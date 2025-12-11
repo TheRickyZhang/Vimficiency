@@ -1,6 +1,9 @@
 #pragma once
 #include <bits/stdc++.h>
 #include "KeyboardModel.h"
+// #include "State.h"
+
+struct Position;
 
 // -----------------------------------------------------------------------------
 // Key metadata and weights
@@ -26,7 +29,13 @@ struct ScoreWeights final {
   double w_roll_bad    = 1.0;   // penalty for "bad" rolls
 };
 
-struct EffortModel {
+struct Config {
   std::array<KeyInfo, KEY_COUNT> keyInfo{};
   ScoreWeights weights{};
+  double costDistanceCoefficient = 1.0; // f = m * keycost() + distance()
+  double heuristic(const State& s, const Position& goal) const {
+    double keyCost = s.effort.get_cost(*this);
+    double dist    = costToGoal(s.pos, goal);
+    return costDistanceCoefficient * keyCost + dist;
+  }
 };

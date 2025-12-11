@@ -2,7 +2,7 @@
 using namespace std;
 
 #include "KeyboardModel.h"
-#include "EffortModel.h"
+#include "Config.h"
 
 // ---------------------------------------------------------------------------
 // QWERTY: (Effort scores from )
@@ -16,7 +16,7 @@ using namespace std;
 //   (1.2)  2.4  1.8  1.4  1.4  1.8    1.8  1.4  1.4  1.8  2.4
 // (2.5)                          0.8                           (3.0 x4)
 // ---------------------------------------------------------------------------
-void fill_qwerty(EffortModel &model) {
+void fill_qwerty(Config &model) {
   auto &keyInfo = model.keyInfo;
 
   auto set_key = [&](Key k, Hand h, Finger f, double base_cost) {
@@ -120,7 +120,7 @@ void fill_qwerty(EffortModel &model) {
 //                      0.8  1.0    1.0  0.8
 //
 // ---------------------------------------------------------------------------
-void fill_colemak_dh(EffortModel &model) {
+void fill_colemak_dh(Config &model) {
   auto &keyInfo = model.keyInfo;
 
   auto set_key = [&](Key k, Hand h, Finger f, double base_cost) {

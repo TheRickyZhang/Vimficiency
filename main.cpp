@@ -1,10 +1,10 @@
 #include <bits/stdc++.h>
-#include "EffortModel.h"
+#include "Config.h"
 #include "EffortState.h"
 #include "TemplateKeyboard.cpp"
 
 int main() {
-  EffortModel model;
+  Config model;
   fill_qwerty(model);
 
   EffortState st;
@@ -14,7 +14,7 @@ int main() {
   st.append(Key::Key_I, model);
   st.append(Key::Key_W, model);
 
-  double cost = st.score(model);
+  double cost = st.cost(model);
   std::cout<<"strokes="<<st.strokes<<" cost="<<cost<<"\n";
   return 0;
 }

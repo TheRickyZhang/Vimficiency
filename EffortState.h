@@ -5,7 +5,7 @@ using namespace std;
 
 #include "KeyboardModel.h"
 #include "KeyboardUtils.h"
-#include "EffortModel.h"
+#include "Config.h"
 
 
 // -----------------------------------------------------------------------------
@@ -31,7 +31,7 @@ struct EffortState {
   Hand   run_hand          = Hand::None;   // hand of current run
   int    run_len           = 0;               // length of current run
 
-  double get_cost(const EffortModel &model) const {
+  double get_cost(const Config &model) const {
     const auto &w = model.weights;
 
     double s = 0.0;
@@ -48,7 +48,7 @@ struct EffortState {
 
 
   // Returns difference in cost after appending keys
-  int append(vector<Key>& keys, const EffortModel& model) {
+  int append(vector<Key>& keys, const Config& model) {
     for(Key k : keys) {
       append_single(k, model);
     }
@@ -56,7 +56,7 @@ struct EffortState {
   }
 
   // Append a key index [0..KEY_COUNT-1] and update all metrics.
-  void append_single(Key key, const EffortModel &model) {
+  void append_single(Key key, const Config &model) {
     const KeyInfo &km = model.keyInfo[static_cast<uint8_t>(key)];
 
     // Base cost

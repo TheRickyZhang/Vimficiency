@@ -1,69 +1,39 @@
 #include <bits/stdc++.h>
 using namespace std;
 #include "EffortState.h"
-#include "EffortModel.h"
+#include "Config.h"
+#include "State.h"
 #include "CharacterToKeys.cpp"
 
-using PosKey = pair<int, int>;
 
-struct position {
-  int line;
-  int currChar;
-  int maxChar; // For accurately tracking line movement 
-
-  position(int l, int cc, int mc) {
-    line = l;
-    cc = cc;
-    maxChar = mc;
-  }
-
-  position getNewPosition(string& motion, )
-};
-
-
-int costToGoal(position p, position q) {
-  return abs(q.line - p.line) + abs(q.currChar - p.currChar);
+int costToGoal(Position p, Position q) {
+  return abs(q.line - p.line) + abs(q.targetCol - p.targetCol);
 }
 
 struct Optimizer {
-  EffortState baseState;
-  EffortModel baseModel; 
+  Config config; 
+  State state;
+
   static constexpr int RESULT_COUNT = 5;
   static constexpr int MAX_SEARCH_DEPTH = 1e5;
   double costWeight = 1;
 
-  Optimizer(const EffortState& effortState, const EffortModel& effortModel, int costWeight = 1) 
-  : baseState(std::move(effortState)), baseModel(std::move(effortModel)), costWeight(costWeight)
+  Optimizer(const State& state, const Config& effortModel, int costWeight = 1) 
+  : state(std::move(state)), config(std::move(effortModel)), costWeight(costWeight)
   {
   }
 
-  struct State {
-    position pos;
-    PosKey key;
-    int cost; // Same as state.get_cost()
-    EffortState state;
-
-    State(position pos, int cost, EffortState state)
-      : pos(pos), cost(cost), state(state) {
-      key = {pos.line, pos.currChar};
-    }
-
-    bool operator<(const State& other) {
-      return cost < other.cost;
-    }
-  };
-
-    
-  vector<string> optimizeMovement(const vector<string>& buffer, position start, position end) {
+  vector<string> optimizeMovement(const vector<string>& lines, Position start, Position end) {
     map<PosKey, int> costMap;
 
-    auto totalCost = [&](State s) {
+    auto totalCost = [&](const State& s) {
       return costWeight * s.cost + costToGoal(s.pos, end);
-    }
+    };
     
-    priority_queue<State, vector<State>, typedef(overallCost)> pq;
+    priority_queue<State> pq;
+    // priority_queue<State, vector<State>, typedef(overallCost)> pq;
     
-    State startState = State(start, 0, baseState);
+    State startState = State(start, 0, state.effort);
     pq.push(startState);
     costMap[startState.key] = 0;
 
@@ -76,9 +46,12 @@ struct Optimizer {
         continue;
       }
       for(auto [motion, keys] : motionToKeys) {
-          EffortState newState = baseState;
-          int newCost = newState.append(keys, baseModel);
-          if(newCost )
+          State newState = s;
+          int newKeyCost = newState.effort.append(keys, config);
+          int newDistCost = apply_normal_motion(newState, motion, lines);
+          int goalCost = 
+
+          if(newCost +)
       }
     }
   }
