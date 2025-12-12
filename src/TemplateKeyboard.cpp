@@ -1,21 +1,9 @@
 #include <bits/stdc++.h>
 using namespace std;
 
-#include "KeyboardModel.h"
-#include "Config.h"
+#include "TemplateKeyboard.h"
+#include "Config.h"   // or whatever defines Config
 
-// ---------------------------------------------------------------------------
-// QWERTY: (Effort scores from )
-// Q W E R T   Y U I O P
-// A S D F G   H J K L ;
-// Z X C V B   N M , . /
-// (Remap esc, 1.2) 
-// (3.0) 2.6  2.2  2.0  2.0  2.2    2.2  2.0  2.0  2.2  2.6 (3.0) (3.0) (3.0)
-//  (2.5) 2.4  1.8  1.4  1.4  1.8    1.8  1.4  1.4  1.8  2.4 (2.5) (2.5) (3.0)
-//         1.3  1.2  1.0  1.0  1.5    1.5  1.0  1.0  1.2  1.3 (1.8) (2.5)
-//   (1.2)  2.4  1.8  1.4  1.4  1.8    1.8  1.4  1.4  1.8  2.4
-// (2.5)                          0.8                           (3.0 x4)
-// ---------------------------------------------------------------------------
 void fill_qwerty(Config &model) {
   auto &keyInfo = model.keyInfo;
 
@@ -89,7 +77,7 @@ void fill_qwerty(Config &model) {
   set_key(Key::Key_Tab,       Hand::Left,   Finger::Lp,   2.5);
   set_key(Key::Key_Enter,     Hand::Right,  Finger::Rp,   2.5);
   set_key(Key::Key_Backspace, Hand::Right,  Finger::Rp,   3.0);
-  set_key(Key::Key_Space,     Hand::None,   Finger::None, 0.8);
+  set_key(Key::Key_Space,     Hand::Right,   Finger::Rt, 0.8);
   set_key(Key::Key_Delete,    Hand::Right,  Finger::Ri,   3.0);
 
   set_key(Key::Key_Ctrl,  Hand::Left, Finger::Lp, 2.5);
@@ -193,7 +181,7 @@ void fill_colemak_dh(Config &model) {
   set_key(Key::Key_Tab,       Hand::Left,   Finger::Lp,   1.8);
   set_key(Key::Key_Enter,     Hand::Right,  Finger::Rp,   1.0);
   set_key(Key::Key_Backspace, Hand::Right,  Finger::Rp,   0.8);
-  set_key(Key::Key_Space,     Hand::None,   Finger::None, 0.8);
+  set_key(Key::Key_Space,     Hand::Right,   Finger::Lt, 0.8);
   set_key(Key::Key_Delete,    Hand::Right,  Finger::Ri,   2.5);
 
   set_key(Key::Key_Ctrl,  Hand::Left, Finger::Lp, 1.2);
@@ -206,4 +194,11 @@ void fill_colemak_dh(Config &model) {
   set_key(Key::Key_Down,  Hand::Right, Finger::Rm, 1.7);
   set_key(Key::Key_Right, Hand::Right, Finger::Ri, 1.7);
   set_key(Key::Key_Up,    Hand::Right, Finger::Rm, 2.0);
+}
+
+
+void fill_equal(Config& cfg) {
+  for(auto &ki : cfg.keyInfo) {
+    ki.baseCost = 1.0;
+  }
 }

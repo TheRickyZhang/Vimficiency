@@ -1,5 +1,4 @@
 #pragma once
-#include <bits/stdc++.h>
 #include "KeyboardModel.h"
 // #include "State.h"
 
@@ -32,10 +31,4 @@ struct ScoreWeights final {
 struct Config {
   std::array<KeyInfo, KEY_COUNT> keyInfo{};
   ScoreWeights weights{};
-  double costDistanceCoefficient = 1.0; // f = m * keycost() + distance()
-  double heuristic(const State& s, const Position& goal) const {
-    double keyCost = s.effort.get_cost(*this);
-    double dist    = costToGoal(s.pos, goal);
-    return costDistanceCoefficient * keyCost + dist;
-  }
 };

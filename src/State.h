@@ -1,5 +1,6 @@
+#pragma once
+
 #include <bits/stdc++.h>
-using namespace std;
 
 #include "EffortState.h"
 
@@ -9,11 +10,14 @@ enum class Mode : uint8_t {
   Visual,
 };
 
-using PosKey = pair<int, int>;
+using PosKey = std::pair<int, int>;
 struct Position {
   int line = 0;
   int col  = 0;
   int targetCol = 0;
+  Position(int l, int c) : line(l), col(c), targetCol(c) {}
+  Position(int l, int c, int tc) : line(l), col(c), targetCol(tc) {}
+
   void setCol(int c) {
     col = targetCol = c;
   }
@@ -24,25 +28,33 @@ struct Position {
 struct State {
   Position pos;
   Mode mode;
+  EffortState effortState;
 
-  int cost;
-  EffortState effort;
+  double effort;
+  double cost;
+  std::string sequence;
 
-  PosKey key;
 
-  State(Position pos, int cost, EffortState effort)
-    : pos(pos), mode(Mode::Normal), cost(cost), effort(effort) {
-    key = {pos.line, pos.targetCol};
+  State(Position pos, EffortState effortState, int effort, int cost)
+    : pos(pos), effortState(effortState), effort(effort), cost(cost), mode(Mode::Normal) {
   }
 
   void reset() {
-    pos = Position{};
+    pos = Position(0, 0, 0);
     mode = Mode::Normal;
-    effort.reset();
+    effortState.reset();
   }
-  bool operator<(const State& other) {
+  bool operator<(const State& other) const {
     return cost < other.cost;
   }
+  bool operator>(const State& other) const {
+    return cost > other.cost;
+  }
+  PosKey getKey() const {
+    return std::make_pair(pos.line, pos.col);
+  }
+
+  void apply_normal_motion(std::string motion, const std::vector<std::string>& lines);
 };
 
 // -----------------------------------------------------------------------------
@@ -57,67 +69,6 @@ struct State {
 
 // Does not change mode or modify text
 // Returns a 
-inline void apply_normal_motion(State& s,
-                                string_view motion,
-                                const vector<string>& lines
-                                ) {
-  Position& p = s.pos;
-  const int n = (int)lines.size();
-
-  auto clampCol = [&](int col, int lineIdx) {
-    assert(lineIdx >= 0 && lineIdx < n);
-    int len = lines[lineIdx].size();
-    return len == 0 ? 0 : clamp(col, 0, len - 1);
-  };
-
-  auto moveCol = [&](int x) {
-      p.setCol(clampCol(p.col + x, s.pos.line));
-  };
-
-  auto moveLine = [&](int x) {
-    p.line = clamp(x, 0, n-1);
-    p.col = clampCol(p.col, p.line);
-  };
-
-  if(motion == "h") {
-    moveCol(-1);
-  }
-  else if(motion == "l") {
-    moveCol(1);
-  }
-  else if(motion == "j") {
-    moveLine(1);
-  }
-  else if(motion == "k") {
-    moveLine(-1);
-  }
-  else if(motion == "0") {
-    p.setCol(0);
-  }
-  else if(motion == "$") {
-    int len = lines[p.line].size();
-    p.setCol(len == 0 ? 0 : len - 1);
-  }
-  else if(motion == "^") {
-    int len = lines[p.line].size();
-    int col = 0;
-    const string& line = lines[p.line];
-    while(col < len && isspace((unsigned char)line[col])) ++col;
-    p.setCol(col);
-  }
-  
-  else if(motion == "gg") {
-    p.line = 0;
-    p.col = clampCol(p.col, p.line);
-  }
-  else if(motion == "G") {
-    p.line = n - 1;
-    p.col = clampCol(p.col, p.line);
-  }
-  else {
-    cout<<"err"<<endl;
-  }
-}
 
 // -----------------------------------------------------------------------------
 // High-level entry: apply "one motion" to VimState, respecting mode

@@ -1,9 +1,14 @@
 #include <bits/stdc++.h>
 using namespace std;
 
-#include "KeyboardModel.h"
+#include "CharacterToKeys.h"
 
-static map<string, vector<Key>> actionToKeys = {
+const SequenceTokenizer& globalTokenizer() {
+  static SequenceTokenizer tok(actionToKeys, motionToKeys);
+  return tok;
+}
+
+map<string, vector<Key>> actionToKeys = {
   // letters
   {"a", {Key::Key_A}},{"A", {Key::Key_Shift, Key::Key_A}},
   {"b", {Key::Key_B}},{"B", {Key::Key_Shift, Key::Key_B}},
@@ -78,9 +83,7 @@ static map<string, vector<Key>> actionToKeys = {
   {")", {Key::Key_Shift, Key::Key_0}},
 };
 
-
-
-static map<string, vector<Key>> motionToKeys = {
+map<string, vector<Key>> motionToKeys = {
   {"h", {Key::Key_H}},
   {"j", {Key::Key_J}},
   {"k", {Key::Key_K}},
@@ -107,45 +110,26 @@ static map<string, vector<Key>> motionToKeys = {
   {"gg", {Key::Key_G, Key::Key_G}},             // top of file
   {"G",  {Key::Key_Shift, Key::Key_G}},         // goto line / end of file
 
-  {"H",  {Key::Key_Shift, Key::Key_H}},         // top of screen
-  {"M",  {Key::Key_Shift, Key::Key_M}},         // middle of screen
-  {"L",  {Key::Key_Shift, Key::Key_L}},         // bottom of screen
+  // {"H",  {Key::Key_Shift, Key::Key_H}},         // top of screen
+  // {"M",  {Key::Key_Shift, Key::Key_M}},         // middle of screen
+  // {"L",  {Key::Key_Shift, Key::Key_L}},         // bottom of screen
 
   // paragraph / sentence-ish motions
-  {"{",  {Key::Key_Shift, Key::Key_LBracket}},
-  {"}",  {Key::Key_Shift, Key::Key_RBracket}},
-  {"(",  {Key::Key_Shift, Key::Key_9}},
-  {")",  {Key::Key_Shift, Key::Key_0}},
+  // {"{",  {Key::Key_Shift, Key::Key_LBracket}},
+  // {"}",  {Key::Key_Shift, Key::Key_RBracket}},
+  // {"(",  {Key::Key_Shift, Key::Key_9}},
+  // {")",  {Key::Key_Shift, Key::Key_0}},
 
   // match pairs
-  {"%",  {Key::Key_Shift, Key::Key_5}},
-
-  // ---------------------------------------------------------------------------
-  // Arrow keys and home/end (for people who use them)
-  // ---------------------------------------------------------------------------
-  {"<Left>",  {Key::Key_Left}},
-  {"<Right>", {Key::Key_Right}},
-  {"<Up>",    {Key::Key_Up}},
-  {"<Down>",  {Key::Key_Down}},
-
-  {"<Home>",  {Key::Key_Home}},
-  {"<End>",   {Key::Key_End}},
+  // {"%",  {Key::Key_Shift, Key::Key_5}},
 
   // ---------------------------------------------------------------------------
   // Scrolling (full/half/small)
   // ---------------------------------------------------------------------------
-  {"<C-f>", {Key::Key_Ctrl, Key::Key_F}},       // page down
-  {"<C-b>", {Key::Key_Ctrl, Key::Key_B}},       // page up
-  {"<C-d>", {Key::Key_Ctrl, Key::Key_D}},       // half-page down
-  {"<C-u>", {Key::Key_Ctrl, Key::Key_U}},       // half-page up
-  {"<C-e>", {Key::Key_Ctrl, Key::Key_E}},       // scroll down one line
-  {"<C-y>", {Key::Key_Ctrl, Key::Key_Y}},       // scroll up one line
-
-  // Optional: accept "C-x" notation as synonyms
-  {"C-f", {Key::Key_Ctrl, Key::Key_F}},
-  {"C-b", {Key::Key_Ctrl, Key::Key_B}},
-  {"C-d", {Key::Key_Ctrl, Key::Key_D}},
-  {"C-u", {Key::Key_Ctrl, Key::Key_U}},
-  {"C-e", {Key::Key_Ctrl, Key::Key_E}},
-  {"C-y", {Key::Key_Ctrl, Key::Key_Y}},
+  // {"<C-f>", {Key::Key_Ctrl, Key::Key_F}},       // page down
+  // {"<C-b>", {Key::Key_Ctrl, Key::Key_B}},       // page up
+  // {"<C-d>", {Key::Key_Ctrl, Key::Key_D}},       // half-page down
+  // {"<C-u>", {Key::Key_Ctrl, Key::Key_U}},       // half-page up
+  // {"<C-e>", {Key::Key_Ctrl, Key::Key_E}},       // scroll down one line
+  // {"<C-y>", {Key::Key_Ctrl, Key::Key_Y}},       // scroll up one line
 };
