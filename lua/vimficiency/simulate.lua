@@ -63,7 +63,7 @@ local function simulate_immediate(buf, win, starting_lines, row, col, keys)
 
   return {
     lines  = new_lines,
-    cursor = { new_cursor[1], new_cursor[2] },
+    cursor = { new_cursor[1] - 1, new_cursor[2] },
     buf    = buf,
     win    = win,
   }

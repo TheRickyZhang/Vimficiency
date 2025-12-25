@@ -141,7 +141,7 @@ function M.capture_state(buf, win)
   return types.new_file_contents(
     v.nvim_buf_get_name(buf),
     vim.bo[buf].filetype,
-    cursor[1],
+    cursor[1] - 1, --- Convert to 0-indexed, annoyingly
     cursor[2],
     lines
   );
@@ -260,11 +260,12 @@ function M.run_program(exe, start_path, end_path, key_seq)
 
   local parts = {}
   for i=1,#key_seq do
-    parts[#parts+1] = key_seq[i].key
+    parts[#parts+1] = key_seq[i].key_typed
   end
   local user_seq = table.concat(parts, "")
 
   local cmd = { exe, start_path, end_path, user_seq }
+  print("executing command: " .. vim.inspect(cmd))
 
   if not vim.system then
     error("cannot find neovim version 10+")
@@ -273,14 +274,20 @@ function M.run_program(exe, start_path, end_path, key_seq)
 
   local obj = vim.system(cmd, { text = true }):wait()
   local code = obj.code or 1
+  local signal = obj.signal or 0
   local stdout = obj.stdout or ""
   local stderr = obj.stderr or ""
-  -- If spawn failed, obj.code can be nil and obj.signal set; normalize
-  if obj.code == nil and (obj.signal ~= nil) then
-    code = 1
-    stderr = (stderr ~= "" and stderr .. "\n" or "") .. ("terminated by signal %s"):format(tostring(obj.signal))
+  --
+  -- Treat "normal" only as: exited with code 0 and no signal.
+  local ok = (code == 0 and signal == 0)
+
+  if not ok then
+    error((
+      "vimficiency exe failed (code=%s, signal=%s)\nstdout:\n%s\nstderr:\n%s"
+    ):format(tostring(code), tostring(signal), stdout, stderr))
   end
-  return code, stdout, stderr
+
+  return 0, stdout, stderr
 end
 
 return M

@@ -22,10 +22,10 @@ local M = {}
 ---@field win integer   --- This will be useful when matching against multiple sessions
 ---@field buf integer
 ---@field mode string
----@field key_raw string   ---Probably not needed since not readable, just for debugging
----@field key string
----@field typed_raw_unused string --- Typed = representation before any mappings. Just use key everywhere for now.
----@field typed_unused string
+---@field key_sent_raw string   ---Probably not needed since not readable, just for debugging
+---@field key_sent string
+---@field key_typed_raw string --- Typed = representation before any mappings. Just use key everywhere for now.
+---@field key_typed string
 
 ---@class VimficiencyFileContents
 ---@field bufname string       # original buffer name (full path)

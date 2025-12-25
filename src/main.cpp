@@ -52,6 +52,7 @@ int main(int argc, char* argv[]) {
   if(res.empty()) {
     cout << "res is empty" << endl;
   } else {
+    cout << "res" << endl;
     for(Result r : res) {
       cout << r.sequence << " " << std::format("{:3f}", r.keyCost) << endl;
     }
