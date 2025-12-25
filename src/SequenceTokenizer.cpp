@@ -15,12 +15,13 @@ SequenceTokenizer::SequenceTokenizer(const Mapping &actions,
   // Longest tokens first, so we greedily match "gg" before "g".
   std::sort(tokens_.begin(), tokens_.end(),
             [](const TokenDef &a, const TokenDef &b) {
-              return a.token.size() > b.token.size();
+              if (a.token.size() != b.token.size())
+                return a.token.size() > b.token.size();
+              return a.token < b.token;
             });
 }
 
-bool SequenceTokenizer::tokenize(std::string_view s,
-                                 KeySequence &out) const {
+bool SequenceTokenizer::tokenize(std::string_view s, KeySequence &out) const {
   out.clear();
   std::size_t i = 0;
 
@@ -29,7 +30,7 @@ bool SequenceTokenizer::tokenize(std::string_view s,
 
     for (const auto &td : tokens_) {
       const std::string &tok = td.token;
-      const std::size_t len  = tok.size();
+      const std::size_t len = tok.size();
 
       if (len <= s.size() - i && s.compare(i, len, tok) == 0) {
         const auto &keys = *td.keys;

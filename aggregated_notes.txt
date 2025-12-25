@@ -1,0 +1,15 @@
+- Currently the model can only recommend back default vim bindings, regardless of user mappings. It seems feasible that the user can provide some mappings, and we can adjust the cost model.
+
+- To keep the search quick, we store a minimal state only consisting of a snapshot of contiguous lines and a (row, col) position. 
+
+This means we cannot support the following operations:
+- gj, gk, H, M, L, zz (screen-related)
+- Cross-jumps
+
+Todo:
+Pass in screen height by lines to properly use <C-d>, <C-u>, etc. 
+
+Maybe:
+minimal register/macro use. Can't ingest current registers, but can process with some default register (ex a) if detecting repetition in search.
+
+- TODO when getting back: update main[3] to take in typed_keys, not sent_keys

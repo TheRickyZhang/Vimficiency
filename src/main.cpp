@@ -20,13 +20,14 @@ namespace fs = std::filesystem;
   // vector<string> lines = readLines(fin);
 
 int main(int argc, char* argv[]) {
-  if(argc < 3) {
-    cout << "must pass in file paths for start / end states for now";
+  if(argc != 4) {
+    cout << "must pass in file paths for start path, end path, user sequence";
     return 1;
   }
 
   fs::path start_path = argv[1];
   fs::path end_path = argv[2];
+  string user_seq = argv[3];
 
   Snapshot start_snapshot = load_snapshot(start_path); 
   Snapshot end_snapshot = load_snapshot(end_path); 
@@ -34,12 +35,18 @@ int main(int argc, char* argv[]) {
   Position start_position(start_snapshot.row, start_snapshot.col);
   Position end_position(end_snapshot.row, end_snapshot.col);
 
+  cout << "starting position: " << start_snapshot.row << " " << start_snapshot.col << endl;
+  cout << "ending position: " << end_snapshot.row << " " << end_snapshot.col << endl;
+
   State startingState(start_position, EffortState(), 0, 0);
   Config model;
   fill_equal(model);
   Optimizer o(startingState, model, 1);
 
-  vector<Result> res = o.optimizeMovement(start_snapshot.lines, end_position, "jjkl"
+  vector<Result> res = o.optimizeMovement(
+    start_snapshot.lines,
+    end_position,
+    user_seq
   );
 
   if(res.empty()) {

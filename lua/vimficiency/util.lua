@@ -1,7 +1,7 @@
 local M = {}
 
 local v  = vim.api
-local uv = vim.uv or vim.loop
+local uv = vim.uv
 local fs = vim.fs
 
 local types = require("vimficiency.types")
@@ -15,14 +15,51 @@ function M.ensure_dir(p)
   vim.fn.mkdir(p, "p")
 end
 
+local function is_file(p)
+  local st = uv.fs_stat(p)
+  return st ~= nil and st.type == "file"
+end
+
 -- ID Generation for file names (Snowflake method)
 local function sanitize_filename(s)
   return (s:gsub("[^%w%._%-]", "_"))
 end
 
-local function notify_err(msg)
-  vim.notify(msg, vim.log.levels.ERROR, { title = "vimficiency" })
+
+---@param title string
+---@param text? string
+---@return integer buf
+---@return integer win
+function M.show_output(title, text)
+  local lines = { title }
+  if text and text ~= "" then
+    lines[#lines + 1] = ""
+    vim.list_extend(lines, vim.split(text, "\n", { plain = true }))
+  end
+
+  vim.cmd("botright new") -- create split + window
+  local win = v.nvim_get_current_win()
+
+  local buf = v.nvim_create_buf(false, true) -- listed=false, scratch=true
+  v.nvim_win_set_buf(win, buf)
+
+  v.nvim_buf_set_name(buf, ("vimficiency://%s"):format(title:gsub("%s+", "_")))
+  v.nvim_buf_set_lines(buf, 0, -1, false, lines)
+
+  -- Modern option APIs
+  vim.bo[buf].buftype = "nofile"
+  vim.bo[buf].bufhidden = "wipe"
+  vim.bo[buf].swapfile = false
+  vim.bo[buf].modifiable = false
+
+  vim.wo[win].number = false
+  vim.wo[win].relativenumber = false
+  vim.wo[win].wrap = false
+  vim.wo[win].signcolumn = "no"
+
+  return buf, win
 end
+
 
 -- Snowflake-like: wall-clock milliseconds + per-ms sequence
 local last_ms = -1
@@ -86,6 +123,9 @@ end
 ----------- BEGIN FILE ------------
 
 
+
+
+
 -- ---------- State / IO helpers ----------
 ---@return VimficiencyFileContents
 function M.capture_state(buf, win)
@@ -109,7 +149,7 @@ end
 
 ---@param path string
 ---@param obj VimficiencyFileContents
-function M.write_json(path, obj)
+function M.write_vimficiency(path, obj)
   -- Plain-text format:
   -- line 1: "vimficiency" version(int)
   -- line 2: <filetype>
@@ -128,10 +168,11 @@ function M.write_json(path, obj)
   end
 
   vim.fn.writefile(out, path)
+  print("successfully wrote to " .. path)
 end
 
 ---@return VimficiencyFileContents
-function M.read_json(path)
+function M.read_vimficiency(path)
   local st = uv.fs_stat(path)
   if not st or st.type ~= "file" then
     error(("read_json: missing file: %s"):format(path))
@@ -209,6 +250,37 @@ function M.read_json(path)
   end
 
   return types.new_file_contents(bufname, filetype, row, col, body)
+end
+
+
+---@param key_seq VimficiencyKeyEvent[]
+function M.run_program(exe, start_path, end_path, key_seq)
+  assert(type(exe) == "string", "need exe string")
+  assert(is_file(start_path) and is_file(end_path), "start and end paths must be valid")
+
+  local parts = {}
+  for i=1,#key_seq do
+    parts[#parts+1] = key_seq[i].key
+  end
+  local user_seq = table.concat(parts, "")
+
+  local cmd = { exe, start_path, end_path, user_seq }
+
+  if not vim.system then
+    error("cannot find neovim version 10+")
+    return nil, nil, nil
+  end
+
+  local obj = vim.system(cmd, { text = true }):wait()
+  local code = obj.code or 1
+  local stdout = obj.stdout or ""
+  local stderr = obj.stderr or ""
+  -- If spawn failed, obj.code can be nil and obj.signal set; normalize
+  if obj.code == nil and (obj.signal ~= nil) then
+    code = 1
+    stderr = (stderr ~= "" and stderr .. "\n" or "") .. ("terminated by signal %s"):format(tostring(obj.signal))
+  end
+  return code, stdout, stderr
 end
 
 return M

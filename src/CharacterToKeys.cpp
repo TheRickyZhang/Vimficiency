@@ -8,6 +8,7 @@ const SequenceTokenizer& globalTokenizer() {
   return tok;
 }
 
+// See :h key-notation, :h keytrans()
 map<string, vector<Key>> actionToKeys = {
   // letters
   {"a", {Key::Key_A}},{"A", {Key::Key_Shift, Key::Key_A}},
@@ -66,8 +67,11 @@ map<string, vector<Key>> actionToKeys = {
   // main-row punctuation and shifted versions
   {";", {Key::Key_Semicolon}},{":", {Key::Key_Shift, Key::Key_Semicolon}},
   {"'", {Key::Key_Apostrophe}},{"\"",{Key::Key_Shift, Key::Key_Apostrophe}},
-  {",", {Key::Key_Comma}},{"<", {Key::Key_Shift, Key::Key_Comma}},
-  {".", {Key::Key_Period}},{">", {Key::Key_Shift, Key::Key_Period}},
+  {",", {Key::Key_Comma}},
+  {"<LT>", {Key::Key_Shift, Key::Key_Comma}},  // NOTE: custom form since <...> is used for parsing others
+  {".", {Key::Key_Period}},
+  {">", {Key::Key_Shift, Key::Key_Period}},
+  
   {"/", {Key::Key_Slash}}, {"?", {Key::Key_Shift, Key::Key_Slash}},
 
   // shifted digits (!@#$%^&*())

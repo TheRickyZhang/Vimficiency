@@ -6,7 +6,7 @@ using namespace std;
 vector<Result> Optimizer::optimizeMovement(const vector<string>& lines, const Position& end, const string& userSequence) {
   int totalExplored = 0;
   double userEffort = getEffort(userSequence, config);
-  cout << "user effort: " << userEffort << endl;  
+  cout << "user effort for sequence " << userSequence << ": " << userEffort << endl;  
 
   vector<Result> res;
   map<PosKey, double> costMap;
