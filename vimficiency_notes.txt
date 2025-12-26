@@ -6,7 +6,9 @@ This means we cannot support the following operations:
 - gj, gk, H, M, L, zz (screen-related)
 - Cross-jumps
 
-Todo:
+TODO fixes:
+e0lk is returned on uniform.txt (0, 0) -> (2, 1), when it clearly should not.
+
 Pass in screen height by lines to properly use <C-d>, <C-u>, etc. 
 
 Maybe:
@@ -14,3 +16,12 @@ minimal register/macro use. Can't ingest current registers, but can process with
 
 
 It is pretty dumb how nvim_win_get_cursor returns a 1-indexed row, while buf_get_lines and the natural internal representation has a 0-indexed row. I will choose the correct representation (0-indexed) and deal with off-by-1 line commands later.
+
+LuaJIT's FFI only targets the C ABI, as native C++ ABI is pretty difficult (would need to consider all the added features / stdlib / object layout)
+
+
+
+Interesting (maybe?) things that have come up:
+- C ABI
+- C++ Name Mangling
+- X Macros. May become obsolete with reflection in C++ 26?

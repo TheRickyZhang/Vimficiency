@@ -1,0 +1,8 @@
+vimficiency 1
+text
+/home/ricky/Projects/vimficiency/data/TestFiles/uniform.txt
+0 0
+aaaaaaaaaaaaaa
+aaaaaaaaaaaaaa
+aaaaaaaaaaaaaa
+aaaaaaaaaaaaaa

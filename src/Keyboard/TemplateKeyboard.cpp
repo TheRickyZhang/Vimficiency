@@ -2,7 +2,22 @@
 using namespace std;
 
 #include "TemplateKeyboard.h"
-#include "Config.h"   // or whatever defines Config
+#include "Optimizer/Config.h"   // or whatever defines Config
+
+
+// ---------------------------------------------------------------------------
+// Regular Qwerty
+// Q W E R T   Y U I O P
+//  A S D F G   H J K L ;
+//   Z X C V B   N M , . /
+//
+//     2.6  2.2  2.0  2.0  2.2    2.2  2.0  2.0  2.2  2.6
+//     2.2  2.0  1.7  1.7  2.0    2.0  1.7  1.7  2.0  2.2
+//     2.2  1.7  1.3  1.3  1.6    1.6  1.3  1.3  1.7  2.2
+//     1.3  1.2  1.0  1.0  1.5    1.5  1.0  1.0  1.2  1.3
+//          2.0  1.7 (1.0)            (1.0) 1.7  2.0
+//                            0.8 
+//
 
 void fill_qwerty(Config &model) {
   auto &keyInfo = model.keyInfo;
@@ -196,9 +211,15 @@ void fill_colemak_dh(Config &model) {
   set_key(Key::Key_Up,    Hand::Right, Finger::Rm, 2.0);
 }
 
+/*
+* Equal weights for testing purposes
+* 
+* Everything 1.0, no complex score weights
+*/
 
-void fill_equal(Config& cfg) {
+void fill_uniform(Config& cfg) {
   for(auto &ki : cfg.keyInfo) {
-    ki.baseCost = 1.0;
+    ki.base_cost = 1.0;
   }
+  cfg.weights = ScoreWeights(1.0);
 }

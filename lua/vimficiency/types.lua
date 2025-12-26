@@ -1,10 +1,40 @@
 local M = {}
 
----@class VimficiencyConfig
----@field exe string
----@field root string
----@field start_dir string
----@field end_dir string
+--- C ABI / Library interface
+---@class C_ScoreWeights
+---@field w_key number
+---@field w_same_finger number
+---@field w_same_key number
+---@field w_alt_bonus number
+---@field w_run_pen number
+---@field w_roll_good number
+---@field w_roll_bad number
+
+---@class C_KeyInfo
+---@field hand integer
+---@field finger integer
+---@field base_cost number
+
+---@class VimficiencyConfigFFI
+---@field default_keyboard integer
+---@field weights C_ScoreWeights
+---@field keys C_KeyInfo[]
+
+---@class VimficiencyLib
+---@field VIMFICIENCY_KEY_COUNT integer
+---@field VIMFICIENCY_FINGER_COUNT integer
+---@field VIMFICIENCY_HAND_COUNT integer
+---@field vimficiency_key_name fun(index: integer): ffi.cdata*
+---@field vimficiency_finger_name fun(index: integer): ffi.cdata*
+---@field vimficiency_hand_name fun(index: integer): ffi.cdata*
+---@field vimficiency_get_config fun(): VimficiencyConfigFFI
+---@field vimficiency_apply_config fun(): nil
+---@field vimficiency_analyze fun(start_text: string, start_row: integer, start_col: integer, end_text: string, end_row: integer, end_col: integer, keyseq: string): ffi.cdata*
+---@field vimficiency_version fun(): integer
+---@field vimficiency_debug_config fun(): string
+
+
+--- Native C++
 
 --- A session is maintained from its initialization from a call to start(), to the time it is consumed by a call to end().
 --- It must be over the same window, and will fail if any of its members gets invalidated.
@@ -13,7 +43,7 @@ local M = {}
 ---@field id string
 ---@field win number
 ---@field start_buf number
----@field start_path string
+---@field start_state VimficiencyState
 ---@field key_seq VimficiencyKeyEvent[]
 ---@field time_started number
 
@@ -27,7 +57,7 @@ local M = {}
 ---@field key_typed_raw string --- Typed = representation before any mappings. Just use key everywhere for now.
 ---@field key_typed string
 
----@class VimficiencyFileContents
+---@class VimficiencyState
 ---@field bufname string       # original buffer name (full path)
 ---@field filetype string      # buffer filetype
 ---@field row integer
@@ -38,24 +68,24 @@ local M = {}
 ---@field buf number
 ---@field win number
 ---@field id string
----@field path string
+---@field state VimficiencyState
+
 
 
 ---@param id string
 ---@param win number
 ---@param start_buf number
----@param start_path string
+---@param state VimficiencyState
 ---@return VimficiencySession
-function M.new_session(id, win , start_buf , start_path)
+function M.new_session(id, win , start_buf , state)
   assert(type(id) == "string" and id ~= "", "session.id must be nonempty string")
   assert(vim.api.nvim_win_is_valid(win), "session.win must be a valid window id")
   assert(vim.api.nvim_buf_is_valid(start_buf), "start_buf is not valid" .. start_buf)
-  assert(type(start_path) == "string" and start_path ~= "", "session.start_path must be nonempty string")
 
   return {
     id = id,
     win = win,
-    start_path = start_path,
+    state = state,
     start_buf = start_buf,
     key_seq = {},
     time_started = vim.uv.hrtime(),
@@ -68,7 +98,7 @@ end
 ---@param row integer
 ---@param col integer
 ---@param lines string[]
----@return VimficiencyFileContents
+---@return VimficiencyState
 function M.new_file_contents(bufname, filetype, row, col, lines)
   assert(type(bufname) == "string", "filecontents.bufname must be string")
   assert(type(filetype) == "string", "filecontents.filetype must be string")
@@ -81,14 +111,13 @@ end
 ---@param buf number
 ---@param win number
 ---@param id string
----@param path string
+---@param state VimficiencyState
 ---@return VimficiencyWriteDTO
-function M.new_write_dto(buf, win, id, path)
+function M.new_write_dto(buf, win, id, state)
   assert(vim.api.nvim_buf_is_valid(buf), "buf is not valid" .. buf)
   assert(vim.api.nvim_win_is_valid(win), "win is not valid" .. win)
   assert(type(id) == "string")
-  assert(type(path) == "string")
-  return {buf=buf, win=win, id=id, path=path}
+  return {buf=buf, win=win, id=id, state=state}
 end
 
 return M

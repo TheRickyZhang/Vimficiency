@@ -1,7 +1,7 @@
-#include "EffortState.h"
+#include "State/EffortState.h"
 
-#include "KeyboardUtils.h"
-#include "CharacterToKeys.h"
+#include "Keyboard/KeyboardUtils.h"
+#include "Keyboard/CharacterToKeys.h"
 
 double EffortState::getEffort(const Config &model) const {
   const auto &w = model.weights;
@@ -10,9 +10,9 @@ double EffortState::getEffort(const Config &model) const {
   s += w.w_key         * sum_key_cost;
   s += w.w_same_finger * sum_same_finger;
   s += w.w_same_key    * sum_same_key;
-  s -= w.w_alt_bonus   * sum_alt_bonus;   // alternation makes it cheaper
+  s += w.w_alt_bonus   * sum_alt_bonus;
   s += w.w_run_pen     * sum_run_pen;
-  s -= w.w_roll_good   * sum_roll_good;   // good rolls are cheaper
+  s += w.w_roll_good   * sum_roll_good;
   s += w.w_roll_bad    * sum_roll_bad;
 
   return s;
@@ -32,7 +32,7 @@ void EffortState::appendSingle(Key key, const Config &model) {
 
   // Base cost
   ++strokes;
-  sum_key_cost += km.baseCost;
+  sum_key_cost += km.base_cost;
 
   // Same finger/key
   if (last_finger != Finger::None && km.finger == last_finger) {
@@ -116,10 +116,12 @@ double getEffort(const std::string &seq,
                  const Config      &cfg) {
   std::vector<Key> keys;
   if(!globalTokenizer().tokenize(seq, keys)) {
-    throw std::runtime_error("Malformed key sequence: " + seq);
+    std::cerr << "Malformed key sequence: " + seq << endl;
+    // throw new std::runtime_error("Malformed key sequence: " + seq);
+    return 0.0;
   }
+    
   EffortState st;
-  st.append(keys, cfg);
-  return st.getEffort(cfg);
+  return st.append(keys, cfg);
 }
 

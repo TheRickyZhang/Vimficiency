@@ -43,6 +43,7 @@ bool SequenceTokenizer::tokenize(std::string_view s, KeySequence &out) const {
 
     if (!matched) {
       // Unknown token starting at position i.
+      std::cerr << "unknown starting from " << s[i] << "\n";
       return false;
     }
   }

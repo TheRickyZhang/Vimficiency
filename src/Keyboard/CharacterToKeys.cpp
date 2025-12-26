@@ -85,6 +85,60 @@ map<string, vector<Key>> actionToKeys = {
   {"*", {Key::Key_Shift, Key::Key_8}},
   {"(", {Key::Key_Shift, Key::Key_9}},
   {")", {Key::Key_Shift, Key::Key_0}},
+
+  // Keys with brackets
+    {"<Space>", {Key::Key_Space}},
+  {"<Tab>", {Key::Key_Tab}},
+  {"<CR>", {Key::Key_Enter}},
+  {"<Enter>", {Key::Key_Enter}},
+  {"<Return>", {Key::Key_Enter}},
+  {"<Esc>", {Key::Key_Esc}},
+  {"<BS>", {Key::Key_Backspace}},
+  {"<Del>", {Key::Key_Delete}},
+  
+  // Arrow keys
+  {"<Up>", {Key::Key_Up}},
+  {"<Down>", {Key::Key_Down}},
+  {"<Left>", {Key::Key_Left}},
+  {"<Right>", {Key::Key_Right}},
+  
+  // Navigation
+  {"<Home>", {Key::Key_Home}},
+  {"<End>", {Key::Key_End}},
+
+  // Ctrl combinations
+  {"<C-a>", {Key::Key_Ctrl, Key::Key_A}},
+  {"<C-b>", {Key::Key_Ctrl, Key::Key_B}},
+  {"<C-c>", {Key::Key_Ctrl, Key::Key_C}},
+  {"<C-d>", {Key::Key_Ctrl, Key::Key_D}},
+  {"<C-e>", {Key::Key_Ctrl, Key::Key_E}},
+  {"<C-f>", {Key::Key_Ctrl, Key::Key_F}},
+  {"<C-g>", {Key::Key_Ctrl, Key::Key_G}},
+  {"<C-h>", {Key::Key_Ctrl, Key::Key_H}},
+  {"<C-i>", {Key::Key_Ctrl, Key::Key_I}},
+  {"<C-j>", {Key::Key_Ctrl, Key::Key_J}},
+  {"<C-k>", {Key::Key_Ctrl, Key::Key_K}},
+  {"<C-l>", {Key::Key_Ctrl, Key::Key_L}},
+  {"<C-m>", {Key::Key_Ctrl, Key::Key_M}},
+  {"<C-n>", {Key::Key_Ctrl, Key::Key_N}},
+  {"<C-o>", {Key::Key_Ctrl, Key::Key_O}},
+  {"<C-p>", {Key::Key_Ctrl, Key::Key_P}},
+  {"<C-q>", {Key::Key_Ctrl, Key::Key_Q}},
+  {"<C-r>", {Key::Key_Ctrl, Key::Key_R}},
+  {"<C-s>", {Key::Key_Ctrl, Key::Key_S}},
+  {"<C-t>", {Key::Key_Ctrl, Key::Key_T}},
+  {"<C-u>", {Key::Key_Ctrl, Key::Key_U}},
+  {"<C-v>", {Key::Key_Ctrl, Key::Key_V}},
+  {"<C-w>", {Key::Key_Ctrl, Key::Key_W}},
+  {"<C-x>", {Key::Key_Ctrl, Key::Key_X}},
+  {"<C-y>", {Key::Key_Ctrl, Key::Key_Y}},
+  {"<C-z>", {Key::Key_Ctrl, Key::Key_Z}},
+  
+  // Common Ctrl special keys
+  {"<C-Space>", {Key::Key_Ctrl, Key::Key_Space}},
+  {"<C-BS>", {Key::Key_Ctrl, Key::Key_Backspace}},
+  {"<C-CR>", {Key::Key_Ctrl, Key::Key_Enter}},
+  {"<C-Tab>", {Key::Key_Ctrl, Key::Key_Tab}},
 };
 
 map<string, vector<Key>> motionToKeys = {

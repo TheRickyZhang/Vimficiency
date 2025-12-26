@@ -2,7 +2,7 @@
 
 #include <bits/stdc++.h>
 
-#include "EffortState.h"
+#include "State/EffortState.h"
 
 enum class Mode : uint8_t {
   Normal,

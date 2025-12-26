@@ -1,71 +1,48 @@
--- return require("vimficiency.session")
-
+-- lua/vimficiency/init.lua
+local ffi_lib = require("vimficiency.ffi")
 local session = require("vimficiency.session")
-
 local M = {}
 
-local data_root = vim.fs.joinpath(vim.fn.stdpath("data"), "vimficiency")
-
-
----@type VimficiencyConfig
-local config = {
-  exe = "/home/ricky/Projects/vimficiency/build/vimficiency",  --- Full path for dev
-  root = data_root,              -- base dir for plugin data
-  start_dir = "StartingStates",  -- relative to root by default
-  end_dir   = "EndingStates",    -- relative to root by default
-}
-
--- Simple concatenation of string paths
-local function join(...)
-  return table.concat({ ... }, "/")
-end
-
-local function is_abs(path)
-  return path:sub(1, 1) == "/"
-end
-
-local function normalize_and_ensure(cfg)
-  if not is_abs(cfg.start_dir) then
-    cfg.start_dir = join(cfg.root, cfg.start_dir)
-  end
-  if not is_abs(cfg.end_dir) then
-    cfg.end_dir = join(cfg.root, cfg.end_dir)
-  end
-  vim.fn.mkdir(cfg.start_dir, "p")
-  vim.fn.mkdir(cfg.end_dir, "p")
-end
-
 local function set_cmd(name, fn, opts)
-  opts = opts or {}
-  pcall(vim.api.nvim_del_user_command, name)
-  vim.api.nvim_create_user_command(name, fn, opts)
+    opts = opts or {}
+    pcall(vim.api.nvim_del_user_command, name)
+    vim.api.nvim_create_user_command(name, fn, opts)
 end
 
+function M.setup(user_config)
+    -- Push to C++
+    ffi_lib.configure(user_config or {})
 
+    set_cmd("VimficiencyStart", session.start, {})
+    set_cmd("VimficiencyStop", session.finish, {})
+    set_cmd("VimficiencySimulate", function(o)
+        session.simulate(o.args)
+    end, { nargs = 1 })
 
-function M.setup(setup_options)
-  config = vim.tbl_deep_extend("force", config, setup_options or {})
-  config.exe = vim.fn.expand(config.exe)
+    set_cmd("VimficiencyReload", function()
+        -- Rebuild the shared library
+        local build_dir = vim.fn.expand("~/Projects/vimficiency/build")  -- adjust as needed
+        vim.notify("Rebuilding Vimficiency...", vim.log.levels.INFO)
 
-  normalize_and_ensure(config)
-  session.setup(config)
+        local result = vim.fn.system({ "cmake", "--build", build_dir, "-j" })
+        if vim.v.shell_error ~= 0 then
+            vim.notify("Build failed: " .. result, vim.log.levels.ERROR)
+            return
+        end
 
-  set_cmd("VimficiencyStart", session.start, {})
-  set_cmd("VimficiencyStop", session.finish, {})
+        -- Reloading a shared library in LuaJIT is tricky, safest to restart Neovim
+        vim.notify("Rebuild complete. Restart Neovim to load new library.", vim.log.levels.WARN)
+    end, {})
 
-  set_cmd("VimficiencySimulate", function(o)
-    session.simulate(o.args)
-  end, {nargs = 1})
-
-  set_cmd("VimficiencyReload", function()
-    for name, _ in pairs(package.loaded) do
-      if name:match("vimficiency") then
-        package.loaded[name] = nil
-      end
-    end
-    require("vimficiency").setup({})
-    vim.notify("vimficiency reloaded", vim.log.levels.INFO)
-  end, {})
+    set_cmd("VimficiencyDebugConfig", function()
+        local debug_output = ffi_lib.debug_config()
+        -- Show in a scratch buffer
+        vim.cmd("botright new")
+        local buf = vim.api.nvim_get_current_buf()
+        vim.bo[buf].buftype = "nofile"
+        vim.bo[buf].bufhidden = "wipe"
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(debug_output, "\n"))
+    end, {})
 end
 
 return M

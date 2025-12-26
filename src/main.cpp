@@ -1,11 +1,11 @@
 #include <bits/stdc++.h>
 
-#include "Config.h"
-#include "EffortState.h"
-#include "Optimizer.h"
-#include "Snapshot.h"
-#include "State.h"
-#include "TemplateKeyboard.h"
+#include "Optimizer/Config.h"
+#include "State/EffortState.h"
+#include "Optimizer/Optimizer.h"
+#include "State/Snapshot.h"
+#include "State/State.h"
+#include "Keyboard/TemplateKeyboard.h"
 #include "Testing/TestUtils.h"
 
 using namespace std;
@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) {
 
   State startingState(start_position, EffortState(), 0, 0);
   Config model;
-  fill_equal(model);
+  fill_uniform(model);
   Optimizer o(startingState, model, 1);
 
   vector<Result> res = o.optimizeMovement(

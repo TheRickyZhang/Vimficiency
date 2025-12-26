@@ -2,8 +2,8 @@
 
 #include <bits/stdc++.h>
 
-#include "Config.h"
-#include "State.h"
+#include "Optimizer/Config.h"
+#include "State/State.h"
 
 struct Result {
   std::string sequence;

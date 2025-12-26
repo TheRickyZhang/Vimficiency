@@ -1,5 +1,5 @@
-#include "Optimizer.h"
-#include "CharacterToKeys.h"
+#include "Optimizer/Optimizer.h"
+#include "Keyboard/CharacterToKeys.h"
 
 using namespace std;
 

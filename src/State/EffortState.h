@@ -2,8 +2,8 @@
 
 #include <bits/stdc++.h>
 
-#include "KeyboardModel.h"
-#include "Config.h"
+#include "Keyboard/KeyboardModel.h"
+#include "Optimizer/Config.h"
 
 // -----------------------------------------------------------------------------
 // Incremental state (for a sequence of key presses)
