@@ -29,7 +29,8 @@ local M = {}
 ---@field vimficiency_hand_name fun(index: integer): ffi.cdata*
 ---@field vimficiency_get_config fun(): VimficiencyConfigFFI
 ---@field vimficiency_apply_config fun(): nil
----@field vimficiency_analyze fun(start_text: string, start_row: integer, start_col: integer, end_text: string, end_row: integer, end_col: integer, keyseq: string): ffi.cdata*
+---@field vimficiency_analyze fun(start_text: string, start_row: integer, start_col: integer, end_text: string, end_row: integer, end_col: integer, keyseq: string): string
+---@field vimficiency_get_debug fun(): string
 ---@field vimficiency_version fun(): integer
 ---@field vimficiency_debug_config fun(): string
 
@@ -75,9 +76,9 @@ local M = {}
 ---@param id string
 ---@param win number
 ---@param start_buf number
----@param state VimficiencyState
+---@param start_state VimficiencyState
 ---@return VimficiencySession
-function M.new_session(id, win , start_buf , state)
+function M.new_session(id, win , start_buf , start_state)
   assert(type(id) == "string" and id ~= "", "session.id must be nonempty string")
   assert(vim.api.nvim_win_is_valid(win), "session.win must be a valid window id")
   assert(vim.api.nvim_buf_is_valid(start_buf), "start_buf is not valid" .. start_buf)
@@ -85,7 +86,7 @@ function M.new_session(id, win , start_buf , state)
   return {
     id = id,
     win = win,
-    state = state,
+    start_state = start_state,
     start_buf = start_buf,
     key_seq = {},
     time_started = vim.uv.hrtime(),

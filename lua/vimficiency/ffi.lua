@@ -43,28 +43,28 @@ ffi.cdef([[
         const char* end_text, int end_row, int end_col,
         const char* keyseq
     );
+    const char* vimficiency_get_debug();
+
     int vimficiency_version();
 
     const char* vimficiency_debug_config();
 ]])
 
-
-
 -------- Local Helper Functions --------
 
 local function find_plugin_root()
-    -- This file is at: <plugin_root>/lua/vimficiency/ffi.lua,
-    local source = debug.getinfo(1, "S").source
-    if source:sub(1, 1) == "@" then
-        source = source:sub(2)  -- remove leading @
-    end
-    return vim.fn.fnamemodify(source, ":h:h:h")
+	-- This file is at: <plugin_root>/lua/vimficiency/ffi.lua,
+	local source = debug.getinfo(1, "S").source
+	if source:sub(1, 1) == "@" then
+		source = source:sub(2) -- remove leading @
+	end
+	return vim.fn.fnamemodify(source, ":h:h:h")
 end
 
 -- Find and load the shared library
 ---@return VimficiencyLib
 local function load_lib()
-  local root = find_plugin_root();
+	local root = find_plugin_root()
 	local paths = {
 		root .. "/build/libvimficiency.so", -- local build
 		"vimficiency", -- system path
@@ -82,12 +82,12 @@ end
 
 --- Produces: t["Q"] = 0, t["W"] = 1, etc.
 local function build_enum(count, name_fn)
-  local t = {}
-  for i = 0, count-1 do
-    local name = ffi.string(name_fn(i))
-    t[name] = i
-  end
-  return t
+	local t = {}
+	for i = 0, count - 1 do
+		local name = ffi.string(name_fn(i))
+		t[name] = i
+	end
+	return t
 end
 
 -------- END Local Helper Functions --------
@@ -101,36 +101,49 @@ M.Hand = build_enum(lib.VIMFICIENCY_HAND_COUNT, lib.vimficiency_hand_name)
 
 -- ---@param user_config VimficiencyConfigFFI
 function M.configure(user_config)
-  ---@type VimficiencyConfigFFI
-  local config = lib.vimficiency_get_config()
+	---@type VimficiencyConfigFFI
+	local config = lib.vimficiency_get_config()
 
-  -- if user_config.DEFAULT_KEYBOARD != DEFAULT_KEYBOARD.NONE then
-  --   set_default()
-  -- end
+	-- if user_config.DEFAULT_KEYBOARD != DEFAULT_KEYBOARD.NONE then
+	--   set_default()
+	-- end
 
-  if user_config.weights then
-      local w = user_config.weights
-      local cw = config.weights
-      if w.w_key then cw.w_key = w.w_key end
-      if w.w_same_finger then cw.w_same_finger = w.w_same_finger end
-      if w.w_same_key then cw.w_same_key = w.w_same_key end
-      if w.w_alt_bonus then cw.w_alt_bonus = w.w_alt_bonus end
-      if w.w_run_pen then cw.w_run_pen = w.w_run_pen end
-      if w.w_roll_good then cw.w_roll_good = w.w_roll_good end
-      if w.w_roll_bad then cw.w_roll_bad = w.w_roll_bad end
-  end
+	if user_config.weights then
+		local w = user_config.weights
+		local cw = config.weights
+		if w.w_key then
+			cw.w_key = w.w_key
+		end
+		if w.w_same_finger then
+			cw.w_same_finger = w.w_same_finger
+		end
+		if w.w_same_key then
+			cw.w_same_key = w.w_same_key
+		end
+		if w.w_alt_bonus then
+			cw.w_alt_bonus = w.w_alt_bonus
+		end
+		if w.w_run_pen then
+			cw.w_run_pen = w.w_run_pen
+		end
+		if w.w_roll_good then
+			cw.w_roll_good = w.w_roll_good
+		end
+		if w.w_roll_bad then
+			cw.w_roll_bad = w.w_roll_bad
+		end
+	end
 
-  if user_config.keys then
-    for key_index, info in pairs(user_config.keys) do
-        config.keys[key_index].hand = info.hand
-        config.keys[key_index].finger = info.finger
-        config.keys[key_index].base_cost = info.cost
-      end
-  end
+	if user_config.keys then
+		for key_index, info in pairs(user_config.keys) do
+			config.keys[key_index].hand = info.hand
+			config.keys[key_index].finger = info.finger
+			config.keys[key_index].base_cost = info.cost
+		end
+	end
 
-  lib.vimficiency_apply_config()
+	lib.vimficiency_apply_config()
 end
-
 
 ---@param start_lines string[]
 ---@param start_row integer (0-indexed)
@@ -139,12 +152,14 @@ end
 ---@param end_row integer (0-indexed)
 ---@param end_col integer (0-indexed)
 ---@param key_seq string
----@return string
+---@return string result, string debug
 function M.analyze(start_lines, start_row, start_col, end_lines, end_row, end_col, key_seq)
 	local start_text = table.concat(start_lines, "\n")
 	local end_text = table.concat(end_lines, "\n")
+
 	local result = lib.vimficiency_analyze(start_text, start_row, start_col, end_text, end_row, end_col, key_seq)
-	return ffi.string(result)
+  local dbg = ffi.string(lib.vimficiency_get_debug())
+  return ffi.string(result), ffi.string(dbg)
 end
 
 function M.version()
@@ -152,7 +167,7 @@ function M.version()
 end
 
 function M.debug_config()
-    return ffi.string(lib.vimficiency_debug_config())
+	return ffi.string(lib.vimficiency_debug_config())
 end
 
 return M

@@ -2,7 +2,7 @@
 
 #include <bits/stdc++.h>
 
-#include "State/EffortState.h"
+#include "State/RunningEffort.h"
 
 enum class Mode : uint8_t {
   Normal,
@@ -28,14 +28,14 @@ struct Position {
 struct State {
   Position pos;
   Mode mode;
-  EffortState effortState;
+  RunningEffort effortState;
 
   double effort;
   double cost;
   std::string sequence;
 
 
-  State(Position pos, EffortState effortState, int effort, int cost)
+  State(Position pos, RunningEffort effortState, int effort, int cost)
     : pos(pos), effortState(effortState), effort(effort), cost(cost), mode(Mode::Normal) {
   }
 
@@ -56,6 +56,7 @@ struct State {
 
   void apply_normal_motion(std::string motion, const std::vector<std::string>& lines);
 };
+
 
 // -----------------------------------------------------------------------------
 // Helpers
@@ -86,11 +87,11 @@ struct State {
 //       break;
 //
 //     case Mode::Insert:
-//       cout<<"not done bozo"<<endl;
+//       debug("not done bozo");
 //       break;
 //
 //     case Mode::Visual:
-//       cout<<"not done bozo"<<endl;
+//       debug("not done bozo");
 //       break;
 //   }
 // }

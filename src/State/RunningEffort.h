@@ -9,7 +9,7 @@
 // Incremental state (for a sequence of key presses)
 // -----------------------------------------------------------------------------
 
-class EffortState {
+class RunningEffort {
 private:
   int    strokes           = 0;
   double sum_key_cost      = 0.0; // ∑ base_cost

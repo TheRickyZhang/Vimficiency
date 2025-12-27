@@ -15,7 +15,7 @@ Maybe:
 minimal register/macro use. Can't ingest current registers, but can process with some default register (ex a) if detecting repetition in search.
 
 
-It is pretty dumb how nvim_win_get_cursor returns a 1-indexed row, while buf_get_lines and the natural internal representation has a 0-indexed row. I will choose the correct representation (0-indexed) and deal with off-by-1 line commands later.
+It is pretty dumb how nvim_win_get_cursor returns a 1-indexed row, while buf_get_lines and the natural internal representation has a 0-indexed row. I will choose the correct representation (0-indexed), and shouldn't be an issue apart from direct line jumps (:36).
 
 LuaJIT's FFI only targets the C ABI, as native C++ ABI is pretty difficult (would need to consider all the added features / stdlib / object layout)
 
@@ -25,3 +25,5 @@ Interesting (maybe?) things that have come up:
 - C ABI
 - C++ Name Mangling
 - X Macros. May become obsolete with reflection in C++ 26?
+- std::streambuf, and cout.rdbuf as getter/setter
+- CMake visibility: public, private, interface

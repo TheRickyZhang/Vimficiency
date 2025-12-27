@@ -4,7 +4,6 @@
 vector<Result> Optimizer/Optimizer.h::optimizeMovement(const vector<string>& lines, const Position& end, const string& userSequence) {
   int totalExplored = 0;
   double userEffort = getEffort(userSequence, config);
-  cout << "user effort: " << userEffort << endl;  
 
   vector<Result> res;
   map<PosKey, double> costMap;
@@ -20,7 +19,6 @@ vector<Result> Optimizer/Optimizer.h::optimizeMovement(const vector<string>& lin
     pq.pop();
 
     if(++totalExplored > MAX_SEARCH_DEPTH) {
-      cout<<"maximum total explored count reached"<<endl;
       break;
     }
 
@@ -30,7 +28,6 @@ vector<Result> Optimizer/Optimizer.h::optimizeMovement(const vector<string>& lin
     if(isGoal) {
       res.emplace_back(s.sequence, s.effortState.getEffort(config));
       if(res.size() >= RESULT_COUNT) {
-        cout<<"maximum result count reached"<<endl;
         break;
       }
       continue;
@@ -40,8 +37,6 @@ vector<Result> Optimizer/Optimizer.h::optimizeMovement(const vector<string>& lin
         continue;
       }
     }
-
-    cout << "\"" << s.sequence << "\" " << s.cost << endl;
 
     double currentCost = heuristic(s, end);
     for(auto [motion, keys] : motionToKeys) {
@@ -54,7 +49,6 @@ vector<Result> Optimizer/Optimizer.h::optimizeMovement(const vector<string>& lin
       if(newState.effort > userEffort) {
         continue;
       }
-      // cout << "curr: " << currentCost << " new: " << newCost << endl;
 
       PosKey newKey = newState.getKey();
       auto it = costMap.find(newKey);
@@ -70,16 +64,8 @@ vector<Result> Optimizer/Optimizer.h::optimizeMovement(const vector<string>& lin
         it->second = newCost;
         pq.push(newState);
       }
-      else {
-        // cout << motion << " is worse" << endl;
-      }
     }
   }
 
-  cout << "---costMap---" << endl;
-  for(auto [state, cost] : costMap) {
-    auto [l, c] = state;
-    cout << l << " " << c << ", " << cost << endl;
-  }
   return res;
 }

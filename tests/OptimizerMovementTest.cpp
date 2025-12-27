@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 // #include "Optimizer/Config.h"
-// #include "State/EffortState.h"
+// #include "State/RunningEffort.h"
 // #include "Optimizer/Optimizer.h"
 // #include "State/Snapshot.h"
 // #include "State/State.h"

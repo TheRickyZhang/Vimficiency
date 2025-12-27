@@ -4,26 +4,31 @@ project(vimficiency LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Huh what does this do?
 set(CMAKE_POSITION_INDEPENDENT_CODE ON) 
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
+# Have debug enabled by default for development
+option(VIMFICIENCY_DEBUG "Enable debug output" ON)
 
 # Produces STATIC libvimficiency_core.a.
 # Note to self: Static library just produces bundled code for purposes of easier inclsusion into others
-add_library(vimficiency_core STATIC
-    src/Keyboard/CharacterToKeys.cpp
-    src/Keyboard/SequenceTokenizer.cpp
-    src/Keyboard/TemplateKeyboard.cpp
-    src/Optimizer/Optimizer.cpp
-    src/State/EffortState.cpp
-    src/State/Snapshot.cpp
-    src/State/State.cpp
-    src/VimCore/VimUtils.cpp
+
+# NOTE Remove configure_depends when convenience no longer needed in development
+file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
+    src/Keyboard/*.cpp
+    src/Optimizer/*.cpp
+    src/State/*.cpp
+    src/VimCore/*.cpp
+    src/Utils/*.cpp
 )
+add_library(vimficiency_core STATIC ${CORE_SOURCES})
+
 # We can reference everything under src/ absolutely
 target_include_directories(vimficiency_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+if(VIMFICIENCY_DEBUG)
+    target_compile_definitions(vimficiency_core PUBLIC VIMFICIENCY_DEBUG)
+endif()
 
 # SHARED library for Neovim/Lua direct usage
 add_library(vimficiency SHARED src/lua_exports.cpp)
@@ -35,6 +40,6 @@ target_link_libraries(vimficiency_cli PRIVATE vimficiency_core)
 
 # Tests
 enable_testing()
-add_subdirectory(src/Testing)
+add_subdirectory(tests)
 
 

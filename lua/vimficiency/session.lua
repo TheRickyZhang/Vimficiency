@@ -7,9 +7,6 @@ local ffi_lib = require("vimficiency.ffi")
 
 local M = {}
 
--- ---@type VimficiencyConfig
--- local config
-
 ---TODO: To eventually get continuous monitoring, we will need to support multiple sessions. High priority once a single session is confirmed to work.
 ---
 ---@type VimficiencySession|nil
@@ -76,7 +73,8 @@ function M.finish()
 	end
 	local keyseq_str = table.concat(parts, "")
 
-	local ok, result = pcall(
+  ---@type boolean, string, string
+	local ok, result, dbg = pcall(
 		ffi_lib.analyze,
 		session.start_state.lines,
 		session.start_state.row,
@@ -92,6 +90,15 @@ function M.finish()
 		total_failure("finish() error", "FFI error: " .. tostring(result))
 		return
 	end
+
+  -- Persist debug by writing to file
+  -- Note that we pass entire debug string up here since analyze logic should not know about id. There is some negligible runtime cost.
+  if dbg and dbg ~= "" then
+    local debug_dir = vim.fn.stdpath("data") .. "/vimficiency/debug"
+    vim.fn.mkdir(debug_dir, "p")
+    local debug_path = debug_dir .. "/" .. session.id .. ".txt"
+    vim.fn.writefile(vim.split(dbg, "\n"), debug_path)
+  end
 
   reset_session(
       "vimficiency finished\n" ..

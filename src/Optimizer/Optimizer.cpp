@@ -1,12 +1,13 @@
 #include "Optimizer/Optimizer.h"
 #include "Keyboard/CharacterToKeys.h"
+#include "Utils/Debug.h"
 
 using namespace std;
 
 vector<Result> Optimizer::optimizeMovement(const vector<string>& lines, const Position& end, const string& userSequence) {
   int totalExplored = 0;
   double userEffort = getEffort(userSequence, config);
-  cout << "user effort for sequence " << userSequence << " is " << userEffort << endl;  
+  debug("user effort for sequence", userSequence, "is", userEffort);  
 
   vector<Result> res;
   map<PosKey, double> costMap;
@@ -22,7 +23,7 @@ vector<Result> Optimizer::optimizeMovement(const vector<string>& lines, const Po
     pq.pop();
 
     if(++totalExplored > MAX_SEARCH_DEPTH) {
-      cout<<"maximum total explored count reached"<<endl;
+      debug("maximum total explored count reached");
       break;
     }
 
@@ -32,7 +33,7 @@ vector<Result> Optimizer::optimizeMovement(const vector<string>& lines, const Po
     if(isGoal) {
       res.emplace_back(s.sequence, s.effortState.getEffort(config));
       if(res.size() >= RESULT_COUNT) {
-        cout<<"maximum result count reached"<<endl;
+        debug("maximum result count reached");
         break;
       }
       continue;
@@ -43,7 +44,7 @@ vector<Result> Optimizer::optimizeMovement(const vector<string>& lines, const Po
       }
     }
 
-    cout << "\"" << s.sequence << "\" " << s.cost << endl;
+    debug("\"" + s.sequence + "\"", s.cost);
 
     double currentCost = heuristic(s, end);
     for(auto [motion, keys] : motionToKeys) {
@@ -56,7 +57,7 @@ vector<Result> Optimizer::optimizeMovement(const vector<string>& lines, const Po
       if(newState.effort > userEffort) {
         continue;
       }
-      // cout << "curr: " << currentCost << " new: " << newCost << endl;
+      // debug("curr:", currentCost, "new:", newCost);
 
       PosKey newKey = newState.getKey();
       auto it = costMap.find(newKey);
@@ -72,16 +73,16 @@ vector<Result> Optimizer::optimizeMovement(const vector<string>& lines, const Po
         it->second = newCost;
         pq.push(newState);
       }
-      else {
-        // cout << motion << " is worse" << endl;
-      }
+      // else {
+        // debug(motion, "is worse");
+      // }
     }
   }
 
-  cout << "---costMap---" << endl;
+  debug("---costMap---");
   for(auto [state, cost] : costMap) {
     auto [l, c] = state;
-    cout << l << " " << c << ", " << cost << endl;
+    debug(l, c, cost);
   }
   return res;
 }

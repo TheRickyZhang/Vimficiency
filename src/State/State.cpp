@@ -69,6 +69,6 @@ void State::apply_normal_motion(string motion,
     VimUtils::motion_e(pos, lines, true);
   }
   else {
-    cout<<"motion not supported"<<endl;
+    debug("motion not supported");
   }
 }

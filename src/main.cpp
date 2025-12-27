@@ -1,12 +1,11 @@
 #include <bits/stdc++.h>
 
 #include "Optimizer/Config.h"
-#include "State/EffortState.h"
+#include "State/RunningEffort.h"
 #include "Optimizer/Optimizer.h"
 #include "State/Snapshot.h"
 #include "State/State.h"
-#include "Keyboard/TemplateKeyboard.h"
-#include "Testing/TestUtils.h"
+#include "Utils/Debug.h"
 
 using namespace std;
 namespace fs = std::filesystem;
@@ -21,7 +20,7 @@ namespace fs = std::filesystem;
 
 int main(int argc, char* argv[]) {
   if(argc != 4) {
-    cout << "must pass in file paths for start path, end path, user sequence";
+    cerr << "must pass in file paths for start path, end path, user sequence";
     return 1;
   }
 
@@ -35,12 +34,11 @@ int main(int argc, char* argv[]) {
   Position start_position(start_snapshot.row, start_snapshot.col);
   Position end_position(end_snapshot.row, end_snapshot.col);
 
-  cout << "starting position: " << start_snapshot.row << " " << start_snapshot.col << endl;
-  cout << "ending position: " << end_snapshot.row << " " << end_snapshot.col << endl;
+  debug("starting position:", start_snapshot.row, start_snapshot.col);
+  debug("ending position:", end_snapshot.row, end_snapshot.col);
 
-  State startingState(start_position, EffortState(), 0, 0);
-  Config model;
-  fill_uniform(model);
+  State startingState(start_position, RunningEffort(), 0, 0);
+  Config model = Config::uniform();
   Optimizer o(startingState, model, 1);
 
   vector<Result> res = o.optimizeMovement(

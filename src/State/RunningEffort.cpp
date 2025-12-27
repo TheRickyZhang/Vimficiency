@@ -1,9 +1,9 @@
-#include "State/EffortState.h"
+#include "State/RunningEffort.h"
 
 #include "Keyboard/KeyboardUtils.h"
 #include "Keyboard/CharacterToKeys.h"
 
-double EffortState::getEffort(const Config &model) const {
+double RunningEffort::getEffort(const Config &model) const {
   const auto &w = model.weights;
 
   double s = 0.0;
@@ -19,7 +19,7 @@ double EffortState::getEffort(const Config &model) const {
 }
 
 // Returns difference in cost after appending keys
-double EffortState::append(vector<Key>& keys, const Config& model) {
+double RunningEffort::append(vector<Key>& keys, const Config& model) {
   for(Key k : keys) {
     appendSingle(k, model);
   }
@@ -27,7 +27,7 @@ double EffortState::append(vector<Key>& keys, const Config& model) {
 }
 
 // Append a key index [0..KEY_COUNT-1] and update all metrics.
-void EffortState::appendSingle(Key key, const Config &model) {
+void RunningEffort::appendSingle(Key key, const Config &model) {
   const KeyInfo &km = model.keyInfo[static_cast<uint8_t>(key)];
 
   // Base cost
@@ -94,7 +94,7 @@ void EffortState::appendSingle(Key key, const Config &model) {
   last_key    = key;
 }
 
-void EffortState::reset() {
+void RunningEffort::reset() {
   strokes         = 0;
   sum_key_cost    = 0.0;
   sum_same_finger = 0.0;
@@ -121,7 +121,7 @@ double getEffort(const std::string &seq,
     return 0.0;
   }
     
-  EffortState st;
+  RunningEffort st;
   return st.append(keys, cfg);
 }
 

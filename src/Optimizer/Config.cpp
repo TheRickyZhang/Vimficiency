@@ -1,8 +1,29 @@
+#include "Config.h"
+
 #include <bits/stdc++.h>
 using namespace std;
 
-#include "TemplateKeyboard.h"
-#include "Optimizer/Config.h"   // or whatever defines Config
+void fill_qwerty(Config& cfg);
+void fill_colemak_dh(Config& cfg);
+void fill_uniform(Config& cfg);
+
+Config Config::qwerty() {
+  Config c;
+  fill_qwerty(c);
+  return c;
+}
+
+Config Config::colemak_dh() {
+  Config c;
+  fill_colemak_dh(c);
+  return c;
+}
+Config Config::uniform() {
+  Config c;
+  fill_uniform(c);
+  return c;
+}
+
 
 
 // ---------------------------------------------------------------------------
@@ -221,5 +242,6 @@ void fill_uniform(Config& cfg) {
   for(auto &ki : cfg.keyInfo) {
     ki.base_cost = 1.0;
   }
-  cfg.weights = ScoreWeights(1.0);
+  cfg.weights = ScoreWeights();
 }
+
