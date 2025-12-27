@@ -30,7 +30,22 @@ std::vector<std::string> parseMotions(const std::string& seq) {
 }
 
 
-
+/*
+* Maintain this list of currently defined motions:
+* Alphabet:
+* bB, eE, h j k l, wW,
+* 
+* 
+*
+* Special
+* G, gg
+*
+* Top row symbol:
+* $, ^,
+*
+* Other Symbol:
+* {}, 
+*/ 
 MotionResult apply_motion(Position pos, Mode mode, 
                           const std::string& motion,
                           const std::vector<std::string>& lines) {
@@ -86,6 +101,18 @@ MotionResult apply_motion(Position pos, Mode mode,
   }
   else if(motion == "E") {
     VimUtils::motion_e(pos, lines, true);
+  }
+  else if(motion == "{") {
+    VimUtils::motion_paragraphPrev(pos, lines);
+  }
+  else if(motion == "}") {
+    VimUtils::motion_paragraphNext(pos, lines);
+  }
+  else if(motion == "(") {
+    VimUtils::motion_sentencePrev(pos, lines);
+  }
+  else if(motion == ")") {
+    VimUtils::motion_sentenceNext(pos, lines);
   }
   else {
     debug("motion not supported");

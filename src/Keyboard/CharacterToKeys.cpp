@@ -173,10 +173,10 @@ map<string, vector<Key>> motionToKeys = {
   // {"L",  {Key::Key_Shift, Key::Key_L}},         // bottom of screen
 
   // paragraph / sentence-ish motions
-  // {"{",  {Key::Key_Shift, Key::Key_LBracket}},
-  // {"}",  {Key::Key_Shift, Key::Key_RBracket}},
-  // {"(",  {Key::Key_Shift, Key::Key_9}},
-  // {")",  {Key::Key_Shift, Key::Key_0}},
+  {"{",  {Key::Key_Shift, Key::Key_LBracket}},
+  {"}",  {Key::Key_Shift, Key::Key_RBracket}},
+  {"(",  {Key::Key_Shift, Key::Key_9}},
+  {")",  {Key::Key_Shift, Key::Key_0}},
 
   // match pairs
   // {"%",  {Key::Key_Shift, Key::Key_5}},

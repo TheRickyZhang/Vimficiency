@@ -19,11 +19,10 @@ It is pretty dumb how nvim_win_get_cursor returns a 1-indexed row, while buf_get
 
 LuaJIT's FFI only targets the C ABI, as native C++ ABI is pretty difficult (would need to consider all the added features / stdlib / object layout)
 
-
-
 Interesting (maybe?) things that have come up:
 - C ABI
 - C++ Name Mangling
 - X Macros. May become obsolete with reflection in C++ 26?
 - std::streambuf, and cout.rdbuf as getter/setter
 - CMake visibility: public, private, interface
+

@@ -12,6 +12,8 @@ struct Result {
   Result(std::string s, double c) : sequence(s), keyCost(c) {}
 };
 
+std::ostream& operator<<(std::ostream& os, Result r);
+
 struct Optimizer {
   Config config; 
   State startingState;

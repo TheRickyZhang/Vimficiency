@@ -1,7 +1,15 @@
 #pragma once
 
+#include "Keyboard/KeyboardModel.h"
+
 #include <bits/stdc++.h>
 using namespace std;
+
+struct KeyAdjustment {
+  Key k;
+  double cost;
+  KeyAdjustment(Key k, double cost) : k(k), cost(cost) {}
+};
 
 namespace TestFiles {
 
@@ -21,8 +29,9 @@ inline std::vector<std::string> load(const std::string& filename) {
 
 }
 
-
 vector<string> readLines(istream &in);
 
 bool contains_all(const vector<string>& v, initializer_list<string> need);
+
+void debugResult(vector<string>& results);
 

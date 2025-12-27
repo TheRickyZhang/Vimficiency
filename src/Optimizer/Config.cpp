@@ -41,7 +41,7 @@ Config Config::uniform() {
 //
 
 void fill_qwerty(Config &model) {
-  auto &keyInfo = model.keyInfo;
+  std::array<KeyInfo, KEY_COUNT> &keyInfo = model.keyInfo;
 
   auto set_key = [&](Key k, Hand h, Finger f, double base_cost) {
     keyInfo[static_cast<size_t>(k)] = {h, f, base_cost};
