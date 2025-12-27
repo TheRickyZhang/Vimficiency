@@ -1,5 +1,28 @@
+#pragma once
+
 #include <bits/stdc++.h>
+using namespace std;
 
-std::vector<std::string> readLines(std::istream &in);
+namespace TestFiles {
 
+inline std::vector<std::string> load(const std::string& filename) {
+    auto path = std::filesystem::path(__FILE__).parent_path() / ".." / "data" / "TestFiles" / filename;
+    std::ifstream file(path);
+    if (!file) {
+        throw std::runtime_error("Cannot open: " + path.string());
+    }
+    std::vector<std::string> lines;
+    std::string line;
+    while (std::getline(file, line)) {
+        lines.push_back(line);
+    }
+    return lines;
+}
+
+}
+
+
+vector<string> readLines(istream &in);
+
+bool contains_all(const vector<string>& v, initializer_list<string> need);
 

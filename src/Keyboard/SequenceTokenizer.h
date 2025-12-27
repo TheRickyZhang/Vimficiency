@@ -5,7 +5,10 @@
 #include <string_view>
 #include <vector>
 
-#include "KeyboardModel.h" // for Key
+#include "KeyboardModel.h"
+
+// Used for physical key presses (calculating effort) only!
+// For semantic tokenization, see parseMotions() in Motion.h
 
 class SequenceTokenizer {
 public:

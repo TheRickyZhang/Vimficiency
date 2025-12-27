@@ -4,7 +4,7 @@
 #include <cassert>
 #include <cctype>
 
-#include "State/State.h"
+#include "Editor/Position.h"
 
 // -----------------------------------------------------------------------------
 // Low-level helpers

@@ -104,9 +104,9 @@ function M.configure(user_config)
 	---@type VimficiencyConfigFFI
 	local config = lib.vimficiency_get_config()
 
-	-- if user_config.DEFAULT_KEYBOARD != DEFAULT_KEYBOARD.NONE then
-	--   set_default()
-	-- end
+  if user_config.default_keyboard then
+    config.default_keyboard = user_config.default_keyboard
+  end
 
 	if user_config.weights then
 		local w = user_config.weights

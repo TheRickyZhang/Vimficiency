@@ -2,26 +2,12 @@
 
 #include <bits/stdc++.h>
 
-#include "State/RunningEffort.h"
+#include "RunningEffort.h"
+#include "Editor/Position.h"
+#include "Editor/Mode.h"
 
-enum class Mode : uint8_t {
-  Normal,
-  Insert,
-  Visual,
-};
 
 using PosKey = std::pair<int, int>;
-struct Position {
-  int line = 0;
-  int col  = 0;
-  int targetCol = 0;
-  Position(int l, int c) : line(l), col(c), targetCol(c) {}
-  Position(int l, int c, int tc) : line(l), col(c), targetCol(tc) {}
-
-  void setCol(int c) {
-    col = targetCol = c;
-  }
-};
 
 // Entire simulated editor state (for now, only position+mode+effort).
 // You can later add: vector<string> lines; registers; etc.

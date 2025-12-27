@@ -15,11 +15,12 @@ option(VIMFICIENCY_DEBUG "Enable debug output" ON)
 
 # NOTE Remove configure_depends when convenience no longer needed in development
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
+    src/Editor/*.cpp
     src/Keyboard/*.cpp
     src/Optimizer/*.cpp
     src/State/*.cpp
-    src/VimCore/*.cpp
     src/Utils/*.cpp
+    src/VimCore/*.cpp
 )
 add_library(vimficiency_core STATIC ${CORE_SOURCES})
 

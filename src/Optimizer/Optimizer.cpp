@@ -32,7 +32,7 @@ vector<Result> Optimizer::optimizeMovement(const vector<string>& lines, const Po
 
     if(isGoal) {
       res.emplace_back(s.sequence, s.effortState.getEffort(config));
-      if(res.size() >= RESULT_COUNT) {
+      if(res.size() >= MAX_RESULT_COUNT) {
         debug("maximum result count reached");
         break;
       }
@@ -53,8 +53,10 @@ vector<Result> Optimizer::optimizeMovement(const vector<string>& lines, const Po
       newState.apply_normal_motion(motion, lines);
       double newCost = heuristic(newState, end); 
       newState.cost = newCost;
-      
-      if(newState.effort > userEffort) {
+
+      // Search more for debugging purposes
+      // TODO: an "explore" factor would probably make sense to put in config for this.
+      if(newState.effort > userEffort * 2) {
         continue;
       }
       // debug("curr:", currentCost, "new:", newCost);

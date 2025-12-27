@@ -3,7 +3,7 @@
 #include "Optimizer/Config.h"
 #include "State/RunningEffort.h"
 #include "Optimizer/Optimizer.h"
-#include "State/Snapshot.h"
+#include "Editor/Snapshot.h"
 #include "State/State.h"
 #include "Utils/Debug.h"
 

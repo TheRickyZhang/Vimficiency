@@ -168,6 +168,7 @@ const char *vimficiency_analyze(const char *start_text, int start_row,
 const char* vimficiency_get_debug() {
     static std::string debug_storage;
     debug_storage = get_debug_output();
+    clear_debug_output();
     return debug_storage.c_str();
 }
 

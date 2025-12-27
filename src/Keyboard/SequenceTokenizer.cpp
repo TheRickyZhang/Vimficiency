@@ -21,6 +21,7 @@ SequenceTokenizer::SequenceTokenizer(const Mapping &actions,
             });
 }
 
+
 bool SequenceTokenizer::tokenize(std::string_view s, KeySequence &out) const {
   out.clear();
   std::size_t i = 0;
