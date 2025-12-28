@@ -39,7 +39,7 @@ int main(int argc, char* argv[]) {
 
   State startingState(start_position, RunningEffort(), 0, 0);
   Config model = Config::uniform();
-  Optimizer o(startingState, model, 1);
+  Optimizer o(startingState, model);
 
   vector<Result> res = o.optimizeMovement(
     start_snapshot.lines,

@@ -18,16 +18,16 @@ struct Optimizer {
   Config config; 
   State startingState;
 
-  const int    MAX_RESULT_COUNT = 5;
-  const int    MAX_SEARCH_DEPTH = 1e5;
-  const double COST_WEIGHT      = 1;
-  const double EXPLORE_FACTOR   = 1.5;
+  const int    MAX_RESULT_COUNT;
+  const int    MAX_SEARCH_DEPTH;
+  const double COST_WEIGHT;
+  const double EXPLORE_FACTOR;
 
   Optimizer(const State &state, const Config &effortModel,
             int max_result_count = 5,
             int max_search_depth = 1e5,
             double cost_weight = 1.0,
-            double explore_factor = 1.5
+            double explore_factor = 2.0
             )
       : startingState(std::move(state)), config(std::move(effortModel)),
         MAX_RESULT_COUNT(max_result_count),

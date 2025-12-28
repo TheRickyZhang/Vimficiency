@@ -13,7 +13,10 @@ ostream& operator<<(ostream& os, const Result& r) {
 vector<Result> Optimizer::optimizeMovement(const vector<string>& lines, const Position& end, const string& userSequence) {
   int totalExplored = 0;
   double userEffort = getEffort(userSequence, config);
+
   debug("user effort for sequence", userSequence, "is", userEffort);  
+  // debug("MAX_RESULT_COUNT:", MAX_RESULT_COUNT);
+  // debug("EXPLORE_FACTOR:", EXPLORE_FACTOR);
 
   vector<Result> res;
   map<PosKey, double> costMap;
@@ -60,9 +63,7 @@ vector<Result> Optimizer::optimizeMovement(const vector<string>& lines, const Po
       double newCost = heuristic(newState, end); 
       newState.cost = newCost;
 
-      // Search more for debugging purposes
-      // TODO: an "explore" factor would probably make sense to put in config for this.
-      if(newState.effort > userEffort * 2) {
+      if(newState.effort > userEffort * EXPLORE_FACTOR) {
         continue;
       }
       // debug("curr:", currentCost, "new:", newCost);

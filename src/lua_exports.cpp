@@ -142,7 +142,7 @@ const char *vimficiency_analyze(const char *start_text, int start_row,
   State startingState(start_position, RunningEffort(), 0, 0);
 
   // g_config_internal was already populated by vimficiency_apply_config()
-  Optimizer o(startingState, g_config_internal, 1);
+  Optimizer o(startingState, g_config_internal);
 
   std::vector<Result> res = o.optimizeMovement(start_lines, end_position, keyseq);
 
@@ -151,6 +151,7 @@ const char *vimficiency_analyze(const char *start_text, int start_row,
   if (res.empty()) {
     oss << "no results";
   } else {
+    oss << "result size: " << res.size() << "\n";
     for (const Result &r : res) {
       oss << r.sequence << " " << std::fixed << std::setprecision(3)
           << r.keyCost << "\n";
