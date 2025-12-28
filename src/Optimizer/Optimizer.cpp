@@ -1,5 +1,5 @@
 #include "Optimizer/Optimizer.h"
-#include "Keyboard/CharacterToKeys.h"
+#include "Keyboard/MotionToKeys.h"
 #include "Utils/Debug.h"
 
 using namespace std;
@@ -10,7 +10,10 @@ ostream& operator<<(ostream& os, const Result& r) {
 }
 
 
-vector<Result> Optimizer::optimizeMovement(const vector<string>& lines, const Position& end, const string& userSequence) {
+vector<Result> Optimizer::optimizeMovement(
+  const vector<string>& lines, const Position& end, const string& userSequence,
+  const MotionToKeys& motionToKeys
+) {
   int totalExplored = 0;
   double userEffort = getEffort(userSequence, config);
 

@@ -1,5 +1,6 @@
 #include "TestUtils.h"
 
+
 // #include "Utils/Debug.h"
 using namespace std;
 // namespace fs = std::filesystem;
@@ -14,8 +15,9 @@ vector<string> readLines(istream &in) {
   return lines;
 }
 
-bool contains_all(const vector<string>& v, initializer_list<string> need){
-  unordered_set<string> s(v.begin(), v.end());
+bool contains_all(const vector<Result>& v, initializer_list<string> need){
+  unordered_set<string> s;
+  for(Result r : v) s.insert(r.sequence);
   for(const auto& x : need) if(s.find(x)==s.end()) return false;
   return true;
 }

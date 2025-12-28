@@ -1,7 +1,8 @@
 #include "State/RunningEffort.h"
 
+#include "Keyboard/KeyboardModel.h"
 #include "Keyboard/KeyboardUtils.h"
-#include "Keyboard/CharacterToKeys.h"
+#include "Keyboard/MotionToKeys.h"
 
 double RunningEffort::getEffort(const Config &model) const {
   const auto &w = model.weights;
@@ -19,7 +20,7 @@ double RunningEffort::getEffort(const Config &model) const {
 }
 
 // Returns difference in cost after appending keys
-double RunningEffort::append(vector<Key>& keys, const Config& model) {
+double RunningEffort::append(KeySequence& keys, const Config& model) {
   for(Key k : keys) {
     appendSingle(k, model);
   }
@@ -114,7 +115,7 @@ void RunningEffort::reset() {
 
 double getEffort(const std::string &seq,
                  const Config      &cfg) {
-  std::vector<Key> keys;
+  KeySequence keys;
   if(!globalTokenizer().tokenize(seq, keys)) {
     std::cerr << "Malformed key sequence: " + seq << endl;
     // throw new std::runtime_error("Malformed key sequence: " + seq);

@@ -2,6 +2,7 @@
 
 #include "TestUtils.h"
 
+#include "Keyboard/MotionToKeys.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/Optimizer.h"
 #include "State/RunningEffort.h"
@@ -30,30 +31,22 @@ protected:
 
   static State makeState(Position p) { return State(p, RunningEffort(), 0, 0); }
 
-  static vector<string>
+  static vector<Result>
   runOptimizer(const vector<string> &lines, Position start,
                Position end, const string &userSeq,
+               const MotionToKeys& allowedMotions = ALL_MOTIONS_TO_KEYS,
                vector<KeyAdjustment> adjustments = {},
                Config config = Config::uniform()
                ) {
     State startState = makeState(start);
-    auto set_key = [&](Key k, double new_cost) {
-      config.keyInfo[static_cast<size_t>(k)].base_cost = new_cost;
-    };
     for(KeyAdjustment ka : adjustments) {
-      set_key(ka.k, ka.cost);
+      config.keyInfo[static_cast<size_t>(ka.k)].base_cost = ka.cost;
     }
 
     Optimizer opt(startState, config, 30, 1e5, 1.0, 10.0);
 
   
-    vector<Result> results = opt.optimizeMovement(lines, end, userSeq);
-    vector<string> strs;
-    strs.reserve(results.size());
-    for(auto& r : results) {
-      strs.push_back(std::move(r.sequence));
-    }
-    return strs;
+    return opt.optimizeMovement(lines, end, userSeq, allowedMotions);
   }
 };
 
@@ -68,35 +61,38 @@ TEST_F(OptimizerMovementTest, HorizontalMotions) {
   Position start(0, 0);
   Position end = apply_motions(start, Mode::Normal, user_seq, a1_long_line).pos;
 
-  auto result = runOptimizer(
+  vector<Result> result = runOptimizer(
   a1_long_line,
     start, end, user_seq
   );
 
-  debugResult(result);
   EXPECT_TRUE(contains_all(result, {user_seq, "ee", "wll", "wwhh"}))
-      << "Missing expected sequences";
+      << "Missing expected sequences, got: " << VecStrFmt(result);
 }
 
 
 TEST_F(OptimizerMovementTest, VerticalMotions) {
   string user_seq = "jjjjj";
   Position start(2, 0);
-  vector<KeyAdjustment> adjustments = {
-    KeyAdjustment(Key::Key_LBracket, 0.3),
-    KeyAdjustment(Key::Key_RBracket, 0.3),
-    KeyAdjustment(Key::Key_9, 0.3),
-    KeyAdjustment(Key::Key_0, 0.3),
-    KeyAdjustment(Key::Key_Shift, -0.8),
-  };
   Position end = apply_motions(start, Mode::Normal, user_seq, a3_spaced_lines).pos;
+  // vector<KeyAdjustment> adjustments = {
+  //   KeyAdjustment(Key::Key_LBracket, 0.3),
+  //   KeyAdjustment(Key::Key_RBracket, 0.3),
+  //   KeyAdjustment(Key::Key_9, 0.3),
+  //   KeyAdjustment(Key::Key_0, 0.3),
+  //   KeyAdjustment(Key::Key_Shift, -0.8),
+  // };
+  cout << "end: " << end.line << " " << end.col << "\n";
 
-  auto result = runOptimizer(
+  vector<Result> result = runOptimizer(
   a3_spaced_lines,
-    start, end, user_seq, adjustments
+    start, end, user_seq
+    // ALL_MOTIONS_TO_KEYS
+    // getSlicedMotionToKeys({"j", "k", "G", "{", "}", "(", ")"}),
+    // adjustments
   );
 
-  debugResult(result);
+  // debugResult(result);
   EXPECT_TRUE(contains_all(result, {user_seq, "}}}", "Gk", "G{", "))))"}))
-      << "Missing expected sequences";
+      << "Missing expected sequences, got: " << VecStrFmt(result);
 }

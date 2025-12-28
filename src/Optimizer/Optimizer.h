@@ -5,7 +5,9 @@
 
 #include "Config.h"
 #include "State/State.h"
+#include "Keyboard/MotionToKeys.h"
 
+// Should this be placed here?
 struct Result {
   std::string sequence;
   double keyCost;
@@ -23,13 +25,13 @@ struct Optimizer {
   const double COST_WEIGHT;
   const double EXPLORE_FACTOR;
 
-  Optimizer(const State &state, const Config &effortModel,
+  Optimizer(const State &state, const Config& config,
             int max_result_count = 5,
             int max_search_depth = 1e5,
             double cost_weight = 1.0,
             double explore_factor = 2.0
             )
-      : startingState(std::move(state)), config(std::move(effortModel)),
+      : startingState(std::move(state)), config(std::move(config)),
         MAX_RESULT_COUNT(max_result_count),
         MAX_SEARCH_DEPTH(max_search_depth),
         COST_WEIGHT(cost_weight),
@@ -47,6 +49,7 @@ struct Optimizer {
   std::vector<Result> optimizeMovement(
     const std::vector<std::string>& lines,
     const Position& end,
-    const std::string& userSequence
+    const std::string& userSequence,
+    const MotionToKeys& motionToKeys = ALL_MOTIONS_TO_KEYS
   );
 };

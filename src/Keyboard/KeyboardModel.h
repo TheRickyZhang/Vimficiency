@@ -15,6 +15,7 @@ enum class Key : int {
     None
 };
 
+
 enum class Hand : int8_t {
     VIMFICIENCY_HANDS(ENUM_VALUE)
     None
@@ -30,6 +31,8 @@ enum class FingerPosition : uint8_t {
   Pinky = 0, Ring = 1, Middle = 2, Index = 3, Thumb = 4,
   None,
 };
+
+using KeySequence = std::vector<Key>;
 
 static_assert(KEY_COUNT == static_cast<uint8_t>(Key::None), "key counts do not match");
 static_assert(FINGER_COUNT == static_cast<uint8_t>(Finger::None), "finger counts do not match");

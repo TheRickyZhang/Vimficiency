@@ -1,15 +1,16 @@
 #include <bits/stdc++.h>
 using namespace std;
 
-#include "CharacterToKeys.h"
+#include "MotionToKeys.h"
+#include "Utils/Debug.h"
 
 const SequenceTokenizer& globalTokenizer() {
-  static SequenceTokenizer tok(actionToKeys, motionToKeys);
+  static SequenceTokenizer tok(ACTION_MOTIONS_TO_KEYS , ALL_MOTIONS_TO_KEYS);
   return tok;
 }
 
 // See :h key-notation, :h keytrans()
-map<string, vector<Key>> actionToKeys = {
+const MotionToKeys ACTION_MOTIONS_TO_KEYS = {
   // letters
   {"a", {Key::Key_A}},{"A", {Key::Key_Shift, Key::Key_A}},
   {"b", {Key::Key_B}},{"B", {Key::Key_Shift, Key::Key_B}},
@@ -141,7 +142,7 @@ map<string, vector<Key>> actionToKeys = {
   {"<C-Tab>", {Key::Key_Ctrl, Key::Key_Tab}},
 };
 
-map<string, vector<Key>> motionToKeys = {
+const MotionToKeys ALL_MOTIONS_TO_KEYS = {
   {"h", {Key::Key_H}},
   {"j", {Key::Key_J}},
   {"k", {Key::Key_K}},
@@ -191,3 +192,16 @@ map<string, vector<Key>> motionToKeys = {
   // {"<C-e>", {Key::Key_Ctrl, Key::Key_E}},       // scroll down one line
   // {"<C-y>", {Key::Key_Ctrl, Key::Key_Y}},       // scroll up one line
 };
+
+MotionToKeys getSlicedMotionToKeys(vector<string> motions) {
+  MotionToKeys res;
+  for(string m : motions) {
+    if(!ALL_MOTIONS_TO_KEYS.contains(m)) {
+      debug("cannot find", m, "in ALL_MOTIONS_TO_KEYS");
+    } else {
+      res[m] = ALL_MOTIONS_TO_KEYS.at(m);
+    }
+  }
+  return res;
+}
+

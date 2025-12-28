@@ -2,7 +2,7 @@
 #include "VimCore/VimUtils.h"
 #include "Utils/Debug.h"
 
-#include "Keyboard/CharacterToKeys.h"
+#include "Keyboard/MotionToKeys.h"
 
 using namespace std;
 
@@ -15,7 +15,7 @@ std::vector<std::string> parseMotions(const std::string& seq) {
         // Try longest matches first
         for (size_t len = std::min(seq.size() - i, size_t{4}); len > 0; --len) {
             std::string candidate = seq.substr(i, len);
-            if (motionToKeys.contains(candidate)) {
+            if (ALL_MOTIONS_TO_KEYS.contains(candidate)) {
                 result.push_back(candidate);
                 i += len;
                 matched = true;

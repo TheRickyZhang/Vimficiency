@@ -1,5 +1,5 @@
 #include "Optimizer/Optimizer.h.h"
-#include "CharacterToKeys.h"
+#include "MotionToKeys.h"
 
 vector<Result> Optimizer/Optimizer.h::optimizeMovement(const vector<string>& lines, const Position& end, const string& userSequence) {
   int totalExplored = 0;
