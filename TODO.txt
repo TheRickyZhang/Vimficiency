@@ -1,0 +1,18 @@
+Ranked by natural development order and priority. Complexity level (?) in * stars.
+
+- f/t, ;/, motions                                 **
+- simple symbols: *, #, %                          ***
+- <C-d, u, f, b> page motions                      **
+- Search, n/N (heuristic best-matching prefix)     ***
+- Numbers (compress? Heuristic exact jumps)        ****
+- Operator motions                                 *****
+- Insert Mode structure (just a lot more stuff)    *****
+- Real-time, automatic session spawning            *****
+- Dot operator, brute force (worth space?)         **
+- Separate pattern detection for potential macros? ***
+- Visual Mode                                      ****
+- Multiple buffers with gd, gr, link jumps         *****
+- Feedback on preferred motion paradigms over time ****
+- Reinforcement learning?                          *****
+
+- Niche commands: -/+, ~, gu, gU,

@@ -9,6 +9,7 @@ This means we cannot support the following operations:
 TODO fixes:
 e0lk is returned on uniform.txt (0, 0) -> (2, 1), when it clearly should not.
 
+TODO features:
 Pass in screen height by lines to properly use <C-d>, <C-u>, etc. 
 
 Maybe:

@@ -23,10 +23,10 @@ bool contains_all(const vector<Result>& v, initializer_list<string> need){
 }
 
 // Verify that this is the right semantic responsilbiity to put here
-void debugResult(vector<string>& results) {
+void printResults(vector<Result>& results) {
   cout << "Results (" << results.size() << ") : " <<  endl;
   for (const auto& r : results) {
-    cout << r << " ";
+    cout << r.sequence << " ";
   }
   cout << endl;
 }

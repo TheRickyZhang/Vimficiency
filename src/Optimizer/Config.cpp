@@ -238,9 +238,16 @@ void fill_colemak_dh(Config &model) {
 * Everything 1.0, no complex score weights
 */
 
+const vector<Key> modifierKeys = {
+  Key::Key_Shift, Key::Key_Ctrl
+};
+
 void fill_uniform(Config& cfg) {
   for(auto &ki : cfg.keyInfo) {
     ki.base_cost = 1.0;
+  }
+  for(Key k : modifierKeys) {
+    cfg.keyInfo[static_cast<int>(k)].base_cost = 0.0;
   }
   cfg.weights = ScoreWeights();
 }

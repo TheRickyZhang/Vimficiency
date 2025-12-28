@@ -36,28 +36,5 @@ vector<string> readLines(istream &in);
 
 bool contains_all(const vector<Result>& v, initializer_list<string> need);
 
-void debugResult(vector<string>& results);
-
-
-
-struct VecStrFmt{
-  const std::vector<Result>& v;
-  const char* sep;
-  bool brackets;
-};
-
-inline std::ostream& operator<<(std::ostream& os, VecStrFmt x){
-  if(x.brackets) os<<'[';
-  for(size_t i=0;i<x.v.size();++i){
-    if(i) os<<x.sep;
-    os << x.v[i].sequence << " " << x.v[i].keyCost;
-  }
-  if(x.brackets) os<<']';
-  return os;
-}
-
-inline VecStrFmt vecstr(const std::vector<Result>& v,
-                        const char* sep=", ", bool brackets=true){
-  return {v, sep, brackets};
-}
+void printResults(vector<Result>& results);
 

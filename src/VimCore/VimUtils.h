@@ -24,6 +24,8 @@ struct Position;
 * static bool isSentenceCloser(unsigned char c){
 */
 
+// TODO: add customizability for some settings, ie word definition, startofline. 
+
 struct VimUtils {
   // Fundamental helpers for working with position
   static int clampCol(const std::vector<std::string> &lines,

@@ -127,25 +127,44 @@ static int paragraphEndLine(const std::vector<std::string>& lines, int lineIdx){
 }
 
 void VimUtils::motion_paragraphPrev(Position& pos, const std::vector<std::string>& lines) {
-  int n=(int)lines.size(); if(n==0) return;
-  pos.line=std::clamp(pos.line,0,n-1);
-  int s=paragraphStartLine(lines,pos.line);
-  int i=s-1;
-  while(i>=0 && isBlankLineStr(lines[i])) --i;
-  if(i<0) return;
-  pos.line=paragraphStartLine(lines,i);
-  pos.setCol(firstNonBlankColInLineStr(lines[pos.line]));
+  int n = (int)lines.size();
+  if(n == 0) return;
+  pos.line = std::clamp(pos.line, 0, n - 1);
+
+  // If currently on blank lines, skip past them first
+  while(pos.line > 0 && isBlankLineStr(lines[pos.line])) {
+    pos.line--;
+  }
+  // Now scan backward for the previous blank line
+  int i = pos.line - 1;
+  while(i >= 0 && !isBlankLineStr(lines[i])) {
+    i--;
+  }
+  pos.line = max(i, 0);
+  pos.setCol(0);
 }
 
 void VimUtils::motion_paragraphNext(Position& pos, const std::vector<std::string>& lines) {
-  int n=(int)lines.size(); if(n==0) return;
-  pos.line=std::clamp(pos.line,0,n-1);
-  int e=paragraphEndLine(lines,pos.line);
-  int i=e+1;
-  while(i<n && isBlankLineStr(lines[i])) ++i;
-  if(i>=n) return;
-  pos.line=paragraphStartLine(lines,i);
-  pos.setCol(firstNonBlankColInLineStr(lines[pos.line]));
+  int n = (int)lines.size();
+  if(n == 0) return;
+  pos.line = std::clamp(pos.line, 0, n - 1);
+
+  // If currently on blank lines, skip past them first
+  while(pos.line < n && isBlankLineStr(lines[pos.line])) {
+    pos.line++;
+  }
+  if(pos.line >= n) {
+    pos.line = n - 1;
+    pos.setCol(0);
+    return;
+  }
+  // Now scan forward for the next blank line
+  int i = pos.line + 1;
+  while(i < n && !isBlankLineStr(lines[i])) {
+    i++;
+  }
+  pos.line = min(i, n-1);
+  pos.setCol(0);
 }
 
 static bool isSentenceCloser(unsigned char c){
@@ -173,90 +192,78 @@ static bool isSentenceEndAt(const std::vector<std::string>& lines,int line,int c
   }
 }
 
-// Compute start of sentence containing (line,col) using a backward scan.
-// Simplified: treat blank-line runs as sentence boundaries too.
-static std::pair<int,int> findSentenceStart(const std::vector<std::string>& lines,int line,int col){
-  int n=(int)lines.size();
-  if(n==0) return {0,0};
+static std::pair<int,int> findSentenceStart(const std::vector<std::string>& lines, int line, int col) {
+  int n = (int)lines.size();
+  if(n == 0) return {0, 0};
 
-  line = std::clamp(line, 0, n-1);
-  if((int)lines[line].size()==0) col=0;
-  else col = std::clamp(col, 0, (int)lines[line].size()-1);
+  line = std::clamp(line, 0, n - 1);
+  if((int)lines[line].size() == 0) col = 0;
+  else col = std::clamp(col, 0, (int)lines[line].size() - 1);
 
   // If on blank line run, move up to last nonblank char before it (if any).
-  while(line>0 && isBlankLineStr(lines[line])){
+  while(line > 0 && isBlankLineStr(lines[line])) {
     --line;
     col = (int)lines[line].size();
-    if(col>0) --col;
+    if(col > 0) --col;
   }
 
-  int l=line, k=col;
+  int l = line, k = col;
 
-  // Scan backward for a boundary:
-  //  - a sentence end punctuation per isSentenceEndAt
-  //  - OR crossing into a blank-line run
-  while(true){
-    // boundary: previous char ends a sentence
-    if(isSentenceEndAt(lines,l,k)){
-      int sl=l, sk=k;
-      // move to char after boundary
-      if(!stepFwd(lines,sl,sk)) return {l,k};
+  while(true) {
+    if(isSentenceEndAt(lines, l, k)) {
+      int sl = l, sk = k;
+      if(!stepFwd(lines, sl, sk)) return {l, k};
 
       // skip closers (same line only)
-      while(true){
-        unsigned char c = getChar(lines,sl,sk);
+      while(true) {
+        unsigned char c = getChar(lines, sl, sk);
         if(!isSentenceCloser(c)) break;
-        int tl=sl, tk=sk;
-        if(!stepFwd(lines,tl,tk)) break;
-        if(tl!=sl) break;
-        sl=tl; sk=tk;
+        int tl = sl, tk = sk;
+        if(!stepFwd(lines, tl, tk)) break;
+        if(tl != sl) break;
+        sl = tl; sk = tk;
       }
 
       // skip spaces/tabs and blank lines
-      while(true){
-        if(sl>=n) return {n-1,0};
-        if(isBlankLineStr(lines[sl])){
-          ++sl; sk=0;
+      while(true) {
+        if(sl >= n) return {n - 1, 0};
+        if(isBlankLineStr(lines[sl])) {
+          ++sl; sk = 0;
           continue;
         }
-        int len=(int)lines[sl].size();
-        if(len==0){
-          ++sl; sk=0;
+        int len = (int)lines[sl].size();
+        if(len == 0) {
+          ++sl; sk = 0;
           continue;
         }
-        sk = std::clamp(sk, 0, len-1);
-        unsigned char c=(unsigned char)lines[sl][sk];
-        if(c==' ' || c=='\t'){
-          if(!stepFwd(lines,sl,sk)) break;
+        sk = std::clamp(sk, 0, len - 1);
+        unsigned char c = (unsigned char)lines[sl][sk];
+        if(c == ' ' || c == '\t') {
+          if(!stepFwd(lines, sl, sk)) break;
           continue;
         }
         break;
       }
 
-      if(sl>=n) return {n-1,0};
-      return {sl, firstNonBlankColInLineStr(lines[sl])};
+      if(sl >= n) return {n - 1, 0};
+      return {sl, sk};  // FIX: Use sk, not firstNonBlankColInLineStr
     }
 
-    // boundary: if current position is on first nonblank line after blank run,
-    // we'd have found a punctuation earlier; this keeps behavior simple.
-    int pl=l, pk=k;
-    if(!stepBack(lines,pl,pk)) break;
-    l=pl; k=pk;
+    int pl = l, pk = k;
+    if(!stepBack(lines, pl, pk)) break;
+    l = pl; k = pk;
 
-    // if we just stepped onto a blank line, treat that as boundary and return
-    if(isBlankLineStr(lines[l])){
-      // skip blank run forward to first nonblank
-      while(l<n && isBlankLineStr(lines[l])) ++l;
-      if(l>=n) return {n-1,0};
-      return {l, firstNonBlankColInLineStr(lines[l])};
+    if(isBlankLineStr(lines[l])) {
+      while(l < n && isBlankLineStr(lines[l])) ++l;
+      if(l >= n) return {n - 1, 0};
+      return {l, firstNonBlankColInLineStr(lines[l])};  // This one is OK - starting fresh line
     }
   }
 
-  // If no boundary found, start at first nonblank line in file.
-  int i=0;
-  while(i<n && isBlankLineStr(lines[i])) ++i;
-  if(i>=n) return {n-1,0};
-  return {i, firstNonBlankColInLineStr(lines[i])};
+  int i = 0;
+  while(i < n && isBlankLineStr(lines[i])) ++i;
+  if(i >= n) return {n - 1, 0};
+  return {i, firstNonBlankColInLineStr(lines[i])};  // This one is OK - starting fresh line
 }
 
 
@@ -288,7 +295,7 @@ void VimUtils::moveLine(Position &pos,
                         int dy) {
   int n = static_cast<int>(lines.size());
   pos.line = std::clamp(pos.line + dy, 0, n - 1);
-  pos.setCol(clampCol(lines, pos.col, pos.line));
+  pos.col = clampCol(lines, pos.targetCol, pos.line);
 }
 
 
@@ -397,11 +404,9 @@ void VimUtils::motion_b(Position &pos,
                         bool big) {
   int line = pos.line;
   int col  = pos.col;
-
   auto isWord = [big](unsigned char c) {
     return big ? isBigWordChar(c) : isSmallWordChar(c);
   };
-
   unsigned char c = getChar(lines, line, col);
   if(c == 0) {
     pos.line = line;
@@ -409,31 +414,32 @@ void VimUtils::motion_b(Position &pos,
     return;
   }
 
-  // Step 1: if on blank, move backward over blanks.
-  if(isBlank(c)) {
-    while(true) {
-      if(!stepBack(lines, line, col)) {
-        pos.line = line;
-        pos.col  = col;
-        return;
-      }
-      c = getChar(lines, line, col);
-      if(!isBlank(c)) break;
-    }
-  }
-
-  // Now we are on a non-blank character (word or symbol group).
-  c = getChar(lines, line, col);
-  if(c == 0) {
+  //  Always move back one character first.
+  if(!stepBack(lines, line, col)) {
     pos.line = line;
     pos.col  = col;
     return;
   }
 
+  c = getChar(lines, line, col);
+  while(isBlank(c)) {
+    if(!stepBack(lines, line, col)) {
+      pos.line = line;
+      pos.col  = col;
+      return;
+    }
+    c = getChar(lines, line, col);
+  }
+
+  // Now we are on a non-blank character (word or symbol group).
+  if(c == 0) {
+    pos.line = line;
+    pos.col  = col;
+    return;
+  }
   bool inWord = isWord(c);
 
-  // Step 2: move left while previous character is in the same group and
-  // non-blank, so we end at the *first* char of that word/anti-word.
+  // Step 3: Move left to the first char of this word/anti-word group.
   while(true) {
     int prevLine = line;
     int prevCol  = col;
@@ -442,11 +448,9 @@ void VimUtils::motion_b(Position &pos,
     unsigned char pc = getChar(lines, prevLine, prevCol);
     if(isBlank(pc)) break;
     if(isWord(pc) != inWord) break;
-
     line = prevLine;
     col  = prevCol;
   }
-
   pos.line = line;
   pos.col  = col;
 }
@@ -537,67 +541,66 @@ void VimUtils::moveToParagraphEnd(Position& pos, const std::vector<std::string>&
 }
 
 
+void VimUtils::motion_sentenceNext(Position& pos, const std::vector<std::string>& lines) {
+  int n = (int)lines.size();
+  if(n == 0) return;
 
-void VimUtils::motion_sentenceNext(Position& pos,const std::vector<std::string>& lines){
-  int n=(int)lines.size();
-  if(n==0) return;
-
-  int line = std::clamp(pos.line, 0, n-1);
-  int col  = (int)lines[line].size()==0 ? 0 : std::clamp(pos.col, 0, (int)lines[line].size()-1);
+  int line = std::clamp(pos.line, 0, n - 1);
+  int col = (int)lines[line].size() == 0 ? 0 : std::clamp(pos.col, 0, (int)lines[line].size() - 1);
 
   // If currently on blank run: jump to next nonblank line start.
-  if(isBlankLineStr(lines[line])){
-    while(line<n && isBlankLineStr(lines[line])) ++line;
-    if(line>=n) return;
-    pos.line=line;
+  if(isBlankLineStr(lines[line])) {
+    while(line < n && isBlankLineStr(lines[line])) ++line;
+    if(line >= n) return;
+    pos.line = line;
     pos.setCol(firstNonBlankColInLineStr(lines[line]));
     return;
   }
 
-  int l=line, k=col;
-  while(true){
-    if(isSentenceEndAt(lines,l,k)){
-      // move to start of next sentence
-      if(!stepFwd(lines,l,k)) return;
+  int l = line, k = col;
+  while(true) {
+    if(isSentenceEndAt(lines, l, k)) {
+      // move past the sentence-ending punctuation
+      if(!stepFwd(lines, l, k)) return;
 
       // skip closers (same line only)
-      while(true){
-        unsigned char c = getChar(lines,l,k);
+      while(true) {
+        unsigned char c = getChar(lines, l, k);
         if(!isSentenceCloser(c)) break;
-        int tl=l, tk=k;
-        if(!stepFwd(lines,tl,tk)) break;
-        if(tl!=l) break;
-        l=tl; k=tk;
+        int tl = l, tk = k;
+        if(!stepFwd(lines, tl, tk)) break;
+        if(tl != l) break;
+        l = tl; k = tk;
       }
 
       // skip spaces/tabs and blank lines
-      while(true){
-        if(l>=n) return;
-        if(isBlankLineStr(lines[l])){
-          ++l; k=0;
+      while(true) {
+        if(l >= n) return;
+        if(isBlankLineStr(lines[l])) {
+          ++l; k = 0;
           continue;
         }
-        int len=(int)lines[l].size();
-        if(len==0){
-          ++l; k=0;
+        int len = (int)lines[l].size();
+        if(len == 0) {
+          ++l; k = 0;
           continue;
         }
-        k = std::clamp(k, 0, len-1);
-        unsigned char c=(unsigned char)lines[l][k];
-        if(c==' ' || c=='\t'){
-          if(!stepFwd(lines,l,k)) return;
+        k = std::clamp(k, 0, len - 1);
+        unsigned char c = (unsigned char)lines[l][k];
+        if(c == ' ' || c == '\t') {
+          if(!stepFwd(lines, l, k)) return;
           continue;
         }
         break;
       }
 
-      if(l>=n) return;
-      pos.line=l;
-      pos.setCol(firstNonBlankColInLineStr(lines[l]));
+      if(l >= n) return;
+      pos.line = l;
+      pos.setCol(k);
       return;
     }
 
-    if(!stepFwd(lines,l,k)) return;
+    if(!stepFwd(lines, l, k)) return;
   }
 }
 
