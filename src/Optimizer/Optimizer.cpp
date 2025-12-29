@@ -108,7 +108,7 @@ vector<Result> Optimizer::optimizeMovement(const vector<string> &lines,
           f_motions += string(cnt, repeat_motion); f_key_sequence.append(CHAR_TO_KEYS.at(repeat_motion), cnt);
 
           State newState = s;
-          newState.set_col(col);
+          newState.setCol(col);
           // Mode unchanged
           newState.motionSequence += f_motions;
           newState.effort = newState.effortState.append(f_key_sequence, config);
@@ -120,13 +120,13 @@ vector<Result> Optimizer::optimizeMovement(const vector<string> &lines,
 
       if(s.pos.col<end.col){
         handle(
-          VimUtils::generate_f_motions<true>(s.pos.col, end.col, lines[s.pos.line], F_MOTION_THRESHOLD),
+          VimUtils::generateFMotions<true>(s.pos.col, end.col, lines[s.pos.line], F_MOTION_THRESHOLD),
           'f', ';'
         );
       }
       else {
         handle(
-          VimUtils::generate_f_motions<false>(s.pos.col, end.col, lines[s.pos.line], F_MOTION_THRESHOLD),
+          VimUtils::generateFMotions<false>(s.pos.col, end.col, lines[s.pos.line], F_MOTION_THRESHOLD),
           'F', ';'
         );
       }
@@ -134,7 +134,7 @@ vector<Result> Optimizer::optimizeMovement(const vector<string> &lines,
 
     for (auto [motion, keys] : motionToKeys) {
       State newState = s;
-      newState.apply_normal_motion(motion, lines);
+      newState.applyNormalMotion(motion, lines);
       newState.effort = newState.effortState.append(keys, config);
       newState.cost = heuristic(newState, end);
 

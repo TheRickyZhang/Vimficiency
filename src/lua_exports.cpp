@@ -71,7 +71,7 @@ static void sync_config() {
     g_config_internal = Config::qwerty();
     break;
   case COLEMAK_DH:
-    g_config_internal = Config::colemak_dh();
+    g_config_internal = Config::colemakDh();
     break;
   case UNIFORM:
     g_config_internal = Config::uniform();

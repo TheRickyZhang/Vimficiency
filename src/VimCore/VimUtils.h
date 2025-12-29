@@ -41,29 +41,35 @@ struct VimUtils {
 
 
   // Word motions
-  static void motion_w(Position &pos,
-                       const std::vector<std::string> &lines,
-                       bool big);
+  static void motionW(Position &pos,
+                      const std::vector<std::string> &lines,
+                      bool big);
 
-  static void motion_b(Position &pos,
-                       const std::vector<std::string> &lines,
-                       bool big);
+  static void motionB(Position &pos,
+                      const std::vector<std::string> &lines,
+                      bool big);
 
-  static void motion_e(Position &pos,
-                       const std::vector<std::string> &lines,
-                       bool big);
+  static void motionE(Position &pos,
+                      const std::vector<std::string> &lines,
+                      bool big);
 
   // Paragraph motions
   static void moveToParagraphStart(Position& pos, const std::vector<std::string>& lines);
   static void moveToParagraphEnd(Position& pos, const std::vector<std::string>& lines);
-  static void motion_paragraphPrev(Position& pos, const std::vector<std::string>& lines);
-  static void motion_paragraphNext(Position& pos, const std::vector<std::string>& lines);
+  static void motionParagraphPrev(Position& pos, const std::vector<std::string>& lines);
+  static void motionParagraphNext(Position& pos, const std::vector<std::string>& lines);
 
   // Sentence motions
-  static void motion_sentencePrev(Position& pos, const std::vector<std::string>& lines);
-  static void motion_sentenceNext(Position& pos, const std::vector<std::string>& lines);
+  static void motionSentencePrev(Position& pos, const std::vector<std::string>& lines);
+  static void motionSentenceNext(Position& pos, const std::vector<std::string>& lines);
+
+  // Character find motions (f/F/t/T)
+  // Returns destination column, or -1 if target not found
+  // forward: true for f/t, false for F/T
+  // till: true for t/T (stop one short), false for f/F (land on target)
+  static int findCharInLine(char target, const std::string& line, int startCol, bool forward, bool till);
 
   template<bool Forward>
-  static std::vector<std::tuple<char, int, int>> generate_f_motions(int curr_col, int target_col, const std::string& line, int threshold);
+  static std::vector<std::tuple<char, int, int>> generateFMotions(int currCol, int targetCol, const std::string& line, int threshold);
 
 };

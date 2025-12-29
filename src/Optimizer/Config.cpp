@@ -3,24 +3,24 @@
 #include <bits/stdc++.h>
 using namespace std;
 
-void fill_qwerty(Config& cfg);
-void fill_colemak_dh(Config& cfg);
-void fill_uniform(Config& cfg);
+void fillQwerty(Config& cfg);
+void fillColemakDh(Config& cfg);
+void fillUniform(Config& cfg);
 
 Config Config::qwerty() {
   Config c;
-  fill_qwerty(c);
+  fillQwerty(c);
   return c;
 }
 
-Config Config::colemak_dh() {
+Config Config::colemakDh() {
   Config c;
-  fill_colemak_dh(c);
+  fillColemakDh(c);
   return c;
 }
 Config Config::uniform() {
   Config c;
-  fill_uniform(c);
+  fillUniform(c);
   return c;
 }
 
@@ -40,7 +40,7 @@ Config Config::uniform() {
 //                            0.8 
 //
 
-void fill_qwerty(Config &model) {
+void fillQwerty(Config &model) {
   std::array<KeyInfo, KEY_COUNT> &keyInfo = model.keyInfo;
 
   auto set_key = [&](Key k, Hand h, Finger f, double base_cost) {
@@ -144,7 +144,7 @@ void fill_qwerty(Config &model) {
 //                      0.8  1.0    1.0  0.8
 //
 // ---------------------------------------------------------------------------
-void fill_colemak_dh(Config &model) {
+void fillColemakDh(Config &model) {
   auto &keyInfo = model.keyInfo;
 
   auto set_key = [&](Key k, Hand h, Finger f, double base_cost) {
@@ -242,7 +242,7 @@ const vector<Key> modifierKeys = {
   Key::Key_Shift, Key::Key_Ctrl
 };
 
-void fill_uniform(Config& cfg) {
+void fillUniform(Config& cfg) {
   for(auto &ki : cfg.keyInfo) {
     ki.base_cost = 1.0;
   }

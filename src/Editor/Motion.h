@@ -15,10 +15,10 @@ struct MotionResult {
 
 std::vector<std::string> parseMotions(const std::string& seq);
 
-MotionResult apply_motion(Position pos, Mode mode, 
-                          const std::string& motion,
-                          const std::vector<std::string>& lines);
+MotionResult applyMotion(Position pos, Mode mode,
+                         const std::string& motion,
+                         const std::vector<std::string>& lines);
 
-MotionResult apply_motions(Position pos, Mode mode,
-                           const std::string& motionSeq,
-                           const std::vector<std::string>& lines);
+MotionResult applyMotions(Position pos, Mode mode,
+                          const std::string& motionSeq,
+                          const std::vector<std::string>& lines);

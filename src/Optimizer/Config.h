@@ -56,7 +56,7 @@ struct Config {
   ScoreWeights weights{};
 
   static Config qwerty();
-  static Config colemak_dh();
+  static Config colemakDh();
   static Config uniform();
 
 private:

@@ -12,9 +12,9 @@ inline bool isBlank(unsigned char c) {
 }
 
 // Changes pos, mode, motion
-void State::apply_normal_motion(string motion,
-                                const vector<string>& lines) {
-  MotionResult result = apply_motion(pos, mode, motion, lines);
+void State::applyNormalMotion(string motion,
+                              const vector<string>& lines) {
+  MotionResult result = applyMotion(pos, mode, motion, lines);
   pos = result.pos;
   mode = result.mode;
   motionSequence += motion;

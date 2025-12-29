@@ -143,8 +143,8 @@ static int paragraphEndLine(const std::vector<std::string> &lines,
   return i;
 }
 
-void VimUtils::motion_paragraphPrev(Position &pos,
-                                    const std::vector<std::string> &lines) {
+void VimUtils::motionParagraphPrev(Position &pos,
+                                   const std::vector<std::string> &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
@@ -163,8 +163,8 @@ void VimUtils::motion_paragraphPrev(Position &pos,
   pos.setCol(0);
 }
 
-void VimUtils::motion_paragraphNext(Position &pos,
-                                    const std::vector<std::string> &lines) {
+void VimUtils::motionParagraphNext(Position &pos,
+                                   const std::vector<std::string> &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
@@ -358,8 +358,8 @@ void VimUtils::moveLine(Position &pos, const std::vector<std::string> &lines,
 //  - e/E: move to end of current word if not already at end; else next.
 // -----------------------------------------------------------------------------
 
-void VimUtils::motion_w(Position &pos, const std::vector<std::string> &lines,
-                        bool big) {
+void VimUtils::motionW(Position &pos, const std::vector<std::string> &lines,
+                       bool big) {
   int line = pos.line;
   int col = pos.col;
 
@@ -451,8 +451,8 @@ void VimUtils::motion_w(Position &pos, const std::vector<std::string> &lines,
   pos.col = col;
 }
 
-void VimUtils::motion_b(Position &pos, const std::vector<std::string> &lines,
-                        bool big) {
+void VimUtils::motionB(Position &pos, const std::vector<std::string> &lines,
+                       bool big) {
   int line = pos.line;
   int col = pos.col;
   auto isWord = [big](unsigned char c) {
@@ -509,8 +509,8 @@ void VimUtils::motion_b(Position &pos, const std::vector<std::string> &lines,
   pos.col = col;
 }
 
-void VimUtils::motion_e(Position &pos, const std::vector<std::string> &lines,
-                        bool big) {
+void VimUtils::motionE(Position &pos, const std::vector<std::string> &lines,
+                       bool big) {
   int line = pos.line;
   int col = pos.col;
 
@@ -602,8 +602,8 @@ void VimUtils::moveToParagraphEnd(Position &pos,
   pos.setCol(clampCol(lines, pos.col, pos.line));
 }
 
-void VimUtils::motion_sentenceNext(Position &pos,
-                                   const std::vector<std::string> &lines) {
+void VimUtils::motionSentenceNext(Position &pos,
+                                  const std::vector<std::string> &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
@@ -682,8 +682,8 @@ void VimUtils::motion_sentenceNext(Position &pos,
   }
 }
 
-void VimUtils::motion_sentencePrev(Position &pos,
-                                   const std::vector<std::string> &lines) {
+void VimUtils::motionSentencePrev(Position &pos,
+                                  const std::vector<std::string> &lines) {
   int n = (int)lines.size();
   if (n == 0) return;
 
@@ -705,24 +705,47 @@ void VimUtils::motion_sentencePrev(Position &pos,
 }
 
 
+// -------------------- Character Find (f/F/t/T) --------------------
+
+// Returns destination column, or -1 if target not found
+// forward: true for f/t, false for F/T
+// till: true for t/T (stop one short), false for f/F (land on target)
+int VimUtils::findCharInLine(char target, const string& line, int startCol, bool forward, bool till) {
+  const int n = static_cast<int>(line.size());
+
+  if (forward) {
+    for (int i = startCol + 1; i < n; i++) {
+      if (line[i] == target) {
+        return till ? i - 1 : i;
+      }
+    }
+  } else {
+    for (int i = startCol - 1; i >= 0; i--) {
+      if (line[i] == target) {
+        return till ? i + 1 : i;
+      }
+    }
+  }
+  return -1; // Not found
+}
 
 
 // -------------------- Templates -------------------- 
 
 // Return char since f motions are guaranteed to just be one character. Will be converted to string further up.
 template <bool Forward>
-vector<tuple<char, int, int>> VimUtils::generate_f_motions(int curr_col, int target_col, const string &line, int threshold) {
+vector<tuple<char, int, int>> VimUtils::generateFMotions(int currCol, int targetCol, const string &line, int threshold) {
   vector<tuple<char, int, int>> res;
   const int n = static_cast<int>(line.size());
 
-  threshold = min(threshold, abs(curr_col - target_col));
-  int l = max(0, target_col - threshold);
-  int r = min(n - 1, target_col + threshold);
+  threshold = min(threshold, abs(currCol - targetCol));
+  int l = max(0, targetCol - threshold);
+  int r = min(n - 1, targetCol + threshold);
 
   if constexpr (Forward) {
-    l = max(l, curr_col + 1);
+    l = max(l, currCol + 1);
   } else {
-    r = min(r, curr_col - 1);
+    r = min(r, currCol - 1);
   }
   if (l > r) {
     debug("this shouldn't happen");
@@ -736,7 +759,7 @@ vector<tuple<char, int, int>> VimUtils::generate_f_motions(int curr_col, int tar
 
   // Count occurrences between cursor and window
   if constexpr (Forward) {
-    for (int i = curr_col + 1; i < l; i++) {
+    for (int i = currCol + 1; i < l; i++) {
       cnt[line[i]]++;
     }
     for (int i = l; i <= r; i++) {
@@ -744,7 +767,7 @@ vector<tuple<char, int, int>> VimUtils::generate_f_motions(int curr_col, int tar
       res.emplace_back(c, i, cnt[c]++);
     }
   } else {
-    for (int i = curr_col - 1; i > r; i--) {
+    for (int i = currCol - 1; i > r; i--) {
       cnt[line[i]]++;
     }
     for (int i = r; i >= l; i--) {
@@ -756,7 +779,7 @@ vector<tuple<char, int, int>> VimUtils::generate_f_motions(int curr_col, int tar
 }
 
 template std::vector<std::tuple<char,int,int>>
-VimUtils::generate_f_motions<true>(int,int,const std::string&,int);
+VimUtils::generateFMotions<true>(int,int,const std::string&,int);
 
 template std::vector<std::tuple<char,int,int>>
-VimUtils::generate_f_motions<false>(int,int,const std::string&,int);
+VimUtils::generateFMotions<false>(int,int,const std::string&,int);

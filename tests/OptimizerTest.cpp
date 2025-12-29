@@ -65,7 +65,7 @@ vector<string> OptimizerTest::m1_main_basic;
 TEST_F(OptimizerTest, HorizontalMotions) {
   const string user_seq = "we";
   Position start(0, 0);
-  Position end = apply_motions(start, Mode::Normal, user_seq, a1_long_line).pos;
+  Position end = applyMotions(start, Mode::Normal, user_seq, a1_long_line).pos;
 
   vector<Result> results = runOptimizer(
   a1_long_line,
@@ -81,7 +81,7 @@ TEST_F(OptimizerTest, HorizontalMotions) {
 TEST_F(OptimizerTest, VerticalMotions) {
   const string user_seq = "jjjjj";
   Position start(2, 0);
-  Position end = apply_motions(start, Mode::Normal, user_seq, a3_spaced_lines).pos;
+  Position end = applyMotions(start, Mode::Normal, user_seq, a3_spaced_lines).pos;
   // vector<KeyAdjustment> adjustments = {
   //   KeyAdjustment(Key::Key_LBracket, 0.1),
   //   KeyAdjustment(Key::Key_RBracket, 0.1),
