@@ -26,4 +26,4 @@ Interesting (maybe?) things that have come up:
 - X Macros. May become obsolete with reflection in C++ 26?
 - std::streambuf, and cout.rdbuf as getter/setter
 - CMake visibility: public, private, interface
-
+- When you need same type of space per many function calls, static declaration has downsides over stack: not safe to recursion, worse cache behavior. 

@@ -12,16 +12,13 @@
 
 class SequenceTokenizer {
 public:
-  using KeySequence = std::vector<Key>;
   using Mapping     = std::map<std::string, KeySequence>;
 
   // Build from action + motion maps (they must outlive the tokenizer).
   SequenceTokenizer(const Mapping &actions,
                     const Mapping &motions);
 
-  // Returns true on success, false if `s` contains an unknown token.
-  // On success, `out` will contain the flattened key sequence.
-  bool tokenize(std::string_view s, KeySequence &out) const;
+  KeySequence tokenize(std::string_view s) const;
 
 private:
   struct TokenDef {

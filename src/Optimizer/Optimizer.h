@@ -24,6 +24,8 @@ struct Optimizer {
   const int    MAX_SEARCH_DEPTH;
   const double COST_WEIGHT;
   const double EXPLORE_FACTOR;
+  
+  const int F_MOTION_THRESHOLD = 2;
 
   Optimizer(const State &state, const Config& config,
             int max_result_count = 5,
@@ -50,6 +52,6 @@ struct Optimizer {
     const std::vector<std::string>& lines,
     const Position& end,
     const std::string& userSequence,
-    const MotionToKeys& motionToKeys = ALL_MOTIONS_TO_KEYS
+    const MotionToKeys& motionToKeys = EXPLORABLE_MOTIONS
   );
 };

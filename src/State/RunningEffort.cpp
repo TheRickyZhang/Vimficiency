@@ -115,13 +115,7 @@ void RunningEffort::reset() {
 
 double getEffort(const std::string &seq,
                  const Config      &cfg) {
-  KeySequence keys;
-  if(!globalTokenizer().tokenize(seq, keys)) {
-    std::cerr << "Malformed key sequence: " + seq << endl;
-    // throw new std::runtime_error("Malformed key sequence: " + seq);
-    return 0.0;
-  }
-    
+  KeySequence keys = globalTokenizer().tokenize(seq);
   RunningEffort st;
   return st.append(keys, cfg);
 }

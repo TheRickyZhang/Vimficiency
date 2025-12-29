@@ -32,7 +32,35 @@ enum class FingerPosition : uint8_t {
   None,
 };
 
-using KeySequence = std::vector<Key>;
+// Wrapper for semantic meaning, additional functions.
+class KeySequence {
+  std::vector<Key> keys;
+public:
+  KeySequence()=default;
+  KeySequence(std::initializer_list<Key> init) : keys(init){}
+
+  size_t size() const { return keys.size(); }
+  // bool empty() const { return keys.empty(); }
+  auto begin() const { return keys.begin(); }
+  auto end() const { return keys.end(); }
+
+  std::span<const Key> view() const { return keys; }
+  void push_back(const Key& k) {
+    keys.push_back(k);
+  }
+  KeySequence& append(const KeySequence& ks, size_t cnt = 1){
+    if(cnt <= 0 || ks.size() == 0) return *this;
+    keys.reserve(keys.size() + ks.size() * cnt);
+    for(int i=0; i<cnt; i++) {
+      keys.insert(keys.end(), ks.begin(), ks.end());
+    }
+    return *this;
+  }
+  KeySequence& operator+=(const KeySequence& other){
+    return append(other);
+  }
+};
+
 
 static_assert(KEY_COUNT == static_cast<uint8_t>(Key::None), "key counts do not match");
 static_assert(FINGER_COUNT == static_cast<uint8_t>(Finger::None), "finger counts do not match");

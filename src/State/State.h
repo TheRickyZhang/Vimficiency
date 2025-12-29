@@ -12,14 +12,19 @@ using PosKey = std::pair<int, int>;
 // Entire simulated editor state (for now, only position+mode+effort).
 // You can later add: vector<string> lines; registers; etc.
 struct State {
+  // Visible, core editor state
   Position pos;
   Mode mode;
-  RunningEffort effortState;
 
+  // Progress so far
+  std::string motionSequence;
+
+  // Necessary for ranking states
   double effort;
   double cost;
-  std::string sequence;
 
+  // Internal mechanism
+  RunningEffort effortState;
 
   State(Position pos, RunningEffort effortState, int effort, int cost)
     : pos(pos), effortState(effortState), effort(effort), cost(cost), mode(Mode::Normal) {
@@ -41,6 +46,11 @@ struct State {
   }
 
   void apply_normal_motion(std::string motion, const std::vector<std::string>& lines);
+
+  void set_col(int col) {
+    debug("setting to new col, be careful", col);
+    pos.col = col;
+  }
 };
 
 

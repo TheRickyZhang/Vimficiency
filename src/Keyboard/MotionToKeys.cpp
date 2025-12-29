@@ -4,12 +4,20 @@ using namespace std;
 #include "MotionToKeys.h"
 #include "Utils/Debug.h"
 
+// =============================================================================
+// Global Tokenizer
+// =============================================================================
+
 const SequenceTokenizer& globalTokenizer() {
-  static SequenceTokenizer tok(ACTION_MOTIONS_TO_KEYS , ALL_MOTIONS_TO_KEYS);
+  static SequenceTokenizer tok(ACTION_MOTIONS_TO_KEYS, ALL_MOTIONS);
   return tok;
 }
 
+// =============================================================================
+// ACTION_MOTIONS_TO_KEYS - Physical key mappings for tokenizing raw input
+// =============================================================================
 // See :h key-notation, :h keytrans()
+
 const MotionToKeys ACTION_MOTIONS_TO_KEYS = {
   // letters
   {"a", {Key::Key_A}},{"A", {Key::Key_Shift, Key::Key_A}},
@@ -72,7 +80,7 @@ const MotionToKeys ACTION_MOTIONS_TO_KEYS = {
   {"<LT>", {Key::Key_Shift, Key::Key_Comma}},  // NOTE: custom form since <...> is used for parsing others
   {".", {Key::Key_Period}},
   {">", {Key::Key_Shift, Key::Key_Period}},
-  
+
   {"/", {Key::Key_Slash}}, {"?", {Key::Key_Shift, Key::Key_Slash}},
 
   // shifted digits (!@#$%^&*())
@@ -96,13 +104,13 @@ const MotionToKeys ACTION_MOTIONS_TO_KEYS = {
   {"<Esc>", {Key::Key_Esc}},
   {"<BS>", {Key::Key_Backspace}},
   {"<Del>", {Key::Key_Delete}},
-  
+
   // Arrow keys
   {"<Up>", {Key::Key_Up}},
   {"<Down>", {Key::Key_Down}},
   {"<Left>", {Key::Key_Left}},
   {"<Right>", {Key::Key_Right}},
-  
+
   // Navigation
   {"<Home>", {Key::Key_Home}},
   {"<End>", {Key::Key_End}},
@@ -134,7 +142,7 @@ const MotionToKeys ACTION_MOTIONS_TO_KEYS = {
   {"<C-x>", {Key::Key_Ctrl, Key::Key_X}},
   {"<C-y>", {Key::Key_Ctrl, Key::Key_Y}},
   {"<C-z>", {Key::Key_Ctrl, Key::Key_Z}},
-  
+
   // Common Ctrl special keys
   {"<C-Space>", {Key::Key_Ctrl, Key::Key_Space}},
   {"<C-BS>", {Key::Key_Ctrl, Key::Key_Backspace}},
@@ -142,7 +150,15 @@ const MotionToKeys ACTION_MOTIONS_TO_KEYS = {
   {"<C-Tab>", {Key::Key_Ctrl, Key::Key_Tab}},
 };
 
-const MotionToKeys ALL_MOTIONS_TO_KEYS = {
+// =============================================================================
+// EXPLORABLE_MOTIONS - Motions directly explorable in optimizer search
+// =============================================================================
+// These motions can be applied without additional context (no target char needed)
+
+const MotionToKeys EXPLORABLE_MOTIONS = {
+  // ---------------------------------------------------------------------------
+  // Basic cursor motions
+  // ---------------------------------------------------------------------------
   {"h", {Key::Key_H}},
   {"j", {Key::Key_J}},
   {"k", {Key::Key_K}},
@@ -153,7 +169,7 @@ const MotionToKeys ALL_MOTIONS_TO_KEYS = {
   {"$", {Key::Key_Shift, Key::Key_4}},          // line end
 
   // ---------------------------------------------------------------------------
-  // Word motions (small and big words)
+  // Word motions
   // ---------------------------------------------------------------------------
   {"w", {Key::Key_W}},
   {"b", {Key::Key_B}},
@@ -164,44 +180,160 @@ const MotionToKeys ALL_MOTIONS_TO_KEYS = {
   {"E", {Key::Key_Shift, Key::Key_E}},
 
   // ---------------------------------------------------------------------------
-  // Line / file / screen position motions
+  // Line / file position motions
   // ---------------------------------------------------------------------------
   {"gg", {Key::Key_G, Key::Key_G}},             // top of file
   {"G",  {Key::Key_Shift, Key::Key_G}},         // goto line / end of file
 
-  // {"H",  {Key::Key_Shift, Key::Key_H}},         // top of screen
-  // {"M",  {Key::Key_Shift, Key::Key_M}},         // middle of screen
-  // {"L",  {Key::Key_Shift, Key::Key_L}},         // bottom of screen
+  // {"H",  {Key::Key_Shift, Key::Key_H}},      // top of screen (not supported - needs screen state)
+  // {"M",  {Key::Key_Shift, Key::Key_M}},      // middle of screen
+  // {"L",  {Key::Key_Shift, Key::Key_L}},      // bottom of screen
 
-  // paragraph / sentence-ish motions
+  // ---------------------------------------------------------------------------
+  // Paragraph / sentence motions
+  // ---------------------------------------------------------------------------
   {"{",  {Key::Key_Shift, Key::Key_LBracket}},
   {"}",  {Key::Key_Shift, Key::Key_RBracket}},
   {"(",  {Key::Key_Shift, Key::Key_9}},
   {")",  {Key::Key_Shift, Key::Key_0}},
 
-  // match pairs
+  // ---------------------------------------------------------------------------
+  // Match pairs (not yet implemented)
+  // ---------------------------------------------------------------------------
   // {"%",  {Key::Key_Shift, Key::Key_5}},
 
   // ---------------------------------------------------------------------------
-  // Scrolling (full/half/small)
+  // Scrolling (not yet implemented - needs screen state)
   // ---------------------------------------------------------------------------
-  // {"<C-f>", {Key::Key_Ctrl, Key::Key_F}},       // page down
-  // {"<C-b>", {Key::Key_Ctrl, Key::Key_B}},       // page up
-  // {"<C-d>", {Key::Key_Ctrl, Key::Key_D}},       // half-page down
-  // {"<C-u>", {Key::Key_Ctrl, Key::Key_U}},       // half-page up
-  // {"<C-e>", {Key::Key_Ctrl, Key::Key_E}},       // scroll down one line
-  // {"<C-y>", {Key::Key_Ctrl, Key::Key_Y}},       // scroll up one line
+  // {"<C-f>", {Key::Key_Ctrl, Key::Key_F}},    // page down
+  // {"<C-b>", {Key::Key_Ctrl, Key::Key_B}},    // page up
+  // {"<C-d>", {Key::Key_Ctrl, Key::Key_D}},    // half-page down
+  // {"<C-u>", {Key::Key_Ctrl, Key::Key_U}},    // half-page up
+  // {"<C-e>", {Key::Key_Ctrl, Key::Key_E}},    // scroll down one line
+  // {"<C-y>", {Key::Key_Ctrl, Key::Key_Y}},    // scroll up one line
 };
+
+// =============================================================================
+// CHARACTER_FIND_MOTIONS - Motions requiring special handling
+// =============================================================================
+// These need target characters (f/F/t/T) or prior motion context (;/,)
+// They are handled specially in the optimizer, not in the main exploration loop
+
+static const MotionToKeys CHARACTER_FIND_MOTIONS = {
+  {"f",  {Key::Key_F}},                         // find char forward
+  {"F",  {Key::Key_Shift, Key::Key_F}},         // find char backward
+  {"t",  {Key::Key_T}},                         // till char forward
+  {"T",  {Key::Key_Shift, Key::Key_T}},         // till char backward
+  {";",  {Key::Key_Semicolon}},                 // repeat f/F/t/T same direction
+  {",",  {Key::Key_Comma}},                     // repeat f/F/t/T opposite direction
+};
+
+// =============================================================================
+// ALL_MOTIONS - Union of all supported vim motions (for parsing/validation)
+// =============================================================================
+
+static MotionToKeys buildAllMotions() {
+  MotionToKeys all = EXPLORABLE_MOTIONS;
+  all.insert(CHARACTER_FIND_MOTIONS.begin(), CHARACTER_FIND_MOTIONS.end());
+  return all;
+}
+
+const MotionToKeys ALL_MOTIONS = buildAllMotions();
+
+// =============================================================================
+// CHAR_TO_KEYS - Single character to KeySequence mapping
+// =============================================================================
+// Used for f/F/t/T motion targets
+
+const CharToKeys CHAR_TO_KEYS = {
+  // letters
+  {'a', {Key::Key_A}}, {'A', {Key::Key_Shift, Key::Key_A}},
+  {'b', {Key::Key_B}}, {'B', {Key::Key_Shift, Key::Key_B}},
+  {'c', {Key::Key_C}}, {'C', {Key::Key_Shift, Key::Key_C}},
+  {'d', {Key::Key_D}}, {'D', {Key::Key_Shift, Key::Key_D}},
+  {'e', {Key::Key_E}}, {'E', {Key::Key_Shift, Key::Key_E}},
+  {'f', {Key::Key_F}}, {'F', {Key::Key_Shift, Key::Key_F}},
+  {'g', {Key::Key_G}}, {'G', {Key::Key_Shift, Key::Key_G}},
+  {'h', {Key::Key_H}}, {'H', {Key::Key_Shift, Key::Key_H}},
+  {'i', {Key::Key_I}}, {'I', {Key::Key_Shift, Key::Key_I}},
+  {'j', {Key::Key_J}}, {'J', {Key::Key_Shift, Key::Key_J}},
+  {'k', {Key::Key_K}}, {'K', {Key::Key_Shift, Key::Key_K}},
+  {'l', {Key::Key_L}}, {'L', {Key::Key_Shift, Key::Key_L}},
+  {'m', {Key::Key_M}}, {'M', {Key::Key_Shift, Key::Key_M}},
+  {'n', {Key::Key_N}}, {'N', {Key::Key_Shift, Key::Key_N}},
+  {'o', {Key::Key_O}}, {'O', {Key::Key_Shift, Key::Key_O}},
+  {'p', {Key::Key_P}}, {'P', {Key::Key_Shift, Key::Key_P}},
+  {'q', {Key::Key_Q}}, {'Q', {Key::Key_Shift, Key::Key_Q}},
+  {'r', {Key::Key_R}}, {'R', {Key::Key_Shift, Key::Key_R}},
+  {'s', {Key::Key_S}}, {'S', {Key::Key_Shift, Key::Key_S}},
+  {'t', {Key::Key_T}}, {'T', {Key::Key_Shift, Key::Key_T}},
+  {'u', {Key::Key_U}}, {'U', {Key::Key_Shift, Key::Key_U}},
+  {'v', {Key::Key_V}}, {'V', {Key::Key_Shift, Key::Key_V}},
+  {'w', {Key::Key_W}}, {'W', {Key::Key_Shift, Key::Key_W}},
+  {'x', {Key::Key_X}}, {'X', {Key::Key_Shift, Key::Key_X}},
+  {'y', {Key::Key_Y}}, {'Y', {Key::Key_Shift, Key::Key_Y}},
+  {'z', {Key::Key_Z}}, {'Z', {Key::Key_Shift, Key::Key_Z}},
+
+  // digits
+  {'0', {Key::Key_0}}, {'1', {Key::Key_1}}, {'2', {Key::Key_2}},
+  {'3', {Key::Key_3}}, {'4', {Key::Key_4}}, {'5', {Key::Key_5}},
+  {'6', {Key::Key_6}}, {'7', {Key::Key_7}}, {'8', {Key::Key_8}},
+  {'9', {Key::Key_9}},
+
+  // whitespace
+  {' ', {Key::Key_Space}},
+  {'\t', {Key::Key_Tab}},
+
+  // punctuation (unshifted)
+  {'`', {Key::Key_Grave}},
+  {'-', {Key::Key_Minus}},
+  {'=', {Key::Key_Equal}},
+  {'[', {Key::Key_LBracket}},
+  {']', {Key::Key_RBracket}},
+  {'\\', {Key::Key_Backslash}},
+  {';', {Key::Key_Semicolon}},
+  {'\'', {Key::Key_Apostrophe}},
+  {',', {Key::Key_Comma}},
+  {'.', {Key::Key_Period}},
+  {'/', {Key::Key_Slash}},
+
+  // punctuation (shifted)
+  {'~', {Key::Key_Shift, Key::Key_Grave}},
+  {'!', {Key::Key_Shift, Key::Key_1}},
+  {'@', {Key::Key_Shift, Key::Key_2}},
+  {'#', {Key::Key_Shift, Key::Key_3}},
+  {'$', {Key::Key_Shift, Key::Key_4}},
+  {'%', {Key::Key_Shift, Key::Key_5}},
+  {'^', {Key::Key_Shift, Key::Key_6}},
+  {'&', {Key::Key_Shift, Key::Key_7}},
+  {'*', {Key::Key_Shift, Key::Key_8}},
+  {'(', {Key::Key_Shift, Key::Key_9}},
+  {')', {Key::Key_Shift, Key::Key_0}},
+  {'_', {Key::Key_Shift, Key::Key_Minus}},
+  {'+', {Key::Key_Shift, Key::Key_Equal}},
+  {'{', {Key::Key_Shift, Key::Key_LBracket}},
+  {'}', {Key::Key_Shift, Key::Key_RBracket}},
+  {'|', {Key::Key_Shift, Key::Key_Backslash}},
+  {':', {Key::Key_Shift, Key::Key_Semicolon}},
+  {'"', {Key::Key_Shift, Key::Key_Apostrophe}},
+  {'<', {Key::Key_Shift, Key::Key_Comma}},
+  {'>', {Key::Key_Shift, Key::Key_Period}},
+  {'?', {Key::Key_Shift, Key::Key_Slash}},
+};
+
+// =============================================================================
+// Utilities
+// =============================================================================
 
 MotionToKeys getSlicedMotionToKeys(vector<string> motions) {
   MotionToKeys res;
-  for(string m : motions) {
-    if(!ALL_MOTIONS_TO_KEYS.contains(m)) {
-      debug("cannot find", m, "in ALL_MOTIONS_TO_KEYS");
+  for(const string& m : motions) {
+    auto it = ALL_MOTIONS.find(m);
+    if(it == ALL_MOTIONS.end()) {
+      debug("cannot find", m, "in ALL_MOTIONS");
     } else {
-      res[m] = ALL_MOTIONS_TO_KEYS.at(m);
+      res[m] = it->second;
     }
   }
   return res;
 }
-

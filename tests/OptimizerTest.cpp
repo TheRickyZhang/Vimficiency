@@ -40,7 +40,7 @@ protected:
   static vector<Result>
   runOptimizer(const vector<string> &lines, Position start,
                Position end, const string &userSeq,
-               const MotionToKeys& allowedMotions = ALL_MOTIONS_TO_KEYS,
+               const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS,
                vector<KeyAdjustment> adjustments = {},
                Config config = Config::uniform()
                ) {
@@ -71,9 +71,9 @@ TEST_F(OptimizerTest, HorizontalMotions) {
   a1_long_line,
     start, end, user_seq
   );
-  // printResults(results);
+  printResults(results);
 
-  EXPECT_TRUE(contains_all(results, {user_seq, "ee", "wll", "wwhh"}))
+  EXPECT_TRUE(contains_all(results, {user_seq, "wE", "ee", "EE", "wfal", "wfa;"}))
       << "Missing expected sequences";
 }
 

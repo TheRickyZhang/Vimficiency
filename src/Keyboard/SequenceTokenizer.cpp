@@ -1,6 +1,8 @@
 #include "SequenceTokenizer.h"
 #include <algorithm>
 
+using namespace std;
+
 SequenceTokenizer::SequenceTokenizer(const Mapping &actions,
                                      const Mapping &motions) {
   tokens_.reserve(actions.size() + motions.size());
@@ -13,7 +15,7 @@ SequenceTokenizer::SequenceTokenizer(const Mapping &actions,
   }
 
   // Longest tokens first, so we greedily match "gg" before "g".
-  std::sort(tokens_.begin(), tokens_.end(),
+  sort(tokens_.begin(), tokens_.end(),
             [](const TokenDef &a, const TokenDef &b) {
               if (a.token.size() != b.token.size())
                 return a.token.size() > b.token.size();
@@ -22,32 +24,32 @@ SequenceTokenizer::SequenceTokenizer(const Mapping &actions,
 }
 
 
-bool SequenceTokenizer::tokenize(std::string_view s, KeySequence &out) const {
-  out.clear();
-  std::size_t i = 0;
+KeySequence SequenceTokenizer::tokenize(string_view s) const {
+  KeySequence out;
+  size_t i=0;
 
-  while (i < s.size()) {
-    bool matched = false;
+  while(i < s.size()){
+    bool matched=false;
 
-    for (const auto &td : tokens_) {
-      const std::string &tok = td.token;
-      const std::size_t len = tok.size();
-
-      if (len <= s.size() - i && s.compare(i, len, tok) == 0) {
-        const auto &keys = *td.keys;
-        out.insert(out.end(), keys.begin(), keys.end());
+    for(const auto& td: tokens_){
+      const string& tok = td.token;
+      const size_t len = tok.size();
+      if(len<=s.size()-i && s.compare(i,len,tok)==0){
+        const auto& keys = *td.keys;
+        out.append(keys);
         i += len;
         matched = true;
         break;
       }
     }
-
-    if (!matched) {
-      // Unknown token starting at position i.
-      std::cerr << "unknown starting from " << s[i] << "\n";
-      return false;
+    if(!matched){
+      // include position + a small preview for debugging
+      char ch = s[i];
+      throw runtime_error(
+        "Malformed key sequence at position " + to_string(i) +
+        " near '" + string(1,ch) + "'"
+      );
     }
   }
-
-  return true;
+  return out;
 }

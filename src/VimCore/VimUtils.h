@@ -62,4 +62,8 @@ struct VimUtils {
   // Sentence motions
   static void motion_sentencePrev(Position& pos, const std::vector<std::string>& lines);
   static void motion_sentenceNext(Position& pos, const std::vector<std::string>& lines);
+
+  template<bool Forward>
+  static std::vector<std::tuple<char, int, int>> generate_f_motions(int curr_col, int target_col, const std::string& line, int threshold);
+
 };
