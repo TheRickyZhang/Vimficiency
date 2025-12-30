@@ -5,6 +5,7 @@
 #include "RunningEffort.h"
 #include "Editor/Position.h"
 #include "Editor/Mode.h"
+#include "Editor/NavContext.h"
 
 
 using PosKey = std::pair<int, int>;
@@ -45,7 +46,7 @@ struct State {
     return std::make_pair(pos.line, pos.col);
   }
 
-  void applyNormalMotion(std::string motion, const std::vector<std::string>& lines);
+  void applyMotion(std::string motion, const NavContext& navContext, const std::vector<std::string>& lines);
 
   void setCol(int col) {
     debug("setting to new col, be careful", col);

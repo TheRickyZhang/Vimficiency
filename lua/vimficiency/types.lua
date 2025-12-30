@@ -63,6 +63,10 @@ local M = {}
 ---@field filetype string      # buffer filetype
 ---@field row integer
 ---@field col integer
+---@field top_row integer
+---@field bottom_row integer
+---@field window_height integer # Ctrl-F, B distance
+---@field scroll_amount integer # Ctrl-D, U (may be different than window_height/2)
 ---@field lines string[]       # full buffer contents
 
 ---@class VimficiencyWriteDTO
@@ -98,15 +102,33 @@ end
 ---@param filetype string
 ---@param row integer
 ---@param col integer
+---@param top_row integer
+---@param bottom_row integer
+---@param window_height integer
+---@param scroll_amount integer
 ---@param lines string[]
 ---@return VimficiencyState
-function M.new_file_contents(bufname, filetype, row, col, lines)
+function M.new_file_contents(
+  bufname, filetype, row, col,
+  top_row, bottom_row, window_height, scroll_amount,
+  lines
+)
   assert(type(bufname) == "string", "filecontents.bufname must be string")
   assert(type(filetype) == "string", "filecontents.filetype must be string")
   assert(type(row) == "number" and type(col) == "number", "row and col must be ints")
   assert(type(lines) == "table", "filecontents.lines must be an array of strings")
 
-  return { bufname = bufname, filetype = filetype, row = row, col = col, lines = lines, }
+  return {
+    bufname = bufname,
+    filetype = filetype,
+    row = row,
+    col = col,
+    top_row = top_row,
+    bottom_row = bottom_row,
+    window_height = window_height,
+    scroll_amount = scroll_amount,
+    lines = lines,
+  }
 end
 
 ---@param buf number

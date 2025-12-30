@@ -4,6 +4,7 @@
 #include "State/RunningEffort.h"
 #include "Optimizer/Optimizer.h"
 #include "Editor/Snapshot.h"
+#include "Editor/NavContext.h"
 #include "State/State.h"
 #include "Utils/Debug.h"
 
@@ -41,9 +42,17 @@ int main(int argc, char* argv[]) {
   Config model = Config::uniform();
   Optimizer o(startingState, model);
 
+  NavContext navContext(
+    start_snapshot.topRow,
+    start_snapshot.bottomRow,
+    start_snapshot.windowHeight,
+    start_snapshot.scrollAmount
+  );
+
   vector<Result> res = o.optimizeMovement(
     start_snapshot.lines,
     end_position,
+    navContext,
     user_seq
   );
 

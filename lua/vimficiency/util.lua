@@ -126,7 +126,7 @@ end
 ----------- BEGIN FILE ------------
 
 
--- ---------- State / IO helpers ----------
+---------- State / IO helpers ----------
 ---@return VimficiencyState
 function M.capture_state(buf, win)
   -- Precondition: must pass in valid buffer and window
@@ -137,12 +137,20 @@ function M.capture_state(buf, win)
 
   local lines = v.nvim_buf_get_lines(buf, 0, -1, false)
   local cursor = v.nvim_win_get_cursor(win) -- {row(1-based), col(0-based)}
+  local top_row = vim.fn.line('w0')
+  local bottom_row = vim.fn.line('w$')
+  local window_height = vim.api.nvim_win_get_height(win)
+  local scroll_amount = vim.api.nvim_get_option_value('scroll', {win=win})
 
   return types.new_file_contents(
     v.nvim_buf_get_name(buf),
     vim.bo[buf].filetype,
     cursor[1] - 1, --- Convert to 0-indexed, annoyingly
     cursor[2],
+    top_row,
+    bottom_row,
+    window_height,
+    scroll_amount,
     lines
   );
 end

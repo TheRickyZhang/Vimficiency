@@ -1,6 +1,5 @@
 Ranked by natural development order and priority. Complexity level (?) in * stars.
 
-- f/t, ;/, motions                                 **
 - simple symbols: *, #, %                          ***
 - <C-d, u, f, b> page motions                      **
 - Search, n/N (heuristic best-matching prefix)     ***
@@ -16,3 +15,16 @@ Ranked by natural development order and priority. Complexity level (?) in * star
 - Reinforcement learning?                          *****
 
 - Niche commands: -/+, ~, gu, gU,
+
+
+
+
+
+
+
+
+
+
+
+Done:
+- f/t, ;/, motions                                 **

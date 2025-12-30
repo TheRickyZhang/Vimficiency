@@ -1,5 +1,6 @@
-#include "Optimizer/Optimizer.h"
+#include "Editor/NavContext.h"
 #include "Keyboard/MotionToKeys.h"
+#include "Optimizer/Optimizer.h"
 #include "Utils/Debug.h"
 #include "VimCore/VimUtils.h" // TODO This is probably ugly include, move up?
 
@@ -10,10 +11,11 @@ ostream &operator<<(ostream &os, const Result &r) {
   return os;
 }
 
-vector<Result> Optimizer::optimizeMovement(const vector<string> &lines,
-                                           const Position &end,
-                                           const string &userSequence,
-                                           const MotionToKeys &motionToKeys) {
+vector<Result> Optimizer::optimizeMovement(
+    const vector<string> &lines, const Position &end,
+    NavContext& navContext,
+    const string &userSequence,
+    const MotionToKeys &motionToKeys) {
   int totalExplored = 0;
   double userEffort = getEffort(userSequence, config);
 
@@ -132,9 +134,10 @@ vector<Result> Optimizer::optimizeMovement(const vector<string> &lines,
       }
     }
 
+    // Search MotionToKeys::
     for (auto [motion, keys] : motionToKeys) {
       State newState = s;
-      newState.applyNormalMotion(motion, lines);
+      newState.applyMotion(motion, navContext, lines);
       newState.effort = newState.effortState.append(keys, config);
       newState.cost = heuristic(newState, end);
 

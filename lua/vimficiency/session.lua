@@ -66,6 +66,10 @@ function M.finish()
 
 	local end_state = util.capture_state(buf, win)
 
+  if end_state.scroll_amount ~= session.start_state.scroll_amount then
+    vim.notify("scroll amount is not the same")
+  end
+
 	-- Build keyseq string
 	local parts = {}
 	for i = 1, #session.key_seq do

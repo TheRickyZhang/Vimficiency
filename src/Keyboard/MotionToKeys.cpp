@@ -205,10 +205,11 @@ const MotionToKeys EXPLORABLE_MOTIONS = {
   // ---------------------------------------------------------------------------
   // Scrolling (not yet implemented - needs screen state)
   // ---------------------------------------------------------------------------
-  // {"<C-f>", {Key::Key_Ctrl, Key::Key_F}},    // page down
-  // {"<C-b>", {Key::Key_Ctrl, Key::Key_B}},    // page up
-  // {"<C-d>", {Key::Key_Ctrl, Key::Key_D}},    // half-page down
-  // {"<C-u>", {Key::Key_Ctrl, Key::Key_U}},    // half-page up
+  {"<C-f>", {Key::Key_Ctrl, Key::Key_F}},    // page down
+  {"<C-b>", {Key::Key_Ctrl, Key::Key_B}},    // page up
+  {"<C-d>", {Key::Key_Ctrl, Key::Key_D}},    // half-page down
+  {"<C-u>", {Key::Key_Ctrl, Key::Key_U}},    // half-page up
+  // Pure scrolling doesn't matter, since doesn't move the cursor
   // {"<C-e>", {Key::Key_Ctrl, Key::Key_E}},    // scroll down one line
   // {"<C-y>", {Key::Key_Ctrl, Key::Key_Y}},    // scroll up one line
 };

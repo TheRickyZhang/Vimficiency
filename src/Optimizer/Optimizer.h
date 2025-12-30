@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "Config.h"
+#include "Editor/NavContext.h"
 #include "State/State.h"
 #include "Keyboard/MotionToKeys.h"
 
@@ -51,6 +52,7 @@ struct Optimizer {
   std::vector<Result> optimizeMovement(
     const std::vector<std::string>& lines,
     const Position& end,
+    NavContext& navigationContext,
     const std::string& userSequence,
     const MotionToKeys& motionToKeys = EXPLORABLE_MOTIONS
   );

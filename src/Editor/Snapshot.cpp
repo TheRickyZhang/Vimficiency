@@ -39,11 +39,23 @@ Snapshot load_snapshot(const std::filesystem::path& path) {
   string rowcol;
   if(!getline(in, rowcol)) {
     throw runtime_error("No row or col");
-  } 
+  }
   {
     istringstream ss(rowcol);
     if(!(ss >> row >> col)) {
       throw runtime_error("Huh");
+    }
+  }
+
+  int topRow, bottomRow, windowHeight, scrollAmount;
+  string navContext;
+  if(!getline(in, navContext)) {
+    throw runtime_error("No navContext");
+  }
+  {
+    istringstream ss(navContext);
+    if(!(ss >> topRow >> bottomRow >> windowHeight >> scrollAmount)) {
+      throw runtime_error("Bad navContext");
     }
   }
 
@@ -53,6 +65,7 @@ Snapshot load_snapshot(const std::filesystem::path& path) {
     lines.push_back(line);
   }
 
-  Snapshot s(std::move(bufname), std::move(filename), row, col, std::move(lines));
+  Snapshot s(std::move(bufname), std::move(filename), row, col,
+             topRow, bottomRow, windowHeight, scrollAmount, std::move(lines));
   return s;
 }

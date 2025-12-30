@@ -130,7 +130,10 @@ const char *vimficiency_finger_name(int index) {
 
 const char *vimficiency_analyze(const char *start_text, int start_row,
                                 int start_col, const char *end_text,
-                                int end_row, int end_col, const char *keyseq) {
+                                int end_row, int end_col, const char *keyseq,
+                                // Viewport state
+                                int top_row, int bottom_row, int window_height, int scroll_amount
+                                ) {
   static std::string result_storage;
 
   auto start_lines = split_lines(start_text);
@@ -141,10 +144,12 @@ const char *vimficiency_analyze(const char *start_text, int start_row,
 
   State startingState(start_position, RunningEffort(), 0, 0);
 
+  NavContext navigation_context(top_row, bottom_row, window_height, scroll_amount);
+
   // g_config_internal was already populated by vimficiency_apply_config()
   Optimizer o(startingState, g_config_internal);
 
-  std::vector<Result> res = o.optimizeMovement(start_lines, end_position, keyseq);
+  std::vector<Result> res = o.optimizeMovement(start_lines, end_position, navigation_context, keyseq);
 
   // Format results
   std::ostringstream oss;
