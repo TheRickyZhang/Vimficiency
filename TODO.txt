@@ -1,7 +1,13 @@
 Ranked by natural development order and priority. Complexity level (?) in * stars.
 
+Current priority stack:
+Implement counts
+Build word indices, so that {cnt}w, W are more efficient
+Take a slice of current current buffer, so normal mode search only operates under a specific window.
+
+After done: startingState should be passed in the optimize call, not be a member of Optimizer
+
 - simple symbols: *, #, %                          ***
-- <C-d, u, f, b> page motions                      **
 - Search, n/N (heuristic best-matching prefix)     ***
 - Numbers (compress? Heuristic exact jumps)        ****
 - Operator motions                                 *****
@@ -28,3 +34,4 @@ Ranked by natural development order and priority. Complexity level (?) in * star
 
 Done:
 - f/t, ;/, motions                                 **
+- <C-d, u, f, b> page motions                      **

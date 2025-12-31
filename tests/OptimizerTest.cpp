@@ -5,6 +5,7 @@
 
 #include "Keyboard/MotionToKeys.h"
 #include "Optimizer/Config.h"
+#include "Optimizer/ImpliedExclusions.h"
 #include "Optimizer/Optimizer.h"
 #include "State/RunningEffort.h"
 #include "Editor/Snapshot.h"
@@ -56,8 +57,10 @@ protected:
 
     // Try to explore more, lower search depth for speed
     Optimizer opt(startState, config, 30, 2e4, 1.0, 2.0);
-  
-    return opt.optimizeMovement(lines, end, navContext, userSeq, allowedMotions);
+
+    // Tests use full test files, so don't exclude G/gg
+    ImpliedExclusions impliedExclusions(false, false);
+    return opt.optimizeMovement(lines, end, userSeq, navContext, impliedExclusions, allowedMotions);
   }
 };
 

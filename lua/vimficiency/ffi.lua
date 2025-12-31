@@ -29,6 +29,7 @@ ffi.cdef([[
         int default_keyboard;
         C_ScoreWeights weights;
         C_KeyInfo keys[64];  // assert(64 >= key_count)
+        int slice_buffer_amount;
     } VimficiencyConfigFFI;
 
     VimficiencyConfigFFI* vimficiency_get_config();
@@ -37,11 +38,11 @@ ffi.cdef([[
     const char* vimficiency_key_name(int index);
     const char* vimficiency_finger_name(int index);
     const char* vimficiency_hand_name(int index);
-
     const char* vimficiency_analyze(
-        const char* start_text, int start_row, int start_col,
-        const char* end_text, int end_row, int end_col,
-        const char* keyseq
+        const char* text, bool includes_real_top, bool includes_real_bottom,
+        int start_row, int start_col, int end_row, int end_col,
+        const char* keyseq,
+        int top_row, int bottom_row, int window_height, int scroll_amount
     );
     const char* vimficiency_get_debug();
 
@@ -142,22 +143,40 @@ function M.configure(user_config)
 		end
 	end
 
+  if user_config.slice_buffer_amount then
+    config.slice_buffer_count = user_config.slice_buffer_amount
+  end
+
 	lib.vimficiency_apply_config()
 end
 
----@param start_lines string[]
+---@param lines string[]
+---@param includes_real_top boolean
+---@param includes_real_bottom boolean
 ---@param start_row integer (0-indexed)
 ---@param start_col integer (0-indexed)
----@param end_lines string[]
 ---@param end_row integer (0-indexed)
 ---@param end_col integer (0-indexed)
 ---@param key_seq string
+---@param top_row integer
+---@param bottom_row integer
+---@param window_height integer
+---@param scroll_amount integer
 ---@return string result, string debug
-function M.analyze(start_lines, start_row, start_col, end_lines, end_row, end_col, key_seq)
-	local start_text = table.concat(start_lines, "\n")
-	local end_text = table.concat(end_lines, "\n")
+function M.analyze(
+  lines, includes_real_top, includes_real_bottom,
+  start_row, start_col, end_row, end_col,
+  key_seq,
+  top_row, bottom_row, window_height, scroll_amount
+)
+	local text = table.concat(lines, "\n")
 
-	local result = lib.vimficiency_analyze(start_text, start_row, start_col, end_text, end_row, end_col, key_seq)
+	local result = lib.vimficiency_analyze(
+    text, includes_real_top, includes_real_bottom,
+    start_row, start_col, end_row, end_col,
+    key_seq,
+    top_row, bottom_row, window_height, scroll_amount
+  )
   local dbg = ffi.string(lib.vimficiency_get_debug())
   return ffi.string(result), ffi.string(dbg)
 end

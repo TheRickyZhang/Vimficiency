@@ -1,4 +1,5 @@
 local v = vim.api
+local init = require("vimficiency.init")
 local util = require("vimficiency.util")
 local types = require("vimficiency.types")
 local simulate = require("vimficiency.simulate")
@@ -50,6 +51,7 @@ function M.start()
 	vim.notify("vimficiency started " .. id, vim.log.levels.INFO)
 end
 
+
 function M.finish()
 	if not session then
 		total_failure("finish()", "no session found")
@@ -64,11 +66,19 @@ function M.finish()
 		return
 	end
 
+  local start_state = session.start_state
 	local end_state = util.capture_state(buf, win)
 
-  if end_state.scroll_amount ~= session.start_state.scroll_amount then
-    vim.notify("scroll amount is not the same")
+  util.check_state_inconsistencies(start_state, end_state)
+
+  local start_search, end_search, buffer_line_count = util.get_search_boundaries(start_state.row, end_state.row)
+
+  if end_search - start_search > init.config.max_search_lines then
+    total_failure("finish()", "search range is larger than max_search_lines")
+    return
   end
+
+  local lines = vim.api.nvim_buf_get_lines(buf, start_search, end_search+1, true)
 
 	-- Build keyseq string
 	local parts = {}
@@ -80,13 +90,18 @@ function M.finish()
   ---@type boolean, string, string
 	local ok, result, dbg = pcall(
 		ffi_lib.analyze,
-		session.start_state.lines,
-		session.start_state.row,
+		lines,
+    start_search == 0,
+    end_search == buffer_line_count - 1,
+		session.start_state.row - start_search,
 		session.start_state.col,
-		end_state.lines,
-		end_state.row,
+		end_state.row - start_search,
 		end_state.col,
-		keyseq_str
+		keyseq_str,
+    start_state.top_row,
+    start_state.bottom_row,
+    start_state.window_height,
+    start_state.scroll_amount
 	)
 	local id = session.id
 
@@ -112,14 +127,17 @@ function M.finish()
   )
 end
 
+
 function M.simulate(keys)
 	if not session then
 		util.show_output("no session found")
 		return
 	end
 
+  --TODO: this is not updated for shifted line logic, fix later
+  --The buffer replayed on should only contain lines we searched. Not sure where lines should be persisted, since it is only known after calling end()
 	local data = session.start_state
-	simulate.simulate_visible(data.lines, data.row, data.col, keys, 500)
+	simulate.simulate_visible({}, data.row, data.col, keys, 500)
 end
 
 return M

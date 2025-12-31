@@ -19,6 +19,7 @@ local M = {}
 ---@field default_keyboard integer
 ---@field weights C_ScoreWeights
 ---@field keys C_KeyInfo[]
+---@field slice_buffer_count integer
 
 ---@class VimficiencyLib
 ---@field VIMFICIENCY_KEY_COUNT integer
@@ -29,7 +30,11 @@ local M = {}
 ---@field vimficiency_hand_name fun(index: integer): ffi.cdata*
 ---@field vimficiency_get_config fun(): VimficiencyConfigFFI
 ---@field vimficiency_apply_config fun(): nil
----@field vimficiency_analyze fun(start_text: string, start_row: integer, start_col: integer, end_text: string, end_row: integer, end_col: integer, keyseq: string): string
+---@field vimficiency_analyze fun(
+---text: string, includes_real_top: boolean, includes_real_bottom: boolean,
+---start_row: integer, start_col: integer, end_row: integer, end_col: integer,
+---keyseq: string,
+---top_row: integer, bottom_row: integer, window_height: integer, scroll_amount: integer): string
 ---@field vimficiency_get_debug fun(): string
 ---@field vimficiency_version fun(): integer
 ---@field vimficiency_debug_config fun(): string
@@ -67,7 +72,6 @@ local M = {}
 ---@field bottom_row integer
 ---@field window_height integer # Ctrl-F, B distance
 ---@field scroll_amount integer # Ctrl-D, U (may be different than window_height/2)
----@field lines string[]       # full buffer contents
 
 ---@class VimficiencyWriteDTO
 ---@field buf number

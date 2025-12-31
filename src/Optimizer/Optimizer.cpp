@@ -1,5 +1,6 @@
 #include "Editor/NavContext.h"
 #include "Keyboard/MotionToKeys.h"
+#include "Optimizer/ImpliedExclusions.h"
 #include "Optimizer/Optimizer.h"
 #include "Utils/Debug.h"
 #include "VimCore/VimUtils.h" // TODO This is probably ugly include, move up?
@@ -13,9 +14,19 @@ ostream &operator<<(ostream &os, const Result &r) {
 
 vector<Result> Optimizer::optimizeMovement(
     const vector<string> &lines, const Position &end,
-    NavContext& navContext,
     const string &userSequence,
-    const MotionToKeys &motionToKeys) {
+    NavContext& navContext,
+    const ImpliedExclusions& impliedExclusions,
+    const MotionToKeys &rawMotionToKeys) {
+  // Apply exclusions. Not sure if copy overhead outweighs skipping later, but it's clear and direct.
+  MotionToKeys motionToKeys = rawMotionToKeys;
+  if(impliedExclusions.exclude_G) {
+    motionToKeys.erase("G");
+  }
+  if(impliedExclusions.exclude_gg) {
+    motionToKeys.erase("gg");
+  }
+
   int totalExplored = 0;
   double userEffort = getEffort(userSequence, config);
 
@@ -53,9 +64,34 @@ vector<Result> Optimizer::optimizeMovement(
     // else { debug(motion, "is worse"); }
   };
 
+  // Helper: apply motion, update effort/cost, and explore
+  auto exploreMotion = [&](const State& base, const string& motion, int cnt, KeySequence keys) {
+    State newState = base;
+    newState.applyMotion(motion, cnt, navContext, lines);
+    newState.effort = newState.effortState.append(keys, config);
+    newState.cost = heuristic(newState, end);
+    exploreNewState(std::move(newState));
+  };
+
   // Start
   pq.push(startingState);
   costMap[startingState.getKey()] = 0;
+
+  // Seed search with exact line jump (e.g., "5j" to go down 5 lines)
+  int diff = end.line - startingState.pos.line;
+  int absDiff = abs(diff);
+  if(absDiff >= 3) {
+    string motion = diff > 0 ? "j" : "k";
+    string countStr = to_string(absDiff);
+
+    KeySequence keys;
+    for (char c : countStr) {
+      keys.append(CHAR_TO_KEYS.at(c));
+    }
+    keys.append(motionToKeys.at(motion));
+
+    exploreMotion(startingState, motion, absDiff, keys);
+  }
 
   while (!pq.empty()) {
     State s = pq.top();
@@ -92,7 +128,8 @@ vector<Result> Optimizer::optimizeMovement(
     // Process f/F motions with ; when on the same line as end.
     // Note for now we do not consider t or , as they are generally wasteful in comparison. 
     if (isSameLine) {
-      auto handle = [&](auto infos, const char first_motion, const char repeat_motion){
+      // TODO: move handleFMotions out of way if possible
+      auto handleFMotions = [&](auto infos, const char first_motion, const char repeat_motion){
         for(const auto& info : infos){
           const auto& [c, col, cnt] = info;
 
@@ -120,28 +157,33 @@ vector<Result> Optimizer::optimizeMovement(
         }
       };
 
+      // F Motions
       if(s.pos.col<end.col){
-        handle(
+        handleFMotions(
           VimUtils::generateFMotions<true>(s.pos.col, end.col, lines[s.pos.line], F_MOTION_THRESHOLD),
           'f', ';'
         );
       }
       else {
-        handle(
+        handleFMotions(
           VimUtils::generateFMotions<false>(s.pos.col, end.col, lines[s.pos.line], F_MOTION_THRESHOLD),
           'F', ';'
         );
       }
+
+      for(const string& motion : COUNT_SEARCHABLE_MOTIONS_LINE) {
+        // TODO: handle
+      }
+      
     }
 
-    // Search MotionToKeys::
+    // By default, motionToKeys is EXPLORABLE_MOTIONS (with exclusions applied)
     for (auto [motion, keys] : motionToKeys) {
-      State newState = s;
-      newState.applyMotion(motion, navContext, lines);
-      newState.effort = newState.effortState.append(keys, config);
-      newState.cost = heuristic(newState, end);
+      exploreMotion(s, motion, 0, keys);
+    }
 
-      exploreNewState(std::move(newState));
+    for(const string& motion : COUNT_SEARCHABLE_MOTIONS_GLOBAL) {
+      // TODO: handle
     }
   }
 

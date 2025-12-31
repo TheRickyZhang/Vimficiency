@@ -14,12 +14,40 @@ struct MotionResult {
     MotionResult(Position p, Mode mode) : pos(p), mode(mode) {}
 };
 
-// Only to be externally called in State::applyMotion! 
+struct ParsedMotion {
+  // should be derived from a motion sequence, and applied before that lifetime ends.
+  std::string_view motion;
+
+  // 0 -> no count, OK since it is impossible for 0 to be a count.
+  // important to distinguish since 1{action} sometimes != action!
+  uint32_t count;
+
+  ParsedMotion(std::string_view motion, int count) : motion(motion), count(count) {}
+  ParsedMotion(std::string_view motion) : motion(motion), count(0) {}
+
+  inline bool hasCount() const {
+    return count ? true : false;
+  }
+  // IMPORTANT to call this when standard treatment.
+  inline uint32_t effectiveCount() const {
+    return count ? count : 1;
+  }
+};
+
+/* Implementation details
+
+
+  std::vector<std::string> parsemotions(const std::string& seq, const NavContext& navContext);
+*/
+
+// Currently only to be externally called in State::applyMotion.
 void applySingleMotion(Position& pos, Mode& mode, const NavContext& navContext,
                   const std::string &motion,
                   const std::vector<std::string> &lines);
 
-// std::vector<std::string> parseMotions(const std::string& seq, const NavContext& navContext);
+void applyParsedMotion(Position& pos, Mode& mode, const NavContext& navContext,
+                  const ParsedMotion& motion,
+                  const std::vector<std::string> &lines);
 
 // Parses the motion sequence, and returns the result if they are applied to the current state
 MotionResult simulateMotions(Position pos, Mode mode, const NavContext& navContext,

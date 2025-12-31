@@ -4,6 +4,7 @@ local v  = vim.api
 local uv = vim.uv
 local fs = vim.fs
 
+local init = require("vimficiency.init")
 local types = require("vimficiency.types")
 
 ----------- BEGIN FILE ------------
@@ -155,5 +156,44 @@ function M.capture_state(buf, win)
   );
 end
 
+function M.get_search_boundaries(begin_row, end_row)
+  assert(init.config, "why isn't config loaded dumbo")
+  local padding = init.config.slice_padding
+
+  if begin_row > end_row then
+    begin_row, end_row = end_row, begin_row
+  end
+
+  local buf = 0
+  local nlines = vim.api.nvim_buf_line_count(buf) -- count, not last index
+
+  local start_search = math.max(0, begin_row - padding)
+  local end_search = math.min(nlines-1, end_row + padding)
+
+  if init.config.slice_expand_to_paragraph then
+    local function is_blank_line(r)
+      local l = vim.api.nvim_buf_get_lines(buf, r, r + 1, false)[1] or ""
+      return l:match("^%s*$") ~= nil
+    end
+    while start_search > 0 and not is_blank_line(start_search - 1) do
+      start_search = start_search - 1
+    end
+    while end_search < nlines and not is_blank_line(end_search) do
+      end_search = end_search + 1
+    end
+  end
+
+  return start_search, end_search, nlines
+end
+
+  --Implicit asssertion that the contents of buffer haven't changed since the start. Once we support insert mode in the future, we will want to time the emission of start/end for movement / editing sessions.
+function M.check_state_inconsistencies(start_state, end_state)
+  if end_state.scroll_amount ~= start_state.scroll_amount then
+    vim.notify("scroll amount changed during session")
+  end
+  if end_state.window_height ~= start_state.window_height then
+    vim.notify("window height changed during session")
+  end
+end
 
 return M

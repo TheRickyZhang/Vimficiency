@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "Config.h"
+#include "ImpliedExclusions.h"
 #include "Editor/NavContext.h"
 #include "State/State.h"
 #include "Keyboard/MotionToKeys.h"
@@ -19,6 +20,7 @@ std::ostream& operator<<(std::ostream& os, Result r);
 
 struct Optimizer {
   Config config; 
+  // TODO: startingState should be passed into optimize(), not a member here
   State startingState;
 
   const int    MAX_RESULT_COUNT;
@@ -50,10 +52,16 @@ struct Optimizer {
   // vector<string> optimizeMovement(const vector<string>& lines, const Position& start, const Position& end);
 
   std::vector<Result> optimizeMovement(
+    // Core information
     const std::vector<std::string>& lines,
     const Position& end,
+    const std::string& userSequence, // What the user typed, for reference
+
+    // What's necessary for knowing how to apply some motions
     NavContext& navigationContext,
-    const std::string& userSequence,
-    const MotionToKeys& motionToKeys = EXPLORABLE_MOTIONS
+
+    // What impacts our universe of exploration options
+    const ImpliedExclusions& ImpliedExclusions,
+    const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS
   );
 };

@@ -48,19 +48,20 @@ public:
   void push_back(const Key& k) {
     keys.push_back(k);
   }
-  KeySequence& append(const KeySequence& ks, size_t cnt = 1){
-    if(cnt <= 0 || ks.size() == 0) return *this;
-    keys.reserve(keys.size() + ks.size() * cnt);
-    for(int i=0; i<cnt; i++) {
-      keys.insert(keys.end(), ks.begin(), ks.end());
-    }
-    return *this;
-  }
+  KeySequence& append(const KeySequence& ks, size_t cnt = 1);
+
   KeySequence& operator+=(const KeySequence& other){
     return append(other);
   }
+  bool operator==(const KeySequence& other) const {
+    return keys == other.keys;
+  }
+  bool operator!=(const KeySequence& other) const {
+    return !(*this == other);
+  }
 };
 
+std::ostream& operator<<(std::ostream& os, const KeySequence& ks);
 
 static_assert(KEY_COUNT == static_cast<uint8_t>(Key::None), "key counts do not match");
 static_assert(FINGER_COUNT == static_cast<uint8_t>(Finger::None), "finger counts do not match");

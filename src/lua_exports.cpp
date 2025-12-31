@@ -3,6 +3,7 @@
 #include "Keyboard/KeyboardModel.h"
 #include "Keyboard/XMacroKeyDefinitions.h"
 #include "Optimizer/Config.h"
+#include "Optimizer/ImpliedExclusions.h"
 #include "Optimizer/Optimizer.h"
 #include "State/State.h"
 #include "Utils/CoutCapture.h"
@@ -46,6 +47,7 @@ struct VimficiencyConfigFFI {
   DEFAULT_KEYBOARD default_keyboard = UNIFORM;
   C_ScoreWeights weights{};
   C_KeyInfo keys[KEY_COUNT]{};
+  int slice_buffer_amount{};
 };
 
 // Helper to split string by newlines
@@ -128,16 +130,18 @@ const char *vimficiency_finger_name(int index) {
   return g_finger_names[index];
 }
 
-const char *vimficiency_analyze(const char *start_text, int start_row,
-                                int start_col, const char *end_text,
-                                int end_row, int end_col, const char *keyseq,
-                                // Viewport state
-                                int top_row, int bottom_row, int window_height, int scroll_amount
-                                ) {
+const char *vimficiency_analyze(
+  const char *text,
+  bool includes_real_top, bool includes_real_bottom,
+  int start_row, int start_col,
+  int end_row, int end_col,
+  const char *keyseq,
+  // Viewport state
+  int top_row, int bottom_row, int window_height, int scroll_amount
+) {
   static std::string result_storage;
 
-  auto start_lines = split_lines(start_text);
-  auto end_lines = split_lines(end_text);
+  auto lines = split_lines(text);
 
   Position start_position(start_row, start_col);
   Position end_position(end_row, end_col);
@@ -145,11 +149,13 @@ const char *vimficiency_analyze(const char *start_text, int start_row,
   State startingState(start_position, RunningEffort(), 0, 0);
 
   NavContext navigation_context(top_row, bottom_row, window_height, scroll_amount);
+  // Exclude G if we DON'T have the real bottom, exclude gg if we DON'T have the real top
+  ImpliedExclusions impliedExclusions(!includes_real_bottom, !includes_real_top);
 
   // g_config_internal was already populated by vimficiency_apply_config()
   Optimizer o(startingState, g_config_internal);
 
-  std::vector<Result> res = o.optimizeMovement(start_lines, end_position, navigation_context, keyseq);
+  std::vector<Result> res = o.optimizeMovement(lines, end_position, keyseq,  navigation_context, impliedExclusions);
 
   // Format results
   std::ostringstream oss;

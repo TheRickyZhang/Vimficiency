@@ -11,9 +11,12 @@ inline bool isBlank(unsigned char c) {
   return c == ' ' || c == '\t';
 }
 
-// Changes pos, mode, motion
-void State::applyMotion(string motion, const NavContext& navContext,
+// Changes pos, mode, motionSequence
+void State::applyMotion(string motion, int cnt /* = 0 */, const NavContext& navContext,
                                const vector<string>& lines) {
-  applySingleMotion(pos, mode, navContext, motion, lines);
+  applyParsedMotion(pos, mode, navContext, ParsedMotion(motion, cnt), lines);
+  if (cnt > 0) {
+    motionSequence += to_string(cnt);
+  }
   motionSequence += motion;
 }

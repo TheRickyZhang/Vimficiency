@@ -46,10 +46,9 @@ struct State {
     return std::make_pair(pos.line, pos.col);
   }
 
-  void applyMotion(std::string motion, const NavContext& navContext, const std::vector<std::string>& lines);
+  void applyMotion(std::string motion, int cnt, const NavContext& navContext, const std::vector<std::string>& lines);
 
   void setCol(int col) {
-    debug("setting to new col, be careful", col);
     pos.col = col;
   }
 };

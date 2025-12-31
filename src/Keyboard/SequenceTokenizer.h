@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>  // for std::less<>
 #include <map>
 #include <string>
 #include <string_view>
@@ -12,7 +13,8 @@
 
 class SequenceTokenizer {
 public:
-  using Mapping     = std::map<std::string, KeySequence>;
+  // std::less<> enables transparent comparison (lookup with string_view without allocation)
+  using Mapping     = std::map<std::string, KeySequence, std::less<>>;
 
   // Build from action + motion maps (they must outlive the tokenizer).
   SequenceTokenizer(const Mapping &actions,

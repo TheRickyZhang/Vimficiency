@@ -7,58 +7,86 @@
 
 using namespace std;
 
+// Forward declaration
+void applyParsedMotion(Position& pos, Mode& mode, const NavContext& navContext,
+                  const ParsedMotion& parsedMotion,
+                  const std::vector<std::string> &lines);
+
 // Does string motion parsing. See SequenceTokenizer for the physical key parsing.
-std::vector<std::string> parseMotions(const std::string &seq, const NavContext& navContext) {
-  std::vector<std::string> result;
+// IMPORTANT: Returned ParsedMotions contain string_views into seq - caller must ensure seq outlives usage.
+
+  // TODO: Once the motions we support are stable, and if it makes sense in how we implement vim's object model, consider representing motions as an enum instead of string. Then it would be no return, as harder to read/debug, but more efficient.
+std::vector<ParsedMotion> parseMotions(const std::string &seq, const NavContext& navContext) {
+  std::string_view sv(seq);  // Create view to avoid allocations
+  std::vector<ParsedMotion> result;
   size_t i = 0;
-  while (i < seq.size()) {
-    char c = seq[i];
+  while (i < sv.size()) {
+    char c = sv[i];
+
+    int cnt = 0;
+    // 0 is a valid digit except for the first one
+    if(isdigit(c) && c != '0') {
+      size_t start = i;
+      while(i < sv.size() && isdigit(sv[i])) {
+        i++;
+      }
+      // Parse count from substring
+      cnt = 0;
+      for (size_t j = start; j < i; j++) {
+        cnt = cnt * 10 + (sv[j] - '0');
+      }
+      c = sv[i];  // Update c to char after count
+    }
 
     // f/F/t/T consume the next character as target, then max-munch ;/,
-    if ((c == 'f' || c == 'F' || c == 't' || c == 'T') && i + 1 < seq.size()) {
+    if ((c == 'f' || c == 'F' || c == 't' || c == 'T') && i + 1 < sv.size()) {
       size_t start = i;
       i += 2; // consume motion + target char
       // Max-munch any following ; or ,
-      while (i < seq.size() && (seq[i] == ';' || seq[i] == ',')) {
+      while (i < sv.size() && (sv[i] == ';' || sv[i] == ',')) {
         i++;
       }
-      result.push_back(seq.substr(start, i - start));
+      result.push_back(ParsedMotion{sv.substr(start, i - start), cnt});
       continue;
     }
-  
+
     // Handle <C-_> for special bindings (e.g., <C-_>, <C-d>, <CR>)
     if (c == '<') {
-      size_t close = seq.find('>', i);
-      if (close != std::string::npos) {
-        std::string special = seq.substr(i, close - i + 1);
-        if (ALL_MOTIONS.contains(special)) {
-          result.push_back(special);
+      size_t close = sv.find('>', i);
+      if (close != std::string_view::npos) {
+        std::string_view special = sv.substr(i, close - i + 1);
+        if (ALL_MOTIONS.contains(special)) {  // No allocation - transparent comparator
+          result.push_back(ParsedMotion{special, cnt});
           i = close + 1;
           continue;
         }
         // If not a known motion, fall through to error
       }
-      throw std::runtime_error("Unknown or malformed special key at: " + seq.substr(i));
+      throw std::runtime_error("Unknown or malformed special key at: " + string(sv.substr(i)));
     }
 
     // Standard longest-match for other motions
     bool matched = false;
-    for (size_t len = std::min(seq.size() - i, size_t{4}); len > 0; --len) {
-      std::string candidate = seq.substr(i, len);
-      if (ALL_MOTIONS.contains(candidate)) {
-        result.push_back(candidate);
+    for (size_t len = std::min(sv.size() - i, size_t{4}); len > 0; --len) {
+      std::string_view candidate = sv.substr(i, len);
+      if (ALL_MOTIONS.contains(candidate)) {  // No allocation - transparent comparator
+        result.push_back({candidate, cnt});
         i += len;
         matched = true;
         break;
       }
     }
     if (!matched) {
-      throw std::runtime_error("Unknown motion at: " + seq.substr(i));
+      throw std::runtime_error("Unknown motion at: " + string(sv.substr(i)));
     }
   }
   return result;
 }
 
+
+void applySingleMotion(Position& pos, Mode& mode, const NavContext& navContext, const string& motion, const vector<string>& lines) {
+  applyParsedMotion(pos, mode, navContext, ParsedMotion(motion, 0), lines);
+}
 /*
  * Maintain this list of currently defined motions:
  * Alphabet:
@@ -76,22 +104,29 @@ std::vector<std::string> parseMotions(const std::string &seq, const NavContext& 
  * {}, ;,, 
  */
 // Directly modifies the position and mode passed in. 
-void applySingleMotion(Position& pos, Mode& mode, const NavContext& navContext,
-                  const std::string &motion,
+void applyParsedMotion(Position& pos, Mode& mode, const NavContext& navContext,
+                  const ParsedMotion& parsedMotion,
                   const std::vector<std::string> &lines) {
   int n = static_cast<int>(lines.size());
+  std::string_view motion = parsedMotion.motion;
+  bool hasCount = parsedMotion.hasCount();
+  int count = parsedMotion.effectiveCount();
   // Fundamental movements
   if (motion == "h") {
-    VimUtils::moveCol(pos, lines, -1);
+    VimUtils::moveCol(pos, lines, -count);
   } else if (motion == "l") {
-    VimUtils::moveCol(pos, lines, 1);
+    VimUtils::moveCol(pos, lines, count);
   } else if (motion == "j") {
-    VimUtils::moveLine(pos, lines, 1);
+    VimUtils::moveLine(pos, lines, count);
   } else if (motion == "k") {
-    VimUtils::moveLine(pos, lines, -1);
+    VimUtils::moveLine(pos, lines, -count);
   } else if (motion == "0") {
     pos.setCol(0);
   } else if (motion == "$") {
+    // Special: {cnt}$ moves cursor down
+    if(hasCount) {
+      VimUtils::moveLine(pos, lines, count-1);
+    }
     int len = static_cast<int>(lines[pos.line].size());
     pos.setCol(len == 0 ? 0 : len - 1);
   } else if (motion == "^") {
@@ -102,10 +137,12 @@ void applySingleMotion(Position& pos, Mode& mode, const NavContext& navContext,
       ++col;
     pos.setCol(col);
   } else if (motion == "gg") {
-    pos.line = 0;
+    // Special: set line. Because it's 1 based, subtract 1
+    pos.line = hasCount ? count-1 : 0;
     pos.col = VimUtils::clampCol(lines, pos.col, pos.line);
   } else if (motion == "G") {
-    pos.line = n - 1;
+    // Special: set line. Because it's 1 based, subtract 1
+    pos.line = hasCount ? min(count-1, n-1) : n-1;
     pos.col = VimUtils::clampCol(lines, pos.col, pos.line);
   }
   // Words
@@ -188,7 +225,7 @@ MotionResult simulateMotions(Position pos, Mode mode, const NavContext& navConte
                           const std::vector<std::string> &lines) {
   auto motions = parseMotions(motionSeq, navContext);
   for (const auto &motion : motions) {
-    applySingleMotion(pos, mode, navContext, motion, lines);
+    applyParsedMotion(pos, mode, navContext, motion, lines);
   }
   return MotionResult(pos, mode);
 }

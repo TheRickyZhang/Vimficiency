@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>  // for std::less<>
 #include <map>
 #include <string>
 #include <vector>
@@ -7,7 +8,9 @@
 #include "KeyboardModel.h"
 #include "SequenceTokenizer.h"
 
-using MotionToKeys = std::map<std::string, KeySequence>;
+// std::less<> enables transparent comparison - allows lookup with string_view
+// without allocating a temporary std::string
+using MotionToKeys = std::map<std::string, KeySequence, std::less<>>;
 using CharToKeys = std::map<char, KeySequence>;
 
 // =============================================================================
@@ -26,6 +29,12 @@ extern const MotionToKeys EXPLORABLE_MOTIONS;
 
 // Single-character to KeySequence mapping (for f/F/t/T motion targets)
 extern const CharToKeys CHAR_TO_KEYS;
+
+// COUNT_SEARCHABLE = what motions we want to find best prefix counts for
+// Only apply when same line as end
+extern const std::vector<std::string> COUNT_SEARCHABLE_MOTIONS_LINE;
+ // No restrictions
+extern const std::vector<std::string> COUNT_SEARCHABLE_MOTIONS_GLOBAL;
 
 // =============================================================================
 // Utilities

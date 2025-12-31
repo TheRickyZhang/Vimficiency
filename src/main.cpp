@@ -1,6 +1,7 @@
 #include <bits/stdc++.h>
 
 #include "Optimizer/Config.h"
+#include "Optimizer/ImpliedExclusions.h"
 #include "State/RunningEffort.h"
 #include "Optimizer/Optimizer.h"
 #include "Editor/Snapshot.h"
@@ -49,11 +50,15 @@ int main(int argc, char* argv[]) {
     start_snapshot.scrollAmount
   );
 
+  // CLI uses full file snapshots, so don't exclude G/gg
+  ImpliedExclusions impliedExclusions(false, false);
+
   vector<Result> res = o.optimizeMovement(
     start_snapshot.lines,
     end_position,
+    user_seq,
     navContext,
-    user_seq
+    impliedExclusions
   );
 
   if(res.empty()) {
