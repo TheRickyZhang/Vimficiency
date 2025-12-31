@@ -15,12 +15,14 @@ struct MotionResult {
 };
 
 struct ParsedMotion {
-  // should be derived from a motion sequence, and applied before that lifetime ends.
-  std::string_view motion;
-
+private:
   // 0 -> no count, OK since it is impossible for 0 to be a count.
   // important to distinguish since 1{action} sometimes != action!
   uint32_t count;
+
+public:
+  // should be derived from a motion sequence, and applied before that lifetime ends.
+  std::string_view motion;
 
   ParsedMotion(std::string_view motion, int count) : motion(motion), count(count) {}
   ParsedMotion(std::string_view motion) : motion(motion), count(0) {}

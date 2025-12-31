@@ -866,3 +866,163 @@ TEST_F(MotionTest, Scroll_WindowHeightOne) {
   p = simulateWithNav({25, 0}, "<C-b>", lines, nav);
   EXPECT_EQ(p.line, 25) << "C-b with window=1 should not move";
 }
+
+// =============================================================================
+// 12. COUNT PREFIXES
+// =============================================================================
+
+// --- Basic count with h/l/j/k ---
+
+TEST_F(MotionTest, Count_BasicHJKL) {
+  expectPos(simulateMotionsDefault({0, 10}, "3h", a1_long_line), 0, 7, "3h moves left 3");
+  expectPos(simulateMotionsDefault({0, 0}, "5l", a1_long_line), 0, 5, "5l moves right 5");
+  expectPos(simulateMotionsDefault({0, 0}, "2j", a2_block_lines), 2, 0, "2j moves down 2");
+  expectPos(simulateMotionsDefault({3, 0}, "2k", a2_block_lines), 1, 0, "2k moves up 2");
+}
+
+TEST_F(MotionTest, Count_LargeCount) {
+  auto lines = makeLines(100);
+  expectPos(simulateMotionsDefault({0, 0}, "50j", lines), 50, 0, "50j");
+  expectPos(simulateMotionsDefault({99, 0}, "50k", lines), 49, 0, "50k");
+  expectPos(simulateMotionsDefault({0, 0}, "20l", a1_long_line), 0, 20, "20l");
+}
+
+TEST_F(MotionTest, Count_ClampsAtBoundary) {
+  expectPos(simulateMotionsDefault({0, 0}, "100j", a2_block_lines), 3, 0, "100j clamps to last line");
+  expectPos(simulateMotionsDefault({3, 0}, "100k", a2_block_lines), 0, 0, "100k clamps to first line");
+  expectPos(simulateMotionsDefault({0, 0}, "100l", a1_long_line), 0, 20, "100l clamps to line end");
+  expectPos(simulateMotionsDefault({0, 10}, "100h", a1_long_line), 0, 0, "100h clamps to col 0");
+}
+
+// --- Count with $ ---
+
+TEST_F(MotionTest, Count_Dollar) {
+  // {count}$ moves down count-1 lines, then to end of line
+  expectPos(simulateMotionsDefault({0, 0}, "1$", a2_block_lines), 0, 13, "1$ stays on same line, goes to end");
+  expectPos(simulateMotionsDefault({0, 0}, "2$", a2_block_lines), 1, 13, "2$ goes to end of next line");
+  expectPos(simulateMotionsDefault({0, 0}, "3$", a2_block_lines), 2, 13, "3$ goes to end of line 2 down");
+}
+
+// --- Count with gg and G ---
+
+TEST_F(MotionTest, Count_ggG) {
+  auto lines = makeLines(100);
+  // gg with count goes to that line (1-indexed)
+  expectPos(simulateMotionsDefault({50, 0}, "1gg", lines), 0, 0, "1gg goes to line 0");
+  expectPos(simulateMotionsDefault({0, 0}, "10gg", lines), 9, 0, "10gg goes to line 9");
+  expectPos(simulateMotionsDefault({0, 0}, "50gg", lines), 49, 0, "50gg goes to line 49");
+
+  // G with count goes to that line (1-indexed)
+  expectPos(simulateMotionsDefault({50, 0}, "1G", lines), 0, 0, "1G goes to line 0");
+  expectPos(simulateMotionsDefault({0, 0}, "100G", lines), 99, 0, "100G goes to last line");
+  expectPos(simulateMotionsDefault({0, 0}, "200G", lines), 99, 0, "200G clamps to last line");
+}
+
+// --- Count with word motions ---
+
+TEST_F(MotionTest, Count_WordMotions) {
+  // a1_long_line: "aaaaaa aaa aaaaaa aaa" (4 words)
+  expectPos(simulateMotionsDefault({0, 0}, "2w", a1_long_line), 0, 11, "2w skips 2 words");
+  expectPos(simulateMotionsDefault({0, 0}, "3w", a1_long_line), 0, 18, "3w skips 3 words");
+  expectPos(simulateMotionsDefault({0, 18}, "2b", a1_long_line), 0, 7, "2b goes back 2 words");
+}
+
+// --- Count with f/F/t/T ---
+
+TEST_F(MotionTest, Count_CharFind) {
+  vector<string> lines = {"abcabcabc"};  // 'a' at 0, 3, 6
+  // From col 0 (on 'a'), 1st 'a' after = col 3, 2nd 'a' after = col 6
+  expectPos(simulateMotionsDefault({0, 0}, "2fa", lines), 0, 6, "2fa finds 2nd 'a' after cursor");
+  expectPos(simulateMotionsDefault({0, 0}, "1fa", lines), 0, 3, "1fa finds 1st 'a' after cursor");
+  // From col 8, going backward: 1st 'a' at 6, 2nd 'a' at 3
+  expectPos(simulateMotionsDefault({0, 8}, "2Fa", lines), 0, 3, "2Fa finds 2nd 'a' backward");
+
+  // Count with t - note: current impl applies till offset per-iteration
+  // which may differ from Vim's exact behavior for counts > 1
+  expectPos(simulateMotionsDefault({0, 0}, "ta", lines), 0, 2, "ta lands before 1st 'a'");
+}
+
+TEST_F(MotionTest, Count_CharFindWithRepeat) {
+  vector<string> lines = {"abababab"};  // 'a' at 0, 2, 4, 6
+  // From pos 0 (on 'a'): 1st 'a' after = 2, 2nd 'a' after = 4
+  // 2fa lands on pos 4, then ; finds next 'a' at pos 6
+  expectPos(simulateMotionsDefault({0, 0}, "2fa;", lines), 0, 6, "2fa; finds 2nd a then next");
+  // After 2fa;, cursor at 6, ; would find nothing (no 'a' after 6)
+  expectPos(simulateMotionsDefault({0, 0}, "fa;", lines), 0, 4, "fa; finds 1st a then next");
+  expectPos(simulateMotionsDefault({0, 0}, "fa;;", lines), 0, 6, "fa;; finds 1st a then 2 more");
+}
+
+// --- Count with scroll commands ---
+
+TEST_F(MotionTest, Count_CtrlD_SetsScrollAmount) {
+  // In Vim, {count}<C-d> uses count as scroll amount (not repeat)
+  auto lines = makeLines(100);
+  NavContext nav(0, 39, 40, 20);  // default scroll = 20
+
+  // 5<C-d> should move 5 lines, not 5*20=100 lines
+  expectPos(simulateWithNav({0, 0}, "5<C-d>", lines, nav), 5, 0, "5<C-d> moves 5 lines");
+  expectPos(simulateWithNav({0, 0}, "10<C-d>", lines, nav), 10, 0, "10<C-d> moves 10 lines");
+}
+
+TEST_F(MotionTest, Count_CtrlU_SetsScrollAmount) {
+  auto lines = makeLines(100);
+  NavContext nav(0, 39, 40, 20);
+
+  expectPos(simulateWithNav({50, 0}, "5<C-u>", lines, nav), 45, 0, "5<C-u> moves up 5 lines");
+  expectPos(simulateWithNav({50, 0}, "10<C-u>", lines, nav), 40, 0, "10<C-u> moves up 10 lines");
+}
+
+TEST_F(MotionTest, Count_CtrlF_RepeatsPages) {
+  // In Vim, {count}<C-f> scrolls count pages (not sets amount)
+  auto lines = makeLines(200);
+  NavContext nav(0, 39, 40, 20);  // C-f moves windowHeight-2 = 38 lines per page
+
+  expectPos(simulateWithNav({0, 0}, "2<C-f>", lines, nav), 76, 0, "2<C-f> moves 2 pages (76 lines)");
+  expectPos(simulateWithNav({0, 0}, "3<C-f>", lines, nav), 114, 0, "3<C-f> moves 3 pages (114 lines)");
+}
+
+TEST_F(MotionTest, Count_CtrlB_RepeatsPages) {
+  auto lines = makeLines(200);
+  NavContext nav(0, 39, 40, 20);
+
+  expectPos(simulateWithNav({100, 0}, "2<C-b>", lines, nav), 24, 0, "2<C-b> moves back 2 pages");
+}
+
+// --- Count with paragraph/sentence motions ---
+
+TEST_F(MotionTest, Count_ParagraphMotions) {
+  // a3_spaced_lines has blank lines creating paragraphs
+  Position result = simulateMotionsDefault({0, 0}, "2}", a3_spaced_lines);
+  EXPECT_GT(result.line, 0) << "2} should move forward";
+
+  // Verify } called twice vs 2} gives same result
+  Position p1 = simulateMotionsDefault({0, 0}, "}}", a3_spaced_lines);
+  Position p2 = simulateMotionsDefault({0, 0}, "2}", a3_spaced_lines);
+  expectPos(p2, p1.line, p1.col, "2} == }}");
+}
+
+// --- Edge cases for count parsing ---
+
+TEST_F(MotionTest, Count_ZeroIsMotion) {
+  // '0' is a motion to go to column 0, not a count prefix
+  expectPos(simulateMotionsDefault({0, 10}, "0", a1_long_line), 0, 0, "0 goes to column 0");
+  // Use multi-line file for 0j test
+  expectPos(simulateMotionsDefault({0, 10}, "0j", a2_block_lines), 1, 0, "0j means 0 then j");
+}
+
+TEST_F(MotionTest, Count_LeadingZerosNotAllowed) {
+  // "03j" should be: 0 (col 0), then 3j (down 3)
+  expectPos(simulateMotionsDefault({0, 10}, "03j", a2_block_lines), 3, 0, "03j = 0 then 3j");
+}
+
+TEST_F(MotionTest, Count_MultiDigit) {
+  auto lines = makeLines(150);
+  expectPos(simulateMotionsDefault({0, 0}, "123j", lines), 123, 0, "123j moves down 123");
+  expectPos(simulateMotionsDefault({149, 0}, "99k", lines), 50, 0, "99k moves up 99");
+}
+
+TEST_F(MotionTest, Count_NoCount) {
+  // Without count, effectiveCount() should be 1
+  expectPos(simulateMotionsDefault({0, 0}, "j", a2_block_lines), 1, 0, "j without count moves 1 line");
+  expectPos(simulateMotionsDefault({0, 0}, "l", a1_long_line), 0, 1, "l without count moves 1 col");
+}

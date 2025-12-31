@@ -62,7 +62,7 @@ const MotionToKeys scrolls = {
 
 
 // -------------------- BEGIN Categorial Building Blocks --------------------
-const MotionToKeys lowercase = {
+const MotionToKeys letters = {
   {"a", {Key::Key_A}},{"A", {Key::Key_Shift, Key::Key_A}},
   {"b", {Key::Key_B}},{"B", {Key::Key_Shift, Key::Key_B}},
   {"c", {Key::Key_C}},{"C", {Key::Key_Shift, Key::Key_C}},

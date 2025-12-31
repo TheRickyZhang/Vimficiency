@@ -5,6 +5,9 @@ Implement counts
 Build word indices, so that {cnt}w, W are more efficient
 Take a slice of current current buffer, so normal mode search only operates under a specific window.
 
+== Finish handling counts in applyParsedMotion! Not completed
+
+
 After done: startingState should be passed in the optimize call, not be a member of Optimizer
 
 - simple symbols: *, #, %                          ***

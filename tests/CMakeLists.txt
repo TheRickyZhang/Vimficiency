@@ -13,6 +13,7 @@ FetchContent_MakeAvailable(googletest)
 add_executable(vimficiency_tests
   OptimizerTest.cpp
   MotionTest.cpp
+  ConfigurationTest.cpp
   TestUtils.cpp
 )
 

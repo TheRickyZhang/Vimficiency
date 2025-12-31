@@ -20,7 +20,7 @@ const SequenceTokenizer& globalTokenizer() {
 // See :h key-notation, :h keytrans()
 
 const MotionToKeys ACTION_MOTIONS_TO_KEYS = combineAll({
-  cref(lowercase),
+  cref(letters),
   cref(digits), 
   cref(whitespace), 
   cref(topPunctuation),
@@ -76,7 +76,7 @@ const MotionToKeys ALL_MOTIONS = buildAllMotions();
 // =============================================================================
 // Used for f/F/t/T motion targets
 const CharToKeys CHAR_TO_KEYS = combineAllToCharKeySeq({
-  cref(lowercase),
+  cref(letters),
   cref(digits),
   cref(whitespace),
   cref(allSingleCharPunctuationAndSymbols),
