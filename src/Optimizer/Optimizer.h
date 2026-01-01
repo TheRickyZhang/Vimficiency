@@ -44,7 +44,7 @@ struct Optimizer {
     return abs(q.line - p.line) + abs(q.targetCol - p.targetCol);
   }
   double heuristic(const State& s, const Position& goal) const {
-    return COST_WEIGHT * s.effort + costToGoal(s.pos, goal);
+    return COST_WEIGHT * s.getEffort() + costToGoal(s.getPos(), goal);
   }
 
   // vector<string> optimizeMovement(const vector<string>& lines, const Position& start, const Position& end);

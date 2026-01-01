@@ -14,6 +14,7 @@ add_executable(vimficiency_tests
   OptimizerTest.cpp
   MotionTest.cpp
   ConfigurationTest.cpp
+  CountMotionsTest.cpp
   TestUtils.cpp
 )
 

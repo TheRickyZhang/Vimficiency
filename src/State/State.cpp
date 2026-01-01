@@ -12,12 +12,14 @@ inline bool isBlank(unsigned char c) {
 }
 
 // Changes pos, mode, motionSequence
-void State::applyMotion(string motion, int cnt /* = 0 */, const NavContext& navContext,
+void State::applySingleMotion(string motion, const NavContext& navContext,
                                const vector<string>& lines) {
-  applyParsedMotion(pos, mode, navContext, ParsedMotion(motion, cnt), lines);
-  if (cnt > 0) {
-    motionSequence += to_string(cnt);
-  }
+  applyParsedMotion(pos, mode, navContext, ParsedMotion(motion), lines);
+  motionSequence += motion;
+}
+
+void State::applySingleMotionWithKnownColumn(string motion, int newCol) {
+  setCol(newCol);
   motionSequence += motion;
 }
 
@@ -28,4 +30,14 @@ void State::applyMotionWithKnownPosition(std::string motion, int cnt, const Posi
     motionSequence += to_string(cnt);
   }
   motionSequence += motion;
+}
+
+
+void State::updateEffort(const KeySequence& keySequence, const Config& config) {
+  effort = runningEffort.append(keySequence, config);
+}
+
+
+void State::updateCost(double newCost) {
+  cost = newCost;
 }

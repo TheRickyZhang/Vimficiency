@@ -12,7 +12,7 @@ using PosKey = std::pair<int, int>;
 
 // Entire simulated editor state (for now, only position+mode+effort).
 // You can later add: vector<string> lines; registers; etc.
-struct State {
+class State {
   // Visible, core editor state
   Position pos;
   Mode mode;
@@ -25,16 +25,17 @@ struct State {
   double cost;
 
   // Internal mechanism
-  RunningEffort effortState;
+  RunningEffort runningEffort;
 
-  State(Position pos, RunningEffort effortState, int effort, int cost)
-    : pos(pos), effortState(effortState), effort(effort), cost(cost), mode(Mode::Normal) {
+public:
+  State(Position pos, RunningEffort runningEffort, double effort, double cost)
+    : pos(pos), runningEffort(runningEffort), effort(effort), cost(cost), mode(Mode::Normal) {
   }
 
   void reset() {
     pos = Position(0, 0, 0);
     mode = Mode::Normal;
-    effortState.reset();
+    runningEffort.reset();
   }
   bool operator<(const State& other) const {
     return cost < other.cost;
@@ -42,35 +43,39 @@ struct State {
   bool operator>(const State& other) const {
     return cost > other.cost;
   }
+
   PosKey getKey() const {
     return std::make_pair(pos.line, pos.col);
   }
+  Position getPos()                const { return pos; }
+  Mode getMode()                   const { return mode; }
+  std::string getMotionSequence()  const { return motionSequence; }
+  double getEffort()               const { return effort; }
+  double getCost()                 const { return cost; }
+  RunningEffort getRunningEffort() const { return runningEffort; }
 
-  void applyMotion(std::string motion, int cnt, const NavContext& navContext, const std::vector<std::string>& lines);
+  // In most cases, to update, do in this order:
+  // applyMotion
+  // updateEffort
+
+  // Apply commands change pos, mode, and motionSequence
+
+  // Must pass context to brute-force compute
+  void applySingleMotion(std::string motion, const NavContext& navContext, const std::vector<std::string>& lines);
+
+  void applySingleMotionWithKnownColumn(std::string motion, int newCol);
+
+  // When exploring {count}motion, we always know the newPos from index search
   void applyMotionWithKnownPosition(std::string motion, int cnt, const Position& newPos);
+
+  void updateEffort(const KeySequence& keySequence, const Config& config);
+
+  void updateCost(double newCost);
 
   void setCol(int col) {
     pos.col = col;
   }
 };
-
-
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-
-
-
-// -----------------------------------------------------------------------------
-// Normal-mode motion semantics (MVP subset)
-// -----------------------------------------------------------------------------
-
-// Does not change mode or modify text
-// Returns a 
-
-// -----------------------------------------------------------------------------
-// High-level entry: apply "one motion" to VimState, respecting mode
-// -----------------------------------------------------------------------------
 
 // Later, you'll change this to dispatch differently depending on s.mode.
 // For now, we only support Normal mode motions that don't leave Normal.
@@ -80,15 +85,7 @@ struct State {
 //                          const Config& model) {
 //   switch(s.mode) {
 //     case Mode::Normal:
-//       apply_normal_motion(s, motion, lines);
-//       break;
-//
 //     case Mode::Insert:
-//       debug("not done bozo");
-//       break;
-//
 //     case Mode::Visual:
-//       debug("not done bozo");
-//       break;
 //   }
 // }

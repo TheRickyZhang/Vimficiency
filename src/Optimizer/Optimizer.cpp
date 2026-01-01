@@ -57,11 +57,11 @@ vector<Result> Optimizer::optimizeMovement(
 
   // Consider making an lvalue overload as well if that is needed anywhere
   function<void(State&&)> exploreNewState = [this, &pq, &costMap, &goalKey, &userEffort](State&& newState) {
-    if (newState.effort > userEffort * EXPLORE_FACTOR) {
+    if (newState.getEffort() > userEffort * EXPLORE_FACTOR) {
       return;
     }
     // debug("curr:", currentCost, "new:", newCost);
-    double newCost = newState.cost;
+    double newCost = newState.getCost();
     PosKey newKey = newState.getKey();
     auto it = costMap.find(newKey);
     if (it == costMap.end()) {
@@ -81,31 +81,29 @@ vector<Result> Optimizer::optimizeMovement(
 
   auto exploreMotionWithKnownKeySequence = [&](const State& base, const string& motion, const KeySequence& keySequence) {
     State newState = base;
-    newState.applyMotion(motion, 0, navContext, lines);
-    newState.effort = newState.effortState.append( keySequence, config);
-    newState.cost = heuristic(newState, endPos);
+    newState.applySingleMotion(motion, navContext, lines);
+    newState.updateEffort(keySequence, config);
+    newState.updateCost(heuristic(newState, endPos));
     exploreNewState(std::move(newState));
   };
 
-  auto exploreMotionCntTimes = [&](const State& base, const string& motion, int cnt) {
-    State newState = base;
-    newState.applyMotion(motion, cnt, navContext, lines);
-    newState.effort = newState.effortState.append(
-      makeKeySequence(abs(cnt), motionToKeys.at(motion)),
-      config
-    );
-    newState.cost = heuristic(newState, endPos);
-    exploreNewState(std::move(newState));
-  };
 
   auto exploreMotionCntTimesWithKnownPosition = [&](const State& base, const string& motion, int cnt, const Position& newPos) {
     State newState = base;
     newState.applyMotionWithKnownPosition(motion, cnt, newPos);
-    newState.effort = newState.effortState.append(
+    newState.updateEffort(
       makeKeySequence(abs(cnt), motionToKeys.at(motion)),
       config
     );
-    newState.cost = heuristic(newState, endPos);
+    newState.updateCost(heuristic(newState, endPos));
+    exploreNewState(std::move(newState));
+  };
+
+  auto exploreMotionWithKnownColumnAndKeySequence = [&](const State& base, const string& motion, int newcol, const KeySequence& keySequence) {
+    State newState = base;
+    newState.applySingleMotionWithKnownColumn(motion, newcol);
+    newState.updateEffort(keySequence, config);
+    newState.updateCost(heuristic(newState, endPos));
     exploreNewState(std::move(newState));
   };
 
@@ -114,17 +112,22 @@ vector<Result> Optimizer::optimizeMovement(
   costMap[startingState.getKey()] = 0;
 
   // Seed search with exact line jump (e.g., "5j" to go down 5 lines)
-  int diff = endPos.line - startingState.pos.line;
-  int absDiff = abs(diff);
-  if(absDiff >= 3) {
-    string motion = diff > 0 ? "j" : "k";
-    exploreMotionCntTimes(startingState, motion, abs(diff));
-  }
+  // int diff = endPos.line - startingState.pos.line;
+  // int absDiff = abs(diff);
+  // if(absDiff >= 3) {
+  //   string motion = diff > 0 ? "j" : "k";
+  //   exploreMotionCntTimesWithKnownPosition(startingState, motion, abs(diff), Position(
+  //     endPos.line,
+  //     min(startingState.pos.targetCol,
+  //         static_cast<int>(lines[endPos.line].size()-1)),
+  //         startingState.pos.targetCol
+  //         ));
+  // }
 
   while (!pq.empty()) {
     State s = pq.top();
     pq.pop();
-    Position pos = s.pos;
+    Position pos = s.getPos();
 
     if (++totalExplored > MAX_SEARCH_DEPTH) {
       debug("maximum total explored count reached");
@@ -136,7 +139,7 @@ vector<Result> Optimizer::optimizeMovement(
     bool isSameLine = (stateKey.first == goalKey.first);
 
     if (isGoal) {
-      res.emplace_back(s.motionSequence, s.effortState.getEffort(config));
+      res.emplace_back(s.getMotionSequence(), s.getRunningEffort().getEffort(config));
       if (res.size() >= MAX_RESULT_COUNT) {
         debug("maximum result count reached");
         break;
@@ -145,12 +148,12 @@ vector<Result> Optimizer::optimizeMovement(
     } else {
       // Prune early if this state is outdated. It is guaranteed to exist in the
       // map.
-      if (costMap[stateKey] < s.cost) {
+      if (costMap[stateKey] < s.getCost()) {
         continue;
       }
     }
 
-    debug("\"" + s.motionSequence + "\"", s.cost);
+    debug("\"" + s.getMotionSequence() + "\"", s.getCost());
 
     // double currentCost = heuristic(s, endPos);
 
@@ -159,7 +162,7 @@ vector<Result> Optimizer::optimizeMovement(
     // -------------------- START isSameLine --------------------
     if (isSameLine) {
       // TODO: move handleFMotions out of way if possible
-      auto handleFMotions = [&](auto infos, const char first_motion, const char repeat_motion){
+      auto handleFMotions = [&](vector<tuple<char, int, int>> infos, const char first_motion, const char repeat_motion){
         for(const auto& info : infos){
           const auto& [c, col, cnt] = info;
 
@@ -176,14 +179,7 @@ vector<Result> Optimizer::optimizeMovement(
           f_motions += c;                          f_key_sequence.append(charIt->second);
           f_motions += string(cnt, repeat_motion); f_key_sequence.append(CHAR_TO_KEYS.at(repeat_motion), cnt);
 
-          State newState = s;
-          newState.setCol(col);
-          // Mode unchanged
-          newState.motionSequence += f_motions;
-          newState.effort = newState.effortState.append(f_key_sequence, config);
-          newState.cost = heuristic(newState, endPos);
-
-          exploreNewState(std::move(newState));
+          exploreMotionWithKnownColumnAndKeySequence(s, f_motions, col, f_key_sequence);
         }
       };
 
@@ -224,12 +220,12 @@ vector<Result> Optimizer::optimizeMovement(
     for(const auto& motionPair : COUNT_SEARCHABLE_MOTIONS_GLOBAL) {
       string forwardMotion = motionPair.forward;
       string backwardMotion = motionPair.backward;
-      LandingType type = motionPair.type; 
-      array<RepeatMotionResult, 2> results = bufferIndex.getTwoClosest( type, pos, endPos);
-      for(const auto& res : results) {
-        if(!res.valid()) continue;
+      LandingType type = motionPair.type;
+      array<RepeatMotionResult, 2> countSearchResults = bufferIndex.getTwoClosest(type, pos, endPos);
+      for(const auto& cres : countSearchResults) {
+        if(!cres.valid()) continue;
         string motion = endPos > pos ? forwardMotion : backwardMotion;
-        exploreMotionCntTimesWithKnownPosition(s, motion, res.count, res.pos);
+        exploreMotionCntTimesWithKnownPosition(s, motion, cres.count, cres.pos);
       }
     }
     // -------------------- END global search --------------------
