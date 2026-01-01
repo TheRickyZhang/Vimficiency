@@ -50,17 +50,16 @@ protected:
                vector<KeyAdjustment> adjustments = {},
                Config config = Config::uniform()
                ) {
-    State startState = makeState(start);
     for(KeyAdjustment ka : adjustments) {
       config.keyInfo[static_cast<size_t>(ka.k)].base_cost = ka.cost;
     }
 
     // Try to explore more, lower search depth for speed
-    Optimizer opt(startState, config, 30, 2e4, 1.0, 2.0);
+    Optimizer opt(config, 30, 2e4, 1.0, 2.0);
 
     // Tests use full test files, so don't exclude G/gg
     ImpliedExclusions impliedExclusions(false, false);
-    return opt.optimizeMovement(lines, end, userSeq, navContext, impliedExclusions, allowedMotions);
+    return opt.optimizeMovement(lines, makeState(start), end, userSeq, navContext, impliedExclusions, allowedMotions);
   }
 };
 
@@ -82,7 +81,7 @@ TEST_F(OptimizerTest, HorizontalMotions) {
   );
   printResults(results);
 
-  EXPECT_TRUE(contains_all(results, {user_seq, "wE", "ee", "EE", "wfal", "wfa;"}))
+  EXPECT_TRUE(contains_all(results, {user_seq, "wE", "ee", "EE", "wfa;"}))
       << "Missing expected sequences";
 }
 

@@ -11,10 +11,17 @@ struct Position {
     col = targetCol = c;
   }
 
-  bool operator==(const Position& other) {
+  bool operator==(const Position& other) const {
     return line == other.line && col == other.col && targetCol == other.targetCol;
   }
-  bool operator!=(const Position& other) {
+  bool operator!=(const Position& other) const {
     return !(*this == other);
+  }
+  bool operator<(const Position& other) const {
+    if (line != other.line) return line < other.line;
+    return col < other.col;
+  }
+  bool operator>(const Position& other) const {
+    return other < *this;
   }
 };

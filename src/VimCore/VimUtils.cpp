@@ -571,6 +571,42 @@ void VimUtils::motionE(Position &pos, const std::vector<std::string> &lines,
   pos.col = col;
 }
 
+// ge/gE: backward to end of previous word
+// A word END is a position where: current char is word char, AND next char is blank/different/EOL
+void VimUtils::motionGe(Position &pos, const std::vector<std::string> &lines,
+                        bool big) {
+  int line = pos.line;
+  int col = pos.col;
+
+  auto isWord = [big](unsigned char c) {
+    return big ? isBigWordChar(c) : isSmallWordChar(c);
+  };
+
+  // Helper: check if position is a word END
+  auto isWordEnd = [&](int l, int c) -> bool {
+    unsigned char curr = getChar(lines, l, c);
+    if (!isWord(curr)) return false;
+
+    int nl = l, nc = c;
+    if (!stepFwd(lines, nl, nc)) return true;  // EOF = word end
+    if (nl != l) return true;  // Line break = word end
+
+    unsigned char next = getChar(lines, nl, nc);
+    return !isWord(next);  // Next char is different type = word end
+  };
+
+  // Walk backwards, looking for a word END
+  while (stepBack(lines, line, col)) {
+    if (isWordEnd(line, col)) {
+      pos.line = line;
+      pos.col = col;
+      return;
+    }
+  }
+
+  // Couldn't find a word end before us, stay put
+}
+
 // Move to the "top edge" (start) of the current paragraph.
 // If currently on blank lines, goes to first blank line in that run.
 void VimUtils::moveToParagraphStart(Position &pos,

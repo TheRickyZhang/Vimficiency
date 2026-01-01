@@ -39,9 +39,9 @@ int main(int argc, char* argv[]) {
   debug("starting position:", start_snapshot.row, start_snapshot.col);
   debug("ending position:", end_snapshot.row, end_snapshot.col);
 
-  State startingState(start_position, RunningEffort(), 0, 0);
+  State start_state(start_position, RunningEffort(), 0, 0);
   Config model = Config::uniform();
-  Optimizer o(startingState, model);
+  Optimizer o(model);
 
   NavContext navContext(
     start_snapshot.topRow,
@@ -55,6 +55,7 @@ int main(int argc, char* argv[]) {
 
   vector<Result> res = o.optimizeMovement(
     start_snapshot.lines,
+    start_state,
     end_position,
     user_seq,
     navContext,

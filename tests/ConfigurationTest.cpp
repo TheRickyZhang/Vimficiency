@@ -8,7 +8,6 @@
 #include "Optimizer/ImpliedExclusions.h"
 #include "Optimizer/Optimizer.h"
 #include "State/RunningEffort.h"
-#include "Editor/Motion.h"
 #include "State/State.h"
 
 using namespace std;
@@ -30,10 +29,9 @@ protected:
                Position end, const string &userSeq,
                Config config,
                const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS) {
-    State startState = makeState(start);
-    Optimizer opt(startState, config, 30, 2e4, 1.0, 2.0);
+    Optimizer opt(config, 30, 2e4, 1.0, 2.0);
     ImpliedExclusions impliedExclusions(false, false);
-    return opt.optimizeMovement(lines, end, userSeq, navContext, impliedExclusions, allowedMotions);
+    return opt.optimizeMovement(lines, makeState(start), end, userSeq, navContext, impliedExclusions, allowedMotions);
   }
 
   // Get cost of best result for a motion

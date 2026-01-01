@@ -20,7 +20,7 @@ double RunningEffort::getEffort(const Config &model) const {
 }
 
 // Returns difference in cost after appending keys
-double RunningEffort::append(KeySequence& keys, const Config& model) {
+double RunningEffort::append(const KeySequence& keys, const Config& model) {
   for(Key k : keys) {
     appendSingle(k, model);
   }

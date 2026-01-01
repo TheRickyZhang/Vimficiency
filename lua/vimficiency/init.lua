@@ -1,14 +1,11 @@
 -- lua/vimficiency/init.lua
 local ffi_lib = require("vimficiency.ffi")
+local config = require("vimficiency.config")
 local session = require("vimficiency.session")
 local M = {}
 
---- subset of config that is only needed for lua context (does not need to be C++ forwarded)
-M.config = {
-	slice_padding = 5,
-  slice_expand_to_paragraph = false,
-  max_search_lines = 500
-}
+-- Re-export config for backwards compatibility
+M.config = config
 
 local function set_cmd(name, fn, opts)
 	opts = opts or {}
@@ -18,13 +15,13 @@ end
 
 local function import_lua_config(user_config)
 	if user_config.slice_padding then
-		M.config.slice_padding = user_config.slice_padding
+		config.slice_padding = user_config.slice_padding
 	end
 	if user_config.slice_expand_to_paragraph then
-		M.config.slice_expand_to_paragraph = user_config.slice_expand_to_paragraph
+		config.slice_expand_to_paragraph = user_config.slice_expand_to_paragraph
 	end
 	if user_config.max_search_lines then
-		M.config.max_search_lines = user_config.max_search_lines
+		config.max_search_lines = user_config.max_search_lines
 	end
 end
 

@@ -1,28 +1,26 @@
 #pragma once
 
+#include <cctype>
 #include <vector>
 #include <string>
 
 struct Position;
 
-// Classification for characters
-/*
-* bool isBlank(unsigned char c);
-* bool isSmallWordChar(unsigned char c);
-* bool isBigWordChar(unsigned char c);
-*
-* bool isBlankLineStr(const string&);
-* int firstNonBlankColInLineStr(const std::string& s);
-* 
-* unsigned char getChar(const std::vector<std::string> &lines, int line, int col);
-* bool stepFwd(const std::vector<std::string> &lines, int &line, int &col);
-* bool stepBack(const std::vector<std::string> &lines, int &line, int &col);
-*
-* int paragraphStartLine(const std::vector<std::string>& lines, int lineIdx);
-* int paragraphEndLine(const std::vector<std::string>& lines, int lineIdx);
-*
-* static bool isSentenceCloser(unsigned char c){
-*/
+// Character classification functions
+namespace CharClass {
+  inline bool isBlank(unsigned char c) {
+    return c == ' ' || c == '\t' || c == '\0';
+  }
+  inline bool isSmallWordChar(unsigned char c) {
+    return std::isalnum(c) || c == '_';
+  }
+  inline bool isBigWordChar(unsigned char c) {
+    return c != 0 && !isBlank(c) && c != '\n';
+  }
+  inline bool isSentenceEnd(unsigned char c) {
+    return c == '.' || c == '!' || c == '?';
+  }
+}
 
 // TODO: add customizability for some settings, ie word definition, startofline. 
 
@@ -52,6 +50,10 @@ struct VimUtils {
   static void motionE(Position &pos,
                       const std::vector<std::string> &lines,
                       bool big);
+
+  static void motionGe(Position &pos,
+                       const std::vector<std::string> &lines,
+                       bool big);
 
   // Paragraph motions
   static void moveToParagraphStart(Position& pos, const std::vector<std::string>& lines);

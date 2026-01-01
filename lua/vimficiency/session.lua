@@ -1,5 +1,5 @@
 local v = vim.api
-local init = require("vimficiency.init")
+local config = require("vimficiency.config")
 local util = require("vimficiency.util")
 local types = require("vimficiency.types")
 local simulate = require("vimficiency.simulate")
@@ -73,7 +73,7 @@ function M.finish()
 
   local start_search, end_search, buffer_line_count = util.get_search_boundaries(start_state.row, end_state.row)
 
-  if end_search - start_search > init.config.max_search_lines then
+  if end_search - start_search > config.max_search_lines then
     total_failure("finish()", "search range is larger than max_search_lines")
     return
   end

@@ -1,4 +1,6 @@
 #include "MotionToKeysBuildingBlocks.h"
+#include <iostream>
+#include <set>
 
 using namespace std;
 

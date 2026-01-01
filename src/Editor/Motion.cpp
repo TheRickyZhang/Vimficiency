@@ -92,16 +92,17 @@ void applySingleMotion(Position& pos, Mode& mode, const NavContext& navContext, 
  * Alphabet:
  * bB, eE, fF, h j k l, wW,
  *
+ * g-prefix:
+ * ge, gE, gg
  *
- *
- * Special
- * G, gg
+ * Special:
+ * G
  *
  * Top row symbol:
  * $, ^,
  *
  * Other Symbol:
- * {}, ;,, 
+ * {}, (), ;,
  */
 // Directly modifies the position and mode passed in. 
 void applyParsedMotion(Position& pos, Mode& mode, const NavContext& navContext,
@@ -159,6 +160,10 @@ void applyParsedMotion(Position& pos, Mode& mode, const NavContext& navContext,
     for(int i = 0; i < count; i++) VimUtils::motionB(pos, lines, true);
   } else if (motion == "E") {
     for(int i = 0; i < count; i++) VimUtils::motionE(pos, lines, true);
+  } else if (motion == "ge") {
+    for(int i = 0; i < count; i++) VimUtils::motionGe(pos, lines, false);
+  } else if (motion == "gE") {
+    for(int i = 0; i < count; i++) VimUtils::motionGe(pos, lines, true);
   }
   // Text object jumps
   else if (motion == "{") {

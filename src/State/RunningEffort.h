@@ -35,7 +35,7 @@ private:
 public:
   double getEffort(const Config &model) const;
 
-  double append(KeySequence& keys, const Config& model);
+  double append(const KeySequence& keys, const Config& model);
 
   void reset();
 };

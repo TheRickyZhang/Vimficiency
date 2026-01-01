@@ -31,10 +31,12 @@ const MotionToKeys words = {
   {"w", {Key::Key_W}},
   {"b", {Key::Key_B}},
   {"e", {Key::Key_E}},
+  {"ge", {Key::Key_G, Key::Key_E}},
 
   {"W", {Key::Key_Shift, Key::Key_W}},
   {"B", {Key::Key_Shift, Key::Key_B}},
   {"E", {Key::Key_Shift, Key::Key_E}},
+  {"gE", {Key::Key_G, Key::Key_Shift, Key::Key_E}},
 };
 
 const MotionToKeys ggG = {

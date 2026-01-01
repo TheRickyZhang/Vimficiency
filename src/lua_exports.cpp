@@ -146,16 +146,16 @@ const char *vimficiency_analyze(
   Position start_position(start_row, start_col);
   Position end_position(end_row, end_col);
 
-  State startingState(start_position, RunningEffort(), 0, 0);
+  State start_state(start_position, RunningEffort(), 0, 0);
 
   NavContext navigation_context(top_row, bottom_row, window_height, scroll_amount);
   // Exclude G if we DON'T have the real bottom, exclude gg if we DON'T have the real top
   ImpliedExclusions impliedExclusions(!includes_real_bottom, !includes_real_top);
 
   // g_config_internal was already populated by vimficiency_apply_config()
-  Optimizer o(startingState, g_config_internal);
+  Optimizer opt(g_config_internal);
 
-  std::vector<Result> res = o.optimizeMovement(lines, end_position, keyseq,  navigation_context, impliedExclusions);
+  std::vector<Result> res = opt.optimizeMovement(lines, start_state, end_position, keyseq,  navigation_context, impliedExclusions);
 
   // Format results
   std::ostringstream oss;

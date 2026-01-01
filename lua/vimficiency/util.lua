@@ -4,7 +4,7 @@ local v  = vim.api
 local uv = vim.uv
 local fs = vim.fs
 
-local init = require("vimficiency.init")
+local config = require("vimficiency.config")
 local types = require("vimficiency.types")
 
 ----------- BEGIN FILE ------------
@@ -157,8 +157,8 @@ function M.capture_state(buf, win)
 end
 
 function M.get_search_boundaries(begin_row, end_row)
-  assert(init.config, "why isn't config loaded dumbo")
-  local padding = init.config.slice_padding
+  assert(config, "config module not loaded")
+  local padding = config.slice_padding
 
   if begin_row > end_row then
     begin_row, end_row = end_row, begin_row
@@ -170,7 +170,7 @@ function M.get_search_boundaries(begin_row, end_row)
   local start_search = math.max(0, begin_row - padding)
   local end_search = math.min(nlines-1, end_row + padding)
 
-  if init.config.slice_expand_to_paragraph then
+  if config.slice_expand_to_paragraph then
     local function is_blank_line(r)
       local l = vim.api.nvim_buf_get_lines(buf, r, r + 1, false)[1] or ""
       return l:match("^%s*$") ~= nil

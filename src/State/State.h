@@ -47,6 +47,7 @@ struct State {
   }
 
   void applyMotion(std::string motion, int cnt, const NavContext& navContext, const std::vector<std::string>& lines);
+  void applyMotionWithKnownPosition(std::string motion, int cnt, const Position& newPos);
 
   void setCol(int col) {
     pos.col = col;

@@ -142,6 +142,40 @@ TEST_F(MotionTest, E_SmallWord_WordEnd) {
   expectPos(simulateMotionsDefault({0, 5}, "e", a1_long_line), 0, 9);   // end of "aaa"
 }
 
+TEST_F(MotionTest, Ge_SmallWord_PrevWordEnd) {
+  //                       0   4   8
+  vector<string> lines = {"one two three"};
+  expectPos(simulateMotionsDefault({0, 8}, "ge", lines), 0, 6);   // three -> end of "two"
+  expectPos(simulateMotionsDefault({0, 6}, "ge", lines), 0, 2);   // two -> end of "one"
+  expectPos(simulateMotionsDefault({0, 2}, "ge", lines), 0, 2);   // already at word end, stay
+}
+
+TEST_F(MotionTest, Ge_FromMiddleOfWord) {
+  vector<string> lines = {"hello world"};
+  expectPos(simulateMotionsDefault({0, 8}, "ge", lines), 0, 4);   // "wor|ld" -> end of "hello"
+  expectPos(simulateMotionsDefault({0, 2}, "ge", lines), 0, 2);   // "hel|lo" -> stays (no prev word end)
+}
+
+TEST_F(MotionTest, Ge_SkipsWhitespace) {
+  vector<string> lines = {"one   two"};
+  expectPos(simulateMotionsDefault({0, 6}, "ge", lines), 0, 2);   // start of "two" -> end of "one"
+}
+
+TEST_F(MotionTest, GE_BigWord_PrevWordEnd) {
+  vector<string> lines = {"foo.bar baz.qux"};
+  expectPos(simulateMotionsDefault({0, 8}, "gE", lines), 0, 6);   // baz -> end of "foo.bar"
+}
+
+TEST_F(MotionTest, Ge_CrossesLines) {
+  vector<string> lines = {"first", "second"};
+  expectPos(simulateMotionsDefault({1, 0}, "ge", lines), 0, 4);   // "second" -> end of "first"
+}
+
+TEST_F(MotionTest, Ge_MultipleJumps) {
+  vector<string> lines = {"one two three"};
+  expectPos(simulateMotionsDefault({0, 12}, "gege", lines), 0, 2);  // end of "three" -> end of "one"
+}
+
 // m2_main_big has punctuation for testing W vs w
 TEST_F(MotionTest, W_BigWord_SkipsPunctuation) {
   // Line 0: "#include <bits/stdc++.h>"

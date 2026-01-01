@@ -20,3 +20,12 @@ void State::applyMotion(string motion, int cnt /* = 0 */, const NavContext& navC
   }
   motionSequence += motion;
 }
+
+
+void State::applyMotionWithKnownPosition(std::string motion, int cnt, const Position& newPos) {
+  pos = newPos;
+  if (cnt > 0) {
+    motionSequence += to_string(cnt);
+  }
+  motionSequence += motion;
+}

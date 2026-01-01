@@ -82,15 +82,18 @@ const CharToKeys CHAR_TO_KEYS = combineAllToCharKeySeq({
   cref(allSingleCharPunctuationAndSymbols),
 });
 
+const std::vector<CountableMotionPair> COUNT_SEARCHABLE_MOTIONS_LINE = {
+  {"w",  "b",  LandingType::WordBegin},
+  {"e",  "ge", LandingType::WordEnd},
+  {"W",  "B",  LandingType::WORDBegin},
+  {"E",  "gE", LandingType::WORDEnd},
+};
 
-const std::vector<std::string> COUNT_SEARCHABLE_MOTIONS_LINE = combineAllMotionsToList({
-  cref(words),
-});
-
-const std::vector<std::string> COUNT_SEARCHABLE_MOTIONS_GLOBAL = combineAllMotionsToList({
-  cref(brackets),
-  cref(scrolls),
-});
+const std::vector<CountableMotionPair> COUNT_SEARCHABLE_MOTIONS_GLOBAL = {
+  {"}",  "{",  LandingType::Paragraph},
+  {")",  "(",  LandingType::Sentence},
+  // Note: scrolls (<C-f>, <C-b>, etc.) don't map to LandingType - handle separately
+};
 
 
 

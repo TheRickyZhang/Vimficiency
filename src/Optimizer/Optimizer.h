@@ -20,8 +20,6 @@ std::ostream& operator<<(std::ostream& os, Result r);
 
 struct Optimizer {
   Config config; 
-  // TODO: startingState should be passed into optimize(), not a member here
-  State startingState;
 
   const int    MAX_RESULT_COUNT;
   const int    MAX_SEARCH_DEPTH;
@@ -30,13 +28,13 @@ struct Optimizer {
   
   const int F_MOTION_THRESHOLD = 2;
 
-  Optimizer(const State &state, const Config& config,
+  Optimizer(const Config& config,
             int max_result_count = 5,
             int max_search_depth = 1e5,
             double cost_weight = 1.0,
             double explore_factor = 2.0
             )
-      : startingState(std::move(state)), config(std::move(config)),
+      : config(std::move(config)),
         MAX_RESULT_COUNT(max_result_count),
         MAX_SEARCH_DEPTH(max_search_depth),
         COST_WEIGHT(cost_weight),
@@ -54,7 +52,8 @@ struct Optimizer {
   std::vector<Result> optimizeMovement(
     // Core information
     const std::vector<std::string>& lines,
-    const Position& end,
+    const State& startingState,
+    const Position& endPos,
     const std::string& userSequence, // What the user typed, for reference
 
     // What's necessary for knowing how to apply some motions
