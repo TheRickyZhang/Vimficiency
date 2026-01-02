@@ -37,6 +37,9 @@ extern const std::vector<CountableMotionPair> COUNT_SEARCHABLE_MOTIONS_LINE;
 // No restrictions
 extern const std::vector<CountableMotionPair> COUNT_SEARCHABLE_MOTIONS_GLOBAL;
 
+// Combine line + global
+extern const std::vector<std::string> COUNT_SEARCHABLE_MOTIONS;
+
 // =============================================================================
 // Utilities
 // =============================================================================

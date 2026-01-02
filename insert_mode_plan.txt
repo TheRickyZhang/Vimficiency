@@ -1,0 +1,28 @@
+Fundamentally, operations in insert mode can be boiled down to a consecutive sequence of diffs. Let's work with the following conversion:
+
+0123456789ab
+I like cats
+You like dogs.
+0  123456789a b
+0123456789abcd
+
+The edit sequences in order are:
+I -> You : [0, 1) -> [0, 2]
+cats -> dogs. : [7, b) -> [9, d]
+
+In each edit sequence, we want to calculate the cheapest cost to do the edit, for every single start-end combination. Here is an example with cats->dogs:
+If we start at 7, and do: cwdogs.<Esc>, we end at d. So best[7][d] = cost(cwdogs<Esc>).
+If we start at 8, and do: ciwdogs.<Esc>, we end at d, (best[8][d]). 
+If we start at a, and do: a.<Esc>hrghrohrd, we end at 9, (best[a][9]). 
+
+I am a bit unsure with whether to include boundaries, though. For instance, if I had:
+dog cat -> cat cat:
+It is possible to do cb from the space to start editing, which is outside the exact diff range, but works because of start/end correspondence (w b). Is including one past the end like this enough, or are there other cases I am missing, that might make this too complex to handle?
+
+So now, in our optimizer, we can think of possible edits as a special type of normal motion. We store parameter editsMade in each state. WLOG suppose we are making progress forward (for backwards, we simply reverse).
+
+If a state has a position inside an edit range, it has the option to explore all precomputed best sequences. Our distance function now includes the number of edit sequences left, weighted heavily to narrow down on finding an exact solution, and we apply a heavy penalty to any states with position > last completed / currently exploring state, as that means we have "overshot" our edit, which is unoptimal for doing the edits in order.
+
+I am also a bit unsure how to resolve position alignment. If we assume that all edits must happen in order, then for editCount > 0, our position for the same logical position may not be the same as the initial position, which makes it tricky to determine if we will be in the next edit range. I think we can store an internal original_pos, and have 
+cumulate_edit_pos be how much we have "shifted" from our completed edits. With careful handling, original_pos should remain valid for determining if we are at a valid edit location.
+

@@ -105,7 +105,10 @@ void applySingleMotion(Position& pos, Mode& mode, const NavContext& navContext, 
  * {}, (), ;,
  */
 // Directly modifies the position and mode passed in. 
-void applyParsedMotion(Position& pos, Mode& mode, const NavContext& navContext,
+// We may think of passing in BufferIndex to improve simulating certain count motions.
+// However, I am not sure if it is worth it, as count > 1 is called only in simulateMotion(). It is helpful to compare vs repeated applications as well.
+void applyParsedMotion(Position& pos, Mode& mode,
+                       const NavContext& navContext,
                   const ParsedMotion& parsedMotion,
                   const std::vector<std::string> &lines) {
   int n = static_cast<int>(lines.size());
@@ -147,7 +150,7 @@ void applyParsedMotion(Position& pos, Mode& mode, const NavContext& navContext,
     pos.col = VimUtils::clampCol(lines, pos.col, pos.line);
   }
   // Words
-  // TODO: Redo to use indices once we generate those
+  // TODO: Able to process faster with indices? Or at least modify underlying VimUtils calls to be more efficient with multiple invocations.
   else if (motion == "w") {
     for(int i = 0; i < count; i++) VimUtils::motionW(pos, lines, false);
   } else if (motion == "b") {

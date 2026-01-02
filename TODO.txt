@@ -1,8 +1,7 @@
 Ranked by natural development order and priority. Complexity level (?) in * stars.
 
 Current priority stack:
-Implement counts
-Build word indices, so that {cnt}w, W are more efficient
+Support Lua simulate() for seeing how many keysequences would act.
 
 
 After done: startingState should be passed in the optimize call, not be a member of Optimizer
@@ -24,14 +23,8 @@ After done: startingState should be passed in the optimize call, not be a member
 
 
 
-
-
-
-
-
-
-
-
 Done:
+- Build word indices                               **
+- Implement counts (almost)                       ***
 - f/t, ;/, motions                                 **
 - <C-d, u, f, b> page motions                      **

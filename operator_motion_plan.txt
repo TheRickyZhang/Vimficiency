@@ -1,0 +1,31 @@
+Supporting operator motions:
+
+You’ll eventually want to separate “cursor motion” from “operator application”.
+
+Parse structure: [count] [operator?] [motion | textobj]
+Ex: dip = operator d + text object ip
+
+A clean approach is to parse into something like:
+struct Command {
+  int count = 1;
+  char op = 0;          // 'd','y','c' etc; 0 means "no operator"
+  bool isTextObj = false;
+  std::string motionOrObj; // "w", "}", "ip", "ap", ...
+};
+
+Normalize everything into a range
+Text objects produce a range directly (paragraph bounds, word bounds, inside braces, etc.).
+
+Apply operator to that range
+
+if(cmd.op == 0) {
+  pos = apply_motion(pos, mode, cmd.motionOrObj, lines).pos;
+} else {
+  Range rg;
+  if(cmd.isTextObj) rg = computeTextObjRange(pos, cmd.motionOrObj, lines);
+  else {
+    Position dst = apply_motion(pos, mode, cmd.motionOrObj, lines).pos;
+    rg = rangeFromMotion(pos, dst, /*inclusive rules*/);
+  }
+  applyOperator(cmd.op, rg, /*buffer*/);
+}

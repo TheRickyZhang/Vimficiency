@@ -5,6 +5,40 @@ using namespace std;
 #include "MotionToKeysBuildingBlocks.h"
 #include "Utils/Debug.h"
 
+vector<string> getCountableMotions(const vector<CountableMotionPair> firstVec, const vector<CountableMotionPair> secondVec) {
+  vector<string> res;
+  res.reserve(2 * (firstVec.size() + secondVec.size()));
+  for(auto x : firstVec) {
+    res.push_back(x.forward);
+    res.push_back(x.backward);
+  }
+  for(auto x : secondVec) {
+    res.push_back(x.forward);
+    res.push_back(x.backward);
+  }
+  return res;
+}
+
+CharToKeys combineAllToCharKeySeq( initializer_list<reference_wrapper<const MotionToKeys>> maps)
+{
+  CharToKeys res;
+  for (const auto& mpref : maps) {
+    const auto& mp = mpref.get();
+    for (const auto& [k, v] : mp) {
+      if (k.size() != 1) throw runtime_error("key must be length 1: " + k);
+      char c = k[0];
+      auto [it, inserted] = res.try_emplace(c, v);
+      if (!inserted) {
+        if (it->second != v) {
+          cerr << "conflict for key '" << c << "'\n";
+        }
+        it->second = v;
+      }
+    }
+  }
+  return res;
+}
+
 // =============================================================================
 // Global Tokenizer
 // =============================================================================
@@ -82,20 +116,20 @@ const CharToKeys CHAR_TO_KEYS = combineAllToCharKeySeq({
   cref(allSingleCharPunctuationAndSymbols),
 });
 
-const std::vector<CountableMotionPair> COUNT_SEARCHABLE_MOTIONS_LINE = {
+const vector<CountableMotionPair> COUNT_SEARCHABLE_MOTIONS_LINE = {
   {"w",  "b",  LandingType::WordBegin},
   {"e",  "ge", LandingType::WordEnd},
   {"W",  "B",  LandingType::WORDBegin},
   {"E",  "gE", LandingType::WORDEnd},
 };
 
-const std::vector<CountableMotionPair> COUNT_SEARCHABLE_MOTIONS_GLOBAL = {
+const vector<CountableMotionPair> COUNT_SEARCHABLE_MOTIONS_GLOBAL = {
   {"}",  "{",  LandingType::Paragraph},
   {")",  "(",  LandingType::Sentence},
   // Note: scrolls (<C-f>, <C-b>, etc.) don't map to LandingType - handle separately
 };
 
-
+const vector<string> COUNT_SEARCHABLE_MOTIONS = getCountableMotions(COUNT_SEARCHABLE_MOTIONS_LINE, COUNT_SEARCHABLE_MOTIONS_GLOBAL);
 
 // =============================================================================
 // Utilities

@@ -40,6 +40,7 @@ The optimizer performs **A* search** over editor states to find optimal motion s
 - **Search space**: Each state expands by applying available Vim motions
 - **Heuristic**: `cost_weight * effort + manhattan_distance_to_goal`
 - **RunningEffort** tracks typing patterns across sequences (same-finger penalties, alternation bonuses, rolls)
+- **BufferIndex** pre-computes word/WORD/paragraph/sentence landing positions for efficient count motion search (e.g., finding optimal `5w` vs `wwwww`)
 
 Key constraint: Search uses **minimal state** (contiguous buffer lines + position only), which means screen-relative motions (H, M, L, zz, gj, gk) and cross-buffer jumps are not supported.
 
@@ -66,19 +67,21 @@ void vimficiency_apply_config();
 
 ### Key Components
 
-**Editor/**: Position, Snapshot (buffer + cursor state), Motion (parsing and application), Mode enum
+**Editor/**: Position, Snapshot (buffer + cursor state), Motion (parsing and application), Mode enum, NavContext (window height/scroll amount for scroll motions)
 
 **State/**: State struct (Position + RunningEffort + cost + sequence), RunningEffort (tracks typing effort patterns)
 
 **Keyboard/**:
 - KeyboardModel.h: Key/Hand/Finger enums, KeyInfo struct
 - XMacroKeyDefinitions.h: X macro definitions (generates enums, name arrays, FFI exports from single source)
-- MotionToKeys: Motion string → KeySequence mapping
+- MotionToKeys: Motion string → KeySequence mapping, including `COUNT_SEARCHABLE_MOTIONS` for count-prefixed motion optimization
 - SequenceTokenizer: Parses user input into motion tokens
 
 **VimCore/VimUtils**: Implements Vim motion semantics (word motions w/e/b, paragraph {/}, sentence (/)
 
 **Optimizer/Config**: Keyboard layouts + cost models (presets: uniform, qwerty, colemak_dh)
+
+**Optimizer/BufferIndex**: Pre-indexes buffer for landing positions (word/WORD begin/end, paragraph, sentence) enabling O(log n) count motion lookup
 
 **Utils/Debug.h**: Debug output (enabled with `VIMFICIENCY_DEBUG` CMake option, ON by default)
 
@@ -101,10 +104,26 @@ void vimficiency_apply_config();
 Uses **GoogleTest** (fetched via CMake FetchContent).
 
 Test files in `data/TestFiles/` use naming convention:
-- `a1_long_line.txt`, `a2_block_lines.txt` - Abstract test cases
-- `m1_main_basic.txt` - Realistic code snippets
+- `a1_long_line.txt`, `a2_block_lines.txt`, `a3_spaced_lines.txt` - Abstract test cases
+- `m1_main_basic.txt`, `m2_main_big.txt`, `m3_source_code.txt` - Realistic code snippets
 
 The `TestUtils` class provides `TestFiles::load()` helper to read test files.
+
+## Supported Motions
+
+**Basic navigation:** h, j, k, l, 0, ^, $
+
+**Word motions:** w, W, b, B, e, E, ge, gE
+
+**Line jumps:** gg, G (with optional count for line number)
+
+**Text objects:** {, }, (, )
+
+**Character find:** f, F, t, T (with ;/, repeats)
+
+**Scrolling:** `<C-d>`, `<C-u>`, `<C-f>`, `<C-b>`
+
+**Count prefixes:** All above motions support counts (e.g., 3w, 5j, 10gg)
 
 ## Important Constraints
 
@@ -114,9 +133,8 @@ The `TestUtils` class provides `TestFiles::load()` helper to read test files.
 - Custom user mappings (currently only default Vim bindings)
 
 **Current limitations** (from TODO.txt):
-- No f/t/;/, character motions yet
+- No *, #, % symbol motions
 - No search (/, n, N)
-- No count prefixes (e.g., 3w, 5j)
 - No operator motions (dw, ci{)
 - No insert mode operations
 - No visual mode
