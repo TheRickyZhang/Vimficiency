@@ -1,17 +1,16 @@
 Ranked by natural development order and priority. Complexity level (?) in * stars.
 
 Current priority stack:
-Support Lua simulate() for seeing how many keysequences would act.
+- Real-time, automatic session spawning            *****
+- Verify the key count one
 
 
 After done: startingState should be passed in the optimize call, not be a member of Optimizer
 
 - simple symbols: *, #, %                          ***
 - Search, n/N (heuristic best-matching prefix)     ***
-- Numbers (compress? Heuristic exact jumps)        ****
 - Operator motions                                 *****
 - Insert Mode structure (just a lot more stuff)    *****
-- Real-time, automatic session spawning            *****
 - Dot operator, brute force (worth space?)         **
 - Separate pattern detection for potential macros? ***
 - Visual Mode                                      ****
@@ -29,8 +28,9 @@ Current view of sessions / continuous evaluation:
 
 
 Done:
+- Simulation                                       **
 - Build word indices                               **
-- Implement counts (almost)                       ***
+- Numbers                                          ***
 - f/t, ;/, motions                                 **
 - <C-d, u, f, b> page motions                      **
 

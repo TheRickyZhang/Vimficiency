@@ -5,6 +5,9 @@ local ffi_lib = require("vimficiency.ffi")
 
 local M = {}
 
+-- Namespace for cursor highlight extmarks
+local cursor_ns = v.nvim_create_namespace("vimficiency_cursor")
+
 -- =============================================================================
 -- Multi-sequence comparison state
 -- =============================================================================
@@ -12,15 +15,49 @@ local M = {}
 local multi_sim = {
   active = false,
   timer = nil,
-  windows = {},    -- { win, buf }[]
+  windows = {},    -- { win: integer, buf: integer }[]
   sequences = {},  -- parsed motion tokens per sequence
   indices = {},    -- current step index per sequence
   orig_win = nil,
+  orig_tab = nil,
+  sim_tab = nil,
 }
 
 -- =============================================================================
 -- Multi-sequence comparison functions
 -- =============================================================================
+
+--- Update cursor highlight extmarks for all windows
+local function update_cursor_highlights()
+  for _, entry in ipairs(multi_sim.windows) do
+    if v.nvim_win_is_valid(entry.win) and v.nvim_buf_is_valid(entry.buf) then
+      -- Clear previous highlights in this buffer
+      v.nvim_buf_clear_namespace(entry.buf, cursor_ns, 0, -1)
+
+      -- Get current cursor position (1-indexed)
+      local cursor = v.nvim_win_get_cursor(entry.win)
+      local row = cursor[1] - 1  -- Convert to 0-indexed for extmark
+      local col = cursor[2]
+
+      -- Add highlight at cursor position
+      local line = v.nvim_buf_get_lines(entry.buf, row, row + 1, false)[1] or ""
+      if col < #line then
+        v.nvim_buf_set_extmark(entry.buf, cursor_ns, row, col, {
+          end_col = col + 1,
+          hl_group = "Cursor",
+          priority = 1000,
+        })
+      elseif #line > 0 then
+        -- Cursor at end of line, highlight last character
+        v.nvim_buf_set_extmark(entry.buf, cursor_ns, row, #line - 1, {
+          end_col = #line,
+          hl_group = "Cursor",
+          priority = 1000,
+        })
+      end
+    end
+  end
+end
 
 --- Clean up all multi-sim windows and state
 local function cleanup_multi_sim()
@@ -30,15 +67,18 @@ local function cleanup_multi_sim()
     multi_sim.timer = nil
   end
 
-  for _, entry in ipairs(multi_sim.windows) do
-    if entry.win and v.nvim_win_is_valid(entry.win) then
-      v.nvim_win_close(entry.win, true)
+  -- Close the simulation tab if it exists
+  if multi_sim.sim_tab and v.nvim_tabpage_is_valid(multi_sim.sim_tab) then
+    -- Switch to original tab first
+    if multi_sim.orig_tab and v.nvim_tabpage_is_valid(multi_sim.orig_tab) then
+      v.nvim_set_current_tabpage(multi_sim.orig_tab)
     end
-    if entry.buf and v.nvim_buf_is_valid(entry.buf) then
-      v.nvim_buf_delete(entry.buf, { force = true })
-    end
+    -- Close sim tab (this also closes all windows/buffers in it)
+    local sim_tab_nr = v.nvim_tabpage_get_number(multi_sim.sim_tab)
+    pcall(cmd, "tabclose " .. sim_tab_nr)
   end
 
+  -- Restore original window if possible
   if multi_sim.orig_win and v.nvim_win_is_valid(multi_sim.orig_win) then
     v.nvim_set_current_win(multi_sim.orig_win)
   end
@@ -48,15 +88,17 @@ local function cleanup_multi_sim()
   multi_sim.sequences = {}
   multi_sim.indices = {}
   multi_sim.orig_win = nil
+  multi_sim.orig_tab = nil
+  multi_sim.sim_tab = nil
 end
 
---- Create a simulation window with buffer
+--- Create a simulation buffer
 ---@param lines string[]
 ---@param row integer 0-indexed
 ---@param col integer 0-indexed
 ---@param label string
----@return { win: integer, buf: integer }
-local function create_sim_window(lines, row, col, label)
+---@return integer buf
+local function create_sim_buffer(lines, label)
   local buf = v.nvim_create_buf(false, true)
   v.nvim_buf_set_name(buf, "vimficiency-sim-" .. label:gsub("%s+", "_"):sub(1, 20))
   v.nvim_set_option_value("buftype", "nofile", { buf = buf })
@@ -74,8 +116,17 @@ local function create_sim_window(lines, row, col, label)
     desc = "Close all simulation windows",
   })
 
-  cmd("vsplit")
-  local win = v.nvim_get_current_win()
+  return buf
+end
+
+--- Set up a window with buffer and cursor position
+---@param win integer
+---@param buf integer
+---@param lines string[]
+---@param row integer 0-indexed
+---@param col integer 0-indexed
+---@param label string
+local function setup_sim_window(win, buf, lines, row, col, label)
   v.nvim_win_set_buf(win, buf)
 
   -- Clamp row to valid range and convert to 1-indexed for Neovim API
@@ -87,12 +138,47 @@ local function create_sim_window(lines, row, col, label)
 
   v.nvim_win_set_cursor(win, { safe_row, safe_col })
 
+  -- Enable cursor indicators visible in unfocused windows
+  v.nvim_set_option_value("cursorline", true, { win = win })
+  v.nvim_set_option_value("cursorcolumn", true, { win = win })
+
   -- Show label in winbar if available
   pcall(function()
     v.nvim_set_option_value("winbar", label, { win = win })
   end)
+end
 
-  return { win = win, buf = buf }
+--- Tokenize a sequence for animation, with character-by-character fallback
+---@param seq string
+---@return string[]
+local function tokenize_for_animation(seq)
+  -- First try the C++ tokenizer (works for optimizer-supported motions)
+  local tokens, err = ffi_lib.tokenize_motions(seq)
+  if not err and tokens and #tokens > 0 then
+    return tokens
+  end
+
+  -- Fallback: split into individual characters for animation
+  -- This handles user sequences with unsupported motions like gj, gk, etc.
+  local chars = {}
+  local i = 1
+  while i <= #seq do
+    -- Check for <...> style key notation
+    if seq:sub(i, i) == "<" then
+      local close = seq:find(">", i, true)
+      if close then
+        table.insert(chars, seq:sub(i, close))
+        i = close + 1
+      else
+        table.insert(chars, seq:sub(i, i))
+        i = i + 1
+      end
+    else
+      table.insert(chars, seq:sub(i, i))
+      i = i + 1
+    end
+  end
+  return chars
 end
 
 --- Advance all sequences by one step
@@ -118,6 +204,12 @@ local function step_all()
     end
   end
 
+  -- Update cursor highlights for all windows
+  update_cursor_highlights()
+
+  -- Force redraw to show updates
+  cmd("redraw")
+
   if all_done then
     if multi_sim.timer then
       multi_sim.timer:stop()
@@ -131,9 +223,9 @@ end
 ---@param row integer 0-indexed starting row
 ---@param col integer 0-indexed starting column
 ---@param sequences string[] Array of motion sequences (e.g., {"3w", "wwwfa;", "jjjw"})
----@param delay_ms integer|nil Delay between steps in milliseconds (default 300)
+---@param delay_ms integer Delay between steps in milliseconds
 function M.simulate_compare(lines, row, col, sequences, delay_ms)
-  delay_ms = delay_ms or 300
+  assert(delay_ms and delay_ms > 0, "delay_ms must be a positive integer")
 
   if multi_sim.active then
     cleanup_multi_sim()
@@ -151,179 +243,64 @@ function M.simulate_compare(lines, row, col, sequences, delay_ms)
 
   multi_sim.active = true
   multi_sim.orig_win = v.nvim_get_current_win()
+  multi_sim.orig_tab = v.nvim_get_current_tabpage()
   multi_sim.windows = {}
   multi_sim.sequences = {}
   multi_sim.indices = {}
 
-  -- Parse sequences and create windows (in reverse order so first seq is leftmost)
-  for i = #sequences, 1, -1 do
-    local seq = sequences[i]
-    local tokens, err = ffi_lib.tokenize_motions(seq)
-    -- If tokenization failed (e.g., user sequence with custom mappings), treat whole seq as one token
-    if err or #tokens == 0 then
-      tokens = { seq }
-    end
+  -- Create a new tab for full-screen simulation
+  cmd("tabnew")
+  multi_sim.sim_tab = v.nvim_get_current_tabpage()
+
+  -- Track the empty buffer created by tabnew so we can delete it
+  local tabnew_buf = v.nvim_get_current_buf()
+
+  -- Create buffers and windows for each sequence
+  for i, seq in ipairs(sequences) do
+    local tokens = tokenize_for_animation(seq)
     multi_sim.sequences[i] = tokens
     multi_sim.indices[i] = 1
 
     local label = string.format("[%d] %s", i, seq)
-    local entry = create_sim_window(lines, row, col, label)
-    table.insert(multi_sim.windows, 1, entry)  -- prepend to maintain order
+    local buf = create_sim_buffer(lines, label)
+
+    local win
+    if i == 1 then
+      -- First window: use the current window from tabnew
+      win = v.nvim_get_current_win()
+    else
+      -- Subsequent windows: create vertical splits
+      cmd("vsplit")
+      win = v.nvim_get_current_win()
+    end
+
+    setup_sim_window(win, buf, lines, row, col, label)
+    table.insert(multi_sim.windows, { win = win, buf = buf })
   end
+
+  -- Delete the empty buffer created by tabnew (it's no longer displayed)
+  if v.nvim_buf_is_valid(tabnew_buf) then
+    v.nvim_buf_delete(tabnew_buf, { force = true })
+  end
+
+  -- Equalize window sizes
+  cmd("wincmd =")
 
   -- Focus first simulation window
   if #multi_sim.windows > 0 and v.nvim_win_is_valid(multi_sim.windows[1].win) then
     v.nvim_set_current_win(multi_sim.windows[1].win)
   end
 
+  -- Set initial cursor highlights
+  update_cursor_highlights()
+
   -- Start animation timer
-  multi_sim.timer = vim.loop.new_timer()
+  multi_sim.timer = vim.uv.new_timer()
   multi_sim.timer:start(delay_ms, delay_ms, vim.schedule_wrap(step_all))
 end
 
 -- Export cleanup for external use
 M.cleanup_compare = cleanup_multi_sim
-
--- Dedicated scratch buffer/window used for simulations
-local sim_buf = nil
-local sim_win = nil
-
-local function ensure_sim_buf()
-  if sim_buf and v.nvim_buf_is_valid(sim_buf) then
-    return sim_buf
-  end
-
-  local buf = v.nvim_create_buf(false, true) -- listed=false, scratch=true
-  v.nvim_buf_set_name(buf, "vimficiency-sim")
-  v.nvim_set_option_value("buftype",   "nofile", { buf = buf })
-  v.nvim_set_option_value("bufhidden", "hide",   { buf = buf })
-  v.nvim_set_option_value("swapfile",  false,    { buf = buf })
-
-  sim_buf = buf
-  return buf
-end
-
-local function ensure_sim_win(buf, split)
-  if sim_win and v.nvim_win_is_valid(sim_win) and v.nvim_win_get_buf(sim_win) == buf then
-    return sim_win
-  end
-
-  local prev_win = v.nvim_get_current_win()
-
-  if split == "h" then
-    cmd("split")
-  else
-    cmd("vsplit")
-  end
-
-  local win = v.nvim_get_current_win()
-  v.nvim_win_set_buf(win, buf)
-
-  -- Go back to whatever window the user was in
-  v.nvim_set_current_win(prev_win)
-
-  sim_win = win
-  return win
-end
-
---- Internal: immediate simulation (no delay, everything applied at once)
----@param row integer 0-indexed
----@param col integer 0-indexed
-local function simulate_immediate(buf, win, starting_lines, row, col, keys)
-  local prev_win = v.nvim_get_current_win()
-
-  v.nvim_buf_set_lines(buf, 0, -1, true, starting_lines)
-  v.nvim_win_set_cursor(win, { row + 1, col })  -- Convert to 1-indexed for Neovim
-  v.nvim_set_current_win(win)
-
-  cmd("normal! " .. keys)
-
-  local new_lines = v.nvim_buf_get_lines(buf, 0, -1, false)
-  local new_cursor = v.nvim_win_get_cursor(win)
-
-  v.nvim_set_current_win(prev_win)
-
-  return {
-    lines  = new_lines,
-    cursor = { new_cursor[1] - 1, new_cursor[2] },
-    buf    = buf,
-    win    = win,
-  }
-end
-
---- Internal: incremental simulation using timer + feedkeys
----@param row integer 0-indexed
----@param col integer 0-indexed
-local function simulate_incremental(buf, win, starting_lines, row, col, keys, delay_ms)
-  delay_ms = delay_ms or 500
-
-  -- Convert key-notation (<Esc>, <CR>, etc) into real termcodes once
-  local termkeys = v.nvim_replace_termcodes(keys, true, false, true)
-
-  local prev_win = v.nvim_get_current_win()
-
-  v.nvim_buf_set_lines(buf, 0, -1, true, starting_lines)
-  v.nvim_win_set_cursor(win, { row + 1, col })  -- Convert to 1-indexed for Neovim
-
-  -- We want the user to stay in their original window while the sim runs
-  v.nvim_set_current_win(prev_win)
-
-  local i, n = 1, #termkeys
-
-  local function step()
-    if not (v.nvim_buf_is_valid(buf) and v.nvim_win_is_valid(win)) then
-      -- Simulation window/buffer got killed; give up quietly.
-      return
-    end
-    if i > n then
-      -- Done: nothing more to do. Buffer/window stay visible for inspection.
-      return
-    end
-
-    -- Send exactly one byte (one "keypress" unit) at a time
-    local chunk = string.sub(termkeys, i, i)
-    i = i + 1
-
-    -- Temporarily focus sim window, execute key synchronously, then restore
-    local cur_prev = v.nvim_get_current_win()
-    v.nvim_set_current_win(win)
-    cmd("normal! " .. chunk)
-    v.nvim_set_current_win(cur_prev)
-
-    -- Schedule next key
-    vim.defer_fn(step, delay_ms)
-  end
-
-  -- Kick off the first step
-  vim.defer_fn(step, delay_ms)
-
-  -- Nothing meaningful to return here; the simulation is async.
-  return nil
-end
-
---- Public API: simulate a key sequence in a dedicated scratch buffer.
---- If delay_ms == 0 or nil  -> immediate (everything at once, returns final state)
---- If delay_ms > 0          -> incremental playback; returns nil.
----
---- @param starting_lines string[]
---- @param row integer       0-indexed
---- @param col integer       0-indexed
---- @param keys string       key sequence (normal-mode style, e.g. "gg=G", "ciw", etc.)
---- @param delay_ms? integer  optional
---- @param split? "h" | "v"   optional
-function M.simulate_visible(starting_lines, row, col, keys, delay_ms, split)
-  split = split or "h"
-  delay_ms = delay_ms or 0
-
-  local buf = ensure_sim_buf()
-  local win = ensure_sim_win(buf, split)
-
-  if delay_ms <= 0 then
-    return simulate_immediate(buf, win, starting_lines, row, col, keys)
-  else
-    return simulate_incremental(buf, win, starting_lines, row, col, keys, delay_ms)
-  end
-end
 
 return M
 

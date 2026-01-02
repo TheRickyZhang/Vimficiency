@@ -371,7 +371,7 @@ void VimUtils::motionW(Position &pos, const std::vector<std::string> &lines,
   if (c0 == 0) {
     // Out of buffer
     pos.line = line;
-    pos.col = col;
+    pos.setCol(col);
     return;
   }
 
@@ -381,7 +381,7 @@ void VimUtils::motionW(Position &pos, const std::vector<std::string> &lines,
     while (true) {
       if (!stepFwd(lines, line, col)) {
         pos.line = line;
-        pos.col = col;
+        pos.setCol(col);
         return;
       }
       unsigned char c = getChar(lines, line, col);
@@ -389,7 +389,7 @@ void VimUtils::motionW(Position &pos, const std::vector<std::string> &lines,
         break;
     }
     pos.line = line;
-    pos.col = col;
+    pos.setCol(col);
     return;
   }
 
@@ -404,7 +404,7 @@ void VimUtils::motionW(Position &pos, const std::vector<std::string> &lines,
     if (!stepFwd(lines, line, col)) {
       // Reached EOF; stay there.
       pos.line = line;
-      pos.col = col;
+      pos.setCol(col);
       return;
     }
 
@@ -431,7 +431,7 @@ void VimUtils::motionW(Position &pos, const std::vector<std::string> &lines,
     // Start of next (word|anti-word) group: this is where Vim's 'w' lands
     // when there is no intermediate whitespace.
     pos.line = line;
-    pos.col = col;
+    pos.setCol(col);
     return;
   }
 
@@ -439,7 +439,7 @@ void VimUtils::motionW(Position &pos, const std::vector<std::string> &lines,
   while (true) {
     if (!stepFwd(lines, line, col)) {
       pos.line = line;
-      pos.col = col;
+      pos.setCol(col);
       return;
     }
     c = getChar(lines, line, col);
@@ -448,7 +448,7 @@ void VimUtils::motionW(Position &pos, const std::vector<std::string> &lines,
   }
 
   pos.line = line;
-  pos.col = col;
+  pos.setCol(col);
 }
 
 void VimUtils::motionB(Position &pos, const std::vector<std::string> &lines,
@@ -461,14 +461,14 @@ void VimUtils::motionB(Position &pos, const std::vector<std::string> &lines,
   unsigned char c = getChar(lines, line, col);
   if (c == 0) {
     pos.line = line;
-    pos.col = col;
+    pos.setCol(col);
     return;
   }
 
   //  Always move back one character first.
   if (!stepBack(lines, line, col)) {
     pos.line = line;
-    pos.col = col;
+    pos.setCol(col);
     return;
   }
 
@@ -476,7 +476,7 @@ void VimUtils::motionB(Position &pos, const std::vector<std::string> &lines,
   while (isBlank(c)) {
     if (!stepBack(lines, line, col)) {
       pos.line = line;
-      pos.col = col;
+      pos.setCol(col);
       return;
     }
     c = getChar(lines, line, col);
@@ -485,7 +485,7 @@ void VimUtils::motionB(Position &pos, const std::vector<std::string> &lines,
   // Now we are on a non-blank character (word or symbol group).
   if (c == 0) {
     pos.line = line;
-    pos.col = col;
+    pos.setCol(col);
     return;
   }
   bool inWord = isWord(c);
@@ -506,7 +506,7 @@ void VimUtils::motionB(Position &pos, const std::vector<std::string> &lines,
     col = prevCol;
   }
   pos.line = line;
-  pos.col = col;
+  pos.setCol(col);
 }
 
 void VimUtils::motionE(Position &pos, const std::vector<std::string> &lines,
@@ -523,7 +523,7 @@ void VimUtils::motionE(Position &pos, const std::vector<std::string> &lines,
   // :contentReference[oaicite:3]{index=3}
   if (!stepFwd(lines, line, col)) {
     pos.line = line;
-    pos.col = col;
+    pos.setCol(col);
     return;
   }
 
@@ -533,7 +533,7 @@ void VimUtils::motionE(Position &pos, const std::vector<std::string> &lines,
   while (isBlank(c)) {
     if (!stepFwd(lines, line, col)) {
       pos.line = line;
-      pos.col = col;
+      pos.setCol(col);
       return;
     }
     c = getChar(lines, line, col);
@@ -541,7 +541,7 @@ void VimUtils::motionE(Position &pos, const std::vector<std::string> &lines,
 
   if (c == 0) {
     pos.line = line;
-    pos.col = col;
+    pos.setCol(col);
     return;
   }
 
@@ -557,6 +557,13 @@ void VimUtils::motionE(Position &pos, const std::vector<std::string> &lines,
       break;
     }
 
+    // Line wrap acts like hitting a newline: we consider that a boundary.
+    // This matches motionW behavior and Vim semantics.
+    bool wrapped = (nextLine != line);
+    if (wrapped) {
+      break;
+    }
+
     unsigned char nc = getChar(lines, nextLine, nextCol);
     if (isBlank(nc))
       break;
@@ -568,7 +575,7 @@ void VimUtils::motionE(Position &pos, const std::vector<std::string> &lines,
   }
 
   pos.line = line;
-  pos.col = col;
+  pos.setCol(col);
 }
 
 // ge/gE: backward to end of previous word
@@ -599,7 +606,7 @@ void VimUtils::motionGe(Position &pos, const std::vector<std::string> &lines,
   while (stepBack(lines, line, col)) {
     if (isWordEnd(line, col)) {
       pos.line = line;
-      pos.col = col;
+      pos.setCol(col);
       return;
     }
   }

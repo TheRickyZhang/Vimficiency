@@ -4,9 +4,13 @@ struct Position {
   int line = 0;
   int col  = 0;
   int targetCol = 0;
+
   Position(int l, int c) : line(l), col(c), targetCol(c) {}
   Position(int l, int c, int tc) : line(l), col(c), targetCol(tc) {}
 
+  // Use setCol() for horizontal movements - updates both col and targetCol.
+  // Direct assignment to col (without updating targetCol) should only be used
+  // for vertical movements (j/k) that restore col from targetCol.
   void setCol(int c) {
     col = targetCol = c;
   }

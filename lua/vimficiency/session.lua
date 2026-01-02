@@ -185,8 +185,10 @@ end
 
 ---@param alias string  The alias of the session to simulate
 ---@param count integer|nil  How many optimal results to show (default: all saved)
----@param delay_ms integer|nil  Delay between steps in ms (default 300)
+---@param delay_ms integer|nil  Delay between steps in ms (default 1000)
 function M.simulate(alias, count, delay_ms)
+  delay_ms = delay_ms or 1000
+
   if not alias or alias == "" then
     vim.notify("simulate() requires a session alias", vim.log.levels.ERROR)
     return
@@ -221,7 +223,6 @@ function M.simulate(alias, count, delay_ms)
     return
   end
 
-  delay_ms = delay_ms or 300
 
   simulate.simulate_compare(
     result.lines,
