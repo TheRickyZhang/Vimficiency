@@ -1,5 +1,6 @@
 // src/lua_exports.cpp
 
+#include "Editor/Motion.h"
 #include "Keyboard/KeyboardModel.h"
 #include "Keyboard/XMacroKeyDefinitions.h"
 #include "Optimizer/Config.h"
@@ -137,7 +138,9 @@ const char *vimficiency_analyze(
   int end_row, int end_col,
   const char *keyseq,
   // Viewport state
-  int top_row, int bottom_row, int window_height, int scroll_amount
+  int top_row, int bottom_row, int window_height, int scroll_amount,
+  // How many results to calculate/return
+  int RESULTS_CALCULATED
 ) {
   static std::string result_storage;
 
@@ -153,7 +156,7 @@ const char *vimficiency_analyze(
   ImpliedExclusions impliedExclusions(!includes_real_bottom, !includes_real_top);
 
   // g_config_internal was already populated by vimficiency_apply_config()
-  Optimizer opt(g_config_internal);
+  Optimizer opt(g_config_internal, RESULTS_CALCULATED);
 
   std::vector<Result> res = opt.optimizeMovement(lines, start_state, end_position, keyseq,  navigation_context, impliedExclusions);
 
@@ -182,6 +185,30 @@ const char* vimficiency_get_debug() {
     debug_storage = get_debug_output();
     clear_debug_output();
     return debug_storage.c_str();
+}
+
+// Tokenize a motion sequence into individual motion tokens
+// Returns newline-separated tokens (e.g., "3w\nfx;\nj" for "3wfx;j")
+const char *vimficiency_tokenize_motions(const char *seq) {
+  static std::string result_storage;
+
+  if (!seq || !*seq) {
+    result_storage = "";
+    return result_storage.c_str();
+  }
+
+  try {
+    std::vector<ParsedMotion> motions = parseMotions(seq);
+
+    std::ostringstream oss;
+    for (const auto& m : motions) {
+      oss << m << "\n";
+    }
+    result_storage = oss.str();
+  } catch (const std::exception& e) {
+    result_storage = std::string("ERROR: ") + e.what();
+  }
+  return result_storage.c_str();
 }
 
 // Unimportant debug stuff

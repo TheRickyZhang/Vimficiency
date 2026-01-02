@@ -7,16 +7,18 @@
 
 using namespace std;
 
-// Forward declaration
-void applyParsedMotion(Position& pos, Mode& mode, const NavContext& navContext,
-                  const ParsedMotion& parsedMotion,
-                  const std::vector<std::string> &lines);
-
+std::ostream& operator<<(std::ostream& os, const ParsedMotion& motion) {
+  if(motion.hasCount()) {
+    os << motion.effectiveCount();
+  }
+  os << motion.motion;
+  return os;
+}
 // Does string motion parsing. See SequenceTokenizer for the physical key parsing.
 // IMPORTANT: Returned ParsedMotions contain string_views into seq - caller must ensure seq outlives usage.
 
   // TODO: Once the motions we support are stable, and if it makes sense in how we implement vim's object model, consider representing motions as an enum instead of string. Then it would be no return, as harder to read/debug, but more efficient.
-std::vector<ParsedMotion> parseMotions(const std::string &seq, const NavContext& navContext) {
+std::vector<ParsedMotion> parseMotions(const std::string &seq) {
   std::string_view sv(seq);  // Create view to avoid allocations
   std::vector<ParsedMotion> result;
   size_t i = 0;
@@ -83,10 +85,6 @@ std::vector<ParsedMotion> parseMotions(const std::string &seq, const NavContext&
   return result;
 }
 
-
-void applySingleMotion(Position& pos, Mode& mode, const NavContext& navContext, const string& motion, const vector<string>& lines) {
-  applyParsedMotion(pos, mode, navContext, ParsedMotion(motion, 0), lines);
-}
 /*
  * Maintain this list of currently defined motions:
  * Alphabet:
@@ -235,12 +233,17 @@ void applyParsedMotion(Position& pos, Mode& mode,
   }
 }
 
+
+void applySingleMotion(Position& pos, Mode& mode, const NavContext& navContext, const string& motion, const vector<string>& lines) {
+  applyParsedMotion(pos, mode, navContext, ParsedMotion(motion, 0), lines);
+}
+
 // Return the result if we were to simulate motionSeq at current state
 // Important that pos and mode are passed by copy! We wouldn't want to change any state.
 MotionResult simulateMotions(Position pos, Mode mode, const NavContext& navContext,
                           const std::string &motionSeq,
                           const std::vector<std::string> &lines) {
-  auto motions = parseMotions(motionSeq, navContext);
+  auto motions = parseMotions(motionSeq);
   for (const auto &motion : motions) {
     applyParsedMotion(pos, mode, navContext, motion, lines);
   }

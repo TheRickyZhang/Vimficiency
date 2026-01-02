@@ -4,6 +4,46 @@ local ffi = require("ffi")
 
 local M = {}
 
+--------------------------------------------------------------------------------
+-- FFI Type Annotations (for LuaLS)
+-- These mirror the C structs defined in ffi.cdef below.
+--------------------------------------------------------------------------------
+
+---@class C_ScoreWeights
+---@field w_key number
+---@field w_same_finger number
+---@field w_same_key number
+---@field w_alt_bonus number
+---@field w_run_pen number
+---@field w_roll_good number
+---@field w_roll_bad number
+
+---@class C_KeyInfo
+---@field hand integer
+---@field finger integer
+---@field base_cost number
+
+---@class VimficiencyConfigFFI
+---@field default_keyboard integer
+---@field weights C_ScoreWeights
+---@field keys C_KeyInfo[]
+---@field slice_buffer_count integer
+
+---@class VimficiencyLib
+---@field VIMFICIENCY_KEY_COUNT integer
+---@field VIMFICIENCY_FINGER_COUNT integer
+---@field VIMFICIENCY_HAND_COUNT integer
+---@field vimficiency_key_name fun(index: integer): ffi.cdata*
+---@field vimficiency_finger_name fun(index: integer): ffi.cdata*
+---@field vimficiency_hand_name fun(index: integer): ffi.cdata*
+---@field vimficiency_get_config fun(): VimficiencyConfigFFI
+---@field vimficiency_apply_config fun(): nil
+---@field vimficiency_analyze fun(text: string, includes_real_top: boolean, includes_real_bottom: boolean, start_row: integer, start_col: integer, end_row: integer, end_col: integer, keyseq: string, top_row: integer, bottom_row: integer, window_height: integer, scroll_amount: integer, results_calculated: integer): string
+---@field vimficiency_get_debug fun(): string
+---@field vimficiency_version fun(): integer
+---@field vimficiency_debug_config fun(): string
+---@field vimficiency_tokenize_motions fun(seq: string): string
+
 ffi.cdef([[
     extern const int VIMFICIENCY_KEY_COUNT;
     extern const int VIMFICIENCY_FINGER_COUNT;
@@ -42,13 +82,16 @@ ffi.cdef([[
         const char* text, bool includes_real_top, bool includes_real_bottom,
         int start_row, int start_col, int end_row, int end_col,
         const char* keyseq,
-        int top_row, int bottom_row, int window_height, int scroll_amount
+        int top_row, int bottom_row, int window_height, int scroll_amount,
+        int RESULTS_CALCULATED
     );
     const char* vimficiency_get_debug();
 
     int vimficiency_version();
 
     const char* vimficiency_debug_config();
+
+    const char* vimficiency_tokenize_motions(const char* seq);
 ]])
 
 -------- Local Helper Functions --------
@@ -162,12 +205,14 @@ end
 ---@param bottom_row integer
 ---@param window_height integer
 ---@param scroll_amount integer
----@return string result, string debug
+---@param RESULTS_CALCULATED integer
+---@return string[] sequences, string debug
 function M.analyze(
   lines, includes_real_top, includes_real_bottom,
   start_row, start_col, end_row, end_col,
   key_seq,
-  top_row, bottom_row, window_height, scroll_amount
+  top_row, bottom_row, window_height, scroll_amount,
+  RESULTS_CALCULATED
 )
 	local text = table.concat(lines, "\n")
 
@@ -175,10 +220,26 @@ function M.analyze(
     text, includes_real_top, includes_real_bottom,
     start_row, start_col, end_row, end_col,
     key_seq,
-    top_row, bottom_row, window_height, scroll_amount
+    top_row, bottom_row, window_height, scroll_amount,
+    RESULTS_CALCULATED
   )
   local dbg = ffi.string(lib.vimficiency_get_debug())
-  return ffi.string(result), ffi.string(dbg)
+  local result_str = ffi.string(result)
+
+  -- Parse results: format is "size: N\nseq1 cost1\nseq2 cost2\n..."
+  local sequences = {}
+  local line_num = 0
+  for line in result_str:gmatch("[^\n]+") do
+    line_num = line_num + 1
+    if line_num > 1 then  -- Skip "size: N" header
+      local seq = line:match("^(%S+)")  -- Extract just the sequence (before space)
+      if seq then
+        table.insert(sequences, seq)
+      end
+    end
+  end
+
+  return sequences, dbg
 end
 
 function M.version()
@@ -187,6 +248,26 @@ end
 
 function M.debug_config()
 	return ffi.string(lib.vimficiency_debug_config())
+end
+
+--- Tokenize a motion sequence into individual tokens
+---@param seq string Motion sequence (e.g., "3wfx;j")
+---@return string[] Array of motion tokens (e.g., {"3w", "fx;", "j"})
+---@return string|nil error Error message if tokenization failed
+function M.tokenize_motions(seq)
+  if not seq or seq == "" then
+    return {}, nil
+  end
+  local result_str = ffi.string(lib.vimficiency_tokenize_motions(seq))
+  if result_str == "" then
+    return {}, nil
+  end
+  -- Check for error from C++
+  if result_str:sub(1, 6) == "ERROR:" then
+    return {}, result_str
+  end
+  -- Handle trailing newline from C++ (trimws removes empty strings from split)
+  return vim.split(result_str, "\n", { plain = true, trimempty = true }), nil
 end
 
 return M

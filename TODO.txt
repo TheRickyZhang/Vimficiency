@@ -22,9 +22,15 @@ After done: startingState should be passed in the optimize call, not be a member
 - Niche commands: -/+, ~, gu, gU,
 
 
+Current view of sessions / continuous evaluation:
+
+
+
+
 
 Done:
 - Build word indices                               **
 - Implement counts (almost)                       ***
 - f/t, ;/, motions                                 **
 - <C-d, u, f, b> page motions                      **
+

@@ -14,14 +14,14 @@ local function set_cmd(name, fn, opts)
 end
 
 local function import_lua_config(user_config)
-	if user_config.slice_padding then
-		config.slice_padding = user_config.slice_padding
+	if user_config.SLICE_PADDING then
+		config.SLICE_PADDING = user_config.SLICE_PADDING
 	end
-	if user_config.slice_expand_to_paragraph then
-		config.slice_expand_to_paragraph = user_config.slice_expand_to_paragraph
+	if user_config.SLICE_EXPAND_TO_PARAGRAPH then
+		config.SLICE_EXPAND_TO_PARAGRAPH = user_config.SLICE_EXPAND_TO_PARAGRAPH
 	end
-	if user_config.max_search_lines then
-		config.max_search_lines = user_config.max_search_lines
+	if user_config.MAX_SEARCH_LINES then
+		config.MAX_SEARCH_LINES = user_config.MAX_SEARCH_LINES
 	end
 end
 
@@ -31,11 +31,32 @@ function M.setup(user_config)
 	-- Push to C++
 	ffi_lib.configure(user_config)
 
-	set_cmd("VimficiencyStart", session.start, {})
-	set_cmd("VimficiencyStop", session.finish, {})
-	set_cmd("VimficiencySimulate", function(o)
-		session.simulate(o.args)
+	set_cmd("VimficiencyStart", function(o)
+		if not o.args or o.args == "" then
+			vim.notify("VimficiencyStart requires an alias argument", vim.log.levels.ERROR)
+			return
+		end
+		session.start(o.args)
 	end, { nargs = 1 })
+	set_cmd("VimficiencyStop", function(o)
+		if not o.args or o.args == "" then
+			vim.notify("VimficiencyStop requires an alias argument", vim.log.levels.ERROR)
+			return
+		end
+		session.finish(o.args)
+	end, { nargs = 1 })
+	set_cmd("VimficiencySimulate", function(o)
+		-- Parse: alias [count]
+		local args = vim.split(o.args, "%s+")
+		local alias = args[1]
+		local count = args[2] and tonumber(args[2]) or nil
+		local delay_ms = args[3] and tonumber(args[3]) or nil
+		if not alias or alias == "" then
+			vim.notify("VimficiencySimulate requires an alias", vim.log.levels.ERROR)
+			return
+		end
+		session.simulate(alias, count, delay_ms)
+	end, { nargs = "+" })
 
 	set_cmd("VimficiencyReload", function()
 		-- Rebuild the shared library

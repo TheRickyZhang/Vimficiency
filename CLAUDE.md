@@ -139,6 +139,27 @@ The `TestUtils` class provides `TestFiles::load()` helper to read test files.
 - No insert mode operations
 - No visual mode
 
+## Future Architecture (see plan files)
+
+### Session Invocation Modes (invocation_plan.txt)
+
+Three ways to create optimization sessions, each with distinct aliasing:
+
+1. **Manual** (aliases: a-e, capacity: 5) - Explicit `VimficiencyStart <alias>` / `VimficiencyEnd <alias>`
+2. **Time-based** (aliases: `.`, `..`, `...`, capacity: 5) - Auto-ends after configurable idle time, one active at a time
+3. **Key Count Back** (aliases: 1-10, capacity: 10) - Rolling FIFO of sessions; creates 1 session per keystroke, evicts oldest when full. Enables retroactive analysis ("what's optimal from 3 keystrokes ago?")
+
+Sessions exceeding `MAX_SESSION_MOTION_LENGTH` auto-terminate. Memory bounded by storing only relevant line ranges (not full buffer).
+
+### Insert Mode Optimization (insert_mode_plan.txt)
+
+Insert mode operations modeled as ordered diff sequences. For each diff `[start, end) → [new_start, new_end]`:
+
+- **State expansion**: Search state includes `editsMade` counter and `original_pos` + `cumulate_edit_pos` for position tracking across edits
+- **Single multi-source A\* search**: One optimizer run explores all valid start/end position pairs with insert/normal mode transitions, pruning unreachable pairs early
+- **Strict boundaries**: Edit boundaries match exact diff ranges - motions that delete beyond boundaries are suboptimal (would require restoring deleted content)
+- **Sequential assumption**: Edits processed in document order; heavy penalty for positions past current edit range
+
 ## X Macros Pattern
 
 The codebase uses **X macros** in `XMacroKeyDefinitions.h` to define keys/hands/fingers:

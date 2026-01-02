@@ -19,26 +19,6 @@ vector<string> getCountableMotions(const vector<CountableMotionPair> firstVec, c
   return res;
 }
 
-CharToKeys combineAllToCharKeySeq( initializer_list<reference_wrapper<const MotionToKeys>> maps)
-{
-  CharToKeys res;
-  for (const auto& mpref : maps) {
-    const auto& mp = mpref.get();
-    for (const auto& [k, v] : mp) {
-      if (k.size() != 1) throw runtime_error("key must be length 1: " + k);
-      char c = k[0];
-      auto [it, inserted] = res.try_emplace(c, v);
-      if (!inserted) {
-        if (it->second != v) {
-          cerr << "conflict for key '" << c << "'\n";
-        }
-        it->second = v;
-      }
-    }
-  }
-  return res;
-}
-
 // =============================================================================
 // Global Tokenizer
 // =============================================================================

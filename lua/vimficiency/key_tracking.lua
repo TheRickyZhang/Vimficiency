@@ -9,6 +9,20 @@
 local M = {}
 local uv = vim.uv
 
+--------------------------------------------------------------------------------
+-- Types
+--------------------------------------------------------------------------------
+
+---@class VimficiencyKeyEvent
+---@field t integer              # hrtime timestamp
+---@field win integer            # window id (useful for multi-session matching)
+---@field buf integer            # buffer id
+---@field mode string            # vim mode at time of keypress
+---@field key_sent_raw string    # raw key sent (for debugging)
+---@field key_sent string        # keytrans'd key sent
+---@field key_typed_raw string   # raw typed key (before mappings)
+---@field key_typed string       # keytrans'd typed key
+
 --- Patterns to filter out - if a mapping's RHS contains any of these, skip it
 local FILTER_PATTERNS = {
 	"VimficiencyStart",
@@ -30,6 +44,9 @@ local function should_filter(rhs)
 end
 
 --- Remove the last N entries from key_seq whose key_typed concatenates to form lhs
+--- Note: When a multi-key mapping fires, the LAST character of the LHS may not be
+--- recorded separately (it's consumed by the mapping trigger). So we match the
+--- longest PREFIX of lhs that we can find, not requiring an exact match.
 ---@param key_seq VimficiencyKeyEvent[]
 ---@param lhs string The mapping LHS to remove (raw bytes)
 local function remove_lhs_keys(key_seq, lhs)
@@ -37,7 +54,11 @@ local function remove_lhs_keys(key_seq, lhs)
 		return
 	end
 
-	-- Work backwards, accumulating key_typed_raw until we match lhs
+	-- DEBUG: Uncomment to debug key filtering issues
+	-- vim.notify(string.format("[remove_lhs_keys] lhs='%s' key_seq_len=%d", vim.fn.keytrans(lhs), #key_seq), vim.log.levels.DEBUG)
+
+	-- Work backwards, accumulating key_typed_raw
+	-- Don't check prefix at each step - collect all and find longest prefix match
 	local accumulated = ""
 	local remove_from = nil
 
@@ -46,11 +67,14 @@ local function remove_lhs_keys(key_seq, lhs)
 		local kt = entry.key_typed_raw or ""
 		if kt ~= "" then
 			accumulated = kt .. accumulated
-			if accumulated == lhs then
+
+			-- Check if current accumulated is a prefix of lhs
+			-- We keep updating remove_from to track the longest matching prefix
+			if lhs:sub(1, #accumulated) == accumulated then
 				remove_from = i
-				break
-			elseif #accumulated >= #lhs then
-				-- Accumulated too much without matching, stop
+			end
+
+			if #accumulated >= #lhs then
 				break
 			end
 		end
@@ -68,7 +92,7 @@ local function remove_lhs_keys(key_seq, lhs)
 	end
 end
 
----@param get_session fun(): VimficiencySession|nil
+---@param get_session fun(): ActiveSession|nil
 ---@param reset_session fun(reason: string, level: integer)
 ---@return integer nsid
 function M.attach(get_session, reset_session)
@@ -86,18 +110,9 @@ function M.attach(get_session, reset_session)
 			return
 		end
 
-		local mode = vim.api.nvim_get_mode().mode
-		local m = mode:sub(1, 1)
-		if m == "c" then
-			return
-		end
-		if m == "n" and key == ":" then
-			return
-		end
-
 		typed = typed or ""
 
-		-- DEDUPLICATION + FILTERING:
+		-- DEDUPLICATION + FILTERING (must happen BEFORE mode checks):
 		-- When a multi-key mapping like <Space>te fires, Neovim:
 		-- 1. First records individual keys (<Space>, t, e) as they're buffered
 		-- 2. Then fires the mapping with typed=<Space>te (the full LHS)
@@ -105,11 +120,20 @@ function M.attach(get_session, reset_session)
 		-- At step 2, we can check what the mapping expands to.
 		-- If it's something we want to filter (like VimficiencyStop),
 		-- we remove the individual keys that were already recorded.
+		--
+		-- This MUST happen before mode checks because the mapping's RHS might
+		-- start with ':' which would cause early return before we can filter.
+
+		local mode = vim.api.nvim_get_mode().mode
+		local m = mode:sub(1, 1)
+
+		-- DEBUG: Uncomment to trace on_key calls
+		-- vim.notify(string.format("[on_key] key='%s' typed='%s' mode='%s'", vim.fn.strtrans(key), vim.fn.strtrans(typed), mode), vim.log.levels.DEBUG)
 
 		if #typed > 1 and typed ~= key then
 			-- This is a multi-key mapping firing
-			-- Check what it maps to
-			local map_mode = mode:sub(1, 1)
+			-- Check what it maps to (use 'n' for normal mode mappings)
+			local map_mode = (m == "c") and "n" or m  -- If we're in cmdline, the mapping was from normal mode
 			local maparg = vim.fn.maparg(vim.fn.keytrans(typed), map_mode)
 
 			if maparg ~= "" and should_filter(maparg) then
@@ -124,6 +148,14 @@ function M.attach(get_session, reset_session)
 
 		-- Skip recording if typed is empty (nothing meaningful to record)
 		if typed == "" then
+			return
+		end
+
+		-- Mode filtering for recording (but filtering above already happened)
+		if m == "c" then
+			return
+		end
+		if m == "n" and key == ":" then
 			return
 		end
 

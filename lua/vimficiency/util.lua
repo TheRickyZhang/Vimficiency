@@ -5,9 +5,58 @@ local uv = vim.uv
 local fs = vim.fs
 
 local config = require("vimficiency.config")
-local types = require("vimficiency.types")
 
------------ BEGIN FILE ------------
+--------------------------------------------------------------------------------
+-- Types
+--------------------------------------------------------------------------------
+
+---@class VimficiencyState
+---@field bufname string       # original buffer name (full path)
+---@field filetype string      # buffer filetype
+---@field row integer          # 0-indexed cursor row
+---@field col integer          # 0-indexed cursor column
+---@field top_row integer      # top visible row
+---@field bottom_row integer   # bottom visible row
+---@field window_height integer # Ctrl-F, B distance
+---@field scroll_amount integer # Ctrl-D, U distance (may differ from window_height/2)
+---@field lines string[]       # buffer lines at capture time
+
+--------------------------------------------------------------------------------
+-- State Constructor
+--------------------------------------------------------------------------------
+
+---@param bufname string
+---@param filetype string
+---@param row integer
+---@param col integer
+---@param top_row integer
+---@param bottom_row integer
+---@param window_height integer
+---@param scroll_amount integer
+---@param lines string[]
+---@return VimficiencyState
+local function new_state(bufname, filetype, row, col, top_row, bottom_row, window_height, scroll_amount, lines)
+  assert(type(bufname) == "string", "state.bufname must be string")
+  assert(type(filetype) == "string", "state.filetype must be string")
+  assert(type(row) == "number" and type(col) == "number", "row and col must be numbers")
+  assert(type(lines) == "table", "state.lines must be an array of strings")
+
+  return {
+    bufname = bufname,
+    filetype = filetype,
+    row = row,
+    col = col,
+    top_row = top_row,
+    bottom_row = bottom_row,
+    window_height = window_height,
+    scroll_amount = scroll_amount,
+    lines = lines,
+  }
+end
+
+--------------------------------------------------------------------------------
+-- Utility Functions
+--------------------------------------------------------------------------------
 M.basename = fs.basename or function(p)
   return p:match("([^/\\]+)$") or p
 end
@@ -143,22 +192,22 @@ function M.capture_state(buf, win)
   local window_height = vim.api.nvim_win_get_height(win)
   local scroll_amount = vim.api.nvim_get_option_value('scroll', {win=win})
 
-  return types.new_file_contents(
+  return new_state(
     v.nvim_buf_get_name(buf),
     vim.bo[buf].filetype,
-    cursor[1] - 1, --- Convert to 0-indexed, annoyingly
+    cursor[1] - 1, -- Convert to 0-indexed
     cursor[2],
     top_row,
     bottom_row,
     window_height,
     scroll_amount,
     lines
-  );
+  )
 end
 
 function M.get_search_boundaries(begin_row, end_row)
   assert(config, "config module not loaded")
-  local padding = config.slice_padding
+  local padding = config.SLICE_PADDING
 
   if begin_row > end_row then
     begin_row, end_row = end_row, begin_row
@@ -170,7 +219,7 @@ function M.get_search_boundaries(begin_row, end_row)
   local start_search = math.max(0, begin_row - padding)
   local end_search = math.min(nlines-1, end_row + padding)
 
-  if config.slice_expand_to_paragraph then
+  if config.SLICE_EXPAND_TO_PARAGRAPH then
     local function is_blank_line(r)
       local l = vim.api.nvim_buf_get_lines(buf, r, r + 1, false)[1] or ""
       return l:match("^%s*$") ~= nil
