@@ -15,14 +15,17 @@ If we start at 7, and do: cwdogs.<Esc>, we end at d. So best[7][d] = cost(cwdogs
 If we start at 8, and do: ciwdogs.<Esc>, we end at d, (best[8][d]). 
 If we start at a, and do: a.<Esc>hrghrohrd, we end at 9, (best[a][9]). 
 
+This involves a multi-source A* search from all starting positions, which include an expanded search state for edit operations / insert mode transitions. Some start-end combinations might be difficult to reach, so we can limit the search to only find results cheaper than the best result + some constant. 
+
+Hopefully, this search is on the order of O(n^2), where n is the length of the edit distance, which I estimate will support reasonable edit chunks of up to 30. But we will need to benchmark this later.
+
 I am a bit unsure with whether to include boundaries, though. For instance, if I had:
 dog cat -> cat cat:
 It is possible to do cb from the space to start editing, which is outside the exact diff range, but works because of start/end correspondence (w b). Is including one past the end like this enough, or are there other cases I am missing, that might make this too complex to handle?
+I think for now, let's stick with [start, end). Since adjacent edits would have been combined, we still guarantee our edit sequences are disjoint.
 
-So now, in our optimizer, we can think of possible edits as a special type of normal motion. We store parameter editsMade in each state. WLOG suppose we are making progress forward (for backwards, we simply reverse).
+So now, in our optimizer, we can think of possible edits as a special type of normal motion. We store parameter editsMade in each state, and pass the correct lines corresponding to how many edits were made, so that motions apply correctly. WLOG suppose we are making progress forward (for backwards, we simply reverse).
 
 If a state has a position inside an edit range, it has the option to explore all precomputed best sequences. Our distance function now includes the number of edit sequences left, weighted heavily to narrow down on finding an exact solution, and we apply a heavy penalty to any states with position > last completed / currently exploring state, as that means we have "overshot" our edit, which is unoptimal for doing the edits in order.
 
-I am also a bit unsure how to resolve position alignment. If we assume that all edits must happen in order, then for editCount > 0, our position for the same logical position may not be the same as the initial position, which makes it tricky to determine if we will be in the next edit range. I think we can store an internal original_pos, and have 
-cumulate_edit_pos be how much we have "shifted" from our completed edits. With careful handling, original_pos should remain valid for determining if we are at a valid edit location.
-
+It is also tricky how to ensure position alignment. We can assume that all edits must happen in order; I think since we are updating which "version" of lines we are at depending on editsMade, we can ensure our positions are always correct for that state, and so we can know the corresponding range.

@@ -7,7 +7,6 @@
 
 #include "Editor/Motion.h"
 #include "Editor/NavContext.h"
-#include "Keyboard/MotionToKeys.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/ImpliedExclusions.h"
 #include "Optimizer/Optimizer.h"
@@ -118,6 +117,90 @@ TEST_F(DebugSequenceTest, AllResultsReachTargetPosition) {
 
   // Print results for debugging
   cout << "Optimizer results for (0,0) -> (2,2):\n";
+  for (const auto &r : results) {
+    Position actual = simulateMotionsDefault(start, r.sequence, a2_block_lines);
+    cout << "  " << r.sequence << " -> (" << actual.line << "," << actual.col << ")\n";
+  }
+
+  for (const auto &r : results) {
+    Position actual = simulateMotionsDefault(start, r.sequence, a2_block_lines);
+    EXPECT_EQ(actual.line, end.line)
+        << "Sequence '" << r.sequence << "' ends at wrong line: "
+        << actual.line << " vs expected " << end.line;
+    EXPECT_EQ(actual.col, end.col)
+        << "Sequence '" << r.sequence << "' ends at wrong col: "
+        << actual.col << " vs expected " << end.col;
+  }
+}
+
+// =============================================================================
+// Bug: }ll returned as solution for jjll starting from (1,0)
+//
+// a2_block_lines: lines 0-3 = "aaaaaaaaaaaaaa", line 4 = empty
+//
+// From (1, 0):
+//   - jjll: j→(2,0), j→(3,0), l→(3,1), l→(3,2) = ends at (3, 2)
+//   - }ll: }→(4,0) [empty line], ll can't move = ends at (4, 0)
+//
+// These end at different positions, so }ll should NOT be a valid solution.
+// =============================================================================
+
+TEST_F(DebugSequenceTest, JjllFrom1_0EndsAtCorrectPosition) {
+  Position result = simulateMotionsDefault({1, 0}, "jjll", a2_block_lines);
+  expectPos(result, 3, 2, "jjll from (1,0)");
+}
+
+TEST_F(DebugSequenceTest, ParagraphMotionGoesToEmptyLine) {
+  // Debug: print buffer content
+  cout << "a2_block_lines has " << a2_block_lines.size() << " lines:\n";
+  for (size_t i = 0; i < a2_block_lines.size(); i++) {
+    cout << "  [" << i << "] \"" << a2_block_lines[i] << "\" (len=" << a2_block_lines[i].size() << ")\n";
+  }
+
+  // } from (1, 0) should go to the next blank line
+  Position result = simulateMotionsDefault({1, 0}, "}", a2_block_lines);
+
+  // If there's a blank line, } should find it. Otherwise it goes to last line.
+  // Let's first verify what Vim would do
+  cout << "} from (1,0) -> (" << result.line << ", " << result.col << ")\n";
+
+  // Check if there's actually a blank line in the buffer
+  bool hasBlankLine = false;
+  int blankLineIdx = -1;
+  for (size_t i = 2; i < a2_block_lines.size(); i++) {
+    if (a2_block_lines[i].empty() ||
+        a2_block_lines[i].find_first_not_of(" \t") == string::npos) {
+      hasBlankLine = true;
+      blankLineIdx = i;
+      break;
+    }
+  }
+  cout << "Has blank line after line 1: " << hasBlankLine << " at index " << blankLineIdx << "\n";
+
+  if (hasBlankLine) {
+    expectPos(result, blankLineIdx, 0, "} from (1,0) should go to blank line");
+  } else {
+    // No blank line - } goes to last character of last line
+    int lastLine = (int)a2_block_lines.size() - 1;
+    int lastCol = (int)a2_block_lines[lastLine].size() - 1;
+    expectPos(result, lastLine, lastCol, "} from (1,0) goes to last char of last line when no blank");
+  }
+}
+
+TEST_F(DebugSequenceTest, CloseBraceLLEndsAtEndOfLastLine) {
+  // }ll from (1, 0): } goes to (3, 13), ll can't move further right
+  Position result = simulateMotionsDefault({1, 0}, "}ll", a2_block_lines);
+  expectPos(result, 3, 13, "}ll from (1,0) ends at (3,13) - already at line end");
+}
+
+TEST_F(DebugSequenceTest, AllResultsReachTargetPosition_From1_0) {
+  Position start(1, 0);
+  Position end(3, 2);
+
+  vector<Result> results =
+      runOptimizer(a2_block_lines, start, end, "jjll");
+
+  cout << "Optimizer results for (1,0) -> (3,2):\n";
   for (const auto &r : results) {
     Position actual = simulateMotionsDefault(start, r.sequence, a2_block_lines);
     cout << "  " << r.sequence << " -> (" << actual.line << "," << actual.col << ")\n";

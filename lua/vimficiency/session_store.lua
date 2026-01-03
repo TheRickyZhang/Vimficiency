@@ -11,6 +11,8 @@
 local M = {}
 
 local key_tracking = require("vimficiency.key_tracking")
+local util = require("vimficiency.util")
+local config = require("vimficiency.config")
 
 --------------------------------------------------------------------------------
 -- Types
@@ -36,7 +38,7 @@ local key_tracking = require("vimficiency.key_tracking")
 ---@field end_row integer              # 0-indexed, relative to lines
 ---@field end_col integer              # 0-indexed
 ---@field user_seq string              # What the user typed
----@field optimal_seqs string[]        # Top N results from optimizer
+---@field optimal_results VimficiencyResult[] # Top N results from optimizer (seq + cost)
 ---@field timestamp integer            # hrtime when finished
 
 --------------------------------------------------------------------------------
@@ -72,7 +74,6 @@ end
 
 local MANUAL_CAPACITY = 5      -- aliases: a-e
 local TIME_CAPACITY = 5        -- aliases: ., .., ...
-local KEY_COUNT_CAPACITY = 10  -- aliases: 1-10
 
 --------------------------------------------------------------------------------
 -- Storage tables
@@ -93,6 +94,9 @@ local time_id_order = {}
 
 ---@type string[]  -- ordered deque of ids (oldest first, newest last)
 local key_id_order = {}
+
+---@type boolean
+local key_sessions_enabled = false
 
 --------------------------------------------------------------------------------
 -- Local helpers
@@ -150,7 +154,9 @@ local function remove_active(id)
   if not active then
     return false
   end
-  if active and active.key_nsid then
+  -- Only detach if key_nsid is valid (>= 0). Key sessions use -1 to indicate
+  -- they use global tracking instead of per-session tracking.
+  if active.key_nsid and active.key_nsid >= 0 then
     key_tracking.detach(active.key_nsid)
   end
   active_sessions[id] = nil
@@ -210,7 +216,7 @@ end
 ---@param active ActiveSession
 ---@return boolean success, string|nil error
 function M.store_key(active)
-  while #key_id_order >= KEY_COUNT_CAPACITY do
+  while #key_id_order >= config.KEY_SESSION_CAPACITY do
     local oldest_id = table.remove(key_id_order, 1)
     if oldest_id then
       remove_active(oldest_id)
@@ -326,6 +332,121 @@ function M.list_aliases()
   end
 
   return aliases
+end
+
+--------------------------------------------------------------------------------
+-- Key-count session management
+--------------------------------------------------------------------------------
+
+--- Get all active key sessions (for broadcasting key events)
+---@return ActiveSession[]
+function M.get_all_active_key_sessions()
+  local sessions = {}
+  for _, id in ipairs(key_id_order) do
+    local active = active_sessions[id]
+    if active then
+      table.insert(sessions, active)
+    end
+  end
+  return sessions
+end
+
+--- Check if key sessions are enabled
+---@return boolean
+function M.is_key_sessions_enabled()
+  return key_sessions_enabled
+end
+
+--- Enable automatic key-count session tracking.
+--- On each keypress: appends key to all active sessions, creates new session.
+---@return boolean success
+function M.enable_key_sessions()
+  if key_sessions_enabled then
+    return false  -- Already enabled
+  end
+
+  local function on_key_event(event)
+    -- 1. Append key event to ALL active key sessions
+    for _, active in ipairs(M.get_all_active_key_sessions()) do
+      table.insert(active.key_seq, event)
+    end
+
+    -- 2. Create new session with current state (BEFORE the key is processed)
+    -- Note: vim.on_key fires before the key is processed, so capture_state
+    -- returns the position before this key takes effect.
+    local buf = event.buf
+    local win = event.win
+
+    if not vim.api.nvim_buf_is_valid(buf) or not vim.api.nvim_win_is_valid(win) then
+      return
+    end
+
+    local id = util.new_id(buf)
+    local start_state = util.capture_state(buf, win)
+
+    -- Key sessions don't have per-session key tracking (we use global)
+    -- Set key_nsid to -1 to indicate no per-session tracking
+    local active = M.new_active_session(id, -1, win, buf, start_state)
+
+    -- Include current key in new session since state is captured BEFORE key is processed
+    table.insert(active.key_seq, event)
+
+    -- 3. Store (handles eviction of oldest if over capacity)
+    M.store_key(active)
+  end
+
+  --- Called when a filtered mapping (e.g., <Space>te -> VimficiencyEnd) is detected.
+  --- Remove the LHS keys from all active key sessions since they were already recorded,
+  --- AND remove the sessions that were created by those LHS keypresses.
+  ---@param lhs_raw string Raw bytes of the mapping LHS
+  local function on_filter_mapping(lhs_raw)
+    -- 1. Remove LHS keys from all existing sessions' key_seqs
+    for _, active in ipairs(M.get_all_active_key_sessions()) do
+      key_tracking.remove_lhs_keys(active.key_seq, lhs_raw)
+    end
+
+    -- 2. Remove the last N sessions (created by the N LHS keypresses)
+    -- Each byte in lhs_raw corresponds to one keypress that created a session
+    local keys_to_remove = #lhs_raw
+    for _ = 1, keys_to_remove do
+      if #key_id_order > 0 then
+        local id = table.remove(key_id_order)  -- Remove from end (most recent)
+        if id then
+          active_sessions[id] = nil
+          result_sessions[id] = nil
+        end
+      end
+    end
+  end
+
+  local success = key_tracking.attach_global(on_key_event, on_filter_mapping)
+  if success then
+    key_sessions_enabled = true
+  end
+  return success
+end
+
+--- Disable automatic key-count session tracking.
+--- Closes all active key sessions without finishing.
+function M.disable_key_sessions()
+  if not key_sessions_enabled then
+    return
+  end
+
+  key_tracking.detach_global()
+  key_sessions_enabled = false
+
+  -- Close all active key sessions (remove without storing results)
+  -- Iterate backwards since we're removing
+  for i = #key_id_order, 1, -1 do
+    local id = key_id_order[i]
+    if id then
+      -- Don't call remove_active() since key sessions have key_nsid = -1
+      active_sessions[id] = nil
+      result_sessions[id] = nil
+    end
+  end
+  key_id_order = {}
 end
 
 return M

@@ -136,7 +136,8 @@ vector<Result> Optimizer::optimizeMovement(
 
     PosKey stateKey = s.getKey();
     bool isGoal = (stateKey == goalKey);
-    bool isSameLine = (stateKey.first == goalKey.first);
+    bool isSameLine = (pos.line == endPos.line);
+    bool forward = pos < endPos;
 
     if (isGoal) {
       res.emplace_back(s.getMotionSequence(), s.getRunningEffort().getEffort(config));
@@ -183,8 +184,8 @@ vector<Result> Optimizer::optimizeMovement(
         }
       };
 
-      // F Motions
-      if(pos.col<endPos.col){
+      // F motions
+      if(forward){
         handleFMotions(
           VimUtils::generateFMotions<true>(pos.col, endPos.col, lines[pos.line], F_MOTION_THRESHOLD),
           'f', ';'
@@ -197,14 +198,17 @@ vector<Result> Optimizer::optimizeMovement(
         );
       }
 
+      // Count searchable (same line) motions
       for(const auto& motionPair : COUNT_SEARCHABLE_MOTIONS_LINE) {
-        string forwardMotion = motionPair.forward;
-        string backwardMotion = motionPair.backward;
-        LandingType type = motionPair.type; 
+        string motion = forward ? motionPair.forward : motionPair.backward;
+        // Skip if not in map
+        if(!motionToKeys.count(motion)) {
+          continue;
+        }
+        LandingType type = motionPair.type;
         array<RepeatMotionResult, 2> countSearchResults = bufferIndex.getTwoClosest( type, pos, endPos);
         for(const auto& cres : countSearchResults) {
           if(!cres.valid()) continue;
-          string motion = endPos > pos ? forwardMotion : backwardMotion;
           exploreMotionCntTimesWithKnownPosition(s, motion, cres.count, cres.pos);
         }
       }
@@ -218,13 +222,15 @@ vector<Result> Optimizer::optimizeMovement(
     }
 
     for(const auto& motionPair : COUNT_SEARCHABLE_MOTIONS_GLOBAL) {
-      string forwardMotion = motionPair.forward;
-      string backwardMotion = motionPair.backward;
+      string motion = forward ? motionPair.forward : motionPair.backward;
+      // Skip if not in allowed set
+      if(!motionToKeys.contains(motion)) {
+        continue;
+      }
       LandingType type = motionPair.type;
       array<RepeatMotionResult, 2> countSearchResults = bufferIndex.getTwoClosest(type, pos, endPos);
       for(const auto& cres : countSearchResults) {
         if(!cres.valid()) continue;
-        string motion = endPos > pos ? forwardMotion : backwardMotion;
         exploreMotionCntTimesWithKnownPosition(s, motion, cres.count, cres.pos);
       }
     }

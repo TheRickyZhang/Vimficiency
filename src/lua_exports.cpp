@@ -144,39 +144,43 @@ const char *vimficiency_analyze(
 ) {
   static std::string result_storage;
 
-  auto lines = split_lines(text);
+  try {
+    auto lines = split_lines(text);
 
-  Position start_position(start_row, start_col);
-  Position end_position(end_row, end_col);
+    Position start_position(start_row, start_col);
+    Position end_position(end_row, end_col);
 
-  State start_state(start_position, RunningEffort(), 0, 0);
+    State start_state(start_position, RunningEffort(), 0, 0);
 
-  NavContext navigation_context(top_row, bottom_row, window_height, scroll_amount);
-  // Exclude G if we DON'T have the real bottom, exclude gg if we DON'T have the real top
-  ImpliedExclusions impliedExclusions(!includes_real_bottom, !includes_real_top);
+    NavContext navigation_context(top_row, bottom_row, window_height, scroll_amount);
+    // Exclude G if we DON'T have the real bottom, exclude gg if we DON'T have the real top
+    ImpliedExclusions impliedExclusions(!includes_real_bottom, !includes_real_top);
 
-  // g_config_internal was already populated by vimficiency_apply_config()
-  Optimizer opt(g_config_internal, RESULTS_CALCULATED);
+    // g_config_internal was already populated by vimficiency_apply_config()
+    Optimizer opt(g_config_internal, RESULTS_CALCULATED);
 
-  std::vector<Result> res = opt.optimizeMovement(lines, start_state, end_position, keyseq,  navigation_context, impliedExclusions);
+    std::vector<Result> res = opt.optimizeMovement(lines, start_state, end_position, keyseq,  navigation_context, impliedExclusions);
 
-  // Format results
-  std::ostringstream oss;
-  if (res.empty()) {
-    oss << "no results";
-  } else {
-    oss << "size: " << res.size() << "\n";
-    for (const Result &r : res) {
-      oss << r.sequence << " " << std::fixed << std::setprecision(3)
-          << r.keyCost << "\n";
+    // Format results
+    std::ostringstream oss;
+    if (res.empty()) {
+      oss << "no results";
+    } else {
+      oss << "size: " << res.size() << "\n";
+      for (const Result &r : res) {
+        oss << r.sequence << " " << std::fixed << std::setprecision(3)
+            << r.keyCost << "\n";
+      }
     }
-  }
 
-  if constexpr (DEBUG_ENABLED) {
-    oss << "\n ----------------DEBUG---------------- \n" << get_debug_output();
-  }
+    if constexpr (DEBUG_ENABLED) {
+      oss << "\n ----------------DEBUG---------------- \n" << get_debug_output();
+    }
 
-  result_storage = oss.str();
+    result_storage = oss.str();
+  } catch (const std::exception& e) {
+    result_storage = std::string("ERROR: ") + e.what();
+  }
   return result_storage.c_str();
 }
 

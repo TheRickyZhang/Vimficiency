@@ -229,7 +229,7 @@ void applyParsedMotion(Position& pos, Mode& mode,
     }
   }
   else {
-    debug("motion not supported:", motion);
+    throw std::runtime_error("Unsupported motion: " + std::string(motion));
   }
 }
 

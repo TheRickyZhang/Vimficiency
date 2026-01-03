@@ -16,6 +16,7 @@ add_executable(vimficiency_tests
   ConfigurationTest.cpp
   CountMotionsTest.cpp
   DebugSequenceTests.cpp
+  ErrorHandlingTest.cpp
   TestUtils.cpp
 )
 

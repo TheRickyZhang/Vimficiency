@@ -206,7 +206,7 @@ end
 ---@param window_height integer
 ---@param scroll_amount integer
 ---@param RESULTS_CALCULATED integer
----@return string[] sequences, string debug
+---@return VimficiencyResult[] results, string debug
 function M.analyze(
   lines, includes_real_top, includes_real_bottom,
   start_row, start_col, end_row, end_col,
@@ -226,20 +226,33 @@ function M.analyze(
   local dbg = ffi.string(lib.vimficiency_get_debug())
   local result_str = ffi.string(result)
 
+  -- Check for error from C++
+  if result_str:sub(1, 6) == "ERROR:" then
+    error(result_str)
+  end
+
   -- Parse results: format is "size: N\nseq1 cost1\nseq2 cost2\n..."
-  local sequences = {}
+  ---@class VimficiencyResult
+  ---@field seq string Motion sequence
+  ---@field cost number Effort cost
+
+  ---@type VimficiencyResult[]
+  local results = {}
   local line_num = 0
   for line in result_str:gmatch("[^\n]+") do
     line_num = line_num + 1
     if line_num > 1 then  -- Skip "size: N" header
-      local seq = line:match("^(%S+)")  -- Extract just the sequence (before space)
+      local seq, cost_str = line:match("^(%S+)%s+(%S+)")
       if seq then
-        table.insert(sequences, seq)
+        table.insert(results, {
+          seq = seq,
+          cost = tonumber(cost_str) or 0
+        })
       end
     end
   end
 
-  return sequences, dbg
+  return results, dbg
 end
 
 function M.version()

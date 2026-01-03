@@ -4,8 +4,8 @@ Current priority stack:
 - Real-time, automatic session spawning            *****
 - Verify the key count one
 
+- Update plans with more specific details (multi-source search, heuristics to stop early)
 
-After done: startingState should be passed in the optimize call, not be a member of Optimizer
 
 - simple symbols: *, #, %                          ***
 - Search, n/N (heuristic best-matching prefix)     ***

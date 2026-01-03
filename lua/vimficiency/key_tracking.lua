@@ -25,16 +25,25 @@ local uv = vim.uv
 
 --- Patterns to filter out - if a mapping's RHS contains any of these, skip it
 local FILTER_PATTERNS = {
-	"VimficiencyStart",
-	"VimficiencyStop",
-	"VimficiencyFinish",
-	-- Add more as needed
+	"Vimficiency",  -- Catches :Vimficiency subcommands (both forms)
+	"Vimfy",        -- Catches :Vimfy subcommands (both forms)
 }
 
---- Check if a string contains any of the filter patterns
----@param rhs string
+--- Check if a mapping's RHS should be filtered (not recorded as user motion)
+--- Filters:
+--- 1. Mappings containing FILTER_PATTERNS (vimficiency commands)
+--- 2. Mappings that enter command-line mode (start with : or <Cmd>)
+---@param rhs string The mapping's RHS
 ---@return boolean
 local function should_filter(rhs)
+	-- Filter any mapping that enters command mode - these aren't motions
+	-- Check for : at start (possibly after <silent>, <expr>, etc.)
+	-- Common patterns: ":cmd", "<Cmd>cmd", "<C-u>:cmd"
+	if rhs:match("^:") or rhs:match("^<[Cc]md>") or rhs:match("<[Cc]%-[Uu]>:") then
+		return true
+	end
+
+	-- Filter explicit vimficiency patterns
 	for _, pattern in ipairs(FILTER_PATTERNS) do
 		if rhs:find(pattern, 1, true) then
 			return true
@@ -91,6 +100,9 @@ local function remove_lhs_keys(key_seq, lhs)
 		end
 	end
 end
+
+-- Export for use by session_store global key sessions
+M.remove_lhs_keys = remove_lhs_keys
 
 ---@param get_session fun(): ActiveSession|nil
 ---@param reset_session fun(reason: string, level: integer)
@@ -179,6 +191,91 @@ function M.detach(nsid)
 	if nsid then
 		vim.on_key(nil, nsid)
 	end
+end
+
+--------------------------------------------------------------------------------
+-- Global key listener (for key-count sessions)
+--------------------------------------------------------------------------------
+
+local global_nsid = nil
+
+--- Attach a global key listener that broadcasts key events.
+--- Only one global listener can be active at a time.
+--- The callback receives (key_event: VimficiencyKeyEvent) after filtering.
+---@param on_key_event fun(event: VimficiencyKeyEvent)
+---@param on_filter_mapping fun(lhs_raw: string)|nil  Called when a filtered mapping is detected, with raw LHS bytes
+---@return boolean success
+function M.attach_global(on_key_event, on_filter_mapping)
+	if global_nsid then
+		return false  -- Already attached
+	end
+
+	local function on_key(key, typed)
+		typed = typed or ""
+
+		local mode = vim.api.nvim_get_mode().mode
+		local m = mode:sub(1, 1)
+
+		-- Skip multi-key mappings that should be filtered
+		if #typed > 1 and typed ~= key then
+			local map_mode = (m == "c") and "n" or m
+			local maparg = vim.fn.maparg(vim.fn.keytrans(typed), map_mode)
+
+			if maparg ~= "" and should_filter(maparg) then
+				-- Filtered mapping detected - notify caller to remove LHS keys
+				if on_filter_mapping then
+					on_filter_mapping(typed)
+				end
+				return
+			end
+
+			-- Multi-key mapping - individual keys already recorded, skip the combined
+			typed = ""
+		end
+
+		if typed == "" then
+			return
+		end
+
+		-- Mode filtering
+		if m == "c" then
+			return
+		end
+		if m == "n" and key == ":" then
+			return
+		end
+
+		---@type VimficiencyKeyEvent
+		local event = {
+			t = uv.hrtime(),
+			mode = mode,
+			win = vim.api.nvim_get_current_win(),
+			buf = vim.api.nvim_get_current_buf(),
+			key_sent_raw = key,
+			key_sent = vim.fn.keytrans(key),
+			key_typed_raw = typed,
+			key_typed = vim.fn.keytrans(typed),
+		}
+
+		on_key_event(event)
+	end
+
+	global_nsid = vim.on_key(on_key, global_nsid)
+	return true
+end
+
+--- Detach the global key listener.
+function M.detach_global()
+	if global_nsid then
+		vim.on_key(nil, global_nsid)
+		global_nsid = nil
+	end
+end
+
+--- Check if global listener is active.
+---@return boolean
+function M.is_global_attached()
+	return global_nsid ~= nil
 end
 
 return M

@@ -89,8 +89,42 @@ void vimficiency_apply_config();
 
 - **ffi.lua**: LuaJIT FFI bindings to C++ library
 - **session.lua**: Manages optimization sessions (captures start/end snapshots)
-- **key_tracking.lua**: Records user keypresses for comparison
+- **session_store.lua**: Manages session storage across three types (manual, time-based, key-count)
+- **key_tracking.lua**: Records user keypresses for comparison, filters non-motion mappings
 - **simulate.lua**: Lua-side motion simulation for validation
+
+### Key Session Filtering (key_tracking.lua)
+
+Key-count sessions record every keypress to enable retroactive analysis. However, non-motion keys (like leader mappings triggering commands) should not be recorded. The filtering system in `key_tracking.lua` handles this.
+
+**Detection mechanism:** When `vim.on_key` fires with `#typed > 1 && typed != key`, a multi-key mapping has fired. We inspect `maparg(typed)` to get the RHS and decide whether to filter.
+
+**What we CAN reliably filter:**
+
+| Pattern | Example | How Detected |
+|---------|---------|--------------|
+| Command-mode mappings | `<Space>w` → `:w<CR>` | RHS matches `^:` or `^<Cmd>` or `<C-u>:` |
+| Vimficiency commands | `<Space>te` → `:Vimfy end 4<CR>` | RHS contains "Vimficiency" or "Vimfy" |
+
+When filtered, we: (1) remove LHS keys from all sessions' `key_seq`, (2) remove sessions created by those LHS keypresses from `key_id_order`.
+
+**What we CANNOT reliably filter:**
+
+| Pattern | Example | Why Hard | Mitigation |
+|---------|---------|----------|------------|
+| Single-key → cmd | `Q` → `:q<CR>` | `#typed == 1`, no mapping detection triggers | Rare in practice |
+| Non-cmd mappings | `gx` → open URL | RHS doesn't enter command mode | Creates useless session, evicted by FIFO |
+| Aborted leader | `<Space>` then `<Esc>` | No mapping fires, can't detect abort | Extra session created |
+| Lua function RHS | `<Space>x` → `function()...end` | RHS is function ref, not inspectable string | Depends on what function does |
+
+**Potential future improvements (unexplored feasibility):**
+
+1. **User-configurable leader key** - If user specifies leader (e.g., `<Space>`), aggressively filter sequences starting with it
+2. **Pending state detection** - Check `vim.fn.state()` for typeahead to detect partial mappings
+3. **Time-based heuristic** - Keys pressed rapidly before command-mode entry likely part of mapping
+4. **Retroactive cleanup on mode change** - When entering command mode, remove recent sessions
+
+**Related:** Screen-line motions `gj`/`gk` are converted to buffer-line equivalents `j`/`k` in `session.lua` via `APPROXIMATE_MOTION_CONVERSIONS` since the optimizer cannot model screen-relative positions.
 
 ## Build Artifacts
 
@@ -139,17 +173,17 @@ The `TestUtils` class provides `TestFiles::load()` helper to read test files.
 - No insert mode operations
 - No visual mode
 
+## Session Invocation Modes
+
+Three ways to create optimization sessions, each with distinct aliasing (see `session_store.lua`):
+
+1. **Manual** (aliases: a-e, capacity: 5) - Explicit `:Vimfy start <alias>` / `:Vimfy end <alias>`
+2. **Time-based** (aliases: `.`, `..`, `...`, capacity: 5) - Auto-ends after configurable idle time (TODO: not yet implemented)
+3. **Key Count Back** (aliases: 1-N, capacity: configurable) - Rolling FIFO of sessions; creates 1 session per keystroke, evicts oldest when full. Enables retroactive analysis (`:Vimfy end 4` = "what's optimal from 4 keystrokes ago?"). Enable with `:Vimfy key on`.
+
+Memory bounded by storing only relevant line ranges (not full buffer).
+
 ## Future Architecture (see plan files)
-
-### Session Invocation Modes (invocation_plan.txt)
-
-Three ways to create optimization sessions, each with distinct aliasing:
-
-1. **Manual** (aliases: a-e, capacity: 5) - Explicit `VimficiencyStart <alias>` / `VimficiencyEnd <alias>`
-2. **Time-based** (aliases: `.`, `..`, `...`, capacity: 5) - Auto-ends after configurable idle time, one active at a time
-3. **Key Count Back** (aliases: 1-10, capacity: 10) - Rolling FIFO of sessions; creates 1 session per keystroke, evicts oldest when full. Enables retroactive analysis ("what's optimal from 3 keystrokes ago?")
-
-Sessions exceeding `MAX_SESSION_MOTION_LENGTH` auto-terminate. Memory bounded by storing only relevant line ranges (not full buffer).
 
 ### Insert Mode Optimization (insert_mode_plan.txt)
 

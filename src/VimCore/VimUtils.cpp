@@ -184,8 +184,17 @@ void VimUtils::motionParagraphNext(Position &pos,
   while (i < n && !isBlankLineStr(lines[i])) {
     i++;
   }
-  pos.line = min(i, n - 1);
-  pos.setCol(0);
+
+  if (i < n) {
+    // Found a blank line - go to it at column 0
+    pos.line = i;
+    pos.setCol(0);
+  } else {
+    // No blank line found - go to last character of last line
+    pos.line = n - 1;
+    int lastCol = std::max(0, (int)lines[pos.line].size() - 1);
+    pos.setCol(lastCol);
+  }
 }
 
 static bool isSentenceCloser(unsigned char c) {
