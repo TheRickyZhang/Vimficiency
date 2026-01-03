@@ -2,13 +2,12 @@
 
 #include <bits/stdc++.h>
 
+#include "PosKey.h"
 #include "RunningEffort.h"
 #include "Editor/Position.h"
 #include "Editor/Mode.h"
 #include "Editor/NavContext.h"
 
-
-using PosKey = std::pair<int, int>;
 
 // Entire simulated editor state (for now, only position+mode+effort).
 // You can later add: vector<string> lines; registers; etc.
@@ -45,7 +44,7 @@ public:
   }
 
   PosKey getKey() const {
-    return std::make_pair(pos.line, pos.col);
+    return PosKey(pos.line, pos.col);
   }
   Position getPos()                const { return pos; }
   Mode getMode()                   const { return mode; }

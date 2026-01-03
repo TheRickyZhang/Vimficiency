@@ -83,6 +83,8 @@ void vimficiency_apply_config();
 
 **Optimizer/BufferIndex**: Pre-indexes buffer for landing positions (word/WORD begin/end, paragraph, sentence) enabling O(log n) count motion lookup
 
+**Optimizer/Levenshtein**: Edit distance computation with prefix caching for A* heuristic (see below)
+
 **Utils/Debug.h**: Debug output (enabled with `VIMFICIENCY_DEBUG` CMake option, ON by default)
 
 ### Neovim Plugin (lua/vimficiency/)
@@ -182,6 +184,71 @@ Three ways to create optimization sessions, each with distinct aliasing (see `se
 3. **Key Count Back** (aliases: 1-N, capacity: configurable) - Rolling FIFO of sessions; creates 1 session per keystroke, evicts oldest when full. Enables retroactive analysis (`:Vimfy end 4` = "what's optimal from 4 keystrokes ago?"). Enable with `:Vimfy key on`.
 
 Memory bounded by storing only relevant line ranges (not full buffer).
+
+## Edit Optimizer Heuristic (Optimizer/Levenshtein.h)
+
+The edit optimizer uses A* search to find optimal Vim sequences for text transformations. The heuristic estimates "how far" the current buffer is from the goal buffer using Levenshtein edit distance.
+
+### Why Levenshtein?
+
+| Metric | Primitives | Vim mapping | Notes |
+|--------|-----------|-------------|-------|
+| **Levenshtein** | ins, del, sub | `i`/`a`, `x`, `r` | Substitute matches `r<char>` (2 keys) |
+| LCS-based | ins, del only | `i`/`a`, `x` | Treats `a→b` as delete+insert (cost 2) |
+| Damerau-Levenshtein | + transpose | + `xp` | Transpose is `xp` (2 keys anyway) |
+| Hamming | substitute only | `r` | Requires equal length - rarely applicable |
+
+Levenshtein is ideal because its substitution primitive directly maps to Vim's `r<char>` command.
+
+### Why it works for A*
+
+In A* with `priority = g(n) + h(n)`:
+- After `dd` (cost 2): g += 2, h -= ~10 (if line had 10 chars) → **net: -8**
+- After `x` (cost 1): g += 1, h -= 1 → **net: 0**
+
+Bulk operations like `dd`, `cw`, `dw` make large dents in edit distance, so A* naturally explores them first. This is exactly what we want.
+
+### Admissibility
+
+For A* to find optimal solutions, h(n) must never overestimate actual cost:
+- Levenshtein("a", "b") = 1
+- Vim cost: at least 2 (`ra`)
+- Since Levenshtein ≤ Vim cost, the heuristic is admissible ✓
+
+### Performance: Prefix Caching
+
+Naive approach: O(c²) Levenshtein per state × O(c²) states = O(c⁴) where c ≈ 50 chars.
+
+Key insight: During A* search, consecutive states share prefixes (edits are local):
+```
+State S:  "hello world"
+State S': "hello earth"  (edit at position 6)
+          ^^^^^^ shared prefix - DP rows are identical
+```
+
+The `Levenshtein` class caches DP rows by prefix hash. For an edit at position p:
+- Reuse cached rows 0..p-1
+- Only compute rows p..n
+- Effective complexity: O(suffix_length × goal_length) per query
+
+### Multi-line Buffer Handling
+
+Buffers are flattened to single strings with `\n` characters:
+```cpp
+flattenLines({"aaa", "bbb", "ccc"}) → "aaa\nbbb\nccc"
+```
+
+This correctly models Vim operations on newlines:
+- `J`: Delete newline (join lines)
+- `o`/`O`: Insert newline (open line)
+- `dd`: Delete line including newline
+
+Per-line distance would require complex alignment logic when line counts differ.
+
+### Future Improvements (if needed)
+
+- **Ukkonen's algorithm**: O(nd) where d = edit distance. Faster when d is small, which is common in A* (we prioritize close-to-goal states).
+- **Myers' bit-vector**: O(nm/64) using SIMD-like bit parallelism. Requires goal length ≤ 64 for single-word optimization.
 
 ## Future Architecture (see plan files)
 

@@ -17,7 +17,14 @@ If we start at a, and do: a.<Esc>hrghrohrd, we end at 9, (best[a][9]).
 
 This involves a multi-source A* search from all starting positions, which include an expanded search state for edit operations / insert mode transitions. Some start-end combinations might be difficult to reach, so we can limit the search to only find results cheaper than the best result + some constant. 
 
-Hopefully, this search is on the order of O(n^2), where n is the length of the edit distance, which I estimate will support reasonable edit chunks of up to 30. But we will need to benchmark this later.
+We only need to consider positions where col == targetCol, as pretty much all edit motions reset targetCol to col.
+
+Our new heuristic for distance to goal will be based on Levenshtein distance for the concatenated current/end states, including new lines characters. Since the end string is fixed, we can cache prefixes from the current string, which will hopefully work well because with our optimization goal, most later candidate states will have the same prefix changes as earlier explored ones. We estimate amortized that distance is O(n) per state.
+
+The search space is O(n^2), so our overall complexity estimate is O(n^3) with high constant factor, which I estimate is safe for n <= 50.
+
+But we will need to benchmark this later, especially as an optimize() involves multiple edit pre computations.
+
 
 I am a bit unsure with whether to include boundaries, though. For instance, if I had:
 dog cat -> cat cat:

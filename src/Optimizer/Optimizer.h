@@ -1,20 +1,15 @@
 #pragma once
 
-#include <bits/stdc++.h>
 #include <cmath>
 
 #include "Config.h"
+#include "Result.h"
 #include "ImpliedExclusions.h"
 #include "Editor/NavContext.h"
 #include "State/State.h"
 #include "Keyboard/MotionToKeys.h"
 
 // Should this be placed here?
-struct Result {
-  std::string sequence;
-  double keyCost;
-  Result(std::string s, double c) : sequence(s), keyCost(c) {}
-};
 
 std::ostream& operator<<(std::ostream& os, Result r);
 

@@ -4,8 +4,9 @@ Current priority stack:
 - Real-time, automatic session spawning            *****
 - Verify the key count one
 
-- Update plans with more specific details (multi-source search, heuristics to stop early)
-
+- Fix $; should set targetCol to infinity.
+- Distinguish between USER_EXPLORE_FACTOR and ABSOLUTE_EXPLORE_FACTOR (stop at minimum of the results with these) 
+- Change vector<string> to lines everywhere you can
 
 - simple symbols: *, #, %                          ***
 - Search, n/N (heuristic best-matching prefix)     ***

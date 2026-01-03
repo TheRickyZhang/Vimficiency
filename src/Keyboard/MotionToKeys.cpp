@@ -57,6 +57,13 @@ const MotionToKeys EXPLORABLE_MOTIONS = combineAll({
     cref(scrolls)
 });
 
+// =============================================================================
+// EDIT_EXPLORABLE_MOTIONS - Motions directly explorable in edit optimizer search
+// =============================================================================
+// These motions can be applied without additional context (no target char needed)
+const MotionToKeys EDIT_EXPLORABLE_MOTIONS = combineAll({
+  cref(arrows)
+});
 
 // =============================================================================
 // CHARACTER_FIND_MOTIONS - Motions requiring special handling

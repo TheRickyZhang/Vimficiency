@@ -58,6 +58,15 @@ const MotionToKeys scrolls = {
   {"<C-d>", {Key::Key_Ctrl, Key::Key_D}},    // half-page down
   {"<C-u>", {Key::Key_Ctrl, Key::Key_U}},    // half-page up
 };
+
+// Start edit motions
+
+const MotionToKeys arrows = {
+  {"<Up>", {Key::Key_Up}},
+  {"<Down>", {Key::Key_Down}},
+  {"<Left>", {Key::Key_Left}},
+  {"<Right>", {Key::Key_Right}},
+};
 // -------------------- END Vim Semantic Building Blocks --------------------
 
 

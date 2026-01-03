@@ -1,6 +1,7 @@
 #include "ImpliedExclusions.h"
 #include "Optimizer.h"
 #include "BufferIndex.h"
+#include "State/PosKey.h"
 #include "Editor/NavContext.h"
 #include "Keyboard/KeyboardModel.h"
 #include "Keyboard/MotionToKeys.h"
@@ -50,8 +51,8 @@ vector<Result> Optimizer::optimizeMovement(
   // debug("EXPLORE_FACTOR:", EXPLORE_FACTOR);
 
   vector<Result> res;
-  map<PosKey, double> costMap;
-  const PosKey goalKey = {endPos.line, endPos.col};
+  unordered_map<PosKey, double, PosKeyHash> costMap;
+  const PosKey goalKey(endPos.line, endPos.col);
 
   priority_queue<State, vector<State>, greater<State>> pq;
 
@@ -62,7 +63,7 @@ vector<Result> Optimizer::optimizeMovement(
     }
     // debug("curr:", currentCost, "new:", newCost);
     double newCost = newState.getCost();
-    PosKey newKey = newState.getKey();
+    const PosKey newKey = newState.getKey();
     auto it = costMap.find(newKey);
     if (it == costMap.end()) {
       // Because we want multiple results, do not insert a best value for the goal.
@@ -140,6 +141,7 @@ vector<Result> Optimizer::optimizeMovement(
     bool forward = pos < endPos;
 
     if (isGoal) {
+      // TODO: replace with root level call, nothing should expose runningEffort
       res.emplace_back(s.getMotionSequence(), s.getRunningEffort().getEffort(config));
       if (res.size() >= MAX_RESULT_COUNT) {
         debug("maximum result count reached");
