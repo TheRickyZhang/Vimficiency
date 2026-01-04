@@ -114,7 +114,7 @@ TEST(LevenshteinTest, CachingProducesSameResults) {
   int d3 = lev.distance("hello earth");
 
   EXPECT_EQ(d1, d3);  // Same query should give same result
-  EXPECT_EQ(d1, 5);   // "world" -> "earth" = 5 edits
+  EXPECT_EQ(d1, 4);   // "world" -> "earth" = 4 edits (w↔e, o↔a, l↔t, d↔h)
   EXPECT_EQ(d2, 5);   // "world" -> "venus" = 5 edits
 }
 

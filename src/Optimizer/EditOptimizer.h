@@ -6,6 +6,8 @@
 #include "Config.h"
 #include "Result.h"
 #include "Levenshtein.h"
+#include "ReachLevel.h"
+
 #include "Utils/Lines.h"
 #include "Keyboard/MotionToKeys.h"
 #include "State/EditState.h"
@@ -48,8 +50,8 @@ struct EditOptimizer {
   EditResult optimizeEdit(
     const Lines& beginLines,
     const Lines& endLines,
-    // bool canDeleteBackFirstLine, // d^ at first line?
-    // bool canDeleteForwardLastLine, // D at last line?
+    const ReachLevel beginReachLevel,
+    const ReachLevel endReachLevel,
     const MotionToKeys& editMotionToKeys = EDIT_EXPLORABLE_MOTIONS
   );
 

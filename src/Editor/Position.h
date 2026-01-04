@@ -1,4 +1,5 @@
 #pragma once
+#include <utility>
 
 struct Position {
   int line = 0;
@@ -27,5 +28,10 @@ struct Position {
   }
   bool operator>(const Position& other) const {
     return other < *this;
+  }
+  void swap(Position& other) noexcept {
+    std::swap(line, other.line);
+    std::swap(col, other.col);
+    std::swap(targetCol, other.targetCol);
   }
 };

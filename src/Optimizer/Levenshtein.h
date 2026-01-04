@@ -23,6 +23,7 @@ public:
   // Compute Levenshtein distance from source to goal.
   // Uses cached DP rows for shared prefixes when available.
   int distance(const std::string& source) const;
+  int distance(const std::vector<std::string>& lines) const;
 
   // Clear the prefix cache (e.g., when starting a new search)
   void clearCache();

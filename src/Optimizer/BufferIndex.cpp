@@ -1,9 +1,10 @@
 #include "BufferIndex.h"
 #include "VimCore/VimUtils.h"
+#include "VimCore/VimMovementUtils.h"
 #include <algorithm>
 #include <assert.h>
 
-using namespace CharClass;
+using namespace VimUtils;
 
 BufferIndex::BufferIndex(const std::vector<std::string>& buffer) {
   if (buffer.empty()) return;

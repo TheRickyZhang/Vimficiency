@@ -6,13 +6,13 @@
 #include <vector>
 
 #include "KeyboardModel.h"
+#include "CharToKeys.h"
 #include "SequenceTokenizer.h"
 #include "Optimizer/BufferIndex.h"  // for CountableMotionPair, LandingType
 
 // std::less<> enables transparent comparison - allows lookup with string_view
 // without allocating a temporary std::string
 using MotionToKeys = std::map<std::string, KeySequence, std::less<>>;
-using CharToKeys = std::map<char, KeySequence>;
 
 // =============================================================================
 // Motion Maps

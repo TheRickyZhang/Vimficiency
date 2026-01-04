@@ -30,3 +30,4 @@ Interesting (maybe?) things that have come up:
 - Map<T> uses std::less<T> as the comparator by default, which can only take in T. But if we pass std::less<>, which is "transparent", now we can have anything comparable to T, like string vs string_view.
 - You can't store references in initializer list, but can use a reference wrapper (basically use * as underlying, with & interface) to get around.
 - Difference in the way types are returned depending on if simple and <= 16 bytes: use register vs pass hidden pointer
+- Use a hash function to change long if/else chain to switch case

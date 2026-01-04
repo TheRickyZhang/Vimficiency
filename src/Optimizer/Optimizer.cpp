@@ -1,12 +1,15 @@
-#include "ImpliedExclusions.h"
 #include "Optimizer.h"
+
+#include "BoundaryFlags.h"
 #include "BufferIndex.h"
+#include "ImpliedExclusions.h"
+#include "EditOptimizer.h"
 #include "State/PosKey.h"
 #include "Editor/NavContext.h"
 #include "Keyboard/KeyboardModel.h"
 #include "Keyboard/MotionToKeys.h"
 #include "Utils/Debug.h"
-#include "VimCore/VimUtils.h" // TODO This is probably ugly include, move up?
+#include "VimCore/VimMovementUtils.h" // TODO This is probably ugly include, move up?
 
 using namespace std;
 
@@ -189,13 +192,13 @@ vector<Result> Optimizer::optimizeMovement(
       // F motions
       if(forward){
         handleFMotions(
-          VimUtils::generateFMotions<true>(pos.col, endPos.col, lines[pos.line], F_MOTION_THRESHOLD),
+          VimMovementUtils::generateFMotions<true>(pos.col, endPos.col, lines[pos.line], F_MOTION_THRESHOLD),
           'f', ';'
         );
       }
       else {
         handleFMotions(
-          VimUtils::generateFMotions<false>(pos.col, endPos.col, lines[pos.line], F_MOTION_THRESHOLD),
+          VimMovementUtils::generateFMotions<false>(pos.col, endPos.col, lines[pos.line], F_MOTION_THRESHOLD),
           'F', ';'
         );
       }
@@ -246,3 +249,74 @@ vector<Result> Optimizer::optimizeMovement(
   }
   return res;
 }
+
+
+vector<Result> Optimizer::optimizeChanges(
+  const vector<string>& startLines,
+  const Position startPos,
+  const vector<string>& endLines,
+  const Position endPos,
+  const NavContext& navigationContext,
+  const ImpliedExclusions& impliedExclusions,
+  const MotionToKeys& rawMotionToKeys,
+  const EditToKeys& editToKeys
+) {
+  // Ensures proper hashing later, and 10 is buffer in case we insert more text, then delete
+  for(const string& s : startLines) { assert(s.size() < MAX_LINE_LENGTH-10); }
+  for(const string& s : endLines) { assert(s.size() < MAX_LINE_LENGTH-10); }
+
+  MotionToKeys motionToKeys = rawMotionToKeys;
+  if(impliedExclusions.exclude_G) {
+    motionToKeys.erase("G");
+  }
+  if(impliedExclusions.exclude_gg) {
+    motionToKeys.erase("gg");
+  }
+
+  // DiffSTate {
+  //  BoundaryFlags boundaryFlags;
+  //  Position changeBegin;
+  //  Position changeEnd;
+  //  vector<string> startLines;
+  //  vector<string> endLines;
+  //  
+  // }
+
+  // Basically retrieve results from "git diff".
+  vector<DiffState> diffStates = Myers::calculate(startLines, endLines);
+  int d = diffStates.size();
+
+  // Note that this is 1-shifted, has size d+1
+  vector<vector<string>> linesAfterNEdits(d+1);
+  linesAfterNEdits[0] = startLines;
+  for(int i = 1; i <= d; i++) {
+    linesAfterNEdits[i] = apply(diffStates[i-1], linesAfterNEdits[i-1]);
+  }
+
+  vector<EditResult> editResults = solveAll(diffStates);
+
+  auto posHash = [this](Position p) {
+    return p.col * MAX_LINE_LENGTH + p.line;
+  };
+  vector<Position> toDiffStateIndex(d * MAX_LINE_LENGTH);
+  // Want toDiffStateIndex[hash(pos)] -> tell us which editResult index the current position is at, or -1 if none
+  //
+  //
+  
+  
+  // TODO:
+  return {}; 
+}
+
+
+
+
+
+
+
+
+
+
+
+
+

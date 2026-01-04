@@ -1,0 +1,41 @@
+Hm I am not sure that I can thoroughly undrestand and convey the logic for this though. I think an example will help. I
+willprovide
+the example and tests that model my expected behavior; you then try to ensure implnemteatino logic is correct.\
+\
+Let's say I have text:\
+abc def.gh i
+The EDIT BOUNDARY is:\
+bc def.g
+which means that I have detected this as the git-style change I want to make, and replace this with something else.\
+\
+I think these are the main boundary types: char, wordedge, wordpast, WORDedge, WORDpast, line.\
+\\
+These are my main motions that reprecsent the right boundary types:\
+x, dw, dge, dW, dgE, D
+Let's say my normal mode cursor is at g.\
+I can only do: x\
+If my cursor is at second .
+I can only do: x, dw
+If my cursor is at f, e, d:\
+I can only do: x, dw, de\
+If my cursor is at space, c:\
+I can only do: x, dw, de, dW\
+If my cursor is at b:\
+I can only do: x, dw, de, dW, dE\
+And D can never be userd, as it will always remove i.\
+\
+My vague plan for how to calculate this fast, is to first analyze the edit boundary for the current reach amount. ab are in the same
+word, so I cannot use backwards word motions from anywhere in the first word of my edit boundary. gh are also same word, so I cannot
+use forward word motions anywhere from last od of my edig boundary.\
+\\
+Note that in this case the edi bonudary is exactly the bc def.g from the original text, but if we have something like:\
+xy z\
+The same principles shold still apply, since what's important is the text connectedness across layers:\
+from z I can only do x\
+From space, y I can only do x, dw\
+from x I can only do x, dw, de, dW
+Knowing that, and my current cursor position and edit text, I should be able to deduce which contiguous range of boundary types are
+feasible. But the exact way to do this is very hard to get right; see if you have an idea for implementation, and justify how it works
+
+
+Original text: abc def.gh i

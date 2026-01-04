@@ -8,28 +8,33 @@
 #include "Utils/Lines.h"
 
 struct EditStateKey {
-  Lines lines;
+  SharedLines lines;  // Shared pointer for efficient comparison
   int line;
   int col;
   Mode mode;
   int startIndex;
-  
-  EditStateKey(const Lines& lines, int line, int col, Mode mode, int startIndex) :
-    lines(lines), line(line), col(col), mode(mode), startIndex(startIndex) {}
+
+  EditStateKey(SharedLines lines, int line, int col, Mode mode, int startIndex) :
+    lines(std::move(lines)), line(line), col(col), mode(mode), startIndex(startIndex) {}
 
   bool operator==(const EditStateKey &other) const {
-    return lines == other.lines && line == other.line && col == other.col &&
-           mode == other.mode;
+    // Fast path: same pointer means same content
+    if (lines == other.lines) {
+      return line == other.line && col == other.col &&
+             mode == other.mode && startIndex == other.startIndex;
+    }
+    // Deep compare only if pointers differ
+    return *lines == *other.lines && line == other.line && col == other.col &&
+           mode == other.mode && startIndex == other.startIndex;
   }
 };
 
-// Must depend on all core state of EditState
+// Hash by pointer for O(1), deep equality handles collisions
 struct EditStateKeyHash {
   size_t operator()(const EditStateKey& key) const {
     size_t h = 0;
-    for (const auto& line : key.lines) {
-      combine(h, line);
-    }
+    // Hash the pointer address - fast O(1)
+    combine(h, reinterpret_cast<uintptr_t>(key.lines.get()));
     combine(h, key.line);
     combine(h, key.col);
     combine(h, static_cast<int>(key.mode));
@@ -45,10 +50,11 @@ private:
 };
 
 // Entire simulated editor state (for now, only position+mode+effort).
-// You can later add: vector<string> lines; registers; etc.
+// Uses SharedLines for copy-on-write: motions share buffer (O(1)),
+// edits trigger copy (O(n)).
 class EditState {
   // Visible, core editor state
-  Lines lines;
+  SharedLines lines;  // Shared for efficient motion exploration
   Position pos;
   Mode mode;
 
@@ -65,10 +71,19 @@ class EditState {
   RunningEffort runningEffort;
 
 public:
-  EditState(const Lines &lines, Position pos, Mode mode,
+  // Construct from existing SharedLines (shares pointer)
+  EditState(SharedLines lines, Position pos, Mode mode,
             RunningEffort runningEffort, int startIndex,
             double effort = 0.0, double cost = 0.0)
-      : lines(lines), pos(pos), mode(mode),
+      : lines(std::move(lines)), pos(pos), mode(mode),
+        runningEffort(runningEffort), startIndex(startIndex),
+        effort(effort), cost(cost) {}
+
+  // Construct from Lines (creates new shared pointer)
+  EditState(const Lines &linesVal, Position pos, Mode mode,
+            RunningEffort runningEffort, int startIndex,
+            double effort = 0.0, double cost = 0.0)
+      : lines(std::make_shared<const Lines>(linesVal)), pos(pos), mode(mode),
         runningEffort(runningEffort), startIndex(startIndex),
         effort(effort), cost(cost) {}
 
@@ -78,7 +93,13 @@ public:
   EditStateKey getKey() const {
     return EditStateKey(lines, pos.line, pos.col, mode, startIndex);
   }
-  Lines getLines() const { return lines; }
+
+  // Returns const reference to avoid copying
+  const Lines& getLines() const { return *lines; }
+
+  // Returns the shared pointer (for sharing with child states)
+  SharedLines getSharedLines() const { return lines; }
+
   Position getPos() const { return pos; }
   Mode getMode() const { return mode; }
   std::string getMotionSequence() const { return motionSequence; }
@@ -88,12 +109,17 @@ public:
   RunningEffort getRunningEffort() const { return runningEffort; }
 
   void updateCost(double newCost);
-  // In most cases, to update, do in this order:
-  // applyMotion
-  // updateEffort
 
-  // Must pass context to brute-force compute
+  // Motion: modifies pos/mode, shares lines (O(1))
   void applySingleMotion(std::string motion, const KeySequence& keySequence);
-  
+
+  // Edit: copies lines if needed (copy-on-write), then mutates
+  // Returns mutable reference to lines for mutation
+  Lines& copyLinesForMutation() {
+    auto mutableLines = std::make_shared<Lines>(*lines);
+    lines = mutableLines;
+    return const_cast<Lines&>(*lines);
+  }
+
   void updateEffort(const KeySequence& keySequence, const Config& config);
 };

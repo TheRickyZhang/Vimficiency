@@ -1,0 +1,90 @@
+Original text: abc def.gh i
+Edit boundary: bc def.g, ie everything between a and h
+Goal: determine which normal mode actions can be done that don't modify a or h
+
+forward edits from least -> most affected are: x, dw, de, dW, dE, D
+
+At char g:
+x
+abc def.h i
+de
+abc def. i (fail)
+
+At char .:
+x
+abc defgh i
+dw
+abc defgh i
+de
+abc def i (fail)
+
+At char f:
+x
+abc de.gh i
+dw
+abc de.gh i
+de
+abc degh i
+dW
+abc dei (fail)
+
+At char <space>:
+x
+abcdef.gh i
+dw
+abcdef.gh i
+de
+abc.gh i
+dW
+abcdef.gh i
+dE
+abc i (fail)
+
+At char b:
+x
+ac def.gh i
+dw
+adef.gh i
+de
+a def.gh i
+dW
+adef.gh i
+dE
+a def.gh i
+D
+a (fail)
+
+
+
+
+Current text: ax yzh i (boundary is still between a and h)
+Edit boundary: x yz, ie everything between a and h
+Goal: determine which normal mode actions can be done that don't modify a or h
+
+At char z:
+x
+ax yh i
+dw
+ax yi (fail)
+
+At char y:
+x
+ax zh i
+dw
+ax i (fail)
+
+At char space:
+x
+axyzh i
+dw
+axyzh i
+de
+ax i (fail)
+
+At char x:
+x
+a yzh i
+dw
+ayzh i
+de
+a i (fail)

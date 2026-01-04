@@ -1,5 +1,6 @@
 #include "EditOptimizer.h"
 
+#include "Keyboard/EditToKeys.h"
 #include "Optimizer/Levenshtein.h"
 #include "State/PosKey.h"
 
@@ -43,8 +44,7 @@ EditOptimizer::heuristic(const EditState &s,
 // that is not correct with the result starting from a different targetCol
 EditResult
 EditOptimizer::optimizeEdit(const Lines &beginLines, const Lines &endLines,
-                            // bool canDeleteBackFirstLine,   // d^ at first line?
-                            // bool canDeleteForwardLastLine, // D at last line?
+                            const ReachLevel beginReachLevel, const ReachLevel endReachLevel,
                             const MotionToKeys &editMotionToKeys) {
   Levenshtein editDistanceCalculator(endLines.flatten());
 
@@ -67,7 +67,8 @@ EditOptimizer::optimizeEdit(const Lines &beginLines, const Lines &endLines,
   // double userEffort = getEffort(userSequence, config);
   // debug("user effort for sequence", userSequence, "is", userEffort);
 
-  map<PosKey, int> positionToIndex;
+  map<PosKey, int> beginPositionToIndex;
+  map<PosKey, int> endPositionToIndex;
   unordered_map<EditStateKey, double, EditStateKeyHash> costMap;
 
   priority_queue<EditState, vector<EditState>, greater<EditState>> pq;
@@ -96,21 +97,32 @@ EditOptimizer::optimizeEdit(const Lines &beginLines, const Lines &endLines,
         // else { debug(motion, "is worse"); }
       };
 
-  int it = 0;
+  // Build position-to-index maps for begin and end lines
+  // Create single SharedLines to share among all initial states
+  SharedLines sharedBeginLines = std::make_shared<const Lines>(beginLines);
+
+  int beginIt = 0;
   for (int i = 0; i < n; i++) {
-    for (int j = 0; j < beginLines[i].size(); j++) {
-      EditState state(beginLines, Position(i, j), Mode::Normal, RunningEffort(),
-                      it);
+    for (int j = 0; j < (int)beginLines[i].size(); j++) {
+      EditState state(sharedBeginLines, Position(i, j), Mode::Normal, RunningEffort(),
+                      beginIt);
       pq.push(state);
-      positionToIndex[PosKey(i, j)] = it++;
+      beginPositionToIndex[PosKey(i, j)] = beginIt++;
       costMap[state.getKey()] = 0;
+    }
+  }
+
+  int endIt = 0;
+  for (int i = 0; i < (int)endLines.size(); i++) {
+    for (int j = 0; j < (int)endLines[i].size(); j++) {
+      endPositionToIndex[PosKey(i, j)] = endIt++;
     }
   }
 
   while (!pq.empty()) {
     EditState s = pq.top();
     pq.pop();
-    Lines lines = s.getLines();
+    const Lines& lines = s.getLines();  // const ref, no copy
     Position pos = s.getPos();
     Mode mode = s.getMode();
     double cost = s.getCost();
@@ -133,17 +145,16 @@ EditOptimizer::optimizeEdit(const Lines &beginLines, const Lines &endLines,
 
     if (isDone) {
       int i = s.getStartIndex();
-      int j = positionToIndex[PosKey(pos)];
+      int j = endPositionToIndex[PosKey(pos)];
       if(res.adj[i][j].isValid()) {
-        duplicatedFound++; 
+        duplicatedFound++;
         duplicatedMessages.push_back("found " + to_string(i) + "->" + to_string(j) + ": " + s.getMotionSequence());
       } else {
         res.adj[i][j] = Result(s.getMotionSequence(), cost);
       }
-      // Update leastCostFound
-      if (leastCostFound == NOT_FOUND) {
-        leastCostFound = cost;
-      }
+      // Update leastCostFound. A* guarantees first goal found has minimum f-value,
+      // and at goal h=0, so f=g=cost. Using min() is defensive.
+      leastCostFound = min(leastCostFound, cost);
     } else {
       // Prune early if this state is outdated. It is guaranteed to exist in the
       // map
@@ -165,6 +176,100 @@ EditOptimizer::optimizeEdit(const Lines &beginLines, const Lines &endLines,
       exploreNewState(std::move(newState));
     };
 
+    using namespace EditCategory;
+
+    // Derive boolean constraints from ReachLevel
+    bool canDeleteBackOneWord = beginReachLevel >= ReachLevel::WORD;
+    bool canDeleteBackOneWORD = beginReachLevel >= ReachLevel::BIG_WORD;
+    bool canDeleteBackFirstLine = beginReachLevel >= ReachLevel::LINE;
+    bool canDeleteForwardOneWord = endReachLevel >= ReachLevel::WORD;
+    bool canDeleteForwardOneWORD = endReachLevel >= ReachLevel::BIG_WORD;
+    bool canDeleteForwardLastLine = endReachLevel >= ReachLevel::LINE;
+
+    if (mode == Mode::Insert) {
+      // Insert mode: explore based on constraints
+      for (auto [motion, keys] : Insert::NEUTRAL) {
+        exploreMotion(s, motion, keys);
+      }
+      for (auto [motion, keys] : Insert::CHAR_RIGHT) {
+        exploreMotion(s, motion, keys);
+      }
+      for (auto [motion, keys] : Insert::CHAR_LEFT) {
+        exploreMotion(s, motion, keys);
+      }
+      if (canDeleteBackOneWord) {
+        for (auto [motion, keys] : Insert::WORD_LEFT) {
+          exploreMotion(s, motion, keys);
+        }
+      }
+      if (canDeleteBackFirstLine) {
+        for (auto [motion, keys] : Insert::LINE_LEFT) {
+          exploreMotion(s, motion, keys);
+        }
+      }
+    } else {
+      // Normal mode: explore based on constraints
+      // Always available: CHAR_LEFT, CHAR_RIGHT
+      for (auto [motion, keys] : Normal::CHAR_LEFT) {
+        exploreMotion(s, motion, keys);
+      }
+      for (auto [motion, keys] : Normal::CHAR_RIGHT) {
+        exploreMotion(s, motion, keys);
+      }
+
+      // Word-level deletions (left)
+      if (canDeleteBackOneWord) {
+        for (auto [motion, keys] : Normal::WORD_LEFT) {
+          exploreMotion(s, motion, keys);
+        }
+        for (auto [motion, keys] : Normal::WORD_END_RIGHT) {
+          exploreMotion(s, motion, keys);
+        }
+      }
+      if (canDeleteBackOneWORD) {
+        for (auto [motion, keys] : Normal::BIG_WORD_LEFT) {
+          exploreMotion(s, motion, keys);
+        }
+        for (auto [motion, keys] : Normal::BIG_WORD_END_RIGHT) {
+          exploreMotion(s, motion, keys);
+        }
+      }
+
+      // Word-level deletions (right)
+      if (canDeleteForwardOneWord) {
+        for (auto [motion, keys] : Normal::WORD_RIGHT) {
+          exploreMotion(s, motion, keys);
+        }
+      }
+      if (canDeleteForwardOneWORD) {
+        for (auto [motion, keys] : Normal::BIG_WORD_RIGHT) {
+          exploreMotion(s, motion, keys);
+        }
+      }
+
+
+      // Full line: only if both line boundaries are at edit region
+      if (canDeleteBackFirstLine && canDeleteForwardLastLine) {
+        for (auto [motion, keys] : Normal::FULL_LINE) {
+          exploreMotion(s, motion, keys);
+        }
+      }
+
+      // Structural: o requires not last line, O requires not first line
+      int numLines = static_cast<int>(lines.size());
+      if (pos.line > 0) {
+        for (auto [motion, keys] : Normal::STRUCTURAL_UP) {
+          exploreMotion(s, motion, keys);
+        }
+      }
+      if (pos.line < numLines - 1) {
+        for (auto [motion, keys] : Normal::STRUCTURAL_DOWN) {
+          exploreMotion(s, motion, keys);
+        }
+      }
+    }
+
+    // Also explore passed-in motion-to-keys (for arrow keys, etc.)
     for (auto [motion, keys] : editMotionToKeys) {
       exploreMotion(s, motion, keys);
     }

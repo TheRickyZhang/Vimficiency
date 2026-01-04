@@ -2,7 +2,7 @@
 using namespace std;
 
 #include "MotionToKeys.h"
-#include "MotionToKeysBuildingBlocks.h"
+#include "MotionToKeysPrimitives.h"
 #include "Utils/Debug.h"
 
 vector<string> getCountableMotions(const vector<CountableMotionPair> firstVec, const vector<CountableMotionPair> secondVec) {
@@ -92,16 +92,7 @@ static MotionToKeys buildAllMotions() {
 
 const MotionToKeys ALL_MOTIONS = buildAllMotions();
 
-// =============================================================================
-// CHAR_TO_KEYS - Single character to KeySequence mapping
-// =============================================================================
-// Used for f/F/t/T motion targets
-const CharToKeys CHAR_TO_KEYS = combineAllToCharKeySeq({
-  cref(letters),
-  cref(digits),
-  cref(whitespace),
-  cref(allSingleCharPunctuationAndSymbols),
-});
+// CHAR_TO_KEYS is now defined in CharToKeys.cpp
 
 const vector<CountableMotionPair> COUNT_SEARCHABLE_MOTIONS_LINE = {
   {"w",  "b",  LandingType::WordBegin},

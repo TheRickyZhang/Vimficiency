@@ -11,13 +11,16 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 add_executable(vimficiency_tests
-  OptimizerTest.cpp
-  MotionTest.cpp
+  BackwardReachTest.cpp
   ConfigurationTest.cpp
   CountMotionsTest.cpp
   DebugSequenceTests.cpp
   ErrorHandlingTest.cpp
+  ForwardReachTest.cpp
+  HashCollisionTest.cpp
   LevenshteinTest.cpp
+  MotionTest.cpp
+  OptimizerTest.cpp
   TestUtils.cpp
 )
 

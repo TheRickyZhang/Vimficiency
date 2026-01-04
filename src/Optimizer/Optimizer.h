@@ -8,6 +8,7 @@
 #include "Editor/NavContext.h"
 #include "State/State.h"
 #include "Keyboard/MotionToKeys.h"
+#include "Keyboard/EditToKeys.h"
 
 // Should this be placed here?
 
@@ -22,6 +23,7 @@ struct Optimizer {
   const double EXPLORE_FACTOR;
   
   const int F_MOTION_THRESHOLD = 2;
+  const int MAX_LINE_LENGTH = 100;
 
   Optimizer(const Config& config,
             int max_result_count = 5,
@@ -42,8 +44,11 @@ struct Optimizer {
     return COST_WEIGHT * s.getEffort() + costToGoal(s.getPos(), goal);
   }
 
-  // vector<string> optimizeMovement(const vector<string>& lines, const Position& start, const Position& end);
 
+  // n = characters in lines, m = total edit boundary length, m_i = length of edit i.
+
+  // For movement only. Builds index for faster movement computation.
+  // ~ O(n^2)
   std::vector<Result> optimizeMovement(
     // Core information
     const std::vector<std::string>& lines,
@@ -55,7 +60,21 @@ struct Optimizer {
     NavContext& navigationContext,
 
     // What impacts our universe of exploration options
-    const ImpliedExclusions& ImpliedExclusions,
+    const ImpliedExclusions& impliedExclusions = ImpliedExclusions(),
     const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS
+  );
+
+  // If start/end lines differ, pre-compute change transitions, then do movement search with them
+  // Much slower; ~ O(n^2) + Σ (m_i)^3, higher constant factor.
+  std::vector<Result> optimizeChanges(
+    const std::vector<std::string>& startLines,
+    const Position startPos,
+    const std::vector<std::string>& endLines,
+    const Position endPos,
+
+    const NavContext& navigationContext,
+    const ImpliedExclusions& impliedExclusions = ImpliedExclusions(),
+    const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS,
+    const EditToKeys& editToKeys = EDIT_EXPLORABLE_MOTIONS
   );
 };

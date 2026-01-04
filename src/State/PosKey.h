@@ -7,7 +7,7 @@ struct PosKey {
   int line;
   int col;
   PosKey(int line, int col) : line(line), col(col) {};
-  PosKey(const Position& pos) : line(pos.line), col(pos.line) {};
+  PosKey(const Position& pos) : line(pos.line), col(pos.col) {};
 
   bool operator==(const PosKey& other) const = default; 
   bool operator<(const PosKey& other) const {

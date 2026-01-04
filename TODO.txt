@@ -8,6 +8,16 @@ Current priority stack:
 - Distinguish between USER_EXPLORE_FACTOR and ABSOLUTE_EXPLORE_FACTOR (stop at minimum of the results with these) 
 - Change vector<string> to lines everywhere you can
 
+- Be careful: handling normal vs insert mode "pos" with backspace/delete, x/X.
+Normal
+ 0 1 2 3 4
+0 1 2 3 4
+Insert
+
+If we are searching 0-4 normal, our insert search is 0-4 BECAUSE our normal is already extended doing [l, r) (don't want to delete that 4th character itself).
+So don't do X for i=0, x for i=n-1, or <Backspace> for i=0, or <Delete> for i=n-1.
+Symmetry maintained!
+
 - simple symbols: *, #, %                          ***
 - Search, n/N (heuristic best-matching prefix)     ***
 - Operator motions                                 *****
