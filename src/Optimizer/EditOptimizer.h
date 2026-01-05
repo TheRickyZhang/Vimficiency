@@ -6,15 +6,16 @@
 #include "Config.h"
 #include "Result.h"
 #include "Levenshtein.h"
-#include "ReachLevel.h"
+#include "EditBoundary.h"
 
 #include "Utils/Lines.h"
-#include "Keyboard/MotionToKeys.h"
 #include "State/EditState.h"
 
 struct EditResult {
+  int n;
+  int m;
   std::vector<std::vector<Result>> adj;
-  EditResult(int n, int m) {
+  EditResult(int n, int m) : n(n), m(m) {
     // Because of SSO this isn't too expensive. We'll see how dense the results generally are later.
     adj = std::vector<std::vector<Result>>(n, std::vector<Result>(m, Result("", INT_MAX)));
   }
@@ -50,9 +51,7 @@ struct EditOptimizer {
   EditResult optimizeEdit(
     const Lines& beginLines,
     const Lines& endLines,
-    const ReachLevel beginReachLevel,
-    const ReachLevel endReachLevel,
-    const MotionToKeys& editMotionToKeys = EDIT_EXPLORABLE_MOTIONS
+    const EditBoundary& boundary
   );
 
 };

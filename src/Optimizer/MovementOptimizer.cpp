@@ -1,22 +1,13 @@
-#include "Optimizer.h"
+#include "MovementOptimizer.h"
 
-#include "BoundaryFlags.h"
 #include "BufferIndex.h"
-#include "ImpliedExclusions.h"
-#include "EditOptimizer.h"
 #include "State/PosKey.h"
-#include "Editor/NavContext.h"
 #include "Keyboard/KeyboardModel.h"
 #include "Keyboard/MotionToKeys.h"
 #include "Utils/Debug.h"
-#include "VimCore/VimMovementUtils.h" // TODO This is probably ugly include, move up?
+#include "VimCore/VimMovementUtils.h"
 
 using namespace std;
-
-ostream &operator<<(ostream &os, const Result &r) {
-  os << r.sequence << ", " << r.keyCost << "\n";
-  return os;
-}
 
 KeySequence makeKeySequence(int count, const KeySequence& motionKeys) {
   KeySequence keys;
@@ -27,9 +18,9 @@ KeySequence makeKeySequence(int count, const KeySequence& motionKeys) {
   return keys;
 }
 
-vector<Result> Optimizer::optimizeMovement(
+vector<Result> MovementOptimizer::optimize(
     const vector<string> &lines,
-    const State& startingState, const Position &endPos,
+    const MotionState& startingState, const Position &endPos,
     const string &userSequence,
     NavContext& navContext,
     const ImpliedExclusions& impliedExclusions,
@@ -50,21 +41,18 @@ vector<Result> Optimizer::optimizeMovement(
   double userEffort = getEffort(userSequence, config);
 
   debug("user effort for sequence", userSequence, "is", userEffort);
-  // debug("MAX_RESULT_COUNT:", MAX_RESULT_COUNT);
-  // debug("EXPLORE_FACTOR:", EXPLORE_FACTOR);
 
   vector<Result> res;
   unordered_map<PosKey, double, PosKeyHash> costMap;
   const PosKey goalKey(endPos.line, endPos.col);
 
-  priority_queue<State, vector<State>, greater<State>> pq;
+  priority_queue<MotionState, vector<MotionState>, greater<MotionState>> pq;
 
   // Consider making an lvalue overload as well if that is needed anywhere
-  function<void(State&&)> exploreNewState = [this, &pq, &costMap, &goalKey, &userEffort](State&& newState) {
+  function<void(MotionState&&)> exploreNewState = [this, &pq, &costMap, &goalKey, &userEffort](MotionState&& newState) {
     if (newState.getEffort() > userEffort * EXPLORE_FACTOR) {
       return;
     }
-    // debug("curr:", currentCost, "new:", newCost);
     double newCost = newState.getCost();
     const PosKey newKey = newState.getKey();
     auto it = costMap.find(newKey);
@@ -80,11 +68,10 @@ vector<Result> Optimizer::optimizeMovement(
       it->second = newCost;
       pq.push(std::move(newState));
     }
-    // else { debug(motion, "is worse"); }
   };
 
-  auto exploreMotionWithKnownKeySequence = [&](const State& base, const string& motion, const KeySequence& keySequence) {
-    State newState = base;
+  auto exploreMotionWithKnownKeySequence = [&](const MotionState& base, const string& motion, const KeySequence& keySequence) {
+    MotionState newState = base;
     newState.applySingleMotion(motion, navContext, lines);
     newState.updateEffort(keySequence, config);
     newState.updateCost(heuristic(newState, endPos));
@@ -92,8 +79,8 @@ vector<Result> Optimizer::optimizeMovement(
   };
 
 
-  auto exploreMotionCntTimesWithKnownPosition = [&](const State& base, const string& motion, int cnt, const Position& newPos) {
-    State newState = base;
+  auto exploreMotionCntTimesWithKnownPosition = [&](const MotionState& base, const string& motion, int cnt, const Position& newPos) {
+    MotionState newState = base;
     newState.applyMotionWithKnownPosition(motion, cnt, newPos);
     newState.updateEffort(
       makeKeySequence(abs(cnt), motionToKeys.at(motion)),
@@ -103,8 +90,8 @@ vector<Result> Optimizer::optimizeMovement(
     exploreNewState(std::move(newState));
   };
 
-  auto exploreMotionWithKnownColumnAndKeySequence = [&](const State& base, const string& motion, int newcol, const KeySequence& keySequence) {
-    State newState = base;
+  auto exploreMotionWithKnownColumnAndKeySequence = [&](const MotionState& base, const string& motion, int newcol, const KeySequence& keySequence) {
+    MotionState newState = base;
     newState.applySingleMotionWithKnownColumn(motion, newcol);
     newState.updateEffort(keySequence, config);
     newState.updateCost(heuristic(newState, endPos));
@@ -115,21 +102,8 @@ vector<Result> Optimizer::optimizeMovement(
   pq.push(startingState);
   costMap[startingState.getKey()] = 0;
 
-  // Seed search with exact line jump (e.g., "5j" to go down 5 lines)
-  // int diff = endPos.line - startingState.pos.line;
-  // int absDiff = abs(diff);
-  // if(absDiff >= 3) {
-  //   string motion = diff > 0 ? "j" : "k";
-  //   exploreMotionCntTimesWithKnownPosition(startingState, motion, abs(diff), Position(
-  //     endPos.line,
-  //     min(startingState.pos.targetCol,
-  //         static_cast<int>(lines[endPos.line].size()-1)),
-  //         startingState.pos.targetCol
-  //         ));
-  // }
-
   while (!pq.empty()) {
-    State s = pq.top();
+    MotionState s = pq.top();
     pq.pop();
     Position pos = s.getPos();
 
@@ -161,10 +135,8 @@ vector<Result> Optimizer::optimizeMovement(
 
     debug("\"" + s.getMotionSequence() + "\"", s.getCost());
 
-    // double currentCost = heuristic(s, endPos);
-
     // Process f/F motions with ; when on the same line as end.
-    // Note for now we do not consider t or , as they are generally wasteful in comparison. 
+    // Note for now we do not consider t or , as they are generally wasteful in comparison.
     // -------------------- START isSameLine --------------------
     if (isSameLine) {
       // TODO: move handleFMotions out of way if possible
@@ -250,73 +222,121 @@ vector<Result> Optimizer::optimizeMovement(
   return res;
 }
 
+vector<Result> MovementOptimizer::optimizeToRange(
+    const Lines& lines,
+    const MotionState& startingState,
+    const Position& rangeBegin,
+    const Position& rangeEnd,
+    const string& userSequence,
+    NavContext& navContext,
+    int maxResults,
+    const ImpliedExclusions& impliedExclusions,
+    const MotionToKeys& rawMotionToKeys) {
 
-vector<Result> Optimizer::optimizeChanges(
-  const vector<string>& startLines,
-  const Position startPos,
-  const vector<string>& endLines,
-  const Position endPos,
-  const NavContext& navigationContext,
-  const ImpliedExclusions& impliedExclusions,
-  const MotionToKeys& rawMotionToKeys,
-  const EditToKeys& editToKeys
-) {
-  // Ensures proper hashing later, and 10 is buffer in case we insert more text, then delete
-  for(const string& s : startLines) { assert(s.size() < MAX_LINE_LENGTH-10); }
-  for(const string& s : endLines) { assert(s.size() < MAX_LINE_LENGTH-10); }
-
+  // Apply exclusions
   MotionToKeys motionToKeys = rawMotionToKeys;
-  if(impliedExclusions.exclude_G) {
+  if (impliedExclusions.exclude_G) {
     motionToKeys.erase("G");
   }
-  if(impliedExclusions.exclude_gg) {
+  if (impliedExclusions.exclude_gg) {
     motionToKeys.erase("gg");
   }
 
-  // DiffSTate {
-  //  BoundaryFlags boundaryFlags;
-  //  Position changeBegin;
-  //  Position changeEnd;
-  //  vector<string> startLines;
-  //  vector<string> endLines;
-  //  
-  // }
+  int totalExplored = 0;
+  double userEffort = getEffort(userSequence, config);
 
-  // Basically retrieve results from "git diff".
-  vector<DiffState> diffStates = Myers::calculate(startLines, endLines);
-  int d = diffStates.size();
+  // Results: best per end position
+  map<PosKey, Result> resultsByPos;
+  int resultsFound = 0;
 
-  // Note that this is 1-shifted, has size d+1
-  vector<vector<string>> linesAfterNEdits(d+1);
-  linesAfterNEdits[0] = startLines;
-  for(int i = 1; i <= d; i++) {
-    linesAfterNEdits[i] = apply(diffStates[i-1], linesAfterNEdits[i-1]);
+  unordered_map<PosKey, double, PosKeyHash> costMap;
+
+  priority_queue<MotionState, vector<MotionState>, greater<MotionState>> pq;
+
+  // Helper: check if position is in goal range
+  auto isInRange = [&](const Position& pos) {
+    return pos >= rangeBegin && pos <= rangeEnd;
+  };
+
+  // exploreNewState: don't cache goal positions (allow multiple paths)
+  auto exploreNewState = [&](MotionState&& newState) {
+    if (newState.getEffort() > userEffort * EXPLORE_FACTOR) {
+      return;
+    }
+    double newCost = newState.getCost();
+    const PosKey newKey = newState.getKey();
+    auto it = costMap.find(newKey);
+    if (it == costMap.end()) {
+      // Don't cache positions in goal range (want multiple results)
+      if (!isInRange(newState.getPos())) {
+        costMap.emplace(newKey, newCost);
+      }
+      pq.push(std::move(newState));
+    } else if (newCost <= it->second) {
+      it->second = newCost;
+      pq.push(std::move(newState));
+    }
+  };
+
+  auto exploreMotion = [&](const MotionState& base, const string& motion, const KeySequence& keySequence) {
+    MotionState newState = base;
+    newState.applySingleMotion(motion, navContext, lines);
+    newState.updateEffort(keySequence, config);
+    newState.updateCost(heuristicToRange(newState, rangeBegin, rangeEnd));
+    exploreNewState(std::move(newState));
+  };
+
+  // Start
+  pq.push(startingState);
+  costMap[startingState.getKey()] = 0;
+
+  while (!pq.empty()) {
+    MotionState s = pq.top();
+    pq.pop();
+    Position pos = s.getPos();
+
+    if (++totalExplored > MAX_SEARCH_DEPTH) {
+      debug("optimizeToRange: max search depth reached");
+      break;
+    }
+
+    PosKey stateKey = s.getKey();
+    bool isGoal = isInRange(pos);
+
+    if (isGoal) {
+      double effort = s.getRunningEffort().getEffort(config);
+      auto it = resultsByPos.find(stateKey);
+      if (it == resultsByPos.end()) {
+        // New end position
+        resultsByPos.emplace(stateKey, Result(s.getMotionSequence(), effort));
+        resultsFound++;
+        if (resultsFound >= maxResults) {
+          debug("optimizeToRange: max results reached");
+          break;
+        }
+      } else if (effort < it->second.keyCost) {
+        // Better path to same position
+        it->second = Result(s.getMotionSequence(), effort);
+      }
+      continue;
+    } else {
+      // Prune outdated states
+      if (costMap.count(stateKey) && costMap[stateKey] < s.getCost()) {
+        continue;
+      }
+    }
+
+    // Basic motions only (f-motion and count searches disabled for now)
+    for (const auto& [motion, keys] : motionToKeys) {
+      exploreMotion(s, motion, keys);
+    }
   }
 
-  vector<EditResult> editResults = solveAll(diffStates);
-
-  auto posHash = [this](Position p) {
-    return p.col * MAX_LINE_LENGTH + p.line;
-  };
-  vector<Position> toDiffStateIndex(d * MAX_LINE_LENGTH);
-  // Want toDiffStateIndex[hash(pos)] -> tell us which editResult index the current position is at, or -1 if none
-  //
-  //
-  
-  
-  // TODO:
-  return {}; 
+  // Convert map to vector
+  vector<Result> results;
+  results.reserve(resultsByPos.size());
+  for (auto& [posKey, result] : resultsByPos) {
+    results.push_back(std::move(result));
+  }
+  return results;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

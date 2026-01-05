@@ -1,7 +1,7 @@
 #pragma once
 
 #include <string>
-
+#include <ostream>
 
 struct Result {
   std::string sequence;
@@ -9,8 +9,13 @@ struct Result {
 
   Result(std::string s, double c) : sequence(s), keyCost(c) {}
 
-  bool isValid() {
-    return sequence.empty();
+  bool isValid() const {
+    return !sequence.empty();
   }
 };
+
+inline std::ostream& operator<<(std::ostream& os, const Result& r) {
+  os << r.sequence << ", " << r.keyCost << "\n";
+  return os;
+}
 

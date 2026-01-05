@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Optimizer/Optimizer.h"
+#include "Optimizer/Result.h"
 #include "Keyboard/KeyboardModel.h"
 
 #include <bits/stdc++.h>

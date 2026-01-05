@@ -51,8 +51,8 @@ extern const EditToKeys CHAR_RIGHT; // x
 extern const EditToKeys WORD_LEFT;  // db
 extern const EditToKeys WORD_RIGHT; // dw
 
-extern const EditToKeys WORD_END_LEFT;  // de
-extern const EditToKeys WORD_END_RIGHT; // dge
+extern const EditToKeys WORD_END_LEFT;  // dge (delete to end of previous word)
+extern const EditToKeys WORD_END_RIGHT; // de (delete to end of current word)
 
 extern const EditToKeys BIG_WORD_LEFT;  // dB
 extern const EditToKeys BIG_WORD_RIGHT; // dW
@@ -70,10 +70,10 @@ extern const EditToKeys LINE_RIGHT; // D
 extern const EditToKeys FULL_LINE;  // dd
 
 // requires pos.line > 0
-extern const EditToKeys STRUCTURAL_UP; // O
+extern const EditToKeys LINE_UP; // O
 
 // requires pos.line < n-1
-extern const EditToKeys STRUCTURAL_DOWN; // o
+extern const EditToKeys LINE_DOWN; // o
 
 } // namespace Normal
 
@@ -93,8 +93,9 @@ extern const EditToKeys WORD_LEFT;  // <C-w>
 
 extern const EditToKeys LINE_LEFT;  // <C-u>
 
-// no constraints
-extern const EditToKeys NEUTRAL; // <Esc>, <CR>
+extern const EditToKeys LINE_UP;    // <Up>
+
+extern const EditToKeys LINE_DOWN;  // <Down>
 
 } // namespace Insert
 

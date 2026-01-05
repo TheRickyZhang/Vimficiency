@@ -9,9 +9,9 @@
 #include "Editor/NavContext.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/ImpliedExclusions.h"
-#include "Optimizer/Optimizer.h"
+#include "Optimizer/MovementOptimizer.h"
 #include "State/RunningEffort.h"
-#include "State/State.h"
+#include "State/MotionState.h"
 #include "TestUtils.h"
 
 using namespace std;
@@ -26,7 +26,7 @@ protected:
     navContext = NavContext(0, 39, 39, 19);
   }
 
-  static State makeState(Position p) { return State(p, RunningEffort(), 0, 0); }
+  static MotionState makeState(Position p) { return MotionState(p, RunningEffort(), 0, 0); }
 
   static Position simulateMotionsDefault(Position start, const string &motion,
                                           const vector<string> &lines) {
@@ -43,10 +43,10 @@ protected:
                                      Position start, Position end,
                                      const string &userSeq,
                                      Config config = Config::uniform()) {
-    Optimizer opt(config, 30, 2e4, 1.0, 2.0);
+    MovementOptimizer opt(config, 30, 2e4, 1.0, 2.0);
     ImpliedExclusions impliedExclusions(false, false);
-    return opt.optimizeMovement(lines, makeState(start), end, userSeq,
-                                navContext, impliedExclusions);
+    return opt.optimize(lines, makeState(start), end, userSeq,
+                        navContext, impliedExclusions);
   }
 
   // Check if a result contains a specific sequence

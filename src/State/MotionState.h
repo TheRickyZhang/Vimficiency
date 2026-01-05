@@ -11,7 +11,7 @@
 
 // Entire simulated editor state (for now, only position+mode+effort).
 // You can later add: vector<string> lines; registers; etc.
-class State {
+class MotionState {
   // Visible, core editor state
   Position pos;
   Mode mode;
@@ -27,7 +27,7 @@ class State {
   RunningEffort runningEffort;
 
 public:
-  State(Position pos, RunningEffort runningEffort, double effort, double cost)
+  MotionState(Position pos, RunningEffort runningEffort, double effort, double cost)
     : pos(pos), runningEffort(runningEffort), effort(effort), cost(cost), mode(Mode::Normal) {
   }
 
@@ -36,10 +36,10 @@ public:
     mode = Mode::Normal;
     runningEffort.reset();
   }
-  bool operator<(const State& other) const {
+  bool operator<(const MotionState& other) const {
     return cost < other.cost;
   }
-  bool operator>(const State& other) const {
+  bool operator>(const MotionState& other) const {
     return cost > other.cost;
   }
 

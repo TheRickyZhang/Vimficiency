@@ -34,6 +34,11 @@ const EditToKeys WORD_RIGHT = {
     {"cw", {Key::Key_C, Key::Key_W}},            // change to next word start
 };
 
+const EditToKeys WORD_END_LEFT = {
+    {"dge", {Key::Key_D, Key::Key_G, Key::Key_E}},   // delete to end of previous word
+    {"cge", {Key::Key_C, Key::Key_G, Key::Key_E}},   // change to end of previous word
+};
+
 const EditToKeys WORD_END_RIGHT = {
     {"de", {Key::Key_D, Key::Key_E}},            // delete to word end
     {"ce", {Key::Key_C, Key::Key_E}},            // change to word end
@@ -47,6 +52,11 @@ const EditToKeys BIG_WORD_LEFT = {
 const EditToKeys BIG_WORD_RIGHT = {
     {"dW", {Key::Key_D, Key::Key_Shift, Key::Key_W}},  // delete to next WORD start
     {"cW", {Key::Key_C, Key::Key_Shift, Key::Key_W}},  // change to next WORD start
+};
+
+const EditToKeys BIG_WORD_END_LEFT = {
+    {"dgE", {Key::Key_D, Key::Key_G, Key::Key_Shift, Key::Key_E}},  // delete to end of previous WORD
+    {"cgE", {Key::Key_C, Key::Key_G, Key::Key_Shift, Key::Key_E}},  // change to end of previous WORD
 };
 
 const EditToKeys BIG_WORD_END_RIGHT = {
@@ -76,11 +86,11 @@ const EditToKeys FULL_LINE = {
     {"S",  {Key::Key_Shift, Key::Key_S}},        // substitute line (same as cc)
 };
 
-const EditToKeys STRUCTURAL_UP = {
+const EditToKeys LINE_UP = {
     {"O",  {Key::Key_Shift, Key::Key_O}},        // open line above
 };
 
-const EditToKeys STRUCTURAL_DOWN = {
+const EditToKeys LINE_DOWN = {
     {"o",  {Key::Key_O}},                        // open line below
 };
 
@@ -94,10 +104,13 @@ namespace Insert {
 
 const EditToKeys CHAR_LEFT = {
     {"<BS>",  {Key::Key_Backspace}},             // backspace
+    {"<Esc>", {Key::Key_Esc}},                   // Since escaping shifts the cursor LEFT
+    {"<Left>", {Key::Key_Left}},
 };
 
 const EditToKeys CHAR_RIGHT = {
     {"<Del>", {Key::Key_Delete}},                // delete at cursor
+    {"<Right>", {Key::Key_Right}},
 };
 
 const EditToKeys WORD_LEFT = {
@@ -108,9 +121,12 @@ const EditToKeys LINE_LEFT = {
     {"<C-u>", {Key::Key_Ctrl, Key::Key_U}},      // delete to line start
 };
 
-const EditToKeys NEUTRAL = {
-    {"<Esc>", {Key::Key_Esc}},                   // exit insert mode
-    {"<CR>",  {Key::Key_Enter}},                 // insert newline
+const EditToKeys LINE_UP = {
+  {"<Up>", {Key::Key_Up }},
+};
+
+const EditToKeys LINE_DOWN = {
+  {"<Down>", {Key::Key_Down }},
 };
 
 } // namespace Insert
@@ -138,20 +154,21 @@ const EditToKeys ALL_EDITS = combineAll({
     cref(Normal::CHAR_RIGHT),
     cref(Normal::WORD_LEFT),
     cref(Normal::WORD_RIGHT),
+    cref(Normal::WORD_END_LEFT),
     cref(Normal::WORD_END_RIGHT),
     cref(Normal::BIG_WORD_LEFT),
     cref(Normal::BIG_WORD_RIGHT),
+    cref(Normal::BIG_WORD_END_LEFT),
     cref(Normal::BIG_WORD_END_RIGHT),
     cref(Normal::LINE_LEFT),
     cref(Normal::LINE_RIGHT),
     cref(Normal::FULL_LINE),
-    cref(Normal::STRUCTURAL_UP),
-    cref(Normal::STRUCTURAL_DOWN),
+    cref(Normal::LINE_UP),
+    cref(Normal::LINE_DOWN),
     cref(Insert::CHAR_LEFT),
     cref(Insert::CHAR_RIGHT),
     cref(Insert::WORD_LEFT),
     cref(Insert::LINE_LEFT),
-    cref(Insert::NEUTRAL),
     cref(OPERATORS),
 });
 

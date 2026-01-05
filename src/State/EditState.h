@@ -64,8 +64,7 @@ class EditState {
 
   // Necessary for ranking states
   double effort;
-  double
-      cost; // = runningEffort.calculate(motionSequence) + editDistance(state)
+  double cost; // = runningEffort.calculate(motionSequence) + editDistance(state)
 
   // Internal mechanism
   RunningEffort runningEffort;

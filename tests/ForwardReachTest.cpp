@@ -4,8 +4,7 @@
 #include "Editor/Motion.h"
 #include "Editor/Range.h"
 #include "VimCore/VimEditUtils.h"
-#include "Optimizer/BoundaryFlags.h"
-#include "Optimizer/ReachLevel.h"
+#include "Optimizer/EditBoundary.h"
 
 using namespace std;
 
@@ -261,81 +260,78 @@ TEST_F(ForwardReachTest, AtB_D_Fails) {
 
 class ForwardReachPredictionTest : public ::testing::Test {
 protected:
+    // Full line: "abc def.gh i"
+    // Edit region: cols 1-8 (inclusive) = "bc def.g"
+    // Positions within edit content: b=0, c=1, space=2, d=3, e=4, f=5, .=6, g=7
     static constexpr const char* FULL_LINE = "abc def.gh i";
     static constexpr int EDIT_START = 1;  // 'b'
     static constexpr int EDIT_END = 8;    // 'g' (inclusive)
 
-    ForwardReachInfo info;
+    EditBoundary boundary;
+    string editContent;
 
     void SetUp() override {
-        info = analyzeForwardBoundary(FULL_LINE, EDIT_START, EDIT_END);
+        bool startsAtLineStart = (EDIT_START == 0);
+        bool endsAtLineEnd = (EDIT_END == (int)strlen(FULL_LINE) - 1);
+        boundary = analyzeEditBoundary(FULL_LINE, EDIT_START, EDIT_END, startsAtLineStart, endsAtLineEnd);
+        editContent = string(FULL_LINE).substr(EDIT_START, EDIT_END - EDIT_START + 1);
     }
 };
 
 TEST_F(ForwardReachPredictionTest, AnalyzeBoundary_Correctly) {
     // 'g' (col 8) and 'h' (col 9) are in same word 'gh'
-    EXPECT_TRUE(info.boundary_in_word);
+    EXPECT_TRUE(boundary.right_in_word);
     // 'g' and 'h' are also in same WORD 'def.gh'
-    EXPECT_TRUE(info.boundary_in_WORD);
-
-    // Last word start is at 'g' (col 8) - the word is 'gh'
-    EXPECT_EQ(info.lastWordStart, 8);
-
-    // Last WORD start is at 'd' (col 4) - the WORD is 'def.gh'
-    EXPECT_EQ(info.lastBigWordStart, 4);
-
-    // Last safe word end: the word before 'gh' is '.' at col 7
-    EXPECT_EQ(info.lastSafeWordEnd, 7);
-
-    // Last safe WORD end: the WORD before 'def.gh' is 'abc' ending at col 2
-    EXPECT_EQ(info.lastSafeBigWordEnd, 2);
+    EXPECT_TRUE(boundary.right_in_WORD);
+    // Edit content should be "bc def.g"
+    EXPECT_EQ(editContent, "bc def.g");
 }
 
 TEST_F(ForwardReachPredictionTest, AtG_Predictions) {
-    // At col 8 (g): only x should be safe
-    EXPECT_TRUE(isForwardEditSafe(info, 8, "x"));
-    EXPECT_FALSE(isForwardEditSafe(info, 8, "de"));
-    EXPECT_FALSE(isForwardEditSafe(info, 8, "dw"));
-    EXPECT_FALSE(isForwardEditSafe(info, 8, "dW"));
-    EXPECT_FALSE(isForwardEditSafe(info, 8, "dE"));
-    EXPECT_FALSE(isForwardEditSafe(info, 8, "D"));
+    // At 'g' (relative col 7): only x should be safe
+    EXPECT_TRUE(isForwardEditSafe(editContent, 7, boundary, ForwardEdit::CHAR));
+    EXPECT_FALSE(isForwardEditSafe(editContent, 7, boundary, ForwardEdit::WORD_TO_END));
+    EXPECT_FALSE(isForwardEditSafe(editContent, 7, boundary, ForwardEdit::WORD_TO_START));
+    EXPECT_FALSE(isForwardEditSafe(editContent, 7, boundary, ForwardEdit::BIG_WORD_TO_START));
+    EXPECT_FALSE(isForwardEditSafe(editContent, 7, boundary, ForwardEdit::BIG_WORD_TO_END));
+    EXPECT_FALSE(isForwardEditSafe(editContent, 7, boundary, ForwardEdit::LINE_TO_END));
 }
 
 TEST_F(ForwardReachPredictionTest, AtDot_Predictions) {
-    // At col 7 (.): x, dw should be safe; de should fail
-    EXPECT_TRUE(isForwardEditSafe(info, 7, "x"));
-    EXPECT_TRUE(isForwardEditSafe(info, 7, "dw"));
-    EXPECT_FALSE(isForwardEditSafe(info, 7, "de"));
-    EXPECT_FALSE(isForwardEditSafe(info, 7, "dW"));
-    EXPECT_FALSE(isForwardEditSafe(info, 7, "dE"));
+    // At '.' (relative col 6): x, dw should be safe; de should fail
+    EXPECT_TRUE(isForwardEditSafe(editContent, 6, boundary, ForwardEdit::CHAR));
+    EXPECT_TRUE(isForwardEditSafe(editContent, 6, boundary, ForwardEdit::WORD_TO_START));
+    EXPECT_FALSE(isForwardEditSafe(editContent, 6, boundary, ForwardEdit::WORD_TO_END));
+    EXPECT_FALSE(isForwardEditSafe(editContent, 6, boundary, ForwardEdit::BIG_WORD_TO_START));
+    EXPECT_FALSE(isForwardEditSafe(editContent, 6, boundary, ForwardEdit::BIG_WORD_TO_END));
 }
 
 TEST_F(ForwardReachPredictionTest, AtF_Predictions) {
-    // At col 6 (f): x, dw, de should be safe; dW, dE should fail
-    EXPECT_TRUE(isForwardEditSafe(info, 6, "x"));
-    EXPECT_TRUE(isForwardEditSafe(info, 6, "dw"));
-    EXPECT_TRUE(isForwardEditSafe(info, 6, "de"));
-    EXPECT_FALSE(isForwardEditSafe(info, 6, "dW"));
-    EXPECT_FALSE(isForwardEditSafe(info, 6, "dE"));
+    // At 'f' (relative col 5): x, dw, de should be safe; dW, dE should fail
+    EXPECT_TRUE(isForwardEditSafe(editContent, 5, boundary, ForwardEdit::CHAR));
+    EXPECT_TRUE(isForwardEditSafe(editContent, 5, boundary, ForwardEdit::WORD_TO_START));
+    EXPECT_TRUE(isForwardEditSafe(editContent, 5, boundary, ForwardEdit::WORD_TO_END));
+    EXPECT_FALSE(isForwardEditSafe(editContent, 5, boundary, ForwardEdit::BIG_WORD_TO_START));
+    EXPECT_FALSE(isForwardEditSafe(editContent, 5, boundary, ForwardEdit::BIG_WORD_TO_END));
 }
 
 TEST_F(ForwardReachPredictionTest, AtSpace_Predictions) {
-    // At col 3 (space): x, dw, de, dW should be safe; dE should fail
-    EXPECT_TRUE(isForwardEditSafe(info, 3, "x"));
-    EXPECT_TRUE(isForwardEditSafe(info, 3, "dw"));
-    EXPECT_TRUE(isForwardEditSafe(info, 3, "de"));
-    EXPECT_TRUE(isForwardEditSafe(info, 3, "dW"));
-    EXPECT_FALSE(isForwardEditSafe(info, 3, "dE"));
+    // At space (relative col 2): x, dw, de, dW should be safe; dE should fail
+    EXPECT_TRUE(isForwardEditSafe(editContent, 2, boundary, ForwardEdit::CHAR));
+    EXPECT_TRUE(isForwardEditSafe(editContent, 2, boundary, ForwardEdit::WORD_TO_START));
+    EXPECT_TRUE(isForwardEditSafe(editContent, 2, boundary, ForwardEdit::WORD_TO_END));
+    EXPECT_TRUE(isForwardEditSafe(editContent, 2, boundary, ForwardEdit::BIG_WORD_TO_START));
+    EXPECT_FALSE(isForwardEditSafe(editContent, 2, boundary, ForwardEdit::BIG_WORD_TO_END));
 }
 
 TEST_F(ForwardReachPredictionTest, AtB_Predictions) {
-    // At col 1 (b): x, dw, de, dW, dE should be safe; D should fail
-    EXPECT_TRUE(isForwardEditSafe(info, 1, "x"));
-    EXPECT_TRUE(isForwardEditSafe(info, 1, "dw"));
-    EXPECT_TRUE(isForwardEditSafe(info, 1, "de"));
-    EXPECT_TRUE(isForwardEditSafe(info, 1, "dW"));
-    EXPECT_TRUE(isForwardEditSafe(info, 1, "dE"));
-    EXPECT_FALSE(isForwardEditSafe(info, 1, "D"));
+    // At 'b' (relative col 0): x, dw, de, dW, dE should be safe; D should fail
+    EXPECT_TRUE(isForwardEditSafe(editContent, 0, boundary, ForwardEdit::CHAR));
+    EXPECT_TRUE(isForwardEditSafe(editContent, 0, boundary, ForwardEdit::WORD_TO_START));
+    EXPECT_TRUE(isForwardEditSafe(editContent, 0, boundary, ForwardEdit::WORD_TO_END));
+    EXPECT_TRUE(isForwardEditSafe(editContent, 0, boundary, ForwardEdit::BIG_WORD_TO_START));
+    EXPECT_TRUE(isForwardEditSafe(editContent, 0, boundary, ForwardEdit::BIG_WORD_TO_END));
+    EXPECT_FALSE(isForwardEditSafe(editContent, 0, boundary, ForwardEdit::LINE_TO_END));
 }
 
 // =============================================================================
@@ -367,10 +363,12 @@ protected:
     // New content after edit
     static constexpr const char* NEW_CONTENT = "x yz";
 
-    BoundaryFlags boundary;
+    EditBoundary boundary;
 
     void SetUp() override {
-        boundary = analyzeBoundaryFlags(ORIGINAL_LINE, EDIT_START_IN_ORIGINAL, EDIT_END_IN_ORIGINAL);
+        bool startsAtLineStart = (EDIT_START_IN_ORIGINAL == 0);
+        bool endsAtLineEnd = (EDIT_END_IN_ORIGINAL == (int)strlen(ORIGINAL_LINE) - 1);
+        boundary = analyzeEditBoundary(ORIGINAL_LINE, EDIT_START_IN_ORIGINAL, EDIT_END_IN_ORIGINAL, startsAtLineStart, endsAtLineEnd);
     }
 };
 
@@ -384,43 +382,43 @@ TEST_F(ForwardReachChangedContentTest, BoundaryFlagsCorrect) {
 TEST_F(ForwardReachChangedContentTest, AtZ_OnlyXWorks) {
     // "x yz" positions: x=0, space=1, y=2, z=3
     // At z (col 3): only x should work
-    EXPECT_TRUE(isForwardEditSafeWithContent(NEW_CONTENT, 3, boundary, "x"));
-    EXPECT_FALSE(isForwardEditSafeWithContent(NEW_CONTENT, 3, boundary, "dw"));
-    EXPECT_FALSE(isForwardEditSafeWithContent(NEW_CONTENT, 3, boundary, "de"));
-    EXPECT_FALSE(isForwardEditSafeWithContent(NEW_CONTENT, 3, boundary, "dW"));
-    EXPECT_FALSE(isForwardEditSafeWithContent(NEW_CONTENT, 3, boundary, "dE"));
+    EXPECT_TRUE(isForwardEditSafe(NEW_CONTENT, 3, boundary, ForwardEdit::CHAR));
+    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 3, boundary, ForwardEdit::WORD_TO_START));
+    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 3, boundary, ForwardEdit::WORD_TO_END));
+    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 3, boundary, ForwardEdit::BIG_WORD_TO_START));
+    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 3, boundary, ForwardEdit::BIG_WORD_TO_END));
 }
 
 TEST_F(ForwardReachChangedContentTest, AtY_OnlyXWorks) {
     // At y (col 2): only x should work
     // dw from y goes to next word which is outside (since yz connects to h)
-    EXPECT_TRUE(isForwardEditSafeWithContent(NEW_CONTENT, 2, boundary, "x"));
-    EXPECT_FALSE(isForwardEditSafeWithContent(NEW_CONTENT, 2, boundary, "dw"));
-    EXPECT_FALSE(isForwardEditSafeWithContent(NEW_CONTENT, 2, boundary, "de"));
-    EXPECT_FALSE(isForwardEditSafeWithContent(NEW_CONTENT, 2, boundary, "dW"));
-    EXPECT_FALSE(isForwardEditSafeWithContent(NEW_CONTENT, 2, boundary, "dE"));
+    EXPECT_TRUE(isForwardEditSafe(NEW_CONTENT, 2, boundary, ForwardEdit::CHAR));
+    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 2, boundary, ForwardEdit::WORD_TO_START));
+    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 2, boundary, ForwardEdit::WORD_TO_END));
+    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 2, boundary, ForwardEdit::BIG_WORD_TO_START));
+    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 2, boundary, ForwardEdit::BIG_WORD_TO_END));
 }
 
 TEST_F(ForwardReachChangedContentTest, AtSpace_XAndDwWork) {
     // At space (col 1): x, dw should work; de, dW, dE should fail
     // dw from space goes to 'y' which is still in content
     // de from space goes to end of 'yz' but yz extends to h → unsafe
-    EXPECT_TRUE(isForwardEditSafeWithContent(NEW_CONTENT, 1, boundary, "x"));
-    EXPECT_TRUE(isForwardEditSafeWithContent(NEW_CONTENT, 1, boundary, "dw"));
-    EXPECT_FALSE(isForwardEditSafeWithContent(NEW_CONTENT, 1, boundary, "de"));
-    EXPECT_TRUE(isForwardEditSafeWithContent(NEW_CONTENT, 1, boundary, "dW"));
-    EXPECT_FALSE(isForwardEditSafeWithContent(NEW_CONTENT, 1, boundary, "dE"));
+    EXPECT_TRUE(isForwardEditSafe(NEW_CONTENT, 1, boundary, ForwardEdit::CHAR));
+    EXPECT_TRUE(isForwardEditSafe(NEW_CONTENT, 1, boundary, ForwardEdit::WORD_TO_START));
+    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 1, boundary, ForwardEdit::WORD_TO_END));
+    EXPECT_TRUE(isForwardEditSafe(NEW_CONTENT, 1, boundary, ForwardEdit::BIG_WORD_TO_START));
+    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 1, boundary, ForwardEdit::BIG_WORD_TO_END));
 }
 
 TEST_F(ForwardReachChangedContentTest, AtX_XAndDwWork) {
     // At x (col 0): x, dw should work; de should fail
     // dw from x goes to 'y' (start of next word)
     // de from x (end of word 'x') goes to end of next word 'yz', but yz extends to h → unsafe
-    EXPECT_TRUE(isForwardEditSafeWithContent(NEW_CONTENT, 0, boundary, "x"));
-    EXPECT_TRUE(isForwardEditSafeWithContent(NEW_CONTENT, 0, boundary, "dw"));
-    EXPECT_FALSE(isForwardEditSafeWithContent(NEW_CONTENT, 0, boundary, "de"));
-    EXPECT_TRUE(isForwardEditSafeWithContent(NEW_CONTENT, 0, boundary, "dW"));
-    EXPECT_FALSE(isForwardEditSafeWithContent(NEW_CONTENT, 0, boundary, "dE"));
+    EXPECT_TRUE(isForwardEditSafe(NEW_CONTENT, 0, boundary, ForwardEdit::CHAR));
+    EXPECT_TRUE(isForwardEditSafe(NEW_CONTENT, 0, boundary, ForwardEdit::WORD_TO_START));
+    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 0, boundary, ForwardEdit::WORD_TO_END));
+    EXPECT_TRUE(isForwardEditSafe(NEW_CONTENT, 0, boundary, ForwardEdit::BIG_WORD_TO_START));
+    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 0, boundary, ForwardEdit::BIG_WORD_TO_END));
 }
 
 // =============================================================================
@@ -440,10 +438,12 @@ protected:
     static constexpr int EDIT_START_IN_ORIGINAL = 0;  // 'a'
     static constexpr int EDIT_END_IN_ORIGINAL = 3;  // space
 
-    BoundaryFlags boundary;
+    EditBoundary boundary;
 
     void SetUp() override {
-        boundary = analyzeBoundaryFlags(ORIGINAL_LINE, EDIT_START_IN_ORIGINAL, EDIT_END_IN_ORIGINAL);
+        bool startsAtLineStart = (EDIT_START_IN_ORIGINAL == 0);
+        bool endsAtLineEnd = (EDIT_END_IN_ORIGINAL == (int)strlen(ORIGINAL_LINE) - 1);
+        boundary = analyzeEditBoundary(ORIGINAL_LINE, EDIT_START_IN_ORIGINAL, EDIT_END_IN_ORIGINAL, startsAtLineStart, endsAtLineEnd);
     }
 };
 
@@ -458,15 +458,15 @@ TEST_F(ForwardReachCleanBoundaryTest, AllMotionsSafe) {
     string content = "abc ";  // The edit content
 
     for (int col = 0; col <= 3; col++) {
-        EXPECT_TRUE(isForwardEditSafeWithContent(content, col, boundary, "x"))
+        EXPECT_TRUE(isForwardEditSafe(content, col, boundary, ForwardEdit::CHAR))
             << "x should be safe at col " << col;
-        EXPECT_TRUE(isForwardEditSafeWithContent(content, col, boundary, "dw"))
+        EXPECT_TRUE(isForwardEditSafe(content, col, boundary, ForwardEdit::WORD_TO_START))
             << "dw should be safe at col " << col;
-        EXPECT_TRUE(isForwardEditSafeWithContent(content, col, boundary, "de"))
+        EXPECT_TRUE(isForwardEditSafe(content, col, boundary, ForwardEdit::WORD_TO_END))
             << "de should be safe at col " << col;
-        EXPECT_TRUE(isForwardEditSafeWithContent(content, col, boundary, "dW"))
+        EXPECT_TRUE(isForwardEditSafe(content, col, boundary, ForwardEdit::BIG_WORD_TO_START))
             << "dW should be safe at col " << col;
-        EXPECT_TRUE(isForwardEditSafeWithContent(content, col, boundary, "dE"))
+        EXPECT_TRUE(isForwardEditSafe(content, col, boundary, ForwardEdit::BIG_WORD_TO_END))
             << "dE should be safe at col " << col;
     }
 }
@@ -475,9 +475,10 @@ TEST_F(ForwardReachCleanBoundaryTest, DStillUnsafe) {
     // D deletes to end of line, which goes beyond our edit region
     // But wait - if boundary is at space and next is 'd', the edit ends at EOL
     // In this case our boundary analysis says right_in_word=false, right_in_WORD=false
-    // So D should actually be safe!
+    // But D is not safe unless we actually end at line end
     string content = "abc ";
-    EXPECT_TRUE(isForwardEditSafeWithContent(content, 0, boundary, "D"));
+    // endsAtLineEnd is false since col 3 is not end of "abc def ghi"
+    EXPECT_FALSE(isForwardEditSafe(content, 0, boundary, ForwardEdit::LINE_TO_END));
 }
 
 // =============================================================================
@@ -493,10 +494,12 @@ protected:
     static constexpr int EDIT_START_IN_ORIGINAL = 1;  // 'b'
     static constexpr int EDIT_END_IN_ORIGINAL = 1;  // 'b'
 
-    BoundaryFlags boundary;
+    EditBoundary boundary;
 
     void SetUp() override {
-        boundary = analyzeBoundaryFlags(ORIGINAL_LINE, EDIT_START_IN_ORIGINAL, EDIT_END_IN_ORIGINAL);
+        bool startsAtLineStart = (EDIT_START_IN_ORIGINAL == 0);
+        bool endsAtLineEnd = (EDIT_END_IN_ORIGINAL == (int)strlen(ORIGINAL_LINE) - 1);
+        boundary = analyzeEditBoundary(ORIGINAL_LINE, EDIT_START_IN_ORIGINAL, EDIT_END_IN_ORIGINAL, startsAtLineStart, endsAtLineEnd);
     }
 };
 
@@ -509,13 +512,13 @@ TEST_F(ForwardReachSingleCharTest, OnlyXSafe) {
     string content = "b";  // Single char
 
     // x at col 0: safe (deletes 'b')
-    EXPECT_TRUE(isForwardEditSafeWithContent(content, 0, boundary, "x"));
+    EXPECT_TRUE(isForwardEditSafe(content, 0, boundary, ForwardEdit::CHAR));
 
     // dw: cursor=0, lastWordStart=0 → 0 < 0 is false → unsafe
-    EXPECT_FALSE(isForwardEditSafeWithContent(content, 0, boundary, "dw"));
+    EXPECT_FALSE(isForwardEditSafe(content, 0, boundary, ForwardEdit::WORD_TO_START));
 
     // de: e_landing=0 (at end of word 'b'), lastWordStart=0 → 0 < 0 is false → unsafe
-    EXPECT_FALSE(isForwardEditSafeWithContent(content, 0, boundary, "de"));
+    EXPECT_FALSE(isForwardEditSafe(content, 0, boundary, ForwardEdit::WORD_TO_END));
 }
 
 // =============================================================================
@@ -532,10 +535,12 @@ protected:
     static constexpr int EDIT_START_IN_ORIGINAL = 1;  // 'b'
     static constexpr int EDIT_END_IN_ORIGINAL = 3;  // first space
 
-    BoundaryFlags boundary;
+    EditBoundary boundary;
 
     void SetUp() override {
-        boundary = analyzeBoundaryFlags(ORIGINAL_LINE, EDIT_START_IN_ORIGINAL, EDIT_END_IN_ORIGINAL);
+        bool startsAtLineStart = (EDIT_START_IN_ORIGINAL == 0);
+        bool endsAtLineEnd = (EDIT_END_IN_ORIGINAL == (int)strlen(ORIGINAL_LINE) - 1);
+        boundary = analyzeEditBoundary(ORIGINAL_LINE, EDIT_START_IN_ORIGINAL, EDIT_END_IN_ORIGINAL, startsAtLineStart, endsAtLineEnd);
     }
 };
 
@@ -550,9 +555,9 @@ TEST_F(ForwardReachTrailingSpaceTest, AllMotionsSafe) {
 
     // All positions should allow all motions
     for (int col = 0; col <= 2; col++) {
-        EXPECT_TRUE(isForwardEditSafeWithContent(content, col, boundary, "dw"))
+        EXPECT_TRUE(isForwardEditSafe(content, col, boundary, ForwardEdit::WORD_TO_START))
             << "dw should be safe at col " << col;
-        EXPECT_TRUE(isForwardEditSafeWithContent(content, col, boundary, "de"))
+        EXPECT_TRUE(isForwardEditSafe(content, col, boundary, ForwardEdit::WORD_TO_END))
             << "de should be safe at col " << col;
     }
 }
@@ -574,10 +579,12 @@ protected:
     static constexpr int EDIT_START_IN_ORIGINAL = 0;  // 'a'
     static constexpr int EDIT_END_IN_ORIGINAL = 3;  // '.'
 
-    BoundaryFlags boundary;
+    EditBoundary boundary;
 
     void SetUp() override {
-        boundary = analyzeBoundaryFlags(ORIGINAL_LINE, EDIT_START_IN_ORIGINAL, EDIT_END_IN_ORIGINAL);
+        bool startsAtLineStart = (EDIT_START_IN_ORIGINAL == 0);
+        bool endsAtLineEnd = (EDIT_END_IN_ORIGINAL == (int)strlen(ORIGINAL_LINE) - 1);
+        boundary = analyzeEditBoundary(ORIGINAL_LINE, EDIT_START_IN_ORIGINAL, EDIT_END_IN_ORIGINAL, startsAtLineStart, endsAtLineEnd);
     }
 };
 
@@ -592,15 +599,15 @@ TEST_F(ForwardReachPunctuationBoundaryTest, WordMotionsSafeWORDMotionsUnsafe) {
     string content = "abc.";
 
     // dw, de should be safe (word boundary is clean)
-    EXPECT_TRUE(isForwardEditSafeWithContent(content, 0, boundary, "dw"));
-    EXPECT_TRUE(isForwardEditSafeWithContent(content, 0, boundary, "de"));
-    EXPECT_TRUE(isForwardEditSafeWithContent(content, 3, boundary, "dw"));
-    EXPECT_TRUE(isForwardEditSafeWithContent(content, 3, boundary, "de"));
+    EXPECT_TRUE(isForwardEditSafe(content, 0, boundary, ForwardEdit::WORD_TO_START));
+    EXPECT_TRUE(isForwardEditSafe(content, 0, boundary, ForwardEdit::WORD_TO_END));
+    EXPECT_TRUE(isForwardEditSafe(content, 3, boundary, ForwardEdit::WORD_TO_START));
+    EXPECT_TRUE(isForwardEditSafe(content, 3, boundary, ForwardEdit::WORD_TO_END));
 
     // dW, dE should be unsafe at positions where they'd hit the last WORD
     // lastBigWordStart for "abc." is 0 (whole thing is one WORD)
-    EXPECT_FALSE(isForwardEditSafeWithContent(content, 0, boundary, "dW"));
-    EXPECT_FALSE(isForwardEditSafeWithContent(content, 0, boundary, "dE"));
+    EXPECT_FALSE(isForwardEditSafe(content, 0, boundary, ForwardEdit::BIG_WORD_TO_START));
+    EXPECT_FALSE(isForwardEditSafe(content, 0, boundary, ForwardEdit::BIG_WORD_TO_END));
 }
 
 // =============================================================================
@@ -620,10 +627,12 @@ protected:
     static constexpr int EDIT_START_IN_ORIGINAL = 0;  // 'a'
     static constexpr int EDIT_END_IN_ORIGINAL = 4;  // 'c'
 
-    BoundaryFlags boundary;
+    EditBoundary boundary;
 
     void SetUp() override {
-        boundary = analyzeBoundaryFlags(ORIGINAL_LINE, EDIT_START_IN_ORIGINAL, EDIT_END_IN_ORIGINAL);
+        bool startsAtLineStart = (EDIT_START_IN_ORIGINAL == 0);
+        bool endsAtLineEnd = (EDIT_END_IN_ORIGINAL == (int)strlen(ORIGINAL_LINE) - 1);
+        boundary = analyzeEditBoundary(ORIGINAL_LINE, EDIT_START_IN_ORIGINAL, EDIT_END_IN_ORIGINAL, startsAtLineStart, endsAtLineEnd);
     }
 };
 
@@ -644,17 +653,17 @@ TEST_F(ForwardReachDwDeAsymmetryTest, AtFirstSpace_DwSafeDeUnsafe) {
 
     // At col 1 (first space):
     // dw: 1 < 4 → safe
-    EXPECT_TRUE(isForwardEditSafeWithContent(content, 1, boundary, "dw"));
+    EXPECT_TRUE(isForwardEditSafe(content, 1, boundary, ForwardEdit::WORD_TO_START));
     // de: e from space at col 1 goes to end of 'b' which is col 2
     //     e_landing = 2, 2 < 4 → safe
-    EXPECT_TRUE(isForwardEditSafeWithContent(content, 1, boundary, "de"));
+    EXPECT_TRUE(isForwardEditSafe(content, 1, boundary, ForwardEdit::WORD_TO_END));
 
     // At col 3 (second space):
     // dw: 3 < 4 → safe
-    EXPECT_TRUE(isForwardEditSafeWithContent(content, 3, boundary, "dw"));
+    EXPECT_TRUE(isForwardEditSafe(content, 3, boundary, ForwardEdit::WORD_TO_START));
     // de: e from space at col 3 goes to end of 'c' which is col 4
     //     e_landing = 4, 4 < 4 is false → unsafe!
-    EXPECT_FALSE(isForwardEditSafeWithContent(content, 3, boundary, "de"));
+    EXPECT_FALSE(isForwardEditSafe(content, 3, boundary, ForwardEdit::WORD_TO_END));
 }
 
 TEST_F(ForwardReachDwDeAsymmetryTest, AtB_DwSafeDeUnsafe) {
@@ -662,12 +671,12 @@ TEST_F(ForwardReachDwDeAsymmetryTest, AtB_DwSafeDeUnsafe) {
 
     // At 'b' (col 2):
     // dw: 2 < 4 → safe
-    EXPECT_TRUE(isForwardEditSafeWithContent(content, 2, boundary, "dw"));
+    EXPECT_TRUE(isForwardEditSafe(content, 2, boundary, ForwardEdit::WORD_TO_START));
     // de: e from 'b' (single char word) goes to end of current word 'b' = col 2
     //     But wait, 'b' is at col 2 which is end of word 'b'
     //     So e_landing = findNextWordEnd = col 4 ('c')
     //     4 < 4 is false → unsafe
-    EXPECT_FALSE(isForwardEditSafeWithContent(content, 2, boundary, "de"));
+    EXPECT_FALSE(isForwardEditSafe(content, 2, boundary, ForwardEdit::WORD_TO_END));
 }
 
 // =============================================================================
@@ -675,12 +684,16 @@ TEST_F(ForwardReachDwDeAsymmetryTest, AtB_DwSafeDeUnsafe) {
 // =============================================================================
 
 TEST(ForwardReachEdgeCases, EmptyContent) {
-    BoundaryFlags boundary{true, true, false, false};
+    EditBoundary boundary;
+    boundary.right_in_word = true;
+    boundary.right_in_WORD = true;
+    boundary.left_in_word = false;
+    boundary.left_in_WORD = false;
     string content = "";
 
     // x at invalid position should be unsafe
-    EXPECT_FALSE(isForwardEditSafeWithContent(content, 0, boundary, "x"));
-    EXPECT_FALSE(isForwardEditSafeWithContent(content, -1, boundary, "x"));
+    EXPECT_FALSE(isForwardEditSafe(content, 0, boundary, ForwardEdit::CHAR));
+    EXPECT_FALSE(isForwardEditSafe(content, -1, boundary, ForwardEdit::CHAR));
 }
 
 // =============================================================================
@@ -688,11 +701,15 @@ TEST(ForwardReachEdgeCases, EmptyContent) {
 // =============================================================================
 
 TEST(ForwardReachEdgeCases, CursorOutOfBounds) {
-    BoundaryFlags boundary{true, true, false, false};
+    EditBoundary boundary;
+    boundary.right_in_word = true;
+    boundary.right_in_WORD = true;
+    boundary.left_in_word = false;
+    boundary.left_in_WORD = false;
     string content = "abc";
 
     // Cursor past end of content
-    EXPECT_FALSE(isForwardEditSafeWithContent(content, 5, boundary, "x"));
+    EXPECT_FALSE(isForwardEditSafe(content, 5, boundary, ForwardEdit::CHAR));
     // Cursor at negative position
-    EXPECT_FALSE(isForwardEditSafeWithContent(content, -1, boundary, "x"));
+    EXPECT_FALSE(isForwardEditSafe(content, -1, boundary, ForwardEdit::CHAR));
 }

@@ -250,6 +250,75 @@ Per-line distance would require complex alignment logic when line counts differ.
 - **Ukkonen's algorithm**: O(nd) where d = edit distance. Faster when d is small, which is common in A* (we prioritize close-to-goal states).
 - **Myers' bit-vector**: O(nm/64) using SIMD-like bit parallelism. Requires goal length ≤ 64 for single-word optimization.
 
+## Optimizer Architecture
+
+### Three Optimizer Types
+
+1. **MovementOptimizer**: Finds optimal motion sequence between two positions (same buffer)
+   - A* search over position states
+   - Supports all movement motions (word, f/F, counts, etc.)
+   - Pre-indexes buffer for O(log n) count motion lookup
+
+2. **EditOptimizer**: Finds optimal sequences to transform one text region to another
+   - A* search over (buffer content, position, mode) states
+   - Uses Levenshtein distance as heuristic
+   - Outputs `EditResult.adj[i][j]` = optimal sequence from position i to j
+
+3. **CompositionOptimizer**: Composes movement + edits for multi-region changes
+   - Uses Myers diff to identify edit regions
+   - Pre-computes EditResult for each region
+   - A* search over (position, editsCompleted) states
+
+### CompositionOptimizer Design
+
+**Initial Design (v1 - implemented):**
+- State transitions: individual movement motions (j, k, h, l, etc.) + edit transitions
+- Movement motions explored directly in main loop
+- Simple but limited: only basic motions, no count/word/f motions
+
+**Improved Design (v2 - planned):**
+- Two edge types in search graph:
+  1. **Edit edges**: Complete an edit (position in region X → position in region X, editsCompleted++)
+  2. **Movement edges**: Move to next edit region (invoke MovementOptimizer on-demand)
+
+- Key insight: Instead of exploring individual movement motions, delegate to MovementOptimizer
+- Advantages:
+  - Leverages existing MovementOptimizer (count motions, f/F, word motions already implemented)
+  - On-demand computation: only compute movements for paths A* actually explores
+  - Cleaner separation of concerns
+
+- Algorithm:
+  ```
+  while pq not empty:
+    state = pq.pop()
+    if state.editsCompleted == totalEdits: yield result
+
+    if pos in edit region for editsCompleted:
+      for each valid (i,j) in EditResult.adj:
+        explore edit transition
+
+    if just finished edit (or at start):
+      results = MovementOptimizer.optimize(currentPos → positions in next edit region)
+      for each movement result:
+        explore movement transition
+  ```
+
+- Considerations:
+  - MovementOptimizer returns effort; need to integrate into CompositionState's RunningEffort
+  - May call MovementOptimizer multiple times; could cache results if needed
+  - Target positions: all valid starting positions in next edit region, or just entry points?
+
+### Heuristic Design
+
+**CompositionOptimizer heuristic:**
+```
+h(n) = suffixEditCosts[editsCompleted] + distanceToNextEditRegion
+```
+
+- `suffixEditCosts[i]` = pre-computed sum of min costs for edits i..n-1 (O(1) lookup)
+- Uses min edit costs to heavily encourage completing edits
+- Admissible: never overestimates actual cost
+
 ## Future Architecture (see plan files)
 
 ### Insert Mode Optimization (insert_mode_plan.txt)

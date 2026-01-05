@@ -1,8 +1,10 @@
 #include "EditOptimizer.h"
 
+#include "EditBoundary.h"
 #include "Keyboard/EditToKeys.h"
 #include "Optimizer/Levenshtein.h"
 #include "State/PosKey.h"
+#include "State/RunningEffort.h"
 
 #include <numeric>
 
@@ -32,6 +34,19 @@ EditOptimizer::heuristic(const EditState &s,
          costToGoal(s.getLines(), s.getMode(), editDistanceCalculator);
 }
 
+template <typename F = void (*)(int, int, int)>
+auto buildPositionIndex(const Lines &lines, F &&onPos = [](int, int, int) {}) {
+  map<PosKey, int> res;
+  int it = 0;
+  for (int i = 0; i < (int)lines.size(); i++) {
+    for (int j = 0; j < lines[i].size(); j++) {
+      onPos(i, j, it);
+      res[PosKey(i, j)] = it++;
+    }
+  }
+  return res;
+}
+
 // We only process starting states with targetCol == col
 // This is because:
 // We already established that the precomputing of edits is optimal/necessary
@@ -42,10 +57,9 @@ EditOptimizer::heuristic(const EditState &s,
 // this).
 // TODO: for testing, add checks to see if we ever produce an output sequence
 // that is not correct with the result starting from a different targetCol
-EditResult
-EditOptimizer::optimizeEdit(const Lines &beginLines, const Lines &endLines,
-                            const ReachLevel beginReachLevel, const ReachLevel endReachLevel,
-                            const MotionToKeys &editMotionToKeys) {
+EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
+                                       const Lines &endLines,
+                                       const EditBoundary& boundary) {
   Levenshtein editDistanceCalculator(endLines.flatten());
 
   int n = beginLines.size();
@@ -67,62 +81,50 @@ EditOptimizer::optimizeEdit(const Lines &beginLines, const Lines &endLines,
   // double userEffort = getEffort(userSequence, config);
   // debug("user effort for sequence", userSequence, "is", userEffort);
 
-  map<PosKey, int> beginPositionToIndex;
-  map<PosKey, int> endPositionToIndex;
   unordered_map<EditStateKey, double, EditStateKeyHash> costMap;
 
   priority_queue<EditState, vector<EditState>, greater<EditState>> pq;
-
-  function<void(EditState &&)> exploreNewState =
-      [this, &pq, &costMap, &endLines](EditState &&newState) {
-        if (newState.getEffort() > userEffort * USER_EXPLORE_FACTOR) {
-          return;
-        }
-        // debug("curr:", currentCost, "new:", newCost);
-        double newCost = newState.getCost();
-        const EditStateKey newKey = newState.getKey();
-        auto it = costMap.find(newKey);
-        if (it == costMap.end()) {
-          // In movement optimizer, we do a check for emplacing, but here we do
-          // unconditionally since we only ever want 1 of each state (startIndex
-          // encoded in key)
-          costMap.emplace(newKey, newCost);
-          pq.push(std::move(newState));
-        }
-        // Allow for equality for more exploration, mostly in testing.
-        else if (newCost <= it->second) {
-          it->second = newCost;
-          pq.push(std::move(newState));
-        }
-        // else { debug(motion, "is worse"); }
-      };
 
   // Build position-to-index maps for begin and end lines
   // Create single SharedLines to share among all initial states
   SharedLines sharedBeginLines = std::make_shared<const Lines>(beginLines);
 
-  int beginIt = 0;
-  for (int i = 0; i < n; i++) {
-    for (int j = 0; j < (int)beginLines[i].size(); j++) {
-      EditState state(sharedBeginLines, Position(i, j), Mode::Normal, RunningEffort(),
-                      beginIt);
-      pq.push(state);
-      beginPositionToIndex[PosKey(i, j)] = beginIt++;
-      costMap[state.getKey()] = 0;
-    }
-  }
+  map<PosKey, int> beginPositionToIndex =
+      buildPositionIndex(beginLines, [&](int i, int j, int it) {
+        EditState state(sharedBeginLines, Position(i, j), Mode::Normal,
+                        RunningEffort(), it);
+        pq.push(state);
+        costMap[state.getKey()] = 0;
+      });
+  map<PosKey, int> endPositionToIndex = buildPositionIndex(endLines);
 
-  int endIt = 0;
-  for (int i = 0; i < (int)endLines.size(); i++) {
-    for (int j = 0; j < (int)endLines[i].size(); j++) {
-      endPositionToIndex[PosKey(i, j)] = endIt++;
+  function<void(EditState &&)> exploreNewState = [this, &pq, &costMap, &endLines](EditState &&newState) {
+    if (newState.getEffort() > userEffort * USER_EXPLORE_FACTOR) {
+      return;
     }
-  }
+    // debug("curr:", currentCost, "new:", newCost);
+    double newCost = newState.getCost();
+    const EditStateKey newKey = newState.getKey();
+    auto it = costMap.find(newKey);
+    if (it == costMap.end()) {
+      // In movement optimizer, we do a check for emplacing, but here we do
+      // unconditionally since we only ever want 1 of each state (startIndex encoded in key)
+      costMap.emplace(newKey, newCost);
+      pq.push(std::move(newState));
+    }
+    // Allow for equality for more exploration, mostly in testing.
+    else if (newCost <= it->second) {
+      it->second = newCost;
+      pq.push(std::move(newState));
+    }
+    // else { debug(motion, "is worse"); }
+  };
 
   while (!pq.empty()) {
     EditState s = pq.top();
     pq.pop();
-    const Lines& lines = s.getLines();  // const ref, no copy
+    const Lines &lines = s.getLines();
+    int n = lines.size();
     Position pos = s.getPos();
     Mode mode = s.getMode();
     double cost = s.getCost();
@@ -132,11 +134,11 @@ EditOptimizer::optimizeEdit(const Lines &beginLines, const Lines &endLines,
       debug("maximum total explored count reached");
       break;
     }
-    if(cost > userEffort * USER_EXPLORE_FACTOR) {
+    if (cost > userEffort * USER_EXPLORE_FACTOR) {
       debug("exceeded user explore cost");
       break;
     }
-    if(cost > leastCostFound * ABSOLUTE_EXPLORE_FACTOR) {
+    if (cost > leastCostFound * ABSOLUTE_EXPLORE_FACTOR) {
       debug("exceeded absolute explore cost");
       break;
     }
@@ -146,18 +148,21 @@ EditOptimizer::optimizeEdit(const Lines &beginLines, const Lines &endLines,
     if (isDone) {
       int i = s.getStartIndex();
       int j = endPositionToIndex[PosKey(pos)];
-      if(res.adj[i][j].isValid()) {
+      if (res.adj[i][j].isValid()) {
         duplicatedFound++;
-        duplicatedMessages.push_back("found " + to_string(i) + "->" + to_string(j) + ": " + s.getMotionSequence());
+        duplicatedMessages.push_back("found " + to_string(i) + "->" +
+                                     to_string(j) + ": " +
+                                     s.getMotionSequence());
       } else {
         res.adj[i][j] = Result(s.getMotionSequence(), cost);
       }
-      // Update leastCostFound. A* guarantees first goal found has minimum f-value,
-      // and at goal h=0, so f=g=cost. Using min() is defensive.
+      // Thes first leastCostFound should be minimal, but guard just in case.
+      if(leastCostFound != NOT_FOUND && cost < leastCostFound) {
+        debug("leastCostFound was", leastCostFound, "but found", cost);
+      }
       leastCostFound = min(leastCostFound, cost);
     } else {
-      // Prune early if this state is outdated. It is guaranteed to exist in the
-      // map
+      // Prune early if state is outdated. It is guaranteed to exist in the map
       if (costMap[key] < s.getCost()) {
         continue;
       }
@@ -166,7 +171,8 @@ EditOptimizer::optimizeEdit(const Lines &beginLines, const Lines &endLines,
     // TODO: handle count motions. Because contents are very dynamic, and we
     // don't handle many characters anyway, just brute force search until the
     // heuristic declines
-    //
+
+
     auto exploreMotion = [&](const EditState &base, const string &motion,
                              const KeySequence &keySequence) {
       EditState newState = base;
@@ -176,102 +182,63 @@ EditOptimizer::optimizeEdit(const Lines &beginLines, const Lines &endLines,
       exploreNewState(std::move(newState));
     };
 
-    using namespace EditCategory;
+    // Helper: explore all motions in a category if condition is true
+    auto explore = [&](bool condition, const auto& motions) {
+      if (condition) {
+        for (auto [motion, keys] : motions) {
+          exploreMotion(s, motion, keys);
+        }
+      }
+    };
 
-    // Derive boolean constraints from ReachLevel
-    bool canDeleteBackOneWord = beginReachLevel >= ReachLevel::WORD;
-    bool canDeleteBackOneWORD = beginReachLevel >= ReachLevel::BIG_WORD;
-    bool canDeleteBackFirstLine = beginReachLevel >= ReachLevel::LINE;
-    bool canDeleteForwardOneWord = endReachLevel >= ReachLevel::WORD;
-    bool canDeleteForwardOneWORD = endReachLevel >= ReachLevel::BIG_WORD;
-    bool canDeleteForwardLastLine = endReachLevel >= ReachLevel::LINE;
+    namespace N = EditCategory::Normal;
+    namespace I = EditCategory::Insert;
+
+    // Per-position safety checking
+    const string& line = lines[pos.line];
+    int col = pos.col;
+
+    // Shorthand for boundary checks
+    auto fwdSafe = [&](ForwardEdit e) { return isForwardEditSafe(line, col, boundary, e); };
+    auto bwdSafe = [&](BackwardEdit e) { return isBackwardEditSafe(line, col, boundary, e); };
+
+    // Position checks
+    bool canGoUp = pos.line > 0;
+    bool canGoDown = pos.line < n - 1;
+    bool canGoLeft = pos.line > 0 || pos.col > 0;
+    bool canGoRight = pos.line < n - 1 || pos.col < (int)lines.back().size();
 
     if (mode == Mode::Insert) {
-      // Insert mode: explore based on constraints
-      for (auto [motion, keys] : Insert::NEUTRAL) {
-        exploreMotion(s, motion, keys);
-      }
-      for (auto [motion, keys] : Insert::CHAR_RIGHT) {
-        exploreMotion(s, motion, keys);
-      }
-      for (auto [motion, keys] : Insert::CHAR_LEFT) {
-        exploreMotion(s, motion, keys);
-      }
-      if (canDeleteBackOneWord) {
-        for (auto [motion, keys] : Insert::WORD_LEFT) {
-          exploreMotion(s, motion, keys);
-        }
-      }
-      if (canDeleteBackFirstLine) {
-        for (auto [motion, keys] : Insert::LINE_LEFT) {
-          exploreMotion(s, motion, keys);
-        }
-      }
-    } else {
-      // Normal mode: explore based on constraints
-      // Always available: CHAR_LEFT, CHAR_RIGHT
-      for (auto [motion, keys] : Normal::CHAR_LEFT) {
-        exploreMotion(s, motion, keys);
-      }
-      for (auto [motion, keys] : Normal::CHAR_RIGHT) {
-        exploreMotion(s, motion, keys);
-      }
+      explore(canGoLeft, I::CHAR_LEFT);
+      explore(canGoRight, I::CHAR_RIGHT);
 
-      // Word-level deletions (left)
-      if (canDeleteBackOneWord) {
-        for (auto [motion, keys] : Normal::WORD_LEFT) {
-          exploreMotion(s, motion, keys);
-        }
-        for (auto [motion, keys] : Normal::WORD_END_RIGHT) {
-          exploreMotion(s, motion, keys);
-        }
-      }
-      if (canDeleteBackOneWORD) {
-        for (auto [motion, keys] : Normal::BIG_WORD_LEFT) {
-          exploreMotion(s, motion, keys);
-        }
-        for (auto [motion, keys] : Normal::BIG_WORD_END_RIGHT) {
-          exploreMotion(s, motion, keys);
-        }
-      }
+      explore(bwdSafe(BackwardEdit::WORD_TO_START), I::WORD_LEFT);   // <C-w>
+      explore(bwdSafe(BackwardEdit::LINE_TO_START), I::LINE_LEFT);   // <C-u>
 
-      // Word-level deletions (right)
-      if (canDeleteForwardOneWord) {
-        for (auto [motion, keys] : Normal::WORD_RIGHT) {
-          exploreMotion(s, motion, keys);
-        }
-      }
-      if (canDeleteForwardOneWORD) {
-        for (auto [motion, keys] : Normal::BIG_WORD_RIGHT) {
-          exploreMotion(s, motion, keys);
-        }
-      }
-
-
-      // Full line: only if both line boundaries are at edit region
-      if (canDeleteBackFirstLine && canDeleteForwardLastLine) {
-        for (auto [motion, keys] : Normal::FULL_LINE) {
-          exploreMotion(s, motion, keys);
-        }
-      }
-
-      // Structural: o requires not last line, O requires not first line
-      int numLines = static_cast<int>(lines.size());
-      if (pos.line > 0) {
-        for (auto [motion, keys] : Normal::STRUCTURAL_UP) {
-          exploreMotion(s, motion, keys);
-        }
-      }
-      if (pos.line < numLines - 1) {
-        for (auto [motion, keys] : Normal::STRUCTURAL_DOWN) {
-          exploreMotion(s, motion, keys);
-        }
-      }
+      explore(canGoUp, I::LINE_UP);
+      explore(canGoDown, I::LINE_DOWN);
     }
+    else if (mode == Mode::Normal) {
+      explore(bwdSafe(BackwardEdit::CHAR), N::CHAR_LEFT);            // X
+      explore(fwdSafe(ForwardEdit::CHAR), N::CHAR_RIGHT);            // x
 
-    // Also explore passed-in motion-to-keys (for arrow keys, etc.)
-    for (auto [motion, keys] : editMotionToKeys) {
-      exploreMotion(s, motion, keys);
+      explore(bwdSafe(BackwardEdit::WORD_TO_START), N::WORD_LEFT);           // db
+      explore(bwdSafe(BackwardEdit::WORD_TO_END), N::WORD_END_LEFT);         // dge
+      explore(bwdSafe(BackwardEdit::BIG_WORD_TO_START), N::BIG_WORD_LEFT);   // dB
+      explore(bwdSafe(BackwardEdit::BIG_WORD_TO_END), N::BIG_WORD_END_LEFT); // dgE
+      explore(bwdSafe(BackwardEdit::LINE_TO_START), N::LINE_LEFT);           // d0
+
+      explore(fwdSafe(ForwardEdit::WORD_TO_START), N::WORD_RIGHT);           // dw
+      explore(fwdSafe(ForwardEdit::WORD_TO_END), N::WORD_END_RIGHT);         // de
+      explore(fwdSafe(ForwardEdit::BIG_WORD_TO_START), N::BIG_WORD_RIGHT);   // dW
+      explore(fwdSafe(ForwardEdit::BIG_WORD_TO_END), N::BIG_WORD_END_RIGHT); // dE
+      explore(fwdSafe(ForwardEdit::LINE_TO_END), N::LINE_RIGHT);             // D
+
+      explore(isFullLineEditSafe(boundary), N::FULL_LINE);           // dd, cc
+
+      // Line navigation
+      explore(canGoUp, N::LINE_UP);
+      explore(canGoDown, N::LINE_DOWN);
     }
   }
 

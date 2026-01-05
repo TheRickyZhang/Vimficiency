@@ -6,11 +6,11 @@
 #include "Keyboard/MotionToKeys.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/ImpliedExclusions.h"
-#include "Optimizer/Optimizer.h"
+#include "Optimizer/MovementOptimizer.h"
 #include "State/RunningEffort.h"
 #include "Editor/Snapshot.h"
 #include "Editor/Motion.h"
-#include "State/State.h"
+#include "State/MotionState.h"
 
 using namespace std;
 // namespace fs = std::filesystem;
@@ -41,7 +41,7 @@ protected:
   }
 
 
-  static State makeState(Position p) { return State(p, RunningEffort(), 0, 0); }
+  static MotionState makeState(Position p) { return MotionState(p, RunningEffort(), 0, 0); }
 
   static vector<Result>
   runOptimizer(const vector<string> &lines, Position start,
@@ -55,11 +55,11 @@ protected:
     }
 
     // Try to explore more, lower search depth for speed
-    Optimizer opt(config, 30, 2e4, 1.0, 2.0);
+    MovementOptimizer opt(config, 30, 2e4, 1.0, 2.0);
 
     // Tests use full test files, so don't exclude G/gg
     ImpliedExclusions impliedExclusions(false, false);
-    return opt.optimizeMovement(lines, makeState(start), end, userSeq, navContext, impliedExclusions, allowedMotions);
+    return opt.optimize(lines, makeState(start), end, userSeq, navContext, impliedExclusions, allowedMotions);
   }
 };
 

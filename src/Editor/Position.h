@@ -6,6 +6,7 @@ struct Position {
   int col  = 0;
   int targetCol = 0;
 
+  Position() = default;
   Position(int l, int c) : line(l), col(c), targetCol(c) {}
   Position(int l, int c, int tc) : line(l), col(c), targetCol(tc) {}
 
@@ -28,6 +29,12 @@ struct Position {
   }
   bool operator>(const Position& other) const {
     return other < *this;
+  }
+  bool operator<=(const Position& other) const {
+    return !(other < *this);
+  }
+  bool operator>=(const Position& other) const {
+    return !(*this < other);
   }
   void swap(Position& other) noexcept {
     std::swap(line, other.line);

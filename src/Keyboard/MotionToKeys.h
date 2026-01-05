@@ -28,8 +28,6 @@ extern const MotionToKeys ALL_MOTIONS;
 // Excludes motions needing special handling (f/F/t/T require target char, ;/, require prior context)
 extern const MotionToKeys EXPLORABLE_MOTIONS;
 
-extern const MotionToKeys EDIT_EXPLORABLE_MOTIONS;
-
 // Single-character to KeySequence mapping (for f/F/t/T motion targets)
 extern const CharToKeys CHAR_TO_KEYS;
 

@@ -4,9 +4,9 @@
 #include "Keyboard/MotionToKeys.h"
 #include "Editor/NavContext.h"
 #include "Editor/Motion.h"
-#include "Optimizer/Optimizer.h"
+#include "Optimizer/MovementOptimizer.h"
 #include "Optimizer/ImpliedExclusions.h"
-#include "State/State.h"
+#include "State/MotionState.h"
 #include "TestUtils.h"
 
 using namespace std;
@@ -169,8 +169,8 @@ protected:
     navContext = NavContext(0, 39, 39, 19);
   }
 
-  static State makeState(Position p) {
-    return State(p, RunningEffort(), 0, 0);
+  static MotionState makeState(Position p) {
+    return MotionState(p, RunningEffort(), 0, 0);
   }
 
   static vector<Result> runOptimizer(
@@ -180,9 +180,9 @@ protected:
       const string& userSeq,
       const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS,
       Config config = Config::uniform()) {
-    Optimizer opt(config, 30, 2e4, 1.0, 2.0);
+    MovementOptimizer opt(config, 30, 2e4, 1.0, 2.0);
     ImpliedExclusions impliedExclusions(false, false);
-    return opt.optimizeMovement(lines, makeState(start), end, userSeq, navContext, impliedExclusions, allowedMotions);
+    return opt.optimize(lines, makeState(start), end, userSeq, navContext, impliedExclusions, allowedMotions);
   }
 };
 

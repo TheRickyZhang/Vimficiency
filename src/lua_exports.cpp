@@ -5,8 +5,8 @@
 #include "Keyboard/XMacroKeyDefinitions.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/ImpliedExclusions.h"
-#include "Optimizer/Optimizer.h"
-#include "State/State.h"
+#include "Optimizer/MovementOptimizer.h"
+#include "State/MotionState.h"
 #include "Utils/CoutCapture.h"
 #include "Utils/Debug.h"
 #include <sstream>
@@ -150,16 +150,16 @@ const char *vimficiency_analyze(
     Position start_position(start_row, start_col);
     Position end_position(end_row, end_col);
 
-    State start_state(start_position, RunningEffort(), 0, 0);
+    MotionState start_state(start_position, RunningEffort(), 0, 0);
 
     NavContext navigation_context(top_row, bottom_row, window_height, scroll_amount);
     // Exclude G if we DON'T have the real bottom, exclude gg if we DON'T have the real top
     ImpliedExclusions impliedExclusions(!includes_real_bottom, !includes_real_top);
 
     // g_config_internal was already populated by vimficiency_apply_config()
-    Optimizer opt(g_config_internal, RESULTS_CALCULATED);
+    MovementOptimizer opt(g_config_internal, RESULTS_CALCULATED);
 
-    std::vector<Result> res = opt.optimizeMovement(lines, start_state, end_position, keyseq,  navigation_context, impliedExclusions);
+    std::vector<Result> res = opt.optimize(lines, start_state, end_position, keyseq,  navigation_context, impliedExclusions);
 
     // Format results
     std::ostringstream oss;

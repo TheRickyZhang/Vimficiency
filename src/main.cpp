@@ -3,10 +3,10 @@
 #include "Optimizer/Config.h"
 #include "Optimizer/ImpliedExclusions.h"
 #include "State/RunningEffort.h"
-#include "Optimizer/Optimizer.h"
+#include "Optimizer/MovementOptimizer.h"
 #include "Editor/Snapshot.h"
 #include "Editor/NavContext.h"
-#include "State/State.h"
+#include "State/MotionState.h"
 #include "Utils/Debug.h"
 
 using namespace std;
@@ -39,9 +39,9 @@ int main(int argc, char* argv[]) {
   debug("starting position:", start_snapshot.row, start_snapshot.col);
   debug("ending position:", end_snapshot.row, end_snapshot.col);
 
-  State start_state(start_position, RunningEffort(), 0, 0);
+  MotionState start_state(start_position, RunningEffort(), 0, 0);
   Config model = Config::uniform();
-  Optimizer o(model);
+  MovementOptimizer o(model);
 
   NavContext navContext(
     start_snapshot.topRow,
@@ -53,7 +53,7 @@ int main(int argc, char* argv[]) {
   // CLI uses full file snapshots, so don't exclude G/gg
   ImpliedExclusions impliedExclusions(false, false);
 
-  vector<Result> res = o.optimizeMovement(
+  vector<Result> res = o.optimize(
     start_snapshot.lines,
     start_state,
     end_position,
