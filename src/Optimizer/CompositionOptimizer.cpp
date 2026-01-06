@@ -42,15 +42,29 @@ vector<Result> CompositionOptimizer::optimize(
   vector<DiffState> rawDiffs = Myers::calculate(
       Lines(startLines.begin(), startLines.end()),
       Lines(endLines.begin(), endLines.end()));
+
+  // If no edits needed, return empty (nothing to optimize)
+  if (rawDiffs.empty()) {
+    return {};
+  }
+
+  // Determine processing direction based on start position relative to edits.
+  // Forward = process edits left->right (top->bottom)
+  // Backward = process edits right->left (bottom->top)
+  // If backward, we reverse the edit order so all subsequent logic is uniform.
+  double distToFirst = costToGoal(startPos, rawDiffs.front().posBegin);
+  double distToLast = costToGoal(startPos, rawDiffs.back().posEnd);
+  bool forward = (distToFirst <= distToLast + FORWARD_BIAS);
+
+  if (!forward) {
+    std::reverse(rawDiffs.begin(), rawDiffs.end());
+    debug("Processing edits in reverse order (backward)");
+  }
+
   // Adjust indices for sequential application, so edit 2's indices are in buffer after edit 1 is applied
   vector<DiffState> diffStates = Myers::adjustForSequential(rawDiffs);
 
   int totalEdits = static_cast<int>(diffStates.size());
-
-  // If no edits needed, return empty (nothing to optimize)
-  if (totalEdits == 0) {
-    return {};
-  }
 
   // Build intermediate buffer states. [0] = no changes (same as startLines), [d] = all changes (same as endLines)
   vector<Lines> linesAfterNEdits = calculateLinesAfterDiffs(
@@ -62,14 +76,13 @@ vector<Result> CompositionOptimizer::optimize(
   vector<double> suffixEditCosts = computeSuffixEditCosts(editResults);
 
   // Position -> editIndex map
-  int maxLines = 0;
+  int maxLineSize = 0;
   for (const auto& lines : linesAfterNEdits) {
-    maxLines = max(maxLines, static_cast<int>(lines.size()));
+    maxLineSize = max(maxLineSize, static_cast<int>(lines.size()));
   }
-  int maxPosKey = maxLines * MAX_LINE_LENGTH;
+  int maxPosKey = maxLineSize * MAX_LINE_LENGTH;
   vector<vector<int>> posToEditIndex = buildPosToEditIndex(diffStates, maxPosKey);
 
-  // Pre-computed data ready, start A* search
   int totalExplored = 0;
   double userEffort = getEffort(userSequence, config);
 
@@ -78,7 +91,6 @@ vector<Result> CompositionOptimizer::optimize(
 
   priority_queue<CompositionState, vector<CompositionState>, greater<CompositionState>> pq;
 
-  // Lambda to explore new states
   auto exploreNewState = [this, &pq, &costMap, &userEffort, totalEdits](CompositionState&& newState) {
     if(newState.getEffort() > userEffort * EXPLORE_FACTOR) {
       return;
@@ -105,6 +117,7 @@ vector<Result> CompositionOptimizer::optimize(
   pq.push(startingState);
   costMap[startingState.getKey()] = startingState.getCost();
 
+  // Main search logic
   while(!pq.empty()) {
     CompositionState s = pq.top();
     pq.pop();
@@ -128,6 +141,7 @@ vector<Result> CompositionOptimizer::optimize(
       }
       continue;
     } else if(costMap.count(stateKey) && costMap[stateKey] < s.getCost()) {
+      // Discard this since there's a better state
       continue;
     }
 
@@ -156,13 +170,10 @@ vector<Result> CompositionOptimizer::optimize(
                 CompositionState newState = s;
 
                 // Convert end index back to buffer position
-                // After this edit, we're in linesAfterNEdits[editsCompleted + 1]
+                // NOTE: After this edit, we're in linesAfterNEdits[editsCompleted + 1]
                 Position newPos = editIndexToBufferPos(j, diff);
 
-                // Parse the edit sequence to get KeySequence
-                KeySequence keySeq = globalTokenizer().tokenize(editRes.sequence);
-
-                newState.applyEditTransition(editRes.sequence, newPos, keySeq, config);
+                newState.applyEditTransition(editRes.sequence, newPos, config);
                 newState.updateCost(heuristic(newState, editsCompleted + 1, suffixEditCosts, diffStates));
                 exploreNewState(std::move(newState));
               }
@@ -176,9 +187,6 @@ vector<Result> CompositionOptimizer::optimize(
     // Use MovementOptimizer to find optimal paths to next edit region
     if (editsCompleted < totalEdits) {
       const DiffState& nextEdit = diffStates[editsCompleted];
-
-      // Create starting MotionState from current CompositionState
-      MotionState startMotionState(pos, s.getRunningEffort(), s.getEffort(), 0.0);
 
       // Copy NavContext for motion application
       NavContext navContext = navigationContext;
@@ -194,73 +202,29 @@ vector<Result> CompositionOptimizer::optimize(
       );
 
       // Use MovementOptimizer to find optimal paths to any position in the edit region
+      // Pass only Position and RunningEffort - sub-search computes its own effort/cost fresh
+      // RangeResult.keyCost returns delta effort for this movement
       MovementOptimizer movementOptimizer(config);
-      vector<Result> movementResults = movementOptimizer.optimizeToRange(
+      vector<RangeResult> movementResults = movementOptimizer.optimizeToRange(
         currentLines,
-        startMotionState,
+        pos,
+        s.getRunningEffort(),
         nextEdit.posBegin,
         nextEdit.posEnd,
         "", // No user sequence reference for sub-optimization
         navContext,
-        10, // Max results per movement search
+        SearchParams(clamp(nextEdit.origCharCount(), 1, 10)),  // Max results per movement search
+        false, // allowMultiplePerPosition: only need 1 best path per position
         subExclusions,
         motionToKeys
       );
 
       // Create new CompositionStates from movement results
-      for (const Result& movResult : movementResults) {
+      for (const RangeResult& movResult : movementResults) {
         if (!movResult.isValid()) continue;
 
-        // Parse the movement sequence to find the end position
-        // We need to simulate the motion to get the end position
-        MotionState simState(pos, RunningEffort(), 0.0, 0.0);
-        // Parse each motion and apply
-        KeySequence keySeq = globalTokenizer().tokenize(movResult.sequence);
-        // For now, just re-run the simulation to get end position
-        // This is somewhat redundant, but ensures correctness
-        MotionState endState(pos, RunningEffort(), 0.0, 0.0);
-        // Apply the full sequence - we can extract position from the sequence
-        // Actually, we need to get the end position from the Result
-        // The issue is Result doesn't store end position...
-
-        // WORKAROUND: Re-simulate the motion sequence to get end position
-        Position newPos = pos;
-        NavContext simNavContext = navigationContext;
-        string seq = movResult.sequence;
-        // Simple re-simulation for position tracking
-        // Note: This duplicates work but keeps the API clean
-        MotionState simMotionState(pos, RunningEffort(), 0.0, 0.0);
-        // Parse and apply each motion in the sequence
-        size_t i = 0;
-        while (i < seq.size()) {
-          string motion;
-          // Handle count prefix
-          while (i < seq.size() && isdigit(seq[i])) {
-            motion += seq[i++];
-          }
-          // Handle motion (may be multi-char like gg, ge, gE)
-          if (i < seq.size()) {
-            if (seq[i] == 'g' && i + 1 < seq.size()) {
-              motion += seq[i++];
-              motion += seq[i++];
-            } else if (seq[i] == '<' || seq[i] == '>') {
-              // Handle <C-d>, <C-u> etc
-              while (i < seq.size() && seq[i] != '>') {
-                motion += seq[i++];
-              }
-              if (i < seq.size()) motion += seq[i++];
-            } else {
-              motion += seq[i++];
-            }
-          }
-          if (!motion.empty()) {
-            simMotionState.applySingleMotion(motion, simNavContext, currentLines);
-          }
-        }
-        newPos = simMotionState.getPos();
-
         CompositionState newState = s;
-        newState.applyMovementResult(movResult.sequence, newPos, config);
+        newState.applyMovementResult(movResult.sequence, movResult.endPos, config);
         newState.updateCost(heuristic(newState, editsCompleted, suffixEditCosts, diffStates));
         exploreNewState(std::move(newState));
       }
@@ -274,22 +238,29 @@ vector<double> CompositionOptimizer::computeSuffixEditCosts(const vector<EditRes
   int n = static_cast<int>(editResults.size());
   vector<double> suffixCosts(n + 1, 0.0);
 
-  // Compute min cost for each edit, then build suffix sums
+  // Compute median cost for each edit, then build suffix sums.
+  // Using median is good for not being biased with large outliers.
+  // How much cheaper the best edit costs are from this median is a good measure of desired exploredness
   for (int i = n - 1; i >= 0; i--) {
     const auto& editRes = editResults[i];
-    double minCost = INT_MAX;
+    vector<double> costs;
     for (int j = 0; j < editRes.n; j++) {
       for (int k = 0; k < editRes.m; k++) {
         if (editRes.adj[j][k].isValid()) {
-          minCost = min(minCost, editRes.adj[j][k].keyCost);
+          costs.push_back(editRes.adj[j][k].keyCost);
         }
       }
     }
-    // If no valid result found, use a high default
-    if (minCost == INT_MAX) {
-      minCost = 100.0;
+
+    double medianCost;
+    if (costs.empty()) {
+      medianCost = 100.0;
+    } else {
+      size_t mid = costs.size() / 2;
+      nth_element(costs.begin(), costs.begin() + mid, costs.end());
+      medianCost = costs[mid];
     }
-    suffixCosts[i] = suffixCosts[i + 1] + minCost;
+    suffixCosts[i] = suffixCosts[i + 1] + medianCost;
   }
 
   return suffixCosts;
@@ -302,16 +273,28 @@ double CompositionOptimizer::costToGoal(const Position& curr, const Position& go
 double CompositionOptimizer::heuristic(const CompositionState& s, int editsCompleted,
                                         const vector<double>& suffixEditCosts,
                                         const vector<DiffState>& diffStates) const {
-  // h(n) = distance to next edit region + suffix sum of min costs
+  // h(n) = distance to next edit region + suffix sum of edit costs
+  // Overshooting (going past the next edit) is penalized more heavily than undershooting.
+  // Note: If we're processing edits in reverse order, diffStates was already reversed,
+  // so "overshooting" still means pos > nextEdit.posEnd in the processing direction.
   int totalEdits = static_cast<int>(diffStates.size());
 
   // O(1) lookup for remaining edit costs
   double h = suffixEditCosts[editsCompleted];
 
-  // Add distance to next edit region if not at goal
+  // Add distance to next edit region with asymmetric penalty
   if (editsCompleted < totalEdits) {
     const DiffState& nextEdit = diffStates[editsCompleted];
-    h += costToGoal(s.getPos(), nextEdit.posBegin);
+    Position pos = s.getPos();
+    if (pos < nextEdit.posBegin) {
+      // Undershooting: normal cost to reach the edit
+      h += costToGoal(pos, nextEdit.posBegin);
+    } else if (pos > nextEdit.posEnd) {
+      // Overshooting: went past the edit, heavily penalized
+      // Must backtrack, which is inefficient
+      h += OVERSHOOT_PENALTY * costToGoal(pos, nextEdit.posEnd);
+    }
+    // else: inside range, distance = 0
   }
 
   return COST_WEIGHT * s.getEffort() + h;
@@ -319,7 +302,7 @@ double CompositionOptimizer::heuristic(const CompositionState& s, int editsCompl
 
 int CompositionOptimizer::bufferPosToEditIndex(const Position& bufferPos, const DiffState& diff) const {
   // Convert buffer position to flat index within deletedLines
-  int editLine = bufferPos.line - diff.origLineStart;
+  int editLine = bufferPos.line - diff.origLineStart();
 
   if (editLine < 0 || editLine >= static_cast<int>(diff.deletedLines.size())) {
     return -1;
@@ -337,20 +320,20 @@ int CompositionOptimizer::bufferPosToEditIndex(const Position& bufferPos, const 
 
 Position CompositionOptimizer::editIndexToBufferPos(int flatIndex, const DiffState& diff) const {
   // Convert flat index within insertedLines to buffer position
-  // The new buffer has insertedLines at diff.newLineStart
+  // The new buffer has insertedLines at diff.newLineStart()
 
   int remaining = flatIndex;
   for (int i = 0; i < static_cast<int>(diff.insertedLines.size()); i++) {
     int lineLen = static_cast<int>(diff.insertedLines[i].size());
     if (remaining < lineLen) {
       // Found the line
-      return Position(diff.newLineStart + i, remaining);
+      return Position(diff.newLineStart() + i, remaining);
     }
     remaining -= lineLen;
   }
 
   // If we get here, index was at end of last line
-  int lastLine = diff.newLineStart + static_cast<int>(diff.insertedLines.size()) - 1;
+  int lastLine = diff.newLineStart() + static_cast<int>(diff.insertedLines.size()) - 1;
   int lastCol = diff.insertedLines.empty() ? 0 : static_cast<int>(diff.insertedLines.back().size());
   return Position(lastLine, lastCol);
 }
@@ -393,7 +376,7 @@ vector<vector<int>> CompositionOptimizer::buildPosToEditIndex(
 
     // Mark all positions on lines within the edit region
     // (line-based for compatibility with EditOptimizer's full-line indexing)
-    for (int line = diff.origLineStart; line < diff.origLineStart + diff.origLineCount; line++) {
+    for (int line = diff.origLineStart(); line < diff.origLineStart() + diff.origLineCount(); line++) {
       // Mark all columns on this line
       for (int col = 0; col < MAX_LINE_LENGTH; col++) {
         int posKey = line * MAX_LINE_LENGTH + col;
@@ -404,8 +387,8 @@ vector<vector<int>> CompositionOptimizer::buildPosToEditIndex(
     }
 
     // For pure insertions, mark the insertion point
-    if (diff.origLineCount == 0) {
-      int posKey = diff.origLineStart * MAX_LINE_LENGTH + 0;
+    if (diff.origLineCount() == 0) {
+      int posKey = diff.origLineStart() * MAX_LINE_LENGTH + 0;
       if (posKey < maxPosKey) {
         posToEditIndex[posKey].push_back(editIdx);
       }

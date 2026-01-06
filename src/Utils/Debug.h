@@ -27,7 +27,7 @@ inline void debug([[maybe_unused]] Args&&... args){
 }
 
 inline std::string get_debug_output() {
-    return dout().str();
+    return "-----------------DEBUG------------------\n" + dout().str();
 }
 
 inline void clear_debug_output() {

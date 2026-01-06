@@ -2,8 +2,16 @@
 
 #include <algorithm>
 #include <cassert>
+#include <numeric>
 
 using namespace std;
+
+
+int DiffState::origCharCount() const {
+  return accumulate(deletedLines.begin(), deletedLines.end(), 0,
+                    [](int x, const string& s){ return x + s.size(); });
+}
+
 
 namespace Myers {
 
@@ -30,18 +38,21 @@ static int findLastDiff(const string& a, const string& b) {
 }
 
 // Compute character-precise posBegin and posEnd for a DiffState
-static void computeCharBounds(DiffState& diff) {
-  if (diff.origLineCount == 0) {
+// lineStart is the starting line index where this diff begins
+static void computeCharBounds(DiffState& diff, int lineStart) {
+  int lineCount = static_cast<int>(diff.deletedLines.size());
+
+  if (lineCount == 0) {
     // Pure insertion: posBegin = posEnd = insertion point
-    diff.posBegin = Position(diff.origLineStart, 0);
-    diff.posEnd = Position(diff.origLineStart, 0);
+    diff.posBegin = Position(lineStart, 0);
+    diff.posEnd = Position(lineStart, 0);
     return;
   }
 
-  if (diff.newLineCount == 0) {
+  if (diff.insertedLines.empty()) {
     // Pure deletion: entire deleted range
-    diff.posBegin = Position(diff.origLineStart, 0);
-    int lastLine = diff.origLineStart + diff.origLineCount - 1;
+    diff.posBegin = Position(lineStart, 0);
+    int lastLine = lineStart + lineCount - 1;
     int lastCol = static_cast<int>(diff.deletedLines.back().size());
     diff.posEnd = Position(lastLine, lastCol);
     return;
@@ -57,12 +68,12 @@ static void computeCharBounds(DiffState& diff) {
   int endCol = findLastDiff(lastDel, lastIns);
 
   // Handle single-line case: ensure begin <= end
-  if (diff.origLineCount == 1 && beginCol > endCol) {
+  if (lineCount == 1 && beginCol > endCol) {
     endCol = beginCol;
   }
 
-  diff.posBegin = Position(diff.origLineStart, beginCol);
-  diff.posEnd = Position(diff.origLineStart + diff.origLineCount - 1, endCol);
+  diff.posBegin = Position(lineStart, beginCol);
+  diff.posEnd = Position(lineStart + lineCount - 1, endCol);
 }
 
 // Internal: trace the edit path from the DP table
@@ -125,15 +136,11 @@ vector<DiffState> calculate(const Lines& startLines,
 
     // Found a change region - collect consecutive DELETEs and INSERTs
     DiffState diff;
-    diff.origLineStart = origIdx;
-    diff.newLineStart = newIdx;
-    diff.origLineCount = 0;
-    diff.newLineCount = 0;
+    int lineStart = origIdx;  // Track where this diff starts
 
     // Collect DELETEs first (lines removed from original)
     while (opIdx < ops.size() && ops[opIdx] == EditOp::DELETE) {
       diff.deletedLines.push_back(startLines[origIdx]);
-      diff.origLineCount++;
       origIdx++;
       opIdx++;
     }
@@ -141,13 +148,12 @@ vector<DiffState> calculate(const Lines& startLines,
     // Collect INSERTs (lines added to new)
     while (opIdx < ops.size() && ops[opIdx] == EditOp::INSERT) {
       diff.insertedLines.push_back(endLines[newIdx]);
-      diff.newLineCount++;
       newIdx++;
       opIdx++;
     }
 
-    // Compute character-precise bounds
-    computeCharBounds(diff);
+    // Compute character-precise bounds (sets posBegin/posEnd)
+    computeCharBounds(diff, lineStart);
 
     result.push_back(std::move(diff));
   }
@@ -159,7 +165,7 @@ Lines applyDiffState(const DiffState& diff, const Lines& lines) {
   Lines result;
 
   // Copy lines before the change
-  for (int i = 0; i < diff.origLineStart; i++) {
+  for (int i = 0; i < diff.origLineStart(); i++) {
     result.push_back(lines[i]);
   }
 
@@ -169,7 +175,7 @@ Lines applyDiffState(const DiffState& diff, const Lines& lines) {
   }
 
   // Copy lines after the change (skip deleted lines)
-  for (int i = diff.origLineStart + diff.origLineCount;
+  for (int i = diff.origLineStart() + diff.origLineCount();
        i < static_cast<int>(lines.size()); i++) {
     result.push_back(lines[i]);
   }
@@ -188,19 +194,16 @@ vector<DiffState> adjustForSequential(const vector<DiffState>& diffs) {
 
   for (const auto& diff : diffs) {
     DiffState adjusted = diff;
-    adjusted.origLineStart += lineOffset;
-    // newLineStart is already relative to final buffer, but for intermediate
-    // states we need to track where in the current buffer we're inserting
-    adjusted.newLineStart = adjusted.origLineStart;
 
     // Adjust posBegin and posEnd line numbers
+    // (origLineStart/newLineStart are derived from posBegin.line)
     adjusted.posBegin.line += lineOffset;
     adjusted.posEnd.line += lineOffset;
 
     result.push_back(std::move(adjusted));
 
-    // Update offset for next diff
-    lineOffset += (diff.newLineCount - diff.origLineCount);
+    // Update offset for next diff: inserted lines - deleted lines
+    lineOffset += (diff.newLineCount() - diff.origLineCount());
   }
 
   return result;

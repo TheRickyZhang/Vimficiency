@@ -39,13 +39,10 @@ int main(int argc, char* argv[]) {
   debug("starting position:", start_snapshot.row, start_snapshot.col);
   debug("ending position:", end_snapshot.row, end_snapshot.col);
 
-  MotionState start_state(start_position, RunningEffort(), 0, 0);
   Config model = Config::uniform();
   MovementOptimizer o(model);
 
   NavContext navContext(
-    start_snapshot.topRow,
-    start_snapshot.bottomRow,
     start_snapshot.windowHeight,
     start_snapshot.scrollAmount
   );
@@ -53,12 +50,15 @@ int main(int argc, char* argv[]) {
   // CLI uses full file snapshots, so don't exclude G/gg
   ImpliedExclusions impliedExclusions(false, false);
 
+  // Pass Position and fresh RunningEffort (no prior typing context from CLI)
   vector<Result> res = o.optimize(
     start_snapshot.lines,
-    start_state,
+    start_position,
+    RunningEffort(),
     end_position,
     user_seq,
     navContext,
+    SearchParams(),  // default search parameters
     impliedExclusions
   );
 

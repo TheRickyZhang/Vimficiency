@@ -38,7 +38,7 @@ protected:
         Lines lines = {line};
         Position pos(0, cursorCol);
         Mode mode = Mode::Normal;
-        NavContext nav(0, 40, 40, 20);
+        NavContext nav(40, 20);
 
         Edit::applyEdit(lines, pos, mode, nav, ParsedEdit(editCmd));
         return lines[0];
@@ -49,7 +49,7 @@ protected:
         Lines lines = {line};
         Position startPos(0, cursorCol);
         Mode mode = Mode::Normal;
-        NavContext nav(0, 40, 40, 20);
+        NavContext nav(40, 20);
 
         // Simulate the motion to get end position
         MotionResult result = simulateMotions(startPos, mode, nav, motion, lines);

@@ -20,9 +20,12 @@ KeySequence makeKeySequence(int count, const KeySequence& motionKeys) {
 
 vector<Result> MovementOptimizer::optimize(
     const vector<string> &lines,
-    const MotionState& startingState, const Position &endPos,
+    const Position& startPos,
+    const RunningEffort& startingEffort,
+    const Position &endPos,
     const string &userSequence,
-    NavContext& navContext,
+    const NavContext& navContext,
+    const SearchParams& params,
     const ImpliedExclusions& impliedExclusions,
     const MotionToKeys &rawMotionToKeys) {
   // Apply exclusions. Not sure if copy overhead outweighs skipping later, but it's clear and direct.
@@ -40,6 +43,10 @@ vector<Result> MovementOptimizer::optimize(
   int totalExplored = 0;
   double userEffort = getEffort(userSequence, config);
 
+  // Create initial state: effort=0 (fresh start), cost=heuristic
+  // Only RunningEffort is continued from caller for correct typing effort calculation
+  MotionState initialState(startPos, startingEffort, 0.0, 0.0);
+
   debug("user effort for sequence", userSequence, "is", userEffort);
 
   vector<Result> res;
@@ -49,8 +56,11 @@ vector<Result> MovementOptimizer::optimize(
   priority_queue<MotionState, vector<MotionState>, greater<MotionState>> pq;
 
   // Consider making an lvalue overload as well if that is needed anywhere
-  function<void(MotionState&&)> exploreNewState = [this, &pq, &costMap, &goalKey, &userEffort](MotionState&& newState) {
-    if (newState.getEffort() > userEffort * EXPLORE_FACTOR) {
+  // NOTE: Uses <= for cost comparison to allow exploration of equal-cost paths.
+  // This ensures we find all optimal sequences (e.g., both 'w' and 'W' when they
+  // have equal cost to reach the goal).
+  auto exploreNewState = [&](MotionState&& newState) {
+    if (newState.getEffort() > userEffort * params.exploreFactor) {
       return;
     }
     double newCost = newState.getCost();
@@ -63,7 +73,7 @@ vector<Result> MovementOptimizer::optimize(
       }
       pq.push(std::move(newState));
     }
-    // Allow for equality for more exploration, mostly in testing.
+    // Allow equal costs for more exploration - finds all optimal paths
     else if (newCost <= it->second) {
       it->second = newCost;
       pq.push(std::move(newState));
@@ -74,7 +84,7 @@ vector<Result> MovementOptimizer::optimize(
     MotionState newState = base;
     newState.applySingleMotion(motion, navContext, lines);
     newState.updateEffort(keySequence, config);
-    newState.updateCost(heuristic(newState, endPos));
+    newState.updateCost(heuristic(newState, endPos, params.costWeight));
     exploreNewState(std::move(newState));
   };
 
@@ -86,7 +96,7 @@ vector<Result> MovementOptimizer::optimize(
       makeKeySequence(abs(cnt), motionToKeys.at(motion)),
       config
     );
-    newState.updateCost(heuristic(newState, endPos));
+    newState.updateCost(heuristic(newState, endPos, params.costWeight));
     exploreNewState(std::move(newState));
   };
 
@@ -94,20 +104,21 @@ vector<Result> MovementOptimizer::optimize(
     MotionState newState = base;
     newState.applySingleMotionWithKnownColumn(motion, newcol);
     newState.updateEffort(keySequence, config);
-    newState.updateCost(heuristic(newState, endPos));
+    newState.updateCost(heuristic(newState, endPos, params.costWeight));
     exploreNewState(std::move(newState));
   };
 
-  // Start
-  pq.push(startingState);
-  costMap[startingState.getKey()] = 0;
+  // Start - set cost to heuristic (f = g + h, where g = 0 for fresh start)
+  initialState.updateCost(heuristic(initialState, endPos, params.costWeight));
+  pq.push(initialState);
+  costMap[initialState.getKey()] = initialState.getCost();
 
   while (!pq.empty()) {
     MotionState s = pq.top();
     pq.pop();
     Position pos = s.getPos();
 
-    if (++totalExplored > MAX_SEARCH_DEPTH) {
+    if (++totalExplored > params.maxSearchDepth) {
       debug("maximum total explored count reached");
       break;
     }
@@ -120,7 +131,7 @@ vector<Result> MovementOptimizer::optimize(
     if (isGoal) {
       // TODO: replace with root level call, nothing should expose runningEffort
       res.emplace_back(s.getMotionSequence(), s.getRunningEffort().getEffort(config));
-      if (res.size() >= MAX_RESULT_COUNT) {
+      if (res.size() >= static_cast<size_t>(params.maxResults)) {
         debug("maximum result count reached");
         break;
       }
@@ -164,13 +175,13 @@ vector<Result> MovementOptimizer::optimize(
       // F motions
       if(forward){
         handleFMotions(
-          VimMovementUtils::generateFMotions<true>(pos.col, endPos.col, lines[pos.line], F_MOTION_THRESHOLD),
+          VimMovementUtils::generateFMotions<true>(pos.col, endPos.col, lines[pos.line], params.fMotionThreshold),
           'f', ';'
         );
       }
       else {
         handleFMotions(
-          VimMovementUtils::generateFMotions<false>(pos.col, endPos.col, lines[pos.line], F_MOTION_THRESHOLD),
+          VimMovementUtils::generateFMotions<false>(pos.col, endPos.col, lines[pos.line], params.fMotionThreshold),
           'F', ';'
         );
       }
@@ -222,14 +233,16 @@ vector<Result> MovementOptimizer::optimize(
   return res;
 }
 
-vector<Result> MovementOptimizer::optimizeToRange(
+vector<RangeResult> MovementOptimizer::optimizeToRange(
     const Lines& lines,
-    const MotionState& startingState,
+    const Position& startPos,
+    const RunningEffort& startingEffort,
     const Position& rangeBegin,
     const Position& rangeEnd,
     const string& userSequence,
     NavContext& navContext,
-    int maxResults,
+    const SearchParams& params,
+    bool allowMultiplePerPosition,
     const ImpliedExclusions& impliedExclusions,
     const MotionToKeys& rawMotionToKeys) {
 
@@ -245,9 +258,16 @@ vector<Result> MovementOptimizer::optimizeToRange(
   int totalExplored = 0;
   double userEffort = getEffort(userSequence, config);
 
-  // Results: best per end position
-  map<PosKey, Result> resultsByPos;
-  int resultsFound = 0;
+  // Create initial state: effort=0 (fresh start), cost=heuristic
+  // Only RunningEffort is continued from caller for correct typing effort calculation
+  MotionState initialState(startPos, startingEffort, 0.0, 0.0);
+
+  // Results storage:
+  // - allowMultiplePerPosition=false: at most 1 result per position (best cost)
+  // - allowMultiplePerPosition=true: all results found per position
+  map<PosKey, RangeResult> bestResultByPos;      // Used when !allowMultiplePerPosition
+  vector<RangeResult> allResults;                 // Used when allowMultiplePerPosition
+  int uniquePositionsFound = 0;
 
   unordered_map<PosKey, double, PosKeyHash> costMap;
 
@@ -259,8 +279,11 @@ vector<Result> MovementOptimizer::optimizeToRange(
   };
 
   // exploreNewState: don't cache goal positions (allow multiple paths)
+  // NOTE: Uses <= for cost comparison to allow exploration of equal-cost paths.
+  // This ensures we find all optimal sequences (e.g., both 'w' and 'W' when they
+  // have equal cost to reach the range).
   auto exploreNewState = [&](MotionState&& newState) {
-    if (newState.getEffort() > userEffort * EXPLORE_FACTOR) {
+    if (newState.getEffort() > userEffort * params.exploreFactor) {
       return;
     }
     double newCost = newState.getCost();
@@ -273,6 +296,7 @@ vector<Result> MovementOptimizer::optimizeToRange(
       }
       pq.push(std::move(newState));
     } else if (newCost <= it->second) {
+      // Allow equal costs for more exploration - finds all optimal paths
       it->second = newCost;
       pq.push(std::move(newState));
     }
@@ -282,20 +306,21 @@ vector<Result> MovementOptimizer::optimizeToRange(
     MotionState newState = base;
     newState.applySingleMotion(motion, navContext, lines);
     newState.updateEffort(keySequence, config);
-    newState.updateCost(heuristicToRange(newState, rangeBegin, rangeEnd));
+    newState.updateCost(heuristicToRange(newState, rangeBegin, rangeEnd, params.costWeight));
     exploreNewState(std::move(newState));
   };
 
-  // Start
-  pq.push(startingState);
-  costMap[startingState.getKey()] = 0;
+  // Start - set cost to heuristic (f = g + h, where g = 0 for fresh start)
+  initialState.updateCost(heuristicToRange(initialState, rangeBegin, rangeEnd, params.costWeight));
+  pq.push(initialState);
+  costMap[initialState.getKey()] = initialState.getCost();
 
   while (!pq.empty()) {
     MotionState s = pq.top();
     pq.pop();
     Position pos = s.getPos();
 
-    if (++totalExplored > MAX_SEARCH_DEPTH) {
+    if (++totalExplored > params.maxSearchDepth) {
       debug("optimizeToRange: max search depth reached");
       break;
     }
@@ -305,18 +330,30 @@ vector<Result> MovementOptimizer::optimizeToRange(
 
     if (isGoal) {
       double effort = s.getRunningEffort().getEffort(config);
-      auto it = resultsByPos.find(stateKey);
-      if (it == resultsByPos.end()) {
-        // New end position
-        resultsByPos.emplace(stateKey, Result(s.getMotionSequence(), effort));
-        resultsFound++;
-        if (resultsFound >= maxResults) {
+
+      if (allowMultiplePerPosition) {
+        // Store all results, no filtering
+        allResults.emplace_back(s.getMotionSequence(), effort, pos);
+        if (allResults.size() >= static_cast<size_t>(params.maxResults)) {
           debug("optimizeToRange: max results reached");
           break;
         }
-      } else if (effort < it->second.keyCost) {
-        // Better path to same position
-        it->second = Result(s.getMotionSequence(), effort);
+      } else {
+        // At most 1 result per position, keep best cost
+        auto it = bestResultByPos.find(stateKey);
+        if (it == bestResultByPos.end()) {
+          // New end position
+          bestResultByPos.emplace(stateKey, RangeResult(s.getMotionSequence(), effort, pos));
+          uniquePositionsFound++;
+          if (uniquePositionsFound >= params.maxResults) {
+            debug("optimizeToRange: max unique positions reached");
+            break;
+          }
+        } else if (effort < it->second.keyCost) {
+          // Strictly better path - replace
+          it->second = RangeResult(s.getMotionSequence(), effort, pos);
+        }
+        // else: same or worse cost, ignore
       }
       continue;
     } else {
@@ -326,17 +363,30 @@ vector<Result> MovementOptimizer::optimizeToRange(
       }
     }
 
+    debug("\"" + s.getMotionSequence() + "\"", s.getCost());
+
     // Basic motions only (f-motion and count searches disabled for now)
     for (const auto& [motion, keys] : motionToKeys) {
       exploreMotion(s, motion, keys);
     }
   }
 
-  // Convert map to vector
-  vector<Result> results;
-  results.reserve(resultsByPos.size());
-  for (auto& [posKey, result] : resultsByPos) {
-    results.push_back(std::move(result));
+  debug("---costMap---");
+  map<PosKey, double> tempMap(costMap.begin(), costMap.end()); // Print in order
+  for (auto [state, cost] : tempMap) {
+    auto [l, c] = state;
+    debug(l, c, cost);
   }
-  return results;
+
+  // Return results based on mode
+  if (allowMultiplePerPosition) {
+    return allResults;
+  } else {
+    vector<RangeResult> results;
+    results.reserve(bestResultByPos.size());
+    for (auto& [posKey, result] : bestResultByPos) {
+      results.push_back(std::move(result));
+    }
+    return results;
+  }
 }

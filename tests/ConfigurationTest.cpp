@@ -19,19 +19,18 @@ protected:
 
   static void SetUpTestSuite() {
     a2_block_lines = TestFiles::load("a2_block_lines.txt");
-    navContext = NavContext(0, 39, 39, 19);
+    navContext = NavContext(39, 19);
   }
-
-  static MotionState makeState(Position p) { return MotionState(p, RunningEffort(), 0, 0); }
 
   static vector<Result>
   runOptimizer(const vector<string> &lines, Position start,
                Position end, const string &userSeq,
                Config config,
                const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS) {
-    MovementOptimizer opt(config, 30, 2e4, 1.0, 2.0);
+    MovementOptimizer opt(config);
     ImpliedExclusions impliedExclusions(false, false);
-    return opt.optimize(lines, makeState(start), end, userSeq, navContext, impliedExclusions, allowedMotions);
+    return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
+                        SearchParams(30, 2e4, 1.0, 2.0), impliedExclusions, allowedMotions);
   }
 
   // Get cost of best result for a motion
@@ -47,7 +46,7 @@ protected:
 
 // Static member definitions
 vector<string> ConfigurationTest::a2_block_lines;
-NavContext ConfigurationTest::navContext(0, 0, 0, 0);
+NavContext ConfigurationTest::navContext(0, 0);
 
 // =============================================================================
 // Keyboard Layout Tests

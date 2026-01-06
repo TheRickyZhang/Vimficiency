@@ -15,12 +15,13 @@ add_executable(vimficiency_tests
   ConfigurationTest.cpp
   CountMotionsTest.cpp
   DebugSequenceTests.cpp
+  EditOptimizerTests.cpp
   ErrorHandlingTest.cpp
   ForwardReachTest.cpp
   HashCollisionTest.cpp
   LevenshteinTest.cpp
   MotionTest.cpp
-  OptimizerTest.cpp
+  MovementOptimizerTest.cpp
   TestUtils.cpp
 )
 

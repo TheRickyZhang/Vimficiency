@@ -150,16 +150,15 @@ const char *vimficiency_analyze(
     Position start_position(start_row, start_col);
     Position end_position(end_row, end_col);
 
-    MotionState start_state(start_position, RunningEffort(), 0, 0);
-
-    NavContext navigation_context(top_row, bottom_row, window_height, scroll_amount);
+    NavContext navigation_context(window_height, scroll_amount);
     // Exclude G if we DON'T have the real bottom, exclude gg if we DON'T have the real top
     ImpliedExclusions impliedExclusions(!includes_real_bottom, !includes_real_top);
 
     // g_config_internal was already populated by vimficiency_apply_config()
-    MovementOptimizer opt(g_config_internal, RESULTS_CALCULATED);
+    MovementOptimizer opt(g_config_internal);
 
-    std::vector<Result> res = opt.optimize(lines, start_state, end_position, keyseq,  navigation_context, impliedExclusions);
+    // Pass Position and fresh RunningEffort (no prior typing context from FFI)
+    std::vector<Result> res = opt.optimize(lines, start_position, RunningEffort(), end_position, keyseq, navigation_context, SearchParams(RESULTS_CALCULATED), impliedExclusions);
 
     // Format results
     std::ostringstream oss;

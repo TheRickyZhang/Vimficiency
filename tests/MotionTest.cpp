@@ -23,7 +23,7 @@ protected:
     a3_spaced_lines = TestFiles::load("a3_spaced_lines.txt");
     m2_main_big = TestFiles::load("m2_main_big.txt");
     // Currently the default in my neovim
-    navContext = NavContext(0, 39, 39, 19);
+    navContext = NavContext(39, 19);
   }
 
   // Helper: apply motion and return resulting position
@@ -43,7 +43,7 @@ vector<string> MotionTest::a1_long_line;
 vector<string> MotionTest::a2_block_lines;
 vector<string> MotionTest::a3_spaced_lines;
 vector<string> MotionTest::m2_main_big;
-NavContext MotionTest::navContext(0, 0, 0, 0);
+NavContext MotionTest::navContext(0, 0);
 
 // =============================================================================
 // 1. BASIC MOTIONS (h, j, k, l)
@@ -636,7 +636,7 @@ static vector<string> makeLines(int count) {
 
 TEST_F(MotionTest, CtrlD_Basic) {
   auto lines = makeLines(100);
-  NavContext nav(0, 39, 40, 20);  // scrollAmount = 20
+  NavContext nav(40, 20);  // scrollAmount = 20
 
   expectPos(simulateWithNav({0, 0}, "<C-d>", lines, nav), 20, 0, "C-d from line 0");
   expectPos(simulateWithNav({10, 0}, "<C-d>", lines, nav), 30, 0, "C-d from line 10");
@@ -646,19 +646,19 @@ TEST_F(MotionTest, CtrlD_Basic) {
 TEST_F(MotionTest, CtrlD_DifferentScrollAmounts) {
   auto lines = makeLines(100);
 
-  NavContext nav10(0, 19, 20, 10);
+  NavContext nav10(20, 10);
   expectPos(simulateWithNav({0, 0}, "<C-d>", lines, nav10), 10, 0, "C-d with scroll=10");
 
-  NavContext nav5(0, 9, 10, 5);
+  NavContext nav5(10, 5);
   expectPos(simulateWithNav({0, 0}, "<C-d>", lines, nav5), 5, 0, "C-d with scroll=5");
 
-  NavContext nav30(0, 59, 60, 30);
+  NavContext nav30(60, 30);
   expectPos(simulateWithNav({0, 0}, "<C-d>", lines, nav30), 30, 0, "C-d with scroll=30");
 }
 
 TEST_F(MotionTest, CtrlD_StopsAtEndOfFile) {
   auto lines = makeLines(50);
-  NavContext nav(0, 39, 40, 20);
+  NavContext nav(40, 20);
 
   expectPos(simulateWithNav({40, 0}, "<C-d>", lines, nav), 49, 0, "C-d near end clamps to last line");
   expectPos(simulateWithNav({49, 0}, "<C-d>", lines, nav), 49, 0, "C-d at last line stays");
@@ -667,7 +667,7 @@ TEST_F(MotionTest, CtrlD_StopsAtEndOfFile) {
 
 TEST_F(MotionTest, CtrlD_PreservesColumn) {
   auto lines = makeLines(100);
-  NavContext nav(0, 39, 40, 20);
+  NavContext nav(40, 20);
 
   expectPos(simulateWithNav({0, 3}, "<C-d>", lines, nav), 20, 3, "C-d preserves column");
 }
@@ -678,7 +678,7 @@ TEST_F(MotionTest, CtrlD_ClampsColumnOnShorterLine) {
     "short",           // 1 (len 5)
     "long line here",  // 2
   };
-  NavContext nav(0, 2, 3, 1);  // scroll 1 line at a time
+  NavContext nav(3, 1);  // scroll 1 line at a time
 
   Position result = simulateWithNav({0, 10}, "<C-d>", lines, nav);
   EXPECT_EQ(result.line, 1);
@@ -689,7 +689,7 @@ TEST_F(MotionTest, CtrlD_ClampsColumnOnShorterLine) {
 
 TEST_F(MotionTest, CtrlU_Basic) {
   auto lines = makeLines(100);
-  NavContext nav(0, 39, 40, 20);
+  NavContext nav(40, 20);
 
   expectPos(simulateWithNav({50, 0}, "<C-u>", lines, nav), 30, 0, "C-u from line 50");
   expectPos(simulateWithNav({30, 0}, "<C-u>", lines, nav), 10, 0, "C-u from line 30");
@@ -699,16 +699,16 @@ TEST_F(MotionTest, CtrlU_Basic) {
 TEST_F(MotionTest, CtrlU_DifferentScrollAmounts) {
   auto lines = makeLines(100);
 
-  NavContext nav10(0, 19, 20, 10);
+  NavContext nav10(20, 10);
   expectPos(simulateWithNav({50, 0}, "<C-u>", lines, nav10), 40, 0, "C-u with scroll=10");
 
-  NavContext nav15(0, 29, 30, 15);
+  NavContext nav15(30, 15);
   expectPos(simulateWithNav({50, 0}, "<C-u>", lines, nav15), 35, 0, "C-u with scroll=15");
 }
 
 TEST_F(MotionTest, CtrlU_StopsAtTopOfFile) {
   auto lines = makeLines(50);
-  NavContext nav(0, 39, 40, 20);
+  NavContext nav(40, 20);
 
   expectPos(simulateWithNav({10, 0}, "<C-u>", lines, nav), 0, 0, "C-u near top clamps to line 0");
   expectPos(simulateWithNav({0, 0}, "<C-u>", lines, nav), 0, 0, "C-u at line 0 stays");
@@ -717,7 +717,7 @@ TEST_F(MotionTest, CtrlU_StopsAtTopOfFile) {
 
 TEST_F(MotionTest, CtrlU_PreservesColumn) {
   auto lines = makeLines(100);
-  NavContext nav(0, 39, 40, 20);
+  NavContext nav(40, 20);
 
   expectPos(simulateWithNav({50, 3}, "<C-u>", lines, nav), 30, 3, "C-u preserves column");
 }
@@ -726,7 +726,7 @@ TEST_F(MotionTest, CtrlU_PreservesColumn) {
 
 TEST_F(MotionTest, CtrlF_Basic) {
   auto lines = makeLines(100);
-  NavContext nav(0, 39, 40, 20);  // windowHeight = 40, so C-f moves 38 lines
+  NavContext nav(40, 20);  // windowHeight = 40, so C-f moves 38 lines
 
   expectPos(simulateWithNav({0, 0}, "<C-f>", lines, nav), 38, 0, "C-f from line 0");
   expectPos(simulateWithNav({10, 0}, "<C-f>", lines, nav), 48, 0, "C-f from line 10");
@@ -735,16 +735,16 @@ TEST_F(MotionTest, CtrlF_Basic) {
 TEST_F(MotionTest, CtrlF_DifferentWindowHeights) {
   auto lines = makeLines(100);
 
-  NavContext nav20(0, 19, 20, 10);  // windowHeight = 20, moves 18
+  NavContext nav20(20, 10);  // windowHeight = 20, moves 18
   expectPos(simulateWithNav({0, 0}, "<C-f>", lines, nav20), 18, 0, "C-f with window=20");
 
-  NavContext nav50(0, 49, 50, 25);  // windowHeight = 50, moves 48
+  NavContext nav50(50, 25);  // windowHeight = 50, moves 48
   expectPos(simulateWithNav({0, 0}, "<C-f>", lines, nav50), 48, 0, "C-f with window=50");
 }
 
 TEST_F(MotionTest, CtrlF_StopsAtEndOfFile) {
   auto lines = makeLines(50);
-  NavContext nav(0, 39, 40, 20);
+  NavContext nav(40, 20);
 
   expectPos(simulateWithNav({20, 0}, "<C-f>", lines, nav), 49, 0, "C-f near end clamps");
   expectPos(simulateWithNav({49, 0}, "<C-f>", lines, nav), 49, 0, "C-f at last line stays");
@@ -754,7 +754,7 @@ TEST_F(MotionTest, CtrlF_StopsAtEndOfFile) {
 
 TEST_F(MotionTest, CtrlB_Basic) {
   auto lines = makeLines(100);
-  NavContext nav(0, 39, 40, 20);  // windowHeight = 40, so C-b moves 38 lines
+  NavContext nav(40, 20);  // windowHeight = 40, so C-b moves 38 lines
 
   expectPos(simulateWithNav({50, 0}, "<C-b>", lines, nav), 12, 0, "C-b from line 50");
   expectPos(simulateWithNav({99, 0}, "<C-b>", lines, nav), 61, 0, "C-b from last line");
@@ -763,16 +763,16 @@ TEST_F(MotionTest, CtrlB_Basic) {
 TEST_F(MotionTest, CtrlB_DifferentWindowHeights) {
   auto lines = makeLines(100);
 
-  NavContext nav20(0, 19, 20, 10);  // windowHeight = 20, moves 18
+  NavContext nav20(20, 10);  // windowHeight = 20, moves 18
   expectPos(simulateWithNav({50, 0}, "<C-b>", lines, nav20), 32, 0, "C-b with window=20");
 
-  NavContext nav50(0, 49, 50, 25);  // windowHeight = 50, moves 48
+  NavContext nav50(50, 25);  // windowHeight = 50, moves 48
   expectPos(simulateWithNav({50, 0}, "<C-b>", lines, nav50), 2, 0, "C-b with window=50");
 }
 
 TEST_F(MotionTest, CtrlB_StopsAtTopOfFile) {
   auto lines = makeLines(50);
-  NavContext nav(0, 39, 40, 20);
+  NavContext nav(40, 20);
 
   expectPos(simulateWithNav({20, 0}, "<C-b>", lines, nav), 0, 0, "C-b near top clamps");
   expectPos(simulateWithNav({0, 0}, "<C-b>", lines, nav), 0, 0, "C-b at line 0 stays");
@@ -782,7 +782,7 @@ TEST_F(MotionTest, CtrlB_StopsAtTopOfFile) {
 
 TEST_F(MotionTest, Scroll_RoundTrip) {
   auto lines = makeLines(100);
-  NavContext nav(0, 39, 40, 20);
+  NavContext nav(40, 20);
 
   // C-d then C-u should return to original line
   Position p1 = simulateWithNav({30, 0}, "<C-d>", lines, nav);
@@ -797,7 +797,7 @@ TEST_F(MotionTest, Scroll_RoundTrip) {
 
 TEST_F(MotionTest, Scroll_MultipleScrolls) {
   auto lines = makeLines(100);
-  NavContext nav(0, 39, 40, 10);  // scrollAmount = 10
+  NavContext nav(40, 10);  // scrollAmount = 10
 
   // Multiple C-d
   Position p = {0, 0};
@@ -811,7 +811,7 @@ TEST_F(MotionTest, Scroll_MultipleScrolls) {
 
 TEST_F(MotionTest, Scroll_CombinedWithOtherMotions) {
   auto lines = makeLines(100);
-  NavContext nav(0, 39, 40, 20);
+  NavContext nav(40, 20);
 
   // C-d then j
   Position p1 = simulateWithNav({0, 0}, "<C-d>", lines, nav);
@@ -828,7 +828,7 @@ TEST_F(MotionTest, Scroll_CombinedWithOtherMotions) {
 
 TEST_F(MotionTest, Scroll_SmallFile) {
   auto lines = makeLines(5);  // Only 5 lines
-  NavContext nav(0, 39, 40, 20);  // scrollAmount > file size
+  NavContext nav(40, 20);  // scrollAmount > file size
 
   expectPos(simulateWithNav({0, 0}, "<C-d>", lines, nav), 4, 0, "C-d in small file");
   expectPos(simulateWithNav({4, 0}, "<C-u>", lines, nav), 0, 0, "C-u in small file");
@@ -839,7 +839,7 @@ TEST_F(MotionTest, Scroll_SmallFile) {
 TEST_F(MotionTest, Scroll_SingleLine) {
   vector<string> lines = {"only line"};
   // Use realistic window size even for single line file
-  NavContext nav(0, 0, 40, 20);
+  NavContext nav(40, 20);
 
   expectPos(simulateWithNav({0, 0}, "<C-d>", lines, nav), 0, 0, "C-d single line");
   expectPos(simulateWithNav({0, 0}, "<C-u>", lines, nav), 0, 0, "C-u single line");
@@ -855,7 +855,7 @@ TEST_F(MotionTest, Scroll_EmptyLinesInFile) {
     "more content",
     "",
   };
-  NavContext nav(0, 4, 5, 2);
+  NavContext nav(5, 2);
 
   // Scroll should work normally with empty lines
   expectPos(simulateWithNav({0, 5}, "<C-d>", lines, nav), 2, 0, "C-d lands on empty line, col clamps");
@@ -865,7 +865,7 @@ TEST_F(MotionTest, Scroll_EmptyLinesInFile) {
 TEST_F(MotionTest, Scroll_ZeroScrollAmount) {
   // Edge case: what if scrollAmount is 0?
   auto lines = makeLines(50);
-  NavContext nav(0, 39, 40, 0);
+  NavContext nav(40, 0);
 
   // Should not move (or at minimum not crash)
   Position p = simulateWithNav({25, 0}, "<C-d>", lines, nav);
@@ -878,7 +878,7 @@ TEST_F(MotionTest, Scroll_ZeroScrollAmount) {
 TEST_F(MotionTest, Scroll_WindowHeightTwo) {
   // windowHeight = 2 means C-f/C-b move 0 lines (2-2=0)
   auto lines = makeLines(50);
-  NavContext nav(0, 1, 2, 1);
+  NavContext nav(2, 1);
 
   Position p = simulateWithNav({25, 0}, "<C-f>", lines, nav);
   EXPECT_EQ(p.line, 25) << "C-f with window=2 should not move";
@@ -891,7 +891,7 @@ TEST_F(MotionTest, Scroll_WindowHeightOne) {
   // windowHeight = 1 would compute negative jump without max(0, ...)
   // This tests the defensive guard against windowHeight < 2
   auto lines = makeLines(50);
-  NavContext nav(0, 0, 1, 1);
+  NavContext nav(1, 1);
 
   // Should not crash or move (jump = max(0, 1-2) = 0)
   Position p = simulateWithNav({25, 0}, "<C-f>", lines, nav);
@@ -991,7 +991,7 @@ TEST_F(MotionTest, Count_CharFindWithRepeat) {
 TEST_F(MotionTest, Count_CtrlD_SetsScrollAmount) {
   // In Vim, {count}<C-d> uses count as scroll amount (not repeat)
   auto lines = makeLines(100);
-  NavContext nav(0, 39, 40, 20);  // default scroll = 20
+  NavContext nav(40, 20);  // default scroll = 20
 
   // 5<C-d> should move 5 lines, not 5*20=100 lines
   expectPos(simulateWithNav({0, 0}, "5<C-d>", lines, nav), 5, 0, "5<C-d> moves 5 lines");
@@ -1000,7 +1000,7 @@ TEST_F(MotionTest, Count_CtrlD_SetsScrollAmount) {
 
 TEST_F(MotionTest, Count_CtrlU_SetsScrollAmount) {
   auto lines = makeLines(100);
-  NavContext nav(0, 39, 40, 20);
+  NavContext nav(40, 20);
 
   expectPos(simulateWithNav({50, 0}, "5<C-u>", lines, nav), 45, 0, "5<C-u> moves up 5 lines");
   expectPos(simulateWithNav({50, 0}, "10<C-u>", lines, nav), 40, 0, "10<C-u> moves up 10 lines");
@@ -1009,7 +1009,7 @@ TEST_F(MotionTest, Count_CtrlU_SetsScrollAmount) {
 TEST_F(MotionTest, Count_CtrlF_RepeatsPages) {
   // In Vim, {count}<C-f> scrolls count pages (not sets amount)
   auto lines = makeLines(200);
-  NavContext nav(0, 39, 40, 20);  // C-f moves windowHeight-2 = 38 lines per page
+  NavContext nav(40, 20);  // C-f moves windowHeight-2 = 38 lines per page
 
   expectPos(simulateWithNav({0, 0}, "2<C-f>", lines, nav), 76, 0, "2<C-f> moves 2 pages (76 lines)");
   expectPos(simulateWithNav({0, 0}, "3<C-f>", lines, nav), 114, 0, "3<C-f> moves 3 pages (114 lines)");
@@ -1017,7 +1017,7 @@ TEST_F(MotionTest, Count_CtrlF_RepeatsPages) {
 
 TEST_F(MotionTest, Count_CtrlB_RepeatsPages) {
   auto lines = makeLines(200);
-  NavContext nav(0, 39, 40, 20);
+  NavContext nav(40, 20);
 
   expectPos(simulateWithNav({100, 0}, "2<C-b>", lines, nav), 24, 0, "2<C-b> moves back 2 pages");
 }

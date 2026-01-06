@@ -5,6 +5,7 @@
 #include "Optimizer/Levenshtein.h"
 #include "State/PosKey.h"
 #include "State/RunningEffort.h"
+#include "Utils/Debug.h"
 
 #include <numeric>
 
@@ -69,6 +70,17 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
                            [](const string &s) { return s.size(); });
   int y = transform_reduce(endLines.begin(), endLines.end(), 0, plus<int>{},
                            [](const string &s) { return s.size(); });
+
+  debug("=== EditOptimizer::optimizeEdit ===");
+  debug("beginLines:", n, "lines,", x, "chars");
+  for (size_t i = 0; i < beginLines.size(); i++) {
+    debug("  [" + to_string(i) + "] \"" + beginLines[i] + "\"");
+  }
+  debug("endLines:", m, "lines,", y, "chars");
+  for (size_t i = 0; i < endLines.size(); i++) {
+    debug("  [" + to_string(i) + "] \"" + endLines[i] + "\"");
+  }
+  debug("Result matrix size:", x, "x", y);
 
   EditResult res(x, y);
 
@@ -147,7 +159,10 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
 
     if (isDone) {
       int i = s.getStartIndex();
-      int j = endPositionToIndex[PosKey(pos)];
+      auto it = endPositionToIndex.find(PosKey(pos));
+      if (it == endPositionToIndex.end()) continue;  // Position not in end buffer
+      int j = it->second;
+      if (j < 0 || j >= res.m) continue;  // Bounds check
       if (res.adj[i][j].isValid()) {
         duplicatedFound++;
         duplicatedMessages.push_back("found " + to_string(i) + "->" +
@@ -155,6 +170,8 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
                                      s.getMotionSequence());
       } else {
         res.adj[i][j] = Result(s.getMotionSequence(), cost);
+        debug("Result [" + to_string(i) + "][" + to_string(j) + "] = \"" +
+              s.getMotionSequence() + "\" cost=" + to_string(cost));
       }
       // Thes first leastCostFound should be minimal, but guard just in case.
       if(leastCostFound != NOT_FOUND && cost < leastCostFound) {
@@ -197,10 +214,11 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
     // Per-position safety checking
     const string& line = lines[pos.line];
     int col = pos.col;
+    bool lineNonEmpty = !line.empty();
 
-    // Shorthand for boundary checks
-    auto fwdSafe = [&](ForwardEdit e) { return isForwardEditSafe(line, col, boundary, e); };
-    auto bwdSafe = [&](BackwardEdit e) { return isBackwardEditSafe(line, col, boundary, e); };
+    // Shorthand for boundary checks (already false if line empty via col checks)
+    auto fwdSafe = [&](ForwardEdit e) { return lineNonEmpty && isForwardEditSafe(line, col, boundary, e); };
+    auto bwdSafe = [&](BackwardEdit e) { return lineNonEmpty && isBackwardEditSafe(line, col, boundary, e); };
 
     // Position checks
     bool canGoUp = pos.line > 0;
@@ -208,38 +226,72 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
     bool canGoLeft = pos.line > 0 || pos.col > 0;
     bool canGoRight = pos.line < n - 1 || pos.col < (int)lines.back().size();
 
+    // Additional checks for motions that would be no-ops
+    bool notAtBufferStart = !(pos.line == 0 && pos.col == 0);
+    bool notAtBufferEnd = pos.line < n - 1 || (lineNonEmpty && pos.col < (int)line.size() - 1);
+    bool colNotZero = col > 0;
+    bool colNotAtEnd = lineNonEmpty && pos.col < (int)line.size() - 1;  // Normal mode: last char
+    bool colNotAtEndInsert = pos.col < (int)line.size();  // Insert mode: can be at line.size()
+
     if (mode == Mode::Insert) {
-      explore(canGoLeft, I::CHAR_LEFT);
-      explore(canGoRight, I::CHAR_RIGHT);
+      // Split CHAR_LEFT/CHAR_RIGHT into individual commands with precise conditions
+      // <Left>: needs col > 0 (no-op otherwise)
+      // <BS>: needs col > 0 || line > 0 (can join with previous line)
+      // <Esc>: always works
+      // <Right>: needs col < line.size() (no-op otherwise)
+      // <Del>: needs col < line.size() || line < n-1 (can join with next line)
 
-      explore(bwdSafe(BackwardEdit::WORD_TO_START), I::WORD_LEFT);   // <C-w>
-      explore(bwdSafe(BackwardEdit::LINE_TO_START), I::LINE_LEFT);   // <C-u>
+      if (colNotZero) exploreMotion(s, "<Left>", {Key::Key_Left});
+      if (canGoLeft) exploreMotion(s, "<BS>", {Key::Key_Backspace});
+      exploreMotion(s, "<Esc>", {Key::Key_Esc});
 
-      explore(canGoUp, I::LINE_UP);
-      explore(canGoDown, I::LINE_DOWN);
+      if (colNotAtEndInsert) exploreMotion(s, "<Right>", {Key::Key_Right});
+      bool canDelForward = colNotAtEndInsert || pos.line < n - 1;
+      if (canDelForward) exploreMotion(s, "<Del>", {Key::Key_Delete});
+
+      explore(colNotZero && bwdSafe(BackwardEdit::WORD_TO_START), I::WORD_LEFT);   // <C-w>
+      explore(colNotZero && bwdSafe(BackwardEdit::LINE_TO_START), I::LINE_LEFT);   // <C-u>
+
+      explore(canGoUp, I::LINE_UP);     // <Up>
+      explore(canGoDown, I::LINE_DOWN); // <Down>
     }
     else if (mode == Mode::Normal) {
-      explore(bwdSafe(BackwardEdit::CHAR), N::CHAR_LEFT);            // X
+      explore(bwdSafe(BackwardEdit::CHAR), N::CHAR_LEFT);            // X (already checks col > 0)
       explore(fwdSafe(ForwardEdit::CHAR), N::CHAR_RIGHT);            // x
 
-      explore(bwdSafe(BackwardEdit::WORD_TO_START), N::WORD_LEFT);           // db
-      explore(bwdSafe(BackwardEdit::WORD_TO_END), N::WORD_END_LEFT);         // dge
-      explore(bwdSafe(BackwardEdit::BIG_WORD_TO_START), N::BIG_WORD_LEFT);   // dB
-      explore(bwdSafe(BackwardEdit::BIG_WORD_TO_END), N::BIG_WORD_END_LEFT); // dgE
-      explore(bwdSafe(BackwardEdit::LINE_TO_START), N::LINE_LEFT);           // d0
+      explore(notAtBufferStart && bwdSafe(BackwardEdit::WORD_TO_START), N::WORD_LEFT);           // db
+      explore(notAtBufferStart && bwdSafe(BackwardEdit::WORD_TO_END), N::WORD_END_LEFT);         // dge
+      explore(notAtBufferStart && bwdSafe(BackwardEdit::BIG_WORD_TO_START), N::BIG_WORD_LEFT);   // dB
+      explore(notAtBufferStart && bwdSafe(BackwardEdit::BIG_WORD_TO_END), N::BIG_WORD_END_LEFT); // dgE
+      explore(colNotZero && bwdSafe(BackwardEdit::LINE_TO_START), N::LINE_LEFT);                 // d0
 
-      explore(fwdSafe(ForwardEdit::WORD_TO_START), N::WORD_RIGHT);           // dw
-      explore(fwdSafe(ForwardEdit::WORD_TO_END), N::WORD_END_RIGHT);         // de
-      explore(fwdSafe(ForwardEdit::BIG_WORD_TO_START), N::BIG_WORD_RIGHT);   // dW
-      explore(fwdSafe(ForwardEdit::BIG_WORD_TO_END), N::BIG_WORD_END_RIGHT); // dE
-      explore(fwdSafe(ForwardEdit::LINE_TO_END), N::LINE_RIGHT);             // D
+      explore(notAtBufferEnd && fwdSafe(ForwardEdit::WORD_TO_START), N::WORD_RIGHT);           // dw
+      explore(notAtBufferEnd && fwdSafe(ForwardEdit::WORD_TO_END), N::WORD_END_RIGHT);         // de
+      explore(notAtBufferEnd && fwdSafe(ForwardEdit::BIG_WORD_TO_START), N::BIG_WORD_RIGHT);   // dW
+      explore(notAtBufferEnd && fwdSafe(ForwardEdit::BIG_WORD_TO_END), N::BIG_WORD_END_RIGHT); // dE
+      explore(colNotAtEnd && fwdSafe(ForwardEdit::LINE_TO_END), N::LINE_RIGHT);               // D, d$
 
       explore(isFullLineEditSafe(boundary), N::FULL_LINE);           // dd, cc
 
-      // Line navigation
+      // Line navigation (valid even on empty lines)
       explore(canGoUp, N::LINE_UP);
       explore(canGoDown, N::LINE_DOWN);
     }
+  }
+
+  // Summary
+  int validResults = 0;
+  for (int i = 0; i < res.n; i++) {
+    for (int j = 0; j < res.m; j++) {
+      if (res.adj[i][j].isValid()) validResults++;
+    }
+  }
+  debug("=== EditOptimizer Summary ===");
+  debug("Total explored:", totalExplored);
+  debug("Valid results:", validResults, "/", res.n * res.m);
+  debug("Duplicates found:", duplicatedFound);
+  if (leastCostFound != NOT_FOUND) {
+    debug("Least cost found:", leastCostFound);
   }
 
   return res;

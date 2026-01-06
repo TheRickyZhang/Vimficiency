@@ -31,3 +31,5 @@ Interesting (maybe?) things that have come up:
 - You can't store references in initializer list, but can use a reference wrapper (basically use * as underlying, with & interface) to get around.
 - Difference in the way types are returned depending on if simple and <= 16 bytes: use register vs pass hidden pointer
 - Use a hash function to change long if/else chain to switch case
+- You can use iterator construction for anything as long as value_type convertible to T
+- You need extra {} scope in switch statement to not leak definitions (at underlying jump table, they are not separate blocks)

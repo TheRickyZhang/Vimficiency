@@ -22,6 +22,12 @@ struct CompositionOptimizer {
   const double COST_WEIGHT;
   const double EXPLORE_FACTOR;
 
+  // Overshooting (going past the next edit region) is penalized more heavily
+  // than undershooting (not yet reaching it)
+  const double OVERSHOOT_PENALTY = 3.0;
+  // Slight bias towards forward (natural left->right, top->bottom order)
+  const double FORWARD_BIAS = 2.0;
+
   const int MAX_LINE_LENGTH = 100;
 
   CompositionOptimizer(const Config& config,

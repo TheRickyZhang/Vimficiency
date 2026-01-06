@@ -104,11 +104,11 @@ public:
   // - newPos: position after edit completes (end position in edit region)
   // - editCost: cost of this edit transition (from EditResult.adj)
   void applyEditTransition(const std::string& sequence, const Position& newPos,
-                           const KeySequence& keySequence, const Config& config) {
+                           const Config& config) {
     pos = newPos;
     editsCompleted++;
     motionSequence += sequence;
-    effort = runningEffort.append(keySequence, config);
+    effort = runningEffort.append(globalTokenizer().tokenize(sequence), config);
   }
 
   // Apply movement result from MovementOptimizer::optimizeToRange()

@@ -23,10 +23,8 @@ protected:
 
   static void SetUpTestSuite() {
     a2_block_lines = TestFiles::load("a2_block_lines.txt");
-    navContext = NavContext(0, 39, 39, 19);
+    navContext = NavContext(39, 19);
   }
-
-  static MotionState makeState(Position p) { return MotionState(p, RunningEffort(), 0, 0); }
 
   static Position simulateMotionsDefault(Position start, const string &motion,
                                           const vector<string> &lines) {
@@ -43,10 +41,10 @@ protected:
                                      Position start, Position end,
                                      const string &userSeq,
                                      Config config = Config::uniform()) {
-    MovementOptimizer opt(config, 30, 2e4, 1.0, 2.0);
+    MovementOptimizer opt(config);
     ImpliedExclusions impliedExclusions(false, false);
-    return opt.optimize(lines, makeState(start), end, userSeq,
-                        navContext, impliedExclusions);
+    return opt.optimize(lines, start, RunningEffort(), end, userSeq,
+                        navContext, SearchParams(30, 2e4, 1.0, 2.0), impliedExclusions);
   }
 
   // Check if a result contains a specific sequence
@@ -58,7 +56,7 @@ protected:
 };
 
 vector<string> DebugSequenceTest::a2_block_lines;
-NavContext DebugSequenceTest::navContext(0, 0, 0, 0);
+NavContext DebugSequenceTest::navContext(0, 0);
 
 // =============================================================================
 // Regression tests for motion behavior

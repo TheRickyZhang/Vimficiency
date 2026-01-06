@@ -67,7 +67,7 @@ void vimficiency_apply_config();
 
 ### Key Components
 
-**Editor/**: Position, Snapshot (buffer + cursor state), Motion (parsing and application), Mode enum, NavContext (window height/scroll amount for scroll motions)
+**Editor/**: Position (with targetCol), Snapshot (buffer + cursor state), Motion (movement parsing/application), Edit (edit operation dispatch), Mode enum, NavContext (window height/scroll amount), Range (for operator+motion)
 
 **State/**: State struct (Position + RunningEffort + cost + sequence), RunningEffort (tracks typing effort patterns)
 
@@ -78,6 +78,8 @@ void vimficiency_apply_config();
 - SequenceTokenizer: Parses user input into motion tokens
 
 **VimCore/VimUtils**: Implements Vim motion semantics (word motions w/e/b, paragraph {/}, sentence (/)
+
+**VimCore/VimEditUtils**: Edit operations (deleteRange, insertText, joinLines, etc.) with minimal API design
 
 **Optimizer/Config**: Keyboard layouts + cost models (presets: uniform, qwerty, colemak_dh)
 
@@ -161,6 +163,11 @@ The `TestUtils` class provides `TestFiles::load()` helper to read test files.
 
 **Count prefixes:** All above motions support counts (e.g., 3w, 5j, 10gg)
 
+## Information on precise details of Vim Bindings. Important to know for implementation!
+
+@~/.claude/docs/vim-motion.txt
+@~/.claude/docs/vim-change.txt
+
 ## Important Constraints
 
 **Cannot support** (due to minimal state representation):
@@ -171,8 +178,7 @@ The `TestUtils` class provides `TestFiles::load()` helper to read test files.
 **Current limitations** (from TODO.txt):
 - No *, #, % symbol motions
 - No search (/, n, N)
-- No operator motions (dw, ci{)
-- No insert mode operations
+- No text objects (ci{, da", etc.)
 - No visual mode
 
 ## Session Invocation Modes
@@ -263,6 +269,7 @@ Per-line distance would require complex alignment logic when line counts differ.
    - A* search over (buffer content, position, mode) states
    - Uses Levenshtein distance as heuristic
    - Outputs `EditResult.adj[i][j]` = optimal sequence from position i to j
+   - Prunes invalid edits (e.g., word motions on empty lines) via `lineNonEmpty` guards
 
 3. **CompositionOptimizer**: Composes movement + edits for multi-region changes
    - Uses Myers diff to identify edit regions
@@ -345,6 +352,53 @@ This single definition generates:
 - Enum values: `enum class Key { Key_A, Key_B, ... }`
 - Name arrays: `const char* g_key_names[] = {"a", "b", ...}`
 - FFI exports: `vimficiency_key_name(int index)`
+
+## Edit System Design (Editor/Edit.cpp, VimCore/VimEditUtils)
+
+### Design Principles
+
+1. **Assume valid state** - Use assertions, not defensive clamping. Invalid states indicate bugs in search logic.
+
+2. **Minimal API** - Single-line operations take `string& line, int& col`, not `Lines& + Position&`.
+
+3. **Upfront guards** - Handle edge cases (empty buffer, empty line) at function entry, then assume valid preconditions.
+
+4. **Strict count validation** - Operations with deterministic outcomes (`x`, `X`, `~`, `r`, `s`, `dd`, `J`) throw if count exceeds available chars/lines. Search should prune these.
+
+### Empty State Handling
+
+Symmetric treatment of empty containers:
+
+| Container | Empty state | Index | Guard pattern |
+|-----------|-------------|-------|---------------|
+| `line` (string) | `""` | `col = 0` | `if (line.empty()) return;` |
+| `lines` (vector) | `{}` | `line = 0, col = 0` | `if (lines.empty()) { pos = {0,0}; return; }` |
+
+This allows distinguishing "one empty line" from "no lines" for diff purposes.
+
+### Position and targetCol
+
+`Position` has three fields: `line`, `col`, `targetCol`. Use appropriately:
+
+- `pos.setCol(c)` - Updates both `col` and `targetCol` (for horizontal movements)
+- `pos.col = c` - Updates only `col`, preserves `targetCol` (for vertical movements restoring from targetCol)
+
+Per [Vim's motion.txt](https://vimhelp.org/motion.txt.html), linewise operations like `dd` go to first non-blank and update targetCol (due to `'startofline'` default).
+
+### Supported Edit Operations
+
+**Normal mode:**
+- Character: `x`, `X`, `s`, `r{char}`, `~`
+- Word: `dw`, `de`, `db`, `dge`, `dW`, `dE`, `dB`, `dgE` (and `c` variants)
+- Line: `dd`, `cc`, `S`, `D`, `C`, `d$`, `c$`, `d0`, `c0`, `d^`, `c^`
+- Join: `J`, `gJ`
+- Open: `o`, `O`
+- Mode entry: `i`, `I`, `a`, `A`
+
+**Insert mode:**
+- `<Esc>`, `<BS>`, `<Del>`, `<CR>`
+- `<C-u>` (delete to line start), `<C-w>` (delete word)
+- Arrow keys: `<Left>`, `<Right>`, `<Up>`, `<Down>`
 
 ## Debug Mode
 

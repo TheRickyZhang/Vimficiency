@@ -1,4 +1,5 @@
-// MotionLogic.h
+// Motion.h - Movement motion parsing and application
+// Handles cursor movement motions (h, j, k, l, w, b, etc.) that don't modify buffer content.
 #pragma once
 
 #include <string>

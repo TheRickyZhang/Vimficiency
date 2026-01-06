@@ -166,11 +166,7 @@ protected:
       "after blank paragraph"
     };
 
-    navContext = NavContext(0, 39, 39, 19);
-  }
-
-  static MotionState makeState(Position p) {
-    return MotionState(p, RunningEffort(), 0, 0);
+    navContext = NavContext(39, 19);
   }
 
   static vector<Result> runOptimizer(
@@ -180,15 +176,16 @@ protected:
       const string& userSeq,
       const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS,
       Config config = Config::uniform()) {
-    MovementOptimizer opt(config, 30, 2e4, 1.0, 2.0);
+    MovementOptimizer opt(config);
     ImpliedExclusions impliedExclusions(false, false);
-    return opt.optimize(lines, makeState(start), end, userSeq, navContext, impliedExclusions, allowedMotions);
+    return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
+                        SearchParams(30, 2e4, 1.0, 2.0), impliedExclusions, allowedMotions);
   }
 };
 
 vector<string> CountMotionsOptimizerTest::wordLine;
 vector<string> CountMotionsOptimizerTest::multiWordLines;
-NavContext CountMotionsOptimizerTest::navContext(0, 0, 0, 0);
+NavContext CountMotionsOptimizerTest::navContext(0, 0);
 
 TEST_F(CountMotionsOptimizerTest, CountW_BasicForward) {
   // "one two three four five six seven eight"
