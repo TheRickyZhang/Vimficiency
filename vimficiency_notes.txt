@@ -6,11 +6,8 @@ This means we cannot support the following operations:
 - gj, gk, H, M, L, zz (screen-related)
 - Cross-jumps
 
-TODO fixes:
-e0lk is returned on uniform.txt (0, 0) -> (2, 1), when it clearly should not.
-
-TODO features:
-Pass in screen height by lines to properly use <C-d>, <C-u>, etc. 
+TODO additions:
+- Should have toggle between default vim vs neovim bindings. For instance, Y = yy on vim, but y$ on neovim.
 
 Maybe:
 minimal register/macro use. Can't ingest current registers, but can process with some default register (ex a) if detecting repetition in search.

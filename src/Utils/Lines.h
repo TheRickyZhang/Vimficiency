@@ -16,6 +16,27 @@ struct Lines : std::vector<std::string> {
     }
     return result;
   }
+
+  static Lines unflatten(const std::string& text) {
+    Lines result;
+    size_t start = 0;
+    size_t pos;
+    while ((pos = text.find('\n', start)) != std::string::npos) {
+      result.push_back(text.substr(start, pos - start));
+      start = pos + 1;
+    }
+    result.push_back(text.substr(start));
+    return result;
+  }
+
+  // Total character count (excluding newlines between lines)
+  int charCount() const {
+    int count = 0;
+    for (const auto& line : *this) {
+      count += static_cast<int>(line.size());
+    }
+    return count;
+  }
 };
 
 // Copy-on-write shared Lines for efficient state sharing in A* search.

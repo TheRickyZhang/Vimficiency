@@ -65,7 +65,7 @@ protected:
 
     for (int i = 0; i < res.n; i++) {
       for (int j = 0; j < res.m; j++) {
-        if (res.adj[i][j].keyCost < 1e9) {
+        if (res.adj[i][j].isValid()) {
           cout << "  [" << i << "][" << j << "] = \"" << res.adj[i][j].sequence
                << "\" (cost: " << res.adj[i][j].keyCost << ")" << endl;
         }

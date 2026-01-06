@@ -302,18 +302,29 @@ double CompositionOptimizer::heuristic(const CompositionState& s, int editsCompl
 
 int CompositionOptimizer::bufferPosToEditIndex(const Position& bufferPos, const DiffState& diff) const {
   // Convert buffer position to flat index within deletedLines
+  Lines deleted = diff.deletedLines();
   int editLine = bufferPos.line - diff.origLineStart();
 
-  if (editLine < 0 || editLine >= static_cast<int>(diff.deletedLines.size())) {
+  if (editLine < 0 || editLine >= static_cast<int>(deleted.size())) {
     return -1;
   }
 
   // Compute flat index: sum of previous line lengths + column
+  // For character-level diffs, we need to account for the column offset within the first line
   int flatIndex = 0;
-  for (int i = 0; i < editLine; i++) {
-    flatIndex += static_cast<int>(diff.deletedLines[i].size());
+
+  // If this is a mid-line diff, adjust for the starting column
+  if (editLine == 0) {
+    // First line of edit region: column is relative to posBegin.col
+    flatIndex = bufferPos.col - diff.posBegin.col;
+    if (flatIndex < 0) return -1;
+  } else {
+    // Not first line: sum previous line lengths + current column
+    for (int i = 0; i < editLine; i++) {
+      flatIndex += static_cast<int>(deleted[i].size());
+    }
+    flatIndex += bufferPos.col;
   }
-  flatIndex += bufferPos.col;
 
   return flatIndex;
 }
@@ -321,20 +332,29 @@ int CompositionOptimizer::bufferPosToEditIndex(const Position& bufferPos, const 
 Position CompositionOptimizer::editIndexToBufferPos(int flatIndex, const DiffState& diff) const {
   // Convert flat index within insertedLines to buffer position
   // The new buffer has insertedLines at diff.newLineStart()
+  Lines inserted = diff.insertedLines();
 
   int remaining = flatIndex;
-  for (int i = 0; i < static_cast<int>(diff.insertedLines.size()); i++) {
-    int lineLen = static_cast<int>(diff.insertedLines[i].size());
+  for (int i = 0; i < static_cast<int>(inserted.size()); i++) {
+    int lineLen = static_cast<int>(inserted[i].size());
     if (remaining < lineLen) {
       // Found the line
-      return Position(diff.newLineStart() + i, remaining);
+      // For first line of mid-line diff, add the starting column offset
+      int col = remaining;
+      if (i == 0) {
+        col += diff.posBegin.col;  // Offset within the line where edit starts
+      }
+      return Position(diff.newLineStart() + i, col);
     }
     remaining -= lineLen;
   }
 
   // If we get here, index was at end of last line
-  int lastLine = diff.newLineStart() + static_cast<int>(diff.insertedLines.size()) - 1;
-  int lastCol = diff.insertedLines.empty() ? 0 : static_cast<int>(diff.insertedLines.back().size());
+  int lastLine = diff.newLineStart() + static_cast<int>(inserted.size()) - 1;
+  int lastCol = inserted.empty() ? diff.posBegin.col : static_cast<int>(inserted.back().size());
+  if (!inserted.empty() && inserted.size() == 1) {
+    lastCol += diff.posBegin.col;
+  }
   return Position(lastLine, lastCol);
 }
 
@@ -345,8 +365,8 @@ vector<EditResult> CompositionOptimizer::calculateEditResults(const vector<DiffS
 
   for (const DiffState& diff : diffStates) {
     EditResult result = editOptimizer.optimizeEdit(
-        diff.deletedLines,
-        diff.insertedLines,
+        diff.deletedLines(),
+        diff.insertedLines(),
         diff.boundary
     );
     results.push_back(std::move(result));
@@ -374,23 +394,28 @@ vector<vector<int>> CompositionOptimizer::buildPosToEditIndex(
   for (int editIdx = 0; editIdx < static_cast<int>(diffStates.size()); editIdx++) {
     const DiffState& diff = diffStates[editIdx];
 
-    // Mark all positions on lines within the edit region
-    // (line-based for compatibility with EditOptimizer's full-line indexing)
-    for (int line = diff.origLineStart(); line < diff.origLineStart() + diff.origLineCount(); line++) {
-      // Mark all columns on this line
-      for (int col = 0; col < MAX_LINE_LENGTH; col++) {
-        int posKey = line * MAX_LINE_LENGTH + col;
-        if (posKey < maxPosKey) {
-          posToEditIndex[posKey].push_back(editIdx);
-        }
-      }
-    }
+    // For character-level diffs, mark only positions within the actual edit region
+    // posBegin and posEnd define the exact character boundaries
 
-    // For pure insertions, mark the insertion point
-    if (diff.origLineCount() == 0) {
-      int posKey = diff.origLineStart() * MAX_LINE_LENGTH + 0;
-      if (posKey < maxPosKey) {
+    if (diff.isPureInsertion()) {
+      // Pure insertion: mark only the insertion point
+      int posKey = posToKey(diff.posBegin);
+      if (posKey >= 0 && posKey < maxPosKey) {
         posToEditIndex[posKey].push_back(editIdx);
+      }
+    } else {
+      // Deletion or replacement: mark positions from posBegin to posEnd
+      // Handle single-line and multi-line cases
+      for (int line = diff.posBegin.line; line <= diff.posEnd.line; line++) {
+        int startCol = (line == diff.posBegin.line) ? diff.posBegin.col : 0;
+        int endCol = (line == diff.posEnd.line) ? diff.posEnd.col : MAX_LINE_LENGTH - 1;
+
+        for (int col = startCol; col <= endCol; col++) {
+          int posKey = line * MAX_LINE_LENGTH + col;
+          if (posKey >= 0 && posKey < maxPosKey) {
+            posToEditIndex[posKey].push_back(editIdx);
+          }
+        }
       }
     }
   }

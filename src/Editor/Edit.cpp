@@ -156,15 +156,6 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         pos.col += count - 1;
         return;
 
-      case hash("D"):
-        VimEditUtils::eraseToEnd(line, pos.col);
-        return;
-
-      case hash("C"):
-        VimEditUtils::eraseToEnd(line, pos.col);
-        mode = Mode::Insert;
-        return;
-
       case hash("J"):
         if (pos.line + count >= n) {
           throw runtime_error("J requires " + to_string(count) + " lines below");
@@ -233,8 +224,6 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         return;
 
       // --- Word deletion motions (d + motion) ---
-      // Note: These silently do nothing if motion doesn't move.
-      // This is less strict than char operations but motion no-ops are harder to predict.
       case hash("dw"):
       case hash("dW"):
         {
@@ -322,7 +311,6 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         return;
 
       // --- Change motions (c + motion) ---
-      // Note: These silently enter insert mode even if motion doesn't move.
       case hash("cw"):
       case hash("cW"):
         {
@@ -414,6 +402,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         mode = Mode::Insert;
         return;
 
+      case hash("C"):
       case hash("c$"):
         if (pos.line + count > n) {
           throw runtime_error("c$ requires " + to_string(count) + " lines but only " + to_string(n - pos.line) + " available");
@@ -427,6 +416,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         }
         return;
 
+      case hash("D"):
       case hash("d$"):
         if (pos.line + count > n) {
           throw runtime_error("d$ requires " + to_string(count) + " lines but only " + to_string(n - pos.line) + " available");
