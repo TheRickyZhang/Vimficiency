@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "Editor/Mode.h"
 #include "Editor/Position.h"
 #include "Editor/Range.h"
 #include "Utils/Lines.h"
@@ -16,13 +17,28 @@
 namespace VimEditUtils {
 
 // -----------------------------------------------------------------------------
+// Position clamping helpers
+// -----------------------------------------------------------------------------
+
+// Clamp col to valid normal mode range: [0, line.size()-1] or 0 if empty
+inline void clampCol(const std::string& line, int& col) {
+  col = line.empty() ? 0 : std::min(col, static_cast<int>(line.size()) - 1);
+}
+
+// Clamp col to valid insert mode range: [0, line.size()] (cursor can be after last char)
+inline void clampInsertCol(const std::string& line, int& col) {
+  col = std::min(col, static_cast<int>(line.size()));
+}
+
+// -----------------------------------------------------------------------------
 // Multi-line operations (require Lines& and Position&)
 // -----------------------------------------------------------------------------
 
 // Delete text in range. Modifies lines and updates pos.
 // For linewise: deletes entire lines, pos goes to first non-blank of new line
 // For charwise: deletes character range, pos goes to start of deleted range
-void deleteRange(Lines& lines, const Range& range, Position& pos);
+// Mode determines position clamping: Normal clamps to last char, Insert allows after last char
+void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode = Mode::Normal);
 
 // Insert text at position. Handles newlines (splits into multiple lines).
 // After insert, pos is at end of inserted text.

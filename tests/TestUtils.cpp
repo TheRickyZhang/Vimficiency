@@ -17,7 +17,7 @@ vector<string> readLines(istream &in) {
 
 bool contains_all(const vector<Result>& v, initializer_list<string> need){
   unordered_set<string> s;
-  for(Result r : v) s.insert(r.sequence);
+  for(Result r : v) s.insert(r.getSequenceString());
   for(const auto& x : need) if(s.find(x)==s.end()) return false;
   return true;
 }
@@ -41,7 +41,7 @@ static string makePrintable(const string& seq) {
 void printResults(vector<Result>& results) {
   cout << "Results (" << results.size() << ") : " <<  endl;
   for (const auto& r : results) {
-    cout << makePrintable(r.sequence) << " ";
+    cout << makePrintable(r.getSequenceString()) << " ";
   }
   cout << endl;
 }

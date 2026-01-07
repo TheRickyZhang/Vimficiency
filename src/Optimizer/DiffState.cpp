@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <numeric>
 
 using namespace std;
 
@@ -10,13 +9,13 @@ namespace Myers {
 
 // Minimum length for a common substring to be preserved as a separate match.
 // Shorter matches are merged into adjacent diffs to produce more intuitive results.
-// e.g., "world" -> "there" shares 'r' (len 1), but we want 1 diff, not 2.
+// e.g., "world" -> "there" shares 'r' (len 1), but we want 1 diff, not 2 (wo->the, d->e).
 // But "migration" -> "arbitrations" shares "ration" (len 6), so 2 diffs makes sense.
 const int MIN_MATCH_LENGTH = 4;
 
-// Check if a character is a word boundary (whitespace or punctuation).
-// Used to preserve short matches that represent complete words/tokens.
-// e.g., " b " in "a b c" -> "d b e" should be preserved even though it's only 3 chars.
+// Check if a character is a word boundary (whitespace or punctuation) as an exception to above
+// Being surrounded by spaces, for instance, is very distinguishable.
+// e.g., " b " in "a b c" -> "d b e" should be preserved even though " b " is only 3 < MIN_MATCH_LENGTH chars.
 // Note: underscore (_) is excluded since it's part of identifiers in code.
 static bool isWordBoundaryChar(char c) {
   if (isspace(c)) return true;
@@ -64,58 +63,148 @@ static int positionToFlatIndex(const Position& pos, const Lines& lines) {
 }
 
 // =============================================================================
-// Character-Level LCS/Diff
+// Myers O(ND) Diff Algorithm
 // =============================================================================
+//
+// This implements Eugene Myers' "An O(ND) Difference Algorithm" (1986).
+// Same as used in Git diffs, but character-wise, so preserves intuitive "diff" notions.
+// Key properties:
+// - O(ND) time where N = n + m and D = edit distance (number of edits)
+// - Greedy: consumes matches as early as possible during forward search
+// - Prefers deletions over insertions on ties (deletions appear first)
+// - Produces minimal edit scripts
+//
+// The algorithm explores an edit graph where:
+// - x-axis = source string positions, y-axis = target string positions
+// - Moving right (+x) = DELETE from source
+// - Moving down (+y) = INSERT from target
+// - Diagonal (+x, +y) = KEEP (match, free move)
+// - Goal: find shortest path from (0,0) to (n,m)
 
 // Internal: represents an edit operation
 enum class EditOp { KEEP, DELETE, INSERT };
 
-// Trace the edit path from the DP table (character-level)
-// Uses FORWARD traceback to prefer early matches and produce contiguous diffs
+// Traceback from the saved history to reconstruct edit operations
+static vector<EditOp> myersTraceback(
+    const vector<vector<int>>& trace,
+    int d_final, int n, int m, int offset,
+    const string& a, const string& b) {
+
+  vector<EditOp> ops;
+  int x = n, y = m;
+
+  // Work backwards from d_final to d=1
+  for (int d = d_final; d > 0; d--) {
+    int k = x - y;
+    const vector<int>& V_prev = trace[d];
+
+    // Determine which direction we came from
+    int prev_k;
+    bool was_insert;
+
+    if (k == -d || (k != d && V_prev[k - 1 + offset] < V_prev[k + 1 + offset])) {
+      // Came from k+1 (insert: moved down)
+      prev_k = k + 1;
+      was_insert = true;
+    } else {
+      // Came from k-1 (delete: moved right)
+      prev_k = k - 1;
+      was_insert = false;
+    }
+
+    // Position at end of previous round on prev_k diagonal
+    int end_x = V_prev[prev_k + offset];
+    int end_y = end_x - prev_k;
+
+    // Position right after the edit (before snake/diagonal extension)
+    int snake_start_x = was_insert ? end_x : end_x + 1;
+    int snake_start_y = was_insert ? end_y + 1 : end_y;
+
+    // Add diagonal moves (snake) that happened after the edit
+    while (x > snake_start_x && y > snake_start_y) {
+      ops.push_back(EditOp::KEEP);
+      x--; y--;
+    }
+
+    // Add the edit
+    if (was_insert) {
+      ops.push_back(EditOp::INSERT);
+      y--;
+    } else {
+      ops.push_back(EditOp::DELETE);
+      x--;
+    }
+  }
+
+  // d=0: initial diagonal moves from (0,0) before any edits
+  while (x > 0 && y > 0) {
+    ops.push_back(EditOp::KEEP);
+    x--; y--;
+  }
+
+  // Reverse to get forward order
+  reverse(ops.begin(), ops.end());
+  return ops;
+}
+
+// Myers O(ND) diff algorithm - finds shortest edit script
 static vector<EditOp> tracePath(const string& a, const string& b) {
   int n = static_cast<int>(a.size());
   int m = static_cast<int>(b.size());
 
-  // For large strings, use space-optimized approach
-  // For now, use standard DP (O(nm) space)
-  // TODO: Implement Myers O(nd) or Hirschberg O(n) space if needed
+  // Handle edge cases
+  if (n == 0 && m == 0) return {};
+  if (n == 0) return vector<EditOp>(m, EditOp::INSERT);
+  if (m == 0) return vector<EditOp>(n, EditOp::DELETE);
 
-  // DP: lcs[i][j] = length of LCS of a[i..] and b[j..] (suffix LCS)
-  // Using suffix LCS enables forward traceback with correct tie-breaking
-  vector<vector<int>> lcs(n + 2, vector<int>(m + 2, 0));
+  int max_d = n + m;
+  int offset = max_d + 1;  // To handle negative diagonal indices
+  int V_size = 2 * max_d + 3;
 
-  for (int i = n - 1; i >= 0; i--) {
-    for (int j = m - 1; j >= 0; j--) {
-      if (a[i] == b[j]) {
-        lcs[i][j] = lcs[i + 1][j + 1] + 1;
+  // V[k + offset] = furthest x position reached on diagonal k
+  // Diagonal k means: x - y = k
+  vector<int> V(V_size, 0);
+  vector<vector<int>> trace;  // History for traceback
+
+  // Sentinel: V[1] = 0 allows the algorithm to start cleanly
+  V[1 + offset] = 0;
+
+  for (int d = 0; d <= max_d; d++) {
+    // Save V at the start of this round for traceback
+    trace.push_back(V);
+
+    for (int k = -d; k <= d; k += 2) {
+      int x;
+
+      // Choose: come from diagonal k-1 (delete) or k+1 (insert)
+      // - k == -d: must come from k+1 (can't go further left)
+      // - k == d: must come from k-1 (can't go further right)
+      // - Otherwise: choose the one that reaches further
+      // - Prefer delete (k-1) on tie for consistent output
+      if (k == -d || (k != d && V[k - 1 + offset] < V[k + 1 + offset])) {
+        x = V[k + 1 + offset];      // insert: come from k+1, x stays same
       } else {
-        lcs[i][j] = max(lcs[i + 1][j], lcs[i][j + 1]);
+        x = V[k - 1 + offset] + 1;  // delete: come from k-1, x increases
+      }
+
+      int y = x - k;
+
+      // Snake: greedily follow diagonal (matches) as far as possible
+      while (x < n && y < m && a[x] == b[y]) {
+        x++; y++;
+      }
+
+      V[k + offset] = x;
+
+      // Check if we've reached the goal
+      if (x >= n && y >= m) {
+        return myersTraceback(trace, d, n, m, offset, a, b);
       }
     }
   }
 
-  // Forward trace to get edit operations
-  // This naturally prefers early matches, producing contiguous diffs
-  vector<EditOp> ops;
-  int i = 0, j = 0;
-  while (i < n || j < m) {
-    if (i < n && j < m && a[i] == b[j]) {
-      // Characters match - always KEEP
-      ops.push_back(EditOp::KEEP);
-      i++; j++;
-    } else if (j >= m || (i < n && lcs[i + 1][j] >= lcs[i][j + 1])) {
-      // DELETE from source: prefer this when it leads to equally good or better LCS
-      // This consumes the source first, ensuring early matches
-      ops.push_back(EditOp::DELETE);
-      i++;
-    } else {
-      // INSERT from target
-      ops.push_back(EditOp::INSERT);
-      j++;
-    }
-  }
-
-  return ops;
+  // Should never reach here for valid input
+  return {};
 }
 
 // =============================================================================
@@ -238,26 +327,84 @@ vector<DiffState> calculate(const Lines& startLines, const Lines& endLines) {
       if (keepCount == 0) {
         // No more KEEPs, we're done with this diff or at end
         break;
-      } else if (keepCount >= MIN_MATCH_LENGTH || peekIdx >= ops.size()) {
-        // Long enough match or end of ops - finalize this diff
-        // (we also finalize at end to not lose trailing matches)
+      }
+
+      // Rule 0: Cross-line matches with little content are likely coincidental
+      // e.g., "\n  r" matching just because both files have "return" at same indent
+      // This applies even to "long" matches since "\n   x" is 5 chars but weak
+      bool containsNewline = false;
+      int nonWhitespaceCount = 0;
+      for (int k = 0; k < keepCount; k++) {
+        char c = startText[origIdx + k];
+        if (c == '\n') containsNewline = true;
+        if (!std::isspace(static_cast<unsigned char>(c))) nonWhitespaceCount++;
+      }
+      bool atEnd = (peekIdx >= ops.size());
+      // Require at least 3 non-whitespace chars for cross-line matches to be meaningful
+      if (containsNewline && nonWhitespaceCount < 3 && !atEnd) {
+        // Cross-line match with < 2 non-whitespace chars - absorb
+        for (int k = 0; k < keepCount; k++) {
+          deleted += startText[origIdx];
+          inserted += endText[newIdx];
+          origIdx++;
+          newIdx++;
+          opIdx++;
+        }
+        continue;
+      }
+
+      if (keepCount >= MIN_MATCH_LENGTH) {
+        // Long enough match - finalize this diff
         break;
       } else {
-        // Short match - check if it contains word boundaries
-        // If so, it represents complete word(s) and should be preserved
-        bool containsBoundary = false;
+        // Short match - decide whether to preserve or absorb
+        bool isPureInsertion = deleted.empty();
+        bool isPureDeletion = inserted.empty();
+
+        // Check if match contains any boundary chars
+        bool hasBoundary = false;
         for (int k = 0; k < keepCount; k++) {
           if (isWordBoundaryChar(startText[origIdx + k])) {
-            containsBoundary = true;
+            hasBoundary = true;
             break;
           }
         }
-        if (containsBoundary) {
-          // Preserve this match - it contains word structure
+
+        // Rule 1: At end with boundary - preserve (e.g., trailing ")")
+        if (atEnd && hasBoundary) {
           break;
         }
-        // Short match with no boundaries - absorb it into the current diff
-        // Treat the kept chars as deleted from source and inserted from target
+
+        // Rule 2: Pure insert/delete at end - preserve to keep diff minimal
+        if (atEnd && (isPureInsertion || isPureDeletion)) {
+          break;
+        }
+
+        // Rule 3: Proper boundary+content+boundary - preserve (e.g., " b ")
+        if (hasBoundary) {
+          bool startsWithBoundary = isWordBoundaryChar(startText[origIdx]);
+          bool endsWithBoundary = isWordBoundaryChar(startText[origIdx + keepCount - 1]);
+          bool hasContent = false;
+          for (int k = 0; k < keepCount; k++) {
+            if (!isWordBoundaryChar(startText[origIdx + k])) {
+              hasContent = true;
+              break;
+            }
+          }
+          if (startsWithBoundary && endsWithBoundary && hasContent) {
+            break;
+          }
+        }
+
+        // Rule 4: Small diff at end - preserve to keep diff minimal
+        if (atEnd) {
+          int currentDiffSize = static_cast<int>(deleted.size() + inserted.size());
+          if (currentDiffSize <= keepCount) {
+            break;
+          }
+        }
+
+        // Absorb - treat the kept chars as deleted from source and inserted from target
         for (int k = 0; k < keepCount; k++) {
           deleted += startText[origIdx];
           inserted += endText[newIdx];

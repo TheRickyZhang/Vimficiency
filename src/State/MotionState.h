@@ -67,7 +67,7 @@ public:
   // When exploring {count}motion, we always know the newPos from index search
   void applyMotionWithKnownPosition(std::string motion, int cnt, const Position& newPos);
 
-  void updateEffort(const KeySequence& keySequence, const Config& config);
+  void updateEffort(const PhysicalKeys& keys, const Config& config);
 
   void updateCost(double newCost);
 

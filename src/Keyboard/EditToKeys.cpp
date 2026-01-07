@@ -149,7 +149,7 @@ const EditToKeys OPERATORS = {
 
 using namespace EditCategory;
 
-const EditToKeys ALL_EDITS = combineAll({
+const EditToKeys ALL_EDITS_TO_KEYS = combineAll({
     cref(Normal::CHAR_LEFT),
     cref(Normal::CHAR_RIGHT),
     cref(Normal::WORD_LEFT),
@@ -183,7 +183,7 @@ bool isEdit(string_view s) {
     if (s.size() == 2 && s[0] == 'r') return true;
 
     // Check if it's in ALL_EDITS
-    if (ALL_EDITS.contains(s)) return true;
+    if (ALL_EDITS_TO_KEYS.contains(s)) return true;
 
     // Check if starts with an operator (d, c, y followed by motion/text-object)
     if (s.size() > 1 && OPERATORS.contains(s.substr(0, 1))) return true;

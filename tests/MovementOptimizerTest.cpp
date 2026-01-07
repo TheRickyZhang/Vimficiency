@@ -130,7 +130,7 @@ TEST_F(MovementOptimizerTest, RangeBasic_SameLine) {
   cout << "=== RangeBasic_SameLine ===" << endl;
   cout << "Start: (0, 0), Range: [(0, 5), (0, 10)]" << endl;
   for (const auto& r : results) {
-    cout << "  seq: \"" << r.sequence << "\", cost: " << r.keyCost
+    cout << "  seq: \"" << r.getSequenceString() << "\", cost: " << r.keyCost
          << ", endPos: (" << r.endPos.line << ", " << r.endPos.col << ")" << endl;
   }
   cout << get_debug_output() << endl;
@@ -154,7 +154,7 @@ TEST_F(MovementOptimizerTest, RangeBasic_MultiLine) {
   cout << "=== RangeBasic_MultiLine ===" << endl;
   cout << "Start: (0, 0), Range: [(1, 0), (2, 5)]" << endl;
   for (const auto& r : results) {
-    cout << "  seq: \"" << r.sequence << "\", cost: " << r.keyCost
+    cout << "  seq: \"" << r.getSequenceString() << "\", cost: " << r.keyCost
          << ", endPos: (" << r.endPos.line << ", " << r.endPos.col << ")" << endl;
   }
 
@@ -178,7 +178,7 @@ TEST_F(MovementOptimizerTest, RangeFromMiddle) {
   cout << "=== RangeFromMiddle ===" << endl;
   cout << "Start: (2, 1), Range: [(4, 0), (4, 2)]" << endl;
   for (const auto& r : results) {
-    cout << "  seq: \"" << r.sequence << "\", cost: " << r.keyCost
+    cout << "  seq: \"" << r.getSequenceString() << "\", cost: " << r.keyCost
          << ", endPos: (" << r.endPos.line << ", " << r.endPos.col << ")" << endl;
   }
 
@@ -198,7 +198,7 @@ TEST_F(MovementOptimizerTest, RangeWithWordMotions) {
   cout << "Line: \"" << lines[0] << "\"" << endl;
   cout << "Start: (0, 0), Range: [(0, 8), (0, 17)]" << endl;
   for (const auto& r : results) {
-    cout << "  seq: \"" << r.sequence << "\", cost: " << r.keyCost
+    cout << "  seq: \"" << r.getSequenceString() << "\", cost: " << r.keyCost
          << ", endPos: (" << r.endPos.line << ", " << r.endPos.col << ")" << endl;
   }
 

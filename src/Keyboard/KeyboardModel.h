@@ -39,15 +39,16 @@ enum class FingerPosition : uint8_t {
   None,
 };
 
-// Wrapper for semantic meaning, additional functions.
-class KeySequence {
+// Represents physical key presses for effort calculation.
+// Used by RunningEffort to compute typing cost based on hand/finger patterns.
+class PhysicalKeys {
   std::vector<Key> keys;
 public:
-  KeySequence()=default;
-  KeySequence(std::initializer_list<Key> init) : keys(init){}
+  PhysicalKeys() = default;
+  PhysicalKeys(std::initializer_list<Key> init) : keys(init) {}
 
   size_t size() const { return keys.size(); }
-  // bool empty() const { return keys.empty(); }
+  bool empty() const { return keys.empty(); }
   auto begin() const { return keys.begin(); }
   auto end() const { return keys.end(); }
 
@@ -55,21 +56,20 @@ public:
   void push_back(const Key& k) {
     keys.push_back(k);
   }
-  KeySequence& append(const KeySequence& ks, size_t cnt = 1);
+  PhysicalKeys& append(const PhysicalKeys& ks, size_t cnt = 1);
 
-  KeySequence& operator+=(const KeySequence& other){
+  PhysicalKeys& operator+=(const PhysicalKeys& other){
     return append(other);
   }
-  bool operator==(const KeySequence& other) const {
+  bool operator==(const PhysicalKeys& other) const {
     return keys == other.keys;
   }
-  bool operator!=(const KeySequence& other) const {
+  bool operator!=(const PhysicalKeys& other) const {
     return !(*this == other);
   }
 };
 
-    // KeySequence keys;
-std::ostream& operator<<(std::ostream& os, const KeySequence& ks);
+std::ostream& operator<<(std::ostream& os, const PhysicalKeys& ks);
 
 static_assert(KEY_COUNT == static_cast<uint8_t>(Key::None), "key counts do not match");
 static_assert(FINGER_COUNT == static_cast<uint8_t>(Finger::None), "finger counts do not match");

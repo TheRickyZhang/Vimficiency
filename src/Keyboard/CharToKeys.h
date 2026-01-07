@@ -3,8 +3,8 @@
 #include <map>
 #include "KeyboardModel.h"
 
-// Single-character to KeySequence mapping
-using CharToKeys = std::map<char, KeySequence>;
+// Single-character to PhysicalKeys mapping
+using CharToKeys = std::map<char, PhysicalKeys>;
 
 // All printable characters mapped to their key sequences
 extern const CharToKeys CHAR_TO_KEYS;

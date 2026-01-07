@@ -24,8 +24,8 @@ SequenceTokenizer::SequenceTokenizer(const Mapping &actions,
 }
 
 
-KeySequence SequenceTokenizer::tokenize(string_view s) const {
-  KeySequence out;
+PhysicalKeys SequenceTokenizer::tokenize(string_view s) const {
+  PhysicalKeys out;
   size_t i=0;
 
   while(i < s.size()){

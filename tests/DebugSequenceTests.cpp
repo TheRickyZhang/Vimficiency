@@ -51,7 +51,7 @@ protected:
   static bool containsSequence(const vector<Result> &results,
                                const string &seq) {
     return std::any_of(results.begin(), results.end(),
-                       [&seq](const Result &r) { return r.sequence == seq; });
+                       [&seq](const Result &r) { return r.getSequenceString() == seq; });
   }
 };
 
@@ -116,17 +116,17 @@ TEST_F(DebugSequenceTest, AllResultsReachTargetPosition) {
   // Print results for debugging
   cout << "Optimizer results for (0,0) -> (2,2):\n";
   for (const auto &r : results) {
-    Position actual = simulateMotionsDefault(start, r.sequence, a2_block_lines);
-    cout << "  " << r.sequence << " -> (" << actual.line << "," << actual.col << ")\n";
+    Position actual = simulateMotionsDefault(start, r.getSequenceString(), a2_block_lines);
+    cout << "  " << r.getSequenceString() << " -> (" << actual.line << "," << actual.col << ")\n";
   }
 
   for (const auto &r : results) {
-    Position actual = simulateMotionsDefault(start, r.sequence, a2_block_lines);
+    Position actual = simulateMotionsDefault(start, r.getSequenceString(), a2_block_lines);
     EXPECT_EQ(actual.line, end.line)
-        << "Sequence '" << r.sequence << "' ends at wrong line: "
+        << "Sequence '" << r.getSequenceString() << "' ends at wrong line: "
         << actual.line << " vs expected " << end.line;
     EXPECT_EQ(actual.col, end.col)
-        << "Sequence '" << r.sequence << "' ends at wrong col: "
+        << "Sequence '" << r.getSequenceString() << "' ends at wrong col: "
         << actual.col << " vs expected " << end.col;
   }
 }
@@ -200,17 +200,17 @@ TEST_F(DebugSequenceTest, AllResultsReachTargetPosition_From1_0) {
 
   cout << "Optimizer results for (1,0) -> (3,2):\n";
   for (const auto &r : results) {
-    Position actual = simulateMotionsDefault(start, r.sequence, a2_block_lines);
-    cout << "  " << r.sequence << " -> (" << actual.line << "," << actual.col << ")\n";
+    Position actual = simulateMotionsDefault(start, r.getSequenceString(), a2_block_lines);
+    cout << "  " << r.getSequenceString() << " -> (" << actual.line << "," << actual.col << ")\n";
   }
 
   for (const auto &r : results) {
-    Position actual = simulateMotionsDefault(start, r.sequence, a2_block_lines);
+    Position actual = simulateMotionsDefault(start, r.getSequenceString(), a2_block_lines);
     EXPECT_EQ(actual.line, end.line)
-        << "Sequence '" << r.sequence << "' ends at wrong line: "
+        << "Sequence '" << r.getSequenceString() << "' ends at wrong line: "
         << actual.line << " vs expected " << end.line;
     EXPECT_EQ(actual.col, end.col)
-        << "Sequence '" << r.sequence << "' ends at wrong col: "
+        << "Sequence '" << r.getSequenceString() << "' ends at wrong col: "
         << actual.col << " vs expected " << end.col;
   }
 }

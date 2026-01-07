@@ -167,7 +167,7 @@ const char *vimficiency_analyze(
     } else {
       oss << "size: " << res.size() << "\n";
       for (const Result &r : res) {
-        oss << r.sequence << " " << std::fixed << std::setprecision(3)
+        oss << r.getSequenceString() << " " << std::fixed << std::setprecision(3)
             << r.keyCost << "\n";
       }
     }

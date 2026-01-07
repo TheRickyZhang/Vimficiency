@@ -8,16 +8,11 @@ using namespace std;
 
 namespace VimEditUtils {
 
-// Helper: clamp col to last char, or 0 if empty
-inline void clampCol(const string& line, int& col) {
-  col = line.empty() ? 0 : min(col, static_cast<int>(line.size()) - 1);
-}
-
 // -----------------------------------------------------------------------------
 // Multi-line operations
 // -----------------------------------------------------------------------------
 
-void deleteRange(Lines& lines, const Range& range, Position& pos) {
+void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
   if (lines.empty()) {
     pos = {0, 0};
     return;
@@ -66,7 +61,11 @@ void deleteRange(Lines& lines, const Range& range, Position& pos) {
 
     pos.line = r.start.line;
     pos.col = r.start.col;
-    clampCol(lines[pos.line], pos.col);
+    if (mode == Mode::Insert) {
+      clampInsertCol(lines[pos.line], pos.col);
+    } else {
+      clampCol(lines[pos.line], pos.col);
+    }
   }
 }
 

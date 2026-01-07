@@ -12,7 +12,7 @@
 
 // std::less<> enables transparent comparison - allows lookup with string_view
 // without allocating a temporary std::string
-using MotionToKeys = std::map<std::string, KeySequence, std::less<>>;
+using MotionToKeys = std::map<std::string, PhysicalKeys, std::less<>>;
 
 // =============================================================================
 // Motion Maps
@@ -28,7 +28,7 @@ extern const MotionToKeys ALL_MOTIONS;
 // Excludes motions needing special handling (f/F/t/T require target char, ;/, require prior context)
 extern const MotionToKeys EXPLORABLE_MOTIONS;
 
-// Single-character to KeySequence mapping (for f/F/t/T motion targets)
+// Single-character to PhysicalKeys mapping (for f/F/t/T motion targets)
 extern const CharToKeys CHAR_TO_KEYS;
 
 // COUNT_SEARCHABLE = what motions we want to find best prefix counts for

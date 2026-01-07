@@ -173,7 +173,8 @@ vector<Result> CompositionOptimizer::optimize(
                 // NOTE: After this edit, we're in linesAfterNEdits[editsCompleted + 1]
                 Position newPos = editIndexToBufferPos(j, diff);
 
-                newState.applyEditTransition(editRes.sequence, newPos, config);
+                // Edit results always end in Normal mode (Esc at the end)
+                newState.applyEditTransition(editRes.sequences, newPos, Mode::Normal, config);
                 newState.updateCost(heuristic(newState, editsCompleted + 1, suffixEditCosts, diffStates));
                 exploreNewState(std::move(newState));
               }
@@ -224,7 +225,7 @@ vector<Result> CompositionOptimizer::optimize(
         if (!movResult.isValid()) continue;
 
         CompositionState newState = s;
-        newState.applyMovementResult(movResult.sequence, movResult.endPos, config);
+        newState.applyMovementResult(movResult.sequences, movResult.endPos, config);
         newState.updateCost(heuristic(newState, editsCompleted, suffixEditCosts, diffStates));
         exploreNewState(std::move(newState));
       }

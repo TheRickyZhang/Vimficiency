@@ -9,8 +9,8 @@
 
 using namespace std;
 
-KeySequence makeKeySequence(int count, const KeySequence& motionKeys) {
-  KeySequence keys;
+PhysicalKeys makePhysicalKeys(int count, const PhysicalKeys& motionKeys) {
+  PhysicalKeys keys;
   for(char c : to_string(count)) {
     keys.append(CHAR_TO_KEYS.at(c));
   }
@@ -80,10 +80,10 @@ vector<Result> MovementOptimizer::optimize(
     }
   };
 
-  auto exploreMotionWithKnownKeySequence = [&](const MotionState& base, const string& motion, const KeySequence& keySequence) {
+  auto exploreMotionWithKnownKeys = [&](const MotionState& base, const string& motion, const PhysicalKeys& keys) {
     MotionState newState = base;
     newState.applySingleMotion(motion, navContext, lines);
-    newState.updateEffort(keySequence, config);
+    newState.updateEffort(keys, config);
     newState.updateCost(heuristic(newState, endPos, params.costWeight));
     exploreNewState(std::move(newState));
   };
@@ -93,17 +93,17 @@ vector<Result> MovementOptimizer::optimize(
     MotionState newState = base;
     newState.applyMotionWithKnownPosition(motion, cnt, newPos);
     newState.updateEffort(
-      makeKeySequence(abs(cnt), motionToKeys.at(motion)),
+      makePhysicalKeys(abs(cnt), motionToKeys.at(motion)),
       config
     );
     newState.updateCost(heuristic(newState, endPos, params.costWeight));
     exploreNewState(std::move(newState));
   };
 
-  auto exploreMotionWithKnownColumnAndKeySequence = [&](const MotionState& base, const string& motion, int newcol, const KeySequence& keySequence) {
+  auto exploreMotionWithKnownColumnAndKeys = [&](const MotionState& base, const string& motion, int newcol, const PhysicalKeys& keys) {
     MotionState newState = base;
     newState.applySingleMotionWithKnownColumn(motion, newcol);
-    newState.updateEffort(keySequence, config);
+    newState.updateEffort(keys, config);
     newState.updateCost(heuristic(newState, endPos, params.costWeight));
     exploreNewState(std::move(newState));
   };
@@ -163,12 +163,12 @@ vector<Result> MovementOptimizer::optimize(
           }
 
           string f_motions;
-          KeySequence f_key_sequence;
-          f_motions += first_motion;               f_key_sequence.append(CHAR_TO_KEYS.at(first_motion));
-          f_motions += c;                          f_key_sequence.append(charIt->second);
-          f_motions += string(cnt, repeat_motion); f_key_sequence.append(CHAR_TO_KEYS.at(repeat_motion), cnt);
+          PhysicalKeys f_keys;
+          f_motions += first_motion;               f_keys.append(CHAR_TO_KEYS.at(first_motion));
+          f_motions += c;                          f_keys.append(charIt->second);
+          f_motions += string(cnt, repeat_motion); f_keys.append(CHAR_TO_KEYS.at(repeat_motion), cnt);
 
-          exploreMotionWithKnownColumnAndKeySequence(s, f_motions, col, f_key_sequence);
+          exploreMotionWithKnownColumnAndKeys(s, f_motions, col, f_keys);
         }
       };
 
@@ -206,7 +206,7 @@ vector<Result> MovementOptimizer::optimize(
     // -------------------- START global search --------------------
     // By default, motionToKeys is EXPLORABLE_MOTIONS (with exclusions applied)
     for (auto [motion, keys] : motionToKeys) {
-      exploreMotionWithKnownKeySequence(s, motion,  keys);
+      exploreMotionWithKnownKeys(s, motion, keys);
     }
 
     for(const auto& motionPair : COUNT_SEARCHABLE_MOTIONS_GLOBAL) {
@@ -302,10 +302,10 @@ vector<RangeResult> MovementOptimizer::optimizeToRange(
     }
   };
 
-  auto exploreMotion = [&](const MotionState& base, const string& motion, const KeySequence& keySequence) {
+  auto exploreMotion = [&](const MotionState& base, const string& motion, const PhysicalKeys& keys) {
     MotionState newState = base;
     newState.applySingleMotion(motion, navContext, lines);
-    newState.updateEffort(keySequence, config);
+    newState.updateEffort(keys, config);
     newState.updateCost(heuristicToRange(newState, rangeBegin, rangeEnd, params.costWeight));
     exploreNewState(std::move(newState));
   };

@@ -66,7 +66,7 @@ protected:
     for (int i = 0; i < res.n; i++) {
       for (int j = 0; j < res.m; j++) {
         if (res.adj[i][j].isValid()) {
-          cout << "  [" << i << "][" << j << "] = \"" << res.adj[i][j].sequence
+          cout << "  [" << i << "][" << j << "] = \"" << res.adj[i][j].getSequenceString()
                << "\" (cost: " << res.adj[i][j].keyCost << ")" << endl;
         }
       }
@@ -84,6 +84,7 @@ TEST_F(EditOptimizerTest, MatrixDimensions_SingleLine) {
 
   printEditResult(res, begin, end);
 
+  // EXPECT_EQ(res.adj[0][2].sequence, "cexyz<Esc>");
   EXPECT_EQ(res.n, 5) << "n should equal total chars in begin";
   EXPECT_EQ(res.m, 3) << "m should equal total chars in end";
 }
@@ -162,8 +163,8 @@ TEST_F(EditOptimizerTest, SingleCharDeletion) {
   EXPECT_EQ(res.m, 1);
 }
 
-// Cannot insert - would need to type actual characters (infinite search space)
-TEST_F(EditOptimizerTest, DISABLED_SingleCharInsertion) {
+// Insert single character - now works with goal-directed typing
+TEST_F(EditOptimizerTest, SingleCharInsertion) {
   // Insert single character: "a" -> "ab"
   Lines begin = {"a"};
   Lines end = {"ab"};
@@ -176,8 +177,8 @@ TEST_F(EditOptimizerTest, DISABLED_SingleCharInsertion) {
   EXPECT_EQ(res.m, 2);
 }
 
-// Cannot substitute - r{char} requires typing replacement character
-TEST_F(EditOptimizerTest, DISABLED_SingleCharSubstitution) {
+// Substitute character - now works with goal-directed typing
+TEST_F(EditOptimizerTest, SingleCharSubstitution) {
   // Substitute: "a" -> "b"
   Lines begin = {"a"};
   Lines end = {"b"};

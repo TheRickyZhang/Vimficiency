@@ -452,7 +452,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           // Delete char before cursor
           Position beforePos(pos.line, pos.col - 1);
           Range r(beforePos, beforePos, false, true);
-          VimEditUtils::deleteRange(lines, r, pos);
+          VimEditUtils::deleteRange(lines, r, pos, Mode::Insert);
         }
         return;
 
@@ -468,7 +468,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           } else {
             // Delete char at cursor
             Range r(pos, pos, false, true);
-            VimEditUtils::deleteRange(lines, r, pos);
+            VimEditUtils::deleteRange(lines, r, pos, Mode::Insert);
           }
         }
         return;
@@ -483,7 +483,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         }
         {
           Range r(Position(pos.line, 0), Position(pos.line, pos.col - 1), false, true);
-          VimEditUtils::deleteRange(lines, r, pos);
+          VimEditUtils::deleteRange(lines, r, pos, Mode::Insert);
         }
         return;
 
@@ -505,7 +505,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
                    !VimUtils::isBlank(ln[col - 1])) col--;
           }
           Range r(Position(pos.line, col), Position(pos.line, pos.col - 1), false, true);
-          VimEditUtils::deleteRange(lines, r, pos);
+          VimEditUtils::deleteRange(lines, r, pos, Mode::Insert);
         }
         return;
 

@@ -1,8 +1,11 @@
 #include "EditOptimizer.h"
 
 #include "EditBoundary.h"
+#include "Keyboard/CharToKeys.h"
 #include "Keyboard/EditToKeys.h"
+#include "Keyboard/KeyboardModel.h"
 #include "Optimizer/Levenshtein.h"
+#include "State/EditState.h"
 #include "State/PosKey.h"
 #include "State/RunningEffort.h"
 #include "Utils/Debug.h"
@@ -71,6 +74,10 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
   int y = transform_reduce(endLines.begin(), endLines.end(), 0, plus<int>{},
                            [](const string &s) { return s.size(); });
 
+  // TODO: Implement
+  string flattenedBeginLines = beginLines.flatten();
+  string flattenedEndLines = endLines.flatten();
+
   debug("=== EditOptimizer::optimizeEdit ===");
   debug("beginLines:", n, "lines,", x, "chars");
   for (size_t i = 0; i < beginLines.size(); i++) {
@@ -104,7 +111,7 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
   map<PosKey, int> beginPositionToIndex =
       buildPositionIndex(beginLines, [&](int i, int j, int it) {
         EditState state(sharedBeginLines, Position(i, j), Mode::Normal,
-                        RunningEffort(), it);
+                        RunningEffort(), it, 0);
         pq.push(state);
         costMap[state.getKey()] = 0;
       });
@@ -141,6 +148,8 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
     Mode mode = s.getMode();
     double cost = s.getCost();
     EditStateKey key = s.getKey();
+    int typedIndex = s.getTypedIndex();
+    bool didType = s.getDidType();
 
     if (++totalExplored > MAX_SEARCH_DEPTH) {
       debug("maximum total explored count reached");
@@ -158,6 +167,9 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
     bool isDone = (lines == endLines && mode == Mode::Normal);
 
     if (isDone) {
+      if(typedIndex != y) {
+        debug("huh this is not expected, typedIndex=", typedIndex, "y=", y);
+      }
       int i = s.getStartIndex();
       auto it = endPositionToIndex.find(PosKey(pos));
       if (it == endPositionToIndex.end()) continue;  // Position not in end buffer
@@ -169,7 +181,7 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
                                      to_string(j) + ": " +
                                      s.getMotionSequence());
       } else {
-        res.adj[i][j] = Result(s.getMotionSequence(), cost);
+        res.adj[i][j] = Result(s.getSequences(), cost);
         debug("Result [" + to_string(i) + "][" + to_string(j) + "] = \"" +
               s.getMotionSequence() + "\" cost=" + to_string(cost));
       }
@@ -190,20 +202,44 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
     // heuristic declines
 
 
-    auto exploreMotion = [&](const EditState &base, const string &motion,
-                             const KeySequence &keySequence) {
+    auto exploreMotion = [&](const EditState &base, const string &motion) {
       EditState newState = base;
-      newState.applySingleMotion(motion, keySequence);
-      newState.updateEffort(keySequence, config);
+      newState.updateDidType(false);
+      newState.applySingleMotion(motion, ALL_EDITS_TO_KEYS.at(motion), config);
+      newState.updateCost(heuristic(newState, editDistanceCalculator));
+      exploreNewState(std::move(newState));
+    };
+
+    auto exploreMotionWithKnownKeys = [&](const EditState &base, const string &motion, const PhysicalKeys& keys) {
+      EditState newState = base;
+      newState.updateDidType(false);
+      newState.applySingleMotion(motion, keys, config);
+      newState.updateCost(heuristic(newState, editDistanceCalculator));
+      exploreNewState(std::move(newState));
+    };
+
+    auto exploreMotionAndIncrementIndex = [&](const EditState &base, const string &motion) {
+      EditState newState = base;
+      newState.updateDidType(true);
+      newState.incrementTypedIndex();
+      newState.applySingleMotion(motion, ALL_EDITS_TO_KEYS.at(motion), config);
+      newState.updateCost(heuristic(newState, editDistanceCalculator));
+      exploreNewState(std::move(newState));
+    };
+
+    auto exploreInsertChar = [&](const EditState& base, char c) {
+      EditState newState = base;
+      newState.updateDidType(true);
+      newState.addTypedSingleChar(c, CHAR_TO_KEYS.at(c), config);
       newState.updateCost(heuristic(newState, editDistanceCalculator));
       exploreNewState(std::move(newState));
     };
 
     // Helper: explore all motions in a category if condition is true
-    auto explore = [&](bool condition, const auto& motions) {
+    auto exploreMotionsWithCondition = [&](bool condition, const auto& motions) {
       if (condition) {
         for (auto [motion, keys] : motions) {
-          exploreMotion(s, motion, keys);
+          exploreMotionWithKnownKeys(s, motion, keys);
         }
       }
     };
@@ -221,61 +257,80 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
     auto bwdSafe = [&](BackwardEdit e) { return lineNonEmpty && isBackwardEditSafe(line, col, boundary, e); };
 
     // Position checks
-    bool canGoUp = pos.line > 0;
-    bool canGoDown = pos.line < n - 1;
-    bool canGoLeft = pos.line > 0 || pos.col > 0;
-    bool canGoRight = pos.line < n - 1 || pos.col < (int)lines.back().size();
 
     // Additional checks for motions that would be no-ops
-    bool notAtBufferStart = !(pos.line == 0 && pos.col == 0);
-    bool notAtBufferEnd = pos.line < n - 1 || (lineNonEmpty && pos.col < (int)line.size() - 1);
+    
+    bool lineNotZero = pos.line > 0;
+    bool lineNotEnd = pos.line < n - 1;
     bool colNotZero = col > 0;
-    bool colNotAtEnd = lineNonEmpty && pos.col < (int)line.size() - 1;  // Normal mode: last char
-    bool colNotAtEndInsert = pos.col < (int)line.size();  // Insert mode: can be at line.size()
+    bool colNotEnd = lineNonEmpty && pos.col < (int)line.size() - 1;  // Normal mode: last char
+    bool insertColNotEnd = pos.col < (int)line.size();  // Insert mode: can be at line.size()
+    
+    bool notAtStart = lineNotZero || colNotZero;
+    bool notAtEnd   = lineNotEnd  || colNotEnd;
+    bool insertNotAtEnd = lineNotEnd || insertColNotEnd;  // Insert mode version
+
+    // In insert mode, cursor is BETWEEN characters, so char at cursor is line[col]
+    auto getCharAtCursor = [&](Position p) -> char {
+      if(p.col < (int)lines[p.line].size()) return lines[p.line][p.col];
+      if(p.line < n - 1) return '\n';  // At end of line, next char is newline
+      return '\0';  // At end of buffer
+    };
 
     if (mode == Mode::Insert) {
-      // Split CHAR_LEFT/CHAR_RIGHT into individual commands with precise conditions
-      // <Left>: needs col > 0 (no-op otherwise)
-      // <BS>: needs col > 0 || line > 0 (can join with previous line)
-      // <Esc>: always works
-      // <Right>: needs col < line.size() (no-op otherwise)
-      // <Del>: needs col < line.size() || line < n-1 (can join with next line)
+      exploreMotion(s, "<Esc>");
 
-      if (colNotZero) exploreMotion(s, "<Left>", {Key::Key_Left});
-      if (canGoLeft) exploreMotion(s, "<BS>", {Key::Key_Backspace});
-      exploreMotion(s, "<Esc>", {Key::Key_Esc});
+      if (insertColNotEnd) exploreMotion(s, "<Right>");
+      if (insertColNotEnd || lineNotEnd) exploreMotion(s, "<Del>");
 
-      if (colNotAtEndInsert) exploreMotion(s, "<Right>", {Key::Key_Right});
-      bool canDelForward = colNotAtEndInsert || pos.line < n - 1;
-      if (canDelForward) exploreMotion(s, "<Del>", {Key::Key_Delete});
+      if (!didType && colNotZero) exploreMotion(s, "<Left>");
+      if (!didType && colNotZero) exploreMotion(s, "<BS>");
 
-      explore(colNotZero && bwdSafe(BackwardEdit::WORD_TO_START), I::WORD_LEFT);   // <C-w>
-      explore(colNotZero && bwdSafe(BackwardEdit::LINE_TO_START), I::LINE_LEFT);   // <C-u>
+      exploreMotionsWithCondition(!didType && colNotZero && bwdSafe(BackwardEdit::WORD_TO_START), I::WORD_LEFT);   // <C-w>
+      exploreMotionsWithCondition(!didType && colNotZero && bwdSafe(BackwardEdit::LINE_TO_START), I::LINE_LEFT);   // <C-u>
 
-      explore(canGoUp, I::LINE_UP);     // <Up>
-      explore(canGoDown, I::LINE_DOWN); // <Down>
+      exploreMotionsWithCondition(lineNotZero, I::LINE_UP);     // <Up>
+      exploreMotionsWithCondition(lineNotEnd, I::LINE_DOWN); // <Down>
+
+      // Character typing based on goal
+      // We type the next character from endLines at current cursor position
+      if(typedIndex < (int)flattenedEndLines.size()) {
+        // Type next character
+        char c = flattenedEndLines[typedIndex];
+        exploreInsertChar(s, c);
+
+        // Also, if existing character at cursor matches, we can just move right
+        // Note: <Right> can only move within the same line, so only use it for non-newline chars
+        if(insertColNotEnd) {
+          char charAtCursor = getCharAtCursor(pos);
+          if(charAtCursor == c) {
+            exploreMotionAndIncrementIndex(s, "<Right>");
+          }
+        }
+      }
+
     }
     else if (mode == Mode::Normal) {
-      explore(bwdSafe(BackwardEdit::CHAR), N::CHAR_LEFT);            // X (already checks col > 0)
-      explore(fwdSafe(ForwardEdit::CHAR), N::CHAR_RIGHT);            // x
+      exploreMotionsWithCondition(bwdSafe(BackwardEdit::CHAR), N::CHAR_LEFT);            // X (already checks col > 0)
+      exploreMotionsWithCondition(fwdSafe(ForwardEdit::CHAR), N::CHAR_RIGHT);            // x
 
-      explore(notAtBufferStart && bwdSafe(BackwardEdit::WORD_TO_START), N::WORD_LEFT);           // db
-      explore(notAtBufferStart && bwdSafe(BackwardEdit::WORD_TO_END), N::WORD_END_LEFT);         // dge
-      explore(notAtBufferStart && bwdSafe(BackwardEdit::BIG_WORD_TO_START), N::BIG_WORD_LEFT);   // dB
-      explore(notAtBufferStart && bwdSafe(BackwardEdit::BIG_WORD_TO_END), N::BIG_WORD_END_LEFT); // dgE
-      explore(colNotZero && bwdSafe(BackwardEdit::LINE_TO_START), N::LINE_LEFT);                 // d0
+      exploreMotionsWithCondition(notAtStart && bwdSafe(BackwardEdit::WORD_TO_START), N::WORD_LEFT);           // db
+      exploreMotionsWithCondition(notAtStart && bwdSafe(BackwardEdit::WORD_TO_END), N::WORD_END_LEFT);         // dge
+      exploreMotionsWithCondition(notAtStart && bwdSafe(BackwardEdit::BIG_WORD_TO_START), N::BIG_WORD_LEFT);   // dB
+      exploreMotionsWithCondition(notAtStart && bwdSafe(BackwardEdit::BIG_WORD_TO_END), N::BIG_WORD_END_LEFT); // dgE
+      exploreMotionsWithCondition(colNotZero && bwdSafe(BackwardEdit::LINE_TO_START), N::LINE_LEFT);                 // d0
 
-      explore(notAtBufferEnd && fwdSafe(ForwardEdit::WORD_TO_START), N::WORD_RIGHT);           // dw
-      explore(notAtBufferEnd && fwdSafe(ForwardEdit::WORD_TO_END), N::WORD_END_RIGHT);         // de
-      explore(notAtBufferEnd && fwdSafe(ForwardEdit::BIG_WORD_TO_START), N::BIG_WORD_RIGHT);   // dW
-      explore(notAtBufferEnd && fwdSafe(ForwardEdit::BIG_WORD_TO_END), N::BIG_WORD_END_RIGHT); // dE
-      explore(colNotAtEnd && fwdSafe(ForwardEdit::LINE_TO_END), N::LINE_RIGHT);               // D, d$
+      exploreMotionsWithCondition(notAtEnd && fwdSafe(ForwardEdit::WORD_TO_START), N::WORD_RIGHT);           // dw
+      exploreMotionsWithCondition(notAtEnd && fwdSafe(ForwardEdit::WORD_TO_END), N::WORD_END_RIGHT);         // de
+      exploreMotionsWithCondition(notAtEnd && fwdSafe(ForwardEdit::BIG_WORD_TO_START), N::BIG_WORD_RIGHT);   // dW
+      exploreMotionsWithCondition(notAtEnd && fwdSafe(ForwardEdit::BIG_WORD_TO_END), N::BIG_WORD_END_RIGHT); // dE
+      exploreMotionsWithCondition(colNotEnd && fwdSafe(ForwardEdit::LINE_TO_END), N::LINE_RIGHT);               // D, d$
 
-      explore(isFullLineEditSafe(boundary), N::FULL_LINE);           // dd, cc
+      exploreMotionsWithCondition(isFullLineEditSafe(boundary), N::FULL_LINE);           // dd, cc
 
       // Line navigation (valid even on empty lines)
-      explore(canGoUp, N::LINE_UP);
-      explore(canGoDown, N::LINE_DOWN);
+      exploreMotionsWithCondition(lineNotZero, N::LINE_UP);
+      exploreMotionsWithCondition(lineNotEnd, N::LINE_DOWN);
     }
   }
 

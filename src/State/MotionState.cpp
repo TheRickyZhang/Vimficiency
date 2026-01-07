@@ -33,8 +33,9 @@ void MotionState::applyMotionWithKnownPosition(std::string motion, int cnt, cons
 }
 
 
-void MotionState::updateEffort(const KeySequence& keySequence, const Config& config) {
-  effort = runningEffort.append(keySequence, config);
+// TODO: combine with applySingleMotion
+void MotionState::updateEffort(const PhysicalKeys& keys, const Config& config) {
+  effort = runningEffort.append(keys, config);
 }
 
 

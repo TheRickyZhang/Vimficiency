@@ -4,7 +4,10 @@
 
 #include "Editor/Mode.h"
 #include "Editor/Position.h"
+#include "Keyboard/KeyboardModel.h"
+#include "Optimizer/Config.h"
 #include "RunningEffort.h"
+#include "Sequence.h"
 #include "Utils/Lines.h"
 
 struct EditStateKey {
@@ -60,7 +63,10 @@ class EditState {
 
   // Progress so far
   int startIndex;
-  std::string motionSequence;
+  int typedIndex;
+  bool didType = false;
+  // Command sequences grouped by mode (for display output)
+  std::vector<Sequence> sequences;
 
   // Necessary for ranking states
   double effort;
@@ -72,17 +78,17 @@ class EditState {
 public:
   // Construct from existing SharedLines (shares pointer)
   EditState(SharedLines lines, Position pos, Mode mode,
-            RunningEffort runningEffort, int startIndex,
+            RunningEffort runningEffort, int startIndex, int typedIndex,
             double effort = 0.0, double cost = 0.0)
       : lines(std::move(lines)), pos(pos), mode(mode),
-        runningEffort(runningEffort), startIndex(startIndex),
+        runningEffort(runningEffort), startIndex(startIndex), typedIndex(typedIndex),
         effort(effort), cost(cost) {}
 
   // Construct from Lines (creates new shared pointer)
   EditState(const Lines &linesVal, Position pos, Mode mode,
-            RunningEffort runningEffort, int startIndex,
+            RunningEffort runningEffort, int startIndex, int typedIndex,
             double effort = 0.0, double cost = 0.0)
-      : lines(std::make_shared<const Lines>(linesVal)), pos(pos), mode(mode),
+      : lines(std::make_shared<const Lines>(linesVal)), pos(pos), mode(mode), typedIndex(typedIndex),
         runningEffort(runningEffort), startIndex(startIndex),
         effort(effort), cost(cost) {}
 
@@ -100,17 +106,36 @@ public:
   SharedLines getSharedLines() const { return lines; }
 
   Position getPos() const { return pos; }
+  void setPos(const Position& newPos) { pos = newPos; }
   Mode getMode() const { return mode; }
-  std::string getMotionSequence() const { return motionSequence; }
+
+  // Get sequences grouped by mode
+  const std::vector<Sequence>& getSequences() const { return sequences; }
+
+  // Get flattened string representation
+  std::string getMotionSequence() const { return flattenSequences(sequences); }
+
+  // Get formatted string with mode annotations (e.g., "Normal: dwi\nInsert: hello<Esc>")
+  std::string getFormattedSequence() const { return formatSequences(sequences); }
+
   int getStartIndex() const { return startIndex; }
   double getEffort() const { return effort; }
   double getCost() const { return cost; }
   RunningEffort getRunningEffort() const { return runningEffort; }
+  int getTypedIndex() const { return typedIndex; }
+  bool getDidType() const { return didType; }
+
+  // Append to the appropriate mode segment (creates new segment if mode changed)
+  void appendSequence(const std::string& s, const PhysicalKeys& keys, const Config& config);
 
   void updateCost(double newCost);
+  void updateDidType(bool newDidType);
+  void incrementTypedIndex();
 
   // Motion: modifies pos/mode, shares lines (O(1))
-  void applySingleMotion(std::string motion, const KeySequence& keySequence);
+  void applySingleMotion(const std::string& motion, const PhysicalKeys& keys, const Config& config);
+
+  void addTypedSingleChar(char c, const PhysicalKeys& keys, const Config& config);
 
   // Edit: copies lines if needed (copy-on-write), then mutates
   // Returns mutable reference to lines for mutation
@@ -120,5 +145,4 @@ public:
     return const_cast<Lines&>(*lines);
   }
 
-  void updateEffort(const KeySequence& keySequence, const Config& config);
 };

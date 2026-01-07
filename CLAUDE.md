@@ -46,10 +46,11 @@ Key constraint: Search uses **minimal state** (contiguous buffer lines + positio
 
 ### Motion Processing Pipeline
 
-1. **MotionToKeys** (Keyboard/): Maps Vim motion strings (e.g., "w", "3j", "gg") to KeySequence
-2. **KeySequence**: Vector of Key enum values representing physical keypresses
-3. **Config** (Optimizer/): Defines keyboard layout (QWERTY/Colemak-DH/Uniform) with per-key costs and hand/finger assignments
-4. **Motion application** (Editor/Motion.h): Applies motion semantics to Position, returns new Position + Mode
+1. **MotionToKeys** (Keyboard/): Maps Vim motion strings (e.g., "w", "3j", "gg") to PhysicalKeys
+2. **PhysicalKeys**: Vector of Key enum values representing physical keypresses (used for effort calculation)
+3. **Sequence**: Struct with `{string keys, Mode mode}` for storing command sequences in state classes (used for output)
+4. **Config** (Optimizer/): Defines keyboard layout (QWERTY/Colemak-DH/Uniform) with per-key costs and hand/finger assignments
+5. **Motion application** (Editor/Motion.h): Applies motion semantics to Position, returns new Position + Mode
 
 ### FFI Bridge (lua_exports.cpp)
 
@@ -74,7 +75,7 @@ void vimficiency_apply_config();
 **Keyboard/**:
 - KeyboardModel.h: Key/Hand/Finger enums, KeyInfo struct
 - XMacroKeyDefinitions.h: X macro definitions (generates enums, name arrays, FFI exports from single source)
-- MotionToKeys: Motion string → KeySequence mapping, including `COUNT_SEARCHABLE_MOTIONS` for count-prefixed motion optimization
+- MotionToKeys: Motion string → PhysicalKeys mapping, including `COUNT_SEARCHABLE_MOTIONS` for count-prefixed motion optimization
 - SequenceTokenizer: Parses user input into motion tokens
 
 **VimCore/VimUtils**: Implements Vim motion semantics (word motions w/e/b, paragraph {/}, sentence (/)

@@ -20,7 +20,7 @@ double RunningEffort::getEffort(const Config &model) const {
 }
 
 // Returns difference in cost after appending keys
-double RunningEffort::append(const KeySequence& keys, const Config& model) {
+double RunningEffort::append(const PhysicalKeys& keys, const Config& model) {
   for(Key k : keys) {
     appendSingle(k, model);
   }
@@ -115,7 +115,7 @@ void RunningEffort::reset() {
 
 double getEffort(const std::string &seq,
                  const Config      &cfg) {
-  KeySequence keys = globalTokenizer().tokenize(seq);
+  PhysicalKeys keys = globalTokenizer().tokenize(seq);
   RunningEffort st;
   return st.append(keys, cfg);
 }

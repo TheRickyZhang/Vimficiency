@@ -6,8 +6,8 @@
 
 #include "KeyboardModel.h"
 
-// Edit string to KeySequence mapping (parallel to MotionToKeys)
-using EditToKeys = std::map<std::string, KeySequence, std::less<>>;
+// Edit string to PhysicalKeys mapping (parallel to MotionToKeys)
+using EditToKeys = std::map<std::string, PhysicalKeys, std::less<>>;
 
 // =============================================================================
 // Edit Categories - organized by reach/constraint
@@ -105,7 +105,7 @@ extern const EditToKeys OPERATORS;  // d, c, y
 } // namespace EditCategory
 
 // All supported edit commands
-extern const EditToKeys ALL_EDITS;
+extern const EditToKeys ALL_EDITS_TO_KEYS;
 
 
 // Check if a string is an edit

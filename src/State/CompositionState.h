@@ -1,11 +1,15 @@
 #pragma once
 
+#include <sstream>
 #include <string>
+#include <vector>
 
 #include "Editor/Mode.h"
 #include "Editor/Position.h"
+#include "Keyboard/KeyboardModel.h"
 #include "Keyboard/MotionToKeys.h"
 #include "RunningEffort.h"
+#include "Sequence.h"
 
 // =============================================================================
 // CompositionStateKey: Unique identifier for deduplication in A* search
@@ -51,15 +55,25 @@ class CompositionState {
   Position pos;
   Mode mode;
 
-  // Index into edit sequence / line sate stored externally, 0 = no edits done
+  // Index into edit sequence / line state stored externally, 0 = no edits done
   int editsCompleted;
 
-  std::string motionSequence;
+  // Command sequences grouped by mode (for display output)
+  std::vector<Sequence> sequences;
 
   double effort;
   double cost;
 
   RunningEffort runningEffort;
+
+  // Helper to append to the appropriate mode segment
+  void appendSequence(const std::string& s, const PhysicalKeys& keys, const Config& config) {
+    if (sequences.empty() || sequences.back().mode != mode) {
+      sequences.emplace_back(mode);
+    }
+    sequences.back().append(s);
+    effort = runningEffort.append(keys, config);
+  }
 
 public:
   CompositionState(Position pos, Mode mode, int editsCompleted,
@@ -81,7 +95,16 @@ public:
   Position getPos() const { return pos; }
   Mode getMode() const { return mode; }
   int getEditsCompleted() const { return editsCompleted; }
-  const std::string& getMotionSequence() const { return motionSequence; }
+
+  // Get sequences grouped by mode
+  const std::vector<Sequence>& getSequences() const { return sequences; }
+
+  // Get flattened string representation
+  std::string getMotionSequence() const { return flattenSequences(sequences); }
+
+  // Get formatted string with mode annotations
+  std::string getFormattedSequence() const { return formatSequences(sequences); }
+
   double getEffort() const { return effort; }
   double getCost() const { return cost; }
   RunningEffort getRunningEffort() const { return runningEffort; }
@@ -93,33 +116,40 @@ public:
   // Apply a movement motion (doesn't change editsCompleted)
   // Caller must provide new position (computed via motion application)
   void applyMovement(const std::string& motion, const Position& newPos,
-                     const KeySequence& keySequence, const Config& config) {
+                     const PhysicalKeys& keys, const Config& config) {
     pos = newPos;
-    motionSequence += motion;
-    effort = runningEffort.append(keySequence, config);
+    appendSequence(motion, keys, config);
   }
 
   // Apply an edit transition (uses pre-computed EditResult)
-  // - sequence: the optimal key sequence for this edit (from EditResult.adj)
+  // - editSequences: the sequences for this edit (from EditResult.adj)
   // - newPos: position after edit completes (end position in edit region)
-  // - editCost: cost of this edit transition (from EditResult.adj)
-  void applyEditTransition(const std::string& sequence, const Position& newPos,
+  // - newMode: mode after edit completes
+  void applyEditTransition(const std::vector<Sequence>& editSequences,
+                           const Position& newPos, Mode newMode,
                            const Config& config) {
     pos = newPos;
     editsCompleted++;
-    motionSequence += sequence;
-    effort = runningEffort.append(globalTokenizer().tokenize(sequence), config);
+    // Merge edit sequences into our sequences
+    for (const auto& seq : editSequences) {
+      // Set mode to match each segment's mode before appending
+      mode = seq.mode;
+      PhysicalKeys keys = globalTokenizer().tokenize(seq.keys);
+      appendSequence(seq.keys, keys, config);
+    }
+    mode = newMode;
   }
 
   // Apply movement result from MovementOptimizer::optimizeToRange()
-  // - sequence: the optimal motion sequence string
+  // - moveSequences: the sequences for this movement
   // - newPos: position after movement completes
-  void applyMovementResult(const std::string& sequence, const Position& newPos,
-                           const Config& config) {
+  void applyMovementResult(const std::vector<Sequence>& moveSequences,
+                           const Position& newPos, const Config& config) {
     pos = newPos;
-    motionSequence += sequence;
-    KeySequence keySeq = globalTokenizer().tokenize(sequence);
-    effort = runningEffort.append(keySeq, config);
+    for (const auto& seq : moveSequences) {
+      PhysicalKeys keys = globalTokenizer().tokenize(seq.keys);
+      appendSequence(seq.keys, keys, config);
+    }
   }
 
   void updateCost(double newCost) { cost = newCost; }
