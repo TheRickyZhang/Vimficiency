@@ -25,6 +25,7 @@ add_executable(vimficiency_tests
   Reach/BackwardReachTest.cpp
   Reach/ForwardReachTest.cpp
   Utils/TestUtils.cpp
+  Temp.cpp
 )
 
 target_include_directories(vimficiency_tests

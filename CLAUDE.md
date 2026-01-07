@@ -8,6 +8,10 @@ Vimficiency is a Vim motion optimizer that analyzes cursor movements and recomme
 
 **Architecture:** C++ core library + LuaJIT FFI bridge + Neovim plugin
 
+## Debugging Practices
+
+When creating temporary test files to inspect execution behavior, use `tests/Temp.cpp` instead of `/tmp`. This keeps debug code in the project where it can be easily found and cleaned up.
+
 ## Build and Test Commands
 
 ```bash

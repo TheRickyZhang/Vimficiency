@@ -147,19 +147,25 @@ void applyParsedMotion(Position& pos, Mode& mode,
     pos.col = VimMovementUtils::clampCol(lines, pos.col, pos.line);
   }
   // Words
+  // Note: motionW/motionE may return "past end" positions for delete operations.
+  // For cursor movement, clamp to valid bounds.
   // TODO: Able to process faster with indices? Or at least modify underlying VimUtils calls to be more efficient with multiple invocations.
   else if (motion == "w") {
     for(int i = 0; i < count; i++) VimMovementUtils::motionW(pos, lines, false);
+    pos.setCol(VimMovementUtils::clampCol(lines, pos.col, pos.line));
   } else if (motion == "b") {
     for(int i = 0; i < count; i++) VimMovementUtils::motionB(pos, lines, false);
   } else if (motion == "e") {
     for(int i = 0; i < count; i++) VimMovementUtils::motionE(pos, lines, false);
+    pos.setCol(VimMovementUtils::clampCol(lines, pos.col, pos.line));
   } else if (motion == "W") {
     for(int i = 0; i < count; i++) VimMovementUtils::motionW(pos, lines, true);
+    pos.setCol(VimMovementUtils::clampCol(lines, pos.col, pos.line));
   } else if (motion == "B") {
     for(int i = 0; i < count; i++) VimMovementUtils::motionB(pos, lines, true);
   } else if (motion == "E") {
     for(int i = 0; i < count; i++) VimMovementUtils::motionE(pos, lines, true);
+    pos.setCol(VimMovementUtils::clampCol(lines, pos.col, pos.line));
   } else if (motion == "ge") {
     for(int i = 0; i < count; i++) VimMovementUtils::motionGe(pos, lines, false);
   } else if (motion == "gE") {

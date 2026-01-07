@@ -140,13 +140,35 @@ TEST_F(EditTest, DW_DeleteBigWord) {
   expectState(r, {"baz"}, 0, 0, Mode::Normal, "dW deletes big word including punctuation");
 }
 
-// dw at end of line: crosses to next line
-TEST_F(EditTest, Dw_CrossesLine) {
+// dw at end of line: does NOT cross to next line (Vim special case for count=1)
+TEST_F(EditTest, Dw_DoesNotCrossLine) {
   auto r = applyNormalEdit({"ab", "cd"}, {0, 0}, "dw");
-  // From (0,0), w goes to (1,0), exclusive delete from (0,0) to (1,0)
-  // Should delete "ab\n" leaving "cd"
-  // Current behavior may differ - let's test what actually happens
-  expectLines(r.lines, {"d"}, "dw from start of line crosses to next");
+  // From (0,0), w motion would go to (1,0), but dw never deletes newlines
+  // It deletes to end of current line only, leaving empty line + "cd"
+  expectLines(r.lines, {"", "cd"}, "dw stays on same line, doesn't delete newline");
+}
+
+// dw on empty line: empty line IS a word, so it gets deleted (including newline)
+TEST_F(EditTest, Dw_OnEmptyLine_DeletesLine) {
+  auto r = applyNormalEdit({"", "cd"}, {0, 0}, "dw");
+  // Empty line is considered a word, so dw deletes it entirely
+  expectLines(r.lines, {"cd"}, "dw on empty line deletes the line");
+}
+
+// 2dw: count > 1 CAN cross lines (special case only applies to count=1)
+TEST_F(EditTest, Dw_WithCount_CrossesLines) {
+  auto r = applyNormalEdit({"ab", "cd"}, {0, 0}, "dw", 2);
+  // 2dw deletes both words across lines
+  expectLines(r.lines, {""}, "2dw crosses lines");
+}
+
+// 2dw where motion lands ON a word boundary (not past EOF)
+// The key case: motion lands on 'a' but we don't want to delete 'a'
+TEST_F(EditTest, Dw_WithCount_LandsOnWord) {
+  auto r = applyNormalEdit({"ab", "ab a"}, {0, 0}, "dw", 2);
+  // Two w motions: ab -> ab -> a. Lands on 'a' (valid boundary)
+  // Exclusive delete: delete everything BEFORE 'a', leaving 'a'
+  expectLines(r.lines, {"a"}, "2dw lands on 'a', doesn't delete it");
 }
 
 TEST_F(EditTest, De_DeleteToEndOfWord) {
@@ -157,6 +179,13 @@ TEST_F(EditTest, De_DeleteToEndOfWord) {
 TEST_F(EditTest, DE_DeleteToEndOfBigWord) {
   auto r = applyNormalEdit({"foo.bar baz"}, {0, 0}, "dE");
   expectState(r, {" baz"}, 0, 0, Mode::Normal, "dE deletes to end of WORD");
+}
+
+// de/dE DOES cross lines (unlike dw/dW which has a special case)
+TEST_F(EditTest, De_DoesCrossLine) {
+  auto r = applyNormalEdit({"a", "cd"}, {0, 0}, "de");
+  // e motion goes to next line's word end, de follows it
+  expectLines(r.lines, {""}, "de crosses lines and deletes to word end");
 }
 
 TEST_F(EditTest, Db_DeleteBackToWordStart) {
@@ -176,14 +205,17 @@ TEST_F(EditTest, Db_AtBufferStart_Throws) {
 TEST_F(EditTest, Dge_DeleteBackToWordEnd) {
   auto r = applyNormalEdit({"one two three"}, {0, 8}, "dge");
   // From col 8 ('t' in three), ge goes to col 6 (end of 'two')
-  // Deletes from col 6 to col 7 (chars 'o' and ' ')
-  expectState(r, {"one twthree"}, 0, 6, Mode::Normal, "dge deletes back to prev word end");
+  // ge is INCLUSIVE motion: deletes from col 6 to col 8 (chars 'o', ' ', 't')
+  // Cursor ends at col 6 (where ge landed, now points to 'h')
+  expectState(r, {"one twhree"}, 0, 6, Mode::Normal, "dge deletes back to prev word end inclusive");
 }
 
 TEST_F(EditTest, DgE_DeleteBackToBigWordEnd) {
   auto r = applyNormalEdit({"foo.bar baz.qux"}, {0, 8}, "dgE");
   // From col 8 ('b' in baz), gE goes to col 6 (end of 'foo.bar')
-  expectState(r, {"foo.babaz.qux"}, 0, 6, Mode::Normal, "dgE deletes back to WORD end");
+  // gE is INCLUSIVE motion: deletes from col 6 to col 8 (chars 'r', ' ', 'b')
+  // Cursor ends at col 6 (where gE landed, now points to 'a')
+  expectState(r, {"foo.baaz.qux"}, 0, 6, Mode::Normal, "dgE deletes back to WORD end inclusive");
 }
 
 // =============================================================================
@@ -232,6 +264,14 @@ TEST_F(EditTest, CE_DeleteToBigWordEnd) {
   expectState(r, {" baz"}, 0, 0, Mode::Insert, "cE deletes to WORD end");
 }
 
+// ce/cE DOES cross lines (unlike cw/cW which has a special case)
+TEST_F(EditTest, Ce_DoesCrossLine) {
+  auto r = applyNormalEdit({"a", "cd"}, {0, 0}, "ce");
+  // e motion goes to next line's word end, ce follows it
+  expectLines(r.lines, {""}, "ce crosses lines and changes to word end");
+  EXPECT_EQ(r.mode, Mode::Insert);
+}
+
 TEST_F(EditTest, Cb_ChangeBackToWordStart) {
   auto r = applyNormalEdit({"one two three"}, {0, 8}, "cb");
   expectState(r, {"one three"}, 0, 4, Mode::Insert, "cb changes back to word start");
@@ -240,6 +280,94 @@ TEST_F(EditTest, Cb_ChangeBackToWordStart) {
 TEST_F(EditTest, CB_ChangeBackToBigWordStart) {
   auto r = applyNormalEdit({"foo.bar baz.qux"}, {0, 8}, "cB");
   expectState(r, {"baz.qux"}, 0, 0, Mode::Insert, "cB changes back to WORD start");
+}
+
+// =============================================================================
+// 3b. WORD MOTION EOF/BUFFER BOUNDARY EDGE CASES
+//
+// These test the special behavior when word motions reach buffer boundaries.
+// Key insight: motionW returns "past end" position (col = line.size()) when
+// it can't find more words, allowing dw to correctly delete everything.
+// =============================================================================
+
+// dw at last word of single-line buffer - should delete everything
+TEST_F(EditTest, Dw_AtLastWord_SingleLine) {
+  auto r = applyNormalEdit({"abc"}, {0, 0}, "dw");
+  // w motion can't find next word, returns "past end", dw deletes all
+  expectLines(r.lines, {""}, "dw on only word deletes everything");
+}
+
+// dw at last word with trailing whitespace
+TEST_F(EditTest, Dw_AtLastWord_WithTrailingSpace) {
+  auto r = applyNormalEdit({"abc "}, {0, 0}, "dw");
+  // w goes to end of line (past space), dw deletes "abc "
+  expectLines(r.lines, {""}, "dw with trailing space deletes word and space");
+}
+
+// 2dw where second w lands on a word (not past EOF)
+TEST_F(EditTest, Dw_Count2_LandsOnWord) {
+  auto r = applyNormalEdit({"ab cd ef"}, {0, 0}, "dw", 2);
+  // Two w motions: ab→cd→ef. Lands on 'e' (valid word start)
+  // Exclusive delete: "ab cd " deleted, "ef" remains
+  expectLines(r.lines, {"ef"}, "2dw landing on word is exclusive");
+}
+
+// 3dw where third w goes past EOF
+TEST_F(EditTest, Dw_Count3_PastEOF) {
+  auto r = applyNormalEdit({"ab cd ef"}, {0, 0}, "dw", 3);
+  // Three w motions: ab→cd→ef→past end. Returns "past end"
+  // Delete everything including 'ef'
+  expectLines(r.lines, {""}, "3dw past EOF deletes everything");
+}
+
+// dW at last WORD of buffer
+TEST_F(EditTest, DW_AtLastWord_SingleLine) {
+  auto r = applyNormalEdit({"foo.bar"}, {0, 0}, "dW");
+  expectLines(r.lines, {""}, "dW on only WORD deletes everything");
+}
+
+// de at last char of last word - should delete that char (inclusive)
+// NOTE: This tests that e motion at EOF correctly handles the edge case
+TEST_F(EditTest, De_AtLastCharOfWord_EOF) {
+  auto r = applyNormalEdit({"abc"}, {0, 2}, "de");
+  // e can't move forward, but we're on word char - delete it
+  expectLines(r.lines, {"ab"}, "de at last char of buffer deletes that char");
+}
+
+// de at last char of word with more words after
+TEST_F(EditTest, De_AtEndOfWord_MoreWords) {
+  auto r = applyNormalEdit({"abc def"}, {0, 2}, "de");
+  // e from 'c' (end of word) goes to 'f' (end of next word)
+  expectLines(r.lines, {"ab"}, "de at end of word goes to next word end");
+}
+
+// de on word with trailing whitespace - should NOT delete the whitespace
+TEST_F(EditTest, De_AtLastWord_TrailingSpace) {
+  auto r = applyNormalEdit({"abc "}, {0, 0}, "de");
+  // e goes to 'c' (end of word), inclusive delete "abc", space remains
+  expectLines(r.lines, {" "}, "de deletes word but not trailing space");
+}
+
+// dE at last char of last WORD
+TEST_F(EditTest, DE_AtLastCharOfWord_EOF) {
+  auto r = applyNormalEdit({"foo.bar"}, {0, 6}, "dE");
+  // E can't move forward, but we're on word char - delete it
+  expectLines(r.lines, {"foo.ba"}, "dE at last char of buffer deletes that char");
+}
+
+// db at second word - deletes back to start of previous word
+TEST_F(EditTest, Db_AtSecondWord) {
+  auto r = applyNormalEdit({"abc def"}, {0, 4}, "db");
+  // b from 'd' goes to 'a', exclusive delete removes "abc "
+  expectLines(r.lines, {"def"}, "db at word start deletes previous word + space");
+}
+
+// dge at second word - deletes back to end of previous word (inclusive)
+TEST_F(EditTest, Dge_AtSecondWord) {
+  auto r = applyNormalEdit({"abc def"}, {0, 4}, "dge");
+  // ge from 'd' goes to 'c' (end of prev word)
+  // ge is INCLUSIVE: delete from 'c' (col 2) to 'd' (col 4) = "c d"
+  expectLines(r.lines, {"abef"}, "dge deletes from prev word end to cursor inclusive");
 }
 
 // =============================================================================
@@ -630,4 +758,417 @@ TEST_F(EditTest, Scenario_JoinMultipleLines) {
   Lines lines = {"one", "two", "three", "four"};
   auto r = applyNormalEdit(lines, {0, 0}, "J", 3);
   expectLines(r.lines, {"one two three four"}, "3J joins 3 lines");
+}
+
+// =============================================================================
+// 13. NEOVIM-VERIFIED b-MOTION TESTS
+//
+// These tests are generated from actual Neovim behavior using the oracle script
+// at lua/tests/b_motion_oracle.lua. They verify our implementation matches
+// real Vim behavior for db, cb, dB, cB operations.
+// =============================================================================
+
+// --- db tests (delete backward to word start) ---
+
+TEST_F(EditTest, Db_Neovim_within_line) {
+  auto r = applyNormalEdit({"one two three"}, {0, 8}, "db");
+  expectState(r, {"one three"}, 0, 4, Mode::Normal, "db within line");
+}
+
+TEST_F(EditTest, Db_Neovim_at_word_start) {
+  auto r = applyNormalEdit({"one two three"}, {0, 4}, "db");
+  expectState(r, {"two three"}, 0, 0, Mode::Normal, "db at word start");
+}
+
+TEST_F(EditTest, Db_Neovim_in_middle_of_word) {
+  auto r = applyNormalEdit({"one two three"}, {0, 5}, "db");
+  expectState(r, {"one wo three"}, 0, 4, Mode::Normal, "db in middle of word");
+}
+
+TEST_F(EditTest, Db_Neovim_at_second_char) {
+  auto r = applyNormalEdit({"one two"}, {0, 5}, "db");
+  expectState(r, {"one wo"}, 0, 4, Mode::Normal, "db at second char");
+}
+
+TEST_F(EditTest, Db_Neovim_cross_line_at_col0) {
+  // KEY TEST: db at col 0 crossing lines should delete the newline
+  auto r = applyNormalEdit({"ab", "cd"}, {1, 0}, "db");
+  expectState(r, {"cd"}, 0, 0, Mode::Normal, "db cross line at col 0");
+}
+
+TEST_F(EditTest, Db_Neovim_cross_line_at_col1) {
+  auto r = applyNormalEdit({"ab", "cd"}, {1, 1}, "db");
+  expectState(r, {"ab", "d"}, 1, 0, Mode::Normal, "db cross line at col 1");
+}
+
+TEST_F(EditTest, Db_Neovim_cross_multiline) {
+  auto r = applyNormalEdit({"aa", "bb", "cc"}, {2, 0}, "db");
+  expectState(r, {"aa", "cc"}, 1, 0, Mode::Normal, "db cross multiline");
+}
+
+TEST_F(EditTest, Db_Neovim_single_word_line) {
+  auto r = applyNormalEdit({"word"}, {0, 2}, "db");
+  expectState(r, {"rd"}, 0, 0, Mode::Normal, "db single word line");
+}
+
+TEST_F(EditTest, Db_Neovim_with_punctuation) {
+  auto r = applyNormalEdit({"foo.bar baz"}, {0, 8}, "db");
+  expectState(r, {"foo.baz"}, 0, 4, Mode::Normal, "db with punctuation");
+}
+
+TEST_F(EditTest, Db_Neovim_with_spaces) {
+  auto r = applyNormalEdit({"  word"}, {0, 4}, "db");
+  expectState(r, {"  rd"}, 0, 2, Mode::Normal, "db with leading spaces");
+}
+
+TEST_F(EditTest, Db_Neovim_trailing_spaces) {
+  auto r = applyNormalEdit({"word  "}, {0, 5}, "db");
+  expectState(r, {" "}, 0, 0, Mode::Normal, "db trailing spaces");
+}
+
+// --- cb tests (change backward to word start) ---
+
+TEST_F(EditTest, Cb_Neovim_within_line) {
+  auto r = applyNormalEdit({"one two three"}, {0, 8}, "cb");
+  // Note: In insert mode, cursor is at insertion point (col 4, before 't')
+  expectState(r, {"one three"}, 0, 4, Mode::Insert, "cb within line");
+}
+
+TEST_F(EditTest, Cb_Neovim_at_word_start) {
+  auto r = applyNormalEdit({"one two three"}, {0, 4}, "cb");
+  expectState(r, {"two three"}, 0, 0, Mode::Insert, "cb at word start");
+}
+
+TEST_F(EditTest, Cb_Neovim_in_middle_of_word) {
+  auto r = applyNormalEdit({"one two three"}, {0, 5}, "cb");
+  expectState(r, {"one wo three"}, 0, 4, Mode::Insert, "cb in middle of word");
+}
+
+TEST_F(EditTest, Cb_Neovim_cross_line_at_col0) {
+  // KEY TEST: cb at col 0 crossing lines should NOT delete the newline
+  auto r = applyNormalEdit({"ab", "cd"}, {1, 0}, "cb");
+  expectState(r, {"", "cd"}, 0, 0, Mode::Insert, "cb cross line at col 0");
+}
+
+TEST_F(EditTest, Cb_Neovim_cross_line_at_col1) {
+  auto r = applyNormalEdit({"ab", "cd"}, {1, 1}, "cb");
+  expectState(r, {"ab", "d"}, 1, 0, Mode::Insert, "cb cross line at col 1");
+}
+
+TEST_F(EditTest, Cb_Neovim_cross_multiline) {
+  // KEY TEST: cb across multiple lines at col 0 should leave empty line
+  auto r = applyNormalEdit({"aa", "bb", "cc"}, {2, 0}, "cb");
+  expectState(r, {"aa", "", "cc"}, 1, 0, Mode::Insert, "cb cross multiline");
+}
+
+TEST_F(EditTest, Cb_Neovim_single_word_line) {
+  auto r = applyNormalEdit({"word"}, {0, 2}, "cb");
+  expectState(r, {"rd"}, 0, 0, Mode::Insert, "cb single word line");
+}
+
+TEST_F(EditTest, Cb_Neovim_with_punctuation) {
+  auto r = applyNormalEdit({"foo.bar baz"}, {0, 8}, "cb");
+  expectState(r, {"foo.baz"}, 0, 4, Mode::Insert, "cb with punctuation");
+}
+
+// --- dB tests (delete backward to WORD start) ---
+
+TEST_F(EditTest, DB_Neovim_within_line) {
+  auto r = applyNormalEdit({"foo.bar baz.qux"}, {0, 8}, "dB");
+  expectState(r, {"baz.qux"}, 0, 0, Mode::Normal, "dB within line");
+}
+
+TEST_F(EditTest, DB_Neovim_at_WORD_start) {
+  auto r = applyNormalEdit({"foo.bar baz"}, {0, 8}, "dB");
+  expectState(r, {"baz"}, 0, 0, Mode::Normal, "dB at WORD start");
+}
+
+TEST_F(EditTest, DB_Neovim_cross_line_at_col0) {
+  // KEY TEST: dB at col 0 crossing lines should delete the newline
+  auto r = applyNormalEdit({"ab", "cd"}, {1, 0}, "dB");
+  expectState(r, {"cd"}, 0, 0, Mode::Normal, "dB cross line at col 0");
+}
+
+TEST_F(EditTest, DB_Neovim_cross_line_at_col1) {
+  auto r = applyNormalEdit({"ab", "cd"}, {1, 1}, "dB");
+  expectState(r, {"ab", "d"}, 1, 0, Mode::Normal, "dB cross line at col 1");
+}
+
+TEST_F(EditTest, DB_Neovim_with_punctuation) {
+  auto r = applyNormalEdit({"foo.bar baz"}, {0, 4}, "dB");
+  expectState(r, {"bar baz"}, 0, 0, Mode::Normal, "dB with punctuation");
+}
+
+// --- cB tests (change backward to WORD start) ---
+
+TEST_F(EditTest, CB_Neovim_within_line) {
+  auto r = applyNormalEdit({"foo.bar baz.qux"}, {0, 8}, "cB");
+  expectState(r, {"baz.qux"}, 0, 0, Mode::Insert, "cB within line");
+}
+
+TEST_F(EditTest, CB_Neovim_cross_line_at_col0) {
+  // KEY TEST: cB at col 0 crossing lines should NOT delete the newline
+  auto r = applyNormalEdit({"ab", "cd"}, {1, 0}, "cB");
+  expectState(r, {"", "cd"}, 0, 0, Mode::Insert, "cB cross line at col 0");
+}
+
+TEST_F(EditTest, CB_Neovim_cross_line_at_col1) {
+  auto r = applyNormalEdit({"ab", "cd"}, {1, 1}, "cB");
+  expectState(r, {"ab", "d"}, 1, 0, Mode::Insert, "cB cross line at col 1");
+}
+
+// =============================================================================
+// 14. NEOVIM-VERIFIED w/W MOTION TESTS
+// =============================================================================
+
+// --- dw tests (delete forward to word start) ---
+
+TEST_F(EditTest, Dw_Neovim_within_line) {
+  auto r = applyNormalEdit({"one two three"}, {0, 0}, "dw");
+  expectState(r, {"two three"}, 0, 0, Mode::Normal, "dw within line");
+}
+
+TEST_F(EditTest, Dw_Neovim_at_word_end) {
+  auto r = applyNormalEdit({"one two three"}, {0, 2}, "dw");
+  expectState(r, {"ontwo three"}, 0, 2, Mode::Normal, "dw at word end");
+}
+
+TEST_F(EditTest, Dw_Neovim_in_middle_of_word) {
+  auto r = applyNormalEdit({"one two three"}, {0, 1}, "dw");
+  expectState(r, {"otwo three"}, 0, 1, Mode::Normal, "dw in middle of word");
+}
+
+TEST_F(EditTest, Dw_Neovim_on_whitespace) {
+  auto r = applyNormalEdit({"one  two"}, {0, 3}, "dw");
+  expectState(r, {"onetwo"}, 0, 3, Mode::Normal, "dw on whitespace");
+}
+
+TEST_F(EditTest, Dw_Neovim_cross_line_last_word) {
+  // KEY: dw on last word of line does NOT delete newline
+  auto r = applyNormalEdit({"ab", "cd"}, {0, 0}, "dw");
+  expectState(r, {"", "cd"}, 0, 0, Mode::Normal, "dw cross line last word");
+}
+
+TEST_F(EditTest, Dw_Neovim_cross_line_at_end) {
+  auto r = applyNormalEdit({"ab", "cd"}, {0, 1}, "dw");
+  expectState(r, {"a", "cd"}, 0, 0, Mode::Normal, "dw cross line at end");
+}
+
+TEST_F(EditTest, Dw_Neovim_single_word) {
+  auto r = applyNormalEdit({"word"}, {0, 0}, "dw");
+  expectState(r, {""}, 0, 0, Mode::Normal, "dw single word");
+}
+
+TEST_F(EditTest, Dw_Neovim_with_punctuation) {
+  auto r = applyNormalEdit({"foo.bar baz"}, {0, 0}, "dw");
+  expectState(r, {".bar baz"}, 0, 0, Mode::Normal, "dw with punctuation");
+}
+
+TEST_F(EditTest, Dw_Neovim_empty_line_below) {
+  auto r = applyNormalEdit({"ab", "", "cd"}, {0, 0}, "dw");
+  expectState(r, {"", "", "cd"}, 0, 0, Mode::Normal, "dw empty line below");
+}
+
+// --- cw tests (change forward - special: acts like ce on word) ---
+
+TEST_F(EditTest, Cw_Neovim_within_line) {
+  auto r = applyNormalEdit({"one two three"}, {0, 0}, "cw");
+  expectState(r, {" two three"}, 0, 0, Mode::Insert, "cw within line");
+}
+
+TEST_F(EditTest, Cw_Neovim_at_word_end) {
+  // cw from last char of word deletes just that char
+  auto r = applyNormalEdit({"one two three"}, {0, 2}, "cw");
+  expectState(r, {"on two three"}, 0, 2, Mode::Insert, "cw at word end");
+}
+
+TEST_F(EditTest, Cw_Neovim_on_whitespace) {
+  // cw on whitespace uses w motion (unlike on word where it uses ce)
+  auto r = applyNormalEdit({"one  two"}, {0, 3}, "cw");
+  expectState(r, {"onetwo"}, 0, 3, Mode::Insert, "cw on whitespace");
+}
+
+TEST_F(EditTest, Cw_Neovim_cross_line_last_word) {
+  auto r = applyNormalEdit({"ab", "cd"}, {0, 0}, "cw");
+  expectState(r, {"", "cd"}, 0, 0, Mode::Insert, "cw cross line last word");
+}
+
+TEST_F(EditTest, Cw_Neovim_at_line_end) {
+  auto r = applyNormalEdit({"ab", "cd"}, {0, 1}, "cw");
+  expectState(r, {"a", "cd"}, 0, 1, Mode::Insert, "cw at line end");
+}
+
+TEST_F(EditTest, Cw_Neovim_single_word) {
+  auto r = applyNormalEdit({"word"}, {0, 0}, "cw");
+  expectState(r, {""}, 0, 0, Mode::Insert, "cw single word");
+}
+
+TEST_F(EditTest, Cw_Neovim_with_punctuation) {
+  auto r = applyNormalEdit({"foo.bar baz"}, {0, 0}, "cw");
+  expectState(r, {".bar baz"}, 0, 0, Mode::Insert, "cw with punctuation");
+}
+
+// --- dW tests (delete forward to WORD start) ---
+
+TEST_F(EditTest, DW_Neovim_within_line) {
+  auto r = applyNormalEdit({"foo.bar baz.qux"}, {0, 0}, "dW");
+  expectState(r, {"baz.qux"}, 0, 0, Mode::Normal, "dW within line");
+}
+
+TEST_F(EditTest, DW_Neovim_cross_line) {
+  auto r = applyNormalEdit({"foo.bar", "baz"}, {0, 0}, "dW");
+  expectState(r, {"", "baz"}, 0, 0, Mode::Normal, "dW cross line");
+}
+
+TEST_F(EditTest, DW_Neovim_with_punctuation) {
+  auto r = applyNormalEdit({"foo.bar baz"}, {0, 4}, "dW");
+  expectState(r, {"foo.baz"}, 0, 4, Mode::Normal, "dW with punctuation");
+}
+
+// =============================================================================
+// 15. NEOVIM-VERIFIED e/E MOTION TESTS
+// =============================================================================
+
+// --- de tests (delete forward to word end - inclusive) ---
+
+TEST_F(EditTest, De_Neovim_within_line) {
+  auto r = applyNormalEdit({"one two three"}, {0, 0}, "de");
+  expectState(r, {" two three"}, 0, 0, Mode::Normal, "de within line");
+}
+
+TEST_F(EditTest, De_Neovim_at_word_end) {
+  // e from word end goes to next word end
+  auto r = applyNormalEdit({"one two three"}, {0, 2}, "de");
+  expectState(r, {"on three"}, 0, 2, Mode::Normal, "de at word end");
+}
+
+TEST_F(EditTest, De_Neovim_in_middle) {
+  auto r = applyNormalEdit({"one two three"}, {0, 1}, "de");
+  expectState(r, {"o two three"}, 0, 1, Mode::Normal, "de in middle");
+}
+
+TEST_F(EditTest, De_Neovim_cross_line_at_end) {
+  // de at word end crosses to next line's word end and deletes newline
+  auto r = applyNormalEdit({"ab", "cd"}, {0, 1}, "de");
+  expectState(r, {"a"}, 0, 0, Mode::Normal, "de cross line at end");
+}
+
+TEST_F(EditTest, De_Neovim_last_char_of_buffer) {
+  auto r = applyNormalEdit({"ab"}, {0, 1}, "de");
+  expectState(r, {"a"}, 0, 0, Mode::Normal, "de last char of buffer");
+}
+
+TEST_F(EditTest, De_Neovim_single_char) {
+  auto r = applyNormalEdit({"a"}, {0, 0}, "de");
+  expectState(r, {""}, 0, 0, Mode::Normal, "de single char");
+}
+
+TEST_F(EditTest, De_Neovim_with_punctuation) {
+  auto r = applyNormalEdit({"foo.bar baz"}, {0, 0}, "de");
+  expectState(r, {".bar baz"}, 0, 0, Mode::Normal, "de with punctuation");
+}
+
+// --- ce tests (change forward to word end) ---
+
+TEST_F(EditTest, Ce_Neovim_within_line) {
+  auto r = applyNormalEdit({"one two three"}, {0, 0}, "ce");
+  expectState(r, {" two three"}, 0, 0, Mode::Insert, "ce within line");
+}
+
+TEST_F(EditTest, Ce_Neovim_at_word_end) {
+  auto r = applyNormalEdit({"one two three"}, {0, 2}, "ce");
+  expectState(r, {"on three"}, 0, 2, Mode::Insert, "ce at word end");
+}
+
+TEST_F(EditTest, Ce_Neovim_cross_line_at_end) {
+  auto r = applyNormalEdit({"ab", "cd"}, {0, 1}, "ce");
+  expectState(r, {"a"}, 0, 1, Mode::Insert, "ce cross line at end");
+}
+
+TEST_F(EditTest, Ce_Neovim_single_char) {
+  auto r = applyNormalEdit({"a"}, {0, 0}, "ce");
+  expectState(r, {""}, 0, 0, Mode::Insert, "ce single char");
+}
+
+// --- dE tests (delete forward to WORD end) ---
+
+TEST_F(EditTest, DE_Neovim_within_line) {
+  auto r = applyNormalEdit({"foo.bar baz.qux"}, {0, 0}, "dE");
+  expectState(r, {" baz.qux"}, 0, 0, Mode::Normal, "dE within line");
+}
+
+TEST_F(EditTest, DE_Neovim_cross_line) {
+  auto r = applyNormalEdit({"foo.bar", "baz"}, {0, 4}, "dE");
+  expectState(r, {"foo.", "baz"}, 0, 3, Mode::Normal, "dE cross line");
+}
+
+// =============================================================================
+// 16. NEOVIM-VERIFIED ge/gE MOTION TESTS
+// =============================================================================
+
+// --- dge tests (delete backward to word end - inclusive) ---
+
+TEST_F(EditTest, Dge_Neovim_within_line) {
+  auto r = applyNormalEdit({"one two three"}, {0, 8}, "dge");
+  expectState(r, {"one twhree"}, 0, 6, Mode::Normal, "dge within line");
+}
+
+TEST_F(EditTest, Dge_Neovim_at_word_start) {
+  auto r = applyNormalEdit({"one two three"}, {0, 4}, "dge");
+  expectState(r, {"onwo three"}, 0, 2, Mode::Normal, "dge at word start");
+}
+
+TEST_F(EditTest, Dge_Neovim_in_middle) {
+  auto r = applyNormalEdit({"one two three"}, {0, 5}, "dge");
+  expectState(r, {"ono three"}, 0, 2, Mode::Normal, "dge in middle");
+}
+
+TEST_F(EditTest, Dge_Neovim_cross_line_at_col0) {
+  // dge from col 0 goes to previous line's word end and deletes newline
+  auto r = applyNormalEdit({"ab", "cd"}, {1, 0}, "dge");
+  expectState(r, {"ad"}, 0, 1, Mode::Normal, "dge cross line at col 0");
+}
+
+TEST_F(EditTest, Dge_Neovim_cross_line_at_col1) {
+  auto r = applyNormalEdit({"ab", "cd"}, {1, 1}, "dge");
+  expectState(r, {"a"}, 0, 0, Mode::Normal, "dge cross line at col 1");
+}
+
+TEST_F(EditTest, Dge_Neovim_cross_multiline) {
+  auto r = applyNormalEdit({"aa", "bb", "cc"}, {2, 0}, "dge");
+  expectState(r, {"aa", "bc"}, 1, 1, Mode::Normal, "dge cross multiline");
+}
+
+TEST_F(EditTest, Dge_Neovim_with_punctuation) {
+  auto r = applyNormalEdit({"foo.bar baz"}, {0, 8}, "dge");
+  expectState(r, {"foo.baaz"}, 0, 6, Mode::Normal, "dge with punctuation");
+}
+
+// --- cge tests (change backward to word end) ---
+
+TEST_F(EditTest, Cge_Neovim_within_line) {
+  auto r = applyNormalEdit({"one two three"}, {0, 8}, "cge");
+  expectState(r, {"one twhree"}, 0, 6, Mode::Insert, "cge within line");
+}
+
+TEST_F(EditTest, Cge_Neovim_cross_line_at_col0) {
+  auto r = applyNormalEdit({"ab", "cd"}, {1, 0}, "cge");
+  expectState(r, {"ad"}, 0, 1, Mode::Insert, "cge cross line at col 0");
+}
+
+TEST_F(EditTest, Cge_Neovim_cross_line_at_col1) {
+  auto r = applyNormalEdit({"ab", "cd"}, {1, 1}, "cge");
+  expectState(r, {"a"}, 0, 0, Mode::Insert, "cge cross line at col 1");
+}
+
+// --- dgE tests (delete backward to WORD end) ---
+
+TEST_F(EditTest, DgE_Neovim_within_line) {
+  auto r = applyNormalEdit({"foo.bar baz.qux"}, {0, 8}, "dgE");
+  expectState(r, {"foo.baaz.qux"}, 0, 6, Mode::Normal, "dgE within line");
+}
+
+TEST_F(EditTest, DgE_Neovim_cross_line_at_col0) {
+  auto r = applyNormalEdit({"foo.bar", "baz"}, {1, 0}, "dgE");
+  expectState(r, {"foo.baaz"}, 0, 6, Mode::Normal, "dgE cross line at col 0");
 }

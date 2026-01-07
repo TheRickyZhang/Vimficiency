@@ -1,7 +1,7 @@
 #include "EditState.h"
 #include "Editor/Edit.h"
 #include "Editor/NavContext.h"
-#include "Keyboard/CharToKeys.h"
+// #include "Keyboard/CharToKeys.h"
 #include "State/RunningEffort.h"
 
 void EditState::appendSequence(const std::string& s, const PhysicalKeys& keys, const Config& config) {

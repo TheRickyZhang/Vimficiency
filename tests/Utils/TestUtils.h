@@ -17,7 +17,7 @@ struct KeyAdjustment {
 namespace TestFiles {
 
 inline std::vector<std::string> load(const std::string& filename) {
-    auto path = std::filesystem::path(__FILE__).parent_path() / ".." / "data" / "TestFiles" / filename;
+    auto path = std::filesystem::path(__FILE__).parent_path() / ".." / ".." / "data" / "TestFiles" / filename;
     std::ifstream file(path);
     if (!file) {
         throw std::runtime_error("Cannot open: " + path.string());

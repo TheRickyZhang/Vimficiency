@@ -227,14 +227,35 @@ void VimMovementUtils::moveLine(Position &pos, const std::vector<std::string> &l
 // -----------------------------------------------------------------------------
 // Word motions: w, b, e / W, B, E
 //
-// Goal: approximate Vim’s word semantics.
+// =============================================================================
+// Word Motions (w, W, b, B, e, E, ge, gE)
 //
-//  - w/W: move to start of next "word"/"WORD"
-//  :contentReference[oaicite:2]{index=2}
-//  - b/B: move to start of current word if inside it; otherwise previous.
-//  - e/E: move to end of current word if not already at end; else next.
-// -----------------------------------------------------------------------------
+// Goal: approximate Vim's word semantics.
+//   - w/W: move to start of next "word"/"WORD"
+//   - b/B: move to start of current word if inside it; otherwise previous
+//   - e/E: move to end of current word if not already at end; else next
+//   - ge/gE: move backward to end of previous word
+//
+// Buffer Boundary Handling:
+//   When a motion reaches the end of buffer (EOF), it returns a "past end"
+//   position (col = line.size()) rather than staying at the last valid char.
+//   This allows delete operations (dw, de) to correctly distinguish:
+//     - "motion landed on valid word boundary" (col < line.size())
+//     - "motion wanted to go further but hit EOF" (col = line.size())
+//
+//   Example: dw on "ab" should delete both chars. Without "past end":
+//     - w stays at 'b' (last char), dw sees endPos == pos, deletes nothing
+//   With "past end":
+//     - w returns col=2 (past 'b'), dw knows to delete everything
+//
+//   For backward motions (b, ge), if at buffer start, they stay at current
+//   position. Delete operations throw an error in this case.
+// =============================================================================
 
+// w/W: Forward to start of next word/WORD (exclusive motion)
+//
+// Returns "past end" position (col = line.size()) when reaching EOF, allowing
+// dw/dW to correctly delete to end of buffer.
 void VimMovementUtils::motionW(Position &pos, const std::vector<std::string> &lines,
                        bool big) {
   int line = pos.line;
@@ -257,8 +278,9 @@ void VimMovementUtils::motionW(Position &pos, const std::vector<std::string> &li
   if (isBlank(c0)) {
     while (true) {
       if (!stepFwd(lines, line, col)) {
+        // Reached EOF - return "past end" position for delete operations
         pos.line = line;
-        pos.setCol(col);
+        pos.setCol(static_cast<int>(lines[line].size()));
         return;
       }
       unsigned char c = getChar(lines, line, col);
@@ -279,9 +301,9 @@ void VimMovementUtils::motionW(Position &pos, const std::vector<std::string> &li
     int oldCol = col;
 
     if (!stepFwd(lines, line, col)) {
-      // Reached EOF; stay there.
+      // Reached EOF - return "past end" position for delete operations
       pos.line = line;
-      pos.setCol(col);
+      pos.setCol(static_cast<int>(lines[line].size()));
       return;
     }
 
@@ -315,8 +337,9 @@ void VimMovementUtils::motionW(Position &pos, const std::vector<std::string> &li
   // Otherwise, we're on whitespace → skip blanks to first non-blank.
   while (true) {
     if (!stepFwd(lines, line, col)) {
+      // Reached EOF - return "past end" position for delete operations
       pos.line = line;
-      pos.setCol(col);
+      pos.setCol(static_cast<int>(lines[line].size()));
       return;
     }
     c = getChar(lines, line, col);
@@ -328,6 +351,10 @@ void VimMovementUtils::motionW(Position &pos, const std::vector<std::string> &li
   pos.setCol(col);
 }
 
+// b/B: Backward to start of word/WORD (exclusive motion)
+//
+// At buffer start (line 0, col 0), stays at current position.
+// Delete operations (db/dB) throw an error in this case.
 void VimMovementUtils::motionB(Position &pos, const std::vector<std::string> &lines,
                        bool big) {
   int line = pos.line;
@@ -342,7 +369,35 @@ void VimMovementUtils::motionB(Position &pos, const std::vector<std::string> &li
     return;
   }
 
-  //  Always move back one character first.
+  // Check if we're at the start of a word/symbol group on this line
+  // We're at word start if: current is word/symbol AND (col 0 OR prev char on same line is different type)
+  bool atWordStart = false;
+  if (!isBlank(c)) {
+    if (col == 0) {
+      // At line start - definitely at word start on this line
+      atWordStart = true;
+    } else {
+      unsigned char pc = getChar(lines, line, col - 1);
+      // At word start if prev char on same line is blank or different word type
+      atWordStart = isBlank(pc) || (isWord(c) != isWord(pc));
+    }
+  }
+
+  // If NOT at word start, go to start of current word (stay on same line)
+  if (!isBlank(c) && !atWordStart) {
+    bool inWord = isWord(c);
+    while (col > 0) {
+      unsigned char pc = getChar(lines, line, col - 1);
+      if (isBlank(pc) || isWord(pc) != inWord)
+        break;
+      col--;
+    }
+    pos.line = line;
+    pos.setCol(col);
+    return;
+  }
+
+  // At word start or on whitespace: step back and find previous word start
   if (!stepBack(lines, line, col)) {
     pos.line = line;
     pos.setCol(col);
@@ -350,6 +405,7 @@ void VimMovementUtils::motionB(Position &pos, const std::vector<std::string> &li
   }
 
   c = getChar(lines, line, col);
+  // Skip whitespace
   while (isBlank(c)) {
     if (!stepBack(lines, line, col)) {
       pos.line = line;
@@ -359,7 +415,7 @@ void VimMovementUtils::motionB(Position &pos, const std::vector<std::string> &li
     c = getChar(lines, line, col);
   }
 
-  // Now we are on a non-blank character (word or symbol group).
+  // Now on a non-blank char, find start of this word/symbol group (stay on same line)
   if (c == 0) {
     pos.line = line;
     pos.setCol(col);
@@ -367,25 +423,25 @@ void VimMovementUtils::motionB(Position &pos, const std::vector<std::string> &li
   }
   bool inWord = isWord(c);
 
-  // Step 3: Move left to the first char of this word/anti-word group.
-  while (true) {
-    int prevLine = line;
-    int prevCol = col;
-    if (!stepBack(lines, prevLine, prevCol))
+  // Move back to start of word, but don't cross line boundaries
+  while (col > 0) {
+    unsigned char pc = getChar(lines, line, col - 1);
+    if (isBlank(pc) || isWord(pc) != inWord)
       break;
-
-    unsigned char pc = getChar(lines, prevLine, prevCol);
-    if (isBlank(pc))
-      break;
-    if (isWord(pc) != inWord)
-      break;
-    line = prevLine;
-    col = prevCol;
+    col--;
   }
   pos.line = line;
   pos.setCol(col);
 }
 
+// e/E: Forward to end of word/WORD (inclusive motion)
+//
+// Returns "past end" position (col = line.size()) when:
+//   - At last char of buffer AND on a word char (not whitespace)
+//
+// This allows de/dE to correctly delete the last character when there's
+// no next word to find. If on whitespace at EOF, stays at current position
+// (nothing to delete to).
 void VimMovementUtils::motionE(Position &pos, const std::vector<std::string> &lines,
                        bool big) {
   int line = pos.line;
@@ -397,10 +453,18 @@ void VimMovementUtils::motionE(Position &pos, const std::vector<std::string> &li
 
   // Step 1: move forward one character.
   // This aligns with Vim's "current-or-next word end" semantics.
-  // :contentReference[oaicite:3]{index=3}
   if (!stepFwd(lines, line, col)) {
-    pos.line = line;
-    pos.setCol(col);
+    // At EOF - check if we're on a word char (for inclusive delete operations)
+    // If on word char, return "past end" so de/dE knows to delete the char
+    // If on whitespace, return current position (nothing to delete to)
+    unsigned char c0 = getChar(lines, line, col);
+    if (!isBlank(c0)) {
+      pos.line = line;
+      pos.setCol(static_cast<int>(lines[line].size()));  // "past end"
+    } else {
+      pos.line = line;
+      pos.setCol(col);
+    }
     return;
   }
 
@@ -455,8 +519,13 @@ void VimMovementUtils::motionE(Position &pos, const std::vector<std::string> &li
   pos.setCol(col);
 }
 
-// ge/gE: backward to end of previous word
-// A word END is a position where: current char is word char, AND next char is blank/different/EOL
+// ge/gE: Backward to end of previous word/WORD (inclusive motion)
+//
+// A word END is a position where: current char is word char, AND next char
+// is blank/different/EOL.
+//
+// If no previous word end found (at buffer start), stays at current position.
+// Delete operations (dge/dgE) throw an error in this case.
 void VimMovementUtils::motionGe(Position &pos, const std::vector<std::string> &lines,
                         bool big) {
   int line = pos.line;
