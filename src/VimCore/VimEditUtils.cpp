@@ -1,4 +1,5 @@
 #include "VimEditUtils.h"
+#include "VimOptions.h"
 #include "VimUtils.h"
 
 #include <algorithm>
@@ -128,7 +129,7 @@ void joinLines(Lines& lines, Position& pos, bool addSpace) {
   string& currentLine = lines[pos.line];
   int joinCol = static_cast<int>(currentLine.size());
 
-  // Remove trailing whitespace from current line if adding space
+  // Remove trailing whitespace from current line if adding space (J command)
   if (addSpace) {
     while (!currentLine.empty() &&
            (currentLine.back() == ' ' || currentLine.back() == '\t')) {
@@ -137,18 +138,31 @@ void joinLines(Lines& lines, Position& pos, bool addSpace) {
     joinCol = static_cast<int>(currentLine.size());
   }
 
-  // Get next line, stripping leading whitespace
+  // Get next line
   string nextLine = lines[pos.line + 1];
   size_t start = 0;
-  while (start < nextLine.size() &&
-         (nextLine[start] == ' ' || nextLine[start] == '\t')) {
-    start++;
+
+  // Only strip leading whitespace for J command (addSpace=true)
+  // gJ (addSpace=false) preserves all whitespace per Vim docs
+  if (addSpace) {
+    while (start < nextLine.size() &&
+           (nextLine[start] == ' ' || nextLine[start] == '\t')) {
+      start++;
+    }
   }
 
-  // Join with optional space
+  // Join with optional space (only for J when both lines have content)
   if (addSpace && !currentLine.empty() && start < nextLine.size()) {
-    currentLine += ' ';
-    joinCol++;
+    // joinspaces: add 2 spaces after .!? (Vim default), else single space (Neovim default)
+    bool needsTwoSpaces = VimOptions::joinSpaces() && !currentLine.empty() &&
+                          (currentLine.back() == '.' || currentLine.back() == '!' || currentLine.back() == '?');
+    if (needsTwoSpaces) {
+      currentLine += "  ";
+      joinCol += 2;
+    } else {
+      currentLine += ' ';
+      joinCol++;
+    }
   }
   currentLine += nextLine.substr(start);
 

@@ -3,11 +3,9 @@
 #include "Optimizer/BufferIndex.h"
 #include "Keyboard/MotionToKeys.h"
 #include "Editor/NavContext.h"
-#include "Editor/Motion.h"
 #include "Optimizer/MovementOptimizer.h"
 #include "Optimizer/ImpliedExclusions.h"
-#include "State/MotionState.h"
-#include "TestUtils.h"
+#include "Utils/TestUtils.h"
 
 using namespace std;
 
@@ -179,7 +177,7 @@ protected:
     MovementOptimizer opt(config);
     ImpliedExclusions impliedExclusions(false, false);
     return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
-                        SearchParams(30, 2e4, 1.0, 2.0), impliedExclusions, allowedMotions);
+                        impliedExclusions, allowedMotions, OptimizerParams(30, 2e4, 1.0, 2.0));
   }
 };
 

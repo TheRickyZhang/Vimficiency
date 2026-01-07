@@ -11,6 +11,7 @@
 // - Pending tests: Require applySingleMotion implementation (marked DISABLED)
 
 #include <gtest/gtest.h>
+#include <ostream>
 
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer.h"
@@ -25,7 +26,7 @@ protected:
   Config config = Config::uniform();
 
   EditOptimizer makeOptimizer() {
-    return EditOptimizer(config, 1e5, 1.0, 2.0, 3.0);
+    return EditOptimizer(config, OptimizerParams(10, 1e5, 1.0, 2.0), 3.0);
   }
 
   // All flags false = boundaries don't cut through words, so all edits allowed
@@ -56,18 +57,15 @@ protected:
 
   void printEditResult(const EditResult& res, const Lines& beginLines, const Lines& endLines) {
     cout << "EditResult (" << res.n << " x " << res.m << "):" << endl;
-    cout << "Begin: ";
-    for (const auto& l : beginLines) cout << "\"" << l << "\" ";
-    cout << endl;
-    cout << "End: ";
-    for (const auto& l : endLines) cout << "\"" << l << "\" ";
-    cout << endl;
+    cout << "Begin:\n" << beginLines << "\n";
+    cout << "End:\n" << endLines << "\n";
 
     for (int i = 0; i < res.n; i++) {
       for (int j = 0; j < res.m; j++) {
-        if (res.adj[i][j].isValid()) {
-          cout << "  [" << i << "][" << j << "] = \"" << res.adj[i][j].getSequenceString()
-               << "\" (cost: " << res.adj[i][j].keyCost << ")" << endl;
+        const Result& r = res.adj[i][j];
+        if (r.isValid()) {
+          cout << "["<< i << "][" << j << "] ";
+          cout << r << "\n";
         }
       }
     }
@@ -84,7 +82,7 @@ TEST_F(EditOptimizerTest, MatrixDimensions_SingleLine) {
 
   printEditResult(res, begin, end);
 
-  // EXPECT_EQ(res.adj[0][2].sequence, "cexyz<Esc>");
+  EXPECT_EQ(res.adj[0][2].getSequenceString(), "cexyz<Esc>");
   EXPECT_EQ(res.n, 5) << "n should equal total chars in begin";
   EXPECT_EQ(res.m, 3) << "m should equal total chars in end";
 }
@@ -96,6 +94,8 @@ TEST_F(EditOptimizerTest, MatrixDimensions_MultiLine) {
   EditOptimizer opt = makeOptimizer();
   EditResult res = opt.optimizeEdit(begin, end, noBoundary());
 
+  printEditResult(res, begin, end);
+
   EXPECT_EQ(res.n, 4) << "n should equal total chars in begin lines";
   EXPECT_EQ(res.m, 3) << "m should equal total chars in end lines";
 }
@@ -106,6 +106,8 @@ TEST_F(EditOptimizerTest, MatrixDimensions_MultiLineToMultiLine) {
 
   EditOptimizer opt = makeOptimizer();
   EditResult res = opt.optimizeEdit(begin, end, noBoundary());
+
+  printEditResult(res, begin, end);
 
   EXPECT_EQ(res.n, 6);
   EXPECT_EQ(res.m, 4);

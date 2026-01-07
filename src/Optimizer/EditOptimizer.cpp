@@ -33,8 +33,9 @@ EditOptimizer::costToGoal(const Lines &currLines, const Mode &mode,
 
 double
 EditOptimizer::heuristic(const EditState &s,
-                         const Levenshtein &editDistanceCalculator) const {
-  return COST_WEIGHT * s.getEffort() +
+                         const Levenshtein &editDistanceCalculator,
+                         const OptimizerParams& params) const {
+  return params.costWeight * s.getEffort() +
          costToGoal(s.getLines(), s.getMode(), editDistanceCalculator);
 }
 
@@ -63,7 +64,11 @@ auto buildPositionIndex(const Lines &lines, F &&onPos = [](int, int, int) {}) {
 // that is not correct with the result starting from a different targetCol
 EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
                                        const Lines &endLines,
-                                       const EditBoundary& boundary) {
+                                       const EditBoundary& boundary,
+                                       const optional<OptimizerParams>& paramsOverride) {
+  // Merge defaults with overrides
+  const OptimizerParams params = OptimizerParams::merge(defaultParams, paramsOverride);
+
   Levenshtein editDistanceCalculator(endLines.flatten());
 
   int n = beginLines.size();
@@ -92,6 +97,7 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
   EditResult res(x, y);
 
   int totalExplored = 0;
+  int validResultsFound = 0;
   double leastCostFound = NOT_FOUND;
 
   // Debug
@@ -117,8 +123,8 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
       });
   map<PosKey, int> endPositionToIndex = buildPositionIndex(endLines);
 
-  function<void(EditState &&)> exploreNewState = [this, &pq, &costMap, &endLines](EditState &&newState) {
-    if (newState.getEffort() > userEffort * USER_EXPLORE_FACTOR) {
+  function<void(EditState &&)> exploreNewState = [this, &pq, &costMap, &endLines, &params](EditState &&newState) {
+    if (newState.getEffort() > userEffort * params.exploreFactor) {
       return;
     }
     // debug("curr:", currentCost, "new:", newCost);
@@ -151,15 +157,15 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
     int typedIndex = s.getTypedIndex();
     bool didType = s.getDidType();
 
-    if (++totalExplored > MAX_SEARCH_DEPTH) {
+    if (++totalExplored > params.maxSearchDepth) {
       debug("maximum total explored count reached");
       break;
     }
-    if (cost > userEffort * USER_EXPLORE_FACTOR) {
+    if (cost > userEffort * params.exploreFactor) {
       debug("exceeded user explore cost");
       break;
     }
-    if (cost > leastCostFound * ABSOLUTE_EXPLORE_FACTOR) {
+    if (cost > leastCostFound * absoluteExploreFactor) {
       debug("exceeded absolute explore cost");
       break;
     }
@@ -167,6 +173,10 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
     bool isDone = (lines == endLines && mode == Mode::Normal);
 
     if (isDone) {
+      if(++validResultsFound > params.maxResults) {
+        debug("maximum results found");
+        break;
+      }
       if(typedIndex != y) {
         debug("huh this is not expected, typedIndex=", typedIndex, "y=", y);
       }
@@ -206,7 +216,7 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
       EditState newState = base;
       newState.updateDidType(false);
       newState.applySingleMotion(motion, ALL_EDITS_TO_KEYS.at(motion), config);
-      newState.updateCost(heuristic(newState, editDistanceCalculator));
+      newState.updateCost(heuristic(newState, editDistanceCalculator, params));
       exploreNewState(std::move(newState));
     };
 
@@ -214,7 +224,7 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
       EditState newState = base;
       newState.updateDidType(false);
       newState.applySingleMotion(motion, keys, config);
-      newState.updateCost(heuristic(newState, editDistanceCalculator));
+      newState.updateCost(heuristic(newState, editDistanceCalculator, params));
       exploreNewState(std::move(newState));
     };
 
@@ -223,7 +233,7 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
       newState.updateDidType(true);
       newState.incrementTypedIndex();
       newState.applySingleMotion(motion, ALL_EDITS_TO_KEYS.at(motion), config);
-      newState.updateCost(heuristic(newState, editDistanceCalculator));
+      newState.updateCost(heuristic(newState, editDistanceCalculator, params));
       exploreNewState(std::move(newState));
     };
 
@@ -231,7 +241,7 @@ EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
       EditState newState = base;
       newState.updateDidType(true);
       newState.addTypedSingleChar(c, CHAR_TO_KEYS.at(c), config);
-      newState.updateCost(heuristic(newState, editDistanceCalculator));
+      newState.updateCost(heuristic(newState, editDistanceCalculator, params));
       exploreNewState(std::move(newState));
     };
 

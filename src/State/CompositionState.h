@@ -1,6 +1,5 @@
 #pragma once
 
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -101,9 +100,6 @@ public:
 
   // Get flattened string representation
   std::string getMotionSequence() const { return flattenSequences(sequences); }
-
-  // Get formatted string with mode annotations
-  std::string getFormattedSequence() const { return formatSequences(sequences); }
 
   double getEffort() const { return effort; }
   double getCost() const { return cost; }

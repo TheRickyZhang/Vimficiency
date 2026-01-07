@@ -1,14 +1,13 @@
 #include <gtest/gtest.h>
 
 #include "Editor/NavContext.h"
-#include "TestUtils.h"
+#include "Utils/TestUtils.h"
 
 #include "Keyboard/MotionToKeys.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/ImpliedExclusions.h"
 #include "Optimizer/MovementOptimizer.h"
 #include "State/RunningEffort.h"
-#include "State/MotionState.h"
 
 using namespace std;
 
@@ -30,7 +29,7 @@ protected:
     MovementOptimizer opt(config);
     ImpliedExclusions impliedExclusions(false, false);
     return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
-                        SearchParams(30, 2e4, 1.0, 2.0), impliedExclusions, allowedMotions);
+                        impliedExclusions, allowedMotions, OptimizerParams(30, 2e4, 1.0, 2.0));
   }
 
   // Get cost of best result for a motion

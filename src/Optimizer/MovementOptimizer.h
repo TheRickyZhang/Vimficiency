@@ -1,9 +1,11 @@
 #pragma once
 
 #include <cmath>
+#include <optional>
 
 #include "Config.h"
 #include "Result.h"
+#include "OptimizerParams.h"
 #include "ImpliedExclusions.h"
 #include "Editor/NavContext.h"
 #include "Editor/Position.h"
@@ -12,30 +14,15 @@
 #include "Keyboard/MotionToKeys.h"
 #include "Utils/Lines.h"
 
-// Search parameters that can vary per-call
-struct SearchParams {
-  int maxResults = 5;
-  int maxSearchDepth = 100000;
-  double costWeight = 1.0;
-  double exploreFactor = 2.0;
-
-  // For f-motion optimization (only used by optimize())
-  int fMotionThreshold = 2;
-
-  SearchParams() = default;
-
-  SearchParams(int maxResults, int maxSearchDepth = 100000,
-               double costWeight = 1.0, double exploreFactor = 2.0)
-      : maxResults(maxResults),
-        maxSearchDepth(maxSearchDepth),
-        costWeight(costWeight),
-        exploreFactor(exploreFactor) {}
-};
+// Backward compatibility alias
+using SearchParams = OptimizerParams;
 
 struct MovementOptimizer {
   Config config;
+  OptimizerParams defaultParams;
 
-  MovementOptimizer(const Config& config) : config(config) {}
+  MovementOptimizer(const Config& config, OptimizerParams params = {})
+      : config(config), defaultParams(params) {}
 
   double costToGoal(Position p, Position q) const {
     return abs(q.line - p.line) + abs(q.targetCol - p.targetCol);
@@ -73,12 +60,12 @@ struct MovementOptimizer {
     // What's necessary for knowing how to apply some motions
     const NavContext& navigationContext,
 
-    // Search parameters
-    const SearchParams& params = SearchParams(),
-
     // What impacts our universe of exploration options
     const ImpliedExclusions& impliedExclusions = ImpliedExclusions(),
-    const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS
+    const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS,
+
+    // Optional search parameter overrides (uses defaultParams if not provided)
+    const std::optional<OptimizerParams>& paramsOverride = std::nullopt
   );
 
   // Multi-sink movement optimization: find paths to any position in [rangeBegin, rangeEnd]
@@ -97,11 +84,11 @@ struct MovementOptimizer {
     const std::string& userSequence,
     NavContext& navigationContext,
 
-    // Search parameters
-    const SearchParams& params = SearchParams(),
-
     bool allowMultiplePerPosition = false,
     const ImpliedExclusions& impliedExclusions = ImpliedExclusions(),
-    const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS
+    const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS,
+
+    // Optional search parameter overrides (uses defaultParams if not provided)
+    const std::optional<OptimizerParams>& paramsOverride = std::nullopt
   );
 };

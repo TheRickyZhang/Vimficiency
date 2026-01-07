@@ -25,9 +25,11 @@ vector<Result> MovementOptimizer::optimize(
     const Position &endPos,
     const string &userSequence,
     const NavContext& navContext,
-    const SearchParams& params,
     const ImpliedExclusions& impliedExclusions,
-    const MotionToKeys &rawMotionToKeys) {
+    const MotionToKeys &rawMotionToKeys,
+    const optional<OptimizerParams>& paramsOverride) {
+  // Merge defaults with overrides
+  const OptimizerParams params = OptimizerParams::merge(defaultParams, paramsOverride);
   // Apply exclusions. Not sure if copy overhead outweighs skipping later, but it's clear and direct.
   MotionToKeys motionToKeys = rawMotionToKeys;
   if(impliedExclusions.exclude_G) {
@@ -241,10 +243,12 @@ vector<RangeResult> MovementOptimizer::optimizeToRange(
     const Position& rangeEnd,
     const string& userSequence,
     NavContext& navContext,
-    const SearchParams& params,
     bool allowMultiplePerPosition,
     const ImpliedExclusions& impliedExclusions,
-    const MotionToKeys& rawMotionToKeys) {
+    const MotionToKeys& rawMotionToKeys,
+    const optional<OptimizerParams>& paramsOverride) {
+  // Merge defaults with overrides
+  const OptimizerParams params = OptimizerParams::merge(defaultParams, paramsOverride);
 
   // Apply exclusions
   MotionToKeys motionToKeys = rawMotionToKeys;

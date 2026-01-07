@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "Editor/NavContext.h"
-#include "TestUtils.h"
+#include "Utils/TestUtils.h"
 
 #include "Keyboard/MotionToKeys.h"
 #include "Optimizer/Config.h"
@@ -10,7 +10,6 @@
 #include "State/RunningEffort.h"
 #include "Editor/Snapshot.h"
 #include "Editor/Motion.h"
-#include "State/MotionState.h"
 #include "Utils/Debug.h"
 #include "Utils/Lines.h"
 
@@ -51,7 +50,7 @@ protected:
     // Pass Position and fresh RunningEffort (no prior typing context in tests)
     // Try to explore more (30 results), lower search depth for speed (2e4)
     return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
-                        SearchParams(30, 2e4, 1.0, 2.0), impliedExclusions, allowedMotions);
+                        impliedExclusions, allowedMotions, OptimizerParams(30, 2e4, 1.0, 2.0));
   }
 
   static vector<RangeResult>
@@ -66,8 +65,8 @@ protected:
     // allowMultiplePerPosition=true for tests to see all paths
     // Pass Position and fresh RunningEffort (no prior typing context in tests)
     return opt.optimizeToRange(lines, start, RunningEffort(), rangeBegin, rangeEnd,
-                               userSeq, navContext, SearchParams(maxResults, 2e4, 1.0, 2.0),
-                               true, impliedExclusions, allowedMotions);
+                               userSeq, navContext, true, impliedExclusions, allowedMotions,
+                               OptimizerParams(maxResults, 2e4, 1.0, 2.0));
   }
 };
 

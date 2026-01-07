@@ -30,16 +30,18 @@ struct Result {
     return flattenSequences(sequences);
   }
 
-  // Get formatted string with mode annotations
-  std::string getFormattedSequence() const {
-    return formatSequences(sequences);
+  friend std::ostream& operator<<(std::ostream& os, const Result& r) {
+    for(size_t i = 0; i < r.sequences.size(); i++) {
+      const Sequence& s = r.sequences[i];
+      if(i == 0 && s.mode == Mode::Insert) os << "I: ";
+      if(i > 0) os << " ";
+      os << s.keys;
+    }
+    os << "(cost: " << r.keyCost << ")";
+    return os;
   }
 };
 
-inline std::ostream& operator<<(std::ostream& os, const Result& r) {
-  os << r.getSequenceString() << ", " << r.keyCost << "\n";
-  return os;
-}
 
 // Result with end position, used by optimizeToRange
 struct RangeResult {

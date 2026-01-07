@@ -24,11 +24,15 @@ vector<Result> CompositionOptimizer::optimize(
   const string& userSequence,
   const NavContext& navigationContext,
   const ImpliedExclusions& impliedExclusions,
-  const MotionToKeys& rawMotionToKeys
+  const MotionToKeys& rawMotionToKeys,
+  const optional<OptimizerParams>& paramsOverride
 ) {
+  // Merge defaults with overrides
+  const OptimizerParams params = OptimizerParams::merge(defaultParams, paramsOverride);
+
   // Ensures proper hashing later, and 10 is buffer in case we insert more text, then delete
-  for(const string& s : startLines) { assert(s.size() < MAX_LINE_LENGTH-10); }
-  for(const string& s : endLines) { assert(s.size() < MAX_LINE_LENGTH-10); }
+  for(const string& s : startLines) { assert(s.size() < static_cast<size_t>(maxLineLength-10)); }
+  for(const string& s : endLines) { assert(s.size() < static_cast<size_t>(maxLineLength-10)); }
 
   MotionToKeys motionToKeys = rawMotionToKeys;
   if(impliedExclusions.exclude_G) {
@@ -54,7 +58,7 @@ vector<Result> CompositionOptimizer::optimize(
   // If backward, we reverse the edit order so all subsequent logic is uniform.
   double distToFirst = costToGoal(startPos, rawDiffs.front().posBegin);
   double distToLast = costToGoal(startPos, rawDiffs.back().posEnd);
-  bool forward = (distToFirst <= distToLast + FORWARD_BIAS);
+  bool forward = (distToFirst <= distToLast + forwardBias);
 
   if (!forward) {
     std::reverse(rawDiffs.begin(), rawDiffs.end());
@@ -80,7 +84,7 @@ vector<Result> CompositionOptimizer::optimize(
   for (const auto& lines : linesAfterNEdits) {
     maxLineSize = max(maxLineSize, static_cast<int>(lines.size()));
   }
-  int maxPosKey = maxLineSize * MAX_LINE_LENGTH;
+  int maxPosKey = maxLineSize * maxLineLength;
   vector<vector<int>> posToEditIndex = buildPosToEditIndex(diffStates, maxPosKey);
 
   int totalExplored = 0;
@@ -91,8 +95,8 @@ vector<Result> CompositionOptimizer::optimize(
 
   priority_queue<CompositionState, vector<CompositionState>, greater<CompositionState>> pq;
 
-  auto exploreNewState = [this, &pq, &costMap, &userEffort, totalEdits](CompositionState&& newState) {
-    if(newState.getEffort() > userEffort * EXPLORE_FACTOR) {
+  auto exploreNewState = [this, &pq, &costMap, &userEffort, totalEdits, &params](CompositionState&& newState) {
+    if(newState.getEffort() > userEffort * params.exploreFactor) {
       return;
     }
     double newCost = newState.getCost();
@@ -113,7 +117,7 @@ vector<Result> CompositionOptimizer::optimize(
 
   // Initialize starting state
   CompositionState startingState(startPos, Mode::Normal, 0);
-  startingState.updateCost(heuristic(startingState, 0, suffixEditCosts, diffStates));
+  startingState.updateCost(heuristic(startingState, 0, suffixEditCosts, diffStates, params));
   pq.push(startingState);
   costMap[startingState.getKey()] = startingState.getCost();
 
@@ -125,7 +129,7 @@ vector<Result> CompositionOptimizer::optimize(
     int editsCompleted = s.getEditsCompleted();
     Mode mode = s.getMode();
 
-    if(++totalExplored > MAX_SEARCH_DEPTH) {
+    if(++totalExplored > params.maxSearchDepth) {
       debug("maximum total explored count reached");
       break;
     }
@@ -135,7 +139,7 @@ vector<Result> CompositionOptimizer::optimize(
 
     if(isGoal) {
       res.emplace_back(s.getMotionSequence(), s.getRunningEffort().getEffort(config));
-      if(res.size() >= MAX_RESULT_COUNT) {
+      if(res.size() >= static_cast<size_t>(params.maxResults)) {
         debug("maximum result count reached");
         break;
       }
@@ -175,7 +179,7 @@ vector<Result> CompositionOptimizer::optimize(
 
                 // Edit results always end in Normal mode (Esc at the end)
                 newState.applyEditTransition(editRes.sequences, newPos, Mode::Normal, config);
-                newState.updateCost(heuristic(newState, editsCompleted + 1, suffixEditCosts, diffStates));
+                newState.updateCost(heuristic(newState, editsCompleted + 1, suffixEditCosts, diffStates, params));
                 exploreNewState(std::move(newState));
               }
             }
@@ -214,10 +218,10 @@ vector<Result> CompositionOptimizer::optimize(
         nextEdit.posEnd,
         "", // No user sequence reference for sub-optimization
         navContext,
-        SearchParams(clamp(nextEdit.origCharCount(), 1, 10)),  // Max results per movement search
         false, // allowMultiplePerPosition: only need 1 best path per position
         subExclusions,
-        motionToKeys
+        motionToKeys,
+        OptimizerParams(clamp(nextEdit.origCharCount(), 1, 10))  // Max results per movement search
       );
 
       // Create new CompositionStates from movement results
@@ -226,7 +230,7 @@ vector<Result> CompositionOptimizer::optimize(
 
         CompositionState newState = s;
         newState.applyMovementResult(movResult.sequences, movResult.endPos, config);
-        newState.updateCost(heuristic(newState, editsCompleted, suffixEditCosts, diffStates));
+        newState.updateCost(heuristic(newState, editsCompleted, suffixEditCosts, diffStates, params));
         exploreNewState(std::move(newState));
       }
     }
@@ -273,7 +277,8 @@ double CompositionOptimizer::costToGoal(const Position& curr, const Position& go
 
 double CompositionOptimizer::heuristic(const CompositionState& s, int editsCompleted,
                                         const vector<double>& suffixEditCosts,
-                                        const vector<DiffState>& diffStates) const {
+                                        const vector<DiffState>& diffStates,
+                                        const OptimizerParams& params) const {
   // h(n) = distance to next edit region + suffix sum of edit costs
   // Overshooting (going past the next edit) is penalized more heavily than undershooting.
   // Note: If we're processing edits in reverse order, diffStates was already reversed,
@@ -293,12 +298,12 @@ double CompositionOptimizer::heuristic(const CompositionState& s, int editsCompl
     } else if (pos > nextEdit.posEnd) {
       // Overshooting: went past the edit, heavily penalized
       // Must backtrack, which is inefficient
-      h += OVERSHOOT_PENALTY * costToGoal(pos, nextEdit.posEnd);
+      h += overshootPenalty * costToGoal(pos, nextEdit.posEnd);
     }
     // else: inside range, distance = 0
   }
 
-  return COST_WEIGHT * s.getEffort() + h;
+  return params.costWeight * s.getEffort() + h;
 }
 
 int CompositionOptimizer::bufferPosToEditIndex(const Position& bufferPos, const DiffState& diff) const {
@@ -409,10 +414,10 @@ vector<vector<int>> CompositionOptimizer::buildPosToEditIndex(
       // Handle single-line and multi-line cases
       for (int line = diff.posBegin.line; line <= diff.posEnd.line; line++) {
         int startCol = (line == diff.posBegin.line) ? diff.posBegin.col : 0;
-        int endCol = (line == diff.posEnd.line) ? diff.posEnd.col : MAX_LINE_LENGTH - 1;
+        int endCol = (line == diff.posEnd.line) ? diff.posEnd.col : maxLineLength - 1;
 
         for (int col = startCol; col <= endCol; col++) {
-          int posKey = line * MAX_LINE_LENGTH + col;
+          int posKey = line * maxLineLength + col;
           if (posKey >= 0 && posKey < maxPosKey) {
             posToEditIndex[posKey].push_back(editIdx);
           }

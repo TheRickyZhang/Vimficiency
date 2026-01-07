@@ -1,6 +1,7 @@
 #include "Edit.h"
 #include "VimCore/VimEditUtils.h"
 #include "VimCore/VimMovementUtils.h"
+#include "VimCore/VimOptions.h"
 #include "VimCore/VimUtils.h"
 #include "Utils/Debug.h"
 
@@ -176,8 +177,13 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         }
         lines.erase(lines.begin() + pos.line, lines.begin() + pos.line + count);
         pos.line = lines.empty() ? 0 : min(pos.line, static_cast<int>(lines.size()) - 1);
-        // 'startofline' behavior: go to first non-blank, update targetCol
-        pos.setCol(lines.empty() ? 0 : VimUtils::firstNonBlankColInLineStr(lines[pos.line]));
+        if (VimOptions::startOfLine()) {
+          // Vim default: go to first non-blank, update targetCol
+          pos.setCol(lines.empty() ? 0 : VimUtils::firstNonBlankColInLineStr(lines[pos.line]));
+        } else {
+          // Neovim default: preserve column (clamp to line length)
+          pos.col = lines.empty() ? 0 : VimMovementUtils::clampCol(lines, pos.targetCol, pos.line);
+        }
         return;
 
       case hash("cc"): case hash("S"):
@@ -311,15 +317,30 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         return;
 
       // --- Change motions (c + motion) ---
+      // Vim special case: cw/cW on a word acts like ce/cE (doesn't include trailing whitespace)
+      // Only when on whitespace does it use w motion semantics
       case hash("cw"):
       case hash("cW"):
         {
           bool big = (e == "cW");
           Position endPos = pos;
-          for (int i = 0; i < count; i++) VimMovementUtils::motionW(endPos, lines, big);
-          if (endPos.line > pos.line || endPos.col > pos.col) {
-            Range r(pos, Position(endPos.line, endPos.col > 0 ? endPos.col - 1 : 0), false, true);
-            VimEditUtils::deleteRange(lines, r, pos);
+          unsigned char c = static_cast<unsigned char>(line[pos.col]);
+          bool onWord = big ? VimUtils::isBigWordChar(c) : VimUtils::isSmallWordChar(c);
+
+          if (onWord) {
+            // On a word: use e/E motion (change to end of word, not including trailing whitespace)
+            for (int i = 0; i < count; i++) VimMovementUtils::motionE(endPos, lines, big);
+            if (endPos != pos) {
+              Range r(pos, endPos, false, true);  // inclusive, to end of word
+              VimEditUtils::deleteRange(lines, r, pos);
+            }
+          } else {
+            // On whitespace: use w/W motion (change to start of next word)
+            for (int i = 0; i < count; i++) VimMovementUtils::motionW(endPos, lines, big);
+            if (endPos.line > pos.line || endPos.col > pos.col) {
+              Range r(pos, Position(endPos.line, endPos.col > 0 ? endPos.col - 1 : 0), false, true);
+              VimEditUtils::deleteRange(lines, r, pos);
+            }
           }
           mode = Mode::Insert;
         }

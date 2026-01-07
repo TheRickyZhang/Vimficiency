@@ -2,9 +2,11 @@
 
 #include <vector>
 #include <string>
+#include <optional>
 
 #include "Config.h"
 #include "Result.h"
+#include "OptimizerParams.h"
 #include "EditOptimizer.h"
 #include "DiffState.h"
 #include "ImpliedExclusions.h"
@@ -16,28 +18,25 @@
 
 struct CompositionOptimizer {
   Config config;
+  OptimizerParams defaultParams;
 
-  const int    MAX_RESULT_COUNT = 5;
-  const int    MAX_SEARCH_DEPTH;
-  const double COST_WEIGHT;
-  const double EXPLORE_FACTOR;
-
+  // CompositionOptimizer-specific parameters
   // Overshooting (going past the next edit region) is penalized more heavily
   // than undershooting (not yet reaching it)
-  const double OVERSHOOT_PENALTY = 3.0;
+  double overshootPenalty = 3.0;
   // Slight bias towards forward (natural left->right, top->bottom order)
-  const double FORWARD_BIAS = 2.0;
+  double forwardBias = 2.0;
+  // Max line length for position key encoding
+  int maxLineLength = 100;
 
-  const int MAX_LINE_LENGTH = 100;
-
-  CompositionOptimizer(const Config& config,
-            int max_search_depth = 1e5,
-            double cost_weight = 1.0,
-            double explore_factor = 2.0)
+  CompositionOptimizer(const Config& config, OptimizerParams params = {},
+                       double overshootPenalty = 3.0, double forwardBias = 2.0,
+                       int maxLineLength = 100)
       : config(std::move(config)),
-        MAX_SEARCH_DEPTH(max_search_depth),
-        COST_WEIGHT(cost_weight),
-        EXPLORE_FACTOR(explore_factor) {}
+        defaultParams(params),
+        overshootPenalty(overshootPenalty),
+        forwardBias(forwardBias),
+        maxLineLength(maxLineLength) {}
 
   // Composes edit transitions + movement. Pre-computes edit regions, then searches for optimal sequence.
   // Much slower; ~ O(n^2) + Sigma (m_i)^3, higher constant factor.
@@ -50,7 +49,10 @@ struct CompositionOptimizer {
 
     const NavContext& navigationContext,
     const ImpliedExclusions& impliedExclusions = ImpliedExclusions(),
-    const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS
+    const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS,
+
+    // Optional search parameter overrides (uses defaultParams if not provided)
+    const std::optional<OptimizerParams>& paramsOverride = std::nullopt
   );
 
   // Manhattan distance
@@ -60,7 +62,8 @@ struct CompositionOptimizer {
   // Uses suffix sum of min edit costs + distance to next edit region
   double heuristic(const CompositionState& s, int editsCompleted,
                    const std::vector<double>& suffixEditCosts,
-                   const std::vector<DiffState>& diffStates) const;
+                   const std::vector<DiffState>& diffStates,
+                   const OptimizerParams& params) const;
 
   // Compute suffix sums of minimum edit costs
   // suffixEditCosts[i] = sum of min costs for edits i..totalEdits-1
@@ -92,6 +95,6 @@ struct CompositionOptimizer {
 
   // Convert Position to posKey
   int posToKey(const Position& pos) const {
-    return pos.line * MAX_LINE_LENGTH + pos.col;
+    return pos.line * maxLineLength + pos.col;
   }
 };

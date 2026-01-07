@@ -11,19 +11,25 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 add_executable(vimficiency_tests
-  BackwardReachTest.cpp
-  ConfigurationTest.cpp
-  CountMotionsTest.cpp
-  DebugSequenceTests.cpp
-  DiffStateTest.cpp
-  EditOptimizerTests.cpp
-  ErrorHandlingTest.cpp
-  ForwardReachTest.cpp
-  HashCollisionTest.cpp
-  LevenshteinTest.cpp
-  MotionTest.cpp
-  MovementOptimizerTest.cpp
-  TestUtils.cpp
+  Actions/CountMotionsTest.cpp
+  Actions/EditTest.cpp
+  Actions/MotionTest.cpp
+  EditPrimitives/DiffStateTest.cpp
+  EditPrimitives/LevenshteinTest.cpp
+  Misc/ConfigurationTest.cpp
+  Misc/DebugSequenceTests.cpp
+  Misc/ErrorHandlingTest.cpp
+  Misc/HashCollisionTest.cpp
+  Optimizer/EditOptimizerTests.cpp
+  Optimizer/MovementOptimizerTest.cpp
+  Reach/BackwardReachTest.cpp
+  Reach/ForwardReachTest.cpp
+  Utils/TestUtils.cpp
+)
+
+target_include_directories(vimficiency_tests
+  PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(vimficiency_tests

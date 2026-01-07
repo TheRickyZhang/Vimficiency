@@ -11,8 +11,7 @@
 #include "Optimizer/ImpliedExclusions.h"
 #include "Optimizer/MovementOptimizer.h"
 #include "State/RunningEffort.h"
-#include "State/MotionState.h"
-#include "TestUtils.h"
+#include "Utils/TestUtils.h"
 
 using namespace std;
 
@@ -44,7 +43,7 @@ protected:
     MovementOptimizer opt(config);
     ImpliedExclusions impliedExclusions(false, false);
     return opt.optimize(lines, start, RunningEffort(), end, userSeq,
-                        navContext, SearchParams(30, 2e4, 1.0, 2.0), impliedExclusions);
+                        navContext, impliedExclusions, EXPLORABLE_MOTIONS, OptimizerParams(30, 2e4, 1.0, 2.0));
   }
 
   // Check if a result contains a specific sequence

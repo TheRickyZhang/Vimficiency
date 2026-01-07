@@ -1,4 +1,5 @@
 #pragma once
+#include <ostream>
 #include <utility>
 
 struct Position {
@@ -40,5 +41,11 @@ struct Position {
     std::swap(line, other.line);
     std::swap(col, other.col);
     std::swap(targetCol, other.targetCol);
+  }
+
+  friend std::ostream& operator<<(std::ostream& os, const Position& pos) {
+    os << "(" << pos.line << ", " << pos.col << ")";
+    if(pos.targetCol != pos.col) os << "[" << pos.targetCol << "]" << "\n";    
+    return os;
   }
 };

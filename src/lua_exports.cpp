@@ -158,7 +158,7 @@ const char *vimficiency_analyze(
     MovementOptimizer opt(g_config_internal);
 
     // Pass Position and fresh RunningEffort (no prior typing context from FFI)
-    std::vector<Result> res = opt.optimize(lines, start_position, RunningEffort(), end_position, keyseq, navigation_context, SearchParams(RESULTS_CALCULATED), impliedExclusions);
+    std::vector<Result> res = opt.optimize(lines, start_position, RunningEffort(), end_position, keyseq, navigation_context, impliedExclusions, EXPLORABLE_MOTIONS, OptimizerParams(RESULTS_CALCULATED));
 
     // Format results
     std::ostringstream oss;

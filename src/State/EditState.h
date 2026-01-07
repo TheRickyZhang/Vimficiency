@@ -115,9 +115,6 @@ public:
   // Get flattened string representation
   std::string getMotionSequence() const { return flattenSequences(sequences); }
 
-  // Get formatted string with mode annotations (e.g., "Normal: dwi\nInsert: hello<Esc>")
-  std::string getFormattedSequence() const { return formatSequences(sequences); }
-
   int getStartIndex() const { return startIndex; }
   double getEffort() const { return effort; }
   double getCost() const { return cost; }
@@ -145,4 +142,6 @@ public:
     return const_cast<Lines&>(*lines);
   }
 
+  // friend std::ostream&(std::ostream& os, const EditState& editState) {
+  // }
 };

@@ -2,7 +2,7 @@
 
 #include <string>
 #include <vector>
-#include <sstream>
+// #include <ostream>
 
 #include "Editor/Mode.h"
 
@@ -28,24 +28,15 @@ struct Sequence {
   bool operator!=(const Sequence& other) const {
     return !(*this == other);
   }
+
+  // friend std::ostream& operator<<(std::ostream& os, const Sequence& seq) {
+  //   os << (seq.mode == Mode::Normal ? "Normal" : "Insert") << ": ";
+  //   os << seq.keys;
+  //   return os;
+  // }
 };
 
 // Helper to get flattened string from vector<Sequence>
-inline std::string flattenSequences(const std::vector<Sequence>& seqs) {
-  std::string result;
-  for (const auto& s : seqs) {
-    result += s.keys;
-  }
-  return result;
-}
+std::string flattenSequences(const std::vector<Sequence>& seqs);
 
-// Helper to get formatted string with mode annotations
-inline std::string formatSequences(const std::vector<Sequence>& seqs) {
-  std::ostringstream oss;
-  for (size_t i = 0; i < seqs.size(); i++) {
-    if (i > 0) oss << "\n";
-    oss << (seqs[i].mode == Mode::Normal ? "Normal" : "Insert")
-        << ": " << seqs[i].keys;
-  }
-  return oss.str();
-}
+

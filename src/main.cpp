@@ -58,7 +58,6 @@ int main(int argc, char* argv[]) {
     end_position,
     user_seq,
     navContext,
-    SearchParams(),  // default search parameters
     impliedExclusions
   );
 

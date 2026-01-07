@@ -37,7 +37,13 @@ struct Lines : std::vector<std::string> {
     }
     return count;
   }
+
+  friend std::ostream& operator<<(std::ostream& os, const Lines& lines) {
+    for(const std::string& s : lines) { os << s << "\n"; }
+    return os;
+  }
 };
+
 
 // Copy-on-write shared Lines for efficient state sharing in A* search.
 // Motions share the same buffer (O(1)), edits copy-on-write (O(n)).

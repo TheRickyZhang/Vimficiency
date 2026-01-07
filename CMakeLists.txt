@@ -10,6 +10,13 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Have debug enabled by default for development
 option(VIMFICIENCY_DEBUG "Enable debug output" ON)
 
+# Legacy Vim compatibility mode (uses Vim defaults instead of Neovim defaults)
+# Key differences when enabled:
+#   - startofline: ON (cursor goes to first non-blank on gg/G/dd/etc)
+#   - joinspaces: ON (two spaces after .!? when joining lines)
+#   - Y: yy behavior (yank line) instead of y$ (yank to EOL)
+option(VIMFICIENCY_LEGACY_VIM "Use legacy Vim defaults instead of Neovim defaults" OFF)
+
 # Produces STATIC libvimficiency_core.a.
 # Note to self: Static library just produces bundled code for purposes of easier inclsusion into others
 
@@ -29,6 +36,10 @@ target_include_directories(vimficiency_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/s
 
 if(VIMFICIENCY_DEBUG)
     target_compile_definitions(vimficiency_core PUBLIC VIMFICIENCY_DEBUG)
+endif()
+
+if(VIMFICIENCY_LEGACY_VIM)
+    target_compile_definitions(vimficiency_core PUBLIC VIMFICIENCY_LEGACY_VIM)
 endif()
 
 # SHARED library for Neovim/Lua direct usage
