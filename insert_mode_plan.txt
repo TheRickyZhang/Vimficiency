@@ -1,3 +1,24 @@
+NEW Insert mode plan:
+First plan did not work, because it could not get good direction to goal, and had a very large search space.
+
+Now, we assume from CompositionOptimizer context that Edit states are give such that we are committed to typing all the text that is in endState, so our problem becomes finding optimal way to delete all text from each position in startingState.
+
+In this new model, we must go into insert mode at least once (typically in the last delete operation?), but don't have to worry about specifically finding the sequence for now.
+
+
+Level 1:
+x, X, delete + {w, e, b, ge}, dd -> delete all lines
+Level 2: How to reuse lines; can transform one section, then move down to next (DP?)
+Level 3: When to use o/O to save enter presses
+Level 4: Deleting in insert mode <C-w>, <C-u>
+Level 5: Dot operator
+
+
+It makes sense to delete the largest amount possible, of course, but for robustness against variable costs, we do want to preserve A*. Our new heuristic will involve how much text to be deleted is left.
+
+
+
+
 Fundamentally, operations in insert mode can be boiled down to a consecutive sequence of diffs. Let's work with the following conversion:
 
 0123456789ab
@@ -36,3 +57,5 @@ So now, in our optimizer, we can think of possible edits as a special type of no
 If a state has a position inside an edit range, it has the option to explore all precomputed best sequences. Our distance function now includes the number of edit sequences left, weighted heavily to narrow down on finding an exact solution, and we apply a heavy penalty to any states with position > last completed / currently exploring state, as that means we have "overshot" our edit, which is unoptimal for doing the edits in order.
 
 It is also tricky how to ensure position alignment. We can assume that all edits must happen in order; I think since we are updating which "version" of lines we are at depending on editsMade, we can ensure our positions are always correct for that state, and so we can know the corresponding range.
+
+

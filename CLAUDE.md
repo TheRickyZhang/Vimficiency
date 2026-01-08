@@ -410,4 +410,4 @@ Per [Vim's motion.txt](https://vimhelp.org/motion.txt.html), linewise operations
 CMake option `VIMFICIENCY_DEBUG` (default ON) enables debug output:
 - Defines `VIMFICIENCY_DEBUG` preprocessor macro
 - Use `debug(...)` from Utils/Debug.h
-- Output captured via `get_debug_output()` / `clear_debug_output()`
+- Output captured via `consume_debug_output()`

@@ -173,7 +173,7 @@ const char *vimficiency_analyze(
     }
 
     if constexpr (DEBUG_ENABLED) {
-      oss << "\n ----------------DEBUG---------------- \n" << get_debug_output();
+      oss << "\n ----------------DEBUG---------------- \n" << consume_debug_output();
     }
 
     result_storage = oss.str();
@@ -185,8 +185,7 @@ const char *vimficiency_analyze(
 
 const char* vimficiency_get_debug() {
     static std::string debug_storage;
-    debug_storage = get_debug_output();
-    clear_debug_output();
+    debug_storage = consume_debug_output();
     return debug_storage.c_str();
 }
 

@@ -2,6 +2,7 @@
 
 #include "Optimizer/Result.h"
 #include "Keyboard/KeyboardModel.h"
+#include "Utils/StringUtils.h"
 
 #include <bits/stdc++.h>
 using namespace std;

@@ -3,8 +3,8 @@
 
 using namespace std;
 
-SequenceTokenizer::SequenceTokenizer(const Mapping &actions,
-                                     const Mapping &motions) {
+SequenceTokenizer::SequenceTokenizer(const StringToKeys &actions,
+                                     const StringToKeys &motions) {
   tokens_.reserve(actions.size() + motions.size());
 
   for (const auto &p : actions) {

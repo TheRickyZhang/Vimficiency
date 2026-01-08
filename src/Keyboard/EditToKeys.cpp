@@ -24,45 +24,15 @@ const EditToKeys CHAR_RIGHT = {
     // Note: r{c} is handled specially in Edit.cpp due to variable second char
 };
 
-const EditToKeys WORD_LEFT = {
-    {"db", {Key::Key_D, Key::Key_B}},            // delete back to word start
-    {"cb", {Key::Key_C, Key::Key_B}},            // change back to word start
-};
-
-const EditToKeys WORD_RIGHT = {
-    {"dw", {Key::Key_D, Key::Key_W}},            // delete to next word start
-    {"cw", {Key::Key_C, Key::Key_W}},            // change to next word start
-};
-
-const EditToKeys WORD_END_LEFT = {
-    {"dge", {Key::Key_D, Key::Key_G, Key::Key_E}},   // delete to end of previous word
-    {"cge", {Key::Key_C, Key::Key_G, Key::Key_E}},   // change to end of previous word
-};
-
-const EditToKeys WORD_END_RIGHT = {
-    {"de", {Key::Key_D, Key::Key_E}},            // delete to word end
-    {"ce", {Key::Key_C, Key::Key_E}},            // change to word end
-};
-
-const EditToKeys BIG_WORD_LEFT = {
-    {"dB", {Key::Key_D, Key::Key_Shift, Key::Key_B}},  // delete back to WORD start
-    {"cB", {Key::Key_C, Key::Key_Shift, Key::Key_B}},  // change back to WORD start
-};
-
-const EditToKeys BIG_WORD_RIGHT = {
-    {"dW", {Key::Key_D, Key::Key_Shift, Key::Key_W}},  // delete to next WORD start
-    {"cW", {Key::Key_C, Key::Key_Shift, Key::Key_W}},  // change to next WORD start
-};
-
-const EditToKeys BIG_WORD_END_LEFT = {
-    {"dgE", {Key::Key_D, Key::Key_G, Key::Key_Shift, Key::Key_E}},  // delete to end of previous WORD
-    {"cgE", {Key::Key_C, Key::Key_G, Key::Key_Shift, Key::Key_E}},  // change to end of previous WORD
-};
-
-const EditToKeys BIG_WORD_END_RIGHT = {
-    {"dE", {Key::Key_D, Key::Key_Shift, Key::Key_E}},  // delete to WORD end
-    {"cE", {Key::Key_C, Key::Key_Shift, Key::Key_E}},  // change to WORD end
-};
+// Word motion edits: operator + motion
+const EditToKeys WORD_LEFT         = makeCombinations({{"d", "c"}, {"b"}});
+const EditToKeys WORD_RIGHT        = makeCombinations({{"d", "c"}, {"w"}});
+const EditToKeys WORD_END_LEFT     = makeCombinations({{"d", "c"}, {"ge"}});
+const EditToKeys WORD_END_RIGHT    = makeCombinations({{"d", "c"}, {"e"}});
+const EditToKeys BIG_WORD_LEFT     = makeCombinations({{"d", "c"}, {"B"}});
+const EditToKeys BIG_WORD_RIGHT    = makeCombinations({{"d", "c"}, {"W"}});
+const EditToKeys BIG_WORD_END_LEFT = makeCombinations({{"d", "c"}, {"gE"}});
+const EditToKeys BIG_WORD_END_RIGHT= makeCombinations({{"d", "c"}, {"E"}});
 
 const EditToKeys LINE_LEFT = {
     {"d0", {Key::Key_D, Key::Key_0}},            // delete to line start
@@ -93,6 +63,52 @@ const EditToKeys LINE_UP = {
 const EditToKeys LINE_DOWN = {
     {"o",  {Key::Key_O}},                        // open line below
 };
+
+// --- Navigation motions (for EditOptimizer) ---
+
+const EditToKeys NAV_VERTICAL = {
+    {"j",  {Key::Key_J}},                        // move down
+    {"k",  {Key::Key_K}},                        // move up
+};
+
+const EditToKeys NAV_HORIZONTAL = {
+    {"h",  {Key::Key_H}},                        // move left
+    {"l",  {Key::Key_L}},                        // move right
+};
+
+const EditToKeys NAV_WORD_FWD = {
+    {"w",   {Key::Key_W}},                       // next word start
+    {"W",   {Key::Key_Shift, Key::Key_W}},       // next WORD start
+    {"e",   {Key::Key_E}},                       // word end
+    {"E",   {Key::Key_Shift, Key::Key_E}},       // WORD end
+};
+
+const EditToKeys NAV_WORD_BWD = {
+    {"b",   {Key::Key_B}},                       // prev word start
+    {"B",   {Key::Key_Shift, Key::Key_B}},       // prev WORD start
+    {"ge",  {Key::Key_G, Key::Key_E}},           // prev word end
+    {"gE",  {Key::Key_G, Key::Key_Shift, Key::Key_E}}, // prev WORD end
+};
+
+const EditToKeys NAV_LINE_START = {
+    {"0",  {Key::Key_0}},                        // line start
+    {"^",  {Key::Key_Shift, Key::Key_6}},        // first non-blank
+};
+
+const EditToKeys NAV_LINE_END = {
+    {"$",  {Key::Key_Shift, Key::Key_4}},        // line end
+};
+
+// --- Text object edits ---
+// Pattern: operator + inner/around + object
+// Using makeCombinations to generate all permutations
+
+const EditToKeys TEXT_OBJ_WORD    = makeCombinations({{"d", "c"}, {"i", "a"}, {"w", "W"}});
+const EditToKeys TEXT_OBJ_QUOTE   = makeCombinations({{"d", "c"}, {"i", "a"}, {"\"", "'"}});
+const EditToKeys TEXT_OBJ_PAREN   = makeCombinations({{"d", "c"}, {"i", "a"}, {"(", "b"}});   // b = block
+const EditToKeys TEXT_OBJ_BRACE   = makeCombinations({{"d", "c"}, {"i", "a"}, {"{", "B"}});   // B = Block
+const EditToKeys TEXT_OBJ_BRACKET = makeCombinations({{"d", "c"}, {"i", "a"}, {"["}});
+const EditToKeys TEXT_OBJ_ANGLE   = makeCombinations({{"d", "c"}, {"i", "a"}, {"<"}});
 
 } // namespace Normal
 
@@ -165,6 +181,18 @@ const EditToKeys ALL_EDITS_TO_KEYS = combineAll({
     cref(Normal::FULL_LINE),
     cref(Normal::LINE_UP),
     cref(Normal::LINE_DOWN),
+    cref(Normal::NAV_VERTICAL),
+    cref(Normal::NAV_HORIZONTAL),
+    cref(Normal::NAV_WORD_FWD),
+    cref(Normal::NAV_WORD_BWD),
+    cref(Normal::NAV_LINE_START),
+    cref(Normal::NAV_LINE_END),
+    cref(Normal::TEXT_OBJ_WORD),
+    cref(Normal::TEXT_OBJ_QUOTE),
+    cref(Normal::TEXT_OBJ_PAREN),
+    cref(Normal::TEXT_OBJ_BRACE),
+    cref(Normal::TEXT_OBJ_BRACKET),
+    cref(Normal::TEXT_OBJ_ANGLE),
     cref(Insert::CHAR_LEFT),
     cref(Insert::CHAR_RIGHT),
     cref(Insert::WORD_LEFT),
@@ -190,3 +218,42 @@ bool isEdit(string_view s) {
 
     return false;
 }
+
+// =============================================================================
+// Pure Deletion Operations (for EditOptimizer deletion model)
+// =============================================================================
+
+namespace Deletion {
+
+const EditToKeys CHAR = {
+    {"x",  {Key::Key_X}},
+    {"X",  {Key::Key_Shift, Key::Key_X}},
+};
+
+const EditToKeys WORD = {
+    {"dw",  {Key::Key_D, Key::Key_W}},
+    {"de",  {Key::Key_D, Key::Key_E}},
+    {"db",  {Key::Key_D, Key::Key_B}},
+    {"dge", {Key::Key_D, Key::Key_G, Key::Key_E}},
+    {"dW",  {Key::Key_D, Key::Key_Shift, Key::Key_W}},
+    {"dE",  {Key::Key_D, Key::Key_Shift, Key::Key_E}},
+    {"dB",  {Key::Key_D, Key::Key_Shift, Key::Key_B}},
+    {"dgE", {Key::Key_D, Key::Key_G, Key::Key_Shift, Key::Key_E}},
+};
+
+const EditToKeys LINE = {
+    {"dd", {Key::Key_D, Key::Key_D}},
+    {"D",  {Key::Key_Shift, Key::Key_D}},
+    {"d$", {Key::Key_D, Key::Key_Shift, Key::Key_4}},
+    {"d0", {Key::Key_D, Key::Key_0}},
+    {"d^", {Key::Key_D, Key::Key_Shift, Key::Key_6}},
+};
+
+const EditToKeys TEXT_OBJ = {
+    {"diw", {Key::Key_D, Key::Key_I, Key::Key_W}},
+    {"daw", {Key::Key_D, Key::Key_A, Key::Key_W}},
+    {"diW", {Key::Key_D, Key::Key_I, Key::Key_Shift, Key::Key_W}},
+    {"daW", {Key::Key_D, Key::Key_A, Key::Key_Shift, Key::Key_W}},
+};
+
+} // namespace Deletion

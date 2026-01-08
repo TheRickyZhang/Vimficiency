@@ -116,16 +116,16 @@ TEST_F(DebugSequenceTest, AllResultsReachTargetPosition) {
   cout << "Optimizer results for (0,0) -> (2,2):\n";
   for (const auto &r : results) {
     Position actual = simulateMotionsDefault(start, r.getSequenceString(), a2_block_lines);
-    cout << "  " << r.getSequenceString() << " -> (" << actual.line << "," << actual.col << ")\n";
+    cout << "  " << r << " -> (" << actual.line << "," << actual.col << ")\n";
   }
 
   for (const auto &r : results) {
     Position actual = simulateMotionsDefault(start, r.getSequenceString(), a2_block_lines);
     EXPECT_EQ(actual.line, end.line)
-        << "Sequence '" << r.getSequenceString() << "' ends at wrong line: "
+        << "Sequence '" << makePrintable(r.getSequenceString()) << "' ends at wrong line: "
         << actual.line << " vs expected " << end.line;
     EXPECT_EQ(actual.col, end.col)
-        << "Sequence '" << r.getSequenceString() << "' ends at wrong col: "
+        << "Sequence '" << makePrintable(r.getSequenceString()) << "' ends at wrong col: "
         << actual.col << " vs expected " << end.col;
   }
 }
@@ -200,16 +200,16 @@ TEST_F(DebugSequenceTest, AllResultsReachTargetPosition_From1_0) {
   cout << "Optimizer results for (1,0) -> (3,2):\n";
   for (const auto &r : results) {
     Position actual = simulateMotionsDefault(start, r.getSequenceString(), a2_block_lines);
-    cout << "  " << r.getSequenceString() << " -> (" << actual.line << "," << actual.col << ")\n";
+    cout << "  " << r << " -> (" << actual.line << "," << actual.col << ")\n";
   }
 
   for (const auto &r : results) {
     Position actual = simulateMotionsDefault(start, r.getSequenceString(), a2_block_lines);
     EXPECT_EQ(actual.line, end.line)
-        << "Sequence '" << r.getSequenceString() << "' ends at wrong line: "
+        << "Sequence '" << makePrintable(r.getSequenceString()) << "' ends at wrong line: "
         << actual.line << " vs expected " << end.line;
     EXPECT_EQ(actual.col, end.col)
-        << "Sequence '" << r.getSequenceString() << "' ends at wrong col: "
+        << "Sequence '" << makePrintable(r.getSequenceString()) << "' ends at wrong col: "
         << actual.col << " vs expected " << end.col;
   }
 }

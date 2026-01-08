@@ -53,8 +53,18 @@ struct EditBoundary {
     bool left_in_WORD = false;    // Left boundary cuts through a WORD
 
     // Line boundary flags (for line-level operations)
-    bool startsAtLineStart = false;  // Edit region starts at column 0
-    bool endsAtLineEnd = false;      // Edit region ends at EOL
+    // Default to true (full-line edit) - partial-line edits must be explicitly marked
+    bool startsAtLineStart = true;   // Edit region starts at column 0
+    bool endsAtLineEnd = true;       // Edit region ends at EOL
+
+    // Context flags: are there lines outside the edit region?
+    // These affect cursor behavior after line deletion (dd).
+    // - hasLinesAbove: if true, can't assume dd on first line moves cursor down
+    //   (it would - but first line deletion might not be what we want)
+    // - hasLinesBelow: if true, dd on LAST line of region leaves cursor on
+    //   same line NUMBER, which is now content OUTSIDE the region (invalid)
+    bool hasLinesAbove = false;
+    bool hasLinesBelow = false;
 };
 
 // =============================================================================

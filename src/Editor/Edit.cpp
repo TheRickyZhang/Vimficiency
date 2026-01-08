@@ -2,6 +2,7 @@
 #include "VimCore/VimEditUtils.h"
 #include "VimCore/VimMovementUtils.h"
 #include "VimCore/VimOptions.h"
+#include "VimCore/VimTextObjects.h"
 #include "VimCore/VimUtils.h"
 #include "Utils/Debug.h"
 
@@ -137,7 +138,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
   int n = static_cast<int>(lines.size());
   int m = static_cast<int>(line.size());
 
-  // Empty line: only switch to insert mode, vertical motion, and word motions
+  // Empty line: only switch to insert mode, vertical motion, navigation, and word motions
   // (empty line is considered a "word" for dw/dW purposes)
   if (line.empty() && mode == Mode::Normal) {
     switch (h) {
@@ -147,6 +148,11 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
       case hash("J"): case hash("gJ"):
       // Word motions (empty line is a "word")
       case hash("dw"): case hash("dW"):
+      // Navigation motions (valid on empty lines - position unchanged or vertical move)
+      case hash("j"): case hash("k"):
+      case hash("w"): case hash("W"): case hash("b"): case hash("B"):
+      case hash("e"): case hash("E"): case hash("ge"): case hash("gE"):
+      case hash("0"): case hash("^"): case hash("$"):
         break;  // Fall through to main switch
       default:
         throw runtime_error("Edit '" + string(e) + "' invalid on empty line");
@@ -563,6 +569,136 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           VimEditUtils::deleteRange(lines, r, pos);
         }
         return;
+
+      // --- Navigation motions (for EditOptimizer) ---
+      case hash("j"):
+        if (pos.line + count >= n) {
+          throw runtime_error("j requires " + to_string(count) + " lines below");
+        }
+        pos.line += count;
+        pos.col = VimMovementUtils::clampCol(lines, pos.targetCol, pos.line);
+        return;
+
+      case hash("k"):
+        if (pos.line < count) {
+          throw runtime_error("k requires " + to_string(count) + " lines above");
+        }
+        pos.line -= count;
+        pos.col = VimMovementUtils::clampCol(lines, pos.targetCol, pos.line);
+        return;
+
+      case hash("h"):
+        if (pos.col < count) {
+          throw runtime_error("h requires " + to_string(count) + " chars left");
+        }
+        pos.setCol(pos.col - count);
+        return;
+
+      case hash("l"):
+        if (pos.col + count >= m) {
+          throw runtime_error("l requires " + to_string(count) + " chars right");
+        }
+        pos.setCol(pos.col + count);
+        return;
+
+      case hash("w"):
+        for (int i = 0; i < count; i++) VimMovementUtils::motionW(pos, lines, false);
+        return;
+
+      case hash("W"):
+        for (int i = 0; i < count; i++) VimMovementUtils::motionW(pos, lines, true);
+        return;
+
+      case hash("b"):
+        for (int i = 0; i < count; i++) VimMovementUtils::motionB(pos, lines, false);
+        return;
+
+      case hash("B"):
+        for (int i = 0; i < count; i++) VimMovementUtils::motionB(pos, lines, true);
+        return;
+
+      case hash("e"):
+        for (int i = 0; i < count; i++) VimMovementUtils::motionE(pos, lines, false);
+        return;
+
+      case hash("E"):
+        for (int i = 0; i < count; i++) VimMovementUtils::motionE(pos, lines, true);
+        return;
+
+      case hash("ge"):
+        for (int i = 0; i < count; i++) VimMovementUtils::motionGe(pos, lines, false);
+        return;
+
+      case hash("gE"):
+        for (int i = 0; i < count; i++) VimMovementUtils::motionGe(pos, lines, true);
+        return;
+
+      case hash("0"):
+        pos.setCol(0);
+        return;
+
+      case hash("^"):
+        pos.setCol(VimUtils::firstNonBlankColInLineStr(line));
+        return;
+
+      case hash("$"):
+        pos.setCol(m > 0 ? m - 1 : 0);
+        return;
+
+    }
+
+    // --- Text object operations: operator + modifier + object ---
+    // Pattern: [d|c] + [i|a] + [w|W|"|'|(|)|{|}|[|]|<|>|b|B]
+    if (e.size() == 3 && (e[0] == 'd' || e[0] == 'c') && (e[1] == 'i' || e[1] == 'a')) {
+      char op = e[0];
+      bool inner = (e[1] == 'i');
+      char obj = e[2];
+
+      Range r(pos, pos);  // Default: empty range
+
+      // Word objects
+      if (obj == 'w') {
+        r = inner ? VimTextObjects::innerWord(lines, pos, false)
+                  : VimTextObjects::aroundWord(lines, pos, false);
+      } else if (obj == 'W') {
+        r = inner ? VimTextObjects::innerWord(lines, pos, true)
+                  : VimTextObjects::aroundWord(lines, pos, true);
+      }
+      // Quote objects
+      else if (obj == '"' || obj == '\'' || obj == '`') {
+        r = inner ? VimTextObjects::innerQuote(lines, pos, obj)
+                  : VimTextObjects::aroundQuote(lines, pos, obj);
+      }
+      // Bracket objects - handle both opening and closing chars
+      else if (obj == '(' || obj == ')' || obj == 'b') {
+        r = inner ? VimTextObjects::innerBracket(lines, pos, '(', ')')
+                  : VimTextObjects::aroundBracket(lines, pos, '(', ')');
+      } else if (obj == '{' || obj == '}' || obj == 'B') {
+        r = inner ? VimTextObjects::innerBracket(lines, pos, '{', '}')
+                  : VimTextObjects::aroundBracket(lines, pos, '{', '}');
+      } else if (obj == '[' || obj == ']') {
+        r = inner ? VimTextObjects::innerBracket(lines, pos, '[', ']')
+                  : VimTextObjects::aroundBracket(lines, pos, '[', ']');
+      } else if (obj == '<' || obj == '>') {
+        r = inner ? VimTextObjects::innerBracket(lines, pos, '<', '>')
+                  : VimTextObjects::aroundBracket(lines, pos, '<', '>');
+      } else {
+        throw runtime_error("Unknown text object: " + string(1, obj));
+      }
+
+      // Apply operator to range
+      if (r.start != r.end || r.inclusive) {
+        if (op == 'd') {
+          VimEditUtils::deleteRange(lines, r, pos);
+        } else {  // op == 'c'
+          VimEditUtils::deleteRange(lines, r, pos, Mode::Insert);
+          mode = Mode::Insert;
+        }
+      } else if (op == 'c') {
+        // Empty range but still enter insert mode for 'c'
+        mode = Mode::Insert;
+      }
+      return;
     }
   }
 

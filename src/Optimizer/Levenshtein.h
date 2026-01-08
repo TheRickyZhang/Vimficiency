@@ -18,7 +18,11 @@
 class Levenshtein {
 public:
   // Construct with a fixed goal string. The goal is what all queries compare against.
-  explicit Levenshtein(std::string goal);
+  // deletionCost controls the cost of deleting source characters (default 1.0).
+  // Lower values (e.g., 0.1) encourage deletion of "wrong" content while still
+  // accounting for the effort needed. Setting to 0 makes deletions free but may
+  // cause the heuristic to be too optimistic.
+  explicit Levenshtein(std::string goal, double deletionCost = 1.0);
 
   // Compute Levenshtein distance from source to goal.
   // Uses cached DP rows for shared prefixes when available.
@@ -35,11 +39,15 @@ public:
   // Lower = more memory, faster lookups. Higher = less memory, more recomputation.
   void setCacheInterval(size_t interval) { cacheInterval_ = interval; }
 
+  // Compute distance as a double (for fractional deletion costs)
+  double distanceDouble(const std::string& source) const;
+
 private:
   std::string goal_;
-  std::vector<int> baseRow_;  // DP row for empty source string
-  mutable std::unordered_map<size_t, std::vector<int>> prefixCache_;
+  std::vector<double> baseRow_;  // DP row for empty source string (using double for fractional costs)
+  mutable std::unordered_map<size_t, std::vector<double>> prefixCache_;
   size_t cacheInterval_ = 4;
+  double deletionCost_ = 1.0;  // Cost of deleting a source character
 
   // Hash a prefix of the string for cache lookup
   static size_t hashPrefix(const std::string& s, size_t len);

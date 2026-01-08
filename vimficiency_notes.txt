@@ -1,13 +1,18 @@
+TODO additions:
+- Should have toggle between default vim vs neovim bindings. For instance, Y = yy on vim, but y$ on neovim.
+
+Dev stack:
+Ensure EditOptimizer produces correct and relatively complete results
+Add text objects (iw, a[) and basic movement motions to EditOptimizer
+
+Add support for .
+
 - Currently the model can only recommend back default vim bindings, regardless of user mappings. It seems feasible that the user can provide some mappings, and we can adjust the cost model.
 
-- To keep the search quick, we store a minimal state only consisting of a snapshot of contiguous lines and a (row, col) position. 
-
-This means we cannot support the following operations:
+Impossible operations to support:
 - gj, gk, H, M, L, zz (screen-related)
 - Cross-jumps
 
-TODO additions:
-- Should have toggle between default vim vs neovim bindings. For instance, Y = yy on vim, but y$ on neovim.
 
 Maybe:
 minimal register/macro use. Can't ingest current registers, but can process with some default register (ex a) if detecting repetition in search.
@@ -25,8 +30,18 @@ Interesting (maybe?) things that have come up:
 - CMake visibility: public, private, interface
 - When you need same type of space per many function calls, static declaration has downsides over stack: not safe to recursion, worse cache behavior. 
 - Map<T> uses std::less<T> as the comparator by default, which can only take in T. But if we pass std::less<>, which is "transparent", now we can have anything comparable to T, like string vs string_view.
+- Similarly, we can implement transparent std::equals<>, and hash callable, which uses pre-concept check of: "using is_transparent = {whatever}"
+- Other built-in nested type checks:
+  Allocator: is_always_equal, propagate_on_container_{...}
+  Iterator: iterator_category
+  Tag dispatch types, mutex/lock tags, memory order tags
+  Execution policies
+  Pointer traits
+
 - You can't store references in initializer list, but can use a reference wrapper (basically use * as underlying, with & interface) to get around.
 - Difference in the way types are returned depending on if simple and <= 16 bytes: use register vs pass hidden pointer
 - Use a hash function to change long if/else chain to switch case
 - You can use iterator construction for anything as long as value_type convertible to T
 - You need extra {} scope in switch statement to not leak definitions (at underlying jump table, they are not separate blocks)
+- Difference between default stream formatting and to_string(), such as for printing doubles.
+- std::pmr (C++ 17)

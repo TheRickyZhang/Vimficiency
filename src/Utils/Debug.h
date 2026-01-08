@@ -26,11 +26,14 @@ inline void debug([[maybe_unused]] Args&&... args){
     }
 }
 
-inline std::string get_debug_output() {
-    return "-----------------DEBUG------------------\n" + dout().str();
+inline std::string consume_debug_output() {
+  std::string result = "-----------------DEBUG------------------\n" + dout().str();
+  dout().str("");
+  dout().clear();
+  return result;
 }
 
-inline void clear_debug_output() {
-    dout().str("");
-    dout().clear();
-}
+// inline void clear_debug_output() {
+//     dout().str("");
+//     dout().clear();
+// }

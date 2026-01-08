@@ -1,13 +1,9 @@
 #pragma once
 
-#include <functional>
-#include <map>
-#include <string>
-
-#include "KeyboardModel.h"
+#include "Keyboard/StringToKeys.h"
 
 // Edit string to PhysicalKeys mapping (parallel to MotionToKeys)
-using EditToKeys = std::map<std::string, PhysicalKeys, std::less<>>;
+using EditToKeys = StringToKeys;
 
 // =============================================================================
 // Edit Categories - organized by reach/constraint
@@ -75,6 +71,22 @@ extern const EditToKeys LINE_UP; // O
 // requires pos.line < n-1
 extern const EditToKeys LINE_DOWN; // o
 
+// --- Navigation motions (for EditOptimizer) ---
+extern const EditToKeys NAV_VERTICAL;     // j, k
+extern const EditToKeys NAV_HORIZONTAL;   // h, l
+extern const EditToKeys NAV_WORD_FWD;     // w, W, e, E (forward word motions)
+extern const EditToKeys NAV_WORD_BWD;     // b, B, ge, gE (backward word motions)
+extern const EditToKeys NAV_LINE_START;   // 0, ^ (to line start)
+extern const EditToKeys NAV_LINE_END;     // $ (to line end)
+
+// --- Text object edits ---
+extern const EditToKeys TEXT_OBJ_WORD;     // diw, daw, ciw, caw, diW, daW, ciW, caW
+extern const EditToKeys TEXT_OBJ_QUOTE;    // di", da", ci", ca", di', da', ci', ca'
+extern const EditToKeys TEXT_OBJ_PAREN;    // di(, da(, ci(, ca(, dib, dab, cib, cab
+extern const EditToKeys TEXT_OBJ_BRACE;    // di{, da{, ci{, ca{, diB, daB, ciB, caB
+extern const EditToKeys TEXT_OBJ_BRACKET;  // di[, da[, ci[, ca[
+extern const EditToKeys TEXT_OBJ_ANGLE;    // di<, da<, ci<, ca<
+
 } // namespace Normal
 
 // =============================================================================
@@ -107,6 +119,19 @@ extern const EditToKeys OPERATORS;  // d, c, y
 // All supported edit commands
 extern const EditToKeys ALL_EDITS_TO_KEYS;
 
+// =============================================================================
+// Pure Deletion Operations (for EditOptimizer deletion model)
+// =============================================================================
+// These contain ONLY deletion commands - no mode changes, no navigation.
+
+namespace Deletion {
+
+extern const EditToKeys CHAR;       // x, X
+extern const EditToKeys WORD;       // dw, de, db, dge, dW, dE, dB, dgE
+extern const EditToKeys LINE;       // dd, D, d$, d0, d^
+extern const EditToKeys TEXT_OBJ;   // diw, daw, diW, daW
+
+} // namespace Deletion
 
 // Check if a string is an edit
 bool isEdit(std::string_view s);

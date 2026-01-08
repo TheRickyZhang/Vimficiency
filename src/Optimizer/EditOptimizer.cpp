@@ -1,363 +1,475 @@
+// EditOptimizer: A* search for optimal Vim editing sequences
+//
+// Uses A* search over (buffer, position, mode) states to find optimal
+// ways to transform text. The deletion search finds optimal ways to
+// clear buffer from any starting position.
+
 #include "EditOptimizer.h"
 
 #include "EditBoundary.h"
+#include "Editor/Edit.h"
+#include "Editor/NavContext.h"
 #include "Keyboard/CharToKeys.h"
-#include "Keyboard/EditToKeys.h"
 #include "Keyboard/KeyboardModel.h"
-#include "Optimizer/Levenshtein.h"
+#include "Keyboard/MotionToKeys.h"
 #include "State/EditState.h"
-#include "State/PosKey.h"
 #include "State/RunningEffort.h"
 #include "Utils/Debug.h"
 
-#include <numeric>
+#include <queue>
+#include <unordered_map>
+#include <optional>
+#include <climits>
 
 using namespace std;
 
-const double NOT_FOUND = numeric_limits<double>::infinity();
+// =============================================================================
+// Heuristic for A* search
+// =============================================================================
 
-// TODO: actually pass in or don't have it
-double userEffort = 100.0;
-
-double
-EditOptimizer::costToGoal(const Lines &currLines, const Mode &mode,
-                          const Levenshtein &editDistanceCalculator) const {
-  // Slightly prefer normal mode so that pressing <Esc> is encouraged at the
-  // final step
-  double modeCost =
-      mode == Mode::Normal
-          ? 0
-          : config.keyInfo[static_cast<size_t>(Key::Key_Esc)].base_cost;
-  return modeCost + editDistanceCalculator.distance(currLines.flatten());
-}
-
-double
-EditOptimizer::heuristic(const EditState &s,
-                         const Levenshtein &editDistanceCalculator,
-                         const OptimizerParams& params) const {
-  return params.costWeight * s.getEffort() +
-         costToGoal(s.getLines(), s.getMode(), editDistanceCalculator);
-}
-
-template <typename F = void (*)(int, int, int)>
-auto buildPositionIndex(const Lines &lines, F &&onPos = [](int, int, int) {}) {
-  map<PosKey, int> res;
-  int it = 0;
-  for (int i = 0; i < (int)lines.size(); i++) {
-    for (int j = 0; j < lines[i].size(); j++) {
-      onPos(i, j, it);
-      res[PosKey(i, j)] = it++;
-    }
+double EditOptimizer::heuristic(const EditState& s, const OptimizerParams& params) const {
+  // For deletion: total characters remaining + line count + mode penalty
+  double total = 0;
+  for (const auto& line : s.lines) {
+    total += line.size();
   }
-  return res;
+  if (s.lines.size() > 1) {
+    total += s.lines.size() - 1;  // Newlines to delete
+  }
+  if (s.mode != Mode::Insert) {
+    total += 1;  // Need to enter insert mode
+  }
+  return total;
 }
 
-// We only process starting states with targetCol == col
-// This is because:
-// We already established that the precomputing of edits is optimal/necessary
-// Parameterizing on targetCol for exact correctness changes our search space
-// from O(c^2) to O(c^4). Even with strong pruning, this is far too large
-// ****Most importantly****, edit motions are dominated by horizontal
-// movement, all of which reset targetCol anyway, so it doesn't matter (verify
-// this).
-// TODO: for testing, add checks to see if we ever produce an output sequence
-// that is not correct with the result starting from a different targetCol
-EditResult EditOptimizer::optimizeEdit(const Lines &beginLines,
-                                       const Lines &endLines,
+// =============================================================================
+// optimizeEdit - uses deletion search as foundation
+// =============================================================================
+
+EditResult EditOptimizer::optimizeEdit(const Lines& sourceLines,
+                                       const Lines& endLines,
                                        const EditBoundary& boundary,
                                        const optional<OptimizerParams>& paramsOverride) {
-  // Merge defaults with overrides
-  const OptimizerParams params = OptimizerParams::merge(defaultParams, paramsOverride);
-
-  Levenshtein editDistanceCalculator(endLines.flatten());
-
-  int n = beginLines.size();
+  int n = sourceLines.size();
   int m = endLines.size();
-  // Total sum of lines, not including new line chars
-  int x = transform_reduce(beginLines.begin(), beginLines.end(), 0, plus<int>{},
-                           [](const string &s) { return s.size(); });
-  int y = transform_reduce(endLines.begin(), endLines.end(), 0, plus<int>{},
-                           [](const string &s) { return s.size(); });
 
-  // TODO: Implement
-  string flattenedBeginLines = beginLines.flatten();
-  string flattenedEndLines = endLines.flatten();
+  // For now: n = number of starting positions (rows), m columns (last column = m-1)
+  // We store deletion results in adj[row][m-1] for each starting row
+  // Each row can have multiple columns (one per character position)
 
-  debug("=== EditOptimizer::optimizeEdit ===");
-  debug("beginLines:", n, "lines,", x, "chars");
-  for (size_t i = 0; i < beginLines.size(); i++) {
-    debug("  [" + to_string(i) + "] \"" + beginLines[i] + "\"");
+  // Calculate max columns across all source lines
+  int maxCols = 1;
+  for (const auto& line : sourceLines) {
+    maxCols = max(maxCols, (int)line.size());
   }
-  debug("endLines:", m, "lines,", y, "chars");
-  for (size_t i = 0; i < endLines.size(); i++) {
-    debug("  [" + to_string(i) + "] \"" + endLines[i] + "\"");
-  }
-  debug("Result matrix size:", x, "x", y);
+  if (maxCols == 0) maxCols = 1;
 
-  EditResult res(x, y);
+  // Result dimensions: n rows x maxCols columns
+  // adj[r][c] = optimal deletion from position (r, c)
+  EditResult res(n == 0 ? 1 : n, maxCols);
 
-  int totalExplored = 0;
-  int validResultsFound = 0;
-  double leastCostFound = NOT_FOUND;
-
-  // Debug
-  int duplicatedFound = 0;
-  vector<string> duplicatedMessages;
-  // double userEffort = getEffort(userSequence, config);
-  // debug("user effort for sequence", userSequence, "is", userEffort);
-
-  unordered_map<EditStateKey, double, EditStateKeyHash> costMap;
-
-  priority_queue<EditState, vector<EditState>, greater<EditState>> pq;
-
-  // Build position-to-index maps for begin and end lines
-  // Create single SharedLines to share among all initial states
-  SharedLines sharedBeginLines = std::make_shared<const Lines>(beginLines);
-
-  map<PosKey, int> beginPositionToIndex =
-      buildPositionIndex(beginLines, [&](int i, int j, int it) {
-        EditState state(sharedBeginLines, Position(i, j), Mode::Normal,
-                        RunningEffort(), it, 0);
-        pq.push(state);
-        costMap[state.getKey()] = 0;
-      });
-  map<PosKey, int> endPositionToIndex = buildPositionIndex(endLines);
-
-  function<void(EditState &&)> exploreNewState = [this, &pq, &costMap, &endLines, &params](EditState &&newState) {
-    if (newState.getEffort() > userEffort * params.exploreFactor) {
-      return;
-    }
-    // debug("curr:", currentCost, "new:", newCost);
-    double newCost = newState.getCost();
-    const EditStateKey newKey = newState.getKey();
-    auto it = costMap.find(newKey);
-    if (it == costMap.end()) {
-      // In movement optimizer, we do a check for emplacing, but here we do
-      // unconditionally since we only ever want 1 of each state (startIndex encoded in key)
-      costMap.emplace(newKey, newCost);
-      pq.push(std::move(newState));
-    }
-    // Allow for equality for more exploration, mostly in testing.
-    else if (newCost <= it->second) {
-      it->second = newCost;
-      pq.push(std::move(newState));
-    }
-    // else { debug(motion, "is worse"); }
-  };
-
-  while (!pq.empty()) {
-    EditState s = pq.top();
-    pq.pop();
-    const Lines &lines = s.getLines();
-    int n = lines.size();
-    Position pos = s.getPos();
-    Mode mode = s.getMode();
-    double cost = s.getCost();
-    EditStateKey key = s.getKey();
-    int typedIndex = s.getTypedIndex();
-    bool didType = s.getDidType();
-
-    if (++totalExplored > params.maxSearchDepth) {
-      debug("maximum total explored count reached");
-      break;
-    }
-    if (cost > userEffort * params.exploreFactor) {
-      debug("exceeded user explore cost");
-      break;
-    }
-    if (cost > leastCostFound * absoluteExploreFactor) {
-      debug("exceeded absolute explore cost");
-      break;
-    }
-
-    bool isDone = (lines == endLines && mode == Mode::Normal);
-
-    if (isDone) {
-      if(++validResultsFound > params.maxResults) {
-        debug("maximum results found");
-        break;
-      }
-      if(typedIndex != y) {
-        debug("huh this is not expected, typedIndex=", typedIndex, "y=", y);
-      }
-      int i = s.getStartIndex();
-      auto it = endPositionToIndex.find(PosKey(pos));
-      if (it == endPositionToIndex.end()) continue;  // Position not in end buffer
-      int j = it->second;
-      if (j < 0 || j >= res.m) continue;  // Bounds check
-      if (res.adj[i][j].isValid()) {
-        duplicatedFound++;
-        duplicatedMessages.push_back("found " + to_string(i) + "->" +
-                                     to_string(j) + ": " +
-                                     s.getMotionSequence());
-      } else {
-        res.adj[i][j] = Result(s.getSequences(), cost);
-        debug("Result [" + to_string(i) + "][" + to_string(j) + "] = \"" +
-              s.getMotionSequence() + "\" cost=" + to_string(cost));
-      }
-      // Thes first leastCostFound should be minimal, but guard just in case.
-      if(leastCostFound != NOT_FOUND && cost < leastCostFound) {
-        debug("leastCostFound was", leastCostFound, "but found", cost);
-      }
-      leastCostFound = min(leastCostFound, cost);
-    } else {
-      // Prune early if state is outdated. It is guaranteed to exist in the map
-      if (costMap[key] < s.getCost()) {
-        continue;
-      }
-    }
-
-    // TODO: handle count motions. Because contents are very dynamic, and we
-    // don't handle many characters anyway, just brute force search until the
-    // heuristic declines
-
-
-    auto exploreMotion = [&](const EditState &base, const string &motion) {
-      EditState newState = base;
-      newState.updateDidType(false);
-      newState.applySingleMotion(motion, ALL_EDITS_TO_KEYS.at(motion), config);
-      newState.updateCost(heuristic(newState, editDistanceCalculator, params));
-      exploreNewState(std::move(newState));
-    };
-
-    auto exploreMotionWithKnownKeys = [&](const EditState &base, const string &motion, const PhysicalKeys& keys) {
-      EditState newState = base;
-      newState.updateDidType(false);
-      newState.applySingleMotion(motion, keys, config);
-      newState.updateCost(heuristic(newState, editDistanceCalculator, params));
-      exploreNewState(std::move(newState));
-    };
-
-    auto exploreMotionAndIncrementIndex = [&](const EditState &base, const string &motion) {
-      EditState newState = base;
-      newState.updateDidType(true);
-      newState.incrementTypedIndex();
-      newState.applySingleMotion(motion, ALL_EDITS_TO_KEYS.at(motion), config);
-      newState.updateCost(heuristic(newState, editDistanceCalculator, params));
-      exploreNewState(std::move(newState));
-    };
-
-    auto exploreInsertChar = [&](const EditState& base, char c) {
-      EditState newState = base;
-      newState.updateDidType(true);
-      newState.addTypedSingleChar(c, CHAR_TO_KEYS.at(c), config);
-      newState.updateCost(heuristic(newState, editDistanceCalculator, params));
-      exploreNewState(std::move(newState));
-    };
-
-    // Helper: explore all motions in a category if condition is true
-    auto exploreMotionsWithCondition = [&](bool condition, const auto& motions) {
-      if (condition) {
-        for (auto [motion, keys] : motions) {
-          exploreMotionWithKnownKeys(s, motion, keys);
-        }
-      }
-    };
-
-    namespace N = EditCategory::Normal;
-    namespace I = EditCategory::Insert;
-
-    // Per-position safety checking
-    const string& line = lines[pos.line];
-    int col = pos.col;
-    bool lineNonEmpty = !line.empty();
-
-    // Shorthand for boundary checks (already false if line empty via col checks)
-    auto fwdSafe = [&](ForwardEdit e) { return lineNonEmpty && isForwardEditSafe(line, col, boundary, e); };
-    auto bwdSafe = [&](BackwardEdit e) { return lineNonEmpty && isBackwardEditSafe(line, col, boundary, e); };
-
-    // Position checks
-
-    // Additional checks for motions that would be no-ops
-    
-    bool lineNotZero = pos.line > 0;
-    bool lineNotEnd = pos.line < n - 1;
-    bool colNotZero = col > 0;
-    bool colNotEnd = lineNonEmpty && pos.col < (int)line.size() - 1;  // Normal mode: last char
-    bool insertColNotEnd = pos.col < (int)line.size();  // Insert mode: can be at line.size()
-    
-    bool notAtStart = lineNotZero || colNotZero;
-    bool notAtEnd   = lineNotEnd  || colNotEnd;
-    bool insertNotAtEnd = lineNotEnd || insertColNotEnd;  // Insert mode version
-
-    // In insert mode, cursor is BETWEEN characters, so char at cursor is line[col]
-    auto getCharAtCursor = [&](Position p) -> char {
-      if(p.col < (int)lines[p.line].size()) return lines[p.line][p.col];
-      if(p.line < n - 1) return '\n';  // At end of line, next char is newline
-      return '\0';  // At end of buffer
-    };
-
-    if (mode == Mode::Insert) {
-      exploreMotion(s, "<Esc>");
-
-      if (insertColNotEnd) exploreMotion(s, "<Right>");
-      if (insertColNotEnd || lineNotEnd) exploreMotion(s, "<Del>");
-
-      if (!didType && colNotZero) exploreMotion(s, "<Left>");
-      if (!didType && colNotZero) exploreMotion(s, "<BS>");
-
-      exploreMotionsWithCondition(!didType && colNotZero && bwdSafe(BackwardEdit::WORD_TO_START), I::WORD_LEFT);   // <C-w>
-      exploreMotionsWithCondition(!didType && colNotZero && bwdSafe(BackwardEdit::LINE_TO_START), I::LINE_LEFT);   // <C-u>
-
-      exploreMotionsWithCondition(lineNotZero, I::LINE_UP);     // <Up>
-      exploreMotionsWithCondition(lineNotEnd, I::LINE_DOWN); // <Down>
-
-      // Character typing based on goal
-      // We type the next character from endLines at current cursor position
-      if(typedIndex < (int)flattenedEndLines.size()) {
-        // Type next character
-        char c = flattenedEndLines[typedIndex];
-        exploreInsertChar(s, c);
-
-        // Also, if existing character at cursor matches, we can just move right
-        // Note: <Right> can only move within the same line, so only use it for non-newline chars
-        if(insertColNotEnd) {
-          char charAtCursor = getCharAtCursor(pos);
-          if(charAtCursor == c) {
-            exploreMotionAndIncrementIndex(s, "<Right>");
-          }
-        }
-      }
-
-    }
-    else if (mode == Mode::Normal) {
-      exploreMotionsWithCondition(bwdSafe(BackwardEdit::CHAR), N::CHAR_LEFT);            // X (already checks col > 0)
-      exploreMotionsWithCondition(fwdSafe(ForwardEdit::CHAR), N::CHAR_RIGHT);            // x
-
-      exploreMotionsWithCondition(notAtStart && bwdSafe(BackwardEdit::WORD_TO_START), N::WORD_LEFT);           // db
-      exploreMotionsWithCondition(notAtStart && bwdSafe(BackwardEdit::WORD_TO_END), N::WORD_END_LEFT);         // dge
-      exploreMotionsWithCondition(notAtStart && bwdSafe(BackwardEdit::BIG_WORD_TO_START), N::BIG_WORD_LEFT);   // dB
-      exploreMotionsWithCondition(notAtStart && bwdSafe(BackwardEdit::BIG_WORD_TO_END), N::BIG_WORD_END_LEFT); // dgE
-      exploreMotionsWithCondition(colNotZero && bwdSafe(BackwardEdit::LINE_TO_START), N::LINE_LEFT);                 // d0
-
-      exploreMotionsWithCondition(notAtEnd && fwdSafe(ForwardEdit::WORD_TO_START), N::WORD_RIGHT);           // dw
-      exploreMotionsWithCondition(notAtEnd && fwdSafe(ForwardEdit::WORD_TO_END), N::WORD_END_RIGHT);         // de
-      exploreMotionsWithCondition(notAtEnd && fwdSafe(ForwardEdit::BIG_WORD_TO_START), N::BIG_WORD_RIGHT);   // dW
-      exploreMotionsWithCondition(notAtEnd && fwdSafe(ForwardEdit::BIG_WORD_TO_END), N::BIG_WORD_END_RIGHT); // dE
-      exploreMotionsWithCondition(colNotEnd && fwdSafe(ForwardEdit::LINE_TO_END), N::LINE_RIGHT);               // D, d$
-
-      exploreMotionsWithCondition(isFullLineEditSafe(boundary), N::FULL_LINE);           // dd, cc
-
-      // Line navigation (valid even on empty lines)
-      exploreMotionsWithCondition(lineNotZero, N::LINE_UP);
-      exploreMotionsWithCondition(lineNotEnd, N::LINE_DOWN);
-    }
+  // Handle empty source - nothing to delete
+  if (sourceLines.empty()) {
+    res.adj[0][0] = Result("", 0);  // No-op
+    return res;
   }
 
-  // Summary
-  int validResults = 0;
-  for (int i = 0; i < res.n; i++) {
-    for (int j = 0; j < res.m; j++) {
-      if (res.adj[i][j].isValid()) validResults++;
+  // Run deletion search with boundary constraints
+  DeletionResult delResult = optimizeDeletion(sourceLines, boundary);
+
+  // Copy results into EditResult structure
+  for (int r = 0; r < n; r++) {
+    int cols = sourceLines[r].empty() ? 1 : sourceLines[r].size();
+    for (int c = 0; c < cols && c < maxCols; c++) {
+      res.adj[r][c] = delResult.at(r, c);
     }
-  }
-  debug("=== EditOptimizer Summary ===");
-  debug("Total explored:", totalExplored);
-  debug("Valid results:", validResults, "/", res.n * res.m);
-  debug("Duplicates found:", duplicatedFound);
-  if (leastCostFound != NOT_FOUND) {
-    debug("Least cost found:", leastCostFound);
   }
 
   return res;
+}
+
+// =============================================================================
+// Deletion Search - A* to find optimal ways to clear buffer from any position
+// =============================================================================
+
+// Operations to explore in deletion search
+static const vector<string> DELETION_OPS = {
+  // Line operations
+  "dd", "cc", "S",
+  // Word deletions
+  "dw", "dW", "de", "dE", "db", "dB", "dge", "dgE",
+  // Word changes (enters insert mode)
+  "cw", "cW", "ce", "cE", "cb", "cB", "cge", "cgE",
+  // Line-partial operations
+  "D", "d$", "C", "c$", "d0", "c0", "d^", "c^",
+  // Character operations
+  "x", "s",
+  // Text objects
+  "diw", "daw", "diW", "daW",
+  "ciw", "caw", "ciW", "caW",
+  // Navigation (no buffer change, but needed to reach different positions)
+  "j", "k", "h", "l",
+  "w", "W", "b", "B", "e", "E", "ge", "gE",
+  "0", "^", "$",
+};
+
+// Check if state is a goal state for deletion search
+// If boundary has lines above/below, we can only clear to single empty line (can't delete all lines)
+static bool isDeletionGoal(const EditState& s, const EditBoundary& boundary) {
+  // Must be in insert mode
+  if (s.mode != Mode::Insert) return false;
+
+  // If there are lines outside the region, we can only reduce to single empty line
+  bool canDeleteAllLines = !boundary.hasLinesAbove && !boundary.hasLinesBelow;
+
+  if (canDeleteAllLines) {
+    // Can reach truly empty buffer
+    if (s.lines.empty()) return true;
+  }
+
+  // Single empty line is always a valid goal
+  if (s.lines.size() == 1 && s.lines[0].empty()) return true;
+
+  // For partial-line regions, we can't reduce line count (no dd/J allowed),
+  // so goal is "all lines empty" - preserves line structure
+  bool isPartialLineRegion = !boundary.startsAtLineStart || !boundary.endsAtLineEnd;
+  if (isPartialLineRegion && s.lines.size() > 1) {
+    bool allEmpty = true;
+    for (const auto& line : s.lines) {
+      if (!line.empty()) {
+        allEmpty = false;
+        break;
+      }
+    }
+    if (allEmpty) return true;
+  }
+
+  return false;
+}
+
+// Heuristic: total characters remaining in buffer
+static double deletionHeuristic(const EditState& s) {
+  double total = 0;
+  for (const auto& line : s.lines) {
+    total += line.size();
+  }
+  // Add cost for lines (need to delete newlines too)
+  if (s.lines.size() > 1) {
+    total += s.lines.size() - 1;
+  }
+  // Not in insert mode yet - add small cost
+  if (s.mode != Mode::Insert) {
+    total += 1;
+  }
+  return total;
+}
+
+// Map operation string to ForwardEdit enum
+static optional<ForwardEdit> getForwardEditType(const string& op) {
+  if (op == "x") return ForwardEdit::CHAR;
+  if (op == "dw" || op == "cw") return ForwardEdit::WORD_TO_START;
+  if (op == "de" || op == "ce") return ForwardEdit::WORD_TO_END;
+  if (op == "dW" || op == "cW") return ForwardEdit::BIG_WORD_TO_START;
+  if (op == "dE" || op == "cE") return ForwardEdit::BIG_WORD_TO_END;
+  if (op == "D" || op == "C" || op == "d$" || op == "c$") return ForwardEdit::LINE_TO_END;
+  return nullopt;
+}
+
+// Map operation string to BackwardEdit enum
+static optional<BackwardEdit> getBackwardEditType(const string& op) {
+  if (op == "X") return BackwardEdit::CHAR;
+  if (op == "db" || op == "cb") return BackwardEdit::WORD_TO_START;
+  if (op == "dge" || op == "cge") return BackwardEdit::WORD_TO_END;
+  if (op == "dB" || op == "cB") return BackwardEdit::BIG_WORD_TO_START;
+  if (op == "dgE" || op == "cgE") return BackwardEdit::BIG_WORD_TO_END;
+  if (op == "d0" || op == "c0" || op == "d^" || op == "c^") return BackwardEdit::LINE_TO_START;
+  return nullopt;
+}
+
+// Check if operation is valid given boundary constraints
+static bool isOpValidForBoundary(const EditState& s, const string& op, const EditBoundary& boundary) {
+  // Get current line content and cursor position
+  if (s.lines.empty()) return true;  // Empty buffer, any op is fine
+  const string& currentLine = s.lines[s.pos.line];
+  int cursorCol = s.pos.col;
+
+  // Partial-line region detection
+  bool isPartialLineRegion = !boundary.startsAtLineStart || !boundary.endsAtLineEnd;
+  bool isMultiLine = s.lines.size() > 1;
+
+  if (isPartialLineRegion && isMultiLine) {
+    // Block explicit line join operations - these would merge lines in full buffer
+    if (op == "J" || op == "gJ") return false;
+
+    // Block j/k navigation - column offsets differ between lines in partial-line regions.
+    // When k goes from line 1 col 0 to line 0 col 0, in full buffer that's a different
+    // relative position within each line's edit region (or outside it entirely).
+    if (op == "j" || op == "k") return false;
+  }
+
+  // Full-line operations (dd, cc, S)
+  static const vector<string> FULL_LINE_OPS = {"dd", "cc", "S"};
+  bool isFullLineOp = find(FULL_LINE_OPS.begin(), FULL_LINE_OPS.end(), op) != FULL_LINE_OPS.end();
+
+  if (isFullLineOp) {
+    // Use existing isFullLineEditSafe
+    if (!isFullLineEditSafe(boundary)) {
+      return false;  // Would delete content outside edit region
+    }
+
+    // dd-specific constraints for cursor escape
+    if (op == "dd") {
+      bool isLastLine = (s.pos.line == (int)s.lines.size() - 1);
+      if (isLastLine && boundary.hasLinesBelow) {
+        return false;  // Cursor would escape to content below
+      }
+      // Can't dd if it would leave us with 0 lines but there are lines above/below
+      if (s.lines.size() == 1 && (boundary.hasLinesAbove || boundary.hasLinesBelow)) {
+        return false;  // Can't delete the only line if there's surrounding content
+      }
+    }
+    return true;
+  }
+
+  // Forward edit operations - check with isForwardEditSafe
+  auto fwdType = getForwardEditType(op);
+  if (fwdType) {
+    bool isLastLine = (s.pos.line == (int)s.lines.size() - 1);
+    int lineLen = currentLine.size();
+    bool atOrNearLineEnd = (lineLen == 0) || (cursorCol >= lineLen - 1);
+
+    if (*fwdType != ForwardEdit::CHAR && *fwdType != ForwardEdit::LINE_TO_END) {
+      // For partial-line multi-line regions, forward word ops from ANY position
+      // on non-last lines can reach next line (w/e/E cross lines easily)
+      // This would join lines and corrupt the full buffer.
+      if (isPartialLineRegion && isMultiLine && !isLastLine) {
+        return false;
+      }
+      // Block at line end if would wrap to next line (join lines)
+      if (isMultiLine && atOrNearLineEnd && !isLastLine) {
+        return false;
+      }
+      // On last line with endsAtLineEnd=false: block forward word ops near line end
+      // (would escape to content after edit region in full buffer)
+      if (isLastLine && !boundary.endsAtLineEnd && atOrNearLineEnd) {
+        return false;
+      }
+    }
+
+    // WORD_TO_START (dw, cw, dW, cW) includes trailing whitespace after the word.
+    // On last line with endsAtLineEnd=false, this whitespace is OUTSIDE the edit region.
+    // Block these operations entirely on last line for partial-line regions.
+    if (*fwdType == ForwardEdit::WORD_TO_START || *fwdType == ForwardEdit::BIG_WORD_TO_START) {
+      if (isLastLine && !boundary.endsAtLineEnd) {
+        return false;
+      }
+    }
+
+    // CHAR (x) at last column of last line with endsAtLineEnd=false:
+    // After deletion, cursor lands on content OUTSIDE the edit region.
+    // Subsequent operations would affect outside content.
+    if (*fwdType == ForwardEdit::CHAR) {
+      if (isLastLine && !boundary.endsAtLineEnd && atOrNearLineEnd) {
+        return false;
+      }
+    }
+
+    return isForwardEditSafe(currentLine, cursorCol, boundary, *fwdType);
+  }
+
+  // Backward edit operations - check with isBackwardEditSafe
+  auto bwdType = getBackwardEditType(op);
+  if (bwdType) {
+    if (*bwdType != BackwardEdit::CHAR && *bwdType != BackwardEdit::LINE_TO_START) {
+      // For partial-line multi-line regions, backward word ops from ANY position
+      // on non-first lines can reach previous line (ge/b cross lines easily)
+      // This would join lines and corrupt the full buffer.
+      if (isPartialLineRegion && isMultiLine && s.pos.line > 0) {
+        return false;
+      }
+      // Block at line start if would wrap to previous line (join lines)
+      if (isMultiLine && cursorCol == 0 && s.pos.line > 0) {
+        return false;
+      }
+      // On first line with startsAtLineStart=false: block backward word ops from column 0
+      // (would escape to content before edit region in full buffer)
+      bool isFirstLine = (s.pos.line == 0);
+      if (isFirstLine && !boundary.startsAtLineStart && cursorCol == 0) {
+        return false;
+      }
+    }
+    return isBackwardEditSafe(currentLine, cursorCol, boundary, *bwdType);
+  }
+
+  // Text object operations - need careful boundary checking
+  // "inner" (iw, iW) - deletes just the word/WORD
+  // "around" (aw, aW) - deletes word/WORD plus surrounding whitespace
+  //
+  // Key insight from Vim testing:
+  // - ciW on "bb" in "bb x" → " x" (keeps space)
+  // - caW on "bb" in "bb x" → "x" (deletes space too!)
+  //
+  // So "around" text objects are DANGEROUS when boundary is at word edge
+  // because they'll grab whitespace that's outside the edit region.
+
+  // Inner word text objects - safe when boundary is at word edge (not in middle)
+  if (op == "diw" || op == "ciw") {
+    return !boundary.left_in_word && !boundary.right_in_word;
+  }
+  if (op == "diW" || op == "ciW") {
+    return !boundary.left_in_WORD && !boundary.right_in_WORD;
+  }
+
+  // Around word text objects - only safe when boundary cuts through word
+  // (meaning there's no adjacent whitespace to grab outside the region)
+  // For partial-line regions, "around" is almost never safe
+  if (op == "daw" || op == "caw") {
+    // Safe only if BOTH boundaries cut through words (no exposed whitespace)
+    // AND we're at full line boundaries (no adjacent content)
+    if (!boundary.startsAtLineStart || !boundary.endsAtLineEnd) {
+      return false;  // Partial line - around would grab adjacent whitespace
+    }
+    return boundary.left_in_word && boundary.right_in_word;
+  }
+  if (op == "daW" || op == "caW") {
+    if (!boundary.startsAtLineStart || !boundary.endsAtLineEnd) {
+      return false;  // Partial line - around would grab adjacent whitespace
+    }
+    return boundary.left_in_WORD && boundary.right_in_WORD;
+  }
+
+  // 's' (substitute char) is like 'x' then insert
+  if (op == "s") {
+    return isForwardEditSafe(currentLine, cursorCol, boundary, ForwardEdit::CHAR);
+  }
+
+  // Navigation and other operations - generally safe
+  return true;
+}
+
+// Try to apply an operation to a state, return new state if valid
+static optional<EditState> tryApplyOp(const EditState& s, const string& op,
+                                       const Config& config, const NavContext& ctx,
+                                       const EditBoundary& boundary) {
+  // Check boundary constraints before attempting
+  if (!isOpValidForBoundary(s, op, boundary)) {
+    return nullopt;
+  }
+
+  EditState newState = s;
+  try {
+    Edit::applyEdit(newState.lines, newState.pos, newState.mode, ctx, ParsedEdit(op));
+    // Compute cost using ALL_MOTIONS or character-based fallback
+    auto it = ALL_MOTIONS.find(op);
+    if (it != ALL_MOTIONS.end()) {
+      newState.effort.append(it->second, config);
+    } else {
+      // Try character-based cost for unknown ops
+      for (char c : op) {
+        auto cit = CHAR_TO_KEYS.find(c);
+        if (cit != CHAR_TO_KEYS.end()) {
+          newState.effort.append(cit->second, config);
+        }
+      }
+    }
+    newState.seq.push_back(op);
+    return newState;
+  } catch (...) {
+    // Operation invalid in this state
+    return nullopt;
+  }
+}
+
+DeletionResult EditOptimizer::optimizeDeletion(const Lines& source, const EditBoundary& boundary) {
+  int rows = source.size();
+  int maxCols = 0;
+  for (const auto& line : source) {
+    maxCols = max(maxCols, (int)line.size());
+  }
+  if (maxCols == 0) maxCols = 1;  // At least 1 column for empty lines
+
+  DeletionResult result(rows, maxCols);
+  if (source.empty()) {
+    return result;  // Empty source, nothing to do
+  }
+
+  debug("DeletionSearch: hasLinesAbove=", boundary.hasLinesAbove,
+        "hasLinesBelow=", boundary.hasLinesBelow);
+
+  // NavContext for edit operations
+  NavContext ctx(100, 50);  // windowHeight, scrollAmount
+
+  // Priority queue: min-heap by cost
+  priority_queue<EditState, vector<EditState>, greater<EditState>> pq;
+
+  // Visited states: track best cost for each (startIndex, buffer, pos, mode) tuple
+  // Use map of startIndex -> (stateKey -> cost)
+  unordered_map<int, unordered_map<EditStateKey, double, EditStateKeyHash>> visited;
+
+  // Initialize with all starting positions
+  for (int r = 0; r < rows; r++) {
+    int cols = source[r].empty() ? 1 : source[r].size();
+    for (int c = 0; c < cols; c++) {
+      EditState initial;
+      initial.lines = source;
+      initial.pos = Position(r, c);
+      initial.mode = Mode::Normal;
+      initial.startIndex = r * maxCols + c;
+      initial.cost = deletionHeuristic(initial);
+      pq.push(initial);
+    }
+  }
+
+  debug("DeletionSearch: starting with", pq.size(), "positions");
+
+  int expansions = 0;
+  const int maxExpansions = 100000;
+
+  while (!pq.empty() && expansions < maxExpansions) {
+    EditState current = pq.top();
+    pq.pop();
+
+    // Check if already visited with better cost (per startIndex)
+    auto key = current.getKey();
+    auto& perStartVisited = visited[current.startIndex];
+    auto it = perStartVisited.find(key);
+    if (it != perStartVisited.end() && it->second <= current.getEffort(config)) {
+      continue;
+    }
+    perStartVisited[key] = current.getEffort(config);
+    expansions++;
+
+    // Check if goal
+    if (isDeletionGoal(current, boundary)) {
+      int idx = current.startIndex;
+      if (!result.results[idx].isValid() ||
+          current.getEffort(config) < result.results[idx].keyCost) {
+        result.results[idx] = Result(current.getSequenceString(), current.getEffort(config));
+        debug("Found goal for start", idx, ":", current.getSequenceString(),
+              "cost", current.getEffort(config));
+      }
+      continue;  // Don't expand further from goal
+    }
+
+    // Expand: try all operations
+    for (const auto& op : DELETION_OPS) {
+      auto newState = tryApplyOp(current, op, config, ctx, boundary);
+      if (newState) {
+        newState->startIndex = current.startIndex;
+        newState->cost = newState->getEffort(config) + deletionHeuristic(*newState);
+
+        // Only add if not visited with better cost (per startIndex)
+        auto newKey = newState->getKey();
+        auto& perStartVis = visited[newState->startIndex];
+        auto vit = perStartVis.find(newKey);
+        if (vit == perStartVis.end() || vit->second > newState->getEffort(config)) {
+          pq.push(*newState);
+        }
+      }
+    }
+  }
+
+  debug("DeletionSearch: completed after", expansions, "expansions");
+
+  return result;
 }

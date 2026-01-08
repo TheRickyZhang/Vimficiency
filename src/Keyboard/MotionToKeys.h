@@ -1,18 +1,16 @@
 #pragma once
 
-#include <functional>  // for std::less<>
-#include <map>
 #include <string>
 #include <vector>
 
-#include "KeyboardModel.h"
 #include "CharToKeys.h"
 #include "SequenceTokenizer.h"
 #include "Optimizer/BufferIndex.h"  // for CountableMotionPair, LandingType
+#include "Keyboard/StringToKeys.h"
 
 // std::less<> enables transparent comparison - allows lookup with string_view
 // without allocating a temporary std::string
-using MotionToKeys = std::map<std::string, PhysicalKeys, std::less<>>;
+using MotionToKeys = StringToKeys;
 
 // =============================================================================
 // Motion Maps

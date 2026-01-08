@@ -1,11 +1,13 @@
 #pragma once
 
+#include <sstream>
 #include <string>
 #include <ostream>
 #include <vector>
 
 #include "Editor/Position.h"
 #include "State/Sequence.h"
+#include "Utils/StringUtils.h"
 
 struct Result {
   std::vector<Sequence> sequences;
@@ -30,14 +32,20 @@ struct Result {
     return flattenSequences(sequences);
   }
 
+  std::string to_string() {
+    std::ostringstream oss;
+    oss << *this;
+    return oss.str();
+  }
+
   friend std::ostream& operator<<(std::ostream& os, const Result& r) {
     for(size_t i = 0; i < r.sequences.size(); i++) {
       const Sequence& s = r.sequences[i];
       if(i == 0 && s.mode == Mode::Insert) os << "I: ";
       if(i > 0) os << " ";
-      os << s.keys;
+      os << makePrintable(s.keys);
     }
-    os << "(cost: " << r.keyCost << ")";
+    os << " " << r.keyCost;
     return os;
   }
 };
@@ -66,5 +74,16 @@ struct RangeResult {
 
   std::string getSequenceString() const {
     return flattenSequences(sequences);
+  }
+
+  friend std::ostream& operator<<(std::ostream& os, const RangeResult& r) {
+    for(size_t i = 0; i < r.sequences.size(); i++) {
+      const Sequence& s = r.sequences[i];
+      if(i == 0 && s.mode == Mode::Insert) os << "I: ";
+      if(i > 0) os << " ";
+      os << makePrintable(s.keys);
+    }
+    os << " " << r.keyCost << " -> (" << r.endPos.line << "," << r.endPos.col << ")";
+    return os;
   }
 };

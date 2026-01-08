@@ -129,10 +129,9 @@ TEST_F(MovementOptimizerTest, RangeBasic_SameLine) {
   cout << "=== RangeBasic_SameLine ===" << endl;
   cout << "Start: (0, 0), Range: [(0, 5), (0, 10)]" << endl;
   for (const auto& r : results) {
-    cout << "  seq: \"" << r.getSequenceString() << "\", cost: " << r.keyCost
-         << ", endPos: (" << r.endPos.line << ", " << r.endPos.col << ")" << endl;
+    cout << "  " << r << endl;
   }
-  cout << get_debug_output() << endl;
+  cout << consume_debug_output() << endl;
 
   EXPECT_FALSE(results.empty()) << "Should find at least one path to range";
   for (const auto& r : results) {
@@ -153,8 +152,7 @@ TEST_F(MovementOptimizerTest, RangeBasic_MultiLine) {
   cout << "=== RangeBasic_MultiLine ===" << endl;
   cout << "Start: (0, 0), Range: [(1, 0), (2, 5)]" << endl;
   for (const auto& r : results) {
-    cout << "  seq: \"" << r.getSequenceString() << "\", cost: " << r.keyCost
-         << ", endPos: (" << r.endPos.line << ", " << r.endPos.col << ")" << endl;
+    cout << "  " << r << endl;
   }
 
   EXPECT_FALSE(results.empty()) << "Should find at least one path to range";
@@ -177,8 +175,7 @@ TEST_F(MovementOptimizerTest, RangeFromMiddle) {
   cout << "=== RangeFromMiddle ===" << endl;
   cout << "Start: (2, 1), Range: [(4, 0), (4, 2)]" << endl;
   for (const auto& r : results) {
-    cout << "  seq: \"" << r.getSequenceString() << "\", cost: " << r.keyCost
-         << ", endPos: (" << r.endPos.line << ", " << r.endPos.col << ")" << endl;
+    cout << "  " << r << endl;
   }
 
   EXPECT_FALSE(results.empty()) << "Should find at least one path to range";
@@ -197,8 +194,7 @@ TEST_F(MovementOptimizerTest, RangeWithWordMotions) {
   cout << "Line: \"" << lines[0] << "\"" << endl;
   cout << "Start: (0, 0), Range: [(0, 8), (0, 17)]" << endl;
   for (const auto& r : results) {
-    cout << "  seq: \"" << r.getSequenceString() << "\", cost: " << r.keyCost
-         << ", endPos: (" << r.endPos.line << ", " << r.endPos.col << ")" << endl;
+    cout << "  " << r << endl;
   }
 
   EXPECT_FALSE(results.empty()) << "Should find paths using word motions";

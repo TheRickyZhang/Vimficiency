@@ -1,147 +1,99 @@
 #pragma once
 
-#include <bits/stdc++.h>
+#include <ostream>
+#include <sstream>
+#include <vector>
+#include <string>
 
 #include "Editor/Mode.h"
 #include "Editor/Position.h"
-#include "Keyboard/KeyboardModel.h"
 #include "Optimizer/Config.h"
 #include "RunningEffort.h"
-#include "Sequence.h"
 #include "Utils/Lines.h"
 
+// =============================================================================
+// EditStateKey - for visited state tracking in A* search
+// =============================================================================
+
 struct EditStateKey {
-  SharedLines lines;  // Shared pointer for efficient comparison
+  Lines lines;
   int line;
   int col;
   Mode mode;
-  int startIndex;
 
-  EditStateKey(SharedLines lines, int line, int col, Mode mode, int startIndex) :
-    lines(std::move(lines)), line(line), col(col), mode(mode), startIndex(startIndex) {}
+  EditStateKey(const Lines& l, Position p, Mode m = Mode::Normal)
+      : lines(l), line(p.line), col(p.col), mode(m) {}
 
-  bool operator==(const EditStateKey &other) const {
-    // Fast path: same pointer means same content
-    if (lines == other.lines) {
-      return line == other.line && col == other.col &&
-             mode == other.mode && startIndex == other.startIndex;
-    }
-    // Deep compare only if pointers differ
-    return *lines == *other.lines && line == other.line && col == other.col &&
-           mode == other.mode && startIndex == other.startIndex;
+  bool operator==(const EditStateKey& other) const {
+    return line == other.line && col == other.col
+        && mode == other.mode && lines == other.lines;
   }
 };
 
-// Hash by pointer for O(1), deep equality handles collisions
 struct EditStateKeyHash {
-  size_t operator()(const EditStateKey& key) const {
+  size_t operator()(const EditStateKey& k) const {
     size_t h = 0;
-    // Hash the pointer address - fast O(1)
-    combine(h, reinterpret_cast<uintptr_t>(key.lines.get()));
-    combine(h, key.line);
-    combine(h, key.col);
-    combine(h, static_cast<int>(key.mode));
-    combine(h, key.startIndex);
+    h ^= std::hash<int>{}(k.line) + 0x9e3779b9 + (h << 6) + (h >> 2);
+    h ^= std::hash<int>{}(k.col) + 0x9e3779b9 + (h << 6) + (h >> 2);
+    h ^= std::hash<int>{}(static_cast<int>(k.mode)) + 0x9e3779b9 + (h << 6) + (h >> 2);
+    // Hash first line content for differentiation
+    if (!k.lines.empty()) {
+      h ^= std::hash<std::string>{}(k.lines[0]) + 0x9e3779b9 + (h << 6) + (h >> 2);
+    }
+    h ^= std::hash<size_t>{}(k.lines.size()) + 0x9e3779b9 + (h << 6) + (h >> 2);
     return h;
   }
-
-private:
-  template<typename T>
-  static void combine(size_t& h, const T& v) {
-    h ^= std::hash<T>{}(v) + 0x9e3779b9 + (h << 6) + (h >> 2);
-  }
 };
 
-// Entire simulated editor state (for now, only position+mode+effort).
-// Uses SharedLines for copy-on-write: motions share buffer (O(1)),
-// edits trigger copy (O(n)).
-class EditState {
-  // Visible, core editor state
-  SharedLines lines;  // Shared for efficient motion exploration
-  Position pos;
-  Mode mode;
+// =============================================================================
+// EditState - A* search state for edit optimization
+// =============================================================================
 
-  // Progress so far
-  int startIndex;
-  int typedIndex;
-  bool didType = false;
-  // Command sequences grouped by mode (for display output)
-  std::vector<Sequence> sequences;
+struct EditState {
+  Lines lines;              // Current buffer content
+  Position pos;             // Cursor position
+  Mode mode = Mode::Normal; // Current editing mode
+  RunningEffort effort;     // Typing effort tracker
+  std::vector<std::string> seq;  // Sequence of operations taken
+  int startIndex;           // Which starting position this search is for
+  double cost;              // Priority = effort + heuristic
 
-  // Necessary for ranking states
-  double effort;
-  double cost; // = runningEffort.calculate(motionSequence) + editDistance(state)
+  // For priority queue ordering (min-heap)
+  bool operator>(const EditState& other) const {
+    return cost > other.cost;
+  }
 
-  // Internal mechanism
-  RunningEffort runningEffort;
-
-public:
-  // Construct from existing SharedLines (shares pointer)
-  EditState(SharedLines lines, Position pos, Mode mode,
-            RunningEffort runningEffort, int startIndex, int typedIndex,
-            double effort = 0.0, double cost = 0.0)
-      : lines(std::move(lines)), pos(pos), mode(mode),
-        runningEffort(runningEffort), startIndex(startIndex), typedIndex(typedIndex),
-        effort(effort), cost(cost) {}
-
-  // Construct from Lines (creates new shared pointer)
-  EditState(const Lines &linesVal, Position pos, Mode mode,
-            RunningEffort runningEffort, int startIndex, int typedIndex,
-            double effort = 0.0, double cost = 0.0)
-      : lines(std::make_shared<const Lines>(linesVal)), pos(pos), mode(mode), typedIndex(typedIndex),
-        runningEffort(runningEffort), startIndex(startIndex),
-        effort(effort), cost(cost) {}
-
-  bool operator<(const EditState &other) const { return cost < other.cost; }
-  bool operator>(const EditState &other) const { return cost > other.cost; }
+  bool operator<(const EditState& other) const {
+    return cost < other.cost;
+  }
 
   EditStateKey getKey() const {
-    return EditStateKey(lines, pos.line, pos.col, mode, startIndex);
+    return EditStateKey(lines, pos, mode);
   }
 
-  // Returns const reference to avoid copying
-  const Lines& getLines() const { return *lines; }
-
-  // Returns the shared pointer (for sharing with child states)
-  SharedLines getSharedLines() const { return lines; }
-
-  Position getPos() const { return pos; }
-  void setPos(const Position& newPos) { pos = newPos; }
-  Mode getMode() const { return mode; }
-
-  // Get sequences grouped by mode
-  const std::vector<Sequence>& getSequences() const { return sequences; }
-
-  // Get flattened string representation
-  std::string getMotionSequence() const { return flattenSequences(sequences); }
-
-  int getStartIndex() const { return startIndex; }
-  double getEffort() const { return effort; }
-  double getCost() const { return cost; }
-  RunningEffort getRunningEffort() const { return runningEffort; }
-  int getTypedIndex() const { return typedIndex; }
-  bool getDidType() const { return didType; }
-
-  // Append to the appropriate mode segment (creates new segment if mode changed)
-  void appendSequence(const std::string& s, const PhysicalKeys& keys, const Config& config);
-
-  void updateCost(double newCost);
-  void updateDidType(bool newDidType);
-  void incrementTypedIndex();
-
-  // Motion: modifies pos/mode, shares lines (O(1))
-  void applySingleMotion(const std::string& motion, const PhysicalKeys& keys, const Config& config);
-
-  void addTypedSingleChar(char c, const PhysicalKeys& keys, const Config& config);
-
-  // Edit: copies lines if needed (copy-on-write), then mutates
-  // Returns mutable reference to lines for mutation
-  Lines& copyLinesForMutation() {
-    auto mutableLines = std::make_shared<Lines>(*lines);
-    lines = mutableLines;
-    return const_cast<Lines&>(*lines);
+  // Get effort value using config
+  double getEffort(const Config& config) const {
+    return effort.getEffort(config);
   }
 
-  // friend std::ostream&(std::ostream& os, const EditState& editState) {
-  // }
+  // Build sequence string from operations
+  std::string getSequenceString() const {
+    std::string result;
+    for (const auto& op : seq) {
+      result += op;
+    }
+    return result;
+  }
+
+  std::string toString() const {
+    std::ostringstream oss;
+    oss << *this;
+    return oss.str();
+  }
+
+  friend std::ostream& operator<<(std::ostream& os, const EditState& state) {
+    os << state.getSequenceString() << " (effort=" << state.cost << ")";
+    return os;
+  }
 };
+

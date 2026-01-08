@@ -1,10 +1,10 @@
 #pragma once
 
-#include <map>
+#include <unordered_map>
 #include "KeyboardModel.h"
 
 // Single-character to PhysicalKeys mapping
-using CharToKeys = std::map<char, PhysicalKeys>;
+using CharToKeys = std::unordered_map<char, PhysicalKeys>;
 
 // All printable characters mapped to their key sequences
 extern const CharToKeys CHAR_TO_KEYS;
