@@ -15,7 +15,7 @@ using namespace std;
 namespace Edit {
 
 // Compile-time string hash for switch statements.
-// Uses M=131 (prime > 126) to guarantee collision-free hashing for all strings.
+// Uses M=131 (prime > 126, total chars supported) to guarantee collision-free hashing for all strings.
 // Math: hash(s) = s[0]*M^(n-1) + s[1]*M^(n-2) + ... + s[n-1]
 // This is bijective (unique hash per string) until 64-bit overflow at ~10 chars.
 constexpr size_t hash(string_view s) {

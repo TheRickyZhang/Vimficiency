@@ -6,9 +6,18 @@ FetchContent_Declare(
   GIT_TAG        v1.17.0
 )
 
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_Declare(
+  msgpack-c
+  GIT_REPOSITORY https://github.com/msgpack/msgpack-c.git
+  GIT_TAG        cpp-7.0.0
+)
 
-FetchContent_MakeAvailable(googletest)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+set(MSGPACK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(MSGPACK_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(MSGPACK_USE_BOOST OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(googletest msgpack-c)
 
 add_executable(vimficiency_tests
   Actions/CountMotionsTest.cpp
@@ -24,6 +33,7 @@ add_executable(vimficiency_tests
   Optimizer/MovementOptimizerTest.cpp
   Reach/BackwardReachTest.cpp
   Reach/ForwardReachTest.cpp
+  Utils/NeovimOracle.cpp
   Utils/TestUtils.cpp
   Temp.cpp
 )
@@ -37,6 +47,7 @@ target_link_libraries(vimficiency_tests
   PRIVATE
     vimficiency_core
     GTest::gtest_main
+    msgpack-cxx
 )
 
 include(GoogleTest)

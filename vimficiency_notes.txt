@@ -2,8 +2,8 @@ TODO additions:
 - Should have toggle between default vim vs neovim bindings. For instance, Y = yy on vim, but y$ on neovim.
 
 Dev stack:
-Ensure EditOptimizer produces correct and relatively complete results
-Add text objects (iw, a[) and basic movement motions to EditOptimizer
+See insert_mode_plan. Got refactored.
+
 
 Add support for .
 

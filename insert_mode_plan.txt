@@ -8,7 +8,7 @@ In this new model, we must go into insert mode at least once (typically in the l
 
 Level 1:
 x, X, delete + {w, e, b, ge}, dd -> delete all lines
-Level 2: How to reuse lines; can transform one section, then move down to next (DP?)
+Level 2: How to reuse lines; can transform one section, then move down to next?
 Level 3: When to use o/O to save enter presses
 Level 4: Deleting in insert mode <C-w>, <C-u>
 Level 5: Dot operator
