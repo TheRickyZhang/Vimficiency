@@ -1,119 +1,140 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 // =============================================================================
 // EditBoundary: Pre-computed boundary info for constrained edit operations
 // =============================================================================
 //
-// Computed ONCE from original text when setting up an edit region.
-// Used during A* search for per-position safety checking.
+// Stores the CharType of characters adjacent to the edit region boundaries.
+// During A* search, we check if a motion would "cross" the boundary by
+// looking up (lastChar/firstChar, boundaryChar) in motion-specific tables.
 //
 // Workflow:
 // 1. Compute EditBoundary from original text (once per edit region)
-// 2. During A* search, at each state:
-//    - Call isForwardEditSafe/isBackwardEditSafe with current content + position
-//    - Only explore edits that return true (uses hierarchy to short-circuit)
-// 3. Motion application is boundary-unaware (just applies the edit)
+// 2. During A* search, compute lastChar/firstChar from current content
+// 3. Use canXxxCross() to determine if motion would escape the boundary
 //
-// Hierarchy: CHAR < WORD < BIG_WORD < LINE
-// - If boundary doesn't cut through word, ALL word-level edits are safe
-// - If boundary doesn't cut through WORD, ALL WORD-level edits are safe
-// - This allows early returns without computing word positions in content
+// See data/EditBoundaryLogic.typ for the complete crossing logic tables.
 //
 // =============================================================================
 
-// Forward edit categories (char < word < WORD < line hierarchy)
-// "TO_START" = cursor-to-word-start motions (w, W)
-// "TO_END" = cursor-to-word-end motions (e, E)
+// Character classification for boundary crossing logic
+enum class CharType : uint8_t {
+    Keyword,     // alphanumeric + underscore (vim 'iskeyword')
+    Whitespace,  // space, tab, etc.
+    Symbol,      // punctuation and other non-word chars
+    Newline      // at line boundary (nothing beyond)
+};
+
+// =============================================================================
+// Edit operation categories (used by EditOptimizer for operation dispatch)
+// =============================================================================
+
+// Forward edit categories
 enum class ForwardEdit {
-    CHAR,           // x - delete character at cursor
-    WORD_TO_START,  // dw, cw - delete to next word start
-    WORD_TO_END,    // de, ce - delete to word end
+    CHAR,              // x - delete character at cursor
+    WORD_TO_START,     // dw, cw - delete to next word start
+    WORD_TO_END,       // de, ce - delete to word end
     BIG_WORD_TO_START, // dW, cW - delete to next WORD start
     BIG_WORD_TO_END,   // dE, cE - delete to WORD end
-    LINE_TO_END     // D, C - delete to end of line
+    LINE_TO_END        // D, C - delete to end of line
 };
 
-// Backward edit categories (char < word < WORD < line hierarchy)
+// Backward edit categories
 enum class BackwardEdit {
-    CHAR,           // X - delete char before cursor
-    WORD_TO_START,  // db, cb - delete to previous word start
-    WORD_TO_END,    // dge, cge - delete to previous word end
+    CHAR,              // X - delete char before cursor
+    WORD_TO_START,     // db, cb - delete to previous word start
+    WORD_TO_END,       // dge, cge - delete to previous word end
     BIG_WORD_TO_START, // dB, cB - delete to previous WORD start
     BIG_WORD_TO_END,   // dgE, cgE - delete to previous WORD end
-    LINE_TO_START   // d0, d^ - delete to line start
+    LINE_TO_START      // d0, d^ - delete to line start
 };
 
+// Get CharType for a character
+CharType getCharType(char c);
+
+// =============================================================================
+// EditBoundary struct
+// =============================================================================
+
 struct EditBoundary {
-    // Word/WORD boundary flags (does boundary cut through a word/WORD?)
-    bool right_in_word = false;   // Right boundary cuts through a word
-    bool right_in_WORD = false;   // Right boundary cuts through a WORD
-    bool left_in_word = false;    // Left boundary cuts through a word
-    bool left_in_WORD = false;    // Left boundary cuts through a WORD
+    // Boundary character types (what's OUTSIDE the edit region)
+    CharType rightBoundaryChar = CharType::Newline;  // char after edit region end
+    CharType leftBoundaryChar = CharType::Newline;   // char before edit region start
 
-    // Line boundary flags (for line-level operations)
-    // Default to true (full-line edit) - partial-line edits must be explicitly marked
-    bool startsAtLineStart = true;   // Edit region starts at column 0
-    bool endsAtLineEnd = true;       // Edit region ends at EOL
+    // Context flags for line-level operations (dd, cc)
+    bool hasLinesAbove = false;  // lines exist above edit region
+    bool hasLinesBelow = false;  // lines exist below edit region
 
-    // Context flags: are there lines outside the edit region?
-    // These affect cursor behavior after line deletion (dd).
-    // - hasLinesAbove: if true, can't assume dd on first line moves cursor down
-    //   (it would - but first line deletion might not be what we want)
-    // - hasLinesBelow: if true, dd on LAST line of region leaves cursor on
-    //   same line NUMBER, which is now content OUTSIDE the region (invalid)
-    bool hasLinesAbove = false;
-    bool hasLinesBelow = false;
+    // Convenience checks
+    bool atLineEnd() const { return rightBoundaryChar == CharType::Newline; }
+    bool atLineStart() const { return leftBoundaryChar == CharType::Newline; }
 };
 
 // =============================================================================
-// Boundary Analysis (call ONCE per edit region)
+// Boundary crossing checks
+// =============================================================================
+//
+// These determine if a motion CAN cross the boundary, based on:
+// - lastChar/firstChar: CharType of the last/first char in current edit content
+// - boundaryChar: CharType stored in EditBoundary (what's outside)
+//
+// Returns true if motion WOULD cross (unsafe), false if motion is safe.
+//
+// Forward motions use (lastChar, rightBoundaryChar)
+// Backward motions use (firstChar, leftBoundaryChar)
+
+// Forward word motions
+bool canDwCross(CharType lastChar, CharType boundaryChar);   // dw, cw
+bool canDeCross(CharType lastChar, CharType boundaryChar);   // de, ce
+
+// Forward WORD motions
+bool canDWCross(CharType lastChar, CharType boundaryChar);   // dW, cW
+bool canDECross(CharType lastChar, CharType boundaryChar);   // dE, cE
+
+// Backward word motions
+bool canDbCross(CharType firstChar, CharType boundaryChar);  // db, cb
+bool canDgeCross(CharType firstChar, CharType boundaryChar); // dge, cge
+
+// Backward WORD motions
+bool canDBCross(CharType firstChar, CharType boundaryChar);  // dB, cB
+bool canDgECross(CharType firstChar, CharType boundaryChar); // dgE, cgE
+
+// =============================================================================
+// Line-level operations
+// =============================================================================
+
+// Full line edit (dd, cc, S) - safe only if edit spans entire line(s)
+bool isFullLineEditSafe(const EditBoundary& boundary);
+
+// =============================================================================
+// Boundary construction
 // =============================================================================
 
 // Analyze boundary from original full line.
 // - fullLine: the complete original line
 // - editStart: first column of edit region (inclusive)
 // - editEnd: last column of edit region (inclusive)
-// - startsAtLineStart: true if editStart == 0
-// - endsAtLineEnd: true if editEnd == line.size() - 1
 EditBoundary analyzeEditBoundary(
     const std::string& fullLine,
     int editStart,
-    int editEnd,
-    bool startsAtLineStart,
-    bool endsAtLineEnd);
+    int editEnd);
 
 // =============================================================================
-// Per-Position Safety Checking (call during A* search)
+// TEMPORARY: Legacy API stubs (to be removed when EditOptimizer is updated)
 // =============================================================================
-//
-// These check if a specific edit at a specific position is safe.
-// - editContent: CURRENT content of edit region (may differ from original)
-// - cursorCol: cursor column within editContent (0-indexed)
-// - boundary: EditBoundary computed once from original text
-// - edit: the edit category (enum, not string)
-//
-// EFFICIENCY: Uses hierarchy to short-circuit.
-// - If boundary doesn't cut through word, word-level checks return true immediately
-// - If boundary doesn't cut through WORD, WORD-level checks return true immediately
-// - Only computes word positions in content when boundary flags require it
-//
-// Returns true if the edit is safe (won't cross boundary).
 
-// Forward edits: x, dw, de, dW, dE, D
+// TODO: Remove these once EditOptimizer uses the new canXxxCross() functions
 bool isForwardEditSafe(
     const std::string& editContent,
     int cursorCol,
     const EditBoundary& boundary,
     ForwardEdit edit);
 
-// Backward edits: X, db, dge, dB, dgE, d0, d^
 bool isBackwardEditSafe(
     const std::string& editContent,
     int cursorCol,
     const EditBoundary& boundary,
     BackwardEdit edit);
-
-// Full line edits: dd, cc
-bool isFullLineEditSafe(const EditBoundary& boundary);

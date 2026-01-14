@@ -453,8 +453,8 @@ TEST_F(EditOptimizerTest, FullBuffer_Linewise) {
   EditBoundary boundary;
   boundary.hasLinesAbove = true;
   boundary.hasLinesBelow = true;
-  boundary.startsAtLineStart = true;
-  boundary.endsAtLineEnd = true;
+  boundary.leftBoundaryChar = CharType::Newline;   // at line start
+  boundary.rightBoundaryChar = CharType::Newline;  // at line end
 
   EditOptimizer opt = makeOptimizer();
   DeletionResult res = opt.optimizeDeletion(editRegion, boundary);
@@ -529,8 +529,8 @@ TEST_F(EditOptimizerTest, FullBuffer_SpaceSeparated) {
   EditBoundary boundary;
   boundary.hasLinesAbove = false;
   boundary.hasLinesBelow = false;
-  boundary.startsAtLineStart = false;  // Starts at column 2, not 0
-  boundary.endsAtLineEnd = false;      // Ends at column 1, not EOL
+  boundary.leftBoundaryChar = CharType::Whitespace;   // "x " before edit region
+  boundary.rightBoundaryChar = CharType::Whitespace;  // " x" after edit region
 
   EditOptimizer opt = makeOptimizer();
   DeletionResult res = opt.optimizeDeletion(editRegion, boundary);
@@ -540,7 +540,7 @@ TEST_F(EditOptimizerTest, FullBuffer_SpaceSeparated) {
   cout << "=== Space-separated boundary test ===" << endl;
   cout << "Full buffer: " << fullBuffer << endl;
   cout << "Edit region: " << editRegion << endl;
-  cout << "startsAtLineStart=false, endsAtLineEnd=false -> line ops blocked" << endl;
+  cout << "leftBoundaryChar=Whitespace, rightBoundaryChar=Whitespace -> line ops blocked" << endl;
 
   // Verify NO line operations are used (they'd delete the x's)
   // Full line: dd, cc, S
@@ -620,8 +620,8 @@ TEST_F(EditOptimizerTest, FullBuffer_Linewise_VerifyNoEscape) {
   EditBoundary boundary;
   boundary.hasLinesAbove = true;
   boundary.hasLinesBelow = true;
-  boundary.startsAtLineStart = true;
-  boundary.endsAtLineEnd = true;
+  boundary.leftBoundaryChar = CharType::Newline;   // at line start
+  boundary.rightBoundaryChar = CharType::Newline;  // at line end
 
   EditOptimizer opt = makeOptimizer();
   DeletionResult res = opt.optimizeDeletion(editRegion, boundary);

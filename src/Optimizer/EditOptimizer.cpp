@@ -132,7 +132,7 @@ static bool isDeletionGoal(const EditState& s, const EditBoundary& boundary) {
 
   // For partial-line regions, we can't reduce line count (no dd/J allowed),
   // so goal is "all lines empty" - preserves line structure
-  bool isPartialLineRegion = !boundary.startsAtLineStart || !boundary.endsAtLineEnd;
+  bool isPartialLineRegion = !boundary.atLineStart() || !boundary.atLineEnd();
   if (isPartialLineRegion && s.lines.size() > 1) {
     bool allEmpty = true;
     for (const auto& line : s.lines) {
@@ -194,7 +194,7 @@ static bool isOpValidForBoundary(const EditState& s, const string& op, const Edi
   int cursorCol = s.pos.col;
 
   // Partial-line region detection
-  bool isPartialLineRegion = !boundary.startsAtLineStart || !boundary.endsAtLineEnd;
+  bool isPartialLineRegion = !boundary.atLineStart() || !boundary.atLineEnd();
   bool isMultiLine = s.lines.size() > 1;
 
   if (isPartialLineRegion && isMultiLine) {
@@ -251,7 +251,7 @@ static bool isOpValidForBoundary(const EditState& s, const string& op, const Edi
       }
       // On last line with endsAtLineEnd=false: block forward word ops near line end
       // (would escape to content after edit region in full buffer)
-      if (isLastLine && !boundary.endsAtLineEnd && atOrNearLineEnd) {
+      if (isLastLine && !boundary.atLineEnd() && atOrNearLineEnd) {
         return false;
       }
     }
@@ -260,7 +260,7 @@ static bool isOpValidForBoundary(const EditState& s, const string& op, const Edi
     // On last line with endsAtLineEnd=false, this whitespace is OUTSIDE the edit region.
     // Block these operations entirely on last line for partial-line regions.
     if (*fwdType == ForwardEdit::WORD_TO_START || *fwdType == ForwardEdit::BIG_WORD_TO_START) {
-      if (isLastLine && !boundary.endsAtLineEnd) {
+      if (isLastLine && !boundary.atLineEnd()) {
         return false;
       }
     }
@@ -269,7 +269,7 @@ static bool isOpValidForBoundary(const EditState& s, const string& op, const Edi
     // After deletion, cursor lands on content OUTSIDE the edit region.
     // Subsequent operations would affect outside content.
     if (*fwdType == ForwardEdit::CHAR) {
-      if (isLastLine && !boundary.endsAtLineEnd && atOrNearLineEnd) {
+      if (isLastLine && !boundary.atLineEnd() && atOrNearLineEnd) {
         return false;
       }
     }
@@ -294,7 +294,7 @@ static bool isOpValidForBoundary(const EditState& s, const string& op, const Edi
       // On first line with startsAtLineStart=false: block backward word ops from column 0
       // (would escape to content before edit region in full buffer)
       bool isFirstLine = (s.pos.line == 0);
-      if (isFirstLine && !boundary.startsAtLineStart && cursorCol == 0) {
+      if (isFirstLine && !boundary.atLineStart() && cursorCol == 0) {
         return false;
       }
     }
@@ -312,30 +312,20 @@ static bool isOpValidForBoundary(const EditState& s, const string& op, const Edi
   // So "around" text objects are DANGEROUS when boundary is at word edge
   // because they'll grab whitespace that's outside the edit region.
 
-  // Inner word text objects - safe when boundary is at word edge (not in middle)
-  if (op == "diw" || op == "ciw") {
-    return !boundary.left_in_word && !boundary.right_in_word;
-  }
-  if (op == "diW" || op == "ciW") {
-    return !boundary.left_in_WORD && !boundary.right_in_WORD;
+  // TODO: Text object boundary checking needs rework with new CharType model.
+  // The old model stored whether boundary "cut through" a word (both sides).
+  // The new model only stores what's OUTSIDE the boundary.
+  // For now, only allow text objects when we have full line boundaries.
+
+  if (op == "diw" || op == "ciw" || op == "diW" || op == "ciW") {
+    // Inner text objects: safe only at full line boundaries for now
+    return boundary.atLineStart() && boundary.atLineEnd();
   }
 
-  // Around word text objects - only safe when boundary cuts through word
-  // (meaning there's no adjacent whitespace to grab outside the region)
-  // For partial-line regions, "around" is almost never safe
-  if (op == "daw" || op == "caw") {
-    // Safe only if BOTH boundaries cut through words (no exposed whitespace)
-    // AND we're at full line boundaries (no adjacent content)
-    if (!boundary.startsAtLineStart || !boundary.endsAtLineEnd) {
-      return false;  // Partial line - around would grab adjacent whitespace
-    }
-    return boundary.left_in_word && boundary.right_in_word;
-  }
-  if (op == "daW" || op == "caW") {
-    if (!boundary.startsAtLineStart || !boundary.endsAtLineEnd) {
-      return false;  // Partial line - around would grab adjacent whitespace
-    }
-    return boundary.left_in_WORD && boundary.right_in_WORD;
+  if (op == "daw" || op == "caw" || op == "daW" || op == "caW") {
+    // Around text objects: very risky, disable for partial lines
+    // TODO: Determine proper safety conditions with CharType model
+    return boundary.atLineStart() && boundary.atLineEnd();
   }
 
   // 's' (substitute char) is like 'x' then insert

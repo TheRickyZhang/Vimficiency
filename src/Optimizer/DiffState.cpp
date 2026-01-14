@@ -221,47 +221,28 @@ static EditBoundary computeEditBoundary(
 
   EditBoundary boundary;
 
-  // Line boundary flags
-  boundary.startsAtLineStart = (posBegin.col == 0);
-  bool endsAtLineEnd = false;
-  if (posEnd.line < static_cast<int>(origLines.size())) {
-    endsAtLineEnd = (posEnd.col >= static_cast<int>(origLines[posEnd.line].size()) - 1);
-  }
-  boundary.endsAtLineEnd = endsAtLineEnd;
-
-  // For word/WORD boundary analysis, we need to check the characters
-  // adjacent to the edit region in the original buffer
-
-  // Check left boundary (character before posBegin)
+  // Left boundary: what's before the edit region?
   if (posBegin.col > 0 && posBegin.line < static_cast<int>(origLines.size())) {
     const string& line = origLines[posBegin.line];
-    int leftPos = posBegin.col - 1;
-    int rightPos = posBegin.col;
-    if (rightPos < static_cast<int>(line.size())) {
-      char leftChar = line[leftPos];
-      char rightChar = line[rightPos];
-      // Check if they're in same word/WORD
-      bool leftIsWord = isalnum(leftChar) || leftChar == '_';
-      bool rightIsWord = isalnum(rightChar) || rightChar == '_';
-      boundary.left_in_word = leftIsWord && rightIsWord;
-      boundary.left_in_WORD = !isspace(leftChar) && !isspace(rightChar);
-    }
+    boundary.leftBoundaryChar = getCharType(line[posBegin.col - 1]);
+  } else {
+    boundary.leftBoundaryChar = CharType::Newline;  // at line start
   }
 
-  // Check right boundary (character after posEnd)
+  // Right boundary: what's after the edit region?
   if (posEnd.line < static_cast<int>(origLines.size())) {
     const string& line = origLines[posEnd.line];
-    int leftPos = posEnd.col;
-    int rightPos = posEnd.col + 1;
-    if (leftPos >= 0 && rightPos < static_cast<int>(line.size())) {
-      char leftChar = line[leftPos];
-      char rightChar = line[rightPos];
-      bool leftIsWord = isalnum(leftChar) || leftChar == '_';
-      bool rightIsWord = isalnum(rightChar) || rightChar == '_';
-      boundary.right_in_word = leftIsWord && rightIsWord;
-      boundary.right_in_WORD = !isspace(leftChar) && !isspace(rightChar);
+    int nextCol = posEnd.col + 1;
+    if (nextCol < static_cast<int>(line.size())) {
+      boundary.rightBoundaryChar = getCharType(line[nextCol]);
+    } else {
+      boundary.rightBoundaryChar = CharType::Newline;  // at line end
     }
+  } else {
+    boundary.rightBoundaryChar = CharType::Newline;
   }
+
+  // hasLinesAbove/hasLinesBelow: set by caller if needed for multi-line context
 
   return boundary;
 }

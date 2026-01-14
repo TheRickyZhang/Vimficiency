@@ -1,381 +1,241 @@
 #include "EditBoundary.h"
 #include "VimCore/VimUtils.h"
-#include "Utils/Debug.h"
-
-using namespace std;
 
 // =============================================================================
-// Helper Functions
+// Character classification
 // =============================================================================
 
-namespace {
-
-// Check if two adjacent positions are in the same word
-bool areInSameWord(const string& line, int pos1, int pos2) {
-    if (pos1 < 0 || pos2 < 0 || pos1 >= (int)line.size() || pos2 >= (int)line.size()) {
-        return false;
-    }
-    char c1 = line[pos1];
-    char c2 = line[pos2];
-
-    if (VimUtils::isBlank(c1) || VimUtils::isBlank(c2)) return false;
-
-    bool c1IsWordChar = VimUtils::isSmallWordChar(c1);
-    bool c2IsWordChar = VimUtils::isSmallWordChar(c2);
-
-    return c1IsWordChar == c2IsWordChar;
+CharType getCharType(char c) {
+    if (VimUtils::isSmallWordChar(c)) return CharType::Keyword;
+    if (VimUtils::isBlank(c)) return CharType::Whitespace;
+    return CharType::Symbol;
 }
-
-// Check if two adjacent positions are in the same WORD
-bool areInSameWORD(const string& line, int pos1, int pos2) {
-    if (pos1 < 0 || pos2 < 0 || pos1 >= (int)line.size() || pos2 >= (int)line.size()) {
-        return false;
-    }
-    return !VimUtils::isBlank(line[pos1]) && !VimUtils::isBlank(line[pos2]);
-}
-
-// Find start of word containing position
-int findWordStart(const string& line, int pos) {
-    if (pos < 0 || pos >= (int)line.size()) return pos;
-    if (VimUtils::isBlank(line[pos])) return pos;
-
-    int i = pos;
-    if (VimUtils::isSmallWordChar(line[i])) {
-        while (i > 0 && VimUtils::isSmallWordChar(line[i - 1])) i--;
-    } else {
-        while (i > 0 && !VimUtils::isSmallWordChar(line[i - 1]) && !VimUtils::isBlank(line[i - 1])) i--;
-    }
-    return i;
-}
-
-// Find end of word containing position
-int findWordEnd(const string& line, int pos) {
-    if (pos < 0 || pos >= (int)line.size()) return pos;
-    if (VimUtils::isBlank(line[pos])) return pos;
-
-    int i = pos;
-    int len = (int)line.size();
-    if (VimUtils::isSmallWordChar(line[i])) {
-        while (i + 1 < len && VimUtils::isSmallWordChar(line[i + 1])) i++;
-    } else {
-        while (i + 1 < len && !VimUtils::isSmallWordChar(line[i + 1]) && !VimUtils::isBlank(line[i + 1])) i++;
-    }
-    return i;
-}
-
-// Find start of WORD containing position
-int findBigWordStart(const string& line, int pos) {
-    if (pos < 0 || pos >= (int)line.size()) return pos;
-    if (VimUtils::isBlank(line[pos])) return pos;
-
-    int i = pos;
-    while (i > 0 && !VimUtils::isBlank(line[i - 1])) i--;
-    return i;
-}
-
-// Find end of WORD containing position
-int findBigWordEnd(const string& line, int pos) {
-    if (pos < 0 || pos >= (int)line.size()) return pos;
-    if (VimUtils::isBlank(line[pos])) return pos;
-
-    int i = pos;
-    int len = (int)line.size();
-    while (i + 1 < len && !VimUtils::isBlank(line[i + 1])) i++;
-    return i;
-}
-
-// Find end of next word after position
-int findNextWordEnd(const string& line, int pos) {
-    int i = pos + 1;
-    int len = (int)line.size();
-
-    while (i < len && VimUtils::isBlank(line[i])) i++;
-    if (i >= len) return len - 1;
-
-    return findWordEnd(line, i);
-}
-
-// Find end of next WORD after position
-int findNextBigWordEnd(const string& line, int pos) {
-    int i = pos + 1;
-    int len = (int)line.size();
-
-    while (i < len && VimUtils::isBlank(line[i])) i++;
-    if (i >= len) return len - 1;
-
-    return findBigWordEnd(line, i);
-}
-
-// Compute where 'e' motion would land
-int computeELanding(const string& line, int pos) {
-    if (pos < 0 || pos >= (int)line.size()) return pos;
-
-    if (VimUtils::isBlank(line[pos])) {
-        return findNextWordEnd(line, pos);
-    }
-
-    int currentWordEnd = findWordEnd(line, pos);
-    if (pos >= currentWordEnd) {
-        return findNextWordEnd(line, pos);
-    }
-
-    return currentWordEnd;
-}
-
-// Compute where 'E' motion would land
-int computeEBigLanding(const string& line, int pos) {
-    if (pos < 0 || pos >= (int)line.size()) return pos;
-
-    if (VimUtils::isBlank(line[pos])) {
-        return findNextBigWordEnd(line, pos);
-    }
-
-    int currentBigWordEnd = findBigWordEnd(line, pos);
-    if (pos >= currentBigWordEnd) {
-        return findNextBigWordEnd(line, pos);
-    }
-
-    return currentBigWordEnd;
-}
-
-// Find start of previous word
-int findPrevWordStart(const string& line, int pos) {
-    int i = pos - 1;
-    while (i >= 0 && VimUtils::isBlank(line[i])) i--;
-    if (i < 0) return 0;
-    return findWordStart(line, i);
-}
-
-// Find start of previous WORD
-int findPrevBigWordStart(const string& line, int pos) {
-    int i = pos - 1;
-    while (i >= 0 && VimUtils::isBlank(line[i])) i--;
-    if (i < 0) return 0;
-    return findBigWordStart(line, i);
-}
-
-// Compute where 'b' motion would land
-int computeBLanding(const string& line, int pos) {
-    if (pos <= 0) return 0;
-
-    if (VimUtils::isBlank(line[pos])) {
-        return findPrevWordStart(line, pos);
-    }
-
-    int currentWordStart = findWordStart(line, pos);
-    if (pos <= currentWordStart) {
-        return findPrevWordStart(line, pos);
-    }
-
-    return currentWordStart;
-}
-
-// Compute where 'B' motion would land
-int computeBBigLanding(const string& line, int pos) {
-    if (pos <= 0) return 0;
-
-    if (VimUtils::isBlank(line[pos])) {
-        return findPrevBigWordStart(line, pos);
-    }
-
-    int currentBigWordStart = findBigWordStart(line, pos);
-    if (pos <= currentBigWordStart) {
-        return findPrevBigWordStart(line, pos);
-    }
-
-    return currentBigWordStart;
-}
-
-// Find end of previous word
-int findPrevWordEnd(const string& line, int pos) {
-    int i = pos - 1;
-    while (i >= 0 && VimUtils::isBlank(line[i])) i--;
-    if (i < 0) return 0;
-    return findWordEnd(line, findWordStart(line, i));
-}
-
-// Find end of previous WORD
-int findPrevBigWordEnd(const string& line, int pos) {
-    int i = pos - 1;
-    while (i >= 0 && VimUtils::isBlank(line[i])) i--;
-    if (i < 0) return 0;
-    return findBigWordEnd(line, findBigWordStart(line, i));
-}
-
-// Compute where 'ge' motion would land
-int computeGeLanding(const string& line, int pos) {
-    if (pos <= 0) return 0;
-
-    if (VimUtils::isBlank(line[pos])) {
-        return findPrevWordEnd(line, pos);
-    }
-
-    int currentWordStart = findWordStart(line, pos);
-    if (pos <= currentWordStart) {
-        return findPrevWordEnd(line, pos);
-    }
-
-    return findPrevWordEnd(line, currentWordStart);
-}
-
-// Compute where 'gE' motion would land
-int computeGELanding(const string& line, int pos) {
-    if (pos <= 0) return 0;
-
-    if (VimUtils::isBlank(line[pos])) {
-        return findPrevBigWordEnd(line, pos);
-    }
-
-    int currentBigWordStart = findBigWordStart(line, pos);
-    if (pos <= currentBigWordStart) {
-        return findPrevBigWordEnd(line, pos);
-    }
-
-    return findPrevBigWordEnd(line, currentBigWordStart);
-}
-
-// Find first word end in content
-int findFirstWordEnd(const string& line) {
-    int i = 0;
-    int len = static_cast<int>(line.size());
-
-    while (i < len && VimUtils::isBlank(line[i])) i++;
-    if (i >= len) return -1;
-
-    if (VimUtils::isSmallWordChar(line[i])) {
-        while (i < len && VimUtils::isSmallWordChar(line[i])) i++;
-    } else {
-        while (i < len && !VimUtils::isSmallWordChar(line[i]) && !VimUtils::isBlank(line[i])) i++;
-    }
-    return i - 1;
-}
-
-// Find first WORD end in content
-int findFirstBigWordEnd(const string& line) {
-    int i = 0;
-    int len = static_cast<int>(line.size());
-
-    while (i < len && VimUtils::isBlank(line[i])) i++;
-    if (i >= len) return -1;
-
-    while (i < len && !VimUtils::isBlank(line[i])) i++;
-    return i - 1;
-}
-
-} // anonymous namespace
 
 // =============================================================================
-// Public API
+// Forward word motion crossing checks
+// See data/EditBoundaryLogic.typ for derivation
+// =============================================================================
+
+// dw: delete to next word start (includes trailing whitespace)
+//
+//               |  bc=keyword       |  bc=whitespace    |  bc=symbol        |
+// --------------+-------------------+-------------------+-------------------+
+// last=keyword  |  YES              |  YES              |  no               |
+// last=space    |  no               |  YES              |  no               |
+// last=symbol   |  no               |  no               |  no               |
+//
+bool canDwCross(CharType lastChar, CharType bc) {
+    if (bc == CharType::Newline) return false;
+    if (lastChar == CharType::Symbol) return false;
+    if (lastChar == CharType::Keyword) return bc != CharType::Symbol;
+    // lastChar == Whitespace
+    return bc == CharType::Whitespace;
+}
+
+// de: delete to word end
+//
+//               |  bc=keyword       |  bc=whitespace    |  bc=symbol        |
+// --------------+-------------------+-------------------+-------------------+
+// last=keyword  |  YES              |  no               |  no               |
+// last=space    |  no               |  no               |  no               |
+// last=symbol   |  no               |  no               |  no               |
+//
+bool canDeCross(CharType lastChar, CharType bc) {
+    if (bc == CharType::Newline) return false;
+    return lastChar == CharType::Keyword && bc == CharType::Keyword;
+}
+
+// =============================================================================
+// Forward WORD motion crossing checks
+// =============================================================================
+
+// dW: delete to next WORD start (includes trailing whitespace)
+//
+//               |  bc=keyword       |  bc=whitespace    |  bc=symbol        |
+// --------------+-------------------+-------------------+-------------------+
+// last=keyword  |  YES              |  YES              |  YES              |
+// last=space    |  no               |  YES              |  no               |
+// last=symbol   |  YES              |  YES              |  YES              |
+//
+bool canDWCross(CharType lastChar, CharType bc) {
+    if (bc == CharType::Newline) return false;
+    if (lastChar == CharType::Whitespace) return bc == CharType::Whitespace;
+    // lastChar == Keyword or Symbol: always crosses (WORD chars)
+    return true;
+}
+
+// dE: delete to WORD end
+//
+//               |  bc=keyword       |  bc=whitespace    |  bc=symbol        |
+// --------------+-------------------+-------------------+-------------------+
+// last=keyword  |  YES              |  no               |  YES              |
+// last=space    |  no               |  no               |  no               |
+// last=symbol   |  YES              |  no               |  YES              |
+//
+bool canDECross(CharType lastChar, CharType bc) {
+    if (bc == CharType::Newline) return false;
+    if (lastChar == CharType::Whitespace) return false;
+    // lastChar == Keyword or Symbol: crosses if bc is also non-whitespace
+    return bc != CharType::Whitespace;
+}
+
+// =============================================================================
+// Backward word motion crossing checks
+// =============================================================================
+
+// db: delete backward to word start
+//
+//                |  bc=keyword       |  bc=whitespace    |  bc=symbol        |
+// ---------------+-------------------+-------------------+-------------------+
+// first=keyword  |  YES              |  no               |  no               |
+// first=space    |  no               |  no               |  no               |
+// first=symbol   |  no               |  no               |  no               |
+//
+bool canDbCross(CharType firstChar, CharType bc) {
+    if (bc == CharType::Newline) return false;
+    return firstChar == CharType::Keyword && bc == CharType::Keyword;
+}
+
+// dge: delete backward to previous word end
+//
+//                |  bc=keyword       |  bc=whitespace    |  bc=symbol        |
+// ---------------+-------------------+-------------------+-------------------+
+// first=keyword  |  YES              |  YES              |  YES              |
+// first=space    |  YES              |  YES              |  YES              |
+// first=symbol   |  no               |  no               |  no               |
+//
+bool canDgeCross(CharType firstChar, CharType bc) {
+    if (bc == CharType::Newline) return false;
+    return firstChar != CharType::Symbol;
+}
+
+// =============================================================================
+// Backward WORD motion crossing checks
+// =============================================================================
+
+// dB: delete backward to WORD start
+//
+//                |  bc=keyword       |  bc=whitespace    |  bc=symbol        |
+// ---------------+-------------------+-------------------+-------------------+
+// first=keyword  |  YES              |  no               |  YES              |
+// first=space    |  no               |  no               |  no               |
+// first=symbol   |  YES              |  no               |  YES              |
+//
+bool canDBCross(CharType firstChar, CharType bc) {
+    if (bc == CharType::Newline) return false;
+    if (firstChar == CharType::Whitespace) return false;
+    // firstChar == Keyword or Symbol: crosses if bc is also non-whitespace
+    return bc != CharType::Whitespace;
+}
+
+// dgE: delete backward to previous WORD end
+//
+//                |  bc=keyword       |  bc=whitespace    |  bc=symbol        |
+// ---------------+-------------------+-------------------+-------------------+
+// first=keyword  |  YES              |  YES              |  YES              |
+// first=space    |  YES              |  YES              |  YES              |
+// first=symbol   |  YES              |  no               |  YES              |
+//
+bool canDgECross(CharType firstChar, CharType bc) {
+    if (bc == CharType::Newline) return false;
+    if (firstChar == CharType::Whitespace) return false;
+    if (firstChar == CharType::Symbol) return bc == CharType::Symbol;
+    // firstChar == Keyword: always crosses
+    return true;
+}
+
+// =============================================================================
+// Line-level operations
+// =============================================================================
+
+bool isFullLineEditSafe(const EditBoundary& boundary) {
+    return boundary.atLineStart() && boundary.atLineEnd();
+}
+
+// =============================================================================
+// Boundary construction
 // =============================================================================
 
 EditBoundary analyzeEditBoundary(
-    const string& fullLine,
+    const std::string& fullLine,
     int editStart,
-    int editEnd,
-    bool startsAtLineStart,
-    bool endsAtLineEnd) {
+    int editEnd) {
 
-    EditBoundary boundary;
+    EditBoundary b;
+    int len = static_cast<int>(fullLine.size());
 
-    // Word/WORD boundary analysis
-    boundary.right_in_word = areInSameWord(fullLine, editEnd, editEnd + 1);
-    boundary.right_in_WORD = areInSameWORD(fullLine, editEnd, editEnd + 1);
-    boundary.left_in_word = areInSameWord(fullLine, editStart - 1, editStart);
-    boundary.left_in_WORD = areInSameWORD(fullLine, editStart - 1, editStart);
+    // Right boundary: what's after the edit region?
+    if (editEnd + 1 < len) {
+        b.rightBoundaryChar = getCharType(fullLine[editEnd + 1]);
+    } else {
+        b.rightBoundaryChar = CharType::Newline;
+    }
 
-    // Line boundary info
-    boundary.startsAtLineStart = startsAtLineStart;
-    boundary.endsAtLineEnd = endsAtLineEnd;
+    // Left boundary: what's before the edit region?
+    if (editStart > 0) {
+        b.leftBoundaryChar = getCharType(fullLine[editStart - 1]);
+    } else {
+        b.leftBoundaryChar = CharType::Newline;
+    }
 
-    return boundary;
+    // hasLinesAbove/hasLinesBelow must be set by caller with multi-line context
+
+    return b;
 }
 
+// =============================================================================
+// TEMPORARY: Legacy API stubs
+// TODO: Remove these once EditOptimizer is updated to use canXxxCross()
+// =============================================================================
+
 bool isForwardEditSafe(
-    const string& editContent,
+    const std::string& editContent,
     int cursorCol,
     const EditBoundary& boundary,
     ForwardEdit edit) {
 
-    int len = static_cast<int>(editContent.size());
-    int editEnd = len - 1;
+    if (editContent.empty()) return false;
+    CharType lastChar = getCharType(editContent.back());
 
     switch (edit) {
         case ForwardEdit::CHAR:
-            // x: safe if cursor is within content
-            return cursorCol >= 0 && cursorCol <= editEnd;
-
+            return cursorCol >= 0 && cursorCol < static_cast<int>(editContent.size());
         case ForwardEdit::LINE_TO_END:
-            // D: only safe if edit region ends at EOL
-            return boundary.endsAtLineEnd;
-
+            return boundary.atLineEnd();
         case ForwardEdit::WORD_TO_START:
-            // dw: safe if boundary doesn't cut through word, OR cursor < lastWordStart
-            if (!boundary.right_in_word) return true;
-            return cursorCol < findWordStart(editContent, editEnd);
-
+            return !canDwCross(lastChar, boundary.rightBoundaryChar);
         case ForwardEdit::WORD_TO_END:
-            // de: safe if boundary doesn't cut through word, OR e_landing < lastWordStart
-            if (!boundary.right_in_word) return true;
-            return computeELanding(editContent, cursorCol) < findWordStart(editContent, editEnd);
-
+            return !canDeCross(lastChar, boundary.rightBoundaryChar);
         case ForwardEdit::BIG_WORD_TO_START:
-            // dW: safe if boundary doesn't cut through WORD, OR cursor < lastBigWordStart
-            if (!boundary.right_in_WORD) return true;
-            return cursorCol < findBigWordStart(editContent, editEnd);
-
+            return !canDWCross(lastChar, boundary.rightBoundaryChar);
         case ForwardEdit::BIG_WORD_TO_END:
-            // dE: safe if boundary doesn't cut through WORD, OR E_landing < lastBigWordStart
-            if (!boundary.right_in_WORD) return true;
-            return computeEBigLanding(editContent, cursorCol) < findBigWordStart(editContent, editEnd);
+            return !canDECross(lastChar, boundary.rightBoundaryChar);
     }
-
-    debug("should not reach here?");
-    return false; // Should not reach here
+    return false;
 }
 
 bool isBackwardEditSafe(
-    const string& editContent,
+    const std::string& editContent,
     int cursorCol,
     const EditBoundary& boundary,
     BackwardEdit edit) {
 
-    int len = static_cast<int>(editContent.size());
-
-    if (cursorCol < 0 || cursorCol >= len) return false;
+    if (editContent.empty()) return false;
+    CharType firstChar = getCharType(editContent.front());
 
     switch (edit) {
         case BackwardEdit::CHAR:
-            // X: safe if cursor > 0
             return cursorCol > 0;
-
         case BackwardEdit::LINE_TO_START:
-            // d0, d^: only safe if edit region starts at line start
-            return boundary.startsAtLineStart;
-
+            return boundary.atLineStart();
         case BackwardEdit::WORD_TO_START:
-            // db: safe if boundary doesn't cut through word, OR b_landing > firstWordEnd
-            if (!boundary.left_in_word) return true;
-            return computeBLanding(editContent, cursorCol) > findFirstWordEnd(editContent);
-
+            return !canDbCross(firstChar, boundary.leftBoundaryChar);
         case BackwardEdit::WORD_TO_END:
-            // dge: safe if boundary doesn't cut through word, OR ge_landing > firstWordEnd
-            if (!boundary.left_in_word) return true;
-            return computeGeLanding(editContent, cursorCol) > findFirstWordEnd(editContent);
-
+            return !canDgeCross(firstChar, boundary.leftBoundaryChar);
         case BackwardEdit::BIG_WORD_TO_START:
-            // dB: safe if boundary doesn't cut through WORD, OR B_landing > firstBigWordEnd
-            if (!boundary.left_in_WORD) return true;
-            return computeBBigLanding(editContent, cursorCol) > findFirstBigWordEnd(editContent);
-
+            return !canDBCross(firstChar, boundary.leftBoundaryChar);
         case BackwardEdit::BIG_WORD_TO_END:
-            // dgE: safe if boundary doesn't cut through WORD, OR gE_landing > firstBigWordEnd
-            if (!boundary.left_in_WORD) return true;
-            return computeGELanding(editContent, cursorCol) > findFirstBigWordEnd(editContent);
+            return !canDgECross(firstChar, boundary.leftBoundaryChar);
     }
-
-    return false; // Should not reach here
-}
-
-bool isFullLineEditSafe(const EditBoundary& boundary) {
-    return boundary.startsAtLineStart && boundary.endsAtLineEnd;
+    return false;
 }
