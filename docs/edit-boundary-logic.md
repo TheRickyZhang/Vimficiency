@@ -145,16 +145,42 @@ dip, dap
 dib, dab
 ```
 
+== Testing Considerations (BoundaryTest)
 
-.n l.n :Qaejp 
-e @i:bmi : 
+=== db/de/dB/dE Check the NEXT Char, Not Current
 
+These commands have exclusive behavior on the current char:
+- `db`: does NOT delete current char; starts END search from previous char
+- `de`: deletes current char, then starts END search from next char
+- `dB`/`dE`: same pattern for WORD variants
 
+When predicting crossing:
+- `db`/`dB`: check `(charBeforeCursor, leftBoundary)`
+- `de`/`dE`: check `(charAfterCursor, rightBoundary)`
+- `dw`/`dW`/`dge`/`dgE`: check `(contentEdgeChar, boundary)`
 
+=== Newlines Are Transparent for Adjacent Char Lookup
 
+When finding the "previous char" or "next char" for db/de, skip newlines.
+Motions traverse across lines, so the adjacent char is the last/first
+non-newline char on the adjacent line.
 
+Example:
+```
+Line 0: "hello "
+Line 1: "world"
+Cursor at 'w' (line 1, col 0)
+```
+- `charBeforeCursor` = ' ' (space at end of line 0), NOT Newline
+- `db` from 'w' searches backward from the space, not from newline
 
+=== Random Buffer Stress Test Design
 
-
-
-
+The stress test verifies crossing predictions against Neovim:
+1. Generate random buffer content
+2. Place reserved boundary chars (one per CharType) at edit region edges
+3. Random cursor position within edit region
+4. Execute motion, verify prefix/suffix intact via string matching
+5. Only flag failure if: motion crossed but crossFn predicted safe
+   (Conservative predictions where crossFn says "would cross" but motion
+   didn't reach boundary are acceptable)

@@ -59,3 +59,4 @@ For Lua context, see `lua/CLAUDE.md`.
 - @docs/testing.md - NeovimOracle, test file conventions, debug printing
 - @docs/x-macros.md - Key definitions, supported commands, sequence parsing
 - @docs/edit-boundary-logic.md - Boundary handling details
+- @docs/session-invocation.txt - How vimficiency optimizer sessions are called and stored

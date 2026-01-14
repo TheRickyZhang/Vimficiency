@@ -1,6 +1,8 @@
 #include <vector>
 #include <string>
 
+#include "EndpointType.h"
+
 struct Position;
 
 struct VimMovementUtils {
@@ -15,8 +17,26 @@ struct VimMovementUtils {
                        const std::vector<std::string> &lines,
                        int dy);
 
+  // ==========================================================================
+  // Word motions - general interface
+  // ==========================================================================
+  //
+  // Unified word motion based on EndpointType, direction, and word type.
+  // This is the fundamental building block; named motions forward to this.
+  //
+  // Mapping:
+  //   Forward + End   -> e/E  (to end of word)
+  //   Forward + Space -> w/W  (to start of next word)
+  //   Backward + End  -> b/B  (to start of word)
+  //   Backward + Next -> ge/gE (to end of previous word)
+  //
+  static void motionWord(Position &pos,
+                         const std::vector<std::string> &lines,
+                         bool forward,
+                         EndpointType endpointType,
+                         bool big);
 
-  // Word motions
+  // Named word motion forwarders
   static void motionW(Position &pos,
                       const std::vector<std::string> &lines,
                       bool big);

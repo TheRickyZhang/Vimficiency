@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "EditBoundary.h"
+#include "Boundary/EditBoundary.h"
 #include "Editor/Position.h"
 #include "Utils/Lines.h"
 

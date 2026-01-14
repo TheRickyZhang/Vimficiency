@@ -31,8 +31,8 @@ add_executable(vimficiency_tests
   Misc/HashCollisionTest.cpp
   Optimizer/EditOptimizerTests.cpp
   Optimizer/MovementOptimizerTest.cpp
-  Reach/ReachTest.cpp
-  Reach/ReachTestHelpers.cpp
+  Boundary/BoundaryTest.cpp
+  Boundary/BoundaryTestHelpers.cpp
   Utils/NeovimOracle.cpp
   Utils/TestUtils.cpp
   Temp.cpp

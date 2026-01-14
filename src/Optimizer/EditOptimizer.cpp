@@ -6,7 +6,7 @@
 
 #include "EditOptimizer.h"
 
-#include "EditBoundary.h"
+#include "Boundary/EditBoundary.h"
 #include "Editor/Edit.h"
 #include "Editor/NavContext.h"
 #include "Keyboard/CharToKeys.h"

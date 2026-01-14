@@ -7,7 +7,7 @@
 
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer.h"
-#include "Optimizer/EditBoundary.h"
+#include "Boundary/EditBoundary.h"
 #include "Utils/NeovimOracle.h"
 
 using namespace std;

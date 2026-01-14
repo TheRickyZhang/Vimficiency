@@ -4,7 +4,8 @@ Implement EditOptimizer
 Fix how EditBoundaries work
 Operator motions                                 *****
 Use NeovimOracle to verify randomized tests
-Test EditBoundaries across new lines (also inspect why lines handled differently?)
+Adjust BoundaryTestsHelpers.cpp to have absolute precision with actual vs real case
+Change VimUtils word implementation to be general over endpoint types
 
 == Misc:
 - $ should set targetCol to infinity.

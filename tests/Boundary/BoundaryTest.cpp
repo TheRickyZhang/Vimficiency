@@ -1,14 +1,14 @@
 #include <gtest/gtest.h>
 
-#include "Optimizer/EditBoundary.h"
-#include "ReachTestHelpers.h"
+#include "Boundary/EditBoundary.h"
+#include "BoundaryTestHelpers.h"
 
 #include <random>
 
 using namespace std;
 
 // =============================================================================
-// ReachTest - Tests for edit boundary crossing logic
+// BoundaryTest - Tests for edit boundary crossing logic
 // =============================================================================
 
 // =============================================================================
@@ -67,7 +67,7 @@ TEST_F(ManualExampleTest, NewlineBoundary_AllSafe) {
 // Section 2: Neovim-Verified Tests
 // =============================================================================
 
-class ReachTest : public ::testing::Test {
+class BoundaryTest : public ::testing::Test {
 protected:
     static void SetUpTestSuite() { oracle_ = make_unique<NeovimOracle>(); }
     static void TearDownTestSuite() { oracle_.reset(); }
@@ -76,13 +76,13 @@ protected:
     mt19937 rng{42};
 };
 
-unique_ptr<NeovimOracle> ReachTest::oracle_;
+unique_ptr<NeovimOracle> BoundaryTest::oracle_;
 
 // -----------------------------------------------------------------------------
 // Systematic: All CharType combinations tested on specified formats
 // -----------------------------------------------------------------------------
 
-TEST_F(ReachTest, Systematic_SingleLine) {
+TEST_F(BoundaryTest, Systematic_SingleLine) {
     vector<CharType> types = {CharType::Keyword, CharType::Whitespace, CharType::Symbol};
     const vector<MotionSpec>& motions = getAllMotions();
 
@@ -95,7 +95,7 @@ TEST_F(ReachTest, Systematic_SingleLine) {
                 for (const auto& motion : motions) {
                     if (motion.isForward != isForward) continue;
                     total++;
-                    if (runReachTest(*oracle_, motion, tc, true)) passed++;
+                    if (runBoundaryTest(*oracle_, motion, tc, true)) passed++;
                 }
             }
         }
@@ -105,7 +105,7 @@ TEST_F(ReachTest, Systematic_SingleLine) {
     EXPECT_EQ(passed, total);
 }
 
-TEST_F(ReachTest, Systematic_MultiLine) {
+TEST_F(BoundaryTest, Systematic_MultiLine) {
     vector<CharType> contentTypes = {CharType::Keyword, CharType::Whitespace, CharType::Symbol};
     const vector<MotionSpec>& motions = getAllMotions();
 
@@ -118,7 +118,7 @@ TEST_F(ReachTest, Systematic_MultiLine) {
             for (const auto& motion : motions) {
                 if (motion.isForward != isForward) continue;
                 total++;
-                if (runReachTest(*oracle_, motion, tc, true)) passed++;
+                if (runBoundaryTest(*oracle_, motion, tc, true)) passed++;
             }
         }
     }
@@ -135,7 +135,7 @@ TEST_F(ReachTest, Systematic_MultiLine) {
 // Tests ALL motions on each buffer (not just random selection).
 // Uses reserved boundary chars for easy verification.
 
-TEST_F(ReachTest, RandomBufferStress_SingleLine) {
+TEST_F(BoundaryTest, RandomBufferStress_SingleLine) {
     const int NUM_BUFFERS = 50;
     const auto& motions = getAllMotions();
 
@@ -156,14 +156,14 @@ TEST_F(ReachTest, RandomBufferStress_SingleLine) {
     EXPECT_EQ(passed, total);
 }
 
-TEST_F(ReachTest, RandomBufferStress_MultiLine) {
+TEST_F(BoundaryTest, RandomBufferStress_MultiLine) {
     const int NUM_BUFFERS = 50;
     const auto& motions = getAllMotions();
 
     int total = 0, passed = 0;
 
     for (int i = 0; i < NUM_BUFFERS; i++) {
-        uniform_int_distribution<int> linesDist(2, 4);
+        uniform_int_distribution<int> linesDist(2, 5);
         auto test = generateRandomBuffer(rng, linesDist(rng));
 
         for (const auto& motion : motions) {
@@ -182,7 +182,7 @@ TEST_F(ReachTest, RandomBufferStress_MultiLine) {
 // Edge cases
 // -----------------------------------------------------------------------------
 
-TEST_F(ReachTest, EdgeCase_NewlineBoundary_AllSafe) {
+TEST_F(BoundaryTest, EdgeCase_NewlineBoundary_AllSafe) {
     // When boundary is Newline (single-line, edit spans entire line), all safe
     for (CharType c : {CharType::Keyword, CharType::Whitespace, CharType::Symbol}) {
         EXPECT_FALSE(canEndCross(c, CharType::Newline));
@@ -195,7 +195,7 @@ TEST_F(ReachTest, EdgeCase_NewlineBoundary_AllSafe) {
     EXPECT_FALSE(canLineCross(CharType::Newline));
 }
 
-TEST_F(ReachTest, EdgeCase_SymmetryBetweenDirections) {
+TEST_F(BoundaryTest, EdgeCase_SymmetryBetweenDirections) {
     // de and db use the same crossing function (canEndCross)
     // Same inputs -> same results
     for (CharType c : {CharType::Keyword, CharType::Whitespace, CharType::Symbol}) {

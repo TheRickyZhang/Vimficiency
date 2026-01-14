@@ -14,7 +14,7 @@
 #include "Editor/Position.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer.h"
-#include "Optimizer/EditBoundary.h"
+#include "Boundary/EditBoundary.h"
 #include "Utils/Debug.h"
 #include "Utils/Lines.h"
 

@@ -7,7 +7,7 @@
 #include "Config.h"
 #include "Result.h"
 #include "OptimizerParams.h"
-#include "EditBoundary.h"
+#include "Boundary/EditBoundary.h"
 
 #include "Utils/Lines.h"
 #include "State/EditState.h"

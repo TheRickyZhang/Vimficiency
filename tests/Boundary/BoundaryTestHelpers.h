@@ -1,6 +1,9 @@
 #pragma once
 
-#include "Optimizer/EditBoundary.h"
+#include "Boundary/Boundary.h"
+#include "Boundary/EditBoundary.h"
+#include "Editor/Position.h"
+#include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
 
 #include <functional>
@@ -9,7 +12,7 @@
 #include <vector>
 
 // =============================================================================
-// ReachTest Infrastructure
+// BoundaryTest Infrastructure
 // =============================================================================
 //
 // Helpers for testing edit boundary crossing logic against Neovim.
@@ -37,7 +40,7 @@ const std::vector<MotionSpec>& getAllMotions();
 // Test case structure
 // =============================================================================
 
-struct ReachTestCase {
+struct BoundaryTestCase {
     std::vector<std::string> lines;
     int cursorLine;
     int cursorCol;
@@ -72,7 +75,7 @@ const char* typeName(CharType ct);
 // numLines=1: Single line [prefix][boundary][content][boundary][suffix]
 // numLines=2: Content at line edge, tests hasLinesAbove/Below
 
-ReachTestCase buildTestCase(CharType contentType, CharType boundaryType,
+BoundaryTestCase buildTestCase(CharType contentType, CharType boundaryType,
                             bool isForward, int numLines = 1);
 
 // =============================================================================
@@ -80,25 +83,25 @@ ReachTestCase buildTestCase(CharType contentType, CharType boundaryType,
 // =============================================================================
 
 // Check if motion crossed the boundary by examining result
-bool didCross(const ReachTestCase& tc, const std::vector<std::string>& result);
+bool didCross(const BoundaryTestCase& tc, const std::vector<std::string>& result);
 
 // Predict if motion should cross (including multi-line adjustments)
-bool predictCross(const MotionSpec& motion, const ReachTestCase& tc);
+bool predictCross(const MotionSpec& motion, const BoundaryTestCase& tc);
 
 // =============================================================================
 // Test runner
 // =============================================================================
 
 // Run a single test case against Neovim, return true if prediction matches
-bool runReachTest(NeovimOracle& oracle, const MotionSpec& motion,
-                  const ReachTestCase& tc, bool verbose = false);
+bool runBoundaryTest(NeovimOracle& oracle, const MotionSpec& motion,
+                  const BoundaryTestCase& tc, bool verbose = false);
 
 // =============================================================================
 // Random buffer generation (for stress tests)
 // =============================================================================
 
 struct RandomBufferTest {
-    std::vector<std::string> lines;
+    Lines lines;
 
     // Edit region (inclusive)
     int editStartLine, editStartCol;
@@ -106,6 +109,12 @@ struct RandomBufferTest {
 
     // Cursor position (within edit region)
     int cursorLine, cursorCol;
+
+    // Boundary positions (just OUTSIDE the edit region)
+    // For forward motions: check against rightBoundaryPos
+    // For backward motions: check against leftBoundaryPos
+    Position leftBoundaryPos;   // Position of char just before edit start
+    Position rightBoundaryPos;  // Position of char just after edit end
 
     // Computed from buffer
     EditBoundary boundary;
@@ -119,6 +128,8 @@ struct RandomBufferTest {
     // Context
     bool hasLinesAbove;
     bool hasLinesBelow;
+    bool hasLeftBoundary;   // Is there a char before edit region?
+    bool hasRightBoundary;  // Is there a char after edit region?
 
     // Content outside edit region (for verification)
     std::string prefix;  // Everything before edit region

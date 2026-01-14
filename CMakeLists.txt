@@ -23,6 +23,7 @@ option(VIMFICIENCY_LEGACY_VIM "Use legacy Vim defaults instead of Neovim default
 
 # NOTE Remove configure_depends when convenience no longer needed in development
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
+    src/Boundary/*.cpp
     src/Editor/*.cpp
     src/Keyboard/*.cpp
     src/Optimizer/*.cpp

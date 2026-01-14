@@ -1,4 +1,7 @@
-#include "ReachTestHelpers.h"
+#include "BoundaryTestHelpers.h"
+
+#include "Boundary/Boundary.h"
+#include "Boundary/BoundaryToMotionInfo.h"
 
 #include <iostream>
 
@@ -53,9 +56,9 @@ const char* typeName(CharType ct) {
 // Test case builder
 // =============================================================================
 
-ReachTestCase buildTestCase(CharType contentType, CharType boundaryType,
+BoundaryTestCase buildTestCase(CharType contentType, CharType boundaryType,
                             bool isForward, int numLines) {
-    ReachTestCase tc;
+    BoundaryTestCase tc;
     tc.contentType = contentType;
     tc.boundaryType = boundaryType;
     tc.isForward = isForward;
@@ -103,7 +106,7 @@ ReachTestCase buildTestCase(CharType contentType, CharType boundaryType,
 // Crossing detection
 // =============================================================================
 
-static bool forwardCrossed(const ReachTestCase& tc, const vector<string>& result) {
+static bool forwardCrossed(const BoundaryTestCase& tc, const vector<string>& result) {
     if (tc.hasLinesBelow) {
         // Multi-line: check if second line is intact
         return !(result.size() >= 2 && result[1] == "yy ZZ");
@@ -120,7 +123,7 @@ static bool forwardCrossed(const ReachTestCase& tc, const vector<string>& result
     return line.substr(line.size() - 3 - boundary.size(), boundary.size()) != boundary;
 }
 
-static bool backwardCrossed(const ReachTestCase& tc, const vector<string>& result) {
+static bool backwardCrossed(const BoundaryTestCase& tc, const vector<string>& result) {
     if (tc.hasLinesAbove) {
         // Multi-line: check if first line is intact
         return !(result.size() >= 1 && result[0] == "QQ yy");
@@ -137,7 +140,7 @@ static bool backwardCrossed(const ReachTestCase& tc, const vector<string>& resul
     return line.substr(3, boundary.size()) != boundary;
 }
 
-bool didCross(const ReachTestCase& tc, const vector<string>& result) {
+bool didCross(const BoundaryTestCase& tc, const vector<string>& result) {
     return tc.isForward ? forwardCrossed(tc, result) : backwardCrossed(tc, result);
 }
 
@@ -145,7 +148,7 @@ bool didCross(const ReachTestCase& tc, const vector<string>& result) {
 // Prediction
 // =============================================================================
 
-bool predictCross(const MotionSpec& motion, const ReachTestCase& tc) {
+bool predictCross(const MotionSpec& motion, const BoundaryTestCase& tc) {
     bool baseCross = motion.crossFn(tc.contentType, tc.boundaryType);
 
     // Multi-line adjustments: some motions cross line boundaries
@@ -176,8 +179,8 @@ bool predictCross(const MotionSpec& motion, const ReachTestCase& tc) {
 // Test runner
 // =============================================================================
 
-bool runReachTest(NeovimOracle& oracle, const MotionSpec& motion,
-                  const ReachTestCase& tc, bool verbose) {
+bool runBoundaryTest(NeovimOracle& oracle, const MotionSpec& motion,
+                  const BoundaryTestCase& tc, bool verbose) {
     // Skip mismatched direction
     if (motion.isForward != tc.isForward) return true;
 
@@ -258,19 +261,8 @@ string flattenLines(const vector<string>& lines) {
     return result;
 }
 
-static vector<string> unflattenLines(const string& flat) {
-    vector<string> lines;
-    string current;
-    for (char c : flat) {
-        if (c == '\n') {
-            lines.push_back(current);
-            current.clear();
-        } else {
-            current += c;
-        }
-    }
-    lines.push_back(current);
-    return lines;
+static Lines unflattenLines(const string& flat) {
+    return Lines::unflatten(flat);
 }
 
 RandomBufferTest generateRandomBuffer(mt19937& rng, int numLines) {
@@ -356,8 +348,20 @@ RandomBufferTest generateRandomBuffer(mt19937& rng, int numLines) {
     test.cursorCol = curCol;
 
     // Set boundary info
-    test.boundary.leftBoundaryChar = (editStart > 0) ? leftType : CharType::Newline;
-    test.boundary.rightBoundaryChar = (editEnd < (int)flat.size() - 1) ? rightType : CharType::Newline;
+    test.hasLeftBoundary = (editStart > 0);
+    test.hasRightBoundary = (editEnd < (int)flat.size() - 1);
+    test.boundary.leftBoundaryChar = test.hasLeftBoundary ? leftType : CharType::Newline;
+    test.boundary.rightBoundaryChar = test.hasRightBoundary ? rightType : CharType::Newline;
+
+    // Compute boundary positions
+    if (test.hasLeftBoundary) {
+        auto [l, c] = flatToLineCol(editStart - 1);
+        test.leftBoundaryPos = Position(l, c);
+    }
+    if (test.hasRightBoundary) {
+        auto [l, c] = flatToLineCol(editEnd + 1);
+        test.rightBoundaryPos = Position(l, c);
+    }
 
     // Content edge chars (for dw, dge, dW, dgE)
     test.contentFirstChar = getCharType(flat[editStart]);
@@ -462,41 +466,46 @@ bool predictCrossRandom(const MotionSpec& motion, const RandomBufferTest& test) 
 
 bool runRandomTest(NeovimOracle& oracle, const MotionSpec& motion,
                    const RandomBufferTest& test, bool verbose) {
-    auto result = oracle.simulate(test.lines, test.cursorLine, test.cursorCol, motion.cmd);
+    // Get MotionInfo for this command
+    auto motionInfoOpt = getMotionInfo(motion.cmd);
+    if (!motionInfoOpt) {
+        cerr << "Unknown motion: " << motion.cmd << endl;
+        return false;
+    }
+    const MotionInfo& info = *motionInfoOpt;
 
-    // Check if the relevant boundary was crossed (depends on motion direction)
-    bool actual_crossed = motion.isForward ?
+    // Determine which boundary to check
+    bool hasBoundary = motion.isForward ? test.hasRightBoundary : test.hasLeftBoundary;
+    Position boundaryPos = motion.isForward ? test.rightBoundaryPos : test.leftBoundaryPos;
+
+    // Predict using extendsTooFar
+    bool predicted;
+    if (!hasBoundary) {
+        // No boundary to cross (at edge of buffer)
+        predicted = false;
+    } else {
+        Position cursor(test.cursorLine, test.cursorCol);
+        predicted = extendsTooFar(test.lines, cursor, boundaryPos, info);
+    }
+
+    // Get actual result from Neovim
+    auto result = oracle.simulate(test.lines, test.cursorLine, test.cursorCol, motion.cmd);
+    bool actual = motion.isForward ?
         rightBoundaryCrossed(test, result.lines) :
         leftBoundaryCrossed(test, result.lines);
 
-    // crossFn predicts what happens IF motion reaches the boundary
-    bool would_cross = predictCrossRandom(motion, test);
+    // Strict comparison: predicted must match actual exactly
+    bool success = (predicted == actual);
 
-    // Key insight: cursor is random, so motion may not reach the boundary.
-    // We verify: IF boundary was crossed, crossing function must have predicted it.
-    // A false "safe" prediction (would_cross=false, actual=true) is a bug.
-    // A conservative prediction (would_cross=true, actual=false) is OK (motion may not have reached).
-
-    bool is_failure = actual_crossed && !would_cross;
-
-    if (verbose && is_failure) {
-        // Determine the char used for crossing check
-        CharType checkChar;
-        if (motion.cmd == "db" || motion.cmd == "dB") {
-            checkChar = test.charBeforeCursor;
-        } else if (motion.cmd == "de" || motion.cmd == "dE") {
-            checkChar = test.charAfterCursor;
-        } else if (motion.isForward) {
-            checkChar = test.contentLastChar;
-        } else {
-            checkChar = test.contentFirstChar;
-        }
-
+    if (verbose && !success) {
         cerr << "\n=== RANDOM TEST FAILURE ===" << endl;
         cerr << "Motion: " << motion.cmd << " (" << (motion.isForward ? "forward" : "backward") << ")" << endl;
-        cerr << "Check char: " << typeName(checkChar) << endl;
-        cerr << "Boundary char: " << typeName(motion.isForward ?
-            test.boundary.rightBoundaryChar : test.boundary.leftBoundaryChar) << endl;
+        cerr << "Has boundary: " << (hasBoundary ? "yes" : "no") << endl;
+        if (hasBoundary) {
+            cerr << "Boundary pos: (" << boundaryPos.line << "," << boundaryPos.col << ")" << endl;
+            cerr << "Boundary char: " << typeName(motion.isForward ?
+                test.boundary.rightBoundaryChar : test.boundary.leftBoundaryChar) << endl;
+        }
         cerr << "Input:" << endl;
         for (size_t i = 0; i < test.lines.size(); i++) {
             cerr << "  [" << i << "]: \"" << test.lines[i] << "\"" << endl;
@@ -510,10 +519,9 @@ bool runRandomTest(NeovimOracle& oracle, const MotionSpec& motion,
         for (size_t i = 0; i < result.lines.size(); i++) {
             cerr << "  [" << i << "]: \"" << result.lines[i] << "\"" << endl;
         }
-        cerr << "crossFn prediction: " << (would_cross ? "WOULD_CROSS" : "SAFE") << endl;
-        cerr << "Actual: " << (actual_crossed ? "CROSSED" : "DID_NOT_CROSS") << endl;
-        cerr << "FAILURE: crossFn said safe but motion crossed boundary!" << endl;
+        cerr << "Predicted: " << (predicted ? "EXTENDS_TOO_FAR" : "SAFE") << endl;
+        cerr << "Actual: " << (actual ? "CROSSED" : "DID_NOT_CROSS") << endl;
     }
 
-    return !is_failure;
+    return success;
 }
