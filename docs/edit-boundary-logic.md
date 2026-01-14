@@ -144,3 +144,17 @@ dd   (Line)
 dip, dap
 dib, dab
 ```
+
+
+.n l.n :Qaejp 
+e @i:bmi : 
+
+
+
+
+
+
+
+
+
+

@@ -1,14 +1,15 @@
-Ranked by natural development order and priority. Complexity level (?) in * stars.
+== Current priority stack:
+Insert Mode handling (just a lot more stuff)     ********* (very very difficult)
+Implement EditOptimizer
+Fix how EditBoundaries work
+Operator motions                                 *****
+Use NeovimOracle to verify randomized tests
+Test EditBoundaries across new lines (also inspect why lines handled differently?)
 
-Current priority stack:
-- Real-time, automatic session spawning            *****
-- Verify the key count one
-
-- Fix $; should set targetCol to infinity.
+== Misc:
+- $ should set targetCol to infinity.
 - Distinguish between USER_EXPLORE_FACTOR and ABSOLUTE_EXPLORE_FACTOR (stop at minimum of the results with these) 
-- Change vector<string> to lines everywhere you can
-
-- Be careful: handling normal vs insert mode "pos" with backspace/delete, x/X.
+- Be careful: handling normal vs insert mode col with backspace/delete, x/X.
 Normal
  0 1 2 3 4
 0 1 2 3 4
@@ -18,24 +19,19 @@ If we are searching 0-4 normal, our insert search is 0-4 BECAUSE our normal is a
 So don't do X for i=0, x for i=n-1, or <Backspace> for i=0, or <Delete> for i=n-1.
 Symmetry maintained!
 
+
+Ranked by natural development order and priority. Complexity level (?) in * stars.
+
+- Dot operator, brute force (worth space?)         **
 - simple symbols: *, #, %                          ***
 - Search, n/N (heuristic best-matching prefix)     ***
-- Operator motions                                 *****
-- Insert Mode structure (just a lot more stuff)    *****
-- Dot operator, brute force (worth space?)         **
 - Separate pattern detection for potential macros? ***
-- Visual Mode                                      ****
-- Multiple buffers with gd, gr, link jumps         *****
+- Visual Mode                                      ******
+- Multiple buffers with gd, gr, link jumps         ******
 - Feedback on preferred motion paradigms over time ****
+- minimal register/macro use detecting repetition  ***
 - Reinforcement learning?                          *****
-
-- Niche commands: -/+, ~, gu, gU,
-
-
-Current view of sessions / continuous evaluation:
-
-
-
+- Niche commands: -/+, ~, gu, gU,                  *
 
 
 Done:
@@ -44,4 +40,4 @@ Done:
 - Numbers                                          ***
 - f/t, ;/, motions                                 **
 - <C-d, u, f, b> page motions                      **
-
+- Real-time, automatic session spawning            *****

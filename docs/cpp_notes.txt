@@ -1,26 +1,9 @@
-TODO additions:
 - Should have toggle between default vim vs neovim bindings. For instance, Y = yy on vim, but y$ on neovim.
 
-Dev stack:
-See insert_mode_plan. Got refactored.
-
-
-Add support for .
 
 - Currently the model can only recommend back default vim bindings, regardless of user mappings. It seems feasible that the user can provide some mappings, and we can adjust the cost model.
 
-Impossible operations to support:
-- gj, gk, H, M, L, zz (screen-related)
-- Cross-jumps
-
-
-Maybe:
 minimal register/macro use. Can't ingest current registers, but can process with some default register (ex a) if detecting repetition in search.
-
-
-It is pretty dumb how nvim_win_get_cursor returns a 1-indexed row, while buf_get_lines and the natural internal representation has a 0-indexed row. I will choose the correct representation (0-indexed), and shouldn't be an issue apart from direct line jumps (:36).
-
-LuaJIT's FFI only targets the C ABI, as native C++ ABI is pretty difficult (would need to consider all the added features / stdlib / object layout)
 
 Interesting (maybe?) things that have come up:
 - C ABI
