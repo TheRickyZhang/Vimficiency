@@ -23,9 +23,11 @@ Each endpoint type has a crossing table. Motion is *safe* when table returns `no
               |  bc=Keyword  |  bc=Whitespace  |  bc=Symbol  |  bc=Newline  |
 --------------+--------------+-----------------+-------------+--------------+
 char=Keyword  |  YES         |  no             |  no         |  no          |
-char=Space    |  no          |  no             |  no         |  no          |
-char=Symbol   |  no          |  no             |  no         |  no          |
+char=Space    |  YES         |  YES            |  YES        |  no          |
+char=Symbol   |  no          |  no             |  YES        |  no          |
 ```
+Note: Whitespace isn't a word, so `e` from whitespace goes to NEXT word end, crossing everything.
+Symbol row mirrors Keyword row (wordChar/nonWordChar symmetry).
 
 === Space
 ```
@@ -33,8 +35,9 @@ char=Symbol   |  no          |  no             |  no         |  no          |
 --------------+--------------+-----------------+-------------+--------------+
 char=Keyword  |  YES         |  YES            |  no         |  no          |
 char=Space    |  no          |  YES            |  no         |  no          |
-char=Symbol   |  no          |  no             |  no         |  no          |
+char=Symbol   |  no          |  YES            |  YES        |  no          |
 ```
+Note: Symbol row mirrors Keyword row (wordChar/nonWordChar symmetry).
 
 === Next
 ```
@@ -42,8 +45,9 @@ char=Symbol   |  no          |  no             |  no         |  no          |
 --------------+--------------+-----------------+-------------+--------------+
 char=Keyword  |  YES         |  YES            |  YES        |  no          |
 char=Space    |  YES         |  YES            |  YES        |  no          |
-char=Symbol   |  no          |  no             |  no         |  no          |
+char=Symbol   |  YES         |  YES            |  YES        |  no          |
 ```
+Note: `ge` always goes to previous word end, regardless of current content type.
 
 === Line
 ```
@@ -92,8 +96,9 @@ Same endpoint types, but Keyword and Symbol merge into "NonWS" class.
               |  bc=NonWS  |  bc=Whitespace  |  bc=Newline  |
 --------------+------------+-----------------+--------------+
 char=WORD     |  YES       |  no             |  no          |
-char=Space    |  no        |  no             |  no          |
+char=Space    |  YES       |  YES            |  no          |
 ```
+Note: Whitespace isn't a WORD, so `E` from whitespace goes to NEXT WORD end.
 
 === SPACE
 ```

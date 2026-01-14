@@ -8,4 +8,4 @@ CTestTestfile.cmake
 Makefile
 .cache/
 
-docs/reference/
+docs/vim/

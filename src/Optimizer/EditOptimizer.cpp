@@ -10,7 +10,6 @@
 #include "Editor/Edit.h"
 #include "Editor/NavContext.h"
 #include "Keyboard/CharToKeys.h"
-#include "Keyboard/KeyboardModel.h"
 #include "Keyboard/MotionToKeys.h"
 #include "State/EditState.h"
 #include "State/RunningEffort.h"
@@ -19,7 +18,6 @@
 #include <queue>
 #include <unordered_map>
 #include <optional>
-#include <climits>
 
 using namespace std;
 
@@ -164,173 +162,171 @@ static double deletionHeuristic(const EditState& s) {
   return total;
 }
 
-// Map operation string to ForwardEdit enum
-static optional<ForwardEdit> getForwardEditType(const string& op) {
-  if (op == "x") return ForwardEdit::CHAR;
-  if (op == "dw" || op == "cw") return ForwardEdit::WORD_TO_START;
-  if (op == "de" || op == "ce") return ForwardEdit::WORD_TO_END;
-  if (op == "dW" || op == "cW") return ForwardEdit::BIG_WORD_TO_START;
-  if (op == "dE" || op == "cE") return ForwardEdit::BIG_WORD_TO_END;
-  if (op == "D" || op == "C" || op == "d$" || op == "c$") return ForwardEdit::LINE_TO_END;
-  return nullopt;
+// =============================================================================
+// Boundary constraint checking
+// =============================================================================
+//
+// Uses endpoint-based crossing functions to determine if operations are safe.
+// See EditBoundaryLogic.typ for the crossing tables.
+
+// Check if a forward word motion is valid (not blocked by position constraints)
+static bool isForwardWordPositionValid(
+    const EditState& s, const EditBoundary& boundary, bool isMultiLine, bool isPartialLineRegion) {
+  bool isLastLine = (s.pos.line == (int)s.lines.size() - 1);
+  const string& currentLine = s.lines[s.pos.line];
+  int lineLen = currentLine.size();
+  bool atOrNearLineEnd = (lineLen == 0) || (s.pos.col >= lineLen - 1);
+
+  // For partial-line multi-line regions, forward word ops from ANY position
+  // on non-last lines can reach next line (w/e/E cross lines easily)
+  if (isPartialLineRegion && isMultiLine && !isLastLine) {
+    return false;
+  }
+  // Block at line end if would wrap to next line (join lines)
+  if (isMultiLine && atOrNearLineEnd && !isLastLine) {
+    return false;
+  }
+  // On last line with atLineEnd=false: block forward word ops near line end
+  if (isLastLine && !boundary.atLineEnd() && atOrNearLineEnd) {
+    return false;
+  }
+  return true;
 }
 
-// Map operation string to BackwardEdit enum
-static optional<BackwardEdit> getBackwardEditType(const string& op) {
-  if (op == "X") return BackwardEdit::CHAR;
-  if (op == "db" || op == "cb") return BackwardEdit::WORD_TO_START;
-  if (op == "dge" || op == "cge") return BackwardEdit::WORD_TO_END;
-  if (op == "dB" || op == "cB") return BackwardEdit::BIG_WORD_TO_START;
-  if (op == "dgE" || op == "cgE") return BackwardEdit::BIG_WORD_TO_END;
-  if (op == "d0" || op == "c0" || op == "d^" || op == "c^") return BackwardEdit::LINE_TO_START;
-  return nullopt;
+// Check if a backward word motion is valid (not blocked by position constraints)
+static bool isBackwardWordPositionValid(
+    const EditState& s, const EditBoundary& boundary, bool isMultiLine, bool isPartialLineRegion) {
+  bool isFirstLine = (s.pos.line == 0);
+  int cursorCol = s.pos.col;
+
+  // For partial-line multi-line regions, backward word ops from ANY position
+  // on non-first lines can reach previous line
+  if (isPartialLineRegion && isMultiLine && s.pos.line > 0) {
+    return false;
+  }
+  // Block at line start if would wrap to previous line (join lines)
+  if (isMultiLine && cursorCol == 0 && s.pos.line > 0) {
+    return false;
+  }
+  // On first line with atLineStart=false: block backward word ops from column 0
+  if (isFirstLine && !boundary.atLineStart() && cursorCol == 0) {
+    return false;
+  }
+  return true;
 }
 
 // Check if operation is valid given boundary constraints
 static bool isOpValidForBoundary(const EditState& s, const string& op, const EditBoundary& boundary) {
-  // Get current line content and cursor position
-  if (s.lines.empty()) return true;  // Empty buffer, any op is fine
+  if (s.lines.empty()) return true;
   const string& currentLine = s.lines[s.pos.line];
   int cursorCol = s.pos.col;
 
-  // Partial-line region detection
+  // Compute edge characters for crossing checks (conservative: use content edges)
+  CharType lastChar = currentLine.empty() ? CharType::Newline : getCharType(currentLine.back());
+  CharType firstChar = currentLine.empty() ? CharType::Newline : getCharType(currentLine.front());
+
   bool isPartialLineRegion = !boundary.atLineStart() || !boundary.atLineEnd();
   bool isMultiLine = s.lines.size() > 1;
+  bool isLastLine = (s.pos.line == (int)s.lines.size() - 1);
+  bool isFirstLine = (s.pos.line == 0);
+  int lineLen = currentLine.size();
+  bool atOrNearLineEnd = (lineLen == 0) || (cursorCol >= lineLen - 1);
 
+  // Block line join operations in partial-line multi-line regions
   if (isPartialLineRegion && isMultiLine) {
-    // Block explicit line join operations - these would merge lines in full buffer
-    if (op == "J" || op == "gJ") return false;
-
-    // Block j/k navigation - column offsets differ between lines in partial-line regions.
-    // When k goes from line 1 col 0 to line 0 col 0, in full buffer that's a different
-    // relative position within each line's edit region (or outside it entirely).
-    if (op == "j" || op == "k") return false;
+    if (op == "J" || op == "gJ" || op == "j" || op == "k") return false;
   }
 
   // Full-line operations (dd, cc, S)
-  static const vector<string> FULL_LINE_OPS = {"dd", "cc", "S"};
-  bool isFullLineOp = find(FULL_LINE_OPS.begin(), FULL_LINE_OPS.end(), op) != FULL_LINE_OPS.end();
-
-  if (isFullLineOp) {
-    // Use existing isFullLineEditSafe
-    if (!isFullLineEditSafe(boundary)) {
-      return false;  // Would delete content outside edit region
-    }
-
-    // dd-specific constraints for cursor escape
+  if (op == "dd" || op == "cc" || op == "S") {
+    if (!isFullLineEditSafe(boundary)) return false;
     if (op == "dd") {
-      bool isLastLine = (s.pos.line == (int)s.lines.size() - 1);
-      if (isLastLine && boundary.hasLinesBelow) {
-        return false;  // Cursor would escape to content below
-      }
-      // Can't dd if it would leave us with 0 lines but there are lines above/below
-      if (s.lines.size() == 1 && (boundary.hasLinesAbove || boundary.hasLinesBelow)) {
-        return false;  // Can't delete the only line if there's surrounding content
-      }
+      if (isLastLine && boundary.hasLinesBelow) return false;
+      if (s.lines.size() == 1 && (boundary.hasLinesAbove || boundary.hasLinesBelow)) return false;
     }
     return true;
   }
 
-  // Forward edit operations - check with isForwardEditSafe
-  auto fwdType = getForwardEditType(op);
-  if (fwdType) {
-    bool isLastLine = (s.pos.line == (int)s.lines.size() - 1);
-    int lineLen = currentLine.size();
-    bool atOrNearLineEnd = (lineLen == 0) || (cursorCol >= lineLen - 1);
-
-    if (*fwdType != ForwardEdit::CHAR && *fwdType != ForwardEdit::LINE_TO_END) {
-      // For partial-line multi-line regions, forward word ops from ANY position
-      // on non-last lines can reach next line (w/e/E cross lines easily)
-      // This would join lines and corrupt the full buffer.
-      if (isPartialLineRegion && isMultiLine && !isLastLine) {
-        return false;
-      }
-      // Block at line end if would wrap to next line (join lines)
-      if (isMultiLine && atOrNearLineEnd && !isLastLine) {
-        return false;
-      }
-      // On last line with endsAtLineEnd=false: block forward word ops near line end
-      // (would escape to content after edit region in full buffer)
-      if (isLastLine && !boundary.atLineEnd() && atOrNearLineEnd) {
-        return false;
-      }
-    }
-
-    // WORD_TO_START (dw, cw, dW, cW) includes trailing whitespace after the word.
-    // On last line with endsAtLineEnd=false, this whitespace is OUTSIDE the edit region.
-    // Block these operations entirely on last line for partial-line regions.
-    if (*fwdType == ForwardEdit::WORD_TO_START || *fwdType == ForwardEdit::BIG_WORD_TO_START) {
-      if (isLastLine && !boundary.atLineEnd()) {
-        return false;
-      }
-    }
-
-    // CHAR (x) at last column of last line with endsAtLineEnd=false:
-    // After deletion, cursor lands on content OUTSIDE the edit region.
-    // Subsequent operations would affect outside content.
-    if (*fwdType == ForwardEdit::CHAR) {
-      if (isLastLine && !boundary.atLineEnd() && atOrNearLineEnd) {
-        return false;
-      }
-    }
-
-    return isForwardEditSafe(currentLine, cursorCol, boundary, *fwdType);
+  // Forward word motions: dw/cw (Space endpoint)
+  if (op == "dw" || op == "cw") {
+    if (!isForwardWordPositionValid(s, boundary, isMultiLine, isPartialLineRegion)) return false;
+    // Space motions include trailing whitespace - block on partial line end
+    if (isLastLine && !boundary.atLineEnd()) return false;
+    return !canSpaceCross(lastChar, boundary.rightBoundaryChar);
   }
 
-  // Backward edit operations - check with isBackwardEditSafe
-  auto bwdType = getBackwardEditType(op);
-  if (bwdType) {
-    if (*bwdType != BackwardEdit::CHAR && *bwdType != BackwardEdit::LINE_TO_START) {
-      // For partial-line multi-line regions, backward word ops from ANY position
-      // on non-first lines can reach previous line (ge/b cross lines easily)
-      // This would join lines and corrupt the full buffer.
-      if (isPartialLineRegion && isMultiLine && s.pos.line > 0) {
-        return false;
-      }
-      // Block at line start if would wrap to previous line (join lines)
-      if (isMultiLine && cursorCol == 0 && s.pos.line > 0) {
-        return false;
-      }
-      // On first line with startsAtLineStart=false: block backward word ops from column 0
-      // (would escape to content before edit region in full buffer)
-      bool isFirstLine = (s.pos.line == 0);
-      if (isFirstLine && !boundary.atLineStart() && cursorCol == 0) {
-        return false;
-      }
-    }
-    return isBackwardEditSafe(currentLine, cursorCol, boundary, *bwdType);
+  // Forward word-end motions: de/ce (End endpoint)
+  if (op == "de" || op == "ce") {
+    if (!isForwardWordPositionValid(s, boundary, isMultiLine, isPartialLineRegion)) return false;
+    return !canEndCross(lastChar, boundary.rightBoundaryChar);
   }
 
-  // Text object operations - need careful boundary checking
-  // "inner" (iw, iW) - deletes just the word/WORD
-  // "around" (aw, aW) - deletes word/WORD plus surrounding whitespace
-  //
-  // Key insight from Vim testing:
-  // - ciW on "bb" in "bb x" → " x" (keeps space)
-  // - caW on "bb" in "bb x" → "x" (deletes space too!)
-  //
-  // So "around" text objects are DANGEROUS when boundary is at word edge
-  // because they'll grab whitespace that's outside the edit region.
+  // Forward WORD motions: dW/cW (SPACE endpoint)
+  if (op == "dW" || op == "cW") {
+    if (!isForwardWordPositionValid(s, boundary, isMultiLine, isPartialLineRegion)) return false;
+    if (isLastLine && !boundary.atLineEnd()) return false;
+    return !canSpaceCrossWORD(lastChar, boundary.rightBoundaryChar);
+  }
 
-  // TODO: Text object boundary checking needs rework with new CharType model.
-  // The old model stored whether boundary "cut through" a word (both sides).
-  // The new model only stores what's OUTSIDE the boundary.
-  // For now, only allow text objects when we have full line boundaries.
+  // Forward WORD-end motions: dE/cE (END endpoint)
+  if (op == "dE" || op == "cE") {
+    if (!isForwardWordPositionValid(s, boundary, isMultiLine, isPartialLineRegion)) return false;
+    return !canEndCrossWORD(lastChar, boundary.rightBoundaryChar);
+  }
 
-  if (op == "diw" || op == "ciw" || op == "diW" || op == "ciW") {
-    // Inner text objects: safe only at full line boundaries for now
+  // Line-to-end motions: D/C/d$/c$ (Line endpoint)
+  if (op == "D" || op == "C" || op == "d$" || op == "c$") {
+    return !canLineCross(boundary.rightBoundaryChar);
+  }
+
+  // Backward word motions: db/cb (End endpoint - symmetric with de)
+  if (op == "db" || op == "cb") {
+    if (!isBackwardWordPositionValid(s, boundary, isMultiLine, isPartialLineRegion)) return false;
+    return !canEndCross(firstChar, boundary.leftBoundaryChar);
+  }
+
+  // Backward word-end motions: dge/cge (Next endpoint)
+  if (op == "dge" || op == "cge") {
+    if (!isBackwardWordPositionValid(s, boundary, isMultiLine, isPartialLineRegion)) return false;
+    return !canNextCross(firstChar, boundary.leftBoundaryChar);
+  }
+
+  // Backward WORD motions: dB/cB (END endpoint)
+  if (op == "dB" || op == "cB") {
+    if (!isBackwardWordPositionValid(s, boundary, isMultiLine, isPartialLineRegion)) return false;
+    return !canEndCrossWORD(firstChar, boundary.leftBoundaryChar);
+  }
+
+  // Backward WORD-end motions: dgE/cgE (NEXT endpoint)
+  if (op == "dgE" || op == "cgE") {
+    if (!isBackwardWordPositionValid(s, boundary, isMultiLine, isPartialLineRegion)) return false;
+    return !canNextCrossWORD(firstChar, boundary.leftBoundaryChar);
+  }
+
+  // Line-to-start motions: d0/c0/d^/c^ (Line endpoint)
+  if (op == "d0" || op == "c0" || op == "d^" || op == "c^") {
+    return !canLineCross(boundary.leftBoundaryChar);
+  }
+
+  // Single char forward: x, s (position-based check)
+  if (op == "x" || op == "s") {
+    if (currentLine.empty()) return false;
+    if (cursorCol < 0 || cursorCol >= lineLen) return false;
+    // At last column of partial-line region: cursor would land outside
+    if (isLastLine && !boundary.atLineEnd() && atOrNearLineEnd) return false;
+    return true;
+  }
+
+  // Single char backward: X (position-based check)
+  if (op == "X") {
+    return cursorCol > 0;
+  }
+
+  // Text objects: only safe at full line boundaries for now
+  // TODO: Implement proper crossing checks for text objects
+  if (op == "diw" || op == "ciw" || op == "diW" || op == "ciW" ||
+      op == "daw" || op == "caw" || op == "daW" || op == "caW") {
     return boundary.atLineStart() && boundary.atLineEnd();
-  }
-
-  if (op == "daw" || op == "caw" || op == "daW" || op == "caW") {
-    // Around text objects: very risky, disable for partial lines
-    // TODO: Determine proper safety conditions with CharType model
-    return boundary.atLineStart() && boundary.atLineEnd();
-  }
-
-  // 's' (substitute char) is like 'x' then insert
-  if (op == "s") {
-    return isForwardEditSafe(currentLine, cursorCol, boundary, ForwardEdit::CHAR);
   }
 
   // Navigation and other operations - generally safe

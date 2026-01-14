@@ -12,136 +12,125 @@ CharType getCharType(char c) {
 }
 
 // =============================================================================
-// Forward word motion crossing checks
+// Endpoint-based crossing checks (word)
 // See data/EditBoundaryLogic.typ for derivation
 // =============================================================================
 
-// dw: delete to next word start (includes trailing whitespace)
+// End: stops at word boundary (de, db motions)
 //
-//               |  bc=keyword       |  bc=whitespace    |  bc=symbol        |
-// --------------+-------------------+-------------------+-------------------+
-// last=keyword  |  YES              |  YES              |  no               |
-// last=space    |  no               |  YES              |  no               |
-// last=symbol   |  no               |  no               |  no               |
+// Uses wordChar/nonWordChar concept: motion continues through same word type.
+// Whitespace isn't a word, so `e` from whitespace goes to NEXT word end.
 //
-bool canDwCross(CharType lastChar, CharType bc) {
+//               |  bc=Keyword  |  bc=Whitespace  |  bc=Symbol  |  bc=Newline  |
+// --------------+--------------+-----------------+-------------+--------------+
+// char=Keyword  |  YES         |  no             |  no         |  no          |
+// char=Space    |  YES         |  YES            |  YES        |  no          |
+// char=Symbol   |  no          |  no             |  YES        |  no          |
+//
+bool canEndCross(CharType c, CharType bc) {
     if (bc == CharType::Newline) return false;
-    if (lastChar == CharType::Symbol) return false;
-    if (lastChar == CharType::Keyword) return bc != CharType::Symbol;
-    // lastChar == Whitespace
-    return bc == CharType::Whitespace;
+    // Whitespace isn't a word - `e` goes to NEXT word end, crossing everything
+    if (c == CharType::Whitespace) return true;
+    // Same word type continues: Keyword→Keyword or Symbol→Symbol
+    return c == bc;
 }
 
-// de: delete to word end
+// Space: stops at word end + trailing whitespace (dw, db motions)
 //
-//               |  bc=keyword       |  bc=whitespace    |  bc=symbol        |
-// --------------+-------------------+-------------------+-------------------+
-// last=keyword  |  YES              |  no               |  no               |
-// last=space    |  no               |  no               |  no               |
-// last=symbol   |  no               |  no               |  no               |
+// Uses wordChar/nonWordChar concept: motion continues through same word type + whitespace.
+// - For Keyword content: crosses Keyword and Whitespace, stops at Symbol
+// - For Symbol content: crosses Symbol and Whitespace, stops at Keyword
 //
-bool canDeCross(CharType lastChar, CharType bc) {
+//               |  bc=Keyword  |  bc=Whitespace  |  bc=Symbol  |  bc=Newline  |
+// --------------+--------------+-----------------+-------------+--------------+
+// char=Keyword  |  YES         |  YES            |  no         |  no          |
+// char=Space    |  no          |  YES            |  no         |  no          |
+// char=Symbol   |  no          |  YES            |  YES        |  no          |
+//
+bool canSpaceCross(CharType c, CharType bc) {
     if (bc == CharType::Newline) return false;
-    return lastChar == CharType::Keyword && bc == CharType::Keyword;
+    if (c == CharType::Whitespace) return bc == CharType::Whitespace;
+    // For Keyword/Symbol: crosses same type and whitespace, stops at different type
+    if (bc == CharType::Whitespace) return true;
+    return c == bc;  // Same word type continues
+}
+
+// Next: crosses into adjacent word (dge motion)
+//
+// Uses wordChar/nonWordChar concept applied symmetrically.
+// Original table had Keyword/Whitespace crossing everything, Symbol crossing nothing.
+// With symmetric interpretation, Symbol should also cross everything.
+//
+//               |  bc=Keyword  |  bc=Whitespace  |  bc=Symbol  |  bc=Newline  |
+// --------------+--------------+-----------------+-------------+--------------+
+// char=Keyword  |  YES         |  YES            |  YES        |  no          |
+// char=Space    |  YES         |  YES            |  YES        |  no          |
+// char=Symbol   |  YES         |  YES            |  YES        |  no          |
+//
+bool canNextCross(CharType c, CharType bc) {
+    (void)c;  // All word types cross - ge always goes to previous word end
+    return bc != CharType::Newline;
+}
+
+// Line: crosses to line boundary
+//
+//               |  bc=Keyword  |  bc=Whitespace  |  bc=Symbol  |  bc=Newline  |
+// --------------+--------------+-----------------+-------------+--------------+
+//               |  YES         |  YES            |  YES        |  no          |
+//
+bool canLineCross(CharType bc) {
+    return bc != CharType::Newline;
 }
 
 // =============================================================================
-// Forward WORD motion crossing checks
+// Endpoint-based crossing checks (WORD)
+// Keyword and Symbol merge into NonWhitespace
 // =============================================================================
 
-// dW: delete to next WORD start (includes trailing whitespace)
+// END: stops at WORD boundary (dE, dB motions)
 //
-//               |  bc=keyword       |  bc=whitespace    |  bc=symbol        |
-// --------------+-------------------+-------------------+-------------------+
-// last=keyword  |  YES              |  YES              |  YES              |
-// last=space    |  no               |  YES              |  no               |
-// last=symbol   |  YES              |  YES              |  YES              |
+// For WORD motions, Keyword and Symbol merge into NonWhitespace.
+// Whitespace isn't a WORD, so `E` from whitespace goes to NEXT WORD end.
 //
-bool canDWCross(CharType lastChar, CharType bc) {
+//               |  bc=NonWS  |  bc=Whitespace  |  bc=Newline  |
+// --------------+------------+-----------------+--------------+
+// char=WORD     |  YES       |  no             |  no          |
+// char=Space    |  YES       |  YES            |  no          |
+//
+bool canEndCrossWORD(CharType c, CharType bc) {
     if (bc == CharType::Newline) return false;
-    if (lastChar == CharType::Whitespace) return bc == CharType::Whitespace;
-    // lastChar == Keyword or Symbol: always crosses (WORD chars)
-    return true;
-}
-
-// dE: delete to WORD end
-//
-//               |  bc=keyword       |  bc=whitespace    |  bc=symbol        |
-// --------------+-------------------+-------------------+-------------------+
-// last=keyword  |  YES              |  no               |  YES              |
-// last=space    |  no               |  no               |  no               |
-// last=symbol   |  YES              |  no               |  YES              |
-//
-bool canDECross(CharType lastChar, CharType bc) {
-    if (bc == CharType::Newline) return false;
-    if (lastChar == CharType::Whitespace) return false;
-    // lastChar == Keyword or Symbol: crosses if bc is also non-whitespace
+    // Whitespace isn't a WORD - `E` goes to NEXT WORD end, crossing everything
+    if (c == CharType::Whitespace) return true;
+    // NonWS (Keyword or Symbol) continues through non-whitespace boundary
     return bc != CharType::Whitespace;
 }
 
-// =============================================================================
-// Backward word motion crossing checks
-// =============================================================================
-
-// db: delete backward to word start
+// SPACE: stops at WORD end + trailing whitespace
 //
-//                |  bc=keyword       |  bc=whitespace    |  bc=symbol        |
-// ---------------+-------------------+-------------------+-------------------+
-// first=keyword  |  YES              |  no               |  no               |
-// first=space    |  no               |  no               |  no               |
-// first=symbol   |  no               |  no               |  no               |
+//               |  bc=NonWS  |  bc=Whitespace  |  bc=Newline  |
+// --------------+------------+-----------------+--------------+
+// char=WORD     |  YES       |  YES            |  no          |
+// char=Space    |  no        |  YES            |  no          |
 //
-bool canDbCross(CharType firstChar, CharType bc) {
+bool canSpaceCrossWORD(CharType c, CharType bc) {
     if (bc == CharType::Newline) return false;
-    return firstChar == CharType::Keyword && bc == CharType::Keyword;
-}
-
-// dge: delete backward to previous word end
-//
-//                |  bc=keyword       |  bc=whitespace    |  bc=symbol        |
-// ---------------+-------------------+-------------------+-------------------+
-// first=keyword  |  YES              |  YES              |  YES              |
-// first=space    |  YES              |  YES              |  YES              |
-// first=symbol   |  no               |  no               |  no               |
-//
-bool canDgeCross(CharType firstChar, CharType bc) {
-    if (bc == CharType::Newline) return false;
-    return firstChar != CharType::Symbol;
-}
-
-// =============================================================================
-// Backward WORD motion crossing checks
-// =============================================================================
-
-// dB: delete backward to WORD start
-//
-//                |  bc=keyword       |  bc=whitespace    |  bc=symbol        |
-// ---------------+-------------------+-------------------+-------------------+
-// first=keyword  |  YES              |  no               |  YES              |
-// first=space    |  no               |  no               |  no               |
-// first=symbol   |  YES              |  no               |  YES              |
-//
-bool canDBCross(CharType firstChar, CharType bc) {
-    if (bc == CharType::Newline) return false;
-    if (firstChar == CharType::Whitespace) return false;
-    // firstChar == Keyword or Symbol: crosses if bc is also non-whitespace
-    return bc != CharType::Whitespace;
-}
-
-// dgE: delete backward to previous WORD end
-//
-//                |  bc=keyword       |  bc=whitespace    |  bc=symbol        |
-// ---------------+-------------------+-------------------+-------------------+
-// first=keyword  |  YES              |  YES              |  YES              |
-// first=space    |  YES              |  YES              |  YES              |
-// first=symbol   |  YES              |  no               |  YES              |
-//
-bool canDgECross(CharType firstChar, CharType bc) {
-    if (bc == CharType::Newline) return false;
-    if (firstChar == CharType::Whitespace) return false;
-    if (firstChar == CharType::Symbol) return bc == CharType::Symbol;
-    // firstChar == Keyword: always crosses
+    if (c == CharType::Whitespace) return bc == CharType::Whitespace;
+    // c is NonWS: always crosses except to Newline
     return true;
+}
+
+// NEXT: crosses into adjacent WORD
+//
+//               |  bc=NonWS  |  bc=Whitespace  |  bc=Newline  |
+// --------------+------------+-----------------+--------------+
+// char=WORD     |  YES       |  YES            |  no          |
+// char=Space    |  YES       |  YES            |  no          |
+//
+bool canNextCrossWORD(CharType c, CharType bc) {
+    if (bc == CharType::Newline) return false;
+    // For WORD, everything except Newline allows crossing
+    return c != CharType::Whitespace || bc != CharType::Newline;
+    // Simplified: always true when bc != Newline (already checked above)
 }
 
 // =============================================================================
@@ -181,61 +170,4 @@ EditBoundary analyzeEditBoundary(
     // hasLinesAbove/hasLinesBelow must be set by caller with multi-line context
 
     return b;
-}
-
-// =============================================================================
-// TEMPORARY: Legacy API stubs
-// TODO: Remove these once EditOptimizer is updated to use canXxxCross()
-// =============================================================================
-
-bool isForwardEditSafe(
-    const std::string& editContent,
-    int cursorCol,
-    const EditBoundary& boundary,
-    ForwardEdit edit) {
-
-    if (editContent.empty()) return false;
-    CharType lastChar = getCharType(editContent.back());
-
-    switch (edit) {
-        case ForwardEdit::CHAR:
-            return cursorCol >= 0 && cursorCol < static_cast<int>(editContent.size());
-        case ForwardEdit::LINE_TO_END:
-            return boundary.atLineEnd();
-        case ForwardEdit::WORD_TO_START:
-            return !canDwCross(lastChar, boundary.rightBoundaryChar);
-        case ForwardEdit::WORD_TO_END:
-            return !canDeCross(lastChar, boundary.rightBoundaryChar);
-        case ForwardEdit::BIG_WORD_TO_START:
-            return !canDWCross(lastChar, boundary.rightBoundaryChar);
-        case ForwardEdit::BIG_WORD_TO_END:
-            return !canDECross(lastChar, boundary.rightBoundaryChar);
-    }
-    return false;
-}
-
-bool isBackwardEditSafe(
-    const std::string& editContent,
-    int cursorCol,
-    const EditBoundary& boundary,
-    BackwardEdit edit) {
-
-    if (editContent.empty()) return false;
-    CharType firstChar = getCharType(editContent.front());
-
-    switch (edit) {
-        case BackwardEdit::CHAR:
-            return cursorCol > 0;
-        case BackwardEdit::LINE_TO_START:
-            return boundary.atLineStart();
-        case BackwardEdit::WORD_TO_START:
-            return !canDbCross(firstChar, boundary.leftBoundaryChar);
-        case BackwardEdit::WORD_TO_END:
-            return !canDgeCross(firstChar, boundary.leftBoundaryChar);
-        case BackwardEdit::BIG_WORD_TO_START:
-            return !canDBCross(firstChar, boundary.leftBoundaryChar);
-        case BackwardEdit::BIG_WORD_TO_END:
-            return !canDgECross(firstChar, boundary.leftBoundaryChar);
-    }
-    return false;
 }

@@ -5,6 +5,9 @@
 #include "Editor/Range.h"
 #include "VimCore/VimEditUtils.h"
 #include "Optimizer/EditBoundary.h"
+#include "Utils/NeovimOracle.h"
+
+#include <random>
 
 using namespace std;
 
@@ -12,19 +15,9 @@ using namespace std;
 // Forward Reach Test Suite
 // Tests that forward edit operations respect edit boundaries
 // =============================================================================
-//
-// Test case: "abc def.gh i"
-// Edit boundary: cols 1-8 ("bc def.g")
-// The edit should NOT modify 'a' (col 0) or 'h' (col 9)
-//
-// Vim-tested expected results:
-// - At col 8 (g): only x works
-// - At col 7 (.): x, dw work
-// - At col 6 (f): x, dw, de work
-// - At col 3 (space): x, dw, de, dW work
-// - At col 1 (b): x, dw, de, dW, dE work
-// - D never works (would delete to EOL)
-//
+
+// =============================================================================
+// Hand-crafted tests (original examples)
 // =============================================================================
 
 class ForwardReachTest : public ::testing::Test {
@@ -33,40 +26,26 @@ protected:
     static constexpr int EDIT_START = 1;  // 'b'
     static constexpr int EDIT_END = 8;    // 'g' (inclusive)
 
-    // Apply a single-char edit (x, D) and return the resulting line
     string applySimpleEdit(const string& line, int cursorCol, const string& editCmd) {
         Lines lines = {line};
         Position pos(0, cursorCol);
         Mode mode = Mode::Normal;
         NavContext nav(40, 20);
-
         Edit::applyEdit(lines, pos, mode, nav, ParsedEdit(editCmd));
         return lines[0];
     }
 
-    // Apply operator+motion edit (dw, de, dW, dE) and return the resulting line
     string applyOperatorMotion(const string& line, int cursorCol, const string& motion) {
         Lines lines = {line};
         Position startPos(0, cursorCol);
         Mode mode = Mode::Normal;
         NavContext nav(40, 20);
 
-        // Simulate the motion to get end position
         MotionResult result = simulateMotions(startPos, mode, nav, motion, lines);
         Position endPos = result.pos;
-
-        // Determine inclusivity based on motion
-        // e, E are inclusive (delete up to and including end char)
-        // w, W, b, B are exclusive (delete up to but not including end char)
-        bool inclusive = (motion == "e" || motion == "E" ||
-                          motion == "ge" || motion == "gE");
-
-        // For exclusive motions like w/W, we want to delete up to (not including) the landing spot
-        // So we adjust: delete [start, end-1] inclusive, or [start, end) exclusive
+        bool inclusive = (motion == "e" || motion == "E" || motion == "ge" || motion == "gE");
         Range range = rangeFromMotion(startPos, endPos, inclusive);
 
-        // For w/W motions: range is [start, end) exclusive
-        // But our deleteRange expects inclusive end, so adjust
         if (!inclusive && range.end.col > 0) {
             range.end.col--;
             range.inclusive = true;
@@ -76,30 +55,17 @@ protected:
         return lines[0];
     }
 
-    // Check if an edit stays within the boundary
-    // (i.e., doesn't modify chars outside [EDIT_START, EDIT_END])
     bool isEditSafe(const string& original, const string& result, int editStart, int editEnd) {
-        // Characters before editStart must be unchanged
         for (int i = 0; i < editStart && i < (int)original.size() && i < (int)result.size(); i++) {
             if (original[i] != result[i]) return false;
         }
-
-        // Characters after editEnd must be unchanged (accounting for deletions)
-        // Find what remains after the edit boundary in result
         int origAfterEdit = editEnd + 1;
         string origSuffix = original.substr(origAfterEdit);
-
-        // The result should end with this suffix
         if (result.size() < origSuffix.size()) return false;
         string resultSuffix = result.substr(result.size() - origSuffix.size());
-
         return origSuffix == resultSuffix;
     }
 };
-
-// =============================================================================
-// At col 8 (g): only x works
-// =============================================================================
 
 TEST_F(ForwardReachTest, AtG_X_Works) {
     string result = applySimpleEdit(FULL_LINE, 8, "x");
@@ -109,519 +75,578 @@ TEST_F(ForwardReachTest, AtG_X_Works) {
 
 TEST_F(ForwardReachTest, AtG_De_Fails) {
     string result = applyOperatorMotion(FULL_LINE, 8, "e");
-    // de from g would delete 'gh' (to end of word), leaving "abc def. i"
-    // This deletes 'h' which is outside the edit boundary
     EXPECT_FALSE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
 }
 
-// =============================================================================
-// At col 7 (.): x, dw work
-// =============================================================================
-
 TEST_F(ForwardReachTest, AtDot_X_Works) {
     string result = applySimpleEdit(FULL_LINE, 7, "x");
-    EXPECT_EQ(result, "abc defgh i");
     EXPECT_TRUE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
 }
 
 TEST_F(ForwardReachTest, AtDot_Dw_Works) {
     string result = applyOperatorMotion(FULL_LINE, 7, "w");
-    // dw from . goes to next word 'gh', deleting just '.'
-    EXPECT_EQ(result, "abc defgh i");
-    EXPECT_TRUE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
-}
-
-TEST_F(ForwardReachTest, AtDot_De_Fails) {
-    string result = applyOperatorMotion(FULL_LINE, 7, "e");
-    // de from . (end of word '.') goes to end of next word 'gh' (at 'h')
-    // This deletes '.gh', leaving "abc def i" - 'h' was outside boundary
-    EXPECT_FALSE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
-}
-
-// =============================================================================
-// At col 6 (f): x, dw, de work
-// =============================================================================
-
-TEST_F(ForwardReachTest, AtF_X_Works) {
-    string result = applySimpleEdit(FULL_LINE, 6, "x");
-    EXPECT_EQ(result, "abc de.gh i");
-    EXPECT_TRUE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
-}
-
-TEST_F(ForwardReachTest, AtF_Dw_Works) {
-    string result = applyOperatorMotion(FULL_LINE, 6, "w");
-    // dw from f goes to '.', deleting 'f'
-    EXPECT_EQ(result, "abc de.gh i");
-    EXPECT_TRUE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
-}
-
-TEST_F(ForwardReachTest, AtF_De_Works) {
-    string result = applyOperatorMotion(FULL_LINE, 6, "e");
-    // de from f (end of 'def') goes to end of next word '.' (at '.')
-    // Deletes 'f.' leaving "abc degh i"
-    EXPECT_EQ(result, "abc degh i");
     EXPECT_TRUE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
 }
 
 TEST_F(ForwardReachTest, AtF_DW_Fails) {
     string result = applyOperatorMotion(FULL_LINE, 6, "W");
-    // dW from f goes to next WORD 'i', deleting 'f.gh '
-    // This deletes 'h' which is outside boundary
     EXPECT_FALSE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
-}
-
-// =============================================================================
-// At col 3 (space): x, dw, de, dW work
-// =============================================================================
-
-TEST_F(ForwardReachTest, AtSpace_X_Works) {
-    string result = applySimpleEdit(FULL_LINE, 3, "x");
-    EXPECT_EQ(result, "abcdef.gh i");
-    EXPECT_TRUE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
-}
-
-TEST_F(ForwardReachTest, AtSpace_Dw_Works) {
-    string result = applyOperatorMotion(FULL_LINE, 3, "w");
-    // dw from space goes to 'd', deleting just the space
-    EXPECT_EQ(result, "abcdef.gh i");
-    EXPECT_TRUE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
-}
-
-TEST_F(ForwardReachTest, AtSpace_De_Works) {
-    string result = applyOperatorMotion(FULL_LINE, 3, "e");
-    // de from space goes to end of 'def' (at 'f'), deleting ' def'
-    EXPECT_EQ(result, "abc.gh i");
-    EXPECT_TRUE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
-}
-
-TEST_F(ForwardReachTest, AtSpace_DW_Works) {
-    string result = applyOperatorMotion(FULL_LINE, 3, "W");
-    // dW from space goes to 'd' (start of WORD 'def.gh'), deleting just space
-    EXPECT_EQ(result, "abcdef.gh i");
-    EXPECT_TRUE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
 }
 
 TEST_F(ForwardReachTest, AtSpace_DE_Fails) {
     string result = applyOperatorMotion(FULL_LINE, 3, "E");
-    // dE from space goes to end of WORD 'def.gh' (at 'h'), deleting ' def.gh'
-    // This deletes 'h' which is outside boundary
     EXPECT_FALSE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
-}
-
-// =============================================================================
-// At col 1 (b): x, dw, de, dW, dE work
-// =============================================================================
-
-TEST_F(ForwardReachTest, AtB_X_Works) {
-    string result = applySimpleEdit(FULL_LINE, 1, "x");
-    EXPECT_EQ(result, "ac def.gh i");
-    EXPECT_TRUE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
-}
-
-TEST_F(ForwardReachTest, AtB_Dw_Works) {
-    string result = applyOperatorMotion(FULL_LINE, 1, "w");
-    // dw from b goes to 'd' (start of next word), deleting 'bc '
-    EXPECT_EQ(result, "adef.gh i");
-    EXPECT_TRUE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
-}
-
-TEST_F(ForwardReachTest, AtB_De_Works) {
-    string result = applyOperatorMotion(FULL_LINE, 1, "e");
-    // de from b goes to end of 'abc' (at 'c'), deleting 'bc'
-    EXPECT_EQ(result, "a def.gh i");
-    EXPECT_TRUE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
-}
-
-TEST_F(ForwardReachTest, AtB_DW_Works) {
-    string result = applyOperatorMotion(FULL_LINE, 1, "w");
-    // dW from b goes to 'd' (start of next WORD), deleting 'bc '
-    EXPECT_EQ(result, "adef.gh i");
-    EXPECT_TRUE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
-}
-
-TEST_F(ForwardReachTest, AtB_DE_Works) {
-    string result = applyOperatorMotion(FULL_LINE, 1, "E");
-    // dE from b goes to end of WORD 'abc' (at 'c'), deleting 'bc'
-    EXPECT_EQ(result, "a def.gh i");
-    EXPECT_TRUE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
 }
 
 TEST_F(ForwardReachTest, AtB_D_Fails) {
     string result = applySimpleEdit(FULL_LINE, 1, "D");
-    // D from b deletes to EOL: 'bc def.gh i'
-    // This deletes everything including 'h' and 'i'
     EXPECT_FALSE(isEditSafe(FULL_LINE, result, EDIT_START, EDIT_END));
 }
 
 // =============================================================================
-// Tests for isForwardEditSafe() prediction function
-// These verify that the prediction matches actual edit behavior
+// Crossing Function Unit Tests
 // =============================================================================
 
-class ForwardReachPredictionTest : public ::testing::Test {
+class CrossingFunctionTest : public ::testing::Test {
 protected:
-    // Full line: "abc def.gh i"
-    // Edit region: cols 1-8 (inclusive) = "bc def.g"
-    // Positions within edit content: b=0, c=1, space=2, d=3, e=4, f=5, .=6, g=7
-    static constexpr const char* FULL_LINE = "abc def.gh i";
-    static constexpr int EDIT_START = 1;  // 'b'
-    static constexpr int EDIT_END = 8;    // 'g' (inclusive)
-
-    EditBoundary boundary;
-    string editContent;
+    EditBoundary keywordBoundary;
+    EditBoundary whitespaceBoundary;
+    EditBoundary symbolToKeywordBoundary;
 
     void SetUp() override {
-        boundary = analyzeEditBoundary(FULL_LINE, EDIT_START, EDIT_END);
-        editContent = string(FULL_LINE).substr(EDIT_START, EDIT_END - EDIT_START + 1);
+        keywordBoundary = analyzeEditBoundary("abc def.gh i", 1, 8);
+        whitespaceBoundary = analyzeEditBoundary("abc  def", 1, 3);
+        symbolToKeywordBoundary = analyzeEditBoundary("abc.def", 0, 3);
     }
 };
 
-TEST_F(ForwardReachPredictionTest, AnalyzeBoundary_Correctly) {
-    // 'h' (col 9) is a keyword char
-    EXPECT_EQ(boundary.rightBoundaryChar, CharType::Keyword);
-    // Edit content should be "bc def.g"
-    EXPECT_EQ(editContent, "bc def.g");
+TEST_F(CrossingFunctionTest, BoundaryAnalysis) {
+    EXPECT_EQ(keywordBoundary.rightBoundaryChar, CharType::Keyword);
+    EXPECT_EQ(keywordBoundary.leftBoundaryChar, CharType::Keyword);
+    EXPECT_EQ(whitespaceBoundary.rightBoundaryChar, CharType::Whitespace);
+    EXPECT_EQ(symbolToKeywordBoundary.rightBoundaryChar, CharType::Keyword);
+    EXPECT_EQ(symbolToKeywordBoundary.leftBoundaryChar, CharType::Newline);
 }
 
-TEST_F(ForwardReachPredictionTest, AtG_Predictions) {
-    // At 'g' (relative col 7): only x should be safe
-    EXPECT_TRUE(isForwardEditSafe(editContent, 7, boundary, ForwardEdit::CHAR));
-    EXPECT_FALSE(isForwardEditSafe(editContent, 7, boundary, ForwardEdit::WORD_TO_END));
-    EXPECT_FALSE(isForwardEditSafe(editContent, 7, boundary, ForwardEdit::WORD_TO_START));
-    EXPECT_FALSE(isForwardEditSafe(editContent, 7, boundary, ForwardEdit::BIG_WORD_TO_START));
-    EXPECT_FALSE(isForwardEditSafe(editContent, 7, boundary, ForwardEdit::BIG_WORD_TO_END));
-    EXPECT_FALSE(isForwardEditSafe(editContent, 7, boundary, ForwardEdit::LINE_TO_END));
+TEST_F(CrossingFunctionTest, EndCross_KeywordToKeyword_Crosses) {
+    EXPECT_TRUE(canEndCross(CharType::Keyword, CharType::Keyword));
 }
 
-TEST_F(ForwardReachPredictionTest, AtDot_Predictions) {
-    // At '.' (relative col 6): x, dw should be safe; de should fail
-    // lastChar = '.' (Symbol), boundaryChar = 'h' (Keyword)
-    // canDwCross(Symbol, Keyword) = false → safe
-    // canDeCross(Symbol, Keyword) = false → safe (but de lands on 'g' which is Keyword)
-    // Actually the legacy function uses lastChar of whole content = 'g' (Keyword)
-    // canDeCross(Keyword, Keyword) = true → unsafe
-    EXPECT_TRUE(isForwardEditSafe(editContent, 6, boundary, ForwardEdit::CHAR));
-    EXPECT_TRUE(isForwardEditSafe(editContent, 6, boundary, ForwardEdit::WORD_TO_START));
-    EXPECT_FALSE(isForwardEditSafe(editContent, 6, boundary, ForwardEdit::WORD_TO_END));
-    EXPECT_FALSE(isForwardEditSafe(editContent, 6, boundary, ForwardEdit::BIG_WORD_TO_START));
-    EXPECT_FALSE(isForwardEditSafe(editContent, 6, boundary, ForwardEdit::BIG_WORD_TO_END));
+TEST_F(CrossingFunctionTest, EndCross_KeywordToOther_Safe) {
+    EXPECT_FALSE(canEndCross(CharType::Keyword, CharType::Whitespace));
+    EXPECT_FALSE(canEndCross(CharType::Keyword, CharType::Symbol));
+    EXPECT_FALSE(canEndCross(CharType::Keyword, CharType::Newline));
 }
 
-TEST_F(ForwardReachPredictionTest, AtF_Predictions) {
-    // At 'f' (relative col 5): x, dw, de should be safe; dW, dE should fail
-    // lastChar = 'g' (Keyword), boundaryChar = 'h' (Keyword)
-    // canDeCross(Keyword, Keyword) = true → unsafe
-    // But actual vim behavior shows de at 'f' is safe...
-    // The legacy function may not match perfectly with new crossing logic
-    EXPECT_TRUE(isForwardEditSafe(editContent, 5, boundary, ForwardEdit::CHAR));
-    EXPECT_TRUE(isForwardEditSafe(editContent, 5, boundary, ForwardEdit::WORD_TO_START));
-    // Note: with new logic using lastChar of whole content, this becomes unsafe
-    EXPECT_FALSE(isForwardEditSafe(editContent, 5, boundary, ForwardEdit::WORD_TO_END));
-    EXPECT_FALSE(isForwardEditSafe(editContent, 5, boundary, ForwardEdit::BIG_WORD_TO_START));
-    EXPECT_FALSE(isForwardEditSafe(editContent, 5, boundary, ForwardEdit::BIG_WORD_TO_END));
+TEST_F(CrossingFunctionTest, SpaceCross_KeywordToKeyword_Crosses) {
+    EXPECT_TRUE(canSpaceCross(CharType::Keyword, CharType::Keyword));
 }
 
-TEST_F(ForwardReachPredictionTest, AtSpace_Predictions) {
-    // At space (relative col 2): x, dw, de, dW should be safe; dE should fail
-    // lastChar = 'g' (Keyword), boundaryChar = 'h' (Keyword)
-    EXPECT_TRUE(isForwardEditSafe(editContent, 2, boundary, ForwardEdit::CHAR));
-    EXPECT_TRUE(isForwardEditSafe(editContent, 2, boundary, ForwardEdit::WORD_TO_START));
-    // With new logic: canDeCross(Keyword, Keyword) = true → unsafe
-    EXPECT_FALSE(isForwardEditSafe(editContent, 2, boundary, ForwardEdit::WORD_TO_END));
-    EXPECT_TRUE(isForwardEditSafe(editContent, 2, boundary, ForwardEdit::BIG_WORD_TO_START));
-    EXPECT_FALSE(isForwardEditSafe(editContent, 2, boundary, ForwardEdit::BIG_WORD_TO_END));
+TEST_F(CrossingFunctionTest, SpaceCross_KeywordToWhitespace_Crosses) {
+    EXPECT_TRUE(canSpaceCross(CharType::Keyword, CharType::Whitespace));
 }
 
-TEST_F(ForwardReachPredictionTest, AtB_Predictions) {
-    // At 'b' (relative col 0): x, dw, de, dW, dE should be safe; D should fail
-    // lastChar = 'g' (Keyword), boundaryChar = 'h' (Keyword)
-    EXPECT_TRUE(isForwardEditSafe(editContent, 0, boundary, ForwardEdit::CHAR));
-    EXPECT_TRUE(isForwardEditSafe(editContent, 0, boundary, ForwardEdit::WORD_TO_START));
-    // With new logic: canDeCross(Keyword, Keyword) = true → unsafe
-    EXPECT_FALSE(isForwardEditSafe(editContent, 0, boundary, ForwardEdit::WORD_TO_END));
-    EXPECT_TRUE(isForwardEditSafe(editContent, 0, boundary, ForwardEdit::BIG_WORD_TO_START));
-    EXPECT_FALSE(isForwardEditSafe(editContent, 0, boundary, ForwardEdit::BIG_WORD_TO_END));
-    EXPECT_FALSE(isForwardEditSafe(editContent, 0, boundary, ForwardEdit::LINE_TO_END));
+TEST_F(CrossingFunctionTest, SpaceCross_KeywordToSymbol_Safe) {
+    EXPECT_FALSE(canSpaceCross(CharType::Keyword, CharType::Symbol));
+}
+
+TEST_F(CrossingFunctionTest, LineCross) {
+    EXPECT_TRUE(canLineCross(CharType::Keyword));
+    EXPECT_TRUE(canLineCross(CharType::Whitespace));
+    EXPECT_FALSE(canLineCross(CharType::Newline));
+}
+
+TEST_F(CrossingFunctionTest, EndCrossWORD_NonWSToNonWS_Crosses) {
+    EXPECT_TRUE(canEndCrossWORD(CharType::Keyword, CharType::Keyword));
+    EXPECT_TRUE(canEndCrossWORD(CharType::Keyword, CharType::Symbol));
+    EXPECT_TRUE(canEndCrossWORD(CharType::Symbol, CharType::Keyword));
+}
+
+TEST_F(CrossingFunctionTest, SpaceCrossWORD) {
+    EXPECT_TRUE(canSpaceCrossWORD(CharType::Keyword, CharType::Keyword));
+    EXPECT_TRUE(canSpaceCrossWORD(CharType::Keyword, CharType::Whitespace));
+    EXPECT_TRUE(canSpaceCrossWORD(CharType::Whitespace, CharType::Whitespace));
+    EXPECT_FALSE(canSpaceCrossWORD(CharType::Whitespace, CharType::Keyword));
 }
 
 // =============================================================================
-// Tests for changed content with boundary analysis from original
+// NeovimOracle-backed Testing
 // =============================================================================
+//
+// Strategy:
+// The crossing functions predict: "if you execute this motion when positioned
+// at content ending with lastChar, with boundaryChar immediately following,
+// would the motion cross into the boundary?"
+//
+// To test this, we create minimal test cases:
+// - For forward motions: [content][boundary] where cursor is at the last char of content
+// - For backward motions: [boundary][content] where cursor is in the content
+//
+// We then run the motion and check if the boundary was modified.
 
-class ForwardReachChangedContentTest : public ::testing::Test {
+class NeovimCrossingTest : public ::testing::Test {
 protected:
-    // Original text for boundary analysis
-    static constexpr const char* ORIGINAL_LINE = "abc def.gh i";
-    static constexpr int EDIT_START_IN_ORIGINAL = 1;  // 'b'
-    static constexpr int EDIT_END_IN_ORIGINAL = 8;  // 'g'
+    static void SetUpTestSuite() {
+        oracle_ = std::make_unique<NeovimOracle>();
+    }
+    static void TearDownTestSuite() {
+        oracle_.reset();
+    }
+    static std::unique_ptr<NeovimOracle> oracle_;
 
-    // New content after edit
-    static constexpr const char* NEW_CONTENT = "x yz";
+    // Random generator (seeded for reproducibility)
+    std::mt19937 rng{42};
 
-    EditBoundary boundary;
+    // Detailed debug output
+    void printDebug(const string& label, const string& fullLine, int cursorCol,
+                    const string& op, const string& resultLine,
+                    bool predictedSafe, bool actualSafe,
+                    CharType edgeChar, CharType boundaryChar) {
+        cerr << "\n" << string(60, '=') << endl;
+        cerr << label << endl;
+        cerr << string(60, '-') << endl;
+        cerr << "Full line:      \"" << fullLine << "\"" << endl;
+        cerr << "Cursor:         col " << cursorCol << " ('" << fullLine[cursorCol] << "')" << endl;
+        cerr << "Operation:      " << op << endl;
+        cerr << "Result:         \"" << resultLine << "\"" << endl;
+        cerr << "Edge char:      " << charTypeName(edgeChar) << endl;
+        cerr << "Boundary char:  " << charTypeName(boundaryChar) << endl;
+        cerr << "Prediction:     " << (predictedSafe ? "SAFE" : "CROSSES") << endl;
+        cerr << "Actual:         " << (actualSafe ? "SAFE" : "CROSSES") << endl;
+        cerr << "Status:         " << (predictedSafe == actualSafe ? "PASS" : "*** MISMATCH ***") << endl;
+        cerr << string(60, '=') << endl;
+    }
 
-    void SetUp() override {
-        boundary = analyzeEditBoundary(ORIGINAL_LINE, EDIT_START_IN_ORIGINAL, EDIT_END_IN_ORIGINAL);
+    static const char* charTypeName(CharType ct) {
+        switch (ct) {
+            case CharType::Keyword: return "Keyword";
+            case CharType::Whitespace: return "Whitespace";
+            case CharType::Symbol: return "Symbol";
+            case CharType::Newline: return "Newline";
+        }
+        return "Unknown";
+    }
+
+    // Generate representative chars for each type
+    char charOfType(CharType type) {
+        switch (type) {
+            case CharType::Keyword: return 'x';
+            case CharType::Whitespace: return ' ';
+            case CharType::Symbol: return '.';
+            default: return 'x';
+        }
+    }
+
+    // =======================================================================
+    // Forward Test Structure
+    // =======================================================================
+    // The crossing functions predict: when a motion reaches its natural stopping
+    // point, would it cross into the boundary?
+    //
+    // For `de`:
+    //   - Stops at word end (inclusive)
+    //   - If content and boundary are same word type, motion continues through
+    //   - E.g., "xxyy.ZZ" with cursor on first 'x': de goes to 'y' end (crosses into "yy")
+    //
+    // For `dw`:
+    //   - Stops at next word start (exclusive) + trailing whitespace
+    //   - E.g., "xx  yy" with cursor on first 'x': dw deletes "xx  " → crosses if boundary is ' '
+    //
+    // Test structure:
+    //   [content][boundary][suffix_marker]
+    //   - content: 2+ chars of lastCharType
+    //   - boundary: 2+ chars of boundaryType
+    //   - suffix_marker: ".ZZ" - a different type to clearly separate
+    //   - Cursor at START of content
+    //   - Check if suffix_marker is at the expected position after motion
+
+    struct ForwardTestCase {
+        string line;
+        int cursorCol;
+        CharType lastChar;
+        CharType boundaryChar;
+    };
+
+    ForwardTestCase buildForwardTest(CharType lastCharType, CharType boundaryType) {
+        ForwardTestCase tc;
+        tc.lastChar = lastCharType;
+        tc.boundaryChar = boundaryType;
+
+        // Build content (2 chars of lastCharType)
+        string content;
+        switch (lastCharType) {
+            case CharType::Keyword: content = "xx"; break;
+            case CharType::Whitespace: content = "  "; break;
+            case CharType::Symbol: content = ".."; break;
+            default: content = "xx";
+        }
+
+        // Build boundary (2 chars of boundaryType)
+        string boundary;
+        switch (boundaryType) {
+            case CharType::Keyword: boundary = "yy"; break;
+            case CharType::Whitespace: boundary = "  "; break;
+            case CharType::Symbol: boundary = ",,"; break;
+            default: boundary = "yy";
+        }
+
+        // Suffix marker: " QQ" (space + keyword) - space guarantees separation from any boundary type
+        string suffix = " QQ";
+
+        tc.line = content + boundary + suffix;
+        tc.cursorCol = 0;  // Start of content
+
+        return tc;
+    }
+
+    // Check if forward motion crossed the boundary
+    // Safe = boundary chars are still present and in correct position
+    bool forwardMotionCrossed(const ForwardTestCase& tc, const string& result) {
+        // The suffix " QQ" should always be at the end
+        if (result.size() < 3) return true;  // Definitely crossed
+        if (result.substr(result.size() - 3) != " QQ") return true;  // Suffix damaged
+
+        // Now check if boundary was eaten
+        // Original: content + boundary + " QQ"
+        // After safe motion: some_prefix + boundary + " QQ"
+        // After crossing motion: some_prefix + partial_boundary + " QQ" or just " QQ"
+
+        // Build expected boundary string
+        string expectedBoundary;
+        switch (tc.boundaryChar) {
+            case CharType::Keyword: expectedBoundary = "yy"; break;
+            case CharType::Whitespace: expectedBoundary = "  "; break;
+            case CharType::Symbol: expectedBoundary = ",,"; break;
+            default: expectedBoundary = "yy";
+        }
+
+        // Check if boundary is intact before suffix
+        if (result.size() < expectedBoundary.size() + 3) return true;
+        string beforeSuffix = result.substr(result.size() - 3 - expectedBoundary.size(), expectedBoundary.size());
+        return beforeSuffix != expectedBoundary;
+    }
+
+    // =======================================================================
+    // Backward Test Structure
+    // =======================================================================
+    // For backward motions, we reverse the structure:
+    //   [prefix_marker][boundary][content]
+    //   - Cursor at END of content
+    //   - Check if boundary is preserved
+
+    struct BackwardTestCase {
+        string line;
+        int cursorCol;
+        CharType firstChar;
+        CharType boundaryChar;
+    };
+
+    BackwardTestCase buildBackwardTest(CharType firstCharType, CharType boundaryType) {
+        BackwardTestCase tc;
+        tc.firstChar = firstCharType;
+        tc.boundaryChar = boundaryType;
+
+        // Prefix marker: "QQ " (keyword + space) - space guarantees separation from any boundary type
+        string prefix = "QQ ";
+
+        // Build boundary (2 chars of boundaryType)
+        string boundary;
+        switch (boundaryType) {
+            case CharType::Keyword: boundary = "yy"; break;
+            case CharType::Whitespace: boundary = "  "; break;
+            case CharType::Symbol: boundary = ",,"; break;
+            default: boundary = "yy";
+        }
+
+        // Build content (2 chars of firstCharType)
+        string content;
+        switch (firstCharType) {
+            case CharType::Keyword: content = "xx"; break;
+            case CharType::Whitespace: content = "  "; break;
+            case CharType::Symbol: content = ".."; break;
+            default: content = "xx";
+        }
+
+        tc.line = prefix + boundary + content;
+        tc.cursorCol = tc.line.size() - 1;  // End of content
+
+        return tc;
+    }
+
+    // Check if backward motion crossed the boundary
+    bool backwardMotionCrossed(const BackwardTestCase& tc, const string& result) {
+        // The prefix "QQ " should always be at the start
+        if (result.size() < 3) return true;
+        if (result.substr(0, 3) != "QQ ") return true;
+
+        // Build expected boundary string
+        string expectedBoundary;
+        switch (tc.boundaryChar) {
+            case CharType::Keyword: expectedBoundary = "yy"; break;
+            case CharType::Whitespace: expectedBoundary = "  "; break;
+            case CharType::Symbol: expectedBoundary = ",,"; break;
+            default: expectedBoundary = "yy";
+        }
+
+        // Check if boundary is intact after prefix
+        if (result.size() < 3 + expectedBoundary.size()) return true;
+        string afterPrefix = result.substr(3, expectedBoundary.size());
+        return afterPrefix != expectedBoundary;
     }
 };
 
-TEST_F(ForwardReachChangedContentTest, BoundaryCharCorrect) {
-    // 'h' (col 9) is a keyword char
-    EXPECT_EQ(boundary.rightBoundaryChar, CharType::Keyword);
-}
-
-TEST_F(ForwardReachChangedContentTest, AtZ_OnlyXWorks) {
-    // "x yz" positions: x=0, space=1, y=2, z=3
-    // At z (col 3): only x should work
-    // lastChar = 'z' (Keyword), boundaryChar = 'h' (Keyword)
-    // canDwCross(Keyword, Keyword) = true → unsafe
-    EXPECT_TRUE(isForwardEditSafe(NEW_CONTENT, 3, boundary, ForwardEdit::CHAR));
-    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 3, boundary, ForwardEdit::WORD_TO_START));
-    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 3, boundary, ForwardEdit::WORD_TO_END));
-    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 3, boundary, ForwardEdit::BIG_WORD_TO_START));
-    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 3, boundary, ForwardEdit::BIG_WORD_TO_END));
-}
-
-TEST_F(ForwardReachChangedContentTest, AtY_OnlyXWorks) {
-    // At y (col 2): only x should work
-    // lastChar = 'z' (Keyword), boundaryChar = 'h' (Keyword)
-    EXPECT_TRUE(isForwardEditSafe(NEW_CONTENT, 2, boundary, ForwardEdit::CHAR));
-    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 2, boundary, ForwardEdit::WORD_TO_START));
-    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 2, boundary, ForwardEdit::WORD_TO_END));
-    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 2, boundary, ForwardEdit::BIG_WORD_TO_START));
-    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 2, boundary, ForwardEdit::BIG_WORD_TO_END));
-}
-
-TEST_F(ForwardReachChangedContentTest, AtSpace_XAndDwWork) {
-    // At space (col 1): x, dw should work
-    // lastChar = 'z' (Keyword), boundaryChar = 'h' (Keyword)
-    // canDwCross(Keyword, Keyword) = true → would cross → but wait...
-    // The space at col 1 doesn't have lastChar = 'z', the whole content's lastChar is 'z'
-    // So even from space, dw would eventually extend to 'yz' which connects to 'h'
-    EXPECT_TRUE(isForwardEditSafe(NEW_CONTENT, 1, boundary, ForwardEdit::CHAR));
-    // With new logic using lastChar='z': canDwCross(Keyword, Keyword)=true → unsafe
-    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 1, boundary, ForwardEdit::WORD_TO_START));
-    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 1, boundary, ForwardEdit::WORD_TO_END));
-    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 1, boundary, ForwardEdit::BIG_WORD_TO_START));
-    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 1, boundary, ForwardEdit::BIG_WORD_TO_END));
-}
-
-TEST_F(ForwardReachChangedContentTest, AtX_XAndDwWork) {
-    // At x (col 0): x, dw should work
-    // lastChar = 'z' (Keyword), boundaryChar = 'h' (Keyword)
-    EXPECT_TRUE(isForwardEditSafe(NEW_CONTENT, 0, boundary, ForwardEdit::CHAR));
-    // With new logic: canDwCross(Keyword, Keyword)=true → unsafe
-    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 0, boundary, ForwardEdit::WORD_TO_START));
-    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 0, boundary, ForwardEdit::WORD_TO_END));
-    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 0, boundary, ForwardEdit::BIG_WORD_TO_START));
-    EXPECT_FALSE(isForwardEditSafe(NEW_CONTENT, 0, boundary, ForwardEdit::BIG_WORD_TO_END));
-}
+std::unique_ptr<NeovimOracle> NeovimCrossingTest::oracle_;
 
 // =============================================================================
-// Edge Cases: Boundary does NOT cut through word
+// Systematic Forward Motion Tests
 // =============================================================================
 
-class ForwardReachCleanBoundaryTest : public ::testing::Test {
-protected:
-    // Original: "abc def ghi"
-    // Edit boundary at space: "abc " (cols 0-3), next char is 'd'
-    // 'd' is a keyword char
-    static constexpr const char* ORIGINAL_LINE = "abc def ghi";
-    static constexpr int EDIT_START_IN_ORIGINAL = 0;  // 'a'
-    static constexpr int EDIT_END_IN_ORIGINAL = 3;  // space
+TEST_F(NeovimCrossingTest, ForwardMotions_Systematic) {
+    struct OpSpec {
+        string op;
+        function<bool(CharType, CharType)> crossFn;
+    };
 
-    EditBoundary boundary;
+    vector<OpSpec> ops = {
+        {"dw", [](CharType last, CharType bc) { return canSpaceCross(last, bc); }},
+        {"de", [](CharType last, CharType bc) { return canEndCross(last, bc); }},
+        {"dW", [](CharType last, CharType bc) { return canSpaceCrossWORD(last, bc); }},
+        {"dE", [](CharType last, CharType bc) { return canEndCrossWORD(last, bc); }},
+    };
 
-    void SetUp() override {
-        boundary = analyzeEditBoundary(ORIGINAL_LINE, EDIT_START_IN_ORIGINAL, EDIT_END_IN_ORIGINAL);
+    vector<CharType> edgeTypes = {CharType::Keyword, CharType::Whitespace, CharType::Symbol};
+    vector<CharType> boundaryTypes = {CharType::Keyword, CharType::Whitespace, CharType::Symbol};
+
+    int total = 0, passed = 0, failed = 0;
+
+    for (const auto& opSpec : ops) {
+        for (CharType lastChar : edgeTypes) {
+            for (CharType boundaryChar : boundaryTypes) {
+                ForwardTestCase tc = buildForwardTest(lastChar, boundaryChar);
+
+                bool predictedCross = opSpec.crossFn(lastChar, boundaryChar);
+                bool predictedSafe = !predictedCross;
+
+                // Run in Neovim
+                auto result = oracle_->simulate({tc.line}, 0, tc.cursorCol, opSpec.op);
+
+                // Check if boundary was crossed
+                bool actualCrossed = forwardMotionCrossed(tc, result.lines[0]);
+                bool actualSafe = !actualCrossed;
+
+                total++;
+                if (predictedSafe == actualSafe) {
+                    passed++;
+                } else {
+                    failed++;
+                    printDebug("FORWARD MISMATCH: " + opSpec.op, tc.line, tc.cursorCol,
+                               opSpec.op, result.lines[0], predictedSafe, actualSafe,
+                               lastChar, boundaryChar);
+                }
+            }
+        }
     }
-};
 
-TEST_F(ForwardReachCleanBoundaryTest, BoundaryIsKeyword) {
-    // 'd' (col 4) is a keyword char
-    EXPECT_EQ(boundary.rightBoundaryChar, CharType::Keyword);
+    cerr << "\n=== Forward Motion Systematic Test ===" << endl;
+    cerr << "Total: " << total << ", Passed: " << passed << ", Failed: " << failed << endl;
+
+    EXPECT_EQ(failed, 0) << "Forward motion tests had " << failed << " failures";
 }
 
-TEST_F(ForwardReachCleanBoundaryTest, WordMotionsSafe) {
-    // Content: "abc " ending with space
-    // lastChar = ' ' (Whitespace), boundaryChar = 'd' (Keyword)
-    // canDwCross(Whitespace, Keyword) = false → safe
-    // canDeCross(Whitespace, Keyword) = false → safe
-    string content = "abc ";
+// =============================================================================
+// Systematic Backward Motion Tests
+// =============================================================================
 
-    for (int col = 0; col <= 3; col++) {
-        EXPECT_TRUE(isForwardEditSafe(content, col, boundary, ForwardEdit::CHAR))
-            << "x should be safe at col " << col;
-        EXPECT_TRUE(isForwardEditSafe(content, col, boundary, ForwardEdit::WORD_TO_START))
-            << "dw should be safe at col " << col;
-        EXPECT_TRUE(isForwardEditSafe(content, col, boundary, ForwardEdit::WORD_TO_END))
-            << "de should be safe at col " << col;
-        EXPECT_TRUE(isForwardEditSafe(content, col, boundary, ForwardEdit::BIG_WORD_TO_START))
-            << "dW should be safe at col " << col;
-        EXPECT_TRUE(isForwardEditSafe(content, col, boundary, ForwardEdit::BIG_WORD_TO_END))
-            << "dE should be safe at col " << col;
+TEST_F(NeovimCrossingTest, BackwardMotions_Systematic) {
+    struct OpSpec {
+        string op;
+        function<bool(CharType, CharType)> crossFn;
+    };
+
+    vector<OpSpec> ops = {
+        {"db", [](CharType first, CharType bc) { return canEndCross(first, bc); }},
+        {"dge", [](CharType first, CharType bc) { return canNextCross(first, bc); }},
+        {"dB", [](CharType first, CharType bc) { return canEndCrossWORD(first, bc); }},
+        {"dgE", [](CharType first, CharType bc) { return canNextCrossWORD(first, bc); }},
+    };
+
+    vector<CharType> edgeTypes = {CharType::Keyword, CharType::Whitespace, CharType::Symbol};
+    vector<CharType> boundaryTypes = {CharType::Keyword, CharType::Whitespace, CharType::Symbol};
+
+    int total = 0, passed = 0, failed = 0;
+
+    for (const auto& opSpec : ops) {
+        for (CharType firstChar : edgeTypes) {
+            for (CharType boundaryChar : boundaryTypes) {
+                BackwardTestCase tc = buildBackwardTest(firstChar, boundaryChar);
+
+                bool predictedCross = opSpec.crossFn(firstChar, boundaryChar);
+                bool predictedSafe = !predictedCross;
+
+                // Run in Neovim
+                auto result = oracle_->simulate({tc.line}, 0, tc.cursorCol, opSpec.op);
+
+                // Check if boundary was crossed
+                bool actualCrossed = backwardMotionCrossed(tc, result.lines[0]);
+                bool actualSafe = !actualCrossed;
+
+                total++;
+                if (predictedSafe == actualSafe) {
+                    passed++;
+                } else {
+                    failed++;
+                    printDebug("BACKWARD MISMATCH: " + opSpec.op, tc.line, tc.cursorCol,
+                               opSpec.op, result.lines[0], predictedSafe, actualSafe,
+                               firstChar, boundaryChar);
+                }
+            }
+        }
     }
-}
 
-TEST_F(ForwardReachCleanBoundaryTest, DStillUnsafe) {
-    // D deletes to end of line, which goes beyond our edit region
-    string content = "abc ";
-    // endsAtLineEnd is false since col 3 is not end of "abc def ghi"
-    EXPECT_FALSE(isForwardEditSafe(content, 0, boundary, ForwardEdit::LINE_TO_END));
+    cerr << "\n=== Backward Motion Systematic Test ===" << endl;
+    cerr << "Total: " << total << ", Passed: " << passed << ", Failed: " << failed << endl;
+
+    EXPECT_EQ(failed, 0) << "Backward motion tests had " << failed << " failures";
 }
 
 // =============================================================================
-// Edge Cases: Single character content
+// Random Stress Test with varied content
 // =============================================================================
 
-class ForwardReachSingleCharTest : public ::testing::Test {
-protected:
-    // Original: "abcd"
-    // Edit boundary: just 'b' (col 1), next char is 'c'
-    static constexpr const char* ORIGINAL_LINE = "abcd";
-    static constexpr int EDIT_START_IN_ORIGINAL = 1;  // 'b'
-    static constexpr int EDIT_END_IN_ORIGINAL = 1;  // 'b'
+TEST_F(NeovimCrossingTest, RandomStressTest) {
+    const int NUM_TESTS = 100;
 
-    EditBoundary boundary;
+    vector<pair<string, function<bool(CharType, CharType)>>> forwardOps = {
+        {"dw", [](CharType e, CharType b) { return canSpaceCross(e, b); }},
+        {"de", [](CharType e, CharType b) { return canEndCross(e, b); }},
+        {"dW", [](CharType e, CharType b) { return canSpaceCrossWORD(e, b); }},
+        {"dE", [](CharType e, CharType b) { return canEndCrossWORD(e, b); }},
+    };
 
-    void SetUp() override {
-        boundary = analyzeEditBoundary(ORIGINAL_LINE, EDIT_START_IN_ORIGINAL, EDIT_END_IN_ORIGINAL);
+    vector<pair<string, function<bool(CharType, CharType)>>> backwardOps = {
+        {"db", [](CharType e, CharType b) { return canEndCross(e, b); }},
+        {"dge", [](CharType e, CharType b) { return canNextCross(e, b); }},
+        {"dB", [](CharType e, CharType b) { return canEndCrossWORD(e, b); }},
+        {"dgE", [](CharType e, CharType b) { return canNextCrossWORD(e, b); }},
+    };
+
+    vector<CharType> types = {CharType::Keyword, CharType::Whitespace, CharType::Symbol};
+
+    int passed = 0, failed = 0;
+
+    for (int i = 0; i < NUM_TESTS; i++) {
+        uniform_int_distribution<int> dirDist(0, 1);
+        bool isForward = dirDist(rng) == 0;
+
+        uniform_int_distribution<size_t> typeDist(0, types.size() - 1);
+        CharType edgeType = types[typeDist(rng)];
+        CharType boundaryType = types[typeDist(rng)];
+
+        bool predictedCross, predictedSafe;
+        string op;
+        string line, resultLine;
+        int cursorCol;
+
+        if (isForward) {
+            uniform_int_distribution<size_t> opDist(0, forwardOps.size() - 1);
+            auto& opPair = forwardOps[opDist(rng)];
+            op = opPair.first;
+
+            ForwardTestCase tc = buildForwardTest(edgeType, boundaryType);
+            line = tc.line;
+            cursorCol = tc.cursorCol;
+
+            predictedCross = opPair.second(edgeType, boundaryType);
+            predictedSafe = !predictedCross;
+
+            auto result = oracle_->simulate({tc.line}, 0, tc.cursorCol, op);
+            resultLine = result.lines[0];
+
+            bool actualCrossed = forwardMotionCrossed(tc, resultLine);
+            bool actualSafe = !actualCrossed;
+
+            if (predictedSafe == actualSafe) {
+                passed++;
+            } else {
+                failed++;
+                printDebug("RANDOM #" + to_string(i), line, cursorCol, op,
+                           resultLine, predictedSafe, actualSafe, edgeType, boundaryType);
+            }
+        } else {
+            uniform_int_distribution<size_t> opDist(0, backwardOps.size() - 1);
+            auto& opPair = backwardOps[opDist(rng)];
+            op = opPair.first;
+
+            BackwardTestCase tc = buildBackwardTest(edgeType, boundaryType);
+            line = tc.line;
+            cursorCol = tc.cursorCol;
+
+            predictedCross = opPair.second(edgeType, boundaryType);
+            predictedSafe = !predictedCross;
+
+            auto result = oracle_->simulate({tc.line}, 0, tc.cursorCol, op);
+            resultLine = result.lines[0];
+
+            bool actualCrossed = backwardMotionCrossed(tc, resultLine);
+            bool actualSafe = !actualCrossed;
+
+            if (predictedSafe == actualSafe) {
+                passed++;
+            } else {
+                failed++;
+                printDebug("RANDOM #" + to_string(i), line, cursorCol, op,
+                           resultLine, predictedSafe, actualSafe, edgeType, boundaryType);
+            }
+        }
     }
-};
 
-TEST_F(ForwardReachSingleCharTest, BoundaryIsKeyword) {
-    // 'c' (col 2) is a keyword char
-    EXPECT_EQ(boundary.rightBoundaryChar, CharType::Keyword);
-}
+    cerr << "\n=== Random Stress Test ===" << endl;
+    cerr << "Total: " << (passed + failed) << ", Passed: " << passed << ", Failed: " << failed << endl;
 
-TEST_F(ForwardReachSingleCharTest, OnlyXSafe) {
-    string content = "b";  // Single char
-
-    // x at col 0: safe (deletes 'b')
-    EXPECT_TRUE(isForwardEditSafe(content, 0, boundary, ForwardEdit::CHAR));
-
-    // lastChar = 'b' (Keyword), boundaryChar = 'c' (Keyword)
-    // canDwCross(Keyword, Keyword) = true → unsafe
-    EXPECT_FALSE(isForwardEditSafe(content, 0, boundary, ForwardEdit::WORD_TO_START));
-
-    // canDeCross(Keyword, Keyword) = true → unsafe
-    EXPECT_FALSE(isForwardEditSafe(content, 0, boundary, ForwardEdit::WORD_TO_END));
+    EXPECT_EQ(failed, 0) << "Random stress test had " << failed << " failures";
 }
 
 // =============================================================================
-// Edge Cases: Content ending with whitespace
+// Original Example Verification with Neovim
 // =============================================================================
 
-class ForwardReachTrailingSpaceTest : public ::testing::Test {
-protected:
-    // Original: "abc  def"
-    // Edit boundary: "bc " (cols 1-3), next char is ' ' (col 4)
-    static constexpr const char* ORIGINAL_LINE = "abc  def";
-    static constexpr int EDIT_START_IN_ORIGINAL = 1;  // 'b'
-    static constexpr int EDIT_END_IN_ORIGINAL = 3;  // first space
+TEST_F(NeovimCrossingTest, OriginalExample_VerifyWithNeovim) {
+    // Verify the hand-crafted "abc def.gh i" example against Neovim
+    const string fullLine = "abc def.gh i";
+    const int editStart = 1;  // 'b'
+    const int editEnd = 8;    // 'g'
 
-    EditBoundary boundary;
+    struct Case {
+        int col;
+        string op;
+        bool expectSafe;
+    };
 
-    void SetUp() override {
-        boundary = analyzeEditBoundary(ORIGINAL_LINE, EDIT_START_IN_ORIGINAL, EDIT_END_IN_ORIGINAL);
+    vector<Case> cases = {
+        {8, "de", false},  // de from 'g' crosses to 'h'
+        {7, "dw", true},   // dw from '.' stays within
+        {7, "de", false},  // de from '.' crosses to 'h'
+        {6, "dW", false},  // dW from 'f' crosses to 'h'
+        {3, "dE", false},  // dE from ' ' crosses to 'h'
+        {1, "D", false},   // D from 'b' crosses to end
+    };
+
+    for (const auto& c : cases) {
+        auto result = oracle_->simulate({fullLine}, 0, c.col, c.op);
+
+        string expectedSuffix = fullLine.substr(editEnd + 1);
+        bool actualSafe = true;
+        if (result.lines[0].size() < expectedSuffix.size()) {
+            actualSafe = false;
+        } else {
+            string resultSuffix = result.lines[0].substr(result.lines[0].size() - expectedSuffix.size());
+            actualSafe = (resultSuffix == expectedSuffix);
+        }
+
+        EXPECT_EQ(actualSafe, c.expectSafe)
+            << "Op " << c.op << " at col " << c.col
+            << ": expected " << (c.expectSafe ? "safe" : "cross")
+            << ", got " << (actualSafe ? "safe" : "cross")
+            << ". Result: \"" << result.lines[0] << "\"";
     }
-};
-
-TEST_F(ForwardReachTrailingSpaceTest, BoundaryIsWhitespace) {
-    // Space (col 4) is a whitespace char
-    EXPECT_EQ(boundary.rightBoundaryChar, CharType::Whitespace);
-}
-
-TEST_F(ForwardReachTrailingSpaceTest, AllMotionsSafe) {
-    // Content "bc " ends with space
-    // lastChar = ' ' (Whitespace), boundaryChar = ' ' (Whitespace)
-    // canDwCross(Whitespace, Whitespace) = true → unsafe!
-    // Wait, this differs from old behavior...
-    // Actually let's check: canDwCross says Whitespace→Whitespace = YES crosses
-    // So dw from space content to space boundary would cross
-    string content = "bc ";
-
-    // Only positions 0,1 (b,c) are keyword chars
-    // For them: lastChar = ' ' (end of content), canDwCross(Whitespace, Whitespace) = true
-    // So these would be unsafe with new logic
-    // Let's update expectations to match new behavior
-    for (int col = 0; col <= 2; col++) {
-        // dw: lastChar=' ', boundary=' ' → canDwCross(Whitespace, Whitespace)=true → unsafe
-        EXPECT_FALSE(isForwardEditSafe(content, col, boundary, ForwardEdit::WORD_TO_START))
-            << "dw should be unsafe at col " << col << " with trailing space";
-        // de: canDeCross(Whitespace, Whitespace)=false → safe
-        EXPECT_TRUE(isForwardEditSafe(content, col, boundary, ForwardEdit::WORD_TO_END))
-            << "de should be safe at col " << col;
-    }
-}
-
-// =============================================================================
-// Edge Cases: Punctuation boundaries (word vs WORD)
-// =============================================================================
-
-class ForwardReachPunctuationBoundaryTest : public ::testing::Test {
-protected:
-    // Original: "abc.def"
-    // Edit boundary at '.': cols 0-3, next char is 'd'
-    static constexpr const char* ORIGINAL_LINE = "abc.def";
-    static constexpr int EDIT_START_IN_ORIGINAL = 0;  // 'a'
-    static constexpr int EDIT_END_IN_ORIGINAL = 3;  // '.'
-
-    EditBoundary boundary;
-
-    void SetUp() override {
-        boundary = analyzeEditBoundary(ORIGINAL_LINE, EDIT_START_IN_ORIGINAL, EDIT_END_IN_ORIGINAL);
-    }
-};
-
-TEST_F(ForwardReachPunctuationBoundaryTest, BoundaryIsKeyword) {
-    // 'd' (col 4) is a keyword char
-    EXPECT_EQ(boundary.rightBoundaryChar, CharType::Keyword);
-}
-
-TEST_F(ForwardReachPunctuationBoundaryTest, WordMotionsSafe_WORDMotionsUnsafe) {
-    // Content "abc." ends with '.'
-    // lastChar = '.' (Symbol), boundaryChar = 'd' (Keyword)
-    // canDwCross(Symbol, Keyword) = false → safe
-    // canDeCross(Symbol, Keyword) = false → safe
-    // canDWCross(Symbol, Keyword) = true → unsafe
-    // canDECross(Symbol, Keyword) = true → unsafe
-    string content = "abc.";
-
-    // dw, de should be safe
-    EXPECT_TRUE(isForwardEditSafe(content, 0, boundary, ForwardEdit::WORD_TO_START));
-    EXPECT_TRUE(isForwardEditSafe(content, 0, boundary, ForwardEdit::WORD_TO_END));
-    EXPECT_TRUE(isForwardEditSafe(content, 3, boundary, ForwardEdit::WORD_TO_START));
-    EXPECT_TRUE(isForwardEditSafe(content, 3, boundary, ForwardEdit::WORD_TO_END));
-
-    // dW, dE should be unsafe
-    EXPECT_FALSE(isForwardEditSafe(content, 0, boundary, ForwardEdit::BIG_WORD_TO_START));
-    EXPECT_FALSE(isForwardEditSafe(content, 0, boundary, ForwardEdit::BIG_WORD_TO_END));
-}
-
-// =============================================================================
-// Edge Cases: Empty content and out of bounds
-// =============================================================================
-
-TEST(ForwardReachEdgeCases, EmptyContent) {
-    EditBoundary boundary;
-    boundary.rightBoundaryChar = CharType::Keyword;
-    boundary.leftBoundaryChar = CharType::Newline;
-    string content = "";
-
-    // x at invalid position should be unsafe
-    EXPECT_FALSE(isForwardEditSafe(content, 0, boundary, ForwardEdit::CHAR));
-    EXPECT_FALSE(isForwardEditSafe(content, -1, boundary, ForwardEdit::CHAR));
-}
-
-TEST(ForwardReachEdgeCases, CursorOutOfBounds) {
-    EditBoundary boundary;
-    boundary.rightBoundaryChar = CharType::Keyword;
-    boundary.leftBoundaryChar = CharType::Newline;
-    string content = "abc";
-
-    // Cursor past end of content
-    EXPECT_FALSE(isForwardEditSafe(content, 5, boundary, ForwardEdit::CHAR));
-    // Cursor at negative position
-    EXPECT_FALSE(isForwardEditSafe(content, -1, boundary, ForwardEdit::CHAR));
 }

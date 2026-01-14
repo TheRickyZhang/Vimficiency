@@ -7,16 +7,18 @@
 // EditBoundary: Pre-computed boundary info for constrained edit operations
 // =============================================================================
 //
-// Stores the CharType of characters adjacent to the edit region boundaries.
-// During A* search, we check if a motion would "cross" the boundary by
-// looking up (lastChar/firstChar, boundaryChar) in motion-specific tables.
+// See data/EditBoundaryLogic.typ for the complete crossing logic.
+//
+// Endpoint Types (what a deletion stops at):
+//   End:   Last char of word
+//   Space: Char before next word (includes trailing whitespace)
+//   Next:  Start of next word (crosses into adjacent word)
+//   Line:  End of line
 //
 // Workflow:
 // 1. Compute EditBoundary from original text (once per edit region)
 // 2. During A* search, compute lastChar/firstChar from current content
 // 3. Use canXxxCross() to determine if motion would escape the boundary
-//
-// See data/EditBoundaryLogic.typ for the complete crossing logic tables.
 //
 // =============================================================================
 
@@ -26,30 +28,6 @@ enum class CharType : uint8_t {
     Whitespace,  // space, tab, etc.
     Symbol,      // punctuation and other non-word chars
     Newline      // at line boundary (nothing beyond)
-};
-
-// =============================================================================
-// Edit operation categories (used by EditOptimizer for operation dispatch)
-// =============================================================================
-
-// Forward edit categories
-enum class ForwardEdit {
-    CHAR,              // x - delete character at cursor
-    WORD_TO_START,     // dw, cw - delete to next word start
-    WORD_TO_END,       // de, ce - delete to word end
-    BIG_WORD_TO_START, // dW, cW - delete to next WORD start
-    BIG_WORD_TO_END,   // dE, cE - delete to WORD end
-    LINE_TO_END        // D, C - delete to end of line
-};
-
-// Backward edit categories
-enum class BackwardEdit {
-    CHAR,              // X - delete char before cursor
-    WORD_TO_START,     // db, cb - delete to previous word start
-    WORD_TO_END,       // dge, cge - delete to previous word end
-    BIG_WORD_TO_START, // dB, cB - delete to previous WORD start
-    BIG_WORD_TO_END,   // dgE, cgE - delete to previous WORD end
-    LINE_TO_START      // d0, d^ - delete to line start
 };
 
 // Get CharType for a character
@@ -74,33 +52,39 @@ struct EditBoundary {
 };
 
 // =============================================================================
-// Boundary crossing checks
+// Endpoint-based crossing checks (word)
 // =============================================================================
 //
-// These determine if a motion CAN cross the boundary, based on:
-// - lastChar/firstChar: CharType of the last/first char in current edit content
-// - boundaryChar: CharType stored in EditBoundary (what's outside)
+// Returns true if motion WOULD cross (unsafe), false if safe.
+// Forward: check (lastChar, rightBoundaryChar)
+// Backward: check (firstChar, leftBoundaryChar)
+
+// End: stops at word boundary (de, db, diw edges)
+bool canEndCross(CharType c, CharType bc);
+
+// Space: stops at word end + trailing whitespace (dw, daw trailing edge)
+bool canSpaceCross(CharType c, CharType bc);
+
+// Next: crosses into adjacent word (dge)
+bool canNextCross(CharType c, CharType bc);
+
+// Line: crosses to line boundary (D, C, d$, d0)
+bool canLineCross(CharType bc);
+
+// =============================================================================
+// Endpoint-based crossing checks (WORD)
+// =============================================================================
 //
-// Returns true if motion WOULD cross (unsafe), false if motion is safe.
-//
-// Forward motions use (lastChar, rightBoundaryChar)
-// Backward motions use (firstChar, leftBoundaryChar)
+// Same as word versions, but Keyword and Symbol merge into NonWhitespace.
 
-// Forward word motions
-bool canDwCross(CharType lastChar, CharType boundaryChar);   // dw, cw
-bool canDeCross(CharType lastChar, CharType boundaryChar);   // de, ce
+// END: stops at WORD boundary (dE, dB, diW edges)
+bool canEndCrossWORD(CharType c, CharType bc);
 
-// Forward WORD motions
-bool canDWCross(CharType lastChar, CharType boundaryChar);   // dW, cW
-bool canDECross(CharType lastChar, CharType boundaryChar);   // dE, cE
+// SPACE: stops at WORD end + trailing whitespace (dW, daW trailing edge)
+bool canSpaceCrossWORD(CharType c, CharType bc);
 
-// Backward word motions
-bool canDbCross(CharType firstChar, CharType boundaryChar);  // db, cb
-bool canDgeCross(CharType firstChar, CharType boundaryChar); // dge, cge
-
-// Backward WORD motions
-bool canDBCross(CharType firstChar, CharType boundaryChar);  // dB, cB
-bool canDgECross(CharType firstChar, CharType boundaryChar); // dgE, cgE
+// NEXT: crosses into adjacent WORD (dgE)
+bool canNextCrossWORD(CharType c, CharType bc);
 
 // =============================================================================
 // Line-level operations
@@ -121,20 +105,3 @@ EditBoundary analyzeEditBoundary(
     const std::string& fullLine,
     int editStart,
     int editEnd);
-
-// =============================================================================
-// TEMPORARY: Legacy API stubs (to be removed when EditOptimizer is updated)
-// =============================================================================
-
-// TODO: Remove these once EditOptimizer uses the new canXxxCross() functions
-bool isForwardEditSafe(
-    const std::string& editContent,
-    int cursorCol,
-    const EditBoundary& boundary,
-    ForwardEdit edit);
-
-bool isBackwardEditSafe(
-    const std::string& editContent,
-    int cursorCol,
-    const EditBoundary& boundary,
-    BackwardEdit edit);

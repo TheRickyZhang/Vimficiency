@@ -4,12 +4,10 @@
 // Tests here may be incomplete or experimental.
 
 #include <gtest/gtest.h>
-#include <ostream>
 
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer.h"
 #include "Optimizer/EditBoundary.h"
-#include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
 
 using namespace std;

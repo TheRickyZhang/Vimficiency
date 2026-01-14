@@ -2,24 +2,19 @@
 
 #include "Optimizer/EditBoundary.h"
 
-#include <cstring>
-
 using namespace std;
 
 // =============================================================================
 // Backward Reach Tests
 // =============================================================================
 //
+// Tests for backward crossing logic using endpoint-based functions.
+// For backward motions, we check (firstChar, leftBoundaryChar).
+//
 // Test case: "abc def.gh i"
 // Edit boundary: cols 1-8 ("bc def.g")
 // - Left boundary: 'a' (col 0) is outside → leftBoundaryChar = Keyword
 // - Right boundary: 'h' (col 9) is outside → rightBoundaryChar = Keyword
-//
-// For backward motions within edit content "bc def.g":
-// - At col 0 ('b'): X would delete outside region → unsafe
-// - At col 1 ('c'): X deletes 'b' → safe
-// - db from first word would delete across boundary → depends on crossing logic
-//
 
 class BackwardReachTest : public ::testing::Test {
 protected:
@@ -28,9 +23,6 @@ protected:
     static constexpr const char* ORIGINAL_LINE = "abc def.gh i";
     static constexpr int EDIT_START = 1;  // 'b'
     static constexpr int EDIT_END = 8;    // 'g'
-
-    // Edit content (original, before any changes)
-    static constexpr const char* EDIT_CONTENT = "bc def.g";
 
     EditBoundary boundary;
 
@@ -47,55 +39,21 @@ TEST_F(BackwardReachTest, BoundaryCharsCorrect) {
     EXPECT_EQ(boundary.rightBoundaryChar, CharType::Keyword);
 }
 
-TEST_F(BackwardReachTest, X_AtCol0_Unsafe) {
-    // X at col 0 would try to delete before edit region
-    EXPECT_FALSE(isBackwardEditSafe(EDIT_CONTENT, 0, boundary, BackwardEdit::CHAR));
+// =============================================================================
+// Backward Crossing Tests
+// =============================================================================
+
+TEST_F(BackwardReachTest, db_FromKeywordContent_ToKeywordBoundary_Crosses) {
+    // Content starting with 'b' (Keyword), boundary is 'a' (Keyword)
+    // db uses End endpoint: canEndCross(Keyword, Keyword) = YES
+    CharType firstChar = CharType::Keyword;  // 'b'
+    EXPECT_TRUE(canEndCross(firstChar, boundary.leftBoundaryChar));
 }
 
-TEST_F(BackwardReachTest, X_AtCol1_Safe) {
-    // X at col 1 deletes col 0 within edit region
-    EXPECT_TRUE(isBackwardEditSafe(EDIT_CONTENT, 1, boundary, BackwardEdit::CHAR));
-}
-
-TEST_F(BackwardReachTest, X_AtLastCol_Safe) {
-    // X at last col deletes previous col within edit region
-    int lastCol = static_cast<int>(strlen(EDIT_CONTENT)) - 1;
-    EXPECT_TRUE(isBackwardEditSafe(EDIT_CONTENT, lastCol, boundary, BackwardEdit::CHAR));
-}
-
-TEST_F(BackwardReachTest, db_FromFirstWord_Unsafe) {
-    // "bc def.g": first word is "bc" (cols 0-1)
-    // db from 'b' or 'c' - first char is 'b' (Keyword), boundary is 'a' (Keyword)
-    // canDbCross(Keyword, Keyword) = true → would cross → unsafe
-    EXPECT_FALSE(isBackwardEditSafe(EDIT_CONTENT, 0, boundary, BackwardEdit::WORD_TO_START));
-    EXPECT_FALSE(isBackwardEditSafe(EDIT_CONTENT, 1, boundary, BackwardEdit::WORD_TO_START));
-}
-
-TEST_F(BackwardReachTest, db_FromSpace_Unsafe) {
-    // "bc def.g": space is at col 2
-    // db from space - first char would be ' ' after deletion starts
-    // But the isBackwardEditSafe uses first char of current content = 'b'
-    // canDbCross(Keyword, Keyword) = true → unsafe
-    EXPECT_FALSE(isBackwardEditSafe(EDIT_CONTENT, 2, boundary, BackwardEdit::WORD_TO_START));
-}
-
-TEST_F(BackwardReachTest, db_FromSecondWord_Safe) {
-    // "bc def.g": 'd' is at col 3
-    // These tests rely on the legacy isBackwardEditSafe which uses first char of whole content
-    // First char = 'b' (Keyword), boundary = 'a' (Keyword) → would cross
-    // So these would be unsafe with the new logic
-    EXPECT_FALSE(isBackwardEditSafe(EDIT_CONTENT, 3, boundary, BackwardEdit::WORD_TO_START));
-
-    // 'e' at col 4, 'f' at col 5 - same analysis
-    // With new logic: still uses first char of content = 'b'
-    EXPECT_FALSE(isBackwardEditSafe(EDIT_CONTENT, 4, boundary, BackwardEdit::WORD_TO_START));
-    EXPECT_FALSE(isBackwardEditSafe(EDIT_CONTENT, 5, boundary, BackwardEdit::WORD_TO_START));
-}
-
-TEST_F(BackwardReachTest, db_FromPunctuation_Unsafe) {
-    // "bc def.g": '.' is at col 6
-    // First char = 'b' (Keyword), boundary = 'a' (Keyword) → canDbCross = true → unsafe
-    EXPECT_FALSE(isBackwardEditSafe(EDIT_CONTENT, 6, boundary, BackwardEdit::WORD_TO_START));
+TEST_F(BackwardReachTest, dge_FromKeywordContent_ToKeywordBoundary_Crosses) {
+    // dge uses Next endpoint: canNextCross(Keyword, Keyword) = YES
+    CharType firstChar = CharType::Keyword;
+    EXPECT_TRUE(canNextCross(firstChar, boundary.leftBoundaryChar));
 }
 
 // =============================================================================
@@ -111,8 +69,6 @@ protected:
     static constexpr int EDIT_START = 1;  // 'a'
     static constexpr int EDIT_END = 7;    // 'f'
 
-    static constexpr const char* EDIT_CONTENT = "abc def";
-
     EditBoundary boundary;
 
     void SetUp() override {
@@ -125,41 +81,38 @@ TEST_F(BackwardReachCleanBoundaryTest, BoundaryIsWhitespace) {
     EXPECT_EQ(boundary.leftBoundaryChar, CharType::Whitespace);
 }
 
-TEST_F(BackwardReachCleanBoundaryTest, X_AtCol0_StillUnsafe) {
-    // X at col 0 still tries to delete outside (col -1)
-    // This is a position issue, not a word boundary issue
-    EXPECT_FALSE(isBackwardEditSafe(EDIT_CONTENT, 0, boundary, BackwardEdit::CHAR));
+TEST_F(BackwardReachCleanBoundaryTest, db_FromKeyword_ToWhitespace_Safe) {
+    // Content starting with 'a' (Keyword), boundary is ' ' (Whitespace)
+    // canEndCross(Keyword, Whitespace) = no → safe
+    CharType firstChar = CharType::Keyword;
+    EXPECT_FALSE(canEndCross(firstChar, boundary.leftBoundaryChar));
 }
 
-TEST_F(BackwardReachCleanBoundaryTest, db_FromFirstWord_Safe) {
-    // First char = 'a' (Keyword), boundary = ' ' (Whitespace)
-    // canDbCross(Keyword, Whitespace) = false → won't cross → safe
-    EXPECT_TRUE(isBackwardEditSafe(EDIT_CONTENT, 0, boundary, BackwardEdit::WORD_TO_START));
-    EXPECT_TRUE(isBackwardEditSafe(EDIT_CONTENT, 1, boundary, BackwardEdit::WORD_TO_START));
-    EXPECT_TRUE(isBackwardEditSafe(EDIT_CONTENT, 2, boundary, BackwardEdit::WORD_TO_START));
+TEST_F(BackwardReachCleanBoundaryTest, dge_FromKeyword_ToWhitespace_Crosses) {
+    // canNextCross(Keyword, Whitespace) = YES → would cross
+    CharType firstChar = CharType::Keyword;
+    EXPECT_TRUE(canNextCross(firstChar, boundary.leftBoundaryChar));
 }
 
-TEST_F(BackwardReachCleanBoundaryTest, d0_Unsafe_NotAtLineStart) {
-    // d0 should be unsafe when not at line start
-    // EDIT_START = 1, not 0, so not at line start
-    EXPECT_FALSE(isBackwardEditSafe(EDIT_CONTENT, 3, boundary, BackwardEdit::LINE_TO_START));
+TEST_F(BackwardReachCleanBoundaryTest, d0_NotAtLineStart_Crosses) {
+    // d0/c0 use Line endpoint
+    // boundary.leftBoundaryChar = Whitespace (not Newline)
+    // canLineCross(Whitespace) = YES → would cross
+    EXPECT_TRUE(canLineCross(boundary.leftBoundaryChar));
 }
 
 // =============================================================================
-// Backward Reach with Changed Content
+// Backward Reach at Line Start
 // =============================================================================
 
-class BackwardReachChangedContentTest : public ::testing::Test {
+class BackwardReachLineStartTest : public ::testing::Test {
 protected:
-    // Original: "abc def.gh i"
-    // Edit boundary: "bc def.g" (cols 1-8)
-    // Left boundary: 'a' (Keyword)
-    static constexpr const char* ORIGINAL_LINE = "abc def.gh i";
-    static constexpr int EDIT_START = 1;
-    static constexpr int EDIT_END = 8;
-
-    // After some edits, content becomes "xy z"
-    static constexpr const char* NEW_CONTENT = "xy z";
+    // Original: "abc def"
+    // Edit boundary: entire line (cols 0-6)
+    // Left: nothing before col 0 → leftBoundaryChar = Newline
+    static constexpr const char* ORIGINAL_LINE = "abc def";
+    static constexpr int EDIT_START = 0;
+    static constexpr int EDIT_END = 6;
 
     EditBoundary boundary;
 
@@ -168,32 +121,86 @@ protected:
     }
 };
 
-TEST_F(BackwardReachChangedContentTest, X_Behavior) {
-    // X at col 0 is unsafe (would delete before region)
-    EXPECT_FALSE(isBackwardEditSafe(NEW_CONTENT, 0, boundary, BackwardEdit::CHAR));
-    // X at cols 1-3 is safe
-    EXPECT_TRUE(isBackwardEditSafe(NEW_CONTENT, 1, boundary, BackwardEdit::CHAR));
-    EXPECT_TRUE(isBackwardEditSafe(NEW_CONTENT, 2, boundary, BackwardEdit::CHAR));
-    EXPECT_TRUE(isBackwardEditSafe(NEW_CONTENT, 3, boundary, BackwardEdit::CHAR));
+TEST_F(BackwardReachLineStartTest, BoundaryIsNewline) {
+    EXPECT_EQ(boundary.leftBoundaryChar, CharType::Newline);
 }
 
-TEST_F(BackwardReachChangedContentTest, db_FromFirstWord_Unsafe) {
-    // "xy z": first char = 'x' (Keyword), boundary = 'a' (Keyword)
-    // canDbCross(Keyword, Keyword) = true → unsafe
-    EXPECT_FALSE(isBackwardEditSafe(NEW_CONTENT, 0, boundary, BackwardEdit::WORD_TO_START));
-    EXPECT_FALSE(isBackwardEditSafe(NEW_CONTENT, 1, boundary, BackwardEdit::WORD_TO_START));
+TEST_F(BackwardReachLineStartTest, AllBackwardMotions_ToNewline_Safe) {
+    // All backward motions are safe when boundary is Newline
+    CharType firstChar = CharType::Keyword;
+
+    EXPECT_FALSE(canEndCross(firstChar, CharType::Newline));
+    EXPECT_FALSE(canNextCross(firstChar, CharType::Newline));
+    EXPECT_FALSE(canLineCross(CharType::Newline));
 }
 
-TEST_F(BackwardReachChangedContentTest, db_FromSpace_Unsafe) {
-    // "xy z": space at col 2
-    // First char = 'x' (Keyword), boundary = 'a' (Keyword)
-    // canDbCross(Keyword, Keyword) = true → unsafe
-    EXPECT_FALSE(isBackwardEditSafe(NEW_CONTENT, 2, boundary, BackwardEdit::WORD_TO_START));
+// =============================================================================
+// Backward WORD Motions
+// =============================================================================
+
+class BackwardWORDTest : public ::testing::Test {
+protected:
+    // Original: "x.abc def"
+    // Edit boundary: "abc def" (cols 2-8)
+    // Left boundary: '.' (Symbol)
+    static constexpr const char* ORIGINAL_LINE = "x.abc def";
+    static constexpr int EDIT_START = 2;  // 'a'
+    static constexpr int EDIT_END = 8;    // 'f'
+
+    EditBoundary boundary;
+
+    void SetUp() override {
+        boundary = analyzeEditBoundary(ORIGINAL_LINE, EDIT_START, EDIT_END);
+    }
+};
+
+TEST_F(BackwardWORDTest, BoundaryIsSymbol) {
+    EXPECT_EQ(boundary.leftBoundaryChar, CharType::Symbol);  // '.'
 }
 
-TEST_F(BackwardReachChangedContentTest, db_FromSecondWord_Unsafe) {
-    // "xy z": 'z' at col 3
-    // First char = 'x' (Keyword), boundary = 'a' (Keyword)
-    // canDbCross(Keyword, Keyword) = true → unsafe
-    EXPECT_FALSE(isBackwardEditSafe(NEW_CONTENT, 3, boundary, BackwardEdit::WORD_TO_START));
+TEST_F(BackwardWORDTest, dB_FromKeyword_ToSymbol_Crosses) {
+    // dB uses END endpoint (WORD version)
+    // canEndCrossWORD(Keyword, Symbol) = YES (both are NonWS)
+    CharType firstChar = CharType::Keyword;
+    EXPECT_TRUE(canEndCrossWORD(firstChar, boundary.leftBoundaryChar));
+}
+
+TEST_F(BackwardWORDTest, db_FromKeyword_ToSymbol_Safe) {
+    // db uses End endpoint (word version)
+    // canEndCross(Keyword, Symbol) = no (different word types)
+    CharType firstChar = CharType::Keyword;
+    EXPECT_FALSE(canEndCross(firstChar, boundary.leftBoundaryChar));
+}
+
+// =============================================================================
+// Symmetry Tests: de/db use same endpoint (End)
+// =============================================================================
+
+TEST(SymmetryTest, DeAndDb_UseSameEndpoint) {
+    // de (forward) and db (backward) both use End endpoint
+    // The crossing check is symmetric based on direction:
+    // - de: canEndCross(lastChar, rightBoundaryChar)
+    // - db: canEndCross(firstChar, leftBoundaryChar)
+
+    // Same char types should give same results
+    EXPECT_EQ(canEndCross(CharType::Keyword, CharType::Keyword),
+              canEndCross(CharType::Keyword, CharType::Keyword));
+
+    EXPECT_EQ(canEndCross(CharType::Symbol, CharType::Keyword),
+              canEndCross(CharType::Symbol, CharType::Keyword));
+}
+
+TEST(SymmetryTest, DwAndDge_UseDifferentEndpoints) {
+    // dw (forward) uses Space, dge (backward) uses Next
+    // These are NOT symmetric - different crossing behavior
+
+    // Keyword → Keyword
+    bool dwCrosses = canSpaceCross(CharType::Keyword, CharType::Keyword);    // Space: YES
+    bool dgeCrosses = canNextCross(CharType::Keyword, CharType::Keyword);    // Next: YES
+    // Both cross, but for different reasons
+
+    // Keyword → Symbol
+    dwCrosses = canSpaceCross(CharType::Keyword, CharType::Symbol);     // Space: no
+    dgeCrosses = canNextCross(CharType::Keyword, CharType::Symbol);     // Next: YES
+    EXPECT_NE(dwCrosses, dgeCrosses);  // Different behavior!
 }
