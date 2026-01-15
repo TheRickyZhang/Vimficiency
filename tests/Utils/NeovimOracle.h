@@ -44,6 +44,9 @@ public:
                             int startCol, // 0-indexed
                             const std::string &keys);
 
+  // Restart the Neovim subprocess (call periodically to prevent buffer exhaustion)
+  void restart();
+
 private:
   // Pimpl is cleaner, given the subprocess has messy details
   struct Impl;

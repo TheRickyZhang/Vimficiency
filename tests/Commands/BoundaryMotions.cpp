@@ -198,8 +198,9 @@ TEST_F(BoundaryMotionsTest, GE_RandomMultiLine) {
   testMotionRandom(*oracle, navContext, "ge", 100, 3);
 }
 
-// WORD variants
+// WORD variants - restart Neovim to prevent buffer exhaustion after 800 iterations
 TEST_F(BoundaryMotionsTest, BigW_RandomSingleLine) {
+  oracle->restart();
   testMotionRandom(*oracle, navContext, "W", 100, 1);
 }
 
@@ -232,10 +233,11 @@ TEST_F(BoundaryMotionsTest, BigGE_RandomMultiLine) {
 }
 
 // =============================================================================
-// Manual Edge Case Tests
+// Manual Edge Case Tests - restart Neovim to prevent buffer exhaustion
 // =============================================================================
 
 TEST_F(BoundaryMotionsTest, W_AtEndOfLine_CrossesToNextLine) {
+  oracle->restart();
   Lines lines = {"hello world", "next line"};
   Position result = applyMotion({0, 6}, "w", lines);  // Start at 'w' in world
   Position expected = neovimMotion(lines, 0, 6, "w");

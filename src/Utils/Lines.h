@@ -39,6 +39,7 @@ struct Lines : std::vector<std::string> {
     assert(false);
   }
 
+  // Get next position, skipping empty lines (for character-by-character traversal)
   Position getNextPos(Position pos) const {
     if(pos.col + 1 < (*this)[pos.line].size()) {
       return Position(pos.line, pos.col + 1);
@@ -48,9 +49,21 @@ struct Lines : std::vector<std::string> {
         return Position(row, 0);
       }
     }
-    return pos; // Same position if cannot move, or check == pos at call site for sentinel
+    return pos; // Same position if cannot move
   }
 
+  // Get next position, including empty lines (for word motions where empty line = word)
+  Position getNextPosIncludeEmpty(Position pos) const {
+    if(pos.col + 1 < (*this)[pos.line].size()) {
+      return Position(pos.line, pos.col + 1);
+    }
+    if(pos.line + 1 < this->size()) {
+      return Position(pos.line + 1, 0);
+    }
+    return pos; // Same position if cannot move
+  }
+
+  // Get prev position, skipping empty lines
   Position getPrevPos(Position pos) const {
     if(pos.col > 0) {
       return Position(pos.line, pos.col - 1);
@@ -60,7 +73,20 @@ struct Lines : std::vector<std::string> {
         return Position(row, (*this)[row].size() - 1);
       }
     }
-    return pos; // Same position if cannot move, or check == pos at call site for sentinel
+    return pos; // Same position if cannot move
+  }
+
+  // Get prev position, including empty lines (for word motions where empty line = word)
+  Position getPrevPosIncludeEmpty(Position pos) const {
+    if(pos.col > 0) {
+      return Position(pos.line, pos.col - 1);
+    }
+    if(pos.line > 0) {
+      int prevLine = pos.line - 1;
+      int prevCol = (*this)[prevLine].empty() ? 0 : (*this)[prevLine].size() - 1;
+      return Position(prevLine, prevCol);
+    }
+    return pos; // Same position if cannot move
   }
 
   char get(const Position& pos) const {

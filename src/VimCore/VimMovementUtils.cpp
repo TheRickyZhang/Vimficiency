@@ -44,12 +44,13 @@ namespace {
 // Direction-agnostic step helpers
 // =============================================================================
 
+// Step including empty lines (for word motions where empty line = word)
 inline Position step(const Lines& lines, Position pos, bool forward) {
-    return forward ? lines.getNextPos(pos) : lines.getPrevPos(pos);
+    return forward ? lines.getNextPosIncludeEmpty(pos) : lines.getPrevPosIncludeEmpty(pos);
 }
 
 inline Position stepBack(const Lines& lines, Position pos, bool forward) {
-    return forward ? lines.getPrevPos(pos) : lines.getNextPos(pos);
+    return forward ? lines.getPrevPosIncludeEmpty(pos) : lines.getNextPosIncludeEmpty(pos);
 }
 
 // Check if position has reached or passed target in the given direction
@@ -98,18 +99,33 @@ void motionWordCore(Position& pos, const Lines& lines, bool forward,
     // For WORD: all non-blank are same type
     // For word: keyword vs symbol are different types
     bool startIsWordChar = isSmallWordChar(c);
+    bool crossedLine = false;
     do {
         Position prev = pos;
         pos = step(lines, pos, forward);
         if (pos == prev) return;  // Hit buffer boundary
-        // Forward only: line boundary = word boundary (newline terminates WORD)
-        if (forward && pos.line != prev.line) break;
         c = lines.get(pos);
+        // Line boundary = word boundary (newline terminates WORD)
+        if (pos.line != prev.line) {
+            crossedLine = true;
+            break;
+        }
     } while (!isBlank(c) && (big || isSmallWordChar(c) == startIsWordChar));
 
     if (edge == EdgeType::WordEdge) {
         pos = stepBack(lines, pos, forward);  // Last char of word
         return;
+    }
+
+    // Empty line is a word (vim doc: "An empty line is also considered to be a word")
+    // c == '\n' means we landed on an empty line
+    if (crossedLine && c == '\n') {
+        if (edge == EdgeType::NextEdge) return;  // Empty line is the next word
+        // For GapEdge: empty line ends the gap
+        if (edge == EdgeType::GapEdge) {
+            pos = stepBack(lines, pos, forward);
+            return;
+        }
     }
 
     // Phase 3: If at non-blank different type (word only, not WORD)
@@ -123,12 +139,20 @@ void motionWordCore(Position& pos, const Lines& lines, bool forward,
         }
     }
 
-    // Phase 4: Skip blanks to reach next word
-    while (isBlank(c)) {
+    // Phase 4: Skip whitespace to reach next word (but stop at empty lines)
+    while (isWhitespace(c)) {
         Position prev = pos;
         pos = step(lines, pos, forward);
         if (pos == prev) return;  // Hit buffer boundary
         c = lines.get(pos);
+        // Empty line is a word, stop here
+        if (c == '\n') {
+            if (edge == EdgeType::NextEdge) return;
+            if (edge == EdgeType::GapEdge) {
+                pos = stepBack(lines, pos, forward);
+                return;
+            }
+        }
     }
 
     if (edge == EdgeType::GapEdge) {
@@ -181,9 +205,9 @@ bool checkMotionWordReachesCore(Position pos, const Position& targetPos,
         pos = step(lines, pos, forward);
         if (pos == prev) return reachedTarget(pos, targetPos, forward);
         if (canEarlyReturn && reachedTarget(pos, targetPos, forward)) return true;
-        // Forward only: line boundary = word boundary (newline terminates WORD)
-        if (forward && pos.line != prev.line) break;
         c = lines.get(pos);
+        // Line boundary = word boundary (newline terminates WORD)
+        if (pos.line != prev.line) break;
     } while (!isBlank(c) && (big || isSmallWordChar(c) == startIsWordChar));
 
     if (edge == EdgeType::WordEdge) {
@@ -226,7 +250,19 @@ void VimMovementUtils::motionWord(Position &pos,
     pos = step(lines, pos, forward);
     unsigned char currChar = lines.get(pos);
 
-    // For backward + NextEdge, if we crossed a word boundary (landed on blank or
+    // Empty line is a word - if we landed on one, handle it
+    if (currChar == '\n') {
+      // For backward + WordEdge (b/B): empty line IS the word start, stop here
+      if (!forward && edgeType == EdgeType::WordEdge) {
+        return;
+      }
+      // For forward + NextEdge (w/W): empty line IS the next word, stop here
+      if (forward && edgeType == EdgeType::NextEdge) {
+        return;
+      }
+    }
+
+    // For backward + NextEdge (ge/gE), if we crossed a word boundary (landed on blank or
     // different word type), we're at the word end we're seeking. Return immediately.
     if (!forward && edgeType == EdgeType::NextEdge) {
       bool crossedBoundary = isBlank(currChar) ||

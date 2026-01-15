@@ -209,3 +209,52 @@ The stress test verifies crossing predictions against Neovim:
 5. Only flag failure if: motion crossed but crossFn predicted safe
    (Conservative predictions where crossFn says "would cross" but motion
    didn't reach boundary are acceptable)
+
+== Critical Edge Cases
+
+=== Empty Lines Are Words
+
+Per vim docs: "An empty line is also considered to be a word."
+
+This affects motion behavior:
+- `w` from end of line before empty line → stops AT the empty line (line N+1, col 0)
+- `b` from start of line after empty line → stops AT the empty line
+- `e` behavior: empty line has no "end", so `e` stops at end of word BEFORE empty line
+- `ge` behavior: similarly stops at end of word before empty line
+
+Implementation notes:
+- `Lines::get()` returns `'\n'` for empty lines (col 0 of empty line)
+- Use `isWhitespace()` (space/tab only) for within-line blank skipping
+- Use `isBlank()` (includes newline) for general blank checks
+- After `skipCurrent` lands on empty line, return immediately for `b`/`B` (WordEdge)
+
+=== Line Crossing Is a Word Boundary
+
+Newlines terminate words in BOTH directions. When traversing characters:
+- Forward: crossing to next line = word boundary, then skip leading whitespace
+- Backward: crossing to previous line = word boundary, step back to word start
+
+Key implementation detail: update character `c` BEFORE checking line crossing,
+so Phase 3/4 have the correct character for the new line:
+```cpp
+c = lines.get(pos);  // Update BEFORE line check
+if (pos.line != prev.line) break;
+```
+
+=== Character Stepping With Empty Lines
+
+The `Lines` class has two stepping modes:
+- `getNextPos()`/`getPrevPos()`: Skip empty lines (for char-by-char traversal)
+- `getNextPosIncludeEmpty()`/`getPrevPosIncludeEmpty()`: Include empty lines
+
+Word motions use the "IncludeEmpty" variants because empty lines are words.
+Other operations (like find char `f`/`t`) may use the skipping variants.
+
+=== Whitespace vs Blank
+
+Two character classification functions:
+- `isWhitespace(c)`: space or tab only - for skipping within lines
+- `isBlank(c)`: space, tab, or newline - for general blank checks
+
+Use `isWhitespace` in Phase 4 (skip blanks to next word) to avoid
+incorrectly skipping past empty lines.

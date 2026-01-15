@@ -182,6 +182,14 @@ NeovimOracle::NeovimOracle() : impl_(std::make_unique<Impl>()) {
 
 NeovimOracle::~NeovimOracle() = default;
 
+void NeovimOracle::restart() {
+  impl_->shutdown();
+  impl_->recv_unpacker.reset();
+  impl_->recv_unpacker.reserve_buffer(65536);
+  impl_->msg_id = 0;
+  impl_->start();
+}
+
 SimulationResult NeovimOracle::simulate(const Lines &lines,
                                         int startRow, int startCol,
                                         const std::string &keys) {

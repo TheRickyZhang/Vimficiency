@@ -8,6 +8,10 @@ struct Position;
 // Character classification functions
 
 namespace VimUtils {
+  // Space or tab (not newline) - for within-line whitespace skipping
+  bool isWhitespace(unsigned char c);
+
+  // Space, tab, or newline - for general blank checks
   bool isBlank(unsigned char c);
 
   bool isSmallWordChar(unsigned char c);

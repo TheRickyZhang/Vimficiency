@@ -19,6 +19,10 @@ using namespace std;
 
 namespace VimUtils {
 
+bool isWhitespace(unsigned char c) {
+  return c == ' ' || c == '\t';
+}
+
 bool isBlank(unsigned char c) {
   return c == ' ' || c == '\t' || c == '\n';
 }
