@@ -1,4 +1,7 @@
+#include "Boundary/EditBoundary.h"
+#include "VimCore/EndpointType.h"
 #include "VimUtils.h"
+#include "Utils/SentinelChar.h"
 #include "VimMovementUtils.h"
 
 #include <algorithm>
@@ -57,7 +60,7 @@ namespace {
 //   Space? return pos-1 (last space)
 //   Next? return pos (first non-space)
 //
-void motionWordForward_big(Position &pos, const vector<string> &lines,
+void motionWordForward_big(Position &pos, const Lines &lines,
                            EndpointType endpoint) {
     int line = pos.line, col = pos.col;
     unsigned char c = getChar(lines, line, col);
@@ -147,7 +150,7 @@ void motionWordForward_big(Position &pos, const vector<string> &lines,
 //   Space? return pos-1 (last space)
 //   Next? return pos (first non-space)
 //
-void motionWordForward_small(Position &pos, const vector<string> &lines,
+void motionWordForward_small(Position &pos, const Lines &lines,
                              EndpointType endpoint) {
     int line = pos.line, col = pos.col;
     unsigned char c = getChar(lines, line, col);
@@ -242,7 +245,7 @@ void motionWordForward_small(Position &pos, const vector<string> &lines,
 //   Space? return pos+1 (first space)
 //   End? return pos (last non-space = WORD end)
 //
-void motionWordBackward_big(Position &pos, const vector<string> &lines,
+void motionWordBackward_big(Position &pos, const Lines &lines,
                             EndpointType endpoint) {
     int line = pos.line, col = pos.col;
     unsigned char c = getChar(lines, line, col);
@@ -321,7 +324,7 @@ void motionWordBackward_big(Position &pos, const vector<string> &lines,
 //   Space? return pos
 //   End? return pos (word end)
 //
-void motionWordBackward_small(Position &pos, const vector<string> &lines,
+void motionWordBackward_small(Position &pos, const Lines &lines,
                               EndpointType endpoint) {
     int line = pos.line, col = pos.col;
     unsigned char c = getChar(lines, line, col);
@@ -389,40 +392,113 @@ void motionWordBackward_small(Position &pos, const vector<string> &lines,
     pos.line = line; pos.setCol(col);
 }
 
-// =============================================================================
-// Dispatch to big/small implementations
-// =============================================================================
-void motionWordForward(Position &pos, const vector<string> &lines,
-                       EndpointType endpoint, bool big) {
-    if (big) {
-        motionWordForward_big(pos, lines, endpoint);
-    } else {
-        motionWordForward_small(pos, lines, endpoint);
-    }
-}
-
-void motionWordBackward(Position &pos, const vector<string> &lines,
-                        EndpointType endpoint, bool big) {
-    if (big) {
-        motionWordBackward_big(pos, lines, endpoint);
-    } else {
-        motionWordBackward_small(pos, lines, endpoint);
-    }
-}
 
 } // anonymous namespace
 
+
+void motionWORDImpl(Position& pos, const Lines& lines, bool forward, EndpointType endpointType) {
+  if(isBlank(lines.get(pos))) {
+    // handle separately
+  }
+
+  Position lastPos = lines.getLastPos();
+  while(isBigWordChar(lines.get(pos))) {
+    pos = lines.getNextPos(pos);
+    if(pos == lastPos) return;
+  }
+  // Now at first non-WORD
+  assert(isBlank(lines.get(pos)));
+  if(endpointType == EndpointType::End) {
+    pos = lines.getPrevPos(pos);
+    return;
+  }
+  while(!isBlank (lines.get(pos))) {
+    pos = lines.getNextPos(pos);
+    if(pos == lastPos) return;
+  }
+  // Now at start of next WORD 
+  assert(isBigWordChar(lines.get(pos)));
+  if(endpointType == EndpointType::Space) {
+    pos = lines.getPrevPos(pos);
+    return;
+  } else if(endpointType == EndpointType::Next) {
+    return;
+  } else {
+    assert(false && "not implemented yet");
+  }
+}
+
+
+void motionWordImpl(Position& pos, const Lines& lines, bool forward, EndpointType endpointType) {
+  if(isBlank(lines.get(pos))) {
+    // handle separately
+  }
+  Position lastPos = lines.getLastPos();
+
+  char c = lines.get(pos);
+  CharType currentWordType = getCharType(c);
+  CharType oppositeWordType = getOppositeCharType(currentWordType);
+
+  while(getCharType(lines.get(pos)) == currentWordType) {
+    pos = lines.getNextPos(pos);
+    if(pos == lastPos) return;
+  }
+  // Now at first non-currentWordType
+  assert(getCharType(lines.get(pos)) != currentWordType);
+  if(endpointType == EndpointType::End) {
+    pos = lines.getPrevPos(pos);
+    return;
+  }
+  while(isBlank(lines.get(pos))) {
+    pos = lines.getNextPos(pos);
+    if(pos == lastPos) return;
+  }
+  // Now at start of next word
+  assert(!isBlank(lines.get(pos)));
+  if(endpointType == EndpointType::Space) {
+    pos = lines.getPrevPos(pos);
+    return;
+  } else if(endpointType == EndpointType::Next) {
+    return;
+  } else {
+    assert(false && "not implemented yet");
+  }
+}
+
 void VimMovementUtils::motionWord(Position &pos,
-                                   const vector<string> &lines,
+                                   const Lines &lines,
                                    bool forward,
                                    EndpointType endpointType,
-                                   bool big) {
-    if (forward) {
-        motionWordForward(pos, lines, endpointType, big);
+                                   bool big,
+                                   bool skipCurrent
+                                   ) {
+  if(skipCurrent) {
+    if(forward) {
+      pos = lines.getNextPos(pos);
     } else {
-        motionWordBackward(pos, lines, endpointType, big);
+      pos = lines.getPrevPos(pos);
     }
+  }
+  if(big) {
+    motionWORDImpl(pos, lines, forward, endpointType);
+  } else {
+    motionWordImpl(pos, lines, forward, endpointType);
+  }
 }
+
+// Returns true if doing motion from pos would get to lastPos
+bool VimMovementUtils::checkMotionWordReaches(Position pos,
+                                     const Position& lastPos,
+                                     const Lines& lines, 
+                                     bool forward,
+                                     EndpointType endpointType,
+                                     bool big,
+                                     bool skipCurrent
+                                     ) {
+  // To same thing as motionWord, but return true/false (can return true early) if the motion would bring up to lastPos
+}
+
+
 
 // =============================================================================
 // Named forwarders - handle +1 shift where needed
@@ -438,39 +514,8 @@ void VimMovementUtils::motionWord(Position &pos,
 //   w/b: no shift needed (implementation already skips current position)
 //
 
-void VimMovementUtils::motionW(Position &pos, const vector<string> &lines, bool big) {
-    motionWord(pos, lines, true, EndpointType::Next, big);
-}
-
-void VimMovementUtils::motionB(Position &pos, const vector<string> &lines, bool big) {
-    motionWord(pos, lines, false, EndpointType::Next, big);
-}
-
-void VimMovementUtils::motionE(Position &pos, const vector<string> &lines, bool big) {
-    // Step forward first so we don't stay at current word end
-    int line = pos.line, col = pos.col;
-    if (!stepFwd(lines, line, col)) {
-        // At EOF - return past end if on word char
-        unsigned char c = getChar(lines, pos.line, pos.col);
-        if (!isBlank(c)) {
-            pos.setCol(static_cast<int>(lines[pos.line].size()));
-        }
-        return;
-    }
-    pos.line = line; pos.col = col;
-    motionWord(pos, lines, true, EndpointType::End, big);
-}
-
-void VimMovementUtils::motionGe(Position &pos, const vector<string> &lines, bool big) {
-    // Step backward first so we don't stay at current word end
-    int line = pos.line, col = pos.col;
-    if (!stepBack(lines, line, col)) return;
-    pos.line = line; pos.col = col;
-    motionWord(pos, lines, false, EndpointType::End, big);
-}
-
 void VimMovementUtils::motionParagraphPrev(Position &pos,
-                                   const std::vector<std::string> &lines) {
+                                   const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
@@ -490,7 +535,7 @@ void VimMovementUtils::motionParagraphPrev(Position &pos,
 }
 
 void VimMovementUtils::motionParagraphNext(Position &pos,
-                                   const std::vector<std::string> &lines) {
+                                   const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
@@ -529,7 +574,7 @@ static bool isSentenceCloser(unsigned char c) {
 
 // Sentence end at (line,col): . ! ?  then optional closers  then (EOL or
 // space/tab)
-static bool isSentenceEndAt(const std::vector<std::string> &lines, int line,
+static bool isSentenceEndAt(const Lines &lines, int line,
                             int col) {
   unsigned char c = getChar(lines, line, col);
   if (c == 0)
@@ -556,7 +601,7 @@ static bool isSentenceEndAt(const std::vector<std::string> &lines, int line,
 }
 
 static std::pair<int, int>
-findSentenceStart(const std::vector<std::string> &lines, int line, int col) {
+findSentenceStart(const Lines &lines, int line, int col) {
   int n = (int)lines.size();
   if (n == 0)
     return {0, 0};
@@ -660,7 +705,7 @@ findSentenceStart(const std::vector<std::string> &lines, int line, int col) {
  */
 
 // Fundamental helpers for working with position
-int VimMovementUtils::clampCol(const std::vector<std::string> &lines, int col,
+int VimMovementUtils::clampCol(const Lines &lines, int col,
                        int lineIdx) {
   int n = static_cast<int>(lines.size());
   assert(lineIdx >= 0 && lineIdx < n);
@@ -670,12 +715,12 @@ int VimMovementUtils::clampCol(const std::vector<std::string> &lines, int col,
   return std::clamp(col, 0, len - 1);
 }
 
-void VimMovementUtils::moveCol(Position &pos, const std::vector<std::string> &lines,
+void VimMovementUtils::moveCol(Position &pos, const Lines &lines,
                        int dx) {
   pos.setCol(clampCol(lines, pos.col + dx, pos.line));
 }
 
-void VimMovementUtils::moveLine(Position &pos, const std::vector<std::string> &lines,
+void VimMovementUtils::moveLine(Position &pos, const Lines &lines,
                         int dy) {
   int n = static_cast<int>(lines.size());
   pos.line = std::clamp(pos.line + dy, 0, n - 1);
@@ -685,7 +730,7 @@ void VimMovementUtils::moveLine(Position &pos, const std::vector<std::string> &l
 // Move to the "top edge" (start) of the current paragraph.
 // If currently on blank lines, goes to first blank line in that run.
 void VimMovementUtils::moveToParagraphStart(Position &pos,
-                                    const std::vector<std::string> &lines) {
+                                    const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
@@ -702,7 +747,7 @@ void VimMovementUtils::moveToParagraphStart(Position &pos,
 // Move to the "bottom edge" (end) of the current paragraph.
 // If currently on blank lines, goes to last blank line in that run.
 void VimMovementUtils::moveToParagraphEnd(Position &pos,
-                                  const std::vector<std::string> &lines) {
+                                  const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
@@ -714,7 +759,7 @@ void VimMovementUtils::moveToParagraphEnd(Position &pos,
 }
 
 void VimMovementUtils::motionSentenceNext(Position &pos,
-                                  const std::vector<std::string> &lines) {
+                                  const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
@@ -794,7 +839,7 @@ void VimMovementUtils::motionSentenceNext(Position &pos,
 }
 
 void VimMovementUtils::motionSentencePrev(Position &pos,
-                                  const std::vector<std::string> &lines) {
+                                  const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0) return;
 

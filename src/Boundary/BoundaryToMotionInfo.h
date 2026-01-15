@@ -26,6 +26,7 @@ struct MotionInfo {
     EndpointType endpointType;
     bool isForward;
     bool isWORD;
+    bool skipCurrent = false;
 };
 
 // =============================================================================

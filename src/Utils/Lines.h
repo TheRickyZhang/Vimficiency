@@ -3,6 +3,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <assert.h>
+#include <Editor/Position.h>
 
 struct Lines : std::vector<std::string> {
   using std::vector<std::string>::vector;
@@ -27,6 +29,44 @@ struct Lines : std::vector<std::string> {
     }
     result.push_back(text.substr(start));
     return result;
+  }
+
+  Position getLastPos() const {
+    assert(!this->empty());
+    for(int i = this->size() - 1; i >= 0; i--) {
+      if(!(*this)[i].empty()) return Position(i, (*this)[i].size()-1);
+    }
+    assert(false);
+  }
+
+  Position getNextPos(Position pos) const {
+    if(pos.col + 1 < (*this)[pos.line].size()) {
+      return Position(pos.line, pos.col + 1);
+    }
+    for(int row = pos.line + 1; row < this->size(); ++row) {
+      if(!(*this)[row].empty()) {
+        return Position(row, 0);
+      }
+    }
+    return pos; // Same position if cannot move, or check == pos at call site for sentinel
+  }
+
+  Position getPrevPos(Position pos) const {
+    if(pos.col > 0) {
+      return Position(pos.line, pos.col - 1);
+    }
+    for(int row = pos.line - 1; row >= 0; --row) {
+      if(!(*this)[row].empty()) {
+        return Position(row, (*this)[row].size() - 1);
+      }
+    }
+    return pos; // Same position if cannot move, or check == pos at call site for sentinel
+  }
+
+  char get(const Position& pos) const {
+    assert(pos.line < this->size());
+    assert(pos.col < (*this)[pos.line].size());
+    return (*this)[pos.line][pos.col];
   }
 
   // Total character count (excluding newlines between lines)

@@ -2,19 +2,20 @@
 #include <string>
 
 #include "EndpointType.h"
+#include "Utils/Lines.h"
 
 struct Position;
 
 struct VimMovementUtils {
   // Fundamental helpers for working with position
-  static int clampCol(const std::vector<std::string> &lines,
+  static int clampCol(const Lines &lines,
                       int col,
                       int lineIdx);
   static void moveCol(Position &pos,
-                      const std::vector<std::string> &lines,
+                      const Lines &lines,
                       int dx);
   static void moveLine(Position &pos,
-                       const std::vector<std::string> &lines,
+                       const Lines &lines,
                        int dy);
 
   // ==========================================================================
@@ -31,37 +32,46 @@ struct VimMovementUtils {
   //   Backward + Next -> ge/gE (to end of previous word)
   //
   static void motionWord(Position &pos,
-                         const std::vector<std::string> &lines,
+                         const Lines &lines,
                          bool forward,
                          EndpointType endpointType,
-                         bool big);
+                         bool big,
+                         bool skipCurrent);
+
+  static bool checkMotionWordReaches(Position pos,
+                                     const Position& lastPos,
+                                     const Lines &lines,
+                                     bool forward,
+                                     EndpointType endpointType,
+                                     bool big,
+                                     bool skipCurrent);
 
   // Named word motion forwarders
   static void motionW(Position &pos,
-                      const std::vector<std::string> &lines,
+                      const Lines &lines,
                       bool big);
 
   static void motionB(Position &pos,
-                      const std::vector<std::string> &lines,
+                      const Lines &lines,
                       bool big);
 
   static void motionE(Position &pos,
-                      const std::vector<std::string> &lines,
+                      const Lines &lines,
                       bool big);
 
   static void motionGe(Position &pos,
-                       const std::vector<std::string> &lines,
+                       const Lines &lines,
                        bool big);
 
   // Paragraph motions
-  static void moveToParagraphStart(Position& pos, const std::vector<std::string>& lines);
-  static void moveToParagraphEnd(Position& pos, const std::vector<std::string>& lines);
-  static void motionParagraphPrev(Position& pos, const std::vector<std::string>& lines);
-  static void motionParagraphNext(Position& pos, const std::vector<std::string>& lines);
+  static void moveToParagraphStart(Position& pos, const Lines& lines);
+  static void moveToParagraphEnd(Position& pos, const Lines& lines);
+  static void motionParagraphPrev(Position& pos, const Lines& lines);
+  static void motionParagraphNext(Position& pos, const Lines& lines);
 
   // Sentence motions
-  static void motionSentencePrev(Position& pos, const std::vector<std::string>& lines);
-  static void motionSentenceNext(Position& pos, const std::vector<std::string>& lines);
+  static void motionSentencePrev(Position& pos, const Lines& lines);
+  static void motionSentenceNext(Position& pos, const Lines& lines);
 
   // Character find motions (f/F/t/T)
   // Returns destination column, or -1 if target not found

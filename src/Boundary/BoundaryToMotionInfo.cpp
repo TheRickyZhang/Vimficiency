@@ -4,8 +4,8 @@
 // word motions
 // =============================================================================
 
-const MotionInfo MOTION_DE  = {EndpointType::End,   true,  false};
-const MotionInfo MOTION_DB  = {EndpointType::End,   false, false};
+const MotionInfo MOTION_DE  = {EndpointType::End,   true,  false, true};
+const MotionInfo MOTION_DB  = {EndpointType::End,   false, false, true};
 const MotionInfo MOTION_DW  = {EndpointType::Space, true,  false};
 const MotionInfo MOTION_DGE = {EndpointType::Next,  false, false};
 
@@ -13,8 +13,8 @@ const MotionInfo MOTION_DGE = {EndpointType::Next,  false, false};
 // WORD motions
 // =============================================================================
 
-const MotionInfo MOTION_DE_BIG  = {EndpointType::End,   true,  true};
-const MotionInfo MOTION_DB_BIG  = {EndpointType::End,   false, true};
+const MotionInfo MOTION_DE_BIG  = {EndpointType::End,   true,  true, true};
+const MotionInfo MOTION_DB_BIG  = {EndpointType::End,   false, true, true};
 const MotionInfo MOTION_DW_BIG  = {EndpointType::Space, true,  true};
 const MotionInfo MOTION_DGE_BIG = {EndpointType::Next,  false, true};
 

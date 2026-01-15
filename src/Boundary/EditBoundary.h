@@ -33,6 +33,8 @@ enum class CharType : uint8_t {
 // Get CharType for a character
 CharType getCharType(char c);
 
+CharType getOppositeCharType(CharType charType);
+
 // =============================================================================
 // EditBoundary struct
 // =============================================================================

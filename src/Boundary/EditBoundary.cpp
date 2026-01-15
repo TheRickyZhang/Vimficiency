@@ -1,3 +1,5 @@
+#include <assert.h>
+
 #include "EditBoundary.h"
 #include "VimCore/VimUtils.h"
 
@@ -11,6 +13,10 @@ CharType getCharType(char c) {
     return CharType::Symbol;
 }
 
+CharType getOppositeCharType(CharType charType) {
+  assert(charType == CharType::Keyword || charType == CharType::Symbol);
+  return charType == CharType::Keyword ? CharType::Symbol : CharType::Keyword;
+}
 // =============================================================================
 // Endpoint-based crossing checks (word)
 // See data/EditBoundaryLogic.typ for derivation
