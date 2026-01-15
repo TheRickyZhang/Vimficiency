@@ -17,10 +17,10 @@ using namespace std;
 
 class MovementOptimizerTest : public ::testing::Test {
 protected:
-  static vector<string> a1_long_line;
-  static vector<string> a2_block_lines;
-  static vector<string> a3_spaced_lines;
-  static vector<string> m1_main_basic;
+  static Lines a1_long_line;
+  static Lines a2_block_lines;
+  static Lines a3_spaced_lines;
+  static Lines m1_main_basic;
   static NavContext navContext;
 
   static void SetUpTestSuite() {
@@ -33,7 +33,7 @@ protected:
   }
 
   static vector<Result>
-  runOptimizer(const vector<string> &lines, Position start,
+  runOptimizer(const Lines &lines, Position start,
                Position end, const string &userSeq,
                const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS,
                vector<KeyAdjustment> adjustments = {},
@@ -71,10 +71,10 @@ protected:
 };
 
 // Static member definitions
-vector<string> MovementOptimizerTest::a1_long_line;
-vector<string> MovementOptimizerTest::a2_block_lines;
-vector<string> MovementOptimizerTest::a3_spaced_lines;
-vector<string> MovementOptimizerTest::m1_main_basic;
+Lines MovementOptimizerTest::a1_long_line;
+Lines MovementOptimizerTest::a2_block_lines;
+Lines MovementOptimizerTest::a3_spaced_lines;
+Lines MovementOptimizerTest::m1_main_basic;
 NavContext MovementOptimizerTest::navContext(0, 0);
 
 TEST_F(MovementOptimizerTest, HorizontalMotions) {

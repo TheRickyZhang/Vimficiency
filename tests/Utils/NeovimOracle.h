@@ -1,13 +1,14 @@
 #pragma once
 
 #include "Editor/Mode.h"
+#include "Utils/Lines.h"
 
 #include <memory>
 #include <string>
 #include <vector>
 
 struct SimulationResult {
-  std::vector<std::string> lines;
+  Lines lines;
   int row; // 0-indexed
   int col; // 0-indexed
   Mode mode;
@@ -38,7 +39,7 @@ public:
 
   // Simulate executing a key sequence in Neovim starting from normal mode.
   // Returns the resulting buffer state, cursor position, and mode.
-  SimulationResult simulate(const std::vector<std::string> &lines,
+  SimulationResult simulate(const Lines &lines,
                             int startRow, // 0-indexed
                             int startCol, // 0-indexed
                             const std::string &keys);

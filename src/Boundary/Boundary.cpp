@@ -1,7 +1,5 @@
 #include "Boundary.h"
-#include "VimCore/EndpointType.h"
 #include "VimCore/VimMovementUtils.h"
-#include <stdexcept>
 
 // =============================================================================
 // Helper: Get char type at position
@@ -58,7 +56,7 @@ bool extendsTooFar(const Lines &lines, Position cursor, Position boundaryPos,
     endPos,
     lines,
     info.isForward,
-    info.endpointType,
+    info.edgeType,
     info.isWORD
   );
 

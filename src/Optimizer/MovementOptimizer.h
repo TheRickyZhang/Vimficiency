@@ -51,7 +51,7 @@ struct MovementOptimizer {
   // ~ O(n^2)
   std::vector<Result> optimize(
     // Core information
-    const std::vector<std::string>& lines,
+    const Lines& lines,
     const Position& startPos,
     const RunningEffort& startingEffort,  // Continued from caller for correct effort calc
     const Position& endPos,

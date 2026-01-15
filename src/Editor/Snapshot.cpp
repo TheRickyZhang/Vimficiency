@@ -59,7 +59,7 @@ Snapshot load_snapshot(const std::filesystem::path& path) {
     }
   }
 
-  vector<string> lines;
+  Lines lines;
   string line;
   while(getline(in, line)) {
     lines.push_back(line);

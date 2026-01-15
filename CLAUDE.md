@@ -58,5 +58,5 @@ For Lua context, see `lua/CLAUDE.md`.
 - @docs/vim-utils-principles.md - State validation, empty representation handling
 - @docs/testing.md - NeovimOracle, test file conventions, debug printing
 - @docs/x-macros.md - Key definitions, supported commands, sequence parsing
-- @docs/edit-boundary-logic.md - Boundary handling details
+- @docs/boundary-logic.md - Word motion and boundary crossing logic
 - @docs/session-invocation.txt - How vimficiency optimizer sessions are called and stored

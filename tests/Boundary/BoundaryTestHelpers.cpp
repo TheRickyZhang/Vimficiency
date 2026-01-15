@@ -106,7 +106,7 @@ BoundaryTestCase buildTestCase(CharType contentType, CharType boundaryType,
 // Crossing detection
 // =============================================================================
 
-static bool forwardCrossed(const BoundaryTestCase& tc, const vector<string>& result) {
+static bool forwardCrossed(const BoundaryTestCase& tc, const Lines& result) {
     if (tc.hasLinesBelow) {
         // Multi-line: check if second line is intact
         return !(result.size() >= 2 && result[1] == "yy ZZ");
@@ -123,7 +123,7 @@ static bool forwardCrossed(const BoundaryTestCase& tc, const vector<string>& res
     return line.substr(line.size() - 3 - boundary.size(), boundary.size()) != boundary;
 }
 
-static bool backwardCrossed(const BoundaryTestCase& tc, const vector<string>& result) {
+static bool backwardCrossed(const BoundaryTestCase& tc, const Lines& result) {
     if (tc.hasLinesAbove) {
         // Multi-line: check if first line is intact
         return !(result.size() >= 1 && result[0] == "QQ yy");
@@ -140,7 +140,7 @@ static bool backwardCrossed(const BoundaryTestCase& tc, const vector<string>& re
     return line.substr(3, boundary.size()) != boundary;
 }
 
-bool didCross(const BoundaryTestCase& tc, const vector<string>& result) {
+bool didCross(const BoundaryTestCase& tc, const Lines& result) {
     return tc.isForward ? forwardCrossed(tc, result) : backwardCrossed(tc, result);
 }
 
@@ -252,7 +252,7 @@ static char randomChar(mt19937& rng) {
     return randomCharOfType(type, rng);
 }
 
-string flattenLines(const vector<string>& lines) {
+string flattenLines(const Lines& lines) {
     string result;
     for (size_t i = 0; i < lines.size(); i++) {
         if (i > 0) result += '\n';
@@ -405,20 +405,20 @@ static bool suffixIntact(const string& suffix, const string& resultFlat) {
     return resultFlat.substr(resultFlat.size() - suffix.size()) == suffix;
 }
 
-bool boundaryRespected(const RandomBufferTest& test, const vector<string>& result) {
+bool boundaryRespected(const RandomBufferTest& test, const Lines& result) {
     string resultFlat = flattenLines(result);
     // Both prefix and suffix must be intact for boundary to be respected
     return prefixIntact(test.prefix, resultFlat) && suffixIntact(test.suffix, resultFlat);
 }
 
 // Check specifically if right boundary was crossed (for forward motions)
-static bool rightBoundaryCrossed(const RandomBufferTest& test, const vector<string>& result) {
+static bool rightBoundaryCrossed(const RandomBufferTest& test, const Lines& result) {
     string resultFlat = flattenLines(result);
     return !suffixIntact(test.suffix, resultFlat);
 }
 
 // Check specifically if left boundary was crossed (for backward motions)
-static bool leftBoundaryCrossed(const RandomBufferTest& test, const vector<string>& result) {
+static bool leftBoundaryCrossed(const RandomBufferTest& test, const Lines& result) {
     string resultFlat = flattenLines(result);
     return !prefixIntact(test.prefix, resultFlat);
 }

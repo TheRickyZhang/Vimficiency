@@ -1,22 +1,22 @@
 #include "BoundaryToMotionInfo.h"
 
 // =============================================================================
-// word motions
+// word deletions
 // =============================================================================
 
-const MotionInfo MOTION_DE  = {EndpointType::End,   true,  false, true};
-const MotionInfo MOTION_DB  = {EndpointType::End,   false, false, true};
-const MotionInfo MOTION_DW  = {EndpointType::Space, true,  false};
-const MotionInfo MOTION_DGE = {EndpointType::Next,  false, false};
+const MotionInfo MOTION_DE  = {EdgeType::WordEdge, true,  false, true};
+const MotionInfo MOTION_DB  = {EdgeType::WordEdge, false, false, true};
+const MotionInfo MOTION_DW  = {EdgeType::GapEdge,  true,  false};
+const MotionInfo MOTION_DGE = {EdgeType::NextEdge, false, false};
 
 // =============================================================================
-// WORD motions
+// WORD deletions
 // =============================================================================
 
-const MotionInfo MOTION_DE_BIG  = {EndpointType::End,   true,  true, true};
-const MotionInfo MOTION_DB_BIG  = {EndpointType::End,   false, true, true};
-const MotionInfo MOTION_DW_BIG  = {EndpointType::Space, true,  true};
-const MotionInfo MOTION_DGE_BIG = {EndpointType::Next,  false, true};
+const MotionInfo MOTION_DE_BIG  = {EdgeType::WordEdge, true,  true, true};
+const MotionInfo MOTION_DB_BIG  = {EdgeType::WordEdge, false, true, true};
+const MotionInfo MOTION_DW_BIG  = {EdgeType::GapEdge,  true,  true};
+const MotionInfo MOTION_DGE_BIG = {EdgeType::NextEdge, false, true};
 
 // =============================================================================
 // Lookup

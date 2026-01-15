@@ -11,10 +11,10 @@ using namespace std;
 
 class MotionTest : public ::testing::Test {
 protected:
-  static vector<string> a1_long_line;
-  static vector<string> a2_block_lines;
-  static vector<string> a3_spaced_lines;
-  static vector<string> m2_main_big;
+  static Lines a1_long_line;
+  static Lines a2_block_lines;
+  static Lines a3_spaced_lines;
+  static Lines m2_main_big;
   static NavContext navContext;
 
   static void SetUpTestSuite() {
@@ -27,7 +27,7 @@ protected:
   }
 
   // Helper: apply motion and return resulting position
-  static Position simulateMotionsDefault(Position start, const string& motion, const vector<string>& lines) {
+  static Position simulateMotionsDefault(Position start, const string& motion, const Lines& lines) {
     return simulateMotions(start, Mode::Normal, navContext, motion, lines).pos;
   }
 
@@ -39,10 +39,10 @@ protected:
 };
 
 // Static member definitions
-vector<string> MotionTest::a1_long_line;
-vector<string> MotionTest::a2_block_lines;
-vector<string> MotionTest::a3_spaced_lines;
-vector<string> MotionTest::m2_main_big;
+Lines MotionTest::a1_long_line;
+Lines MotionTest::a2_block_lines;
+Lines MotionTest::a3_spaced_lines;
+Lines MotionTest::m2_main_big;
 NavContext MotionTest::navContext(0, 0);
 
 // =============================================================================
@@ -100,13 +100,13 @@ TEST_F(MotionTest, JK_PreservesColumn) {
 }
 
 TEST_F(MotionTest, JK_ClampsToShorterLine) {
-  vector<string> lines = {"long line here", "short", "long line here"};
+  Lines lines = {"long line here", "short", "long line here"};
   expectPos(simulateMotionsDefault({0, 10}, "j", lines), 1, 4);
   expectPos(simulateMotionsDefault({0, 10}, "jk", lines), 0, 10);
 }
 
 TEST_F(MotionTest, JK_HandlesEmptyLines) {
-  vector<string> lines = {"content", "", "content"};
+  Lines lines = {"content", "", "content"};
   expectPos(simulateMotionsDefault({0, 5}, "j", lines), 1, 0);
   expectPos(simulateMotionsDefault({0, 5}, "jk", lines), 0, 5);
   expectPos(simulateMotionsDefault({1, 0}, "k", lines), 0, 0);
@@ -131,7 +131,7 @@ TEST_F(MotionTest, W_MultipleWords) {
 
 TEST_F(MotionTest, B_SmallWord_PrevWordStart) {
   //                       0   4   8
-  vector<string> lines = {"one two three"};
+  Lines lines = {"one two three"};
   expectPos(simulateMotionsDefault({0, 8}, "b", lines), 0, 4);   // three -> two
   expectPos(simulateMotionsDefault({0, 4}, "b", lines), 0, 0);   // two -> one
   expectPos(simulateMotionsDefault({0, 0}, "b", lines), 0, 0);   // one -> stays
@@ -144,35 +144,35 @@ TEST_F(MotionTest, E_SmallWord_WordEnd) {
 
 TEST_F(MotionTest, Ge_SmallWord_PrevWordEnd) {
   //                       0   4   8
-  vector<string> lines = {"one two three"};
+  Lines lines = {"one two three"};
   expectPos(simulateMotionsDefault({0, 8}, "ge", lines), 0, 6);   // three -> end of "two"
   expectPos(simulateMotionsDefault({0, 6}, "ge", lines), 0, 2);   // two -> end of "one"
   expectPos(simulateMotionsDefault({0, 2}, "ge", lines), 0, 2);   // already at word end, stay
 }
 
 TEST_F(MotionTest, Ge_FromMiddleOfWord) {
-  vector<string> lines = {"hello world"};
+  Lines lines = {"hello world"};
   expectPos(simulateMotionsDefault({0, 8}, "ge", lines), 0, 4);   // "wor|ld" -> end of "hello"
   expectPos(simulateMotionsDefault({0, 2}, "ge", lines), 0, 2);   // "hel|lo" -> stays (no prev word end)
 }
 
 TEST_F(MotionTest, Ge_SkipsWhitespace) {
-  vector<string> lines = {"one   two"};
+  Lines lines = {"one   two"};
   expectPos(simulateMotionsDefault({0, 6}, "ge", lines), 0, 2);   // start of "two" -> end of "one"
 }
 
 TEST_F(MotionTest, GE_BigWord_PrevWordEnd) {
-  vector<string> lines = {"foo.bar baz.qux"};
+  Lines lines = {"foo.bar baz.qux"};
   expectPos(simulateMotionsDefault({0, 8}, "gE", lines), 0, 6);   // baz -> end of "foo.bar"
 }
 
 TEST_F(MotionTest, Ge_CrossesLines) {
-  vector<string> lines = {"first", "second"};
+  Lines lines = {"first", "second"};
   expectPos(simulateMotionsDefault({1, 0}, "ge", lines), 0, 4);   // "second" -> end of "first"
 }
 
 TEST_F(MotionTest, Ge_MultipleJumps) {
-  vector<string> lines = {"one two three"};
+  Lines lines = {"one two three"};
   expectPos(simulateMotionsDefault({0, 12}, "gege", lines), 0, 2);  // end of "three" -> end of "one"
 }
 
@@ -207,7 +207,7 @@ TEST_F(MotionTest, W_CrossesLinesInCode) {
 }
 
 TEST_F(MotionTest, WordMotionFromEmptyLine) {
-  vector<string> lines = {"", "content"};
+  Lines lines = {"", "content"};
   // w from empty line should go to next line's first word
   Position p = simulateMotionsDefault({0, 0}, "w", lines);
   EXPECT_EQ(p.line, 1);
@@ -230,19 +230,19 @@ TEST_F(MotionTest, Dollar_GoesToLineEnd) {
 }
 
 TEST_F(MotionTest, Dollar_OnEmptyLine) {
-  vector<string> lines = {"", "content"};
+  Lines lines = {"", "content"};
   expectPos(simulateMotionsDefault({0, 0}, "$", lines), 0, 0);
 }
 
 TEST_F(MotionTest, Caret_GoesToFirstNonBlank) {
-  vector<string> lines = {"  indented"};
+  Lines lines = {"  indented"};
   Position p = simulateMotionsDefault({0, 5}, "^", lines);
   EXPECT_EQ(p.line, 0);
   EXPECT_EQ(p.col, 2);  // first non-blank after 2 spaces
 }
 
 TEST_F(MotionTest, Caret_OnNoIndent) {
-  vector<string> lines = {"noindent"};
+  Lines lines = {"noindent"};
   Position p = simulateMotionsDefault({0, 5}, "^", lines);
   EXPECT_EQ(p.line, 0);
   EXPECT_EQ(p.col, 0);
@@ -253,19 +253,19 @@ TEST_F(MotionTest, Caret_OnNoIndent) {
 // =============================================================================
 
 TEST_F(MotionTest, CloseBrace_NextParagraph) {
-  vector<string> lines = {"para1", "para1", "", "para2", "para2"};
+  Lines lines = {"para1", "para1", "", "para2", "para2"};
   Position p = simulateMotionsDefault({0, 0}, "}", lines);
   EXPECT_EQ(p.line, 2);  // blank line
 }
 
 TEST_F(MotionTest, OpenBrace_PrevParagraph) {
-  vector<string> lines = {"para1", "", "para2", "para2"};
+  Lines lines = {"para1", "", "para2", "para2"};
   Position p = simulateMotionsDefault({3, 0}, "{", lines);
   EXPECT_EQ(p.line, 1);  // blank line
 }
 
 TEST_F(MotionTest, MultipleBraceJumps) {
-  vector<string> lines = {"a", "", "b", "", "c"};
+  Lines lines = {"a", "", "b", "", "c"};
   Position p1 = simulateMotionsDefault({0, 0}, "}", lines);
   Position p2 = simulateMotionsDefault({0, 0}, "}}", lines);
   EXPECT_EQ(p1.line, 1);
@@ -273,7 +273,7 @@ TEST_F(MotionTest, MultipleBraceJumps) {
 }
 
 TEST_F(MotionTest, CloseParen_NextSentence) {
-  vector<string> lines = {"First. Second."};
+  Lines lines = {"First. Second."};
   Position start(0, 0);
   Position p = simulateMotionsDefault(start, ")", lines);
   // Should move to "Second" (after ". ")
@@ -281,7 +281,7 @@ TEST_F(MotionTest, CloseParen_NextSentence) {
 }
 
 TEST_F(MotionTest, OpenParen_PrevSentence) {
-  vector<string> lines = {"First. Second."};
+  Lines lines = {"First. Second."};
   Position start(0, 10);
   Position p = simulateMotionsDefault(start, "(", lines);
   EXPECT_LT(p.col, start.col) << "( should move cursor backward";
@@ -297,7 +297,7 @@ TEST_F(MotionTest, GG_GoesToFirstLine) {
   EXPECT_EQ(p1.line, 0);
   EXPECT_EQ(p1.col, 5);
   
-  vector<string> lines = {"short", "longer line"};
+  Lines lines = {"short", "longer line"};
   Position p2 = simulateMotionsDefault({1, 8}, "gg", lines);
   EXPECT_EQ(p2.line, 0);
   EXPECT_EQ(p2.col, 4);
@@ -355,7 +355,7 @@ TEST_F(MotionTest, NavigateCodeBlock) {
 // =============================================================================
 
 TEST_F(MotionTest, EmptyLineNavigation) {
-  vector<string> lines = {""};
+  Lines lines = {""};
   expectPos(simulateMotionsDefault({0, 0}, "l", lines), 0, 0);  // can't move right on empty
   expectPos(simulateMotionsDefault({0, 0}, "h", lines), 0, 0);  // can't move left on empty
   expectPos(simulateMotionsDefault({0, 0}, "$", lines), 0, 0);  // $ on empty stays
@@ -363,7 +363,7 @@ TEST_F(MotionTest, EmptyLineNavigation) {
 }
 
 TEST_F(MotionTest, SingleCharLine) {
-  vector<string> lines = {"a"};
+  Lines lines = {"a"};
   expectPos(simulateMotionsDefault({0, 0}, "l", lines), 0, 0);
   expectPos(simulateMotionsDefault({0, 0}, "h", lines), 0, 0);
   expectPos(simulateMotionsDefault({0, 0}, "$", lines), 0, 0);
@@ -415,7 +415,7 @@ TEST_F(MotionTest, Property_K_NeverIncreasesLine) {
 }
 
 TEST_F(MotionTest, Property_PositionAlwaysValid) {
-  vector<string> motions = {"h", "j", "k", "l", "w", "b", "e", "W", "B", "E",
+  Lines motions = {"h", "j", "k", "l", "w", "b", "e", "W", "B", "E",
                             "0", "^", "$", "gg", "G", "{", "}", "(", ")"};
   
   // Test on a2_block_lines
@@ -494,34 +494,34 @@ TEST_F(MotionTest, Scenario_WordNavigationAcrossFile) {
 // Test line with spaces: "abc def ghi" (positions 0-10)
 
 TEST_F(MotionTest, F_FindForward_Basic) {
-  vector<string> lines = {"abcdefghij"};
+  Lines lines = {"abcdefghij"};
   expectPos(simulateMotionsDefault({0, 0}, "fc", lines), 0, 2, "f from 0 to 'c'");
   expectPos(simulateMotionsDefault({0, 0}, "fj", lines), 0, 9, "f from 0 to 'j'");
   expectPos(simulateMotionsDefault({0, 3}, "fg", lines), 0, 6, "f from 3 to 'g'");
 }
 
 TEST_F(MotionTest, F_FindForward_NotFound) {
-  vector<string> lines = {"abcdefghij"};
+  Lines lines = {"abcdefghij"};
   // Target not found - position should stay unchanged
   expectPos(simulateMotionsDefault({0, 0}, "fz", lines), 0, 0, "f to nonexistent char");
   expectPos(simulateMotionsDefault({0, 5}, "fa", lines), 0, 5, "f forward to char behind cursor");
 }
 
 TEST_F(MotionTest, F_FindBackward_Basic) {
-  vector<string> lines = {"abcdefghij"};
+  Lines lines = {"abcdefghij"};
   expectPos(simulateMotionsDefault({0, 9}, "Fc", lines), 0, 2, "F from 9 to 'c'");
   expectPos(simulateMotionsDefault({0, 9}, "Fa", lines), 0, 0, "F from 9 to 'a'");
   expectPos(simulateMotionsDefault({0, 6}, "Fd", lines), 0, 3, "F from 6 to 'd'");
 }
 
 TEST_F(MotionTest, F_FindBackward_NotFound) {
-  vector<string> lines = {"abcdefghij"};
+  Lines lines = {"abcdefghij"};
   expectPos(simulateMotionsDefault({0, 9}, "Fz", lines), 0, 9, "F to nonexistent char");
   expectPos(simulateMotionsDefault({0, 3}, "Fj", lines), 0, 3, "F backward to char ahead of cursor");
 }
 
 TEST_F(MotionTest, T_TillForward_Basic) {
-  vector<string> lines = {"abcdefghij"};
+  Lines lines = {"abcdefghij"};
   // t lands ONE BEFORE the target
   expectPos(simulateMotionsDefault({0, 0}, "tc", lines), 0, 1, "t from 0 to before 'c'");
   expectPos(simulateMotionsDefault({0, 0}, "tj", lines), 0, 8, "t from 0 to before 'j'");
@@ -529,25 +529,25 @@ TEST_F(MotionTest, T_TillForward_Basic) {
 }
 
 TEST_F(MotionTest, T_TillForward_AdjacentChar) {
-  vector<string> lines = {"abcdefghij"};
+  Lines lines = {"abcdefghij"};
   // t to adjacent char - lands on current position (one before target)
   expectPos(simulateMotionsDefault({0, 0}, "tb", lines), 0, 0, "t to adjacent char stays");
 }
 
 TEST_F(MotionTest, T_TillBackward_Basic) {
-  vector<string> lines = {"abcdefghij"};
+  Lines lines = {"abcdefghij"};
   // T lands ONE AFTER the target (going backward)
   expectPos(simulateMotionsDefault({0, 9}, "Tc", lines), 0, 3, "T from 9 to after 'c'");
   expectPos(simulateMotionsDefault({0, 9}, "Ta", lines), 0, 1, "T from 9 to after 'a'");
 }
 
 TEST_F(MotionTest, T_TillBackward_AdjacentChar) {
-  vector<string> lines = {"abcdefghij"};
+  Lines lines = {"abcdefghij"};
   expectPos(simulateMotionsDefault({0, 5}, "Te", lines), 0, 5, "T to adjacent char stays");
 }
 
 TEST_F(MotionTest, CharFind_WithSemicolonRepeat) {
-  vector<string> lines = {"abcabcabc"};  // 'a' at 0, 3, 6; 'b' at 1, 4, 7; 'c' at 2, 5, 8
+  Lines lines = {"abcabcabc"};  // 'a' at 0, 3, 6; 'b' at 1, 4, 7; 'c' at 2, 5, 8
   expectPos(simulateMotionsDefault({0, 0}, "fa", lines), 0, 3, "fa from 0");
   expectPos(simulateMotionsDefault({0, 0}, "fa;", lines), 0, 6, "fa; from 0");
   expectPos(simulateMotionsDefault({0, 8}, "Fa", lines), 0, 6, "Fa from 8");
@@ -556,20 +556,20 @@ TEST_F(MotionTest, CharFind_WithSemicolonRepeat) {
 }
 
 TEST_F(MotionTest, CharFind_WithCommaRepeat) {
-  vector<string> lines = {"abcabcabc"};
+  Lines lines = {"abcabcabc"};
   expectPos(simulateMotionsDefault({0, 0}, "fa,", lines), 0, 0, "fa, from 0 - back to start");
   expectPos(simulateMotionsDefault({0, 0}, "fa;,", lines), 0, 3, "fa;, from 0 - forward twice, back once");
   expectPos(simulateMotionsDefault({0, 8}, "Fa,", lines), 0, 6, "Fa, from 8 - stays at 6 (no 'a' ahead of 6)");
 }
 
 TEST_F(MotionTest, CharFind_MixedRepeat) {
-  vector<string> lines = {"abcabcabc"};
+  Lines lines = {"abcabcabc"};
   // 0 -> 3 (fa) -> 6 (;) -> 3 (,) -> 6 (;)
   expectPos(simulateMotionsDefault({0, 0}, "fa;,;", lines), 0, 6, "fa;,; complex repeat");
 }
 
 TEST_F(MotionTest, CharFind_TillWithRepeat) {
-  vector<string> lines = {"abcabcabc"};
+  Lines lines = {"abcabcabc"};
   // ta - till 'a', lands one before
   expectPos(simulateMotionsDefault({0, 0}, "ta", lines), 0, 2, "ta from 0 - before first 'a' at 3");
   // This is correct - t; can get "stuck" when you're right before the target
@@ -579,7 +579,7 @@ TEST_F(MotionTest, CharFind_TillWithRepeat) {
 }
 
 TEST_F(MotionTest, CharFind_SpaceAsTarget) {
-  vector<string> lines = {"abc def ghi"};  // spaces at 3, 7
+  Lines lines = {"abc def ghi"};  // spaces at 3, 7
   expectPos(simulateMotionsDefault({0, 0}, "f ", lines), 0, 3, "f<space> from 0");
   expectPos(simulateMotionsDefault({0, 0}, "f ;", lines), 0, 7, "f<space>; from 0");
   expectPos(simulateMotionsDefault({0, 0}, "t ", lines), 0, 2, "t<space> from 0");
@@ -588,7 +588,7 @@ TEST_F(MotionTest, CharFind_SpaceAsTarget) {
 }
 
 TEST_F(MotionTest, CharFind_MultipleOccurrences) {
-  vector<string> lines = {"aaaaaa"};
+  Lines lines = {"aaaaaa"};
   expectPos(simulateMotionsDefault({0, 0}, "fa", lines), 0, 1, "fa in all-a line");
   expectPos(simulateMotionsDefault({0, 0}, "fa;", lines), 0, 2, "fa; in all-a line");
   expectPos(simulateMotionsDefault({0, 0}, "fa;;", lines), 0, 3, "fa;; in all-a line");
@@ -596,19 +596,19 @@ TEST_F(MotionTest, CharFind_MultipleOccurrences) {
 }
 
 TEST_F(MotionTest, CharFind_CombinedWithOtherMotions) {
-  vector<string> lines = {"abcdefghij", "0123456789"};
+  Lines lines = {"abcdefghij", "0123456789"};
   expectPos(simulateMotionsDefault({0, 0}, "jfc", lines), 1, 0, "j then fc (no 'c' in line 1)");
   expectPos(simulateMotionsDefault({0, 0}, "fcj", lines), 1, 2, "fc then j");
 }
 
 TEST_F(MotionTest, CharFind_AtLineEnd) {
-  vector<string> lines = {"abcdef"};
+  Lines lines = {"abcdef"};
   expectPos(simulateMotionsDefault({0, 5}, "fa", lines), 0, 5, "f from end - target behind");
   expectPos(simulateMotionsDefault({0, 0}, "Ff", lines), 0, 0, "F from start - target ahead");
 }
 
 TEST_F(MotionTest, CharFind_OnTargetChar) {
-  vector<string> lines = {"abcabc"};
+  Lines lines = {"abcabc"};
   expectPos(simulateMotionsDefault({0, 0}, "fa", lines), 0, 3, "fa when on 'a' finds next 'a'");
   expectPos(simulateMotionsDefault({0, 3}, "Fa", lines), 0, 0, "Fa when on 'a' finds previous 'a'");
 }
@@ -619,13 +619,13 @@ TEST_F(MotionTest, CharFind_OnTargetChar) {
 
 // Helper to simulate with custom NavContext
 static Position simulateWithNav(Position start, const string& motion,
-                                const vector<string>& lines, NavContext nav) {
+                                const Lines& lines, NavContext nav) {
   return simulateMotions(start, Mode::Normal, nav, motion, lines).pos;
 }
 
 // Generate a file with N lines for scroll testing
-static vector<string> makeLines(int count) {
-  vector<string> lines;
+static Lines makeLines(int count) {
+  Lines lines;
   for (int i = 0; i < count; i++) {
     lines.push_back("line" + to_string(i));
   }
@@ -673,7 +673,7 @@ TEST_F(MotionTest, CtrlD_PreservesColumn) {
 }
 
 TEST_F(MotionTest, CtrlD_ClampsColumnOnShorterLine) {
-  vector<string> lines = {
+  Lines lines = {
     "long line here",  // 0
     "short",           // 1 (len 5)
     "long line here",  // 2
@@ -837,7 +837,7 @@ TEST_F(MotionTest, Scroll_SmallFile) {
 }
 
 TEST_F(MotionTest, Scroll_SingleLine) {
-  vector<string> lines = {"only line"};
+  Lines lines = {"only line"};
   // Use realistic window size even for single line file
   NavContext nav(40, 20);
 
@@ -848,7 +848,7 @@ TEST_F(MotionTest, Scroll_SingleLine) {
 }
 
 TEST_F(MotionTest, Scroll_EmptyLinesInFile) {
-  vector<string> lines = {
+  Lines lines = {
     "content",
     "",
     "",
@@ -964,7 +964,7 @@ TEST_F(MotionTest, Count_WordMotions) {
 // --- Count with f/F/t/T ---
 
 TEST_F(MotionTest, Count_CharFind) {
-  vector<string> lines = {"abcabcabc"};  // 'a' at 0, 3, 6
+  Lines lines = {"abcabcabc"};  // 'a' at 0, 3, 6
   // From col 0 (on 'a'), 1st 'a' after = col 3, 2nd 'a' after = col 6
   expectPos(simulateMotionsDefault({0, 0}, "2fa", lines), 0, 6, "2fa finds 2nd 'a' after cursor");
   expectPos(simulateMotionsDefault({0, 0}, "1fa", lines), 0, 3, "1fa finds 1st 'a' after cursor");
@@ -977,7 +977,7 @@ TEST_F(MotionTest, Count_CharFind) {
 }
 
 TEST_F(MotionTest, Count_CharFindWithRepeat) {
-  vector<string> lines = {"abababab"};  // 'a' at 0, 2, 4, 6
+  Lines lines = {"abababab"};  // 'a' at 0, 2, 4, 6
   // From pos 0 (on 'a'): 1st 'a' after = 2, 2nd 'a' after = 4
   // 2fa lands on pos 4, then ; finds next 'a' at pos 6
   expectPos(simulateMotionsDefault({0, 0}, "2fa;", lines), 0, 6, "2fa; finds 2nd a then next");

@@ -19,7 +19,7 @@ PhysicalKeys makePhysicalKeys(int count, const PhysicalKeys& motionKeys) {
 }
 
 vector<Result> MovementOptimizer::optimize(
-    const vector<string> &lines,
+    const Lines &lines,
     const Position& startPos,
     const RunningEffort& startingEffort,
     const Position &endPos,

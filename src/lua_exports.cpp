@@ -9,6 +9,7 @@
 #include "State/MotionState.h"
 #include "Utils/CoutCapture.h"
 #include "Utils/Debug.h"
+#include "Utils/Lines.h"
 #include <sstream>
 #include <string>
 #include <vector>
@@ -52,8 +53,8 @@ struct VimficiencyConfigFFI {
 };
 
 // Helper to split string by newlines
-static std::vector<std::string> split_lines(const char *text) {
-  std::vector<std::string> lines;
+static Lines split_lines(const char *text) {
+  Lines lines;
   std::istringstream stream(text);
   std::string line;
   while (std::getline(stream, line)) {

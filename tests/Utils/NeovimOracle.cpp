@@ -182,7 +182,7 @@ NeovimOracle::NeovimOracle() : impl_(std::make_unique<Impl>()) {
 
 NeovimOracle::~NeovimOracle() = default;
 
-SimulationResult NeovimOracle::simulate(const std::vector<std::string> &lines,
+SimulationResult NeovimOracle::simulate(const Lines &lines,
                                         int startRow, int startCol,
                                         const std::string &keys) {
   msgpack::zone z;
@@ -213,8 +213,10 @@ SimulationResult NeovimOracle::simulate(const std::vector<std::string> &lines,
   }
 
   // nvim_buf_set_lines(buf, 0, -1, false, lines)
+  // Cast to base type for msgpack serialization
   {
-    auto args = msgpack::object(std::make_tuple(buf, 0, -1, false, lines), z);
+    const std::vector<std::string>& linesVec = lines;
+    auto args = msgpack::object(std::make_tuple(buf, 0, -1, false, linesVec), z);
     impl_->call_void("nvim_buf_set_lines", args);
   }
 

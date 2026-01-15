@@ -1,5 +1,4 @@
-#include "Boundary/EditBoundary.h"
-#include "VimCore/EndpointType.h"
+#include "VimCore/EdgeType.h"
 #include "VimUtils.h"
 #include "Utils/SentinelChar.h"
 #include "VimMovementUtils.h"
@@ -18,493 +17,289 @@ using namespace VimUtils;
 // Word motions - general interface
 // =============================================================================
 //
-// Unified word motion based on (direction, endpointType, isWORD).
+// Unified word motion based on (direction, edgeType, isWORD).
 //
-// EndpointType determines WHERE we stop:
-//   End:   word END position (current is word char, next is not)
-//   Space: position just BEFORE next word start (the trailing space/char)
-//   Next:  word START position (current is word char, prev is not)
+// EdgeType is DIRECTION-INDEPENDENT - it describes which edge we seek:
+//   WordEdge: the edge of the word we traverse (step back into the word)
+//   GapEdge:  the edge of the gap before next word (step back into gap)
+//   NextEdge: the edge of the next unit (stay at first char of next thing)
 //
 // For MOTIONS (cursor movement):
-//   e  = Forward + End    (land on word end)
-//   w  = Forward + Next   (land on word start)
-//   b  = Backward + Next  (land on word start)
-//   ge = Backward + End   (land on word end)
+//   w  = Forward  + NextEdge  (to start of next word)
+//   e  = Forward  + WordEdge  (to end of word)
+//   b  = Backward + WordEdge  (to start of word)
+//   ge = Backward + NextEdge  (to end of previous word)
 //
-// For DELETIONS (different endpoints for some):
-//   de  = Forward + End
-//   dw  = Forward + Space  (delete including trailing whitespace)
-//   db  = Backward + End   (delete to previous word end, not start)
-//   dge = Backward + Next
+// For DELETIONS (different edges for some):
+//   dw  = Forward  + GapEdge   (delete including trailing whitespace)
+//   de  = Forward  + WordEdge
+//   db  = Backward + WordEdge
+//   dge = Backward + NextEdge
 //
 // =============================================================================
 
 namespace {
 
 // =============================================================================
-// Forward WORD motion (big = true)
+// Direction-agnostic step helpers
 // =============================================================================
-// Two char types: space vs non-space
-//
-// Algorithm:
-//   if starting on space:
-//     skip to first non-space
-//     Next? return pos (first non-space)
-//     Space? return pos-1 (last space)
-//     End? continue below...
-//
-//   skip non-spaces (current WORD)
-//   End? return pos-1 (last char of WORD)
-//
-//   skip spaces
-//   Space? return pos-1 (last space)
-//   Next? return pos (first non-space)
-//
-void motionWordForward_big(Position &pos, const Lines &lines,
-                           EndpointType endpoint) {
-    int line = pos.line, col = pos.col;
-    unsigned char c = getChar(lines, line, col);
-    if (c == 0) return;
 
-    int prevLine, prevCol;
+inline Position step(const Lines& lines, Position pos, bool forward) {
+    return forward ? lines.getNextPos(pos) : lines.getPrevPos(pos);
+}
 
-    // === Starting on space: skip to first non-space ===
-    if (isBlank(c)) {
-        do {
-            prevLine = line; prevCol = col;
-            if (!stepFwd(lines, line, col)) {
-                pos.line = line; pos.setCol(static_cast<int>(lines[line].size()));
-                return;
-            }
-            c = getChar(lines, line, col);
-        } while (isBlank(c));
+inline Position stepBack(const Lines& lines, Position pos, bool forward) {
+    return forward ? lines.getPrevPos(pos) : lines.getNextPos(pos);
+}
 
-        if (endpoint == EndpointType::Next) {
-            pos.line = line; pos.setCol(col);
-            return;
-        }
-        if (endpoint == EndpointType::Space) {
-            pos.line = prevLine; pos.setCol(prevCol);
-            return;
-        }
-        // End: continue to find WORD end below
-    }
-
-    // === Skip non-spaces (current WORD) ===
-    do {
-        prevLine = line; prevCol = col;
-        if (!stepFwd(lines, line, col)) {
-            // EOF
-            if (endpoint == EndpointType::End) {
-                pos.line = prevLine; pos.setCol(prevCol);
-            } else {
-                pos.line = line; pos.setCol(static_cast<int>(lines[line].size()));
-            }
-            return;
-        }
-        c = getChar(lines, line, col);
-    } while (!isBlank(c));
-
-    if (endpoint == EndpointType::End) {
-        pos.line = prevLine; pos.setCol(prevCol);
-        return;
-    }
-
-    // === Skip spaces ===
-    do {
-        prevLine = line; prevCol = col;
-        if (!stepFwd(lines, line, col)) {
-            pos.line = line; pos.setCol(static_cast<int>(lines[line].size()));
-            return;
-        }
-        c = getChar(lines, line, col);
-    } while (isBlank(c));
-
-    if (endpoint == EndpointType::Space) {
-        pos.line = prevLine; pos.setCol(prevCol);
-    } else {  // Next
-        pos.line = line; pos.setCol(col);
+// Check if position has reached or passed target in the given direction
+inline bool reachedTarget(Position pos, Position target, bool forward) {
+    if (forward) {
+        return pos.line > target.line ||
+               (pos.line == target.line && pos.col >= target.col);
+    } else {
+        return pos.line < target.line ||
+               (pos.line == target.line && pos.col <= target.col);
     }
 }
 
 // =============================================================================
-// Forward word motion (big = false)
+// Unified word motion core
 // =============================================================================
-// Three char types: space, wordchar [a-zA-Z0-9_], symbol (other non-space)
 //
-// Algorithm:
-//   if starting on space:
-//     skip to first non-space
-//     Next? return pos (first non-space)
-//     Space? return pos-1 (last space)
-//     End? continue below...
+// Handles both word and WORD motions in both directions.
+// The `big` parameter controls character classification:
+//   big=true (WORD):  non-blank chars are all "same type"
+//   big=false (word): keyword chars vs symbol chars are different types
 //
-//   note type (wordchar vs symbol), skip same-type chars
-//   End? return pos-1 (last char of word)
-//
-//   if now on non-space (different type = new word start):
-//     Next? return pos
-//     Space? return pos-1
-//
-//   skip spaces
-//   Space? return pos-1 (last space)
-//   Next? return pos (first non-space)
-//
-void motionWordForward_small(Position &pos, const Lines &lines,
-                             EndpointType endpoint) {
-    int line = pos.line, col = pos.col;
-    unsigned char c = getChar(lines, line, col);
-    if (c == 0) return;
 
-    int prevLine, prevCol;
+void motionWordCore(Position& pos, const Lines& lines, bool forward,
+                    EdgeType edge, bool big) {
+    unsigned char c = lines.get(pos);
 
-    // === Starting on space: skip to first non-space ===
+    // Phase 1: If starting on blank, skip to first non-blank
     if (isBlank(c)) {
         do {
-            prevLine = line; prevCol = col;
-            if (!stepFwd(lines, line, col)) {
-                pos.line = line; pos.setCol(static_cast<int>(lines[line].size()));
-                return;
-            }
-            c = getChar(lines, line, col);
+            Position prev = pos;
+            pos = step(lines, pos, forward);
+            if (pos == prev) return;  // Can't move (at buffer boundary)
+            c = lines.get(pos);
         } while (isBlank(c));
 
-        if (endpoint == EndpointType::Next) {
-            pos.line = line; pos.setCol(col);
-            return;
-        }
-        if (endpoint == EndpointType::Space) {
-            pos.line = prevLine; pos.setCol(prevCol);
+        if (edge == EdgeType::NextEdge) return;  // First non-blank = next word start
+        if (edge == EdgeType::GapEdge) {
+            pos = stepBack(lines, pos, forward);  // Last blank before next word
             return;
         }
         // End: continue to find word end below
     }
 
-    // === Skip same-type chars (current word) ===
+    // Phase 2: Skip same-type chars (current word)
+    // For WORD: all non-blank are same type
+    // For word: keyword vs symbol are different types
     bool startIsWordChar = isSmallWordChar(c);
     do {
-        prevLine = line; prevCol = col;
-        if (!stepFwd(lines, line, col)) {
-            // EOF
-            if (endpoint == EndpointType::End) {
-                pos.line = prevLine; pos.setCol(prevCol);
-            } else {
-                pos.line = line; pos.setCol(static_cast<int>(lines[line].size()));
-            }
-            return;
-        }
-        c = getChar(lines, line, col);
-    } while (!isBlank(c) && isSmallWordChar(c) == startIsWordChar);
+        Position prev = pos;
+        pos = step(lines, pos, forward);
+        if (pos == prev) return;  // Hit buffer boundary
+        c = lines.get(pos);
+    } while (!isBlank(c) && (big || isSmallWordChar(c) == startIsWordChar));
 
-    if (endpoint == EndpointType::End) {
-        pos.line = prevLine; pos.setCol(prevCol);
+    if (edge == EdgeType::WordEdge) {
+        pos = stepBack(lines, pos, forward);  // Last char of word
         return;
     }
 
-    // === If at non-space (different type = new word start) ===
+    // Phase 3: If at non-blank different type (word only, not WORD)
+    // This happens when we hit keyword->symbol or symbol->keyword boundary
     if (!isBlank(c)) {
-        if (endpoint == EndpointType::Next) {
-            pos.line = line; pos.setCol(col);
-        } else {  // Space
-            pos.line = prevLine; pos.setCol(prevCol);
-        }
-        return;
-    }
-
-    // === Skip spaces ===
-    do {
-        prevLine = line; prevCol = col;
-        if (!stepFwd(lines, line, col)) {
-            pos.line = line; pos.setCol(static_cast<int>(lines[line].size()));
+        // At start of adjacent word (different type)
+        if (edge == EdgeType::NextEdge) return;
+        if (edge == EdgeType::GapEdge) {
+            pos = stepBack(lines, pos, forward);  // Char before this word
             return;
         }
-        c = getChar(lines, line, col);
-    } while (isBlank(c));
-
-    if (endpoint == EndpointType::Space) {
-        pos.line = prevLine; pos.setCol(prevCol);
-    } else {  // Next
-        pos.line = line; pos.setCol(col);
     }
+
+    // Phase 4: Skip blanks to reach next word
+    while (isBlank(c)) {
+        Position prev = pos;
+        pos = step(lines, pos, forward);
+        if (pos == prev) return;  // Hit buffer boundary
+        c = lines.get(pos);
+    }
+
+    if (edge == EdgeType::GapEdge) {
+        pos = stepBack(lines, pos, forward);  // Last blank before next word
+    }
+    // Next: already at next word start
 }
 
 // =============================================================================
-// Backward WORD motion (big = true)
+// Reach-checking version (returns bool, allows early exit)
 // =============================================================================
-// Algorithm (mirrored from forward):
-//   if starting on space:
-//     skip to first non-space (backward)
-//     End? return pos (last non-space = WORD end)
-//     Space? return pos (same position)
-//     Next? continue below...
 //
-//   skip non-spaces backward (current WORD)
-//   Next? return pos+1 (first char of WORD = WORD start)
+// Same algorithm as motionWordCore, but:
+// 1. Takes pos by value (doesn't modify caller's position)
+// 2. Checks if motion would reach targetPos
+// 3. Returns true immediately upon reaching target
 //
-//   skip spaces backward
-//   Space? return pos+1 (first space)
-//   End? return pos (last non-space = WORD end)
-//
-void motionWordBackward_big(Position &pos, const Lines &lines,
-                            EndpointType endpoint) {
-    int line = pos.line, col = pos.col;
-    unsigned char c = getChar(lines, line, col);
-    if (c == 0) return;
 
-    int nextLine, nextCol;
+bool checkMotionWordReachesCore(Position pos, const Position& targetPos,
+                                const Lines& lines, bool forward,
+                                EdgeType edge, bool big) {
+    unsigned char c = lines.get(pos);
 
-    // === Starting on space: skip to first non-space ===
+    // Phase 1: If starting on blank, skip to first non-blank
     if (isBlank(c)) {
         do {
-            nextLine = line; nextCol = col;
-            if (!stepBack(lines, line, col)) return;
-            c = getChar(lines, line, col);
+            Position prev = pos;
+            pos = step(lines, pos, forward);
+            if (pos == prev) return false;  // Can't move, didn't reach target
+            if (reachedTarget(pos, targetPos, forward)) return true;
+            c = lines.get(pos);
         } while (isBlank(c));
 
-        if (endpoint == EndpointType::End) {
-            pos.line = line; pos.setCol(col);
-            return;
+        if (edge == EdgeType::NextEdge) {
+            return reachedTarget(pos, targetPos, forward);
         }
-        if (endpoint == EndpointType::Space) {
-            pos.line = line; pos.setCol(col);
-            return;
+        if (edge == EdgeType::GapEdge) {
+            pos = stepBack(lines, pos, forward);
+            return reachedTarget(pos, targetPos, forward);
         }
-        // Next: continue to find WORD start below
+        // End: continue to find word end below
     }
 
-    // === Skip non-spaces backward (current WORD) ===
-    do {
-        nextLine = line; nextCol = col;
-        if (!stepBack(lines, line, col)) {
-            // BOF - at WORD start
-            if (endpoint == EndpointType::Next) {
-                pos.line = nextLine; pos.setCol(nextCol);
-            }
-            return;
-        }
-        c = getChar(lines, line, col);
-    } while (!isBlank(c));
-
-    if (endpoint == EndpointType::Next) {
-        pos.line = nextLine; pos.setCol(nextCol);
-        return;
-    }
-    if (endpoint == EndpointType::Space) {
-        pos.line = line; pos.setCol(col);
-        return;
-    }
-
-    // === Skip spaces backward for End ===
-    do {
-        if (!stepBack(lines, line, col)) return;
-        c = getChar(lines, line, col);
-    } while (isBlank(c));
-
-    pos.line = line; pos.setCol(col);
-}
-
-// =============================================================================
-// Backward word motion (big = false)
-// =============================================================================
-// Algorithm (mirrored from forward small):
-//   if starting on space:
-//     skip to first non-space (backward)
-//     End? return pos (word end)
-//     Space? return pos (same position)
-//     Next? continue below...
-//
-//   note type (wordchar vs symbol), skip same-type chars backward
-//   Next? return pos+1 (first char of word = word start)
-//
-//   if now on non-space (different type = word end of adjacent word):
-//     Space? return pos
-//     End? return pos
-//
-//   skip spaces backward
-//   Space? return pos
-//   End? return pos (word end)
-//
-void motionWordBackward_small(Position &pos, const Lines &lines,
-                              EndpointType endpoint) {
-    int line = pos.line, col = pos.col;
-    unsigned char c = getChar(lines, line, col);
-    if (c == 0) return;
-
-    int nextLine, nextCol;
-
-    // === Starting on space: skip to first non-space ===
-    if (isBlank(c)) {
-        do {
-            nextLine = line; nextCol = col;
-            if (!stepBack(lines, line, col)) return;
-            c = getChar(lines, line, col);
-        } while (isBlank(c));
-
-        if (endpoint == EndpointType::End) {
-            pos.line = line; pos.setCol(col);
-            return;
-        }
-        if (endpoint == EndpointType::Space) {
-            pos.line = line; pos.setCol(col);
-            return;
-        }
-        // Next: continue to find word start below
-    }
-
-    // === Skip same-type chars backward (current word) ===
+    // Phase 2: Skip same-type chars (current word)
     bool startIsWordChar = isSmallWordChar(c);
     do {
-        nextLine = line; nextCol = col;
-        if (!stepBack(lines, line, col)) {
-            // BOF - at word start
-            if (endpoint == EndpointType::Next) {
-                pos.line = nextLine; pos.setCol(nextCol);
-            }
-            return;
-        }
-        c = getChar(lines, line, col);
-    } while (!isBlank(c) && isSmallWordChar(c) == startIsWordChar);
+        Position prev = pos;
+        pos = step(lines, pos, forward);
+        if (pos == prev) return false;  // Hit buffer boundary without reaching
+        if (reachedTarget(pos, targetPos, forward)) return true;
+        c = lines.get(pos);
+    } while (!isBlank(c) && (big || isSmallWordChar(c) == startIsWordChar));
 
-    if (endpoint == EndpointType::Next) {
-        pos.line = nextLine; pos.setCol(nextCol);
-        return;
+    if (edge == EdgeType::WordEdge) {
+        pos = stepBack(lines, pos, forward);
+        return reachedTarget(pos, targetPos, forward);
     }
 
-    // === If at non-space (different type = word end of adjacent word) ===
+    // Phase 3: If at non-blank different type (word only)
     if (!isBlank(c)) {
-        // Both Space and End return current position
-        pos.line = line; pos.setCol(col);
-        return;
+        if (edge == EdgeType::NextEdge) {
+            return reachedTarget(pos, targetPos, forward);
+        }
+        if (edge == EdgeType::GapEdge) {
+            pos = stepBack(lines, pos, forward);
+            return reachedTarget(pos, targetPos, forward);
+        }
     }
 
-    // === At space ===
-    if (endpoint == EndpointType::Space) {
-        pos.line = line; pos.setCol(col);
-        return;
+    // Phase 4: Skip blanks to reach next word
+    while (isBlank(c)) {
+        Position prev = pos;
+        pos = step(lines, pos, forward);
+        if (pos == prev) return false;
+        if (reachedTarget(pos, targetPos, forward)) return true;
+        c = lines.get(pos);
     }
 
-    // === Skip spaces backward for End ===
-    do {
-        if (!stepBack(lines, line, col)) return;
-        c = getChar(lines, line, col);
-    } while (isBlank(c));
-
-    pos.line = line; pos.setCol(col);
+    if (edge == EdgeType::GapEdge) {
+        pos = stepBack(lines, pos, forward);
+    }
+    return reachedTarget(pos, targetPos, forward);
 }
-
 
 } // anonymous namespace
-
-
-void motionWORDImpl(Position& pos, const Lines& lines, bool forward, EndpointType endpointType) {
-  if(isBlank(lines.get(pos))) {
-    // handle separately
-  }
-
-  Position lastPos = lines.getLastPos();
-  while(isBigWordChar(lines.get(pos))) {
-    pos = lines.getNextPos(pos);
-    if(pos == lastPos) return;
-  }
-  // Now at first non-WORD
-  assert(isBlank(lines.get(pos)));
-  if(endpointType == EndpointType::End) {
-    pos = lines.getPrevPos(pos);
-    return;
-  }
-  while(!isBlank (lines.get(pos))) {
-    pos = lines.getNextPos(pos);
-    if(pos == lastPos) return;
-  }
-  // Now at start of next WORD 
-  assert(isBigWordChar(lines.get(pos)));
-  if(endpointType == EndpointType::Space) {
-    pos = lines.getPrevPos(pos);
-    return;
-  } else if(endpointType == EndpointType::Next) {
-    return;
-  } else {
-    assert(false && "not implemented yet");
-  }
-}
-
-
-void motionWordImpl(Position& pos, const Lines& lines, bool forward, EndpointType endpointType) {
-  if(isBlank(lines.get(pos))) {
-    // handle separately
-  }
-  Position lastPos = lines.getLastPos();
-
-  char c = lines.get(pos);
-  CharType currentWordType = getCharType(c);
-  CharType oppositeWordType = getOppositeCharType(currentWordType);
-
-  while(getCharType(lines.get(pos)) == currentWordType) {
-    pos = lines.getNextPos(pos);
-    if(pos == lastPos) return;
-  }
-  // Now at first non-currentWordType
-  assert(getCharType(lines.get(pos)) != currentWordType);
-  if(endpointType == EndpointType::End) {
-    pos = lines.getPrevPos(pos);
-    return;
-  }
-  while(isBlank(lines.get(pos))) {
-    pos = lines.getNextPos(pos);
-    if(pos == lastPos) return;
-  }
-  // Now at start of next word
-  assert(!isBlank(lines.get(pos)));
-  if(endpointType == EndpointType::Space) {
-    pos = lines.getPrevPos(pos);
-    return;
-  } else if(endpointType == EndpointType::Next) {
-    return;
-  } else {
-    assert(false && "not implemented yet");
-  }
-}
 
 void VimMovementUtils::motionWord(Position &pos,
                                    const Lines &lines,
                                    bool forward,
-                                   EndpointType endpointType,
+                                   EdgeType edgeType,
                                    bool big,
-                                   bool skipCurrent
-                                   ) {
-  if(skipCurrent) {
-    if(forward) {
-      pos = lines.getNextPos(pos);
-    } else {
-      pos = lines.getPrevPos(pos);
+                                   bool skipCurrent) {
+  if (skipCurrent) {
+    unsigned char prevChar = lines.get(pos);
+    pos = step(lines, pos, forward);
+    unsigned char currChar = lines.get(pos);
+
+    // For backward + NextEdge, if we crossed a word boundary (landed on blank or
+    // different word type), we're at the word end we're seeking. Return immediately.
+    if (!forward && edgeType == EdgeType::NextEdge) {
+      bool crossedBoundary = isBlank(currChar) ||
+                             isBlank(prevChar) ||
+                             (!big && isSmallWordChar(currChar) != isSmallWordChar(prevChar));
+      if (crossedBoundary && !isBlank(currChar)) {
+        return;
+      }
     }
   }
-  if(big) {
-    motionWORDImpl(pos, lines, forward, endpointType);
-  } else {
-    motionWordImpl(pos, lines, forward, endpointType);
-  }
+  motionWordCore(pos, lines, forward, edgeType, big);
 }
 
-// Returns true if doing motion from pos would get to lastPos
 bool VimMovementUtils::checkMotionWordReaches(Position pos,
-                                     const Position& lastPos,
-                                     const Lines& lines, 
-                                     bool forward,
-                                     EndpointType endpointType,
-                                     bool big,
-                                     bool skipCurrent
-                                     ) {
-  // To same thing as motionWord, but return true/false (can return true early) if the motion would bring up to lastPos
+                                              const Position& targetPos,
+                                              const Lines& lines,
+                                              bool forward,
+                                              EdgeType edgeType,
+                                              bool big,
+                                              bool skipCurrent) {
+  if (skipCurrent) {
+    unsigned char prevChar = lines.get(pos);
+    pos = step(lines, pos, forward);
+    unsigned char currChar = lines.get(pos);
+
+    // For backward + NextEdge, if we crossed a word boundary, we're at word end.
+    if (!forward && edgeType == EdgeType::NextEdge) {
+      bool crossedBoundary = isBlank(currChar) ||
+                             isBlank(prevChar) ||
+                             (!big && isSmallWordChar(currChar) != isSmallWordChar(prevChar));
+      if (crossedBoundary && !isBlank(currChar)) {
+        return reachedTarget(pos, targetPos, forward);
+      }
+    }
+  }
+  return checkMotionWordReachesCore(pos, targetPos, lines, forward, edgeType, big);
 }
 
+// =============================================================================
+// Named word motion forwarders
+// =============================================================================
+//
+// Pure motion semantics:
+//   w: Forward + Next (to next word start)
+//   e: Forward + End (to word end), skip current first
+//   b: Backward + Next (to previous word start)
+//   ge: Backward + End (to previous word end), skip current first
+//
 
+void VimMovementUtils::motionW(Position &pos, const Lines &lines, bool big) {
+  motionWord(pos, lines, true, EdgeType::NextEdge, big, false);
+}
+
+void VimMovementUtils::motionB(Position &pos, const Lines &lines, bool big) {
+  // For backward direction, End gives edge opposite to travel = leftmost = START
+  // skipCurrent needed so b from word start goes to PREVIOUS word start
+  motionWord(pos, lines, false, EdgeType::WordEdge, big, true);
+}
+
+void VimMovementUtils::motionE(Position &pos, const Lines &lines, bool big) {
+  // e needs to skip current position first, otherwise we'd stay at current word end
+  motionWord(pos, lines, true, EdgeType::WordEdge, big, true);
+}
+
+void VimMovementUtils::motionGe(Position &pos, const Lines &lines, bool big) {
+  // For backward direction, Next gives edge in travel direction = rightmost = END
+  // skipCurrent needed so ge from word end goes to PREVIOUS word end
+  motionWord(pos, lines, false, EdgeType::NextEdge, big, true);
+}
 
 // =============================================================================
 // Named forwarders - handle +1 shift where needed
 // =============================================================================
 //
-// From edit-boundary-logic.md:
+// From boundary-logic.md:
 //   de: Current Char + (Forward, End) from NEXT char
 //   db: Current Char + (Backward, End) from NEXT char
 //

@@ -17,7 +17,7 @@ using namespace std;
 
 class DebugSequenceTest : public ::testing::Test {
 protected:
-  static vector<string> a2_block_lines;
+  static Lines a2_block_lines;
   static NavContext navContext;
 
   static void SetUpTestSuite() {
@@ -26,7 +26,7 @@ protected:
   }
 
   static Position simulateMotionsDefault(Position start, const string &motion,
-                                          const vector<string> &lines) {
+                                          const Lines &lines) {
     return simulateMotions(start, Mode::Normal, navContext, motion, lines).pos;
   }
 
@@ -36,7 +36,7 @@ protected:
     EXPECT_EQ(actual.col, col) << msg << " (col)";
   }
 
-  static vector<Result> runOptimizer(const vector<string> &lines,
+  static vector<Result> runOptimizer(const Lines &lines,
                                      Position start, Position end,
                                      const string &userSeq,
                                      Config config = Config::uniform()) {
@@ -54,7 +54,7 @@ protected:
   }
 };
 
-vector<string> DebugSequenceTest::a2_block_lines;
+Lines DebugSequenceTest::a2_block_lines;
 NavContext DebugSequenceTest::navContext(0, 0);
 
 // =============================================================================

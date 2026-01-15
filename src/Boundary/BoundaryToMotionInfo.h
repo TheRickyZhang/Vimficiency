@@ -1,6 +1,6 @@
 #pragma once
 
-#include "VimCore/EndpointType.h"
+#include "VimCore/EdgeType.h"
 
 #include <optional>
 #include <string_view>
@@ -9,21 +9,21 @@
 // MotionInfo: Boundary check parameters for deletion operations
 // =============================================================================
 //
-// IMPORTANT: Deletion and motion endpoint types differ for some commands!
+// IMPORTANT: Deletion and motion edge types differ for some commands!
 //
-// Motion endpoints (where cursor lands):    Deletion endpoints (where delete stops):
-//   e  = Forward + End                        de  = Forward + End
-//   w  = Forward + Next                       dw  = Forward + Space  (differs!)
-//   b  = Backward + Next                      db  = Backward + End   (differs!)
-//   ge = Backward + End                       dge = Backward + Next  (differs!)
+// Motion edges (where cursor lands):      Deletion edges (where delete stops):
+//   e  = Forward  + WordEdge                de  = Forward  + WordEdge
+//   w  = Forward  + NextEdge                dw  = Forward  + GapEdge  (differs!)
+//   b  = Backward + WordEdge                db  = Backward + WordEdge
+//   ge = Backward + NextEdge                dge = Backward + NextEdge
 //
-// This file defines DELETION endpoint types for boundary crossing checks.
+// This file defines DELETION edge types for boundary crossing checks.
 // For pure motion execution, use VimMovementUtils::motionWord directly.
 //
 // =============================================================================
 
 struct MotionInfo {
-    EndpointType endpointType;
+    EdgeType edgeType;
     bool isForward;
     bool isWORD;
     bool skipCurrent = false;
@@ -34,16 +34,16 @@ struct MotionInfo {
 // =============================================================================
 
 // word deletions
-extern const MotionInfo MOTION_DE;   // de: Forward + End
-extern const MotionInfo MOTION_DB;   // db: Backward + End
-extern const MotionInfo MOTION_DW;   // dw: Forward + Space
-extern const MotionInfo MOTION_DGE;  // dge: Backward + Next
+extern const MotionInfo MOTION_DE;   // de: Forward + WordEdge
+extern const MotionInfo MOTION_DB;   // db: Backward + WordEdge
+extern const MotionInfo MOTION_DW;   // dw: Forward + GapEdge
+extern const MotionInfo MOTION_DGE;  // dge: Backward + NextEdge
 
 // WORD deletions
-extern const MotionInfo MOTION_DE_BIG;   // dE: Forward + End
-extern const MotionInfo MOTION_DB_BIG;   // dB: Backward + End
-extern const MotionInfo MOTION_DW_BIG;   // dW: Forward + Space
-extern const MotionInfo MOTION_DGE_BIG;  // dgE: Backward + Next
+extern const MotionInfo MOTION_DE_BIG;   // dE: Forward + WordEdge
+extern const MotionInfo MOTION_DB_BIG;   // dB: Backward + WordEdge
+extern const MotionInfo MOTION_DW_BIG;   // dW: Forward + GapEdge
+extern const MotionInfo MOTION_DGE_BIG;  // dgE: Backward + NextEdge
 
 // =============================================================================
 // Lookup

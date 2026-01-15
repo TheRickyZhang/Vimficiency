@@ -20,9 +20,10 @@ set(MSGPACK_USE_BOOST OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest msgpack-c)
 
 add_executable(vimficiency_tests
-  Actions/CountMotionsTest.cpp
-  Actions/EditTest.cpp
-  Actions/MotionTest.cpp
+  Commands/CountMotionsTest.cpp
+  Commands/EditTest.cpp
+  Commands/MotionTest.cpp
+  Commands/BoundaryMotions.cpp
   EditPrimitives/DiffStateTest.cpp
   EditPrimitives/LevenshteinTest.cpp
   Misc/ConfigurationTest.cpp

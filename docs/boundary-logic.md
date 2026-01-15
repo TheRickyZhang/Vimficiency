@@ -1,24 +1,68 @@
-= EditBoundary Crossing Logic
+= Boundary Logic
 
-== Endpoint Types (Core Abstraction)
+== Edge Types (Core Abstraction)
 
-All deletion operations find an *endpoint* - where deletion stops. Three types:
-End:   Last char of word
-Space: Char before next word
-Next:  Start of next word
+All word operations find an *edge* - where the operation stops. Three types:
+WordEdge: Edge of the word we traverse (step back into the word)
+GapEdge:  Edge of the gap before next word (step back into gap)
+NextEdge: Edge of the next unit (stay at first char of next thing)
 
+These edge types are DIRECTION-INDEPENDENT. The physical position depends
+on the direction of travel, but the concept is the same regardless of direction.
 
-A deletion operation from currCol to endpoint is INCLUSIVE.
+== Vim Motion Commands
 
-Direction determines which boundary is "end":
-- Forward: end = rightmost char
-- Backward: end = leftmost char
+Motion commands move the cursor without modifying the buffer.
+
+=== word motions
+```
+Motion | Edge Type
+w      | (Forward, NextEdge)   - move to START of next word
+e      | (Forward, WordEdge)   - move to END of current/next word
+b      | (Backward, WordEdge)  - move to START of previous word
+ge     | (Backward, NextEdge)  - move to END of previous word
+```
+
+=== WORD motions
+```
+Motion | Edge Type
+W      | (Forward, NextEdge)   - move to START of next WORD
+E      | (Forward, WordEdge)   - move to END of current/next WORD
+B      | (Backward, WordEdge)  - move to START of previous WORD
+gE     | (Backward, NextEdge)  - move to END of previous WORD
+```
+
+Note: `e`/`E` and `b`/`B` and `ge`/`gE` need to skip current position first
+(skipCurrent=true), otherwise they would stay at the current word boundary.
+
+== Vim Deletion Commands
+
+A deletion operation from currCol to edge is INCLUSIVE.
+
+=== word deletions
+Here, you can see that de/db are symmetric, and vim only gives us a few combinations compared to all possibilities.
+```
+Command |
+de   Current Char + (Forward, WordEdge) from next char
+db   Current Char + (Backward, WordEdge) from prev char
+dw   (Forward, GapEdge)
+dge  (Backward, NextEdge)
+```
+
+=== WORD deletions
+```
+Command |
+dE   Current Char + (Forward, WordEdge) from next char
+dB   Current Char + (Backward, WordEdge) from prev char
+dW   (Forward, GapEdge)
+dgE  (Backward, NextEdge)
+```
 
 == Crossing Tables
 
-Each endpoint type has a crossing table. Motion is *safe* when table returns `no`.
+Each edge type has a crossing table. Motion is *safe* when table returns `no`.
 
-=== End
+=== WordEdge
 ```
               |  bc=Keyword  |  bc=Whitespace  |  bc=Symbol  |  bc=Newline  |
 --------------+--------------+-----------------+-------------+--------------+
@@ -29,7 +73,7 @@ char=Symbol   |  no          |  no             |  YES        |  no          |
 Note: Whitespace isn't a word, so `e` from whitespace goes to NEXT word end, crossing everything.
 Symbol row mirrors Keyword row (wordChar/nonWordChar symmetry).
 
-=== Space
+=== GapEdge
 ```
               |  bc=Keyword  |  bc=Whitespace  |  bc=Symbol  |  bc=Newline  |
 --------------+--------------+-----------------+-------------+--------------+
@@ -39,7 +83,7 @@ char=Symbol   |  no          |  YES            |  YES        |  no          |
 ```
 Note: Symbol row mirrors Keyword row (wordChar/nonWordChar symmetry).
 
-=== Next
+=== NextEdge
 ```
               |  bc=Keyword  |  bc=Whitespace  |  bc=Symbol  |  bc=Newline  |
 --------------+--------------+-----------------+-------------+--------------+
@@ -49,7 +93,7 @@ char=Symbol   |  YES         |  YES            |  YES        |  no          |
 ```
 Note: `ge` always goes to previous word end, regardless of current content type.
 
-=== Line
+=== LineEdge
 ```
               |  bc=Keyword  |  bc=Whitespace  |  bc=Symbol  |  bc=Newline  |
 --------------+--------------+-----------------+-------------+--------------+
@@ -58,40 +102,30 @@ Note: `ge` always goes to previous word end, regardless of current content type.
 
 
 == Applying Crossing Checks
-- *Forward*: check `(lastChar, rightBoundary)` using the endpoint's table
-- *Backward*: check `(firstChar, leftBoundary)` using the endpoint's table
+- *Forward*: check `(lastChar, rightBoundary)` using the edge's table
+- *Backward*: check `(firstChar, leftBoundary)` using the edge's table
 
 Where:
 - `lastChar` / `firstChar` = char at the edge of current content
 - `rightBoundary` / `leftBoundary` = char just OUTSIDE the edit region
 
-== Vim Deletion Commands
-Here, you can see that de/db are symmetric, and vim only gives us a few combinations compared to all possibilities.
-```
-Command |
-de   Current Char + (Forward, End) from next char
-db   Current Char + (Backward  End) from next char
-dw   (Forward, Space)
-dge  (Backward, Next)
-```
-
 == Text Object Commands
 ```
 Command |
-diw  (Backward, End) + (Forward, End)
+diw  (Backward, WordEdge) + (Forward, WordEdge)
 daw  {
   Cursor in word/sentence word:
-    Has trailing whitespace/newline: (Backward, End) + (Forward, Space)
-    Else: (Backward, Space) + (Forward, End)
-  Cursor in whitespace: 
-    (Backward, Space) + (Forward, End)
+    Has trailing whitespace/newline: (Backward, WordEdge) + (Forward, GapEdge)
+    Else: (Backward, GapEdge) + (Forward, WordEdge)
+  Cursor in whitespace:
+    (Backward, GapEdge) + (Forward, WordEdge)
 }
 ```
 
 == WORD Variants
-Same endpoint types, but Keyword and Symbol merge into "NonWS" class.
+Same edge types, but Keyword and Symbol merge into "NonWS" class.
 
-=== END
+=== WordEdge (WORD)
 ```
               |  bc=NonWS  |  bc=Whitespace  |  bc=Newline  |
 --------------+------------+-----------------+--------------+
@@ -100,7 +134,7 @@ char=Space    |  YES       |  YES            |  no          |
 ```
 Note: Whitespace isn't a WORD, so `E` from whitespace goes to NEXT WORD end.
 
-=== SPACE
+=== GapEdge (WORD)
 ```
               |  bc=NonWS  |  bc=Whitespace  |  bc=Newline  |
 --------------+------------+-----------------+--------------+
@@ -108,7 +142,7 @@ char=WORD     |  YES       |  YES            |  no          |
 char=Space    |  no        |  YES            |  no          |
 ```
 
-=== NEXT
+=== NextEdge (WORD)
 ```
               |  bc=NonWS  |  bc=Whitespace  |  bc=Newline  |
 --------------+------------+-----------------+--------------+
@@ -116,31 +150,22 @@ char=WORD     |  YES       |  YES            |  no          |
 char=Space    |  YES       |  YES            |  no          |
 ```
 
-
-== Vim Deletion Commands
-Here, you can see that de/db are symmetric, and vim only gives us a few combinations compared to all possibilities.
+== Text Object Commands (WORD)
 ```
-Command |
-dE   Current Char + (Forward, END) from next char
-dB   Current Char + (Backward, END) from next char
-dW   (Forward, SPACE)
-dgE  (Backward, NEXT)
-```
-
-== Text Object Commands
 Command
-diW  (Backward, END) + (Forward, END)
+diW  (Backward, WordEdge) + (Forward, WordEdge)
 daW  {
   Cursor in word/sentence word:
-    Has trailing whitespace/newline: (Backward, END) + (Forward, SPACE)
-    Else: (Backward, SPACE) + (Forward, END)
-  Cursor in whitespace: 
-    (Backward, SPACE) + (Forward, END)
+    Has trailing whitespace/newline: (Backward, WordEdge) + (Forward, GapEdge)
+    Else: (Backward, GapEdge) + (Forward, WordEdge)
+  Cursor in whitespace:
+    (Backward, GapEdge) + (Forward, WordEdge)
 }
+```
 
 == Other commands (TODO in future)
 ```
-dd   (Line)
+dd   (LineEdge)
 dip, dap
 dib, dab
 ```
@@ -150,8 +175,8 @@ dib, dab
 === db/de/dB/dE Check the NEXT Char, Not Current
 
 These commands have exclusive behavior on the current char:
-- `db`: does NOT delete current char; starts END search from previous char
-- `de`: deletes current char, then starts END search from next char
+- `db`: does NOT delete current char; starts WordEdge search from previous char
+- `de`: deletes current char, then starts WordEdge search from next char
 - `dB`/`dE`: same pattern for WORD variants
 
 When predicting crossing:

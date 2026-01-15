@@ -13,7 +13,7 @@ using namespace std;
 
 class ConfigurationTest : public ::testing::Test {
 protected:
-  static vector<string> a2_block_lines;
+  static Lines a2_block_lines;
   static NavContext navContext;
 
   static void SetUpTestSuite() {
@@ -22,7 +22,7 @@ protected:
   }
 
   static vector<Result>
-  runOptimizer(const vector<string> &lines, Position start,
+  runOptimizer(const Lines &lines, Position start,
                Position end, const string &userSeq,
                Config config,
                const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS) {
@@ -33,7 +33,7 @@ protected:
   }
 
   // Get cost of best result for a motion
-  static double getBestCost(const vector<string> &lines, Position start,
+  static double getBestCost(const Lines &lines, Position start,
                             Position end, const string &userSeq,
                             Config config,
                             const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS) {
@@ -44,7 +44,7 @@ protected:
 };
 
 // Static member definitions
-vector<string> ConfigurationTest::a2_block_lines;
+Lines ConfigurationTest::a2_block_lines;
 NavContext ConfigurationTest::navContext(0, 0);
 
 // =============================================================================

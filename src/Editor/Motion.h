@@ -9,6 +9,7 @@
 #include "Position.h"
 #include "Mode.h"
 #include "NavContext.h"
+#include "Utils/Lines.h"
 
 struct MotionResult {
     Position pos;
@@ -46,15 +47,15 @@ std::vector<ParsedMotion> parseMotions(const std::string& seq);
 
 void applyParsedMotion(Position& pos, Mode& mode, const NavContext& navContext,
                   const ParsedMotion& motion,
-                  const std::vector<std::string> &lines);
+                  const Lines &lines);
 
 // Currently only to be externally called in State::applyMotion.
 void applySingleMotion(Position& pos, Mode& mode, const NavContext& navContext,
                   const std::string &motion,
-                  const std::vector<std::string> &lines);
+                  const Lines &lines);
 
 // Parses the motion sequence, and returns the result if they are applied to the current state
 MotionResult simulateMotions(Position pos, Mode mode, const NavContext& navContext,
                           const std::string& motionSeq,
-                          const std::vector<std::string>& lines);
+                          const Lines& lines);
 

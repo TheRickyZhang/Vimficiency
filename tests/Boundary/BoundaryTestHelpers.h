@@ -41,7 +41,7 @@ const std::vector<MotionSpec>& getAllMotions();
 // =============================================================================
 
 struct BoundaryTestCase {
-    std::vector<std::string> lines;
+    Lines lines;
     int cursorLine;
     int cursorCol;
     CharType contentType;
@@ -83,7 +83,7 @@ BoundaryTestCase buildTestCase(CharType contentType, CharType boundaryType,
 // =============================================================================
 
 // Check if motion crossed the boundary by examining result
-bool didCross(const BoundaryTestCase& tc, const std::vector<std::string>& result);
+bool didCross(const BoundaryTestCase& tc, const Lines& result);
 
 // Predict if motion should cross (including multi-line adjustments)
 bool predictCross(const MotionSpec& motion, const BoundaryTestCase& tc);
@@ -142,11 +142,11 @@ struct RandomBufferTest {
 RandomBufferTest generateRandomBuffer(std::mt19937& rng, int numLines);
 
 // Flatten lines to single string with \n separators
-std::string flattenLines(const std::vector<std::string>& lines);
+std::string flattenLines(const Lines& lines);
 
 // Check if content outside edit region is unchanged
 bool boundaryRespected(const RandomBufferTest& test,
-                       const std::vector<std::string>& result);
+                       const Lines& result);
 
 // Predict if motion would cross for random buffer test
 bool predictCrossRandom(const MotionSpec& motion, const RandomBufferTest& test);

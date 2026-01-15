@@ -107,7 +107,7 @@ std::vector<ParsedMotion> parseMotions(const std::string &seq) {
 void applyParsedMotion(Position& pos, Mode& mode,
                        const NavContext& navContext,
                   const ParsedMotion& parsedMotion,
-                  const std::vector<std::string> &lines) {
+                  const Lines &lines) {
   int n = static_cast<int>(lines.size());
   std::string_view motion = parsedMotion.motion;
   bool hasCount = parsedMotion.hasCount();
@@ -239,7 +239,7 @@ void applyParsedMotion(Position& pos, Mode& mode,
 }
 
 
-void applySingleMotion(Position& pos, Mode& mode, const NavContext& navContext, const string& motion, const vector<string>& lines) {
+void applySingleMotion(Position& pos, Mode& mode, const NavContext& navContext, const string& motion, const Lines& lines) {
   applyParsedMotion(pos, mode, navContext, ParsedMotion(motion, 0), lines);
 }
 
@@ -247,7 +247,7 @@ void applySingleMotion(Position& pos, Mode& mode, const NavContext& navContext, 
 // Important that pos and mode are passed by copy! We wouldn't want to change any state.
 MotionResult simulateMotions(Position pos, Mode mode, const NavContext& navContext,
                           const std::string &motionSeq,
-                          const std::vector<std::string> &lines) {
+                          const Lines &lines) {
   auto motions = parseMotions(motionSeq);
   for (const auto &motion : motions) {
     applyParsedMotion(pos, mode, navContext, motion, lines);

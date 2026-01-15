@@ -16,10 +16,10 @@ using namespace std;
 class BufferIndexTest : public ::testing::Test {
 protected:
   // Simple test buffer: "one two three four five"
-  vector<string> singleLine = {"one two three four five"};
+  Lines singleLine = {"one two three four five"};
 
   // Multi-word lines
-  vector<string> multiLine = {
+  Lines multiLine = {
     "first second third",
     "alpha beta gamma",
     "",
@@ -27,7 +27,7 @@ protected:
   };
 
   // Code-like content
-  vector<string> codeLike = {
+  Lines codeLike = {
     "int main() {",
     "  return 0;",
     "}"
@@ -127,13 +127,13 @@ TEST_F(BufferIndexTest, Paragraph_AcrossBlankLines) {
 // -----------------------------------------------------------------------------
 
 TEST_F(BufferIndexTest, EmptyBuffer) {
-  vector<string> empty = {};
+  Lines empty = {};
   BufferIndex idx(empty);
   // Should not crash - just have empty position lists
 }
 
 TEST_F(BufferIndexTest, SingleCharLine) {
-  vector<string> single = {"x y z"};
+  Lines single = {"x y z"};
   BufferIndex idx(single);
   Position start(0, 0);
   Position goal(0, 4);  // 'z'
@@ -149,8 +149,8 @@ TEST_F(BufferIndexTest, SingleCharLine) {
 
 class CountMotionsOptimizerTest : public ::testing::Test {
 protected:
-  static vector<string> wordLine;
-  static vector<string> multiWordLines;
+  static Lines wordLine;
+  static Lines multiWordLines;
   static NavContext navContext;
 
   static void SetUpTestSuite() {
@@ -168,7 +168,7 @@ protected:
   }
 
   static vector<Result> runOptimizer(
-      const vector<string>& lines,
+      const Lines& lines,
       Position start,
       Position end,
       const string& userSeq,
@@ -181,8 +181,8 @@ protected:
   }
 };
 
-vector<string> CountMotionsOptimizerTest::wordLine;
-vector<string> CountMotionsOptimizerTest::multiWordLines;
+Lines CountMotionsOptimizerTest::wordLine;
+Lines CountMotionsOptimizerTest::multiWordLines;
 NavContext CountMotionsOptimizerTest::navContext(0, 0);
 
 TEST_F(CountMotionsOptimizerTest, CountW_BasicForward) {

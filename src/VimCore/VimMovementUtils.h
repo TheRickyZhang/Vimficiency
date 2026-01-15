@@ -1,7 +1,7 @@
 #include <vector>
 #include <string>
 
-#include "EndpointType.h"
+#include "EdgeType.h"
 #include "Utils/Lines.h"
 
 struct Position;
@@ -22,29 +22,34 @@ struct VimMovementUtils {
   // Word motions - general interface
   // ==========================================================================
   //
-  // Unified word motion based on EndpointType, direction, and word type.
+  // Unified word motion based on EdgeType, direction, and word type.
   // This is the fundamental building block; named motions forward to this.
   //
+  // EdgeType is DIRECTION-INDEPENDENT:
+  //   WordEdge: edge of the word we traverse (step back into word)
+  //   GapEdge:  edge of the gap before next word (step back into gap)
+  //   NextEdge: edge of the next unit (stay at first char of next thing)
+  //
   // Mapping:
-  //   Forward + End   -> e/E  (to end of word)
-  //   Forward + Space -> w/W  (to start of next word)
-  //   Backward + End  -> b/B  (to start of word)
-  //   Backward + Next -> ge/gE (to end of previous word)
+  //   Forward  + NextEdge -> w/W  (to start of next word)
+  //   Forward  + WordEdge -> e/E  (to end of word)
+  //   Backward + WordEdge -> b/B  (to start of word)
+  //   Backward + NextEdge -> ge/gE (to end of previous word)
   //
   static void motionWord(Position &pos,
                          const Lines &lines,
                          bool forward,
-                         EndpointType endpointType,
+                         EdgeType edgeType,
                          bool big,
-                         bool skipCurrent);
+                         bool skipCurrent = false);
 
   static bool checkMotionWordReaches(Position pos,
-                                     const Position& lastPos,
+                                     const Position& targetPos,
                                      const Lines &lines,
                                      bool forward,
-                                     EndpointType endpointType,
+                                     EdgeType edgeType,
                                      bool big,
-                                     bool skipCurrent);
+                                     bool skipCurrent = false);
 
   // Named word motion forwarders
   static void motionW(Position &pos,

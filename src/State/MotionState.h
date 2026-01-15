@@ -7,6 +7,7 @@
 #include "Editor/Position.h"
 #include "Editor/Mode.h"
 #include "Editor/NavContext.h"
+#include "Utils/Lines.h"
 
 
 // Entire simulated editor state (for now, only position+mode+effort).
@@ -60,7 +61,7 @@ public:
   // Apply commands change pos, mode, and motionSequence
 
   // Must pass context to brute-force compute
-  void applySingleMotion(std::string motion, const NavContext& navContext, const std::vector<std::string>& lines);
+  void applySingleMotion(std::string motion, const NavContext& navContext, const Lines& lines);
 
   void applySingleMotionWithKnownColumn(std::string motion, int newCol);
 
