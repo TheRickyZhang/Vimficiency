@@ -1,6 +1,5 @@
 #pragma once
 
-#include "BoundaryToMotionInfo.h"
 #include "EditBoundary.h"
 #include "Editor/Position.h"
 #include "Utils/Lines.h"
@@ -18,29 +17,6 @@
 // 3. Otherwise, use crossing function based on char types
 //
 // =============================================================================
-
-// =============================================================================
-// Core API
-// =============================================================================
-
-// Check if a motion would extend past the boundary.
-//
-// Simulates the motion from cursor and checks:
-// 1. If motion end position reaches/crosses boundaryPos -> return true
-// 2. Otherwise, use crossing function based on char types at edge
-//
-// Parameters:
-// - lines: buffer content
-// - cursor: starting cursor position
-// - boundaryPos: position just outside the edit region
-// - info: motion parameters (direction, endpoint type, isWORD)
-//
-// Returns true if the motion would extend past the boundary.
-bool extendsTooFar(
-    const Lines& lines,
-    Position cursor,
-    Position boundaryPos,
-    const MotionInfo& info);
 
 // =============================================================================
 // Helper: Get char type at position

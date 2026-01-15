@@ -1,34 +1,48 @@
-int main() {
-   int x = 0;
-}
-->
-int32_t main() {
-  for(int i = 0; i < n; i++) {
-    int x = i;
-  }
-}
+Running main() from /home/ricky/Projects/vimficiency/build/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = BoundaryTest.RandomBufferStress_MultiLine
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from BoundaryTest
+[ RUN      ] BoundaryTest.RandomBufferStress_MultiLine
 
-DiffState int -> int32_t
-- startRange = [(0, 0), (0, 2)]. endRange = [(0, 0), (0, 6)]
-DiffState x = 0 -> y{}
+=== RANDOM TEST FAILURE ===
+Motion: dE (forward)
+Has boundary: yes
+Boundary pos: (2,0)
+Boundary char: Symbol
+Input:
+  [1]: pp      ,,e.j
+  [2]: # af;ki  ;j.,d:
+Edit region: (1,3) to (1,8)
+Cursor: (1,6)
+Prefix: ".fpfi ,
+pp      "
+Suffix: "# af;ki  ;j.,d:"
+Result:
+  [0]: ".fpfi ,"
+  [1]: "pp      ,,e"
+  [2]: "# af;ki  ;j.,d:"
+Predicted: EXTENDS_TOO_FAR
+Actual: DID_NOT_CROSS
 
-
-
-
-012 345 6789
-->
-a cdefg hi
-0123456789ab
-
-Edits:
-012 -> b
-345 -> cdefg
-6789 -> hi
-
-PositionToEditsMade:
-0 1 2 3 4 5 6 7 8 9 0
-1 1 1
-    2 2 2
-                3 3 3 3
-
+=== RANDOM TEST FAILURE ===
+Motion: dW (forward)
+Has boundary: yes
+Boundary pos: (2,0)
+Boundary char: Symbol
+Input:
+  [0]: ".fpfi ,"
+  [1]: "pp      ,,e.j"
+  [2]: "# af;ki  ;j.,d:"
+Edit region: (1,3) to (1,8)
+Cursor: (1,6)
+Prefix: ".fpfi ,
+pp      "
+Suffix: "# af;ki  ;j.,d:"
+Result:
+  [0]: ".fpfi ,"
+  [1]: "pp      ,,e"
+  [2]: "# af;ki  ;j.,d:"
+Predicted: EXTENDS_TOO_FAR
+Actual: DID_NOT_CROSS
 

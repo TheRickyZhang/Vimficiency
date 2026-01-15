@@ -102,6 +102,8 @@ void motionWordCore(Position& pos, const Lines& lines, bool forward,
         Position prev = pos;
         pos = step(lines, pos, forward);
         if (pos == prev) return;  // Hit buffer boundary
+        // Forward only: line boundary = word boundary (newline terminates WORD)
+        if (forward && pos.line != prev.line) break;
         c = lines.get(pos);
     } while (!isBlank(c) && (big || isSmallWordChar(c) == startIsWordChar));
 
@@ -150,24 +152,26 @@ bool checkMotionWordReachesCore(Position pos, const Position& targetPos,
                                 EdgeType edge, bool big) {
     unsigned char c = lines.get(pos);
 
+    // For WordEdge and GapEdge, we step past and then step back.
+    // Don't early-return during stepping phases for these edge types,
+    // only check final position after stepBack.
+    bool canEarlyReturn = (edge == EdgeType::NextEdge);
+
     // Phase 1: If starting on blank, skip to first non-blank
     if (isBlank(c)) {
         do {
             Position prev = pos;
             pos = step(lines, pos, forward);
-            if (pos == prev) return false;  // Can't move, didn't reach target
-            if (reachedTarget(pos, targetPos, forward)) return true;
+            if (pos == prev) return reachedTarget(pos, targetPos, forward);
+            if (canEarlyReturn && reachedTarget(pos, targetPos, forward)) return true;
             c = lines.get(pos);
         } while (isBlank(c));
 
-        if (edge == EdgeType::NextEdge) {
-            return reachedTarget(pos, targetPos, forward);
-        }
+        if (edge == EdgeType::NextEdge) return reachedTarget(pos, targetPos, forward);
         if (edge == EdgeType::GapEdge) {
             pos = stepBack(lines, pos, forward);
             return reachedTarget(pos, targetPos, forward);
         }
-        // End: continue to find word end below
     }
 
     // Phase 2: Skip same-type chars (current word)
@@ -175,8 +179,10 @@ bool checkMotionWordReachesCore(Position pos, const Position& targetPos,
     do {
         Position prev = pos;
         pos = step(lines, pos, forward);
-        if (pos == prev) return false;  // Hit buffer boundary without reaching
-        if (reachedTarget(pos, targetPos, forward)) return true;
+        if (pos == prev) return reachedTarget(pos, targetPos, forward);
+        if (canEarlyReturn && reachedTarget(pos, targetPos, forward)) return true;
+        // Forward only: line boundary = word boundary (newline terminates WORD)
+        if (forward && pos.line != prev.line) break;
         c = lines.get(pos);
     } while (!isBlank(c) && (big || isSmallWordChar(c) == startIsWordChar));
 
@@ -187,9 +193,7 @@ bool checkMotionWordReachesCore(Position pos, const Position& targetPos,
 
     // Phase 3: If at non-blank different type (word only)
     if (!isBlank(c)) {
-        if (edge == EdgeType::NextEdge) {
-            return reachedTarget(pos, targetPos, forward);
-        }
+        if (edge == EdgeType::NextEdge) return reachedTarget(pos, targetPos, forward);
         if (edge == EdgeType::GapEdge) {
             pos = stepBack(lines, pos, forward);
             return reachedTarget(pos, targetPos, forward);
@@ -200,14 +204,12 @@ bool checkMotionWordReachesCore(Position pos, const Position& targetPos,
     while (isBlank(c)) {
         Position prev = pos;
         pos = step(lines, pos, forward);
-        if (pos == prev) return false;
-        if (reachedTarget(pos, targetPos, forward)) return true;
+        if (pos == prev) return reachedTarget(pos, targetPos, forward);
+        if (canEarlyReturn && reachedTarget(pos, targetPos, forward)) return true;
         c = lines.get(pos);
     }
 
-    if (edge == EdgeType::GapEdge) {
-        pos = stepBack(lines, pos, forward);
-    }
+    if (edge == EdgeType::GapEdge) pos = stepBack(lines, pos, forward);
     return reachedTarget(pos, targetPos, forward);
 }
 
@@ -239,15 +241,17 @@ void VimMovementUtils::motionWord(Position &pos,
 }
 
 bool VimMovementUtils::checkMotionWordReaches(Position pos,
-                                              const Position& targetPos,
+                                              const Position& boundaryPos,
                                               const Lines& lines,
                                               bool forward,
                                               EdgeType edgeType,
                                               bool big,
                                               bool skipCurrent) {
   if (skipCurrent) {
+    Position posAfterSkip = step(lines, pos, forward);
+
     unsigned char prevChar = lines.get(pos);
-    pos = step(lines, pos, forward);
+    pos = posAfterSkip;
     unsigned char currChar = lines.get(pos);
 
     // For backward + NextEdge, if we crossed a word boundary, we're at word end.
@@ -256,11 +260,54 @@ bool VimMovementUtils::checkMotionWordReaches(Position pos,
                              isBlank(prevChar) ||
                              (!big && isSmallWordChar(currChar) != isSmallWordChar(prevChar));
       if (crossedBoundary && !isBlank(currChar)) {
-        return reachedTarget(pos, targetPos, forward);
+        return reachedTarget(pos, boundaryPos, forward);
       }
     }
   }
-  return checkMotionWordReachesCore(pos, targetPos, lines, forward, edgeType, big);
+  return checkMotionWordReachesCore(pos, boundaryPos, lines, forward, edgeType, big);
+}
+
+bool VimMovementUtils::checkMotionWordReachesCharTableMatching(
+    Position cursor,
+    const Position& editRegionEnd,
+    CharType boundaryCharType,
+    const Lines& lines,
+    bool forward,
+    EdgeType edgeType,
+    bool big,
+    bool skipCurrent) {
+  // Run motion to find endpoint
+  Position endPos = cursor;
+  motionWord(endPos, lines, forward, edgeType, big, skipCurrent);
+
+  // Check if endpoint reached the edit region edge
+  bool reachedEdge = forward
+    ? (endPos >= editRegionEnd)
+    : (endPos <= editRegionEnd);
+
+  if (!reachedEdge) {
+    return false;  // Didn't reach edge, safe
+  }
+
+  // At edge - use crossing table to determine if we'd cross
+  CharType edgeCharType = getCharType(lines.get(endPos));
+
+  // Select crossing function based on edge type and WORD mode
+  if (big) {
+    switch (edgeType) {
+      case EdgeType::WordEdge: return canEndCrossWORD(edgeCharType, boundaryCharType);
+      case EdgeType::GapEdge:  return canSpaceCrossWORD(edgeCharType, boundaryCharType);
+      case EdgeType::NextEdge: return canNextCrossWORD(edgeCharType, boundaryCharType);
+      default: return true;
+    }
+  } else {
+    switch (edgeType) {
+      case EdgeType::WordEdge: return canEndCross(edgeCharType, boundaryCharType);
+      case EdgeType::GapEdge:  return canSpaceCross(edgeCharType, boundaryCharType);
+      case EdgeType::NextEdge: return canNextCross(edgeCharType, boundaryCharType);
+      default: return true;
+    }
+  }
 }
 
 // =============================================================================

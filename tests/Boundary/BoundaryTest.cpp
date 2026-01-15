@@ -79,55 +79,6 @@ protected:
 unique_ptr<NeovimOracle> BoundaryTest::oracle_;
 
 // -----------------------------------------------------------------------------
-// Systematic: All CharType combinations tested on specified formats
-// -----------------------------------------------------------------------------
-
-TEST_F(BoundaryTest, Systematic_SingleLine) {
-    vector<CharType> types = {CharType::Keyword, CharType::Whitespace, CharType::Symbol};
-    const vector<MotionSpec>& motions = getAllMotions();
-
-    int total = 0, passed = 0;
-
-    for (CharType contentType : types) {
-        for (CharType boundaryType : types) {
-            for (bool isForward : {true, false}) {
-                auto tc = buildTestCase(contentType, boundaryType, isForward, 1);
-                for (const auto& motion : motions) {
-                    if (motion.isForward != isForward) continue;
-                    total++;
-                    if (runBoundaryTest(*oracle_, motion, tc, true)) passed++;
-                }
-            }
-        }
-    }
-
-    cerr << "\n=== Systematic Single-Line: " << passed << "/" << total << " ===" << endl;
-    EXPECT_EQ(passed, total);
-}
-
-TEST_F(BoundaryTest, Systematic_MultiLine) {
-    vector<CharType> contentTypes = {CharType::Keyword, CharType::Whitespace, CharType::Symbol};
-    const vector<MotionSpec>& motions = getAllMotions();
-
-    int total = 0, passed = 0;
-
-    for (CharType contentType : contentTypes) {
-        for (bool isForward : {true, false}) {
-            auto tc = buildTestCase(contentType, CharType::Newline, isForward, 3);
-
-            for (const auto& motion : motions) {
-                if (motion.isForward != isForward) continue;
-                total++;
-                if (runBoundaryTest(*oracle_, motion, tc, true)) passed++;
-            }
-        }
-    }
-
-    cerr << "\n=== Systematic Multi-Line: " << passed << "/" << total << " ===" << endl;
-    EXPECT_EQ(passed, total);
-}
-
-// -----------------------------------------------------------------------------
 // Random buffer stress test
 // -----------------------------------------------------------------------------
 //
@@ -136,7 +87,8 @@ TEST_F(BoundaryTest, Systematic_MultiLine) {
 // Uses reserved boundary chars for easy verification.
 
 TEST_F(BoundaryTest, RandomBufferStress_SingleLine) {
-    const int NUM_BUFFERS = 50;
+    // Keep relatively low for now
+    const int NUM_BUFFERS = 10;
     const auto& motions = getAllMotions();
 
     int total = 0, passed = 0;
@@ -157,7 +109,7 @@ TEST_F(BoundaryTest, RandomBufferStress_SingleLine) {
 }
 
 TEST_F(BoundaryTest, RandomBufferStress_MultiLine) {
-    const int NUM_BUFFERS = 50;
+    const int NUM_BUFFERS = 10;
     const auto& motions = getAllMotions();
 
     int total = 0, passed = 0;

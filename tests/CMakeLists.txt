@@ -34,6 +34,7 @@ add_executable(vimficiency_tests
   Optimizer/MovementOptimizerTest.cpp
   Boundary/BoundaryTest.cpp
   Boundary/BoundaryTestHelpers.cpp
+  Boundary/BoundaryDebugTest.cpp
   Utils/NeovimOracle.cpp
   Utils/TestUtils.cpp
   Temp.cpp

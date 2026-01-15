@@ -65,6 +65,8 @@ struct Lines : std::vector<std::string> {
 
   char get(const Position& pos) const {
     assert(pos.line < this->size());
+    // Empty line at col=0 is valid - treat as newline (blank)
+    if ((*this)[pos.line].empty()) return '\n';
     assert(pos.col < (*this)[pos.line].size());
     return (*this)[pos.line][pos.col];
   }

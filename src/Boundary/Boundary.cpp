@@ -42,27 +42,3 @@ CharType getCharTypeAfter(const Lines &lines, Position pos) {
   return CharType::Newline;
 }
 
-// =============================================================================
-// Core API
-// =============================================================================
-
-bool extendsTooFar(const Lines &lines, Position cursor, Position boundaryPos,
-                   const MotionInfo &info) {
-
-  Position endPos = cursor;
-
-  // TODO: Custom implementation that can break early for efficiency
-  VimMovementUtils::motionWord(
-    endPos,
-    lines,
-    info.isForward,
-    info.edgeType,
-    info.isWORD
-  );
-
-  if (info.isForward) {
-    return endPos >= boundaryPos;
-  } else {
-    return endPos <= boundaryPos;
-  }
-}

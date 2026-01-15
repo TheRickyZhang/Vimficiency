@@ -2,6 +2,7 @@
 #include <string>
 
 #include "EdgeType.h"
+#include "Boundary/EditBoundary.h"
 #include "Utils/Lines.h"
 
 struct Position;
@@ -43,13 +44,29 @@ struct VimMovementUtils {
                          bool big,
                          bool skipCurrent = false);
 
-  static bool checkMotionWordReaches(Position pos,
-                                     const Position& targetPos,
+  // Check if motion reaches/crosses boundary position.
+  // Full buffer version - simulates motion and checks endpoint vs boundaryPos.
+  static bool checkMotionWordReaches(Position cursor,
+                                     const Position& boundaryPos,
                                      const Lines &lines,
                                      bool forward,
                                      EdgeType edgeType,
                                      bool big,
                                      bool skipCurrent = false);
+
+  // Check if motion would cross boundary using crossing tables.
+  // Partial buffer version - uses CharType tables when only boundary type is known.
+  // editRegionEnd = last position INSIDE the edit region.
+  // boundaryCharType = CharType of char just OUTSIDE (or Newline for buffer edge).
+  static bool checkMotionWordReachesCharTableMatching(
+      Position cursor,
+      const Position& editRegionEnd,
+      CharType boundaryCharType,
+      const Lines &lines,
+      bool forward,
+      EdgeType edgeType,
+      bool big,
+      bool skipCurrent = false);
 
   // Named word motion forwarders
   static void motionW(Position &pos,

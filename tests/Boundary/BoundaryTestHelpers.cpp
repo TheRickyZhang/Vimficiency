@@ -1,7 +1,7 @@
 #include "BoundaryTestHelpers.h"
 
-#include "Boundary/Boundary.h"
 #include "Boundary/BoundaryToMotionInfo.h"
+#include "VimCore/VimMovementUtils.h"
 
 #include <iostream>
 
@@ -214,26 +214,43 @@ bool runBoundaryTest(NeovimOracle& oracle, const MotionSpec& motion,
 // Random buffer generation
 // =============================================================================
 
-// Reserved boundary chars (one per CharType, never used in random content)
-static char reservedChar(CharType type) {
+// Reserved boundary chars (distinct for left vs right to avoid false matches)
+//
+// IMPORTANT: We use TAB ('\t') for whitespace boundaries instead of space.
+// This is because random content uses only spaces, so tab uniquely identifies
+// boundary positions. Without this, prefix/suffix string matching would give
+// false positives when boundary type is whitespace and content also has spaces.
+//
+// Left boundaries use: Q, @, tab
+// Right boundaries use: Z, #, tab
+static char reservedCharLeft(CharType type) {
     switch (type) {
         case CharType::Keyword: return 'Q';
         case CharType::Symbol: return '@';
-        case CharType::Whitespace: return ' ';
+        case CharType::Whitespace: return '\t';
         default: return 'Q';
     }
 }
 
-// Generate random char of given type (excluding reserved chars)
+static char reservedCharRight(CharType type) {
+    switch (type) {
+        case CharType::Keyword: return 'Z';
+        case CharType::Symbol: return '#';
+        case CharType::Whitespace: return '\t';
+        default: return 'Z';
+    }
+}
+
+// Generate random char of given type (excluding reserved chars Q, Z, @, #)
 static char randomCharOfType(CharType type, mt19937& rng) {
     switch (type) {
         case CharType::Keyword: {
-            // a-p (excluding Q which is reserved)
+            // a-p (excluding Q and Z which are reserved)
             uniform_int_distribution<int> dist(0, 15);
             return 'a' + dist(rng);
         }
         case CharType::Symbol: {
-            // .,;: (excluding @ which is reserved)
+            // .,;: (excluding @ and # which are reserved)
             const char symbols[] = ".,;:";
             uniform_int_distribution<size_t> dist(0, 3);
             return symbols[dist(rng)];
@@ -307,10 +324,10 @@ RandomBufferTest generateRandomBuffer(mt19937& rng, int numLines) {
 
     // Place reserved boundary chars at boundary positions
     if (editStart > 0) {
-        flat[editStart - 1] = reservedChar(leftType);
+        flat[editStart - 1] = reservedCharLeft(leftType);
     }
     if (editEnd < (int)flat.size() - 1) {
-        flat[editEnd + 1] = reservedChar(rightType);
+        flat[editEnd + 1] = reservedCharRight(rightType);
     }
 
     // Convert to lines
@@ -466,26 +483,29 @@ bool predictCrossRandom(const MotionSpec& motion, const RandomBufferTest& test) 
 
 bool runRandomTest(NeovimOracle& oracle, const MotionSpec& motion,
                    const RandomBufferTest& test, bool verbose) {
-    // Get MotionInfo for this command
-    auto motionInfoOpt = getMotionInfo(motion.cmd);
-    if (!motionInfoOpt) {
+    // Get EditInfo for this command
+    auto editInfoOpt = getEditInfo(motion.cmd);
+    if (!editInfoOpt) {
         cerr << "Unknown motion: " << motion.cmd << endl;
         return false;
     }
-    const MotionInfo& info = *motionInfoOpt;
+    const EditInfo& info = *editInfoOpt;
 
     // Determine which boundary to check
     bool hasBoundary = motion.isForward ? test.hasRightBoundary : test.hasLeftBoundary;
     Position boundaryPos = motion.isForward ? test.rightBoundaryPos : test.leftBoundaryPos;
 
-    // Predict using extendsTooFar
+    // Predict using checkMotionWordReaches
     bool predicted;
     if (!hasBoundary) {
         // No boundary to cross (at edge of buffer)
         predicted = false;
     } else {
         Position cursor(test.cursorLine, test.cursorCol);
-        predicted = extendsTooFar(test.lines, cursor, boundaryPos, info);
+        predicted = VimMovementUtils::checkMotionWordReaches(
+          cursor, boundaryPos, test.lines,
+          info.isForward, info.edgeType, info.isWORD, info.skipCurrent
+        );
     }
 
     // Get actual result from Neovim
