@@ -1,5 +1,7 @@
 #include "VimTextObjects.h"
 #include "VimUtils.h"
+#include "VimMovementUtils.h"
+#include "Utils/Lines.h"
 
 #include <algorithm>
 
@@ -345,6 +347,23 @@ Range aroundBracket(const vector<string>& lines, Position pos, char open, char c
   }
 
   return Range(openPos, closePos);
+}
+
+// -----------------------------------------------------------------------------
+// Sentence text objects (is, as)
+// -----------------------------------------------------------------------------
+//
+// Uses VimMovementUtils::sentenceTextObjectRange() which implements the
+// EdgeType-based boundary logic parallel to word and paragraph text objects.
+
+Range innerSentence(const vector<string>& lines, Position pos) {
+  Lines linesWrapper(lines.begin(), lines.end());
+  return VimMovementUtils::sentenceTextObjectRange(pos, linesWrapper, true);
+}
+
+Range aroundSentence(const vector<string>& lines, Position pos) {
+  Lines linesWrapper(lines.begin(), lines.end());
+  return VimMovementUtils::sentenceTextObjectRange(pos, linesWrapper, false);
 }
 
 } // namespace VimTextObjects

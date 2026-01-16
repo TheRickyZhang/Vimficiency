@@ -1,5 +1,6 @@
 #include "VimCore/EdgeType.h"
 #include "VimCore/LineEdgeType.h"
+#include "VimCore/SentenceEdgeType.h"
 #include "VimUtils.h"
 #include "Utils/SentinelChar.h"
 #include "VimMovementUtils.h"
@@ -530,6 +531,19 @@ void VimMovementUtils::motionParagraphNext(Position &pos,
   }
 }
 
+// =============================================================================
+// Sentence motions - general interface (parallel to word/paragraph motions)
+// =============================================================================
+//
+// Sentence boundaries are defined by:
+//   1. Punctuation [.!?] + optional closers [)'"'\]] + whitespace/EOL
+//   2. Blank lines (paragraph boundary = sentence boundary)
+//
+// SentenceEdgeType:
+//   SentenceEdge: edge of current sentence (at punctuation mark + closers)
+//   GapEdge:      edge of whitespace gap after sentence end
+//   NextEdge:     start of next sentence ()/( motions)
+
 static bool isSentenceCloser(unsigned char c) {
   return c == ')' || c == ']' || c == '"' || c == '\'';
 }
@@ -562,11 +576,81 @@ static bool isSentenceEndAt(const Lines &lines, int line,
   }
 }
 
+// =============================================================================
+// skipToSentenceStart: Core helper for sentence motions
+// =============================================================================
+//
+// Given a position at sentence-ending punctuation [.!?], skip past:
+// 1. The punctuation mark itself
+// 2. Any closers [)'"'\]]  (may cross to next line)
+// 3. Whitespace and blank lines
+// Returns the first non-blank char position (the next sentence start).
+//
+// If a blank line is encountered while skipping whitespace, that blank line
+// IS the sentence boundary - return its position (line, 0).
+
 static std::pair<int, int>
-findSentenceStart(const Lines &lines, int line, int col) {
+skipToSentenceStart(const Lines &lines, int line, int col) {
   int n = (int)lines.size();
-  if (n == 0)
-    return {0, 0};
+  if (n == 0) return {0, 0};
+
+  int l = line, k = col;
+
+  // Step 1: Move past the punctuation mark
+  if (!stepFwd(lines, l, k)) {
+    return {l, k};  // EOF after punctuation
+  }
+
+  // Step 2: Skip closers (can cross line boundaries)
+  while (true) {
+    unsigned char c = getChar(lines, l, k);
+    if (!isSentenceCloser(c)) break;
+    if (!stepFwd(lines, l, k)) return {l, k};  // EOF after closers
+  }
+
+  // Step 3: Skip whitespace; blank lines are sentence boundaries (stop there)
+  while (true) {
+    if (l >= n) return {n - 1, 0};
+
+    // Blank line = sentence boundary, stop here
+    if (isBlankLineStr(lines[l])) {
+      return {l, 0};
+    }
+
+    int len = (int)lines[l].size();
+    if (len == 0) {
+      return {l, 0};  // Empty line = boundary
+    }
+
+    k = std::clamp(k, 0, len - 1);
+    unsigned char c = (unsigned char)lines[l][k];
+
+    if (c == ' ' || c == '\t') {
+      if (!stepFwd(lines, l, k)) return {l, k};
+      continue;
+    }
+
+    // Found non-blank: this is the sentence start
+    return {l, k};
+  }
+}
+
+// =============================================================================
+// findCurrentSentenceStart: Find the start of the sentence containing pos
+// =============================================================================
+//
+// For a position in the middle of a sentence, this finds where that sentence
+// starts. The algorithm:
+// 1. Search backward for the previous sentence boundary
+// 2. The current sentence starts at the first non-blank char after that boundary
+//
+// Special case for blank lines: a blank line is a sentence boundary, so
+// from a blank line we find the last sentence of the previous paragraph.
+
+static std::pair<int, int>
+findCurrentSentenceStart(const Lines &lines, int line, int col) {
+  int n = (int)lines.size();
+  if (n == 0) return {0, 0};
 
   line = std::clamp(line, 0, n - 1);
   if ((int)lines[line].size() == 0)
@@ -574,89 +658,166 @@ findSentenceStart(const Lines &lines, int line, int col) {
   else
     col = std::clamp(col, 0, (int)lines[line].size() - 1);
 
-  // If on blank line run, move up to last nonblank char before it (if any).
-  while (line > 0 && isBlankLineStr(lines[line])) {
-    --line;
-    col = (int)lines[line].size();
-    if (col > 0)
-      --col;
+  // If on blank line, we need to find the start of the LAST sentence
+  // before the blank line (not the next sentence after).
+  if (isBlankLineStr(lines[line])) {
+    // Move to last non-blank line before this blank run
+    int prevLine = line - 1;
+    while (prevLine >= 0 && isBlankLineStr(lines[prevLine])) {
+      --prevLine;
+    }
+    if (prevLine < 0) {
+      // All blank lines from start - return buffer start
+      return {0, 0};
+    }
+
+    // Now find the START of the last sentence on prevLine.
+    // The last sentence ends at or near the end of prevLine.
+    // To find its START, we need to find the PREVIOUS sentence end,
+    // then skip forward from there.
+    int endCol = (int)lines[prevLine].size() - 1;
+    if (endCol < 0) endCol = 0;
+
+    int l = prevLine, k = endCol;
+
+    // Skip backward past any closers/punctuation at the end of line
+    // to get into the content of the last sentence
+    while (k > 0) {
+      unsigned char c = getChar(lines, l, k);
+      if (c == '.' || c == '!' || c == '?' || isSentenceCloser(c)) {
+        --k;
+      } else {
+        break;
+      }
+    }
+
+    // Now search backward for the PREVIOUS sentence end (which marks where
+    // the last sentence starts)
+    while (true) {
+      if (isSentenceEndAt(lines, l, k)) {
+        // Found the end of the PREVIOUS sentence - last sentence starts after this
+        return skipToSentenceStart(lines, l, k);
+      }
+
+      // Check if we hit a blank line
+      if (isBlankLineStr(lines[l])) {
+        // Sentence starts at first non-blank after this blank run
+        int nextLine = l + 1;
+        while (nextLine < n && isBlankLineStr(lines[nextLine])) ++nextLine;
+        if (nextLine >= n) return {n - 1, 0};
+        return {nextLine, firstNonBlankColInLineStr(lines[nextLine])};
+      }
+
+      // Step backward
+      int pl = l, pk = k;
+      if (!stepBack(lines, pl, pk)) {
+        // Reached buffer start - sentence starts at first non-blank
+        int i = 0;
+        while (i < n && isBlankLineStr(lines[i])) ++i;
+        if (i >= n) return {0, 0};
+        return {i, firstNonBlankColInLineStr(lines[i])};
+      }
+
+      // Check if stepping back crossed into a blank line
+      if (isBlankLineStr(lines[pl])) {
+        // Sentence starts at line l
+        return {l, firstNonBlankColInLineStr(lines[l])};
+      }
+
+      l = pl;
+      k = pk;
+    }
   }
 
+  // Not on blank line - search backward for sentence boundary
   int l = line, k = col;
+
+  // If we're ON sentence-ending punctuation or closer, step back first.
+  // We want the start of the sentence we're IN, not the next one.
+  {
+    unsigned char c = getChar(lines, l, k);
+    while (c == '.' || c == '!' || c == '?' || isSentenceCloser(c)) {
+      if (!stepBack(lines, l, k)) break;
+      c = getChar(lines, l, k);
+    }
+  }
+
+  // If we're in whitespace, check if it follows a sentence end.
+  // If so, we're "between" sentences and should return the start of
+  // the sentence that ENDED (not the next one after the whitespace).
+  {
+    unsigned char c = getChar(lines, l, k);
+    if (c == ' ' || c == '\t') {
+      // Search backward through whitespace to find potential sentence end
+      int tl = l, tk = k;
+      while (tk > 0) {
+        --tk;
+        unsigned char tc = getChar(lines, tl, tk);
+        if (tc == '.' || tc == '!' || tc == '?') {
+          if (isSentenceEndAt(lines, tl, tk)) {
+            // We're in whitespace after a sentence end.
+            // Find the start of THAT sentence (not the next one).
+            // Continue searching backward from the punctuation.
+            l = tl;
+            k = tk - 1;
+            if (k < 0) {
+              // At start of line, check previous line
+              if (l > 0) {
+                --l;
+                k = (int)lines[l].size() - 1;
+                if (k < 0) k = 0;
+              } else {
+                // Buffer start - sentence starts at first non-blank
+                int i = 0;
+                while (i < n && isBlankLineStr(lines[i])) ++i;
+                if (i >= n) return {0, 0};
+                return {i, firstNonBlankColInLineStr(lines[i])};
+              }
+            }
+            break;
+          }
+        }
+        if (tc != ' ' && tc != '\t' && !isSentenceCloser(tc)) {
+          break;  // Not in whitespace after sentence
+        }
+      }
+    }
+  }
 
   while (true) {
     if (isSentenceEndAt(lines, l, k)) {
-      int sl = l, sk = k;
-      if (!stepFwd(lines, sl, sk))
-        return {l, k};
-
-      // skip closers (same line only)
-      while (true) {
-        unsigned char c = getChar(lines, sl, sk);
-        if (!isSentenceCloser(c))
-          break;
-        int tl = sl, tk = sk;
-        if (!stepFwd(lines, tl, tk))
-          break;
-        if (tl != sl)
-          break;
-        sl = tl;
-        sk = tk;
-      }
-
-      // skip spaces/tabs and blank lines
-      while (true) {
-        if (sl >= n)
-          return {n - 1, 0};
-        if (isBlankLineStr(lines[sl])) {
-          ++sl;
-          sk = 0;
-          continue;
-        }
-        int len = (int)lines[sl].size();
-        if (len == 0) {
-          ++sl;
-          sk = 0;
-          continue;
-        }
-        sk = std::clamp(sk, 0, len - 1);
-        unsigned char c = (unsigned char)lines[sl][sk];
-        if (c == ' ' || c == '\t') {
-          if (!stepFwd(lines, sl, sk))
-            break;
-          continue;
-        }
-        break;
-      }
-
-      if (sl >= n)
-        return {n - 1, 0};
-      return {sl, sk}; // FIX: Use sk, not firstNonBlankColInLineStr
+      // Found sentence end - the current sentence starts after this
+      return skipToSentenceStart(lines, l, k);
     }
 
+    // Check if we hit a blank line
+    if (isBlankLineStr(lines[l])) {
+      // Sentence starts at first non-blank after this blank run
+      int nextLine = l + 1;
+      while (nextLine < n && isBlankLineStr(lines[nextLine])) ++nextLine;
+      if (nextLine >= n) return {n - 1, 0};
+      return {nextLine, firstNonBlankColInLineStr(lines[nextLine])};
+    }
+
+    // Step backward
     int pl = l, pk = k;
-    if (!stepBack(lines, pl, pk))
-      break;
+    if (!stepBack(lines, pl, pk)) {
+      // Reached buffer start - sentence starts at first non-blank
+      int i = 0;
+      while (i < n && isBlankLineStr(lines[i])) ++i;
+      if (i >= n) return {0, 0};
+      return {i, firstNonBlankColInLineStr(lines[i])};
+    }
+
+    // Check if stepping back crossed into a blank line
+    if (isBlankLineStr(lines[pl])) {
+      // Sentence starts at line l
+      return {l, firstNonBlankColInLineStr(lines[l])};
+    }
+
     l = pl;
     k = pk;
-
-    if (isBlankLineStr(lines[l])) {
-      while (l < n && isBlankLineStr(lines[l]))
-        ++l;
-      if (l >= n)
-        return {n - 1, 0};
-      return {l, firstNonBlankColInLineStr(
-                     lines[l])}; // This one is OK - starting fresh line
-    }
   }
-
-  int i = 0;
-  while (i < n && isBlankLineStr(lines[i]))
-    ++i;
-  if (i >= n)
-    return {n - 1, 0};
-  return {i, firstNonBlankColInLineStr(
-                 lines[i])}; // This one is OK - starting fresh line
 }
 
 
@@ -720,8 +881,288 @@ void VimMovementUtils::moveToParagraphEnd(Position &pos,
   pos.setCol(clampCol(lines, pos.col, pos.line));
 }
 
+// =============================================================================
+// motionSentenceEdge - Unified sentence motion implementation
+// =============================================================================
+//
+// Handles all sentence edge types in both directions.
+// This parallels motionWord() and motionParagraphEdge().
+
+Position VimMovementUtils::motionSentenceEdge(Position cursor,
+                                               const Lines& lines,
+                                               bool forward,
+                                               SentenceEdgeType edgeType) {
+  int n = static_cast<int>(lines.size());
+  if (n == 0) return cursor;
+
+  int line = std::clamp(cursor.line, 0, n - 1);
+  int col = lines[line].empty() ? 0 : std::clamp(cursor.col, 0, static_cast<int>(lines[line].size()) - 1);
+
+  if (forward) {
+    // Forward motion - find next sentence boundary
+
+    // If on blank line, skip to first non-blank line
+    if (isBlankLineStr(lines[line])) {
+      while (line < n && isBlankLineStr(lines[line])) {
+        line++;
+      }
+      if (line >= n) return Position(n - 1, 0);
+
+      // For NextEdge: return start of first non-blank line (sentence start)
+      if (edgeType == SentenceEdgeType::NextEdge) {
+        return Position(line, firstNonBlankColInLineStr(lines[line]));
+      }
+      // For SentenceEdge/GapEdge: continue searching from this line
+      col = 0;
+    }
+
+    // Search forward for sentence end
+    int l = line, k = col;
+    while (true) {
+      if (isSentenceEndAt(lines, l, k)) {
+        // Found sentence end at (l, k)
+        int endLine = l, endCol = k;
+
+        // Skip past the punctuation mark
+        if (!stepFwd(lines, l, k)) {
+          // At EOF - return sentence end position
+          if (edgeType == SentenceEdgeType::SentenceEdge) {
+            // Return position of last closer (or punctuation if no closers)
+            return Position(endLine, endCol);
+          }
+          return Position(endLine, endCol);
+        }
+
+        // Skip closers on same line
+        while (true) {
+          unsigned char c = getChar(lines, l, k);
+          if (!isSentenceCloser(c)) break;
+          endLine = l;
+          endCol = k;
+          int tl = l, tk = k;
+          if (!stepFwd(lines, tl, tk)) break;
+          if (tl != l) break;
+          l = tl;
+          k = tk;
+        }
+
+        // For SentenceEdge: return position of last closer (or punctuation)
+        if (edgeType == SentenceEdgeType::SentenceEdge) {
+          return Position(endLine, endCol);
+        }
+
+        // Now skip whitespace and blank lines to find gap edge or next sentence
+        int gapEndLine = l, gapEndCol = k;
+        bool foundNonBlank = false;
+
+        while (true) {
+          if (l >= n) break;
+          if (isBlankLineStr(lines[l])) {
+            gapEndLine = l;
+            gapEndCol = 0;
+            l++;
+            k = 0;
+            continue;
+          }
+          int len = static_cast<int>(lines[l].size());
+          if (len == 0) {
+            l++;
+            k = 0;
+            continue;
+          }
+          k = std::clamp(k, 0, len - 1);
+          unsigned char c = static_cast<unsigned char>(lines[l][k]);
+          if (c == ' ' || c == '\t') {
+            gapEndLine = l;
+            gapEndCol = k;
+            if (!stepFwd(lines, l, k)) break;
+            continue;
+          }
+          // Found non-blank
+          foundNonBlank = true;
+          break;
+        }
+
+        if (edgeType == SentenceEdgeType::GapEdge) {
+          return Position(gapEndLine, gapEndCol);
+        }
+
+        // NextEdge: return start of next sentence
+        if (l >= n) return Position(n - 1, 0);
+        return Position(l, k);
+      }
+
+      if (!stepFwd(lines, l, k)) {
+        // Reached end of buffer without finding sentence end
+        return cursor;
+      }
+    }
+  } else {
+    // Backward motion - find previous sentence boundary
+
+    // First find start of current sentence
+    auto [sl, sc] = findCurrentSentenceStart(lines, line, col);
+
+    // If we're already at a sentence start, we need to go to the previous one
+    if (sl == line && sc == col) {
+      int l = sl, k = sc;
+      if (stepBack(lines, l, k)) {
+        auto [psl, psc] = findCurrentSentenceStart(lines, l, k);
+        sl = psl;
+        sc = psc;
+      } else {
+        // At buffer start, can't go back
+        return Position(sl, sc);
+      }
+    }
+
+    // For NextEdge (( motion): return sentence start
+    if (edgeType == SentenceEdgeType::NextEdge) {
+      return Position(sl, sc);
+    }
+
+    // For SentenceEdge: find the sentence end before this sentence start
+    // Go back from sentence start to find the previous sentence's end
+    if (sl == 0 && sc == 0) {
+      // At buffer start
+      return Position(0, 0);
+    }
+
+    int l = sl, k = sc;
+    if (!stepBack(lines, l, k)) {
+      return Position(0, 0);
+    }
+
+    // Skip whitespace/blank lines backward to find gap start or sentence end
+    while (true) {
+      if (isBlankLineStr(lines[l])) {
+        if (edgeType == SentenceEdgeType::GapEdge) {
+          // Find start of blank run
+          while (l > 0 && isBlankLineStr(lines[l - 1])) {
+            l--;
+          }
+          return Position(l, 0);
+        }
+        // Skip blank lines
+        while (l > 0 && isBlankLineStr(lines[l])) {
+          l--;
+        }
+        if (isBlankLineStr(lines[l])) {
+          // All blank lines to start
+          return Position(0, 0);
+        }
+        k = static_cast<int>(lines[l].size()) - 1;
+        if (k < 0) k = 0;
+        continue;
+      }
+
+      unsigned char c = getChar(lines, l, k);
+      if (c == ' ' || c == '\t') {
+        if (edgeType == SentenceEdgeType::GapEdge) {
+          // Skip forward past whitespace to find gap end
+          while (true) {
+            unsigned char nc = getChar(lines, l, k);
+            if (nc != ' ' && nc != '\t') break;
+            int tl = l, tk = k;
+            if (!stepFwd(lines, tl, tk)) break;
+            if (tl != l) break;
+            l = tl;
+            k = tk;
+          }
+          // Step back to last whitespace
+          if (!stepBack(lines, l, k)) return Position(0, 0);
+          return Position(l, k);
+        }
+        // Skip whitespace backward
+        if (!stepBack(lines, l, k)) {
+          return Position(0, 0);
+        }
+        continue;
+      }
+
+      // Found non-whitespace - this should be sentence end (closer or punctuation)
+      // Skip closers backward
+      while (isSentenceCloser(c)) {
+        if (!stepBack(lines, l, k)) {
+          return Position(l, k);
+        }
+        c = getChar(lines, l, k);
+      }
+
+      // Should be at punctuation mark
+      if (c == '.' || c == '!' || c == '?') {
+        return Position(l, k);
+      }
+
+      // If not at sentence-ending punctuation, continue backward
+      if (!stepBack(lines, l, k)) {
+        return Position(0, 0);
+      }
+    }
+  }
+}
+
+// =============================================================================
+// sentenceTextObjectRange - Sentence text object range computation
+// =============================================================================
+//
+// Parallels textObjectRange() for words and paragraphTextObjectRange() for paragraphs.
+//
+// From boundary-logic.md pattern:
+//   dis: (Backward, SentenceEdge) + (Forward, SentenceEdge)
+//   das: {
+//     Has trailing whitespace: (Backward, SentenceEdge) + (Forward, GapEdge)
+//     Else: (Backward, GapEdge) + (Forward, SentenceEdge)
+//   }
+
+Range VimMovementUtils::sentenceTextObjectRange(Position cursor,
+                                                 const Lines& lines,
+                                                 bool isInner) {
+  int n = static_cast<int>(lines.size());
+  if (n == 0) return RANGE_NOT_FOUND;
+
+  // Find sentence start (beginning of current sentence)
+  auto [startLine, startCol] = findCurrentSentenceStart(lines, cursor.line, cursor.col);
+
+  // Find sentence end by searching forward from sentence start
+  Position sentenceStart(startLine, startCol);
+  Position sentenceEnd = motionSentenceEdge(sentenceStart, lines, true, SentenceEdgeType::SentenceEdge);
+
+  if (isInner) {
+    // dis: just the sentence content
+    return Range(sentenceStart, sentenceEnd);
+  }
+
+  // das: include trailing whitespace (or leading if no trailing)
+  Position gapEnd = motionSentenceEdge(sentenceStart, lines, true, SentenceEdgeType::GapEdge);
+
+  // Check if there's trailing whitespace/blank lines
+  bool hasTrailing = (gapEnd.line > sentenceEnd.line ||
+                      (gapEnd.line == sentenceEnd.line && gapEnd.col > sentenceEnd.col));
+
+  if (hasTrailing) {
+    // Include trailing whitespace
+    return Range(sentenceStart, gapEnd);
+  }
+
+  // No trailing whitespace - include leading whitespace
+  // Find gap edge backward from sentence start
+  Position gapStart = motionSentenceEdge(sentenceStart, lines, false, SentenceEdgeType::GapEdge);
+
+  // Check if there's leading whitespace
+  bool hasLeading = (gapStart.line < sentenceStart.line ||
+                     (gapStart.line == sentenceStart.line && gapStart.col < sentenceStart.col));
+
+  if (hasLeading) {
+    return Range(gapStart, sentenceEnd);
+  }
+
+  // No surrounding whitespace, just return sentence
+  return Range(sentenceStart, sentenceEnd);
+}
+
 void VimMovementUtils::motionSentenceNext(Position &pos,
-                                  const Lines &lines) {
+                                          const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
@@ -732,66 +1173,59 @@ void VimMovementUtils::motionSentenceNext(Position &pos,
                 : std::clamp(pos.col, 0, (int)lines[line].size() - 1);
 
   // If currently on blank run: jump to next nonblank line start.
+  // Special case: if all remaining lines are blank, move to next blank line (if any).
   if (isBlankLineStr(lines[line])) {
+    int startLine = line;
     while (line < n && isBlankLineStr(lines[line]))
       ++line;
-    if (line >= n)
+    if (line >= n) {
+      // All remaining lines are blank - move to next blank line if we can
+      if (startLine + 1 < n) {
+        pos.line = startLine + 1;
+        pos.setCol(0);
+      }
       return;
+    }
     pos.line = line;
     pos.setCol(firstNonBlankColInLineStr(lines[line]));
     return;
   }
 
+  // Check if we're on whitespace/closer that follows a sentence end.
+  // If so, skip directly to next sentence start (we're in the gap).
+  {
+    unsigned char c = getChar(lines, line, col);
+    if (c == ' ' || c == '\t' || isSentenceCloser(c)) {
+      // Search backward to see if there's a sentence end before us on this line
+      int l = line, k = col;
+      while (k > 0) {
+        --k;
+        unsigned char pc = getChar(lines, l, k);
+        if (pc == '.' || pc == '!' || pc == '?') {
+          // Found punctuation - check if it's a valid sentence end
+          if (isSentenceEndAt(lines, l, k)) {
+            // We're in the gap after a sentence end - skip to next sentence start
+            auto [nl, nk] = skipToSentenceStart(lines, l, k);
+            pos.line = nl;
+            pos.setCol(nk);
+            return;
+          }
+        }
+        if (pc != ' ' && pc != '\t' && !isSentenceCloser(pc)) {
+          // Hit non-whitespace/non-closer that's not punctuation
+          break;
+        }
+      }
+    }
+  }
+
+  // Search forward for sentence end, then skip to next sentence start
   int l = line, k = col;
   while (true) {
     if (isSentenceEndAt(lines, l, k)) {
-      // move past the sentence-ending punctuation
-      if (!stepFwd(lines, l, k))
-        return;
-
-      // skip closers (same line only)
-      while (true) {
-        unsigned char c = getChar(lines, l, k);
-        if (!isSentenceCloser(c))
-          break;
-        int tl = l, tk = k;
-        if (!stepFwd(lines, tl, tk))
-          break;
-        if (tl != l)
-          break;
-        l = tl;
-        k = tk;
-      }
-
-      // skip spaces/tabs and blank lines
-      while (true) {
-        if (l >= n)
-          return;
-        if (isBlankLineStr(lines[l])) {
-          ++l;
-          k = 0;
-          continue;
-        }
-        int len = (int)lines[l].size();
-        if (len == 0) {
-          ++l;
-          k = 0;
-          continue;
-        }
-        k = std::clamp(k, 0, len - 1);
-        unsigned char c = (unsigned char)lines[l][k];
-        if (c == ' ' || c == '\t') {
-          if (!stepFwd(lines, l, k))
-            return;
-          continue;
-        }
-        break;
-      }
-
-      if (l >= n)
-        return;
-      pos.line = l;
-      pos.setCol(k);
+      auto [nl, nk] = skipToSentenceStart(lines, l, k);
+      pos.line = nl;
+      pos.setCol(nk);
       return;
     }
 
@@ -801,21 +1235,48 @@ void VimMovementUtils::motionSentenceNext(Position &pos,
 }
 
 void VimMovementUtils::motionSentencePrev(Position &pos,
-                                  const Lines &lines) {
+                                          const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0) return;
 
-  auto [sl, sc] = findSentenceStart(lines, pos.line, pos.col);
+  auto [sl, sc] = findCurrentSentenceStart(lines, pos.line, pos.col);
 
   // If already at sentence start, go to previous sentence start.
   if (sl == pos.line && sc == pos.col) {
     int l = sl, k = sc;
-    if (stepBack(lines, l, k)) {
-      auto [psl, psc] = findSentenceStart(lines, l, k);
-      pos.line = psl;
-      pos.setCol(psc);
-      return;
+
+    // Step back past the whitespace/closers that precede this sentence start
+    // to get into the content of the previous sentence
+    while (true) {
+      if (!stepBack(lines, l, k)) {
+        // At buffer start, can't go further
+        pos.line = sl;
+        pos.setCol(sc);
+        return;
+      }
+
+      // Blank line IS a sentence boundary - stop here
+      if (isBlankLineStr(lines[l])) {
+        pos.line = l;
+        pos.setCol(0);
+        return;
+      }
+
+      unsigned char c = getChar(lines, l, k);
+      // Skip whitespace, closers, and sentence-ending punctuation
+      if (c == ' ' || c == '\t' || isSentenceCloser(c) ||
+          c == '.' || c == '!' || c == '?') {
+        continue;
+      }
+
+      // We're now in actual content - find this sentence's start
+      break;
     }
+
+    auto [psl, psc] = findCurrentSentenceStart(lines, l, k);
+    pos.line = psl;
+    pos.setCol(psc);
+    return;
   }
 
   pos.line = sl;

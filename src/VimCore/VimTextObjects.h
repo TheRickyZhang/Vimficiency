@@ -34,8 +34,8 @@ Range aroundQuote(const std::vector<std::string>& lines, Position pos, char quot
 Range innerBracket(const std::vector<std::string>& lines, Position pos, char open, char close);
 Range aroundBracket(const std::vector<std::string>& lines, Position pos, char open, char close);
 
-// Sentence text objects (is, as) - TODO if needed
-// Range innerSentence(const std::vector<std::string>& lines, Position pos);
-// Range aroundSentence(const std::vector<std::string>& lines, Position pos);
+// Sentence text objects (is, as)
+Range innerSentence(const std::vector<std::string>& lines, Position pos);
+Range aroundSentence(const std::vector<std::string>& lines, Position pos);
 
 } // namespace VimTextObjects

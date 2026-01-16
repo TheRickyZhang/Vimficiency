@@ -1,50 +1,10 @@
 === TEXT OBJECT TEST FAILURE ===
 Command: daw
 Input:
-  [0]: ",e.; e, :       k;o     "
-Cursor: (0, 13)
-Edit region: (0,10) to (0,13)
-Left boundary: (0,9)
-Right boundary: (0,14)
-Prefix: ",e.; e, :      "
-Suffix: "       "
-Result:
-  [0]: ",e.; e, :       k;o     "
-Left - Predicted: SAFE, Actual: SAFE
-Right - Predicted: CROSS, Actual: SAFE
+,e.; e, :       k;o     "
+ntseirorst
+sroenit
+(
+rsoteinrsoe""
+(s ienrsterstors)
 
-=== TEXT OBJECT TEST FAILURE ===
-Command: daW
-Input:
-  [0]: ",e.; e, :       k;o     "
-Cursor: (0, 13)
-Edit region: (0,10) to (0,13)
-Left boundary: (0,9)
-Right boundary: (0,14)
-Prefix: ",e.; e, :      "
-Suffix: "       "
-Result:
-  [0]: ",e.; e, :       k;o     "
-Left - Predicted: SAFE, Actual: SAFE
-Right - Predicted: CROSS, Actual: SAFE
-
-=== Text Object Random Buffer (Single-Line): 38/40 ===
-/home/ricky/Projects/vimficiency/tests/Boundary/OperatorTextObject.cpp:248: Failure
-Expected equality of these values:
-  passed
-    Which is: 38
-  total
-    Which is: 40
-
-[  FAILED  ] OperatorTextObjectTest.RandomBufferStress_SingleLine (16 ms)
-[----------] 1 test from OperatorTextObjectTest (16 ms total)
-
-[----------] Global test environment tear-down
-[==========] 1 test from 1 test suite ran. (33 ms total)
-[  PASSED  ] 0 tests.
-[  FAILED  ] 1 test, listed below:
-[  FAILED  ] OperatorTextObjectTest.RandomBufferStress_SingleLine
-
- 1 FAILED TEST
-
-[Process exited 1]

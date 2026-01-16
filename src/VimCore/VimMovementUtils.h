@@ -3,6 +3,7 @@
 
 #include "EdgeType.h"
 #include "LineEdgeType.h"
+#include "SentenceEdgeType.h"
 #include "Editor/Range.h"
 #include "Editor/LineRange.h"
 #include "Utils/Lines.h"
@@ -134,7 +135,45 @@ struct VimMovementUtils {
   static void moveToParagraphStart(Position& pos, const Lines& lines);
   static void moveToParagraphEnd(Position& pos, const Lines& lines);
 
-  // Sentence motions
+  // ==========================================================================
+  // Sentence motions - general interface (parallel to word/paragraph motions)
+  // ==========================================================================
+  //
+  // Unified sentence motion based on SentenceEdgeType and direction.
+  // This is the fundamental building block; named motions forward to this.
+  //
+  // SentenceEdgeType is DIRECTION-INDEPENDENT (parallel to EdgeType):
+  //   SentenceEdge: edge of current sentence (punctuation + closers)
+  //   GapEdge:      edge of whitespace gap after sentence end
+  //   NextEdge:     start of next sentence
+  //
+  // Sentence boundaries are defined by:
+  //   1. Punctuation [.!?] + optional closers [)'"'\]] + whitespace/EOL
+  //   2. Blank lines (paragraph boundary = sentence boundary)
+  //
+  // Mapping:
+  //   Forward  + NextEdge -> ) (to start of next sentence)
+  //   Backward + NextEdge -> ( (to start of previous sentence)
+  //
+  // Returns the position where the motion lands.
+  static Position motionSentenceEdge(Position cursor,
+                                     const Lines& lines,
+                                     bool forward,
+                                     SentenceEdgeType edgeType);
+
+  // Returns the range for a sentence text object.
+  // Caller can compare to boundaries:
+  //   range.start <= leftBoundary  -> reaches left
+  //   range.end >= rightBoundary   -> reaches right
+  //
+  // From boundary-logic.md:
+  //   dis: (Backward, SentenceEdge) + (Forward, SentenceEdge)
+  //   das: depends on cursor position and trailing whitespace
+  static Range sentenceTextObjectRange(Position cursor,
+                                       const Lines& lines,
+                                       bool isInner);
+
+  // Named sentence motion forwarders
   static void motionSentencePrev(Position& pos, const Lines& lines);
   static void motionSentenceNext(Position& pos, const Lines& lines);
 

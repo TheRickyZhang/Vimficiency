@@ -330,3 +330,119 @@ Two character classification functions:
 
 Use `isWhitespace` in Phase 4 (skip blanks to next word) to avoid
 incorrectly skipping past empty lines.
+
+= Sentence Boundary Logic (Characterwise)
+
+Sentences are **characterwise** like words, not linewise like paragraphs.
+They have dual-source boundaries: punctuation patterns AND blank lines.
+
+== Sentence Edge Types (Parallel to EdgeType)
+
+```
+SentenceEdgeType | Meaning
+SentenceEdge     | Edge of current sentence (punctuation mark + closers)
+GapEdge          | Edge of whitespace gap after sentence end
+NextEdge         | Start of next sentence ()/( motions)
+```
+
+Mapping to word EdgeType:
+- SentenceEdge ↔ WordEdge (edge of current unit)
+- GapEdge ↔ GapEdge (edge of gap)
+- NextEdge ↔ NextEdge (start/end of next unit)
+
+== Sentence Boundary Detection
+
+A sentence boundary is detected when:
+1. **Punctuation pattern**: char is [.!?] AND followed by optional closers [)'"'\]]
+   AND followed by (whitespace OR EOL)
+2. **Blank line**: paragraph boundary = sentence boundary
+
+```
+Is char in [.!?]
+  AND followed by zero or more of [)'"'\]]
+  AND followed by (whitespace OR EOL)?
+    → sentence end
+OR is line blank?
+    → sentence boundary
+```
+
+== Sentence Motion Commands
+
+```
+Motion | Sentence Edge Type
+)      | (Forward, NextEdge)   - move to start of next sentence
+(      | (Backward, NextEdge)  - move to start of previous sentence
+```
+
+Unlike words (which have w/e/b/ge), sentences only have two motion variants.
+
+== Sentence Text Object Commands
+
+```
+Command |
+dis  (Backward, SentenceEdge) + (Forward, SentenceEdge)
+das  {
+  Has trailing whitespace/blank lines:
+    (Backward, SentenceEdge) + (Forward, GapEdge)
+  Else (no trailing):
+    (Backward, GapEdge) + (Forward, SentenceEdge)
+}
+```
+
+Note: The das logic mirrors daw — same trailing/leading preference pattern.
+
+== Sentence Boundary Crossing
+
+Like words, sentences are characterwise, so we compare positions:
+
+```
+Forward:   endpoint >= rightBoundary
+Backward:  endpoint <= leftBoundary
+Text obj:  range.start <= leftBoundary || range.end >= rightBoundary
+```
+
+However, sentences have more complex boundary detection than words:
+- Must track punctuation patterns, not just character classes
+- Closers [)'"'\]] can extend the sentence end position
+- Blank lines act as implicit sentence boundaries
+
+== API Parallel (Sentences)
+
+```
+Sentences (characterwise, like words):
+  motionSentenceEdge(cursor, lines, forward, SentenceEdgeType) -> Position
+  sentenceTextObjectRange(cursor, lines, isInner) -> Range
+```
+
+The pattern matches words:
+- `motionSentenceEdge` parallels `motionWordEndpoint`
+- `sentenceTextObjectRange` parallels `textObjectRange`
+
+== Edge Cases
+
+=== Sentences with Closers
+
+Example: `"Hello!" she said.`
+- The `!` is the sentence end punctuation
+- The `"` is a closer
+- Sentence edge is at `"`
+- The `.` starts a new sentence detection
+
+=== Blank Lines as Sentence Boundaries
+
+Blank lines act as both paragraph AND sentence boundaries:
+- `}` from middle of paragraph → stops at blank line
+- `)` from same position → also stops at blank line (if no sentence end found first)
+
+=== Multiple Sentences on One Line
+
+Example: `First. Second. Third.`
+- Each `.` followed by space creates a sentence boundary
+- `)` navigates between sentence starts
+- `dis` selects from start to sentence-ending punctuation (+ closers)
+
+=== Sentence at Buffer Start/End
+
+- At buffer start: `(` stays at position
+- At buffer end: `)` stays at position
+- For `as` at buffer end with no trailing: include leading whitespace instead
