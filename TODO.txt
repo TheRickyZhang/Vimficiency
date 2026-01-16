@@ -3,9 +3,7 @@ Insert Mode handling (just a lot more stuff)     ********* (very very difficult)
 Implement EditOptimizer
 Fix how EditBoundaries work
 Operator motions                                 *****
-Use NeovimOracle to verify randomized tests
-Adjust BoundaryTestsHelpers.cpp to have absolute precision with actual vs real case
-Change VimUtils word implementation to be general over endpoint types
+Implement paragraph motions, separate motion processing (just directly edit) vs boundary check for edit processing (want to break early)
 
 == Misc:
 - $ should set targetCol to infinity.

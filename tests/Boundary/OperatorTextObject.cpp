@@ -12,7 +12,6 @@
 
 #include <gtest/gtest.h>
 
-#include "Boundary/EditBoundary.h"
 #include "BoundaryTestHelpers.h"
 #include "VimCore/VimMovementUtils.h"
 
@@ -56,48 +55,23 @@ const vector<TextObjectSpec>& getAllTextObjects() {
 }
 
 // =============================================================================
-// Random Buffer Generation for Text Object Testing
+// Text Object Buffer Generation (uses RandomBufferTest struct)
 // =============================================================================
+//
+// Text objects need single-line edit regions with cursor on a word character.
+// This wrapper generates appropriate test cases while reusing the shared struct.
 
-struct TextObjectTestCase {
-    Lines lines;
-
-    // Edit region (inclusive) - where text objects should NOT escape
-    int editStartLine, editStartCol;
-    int editEndLine, editEndCol;
-
-    // Cursor position (within edit region)
-    int cursorLine, cursorCol;
-
-    // Boundary positions (just OUTSIDE the edit region)
-    Position leftBoundaryPos;
-    Position rightBoundaryPos;
-
-    // Boundary char types
-    CharType leftBoundaryChar;
-    CharType rightBoundaryChar;
-
-    bool hasLeftBoundary;
-    bool hasRightBoundary;
-
-    // Content outside edit region (for verification)
-    string prefix;
-    string suffix;
-};
-
-// Generate random buffer with random edit region for text object testing
-TextObjectTestCase generateTextObjectBuffer(mt19937& rng, int numLines) {
-    TextObjectTestCase test;
+RandomBufferTest generateTextObjectBuffer(mt19937& rng, int numLines) {
+    RandomBufferTest test;
 
     // Character pools for different types
     const string keywords = "abcdefghijklmnop";  // Exclude Q, Z reserved
     const string symbols = ".,;:";               // Exclude @, # reserved
-    const string whitespace = "    ";
 
-    uniform_int_distribution<int> lineLen(8, 20);
+    uniform_int_distribution<int> lineLen(10, 20);
     uniform_int_distribution<int> charTypeDist(0, 2);
 
-    // Build lines
+    // Build lines with mixed content
     for (int i = 0; i < numLines; i++) {
         int len = lineLen(rng);
         string line;
@@ -116,23 +90,24 @@ TextObjectTestCase generateTextObjectBuffer(mt19937& rng, int numLines) {
         test.lines.push_back(line);
     }
 
-    // For simplicity, use single-line edit region
+    // For text objects, use single-line edit region
     uniform_int_distribution<int> lineDist(0, numLines - 1);
     int editLine = lineDist(rng);
     int lineLen2 = test.lines[editLine].size();
 
-    // Pick edit region (at least 4 chars to have meaningful content)
+    // Ensure line is long enough for meaningful edit region
     int minEditLen = 4;
     if (lineLen2 < minEditLen + 2) {
-        // Pad line if too short
         test.lines[editLine] += string(minEditLen + 2 - lineLen2, 'x');
         lineLen2 = test.lines[editLine].size();
     }
 
+    // Pick edit region with room for boundaries
     uniform_int_distribution<int> startDist(1, max(1, lineLen2 - minEditLen - 1));
     int editStart = startDist(rng);
 
-    uniform_int_distribution<int> endDist(editStart + minEditLen - 1, min(lineLen2 - 2, editStart + 10));
+    uniform_int_distribution<int> endDist(editStart + minEditLen - 1,
+                                          min(lineLen2 - 2, editStart + 10));
     int editEnd = endDist(rng);
 
     test.editStartLine = editLine;
@@ -145,7 +120,6 @@ TextObjectTestCase generateTextObjectBuffer(mt19937& rng, int numLines) {
     CharType leftType = static_cast<CharType>(typeDist(rng));
     CharType rightType = static_cast<CharType>(typeDist(rng));
 
-    // Use reserved chars for boundaries
     auto reservedCharLeft = [](CharType type) -> char {
         switch (type) {
             case CharType::Keyword: return 'Q';
@@ -164,12 +138,8 @@ TextObjectTestCase generateTextObjectBuffer(mt19937& rng, int numLines) {
     };
 
     string& line = test.lines[editLine];
-    if (editStart > 0) {
-        line[editStart - 1] = reservedCharLeft(leftType);
-    }
-    if (editEnd < (int)line.size() - 1) {
-        line[editEnd + 1] = reservedCharRight(rightType);
-    }
+    line[editStart - 1] = reservedCharLeft(leftType);
+    line[editEnd + 1] = reservedCharRight(rightType);
 
     // Random cursor position within edit region
     uniform_int_distribution<int> cursorDist(editStart, editEnd);
@@ -177,43 +147,35 @@ TextObjectTestCase generateTextObjectBuffer(mt19937& rng, int numLines) {
     test.cursorLine = editLine;
 
     // Set boundary info
-    test.hasLeftBoundary = (editStart > 0);
-    test.hasRightBoundary = (editEnd < (int)line.size() - 1);
-    test.leftBoundaryChar = test.hasLeftBoundary ? leftType : CharType::Newline;
-    test.rightBoundaryChar = test.hasRightBoundary ? rightType : CharType::Newline;
+    test.hasLeftBoundary = true;
+    test.hasRightBoundary = true;
+    test.leftBoundaryPos = Position(editLine, editStart - 1);
+    test.rightBoundaryPos = Position(editLine, editEnd + 1);
+    test.boundary.leftBoundaryChar = leftType;
+    test.boundary.rightBoundaryChar = rightType;
 
-    if (test.hasLeftBoundary) {
-        test.leftBoundaryPos = Position(editLine, editStart - 1);
+    // Store prefix/suffix for verification (flattened representation)
+    // Prefix: all lines before editLine + beginning of editLine up to editStart
+    // Suffix: rest of editLine after editEnd + all lines after editLine
+    string prefix;
+    for (int i = 0; i < editLine; i++) {
+        prefix += test.lines[i] + '\n';
     }
-    if (test.hasRightBoundary) {
-        test.rightBoundaryPos = Position(editLine, editEnd + 1);
-    }
+    prefix += line.substr(0, editStart);
+    test.prefix = prefix;
 
-    // Store prefix/suffix for verification
-    test.prefix = line.substr(0, editStart);
-    test.suffix = (editEnd < (int)line.size() - 1) ? line.substr(editEnd + 1) : "";
+    string suffix = line.substr(editEnd + 1);
+    for (int i = editLine + 1; i < numLines; i++) {
+        suffix += '\n';
+        suffix += test.lines[i];
+    }
+    test.suffix = suffix;
+
+    // Context flags
+    test.hasLinesAbove = (editLine > 0);
+    test.hasLinesBelow = (editLine < numLines - 1);
 
     return test;
-}
-
-// =============================================================================
-// Boundary Crossing Detection
-// =============================================================================
-
-// Check if left boundary was crossed (prefix changed)
-bool leftBoundaryCrossed(const TextObjectTestCase& test, const Lines& result) {
-    if (result.size() != test.lines.size()) return true;
-    const string& resultLine = result[test.editStartLine];
-    if (resultLine.size() < test.prefix.size()) return true;
-    return resultLine.substr(0, test.prefix.size()) != test.prefix;
-}
-
-// Check if right boundary was crossed (suffix changed)
-bool rightBoundaryCrossed(const TextObjectTestCase& test, const Lines& result) {
-    if (result.size() != test.lines.size()) return true;
-    const string& resultLine = result[test.editEndLine];
-    if (resultLine.size() < test.suffix.size()) return true;
-    return resultLine.substr(resultLine.size() - test.suffix.size()) != test.suffix;
 }
 
 // =============================================================================
@@ -221,7 +183,7 @@ bool rightBoundaryCrossed(const TextObjectTestCase& test, const Lines& result) {
 // =============================================================================
 
 bool runTextObjectTest(NeovimOracle& oracle, const TextObjectSpec& spec,
-                       const TextObjectTestCase& test, bool verbose = false) {
+                       const RandomBufferTest& test, bool verbose = false) {
     // Get actual result from Neovim
     auto result = oracle.simulate(test.lines, test.cursorLine, test.cursorCol, spec.cmd);
 

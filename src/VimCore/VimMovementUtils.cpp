@@ -1,7 +1,9 @@
 #include "VimCore/EdgeType.h"
+#include "VimCore/LineEdgeType.h"
 #include "VimUtils.h"
 #include "Utils/SentinelChar.h"
 #include "VimMovementUtils.h"
+#include "Editor/LineRange.h"
 
 #include <algorithm>
 #include <cassert>
@@ -248,25 +250,14 @@ Range VimMovementUtils::textObjectRange(
     if (cursorOnWhitespace) {
       // Cursor in whitespace: (Backward, GapEdge) + (Forward, WordEdge)
       //
-      // Special case: if cursor is on trailing whitespace (no non-blank chars after on line)
-      // and there's a next line, daw extends to the next line's first word.
-      // This joins lines in a way that crosses any boundary on the current line.
-      bool atTrailingWhitespace = true;
-      for (int col = cursor.col + 1; col < (int)lines[cursor.line].size(); col++) {
-        if (!isBlank(lines[cursor.line][col])) {
-          atTrailingWhitespace = false;
-          break;
-        }
-      }
+      // daw treats whitespace-under-cursor as "leading whitespace of next word".
+      // If there's no next word, the operation is invalid.
+      start = motionWordEndpoint(cursor, lines, false, EdgeType::GapEdge, isBigWord, false);
+      end = motionWordEndpoint(cursor, lines, true, EdgeType::WordEdge, isBigWord, false);
 
-      if (atTrailingWhitespace && cursor.line + 1 < (int)lines.size()) {
-        // Will extend to next line - return a range that spans from start of buffer
-        // to next line's first word, ensuring it crosses both boundaries
-        start = Position(0, 0);  // Start of buffer
-        end = motionWordEndpoint(cursor, lines, true, EdgeType::WordEdge, isBigWord, false);
-      } else {
-        start = motionWordEndpoint(cursor, lines, false, EdgeType::GapEdge, isBigWord, false);
-        end = motionWordEndpoint(cursor, lines, true, EdgeType::WordEdge, isBigWord, false);
+      // If forward motion ended on whitespace, no word was found - operation invalid
+      if (isBlank(lines.get(end))) {
+        return RANGE_NOT_FOUND;
       }
     } else {
       // Cursor in word/symbol: check for trailing whitespace/newline
@@ -338,23 +329,185 @@ void VimMovementUtils::motionGe(Position &pos, const Lines &lines, bool big) {
 //   w/b: no shift needed (implementation already skips current position)
 //
 
+// =============================================================================
+// Paragraph motions - general interface (parallel to word motions)
+// =============================================================================
+//
+// LineEdgeType is DIRECTION-INDEPENDENT:
+//   BlockEdge: edge of current same-type block (blank or non-blank lines)
+//   GapEdge:   edge of blank line run (adjacent to current paragraph)
+//   NextEdge:  edge of next block (for }/{ motions - goes to blank line separator)
+//
+// Returns the line number where the motion lands.
+
+int VimMovementUtils::motionParagraphEdge(int cursorLine,
+                                          const Lines& lines,
+                                          bool forward,
+                                          LineEdgeType edgeType) {
+  int n = static_cast<int>(lines.size());
+  if (n == 0) return 0;
+
+  cursorLine = std::clamp(cursorLine, 0, n - 1);
+  bool cursorOnBlank = isBlankLineStr(lines[cursorLine]);
+
+  switch (edgeType) {
+    case LineEdgeType::BlockEdge: {
+      // Edge of current same-type block
+      if (forward) {
+        return paragraphEndLine(lines, cursorLine);
+      } else {
+        return paragraphStartLine(lines, cursorLine);
+      }
+    }
+
+    case LineEdgeType::GapEdge: {
+      // Edge of blank line run adjacent to current paragraph
+      if (forward) {
+        // Find end of trailing blank lines (after current paragraph)
+        int blockEnd = paragraphEndLine(lines, cursorLine);
+        if (cursorOnBlank) {
+          // Already on blanks - return end of blank run
+          return blockEnd;
+        }
+        // Skip past non-blank paragraph, find end of following blank run
+        if (blockEnd + 1 < n && isBlankLineStr(lines[blockEnd + 1])) {
+          return paragraphEndLine(lines, blockEnd + 1);
+        }
+        // No trailing blanks
+        return blockEnd;
+      } else {
+        // Find start of leading blank lines (before current paragraph)
+        int blockStart = paragraphStartLine(lines, cursorLine);
+        if (cursorOnBlank) {
+          // Already on blanks - return start of blank run
+          return blockStart;
+        }
+        // Skip past non-blank paragraph, find start of preceding blank run
+        if (blockStart > 0 && isBlankLineStr(lines[blockStart - 1])) {
+          return paragraphStartLine(lines, blockStart - 1);
+        }
+        // No leading blanks
+        return blockStart;
+      }
+    }
+
+    case LineEdgeType::NextEdge: {
+      // Edge of next block (}/{ motions go to blank line separator)
+      if (forward) {
+        // Skip current blank lines
+        int i = cursorLine;
+        while (i < n && isBlankLineStr(lines[i])) {
+          i++;
+        }
+        if (i >= n) {
+          // All blanks to end - return last line
+          return n - 1;
+        }
+        // Scan forward for next blank line
+        i++;
+        while (i < n && !isBlankLineStr(lines[i])) {
+          i++;
+        }
+        // Return blank line, or last line if not found
+        return (i < n) ? i : n - 1;
+      } else {
+        // Skip current blank lines
+        int i = cursorLine;
+        while (i > 0 && isBlankLineStr(lines[i])) {
+          i--;
+        }
+        // Scan backward for previous blank line
+        i--;
+        while (i >= 0 && !isBlankLineStr(lines[i])) {
+          i--;
+        }
+        // Return blank line, or line 0 if not found
+        return max(i, 0);
+      }
+    }
+  }
+
+  return cursorLine;  // Should not reach here
+}
+
+// =============================================================================
+// Paragraph text object range computation (parallel to textObjectRange)
+// =============================================================================
+//
+// From boundary-logic.md:
+//   dip: (Backward, BlockEdge) + (Forward, BlockEdge)
+//   dap: {
+//     Cursor on non-blank line:
+//       Has trailing blank lines: (Backward, BlockEdge) + (Forward, GapEdge)
+//       Else: (Backward, GapEdge) + (Forward, BlockEdge)
+//     Cursor on blank line:
+//       (Backward, BlockEdge) + (Forward, NextEdge)
+//   }
+
+LineRange VimMovementUtils::paragraphTextObjectRange(int cursorLine,
+                                                     const Lines& lines,
+                                                     bool isInner) {
+  int n = static_cast<int>(lines.size());
+  if (n == 0) return LINE_RANGE_NOT_FOUND;
+
+  cursorLine = std::clamp(cursorLine, 0, n - 1);
+  bool cursorOnBlank = isBlankLineStr(lines[cursorLine]);
+
+  if (isInner) {
+    // dip: (Backward, BlockEdge) + (Forward, BlockEdge)
+    int startLine = motionParagraphEdge(cursorLine, lines, false, LineEdgeType::BlockEdge);
+    int endLine = motionParagraphEdge(cursorLine, lines, true, LineEdgeType::BlockEdge);
+    return LineRange(startLine, endLine);
+  }
+
+  // dap: depends on cursor position and trailing blank lines
+  if (cursorOnBlank) {
+    // Cursor on blank line: (Backward, BlockEdge) + (Forward, NextEdge)
+    // Select blank run + following non-blank paragraph
+    int startLine = motionParagraphEdge(cursorLine, lines, false, LineEdgeType::BlockEdge);
+    int endLine = motionParagraphEdge(cursorLine, lines, true, LineEdgeType::NextEdge);
+
+    // NextEdge forward finds the blank line after the next paragraph,
+    // but we want to include the paragraph content, not stop at the blank.
+    // Actually for "ap on blank", we want blank lines + following paragraph.
+    // Let's use BlockEdge on the line after the blank run.
+    int blankEnd = motionParagraphEdge(cursorLine, lines, true, LineEdgeType::BlockEdge);
+    if (blankEnd + 1 < n) {
+      // There's a non-blank paragraph after - include it
+      endLine = motionParagraphEdge(blankEnd + 1, lines, true, LineEdgeType::BlockEdge);
+    } else {
+      // No paragraph after, just the blank lines
+      endLine = blankEnd;
+    }
+    return LineRange(startLine, endLine);
+  }
+
+  // Cursor on non-blank line
+  int blockEnd = motionParagraphEdge(cursorLine, lines, true, LineEdgeType::BlockEdge);
+
+  // Check for trailing blank lines
+  bool hasTrailingBlanks = (blockEnd + 1 < n && isBlankLineStr(lines[blockEnd + 1]));
+
+  if (hasTrailingBlanks) {
+    // Has trailing blank lines: (Backward, BlockEdge) + (Forward, GapEdge)
+    int startLine = motionParagraphEdge(cursorLine, lines, false, LineEdgeType::BlockEdge);
+    int endLine = motionParagraphEdge(cursorLine, lines, true, LineEdgeType::GapEdge);
+    return LineRange(startLine, endLine);
+  } else {
+    // No trailing blanks: (Backward, GapEdge) + (Forward, BlockEdge)
+    int startLine = motionParagraphEdge(cursorLine, lines, false, LineEdgeType::GapEdge);
+    int endLine = motionParagraphEdge(cursorLine, lines, true, LineEdgeType::BlockEdge);
+    return LineRange(startLine, endLine);
+  }
+}
+
 void VimMovementUtils::motionParagraphPrev(Position &pos,
                                    const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
-  pos.line = std::clamp(pos.line, 0, n - 1);
 
-  // If currently on blank lines, skip past them first
-  while (pos.line > 0 && isBlankLineStr(lines[pos.line])) {
-    pos.line--;
-  }
-  // Now scan backward for the previous blank line
-  int i = pos.line - 1;
-  while (i >= 0 && !isBlankLineStr(lines[i])) {
-    i--;
-  }
-  pos.line = max(i, 0);
+  pos.line = motionParagraphEdge(pos.line, lines, false, LineEdgeType::NextEdge);
   pos.setCol(0);
 }
 
@@ -363,32 +516,17 @@ void VimMovementUtils::motionParagraphNext(Position &pos,
   int n = (int)lines.size();
   if (n == 0)
     return;
-  pos.line = std::clamp(pos.line, 0, n - 1);
 
-  // If currently on blank lines, skip past them first
-  while (pos.line < n && isBlankLineStr(lines[pos.line])) {
-    pos.line++;
-  }
-  if (pos.line >= n) {
-    pos.line = n - 1;
-    pos.setCol(0);
-    return;
-  }
-  // Now scan forward for the next blank line
-  int i = pos.line + 1;
-  while (i < n && !isBlankLineStr(lines[i])) {
-    i++;
-  }
+  int resultLine = motionParagraphEdge(pos.line, lines, true, LineEdgeType::NextEdge);
+  pos.line = resultLine;
 
-  if (i < n) {
-    // Found a blank line - go to it at column 0
-    pos.line = i;
-    pos.setCol(0);
-  } else {
-    // No blank line found - go to last character of last line
-    pos.line = n - 1;
-    int lastCol = std::max(0, (int)lines[pos.line].size() - 1);
+  // Special case: if at last line and it's not blank, go to last char
+  // (This matches vim's behavior at EOF)
+  if (resultLine == n - 1 && !isBlankLineStr(lines[resultLine])) {
+    int lastCol = std::max(0, (int)lines[resultLine].size() - 1);
     pos.setCol(lastCol);
+  } else {
+    pos.setCol(0);
   }
 }
 

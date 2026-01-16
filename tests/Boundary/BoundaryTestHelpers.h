@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Boundary/Boundary.h"
 #include "Boundary/EditBoundary.h"
 #include "Editor/Position.h"
 #include "Utils/Lines.h"
@@ -147,6 +146,10 @@ std::string flattenLines(const Lines& lines);
 // Check if content outside edit region is unchanged
 bool boundaryRespected(const RandomBufferTest& test,
                        const Lines& result);
+
+// Check if specific boundary was crossed (for text objects that check both directions)
+bool leftBoundaryCrossed(const RandomBufferTest& test, const Lines& result);
+bool rightBoundaryCrossed(const RandomBufferTest& test, const Lines& result);
 
 // Predict if motion would cross for random buffer test
 bool predictCrossRandom(const MotionSpec& motion, const RandomBufferTest& test);

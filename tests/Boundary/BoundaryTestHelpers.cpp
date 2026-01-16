@@ -429,13 +429,13 @@ bool boundaryRespected(const RandomBufferTest& test, const Lines& result) {
 }
 
 // Check specifically if right boundary was crossed (for forward motions)
-static bool rightBoundaryCrossed(const RandomBufferTest& test, const Lines& result) {
+bool rightBoundaryCrossed(const RandomBufferTest& test, const Lines& result) {
     string resultFlat = flattenLines(result);
     return !suffixIntact(test.suffix, resultFlat);
 }
 
 // Check specifically if left boundary was crossed (for backward motions)
-static bool leftBoundaryCrossed(const RandomBufferTest& test, const Lines& result) {
+bool leftBoundaryCrossed(const RandomBufferTest& test, const Lines& result) {
     string resultFlat = flattenLines(result);
     return !prefixIntact(test.prefix, resultFlat);
 }

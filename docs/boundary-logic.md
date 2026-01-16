@@ -166,9 +166,81 @@ daW  {
 == Other commands (TODO in future)
 ```
 dd   (LineEdge)
-dip, dap
 dib, dab
 ```
+
+= Paragraph Boundary Logic (Linewise)
+
+Paragraphs are fundamentally different from words:
+- **Linewise** vs characterwise
+- **LineRange(startLine, endLine)** vs Range(Position, Position)
+- Boundary is always a **blank line** (no crossing tables needed)
+
+== Line Edge Types (Parallel to EdgeType)
+
+```
+LineEdgeType | Meaning
+BlockEdge    | Edge of current same-type block (blank or non-blank lines)
+GapEdge      | Edge of blank line run (adjacent to current paragraph)
+NextEdge     | Start/end of next different-type block
+```
+
+Mapping to word EdgeType:
+- BlockEdge ↔ WordEdge (edge of current unit)
+- GapEdge ↔ GapEdge (edge of gap)
+- NextEdge ↔ NextEdge (start/end of next unit)
+
+== Paragraph Motion Commands
+
+```
+Motion | Line Edge Type
+}      | (Forward, NextEdge)   - move to first blank line after paragraph
+{      | (Backward, NextEdge)  - move to first blank line before paragraph
+```
+
+Unlike word motions, paragraph motions only have two variants (no e/ge equivalents).
+
+== Paragraph Text Object Commands
+
+```
+Command |
+dip  (Backward, BlockEdge) + (Forward, BlockEdge)
+dap  {
+  Cursor on non-blank line:
+    Has trailing blank lines: (Backward, BlockEdge) + (Forward, GapEdge)
+    Else: (Backward, GapEdge) + (Forward, BlockEdge)
+  Cursor on blank line:
+    (Backward, BlockEdge) + (Forward, NextEdge)
+}
+```
+
+Note: The dap logic mirrors daw — same trailing/leading preference pattern.
+
+== Paragraph Boundary Crossing
+
+Unlike words (which need CharType × CharType crossing tables), paragraphs use simple line comparison:
+
+```
+Forward:   endpointLine >= bottomBoundaryLine
+Backward:  endpointLine <= topBoundaryLine
+Text obj:  range.startLine <= topBoundary || range.endLine >= bottomBoundary
+```
+
+No crossing tables needed — blank lines are the only boundary type.
+
+== API Parallel (Words vs Paragraphs)
+
+```
+Words (characterwise):
+  motionWordEndpoint(cursor, lines, forward, EdgeType, big, skipCurrent) -> Position
+  textObjectRange(cursor, lines, isInner, isBigWord) -> Range
+
+Paragraphs (linewise):
+  motionParagraphEdge(cursorLine, lines, forward, LineEdgeType) -> int
+  paragraphTextObjectRange(cursorLine, lines, isInner) -> LineRange
+```
+
+The pattern is the same: compute endpoint → compare to boundary → decide if safe.
 
 == Testing Considerations (BoundaryTest)
 

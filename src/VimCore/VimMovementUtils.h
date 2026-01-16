@@ -2,7 +2,9 @@
 #include <string>
 
 #include "EdgeType.h"
+#include "LineEdgeType.h"
 #include "Editor/Range.h"
+#include "Editor/LineRange.h"
 #include "Utils/Lines.h"
 
 struct VimMovementUtils {
@@ -90,11 +92,47 @@ struct VimMovementUtils {
                        const Lines &lines,
                        bool big);
 
-  // Paragraph motions
-  static void moveToParagraphStart(Position& pos, const Lines& lines);
-  static void moveToParagraphEnd(Position& pos, const Lines& lines);
+  // ==========================================================================
+  // Paragraph motions - general interface (parallel to word motions)
+  // ==========================================================================
+  //
+  // Unified paragraph motion based on LineEdgeType and direction.
+  // This is the fundamental building block; named motions forward to this.
+  //
+  // LineEdgeType is DIRECTION-INDEPENDENT (parallel to EdgeType):
+  //   BlockEdge: edge of current same-type block (blank or non-blank)
+  //   GapEdge:   edge of blank line run (adjacent to paragraph)
+  //   NextEdge:  start/end of next different-type block
+  //
+  // Mapping:
+  //   Forward  + NextEdge -> } (to first blank line after paragraph)
+  //   Backward + NextEdge -> { (to first blank line before paragraph)
+  //
+  // Returns the line number where the motion lands.
+  static int motionParagraphEdge(int cursorLine,
+                                 const Lines& lines,
+                                 bool forward,
+                                 LineEdgeType edgeType);
+
+  // Returns the line range for a paragraph text object.
+  // Caller can compare to boundaries:
+  //   range.startLine <= topBoundary  -> reaches top
+  //   range.endLine >= bottomBoundary -> reaches bottom
+  //
+  // From boundary-logic.md:
+  //   dip: (Backward, BlockEdge) + (Forward, BlockEdge)
+  //   dap: depends on cursor position and trailing blank lines
+  static LineRange paragraphTextObjectRange(int cursorLine,
+                                            const Lines& lines,
+                                            bool isInner);
+
+  // Named paragraph motion forwarders
   static void motionParagraphPrev(Position& pos, const Lines& lines);
   static void motionParagraphNext(Position& pos, const Lines& lines);
+
+  // Helpers for paragraph edges (used internally and by text objects)
+  static void moveToParagraphStart(Position& pos, const Lines& lines);
+  static void moveToParagraphEnd(Position& pos, const Lines& lines);
 
   // Sentence motions
   static void motionSentencePrev(Position& pos, const Lines& lines);

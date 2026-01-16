@@ -5,6 +5,7 @@
 #include "Editor/Mode.h"
 #include "Editor/Position.h"
 #include "Editor/Range.h"
+#include "Editor/LineRange.h"
 #include "Utils/Lines.h"
 
 // Edit operations that modify buffer content.

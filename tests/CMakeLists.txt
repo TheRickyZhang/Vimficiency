@@ -24,6 +24,7 @@ add_executable(vimficiency_tests
   Commands/EditTest.cpp
   Commands/MotionTest.cpp
   Commands/BoundaryMotions.cpp
+  Commands/ParagraphMotions.cpp
   EditPrimitives/DiffStateTest.cpp
   EditPrimitives/LevenshteinTest.cpp
   Misc/ConfigurationTest.cpp
@@ -34,8 +35,8 @@ add_executable(vimficiency_tests
   Optimizer/MovementOptimizerTest.cpp
   Boundary/OperatorMotions.cpp
   Boundary/OperatorTextObject.cpp
+  Boundary/OperatorParagraph.cpp
   Boundary/BoundaryTestHelpers.cpp
-  Boundary/BoundaryDebugTest.cpp
   Utils/NeovimOracle.cpp
   Utils/TestUtils.cpp
   Temp.cpp
