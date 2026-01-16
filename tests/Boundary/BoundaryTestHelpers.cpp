@@ -495,17 +495,19 @@ bool runRandomTest(NeovimOracle& oracle, const MotionSpec& motion,
     bool hasBoundary = motion.isForward ? test.hasRightBoundary : test.hasLeftBoundary;
     Position boundaryPos = motion.isForward ? test.rightBoundaryPos : test.leftBoundaryPos;
 
-    // Predict using checkMotionWordReaches
+    // Predict using motionWordEndpoint - caller compares to boundary
     bool predicted;
     if (!hasBoundary) {
         // No boundary to cross (at edge of buffer)
         predicted = false;
     } else {
         Position cursor(test.cursorLine, test.cursorCol);
-        predicted = VimMovementUtils::checkMotionWordReaches(
-          cursor, boundaryPos, test.lines,
+        Position endpoint = VimMovementUtils::motionWordEndpoint(
+          cursor, test.lines,
           info.isForward, info.edgeType, info.isWORD, info.skipCurrent
         );
+        // For forward motion, reaches if endpoint >= boundary; for backward, if endpoint <= boundary
+        predicted = motion.isForward ? (endpoint >= boundaryPos) : (endpoint <= boundaryPos);
     }
 
     // Get actual result from Neovim

@@ -8,7 +8,7 @@
 using namespace std;
 
 // =============================================================================
-// BoundaryTest - Tests for edit boundary crossing logic
+// OperatorMotions - Tests for operator + motion boundary crossing logic
 // =============================================================================
 
 // =============================================================================
@@ -67,7 +67,7 @@ TEST_F(ManualExampleTest, NewlineBoundary_AllSafe) {
 // Section 2: Neovim-Verified Tests
 // =============================================================================
 
-class BoundaryTest : public ::testing::Test {
+class OperatorMotionsTest : public ::testing::Test {
 protected:
     static void SetUpTestSuite() { oracle_ = make_unique<NeovimOracle>(); }
     static void TearDownTestSuite() { oracle_.reset(); }
@@ -76,7 +76,7 @@ protected:
     mt19937 rng{42};
 };
 
-unique_ptr<NeovimOracle> BoundaryTest::oracle_;
+unique_ptr<NeovimOracle> OperatorMotionsTest::oracle_;
 
 // -----------------------------------------------------------------------------
 // Random buffer stress test
@@ -86,7 +86,7 @@ unique_ptr<NeovimOracle> BoundaryTest::oracle_;
 // Tests ALL motions on each buffer (not just random selection).
 // Uses reserved boundary chars for easy verification.
 
-TEST_F(BoundaryTest, RandomBufferStress_SingleLine) {
+TEST_F(OperatorMotionsTest, RandomBufferStress_SingleLine) {
     // Keep relatively low for now
     const int NUM_BUFFERS = 10;
     const auto& motions = getAllMotions();
@@ -108,7 +108,7 @@ TEST_F(BoundaryTest, RandomBufferStress_SingleLine) {
     EXPECT_EQ(passed, total);
 }
 
-TEST_F(BoundaryTest, RandomBufferStress_MultiLine) {
+TEST_F(OperatorMotionsTest, RandomBufferStress_MultiLine) {
     const int NUM_BUFFERS = 10;
     const auto& motions = getAllMotions();
 
@@ -134,7 +134,7 @@ TEST_F(BoundaryTest, RandomBufferStress_MultiLine) {
 // Edge cases
 // -----------------------------------------------------------------------------
 
-TEST_F(BoundaryTest, EdgeCase_NewlineBoundary_AllSafe) {
+TEST_F(OperatorMotionsTest, EdgeCase_NewlineBoundary_AllSafe) {
     // When boundary is Newline (single-line, edit spans entire line), all safe
     for (CharType c : {CharType::Keyword, CharType::Whitespace, CharType::Symbol}) {
         EXPECT_FALSE(canEndCross(c, CharType::Newline));
@@ -147,7 +147,7 @@ TEST_F(BoundaryTest, EdgeCase_NewlineBoundary_AllSafe) {
     EXPECT_FALSE(canLineCross(CharType::Newline));
 }
 
-TEST_F(BoundaryTest, EdgeCase_SymmetryBetweenDirections) {
+TEST_F(OperatorMotionsTest, EdgeCase_SymmetryBetweenDirections) {
     // de and db use the same crossing function (canEndCross)
     // Same inputs -> same results
     for (CharType c : {CharType::Keyword, CharType::Whitespace, CharType::Symbol}) {

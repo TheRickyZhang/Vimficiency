@@ -2,10 +2,8 @@
 #include <string>
 
 #include "EdgeType.h"
-#include "Boundary/EditBoundary.h"
+#include "Editor/Range.h"
 #include "Utils/Lines.h"
-
-struct Position;
 
 struct VimMovementUtils {
   // Fundamental helpers for working with position
@@ -44,29 +42,36 @@ struct VimMovementUtils {
                          bool big,
                          bool skipCurrent = false);
 
-  // Check if motion reaches/crosses boundary position.
-  // Full buffer version - simulates motion and checks endpoint vs boundaryPos.
-  static bool checkMotionWordReaches(Position cursor,
-                                     const Position& boundaryPos,
+  // Returns the endpoint position of a word motion.
+  // Caller can compare to boundary: `endpoint >= boundary` (forward) or `endpoint <= boundary` (backward)
+  static Position motionWordEndpoint(Position cursor,
                                      const Lines &lines,
                                      bool forward,
                                      EdgeType edgeType,
                                      bool big,
                                      bool skipCurrent = false);
 
-  // Check if motion would cross boundary using crossing tables.
-  // Partial buffer version - uses CharType tables when only boundary type is known.
-  // editRegionEnd = last position INSIDE the edit region.
-  // boundaryCharType = CharType of char just OUTSIDE (or Newline for buffer edge).
-  static bool checkMotionWordReachesCharTableMatching(
+  // ==========================================================================
+  // Text object range computation
+  // ==========================================================================
+  //
+  // Text objects (iw, aw, iW, aW) select ranges in both directions from cursor.
+  // Returns the range that would be selected.
+  //
+  // Caller can compare to boundaries:
+  //   range.start <= leftBoundary  -> reaches left
+  //   range.end >= rightBoundary   -> reaches right
+  //
+  // From boundary-logic.md:
+  //   diw/diW: (Backward, WordEdge) + (Forward, WordEdge)
+  //   daw/daW: depends on cursor position and trailing whitespace
+
+  // Returns the range that the text object would select.
+  static Range textObjectRange(
       Position cursor,
-      const Position& editRegionEnd,
-      CharType boundaryCharType,
-      const Lines &lines,
-      bool forward,
-      EdgeType edgeType,
-      bool big,
-      bool skipCurrent = false);
+      const Lines& lines,
+      bool isInner,      // true for iw/iW, false for aw/aW
+      bool isBigWord);   // true for W variants
 
   // Named word motion forwarders
   static void motionW(Position &pos,

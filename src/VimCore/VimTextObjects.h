@@ -10,6 +10,10 @@
 // "Around" objects include surrounding delimiters/whitespace.
 //
 // These are used with operators: ciw, daw, yi", da(, etc.
+//
+// NOTE: For boundary prediction during A* search, use
+// VimMovementUtils::textObjectRange instead of computing full ranges.
+// See boundary-logic.md for the boundary checking model.
 
 namespace VimTextObjects {
 

@@ -22,12 +22,17 @@ TEST(BoundaryDebugTest, DeForwardWhitespaceAtEnd) {
     std::cerr << "Cursor: col 2 (',')" << std::endl;
     std::cerr << "Boundary: col 4 ('\\t')" << std::endl;
 
-    bool result = VimMovementUtils::checkMotionWordReaches(
-        cursor, boundary, lines,
+    // New API: motionWordEndpoint returns the endpoint, caller compares to boundary
+    Position endpoint = VimMovementUtils::motionWordEndpoint(
+        cursor, lines,
         info.isForward, info.edgeType, info.isWORD, info.skipCurrent);
 
+    // For forward motion, reaches boundary if endpoint >= boundary
+    bool result = (endpoint >= boundary);
+
     std::cerr << consume_debug_output() << std::endl;
-    std::cerr << "checkMotionWordReaches returned: " << (result ? "true (EXTENDS)" : "false (SAFE)") << std::endl;
+    std::cerr << "motionWordEndpoint returned: (" << endpoint.line << ", " << endpoint.col << ")" << std::endl;
+    std::cerr << "Reaches boundary: " << (result ? "true (EXTENDS)" : "false (SAFE)") << std::endl;
 
     // The motion should reach the boundary because:
     // - skipCurrent: step from col 2 to col 3 (space)

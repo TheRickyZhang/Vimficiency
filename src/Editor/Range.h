@@ -2,33 +2,50 @@
 
 #include "Position.h"
 
-// Range represents a region in the buffer for operator application.
-// Used by both motion-based operations (d$, cw) and text objects (ciw, dap).
+// Range represents a character-wise region in the buffer.
+// All ranges are inclusive (both start and end positions are included).
+// Used by motions (d$, cw) and text objects (ciw, dap).
 struct Range {
   Position start;
   Position end;
-  bool linewise = false;   // If true, operation affects whole lines (dd, dip)
-  bool inclusive = true;   // If true, end position is included (f vs t)
 
-  Range(Position s, Position e, bool lw = false, bool incl = true)
-    : start(s), end(e), linewise(lw), inclusive(incl) {}
+  Range() = default;
+  constexpr Range(Position s, Position e) : start(s), end(e) {}
 
-  // Ensure start <= end (normalize)
+  // Ensure start <= end
   void normalize() {
-    if (start.line > end.line || (start.line == end.line && start.col > end.col)) {
-      std::swap(start, end);
+    if (start > end) {
+      start.swap(end);
     }
   }
 
-  bool isEmpty() const {
-    return start.line == end.line && start.col == end.col && !inclusive;
+  bool isValid() const {
+    return start.isValid() && end.isValid();
   }
 };
 
-// Convert a motion result to a Range
-// motionInclusive: true for f/F/e/E motions, false for t/T/w/b motions
-inline Range rangeFromMotion(Position from, Position to, bool motionInclusive = false) {
-  Range r(from, to, false, motionInclusive);
-  r.normalize();
-  return r;
-}
+// Sentinel value for "no range" / "not found"
+constexpr Range RANGE_NOT_FOUND{POSITION_NOT_FOUND, POSITION_NOT_FOUND};
+
+// LineRange represents a line-wise region (for dd, dip, etc.)
+// All line ranges are inclusive (both startLine and endLine are included).
+struct LineRange {
+  int startLine;
+  int endLine;
+
+  LineRange() : startLine(-1), endLine(-1) {}
+  constexpr LineRange(int s, int e) : startLine(s), endLine(e) {}
+
+  void normalize() {
+    if (endLine < startLine) {
+      std::swap(startLine, endLine);
+    }
+  }
+
+  bool isValid() const {
+    return startLine >= 0;
+  }
+};
+
+// Sentinel value for "no line range" / "not found"
+constexpr LineRange LINE_RANGE_NOT_FOUND{-1, -1};

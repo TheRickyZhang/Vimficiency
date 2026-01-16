@@ -8,8 +8,11 @@ struct Position {
   int targetCol = 0;
 
   Position() = default;
-  Position(int l, int c) : line(l), col(c), targetCol(c) {}
-  Position(int l, int c, int tc) : line(l), col(c), targetCol(tc) {}
+  constexpr Position(int l, int c) : line(l), col(c), targetCol(c) {}
+  constexpr Position(int l, int c, int tc) : line(l), col(c), targetCol(tc) {}
+
+  // Validity check - positions are invalid when line < 0 (sentinel value)
+  bool isValid() const { return line >= 0; }
 
   // Use setCol() for horizontal movements - updates both col and targetCol.
   // Direct assignment to col (without updating targetCol) should only be used
@@ -45,7 +48,10 @@ struct Position {
 
   friend std::ostream& operator<<(std::ostream& os, const Position& pos) {
     os << "(" << pos.line << ", " << pos.col << ")";
-    if(pos.targetCol != pos.col) os << "[" << pos.targetCol << "]" << "\n";    
+    if(pos.targetCol != pos.col) os << "[" << pos.targetCol << "]" << "\n";
     return os;
   }
 };
+
+// Sentinel value for "no position" / "not found"
+constexpr Position POSITION_NOT_FOUND{-1, -1, -1};

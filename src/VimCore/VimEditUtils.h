@@ -34,11 +34,14 @@ inline void clampInsertCol(const std::string& line, int& col) {
 // Multi-line operations (require Lines& and Position&)
 // -----------------------------------------------------------------------------
 
-// Delete text in range. Modifies lines and updates pos.
-// For linewise: deletes entire lines, pos goes to first non-blank of new line
-// For charwise: deletes character range, pos goes to start of deleted range
+// Delete text in character range. Modifies lines and updates pos.
+// All ranges are inclusive (both start and end positions are deleted).
 // Mode determines position clamping: Normal clamps to last char, Insert allows after last char
 void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode = Mode::Normal);
+
+// Delete entire lines. Modifies lines and updates pos.
+// Pos goes to first non-blank of the line following the deleted range.
+void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos);
 
 // Insert text at position. Handles newlines (splits into multiple lines).
 // After insert, pos is at end of inserted text.

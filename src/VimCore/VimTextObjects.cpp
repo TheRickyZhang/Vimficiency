@@ -11,6 +11,9 @@ namespace VimTextObjects {
 // -----------------------------------------------------------------------------
 // Word text objects (iw, aw, iW, aW)
 // -----------------------------------------------------------------------------
+//
+// NOTE: For boundary prediction during A* search, use
+// VimMovementUtils::textObjectRange instead.
 
 Range innerWord(const vector<string>& lines, Position pos, bool bigWord) {
   int n = static_cast<int>(lines.size());
@@ -53,7 +56,7 @@ Range innerWord(const vector<string>& lines, Position pos, bool bigWord) {
     endCol++;
   }
 
-  return Range(Position(line, startCol), Position(line, endCol), false, true);
+  return Range(Position(line, startCol), Position(line, endCol));
 }
 
 Range aroundWord(const vector<string>& lines, Position pos, bool bigWord) {
@@ -74,7 +77,7 @@ Range aroundWord(const vector<string>& lines, Position pos, bool bigWord) {
 
   if (trailEnd > endCol) {
     // Found trailing whitespace
-    return Range(Position(line, startCol), Position(line, trailEnd), false, true);
+    return Range(Position(line, startCol), Position(line, trailEnd));
   }
 
   // No trailing whitespace, try leading whitespace
@@ -84,7 +87,7 @@ Range aroundWord(const vector<string>& lines, Position pos, bool bigWord) {
   }
 
   if (leadStart < startCol) {
-    return Range(Position(line, leadStart), Position(line, endCol), false, true);
+    return Range(Position(line, leadStart), Position(line, endCol));
   }
 
   // No surrounding whitespace, return inner
@@ -108,7 +111,7 @@ Range innerParagraph(const vector<string>& lines, Position pos) {
   // If on non-blank paragraph, return just the non-blank lines
   int endCol = lines[endLine].empty() ? 0 : static_cast<int>(lines[endLine].size()) - 1;
 
-  return Range(Position(startLine, 0), Position(endLine, endCol), true, true);
+  return Range(Position(startLine, 0), Position(endLine, endCol));
 }
 
 Range aroundParagraph(const vector<string>& lines, Position pos) {
@@ -137,7 +140,7 @@ Range aroundParagraph(const vector<string>& lines, Position pos) {
 
   int endCol = lines[endLine].empty() ? 0 : static_cast<int>(lines[endLine].size()) - 1;
 
-  return Range(Position(startLine, 0), Position(endLine, endCol), true, true);
+  return Range(Position(startLine, 0), Position(endLine, endCol));
 }
 
 // -----------------------------------------------------------------------------
@@ -198,11 +201,11 @@ Range innerQuote(const vector<string>& lines, Position pos, char quote) {
 
   // Inner: exclude the quotes themselves
   if (closeQuote - openQuote <= 1) {
-    // Empty quotes like ""
-    return Range(Position(line, openQuote + 1), Position(line, openQuote), false, false);
+    // Empty quotes like "" - return invalid/empty range
+    return RANGE_NOT_FOUND;
   }
 
-  return Range(Position(line, openQuote + 1), Position(line, closeQuote - 1), false, true);
+  return Range(Position(line, openQuote + 1), Position(line, closeQuote - 1));
 }
 
 Range aroundQuote(const vector<string>& lines, Position pos, char quote) {
@@ -218,7 +221,7 @@ Range aroundQuote(const vector<string>& lines, Position pos, char quote) {
   int startCol = inner.start.col > 0 ? inner.start.col - 1 : inner.start.col;
   int endCol = inner.end.col < static_cast<int>(ln.size()) - 1 ? inner.end.col + 1 : inner.end.col;
 
-  return Range(Position(line, startCol), Position(line, endCol), false, true);
+  return Range(Position(line, startCol), Position(line, endCol));
 }
 
 // -----------------------------------------------------------------------------
@@ -328,10 +331,10 @@ Range innerBracket(const vector<string>& lines, Position pos, char open, char cl
 
   // Handle empty brackets like ()
   if (start.line > end.line || (start.line == end.line && start.col > end.col)) {
-    return Range(closePos, closePos, false, false);  // Empty
+    return RANGE_NOT_FOUND;  // Empty
   }
 
-  return Range(start, end, false, true);
+  return Range(start, end);
 }
 
 Range aroundBracket(const vector<string>& lines, Position pos, char open, char close) {
@@ -341,7 +344,7 @@ Range aroundBracket(const vector<string>& lines, Position pos, char open, char c
     return Range(pos, pos);
   }
 
-  return Range(openPos, closePos, false, true);
+  return Range(openPos, closePos);
 }
 
 } // namespace VimTextObjects

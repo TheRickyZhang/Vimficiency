@@ -22,52 +22,59 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
   Range r = range;
   r.normalize();
 
-  if (r.linewise) {
-    assert(r.start.line >= 0 && r.start.line < static_cast<int>(lines.size()));
-    assert(r.end.line >= 0 && r.end.line < static_cast<int>(lines.size()));
+  // Character-wise deletion (all ranges are inclusive)
+  assert(r.start.line >= 0 && r.start.line < static_cast<int>(lines.size()));
+  assert(r.end.line >= 0 && r.end.line < static_cast<int>(lines.size()));
 
-    lines.erase(lines.begin() + r.start.line, lines.begin() + r.end.line + 1);
+  int endCol = r.end.col + 1;  // Inclusive: delete up to and including end.col
 
-    // Allow truly empty buffer - symmetric with empty string
-    pos.line = lines.empty() ? 0 : min(r.start.line, static_cast<int>(lines.size()) - 1);
-    pos.col = lines.empty() ? 0 : VimUtils::firstNonBlankColInLineStr(lines[pos.line]);
-
+  if (r.start.line == r.end.line) {
+    // Single line deletion
+    string& ln = lines[r.start.line];
+    assert(r.start.col >= 0 && r.start.col <= static_cast<int>(ln.size()));
+    endCol = min(endCol, static_cast<int>(ln.size()));
+    ln.erase(r.start.col, endCol - r.start.col);
   } else {
-    // Character-wise deletion
-    assert(r.start.line >= 0 && r.start.line < static_cast<int>(lines.size()));
-    assert(r.end.line >= 0 && r.end.line < static_cast<int>(lines.size()));
+    // Multi-line deletion: merge first and last line, delete lines in between
+    string& firstLn = lines[r.start.line];
+    const string& lastLn = lines[r.end.line];
 
-    int endCol = r.inclusive ? r.end.col + 1 : r.end.col;
+    assert(r.start.col >= 0 && r.start.col <= static_cast<int>(firstLn.size()));
+    endCol = min(endCol, static_cast<int>(lastLn.size()));
 
-    if (r.start.line == r.end.line) {
-      // Single line deletion
-      string& ln = lines[r.start.line];
-      assert(r.start.col >= 0 && r.start.col <= static_cast<int>(ln.size()));
-      endCol = min(endCol, static_cast<int>(ln.size()));
-      ln.erase(r.start.col, endCol - r.start.col);
-    } else {
-      // Multi-line deletion: merge first and last line, delete lines in between
-      string& firstLn = lines[r.start.line];
-      const string& lastLn = lines[r.end.line];
+    // Merge: keep first part of first line + last part of last line
+    firstLn = firstLn.substr(0, r.start.col) + lastLn.substr(endCol);
 
-      assert(r.start.col >= 0 && r.start.col <= static_cast<int>(firstLn.size()));
-      endCol = min(endCol, static_cast<int>(lastLn.size()));
-
-      // Merge: keep first part of first line + last part of last line
-      firstLn = firstLn.substr(0, r.start.col) + lastLn.substr(endCol);
-
-      // Delete lines from startLine+1 to endLine (inclusive)
-      lines.erase(lines.begin() + r.start.line + 1, lines.begin() + r.end.line + 1);
-    }
-
-    pos.line = r.start.line;
-    pos.col = r.start.col;
-    if (mode == Mode::Insert) {
-      clampInsertCol(lines[pos.line], pos.col);
-    } else {
-      clampCol(lines[pos.line], pos.col);
-    }
+    // Delete lines from startLine+1 to endLine (inclusive)
+    lines.erase(lines.begin() + r.start.line + 1, lines.begin() + r.end.line + 1);
   }
+
+  pos.line = r.start.line;
+  pos.col = r.start.col;
+  if (mode == Mode::Insert) {
+    clampInsertCol(lines[pos.line], pos.col);
+  } else {
+    clampCol(lines[pos.line], pos.col);
+  }
+}
+
+void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos) {
+  if (lines.empty()) {
+    pos = {0, 0};
+    return;
+  }
+
+  LineRange r = range;
+  r.normalize();
+
+  assert(r.startLine >= 0 && r.startLine < static_cast<int>(lines.size()));
+  assert(r.endLine >= 0 && r.endLine < static_cast<int>(lines.size()));
+
+  lines.erase(lines.begin() + r.startLine, lines.begin() + r.endLine + 1);
+
+  // Allow truly empty buffer - symmetric with empty string
+  pos.line = lines.empty() ? 0 : min(r.startLine, static_cast<int>(lines.size()) - 1);
+  pos.col = lines.empty() ? 0 : VimUtils::firstNonBlankColInLineStr(lines[pos.line]);
 }
 
 void insertText(Lines& lines, Position& pos, const string& text) {

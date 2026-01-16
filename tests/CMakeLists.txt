@@ -32,7 +32,8 @@ add_executable(vimficiency_tests
   Misc/HashCollisionTest.cpp
   Optimizer/EditOptimizerTests.cpp
   Optimizer/MovementOptimizerTest.cpp
-  Boundary/BoundaryTest.cpp
+  Boundary/OperatorMotions.cpp
+  Boundary/OperatorTextObject.cpp
   Boundary/BoundaryTestHelpers.cpp
   Boundary/BoundaryDebugTest.cpp
   Utils/NeovimOracle.cpp
