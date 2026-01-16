@@ -1,10 +1,14 @@
 === TEXT OBJECT TEST FAILURE ===
 Command: daw
-Input:
-,e.; e, :       k;o     "
-ntseirorst
-sroenit
 (
-rsoteinrsoe""
-(s ienrsterstors)
+aa
+a
+a
+(
+rintesrot
+)
+(  (  ))
+
+
+
 

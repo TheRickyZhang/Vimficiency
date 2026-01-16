@@ -22,4 +22,5 @@ struct Range {
   }
 };
 
-constexpr Range RANGE_NOT_FOUND(POSITION_NOT_FOUND, POSITION_NOT_FOUND);
+// Sentinel value for "range outside boundary" / "operation would cross boundary"
+constexpr Range RANGE_OUTSIDE_BOUNDARY(POSITION_OUTSIDE_BOUNDARY, POSITION_OUTSIDE_BOUNDARY);

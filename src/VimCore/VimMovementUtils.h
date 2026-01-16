@@ -1,11 +1,8 @@
 #include <vector>
 #include <string>
+#include <tuple>
 
 #include "EdgeType.h"
-#include "LineEdgeType.h"
-#include "SentenceEdgeType.h"
-#include "Editor/Range.h"
-#include "Editor/LineRange.h"
 #include "Utils/Lines.h"
 
 struct VimMovementUtils {
@@ -45,37 +42,6 @@ struct VimMovementUtils {
                          bool big,
                          bool skipCurrent = false);
 
-  // Returns the endpoint position of a word motion.
-  // Caller can compare to boundary: `endpoint >= boundary` (forward) or `endpoint <= boundary` (backward)
-  static Position motionWordEndpoint(Position cursor,
-                                     const Lines &lines,
-                                     bool forward,
-                                     EdgeType edgeType,
-                                     bool big,
-                                     bool skipCurrent = false);
-
-  // ==========================================================================
-  // Text object range computation
-  // ==========================================================================
-  //
-  // Text objects (iw, aw, iW, aW) select ranges in both directions from cursor.
-  // Returns the range that would be selected.
-  //
-  // Caller can compare to boundaries:
-  //   range.start <= leftBoundary  -> reaches left
-  //   range.end >= rightBoundary   -> reaches right
-  //
-  // From boundary-logic.md:
-  //   diw/diW: (Backward, WordEdge) + (Forward, WordEdge)
-  //   daw/daW: depends on cursor position and trailing whitespace
-
-  // Returns the range that the text object would select.
-  static Range textObjectRange(
-      Position cursor,
-      const Lines& lines,
-      bool isInner,      // true for iw/iW, false for aw/aW
-      bool isBigWord);   // true for W variants
-
   // Named word motion forwarders
   static void motionW(Position &pos,
                       const Lines &lines,
@@ -97,36 +63,6 @@ struct VimMovementUtils {
   // Paragraph motions - general interface (parallel to word motions)
   // ==========================================================================
   //
-  // Unified paragraph motion based on LineEdgeType and direction.
-  // This is the fundamental building block; named motions forward to this.
-  //
-  // LineEdgeType is DIRECTION-INDEPENDENT (parallel to EdgeType):
-  //   BlockEdge: edge of current same-type block (blank or non-blank)
-  //   GapEdge:   edge of blank line run (adjacent to paragraph)
-  //   NextEdge:  start/end of next different-type block
-  //
-  // Mapping:
-  //   Forward  + NextEdge -> } (to first blank line after paragraph)
-  //   Backward + NextEdge -> { (to first blank line before paragraph)
-  //
-  // Returns the line number where the motion lands.
-  static int motionParagraphEdge(int cursorLine,
-                                 const Lines& lines,
-                                 bool forward,
-                                 LineEdgeType edgeType);
-
-  // Returns the line range for a paragraph text object.
-  // Caller can compare to boundaries:
-  //   range.startLine <= topBoundary  -> reaches top
-  //   range.endLine >= bottomBoundary -> reaches bottom
-  //
-  // From boundary-logic.md:
-  //   dip: (Backward, BlockEdge) + (Forward, BlockEdge)
-  //   dap: depends on cursor position and trailing blank lines
-  static LineRange paragraphTextObjectRange(int cursorLine,
-                                            const Lines& lines,
-                                            bool isInner);
-
   // Named paragraph motion forwarders
   static void motionParagraphPrev(Position& pos, const Lines& lines);
   static void motionParagraphNext(Position& pos, const Lines& lines);
@@ -139,40 +75,6 @@ struct VimMovementUtils {
   // Sentence motions - general interface (parallel to word/paragraph motions)
   // ==========================================================================
   //
-  // Unified sentence motion based on SentenceEdgeType and direction.
-  // This is the fundamental building block; named motions forward to this.
-  //
-  // SentenceEdgeType is DIRECTION-INDEPENDENT (parallel to EdgeType):
-  //   SentenceEdge: edge of current sentence (punctuation + closers)
-  //   GapEdge:      edge of whitespace gap after sentence end
-  //   NextEdge:     start of next sentence
-  //
-  // Sentence boundaries are defined by:
-  //   1. Punctuation [.!?] + optional closers [)'"'\]] + whitespace/EOL
-  //   2. Blank lines (paragraph boundary = sentence boundary)
-  //
-  // Mapping:
-  //   Forward  + NextEdge -> ) (to start of next sentence)
-  //   Backward + NextEdge -> ( (to start of previous sentence)
-  //
-  // Returns the position where the motion lands.
-  static Position motionSentenceEdge(Position cursor,
-                                     const Lines& lines,
-                                     bool forward,
-                                     SentenceEdgeType edgeType);
-
-  // Returns the range for a sentence text object.
-  // Caller can compare to boundaries:
-  //   range.start <= leftBoundary  -> reaches left
-  //   range.end >= rightBoundary   -> reaches right
-  //
-  // From boundary-logic.md:
-  //   dis: (Backward, SentenceEdge) + (Forward, SentenceEdge)
-  //   das: depends on cursor position and trailing whitespace
-  static Range sentenceTextObjectRange(Position cursor,
-                                       const Lines& lines,
-                                       bool isInner);
-
   // Named sentence motion forwarders
   static void motionSentencePrev(Position& pos, const Lines& lines);
   static void motionSentenceNext(Position& pos, const Lines& lines);

@@ -1,7 +1,7 @@
 #include "BoundaryTestHelpers.h"
 
 #include "Boundary/BoundaryToMotionInfo.h"
-#include "VimCore/VimMovementUtils.h"
+#include "VimCore/VimEndpointUtils.h"
 
 #include <iostream>
 
@@ -502,7 +502,7 @@ bool runRandomTest(NeovimOracle& oracle, const MotionSpec& motion,
         predicted = false;
     } else {
         Position cursor(test.cursorLine, test.cursorCol);
-        Position endpoint = VimMovementUtils::motionWordEndpoint(
+        Position endpoint = VimEndpointUtils::motionWordEndpoint(
           cursor, test.lines,
           info.isForward, info.edgeType, info.isWORD, info.skipCurrent
         );

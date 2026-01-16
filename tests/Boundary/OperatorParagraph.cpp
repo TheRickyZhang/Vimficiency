@@ -17,7 +17,7 @@
 #include "Editor/LineRange.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
-#include "VimCore/VimMovementUtils.h"
+#include "VimCore/VimEndpointUtils.h"
 
 #include <random>
 
@@ -185,12 +185,12 @@ TEST_F(OperatorParagraphTest, InnerParagraph_RangeComputation) {
   Lines lines = {"first", "second", "", "third", "fourth"};
 
   // On non-blank line "second"
-  LineRange range = VimMovementUtils::paragraphTextObjectRange(1, lines, true);
+  LineRange range = VimEndpointUtils::paragraphTextObjectRange(1, lines, true);
   EXPECT_EQ(range.startLine, 0);  // Start of paragraph block
   EXPECT_EQ(range.endLine, 1);    // End of paragraph block
 
   // On blank line
-  LineRange rangeBlank = VimMovementUtils::paragraphTextObjectRange(2, lines, true);
+  LineRange rangeBlank = VimEndpointUtils::paragraphTextObjectRange(2, lines, true);
   EXPECT_EQ(rangeBlank.startLine, 2);  // Just the blank line
   EXPECT_EQ(rangeBlank.endLine, 2);
 }
@@ -199,7 +199,7 @@ TEST_F(OperatorParagraphTest, AroundParagraph_WithTrailingBlanks) {
   Lines lines = {"first", "second", "", "", "third"};
 
   // On non-blank line with trailing blanks
-  LineRange range = VimMovementUtils::paragraphTextObjectRange(0, lines, false);
+  LineRange range = VimEndpointUtils::paragraphTextObjectRange(0, lines, false);
   // Should include paragraph + trailing blanks
   EXPECT_EQ(range.startLine, 0);
   EXPECT_EQ(range.endLine, 3);  // Through blank lines
@@ -209,7 +209,7 @@ TEST_F(OperatorParagraphTest, AroundParagraph_NoTrailingBlanks) {
   Lines lines = {"", "first", "second"};
 
   // On non-blank line with no trailing blanks, should include leading blanks
-  LineRange range = VimMovementUtils::paragraphTextObjectRange(1, lines, false);
+  LineRange range = VimEndpointUtils::paragraphTextObjectRange(1, lines, false);
   EXPECT_EQ(range.startLine, 0);  // Include leading blank
   EXPECT_EQ(range.endLine, 2);
 }
@@ -218,7 +218,7 @@ TEST_F(OperatorParagraphTest, AroundParagraph_OnBlankLine) {
   Lines lines = {"first", "", "", "second", "third"};
 
   // On blank line, should include blank run + following paragraph
-  LineRange range = VimMovementUtils::paragraphTextObjectRange(1, lines, false);
+  LineRange range = VimEndpointUtils::paragraphTextObjectRange(1, lines, false);
   EXPECT_EQ(range.startLine, 1);  // Start of blank run
   EXPECT_EQ(range.endLine, 4);    // End of following paragraph
 }
@@ -246,7 +246,7 @@ TEST_F(OperatorParagraphTest, InnerParagraph_RandomBuffer) {
     bool bottomCrossed = bottomBoundaryCrossed(test, result.lines);
 
     // Compute our predicted range
-    LineRange range = VimMovementUtils::paragraphTextObjectRange(test.cursorLine, test.lines, true);
+    LineRange range = VimEndpointUtils::paragraphTextObjectRange(test.cursorLine, test.lines, true);
 
     // Check our prediction
     bool predictTopCross = test.hasTopBoundary && range.startLine <= test.topBoundaryLine;
@@ -292,7 +292,7 @@ TEST_F(OperatorParagraphTest, AroundParagraph_RandomBuffer) {
     bool bottomCrossed = bottomBoundaryCrossed(test, result.lines);
 
     // Compute our predicted range
-    LineRange range = VimMovementUtils::paragraphTextObjectRange(test.cursorLine, test.lines, false);
+    LineRange range = VimEndpointUtils::paragraphTextObjectRange(test.cursorLine, test.lines, false);
 
     // Check our prediction
     bool predictTopCross = test.hasTopBoundary && range.startLine <= test.topBoundaryLine;
@@ -326,7 +326,7 @@ TEST_F(OperatorParagraphTest, AroundParagraph_RandomBuffer) {
 TEST_F(OperatorParagraphTest, Dip_SingleLineBuffer) {
   Lines lines = {"only line"};
 
-  LineRange range = VimMovementUtils::paragraphTextObjectRange(0, lines, true);
+  LineRange range = VimEndpointUtils::paragraphTextObjectRange(0, lines, true);
   EXPECT_EQ(range.startLine, 0);
   EXPECT_EQ(range.endLine, 0);
 
@@ -339,7 +339,7 @@ TEST_F(OperatorParagraphTest, Dip_SingleLineBuffer) {
 TEST_F(OperatorParagraphTest, Dap_SingleLineBuffer) {
   Lines lines = {"only line"};
 
-  LineRange range = VimMovementUtils::paragraphTextObjectRange(0, lines, false);
+  LineRange range = VimEndpointUtils::paragraphTextObjectRange(0, lines, false);
   EXPECT_EQ(range.startLine, 0);
   EXPECT_EQ(range.endLine, 0);
 }
@@ -348,7 +348,7 @@ TEST_F(OperatorParagraphTest, Dip_AllBlankLines) {
   Lines lines = {"", "", ""};
 
   // On blank line, dip selects contiguous blank run
-  LineRange range = VimMovementUtils::paragraphTextObjectRange(1, lines, true);
+  LineRange range = VimEndpointUtils::paragraphTextObjectRange(1, lines, true);
   EXPECT_EQ(range.startLine, 0);
   EXPECT_EQ(range.endLine, 2);
 }
@@ -357,7 +357,7 @@ TEST_F(OperatorParagraphTest, Dap_AtBufferEnd) {
   Lines lines = {"content", "", "last paragraph"};
 
   // dap at end with no trailing blanks should include leading blanks
-  LineRange range = VimMovementUtils::paragraphTextObjectRange(2, lines, false);
+  LineRange range = VimEndpointUtils::paragraphTextObjectRange(2, lines, false);
   EXPECT_EQ(range.startLine, 1);  // Include leading blank
   EXPECT_EQ(range.endLine, 2);
 }
@@ -366,7 +366,7 @@ TEST_F(OperatorParagraphTest, Dap_AtBufferStart) {
   Lines lines = {"first paragraph", "", "content"};
 
   // dap at start with trailing blanks
-  LineRange range = VimMovementUtils::paragraphTextObjectRange(0, lines, false);
+  LineRange range = VimEndpointUtils::paragraphTextObjectRange(0, lines, false);
   EXPECT_EQ(range.startLine, 0);
   EXPECT_EQ(range.endLine, 1);  // Include trailing blank
 }

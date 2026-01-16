@@ -20,4 +20,5 @@ struct LineRange {
   }
 };
 
-constexpr LineRange LINE_RANGE_NOT_FOUND(-1, -1);
+// Sentinel value for "line range outside boundary"
+constexpr LineRange LINE_RANGE_OUTSIDE_BOUNDARY(-1, -1);

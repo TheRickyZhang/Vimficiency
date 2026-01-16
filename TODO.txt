@@ -5,7 +5,6 @@ Fix how EditBoundaries work
 Operator motions                                 *****
 Implement paragraph motions, separate motion processing (just directly edit) vs boundary check for edit processing (want to break early)
 
-// TODO Need to update POSITION_NOT_FOUND, RANGE_NOT_FOUND usage in VimUtils functions, because not returned correctly
 
 Think about how to detect ci", cib from CompositionOptimizer scope (can move and edit)
 ci": Simply goes forward linewise, so can always call if next edit region surrounded by "" (and doesn't contain any " inside?)

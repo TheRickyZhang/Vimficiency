@@ -5,7 +5,6 @@
 #include "MovementOptimizer.h"
 
 #include "State/CompositionState.h"
-#include "State/MotionState.h"
 #include "Keyboard/MotionToKeys.h"
 #include "Utils/Lines.h"
 #include "Utils/Debug.h"

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <utility>
 #include <vector>
 #include <string>
 
@@ -39,6 +40,24 @@ namespace VimUtils {
   int paragraphEndLine(const std::vector<std::string> &lines,
                               int lineIdx);
 
-  // TODO: add customizability for some settings, ie word definition, startofline. 
+  // Sentence helpers
+
+  // Check if char is a sentence closer: ) ] " '
+  bool isSentenceCloser(unsigned char c);
+
+  // Check if position is a sentence end: [.!?] + optional closers + (whitespace or EOL)
+  bool isSentenceEndAt(const std::vector<std::string> &lines, int line, int col);
+
+  // From sentence end, skip past closers and whitespace to find next sentence start.
+  // Returns (line, col) of next sentence start.
+  std::pair<int, int> skipToSentenceStart(const std::vector<std::string> &lines,
+                                          int line, int col);
+
+  // Find the start of the sentence containing position (line, col).
+  // Returns (line, col) of sentence start.
+  std::pair<int, int> findCurrentSentenceStart(const std::vector<std::string> &lines,
+                                               int line, int col);
+
+  // TODO: add customizability for some settings, ie word definition, startofline.
 }
 

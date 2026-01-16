@@ -53,5 +53,6 @@ struct Position {
   }
 };
 
-// Sentinel value for "no position" / "not found"
-constexpr Position POSITION_NOT_FOUND{-1, -1, -1};
+// Sentinel value for "position outside boundary" / "operation would cross boundary"
+// Used by endpoint functions when the computed position would exceed given bounds.
+constexpr Position POSITION_OUTSIDE_BOUNDARY{-1, -1, -1};

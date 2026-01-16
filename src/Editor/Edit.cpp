@@ -1,10 +1,12 @@
 #include "Edit.h"
 #include "VimCore/VimEditUtils.h"
+#include "VimCore/VimEndpointUtils.h"
 #include "VimCore/VimMovementUtils.h"
 #include "VimCore/VimOptions.h"
-#include "VimCore/VimTextObjects.h"
+#include "VimCore/VimTextObjectsDeprecated.h"
 #include "VimCore/VimUtils.h"
 #include "Utils/Debug.h"
+#include "Utils/Lines.h"
 
 #include <cassert>
 #include <stdexcept>
@@ -667,32 +669,30 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
 
       Range r(pos, pos);  // Default: empty range
 
-      // Word objects
-      if (obj == 'w') {
-        r = inner ? VimTextObjects::innerWord(lines, pos, false)
-                  : VimTextObjects::aroundWord(lines, pos, false);
-      } else if (obj == 'W') {
-        r = inner ? VimTextObjects::innerWord(lines, pos, true)
-                  : VimTextObjects::aroundWord(lines, pos, true);
+      // Word objects - use VimEndpointUtils
+      if (obj == 'w' || obj == 'W') {
+        Lines linesWrapper(lines.begin(), lines.end());
+        bool bigWord = (obj == 'W');
+        r = VimEndpointUtils::textObjectRange(pos, linesWrapper, inner, bigWord);
       }
       // Quote objects
       else if (obj == '"' || obj == '\'' || obj == '`') {
-        r = inner ? VimTextObjects::innerQuote(lines, pos, obj)
-                  : VimTextObjects::aroundQuote(lines, pos, obj);
+        r = inner ? VimTextObjectsDeprecated::innerQuote(lines, pos, obj)
+                  : VimTextObjectsDeprecated::aroundQuote(lines, pos, obj);
       }
       // Bracket objects - handle both opening and closing chars
       else if (obj == '(' || obj == ')' || obj == 'b') {
-        r = inner ? VimTextObjects::innerBracket(lines, pos, '(', ')')
-                  : VimTextObjects::aroundBracket(lines, pos, '(', ')');
+        r = inner ? VimTextObjectsDeprecated::innerBracket(lines, pos, '(', ')')
+                  : VimTextObjectsDeprecated::aroundBracket(lines, pos, '(', ')');
       } else if (obj == '{' || obj == '}' || obj == 'B') {
-        r = inner ? VimTextObjects::innerBracket(lines, pos, '{', '}')
-                  : VimTextObjects::aroundBracket(lines, pos, '{', '}');
+        r = inner ? VimTextObjectsDeprecated::innerBracket(lines, pos, '{', '}')
+                  : VimTextObjectsDeprecated::aroundBracket(lines, pos, '{', '}');
       } else if (obj == '[' || obj == ']') {
-        r = inner ? VimTextObjects::innerBracket(lines, pos, '[', ']')
-                  : VimTextObjects::aroundBracket(lines, pos, '[', ']');
+        r = inner ? VimTextObjectsDeprecated::innerBracket(lines, pos, '[', ']')
+                  : VimTextObjectsDeprecated::aroundBracket(lines, pos, '[', ']');
       } else if (obj == '<' || obj == '>') {
-        r = inner ? VimTextObjects::innerBracket(lines, pos, '<', '>')
-                  : VimTextObjects::aroundBracket(lines, pos, '<', '>');
+        r = inner ? VimTextObjectsDeprecated::innerBracket(lines, pos, '<', '>')
+                  : VimTextObjectsDeprecated::aroundBracket(lines, pos, '<', '>');
       } else {
         throw runtime_error("Unknown text object: " + string(1, obj));
       }

@@ -55,8 +55,9 @@ For Lua context, see `lua/CLAUDE.md`.
 
 ## Deep Dive References
 - @docs/optimizer-architecture.md - A* heuristics, MotionOptimizer, EditOptimizer, CompositionOptimizer
-- @docs/vim-utils-principles.md - State validation, empty representation handling
+- @docs/vim-utils-principles.md - State validation, empty handling, MovementUtils vs EndpointUtils
 - @docs/testing.md - NeovimOracle, test file conventions, debug printing
 - @docs/x-macros.md - Key definitions, supported commands, sequence parsing
 - @docs/boundary-logic.md - Word motion and boundary crossing logic
 - @docs/session-invocation.txt - How vimficiency optimizer sessions are called and stored
+- @docs/utils.md - General utilities (QuoteFlags, BracketFlags, Lines, StringUtils)

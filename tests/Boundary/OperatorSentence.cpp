@@ -15,7 +15,7 @@
 #include "Editor/Range.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
-#include "VimCore/VimMovementUtils.h"
+#include "VimCore/VimEndpointUtils.h"
 
 #include <random>
 
@@ -178,7 +178,7 @@ TEST_F(OperatorSentenceTest, InnerSentence_RangeComputation) {
   Lines lines = {"First sentence.  Second sentence."};
 
   // On "Second"
-  Range range = VimMovementUtils::sentenceTextObjectRange(Position(0, 17), lines, true);
+  Range range = VimEndpointUtils::sentenceTextObjectRange(Position(0, 17), lines, true);
 
   // Should select "Second sentence."
   EXPECT_EQ(range.start.line, 0);
@@ -190,7 +190,7 @@ TEST_F(OperatorSentenceTest, AroundSentence_WithTrailingWhitespace) {
   Lines lines = {"First.  Second."};
 
   // On "First" - has trailing whitespace
-  Range range = VimMovementUtils::sentenceTextObjectRange(Position(0, 0), lines, false);
+  Range range = VimEndpointUtils::sentenceTextObjectRange(Position(0, 0), lines, false);
 
   // Should include trailing whitespace
   EXPECT_EQ(range.start.line, 0);
@@ -202,9 +202,9 @@ TEST_F(OperatorSentenceTest, InnerSentence_OnBlankLine) {
   Lines lines = {"First.", "", "Second."};
 
   // dis on blank line - behavior depends on implementation
-  Range range = VimMovementUtils::sentenceTextObjectRange(Position(1, 0), lines, true);
+  Range range = VimEndpointUtils::sentenceTextObjectRange(Position(1, 0), lines, true);
 
-  // Range should be valid (not RANGE_NOT_FOUND)
+  // Range should be valid (not RANGE_OUTSIDE_BOUNDARY)
   EXPECT_GE(range.start.line, 0);
 }
 
@@ -231,7 +231,7 @@ TEST_F(OperatorSentenceTest, InnerSentence_RandomBuffer) {
     bool rightCrossed = rightMarkerCrossed(test, result.lines);
 
     // Compute our predicted range
-    Range range = VimMovementUtils::sentenceTextObjectRange(
+    Range range = VimEndpointUtils::sentenceTextObjectRange(
         Position(test.cursorLine, test.cursorCol), test.lines, true);
 
     // For sentence boundary prediction, we'd need to compare range to marker positions
@@ -288,7 +288,7 @@ TEST_F(OperatorSentenceTest, AroundSentence_RandomBuffer) {
 TEST_F(OperatorSentenceTest, Dis_SingleSentence) {
   Lines lines = {"Only sentence."};
 
-  Range range = VimMovementUtils::sentenceTextObjectRange(Position(0, 5), lines, true);
+  Range range = VimEndpointUtils::sentenceTextObjectRange(Position(0, 5), lines, true);
 
   // Should select entire line content
   EXPECT_EQ(range.start.line, 0);
@@ -299,7 +299,7 @@ TEST_F(OperatorSentenceTest, Dis_SingleSentence) {
 TEST_F(OperatorSentenceTest, Das_SingleSentence) {
   Lines lines = {"Only sentence."};
 
-  Range range = VimMovementUtils::sentenceTextObjectRange(Position(0, 5), lines, false);
+  Range range = VimEndpointUtils::sentenceTextObjectRange(Position(0, 5), lines, false);
 
   // Should select entire line content (no surrounding whitespace to include)
   EXPECT_EQ(range.start.line, 0);
@@ -311,7 +311,7 @@ TEST_F(OperatorSentenceTest, Dis_WithClosers) {
   Lines lines = {"\"Hello!\" she said."};
 
   // dis at "Hello" - sentence ends at !"
-  Range range = VimMovementUtils::sentenceTextObjectRange(Position(0, 1), lines, true);
+  Range range = VimEndpointUtils::sentenceTextObjectRange(Position(0, 1), lines, true);
 
   // Range should include up to the closer
   EXPECT_EQ(range.start.line, 0);
@@ -322,7 +322,7 @@ TEST_F(OperatorSentenceTest, Dis_AcrossBlankLines) {
   Lines lines = {"First sentence.", "", "Second sentence."};
 
   // dis on second sentence
-  Range range = VimMovementUtils::sentenceTextObjectRange(Position(2, 0), lines, true);
+  Range range = VimEndpointUtils::sentenceTextObjectRange(Position(2, 0), lines, true);
 
   EXPECT_EQ(range.start.line, 2);
   EXPECT_EQ(range.start.col, 0);
@@ -333,7 +333,7 @@ TEST_F(OperatorSentenceTest, Das_IncludesTrailingSpace) {
   Lines lines = {"First.  Second."};
 
   // das on "First" should include trailing spaces
-  Range range = VimMovementUtils::sentenceTextObjectRange(Position(0, 0), lines, false);
+  Range range = VimEndpointUtils::sentenceTextObjectRange(Position(0, 0), lines, false);
 
   EXPECT_EQ(range.start.line, 0);
   EXPECT_EQ(range.start.col, 0);

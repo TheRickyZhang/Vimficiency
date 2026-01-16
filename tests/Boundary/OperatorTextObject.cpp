@@ -13,7 +13,7 @@
 #include <gtest/gtest.h>
 
 #include "BoundaryTestHelpers.h"
-#include "VimCore/VimMovementUtils.h"
+#include "VimCore/VimEndpointUtils.h"
 
 #include <random>
 
@@ -192,7 +192,7 @@ bool runTextObjectTest(NeovimOracle& oracle, const TextObjectSpec& spec,
 
     // Predict using textObjectRange - caller compares to boundaries
     Position cursor(test.cursorLine, test.cursorCol);
-    Range predictedRange = VimMovementUtils::textObjectRange(
+    Range predictedRange = VimEndpointUtils::textObjectRange(
         cursor,
         test.lines,
         spec.isInner,
@@ -344,7 +344,7 @@ TEST_F(OperatorTextObjectTest, TextObjectRange_InnerWord) {
     Position leftBoundary(0, 3);   // space before "def"
     Position rightBoundary(0, 7);  // space after "def"
 
-    Range result = VimMovementUtils::textObjectRange(cursor, lines, true, false);
+    Range result = VimEndpointUtils::textObjectRange(cursor, lines, true, false);
 
     // diw should NOT reach the boundaries (only selects "def")
     EXPECT_FALSE(result.start <= leftBoundary);
@@ -358,7 +358,7 @@ TEST_F(OperatorTextObjectTest, TextObjectRange_AroundWord) {
     Position leftBoundary(0, 2);   // 'c' in "abc"
     Position rightBoundary(0, 8);  // 'g' in "ghi"
 
-    Range result = VimMovementUtils::textObjectRange(cursor, lines, false, false);
+    Range result = VimEndpointUtils::textObjectRange(cursor, lines, false, false);
 
     // daw should NOT reach the boundaries (selects "def " with trailing space)
     EXPECT_FALSE(result.start <= leftBoundary);
@@ -372,7 +372,7 @@ TEST_F(OperatorTextObjectTest, TextObjectRange_CrossesBoundary) {
     Position leftBoundary(0, 0);   // 'a' - adjacent to word
     Position rightBoundary(0, 2);  // 'c' - adjacent to word
 
-    Range result = VimMovementUtils::textObjectRange(cursor, lines, true, false);
+    Range result = VimEndpointUtils::textObjectRange(cursor, lines, true, false);
 
     // diw on "abc" should reach both boundaries (selects entire word)
     EXPECT_TRUE(result.start <= leftBoundary);

@@ -1,149 +1,11 @@
-#include "VimTextObjects.h"
-#include "VimUtils.h"
-#include "VimMovementUtils.h"
-#include "Utils/Lines.h"
+#include "VimTextObjectsDeprecated.h"
 
 #include <algorithm>
+#include <utility>
 
 using namespace std;
-using namespace VimUtils;
 
-namespace VimTextObjects {
-
-// -----------------------------------------------------------------------------
-// Word text objects (iw, aw, iW, aW)
-// -----------------------------------------------------------------------------
-//
-// NOTE: For boundary prediction during A* search, use
-// VimMovementUtils::textObjectRange instead.
-
-Range innerWord(const vector<string>& lines, Position pos, bool bigWord) {
-  int n = static_cast<int>(lines.size());
-  if (n == 0) return Range(pos, pos);
-
-  int line = clamp(pos.line, 0, n - 1);
-  const string& ln = lines[line];
-  int len = static_cast<int>(ln.size());
-  if (len == 0) return Range(pos, pos);
-
-  int col = clamp(pos.col, 0, len - 1);
-
-  auto isWordChar = [bigWord](unsigned char c) {
-    return bigWord ? isBigWordChar(c) : isSmallWordChar(c);
-  };
-
-  unsigned char c = static_cast<unsigned char>(ln[col]);
-
-  // Determine what kind of "word" we're in
-  bool onWord = isWordChar(c);
-  bool onBlank = isBlank(c);
-
-  // Find start of current word/blank/symbol run
-  int startCol = col;
-  while (startCol > 0) {
-    unsigned char prev = static_cast<unsigned char>(ln[startCol - 1]);
-    if (onBlank && !isBlank(prev)) break;
-    if (!onBlank && onWord && !isWordChar(prev)) break;
-    if (!onBlank && !onWord && (isWordChar(prev) || isBlank(prev))) break;
-    startCol--;
-  }
-
-  // Find end of current word/blank/symbol run
-  int endCol = col;
-  while (endCol < len - 1) {
-    unsigned char next = static_cast<unsigned char>(ln[endCol + 1]);
-    if (onBlank && !isBlank(next)) break;
-    if (!onBlank && onWord && !isWordChar(next)) break;
-    if (!onBlank && !onWord && (isWordChar(next) || isBlank(next))) break;
-    endCol++;
-  }
-
-  return Range(Position(line, startCol), Position(line, endCol));
-}
-
-Range aroundWord(const vector<string>& lines, Position pos, bool bigWord) {
-  Range inner = innerWord(lines, pos, bigWord);
-
-  int line = inner.start.line;
-  const string& ln = lines[line];
-  int len = static_cast<int>(ln.size());
-
-  int startCol = inner.start.col;
-  int endCol = inner.end.col;
-
-  // Try to include trailing whitespace first
-  int trailEnd = endCol;
-  while (trailEnd + 1 < len && isBlank(static_cast<unsigned char>(ln[trailEnd + 1]))) {
-    trailEnd++;
-  }
-
-  if (trailEnd > endCol) {
-    // Found trailing whitespace
-    return Range(Position(line, startCol), Position(line, trailEnd));
-  }
-
-  // No trailing whitespace, try leading whitespace
-  int leadStart = startCol;
-  while (leadStart > 0 && isBlank(static_cast<unsigned char>(ln[leadStart - 1]))) {
-    leadStart--;
-  }
-
-  if (leadStart < startCol) {
-    return Range(Position(line, leadStart), Position(line, endCol));
-  }
-
-  // No surrounding whitespace, return inner
-  return inner;
-}
-
-// -----------------------------------------------------------------------------
-// Paragraph text objects (ip, ap)
-// -----------------------------------------------------------------------------
-
-Range innerParagraph(const vector<string>& lines, Position pos) {
-  int n = static_cast<int>(lines.size());
-  if (n == 0) return Range(pos, pos);
-
-  int line = clamp(pos.line, 0, n - 1);
-
-  int startLine = paragraphStartLine(lines, line);
-  int endLine = paragraphEndLine(lines, line);
-
-  // For inner paragraph, if on blank lines, just return blank line range
-  // If on non-blank paragraph, return just the non-blank lines
-  int endCol = lines[endLine].empty() ? 0 : static_cast<int>(lines[endLine].size()) - 1;
-
-  return Range(Position(startLine, 0), Position(endLine, endCol));
-}
-
-Range aroundParagraph(const vector<string>& lines, Position pos) {
-  int n = static_cast<int>(lines.size());
-  if (n == 0) return Range(pos, pos);
-
-  int line = clamp(pos.line, 0, n - 1);
-
-  int startLine = paragraphStartLine(lines, line);
-  int endLine = paragraphEndLine(lines, line);
-
-  bool onBlank = isBlankLineStr(lines[line]);
-
-  if (!onBlank) {
-    // Include trailing blank lines
-    while (endLine + 1 < n && isBlankLineStr(lines[endLine + 1])) {
-      endLine++;
-    }
-  } else {
-    // On blank lines: include following non-blank paragraph
-    if (endLine + 1 < n) {
-      int nextEnd = paragraphEndLine(lines, endLine + 1);
-      endLine = nextEnd;
-    }
-  }
-
-  int endCol = lines[endLine].empty() ? 0 : static_cast<int>(lines[endLine].size()) - 1;
-
-  return Range(Position(startLine, 0), Position(endLine, endCol));
-}
+namespace VimTextObjectsDeprecated {
 
 // -----------------------------------------------------------------------------
 // Quote text objects (i", a", i', a')
@@ -204,7 +66,7 @@ Range innerQuote(const vector<string>& lines, Position pos, char quote) {
   // Inner: exclude the quotes themselves
   if (closeQuote - openQuote <= 1) {
     // Empty quotes like "" - return invalid/empty range
-    return RANGE_NOT_FOUND;
+    return RANGE_OUTSIDE_BOUNDARY;
   }
 
   return Range(Position(line, openQuote + 1), Position(line, closeQuote - 1));
@@ -333,7 +195,7 @@ Range innerBracket(const vector<string>& lines, Position pos, char open, char cl
 
   // Handle empty brackets like ()
   if (start.line > end.line || (start.line == end.line && start.col > end.col)) {
-    return RANGE_NOT_FOUND;  // Empty
+    return RANGE_OUTSIDE_BOUNDARY;  // Empty
   }
 
   return Range(start, end);
@@ -349,21 +211,4 @@ Range aroundBracket(const vector<string>& lines, Position pos, char open, char c
   return Range(openPos, closePos);
 }
 
-// -----------------------------------------------------------------------------
-// Sentence text objects (is, as)
-// -----------------------------------------------------------------------------
-//
-// Uses VimMovementUtils::sentenceTextObjectRange() which implements the
-// EdgeType-based boundary logic parallel to word and paragraph text objects.
-
-Range innerSentence(const vector<string>& lines, Position pos) {
-  Lines linesWrapper(lines.begin(), lines.end());
-  return VimMovementUtils::sentenceTextObjectRange(pos, linesWrapper, true);
-}
-
-Range aroundSentence(const vector<string>& lines, Position pos) {
-  Lines linesWrapper(lines.begin(), lines.end());
-  return VimMovementUtils::sentenceTextObjectRange(pos, linesWrapper, false);
-}
-
-} // namespace VimTextObjects
+} // namespace VimTextObjectsDeprecated
