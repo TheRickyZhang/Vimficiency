@@ -1,4 +1,4 @@
-// tests/Boundary/OperatorTextObject.cpp
+// tests/Operator/TextObjects.cpp
 //
 // Tests for operator + text object boundary crossing logic.
 // Text objects select a range from cursor position in both directions.
@@ -7,7 +7,7 @@
 
 #include <gtest/gtest.h>
 
-#include "BoundaryTestHelpers.h"
+#include "TestHelpers.h"
 #include "VimCore/VimEndpointUtils.h"
 
 #include <random>
@@ -15,10 +15,10 @@
 using namespace std;
 
 // =============================================================================
-// OperatorTextObject - Tests for text object boundary crossing
+// TextObjectsTest - Tests for text object boundary crossing
 // =============================================================================
 
-class OperatorTextObjectTest : public ::testing::Test {
+class TextObjectsTest : public ::testing::Test {
 protected:
   static void SetUpTestSuite() { oracle_ = make_unique<NeovimOracle>(); }
   static void TearDownTestSuite() { oracle_.reset(); }
@@ -27,7 +27,7 @@ protected:
   mt19937 rng{42};
 };
 
-unique_ptr<NeovimOracle> OperatorTextObjectTest::oracle_;
+unique_ptr<NeovimOracle> TextObjectsTest::oracle_;
 
 // =============================================================================
 // Text Object Test Infrastructure
@@ -201,7 +201,7 @@ bool runTextObjectTest(NeovimOracle& oracle, const TextObjectSpec& spec,
 // Section 1: Random Buffer Stress Tests
 // =============================================================================
 
-TEST_F(OperatorTextObjectTest, RandomBufferStress_SingleLine) {
+TEST_F(TextObjectsTest, RandomBufferStress_SingleLine) {
   const int NUM_BUFFERS = 10;
   const auto& textObjects = getAllTextObjects();
 
@@ -223,7 +223,7 @@ TEST_F(OperatorTextObjectTest, RandomBufferStress_SingleLine) {
   EXPECT_EQ(passed, total);
 }
 
-TEST_F(OperatorTextObjectTest, RandomBufferStress_MultiLine) {
+TEST_F(TextObjectsTest, RandomBufferStress_MultiLine) {
   const int NUM_BUFFERS = 10;
   const auto& textObjects = getAllTextObjects();
 
@@ -250,49 +250,49 @@ TEST_F(OperatorTextObjectTest, RandomBufferStress_MultiLine) {
 // Section 2: Manual Edge Case Tests
 // =============================================================================
 
-TEST_F(OperatorTextObjectTest, Diw_InMiddleOfWord) {
+TEST_F(TextObjectsTest, Diw_InMiddleOfWord) {
   Lines lines = {"hello world"};
   auto result = oracle_->simulate(lines, 0, 2, "diw");  // Cursor on 'l' in hello
   // Should delete "hello", leaving " world"
   EXPECT_EQ(result.lines[0], " world");
 }
 
-TEST_F(OperatorTextObjectTest, Diw_OnWhitespace) {
+TEST_F(TextObjectsTest, Diw_OnWhitespace) {
   Lines lines = {"hello   world"};
   auto result = oracle_->simulate(lines, 0, 6, "diw");  // Cursor in whitespace
   // Should delete the whitespace
   EXPECT_EQ(result.lines[0], "helloworld");
 }
 
-TEST_F(OperatorTextObjectTest, Daw_WithTrailingWhitespace) {
+TEST_F(TextObjectsTest, Daw_WithTrailingWhitespace) {
   Lines lines = {"hello   world"};
   auto result = oracle_->simulate(lines, 0, 0, "daw");  // Cursor on 'h'
   // Should delete "hello   " (word + trailing whitespace)
   EXPECT_EQ(result.lines[0], "world");
 }
 
-TEST_F(OperatorTextObjectTest, Daw_WithNoTrailingWhitespace) {
+TEST_F(TextObjectsTest, Daw_WithNoTrailingWhitespace) {
   Lines lines = {"hello"};
   auto result = oracle_->simulate(lines, 0, 0, "daw");  // Cursor on 'h', no trailing
   // Should delete entire word
   EXPECT_EQ(result.lines[0], "");
 }
 
-TEST_F(OperatorTextObjectTest, Daw_LastWordWithLeadingWhitespace) {
+TEST_F(TextObjectsTest, Daw_LastWordWithLeadingWhitespace) {
   Lines lines = {"hello world"};
   auto result = oracle_->simulate(lines, 0, 6, "daw");  // Cursor on 'w' in world
   // Should delete " world" (leading whitespace + word, since no trailing)
   EXPECT_EQ(result.lines[0], "hello");
 }
 
-TEST_F(OperatorTextObjectTest, DiW_OnSymbol) {
+TEST_F(TextObjectsTest, DiW_OnSymbol) {
   Lines lines = {"hello... world"};  // Note: space before world
   auto result = oracle_->simulate(lines, 0, 0, "diW");  // Cursor on 'h'
   // WORD treats "hello..." as one word (no whitespace in it)
   EXPECT_EQ(result.lines[0], " world");
 }
 
-TEST_F(OperatorTextObjectTest, DaW_WithTrailingWhitespace) {
+TEST_F(TextObjectsTest, DaW_WithTrailingWhitespace) {
   Lines lines = {"hello...  world"};
   auto result = oracle_->simulate(lines, 0, 0, "daW");  // Cursor on 'h'
   // Should delete "hello...  "
@@ -303,7 +303,7 @@ TEST_F(OperatorTextObjectTest, DaW_WithTrailingWhitespace) {
 // Section 3: Boundary Checking Against VimEndpointUtils
 // =============================================================================
 
-TEST_F(OperatorTextObjectTest, TextObjectRange_InnerWord) {
+TEST_F(TextObjectsTest, TextObjectRange_InnerWord) {
   // Test that textObjectRange correctly computes range for diw
   Lines lines = {"abc def ghi"};
   Position cursor(0, 4);           // On 'd' in "def"
@@ -317,7 +317,7 @@ TEST_F(OperatorTextObjectTest, TextObjectRange_InnerWord) {
   EXPECT_NE(result.start, POSITION_OUTSIDE_BOUNDARY);
 }
 
-TEST_F(OperatorTextObjectTest, TextObjectRange_AroundWord) {
+TEST_F(TextObjectsTest, TextObjectRange_AroundWord) {
   // Test that textObjectRange correctly computes range for daw
   Lines lines = {"abc def ghi"};
   Position cursor(0, 4);           // On 'd' in "def"
@@ -331,7 +331,7 @@ TEST_F(OperatorTextObjectTest, TextObjectRange_AroundWord) {
   EXPECT_NE(result.start, POSITION_OUTSIDE_BOUNDARY);
 }
 
-TEST_F(OperatorTextObjectTest, TextObjectRange_CrossesBoundary) {
+TEST_F(TextObjectsTest, TextObjectRange_CrossesBoundary) {
   // Test where text object DOES cross a boundary
   Lines lines = {"abc"};
   Position cursor(0, 1);           // On 'b'
@@ -345,14 +345,15 @@ TEST_F(OperatorTextObjectTest, TextObjectRange_CrossesBoundary) {
   EXPECT_EQ(result.start, POSITION_OUTSIDE_BOUNDARY);
 }
 
-TEST_F(OperatorTextObjectTest, TextObjectRange_NoBoundary) {
+TEST_F(TextObjectsTest, TextObjectRange_NoBoundary) {
   // When no boundaries are set, text object always succeeds
   Lines lines = {"hello world"};
   Position cursor(0, 0);
-  Position noBoundary;  // Invalid position
 
+  // Use POSITION_OUTSIDE_BOUNDARY to indicate no boundary check
   Range result = VimEndpointUtils::textObjectRange(cursor, lines, true, false,
-                                                   noBoundary, noBoundary);
+                                                   POSITION_OUTSIDE_BOUNDARY,
+                                                   POSITION_OUTSIDE_BOUNDARY);
 
   EXPECT_NE(result.start, POSITION_OUTSIDE_BOUNDARY);
   EXPECT_EQ(result.start.col, 0);

@@ -246,7 +246,7 @@ void VimMovementUtils::motionParagraphPrev(Position &pos,
   if (n == 0)
     return;
 
-  pos.line = VimEndpointUtils::motionParagraphEdge(pos.line, lines, false, LineEdgeType::NextEdge);
+  pos.line = VimEndpointUtils::motionParagraphEndpoint(pos.line, lines, false, LineEdgeType::NextEdge);
   pos.setCol(0);
 }
 
@@ -256,7 +256,7 @@ void VimMovementUtils::motionParagraphNext(Position &pos,
   if (n == 0)
     return;
 
-  int resultLine = VimEndpointUtils::motionParagraphEdge(pos.line, lines, true, LineEdgeType::NextEdge);
+  int resultLine = VimEndpointUtils::motionParagraphEndpoint(pos.line, lines, true, LineEdgeType::NextEdge);
   pos.line = resultLine;
 
   // Special case: if at last line and it's not blank, go to last char

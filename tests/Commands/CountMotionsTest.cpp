@@ -195,7 +195,6 @@ TEST_F(CountMotionsOptimizerTest, CountW_BasicForward) {
   string userSeq = "wwww";
 
   auto results = runOptimizer(wordLine, start, end, userSeq);
-  printResults(results);
 
   // Should find "4w" as an alternative
   EXPECT_TRUE(contains_all(results, {"4w"})) << "Should find count-prefixed 4w";
@@ -210,7 +209,6 @@ TEST_F(CountMotionsOptimizerTest, CountB_BasicBackward) {
   string userSeq = "bbbb";
 
   auto results = runOptimizer(wordLine, start, end, userSeq);
-  printResults(results);
 
   // Should find count-prefixed backward motion
   EXPECT_TRUE(contains_all(results, {"4b"})) << "Should find count-prefixed 4b";
@@ -226,7 +224,6 @@ TEST_F(CountMotionsOptimizerTest, CountE_ForwardToWordEnd) {
   string userSeq = "eeee";
 
   auto results = runOptimizer(wordLine, start, end, userSeq);
-  printResults(results);
 
   // Should find "4e"
   EXPECT_TRUE(contains_all(results, {"4e"})) << "Should find count-prefixed 4e";
@@ -241,7 +238,6 @@ TEST_F(CountMotionsOptimizerTest, CountGe_BackwardToWordEnd) {
   string userSeq = "gegegege";
 
   auto results = runOptimizer(wordLine, start, end, userSeq);
-  printResults(results);
 
   // Should find count-prefixed ge (4ge lands at 17)
   EXPECT_TRUE(contains_all(results, {"4ge"})) << "Should find count-prefixed 4ge";
@@ -254,7 +250,6 @@ TEST_F(CountMotionsOptimizerTest, CountW_SameLineOnly) {
   string userSeq = "jwww";
 
   auto results = runOptimizer(multiWordLines, start, end, userSeq);
-  printResults(results);
 
   // Should still find good results, even though cross-line
   EXPECT_FALSE(results.empty());
@@ -270,7 +265,6 @@ TEST_F(CountMotionsOptimizerTest, CountParagraph_Global) {
     multiWordLines, start, end, userSeq,
     getSlicedMotionToKeys({"j", "k", "{", "}"})
   );
-  printResults(results);
 
   // Should find paragraph-based motions
   EXPECT_FALSE(results.empty());
@@ -283,7 +277,6 @@ TEST_F(CountMotionsOptimizerTest, SmallCount_NotEmitted) {
   string userSeq = "w";
 
   auto results = runOptimizer(wordLine, start, end, userSeq);
-  printResults(results);
 
   // Should find "w", not "1w"
   bool has_1w = false;

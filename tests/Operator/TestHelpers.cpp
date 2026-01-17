@@ -1,9 +1,9 @@
-// tests/Boundary/BoundaryTestHelpers.cpp
+// tests/Operator/TestHelpers.cpp
 //
-// Implementation of shared test infrastructure for boundary crossing tests.
+// Implementation of shared test infrastructure for operator boundary crossing tests.
 // Uses VimEndpointUtils for Position-based boundary checking.
 
-#include "BoundaryTestHelpers.h"
+#include "TestHelpers.h"
 
 #include <algorithm>
 #include <iostream>
@@ -15,18 +15,19 @@ using namespace std;
 // =============================================================================
 
 const vector<MotionSpec>& getAllWordMotions() {
+  // cmd, isForward, edgeType, isBigWord, skipCurrent
   static vector<MotionSpec> motions = {
       // word motions (small)
-      {"de", true, EdgeType::WordEdge, false},
-      {"dw", true, EdgeType::GapEdge, false},
-      {"db", false, EdgeType::WordEdge, false},
-      {"dge", false, EdgeType::NextEdge, false},
+      {"de", true, EdgeType::WordEdge, false, true},
+      {"dw", true, EdgeType::GapEdge, false, false},
+      {"db", false, EdgeType::WordEdge, false, true},
+      {"dge", false, EdgeType::NextEdge, false, false},
 
       // WORD motions
-      {"dE", true, EdgeType::WordEdge, true},
-      {"dW", true, EdgeType::GapEdge, true},
-      {"dB", false, EdgeType::WordEdge, true},
-      {"dgE", false, EdgeType::NextEdge, true},
+      {"dE", true, EdgeType::WordEdge, true, true},
+      {"dW", true, EdgeType::GapEdge, true, false},
+      {"dB", false, EdgeType::WordEdge, true, true},
+      {"dgE", false, EdgeType::NextEdge, true, false},
   };
   return motions;
 }
@@ -91,8 +92,16 @@ RandomBufferTest generateRandomBuffer(mt19937& rng, int numLines) {
   test.editStartCol = startColDist(rng);
 
   if (test.editStartLine == test.editEndLine) {
-    uniform_int_distribution<int> endColDist(test.editStartCol + minEditLen - 1,
-                                              endLineLen - 2);
+    // Ensure valid range: end must be >= start + minEditLen - 1 AND < endLineLen - 1
+    int minEnd = test.editStartCol + minEditLen - 1;
+    int maxEnd = endLineLen - 2;
+    if (minEnd > maxEnd) {
+      // Extend line to accommodate
+      test.lines[test.editEndLine] += string(minEnd - maxEnd + 1, 'x');
+      endLineLen = test.lines[test.editEndLine].size();
+      maxEnd = endLineLen - 2;
+    }
+    uniform_int_distribution<int> endColDist(minEnd, maxEnd);
     test.editEndCol = endColDist(rng);
   } else {
     uniform_int_distribution<int> endColDist(minEditLen - 1, endLineLen - 2);

@@ -264,22 +264,20 @@ const EditToKeys TEXT_OBJ = {
 
 namespace Edit {
 
+// Forward word edits: cmd, keys, edgeType, isBig, skipCurrent
 const vector<ForwardWordEditSpec> FORWARD_WORD_EDITS = {
-    // Small word
-    {"de", {Key::Key_D, Key::Key_E}, EdgeType::WordEdge, false},
-    {"dw", {Key::Key_D, Key::Key_W}, EdgeType::GapEdge, false},
-    // Big WORD
-    {"dE", {Key::Key_D, Key::Key_Shift, Key::Key_E}, EdgeType::WordEdge, true},
-    {"dW", {Key::Key_D, Key::Key_Shift, Key::Key_W}, EdgeType::GapEdge, true},
+    {"de", {Key::Key_D, Key::Key_E}, EdgeType::WordEdge, false, true},
+    {"dw", {Key::Key_D, Key::Key_W}, EdgeType::GapEdge, false, false},
+    {"dE", {Key::Key_D, Key::Key_Shift, Key::Key_E}, EdgeType::WordEdge, true, true},
+    {"dW", {Key::Key_D, Key::Key_Shift, Key::Key_W}, EdgeType::GapEdge, true, false},
 };
 
+// Backward word edits: cmd, keys, edgeType, isBig, skipCurrent, isExclusiveAtCursor
 const vector<BackwardWordEditSpec> BACKWARD_WORD_EDITS = {
-    // Small word
-    {"db", {Key::Key_D, Key::Key_B}, EdgeType::WordEdge, false},
-    {"dge", {Key::Key_D, Key::Key_G, Key::Key_E}, EdgeType::NextEdge, false},
-    // Big WORD
-    {"dB", {Key::Key_D, Key::Key_Shift, Key::Key_B}, EdgeType::WordEdge, true},
-    {"dgE", {Key::Key_D, Key::Key_G, Key::Key_Shift, Key::Key_E}, EdgeType::NextEdge, true},
+    {"db", {Key::Key_D, Key::Key_B}, EdgeType::WordEdge, false, true, true},
+    {"dge", {Key::Key_D, Key::Key_G, Key::Key_E}, EdgeType::NextEdge, false, false, false},
+    {"dB", {Key::Key_D, Key::Key_Shift, Key::Key_B}, EdgeType::WordEdge, true, true, true},
+    {"dgE", {Key::Key_D, Key::Key_G, Key::Key_Shift, Key::Key_E}, EdgeType::NextEdge, true, false, false},
 };
 
 const vector<TextObjectEditSpec> TEXT_OBJECT_EDITS = {
@@ -289,6 +287,19 @@ const vector<TextObjectEditSpec> TEXT_OBJECT_EDITS = {
     // Big WORD
     {"diW", {Key::Key_D, Key::Key_I, Key::Key_Shift, Key::Key_W}, true, true},
     {"daW", {Key::Key_D, Key::Key_A, Key::Key_Shift, Key::Key_W}, false, true},
+};
+
+// Line motion edits: cmd, keys, forward
+const vector<LineEditSpec> LINE_EDITS = {
+    // Forward (to line end)
+    {"D", {Key::Key_Shift, Key::Key_D}, true},
+    // Backward (to line start)
+    {"d0", {Key::Key_D, Key::Key_0}, false},
+};
+
+// Full line edits: cmd, keys
+const vector<FullLineEditSpec> FULL_LINE_EDITS = {
+    {"dd", {Key::Key_D, Key::Key_D}},
 };
 
 } // namespace Edit

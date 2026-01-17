@@ -1,6 +1,6 @@
-// tests/Boundary/BoundaryTestHelpers.h
+// tests/Operator/TestHelpers.h
 //
-// Shared test infrastructure for boundary crossing tests.
+// Shared test infrastructure for operator boundary crossing tests.
 // These helpers generate random buffers and verify boundary crossing behavior
 // using VimEndpointUtils functions which handle Position-based boundaries.
 
@@ -26,11 +26,12 @@ struct MotionSpec {
   bool isForward;    // direction of motion
   EdgeType edgeType; // for word motions
   bool isBigWord;    // true for W/E/B variants
+  bool skipCurrent;  // de/dE/db/dB need true; dw/dW/dge/dgE need false
 
   // Predict if motion would cross boundary using VimEndpointUtils
   bool wouldCross(Position cursor, const Lines& lines, Position boundary) const {
     Position result = VimEndpointUtils::motionWordEndpoint(
-        cursor, lines, isForward, edgeType, isBigWord, false, boundary);
+        cursor, lines, isForward, edgeType, isBigWord, skipCurrent, boundary);
     return result == POSITION_OUTSIDE_BOUNDARY;
   }
 };

@@ -7,6 +7,9 @@
 #include "Editor/LineRange.h"
 #include "Utils/Lines.h"
 
+// Forward declaration
+struct EditBoundary;
+
 // =============================================================================
 // VimEndpointUtils - Endpoint and Range computation for boundary checking
 // =============================================================================
@@ -64,7 +67,7 @@ struct VimEndpointUtils {
   //   BlockEdge: edge of current same-type block (blank or non-blank)
   //   GapEdge:   edge of blank line run (adjacent to paragraph)
   //   NextEdge:  start/end of next different-type block
-  static int motionParagraphEdge(int cursorLine,
+  static int motionParagraphEndpoint(int cursorLine,
                                  const Lines& lines,
                                  bool forward,
                                  LineEdgeType edgeType,
@@ -96,7 +99,7 @@ struct VimEndpointUtils {
   //   SentenceEdge: edge of current sentence (punctuation + closers)
   //   GapEdge:      edge of whitespace gap after sentence end
   //   NextEdge:     start of next sentence
-  static Position motionSentenceEdge(Position cursor,
+  static Position motionSentenceEndpoint(Position cursor,
                                      const Lines& lines,
                                      bool forward,
                                      SentenceEdgeType edgeType,
@@ -114,4 +117,34 @@ struct VimEndpointUtils {
                                        bool isInner,
                                        Position leftBoundary = POSITION_OUTSIDE_BOUNDARY,
                                        Position rightBoundary = POSITION_OUTSIDE_BOUNDARY);
+
+  // ==========================================================================
+  // Line endpoint/range computation
+  // ==========================================================================
+
+  // Sentinel for column outside boundary
+  static constexpr int COL_OUTSIDE_BOUNDARY = -1;
+
+  // Returns the column endpoint for line-based motions.
+  // forward=true:  D/d$ - returns last column of current line
+  // forward=false: d0   - returns column 0
+  //
+  // Boundary check:
+  //   forward:  if on last line and !boundary.atLineEnd(), returns COL_OUTSIDE_BOUNDARY
+  //   backward: if on first line and !boundary.atLineStart(), returns COL_OUTSIDE_BOUNDARY
+  static int motionLineEndpoint(Position cursor,
+                                   const Lines& lines,
+                                   bool forward,
+                                   const EditBoundary& boundary);
+
+  // Returns the line range for a full-line delete (dd).
+  // Returns LINE_RANGE_OUTSIDE_BOUNDARY if would cross boundary.
+  //
+  // Safe if:
+  //   - cursor is on a middle line (not first or last), OR
+  //   - cursor is on first line AND boundary.atLineStart(), OR
+  //   - cursor is on last line AND boundary.atLineEnd()
+  static LineRange lineDeleteRange(Position cursor,
+                                   const Lines& lines,
+                                   const EditBoundary& boundary);
 };

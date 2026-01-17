@@ -1,4 +1,4 @@
-// tests/Boundary/OperatorParagraph.cpp
+// tests/Operator/Paragraphs.cpp
 //
 // Tests for paragraph-based operator commands (dip, dap, d}, d{)
 // with boundary crossing verification using NeovimOracle.
@@ -27,7 +27,7 @@ using namespace std;
 // Test Infrastructure
 // =============================================================================
 
-class OperatorParagraphTest : public ::testing::Test {
+class ParagraphsTest : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle_;
   static void SetUpTestSuite() { oracle_ = make_unique<NeovimOracle>(); }
@@ -36,7 +36,7 @@ protected:
   mt19937 rng{42};
 };
 
-unique_ptr<NeovimOracle> OperatorParagraphTest::oracle_;
+unique_ptr<NeovimOracle> ParagraphsTest::oracle_;
 
 // =============================================================================
 // Random Buffer Generation for Paragraph Boundary Testing
@@ -180,7 +180,7 @@ bool bottomBoundaryCrossed(const ParagraphBoundaryTest& test, const Lines& resul
 //
 // Verify that our range computation matches what Neovim actually deletes
 
-TEST_F(OperatorParagraphTest, InnerParagraph_RangeComputation) {
+TEST_F(ParagraphsTest, InnerParagraph_RangeComputation) {
   // Test dip range computation
   Lines lines = {"first", "second", "", "third", "fourth"};
 
@@ -195,7 +195,7 @@ TEST_F(OperatorParagraphTest, InnerParagraph_RangeComputation) {
   EXPECT_EQ(rangeBlank.endLine, 2);
 }
 
-TEST_F(OperatorParagraphTest, AroundParagraph_WithTrailingBlanks) {
+TEST_F(ParagraphsTest, AroundParagraph_WithTrailingBlanks) {
   Lines lines = {"first", "second", "", "", "third"};
 
   // On non-blank line with trailing blanks
@@ -205,7 +205,7 @@ TEST_F(OperatorParagraphTest, AroundParagraph_WithTrailingBlanks) {
   EXPECT_EQ(range.endLine, 3);  // Through blank lines
 }
 
-TEST_F(OperatorParagraphTest, AroundParagraph_NoTrailingBlanks) {
+TEST_F(ParagraphsTest, AroundParagraph_NoTrailingBlanks) {
   Lines lines = {"", "first", "second"};
 
   // On non-blank line with no trailing blanks, should include leading blanks
@@ -214,7 +214,7 @@ TEST_F(OperatorParagraphTest, AroundParagraph_NoTrailingBlanks) {
   EXPECT_EQ(range.endLine, 2);
 }
 
-TEST_F(OperatorParagraphTest, AroundParagraph_OnBlankLine) {
+TEST_F(ParagraphsTest, AroundParagraph_OnBlankLine) {
   Lines lines = {"first", "", "", "second", "third"};
 
   // On blank line, should include blank run + following paragraph
@@ -227,7 +227,7 @@ TEST_F(OperatorParagraphTest, AroundParagraph_OnBlankLine) {
 // Section 2: Neovim-Verified Random Buffer Tests
 // =============================================================================
 
-TEST_F(OperatorParagraphTest, InnerParagraph_RandomBuffer) {
+TEST_F(ParagraphsTest, InnerParagraph_RandomBuffer) {
   const int NUM_ITERATIONS = 50;
 
   int total = 0, passed = 0;
@@ -273,7 +273,7 @@ TEST_F(OperatorParagraphTest, InnerParagraph_RandomBuffer) {
   EXPECT_EQ(passed, total) << "=== Inner Paragraph: " << passed << "/" << total << " ===";
 }
 
-TEST_F(OperatorParagraphTest, AroundParagraph_RandomBuffer) {
+TEST_F(ParagraphsTest, AroundParagraph_RandomBuffer) {
   const int NUM_ITERATIONS = 50;
 
   int total = 0, passed = 0;
@@ -323,7 +323,7 @@ TEST_F(OperatorParagraphTest, AroundParagraph_RandomBuffer) {
 // Section 3: Edge Case Tests
 // =============================================================================
 
-TEST_F(OperatorParagraphTest, Dip_SingleLineBuffer) {
+TEST_F(ParagraphsTest, Dip_SingleLineBuffer) {
   Lines lines = {"only line"};
 
   LineRange range = VimEndpointUtils::paragraphTextObjectRange(0, lines, true);
@@ -336,7 +336,7 @@ TEST_F(OperatorParagraphTest, Dip_SingleLineBuffer) {
   EXPECT_TRUE(result.lines.empty() || (result.lines.size() == 1 && result.lines[0].empty()));
 }
 
-TEST_F(OperatorParagraphTest, Dap_SingleLineBuffer) {
+TEST_F(ParagraphsTest, Dap_SingleLineBuffer) {
   Lines lines = {"only line"};
 
   LineRange range = VimEndpointUtils::paragraphTextObjectRange(0, lines, false);
@@ -344,7 +344,7 @@ TEST_F(OperatorParagraphTest, Dap_SingleLineBuffer) {
   EXPECT_EQ(range.endLine, 0);
 }
 
-TEST_F(OperatorParagraphTest, Dip_AllBlankLines) {
+TEST_F(ParagraphsTest, Dip_AllBlankLines) {
   Lines lines = {"", "", ""};
 
   // On blank line, dip selects contiguous blank run
@@ -353,7 +353,7 @@ TEST_F(OperatorParagraphTest, Dip_AllBlankLines) {
   EXPECT_EQ(range.endLine, 2);
 }
 
-TEST_F(OperatorParagraphTest, Dap_AtBufferEnd) {
+TEST_F(ParagraphsTest, Dap_AtBufferEnd) {
   Lines lines = {"content", "", "last paragraph"};
 
   // dap at end with no trailing blanks should include leading blanks
@@ -362,7 +362,7 @@ TEST_F(OperatorParagraphTest, Dap_AtBufferEnd) {
   EXPECT_EQ(range.endLine, 2);
 }
 
-TEST_F(OperatorParagraphTest, Dap_AtBufferStart) {
+TEST_F(ParagraphsTest, Dap_AtBufferStart) {
   Lines lines = {"first paragraph", "", "content"};
 
   // dap at start with trailing blanks

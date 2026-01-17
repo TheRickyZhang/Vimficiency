@@ -1,21 +1,21 @@
-// tests/Boundary/OperatorMotions.cpp
+// tests/Operator/Words.cpp
 //
-// Tests for operator + motion boundary crossing logic.
+// Tests for operator + word motion boundary crossing logic.
 // Uses VimEndpointUtils for Position-based boundary prediction.
 
 #include <gtest/gtest.h>
 
-#include "BoundaryTestHelpers.h"
+#include "TestHelpers.h"
 
 #include <random>
 
 using namespace std;
 
 // =============================================================================
-// OperatorMotions - Tests for operator + motion boundary crossing logic
+// WordsTest - Tests for operator + word motion boundary crossing logic
 // =============================================================================
 
-class OperatorMotionsTest : public ::testing::Test {
+class WordsTest : public ::testing::Test {
 protected:
   static void SetUpTestSuite() { oracle_ = make_unique<NeovimOracle>(); }
   static void TearDownTestSuite() { oracle_.reset(); }
@@ -24,13 +24,13 @@ protected:
   mt19937 rng{42};
 };
 
-unique_ptr<NeovimOracle> OperatorMotionsTest::oracle_;
+unique_ptr<NeovimOracle> WordsTest::oracle_;
 
 // =============================================================================
 // Section 1: Random Buffer Stress Tests
 // =============================================================================
 
-TEST_F(OperatorMotionsTest, RandomBufferStress_SingleLine) {
+TEST_F(WordsTest, RandomBufferStress_SingleLine) {
   const int NUM_BUFFERS = 10;
   const auto& motions = getAllWordMotions();
 
@@ -51,7 +51,7 @@ TEST_F(OperatorMotionsTest, RandomBufferStress_SingleLine) {
   EXPECT_EQ(passed, total);
 }
 
-TEST_F(OperatorMotionsTest, RandomBufferStress_MultiLine) {
+TEST_F(WordsTest, RandomBufferStress_MultiLine) {
   const int NUM_BUFFERS = 10;
   const auto& motions = getAllWordMotions();
 
@@ -77,7 +77,7 @@ TEST_F(OperatorMotionsTest, RandomBufferStress_MultiLine) {
 // Section 2: Manual Examples
 // =============================================================================
 
-TEST_F(OperatorMotionsTest, ManualExample_WordMotionForward) {
+TEST_F(WordsTest, ManualExample_WordMotionForward) {
   // "abc def.gh i", edit region cols 1-8 ("bc def.g")
   Lines lines = {"abc def.gh i"};
   int editStart = 1;
@@ -94,7 +94,7 @@ TEST_F(OperatorMotionsTest, ManualExample_WordMotionForward) {
   EXPECT_NE(result, POSITION_OUTSIDE_BOUNDARY);
 }
 
-TEST_F(OperatorMotionsTest, ManualExample_WordMotionCrossing) {
+TEST_F(WordsTest, ManualExample_WordMotionCrossing) {
   // When content char continues into boundary char of same type
   Lines lines = {"abcdefgh"};
 
@@ -108,7 +108,7 @@ TEST_F(OperatorMotionsTest, ManualExample_WordMotionCrossing) {
   EXPECT_EQ(result, POSITION_OUTSIDE_BOUNDARY);
 }
 
-TEST_F(OperatorMotionsTest, ManualExample_GapEdgeMotion) {
+TEST_F(WordsTest, ManualExample_GapEdgeMotion) {
   // dw uses GapEdge - goes to start of next word
   Lines lines = {"abc   def"};
 
@@ -124,7 +124,7 @@ TEST_F(OperatorMotionsTest, ManualExample_GapEdgeMotion) {
   EXPECT_NE(result, POSITION_OUTSIDE_BOUNDARY);
 }
 
-TEST_F(OperatorMotionsTest, ManualExample_BackwardMotion) {
+TEST_F(WordsTest, ManualExample_BackwardMotion) {
   // db uses WordEdge backward
   Lines lines = {"abc def"};
 
@@ -142,20 +142,20 @@ TEST_F(OperatorMotionsTest, ManualExample_BackwardMotion) {
 // Section 3: Edge Cases
 // =============================================================================
 
-TEST_F(OperatorMotionsTest, EdgeCase_NoBoundary) {
+TEST_F(WordsTest, EdgeCase_NoBoundary) {
   // When no boundary is set (invalid position), motion always succeeds
   Lines lines = {"hello world"};
   Position cursor(0, 0);
-  Position noBoundary;  // Invalid position
 
+  // Use POSITION_OUTSIDE_BOUNDARY to indicate no boundary check
   Position result = VimEndpointUtils::motionWordEndpoint(
-      cursor, lines, true, EdgeType::WordEdge, false, false, noBoundary);
+      cursor, lines, true, EdgeType::WordEdge, false, false, POSITION_OUTSIDE_BOUNDARY);
 
   EXPECT_NE(result, POSITION_OUTSIDE_BOUNDARY);
   EXPECT_EQ(result.col, 4);  // End of "hello"
 }
 
-TEST_F(OperatorMotionsTest, EdgeCase_BoundaryAtEndOfLine) {
+TEST_F(WordsTest, EdgeCase_BoundaryAtEndOfLine) {
   Lines lines = {"hello"};
   Position cursor(0, 0);
   Position rightBoundary(0, 4);  // 'o' at end
@@ -168,7 +168,7 @@ TEST_F(OperatorMotionsTest, EdgeCase_BoundaryAtEndOfLine) {
   EXPECT_EQ(result, POSITION_OUTSIDE_BOUNDARY);
 }
 
-TEST_F(OperatorMotionsTest, EdgeCase_WORD_IncludesSymbols) {
+TEST_F(WordsTest, EdgeCase_WORD_IncludesSymbols) {
   // WORD motions treat symbols as part of word
   Lines lines = {"abc...def ghi"};
 
@@ -183,7 +183,7 @@ TEST_F(OperatorMotionsTest, EdgeCase_WORD_IncludesSymbols) {
   EXPECT_NE(result, POSITION_OUTSIDE_BOUNDARY);
 }
 
-TEST_F(OperatorMotionsTest, EdgeCase_EmptyLine) {
+TEST_F(WordsTest, EdgeCase_EmptyLine) {
   Lines lines = {"abc", "", "def"};
 
   Position cursor(0, 0);

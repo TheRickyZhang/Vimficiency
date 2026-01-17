@@ -50,13 +50,16 @@ struct EditStateKeyHash {
 // =============================================================================
 
 struct EditState {
-  Lines lines;              // Current buffer content
-  Position pos;             // Cursor position
-  Mode mode = Mode::Normal; // Current editing mode
-  RunningEffort effort;     // Typing effort tracker
-  std::vector<std::string> seq;  // Sequence of operations taken
-  int startIndex;           // Which starting position this search is for
+  Lines lines;                    // Current buffer content
+  Position pos;                   // Cursor position
+  Mode mode = Mode::Normal;       // Current editing mode
+  RunningEffort effort{};         // Typing effort tracker
+  std::vector<std::string> seq{}; // Sequence of operations taken
+  int startIndex;                 // Which starting position this search is for
   double cost;              // Priority = effort + heuristic
+
+  EditState(Lines lines, Position pos, int startIndex, double cost) :
+    lines(lines), pos(pos), startIndex(startIndex), cost(cost) { }
 
   // For priority queue ordering (min-heap)
   bool operator>(const EditState& other) const {

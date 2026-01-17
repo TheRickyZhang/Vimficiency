@@ -9,7 +9,6 @@
 #include "Boundary/EditBoundary.h"
 
 #include "Utils/Lines.h"
-#include "State/EditState.h"
 
 struct EditResult {
   // Results that involve deleting everything, and typing the end text
@@ -31,15 +30,18 @@ struct EditResult {
 
 
 // Try to find an optimal replacement sequence for same-length transformations.
-// Returns invalid result if replacement is not beneficial or not possible.
+// Populates res with results for each starting position (0 to firstDiff).
 //
-// @param deleted  The characters being removed (no newlines)
-// @param inserted The characters being added (must be same length as deleted)
-// @param config   Keyboard config for cost calculation
-// @return Result with sequence and cost if beneficial, invalid otherwise
-Result tryReplacement(const std::string& deleted,
-                      const std::string& inserted,
-                      const Config& config);
+// @param deleted            The characters being removed (no newlines)
+// @param inserted           The characters being added (must be same length as deleted)
+// @param config             Keyboard config for cost calculation
+// @param lastReplacementPos Output: column of last replacement (for cursor tracking)
+// @param res                Output: results indexed by starting position
+void tryReplacement(const std::string& deleted,
+                    const std::string& inserted,
+                    const Config& config,
+                    int& lastReplacementPos,
+                    std::vector<Result>& res);
 
 
 struct EditOptimizer {
@@ -51,7 +53,7 @@ struct EditOptimizer {
         defaultParams(params) {}
 
   // Heuristic for A* search: effort + chars remaining
-  double heuristic(const EditState& s, const OptimizerParams& params) const;
+  double heuristic(const Lines& lines) const;
 
   // Main entry point: find optimal sequences to transform startLines to endLines
   // within the given edit boundary constraints.

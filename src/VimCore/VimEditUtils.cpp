@@ -22,16 +22,11 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
   Range r = range;
   r.normalize();
 
-  // Character-wise deletion (all ranges are inclusive)
-  assert(r.start.line >= 0 && r.start.line < static_cast<int>(lines.size()));
-  assert(r.end.line >= 0 && r.end.line < static_cast<int>(lines.size()));
-
   int endCol = r.end.col + 1;  // Inclusive: delete up to and including end.col
 
   if (r.start.line == r.end.line) {
     // Single line deletion
     string& ln = lines[r.start.line];
-    assert(r.start.col >= 0 && r.start.col <= static_cast<int>(ln.size()));
     endCol = min(endCol, static_cast<int>(ln.size()));
     ln.erase(r.start.col, endCol - r.start.col);
   } else {
@@ -39,7 +34,6 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
     string& firstLn = lines[r.start.line];
     const string& lastLn = lines[r.end.line];
 
-    assert(r.start.col >= 0 && r.start.col <= static_cast<int>(firstLn.size()));
     endCol = min(endCol, static_cast<int>(lastLn.size()));
 
     // Merge: keep first part of first line + last part of last line

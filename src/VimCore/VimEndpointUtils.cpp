@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cassert>
 
+#include "Boundary/EditBoundary.h"
 #include "Editor/Position.h"
 
 using namespace std;
@@ -128,7 +129,7 @@ Range VimEndpointUtils::textObjectRange(
 // Paragraph endpoint/range computation
 // =============================================================================
 
-int VimEndpointUtils::motionParagraphEdge(int cursorLine,
+int VimEndpointUtils::motionParagraphEndpoint(int cursorLine,
                                           const Lines& lines,
                                           bool forward,
                                           LineEdgeType edgeType,
@@ -250,36 +251,36 @@ LineRange VimEndpointUtils::paragraphTextObjectRange(int cursorLine,
 
   if (isInner) {
     // dip: (Backward, BlockEdge) + (Forward, BlockEdge)
-    startLine = motionParagraphEdge(cursorLine, lines, false, LineEdgeType::BlockEdge);
-    endLine = motionParagraphEdge(cursorLine, lines, true, LineEdgeType::BlockEdge);
+    startLine = motionParagraphEndpoint(cursorLine, lines, false, LineEdgeType::BlockEdge);
+    endLine = motionParagraphEndpoint(cursorLine, lines, true, LineEdgeType::BlockEdge);
   } else if (cursorOnBlank) {
     // dap on blank line: (Backward, BlockEdge) + select blank run + following paragraph
-    startLine = motionParagraphEdge(cursorLine, lines, false, LineEdgeType::BlockEdge);
+    startLine = motionParagraphEndpoint(cursorLine, lines, false, LineEdgeType::BlockEdge);
 
     // For "ap on blank", we want blank lines + following paragraph.
-    int blankEnd = motionParagraphEdge(cursorLine, lines, true, LineEdgeType::BlockEdge);
+    int blankEnd = motionParagraphEndpoint(cursorLine, lines, true, LineEdgeType::BlockEdge);
     if (blankEnd + 1 < n) {
       // There's a non-blank paragraph after - include it
-      endLine = motionParagraphEdge(blankEnd + 1, lines, true, LineEdgeType::BlockEdge);
+      endLine = motionParagraphEndpoint(blankEnd + 1, lines, true, LineEdgeType::BlockEdge);
     } else {
       // No paragraph after, just the blank lines
       endLine = blankEnd;
     }
   } else {
     // Cursor on non-blank line
-    int blockEnd = motionParagraphEdge(cursorLine, lines, true, LineEdgeType::BlockEdge);
+    int blockEnd = motionParagraphEndpoint(cursorLine, lines, true, LineEdgeType::BlockEdge);
 
     // Check for trailing blank lines
     bool hasTrailingBlanks = (blockEnd + 1 < n && isBlankLineStr(lines[blockEnd + 1]));
 
     if (hasTrailingBlanks) {
       // Has trailing blank lines: (Backward, BlockEdge) + (Forward, GapEdge)
-      startLine = motionParagraphEdge(cursorLine, lines, false, LineEdgeType::BlockEdge);
-      endLine = motionParagraphEdge(cursorLine, lines, true, LineEdgeType::GapEdge);
+      startLine = motionParagraphEndpoint(cursorLine, lines, false, LineEdgeType::BlockEdge);
+      endLine = motionParagraphEndpoint(cursorLine, lines, true, LineEdgeType::GapEdge);
     } else {
       // No trailing blanks: (Backward, GapEdge) + (Forward, BlockEdge)
-      startLine = motionParagraphEdge(cursorLine, lines, false, LineEdgeType::GapEdge);
-      endLine = motionParagraphEdge(cursorLine, lines, true, LineEdgeType::BlockEdge);
+      startLine = motionParagraphEndpoint(cursorLine, lines, false, LineEdgeType::GapEdge);
+      endLine = motionParagraphEndpoint(cursorLine, lines, true, LineEdgeType::BlockEdge);
     }
   }
 
@@ -507,7 +508,7 @@ static Position motionSentenceEdgeCore(Position cursor,
   }
 }
 
-Position VimEndpointUtils::motionSentenceEdge(Position cursor,
+Position VimEndpointUtils::motionSentenceEndpoint(Position cursor,
                                                const Lines& lines,
                                                bool forward,
                                                SentenceEdgeType edgeType,
@@ -540,7 +541,7 @@ Range VimEndpointUtils::sentenceTextObjectRange(Position cursor,
 
   // Find sentence end by searching forward from sentence start
   Position sentenceStart(startLine, startCol);
-  Position sentenceEnd = motionSentenceEdge(sentenceStart, lines, true, SentenceEdgeType::SentenceEdge);
+  Position sentenceEnd = motionSentenceEndpoint(sentenceStart, lines, true, SentenceEdgeType::SentenceEdge);
 
   Position resultStart, resultEnd;
 
@@ -550,7 +551,7 @@ Range VimEndpointUtils::sentenceTextObjectRange(Position cursor,
     resultEnd = sentenceEnd;
   } else {
     // das: include trailing whitespace (or leading if no trailing)
-    Position gapEnd = motionSentenceEdge(sentenceStart, lines, true, SentenceEdgeType::GapEdge);
+    Position gapEnd = motionSentenceEndpoint(sentenceStart, lines, true, SentenceEdgeType::GapEdge);
 
     // Check if there's trailing whitespace/blank lines
     bool hasTrailing = (gapEnd.line > sentenceEnd.line ||
@@ -563,7 +564,7 @@ Range VimEndpointUtils::sentenceTextObjectRange(Position cursor,
     } else {
       // No trailing whitespace - include leading whitespace
       // Find gap edge backward from sentence start
-      Position gapStart = motionSentenceEdge(sentenceStart, lines, false, SentenceEdgeType::GapEdge);
+      Position gapStart = motionSentenceEndpoint(sentenceStart, lines, false, SentenceEdgeType::GapEdge);
 
       // Check if there's leading whitespace
       bool hasLeading = (gapStart.line < sentenceStart.line ||
@@ -589,4 +590,53 @@ Range VimEndpointUtils::sentenceTextObjectRange(Position cursor,
   }
 
   return Range(resultStart, resultEnd);
+}
+
+// =============================================================================
+// Line endpoint/range computation
+// =============================================================================
+
+int VimEndpointUtils::motionLineEndpoint(Position cursor,
+                                            const Lines& lines,
+                                            bool forward,
+                                            const EditBoundary& boundary) {
+  int n = static_cast<int>(lines.size());
+  if (n == 0) return COL_OUTSIDE_BOUNDARY;
+
+  int line = std::clamp(cursor.line, 0, n - 1);
+  int lineLen = static_cast<int>(lines[line].size());
+
+  if (forward) {
+    if (line == n - 1 && !boundary.atLineEnd()) {
+      return COL_OUTSIDE_BOUNDARY;
+    }
+    return lineLen > 0 ? lineLen - 1 : 0;
+  } else {
+    if (line == 0 && !boundary.atLineStart()) {
+      return COL_OUTSIDE_BOUNDARY;
+    }
+    return 0;
+  }
+}
+
+LineRange VimEndpointUtils::lineDeleteRange(Position cursor,
+                                            const Lines& lines,
+                                            const EditBoundary& boundary) {
+  int n = static_cast<int>(lines.size());
+  if (n == 0) return LINE_RANGE_OUTSIDE_BOUNDARY;
+
+  int line = std::clamp(cursor.line, 0, n - 1);
+
+  // Middle lines are always safe, check first / last
+  bool onFirstLine = (line == 0);
+  bool onLastLine = (line == n - 1);
+
+  if (onFirstLine && !boundary.atLineStart()) {
+    return LINE_RANGE_OUTSIDE_BOUNDARY;
+  }
+  if (onLastLine && !boundary.atLineEnd()) {
+    return LINE_RANGE_OUTSIDE_BOUNDARY;
+  }
+
+  return LineRange(line, line);
 }

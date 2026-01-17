@@ -136,6 +136,9 @@ void applyParsedMotion(Position& pos, Mode& mode,
     const string &line = lines[pos.line];
     while (col < len && isspace(static_cast<unsigned char>(line[col])))
       ++col;
+    // If all whitespace, clamp to last valid position (Neovim behavior)
+    if (col >= len && len > 0)
+      col = len - 1;
     pos.setCol(col);
   } else if (motion == "gg") {
     // Special: set line. Because it's 1 based, subtract 1

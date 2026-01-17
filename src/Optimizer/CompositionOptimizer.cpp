@@ -378,10 +378,14 @@ vector<EditResult> CompositionOptimizer::calculateEditResults(const vector<DiffS
     if (diff.deletedText.size() == diff.insertedText.size() &&
         diff.deletedText.find('\n') == string::npos &&
         diff.insertedText.find('\n') == string::npos &&
-        !diff.deletedText.empty()) {
+        !diff.deletedText.empty() &&
+        diff.deletedText != diff.insertedText) {
 
-      Result replResult = tryReplacement(diff.deletedText, diff.insertedText, config);
-      if (replResult.isValid()) {
+      vector<Result> replResults;
+      int lastReplacementPos = -1;
+      tryReplacement(diff.deletedText, diff.insertedText, config, lastReplacementPos, replResults);
+      if (!replResults.empty() && replResults[0].isValid()) {
+        Result replResult = replResults[0];
         // Replacement starts at column 0, ends in Normal mode
         // Compare to deletion result at position 0 (flat index)
         if (!result.typeAllResults.empty() && result.typeAllResults[0].isValid()) {

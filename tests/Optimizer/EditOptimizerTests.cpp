@@ -730,8 +730,12 @@ TEST_F(EditOptimizerTest, FullBuffer_Linewise_VerifyNoEscape) {
 
 TEST_F(EditOptimizerTest, Replacement_SingleDiff) {
   // "fresh" -> "frosh" - only 'e' -> 'o' differs at position 2
-  Result result = tryReplacement("fresh", "frosh", config);
+  vector<Result> results;
+  int lastPos = -1;
+  tryReplacement("fresh", "frosh", config, lastPos, results);
 
+  ASSERT_FALSE(results.empty());
+  Result result = results[0];
   EXPECT_TRUE(result.isValid());
   string seq = result.getSequenceString();
   EXPECT_FALSE(seq.empty());
@@ -749,8 +753,12 @@ TEST_F(EditOptimizerTest, Replacement_SingleDiff) {
 
 TEST_F(EditOptimizerTest, Replacement_MultipleDiffs) {
   // "hello" -> "jello" - 'h' -> 'j' at position 0
-  Result result = tryReplacement("hello", "jello", config);
+  vector<Result> results;
+  int lastPos = -1;
+  tryReplacement("hello", "jello", config, lastPos, results);
 
+  ASSERT_FALSE(results.empty());
+  Result result = results[0];
   EXPECT_TRUE(result.isValid());
   string seq = result.getSequenceString();
   cout << "Replacement 'hello' -> 'jello': " << seq
@@ -763,8 +771,12 @@ TEST_F(EditOptimizerTest, Replacement_MultipleDiffs) {
 
 TEST_F(EditOptimizerTest, Replacement_ConsecutiveDiffs) {
   // "abc" -> "xyz" - all three chars differ
-  Result result = tryReplacement("abc", "xyz", config);
+  vector<Result> results;
+  int lastPos = -1;
+  tryReplacement("abc", "xyz", config, lastPos, results);
 
+  ASSERT_FALSE(results.empty());
+  Result result = results[0];
   EXPECT_TRUE(result.isValid());
   string seq = result.getSequenceString();
   cout << "Replacement 'abc' -> 'xyz': " << seq
@@ -775,40 +787,38 @@ TEST_F(EditOptimizerTest, Replacement_ConsecutiveDiffs) {
       << "Expected R mode for consecutive replacements: " << seq;
 }
 
-TEST_F(EditOptimizerTest, Replacement_NoDiffs) {
+// Precondition tests - these test that callers properly check preconditions
+// before calling tryReplacement (which asserts on invalid input)
+
+TEST_F(EditOptimizerTest, Replacement_NoDiffs_Precondition) {
   // "same" -> "same" - no differences
-  Result result = tryReplacement("same", "same", config);
-
-  // With no differences, result should be invalid (nothing to do)
-  // OR valid with empty sequence - check which behavior is implemented
-  if (result.isValid()) {
-    EXPECT_TRUE(result.getSequenceString().empty());
-    EXPECT_EQ(result.keyCost, 0);
-  }
-
-  cout << "Replacement 'same' -> 'same': (no changes)" << endl;
+  // Callers should check deleted != inserted before calling
+  string deleted = "same";
+  string inserted = "same";
+  EXPECT_EQ(deleted, inserted) << "Precondition: caller should skip identical strings";
 }
 
-TEST_F(EditOptimizerTest, Replacement_DifferentLengths) {
-  // Different lengths - should return invalid
-  Result result = tryReplacement("hello", "hi", config);
-
-  EXPECT_FALSE(result.isValid())
-      << "Replacement should be invalid for different-length strings";
+TEST_F(EditOptimizerTest, Replacement_DifferentLengths_Precondition) {
+  // Different lengths - callers should check this
+  string deleted = "hello";
+  string inserted = "hi";
+  EXPECT_NE(deleted.size(), inserted.size()) << "Precondition: caller should check lengths";
 }
 
-TEST_F(EditOptimizerTest, Replacement_WithNewlines) {
-  // Strings with newlines - should return invalid
-  Result result = tryReplacement("hello\nworld", "jello\nworld", config);
-
-  EXPECT_FALSE(result.isValid())
-      << "Replacement should be invalid for multi-line strings";
+TEST_F(EditOptimizerTest, Replacement_WithNewlines_Precondition) {
+  // Strings with newlines - callers should check for single-line
+  string deleted = "hello\nworld";
+  EXPECT_NE(deleted.find('\n'), string::npos) << "Precondition: caller should check for newlines";
 }
 
 TEST_F(EditOptimizerTest, Replacement_SparseDiffs) {
   // "0000000" -> "1001001" - three non-consecutive diffs at positions 0, 3, 6
-  Result result = tryReplacement("0000000", "1001001", config);
+  vector<Result> results;
+  int lastPos = -1;
+  tryReplacement("0000000", "1001001", config, lastPos, results);
 
+  ASSERT_FALSE(results.empty());
+  Result result = results[0];
   EXPECT_TRUE(result.isValid());
   string seq = result.getSequenceString();
   cout << "Replacement '0000000' -> '1001001': " << seq

@@ -143,7 +143,7 @@ bool isEdit(std::string_view s);
 // Edit Operation Specs - constexpr tables for EditOptimizer
 // =============================================================================
 // Structured specs with operation parameters alongside keys.
-// Separated by direction for efficient boundary checking.
+// Separated by direction - isForward is implicit from which vector is used.
 
 namespace Edit {
 
@@ -153,6 +153,7 @@ struct ForwardWordEditSpec {
   PhysicalKeys keys;
   EdgeType edgeType;
   bool isBig;
+  bool skipCurrent;  // de/dE need true; dw/dW need false
 };
 extern const std::vector<ForwardWordEditSpec> FORWARD_WORD_EDITS;
 
@@ -162,6 +163,8 @@ struct BackwardWordEditSpec {
   PhysicalKeys keys;
   EdgeType edgeType;
   bool isBig;
+  bool skipCurrent;         // db/dB need true; dge/dgE need false
+  bool isExclusiveAtCursor; // db/dB exclude cursor char from deletion
 };
 extern const std::vector<BackwardWordEditSpec> BACKWARD_WORD_EDITS;
 
@@ -173,5 +176,20 @@ struct TextObjectEditSpec {
   bool isBig;
 };
 extern const std::vector<TextObjectEditSpec> TEXT_OBJECT_EDITS;
+
+// Line motion edits (D, d0, d^) - characterwise to line boundary
+struct LineEditSpec {
+  const char* cmd;
+  PhysicalKeys keys;
+  bool forward;  // true for D/d$, false for d0/d^
+};
+extern const std::vector<LineEditSpec> LINE_EDITS;
+
+// Full line edit (dd) - linewise
+struct FullLineEditSpec {
+  const char* cmd;
+  PhysicalKeys keys;
+};
+extern const std::vector<FullLineEditSpec> FULL_LINE_EDITS;
 
 } // namespace Edit

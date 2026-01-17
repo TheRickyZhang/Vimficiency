@@ -1,4 +1,4 @@
-// tests/Boundary/OperatorSentence.cpp
+// tests/Operator/Sentences.cpp
 //
 // Tests for sentence-based operator commands (dis, das)
 // with boundary crossing verification using NeovimOracle.
@@ -25,7 +25,7 @@ using namespace std;
 // Test Infrastructure
 // =============================================================================
 
-class OperatorSentenceTest : public ::testing::Test {
+class SentencesTest : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle_;
   static void SetUpTestSuite() { oracle_ = make_unique<NeovimOracle>(); }
@@ -34,7 +34,7 @@ protected:
   mt19937 rng{42};
 };
 
-unique_ptr<NeovimOracle> OperatorSentenceTest::oracle_;
+unique_ptr<NeovimOracle> SentencesTest::oracle_;
 
 // =============================================================================
 // Random Buffer Generation for Sentence Boundary Testing
@@ -174,7 +174,7 @@ bool rightMarkerCrossed(const SentenceBoundaryTest& test, const Lines& result) {
 // Section 1: sentenceTextObjectRange Tests
 // =============================================================================
 
-TEST_F(OperatorSentenceTest, InnerSentence_RangeComputation) {
+TEST_F(SentencesTest, InnerSentence_RangeComputation) {
   Lines lines = {"First sentence.  Second sentence."};
 
   // On "Second"
@@ -186,7 +186,7 @@ TEST_F(OperatorSentenceTest, InnerSentence_RangeComputation) {
   EXPECT_GE(range.end.col, 32);    // End includes period
 }
 
-TEST_F(OperatorSentenceTest, AroundSentence_WithTrailingWhitespace) {
+TEST_F(SentencesTest, AroundSentence_WithTrailingWhitespace) {
   Lines lines = {"First.  Second."};
 
   // On "First" - has trailing whitespace
@@ -198,7 +198,7 @@ TEST_F(OperatorSentenceTest, AroundSentence_WithTrailingWhitespace) {
   EXPECT_GE(range.end.col, 6);  // Past the period into whitespace
 }
 
-TEST_F(OperatorSentenceTest, InnerSentence_OnBlankLine) {
+TEST_F(SentencesTest, InnerSentence_OnBlankLine) {
   Lines lines = {"First.", "", "Second."};
 
   // dis on blank line - behavior depends on implementation
@@ -212,7 +212,7 @@ TEST_F(OperatorSentenceTest, InnerSentence_OnBlankLine) {
 // Section 2: Neovim-Verified Random Buffer Tests
 // =============================================================================
 
-TEST_F(OperatorSentenceTest, InnerSentence_RandomBuffer) {
+TEST_F(SentencesTest, InnerSentence_RandomBuffer) {
   const int NUM_ITERATIONS = 50;
 
   int total = 0, passed = 0;
@@ -251,7 +251,7 @@ TEST_F(OperatorSentenceTest, InnerSentence_RandomBuffer) {
   EXPECT_GE(passed, total * 0.8) << "At least 80% should pass boundary check";
 }
 
-TEST_F(OperatorSentenceTest, AroundSentence_RandomBuffer) {
+TEST_F(SentencesTest, AroundSentence_RandomBuffer) {
   const int NUM_ITERATIONS = 50;
 
   int total = 0, passed = 0;
@@ -285,7 +285,7 @@ TEST_F(OperatorSentenceTest, AroundSentence_RandomBuffer) {
 // Section 3: Edge Case Tests
 // =============================================================================
 
-TEST_F(OperatorSentenceTest, Dis_SingleSentence) {
+TEST_F(SentencesTest, Dis_SingleSentence) {
   Lines lines = {"Only sentence."};
 
   Range range = VimEndpointUtils::sentenceTextObjectRange(Position(0, 5), lines, true);
@@ -296,7 +296,7 @@ TEST_F(OperatorSentenceTest, Dis_SingleSentence) {
   EXPECT_EQ(range.end.line, 0);
 }
 
-TEST_F(OperatorSentenceTest, Das_SingleSentence) {
+TEST_F(SentencesTest, Das_SingleSentence) {
   Lines lines = {"Only sentence."};
 
   Range range = VimEndpointUtils::sentenceTextObjectRange(Position(0, 5), lines, false);
@@ -307,7 +307,7 @@ TEST_F(OperatorSentenceTest, Das_SingleSentence) {
   EXPECT_EQ(range.end.line, 0);
 }
 
-TEST_F(OperatorSentenceTest, Dis_WithClosers) {
+TEST_F(SentencesTest, Dis_WithClosers) {
   Lines lines = {"\"Hello!\" she said."};
 
   // dis at "Hello" - sentence ends at !"
@@ -318,7 +318,7 @@ TEST_F(OperatorSentenceTest, Dis_WithClosers) {
   EXPECT_EQ(range.start.col, 0);
 }
 
-TEST_F(OperatorSentenceTest, Dis_AcrossBlankLines) {
+TEST_F(SentencesTest, Dis_AcrossBlankLines) {
   Lines lines = {"First sentence.", "", "Second sentence."};
 
   // dis on second sentence
@@ -329,7 +329,7 @@ TEST_F(OperatorSentenceTest, Dis_AcrossBlankLines) {
   EXPECT_EQ(range.end.line, 2);
 }
 
-TEST_F(OperatorSentenceTest, Das_IncludesTrailingSpace) {
+TEST_F(SentencesTest, Das_IncludesTrailingSpace) {
   Lines lines = {"First.  Second."};
 
   // das on "First" should include trailing spaces
@@ -345,7 +345,7 @@ TEST_F(OperatorSentenceTest, Das_IncludesTrailingSpace) {
 // Section 4: Verification Against Neovim
 // =============================================================================
 
-TEST_F(OperatorSentenceTest, Dis_NeovimComparison) {
+TEST_F(SentencesTest, Dis_NeovimComparison) {
   Lines lines = {"First sentence.  Second sentence.  Third."};
 
   // Execute dis at "Second"
@@ -359,7 +359,7 @@ TEST_F(OperatorSentenceTest, Dis_NeovimComparison) {
   EXPECT_TRUE(result.lines[0].find("Second") == string::npos);
 }
 
-TEST_F(OperatorSentenceTest, Das_NeovimComparison) {
+TEST_F(SentencesTest, Das_NeovimComparison) {
   Lines lines = {"First.  Second.  Third."};
 
   // Execute das at "Second"

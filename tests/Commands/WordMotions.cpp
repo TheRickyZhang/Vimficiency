@@ -1,4 +1,4 @@
-// tests/Commands/BoundaryMotions.cpp
+// tests/Commands/WordMotions.cpp
 //
 // Tests for word motion commands (w, e, b, ge, W, E, B, gE) using random buffers
 // and NeovimOracle verification. These test pure cursor movement, not deletion.
@@ -25,7 +25,7 @@ using namespace std;
 // Test Infrastructure
 // =============================================================================
 
-class BoundaryMotionsTest : public ::testing::Test {
+class WordMotionsTest : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle;
   static NavContext navContext;
@@ -51,8 +51,8 @@ protected:
   }
 };
 
-unique_ptr<NeovimOracle> BoundaryMotionsTest::oracle;
-NavContext BoundaryMotionsTest::navContext(0, 0);
+unique_ptr<NeovimOracle> WordMotionsTest::oracle;
+NavContext WordMotionsTest::navContext(0, 0);
 
 // =============================================================================
 // Random Buffer Generation for Motion Testing
@@ -166,69 +166,69 @@ void testMotionRandom(NeovimOracle& oracle, const NavContext& navContext,
 // Random Buffer Tests for Each Motion
 // =============================================================================
 
-TEST_F(BoundaryMotionsTest, W_RandomSingleLine) {
+TEST_F(WordMotionsTest, W_RandomSingleLine) {
   testMotionRandom(*oracle, navContext, "w", 100, 1);
 }
 
-TEST_F(BoundaryMotionsTest, W_RandomMultiLine) {
+TEST_F(WordMotionsTest, W_RandomMultiLine) {
   testMotionRandom(*oracle, navContext, "w", 100, 3);
 }
 
-TEST_F(BoundaryMotionsTest, E_RandomSingleLine) {
+TEST_F(WordMotionsTest, E_RandomSingleLine) {
   testMotionRandom(*oracle, navContext, "e", 100, 1);
 }
 
-TEST_F(BoundaryMotionsTest, E_RandomMultiLine) {
+TEST_F(WordMotionsTest, E_RandomMultiLine) {
   testMotionRandom(*oracle, navContext, "e", 100, 3);
 }
 
-TEST_F(BoundaryMotionsTest, B_RandomSingleLine) {
+TEST_F(WordMotionsTest, B_RandomSingleLine) {
   testMotionRandom(*oracle, navContext, "b", 100, 1);
 }
 
-TEST_F(BoundaryMotionsTest, B_RandomMultiLine) {
+TEST_F(WordMotionsTest, B_RandomMultiLine) {
   testMotionRandom(*oracle, navContext, "b", 100, 3);
 }
 
-TEST_F(BoundaryMotionsTest, GE_RandomSingleLine) {
+TEST_F(WordMotionsTest, GE_RandomSingleLine) {
   testMotionRandom(*oracle, navContext, "ge", 100, 1);
 }
 
-TEST_F(BoundaryMotionsTest, GE_RandomMultiLine) {
+TEST_F(WordMotionsTest, GE_RandomMultiLine) {
   testMotionRandom(*oracle, navContext, "ge", 100, 3);
 }
 
 // WORD variants - restart Neovim to prevent buffer exhaustion after 800 iterations
-TEST_F(BoundaryMotionsTest, BigW_RandomSingleLine) {
+TEST_F(WordMotionsTest, BigW_RandomSingleLine) {
   oracle->restart();
   testMotionRandom(*oracle, navContext, "W", 100, 1);
 }
 
-TEST_F(BoundaryMotionsTest, BigW_RandomMultiLine) {
+TEST_F(WordMotionsTest, BigW_RandomMultiLine) {
   testMotionRandom(*oracle, navContext, "W", 100, 3);
 }
 
-TEST_F(BoundaryMotionsTest, BigE_RandomSingleLine) {
+TEST_F(WordMotionsTest, BigE_RandomSingleLine) {
   testMotionRandom(*oracle, navContext, "E", 100, 1);
 }
 
-TEST_F(BoundaryMotionsTest, BigE_RandomMultiLine) {
+TEST_F(WordMotionsTest, BigE_RandomMultiLine) {
   testMotionRandom(*oracle, navContext, "E", 100, 3);
 }
 
-TEST_F(BoundaryMotionsTest, BigB_RandomSingleLine) {
+TEST_F(WordMotionsTest, BigB_RandomSingleLine) {
   testMotionRandom(*oracle, navContext, "B", 100, 1);
 }
 
-TEST_F(BoundaryMotionsTest, BigB_RandomMultiLine) {
+TEST_F(WordMotionsTest, BigB_RandomMultiLine) {
   testMotionRandom(*oracle, navContext, "B", 100, 3);
 }
 
-TEST_F(BoundaryMotionsTest, BigGE_RandomSingleLine) {
+TEST_F(WordMotionsTest, BigGE_RandomSingleLine) {
   testMotionRandom(*oracle, navContext, "gE", 100, 1);
 }
 
-TEST_F(BoundaryMotionsTest, BigGE_RandomMultiLine) {
+TEST_F(WordMotionsTest, BigGE_RandomMultiLine) {
   testMotionRandom(*oracle, navContext, "gE", 100, 3);
 }
 
@@ -236,7 +236,7 @@ TEST_F(BoundaryMotionsTest, BigGE_RandomMultiLine) {
 // Manual Edge Case Tests - restart Neovim to prevent buffer exhaustion
 // =============================================================================
 
-TEST_F(BoundaryMotionsTest, W_AtEndOfLine_CrossesToNextLine) {
+TEST_F(WordMotionsTest, W_AtEndOfLine_CrossesToNextLine) {
   oracle->restart();
   Lines lines = {"hello world", "next line"};
   Position result = applyMotion({0, 6}, "w", lines);  // Start at 'w' in world
@@ -245,7 +245,7 @@ TEST_F(BoundaryMotionsTest, W_AtEndOfLine_CrossesToNextLine) {
   EXPECT_EQ(result.col, expected.col);
 }
 
-TEST_F(BoundaryMotionsTest, W_AtLastWord_StaysAtEnd) {
+TEST_F(WordMotionsTest, W_AtLastWord_StaysAtEnd) {
   Lines lines = {"hello world"};
   Position result = applyMotion({0, 6}, "w", lines);  // Start at 'w' in world
   Position expected = neovimMotion(lines, 0, 6, "w");
@@ -253,7 +253,7 @@ TEST_F(BoundaryMotionsTest, W_AtLastWord_StaysAtEnd) {
   EXPECT_EQ(result.col, expected.col);
 }
 
-TEST_F(BoundaryMotionsTest, E_FromWordStart_GoesToWordEnd) {
+TEST_F(WordMotionsTest, E_FromWordStart_GoesToWordEnd) {
   Lines lines = {"hello world"};
   Position result = applyMotion({0, 0}, "e", lines);  // Start at 'h'
   Position expected = neovimMotion(lines, 0, 0, "e");
@@ -261,7 +261,7 @@ TEST_F(BoundaryMotionsTest, E_FromWordStart_GoesToWordEnd) {
   EXPECT_EQ(result.col, expected.col);
 }
 
-TEST_F(BoundaryMotionsTest, E_FromWordEnd_GoesToNextWordEnd) {
+TEST_F(WordMotionsTest, E_FromWordEnd_GoesToNextWordEnd) {
   Lines lines = {"hello world"};
   Position result = applyMotion({0, 4}, "e", lines);  // Start at 'o' (end of hello)
   Position expected = neovimMotion(lines, 0, 4, "e");
@@ -269,7 +269,7 @@ TEST_F(BoundaryMotionsTest, E_FromWordEnd_GoesToNextWordEnd) {
   EXPECT_EQ(result.col, expected.col);
 }
 
-TEST_F(BoundaryMotionsTest, B_FromWordStart_GoesToPreviousWordStart) {
+TEST_F(WordMotionsTest, B_FromWordStart_GoesToPreviousWordStart) {
   Lines lines = {"hello world"};
   Position result = applyMotion({0, 6}, "b", lines);  // Start at 'w' in world
   Position expected = neovimMotion(lines, 0, 6, "b");
@@ -277,7 +277,7 @@ TEST_F(BoundaryMotionsTest, B_FromWordStart_GoesToPreviousWordStart) {
   EXPECT_EQ(result.col, expected.col);
 }
 
-TEST_F(BoundaryMotionsTest, B_FromMiddleOfWord_GoesToWordStart) {
+TEST_F(WordMotionsTest, B_FromMiddleOfWord_GoesToWordStart) {
   Lines lines = {"hello world"};
   Position result = applyMotion({0, 8}, "b", lines);  // Start at 'r' in world
   Position expected = neovimMotion(lines, 0, 8, "b");
@@ -285,7 +285,7 @@ TEST_F(BoundaryMotionsTest, B_FromMiddleOfWord_GoesToWordStart) {
   EXPECT_EQ(result.col, expected.col);
 }
 
-TEST_F(BoundaryMotionsTest, GE_FromWordStart_GoesToPreviousWordEnd) {
+TEST_F(WordMotionsTest, GE_FromWordStart_GoesToPreviousWordEnd) {
   Lines lines = {"hello world"};
   Position result = applyMotion({0, 6}, "ge", lines);  // Start at 'w' in world
   Position expected = neovimMotion(lines, 0, 6, "ge");
@@ -293,7 +293,7 @@ TEST_F(BoundaryMotionsTest, GE_FromWordStart_GoesToPreviousWordEnd) {
   EXPECT_EQ(result.col, expected.col);
 }
 
-TEST_F(BoundaryMotionsTest, GE_FromWordEnd_GoesToPreviousWordEnd) {
+TEST_F(WordMotionsTest, GE_FromWordEnd_GoesToPreviousWordEnd) {
   Lines lines = {"hello world test"};
   Position result = applyMotion({0, 10}, "ge", lines);  // Start at 'd' (end of world)
   Position expected = neovimMotion(lines, 0, 10, "ge");
@@ -302,7 +302,7 @@ TEST_F(BoundaryMotionsTest, GE_FromWordEnd_GoesToPreviousWordEnd) {
 }
 
 // Symbol/keyword boundary tests
-TEST_F(BoundaryMotionsTest, W_KeywordToSymbol) {
+TEST_F(WordMotionsTest, W_KeywordToSymbol) {
   Lines lines = {"hello.world"};
   Position result = applyMotion({0, 0}, "w", lines);
   Position expected = neovimMotion(lines, 0, 0, "w");
@@ -310,7 +310,7 @@ TEST_F(BoundaryMotionsTest, W_KeywordToSymbol) {
   EXPECT_EQ(result.col, expected.col);
 }
 
-TEST_F(BoundaryMotionsTest, W_SymbolToKeyword) {
+TEST_F(WordMotionsTest, W_SymbolToKeyword) {
   Lines lines = {"...hello"};
   Position result = applyMotion({0, 0}, "w", lines);
   Position expected = neovimMotion(lines, 0, 0, "w");
@@ -318,7 +318,7 @@ TEST_F(BoundaryMotionsTest, W_SymbolToKeyword) {
   EXPECT_EQ(result.col, expected.col);
 }
 
-TEST_F(BoundaryMotionsTest, BigW_TreatsSymbolsAsWord) {
+TEST_F(WordMotionsTest, BigW_TreatsSymbolsAsWord) {
   Lines lines = {"hello...world"};
   Position result = applyMotion({0, 0}, "W", lines);  // Should skip past "hello..." to "world"
   Position expected = neovimMotion(lines, 0, 0, "W");
@@ -327,7 +327,7 @@ TEST_F(BoundaryMotionsTest, BigW_TreatsSymbolsAsWord) {
 }
 
 // Whitespace handling
-TEST_F(BoundaryMotionsTest, W_FromWhitespace) {
+TEST_F(WordMotionsTest, W_FromWhitespace) {
   Lines lines = {"hello   world"};
   Position result = applyMotion({0, 6}, "w", lines);  // Start in whitespace
   Position expected = neovimMotion(lines, 0, 6, "w");
@@ -335,7 +335,7 @@ TEST_F(BoundaryMotionsTest, W_FromWhitespace) {
   EXPECT_EQ(result.col, expected.col);
 }
 
-TEST_F(BoundaryMotionsTest, E_FromWhitespace) {
+TEST_F(WordMotionsTest, E_FromWhitespace) {
   Lines lines = {"hello   world"};
   Position result = applyMotion({0, 6}, "e", lines);  // Start in whitespace
   Position expected = neovimMotion(lines, 0, 6, "e");
@@ -344,7 +344,7 @@ TEST_F(BoundaryMotionsTest, E_FromWhitespace) {
 }
 
 // Multi-line crossing
-TEST_F(BoundaryMotionsTest, W_CrossesEmptyLine) {
+TEST_F(WordMotionsTest, W_CrossesEmptyLine) {
   Lines lines = {"hello", "", "world"};
   Position result = applyMotion({0, 0}, "w", lines);
   Position expected = neovimMotion(lines, 0, 0, "w");
@@ -352,7 +352,7 @@ TEST_F(BoundaryMotionsTest, W_CrossesEmptyLine) {
   EXPECT_EQ(result.col, expected.col);
 }
 
-TEST_F(BoundaryMotionsTest, B_CrossesEmptyLine) {
+TEST_F(WordMotionsTest, B_CrossesEmptyLine) {
   Lines lines = {"hello", "", "world"};
   Position result = applyMotion({2, 0}, "b", lines);  // Start at 'w' in world
   Position expected = neovimMotion(lines, 2, 0, "b");
@@ -361,7 +361,7 @@ TEST_F(BoundaryMotionsTest, B_CrossesEmptyLine) {
 }
 
 // Edge cases at buffer boundaries
-TEST_F(BoundaryMotionsTest, W_AtBufferEnd) {
+TEST_F(WordMotionsTest, W_AtBufferEnd) {
   Lines lines = {"hello"};
   Position result = applyMotion({0, 4}, "w", lines);  // At last char
   Position expected = neovimMotion(lines, 0, 4, "w");
@@ -369,7 +369,7 @@ TEST_F(BoundaryMotionsTest, W_AtBufferEnd) {
   EXPECT_EQ(result.col, expected.col);
 }
 
-TEST_F(BoundaryMotionsTest, B_AtBufferStart) {
+TEST_F(WordMotionsTest, B_AtBufferStart) {
   Lines lines = {"hello"};
   Position result = applyMotion({0, 0}, "b", lines);  // At first char
   Position expected = neovimMotion(lines, 0, 0, "b");
@@ -377,7 +377,7 @@ TEST_F(BoundaryMotionsTest, B_AtBufferStart) {
   EXPECT_EQ(result.col, expected.col);
 }
 
-TEST_F(BoundaryMotionsTest, GE_AtBufferStart) {
+TEST_F(WordMotionsTest, GE_AtBufferStart) {
   Lines lines = {"hello"};
   Position result = applyMotion({0, 0}, "ge", lines);  // At first char
   Position expected = neovimMotion(lines, 0, 0, "ge");

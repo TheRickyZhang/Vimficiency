@@ -46,6 +46,8 @@ class PhysicalKeys {
 public:
   PhysicalKeys() = default;
   PhysicalKeys(std::initializer_list<Key> init) : keys(init) {}
+  PhysicalKeys(size_t count, Key k) : keys(count, k) {}
+
 
   size_t size() const { return keys.size(); }
   bool empty() const { return keys.empty(); }
