@@ -31,6 +31,16 @@ struct Lines : std::vector<std::string> {
     return result;
   }
 
+  static bool sameLineLengths(const Lines& x, const Lines& y) {
+    if(x.size() != y.size()) return false;
+    for(int i = 0; i < x.size(); i++) {
+      if(x[i].size() != y[i].size()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   Position getLastPos() const {
     assert(!this->empty());
     for(int i = this->size() - 1; i >= 0; i--) {

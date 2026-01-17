@@ -5,6 +5,7 @@
 
 #include "Config.h"
 #include "Result.h"
+#include "RangeResult.h"
 #include "OptimizerParams.h"
 #include "ImpliedExclusions.h"
 #include "Editor/NavContext.h"

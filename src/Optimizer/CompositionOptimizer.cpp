@@ -5,6 +5,7 @@
 #include "MovementOptimizer.h"
 
 #include "State/CompositionState.h"
+#include "Keyboard/CharToKeys.h"
 #include "Keyboard/MotionToKeys.h"
 #include "Utils/Lines.h"
 #include "Utils/Debug.h"
@@ -163,24 +164,21 @@ vector<Result> CompositionOptimizer::optimize(
           const DiffState& diff = diffStates[editsCompleted];
           const EditResult& editResult = editResults[editsCompleted];
 
-          // Convert buffer position to edit region index
-          int i = bufferPosToEditIndex(pos, diff);
-          if (i >= 0 && i < editResult.n) {
-            // Try all possible ending positions
-            for (int j = 0; j < editResult.m; j++) {
-              const Result& editRes = editResult.adj[i][j];
-              if (editRes.isValid()) {
-                CompositionState newState = s;
+          // Convert buffer position to edit region index (flat index)
+          int flatIdx = bufferPosToEditIndex(pos, diff);
+          if (flatIdx >= 0 && flatIdx < static_cast<int>(editResult.typeAllResults.size())) {
+            const Result& editRes = editResult.typeAllResults[flatIdx];
+            if (editRes.isValid()) {
+              CompositionState newState = s;
 
-                // Convert end index back to buffer position
-                // NOTE: After this edit, we're in linesAfterNEdits[editsCompleted + 1]
-                Position newPos = editIndexToBufferPos(j, diff);
+              // After deletion, cursor ends up at start of edit region
+              // The edit clears content, then we type the inserted text
+              Position newPos = diff.posBegin;
 
-                // Edit results always end in Normal mode (Esc at the end)
-                newState.applyEditTransition(editRes.sequences, newPos, Mode::Normal, config);
-                newState.updateCost(heuristic(newState, editsCompleted + 1, suffixEditCosts, diffStates, params));
-                exploreNewState(std::move(newState));
-              }
+              // Edit results always end in Normal mode (Esc at the end)
+              newState.applyEditTransition(editRes.sequences, newPos, Mode::Normal, config);
+              newState.updateCost(heuristic(newState, editsCompleted + 1, suffixEditCosts, diffStates, params));
+              exploreNewState(std::move(newState));
             }
           }
         }
@@ -248,11 +246,9 @@ vector<double> CompositionOptimizer::computeSuffixEditCosts(const vector<EditRes
   for (int i = n - 1; i >= 0; i--) {
     const auto& editRes = editResults[i];
     vector<double> costs;
-    for (int j = 0; j < editRes.n; j++) {
-      for (int k = 0; k < editRes.m; k++) {
-        if (editRes.adj[j][k].isValid()) {
-          costs.push_back(editRes.adj[j][k].keyCost);
-        }
+    for (const Result& r : editRes.typeAllResults) {
+      if (r.isValid()) {
+        costs.push_back(r.keyCost);
       }
     }
 
@@ -369,11 +365,45 @@ vector<EditResult> CompositionOptimizer::calculateEditResults(const vector<DiffS
   results.reserve(diffStates.size());
 
   for (const DiffState& diff : diffStates) {
+    // Run deletion-based approach
     EditResult result = editOptimizer.optimizeEdit(
         diff.deletedLines(),
-        diff.insertedLines(),
         diff.boundary
     );
+
+    // Check if replacement strategy is applicable and better
+    // Replacement works for same-length, single-line transformations
+    if (diff.deletedText.size() == diff.insertedText.size() &&
+        diff.deletedText.find('\n') == string::npos &&
+        diff.insertedText.find('\n') == string::npos &&
+        !diff.deletedText.empty()) {
+
+      Result replResult = tryReplacement(diff.deletedText, diff.insertedText, config);
+      if (replResult.isValid()) {
+        // Replacement starts at column 0, ends in Normal mode
+        // Compare to deletion result at position 0 (flat index)
+        if (!result.typeAllResults.empty() && result.typeAllResults[0].isValid()) {
+          // Deletion cost = delete cost + cost to type all inserted chars
+          // (deletion ends in insert mode, we'd type insertedText)
+          double typingCost = 0;
+          for (char c : diff.insertedText) {
+            auto it = CHAR_TO_KEYS.find(c);
+            if (it != CHAR_TO_KEYS.end()) {
+              typingCost += it->second.size();
+            }
+          }
+          double deletionTotalCost = result.typeAllResults[0].keyCost + typingCost;
+
+          // If replacement is cheaper, update the result
+          if (replResult.keyCost < deletionTotalCost) {
+            result.typeAllResults[0] = replResult;
+            debug("Replacement is cheaper for diff: ", diff.deletedText, " -> ", diff.insertedText,
+                  " (", replResult.keyCost, " vs ", deletionTotalCost, ")");
+          }
+        }
+      }
+    }
+
     results.push_back(std::move(result));
   }
 

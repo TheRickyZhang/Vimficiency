@@ -17,8 +17,21 @@
 #include "Boundary/EditBoundary.h"
 #include "Utils/Debug.h"
 #include "Utils/Lines.h"
+#include "Utils/NoChar.h"
 
 using namespace std;
+
+// Helper: Convert (row, col) to flat index for typeAllResults access
+// Note: This matches how EditOptimizer indexes results - by position count,
+// NOT including newlines. Empty lines count as 1 position.
+static int toFlatIndex(int row, int col, const Lines& lines) {
+  int idx = 0;
+  for (int r = 0; r < row && r < static_cast<int>(lines.size()); r++) {
+    idx += lines[r].empty() ? 1 : static_cast<int>(lines[r].size());
+  }
+  idx += col;
+  return idx;
+}
 
 class EditOptimizerTest : public ::testing::Test {
 protected:
@@ -184,16 +197,18 @@ TEST_F(EditOptimizerTest, DeletionSearch_Simple) {
   Lines source = {"aa", "bb"};
 
   EditOptimizer opt = makeOptimizer();
-  DeletionResult res = opt.optimizeDeletion(source);
+  EditBoundary boundary;  // Default boundary (no constraints)
+  EditResult res = opt.optimizeEdit(source, boundary);
 
   cout << consume_debug_output() << endl;
 
   // Print results for each starting position
   cout << "Deletion results for source: " << source << endl;
-  for (int r = 0; r < res.rows; r++) {
+  for (int r = 0; r < static_cast<int>(source.size()); r++) {
     int cols = source[r].empty() ? 1 : source[r].size();
     for (int c = 0; c < cols; c++) {
-      const Result& result = res.at(r, c);
+      int flatIdx = toFlatIndex(r, c, source);
+      const Result& result = res.typeAllResults[flatIdx];
       if (result.isValid()) {
         cout << "  [" << r << "," << c << "]: " << result.getSequenceString()
              << " (cost " << result.keyCost << ")" << endl;
@@ -204,16 +219,17 @@ TEST_F(EditOptimizerTest, DeletionSearch_Simple) {
   }
 
   // All positions should have valid results
-  EXPECT_TRUE(res.at(0, 0).isValid());
-  EXPECT_TRUE(res.at(0, 1).isValid());
-  EXPECT_TRUE(res.at(1, 0).isValid());
-  EXPECT_TRUE(res.at(1, 1).isValid());
+  EXPECT_TRUE(res.typeAllResults[toFlatIndex(0, 0, source)].isValid());
+  EXPECT_TRUE(res.typeAllResults[toFlatIndex(0, 1, source)].isValid());
+  EXPECT_TRUE(res.typeAllResults[toFlatIndex(1, 0, source)].isValid());
+  EXPECT_TRUE(res.typeAllResults[toFlatIndex(1, 1, source)].isValid());
 
   // Verify each sequence actually produces the goal state
-  for (int r = 0; r < res.rows; r++) {
+  for (int r = 0; r < static_cast<int>(source.size()); r++) {
     int cols = source[r].empty() ? 1 : source[r].size();
     for (int c = 0; c < cols; c++) {
-      const Result& result = res.at(r, c);
+      int flatIdx = toFlatIndex(r, c, source);
+      const Result& result = res.typeAllResults[flatIdx];
       if (result.isValid()) {
         string seq = result.getSequenceString();
         ApplyResult applied = applySequence(source, Position(r, c), seq);
@@ -235,13 +251,15 @@ TEST_F(EditOptimizerTest, DeletionSearch_SingleLine) {
   Lines source = {"hello"};
 
   EditOptimizer opt = makeOptimizer();
-  DeletionResult res = opt.optimizeDeletion(source);
+  EditBoundary boundary;
+  EditResult res = opt.optimizeEdit(source, boundary);
 
   cout << consume_debug_output() << endl;
 
   cout << "Deletion results for source: " << source << endl;
   for (int c = 0; c < (int)source[0].size(); c++) {
-    const Result& result = res.at(0, c);
+    int flatIdx = toFlatIndex(0, c, source);
+    const Result& result = res.typeAllResults[flatIdx];
     if (result.isValid()) {
       cout << "  [0," << c << "]: " << result.getSequenceString()
            << " (cost " << result.keyCost << ")" << endl;
@@ -263,17 +281,19 @@ TEST_F(EditOptimizerTest, DeletionSearch_ThreeLines) {
   Lines source = {"aaa", "bbb", "ccc"};
 
   EditOptimizer opt = makeOptimizer();
-  DeletionResult res = opt.optimizeDeletion(source);
+  EditBoundary boundary;
+  EditResult res = opt.optimizeEdit(source, boundary);
 
   cout << consume_debug_output() << endl;
 
   cout << "Deletion results for source: " << source << endl;
 
   int verified = 0;
-  for (int r = 0; r < res.rows; r++) {
+  for (int r = 0; r < static_cast<int>(source.size()); r++) {
     int cols = source[r].size();
     for (int c = 0; c < cols; c++) {
-      const Result& result = res.at(r, c);
+      int flatIdx = toFlatIndex(r, c, source);
+      const Result& result = res.typeAllResults[flatIdx];
       if (result.isValid()) {
         cout << "  [" << r << "," << c << "]: " << result.getSequenceString()
              << " (cost " << result.keyCost << ")" << endl;
@@ -300,17 +320,19 @@ TEST_F(EditOptimizerTest, DeletionSearch_MixedLengths) {
   Lines source = {"a", "bbb", "cc"};
 
   EditOptimizer opt = makeOptimizer();
-  DeletionResult res = opt.optimizeDeletion(source);
+  EditBoundary boundary;
+  EditResult res = opt.optimizeEdit(source, boundary);
 
   cout << consume_debug_output() << endl;
 
   cout << "Deletion results for source: " << source << endl;
 
   int verified = 0;
-  for (int r = 0; r < res.rows; r++) {
+  for (int r = 0; r < static_cast<int>(source.size()); r++) {
     int cols = source[r].size();
     for (int c = 0; c < cols; c++) {
-      const Result& result = res.at(r, c);
+      int flatIdx = toFlatIndex(r, c, source);
+      const Result& result = res.typeAllResults[flatIdx];
       if (result.isValid()) {
         cout << "  [" << r << "," << c << "]: " << result.getSequenceString()
              << " (cost " << result.keyCost << ")" << endl;
@@ -347,15 +369,16 @@ TEST_F(EditOptimizerTest, DeletionSearch_WithLinesBelow) {
   boundary.hasLinesBelow = true;  // Can't dd on last line
 
   EditOptimizer opt = makeOptimizer();
-  DeletionResult res = opt.optimizeDeletion(source, boundary);
+  EditResult res = opt.optimizeEdit(source, boundary);
 
   cout << consume_debug_output() << endl;
 
   cout << "Deletion results with hasLinesBelow=true:" << endl;
-  for (int r = 0; r < res.rows; r++) {
+  for (int r = 0; r < static_cast<int>(source.size()); r++) {
     int cols = source[r].empty() ? 1 : source[r].size();
     for (int c = 0; c < cols; c++) {
-      const Result& result = res.at(r, c);
+      int flatIdx = toFlatIndex(r, c, source);
+      const Result& result = res.typeAllResults[flatIdx];
       if (result.isValid()) {
         string seq = result.getSequenceString();
         cout << "  [" << r << "," << c << "]: " << seq
@@ -373,10 +396,10 @@ TEST_F(EditOptimizerTest, DeletionSearch_WithLinesBelow) {
   }
 
   // All positions should still have valid results
-  EXPECT_TRUE(res.at(0, 0).isValid());
-  EXPECT_TRUE(res.at(0, 1).isValid());
-  EXPECT_TRUE(res.at(1, 0).isValid());
-  EXPECT_TRUE(res.at(1, 1).isValid());
+  EXPECT_TRUE(res.typeAllResults[toFlatIndex(0, 0, source)].isValid());
+  EXPECT_TRUE(res.typeAllResults[toFlatIndex(0, 1, source)].isValid());
+  EXPECT_TRUE(res.typeAllResults[toFlatIndex(1, 0, source)].isValid());
+  EXPECT_TRUE(res.typeAllResults[toFlatIndex(1, 1, source)].isValid());
 }
 
 TEST_F(EditOptimizerTest, DeletionSearch_SingleLineWithLinesBelow) {
@@ -387,13 +410,14 @@ TEST_F(EditOptimizerTest, DeletionSearch_SingleLineWithLinesBelow) {
   boundary.hasLinesBelow = true;
 
   EditOptimizer opt = makeOptimizer();
-  DeletionResult res = opt.optimizeDeletion(source, boundary);
+  EditResult res = opt.optimizeEdit(source, boundary);
 
   cout << consume_debug_output() << endl;
 
   cout << "Deletion results (single line, hasLinesBelow):" << endl;
   for (int c = 0; c < (int)source[0].size(); c++) {
-    const Result& result = res.at(0, c);
+    int flatIdx = toFlatIndex(0, c, source);
+    const Result& result = res.typeAllResults[flatIdx];
     if (result.isValid()) {
       string seq = result.getSequenceString();
       cout << "  [0," << c << "]: " << seq << endl;
@@ -453,11 +477,11 @@ TEST_F(EditOptimizerTest, FullBuffer_Linewise) {
   EditBoundary boundary;
   boundary.hasLinesAbove = true;
   boundary.hasLinesBelow = true;
-  boundary.leftBoundaryChar = CharType::Newline;   // at line start
-  boundary.rightBoundaryChar = CharType::Newline;  // at line end
+  boundary.leftChar = '\n';   // at line start
+  boundary.rightChar = '\n';  // at line end
 
   EditOptimizer opt = makeOptimizer();
-  DeletionResult res = opt.optimizeDeletion(editRegion, boundary);
+  EditResult res = opt.optimizeEdit(editRegion, boundary);
 
   cout << consume_debug_output() << endl;
 
@@ -466,10 +490,11 @@ TEST_F(EditOptimizerTest, FullBuffer_Linewise) {
   cout << "Edit region: " << editRegion << endl;
 
   // Test each starting position in the edit region
-  for (int r = 0; r < res.rows; r++) {
+  for (int r = 0; r < static_cast<int>(editRegion.size()); r++) {
     int cols = editRegion[r].empty() ? 1 : editRegion[r].size();
     for (int c = 0; c < cols; c++) {
-      const Result& result = res.at(r, c);
+      int flatIdx = toFlatIndex(r, c, editRegion);
+      const Result& result = res.typeAllResults[flatIdx];
       if (!result.isValid()) continue;
 
       string seq = result.getSequenceString();
@@ -529,18 +554,18 @@ TEST_F(EditOptimizerTest, FullBuffer_SpaceSeparated) {
   EditBoundary boundary;
   boundary.hasLinesAbove = false;
   boundary.hasLinesBelow = false;
-  boundary.leftBoundaryChar = CharType::Whitespace;   // "x " before edit region
-  boundary.rightBoundaryChar = CharType::Whitespace;  // " x" after edit region
+  boundary.leftChar = ' ';   // "x " before edit region
+  boundary.rightChar = ' ';  // " x" after edit region
 
   EditOptimizer opt = makeOptimizer();
-  DeletionResult res = opt.optimizeDeletion(editRegion, boundary);
+  EditResult res = opt.optimizeEdit(editRegion, boundary);
 
   cout << consume_debug_output() << endl;
 
   cout << "=== Space-separated boundary test ===" << endl;
   cout << "Full buffer: " << fullBuffer << endl;
   cout << "Edit region: " << editRegion << endl;
-  cout << "leftBoundaryChar=Whitespace, rightBoundaryChar=Whitespace -> line ops blocked" << endl;
+  cout << "leftChar=' ', rightChar=' ' -> line ops blocked" << endl;
 
   // Verify NO line operations are used (they'd delete the x's)
   // Full line: dd, cc, S
@@ -552,10 +577,11 @@ TEST_F(EditOptimizerTest, FullBuffer_SpaceSeparated) {
     "c0", "d0", "c^", "d^"    // To start of line (startsAtLineStart=false)
   };
 
-  for (int r = 0; r < res.rows; r++) {
+  for (int r = 0; r < static_cast<int>(editRegion.size()); r++) {
     int cols = editRegion[r].empty() ? 1 : editRegion[r].size();
     for (int c = 0; c < cols; c++) {
-      const Result& result = res.at(r, c);
+      int flatIdx = toFlatIndex(r, c, editRegion);
+      const Result& result = res.typeAllResults[flatIdx];
       if (!result.isValid()) {
         cout << "  [" << r << "," << c << "]: no solution" << endl;
         continue;
@@ -620,20 +646,21 @@ TEST_F(EditOptimizerTest, FullBuffer_Linewise_VerifyNoEscape) {
   EditBoundary boundary;
   boundary.hasLinesAbove = true;
   boundary.hasLinesBelow = true;
-  boundary.leftBoundaryChar = CharType::Newline;   // at line start
-  boundary.rightBoundaryChar = CharType::Newline;  // at line end
+  boundary.leftChar = '\n';   // at line start
+  boundary.rightChar = '\n';  // at line end
 
   EditOptimizer opt = makeOptimizer();
-  DeletionResult res = opt.optimizeDeletion(editRegion, boundary);
+  EditResult res = opt.optimizeEdit(editRegion, boundary);
 
   cout << consume_debug_output() << endl;
 
   cout << "=== Linewise cursor escape test ===" << endl;
 
-  for (int r = 0; r < res.rows; r++) {
+  for (int r = 0; r < static_cast<int>(editRegion.size()); r++) {
     int cols = editRegion[r].empty() ? 1 : editRegion[r].size();
     for (int c = 0; c < cols; c++) {
-      const Result& result = res.at(r, c);
+      int flatIdx = toFlatIndex(r, c, editRegion);
+      const Result& result = res.typeAllResults[flatIdx];
       if (!result.isValid()) continue;
 
       string seq = result.getSequenceString();
@@ -675,5 +702,107 @@ TEST_F(EditOptimizerTest, FullBuffer_Linewise_VerifyNoEscape) {
            << ", buffer=" << applied.lines << " ✓" << endl;
     }
   }
+}
+
+// =============================================================================
+// Replacement strategy tests
+// =============================================================================
+
+TEST_F(EditOptimizerTest, Replacement_SingleDiff) {
+  // "fresh" -> "frosh" - only 'e' -> 'o' differs at position 2
+  Result result = tryReplacement("fresh", "frosh", config);
+
+  EXPECT_TRUE(result.isValid());
+  string seq = result.getSequenceString();
+  EXPECT_FALSE(seq.empty());
+
+  cout << "Replacement 'fresh' -> 'frosh': " << seq
+       << " (cost " << result.keyCost << ")" << endl;
+
+  // Should navigate to position 2, then replace 'e' with 'o'
+  // Expected: "2lro" (2l to move, then ro to replace with 'o')
+  // Or it could be "llro" depending on cost calculation
+  EXPECT_TRUE(seq.find("ro") != string::npos ||
+              seq.find("r") != string::npos)
+      << "Expected replacement command in: " << seq;
+}
+
+TEST_F(EditOptimizerTest, Replacement_MultipleDiffs) {
+  // "hello" -> "jello" - 'h' -> 'j' at position 0
+  Result result = tryReplacement("hello", "jello", config);
+
+  EXPECT_TRUE(result.isValid());
+  string seq = result.getSequenceString();
+  cout << "Replacement 'hello' -> 'jello': " << seq
+       << " (cost " << result.keyCost << ")" << endl;
+
+  // At position 0, should just be "rj"
+  EXPECT_EQ(seq, "rj")
+      << "Expected 'rj' for single char replacement at col 0";
+}
+
+TEST_F(EditOptimizerTest, Replacement_ConsecutiveDiffs) {
+  // "abc" -> "xyz" - all three chars differ
+  Result result = tryReplacement("abc", "xyz", config);
+
+  EXPECT_TRUE(result.isValid());
+  string seq = result.getSequenceString();
+  cout << "Replacement 'abc' -> 'xyz': " << seq
+       << " (cost " << result.keyCost << ")" << endl;
+
+  // With 3 consecutive diffs starting at col 0, should use R mode: "Rxyz<Esc>"
+  EXPECT_TRUE(seq.find("Rxyz") != string::npos)
+      << "Expected R mode for consecutive replacements: " << seq;
+}
+
+TEST_F(EditOptimizerTest, Replacement_NoDiffs) {
+  // "same" -> "same" - no differences
+  Result result = tryReplacement("same", "same", config);
+
+  // With no differences, result should be invalid (nothing to do)
+  // OR valid with empty sequence - check which behavior is implemented
+  if (result.isValid()) {
+    EXPECT_TRUE(result.getSequenceString().empty());
+    EXPECT_EQ(result.keyCost, 0);
+  }
+
+  cout << "Replacement 'same' -> 'same': (no changes)" << endl;
+}
+
+TEST_F(EditOptimizerTest, Replacement_DifferentLengths) {
+  // Different lengths - should return invalid
+  Result result = tryReplacement("hello", "hi", config);
+
+  EXPECT_FALSE(result.isValid())
+      << "Replacement should be invalid for different-length strings";
+}
+
+TEST_F(EditOptimizerTest, Replacement_WithNewlines) {
+  // Strings with newlines - should return invalid
+  Result result = tryReplacement("hello\nworld", "jello\nworld", config);
+
+  EXPECT_FALSE(result.isValid())
+      << "Replacement should be invalid for multi-line strings";
+}
+
+TEST_F(EditOptimizerTest, Replacement_SparseDiffs) {
+  // "0000000" -> "1001001" - three non-consecutive diffs at positions 0, 3, 6
+  Result result = tryReplacement("0000000", "1001001", config);
+
+  EXPECT_TRUE(result.isValid());
+  string seq = result.getSequenceString();
+  cout << "Replacement '0000000' -> '1001001': " << seq
+       << " (cost " << result.keyCost << ")" << endl;
+
+  // Should have multiple r1 commands with navigation
+  // Expected something like: r1 3l r1 3l r1
+  size_t replaceCount = 0;
+  for (size_t i = 0; i < seq.size(); i++) {
+    if (seq[i] == 'r' && i+1 < seq.size() && seq[i+1] == '1') {
+      replaceCount++;
+    }
+  }
+  EXPECT_GE(replaceCount, 3u)
+      << "Expected at least 3 single-char replacements: " << seq;
 }
 

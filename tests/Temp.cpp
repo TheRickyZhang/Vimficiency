@@ -23,8 +23,8 @@ protected:
   EditBoundary noBoundary() {
     EditBoundary b{};
     // Newline at both boundaries = no crossing possible (full line)
-    b.leftBoundaryChar = CharType::Newline;
-    b.rightBoundaryChar = CharType::Newline;
+    b.leftChar = '\n';
+    b.rightChar = '\n';
     return b;
   }
 };

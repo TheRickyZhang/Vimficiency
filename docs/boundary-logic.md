@@ -109,6 +109,40 @@ Where:
 - `lastChar` / `firstChar` = char at the edge of current content
 - `rightBoundary` / `leftBoundary` = char just OUTSIDE the edit region
 
+== EditBoundary API (Simplified)
+
+EditBoundary now uses raw chars instead of CharType enum:
+```cpp
+struct EditBoundary {
+  char leftChar = NO_CHAR;   // Char before edit region ('\n' at line start, NO_CHAR at buffer start)
+  char rightChar = NO_CHAR;  // Char after edit region ('\n' at line end, NO_CHAR at buffer end)
+  bool hasLinesAbove = false;
+  bool hasLinesBelow = false;
+  QuoteFlags firstLineQuotes;   // For quote text object support
+  QuoteFlags lastLineQuotes;
+  BracketFlags firstLineBrackets;  // For bracket text object support
+  BracketFlags lastLineBrackets;
+
+  // Default constructor for manual setup
+  EditBoundary() = default;
+
+  // Construct from buffer context - analyzes chars around edit region
+  EditBoundary(const Lines& lines, Position startPos, Position endPos);
+
+  // Construct inheriting from parent boundary (for sub-regions)
+  EditBoundary(const EditBoundary& parent, const Lines& lines, Position startPos, Position endPos);
+
+  bool atLineEnd() const { return rightChar == '\n' || rightChar == NO_CHAR; }
+  bool atLineStart() const { return leftChar == '\n' || leftChar == NO_CHAR; }
+  bool isFullLineEditSafe() const { return atLineStart() && atLineEnd(); }
+};
+```
+
+**Constructors**:
+- Default: manual setup, fields default to NO_CHAR/false
+- Primary: takes full buffer context, computes leftChar/rightChar from adjacent positions
+- Inherited: starts with parent's boundary, refines based on new sub-region positions
+
 == Text Object Commands
 ```
 Command |
@@ -218,7 +252,7 @@ Note: The dap logic mirrors daw — same trailing/leading preference pattern.
 
 == Paragraph Boundary Crossing
 
-Unlike words (which need CharType × CharType crossing tables), paragraphs use simple line comparison:
+Unlike words (which need character-class based crossing tables), paragraphs use simple line comparison:
 
 ```
 Forward:   endpointLine >= bottomBoundaryLine
@@ -275,11 +309,11 @@ Cursor at 'w' (line 1, col 0)
 
 The stress test verifies crossing predictions against Neovim:
 1. Generate random buffer content
-2. Place reserved boundary chars (one per CharType) at edit region edges
+2. Place reserved boundary chars at edit region edges
 3. Random cursor position within edit region
 4. Execute motion, verify prefix/suffix intact via string matching
-5. Only flag failure if: motion crossed but crossFn predicted safe
-   (Conservative predictions where crossFn says "would cross" but motion
+5. Only flag failure if: motion crossed but prediction said safe
+   (Conservative predictions where we say "would cross" but motion
    didn't reach boundary are acceptable)
 
 == Critical Edge Cases

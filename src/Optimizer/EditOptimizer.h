@@ -1,7 +1,6 @@
 #pragma once
 
 #include <vector>
-#include <climits>
 #include <optional>
 
 #include "Config.h"
@@ -12,33 +11,29 @@
 #include "Utils/Lines.h"
 #include "State/EditState.h"
 
-// DEPRECATED: Old result structure for line-level DP approach.
-// Kept temporarily for CompositionOptimizer compatibility.
-// Will be removed once CompositionOptimizer is updated to use DeletionResult.
 struct EditResult {
-  int n;
-  int m;
-  std::vector<std::vector<Result>> adj;
-  EditResult(int n, int m) : n(n), m(m) {
-    adj = std::vector<std::vector<Result>>(n, std::vector<Result>(m, Result("", INT_MAX)));
-  }
+  // Results that involve deleting everything, and typing the end text
+  // start = index, end = sz-1
+  std::vector<Result> typeAllResults;
+
+  // Results that involve replacement. Start indices only go until first replace region, and end is always the last replace pos.
+  // start = index, end = replacementEnd
+  std::vector<Result> replacementResults;
+  int replacementEnd;
 };
 
-// Result of deletion search: for each starting position, optimal sequences to clear buffer
-struct DeletionResult {
-  // For each linear position index, the best sequence(s) to delete all content
-  // Index = row * maxCol + col (linearized position)
-  std::vector<Result> results;
 
-  // Dimensions for interpreting indices
-  int rows;
-  int maxCols;
+// Try to find an optimal replacement sequence for same-length transformations.
+// Returns invalid result if replacement is not beneficial or not possible.
+//
+// @param deleted  The characters being removed (no newlines)
+// @param inserted The characters being added (must be same length as deleted)
+// @param config   Keyboard config for cost calculation
+// @return ReplacementResult with sequence and cost if beneficial, invalid otherwise
+Result tryReplacement(const std::string& deleted,
+                                  const std::string& inserted,
+                                  const Config& config);
 
-  DeletionResult(int r, int c) : rows(r), maxCols(c), results(r * c) {}
-
-  Result& at(int row, int col) { return results[row * maxCols + col]; }
-  const Result& at(int row, int col) const { return results[row * maxCols + col]; }
-};
 
 
 struct EditOptimizer {
@@ -57,21 +52,15 @@ struct EditOptimizer {
   // Heuristic for A* search: effort + chars remaining
   double heuristic(const EditState& s, const OptimizerParams& params) const;
 
-  // A* search to find optimal sequences to delete all content from each starting position.
-  // Returns best sequence for each (row, col) starting position.
-  // Goal state: buffer empty (or single empty line) AND in Insert mode.
-  // Boundary constraints:
-  // - If hasLinesBelow: can't dd on last line (cursor would escape to content below)
-  // - If hasLinesAbove or hasLinesBelow: goal is single empty line (can't delete all lines)
-  DeletionResult optimizeDeletion(const Lines& source, const EditBoundary& boundary = EditBoundary{});
 
-  // DEPRECATED: Stub for CompositionOptimizer compatibility.
-  // Returns empty result - CompositionOptimizer needs to be updated to use DeletionResult.
+  // Simplified interface: optimizeDeletion with boundary chars instead of full EditBoundary.
+  // This is the preferred interface for new code.
+
   EditResult optimizeEdit(
-    const Lines& beginLines,
-    const Lines& endLines,
-    const EditBoundary& boundary,
-    const std::optional<OptimizerParams>& paramsOverride = std::nullopt
+      const Lines& startLines,
+      const Lines& endLines,
+      EditBoundary editBoundary,
+      const std::optional<OptimizerParams>& paramsOverride = std::nullopt
   );
 
 };

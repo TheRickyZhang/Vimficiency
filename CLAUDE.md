@@ -58,6 +58,7 @@ For Lua context, see `lua/CLAUDE.md`.
 - @docs/vim-utils-principles.md - State validation, empty handling, MovementUtils vs EndpointUtils
 - @docs/testing.md - NeovimOracle, test file conventions, debug printing
 - @docs/x-macros.md - Key definitions, supported commands, sequence parsing
-- @docs/boundary-logic.md - Word motion and boundary crossing logic
+- @docs/boundary-logic.md - Word motion and boundary crossing logic, EditBoundary API
 - @docs/session-invocation.txt - How vimficiency optimizer sessions are called and stored
 - @docs/utils.md - General utilities (QuoteFlags, BracketFlags, Lines, StringUtils)
+- @docs/edit-region-strategy.md - Replace vs change strategy (includes tryReplacement implementation)

@@ -224,9 +224,9 @@ static EditBoundary computeEditBoundary(
   // Left boundary: what's before the edit region?
   if (posBegin.col > 0 && posBegin.line < static_cast<int>(origLines.size())) {
     const string& line = origLines[posBegin.line];
-    boundary.leftBoundaryChar = getCharType(line[posBegin.col - 1]);
+    boundary.leftChar = line[posBegin.col - 1];
   } else {
-    boundary.leftBoundaryChar = CharType::Newline;  // at line start
+    boundary.leftChar = '\n';  // at line start
   }
 
   // Right boundary: what's after the edit region?
@@ -234,12 +234,12 @@ static EditBoundary computeEditBoundary(
     const string& line = origLines[posEnd.line];
     int nextCol = posEnd.col + 1;
     if (nextCol < static_cast<int>(line.size())) {
-      boundary.rightBoundaryChar = getCharType(line[nextCol]);
+      boundary.rightChar = line[nextCol];
     } else {
-      boundary.rightBoundaryChar = CharType::Newline;  // at line end
+      boundary.rightChar = '\n';  // at line end
     }
   } else {
-    boundary.rightBoundaryChar = CharType::Newline;
+    boundary.rightChar = '\n';
   }
 
   // hasLinesAbove/hasLinesBelow: set by caller if needed for multi-line context

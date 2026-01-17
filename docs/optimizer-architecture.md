@@ -4,7 +4,7 @@ We have three different Optimizers.
 They all have similar configuration settings and include E = effort for typing the key sequence in their heuristics.
 When optimizing commands, we only want to send the relevant buffer context to guard against redundant searching. Thus, Optimizers take in boundary info so that gg/G, for instance, are not searched if they would "spill over".
 
-For more details about how boundaries are handled, see /plans/EditBoundaryLogic.typ.
+For more details about how boundaries are handled, see `docs/boundary-logic.md`.
 
 ## MotionOptimizer
 - Finds best ways to move cursor from start to end.
@@ -13,10 +13,47 @@ For more details about how boundaries are handled, see /plans/EditBoundaryLogic.
 - Builds an index over text objects for efficiency, as we guarantee the buffer contents stay the same
 
 ## EditOptimizer
-- Finds best ways to change starting text to ending text, assuming that all ending text will be typed. We can start from any position, but always end at the very last character.
-- It is very important to handle edit boundaries here, as start/end can span multiple lines, and straddle lines/words from the original context.
-- TBD: Does a multi-source A* search over deleting all characters. Look for improvement.
+- Finds best ways to change starting text to ending text.
+- Two strategies available:
+  1. **Type-all**: Delete content, enter insert mode, type all new text
+  2. **Replacement**: For same-length transformations, use `r{c}` or `R{chars}<Esc>`
+- Multi-source A* search over delete operations from any starting position.
 - Uses the heuristic of E + (Remaining characters to delete)
+
+### API
+```cpp
+// Main entry point - returns results for all starting positions
+EditResult optimizeEdit(const Lines& editRegion, EditBoundary boundary);
+
+// Replacement strategy for same-length strings (no newlines)
+Result tryReplacement(const string& deleted, const string& inserted, const Config& config);
+```
+
+### EditResult Structure
+```cpp
+struct EditResult {
+  vector<Result> typeAllResults;      // Indexed by flat position (no newlines in count)
+  vector<Result> replacementResults;  // For replacement strategy
+  int replacementEnd;
+};
+```
+
+### Flat Position Indexing
+Results are indexed by character position count, NOT including newlines:
+- For `{"aa", "bb"}`: 4 positions (indices 0-3)
+- Position (0,0)→0, (0,1)→1, (1,0)→2, (1,1)→3
+
+### EditBoundary (Simplified)
+Uses raw chars instead of CharType enum:
+```cpp
+struct EditBoundary {
+  char leftChar = NO_CHAR;   // Char before edit region ('\n' at line start)
+  char rightChar = NO_CHAR;  // Char after edit region ('\n' at line end)
+  bool hasLinesAbove = false;
+  bool hasLinesBelow = false;
+  // + QuoteFlags/BracketFlags for text object support
+};
+```
 
 ## CompositionOptimizer
 - Finds best ways to change any buffer state to any other buffer state by content.
