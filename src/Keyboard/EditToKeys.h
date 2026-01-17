@@ -1,6 +1,9 @@
 #pragma once
 
+#include <vector>
+
 #include "Keyboard/StringToKeys.h"
+#include "VimCore/EdgeType.h"
 
 // Edit string to PhysicalKeys mapping (parallel to MotionToKeys)
 using EditToKeys = StringToKeys;
@@ -135,3 +138,40 @@ extern const EditToKeys TEXT_OBJ;   // diw, daw, diW, daW
 
 // Check if a string is an edit
 bool isEdit(std::string_view s);
+
+// =============================================================================
+// Edit Operation Specs - constexpr tables for EditOptimizer
+// =============================================================================
+// Structured specs with operation parameters alongside keys.
+// Separated by direction for efficient boundary checking.
+
+namespace Edit {
+
+// Forward word motion edits (de, dw, dE, dW)
+struct ForwardWordEditSpec {
+  const char* cmd;
+  PhysicalKeys keys;
+  EdgeType edgeType;
+  bool isBig;
+};
+extern const std::vector<ForwardWordEditSpec> FORWARD_WORD_EDITS;
+
+// Backward word motion edits (db, dge, dB, dgE)
+struct BackwardWordEditSpec {
+  const char* cmd;
+  PhysicalKeys keys;
+  EdgeType edgeType;
+  bool isBig;
+};
+extern const std::vector<BackwardWordEditSpec> BACKWARD_WORD_EDITS;
+
+// Text object edits (diw, daw, diW, daW)
+struct TextObjectEditSpec {
+  const char* cmd;
+  PhysicalKeys keys;
+  bool isInner;
+  bool isBig;
+};
+extern const std::vector<TextObjectEditSpec> TEXT_OBJECT_EDITS;
+
+} // namespace Edit

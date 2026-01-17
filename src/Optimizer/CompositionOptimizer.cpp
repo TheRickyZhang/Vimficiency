@@ -366,8 +366,10 @@ vector<EditResult> CompositionOptimizer::calculateEditResults(const vector<DiffS
 
   for (const DiffState& diff : diffStates) {
     // Run deletion-based approach
+    // Pass deletedLines as start, empty/insertedLines as end, and boundary
     EditResult result = editOptimizer.optimizeEdit(
         diff.deletedLines(),
+        diff.insertedLines(),
         diff.boundary
     );
 

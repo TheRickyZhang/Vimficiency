@@ -25,6 +25,12 @@ struct DiffState {
   // Computed once per DiffState, used for per-position safety checking
   EditBoundary boundary;
 
+  // Constructor with all fields
+  DiffState(Position begin, Position end, std::string deleted,
+            std::string inserted, EditBoundary bnd)
+      : posBegin(begin), posEnd(end), deletedText(std::move(deleted)),
+        insertedText(std::move(inserted)), boundary(std::move(bnd)) {}
+
   // Convert to Lines format for EditOptimizer compatibility
   Lines deletedLines() const { return Lines::unflatten(deletedText); }
   Lines insertedLines() const { return Lines::unflatten(insertedText); }

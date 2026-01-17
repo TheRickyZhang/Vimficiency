@@ -38,7 +38,7 @@ protected:
   Config config = Config::uniform();
 
   EditOptimizer makeOptimizer() {
-    return EditOptimizer(config, OptimizerParams(30, 1e4, 1.0, 2.0), 3.0);
+    return EditOptimizer(config, OptimizerParams(30, 1e4, 1.0, 2.0));
   }
 };
 
@@ -192,13 +192,31 @@ bool isValidDeletionGoal(const ApplyResult& result) {
   return false;
 }
 
+// Helper: Create EditBoundary for full buffer deletion (no constraints)
+// This creates a boundary where the entire buffer is the edit region.
+EditBoundary makeFullBufferBoundary(const Lines& source) {
+  if (source.empty()) {
+    return EditBoundary(source, Position(0, 0), Position(0, 0));
+  }
+  int lastLine = static_cast<int>(source.size()) - 1;
+  int lastCol = source[lastLine].empty() ? 0 : static_cast<int>(source[lastLine].size()) - 1;
+  return EditBoundary(source, Position(0, 0), Position(lastLine, lastCol));
+}
+
+// Helper: Call optimizeEdit for full buffer deletion
+// Tests deletion from source to empty buffer.
+EditResult optimizeFullDeletion(EditOptimizer& opt, const Lines& source) {
+  EditBoundary boundary = makeFullBufferBoundary(source);
+  Lines emptyTarget = {""};
+  return opt.optimizeEdit(source, emptyTarget, boundary);
+}
+
 TEST_F(EditOptimizerTest, DeletionSearch_Simple) {
   // Test deletion search from all positions in "aa\nbb"
   Lines source = {"aa", "bb"};
 
   EditOptimizer opt = makeOptimizer();
-  EditBoundary boundary;  // Default boundary (no constraints)
-  EditResult res = opt.optimizeEdit(source, boundary);
+  EditResult res = optimizeFullDeletion(opt, source);
 
   cout << consume_debug_output() << endl;
 
@@ -251,8 +269,7 @@ TEST_F(EditOptimizerTest, DeletionSearch_SingleLine) {
   Lines source = {"hello"};
 
   EditOptimizer opt = makeOptimizer();
-  EditBoundary boundary;
-  EditResult res = opt.optimizeEdit(source, boundary);
+  EditResult res = optimizeFullDeletion(opt, source);
 
   cout << consume_debug_output() << endl;
 
@@ -281,8 +298,7 @@ TEST_F(EditOptimizerTest, DeletionSearch_ThreeLines) {
   Lines source = {"aaa", "bbb", "ccc"};
 
   EditOptimizer opt = makeOptimizer();
-  EditBoundary boundary;
-  EditResult res = opt.optimizeEdit(source, boundary);
+  EditResult res = optimizeFullDeletion(opt, source);
 
   cout << consume_debug_output() << endl;
 
@@ -320,8 +336,7 @@ TEST_F(EditOptimizerTest, DeletionSearch_MixedLengths) {
   Lines source = {"a", "bbb", "cc"};
 
   EditOptimizer opt = makeOptimizer();
-  EditBoundary boundary;
-  EditResult res = opt.optimizeEdit(source, boundary);
+  EditResult res = optimizeFullDeletion(opt, source);
 
   cout << consume_debug_output() << endl;
 
@@ -365,11 +380,12 @@ TEST_F(EditOptimizerTest, DeletionSearch_WithLinesBelow) {
   //   xx        <- outside (hasLinesBelow)
   Lines source = {"aa", "bb"};
 
-  EditBoundary boundary;
+  EditBoundary boundary = makeFullBufferBoundary(source);
   boundary.hasLinesBelow = true;  // Can't dd on last line
 
   EditOptimizer opt = makeOptimizer();
-  EditResult res = opt.optimizeEdit(source, boundary);
+  Lines emptyTarget = {""};
+  EditResult res = opt.optimizeEdit(source, emptyTarget, boundary);
 
   cout << consume_debug_output() << endl;
 
@@ -406,11 +422,12 @@ TEST_F(EditOptimizerTest, DeletionSearch_SingleLineWithLinesBelow) {
   // Single line with hasLinesBelow - can't dd at all, must use S/cc
   Lines source = {"hello"};
 
-  EditBoundary boundary;
+  EditBoundary boundary = makeFullBufferBoundary(source);
   boundary.hasLinesBelow = true;
 
   EditOptimizer opt = makeOptimizer();
-  EditResult res = opt.optimizeEdit(source, boundary);
+  Lines emptyTarget = {""};
+  EditResult res = opt.optimizeEdit(source, emptyTarget, boundary);
 
   cout << consume_debug_output() << endl;
 
@@ -474,14 +491,15 @@ TEST_F(EditOptimizerTest, FullBuffer_Linewise) {
   Lines fullBuffer = {"xx", "aa", "bb", "xx"};
   Lines editRegion = {"aa", "bb"};
 
-  EditBoundary boundary;
+  EditBoundary boundary = makeFullBufferBoundary(editRegion);
   boundary.hasLinesAbove = true;
   boundary.hasLinesBelow = true;
   boundary.leftChar = '\n';   // at line start
   boundary.rightChar = '\n';  // at line end
 
   EditOptimizer opt = makeOptimizer();
-  EditResult res = opt.optimizeEdit(editRegion, boundary);
+  Lines emptyTarget = {""};
+  EditResult res = opt.optimizeEdit(editRegion, emptyTarget, boundary);
 
   cout << consume_debug_output() << endl;
 
@@ -551,14 +569,15 @@ TEST_F(EditOptimizerTest, FullBuffer_SpaceSeparated) {
   Lines editRegion = {"aa", "bb"};
 
   // Boundary: NOT full lines - dd/cc/S would delete outside content
-  EditBoundary boundary;
+  EditBoundary boundary = makeFullBufferBoundary(editRegion);
   boundary.hasLinesAbove = false;
   boundary.hasLinesBelow = false;
   boundary.leftChar = ' ';   // "x " before edit region
   boundary.rightChar = ' ';  // " x" after edit region
 
   EditOptimizer opt = makeOptimizer();
-  EditResult res = opt.optimizeEdit(editRegion, boundary);
+  Lines emptyTarget = {""};
+  EditResult res = opt.optimizeEdit(editRegion, emptyTarget, boundary);
 
   cout << consume_debug_output() << endl;
 
@@ -643,14 +662,15 @@ TEST_F(EditOptimizerTest, FullBuffer_Linewise_VerifyNoEscape) {
   Lines fullBuffer = {"xx", "aa", "bb", "yy"};
   Lines editRegion = {"aa", "bb"};
 
-  EditBoundary boundary;
+  EditBoundary boundary = makeFullBufferBoundary(editRegion);
   boundary.hasLinesAbove = true;
   boundary.hasLinesBelow = true;
   boundary.leftChar = '\n';   // at line start
   boundary.rightChar = '\n';  // at line end
 
   EditOptimizer opt = makeOptimizer();
-  EditResult res = opt.optimizeEdit(editRegion, boundary);
+  Lines emptyTarget = {""};
+  EditResult res = opt.optimizeEdit(editRegion, emptyTarget, boundary);
 
   cout << consume_debug_output() << endl;
 

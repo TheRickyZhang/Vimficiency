@@ -208,46 +208,6 @@ static vector<EditOp> tracePath(const string& a, const string& b) {
 }
 
 // =============================================================================
-// EditBoundary Computation for Character-Level Diffs
-// =============================================================================
-
-// Compute EditBoundary for a character-level diff
-// This handles both single-line and multi-line diffs
-static EditBoundary computeEditBoundary(
-    const Lines& origLines,
-    const Position& posBegin,
-    const Position& posEnd,
-    const string& deletedText) {
-
-  EditBoundary boundary;
-
-  // Left boundary: what's before the edit region?
-  if (posBegin.col > 0 && posBegin.line < static_cast<int>(origLines.size())) {
-    const string& line = origLines[posBegin.line];
-    boundary.leftChar = line[posBegin.col - 1];
-  } else {
-    boundary.leftChar = '\n';  // at line start
-  }
-
-  // Right boundary: what's after the edit region?
-  if (posEnd.line < static_cast<int>(origLines.size())) {
-    const string& line = origLines[posEnd.line];
-    int nextCol = posEnd.col + 1;
-    if (nextCol < static_cast<int>(line.size())) {
-      boundary.rightChar = line[nextCol];
-    } else {
-      boundary.rightChar = '\n';  // at line end
-    }
-  } else {
-    boundary.rightChar = '\n';
-  }
-
-  // hasLinesAbove/hasLinesBelow: set by caller if needed for multi-line context
-
-  return boundary;
-}
-
-// =============================================================================
 // Main API
 // =============================================================================
 
@@ -399,25 +359,22 @@ vector<DiffState> calculate(const Lines& startLines, const Lines& endLines) {
 
     // Only create a diff if there's actually something to change
     if (!deleted.empty() || !inserted.empty()) {
-      DiffState diff;
-      diff.deletedText = deleted;
-      diff.insertedText = inserted;
-
       // Compute position bounds
-      diff.posBegin = flatIndexToPosition(startOrigIdx, startText);
+      Position posBegin = flatIndexToPosition(startOrigIdx, startText);
 
       // posEnd is inclusive, so it's the position of the last deleted char
       // For pure insertions, posEnd == posBegin (insertion point)
+      Position posEnd;
       if (deleted.empty()) {
-        diff.posEnd = diff.posBegin;
+        posEnd = posBegin;
       } else {
-        diff.posEnd = flatIndexToPosition(startOrigIdx + static_cast<int>(deleted.size()) - 1, startText);
+        posEnd = flatIndexToPosition(startOrigIdx + static_cast<int>(deleted.size()) - 1, startText);
       }
 
-      // Compute EditBoundary
-      diff.boundary = computeEditBoundary(startLines, diff.posBegin, diff.posEnd, deleted);
-
-      result.push_back(std::move(diff));
+      // Construct DiffState with EditBoundary computed from buffer context
+      result.emplace_back(
+          posBegin, posEnd, std::move(deleted), std::move(inserted),
+          EditBoundary(startLines, posBegin, posEnd));
     }
 
     // Skip the long KEEP run we found (or remaining KEEPs at end)

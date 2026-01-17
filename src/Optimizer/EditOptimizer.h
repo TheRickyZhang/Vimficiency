@@ -19,7 +19,14 @@ struct EditResult {
   // Results that involve replacement. Start indices only go until first replace region, and end is always the last replace pos.
   // start = index, end = replacementEnd
   std::vector<Result> replacementResults;
-  int replacementEnd;
+
+  int replacementEnd = -1;
+
+  EditResult(int n, int m, int x) {
+    typeAllResults.resize(n);
+    replacementResults.resize(m);
+    replacementEnd = x;
+  }
 };
 
 
@@ -29,38 +36,31 @@ struct EditResult {
 // @param deleted  The characters being removed (no newlines)
 // @param inserted The characters being added (must be same length as deleted)
 // @param config   Keyboard config for cost calculation
-// @return ReplacementResult with sequence and cost if beneficial, invalid otherwise
+// @return Result with sequence and cost if beneficial, invalid otherwise
 Result tryReplacement(const std::string& deleted,
-                                  const std::string& inserted,
-                                  const Config& config);
-
+                      const std::string& inserted,
+                      const Config& config);
 
 
 struct EditOptimizer {
   Config config;
   OptimizerParams defaultParams;
 
-  // EditOptimizer-specific: second explore factor for absolute cost bound
-  double absoluteExploreFactor = 3.0;
-
-  EditOptimizer(const Config& config, OptimizerParams params = {},
-                double absoluteExploreFactor = 3.0)
+  EditOptimizer(const Config& config, OptimizerParams params = {})
       : config(std::move(config)),
-        defaultParams(params),
-        absoluteExploreFactor(absoluteExploreFactor) {}
+        defaultParams(params) {}
 
   // Heuristic for A* search: effort + chars remaining
   double heuristic(const EditState& s, const OptimizerParams& params) const;
 
-
-  // Simplified interface: optimizeDeletion with boundary chars instead of full EditBoundary.
-  // This is the preferred interface for new code.
-
+  // Main entry point: find optimal sequences to transform startLines to endLines
+  // within the given edit boundary constraints.
+  //
+  // Returns results indexed by starting position (flat index, not including newlines).
   EditResult optimizeEdit(
       const Lines& startLines,
       const Lines& endLines,
       EditBoundary editBoundary,
       const std::optional<OptimizerParams>& paramsOverride = std::nullopt
   );
-
 };

@@ -17,15 +17,17 @@ protected:
   Config config = Config::uniform();
 
   EditOptimizer makeOptimizer() {
-    return EditOptimizer(config, OptimizerParams(30, 1e5, 1.0, 2.0), 3.0);
+    return EditOptimizer(config, OptimizerParams(30, 1e5, 1.0, 2.0));
   }
 
-  EditBoundary noBoundary() {
-    EditBoundary b{};
-    // Newline at both boundaries = no crossing possible (full line)
-    b.leftChar = '\n';
-    b.rightChar = '\n';
-    return b;
+  // Create boundary for full buffer deletion (no constraints)
+  EditBoundary makeFullBufferBoundary(const Lines& source) {
+    if (source.empty()) {
+      return EditBoundary(source, Position(0, 0), Position(0, 0));
+    }
+    int lastLine = static_cast<int>(source.size()) - 1;
+    int lastCol = source[lastLine].empty() ? 0 : static_cast<int>(source[lastLine].size()) - 1;
+    return EditBoundary(source, Position(0, 0), Position(lastLine, lastCol));
   }
 };
 

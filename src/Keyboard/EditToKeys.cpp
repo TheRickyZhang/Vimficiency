@@ -257,3 +257,38 @@ const EditToKeys TEXT_OBJ = {
 };
 
 } // namespace Deletion
+
+// =============================================================================
+// Edit Operation Specs - constexpr tables for EditOptimizer
+// =============================================================================
+
+namespace Edit {
+
+const vector<ForwardWordEditSpec> FORWARD_WORD_EDITS = {
+    // Small word
+    {"de", {Key::Key_D, Key::Key_E}, EdgeType::WordEdge, false},
+    {"dw", {Key::Key_D, Key::Key_W}, EdgeType::GapEdge, false},
+    // Big WORD
+    {"dE", {Key::Key_D, Key::Key_Shift, Key::Key_E}, EdgeType::WordEdge, true},
+    {"dW", {Key::Key_D, Key::Key_Shift, Key::Key_W}, EdgeType::GapEdge, true},
+};
+
+const vector<BackwardWordEditSpec> BACKWARD_WORD_EDITS = {
+    // Small word
+    {"db", {Key::Key_D, Key::Key_B}, EdgeType::WordEdge, false},
+    {"dge", {Key::Key_D, Key::Key_G, Key::Key_E}, EdgeType::NextEdge, false},
+    // Big WORD
+    {"dB", {Key::Key_D, Key::Key_Shift, Key::Key_B}, EdgeType::WordEdge, true},
+    {"dgE", {Key::Key_D, Key::Key_G, Key::Key_Shift, Key::Key_E}, EdgeType::NextEdge, true},
+};
+
+const vector<TextObjectEditSpec> TEXT_OBJECT_EDITS = {
+    // Small word
+    {"diw", {Key::Key_D, Key::Key_I, Key::Key_W}, true, false},
+    {"daw", {Key::Key_D, Key::Key_A, Key::Key_W}, false, false},
+    // Big WORD
+    {"diW", {Key::Key_D, Key::Key_I, Key::Key_Shift, Key::Key_W}, true, true},
+    {"daW", {Key::Key_D, Key::Key_A, Key::Key_Shift, Key::Key_W}, false, true},
+};
+
+} // namespace Edit
