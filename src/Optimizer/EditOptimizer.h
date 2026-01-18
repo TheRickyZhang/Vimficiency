@@ -28,6 +28,28 @@ struct EditResult {
   }
 };
 
+// std::ostream& operator<<(std::ostream& os, const EditResult& editResult) {
+//   os << "typeAllResults: ";
+//   for(int i = 0; i < editResult.typeAllResults.size(); i++) {
+//     const auto& res = editResult.typeAllResults[i];
+//     os << (res.isValid() ? res.getSequenceString() : "_");
+//
+//     if(i < editResult.typeAllResults.size()) os << " ";
+//     else os << "\n";
+//   }
+//   if(!editResult.replacementResults.empty()) {
+//     os << "replaecmentResults: ";
+//     for(int i = 0; i < editResult.replacementResults.size(); i++) {
+//       const auto& res = editResult.replacementResults[i];
+//       os << (res.isValid() ? res.getSequenceString() : "_");
+//       if(i < editResult.typeAllResults.size()) os << " ";
+//       else os << "\n";
+//     }  
+//     os << "replacementEnd: " << editResult.replacementEnd << "\n";
+//   }
+//   return os;
+// }
+
 
 // Try to find an optimal replacement sequence for same-length transformations.
 // Populates res with results for each starting position (0 to firstDiff).

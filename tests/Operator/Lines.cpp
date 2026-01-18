@@ -32,16 +32,26 @@ protected:
 
   mt19937 rng{42};
 
-  // Helper to create EditBoundary and override specific chars
+  // Helper to create EditBoundary with specific boundary context
+  // left/right chars indicate what's outside the edit region:
+  // - '\n' means at line start/end with lines above/below
+  // - other char means that char is adjacent (single-char prefix/suffix for testing)
   static EditBoundary makeBoundary(const Lines& lines, char left, char right) {
-    Position start(0, 0);
-    int lastLine = lines.size() - 1;
-    int lastCol = lines[lastLine].empty() ? 0 : lines[lastLine].size() - 1;
-    Position end(lastLine, lastCol);
-
-    EditBoundary b(lines, start, end);
-    b.leftChar = left;
-    b.rightChar = right;
+    EditBoundary b;
+    // Set prefix based on left char
+    if (left == '\n') {
+      b.hasLinesAbove = true;
+      // prefix stays empty
+    } else if (left != NO_CHAR) {
+      b.prefix = std::string(1, left);
+    }
+    // Set suffix based on right char
+    if (right == '\n') {
+      b.hasLinesBelow = true;
+      // suffix stays empty
+    } else if (right != NO_CHAR) {
+      b.suffix = std::string(1, right);
+    }
     return b;
   }
 };

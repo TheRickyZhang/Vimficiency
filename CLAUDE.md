@@ -41,10 +41,11 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 cmake -B build && cmake --build build
 cd build && ctest
 cd build && ./tests/vimficiency_tests --gtest_filter="TestName.*"
-rm -rf build && cmake -B build && cmake --build build  # clean rebuild
 ```
 
 **Artifacts:** `build/libvimficiency_core.a`, `build/libvimficiency.so`, `build/vimficiency_cli`, `build/tests/vimficiency_tests`
+
+**Important:** Never use `rm -rf build` unless something appears corrupted. The build directory contains downloaded libraries (googletest, etc.) that take time to re-fetch. For incremental rebuilds, just run `cmake --build build`.
 
 Do not run tests unless explicitly requested or your code introduces new tests.
 
@@ -59,6 +60,7 @@ For Lua context, see `lua/CLAUDE.md`.
 - @docs/testing.md - NeovimOracle, test file conventions, debug printing
 - @docs/x-macros.md - Key definitions, supported commands, sequence parsing
 - @docs/boundary-logic.md - Word motion and boundary crossing logic, EditBoundary API
+- @docs/edit-boundary-limitations.md - Known limitations with multi-line embedded regions
 - @docs/session-invocation.txt - How vimficiency optimizer sessions are called and stored
 - @docs/utils.md - General utilities (QuoteFlags, BracketFlags, Lines, StringUtils)
 - @docs/edit-region-strategy.md - Replace vs change strategy (includes tryReplacement implementation)

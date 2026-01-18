@@ -160,6 +160,7 @@ void VimMovementUtils::motionWord(Position &pos,
                                    bool big,
                                    bool skipCurrent) {
   if (skipCurrent) {
+    int prevLine = pos.line;
     unsigned char prevChar = lines.get(pos);
     pos = step(lines, pos, forward);
     unsigned char currChar = lines.get(pos);
@@ -177,9 +178,11 @@ void VimMovementUtils::motionWord(Position &pos,
     }
 
     // For backward + NextEdge (ge/gE), if we crossed a word boundary (landed on blank or
-    // different word type), we're at the word end we're seeking. Return immediately.
+    // different word type, or crossed a line), we're at the word end we're seeking.
     if (!forward && edgeType == EdgeType::NextEdge) {
-      bool crossedBoundary = isBlank(currChar) ||
+      bool crossedLine = (pos.line != prevLine);
+      bool crossedBoundary = crossedLine ||
+                             isBlank(currChar) ||
                              isBlank(prevChar) ||
                              (!big && isSmallWordChar(currChar) != isSmallWordChar(prevChar));
       if (crossedBoundary && !isBlank(currChar)) {

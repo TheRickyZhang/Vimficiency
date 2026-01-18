@@ -257,9 +257,9 @@ const vector<ForwardWordEditSpec> FORWARD_WORD_EDITS = {
 // Backward word edits: cmd, keys, edgeType, isBig, skipCurrent, isExclusiveAtCursor
 const vector<BackwardWordEditSpec> BACKWARD_WORD_EDITS = {
     {"db", {Key::Key_D, Key::Key_B}, EdgeType::WordEdge, false, true, true},
-    {"dge", {Key::Key_D, Key::Key_G, Key::Key_E}, EdgeType::NextEdge, false, false, false},
+    {"dge", {Key::Key_D, Key::Key_G, Key::Key_E}, EdgeType::NextEdge, false, true, false},
     {"dB", {Key::Key_D, Key::Key_Shift, Key::Key_B}, EdgeType::WordEdge, true, true, true},
-    {"dgE", {Key::Key_D, Key::Key_G, Key::Key_Shift, Key::Key_E}, EdgeType::NextEdge, true, false, false},
+    {"dgE", {Key::Key_D, Key::Key_G, Key::Key_Shift, Key::Key_E}, EdgeType::NextEdge, true, true, false},
 };
 
 const vector<TextObjectEditSpec> TEXT_OBJECT_EDITS = {

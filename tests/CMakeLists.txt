@@ -48,6 +48,7 @@ add_executable(vimficiency_tests
 
   # Optimizer
   Optimizer/EditOptimizerTests.cpp
+  Optimizer/EditOptimizerStressTests.cpp
   Optimizer/MovementOptimizerTest.cpp
 
   # Utils

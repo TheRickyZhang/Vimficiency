@@ -55,6 +55,33 @@ struct EditBoundary {
 };
 ```
 
+### EffectiveLines Model
+
+EditOptimizer operates on `effectiveLines` - the edit region content with boundary chars baked in. This ensures cursor positions during search match the full buffer context.
+
+**Building effectiveLines:**
+```cpp
+// leftChar prepended to first line (or empty line added if leftChar='\n')
+// rightChar appended to last line (or empty line added if rightChar='\n')
+effectiveLines = [leftBoundary] + editRegion + [rightBoundary]
+```
+
+**Example:**
+```
+Edit region: {"hello", "world"}
+Boundary: leftChar='X', rightChar='Y'
+effectiveLines: {"Xhello", "worldY"}
+goalLines: {"XY"}  // what effectiveLines looks like when edit region is empty
+```
+
+**Key properties:**
+- Starting positions converted to effectiveLines coordinates
+- Goal check: `lines == goalLines`
+- Boundary protection: positions in boundary char columns are never modified
+- Line operations (D, d0, dd) gated by `atLineEnd()`, `atLineStart()`, `isFullLineEditSafe()`
+
+**Known limitation:** Multi-line embedded regions with prefix/suffix > 1 char may have ~3% failure rate when word motions cross into prefix/suffix lines. See `docs/edit-boundary-limitations.md`.
+
 ## CompositionOptimizer
 - Finds best ways to change any buffer state to any other buffer state by content.
 - First, uses Myer's diff logic over characters to represent the change into many Diff states.

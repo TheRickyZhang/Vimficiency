@@ -225,19 +225,116 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
     result.replacementResults[i] = replacementResults[i];
   }
 
+  // ===========================================================================
+  // Build effectiveLines - edit region with prefix/suffix on boundary lines
+  // ===========================================================================
+  // No synthetic empty lines. Just the edit region content with:
+  // - prefix prepended to first line (if any)
+  // - suffix appended to last line (if any)
+  Lines effectiveLines;
+  int leftColOffset = 0;   // Chars before edit content on first line (prefix length)
+  int rightColOffset = 0;  // Chars after edit content on last line (suffix length)
+
+  for (size_t i = 0; i < startLines.size(); i++) {
+    string line = startLines[i];
+
+    if (i == 0 && !editBoundary.prefix.empty()) {
+      line = editBoundary.prefix + line;
+      leftColOffset = static_cast<int>(editBoundary.prefix.size());
+    }
+
+    if (i == startLines.size() - 1 && !editBoundary.suffix.empty()) {
+      line += editBoundary.suffix;
+      rightColOffset = static_cast<int>(editBoundary.suffix.size());
+    }
+
+    effectiveLines.push_back(line);
+  }
+
+  // ===========================================================================
+  // Goal check: all edit content deleted, only prefix/suffix/empty lines remain
+  // ===========================================================================
+  // Returns true if the lines represent a valid goal state where:
+  // - All edit content is deleted
+  // - Prefix (if any) is preserved on first line
+  // - Suffix (if any) is preserved on last line
+  // - Any number of empty lines in between (will be collapsed with <BS>/<Del>)
+  auto isGoalReached = [&](const Lines &lines) -> bool {
+    if (lines.empty()) {
+      // Empty buffer is goal only if no prefix/suffix to preserve
+      return editBoundary.prefix.empty() && editBoundary.suffix.empty();
+    }
+
+    // Check each line contains only boundary content or is empty
+    for (size_t i = 0; i < lines.size(); i++) {
+      const string &line = lines[i];
+
+      if (i == 0 && !editBoundary.prefix.empty()) {
+        // First line must start with prefix, rest must be empty or suffix
+        if (line.size() < editBoundary.prefix.size()) return false;
+        if (line.substr(0, editBoundary.prefix.size()) != editBoundary.prefix) return false;
+
+        // Content after prefix
+        string afterPrefix = line.substr(editBoundary.prefix.size());
+        if (lines.size() == 1 && !editBoundary.suffix.empty()) {
+          // Single line: must end with suffix, nothing between
+          if (afterPrefix != editBoundary.suffix) return false;
+        } else {
+          // Multi-line or no suffix: nothing after prefix
+          if (!afterPrefix.empty()) return false;
+        }
+      } else if (i == lines.size() - 1 && !editBoundary.suffix.empty()) {
+        // Last line must be just suffix (or empty if suffix will be added)
+        if (line != editBoundary.suffix) return false;
+      } else {
+        // Middle lines must be empty
+        if (!line.empty()) return false;
+      }
+    }
+    return true;
+  };
+
+  // ===========================================================================
+  // Boundary protection: positions that must not be touched
+  // ===========================================================================
+  auto inBoundaryRegion = [&](const Position &pos, const Lines &lines) {
+    if (lines.empty()) return true;
+
+    int lastLine = static_cast<int>(lines.size()) - 1;
+
+    // Line boundary checks (can't go above first or below last line)
+    if (pos.line < 0 || pos.line > lastLine) return true;
+
+    // Left column boundary (prefix on first line)
+    if (pos.line == 0 && pos.col < leftColOffset) return true;
+
+    // Right column boundary (suffix on last line)
+    if (pos.line == lastLine && rightColOffset > 0) {
+      int lineLen = static_cast<int>(lines[pos.line].size());
+      if (pos.col >= lineLen - rightColOffset) return true;
+    }
+
+    return false;
+  };
+
+  // For tracking last edit line (affected by hasLinesBelow for dd)
+  int lastEditLine = static_cast<int>(effectiveLines.size()) - 1;
+
   priority_queue<EditState, vector<EditState>, greater<EditState>> pq;
   unordered_map<EditStateKey, double, EditStateKeyHash> costMap;
 
-  // Initialize with all starting positions
+  // Initialize with all starting positions (in effectiveLines coordinates)
   int startIndex = 0;
-  double startCost = heuristic(startLines);
+  double startCost = heuristic(startLines);  // Heuristic based on content to delete
   for (int line = 0; line < static_cast<int>(startLines.size()); line++) {
     int lineCols = startLines[line].empty()
                        ? 1
                        : static_cast<int>(startLines[line].size());
     for (int col = 0; col < lineCols; col++) {
+      // Convert to effectiveLines coordinates (add prefix offset on first line)
+      int effCol = col + (line == 0 ? leftColOffset : 0);
       pq.push(
-          EditState(startLines, Position(line, col), startIndex, startCost));
+          EditState(effectiveLines, Position(line, effCol), startIndex, startCost));
       startIndex++;
     }
   }
@@ -266,42 +363,41 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
     EditState newState = base;
     newState.applyDeletion(range);
 
-    // Goal reached - all lines are empty
-    if (allLinesEmpty(newState.getLines())) {
+    const Lines &lines = newState.getLines();
+
+    // Goal reached - all edit content deleted, only boundary content remains
+    if (isGoalReached(lines)) {
       int idx = newState.getStartIndex();
+      if (result.typeAllResults[idx].isValid()) return;
 
-      // Skip if we already have a result for this starting position
-      // (A* guarantees first result is optimal)
-      if (result.typeAllResults[idx].isValid()) {
-        return;
-      }
-
-      // Use change equivalent instead of delete
       string changeCmd = deleteToChange(deleteCmd);
+      int cursorLine = newState.getPos().line;
 
-      // Build sequence to collapse multiple empty lines to one
-      const Lines &lines = newState.getLines();
-      int lineIndex = newState.getPos().line;
-      int lineCount = static_cast<int>(lines.size());
-
+      // Collapse multiple lines into one with <BS>/<Del> after entering insert mode.
+      // To merge N lines into 1, we need N-1 join operations.
+      // <BS> joins current line with previous, <Del> joins with next.
       string collapseSeq;
       PhysicalKeys collapseKeys;
 
-      // Backspace to get to first line (each BS merges with previous line)
-      for (int i = 0; i < lineIndex; i++) {
-        collapseSeq += "<BS>";
-        collapseKeys.push_back(Key::Key_Backspace);
-      }
+      int totalLines = static_cast<int>(lines.size());
+      if (totalLines > 1) {
+        // Lines before cursor: each needs <BS> to join upward
+        int linesBefore = cursorLine;
+        // Lines after cursor: each needs <Del> to join downward
+        int linesAfter = totalLines - 1 - cursorLine;
 
-      // Delete to remove remaining lines below
-      for (int i = 0; i < lineCount - lineIndex - 1; i++) {
-        collapseSeq += "<Del>";
-        collapseKeys.push_back(Key::Key_Delete);
+        for (int i = 0; i < linesBefore; i++) {
+          collapseSeq += "<BS>";
+          collapseKeys.push_back(Key::Key_Backspace);
+        }
+        for (int i = 0; i < linesAfter; i++) {
+          collapseSeq += "<Del>";
+          collapseKeys.push_back(Key::Key_Delete);
+        }
       }
 
       string seqStr = newState.getSeq() + changeCmd + collapseSeq + typedStr;
 
-      // Compute effort incrementally
       PhysicalKeys changeKeys = globalTokenizer().tokenize(changeCmd);
       RunningEffort effort = newState.getRunningEffort();
       effort.append(changeKeys, config);
@@ -316,7 +412,120 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
     // Not goal: append delete cmd, continue search
     newState.appendToSeq(deleteCmd);
     newState.updateEffort(deleteKeys, config);
-    newState.updateCost(newState.getEffort() + heuristic(newState.getLines()));
+
+    // Heuristic: count remaining edit content (excluding prefix/suffix)
+    double remaining = 0;
+    for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+      int start = (i == 0) ? leftColOffset : 0;
+      int end = static_cast<int>(lines[i].size());
+      if (i == static_cast<int>(lines.size()) - 1 && rightColOffset > 0) {
+        end -= rightColOffset;
+      }
+      remaining += max(0, end - start);
+      if (i < static_cast<int>(lines.size()) - 1) {
+        remaining += 1;  // Newline
+      }
+    }
+    newState.updateCost(newState.getEffort() + remaining);
+    exploreNewState(std::move(newState));
+  };
+
+  // Linewise deletion for dd - deletes entire line including newline.
+  // With hasLinesBelow, cursor may need "k" to stay in edit region.
+  auto exploreLinewiseDeletion = [&](const EditState &base, int line,
+                                     const char *deleteCmd,
+                                     const PhysicalKeys &deleteKeys) {
+    EditState newState = base;
+    newState.applyLinewiseDeletion(line);
+
+    const Lines &lines = newState.getLines();
+
+    // Build command sequence: dd + optional k to adjust cursor
+    string cmdSeq = deleteCmd;
+    PhysicalKeys cmdKeys = deleteKeys;
+
+    // After linewise deletion, cursor may land beyond our edit region
+    // (e.g., on content that's outside in the real buffer).
+    // Add "k" to move back if needed.
+    Position pos = newState.getPos();
+    int lastValidLine = static_cast<int>(lines.size()) - 1;
+    if (editBoundary.hasLinesBelow && lastValidLine >= 0 && pos.line > lastValidLine) {
+      // Cursor escaped below - move back up
+      cmdSeq += "k";
+      cmdKeys.push_back(Key::Key_K);
+      pos.line = lastValidLine;
+      pos.col = lines[pos.line].empty() ? 0 :
+                min(pos.col, static_cast<int>(lines[pos.line].size()) - 1);
+      newState.setPos(pos);
+    }
+
+    // Check if goal reached
+    if (isGoalReached(lines)) {
+      int idx = newState.getStartIndex();
+      if (result.typeAllResults[idx].isValid()) return;
+
+      // Build collapse sequence for multi-line goal states
+      string collapseSeq;
+      PhysicalKeys collapseKeys;
+
+      int totalLines = static_cast<int>(lines.size());
+      int cursorLine = newState.getPos().line;
+      if (totalLines > 1) {
+        int linesBefore = cursorLine;
+        int linesAfter = totalLines - 1 - cursorLine;
+
+        for (int i = 0; i < linesBefore; i++) {
+          collapseSeq += "<BS>";
+          collapseKeys.push_back(Key::Key_Backspace);
+        }
+        for (int i = 0; i < linesAfter; i++) {
+          collapseSeq += "<Del>";
+          collapseKeys.push_back(Key::Key_Delete);
+        }
+      }
+
+      // For pure deletion (no typed content), need to enter insert mode to collapse
+      // For typing content, change command enters insert mode
+      string seqStr;
+      double totalEffort;
+      RunningEffort effort = newState.getRunningEffort();
+      effort.append(cmdKeys, config);
+
+      if (collapseSeq.empty() && typedStr == "<Esc>") {
+        // Pure deletion with no collapse needed: just use dd commands
+        seqStr = newState.getSeq() + cmdSeq;
+        totalEffort = effort.getEffort(config);
+      } else {
+        // Need to type content or collapse: add change command
+        string changeCmd = deleteToChange(deleteCmd);
+        seqStr = newState.getSeq() + cmdSeq + changeCmd + collapseSeq + typedStr;
+        PhysicalKeys changeKeys = globalTokenizer().tokenize(changeCmd);
+        effort.append(changeKeys, config);
+        effort.append(collapseKeys, config);
+        totalEffort = effort.append(typedKeys, config);
+      }
+
+      result.typeAllResults[idx] = Result(seqStr, totalEffort);
+      resultsFound++;
+      return;
+    }
+
+    // Not goal: continue search
+    newState.appendToSeq(cmdSeq.c_str());
+    newState.updateEffort(cmdKeys, config);
+
+    // Heuristic: count remaining edit content (excluding prefix/suffix)
+    double remaining = 0;
+    for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+      int start = (i == 0) ? leftColOffset : 0;
+      int end = static_cast<int>(lines[i].size());
+      if (i == static_cast<int>(lines.size()) - 1 && rightColOffset > 0) {
+        end -= rightColOffset;
+      }
+      remaining += max(0, end - start);
+      if (i < static_cast<int>(lines.size()) - 1) remaining += 1;
+    }
+    newState.updateCost(newState.getEffort() + remaining);
     exploreNewState(std::move(newState));
   };
 
@@ -335,21 +544,41 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
 
     const Lines &lines = s.getLines();
     Position cursor = s.getPos();
-    int lineLen = static_cast<int>(lines[cursor.line].size());
+
+    // Skip empty buffers - can happen after linewise deletions
+    if (lines.empty()) continue;
+
+    // Compute line length for edit region content (excluding boundary chars)
+    int rawLineLen = static_cast<int>(lines[cursor.line].size());
+    int contentStart = (cursor.line == 0) ? leftColOffset : 0;
+    int contentEnd = rawLineLen;
+    // Last edit line is simply the last line in effectiveLines
+    int lastEditLine = static_cast<int>(lines.size()) - 1;
+    // Only adjust for suffix on last line if there's suffix content
+    if (cursor.line == lastEditLine && rightColOffset > 0) {
+      contentEnd -= rightColOffset;
+    }
+    int editContentLen = max(0, contentEnd - contentStart);
 
     // =========================================================================
     // Forward word deletes: de, dw, dE, dW
     // Skip if on empty line - change equivalents (ce, cw) can't start there
     // =========================================================================
-    if (lineLen > 0) {
+    if (editContentLen > 0) {
       for (const auto &spec : Edit::FORWARD_WORD_EDITS) {
+        // Motions operate directly on effectiveLines (which is `lines`)
         Position endpoint = VimEndpointUtils::motionWordEndpoint(
-            cursor, lines, true, spec.edgeType, spec.isBig, spec.skipCurrent,
-            POSITION_OUTSIDE_BOUNDARY);
+            cursor, lines, true, spec.edgeType, spec.isBig,
+            spec.skipCurrent, POSITION_OUTSIDE_BOUNDARY);
 
         if (endpoint == POSITION_OUTSIDE_BOUNDARY)
           continue;
 
+        // Check if motion endpoint is in protected boundary region
+        if (inBoundaryRegion(endpoint, lines))
+          continue;
+
+        // Range is already in effectiveLines coordinates
         Range range(cursor, endpoint);
         exploreDeletion(s, range, spec.cmd, spec.keys);
       }
@@ -359,19 +588,37 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
     // Backward word deletes: db, dge, dB, dgE
     // Skip if on empty line - change equivalents can't start there
     // =========================================================================
-    if (lineLen > 0) {
+    if (editContentLen > 0) {
       for (const auto &spec : Edit::BACKWARD_WORD_EDITS) {
         Position endpoint = VimEndpointUtils::motionWordEndpoint(
-            cursor, lines, false, spec.edgeType, spec.isBig, spec.skipCurrent,
-            POSITION_OUTSIDE_BOUNDARY);
+            cursor, lines, false, spec.edgeType, spec.isBig,
+            spec.skipCurrent, POSITION_OUTSIDE_BOUNDARY);
 
         if (endpoint == POSITION_OUTSIDE_BOUNDARY)
           continue;
 
+        // Check if motion endpoint is in protected boundary region
+        if (inBoundaryRegion(endpoint, lines))
+          continue;
+
         // Build range respecting cursor exclusivity
         Range range;
-        if (spec.isExclusiveAtCursor && cursor.col > 0) {
-          range = Range(endpoint, Position(cursor.line, cursor.col - 1));
+        if (spec.isExclusiveAtCursor) {
+          // Check if cursor is at left boundary (where we can't go further left)
+          int cursorContentCol = cursor.col - (cursor.line == 0 ? leftColOffset : 0);
+          if (cursorContentCol > 0) {
+            range = Range(endpoint, Position(cursor.line, cursor.col - 1));
+          } else if (endpoint.line < cursor.line) {
+            // Col at left boundary, crossing lines: delete to end of previous line only
+            int prevLine = cursor.line - 1;
+            int lastCol = lines[prevLine].empty()
+                              ? 0
+                              : static_cast<int>(lines[prevLine].size()) - 1;
+            range = Range(endpoint, Position(prevLine, lastCol));
+          } else {
+            // Same line at left boundary: nothing to delete
+            continue;
+          }
         } else {
           range = Range(endpoint, cursor);
         }
@@ -384,69 +631,159 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
     // Text object deletes: diw, daw, diW, daW
     // Skip if on empty line - change equivalents can't start there
     // =========================================================================
-    if (lineLen > 0) {
+    if (editContentLen > 0) {
       for (const auto &spec : Edit::TEXT_OBJECT_EDITS) {
         Range range = VimEndpointUtils::textObjectRange(
-            cursor, lines, spec.isInner, spec.isBig, POSITION_OUTSIDE_BOUNDARY,
-            POSITION_OUTSIDE_BOUNDARY);
+            cursor, lines, spec.isInner, spec.isBig,
+            POSITION_OUTSIDE_BOUNDARY, POSITION_OUTSIDE_BOUNDARY);
 
         if (range.start == POSITION_OUTSIDE_BOUNDARY)
           continue;
 
+        // Check if range touches protected boundary region
+        if (inBoundaryRegion(range.start, lines) || inBoundaryRegion(range.end, lines))
+          continue;
+
+        // Range is already in effectiveLines coordinates
         exploreDeletion(s, range, spec.cmd, spec.keys);
       }
     }
 
     // =========================================================================
     // Line motion deletes: D, d0
+    // D: on last edit line, check atLineEnd(). On other lines, always allowed.
+    // d0: on first edit line, check atLineStart(). On other lines, always allowed.
     // =========================================================================
     for (const auto &spec : Edit::LINE_EDITS) {
-      int endCol = VimEndpointUtils::motionLineEndpoint(
-          cursor, lines, spec.forward, editBoundary);
-      if (endCol == VimEndpointUtils::COL_OUTSIDE_BOUNDARY)
-        continue;
-
-      Range range;
       if (spec.forward) {
-        // D: cursor to end of line
-        if (lineLen == 0)
-          continue; // nothing to delete on empty line
-        range = Range(cursor, Position(cursor.line, endCol));
+        // D: delete from cursor to end of line
+        // Only check atLineEnd() on the last edit line (where suffix lives)
+        if (cursor.line == lastEditLine && !editBoundary.atLineEnd()) continue;
+
+        // Compute line-specific content bounds
+        int lineLen = static_cast<int>(lines[cursor.line].size());
+        int lineContentEnd = lineLen;
+        if (cursor.line == lastEditLine && rightColOffset > 0) {
+          lineContentEnd -= rightColOffset;
+        }
+        if (lineContentEnd <= 0) continue;
+
+        int endCol = lineContentEnd - 1;
+        if (endCol < cursor.col) continue;
+        Range range(cursor, Position(cursor.line, endCol));
+        exploreDeletion(s, range, spec.cmd, spec.keys);
       } else {
-        // d0: start of line to cursor (exclusive)
-        if (cursor.col == 0)
-          continue; // nothing to delete at col 0
-        range = Range(Position(cursor.line, 0),
-                      Position(cursor.line, cursor.col - 1));
+        // d0: delete from start of line to cursor (exclusive)
+        // Only check atLineStart() on the first edit line (where prefix lives)
+        if (cursor.line == 0 && !editBoundary.atLineStart()) continue;
+
+        // Compute line-specific content bounds
+        int lineContentStart = (cursor.line == 0) ? leftColOffset : 0;
+        if (cursor.col <= lineContentStart) continue;
+        Range range(Position(cursor.line, lineContentStart),
+                    Position(cursor.line, cursor.col - 1));
+        exploreDeletion(s, range, spec.cmd, spec.keys);
       }
-      exploreDeletion(s, range, spec.cmd, spec.keys);
     }
 
     // =========================================================================
     // Full line deletes: dd
+    // Valid when: on an edit line AND isFullLineEditSafe() (no prefix/suffix)
+    // Uses linewise deletion. If cursor lands outside edit region after
+    // deletion, we add "k" to move back.
     // =========================================================================
     for (const auto &spec : Edit::FULL_LINE_EDITS) {
-      LineRange lineRange = VimEndpointUtils::lineDeleteRange(cursor, lines, editBoundary);
-      if (!lineRange.isValid())
-        continue;
+      // dd is safe if:
+      // 1. We're on an edit line (not boundary line)
+      // 2. No prefix content (atLineStart)
+      // 3. No suffix content (atLineEnd)
+      if (cursor.line > lastEditLine) continue;
+      if (!editBoundary.isFullLineEditSafe()) continue;
 
-      int endCol = lineLen > 0 ? lineLen - 1 : 0;
-      Range range(Position(cursor.line, 0), Position(cursor.line, endCol));
-      exploreDeletion(s, range, spec.cmd, spec.keys);
+      // Line must have content (can't dd an already-empty edit line)
+      int lineLen = static_cast<int>(lines[cursor.line].size());
+      if (lineLen == 0) continue;
+
+      // Use linewise deletion
+      exploreLinewiseDeletion(s, cursor.line, spec.cmd, spec.keys);
     }
 
     // =========================================================================
     // Char deletes: x, X
+    // x: delete char at cursor (must be edit content, not boundary)
+    // X: delete char before cursor (must be edit content, not boundary)
     // =========================================================================
-    if (lineLen > 0 && cursor.col < lineLen) {
-      Range range(cursor, cursor);
-      exploreDeletion(s, range, "x", Deletion::CHAR.at("x"));
+    // x: only if cursor is on edit content (not on boundary char)
+    if (editContentLen > 0 && cursor.col >= contentStart && cursor.col < contentEnd) {
+      // Check if this is the last edit char - after x, cursor would land on boundary
+      bool isLastEditChar = (cursor.col == contentEnd - 1);
+      bool wouldLandOnBoundary = isLastEditChar && rightColOffset > 0;
+
+      if (wouldLandOnBoundary) {
+        // Only allow if this x reaches goal (deletes last char of single-char content)
+        // This is safe when editContentLen == 1 (deleting the only remaining edit char)
+        if (editContentLen == 1) {
+          Range range(cursor, cursor);
+          exploreDeletion(s, range, "x", Deletion::CHAR.at("x"));
+        }
+      } else {
+        Range range(cursor, cursor);
+        exploreDeletion(s, range, "x", Deletion::CHAR.at("x"));
+      }
     }
 
-    if (cursor.col > 0) {
+    // X: delete char before cursor (must be edit content)
+    if (cursor.col > contentStart) {
       Position before(cursor.line, cursor.col - 1);
-      Range range(before, before);
-      exploreDeletion(s, range, "X", Deletion::CHAR.at("X"));
+      // Ensure we're not deleting a boundary char
+      if (!inBoundaryRegion(before, lines)) {
+        Range range(before, before);
+        exploreDeletion(s, range, "X", Deletion::CHAR.at("X"));
+      }
+    }
+
+    // =========================================================================
+    // Vertical navigation: j, k
+    // When on an empty line, allow j/k to navigate to other lines.
+    // This enables reaching lines that can then be deleted with dd or collapsed
+    // with <BS>/<Del> in insert mode.
+    // =========================================================================
+    if (editContentLen == 0) {
+      // j: move down (if not on last edit line)
+      if (cursor.line < lastEditLine) {
+        EditState newState = s;
+        Position newPos(cursor.line + 1, 0);
+        // Clamp col to line length
+        int nextLineLen = static_cast<int>(lines[newPos.line].size());
+        if (nextLineLen > 0) {
+          newPos.col = min(cursor.col, nextLineLen - 1);
+        }
+        newState.setPos(newPos);
+        newState.appendToSeq("j");
+        PhysicalKeys jKeys = {Key::Key_J};
+        newState.updateEffort(jKeys, config);
+        // Heuristic stays same (no content deleted)
+        newState.updateCost(newState.getEffort() + heuristic(newState.getLines()));
+        exploreNewState(std::move(newState));
+      }
+
+      // k: move up (if not on first edit line)
+      if (cursor.line > 0) {
+        EditState newState = s;
+        Position newPos(cursor.line - 1, 0);
+        // Clamp col to line length
+        int prevLineLen = static_cast<int>(lines[newPos.line].size());
+        if (prevLineLen > 0) {
+          newPos.col = min(cursor.col, prevLineLen - 1);
+        }
+        newState.setPos(newPos);
+        newState.appendToSeq("k");
+        PhysicalKeys kKeys = {Key::Key_K};
+        newState.updateEffort(kKeys, config);
+        // Heuristic stays same (no content deleted)
+        newState.updateCost(newState.getEffort() + heuristic(newState.getLines()));
+        exploreNewState(std::move(newState));
+      }
     }
   }
 

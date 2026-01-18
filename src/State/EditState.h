@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 
+#include "Editor/LineRange.h"
 #include "Editor/Mode.h"
 #include "Editor/Position.h"
 #include "Editor/Range.h"
@@ -76,6 +77,7 @@ public:
   // -----------------------------------------------------------------------------
   const Lines& getLines() const { return lines; }
   Position getPos() const { return pos; }
+  void setPos(Position newPos) { pos = newPos; }
   Mode getMode() const { return mode; }
   int getStartIndex() const { return startIndex; }
 
@@ -92,6 +94,11 @@ public:
   // Apply a deletion to the buffer (does NOT update seq - use appendToSeq separately)
   void applyDeletion(const Range& range) {
     VimEditUtils::deleteRange(lines, range, pos, Mode::Normal);
+  }
+
+  // Apply a linewise deletion (for dd - deletes entire lines including newlines)
+  void applyLinewiseDeletion(int line) {
+    VimEditUtils::deleteRangeLinewise(lines, LineRange(line, line), pos);
   }
 
   // Append a command string to the sequence

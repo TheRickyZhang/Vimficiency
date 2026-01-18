@@ -236,6 +236,8 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
       case hash("cw"): case hash("cW"): case hash("cb"): case hash("cB"):
       case hash("ce"): case hash("cE"): case hash("cge"): case hash("cgE"):
       case hash("0"): case hash("^"): case hash("$"):
+      // Navigation (for EditOptimizer line traversal)
+      case hash("j"): case hash("k"): case hash("h"): case hash("l"):
         break;  // Fall through to main switch
       default:
         throw runtime_error("Edit '" + string(e) + "' invalid on empty line");
@@ -418,6 +420,11 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
       case hash("cw"):
       case hash("cW"):
         {
+          if (line.empty()) {
+            // Empty line: just enter insert mode, nothing to change
+            mode = Mode::Insert;
+            return;
+          }
           bool big = (e == "cW");
           unsigned char c = static_cast<unsigned char>(line[pos.col]);
           bool onWord = big ? VimUtils::isBigWordChar(c) : VimUtils::isSmallWordChar(c);

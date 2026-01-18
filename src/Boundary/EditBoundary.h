@@ -19,12 +19,15 @@
 // =============================================================================
 
 struct EditBoundary {
-  // What character is immediately outside, if present.
-  // - If there's a char on same line, use it
-  // - If at line boundary with another line: '\n'
-  // - If at buffer boundary (no line above/below): NO_CHAR
-  char leftChar = NO_CHAR;
-  char rightChar = NO_CHAR;
+  // Full content before/after the edit region on the same line.
+  // - prefix: characters before edit region on first line (empty if at line start)
+  // - suffix: characters after edit region on last line (empty if at line end)
+  // These enable correct cursor behavior after multi-line deletions merge lines.
+  std::string prefix;
+  std::string suffix;
+
+  // Whether there are lines above/below the edit region in the buffer.
+  // Used for vertical boundary detection (gg, G, k, j escaping).
   bool hasLinesAbove = false;
   bool hasLinesBelow = false;
 
@@ -34,14 +37,21 @@ struct EditBoundary {
   BracketFlags firstLineBrackets;
   BracketFlags lastLineBrackets;
 
+  // Default constructor: empty prefix/suffix, no lines above/below
+  EditBoundary() = default;
+
   // Construct from buffer context
   EditBoundary(const Lines& lines, Position startPos, Position endPos);
 
   // Construct inheriting from parent boundary (for sub-regions)
   EditBoundary(const EditBoundary& parent, const Lines& lines, Position startPos, Position endPos);
 
-  bool atLineEnd() const { return rightChar == '\n' || rightChar == NO_CHAR; }
-  bool atLineStart() const { return leftChar == '\n' || leftChar == NO_CHAR; }
+  // Helper accessors for boundary char (last char of prefix, first char of suffix)
+  char leftChar() const { return prefix.empty() ? (hasLinesAbove ? '\n' : NO_CHAR) : prefix.back(); }
+  char rightChar() const { return suffix.empty() ? (hasLinesBelow ? '\n' : NO_CHAR) : suffix.front(); }
+
+  bool atLineEnd() const { return suffix.empty(); }
+  bool atLineStart() const { return prefix.empty(); }
 
   bool isFullLineEditSafe() const { return atLineStart() && atLineEnd(); }
 

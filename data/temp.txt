@@ -1,17 +1,4 @@
-
-Deletion results for source: aa
-bb
-
-  [0,0]: xce<Esc> (cost 4)
-  [0,1]: dece<Esc> (cost 5)
-  [1,0]: dbce<Esc> (cost 5)
-  [1,1]: dgece<Esc> (cost 6)
-/home/ricky/Projects/vimficiency/tests/Optimizer/EditOptimizerTests.cpp:160: Failure
-Value of: isValidDeletionGoal(applied)
-  Actual: false
-Expected: true
-Sequence 'dece<Esc>' from [0,1] did not reach goal. Lines: a
-, Mode: Normal
+eeddbcba
 
 
-
+xxx

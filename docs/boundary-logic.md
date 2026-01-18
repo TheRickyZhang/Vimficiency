@@ -480,3 +480,33 @@ Example: `First. Second. Third.`
 - At buffer start: `(` stays at position
 - At buffer end: `)` stays at position
 - For `as` at buffer end with no trailing: include leading whitespace instead
+
+= EditOptimizer Boundary Handling
+
+EditOptimizer uses an **effectiveLines model** where boundary chars are baked into
+the buffer content. This ensures cursor clamping after deletions matches the full
+buffer behavior.
+
+== Building effectiveLines
+
+```
+Input:  editRegion = {"hello", "world"}, leftChar='X', rightChar='Y'
+Output: effectiveLines = {"Xhello", "worldY"}
+        goalLines = {"XY"}  // empty edit region
+```
+
+For newline boundaries, empty lines are added instead:
+```
+Input:  editRegion = {"hello"}, leftChar='\n', rightChar='\n'
+Output: effectiveLines = {"", "hello", ""}  // lineOffset=1
+        goalLines = {"", "", ""}
+```
+
+== Limitations
+
+The boundary char model has a known limitation with multi-line embedded regions.
+When word motions cross into lines containing prefix/suffix content, word boundaries
+may differ because effectiveLines only has a single boundary char, not the full
+prefix/suffix content.
+
+See `docs/edit-boundary-limitations.md` for detailed analysis.
