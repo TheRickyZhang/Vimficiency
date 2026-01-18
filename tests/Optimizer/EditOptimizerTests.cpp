@@ -316,10 +316,9 @@ TEST_F(EditOptimizerTest, FullBuffer_Linewise) {
   Lines fullBuffer = {"xx", "aa", "bb", "xx"};
   Lines editRegion = {"aa", "bb"};
 
-  EditBoundary boundary = makeFullBufferBoundary(editRegion);
-  boundary.hasLinesAbove = true;
-  boundary.hasLinesBelow = true;
-  // prefix/suffix empty means at line start/end (leftChar()/rightChar() return '\n')
+  // Construct boundary from fullBuffer: edit region is lines 1-2
+  // This correctly computes hasLinesAbove=true (line 0), hasLinesBelow=true (line 3)
+  EditBoundary boundary(fullBuffer, Position(1, 0), Position(2, 1));
 
   EditOptimizer opt = makeOptimizer();
   Lines emptyTarget = {""};
@@ -432,10 +431,9 @@ TEST_F(EditOptimizerTest, FullBuffer_Linewise_VerifyNoEscape) {
   Lines fullBuffer = {"xx", "aa", "bb", "yy"};
   Lines editRegion = {"aa", "bb"};
 
-  EditBoundary boundary = makeFullBufferBoundary(editRegion);
-  boundary.hasLinesAbove = true;
-  boundary.hasLinesBelow = true;
-  // prefix/suffix empty means at line start/end (leftChar()/rightChar() return '\n')
+  // Construct boundary from fullBuffer: edit region is lines 1-2
+  // This correctly computes hasLinesAbove=true (line 0), hasLinesBelow=true (line 3)
+  EditBoundary boundary(fullBuffer, Position(1, 0), Position(2, 1));
 
   EditOptimizer opt = makeOptimizer();
   Lines emptyTarget = {""};

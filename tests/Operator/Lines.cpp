@@ -37,22 +37,27 @@ protected:
   // - '\n' means at line start/end with lines above/below
   // - other char means that char is adjacent (single-char prefix/suffix for testing)
   static EditBoundary makeBoundary(const Lines& lines, char left, char right) {
-    EditBoundary b;
+    std::string prefix;
+    std::string suffix;
+    bool hasLinesAbove = false;
+    bool hasLinesBelow = false;
+
     // Set prefix based on left char
     if (left == '\n') {
-      b.hasLinesAbove = true;
+      hasLinesAbove = true;
       // prefix stays empty
     } else if (left != NO_CHAR) {
-      b.prefix = std::string(1, left);
+      prefix = std::string(1, left);
     }
     // Set suffix based on right char
     if (right == '\n') {
-      b.hasLinesBelow = true;
+      hasLinesBelow = true;
       // suffix stays empty
     } else if (right != NO_CHAR) {
-      b.suffix = std::string(1, right);
+      suffix = std::string(1, right);
     }
-    return b;
+
+    return EditBoundary(prefix, suffix, hasLinesAbove, hasLinesBelow);
   }
 };
 

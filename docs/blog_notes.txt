@@ -1,0 +1,5 @@
+You need to be very clear with LLMs!
+
+One thing that is very helpful is having it create randomized tests with an objective truth verifier, such as: generating a random buffer / edit location, and verifying that the result is the same as running it directly through a Neovim instance.
+
+On the flip side, it can be a real pain if your tests have a subtle flaw, as it is generally assumed they are ironclad. For instance, I did not set up my EditBoundary to have private members, so rather than using constructor directly, Claude Code created a proxy instance, then changed its member variables directly, which was incorrect compared to the actual situation. Don't rely on Claude making correct tests for you without some backing source!

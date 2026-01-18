@@ -238,14 +238,14 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
   for (size_t i = 0; i < startLines.size(); i++) {
     string line = startLines[i];
 
-    if (i == 0 && !editBoundary.prefix.empty()) {
-      line = editBoundary.prefix + line;
-      leftColOffset = static_cast<int>(editBoundary.prefix.size());
+    if (i == 0 && !editBoundary.prefix().empty()) {
+      line = editBoundary.prefix() + line;
+      leftColOffset = static_cast<int>(editBoundary.prefix().size());
     }
 
-    if (i == startLines.size() - 1 && !editBoundary.suffix.empty()) {
-      line += editBoundary.suffix;
-      rightColOffset = static_cast<int>(editBoundary.suffix.size());
+    if (i == startLines.size() - 1 && !editBoundary.suffix().empty()) {
+      line += editBoundary.suffix();
+      rightColOffset = static_cast<int>(editBoundary.suffix().size());
     }
 
     effectiveLines.push_back(line);
@@ -262,30 +262,30 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
   auto isGoalReached = [&](const Lines &lines) -> bool {
     if (lines.empty()) {
       // Empty buffer is goal only if no prefix/suffix to preserve
-      return editBoundary.prefix.empty() && editBoundary.suffix.empty();
+      return editBoundary.prefix().empty() && editBoundary.suffix().empty();
     }
 
     // Check each line contains only boundary content or is empty
     for (size_t i = 0; i < lines.size(); i++) {
       const string &line = lines[i];
 
-      if (i == 0 && !editBoundary.prefix.empty()) {
+      if (i == 0 && !editBoundary.prefix().empty()) {
         // First line must start with prefix, rest must be empty or suffix
-        if (line.size() < editBoundary.prefix.size()) return false;
-        if (line.substr(0, editBoundary.prefix.size()) != editBoundary.prefix) return false;
+        if (line.size() < editBoundary.prefix().size()) return false;
+        if (line.substr(0, editBoundary.prefix().size()) != editBoundary.prefix()) return false;
 
         // Content after prefix
-        string afterPrefix = line.substr(editBoundary.prefix.size());
-        if (lines.size() == 1 && !editBoundary.suffix.empty()) {
+        string afterPrefix = line.substr(editBoundary.prefix().size());
+        if (lines.size() == 1 && !editBoundary.suffix().empty()) {
           // Single line: must end with suffix, nothing between
-          if (afterPrefix != editBoundary.suffix) return false;
+          if (afterPrefix != editBoundary.suffix()) return false;
         } else {
           // Multi-line or no suffix: nothing after prefix
           if (!afterPrefix.empty()) return false;
         }
-      } else if (i == lines.size() - 1 && !editBoundary.suffix.empty()) {
+      } else if (i == lines.size() - 1 && !editBoundary.suffix().empty()) {
         // Last line must be just suffix (or empty if suffix will be added)
-        if (line != editBoundary.suffix) return false;
+        if (line != editBoundary.suffix()) return false;
       } else {
         // Middle lines must be empty
         if (!line.empty()) return false;
@@ -449,7 +449,7 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
     // Add "k" to move back if needed.
     Position pos = newState.getPos();
     int lastValidLine = static_cast<int>(lines.size()) - 1;
-    if (editBoundary.hasLinesBelow && lastValidLine >= 0 && pos.line > lastValidLine) {
+    if (editBoundary.hasLinesBelow() && lastValidLine >= 0 && pos.line > lastValidLine) {
       // Cursor escaped below - move back up
       cmdSeq += "k";
       cmdKeys.push_back(Key::Key_K);
@@ -583,14 +583,12 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
         if (inBoundaryRegion(endpoint, lines))
           continue;
 
-        // When fully embedded (hasLinesAbove AND hasLinesBelow), block all forward
-        // line-crossing to prevent escape after merge operations diverge.
-        // When only hasLinesBelow, block from last line since that's where escape happens.
-        if (endpoint.line > cursor.line &&
-            (editBoundary.hasLinesAbove && editBoundary.hasLinesBelow))
-          continue;
+        // Block forward line-crossing from last edit line when hasLinesBelow.
+        // In fullBuffer, content below exists that the motion could reach, but in
+        // effectiveLines it doesn't. This causes divergence in motion behavior.
+        // Line-crossing within the edit region (not from last line) is safe.
         if (cursor.line == lastEditLine && endpoint.line > cursor.line &&
-            editBoundary.hasLinesBelow && !editBoundary.hasLinesAbove)
+            editBoundary.hasLinesBelow())
           continue;
 
         // Range is already in effectiveLines coordinates
@@ -621,13 +619,14 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
         if (inBoundaryRegion(endpoint, lines))
           continue;
 
-        // When fully embedded (hasLinesAbove AND hasLinesBelow), block all backward
-        // line-crossing. After any line-merging deletion, the content around cursor
-        // differs between isolated and fullBuffer, causing motion behavior to diverge.
-        // When only hasLinesAbove (no linesBelow), backward motions from line 0 would
-        // escape upward - but such motions return cursor/OUTSIDE in isolated.
+        // Block backward line-crossing when fully embedded (hasLinesAbove AND hasLinesBelow).
+        // After a multi-line backward deletion, the merged content differs between
+        // effectiveLines and fullBuffer. Subsequent backward motions can then escape
+        // to content that exists in fullBuffer (above line 0) but not in effectiveLines.
+        // When only hasLinesAbove (no linesBelow), this is less critical because
+        // the edit region extends to the buffer end.
         if (endpoint.line < cursor.line &&
-            (editBoundary.hasLinesAbove && editBoundary.hasLinesBelow))
+            editBoundary.hasLinesAbove() && editBoundary.hasLinesBelow())
           continue;
 
         // Build range respecting cursor exclusivity
@@ -638,12 +637,13 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
           if (cursorContentCol > 0) {
             range = Range(endpoint, Position(cursor.line, cursor.col - 1));
           } else if (endpoint.line < cursor.line) {
-            // Col at left boundary, crossing lines: delete to end of previous line only
+            // db/dB from col 0 crossing lines: delete from endpoint to end of
+            // previous line. This captures the newline, merging current line
+            // with content after endpoint.
             int prevLine = cursor.line - 1;
-            int lastCol = lines[prevLine].empty()
-                              ? 0
-                              : static_cast<int>(lines[prevLine].size()) - 1;
-            range = Range(endpoint, Position(prevLine, lastCol));
+            int prevLineLen = static_cast<int>(lines[prevLine].size());
+            int endCol = prevLineLen > 0 ? prevLineLen - 1 : 0;
+            range = Range(endpoint, Position(prevLine, endCol));
           } else {
             // Same line at left boundary: nothing to delete
             continue;
@@ -733,17 +733,20 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
       int lineLen = static_cast<int>(lines[cursor.line].size());
       if (lineLen == 0) continue;
 
-      // When fully embedded (hasLinesAbove AND hasLinesBelow), dd is unsafe.
-      // After dd, cursor line in isolated region (0 to N-1) doesn't match
-      // fullBuffer line (M to M+N-1). Subsequent motions behave differently.
-      if (editBoundary.hasLinesAbove && editBoundary.hasLinesBelow) continue;
-
-      // When only hasLinesBelow and on last edit line, dd cursor lands below.
-      if (cursor.line == lastEditLine && editBoundary.hasLinesBelow) continue;
-
-      // When only hasLinesAbove and single line, dd leaves empty in isolated
-      // but fullBuffer has lines above.
-      if (cursor.line == 0 && lastEditLine == 0 && editBoundary.hasLinesAbove) continue;
+      // Block dd in scenarios where cursor position would diverge between
+      // effectiveLines and fullBuffer, causing subsequent operations to differ.
+      //
+      // Case 1: Multi-line fully embedded (hasLinesAbove AND hasLinesBelow)
+      // After dd, backward/forward motions can escape to content that exists in
+      // fullBuffer but not in effectiveLines. Single-line is OK (reaches goal).
+      if (editBoundary.hasLinesAbove() && editBoundary.hasLinesBelow()) {
+        if (static_cast<int>(lines.size()) > 1) continue;
+      }
+      // Case 2: Non-first line when hasLinesBelow
+      // After dd on line N>0, cursor lands on line N (which was N+1 before deletion).
+      // In fullBuffer, that might be suffix content, but in effectiveLines it's
+      // the previous edit line - content diverges.
+      if (cursor.line > 0 && editBoundary.hasLinesBelow()) continue;
 
       // Use linewise deletion
       exploreLinewiseDeletion(s, cursor.line, spec.cmd, spec.keys);
@@ -788,15 +791,18 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
     // When on an empty line, allow j/k to navigate to other lines.
     // This enables reaching lines that can then be deleted with dd or collapsed
     // with <BS>/<Del> in insert mode.
-    // TEMPORARILY DISABLED: j/k sequences cause divergence in stress tests.
-    // TODO: Fix j/k simulation to match vim's targetCol behavior.
+    //
+    // DISABLED: j/k navigation causes divergence in stress tests. The issue may be:
+    // 1. targetCol behavior mismatch (our simulation doesn't track targetCol)
+    // 2. Line structure changes after deletions causing position divergence
+    // TODO: Investigate and fix j/k simulation to match Vim exactly
     // =========================================================================
     if (false && editContentLen == 0) {
       // j: move down (if not on last edit line)
       if (cursor.line < lastEditLine) {
         EditState newState = s;
         Position newPos(cursor.line + 1, 0);
-        // Clamp col to line length
+        // Clamp col to line length (from empty line, cursor.col is 0)
         int nextLineLen = static_cast<int>(lines[newPos.line].size());
         if (nextLineLen > 0) {
           newPos.col = min(cursor.col, nextLineLen - 1);
@@ -814,7 +820,7 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
       if (cursor.line > 0) {
         EditState newState = s;
         Position newPos(cursor.line - 1, 0);
-        // Clamp col to line length
+        // Clamp col to line length (from empty line, cursor.col is 0)
         int prevLineLen = static_cast<int>(lines[newPos.line].size());
         if (prevLineLen > 0) {
           newPos.col = min(cursor.col, prevLineLen - 1);

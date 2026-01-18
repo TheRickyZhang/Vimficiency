@@ -19,24 +19,6 @@
 // =============================================================================
 
 struct EditBoundary {
-  // Full content before/after the edit region on the same line.
-  // - prefix: characters before edit region on first line (empty if at line start)
-  // - suffix: characters after edit region on last line (empty if at line end)
-  // These enable correct cursor behavior after multi-line deletions merge lines.
-  std::string prefix;
-  std::string suffix;
-
-  // Whether there are lines above/below the edit region in the buffer.
-  // Used for vertical boundary detection (gg, G, k, j escaping).
-  bool hasLinesAbove = false;
-  bool hasLinesBelow = false;
-
-  // Quote/bracket context for text object operations
-  QuoteFlags firstLineQuotes;
-  QuoteFlags lastLineQuotes;
-  BracketFlags firstLineBrackets;
-  BracketFlags lastLineBrackets;
-
   // Default constructor: empty prefix/suffix, no lines above/below
   EditBoundary() = default;
 
@@ -46,16 +28,51 @@ struct EditBoundary {
   // Construct inheriting from parent boundary (for sub-regions)
   EditBoundary(const EditBoundary& parent, const Lines& lines, Position startPos, Position endPos);
 
-  // Helper accessors for boundary char (last char of prefix, first char of suffix)
-  char leftChar() const { return prefix.empty() ? (hasLinesAbove ? '\n' : NO_CHAR) : prefix.back(); }
-  char rightChar() const { return suffix.empty() ? (hasLinesBelow ? '\n' : NO_CHAR) : suffix.front(); }
+  // Construct with explicit boundary values (for testing boundary crossing logic)
+  EditBoundary(std::string prefix, std::string suffix, bool hasLinesAbove, bool hasLinesBelow)
+      : prefix_(std::move(prefix)), suffix_(std::move(suffix)),
+        hasLinesAbove_(hasLinesAbove), hasLinesBelow_(hasLinesBelow) {}
 
-  bool atLineEnd() const { return suffix.empty(); }
-  bool atLineStart() const { return prefix.empty(); }
+  // Getters for boundary content
+  const std::string& prefix() const { return prefix_; }
+  const std::string& suffix() const { return suffix_; }
+  bool hasLinesAbove() const { return hasLinesAbove_; }
+  bool hasLinesBelow() const { return hasLinesBelow_; }
+
+  // Quote/bracket context for text object operations (read-only)
+  const QuoteFlags& firstLineQuotes() const { return firstLineQuotes_; }
+  const QuoteFlags& lastLineQuotes() const { return lastLineQuotes_; }
+  const BracketFlags& firstLineBrackets() const { return firstLineBrackets_; }
+  const BracketFlags& lastLineBrackets() const { return lastLineBrackets_; }
+
+  // Helper accessors for boundary char (last char of prefix, first char of suffix)
+  char leftChar() const { return prefix_.empty() ? (hasLinesAbove_ ? '\n' : NO_CHAR) : prefix_.back(); }
+  char rightChar() const { return suffix_.empty() ? (hasLinesBelow_ ? '\n' : NO_CHAR) : suffix_.front(); }
+
+  bool atLineEnd() const { return suffix_.empty(); }
+  bool atLineStart() const { return prefix_.empty(); }
 
   bool isFullLineEditSafe() const { return atLineStart() && atLineEnd(); }
 
 private:
+  // Full content before/after the edit region on the same line.
+  // - prefix_: characters before edit region on first line (empty if at line start)
+  // - suffix_: characters after edit region on last line (empty if at line end)
+  // These enable correct cursor behavior after multi-line deletions merge lines.
+  std::string prefix_;
+  std::string suffix_;
+
+  // Whether there are lines above/below the edit region in the buffer.
+  // Used for vertical boundary detection (gg, G, k, j escaping).
+  bool hasLinesAbove_ = false;
+  bool hasLinesBelow_ = false;
+
+  // Quote/bracket context for text object operations
+  QuoteFlags firstLineQuotes_;
+  QuoteFlags lastLineQuotes_;
+  BracketFlags firstLineBrackets_;
+  BracketFlags lastLineBrackets_;
+
   void computeBoundaryChars(const Lines& lines, Position startPos, Position endPos);
   void scanQuotesAndBrackets(const Lines& lines, Position startPos, Position endPos);
 };
