@@ -32,14 +32,13 @@ unique_ptr<NeovimOracle> WordsTest::oracle_;
 
 TEST_F(WordsTest, RandomBufferStress_SingleLine) {
   const int NUM_BUFFERS = 10;
-  const auto& motions = getAllWordMotions();
 
   int total = 0, passed = 0;
 
   for (int i = 0; i < NUM_BUFFERS; i++) {
     auto test = generateRandomBuffer(rng, 1);
 
-    for (const auto& motion : motions) {
+    for (const auto& motion : getAllWordMotions()) {
       total++;
       if (runRandomMotionTest(*oracle_, motion, test, true)) {
         passed++;

@@ -7,9 +7,12 @@
 
 #include "Editor/Mode.h"
 #include "Editor/Position.h"
+#include "Editor/Range.h"
 #include "Optimizer/Config.h"
 #include "RunningEffort.h"
 #include "Utils/Lines.h"
+#include "Keyboard/KeyboardModel.h"
+#include "VimCore/VimEditUtils.h"
 
 // =============================================================================
 // EditStateKey - for visited state tracking in A* search
@@ -49,45 +52,66 @@ struct EditStateKeyHash {
 // EditState - A* search state for edit optimization
 // =============================================================================
 
-struct EditState {
+class EditState {
   Lines lines;                    // Current buffer content
   Position pos;                   // Cursor position
   Mode mode = Mode::Normal;       // Current editing mode
-  RunningEffort effort{};         // Typing effort tracker
-  std::vector<std::string> seq{}; // Sequence of operations taken
   int startIndex;                 // Which starting position this search is for
-  double cost;              // Priority = effort + heuristic
 
-  EditState(Lines lines, Position pos, int startIndex, double cost) :
-    lines(lines), pos(pos), startIndex(startIndex), cost(cost) { }
+  std::string seq_{};             // Sequence of operations taken
+  RunningEffort runningEffort{};  // Typing effort tracker (internal)
+  double effort_ = 0.0;           // Cached effort value
+  double cost_ = 0.0;             // Priority = effort + heuristic
+
+public:
+  EditState(Lines lines, Position pos, int startIndex, double initialCost)
+    : lines(std::move(lines)), pos(pos), startIndex(startIndex), cost_(initialCost) {}
 
   // For priority queue ordering (min-heap)
-  bool operator>(const EditState& other) const {
-    return cost > other.cost;
+  bool operator>(const EditState& other) const { return cost_ > other.cost_; }
+  bool operator<(const EditState& other) const { return cost_ < other.cost_; }
+
+  // -----------------------------------------------------------------------------
+  // Getters
+  // -----------------------------------------------------------------------------
+  const Lines& getLines() const { return lines; }
+  Position getPos() const { return pos; }
+  Mode getMode() const { return mode; }
+  int getStartIndex() const { return startIndex; }
+
+  EditStateKey getKey() const { return EditStateKey(lines, pos, mode); }
+  double getEffort() const { return effort_; }
+  double getCost() const { return cost_; }
+  const std::string& getSeq() const { return seq_; }
+  const RunningEffort& getRunningEffort() const { return runningEffort; }
+
+  // -----------------------------------------------------------------------------
+  // State mutation methods
+  // -----------------------------------------------------------------------------
+
+  // Apply a deletion to the buffer (does NOT update seq - use appendToSeq separately)
+  void applyDeletion(const Range& range) {
+    VimEditUtils::deleteRange(lines, range, pos, Mode::Normal);
   }
 
-  bool operator<(const EditState& other) const {
-    return cost < other.cost;
+  // Append a command string to the sequence
+  void appendToSeq(const char* cmd) {
+    seq_ += cmd;
   }
 
-  EditStateKey getKey() const {
-    return EditStateKey(lines, pos, mode);
+  // Update effort with new keys
+  void updateEffort(const PhysicalKeys& keys, const Config& config) {
+    effort_ = runningEffort.append(keys, config);
   }
 
-  // Get effort value using config
-  double getEffort(const Config& config) const {
-    return effort.getEffort(config);
+  // Update cost (typically effort + heuristic)
+  void updateCost(double newCost) {
+    cost_ = newCost;
   }
 
-  // Build sequence string from operations
-  std::string getSequenceString() const {
-    std::string result;
-    for (const auto& op : seq) {
-      result += op;
-    }
-    return result;
-  }
-
+  // -----------------------------------------------------------------------------
+  // Debug/Output
+  // -----------------------------------------------------------------------------
   std::string toString() const {
     std::ostringstream oss;
     oss << *this;
@@ -95,7 +119,7 @@ struct EditState {
   }
 
   friend std::ostream& operator<<(std::ostream& os, const EditState& state) {
-    os << state.getSequenceString() << " (effort=" << state.cost << ")";
+    os << state.seq_ << " (cost=" << state.cost_ << ")";
     return os;
   }
 };

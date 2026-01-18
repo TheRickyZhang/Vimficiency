@@ -8,17 +8,17 @@
 
 #include "Boundary/EditBoundary.h"
 #include "Editor/LineRange.h"
+#include "Keyboard/CharToKeys.h"
 #include "Keyboard/EditToKeys.h"
 #include "Keyboard/MotionToKeys.h"
 #include "State/EditState.h"
 #include "State/RunningEffort.h"
-#include "VimCore/VimEditUtils.h"
 #include "VimCore/VimEndpointUtils.h"
 
 #include <algorithm>
+#include <optional>
 #include <queue>
 #include <unordered_map>
-#include <optional>
 
 using namespace std;
 
@@ -28,43 +28,76 @@ using namespace std;
 
 namespace {
 
-// Check if buffer is effectively empty (goal state)
-bool isBufferEmpty(const Lines& lines) {
-  if (lines.empty()) return true;
-  if (lines.size() == 1 && lines[0].empty()) return true;
+// Check if buffer is effectively empty (all lines are empty strings)
+bool allLinesEmpty(const Lines &lines) {
+  if (lines.empty())
+    return true;
+  for (const auto &line : lines) {
+    if (!line.empty())
+      return false;
+  }
+  return true;
+}
+
+// Convert delete command to change equivalent
+// Returns the change command string, or empty string if no mapping exists
+string deleteToChange(const string &deleteCmd) {
+  assert(!deleteCmd.empty());
+  if (deleteCmd == "D")
+    return "C";
+  if (deleteCmd == "dd")
+    return "cc";
+  if (deleteCmd[0] == 'd') {
+    return "c" + deleteCmd.substr(1);
+  }
+  if (deleteCmd == "x")
+    return "s";
+  if (deleteCmd == "X")
+    return "hs";
+  assert(false && "deleteToChange not supported");
+  return "";
+}
+
+// Only new lines remain
+bool linesEffectivelyEmpty(const Lines &endLines) {
+  if (endLines.empty())
+    return true;
+  if (endLines.size() == 1 && endLines[0].empty())
+    return true;
   return false;
 }
 
-// =============================================================================
-// Helper: Try to add a new state to the search
-// =============================================================================
-
-void tryAddState(
-    EditState& newState,
-    priority_queue<EditState, vector<EditState>, greater<EditState>>& pq,
-    unordered_map<EditStateKey, double, EditStateKeyHash>& costMap) {
-
-  EditStateKey key = newState.getKey();
-  auto it = costMap.find(key);
-
-  if (it == costMap.end() || newState.cost < it->second) {
-    costMap[key] = newState.cost;
-    pq.push(newState);
+// Build the typed content string from endLines
+pair<string, PhysicalKeys> buildTypedCommands(const Lines &endLines) {
+  string str;
+  PhysicalKeys keys;
+  for (size_t i = 0; i < endLines.size(); i++) {
+    str += endLines[i];
+    for (int c : endLines[i]) {
+      keys.append(CHAR_TO_KEYS.at(c));
+    }
+    if (i < endLines.size() - 1) {
+      str += "<CR>";
+      keys.push_back(Key::Key_Enter);
+    }
   }
+  str += "<Esc>";
+  keys.push_back(Key::Key_Esc);
+  return {str, keys};
 }
 
-}  // anonymous namespace
-
+} // anonymous namespace
 
 // =============================================================================
 // Heuristic for A* search
 // =============================================================================
 
-double EditOptimizer::heuristic(const Lines& lines) const {
+double EditOptimizer::heuristic(const Lines &lines) const {
   double total = 0;
   for (size_t i = 0; i < lines.size(); i++) {
     total += lines[i].size();
-    if (i < lines.size() - 1) total += 1;
+    if (i < lines.size() - 1)
+      total += 1;
   }
   return total;
 }
@@ -73,8 +106,9 @@ double EditOptimizer::heuristic(const Lines& lines) const {
 // tryReplacement - replacement strategy for same-length transformations
 // =============================================================================
 
-void tryReplacement(const string& deleted, const string& inserted, const Config& config,
-                    int& lastReplacementPos, vector<Result>& res) {
+void tryReplacement(const string &deleted, const string &inserted,
+                    const Config &config, int &lastReplacementPos,
+                    vector<Result> &res) {
   assert(deleted.size() == inserted.size());
   assert(deleted != inserted);
 
@@ -110,7 +144,8 @@ void tryReplacement(const string& deleted, const string& inserted, const Config&
 
     // Find consecutive positions (for R-mode)
     size_t j = i;
-    while (j + 1 < diff.size() && diff[j+1] == diff[j] + 1 && inserted[diff[j+1]] == inserted[diff[j]]) {
+    while (j + 1 < diff.size() && diff[j + 1] == diff[j] + 1 &&
+           inserted[diff[j + 1]] == inserted[diff[j]]) {
       j++;
     }
 
@@ -124,7 +159,7 @@ void tryReplacement(const string& deleted, const string& inserted, const Config&
     }
 
     // Navigate to next run if there is one
-    i = j+1;
+    i = j + 1;
     if (i < diff.size()) {
       int prevPos = diff[j];
       int nextPos = diff[i];
@@ -134,8 +169,9 @@ void tryReplacement(const string& deleted, const string& inserted, const Config&
         seq += "l";
       } else if (dist > 2) {
         // Try f-motion: check if target char appears only once in range
-        char findChar = deleted[nextPos];  // char at target position in original
-        int occurrences = ( count(deleted.begin() + prevPos + 1, deleted.begin() + nextPos, findChar));
+        char findChar = deleted[nextPos]; // char at target position in original
+        int occurrences = (count(deleted.begin() + prevPos + 1,
+                                 deleted.begin() + nextPos, findChar));
         if (occurrences == 0) {
           seq += "f";
           seq += findChar;
@@ -162,30 +198,28 @@ void tryReplacement(const string& deleted, const string& inserted, const Config&
 // optimizeEdit - main entry point
 // =============================================================================
 
-EditResult EditOptimizer::optimizeEdit(const Lines& startLines, const Lines& endLines,
-                                        EditBoundary editBoundary,
-                                        const optional<OptimizerParams>& paramsOverride) {
-  const OptimizerParams& params = paramsOverride.value_or(defaultParams);
-  
+EditResult
+EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
+                            EditBoundary editBoundary,
+                            const optional<OptimizerParams> &paramsOverride) {
+  const OptimizerParams &params = paramsOverride.value_or(defaultParams);
+
   assert(startLines != endLines);
 
   int totalPositions = 0;
-  for (const auto& line : startLines) {
+  for (const auto &line : startLines) {
     totalPositions += line.empty() ? 1 : static_cast<int>(line.size());
   }
 
   vector<Result> replacementResults;
   int lastReplacementPos = -1;
   if (startLines.size() == 1 && endLines.size() == 1 &&
-      startLines[0].size() == endLines[0].size() &&
-      !startLines[0].empty()) {
-    tryReplacement(startLines[0], endLines[0], config,
-                   lastReplacementPos, replacementResults);
+      startLines[0].size() == endLines[0].size() && !startLines[0].empty()) {
+    tryReplacement(startLines[0], endLines[0], config, lastReplacementPos,
+                   replacementResults);
   }
-  EditResult result(totalPositions,
-                    static_cast<int>(replacementResults.size()),
+  EditResult result(totalPositions, static_cast<int>(replacementResults.size()),
                     lastReplacementPos);
-
   // Copy replacement results into the EditResult
   for (size_t i = 0; i < replacementResults.size(); i++) {
     result.replacementResults[i] = replacementResults[i];
@@ -196,156 +230,223 @@ EditResult EditOptimizer::optimizeEdit(const Lines& startLines, const Lines& end
 
   // Initialize with all starting positions
   int startIndex = 0;
-  int startCost = heuristic(startLines);
+  double startCost = heuristic(startLines);
   for (int line = 0; line < static_cast<int>(startLines.size()); line++) {
-    int lineCols = startLines[line].empty() ? 1 : static_cast<int>(startLines[line].size());
+    int lineCols = startLines[line].empty()
+                       ? 1
+                       : static_cast<int>(startLines[line].size());
     for (int col = 0; col < lineCols; col++) {
-      pq.push(EditState(startLines, Position(line, col), startIndex, startCost));
+      pq.push(
+          EditState(startLines, Position(line, col), startIndex, startCost));
       startIndex++;
     }
   }
 
+  // Precompute typed content for goal state (content to type after change
+  // operation)
+  auto [typedStr, typedKeys] = buildTypedCommands(endLines);
+
   int resultsFound = 0;
   int iterations = 0;
 
-  // Helper lambda to apply deletion and add state
-  auto applyAndAdd = [&](const EditState& s, const Range& range,
-                         const char* cmd, const PhysicalKeys& keys) {
-    EditState newState = s;
-    VimEditUtils::deleteRange(newState.lines, range, newState.pos, Mode::Normal);
-    newState.effort.append(keys, config);
-    newState.seq.push_back(cmd);
-    newState.cost = newState.effort.getEffort(config) + heuristic(newState.lines);
-    tryAddState(newState, pq, costMap);
+  auto exploreNewState = [&](EditState &&newState) {
+    EditStateKey key = newState.getKey();
+    auto it = costMap.find(key);
+
+    double newCost = newState.getCost();
+    if (it == costMap.end() || newCost < it->second) {
+      costMap[key] = newCost;
+      pq.push(std::move(newState));
+    }
   };
 
-  while (!pq.empty()
-    && resultsFound < totalPositions
-    && iterations < params.maxSearchDepth
-  ) {
+  auto exploreDeletion = [&](const EditState &base, const Range &range,
+                             const char *deleteCmd,
+                             const PhysicalKeys &deleteKeys) {
+    EditState newState = base;
+    newState.applyDeletion(range);
+
+    // Goal reached - all lines are empty
+    if (allLinesEmpty(newState.getLines())) {
+      int idx = newState.getStartIndex();
+
+      // Skip if we already have a result for this starting position
+      // (A* guarantees first result is optimal)
+      if (result.typeAllResults[idx].isValid()) {
+        return;
+      }
+
+      // Use change equivalent instead of delete
+      string changeCmd = deleteToChange(deleteCmd);
+
+      // Build sequence to collapse multiple empty lines to one
+      const Lines &lines = newState.getLines();
+      int lineIndex = newState.getPos().line;
+      int lineCount = static_cast<int>(lines.size());
+
+      string collapseSeq;
+      PhysicalKeys collapseKeys;
+
+      // Backspace to get to first line (each BS merges with previous line)
+      for (int i = 0; i < lineIndex; i++) {
+        collapseSeq += "<BS>";
+        collapseKeys.push_back(Key::Key_Backspace);
+      }
+
+      // Delete to remove remaining lines below
+      for (int i = 0; i < lineCount - lineIndex - 1; i++) {
+        collapseSeq += "<Del>";
+        collapseKeys.push_back(Key::Key_Delete);
+      }
+
+      string seqStr = newState.getSeq() + changeCmd + collapseSeq + typedStr;
+
+      // Compute effort incrementally
+      PhysicalKeys changeKeys = globalTokenizer().tokenize(changeCmd);
+      RunningEffort effort = newState.getRunningEffort();
+      effort.append(changeKeys, config);
+      effort.append(collapseKeys, config);
+      double totalEffort = effort.append(typedKeys, config);
+
+      result.typeAllResults[idx] = Result(seqStr, totalEffort);
+      resultsFound++;
+      return;
+    }
+
+    // Not goal: append delete cmd, continue search
+    newState.appendToSeq(deleteCmd);
+    newState.updateEffort(deleteKeys, config);
+    newState.updateCost(newState.getEffort() + heuristic(newState.getLines()));
+    exploreNewState(std::move(newState));
+  };
+
+  while (!pq.empty() && resultsFound < totalPositions &&
+         iterations < params.maxSearchDepth) {
     iterations++;
 
     EditState s = pq.top();
     pq.pop();
 
-    // Goal check
-    if (isBufferEmpty(s.lines)) {
-      // TODO: set most recent delete to change, do backspace/delete until one empty line, then type everything out
-      int idx = s.startIndex;
-      if (!result.typeAllResults[idx].isValid()) {
-        string seqStr;
-        for (const auto& op : s.seq) {
-          seqStr += op;
-        }
-        result.typeAllResults[idx] = Result(seqStr, s.effort.getEffort(config));
-        resultsFound++;
-      }
-      continue;
-    }
-
     // Skip if we've found a better path
     EditStateKey key = s.getKey();
     auto it = costMap.find(key);
-    if (it != costMap.end() && it->second < s.cost - 1e-9) continue;
+    if (it != costMap.end() && it->second < s.getCost() - 1e-9)
+      continue;
 
-    const Lines& lines = s.lines;
-    Position cursor = s.pos;
-    int lineLen = lines[cursor.line].size();
+    const Lines &lines = s.getLines();
+    Position cursor = s.getPos();
+    int lineLen = static_cast<int>(lines[cursor.line].size());
 
     // =========================================================================
     // Forward word deletes: de, dw, dE, dW
+    // Skip if on empty line - change equivalents (ce, cw) can't start there
     // =========================================================================
-    for (const auto& spec : Edit::FORWARD_WORD_EDITS) {
-      Position endpoint = VimEndpointUtils::motionWordEndpoint(
-          cursor, lines, true, spec.edgeType, spec.isBig,
-          spec.skipCurrent, POSITION_OUTSIDE_BOUNDARY);
+    if (lineLen > 0) {
+      for (const auto &spec : Edit::FORWARD_WORD_EDITS) {
+        Position endpoint = VimEndpointUtils::motionWordEndpoint(
+            cursor, lines, true, spec.edgeType, spec.isBig, spec.skipCurrent,
+            POSITION_OUTSIDE_BOUNDARY);
 
-      if (endpoint == POSITION_OUTSIDE_BOUNDARY) continue;
+        if (endpoint == POSITION_OUTSIDE_BOUNDARY)
+          continue;
 
-      Range range(cursor, endpoint);
-      applyAndAdd(s, range, spec.cmd, spec.keys);
+        Range range(cursor, endpoint);
+        exploreDeletion(s, range, spec.cmd, spec.keys);
+      }
     }
 
     // =========================================================================
     // Backward word deletes: db, dge, dB, dgE
+    // Skip if on empty line - change equivalents can't start there
     // =========================================================================
-    for (const auto& spec : Edit::BACKWARD_WORD_EDITS) {
-      Position endpoint = VimEndpointUtils::motionWordEndpoint(
-          cursor, lines, false, spec.edgeType, spec.isBig,
-          spec.skipCurrent, POSITION_OUTSIDE_BOUNDARY);
+    if (lineLen > 0) {
+      for (const auto &spec : Edit::BACKWARD_WORD_EDITS) {
+        Position endpoint = VimEndpointUtils::motionWordEndpoint(
+            cursor, lines, false, spec.edgeType, spec.isBig, spec.skipCurrent,
+            POSITION_OUTSIDE_BOUNDARY);
 
-      if (endpoint == POSITION_OUTSIDE_BOUNDARY) continue;
+        if (endpoint == POSITION_OUTSIDE_BOUNDARY)
+          continue;
 
-      // Build range respecting cursor exclusivity
-      Range range;
-      if (spec.isExclusiveAtCursor && cursor.col > 0) {
-        // db/dB: don't include cursor char
-        range = Range(endpoint, Position(cursor.line, cursor.col - 1));
-      } else if (spec.isExclusiveAtCursor) {
-        // At col 0, nothing to delete for db/dB from cursor
-        continue;
-      } else {
-        range = Range(endpoint, cursor);
+        // Build range respecting cursor exclusivity
+        Range range;
+        if (spec.isExclusiveAtCursor && cursor.col > 0) {
+          range = Range(endpoint, Position(cursor.line, cursor.col - 1));
+        } else {
+          range = Range(endpoint, cursor);
+        }
+
+        exploreDeletion(s, range, spec.cmd, spec.keys);
       }
-
-      applyAndAdd(s, range, spec.cmd, spec.keys);
     }
 
     // =========================================================================
     // Text object deletes: diw, daw, diW, daW
+    // Skip if on empty line - change equivalents can't start there
     // =========================================================================
-    for (const auto& spec : Edit::TEXT_OBJECT_EDITS) {
-      Range range = VimEndpointUtils::textObjectRange(
-          cursor, lines, spec.isInner, spec.isBig,
-          POSITION_OUTSIDE_BOUNDARY, POSITION_OUTSIDE_BOUNDARY);
+    if (lineLen > 0) {
+      for (const auto &spec : Edit::TEXT_OBJECT_EDITS) {
+        Range range = VimEndpointUtils::textObjectRange(
+            cursor, lines, spec.isInner, spec.isBig, POSITION_OUTSIDE_BOUNDARY,
+            POSITION_OUTSIDE_BOUNDARY);
 
-      if (range.start == POSITION_OUTSIDE_BOUNDARY) continue;
+        if (range.start == POSITION_OUTSIDE_BOUNDARY)
+          continue;
 
-      applyAndAdd(s, range, spec.cmd, spec.keys);
+        exploreDeletion(s, range, spec.cmd, spec.keys);
+      }
     }
 
     // =========================================================================
     // Line motion deletes: D, d0
     // =========================================================================
-    for (const auto& spec : Edit::LINE_EDITS) {
-      int endCol = VimEndpointUtils::motionLineEndpoint(cursor, lines, spec.forward, editBoundary);
-      if (endCol == VimEndpointUtils::COL_OUTSIDE_BOUNDARY) continue;
+    for (const auto &spec : Edit::LINE_EDITS) {
+      int endCol = VimEndpointUtils::motionLineEndpoint(
+          cursor, lines, spec.forward, editBoundary);
+      if (endCol == VimEndpointUtils::COL_OUTSIDE_BOUNDARY)
+        continue;
 
       Range range;
       if (spec.forward) {
         // D: cursor to end of line
-        if (lineLen == 0) continue;  // nothing to delete on empty line
+        if (lineLen == 0)
+          continue; // nothing to delete on empty line
         range = Range(cursor, Position(cursor.line, endCol));
       } else {
         // d0: start of line to cursor (exclusive)
-        if (cursor.col == 0) continue;  // nothing to delete at col 0
-        range = Range(Position(cursor.line, 0), Position(cursor.line, cursor.col - 1));
+        if (cursor.col == 0)
+          continue; // nothing to delete at col 0
+        range = Range(Position(cursor.line, 0),
+                      Position(cursor.line, cursor.col - 1));
       }
-      applyAndAdd(s, range, spec.cmd, spec.keys);
+      exploreDeletion(s, range, spec.cmd, spec.keys);
     }
 
     // =========================================================================
     // Full line deletes: dd
     // =========================================================================
-    for (const auto& spec : Edit::FULL_LINE_EDITS) {
+    for (const auto &spec : Edit::FULL_LINE_EDITS) {
       LineRange lineRange = VimEndpointUtils::lineDeleteRange(cursor, lines, editBoundary);
-      if (!lineRange.isValid()) continue;
+      if (!lineRange.isValid())
+        continue;
 
       int endCol = lineLen > 0 ? lineLen - 1 : 0;
       Range range(Position(cursor.line, 0), Position(cursor.line, endCol));
-      applyAndAdd(s, range, spec.cmd, spec.keys);
+      exploreDeletion(s, range, spec.cmd, spec.keys);
     }
 
+    // =========================================================================
     // Char deletes: x, X
+    // =========================================================================
     if (lineLen > 0 && cursor.col < lineLen) {
       Range range(cursor, cursor);
-      applyAndAdd(s, range, "x", Deletion::CHAR.at("x"));
+      exploreDeletion(s, range, "x", Deletion::CHAR.at("x"));
     }
 
     if (cursor.col > 0) {
       Position before(cursor.line, cursor.col - 1);
       Range range(before, before);
-      applyAndAdd(s, range, "X", Deletion::CHAR.at("X"));
+      exploreDeletion(s, range, "X", Deletion::CHAR.at("X"));
     }
   }
 

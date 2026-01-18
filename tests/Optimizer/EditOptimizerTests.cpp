@@ -17,7 +17,6 @@
 #include "Boundary/EditBoundary.h"
 #include "Utils/Debug.h"
 #include "Utils/Lines.h"
-#include "Utils/NoChar.h"
 
 using namespace std;
 
@@ -47,105 +46,6 @@ protected:
 // =============================================================================
 
 // =============================================================================
-// Sequence Parsing - Parse Vim sequence strings into individual operations
-// =============================================================================
-
-// Parse a motion or text object starting at position i.
-// Returns the motion string and advances i past the parsed motion.
-// Returns empty string if no valid motion found (i unchanged).
-static string parseMotion(const string& sequence, size_t& i) {
-  if (i >= sequence.size()) return "";
-
-  char c = sequence[i];
-
-  // Text objects: i/a followed by object specifier (w, W)
-  if ((c == 'i' || c == 'a') && i + 1 < sequence.size()) {
-    char obj = sequence[i + 1];
-    if (obj == 'w' || obj == 'W') {
-      i += 2;
-      return string(1, c) + obj;
-    }
-  }
-
-  // g-motions: ge, gE
-  if (c == 'g' && i + 1 < sequence.size()) {
-    char next = sequence[i + 1];
-    if (next == 'e' || next == 'E') {
-      i += 2;
-      return string("g") + next;
-    }
-  }
-
-  // Simple motions: w, W, b, B, e, E, 0, ^, $, h, j, k, l
-  static const string simpleMotions = "wWbBeE0^$hjkl";
-  if (simpleMotions.find(c) != string::npos) {
-    i += 1;
-    return string(1, c);
-  }
-
-  return "";
-}
-
-// Parse a sequence string into individual Vim operations.
-// Handles operators (d, c) + motions/text objects intelligently.
-static vector<string> parseEditSequence(const string& sequence) {
-  vector<string> ops;
-  size_t i = 0;
-
-  while (i < sequence.size()) {
-    char c = sequence[i];
-
-    // Operators that take motions: d, c (y not implemented)
-    if (c == 'd' || c == 'c') {
-      // Check for doubled operator (dd, cc)
-      if (i + 1 < sequence.size() && sequence[i + 1] == c) {
-        ops.push_back(string(2, c));
-        i += 2;
-        continue;
-      }
-
-      // Try to parse operator + motion/text object
-      size_t motionStart = i + 1;
-      string motion = parseMotion(sequence, motionStart);
-      if (!motion.empty()) {
-        ops.push_back(string(1, c) + motion);
-        i = motionStart;
-        continue;
-      }
-
-      // Fallback: just the operator character
-      ops.push_back(string(1, c));
-      i++;
-      continue;
-    }
-
-    // g-prefix commands: ge, gE, gJ
-    if (c == 'g' && i + 1 < sequence.size()) {
-      char next = sequence[i + 1];
-      if (next == 'e' || next == 'E' || next == 'J') {
-        ops.push_back(string("g") + next);
-        i += 2;
-        continue;
-      }
-    }
-
-    // Single-character operations (movements and commands)
-    static const string singleOps = "xXsSDCJiaIAoOhjklwWbBeE0^$";
-    if (singleOps.find(c) != string::npos) {
-      ops.push_back(string(1, c));
-      i++;
-      continue;
-    }
-
-    // Unknown character - add as single char
-    ops.push_back(string(1, c));
-    i++;
-  }
-
-  return ops;
-}
-
-// =============================================================================
 // Test Helpers
 // =============================================================================
 
@@ -167,15 +67,15 @@ ApplyResult applySequence(const Lines& source, Position startPos, const string& 
 
   NavContext ctx(100, 50);
 
-  vector<string> ops = parseEditSequence(sequence);
+  vector<ParsedEdit> ops = Edit::parseEdits(sequence);
 
-  // Apply each operation
+  // Apply each operation using Edit::applyEdit
   for (const auto& op : ops) {
     try {
-      Edit::applyEdit(result.lines, result.pos, result.mode, ctx, ParsedEdit(op));
+      Edit::applyEdit(result.lines, result.pos, result.mode, ctx, op);
     } catch (const exception& e) {
       result.success = false;
-      result.error = "Failed on op '" + op + "': " + e.what();
+      result.error = "Failed on op '" + string(op.edit) + "': " + e.what();
       return result;
     }
   }
@@ -183,10 +83,11 @@ ApplyResult applySequence(const Lines& source, Position startPos, const string& 
   return result;
 }
 
-// Helper: Check if result is valid deletion goal (empty buffer + insert mode)
+// Helper: Check if result is valid deletion goal (empty buffer + normal mode)
+// Note: Sequences now end with <Esc>, so we expect Normal mode, not Insert.
 bool isValidDeletionGoal(const ApplyResult& result) {
   if (!result.success) return false;
-  if (result.mode != Mode::Insert) return false;
+  if (result.mode != Mode::Normal) return false;
   if (result.lines.empty()) return true;
   if (result.lines.size() == 1 && result.lines[0].empty()) return true;
   return false;

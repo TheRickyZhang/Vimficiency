@@ -136,8 +136,6 @@ extern const EditToKeys TEXT_OBJ;   // diw, daw, diW, daW
 
 } // namespace Deletion
 
-// Check if a string is an edit
-bool isEdit(std::string_view s);
 
 // =============================================================================
 // Edit Operation Specs - constexpr tables for EditOptimizer

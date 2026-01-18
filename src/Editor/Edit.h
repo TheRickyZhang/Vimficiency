@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "Mode.h"
 #include "Position.h"
@@ -56,5 +57,11 @@ void insertText(Lines& lines, Position& pos, Mode mode, const std::string& text)
 void applyEdit(Lines& lines, Position& pos, Mode& mode,
                const NavContext& navContext,
                const ParsedEdit& edit);
+
+// Parse an edit sequence string into individual ParsedEdit tokens.
+// Handles operators (d, c) + motions/text objects, special keys (<Esc>, <CR>, etc.),
+// and counts.
+// IMPORTANT: Returned ParsedEdits contain string_views into seq - caller must ensure seq outlives usage.
+std::vector<ParsedEdit> parseEdits(const std::string& seq);
 
 } // namespace Edit
