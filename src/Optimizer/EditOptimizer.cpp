@@ -574,8 +574,23 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
         if (endpoint == POSITION_OUTSIDE_BOUNDARY)
           continue;
 
+        // If skipCurrent motion returns cursor (couldn't move), skip it.
+        // This happens when at word boundary with no next word to go to.
+        if (spec.skipCurrent && endpoint == cursor)
+          continue;
+
         // Check if motion endpoint is in protected boundary region
         if (inBoundaryRegion(endpoint, lines))
+          continue;
+
+        // When fully embedded (hasLinesAbove AND hasLinesBelow), block all forward
+        // line-crossing to prevent escape after merge operations diverge.
+        // When only hasLinesBelow, block from last line since that's where escape happens.
+        if (endpoint.line > cursor.line &&
+            (editBoundary.hasLinesAbove && editBoundary.hasLinesBelow))
+          continue;
+        if (cursor.line == lastEditLine && endpoint.line > cursor.line &&
+            editBoundary.hasLinesBelow && !editBoundary.hasLinesAbove)
           continue;
 
         // Range is already in effectiveLines coordinates
@@ -597,8 +612,22 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
         if (endpoint == POSITION_OUTSIDE_BOUNDARY)
           continue;
 
+        // If skipCurrent motion returns cursor (couldn't move), skip it.
+        // This happens when at word boundary with no previous word to go to.
+        if (spec.skipCurrent && endpoint == cursor)
+          continue;
+
         // Check if motion endpoint is in protected boundary region
         if (inBoundaryRegion(endpoint, lines))
+          continue;
+
+        // When fully embedded (hasLinesAbove AND hasLinesBelow), block all backward
+        // line-crossing. After any line-merging deletion, the content around cursor
+        // differs between isolated and fullBuffer, causing motion behavior to diverge.
+        // When only hasLinesAbove (no linesBelow), backward motions from line 0 would
+        // escape upward - but such motions return cursor/OUTSIDE in isolated.
+        if (endpoint.line < cursor.line &&
+            (editBoundary.hasLinesAbove && editBoundary.hasLinesBelow))
           continue;
 
         // Build range respecting cursor exclusivity
@@ -704,6 +733,18 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
       int lineLen = static_cast<int>(lines[cursor.line].size());
       if (lineLen == 0) continue;
 
+      // When fully embedded (hasLinesAbove AND hasLinesBelow), dd is unsafe.
+      // After dd, cursor line in isolated region (0 to N-1) doesn't match
+      // fullBuffer line (M to M+N-1). Subsequent motions behave differently.
+      if (editBoundary.hasLinesAbove && editBoundary.hasLinesBelow) continue;
+
+      // When only hasLinesBelow and on last edit line, dd cursor lands below.
+      if (cursor.line == lastEditLine && editBoundary.hasLinesBelow) continue;
+
+      // When only hasLinesAbove and single line, dd leaves empty in isolated
+      // but fullBuffer has lines above.
+      if (cursor.line == 0 && lastEditLine == 0 && editBoundary.hasLinesAbove) continue;
+
       // Use linewise deletion
       exploreLinewiseDeletion(s, cursor.line, spec.cmd, spec.keys);
     }
@@ -747,8 +788,10 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
     // When on an empty line, allow j/k to navigate to other lines.
     // This enables reaching lines that can then be deleted with dd or collapsed
     // with <BS>/<Del> in insert mode.
+    // TEMPORARILY DISABLED: j/k sequences cause divergence in stress tests.
+    // TODO: Fix j/k simulation to match vim's targetCol behavior.
     // =========================================================================
-    if (editContentLen == 0) {
+    if (false && editContentLen == 0) {
       // j: move down (if not on last edit line)
       if (cursor.line < lastEditLine) {
         EditState newState = s;

@@ -350,13 +350,13 @@ TEST_F(EditOptimizerTest, FullBuffer_Linewise) {
           << "Buffer too small after applying '" << seq << "'";
       EXPECT_EQ(applied.lines[0], "xx")
           << "Line 0 was modified! Expected 'xx', got '" << applied.lines[0]
-          << "' after applying '" << seq << "'";
+          << "' after applying '" << seq << "' to " << flatIdx;
 
       // Verify last line ("xx") is unchanged
       // Note: line count may have changed, but last line should still be "xx"
       EXPECT_EQ(applied.lines.back(), "xx")
           << "Last line was modified! Expected 'xx', got '" << applied.lines.back()
-          << "' after applying '" << seq << "'";
+          << "' after applying '" << seq << "' to " << flatIdx;
     }
   }
 }

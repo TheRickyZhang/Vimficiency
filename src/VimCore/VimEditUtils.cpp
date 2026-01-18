@@ -68,7 +68,12 @@ void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos) {
 
   // Allow truly empty buffer - symmetric with empty string
   pos.line = lines.empty() ? 0 : min(r.startLine, static_cast<int>(lines.size()) - 1);
-  pos.col = lines.empty() ? 0 : VimUtils::firstNonBlankColInLineStr(lines[pos.line]);
+  // Preserve column (clamped to line length) - vim behavior after linewise delete
+  if (lines.empty() || lines[pos.line].empty()) {
+    pos.col = 0;
+  } else {
+    pos.col = min(pos.col, static_cast<int>(lines[pos.line].size()) - 1);
+  }
 }
 
 void insertText(Lines& lines, Position& pos, const string& text) {
