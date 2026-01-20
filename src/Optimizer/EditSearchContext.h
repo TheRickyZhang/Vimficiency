@@ -61,8 +61,8 @@ struct EditSearchContext {
   void initStartingPositions(const Lines& startLines);
 
   // Within a line, get columns that bound the edit content
-  // Returns (contentStart, contentEnd, editContentLen, lastEditLine)
-  std::tuple<int, int, int, int> computeContentBounds(const Lines& lines, const Position& cursor) const;
+  // Returns (contentStart, contentEnd)
+  std::pair<int, int> computeContentBounds(const Lines& lines, const Position& cursor) const;
 
   // Compute remaining heuristic for A* search
   double computeRemainingHeuristic(const Lines& lines) const;
@@ -75,6 +75,7 @@ struct EditSearchContext {
   // Check if search should continue
   bool shouldContinue() const;
 
-  // Pop next state from queue, returns nullopt if queue empty or state is stale
+  // Pop next valid state from queue, skipping stale states.
+  // Returns nullopt if queue becomes empty.
   std::optional<EditState> popNextState();
 };

@@ -420,8 +420,7 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
     });
 
     // Full line operations (dd/cc) - handled separately since logic differs
-    auto [contentStart, contentEnd, editContentLen, lastEditLine] =
-        ctx.computeContentBounds(lines, cursor);
+    int lastEditLine = lines.lastLine();
 
     if (editBoundary.isFullLineEditSafe() && cursor.line <= lastEditLine) {
       int lineLen = static_cast<int>(lines[cursor.line].size());
@@ -563,8 +562,7 @@ EditOptimizer::optimizePureDeletion(const Lines &startLines,
     });
 
     // Full line deletion (dd) - handled separately
-    auto [contentStart, contentEnd, editContentLen, lastEditLine] =
-        ctx.computeContentBounds(lines, cursor);
+    int lastEditLine = lines.lastLine();
 
     if (editBoundary.isFullLineEditSafe() && cursor.line <= lastEditLine) {
       int lineLen = static_cast<int>(lines[cursor.line].size());

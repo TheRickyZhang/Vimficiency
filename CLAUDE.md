@@ -45,9 +45,11 @@ cd build && ./tests/vimficiency_tests --gtest_filter="TestName.*"
 
 **Artifacts:** `build/libvimficiency_core.a`, `build/libvimficiency.so`, `build/vimficiency_cli`, `build/tests/vimficiency_tests`
 
-**Important:** Never use `rm -rf build` unless something appears corrupted. The build directory contains downloaded libraries (googletest, etc.) that take time to re-fetch. For incremental rebuilds, just run `cmake --build build`.
+**Important:**
+- Don't change directories in your session! Just do everything relative to the project root.
+- Never use `rm -rf build` unless something appears corrupted. The build directory contains downloaded libraries (googletest, etc.) that take time to re-fetch. For incremental rebuilds, just run `cmake --build build`.
 
-Do not run tests unless explicitly requested or your code introduces new tests.
+When verifying any new feature, run all tests, but only output the last 10 lines so that we can quickly verify that everything passes. Only if there are some failures, analyze the output.
 
 ## FFI Bridge
 Exposes C ABI for LuaJIT in `lua_exports.cpp`. **Position indexing:** Internal code is 0-indexed; Neovim is 1-indexed. Conversion happens at FFI boundary.

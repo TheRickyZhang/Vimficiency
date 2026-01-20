@@ -316,6 +316,39 @@ The stress test verifies crossing predictions against Neovim:
    (Conservative predictions where we say "would cross" but motion
    didn't reach boundary are acceptable)
 
+=== Deletion Boundary Checking Invariant
+
+**Critical**: When exploring deletions in `exploreAllDeletions`, ALL positions
+that will be deleted must be checked against the boundary. This includes:
+
+1. **Motion endpoint**: Where the deletion motion lands
+2. **Cursor position**: For inclusive deletions (dge/dgE), the cursor is part
+   of the deletion range
+
+The invariant `editContentLen >= 0` (line length >= boundary offset) must hold
+for all states during A* search. Violation indicates a deletion corrupted the
+prefix/suffix content.
+
+**Bug pattern that violates this**: After line-merging deletions, the cursor
+may land on what becomes the new last line. If subsequent inclusive backward
+deletions (dge/dgE) don't check whether the cursor is now in the suffix region,
+they can delete into the suffix.
+
+**Example failure sequence**:
+```
+Initial: 5 lines, suffix "aac" on line 4
+After dge: 4 lines, line 3 is new last line with suffix at end
+Cursor at (3, 2), suffix starts at col 2
+Second dge: endpoint (2, x) checked ✓, but cursor (3, 2) NOT checked ✗
+Result: deletion corrupts suffix, line 3 becomes shorter than rightColOffset
+```
+
+**Fix**: For inclusive backward deletions, also check `inBoundaryRegion(cursor)`:
+```cpp
+if (!spec.isExclusiveAtCursor && inBoundaryRegion(cursor, lines))
+  continue;
+```
+
 == Critical Edge Cases
 
 === Empty Lines Are Words
