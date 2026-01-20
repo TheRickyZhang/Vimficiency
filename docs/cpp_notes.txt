@@ -28,3 +28,6 @@ Interesting (maybe?) things that have come up:
 - You need extra {} scope in switch statement to not leak definitions (at underlying jump table, they are not separate blocks)
 - Difference between default stream formatting and to_string(), such as for printing doubles.
 - std::pmr (C++ 17)
+- Compared to += or appending, prepending to a string (ig: str = s + t) does an allocation, so you should prefer insert instead.
+
+

@@ -40,10 +40,8 @@ struct EditStateKeyHash {
     h ^= std::hash<int>{}(k.line) + 0x9e3779b9 + (h << 6) + (h >> 2);
     h ^= std::hash<int>{}(k.col) + 0x9e3779b9 + (h << 6) + (h >> 2);
     h ^= std::hash<int>{}(static_cast<int>(k.mode)) + 0x9e3779b9 + (h << 6) + (h >> 2);
-    // Hash first line content for differentiation
-    if (!k.lines.empty()) {
-      h ^= std::hash<std::string>{}(k.lines[0]) + 0x9e3779b9 + (h << 6) + (h >> 2);
-    }
+    // Hash first line content for differentiation (Lines invariant: always at least one line)
+    h ^= std::hash<std::string>{}(k.lines[0]) + 0x9e3779b9 + (h << 6) + (h >> 2);
     h ^= std::hash<size_t>{}(k.lines.size()) + 0x9e3779b9 + (h << 6) + (h >> 2);
     return h;
   }
@@ -99,6 +97,14 @@ public:
   // Apply a linewise deletion (for dd - deletes entire lines including newlines)
   void applyLinewiseDeletion(int line) {
     VimEditUtils::deleteRangeLinewise(lines, LineRange(line, line), pos);
+  }
+
+  // Apply a linewise change (for cc - clears line content, cursor stays at col 0)
+  void applyLinewiseChange(int line) {
+    assert(line >= 0 && line < static_cast<int>(lines.size()));
+    lines[line].clear();
+    pos.line = line;
+    pos.col = 0;
   }
 
   // Append a command string to the sequence

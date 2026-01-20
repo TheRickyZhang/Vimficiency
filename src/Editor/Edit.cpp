@@ -63,7 +63,8 @@ static void deleteToEndOfLine(Lines& lines, Position& pos) {
 // - landed on valid word boundary (col < line.size())
 // - wanted to go further but hit EOF (col == line.size())
 static bool isPastEndPosition(const Lines& lines, const Position& pos) {
-  if (lines.empty() || pos.line >= static_cast<int>(lines.size())) return false;
+  // Lines invariant: buffer always has at least one line
+  if (pos.line >= static_cast<int>(lines.size())) return false;
   return pos.col == static_cast<int>(lines[pos.line].size());
 }
 
@@ -193,27 +194,12 @@ void insertText(Lines& lines, Position& pos, Mode mode, const string& text) {
 void applyEdit(Lines& lines, Position& pos, Mode& mode,
                const NavContext& navContext,
                const ParsedEdit& edit) {
+  // Lines invariant: buffer always has at least one line (minimum: {""})
+  assert(!lines.empty());
+
   string_view e = edit.edit;
   int count = edit.effectiveCount();
   size_t h = hash(e);
-
-  // Empty buffer: only switch to insert mode
-  if (lines.empty()) {
-    if (mode == Mode::Normal) {
-      switch (h) {
-        case hash("i"): case hash("a"):
-          mode = Mode::Insert;
-          return;
-        // Same effect for both on empty - create first line
-        case hash("o"): case hash("O"):
-          lines.push_back("");
-          pos = {0, 0};
-          mode = Mode::Insert;
-          return;
-      }
-    }
-    throw runtime_error("Edit '" + string(e) + "' invalid on empty buffer");
-  }
 
   string& line = lines[pos.line];
   int n = static_cast<int>(lines.size());
@@ -306,13 +292,17 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           throw runtime_error("dd requires " + to_string(count) + " lines");
         }
         lines.erase(lines.begin() + pos.line, lines.begin() + pos.line + count);
-        pos.line = lines.empty() ? 0 : min(pos.line, static_cast<int>(lines.size()) - 1);
+        // Maintain invariant: buffer always has at least one line
+        if (lines.empty()) {
+          lines.push_back("");
+        }
+        pos.line = min(pos.line, static_cast<int>(lines.size()) - 1);
         if (VimOptions::startOfLine()) {
           // Vim default: go to first non-blank, update targetCol
-          pos.setCol(lines.empty() ? 0 : VimUtils::firstNonBlankColInLineStr(lines[pos.line]));
+          pos.setCol(VimUtils::firstNonBlankColInLineStr(lines[pos.line]));
         } else {
           // Neovim default: preserve column (clamp to line length)
-          pos.col = lines.empty() ? 0 : VimMovementUtils::clampCol(lines, pos.targetCol, pos.line);
+          pos.col = VimMovementUtils::clampCol(lines, pos.targetCol, pos.line);
         }
         return;
 

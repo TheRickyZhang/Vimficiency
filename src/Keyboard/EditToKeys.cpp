@@ -272,7 +272,7 @@ const vector<TextObjectEditSpec> TEXT_OBJECT_EDITS = {
 };
 
 // Line motion edits: cmd, keys, forward
-const vector<LineEditSpec> LINE_EDITS = {
+const vector<LineEditSpec> HALF_LINE_EDITS = {
     // Forward (to line end)
     {"D", {Key::Key_Shift, Key::Key_D}, true},
     // Backward (to line start)

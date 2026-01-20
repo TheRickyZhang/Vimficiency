@@ -18,6 +18,19 @@ extern const CharToKeys letters;
 // Digits (0-9)
 extern const CharToKeys digits;
 
+const std::array<Key, 10> digitsArr = {
+  Key::Key_0,
+  Key::Key_1,
+  Key::Key_2,
+  Key::Key_3,
+  Key::Key_4,
+  Key::Key_5,
+  Key::Key_6,
+  Key::Key_7,
+  Key::Key_8,
+  Key::Key_9,
+};
+
 // Whitespace (space, tab, newline)
 extern const CharToKeys whitespace;
 

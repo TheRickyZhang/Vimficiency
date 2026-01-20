@@ -6,6 +6,14 @@
 #include <assert.h>
 #include <Editor/Position.h>
 
+// Lines represents buffer content as a vector of strings.
+//
+// INVARIANT: A valid buffer always has at least one line.
+// The minimum buffer state is a single empty line: {""}
+// This matches Vim's behavior - a buffer always has at least one line.
+//
+// This invariant should be maintained by all code that creates or modifies Lines.
+// Functions may assert(!lines.empty()) rather than handle the impossible case.
 struct Lines : std::vector<std::string> {
   using std::vector<std::string>::vector;
 
@@ -39,6 +47,11 @@ struct Lines : std::vector<std::string> {
       }
     }
     return true;
+  }
+
+  // Returns index of last line (size - 1). Zero cost when inlined.
+  int lastLine() const {
+    return static_cast<int>(size()) - 1;
   }
 
   Position getLastPos() const {

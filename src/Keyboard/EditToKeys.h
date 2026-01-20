@@ -181,7 +181,7 @@ struct LineEditSpec {
   PhysicalKeys keys;
   bool forward;  // true for D/d$, false for d0/d^
 };
-extern const std::vector<LineEditSpec> LINE_EDITS;
+extern const std::vector<LineEditSpec> HALF_LINE_EDITS;
 
 // Full line edit (dd) - linewise
 struct FullLineEditSpec {

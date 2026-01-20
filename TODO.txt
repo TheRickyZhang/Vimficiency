@@ -1,9 +1,10 @@
 == Current priority stack:
 Insert Mode handling (just a lot more stuff)     ********* (very very difficult)
 Implement EditOptimizer
-Fix how EditBoundaries work
-Operator motions                                 *****
-Implement paragraph motions, separate motion processing (just directly edit) vs boundary check for edit processing (want to break early)
+Inspect code and improve organization
+Handle pureDeletion, pureInsertion cases separately
+Investigate deletion sequence
+
 
 
 Think about how to detect ci", cib from CompositionOptimizer scope (can move and edit)
@@ -46,53 +47,3 @@ Done:
 - f/t, ;/, motions                                 **
 - <C-d, u, f, b> page motions                      **
 - Real-time, automatic session spawning            *****
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-eeddbcba
-cdbbce
-
-eddbcba
-cdbb
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

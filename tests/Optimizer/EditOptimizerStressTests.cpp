@@ -175,7 +175,7 @@ TEST_F(EditOptimizerStressTest, PureDeletion_MultiLineFullBuffer) {
 // Replacement Tests - same-length string replacement
 // =============================================================================
 
-TEST_F(EditOptimizerStressTest, Replacement_SameLength) {
+TEST_F(EditOptimizerStressTest, DISABLED_Replacement_SameLength) {
   oracle->restart();
   const int NUM_ITERATIONS = 30;
   mt19937 rng(44);

@@ -10,45 +10,26 @@
 
 #include "Utils/Lines.h"
 
+// TODO: Is it helpful to return some sort of vector<Position> to reuse information about how flat indices -> real positions?
 struct EditResult {
   // Results that involve deleting everything, and typing the end text
-  // start = index, end = sz-1
+  // [start, end] for each result is [index, sz-1]
   std::vector<Result> typeAllResults;
 
-  // Results that involve replacement. Start indices only go until first replace region, and end is always the last replace pos.
-  // start = index, end = replacementEnd
-  std::vector<Result> replacementResults;
+  // Results that involve replacement. We go in order, so all starts <= first change, end = last change
+  // [start, end] for each result is [index, replacementEnd]
+  std::vector<Result> replaceResults;
 
-  int replacementEnd = -1;
+  int replaceEnd = -1;
 
-  EditResult(int n, int m, int x) {
+  EditResult(int n, std::vector<Result> replaceResults, int replacemeEnd) : 
+    replaceResults(replaceResults), replaceEnd(replacemeEnd)
+  {
     typeAllResults.resize(n);
-    replacementResults.resize(m);
-    replacementEnd = x;
   }
 };
 
-// std::ostream& operator<<(std::ostream& os, const EditResult& editResult) {
-//   os << "typeAllResults: ";
-//   for(int i = 0; i < editResult.typeAllResults.size(); i++) {
-//     const auto& res = editResult.typeAllResults[i];
-//     os << (res.isValid() ? res.getSequenceString() : "_");
-//
-//     if(i < editResult.typeAllResults.size()) os << " ";
-//     else os << "\n";
-//   }
-//   if(!editResult.replacementResults.empty()) {
-//     os << "replaecmentResults: ";
-//     for(int i = 0; i < editResult.replacementResults.size(); i++) {
-//       const auto& res = editResult.replacementResults[i];
-//       os << (res.isValid() ? res.getSequenceString() : "_");
-//       if(i < editResult.typeAllResults.size()) os << " ";
-//       else os << "\n";
-//     }  
-//     os << "replacementEnd: " << editResult.replacementEnd << "\n";
-//   }
-//   return os;
-// }
+std::ostream& operator<<(std::ostream& os, const EditResult& editResult);
 
 
 // Try to find an optimal replacement sequence for same-length transformations.
@@ -77,13 +58,21 @@ struct EditOptimizer {
   // Heuristic for A* search: effort + chars remaining
   double heuristic(const Lines& lines) const;
 
-  // Main entry point: find optimal sequences to transform startLines to endLines
-  // within the given edit boundary constraints.
-  //
-  // Returns results indexed by starting position (flat index, not including newlines).
+  // find optimal sequences to transform startLines to endLines
+  // Either delete all initial and type out result, or use replacement
+  // Returns results indexed by flattened starting position
   EditResult optimizeEdit(
       const Lines& startLines,
       const Lines& endLines,
+      EditBoundary editBoundary,
+      const std::optional<OptimizerParams>& paramsOverride = std::nullopt
+  );
+
+  // find optimal sequences to delete all content in startLines
+  // Simpler than optimizeEdit: no typed content, no change conversion
+  // Returns results indexed by flattened starting position
+  std::vector<Result> optimizePureDeletion(
+      const Lines& startLines,
       EditBoundary editBoundary,
       const std::optional<OptimizerParams>& paramsOverride = std::nullopt
   );

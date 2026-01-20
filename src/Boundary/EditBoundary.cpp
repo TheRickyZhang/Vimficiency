@@ -14,7 +14,7 @@ EditBoundary::EditBoundary(const Lines &lines, Position startPos, Position endPo
       hasLinesAbove_(false), hasLinesBelow_(false),
       firstLineQuotes_(), lastLineQuotes_(),
       firstLineBrackets_(), lastLineBrackets_() {
-  if (lines.empty()) return;
+  assert(!lines.empty() && "Lines invariant: buffer always has at least one line");
 
   const string &firstLine = lines[startPos.line];
   // Extract full prefix: all characters before startPos on the first line
@@ -57,7 +57,7 @@ EditBoundary::EditBoundary(const EditBoundary &parent, const Lines &lines,
       lastLineQuotes_(parent.lastLineQuotes()),
       firstLineBrackets_(parent.firstLineBrackets()),
       lastLineBrackets_(parent.lastLineBrackets()) {
-  if (lines.empty()) return;
+  assert(!lines.empty() && "Lines invariant: buffer always has at least one line");
 
   const string &firstLine = lines[startPos.line];
   // Extract full prefix from current lines, or inherit from parent if at edge

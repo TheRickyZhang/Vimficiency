@@ -14,11 +14,6 @@ namespace VimEditUtils {
 // -----------------------------------------------------------------------------
 
 void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
-  if (lines.empty()) {
-    pos = {0, 0};
-    return;
-  }
-
   Range r = range;
   r.normalize();
 
@@ -41,6 +36,7 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
 
     // Delete lines from startLine+1 to endLine (inclusive)
     lines.erase(lines.begin() + r.start.line + 1, lines.begin() + r.end.line + 1);
+    assert(!lines.empty());
   }
 
   pos.line = r.start.line;
@@ -53,11 +49,6 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
 }
 
 void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos) {
-  if (lines.empty()) {
-    pos = {0, 0};
-    return;
-  }
-
   LineRange r = range;
   r.normalize();
 
@@ -66,10 +57,14 @@ void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos) {
 
   lines.erase(lines.begin() + r.startLine, lines.begin() + r.endLine + 1);
 
-  // Allow truly empty buffer - symmetric with empty string
-  pos.line = lines.empty() ? 0 : min(r.startLine, static_cast<int>(lines.size()) - 1);
+  // Maintain invariant: buffer always has at least one line
+  if (lines.empty()) {
+    lines.push_back("");
+  }
+
+  pos.line = min(r.startLine, static_cast<int>(lines.size()) - 1);
   // Preserve column (clamped to line length) - vim behavior after linewise delete
-  if (lines.empty() || lines[pos.line].empty()) {
+  if (lines[pos.line].empty()) {
     pos.col = 0;
   } else {
     pos.col = min(pos.col, static_cast<int>(lines[pos.line].size()) - 1);
@@ -79,12 +74,7 @@ void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos) {
 void insertText(Lines& lines, Position& pos, const string& text) {
   if (text.empty()) return;
 
-  // Empty buffer: inserting text creates content
-  if (lines.empty()) {
-    lines.push_back("");
-    pos = {0, 0};
-  }
-
+  assert(!lines.empty() && "Lines invariant: buffer always has at least one line");
   assert(pos.line >= 0 && pos.line < static_cast<int>(lines.size()));
   assert(pos.col >= 0 && pos.col <= static_cast<int>(lines[pos.line].size()));
 
