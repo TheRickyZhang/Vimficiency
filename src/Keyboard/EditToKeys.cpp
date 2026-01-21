@@ -266,6 +266,13 @@ const vector<BackwardWordEditSpec> BACKWARD_WORD_EDITS = {
     {"dB", {Key::Key_D, Key::Key_Shift, Key::Key_B}, EdgeType::WordEdge, true, true, true},
     {"dgE", {Key::Key_D, Key::Key_G, Key::Key_Shift, Key::Key_E}, EdgeType::NextEdge, true, true, false},
 };
+
+
+const vector<BackwardWordEditSpec> EXCLUSIVE_BACKWARD_WORD_EDITS = {
+    {"db", {Key::Key_D, Key::Key_B}, EdgeType::WordEdge, false, true, true},
+    {"dB", {Key::Key_D, Key::Key_Shift, Key::Key_B}, EdgeType::WordEdge, true, true, true},
+};
+
 // Subset: db/dB/dge only (dgE equivalent to dge on empty lines)
 const vector<BackwardWordEditSpec> EMPTYLINE_BACKWARD_WORD_EDITS = {
     {"db", {Key::Key_D, Key::Key_B}, EdgeType::WordEdge, false, true, true},

@@ -76,16 +76,3 @@ public:
     pos.setCol(col);  // Updates both col and targetCol
   }
 };
-
-// Later, you'll change this to dispatch differently depending on s.mode.
-// For now, we only support Normal mode motions that don't leave Normal.
-// inline void apply_motion(State& s,
-//                          string_view motion,
-//                          const vector<string>& lines,
-//                          const Config& model) {
-//   switch(s.mode) {
-//     case Mode::Normal:
-//     case Mode::Insert:
-//     case Mode::Visual:
-//   }
-// }

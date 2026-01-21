@@ -54,25 +54,13 @@ struct Lines : std::vector<std::string> {
     return static_cast<int>(size()) - 1;
   }
 
-  Position getLastPos() const {
-    assert(!this->empty());
-    for(int i = this->size() - 1; i >= 0; i--) {
-      if(!(*this)[i].empty()) return Position(i, (*this)[i].size()-1);
-    }
-    assert(false);
+  int lastCol(int line) const {
+    const std::string& l = (*this)[line];
+    return l.empty() ? 0 : l.size() - 1;
   }
 
-  // Get next position, skipping empty lines (for character-by-character traversal)
-  Position getNextPos(Position pos) const {
-    if(pos.col + 1 < (*this)[pos.line].size()) {
-      return Position(pos.line, pos.col + 1);
-    }
-    for(int row = pos.line + 1; row < this->size(); ++row) {
-      if(!(*this)[row].empty()) {
-        return Position(row, 0);
-      }
-    }
-    return pos; // Same position if cannot move
+  int getSize(int line) const {
+    return (*this)[line].size();
   }
 
   // Get next position, including empty lines (for word motions where empty line = word)
@@ -86,18 +74,6 @@ struct Lines : std::vector<std::string> {
     return pos; // Same position if cannot move
   }
 
-  // Get prev position, skipping empty lines
-  Position getPrevPos(Position pos) const {
-    if(pos.col > 0) {
-      return Position(pos.line, pos.col - 1);
-    }
-    for(int row = pos.line - 1; row >= 0; --row) {
-      if(!(*this)[row].empty()) {
-        return Position(row, (*this)[row].size() - 1);
-      }
-    }
-    return pos; // Same position if cannot move
-  }
 
   // Get prev position, including empty lines (for word motions where empty line = word)
   Position getPrevPosIncludeEmpty(Position pos) const {
@@ -118,15 +94,6 @@ struct Lines : std::vector<std::string> {
     if ((*this)[pos.line].empty()) return '\n';
     assert(pos.col < (*this)[pos.line].size());
     return (*this)[pos.line][pos.col];
-  }
-
-  // Total character count (excluding newlines between lines)
-  int charCount() const {
-    int count = 0;
-    for (const auto& line : *this) {
-      count += static_cast<int>(line.size());
-    }
-    return count;
   }
 
   friend std::ostream& operator<<(std::ostream& os, const Lines& lines) {

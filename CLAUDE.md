@@ -24,7 +24,7 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 - **Edit**: Commands that change buffer (operator + motion/text object, replacement, mode change, insert typing)
 - **ParsedMotion/ParsedEdit**: Command structure with count (0 = default single, positive = prefixed)
 - **Effort**: Estimated difficulty of typing a key sequence
-- **Position**: Contains `line`, `col`, `targetCol`. Use `pos.setCol(c)` for horizontal movements (updates both col and targetCol), `pos.col = c` for vertical (preserves targetCol)
+- **Position**: Contains `line`, `col`, `targetCol`. Use `pos.setCol(c)` for horizontal movements (updates both col and targetCol), `pos.clampColPreservingTarget(c)` for vertical (preserves targetCol). See `docs/vim-utils-principles.md` §5 for detailed guidance and common pitfalls.
 
 ## Design Constraints
 
@@ -58,7 +58,7 @@ For Lua context, see `lua/CLAUDE.md`.
 
 ## Deep Dive References
 - @docs/optimizer-architecture.md - A* heuristics, MotionOptimizer, EditOptimizer, CompositionOptimizer
-- @docs/vim-utils-principles.md - State validation, empty handling, MovementUtils vs EndpointUtils
+- @docs/vim-utils-principles.md - State validation, empty handling, MovementUtils vs EndpointUtils, **targetCol handling**
 - @docs/testing.md - NeovimOracle, test file conventions, debug printing
 - @docs/x-macros.md - Key definitions, supported commands, sequence parsing
 - @docs/boundary-logic.md - Word motion and boundary crossing logic, EditBoundary API

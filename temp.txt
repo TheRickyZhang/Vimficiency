@@ -1,8 +1,12 @@
+FAIL iter=3 editPos=[2,4] bufferPos=[2,4] seq='xkdddgeXXx'
+fcef
+cdd
+bbfbb
 
-aaa
-bbb
-cc
+  EditRegion: cef
+cdd
+bbfbf
 
-
-
-'DddXdbde'
+  Expected: 'fb'
+  Got: ''
+/home/ricky/Projects/

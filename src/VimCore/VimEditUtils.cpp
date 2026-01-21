@@ -90,11 +90,11 @@ void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos) {
   }
 
   pos.line = min(r.startLine, static_cast<int>(lines.size()) - 1);
-  // Preserve column (clamped to line length) - vim behavior after linewise delete
+  // dd resets targetCol to the clamped column (unlike vertical motions which preserve it)
   if (lines[pos.line].empty()) {
     pos.setCol(0);
   } else {
-    pos.setCol(min(pos.col, static_cast<int>(lines[pos.line].size()) - 1));
+    pos.setCol(min(pos.targetCol, static_cast<int>(lines[pos.line].size()) - 1));
   }
 }
 

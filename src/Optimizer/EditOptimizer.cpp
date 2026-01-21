@@ -8,7 +8,6 @@
 #include "EditSearchContext.h"
 
 #include "Keyboard/CharToKeys.h"
-#include "Keyboard/EditToKeys.h"
 #include "Keyboard/MotionToKeys.h"
 #include "State/RunningEffort.h"
 
@@ -99,7 +98,7 @@ bool allLinesEmpty(const Lines &lines) {
 
 // Convert delete command to change equivalent
 // Returns the change command string, or empty string if no mapping exists
-string deleteToChange(const string &deleteCmd) {
+string deleteToChange(const string& deleteCmd) {
   assert(!deleteCmd.empty());
   if (deleteCmd == "D")
     return "C";
@@ -299,7 +298,7 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
 
   // Deletion handler: apply deletion, check goal, store result or continue search
   auto exploreDeletion = [&](const EditState &base, const Range &range,
-                             const char *deleteCmd, const PhysicalKeys &deleteKeys) {
+                             const char* deleteCmd, const PhysicalKeys &deleteKeys) {
     EditState newState = base;
     newState.applyDeletion(range);
     const Lines &lines = newState.getLines();
@@ -347,8 +346,9 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
       searchCmdSeq += "k";
       searchCmdKeys.push_back(Key::Key_K);
       pos.line = lastValidLine;
-      pos.setCol(lines[pos.line].empty() ? 0 :
-                 min(pos.col, static_cast<int>(lines[pos.line].size()) - 1));
+      // k motion preserves targetCol (sticky column behavior)
+      pos.clampColPreservingTarget(lines[pos.line].empty() ? 0 :
+                 min(pos.targetCol, static_cast<int>(lines[pos.line].size()) - 1));
       newState.setPos(pos);
     }
 
@@ -396,6 +396,15 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
       },
       [&](int line, const char* cmd, const PhysicalKeys& keys) {
         exploreLinewise(s, line, cmd, keys);
+      },
+      [&](const Position& newPos, const char* cmd, const PhysicalKeys& keys) {
+        // Pure cursor movement - no buffer change, no goal check possible
+        EditState newState = s;
+        newState.setPos(newPos);
+        newState.appendToSeq(cmd);
+        newState.updateEffort(keys, config);
+        newState.updateCost(newState.getEffort() + ctx.heuristic(newState.getLines()));
+        ctx.exploreNewState(std::move(newState));
       }
     );
   }
@@ -474,8 +483,9 @@ EditOptimizer::optimizePureDeletion(const Lines &startLines,
       cmdSeq += "k";
       cmdKeys.push_back(Key::Key_K);
       pos.line = lastValidLine;
-      pos.setCol(lines[pos.line].empty() ? 0 :
-                 min(pos.col, static_cast<int>(lines[pos.line].size()) - 1));
+      // k motion preserves targetCol (sticky column behavior)
+      pos.clampColPreservingTarget(lines[pos.line].empty() ? 0 :
+                 min(pos.targetCol, static_cast<int>(lines[pos.line].size()) - 1));
       newState.setPos(pos);
     }
 
@@ -513,6 +523,15 @@ EditOptimizer::optimizePureDeletion(const Lines &startLines,
       },
       [&](int line, const char* cmd, const PhysicalKeys& keys) {
         exploreLinewise(s, line, cmd, keys);
+      },
+      [&](const Position& newPos, const char* cmd, const PhysicalKeys& keys) {
+        // Pure cursor movement - no buffer change, no goal check possible
+        EditState newState = s;
+        newState.setPos(newPos);
+        newState.appendToSeq(cmd);
+        newState.updateEffort(keys, config);
+        newState.updateCost(newState.getEffort() + ctx.heuristic(newState.getLines()));
+        ctx.exploreNewState(std::move(newState));
       }
     );
   }

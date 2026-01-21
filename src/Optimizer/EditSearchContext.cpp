@@ -1,5 +1,6 @@
 #include "EditSearchContext.h"
 #include "Keyboard/EditToKeys.h"
+#include "Keyboard/MotionToKeysPrimitives.h"
 
 #include <cstring>
 
@@ -65,10 +66,12 @@ void EditSearchContext::initStartingPositions(const Lines& startLines) {
   }
 }
 
-pair<int, int> EditSearchContext::computeContentBounds(
+// Returns C++ convention [startCol, endCol) <- EXCLUSIVE END
+// of where the edit region is in this line
+pair<int, int> EditSearchContext::computeEditBounds(
     const Lines& lines, const Position& cursor) const {
   int rawLineLen = static_cast<int>(lines[cursor.line].size());
-  int contentStart = (cursor.line == 0) ? leftColOffset : 0;
+  int contentBegin = (cursor.line == 0) ? leftColOffset : 0;
   int contentEnd = rawLineLen;
 
   if (cursor.line == lines.lastLine() && rightColOffset > 0) {
@@ -79,8 +82,9 @@ pair<int, int> EditSearchContext::computeContentBounds(
          << " rawLineLen=" << rawLineLen << " rightColOffset=" << rightColOffset << endl;
   }
   assert(contentEnd >= 0);
-  assert(contentStart >= 0);
-  return {contentStart, contentEnd};
+  assert(contentBegin >= 0);
+  assert(contentEnd >= contentBegin);
+  return {contentBegin, contentEnd};
 }
 
 double EditSearchContext::heuristic(const Lines& lines) const {
@@ -154,20 +158,19 @@ void EditSearchContext::exploreBackwardWordEdits(
 
     // db/dB are EXCLUSIVE at cursor: delete backward but NOT the cursor char.
     // Three cases:
-    // 1. Cursor not at content start: range ends at cursor.col - 1
-    // 2. Cursor at content start AND crossed lines: ends at prev line's last char
-    // 3. Cursor at content start AND same line: skip (can't delete backward)
     Range range;
     if (spec.isExclusiveAtCursor) {
       int cursorContentCol = cursor.col - (cursor.line == 0 ? leftColOffset : 0);
       if (cursorContentCol > 0) {
+        // 1. Cursor not at content start: range ends at cursor.col - 1
         range = Range(endpoint, Position(cursor.line, cursor.col - 1));
-      } else if (endpoint.line < cursor.line) {
+      }
+      else if (endpoint.line < cursor.line) {
+        // 2. Cursor at content start AND crossed lines: ends at prev line's last char
         int prevLine = cursor.line - 1;
-        int prevLineLen = static_cast<int>(lines[prevLine].size());
-        int endCol = prevLineLen > 0 ? prevLineLen - 1 : 0;
-        range = Range(endpoint, Position(prevLine, endCol));
+        range = Range(endpoint, Position(prevLine, lines.lastCol(prevLine)));
       } else {
+        // 3. Cursor at content start AND same line: skip (can't delete backward)
         continue;
       }
     } else {
@@ -194,14 +197,17 @@ void EditSearchContext::exploreTextObjectEdits(
   }
 }
 
+// TODO: Support d^, d0?
+// Currently contentStart, contentEnd is not used
 void EditSearchContext::exploreHalfLineEdits(
     const vector<Edit::LineEditSpec>& specs,
     const Position& cursor, const Lines& lines, int contentStart, int contentEnd,
     DeletionCallback onDeletion) {
   int lastEditLine = lines.lastLine();
 
-  for (const auto& spec : specs) {
-    if (strcmp(spec.cmd, "D") == 0) {
+  for (const Edit::LineEditSpec& spec : specs) {
+    // Must use strcmp since both are const char*
+    if (!strcmp(spec.cmd, "D")) {
       if (cursor.line == lastEditLine && editBoundary.hasSuffix()) continue;
 
       int lineLen = static_cast<int>(lines[cursor.line].size());
@@ -215,7 +221,7 @@ void EditSearchContext::exploreHalfLineEdits(
       if (endCol < cursor.col) continue;
       Range range(cursor, Position(cursor.line, endCol));
       onDeletion(range, spec.cmd, spec.keys);
-    } else if (strcmp(spec.cmd, "d0") == 0) {
+    } else if (!strcmp(spec.cmd, "d0")) {
       if (cursor.line == 0 && editBoundary.hasPrefix()) continue;
 
       int lineContentStart = (cursor.line == 0) ? leftColOffset : 0;
@@ -233,60 +239,33 @@ void EditSearchContext::exploreFullLineEdits(
   const std::vector<Edit::FullLineEditSpec>& specs,
   const Position& cursor, const Lines& lines, LinewiseCallback onLinewise
 ) {
-  if (onLinewise && !isFullLineEditBlocked(lines, cursor)) {
-    for (const auto& spec : specs) {
-      onLinewise(cursor.line, spec.cmd, spec.keys);
-    }
+  if((cursor.line == 0 && editBoundary.hasPrefix()) || 
+    (cursor.line == lines.lastLine() && editBoundary.hasSuffix())
+  ) {
+    return;
+  }
+  for (const auto& spec : specs) {
+    onLinewise(cursor.line, spec.cmd, spec.keys);
   }
 }
 
 void EditSearchContext::exploreCharEdits(
     const Position& cursor, const Lines& lines, int contentStart, int contentEnd,
     int editContentLen, DeletionCallback onDeletion) {
-  // x: delete char at cursor
-  if (editContentLen > 0 && cursor.col >= contentStart && cursor.col < contentEnd) {
-    bool isLastEditChar = (cursor.col == contentEnd - 1);
-    bool wouldLandOnBoundary = isLastEditChar && rightColOffset > 0;
+  // Note these can make the cursor end up in edit region, but we can handle inside edit region separately
 
-    if (wouldLandOnBoundary) {
-      if (editContentLen == 1) {
-        onDeletion(Range(cursor, cursor), "x", Deletion::CHAR.at("x"));
-      }
-    } else {
-      onDeletion(Range(cursor, cursor), "x", Deletion::CHAR.at("x"));
-    }
+  // x: delete char at cursor
+  if (contentStart <= cursor.col && cursor.col < contentEnd) {
+    onDeletion(Range(cursor, cursor), "x", Deletion::CHAR.at("x"));
   }
 
   // X: delete char before cursor
   if (cursor.col > contentStart) {
     Position before(cursor.line, cursor.col - 1);
-    if (!inBoundaryRegion(before, lines)) {
-      onDeletion(Range(before, before), "X", Deletion::CHAR.at("X"));
-    }
+    onDeletion(Range(before, before), "X", Deletion::CHAR.at("X"));
   }
 }
 
-// =============================================================================
-// Blocking Logic
-// =============================================================================
-
-bool EditSearchContext::isFullLineEditBlocked(const Lines& lines, const Position& cursor) const {
-  if(cursor.line == 0 && editBoundary.hasPrefix()) {
-    return true;
-  }
-  if(cursor.line == lines.lastLine() && editBoundary.hasSuffix()) {
-    return true;
-  }
-
-  // // Block if lines above AND below AND multiple lines exist (divergence risk)
-  // if (editBoundary.hasLinesAbove() && editBoundary.hasLinesBelow()) {
-  //   if (static_cast<int>(lines.size()) > 1) return true;
-  // }
-  // // Block if cursor not on first line AND lines below (would merge with suffix)
-  // if (cursor.line > 0 && editBoundary.hasLinesBelow()) return true;
-
-  return false;
-}
 
 // =============================================================================
 // Main Exploration Entry Point
@@ -294,31 +273,51 @@ bool EditSearchContext::isFullLineEditBlocked(const Lines& lines, const Position
 
 void EditSearchContext::exploreAllDeletions(const EditState& state,
                                             DeletionCallback onDeletion,
-                                            LinewiseCallback onLinewise) {
+                                            LinewiseCallback onLinewise,
+                                            MotionCallback onMotion) {
   const Lines& lines = state.getLines();
   Position cursor = state.getPos();
 
-  // Debug: check for invalid state before computing bounds
-  if (cursor.line == lines.lastLine() && rightColOffset > 0) {
-    int rawLineLen = static_cast<int>(lines[cursor.line].size());
-    if (rawLineLen < rightColOffset) {
-      cerr << "INVALID STATE: lines=" << lines << " cursor=" << cursor.line << "," << cursor.col
-           << " seq=" << state.getSeq() << endl;
-    }
-  }
+  // Right boundary (suffix region): cursor on last line, in suffix columns
+  if (cursor.line == lines.lastLine() && rightColOffset > 0 &&
+      cursor.col + rightColOffset >= static_cast<int>(lines.getSize(cursor.line))) {
+    // Can still do backward deletions that don't touch suffix
+    exploreBackwardWordEdits(Edit::EXCLUSIVE_BACKWARD_WORD_EDITS, cursor, lines, onDeletion);
 
-  // Early exit if cursor is in a protected boundary region.
-  // This can happen after dd clamps cursor to a position within the suffix region.
-  if (inBoundaryRegion(cursor, lines)) {
+    if (onMotion) {
+      // h: move left within line (away from suffix) - horizontal updates targetCol
+      if (cursor.col > 0) { onMotion(Position(cursor.line, cursor.col - 1), "h", hjkl.at("h")); }
+      // k: move up to previous line (escape suffix line entirely) - vertical preserves targetCol
+      if (cursor.line > 0) {
+        int newCol = min(cursor.targetCol, lines.lastCol(cursor.line - 1));
+        onMotion(Position(cursor.line - 1, newCol, cursor.targetCol), "k", hjkl.at("k"));
+      }
+    }
     return;
   }
 
-  auto [contentStart, contentEnd] = computeContentBounds(lines, cursor);
-  int editContentLen = contentEnd - contentStart;
+  // Left boundary (prefix region): cursor on line 0, in prefix columns
+  if (cursor.line == 0 && cursor.col < leftColOffset) {
+    if (onMotion) {
+      // l: move right within line (away from prefix) - horizontal updates targetCol
+      if (cursor.col < static_cast<int>(lines[0].size()) - 1) {
+        onMotion(Position(0, cursor.col + 1), "l", hjkl.at("l"));
+      }
+      // j: move down to next line (escape prefix line entirely) - vertical preserves targetCol
+      if (lines.lastLine() > 0) {
+        int newCol = min(cursor.targetCol, lines.lastCol(1));
+        onMotion(Position(1, newCol, cursor.targetCol), "j", hjkl.at("j"));
+      }
+    }
+    return;
+  }
 
-  // Case 1: Empty line -> Explore limited set, since many commands are equivalent
+  auto [contentBegin, contentEnd] = computeEditBounds(lines, cursor);
+  int editContentLen = contentEnd - contentBegin;
+
+  // Otherwise if no content we must have empty line -> Explore limited set, since many commands are equivalent
   if (editContentLen <= 0) {
-    // Note: inBoundaryRegion check already done above
+    assert(lines[cursor.line].size() == 0);
 
     // Limited exploration: 
     // (dd == dw == dW)
@@ -331,11 +330,10 @@ void EditSearchContext::exploreAllDeletions(const EditState& state,
     return;
   }
 
-  // Case 2: Normal exploration - full spec sets
   exploreForwardWordEdits(Edit::FORWARD_WORD_EDITS, cursor, lines, onDeletion);
   exploreBackwardWordEdits(Edit::BACKWARD_WORD_EDITS, cursor, lines, onDeletion);
   exploreTextObjectEdits(Edit::TEXT_OBJECT_EDITS, cursor, lines, onDeletion);
-  exploreHalfLineEdits(Edit::HALF_LINE_EDITS, cursor, lines, contentStart, contentEnd, onDeletion);
+  exploreHalfLineEdits(Edit::HALF_LINE_EDITS, cursor, lines, contentBegin, contentEnd, onDeletion);
   exploreFullLineEdits(Edit::FULL_LINE_EDITS, cursor, lines, onLinewise);
-  exploreCharEdits(cursor, lines, contentStart, contentEnd, editContentLen, onDeletion);
+  exploreCharEdits(cursor, lines, contentBegin, contentEnd, editContentLen, onDeletion);
 }

@@ -23,6 +23,10 @@ using DeletionCallback = std::function<void(const Range&, const char*, const Phy
 // Called with (line, deleteCmd, deleteKeys) for each valid linewise deletion
 using LinewiseCallback = std::function<void(int, const char*, const PhysicalKeys&)>;
 
+// Callback type for motion-only exploration (when cursor in boundary region)
+// Called with (newPos, motionCmd, motionKeys) - no buffer change, just cursor movement
+using MotionCallback = std::function<void(const Position&, const char*, const PhysicalKeys&)>;
+
 // EditSearchContext encapsulates shared state and logic for edit optimization search.
 // Used by both optimizeEdit and optimizePureDeletion to avoid massive code duplication.
 struct EditSearchContext {
@@ -62,7 +66,7 @@ struct EditSearchContext {
 
   // Within a line, get columns that bound the edit content
   // Returns (contentStart, contentEnd)
-  std::pair<int, int> computeContentBounds(const Lines& lines, const Position& cursor) const;
+  std::pair<int, int> computeEditBounds(const Lines& lines, const Position& cursor) const;
 
   // Compute remaining heuristic for A* search
   double heuristic(const Lines& lines) const;
@@ -70,12 +74,12 @@ struct EditSearchContext {
   // Explore all valid deletions from current state
   // Calls onDeletion for characterwise deletions, onLinewise for full-line (dd)
   // Pass nullptr for onLinewise to skip linewise exploration
+  // Pass onMotion to explore pure cursor movements when cursor is in boundary region
   void exploreAllDeletions(const EditState& state,
                            DeletionCallback onDeletion,
-                           LinewiseCallback onLinewise = nullptr);
+                           LinewiseCallback onLinewise = nullptr,
+                           MotionCallback onMotion = nullptr);
 
-  // Check if full-line edit (dd) is blocked for current state
-  bool isFullLineEditBlocked(const Lines& lines, const Position& cursor) const;
 
   // Check if search should continue
   bool shouldContinue() const;

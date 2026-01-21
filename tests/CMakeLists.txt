@@ -56,7 +56,7 @@ add_executable(vimficiency_tests
   Utils/NeovimOracle.cpp
   Utils/TestUtils.cpp
 
-  Temp.cpp
+  Debug.cpp
 )
 
 target_include_directories(vimficiency_tests

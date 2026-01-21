@@ -169,6 +169,7 @@ struct BackwardWordEditSpec {
 extern const std::vector<BackwardWordEditSpec> BACKWARD_WORD_EDITS;
 // Subset: db/dB/dge only (dgE equivalent to dge on empty lines)
 extern const std::vector<BackwardWordEditSpec> EMPTYLINE_BACKWARD_WORD_EDITS;
+extern const std::vector<BackwardWordEditSpec> EXCLUSIVE_BACKWARD_WORD_EDITS;
 
 // Text object edits (diw, daw, diW, daW)
 struct TextObjectEditSpec {
