@@ -118,48 +118,50 @@ bool stepBack(const std::vector<std::string>& lines, int& line, int& col) {
 // 4. Word Motion Core
 // =============================================================================
 
-// Returns:
-//   - Valid position: the endpoint of the motion
-//   - POSITION_OUTSIDE_BOUNDARY: motion hit buffer edge (for boundary detection)
+// Returns: Position after perfoaming - POSITION_OUTSIDE_BOUNDARY: motion hit buffer edge (for boundary detection)
 Position motionWordCore(Position pos,
                         const Lines& lines,
                         bool forward,
                         EdgeType edge,
                         bool big,
                         bool skipCurrent) {
-  // Handle skipCurrent (for e/E/b/B/ge/gE which need to move off current position first)
+  // ---------------------------------------------------------------------------
+  // skipCurrent: Move off current position before searching
+  // ---------------------------------------------------------------------------
+  // Used by: e/E, b/B, ge/gE. For instance, 'e' at end of word should find NEXT word's end
+  //
+  // Some motions terminate early after just this one step:
+  //   - b/B landing on empty line: empty line IS a word (vim: "An empty line is also a word")
+  //   - ge/gE crossing word boundary: line boundaries count as word boundaries for ge/gE (unlike 'e' which "does not stop in an empty line")
   if (skipCurrent) {
-    int prevLine = pos.line;
+    Position prevPos = pos;
     unsigned char prevChar = lines.get(pos);
-    Position newPos = step(lines, pos, forward);
 
-    if (newPos == pos) {
-      return POSITION_OUTSIDE_BOUNDARY;
+    pos = step(lines, pos, forward);
+    if (pos == prevPos) {
+      return POSITION_OUTSIDE_BOUNDARY;  // At buffer edge
     }
-    pos = newPos;
+
     unsigned char currChar = lines.get(pos);
 
-    // Empty line is a word - if we landed on one, handle it
-    if (currChar == '\n') {
-      if (!forward && edge == EdgeType::WordEdge) {
-        return pos;  // backward + WordEdge (b/B): empty line IS the word start
-      }
-      if (forward && edge == EdgeType::NextEdge) {
-        return pos;  // forward + NextEdge (w/W): empty line IS the next word
-      }
+    // b/B (backward WordEdge): Empty line is a word, stop here
+    if (!forward && edge == EdgeType::WordEdge && currChar == '\n') {
+      return pos;
     }
 
-    // For backward + NextEdge (ge/gE), check if we crossed a word boundary
+    // ge/gE (backward NextEdge): Line/word boundaries are stopping points
+    // If the single step crossed a word boundary and landed on non-blank, done.
     if (!forward && edge == EdgeType::NextEdge) {
-      bool crossedLine = (pos.line != prevLine);
-      bool crossedBoundary = crossedLine ||
-                             isBlank(currChar) ||
-                             isBlank(prevChar) ||
-                             (!big && isSmallWordChar(currChar) != isSmallWordChar(prevChar));
-      if (crossedBoundary && !isBlank(currChar)) {
+      bool crossedLine = (pos.line != prevPos.line);
+      bool crossedWordBoundary =
+          crossedLine || isBlank(currChar) || isBlank(prevChar) ||
+          (!big && isSmallWordChar(currChar) != isSmallWordChar(prevChar));
+      if (crossedWordBoundary && !isBlank(currChar)) {
         return pos;
       }
     }
+    // e/E (forward WordEdge): No early termination - "does not stop in an empty line"
+    // Note: w/W (forward NextEdge) uses skipCurrent=false, so not handled here.
   }
 
   unsigned char c = lines.get(pos);

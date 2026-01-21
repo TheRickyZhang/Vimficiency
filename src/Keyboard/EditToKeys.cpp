@@ -253,6 +253,11 @@ const vector<ForwardWordEditSpec> FORWARD_WORD_EDITS = {
     {"dE", {Key::Key_D, Key::Key_Shift, Key::Key_E}, EdgeType::WordEdge, true, true},
     {"dW", {Key::Key_D, Key::Key_Shift, Key::Key_W}, EdgeType::GapEdge, true, false},
 };
+// Subset: de/dE only (dw/dW equivalent to dd on empty lines)
+const vector<ForwardWordEditSpec> EMPTYLINE_FORWARD_WORD_EDITS = {
+    {"de", {Key::Key_D, Key::Key_E}, EdgeType::WordEdge, false, true},
+    {"dE", {Key::Key_D, Key::Key_Shift, Key::Key_E}, EdgeType::WordEdge, true, true},
+};
 
 // Backward word edits: cmd, keys, edgeType, isBig, skipCurrent, isExclusiveAtCursor
 const vector<BackwardWordEditSpec> BACKWARD_WORD_EDITS = {
@@ -260,6 +265,12 @@ const vector<BackwardWordEditSpec> BACKWARD_WORD_EDITS = {
     {"dge", {Key::Key_D, Key::Key_G, Key::Key_E}, EdgeType::NextEdge, false, true, false},
     {"dB", {Key::Key_D, Key::Key_Shift, Key::Key_B}, EdgeType::WordEdge, true, true, true},
     {"dgE", {Key::Key_D, Key::Key_G, Key::Key_Shift, Key::Key_E}, EdgeType::NextEdge, true, true, false},
+};
+// Subset: db/dB/dge only (dgE equivalent to dge on empty lines)
+const vector<BackwardWordEditSpec> EMPTYLINE_BACKWARD_WORD_EDITS = {
+    {"db", {Key::Key_D, Key::Key_B}, EdgeType::WordEdge, false, true, true},
+    {"dge", {Key::Key_D, Key::Key_G, Key::Key_E}, EdgeType::NextEdge, false, true, false},
+    {"dB", {Key::Key_D, Key::Key_Shift, Key::Key_B}, EdgeType::WordEdge, true, true, true},
 };
 
 const vector<TextObjectEditSpec> TEXT_OBJECT_EDITS = {
@@ -283,5 +294,7 @@ const vector<LineEditSpec> HALF_LINE_EDITS = {
 const vector<FullLineEditSpec> FULL_LINE_EDITS = {
     {"dd", {Key::Key_D, Key::Key_D}},
 };
+
+const vector<FullLineEditSpec> EMPTYLINE_FULL_LINE_EDITS = FULL_LINE_EDITS;
 
 } // namespace Edit

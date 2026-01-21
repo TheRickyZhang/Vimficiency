@@ -250,8 +250,6 @@ TEST_F(TextObjectsTest, RandomBufferStress_SingleLine) {
     }
   }
 
-  cerr << "\n=== Text Object Random Buffer (Single-Line): " << passed << "/" << total
-       << " ===" << endl;
   EXPECT_EQ(passed, total);
 }
 
@@ -273,8 +271,6 @@ TEST_F(TextObjectsTest, RandomBufferStress_MultiLine) {
     }
   }
 
-  cerr << "\n=== Text Object Random Buffer (Multi-Line): " << passed << "/" << total
-       << " ===" << endl;
   EXPECT_EQ(passed, total);
 }
 

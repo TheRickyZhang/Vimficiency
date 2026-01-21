@@ -222,22 +222,17 @@ TEST(DiffStateTest, ApplyDiffs_Various) {
   expectRoundTrip({"a b c d e"}, {"x b y d z"});
 }
 
-// =============================================================================
-// Complex Cases (print for manual inspection)
-// =============================================================================
+// Complex Cases
 
 TEST(DiffStateTest, Complex_FunctionRename) {
   auto diffs = Myers::calculate({"result = getData(userId, options);"},
                                 {"result = fetchData(userId, options);"});
-  printDiffs("FunctionRename", diffs);
   expectDiffs(diffs, {{"get", "fetch"}});
 }
 
 TEST(DiffStateTest, Complex_MultipleWordChanges) {
   Lines start = {"the quick brown fox jumps"};
   Lines end = {"the slow red fox leaps"};
-  auto diffs = Myers::calculate(start, end);
-  printDiffs("MultipleWordChanges", diffs);
   expectRoundTrip(start, end);
 }
 
@@ -259,8 +254,6 @@ TEST(DiffStateTest, Complex_MainFunction) {
     "  return 0;",
     "}"
   };
-  auto diffs = Myers::calculate(start, end);
-  printDiffs("MainFunction", diffs);
   expectRoundTrip(start, end);
 }
 
@@ -283,6 +276,5 @@ TEST(DiffStateTest, SimpleJoin) {
     "}"
   };
   auto diffs = Myers::calculate(start, end);
-  printDiffs("SimpleJoin", diffs);
   expectRoundTrip(start, end);
 }

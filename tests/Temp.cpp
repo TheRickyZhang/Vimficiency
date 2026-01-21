@@ -5,6 +5,8 @@
 
 #include <gtest/gtest.h>
 
+#include "Editor/Edit.h"
+#include "Editor/NavContext.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer.h"
 #include "Boundary/EditBoundary.h"
@@ -33,7 +35,6 @@ protected:
 
 
 TEST_F(TempTest, Placeholder) {
-  // Placeholder test - add experiments here
   EXPECT_TRUE(true);
 }
 
@@ -53,36 +54,4 @@ protected:
 };
 
 std::unique_ptr<NeovimOracle> NeovimOracleTest::oracle_;
-
-TEST_F(NeovimOracleTest, BasicMotion_w) {
-  auto r = oracle_->simulate({"one two three"}, 0, 0, "w");
-  EXPECT_EQ(r.lines, vector<string>{"one two three"});
-  EXPECT_EQ(r.row, 0);
-  EXPECT_EQ(r.col, 4);  // Start of "two"
-  EXPECT_EQ(r.mode, Mode::Normal);
-}
-
-TEST_F(NeovimOracleTest, BasicMotion_dw) {
-  auto r = oracle_->simulate({"one two three"}, 0, 0, "dw");
-  EXPECT_EQ(r.lines, vector<string>{"two three"});
-  EXPECT_EQ(r.row, 0);
-  EXPECT_EQ(r.col, 0);
-  EXPECT_EQ(r.mode, Mode::Normal);
-}
-
-TEST_F(NeovimOracleTest, ChangeEntersInsertMode) {
-  auto r = oracle_->simulate({"one two three"}, 0, 0, "cw");
-  EXPECT_EQ(r.lines, vector<string>{" two three"});
-  EXPECT_EQ(r.row, 0);
-  EXPECT_EQ(r.col, 0);
-  EXPECT_EQ(r.mode, Mode::Insert);
-}
-
-TEST_F(NeovimOracleTest, CrossLineMotion_db) {
-  auto r = oracle_->simulate({"ab", "cd"}, 1, 0, "db");
-  EXPECT_EQ(r.lines, vector<string>{"cd"});
-  EXPECT_EQ(r.row, 0);
-  EXPECT_EQ(r.col, 0);
-  EXPECT_EQ(r.mode, Mode::Normal);
-}
 

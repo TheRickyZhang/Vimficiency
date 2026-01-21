@@ -2,7 +2,6 @@
 
 #include <functional>
 #include <queue>
-#include <tuple>
 #include <unordered_map>
 
 #include "Config.h"
@@ -10,15 +9,19 @@
 #include "Boundary/EditBoundary.h"
 #include "Editor/Position.h"
 #include "Editor/Range.h"
-#include "Keyboard/KeyboardModel.h"
 #include "Keyboard/EditToKeys.h"
+#include "Keyboard/KeyboardModel.h"
 #include "State/EditState.h"
 #include "Utils/Lines.h"
 #include "VimCore/VimEndpointUtils.h"
 
-// Callback type for deletion exploration
+// Callback type for characterwise deletion exploration
 // Called with (range, deleteCmd, deleteKeys) for each valid deletion
 using DeletionCallback = std::function<void(const Range&, const char*, const PhysicalKeys&)>;
+
+// Callback type for linewise deletion exploration (dd)
+// Called with (line, deleteCmd, deleteKeys) for each valid linewise deletion
+using LinewiseCallback = std::function<void(int, const char*, const PhysicalKeys&)>;
 
 // EditSearchContext encapsulates shared state and logic for edit optimization search.
 // Used by both optimizeEdit and optimizePureDeletion to avoid massive code duplication.
@@ -64,10 +67,15 @@ struct EditSearchContext {
   // Compute remaining heuristic for A* search
   double heuristic(const Lines& lines) const;
 
-  // Explore all valid characterwise deletions from current state
-  // Calls callback with (range, cmd, keys) for each valid deletion
-  // Does NOT handle full-line operations (dd/cc) - each optimizer handles those
-  void exploreAllDeletions(const EditState& state, DeletionCallback onDeletion);
+  // Explore all valid deletions from current state
+  // Calls onDeletion for characterwise deletions, onLinewise for full-line (dd)
+  // Pass nullptr for onLinewise to skip linewise exploration
+  void exploreAllDeletions(const EditState& state,
+                           DeletionCallback onDeletion,
+                           LinewiseCallback onLinewise = nullptr);
+
+  // Check if full-line edit (dd) is blocked for current state
+  bool isFullLineEditBlocked(const Lines& lines, const Position& cursor) const;
 
   // Check if search should continue
   bool shouldContinue() const;
@@ -75,4 +83,27 @@ struct EditSearchContext {
   // Pop next valid state from queue, skipping stale states.
   // Returns nullopt if queue becomes empty.
   std::optional<EditState> getNextValidState();
+
+private:
+  // Exploration helpers - allow passing subset vectors for limited exploration
+  void exploreForwardWordEdits(
+      const std::vector<Edit::ForwardWordEditSpec>& specs,
+      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
+  void exploreBackwardWordEdits(
+      const std::vector<Edit::BackwardWordEditSpec>& specs,
+      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
+  void exploreTextObjectEdits(
+      const std::vector<Edit::TextObjectEditSpec>& specs,
+      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
+  void exploreHalfLineEdits(
+      const std::vector<Edit::LineEditSpec>& specs,
+      const Position& cursor, const Lines& lines, int contentStart, int contentEnd,
+      DeletionCallback onDeletion);
+  void exploreFullLineEdits(
+    const std::vector<Edit::FullLineEditSpec>& specs,
+    const Position& cursor, const Lines& lines, LinewiseCallback onLinewise
+  );
+  void exploreCharEdits(
+      const Position& cursor, const Lines& lines, int contentStart, int contentEnd,
+      int editContentLen, DeletionCallback onDeletion);
 };

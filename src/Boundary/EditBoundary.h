@@ -49,10 +49,8 @@ struct EditBoundary {
   char leftChar() const { return prefix_.empty() ? (hasLinesAbove_ ? '\n' : NO_CHAR) : prefix_.back(); }
   char rightChar() const { return suffix_.empty() ? (hasLinesBelow_ ? '\n' : NO_CHAR) : suffix_.front(); }
 
-  bool atLineEnd() const { return suffix_.empty(); }
-  bool atLineStart() const { return prefix_.empty(); }
-
-  bool isFullLineEditSafe() const { return atLineStart() && atLineEnd(); }
+  bool hasPrefix() const { return !prefix_.empty(); }
+  bool hasSuffix() const { return !suffix_.empty(); }
 
 private:
   // Full content before/after the edit region on the same line.

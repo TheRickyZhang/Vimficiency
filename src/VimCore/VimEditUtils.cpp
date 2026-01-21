@@ -16,6 +16,12 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
   Range r = range;
   r.normalize();
 
+  // Determine if cursor is on the deletion line BEFORE modifying pos.
+  // This affects empty line removal behavior:
+  // - Cursor on same line (D at col 0): keep empty line
+  // - Cursor on different line (db from col 0): remove empty line
+  bool cursorOnDeletionLine = (pos.line == r.start.line);
+
   int endCol = r.end.col + 1;  // Inclusive: delete up to and including end.col
 
   if (r.start.line == r.end.line) {
@@ -23,6 +29,13 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
     string& ln = lines[r.start.line];
     endCol = min(endCol, static_cast<int>(ln.size()));
     ln.erase(r.start.col, endCol - r.start.col);
+
+    // Vim behavior for empty lines after single-line deletion:
+    // - If cursor was on the same line (D at col 0): keep empty line
+    // - If cursor was on different line (db from col 0): remove empty line
+    if (ln.empty() && r.start.col == 0 && lines.size() > 1 && !cursorOnDeletionLine) {
+      lines.erase(lines.begin() + r.start.line);
+    }
   } else {
     // Multi-line deletion: merge first and last line, delete lines in between
     string& firstLn = lines[r.start.line];
@@ -35,16 +48,31 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
 
     // Delete lines from startLine+1 to endLine (inclusive)
     lines.erase(lines.begin() + r.start.line + 1, lines.begin() + r.end.line + 1);
+
+    // Vim behavior: if multi-line deletion results in empty merged line AND
+    // there are other lines in the buffer, remove the empty line.
+    // This matches neovim's behavior where `de` on a single-char line followed
+    // by other content removes the line entirely rather than leaving it empty.
+    if (firstLn.empty() && lines.size() > 1) {
+      lines.erase(lines.begin() + r.start.line);
+    }
+
     assert(!lines.empty());
   }
 
   pos.line = r.start.line;
-  pos.col = r.start.col;
-  if (mode == Mode::Insert) {
-    clampInsertCol(lines[pos.line], pos.col);
-  } else {
-    clampCol(lines[pos.line], pos.col);
+  // Clamp position to valid range after possible line removal
+  if (pos.line >= static_cast<int>(lines.size())) {
+    pos.line = static_cast<int>(lines.size()) - 1;
   }
+  // Compute clamped column and update both col and targetCol
+  int newCol = r.start.col;
+  if (mode == Mode::Insert) {
+    newCol = min(newCol, static_cast<int>(lines[pos.line].size()));
+  } else {
+    newCol = lines[pos.line].empty() ? 0 : min(newCol, static_cast<int>(lines[pos.line].size()) - 1);
+  }
+  pos.setCol(newCol);
 }
 
 void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos) {
@@ -64,9 +92,9 @@ void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos) {
   pos.line = min(r.startLine, static_cast<int>(lines.size()) - 1);
   // Preserve column (clamped to line length) - vim behavior after linewise delete
   if (lines[pos.line].empty()) {
-    pos.col = 0;
+    pos.setCol(0);
   } else {
-    pos.col = min(pos.col, static_cast<int>(lines[pos.line].size()) - 1);
+    pos.setCol(min(pos.col, static_cast<int>(lines[pos.line].size()) - 1));
   }
 }
 
@@ -93,7 +121,7 @@ void insertText(Lines& lines, Position& pos, const string& text) {
   if (textLines.size() == 1) {
     // Simple single-line insert
     lines[pos.line].insert(pos.col, text);
-    pos.col += static_cast<int>(text.size());
+    pos.setCol(pos.col + static_cast<int>(text.size()));
   } else {
     // Multi-line insert
     string& originalLine = lines[pos.line];
@@ -164,7 +192,7 @@ void joinLines(Lines& lines, Position& pos, bool addSpace) {
   // Remove the next line
   lines.erase(lines.begin() + pos.line + 1);
 
-  pos.col = joinCol > 0 ? joinCol - 1 : 0;
+  pos.setCol(joinCol > 0 ? joinCol - 1 : 0);
 }
 
 void openLineBelow(Lines& lines, Position& pos) {
@@ -180,7 +208,7 @@ void openLineAbove(Lines& lines, Position& pos) {
   assert(pos.line >= 0 && pos.line < static_cast<int>(lines.size()));
 
   lines.insert(lines.begin() + pos.line, "");
-  pos.col = 0;
+  pos.setCol(0);
   // pos.line stays the same (now points to the new empty line)
 }
 

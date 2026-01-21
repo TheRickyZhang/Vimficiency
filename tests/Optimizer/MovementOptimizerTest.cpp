@@ -10,7 +10,6 @@
 #include "State/RunningEffort.h"
 #include "Editor/Snapshot.h"
 #include "Editor/Motion.h"
-#include "Utils/Debug.h"
 #include "Utils/Lines.h"
 
 using namespace std;
@@ -86,7 +85,6 @@ TEST_F(MovementOptimizerTest, HorizontalMotions) {
   a1_long_line,
     start, end, user_seq
   );
-  printResults(results);
 
   // Note: "2e" and "ee" are functionally equivalent; optimizer may prefer count-prefixed
   // f motions may not be explored within result limit depending on search order
@@ -99,16 +97,13 @@ TEST_F(MovementOptimizerTest, VerticalMotions) {
   const string user_seq = "jjjjj";
   Position start(2, 0);
   Position end = simulateMotions(start, Mode::Normal, navContext, user_seq, a3_spaced_lines).pos;
-  cout << "end: " << end.line << " " << end.col << "\n";
 
   vector<Result> results = runOptimizer(
     a3_spaced_lines,
     start, end, user_seq,
     getSlicedMotionToKeys({"j", "k", "G", "{", "}", "(", ")"})
   );
-
-  printResults(results);
-
+  // printResults(results);
   EXPECT_TRUE(contains_all(results, {"Gk", "G{", "}}", "})}", "}jjj"}))
       << "Missing expected sequences";
 }
@@ -126,13 +121,6 @@ TEST_F(MovementOptimizerTest, RangeBasic_SameLine) {
 
   vector<RangeResult> results = runOptimizerToRange(lines, start, rangeBegin, rangeEnd, "lllll");
 
-  cout << "=== RangeBasic_SameLine ===" << endl;
-  cout << "Start: (0, 0), Range: [(0, 5), (0, 10)]" << endl;
-  for (const auto& r : results) {
-    cout << "  " << r << endl;
-  }
-  cout << consume_debug_output() << endl;
-
   EXPECT_FALSE(results.empty()) << "Should find at least one path to range";
   for (const auto& r : results) {
     EXPECT_GE(r.endPos.col, 5) << "End position should be in range";
@@ -148,12 +136,6 @@ TEST_F(MovementOptimizerTest, RangeBasic_MultiLine) {
   Position rangeEnd(2, 5);
 
   vector<RangeResult> results = runOptimizerToRange(lines, start, rangeBegin, rangeEnd, "jj");
-
-  cout << "=== RangeBasic_MultiLine ===" << endl;
-  cout << "Start: (0, 0), Range: [(1, 0), (2, 5)]" << endl;
-  for (const auto& r : results) {
-    cout << "  " << r << endl;
-  }
 
   EXPECT_FALSE(results.empty()) << "Should find at least one path to range";
   for (const auto& r : results) {
@@ -172,12 +154,6 @@ TEST_F(MovementOptimizerTest, RangeFromMiddle) {
 
   vector<RangeResult> results = runOptimizerToRange(lines, start, rangeBegin, rangeEnd, "jj");
 
-  cout << "=== RangeFromMiddle ===" << endl;
-  cout << "Start: (2, 1), Range: [(4, 0), (4, 2)]" << endl;
-  for (const auto& r : results) {
-    cout << "  " << r << endl;
-  }
-
   EXPECT_FALSE(results.empty()) << "Should find at least one path to range";
 }
 
@@ -189,13 +165,6 @@ TEST_F(MovementOptimizerTest, RangeWithWordMotions) {
   Position rangeEnd(0, 17);    // "four" ends at 17
 
   vector<RangeResult> results = runOptimizerToRange(lines, start, rangeBegin, rangeEnd, "www");
-
-  cout << "=== RangeWithWordMotions ===" << endl;
-  cout << "Line: \"" << lines[0] << "\"" << endl;
-  cout << "Start: (0, 0), Range: [(0, 8), (0, 17)]" << endl;
-  for (const auto& r : results) {
-    cout << "  " << r << endl;
-  }
 
   EXPECT_FALSE(results.empty()) << "Should find paths using word motions";
 }

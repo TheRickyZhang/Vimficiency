@@ -73,7 +73,7 @@ public:
   void updateCost(double newCost);
 
   void setCol(int col) {
-    pos.col = col;
+    pos.setCol(col);  // Updates both col and targetCol
   }
 };
 

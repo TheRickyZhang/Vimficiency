@@ -6,6 +6,7 @@
 // from any starting position. This is the foundation for edit optimization.
 
 #include <gtest/gtest.h>
+#include <memory>
 
 #include "Editor/Edit.h"
 #include "Editor/Mode.h"
@@ -15,6 +16,7 @@
 #include "Optimizer/EditOptimizer.h"
 #include "Boundary/EditBoundary.h"
 #include "Utils/Lines.h"
+#include "Utils/NeovimOracle.h"
 
 using namespace std;
 
@@ -32,12 +34,18 @@ static int toFlatIndex(int row, int col, const Lines& lines) {
 
 class EditOptimizerTest : public ::testing::Test {
 protected:
+  static unique_ptr<NeovimOracle> oracle;
   Config config = Config::uniform();
+
+  static void SetUpTestSuite() { oracle = make_unique<NeovimOracle>(); }
+  static void TearDownTestSuite() { oracle.reset(); }
 
   EditOptimizer makeOptimizer() {
     return EditOptimizer(config, OptimizerParams(30, 1e4, 1.0, 2.0));
   }
 };
+
+unique_ptr<NeovimOracle> EditOptimizerTest::oracle;
 
 // =============================================================================
 // Deletion search tests
@@ -81,10 +89,54 @@ ApplyResult applySequence(const Lines& source, Position startPos, const string& 
   return result;
 }
 
+// Apply sequence and verify our Edit.cpp implementation matches NeovimOracle.
+// Returns the oracle result (ground truth). Failures are reported via EXPECT macros.
+SimulationResult verifySequenceWithOracle(
+    NeovimOracle* oracle,
+    const Lines& source,
+    Position startPos,
+    const string& sequence) {
+  // Get ground truth from Neovim
+  SimulationResult nvim = oracle->simulate(source, startPos.line, startPos.col, sequence);
+
+  // Apply using our Edit.cpp implementation
+  ApplyResult ours = applySequence(source, startPos, sequence);
+
+  // Verify they match
+  EXPECT_TRUE(ours.success)
+      << "applySequence failed for '" << sequence << "': " << ours.error;
+
+  if (ours.success) {
+    EXPECT_EQ(ours.lines, nvim.lines)
+        << "Lines mismatch for seq='" << sequence << "' from ["
+        << startPos.line << "," << startPos.col << "]\n"
+        << "  Source: " << source << "\n"
+        << "  Ours:   " << ours.lines << "\n"
+        << "  Neovim: " << nvim.lines;
+
+    EXPECT_EQ(ours.pos.line, nvim.row)
+        << "Row mismatch for seq='" << sequence << "'";
+    EXPECT_EQ(ours.pos.col, nvim.col)
+        << "Col mismatch for seq='" << sequence << "'";
+    EXPECT_EQ(ours.mode, nvim.mode)
+        << "Mode mismatch for seq='" << sequence << "'";
+  }
+
+  return nvim;
+}
+
 // Helper: Check if result is valid deletion goal (empty buffer + normal mode)
 // Note: Sequences now end with <Esc>, so we expect Normal mode, not Insert.
 bool isValidDeletionGoal(const ApplyResult& result) {
   if (!result.success) return false;
+  if (result.mode != Mode::Normal) return false;
+  if (result.lines.empty()) return true;
+  if (result.lines.size() == 1 && result.lines[0].empty()) return true;
+  return false;
+}
+
+// Helper: Check if SimulationResult is valid deletion goal
+bool isValidDeletionGoal(const SimulationResult& result) {
   if (result.mode != Mode::Normal) return false;
   if (result.lines.empty()) return true;
   if (result.lines.size() == 1 && result.lines[0].empty()) return true;
@@ -123,7 +175,7 @@ TEST_F(EditOptimizerTest, DeletionSearch_Simple) {
   EXPECT_TRUE(res.typeAllResults[toFlatIndex(1, 0, source)].isValid());
   EXPECT_TRUE(res.typeAllResults[toFlatIndex(1, 1, source)].isValid());
 
-  // Verify each sequence actually produces the goal state
+  // Verify each sequence against NeovimOracle and check it reaches goal
   for (int r = 0; r < static_cast<int>(source.size()); r++) {
     int cols = source[r].empty() ? 1 : source[r].size();
     for (int c = 0; c < cols; c++) {
@@ -131,16 +183,12 @@ TEST_F(EditOptimizerTest, DeletionSearch_Simple) {
       const Result& result = res.typeAllResults[flatIdx];
       if (result.isValid()) {
         string seq = result.getSequenceString();
-        ApplyResult applied = applySequence(source, Position(r, c), seq);
+        SimulationResult nvim = verifySequenceWithOracle(oracle.get(), source, Position(r, c), seq);
 
-        EXPECT_TRUE(applied.success)
-            << "Sequence '" << seq << "' from [" << r << "," << c << "] failed: "
-            << applied.error;
-
-        EXPECT_TRUE(isValidDeletionGoal(applied))
+        EXPECT_TRUE(isValidDeletionGoal(nvim))
             << "Sequence '" << seq << "' from [" << r << "," << c << "] "
-            << "did not reach goal. Lines: " << applied.lines
-            << ", Mode: " << (applied.mode == Mode::Insert ? "Insert" : "Normal");
+            << "did not reach goal. Lines: " << nvim.lines
+            << ", Mode: " << (nvim.mode == Mode::Insert ? "Insert" : "Normal");
       }
     }
   }
@@ -157,11 +205,11 @@ TEST_F(EditOptimizerTest, DeletionSearch_SingleLine) {
     const Result& result = res.typeAllResults[flatIdx];
     ASSERT_TRUE(result.isValid()) << "No solution for position [0," << c << "]";
 
-    ApplyResult applied = applySequence(source, Position(0, c), result.getSequenceString());
-    EXPECT_TRUE(applied.success) << "Failed: " << applied.error;
-    EXPECT_TRUE(isValidDeletionGoal(applied))
-        << "Sequence '" << result.getSequenceString() << "' from [0," << c << "] "
-        << "did not reach goal. Lines: " << applied.lines;
+    string seq = result.getSequenceString();
+    SimulationResult nvim = verifySequenceWithOracle(oracle.get(), source, Position(0, c), seq);
+    EXPECT_TRUE(isValidDeletionGoal(nvim))
+        << "Sequence '" << seq << "' from [0," << c << "] "
+        << "did not reach goal. Lines: " << nvim.lines;
   }
 }
 
@@ -177,13 +225,12 @@ TEST_F(EditOptimizerTest, DeletionSearch_ThreeLines) {
       int flatIdx = toFlatIndex(r, c, source);
       const Result& result = res.typeAllResults[flatIdx];
       if (result.isValid()) {
-        ApplyResult applied = applySequence(source, Position(r, c), result.getSequenceString());
-        EXPECT_TRUE(applied.success)
-            << "Sequence '" << result.getSequenceString() << "' failed: " << applied.error;
-        EXPECT_TRUE(isValidDeletionGoal(applied))
-            << "Sequence '" << result.getSequenceString() << "' from [" << r << "," << c << "] "
-            << "did not reach goal. Lines: " << applied.lines
-            << ", Mode: " << (applied.mode == Mode::Insert ? "Insert" : "Normal");
+        string seq = result.getSequenceString();
+        SimulationResult nvim = verifySequenceWithOracle(oracle.get(), source, Position(r, c), seq);
+        EXPECT_TRUE(isValidDeletionGoal(nvim))
+            << "Sequence '" << seq << "' from [" << r << "," << c << "] "
+            << "did not reach goal. Lines: " << nvim.lines
+            << ", Mode: " << (nvim.mode == Mode::Insert ? "Insert" : "Normal");
       }
     }
   }

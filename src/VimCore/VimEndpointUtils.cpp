@@ -723,12 +723,12 @@ int motionLineEndpoint(Position cursor,
   int lineLen = static_cast<int>(lines[line].size());
 
   if (forward) {
-    if (line == n - 1 && !boundary.atLineEnd()) {
+    if (line == n - 1 && boundary.hasSuffix()) {
       return COL_OUTSIDE_BOUNDARY;
     }
     return lineLen > 0 ? lineLen - 1 : 0;
   } else {
-    if (line == 0 && !boundary.atLineStart()) {
+    if (line == 0 && boundary.hasPrefix()) {
       return COL_OUTSIDE_BOUNDARY;
     }
     return 0;
@@ -747,10 +747,10 @@ LineRange lineDeleteRange(Position cursor,
   bool onFirstLine = (line == 0);
   bool onLastLine = (line == n - 1);
 
-  if (onFirstLine && !boundary.atLineStart()) {
+  if (onFirstLine && boundary.hasPrefix()) {
     return LINE_RANGE_OUTSIDE_BOUNDARY;
   }
-  if (onLastLine && !boundary.atLineEnd()) {
+  if (onLastLine && boundary.hasSuffix()) {
     return LINE_RANGE_OUTSIDE_BOUNDARY;
   }
 

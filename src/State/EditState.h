@@ -104,7 +104,7 @@ public:
     assert(line >= 0 && line < static_cast<int>(lines.size()));
     lines[line].clear();
     pos.line = line;
-    pos.col = 0;
+    pos.setCol(0);  // Updates both col and targetCol
   }
 
   // Append a command string to the sequence

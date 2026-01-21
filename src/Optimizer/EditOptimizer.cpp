@@ -330,25 +330,25 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
     ctx.exploreNewState(std::move(newState));
   };
 
-  // Linewise deletion (dd) - only for pure deletion within optimizeEdit
-  auto exploreLinewiseDeletion = [&](const EditState &base, int line,
-                                     const char *deleteCmd, const PhysicalKeys &deleteKeys) {
+  // Linewise handler: search with dd, record result as cc + collapseSeq + typedStr
+  // The cc conversion accounts for the empty line that cc leaves (vs dd which removes it)
+  auto exploreLinewise = [&](const EditState &base, int line,
+                             const char *deleteCmd, const PhysicalKeys &deleteKeys) {
     EditState newState = base;
     newState.applyLinewiseDeletion(line);
     const Lines &lines = newState.getLines();
 
-    string cmdSeq = deleteCmd;
-    PhysicalKeys cmdKeys = deleteKeys;
-
-    // Adjust cursor if it escaped below edit region
+    // For search continuation: adjust cursor if it escaped below edit region
+    string searchCmdSeq = deleteCmd;
+    PhysicalKeys searchCmdKeys = deleteKeys;
     Position pos = newState.getPos();
     int lastValidLine = static_cast<int>(lines.size()) - 1;
     if (editBoundary.hasLinesBelow() && lastValidLine >= 0 && pos.line > lastValidLine) {
-      cmdSeq += "k";
-      cmdKeys.push_back(Key::Key_K);
+      searchCmdSeq += "k";
+      searchCmdKeys.push_back(Key::Key_K);
       pos.line = lastValidLine;
-      pos.col = lines[pos.line].empty() ? 0 :
-                min(pos.col, static_cast<int>(lines[pos.line].size()) - 1);
+      pos.setCol(lines[pos.line].empty() ? 0 :
+                 min(pos.col, static_cast<int>(lines[pos.line].size()) - 1));
       newState.setPos(pos);
     }
 
@@ -356,37 +356,15 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
       int idx = newState.getStartIndex();
       if (result.typeAllResults[idx].isValid()) return;
 
-      string seqStr = newState.getSeq() + cmdSeq;
-      RunningEffort effort = newState.getRunningEffort();
-      double totalEffort = effort.append(cmdKeys, config);
-      result.typeAllResults[idx] = Result(seqStr, totalEffort);
-      ctx.resultsFound++;
-      return;
-    }
-
-    newState.appendToSeq(cmdSeq.c_str());
-    newState.updateEffort(cmdKeys, config);
-    newState.updateCost(newState.getEffort() + ctx.heuristic(lines));
-    ctx.exploreNewState(std::move(newState));
-  };
-
-  // Linewise change for cc - clears line content, enters insert mode
-  auto exploreLinewiseChange = [&](const EditState &base, int line,
-                                   const char *changeCmd, const PhysicalKeys &changeKeys) {
-    EditState newState = base;
-    newState.applyLinewiseChange(line);
-    const Lines &lines = newState.getLines();
-
-    if (isGoalReached(lines)) {
-      int idx = newState.getStartIndex();
-      if (result.typeAllResults[idx].isValid()) return;
-
+      // Convert dd -> cc: the cc equivalent has one more line (the empty line it leaves)
+      // Cursor position for cc would be at `line` (the cleared line, not the dd cursor)
+      static const PhysicalKeys ccKeys = {Key::Key_C, Key::Key_C};
       auto [collapseSeq, collapseKeys] =
-          buildCollapseSequence(static_cast<int>(lines.size()), newState.getPos().line);
+          buildCollapseSequence(static_cast<int>(lines.size()) + 1, line);
 
-      string seqStr = newState.getSeq() + changeCmd + collapseSeq + typedStr;
+      string seqStr = newState.getSeq() + "cc" + collapseSeq + typedStr;
       RunningEffort effort = newState.getRunningEffort();
-      effort.append(changeKeys, config);
+      effort.append(ccKeys, config);
       effort.append(collapseKeys, config);
       double totalEffort = effort.append(typedKeys, config);
 
@@ -395,8 +373,9 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
       return;
     }
 
-    newState.appendToSeq(changeCmd);
-    newState.updateEffort(changeKeys, config);
+    // Continue search with dd state
+    newState.appendToSeq(searchCmdSeq.c_str());
+    newState.updateEffort(searchCmdKeys, config);
     newState.updateCost(newState.getEffort() + ctx.heuristic(lines));
     ctx.exploreNewState(std::move(newState));
   };
@@ -409,44 +388,16 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
     if (!maybeState) continue;
     EditState s = std::move(*maybeState);
 
-    const Lines &lines = s.getLines();
-    Position cursor = s.getPos();
-
-    // Explore all characterwise deletions via EditSearchContext
-    ctx.exploreAllDeletions(s, [&](const Range& range, const char* cmd, const PhysicalKeys& keys) {
-      exploreDeletion(s, range, cmd, keys);
-    });
-
-    // Full line operations (dd/cc) - handled separately since logic differs
-    int lastEditLine = lines.lastLine();
-
-    if (editBoundary.isFullLineEditSafe() && cursor.line <= lastEditLine) {
-      int lineLen = static_cast<int>(lines[cursor.line].size());
-      if (lineLen > 0) {
-        bool isPureDeletion = (typedStr == "<Esc>");
-
-        if (isPureDeletion) {
-          // Use dd for pure deletion - block in divergent scenarios
-          bool blocked = false;
-          if (editBoundary.hasLinesAbove() && editBoundary.hasLinesBelow()) {
-            if (static_cast<int>(lines.size()) > 1) blocked = true;
-          }
-          if (cursor.line > 0 && editBoundary.hasLinesBelow()) blocked = true;
-
-          if (!blocked) {
-            for (const auto &spec : Edit::FULL_LINE_EDITS) {
-              exploreLinewiseDeletion(s, cursor.line, spec.cmd, spec.keys);
-            }
-          }
-        } else {
-          // Use cc for content typing - cursor stays on line, no divergence issues
-          static const PhysicalKeys ccKeys = {Key::Key_C, Key::Key_C};
-          exploreLinewiseChange(s, cursor.line, "cc", ccKeys);
-        }
+    // Explore all deletions (characterwise + linewise) via EditSearchContext
+    ctx.exploreAllDeletions(
+      s,
+      [&](const Range& range, const char* cmd, const PhysicalKeys& keys) {
+        exploreDeletion(s, range, cmd, keys);
+      },
+      [&](int line, const char* cmd, const PhysicalKeys& keys) {
+        exploreLinewise(s, line, cmd, keys);
       }
-    }
-
-    // Note: char deletes (x, X) are handled by ctx.exploreAllDeletions()
+    );
   }
 
   return result;
@@ -506,9 +457,9 @@ EditOptimizer::optimizePureDeletion(const Lines &startLines,
     ctx.exploreNewState(std::move(newState));
   };
 
-  // Linewise deletion (dd)
-  auto exploreLinewiseDeletion = [&](const EditState &base, int line,
-                                     const char *deleteCmd, const PhysicalKeys &deleteKeys) {
+  // Linewise handler: record dd directly (pure deletion, no cc conversion)
+  auto exploreLinewise = [&](const EditState &base, int line,
+                             const char *deleteCmd, const PhysicalKeys &deleteKeys) {
     EditState newState = base;
     newState.applyLinewiseDeletion(line);
     const Lines &lines = newState.getLines();
@@ -523,8 +474,8 @@ EditOptimizer::optimizePureDeletion(const Lines &startLines,
       cmdSeq += "k";
       cmdKeys.push_back(Key::Key_K);
       pos.line = lastValidLine;
-      pos.col = lines[pos.line].empty() ? 0 :
-                min(pos.col, static_cast<int>(lines[pos.line].size()) - 1);
+      pos.setCol(lines[pos.line].empty() ? 0 :
+                 min(pos.col, static_cast<int>(lines[pos.line].size()) - 1));
       newState.setPos(pos);
     }
 
@@ -554,33 +505,16 @@ EditOptimizer::optimizePureDeletion(const Lines &startLines,
     if (!maybeState) continue;
     EditState s = std::move(*maybeState);
 
-    const Lines &lines = s.getLines();
-    Position cursor = s.getPos();
-
-    // Explore all characterwise deletions via EditSearchContext
-    ctx.exploreAllDeletions(s, [&](const Range& range, const char* cmd, const PhysicalKeys& keys) {
-      exploreDeletion(s, range, cmd, keys);
-    });
-
-    // Full line deletion (dd) - handled separately
-    int lastEditLine = lines.lastLine();
-
-    if (editBoundary.isFullLineEditSafe() && cursor.line <= lastEditLine) {
-      int lineLen = static_cast<int>(lines[cursor.line].size());
-      if (lineLen > 0) {
-        bool blocked = false;
-        if (editBoundary.hasLinesAbove() && editBoundary.hasLinesBelow()) {
-          if (static_cast<int>(lines.size()) > 1) blocked = true;
-        }
-        if (cursor.line > 0 && editBoundary.hasLinesBelow()) blocked = true;
-
-        if (!blocked) {
-          for (const auto &spec : Edit::FULL_LINE_EDITS) {
-            exploreLinewiseDeletion(s, cursor.line, spec.cmd, spec.keys);
-          }
-        }
+    // Explore all deletions (characterwise + linewise) via EditSearchContext
+    ctx.exploreAllDeletions(
+      s,
+      [&](const Range& range, const char* cmd, const PhysicalKeys& keys) {
+        exploreDeletion(s, range, cmd, keys);
+      },
+      [&](int line, const char* cmd, const PhysicalKeys& keys) {
+        exploreLinewise(s, line, cmd, keys);
       }
-    }
+    );
   }
 
   return results;

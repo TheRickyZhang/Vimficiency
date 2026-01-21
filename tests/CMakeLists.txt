@@ -52,6 +52,7 @@ add_executable(vimficiency_tests
   Optimizer/MovementOptimizerTest.cpp
 
   # Utils
+  Utils/EditTestGenerators.cpp
   Utils/NeovimOracle.cpp
   Utils/TestUtils.cpp
 

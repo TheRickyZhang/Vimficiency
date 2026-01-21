@@ -154,6 +154,8 @@ struct ForwardWordEditSpec {
   bool skipCurrent;  // de/dE need true; dw/dW need false
 };
 extern const std::vector<ForwardWordEditSpec> FORWARD_WORD_EDITS;
+// Subset: de/dE only (for empty lines where dw/dW equivalent to dd)
+extern const std::vector<ForwardWordEditSpec> EMPTYLINE_FORWARD_WORD_EDITS;
 
 // Backward word motion edits (db, dge, dB, dgE)
 struct BackwardWordEditSpec {
@@ -165,6 +167,8 @@ struct BackwardWordEditSpec {
   bool isExclusiveAtCursor; // db/dB exclude cursor char from deletion
 };
 extern const std::vector<BackwardWordEditSpec> BACKWARD_WORD_EDITS;
+// Subset: db/dB/dge only (dgE equivalent to dge on empty lines)
+extern const std::vector<BackwardWordEditSpec> EMPTYLINE_BACKWARD_WORD_EDITS;
 
 // Text object edits (diw, daw, diW, daW)
 struct TextObjectEditSpec {
@@ -189,5 +193,6 @@ struct FullLineEditSpec {
   PhysicalKeys keys;
 };
 extern const std::vector<FullLineEditSpec> FULL_LINE_EDITS;
+extern const std::vector<FullLineEditSpec> EMPTYLINE_FULL_LINE_EDITS;
 
 } // namespace Edit

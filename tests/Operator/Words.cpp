@@ -46,7 +46,6 @@ TEST_F(WordsTest, RandomBufferStress_SingleLine) {
     }
   }
 
-  cerr << "\n=== Random Buffer (Single-Line): " << passed << "/" << total << " ===" << endl;
   EXPECT_EQ(passed, total);
 }
 
@@ -68,7 +67,6 @@ TEST_F(WordsTest, RandomBufferStress_MultiLine) {
     }
   }
 
-  cerr << "\n=== Random Buffer (Multi-Line): " << passed << "/" << total << " ===" << endl;
   EXPECT_EQ(passed, total);
 }
 

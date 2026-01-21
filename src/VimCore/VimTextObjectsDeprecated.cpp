@@ -177,20 +177,20 @@ Range innerBracket(const vector<string>& lines, Position pos, char open, char cl
   // Inner: exclude the brackets
   // Start after open bracket
   Position start = openPos;
-  start.col++;
+  start.setCol(start.col + 1);
   if (start.col >= static_cast<int>(lines[start.line].size())) {
     start.line++;
-    start.col = 0;
+    start.setCol(0);
   }
 
   // End before close bracket
   Position end = closePos;
   if (end.col > 0) {
-    end.col--;
+    end.setCol(end.col - 1);
   } else if (end.line > 0) {
     end.line--;
-    end.col = static_cast<int>(lines[end.line].size()) - 1;
-    if (end.col < 0) end.col = 0;
+    end.setCol(static_cast<int>(lines[end.line].size()) - 1);
+    if (end.col < 0) end.setCol(0);
   }
 
   // Handle empty brackets like ()

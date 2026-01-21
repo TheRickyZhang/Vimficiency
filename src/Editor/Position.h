@@ -4,21 +4,50 @@
 
 struct Position {
   int line = 0;
-  int col  = 0;
-  int targetCol = 0;
+  int col = 0;
+  int targetCol = 0;  // The column we "want" to be at (for sticky column behavior)
 
+private:
+
+public:
   Position() = default;
-  constexpr Position(int l, int c) : line(l), col(c), targetCol(c) {}
-  constexpr Position(int l, int c, int tc) : line(l), col(c), targetCol(tc) {}
+  constexpr Position(int l, int c) : line(l), targetCol(c), col(c) {}
+  constexpr Position(int l, int c, int tc) : line(l), targetCol(tc), col(c) {}
 
   // Validity check - positions are invalid when line < 0 (sentinel value)
   bool isValid() const { return line >= 0; }
 
-  // Use setCol() for horizontal movements - updates both col and targetCol.
-  // Direct assignment to col (without updating targetCol) should only be used
-  // for vertical movements (j/k) that restore col from targetCol.
+  // ==========================================================================
+  // Column Assignment Methods
+  // ==========================================================================
+  //
+  // setCol(): Use for ALL horizontal position changes that establish a new
+  //           target position. Updates both col and targetCol.
+  //   - Insert mode entry (i, I, a, A)
+  //   - After character deletions (d, x, etc.)
+  //   - Line joins (J)
+  //   - Any operation that establishes a new horizontal position
+  //
+  // clampColPreservingTarget(): Use ONLY for vertical movements that preserve
+  //           the "sticky column" behavior. Updates col but keeps targetCol.
+  //   - j/k movements
+  //   - gg/G line jumps
+  //   - C-d/C-u/C-f/C-b scroll commands
+  //   - Insert mode <Up>/<Down>
+  //
+  // The targetCol field remembers where we "want" to be horizontally.
+  // Vertical movements clamp to line length but keep targetCol unchanged,
+  // so moving through short lines and back to long lines returns to the
+  // original column.
+  // ==========================================================================
+
   void setCol(int c) {
     col = targetCol = c;
+  }
+
+  // For vertical movements: clamp column to line bounds but preserve targetCol
+  void clampColPreservingTarget(int clampedCol) {
+    col = clampedCol;
   }
 
   bool operator==(const Position& other) const {

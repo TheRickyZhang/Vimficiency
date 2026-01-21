@@ -38,6 +38,9 @@ inline void clampInsertCol(const std::string& line, int& col) {
 // Delete text in character range. Modifies lines and updates pos.
 // All ranges are inclusive (both start and end positions are deleted).
 // Mode determines position clamping: Normal clamps to last char, Insert allows after last char
+// Empty line removal follows Vim behavior:
+//   - Cursor on same line as deletion (e.g., D at col 0): keep empty line
+//   - Cursor on different line (e.g., db from col 0): remove empty line
 void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode = Mode::Normal);
 
 // Delete entire lines. Modifies lines and updates pos.

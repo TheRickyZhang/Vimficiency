@@ -148,7 +148,8 @@ void moveCol(Position &pos, const Lines &lines, int dx) {
 void moveLine(Position &pos, const Lines &lines, int dy) {
   int n = static_cast<int>(lines.size());
   pos.line = std::clamp(pos.line + dy, 0, n - 1);
-  pos.col = clampCol(lines, pos.targetCol, pos.line);
+  // Vertical movement: clamp col to line length but preserve targetCol
+  pos.clampColPreservingTarget(clampCol(lines, pos.targetCol, pos.line));
 }
 
 // =============================================================================

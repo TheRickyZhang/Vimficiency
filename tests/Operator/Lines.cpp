@@ -313,6 +313,5 @@ TEST_F(LinesTest, RandomStress_LineDeleteRange) {
     }
   }
 
-  cerr << "\n=== Line Delete Range: " << passed << "/" << NUM_TESTS << " ===" << endl;
   EXPECT_EQ(passed, NUM_TESTS);
 }

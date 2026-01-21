@@ -112,13 +112,6 @@ TEST_F(DebugSequenceTest, AllResultsReachTargetPosition) {
   vector<Result> results =
       runOptimizer(a2_block_lines, start, end, "jjll");
 
-  // Print results for debugging
-  cout << "Optimizer results for (0,0) -> (2,2):\n";
-  for (const auto &r : results) {
-    Position actual = simulateMotionsDefault(start, r.getSequenceString(), a2_block_lines);
-    cout << "  " << r << " -> (" << actual.line << "," << actual.col << ")\n";
-  }
-
   for (const auto &r : results) {
     Position actual = simulateMotionsDefault(start, r.getSequenceString(), a2_block_lines);
     EXPECT_EQ(actual.line, end.line)
@@ -148,18 +141,7 @@ TEST_F(DebugSequenceTest, JjllFrom1_0EndsAtCorrectPosition) {
 }
 
 TEST_F(DebugSequenceTest, ParagraphMotionGoesToEmptyLine) {
-  // Debug: print buffer content
-  cout << "a2_block_lines has " << a2_block_lines.size() << " lines:\n";
-  for (size_t i = 0; i < a2_block_lines.size(); i++) {
-    cout << "  [" << i << "] \"" << a2_block_lines[i] << "\" (len=" << a2_block_lines[i].size() << ")\n";
-  }
-
-  // } from (1, 0) should go to the next blank line
   Position result = simulateMotionsDefault({1, 0}, "}", a2_block_lines);
-
-  // If there's a blank line, } should find it. Otherwise it goes to last line.
-  // Let's first verify what Vim would do
-  cout << "} from (1,0) -> (" << result.line << ", " << result.col << ")\n";
 
   // Check if there's actually a blank line in the buffer
   bool hasBlankLine = false;
@@ -172,7 +154,6 @@ TEST_F(DebugSequenceTest, ParagraphMotionGoesToEmptyLine) {
       break;
     }
   }
-  cout << "Has blank line after line 1: " << hasBlankLine << " at index " << blankLineIdx << "\n";
 
   if (hasBlankLine) {
     expectPos(result, blankLineIdx, 0, "} from (1,0) should go to blank line");
@@ -196,12 +177,6 @@ TEST_F(DebugSequenceTest, AllResultsReachTargetPosition_From1_0) {
 
   vector<Result> results =
       runOptimizer(a2_block_lines, start, end, "jjll");
-
-  cout << "Optimizer results for (1,0) -> (3,2):\n";
-  for (const auto &r : results) {
-    Position actual = simulateMotionsDefault(start, r.getSequenceString(), a2_block_lines);
-    cout << "  " << r << " -> (" << actual.line << "," << actual.col << ")\n";
-  }
 
   for (const auto &r : results) {
     Position actual = simulateMotionsDefault(start, r.getSequenceString(), a2_block_lines);

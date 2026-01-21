@@ -28,8 +28,8 @@ constexpr size_t hash(string_view s) {
   return h;
 }
 
-inline void clampToLastChar(const string& line, int& col) {
-  col = line.empty() ? 0 : min(col, (int)line.size() - 1);
+inline int clampedToLastChar(const string& line, int col) {
+  return line.empty() ? 0 : min(col, (int)line.size() - 1);
 }
 
 // -----------------------------------------------------------------------------
@@ -81,7 +81,7 @@ static void deleteToWordEnd(Lines& lines, Position& pos, int count, bool big, Mo
 
   if (isPastEndPosition(lines, endPos)) {
     // e motion wanted to go past EOF - delete to last char inclusive
-    endPos.col = static_cast<int>(lines[endPos.line].size()) - 1;
+    endPos.setCol(static_cast<int>(lines[endPos.line].size()) - 1);
   }
 
   // Inclusive delete: endPos >= pos means we have something to delete
@@ -102,7 +102,7 @@ static void deleteToNextWord(Lines& lines, Position& pos, int count, bool big, M
     deleteToEndOfLine(lines, pos);
   } else if (isPastEndPosition(lines, endPos)) {
     // Motion wanted to go past EOF - delete to last char inclusive
-    endPos.col = static_cast<int>(lines[endPos.line].size()) - 1;
+    endPos.setCol(static_cast<int>(lines[endPos.line].size()) - 1);
     if (endPos.line > pos.line || endPos.col >= pos.col) {
       Range r(pos, endPos);
       VimCore::deleteRange(lines, r, pos, mode);
@@ -241,7 +241,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
       for (int i = 0; i < count; i++) {
         line[pos.col + i] = newChar;
       }
-      pos.col += count - 1;
+      pos.setCol(pos.col + count - 1);
       return;
     }
 
@@ -251,7 +251,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           throw runtime_error("x requires " + to_string(count) + " chars");
         }
         line.erase(pos.col, count);
-        clampToLastChar(line, pos.col);
+        pos.setCol(clampedToLastChar(line, pos.col));
         return;
 
       case hash("X"):
@@ -259,7 +259,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           throw runtime_error("X requires " + to_string(count) + " chars before cursor");
         }
         line.erase(pos.col - count, count);
-        pos.col -= count;
+        pos.setCol(pos.col - count);
         return;
 
       case hash("~"):
@@ -271,7 +271,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           if (isupper(c)) c = tolower(c);
           else if (islower(c)) c = toupper(c);
         }
-        pos.col += count - 1;
+        pos.setCol(pos.col + count - 1);
         return;
 
       case hash("J"):
@@ -302,14 +302,14 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           // Vim default: go to first non-blank, update targetCol
           pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
         } else {
-          // Neovim default: preserve column (clamp to line length)
-          pos.col = VimCore::clampCol(lines, pos.targetCol, pos.line);
+          // Neovim default: preserve column (clamp to line length) - vertical movement
+          pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
         }
         return;
 
       case hash("cc"): case hash("S"):
         line.clear();
-        pos.col = 0;
+        pos.setCol(0);
         mode = Mode::Insert;
         return;
 
@@ -336,17 +336,17 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         return;
 
       case hash("I"):
-        pos.col = VimCore::firstNonBlankColInLineStr(lines[pos.line]);
+        pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
         mode = Mode::Insert;
         return;
 
       case hash("a"):
-        pos.col++;
+        pos.setCol(pos.col + 1);
         mode = Mode::Insert;
         return;
 
       case hash("A"):
-        pos.col = m;
+        pos.setCol(m);
         mode = Mode::Insert;
         return;
 
@@ -443,7 +443,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
               deleteToEndOfLine(lines, pos);
             } else if (isPastEndPosition(lines, endPos)) {
               // w motion wanted to go past EOF - delete to last char inclusive
-              endPos.col = static_cast<int>(lines[endPos.line].size()) - 1;
+              endPos.setCol(static_cast<int>(lines[endPos.line].size()) - 1);
               if (endPos.line > pos.line || endPos.col >= pos.col) {
                 Range r(pos, endPos);
                 VimCore::deleteRange(lines, r, pos);
@@ -572,7 +572,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           throw runtime_error("j requires " + to_string(count) + " lines below");
         }
         pos.line += count;
-        pos.col = VimCore::clampCol(lines, pos.targetCol, pos.line);
+        pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
         return;
 
       case hash("k"):
@@ -580,7 +580,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           throw runtime_error("k requires " + to_string(count) + " lines above");
         }
         pos.line -= count;
-        pos.col = VimCore::clampCol(lines, pos.targetCol, pos.line);
+        pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
         return;
 
       case hash("h"):
@@ -699,7 +699,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
   if (mode == Mode::Insert) {
     switch (hash(e)) {
       case hash("<Esc>"):
-        if (pos.col > 0) pos.col--;
+        if (pos.col > 0) pos.setCol(pos.col - 1);
         mode = Mode::Normal;
         return;
 
@@ -778,14 +778,14 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         if (pos.col == 0) {
           throw runtime_error("<Left> at start of line has no effect");
         }
-        pos.col--;
+        pos.setCol(pos.col - 1);
         return;
 
       case hash("<Right>"):
         if (pos.col >= static_cast<int>(lines[pos.line].size())) {
           throw runtime_error("<Right> at end of line has no effect");
         }
-        pos.col++;
+        pos.setCol(pos.col + 1);
         return;
 
       case hash("<Up>"):
@@ -793,7 +793,8 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           throw runtime_error("<Up> at first line has no effect");
         }
         pos.line--;
-        pos.col = min(pos.col, static_cast<int>(lines[pos.line].size()));
+        // Insert mode <Up>/<Down> use sticky column behavior like j/k
+        pos.clampColPreservingTarget(min(pos.targetCol, static_cast<int>(lines[pos.line].size())));
         return;
 
       case hash("<Down>"):
@@ -801,7 +802,8 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           throw runtime_error("<Down> at last line has no effect");
         }
         pos.line++;
-        pos.col = min(pos.col, static_cast<int>(lines[pos.line].size()));
+        // Insert mode <Up>/<Down> use sticky column behavior like j/k
+        pos.clampColPreservingTarget(min(pos.targetCol, static_cast<int>(lines[pos.line].size())));
         return;
     }
   }
