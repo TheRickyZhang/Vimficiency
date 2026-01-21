@@ -114,19 +114,19 @@ void applyParsedMotion(Position& pos, Mode& mode,
   int count = parsedMotion.effectiveCount();
   // Fundamental movements
   if (motion == "h") {
-    VimMovementUtils::moveCol(pos, lines, -count);
+    VimCore::moveCol(pos, lines, -count);
   } else if (motion == "l") {
-    VimMovementUtils::moveCol(pos, lines, count);
+    VimCore::moveCol(pos, lines, count);
   } else if (motion == "j") {
-    VimMovementUtils::moveLine(pos, lines, count);
+    VimCore::moveLine(pos, lines, count);
   } else if (motion == "k") {
-    VimMovementUtils::moveLine(pos, lines, -count);
+    VimCore::moveLine(pos, lines, -count);
   } else if (motion == "0") {
     pos.setCol(0);
   } else if (motion == "$") {
     // Special: {cnt}$ moves cursor down
     if(hasCount) {
-      VimMovementUtils::moveLine(pos, lines, count-1);
+      VimCore::moveLine(pos, lines, count-1);
     }
     int len = static_cast<int>(lines[pos.line].size());
     pos.setCol(len == 0 ? 0 : len - 1);
@@ -143,46 +143,46 @@ void applyParsedMotion(Position& pos, Mode& mode,
   } else if (motion == "gg") {
     // Special: set line. Because it's 1 based, subtract 1
     pos.line = hasCount ? count-1 : 0;
-    pos.col = VimMovementUtils::clampCol(lines, pos.col, pos.line);
+    pos.col = VimCore::clampCol(lines, pos.col, pos.line);
   } else if (motion == "G") {
     // Special: set line. Because it's 1 based, subtract 1
     pos.line = hasCount ? min(count-1, n-1) : n-1;
-    pos.col = VimMovementUtils::clampCol(lines, pos.col, pos.line);
+    pos.col = VimCore::clampCol(lines, pos.col, pos.line);
   }
   // Words
   // Note: motionW/motionE may return "past end" positions for delete operations.
   // For cursor movement, clamp to valid bounds.
-  // TODO: Able to process faster with indices? Or at least modify underlying VimUtils calls to be more efficient with multiple invocations.
+  // TODO: Able to process faster with indices? Or at least modify underlying VimCore calls to be more efficient with multiple invocations.
   else if (motion == "w") {
-    for(int i = 0; i < count; i++) VimMovementUtils::motionW(pos, lines, false);
-    pos.setCol(VimMovementUtils::clampCol(lines, pos.col, pos.line));
+    for(int i = 0; i < count; i++) VimCore::motionW(pos, lines, false);
+    pos.setCol(VimCore::clampCol(lines, pos.col, pos.line));
   } else if (motion == "b") {
-    for(int i = 0; i < count; i++) VimMovementUtils::motionB(pos, lines, false);
+    for(int i = 0; i < count; i++) VimCore::motionB(pos, lines, false);
   } else if (motion == "e") {
-    for(int i = 0; i < count; i++) VimMovementUtils::motionE(pos, lines, false);
-    pos.setCol(VimMovementUtils::clampCol(lines, pos.col, pos.line));
+    for(int i = 0; i < count; i++) VimCore::motionE(pos, lines, false);
+    pos.setCol(VimCore::clampCol(lines, pos.col, pos.line));
   } else if (motion == "W") {
-    for(int i = 0; i < count; i++) VimMovementUtils::motionW(pos, lines, true);
-    pos.setCol(VimMovementUtils::clampCol(lines, pos.col, pos.line));
+    for(int i = 0; i < count; i++) VimCore::motionW(pos, lines, true);
+    pos.setCol(VimCore::clampCol(lines, pos.col, pos.line));
   } else if (motion == "B") {
-    for(int i = 0; i < count; i++) VimMovementUtils::motionB(pos, lines, true);
+    for(int i = 0; i < count; i++) VimCore::motionB(pos, lines, true);
   } else if (motion == "E") {
-    for(int i = 0; i < count; i++) VimMovementUtils::motionE(pos, lines, true);
-    pos.setCol(VimMovementUtils::clampCol(lines, pos.col, pos.line));
+    for(int i = 0; i < count; i++) VimCore::motionE(pos, lines, true);
+    pos.setCol(VimCore::clampCol(lines, pos.col, pos.line));
   } else if (motion == "ge") {
-    for(int i = 0; i < count; i++) VimMovementUtils::motionGe(pos, lines, false);
+    for(int i = 0; i < count; i++) VimCore::motionGe(pos, lines, false);
   } else if (motion == "gE") {
-    for(int i = 0; i < count; i++) VimMovementUtils::motionGe(pos, lines, true);
+    for(int i = 0; i < count; i++) VimCore::motionGe(pos, lines, true);
   }
   // Text object jumps
   else if (motion == "{") {
-    for(int i = 0; i < count; i++) VimMovementUtils::motionParagraphPrev(pos, lines);
+    for(int i = 0; i < count; i++) VimCore::motionParagraphPrev(pos, lines);
   } else if (motion == "}") {
-    for(int i = 0; i < count; i++) VimMovementUtils::motionParagraphNext(pos, lines);
+    for(int i = 0; i < count; i++) VimCore::motionParagraphNext(pos, lines);
   } else if (motion == "(") {
-    for(int i = 0; i < count; i++) VimMovementUtils::motionSentencePrev(pos, lines);
+    for(int i = 0; i < count; i++) VimCore::motionSentencePrev(pos, lines);
   } else if (motion == ")") {
-    for(int i = 0; i < count; i++) VimMovementUtils::motionSentenceNext(pos, lines);
+    for(int i = 0; i < count; i++) VimCore::motionSentenceNext(pos, lines);
   }
   // f/F/t/T motions with optional ;/, repeats (e.g., "fa;;", "Ta,")
   else if (motion.size() >= 2 && (motion[0] == 'f' || motion[0] == 'F' ||
@@ -194,7 +194,7 @@ void applyParsedMotion(Position& pos, Mode& mode,
     const string &line = lines[pos.line];
     
     for(int i = 0; i < count; i++) {
-      int newCol = VimMovementUtils::findCharInLine(target, line, pos.col, forward, till);
+      int newCol = VimCore::findCharInLine(target, line, pos.col, forward, till);
       if (newCol >= 0) {
         pos.setCol(newCol);
       }
@@ -204,7 +204,7 @@ void applyParsedMotion(Position& pos, Mode& mode,
       char repeat = motion[i];
       bool repeatForward = (repeat == ';') ? forward : !forward;
       bool repeatTill = till; // t/T behavior is preserved
-      int newCol = VimMovementUtils::findCharInLine(target, line, pos.col, repeatForward, repeatTill);
+      int newCol = VimCore::findCharInLine(target, line, pos.col, repeatForward, repeatTill);
       if (newCol >= 0) {
         pos.setCol(newCol);
       }
@@ -215,25 +215,25 @@ void applyParsedMotion(Position& pos, Mode& mode,
   else if (motion == "<C-d>") {
     int amount = hasCount ? count : navContext.scrollAmount;
     pos.line = min(pos.line + amount, n - 1);
-    pos.col = VimMovementUtils::clampCol(lines, pos.col, pos.line);
+    pos.col = VimCore::clampCol(lines, pos.col, pos.line);
   }
   else if (motion == "<C-u>") {
     int amount = hasCount ? count : navContext.scrollAmount;
     pos.line = max(pos.line - amount, 0);
-    pos.col = VimMovementUtils::clampCol(lines, pos.col, pos.line);
+    pos.col = VimCore::clampCol(lines, pos.col, pos.line);
   }
   else if (motion == "<C-f>") {
     for(int i = 0; i < count; i++) {
       int jump = max(0, navContext.windowHeight - 2);
       pos.line = min(pos.line + jump, n - 1);
-      pos.col = VimMovementUtils::clampCol(lines, pos.col, pos.line);
+      pos.col = VimCore::clampCol(lines, pos.col, pos.line);
     }
   }
   else if (motion == "<C-b>") {
     for(int i = 0; i < count; i++) {
       int jump = max(0, navContext.windowHeight - 2);
       pos.line = max(pos.line - jump, 0);
-      pos.col = VimMovementUtils::clampCol(lines, pos.col, pos.line);
+      pos.col = VimCore::clampCol(lines, pos.col, pos.line);
     }
   }
   else {

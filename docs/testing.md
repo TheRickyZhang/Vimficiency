@@ -9,7 +9,7 @@ Use `debug()` in `Utils/Debug.h`. The project is compiled with `VIMFICIENCY_DEBU
 The ground truth for the output of vim commands should be Neovim itself. Use `tests/Utils/NeovimOracle` to directly get Neovim's expected output.
 
 ## Vim Documentation Reference
-If you need to verify VimUtils or EditBoundary behavior or implement new commands:
+If you need to verify VimCore or EditBoundary behavior or implement new commands:
 - Motion commands: see `docs/vim/motion.txt`
 - Change operators: see `docs/vim/change.txt`
 - Command index: see `docs/vim/index.txt`

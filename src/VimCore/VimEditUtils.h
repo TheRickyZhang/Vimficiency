@@ -15,11 +15,11 @@
 // - Minimal API (single-line ops take string& + int&, not Lines& + Position&)
 // - No redundant wrappers (inline trivial operations at call sites)
 
-namespace VimEditUtils {
+namespace VimCore {
 
-// -----------------------------------------------------------------------------
-// Position clamping helpers
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Position Clamping Helpers
+// =============================================================================
 
 // Clamp col to valid normal mode range: [0, line.size()-1] or 0 if empty
 inline void clampCol(const std::string& line, int& col) {
@@ -31,9 +31,9 @@ inline void clampInsertCol(const std::string& line, int& col) {
   col = std::min(col, static_cast<int>(line.size()));
 }
 
-// -----------------------------------------------------------------------------
-// Multi-line operations (require Lines& and Position&)
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Multi-Line Buffer Operations
+// =============================================================================
 
 // Delete text in character range. Modifies lines and updates pos.
 // All ranges are inclusive (both start and end positions are deleted).
@@ -61,11 +61,4 @@ void openLineBelow(Lines& lines, Position& pos);
 // Precondition: lines not empty
 void openLineAbove(Lines& lines, Position& pos);
 
-// -----------------------------------------------------------------------------
-// Single-line operations (minimal API - only what's needed)
-// -----------------------------------------------------------------------------
-
-// D - erase from col to end of line. Updates col to last char (or 0 if empty).
-void eraseToEnd(std::string& line, int& col);
-
-} // namespace VimEditUtils
+} // namespace VimCore

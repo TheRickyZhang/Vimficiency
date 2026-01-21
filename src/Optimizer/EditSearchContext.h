@@ -28,10 +28,7 @@ struct EditSearchContext {
   const OptimizerParams& params;
   const Config& config;
 
-  // Computed from editBoundary
-  const std::string& pre;
-  const std::string& suf;
-  std::string preSuf;
+  // Column offsets for boundary protection (computed from editBoundary)
   int leftColOffset;
   int rightColOffset;
 
@@ -65,7 +62,7 @@ struct EditSearchContext {
   std::pair<int, int> computeContentBounds(const Lines& lines, const Position& cursor) const;
 
   // Compute remaining heuristic for A* search
-  double computeRemainingHeuristic(const Lines& lines) const;
+  double heuristic(const Lines& lines) const;
 
   // Explore all valid characterwise deletions from current state
   // Calls callback with (range, cmd, keys) for each valid deletion
@@ -77,5 +74,5 @@ struct EditSearchContext {
 
   // Pop next valid state from queue, skipping stale states.
   // Returns nullopt if queue becomes empty.
-  std::optional<EditState> popNextState();
+  std::optional<EditState> getNextValidState();
 };

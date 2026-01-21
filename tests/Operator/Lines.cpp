@@ -1,7 +1,7 @@
 // tests/Operator/Lines.cpp
 //
 // Tests for operator + line motion boundary crossing logic.
-// Uses VimEndpointUtils::lineDeleteRange and motionLineEndpoint for boundary checking.
+// Uses VimCore::lineDeleteRange and motionLineEndpoint for boundary checking.
 //
 // Line operations:
 //   dd: Full line delete (linewise) - uses lineDeleteRange
@@ -74,7 +74,7 @@ TEST_F(LinesTest, LineDeleteRange_SingleLine_FullBoundary) {
 
   EditBoundary boundary = makeBoundary(lines, '\n', '\n');
 
-  LineRange range = VimEndpointUtils::lineDeleteRange(cursor, lines, boundary);
+  LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
   EXPECT_TRUE(range.isValid()) << "dd should be safe when at full line boundary";
   EXPECT_EQ(range.startLine, 0);
@@ -88,7 +88,7 @@ TEST_F(LinesTest, LineDeleteRange_SingleLine_PartialBoundary) {
 
   EditBoundary boundary = makeBoundary(lines, 'h', '\n');  // Not at line start
 
-  LineRange range = VimEndpointUtils::lineDeleteRange(cursor, lines, boundary);
+  LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
   EXPECT_FALSE(range.isValid()) << "dd should cross boundary when not at line start";
 }
@@ -100,7 +100,7 @@ TEST_F(LinesTest, LineDeleteRange_MultiLine_MiddleLine) {
 
   EditBoundary boundary = makeBoundary(lines, 'o', 't');  // Partial boundaries
 
-  LineRange range = VimEndpointUtils::lineDeleteRange(cursor, lines, boundary);
+  LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
   EXPECT_TRUE(range.isValid()) << "dd on middle line should always be safe";
 }
@@ -112,7 +112,7 @@ TEST_F(LinesTest, LineDeleteRange_MultiLine_FirstLine_NoBoundary) {
 
   EditBoundary boundary = makeBoundary(lines, '\n', 't');  // At line start
 
-  LineRange range = VimEndpointUtils::lineDeleteRange(cursor, lines, boundary);
+  LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
   EXPECT_TRUE(range.isValid()) << "dd on first line with atLineStart should be safe";
 }
@@ -124,7 +124,7 @@ TEST_F(LinesTest, LineDeleteRange_MultiLine_FirstLine_HasBoundary) {
 
   EditBoundary boundary = makeBoundary(lines, 'l', 't');  // Not at line start
 
-  LineRange range = VimEndpointUtils::lineDeleteRange(cursor, lines, boundary);
+  LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
   EXPECT_FALSE(range.isValid()) << "dd on first line without atLineStart should cross";
 }
@@ -136,7 +136,7 @@ TEST_F(LinesTest, LineDeleteRange_MultiLine_LastLine_NoBoundary) {
 
   EditBoundary boundary = makeBoundary(lines, 'o', '\n');  // At line end
 
-  LineRange range = VimEndpointUtils::lineDeleteRange(cursor, lines, boundary);
+  LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
   EXPECT_TRUE(range.isValid()) << "dd on last line with atLineEnd should be safe";
 }
@@ -148,7 +148,7 @@ TEST_F(LinesTest, LineDeleteRange_MultiLine_LastLine_HasBoundary) {
 
   EditBoundary boundary = makeBoundary(lines, 'o', 'e');  // Not at line end
 
-  LineRange range = VimEndpointUtils::lineDeleteRange(cursor, lines, boundary);
+  LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
   EXPECT_FALSE(range.isValid()) << "dd on last line without atLineEnd should cross";
 }
@@ -164,9 +164,9 @@ TEST_F(LinesTest, MotionLineEndpoint_D_SingleLine_NoBoundary) {
 
   EditBoundary boundary = makeBoundary(lines, '\n', '\n');  // At line end
 
-  int endCol = VimEndpointUtils::motionLineEndpoint(cursor, lines, true, boundary);
+  int endCol = VimCore::motionLineEndpoint(cursor, lines, true, boundary);
 
-  EXPECT_NE(endCol, VimEndpointUtils::COL_OUTSIDE_BOUNDARY) << "D should be safe at line end";
+  EXPECT_NE(endCol, VimCore::COL_OUTSIDE_BOUNDARY) << "D should be safe at line end";
   EXPECT_EQ(endCol, 10);  // Last char of "hello world"
 }
 
@@ -177,9 +177,9 @@ TEST_F(LinesTest, MotionLineEndpoint_D_SingleLine_HasBoundary) {
 
   EditBoundary boundary = makeBoundary(lines, '\n', 'd');  // Not at line end
 
-  int endCol = VimEndpointUtils::motionLineEndpoint(cursor, lines, true, boundary);
+  int endCol = VimCore::motionLineEndpoint(cursor, lines, true, boundary);
 
-  EXPECT_EQ(endCol, VimEndpointUtils::COL_OUTSIDE_BOUNDARY) << "D should cross when not at line end";
+  EXPECT_EQ(endCol, VimCore::COL_OUTSIDE_BOUNDARY) << "D should cross when not at line end";
 }
 
 TEST_F(LinesTest, MotionLineEndpoint_D_MultiLine_NotLastLine) {
@@ -189,9 +189,9 @@ TEST_F(LinesTest, MotionLineEndpoint_D_MultiLine_NotLastLine) {
 
   EditBoundary boundary = makeBoundary(lines, '\n', 'e');  // Not at line end (but we're not on last line)
 
-  int endCol = VimEndpointUtils::motionLineEndpoint(cursor, lines, true, boundary);
+  int endCol = VimCore::motionLineEndpoint(cursor, lines, true, boundary);
 
-  EXPECT_NE(endCol, VimEndpointUtils::COL_OUTSIDE_BOUNDARY) << "D on non-last line ignores boundary";
+  EXPECT_NE(endCol, VimCore::COL_OUTSIDE_BOUNDARY) << "D on non-last line ignores boundary";
 }
 
 TEST_F(LinesTest, MotionLineEndpoint_D_EmptyLine) {
@@ -201,9 +201,9 @@ TEST_F(LinesTest, MotionLineEndpoint_D_EmptyLine) {
 
   EditBoundary boundary = makeBoundary(lines, '\n', '\n');
 
-  int endCol = VimEndpointUtils::motionLineEndpoint(cursor, lines, true, boundary);
+  int endCol = VimCore::motionLineEndpoint(cursor, lines, true, boundary);
 
-  EXPECT_NE(endCol, VimEndpointUtils::COL_OUTSIDE_BOUNDARY);
+  EXPECT_NE(endCol, VimCore::COL_OUTSIDE_BOUNDARY);
   EXPECT_EQ(endCol, 0);  // Empty line returns 0
 }
 
@@ -218,9 +218,9 @@ TEST_F(LinesTest, MotionLineEndpoint_D0_SingleLine_NoBoundary) {
 
   EditBoundary boundary = makeBoundary(lines, '\n', '\n');  // At line start
 
-  int endCol = VimEndpointUtils::motionLineEndpoint(cursor, lines, false, boundary);
+  int endCol = VimCore::motionLineEndpoint(cursor, lines, false, boundary);
 
-  EXPECT_NE(endCol, VimEndpointUtils::COL_OUTSIDE_BOUNDARY) << "d0 should be safe at line start";
+  EXPECT_NE(endCol, VimCore::COL_OUTSIDE_BOUNDARY) << "d0 should be safe at line start";
   EXPECT_EQ(endCol, 0);
 }
 
@@ -231,9 +231,9 @@ TEST_F(LinesTest, MotionLineEndpoint_D0_SingleLine_HasBoundary) {
 
   EditBoundary boundary = makeBoundary(lines, 'h', '\n');  // Not at line start
 
-  int endCol = VimEndpointUtils::motionLineEndpoint(cursor, lines, false, boundary);
+  int endCol = VimCore::motionLineEndpoint(cursor, lines, false, boundary);
 
-  EXPECT_EQ(endCol, VimEndpointUtils::COL_OUTSIDE_BOUNDARY) << "d0 should cross when not at line start";
+  EXPECT_EQ(endCol, VimCore::COL_OUTSIDE_BOUNDARY) << "d0 should cross when not at line start";
 }
 
 TEST_F(LinesTest, MotionLineEndpoint_D0_MultiLine_NotFirstLine) {
@@ -243,9 +243,9 @@ TEST_F(LinesTest, MotionLineEndpoint_D0_MultiLine_NotFirstLine) {
 
   EditBoundary boundary = makeBoundary(lines, 'l', '\n');  // Not at line start (but we're not on first line)
 
-  int endCol = VimEndpointUtils::motionLineEndpoint(cursor, lines, false, boundary);
+  int endCol = VimCore::motionLineEndpoint(cursor, lines, false, boundary);
 
-  EXPECT_NE(endCol, VimEndpointUtils::COL_OUTSIDE_BOUNDARY) << "d0 on non-first line ignores boundary";
+  EXPECT_NE(endCol, VimCore::COL_OUTSIDE_BOUNDARY) << "d0 on non-first line ignores boundary";
   EXPECT_EQ(endCol, 0);
 }
 
@@ -296,7 +296,7 @@ TEST_F(LinesTest, RandomStress_LineDeleteRange) {
 
     EditBoundary boundary = makeBoundary(lines, leftChar, rightChar);
     Position cursor(cursorLine, cursorCol);
-    LineRange range = VimEndpointUtils::lineDeleteRange(cursor, lines, boundary);
+    LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
     // Execute dd in Neovim and verify boundary not crossed
     auto result = oracle_->simulate(lines, cursorLine, cursorCol, "dd");

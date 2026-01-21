@@ -96,13 +96,6 @@ bool allLinesEmpty(const Lines &lines) {
   return true;
 }
 
-int getEffectivePositionCount(const vector<string> lines) {
-  int res = 0;
-  for (const auto &line : lines) {
-    res += line.empty() ? 1 : static_cast<int>(line.size());
-  }
-  return res;
-}
 
 // Convert delete command to change equivalent
 // Returns the change command string, or empty string if no mapping exists
@@ -283,6 +276,11 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
   EditSearchContext ctx(startLines, editBoundary, params, config);
   ctx.initStartingPositions(startLines);
 
+  // Local aliases for goal checking
+  const auto& pre = editBoundary.prefix();
+  const auto& suf = editBoundary.suffix();
+  const string preSuf = pre + suf;
+
   EditResult result(ctx.totalPositions, replacementResults, lastReplacementPos);
 
   // Precompute typed content for goal state
@@ -290,9 +288,9 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
 
   // Goal check for regular edit: accepts multi-line (for collapse via <BS>/<Del>)
   auto isGoalReached = [&](const Lines &lines) -> bool {
-    if (lines.size() == 1) return lines[0] == ctx.preSuf;
-    if (lines[0] != ctx.pre) return false;
-    if (lines.back() != ctx.suf) return false;
+    if (lines.size() == 1) return lines[0] == preSuf;
+    if (lines[0] != pre) return false;
+    if (lines.back() != suf) return false;
     for (size_t i = 1; i < lines.size() - 1; i++) {
       if (!lines[i].empty()) return false;
     }
@@ -328,7 +326,7 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
 
     newState.appendToSeq(deleteCmd);
     newState.updateEffort(deleteKeys, config);
-    newState.updateCost(newState.getEffort() + ctx.computeRemainingHeuristic(lines));
+    newState.updateCost(newState.getEffort() + ctx.heuristic(lines));
     ctx.exploreNewState(std::move(newState));
   };
 
@@ -368,7 +366,7 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
 
     newState.appendToSeq(cmdSeq.c_str());
     newState.updateEffort(cmdKeys, config);
-    newState.updateCost(newState.getEffort() + ctx.computeRemainingHeuristic(lines));
+    newState.updateCost(newState.getEffort() + ctx.heuristic(lines));
     ctx.exploreNewState(std::move(newState));
   };
 
@@ -399,7 +397,7 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
 
     newState.appendToSeq(changeCmd);
     newState.updateEffort(changeKeys, config);
-    newState.updateCost(newState.getEffort() + ctx.computeRemainingHeuristic(lines));
+    newState.updateCost(newState.getEffort() + ctx.heuristic(lines));
     ctx.exploreNewState(std::move(newState));
   };
 
@@ -407,7 +405,7 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
   while (ctx.shouldContinue()) {
     ctx.iterations++;
 
-    auto maybeState = ctx.popNextState();
+    auto maybeState = ctx.getNextValidState();
     if (!maybeState) continue;
     EditState s = std::move(*maybeState);
 
@@ -470,13 +468,16 @@ EditOptimizer::optimizePureDeletion(const Lines &startLines,
   EditSearchContext ctx(startLines, editBoundary, params, config);
   ctx.initStartingPositions(startLines);
 
+  // Local alias for goal checking
+  const string preSuf = editBoundary.prefix() + editBoundary.suffix();
+
   vector<Result> results(ctx.totalPositions);
 
   // Goal check for pure deletion: only single-line goals accepted
   // (can't collapse multiple empty lines without insert mode)
   auto isGoalReached = [&](const Lines &lines) -> bool {
     if (lines.size() != 1) return false;
-    return lines[0] == ctx.preSuf;
+    return lines[0] == preSuf;
   };
 
   // Deletion handler: output delete command directly (no change conversion)
@@ -501,7 +502,7 @@ EditOptimizer::optimizePureDeletion(const Lines &startLines,
 
     newState.appendToSeq(deleteCmd);
     newState.updateEffort(deleteKeys, config);
-    newState.updateCost(newState.getEffort() + ctx.computeRemainingHeuristic(lines));
+    newState.updateCost(newState.getEffort() + ctx.heuristic(lines));
     ctx.exploreNewState(std::move(newState));
   };
 
@@ -541,7 +542,7 @@ EditOptimizer::optimizePureDeletion(const Lines &startLines,
 
     newState.appendToSeq(cmdSeq.c_str());
     newState.updateEffort(cmdKeys, config);
-    newState.updateCost(newState.getEffort() + ctx.computeRemainingHeuristic(lines));
+    newState.updateCost(newState.getEffort() + ctx.heuristic(lines));
     ctx.exploreNewState(std::move(newState));
   };
 
@@ -549,7 +550,7 @@ EditOptimizer::optimizePureDeletion(const Lines &startLines,
   while (ctx.shouldContinue()) {
     ctx.iterations++;
 
-    auto maybeState = ctx.popNextState();
+    auto maybeState = ctx.getNextValidState();
     if (!maybeState) continue;
     EditState s = std::move(*maybeState);
 

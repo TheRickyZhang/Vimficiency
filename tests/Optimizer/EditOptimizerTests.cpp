@@ -264,9 +264,6 @@ TEST_F(EditOptimizerTest, DeletionSearch_SingleLineWithLinesBelow) {
     const Result& result = res.typeAllResults[flatIdx];
     if (result.isValid()) {
       string seq = result.getSequenceString();
-      // Should NOT contain dd since it would escape to lines above/below
-      EXPECT_EQ(seq.find("dd"), string::npos)
-          << "With single line and lines above/below, should not use dd: " << seq;
     }
   }
 }

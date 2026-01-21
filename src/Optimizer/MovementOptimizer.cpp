@@ -177,13 +177,13 @@ vector<Result> MovementOptimizer::optimize(
       // F motions
       if(forward){
         handleFMotions(
-          VimMovementUtils::generateFMotions<true>(pos.col, endPos.col, lines[pos.line], params.fMotionThreshold),
+          VimCore::generateFMotions<true>(pos.col, endPos.col, lines[pos.line], params.fMotionThreshold),
           'f', ';'
         );
       }
       else {
         handleFMotions(
-          VimMovementUtils::generateFMotions<false>(pos.col, endPos.col, lines[pos.line], params.fMotionThreshold),
+          VimCore::generateFMotions<false>(pos.col, endPos.col, lines[pos.line], params.fMotionThreshold),
           'F', ';'
         );
       }

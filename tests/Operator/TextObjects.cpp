@@ -3,7 +3,7 @@
 // Tests for operator + text object boundary crossing logic.
 // Text objects select a range from cursor position in both directions.
 //
-// Uses VimEndpointUtils::textObjectRange for Position-based boundary checking.
+// Uses VimCore::textObjectRange for offset-based boundary checking.
 
 #include <gtest/gtest.h>
 
@@ -38,13 +38,17 @@ struct TextObjectSpec {
   bool isInner;     // true for iw/iW, false for aw/aW
   bool isBigWord;   // true for W variants
 
-  // Predict if text object would cross boundaries using VimEndpointUtils
+  // Predict if text object would cross boundaries using VimCore
+  // Uses offset-based boundary model: leftColOffset protects cols [0, offset) on line 0,
+  // rightColOffset protects cols [lineLen-offset, lineLen) on last line
   bool wouldCross(Position cursor, const Lines& lines,
-                  Position leftBoundary, Position rightBoundary) const {
-    Range range = VimEndpointUtils::textObjectRange(
-        cursor, lines, isInner, isBigWord, leftBoundary, rightBoundary);
-    // RANGE_OUTSIDE_BOUNDARY has start == POSITION_OUTSIDE_BOUNDARY
-    return range.start == POSITION_OUTSIDE_BOUNDARY;
+                  int leftColOffset, int rightColOffset,
+                  bool hasLinesAbove, bool hasLinesBelow) const {
+    Range range = VimCore::textObjectRange(
+        cursor, lines, isInner, isBigWord, leftColOffset, rightColOffset,
+        hasLinesAbove, hasLinesBelow);
+    // Check if either endpoint crossed boundary
+    return range.start == POSITION_OUTSIDE_BOUNDARY || range.end == POSITION_OUTSIDE_BOUNDARY;
   }
 };
 
@@ -65,9 +69,9 @@ const vector<TextObjectSpec>& getAllTextObjects() {
 RandomBufferTest generateTextObjectBuffer(mt19937& rng, int numLines) {
   RandomBufferTest test;
 
-  // Character pools for different types
-  const string keywords = "abcdefghijklmnop";
-  const string symbols = ".,;:";
+  // Minimal char pools - word boundaries depend on character CLASS, not specific chars
+  const string keywords = "abcd";
+  const string symbols = ".,";
 
   uniform_int_distribution<int> lineLen(10, 20);
   uniform_int_distribution<int> charTypeDist(0, 2);
@@ -156,16 +160,47 @@ RandomBufferTest generateTextObjectBuffer(mt19937& rng, int numLines) {
 
 bool runTextObjectTest(NeovimOracle& oracle, const TextObjectSpec& spec,
                        const RandomBufferTest& test, bool verbose = false) {
-  // Get actual result from Neovim
+  // Get actual result from Neovim (uses full buffer)
   auto result = oracle.simulate(test.lines, test.cursorLine, test.cursorCol, spec.cmd);
 
   bool leftCrossed = test.hasLeftBoundary && leftBoundaryCrossed(test, result.lines);
   bool rightCrossed = test.hasRightBoundary && rightBoundaryCrossed(test, result.lines);
 
-  // Predict using VimEndpointUtils::textObjectRange
-  Position cursor(test.cursorLine, test.cursorCol);
-  bool predictCross = spec.wouldCross(cursor, test.lines,
-                                      test.leftBoundaryPos, test.rightBoundaryPos);
+  // === IMPORTANT: effectiveLines Model ===
+  // VimCore boundary functions expect effectiveLines, NOT the full buffer.
+  // effectiveLines contains only the lines in the edit region, with offsets
+  // protecting the prefix/suffix columns. This mirrors EditSearchContext behavior.
+  //
+  // Example: Full buffer has 3 lines, edit region is on line 0 cols 5-10.
+  //   - effectiveLines = [line 0 only]
+  //   - leftColOffset = 5 (protects cols 0-4)
+  //   - rightColOffset = len(line 0) - 10 - 1 (protects suffix)
+  //   - cursor.line = 0 (relative to effectiveLines, not full buffer)
+  //
+  // Contrast with Words.cpp tests which span full buffer → full buffer IS effectiveLines.
+  Lines effectiveLines;
+  for (int i = test.editStartLine; i <= test.editEndLine; i++) {
+    effectiveLines.push_back(test.lines[i]);
+  }
+  int effectiveLastLine = static_cast<int>(effectiveLines.size()) - 1;
+
+  // Cursor position relative to effectiveLines (translate from full buffer coords)
+  Position cursor(test.cursorLine - test.editStartLine, test.cursorCol);
+
+  // Compute offsets relative to effectiveLines
+  // leftColOffset: prefix length on first line of effectiveLines (line 0)
+  int leftColOffset = test.hasLeftBoundary ? test.editStartCol : 0;
+
+  // rightColOffset: suffix length on last line of effectiveLines
+  int rightColOffset = 0;
+  if (test.hasRightBoundary) {
+    int lineLen = static_cast<int>(effectiveLines[effectiveLastLine].size());
+    rightColOffset = lineLen - test.editEndCol - 1;
+  }
+
+  // Predict using VimCore::textObjectRange with effectiveLines (NOT full buffer!)
+  bool predictCross = spec.wouldCross(cursor, effectiveLines, leftColOffset, rightColOffset,
+                                       test.hasLinesAbove, test.hasLinesBelow);
 
   bool actualCross = leftCrossed || rightCrossed;
 
@@ -182,10 +217,7 @@ bool runTextObjectTest(NeovimOracle& oracle, const TextObjectSpec& spec,
     cerr << "Cursor: (" << test.cursorLine << ", " << test.cursorCol << ")" << endl;
     cerr << "Edit region: (" << test.editStartLine << "," << test.editStartCol << ") to ("
          << test.editEndLine << "," << test.editEndCol << ")" << endl;
-    cerr << "Left boundary: (" << test.leftBoundaryPos.line << "," << test.leftBoundaryPos.col
-         << ")" << endl;
-    cerr << "Right boundary: (" << test.rightBoundaryPos.line << ","
-         << test.rightBoundaryPos.col << ")" << endl;
+    cerr << "Left offset: " << leftColOffset << ", Right offset: " << rightColOffset << endl;
     cerr << "Result:" << endl;
     for (size_t i = 0; i < result.lines.size(); i++) {
       cerr << "  [" << i << "]: \"" << result.lines[i] << "\"" << endl;
@@ -300,20 +332,23 @@ TEST_F(TextObjectsTest, DaW_WithTrailingWhitespace) {
 }
 
 // =============================================================================
-// Section 3: Boundary Checking Against VimEndpointUtils
+// Section 3: Boundary Checking Against VimCore
 // =============================================================================
 
 TEST_F(TextObjectsTest, TextObjectRange_InnerWord) {
   // Test that textObjectRange correctly computes range for diw
   Lines lines = {"abc def ghi"};
   Position cursor(0, 4);           // On 'd' in "def"
-  Position leftBoundary(0, 3);     // space before "def"
-  Position rightBoundary(0, 7);    // space after "def"
+  // Old Position boundary at col 3 → protect cols [0, 4), so leftColOffset = 4
+  // Old Position boundary at col 7 → protect cols [7, 11), so rightColOffset = 11 - 7 = 4
+  int leftColOffset = 4;   // protect cols 0-3 (space before "def")
+  int rightColOffset = 4;  // protect cols 7-10 (space after "def" and beyond)
 
-  Range result = VimEndpointUtils::textObjectRange(cursor, lines, true, false,
-                                                   leftBoundary, rightBoundary);
+  Range result = VimCore::textObjectRange(cursor, lines, true, false,
+                                          leftColOffset, rightColOffset,
+                                          false, false);  // single line, no lines above/below
 
-  // diw should NOT reach the boundaries (only selects "def")
+  // diw should NOT reach the boundaries (only selects "def" at cols 4-6)
   EXPECT_NE(result.start, POSITION_OUTSIDE_BOUNDARY);
 }
 
@@ -321,13 +356,16 @@ TEST_F(TextObjectsTest, TextObjectRange_AroundWord) {
   // Test that textObjectRange correctly computes range for daw
   Lines lines = {"abc def ghi"};
   Position cursor(0, 4);           // On 'd' in "def"
-  Position leftBoundary(0, 2);     // 'c' in "abc"
-  Position rightBoundary(0, 8);    // 'g' in "ghi"
+  // Old Position boundary at col 2 → protect cols [0, 3), so leftColOffset = 3
+  // Old Position boundary at col 8 → protect cols [8, 11), so rightColOffset = 11 - 8 = 3
+  int leftColOffset = 3;   // protect cols 0-2 ('c' in "abc" and before)
+  int rightColOffset = 3;  // protect cols 8-10 ('g' in "ghi" and beyond)
 
-  Range result = VimEndpointUtils::textObjectRange(cursor, lines, false, false,
-                                                   leftBoundary, rightBoundary);
+  Range result = VimCore::textObjectRange(cursor, lines, false, false,
+                                          leftColOffset, rightColOffset,
+                                          false, false);  // single line, no lines above/below
 
-  // daw should NOT reach the boundaries (selects "def " with trailing space)
+  // daw should NOT reach the boundaries (selects "def " at cols 4-7)
   EXPECT_NE(result.start, POSITION_OUTSIDE_BOUNDARY);
 }
 
@@ -335,25 +373,26 @@ TEST_F(TextObjectsTest, TextObjectRange_CrossesBoundary) {
   // Test where text object DOES cross a boundary
   Lines lines = {"abc"};
   Position cursor(0, 1);           // On 'b'
-  Position leftBoundary(0, 0);     // 'a' - adjacent to word
-  Position rightBoundary(0, 2);    // 'c' - adjacent to word
+  // Old Position boundary at col 0 → protect cols [0, 1), so leftColOffset = 1
+  // Old Position boundary at col 2 → protect cols [2, 3), so rightColOffset = 3 - 2 = 1
+  int leftColOffset = 1;   // protect col 0 ('a' - adjacent to word)
+  int rightColOffset = 1;  // protect col 2 ('c' - adjacent to word)
 
-  Range result = VimEndpointUtils::textObjectRange(cursor, lines, true, false,
-                                                   leftBoundary, rightBoundary);
+  Range result = VimCore::textObjectRange(cursor, lines, true, false,
+                                          leftColOffset, rightColOffset,
+                                          false, false);  // single line, no lines above/below
 
-  // diw on "abc" should reach both boundaries (selects entire word)
+  // diw on "abc" should reach both boundaries (selects entire word at cols 0-2)
   EXPECT_EQ(result.start, POSITION_OUTSIDE_BOUNDARY);
 }
 
 TEST_F(TextObjectsTest, TextObjectRange_NoBoundary) {
-  // When no boundaries are set, text object always succeeds
+  // When no boundaries are set (offset = 0), text object always succeeds
   Lines lines = {"hello world"};
   Position cursor(0, 0);
 
-  // Use POSITION_OUTSIDE_BOUNDARY to indicate no boundary check
-  Range result = VimEndpointUtils::textObjectRange(cursor, lines, true, false,
-                                                   POSITION_OUTSIDE_BOUNDARY,
-                                                   POSITION_OUTSIDE_BOUNDARY);
+  // Use 0 to indicate no boundary check, no lines above/below
+  Range result = VimCore::textObjectRange(cursor, lines, true, false, 0, 0, false, false);
 
   EXPECT_NE(result.start, POSITION_OUTSIDE_BOUNDARY);
   EXPECT_EQ(result.start.col, 0);

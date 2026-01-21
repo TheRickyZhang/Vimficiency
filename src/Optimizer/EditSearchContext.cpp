@@ -5,15 +5,6 @@
 
 using namespace std;
 
-// Helper to compute character count for heuristic
-static int countChars(const Lines& lines) {
-  int count = 0;
-  for (const auto& line : lines) {
-    count += static_cast<int>(line.size());
-  }
-  return count;
-}
-
 EditSearchContext::EditSearchContext(const Lines& startLines,
                                      const EditBoundary& boundary,
                                      const OptimizerParams& params,
@@ -21,15 +12,14 @@ EditSearchContext::EditSearchContext(const Lines& startLines,
     : editBoundary(boundary),
       params(params),
       config(config),
-      pre(boundary.prefix()),
-      suf(boundary.suffix()),
-      preSuf(pre + suf),
-      leftColOffset(static_cast<int>(pre.size())),
-      rightColOffset(static_cast<int>(suf.size())),
+      leftColOffset(static_cast<int>(boundary.prefix().size())),
+      rightColOffset(static_cast<int>(boundary.suffix().size())),
       effectiveLines(startLines),
       totalPositions(0) {
 
   // Build effectiveLines with prefix/suffix baked in
+  const auto& pre = editBoundary.prefix();
+  const auto& suf = editBoundary.suffix();
   if (!pre.empty()) effectiveLines.front().insert(0, pre);
   if (!suf.empty()) effectiveLines.back() += suf;
 
@@ -63,7 +53,7 @@ void EditSearchContext::exploreNewState(EditState&& state) {
 
 void EditSearchContext::initStartingPositions(const Lines& startLines) {
   int startIndex = 0;
-  double startCost = countChars(startLines);  // Simple heuristic
+  double startCost = heuristic(effectiveLines);
 
   for (int line = 0; line < static_cast<int>(startLines.size()); line++) {
     int lineCols = startLines[line].empty() ? 1 : static_cast<int>(startLines[line].size());
@@ -84,11 +74,12 @@ pair<int, int> EditSearchContext::computeContentBounds(
   if (cursor.line == lines.lastLine() && rightColOffset > 0) {
     contentEnd -= rightColOffset;
   }
-
+  assert(contentEnd >= 0);
+  assert(contentStart >= 0);
   return {contentStart, contentEnd};
 }
 
-double EditSearchContext::computeRemainingHeuristic(const Lines& lines) const {
+double EditSearchContext::heuristic(const Lines& lines) const {
   int total = 0;
   for (size_t i = 0; i < lines.size(); i++) {
     int lineLen = static_cast<int>(lines[i].size());
@@ -99,16 +90,19 @@ double EditSearchContext::computeRemainingHeuristic(const Lines& lines) const {
   return static_cast<double>(total);
 }
 
+// This is good, but I think we should be able to detect when it stops based on each condition, to let use know whether we have exhausted search (unlikely), reached result threshold, or reached search threshold
 bool EditSearchContext::shouldContinue() const {
   return !pq.empty() && resultsFound < totalPositions && iterations < params.maxSearchDepth;
 }
 
-optional<EditState> EditSearchContext::popNextState() {
+// This has potential to be inlined, but worth it for organization
+// Nullopt -> there is no next valid state
+optional<EditState> EditSearchContext::getNextValidState() {
   while (!pq.empty()) {
     EditState s = pq.top();
     pq.pop();
 
-    // Skip if we've found a better path
+    // Skip if this state is outdated (we've found a better path)
     EditStateKey key = s.getKey();
     auto it = costMap.find(key);
     if (it != costMap.end() && it->second < s.getCost() - 1e-9)
@@ -129,25 +123,17 @@ void EditSearchContext::exploreAllDeletions(const EditState& state,
 
   int lastEditLine = lines.lastLine();
 
-  // =========================================================================
-  // Case 1: No edit content or invalid state - check what's possible
-  // =========================================================================
+  // Case 1: No edit content
   if (editContentLen <= 0) {
-    // editContentLen < 0 means a line is shorter than its boundary offset.
-    // This indicates a bug in boundary protection - some deletion corrupted
-    // the prefix/suffix content. Fail early to catch such bugs.
-    assert(editContentLen >= 0 &&
-           "Boundary violation: line shorter than offset. Check that all "
-           "deletion endpoints AND cursor positions are boundary-checked.");
-
-    // editContentLen == 0: no edit content on this line
-    // On boundary line (has prefix/suffix): any motion enters boundary → skip
-    // On empty middle line: word deletes can cross to adjacent lines → allow
-    bool onBoundaryLine = (cursor.line == 0 && leftColOffset > 0) ||
-                          (cursor.line == lastEditLine && rightColOffset > 0);
-    if (onBoundaryLine) {
-      return;  // No edits possible from boundary-only line
+    assert(editContentLen >= 0 && "Boundary violation: line shorter than offset");
+    if ((cursor.line == 0 && leftColOffset > 0) || (cursor.line == lastEditLine && rightColOffset > 0)) {
+      return; 
     }
+    // Only explore a limited set of equivalent motions, no count
+    // dd (equivalent to dw, dW)
+    // de / dE
+    // db / dB
+    // dge (equivalent to dgE)
   }
 
   // =========================================================================
@@ -155,23 +141,15 @@ void EditSearchContext::exploreAllDeletions(const EditState& state,
   // (Valid for both empty middle lines and normal lines - can cross lines)
   // =========================================================================
   for (const auto& spec : Edit::FORWARD_WORD_EDITS) {
-    Position endpoint = VimEndpointUtils::motionWordEndpoint(
+    // Pass rightColOffset to protect suffix on last line,
+    // and hasLinesBelow to detect line crossing into lines below edit region
+    Position endpoint = VimCore::motionWordEndpoint(
         cursor, lines, true, spec.edgeType, spec.isBig,
-        spec.skipCurrent, POSITION_OUTSIDE_BOUNDARY);
+        spec.skipCurrent, rightColOffset, editBoundary.hasLinesBelow());
 
-    if (endpoint == POSITION_OUTSIDE_BOUNDARY)
+    if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor) {
       continue;
-
-    // Skip if motion didn't move - operation would be cancelled in Vim
-    if (endpoint == cursor)
-      continue;
-
-    if (inBoundaryRegion(endpoint, lines))
-      continue;
-
-    if (cursor.line == lastEditLine && endpoint.line > cursor.line &&
-        editBoundary.hasLinesBelow())
-      continue;
+    }
 
     Range range(cursor, endpoint);
     onDeletion(range, spec.cmd, spec.keys);
@@ -182,29 +160,20 @@ void EditSearchContext::exploreAllDeletions(const EditState& state,
   // (Valid for both empty middle lines and normal lines - can cross lines)
   // =========================================================================
   for (const auto& spec : Edit::BACKWARD_WORD_EDITS) {
-    Position endpoint = VimEndpointUtils::motionWordEndpoint(
-        cursor, lines, false, spec.edgeType, spec.isBig,
-        spec.skipCurrent, POSITION_OUTSIDE_BOUNDARY);
-
-    if (endpoint == POSITION_OUTSIDE_BOUNDARY)
-      continue;
-
-    // Skip if motion didn't move - operation would be cancelled in Vim
-    if (endpoint == cursor)
-      continue;
-
-    if (inBoundaryRegion(endpoint, lines))
-      continue;
-
     // For inclusive backward deletes (dge/dgE), the cursor is part of the
-    // deletion range. If cursor is in boundary, deletion would corrupt it.
+    // deletion range. Check cursor first before computing endpoint.
     // This can happen after previous deletions move the cursor onto what
     // becomes the last line with suffix content.
     if (!spec.isExclusiveAtCursor && inBoundaryRegion(cursor, lines))
       continue;
 
-    if (endpoint.line < cursor.line &&
-        editBoundary.hasLinesAbove() && editBoundary.hasLinesBelow())
+    // Pass leftColOffset to protect prefix on line 0,
+    // and hasLinesAbove to detect line crossing into lines above edit region
+    Position endpoint = VimCore::motionWordEndpoint(
+        cursor, lines, false, spec.edgeType, spec.isBig,
+        spec.skipCurrent, leftColOffset, editBoundary.hasLinesAbove());
+
+    if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor)
       continue;
 
     // db/dB are EXCLUSIVE at cursor: delete backward but NOT the cursor char.
@@ -246,14 +215,12 @@ void EditSearchContext::exploreAllDeletions(const EditState& state,
   // (Require word under cursor)
   // =========================================================================
   for (const auto& spec : Edit::TEXT_OBJECT_EDITS) {
-    Range range = VimEndpointUtils::textObjectRange(
+    Range range = VimCore::textObjectRange(
         cursor, lines, spec.isInner, spec.isBig,
-        POSITION_OUTSIDE_BOUNDARY, POSITION_OUTSIDE_BOUNDARY);
+        leftColOffset, rightColOffset,
+        editBoundary.hasLinesAbove(), editBoundary.hasLinesBelow());
 
-    if (range.start == POSITION_OUTSIDE_BOUNDARY)
-      continue;
-
-    if (inBoundaryRegion(range.start, lines) || inBoundaryRegion(range.end, lines))
+    if (range.start == POSITION_OUTSIDE_BOUNDARY || range.end == POSITION_OUTSIDE_BOUNDARY)
       continue;
 
     onDeletion(range, spec.cmd, spec.keys);

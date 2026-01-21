@@ -1,10 +1,11 @@
 #include "Edit.h"
+#include "VimCore/VimCore.h"
 #include "VimCore/VimEditUtils.h"
 #include "VimCore/VimEndpointUtils.h"
 #include "VimCore/VimMovementUtils.h"
 #include "VimCore/VimOptions.h"
 #include "VimCore/VimTextObjectsDeprecated.h"
-#include "VimCore/VimUtils.h"
+#include "VimCore/VimCore.h"
 #include "Utils/Debug.h"
 #include "Utils/Lines.h"
 
@@ -54,7 +55,7 @@ static void deleteToEndOfLine(Lines& lines, Position& pos) {
   int lastCol = static_cast<int>(lines[pos.line].size()) - 1;
   if (lastCol >= pos.col) {
     Range r(pos, Position(pos.line, lastCol));
-    VimEditUtils::deleteRange(lines, r, pos);
+    VimCore::deleteRange(lines, r, pos);
   }
 }
 
@@ -76,7 +77,7 @@ static bool isPastEndPosition(const Lines& lines, const Position& pos) {
 // de/dE/ce/cE: delete to end of word (inclusive motion)
 static void deleteToWordEnd(Lines& lines, Position& pos, int count, bool big, Mode mode) {
   Position endPos = pos;
-  for (int i = 0; i < count; i++) VimMovementUtils::motionE(endPos, lines, big);
+  for (int i = 0; i < count; i++) VimCore::motionE(endPos, lines, big);
 
   if (isPastEndPosition(lines, endPos)) {
     // e motion wanted to go past EOF - delete to last char inclusive
@@ -87,14 +88,14 @@ static void deleteToWordEnd(Lines& lines, Position& pos, int count, bool big, Mo
   // This handles the case where motion didn't move (single char at EOF)
   if (endPos.line > pos.line || endPos.col >= pos.col) {
     Range r(pos, endPos);
-    VimEditUtils::deleteRange(lines, r, pos, mode);
+    VimCore::deleteRange(lines, r, pos, mode);
   }
 }
 
 // dw/dW: delete to next word start (exclusive motion, special line-crossing rule)
 static void deleteToNextWord(Lines& lines, Position& pos, int count, bool big, Mode mode) {
   Position endPos = pos;
-  for (int i = 0; i < count; i++) VimMovementUtils::motionW(endPos, lines, big);
+  for (int i = 0; i < count; i++) VimCore::motionW(endPos, lines, big);
 
   if (shouldStopAtEndOfLine(count, pos, endPos, lines)) {
     // Special case: single dw on non-empty line crossing to next line
@@ -104,7 +105,7 @@ static void deleteToNextWord(Lines& lines, Position& pos, int count, bool big, M
     endPos.col = static_cast<int>(lines[endPos.line].size()) - 1;
     if (endPos.line > pos.line || endPos.col >= pos.col) {
       Range r(pos, endPos);
-      VimEditUtils::deleteRange(lines, r, pos, mode);
+      VimCore::deleteRange(lines, r, pos, mode);
     }
   } else if (endPos.line > pos.line || endPos.col > pos.col) {
     // Normal exclusive delete - compute inclusive end (position before endPos)
@@ -116,14 +117,14 @@ static void deleteToNextWord(Lines& lines, Position& pos, int count, bool big, M
       inclusiveEnd = Position(endPos.line - 1, static_cast<int>(lines[endPos.line - 1].size()) - 1);
     }
     Range r(pos, inclusiveEnd);
-    VimEditUtils::deleteRange(lines, r, pos, mode);
+    VimCore::deleteRange(lines, r, pos, mode);
   }
 }
 
 // db/dB: delete backward to word start (exclusive motion)
 static void deleteBackToWordStart(Lines& lines, Position& pos, int count, bool big, Mode mode) {
   Position startPos = pos;
-  for (int i = 0; i < count; i++) VimMovementUtils::motionB(startPos, lines, big);
+  for (int i = 0; i < count; i++) VimCore::motionB(startPos, lines, big);
 
   if (startPos < pos) {
     // b is exclusive motion: delete from where b lands to just BEFORE cursor
@@ -132,10 +133,10 @@ static void deleteBackToWordStart(Lines& lines, Position& pos, int count, bool b
       int prevLine = pos.line - 1;
       int lastCol = lines[prevLine].empty() ? 0 : static_cast<int>(lines[prevLine].size()) - 1;
       Range r(startPos, Position(prevLine, lastCol));
-      VimEditUtils::deleteRange(lines, r, pos, mode);
+      VimCore::deleteRange(lines, r, pos, mode);
     } else {
       Range r(startPos, Position(pos.line, pos.col - 1));
-      VimEditUtils::deleteRange(lines, r, pos, mode);
+      VimCore::deleteRange(lines, r, pos, mode);
     }
   }
 }
@@ -143,12 +144,12 @@ static void deleteBackToWordStart(Lines& lines, Position& pos, int count, bool b
 // dge/dgE: delete backward to previous word end (inclusive motion)
 static void deleteBackToWordEnd(Lines& lines, Position& pos, int count, bool big, Mode mode) {
   Position startPos = pos;
-  for (int i = 0; i < count; i++) VimMovementUtils::motionGe(startPos, lines, big);
+  for (int i = 0; i < count; i++) VimCore::motionGe(startPos, lines, big);
 
   if (startPos < pos) {
     // ge is an INCLUSIVE backward motion - include current position
     Range r(startPos, pos);
-    VimEditUtils::deleteRange(lines, r, pos, mode);
+    VimCore::deleteRange(lines, r, pos, mode);
   }
 }
 
@@ -158,12 +159,12 @@ static void deleteBackToWordEnd(Lines& lines, Position& pos, int count, bool big
 
 void deleteRange(Lines& lines, Position& pos, Mode mode, const Range& range) {
   assert(mode == Mode::Normal);
-  VimEditUtils::deleteRange(lines, range, pos);
+  VimCore::deleteRange(lines, range, pos);
 }
 
 void changeRange(Lines& lines, Position& pos, Mode& mode, const Range& range) {
   assert(mode == Mode::Normal);
-  VimEditUtils::deleteRange(lines, range, pos);
+  VimCore::deleteRange(lines, range, pos);
   mode = Mode::Insert;
 }
 
@@ -180,7 +181,7 @@ void yankRange(Lines& lines, Position& pos, Mode mode, const Range& range) {
 
 void insertText(Lines& lines, Position& pos, Mode mode, const string& text) {
   assert(mode == Mode::Insert);
-  VimEditUtils::insertText(lines, pos, text);
+  VimCore::insertText(lines, pos, text);
 }
 
 // -----------------------------------------------------------------------------
@@ -277,14 +278,14 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         if (pos.line + count >= n) {
           throw runtime_error("J requires " + to_string(count) + " lines below");
         }
-        for (int i = 0; i < count; i++) VimEditUtils::joinLines(lines, pos, true);
+        for (int i = 0; i < count; i++) VimCore::joinLines(lines, pos, true);
         return;
 
       case hash("gJ"):
         if (pos.line + count >= n) {
           throw runtime_error("gJ requires " + to_string(count) + " lines below");
         }
-        for (int i = 0; i < count; i++) VimEditUtils::joinLines(lines, pos, false);
+        for (int i = 0; i < count; i++) VimCore::joinLines(lines, pos, false);
         return;
 
       case hash("dd"):
@@ -299,10 +300,10 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         pos.line = min(pos.line, static_cast<int>(lines.size()) - 1);
         if (VimOptions::startOfLine()) {
           // Vim default: go to first non-blank, update targetCol
-          pos.setCol(VimUtils::firstNonBlankColInLineStr(lines[pos.line]));
+          pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
         } else {
           // Neovim default: preserve column (clamp to line length)
-          pos.col = VimMovementUtils::clampCol(lines, pos.targetCol, pos.line);
+          pos.col = VimCore::clampCol(lines, pos.targetCol, pos.line);
         }
         return;
 
@@ -313,12 +314,12 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         return;
 
       case hash("o"):
-        VimEditUtils::openLineBelow(lines, pos);
+        VimCore::openLineBelow(lines, pos);
         mode = Mode::Insert;
         return;
 
       case hash("O"):
-        VimEditUtils::openLineAbove(lines, pos);
+        VimCore::openLineAbove(lines, pos);
         mode = Mode::Insert;
         return;
 
@@ -335,7 +336,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         return;
 
       case hash("I"):
-        pos.col = VimUtils::firstNonBlankColInLineStr(lines[pos.line]);
+        pos.col = VimCore::firstNonBlankColInLineStr(lines[pos.line]);
         mode = Mode::Insert;
         return;
 
@@ -385,7 +386,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         }
         {
           Range r(Position(pos.line, 0), Position(pos.line, pos.col - 1));
-          VimEditUtils::deleteRange(lines, r, pos);
+          VimCore::deleteRange(lines, r, pos);
         }
         return;
 
@@ -394,12 +395,12 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           debug("d^: count", count, "ignored (^ motion doesn't use count)");
         }
         {
-          int firstNonBlank = VimUtils::firstNonBlankColInLineStr(lines[pos.line]);
+          int firstNonBlank = VimCore::firstNonBlankColInLineStr(lines[pos.line]);
           if (firstNonBlank >= pos.col) {
             throw runtime_error("d^ at or before first non-blank has no effect");
           }
           Range r(Position(pos.line, firstNonBlank), Position(pos.line, pos.col - 1));
-          VimEditUtils::deleteRange(lines, r, pos);
+          VimCore::deleteRange(lines, r, pos);
         }
         return;
 
@@ -417,13 +418,13 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           }
           bool big = (e == "cW");
           unsigned char c = static_cast<unsigned char>(line[pos.col]);
-          bool onWord = big ? VimUtils::isBigWordChar(c) : VimUtils::isSmallWordChar(c);
+          bool onWord = big ? VimCore::isBigWordChar(c) : VimCore::isSmallWordChar(c);
 
           if (onWord) {
             // On a word: find end of CURRENT word (don't use e motion which goes to next word)
             // Stay on same line, find last char of current word type
             auto isWordChar = [big](unsigned char ch) {
-              return big ? VimUtils::isBigWordChar(ch) : VimUtils::isSmallWordChar(ch);
+              return big ? VimCore::isBigWordChar(ch) : VimCore::isSmallWordChar(ch);
             };
             int endCol = pos.col;
             int lineLen = static_cast<int>(line.size());
@@ -433,11 +434,11 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
             // Delete from current position to end of current word (inclusive)
             // Use Insert mode for positioning since we're about to enter Insert mode
             Range r(pos, Position(pos.line, endCol));
-            VimEditUtils::deleteRange(lines, r, pos, Mode::Insert);
+            VimCore::deleteRange(lines, r, pos, Mode::Insert);
           } else {
             // On whitespace: use w/W motion (change to start of next word)
             Position endPos = pos;
-            for (int i = 0; i < count; i++) VimMovementUtils::motionW(endPos, lines, big);
+            for (int i = 0; i < count; i++) VimCore::motionW(endPos, lines, big);
             if (shouldStopAtEndOfLine(count, pos, endPos, lines)) {
               deleteToEndOfLine(lines, pos);
             } else if (isPastEndPosition(lines, endPos)) {
@@ -445,7 +446,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
               endPos.col = static_cast<int>(lines[endPos.line].size()) - 1;
               if (endPos.line > pos.line || endPos.col >= pos.col) {
                 Range r(pos, endPos);
-                VimEditUtils::deleteRange(lines, r, pos);
+                VimCore::deleteRange(lines, r, pos);
               }
             } else if (endPos.line > pos.line || endPos.col > pos.col) {
               // Normal case: exclusive delete - compute inclusive end (position before endPos)
@@ -457,7 +458,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
                 inclusiveEnd = Position(endPos.line - 1, static_cast<int>(lines[endPos.line - 1].size()) - 1);
               }
               Range r(pos, inclusiveEnd);
-              VimEditUtils::deleteRange(lines, r, pos);
+              VimCore::deleteRange(lines, r, pos);
             }
           }
           mode = Mode::Insert;
@@ -478,7 +479,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         {
           bool big = (e == "cB");
           Position startPos = pos;
-          for (int i = 0; i < count; i++) VimMovementUtils::motionB(startPos, lines, big);
+          for (int i = 0; i < count; i++) VimCore::motionB(startPos, lines, big);
           if (startPos < pos) {
             // For cb/cB, don't delete across newline boundaries (same as cw/cW)
             // If motion crossed to previous line and we're at col 0, only delete
@@ -493,7 +494,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
             }
             if (startPos <= endPos) {
               Range r(startPos, endPos);
-              VimEditUtils::deleteRange(lines, r, pos);
+              VimCore::deleteRange(lines, r, pos);
             }
           }
           mode = Mode::Insert;
@@ -518,7 +519,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         }
         {
           Range r(Position(pos.line, 0), Position(pos.line, pos.col - 1));
-          VimEditUtils::deleteRange(lines, r, pos);
+          VimCore::deleteRange(lines, r, pos);
         }
         mode = Mode::Insert;
         return;
@@ -528,12 +529,12 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           debug("c^: count", count, "ignored (^ motion doesn't use count)");
         }
         {
-          int firstNonBlank = VimUtils::firstNonBlankColInLineStr(lines[pos.line]);
+          int firstNonBlank = VimCore::firstNonBlankColInLineStr(lines[pos.line]);
           if (firstNonBlank >= pos.col) {
             throw runtime_error("c^ at or before first non-blank has no effect");
           }
           Range r(Position(pos.line, firstNonBlank), Position(pos.line, pos.col - 1));
-          VimEditUtils::deleteRange(lines, r, pos);
+          VimCore::deleteRange(lines, r, pos);
         }
         mode = Mode::Insert;
         return;
@@ -547,7 +548,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           int endLine = pos.line + count - 1;
           int endCol = lines[endLine].empty() ? 0 : static_cast<int>(lines[endLine].size()) - 1;
           Range r(pos, Position(endLine, endCol));
-          VimEditUtils::deleteRange(lines, r, pos);
+          VimCore::deleteRange(lines, r, pos);
           mode = Mode::Insert;
         }
         return;
@@ -561,7 +562,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           int endLine = pos.line + count - 1;
           int endCol = lines[endLine].empty() ? 0 : static_cast<int>(lines[endLine].size()) - 1;
           Range r(pos, Position(endLine, endCol));
-          VimEditUtils::deleteRange(lines, r, pos);
+          VimCore::deleteRange(lines, r, pos);
         }
         return;
 
@@ -571,7 +572,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           throw runtime_error("j requires " + to_string(count) + " lines below");
         }
         pos.line += count;
-        pos.col = VimMovementUtils::clampCol(lines, pos.targetCol, pos.line);
+        pos.col = VimCore::clampCol(lines, pos.targetCol, pos.line);
         return;
 
       case hash("k"):
@@ -579,7 +580,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           throw runtime_error("k requires " + to_string(count) + " lines above");
         }
         pos.line -= count;
-        pos.col = VimMovementUtils::clampCol(lines, pos.targetCol, pos.line);
+        pos.col = VimCore::clampCol(lines, pos.targetCol, pos.line);
         return;
 
       case hash("h"):
@@ -597,35 +598,35 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         return;
 
       case hash("w"):
-        for (int i = 0; i < count; i++) VimMovementUtils::motionW(pos, lines, false);
+        for (int i = 0; i < count; i++) VimCore::motionW(pos, lines, false);
         return;
 
       case hash("W"):
-        for (int i = 0; i < count; i++) VimMovementUtils::motionW(pos, lines, true);
+        for (int i = 0; i < count; i++) VimCore::motionW(pos, lines, true);
         return;
 
       case hash("b"):
-        for (int i = 0; i < count; i++) VimMovementUtils::motionB(pos, lines, false);
+        for (int i = 0; i < count; i++) VimCore::motionB(pos, lines, false);
         return;
 
       case hash("B"):
-        for (int i = 0; i < count; i++) VimMovementUtils::motionB(pos, lines, true);
+        for (int i = 0; i < count; i++) VimCore::motionB(pos, lines, true);
         return;
 
       case hash("e"):
-        for (int i = 0; i < count; i++) VimMovementUtils::motionE(pos, lines, false);
+        for (int i = 0; i < count; i++) VimCore::motionE(pos, lines, false);
         return;
 
       case hash("E"):
-        for (int i = 0; i < count; i++) VimMovementUtils::motionE(pos, lines, true);
+        for (int i = 0; i < count; i++) VimCore::motionE(pos, lines, true);
         return;
 
       case hash("ge"):
-        for (int i = 0; i < count; i++) VimMovementUtils::motionGe(pos, lines, false);
+        for (int i = 0; i < count; i++) VimCore::motionGe(pos, lines, false);
         return;
 
       case hash("gE"):
-        for (int i = 0; i < count; i++) VimMovementUtils::motionGe(pos, lines, true);
+        for (int i = 0; i < count; i++) VimCore::motionGe(pos, lines, true);
         return;
 
       case hash("0"):
@@ -633,7 +634,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         return;
 
       case hash("^"):
-        pos.setCol(VimUtils::firstNonBlankColInLineStr(line));
+        pos.setCol(VimCore::firstNonBlankColInLineStr(line));
         return;
 
       case hash("$"):
@@ -651,11 +652,11 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
 
       Range r(pos, pos);  // Default: empty range
 
-      // Word objects - use VimEndpointUtils
+      // Word objects - use VimCore
       if (obj == 'w' || obj == 'W') {
         Lines linesWrapper(lines.begin(), lines.end());
         bool bigWord = (obj == 'W');
-        r = VimEndpointUtils::textObjectRange(pos, linesWrapper, inner, bigWord);
+        r = VimCore::textObject(pos, linesWrapper, inner, bigWord);
       }
       // Quote objects
       else if (obj == '"' || obj == '\'' || obj == '`') {
@@ -682,9 +683,9 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
       // Apply operator to range (all ranges are now inclusive)
       if (r.isValid()) {
         if (op == 'd') {
-          VimEditUtils::deleteRange(lines, r, pos);
+          VimCore::deleteRange(lines, r, pos);
         } else {  // op == 'c'
-          VimEditUtils::deleteRange(lines, r, pos, Mode::Insert);
+          VimCore::deleteRange(lines, r, pos, Mode::Insert);
           mode = Mode::Insert;
         }
       } else if (op == 'c') {
@@ -710,13 +711,13 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           // Join with previous line
           int prevLen = static_cast<int>(lines[pos.line - 1].size());
           Position joinPos(pos.line - 1, 0);
-          VimEditUtils::joinLines(lines, joinPos, false);
+          VimCore::joinLines(lines, joinPos, false);
           pos = Position(pos.line - 1, prevLen);
         } else {
           // Delete char before cursor
           Position beforePos(pos.line, pos.col - 1);
           Range r(beforePos, beforePos);
-          VimEditUtils::deleteRange(lines, r, pos, Mode::Insert);
+          VimCore::deleteRange(lines, r, pos, Mode::Insert);
         }
         return;
 
@@ -728,17 +729,17 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           }
           if (pos.col >= len) {
             // At end of line - join with next line
-            VimEditUtils::joinLines(lines, pos, false);
+            VimCore::joinLines(lines, pos, false);
           } else {
             // Delete char at cursor
             Range r(pos, pos);
-            VimEditUtils::deleteRange(lines, r, pos, Mode::Insert);
+            VimCore::deleteRange(lines, r, pos, Mode::Insert);
           }
         }
         return;
 
       case hash("<CR>"):
-        VimEditUtils::insertText(lines, pos, "\n");
+        VimCore::insertText(lines, pos, "\n");
         return;
 
       case hash("<C-u>"):
@@ -747,7 +748,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
         }
         {
           Range r(Position(pos.line, 0), Position(pos.line, pos.col - 1));
-          VimEditUtils::deleteRange(lines, r, pos, Mode::Insert);
+          VimCore::deleteRange(lines, r, pos, Mode::Insert);
         }
         return;
 
@@ -759,17 +760,17 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
           int col = pos.col - 1;
           const string& ln = lines[pos.line];
           // Skip whitespace backwards
-          while (col > 0 && VimUtils::isBlank(ln[col])) col--;
+          while (col > 0 && VimCore::isBlank(ln[col])) col--;
           // Delete word chars backwards
-          if (VimUtils::isSmallWordChar(ln[col])) {
-            while (col > 0 && VimUtils::isSmallWordChar(ln[col - 1])) col--;
-          } else if (!VimUtils::isBlank(ln[col])) {
+          if (VimCore::isSmallWordChar(ln[col])) {
+            while (col > 0 && VimCore::isSmallWordChar(ln[col - 1])) col--;
+          } else if (!VimCore::isBlank(ln[col])) {
             // Non-word, non-blank: delete punctuation sequence
-            while (col > 0 && !VimUtils::isSmallWordChar(ln[col - 1]) &&
-                   !VimUtils::isBlank(ln[col - 1])) col--;
+            while (col > 0 && !VimCore::isSmallWordChar(ln[col - 1]) &&
+                   !VimCore::isBlank(ln[col - 1])) col--;
           }
           Range r(Position(pos.line, col), Position(pos.line, pos.col - 1));
-          VimEditUtils::deleteRange(lines, r, pos, Mode::Insert);
+          VimCore::deleteRange(lines, r, pos, Mode::Insert);
         }
         return;
 

@@ -1,7 +1,7 @@
-# VimUtils Design Principles
+# VimCore Design Principles
 
 ## 1. Validate State Strictly
-When calling our underlying VimUtils, we should be using assertions to error on any redundant actions. This is because early pruning is always preferred, so it should be assumed when searching that we will never explore options that are easily checkable (for instance don't search j if we are on the last line). This extends to count validation of deterministic outcomes.
+When calling our underlying VimCore, we should be using assertions to error on any redundant actions. This is because early pruning is always preferred, so it should be assumed when searching that we will never explore options that are easily checkable (for instance don't search j if we are on the last line). This extends to count validation of deterministic outcomes.
 
 For instance, "j" should never be explored if on the last line, and neither should 3dd on the second to last line.
 

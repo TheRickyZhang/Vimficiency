@@ -1,23 +1,15 @@
-#include "VimUtils.h"
+#include "VimCore.h"
 
 #include <algorithm>
 #include <cassert>
-#include <cctype>
 
 using namespace std;
 
-// -----------------------------------------------------------------------------
-// Classification helpers (mirror Vim semantics)
-// -----------------------------------------------------------------------------
+namespace VimCore {
 
-// Small "word": sequence of [A-Za-z0-9_] (approximating 'iskeyword')
-// Big "WORD": sequence of any non-blank (non-space, non-tab, non-newline)
-// chars.
-//
-// Newline ('\n') is treated as blank for motions.
-// -----------------------------------------------------------------------------
-
-namespace VimUtils {
+// =============================================================================
+// 1. Character Classification
+// =============================================================================
 
 bool isWhitespace(unsigned char c) {
   return c == ' ' || c == '\t';
@@ -35,7 +27,19 @@ bool isBigWordChar(unsigned char c) {
   return c != 0 && !isBlank(c) && c != '\n';
 }
 
-bool isBlankLineStr(const std::string &s) {
+bool isSentenceEnd(unsigned char c) {
+  return c == '.' || c == '!' || c == '?';
+}
+
+bool isSentenceCloser(unsigned char c) {
+  return c == ')' || c == ']' || c == '"' || c == '\'';
+}
+
+// =============================================================================
+// 2. String/Line Helpers
+// =============================================================================
+
+bool isBlankLineStr(const std::string& s) {
   for (unsigned char c : s) {
     if (c != ' ' && c != '\t')
       return false;
@@ -43,11 +47,7 @@ bool isBlankLineStr(const std::string &s) {
   return true; // empty or whitespace-only
 }
 
-bool isSentenceEnd(unsigned char c) {
-  return c == '.' || c == '!' || c == '?';
-}
-
-int firstNonBlankColInLineStr(const std::string &s) {
+int firstNonBlankColInLineStr(const std::string& s) {
   for (int i = 0; i < (int)s.size(); ++i) {
     unsigned char c = (unsigned char)s[i];
     if (c != ' ' && c != '\t')
@@ -56,16 +56,19 @@ int firstNonBlankColInLineStr(const std::string &s) {
   return 0;
 }
 
+// =============================================================================
+// 3. Position Stepping (old int-based API)
+// =============================================================================
+
 // Char at (line,col):
 // - Returns 0 only if line is out of range.
 // - Returns '\n' if col is outside the actual line (used as "newline/blank"
 //   sentinel for word motions).
-unsigned char getChar(const std::vector<std::string> &lines, int line,
-                      int col) {
+unsigned char getChar(const std::vector<std::string>& lines, int line, int col) {
   int n = static_cast<int>(lines.size());
   if (line < 0 || line >= n)
     return 0;
-  const auto &ln = lines[line];
+  const auto& ln = lines[line];
   if (col < 0 || col >= static_cast<int>(ln.size()))
     return '\n';
   return static_cast<unsigned char>(ln[col]);
@@ -73,11 +76,11 @@ unsigned char getChar(const std::vector<std::string> &lines, int line,
 
 // Step forward one character in the logical buffer (across lines).
 // Returns false if already at (or past) the last character.
-bool stepFwd(const std::vector<std::string> &lines, int &line, int &col) {
+bool stepFwd(const std::vector<std::string>& lines, int& line, int& col) {
   int n = static_cast<int>(lines.size());
   if (line < 0 || line >= n)
     return false;
-  const auto &ln = lines[line];
+  const auto& ln = lines[line];
   int len = static_cast<int>(ln.size());
   if (col + 1 < len) {
     ++col;
@@ -93,7 +96,7 @@ bool stepFwd(const std::vector<std::string> &lines, int &line, int &col) {
 
 // Step backward one character in the logical buffer (across lines).
 // Returns false if already at (or before) the first character.
-bool stepBack(const std::vector<std::string> &lines, int &line, int &col) {
+bool stepBack(const std::vector<std::string>& lines, int& line, int& col) {
   int n = static_cast<int>(lines.size());
   if (line < 0 || line >= n)
     return false;
@@ -111,12 +114,124 @@ bool stepBack(const std::vector<std::string> &lines, int &line, int &col) {
   return false;
 }
 
-// Paragraph helpers
+// =============================================================================
+// 4. Word Motion Core
+// =============================================================================
+
+// Returns:
+//   - Valid position: the endpoint of the motion
+//   - POSITION_OUTSIDE_BOUNDARY: motion hit buffer edge (for boundary detection)
+Position motionWordCore(Position pos,
+                        const Lines& lines,
+                        bool forward,
+                        EdgeType edge,
+                        bool big,
+                        bool skipCurrent) {
+  // Handle skipCurrent (for e/E/b/B/ge/gE which need to move off current position first)
+  if (skipCurrent) {
+    int prevLine = pos.line;
+    unsigned char prevChar = lines.get(pos);
+    Position newPos = step(lines, pos, forward);
+
+    if (newPos == pos) {
+      return POSITION_OUTSIDE_BOUNDARY;
+    }
+    pos = newPos;
+    unsigned char currChar = lines.get(pos);
+
+    // Empty line is a word - if we landed on one, handle it
+    if (currChar == '\n') {
+      if (!forward && edge == EdgeType::WordEdge) {
+        return pos;  // backward + WordEdge (b/B): empty line IS the word start
+      }
+      if (forward && edge == EdgeType::NextEdge) {
+        return pos;  // forward + NextEdge (w/W): empty line IS the next word
+      }
+    }
+
+    // For backward + NextEdge (ge/gE), check if we crossed a word boundary
+    if (!forward && edge == EdgeType::NextEdge) {
+      bool crossedLine = (pos.line != prevLine);
+      bool crossedBoundary = crossedLine ||
+                             isBlank(currChar) ||
+                             isBlank(prevChar) ||
+                             (!big && isSmallWordChar(currChar) != isSmallWordChar(prevChar));
+      if (crossedBoundary && !isBlank(currChar)) {
+        return pos;
+      }
+    }
+  }
+
+  unsigned char c = lines.get(pos);
+
+  // Phase 1: If starting on blank, skip to first non-blank
+  if (isBlank(c)) {
+    do {
+      Position prev = pos;
+      pos = step(lines, pos, forward);
+      if (pos == prev) return POSITION_OUTSIDE_BOUNDARY;
+      c = lines.get(pos);
+    } while (isBlank(c));
+
+    if (edge == EdgeType::NextEdge) return pos;
+    if (edge == EdgeType::GapEdge) return stepBack(lines, pos, forward);
+  }
+
+  // Phase 2: Skip same-type chars (current word)
+  bool startIsWordChar = isSmallWordChar(c);
+  bool crossedLine = false;
+  do {
+    Position prev = pos;
+    pos = step(lines, pos, forward);
+    if (pos == prev) {
+      // Hit buffer edge - for WordEdge, return prev (last char of word)
+      if (edge == EdgeType::WordEdge) return prev;
+      return POSITION_OUTSIDE_BOUNDARY;
+    }
+    c = lines.get(pos);
+    if (pos.line != prev.line) {
+      crossedLine = true;
+      break;
+    }
+  } while (!isBlank(c) && (big || isSmallWordChar(c) == startIsWordChar));
+
+  if (edge == EdgeType::WordEdge) return stepBack(lines, pos, forward);
+
+  // Empty line is a word
+  if (crossedLine && c == '\n') {
+    if (edge == EdgeType::NextEdge) return pos;
+    if (edge == EdgeType::GapEdge) return stepBack(lines, pos, forward);
+  }
+
+  // Phase 3: If at non-blank different type (word only, not WORD)
+  if (!isBlank(c)) {
+    if (edge == EdgeType::NextEdge) return pos;
+    if (edge == EdgeType::GapEdge) return stepBack(lines, pos, forward);
+  }
+
+  // Phase 4: Skip whitespace to reach next word (but stop at empty lines)
+  while (isWhitespace(c)) {
+    Position prev = pos;
+    pos = step(lines, pos, forward);
+    if (pos == prev) return POSITION_OUTSIDE_BOUNDARY;
+    c = lines.get(pos);
+    if (c == '\n') {
+      if (edge == EdgeType::NextEdge) return pos;
+      if (edge == EdgeType::GapEdge) return stepBack(lines, pos, forward);
+    }
+  }
+
+  if (edge == EdgeType::GapEdge) return stepBack(lines, pos, forward);
+  return pos;
+}
+
+// =============================================================================
+// 5. Paragraph Helpers
+// =============================================================================
 
 // Returns the first line index of the paragraph containing lineIdx.
-// If lineIdx is on blank lines, the "paragraph" is the contiguous blank-line
-// run.
-int paragraphStartLine(const std::vector<std::string> &lines, int lineIdx) {
+// If lineIdx is on blank lines, the "paragraph" is the contiguous blank-line run.
+int paragraphStartLine(const std::vector<std::string>& lines, int lineIdx) {
   int n = (int)lines.size();
   if (n == 0)
     return 0;
@@ -130,9 +245,8 @@ int paragraphStartLine(const std::vector<std::string> &lines, int lineIdx) {
 }
 
 // Returns the last line index of the paragraph containing lineIdx.
-// If lineIdx is on blank lines, the "paragraph" is the contiguous blank-line
-// run.
-int paragraphEndLine(const std::vector<std::string> &lines, int lineIdx) {
+// If lineIdx is on blank lines, the "paragraph" is the contiguous blank-line run.
+int paragraphEndLine(const std::vector<std::string>& lines, int lineIdx) {
   int n = (int)lines.size();
   if (n == 0)
     return 0;
@@ -145,16 +259,12 @@ int paragraphEndLine(const std::vector<std::string> &lines, int lineIdx) {
   return i;
 }
 
-// Sentence helpers
+// =============================================================================
+// 6. Sentence Helpers
+// =============================================================================
 
-bool isSentenceCloser(unsigned char c) {
-  return c == ')' || c == ']' || c == '"' || c == '\'';
-}
-
-// Sentence end at (line,col): . ! ?  then optional closers  then (EOL or
-// space/tab)
-bool isSentenceEndAt(const std::vector<std::string> &lines, int line,
-                     int col) {
+// Sentence end at (line,col): . ! ?  then optional closers  then (EOL or space/tab)
+bool isSentenceEndAt(const std::vector<std::string>& lines, int line, int col) {
   unsigned char c = getChar(lines, line, col);
   if (c == 0)
     return false;
@@ -193,7 +303,7 @@ bool isSentenceEndAt(const std::vector<std::string> &lines, int line,
 // IS the sentence boundary - return its position (line, 0).
 
 std::pair<int, int>
-skipToSentenceStart(const std::vector<std::string> &lines, int line, int col) {
+skipToSentenceStart(const std::vector<std::string>& lines, int line, int col) {
   int n = (int)lines.size();
   if (n == 0) return {0, 0};
 
@@ -251,7 +361,7 @@ skipToSentenceStart(const std::vector<std::string> &lines, int line, int col) {
 // from a blank line we find the last sentence of the previous paragraph.
 
 std::pair<int, int>
-findCurrentSentenceStart(const std::vector<std::string> &lines, int line, int col) {
+findCurrentSentenceStart(const std::vector<std::string>& lines, int line, int col) {
   int n = (int)lines.size();
   if (n == 0) return {0, 0};
 
@@ -423,5 +533,4 @@ findCurrentSentenceStart(const std::vector<std::string> &lines, int line, int co
   }
 }
 
-} // namespace VimUtils
-
+} // namespace VimCore

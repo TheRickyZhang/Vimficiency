@@ -68,9 +68,9 @@ struct RandomMotionTest {
 RandomMotionTest generateRandomMotionBuffer(mt19937& rng, int numLines) {
   RandomMotionTest test;
 
-  // Character pools for different types
-  const string keywords = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";
-  const string symbols = "!@#$%^&*()-=+[]{}|;:',.<>?/";
+  // Minimal char pools - word boundaries depend on character CLASS, not specific chars
+  const string keywords = "abcd";
+  const string symbols = ".,";
   const string whitespace = "    ";  // Just spaces for simplicity
 
   uniform_int_distribution<int> lineLen(5, 40);

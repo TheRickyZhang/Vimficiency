@@ -1,7 +1,7 @@
 // tests/Operator/Words.cpp
 //
 // Tests for operator + word motion boundary crossing logic.
-// Uses VimEndpointUtils for Position-based boundary prediction.
+// Uses VimCore for Position-based boundary prediction.
 
 #include <gtest/gtest.h>
 
@@ -79,15 +79,16 @@ TEST_F(WordsTest, RandomBufferStress_MultiLine) {
 TEST_F(WordsTest, ManualExample_WordMotionForward) {
   // "abc def.gh i", edit region cols 1-8 ("bc def.g")
   Lines lines = {"abc def.gh i"};
-  int editStart = 1;
   int editEnd = 8;
 
   Position cursor(0, 4);  // On 'd' in "def"
-  Position rightBoundary(0, editEnd + 1);  // 'h'
+  // rightBoundary was at col 9 ('h'), so offset = lineLen - 9 = 12 - 9 = 3
+  int boundaryOffset = static_cast<int>(lines[0].size()) - (editEnd + 1);
 
   // de from 'd' - should it cross to 'h'?
-  Position result = VimEndpointUtils::motionWordEndpoint(
-      cursor, lines, true, EdgeType::WordEdge, false, false, rightBoundary);
+  // Single line, no lines outside
+  Position result = VimCore::motionWordEndpoint(
+      cursor, lines, true, EdgeType::WordEdge, false, false, boundaryOffset, false);
 
   // 'de' from 'd' goes to end of "def" (col 6), doesn't reach 'h' at col 9
   EXPECT_NE(result, POSITION_OUTSIDE_BOUNDARY);
@@ -97,12 +98,14 @@ TEST_F(WordsTest, ManualExample_WordMotionCrossing) {
   // When content char continues into boundary char of same type
   Lines lines = {"abcdefgh"};
 
-  Position cursor(0, 2);         // On 'c'
-  Position rightBoundary(0, 5);  // 'f' - same word continues
+  Position cursor(0, 2);  // On 'c'
+  // rightBoundary was at col 5 ('f'), so offset = lineLen - 5 = 8 - 5 = 3
+  int boundaryOffset = static_cast<int>(lines[0].size()) - 5;
 
   // de from 'c' - should go to end of word (col 7), crossing 'f' at col 5
-  Position result = VimEndpointUtils::motionWordEndpoint(
-      cursor, lines, true, EdgeType::WordEdge, false, false, rightBoundary);
+  // Single line, no lines outside
+  Position result = VimCore::motionWordEndpoint(
+      cursor, lines, true, EdgeType::WordEdge, false, false, boundaryOffset, false);
 
   EXPECT_EQ(result, POSITION_OUTSIDE_BOUNDARY);
 }
@@ -111,12 +114,14 @@ TEST_F(WordsTest, ManualExample_GapEdgeMotion) {
   // dw uses GapEdge - goes to start of next word
   Lines lines = {"abc   def"};
 
-  Position cursor(0, 0);         // On 'a'
-  Position rightBoundary(0, 6);  // 'd' - start of next word
+  Position cursor(0, 0);  // On 'a'
+  // rightBoundary was at col 6 ('d'), so offset = lineLen - 6 = 9 - 6 = 3
+  int boundaryOffset = static_cast<int>(lines[0].size()) - 6;
 
   // dw from 'a' - should delete "abc   " and stop before 'd'
-  Position result = VimEndpointUtils::motionWordEndpoint(
-      cursor, lines, true, EdgeType::GapEdge, false, false, rightBoundary);
+  // Single line, no lines outside
+  Position result = VimCore::motionWordEndpoint(
+      cursor, lines, true, EdgeType::GapEdge, false, false, boundaryOffset, false);
 
   // GapEdge stops at last whitespace before next word, which is col 5
   // Since 5 < 6, this should NOT cross the boundary
@@ -127,12 +132,14 @@ TEST_F(WordsTest, ManualExample_BackwardMotion) {
   // db uses WordEdge backward
   Lines lines = {"abc def"};
 
-  Position cursor(0, 4);        // On 'd' in "def"
-  Position leftBoundary(0, 2);  // 'c' in "abc"
+  Position cursor(0, 4);  // On 'd' in "def"
+  // leftBoundary was at col 2 ('c'), so offset = 2 + 1 = 3 (protect cols 0,1,2)
+  int boundaryOffset = 3;
 
   // db from 'd' - goes to start of "def" (col 4), doesn't reach 'c' at col 2
-  Position result = VimEndpointUtils::motionWordEndpoint(
-      cursor, lines, false, EdgeType::WordEdge, false, false, leftBoundary);
+  // Single line, no lines outside
+  Position result = VimCore::motionWordEndpoint(
+      cursor, lines, false, EdgeType::WordEdge, false, false, boundaryOffset, false);
 
   EXPECT_NE(result, POSITION_OUTSIDE_BOUNDARY);
 }
@@ -142,13 +149,13 @@ TEST_F(WordsTest, ManualExample_BackwardMotion) {
 // =============================================================================
 
 TEST_F(WordsTest, EdgeCase_NoBoundary) {
-  // When no boundary is set (invalid position), motion always succeeds
+  // When no boundary is set (offset <= 0), motion always succeeds
   Lines lines = {"hello world"};
   Position cursor(0, 0);
 
-  // Use POSITION_OUTSIDE_BOUNDARY to indicate no boundary check
-  Position result = VimEndpointUtils::motionWordEndpoint(
-      cursor, lines, true, EdgeType::WordEdge, false, false, POSITION_OUTSIDE_BOUNDARY);
+  // Use 0 to indicate no boundary check, no lines outside
+  Position result = VimCore::motionWordEndpoint(
+      cursor, lines, true, EdgeType::WordEdge, false, false, 0, false);
 
   EXPECT_NE(result, POSITION_OUTSIDE_BOUNDARY);
   EXPECT_EQ(result.col, 4);  // End of "hello"
@@ -157,11 +164,13 @@ TEST_F(WordsTest, EdgeCase_NoBoundary) {
 TEST_F(WordsTest, EdgeCase_BoundaryAtEndOfLine) {
   Lines lines = {"hello"};
   Position cursor(0, 0);
-  Position rightBoundary(0, 4);  // 'o' at end
+  // rightBoundary was at col 4 ('o'), so offset = lineLen - 4 = 5 - 4 = 1
+  int boundaryOffset = static_cast<int>(lines[0].size()) - 4;
 
   // de from 'h' goes to col 4 ('o'), which equals boundary
-  Position result = VimEndpointUtils::motionWordEndpoint(
-      cursor, lines, true, EdgeType::WordEdge, false, false, rightBoundary);
+  // Single line, no lines outside
+  Position result = VimCore::motionWordEndpoint(
+      cursor, lines, true, EdgeType::WordEdge, false, false, boundaryOffset, false);
 
   // Result at or past boundary = OUTSIDE_BOUNDARY
   EXPECT_EQ(result, POSITION_OUTSIDE_BOUNDARY);
@@ -171,12 +180,14 @@ TEST_F(WordsTest, EdgeCase_WORD_IncludesSymbols) {
   // WORD motions treat symbols as part of word
   Lines lines = {"abc...def ghi"};
 
-  Position cursor(0, 0);         // On 'a'
-  Position rightBoundary(0, 9);  // 'g' in "ghi"
+  Position cursor(0, 0);  // On 'a'
+  // rightBoundary was at col 9 ('g'), so offset = lineLen - 9 = 13 - 9 = 4
+  int boundaryOffset = static_cast<int>(lines[0].size()) - 9;
 
   // dE from 'a' - goes to end of "abc...def" (col 8)
-  Position result = VimEndpointUtils::motionWordEndpoint(
-      cursor, lines, true, EdgeType::WordEdge, true, false, rightBoundary);
+  // Single line, no lines outside
+  Position result = VimCore::motionWordEndpoint(
+      cursor, lines, true, EdgeType::WordEdge, true, false, boundaryOffset, false);
 
   // Col 8 < col 9, so should NOT cross
   EXPECT_NE(result, POSITION_OUTSIDE_BOUNDARY);
@@ -186,11 +197,13 @@ TEST_F(WordsTest, EdgeCase_EmptyLine) {
   Lines lines = {"abc", "", "def"};
 
   Position cursor(0, 0);
-  Position rightBoundary(2, 0);  // 'd' on line 2
+  // rightBoundary was at (2, 0), so offset on last line = lineLen - 0 = 3 - 0 = 3
+  int boundaryOffset = static_cast<int>(lines[2].size()) - 0;
 
   // de from 'a' goes to end of "abc" (col 2), doesn't reach line 2
-  Position result = VimEndpointUtils::motionWordEndpoint(
-      cursor, lines, true, EdgeType::WordEdge, false, false, rightBoundary);
+  // Multi-line, no lines outside (boundary is at line 2 which is last line)
+  Position result = VimCore::motionWordEndpoint(
+      cursor, lines, true, EdgeType::WordEdge, false, false, boundaryOffset, false);
 
   EXPECT_NE(result, POSITION_OUTSIDE_BOUNDARY);
 }

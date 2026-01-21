@@ -91,12 +91,12 @@ public:
 
   // Apply a deletion to the buffer (does NOT update seq - use appendToSeq separately)
   void applyDeletion(const Range& range) {
-    VimEditUtils::deleteRange(lines, range, pos, Mode::Normal);
+    VimCore::deleteRange(lines, range, pos, Mode::Normal);
   }
 
   // Apply a linewise deletion (for dd - deletes entire lines including newlines)
   void applyLinewiseDeletion(int line) {
-    VimEditUtils::deleteRangeLinewise(lines, LineRange(line, line), pos);
+    VimCore::deleteRangeLinewise(lines, LineRange(line, line), pos);
   }
 
   // Apply a linewise change (for cc - clears line content, cursor stays at col 0)

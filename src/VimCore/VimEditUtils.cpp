@@ -1,17 +1,16 @@
 #include "VimEditUtils.h"
 #include "VimOptions.h"
-#include "VimUtils.h"
 
 #include <algorithm>
 #include <cassert>
 
 using namespace std;
 
-namespace VimEditUtils {
+namespace VimCore {
 
-// -----------------------------------------------------------------------------
-// Multi-line operations
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Multi-Line Buffer Operations
+// =============================================================================
 
 void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
   Range r = range;
@@ -185,15 +184,4 @@ void openLineAbove(Lines& lines, Position& pos) {
   // pos.line stays the same (now points to the new empty line)
 }
 
-// -----------------------------------------------------------------------------
-// Single-line operations
-// -----------------------------------------------------------------------------
-
-void eraseToEnd(string& line, int& col) {
-  assert(!line.empty() && col >= 0 && col < static_cast<int>(line.size()));
-
-  line.erase(col);
-  col = line.empty() ? 0 : static_cast<int>(line.size()) - 1;
-}
-
-} // namespace VimEditUtils
+} // namespace VimCore

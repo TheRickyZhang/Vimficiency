@@ -1,18 +1,19 @@
-#include "VimCore/EdgeType.h"
-#include "VimCore/LineEdgeType.h"
-#include "VimUtils.h"
 #include "VimMovementUtils.h"
+#include "VimCore.h"
 #include "VimEndpointUtils.h"
+#include "EdgeType.h"
+#include "LineEdgeType.h"
 
 #include <algorithm>
-#include <cassert>
 #include <array>
+#include <cassert>
 
 #include "Editor/Position.h"
 #include "Utils/Debug.h"
 
 using namespace std;
-using namespace VimUtils;
+
+namespace VimCore {
 
 // =============================================================================
 // Word motions - general interface
@@ -39,158 +40,26 @@ using namespace VimUtils;
 //
 // =============================================================================
 
-namespace {
+void motionWord(Position &pos, const Lines &lines,
+                bool forward, EdgeType edgeType, bool big,
+                bool skipCurrent) {
+  Position result =
+      motionWordCore(pos, lines, forward, edgeType, big, skipCurrent);
 
-// =============================================================================
-// Direction-agnostic step helpers
-// =============================================================================
-
-// Step including empty lines (for word motions where empty line = word)
-inline Position step(const Lines& lines, Position pos, bool forward) {
-    return forward ? lines.getNextPosIncludeEmpty(pos) : lines.getPrevPosIncludeEmpty(pos);
-}
-
-inline Position stepBack(const Lines& lines, Position pos, bool forward) {
-    return forward ? lines.getPrevPosIncludeEmpty(pos) : lines.getNextPosIncludeEmpty(pos);
-}
-
-// =============================================================================
-// Unified word motion core
-// =============================================================================
-//
-// Handles both word and WORD motions in both directions.
-// The `big` parameter controls character classification:
-//   big=true (WORD):  non-blank chars are all "same type"
-//   big=false (word): keyword chars vs symbol chars are different types
-//
-
-void motionWordCore(Position& pos, const Lines& lines, bool forward,
-                    EdgeType edge, bool big) {
-    unsigned char c = lines.get(pos);
-
-    // Phase 1: If starting on blank, skip to first non-blank
-    if (isBlank(c)) {
-        do {
-            Position prev = pos;
-            pos = step(lines, pos, forward);
-            if (pos == prev) return;  // Can't move (at buffer boundary)
-            c = lines.get(pos);
-        } while (isBlank(c));
-
-        if (edge == EdgeType::NextEdge) return;  // First non-blank = next word start
-        if (edge == EdgeType::GapEdge) {
-            pos = stepBack(lines, pos, forward);  // Last blank before next word
-            return;
-        }
-        // End: continue to find word end below
+  if (result == POSITION_OUTSIDE_BOUNDARY) {
+    // Vim clamps to buffer edge based on direction
+    if (forward) {
+      int lastLine = lines.lastLine();
+      int lastCol = lines[lastLine].empty()
+                        ? 0
+                        : static_cast<int>(lines[lastLine].size()) - 1;
+      pos = Position(lastLine, lastCol);
+    } else {
+      pos = Position(0, 0);
     }
-
-    // Phase 2: Skip same-type chars (current word)
-    // For WORD: all non-blank are same type
-    // For word: keyword vs symbol are different types
-    bool startIsWordChar = isSmallWordChar(c);
-    bool crossedLine = false;
-    do {
-        Position prev = pos;
-        pos = step(lines, pos, forward);
-        if (pos == prev) return;  // Hit buffer boundary
-        c = lines.get(pos);
-        // Line boundary = word boundary (newline terminates WORD)
-        if (pos.line != prev.line) {
-            crossedLine = true;
-            break;
-        }
-    } while (!isBlank(c) && (big || isSmallWordChar(c) == startIsWordChar));
-
-    if (edge == EdgeType::WordEdge) {
-        pos = stepBack(lines, pos, forward);  // Last char of word
-        return;
-    }
-
-    // Empty line is a word (vim doc: "An empty line is also considered to be a word")
-    // c == '\n' means we landed on an empty line
-    if (crossedLine && c == '\n') {
-        if (edge == EdgeType::NextEdge) return;  // Empty line is the next word
-        // For GapEdge: empty line ends the gap
-        if (edge == EdgeType::GapEdge) {
-            pos = stepBack(lines, pos, forward);
-            return;
-        }
-    }
-
-    // Phase 3: If at non-blank different type (word only, not WORD)
-    // This happens when we hit keyword->symbol or symbol->keyword boundary
-    if (!isBlank(c)) {
-        // At start of adjacent word (different type)
-        if (edge == EdgeType::NextEdge) return;
-        if (edge == EdgeType::GapEdge) {
-            pos = stepBack(lines, pos, forward);  // Char before this word
-            return;
-        }
-    }
-
-    // Phase 4: Skip whitespace to reach next word (but stop at empty lines)
-    while (isWhitespace(c)) {
-        Position prev = pos;
-        pos = step(lines, pos, forward);
-        if (pos == prev) return;  // Hit buffer boundary
-        c = lines.get(pos);
-        // Empty line is a word, stop here
-        if (c == '\n') {
-            if (edge == EdgeType::NextEdge) return;
-            if (edge == EdgeType::GapEdge) {
-                pos = stepBack(lines, pos, forward);
-                return;
-            }
-        }
-    }
-
-    if (edge == EdgeType::GapEdge) {
-        pos = stepBack(lines, pos, forward);  // Last blank before next word
-    }
-    // Next: already at next word start
-}
-
-} // anonymous namespace
-
-void VimMovementUtils::motionWord(Position &pos,
-                                   const Lines &lines,
-                                   bool forward,
-                                   EdgeType edgeType,
-                                   bool big,
-                                   bool skipCurrent) {
-  if (skipCurrent) {
-    int prevLine = pos.line;
-    unsigned char prevChar = lines.get(pos);
-    pos = step(lines, pos, forward);
-    unsigned char currChar = lines.get(pos);
-
-    // Empty line is a word - if we landed on one, handle it
-    if (currChar == '\n') {
-      // For backward + WordEdge (b/B): empty line IS the word start, stop here
-      if (!forward && edgeType == EdgeType::WordEdge) {
-        return;
-      }
-      // For forward + NextEdge (w/W): empty line IS the next word, stop here
-      if (forward && edgeType == EdgeType::NextEdge) {
-        return;
-      }
-    }
-
-    // For backward + NextEdge (ge/gE), if we crossed a word boundary (landed on blank or
-    // different word type, or crossed a line), we're at the word end we're seeking.
-    if (!forward && edgeType == EdgeType::NextEdge) {
-      bool crossedLine = (pos.line != prevLine);
-      bool crossedBoundary = crossedLine ||
-                             isBlank(currChar) ||
-                             isBlank(prevChar) ||
-                             (!big && isSmallWordChar(currChar) != isSmallWordChar(prevChar));
-      if (crossedBoundary && !isBlank(currChar)) {
-        return;
-      }
-    }
+  } else {
+    pos = result;
   }
-  motionWordCore(pos, lines, forward, edgeType, big);
 }
 
 // =============================================================================
@@ -204,62 +73,49 @@ void VimMovementUtils::motionWord(Position &pos,
 //   ge: Backward + End (to previous word end), skip current first
 //
 
-void VimMovementUtils::motionW(Position &pos, const Lines &lines, bool big) {
+void motionW(Position &pos, const Lines &lines, bool big) {
   motionWord(pos, lines, true, EdgeType::NextEdge, big, false);
 }
 
-void VimMovementUtils::motionB(Position &pos, const Lines &lines, bool big) {
-  // For backward direction, End gives edge opposite to travel = leftmost = START
-  // skipCurrent needed so b from word start goes to PREVIOUS word start
+void motionB(Position &pos, const Lines &lines, bool big) {
+  // For backward direction, End gives edge opposite to travel = leftmost =
+  // START skipCurrent needed so b from word start goes to PREVIOUS word start
   motionWord(pos, lines, false, EdgeType::WordEdge, big, true);
 }
 
-void VimMovementUtils::motionE(Position &pos, const Lines &lines, bool big) {
-  // e needs to skip current position first, otherwise we'd stay at current word end
+void motionE(Position &pos, const Lines &lines, bool big) {
+  // e needs to skip current position first, otherwise we'd stay at current word
+  // end
   motionWord(pos, lines, true, EdgeType::WordEdge, big, true);
 }
 
-void VimMovementUtils::motionGe(Position &pos, const Lines &lines, bool big) {
-  // For backward direction, Next gives edge in travel direction = rightmost = END
-  // skipCurrent needed so ge from word end goes to PREVIOUS word end
+void motionGe(Position &pos, const Lines &lines, bool big) {
+  // For backward direction, Next gives edge in travel direction = rightmost =
+  // END skipCurrent needed so ge from word end goes to PREVIOUS word end
   motionWord(pos, lines, false, EdgeType::NextEdge, big, true);
 }
-
-// =============================================================================
-// Named forwarders - handle +1 shift where needed
-// =============================================================================
-//
-// From boundary-logic.md:
-//   de: Current Char + (Forward, End) from NEXT char
-//   db: Current Char + (Backward, End) from NEXT char
-//
-// For pure motions:
-//   e: step forward first (so we find next word end, not stay at current)
-//   ge: step backward first (so we find previous word end, not stay at current)
-//   w/b: no shift needed (implementation already skips current position)
-//
 
 // =============================================================================
 // Paragraph motion forwarders
 // =============================================================================
 
-void VimMovementUtils::motionParagraphPrev(Position &pos,
-                                   const Lines &lines) {
+void motionParagraphPrev(Position &pos, const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
 
-  pos.line = VimEndpointUtils::motionParagraphEndpoint(pos.line, lines, false, LineEdgeType::NextEdge);
+  pos.line = motionParagraphEndpoint(pos.line, lines, false,
+                                                       LineEdgeType::NextEdge);
   pos.setCol(0);
 }
 
-void VimMovementUtils::motionParagraphNext(Position &pos,
-                                   const Lines &lines) {
+void motionParagraphNext(Position &pos, const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
 
-  int resultLine = VimEndpointUtils::motionParagraphEndpoint(pos.line, lines, true, LineEdgeType::NextEdge);
+  int resultLine = motionParagraphEndpoint(
+      pos.line, lines, true, LineEdgeType::NextEdge);
   pos.line = resultLine;
 
   // Special case: if at last line and it's not blank, go to last char
@@ -273,19 +129,10 @@ void VimMovementUtils::motionParagraphNext(Position &pos,
 }
 
 // =============================================================================
-// Sentence motion forwarders
+// Position helpers
 // =============================================================================
 
-
-
-
-/*
- * ------------------------------ BEGIN VimUtils ------------------------------
- */
-
-// Fundamental helpers for working with position
-int VimMovementUtils::clampCol(const Lines &lines, int col,
-                       int lineIdx) {
+int clampCol(const Lines &lines, int col, int lineIdx) {
   int n = static_cast<int>(lines.size());
   assert(lineIdx >= 0 && lineIdx < n);
   int len = static_cast<int>(lines[lineIdx].size());
@@ -294,22 +141,23 @@ int VimMovementUtils::clampCol(const Lines &lines, int col,
   return std::clamp(col, 0, len - 1);
 }
 
-void VimMovementUtils::moveCol(Position &pos, const Lines &lines,
-                       int dx) {
+void moveCol(Position &pos, const Lines &lines, int dx) {
   pos.setCol(clampCol(lines, pos.col + dx, pos.line));
 }
 
-void VimMovementUtils::moveLine(Position &pos, const Lines &lines,
-                        int dy) {
+void moveLine(Position &pos, const Lines &lines, int dy) {
   int n = static_cast<int>(lines.size());
   pos.line = std::clamp(pos.line + dy, 0, n - 1);
   pos.col = clampCol(lines, pos.targetCol, pos.line);
 }
 
+// =============================================================================
+// Paragraph edge helpers
+// =============================================================================
+
 // Move to the "top edge" (start) of the current paragraph.
 // If currently on blank lines, goes to first blank line in that run.
-void VimMovementUtils::moveToParagraphStart(Position &pos,
-                                    const Lines &lines) {
+void moveToParagraphStart(Position &pos, const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
@@ -325,8 +173,7 @@ void VimMovementUtils::moveToParagraphStart(Position &pos,
 
 // Move to the "bottom edge" (end) of the current paragraph.
 // If currently on blank lines, goes to last blank line in that run.
-void VimMovementUtils::moveToParagraphEnd(Position &pos,
-                                  const Lines &lines) {
+void moveToParagraphEnd(Position &pos, const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
@@ -337,8 +184,11 @@ void VimMovementUtils::moveToParagraphEnd(Position &pos,
   pos.setCol(clampCol(lines, pos.col, pos.line));
 }
 
-void VimMovementUtils::motionSentenceNext(Position &pos,
-                                          const Lines &lines) {
+// =============================================================================
+// Sentence motions
+// =============================================================================
+
+void motionSentenceNext(Position &pos, const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
@@ -349,7 +199,8 @@ void VimMovementUtils::motionSentenceNext(Position &pos,
                 : std::clamp(pos.col, 0, (int)lines[line].size() - 1);
 
   // If currently on blank run: jump to next nonblank line start.
-  // Special case: if all remaining lines are blank, move to next blank line (if any).
+  // Special case: if all remaining lines are blank, move to next blank line (if
+  // any).
   if (isBlankLineStr(lines[line])) {
     int startLine = line;
     while (line < n && isBlankLineStr(lines[line]))
@@ -380,7 +231,8 @@ void VimMovementUtils::motionSentenceNext(Position &pos,
         if (pc == '.' || pc == '!' || pc == '?') {
           // Found punctuation - check if it's a valid sentence end
           if (isSentenceEndAt(lines, l, k)) {
-            // We're in the gap after a sentence end - skip to next sentence start
+            // We're in the gap after a sentence end - skip to next sentence
+            // start
             auto [nl, nk] = skipToSentenceStart(lines, l, k);
             pos.line = nl;
             pos.setCol(nk);
@@ -410,10 +262,10 @@ void VimMovementUtils::motionSentenceNext(Position &pos,
   }
 }
 
-void VimMovementUtils::motionSentencePrev(Position &pos,
-                                          const Lines &lines) {
+void motionSentencePrev(Position &pos, const Lines &lines) {
   int n = (int)lines.size();
-  if (n == 0) return;
+  if (n == 0)
+    return;
 
   auto [sl, sc] = findCurrentSentenceStart(lines, pos.line, pos.col);
 
@@ -440,8 +292,8 @@ void VimMovementUtils::motionSentencePrev(Position &pos,
 
       unsigned char c = getChar(lines, l, k);
       // Skip whitespace, closers, and sentence-ending punctuation
-      if (c == ' ' || c == '\t' || isSentenceCloser(c) ||
-          c == '.' || c == '!' || c == '?') {
+      if (c == ' ' || c == '\t' || isSentenceCloser(c) || c == '.' ||
+          c == '!' || c == '?') {
         continue;
       }
 
@@ -459,13 +311,15 @@ void VimMovementUtils::motionSentencePrev(Position &pos,
   pos.setCol(sc);
 }
 
-
-// -------------------- Character Find (f/F/t/T) --------------------
+// =============================================================================
+// Character Find (f/F/t/T)
+// =============================================================================
 
 // Returns destination column, or -1 if target not found
 // forward: true for f/t, false for F/T
 // till: true for t/T (stop one short), false for f/F (land on target)
-int VimMovementUtils::findCharInLine(char target, const string& line, int startCol, bool forward, bool till) {
+int findCharInLine(char target, const string &line,
+                   int startCol, bool forward, bool till) {
   const int n = static_cast<int>(line.size());
 
   if (forward) {
@@ -484,12 +338,16 @@ int VimMovementUtils::findCharInLine(char target, const string& line, int startC
   return -1; // Not found
 }
 
+// =============================================================================
+// Template instantiations
+// =============================================================================
 
-// -------------------- Templates -------------------- 
-
-// Return char since f motions are guaranteed to just be one character. Will be converted to string further up.
+// Return char since f motions are guaranteed to just be one character. Will be
+// converted to string further up.
 template <bool Forward>
-vector<tuple<char, int, int>> VimMovementUtils::generateFMotions(int currCol, int targetCol, const string &line, int threshold) {
+vector<tuple<char, int, int>>
+generateFMotions(int currCol, int targetCol,
+                 const string &line, int threshold) {
   vector<tuple<char, int, int>> res;
   const int n = static_cast<int>(line.size());
 
@@ -533,8 +391,10 @@ vector<tuple<char, int, int>> VimMovementUtils::generateFMotions(int currCol, in
   return res;
 }
 
-template std::vector<std::tuple<char,int,int>>
-VimMovementUtils::generateFMotions<true>(int,int,const std::string&,int);
+template std::vector<std::tuple<char, int, int>>
+generateFMotions<true>(int, int, const std::string &, int);
 
-template std::vector<std::tuple<char,int,int>>
-VimMovementUtils::generateFMotions<false>(int,int,const std::string&,int);
+template std::vector<std::tuple<char, int, int>>
+generateFMotions<false>(int, int, const std::string &, int);
+
+} // namespace VimCore

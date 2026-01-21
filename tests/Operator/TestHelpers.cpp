@@ -40,8 +40,9 @@ RandomBufferTest generateRandomBuffer(mt19937& rng, int numLines) {
   RandomBufferTest test;
 
   // Character pools - mixed content for word boundary testing
-  const string keywords = "abcdefghijklmnop";
-  const string symbols = ".,;:!?";
+  // Minimal char pools - word boundaries depend on character CLASS, not specific chars
+  const string keywords = "abcd";
+  const string symbols = ".,";
 
   uniform_int_distribution<int> lineLen(8, 20);
   uniform_int_distribution<int> charTypeDist(0, 2);
@@ -65,12 +66,20 @@ RandomBufferTest generateRandomBuffer(mt19937& rng, int numLines) {
     test.lines.push_back(line);
   }
 
-  // Pick edit region
-  uniform_int_distribution<int> lineDist(0, numLines - 1);
-  test.editStartLine = lineDist(rng);
-  test.editEndLine = lineDist(rng);
-  if (test.editStartLine > test.editEndLine) {
-    swap(test.editStartLine, test.editEndLine);
+  // === IMPORTANT: effectiveLines Constraint ===
+  // For multi-line buffers, the edit region MUST span the full buffer so that
+  // test.lines == effectiveLines. This allows passing test.lines directly to
+  // VimCore boundary functions in runRandomMotionTest.
+  //
+  // If partial multi-line edit regions are needed (e.g., TextObjects.cpp tests),
+  // the test runner must construct effectiveLines from the edit region and translate
+  // cursor coordinates. See TextObjects.cpp for an example.
+  if (numLines > 1) {
+    test.editStartLine = 0;
+    test.editEndLine = numLines - 1;
+  } else {
+    test.editStartLine = 0;
+    test.editEndLine = 0;
   }
 
   // Pick column bounds within first/last edit lines
@@ -214,12 +223,24 @@ bool runRandomMotionTest(NeovimOracle& oracle, const MotionSpec& motion,
 
   // Predict using VimEndpointUtils
   Position cursor(test.cursorLine, test.cursorCol);
-  Position boundary = motion.isForward ? test.rightBoundaryPos : test.leftBoundaryPos;
   bool hasBoundary = motion.isForward ? test.hasRightBoundary : test.hasLeftBoundary;
 
   bool predictCross = false;
   if (hasBoundary) {
-    predictCross = motion.wouldCross(cursor, test.lines, boundary);
+    // Compute boundary offset based on direction
+    // Forward: suffix chars on last edit line = chars after editEndCol
+    // Backward: prefix chars on first edit line = editStartCol
+    int boundaryOffset;
+    bool hasLinesOutside;
+    if (motion.isForward) {
+      int endLineLen = static_cast<int>(test.lines[test.editEndLine].size());
+      boundaryOffset = endLineLen - test.editEndCol - 1;
+      hasLinesOutside = test.hasLinesBelow;
+    } else {
+      boundaryOffset = test.editStartCol;
+      hasLinesOutside = test.hasLinesAbove;
+    }
+    predictCross = motion.wouldCross(cursor, test.lines, boundaryOffset, hasLinesOutside);
   }
 
   // Check the relevant boundary based on direction

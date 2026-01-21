@@ -2,7 +2,7 @@
 //
 // Shared test infrastructure for operator boundary crossing tests.
 // These helpers generate random buffers and verify boundary crossing behavior
-// using VimEndpointUtils functions which handle Position-based boundaries.
+// using VimCore functions which handle Position-based boundaries.
 
 #pragma once
 
@@ -18,7 +18,7 @@
 #include <vector>
 
 // =============================================================================
-// MotionSpec - Motion specification with VimEndpointUtils-based prediction
+// MotionSpec - Motion specification with VimCore-based prediction
 // =============================================================================
 
 struct MotionSpec {
@@ -28,10 +28,15 @@ struct MotionSpec {
   bool isBigWord;    // true for W/E/B variants
   bool skipCurrent;  // de/dE/db/dB need true; dw/dW/dge/dgE need false
 
-  // Predict if motion would cross boundary using VimEndpointUtils
-  bool wouldCross(Position cursor, const Lines& lines, Position boundary) const {
-    Position result = VimEndpointUtils::motionWordEndpoint(
-        cursor, lines, isForward, edgeType, isBigWord, skipCurrent, boundary);
+  // Predict if motion would cross boundary using VimCore
+  // boundaryOffset: for forward, protects suffix (last N cols of last line)
+  //                 for backward, protects prefix (first N cols of line 0)
+  // hasLinesOutside: for forward, pass hasLinesBelow; for backward, pass hasLinesAbove
+  bool wouldCross(Position cursor, const Lines& lines, int boundaryOffset,
+                  bool hasLinesOutside) const {
+    Position result = VimCore::motionWordEndpoint(
+        cursor, lines, isForward, edgeType, isBigWord, skipCurrent,
+        boundaryOffset, hasLinesOutside);
     return result == POSITION_OUTSIDE_BOUNDARY;
   }
 };
