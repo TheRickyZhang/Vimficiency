@@ -14,8 +14,42 @@
 //
 // This invariant should be maintained by all code that creates or modifies Lines.
 // Functions may assert(!lines.empty()) rather than handle the impossible case.
-struct Lines : std::vector<std::string> {
-  using std::vector<std::string>::vector;
+struct Line final : std::string {
+  using std::string::string; 
+
+  int effectiveSize() const {
+    return this->empty() ? 1 : this->size();
+  }
+  int lastCol() const {
+    return effectiveSize() - 1;
+  }
+  char get(int col) const {
+    if(this->empty()) {
+      assert(col == 0);
+      return '\n';
+    } else {
+      return data()[col];
+    }
+  }
+
+  // Allow conversion from std::string
+  Line(const std::string& s) : std::string(s) {}
+  Line(std::string&& s) : std::string(std::move(s)) {}
+
+  // Just to avoid breaking functionality with inheriting from standard type
+  void* operator new(size_t) = delete;
+  void* operator new[](size_t) = delete;
+};
+
+struct Lines  final : std::vector<Line> {
+  using std::vector<Line>::vector;
+
+  Lines(std::vector<std::string> v) {
+    reserve(v.size());
+    for (auto& s : v) push_back(std::move(s));
+  }
+
+
 
   std::string flatten() const {
     std::string result;
@@ -39,32 +73,19 @@ struct Lines : std::vector<std::string> {
     return result;
   }
 
-  static bool sameLineLengths(const Lines& x, const Lines& y) {
-    if(x.size() != y.size()) return false;
-    for(int i = 0; i < x.size(); i++) {
-      if(x[i].size() != y[i].size()) {
-        return false;
-      }
-    }
-    return true;
-  }
 
   // Returns index of last line (size - 1). Zero cost when inlined.
   int lastLine() const {
     return static_cast<int>(size()) - 1;
   }
 
-  int lastCol(int line) const {
-    const std::string& l = (*this)[line];
-    return l.empty() ? 0 : l.size() - 1;
-  }
-
   int getSize(int line) const {
     return (*this)[line].size();
   }
 
-  // Get next position, including empty lines (for word motions where empty line = word)
-  Position getNextPosIncludeEmpty(Position pos) const {
+  // Get next position, including [0] on empty line.
+  // Consider: why is it most sensible to clamp here vs returning sentinel? Where do we do check?
+  Position getNextPos(Position pos) const {
     if(pos.col + 1 < (*this)[pos.line].size()) {
       return Position(pos.line, pos.col + 1);
     }
@@ -75,8 +96,8 @@ struct Lines : std::vector<std::string> {
   }
 
 
-  // Get prev position, including empty lines (for word motions where empty line = word)
-  Position getPrevPosIncludeEmpty(Position pos) const {
+  // Get prev position, including [0] on empty line
+  Position getPrevPos(Position pos) const {
     if(pos.col > 0) {
       return Position(pos.line, pos.col - 1);
     }
@@ -90,10 +111,17 @@ struct Lines : std::vector<std::string> {
 
   char get(const Position& pos) const {
     assert(pos.line < this->size());
-    // Empty line at col=0 is valid - treat as newline (blank)
-    if ((*this)[pos.line].empty()) return '\n';
-    assert(pos.col < (*this)[pos.line].size());
-    return (*this)[pos.line][pos.col];
+    return data()[pos.line].get(pos.col);
+  }
+
+  static bool sameLineLengths(const Lines& x, const Lines& y) {
+    if(x.size() != y.size()) return false;
+    for(int i = 0; i < x.size(); i++) {
+      if(x[i].size() != y[i].size()) {
+        return false;
+      }
+    }
+    return true;
   }
 
   friend std::ostream& operator<<(std::ostream& os, const Lines& lines) {

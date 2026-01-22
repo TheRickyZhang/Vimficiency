@@ -11,7 +11,6 @@
 
 
 // Entire simulated editor state (for now, only position+mode+effort).
-// You can later add: vector<string> lines; registers; etc.
 class MotionState {
   // Visible, core editor state
   Position pos;

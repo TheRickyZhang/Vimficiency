@@ -17,9 +17,9 @@
 using namespace std;
 
 vector<Result> CompositionOptimizer::optimize(
-  const vector<string>& startLines,
+  const Lines& startLines,
   const Position startPos,
-  const vector<string>& endLines,
+  const Lines& endLines,
   const Position endPos,
   const string& userSequence,
   const NavContext& navigationContext,

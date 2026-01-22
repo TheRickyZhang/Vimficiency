@@ -168,7 +168,7 @@ void EditSearchContext::exploreBackwardWordEdits(
       else if (endpoint.line < cursor.line) {
         // 2. Cursor at content start AND crossed lines: ends at prev line's last char
         int prevLine = cursor.line - 1;
-        range = Range(endpoint, Position(prevLine, lines.lastCol(prevLine)));
+        range = Range(endpoint, Position(prevLine, lines[prevLine].lastCol()));
       } else {
         // 3. Cursor at content start AND same line: skip (can't delete backward)
         continue;
@@ -289,7 +289,7 @@ void EditSearchContext::exploreAllDeletions(const EditState& state,
       if (cursor.col > 0) { onMotion(Position(cursor.line, cursor.col - 1), "h", hjkl.at("h")); }
       // k: move up to previous line (escape suffix line entirely) - vertical preserves targetCol
       if (cursor.line > 0) {
-        int newCol = min(cursor.targetCol, lines.lastCol(cursor.line - 1));
+        int newCol = min(cursor.targetCol, lines[cursor.line - 1].lastCol());
         onMotion(Position(cursor.line - 1, newCol, cursor.targetCol), "k", hjkl.at("k"));
       }
     }
@@ -305,7 +305,7 @@ void EditSearchContext::exploreAllDeletions(const EditState& state,
       }
       // j: move down to next line (escape prefix line entirely) - vertical preserves targetCol
       if (lines.lastLine() > 0) {
-        int newCol = min(cursor.targetCol, lines.lastCol(1));
+        int newCol = min(cursor.targetCol, lines[1].lastCol());
         onMotion(Position(1, newCol, cursor.targetCol), "j", hjkl.at("j"));
       }
     }

@@ -68,7 +68,7 @@ Position motionWordEndpoint(Position cursor,
 static Range computeWhitespaceRun(Position cursor, const Lines& lines) {
   Position start = cursor;
   while (start.col > 0) {
-    Position prev = lines.getPrevPosIncludeEmpty(start);
+    Position prev = lines.getPrevPos(start);
     if (prev == start) break;
     unsigned char pc = lines.get(prev);
     if (!isBlank(pc)) break;
@@ -76,7 +76,7 @@ static Range computeWhitespaceRun(Position cursor, const Lines& lines) {
   }
   Position end = cursor;
   while (true) {
-    Position next = lines.getNextPosIncludeEmpty(end);
+    Position next = lines.getNextPos(end);
     if (next == end) break;
     unsigned char nc = lines.get(next);
     if (!isBlank(nc)) break;
@@ -118,7 +118,7 @@ Range textObjectCore(
       Position wordEnd = motionWordCore(cursor, lines, true, EdgeType::WordEdge, isBigWord, false);
       bool hasTrailingWs = false;
       if (wordEnd != POSITION_OUTSIDE_BOUNDARY) {
-        Position afterWord = lines.getNextPosIncludeEmpty(wordEnd);
+        Position afterWord = lines.getNextPos(wordEnd);
         unsigned char afterChar = lines.get(afterWord);
         hasTrailingWs = isBlank(afterChar);
       }
@@ -220,7 +220,7 @@ Range textObjectRange(
       Position wordEnd = motionWordEndpoint(cursor, lines, true, EdgeType::WordEdge, isBigWord, false, 0, false);
       bool hasTrailingWs = false;
       if (wordEnd != POSITION_OUTSIDE_BOUNDARY) {
-        Position afterWord = lines.getNextPosIncludeEmpty(wordEnd);
+        Position afterWord = lines.getNextPos(wordEnd);
         unsigned char afterChar = lines.get(afterWord);
         hasTrailingWs = isBlank(afterChar);
       }

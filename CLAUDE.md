@@ -35,21 +35,28 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 
 **Current limitations**: No `*`, `#`, `%` motions; no search (`/`, `n`, `N`); no visual mode
 
+## Important Design to keep in mind!
+- All positions are 0-indexed
+- Always use our Lines type to represent buffer content.
+- We allow an empty line, which has size() == 0, but still an index 0 as a valid cursor position
+- But, we do not allow no lines in the buffer, since the cursor must always be in a valid position.
+- Ensure CAREFUL handling of targetCol (Vim's curswant) within Position.h
+
+
 ## Build Commands
 
 ```bash
-cmake -B build && cmake --build build
-cd build && ctest
-cd build && ./tests/vimficiency_tests --gtest_filter="TestName.*"
+cmake --build build -j
+./build/tests/vimficiency_tests --gtest_brief=1 --gtest_filter="TestName.*"
 ```
 
 **Artifacts:** `build/libvimficiency_core.a`, `build/libvimficiency.so`, `build/vimficiency_cli`, `build/tests/vimficiency_tests`
 
 **Important:**
 - Don't change directories in your session! Just do everything relative to the project root.
-- Never use `rm -rf build` unless something appears corrupted. The build directory contains downloaded libraries (googletest, etc.) that take time to re-fetch. For incremental rebuilds, just run `cmake --build build`.
+- Never use `rm -rf build` unless something appears corrupted. The build directory contains downloaded libraries (googletest, etc.) that take time to re-fetch.
 
-When verifying any new feature, run all tests, but only output the last 10 lines so that we can quickly verify that everything passes. Only if there are some failures, analyze the output.
+When verifying any new feature, run all tests, but only analyze if there is some failed output that is related to the current task.
 
 ## FFI Bridge
 Exposes C ABI for LuaJIT in `lua_exports.cpp`. **Position indexing:** Internal code is 0-indexed; Neovim is 1-indexed. Conversion happens at FFI boundary.

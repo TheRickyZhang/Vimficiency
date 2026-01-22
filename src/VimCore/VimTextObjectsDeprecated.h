@@ -1,9 +1,7 @@
 #pragma once
 
-#include <string>
-#include <vector>
-
 #include "Editor/Range.h"
+#include "Utils/Lines.h"
 
 // =============================================================================
 // DEPRECATED: Quote and Bracket text object implementations
@@ -18,11 +16,11 @@
 namespace VimTextObjectsDeprecated {
 
 // Quote text objects (i", a", i', a', i`, a`)
-Range innerQuote(const std::vector<std::string>& lines, Position pos, char quote);
-Range aroundQuote(const std::vector<std::string>& lines, Position pos, char quote);
+Range innerQuote(const Lines& lines, Position pos, char quote);
+Range aroundQuote(const Lines& lines, Position pos, char quote);
 
 // Bracket/paren text objects (i(, a(, i{, a{, i[, a[, i<, a<)
-Range innerBracket(const std::vector<std::string>& lines, Position pos, char open, char close);
-Range aroundBracket(const std::vector<std::string>& lines, Position pos, char open, char close);
+Range innerBracket(const Lines& lines, Position pos, char open, char close);
+Range aroundBracket(const Lines& lines, Position pos, char open, char close);
 
 } // namespace VimTextObjectsDeprecated

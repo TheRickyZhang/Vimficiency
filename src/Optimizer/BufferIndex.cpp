@@ -1,12 +1,11 @@
 #include "BufferIndex.h"
 #include "VimCore/VimCore.h"
-#include "VimCore/VimMovementUtils.h"
 #include <algorithm>
 #include <assert.h>
 
 using namespace VimCore;
 
-BufferIndex::BufferIndex(const std::vector<std::string>& buffer) {
+BufferIndex::BufferIndex(const Lines& buffer) {
   if (buffer.empty()) return;
 
   Position firstNonBlank{-1, -1};

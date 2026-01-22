@@ -41,9 +41,9 @@ struct CompositionOptimizer {
   // Composes edit transitions + movement. Pre-computes edit regions, then searches for optimal sequence.
   // Much slower; ~ O(n^2) + Sigma (m_i)^3, higher constant factor.
   std::vector<Result> optimize(
-    const std::vector<std::string>& startLines,
+    const Lines& startLines,
     const Position startPos,
-    const std::vector<std::string>& endLines,
+    const Lines& endLines,
     const Position endPos,
     const std::string& userSequence,
 

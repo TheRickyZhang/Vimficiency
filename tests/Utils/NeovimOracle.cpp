@@ -221,9 +221,9 @@ SimulationResult NeovimOracle::simulate(const Lines &lines,
   }
 
   // nvim_buf_set_lines(buf, 0, -1, false, lines)
-  // Cast to base type for msgpack serialization
+  // Convert Lines to vector<string> for msgpack serialization
   {
-    const std::vector<std::string>& linesVec = lines;
+    std::vector<std::string> linesVec(lines.begin(), lines.end());
     auto args = msgpack::object(std::make_tuple(buf, 0, -1, false, linesVec), z);
     impl_->call_void("nvim_buf_set_lines", args);
   }

@@ -2,7 +2,6 @@
 
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "Editor/Position.h"
 #include "Utils/Lines.h"
@@ -54,17 +53,17 @@ int firstNonBlankColInLineStr(const std::string& s);
 
 // Modern Position-based API (inline)
 inline Position step(const Lines& lines, Position pos, bool forward) {
-  return forward ? lines.getNextPosIncludeEmpty(pos) : lines.getPrevPosIncludeEmpty(pos);
+  return forward ? lines.getNextPos(pos) : lines.getPrevPos(pos);
 }
 
 inline Position stepBack(const Lines& lines, Position pos, bool forward) {
-  return forward ? lines.getPrevPosIncludeEmpty(pos) : lines.getNextPosIncludeEmpty(pos);
+  return forward ? lines.getPrevPos(pos) : lines.getNextPos(pos);
 }
 
 // Old int-based API (for sentence/paragraph helpers)
-unsigned char getChar(const std::vector<std::string>& lines, int line, int col);
-bool stepFwd(const std::vector<std::string>& lines, int& line, int& col);
-bool stepBack(const std::vector<std::string>& lines, int& line, int& col);
+unsigned char getChar(const Lines& lines, int line, int col);
+bool stepFwd(const Lines& lines, int& line, int& col);
+bool stepBack(const Lines& lines, int& line, int& col);
 
 // =============================================================================
 // 4. Word Motion Core (depends on stepping + char classification)
@@ -84,26 +83,26 @@ Position motionWordCore(Position pos,
 // =============================================================================
 
 // Returns the first line index of the paragraph containing lineIdx.
-int paragraphStartLine(const std::vector<std::string>& lines, int lineIdx);
+int paragraphStartLine(const Lines& lines, int lineIdx);
 
 // Returns the last line index of the paragraph containing lineIdx.
-int paragraphEndLine(const std::vector<std::string>& lines, int lineIdx);
+int paragraphEndLine(const Lines& lines, int lineIdx);
 
 // =============================================================================
 // 6. Sentence Helpers (depends on char classification + stepping)
 // =============================================================================
 
 // Check if position is a sentence end: [.!?] + optional closers + (whitespace or EOL)
-bool isSentenceEndAt(const std::vector<std::string>& lines, int line, int col);
+bool isSentenceEndAt(const Lines& lines, int line, int col);
 
 // From sentence end, skip past closers and whitespace to find next sentence start.
 // Returns (line, col) of next sentence start.
-std::pair<int, int> skipToSentenceStart(const std::vector<std::string>& lines,
+std::pair<int, int> skipToSentenceStart(const Lines& lines,
                                         int line, int col);
 
 // Find the start of the sentence containing position (line, col).
 // Returns (line, col) of sentence start.
-std::pair<int, int> findCurrentSentenceStart(const std::vector<std::string>& lines,
+std::pair<int, int> findCurrentSentenceStart(const Lines& lines,
                                               int line, int col);
 
 } // namespace VimCore

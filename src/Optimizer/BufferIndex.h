@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include "Editor/Position.h"
+#include "Utils/Lines.h"
 
 struct RepeatMotionResult {
   Position pos{-1, -1};
@@ -45,7 +46,7 @@ class BufferIndex {
 public:
   // Builds index with single forward scan through buffer
   // Contains positions that you could land on by applying motion, including the very start/end positions (even if they don't match the pattern)
-  BufferIndex(const std::vector<std::string>& buffer);
+  BufferIndex(const Lines& buffer);
 
   // Apply motion: count > 0 forward, count < 0 backward
   // Returns current if motion cannot complete

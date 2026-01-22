@@ -64,7 +64,7 @@ int firstNonBlankColInLineStr(const std::string& s) {
 // - Returns 0 only if line is out of range.
 // - Returns '\n' if col is outside the actual line (used as "newline/blank"
 //   sentinel for word motions).
-unsigned char getChar(const std::vector<std::string>& lines, int line, int col) {
+unsigned char getChar(const Lines& lines, int line, int col) {
   int n = static_cast<int>(lines.size());
   if (line < 0 || line >= n)
     return 0;
@@ -76,7 +76,7 @@ unsigned char getChar(const std::vector<std::string>& lines, int line, int col) 
 
 // Step forward one character in the logical buffer (across lines).
 // Returns false if already at (or past) the last character.
-bool stepFwd(const std::vector<std::string>& lines, int& line, int& col) {
+bool stepFwd(const Lines& lines, int& line, int& col) {
   int n = static_cast<int>(lines.size());
   if (line < 0 || line >= n)
     return false;
@@ -96,7 +96,7 @@ bool stepFwd(const std::vector<std::string>& lines, int& line, int& col) {
 
 // Step backward one character in the logical buffer (across lines).
 // Returns false if already at (or before) the first character.
-bool stepBack(const std::vector<std::string>& lines, int& line, int& col) {
+bool stepBack(const Lines& lines, int& line, int& col) {
   int n = static_cast<int>(lines.size());
   if (line < 0 || line >= n)
     return false;
@@ -233,7 +233,7 @@ Position motionWordCore(Position pos,
 
 // Returns the first line index of the paragraph containing lineIdx.
 // If lineIdx is on blank lines, the "paragraph" is the contiguous blank-line run.
-int paragraphStartLine(const std::vector<std::string>& lines, int lineIdx) {
+int paragraphStartLine(const Lines& lines, int lineIdx) {
   int n = (int)lines.size();
   if (n == 0)
     return 0;
@@ -248,7 +248,7 @@ int paragraphStartLine(const std::vector<std::string>& lines, int lineIdx) {
 
 // Returns the last line index of the paragraph containing lineIdx.
 // If lineIdx is on blank lines, the "paragraph" is the contiguous blank-line run.
-int paragraphEndLine(const std::vector<std::string>& lines, int lineIdx) {
+int paragraphEndLine(const Lines& lines, int lineIdx) {
   int n = (int)lines.size();
   if (n == 0)
     return 0;
@@ -266,7 +266,7 @@ int paragraphEndLine(const std::vector<std::string>& lines, int lineIdx) {
 // =============================================================================
 
 // Sentence end at (line,col): . ! ?  then optional closers  then (EOL or space/tab)
-bool isSentenceEndAt(const std::vector<std::string>& lines, int line, int col) {
+bool isSentenceEndAt(const Lines& lines, int line, int col) {
   unsigned char c = getChar(lines, line, col);
   if (c == 0)
     return false;
@@ -305,7 +305,7 @@ bool isSentenceEndAt(const std::vector<std::string>& lines, int line, int col) {
 // IS the sentence boundary - return its position (line, 0).
 
 std::pair<int, int>
-skipToSentenceStart(const std::vector<std::string>& lines, int line, int col) {
+skipToSentenceStart(const Lines& lines, int line, int col) {
   int n = (int)lines.size();
   if (n == 0) return {0, 0};
 
@@ -363,7 +363,7 @@ skipToSentenceStart(const std::vector<std::string>& lines, int line, int col) {
 // from a blank line we find the last sentence of the previous paragraph.
 
 std::pair<int, int>
-findCurrentSentenceStart(const std::vector<std::string>& lines, int line, int col) {
+findCurrentSentenceStart(const Lines& lines, int line, int col) {
   int n = (int)lines.size();
   if (n == 0) return {0, 0};
 

@@ -72,8 +72,7 @@ SimulationResult verifySequenceWithOracle(
   ApplyResult ours = applySequence(source, startPos, sequence);
 
   EXPECT_EQ(ours.lines, nvim.lines)
-      << "Lines mismatch for seq='" << sequence << "' from ["
-      << startPos.line << "," << startPos.col << "]\n"
+      << "Lines mismatch for seq='" << sequence << "' from [" << startPos.line << "," << startPos.col << "]\n"
       << "  Source: " << source << "\n"
       << "  Ours:   " << ours.lines << "\n"
       << "  Neovim: " << nvim.lines;
@@ -109,19 +108,18 @@ EditBoundary makeFullBufferBoundary(const Lines& source) {
   return EditBoundary(source, Position(0, 0), Position(lastLine, lastCol));
 }
 
-// Call optimizeEdit for full buffer deletion
-EditResult optimizeFullDeletion(EditOptimizer& opt, const Lines& source) {
+// Call optimizePureDeletion for full buffer deletion
+vector<Result> optimizeFullDeletion(EditOptimizer& opt, const Lines& source) {
   EditBoundary boundary = makeFullBufferBoundary(source);
-  Lines emptyTarget = {""};
-  return opt.optimizeEdit(source, emptyTarget, boundary);
+  return opt.optimizePureDeletion(source, boundary);
 }
 
-// Check that all positions in EditResult have valid solutions
-bool allPositionsValid(const EditResult& res, const Lines& source) {
+// Check that all positions have valid solutions
+bool allPositionsValid(const vector<Result>& results, const Lines& source) {
   for (int r = 0; r < static_cast<int>(source.size()); r++) {
     int cols = source[r].empty() ? 1 : static_cast<int>(source[r].size());
     for (int c = 0; c < cols; c++) {
-      if (!res.typeAllResults[toFlatIndex(r, c, source)].isValid()) {
+      if (!results[toFlatIndex(r, c, source)].isValid()) {
         return false;
       }
     }
@@ -134,7 +132,7 @@ TEST_F(EditOptimizerTest, DeletionSearch_Simple) {
   Lines source = {"aa", "bb"};
 
   EditOptimizer opt = makeOptimizer();
-  EditResult res = optimizeFullDeletion(opt, source);
+  vector<Result> res = optimizeFullDeletion(opt, source);
 
   EXPECT_TRUE(allPositionsValid(res, source));
 
@@ -143,15 +141,15 @@ TEST_F(EditOptimizerTest, DeletionSearch_Simple) {
     int cols = source[r].empty() ? 1 : source[r].size();
     for (int c = 0; c < cols; c++) {
       int flatIdx = toFlatIndex(r, c, source);
-      const Result& result = res.typeAllResults[flatIdx];
+      const Result& result = res[flatIdx];
       if (result.isValid()) {
         string seq = result.getSequenceString();
-        SimulationResult nvim = verifySequenceWithOracle(oracle.get(), source, Position(r, c), seq);
+        SimulationResult nvimRes = verifySequenceWithOracle(oracle.get(), source, Position(r, c), seq);
 
-        EXPECT_TRUE(isValidDeletionGoal(nvim))
+        EXPECT_TRUE(isEmptyBuffer(nvimRes.lines) && nvimRes.mode == Mode::Normal)
             << "Sequence '" << seq << "' from [" << r << "," << c << "] "
-            << "did not reach goal. Lines: " << nvim.lines
-            << ", Mode: " << (nvim.mode == Mode::Insert ? "Insert" : "Normal");
+            << "did not reach goal. Lines: " << nvimRes.lines
+            << ", Mode: " << (nvimRes.mode == Mode::Insert ? "Insert" : "Normal");
       }
     }
   }
@@ -161,11 +159,11 @@ TEST_F(EditOptimizerTest, DeletionSearch_SingleLine) {
   Lines source = {"hello"};
 
   EditOptimizer opt = makeOptimizer();
-  EditResult res = optimizeFullDeletion(opt, source);
+  vector<Result> res = optimizeFullDeletion(opt, source);
 
   for (int c = 0; c < (int)source[0].size(); c++) {
     int flatIdx = toFlatIndex(0, c, source);
-    const Result& result = res.typeAllResults[flatIdx];
+    const Result& result = res[flatIdx];
     ASSERT_TRUE(result.isValid()) << "No solution for position [0," << c << "]";
 
     string seq = result.getSequenceString();
@@ -180,13 +178,13 @@ TEST_F(EditOptimizerTest, DeletionSearch_ThreeLines) {
   Lines source = {"aaa", "bbb", "ccc"};
 
   EditOptimizer opt = makeOptimizer();
-  EditResult res = optimizeFullDeletion(opt, source);
+  vector<Result> res = optimizeFullDeletion(opt, source);
 
   for (int r = 0; r < static_cast<int>(source.size()); r++) {
     int cols = source[r].size();
     for (int c = 0; c < cols; c++) {
       int flatIdx = toFlatIndex(r, c, source);
-      const Result& result = res.typeAllResults[flatIdx];
+      const Result& result = res[flatIdx];
       if (result.isValid()) {
         string seq = result.getSequenceString();
         SimulationResult nvim = verifySequenceWithOracle(oracle.get(), source, Position(r, c), seq);
@@ -204,13 +202,13 @@ TEST_F(EditOptimizerTest, DeletionSearch_MixedLengths) {
   Lines source = {"a", "bbb", "cc"};
 
   EditOptimizer opt = makeOptimizer();
-  EditResult res = optimizeFullDeletion(opt, source);
+  vector<Result> res = optimizeFullDeletion(opt, source);
 
   for (int r = 0; r < static_cast<int>(source.size()); r++) {
     int cols = source[r].size();
     for (int c = 0; c < cols; c++) {
       int flatIdx = toFlatIndex(r, c, source);
-      const Result& result = res.typeAllResults[flatIdx];
+      const Result& result = res[flatIdx];
       if (result.isValid()) {
         // Apply sequence - assertions in Edit::applyEdit catch invalid operations
         applySequence(source, Position(r, c), result.getSequenceString());
@@ -241,7 +239,7 @@ TEST_F(EditOptimizerTest, DeletionSearch_WithLinesBelow) {
   Lines emptyTarget = {""};
   EditResult res = opt.optimizeEdit(editRegion, emptyTarget, boundary);
 
-  EXPECT_TRUE(allPositionsValid(res, editRegion));
+  EXPECT_TRUE(allPositionsValid(res.typeAllResults, editRegion));
 }
 
 TEST_F(EditOptimizerTest, DeletionSearch_SingleLineWithLinesBelow) {

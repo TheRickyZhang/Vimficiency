@@ -11,7 +11,7 @@ namespace VimTextObjectsDeprecated {
 // Quote text objects (i", a", i', a')
 // -----------------------------------------------------------------------------
 
-Range innerQuote(const vector<string>& lines, Position pos, char quote) {
+Range innerQuote(const Lines& lines, Position pos, char quote) {
   int n = static_cast<int>(lines.size());
   if (n == 0) return Range(pos, pos);
 
@@ -72,7 +72,7 @@ Range innerQuote(const vector<string>& lines, Position pos, char quote) {
   return Range(Position(line, openQuote + 1), Position(line, closeQuote - 1));
 }
 
-Range aroundQuote(const vector<string>& lines, Position pos, char quote) {
+Range aroundQuote(const Lines& lines, Position pos, char quote) {
   Range inner = innerQuote(lines, pos, quote);
 
   // If inner is empty/invalid, return it
@@ -94,7 +94,7 @@ Range aroundQuote(const vector<string>& lines, Position pos, char quote) {
 
 // Helper: find matching bracket, handling nesting
 static pair<Position, Position> findMatchingBrackets(
-    const vector<string>& lines, Position pos, char open, char close) {
+    const Lines& lines, Position pos, char open, char close) {
 
   int n = static_cast<int>(lines.size());
   Position openPos(-1, -1);
@@ -167,7 +167,7 @@ foundOpen:
   return {Position(-1, -1), Position(-1, -1)};
 }
 
-Range innerBracket(const vector<string>& lines, Position pos, char open, char close) {
+Range innerBracket(const Lines& lines, Position pos, char open, char close) {
   auto [openPos, closePos] = findMatchingBrackets(lines, pos, open, close);
 
   if (openPos.line < 0 || closePos.line < 0) {
@@ -201,7 +201,7 @@ Range innerBracket(const vector<string>& lines, Position pos, char open, char cl
   return Range(start, end);
 }
 
-Range aroundBracket(const vector<string>& lines, Position pos, char open, char close) {
+Range aroundBracket(const Lines& lines, Position pos, char open, char close) {
   auto [openPos, closePos] = findMatchingBrackets(lines, pos, open, close);
 
   if (openPos.line < 0 || closePos.line < 0) {
