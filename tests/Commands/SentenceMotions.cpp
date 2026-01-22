@@ -15,7 +15,6 @@
 #include "Editor/NavContext.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
-#include "VimCore/VimMovementUtils.h"
 
 using namespace std;
 
@@ -30,16 +29,10 @@ protected:
 
   static void SetUpTestSuite() {
     oracle = make_unique<NeovimOracle>();
-    navContext = NavContext(39, 19);
+    navContext = NavContext();
   }
 
   static void TearDownTestSuite() { oracle.reset(); }
-
-  // Apply motion using our implementation
-  static Position applyMotion(Position start, const string& motion,
-                              const Lines& lines) {
-    return simulateMotions(start, Mode::Normal, navContext, motion, lines).pos;
-  }
 
   // Get expected result from Neovim
   static Position neovimMotion(const Lines& lines, int startRow, int startCol,
@@ -156,7 +149,7 @@ TEST_F(SentenceMotionsTest, ForwardSentence_RandomBuffer) {
     auto test = generateRandomSentenceBuffer(rng, linesDist(rng));
 
     Position start(test.cursorLine, test.cursorCol);
-    Position ours = applyMotion(start, ")", test.lines);
+    Position ours = simulateMotions(start, ")", test.lines);
     Position expected = neovimMotion(test.lines, test.cursorLine, test.cursorCol, ")");
 
     if (ours.line == expected.line && ours.col == expected.col) {
@@ -197,7 +190,7 @@ TEST_F(SentenceMotionsTest, BackwardSentence_RandomBuffer) {
     auto test = generateRandomSentenceBuffer(rng, linesDist(rng));
 
     Position start(test.cursorLine, test.cursorCol);
-    Position ours = applyMotion(start, "(", test.lines);
+    Position ours = simulateMotions(start, "(", test.lines);
     Position expected = neovimMotion(test.lines, test.cursorLine, test.cursorCol, "(");
 
     if (ours.line == expected.line && ours.col == expected.col) {
@@ -233,7 +226,7 @@ TEST_F(SentenceMotionsTest, ForwardSentence_AtEndOfBuffer) {
 
   // From last line, ) should stay at last position
   Position start(2, 15);  // End of "Second sentence."
-  Position ours = applyMotion(start, ")", lines);
+  Position ours = simulateMotions(start, ")", lines);
   Position expected = neovimMotion(lines, 2, 15, ")");
 
   EXPECT_EQ(ours.line, expected.line);
@@ -245,7 +238,7 @@ TEST_F(SentenceMotionsTest, BackwardSentence_AtStartOfBuffer) {
 
   // From first position, ( should stay at first position
   Position start(0, 0);
-  Position ours = applyMotion(start, "(", lines);
+  Position ours = simulateMotions(start, "(", lines);
   Position expected = neovimMotion(lines, 0, 0, "(");
 
   EXPECT_EQ(ours.line, expected.line);
@@ -257,7 +250,7 @@ TEST_F(SentenceMotionsTest, ForwardSentence_OnBlankLine) {
 
   // From blank line, ) should go to next sentence start
   Position start(1, 0);
-  Position ours = applyMotion(start, ")", lines);
+  Position ours = simulateMotions(start, ")", lines);
   Position expected = neovimMotion(lines, 1, 0, ")");
 
   EXPECT_EQ(ours.line, expected.line);
@@ -269,7 +262,7 @@ TEST_F(SentenceMotionsTest, DISABLED_BackwardSentence_OnBlankLine) {
 
   // From blank line, ( should go to previous sentence start
   Position start(2, 0);
-  Position ours = applyMotion(start, "(", lines);
+  Position ours = simulateMotions(start, "(", lines);
   Position expected = neovimMotion(lines, 2, 0, "(");
 
   EXPECT_EQ(ours.line, expected.line);
@@ -281,7 +274,7 @@ TEST_F(SentenceMotionsTest, ForwardSentence_MultipleSentencesOnLine) {
 
   // From start, ) should go to "Second"
   Position start(0, 0);
-  Position ours = applyMotion(start, ")", lines);
+  Position ours = simulateMotions(start, ")", lines);
   Position expected = neovimMotion(lines, 0, 0, ")");
 
   EXPECT_EQ(ours.line, expected.line);
@@ -293,7 +286,7 @@ TEST_F(SentenceMotionsTest, DISABLED_BackwardSentence_MultipleSentencesOnLine) {
 
   // From "Third", ( should go to "Second"
   Position start(0, 15);  // At "Third"
-  Position ours = applyMotion(start, "(", lines);
+  Position ours = simulateMotions(start, "(", lines);
   Position expected = neovimMotion(lines, 0, 15, "(");
 
   EXPECT_EQ(ours.line, expected.line);
@@ -305,7 +298,7 @@ TEST_F(SentenceMotionsTest, ForwardSentence_WithClosers) {
 
   // The ! is sentence end, " is closer
   Position start(0, 0);
-  Position ours = applyMotion(start, ")", lines);
+  Position ours = simulateMotions(start, ")", lines);
   Position expected = neovimMotion(lines, 0, 0, ")");
 
   EXPECT_EQ(ours.line, expected.line);
@@ -316,7 +309,7 @@ TEST_F(SentenceMotionsTest, CountedMotion_2Forward) {
   Lines lines = {"First. Second. Third."};
 
   Position start(0, 0);
-  Position ours = applyMotion(start, "2)", lines);
+  Position ours = simulateMotions(start, "2)", lines);
   Position expected = neovimMotion(lines, 0, 0, "2)");
 
   EXPECT_EQ(ours.line, expected.line);
@@ -327,7 +320,7 @@ TEST_F(SentenceMotionsTest, DISABLED_CountedMotion_2Backward) {
   Lines lines = {"First. Second. Third."};
 
   Position start(0, 15);  // At "Third"
-  Position ours = applyMotion(start, "2(", lines);
+  Position ours = simulateMotions(start, "2(", lines);
   Position expected = neovimMotion(lines, 0, 15, "2(");
 
   EXPECT_EQ(ours.line, expected.line);

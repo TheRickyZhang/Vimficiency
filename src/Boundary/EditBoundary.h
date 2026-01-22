@@ -75,26 +75,3 @@ private:
   void scanQuotesAndBrackets(const Lines& lines, Position startPos, Position endPos);
 };
 
-/*
-// DEPRECATED: CharType-based crossing checks
-// These are no longer used - VimEndpointUtils now handles boundary checking
-using raw characters directly.
-
-enum class CharType : uint8_t {
-  Keyword,    // alphanumeric + underscore (vim 'iskeyword')
-  Whitespace, // space, tab, etc.
-  Symbol,     // punctuation and other non-word chars
-  Newline     // at line boundary (nothing beyond)
-};
-
-CharType getCharType(char c);
-CharType getOppositeCharType(CharType charType);
-
-bool canEndCross(CharType c, CharType bc);
-bool canSpaceCross(CharType c, CharType bc);
-bool canNextCross(CharType c, CharType bc);
-bool canLineCross(CharType bc);
-bool canEndCrossWORD(CharType c, CharType bc);
-bool canSpaceCrossWORD(CharType c, CharType bc);
-bool canNextCrossWORD(CharType c, CharType bc);
-*/

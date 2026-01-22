@@ -192,9 +192,7 @@ void insertText(Lines& lines, Position& pos, Mode mode, const string& text) {
 // Note: something like 3dw on a line may do nothing on 2nd/3rd dw, but since
 // we can't prune that easily without doing equivalent work as the action, it's fine.
 // TODO: we can apply the same technique to Motions as well
-void applyEdit(Lines& lines, Position& pos, Mode& mode,
-               const NavContext& navContext,
-               const ParsedEdit& edit) {
+void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit) {
   // Lines invariant: buffer always has at least one line (minimum: {""})
   assert(!lines.empty());
 

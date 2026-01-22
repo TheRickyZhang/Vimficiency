@@ -54,9 +54,7 @@ void insertText(Lines& lines, Position& pos, Mode mode, const std::string& text)
 // Routes parsed edit commands to appropriate operations.
 // -----------------------------------------------------------------------------
 
-void applyEdit(Lines& lines, Position& pos, Mode& mode,
-               const NavContext& navContext,
-               const ParsedEdit& edit);
+void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit);
 
 // Parse an edit sequence string into individual ParsedEdit tokens.
 // Handles operators (d, c) + motions/text objects, special keys (<Esc>, <CR>, etc.),
@@ -64,4 +62,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode,
 // IMPORTANT: Returned ParsedEdits contain string_views into seq - caller must ensure seq outlives usage.
 std::vector<ParsedEdit> parseEdits(const std::string& seq);
 
+void simulateEdits(Position& pos, Mode& mode, const NavContext& navContext,
+                          const std::string& motionSeq,
+                          const Lines& lines);
 } // namespace Edit

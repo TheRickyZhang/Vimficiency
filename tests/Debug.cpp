@@ -112,21 +112,9 @@ protected:
 
   // Create boundary for full buffer deletion (no constraints)
   EditBoundary makeFullBufferBoundary(const Lines& source) {
-    if (source.empty()) {
-      return EditBoundary(source, Position(0, 0), Position(0, 0));
-    }
     int lastLine = static_cast<int>(source.size()) - 1;
     int lastCol = source[lastLine].empty() ? 0 : static_cast<int>(source[lastLine].size()) - 1;
     return EditBoundary(source, Position(0, 0), Position(lastLine, lastCol));
-  }
-
-  // Helper to compute flat index from (line, col) position
-  static int flatIndex(const Lines& lines, int line, int col) {
-    int idx = 0;
-    for (int i = 0; i < line; i++) {
-      idx += lines[i].empty() ? 1 : static_cast<int>(lines[i].size());
-    }
-    return idx + col;
   }
 };
 

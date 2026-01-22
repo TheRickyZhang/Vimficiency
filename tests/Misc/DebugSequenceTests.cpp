@@ -25,11 +25,6 @@ protected:
     navContext = NavContext(39, 19);
   }
 
-  static Position simulateMotionsDefault(Position start, const string &motion,
-                                          const Lines &lines) {
-    return simulateMotions(start, Mode::Normal, navContext, motion, lines).pos;
-  }
-
   static void expectPos(Position actual, int line, int col,
                         const string &msg = "") {
     EXPECT_EQ(actual.line, line) << msg << " (line)";
@@ -70,27 +65,27 @@ NavContext DebugSequenceTest::navContext(0, 0);
 
 TEST_F(DebugSequenceTest, JjllEndsAtCorrectPosition) {
   // Verify jjll ends at (2, 2)
-  Position result = simulateMotionsDefault({0, 0}, "jjll", a2_block_lines);
+  Position result = simulateMotions({0, 0}, "jjll", a2_block_lines);
   expectPos(result, 2, 2, "jjll from (0,0)");
 }
 
 // Regression test: e motion should stop at line end (not cross lines)
 TEST_F(DebugSequenceTest, EMotionStopsAtLineEnd) {
   // e from (0,0) should stop at (0, 13) - end of word on line 0
-  Position result = simulateMotionsDefault({0, 0}, "e", a2_block_lines);
+  Position result = simulateMotions({0, 0}, "e", a2_block_lines);
   expectPos(result, 0, 13, "e from (0,0) should stop at end of word on same line");
 }
 
 TEST_F(DebugSequenceTest, VerifyKAtLine0) {
   // Sanity check: k from line 0 stays at line 0
-  Position result = simulateMotionsDefault({0, 5}, "k", a2_block_lines);
+  Position result = simulateMotions({0, 5}, "k", a2_block_lines);
   expectPos(result, 0, 5, "k from line 0 stays at line 0");
 }
 
 // Once e is fixed, ekll should NOT reach (2, 2)
 // e→(0,13), k→stays(0,13), ll→stays(0,13) = (0, 13)
 TEST_F(DebugSequenceTest, EkllShouldNotReachJjllTarget) {
-  Position result = simulateMotionsDefault({0, 0}, "ekll", a2_block_lines);
+  Position result = simulateMotions({0, 0}, "ekll", a2_block_lines);
 
   // After fixing the e motion bug, this should be (0, 13)
   // Currently it's (2, 2) because e incorrectly goes to (3, 13)
@@ -100,7 +95,7 @@ TEST_F(DebugSequenceTest, EkllShouldNotReachJjllTarget) {
 // Test that w motion correctly handles line boundaries (reference for e fix)
 TEST_F(DebugSequenceTest, WMotionStopsAtLineEnd) {
   // w should go to start of next word, treating newline as word boundary
-  Position result = simulateMotionsDefault({0, 0}, "w", a2_block_lines);
+  Position result = simulateMotions({0, 0}, "w", a2_block_lines);
   // On a2_block_lines with no spaces, w goes to next line
   expectPos(result, 1, 0, "w from (0,0) goes to next line start");
 }
@@ -113,7 +108,7 @@ TEST_F(DebugSequenceTest, AllResultsReachTargetPosition) {
       runOptimizer(a2_block_lines, start, end, "jjll");
 
   for (const auto &r : results) {
-    Position actual = simulateMotionsDefault(start, r.getSequenceString(), a2_block_lines);
+    Position actual = simulateMotions(start, r.getSequenceString(), a2_block_lines);
     EXPECT_EQ(actual.line, end.line)
         << "Sequence '" << makePrintable(r.getSequenceString()) << "' ends at wrong line: "
         << actual.line << " vs expected " << end.line;
@@ -136,12 +131,12 @@ TEST_F(DebugSequenceTest, AllResultsReachTargetPosition) {
 // =============================================================================
 
 TEST_F(DebugSequenceTest, JjllFrom1_0EndsAtCorrectPosition) {
-  Position result = simulateMotionsDefault({1, 0}, "jjll", a2_block_lines);
+  Position result = simulateMotions({1, 0}, "jjll", a2_block_lines);
   expectPos(result, 3, 2, "jjll from (1,0)");
 }
 
 TEST_F(DebugSequenceTest, ParagraphMotionGoesToEmptyLine) {
-  Position result = simulateMotionsDefault({1, 0}, "}", a2_block_lines);
+  Position result = simulateMotions({1, 0}, "}", a2_block_lines);
 
   // Check if there's actually a blank line in the buffer
   bool hasBlankLine = false;
@@ -167,7 +162,7 @@ TEST_F(DebugSequenceTest, ParagraphMotionGoesToEmptyLine) {
 
 TEST_F(DebugSequenceTest, CloseBraceLLEndsAtEndOfLastLine) {
   // }ll from (1, 0): } goes to (3, 13), ll can't move further right
-  Position result = simulateMotionsDefault({1, 0}, "}ll", a2_block_lines);
+  Position result = simulateMotions({1, 0}, "}ll", a2_block_lines);
   expectPos(result, 3, 13, "}ll from (1,0) ends at (3,13) - already at line end");
 }
 
@@ -179,7 +174,7 @@ TEST_F(DebugSequenceTest, AllResultsReachTargetPosition_From1_0) {
       runOptimizer(a2_block_lines, start, end, "jjll");
 
   for (const auto &r : results) {
-    Position actual = simulateMotionsDefault(start, r.getSequenceString(), a2_block_lines);
+    Position actual = simulateMotions(start, r.getSequenceString(), a2_block_lines);
     EXPECT_EQ(actual.line, end.line)
         << "Sequence '" << makePrintable(r.getSequenceString()) << "' ends at wrong line: "
         << actual.line << " vs expected " << end.line;

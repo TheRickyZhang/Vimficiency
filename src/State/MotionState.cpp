@@ -14,7 +14,7 @@ inline bool isBlank(unsigned char c) {
 // Changes pos, mode, motionSequence
 void MotionState::applySingleMotion(string motion, const NavContext& navContext,
                                const Lines& lines) {
-  applyParsedMotion(pos, mode, navContext, ParsedMotion(motion), lines);
+  applyParsedMotion(pos, mode, ParsedMotion(motion), lines, navContext);
   motionSequence += motion;
 }
 

@@ -18,7 +18,7 @@ protected:
 
   static void SetUpTestSuite() {
     a2_block_lines = TestFiles::load("a2_block_lines.txt");
-    navContext = NavContext(39, 19);
+    navContext = NavContext();
   }
 
   static vector<Result>

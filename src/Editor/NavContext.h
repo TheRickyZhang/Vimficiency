@@ -12,4 +12,7 @@ struct NavContext {
 
   NavContext(int window_height, int scroll_amount) :
     windowHeight(window_height), scrollAmount(scroll_amount) {}
+
+  // Observed from window, scroll on my neovim instance (normally 40 for full screen, minus gaps for hyprland)
+  NavContext() : windowHeight(39), scrollAmount(19) {}
 };

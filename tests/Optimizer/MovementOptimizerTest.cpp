@@ -27,8 +27,7 @@ protected:
       a2_block_lines = TestFiles::load("a2_block_lines.txt");
       a3_spaced_lines = TestFiles::load("a3_spaced_lines.txt");
       m1_main_basic = TestFiles::load("m1_main_basic.txt");
-
-      navContext = NavContext(39, 19);
+      navContext = NavContext();
   }
 
   static vector<Result>
@@ -74,12 +73,12 @@ Lines MovementOptimizerTest::a1_long_line;
 Lines MovementOptimizerTest::a2_block_lines;
 Lines MovementOptimizerTest::a3_spaced_lines;
 Lines MovementOptimizerTest::m1_main_basic;
-NavContext MovementOptimizerTest::navContext(0, 0);
+NavContext MovementOptimizerTest::navContext;
 
 TEST_F(MovementOptimizerTest, HorizontalMotions) {
   const string user_seq = "we";
   Position start(0, 0);
-  Position end = simulateMotions(start, Mode::Normal, navContext, user_seq, a1_long_line).pos;
+  Position end = simulateMotions(start, user_seq, a1_long_line);
 
   vector<Result> results = runOptimizer(
   a1_long_line,
@@ -96,7 +95,7 @@ TEST_F(MovementOptimizerTest, HorizontalMotions) {
 TEST_F(MovementOptimizerTest, VerticalMotions) {
   const string user_seq = "jjjjj";
   Position start(2, 0);
-  Position end = simulateMotions(start, Mode::Normal, navContext, user_seq, a3_spaced_lines).pos;
+  Position end = simulateMotions(start, user_seq, a3_spaced_lines);
 
   vector<Result> results = runOptimizer(
     a3_spaced_lines,

@@ -31,12 +31,7 @@ protected:
   static void SetUpTestSuite() {
     a1_long_line = TestFiles::load("a1_long_line.txt");
     a2_block_lines = TestFiles::load("a2_block_lines.txt");
-    navContext = NavContext(39, 19);
-  }
-
-  // Helper: apply motion and return resulting position
-  static Position applyMotion(Position start, const string& motion, const Lines& lines) {
-    return simulateMotions(start, Mode::Normal, navContext, motion, lines).pos;
+    navContext = NavContext();
   }
 
   // Helper: assert position
@@ -56,64 +51,64 @@ NavContext MiscMotionsTest::navContext(0, 0);
 // =============================================================================
 
 TEST_F(MiscMotionsTest, H_MovesLeft) {
-  expectPos(applyMotion({0, 5}, "h", a1_long_line), 0, 4);
-  expectPos(applyMotion({0, 5}, "hhh", a1_long_line), 0, 2);
+  expectPos(simulateMotions({0, 5}, "h", a1_long_line), 0, 4);
+  expectPos(simulateMotions({0, 5}, "hhh", a1_long_line), 0, 2);
 }
 
 TEST_F(MiscMotionsTest, H_StopsAtLineStart) {
-  expectPos(applyMotion({0, 0}, "h", a1_long_line), 0, 0);
-  expectPos(applyMotion({0, 2}, "hhhhh", a1_long_line), 0, 0);
+  expectPos(simulateMotions({0, 0}, "h", a1_long_line), 0, 0);
+  expectPos(simulateMotions({0, 2}, "hhhhh", a1_long_line), 0, 0);
 }
 
 TEST_F(MiscMotionsTest, L_MovesRight) {
-  expectPos(applyMotion({0, 0}, "l", a1_long_line), 0, 1);
-  expectPos(applyMotion({0, 0}, "lll", a1_long_line), 0, 3);
+  expectPos(simulateMotions({0, 0}, "l", a1_long_line), 0, 1);
+  expectPos(simulateMotions({0, 0}, "lll", a1_long_line), 0, 3);
 }
 
 TEST_F(MiscMotionsTest, L_StopsAtLineEnd) {
   int lastCol = a1_long_line[0].size() - 1;
-  expectPos(applyMotion({0, lastCol}, "l", a1_long_line), 0, lastCol);
+  expectPos(simulateMotions({0, lastCol}, "l", a1_long_line), 0, lastCol);
 }
 
 TEST_F(MiscMotionsTest, J_MovesDown) {
-  expectPos(applyMotion({0, 0}, "j", a2_block_lines), 1, 0);
-  expectPos(applyMotion({0, 0}, "jj", a2_block_lines), 2, 0);
-  expectPos(applyMotion({0, 0}, "jjj", a2_block_lines), 3, 0);
+  expectPos(simulateMotions({0, 0}, "j", a2_block_lines), 1, 0);
+  expectPos(simulateMotions({0, 0}, "jj", a2_block_lines), 2, 0);
+  expectPos(simulateMotions({0, 0}, "jjj", a2_block_lines), 3, 0);
 }
 
 TEST_F(MiscMotionsTest, J_StopsAtLastLine) {
   int lastLine = a2_block_lines.size() - 1;
-  expectPos(applyMotion({lastLine, 0}, "j", a2_block_lines), lastLine, 0);
-  expectPos(applyMotion({0, 0}, "jjjjjjjj", a2_block_lines), lastLine, 0);
+  expectPos(simulateMotions({lastLine, 0}, "j", a2_block_lines), lastLine, 0);
+  expectPos(simulateMotions({0, 0}, "jjjjjjjj", a2_block_lines), lastLine, 0);
 }
 
 TEST_F(MiscMotionsTest, K_MovesUp) {
-  expectPos(applyMotion({2, 0}, "k", a2_block_lines), 1, 0);
-  expectPos(applyMotion({3, 0}, "kk", a2_block_lines), 1, 0);
+  expectPos(simulateMotions({2, 0}, "k", a2_block_lines), 1, 0);
+  expectPos(simulateMotions({3, 0}, "kk", a2_block_lines), 1, 0);
 }
 
 TEST_F(MiscMotionsTest, K_StopsAtFirstLine) {
-  expectPos(applyMotion({0, 0}, "k", a2_block_lines), 0, 0);
-  expectPos(applyMotion({2, 0}, "kkkkk", a2_block_lines), 0, 0);
+  expectPos(simulateMotions({0, 0}, "k", a2_block_lines), 0, 0);
+  expectPos(simulateMotions({2, 0}, "kkkkk", a2_block_lines), 0, 0);
 }
 
 TEST_F(MiscMotionsTest, JK_PreservesColumn) {
-  expectPos(applyMotion({0, 5}, "j", a2_block_lines), 1, 5);
-  expectPos(applyMotion({0, 5}, "jj", a2_block_lines), 2, 5);
-  expectPos(applyMotion({2, 5}, "k", a2_block_lines), 1, 5);
+  expectPos(simulateMotions({0, 5}, "j", a2_block_lines), 1, 5);
+  expectPos(simulateMotions({0, 5}, "jj", a2_block_lines), 2, 5);
+  expectPos(simulateMotions({2, 5}, "k", a2_block_lines), 1, 5);
 }
 
 TEST_F(MiscMotionsTest, JK_ClampsToShorterLine) {
   Lines lines = {"long line here", "short", "long line here"};
-  expectPos(applyMotion({0, 10}, "j", lines), 1, 4);
-  expectPos(applyMotion({0, 10}, "jk", lines), 0, 10);
+  expectPos(simulateMotions({0, 10}, "j", lines), 1, 4);
+  expectPos(simulateMotions({0, 10}, "jk", lines), 0, 10);
 }
 
 TEST_F(MiscMotionsTest, JK_HandlesEmptyLines) {
   Lines lines = {"content", "", "content"};
-  expectPos(applyMotion({0, 5}, "j", lines), 1, 0);
-  expectPos(applyMotion({0, 5}, "jk", lines), 0, 5);
-  expectPos(applyMotion({1, 0}, "k", lines), 0, 0);
+  expectPos(simulateMotions({0, 5}, "j", lines), 1, 0);
+  expectPos(simulateMotions({0, 5}, "jk", lines), 0, 5);
+  expectPos(simulateMotions({1, 0}, "k", lines), 0, 0);
 }
 
 // =============================================================================
@@ -121,28 +116,28 @@ TEST_F(MiscMotionsTest, JK_HandlesEmptyLines) {
 // =============================================================================
 
 TEST_F(MiscMotionsTest, GG_GoesToFirstLine) {
-  Position p1 = applyMotion({3, 5}, "gg", a2_block_lines);
+  Position p1 = simulateMotions({3, 5}, "gg", a2_block_lines);
   EXPECT_EQ(p1.line, 0);
   EXPECT_EQ(p1.col, 5);
 
   Lines lines = {"short", "longer line"};
-  Position p2 = applyMotion({1, 8}, "gg", lines);
+  Position p2 = simulateMotions({1, 8}, "gg", lines);
   EXPECT_EQ(p2.line, 0);
   EXPECT_EQ(p2.col, 4);
 }
 
 TEST_F(MiscMotionsTest, G_GoesToLastLine) {
   int lastLine = a2_block_lines.size() - 1;
-  Position p = applyMotion({0, 5}, "G", a2_block_lines);
+  Position p = simulateMotions({0, 5}, "G", a2_block_lines);
   EXPECT_EQ(p.line, lastLine);
   EXPECT_EQ(p.col, 5);
 }
 
 TEST_F(MiscMotionsTest, GG_G_RoundTrip) {
   Position start(2, 5);
-  Position atTop = applyMotion(start, "gg", a2_block_lines);
-  Position atBottom = applyMotion(atTop, "G", a2_block_lines);
-  Position backToTop = applyMotion(atBottom, "gg", a2_block_lines);
+  Position atTop = simulateMotions(start, "gg", a2_block_lines);
+  Position atBottom = simulateMotions(atTop, "G", a2_block_lines);
+  Position backToTop = simulateMotions(atBottom, "gg", a2_block_lines);
 
   EXPECT_EQ(atTop.line, 0);
   EXPECT_EQ(atTop.col, 5);
@@ -158,114 +153,114 @@ TEST_F(MiscMotionsTest, GG_G_RoundTrip) {
 
 TEST_F(MiscMotionsTest, F_FindForward_Basic) {
   Lines lines = {"abcdefghij"};
-  expectPos(applyMotion({0, 0}, "fc", lines), 0, 2, "f from 0 to 'c'");
-  expectPos(applyMotion({0, 0}, "fj", lines), 0, 9, "f from 0 to 'j'");
-  expectPos(applyMotion({0, 3}, "fg", lines), 0, 6, "f from 3 to 'g'");
+  expectPos(simulateMotions({0, 0}, "fc", lines), 0, 2, "f from 0 to 'c'");
+  expectPos(simulateMotions({0, 0}, "fj", lines), 0, 9, "f from 0 to 'j'");
+  expectPos(simulateMotions({0, 3}, "fg", lines), 0, 6, "f from 3 to 'g'");
 }
 
 TEST_F(MiscMotionsTest, F_FindForward_NotFound) {
   Lines lines = {"abcdefghij"};
-  expectPos(applyMotion({0, 0}, "fz", lines), 0, 0, "f to nonexistent char");
-  expectPos(applyMotion({0, 5}, "fa", lines), 0, 5, "f forward to char behind cursor");
+  expectPos(simulateMotions({0, 0}, "fz", lines), 0, 0, "f to nonexistent char");
+  expectPos(simulateMotions({0, 5}, "fa", lines), 0, 5, "f forward to char behind cursor");
 }
 
 TEST_F(MiscMotionsTest, F_FindBackward_Basic) {
   Lines lines = {"abcdefghij"};
-  expectPos(applyMotion({0, 9}, "Fc", lines), 0, 2, "F from 9 to 'c'");
-  expectPos(applyMotion({0, 9}, "Fa", lines), 0, 0, "F from 9 to 'a'");
-  expectPos(applyMotion({0, 6}, "Fd", lines), 0, 3, "F from 6 to 'd'");
+  expectPos(simulateMotions({0, 9}, "Fc", lines), 0, 2, "F from 9 to 'c'");
+  expectPos(simulateMotions({0, 9}, "Fa", lines), 0, 0, "F from 9 to 'a'");
+  expectPos(simulateMotions({0, 6}, "Fd", lines), 0, 3, "F from 6 to 'd'");
 }
 
 TEST_F(MiscMotionsTest, F_FindBackward_NotFound) {
   Lines lines = {"abcdefghij"};
-  expectPos(applyMotion({0, 9}, "Fz", lines), 0, 9, "F to nonexistent char");
-  expectPos(applyMotion({0, 3}, "Fj", lines), 0, 3, "F backward to char ahead of cursor");
+  expectPos(simulateMotions({0, 9}, "Fz", lines), 0, 9, "F to nonexistent char");
+  expectPos(simulateMotions({0, 3}, "Fj", lines), 0, 3, "F backward to char ahead of cursor");
 }
 
 TEST_F(MiscMotionsTest, T_TillForward_Basic) {
   Lines lines = {"abcdefghij"};
-  expectPos(applyMotion({0, 0}, "tc", lines), 0, 1, "t from 0 to before 'c'");
-  expectPos(applyMotion({0, 0}, "tj", lines), 0, 8, "t from 0 to before 'j'");
-  expectPos(applyMotion({0, 3}, "tg", lines), 0, 5, "t from 3 to before 'g'");
+  expectPos(simulateMotions({0, 0}, "tc", lines), 0, 1, "t from 0 to before 'c'");
+  expectPos(simulateMotions({0, 0}, "tj", lines), 0, 8, "t from 0 to before 'j'");
+  expectPos(simulateMotions({0, 3}, "tg", lines), 0, 5, "t from 3 to before 'g'");
 }
 
 TEST_F(MiscMotionsTest, T_TillForward_AdjacentChar) {
   Lines lines = {"abcdefghij"};
-  expectPos(applyMotion({0, 0}, "tb", lines), 0, 0, "t to adjacent char stays");
+  expectPos(simulateMotions({0, 0}, "tb", lines), 0, 0, "t to adjacent char stays");
 }
 
 TEST_F(MiscMotionsTest, T_TillBackward_Basic) {
   Lines lines = {"abcdefghij"};
-  expectPos(applyMotion({0, 9}, "Tc", lines), 0, 3, "T from 9 to after 'c'");
-  expectPos(applyMotion({0, 9}, "Ta", lines), 0, 1, "T from 9 to after 'a'");
+  expectPos(simulateMotions({0, 9}, "Tc", lines), 0, 3, "T from 9 to after 'c'");
+  expectPos(simulateMotions({0, 9}, "Ta", lines), 0, 1, "T from 9 to after 'a'");
 }
 
 TEST_F(MiscMotionsTest, T_TillBackward_AdjacentChar) {
   Lines lines = {"abcdefghij"};
-  expectPos(applyMotion({0, 5}, "Te", lines), 0, 5, "T to adjacent char stays");
+  expectPos(simulateMotions({0, 5}, "Te", lines), 0, 5, "T to adjacent char stays");
 }
 
 TEST_F(MiscMotionsTest, CharFind_WithSemicolonRepeat) {
   Lines lines = {"abcabcabc"};
-  expectPos(applyMotion({0, 0}, "fa", lines), 0, 3, "fa from 0");
-  expectPos(applyMotion({0, 0}, "fa;", lines), 0, 6, "fa; from 0");
-  expectPos(applyMotion({0, 8}, "Fa", lines), 0, 6, "Fa from 8");
-  expectPos(applyMotion({0, 8}, "Fa;", lines), 0, 3, "Fa; from 8");
-  expectPos(applyMotion({0, 8}, "Fa;;", lines), 0, 0, "Fa;; from 8");
+  expectPos(simulateMotions({0, 0}, "fa", lines), 0, 3, "fa from 0");
+  expectPos(simulateMotions({0, 0}, "fa;", lines), 0, 6, "fa; from 0");
+  expectPos(simulateMotions({0, 8}, "Fa", lines), 0, 6, "Fa from 8");
+  expectPos(simulateMotions({0, 8}, "Fa;", lines), 0, 3, "Fa; from 8");
+  expectPos(simulateMotions({0, 8}, "Fa;;", lines), 0, 0, "Fa;; from 8");
 }
 
 TEST_F(MiscMotionsTest, CharFind_WithCommaRepeat) {
   Lines lines = {"abcabcabc"};
-  expectPos(applyMotion({0, 0}, "fa,", lines), 0, 0, "fa, from 0 - back to start");
-  expectPos(applyMotion({0, 0}, "fa;,", lines), 0, 3, "fa;, from 0 - forward twice, back once");
-  expectPos(applyMotion({0, 8}, "Fa,", lines), 0, 6, "Fa, from 8 - stays at 6");
+  expectPos(simulateMotions({0, 0}, "fa,", lines), 0, 0, "fa, from 0 - back to start");
+  expectPos(simulateMotions({0, 0}, "fa;,", lines), 0, 3, "fa;, from 0 - forward twice, back once");
+  expectPos(simulateMotions({0, 8}, "Fa,", lines), 0, 6, "Fa, from 8 - stays at 6");
 }
 
 TEST_F(MiscMotionsTest, CharFind_MixedRepeat) {
   Lines lines = {"abcabcabc"};
-  expectPos(applyMotion({0, 0}, "fa;,;", lines), 0, 6, "fa;,; complex repeat");
+  expectPos(simulateMotions({0, 0}, "fa;,;", lines), 0, 6, "fa;,; complex repeat");
 }
 
 TEST_F(MiscMotionsTest, CharFind_TillWithRepeat) {
   Lines lines = {"abcabcabc"};
-  expectPos(applyMotion({0, 0}, "ta", lines), 0, 2, "ta from 0 - before first 'a' at 3");
-  expectPos(applyMotion({0, 0}, "ta;", lines), 0, 2, "ta; from 0 - stuck at 2");
-  expectPos(applyMotion({0, 0}, "fa;", lines), 0, 6, "fa; from 0 advances properly");
+  expectPos(simulateMotions({0, 0}, "ta", lines), 0, 2, "ta from 0 - before first 'a' at 3");
+  expectPos(simulateMotions({0, 0}, "ta;", lines), 0, 2, "ta; from 0 - stuck at 2");
+  expectPos(simulateMotions({0, 0}, "fa;", lines), 0, 6, "fa; from 0 advances properly");
 }
 
 TEST_F(MiscMotionsTest, CharFind_SpaceAsTarget) {
   Lines lines = {"abc def ghi"};
-  expectPos(applyMotion({0, 0}, "f ", lines), 0, 3, "f<space> from 0");
-  expectPos(applyMotion({0, 0}, "f ;", lines), 0, 7, "f<space>; from 0");
-  expectPos(applyMotion({0, 0}, "t ", lines), 0, 2, "t<space> from 0");
-  expectPos(applyMotion({0, 10}, "F ", lines), 0, 7, "F<space> from end");
-  expectPos(applyMotion({0, 10}, "F ;", lines), 0, 3, "F<space>; from end");
+  expectPos(simulateMotions({0, 0}, "f ", lines), 0, 3, "f<space> from 0");
+  expectPos(simulateMotions({0, 0}, "f ;", lines), 0, 7, "f<space>; from 0");
+  expectPos(simulateMotions({0, 0}, "t ", lines), 0, 2, "t<space> from 0");
+  expectPos(simulateMotions({0, 10}, "F ", lines), 0, 7, "F<space> from end");
+  expectPos(simulateMotions({0, 10}, "F ;", lines), 0, 3, "F<space>; from end");
 }
 
 TEST_F(MiscMotionsTest, CharFind_MultipleOccurrences) {
   Lines lines = {"aaaaaa"};
-  expectPos(applyMotion({0, 0}, "fa", lines), 0, 1, "fa in all-a line");
-  expectPos(applyMotion({0, 0}, "fa;", lines), 0, 2, "fa; in all-a line");
-  expectPos(applyMotion({0, 0}, "fa;;", lines), 0, 3, "fa;; in all-a line");
-  expectPos(applyMotion({0, 0}, "fa;;;", lines), 0, 4, "fa;;; in all-a line");
+  expectPos(simulateMotions({0, 0}, "fa", lines), 0, 1, "fa in all-a line");
+  expectPos(simulateMotions({0, 0}, "fa;", lines), 0, 2, "fa; in all-a line");
+  expectPos(simulateMotions({0, 0}, "fa;;", lines), 0, 3, "fa;; in all-a line");
+  expectPos(simulateMotions({0, 0}, "fa;;;", lines), 0, 4, "fa;;; in all-a line");
 }
 
 TEST_F(MiscMotionsTest, CharFind_CombinedWithOtherMotions) {
   Lines lines = {"abcdefghij", "0123456789"};
-  expectPos(applyMotion({0, 0}, "jfc", lines), 1, 0, "j then fc (no 'c' in line 1)");
-  expectPos(applyMotion({0, 0}, "fcj", lines), 1, 2, "fc then j");
+  expectPos(simulateMotions({0, 0}, "jfc", lines), 1, 0, "j then fc (no 'c' in line 1)");
+  expectPos(simulateMotions({0, 0}, "fcj", lines), 1, 2, "fc then j");
 }
 
 TEST_F(MiscMotionsTest, CharFind_AtLineEnd) {
   Lines lines = {"abcdef"};
-  expectPos(applyMotion({0, 5}, "fa", lines), 0, 5, "f from end - target behind");
-  expectPos(applyMotion({0, 0}, "Ff", lines), 0, 0, "F from start - target ahead");
+  expectPos(simulateMotions({0, 5}, "fa", lines), 0, 5, "f from end - target behind");
+  expectPos(simulateMotions({0, 0}, "Ff", lines), 0, 0, "F from start - target ahead");
 }
 
 TEST_F(MiscMotionsTest, CharFind_OnTargetChar) {
   Lines lines = {"abcabc"};
-  expectPos(applyMotion({0, 0}, "fa", lines), 0, 3, "fa when on 'a' finds next 'a'");
-  expectPos(applyMotion({0, 3}, "Fa", lines), 0, 0, "Fa when on 'a' finds previous 'a'");
+  expectPos(simulateMotions({0, 0}, "fa", lines), 0, 3, "fa when on 'a' finds next 'a'");
+  expectPos(simulateMotions({0, 3}, "Fa", lines), 0, 0, "Fa when on 'a' finds previous 'a'");
 }
 
 // =============================================================================
@@ -274,7 +269,7 @@ TEST_F(MiscMotionsTest, CharFind_OnTargetChar) {
 
 static Position simulateWithNav(Position start, const string& motion,
                                 const Lines& lines, NavContext nav) {
-  return simulateMotions(start, Mode::Normal, nav, motion, lines).pos;
+  return simulateMotions(start, motion, lines, nav);
 }
 
 static Lines makeLines(int count) {
@@ -486,50 +481,50 @@ TEST_F(MiscMotionsTest, Scroll_WindowHeightTwo) {
 // =============================================================================
 
 TEST_F(MiscMotionsTest, Count_BasicHJKL) {
-  expectPos(applyMotion({0, 10}, "3h", a1_long_line), 0, 7, "3h moves left 3");
-  expectPos(applyMotion({0, 0}, "5l", a1_long_line), 0, 5, "5l moves right 5");
-  expectPos(applyMotion({0, 0}, "2j", a2_block_lines), 2, 0, "2j moves down 2");
-  expectPos(applyMotion({3, 0}, "2k", a2_block_lines), 1, 0, "2k moves up 2");
+  expectPos(simulateMotions({0, 10}, "3h", a1_long_line), 0, 7, "3h moves left 3");
+  expectPos(simulateMotions({0, 0}, "5l", a1_long_line), 0, 5, "5l moves right 5");
+  expectPos(simulateMotions({0, 0}, "2j", a2_block_lines), 2, 0, "2j moves down 2");
+  expectPos(simulateMotions({3, 0}, "2k", a2_block_lines), 1, 0, "2k moves up 2");
 }
 
 TEST_F(MiscMotionsTest, Count_LargeCount) {
   auto lines = makeLines(100);
-  expectPos(applyMotion({0, 0}, "50j", lines), 50, 0, "50j");
-  expectPos(applyMotion({99, 0}, "50k", lines), 49, 0, "50k");
-  expectPos(applyMotion({0, 0}, "20l", a1_long_line), 0, 20, "20l");
+  expectPos(simulateMotions({0, 0}, "50j", lines), 50, 0, "50j");
+  expectPos(simulateMotions({99, 0}, "50k", lines), 49, 0, "50k");
+  expectPos(simulateMotions({0, 0}, "20l", a1_long_line), 0, 20, "20l");
 }
 
 TEST_F(MiscMotionsTest, Count_ClampsAtBoundary) {
-  expectPos(applyMotion({0, 0}, "100j", a2_block_lines), 3, 0, "100j clamps to last line");
-  expectPos(applyMotion({3, 0}, "100k", a2_block_lines), 0, 0, "100k clamps to first line");
-  expectPos(applyMotion({0, 0}, "100l", a1_long_line), 0, 20, "100l clamps to line end");
-  expectPos(applyMotion({0, 10}, "100h", a1_long_line), 0, 0, "100h clamps to col 0");
+  expectPos(simulateMotions({0, 0}, "100j", a2_block_lines), 3, 0, "100j clamps to last line");
+  expectPos(simulateMotions({3, 0}, "100k", a2_block_lines), 0, 0, "100k clamps to first line");
+  expectPos(simulateMotions({0, 0}, "100l", a1_long_line), 0, 20, "100l clamps to line end");
+  expectPos(simulateMotions({0, 10}, "100h", a1_long_line), 0, 0, "100h clamps to col 0");
 }
 
 TEST_F(MiscMotionsTest, Count_ggG) {
   auto lines = makeLines(100);
-  expectPos(applyMotion({50, 0}, "1gg", lines), 0, 0, "1gg goes to line 0");
-  expectPos(applyMotion({0, 0}, "10gg", lines), 9, 0, "10gg goes to line 9");
-  expectPos(applyMotion({0, 0}, "50gg", lines), 49, 0, "50gg goes to line 49");
+  expectPos(simulateMotions({50, 0}, "1gg", lines), 0, 0, "1gg goes to line 0");
+  expectPos(simulateMotions({0, 0}, "10gg", lines), 9, 0, "10gg goes to line 9");
+  expectPos(simulateMotions({0, 0}, "50gg", lines), 49, 0, "50gg goes to line 49");
 
-  expectPos(applyMotion({50, 0}, "1G", lines), 0, 0, "1G goes to line 0");
-  expectPos(applyMotion({0, 0}, "100G", lines), 99, 0, "100G goes to last line");
-  expectPos(applyMotion({0, 0}, "200G", lines), 99, 0, "200G clamps to last line");
+  expectPos(simulateMotions({50, 0}, "1G", lines), 0, 0, "1G goes to line 0");
+  expectPos(simulateMotions({0, 0}, "100G", lines), 99, 0, "100G goes to last line");
+  expectPos(simulateMotions({0, 0}, "200G", lines), 99, 0, "200G clamps to last line");
 }
 
 TEST_F(MiscMotionsTest, Count_CharFind) {
   Lines lines = {"abcabcabc"};
-  expectPos(applyMotion({0, 0}, "2fa", lines), 0, 6, "2fa finds 2nd 'a' after cursor");
-  expectPos(applyMotion({0, 0}, "1fa", lines), 0, 3, "1fa finds 1st 'a' after cursor");
-  expectPos(applyMotion({0, 8}, "2Fa", lines), 0, 3, "2Fa finds 2nd 'a' backward");
-  expectPos(applyMotion({0, 0}, "ta", lines), 0, 2, "ta lands before 1st 'a'");
+  expectPos(simulateMotions({0, 0}, "2fa", lines), 0, 6, "2fa finds 2nd 'a' after cursor");
+  expectPos(simulateMotions({0, 0}, "1fa", lines), 0, 3, "1fa finds 1st 'a' after cursor");
+  expectPos(simulateMotions({0, 8}, "2Fa", lines), 0, 3, "2Fa finds 2nd 'a' backward");
+  expectPos(simulateMotions({0, 0}, "ta", lines), 0, 2, "ta lands before 1st 'a'");
 }
 
 TEST_F(MiscMotionsTest, Count_CharFindWithRepeat) {
   Lines lines = {"abababab"};
-  expectPos(applyMotion({0, 0}, "2fa;", lines), 0, 6, "2fa; finds 2nd a then next");
-  expectPos(applyMotion({0, 0}, "fa;", lines), 0, 4, "fa; finds 1st a then next");
-  expectPos(applyMotion({0, 0}, "fa;;", lines), 0, 6, "fa;; finds 1st a then 2 more");
+  expectPos(simulateMotions({0, 0}, "2fa;", lines), 0, 6, "2fa; finds 2nd a then next");
+  expectPos(simulateMotions({0, 0}, "fa;", lines), 0, 4, "fa; finds 1st a then next");
+  expectPos(simulateMotions({0, 0}, "fa;;", lines), 0, 6, "fa;; finds 1st a then 2 more");
 }
 
 TEST_F(MiscMotionsTest, Count_CtrlD_SetsScrollAmount) {
@@ -565,8 +560,8 @@ TEST_F(MiscMotionsTest, Count_CtrlB_RepeatsPages) {
 
 TEST_F(MiscMotionsTest, Count_MultiDigit) {
   auto lines = makeLines(150);
-  expectPos(applyMotion({0, 0}, "123j", lines), 123, 0, "123j moves down 123");
-  expectPos(applyMotion({149, 0}, "99k", lines), 50, 0, "99k moves up 99");
+  expectPos(simulateMotions({0, 0}, "123j", lines), 123, 0, "123j moves down 123");
+  expectPos(simulateMotions({149, 0}, "99k", lines), 50, 0, "99k moves up 99");
 }
 
 // =============================================================================
@@ -575,21 +570,21 @@ TEST_F(MiscMotionsTest, Count_MultiDigit) {
 
 TEST_F(MiscMotionsTest, EmptyLineNavigation) {
   Lines lines = {""};
-  expectPos(applyMotion({0, 0}, "l", lines), 0, 0);
-  expectPos(applyMotion({0, 0}, "h", lines), 0, 0);
+  expectPos(simulateMotions({0, 0}, "l", lines), 0, 0);
+  expectPos(simulateMotions({0, 0}, "h", lines), 0, 0);
 }
 
 TEST_F(MiscMotionsTest, SingleCharLine) {
   Lines lines = {"a"};
-  expectPos(applyMotion({0, 0}, "l", lines), 0, 0);
-  expectPos(applyMotion({0, 0}, "h", lines), 0, 0);
+  expectPos(simulateMotions({0, 0}, "l", lines), 0, 0);
+  expectPos(simulateMotions({0, 0}, "h", lines), 0, 0);
 }
 
 TEST_F(MiscMotionsTest, FirstAndLastPositions) {
-  EXPECT_EQ(applyMotion({0, 0}, "gg", a2_block_lines).line, 0);
+  EXPECT_EQ(simulateMotions({0, 0}, "gg", a2_block_lines).line, 0);
 
   int lastLine = a2_block_lines.size() - 1;
-  Position p = applyMotion({lastLine, 0}, "G", a2_block_lines);
+  Position p = simulateMotions({lastLine, 0}, "G", a2_block_lines);
   EXPECT_EQ(p.line, lastLine);
 }
 
@@ -599,7 +594,7 @@ TEST_F(MiscMotionsTest, FirstAndLastPositions) {
 
 TEST_F(MiscMotionsTest, Property_H_NeverIncreasesColumn) {
   for(int col = 0; col < 10; col++) {
-    Position result = applyMotion({0, col}, "h", a1_long_line);
+    Position result = simulateMotions({0, col}, "h", a1_long_line);
     EXPECT_LE(result.col, col) << "h from col " << col << " should not increase col";
     EXPECT_EQ(result.line, 0) << "h should not change line";
   }
@@ -607,7 +602,7 @@ TEST_F(MiscMotionsTest, Property_H_NeverIncreasesColumn) {
 
 TEST_F(MiscMotionsTest, Property_L_NeverDecreasesColumn) {
   for(int col = 0; col < 10; col++) {
-    Position result = applyMotion({0, col}, "l", a1_long_line);
+    Position result = simulateMotions({0, col}, "l", a1_long_line);
     EXPECT_GE(result.col, col) << "l from col " << col << " should not decrease col";
     EXPECT_EQ(result.line, 0) << "l should not change line";
   }
@@ -615,14 +610,14 @@ TEST_F(MiscMotionsTest, Property_L_NeverDecreasesColumn) {
 
 TEST_F(MiscMotionsTest, Property_J_NeverDecreasesLine) {
   for(int line = 0; line < (int)a2_block_lines.size(); line++) {
-    Position result = applyMotion({line, 0}, "j", a2_block_lines);
+    Position result = simulateMotions({line, 0}, "j", a2_block_lines);
     EXPECT_GE(result.line, line) << "j from line " << line << " should not decrease line";
   }
 }
 
 TEST_F(MiscMotionsTest, Property_K_NeverIncreasesLine) {
   for(int line = 0; line < (int)a2_block_lines.size(); line++) {
-    Position result = applyMotion({line, 0}, "k", a2_block_lines);
+    Position result = simulateMotions({line, 0}, "k", a2_block_lines);
     EXPECT_LE(result.line, line) << "k from line " << line << " should not increase line";
   }
 }
@@ -630,7 +625,7 @@ TEST_F(MiscMotionsTest, Property_K_NeverIncreasesLine) {
 TEST_F(MiscMotionsTest, Property_GG_AlwaysLine0) {
   auto lines = makeLines(20);
   for(int line = 0; line < (int)lines.size(); line++) {
-    Position result = applyMotion({line, 0}, "gg", lines);
+    Position result = simulateMotions({line, 0}, "gg", lines);
     EXPECT_EQ(result.line, 0) << "gg from line " << line << " should go to line 0";
   }
 }
@@ -639,7 +634,7 @@ TEST_F(MiscMotionsTest, Property_G_AlwaysLastLine) {
   auto lines = makeLines(20);
   int lastLine = lines.size() - 1;
   for(int line = 0; line < (int)lines.size(); line++) {
-    Position result = applyMotion({line, 0}, "G", lines);
+    Position result = simulateMotions({line, 0}, "G", lines);
     EXPECT_EQ(result.line, lastLine) << "G from line " << line << " should go to last line";
   }
 }

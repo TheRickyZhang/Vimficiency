@@ -6,7 +6,6 @@
 #include "Optimizer/Config.h"
 #include "Optimizer/ImpliedExclusions.h"
 #include "Optimizer/MovementOptimizer.h"
-#include "State/MotionState.h"
 #include "Utils/CoutCapture.h"
 #include "Utils/Debug.h"
 #include "Utils/Lines.h"

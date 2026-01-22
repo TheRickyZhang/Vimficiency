@@ -105,9 +105,10 @@ std::vector<ParsedMotion> parseMotions(const std::string &seq) {
 // We may think of passing in BufferIndex to improve simulating certain count motions.
 // However, I am not sure if it is worth it, as count > 1 is called only in simulateMotion(). It is helpful to compare vs repeated applications as well.
 void applyParsedMotion(Position& pos, Mode& mode,
-                       const NavContext& navContext,
-                  const ParsedMotion& parsedMotion,
-                  const Lines &lines) {
+                       const ParsedMotion& parsedMotion,
+                       const Lines& lines,
+                       const NavContext& navContext) {
+  (void)mode;  // Currently unused but kept for API consistency
   int n = static_cast<int>(lines.size());
   std::string_view motion = parsedMotion.motion;
   bool hasCount = parsedMotion.hasCount();
@@ -248,18 +249,18 @@ void applyParsedMotion(Position& pos, Mode& mode,
 }
 
 
-void applySingleMotion(Position& pos, Mode& mode, const NavContext& navContext, const string& motion, const Lines& lines) {
-  applyParsedMotion(pos, mode, navContext, ParsedMotion(motion, 0), lines);
+void applySingleMotion(Position& pos, Mode& mode, const string& motion, const Lines& lines, const NavContext& navContext) {
+  applyParsedMotion(pos, mode, ParsedMotion(motion, 0), lines, navContext);
 }
 
 // Return the result if we were to simulate motionSeq at current state
-// Important that pos and mode are passed by copy! We wouldn't want to change any state.
-MotionResult simulateMotions(Position pos, Mode mode, const NavContext& navContext,
-                          const std::string &motionSeq,
-                          const Lines &lines) {
+// Important that pos is passed by copy! We wouldn't want to change any state.
+Position simulateMotions(Position pos, const std::string& motionSeq, const Lines& lines,
+                         const NavContext& navContext) {
+  Mode mode = Mode::Normal;  // Motions don't change mode, so use dummy
   auto motions = parseMotions(motionSeq);
-  for (const auto &motion : motions) {
-    applyParsedMotion(pos, mode, navContext, motion, lines);
+  for (const auto& motion : motions) {
+    applyParsedMotion(pos, mode, motion, lines, navContext);
   }
-  return MotionResult(pos, mode);
+  return pos;
 }

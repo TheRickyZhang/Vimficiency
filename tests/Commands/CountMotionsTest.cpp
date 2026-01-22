@@ -156,15 +156,13 @@ protected:
   static void SetUpTestSuite() {
     // "one two three four five six seven eight"
     wordLine = {"one two three four five six seven eight"};
-
     multiWordLines = {
       "first second third fourth",
       "alpha beta gamma delta",
       "",
       "after blank paragraph"
     };
-
-    navContext = NavContext(39, 19);
+    navContext = NavContext();
   }
 
   static vector<Result> runOptimizer(

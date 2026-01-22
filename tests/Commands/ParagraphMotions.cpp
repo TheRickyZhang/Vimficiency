@@ -29,16 +29,10 @@ protected:
 
   static void SetUpTestSuite() {
     oracle = make_unique<NeovimOracle>();
-    navContext = NavContext(39, 19);
+    navContext = NavContext();
   }
 
   static void TearDownTestSuite() { oracle.reset(); }
-
-  // Apply motion using our implementation
-  static Position applyMotion(Position start, const string& motion,
-                              const Lines& lines) {
-    return simulateMotions(start, Mode::Normal, navContext, motion, lines).pos;
-  }
 
   // Get expected result from Neovim
   static Position neovimMotion(const Lines& lines, int startRow, int startCol,
@@ -133,7 +127,7 @@ TEST_F(ParagraphMotionsTest, ForwardParagraph_RandomBuffer) {
     auto test = generateRandomParagraphBuffer(rng, linesDist(rng));
 
     Position start(test.cursorLine, test.cursorCol);
-    Position ours = applyMotion(start, "}", test.lines);
+    Position ours = simulateMotions(start, "}", test.lines);
     Position expected = neovimMotion(test.lines, test.cursorLine, test.cursorCol, "}");
 
     if (ours.line == expected.line && ours.col == expected.col) {
@@ -175,7 +169,7 @@ TEST_F(ParagraphMotionsTest, BackwardParagraph_RandomBuffer) {
     auto test = generateRandomParagraphBuffer(rng, linesDist(rng));
 
     Position start(test.cursorLine, test.cursorCol);
-    Position ours = applyMotion(start, "{", test.lines);
+    Position ours = simulateMotions(start, "{", test.lines);
     Position expected = neovimMotion(test.lines, test.cursorLine, test.cursorCol, "{");
 
     if (ours.line == expected.line && ours.col == expected.col) {
@@ -211,7 +205,7 @@ TEST_F(ParagraphMotionsTest, ForwardParagraph_AtEndOfBuffer) {
 
   // From last line, } should stay at last line
   Position start(2, 0);
-  Position ours = applyMotion(start, "}", lines);
+  Position ours = simulateMotions(start, "}", lines);
   Position expected = neovimMotion(lines, 2, 0, "}");
 
   EXPECT_EQ(ours.line, expected.line);
@@ -223,7 +217,7 @@ TEST_F(ParagraphMotionsTest, BackwardParagraph_AtStartOfBuffer) {
 
   // From first line, { should stay at first line (col 0)
   Position start(0, 5);
-  Position ours = applyMotion(start, "{", lines);
+  Position ours = simulateMotions(start, "{", lines);
   Position expected = neovimMotion(lines, 0, 5, "{");
 
   EXPECT_EQ(ours.line, expected.line);
@@ -235,7 +229,7 @@ TEST_F(ParagraphMotionsTest, ForwardParagraph_OnBlankLine) {
 
   // From middle of blank lines, } should go to next blank after para2
   Position start(1, 0);
-  Position ours = applyMotion(start, "}", lines);
+  Position ours = simulateMotions(start, "}", lines);
   Position expected = neovimMotion(lines, 1, 0, "}");
 
   EXPECT_EQ(ours.line, expected.line);
@@ -247,7 +241,7 @@ TEST_F(ParagraphMotionsTest, BackwardParagraph_OnBlankLine) {
 
   // From blank line, { should go to previous blank
   Position start(2, 0);
-  Position ours = applyMotion(start, "{", lines);
+  Position ours = simulateMotions(start, "{", lines);
   Position expected = neovimMotion(lines, 2, 0, "{");
 
   EXPECT_EQ(ours.line, expected.line);
@@ -258,7 +252,7 @@ TEST_F(ParagraphMotionsTest, CountedMotion_2Forward) {
   Lines lines = {"para1", "", "para2", "", "para3", "", "para4"};
 
   Position start(0, 0);
-  Position ours = applyMotion(start, "2}", lines);
+  Position ours = simulateMotions(start, "2}", lines);
   Position expected = neovimMotion(lines, 0, 0, "2}");
 
   EXPECT_EQ(ours.line, expected.line);
@@ -269,7 +263,7 @@ TEST_F(ParagraphMotionsTest, CountedMotion_2Backward) {
   Lines lines = {"para1", "", "para2", "", "para3", "", "para4"};
 
   Position start(6, 0);
-  Position ours = applyMotion(start, "2{", lines);
+  Position ours = simulateMotions(start, "2{", lines);
   Position expected = neovimMotion(lines, 6, 0, "2{");
 
   EXPECT_EQ(ours.line, expected.line);

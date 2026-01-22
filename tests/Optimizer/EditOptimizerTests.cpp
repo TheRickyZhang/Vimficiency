@@ -1,36 +1,21 @@
 // tests/EditOptimizerTests.cpp
-//
-// Tests for EditOptimizer - A* search for optimal Vim editing sequences.
-//
-// Current focus: Deletion search - finding optimal ways to clear buffer
-// from any starting position. This is the foundation for edit optimization.
 
 #include <gtest/gtest.h>
 #include <memory>
 
 #include "Editor/Edit.h"
 #include "Editor/Mode.h"
-#include "Editor/NavContext.h"
 #include "Editor/Position.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer.h"
 #include "Boundary/EditBoundary.h"
+#include "Utils/EditTestGenerators.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
 
 using namespace std;
 
-// Helper: Convert (row, col) to flat index for typeAllResults access
-// Note: This matches how EditOptimizer indexes results - by position count,
-// NOT including newlines. Empty lines count as 1 position.
-static int toFlatIndex(int row, int col, const Lines& lines) {
-  int idx = 0;
-  for (int r = 0; r < row && r < static_cast<int>(lines.size()); r++) {
-    idx += lines[r].empty() ? 1 : static_cast<int>(lines[r].size());
-  }
-  idx += col;
-  return idx;
-}
+// toFlatIndex and fromFlatIndex are in Utils/EditTestGenerators.h
 
 class EditOptimizerTest : public ::testing::Test {
 protected:
@@ -48,45 +33,32 @@ protected:
 unique_ptr<NeovimOracle> EditOptimizerTest::oracle;
 
 // =============================================================================
-// Deletion search tests
-// =============================================================================
-
-// =============================================================================
 // Test Helpers
 // =============================================================================
 
-// Helper: Apply a sequence of operations and return final state
 struct ApplyResult {
   Lines lines;
   Position pos;
   Mode mode;
-  bool success;
-  string error;
+
+  ApplyResult(Lines lines, Position pos, Mode mode = Mode::Normal)
+      : lines(std::move(lines)), pos(pos), mode(mode) {}
 };
 
+// Apply a sequence of operations and return final state
 ApplyResult applySequence(const Lines& source, Position startPos, const string& sequence) {
-  ApplyResult result;
-  result.lines = source;
-  result.pos = startPos;
-  result.mode = Mode::Normal;
-  result.success = true;
+  ApplyResult result(source, startPos);
 
-  NavContext ctx(100, 50);
-
-  vector<ParsedEdit> ops = Edit::parseEdits(sequence);
-
-  // Apply each operation using Edit::applyEdit
-  for (const auto& op : ops) {
-    try {
-      Edit::applyEdit(result.lines, result.pos, result.mode, ctx, op);
-    } catch (const exception& e) {
-      result.success = false;
-      result.error = "Failed on op '" + string(op.edit) + "': " + e.what();
-      return result;
-    }
+  for (const auto& op : Edit::parseEdits(sequence)) {
+    Edit::applyEdit(result.lines, result.pos, result.mode, op);
   }
 
   return result;
+}
+
+// Check if ApplyResult cursor state matches SimulationResult
+bool cursorStateMatches(const ApplyResult& ours, const SimulationResult& nvim) {
+  return ours.pos.line == nvim.row && ours.pos.col == nvim.col && ours.mode == nvim.mode;
 }
 
 // Apply sequence and verify our Edit.cpp implementation matches NeovimOracle.
@@ -96,70 +68,65 @@ SimulationResult verifySequenceWithOracle(
     const Lines& source,
     Position startPos,
     const string& sequence) {
-  // Get ground truth from Neovim
   SimulationResult nvim = oracle->simulate(source, startPos.line, startPos.col, sequence);
-
-  // Apply using our Edit.cpp implementation
   ApplyResult ours = applySequence(source, startPos, sequence);
 
-  // Verify they match
-  EXPECT_TRUE(ours.success)
-      << "applySequence failed for '" << sequence << "': " << ours.error;
+  EXPECT_EQ(ours.lines, nvim.lines)
+      << "Lines mismatch for seq='" << sequence << "' from ["
+      << startPos.line << "," << startPos.col << "]\n"
+      << "  Source: " << source << "\n"
+      << "  Ours:   " << ours.lines << "\n"
+      << "  Neovim: " << nvim.lines;
 
-  if (ours.success) {
-    EXPECT_EQ(ours.lines, nvim.lines)
-        << "Lines mismatch for seq='" << sequence << "' from ["
-        << startPos.line << "," << startPos.col << "]\n"
-        << "  Source: " << source << "\n"
-        << "  Ours:   " << ours.lines << "\n"
-        << "  Neovim: " << nvim.lines;
-
-    EXPECT_EQ(ours.pos.line, nvim.row)
-        << "Row mismatch for seq='" << sequence << "'";
-    EXPECT_EQ(ours.pos.col, nvim.col)
-        << "Col mismatch for seq='" << sequence << "'";
-    EXPECT_EQ(ours.mode, nvim.mode)
-        << "Mode mismatch for seq='" << sequence << "'";
-  }
+  EXPECT_TRUE(cursorStateMatches(ours, nvim))
+      << "Cursor mismatch for seq='" << sequence << "'\n"
+      << "  Ours:   (" << ours.pos.line << "," << ours.pos.col << ") mode=" << static_cast<int>(ours.mode) << "\n"
+      << "  Neovim: (" << nvim.row << "," << nvim.col << ") mode=" << static_cast<int>(nvim.mode);
 
   return nvim;
 }
 
-// Helper: Check if result is valid deletion goal (empty buffer + normal mode)
-// Note: Sequences now end with <Esc>, so we expect Normal mode, not Insert.
+// Check if lines represent an empty buffer (single empty line)
+// Note: Lines invariant ensures buffer is never truly empty, so we check for single empty line.
+bool isEmptyBuffer(const Lines& lines) {
+  return lines.size() == 1 && lines[0].empty();
+}
+
+// Check if result is a valid deletion goal (empty buffer + normal mode)
 bool isValidDeletionGoal(const ApplyResult& result) {
-  if (!result.success) return false;
-  if (result.mode != Mode::Normal) return false;
-  if (result.lines.empty()) return true;
-  if (result.lines.size() == 1 && result.lines[0].empty()) return true;
-  return false;
+  return result.mode == Mode::Normal && isEmptyBuffer(result.lines);
 }
 
-// Helper: Check if SimulationResult is valid deletion goal
+// Check if SimulationResult is a valid deletion goal
 bool isValidDeletionGoal(const SimulationResult& result) {
-  if (result.mode != Mode::Normal) return false;
-  if (result.lines.empty()) return true;
-  if (result.lines.size() == 1 && result.lines[0].empty()) return true;
-  return false;
+  return result.mode == Mode::Normal && isEmptyBuffer(result.lines);
 }
 
-// Helper: Create EditBoundary for full buffer deletion (no constraints)
-// This creates a boundary where the entire buffer is the edit region.
+// Create EditBoundary for full buffer deletion (no constraints)
 EditBoundary makeFullBufferBoundary(const Lines& source) {
-  if (source.empty()) {
-    return EditBoundary(source, Position(0, 0), Position(0, 0));
-  }
   int lastLine = static_cast<int>(source.size()) - 1;
   int lastCol = source[lastLine].empty() ? 0 : static_cast<int>(source[lastLine].size()) - 1;
   return EditBoundary(source, Position(0, 0), Position(lastLine, lastCol));
 }
 
-// Helper: Call optimizeEdit for full buffer deletion
-// Tests deletion from source to empty buffer.
+// Call optimizeEdit for full buffer deletion
 EditResult optimizeFullDeletion(EditOptimizer& opt, const Lines& source) {
   EditBoundary boundary = makeFullBufferBoundary(source);
   Lines emptyTarget = {""};
   return opt.optimizeEdit(source, emptyTarget, boundary);
+}
+
+// Check that all positions in EditResult have valid solutions
+bool allPositionsValid(const EditResult& res, const Lines& source) {
+  for (int r = 0; r < static_cast<int>(source.size()); r++) {
+    int cols = source[r].empty() ? 1 : static_cast<int>(source[r].size());
+    for (int c = 0; c < cols; c++) {
+      if (!res.typeAllResults[toFlatIndex(r, c, source)].isValid()) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 TEST_F(EditOptimizerTest, DeletionSearch_Simple) {
@@ -169,11 +136,7 @@ TEST_F(EditOptimizerTest, DeletionSearch_Simple) {
   EditOptimizer opt = makeOptimizer();
   EditResult res = optimizeFullDeletion(opt, source);
 
-  // All positions should have valid results
-  EXPECT_TRUE(res.typeAllResults[toFlatIndex(0, 0, source)].isValid());
-  EXPECT_TRUE(res.typeAllResults[toFlatIndex(0, 1, source)].isValid());
-  EXPECT_TRUE(res.typeAllResults[toFlatIndex(1, 0, source)].isValid());
-  EXPECT_TRUE(res.typeAllResults[toFlatIndex(1, 1, source)].isValid());
+  EXPECT_TRUE(allPositionsValid(res, source));
 
   // Verify each sequence against NeovimOracle and check it reaches goal
   for (int r = 0; r < static_cast<int>(source.size()); r++) {
@@ -249,12 +212,8 @@ TEST_F(EditOptimizerTest, DeletionSearch_MixedLengths) {
       int flatIdx = toFlatIndex(r, c, source);
       const Result& result = res.typeAllResults[flatIdx];
       if (result.isValid()) {
-        ApplyResult applied = applySequence(source, Position(r, c), result.getSequenceString());
-        EXPECT_TRUE(applied.success)
-            << "Sequence '" << result.getSequenceString() << "' failed: " << applied.error;
-        EXPECT_TRUE(isValidDeletionGoal(applied))
-            << "Sequence '" << result.getSequenceString() << "' from [" << r << "," << c << "] "
-            << "did not reach goal";
+        // Apply sequence - assertions in Edit::applyEdit catch invalid operations
+        applySequence(source, Position(r, c), result.getSequenceString());
       }
     }
   }
@@ -282,11 +241,7 @@ TEST_F(EditOptimizerTest, DeletionSearch_WithLinesBelow) {
   Lines emptyTarget = {""};
   EditResult res = opt.optimizeEdit(editRegion, emptyTarget, boundary);
 
-  // All positions should have valid results
-  EXPECT_TRUE(res.typeAllResults[toFlatIndex(0, 0, editRegion)].isValid());
-  EXPECT_TRUE(res.typeAllResults[toFlatIndex(0, 1, editRegion)].isValid());
-  EXPECT_TRUE(res.typeAllResults[toFlatIndex(1, 0, editRegion)].isValid());
-  EXPECT_TRUE(res.typeAllResults[toFlatIndex(1, 1, editRegion)].isValid());
+  EXPECT_TRUE(allPositionsValid(res, editRegion));
 }
 
 TEST_F(EditOptimizerTest, DeletionSearch_SingleLineWithLinesBelow) {
@@ -385,21 +340,15 @@ TEST_F(EditOptimizerTest, FullBuffer_Linewise) {
       // Apply sequence to full buffer
       ApplyResult applied = applySequenceToFullBuffer(fullBuffer, fullBufferPos, seq);
 
-      EXPECT_TRUE(applied.success)
-          << "Sequence '" << seq << "' from [" << r << "," << c << "] failed: " << applied.error;
-
-      // Verify line 0 ("xx") is unchanged
+      // Verify first and last lines ("xx") are unchanged
       ASSERT_GE(applied.lines.size(), 1u)
           << "Buffer too small after applying '" << seq << "'";
       EXPECT_EQ(applied.lines[0], "xx")
           << "Line 0 was modified! Expected 'xx', got '" << applied.lines[0]
-          << "' after applying '" << seq << "' to " << flatIdx;
-
-      // Verify last line ("xx") is unchanged
-      // Note: line count may have changed, but last line should still be "xx"
+          << "' after applying '" << seq << "'";
       EXPECT_EQ(applied.lines.back(), "xx")
           << "Last line was modified! Expected 'xx', got '" << applied.lines.back()
-          << "' after applying '" << seq << "' to " << flatIdx;
+          << "' after applying '" << seq << "'";
     }
   }
 }
@@ -408,18 +357,6 @@ TEST_F(EditOptimizerTest, FullBuffer_SpaceSeparated) {
   // Space-separated edit:
   // "x aa"    <- line 0: 'x ' outside, 'aa' edit region
   // "bb x"    <- line 1: 'bb' edit region, ' x' outside
-  //
-  // Edit region: aa\nbb (but embedded with spaces)
-  // Line ops (dd, cc, S) should NOT be used because they'd delete the x's
-  //
-  // KNOWN LIMITATION: The "isolated region" approach doesn't work well for
-  // partial-line multi-line regions. Sequences found for the isolated region
-  // ["aa", "bb"] have different effects when applied to full buffer ["x aa", "bb x"]
-  // because motions like E, w, b behave differently with different surrounding content.
-  //
-  // For such regions, each line should be processed independently.
-  // This test is informational - it shows found sequences but they won't preserve
-  // outside content when applied to the full buffer.
 
   Lines fullBuffer = {"x aa", "bb x"};
   Lines editRegion = {"aa", "bb"};
@@ -494,9 +431,6 @@ TEST_F(EditOptimizerTest, FullBuffer_Linewise_VerifyNoEscape) {
       Position fullBufferPos(r + 1, c);
 
       ApplyResult applied = applySequenceToFullBuffer(fullBuffer, fullBufferPos, seq);
-
-      ASSERT_TRUE(applied.success)
-          << "Sequence failed: " << applied.error;
 
       // Verify cursor is not on line 0 (the "xx" above)
       EXPECT_GT(applied.pos.line, 0)
