@@ -71,12 +71,12 @@ Range textObject(
     bool isBigWord);    // true for W variants
 
 // Returns the range that a word text object would select, with boundary checking.
-// Returns Range where start/end could be POSITION_OUTSIDE_BOUNDARY if crosses.
+// Returns Range where first/last could be POSITION_OUTSIDE_BOUNDARY if crosses.
 //
 // Boundary checking (same model as motionWordEndpoint):
-//   leftColOffset > 0:  crosses if range.start is in prefix region
+//   leftColOffset > 0:  crosses if range.first is in prefix region
 //                       (first leftColOffset cols of line 0)
-//   rightColOffset > 0: crosses if range.end is in suffix region
+//   rightColOffset > 0: crosses if range.last is in suffix region
 //                       (last rightColOffset cols of last line)
 //   hasLinesAbove:      crosses if backward motion goes past line 0
 //   hasLinesBelow:      crosses if forward motion goes past last line
@@ -111,7 +111,7 @@ int motionParagraphEndpoint(int cursorLine,
 
 // Returns the line range for a paragraph text object.
 // If boundaries >= 0 and result would cross:
-//   returns LINE_RANGE_OUTSIDE_BOUNDARY if range.startLine <= topBoundary or range.endLine >= bottomBoundary
+//   returns LINE_RANGE_OUTSIDE_BOUNDARY if range.firstLine <= topBoundary or range.lastLine >= bottomBoundary
 //
 // From boundary-logic.md:
 //   dip: (Backward, BlockEdge) + (Forward, BlockEdge)
@@ -143,7 +143,7 @@ Position motionSentenceEndpoint(Position cursor,
 
 // Returns the range for a sentence text object.
 // If boundaries are valid and result would cross:
-//   returns RANGE_OUTSIDE_BOUNDARY if range.start <= leftBoundary or range.end >= rightBoundary
+//   returns RANGE_OUTSIDE_BOUNDARY if range.first <= leftBoundary or range.last >= rightBoundary
 //
 // From boundary-logic.md:
 //   dis: (Backward, SentenceEdge) + (Forward, SentenceEdge)

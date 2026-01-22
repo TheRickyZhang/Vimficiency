@@ -9,30 +9,30 @@ using namespace std;
 // =============================================================================
 
 // Primary constructor: analyze boundary from buffer context
-EditBoundary::EditBoundary(const Lines &lines, Position startPos, Position endPos)
+EditBoundary::EditBoundary(const Lines &lines, Position firstPos, Position lastPos)
     : prefix_(), suffix_(),
       hasLinesAbove_(false), hasLinesBelow_(false),
       firstLineQuotes_(), lastLineQuotes_(),
       firstLineBrackets_(), lastLineBrackets_() {
   assert(!lines.empty() && "Lines invariant: buffer always has at least one line");
 
-  const string &firstLine = lines[startPos.line];
-  // Extract full prefix: all characters before startPos on the first line
-  if (startPos.col > 0) {
-    prefix_ = firstLine.substr(0, startPos.col);
+  const string &firstLine = lines[firstPos.line];
+  // Extract full prefix: all characters before firstPos on the first line
+  if (firstPos.col > 0) {
+    prefix_ = firstLine.substr(0, firstPos.col);
   }
   // prefix_ stays empty if at column 0 (atLineStart)
 
-  const string &lastLine = lines[endPos.line];
+  const string &lastLine = lines[lastPos.line];
   int endSize = static_cast<int>(lastLine.size());
-  // Extract full suffix: all characters after endPos on the last line
-  if (endPos.col + 1 < endSize) {
-    suffix_ = lastLine.substr(endPos.col + 1);
+  // Extract full suffix: all characters after lastPos on the last line
+  if (lastPos.col + 1 < endSize) {
+    suffix_ = lastLine.substr(lastPos.col + 1);
   }
   // suffix_ stays empty if at end of line (atLineEnd)
 
-  hasLinesAbove_ = (startPos.line > 0);
-  hasLinesBelow_ = (endPos.line + 1 < static_cast<int>(lines.size()));
+  hasLinesAbove_ = (firstPos.line > 0);
+  hasLinesBelow_ = (lastPos.line + 1 < static_cast<int>(lines.size()));
 
   // Scan prefix for quotes/brackets (for text object support)
   for (char c : prefix_) {
@@ -49,7 +49,7 @@ EditBoundary::EditBoundary(const Lines &lines, Position startPos, Position endPo
 
 // Inherited constructor: use parent boundary but refine with new region
 EditBoundary::EditBoundary(const EditBoundary &parent, const Lines &lines,
-                           Position startPos, Position endPos)
+                           Position firstPos, Position lastPos)
     : prefix_(), suffix_(),
       hasLinesAbove_(parent.hasLinesAbove()),
       hasLinesBelow_(parent.hasLinesBelow()),
@@ -59,11 +59,11 @@ EditBoundary::EditBoundary(const EditBoundary &parent, const Lines &lines,
       lastLineBrackets_(parent.lastLineBrackets()) {
   assert(!lines.empty() && "Lines invariant: buffer always has at least one line");
 
-  const string &firstLine = lines[startPos.line];
+  const string &firstLine = lines[firstPos.line];
   // Extract full prefix from current lines, or inherit from parent if at edge
-  if (startPos.col > 0) {
-    prefix_ = firstLine.substr(0, startPos.col);
-  } else if (startPos.line > 0) {
+  if (firstPos.col > 0) {
+    prefix_ = firstLine.substr(0, firstPos.col);
+  } else if (firstPos.line > 0) {
     // At column 0 but not first line of these lines - no prefix
     prefix_ = "";
   } else {
@@ -71,12 +71,12 @@ EditBoundary::EditBoundary(const EditBoundary &parent, const Lines &lines,
     prefix_ = parent.prefix();
   }
 
-  const string &lastLine = lines[endPos.line];
+  const string &lastLine = lines[lastPos.line];
   int endSize = static_cast<int>(lastLine.size());
   // Extract full suffix from current lines, or inherit from parent if at edge
-  if (endPos.col + 1 < endSize) {
-    suffix_ = lastLine.substr(endPos.col + 1);
-  } else if (endPos.line + 1 < static_cast<int>(lines.size())) {
+  if (lastPos.col + 1 < endSize) {
+    suffix_ = lastLine.substr(lastPos.col + 1);
+  } else if (lastPos.line + 1 < static_cast<int>(lines.size())) {
     // At end of line but not last line of these lines - no suffix
     suffix_ = "";
   } else {
@@ -84,9 +84,9 @@ EditBoundary::EditBoundary(const EditBoundary &parent, const Lines &lines,
     suffix_ = parent.suffix();
   }
 
-  hasLinesAbove_ = parent.hasLinesAbove() || (startPos.line > 0);
+  hasLinesAbove_ = parent.hasLinesAbove() || (firstPos.line > 0);
   hasLinesBelow_ = parent.hasLinesBelow() ||
-                  (endPos.line + 1 < static_cast<int>(lines.size()));
+                  (lastPos.line + 1 < static_cast<int>(lines.size()));
 
   // Scan prefix for quotes/brackets
   for (char c : prefix_) {

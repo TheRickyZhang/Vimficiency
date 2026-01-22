@@ -20,53 +20,53 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
   // This affects empty line removal behavior:
   // - Cursor on same line (D at col 0): keep empty line
   // - Cursor on different line (db from col 0): remove empty line
-  bool cursorOnDeletionLine = (pos.line == r.start.line);
+  bool cursorOnDeletionLine = (pos.line == r.first.line);
 
-  int endCol = r.end.col + 1;  // Inclusive: delete up to and including end.col
+  int endCol = r.last.col + 1;  // Inclusive: delete up to and including end.col
 
-  if (r.start.line == r.end.line) {
+  if (r.first.line == r.last.line) {
     // Single line deletion
-    string& ln = lines[r.start.line];
+    string& ln = lines[r.first.line];
     endCol = min(endCol, static_cast<int>(ln.size()));
-    ln.erase(r.start.col, endCol - r.start.col);
+    ln.erase(r.first.col, endCol - r.first.col);
 
     // Vim behavior for empty lines after single-line deletion:
     // - If cursor was on the same line (D at col 0): keep empty line
     // - If cursor was on different line (db from col 0): remove empty line
-    if (ln.empty() && r.start.col == 0 && lines.size() > 1 && !cursorOnDeletionLine) {
-      lines.erase(lines.begin() + r.start.line);
+    if (ln.empty() && r.first.col == 0 && lines.size() > 1 && !cursorOnDeletionLine) {
+      lines.erase(lines.begin() + r.first.line);
     }
   } else {
     // Multi-line deletion: merge first and last line, delete lines in between
-    string& firstLn = lines[r.start.line];
-    const string& lastLn = lines[r.end.line];
+    string& firstLn = lines[r.first.line];
+    const string& lastLn = lines[r.last.line];
 
     endCol = min(endCol, static_cast<int>(lastLn.size()));
 
     // Merge: keep first part of first line + last part of last line
-    firstLn = firstLn.substr(0, r.start.col) + lastLn.substr(endCol);
+    firstLn = firstLn.substr(0, r.first.col) + lastLn.substr(endCol);
 
     // Delete lines from startLine+1 to endLine (inclusive)
-    lines.erase(lines.begin() + r.start.line + 1, lines.begin() + r.end.line + 1);
+    lines.erase(lines.begin() + r.first.line + 1, lines.begin() + r.last.line + 1);
 
     // Vim behavior: if multi-line deletion results in empty merged line AND
     // there are other lines in the buffer, remove the empty line.
     // This matches neovim's behavior where `de` on a single-char line followed
     // by other content removes the line entirely rather than leaving it empty.
     if (firstLn.empty() && lines.size() > 1) {
-      lines.erase(lines.begin() + r.start.line);
+      lines.erase(lines.begin() + r.first.line);
     }
 
     assert(!lines.empty());
   }
 
-  pos.line = r.start.line;
+  pos.line = r.first.line;
   // Clamp position to valid range after possible line removal
   if (pos.line >= static_cast<int>(lines.size())) {
     pos.line = static_cast<int>(lines.size()) - 1;
   }
   // Compute clamped column and update both col and targetCol
-  int newCol = r.start.col;
+  int newCol = r.first.col;
   if (mode == Mode::Insert) {
     newCol = min(newCol, static_cast<int>(lines[pos.line].size()));
   } else {
@@ -79,17 +79,17 @@ void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos) {
   LineRange r = range;
   r.normalize();
 
-  assert(r.startLine >= 0 && r.startLine < static_cast<int>(lines.size()));
-  assert(r.endLine >= 0 && r.endLine < static_cast<int>(lines.size()));
+  assert(r.firstLine >= 0 && r.firstLine < static_cast<int>(lines.size()));
+  assert(r.lastLine >= 0 && r.lastLine < static_cast<int>(lines.size()));
 
-  lines.erase(lines.begin() + r.startLine, lines.begin() + r.endLine + 1);
+  lines.erase(lines.begin() + r.firstLine, lines.begin() + r.lastLine + 1);
 
   // Maintain invariant: buffer always has at least one line
   if (lines.empty()) {
     lines.push_back("");
   }
 
-  pos.line = min(r.startLine, static_cast<int>(lines.size()) - 1);
+  pos.line = min(r.firstLine, static_cast<int>(lines.size()) - 1);
   // dd resets targetCol to the clamped column (unlike vertical motions which preserve it)
   if (lines[pos.line].empty()) {
     pos.setCol(0);

@@ -4,19 +4,19 @@
 
 // A line-wise region. Always inclusive.
 struct LineRange {
-  int startLine;
-  int endLine;
+  int firstLine;
+  int lastLine;
 
-  constexpr LineRange(int s, int e) : startLine(s), endLine(e) {}
+  constexpr LineRange(int f, int l) : firstLine(f), lastLine(l) {}
 
   void normalize() {
-    if (endLine < startLine) {
-      std::swap(startLine, endLine);
+    if (lastLine < firstLine) {
+      std::swap(firstLine, lastLine);
     }
   }
 
   bool isValid() const {
-    return startLine >= 0;
+    return firstLine >= 0;
   }
 };
 

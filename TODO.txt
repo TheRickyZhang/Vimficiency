@@ -4,7 +4,6 @@ Implement EditOptimizer
 Implement quote and bracket text object motions (see quoteFlags/bracketFlags)
 Inspect code and improve organization
 Handle pureDeletion, pureInsertion cases separately
-Finish edge cases when cursor is in edit position (why did introduce hjkl fail?)
 
 Make sure all tests use NeovimOracle to verify parseSequence as well.
 

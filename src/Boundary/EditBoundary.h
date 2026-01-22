@@ -23,10 +23,10 @@ struct EditBoundary {
   EditBoundary() = default;
 
   // Construct from buffer context
-  EditBoundary(const Lines& lines, Position startPos, Position endPos);
+  EditBoundary(const Lines& lines, Position firstPos, Position lastPos);
 
   // Construct inheriting from parent boundary (for sub-regions)
-  EditBoundary(const EditBoundary& parent, const Lines& lines, Position startPos, Position endPos);
+  EditBoundary(const EditBoundary& parent, const Lines& lines, Position firstPos, Position lastPos);
 
   // Construct with explicit boundary values (for testing boundary crossing logic)
   EditBoundary(std::string prefix, std::string suffix, bool hasLinesAbove, bool hasLinesBelow)
@@ -71,7 +71,7 @@ private:
   BracketFlags firstLineBrackets_;
   BracketFlags lastLineBrackets_;
 
-  void computeBoundaryChars(const Lines& lines, Position startPos, Position endPos);
-  void scanQuotesAndBrackets(const Lines& lines, Position startPos, Position endPos);
+  void computeBoundaryChars(const Lines& lines, Position firstPos, Position lastPos);
+  void scanQuotesAndBrackets(const Lines& lines, Position firstPos, Position lastPos);
 };
 

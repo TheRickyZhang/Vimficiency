@@ -76,14 +76,14 @@ Range aroundQuote(const Lines& lines, Position pos, char quote) {
   Range inner = innerQuote(lines, pos, quote);
 
   // If inner is empty/invalid, return it
-  if (inner.start.line != inner.end.line) return inner;
+  if (inner.first.line != inner.last.line) return inner;
 
-  int line = inner.start.line;
+  int line = inner.first.line;
   const string& ln = lines[line];
 
   // Expand to include the quotes
-  int startCol = inner.start.col > 0 ? inner.start.col - 1 : inner.start.col;
-  int endCol = inner.end.col < static_cast<int>(ln.size()) - 1 ? inner.end.col + 1 : inner.end.col;
+  int startCol = inner.first.col > 0 ? inner.first.col - 1 : inner.first.col;
+  int endCol = inner.last.col < static_cast<int>(ln.size()) - 1 ? inner.last.col + 1 : inner.last.col;
 
   return Range(Position(line, startCol), Position(line, endCol));
 }

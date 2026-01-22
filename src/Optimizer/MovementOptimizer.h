@@ -34,15 +34,15 @@ struct MovementOptimizer {
   }
 
   // Heuristic for range target: distance to closest point in range
-  double heuristicToRange(const MotionState& s, const Position& rangeBegin,
-                          const Position& rangeEnd, double costWeight) const {
+  double heuristicToRange(const MotionState& s, const Position& rangeFirst,
+                          const Position& rangeLast, double costWeight) const {
     Position pos = s.getPos();
     // If in range, distance is 0
-    if (pos >= rangeBegin && pos <= rangeEnd) {
+    if (pos >= rangeFirst && pos <= rangeLast) {
       return costWeight * s.getEffort();
     }
     // Otherwise, distance to nearest edge
-    Position closest = (pos < rangeBegin) ? rangeBegin : rangeEnd;
+    Position closest = (pos < rangeFirst) ? rangeFirst : rangeLast;
     return costWeight * s.getEffort() + costToGoal(pos, closest);
   }
 
@@ -69,7 +69,7 @@ struct MovementOptimizer {
     const std::optional<OptimizerParams>& paramsOverride = std::nullopt
   );
 
-  // Multi-sink movement optimization: find paths to any position in [rangeBegin, rangeEnd]
+  // Multi-sink movement optimization: find paths to any position in [rangeFirst, rangeLast]
   // Only RunningEffort maybe continued from previous state.
   // Returns up to params.maxResults unique end positions.
   // - allowMultiplePerPosition=false (default): at most 1 result per end position (best cost)
@@ -80,8 +80,8 @@ struct MovementOptimizer {
     const Lines& lines,
     const Position& startPos,
     const RunningEffort& startingEffort,  // Continued from caller for correct effort calc
-    const Position& rangeBegin,
-    const Position& rangeEnd,
+    const Position& rangeFirst,
+    const Position& rangeLast,
     const std::string& userSequence,
     NavContext& navigationContext,
 

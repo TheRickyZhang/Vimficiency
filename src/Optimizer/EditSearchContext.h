@@ -9,6 +9,7 @@
 #include "Boundary/EditBoundary.h"
 #include "Editor/Position.h"
 #include "Editor/Range.h"
+#include "EditToSpec.h"
 #include "Keyboard/EditToKeys.h"
 #include "Keyboard/KeyboardModel.h"
 #include "State/EditState.h"

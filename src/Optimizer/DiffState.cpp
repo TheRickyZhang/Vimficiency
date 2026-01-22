@@ -393,7 +393,7 @@ Lines applyDiffState(const DiffState& diff, const Lines& lines) {
   string text = lines.flatten();
 
   // Find the flat indices for the edit region
-  int startIdx = positionToFlatIndex(diff.posBegin, lines);
+  int startIdx = positionToFlatIndex(diff.firstPos, lines);
   int endIdx;
 
   if (diff.deletedText.empty()) {
@@ -491,7 +491,7 @@ Lines applyAllDiffState(const vector<DiffState>& diffs, const Lines& startLines)
   // Pre-compute all flat indices for all diffs (using original positions)
   vector<pair<int, int>> indices;  // (startIdx, endIdx) for each diff
   for (const auto& diff : diffs) {
-    int startIdx = posToFlatIdx(diff.posBegin);
+    int startIdx = posToFlatIdx(diff.firstPos);
     int endIdx = startIdx;
     if (!diff.deletedText.empty()) {
       endIdx = startIdx + static_cast<int>(diff.deletedText.size());

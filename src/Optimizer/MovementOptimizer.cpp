@@ -239,8 +239,8 @@ vector<RangeResult> MovementOptimizer::optimizeToRange(
     const Lines& lines,
     const Position& startPos,
     const RunningEffort& startingEffort,
-    const Position& rangeBegin,
-    const Position& rangeEnd,
+    const Position& rangeFirst,
+    const Position& rangeLast,
     const string& userSequence,
     NavContext& navContext,
     bool allowMultiplePerPosition,
@@ -279,7 +279,7 @@ vector<RangeResult> MovementOptimizer::optimizeToRange(
 
   // Helper: check if position is in goal range
   auto isInRange = [&](const Position& pos) {
-    return pos >= rangeBegin && pos <= rangeEnd;
+    return pos >= rangeFirst && pos <= rangeLast;
   };
 
   // exploreNewState: don't cache goal positions (allow multiple paths)
@@ -310,12 +310,12 @@ vector<RangeResult> MovementOptimizer::optimizeToRange(
     MotionState newState = base;
     newState.applySingleMotion(motion, navContext, lines);
     newState.updateEffort(keys, config);
-    newState.updateCost(heuristicToRange(newState, rangeBegin, rangeEnd, params.costWeight));
+    newState.updateCost(heuristicToRange(newState, rangeFirst, rangeLast, params.costWeight));
     exploreNewState(std::move(newState));
   };
 
   // Start - set cost to heuristic (f = g + h, where g = 0 for fresh start)
-  initialState.updateCost(heuristicToRange(initialState, rangeBegin, rangeEnd, params.costWeight));
+  initialState.updateCost(heuristicToRange(initialState, rangeFirst, rangeLast, params.costWeight));
   pq.push(initialState);
   costMap[initialState.getKey()] = initialState.getCost();
 

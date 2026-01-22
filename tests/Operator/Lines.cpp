@@ -77,8 +77,8 @@ TEST_F(LinesTest, LineDeleteRange_SingleLine_FullBoundary) {
   LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
   EXPECT_TRUE(range.isValid()) << "dd should be safe when at full line boundary";
-  EXPECT_EQ(range.startLine, 0);
-  EXPECT_EQ(range.endLine, 0);
+  EXPECT_EQ(range.firstLine, 0);
+  EXPECT_EQ(range.lastLine, 0);
 }
 
 TEST_F(LinesTest, LineDeleteRange_SingleLine_PartialBoundary) {

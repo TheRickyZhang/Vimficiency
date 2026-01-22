@@ -2,9 +2,6 @@
 
 You should have all the tools to debug any unexpected output with 100% certainty.
 
-## Debug Printing
-Use `debug()` in `Utils/Debug.h`. The project is compiled with `VIMFICIENCY_DEBUG = true` by default.
-
 ## Ground Truth: Neovim
 The ground truth for the output of vim commands should be Neovim itself. Use `tests/Utils/NeovimOracle` to directly get Neovim's expected output.
 
@@ -14,8 +11,39 @@ If you need to verify VimCore or EditBoundary behavior or implement new commands
 - Change operators: see `docs/vim/change.txt`
 - Command index: see `docs/vim/index.txt`
 
+
+### Architecture
+- Communicates via msgpack-RPC over stdin/stdout with `nvim --embed --headless`
+- Each `simulate()` call: creates scratch buffer → sets content → runs keys → reads result → deletes buffer
+- Single Neovim process reused across all tests in a suite
+
+## Test Writing Guidelines
+- For all non-ephemeral debugging, persist logic verification by writing a test
+- All vim-based tests should start with a few dense manual cases that are clear and easy to debug
+- Then below that should be random stress tests backed by NeovimOracle. This provides us with quantity.
+- Put tests in `tests/Misc` if no other places fit
+- To trace a nontrivial failure, you can use the existing Debug.cpp with DISABLED tests.
+- Use `debug()` in `Utils/Debug.h`. The project is compiled with `VIMFICIENCY_DEBUG = true` by default.
+
+### Why Randomized Tests
+- Catches edge cases you wouldn't think to test manually
+- Single test covers many scenarios (typically 100 iterations)
+- Self-documenting: if it passes with random input, the logic is robust
+
 ## NeovimOracle Usage
 
+The NeovimOracle maintains a persistent Neovim subprocess. After ~800 buffer
+operations (create/delete cycles), the connection may become unstable due to
+internal state accumulation.
+
+**Solution**: Call `oracle->restart()` periodically between test groups:
+```cpp
+// After running 800 iterations of tests...
+TEST_F(MyTest, NextGroup_FirstTest) {
+  oracle->restart();  // Reset Neovim subprocess
+  // ... test code
+}
+```
 ### Basic Usage
 ```cpp
 class MyTest : public ::testing::Test {
@@ -32,45 +60,9 @@ TEST_F(MyTest, Example) {
   EXPECT_EQ(result.row, 0);
   EXPECT_EQ(result.col, 6);  // result is also 0-indexed
 }
+
+
 ```
-
-### Buffer Exhaustion and restart()
-The NeovimOracle maintains a persistent Neovim subprocess. After ~800 buffer
-operations (create/delete cycles), the connection may become unstable due to
-internal state accumulation.
-
-**Solution**: Call `oracle->restart()` periodically between test groups:
-```cpp
-// After running 800 iterations of tests...
-TEST_F(MyTest, NextGroup_FirstTest) {
-  oracle->restart();  // Reset Neovim subprocess
-  // ... test code
-}
-```
-
-Rule of thumb: restart before each major test group that uses ~100+ iterations.
-See `tests/Commands/BoundaryMotions.cpp` for example placement.
-
-### Architecture
-- Communicates via msgpack-RPC over stdin/stdout with `nvim --embed --headless`
-- Each `simulate()` call: creates scratch buffer → sets content → runs keys → reads result → deletes buffer
-- Single Neovim process reused across all tests in a suite
-
-## Test Writing Guidelines
-- For all non-ephemeral debugging, persist logic verification by writing a test
-- Put tests in `tests/Misc` if no other places fit
-- Tests should be dense, testing one aspect not covered by any other test
-- Verify expected output with NeovimOracle
-
-## Preferred Testing Strategy: Randomized + Oracle
-
-For vim motion/edit behavior, prefer randomized testing over manual edge cases:
-
-### Why Randomized Tests
-- Catches edge cases you wouldn't think to test manually
-- Single test covers many scenarios (typically 100 iterations)
-- Self-documenting: if it passes with random input, the logic is robust
-
 ### Pattern for Motion Tests
 ```cpp
 void testMotionRandom(NeovimOracle& oracle, const string& motion,

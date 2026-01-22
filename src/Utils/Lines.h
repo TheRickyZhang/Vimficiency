@@ -80,7 +80,11 @@ struct Lines  final : std::vector<Line> {
   }
 
   int getSize(int line) const {
-    return (*this)[line].size();
+    return this->data()[line].size();
+  }
+
+  bool isEmpty() const {
+    return size() == 1 && this->data()[0].empty();
   }
 
   // Get next position, including [0] on empty line.
@@ -109,9 +113,27 @@ struct Lines  final : std::vector<Line> {
     return pos; // Same position if cannot move
   }
 
+  Position lastPos() const {
+    return Position(size()-1, this->back().lastCol());
+  }
+
   char get(const Position& pos) const {
     assert(pos.line < this->size());
     return data()[pos.line].get(pos.col);
+  }
+
+  Lines getSpan(const Position& front, const Position& back) const {
+    Lines result;
+    if (front.line == back.line) {
+      result.push_back(data()[front.line].substr(front.col, back.col - front.col + 1));
+    } else {
+      result.push_back(data()[front.line].substr(front.col));
+      for (int i = front.line + 1; i < back.line; i++) {
+        result.push_back(data()[i]);
+      }
+      result.push_back(data()[back.line].substr(0, back.col + 1));
+    }
+    return result;
   }
 
   static bool sameLineLengths(const Lines& x, const Lines& y) {

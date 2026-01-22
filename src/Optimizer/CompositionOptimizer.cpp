@@ -56,8 +56,8 @@ vector<Result> CompositionOptimizer::optimize(
   // Forward = process edits left->right (top->bottom)
   // Backward = process edits right->left (bottom->top)
   // If backward, we reverse the edit order so all subsequent logic is uniform.
-  double distToFirst = costToGoal(startPos, rawDiffs.front().posBegin);
-  double distToLast = costToGoal(startPos, rawDiffs.back().posEnd);
+  double distToFirst = costToGoal(startPos, rawDiffs.front().firstPos);
+  double distToLast = costToGoal(startPos, rawDiffs.back().lastPos);
   bool forward = (distToFirst <= distToLast + forwardBias);
 
   if (!forward) {
@@ -173,7 +173,7 @@ vector<Result> CompositionOptimizer::optimize(
 
               // After deletion, cursor ends up at start of edit region
               // The edit clears content, then we type the inserted text
-              Position newPos = diff.posBegin;
+              Position newPos = diff.firstPos;
 
               // Edit results always end in Normal mode (Esc at the end)
               newState.applyEditTransition(editRes.sequences, newPos, Mode::Normal, config);
@@ -199,8 +199,8 @@ vector<Result> CompositionOptimizer::optimize(
       // - Additionally exclude G if target range doesn't include last line
       int lastLine = numLines - 1;
       ImpliedExclusions subExclusions(
-        impliedExclusions.exclude_G || nextEdit.posEnd.line < lastLine,
-        impliedExclusions.exclude_gg || nextEdit.posBegin.line > 0
+        impliedExclusions.exclude_G || nextEdit.lastPos.line < lastLine,
+        impliedExclusions.exclude_gg || nextEdit.firstPos.line > 0
       );
 
       // Use MovementOptimizer to find optimal paths to any position in the edit region
@@ -211,8 +211,8 @@ vector<Result> CompositionOptimizer::optimize(
         currentLines,
         pos,
         s.getRunningEffort(),
-        nextEdit.posBegin,
-        nextEdit.posEnd,
+        nextEdit.firstPos,
+        nextEdit.lastPos,
         "", // No user sequence reference for sub-optimization
         navContext,
         false, // allowMultiplePerPosition: only need 1 best path per position
@@ -277,7 +277,7 @@ double CompositionOptimizer::heuristic(const CompositionState& s, int editsCompl
   // h(n) = distance to next edit region + suffix sum of edit costs
   // Overshooting (going past the next edit) is penalized more heavily than undershooting.
   // Note: If we're processing edits in reverse order, diffStates was already reversed,
-  // so "overshooting" still means pos > nextEdit.posEnd in the processing direction.
+  // so "overshooting" still means pos > nextEdit.lastPos in the processing direction.
   int totalEdits = static_cast<int>(diffStates.size());
 
   // O(1) lookup for remaining edit costs
@@ -287,13 +287,13 @@ double CompositionOptimizer::heuristic(const CompositionState& s, int editsCompl
   if (editsCompleted < totalEdits) {
     const DiffState& nextEdit = diffStates[editsCompleted];
     Position pos = s.getPos();
-    if (pos < nextEdit.posBegin) {
+    if (pos < nextEdit.firstPos) {
       // Undershooting: normal cost to reach the edit
-      h += costToGoal(pos, nextEdit.posBegin);
-    } else if (pos > nextEdit.posEnd) {
+      h += costToGoal(pos, nextEdit.firstPos);
+    } else if (pos > nextEdit.lastPos) {
       // Overshooting: went past the edit, heavily penalized
       // Must backtrack, which is inefficient
-      h += overshootPenalty * costToGoal(pos, nextEdit.posEnd);
+      h += overshootPenalty * costToGoal(pos, nextEdit.lastPos);
     }
     // else: inside range, distance = 0
   }
@@ -317,7 +317,7 @@ int CompositionOptimizer::bufferPosToEditIndex(const Position& bufferPos, const 
   // If this is a mid-line diff, adjust for the starting column
   if (editLine == 0) {
     // First line of edit region: column is relative to posBegin.col
-    flatIndex = bufferPos.col - diff.posBegin.col;
+    flatIndex = bufferPos.col - diff.firstPos.col;
     if (flatIndex < 0) return -1;
   } else {
     // Not first line: sum previous line lengths + current column
@@ -343,7 +343,7 @@ Position CompositionOptimizer::editIndexToBufferPos(int flatIndex, const DiffSta
       // For first line of mid-line diff, add the starting column offset
       int col = remaining;
       if (i == 0) {
-        col += diff.posBegin.col;  // Offset within the line where edit starts
+        col += diff.firstPos.col;  // Offset within the line where edit starts
       }
       return Position(diff.newLineStart() + i, col);
     }
@@ -352,9 +352,9 @@ Position CompositionOptimizer::editIndexToBufferPos(int flatIndex, const DiffSta
 
   // If we get here, index was at end of last line
   int lastLine = diff.newLineStart() + static_cast<int>(inserted.size()) - 1;
-  int lastCol = inserted.empty() ? diff.posBegin.col : static_cast<int>(inserted.back().size());
+  int lastCol = inserted.empty() ? diff.firstPos.col : static_cast<int>(inserted.back().size());
   if (!inserted.empty() && inserted.size() == 1) {
-    lastCol += diff.posBegin.col;
+    lastCol += diff.firstPos.col;
   }
   return Position(lastLine, lastCol);
 }
@@ -440,16 +440,16 @@ vector<vector<int>> CompositionOptimizer::buildPosToEditIndex(
 
     if (diff.isPureInsertion()) {
       // Pure insertion: mark only the insertion point
-      int posKey = posToKey(diff.posBegin);
+      int posKey = posToKey(diff.firstPos);
       if (posKey >= 0 && posKey < maxPosKey) {
         posToEditIndex[posKey].push_back(editIdx);
       }
     } else {
       // Deletion or replacement: mark positions from posBegin to posEnd
       // Handle single-line and multi-line cases
-      for (int line = diff.posBegin.line; line <= diff.posEnd.line; line++) {
-        int startCol = (line == diff.posBegin.line) ? diff.posBegin.col : 0;
-        int endCol = (line == diff.posEnd.line) ? diff.posEnd.col : maxLineLength - 1;
+      for (int line = diff.firstPos.line; line <= diff.lastPos.line; line++) {
+        int startCol = (line == diff.firstPos.line) ? diff.firstPos.col : 0;
+        int endCol = (line == diff.lastPos.line) ? diff.lastPos.col : maxLineLength - 1;
 
         for (int col = startCol; col <= endCol; col++) {
           int posKey = line * maxLineLength + col;

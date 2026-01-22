@@ -14,8 +14,8 @@
 struct DiffState {
   // Character-precise edit region bounds (in original buffer coordinates)
   // These define exactly which characters need to change
-  Position posBegin;  // First character that differs (inclusive)
-  Position posEnd;    // Last character that differs (inclusive)
+  Position firstPos;  // First character that differs (inclusive)
+  Position lastPos;   // Last character that differs (inclusive)
 
   // The actual content being deleted/inserted (flattened with \n for newlines)
   std::string deletedText;   // Characters being removed (may contain \n)
@@ -26,9 +26,9 @@ struct DiffState {
   EditBoundary boundary;
 
   // Constructor with all fields
-  DiffState(Position begin, Position end, std::string deleted,
+  DiffState(Position first, Position last, std::string deleted,
             std::string inserted, EditBoundary bnd)
-      : posBegin(begin), posEnd(end), deletedText(std::move(deleted)),
+      : firstPos(first), lastPos(last), deletedText(std::move(deleted)),
         insertedText(std::move(inserted)), boundary(std::move(bnd)) {}
 
   // Convert to Lines format for EditOptimizer compatibility
@@ -36,9 +36,9 @@ struct DiffState {
   Lines insertedLines() const { return Lines::unflatten(insertedText); }
 
   // Derived accessors
-  int origLineStart() const { return posBegin.line; }
+  int origLineStart() const { return firstPos.line; }
   int origLineCount() const { return deletedLines().size(); }
-  int newLineStart() const { return posBegin.line; }  // Same as origLineStart after adjustment
+  int newLineStart() const { return firstPos.line; }  // Same as origLineStart after adjustment
   int newLineCount() const { return insertedLines().size(); }
 
   int origCharCount() const { return static_cast<int>(deletedText.size()); }

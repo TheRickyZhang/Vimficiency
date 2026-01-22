@@ -190,7 +190,7 @@ void EditSearchContext::exploreTextObjectEdits(
         leftColOffset, rightColOffset,
         editBoundary.hasLinesAbove(), editBoundary.hasLinesBelow());
 
-    if (range.start == POSITION_OUTSIDE_BOUNDARY || range.end == POSITION_OUTSIDE_BOUNDARY)
+    if (range.first == POSITION_OUTSIDE_BOUNDARY || range.last == POSITION_OUTSIDE_BOUNDARY)
       continue;
 
     onDeletion(range, spec.cmd, spec.keys);

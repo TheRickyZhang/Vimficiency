@@ -172,7 +172,7 @@ void yankRange(Lines& lines, Position& pos, Mode mode, const Range& range) {
   assert(mode == Mode::Normal);
   Range r = range;
   r.normalize();
-  pos = r.start;
+  pos = r.first;
 }
 
 // -----------------------------------------------------------------------------

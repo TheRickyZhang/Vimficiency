@@ -7,12 +7,10 @@
 #pragma once
 
 #include "Editor/Position.h"
-#include "Editor/Range.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "VimCore/VimEndpointUtils.h"
 
-#include <functional>
 #include <random>
 #include <string>
 #include <vector>

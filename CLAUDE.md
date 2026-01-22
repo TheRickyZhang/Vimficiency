@@ -41,7 +41,7 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 - We allow an empty line, which has size() == 0, but still an index 0 as a valid cursor position
 - But, we do not allow no lines in the buffer, since the cursor must always be in a valid position.
 - Ensure CAREFUL handling of targetCol (Vim's curswant) within Position.h
-
+- We use [begin, end) for half-open intervals, and [start, end] for inclusive intervals
 
 ## Build Commands
 

@@ -148,13 +148,13 @@ Range textObject(
   Range range = textObjectCore(cursor, lines, isInner, isBigWord);
 
   // Clamp POSITION_OUTSIDE_BOUNDARY to buffer edges
-  if (range.start == POSITION_OUTSIDE_BOUNDARY) {
-    range.start = Position(0, 0);
+  if (range.first == POSITION_OUTSIDE_BOUNDARY) {
+    range.first = Position(0, 0);
   }
-  if (range.end == POSITION_OUTSIDE_BOUNDARY) {
+  if (range.last == POSITION_OUTSIDE_BOUNDARY) {
     int lastLine = lines.lastLine();
     int lastCol = lines[lastLine].empty() ? 0 : static_cast<int>(lines[lastLine].size()) - 1;
-    range.end = Position(lastLine, lastCol);
+    range.last = Position(lastLine, lastCol);
   }
 
   return range;
@@ -181,8 +181,8 @@ Range textObjectRange(
       // Whitespace run doesn't use motionWordEndpoint, so no line crossing possible
       // But we still need to check column boundaries on the result
       Range wsRange = computeWhitespaceRun(cursor, lines);
-      start = wsRange.start;
-      end = wsRange.end;
+      start = wsRange.first;
+      end = wsRange.last;
 
       // Check left boundary
       if (leftColOffset > 0 && start.line == 0 && start.col < leftColOffset) {
