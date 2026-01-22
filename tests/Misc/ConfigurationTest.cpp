@@ -5,7 +5,7 @@
 
 #include "Keyboard/MotionToKeys.h"
 #include "Optimizer/Config.h"
-#include "Optimizer/ImpliedExclusions.h"
+#include "Optimizer/MotionBoundary.h"
 #include "Optimizer/MovementOptimizer.h"
 #include "State/RunningEffort.h"
 
@@ -27,9 +27,9 @@ protected:
                Config config,
                const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS) {
     MovementOptimizer opt(config);
-    ImpliedExclusions impliedExclusions(false, false);
+    MotionBoundary boundary;
     return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
-                        impliedExclusions, allowedMotions, OptimizerParams(30, 2e4, 1.0, 2.0));
+                        boundary, allowedMotions, OptimizerParams(30, 2e4, 1.0, 2.0));
   }
 
   // Get cost of best result for a motion

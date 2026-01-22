@@ -8,7 +8,7 @@
 #include "Editor/Motion.h"
 #include "Editor/NavContext.h"
 #include "Optimizer/Config.h"
-#include "Optimizer/ImpliedExclusions.h"
+#include "Optimizer/MotionBoundary.h"
 #include "Optimizer/MovementOptimizer.h"
 #include "State/RunningEffort.h"
 #include "Utils/TestUtils.h"
@@ -36,9 +36,9 @@ protected:
                                      const string &userSeq,
                                      Config config = Config::uniform()) {
     MovementOptimizer opt(config);
-    ImpliedExclusions impliedExclusions(false, false);
+    MotionBoundary boundary;
     return opt.optimize(lines, start, RunningEffort(), end, userSeq,
-                        navContext, impliedExclusions, EXPLORABLE_MOTIONS, OptimizerParams(30, 2e4, 1.0, 2.0));
+                        navContext, boundary, EXPLORABLE_MOTIONS, OptimizerParams(30, 2e4, 1.0, 2.0));
   }
 
   // Check if a result contains a specific sequence

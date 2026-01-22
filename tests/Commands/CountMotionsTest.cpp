@@ -4,7 +4,7 @@
 #include "Keyboard/MotionToKeys.h"
 #include "Editor/NavContext.h"
 #include "Optimizer/MovementOptimizer.h"
-#include "Optimizer/ImpliedExclusions.h"
+#include "Optimizer/MotionBoundary.h"
 #include "Utils/TestUtils.h"
 
 using namespace std;
@@ -173,9 +173,9 @@ protected:
       const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS,
       Config config = Config::uniform()) {
     MovementOptimizer opt(config);
-    ImpliedExclusions impliedExclusions(false, false);
+    MotionBoundary boundary;
     return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
-                        impliedExclusions, allowedMotions, OptimizerParams(30, 2e4, 1.0, 2.0));
+                        boundary, allowedMotions, OptimizerParams(30, 2e4, 1.0, 2.0));
   }
 };
 

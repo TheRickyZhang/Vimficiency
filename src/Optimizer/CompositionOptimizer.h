@@ -9,7 +9,7 @@
 #include "OptimizerParams.h"
 #include "EditOptimizer.h"
 #include "DiffState.h"
-#include "ImpliedExclusions.h"
+#include "MotionBoundary.h"
 #include "Editor/NavContext.h"
 #include "Editor/Position.h"
 #include "State/CompositionState.h"
@@ -48,7 +48,7 @@ struct CompositionOptimizer {
     const std::string& userSequence,
 
     const NavContext& navigationContext,
-    const ImpliedExclusions& impliedExclusions = ImpliedExclusions(),
+    const MotionBoundary& boundary = MotionBoundary(),
     const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS,
 
     // Optional search parameter overrides (uses defaultParams if not provided)

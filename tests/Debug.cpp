@@ -234,3 +234,89 @@ TEST_F(NeovimOracleDebug, DISABLED_DebugMultipleDd) {
   // Compare with full sequence
   tracer.traceFullSequence("dddd");
 }
+
+// ============================================================================
+// Sub-buffer boundary failure investigation
+// ============================================================================
+
+TEST_F(NeovimOracleDebug, InvestigateSubBufferFailure_Sentence) {
+  // Failure #2: ")F " escapes sub-buffer
+  // Sub-buffer is lines 1-4 of full buffer
+  // Start: sub(2,10) = full(3,10)
+
+  Lines fullBuffer = {
+    " ca . dc.b ,dda ba",
+    "dba,dd,acaaba,ccbcac.bddca,.ac",
+    "ccd,d ,.d,ac ,bcac,c.d,bddddb.",
+    "..dcc.b bbadc b",
+    ",.ddcb  a,db .",
+    "bc.,.,c cd. db.cba.d",
+    "d,ba, , .cdd,aa..daa. bd",
+    "a,,b,dd,ad.,d ccdcdbd.dc d,d"
+  };
+
+  Lines subBuffer = {
+    "dba,dd,acaaba,ccbcac.bddca,.ac",
+    "ccd,d ,.d,ac ,bcac,c.d,bddddb.",
+    "..dcc.b bbadc b",
+    ",.ddcb  a,db ."
+  };
+
+  cerr << "\n=== Full Buffer Trace (start at line 3, col 10) ===" << endl;
+  auto fullTracer = makeTracer(fullBuffer, 3, 10);
+  fullTracer.trace(")");
+  fullTracer.printSummary();
+
+  cerr << "\n=== Sub-Buffer Trace (start at line 2, col 10) ===" << endl;
+  auto subTracer = makeTracer(subBuffer, 2, 10);
+  subTracer.trace(")");
+  subTracer.printSummary();
+
+  cerr << "\n=== Analysis ===" << endl;
+  cerr << "The ) motion finds different sentence boundaries because:" << endl;
+  cerr << "- Full buffer has more content below to search" << endl;
+  cerr << "- Sub-buffer clamps at its last line" << endl;
+}
+
+TEST_F(NeovimOracleDebug, InvestigateSubBufferFailure_WordWrap) {
+  // Failure #1: "Wj2W" escapes sub-buffer
+  // Sub-buffer is lines 1-4 of full buffer
+  // Start: sub(2,8) = full(3,8)
+
+  Lines fullBuffer = {
+    "bc,dbc.addba,cd d c  ab",
+    "cc,cb, ac . ac,bdbb,adb",
+    "ddc .bddb  , bbc",
+    "ca .c dd.. .d",
+    ",,dbdaab,aadb,aa abdb,",
+    "cad a bc,d,",
+    "aa,c ,, dbdddc daaaacb ,",
+    ". b,ba. bdb,,b"
+  };
+
+  Lines subBuffer = {
+    "cc,cb, ac . ac,bdbb,adb",
+    "ddc .bddb  , bbc",
+    "ca .c dd.. .d",
+    ",,dbdaab,aadb,aa abdb,"
+  };
+
+  cerr << "\n=== Full Buffer Trace (start at line 3, col 8) ===" << endl;
+  auto fullTracer = makeTracer(fullBuffer, 3, 8);
+  fullTracer.trace("W");
+  fullTracer.trace("j");
+  fullTracer.trace("2W");
+  fullTracer.printSummary();
+
+  cerr << "\n=== Sub-Buffer Trace (start at line 2, col 8) ===" << endl;
+  auto subTracer = makeTracer(subBuffer, 2, 8);
+  subTracer.trace("W");
+  subTracer.trace("j");
+  subTracer.trace("2W");
+  subTracer.printSummary();
+
+  cerr << "\n=== Analysis ===" << endl;
+  cerr << "The 2W motion wraps differently because:" << endl;
+  cerr << "- Full buffer has line 5 to wrap to" << endl;
+  cerr << "- Sub-buffer has no line 4, so 2W clamps/behaves differently" << endl;
+}

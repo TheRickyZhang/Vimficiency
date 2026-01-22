@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-struct BracketFlags {
+class BracketFlags {
   uint8_t flags = 0;
 
   static constexpr uint8_t Paren  = 1 << 0;  // ()
@@ -10,13 +10,6 @@ struct BracketFlags {
   static constexpr uint8_t Curly  = 1 << 2;  // {}
   static constexpr uint8_t Angle  = 1 << 3;  // <>
 
-  void add(char c) {
-    flags |= maskFor(c);
-  }
-  bool seen(char c) const {
-    return flags & maskFor(c);
-  }
-  void reset() { flags = 0; }
 
   // When you have raw char (2 comparisons)
   // Accepts either opener or closer
@@ -29,4 +22,13 @@ struct BracketFlags {
       default:   return 0;
     }
   }
+
+public:
+  void add(char c) {
+    flags |= maskFor(c);
+  }
+  bool seen(char c) const {
+    return flags & maskFor(c);
+  }
+  void reset() { flags = 0; }
 };

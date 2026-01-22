@@ -4,7 +4,7 @@
 #include "Keyboard/KeyboardModel.h"
 #include "Keyboard/XMacroKeyDefinitions.h"
 #include "Optimizer/Config.h"
-#include "Optimizer/ImpliedExclusions.h"
+#include "Optimizer/MotionBoundary.h"
 #include "Optimizer/MovementOptimizer.h"
 #include "Utils/CoutCapture.h"
 #include "Utils/Debug.h"
@@ -152,13 +152,15 @@ const char *vimficiency_analyze(
 
     NavContext navigation_context(window_height, scroll_amount);
     // Exclude G if we DON'T have the real bottom, exclude gg if we DON'T have the real top
-    ImpliedExclusions impliedExclusions(!includes_real_bottom, !includes_real_top);
+    MotionBoundary boundary;
+    boundary.hasLinesAbove = !includes_real_top;
+    boundary.hasLinesBelow = !includes_real_bottom;
 
     // g_config_internal was already populated by vimficiency_apply_config()
     MovementOptimizer opt(g_config_internal);
 
     // Pass Position and fresh RunningEffort (no prior typing context from FFI)
-    std::vector<Result> res = opt.optimize(lines, start_position, RunningEffort(), end_position, keyseq, navigation_context, impliedExclusions, EXPLORABLE_MOTIONS, OptimizerParams(RESULTS_CALCULATED));
+    std::vector<Result> res = opt.optimize(lines, start_position, RunningEffort(), end_position, keyseq, navigation_context, boundary, EXPLORABLE_MOTIONS, OptimizerParams(RESULTS_CALCULATED));
 
     // Format results
     std::ostringstream oss;

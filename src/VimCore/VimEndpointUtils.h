@@ -155,6 +155,27 @@ Range sentenceTextObjectRange(Position cursor,
                               Position rightBoundary = POSITION_OUTSIDE_BOUNDARY);
 
 // =============================================================================
+// Scroll Endpoint Computation
+// =============================================================================
+
+// Sentinel for line outside boundary
+constexpr int LINE_OUTSIDE_BOUNDARY = -1;
+
+// Returns the line endpoint for scroll motions (<C-d>, <C-u>, <C-f>, <C-b>).
+// Computes targetLine = cursorLine +/- shift, clamped to buffer bounds.
+//
+// Boundary check:
+//   down (shift > 0): returns LINE_OUTSIDE_BOUNDARY if hasLinesBelow and
+//                     targetLine >= lastLine (motion may have been clamped)
+//   up (shift < 0):   returns LINE_OUTSIDE_BOUNDARY if hasLinesAbove and
+//                     targetLine <= 0 (motion may have been clamped)
+int scrollEndpoint(int cursorLine,
+                   int numLines,
+                   int shift,
+                   bool hasLinesAbove,
+                   bool hasLinesBelow);
+
+// =============================================================================
 // Line Endpoint/Range Computation
 // =============================================================================
 

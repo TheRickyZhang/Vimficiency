@@ -23,7 +23,7 @@ vector<Result> CompositionOptimizer::optimize(
   const Position endPos,
   const string& userSequence,
   const NavContext& navigationContext,
-  const ImpliedExclusions& impliedExclusions,
+  const MotionBoundary& boundary,
   const MotionToKeys& rawMotionToKeys,
   const optional<OptimizerParams>& paramsOverride
 ) {
@@ -35,10 +35,10 @@ vector<Result> CompositionOptimizer::optimize(
   for(const string& s : endLines) { assert(s.size() < static_cast<size_t>(maxLineLength-10)); }
 
   MotionToKeys motionToKeys = rawMotionToKeys;
-  if(impliedExclusions.exclude_G) {
+  if(boundary.excludeG()) {
     motionToKeys.erase("G");
   }
-  if(impliedExclusions.exclude_gg) {
+  if(boundary.excludeGG()) {
     motionToKeys.erase("gg");
   }
 
@@ -193,15 +193,10 @@ vector<Result> CompositionOptimizer::optimize(
       // Copy NavContext for motion application
       NavContext navContext = navigationContext;
 
-      // Compute exclusions for this sub-search:
-      // - Inherit parent exclusions
-      // - Additionally exclude gg if target range doesn't include line 0
-      // - Additionally exclude G if target range doesn't include last line
-      int lastLine = numLines - 1;
-      ImpliedExclusions subExclusions(
-        impliedExclusions.exclude_G || nextEdit.lastPos.line < lastLine,
-        impliedExclusions.exclude_gg || nextEdit.firstPos.line > 0
-      );
+      // Compute boundary for this sub-search:
+      // - Inherit parent boundary's gg/G exclusions
+      // - Uses buffer context for the movement search (currentLines)
+      MotionBoundary subBoundary(boundary, currentLines, nextEdit.firstPos, nextEdit.lastPos);
 
       // Use MovementOptimizer to find optimal paths to any position in the edit region
       // Pass only Position and RunningEffort - sub-search computes its own effort/cost fresh
@@ -216,7 +211,7 @@ vector<Result> CompositionOptimizer::optimize(
         "", // No user sequence reference for sub-optimization
         navContext,
         false, // allowMultiplePerPosition: only need 1 best path per position
-        subExclusions,
+        subBoundary,
         motionToKeys,
         OptimizerParams(clamp(nextEdit.origCharCount(), 1, 10))  // Max results per movement search
       );

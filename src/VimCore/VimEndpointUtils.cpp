@@ -709,6 +709,39 @@ Range sentenceTextObjectRange(Position cursor,
 }
 
 // =============================================================================
+// Scroll endpoint computation
+// =============================================================================
+
+int scrollEndpoint(int cursorLine,
+                   int numLines,
+                   int shift,
+                   bool hasLinesAbove,
+                   bool hasLinesBelow) {
+  if (numLines == 0) return LINE_OUTSIDE_BOUNDARY;
+
+  int lastLine = numLines - 1;
+  int targetLine = cursorLine + shift;
+
+  // Clamp to buffer bounds
+  targetLine = std::clamp(targetLine, 0, lastLine);
+
+  // Check if motion would escape bounds
+  if (shift > 0) {
+    // Down scroll: suspicious if landing on or past last line when there are lines below
+    if (hasLinesBelow && targetLine >= lastLine) {
+      return LINE_OUTSIDE_BOUNDARY;
+    }
+  } else if (shift < 0) {
+    // Up scroll: suspicious if landing on or before first line when there are lines above
+    if (hasLinesAbove && targetLine <= 0) {
+      return LINE_OUTSIDE_BOUNDARY;
+    }
+  }
+
+  return targetLine;
+}
+
+// =============================================================================
 // Line endpoint/range computation
 // =============================================================================
 

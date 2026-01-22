@@ -6,8 +6,59 @@
 #include "Keyboard/MotionToKeys.h"
 #include "Utils/Debug.h"
 #include "VimCore/VimMovementUtils.h"
+#include "VimCore/VimEndpointUtils.h"
+
+#include <unordered_set>
 
 using namespace std;
+
+// =============================================================================
+// Motion Categories for Endpoint-First Boundary Checking
+// =============================================================================
+// Motions are grouped by their endpoint computation method:
+// - SIMPLE_LINE_MOTIONS: Same-line only, no escape risk
+// - VERTICAL_MOTIONS: Need line boundary check only
+// - WORD_MOTIONS: Use motionWordEndpoint()
+// - PARAGRAPH_MOTIONS: Use motionParagraphEndpoint()
+// - SENTENCE_MOTIONS: Use motionSentenceEndpoint()
+// - SCROLL_MOTIONS: Screen-dependent, exclude when bounded
+// - gg/G: Already handled via excludeGG()/excludeG()
+
+static const unordered_set<string> SIMPLE_LINE_MOTIONS = {"h", "l", "0", "^", "$"};
+static const unordered_set<string> VERTICAL_MOTIONS = {"j", "k"};
+static const unordered_set<string> SCROLL_MOTIONS = {"<C-f>", "<C-b>", "<C-d>", "<C-u>"};
+
+// Word motion specs: (motion, forward, edgeType, big, skipCurrent)
+struct WordMotionSpec {
+  string motion;
+  bool forward;
+  EdgeType edgeType;
+  bool big;
+  bool skipCurrent;
+};
+
+static const vector<WordMotionSpec> WORD_MOTION_SPECS = {
+  {"w",  true,  EdgeType::NextEdge, false, false},
+  {"W",  true,  EdgeType::NextEdge, true,  false},
+  {"b",  false, EdgeType::WordEdge, false, true},
+  {"B",  false, EdgeType::WordEdge, true,  true},
+  {"e",  true,  EdgeType::WordEdge, false, true},
+  {"E",  true,  EdgeType::WordEdge, true,  true},
+  {"ge", false, EdgeType::NextEdge, false, false},
+  {"gE", false, EdgeType::NextEdge, true,  false},
+};
+
+// Paragraph motion specs: (motion, forward)
+static const vector<pair<string, bool>> PARAGRAPH_MOTION_SPECS = {
+  {"{", false},
+  {"}", true},
+};
+
+// Sentence motion specs: (motion, forward)
+static const vector<pair<string, bool>> SENTENCE_MOTION_SPECS = {
+  {"(", false},
+  {")", true},
+};
 
 PhysicalKeys makePhysicalKeys(int count, const PhysicalKeys& motionKeys) {
   PhysicalKeys keys;
@@ -25,17 +76,17 @@ vector<Result> MovementOptimizer::optimize(
     const Position &endPos,
     const string &userSequence,
     const NavContext& navContext,
-    const ImpliedExclusions& impliedExclusions,
+    const MotionBoundary& boundary,
     const MotionToKeys &rawMotionToKeys,
     const optional<OptimizerParams>& paramsOverride) {
   // Merge defaults with overrides
   const OptimizerParams params = OptimizerParams::merge(defaultParams, paramsOverride);
   // Apply exclusions. Not sure if copy overhead outweighs skipping later, but it's clear and direct.
   MotionToKeys motionToKeys = rawMotionToKeys;
-  if(impliedExclusions.exclude_G) {
+  if(boundary.excludeG()) {
     motionToKeys.erase("G");
   }
-  if(impliedExclusions.exclude_gg) {
+  if(boundary.excludeGG()) {
     motionToKeys.erase("gg");
   }
 
@@ -82,7 +133,19 @@ vector<Result> MovementOptimizer::optimize(
     }
   };
 
-  auto exploreMotionWithKnownKeys = [&](const MotionState& base, const string& motion, const PhysicalKeys& keys) {
+  // Boundary parameters - follow EditSearchContext pattern:
+  // - Column offsets for word motions (passed to motionWordEndpoint)
+  // - hasLinesAbove/Below for line-crossing motions
+  // - When bounded (hasLinesAbove || hasLinesBelow), paragraph/sentence motions are EXCLUDED
+  //   because their behavior differs when there are more lines in the full buffer
+  bool isBounded = boundary.hasLinesAbove || boundary.hasLinesBelow;
+
+  // ==========================================================================
+  // Exploration helpers with endpoint-first boundary checking
+  // ==========================================================================
+
+  // Simple line motions (h, l, 0, ^, $) - no boundary checking needed
+  auto exploreSimpleLineMotion = [&](const MotionState& base, const string& motion, const PhysicalKeys& keys) {
     MotionState newState = base;
     newState.applySingleMotion(motion, navContext, lines);
     newState.updateEffort(keys, config);
@@ -90,8 +153,127 @@ vector<Result> MovementOptimizer::optimize(
     exploreNewState(std::move(newState));
   };
 
+  // Vertical motions (j, k) - check line boundaries
+  auto exploreVerticalMotion = [&](const MotionState& base, const string& motion, const PhysicalKeys& keys) {
+    Position pos = base.getPos();
+    bool isDown = (motion == "j");
+    int lastLine = static_cast<int>(lines.size()) - 1;
 
+    // Compute endpoint
+    int targetLine = isDown ? pos.line + 1 : pos.line - 1;
+
+    // Check line boundaries BEFORE applying motion
+    if (isDown && boundary.hasLinesBelow && targetLine > lastLine) {
+      return;  // Would escape below
+    }
+    if (!isDown && boundary.hasLinesAbove && targetLine < 0) {
+      return;  // Would escape above
+    }
+
+    // Motion is safe - apply and explore
+    MotionState newState = base;
+    newState.applySingleMotion(motion, navContext, lines);
+    newState.updateEffort(keys, config);
+    newState.updateCost(heuristic(newState, endPos, params.costWeight));
+    exploreNewState(std::move(newState));
+  };
+
+  // Word motions - use motionWordEndpoint for boundary checking
+  // Follows EditSearchContext pattern: pass column offset and hasLinesOutside directly
+  auto exploreWordMotion = [&](const MotionState& base, const WordMotionSpec& spec, const PhysicalKeys& keys) {
+    Position pos = base.getPos();
+
+    // Compute endpoint FIRST with boundary checking
+    // Forward: protect suffix (rightColOffset cols at end of last line)
+    // Backward: protect prefix (leftColOffset cols at start of line 0)
+    int boundaryOffset = spec.forward ? boundary.rightColOffset : boundary.leftColOffset;
+    bool hasLinesOutside = spec.forward ? boundary.hasLinesBelow : boundary.hasLinesAbove;
+
+    Position endpoint = VimCore::motionWordEndpoint(
+        pos, lines, spec.forward, spec.edgeType, spec.big, spec.skipCurrent,
+        boundaryOffset, hasLinesOutside);
+
+    // Check if motion would escape bounds
+    if (endpoint == POSITION_OUTSIDE_BOUNDARY) {
+      return;  // Motion would escape - skip
+    }
+
+    // Motion is safe - apply and explore
+    MotionState newState = base;
+    newState.applySingleMotion(spec.motion, navContext, lines);
+    newState.updateEffort(keys, config);
+    newState.updateCost(heuristic(newState, endPos, params.costWeight));
+    exploreNewState(std::move(newState));
+  };
+
+  // Paragraph motions ({, }) - use motionParagraphEndpoint for boundary checking
+  auto exploreParagraphMotion = [&](const MotionState& base, const string& motion, bool forward, const PhysicalKeys& keys) {
+    Position pos = base.getPos();
+    int lastLine = static_cast<int>(lines.size()) - 1;
+
+    // Compute boundary line for endpoint function
+    // Forward: if hasLinesBelow, can't trust landing on last line (may have been clamped)
+    // Backward: if hasLinesAbove, can't trust landing on first line
+    int boundaryLine = -1;  // -1 means no boundary check
+    if (forward && boundary.hasLinesBelow) {
+      boundaryLine = lastLine;  // Flag if endpoint >= lastLine
+    } else if (!forward && boundary.hasLinesAbove) {
+      boundaryLine = 0;  // Flag if endpoint <= 0
+    }
+
+    int endpointLine = VimCore::motionParagraphEndpoint(
+        pos.line, lines, forward, LineEdgeType::NextEdge, boundaryLine);
+
+    // -1 means motion would escape bounds
+    if (endpointLine == -1) {
+      return;
+    }
+
+    // Motion is safe - apply and explore
+    MotionState newState = base;
+    newState.applySingleMotion(motion, navContext, lines);
+    newState.updateEffort(keys, config);
+    newState.updateCost(heuristic(newState, endPos, params.costWeight));
+    exploreNewState(std::move(newState));
+  };
+
+  // Sentence motions ((, )) - use motionSentenceEndpoint for boundary checking
+  auto exploreSentenceMotion = [&](const MotionState& base, const string& motion, bool forward, const PhysicalKeys& keys) {
+    Position pos = base.getPos();
+    int lastLine = static_cast<int>(lines.size()) - 1;
+
+    // Compute boundary position for endpoint function
+    // Forward: if hasLinesBelow, can't trust landing on last line
+    // Backward: if hasLinesAbove, can't trust landing on first line
+    Position boundaryPos = POSITION_OUTSIDE_BOUNDARY;  // Invalid means no boundary check
+    if (forward && boundary.hasLinesBelow) {
+      // Any position on last line is suspicious
+      boundaryPos = Position(lastLine, 0);
+    } else if (!forward && boundary.hasLinesAbove) {
+      // Any position on first line is suspicious
+      boundaryPos = Position(0, INT_MAX);
+    }
+
+    Position endpoint = VimCore::motionSentenceEndpoint(
+        pos, lines, forward, SentenceEdgeType::NextEdge, boundaryPos);
+
+    // POSITION_OUTSIDE_BOUNDARY means motion would escape bounds
+    if (endpoint == POSITION_OUTSIDE_BOUNDARY) {
+      return;
+    }
+
+    // Motion is safe - apply and explore
+    MotionState newState = base;
+    newState.applySingleMotion(motion, navContext, lines);
+    newState.updateEffort(keys, config);
+    newState.updateCost(heuristic(newState, endPos, params.costWeight));
+    exploreNewState(std::move(newState));
+  };
+
+  // Count motions with known position - these are pre-computed so we trust them
   auto exploreMotionCntTimesWithKnownPosition = [&](const MotionState& base, const string& motion, int cnt, const Position& newPos) {
+    // Count searches are pre-computed by BufferIndex - they find exact positions
+    // within the buffer, so no additional boundary checking needed
     MotionState newState = base;
     newState.applyMotionWithKnownPosition(motion, cnt, newPos);
     newState.updateEffort(
@@ -102,6 +284,7 @@ vector<Result> MovementOptimizer::optimize(
     exploreNewState(std::move(newState));
   };
 
+  // F-motions with known column - same-line so no escape risk
   auto exploreMotionWithKnownColumnAndKeys = [&](const MotionState& base, const string& motion, int newcol, const PhysicalKeys& keys) {
     MotionState newState = base;
     newState.applySingleMotionWithKnownColumn(motion, newcol);
@@ -199,6 +382,12 @@ vector<Result> MovementOptimizer::optimize(
         array<RepeatMotionResult, 2> countSearchResults = bufferIndex.getTwoClosest( type, pos, endPos);
         for(const auto& cres : countSearchResults) {
           if(!cres.valid()) continue;
+          // When bounded, only allow positions strictly inside the region
+          // Edge lines may have been affected by clamping
+          if (isBounded) {
+            if (boundary.hasLinesAbove && cres.pos.line == 0) continue;
+            if (boundary.hasLinesBelow && cres.pos.line == lines.lastLine()) continue;
+          }
           exploreMotionCntTimesWithKnownPosition(s, motion, cres.count, cres.pos);
         }
       }
@@ -206,21 +395,107 @@ vector<Result> MovementOptimizer::optimize(
     // -------------------- END isSameLine --------------------
 
     // -------------------- START global search --------------------
-    // By default, motionToKeys is EXPLORABLE_MOTIONS (with exclusions applied)
-    for (auto [motion, keys] : motionToKeys) {
-      exploreMotionWithKnownKeys(s, motion, keys);
+    // Explore motions by category with endpoint-first boundary checking
+    // Note: gg/G are already erased from motionToKeys when excluded via boundary,
+    // so no additional check needed here.
+    for (const auto& [motion, keys] : motionToKeys) {
+      // Route to appropriate exploration function based on category
+      if (SIMPLE_LINE_MOTIONS.count(motion)) {
+        exploreSimpleLineMotion(s, motion, keys);
+      }
+      else if (VERTICAL_MOTIONS.count(motion)) {
+        exploreVerticalMotion(s, motion, keys);
+      }
+      else if (SCROLL_MOTIONS.count(motion)) {
+        // Scroll motions: compute line shift and check boundary
+        int shift = 0;
+        if (motion == "<C-d>") {
+          shift = navContext.scrollAmount;
+        } else if (motion == "<C-u>") {
+          shift = -navContext.scrollAmount;
+        } else if (motion == "<C-f>") {
+          shift = max(0, navContext.windowHeight - 2);
+        } else if (motion == "<C-b>") {
+          shift = -max(0, navContext.windowHeight - 2);
+        }
+
+        int targetLine = VimCore::scrollEndpoint(
+            pos.line, static_cast<int>(lines.size()), shift,
+            boundary.hasLinesAbove, boundary.hasLinesBelow);
+
+        if (targetLine != VimCore::LINE_OUTSIDE_BOUNDARY) {
+          MotionState newState = s;
+          newState.applySingleMotion(motion, navContext, lines);
+          newState.updateEffort(keys, config);
+          newState.updateCost(heuristic(newState, endPos, params.costWeight));
+          exploreNewState(std::move(newState));
+        }
+      }
+      else {
+        // Check word/paragraph/sentence motion specs
+        bool handled = false;
+
+        // Check word motions
+        for (const auto& spec : WORD_MOTION_SPECS) {
+          if (spec.motion == motion) {
+            exploreWordMotion(s, spec, keys);
+            handled = true;
+            break;
+          }
+        }
+
+        // Check paragraph motions
+        if (!handled) {
+          for (const auto& [pMotion, pForward] : PARAGRAPH_MOTION_SPECS) {
+            if (pMotion == motion) {
+              exploreParagraphMotion(s, motion, pForward, keys);
+              handled = true;
+              break;
+            }
+          }
+        }
+
+        // Check sentence motions
+        if (!handled) {
+          for (const auto& [sMotion, sForward] : SENTENCE_MOTION_SPECS) {
+            if (sMotion == motion) {
+              exploreSentenceMotion(s, motion, sForward, keys);
+              handled = true;
+              break;
+            }
+          }
+        }
+
+        // Unknown motion - explore without boundary checking (legacy behavior)
+        if (!handled) {
+          MotionState newState = s;
+          newState.applySingleMotion(motion, navContext, lines);
+          newState.updateEffort(keys, config);
+          newState.updateCost(heuristic(newState, endPos, params.costWeight));
+          exploreNewState(std::move(newState));
+        }
+      }
     }
 
+    // Count searchable motions (paragraph/sentence)
+    // When bounded with count>1, intermediate positions may cross edge lines,
+    // causing the count to differ in full buffer. Only allow count=1 when bounded.
     for(const auto& motionPair : COUNT_SEARCHABLE_MOTIONS_GLOBAL) {
       string motion = forward ? motionPair.forward : motionPair.backward;
       // Skip if not in allowed set
       if(!motionToKeys.contains(motion)) {
         continue;
       }
+
       LandingType type = motionPair.type;
       array<RepeatMotionResult, 2> countSearchResults = bufferIndex.getTwoClosest(type, pos, endPos);
       for(const auto& cres : countSearchResults) {
         if(!cres.valid()) continue;
+
+        // When bounded, only allow count=1 (verified by single-motion endpoint check)
+        // Count>1 may have intermediate positions on edge lines
+        if (isBounded && cres.count > 1) continue;
+
         exploreMotionCntTimesWithKnownPosition(s, motion, cres.count, cres.pos);
       }
     }
@@ -244,7 +519,7 @@ vector<RangeResult> MovementOptimizer::optimizeToRange(
     const string& userSequence,
     NavContext& navContext,
     bool allowMultiplePerPosition,
-    const ImpliedExclusions& impliedExclusions,
+    const MotionBoundary& boundary,
     const MotionToKeys& rawMotionToKeys,
     const optional<OptimizerParams>& paramsOverride) {
   // Merge defaults with overrides
@@ -252,10 +527,10 @@ vector<RangeResult> MovementOptimizer::optimizeToRange(
 
   // Apply exclusions
   MotionToKeys motionToKeys = rawMotionToKeys;
-  if (impliedExclusions.exclude_G) {
+  if (boundary.excludeG()) {
     motionToKeys.erase("G");
   }
-  if (impliedExclusions.exclude_gg) {
+  if (boundary.excludeGG()) {
     motionToKeys.erase("gg");
   }
 
@@ -309,6 +584,7 @@ vector<RangeResult> MovementOptimizer::optimizeToRange(
   auto exploreMotion = [&](const MotionState& base, const string& motion, const PhysicalKeys& keys) {
     MotionState newState = base;
     newState.applySingleMotion(motion, navContext, lines);
+    // NOTE: isPositionInBounds check removed - see optimize() for rationale.
     newState.updateEffort(keys, config);
     newState.updateCost(heuristicToRange(newState, rangeFirst, rangeLast, params.costWeight));
     exploreNewState(std::move(newState));

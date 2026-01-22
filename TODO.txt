@@ -5,7 +5,25 @@ Implement quote and bracket text object motions (see quoteFlags/bracketFlags)
 Inspect code and improve organization
 Handle pureDeletion, pureInsertion cases separately
 
-Make sure all tests use NeovimOracle to verify parseSequence as well.
+Review (){} boundary motions more deeply.
+Why use line = -1 as a sentinel in the code? Can't we just branch on hasLineAbove/below when we get to the final line in the buffer?
+
+Quote psuedocode:
+Precompute Edit regions
+For each computed state, from the newly implemented edit section to start of next edit section (suppose i just applied first edit: aa aa cc -> aa bb cc. Then we consider region from first b to space before c), basically whatever indices are valid on the same line, but before next edit.
+If the first quote is right before the edit region, and the next quote is right after the edit region, then we can do a di"/ci" -> pure insert, no need to search
+if the first quote is the first char in edit region, and next quote is last char in edit regino, then we can do a da"/ci" -> pure insert, no need to search
+If the first/second quote are inside the edit region otherwise, then we can use a ca". -> 
+will need to search starting from insert mode (adds short exploration of backspace/deletes, or fall back to escape + normal exploration)
+Otherwise, first quote is somewhere before next edit start. Then it is never possible to use ".
+
+We can apply a similar logic to brackets. Begin at start of newly implemented edit section, search to end of next edit section:
+First special case: if can do dib/cib -> pure insert, no need to search
+Second special case: if can do dab,cib -> pure insert, no need to search
+If first opening / next closing bracket inside the edit region otherwise, then we can use cab -> deletes, or fall back to escape + normal exploration 
+Otherwise, containing bracket pair contains space before next edit start.
+
+Then, when searching after applying an edit, we can simply check from the just-completed edit section whether we can do a bracket action or not.
 
 
 Think about how to detect ci", cib from CompositionOptimizer scope (can move and edit)
@@ -48,3 +66,5 @@ Done:
 - f/t, ;/, motions                                 **
 - <C-d, u, f, b> page motions                      **
 - Real-time, automatic session spawning            *****
+
+

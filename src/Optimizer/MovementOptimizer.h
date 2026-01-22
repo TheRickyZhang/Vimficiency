@@ -7,7 +7,7 @@
 #include "Result.h"
 #include "RangeResult.h"
 #include "OptimizerParams.h"
-#include "ImpliedExclusions.h"
+#include "MotionBoundary.h"
 #include "Editor/NavContext.h"
 #include "Editor/Position.h"
 #include "State/MotionState.h"
@@ -62,7 +62,7 @@ struct MovementOptimizer {
     const NavContext& navigationContext,
 
     // What impacts our universe of exploration options
-    const ImpliedExclusions& impliedExclusions = ImpliedExclusions(),
+    const MotionBoundary& boundary = MotionBoundary(),
     const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS,
 
     // Optional search parameter overrides (uses defaultParams if not provided)
@@ -86,7 +86,7 @@ struct MovementOptimizer {
     NavContext& navigationContext,
 
     bool allowMultiplePerPosition = false,
-    const ImpliedExclusions& impliedExclusions = ImpliedExclusions(),
+    const MotionBoundary& boundary = MotionBoundary(),
     const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS,
 
     // Optional search parameter overrides (uses defaultParams if not provided)
