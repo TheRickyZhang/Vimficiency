@@ -198,6 +198,8 @@ const EditToKeys ALL_EDITS_TO_KEYS = combineAll({
     cref(Insert::WORD_LEFT),
     cref(Insert::LINE_LEFT),
     cref(OPERATORS),
+    cref(Deletion::PARAGRAPH),
+    cref(Deletion::SENTENCE),
 });
 
 
@@ -236,6 +238,16 @@ const EditToKeys TEXT_OBJ = {
     {"daw", {Key::Key_D, Key::Key_A, Key::Key_W}},
     {"diW", {Key::Key_D, Key::Key_I, Key::Key_Shift, Key::Key_W}},
     {"daW", {Key::Key_D, Key::Key_A, Key::Key_Shift, Key::Key_W}},
+};
+
+const EditToKeys PARAGRAPH = {
+    {"d}", {Key::Key_D, Key::Key_Shift, Key::Key_RBracket}},
+    {"d{", {Key::Key_D, Key::Key_Shift, Key::Key_LBracket}},
+};
+
+const EditToKeys SENTENCE = {
+    {"d)", {Key::Key_D, Key::Key_Shift, Key::Key_0}},
+    {"d(", {Key::Key_D, Key::Key_Shift, Key::Key_9}},
 };
 
 } // namespace Deletion

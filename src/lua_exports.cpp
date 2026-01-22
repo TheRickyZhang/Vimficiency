@@ -152,9 +152,7 @@ const char *vimficiency_analyze(
 
     NavContext navigation_context(window_height, scroll_amount);
     // Exclude G if we DON'T have the real bottom, exclude gg if we DON'T have the real top
-    MotionBoundary boundary;
-    boundary.hasLinesAbove = !includes_real_top;
-    boundary.hasLinesBelow = !includes_real_bottom;
+    MotionBoundary boundary(!includes_real_top, !includes_real_bottom);
 
     // g_config_internal was already populated by vimficiency_apply_config()
     MovementOptimizer opt(g_config_internal);

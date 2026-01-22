@@ -35,10 +35,10 @@ vector<Result> CompositionOptimizer::optimize(
   for(const string& s : endLines) { assert(s.size() < static_cast<size_t>(maxLineLength-10)); }
 
   MotionToKeys motionToKeys = rawMotionToKeys;
-  if(boundary.excludeG()) {
+  if(boundary.hasLinesBelow()) {
     motionToKeys.erase("G");
   }
-  if(boundary.excludeGG()) {
+  if(boundary.hasLinesAbove()) {
     motionToKeys.erase("gg");
   }
 

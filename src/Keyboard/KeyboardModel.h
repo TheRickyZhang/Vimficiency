@@ -73,6 +73,10 @@ public:
 
 std::ostream& operator<<(std::ostream& os, const PhysicalKeys& ks);
 
+// Build keys for a counted motion: {count digits} + {motion keys}
+// E.g., makeCountedKeys(3, wKeys) -> "3" + "w"
+PhysicalKeys makeCountedKeys(int count, const PhysicalKeys& motionKeys);
+
 static_assert(KEY_COUNT == static_cast<uint8_t>(Key::None), "key counts do not match");
 static_assert(FINGER_COUNT == static_cast<uint8_t>(Finger::None), "finger counts do not match");
 static_assert(HAND_COUNT == static_cast<uint8_t>(Hand::None), "hand counts do not match");

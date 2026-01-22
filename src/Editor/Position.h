@@ -1,4 +1,5 @@
 #pragma once
+#include <climits>
 #include <ostream>
 #include <utility>
 
@@ -85,3 +86,8 @@ public:
 // Sentinel value for "position outside boundary" / "operation would cross boundary"
 // Used by endpoint functions when the computed position would exceed given bounds.
 constexpr Position POSITION_OUTSIDE_BOUNDARY{-1, -1, -1};
+
+// Special targetCol value for "end of line" (Vim's curswant after $).
+// When targetCol is this value, vertical movements keep cursor at line end.
+// clampCol naturally handles this by clamping to len-1.
+constexpr int TARGETCOL_EOL = INT_MAX;

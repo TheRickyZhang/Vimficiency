@@ -1,0 +1,74 @@
+#pragma once
+
+#include <vector>
+#include "VimCore/EdgeType.h"
+#include "Keyboard/KeyboardModel.h"
+
+// =============================================================================
+// Motion Operation Specs - tables for MovementOptimizer
+// =============================================================================
+// Structured specs with operation parameters alongside pre-computed keys.
+// Eliminates runtime map lookups during A* search.
+
+namespace Motion {
+
+// Word motions (w, b, e, ge, W, B, E, gE)
+struct WordMotionSpec {
+  const char* cmd;
+  PhysicalKeys keys;
+  bool forward;
+  EdgeType edgeType;
+  bool big;
+  bool skipCurrent;
+};
+extern const std::vector<WordMotionSpec> WORD_MOTIONS;
+
+// Paragraph motions ({, })
+struct ParagraphMotionSpec {
+  const char* cmd;
+  PhysicalKeys keys;
+  bool forward;
+};
+extern const std::vector<ParagraphMotionSpec> PARAGRAPH_MOTIONS;
+
+// Sentence motions ((, ))
+struct SentenceMotionSpec {
+  const char* cmd;
+  PhysicalKeys keys;
+  bool forward;
+};
+extern const std::vector<SentenceMotionSpec> SENTENCE_MOTIONS;
+
+// Simple line motions (h, l, 0, ^, $) - same-line only, no boundary checks
+struct SimpleLineMotionSpec {
+  const char* cmd;
+  PhysicalKeys keys;
+};
+extern const std::vector<SimpleLineMotionSpec> SIMPLE_LINE_MOTIONS;
+
+// Vertical motions (j, k)
+struct VerticalMotionSpec {
+  const char* cmd;
+  PhysicalKeys keys;
+  bool isDown;
+};
+extern const std::vector<VerticalMotionSpec> VERTICAL_MOTIONS;
+
+// Jump motions (gg, G)
+struct JumpMotionSpec {
+  const char* cmd;
+  PhysicalKeys keys;
+  bool toStart;  // gg=true, G=false
+};
+extern const std::vector<JumpMotionSpec> JUMP_MOTIONS;
+
+// Scroll motions (<C-d>, <C-u>, <C-f>, <C-b>)
+struct ScrollMotionSpec {
+  const char* cmd;
+  PhysicalKeys keys;
+  int shiftMultiplier;  // +1 for down, -1 for up
+  bool isHalf;          // true for C-d/C-u, false for C-f/C-b
+};
+extern const std::vector<ScrollMotionSpec> SCROLL_MOTIONS;
+
+} // namespace Motion

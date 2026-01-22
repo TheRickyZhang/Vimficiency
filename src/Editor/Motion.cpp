@@ -130,7 +130,10 @@ void applyParsedMotion(Position& pos, Mode& mode,
       VimCore::moveLine(pos, lines, count-1);
     }
     int len = static_cast<int>(lines[pos.line].size());
-    pos.setCol(len == 0 ? 0 : len - 1);
+    // Set col to end of line, but targetCol to TARGETCOL_EOL so subsequent
+    // vertical movements keep cursor at end of each line (Vim's curswant behavior)
+    pos.col = len == 0 ? 0 : len - 1;
+    pos.targetCol = TARGETCOL_EOL;
   } else if (motion == "^") {
     int len = static_cast<int>(lines[pos.line].size());
     int col = 0;

@@ -239,7 +239,7 @@ TEST_F(NeovimOracleDebug, DISABLED_DebugMultipleDd) {
 // Sub-buffer boundary failure investigation
 // ============================================================================
 
-TEST_F(NeovimOracleDebug, InvestigateSubBufferFailure_Sentence) {
+TEST_F(NeovimOracleDebug, DISABLED_InvestigateSubBufferFailure_Sentence) {
   // Failure #2: ")F " escapes sub-buffer
   // Sub-buffer is lines 1-4 of full buffer
   // Start: sub(2,10) = full(3,10)
@@ -278,45 +278,3 @@ TEST_F(NeovimOracleDebug, InvestigateSubBufferFailure_Sentence) {
   cerr << "- Sub-buffer clamps at its last line" << endl;
 }
 
-TEST_F(NeovimOracleDebug, InvestigateSubBufferFailure_WordWrap) {
-  // Failure #1: "Wj2W" escapes sub-buffer
-  // Sub-buffer is lines 1-4 of full buffer
-  // Start: sub(2,8) = full(3,8)
-
-  Lines fullBuffer = {
-    "bc,dbc.addba,cd d c  ab",
-    "cc,cb, ac . ac,bdbb,adb",
-    "ddc .bddb  , bbc",
-    "ca .c dd.. .d",
-    ",,dbdaab,aadb,aa abdb,",
-    "cad a bc,d,",
-    "aa,c ,, dbdddc daaaacb ,",
-    ". b,ba. bdb,,b"
-  };
-
-  Lines subBuffer = {
-    "cc,cb, ac . ac,bdbb,adb",
-    "ddc .bddb  , bbc",
-    "ca .c dd.. .d",
-    ",,dbdaab,aadb,aa abdb,"
-  };
-
-  cerr << "\n=== Full Buffer Trace (start at line 3, col 8) ===" << endl;
-  auto fullTracer = makeTracer(fullBuffer, 3, 8);
-  fullTracer.trace("W");
-  fullTracer.trace("j");
-  fullTracer.trace("2W");
-  fullTracer.printSummary();
-
-  cerr << "\n=== Sub-Buffer Trace (start at line 2, col 8) ===" << endl;
-  auto subTracer = makeTracer(subBuffer, 2, 8);
-  subTracer.trace("W");
-  subTracer.trace("j");
-  subTracer.trace("2W");
-  subTracer.printSummary();
-
-  cerr << "\n=== Analysis ===" << endl;
-  cerr << "The 2W motion wraps differently because:" << endl;
-  cerr << "- Full buffer has line 5 to wrap to" << endl;
-  cerr << "- Sub-buffer has no line 4, so 2W clamps/behaves differently" << endl;
-}

@@ -15,6 +15,8 @@
 #include "State/EditState.h"
 #include "Utils/Lines.h"
 #include "VimCore/VimEndpointUtils.h"
+#include "VimCore/LineEdgeType.h"
+#include "VimCore/SentenceEdgeType.h"
 
 // Callback type for characterwise deletion exploration
 // Called with (range, deleteCmd, deleteKeys) for each valid deletion
@@ -111,4 +113,10 @@ private:
   void exploreCharEdits(
       const Position& cursor, const Lines& lines, int contentStart, int contentEnd,
       int editContentLen, DeletionCallback onDeletion);
+  void exploreParagraphEdits(
+      const std::vector<Edit::ParagraphEditSpec>& specs,
+      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
+  void exploreSentenceEdits(
+      const std::vector<Edit::SentenceEditSpec>& specs,
+      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
 };

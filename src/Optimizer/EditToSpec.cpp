@@ -65,4 +65,16 @@ const vector<FullLineEditSpec> FULL_LINE_EDITS = {
 
 const vector<FullLineEditSpec> EMPTYLINE_FULL_LINE_EDITS = FULL_LINE_EDITS;
 
+// Paragraph motion edits: cmd, keys, forward
+const vector<ParagraphEditSpec> PARAGRAPH_EDITS = {
+    {"d}", {Key::Key_D, Key::Key_Shift, Key::Key_RBracket}, true},
+    {"d{", {Key::Key_D, Key::Key_Shift, Key::Key_LBracket}, false},
+};
+
+// Sentence motion edits: cmd, keys, forward
+const vector<SentenceEditSpec> SENTENCE_EDITS = {
+    {"d)", {Key::Key_D, Key::Key_Shift, Key::Key_0}, true},
+    {"d(", {Key::Key_D, Key::Key_Shift, Key::Key_9}, false},
+};
+
 } // namespace Edit

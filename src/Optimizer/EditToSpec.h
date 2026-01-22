@@ -62,4 +62,20 @@ struct FullLineEditSpec {
 extern const std::vector<FullLineEditSpec> FULL_LINE_EDITS;
 extern const std::vector<FullLineEditSpec> EMPTYLINE_FULL_LINE_EDITS;
 
+// Paragraph motion edits (d}, d{)
+struct ParagraphEditSpec {
+  const char* cmd;
+  PhysicalKeys keys;
+  bool forward;  // true for d}, false for d{
+};
+extern const std::vector<ParagraphEditSpec> PARAGRAPH_EDITS;
+
+// Sentence motion edits (d), d()
+struct SentenceEditSpec {
+  const char* cmd;
+  PhysicalKeys keys;
+  bool forward;  // true for d), false for d(
+};
+extern const std::vector<SentenceEditSpec> SENTENCE_EDITS;
+
 } // namespace Edit

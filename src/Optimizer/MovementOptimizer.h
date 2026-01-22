@@ -47,7 +47,8 @@ struct MovementOptimizer {
   }
 
   // For movement only. Builds index for faster movement computation.
-  // Only RunningEffort is continued from pre-existing state, everything else can be fresh.
+  // TODO: Only RunningEffort is continued from pre-existing state, everything else can be fresh. (make sure that we set cost += newCost - previousCost, not cost = newCost!)
+  
   // Returns additional effort and sequence to add to the caller site
   // ~ O(n^2)
   std::vector<Result> optimize(

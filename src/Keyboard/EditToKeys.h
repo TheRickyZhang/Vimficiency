@@ -131,6 +131,8 @@ extern const EditToKeys CHAR;       // x, X
 extern const EditToKeys WORD;       // dw, de, db, dge, dW, dE, dB, dgE
 extern const EditToKeys LINE;       // dd, D, d$, d0, d^
 extern const EditToKeys TEXT_OBJ;   // diw, daw, diW, daW
+extern const EditToKeys PARAGRAPH;  // d}, d{
+extern const EditToKeys SENTENCE;   // d), d(
 
 } // namespace Deletion
 

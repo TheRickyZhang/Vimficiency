@@ -218,11 +218,15 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit) 
       case hash("e"): case hash("E"): case hash("ge"): case hash("gE"):
       case hash("dw"): case hash("dW"): case hash("db"): case hash("dB"):
       case hash("de"): case hash("dE"): case hash("dge"): case hash("dgE"):
+      case hash("d}"): case hash("d{"): case hash("d)"): case hash("d("):
       case hash("cw"): case hash("cW"): case hash("cb"): case hash("cB"):
       case hash("ce"): case hash("cE"): case hash("cge"): case hash("cgE"):
+      case hash("c}"): case hash("c{"): case hash("c)"): case hash("c("):
       case hash("0"): case hash("^"): case hash("$"):
       // Navigation (for EditOptimizer line traversal)
       case hash("j"): case hash("k"): case hash("h"): case hash("l"):
+      // Paragraph/sentence motions
+      case hash("}"): case hash("{"): case hash(")"): case hash("("):
         break;  // Fall through to main switch
       default:
         throw runtime_error("Edit '" + string(e) + "' invalid on empty line");
@@ -564,6 +568,78 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit) 
         }
         return;
 
+      // --- Paragraph motions ---
+      case hash("d}"):
+      case hash("c}"):
+        {
+          Position endPos = pos;
+          for (int i = 0; i < count; i++) VimCore::motionParagraphNext(endPos, lines);
+          // d} is exclusive: delete up to but not including the blank line
+          if (endPos > pos) {
+            Position inclusiveEnd = lines.getPrevPos(endPos);
+            if (inclusiveEnd != POSITION_OUTSIDE_BOUNDARY && inclusiveEnd >= pos) {
+              Range r(pos, inclusiveEnd);
+              VimCore::deleteRange(lines, r, pos, e[0] == 'c' ? Mode::Insert : Mode::Normal);
+            }
+          }
+          if (e[0] == 'c') mode = Mode::Insert;
+        }
+        return;
+
+      case hash("d{"):
+      case hash("c{"):
+        {
+          Position startPos = pos;
+          for (int i = 0; i < count; i++) VimCore::motionParagraphPrev(startPos, lines);
+          // d{ is exclusive: delete from motion endpoint to just before cursor
+          if (startPos < pos) {
+            Position endPos = pos.col > 0 ? Position(pos.line, pos.col - 1)
+                            : (pos.line > 0 ? Position(pos.line - 1, lines[pos.line - 1].lastCol()) : pos);
+            if (startPos <= endPos) {
+              Range r(startPos, endPos);
+              VimCore::deleteRange(lines, r, pos, e[0] == 'c' ? Mode::Insert : Mode::Normal);
+            }
+          }
+          if (e[0] == 'c') mode = Mode::Insert;
+        }
+        return;
+
+      // --- Sentence motions ---
+      case hash("d)"):
+      case hash("c)"):
+        {
+          Position endPos = pos;
+          for (int i = 0; i < count; i++) VimCore::motionSentenceNext(endPos, lines);
+          // d) is exclusive: delete up to but not including the sentence start
+          if (endPos > pos) {
+            Position inclusiveEnd = lines.getPrevPos(endPos);
+            if (inclusiveEnd != POSITION_OUTSIDE_BOUNDARY && inclusiveEnd >= pos) {
+              Range r(pos, inclusiveEnd);
+              VimCore::deleteRange(lines, r, pos, e[0] == 'c' ? Mode::Insert : Mode::Normal);
+            }
+          }
+          if (e[0] == 'c') mode = Mode::Insert;
+        }
+        return;
+
+      case hash("d("):
+      case hash("c("):
+        {
+          Position startPos = pos;
+          for (int i = 0; i < count; i++) VimCore::motionSentencePrev(startPos, lines);
+          // d( is exclusive: delete from motion endpoint to just before cursor
+          if (startPos < pos) {
+            Position endPos = pos.col > 0 ? Position(pos.line, pos.col - 1)
+                            : (pos.line > 0 ? Position(pos.line - 1, lines[pos.line - 1].lastCol()) : pos);
+            if (startPos <= endPos) {
+              Range r(startPos, endPos);
+              VimCore::deleteRange(lines, r, pos, e[0] == 'c' ? Mode::Insert : Mode::Normal);
+            }
+          }
+          if (e[0] == 'c') mode = Mode::Insert;
+        }
+        return;
+
       // --- Navigation motions (for EditOptimizer) ---
       case hash("j"):
         if (pos.line + count >= n) {
@@ -637,6 +713,22 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit) 
 
       case hash("$"):
         pos.setCol(m > 0 ? m - 1 : 0);
+        return;
+
+      case hash("}"):
+        for (int i = 0; i < count; i++) VimCore::motionParagraphNext(pos, lines);
+        return;
+
+      case hash("{"):
+        for (int i = 0; i < count; i++) VimCore::motionParagraphPrev(pos, lines);
+        return;
+
+      case hash(")"):
+        for (int i = 0; i < count; i++) VimCore::motionSentenceNext(pos, lines);
+        return;
+
+      case hash("("):
+        for (int i = 0; i < count; i++) VimCore::motionSentencePrev(pos, lines);
         return;
 
     }

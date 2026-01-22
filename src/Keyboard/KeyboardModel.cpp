@@ -1,5 +1,7 @@
 #include "KeyboardModel.h"
+#include "CharToKeys.h"
 #include <ostream>
+#include <string>
 
 PhysicalKeys& PhysicalKeys::append(const PhysicalKeys& ks, size_t cnt){
   if(cnt <= 0 || ks.size() == 0) return *this;
@@ -15,4 +17,13 @@ std::ostream& operator<<(std::ostream& os, const PhysicalKeys& ks) {
     os << static_cast<int>(k) << " ";
   }
   return os;
+}
+
+PhysicalKeys makeCountedKeys(int count, const PhysicalKeys& motionKeys) {
+  PhysicalKeys keys;
+  for (char c : std::to_string(count)) {
+    keys.append(CHAR_TO_KEYS.at(c));
+  }
+  keys.append(motionKeys);
+  return keys;
 }

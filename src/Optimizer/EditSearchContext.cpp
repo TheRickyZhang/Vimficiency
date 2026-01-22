@@ -266,6 +266,89 @@ void EditSearchContext::exploreCharEdits(
   }
 }
 
+void EditSearchContext::exploreParagraphEdits(
+    const vector<Edit::ParagraphEditSpec>& specs,
+    const Position& cursor, const Lines& lines, DeletionCallback onDeletion) {
+  int lastLine = lines.lastLine();
+
+  for (const auto& spec : specs) {
+    int endpointLine = VimCore::motionParagraphEndpoint(
+        cursor.line, lines, spec.forward, LineEdgeType::NextEdge);
+
+    // Skip if endpoint lands on edge line when bounded (may have been clamped)
+    if (spec.forward) {
+      if (editBoundary.hasLinesBelow() && endpointLine == lastLine) continue;
+      if (editBoundary.hasSuffix() && endpointLine == lastLine) continue;
+    } else {
+      if (editBoundary.hasLinesAbove() && endpointLine == 0) continue;
+      if (editBoundary.hasPrefix() && endpointLine == 0) continue;
+    }
+
+    // Paragraph motions are exclusive: d} deletes up to (not including) the blank line
+    Position endpoint(endpointLine, 0);
+
+    if (spec.forward) {
+      // d}: delete from cursor to just before endpoint (exclusive)
+      if (endpoint <= cursor) continue;
+      Position endPos = lines.getPrevPos(endpoint);
+      if (endPos == POSITION_OUTSIDE_BOUNDARY) continue;
+      onDeletion(Range(cursor, endPos), spec.cmd, spec.keys);
+    } else {
+      // d{: delete from endpoint to just before cursor (exclusive)
+      if (endpoint >= cursor) continue;
+      Position endPos = Position(cursor.line, cursor.col - 1);
+      if (cursor.col == 0) {
+        if (cursor.line == 0) continue;
+        endPos = Position(cursor.line - 1, lines[cursor.line - 1].lastCol());
+      }
+      onDeletion(Range(endpoint, endPos), spec.cmd, spec.keys);
+    }
+  }
+}
+
+void EditSearchContext::exploreSentenceEdits(
+    const vector<Edit::SentenceEditSpec>& specs,
+    const Position& cursor, const Lines& lines, DeletionCallback onDeletion) {
+  int lastLine = lines.lastLine();
+
+  for (const auto& spec : specs) {
+    Position endpoint = VimCore::motionSentenceEndpoint(
+        cursor, lines, spec.forward, SentenceEdgeType::NextEdge);
+
+    if (endpoint == POSITION_OUTSIDE_BOUNDARY) continue;
+
+    // Skip if endpoint lands on edge line when bounded (may have been clamped)
+    if (spec.forward) {
+      if (editBoundary.hasLinesBelow() && endpoint.line == lastLine) continue;
+      // Check if endpoint is in suffix region
+      if (editBoundary.hasSuffix() && endpoint.line == lastLine &&
+          endpoint.col >= static_cast<int>(lines[lastLine].size()) - rightColOffset) continue;
+    } else {
+      if (editBoundary.hasLinesAbove() && endpoint.line == 0) continue;
+      // Check if endpoint is in prefix region
+      if (editBoundary.hasPrefix() && endpoint.line == 0 &&
+          endpoint.col < leftColOffset) continue;
+    }
+
+    if (spec.forward) {
+      // d): delete from cursor to just before endpoint (exclusive)
+      if (endpoint <= cursor) continue;
+      Position endPos = lines.getPrevPos(endpoint);
+      if (endPos == POSITION_OUTSIDE_BOUNDARY) continue;
+      onDeletion(Range(cursor, endPos), spec.cmd, spec.keys);
+    } else {
+      // d(: delete from endpoint to just before cursor (exclusive)
+      if (endpoint >= cursor) continue;
+      Position endPos = Position(cursor.line, cursor.col - 1);
+      if (cursor.col == 0) {
+        if (cursor.line == 0) continue;
+        endPos = Position(cursor.line - 1, lines[cursor.line - 1].lastCol());
+      }
+      onDeletion(Range(endpoint, endPos), spec.cmd, spec.keys);
+    }
+  }
+}
+
 
 // =============================================================================
 // Main Exploration Entry Point
@@ -336,4 +419,6 @@ void EditSearchContext::exploreAllDeletions(const EditState& state,
   exploreHalfLineEdits(Edit::HALF_LINE_EDITS, cursor, lines, contentBegin, contentEnd, onDeletion);
   exploreFullLineEdits(Edit::FULL_LINE_EDITS, cursor, lines, onLinewise);
   exploreCharEdits(cursor, lines, contentBegin, contentEnd, editContentLen, onDeletion);
+  exploreParagraphEdits(Edit::PARAGRAPH_EDITS, cursor, lines, onDeletion);
+  exploreSentenceEdits(Edit::SENTENCE_EDITS, cursor, lines, onDeletion);
 }
