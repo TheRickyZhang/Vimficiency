@@ -298,30 +298,51 @@ void motionSentencePrev(Position &pos, const Lines &lines) {
       }
 
       // Sentence-ending punctuation could be a single-char sentence start
-      // if it's preceded by whitespace (after a previous sentence end).
-      // Example: ". . c" - the second '.' is a sentence start.
-      // But ".." is NOT two sentences - only the last '.' is a sentence end.
+      // if it's preceded by whitespace that follows a previous sentence end.
+      // Example: ". . c" - the second '.' is a sentence start because
+      //          the whitespace before it follows the first '.' (a sentence end).
+      // But "d . c" - the '.' is NOT a sentence start because the whitespace
+      //          follows 'd' (not a sentence end), so '.' is the END of that sentence.
       if (c == '.' || c == '!' || c == '?') {
         // Check the character before this punctuation
         int prevL = l, prevK = k;
         if (stepBack(lines, prevL, prevK)) {
           unsigned char prevC = getChar(lines, prevL, prevK);
-          // Only if preceded by whitespace is this punctuation a sentence start.
-          // Preceded by another punctuation (like "..") means it's part of a
-          // multi-punctuation sequence, not a standalone sentence.
+          // If preceded by whitespace, check if there's a sentence end before the whitespace
           if (prevC == ' ' || prevC == '\t' || prevC == '\n') {
-            // This punctuation is the start of a single-char sentence
-            pos.line = l;
-            pos.setCol(k);
-            return;
+            // Skip back through whitespace to find what precedes it
+            int checkL = prevL, checkK = prevK;
+            while (checkL >= 0) {
+              unsigned char checkC = getChar(lines, checkL, checkK);
+              if (checkC != ' ' && checkC != '\t') {
+                // Found non-whitespace - is it a sentence end or closer?
+                if (checkC == '.' || checkC == '!' || checkC == '?' || isSentenceCloser(checkC)) {
+                  // Whitespace follows a sentence end/closer, so this punctuation
+                  // is the start of a new single-char sentence
+                  pos.line = l;
+                  pos.setCol(k);
+                  return;
+                }
+                // Whitespace follows regular content (like "d . c")
+                // This punctuation is NOT a sentence start - continue stepping back
+                break;
+              }
+              if (!stepBack(lines, checkL, checkK)) {
+                // Reached buffer start through whitespace - this punctuation is a sentence start
+                pos.line = l;
+                pos.setCol(k);
+                return;
+              }
+            }
           }
+          // Preceded by non-whitespace (like "..") or whitespace after regular content
+          // Continue stepping back
         } else {
           // At buffer start - this is the sentence start
           pos.line = l;
           pos.setCol(k);
           return;
         }
-        // Not preceded by whitespace - skip this punctuation
         continue;
       }
 

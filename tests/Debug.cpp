@@ -17,6 +17,7 @@
 #include "Optimizer/BufferIndex.h"
 #include "Boundary/EditBoundary.h"
 #include "Utils/NeovimOracle.h"
+#include "VimCore/VimCore.h"
 #include "VimCore/VimEndpointUtils.h"
 #include "VimCore/VimMotionUtils.h"
 #include "VimCore/SentenceEdgeType.h"
@@ -361,6 +362,111 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentence2ParenFailure) {
   cerr << "\n=== Analysis ===" << endl;
   bool match = (sim2paren.line == subResult2paren.row && sim2paren.col == subResult2paren.col);
   cerr << "2( matches Neovim sub-buffer: " << (match ? "YES" : "NO") << endl;
+}
+
+TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceMixedContentFailure) {
+  // First, let's understand what Neovim thinks about ". . c" patterns
+  cerr << "\n=== Testing '. . c' pattern ===" << endl;
+  Lines testPattern = {". . c"};
+  cerr << "Buffer: \"" << testPattern[0] << "\"" << endl;
+  cerr << "Positions: 0=. 1=space 2=. 3=space 4=c" << endl;
+
+  // What does ( do from position 4 (c)?
+  auto tp0 = oracle_->simulate(testPattern, 0, 4, "(");
+  cerr << "( from (0,4) 'c' -> (" << tp0.row << ", " << tp0.col << ") = '" << testPattern[0][tp0.col] << "'" << endl;
+
+  // What does ( do from position 2 (second .)?
+  auto tp1 = oracle_->simulate(testPattern, 0, 2, "(");
+  cerr << "( from (0,2) '.' -> (" << tp1.row << ", " << tp1.col << ") = '" << testPattern[0][tp1.col] << "'" << endl;
+
+  // What does ( do from position 0 (first .)?
+  auto tp2 = oracle_->simulate(testPattern, 0, 0, "(");
+  cerr << "( from (0,0) '.' -> (" << tp2.row << ", " << tp2.col << ") = '" << testPattern[0][tp2.col] << "'" << endl;
+
+  // Test "d . c" pattern - '.' after letter should NOT be a sentence start
+  cerr << "\n=== Testing 'd . c' pattern ===" << endl;
+  Lines testPattern2 = {"d . c"};
+  cerr << "Buffer: \"" << testPattern2[0] << "\"" << endl;
+  cerr << "Positions: 0=d 1=space 2=. 3=space 4=c" << endl;
+
+  auto tp3 = oracle_->simulate(testPattern2, 0, 4, "(");
+  cerr << "( from (0,4) 'c' -> (" << tp3.row << ", " << tp3.col << ") = '" << testPattern2[0][tp3.col] << "'" << endl;
+
+  auto tp4 = oracle_->simulate(testPattern2, 0, 2, "(");
+  cerr << "( from (0,2) '.' -> (" << tp4.row << ", " << tp4.col << ") = '" << testPattern2[0][tp4.col] << "'" << endl;
+
+  // Now test the original failing case
+  cerr << "\n=== Original Failing Case ===" << endl;
+
+  Lines subBuffer = {
+    "   .d e.,.b,,",
+    "e ,, .,.a .f.a  cf .d,,e f, b ",
+    "c d ,. ,,. e . , ac.e  c  a ",
+    "  .  d .  d , ,be. .c,d  dfb"
+  };
+
+  cerr << "\n=== Buffer Content ===" << endl;
+  for (size_t i = 0; i < subBuffer.size(); i++) {
+    cerr << "[" << i << "]: \"" << subBuffer[i] << "\"" << endl;
+    cerr << "     ";
+    for (size_t j = 0; j < subBuffer[i].size(); j++) {
+      cerr << j % 10;
+    }
+    cerr << endl;
+  }
+
+  cerr << "\n=== Neovim sentence motions ===" << endl;
+
+  // Test single ( from (3, 20)
+  auto r1 = oracle_->simulate(subBuffer, 3, 20, "(");
+  cerr << "Neovim: ( from (3,20) -> (" << r1.row << ", " << r1.col << ")" << endl;
+
+  Position sim1 = simulateMotions(Position(3, 20), "(", subBuffer);
+  cerr << "Ours:   ( from (3,20) -> (" << sim1.line << ", " << sim1.col << ")" << endl;
+
+  // Step through multiple ( motions
+  cerr << "\n=== Multiple ( motions from (3,20) ===" << endl;
+  Position pos(3, 20);
+  int row = 3, col = 20;
+  for (int i = 1; i <= 6; i++) {
+    auto nvim = oracle_->simulate(subBuffer, row, col, "(");
+    Position ours = simulateMotions(pos, "(", subBuffer);
+
+    bool match = (nvim.row == ours.line && nvim.col == ours.col);
+    cerr << i << "(: neovim=(" << nvim.row << "," << nvim.col << ") "
+         << "ours=(" << ours.line << "," << ours.col << ") "
+         << (match ? "MATCH" : "MISMATCH") << endl;
+
+    row = nvim.row;
+    col = nvim.col;
+    pos = ours;
+  }
+
+  // Test VimCore::motionSentenceEndpoint directly
+  cerr << "\n=== VimCore::motionSentenceEndpoint trace ===" << endl;
+  using namespace VimCore;
+
+  Position ep = motionSentenceEndpoint(Position(3, 20), subBuffer, false, SentenceEdgeType::NextEdge);
+  cerr << "motionSentenceEndpoint((3,20), backward, NextEdge) = (" << ep.line << ", " << ep.col << ")" << endl;
+
+  // Test what findCurrentSentenceStart returns
+  cerr << "\n=== findCurrentSentenceStart trace ===" << endl;
+  auto [sl, sc] = VimCore::findCurrentSentenceStart(subBuffer, 3, 20);
+  cerr << "findCurrentSentenceStart((3,20)) = (" << sl << ", " << sc << ")" << endl;
+
+  // What char is at position (3, 20)?
+  cerr << "\nChar at (3,20): '" << subBuffer[3][20] << "'" << endl;
+  cerr << "Line 3: \"" << subBuffer[3] << "\"" << endl;
+
+  // Analyze sentence boundaries on line 3
+  cerr << "\n=== Sentence ends on line 3 ===" << endl;
+  for (int c = 0; c < (int)subBuffer[3].size(); c++) {
+    if (VimCore::isSentenceEndAt(subBuffer, 3, c)) {
+      cerr << "Sentence end at (3, " << c << ") = '" << subBuffer[3][c] << "'" << endl;
+    }
+  }
+
+  EXPECT_TRUE(false) << "Debug test - check output above";
 }
 
 TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceIndexFailure) {
