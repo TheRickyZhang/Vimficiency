@@ -1,5 +1,6 @@
 # Utility Patterns
 
+
 General-purpose utilities in `src/Utils/`.
 
 ## Bitmask Flag Structs

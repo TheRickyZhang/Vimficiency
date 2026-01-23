@@ -206,12 +206,19 @@ function M.finish(alias, save_name)
   local rel_end_row = end_state.row - start_search
   local rel_end_col = end_state.col
 
+  -- For linewise slicing: boundary covers full lines
+  local boundary_first_col = 0
+  local boundary_last_col = #lines[#lines] - 1  -- last char of last line (0-indexed)
+  if boundary_last_col < 0 then boundary_last_col = 0 end
+  local has_lines_above = start_search > 0
+  local has_lines_below = end_search < buffer_line_count - 1
+
   ---@type boolean, VimficiencyResult[], string
   local ok, results, dbg = pcall(
     ffi_lib.analyze,
     lines,
-    start_search == 0,
-    end_search == buffer_line_count - 1,
+    boundary_first_col, boundary_last_col,
+    has_lines_above, has_lines_below,
     rel_start_row,
     rel_start_col,
     rel_end_row,

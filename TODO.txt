@@ -1,13 +1,15 @@
 == Current priority stack:
 Insert Mode handling (just a lot more stuff)     ********* (very very difficult)
-Implement EditOptimizer
+Implement CompositionOptimizer
 Implement quote and bracket text object motions (see quoteFlags/bracketFlags)
-Inspect code and improve organization
-Handle pureDeletion, pureInsertion cases separately
+Handle pureInsertion case
 
-Review (){} boundary motions more deeply.
+Organize tests to property-based, consisteny, manual, human, etc.
+
 
 Any inclusive boundaries we can more cleanly model as half-open?
+
+(){} boundary motions not completely human-reviewed yet (especially for index-building)
 
 Quote psuedocode:
 Precompute Edit regions

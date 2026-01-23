@@ -38,7 +38,7 @@ local M = {}
 ---@field vimficiency_hand_name fun(index: integer): ffi.cdata*
 ---@field vimficiency_get_config fun(): VimficiencyConfigFFI
 ---@field vimficiency_apply_config fun(): nil
----@field vimficiency_analyze fun(text: string, includes_real_top: boolean, includes_real_bottom: boolean, start_row: integer, start_col: integer, end_row: integer, end_col: integer, keyseq: string, top_row: integer, bottom_row: integer, window_height: integer, scroll_amount: integer, results_calculated: integer): string
+---@field vimficiency_analyze fun(text: string, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, start_row: integer, start_col: integer, end_row: integer, end_col: integer, tot_lines: integer, keyseq: string, top_row: integer, bottom_row: integer, window_height: integer, scroll_amount: integer, results_calculated: integer): string
 ---@field vimficiency_get_debug fun(): string
 ---@field vimficiency_version fun(): integer
 ---@field vimficiency_debug_config fun(): string
@@ -79,8 +79,11 @@ ffi.cdef([[
     const char* vimficiency_finger_name(int index);
     const char* vimficiency_hand_name(int index);
     const char* vimficiency_analyze(
-        const char* text, bool includes_real_top, bool includes_real_bottom,
+        const char* text,
+        int boundary_first_col, int boundary_last_col,
+        bool has_lines_above, bool has_lines_below,
         int start_row, int start_col, int end_row, int end_col,
+        int tot_lines,
         const char* keyseq,
         int top_row, int bottom_row, int window_height, int scroll_amount,
         int RESULTS_CALCULATED
@@ -194,11 +197,13 @@ function M.configure(user_config)
 end
 
 ---@param lines string[]
----@param includes_real_top boolean
----@param includes_real_bottom boolean
----@param start_row integer (0-indexed)
+---@param boundary_first_col integer Column offset at start of boundary (0 for linewise)
+---@param boundary_last_col integer Last valid column in boundary (lastLineLen-1 for linewise)
+---@param has_lines_above boolean Whether there are lines above the slice in the full buffer
+---@param has_lines_below boolean Whether there are lines below the slice in the full buffer
+---@param start_row integer (0-indexed, relative to slice)
 ---@param start_col integer (0-indexed)
----@param end_row integer (0-indexed)
+---@param end_row integer (0-indexed, relative to slice)
 ---@param end_col integer (0-indexed)
 ---@param key_seq string
 ---@param top_row integer
@@ -208,17 +213,21 @@ end
 ---@param RESULTS_CALCULATED integer
 ---@return VimficiencyResult[] results, string debug
 function M.analyze(
-  lines, includes_real_top, includes_real_bottom,
+  lines, boundary_first_col, boundary_last_col,
+  has_lines_above, has_lines_below,
   start_row, start_col, end_row, end_col,
   key_seq,
   top_row, bottom_row, window_height, scroll_amount,
   RESULTS_CALCULATED
 )
 	local text = table.concat(lines, "\n")
+	local tot_lines = #lines
 
 	local result = lib.vimficiency_analyze(
-    text, includes_real_top, includes_real_bottom,
+    text, boundary_first_col, boundary_last_col,
+    has_lines_above, has_lines_below,
     start_row, start_col, end_row, end_col,
+    tot_lines,
     key_seq,
     top_row, bottom_row, window_height, scroll_amount,
     RESULTS_CALCULATED

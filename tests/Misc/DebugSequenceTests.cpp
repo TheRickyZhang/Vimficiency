@@ -8,7 +8,7 @@
 #include "Editor/Motion.h"
 #include "Editor/NavContext.h"
 #include "Optimizer/Config.h"
-#include "Optimizer/MotionBoundary.h"
+#include "Boundary/MotionBoundary.h"
 #include "Optimizer/MovementOptimizer.h"
 #include "State/RunningEffort.h"
 #include "Utils/TestUtils.h"

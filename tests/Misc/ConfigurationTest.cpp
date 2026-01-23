@@ -5,7 +5,7 @@
 
 #include "Keyboard/MotionToKeys.h"
 #include "Optimizer/Config.h"
-#include "Optimizer/MotionBoundary.h"
+#include "Boundary/MotionBoundary.h"
 #include "Optimizer/MovementOptimizer.h"
 #include "State/RunningEffort.h"
 

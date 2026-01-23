@@ -37,27 +37,45 @@ protected:
   // - '\n' means at line start/end with lines above/below
   // - other char means that char is adjacent (single-char prefix/suffix for testing)
   static EditBoundary makeBoundary(const Lines& lines, char left, char right) {
-    std::string prefix;
-    std::string suffix;
-    bool hasLinesAbove = false;
-    bool hasLinesBelow = false;
+    bool hasLinesAbove = (left == '\n');
+    bool hasLinesBelow = (right == '\n');
 
-    // Set prefix based on left char
-    if (left == '\n') {
-      hasLinesAbove = true;
-      // prefix stays empty
-    } else if (left != NO_CHAR) {
-      prefix = std::string(1, left);
-    }
-    // Set suffix based on right char
-    if (right == '\n') {
-      hasLinesBelow = true;
-      // suffix stays empty
-    } else if (right != NO_CHAR) {
-      suffix = std::string(1, right);
+    // Build test buffer with boundary context embedded
+    // For hasLinesAbove: prepend an empty line so firstPos.line > 0 triggers the flag
+    // For hasLinesBelow: append an empty line so lastPos.line < lines.size()-1 triggers the flag
+    Lines testLines;
+    int lineOffset = 0;
+
+    if (hasLinesAbove) {
+      testLines.push_back("");  // Empty line above
+      lineOffset = 1;
     }
 
-    return EditBoundary(prefix, suffix, hasLinesAbove, hasLinesBelow);
+    // Copy original lines, potentially with prefix/suffix chars
+    for (size_t i = 0; i < lines.size(); i++) {
+      std::string line = lines[i];
+      if (i == 0 && left != '\n' && left != NO_CHAR) {
+        line = std::string(1, left) + line;  // Prepend prefix char
+      }
+      if (i == lines.size() - 1 && right != '\n' && right != NO_CHAR) {
+        line = line + std::string(1, right);  // Append suffix char
+      }
+      testLines.push_back(line);
+    }
+
+    if (hasLinesBelow) {
+      testLines.push_back("");  // Empty line below
+    }
+
+    // Compute positions within testLines for the edit region
+    int firstLine = lineOffset;
+    int firstCol = (left != '\n' && left != NO_CHAR) ? 1 : 0;
+    int lastLine = lineOffset + static_cast<int>(lines.size()) - 1;
+    int lastCol = testLines[lastLine].empty() ? 0 :
+        static_cast<int>(testLines[lastLine].size()) - 1 - ((right != '\n' && right != NO_CHAR) ? 1 : 0);
+    if (lastCol < 0) lastCol = 0;
+
+    return EditBoundary(testLines, Position(firstLine, firstCol), Position(lastLine, lastCol));
   }
 };
 

@@ -9,7 +9,7 @@
 #include "OptimizerParams.h"
 #include "EditOptimizer.h"
 #include "DiffState.h"
-#include "MotionBoundary.h"
+#include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
 #include "Editor/Position.h"
 #include "State/CompositionState.h"

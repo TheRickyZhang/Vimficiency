@@ -7,7 +7,7 @@
 #include "Result.h"
 #include "RangeResult.h"
 #include "OptimizerParams.h"
-#include "MotionBoundary.h"
+#include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
 #include "Editor/Position.h"
 #include "State/MotionState.h"

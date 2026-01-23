@@ -4,7 +4,7 @@
 #include "Keyboard/KeyboardModel.h"
 #include "Keyboard/XMacroKeyDefinitions.h"
 #include "Optimizer/Config.h"
-#include "Optimizer/MotionBoundary.h"
+#include "Boundary/MotionBoundary.h"
 #include "Optimizer/MovementOptimizer.h"
 #include "Utils/CoutCapture.h"
 #include "Utils/Debug.h"
@@ -131,11 +131,15 @@ const char *vimficiency_finger_name(int index) {
   return g_finger_names[index];
 }
 
+// TODO: Allow this to support character granularity. Currently, it only accepts line ranges,
+// so our first parent boundary will have prefix.empty() and suffix.empty()
 const char *vimficiency_analyze(
   const char *text,
-  bool includes_real_top, bool includes_real_bottom,
+  int boundaryFirstCol, int boundaryLastCol,
+  bool hasLinesAbove, bool hasLinesBelow,
   int start_row, int start_col,
   int end_row, int end_col,
+  int totLines,
   const char *keyseq,
   // Viewport state
   int top_row, int bottom_row, int window_height, int scroll_amount,
@@ -146,19 +150,21 @@ const char *vimficiency_analyze(
 
   try {
     auto lines = split_lines(text);
+    assert(static_cast<int>(lines.size()) == totLines);
 
-    Position start_position(start_row, start_col);
-    Position end_position(end_row, end_col);
+    Position firstMovementPos(start_row, start_col);
+    Position lastMovementPos(end_row, end_col);
 
     NavContext navigation_context(window_height, scroll_amount);
-    // Exclude G if we DON'T have the real bottom, exclude gg if we DON'T have the real top
-    MotionBoundary boundary(!includes_real_top, !includes_real_bottom);
+    MotionBoundary boundary(lines,
+        Position(0, boundaryFirstCol),
+        Position(totLines - 1, boundaryLastCol),
+        hasLinesAbove, hasLinesBelow);
 
-    // g_config_internal was already populated by vimficiency_apply_config()
     MovementOptimizer opt(g_config_internal);
 
     // Pass Position and fresh RunningEffort (no prior typing context from FFI)
-    std::vector<Result> res = opt.optimize(lines, start_position, RunningEffort(), end_position, keyseq, navigation_context, boundary, EXPLORABLE_MOTIONS, OptimizerParams(RESULTS_CALCULATED));
+    std::vector<Result> res = opt.optimize(lines, firstMovementPos, RunningEffort(), lastMovementPos, keyseq, navigation_context, boundary, EXPLORABLE_MOTIONS, OptimizerParams(RESULTS_CALCULATED));
 
     // Format results
     std::ostringstream oss;

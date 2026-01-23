@@ -4,52 +4,18 @@
 
 using namespace std;
 
-// =============================================================================
-// EditBoundary constructors
-// =============================================================================
-
-// Primary constructor: analyze boundary from buffer context
-EditBoundary::EditBoundary(const Lines &lines, Position firstPos, Position lastPos)
-    : prefix_(), suffix_(),
-      hasLinesAbove_(false), hasLinesBelow_(false),
-      firstLineQuotes_(), lastLineQuotes_(),
-      firstLineBrackets_(), lastLineBrackets_() {
-  assert(!lines.empty() && "Lines invariant: buffer always has at least one line");
-
-  const string &firstLine = lines[firstPos.line];
-  // Extract full prefix: all characters before firstPos on the first line
-  if (firstPos.col > 0) {
-    prefix_ = firstLine.substr(0, firstPos.col);
-  }
-  // prefix_ stays empty if at column 0 (atLineStart)
-
-  const string &lastLine = lines[lastPos.line];
-  int endSize = static_cast<int>(lastLine.size());
-  // Extract full suffix: all characters after lastPos on the last line
-  if (lastPos.col + 1 < endSize) {
-    suffix_ = lastLine.substr(lastPos.col + 1);
-  }
-  // suffix_ stays empty if at end of line (atLineEnd)
-
-  hasLinesAbove_ = (firstPos.line > 0);
-  hasLinesBelow_ = (lastPos.line + 1 < static_cast<int>(lines.size()));
-
-  // Scan prefix for quotes/brackets (for text object support)
-  for (char c : prefix_) {
-    firstLineQuotes_.add(c);
-    firstLineBrackets_.add(c);
-  }
-
-  // Scan suffix for quotes/brackets
-  for (char c : suffix_) {
-    lastLineQuotes_.add(c);
-    lastLineBrackets_.add(c);
-  }
+const EditBoundary& EditBoundary::noParent() {
+  static const EditBoundary instance{};
+  return instance;
 }
 
-// Inherited constructor: use parent boundary but refine with new region
-EditBoundary::EditBoundary(const EditBoundary &parent, const Lines &lines,
-                           Position firstPos, Position lastPos)
+// =============================================================================
+// EditBoundary constructor
+// =============================================================================
+
+// Construct from buffer context, optionally inheriting from parent
+EditBoundary::EditBoundary(const Lines &lines, Position firstPos, Position lastPos,
+                           const EditBoundary &parent)
     : prefix_(), suffix_(),
       hasLinesAbove_(parent.hasLinesAbove()),
       hasLinesBelow_(parent.hasLinesBelow()),

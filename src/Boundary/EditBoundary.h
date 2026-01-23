@@ -21,17 +21,11 @@
 struct EditBoundary {
   // Default constructor: empty prefix/suffix, no lines above/below
   EditBoundary() = default;
+  static const EditBoundary& noParent();
 
-  // Construct from buffer context
-  EditBoundary(const Lines& lines, Position firstPos, Position lastPos);
-
-  // Construct inheriting from parent boundary (for sub-regions)
-  EditBoundary(const EditBoundary& parent, const Lines& lines, Position firstPos, Position lastPos);
-
-  // Construct with explicit boundary values (for testing boundary crossing logic)
-  EditBoundary(std::string prefix, std::string suffix, bool hasLinesAbove, bool hasLinesBelow)
-      : prefix_(std::move(prefix)), suffix_(std::move(suffix)),
-        hasLinesAbove_(hasLinesAbove), hasLinesBelow_(hasLinesBelow) {}
+  // Construct from buffer context, optionally inheriting from parent
+  EditBoundary(const Lines& lines, Position firstPos, Position lastPos,
+               const EditBoundary& parent = noParent());
 
   // Getters for boundary content
   const std::string& prefix() const { return prefix_; }

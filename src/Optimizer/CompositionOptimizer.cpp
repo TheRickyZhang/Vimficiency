@@ -196,7 +196,7 @@ vector<Result> CompositionOptimizer::optimize(
       // Compute boundary for this sub-search:
       // - Inherit parent boundary's gg/G exclusions
       // - Uses buffer context for the movement search (currentLines)
-      MotionBoundary subBoundary(boundary, currentLines, nextEdit.firstPos, nextEdit.lastPos);
+      MotionBoundary subBoundary(currentLines, nextEdit.firstPos, nextEdit.lastPos, boundary);
 
       // Use MovementOptimizer to find optimal paths to any position in the edit region
       // Pass only Position and RunningEffort - sub-search computes its own effort/cost fresh

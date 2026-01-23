@@ -5,7 +5,7 @@
 
 #include "Keyboard/MotionToKeys.h"
 #include "Optimizer/Config.h"
-#include "Optimizer/MotionBoundary.h"
+#include "Boundary/MotionBoundary.h"
 #include "Optimizer/MovementOptimizer.h"
 #include "State/RunningEffort.h"
 #include "Editor/Snapshot.h"
@@ -205,13 +205,18 @@ TEST_F(MotionBoundaryTest, DefaultBoundary_AllowsGG) {
 }
 
 TEST_F(MotionBoundaryTest, ExcludeGG_RemovesGG) {
-  Lines lines = {"line0", "line1", "line2", "line3"};
-  Position start(2, 0);
+  // Full buffer has lines above the sub-region we're working with
+  Lines fullBuffer = {"above0", "above1", "line0", "line1", "line2", "line3"};
+  // Sub-buffer is lines 2-5 (line0 through line3)
+  Lines subBuffer = {"line0", "line1", "line2", "line3"};
+  Position start(2, 0);  // In sub-buffer coords
   Position end(0, 0);
 
-  MotionBoundary boundary(true, false);  // hasLinesAbove excludes gg
+  // Boundary computed from sub-region within full buffer
+  // firstPos=(2,0) means hasLinesAbove=true, lastPos=(5,5) means hasLinesBelow=false
+  MotionBoundary boundary(fullBuffer, Position(2, 0), Position(5, 5));
 
-  auto results = runWithBoundary(lines, start, end, "kk", boundary,
+  auto results = runWithBoundary(subBuffer, start, end, "kk", boundary,
                                  getSlicedMotionToKeys({"j", "k", "gg"}));
 
   EXPECT_FALSE(hasSequence(results, "gg")) << "Boundary with hasLinesAbove should exclude gg";
@@ -232,13 +237,17 @@ TEST_F(MotionBoundaryTest, DefaultBoundary_AllowsG) {
 }
 
 TEST_F(MotionBoundaryTest, ExcludeG_RemovesG) {
-  Lines lines = {"line0", "line1", "line2", "line3"};
+  // Full buffer has lines below the sub-region we're working with
+  Lines fullBuffer = {"line0", "line1", "line2", "line3", "below0", "below1"};
+  // Sub-buffer is lines 0-3
+  Lines subBuffer = {"line0", "line1", "line2", "line3"};
   Position start(1, 0);
   Position end(3, 0);
 
-  MotionBoundary boundary(false, true);  // hasLinesBelow excludes G
+  // Boundary computed from sub-region: firstPos=(0,0) hasLinesAbove=false, lastPos=(3,5) hasLinesBelow=true
+  MotionBoundary boundary(fullBuffer, Position(0, 0), Position(3, 5));
 
-  auto results = runWithBoundary(lines, start, end, "jj", boundary,
+  auto results = runWithBoundary(subBuffer, start, end, "jj", boundary,
                                  getSlicedMotionToKeys({"j", "k", "G"}));
 
   EXPECT_FALSE(hasSequence(results, "G")) << "Boundary with hasLinesBelow should exclude G";
@@ -256,7 +265,9 @@ TEST_F(MotionBoundaryTest, LeftColOffset_FiltersPrefixPositions) {
   Position start(0, 10);  // Start in "target" region
   Position end(0, 5);     // End in prefix region
 
-  MotionBoundary boundary(false, false, 7);  // leftColOffset = prefix length
+  // leftColOffset = 7 (prefix "prefix_" length)
+  // Boundary from position (0,7) to (0,12) gives leftColOffset=7
+  MotionBoundary boundary(lines, Position(0, 7), Position(0, 12));
 
   auto results = runWithBoundary(lines, start, end, "hhhhh", boundary,
                                  getSlicedMotionToKeys({"h", "l"}));
@@ -279,11 +290,13 @@ TEST_F(MotionBoundaryTest, RightColOffset_FiltersSuffixPositions) {
   // find paths to prefix/suffix positions on single lines.
   //
   // This test documents current behavior, not desired behavior.
-  Lines lines = {"target_suffix"};
+  Lines lines = {"target_suffix"};  // length=13, suffix "_suffix" starts at col 7
   Position start(0, 3);   // Start in "target" region
   Position end(0, 10);    // End in suffix region
 
-  MotionBoundary boundary(false, false, 0, 6);  // rightColOffset = suffix length
+  // rightColOffset = 6 (suffix "_suffix" without the 's' at col 7)
+  // Boundary from position (0,0) to (0,6) gives rightColOffset = 13-1-6 = 6
+  MotionBoundary boundary(lines, Position(0, 0), Position(0, 6));
 
   auto results = runWithBoundary(lines, start, end, "lllllll", boundary,
                                  getSlicedMotionToKeys({"h", "l"}));
@@ -304,7 +317,14 @@ TEST_F(MotionBoundaryTest, IsPositionInBounds_WithColConstraints) {
   // leftColOffset=3 (prefix length on first line)
   // rightColOffset=5 (suffix length on last line)
   // lastLine=2, lastLineLength=15 (so suffix starts at col 15-5=10)
-  MotionBoundary boundary(false, false, 3, 5);  // leftColOffset=3, rightColOffset=5
+
+  // Build a 3-line buffer where:
+  // - line 0 has prefix of 3 chars, so firstPos=(0,3)
+  // - line 2 has length 15, suffix of 5 chars, so lastPos=(2,9) (last valid col is 14-5=9)
+  Lines lines = {"pppxxxxxx", "middle_content", "xxxxxxxxxxxxxxx"};  // line 2 has 15 chars
+  // Boundary from (0,3) to (2,9): leftColOffset=3, rightColOffset=15-1-9=5
+  MotionBoundary boundary(lines, Position(0, 3), Position(2, 9));
+
   int lastLine = 2;
   int lastLineLength = 15;
 
@@ -396,8 +416,11 @@ protected:
     test.subStart = Position(subLine, col);
     test.fullStart = Position(test.subBufferStartLine + subLine, col);
 
-    // Set up boundary
-    test.boundary = MotionBoundary(test.subBufferStartLine > 0, endLine < fullLines - 1);
+    // Set up boundary from full buffer positions
+    Position firstPos(test.subBufferStartLine, 0);
+    Position lastPos(endLine, test.fullBuffer[endLine].empty() ? 0 :
+                     static_cast<int>(test.fullBuffer[endLine].size()) - 1);
+    test.boundary = MotionBoundary(test.fullBuffer, firstPos, lastPos);
 
     return test;
   }

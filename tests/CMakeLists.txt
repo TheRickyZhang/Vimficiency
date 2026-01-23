@@ -38,7 +38,6 @@ add_executable(vimficiency_tests
 
   # EditPrimitives
   EditPrimitives/DiffStateTest.cpp
-  EditPrimitives/LevenshteinTest.cpp
 
   # Misc
   Misc/ConfigurationTest.cpp
@@ -49,6 +48,9 @@ add_executable(vimficiency_tests
   # Optimizer
   Optimizer/EditOptimizerTests.cpp
   Optimizer/MovementOptimizerTest.cpp
+  Optimizer/CostConsistencyTests.cpp
+  Optimizer/DeterminismTests.cpp
+  Optimizer/HumanApprovalTests.cpp
 
   # Utils
   Utils/EditTestGenerators.cpp

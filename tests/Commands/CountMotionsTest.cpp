@@ -4,7 +4,7 @@
 #include "Keyboard/MotionToKeys.h"
 #include "Editor/NavContext.h"
 #include "Optimizer/MovementOptimizer.h"
-#include "Optimizer/MotionBoundary.h"
+#include "Boundary/MotionBoundary.h"
 #include "Utils/TestUtils.h"
 
 using namespace std;
