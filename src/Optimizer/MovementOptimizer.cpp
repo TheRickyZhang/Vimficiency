@@ -203,7 +203,8 @@ vector<Result> MovementOptimizer::optimize(
     exploreNewState(std::move(newState));
   };
 
-  // Scroll motions (<C-d>, <C-u>, <C-f>, <C-b>) - check line boundaries
+  // Scroll motions (<C-d>, <C-u>) - check line boundaries
+  // NOTE: <C-f>/<C-b> excluded due to viewport state dependency (see MotionToSpec.cpp)
   auto exploreScrollMotion = [&](const MotionState& base, const Motion::ScrollMotionSpec& spec) {
     Position pos = base.getPos();
 
@@ -390,8 +391,6 @@ vector<Result> MovementOptimizer::optimize(
     }
 
     // Count searchable motions (paragraph/sentence)
-    // When bounded with count>1, intermediate positions may cross edge lines,
-    // causing the count to differ in full buffer. Only allow count=1 when bounded.
     for(const auto& motionPair : COUNT_SEARCHABLE_MOTIONS_GLOBAL) {
       string motion = forward ? motionPair.forward : motionPair.backward;
       // Need keys from rawMotionToKeys for counted motion construction

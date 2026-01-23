@@ -292,9 +292,36 @@ void motionSentencePrev(Position &pos, const Lines &lines) {
       }
 
       unsigned char c = getChar(lines, l, k);
-      // Skip whitespace, closers, and sentence-ending punctuation
-      if (c == ' ' || c == '\t' || isSentenceCloser(c) || c == '.' ||
-          c == '!' || c == '?') {
+      // Skip whitespace and closers
+      if (c == ' ' || c == '\t' || isSentenceCloser(c)) {
+        continue;
+      }
+
+      // Sentence-ending punctuation could be a single-char sentence start
+      // if it's preceded by whitespace (after a previous sentence end).
+      // Example: ". . c" - the second '.' is a sentence start.
+      // But ".." is NOT two sentences - only the last '.' is a sentence end.
+      if (c == '.' || c == '!' || c == '?') {
+        // Check the character before this punctuation
+        int prevL = l, prevK = k;
+        if (stepBack(lines, prevL, prevK)) {
+          unsigned char prevC = getChar(lines, prevL, prevK);
+          // Only if preceded by whitespace is this punctuation a sentence start.
+          // Preceded by another punctuation (like "..") means it's part of a
+          // multi-punctuation sequence, not a standalone sentence.
+          if (prevC == ' ' || prevC == '\t' || prevC == '\n') {
+            // This punctuation is the start of a single-char sentence
+            pos.line = l;
+            pos.setCol(k);
+            return;
+          }
+        } else {
+          // At buffer start - this is the sentence start
+          pos.line = l;
+          pos.setCol(k);
+          return;
+        }
+        // Not preceded by whitespace - skip this punctuation
         continue;
       }
 

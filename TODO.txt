@@ -6,7 +6,8 @@ Inspect code and improve organization
 Handle pureDeletion, pureInsertion cases separately
 
 Review (){} boundary motions more deeply.
-Why use line = -1 as a sentinel in the code? Can't we just branch on hasLineAbove/below when we get to the final line in the buffer?
+
+Any inclusive boundaries we can more cleanly model as half-open?
 
 Quote psuedocode:
 Precompute Edit regions

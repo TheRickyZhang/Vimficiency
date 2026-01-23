@@ -1,12 +1,21 @@
-FAIL iter=3 editPos=[2,4] bufferPos=[2,4] seq='xkdddgeXXx'
-fcef
-cdd
-bbfbb
+Sequence: "2(gE"
+Full buffer (8 lines):
+c,,b.d a, 
+cd,b,dc.,d, .a..b.  a,a.,,
+,... ,a,dbdaccca
+a,c..cdaca cbaaa.,  .caa.d ad,
+c,c c a, ..d  ac bd ,,c
+cc d bd,d,d ,.d., da,d. c ,ca
+,b da   , abdb. . cbb ad  d.,
+aa .a b d.d. 
 
-  EditRegion: cef
-cdd
-bbfbf
-
-  Expected: 'fb'
-  Got: ''
-/home/ricky/Projects/
+Sub-buffer (lines 4-7):
+  [0]: "c,c c a, ..d  ac bd ,,c"
+  [1]: "cc d bd,d,d ,.d., da,d. c ,ca"
+  [2]: ",b da   , abdb. . cbb ad  d.,"
+  [3]: "aa .a b d.d. "
+Start: sub(3,6) = full(7,6)
+Our prediction (sub-buffer): (1, 22)
+Neovim result (full-buffer): (6, 14)
+Neovim in sub-buffer coords: (2, 14)
+Boundary: hasLinesAbove=1, hasLinesBelow=0

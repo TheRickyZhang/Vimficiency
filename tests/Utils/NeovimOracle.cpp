@@ -174,10 +174,20 @@ struct NeovimOracle::Impl {
     send_request(method, args);
     recv_response(); // Just wait for completion
   }
+
+  // Set window height to match our default NavContext (39 lines)
+  // This ensures scroll commands (<C-b>, <C-f>, etc.) behave consistently
+  void configureWindowSize() {
+    msgpack::zone z;
+    // nvim_win_set_height(0, 39) - window 0 is current window
+    auto args = msgpack::object(std::make_tuple(0, 39), z);
+    call_void("nvim_win_set_height", args);
+  }
 };
 
 NeovimOracle::NeovimOracle() : impl_(std::make_unique<Impl>()) {
   impl_->start();
+  impl_->configureWindowSize();
 }
 
 NeovimOracle::~NeovimOracle() = default;
@@ -188,6 +198,7 @@ void NeovimOracle::restart() {
   impl_->recv_unpacker.reserve_buffer(65536);
   impl_->msg_id = 0;
   impl_->start();
+  impl_->configureWindowSize();
 }
 
 SimulationResult NeovimOracle::simulate(const Lines &lines,

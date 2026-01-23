@@ -54,11 +54,17 @@ const vector<JumpMotionSpec> JUMP_MOTIONS = {
 };
 
 // Scroll motions: cmd, keys, shiftMultiplier, isHalf
+// NOTE: <C-f> and <C-b> (full-page scroll) are NOT included because they depend on
+// viewport state that we don't track. These commands scroll the window, and when the
+// buffer is smaller than the window or cursor is near buffer edges, they may not move
+// the cursor at all (nothing to scroll). To support them properly, we would need to:
+// 1. Track viewport state (top visible line, window height)
+// 2. Simulate actual scroll behavior (viewport movement + cursor adjustment)
+// 3. Handle edge cases where scrolling is not possible
+// <C-d> and <C-u> are more predictable as they move by a fixed scroll amount.
 const vector<ScrollMotionSpec> SCROLL_MOTIONS = {
     {"<C-d>", {Key::Key_Ctrl, Key::Key_D}, +1, true},   // half-page down
     {"<C-u>", {Key::Key_Ctrl, Key::Key_U}, -1, true},   // half-page up
-    {"<C-f>", {Key::Key_Ctrl, Key::Key_F}, +1, false},  // page down
-    {"<C-b>", {Key::Key_Ctrl, Key::Key_B}, -1, false},  // page up
 };
 
 } // namespace Motion

@@ -59,4 +59,5 @@ public:
 
   // Debug
   size_t count(LandingType type) const { return get(type).size(); }
+  const std::vector<Position>& getPositions(LandingType type) const { return get(type); }
 };

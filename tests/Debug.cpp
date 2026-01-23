@@ -14,8 +14,13 @@
 
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer.h"
+#include "Optimizer/BufferIndex.h"
 #include "Boundary/EditBoundary.h"
 #include "Utils/NeovimOracle.h"
+#include "VimCore/VimEndpointUtils.h"
+#include "VimCore/VimMovementUtils.h"
+#include "VimCore/SentenceEdgeType.h"
+#include "Editor/Motion.h"
 
 using namespace std;
 
@@ -276,5 +281,214 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateSubBufferFailure_Sentence) {
   cerr << "The ) motion finds different sentence boundaries because:" << endl;
   cerr << "- Full buffer has more content below to search" << endl;
   cerr << "- Sub-buffer clamps at its last line" << endl;
+}
+
+TEST_F(NeovimOracleDebug, DISABLED_TraceSentence2ParenFailure) {
+  // From stress test failure:
+  // Sequence: "2(l"
+  // Start: sub(3,21) = full(7,21)
+  // Our prediction: (3, 15)
+  // Neovim in sub-buffer coords: (2, 7)
+
+  Lines fullBuffer = {
+    "cbd..,cdbb a.aa.",
+    "ca,c.db.  d  c.",
+    ".d.,b aa. acc aa bb. b,.aba",
+    "c ,dbccbaa.cc .,,,b...a",
+    ",b ,, adbacdcdb,cdacc,.",
+    "dcaac.a,,ba,",
+    "c,,.. ..a,, .dc .db ,dab",
+    "adaabbaaddbc. acbc.. aa,"
+  };
+
+  Lines subBuffer = {
+    ",b ,, adbacdcdb,cdacc,.",
+    "dcaac.a,,ba,",
+    "c,,.. ..a,, .dc .db ,dab",
+    "adaabbaaddbc. acbc.. aa,"
+  };
+
+  cerr << "\n=== Line content analysis ===" << endl;
+  cerr << "Sub line 3: \"" << subBuffer[3] << "\"" << endl;
+  for (int i = 0; i < (int)subBuffer[3].size(); i++) {
+    cerr << i << "=" << subBuffer[3][i] << " ";
+  }
+  cerr << endl;
+
+  cerr << "\n=== Neovim sentence motion comparison ===" << endl;
+
+  // Single ( from start position
+  auto result1 = oracle_->simulate(fullBuffer, 7, 21, "(");
+  cerr << "Full buffer: ( from (7,21) -> (" << result1.row << ", " << result1.col << ")" << endl;
+
+  auto subResult1 = oracle_->simulate(subBuffer, 3, 21, "(");
+  cerr << "Sub buffer:  ( from (3,21) -> (" << subResult1.row << ", " << subResult1.col << ")" << endl;
+
+  // Second ( from first result
+  auto result2 = oracle_->simulate(fullBuffer, result1.row, result1.col, "(");
+  cerr << "Full buffer: ( from (" << result1.row << "," << result1.col << ") -> (" << result2.row << ", " << result2.col << ")" << endl;
+
+  auto subResult2 = oracle_->simulate(subBuffer, subResult1.row, subResult1.col, "(");
+  cerr << "Sub buffer:  ( from (" << subResult1.row << "," << subResult1.col << ") -> (" << subResult2.row << ", " << subResult2.col << ")" << endl;
+
+  // Full 2( sequence
+  auto result2paren = oracle_->simulate(fullBuffer, 7, 21, "2(");
+  cerr << "Full buffer: 2( from (7,21) -> (" << result2paren.row << ", " << result2paren.col << ")" << endl;
+
+  auto subResult2paren = oracle_->simulate(subBuffer, 3, 21, "2(");
+  cerr << "Sub buffer:  2( from (3,21) -> (" << subResult2paren.row << ", " << subResult2paren.col << ")" << endl;
+
+  // Our simulateMotions
+  cerr << "\n=== Our simulateMotions ===" << endl;
+  Position sim1 = simulateMotions(Position(3, 21), "(", subBuffer);
+  cerr << "simulateMotions((3,21), \"(\") = (" << sim1.line << ", " << sim1.col << ")" << endl;
+
+  Position sim2 = simulateMotions(sim1, "(", subBuffer);
+  cerr << "simulateMotions((" << sim1.line << "," << sim1.col << "), \"(\") = (" << sim2.line << ", " << sim2.col << ")" << endl;
+
+  Position sim2paren = simulateMotions(Position(3, 21), "2(", subBuffer);
+  cerr << "simulateMotions((3,21), \"2(\") = (" << sim2paren.line << ", " << sim2paren.col << ")" << endl;
+
+  // BufferIndex sentence positions
+  cerr << "\n=== BufferIndex sentence positions ===" << endl;
+  BufferIndex subIdx(subBuffer);
+  cerr << "Sub buffer sentence starts:" << endl;
+  for (const auto& pos : subIdx.getPositions(LandingType::Sentence)) {
+    char c = pos.col < (int)subBuffer[pos.line].size() ? subBuffer[pos.line][pos.col] : '?';
+    cerr << "  (" << pos.line << ", " << pos.col << ") = '" << c << "'" << endl;
+  }
+
+  cerr << "\n=== Analysis ===" << endl;
+  bool match = (sim2paren.line == subResult2paren.row && sim2paren.col == subResult2paren.col);
+  cerr << "2( matches Neovim sub-buffer: " << (match ? "YES" : "NO") << endl;
+}
+
+TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceIndexFailure) {
+  // From MovementOptimizerBoundaryStress failure:
+  // Sequence: "2(b"
+  // Start: sub(3,6) = full(7,6)
+  // Our prediction (sub-buffer): (1, 22)
+  // Neovim in sub-buffer coords: (2, 14)
+
+  Lines fullBuffer = {
+    "c,,b.d a, ",
+    "cd,b,dc.,d, .a..b.  a,a.,,",
+    ",... ,a,dbdaccca",
+    "a,c..cdaca cbaaa.,  .caa.d ad,",
+    "c,c c a, ..d  ac bd ,,c",
+    "cc d bd,d,d ,.d., da,d. c ,ca",
+    ",b da   , abdb. . cbb ad  d.,",
+    "aa .a b d.d. "
+  };
+
+  Lines subBuffer = {
+    "c,c c a, ..d  ac bd ,,c",
+    "cc d bd,d,d ,.d., da,d. c ,ca",
+    ",b da   , abdb. . cbb ad  d.,",
+    "aa .a b d.d. "
+  };
+
+  // Test simulateMotions directly
+  cerr << "\n=== Direct simulateMotions Test ===" << endl;
+  Position simResult = simulateMotions(Position(3, 6), "2(b", subBuffer);
+  cerr << "simulateMotions((3,6), \"2(b\", subBuffer) = (" << simResult.line << ", " << simResult.col << ")" << endl;
+
+  // Step by step with simulateMotions
+  Position step1 = simulateMotions(Position(3, 6), "(", subBuffer);
+  cerr << "simulateMotions((3,6), \"(\", subBuffer) = (" << step1.line << ", " << step1.col << ")" << endl;
+
+  Position step2 = simulateMotions(step1, "(", subBuffer);
+  cerr << "simulateMotions((" << step1.line << "," << step1.col << "), \"(\", subBuffer) = (" << step2.line << ", " << step2.col << ")" << endl;
+
+  Position step3 = simulateMotions(step2, "b", subBuffer);
+  cerr << "simulateMotions((" << step2.line << "," << step2.col << "), \"b\", subBuffer) = (" << step3.line << ", " << step3.col << ")" << endl;
+
+  cerr << "\n=== BufferIndex Sentence Positions ===" << endl;
+
+  cerr << "\n--- Full Buffer ---" << endl;
+  BufferIndex fullIdx(fullBuffer);
+  cerr << "Sentence starts in full buffer:" << endl;
+  for (const auto& pos : fullIdx.getPositions(LandingType::Sentence)) {
+    cerr << "  (" << pos.line << ", " << pos.col << ") = '"
+         << (pos.col < (int)fullBuffer[pos.line].size() ? fullBuffer[pos.line][pos.col] : '?')
+         << "'" << endl;
+  }
+
+  cerr << "\n--- Sub Buffer ---" << endl;
+  BufferIndex subIdx(subBuffer);
+  cerr << "Sentence starts in sub buffer:" << endl;
+  for (const auto& pos : subIdx.getPositions(LandingType::Sentence)) {
+    cerr << "  (" << pos.line << ", " << pos.col << ") = '"
+         << (pos.col < (int)subBuffer[pos.line].size() ? subBuffer[pos.line][pos.col] : '?')
+         << "'" << endl;
+  }
+
+  cerr << "\n=== Neovim Sentence Motion Comparison ===" << endl;
+
+  // Test ( from start position in both buffers
+  cerr << "\n--- Single ( motion ---" << endl;
+  auto fullResult1 = oracle_->simulate(fullBuffer, 7, 6, "(");
+  cerr << "Full buffer: ( from (7,6) -> (" << fullResult1.row << ", " << fullResult1.col << ")" << endl;
+
+  auto subResult1 = oracle_->simulate(subBuffer, 3, 6, "(");
+  cerr << "Sub buffer:  ( from (3,6) -> (" << subResult1.row << ", " << subResult1.col << ")" << endl;
+
+  cerr << "\n--- Double 2( motion ---" << endl;
+  auto fullResult2 = oracle_->simulate(fullBuffer, 7, 6, "2(");
+  cerr << "Full buffer: 2( from (7,6) -> (" << fullResult2.row << ", " << fullResult2.col << ")" << endl;
+
+  auto subResult2 = oracle_->simulate(subBuffer, 3, 6, "2(");
+  cerr << "Sub buffer:  2( from (3,6) -> (" << subResult2.row << ", " << subResult2.col << ")" << endl;
+
+  cerr << "\n--- Full sequence 2(b ---" << endl;
+  auto fullResult3 = oracle_->simulate(fullBuffer, 7, 6, "2(b");
+  cerr << "Full buffer: 2(b from (7,6) -> (" << fullResult3.row << ", " << fullResult3.col << ")" << endl;
+
+  auto subResult3 = oracle_->simulate(subBuffer, 3, 6, "2(b");
+  cerr << "Sub buffer:  2(b from (3,6) -> (" << subResult3.row << ", " << subResult3.col << ")" << endl;
+
+  // What our optimizer would predict
+  cerr << "\n--- getTwoClosest results for sentence ---" << endl;
+  Position goal(0, 0);  // backwards search
+  auto [under, over] = subIdx.getTwoClosest(LandingType::Sentence, Position(3, 6), goal);
+  if (under.valid()) {
+    cerr << "Undershoot: count=" << under.count << " pos=(" << under.pos.line << ", " << under.pos.col << ")" << endl;
+  }
+  if (over.valid()) {
+    cerr << "Overshoot: count=" << over.count << " pos=(" << over.pos.line << ", " << over.pos.col << ")" << endl;
+  }
+
+  // Trace VimCore::motionSentenceEndpoint to compare with Neovim
+  cerr << "\n=== VimCore::motionSentenceEndpoint trace ===" << endl;
+
+  using namespace VimCore;
+
+  // Single ( from (3, 6)
+  Position ep1 = motionSentenceEndpoint(Position(3, 6), subBuffer, false, SentenceEdgeType::NextEdge);
+  cerr << "motionSentenceEndpoint((3,6), backward) = (" << ep1.line << ", " << ep1.col << ")" << endl;
+  cerr << "Neovim ( from (3,6) = (" << subResult1.row << ", " << subResult1.col << ")" << endl;
+
+  // Single ( from ep1
+  Position ep2 = motionSentenceEndpoint(ep1, subBuffer, false, SentenceEdgeType::NextEdge);
+  cerr << "motionSentenceEndpoint((" << ep1.line << "," << ep1.col << "), backward) = (" << ep2.line << ", " << ep2.col << ")" << endl;
+
+  // b from ep2
+  Position pos_after_b = ep2;
+  motionB(pos_after_b, subBuffer, false);  // Use motionB which sets skipCurrent=true
+  cerr << "After b from (" << ep2.line << "," << ep2.col << ") = (" << pos_after_b.line << ", " << pos_after_b.col << ")" << endl;
+  cerr << "Neovim 2(b from (3,6) = (" << subResult3.row << ", " << subResult3.col << ")" << endl;
+
+  cerr << "\n=== Analysis ===" << endl;
+  if (ep1.line == subResult1.row && ep1.col == subResult1.col) {
+    cerr << "Single ( matches Neovim ✓" << endl;
+  } else {
+    cerr << "Single ( MISMATCH with Neovim ✗" << endl;
+  }
+  if (pos_after_b.line == subResult3.row && pos_after_b.col == subResult3.col) {
+    cerr << "2(b matches Neovim ✓" << endl;
+  } else {
+    cerr << "2(b MISMATCH: ours=(" << pos_after_b.line << "," << pos_after_b.col
+         << ") vs neovim=(" << subResult3.row << "," << subResult3.col << ") ✗" << endl;
+  }
 }
 

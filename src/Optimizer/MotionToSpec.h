@@ -62,12 +62,13 @@ struct JumpMotionSpec {
 };
 extern const std::vector<JumpMotionSpec> JUMP_MOTIONS;
 
-// Scroll motions (<C-d>, <C-u>, <C-f>, <C-b>)
+// Scroll motions (<C-d>, <C-u>)
+// NOTE: <C-f> and <C-b> are excluded - see MotionToSpec.cpp for details
 struct ScrollMotionSpec {
   const char* cmd;
   PhysicalKeys keys;
   int shiftMultiplier;  // +1 for down, -1 for up
-  bool isHalf;          // true for C-d/C-u, false for C-f/C-b
+  bool isHalf;          // true for C-d/C-u (always true now, kept for future extensibility)
 };
 extern const std::vector<ScrollMotionSpec> SCROLL_MOTIONS;
 
