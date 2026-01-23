@@ -1,7 +1,11 @@
 #pragma once
 
+#include "Boundary/BoundaryContext.h"
 #include "Editor/Position.h"
 #include "Utils/Lines.h"
+
+// Forward declaration
+struct EditBoundary;
 
 // MotionBoundary constrains the search space for MotionOptimizer.
 //
@@ -9,15 +13,11 @@
 // - hasLinesAbove/Below: for gg/G exclusion and edge-line checks
 // - leftColOffset: prefix length on first line (0 = no prefix)
 // - rightColOffset: suffix length on last line (0 = no suffix)
+//
+// Uses BoundaryContext internally for shared offset/line logic.
 
 class MotionBoundary {
-  bool hasLinesAbove_ = false;
-  bool hasLinesBelow_ = false;
-
-  // Column offsets as lengths (like EditBoundary prefix/suffix)
-  // 0 = no constraint
-  int leftColOffset_ = 0;   // prefix length: positions < this on line 0 are forbidden
-  int rightColOffset_ = 0;  // suffix length: positions >= (lineLen - this) on last line are forbidden
+  BoundaryContext ctx_;
 
 public:
   MotionBoundary() = default;
@@ -31,11 +31,17 @@ public:
   MotionBoundary(const Lines& lines, Position firstPos, Position lastPos,
                  bool hasLinesAbove, bool hasLinesBelow);
 
-  // Accessors
-  bool hasLinesAbove() const { return hasLinesAbove_; }
-  bool hasLinesBelow() const { return hasLinesBelow_; }
-  int leftColOffset() const { return leftColOffset_; }
-  int rightColOffset() const { return rightColOffset_; }
+  // Construct from EditBoundary (for conversion when switching optimizer types)
+  explicit MotionBoundary(const EditBoundary& eb);
+
+  // Accessors delegate to ctx_
+  bool hasLinesAbove() const { return ctx_.hasLinesAbove; }
+  bool hasLinesBelow() const { return ctx_.hasLinesBelow; }
+  int leftColOffset() const { return ctx_.leftColOffset; }
+  int rightColOffset() const { return ctx_.rightColOffset; }
+
+  // Access underlying context (for EditBoundary construction)
+  const BoundaryContext& context() const { return ctx_; }
 
   bool isPositionInBounds(const Position& pos, int lastLine, int lastLineLength) const;
 };

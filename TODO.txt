@@ -4,11 +4,11 @@ Implement CompositionOptimizer
 Implement quote and bracket text object motions (see quoteFlags/bracketFlags)
 Handle pureInsertion case
 
-Categorize tests better. Add human tests for EditOptimizer.
+Review human tests.
 Having EditBoundary : MotionBoundary if superset; clarify what exactly is difference.
+Clean up outdated info in docs
 
-
-Handle the case where 
+Can skip F-motions if no endpoints found?
 Any inclusive boundaries we can more cleanly model as half-open?
 
 
@@ -16,7 +16,7 @@ Any inclusive boundaries we can more cleanly model as half-open?
   right now it seems like EditBonudary is a superset of functionality, so Inheritcane could be an option. But we'll need to think
   carefully.
 
-(){} boundary motions not completely human-reviewed yet (especially for index-building)
+(){} boundary motions are iffy - keep in mind for future reference.
 
 Quote psuedocode:
 Precompute Edit regions

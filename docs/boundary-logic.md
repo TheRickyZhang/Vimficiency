@@ -1,545 +1,231 @@
-= Boundary Logic
+# Boundary Logic
 
-== Edge Types (Core Abstraction)
+This document explains how boundaries constrain motion/edit searches in optimizers.
 
-All word operations find an *edge* - where the operation stops. Three types:
-WordEdge: Edge of the word we traverse (step back into the word)
-GapEdge:  Edge of the gap before next word (step back into gap)
-NextEdge: Edge of the next unit (stay at first char of next thing)
+## Edge Types (Building Blocks)
 
-These edge types are DIRECTION-INDEPENDENT. The physical position depends
-on the direction of travel, but the concept is the same regardless of direction.
+Three parallel enums define where operations stop:
 
-== Vim Motion Commands
-
-Motion commands move the cursor without modifying the buffer.
-
-=== word motions
 ```
-Motion | Edge Type
-w      | (Forward, NextEdge)   - move to START of next word
-e      | (Forward, WordEdge)   - move to END of current/next word
-b      | (Backward, WordEdge)  - move to START of previous word
-ge     | (Backward, NextEdge)  - move to END of previous word
+EdgeType (words):          WordEdge | GapEdge | NextEdge
+LineEdgeType (paragraphs): BlockEdge | GapEdge | NextEdge
+SentenceEdgeType:          SentenceEdge | GapEdge | NextEdge
 ```
 
-=== WORD motions
+- **WordEdge/BlockEdge/SentenceEdge**: Edge of current unit
+- **GapEdge**: Edge of whitespace/blank gap after unit
+- **NextEdge**: Start of next unit
+
+These are direction-independent. See `MotionToSpec.h` and `EditToSpec.h` for full specs.
+
+## Command → Edge Type Mappings
+
+### Word Motions
 ```
-Motion | Edge Type
-W      | (Forward, NextEdge)   - move to START of next WORD
-E      | (Forward, WordEdge)   - move to END of current/next WORD
-B      | (Backward, WordEdge)  - move to START of previous WORD
-gE     | (Backward, NextEdge)  - move to END of previous WORD
-```
-
-Note: `e`/`E` and `b`/`B` and `ge`/`gE` need to skip current position first
-(skipCurrent=true), otherwise they would stay at the current word boundary.
-
-== Vim Deletion Commands
-
-A deletion operation from currCol to edge is INCLUSIVE.
-
-=== word deletions
-Here, you can see that de/db are symmetric, and vim only gives us a few combinations compared to all possibilities.
-```
-Command |
-de   Current Char + (Forward, WordEdge) from next char
-db   Current Char + (Backward, WordEdge) from prev char
-dw   (Forward, GapEdge)
-dge  (Backward, NextEdge)
+w, W  | (Forward, NextEdge)   - start of next word
+e, E  | (Forward, WordEdge)   - end of current/next word (skipCurrent=true)
+b, B  | (Backward, WordEdge)  - start of previous word (skipCurrent=true)
+ge,gE | (Backward, NextEdge)  - end of previous word
 ```
 
-=== WORD deletions
+### Word Deletions
 ```
-Command |
-dE   Current Char + (Forward, WordEdge) from next char
-dB   Current Char + (Backward, WordEdge) from prev char
-dW   (Forward, GapEdge)
-dgE  (Backward, NextEdge)
-```
-
-== Crossing Tables
-
-Each edge type has a crossing table. Motion is *safe* when table returns `no`.
-
-=== WordEdge
-```
-              |  bc=Keyword  |  bc=Whitespace  |  bc=Symbol  |  bc=Newline  |
---------------+--------------+-----------------+-------------+--------------+
-char=Keyword  |  YES         |  no             |  no         |  no          |
-char=Space    |  YES         |  YES            |  YES        |  no          |
-char=Symbol   |  no          |  no             |  YES        |  no          |
-```
-Note: Whitespace isn't a word, so `e` from whitespace goes to NEXT word end, crossing everything.
-Symbol row mirrors Keyword row (wordChar/nonWordChar symmetry).
-
-=== GapEdge
-```
-              |  bc=Keyword  |  bc=Whitespace  |  bc=Symbol  |  bc=Newline  |
---------------+--------------+-----------------+-------------+--------------+
-char=Keyword  |  YES         |  YES            |  no         |  no          |
-char=Space    |  no          |  YES            |  no         |  no          |
-char=Symbol   |  no          |  YES            |  YES        |  no          |
-```
-Note: Symbol row mirrors Keyword row (wordChar/nonWordChar symmetry).
-
-=== NextEdge
-```
-              |  bc=Keyword  |  bc=Whitespace  |  bc=Symbol  |  bc=Newline  |
---------------+--------------+-----------------+-------------+--------------+
-char=Keyword  |  YES         |  YES            |  YES        |  no          |
-char=Space    |  YES         |  YES            |  YES        |  no          |
-char=Symbol   |  YES         |  YES            |  YES        |  no          |
-```
-Note: `ge` always goes to previous word end, regardless of current content type.
-
-=== LineEdge
-```
-              |  bc=Keyword  |  bc=Whitespace  |  bc=Symbol  |  bc=Newline  |
---------------+--------------+-----------------+-------------+--------------+
-              |  YES         |  YES            |  YES        |  no          |
+dw,dW  | (Forward, GapEdge)   - delete to gap edge
+de,dE  | (Forward, WordEdge)  - delete to word end (skipCurrent=true)
+db,dB  | (Backward, WordEdge) - delete to word start (skipCurrent=true, isExclusiveAtCursor=true)
+dge,dgE| (Backward, NextEdge) - delete to previous word end
 ```
 
+### Word Text Objects
+```
+diw,diW | (Backward, WordEdge) + (Forward, WordEdge)
+daw,daW | Trailing whitespace? (Backward, WordEdge) + (Forward, GapEdge)
+        | Else:                (Backward, GapEdge) + (Forward, WordEdge)
+```
 
-== Applying Crossing Checks
-- *Forward*: check `(lastChar, rightBoundary)` using the edge's table
-- *Backward*: check `(firstChar, leftBoundary)` using the edge's table
+### Paragraph Motions/Deletions
+```
+}   | (Forward, NextEdge)  - first blank line after paragraph
+{   | (Backward, NextEdge) - first blank line before paragraph
+dip | (Backward, BlockEdge) + (Forward, BlockEdge)
+dap | Similar trailing/leading logic as daw
+```
 
-Where:
-- `lastChar` / `firstChar` = char at the edge of current content
-- `rightBoundary` / `leftBoundary` = char just OUTSIDE the edit region
+### Sentence Motions/Deletions
+```
+)   | (Forward, NextEdge)  - start of next sentence
+(   | (Backward, NextEdge) - start of previous sentence
+dis | (Backward, SentenceEdge) + (Forward, SentenceEdge)
+das | Similar trailing/leading logic as daw
+```
 
-== EditBoundary API (Simplified)
+## Why Boundaries?
 
-EditBoundary now uses raw chars instead of CharType enum:
+When optimizing edits on a sub-buffer, motions must not escape into prefix/suffix
+content. Boundary structs encode what's outside so endpoint functions can reject
+crossing motions.
+
+## Boundary Structs
+
+Three related structs handle boundary information at different levels of detail:
+
+### BoundaryContext (Shared Foundation)
+
+Lightweight struct with the core boundary data shared by both boundary types:
+
 ```cpp
-struct EditBoundary {
-  char leftChar = NO_CHAR;   // Char before edit region ('\n' at line start, NO_CHAR at buffer start)
-  char rightChar = NO_CHAR;  // Char after edit region ('\n' at line end, NO_CHAR at buffer end)
-  bool hasLinesAbove = false;
-  bool hasLinesBelow = false;
-  QuoteFlags firstLineQuotes;   // For quote text object support
-  QuoteFlags lastLineQuotes;
-  BracketFlags firstLineBrackets;  // For bracket text object support
-  BracketFlags lastLineBrackets;
+struct BoundaryContext {
+  bool hasLinesAbove = false;   // Lines exist above edit region
+  bool hasLinesBelow = false;   // Lines exist below edit region
+  int leftColOffset = 0;        // Forbidden columns at line 0 start
+  int rightColOffset = 0;       // Forbidden columns at last line end
 
-  // Default constructor for manual setup
-  EditBoundary() = default;
-
-  // Construct from buffer context - analyzes chars around edit region
-  EditBoundary(const Lines& lines, Position startPos, Position endPos);
-
-  // Construct inheriting from parent boundary (for sub-regions)
-  EditBoundary(const EditBoundary& parent, const Lines& lines, Position startPos, Position endPos);
-
-  bool atLineEnd() const { return rightChar == '\n' || rightChar == NO_CHAR; }
-  bool atLineStart() const { return leftChar == '\n' || leftChar == NO_CHAR; }
-  bool isFullLineEditSafe() const { return atLineStart() && atLineEnd(); }
+  // Two constructors: from parent context, or from explicit bool flags (FFI)
+  BoundaryContext(lines, firstPos, lastPos, parent);
+  BoundaryContext(lines, firstPos, lastPos, hasLinesAbove, hasLinesBelow);
 };
 ```
 
-**Constructors**:
-- Default: manual setup, fields default to NO_CHAR/false
-- Primary: takes full buffer context, computes leftChar/rightChar from adjacent positions
-- Inherited: starts with parent's boundary, refines based on new sub-region positions
+### MotionBoundary
 
-== Text Object Commands
-```
-Command |
-diw  (Backward, WordEdge) + (Forward, WordEdge)
-daw  {
-  Cursor in word/sentence word:
-    Has trailing whitespace/newline: (Backward, WordEdge) + (Forward, GapEdge)
-    Else: (Backward, GapEdge) + (Forward, WordEdge)
-  Cursor in whitespace:
-    (Backward, GapEdge) + (Forward, WordEdge)
-}
-```
+Wraps BoundaryContext for motion constraint checking (no string content needed):
 
-== WORD Variants
-Same edge types, but Keyword and Symbol merge into "NonWS" class.
-
-=== WordEdge (WORD)
-```
-              |  bc=NonWS  |  bc=Whitespace  |  bc=Newline  |
---------------+------------+-----------------+--------------+
-char=WORD     |  YES       |  no             |  no          |
-char=Space    |  YES       |  YES            |  no          |
-```
-Note: Whitespace isn't a WORD, so `E` from whitespace goes to NEXT WORD end.
-
-=== GapEdge (WORD)
-```
-              |  bc=NonWS  |  bc=Whitespace  |  bc=Newline  |
---------------+------------+-----------------+--------------+
-char=WORD     |  YES       |  YES            |  no          |
-char=Space    |  no        |  YES            |  no          |
-```
-
-=== NextEdge (WORD)
-```
-              |  bc=NonWS  |  bc=Whitespace  |  bc=Newline  |
---------------+------------+-----------------+--------------+
-char=WORD     |  YES       |  YES            |  no          |
-char=Space    |  YES       |  YES            |  no          |
-```
-
-== Text Object Commands (WORD)
-```
-Command
-diW  (Backward, WordEdge) + (Forward, WordEdge)
-daW  {
-  Cursor in word/sentence word:
-    Has trailing whitespace/newline: (Backward, WordEdge) + (Forward, GapEdge)
-    Else: (Backward, GapEdge) + (Forward, WordEdge)
-  Cursor in whitespace:
-    (Backward, GapEdge) + (Forward, WordEdge)
-}
-```
-
-== Other commands (TODO in future)
-```
-dd   (LineEdge)
-dib, dab
-```
-
-= Paragraph Boundary Logic (Linewise)
-
-Paragraphs are fundamentally different from words:
-- **Linewise** vs characterwise
-- **LineRange(startLine, endLine)** vs Range(Position, Position)
-- Boundary is always a **blank line** (no crossing tables needed)
-
-== Line Edge Types (Parallel to EdgeType)
-
-```
-LineEdgeType | Meaning
-BlockEdge    | Edge of current same-type block (blank or non-blank lines)
-GapEdge      | Edge of blank line run (adjacent to current paragraph)
-NextEdge     | Start/end of next different-type block
-```
-
-Mapping to word EdgeType:
-- BlockEdge ↔ WordEdge (edge of current unit)
-- GapEdge ↔ GapEdge (edge of gap)
-- NextEdge ↔ NextEdge (start/end of next unit)
-
-== Paragraph Motion Commands
-
-```
-Motion | Line Edge Type
-}      | (Forward, NextEdge)   - move to first blank line after paragraph
-{      | (Backward, NextEdge)  - move to first blank line before paragraph
-```
-
-Unlike word motions, paragraph motions only have two variants (no e/ge equivalents).
-
-== Paragraph Text Object Commands
-
-```
-Command |
-dip  (Backward, BlockEdge) + (Forward, BlockEdge)
-dap  {
-  Cursor on non-blank line:
-    Has trailing blank lines: (Backward, BlockEdge) + (Forward, GapEdge)
-    Else: (Backward, GapEdge) + (Forward, BlockEdge)
-  Cursor on blank line:
-    (Backward, BlockEdge) + (Forward, NextEdge)
-}
-```
-
-Note: The dap logic mirrors daw — same trailing/leading preference pattern.
-
-== Paragraph Boundary Crossing
-
-Unlike words (which need character-class based crossing tables), paragraphs use simple line comparison:
-
-```
-Forward:   endpointLine >= bottomBoundaryLine
-Backward:  endpointLine <= topBoundaryLine
-Text obj:  range.startLine <= topBoundary || range.endLine >= bottomBoundary
-```
-
-No crossing tables needed — blank lines are the only boundary type.
-
-== API Parallel (Words vs Paragraphs)
-
-```
-Words (characterwise):
-  motionWordEndpoint(cursor, lines, forward, EdgeType, big, skipCurrent) -> Position
-  textObjectRange(cursor, lines, isInner, isBigWord) -> Range
-
-Paragraphs (linewise):
-  motionParagraphEdge(cursorLine, lines, forward, LineEdgeType) -> int
-  paragraphTextObjectRange(cursorLine, lines, isInner) -> LineRange
-```
-
-The pattern is the same: compute endpoint → compare to boundary → decide if safe.
-
-== Testing Considerations (BoundaryTest)
-
-=== db/de/dB/dE Check the NEXT Char, Not Current
-
-These commands have exclusive behavior on the current char:
-- `db`: does NOT delete current char; starts WordEdge search from previous char
-- `de`: deletes current char, then starts WordEdge search from next char
-- `dB`/`dE`: same pattern for WORD variants
-
-When predicting crossing:
-- `db`/`dB`: check `(charBeforeCursor, leftBoundary)`
-- `de`/`dE`: check `(charAfterCursor, rightBoundary)`
-- `dw`/`dW`/`dge`/`dgE`: check `(contentEdgeChar, boundary)`
-
-=== Newlines Are Transparent for Adjacent Char Lookup
-
-When finding the "previous char" or "next char" for db/de, skip newlines.
-Motions traverse across lines, so the adjacent char is the last/first
-non-newline char on the adjacent line.
-
-Example:
-```
-Line 0: "hello "
-Line 1: "world"
-Cursor at 'w' (line 1, col 0)
-```
-- `charBeforeCursor` = ' ' (space at end of line 0), NOT Newline
-- `db` from 'w' searches backward from the space, not from newline
-
-=== Random Buffer Stress Test Design
-
-The stress test verifies crossing predictions against Neovim:
-1. Generate random buffer content
-2. Place reserved boundary chars at edit region edges
-3. Random cursor position within edit region
-4. Execute motion, verify prefix/suffix intact via string matching
-5. Only flag failure if: motion crossed but prediction said safe
-   (Conservative predictions where we say "would cross" but motion
-   didn't reach boundary are acceptable)
-
-=== Deletion Boundary Checking Invariant
-
-**Critical**: When exploring deletions in `exploreAllDeletions`, ALL positions
-that will be deleted must be checked against the boundary. This includes:
-
-1. **Motion endpoint**: Where the deletion motion lands
-2. **Cursor position**: For inclusive deletions (dge/dgE), the cursor is part
-   of the deletion range
-
-The invariant `editContentLen >= 0` (line length >= boundary offset) must hold
-for all states during A* search. Violation indicates a deletion corrupted the
-prefix/suffix content.
-
-**Bug pattern that violates this**: After line-merging deletions, the cursor
-may land on what becomes the new last line. If subsequent inclusive backward
-deletions (dge/dgE) don't check whether the cursor is now in the suffix region,
-they can delete into the suffix.
-
-**Example failure sequence**:
-```
-Initial: 5 lines, suffix "aac" on line 4
-After dge: 4 lines, line 3 is new last line with suffix at end
-Cursor at (3, 2), suffix starts at col 2
-Second dge: endpoint (2, x) checked ✓, but cursor (3, 2) NOT checked ✗
-Result: deletion corrupts suffix, line 3 becomes shorter than rightColOffset
-```
-
-**Fix**: For inclusive backward deletions, also check `inBoundaryRegion(cursor)`:
 ```cpp
-if (!spec.isExclusiveAtCursor && inBoundaryRegion(cursor, lines))
-  continue;
+class MotionBoundary {
+  BoundaryContext ctx_;  // Delegates to shared context
+
+  // Accessors delegate to ctx_
+  bool hasLinesAbove() const { return ctx_.hasLinesAbove; }
+  bool hasLinesBelow() const { return ctx_.hasLinesBelow; }
+  int leftColOffset() const { return ctx_.leftColOffset; }
+  int rightColOffset() const { return ctx_.rightColOffset; }
+
+  // Conversion from EditBoundary
+  explicit MotionBoundary(const EditBoundary& eb);
+
+  bool isPositionInBounds(pos, lastLine, lastLineLength) const;
+};
 ```
 
-== Critical Edge Cases
+### EditBoundary
 
-=== Empty Lines Are Words
+Full prefix/suffix strings for correct cursor clamping after line-merging deletions:
 
-Per vim docs: "An empty line is also considered to be a word."
-
-This affects motion behavior:
-- `w` from end of line before empty line → stops AT the empty line (line N+1, col 0)
-- `b` from start of line after empty line → stops AT the empty line
-- `e` behavior: empty line has no "end", so `e` stops at end of word BEFORE empty line
-- `ge` behavior: similarly stops at end of word before empty line
-
-Implementation notes:
-- `Lines::get()` returns `'\n'` for empty lines (col 0 of empty line)
-- Use `isWhitespace()` (space/tab only) for within-line blank skipping
-- Use `isBlank()` (includes newline) for general blank checks
-- After `skipCurrent` lands on empty line, return immediately for `b`/`B` (WordEdge)
-
-=== Line Crossing Is a Word Boundary
-
-Newlines terminate words in BOTH directions. When traversing characters:
-- Forward: crossing to next line = word boundary, then skip leading whitespace
-- Backward: crossing to previous line = word boundary, step back to word start
-
-Key implementation detail: update character `c` BEFORE checking line crossing,
-so Phase 3/4 have the correct character for the new line:
 ```cpp
-c = lines.get(pos);  // Update BEFORE line check
-if (pos.line != prev.line) break;
+struct EditBoundary {
+  std::string prefix_, suffix_;  // Content before/after edit region
+  bool hasLinesAbove_, hasLinesBelow_;
+  // + QuoteFlags/BracketFlags for text objects
+
+  // Column offsets derived from string lengths
+  int leftColOffset() const { return prefix_.size(); }
+  int rightColOffset() const { return suffix_.size(); }
+
+  // Convert to BoundaryContext for interop with MotionBoundary
+  BoundaryContext context() const;
+
+  char leftChar() const;   // prefix_.back() or '\n'/NO_CHAR
+  char rightChar() const;  // suffix_.front() or '\n'/NO_CHAR
+  bool hasPrefix() const;
+  bool hasSuffix() const;
+};
 ```
 
-=== Character Stepping With Empty Lines
+### Why Two Boundary Types?
 
-The `Lines` class has two stepping modes:
-- `getNextPos()`/`getPrevPos()`: Skip empty lines (for char-by-char traversal)
-- `getNextPosIncludeEmpty()`/`getPrevPosIncludeEmpty()`: Include empty lines
+- **EditBoundary needs strings**: Building `effectiveLines` requires prepending/appending
+  actual content. Goal state comparison checks if lines match prefix+suffix.
+- **MotionBoundary needs only offsets**: Position bounds checking just needs column counts,
+  not the actual characters. This keeps MotionOptimizer lightweight.
 
-Word motions use the "IncludeEmpty" variants because empty lines are words.
-Other operations (like find char `f`/`t`) may use the skipping variants.
+The `BoundaryContext` struct extracts the shared logic (hasLinesAbove/Below computation,
+offset storage) so both types compute boundaries consistently. Use `MotionBoundary(eb)`
+or `eb.context()` to convert when switching between optimizer types.
 
-=== Whitespace vs Blank
+## Endpoint Functions (VimEndpointUtils.h)
 
-Two character classification functions:
-- `isWhitespace(c)`: space or tab only - for skipping within lines
-- `isBlank(c)`: space, tab, or newline - for general blank checks
+Return sentinel values (`POSITION_OUTSIDE_BOUNDARY`, etc.) when crossing:
 
-Use `isWhitespace` in Phase 4 (skip blanks to next word) to avoid
-incorrectly skipping past empty lines.
+```cpp
+// Words
+Position motionWordEndpoint(cursor, lines, forward, EdgeType, big, skipCurrent,
+                            boundaryOffset, hasLinesOutside);
+Range textObjectRange(cursor, lines, isInner, isBigWord,
+                      leftColOffset, rightColOffset, hasLinesAbove, hasLinesBelow);
 
-= Sentence Boundary Logic (Characterwise)
+// Paragraphs
+int motionParagraphEndpoint(cursorLine, lines, forward, LineEdgeType, boundaryLine);
+LineRange paragraphTextObjectRange(cursorLine, lines, isInner, topBoundary, bottomBoundary);
 
-Sentences are **characterwise** like words, not linewise like paragraphs.
-They have dual-source boundaries: punctuation patterns AND blank lines.
-
-== Sentence Edge Types (Parallel to EdgeType)
-
-```
-SentenceEdgeType | Meaning
-SentenceEdge     | Edge of current sentence (punctuation mark + closers)
-GapEdge          | Edge of whitespace gap after sentence end
-NextEdge         | Start of next sentence ()/( motions)
-```
-
-Mapping to word EdgeType:
-- SentenceEdge ↔ WordEdge (edge of current unit)
-- GapEdge ↔ GapEdge (edge of gap)
-- NextEdge ↔ NextEdge (start/end of next unit)
-
-== Sentence Boundary Detection
-
-A sentence boundary is detected when:
-1. **Punctuation pattern**: char is [.!?] AND followed by optional closers [)'"'\]]
-   AND followed by (whitespace OR EOL)
-2. **Blank line**: paragraph boundary = sentence boundary
-
-```
-Is char in [.!?]
-  AND followed by zero or more of [)'"'\]]
-  AND followed by (whitespace OR EOL)?
-    → sentence end
-OR is line blank?
-    → sentence boundary
+// Sentences
+Position motionSentenceEndpoint(cursor, lines, forward, SentenceEdgeType, boundary);
+Range sentenceTextObjectRange(cursor, lines, isInner, leftBoundary, rightBoundary);
 ```
 
-== Sentence Motion Commands
+## Crossing Tables (Conceptual)
+
+Word motions check `(contentEdgeChar, boundaryChar)` pairs. Motion is **safe** when
+the table returns `no`. Example for WordEdge:
 
 ```
-Motion | Sentence Edge Type
-)      | (Forward, NextEdge)   - move to start of next sentence
-(      | (Backward, NextEdge)  - move to start of previous sentence
+              | bc=Keyword | bc=Whitespace | bc=Symbol | bc=Newline
+--------------+------------+---------------+-----------+-----------
+char=Keyword  | YES        | no            | no        | no
+char=Space    | YES        | YES           | YES       | no
+char=Symbol   | no         | no            | YES       | no
 ```
 
-Unlike words (which have w/e/b/ge), sentences only have two motion variants.
+Key insight: Newlines always block crossing (rightmost column all `no`).
+This is why `hasLinesAbove`/`hasLinesBelow` gates vertical escape.
 
-== Sentence Text Object Commands
+For full tables, see `wouldCross*` functions in `VimEndpointUtils.cpp`.
 
-```
-Command |
-dis  (Backward, SentenceEdge) + (Forward, SentenceEdge)
-das  {
-  Has trailing whitespace/blank lines:
-    (Backward, SentenceEdge) + (Forward, GapEdge)
-  Else (no trailing):
-    (Backward, GapEdge) + (Forward, SentenceEdge)
-}
-```
+## Notable Edit Behaviors
 
-Note: The das logic mirrors daw — same trailing/leading preference pattern.
+From `EditToSpec.h`, `BackwardWordEditSpec` has `isExclusiveAtCursor`:
+- `db`/`dB`: `true` — excludes cursor char from deletion
+- `dge`/`dgE`: `false` — includes cursor char
 
-== Sentence Boundary Crossing
+**Critical**: Inclusive backward deletions must verify cursor position isn't in
+boundary region, not just the motion endpoint.
 
-Like words, sentences are characterwise, so we compare positions:
+## EditOptimizer: effectiveLines Model
+
+Prepends prefix, appends suffix to create `effectiveLines`:
 
 ```
-Forward:   endpoint >= rightBoundary
-Backward:  endpoint <= leftBoundary
-Text obj:  range.start <= leftBoundary || range.end >= rightBoundary
+editRegion = {"hello", "world"}, prefix = "XX", suffix = "YY"
+→ effectiveLines = {"XXhello", "worldYY"}, goalLines = {"XXYY"}
+  leftColOffset = 2, rightColOffset = 2
 ```
 
-However, sentences have more complex boundary detection than words:
-- Must track punctuation patterns, not just character classes
-- Closers [)'"'\]] can extend the sentence end position
-- Blank lines act as implicit sentence boundaries
-
-== API Parallel (Sentences)
-
+For empty prefix/suffix with `hasLinesAbove`/`Below`, empty lines are added:
 ```
-Sentences (characterwise, like words):
-  motionSentenceEdge(cursor, lines, forward, SentenceEdgeType) -> Position
-  sentenceTextObjectRange(cursor, lines, isInner) -> Range
+editRegion = {"hello"}, hasLinesAbove=true, hasLinesBelow=true
+→ effectiveLines = {"", "hello", ""}, lineOffset = 1
 ```
 
-The pattern matches words:
-- `motionSentenceEdge` parallels `motionWordEndpoint`
-- `sentenceTextObjectRange` parallels `textObjectRange`
+See `docs/edit-boundary-limitations.md` for known limitations with multi-line regions.
 
-== Edge Cases
+## Key Implementation Notes
 
-=== Sentences with Closers
+### skipCurrent Behavior
+- `db`/`dB`, `de`/`dE`: start search from adjacent char, not cursor
+- When predicting crossing: check `(charBeforeCursor, leftBoundary)` for backward,
+  `(charAfterCursor, rightBoundary)` for forward
+- Newlines are transparent for adjacent char lookup (skip to prev/next line)
 
-Example: `"Hello!" she said.`
-- The `!` is the sentence end punctuation
-- The `"` is a closer
-- Sentence edge is at `"`
-- The `.` starts a new sentence detection
+### Empty Lines Are Words
+Per Vim docs: "An empty line is also considered to be a word."
+- `Lines::get()` returns `'\n'` for empty lines
+- `w` before empty line → stops AT the empty line
+- `e` before empty line → stops at word end BEFORE empty line (no "end" on empty)
 
-=== Blank Lines as Sentence Boundaries
+### Character Classification
+- `isWhitespace(c)`: space/tab only — for within-line blank skipping
+- `isBlank(c)`: space/tab/newline — for general blank checks
+- Use `isWhitespace` to avoid incorrectly skipping past empty lines
 
-Blank lines act as both paragraph AND sentence boundaries:
-- `}` from middle of paragraph → stops at blank line
-- `)` from same position → also stops at blank line (if no sentence end found first)
-
-=== Multiple Sentences on One Line
-
-Example: `First. Second. Third.`
-- Each `.` followed by space creates a sentence boundary
-- `)` navigates between sentence starts
-- `dis` selects from start to sentence-ending punctuation (+ closers)
-
-=== Sentence at Buffer Start/End
-
-- At buffer start: `(` stays at position
-- At buffer end: `)` stays at position
-- For `as` at buffer end with no trailing: include leading whitespace instead
-
-= EditOptimizer Boundary Handling
-
-EditOptimizer uses an **effectiveLines model** where boundary chars are baked into
-the buffer content. This ensures cursor clamping after deletions matches the full
-buffer behavior.
-
-== Building effectiveLines
-
-```
-Input:  editRegion = {"hello", "world"}, leftChar='X', rightChar='Y'
-Output: effectiveLines = {"Xhello", "worldY"}
-        goalLines = {"XY"}  // empty edit region
-```
-
-For newline boundaries, empty lines are added instead:
-```
-Input:  editRegion = {"hello"}, leftChar='\n', rightChar='\n'
-Output: effectiveLines = {"", "hello", ""}  // lineOffset=1
-        goalLines = {"", "", ""}
-```
-
-== Limitations
-
-The boundary char model has a known limitation with multi-line embedded regions.
-When word motions cross into lines containing prefix/suffix content, word boundaries
-may differ because effectiveLines only has a single boundary char, not the full
-prefix/suffix content.
-
-See `docs/edit-boundary-limitations.md` for detailed analysis.
+### Sentence Boundaries
+Detected when: char in `[.!?]` + optional closers `[)'"'\]]` + whitespace/EOL.
+Blank lines also act as sentence boundaries (paragraph boundary = sentence boundary).

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Vimficiency is a Vim bindings optimizer that analyzes user's actions and recommends more efficient sequences. The general algorithm is a heuristical A* search with keyboard-aware cost modeling.
+Vimficiency is a Vim bindings optimizer that analyzes user's actions and recommends more efficient sequences. The general algorithm is a heuristical A* search with keyboard-aware cost modeling, powered by a high-level, efficient vim command simulator.
 
 **Folder structure:**
 - `lua/vimficiency/`: Neovim-level code (buffer management, session storage)
@@ -13,7 +13,7 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 - `src/VimCore`: Explicit vim motion simulation
 - `src/Utils`: Utilities
 - `src/lua_exports.cpp`: C++ to Lua FFI interface
-- `tests/`: GoogleTest suite, mirrors src/ structure
+- `tests/`: GoogleTest suite
 
 **Dependency order** (most to least dependent): Optimizer → Editor, State → Keyboard, VimCore
 
@@ -25,6 +25,8 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 - **ParsedMotion/ParsedEdit**: Command structure with count (0 = default single, positive = prefixed)
 - **Effort**: Estimated difficulty of typing a key sequence
 - **Position**: Contains `line`, `col`, `targetCol`. Use `pos.setCol(c)` for horizontal movements (updates both col and targetCol), `pos.clampColPreservingTarget(c)` for vertical (preserves targetCol). See `docs/vim-utils-principles.md` §5 for detailed guidance and common pitfalls.
+- Effective characters: All positions a character could be in Lines. Notably, a cursor can still be at an empty line. 
+- Effective lines: current region + prefix, suffix added
 
 ## Design Constraints
 
@@ -37,11 +39,11 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 
 ## Important Design to keep in mind!
 - All positions are 0-indexed
-- Always use our Lines type to represent buffer content.
+- Always use our Lines type to represent buffer content, which provides additional helpful methods
 - We allow an empty line, which has size() == 0, but still an index 0 as a valid cursor position
 - But, we do not allow no lines in the buffer, since the cursor must always be in a valid position.
-- Ensure CAREFUL handling of targetCol (Vim's curswant) within Position.h
-- We use [begin, end) for half-open intervals, and [start, end] for inclusive intervals
+- Ensure CAREFUL handling of targetCol (Vim's curswant) within Position.h by calling the correct column method
+- We use [begin, end) for half-open intervals, and \[start, end\] for inclusive intervals
 
 ## Build Commands
 
@@ -64,12 +66,12 @@ Exposes C ABI for LuaJIT in `lua_exports.cpp`. **Position indexing:** Internal c
 For Lua context, see `lua/CLAUDE.md`.
 
 ## Deep Dive References
-- @docs/optimizer-architecture.md - A* heuristics, MotionOptimizer, EditOptimizer, CompositionOptimizer
-- @docs/vim-utils-principles.md - State validation, empty handling, MotionUtils vs EndpointUtils, **targetCol handling**
-- @docs/testing.md - NeovimOracle, test file conventions, debug printing
-- @docs/x-macros.md - Key definitions, supported commands, sequence parsing
 - @docs/boundary-logic.md - Word motion and boundary crossing logic, EditBoundary API
 - @docs/edit-boundary-limitations.md - Known limitations with multi-line embedded regions
-- @docs/session-invocation.txt - How vimficiency optimizer sessions are called and stored
-- @docs/utils.md - General utilities (QuoteFlags, BracketFlags, Lines, StringUtils)
 - @docs/edit-region-strategy.md - Replace vs change strategy (includes tryReplacement implementation)
+- @docs/optimizer-architecture.md - A* heuristics, MotionOptimizer, EditOptimizer, CompositionOptimizer
+- @docs/session-invocation.txt - How vimficiency optimizer sessions are called and stored
+- @docs/testing.md - NeovimOracle, test file conventions, debug printing
+- @docs/utils.md - General utilities (QuoteFlags, BracketFlags, Lines, StringUtils)
+- @docs/vim-utils-principles.md - State validation, empty handling, MotionUtils vs EndpointUtils, **targetCol handling**
+- @docs/x-macros.md - Key definitions, supported commands, sequence parsing

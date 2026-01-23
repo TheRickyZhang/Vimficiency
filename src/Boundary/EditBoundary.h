@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Boundary/BoundaryContext.h"
 #include "Editor/Position.h"
 #include "Utils/BracketFlags.h"
 #include "Utils/Lines.h"
@@ -16,6 +17,9 @@
 // 1. Compute EditBoundary from original text (once per edit region)
 // 2. Pass to VimEndpointUtils which uses raw chars for boundary decisions
 //
+// Related: MotionBoundary stores only offsets (no strings) for lighter-weight
+// motion constraint checking. Use context() to convert EditBoundary to
+// BoundaryContext for interop with MotionBoundary.
 // =============================================================================
 
 struct EditBoundary {
@@ -32,6 +36,20 @@ struct EditBoundary {
   const std::string& suffix() const { return suffix_; }
   bool hasLinesAbove() const { return hasLinesAbove_; }
   bool hasLinesBelow() const { return hasLinesBelow_; }
+
+  // Column offsets (derived from prefix/suffix lengths)
+  int leftColOffset() const { return static_cast<int>(prefix_.size()); }
+  int rightColOffset() const { return static_cast<int>(suffix_.size()); }
+
+  // Convert to BoundaryContext for interop with MotionBoundary
+  BoundaryContext context() const {
+    BoundaryContext ctx;
+    ctx.hasLinesAbove = hasLinesAbove_;
+    ctx.hasLinesBelow = hasLinesBelow_;
+    ctx.leftColOffset = leftColOffset();
+    ctx.rightColOffset = rightColOffset();
+    return ctx;
+  }
 
   // Quote/bracket context for text object operations (read-only)
   const QuoteFlags& firstLineQuotes() const { return firstLineQuotes_; }
@@ -68,4 +86,3 @@ private:
   void computeBoundaryChars(const Lines& lines, Position firstPos, Position lastPos);
   void scanQuotesAndBrackets(const Lines& lines, Position firstPos, Position lastPos);
 };
-

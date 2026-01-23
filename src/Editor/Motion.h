@@ -12,12 +12,6 @@
 #include "Position.h"
 #include "Utils/Lines.h"
 
-struct MotionResult {
-  Position pos;
-  Mode mode;
-  MotionResult(Position p, Mode mode) : pos(p), mode(mode) {}
-};
-
 struct ParsedMotion {
 private:
   // 0 -> no count, OK since it is impossible for 0 to be a count.
