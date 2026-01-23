@@ -1,7 +1,7 @@
 #include "Optimizer/Optimizer.h.h"
 #include "MotionToKeys.h"
 
-vector<Result> Optimizer/Optimizer.h::optimizeMovement(const vector<string>& lines, const Position& end, const string& userSequence) {
+vector<Result> Optimizer/Optimizer.h::optimizeMotion(const vector<string>& lines, const Position& end, const string& userSequence) {
   int totalExplored = 0;
   double userEffort = getEffort(userSequence, config);
 

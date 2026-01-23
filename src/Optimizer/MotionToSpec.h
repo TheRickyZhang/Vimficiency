@@ -5,7 +5,7 @@
 #include "Keyboard/KeyboardModel.h"
 
 // =============================================================================
-// Motion Operation Specs - tables for MovementOptimizer
+// Motion Operation Specs - tables for MotionOptimizer
 // =============================================================================
 // Structured specs with operation parameters alongside pre-computed keys.
 // Eliminates runtime map lookups during A* search.

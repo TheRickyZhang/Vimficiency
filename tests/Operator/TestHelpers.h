@@ -1,14 +1,15 @@
 // tests/Operator/TestHelpers.h
 //
-// Shared test infrastructure for operator boundary crossing tests.
-// These helpers generate random buffers and verify boundary crossing behavior
-// using VimCore functions which handle Position-based boundaries.
+// Operator-specific test infrastructure for boundary crossing tests.
+// Builds on RandomBufferHelpers for core random generation.
+// Provides boundary-aware buffer generation and crossing verification.
 
 #pragma once
 
 #include "Editor/Position.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
+#include "Utils/RandomBufferHelpers.h"  // Core random generation
 #include "VimCore/VimEndpointUtils.h"
 
 #include <random>

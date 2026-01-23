@@ -18,7 +18,7 @@
 #include "Boundary/EditBoundary.h"
 #include "Utils/NeovimOracle.h"
 #include "VimCore/VimEndpointUtils.h"
-#include "VimCore/VimMovementUtils.h"
+#include "VimCore/VimMotionUtils.h"
 #include "VimCore/SentenceEdgeType.h"
 #include "Editor/Motion.h"
 
@@ -364,7 +364,7 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentence2ParenFailure) {
 }
 
 TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceIndexFailure) {
-  // From MovementOptimizerBoundaryStress failure:
+  // From MotionOptimizerBoundaryStress failure:
   // Sequence: "2(b"
   // Start: sub(3,6) = full(7,6)
   // Our prediction (sub-buffer): (1, 22)

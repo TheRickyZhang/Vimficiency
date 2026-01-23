@@ -5,7 +5,7 @@
 #include "Keyboard/XMacroKeyDefinitions.h"
 #include "Optimizer/Config.h"
 #include "Boundary/MotionBoundary.h"
-#include "Optimizer/MovementOptimizer.h"
+#include "Optimizer/MotionOptimizer.h"
 #include "Utils/CoutCapture.h"
 #include "Utils/Debug.h"
 #include "Utils/Lines.h"
@@ -152,8 +152,8 @@ const char *vimficiency_analyze(
     auto lines = split_lines(text);
     assert(static_cast<int>(lines.size()) == totLines);
 
-    Position firstMovementPos(start_row, start_col);
-    Position lastMovementPos(end_row, end_col);
+    Position firstMotionPos(start_row, start_col);
+    Position lastMotionPos(end_row, end_col);
 
     NavContext navigation_context(window_height, scroll_amount);
     MotionBoundary boundary(lines,
@@ -161,10 +161,10 @@ const char *vimficiency_analyze(
         Position(totLines - 1, boundaryLastCol),
         hasLinesAbove, hasLinesBelow);
 
-    MovementOptimizer opt(g_config_internal);
+    MotionOptimizer opt(g_config_internal);
 
     // Pass Position and fresh RunningEffort (no prior typing context from FFI)
-    std::vector<Result> res = opt.optimize(lines, firstMovementPos, RunningEffort(), lastMovementPos, keyseq, navigation_context, boundary, EXPLORABLE_MOTIONS, OptimizerParams(RESULTS_CALCULATED));
+    std::vector<Result> res = opt.optimize(lines, firstMotionPos, RunningEffort(), lastMotionPos, keyseq, navigation_context, boundary, EXPLORABLE_MOTIONS, OptimizerParams(RESULTS_CALCULATED));
 
     // Format results
     std::ostringstream oss;

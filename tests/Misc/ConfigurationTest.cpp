@@ -6,7 +6,7 @@
 #include "Keyboard/MotionToKeys.h"
 #include "Optimizer/Config.h"
 #include "Boundary/MotionBoundary.h"
-#include "Optimizer/MovementOptimizer.h"
+#include "Optimizer/MotionOptimizer.h"
 #include "State/RunningEffort.h"
 
 using namespace std;
@@ -26,7 +26,7 @@ protected:
                Position end, const string &userSeq,
                Config config,
                const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS) {
-    MovementOptimizer opt(config);
+    MotionOptimizer opt(config);
     MotionBoundary boundary;
     return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
                         boundary, allowedMotions, OptimizerParams(30, 2e4, 1.0, 2.0));

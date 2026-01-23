@@ -2,9 +2,9 @@
 using namespace std;
 
 // =============================================================================
-// Motion Operation Specs - tables for MovementOptimizer
+// Motion Operation Specs - tables for MotionOptimizer
 // =============================================================================
-// Keys from MotionToKeysPrimitives.h, specs from MovementOptimizer.cpp
+// Keys from MotionToKeysPrimitives.h, specs from MotionOptimizer.cpp
 
 namespace Motion {
 

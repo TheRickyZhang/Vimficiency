@@ -1,3 +1,9 @@
+// tests/MotionOptimizer/MotionOptimizerTest.cpp
+//
+// Manual tests for MotionOptimizer with hardcoded setups.
+// Tests horizontal/vertical motions, range optimization, and boundary constraints.
+// For random/stress tests, see OutputCorrectnessTest.cpp.
+
 #include <gtest/gtest.h>
 
 #include "Editor/NavContext.h"
@@ -6,7 +12,7 @@
 #include "Keyboard/MotionToKeys.h"
 #include "Optimizer/Config.h"
 #include "Boundary/MotionBoundary.h"
-#include "Optimizer/MovementOptimizer.h"
+#include "Optimizer/MotionOptimizer.h"
 #include "State/RunningEffort.h"
 #include "Editor/Snapshot.h"
 #include "Editor/Motion.h"
@@ -14,7 +20,7 @@
 
 using namespace std;
 
-class MovementOptimizerTest : public ::testing::Test {
+class MotionOptimizerTest : public ::testing::Test {
 protected:
   static Lines a1_long_line;
   static Lines a2_block_lines;
@@ -41,7 +47,7 @@ protected:
       config.keyInfo[static_cast<size_t>(ka.k)].base_cost = ka.cost;
     }
 
-    MovementOptimizer opt(config);
+    MotionOptimizer opt(config);
 
     // Tests use full test files, so don't exclude G/gg (default MotionBoundary)
     MotionBoundary boundary;
@@ -58,7 +64,7 @@ protected:
                       int maxResults = 10,
                       const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS,
                       Config config = Config::uniform()) {
-    MovementOptimizer opt(config);
+    MotionOptimizer opt(config);
     MotionBoundary boundary;
     // allowMultiplePerPosition=true for tests to see all paths
     // Pass Position and fresh RunningEffort (no prior typing context in tests)
@@ -69,13 +75,13 @@ protected:
 };
 
 // Static member definitions
-Lines MovementOptimizerTest::a1_long_line;
-Lines MovementOptimizerTest::a2_block_lines;
-Lines MovementOptimizerTest::a3_spaced_lines;
-Lines MovementOptimizerTest::m1_main_basic;
-NavContext MovementOptimizerTest::navContext;
+Lines MotionOptimizerTest::a1_long_line;
+Lines MotionOptimizerTest::a2_block_lines;
+Lines MotionOptimizerTest::a3_spaced_lines;
+Lines MotionOptimizerTest::m1_main_basic;
+NavContext MotionOptimizerTest::navContext;
 
-TEST_F(MovementOptimizerTest, HorizontalMotions) {
+TEST_F(MotionOptimizerTest, HorizontalMotions) {
   const string user_seq = "we";
   Position start(0, 0);
   Position end = simulateMotions(start, user_seq, a1_long_line);
@@ -95,14 +101,14 @@ TEST_F(MovementOptimizerTest, HorizontalMotions) {
 // TODO: Re-enable when adding support for filtering the universe of explorable motions.
 // This test was designed to verify optimizer behavior with a restricted motion set.
 // Currently, all motions are explored automatically via MotionToSpec.
-TEST_F(MovementOptimizerTest, DISABLED_VerticalMotions) {
+TEST_F(MotionOptimizerTest, DISABLED_VerticalMotions) {
 }
 
 // =============================================================================
 // optimizeToRange tests
 // =============================================================================
 
-TEST_F(MovementOptimizerTest, RangeBasic_SameLine) {
+TEST_F(MotionOptimizerTest, RangeBasic_SameLine) {
   // Target range is columns 5-10 on line 0
   Lines lines = {"hello world this is a test line"};
   Position start(0, 0);
@@ -118,7 +124,7 @@ TEST_F(MovementOptimizerTest, RangeBasic_SameLine) {
   }
 }
 
-TEST_F(MovementOptimizerTest, RangeBasic_MultiLine) {
+TEST_F(MotionOptimizerTest, RangeBasic_MultiLine) {
   // Target range spans multiple lines
   Lines lines = {"line one", "line two", "line three", "line four"};
   Position start(0, 0);
@@ -135,7 +141,7 @@ TEST_F(MovementOptimizerTest, RangeBasic_MultiLine) {
   }
 }
 
-TEST_F(MovementOptimizerTest, RangeFromMiddle) {
+TEST_F(MotionOptimizerTest, RangeFromMiddle) {
   // Start from middle of file, target range at end
   Lines lines = {"aaa", "bbb", "ccc", "ddd", "eee"};
   Position start(2, 1);
@@ -147,7 +153,7 @@ TEST_F(MovementOptimizerTest, RangeFromMiddle) {
   EXPECT_FALSE(results.empty()) << "Should find at least one path to range";
 }
 
-TEST_F(MovementOptimizerTest, RangeWithWordMotions) {
+TEST_F(MotionOptimizerTest, RangeWithWordMotions) {
   // Test that word motions can land in range
   Lines lines = {"one two three four five six"};
   Position start(0, 0);
@@ -177,7 +183,7 @@ protected:
                   const string& userSeq, const MotionBoundary& boundary,
                   const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS,
                   Config config = Config::uniform()) {
-    MovementOptimizer opt(config);
+    MotionOptimizer opt(config);
     return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
                         boundary, allowedMotions, OptimizerParams(30, 2e4, 1.0, 2.0));
   }
@@ -346,266 +352,5 @@ TEST_F(MotionBoundaryTest, IsPositionInBounds_WithColConstraints) {
 }
 
 // =============================================================================
-// Sub-buffer stress tests - verify optimizer correctness on embedded regions
+// Note: Stress tests (random buffers) are in OutputCorrectnessTest.cpp
 // =============================================================================
-
-#include "Utils/NeovimOracle.h"
-#include <random>
-#include <map>
-
-// Test case structure for embedded sub-buffer testing
-struct EmbeddedMotionTest {
-  Lines fullBuffer;       // Complete buffer sent to Neovim
-  Lines subBuffer;        // Extracted region for optimizer
-  Position subStart;      // Start position in sub-buffer coords
-  Position fullStart;     // Same position in full-buffer coords
-  int subBufferStartLine; // Line offset of sub-buffer within full buffer
-  MotionBoundary boundary;
-};
-
-class MovementOptimizerBoundaryStress : public ::testing::Test {
-protected:
-  static unique_ptr<NeovimOracle> oracle;
-  static NavContext navContext;
-
-  static void SetUpTestSuite() {
-    oracle = make_unique<NeovimOracle>();
-    navContext = NavContext();
-  }
-
-  static void TearDownTestSuite() {
-    oracle.reset();
-  }
-
-  // Generate a random embedded sub-buffer scenario
-  static EmbeddedMotionTest generateEmbeddedTest(mt19937& rng, int fullLines, int subLines) {
-    EmbeddedMotionTest test;
-
-    // Character pool - mixed content for realistic word boundaries
-    const string chars = "abcd .,";
-    uniform_int_distribution<int> lineLen(10, 30);
-    uniform_int_distribution<int> charDist(0, static_cast<int>(chars.size()) - 1);
-
-    // Generate full buffer
-    for (int i = 0; i < fullLines; i++) {
-      int len = lineLen(rng);
-      string line;
-      for (int j = 0; j < len; j++) {
-        line += chars[charDist(rng)];
-      }
-      test.fullBuffer.push_back(line);
-    }
-
-    // Pick sub-buffer region: lines [startLine, endLine]
-    uniform_int_distribution<int> startLineDist(0, max(0, fullLines - subLines));
-    test.subBufferStartLine = startLineDist(rng);
-    int endLine = min(test.subBufferStartLine + subLines - 1, fullLines - 1);
-
-    // Extract sub-buffer
-    for (int i = test.subBufferStartLine; i <= endLine; i++) {
-      test.subBuffer.push_back(test.fullBuffer[i]);
-    }
-
-    // Random starting position within sub-buffer
-    uniform_int_distribution<int> subLineDist(0, static_cast<int>(test.subBuffer.size()) - 1);
-    int subLine = subLineDist(rng);
-    int maxCol = test.subBuffer[subLine].empty() ? 0 : static_cast<int>(test.subBuffer[subLine].size()) - 1;
-    uniform_int_distribution<int> colDist(0, max(0, maxCol));
-    int col = colDist(rng);
-
-    test.subStart = Position(subLine, col);
-    test.fullStart = Position(test.subBufferStartLine + subLine, col);
-
-    // Set up boundary from full buffer positions
-    Position firstPos(test.subBufferStartLine, 0);
-    Position lastPos(endLine, test.fullBuffer[endLine].empty() ? 0 :
-                     static_cast<int>(test.fullBuffer[endLine].size()) - 1);
-    test.boundary = MotionBoundary(test.fullBuffer, firstPos, lastPos);
-
-    return test;
-  }
-
-  // Convert sub-buffer position to full-buffer position
-  static Position toFullBufferPos(const Position& subPos, int subBufferStartLine) {
-    return Position(subPos.line + subBufferStartLine, subPos.col);
-  }
-
-  // Convert full-buffer position to sub-buffer position (with bounds checking)
-  static pair<bool, Position> toSubBufferPos(const Position& fullPos, int subBufferStartLine, int subBufferLines) {
-    int subLine = fullPos.line - subBufferStartLine;
-    if (subLine < 0 || subLine >= subBufferLines) {
-      return {false, Position(0, 0)};
-    }
-    return {true, Position(subLine, fullPos.col)};
-  }
-
-  // Run optimizer on sub-buffer
-  static vector<Result> runOnSubBuffer(const Lines& subBuffer, Position start, Position end,
-                                       const MotionBoundary& boundary,
-                                       const MotionToKeys& allowedMotions) {
-    MovementOptimizer opt(Config::uniform());
-    return opt.optimize(subBuffer, start, RunningEffort(), end, "jjjjjjjjjj", navContext,
-                        boundary, allowedMotions, OptimizerParams(10, 1e4, 1.0, 2.0));
-  }
-};
-
-unique_ptr<NeovimOracle> MovementOptimizerBoundaryStress::oracle;
-NavContext MovementOptimizerBoundaryStress::navContext;
-
-// Track failures by motion type for analysis
-struct MotionFailureStats {
-  map<string, int> failures;
-  map<string, int> totals;
-
-  void record(const string& seq, bool success) {
-    // Extract first motion from sequence
-    string firstMotion;
-    if (!seq.empty()) {
-      if (seq[0] >= '0' && seq[0] <= '9') {
-        // Count prefix, skip it
-        size_t i = 0;
-        while (i < seq.size() && seq[i] >= '0' && seq[i] <= '9') i++;
-        if (i < seq.size()) firstMotion = seq.substr(i, 1);
-      } else {
-        firstMotion = seq.substr(0, 1);
-        // Handle two-char motions like gg, ge
-        if (seq.size() >= 2 && (seq[0] == 'g' || seq.substr(0, 2) == "gg")) {
-          firstMotion = seq.substr(0, 2);
-        }
-      }
-    }
-    if (!firstMotion.empty()) {
-      totals[firstMotion]++;
-      if (!success) failures[firstMotion]++;
-    }
-  }
-
-  void print() const {
-    cerr << "\n=== Motion Failure Analysis ===\n";
-    for (const auto& [motion, total] : totals) {
-      int fails = 0;
-      auto it = failures.find(motion);
-      if (it != failures.end()) fails = it->second;
-      double rate = total > 0 ? (100.0 * fails / total) : 0;
-      cerr << motion << ": " << fails << "/" << total << " (" << rate << "% failure)\n";
-    }
-  }
-};
-
-TEST_F(MovementOptimizerBoundaryStress, SubBufferMotionCorrectness) {
-  // Test that optimizer predictions match Neovim behavior when operating on sub-buffers
-  mt19937 rng(42);
-  const int iterations = 50;
-  int totalSequences = 0;
-  int failedSequences = 0;
-  int escapedBounds = 0;
-  MotionFailureStats stats;
-
-  // Motions that could jump beyond sub-buffer boundaries
-  MotionToKeys testMotions = getSlicedMotionToKeys({
-    "j", "k",           // vertical (should be fine)
-    "w", "W", "b", "B", // word motions (may cross lines)
-    "e", "E",           // end word
-    "{", "}",           // paragraph (likely problematic)
-    "(", ")",           // sentence (likely problematic)
-  });
-
-  for (int i = 0; i < iterations; i++) {
-    // Restart oracle periodically to avoid connection issues
-    if (i > 0 && i % 20 == 0) {
-      oracle->restart();
-    }
-
-    // Generate embedded test case with sub-buffer smaller than full buffer
-    auto test = generateEmbeddedTest(rng, 8, 4);
-
-    // Pick a random end position within the sub-buffer
-    uniform_int_distribution<int> endLineDist(0, static_cast<int>(test.subBuffer.size()) - 1);
-    int endLine = endLineDist(rng);
-    int maxEndCol = test.subBuffer[endLine].empty() ? 0 : static_cast<int>(test.subBuffer[endLine].size()) - 1;
-    uniform_int_distribution<int> endColDist(0, max(0, maxEndCol));
-    Position subEnd(endLine, endColDist(rng));
-
-    // Run optimizer on sub-buffer
-    auto results = runOnSubBuffer(test.subBuffer, test.subStart, subEnd, test.boundary, testMotions);
-
-    // For each result, verify against Neovim on full buffer
-    for (const auto& result : results) {
-      totalSequences++;
-      string seq = result.getSequenceString();
-
-      // Apply sequence to FULL buffer via Neovim
-      SimulationResult neovimResult;
-      try {
-        neovimResult = oracle->simulate(test.fullBuffer,
-            test.fullStart.line, test.fullStart.col, seq);
-      } catch (const exception& e) {
-        // Oracle connection issue - restart and skip this iteration
-        oracle->restart();
-        continue;
-      }
-      Position neovimEnd(neovimResult.row, neovimResult.col);
-
-      // Apply same sequence to sub-buffer using our simulation
-      Position ourEnd = simulateMotions(test.subStart, seq, test.subBuffer);
-
-      // Convert Neovim result to sub-buffer coords
-      auto [inBounds, neovimSubPos] = toSubBufferPos(neovimEnd, test.subBufferStartLine,
-                                                      static_cast<int>(test.subBuffer.size()));
-
-      // Compare positions
-      bool posMatch;
-      if (inBounds) {
-        posMatch = (ourEnd.line == neovimSubPos.line && ourEnd.col == neovimSubPos.col);
-      } else {
-        // Neovim landed outside sub-buffer bounds - this is the key failure case
-        posMatch = false;
-        escapedBounds++;
-      }
-
-      stats.record(seq, posMatch);
-
-      if (!posMatch) {
-        failedSequences++;
-        // Detailed failure logging (limited to first few)
-        if (failedSequences <= 3) {
-          cerr << "\n=== Sub-buffer Motion Failure #" << failedSequences << " ===" << endl;
-          cerr << "Sequence: \"" << seq << "\"" << endl;
-          cerr << "Full buffer (" << test.fullBuffer.size() << " lines):" << endl;
-          for (size_t j = 0; j < test.fullBuffer.size(); j++) {
-            cerr << "  [" << j << "]: \"" << test.fullBuffer[j] << "\"" << endl;
-          }
-          cerr << "Sub-buffer (lines " << test.subBufferStartLine << "-"
-               << (test.subBufferStartLine + test.subBuffer.size() - 1) << "):" << endl;
-          for (size_t j = 0; j < test.subBuffer.size(); j++) {
-            cerr << "  [" << j << "]: \"" << test.subBuffer[j] << "\"" << endl;
-          }
-          cerr << "Start: sub(" << test.subStart.line << "," << test.subStart.col << ") = "
-               << "full(" << test.fullStart.line << "," << test.fullStart.col << ")" << endl;
-          cerr << "Our prediction (sub-buffer): (" << ourEnd.line << ", " << ourEnd.col << ")" << endl;
-          cerr << "Neovim result (full-buffer): (" << neovimEnd.line << ", " << neovimEnd.col << ")" << endl;
-          if (inBounds) {
-            cerr << "Neovim in sub-buffer coords: (" << neovimSubPos.line << ", " << neovimSubPos.col << ")" << endl;
-          } else {
-            cerr << "Neovim ESCAPED sub-buffer bounds!" << endl;
-          }
-          cerr << "Boundary: hasLinesAbove=" << test.boundary.hasLinesAbove()
-               << ", hasLinesBelow=" << test.boundary.hasLinesBelow() << endl;
-        }
-      }
-    }
-  }
-
-  // Print summary statistics
-  stats.print();
-  cerr << "\n=== Summary ===" << endl;
-  cerr << "Total sequences tested: " << totalSequences << endl;
-  cerr << "Failed sequences: " << failedSequences << endl;
-  cerr << "  - Escaped bounds: " << escapedBounds << endl;
-  double failRate = totalSequences > 0 ? (100.0 * failedSequences / totalSequences) : 0;
-  cerr << "Failure rate: " << failRate << "%" << endl;
-
-  // We expect some failures - this test is for analysis, not strict pass/fail
-  // The purpose is to identify which motions are problematic
-  EXPECT_GT(totalSequences, 0) << "Should have tested some sequences";
-}

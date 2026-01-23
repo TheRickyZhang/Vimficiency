@@ -2,7 +2,7 @@
 #include "VimCore/VimCore.h"
 #include "VimCore/VimEditUtils.h"
 #include "VimCore/VimEndpointUtils.h"
-#include "VimCore/VimMovementUtils.h"
+#include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimOptions.h"
 #include "VimCore/VimTextObjectsDeprecated.h"
 #include "VimCore/VimCore.h"

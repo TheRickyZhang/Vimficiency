@@ -1,26 +1,24 @@
 // tests/Utils/EditTestGenerators.h
 //
-// Shared test utilities for EditOptimizer tests.
-// Provides random buffer generation and embedded edit region creation.
+// Edit-specific test utilities for EditOptimizer tests.
+// Builds on RandomBufferHelpers for core random generation.
+// Provides embedded edit region creation and flat position indexing.
 
 #pragma once
 
 #include "Boundary/EditBoundary.h"
 #include "Editor/Position.h"
 #include "Utils/Lines.h"
+#include "Utils/RandomBufferHelpers.h"  // Core random generation
 
 #include <random>
 #include <string>
 
-// =============================================================================
-// Random Content Generation
-// =============================================================================
-
-// Generate a random word using lowercase letters a-f
-std::string randomWord(std::mt19937& rng, int len);
-
-// Generate random lines with specified count and length range
-Lines randomLines(std::mt19937& rng, int numLines, int minLen, int maxLen);
+// Re-export core random generation for convenience
+// (These are now inline functions in RandomBufferHelpers.h)
+using ::randomWord;
+using ::randomLines;
+using ::randomPosition;
 
 // =============================================================================
 // Position Index Utilities

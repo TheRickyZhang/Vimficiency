@@ -36,21 +36,28 @@ add_executable(vimficiency_tests
   Operator/Sentences.cpp
   Operator/TextObjects.cpp
 
-  # EditPrimitives
-  EditPrimitives/DiffStateTest.cpp
+  # CompositionOptimizer
+  CompositionOptimizer/DiffStateTest.cpp
+
+  # EditOptimizer
+  EditOptimizer/EditOptimizerTest.cpp
+  EditOptimizer/OutputCorrectnessTest.cpp
+  EditOptimizer/CostConsistencyTest.cpp
+  EditOptimizer/DeterminismTest.cpp
+  EditOptimizer/HumanApprovalTest.cpp
+
+  # MotionOptimizer
+  MotionOptimizer/MotionOptimizerTest.cpp
+  MotionOptimizer/OutputCorrectnessTest.cpp
+  MotionOptimizer/CostConsistencyTest.cpp
+  MotionOptimizer/DeterminismTest.cpp
+  MotionOptimizer/HumanApprovalTest.cpp
 
   # Misc
   Misc/ConfigurationTest.cpp
   Misc/DebugSequenceTests.cpp
   Misc/ErrorHandlingTest.cpp
   Misc/HashCollisionTest.cpp
-
-  # Optimizer
-  Optimizer/EditOptimizerTests.cpp
-  Optimizer/MovementOptimizerTest.cpp
-  Optimizer/CostConsistencyTests.cpp
-  Optimizer/DeterminismTests.cpp
-  Optimizer/HumanApprovalTests.cpp
 
   # Utils
   Utils/EditTestGenerators.cpp

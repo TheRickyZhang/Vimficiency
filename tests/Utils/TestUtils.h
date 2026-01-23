@@ -5,8 +5,49 @@
 #include "Utils/StringUtils.h"
 #include "Utils/Lines.h"
 
-#include <bits/stdc++.h>
-using namespace std;
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <initializer_list>
+#include <iostream>
+#include <string>
+#include <vector>
+
+// =============================================================================
+// Result Inspection Helpers
+// =============================================================================
+
+// Check if any result contains the exact sequence
+inline bool hasSequence(const std::vector<Result>& results, const std::string& seq) {
+  return std::any_of(results.begin(), results.end(),
+      [&seq](const Result& r) { return r.getSequenceString() == seq; });
+}
+
+// Check if any result contains a sequence starting with prefix
+inline bool hasSequenceStartingWith(const std::vector<Result>& results,
+                                    const std::string& prefix) {
+  return std::any_of(results.begin(), results.end(),
+      [&prefix](const Result& r) {
+        const std::string& seq = r.getSequenceString();
+        return seq.size() >= prefix.size() &&
+               seq.substr(0, prefix.size()) == prefix;
+      });
+}
+
+// Print results for manual inspection (limited to first N)
+inline void printResultsDebug(const std::vector<Result>& results,
+                              const std::string& description,
+                              size_t maxResults = 10) {
+  std::cerr << "\n=== " << description << " ===" << std::endl;
+  for (size_t i = 0; i < results.size() && i < maxResults; i++) {
+    std::cerr << "  " << i << ": " << results[i].getSequenceString()
+              << " (cost=" << results[i].keyCost << ")" << std::endl;
+  }
+}
+
+// =============================================================================
+// Key Adjustments for Config
+// =============================================================================
 
 struct KeyAdjustment {
   Key k;
@@ -14,29 +55,37 @@ struct KeyAdjustment {
   KeyAdjustment(Key k, double cost) : k(k), cost(cost) {}
 };
 
-
+// =============================================================================
+// Test File Loading
+// =============================================================================
 
 namespace TestFiles {
 
 inline Lines load(const std::string& filename) {
-    auto path = std::filesystem::path(__FILE__).parent_path() / ".." / ".." / "data" / "TestFiles" / filename;
-    std::ifstream file(path);
-    if (!file) {
-        throw std::runtime_error("Cannot open: " + path.string());
-    }
-    Lines lines;
-    std::string line;
-    while (std::getline(file, line)) {
-        lines.push_back(line);
-    }
-    return lines;
+  auto path = std::filesystem::path(__FILE__).parent_path() / ".." / ".." /
+              "data" / "TestFiles" / filename;
+  std::ifstream file(path);
+  if (!file) {
+    throw std::runtime_error("Cannot open: " + path.string());
+  }
+  Lines lines;
+  std::string line;
+  while (std::getline(file, line)) {
+    lines.push_back(line);
+  }
+  return lines;
 }
 
-}
+}  // namespace TestFiles
 
-Lines readLines(istream &in);
+// =============================================================================
+// Legacy Functions (declared, defined in TestUtils.cpp)
+// =============================================================================
 
-bool contains_all(const vector<Result>& v, initializer_list<string> need);
+Lines readLines(std::istream& in);
 
-void printResults(vector<Result>& results);
+bool contains_all(const std::vector<Result>& v,
+                  std::initializer_list<std::string> need);
+
+void printResults(std::vector<Result>& results);
 

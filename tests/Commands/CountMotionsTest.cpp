@@ -3,7 +3,7 @@
 #include "Optimizer/BufferIndex.h"
 #include "Keyboard/MotionToKeys.h"
 #include "Editor/NavContext.h"
-#include "Optimizer/MovementOptimizer.h"
+#include "Optimizer/MotionOptimizer.h"
 #include "Boundary/MotionBoundary.h"
 #include "Utils/TestUtils.h"
 
@@ -172,7 +172,7 @@ protected:
       const string& userSeq,
       const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS,
       Config config = Config::uniform()) {
-    MovementOptimizer opt(config);
+    MotionOptimizer opt(config);
     MotionBoundary boundary;
     return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
                         boundary, allowedMotions, OptimizerParams(30, 2e4, 1.0, 2.0));

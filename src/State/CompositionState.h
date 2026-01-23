@@ -111,7 +111,7 @@ public:
 
   // Apply a movement motion (doesn't change editsCompleted)
   // Caller must provide new position (computed via motion application)
-  void applyMovement(const std::string& motion, const Position& newPos,
+  void applyMotion(const std::string& motion, const Position& newPos,
                      const PhysicalKeys& keys, const Config& config) {
     pos = newPos;
     appendSequence(motion, keys, config);
@@ -136,10 +136,10 @@ public:
     mode = newMode;
   }
 
-  // Apply movement result from MovementOptimizer::optimizeToRange()
+  // Apply movement result from MotionOptimizer::optimizeToRange()
   // - moveSequences: the sequences for this movement
   // - newPos: position after movement completes
-  void applyMovementResult(const std::vector<Sequence>& moveSequences,
+  void applyMotionResult(const std::vector<Sequence>& moveSequences,
                            const Position& newPos, const Config& config) {
     pos = newPos;
     for (const auto& seq : moveSequences) {

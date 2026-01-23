@@ -4,10 +4,17 @@ Implement CompositionOptimizer
 Implement quote and bracket text object motions (see quoteFlags/bracketFlags)
 Handle pureInsertion case
 
-Organize tests to property-based, consisteny, manual, human, etc.
+Categorize tests better. Add human tests for EditOptimizer.
+Having EditBoundary : MotionBoundary if superset; clarify what exactly is difference.
 
 
+Handle the case where 
 Any inclusive boundaries we can more cleanly model as half-open?
+
+
+ Okay, that looks good. Now, let's charify what exactly the difference is betwwen how MotionBoundary and EditBoudarys need to do -
+  right now it seems like EditBonudary is a superset of functionality, so Inheritcane could be an option. But we'll need to think
+  carefully.
 
 (){} boundary motions not completely human-reviewed yet (especially for index-building)
 

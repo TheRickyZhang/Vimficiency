@@ -3,7 +3,7 @@
 #include "Optimizer/Config.h"
 #include "Boundary/MotionBoundary.h"
 #include "State/RunningEffort.h"
-#include "Optimizer/MovementOptimizer.h"
+#include "Optimizer/MotionOptimizer.h"
 #include "Editor/Snapshot.h"
 #include "Editor/NavContext.h"
 #include "State/MotionState.h"
@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) {
   debug("ending position:", end_snapshot.row, end_snapshot.col);
 
   Config model = Config::uniform();
-  MovementOptimizer o(model);
+  MotionOptimizer o(model);
 
   NavContext navContext(
     start_snapshot.windowHeight,

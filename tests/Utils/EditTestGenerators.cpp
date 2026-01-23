@@ -1,34 +1,11 @@
 // tests/Utils/EditTestGenerators.cpp
 //
-// Implementation of shared test utilities for EditOptimizer tests.
+// Implementation of Edit-specific test utilities.
+// Core random generation is now in RandomBufferHelpers.h (header-only).
 
 #include "EditTestGenerators.h"
 
 using namespace std;
-
-// =============================================================================
-// Random Content Generation
-// =============================================================================
-
-string randomWord(mt19937& rng, int len) {
-  static const string chars = "abcdef";
-  string s;
-  s.reserve(len);
-  for (int i = 0; i < len; i++) {
-    s += chars[rng() % chars.size()];
-  }
-  return s;
-}
-
-Lines randomLines(mt19937& rng, int numLines, int minLen, int maxLen) {
-  uniform_int_distribution<int> lenDist(minLen, maxLen);
-  Lines lines;
-  lines.reserve(numLines);
-  for (int i = 0; i < numLines; i++) {
-    lines.push_back(randomWord(rng, lenDist(rng)));
-  }
-  return lines;
-}
 
 // =============================================================================
 // Position Index Utilities

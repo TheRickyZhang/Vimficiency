@@ -2,7 +2,7 @@
 
 #include "DiffState.h"
 #include "EditOptimizer.h"
-#include "MovementOptimizer.h"
+#include "MotionOptimizer.h"
 
 #include "State/CompositionState.h"
 #include "Keyboard/CharToKeys.h"
@@ -186,7 +186,7 @@ vector<Result> CompositionOptimizer::optimize(
     }
 
     // ========== MOVEMENT TRANSITIONS ==========
-    // Use MovementOptimizer to find optimal paths to next edit region
+    // Use MotionOptimizer to find optimal paths to next edit region
     if (editsCompleted < totalEdits) {
       const DiffState& nextEdit = diffStates[editsCompleted];
 
@@ -198,10 +198,10 @@ vector<Result> CompositionOptimizer::optimize(
       // - Uses buffer context for the movement search (currentLines)
       MotionBoundary subBoundary(currentLines, nextEdit.firstPos, nextEdit.lastPos, boundary);
 
-      // Use MovementOptimizer to find optimal paths to any position in the edit region
+      // Use MotionOptimizer to find optimal paths to any position in the edit region
       // Pass only Position and RunningEffort - sub-search computes its own effort/cost fresh
       // RangeResult.keyCost returns delta effort for this movement
-      MovementOptimizer movementOptimizer(config);
+      MotionOptimizer movementOptimizer(config);
       vector<RangeResult> movementResults = movementOptimizer.optimizeToRange(
         currentLines,
         pos,
@@ -221,7 +221,7 @@ vector<Result> CompositionOptimizer::optimize(
         if (!movResult.isValid()) continue;
 
         CompositionState newState = s;
-        newState.applyMovementResult(movResult.sequences, movResult.endPos, config);
+        newState.applyMotionResult(movResult.sequences, movResult.endPos, config);
         newState.updateCost(heuristic(newState, editsCompleted, suffixEditCosts, diffStates, params));
         exploreNewState(std::move(newState));
       }

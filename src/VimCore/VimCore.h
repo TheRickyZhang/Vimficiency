@@ -8,7 +8,7 @@
 #include "EdgeType.h"
 
 // VimCore: Character classification, string helpers, position stepping,
-// and core word motion logic. Used by VimMovementUtils, VimEndpointUtils,
+// and core word motion logic. Used by VimMotionUtils, VimEndpointUtils,
 // and BufferIndex.
 //
 // Edit operations (deleteRange, insertText, etc.) are in VimEditUtils.h

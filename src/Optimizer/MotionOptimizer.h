@@ -18,11 +18,11 @@
 // Backward compatibility alias
 using SearchParams = OptimizerParams;
 
-struct MovementOptimizer {
+struct MotionOptimizer {
   Config config;
   OptimizerParams defaultParams;
 
-  MovementOptimizer(const Config& config, OptimizerParams params = {})
+  MotionOptimizer(const Config& config, OptimizerParams params = {})
       : config(config), defaultParams(params) {}
 
   double costToGoal(Position p, Position q) const {

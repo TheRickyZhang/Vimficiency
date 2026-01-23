@@ -1,4 +1,4 @@
-#include "MovementOptimizer.h"
+#include "MotionOptimizer.h"
 
 #include "BufferIndex.h"
 #include "MotionToSpec.h"
@@ -6,12 +6,12 @@
 #include "Keyboard/KeyboardModel.h"
 #include "Keyboard/MotionToKeys.h"
 #include "Utils/Debug.h"
-#include "VimCore/VimMovementUtils.h"
+#include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimEndpointUtils.h"
 
 using namespace std;
 
-vector<Result> MovementOptimizer::optimize(
+vector<Result> MotionOptimizer::optimize(
     const Lines &lines,
     const Position& startPos,
     const RunningEffort& startingEffort,
@@ -421,7 +421,7 @@ vector<Result> MovementOptimizer::optimize(
   return res;
 }
 
-vector<RangeResult> MovementOptimizer::optimizeToRange(
+vector<RangeResult> MotionOptimizer::optimizeToRange(
     const Lines& lines,
     const Position& startPos,
     const RunningEffort& startingEffort,

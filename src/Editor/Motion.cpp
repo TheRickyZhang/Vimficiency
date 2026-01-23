@@ -1,6 +1,6 @@
 #include "Motion.h"
 #include "Editor/NavContext.h"
-#include "VimCore/VimMovementUtils.h"
+#include "VimCore/VimMotionUtils.h"
 
 #include "Keyboard/MotionToKeys.h"
 

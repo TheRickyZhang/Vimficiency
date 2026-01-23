@@ -1,4 +1,4 @@
-#include "VimMovementUtils.h"
+#include "VimMotionUtils.h"
 #include "VimCore.h"
 #include "VimEndpointUtils.h"
 #include "EdgeType.h"

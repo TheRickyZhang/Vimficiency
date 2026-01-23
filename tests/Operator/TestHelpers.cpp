@@ -39,31 +39,12 @@ const vector<MotionSpec>& getAllWordMotions() {
 RandomBufferTest generateRandomBuffer(mt19937& rng, int numLines) {
   RandomBufferTest test;
 
-  // Character pools - mixed content for word boundary testing
-  // Minimal char pools - word boundaries depend on character CLASS, not specific chars
-  const string keywords = "abcd";
-  const string symbols = ".,";
-
   uniform_int_distribution<int> lineLen(8, 20);
-  uniform_int_distribution<int> charTypeDist(0, 2);
 
-  // Build lines with mixed content
+  // Build lines with mixed content using shared helper
   for (int i = 0; i < numLines; i++) {
     int len = lineLen(rng);
-    string line;
-    line.reserve(len);
-
-    for (int j = 0; j < len; j++) {
-      int charType = charTypeDist(rng);
-      if (charType == 0) {
-        line += keywords[rng() % keywords.size()];
-      } else if (charType == 1) {
-        line += symbols[rng() % symbols.size()];
-      } else {
-        line += ' ';
-      }
-    }
-    test.lines.push_back(line);
+    test.lines.push_back(randomMixedLine(rng, len));
   }
 
   // === IMPORTANT: effectiveLines Constraint ===

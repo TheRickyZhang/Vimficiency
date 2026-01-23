@@ -9,7 +9,7 @@
 #include "Editor/NavContext.h"
 #include "Optimizer/Config.h"
 #include "Boundary/MotionBoundary.h"
-#include "Optimizer/MovementOptimizer.h"
+#include "Optimizer/MotionOptimizer.h"
 #include "State/RunningEffort.h"
 #include "Utils/TestUtils.h"
 
@@ -35,7 +35,7 @@ protected:
                                      Position start, Position end,
                                      const string &userSeq,
                                      Config config = Config::uniform()) {
-    MovementOptimizer opt(config);
+    MotionOptimizer opt(config);
     MotionBoundary boundary;
     return opt.optimize(lines, start, RunningEffort(), end, userSeq,
                         navContext, boundary, EXPLORABLE_MOTIONS, OptimizerParams(30, 2e4, 1.0, 2.0));

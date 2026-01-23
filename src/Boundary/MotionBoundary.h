@@ -3,7 +3,7 @@
 #include "Editor/Position.h"
 #include "Utils/Lines.h"
 
-// MotionBoundary constrains the search space for MovementOptimizer.
+// MotionBoundary constrains the search space for MotionOptimizer.
 //
 // Like EditBoundary, stores information about what's outside the region:
 // - hasLinesAbove/Below: for gg/G exclusion and edge-line checks

@@ -15,11 +15,11 @@ To put it more explicitly:
 ## 3. Minimal API
 Single-line operations only need the context of the line.
 
-## 4. Movement vs Endpoint Utils Separation
+## 4. Motion vs Endpoint Utils Separation
 
 VimCore has two parallel structs for motion operations:
 
-### VimMovementUtils
+### VimMotionUtils
 - **Mutates** Position in-place (void return)
 - Used for **executing** motions during simulation
 - Example: `motionWord(pos, lines, forward, edgeType, big)`
@@ -38,8 +38,8 @@ During A* search, we need to check if a motion would cross edit boundaries *with
 
 The parallel naming makes the relationship clear:
 ```
-VimMovementUtils::motionWord()       ↔  VimEndpointUtils::motionWordEndpoint()
-VimMovementUtils::textObjectRange()  ↔  VimEndpointUtils::textObjectRange()
+VimMotionUtils::motionWord()       ↔  VimEndpointUtils::motionWordEndpoint()
+VimMotionUtils::textObjectRange()  ↔  VimEndpointUtils::textObjectRange()
 ```
 
 See `boundary-logic.md` for the crossing table model used by VimEndpointUtils.
