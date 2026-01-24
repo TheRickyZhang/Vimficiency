@@ -250,5 +250,10 @@ const EditToKeys SENTENCE = {
     {"d(", {Key::Key_D, Key::Key_Shift, Key::Key_9}},
 };
 
+const EditToKeys JOIN = {
+    {"J",  {Key::Key_Shift, Key::Key_J}},      // join with space
+    {"gJ", {Key::Key_G, Key::Key_Shift, Key::Key_J}},  // join without space
+};
+
 } // namespace Deletion
 

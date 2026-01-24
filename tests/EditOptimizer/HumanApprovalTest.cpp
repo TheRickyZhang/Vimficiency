@@ -45,7 +45,23 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionSingleWord) {
   vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
 
   printResultsDebug(res, "Delete single word");
-  // EXPECT_TRUE(all_valid && res[0].str.size() == 2 && res[1..n-1].str.size() == 3);
+  // Single word should use dw or de, not visual mode (too short)
+  ASSERT_TRUE(res[0].isValid());
+  string seq = res[0].getSequenceString();
+  EXPECT_TRUE(seq.find("dw") != string::npos || seq.find("de") != string::npos)
+      << "Expected dw or de for single word, got: " << seq;
+}
+
+TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionMultipleWords) {
+  // Delete multiple words on single line
+  Lines initialLines = {"hello world foo bar"};
+  EditBoundary boundary(initialLines, {0, 0}, initialLines.lastPos());
+
+  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
+
+  printResultsDebug(res, "Delete multiple words");
+  // For longer single-line content, visual mode should be competitive
+  ASSERT_TRUE(res[0].isValid());
 }
 
 TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTop) {
@@ -78,19 +94,60 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleBottom) {
 }
 
 TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTopAndBottom) {
-  // Delete a short word
+  // Delete content that straddles prefix and suffix on both lines
   Lines initialLines = {
     "arstn arstn",
     "arstn arstn",
   };
-  // first char, " " in second line
+  // first " ", second " "
   Position firstPos(0, 5), lastPos(1, 5);
   EditBoundary boundary(initialLines, firstPos, lastPos);
 
   vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
   printResultsDebug(res, "Delete straddle top and bottom");
+
+  // Visual mode should be the best solution here
+  ASSERT_TRUE(res[0].isValid());
+  string seq = res[0].getSequenceString();
+  EXPECT_TRUE(seq.find("v") != string::npos && seq.find("d") != string::npos)
+      << "Expected visual mode (v...d) for multi-line straddling, got: " << seq;
 }
 
+
+TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionMultiLineFull) {
+  // Delete multi-line content with no boundary
+  // Visual mode v}d should be efficient here
+  Lines initialLines = {
+    "hello world",
+    "foo bar baz",
+    "one two three",
+  };
+  EditBoundary boundary(initialLines, {0, 0}, initialLines.lastPos());
+
+  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
+  printResultsDebug(res, "Delete multi-line full");
+
+  // Visual mode with paragraph motion should be optimal
+  ASSERT_TRUE(res[0].isValid());
+  string seq = res[0].getSequenceString();
+  EXPECT_TRUE(seq.find("v") != string::npos)
+      << "Expected visual mode for multi-line full deletion, got: " << seq;
+}
+
+TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionTwoLinesNoPrefix) {
+  // Delete two lines without prefix - J command should be considered
+  Lines initialLines = {
+    "first line",
+    "second line",
+  };
+  EditBoundary boundary(initialLines, {0, 0}, initialLines.lastPos());
+
+  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
+  printResultsDebug(res, "Delete two lines (J candidate)");
+
+  // Should find valid solution
+  ASSERT_TRUE(res[0].isValid());
+}
 
 TEST_F(EditOptimizerHumanApprovalTests, Edit_Replacement_SingleChar) {
   // Replace single character: hello → jello

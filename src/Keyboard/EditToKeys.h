@@ -133,6 +133,7 @@ extern const EditToKeys LINE;       // dd, D, d$, d0, d^
 extern const EditToKeys TEXT_OBJ;   // diw, daw, diW, daW
 extern const EditToKeys PARAGRAPH;  // d}, d{
 extern const EditToKeys SENTENCE;   // d), d(
+extern const EditToKeys JOIN;       // J, gJ
 
 } // namespace Deletion
 

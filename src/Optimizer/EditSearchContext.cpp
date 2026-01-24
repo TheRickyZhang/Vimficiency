@@ -354,10 +354,35 @@ void EditSearchContext::exploreSentenceEdits(
 // Main Exploration Entry Point
 // =============================================================================
 
+void EditSearchContext::exploreJoinCommands(
+    const Position& cursor, const Lines& lines, JoinCallback onJoin) {
+  if (!onJoin) return;
+
+  // J/gJ require a next line to join with
+  if (cursor.line >= lines.lastLine()) return;
+
+  int nextLine = cursor.line + 1;
+
+  // Don't allow J if joining would merge suffix content into current line
+  // This happens when next line is the last line AND it has suffix content
+  if (nextLine == lines.lastLine() && rightColOffset > 0) return;
+
+  // Don't allow J if there are lines below the edit region
+  // (the "last line" of effectiveLines represents content that shouldn't be joined)
+  if (nextLine == lines.lastLine() && editBoundary.hasLinesBelow()) return;
+
+  // Explore both J (with space) and gJ (without space)
+  for (const auto& [cmd, keys] : Deletion::JOIN) {
+    bool addSpace = (cmd == "J");
+    onJoin(addSpace, cmd.c_str(), keys);
+  }
+}
+
 void EditSearchContext::exploreAllDeletions(const EditState& state,
                                             DeletionCallback onDeletion,
                                             LinewiseCallback onLinewise,
-                                            MotionCallback onMotion) {
+                                            MotionCallback onMotion,
+                                            JoinCallback onJoin) {
   const Lines& lines = state.getLines();
   Position cursor = state.getPos();
 
@@ -402,7 +427,7 @@ void EditSearchContext::exploreAllDeletions(const EditState& state,
   if (editContentLen <= 0) {
     assert(lines[cursor.line].size() == 0);
 
-    // Limited exploration: 
+    // Limited exploration:
     // (dd == dw == dW)
     exploreFullLineEdits(Edit::EMPTYLINE_FULL_LINE_EDITS, cursor, lines, onLinewise);
 
@@ -410,6 +435,8 @@ void EditSearchContext::exploreAllDeletions(const EditState& state,
     exploreForwardWordEdits(Edit::EMPTYLINE_FORWARD_WORD_EDITS, cursor, lines, onDeletion);
     // db/dB/dge
     exploreBackwardWordEdits(Edit::EMPTYLINE_BACKWARD_WORD_EDITS, cursor, lines, onDeletion);
+    // J/gJ - can join even from empty lines
+    exploreJoinCommands(cursor, lines, onJoin);
     return;
   }
 
@@ -421,4 +448,5 @@ void EditSearchContext::exploreAllDeletions(const EditState& state,
   exploreCharEdits(cursor, lines, contentBegin, contentEnd, editContentLen, onDeletion);
   exploreParagraphEdits(Edit::PARAGRAPH_EDITS, cursor, lines, onDeletion);
   exploreSentenceEdits(Edit::SENTENCE_EDITS, cursor, lines, onDeletion);
+  exploreJoinCommands(cursor, lines, onJoin);
 }

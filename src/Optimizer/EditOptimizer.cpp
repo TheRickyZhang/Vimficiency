@@ -6,7 +6,9 @@
 
 #include "EditOptimizer.h"
 #include "EditSearchContext.h"
+#include "MotionOptimizer.h"
 
+#include "Editor/NavContext.h"
 #include "Keyboard/CharToKeys.h"
 #include "Keyboard/MotionToKeys.h"
 #include "State/RunningEffort.h"
@@ -388,6 +390,28 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
     if (!maybeState) continue;
     EditState s = std::move(*maybeState);
 
+    // Join handler: J/gJ merges current line with next
+    auto exploreJoin = [&](const EditState& base, bool addSpace,
+                           const char* joinCmd, const PhysicalKeys& joinKeys) {
+      EditState newState = base;
+      newState.applyJoin(addSpace);
+      const Lines& lines = newState.getLines();
+
+      if (isGoalReached(lines)) {
+        int idx = newState.getStartIndex();
+        if (result.typeAllResults[idx].isValid()) return;
+
+        // For optimizeEdit, we need to enter insert mode to type content
+        // J doesn't enter insert mode, so we need to use a change command after
+        // For now, just continue search - J is more useful for pure deletion
+      }
+
+      newState.appendToSeq(joinCmd);
+      newState.updateEffort(joinKeys, config);
+      newState.updateCost(newState.getEffort() + ctx.heuristic(lines));
+      ctx.exploreNewState(std::move(newState));
+    };
+
     // Explore all deletions (characterwise + linewise) via EditSearchContext
     ctx.exploreAllDeletions(
       s,
@@ -405,6 +429,9 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
         newState.updateEffort(keys, config);
         newState.updateCost(newState.getEffort() + ctx.heuristic(newState.getLines()));
         ctx.exploreNewState(std::move(newState));
+      },
+      [&](bool addSpace, const char* cmd, const PhysicalKeys& keys) {
+        exploreJoin(s, addSpace, cmd, keys);
       }
     );
   }
@@ -515,6 +542,31 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
     if (!maybeState) continue;
     EditState s = std::move(*maybeState);
 
+    // Join handler for pure deletion: J/gJ merges lines without adding new content
+    auto exploreJoin = [&](const EditState& base, bool addSpace,
+                           const char* joinCmd, const PhysicalKeys& joinKeys) {
+      EditState newState = base;
+      newState.applyJoin(addSpace);
+      const Lines& lines = newState.getLines();
+
+      if (isGoalReached(lines)) {
+        int idx = newState.getStartIndex();
+        if (results[idx].isValid()) return;
+
+        string seqStr = newState.getSeq() + joinCmd;
+        RunningEffort effort = newState.getRunningEffort();
+        double totalEffort = effort.append(joinKeys, config);
+        results[idx] = Result(seqStr, totalEffort);
+        ctx.resultsFound++;
+        return;
+      }
+
+      newState.appendToSeq(joinCmd);
+      newState.updateEffort(joinKeys, config);
+      newState.updateCost(newState.getEffort() + ctx.heuristic(lines));
+      ctx.exploreNewState(std::move(newState));
+    };
+
     // Explore all deletions (characterwise + linewise) via EditSearchContext
     ctx.exploreAllDeletions(
       s,
@@ -532,8 +584,56 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
         newState.updateEffort(keys, config);
         newState.updateCost(newState.getEffort() + ctx.heuristic(newState.getLines()));
         ctx.exploreNewState(std::move(newState));
+      },
+      [&](bool addSpace, const char* cmd, const PhysicalKeys& keys) {
+        exploreJoin(s, addSpace, cmd, keys);
       }
     );
+  }
+
+  // Try visual mode deletion: v{motion}d from first content position to last
+  // This only applies to position 0 (first content position)
+  if (ctx.effectiveLines.size() > 1 ||
+      static_cast<int>(ctx.effectiveLines[0].size()) > ctx.leftColOffset + ctx.rightColOffset) {
+    // First content position
+    Position firstPos(0, ctx.leftColOffset);
+
+    // Last content position
+    int lastLine = ctx.effectiveLines.lastLine();
+    int lastCol = static_cast<int>(ctx.effectiveLines[lastLine].size()) - 1 - ctx.rightColOffset;
+    Position lastPos(lastLine, max(0, lastCol));
+
+    // Only try visual if there's actual content to select
+    if (lastPos > firstPos || (lastPos.line == firstPos.line && lastPos.col > firstPos.col)) {
+      MotionOptimizer motionOpt(config, params);
+      NavContext navCtx;
+
+      // Find best motion from first to last - use unbounded overload
+      auto motionResults = motionOpt.optimize(
+          ctx.effectiveLines,
+          firstPos,
+          lastPos,
+          navCtx
+      );
+
+      if (!motionResults.empty() && motionResults[0].isValid()) {
+        // Build visual mode sequence: v + motion + d
+        string visualSeq = "v" + motionResults[0].getSequenceString() + "d";
+
+        // Calculate effort: v + motion + d
+        RunningEffort effort;
+        static const PhysicalKeys vKey = {Key::Key_V};
+        static const PhysicalKeys dKey = {Key::Key_D};
+        effort.append(vKey, config);
+        effort.append(globalTokenizer().tokenize(motionResults[0].getSequenceString()), config);
+        double totalEffort = effort.append(dKey, config);
+
+        // Compare with existing result[0] and use better one
+        if (!results[0].isValid() || totalEffort < results[0].keyCost) {
+          results[0] = Result(visualSeq, totalEffort);
+        }
+      }
+    }
   }
 
   return results;

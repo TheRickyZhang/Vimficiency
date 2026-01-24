@@ -107,6 +107,11 @@ public:
     pos.setCol(0);  // Updates both col and targetCol
   }
 
+  // Apply J/gJ command (join current line with next)
+  void applyJoin(bool addSpace) {
+    VimCore::joinLines(lines, pos, addSpace);
+  }
+
   // Append a command string to the sequence
   void appendToSeq(const char* cmd) {
     seq_ += cmd;

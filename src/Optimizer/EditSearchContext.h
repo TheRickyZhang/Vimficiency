@@ -30,6 +30,10 @@ using LinewiseCallback = std::function<void(int, const char*, const PhysicalKeys
 // Called with (newPos, motionCmd, motionKeys) - no buffer change, just cursor movement
 using MotionCallback = std::function<void(const Position&, const char*, const PhysicalKeys&)>;
 
+// Callback type for join command exploration (J/gJ)
+// Called with (addSpace, joinCmd, joinKeys) - modifies buffer by joining current line with next
+using JoinCallback = std::function<void(bool, const char*, const PhysicalKeys&)>;
+
 // EditSearchContext encapsulates shared state and logic for edit optimization search.
 // Used by both optimizeEdit and optimizePureDeletion to avoid massive code duplication.
 struct EditSearchContext {
@@ -78,10 +82,16 @@ struct EditSearchContext {
   // Calls onDeletion for characterwise deletions, onLinewise for full-line (dd)
   // Pass nullptr for onLinewise to skip linewise exploration
   // Pass onMotion to explore pure cursor movements when cursor is in boundary region
+  // Pass onJoin to explore J/gJ commands when valid
   void exploreAllDeletions(const EditState& state,
                            DeletionCallback onDeletion,
                            LinewiseCallback onLinewise = nullptr,
-                           MotionCallback onMotion = nullptr);
+                           MotionCallback onMotion = nullptr,
+                           JoinCallback onJoin = nullptr);
+
+  // Explore J/gJ commands from current state
+  // Only valid when cursor line has a next line and joining wouldn't cross into suffix boundary
+  void exploreJoinCommands(const Position& cursor, const Lines& lines, JoinCallback onJoin);
 
 
   // Check if search should continue

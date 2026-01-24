@@ -1,5 +1,7 @@
 #include "MotionOptimizer.h"
 
+#include <limits>
+
 #include "BufferIndex.h"
 #include "MotionToSpec.h"
 #include "State/PosKey.h"
@@ -30,7 +32,10 @@ vector<Result> MotionOptimizer::optimize(
   BufferIndex bufferIndex(lines);
 
   int totalExplored = 0;
-  double userEffort = getEffort(userSequence, config);
+  // Empty userSequence means unbounded exploration
+  double userEffort = userSequence.empty()
+      ? numeric_limits<double>::max()
+      : getEffort(userSequence, config);
 
   // Create initial state: effort=0 (fresh start), cost=heuristic
   // Only RunningEffort is continued from caller for correct typing effort calculation
@@ -594,4 +599,25 @@ vector<RangeResult> MotionOptimizer::optimizeToRange(
     }
     return results;
   }
+}
+
+// Overload without userSequence - uses unbounded effort exploration
+vector<Result> MotionOptimizer::optimize(
+    const Lines& lines,
+    const Position& startPos,
+    const Position& endPos,
+    const NavContext& navigationContext,
+    const MotionBoundary& boundary,
+    const optional<OptimizerParams>& paramsOverride) {
+  return optimize(
+      lines,
+      startPos,
+      RunningEffort(),
+      endPos,
+      "",  // Empty signals unbounded
+      navigationContext,
+      boundary,
+      EXPLORABLE_MOTIONS,
+      paramsOverride
+  );
 }

@@ -70,6 +70,17 @@ struct MotionOptimizer {
     const std::optional<OptimizerParams>& paramsOverride = std::nullopt
   );
 
+  // Overload without userSequence - uses unbounded effort exploration
+  // Useful when finding optimal path without a user baseline to compare against
+  std::vector<Result> optimize(
+    const Lines& lines,
+    const Position& startPos,
+    const Position& endPos,
+    const NavContext& navigationContext,
+    const MotionBoundary& boundary = MotionBoundary(),
+    const std::optional<OptimizerParams>& paramsOverride = std::nullopt
+  );
+
   // Multi-sink movement optimization: find paths to any position in [rangeFirst, rangeLast]
   // Only RunningEffort maybe continued from previous state.
   // Returns up to params.maxResults unique end positions.
