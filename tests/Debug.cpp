@@ -22,6 +22,7 @@
 #include "VimCore/VimMotionUtils.h"
 #include "VimCore/SentenceEdgeType.h"
 #include "Editor/Motion.h"
+#include "Editor/Edit.h"
 
 using namespace std;
 
@@ -467,6 +468,63 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceMixedContentFailure) {
   }
 
   EXPECT_TRUE(false) << "Debug test - check output above";
+}
+
+TEST_F(NeovimOracleDebug, DISABLED_InvestigateJWithSuffix) {
+  // From OutputCorrectnessTest.MultiLineEmbedded failure:
+  // FAIL iter=7 editPos=[0,2] bufferPos=[0,4] seq='XXJgJXXxxxxxdge'
+  //   FullBuffer: ffade\nfbdc\ndaeaad
+  //   EditRegion: ade\nfbdc\ndaeaa
+  //   Expected: 'ffd'
+  //   Got: 'ff'
+  //
+  // prefix = "ff", suffix = "d"
+  // The suffix 'd' is being deleted when it shouldn't be
+
+  Lines fullBuffer = {"ffade", "fbdc", "daeaad"};
+
+  cerr << "\n=== Comparing Neovim vs our applyEdit step-by-step ===" << endl;
+  cerr << "FullBuffer: " << fullBuffer << endl;
+  cerr << "Start: (0, 4)" << endl;
+
+  // Test individual commands
+  vector<string> cmds = {"X", "X", "J", "gJ", "X", "X", "x", "x", "x", "x", "x", "dge"};
+
+  // Track Neovim state
+  Lines nvimBuf = fullBuffer;
+  int nvimRow = 0, nvimCol = 4;
+
+  // Track our state
+  Lines ourBuf = fullBuffer;
+  Position ourPos(0, 4);
+  Mode ourMode = Mode::Normal;
+
+  for (const auto& cmd : cmds) {
+    // Neovim
+    auto nvim = oracle_->simulate(nvimBuf, nvimRow, nvimCol, cmd);
+
+    // Ours
+    for (const auto& op : Edit::parseEdits(cmd)) {
+      Edit::applyEdit(ourBuf, ourPos, ourMode, op);
+    }
+
+    bool linesMatch = (ourBuf == nvim.lines);
+    bool cursorMatch = (ourPos.line == nvim.row && ourPos.col == nvim.col);
+
+    cerr << "'" << cmd << "': ";
+    if (!linesMatch || !cursorMatch) {
+      cerr << "MISMATCH!" << endl;
+      cerr << "  Neovim: buf='" << nvim.lines.flatten() << "' cursor=(" << nvim.row << "," << nvim.col << ")" << endl;
+      cerr << "  Ours:   buf='" << ourBuf.flatten() << "' cursor=(" << ourPos.line << "," << ourPos.col << ")" << endl;
+      cerr << "  targetCol=" << ourPos.targetCol << endl;
+    } else {
+      cerr << "OK buf='" << nvim.lines.flatten() << "' cursor=(" << nvim.row << "," << nvim.col << ")" << endl;
+    }
+
+    nvimBuf = nvim.lines;
+    nvimRow = nvim.row;
+    nvimCol = nvim.col;
+  }
 }
 
 TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceIndexFailure) {

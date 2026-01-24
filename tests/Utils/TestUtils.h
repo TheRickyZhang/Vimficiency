@@ -36,10 +36,9 @@ inline bool hasSequenceStartingWith(const std::vector<Result>& results,
 
 // Print results for manual inspection (limited to first N)
 inline void printResultsDebug(const std::vector<Result>& results,
-                              const std::string& description,
-                              size_t maxResults = 10) {
+                              const std::string& description) {
   std::cerr << "\n=== " << description << " ===" << std::endl;
-  for (size_t i = 0; i < results.size() && i < maxResults; i++) {
+  for (size_t i = 0; i < results.size(); i++) {
     std::cerr << "  " << i << ": " << results[i].getSequenceString()
               << " (cost=" << results[i].keyCost << ")" << std::endl;
   }

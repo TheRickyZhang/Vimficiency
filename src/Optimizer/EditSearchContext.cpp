@@ -46,7 +46,7 @@ void EditSearchContext::exploreNewState(EditState&& state) {
   auto it = costMap.find(key);
 
   double newCost = state.getCost();
-  if (it == costMap.end() || newCost < it->second) {
+  if (it == costMap.end() || newCost <= it->second) {
     costMap[key] = newCost;
     pq.push(std::move(state));
   }
@@ -95,6 +95,8 @@ double EditSearchContext::heuristic(const Lines& lines) const {
     if (i == lines.size() - 1) lineLen -= rightColOffset;
     total += max(0, lineLen);
   }
+  // Newlines count as 2 (n lines have n-1 newlines)
+  total += (static_cast<int>(lines.size()) - 1) * 2;
   return static_cast<double>(total);
 }
 
@@ -363,12 +365,10 @@ void EditSearchContext::exploreJoinCommands(
 
   int nextLine = cursor.line + 1;
 
-  // Don't allow J if joining would merge suffix content into current line
-  // This happens when next line is the last line AND it has suffix content
-  if (nextLine == lines.lastLine() && rightColOffset > 0) return;
-
   // Don't allow J if there are lines below the edit region
-  // (the "last line" of effectiveLines represents content that shouldn't be joined)
+  // (would pull content from outside the edit region)
+  // Note: J with suffix line IS allowed - after J, the suffix moves to end of
+  // the merged line, which becomes the new lastLine(), so boundary checks still work
   if (nextLine == lines.lastLine() && editBoundary.hasLinesBelow()) return;
 
   // Explore both J (with space) and gJ (without space)

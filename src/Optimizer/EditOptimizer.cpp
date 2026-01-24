@@ -139,13 +139,13 @@ pair<string, PhysicalKeys> buildTypedCommands(const Lines &goalLines) {
 
 } // anonymous namespace
 
-// How many characters remaining, including new lines
+// How many characters remaining, including newlines (newlines count as 2)
 double EditOptimizer::heuristic(const Lines &lines) const {
   double total = 0;
   for (size_t i = 0; i < lines.size(); i++) {
     total += lines[i].size();
     if (i < lines.size() - 1)
-      total += 1;
+      total += 2;  // Newlines worth 2 to prioritize line-joining operations
   }
   return total;
 }

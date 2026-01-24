@@ -192,7 +192,13 @@ void joinLines(Lines& lines, Position& pos, bool addSpace) {
   // Remove the next line
   lines.erase(lines.begin() + pos.line + 1);
 
-  pos.setCol(joinCol > 0 ? joinCol - 1 : 0);
+  // J: cursor on inserted space (joinCol - 1)
+  // gJ: cursor on first char of joined content (joinCol)
+  if (addSpace) {
+    pos.setCol(joinCol > 0 ? joinCol - 1 : 0);
+  } else {
+    pos.setCol(joinCol);
+  }
 }
 
 void openLineBelow(Lines& lines, Position& pos) {

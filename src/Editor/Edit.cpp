@@ -204,6 +204,39 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit) 
   int n = static_cast<int>(lines.size());
   int m = static_cast<int>(line.size());
 
+  // Handle visual mode sequences first (before empty line check)
+  // These are parsed as complete tokens like "vjd", "v}d", "vwhjd"
+  if (mode == Mode::Normal && e.size() >= 2 && e[0] == 'v') {
+    char op = e.back();  // 'd' or 'c'
+    if (op != 'd' && op != 'c') {
+      throw runtime_error("Visual mode sequence must end with 'd' or 'c': " + string(e));
+    }
+
+    // Extract motion part (between 'v' and operator)
+    string motionSeq(e.substr(1, e.size() - 2));
+
+    // Record anchor position
+    Position anchor = pos;
+
+    // Apply motions to get end position
+    for (const auto& motion : parseEdits(motionSeq)) {
+      applyEdit(lines, pos, mode, motion);
+    }
+
+    // Compute range (visual mode is inclusive of both endpoints)
+    Range r(anchor, pos);
+    r.normalize();
+
+    // Apply operator
+    if (op == 'd') {
+      VimCore::deleteRange(lines, r, pos);
+    } else {  // op == 'c'
+      VimCore::deleteRange(lines, r, pos, Mode::Insert);
+      mode = Mode::Insert;
+    }
+    return;
+  }
+
   // Empty line: only switch to insert mode, vertical motion, navigation, and word motions
   // (empty line is considered a "word" for dw/dW purposes)
   if (line.empty() && mode == Mode::Normal) {
@@ -991,6 +1024,22 @@ vector<ParsedEdit> parseEdits(const string& seq) {
         i += 2;
         continue;
       }
+    }
+
+    // Visual mode: v + motion(s) + operator (d or c)
+    // Parse entire visual sequence as single token
+    if (c == 'v') {
+      size_t start = i;
+      i++;  // Skip 'v'
+      // Find the ending operator (d or c)
+      while (i < sv.size() && sv[i] != 'd' && sv[i] != 'c') {
+        i++;
+      }
+      if (i < sv.size()) {
+        i++;  // Include the operator
+      }
+      result.push_back(ParsedEdit{sv.substr(start, i - start), cnt});
+      continue;
     }
 
     // Single character (for insert mode typed characters, navigation, etc.)

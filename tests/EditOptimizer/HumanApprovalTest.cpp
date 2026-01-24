@@ -25,7 +25,7 @@ class EditOptimizerHumanApprovalTests : public ::testing::Test {
 protected:
   inline static const Config config = Config::uniform();
   inline static NavContext navContext = NavContext();
-  inline static OptimizerParams params = OptimizerParams(10, 1e4, 1.0, 2.0);
+  inline static OptimizerParams params = OptimizerParams(20, 2e4, 1.0, 2.0);
   inline static EditOptimizer opt = EditOptimizer(config, params);
 
   static void SetUpTestSuite() {
@@ -52,58 +52,64 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionSingleWord) {
       << "Expected dw or de for single word, got: " << seq;
 }
 
-TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionMultipleWords) {
+TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionMultipleLines) {
   // Delete multiple words on single line
-  Lines initialLines = {"hello world foo bar"};
+  Lines initialLines = {
+    "aa bb",
+    "arst neio"
+  };
   EditBoundary boundary(initialLines, {0, 0}, initialLines.lastPos());
 
   vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
 
-  printResultsDebug(res, "Delete multiple words");
+  printResultsDebug(res, "Delete multiple lines");
   // For longer single-line content, visual mode should be competitive
   ASSERT_TRUE(res[0].isValid());
 }
 
 TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTop) {
-  // Delete a short word
-  Lines initialLines = {
+  // Delete content with prefix on first line (no suffix)
+  Lines fullBuffer = {
     "arstn arstn",
     "arstn arstn",
   };
-  // " " in first line, last char
+  // Edit region: from " " in first line to last char
   Position firstPos(0, 5), lastPos(1, 10);
-  EditBoundary boundary(initialLines, firstPos, lastPos);
+  Lines editRegion = fullBuffer.getSpan(firstPos, lastPos);
+  EditBoundary boundary(fullBuffer, firstPos, lastPos);
 
-  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
+  vector<Result> res = opt.optimizePureDeletion(editRegion, boundary);
   printResultsDebug(res, "Delete straddle top");
 }
 
 
 TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleBottom) {
-  // Delete a short word
-  Lines initialLines = {
+  // Delete content with suffix on last line (no prefix)
+  Lines fullBuffer = {
     "arstn arstn",
     "arstn arstn",
   };
-  // first char, " " in second line
+  // Edit region: from first char to " " in second line
   Position firstPos(0, 0), lastPos(1, 5);
-  EditBoundary boundary(initialLines, firstPos, lastPos);
+  Lines editRegion = fullBuffer.getSpan(firstPos, lastPos);
+  EditBoundary boundary(fullBuffer, firstPos, lastPos);
 
-  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
+  vector<Result> res = opt.optimizePureDeletion(editRegion, boundary);
   printResultsDebug(res, "Delete straddle bottom");
 }
 
 TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTopAndBottom) {
-  // Delete content that straddles prefix and suffix on both lines
-  Lines initialLines = {
+  // Delete content with both prefix and suffix (middle portion of two lines)
+  Lines fullBuffer = {
     "arstn arstn",
     "arstn arstn",
   };
-  // first " ", second " "
+  // Edit region: from first " " to second " " (middle portion)
   Position firstPos(0, 5), lastPos(1, 5);
-  EditBoundary boundary(initialLines, firstPos, lastPos);
+  Lines editRegion = fullBuffer.getSpan(firstPos, lastPos);
+  EditBoundary boundary(fullBuffer, firstPos, lastPos);
 
-  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
+  vector<Result> res = opt.optimizePureDeletion(editRegion, boundary);
   printResultsDebug(res, "Delete straddle top and bottom");
 
   // Visual mode should be the best solution here
