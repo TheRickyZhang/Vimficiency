@@ -3,14 +3,15 @@ Insert Mode handling (just a lot more stuff)     ********* (very very difficult)
 Implement CompositionOptimizer
 Implement quote and bracket text object motions (see quoteFlags/bracketFlags)
 Handle pureInsertion case
-
 Review human tests.
+
 
 Can skip F-motions if no endpoints found?
 Any inclusive boundaries we can more cleanly model as half-open?
+Benchmark search time based on buffer size, search space, A* vs Dijkstra. And what order/frequency results found.
+Extend a lot of EditOptimizer-specific changes to MotionOptimizer.
 
-
-Quote psuedocode:
+Quote pseudocode:
 Precompute Edit regions
 For each computed state, from the newly implemented edit section to start of next edit section (suppose i just applied first edit: aa aa cc -> aa bb cc. Then we consider region from first b to space before c), basically whatever indices are valid on the same line, but before next edit.
 If the first quote is right before the edit region, and the next quote is right after the edit region, then we can do a di"/ci" -> pure insert, no need to search

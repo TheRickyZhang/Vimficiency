@@ -14,6 +14,7 @@
 #include "Optimizer/EditOptimizer.h"
 #include "Boundary/EditBoundary.h"
 #include "Utils/Lines.h"
+// #include "Utils/TestUtils.h"
 #include "Utils/NeovimOracle.h"
 
 using namespace std;
@@ -144,6 +145,7 @@ TEST_F(EditOptimizer_ManualTest, Boundary_SingleLineSurrounded) {
   EditBoundary boundary(fullBuffer, startPos, endPos);
 
   EditResult res = opt.optimizeEdit(editRegion, {""}, boundary);
+  // printResultsDebug(res.typeAllResults, "boundary line surrounded");
   EXPECT_TRUE(allPositionsValid(res.typeAllResults, editRegion));
 }
 

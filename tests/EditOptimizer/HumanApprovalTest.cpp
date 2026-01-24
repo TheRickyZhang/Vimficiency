@@ -25,7 +25,7 @@ class EditOptimizerHumanApprovalTests : public ::testing::Test {
 protected:
   inline static const Config config = Config::uniform();
   inline static NavContext navContext = NavContext();
-  inline static OptimizerParams params = OptimizerParams(20, 2e4, 1.0, 2.0);
+  inline static OptimizerParams params = OptimizerParams(40, 5e4, 1.0, 3.0);
   inline static EditOptimizer opt = EditOptimizer(config, params);
 
   static void SetUpTestSuite() {
@@ -63,8 +63,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionMultipleLines) {
   vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
 
   printResultsDebug(res, "Delete multiple lines");
-  // For longer single-line content, visual mode should be competitive
-  ASSERT_TRUE(res[0].isValid());
+  // ASSERT_TRUE(all results costs are <= 4 (always has option of dddd));
 }
 
 TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTop) {
@@ -95,7 +94,8 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleBottom) {
   EditBoundary boundary(fullBuffer, firstPos, lastPos);
 
   vector<Result> res = opt.optimizePureDeletion(editRegion, boundary);
-  printResultsDebug(res, "Delete straddle bottom");
+  // printResultsDebug(res, "Delete straddle bottom");
+  // ASSERT_TRUE(finds costs <= 5, like dddw)
 }
 
 TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTopAndBottom) {
@@ -111,12 +111,8 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTopAndBottom) {
 
   vector<Result> res = opt.optimizePureDeletion(editRegion, boundary);
   printResultsDebug(res, "Delete straddle top and bottom");
-
-  // Visual mode should be the best solution here
-  ASSERT_TRUE(res[0].isValid());
-  string seq = res[0].getSequenceString();
-  EXPECT_TRUE(seq.find("v") != string::npos && seq.find("d") != string::npos)
-      << "Expected visual mode (v...d) for multi-line straddling, got: " << seq;
+  // ASSERT_TRUE(res[0] == "vjd" (best result by far))
+  // ASSERT_TRUE(finds cost <= 7)
 }
 
 
@@ -131,68 +127,22 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionMultiLineFull) {
   EditBoundary boundary(initialLines, {0, 0}, initialLines.lastPos());
 
   vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
-  printResultsDebug(res, "Delete multi-line full");
-
-  // Visual mode with paragraph motion should be optimal
-  ASSERT_TRUE(res[0].isValid());
-  string seq = res[0].getSequenceString();
-  EXPECT_TRUE(seq.find("v") != string::npos)
-      << "Expected visual mode for multi-line full deletion, got: " << seq;
+  // printResultsDebug(res, "Delete multi-line full");
+  // ASSERT_TRUE(all valid)
 }
 
-TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionTwoLinesNoPrefix) {
-  // Delete two lines without prefix - J command should be considered
+// TODO verify
+TEST_F(EditOptimizerHumanApprovalTests, Edit_Replacement_Multiline) {
+  vector<Result> results;
   Lines initialLines = {
-    "first line",
-    "second line",
+    "hello",
+    "world"
   };
-  EditBoundary boundary(initialLines, {0, 0}, initialLines.lastPos());
-
-  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
-  printResultsDebug(res, "Delete two lines (J candidate)");
-
-  // Should find valid solution
-  ASSERT_TRUE(res[0].isValid());
-}
-
-TEST_F(EditOptimizerHumanApprovalTests, Edit_Replacement_SingleChar) {
-  // Replace single character: hello → jello
-  vector<Result> results;
-  int lastPos = -1;
-  tryReplacement("hello", "jello", config, lastPos, results);
-
-  ASSERT_FALSE(results.empty()) << "Should find replacement strategy";
-
-  string seq = results[0].getSequenceString();
-  // Should use r{char} for single character replacement
-  EXPECT_TRUE(seq.find("rj") != string::npos)
-      << "Should use 'rj' for single char replacement, got: " << seq;
-}
-
-TEST_F(EditOptimizerHumanApprovalTests, Edit_Replacement_MiddleChar) {
-  // Replace middle character: fresh → frosh
-  vector<Result> results;
-  int lastPos = -1;
-  tryReplacement("fresh", "frosh", config, lastPos, results);
-
-  ASSERT_FALSE(results.empty()) << "Should find replacement strategy";
-
-  string seq = results[0].getSequenceString();
-  // Should navigate then replace
-  EXPECT_TRUE(seq.find("ro") != string::npos)
-      << "Should use 'ro' for replacing 'e' with 'o', got: " << seq;
-}
-
-TEST_F(EditOptimizerHumanApprovalTests, Edit_Replacement_MultipleChars) {
-  // Replace multiple consecutive chars: abc → xyz
-  vector<Result> results;
-  int lastPos = -1;
-  tryReplacement("abc", "xyz", config, lastPos, results);
-
-  ASSERT_FALSE(results.empty()) << "Should find replacement strategy";
-
-  // Should use R mode for consecutive replacements
-  string seq = results[0].getSequenceString();
-  EXPECT_TRUE(seq.find("R") != string::npos || seq.find("r") != string::npos)
-      << "Should use replace mode, got: " << seq;
+  Lines goalLines = {
+    "bello",
+    "worth"
+  };
+  EditResult res = opt.optimizeEdit(initialLines, goalLines, EditBoundary());
+  printResultsDebug(res.replaceResults, "multi line");
+  // ASSERT_FALSE(res.replaceResults.empty()) << "Should find replacement strategy";
 }

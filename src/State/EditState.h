@@ -24,13 +24,15 @@ struct EditStateKey {
   int line;
   int col;
   Mode mode;
+  int startIndex;  // Include startIndex so each starting position has independent search
 
-  EditStateKey(const Lines& l, Position p, Mode m = Mode::Normal)
-      : lines(l), line(p.line), col(p.col), mode(m) {}
+  EditStateKey(const Lines& l, Position p, Mode m, int idx)
+      : lines(l), line(p.line), col(p.col), mode(m), startIndex(idx) {}
 
   bool operator==(const EditStateKey& other) const {
     return line == other.line && col == other.col
-        && mode == other.mode && lines == other.lines;
+        && mode == other.mode && startIndex == other.startIndex
+        && lines == other.lines;
   }
 };
 
@@ -40,6 +42,7 @@ struct EditStateKeyHash {
     h ^= std::hash<int>{}(k.line) + 0x9e3779b9 + (h << 6) + (h >> 2);
     h ^= std::hash<int>{}(k.col) + 0x9e3779b9 + (h << 6) + (h >> 2);
     h ^= std::hash<int>{}(static_cast<int>(k.mode)) + 0x9e3779b9 + (h << 6) + (h >> 2);
+    h ^= std::hash<int>{}(k.startIndex) + 0x9e3779b9 + (h << 6) + (h >> 2);
     // Hash first line content for differentiation (Lines invariant: always at least one line)
     h ^= std::hash<std::string>{}(k.lines[0]) + 0x9e3779b9 + (h << 6) + (h >> 2);
     h ^= std::hash<size_t>{}(k.lines.size()) + 0x9e3779b9 + (h << 6) + (h >> 2);
@@ -66,7 +69,7 @@ public:
   EditState(Lines lines, Position pos, int startIndex, double initialCost)
     : lines(std::move(lines)), pos(pos), startIndex(startIndex), cost_(initialCost) {}
 
-  // For priority queue ordering (min-heap)
+  // For priority queue ordering (min-heap) - default uses cost (A*)
   bool operator>(const EditState& other) const { return cost_ > other.cost_; }
   bool operator<(const EditState& other) const { return cost_ < other.cost_; }
 
@@ -79,7 +82,7 @@ public:
   Mode getMode() const { return mode; }
   int getStartIndex() const { return startIndex; }
 
-  EditStateKey getKey() const { return EditStateKey(lines, pos, mode); }
+  EditStateKey getKey() const { return EditStateKey(lines, pos, mode, startIndex); }
   double getEffort() const { return effort_; }
   double getCost() const { return cost_; }
   const std::string& getSeq() const { return seq_; }

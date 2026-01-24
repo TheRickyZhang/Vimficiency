@@ -2,7 +2,6 @@
 
 #include "Optimizer/Result.h"
 #include "Keyboard/KeyboardModel.h"
-#include "Utils/StringUtils.h"
 #include "Utils/Lines.h"
 
 #include <algorithm>

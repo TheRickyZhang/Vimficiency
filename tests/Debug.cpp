@@ -470,6 +470,74 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceMixedContentFailure) {
   EXPECT_TRUE(false) << "Debug test - check output above";
 }
 
+TEST_F(DebugTest, DISABLED_InvestigateSingleLineSurrounded) {
+  // From Boundary_SingleLineSurrounded failure
+  Lines fullBuffer = {"xx", "hello", "xx"};
+  Position startPos(1, 0), endPos(1, 4);
+  Lines editRegion = fullBuffer.getSpan(startPos, endPos);
+  EditBoundary boundary(fullBuffer, startPos, endPos);
+
+  cerr << "\n=== SingleLineSurrounded Investigation ===" << endl;
+  cerr << "fullBuffer: " << fullBuffer << endl;
+  cerr << "editRegion: " << editRegion << endl;
+  cerr << "hasLinesAbove: " << boundary.hasLinesAbove() << endl;
+  cerr << "hasLinesBelow: " << boundary.hasLinesBelow() << endl;
+  cerr << "prefix: '" << boundary.prefix() << "'" << endl;
+  cerr << "suffix: '" << boundary.suffix() << "'" << endl;
+
+  EditOptimizer opt(config, OptimizerParams(30, 1e5, 1.0, 2.0));
+  EditResult res = opt.optimizeEdit(editRegion, {""}, boundary);
+
+  cerr << "\nResults (typeAllResults):" << endl;
+  for (int i = 0; i < static_cast<int>(res.typeAllResults.size()); i++) {
+    const auto& r = res.typeAllResults[i];
+    if (r.isValid()) {
+      cerr << "  " << i << ": " << r.getSequenceString() << " (cost=" << r.keyCost << ")" << endl;
+    } else {
+      cerr << "  " << i << ": INVALID" << endl;
+    }
+  }
+}
+
+TEST_F(DebugTest, DISABLED_InvestigatePosition11) {
+  // Position 11 finds d{de (cost 5) instead of dddd (cost 4) with 10K iterations
+  // With 1M iterations, finds d{D (cost 3) - actually better!
+  // Conclusion: The fix works, but search budget affects results
+  Lines initialLines = {"aa bb", "arst neio"};
+  EditBoundary boundary(initialLines, {0, 0}, initialLines.lastPos());
+
+  // Position 11 is line 1, col 6 ('e' in "arst neio")
+  cerr << "\n=== Position 11 Investigation ===" << endl;
+  cerr << "Buffer: " << initialLines << endl;
+  cerr << "Position 11 is (1, 6) = '" << initialLines[1][6] << "'" << endl;
+
+  // Trace the optimal d{D sequence
+  Lines buf = initialLines;
+  Position pos(1, 6);
+  Mode mode = Mode::Normal;
+
+  cerr << "\nTracing d{D from (1,6):" << endl;
+  for (const auto& op : Edit::parseEdits("d{D")) {
+    cerr << "  Before: " << buf << " pos=" << pos << endl;
+    Edit::applyEdit(buf, pos, mode, op);
+    cerr << "  After '" << op.edit << "': " << buf << " pos=" << pos << endl;
+  }
+  cerr << "Final buffer empty? " << buf.isEmpty() << endl;
+
+  // Compare 10K vs 1M iterations
+  cerr << "\n=== Comparing iteration limits ===" << endl;
+
+  EditOptimizer opt10k(config, OptimizerParams(30, 1e4, 1.0, 2.0));
+  vector<Result> res10k = opt10k.optimizePureDeletion(initialLines, boundary);
+  cerr << "10K iterations: " << res10k[11].getSequenceString()
+       << " (cost=" << res10k[11].keyCost << ")" << endl;
+
+  EditOptimizer opt1m(config, OptimizerParams(30, 1e6, 1.0, 2.0));
+  vector<Result> res1m = opt1m.optimizePureDeletion(initialLines, boundary);
+  cerr << "1M iterations:  " << res1m[11].getSequenceString()
+       << " (cost=" << res1m[11].keyCost << ")" << endl;
+}
+
 TEST_F(NeovimOracleDebug, DISABLED_InvestigateJWithSuffix) {
   // From OutputCorrectnessTest.MultiLineEmbedded failure:
   // FAIL iter=7 editPos=[0,2] bufferPos=[0,4] seq='XXJgJXXxxxxxdge'

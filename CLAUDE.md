@@ -45,6 +45,7 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 - Ensure CAREFUL handling of targetCol (Vim's curswant) within Position.h by calling the correct column method
 - We use [begin, end) for half-open intervals, and \[first, last\] for inclusive intervals, such as beginPos/endPos, firstPos/lastPos
 - For pre/post state, we use initial, goal, such as initialLines, goalLines.
+- We highly prioritize speed. Our default optimizer algorithm is an eager A*, which uses results when first searched, which may not be the best, and has some position start starving issues due to inadmissable heuristic.
 
 ## Build Commands
 

@@ -474,16 +474,18 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
     newState.applyDeletion(range);
     const Lines &lines = newState.getLines();
 
+    // Check goal immediately - multi-source A* needs this since state key doesn't include startIndex
+    // Update if better since exploration order doesn't guarantee optimality per-source
     if (isGoalReached(lines)) {
       int idx = newState.getStartIndex();
-      if (results[idx].isValid()) return;
-
-      string seqStr = newState.getSeq() + deleteCmd;
       RunningEffort effort = newState.getRunningEffort();
       double totalEffort = effort.append(deleteKeys, config);
 
-      results[idx] = Result(seqStr, totalEffort);
-      ctx.resultsFound++;
+      bool isNew = !results[idx].isValid();
+      if (isNew || totalEffort < results[idx].keyCost) {
+        results[idx] = Result(newState.getSeq() + deleteCmd, totalEffort);
+        if (isNew) ctx.resultsFound++;
+      }
       return;
     }
 
@@ -516,15 +518,18 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
       newState.setPos(pos);
     }
 
+    // Check goal immediately - multi-source A* needs this since state key doesn't include startIndex
+    // Update if better since exploration order doesn't guarantee optimality per-source
     if (isGoalReached(lines)) {
       int idx = newState.getStartIndex();
-      if (results[idx].isValid()) return;
-
-      string seqStr = newState.getSeq() + cmdSeq;
       RunningEffort effort = newState.getRunningEffort();
       double totalEffort = effort.append(cmdKeys, config);
-      results[idx] = Result(seqStr, totalEffort);
-      ctx.resultsFound++;
+
+      bool isNew = !results[idx].isValid();
+      if (isNew || totalEffort < results[idx].keyCost) {
+        results[idx] = Result(newState.getSeq() + cmdSeq, totalEffort);
+        if (isNew) ctx.resultsFound++;
+      }
       return;
     }
 
@@ -542,6 +547,10 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
     if (!maybeState) continue;
     EditState s = std::move(*maybeState);
 
+    // Early stopping: skip if this startIndex already has a result
+    // Since A* explores in cost order, first result found is optimal
+    if (results[s.getStartIndex()].isValid()) continue;
+
     // Join handler for pure deletion: J/gJ merges lines without adding new content
     auto exploreJoin = [&](const EditState& base, bool addSpace,
                            const char* joinCmd, const PhysicalKeys& joinKeys) {
@@ -549,15 +558,18 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
       newState.applyJoin(addSpace);
       const Lines& lines = newState.getLines();
 
+      // Check goal immediately - multi-source A* needs this since state key doesn't include startIndex
+      // Update if better since exploration order doesn't guarantee optimality per-source
       if (isGoalReached(lines)) {
         int idx = newState.getStartIndex();
-        if (results[idx].isValid()) return;
-
-        string seqStr = newState.getSeq() + joinCmd;
         RunningEffort effort = newState.getRunningEffort();
         double totalEffort = effort.append(joinKeys, config);
-        results[idx] = Result(seqStr, totalEffort);
-        ctx.resultsFound++;
+
+        bool isNew = !results[idx].isValid();
+        if (isNew || totalEffort < results[idx].keyCost) {
+          results[idx] = Result(newState.getSeq() + joinCmd, totalEffort);
+          if (isNew) ctx.resultsFound++;
+        }
         return;
       }
 

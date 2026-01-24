@@ -10,13 +10,10 @@
 #include "Editor/Position.h"
 #include "Editor/Range.h"
 #include "EditToSpec.h"
-#include "Keyboard/EditToKeys.h"
 #include "Keyboard/KeyboardModel.h"
 #include "State/EditState.h"
 #include "Utils/Lines.h"
 #include "VimCore/VimEndpointUtils.h"
-#include "VimCore/LineEdgeType.h"
-#include "VimCore/SentenceEdgeType.h"
 
 // Callback type for characterwise deletion exploration
 // Called with (range, deleteCmd, deleteKeys) for each valid deletion
@@ -34,6 +31,30 @@ using MotionCallback = std::function<void(const Position&, const char*, const Ph
 // Called with (addSpace, joinCmd, joinKeys) - modifies buffer by joining current line with next
 using JoinCallback = std::function<void(bool, const char*, const PhysicalKeys&)>;
 
+// Comparator for EditState priority queue (compile-time selection).
+// Dijkstra mode: effort-only priority (guarantees optimality)
+// A* mode: effort+heuristic priority (faster but may be suboptimal with inadmissible heuristic)
+// Tie-break by startIndex for fair multi-source exploration.
+template<bool UseDijkstra>
+struct EditStateComparator {
+  bool operator()(const EditState& a, const EditState& b) const {
+    double aPriority, bPriority;
+    if constexpr (UseDijkstra) {
+      aPriority = a.getEffort();
+      bPriority = b.getEffort();
+    } else {
+      aPriority = a.getCost();
+      bPriority = b.getCost();
+    }
+    if (aPriority != bPriority) return aPriority > bPriority;  // min-heap
+    return a.getStartIndex() > b.getStartIndex();
+  }
+};
+
+// Type aliases for common comparator configurations
+using DijkstraComparator = EditStateComparator<true>;
+using AStarComparator = EditStateComparator<false>;
+
 // EditSearchContext encapsulates shared state and logic for edit optimization search.
 // Used by both optimizeEdit and optimizePureDeletion to avoid massive code duplication.
 struct EditSearchContext {
@@ -49,8 +70,10 @@ struct EditSearchContext {
   // Effective lines (edit region with added prefix/suffix)
   Lines effectiveLines;
 
-  // Search state
-  std::priority_queue<EditState, std::vector<EditState>, std::greater<EditState>> pq;
+  // Search state - uses A* by default (faster, but may be suboptimal with inadmissible heuristic)
+  // For guaranteed optimality, use DijkstraComparator instead
+  using PriorityQueue = std::priority_queue<EditState, std::vector<EditState>, AStarComparator>;
+  PriorityQueue pq;
   std::unordered_map<EditStateKey, double, EditStateKeyHash> costMap;
   int resultsFound = 0;
   int iterations = 0;
