@@ -1,4 +1,4 @@
-// tests/EditOptimizer/EditOptimizerTest.cpp
+// tests/EditOptimizer/ManualTest.cpp
 //
 // Manual tests for EditOptimizer with hardcoded setups.
 // Tests boundary constraints, replacement strategies, and specific behaviors.
@@ -18,7 +18,7 @@
 
 using namespace std;
 
-class EditOptimizerTest : public ::testing::Test {
+class EditOptimizer_ManualTest : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle;
   Config config = Config::uniform();
@@ -28,7 +28,7 @@ protected:
   static void TearDownTestSuite() { oracle.reset(); }
 };
 
-unique_ptr<NeovimOracle> EditOptimizerTest::oracle;
+unique_ptr<NeovimOracle> EditOptimizer_ManualTest::oracle;
 
 // =============================================================================
 // Test Helpers
@@ -106,7 +106,7 @@ void forEachValidResult(const vector<Result>& results, const Lines& lines, Fn fn
 // Pure Deletion Tests (full buffer, no boundaries)
 // =============================================================================
 
-TEST_F(EditOptimizerTest, PureDeletion_OracleVerified) {
+TEST_F(EditOptimizer_ManualTest, PureDeletion_OracleVerified) {
   // Single test with oracle verification - stress tests cover more shapes
   Lines lines = {"aa", "bb"};
   vector<Result> res = opt.optimizePureDeletion(lines, EditBoundary(lines, Position(0, 0), lines.lastPos()));
@@ -124,7 +124,7 @@ TEST_F(EditOptimizerTest, PureDeletion_OracleVerified) {
 // Boundary-Constrained Tests
 // =============================================================================
 
-TEST_F(EditOptimizerTest, Boundary_LinesBelow) {
+TEST_F(EditOptimizer_ManualTest, Boundary_LinesBelow) {
   // Edit region has lines below - tests hasLinesBelow constraint
   Lines fullBuffer = {"aa", "bb", "xx"};
   Position startPos(0, 0), endPos(1, 1);
@@ -135,7 +135,7 @@ TEST_F(EditOptimizerTest, Boundary_LinesBelow) {
   EXPECT_TRUE(allPositionsValid(res.typeAllResults, editRegion));
 }
 
-TEST_F(EditOptimizerTest, Boundary_SingleLineSurrounded) {
+TEST_F(EditOptimizer_ManualTest, Boundary_SingleLineSurrounded) {
   // Single line edit region surrounded by other lines
   // Can't use dd - must use S/cc
   Lines fullBuffer = {"xx", "hello", "xx"};
@@ -147,7 +147,7 @@ TEST_F(EditOptimizerTest, Boundary_SingleLineSurrounded) {
   EXPECT_TRUE(allPositionsValid(res.typeAllResults, editRegion));
 }
 
-TEST_F(EditOptimizerTest, Boundary_PrefixSuffix) {
+TEST_F(EditOptimizer_ManualTest, Boundary_PrefixSuffix) {
   // Edit region has prefix and suffix on same lines
   // "x aa"    <- 'x ' is prefix, 'aa' is edit region
   // "bb x"    <- 'bb' is edit region, ' x' is suffix
@@ -174,7 +174,7 @@ TEST_F(EditOptimizerTest, Boundary_PrefixSuffix) {
   });
 }
 
-TEST_F(EditOptimizerTest, Boundary_LinewiseCursorContainment) {
+TEST_F(EditOptimizer_ManualTest, Boundary_LinewiseCursorContainment) {
   // Verify cursor stays within edit region and surrounding lines unchanged
   Lines fullBuffer = {"xx", "aa", "bb", "yy"};
   Position startPos(1, 0), endPos(2, 1);
@@ -201,7 +201,7 @@ TEST_F(EditOptimizerTest, Boundary_LinewiseCursorContainment) {
 // Replacement Strategy Tests
 // =============================================================================
 
-TEST_F(EditOptimizerTest, Replacement_SingleChar) {
+TEST_F(EditOptimizer_ManualTest, Replacement_SingleChar) {
   // "hello" -> "jello" - single char at position 0
   vector<Result> results;
   int lastPos = -1;
@@ -211,7 +211,7 @@ TEST_F(EditOptimizerTest, Replacement_SingleChar) {
   EXPECT_EQ(results[0].getSequenceString(), "rj");
 }
 
-TEST_F(EditOptimizerTest, Replacement_SingleCharMiddle) {
+TEST_F(EditOptimizer_ManualTest, Replacement_SingleCharMiddle) {
   // "fresh" -> "frosh" - single char at position 2
   vector<Result> results;
   int lastPos = -1;
@@ -222,7 +222,7 @@ TEST_F(EditOptimizerTest, Replacement_SingleCharMiddle) {
   EXPECT_TRUE(seq.find("ro") != string::npos) << "Expected 'ro' in: " << seq;
 }
 
-TEST_F(EditOptimizerTest, Replacement_ConsecutiveChars) {
+TEST_F(EditOptimizer_ManualTest, Replacement_ConsecutiveChars) {
   // "abc" -> "xyz" - all three chars differ, should use R mode
   vector<Result> results;
   int lastPos = -1;
@@ -232,7 +232,7 @@ TEST_F(EditOptimizerTest, Replacement_ConsecutiveChars) {
   EXPECT_TRUE(results[0].isValid());
 }
 
-TEST_F(EditOptimizerTest, Replacement_SparseChars) {
+TEST_F(EditOptimizer_ManualTest, Replacement_SparseChars) {
   // "0000000" -> "1001001" - three non-consecutive diffs
   vector<Result> results;
   int lastPos = -1;

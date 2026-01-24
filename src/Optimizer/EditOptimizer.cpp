@@ -116,16 +116,16 @@ string deleteToChange(const string& deleteCmd) {
 }
 
 
-// Build the typed content string from endLines
-pair<string, PhysicalKeys> buildTypedCommands(const Lines &endLines) {
+// Build the typed content string from goalLines
+pair<string, PhysicalKeys> buildTypedCommands(const Lines &goalLines) {
   string str;
   PhysicalKeys keys;
-  for (size_t i = 0; i < endLines.size(); i++) {
-    str += endLines[i];
-    for (int c : endLines[i]) {
+  for (size_t i = 0; i < goalLines.size(); i++) {
+    str += goalLines[i];
+    for (int c : goalLines[i]) {
       keys.append(CHAR_TO_KEYS.at(c));
     }
-    if (i < endLines.size() - 1) {
+    if (i < goalLines.size() - 1) {
       str += "<CR>";
       keys.push_back(Key::Key_Enter);
     }
@@ -245,15 +245,15 @@ void tryReplacement(const string &deleted, const string &inserted,
 // =============================================================================
 
 EditResult
-EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
+EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
                             EditBoundary editBoundary,
                             const optional<OptimizerParams> &paramsOverride) {
-  assert(startLines != endLines);
-  assert(!startLines.empty() && "empty startlines should be handled in compositionEditor by i, a, o, O");
+  assert(initialLines != goalLines);
+  assert(!initialLines.empty() && "empty startlines should be handled in compositionEditor by i, a, o, O");
 
-  // Delegate to optimizePureDeletion for pure deletion (endLines empty)
-  if (allLinesEmpty(endLines)) {
-    vector<Result> deletionResults = optimizePureDeletion(startLines, editBoundary, paramsOverride);
+  // Delegate to optimizePureDeletion for pure deletion (goalLines empty)
+  if (allLinesEmpty(goalLines)) {
+    vector<Result> deletionResults = optimizePureDeletion(initialLines, editBoundary, paramsOverride);
     int n = static_cast<int>(deletionResults.size());
     EditResult result(n, {}, -1);
     result.typeAllResults = std::move(deletionResults);
@@ -265,15 +265,15 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
   // Get replacement results
   vector<Result> replacementResults;
   int lastReplacementPos = -1;
-  if (startLines.size() == 1 && endLines.size() == 1 &&
-      startLines[0].size() == endLines[0].size() && !startLines[0].empty()) {
-    tryReplacement(startLines[0], endLines[0], config, lastReplacementPos,
+  if (initialLines.size() == 1 && goalLines.size() == 1 &&
+      initialLines[0].size() == goalLines[0].size() && !initialLines[0].empty()) {
+    tryReplacement(initialLines[0], goalLines[0], config, lastReplacementPos,
                    replacementResults);
   }
 
   // Create search context (handles effectiveLines, offsets, search state)
-  EditSearchContext ctx(startLines, editBoundary, params, config);
-  ctx.initStartingPositions(startLines);
+  EditSearchContext ctx(initialLines, editBoundary, params, config);
+  ctx.initStartingPositions(initialLines);
 
   // Local aliases for goal checking
   const auto& pre = editBoundary.prefix();
@@ -283,7 +283,7 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
   EditResult result(ctx.totalPositions, replacementResults, lastReplacementPos);
 
   // Precompute typed content for goal state
-  auto [typedStr, typedKeys] = buildTypedCommands(endLines);
+  auto [typedStr, typedKeys] = buildTypedCommands(goalLines);
 
   // Goal check for regular edit: accepts multi-line (for collapse via <BS>/<Del>)
   auto isGoalReached = [&](const Lines &lines) -> bool {
@@ -417,16 +417,16 @@ EditOptimizer::optimizeEdit(const Lines &startLines, const Lines &endLines,
 // =============================================================================
 
 vector<Result>
-EditOptimizer::optimizePureDeletion(const Lines &startLines,
+EditOptimizer::optimizePureDeletion(const Lines &initialLines,
                                     EditBoundary editBoundary,
                                     const optional<OptimizerParams> &paramsOverride) {
-  assert(!startLines.empty() && "empty startlines should be handled in compositionEditor by i, a, o, O");
+  assert(!initialLines.empty() && "empty startlines should be handled in compositionEditor by i, a, o, O");
 
   const OptimizerParams &params = paramsOverride.value_or(defaultParams);
 
   // Create search context (handles effectiveLines, offsets, search state)
-  EditSearchContext ctx(startLines, editBoundary, params, config);
-  ctx.initStartingPositions(startLines);
+  EditSearchContext ctx(initialLines, editBoundary, params, config);
+  ctx.initStartingPositions(initialLines);
 
   // Local alias for goal checking
   const string preSuf = editBoundary.prefix() + editBoundary.suffix();

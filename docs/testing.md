@@ -1,50 +1,55 @@
-# Debugging and Testing Practices
+# Testing Guide
 
-You should have all the tools to debug any unexpected output with 100% certainty.
+## Directory Structure
 
-## Ground Truth: Neovim
-The ground truth for the output of vim commands should be Neovim itself. Use `tests/Utils/NeovimOracle` to directly get Neovim's expected output.
-
-## Vim Documentation Reference
-If you need to verify VimCore or EditBoundary behavior or implement new commands:
-- Motion commands: see `docs/vim/motion.txt`
-- Change operators: see `docs/vim/change.txt`
-- Command index: see `docs/vim/index.txt`
-
-
-### Architecture
-- Communicates via msgpack-RPC over stdin/stdout with `nvim --embed --headless`
-- Each `simulate()` call: creates scratch buffer → sets content → runs keys → reads result → deletes buffer
-- Single Neovim process reused across all tests in a suite
-
-## Test Writing Guidelines
-- For all non-ephemeral debugging, persist logic verification by writing a test
-- All vim-based tests should start with a few dense manual cases that are clear and easy to debug
-- Then below that should be random stress tests backed by NeovimOracle. This provides us with quantity.
-- Put tests in `tests/Misc` if no other places fit
-- To trace a nontrivial failure, you can use the existing Debug.cpp with DISABLED tests.
-- Use `debug()` in `Utils/Debug.h`. The project is compiled with `VIMFICIENCY_DEBUG = true` by default.
-
-### Why Randomized Tests
-- Catches edge cases you wouldn't think to test manually
-- Single test covers many scenarios (typically 100 iterations)
-- Self-documenting: if it passes with random input, the logic is robust
-
-## NeovimOracle Usage
-
-The NeovimOracle maintains a persistent Neovim subprocess. After ~800 buffer
-operations (create/delete cycles), the connection may become unstable due to
-internal state accumulation.
-
-**Solution**: Call `oracle->restart()` periodically between test groups:
-```cpp
-// After running 800 iterations of tests...
-TEST_F(MyTest, NextGroup_FirstTest) {
-  oracle->restart();  // Reset Neovim subprocess
-  // ... test code
-}
 ```
-### Basic Usage
+tests/
+├── Commands/          # VimCore motion correctness (vs Neovim)
+│   ├── WordMotions.cpp
+│   ├── LineMotions.cpp
+│   ├── SentenceMotions.cpp
+│   ├── ParagraphMotions.cpp
+│   ├── CountMotionsTest.cpp
+│   └── MiscMotions.cpp
+├── Operator/          # VimCore edit/delete correctness (vs Neovim)
+│   ├── Words.cpp
+│   ├── Lines.cpp
+│   ├── Sentences.cpp
+│   ├── Paragraphs.cpp
+│   ├── TextObjects.cpp
+│   └── TestHelpers.cpp
+├── MotionOptimizer/   # Optimizer output quality and correctness
+│   ├── OutputCorrectnessTest.cpp
+│   ├── CostConsistencyTest.cpp
+│   ├── DeterminismTest.cpp
+│   └── HumanApprovalTest.cpp
+├── EditOptimizer/     # Same structure as MotionOptimizer
+├── CompositionOptimizer/
+├── Misc/              # Catch-all for other tests
+├── Utils/             # Test infrastructure
+│   ├── NeovimOracle.cpp
+│   ├── TestUtils.cpp
+│   └── EditTestGenerators.cpp
+└── Debug.cpp          # Scratchpad for debugging (use DISABLED_ prefix)
+```
+
+## Test Categories
+
+| Category | Purpose | Ground Truth |
+|----------|---------|--------------|
+| Commands/ | Verify VimCore motions match Neovim | NeovimOracle |
+| Operator/ | Verify VimCore edits match Neovim | NeovimOracle |
+| *Optimizer/ | Verify optimizer outputs are correct and reproducible | Simulation + manual |
+
+## Ground Truth: NeovimOracle
+
+All VimCore behavior should match Neovim. Use `tests/Utils/NeovimOracle` to get expected output directly from an embedded Neovim process.
+
+**Architecture**: Communicates via msgpack-RPC with `nvim --embed --headless`. Single process reused across test suite.
+
+**Stability note**: After ~800 buffer operations, call `oracle->restart()` to reset.
+
+### Setup Pattern
 ```cpp
 class MyTest : public ::testing::Test {
 protected:
@@ -56,45 +61,63 @@ std::unique_ptr<NeovimOracle> MyTest::oracle;
 
 TEST_F(MyTest, Example) {
   Lines lines = {"hello", "world"};
-  auto result = oracle->simulate(lines, 0, 0, "w");  // row/col are 0-indexed
+  auto result = oracle->simulate(lines, 0, 0, "w");  // 0-indexed
   EXPECT_EQ(result.row, 0);
-  EXPECT_EQ(result.col, 6);  // result is also 0-indexed
+  EXPECT_EQ(result.col, 6);
+}
+```
+
+## Test Writing Strategy
+
+Each test file should have two sections:
+
+1. **Manual cases** (top): Dense, specific scenarios for easy debugging
+2. **Randomized stress tests** (bottom): Bulk coverage via NeovimOracle comparison
+
+```cpp
+// Manual: specific edge case
+TEST_F(WordMotionTest, Manual_EmptyLineIsWord) {
+  Lines lines = {"hello", "", "world"};
+  auto result = oracle->simulate(lines, 0, 4, "w");
+  EXPECT_EQ(result.row, 1);  // Stops at empty line
 }
 
-
-```
-### Pattern for Motion Tests
-```cpp
-void testMotionRandom(NeovimOracle& oracle, const string& motion,
-                      int iterations, int numLines) {
+// Randomized: bulk coverage
+TEST_F(WordMotionTest, Random_wMotion) {
   mt19937 rng(42);  // Fixed seed for reproducibility
-  for (int i = 0; i < iterations; i++) {
-    auto buffer = generateRandomBuffer(rng, numLines);
+  for (int i = 0; i < 100; i++) {
+    auto buffer = generateRandomBuffer(rng, 5);
     Position start = randomPosition(rng, buffer);
-
-    // Our implementation
-    Position ours = applyMotion(start, motion, buffer);
-
-    // Neovim ground truth
-    auto result = oracle.simulate(buffer, start.line, start.col, motion);
-    Position expected(result.row, result.col);
-
-    EXPECT_EQ(ours, expected) << "Failed on iteration " << i;
+    Position ours = applyMotion(start, "w", buffer);
+    auto expected = oracle->simulate(buffer, start.line, start.col, "w");
+    EXPECT_EQ(ours.line, expected.row) << "Iteration " << i;
+    EXPECT_EQ(ours.col, expected.col) << "Iteration " << i;
   }
 }
 ```
 
 ### When to Add Manual Tests
-- Specific edge case that failed and was fixed (regression test)
-- Documenting expected behavior for tricky scenarios
-- Cases that random generation won't hit (specific buffer structures)
+- Regression test for a fixed bug
+- Document tricky expected behavior
+- Specific buffer structures random generation won't produce
 
-## Test File Naming Convention
-Files in `data/TestFiles/` use this naming:
-- `a1_long_line.txt`, `a2_block_lines.txt`, `a3_spaced_lines.txt` - Abstract test cases
-- `m1_main_basic.txt`, `m2_main_big.txt`, `m3_source_code.txt` - Realistic code snippets
+## Debugging
 
-Use these for general Optimizer output testing.
+- Use `tests/Debug.cpp` for scratchpad debugging with `DISABLED_` prefix
+- Use `debug()` macro from `Utils/Debug.h` (enabled by default via `VIMFICIENCY_DEBUG`)
+- Use `SequenceTracer` to step through motions (see `vim-utils-principles.md` §5)
 
-## Test Utilities
-The `TestUtils` class provides `TestFiles::load()` helper to read test files.
+## Vim Documentation Reference
+
+For implementing or verifying VimCore behavior:
+- `docs/vim/motion.txt` - Motion commands
+- `docs/vim/change.txt` - Change operators
+- `docs/vim/index.txt` - Command index
+
+## Test Data Files
+
+Files in `data/TestFiles/` for Optimizer testing:
+- `a*` prefix: Abstract cases (long lines, block lines, spaced lines)
+- `m*` prefix: Realistic code snippets
+
+Load with `TestFiles::load("a1_long_line.txt")`.

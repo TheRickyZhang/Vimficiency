@@ -31,3 +31,4 @@ Interesting (maybe?) things that have come up:
 - Compared to += or appending, prepending to a string (ig: str = s + t) does an allocation, so you should prefer insert instead.
 - Use strcmp for comparing values of const char*, since == compares the addresses. (Prefer to use string::view, even though 8 more bytes)
 - Look into std::ranges stream-like API; can be powerful, but verbose
+- Violating ODR through lib like GoogleTest can result in malloc/memory failures very difficult to debug.

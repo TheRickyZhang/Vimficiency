@@ -17,9 +17,9 @@
 using namespace std;
 
 vector<Result> CompositionOptimizer::optimize(
-  const Lines& startLines,
+  const Lines& initialLines,
   const Position startPos,
-  const Lines& endLines,
+  const Lines& goalLines,
   const Position endPos,
   const string& userSequence,
   const NavContext& navigationContext,
@@ -31,8 +31,8 @@ vector<Result> CompositionOptimizer::optimize(
   const OptimizerParams params = OptimizerParams::merge(defaultParams, paramsOverride);
 
   // Ensures proper hashing later, and 10 is buffer in case we insert more text, then delete
-  for(const string& s : startLines) { assert(s.size() < static_cast<size_t>(maxLineLength-10)); }
-  for(const string& s : endLines) { assert(s.size() < static_cast<size_t>(maxLineLength-10)); }
+  for(const string& s : initialLines) { assert(s.size() < static_cast<size_t>(maxLineLength-10)); }
+  for(const string& s : goalLines) { assert(s.size() < static_cast<size_t>(maxLineLength-10)); }
 
   MotionToKeys motionToKeys = rawMotionToKeys;
   if(boundary.hasLinesBelow()) {
@@ -44,8 +44,8 @@ vector<Result> CompositionOptimizer::optimize(
 
   // Get minimal diff between start and end buffers
   vector<DiffState> rawDiffs = Myers::calculate(
-      Lines(startLines.begin(), startLines.end()),
-      Lines(endLines.begin(), endLines.end()));
+      Lines(initialLines.begin(), initialLines.end()),
+      Lines(goalLines.begin(), goalLines.end()));
 
   // If no edits needed, return empty (nothing to optimize)
   if (rawDiffs.empty()) {
@@ -70,9 +70,9 @@ vector<Result> CompositionOptimizer::optimize(
 
   int totalEdits = static_cast<int>(diffStates.size());
 
-  // Build intermediate buffer states. [0] = no changes (same as startLines), [d] = all changes (same as endLines)
+  // Build intermediate buffer states. [0] = no changes (same as initialLines), [d] = all changes (same as goalLines)
   vector<Lines> linesAfterNEdits = calculateLinesAfterDiffs(
-      Lines(startLines.begin(), startLines.end()), diffStates, totalEdits);
+      Lines(initialLines.begin(), initialLines.end()), diffStates, totalEdits);
 
   vector<EditResult> editResults = calculateEditResults(diffStates);
 
@@ -411,10 +411,10 @@ vector<EditResult> CompositionOptimizer::calculateEditResults(const vector<DiffS
   return results;
 }
 
-vector<Lines> CompositionOptimizer::calculateLinesAfterDiffs(const Lines& startLines, const vector<DiffState>& diffStates, int totalEdits) {
+vector<Lines> CompositionOptimizer::calculateLinesAfterDiffs(const Lines& initialLines, const vector<DiffState>& diffStates, int totalEdits) {
   assert(totalEdits == static_cast<int>(diffStates.size()));
   vector<Lines> res(totalEdits + 1);
-  res[0] = startLines;
+  res[0] = initialLines;
   for (int i = 1; i <= totalEdits; i++) {
     res[i] = Myers::applyDiffState(diffStates[i - 1], res[i - 1]);
   }

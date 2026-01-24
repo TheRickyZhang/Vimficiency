@@ -40,14 +40,14 @@ add_executable(vimficiency_tests
   CompositionOptimizer/DiffStateTest.cpp
 
   # EditOptimizer
-  EditOptimizer/EditOptimizerTest.cpp
+  EditOptimizer/ManualTest.cpp
   EditOptimizer/OutputCorrectnessTest.cpp
   EditOptimizer/CostConsistencyTest.cpp
   EditOptimizer/DeterminismTest.cpp
   EditOptimizer/HumanApprovalTest.cpp
 
   # MotionOptimizer
-  MotionOptimizer/MotionOptimizerTest.cpp
+  MotionOptimizer/ManualTest.cpp
   MotionOptimizer/OutputCorrectnessTest.cpp
   MotionOptimizer/CostConsistencyTest.cpp
   MotionOptimizer/DeterminismTest.cpp

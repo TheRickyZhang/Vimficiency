@@ -6,7 +6,7 @@
 
 using namespace std;
 
-EditSearchContext::EditSearchContext(const Lines& startLines,
+EditSearchContext::EditSearchContext(const Lines& initialLines,
                                      const EditBoundary& boundary,
                                      const OptimizerParams& params,
                                      const Config& config)
@@ -15,7 +15,7 @@ EditSearchContext::EditSearchContext(const Lines& startLines,
       config(config),
       leftColOffset(static_cast<int>(boundary.prefix().size())),
       rightColOffset(static_cast<int>(boundary.suffix().size())),
-      effectiveLines(startLines),
+      effectiveLines(initialLines),
       totalPositions(0) {
 
   // Build effectiveLines with prefix/suffix baked in
@@ -25,7 +25,7 @@ EditSearchContext::EditSearchContext(const Lines& startLines,
   if (!suf.empty()) effectiveLines.back() += suf;
 
   // Count total starting positions
-  for (const auto& line : startLines) {
+  for (const auto& line : initialLines) {
     totalPositions += line.empty() ? 1 : static_cast<int>(line.size());
   }
 }
@@ -52,12 +52,12 @@ void EditSearchContext::exploreNewState(EditState&& state) {
   }
 }
 
-void EditSearchContext::initStartingPositions(const Lines& startLines) {
+void EditSearchContext::initStartingPositions(const Lines& initialLines) {
   int startIndex = 0;
   double startCost = heuristic(effectiveLines);
 
-  for (int line = 0; line < static_cast<int>(startLines.size()); line++) {
-    int lineCols = startLines[line].empty() ? 1 : static_cast<int>(startLines[line].size());
+  for (int line = 0; line < static_cast<int>(initialLines.size()); line++) {
+    int lineCols = initialLines[line].empty() ? 1 : static_cast<int>(initialLines[line].size());
     for (int col = 0; col < lineCols; col++) {
       int effCol = col + (line == 0 ? leftColOffset : 0);
       pq.push(EditState(effectiveLines, Position(line, effCol), startIndex, startCost));

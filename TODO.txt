@@ -5,18 +5,10 @@ Implement quote and bracket text object motions (see quoteFlags/bracketFlags)
 Handle pureInsertion case
 
 Review human tests.
-Having EditBoundary : MotionBoundary if superset; clarify what exactly is difference.
-Clean up outdated info in docs
 
 Can skip F-motions if no endpoints found?
 Any inclusive boundaries we can more cleanly model as half-open?
 
-
- Okay, that looks good. Now, let's charify what exactly the difference is betwwen how MotionBoundary and EditBoudarys need to do -
-  right now it seems like EditBonudary is a superset of functionality, so Inheritcane could be an option. But we'll need to think
-  carefully.
-
-(){} boundary motions are iffy - keep in mind for future reference.
 
 Quote psuedocode:
 Precompute Edit regions
@@ -49,6 +41,8 @@ Normal
  0 1 2 3 4
 0 1 2 3 4
 Insert
+
+(){} boundary motions are iffy - keep in mind for future reference.
 
 If we are searching 0-4 normal, our insert search is 0-4 BECAUSE our normal is already extended doing [l, r) (don't want to delete that 4th character itself).
 So don't do X for i=0, x for i=n-1, or <Backspace> for i=0, or <Delete> for i=n-1.

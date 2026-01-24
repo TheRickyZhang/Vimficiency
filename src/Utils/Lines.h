@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <assert.h>
+#include <iostream>
 #include <Editor/Position.h>
 
 // Lines represents buffer content as a vector of strings.
@@ -70,6 +71,7 @@ struct Lines  final : std::vector<Line> {
       start = pos + 1;
     }
     result.push_back(text.substr(start));
+    assert(!result.empty() && "Lines invariant: buffer must have at least one line");
     return result;
   }
 
@@ -118,7 +120,7 @@ struct Lines  final : std::vector<Line> {
   }
 
   char get(const Position& pos) const {
-    assert(pos.line < this->size());
+    assert(pos.line < static_cast<int>(this->size()) && "Lines::get() position out of bounds");
     return data()[pos.line].get(pos.col);
   }
 

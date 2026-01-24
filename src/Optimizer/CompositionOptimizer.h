@@ -41,9 +41,9 @@ struct CompositionOptimizer {
   // Composes edit transitions + movement. Pre-computes edit regions, then searches for optimal sequence.
   // Much slower; ~ O(n^2) + Sigma (m_i)^3, higher constant factor.
   std::vector<Result> optimize(
-    const Lines& startLines,
+    const Lines& initialLines,
     const Position startPos,
-    const Lines& endLines,
+    const Lines& goalLines,
     const Position endPos,
     const std::string& userSequence,
 
@@ -81,7 +81,7 @@ struct CompositionOptimizer {
   std::vector<EditResult> calculateEditResults(const std::vector<DiffState>& diffStates);
 
   // Build intermediate buffer states after each diff
-  std::vector<Lines> calculateLinesAfterDiffs(const Lines& startLines, const std::vector<DiffState>& diffStates, int totalEdits);
+  std::vector<Lines> calculateLinesAfterDiffs(const Lines& initialLines, const std::vector<DiffState>& diffStates, int totalEdits);
 
   // Build position -> editIndex map
   // posToEditIndex[posKey] = list of edit indices that can be started from this position

@@ -260,6 +260,7 @@ void applySingleMotion(Position& pos, Mode& mode, const string& motion, const Li
 // Important that pos is passed by copy! We wouldn't want to change any state.
 Position simulateMotions(Position pos, const std::string& motionSeq, const Lines& lines,
                          const NavContext& navContext) {
+  assert(!lines.empty() && "Lines can't be empty");
   Mode mode = Mode::Normal;  // Motions don't change mode, so use dummy
   auto motions = parseMotions(motionSeq);
   for (const auto& motion : motions) {

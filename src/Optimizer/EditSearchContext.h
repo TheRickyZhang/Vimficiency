@@ -53,7 +53,7 @@ struct EditSearchContext {
   int totalPositions;
 
   // Constructor - sets up context from start lines and boundary
-  EditSearchContext(const Lines& startLines,
+  EditSearchContext(const Lines& initialLines,
                     const EditBoundary& boundary,
                     const OptimizerParams& params,
                     const Config& config);
@@ -65,7 +65,7 @@ struct EditSearchContext {
   void exploreNewState(EditState&& state);
 
   // Initialize priority queue with all starting positions
-  void initStartingPositions(const Lines& startLines);
+  void initStartingPositions(const Lines& initialLines);
 
   // Within a line, get columns that bound the edit content
   // Returns (contentStart, contentEnd)

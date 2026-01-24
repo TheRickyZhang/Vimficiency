@@ -1,4 +1,4 @@
-// tests/MotionOptimizer/MotionOptimizerTest.cpp
+// tests/MotionOptimizer/ManualTest.cpp
 //
 // Manual tests for MotionOptimizer with hardcoded setups.
 // Tests horizontal/vertical motions, range optimization, and boundary constraints.
@@ -20,7 +20,7 @@
 
 using namespace std;
 
-class MotionOptimizerTest : public ::testing::Test {
+class MotionOptimizer_ManualTest : public ::testing::Test {
 protected:
   static Lines a1_long_line;
   static Lines a2_block_lines;
@@ -75,13 +75,13 @@ protected:
 };
 
 // Static member definitions
-Lines MotionOptimizerTest::a1_long_line;
-Lines MotionOptimizerTest::a2_block_lines;
-Lines MotionOptimizerTest::a3_spaced_lines;
-Lines MotionOptimizerTest::m1_main_basic;
-NavContext MotionOptimizerTest::navContext;
+Lines MotionOptimizer_ManualTest::a1_long_line;
+Lines MotionOptimizer_ManualTest::a2_block_lines;
+Lines MotionOptimizer_ManualTest::a3_spaced_lines;
+Lines MotionOptimizer_ManualTest::m1_main_basic;
+NavContext MotionOptimizer_ManualTest::navContext;
 
-TEST_F(MotionOptimizerTest, HorizontalMotions) {
+TEST_F(MotionOptimizer_ManualTest, HorizontalMotions) {
   const string user_seq = "we";
   Position start(0, 0);
   Position end = simulateMotions(start, user_seq, a1_long_line);
@@ -101,14 +101,14 @@ TEST_F(MotionOptimizerTest, HorizontalMotions) {
 // TODO: Re-enable when adding support for filtering the universe of explorable motions.
 // This test was designed to verify optimizer behavior with a restricted motion set.
 // Currently, all motions are explored automatically via MotionToSpec.
-TEST_F(MotionOptimizerTest, DISABLED_VerticalMotions) {
+TEST_F(MotionOptimizer_ManualTest, DISABLED_VerticalMotions) {
 }
 
 // =============================================================================
 // optimizeToRange tests
 // =============================================================================
 
-TEST_F(MotionOptimizerTest, RangeBasic_SameLine) {
+TEST_F(MotionOptimizer_ManualTest, RangeBasic_SameLine) {
   // Target range is columns 5-10 on line 0
   Lines lines = {"hello world this is a test line"};
   Position start(0, 0);
@@ -124,7 +124,7 @@ TEST_F(MotionOptimizerTest, RangeBasic_SameLine) {
   }
 }
 
-TEST_F(MotionOptimizerTest, RangeBasic_MultiLine) {
+TEST_F(MotionOptimizer_ManualTest, RangeBasic_MultiLine) {
   // Target range spans multiple lines
   Lines lines = {"line one", "line two", "line three", "line four"};
   Position start(0, 0);
@@ -141,7 +141,7 @@ TEST_F(MotionOptimizerTest, RangeBasic_MultiLine) {
   }
 }
 
-TEST_F(MotionOptimizerTest, RangeFromMiddle) {
+TEST_F(MotionOptimizer_ManualTest, RangeFromMiddle) {
   // Start from middle of file, target range at end
   Lines lines = {"aaa", "bbb", "ccc", "ddd", "eee"};
   Position start(2, 1);
@@ -153,7 +153,7 @@ TEST_F(MotionOptimizerTest, RangeFromMiddle) {
   EXPECT_FALSE(results.empty()) << "Should find at least one path to range";
 }
 
-TEST_F(MotionOptimizerTest, RangeWithWordMotions) {
+TEST_F(MotionOptimizer_ManualTest, RangeWithWordMotions) {
   // Test that word motions can land in range
   Lines lines = {"one two three four five six"};
   Position start(0, 0);

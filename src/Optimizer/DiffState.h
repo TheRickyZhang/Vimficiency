@@ -55,12 +55,12 @@ struct DiffState {
 // Returns a sequence of DiffStates representing contiguous change regions.
 namespace Myers {
 
-// Calculate minimal diff between startLines and endLines at character level.
+// Calculate minimal diff between initialLines and goalLines at character level.
 // Returns vector of DiffStates in document order, each representing
 // a contiguous region where characters differ.
 std::vector<DiffState> calculate(
-    const Lines& startLines,
-    const Lines& endLines);
+    const Lines& initialLines,
+    const Lines& goalLines);
 
 // Apply a DiffState to transform lines.
 // Returns new lines with the diff applied.
@@ -75,9 +75,9 @@ Lines applyDiffState(
 std::vector<DiffState> adjustForSequential(
     const std::vector<DiffState>& diffs);
 
-// Apply all diffs in sequence to startLines
+// Apply all diffs in sequence to initialLines
 Lines applyAllDiffState(
     const std::vector<DiffState>& diffs,
-    const Lines& startLines);
+    const Lines& initialLines);
 
 } // namespace Myers

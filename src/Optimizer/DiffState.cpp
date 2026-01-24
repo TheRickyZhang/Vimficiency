@@ -211,10 +211,10 @@ static vector<EditOp> tracePath(const string& a, const string& b) {
 // Main API
 // =============================================================================
 
-vector<DiffState> calculate(const Lines& startLines, const Lines& endLines) {
+vector<DiffState> calculate(const Lines& initialLines, const Lines& goalLines) {
   // Flatten both buffers to character strings
-  string startText = startLines.flatten();
-  string endText = endLines.flatten();
+  string startText = initialLines.flatten();
+  string endText = goalLines.flatten();
 
   // Get character-level edit operations
   vector<EditOp> ops = tracePath(startText, endText);
@@ -374,7 +374,7 @@ vector<DiffState> calculate(const Lines& startLines, const Lines& endLines) {
       // Construct DiffState with EditBoundary computed from buffer context
       result.emplace_back(
           posBegin, posEnd, std::move(deleted), std::move(inserted),
-          EditBoundary(startLines, posBegin, posEnd));
+          EditBoundary(initialLines, posBegin, posEnd));
     }
 
     // Skip the long KEEP run we found (or remaining KEEPs at end)
@@ -462,9 +462,9 @@ vector<DiffState> adjustForSequential(const vector<DiffState>& diffs) {
   return diffs;
 }
 
-Lines applyAllDiffState(const vector<DiffState>& diffs, const Lines& startLines) {
+Lines applyAllDiffState(const vector<DiffState>& diffs, const Lines& initialLines) {
   // Compute all flat indices upfront using the ORIGINAL text positions
-  string text = startLines.flatten();
+  string text = initialLines.flatten();
 
   // Build a map from Position to flat index for the original text
   auto posToFlatIdx = [&](const Position& pos) -> int {

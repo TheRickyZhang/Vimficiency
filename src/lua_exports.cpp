@@ -149,6 +149,7 @@ const char *vimficiency_analyze(
   static std::string result_storage;
 
   try {
+    assert(totLines >= 1 && "FFI contract: buffer must have at least one line");
     auto lines = split_lines(text);
     assert(static_cast<int>(lines.size()) == totLines);
 

@@ -58,21 +58,21 @@ struct EditOptimizer {
   // Heuristic for A* search: effort + chars remaining
   double heuristic(const Lines& lines) const;
 
-  // find optimal sequences to transform startLines to endLines
+  // find optimal sequences to transform initialLines to goalLines
   // Either delete all initial and type out result, or use replacement
   // Returns results indexed by flattened starting position
   EditResult optimizeEdit(
-      const Lines& startLines,
-      const Lines& endLines,
+      const Lines& initialLines,
+      const Lines& goalLines,
       EditBoundary editBoundary,
       const std::optional<OptimizerParams>& paramsOverride = std::nullopt
   );
 
-  // find optimal sequences to delete all content in startLines
+  // find optimal sequences to delete all content in initialLines
   // Simpler than optimizeEdit: no typed content, no change conversion
   // Returns results indexed by flattened starting position
   std::vector<Result> optimizePureDeletion(
-      const Lines& startLines,
+      const Lines& initialLines,
       EditBoundary editBoundary,
       const std::optional<OptimizerParams>& paramsOverride = std::nullopt
   );

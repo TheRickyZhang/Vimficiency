@@ -3,12 +3,7 @@
 // Human-verified examples for EditOptimizer output quality.
 // Since no ground truth optimizer exists, we manually verify that outputs
 // are sensible and contain expected efficient sequences.
-//
-// Workflow:
-// 1. Run test with DISABLED_ prefix first to see output
-// 2. Verify output is sensible
-// 3. Add assertions for expected sequences
-// 4. Remove DISABLED_ prefix
+// (first print output, then add various assertions on expected output)
 
 #include <gtest/gtest.h>
 
@@ -16,8 +11,9 @@
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer.h"
 #include "Boundary/EditBoundary.h"
+#include "Optimizer/OptimizerParams.h"
 #include "Utils/Lines.h"
-#include "Utils/TestUtils.h"  // hasSequence, hasSequenceStartingWith, printResultsDebug
+#include "Utils/TestUtils.h"
 
 using namespace std;
 
@@ -27,34 +23,74 @@ using namespace std;
 
 class EditOptimizerHumanApprovalTests : public ::testing::Test {
 protected:
-  Config config = Config::uniform();
-  static NavContext navContext;
+  inline static const Config config = Config::uniform();
+  inline static NavContext navContext = NavContext();
+  inline static OptimizerParams params = OptimizerParams(10, 1e4, 1.0, 2.0);
+  inline static EditOptimizer opt = EditOptimizer(config, params);
 
   static void SetUpTestSuite() {
     navContext = NavContext();
   }
 };
 
-NavContext EditOptimizerHumanApprovalTests::navContext;
-
 // =============================================================================
 // EditOptimizer Examples
 // =============================================================================
 
-TEST_F(EditOptimizerHumanApprovalTests, DISABLED_Edit_SimpleDeletion) {
+TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionSingleWord) {
   // Delete a short word
-  Lines lines = {"hello"};
-  EditBoundary boundary(lines, {0, 0}, lines.lastPos());
-  EditOptimizer opt(config, OptimizerParams(10, 1e4, 1.0, 2.0));
+  Lines initialLines = {"arstn"};
+  EditBoundary boundary(initialLines, {0, 0}, initialLines.lastPos());
 
-  EditResult res = opt.optimizeEdit(lines, {""}, boundary);
+  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
 
-  printResultsDebug(res.typeAllResults, "Delete 'hello'");
-
-  EXPECT_TRUE(res.typeAllResults[0].isValid());
-
-  // TODO: Add assertions after reviewing output
+  printResultsDebug(res, "Delete single word");
+  // EXPECT_TRUE(all_valid && res[0].str.size() == 2 && res[1..n-1].str.size() == 3);
 }
+
+TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTop) {
+  // Delete a short word
+  Lines initialLines = {
+    "arstn arstn",
+    "arstn arstn",
+  };
+  // " " in first line, last char
+  Position firstPos(0, 5), lastPos(1, 10);
+  EditBoundary boundary(initialLines, firstPos, lastPos);
+
+  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
+  printResultsDebug(res, "Delete straddle top");
+}
+
+
+TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleBottom) {
+  // Delete a short word
+  Lines initialLines = {
+    "arstn arstn",
+    "arstn arstn",
+  };
+  // first char, " " in second line
+  Position firstPos(0, 0), lastPos(1, 5);
+  EditBoundary boundary(initialLines, firstPos, lastPos);
+
+  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
+  printResultsDebug(res, "Delete straddle bottom");
+}
+
+TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTopAndBottom) {
+  // Delete a short word
+  Lines initialLines = {
+    "arstn arstn",
+    "arstn arstn",
+  };
+  // first char, " " in second line
+  Position firstPos(0, 5), lastPos(1, 5);
+  EditBoundary boundary(initialLines, firstPos, lastPos);
+
+  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
+  printResultsDebug(res, "Delete straddle top and bottom");
+}
+
 
 TEST_F(EditOptimizerHumanApprovalTests, Edit_Replacement_SingleChar) {
   // Replace single character: hello → jello
