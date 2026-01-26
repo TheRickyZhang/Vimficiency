@@ -1,4 +1,5 @@
 #include "MotionOptimizer.h"
+#include "MotionSearchContext.h"
 
 #include <limits>
 
@@ -31,48 +32,22 @@ vector<Result> MotionOptimizer::optimize(
   // Initialize index for faster count searching
   BufferIndex bufferIndex(lines);
 
-  int totalExplored = 0;
   // Empty userSequence means unbounded exploration
   double userEffort = userSequence.empty()
       ? numeric_limits<double>::max()
       : getEffort(userSequence, config);
 
+  debug("user effort for sequence", userSequence, "is", userEffort);
+
+  // Create search context with shared state
+  MotionSearchContext ctx(lines, navContext, boundary, params, config, userEffort);
+  const PosKey goalKey(endPos.line, endPos.col);
+
   // Create initial state: effort=0 (fresh start), cost=heuristic
   // Only RunningEffort is continued from caller for correct typing effort calculation
   MotionState initialState(startPos, startingEffort, 0.0, 0.0);
 
-  debug("user effort for sequence", userSequence, "is", userEffort);
-
   vector<Result> res;
-  unordered_map<PosKey, double, PosKeyHash> costMap;
-  const PosKey goalKey(endPos.line, endPos.col);
-
-  priority_queue<MotionState, vector<MotionState>, greater<MotionState>> pq;
-
-  // Consider making an lvalue overload as well if that is needed anywhere
-  // NOTE: Uses <= for cost comparison to allow exploration of equal-cost paths.
-  // This ensures we find all optimal sequences (e.g., both 'w' and 'W' when they
-  // have equal cost to reach the goal).
-  auto exploreNewState = [&](MotionState&& newState) {
-    if (newState.getEffort() > userEffort * params.exploreFactor) {
-      return;
-    }
-    double newCost = newState.getCost();
-    const PosKey newKey = newState.getKey();
-    auto it = costMap.find(newKey);
-    if (it == costMap.end()) {
-      // Because we want multiple results, do not insert a best value for the goal.
-      if (newKey != goalKey) {
-        costMap.emplace(newKey, newCost);
-      }
-      pq.push(std::move(newState));
-    }
-    // Allow equal costs for more exploration - finds all optimal paths
-    else if (newCost <= it->second) {
-      it->second = newCost;
-      pq.push(std::move(newState));
-    }
-  };
 
   // Boundary parameters - follow EditSearchContext pattern:
   // - Column offsets for word motions (passed to motionWordEndpoint)
@@ -88,8 +63,8 @@ vector<Result> MotionOptimizer::optimize(
     MotionState newState = base;
     newState.applySingleMotion(spec.cmd, navContext, lines);
     newState.updateEffort(spec.keys, config);
-    newState.updateCost(heuristic(newState, endPos, params.costWeight));
-    exploreNewState(std::move(newState));
+    newState.updateCost(ctx.computePriorityToGoal(newState, endPos));
+    ctx.exploreNewState(std::move(newState), goalKey);
   };
 
   // Vertical motions (j, k) - check line boundaries
@@ -112,8 +87,8 @@ vector<Result> MotionOptimizer::optimize(
     MotionState newState = base;
     newState.applySingleMotion(spec.cmd, navContext, lines);
     newState.updateEffort(spec.keys, config);
-    newState.updateCost(heuristic(newState, endPos, params.costWeight));
-    exploreNewState(std::move(newState));
+    newState.updateCost(ctx.computePriorityToGoal(newState, endPos));
+    ctx.exploreNewState(std::move(newState), goalKey);
   };
 
   // Word motions - use motionWordEndpoint for boundary checking
@@ -140,8 +115,8 @@ vector<Result> MotionOptimizer::optimize(
     MotionState newState = base;
     newState.applySingleMotion(spec.cmd, navContext, lines);
     newState.updateEffort(spec.keys, config);
-    newState.updateCost(heuristic(newState, endPos, params.costWeight));
-    exploreNewState(std::move(newState));
+    newState.updateCost(ctx.computePriorityToGoal(newState, endPos));
+    ctx.exploreNewState(std::move(newState), goalKey);
   };
 
   // Paragraph motions ({, }) - use motionParagraphEndpoint for boundary checking
@@ -171,8 +146,8 @@ vector<Result> MotionOptimizer::optimize(
     MotionState newState = base;
     newState.applySingleMotion(spec.cmd, navContext, lines);
     newState.updateEffort(spec.keys, config);
-    newState.updateCost(heuristic(newState, endPos, params.costWeight));
-    exploreNewState(std::move(newState));
+    newState.updateCost(ctx.computePriorityToGoal(newState, endPos));
+    ctx.exploreNewState(std::move(newState), goalKey);
   };
 
   // Sentence motions ((, )) - use motionSentenceEndpoint for boundary checking
@@ -204,8 +179,8 @@ vector<Result> MotionOptimizer::optimize(
     MotionState newState = base;
     newState.applySingleMotion(spec.cmd, navContext, lines);
     newState.updateEffort(spec.keys, config);
-    newState.updateCost(heuristic(newState, endPos, params.costWeight));
-    exploreNewState(std::move(newState));
+    newState.updateCost(ctx.computePriorityToGoal(newState, endPos));
+    ctx.exploreNewState(std::move(newState), goalKey);
   };
 
   // Scroll motions (<C-d>, <C-u>) - check line boundaries
@@ -229,8 +204,8 @@ vector<Result> MotionOptimizer::optimize(
       MotionState newState = base;
       newState.applySingleMotion(spec.cmd, navContext, lines);
       newState.updateEffort(spec.keys, config);
-      newState.updateCost(heuristic(newState, endPos, params.costWeight));
-      exploreNewState(std::move(newState));
+      newState.updateCost(ctx.computePriorityToGoal(newState, endPos));
+      ctx.exploreNewState(std::move(newState), goalKey);
     }
   };
 
@@ -239,8 +214,8 @@ vector<Result> MotionOptimizer::optimize(
     MotionState newState = base;
     newState.applySingleMotion(spec.cmd, navContext, lines);
     newState.updateEffort(spec.keys, config);
-    newState.updateCost(heuristic(newState, endPos, params.costWeight));
-    exploreNewState(std::move(newState));
+    newState.updateCost(ctx.computePriorityToGoal(newState, endPos));
+    ctx.exploreNewState(std::move(newState), goalKey);
   };
 
   // Count motions with known position - these are pre-computed so we trust them
@@ -253,8 +228,8 @@ vector<Result> MotionOptimizer::optimize(
       makeCountedKeys(abs(cnt), rawMotionToKeys.at(motion)),
       config
     );
-    newState.updateCost(heuristic(newState, endPos, params.costWeight));
-    exploreNewState(std::move(newState));
+    newState.updateCost(ctx.computePriorityToGoal(newState, endPos));
+    ctx.exploreNewState(std::move(newState), goalKey);
   };
 
   // F-motions with known column - same-line so no escape risk
@@ -262,24 +237,18 @@ vector<Result> MotionOptimizer::optimize(
     MotionState newState = base;
     newState.applySingleMotionWithKnownColumn(motion, newcol);
     newState.updateEffort(keys, config);
-    newState.updateCost(heuristic(newState, endPos, params.costWeight));
-    exploreNewState(std::move(newState));
+    newState.updateCost(ctx.computePriorityToGoal(newState, endPos));
+    ctx.exploreNewState(std::move(newState), goalKey);
   };
 
   // Start - set cost to heuristic (f = g + h, where g = 0 for fresh start)
-  initialState.updateCost(heuristic(initialState, endPos, params.costWeight));
-  pq.push(initialState);
-  costMap[initialState.getKey()] = initialState.getCost();
+  initialState.updateCost(ctx.computePriorityToGoal(initialState, endPos));
+  ctx.pq.push(initialState);
+  ctx.costMap[initialState.getKey()] = initialState.getCost();
 
-  while (!pq.empty()) {
-    MotionState s = pq.top();
-    pq.pop();
+  while (ctx.shouldContinue()) {
+    MotionState s = ctx.popNext();
     Position pos = s.getPos();
-
-    if (++totalExplored > params.maxSearchDepth) {
-      debug("maximum total explored count reached");
-      break;
-    }
 
     PosKey stateKey = s.getKey();
     bool isGoal = (stateKey == goalKey);
@@ -295,9 +264,8 @@ vector<Result> MotionOptimizer::optimize(
       }
       continue;
     } else {
-      // Prune early if this state is outdated. It is guaranteed to exist in the
-      // map.
-      if (costMap[stateKey] < s.getCost()) {
+      // Prune early if this state is outdated
+      if (ctx.isStale(s)) {
         continue;
       }
     }
@@ -419,7 +387,7 @@ vector<Result> MotionOptimizer::optimize(
   }
 
   debug("---costMap---");
-  for (auto [state, cost] : costMap) {
+  for (auto [state, cost] : ctx.costMap) {
     auto [l, c] = state;
     debug(l, c, cost);
   }
@@ -442,8 +410,10 @@ vector<RangeResult> MotionOptimizer::optimizeToRange(
   const OptimizerParams params = OptimizerParams::merge(defaultParams, paramsOverride);
   // rawMotionToKeys not used in optimizeToRange - spec-based exploration only
 
-  int totalExplored = 0;
   double userEffort = getEffort(userSequence, config);
+
+  // Create search context with shared state
+  MotionSearchContext ctx(lines, navContext, boundary, params, config, userEffort);
 
   // Create initial state: effort=0 (fresh start), cost=heuristic
   // Only RunningEffort is continued from caller for correct typing effort calculation
@@ -456,37 +426,9 @@ vector<RangeResult> MotionOptimizer::optimizeToRange(
   vector<RangeResult> allResults;                 // Used when allowMultiplePerPosition
   int uniquePositionsFound = 0;
 
-  unordered_map<PosKey, double, PosKeyHash> costMap;
-
-  priority_queue<MotionState, vector<MotionState>, greater<MotionState>> pq;
-
   // Helper: check if position is in goal range
   auto isInRange = [&](const Position& pos) {
     return pos >= rangeFirst && pos <= rangeLast;
-  };
-
-  // exploreNewState: don't cache goal positions (allow multiple paths)
-  // NOTE: Uses <= for cost comparison to allow exploration of equal-cost paths.
-  // This ensures we find all optimal sequences (e.g., both 'w' and 'W' when they
-  // have equal cost to reach the range).
-  auto exploreNewState = [&](MotionState&& newState) {
-    if (newState.getEffort() > userEffort * params.exploreFactor) {
-      return;
-    }
-    double newCost = newState.getCost();
-    const PosKey newKey = newState.getKey();
-    auto it = costMap.find(newKey);
-    if (it == costMap.end()) {
-      // Don't cache positions in goal range (want multiple results)
-      if (!isInRange(newState.getPos())) {
-        costMap.emplace(newKey, newCost);
-      }
-      pq.push(std::move(newState));
-    } else if (newCost <= it->second) {
-      // Allow equal costs for more exploration - finds all optimal paths
-      it->second = newCost;
-      pq.push(std::move(newState));
-    }
   };
 
   // Exploration helper - applies motion and updates state
@@ -494,24 +436,18 @@ vector<RangeResult> MotionOptimizer::optimizeToRange(
     MotionState newState = base;
     newState.applySingleMotion(cmd, navContext, lines);
     newState.updateEffort(keys, config);
-    newState.updateCost(heuristicToRange(newState, rangeFirst, rangeLast, params.costWeight));
-    exploreNewState(std::move(newState));
+    newState.updateCost(ctx.computePriorityToRange(newState, rangeFirst, rangeLast));
+    ctx.exploreNewStateToRange(std::move(newState), rangeFirst, rangeLast);
   };
 
   // Start - set cost to heuristic (f = g + h, where g = 0 for fresh start)
-  initialState.updateCost(heuristicToRange(initialState, rangeFirst, rangeLast, params.costWeight));
-  pq.push(initialState);
-  costMap[initialState.getKey()] = initialState.getCost();
+  initialState.updateCost(ctx.computePriorityToRange(initialState, rangeFirst, rangeLast));
+  ctx.pq.push(initialState);
+  ctx.costMap[initialState.getKey()] = initialState.getCost();
 
-  while (!pq.empty()) {
-    MotionState s = pq.top();
-    pq.pop();
+  while (ctx.shouldContinue()) {
+    MotionState s = ctx.popNext();
     Position pos = s.getPos();
-
-    if (++totalExplored > params.maxSearchDepth) {
-      debug("optimizeToRange: max search depth reached");
-      break;
-    }
 
     PosKey stateKey = s.getKey();
     bool isGoal = isInRange(pos);
@@ -546,7 +482,7 @@ vector<RangeResult> MotionOptimizer::optimizeToRange(
       continue;
     } else {
       // Prune outdated states
-      if (costMap.count(stateKey) && costMap[stateKey] < s.getCost()) {
+      if (ctx.isStale(s)) {
         continue;
       }
     }
@@ -582,7 +518,7 @@ vector<RangeResult> MotionOptimizer::optimizeToRange(
   }
 
   debug("---costMap---");
-  map<PosKey, double> tempMap(costMap.begin(), costMap.end()); // Print in order
+  map<PosKey, double> tempMap(ctx.costMap.begin(), ctx.costMap.end()); // Print in order
   for (auto [state, cost] : tempMap) {
     auto [l, c] = state;
     debug(l, c, cost);

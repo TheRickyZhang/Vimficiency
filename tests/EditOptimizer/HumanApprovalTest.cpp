@@ -44,7 +44,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionSingleWord) {
 
   vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
 
-  printResultsDebug(res, "Delete single word");
+  // printResultsDebug(res, "Delete single word");
   // Single word should use dw or de, not visual mode (too short)
   ASSERT_TRUE(res[0].isValid());
   string seq = res[0].getSequenceString();
@@ -62,7 +62,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionMultipleLines) {
 
   vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
 
-  printResultsDebug(res, "Delete multiple lines");
+  // printResultsDebug(res, "Delete multiple lines");
   // ASSERT_TRUE(all results costs are <= 4 (always has option of dddd));
 }
 
@@ -78,7 +78,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTop) {
   EditBoundary boundary(fullBuffer, firstPos, lastPos);
 
   vector<Result> res = opt.optimizePureDeletion(editRegion, boundary);
-  printResultsDebug(res, "Delete straddle top");
+  // printResultsDebug(res, "Delete straddle top");
 }
 
 
@@ -110,7 +110,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTopAndBottom) {
   EditBoundary boundary(fullBuffer, firstPos, lastPos);
 
   vector<Result> res = opt.optimizePureDeletion(editRegion, boundary);
-  printResultsDebug(res, "Delete straddle top and bottom");
+  // printResultsDebug(res, "Delete straddle top and bottom");
   // ASSERT_TRUE(res[0] == "vjd" (best result by far))
   // ASSERT_TRUE(finds cost <= 7)
 }
@@ -143,6 +143,6 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_Replacement_Multiline) {
     "worth"
   };
   EditResult res = opt.optimizeEdit(initialLines, goalLines, EditBoundary());
-  printResultsDebug(res.replaceResults, "multi line");
+  // printResultsDebug(res.replaceResults, "multi line");
   // ASSERT_FALSE(res.replaceResults.empty()) << "Should find replacement strategy";
 }

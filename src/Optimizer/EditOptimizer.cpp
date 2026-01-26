@@ -139,17 +139,6 @@ pair<string, PhysicalKeys> buildTypedCommands(const Lines &goalLines) {
 
 } // anonymous namespace
 
-// How many characters remaining, including newlines (newlines count as 2)
-double EditOptimizer::heuristic(const Lines &lines) const {
-  double total = 0;
-  for (size_t i = 0; i < lines.size(); i++) {
-    total += lines[i].size();
-    if (i < lines.size() - 1)
-      total += 2;  // Newlines worth 2 to prioritize line-joining operations
-  }
-  return total;
-}
-
 // replacement strategy for same-length transformations
 void tryReplacement(const string &deleted, const string &inserted,
                     const Config &config, int &lastReplacementPos,
@@ -327,7 +316,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
 
     newState.appendToSeq(deleteCmd);
     newState.updateEffort(deleteKeys, config);
-    newState.updateCost(newState.getEffort() + ctx.heuristic(lines));
+    newState.updateCost(ctx.computePriority(newState.getEffort(), lines));
     ctx.exploreNewState(std::move(newState));
   };
 
@@ -378,7 +367,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
     // Continue search with dd state
     newState.appendToSeq(searchCmdSeq.c_str());
     newState.updateEffort(searchCmdKeys, config);
-    newState.updateCost(newState.getEffort() + ctx.heuristic(lines));
+    newState.updateCost(ctx.computePriority(newState.getEffort(), lines));
     ctx.exploreNewState(std::move(newState));
   };
 
@@ -408,7 +397,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
 
       newState.appendToSeq(joinCmd);
       newState.updateEffort(joinKeys, config);
-      newState.updateCost(newState.getEffort() + ctx.heuristic(lines));
+      newState.updateCost(ctx.computePriority(newState.getEffort(), lines));
       ctx.exploreNewState(std::move(newState));
     };
 
@@ -427,7 +416,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
         newState.setPos(newPos);
         newState.appendToSeq(cmd);
         newState.updateEffort(keys, config);
-        newState.updateCost(newState.getEffort() + ctx.heuristic(newState.getLines()));
+        newState.updateCost(ctx.computePriority(newState.getEffort(), newState.getLines()));
         ctx.exploreNewState(std::move(newState));
       },
       [&](bool addSpace, const char* cmd, const PhysicalKeys& keys) {
@@ -491,7 +480,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
 
     newState.appendToSeq(deleteCmd);
     newState.updateEffort(deleteKeys, config);
-    newState.updateCost(newState.getEffort() + ctx.heuristic(lines));
+    newState.updateCost(ctx.computePriority(newState.getEffort(), lines));
     ctx.exploreNewState(std::move(newState));
   };
 
@@ -535,7 +524,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
 
     newState.appendToSeq(cmdSeq.c_str());
     newState.updateEffort(cmdKeys, config);
-    newState.updateCost(newState.getEffort() + ctx.heuristic(lines));
+    newState.updateCost(ctx.computePriority(newState.getEffort(), lines));
     ctx.exploreNewState(std::move(newState));
   };
 
@@ -575,7 +564,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
 
       newState.appendToSeq(joinCmd);
       newState.updateEffort(joinKeys, config);
-      newState.updateCost(newState.getEffort() + ctx.heuristic(lines));
+      newState.updateCost(ctx.computePriority(newState.getEffort(), lines));
       ctx.exploreNewState(std::move(newState));
     };
 
@@ -594,7 +583,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
         newState.setPos(newPos);
         newState.appendToSeq(cmd);
         newState.updateEffort(keys, config);
-        newState.updateCost(newState.getEffort() + ctx.heuristic(newState.getLines()));
+        newState.updateCost(ctx.computePriority(newState.getEffort(), newState.getLines()));
         ctx.exploreNewState(std::move(newState));
       },
       [&](bool addSpace, const char* cmd, const PhysicalKeys& keys) {

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cmath>
 #include <optional>
 
 #include "Config.h"
@@ -10,7 +9,6 @@
 #include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
 #include "Editor/Position.h"
-#include "State/MotionState.h"
 #include "State/RunningEffort.h"
 #include "Keyboard/MotionToKeys.h"
 #include "Utils/Lines.h"
@@ -24,27 +22,6 @@ struct MotionOptimizer {
 
   MotionOptimizer(const Config& config, OptimizerParams params = {})
       : config(config), defaultParams(params) {}
-
-  double costToGoal(Position p, Position q) const {
-    return abs(q.line - p.line) + abs(q.targetCol - p.targetCol);
-  }
-
-  double heuristic(const MotionState& s, const Position& goal, double costWeight) const {
-    return costWeight * s.getEffort() + costToGoal(s.getPos(), goal);
-  }
-
-  // Heuristic for range target: distance to closest point in range
-  double heuristicToRange(const MotionState& s, const Position& rangeFirst,
-                          const Position& rangeLast, double costWeight) const {
-    Position pos = s.getPos();
-    // If in range, distance is 0
-    if (pos >= rangeFirst && pos <= rangeLast) {
-      return costWeight * s.getEffort();
-    }
-    // Otherwise, distance to nearest edge
-    Position closest = (pos < rangeFirst) ? rangeFirst : rangeLast;
-    return costWeight * s.getEffort() + costToGoal(pos, closest);
-  }
 
   // For movement only. Builds index for faster movement computation.
   // TODO: Only RunningEffort is continued from pre-existing state, everything else can be fresh. (make sure that we set cost += newCost - previousCost, not cost = newCost!)

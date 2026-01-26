@@ -31,29 +31,19 @@ using MotionCallback = std::function<void(const Position&, const char*, const Ph
 // Called with (addSpace, joinCmd, joinKeys) - modifies buffer by joining current line with next
 using JoinCallback = std::function<void(bool, const char*, const PhysicalKeys&)>;
 
-// Comparator for EditState priority queue (compile-time selection).
-// Dijkstra mode: effort-only priority (guarantees optimality)
-// A* mode: effort+heuristic priority (faster but may be suboptimal with inadmissible heuristic)
+// Comparator for EditState priority queue.
+// Uses getCost() which is computed as: effortWeight * effort + distanceWeight * heuristic
+// - A* (default): effortWeight=1.0, distanceWeight=1.0
+// - Dijkstra: effortWeight=1.0, distanceWeight=0.0 (no heuristic, optimal but slower)
 // Tie-break by startIndex for fair multi-source exploration.
-template<bool UseDijkstra>
 struct EditStateComparator {
   bool operator()(const EditState& a, const EditState& b) const {
-    double aPriority, bPriority;
-    if constexpr (UseDijkstra) {
-      aPriority = a.getEffort();
-      bPriority = b.getEffort();
-    } else {
-      aPriority = a.getCost();
-      bPriority = b.getCost();
-    }
+    double aPriority = a.getCost();
+    double bPriority = b.getCost();
     if (aPriority != bPriority) return aPriority > bPriority;  // min-heap
     return a.getStartIndex() > b.getStartIndex();
   }
 };
-
-// Type aliases for common comparator configurations
-using DijkstraComparator = EditStateComparator<true>;
-using AStarComparator = EditStateComparator<false>;
 
 // EditSearchContext encapsulates shared state and logic for edit optimization search.
 // Used by both optimizeEdit and optimizePureDeletion to avoid massive code duplication.
@@ -70,9 +60,12 @@ struct EditSearchContext {
   // Effective lines (edit region with added prefix/suffix)
   Lines effectiveLines;
 
-  // Search state - uses A* by default (faster, but may be suboptimal with inadmissible heuristic)
-  // For guaranteed optimality, use DijkstraComparator instead
-  using PriorityQueue = std::priority_queue<EditState, std::vector<EditState>, AStarComparator>;
+  // A* priority weights from params (priority = effortWeight * effort + distanceWeight * distance)
+  double effortWeight;
+  double distanceWeight;
+
+  // Search state
+  using PriorityQueue = std::priority_queue<EditState, std::vector<EditState>, EditStateComparator>;
   PriorityQueue pq;
   std::unordered_map<EditStateKey, double, EditStateKeyHash> costMap;
   int resultsFound = 0;
@@ -98,8 +91,13 @@ struct EditSearchContext {
   // Returns (contentStart, contentEnd)
   std::pair<int, int> computeEditBounds(const Lines& lines, const Position& cursor) const;
 
-  // Compute remaining heuristic for A* search
-  double heuristic(const Lines& lines) const;
+  // Compute distance heuristic (remaining characters to delete)
+  double distanceHeuristic(const Lines& lines) const;
+
+  // Compute A* priority: effortWeight * effort + distanceWeight * distance
+  double computePriority(double effort, const Lines& lines) const {
+    return effortWeight * effort + distanceWeight * distanceHeuristic(lines);
+  }
 
   // Explore all valid deletions from current state
   // Calls onDeletion for characterwise deletions, onLinewise for full-line (dd)

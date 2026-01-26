@@ -55,9 +55,6 @@ struct EditOptimizer {
       : config(std::move(config)),
         defaultParams(params) {}
 
-  // Heuristic for A* search: effort + chars remaining
-  double heuristic(const Lines& lines) const;
-
   // find optimal sequences to transform initialLines to goalLines
   // Either delete all initial and type out result, or use replacement
   // Returns results indexed by flattened starting position

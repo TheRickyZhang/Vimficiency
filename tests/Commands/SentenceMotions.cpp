@@ -257,7 +257,7 @@ TEST_F(SentenceMotionsTest, ForwardSentence_OnBlankLine) {
   EXPECT_EQ(ours.col, expected.col);
 }
 
-TEST_F(SentenceMotionsTest, DISABLED_BackwardSentence_OnBlankLine) {
+TEST_F(SentenceMotionsTest, BackwardSentence_OnBlankLine) {
   Lines lines = {"First.", "", "", "Second."};
 
   // From blank line, ( should go to previous sentence start
@@ -281,7 +281,7 @@ TEST_F(SentenceMotionsTest, ForwardSentence_MultipleSentencesOnLine) {
   EXPECT_EQ(ours.col, expected.col);
 }
 
-TEST_F(SentenceMotionsTest, DISABLED_BackwardSentence_MultipleSentencesOnLine) {
+TEST_F(SentenceMotionsTest, BackwardSentence_MultipleSentencesOnLine) {
   Lines lines = {"First. Second. Third."};
 
   // From "Third", ( should go to "Second"
@@ -316,7 +316,7 @@ TEST_F(SentenceMotionsTest, CountedMotion_2Forward) {
   EXPECT_EQ(ours.col, expected.col);
 }
 
-TEST_F(SentenceMotionsTest, DISABLED_CountedMotion_2Backward) {
+TEST_F(SentenceMotionsTest, CountedMotion_2Backward) {
   Lines lines = {"First. Second. Third."};
 
   Position start(0, 15);  // At "Third"

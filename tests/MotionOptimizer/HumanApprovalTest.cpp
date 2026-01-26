@@ -42,8 +42,7 @@ NavContext MotionOptimizerHumanApprovalTests::navContext;
 // MotionOptimizer Examples
 // =============================================================================
 
-TEST_F(MotionOptimizerHumanApprovalTests, DISABLED_Motion_SimpleHorizontal) {
-  // Moving right 5 characters: "lllll" vs "5l" vs word motions
+TEST_F(MotionOptimizerHumanApprovalTests, Motion_SimpleHorizontal) {
   Lines lines = {"hello world test"};
   Position start(0, 0);
   Position end(0, 5);  // At space before "world"
@@ -53,13 +52,11 @@ TEST_F(MotionOptimizerHumanApprovalTests, DISABLED_Motion_SimpleHorizontal) {
     lines, start, RunningEffort(), end, "lllll", navContext,
     MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams(10, 1e4, 1.0, 2.0)
   );
-
-  printResultsDebug(results, "Simple horizontal movement 0→5");
+  // printResultsDebug(results, "Simple horizontal movement 0→5");
 
   EXPECT_FALSE(results.empty()) << "Should find at least one path";
 
   // TODO: Add assertions after reviewing output
-  // EXPECT_TRUE(hasSequence(results, "5l") || hasSequence(results, "lllll"));
 }
 
 TEST_F(MotionOptimizerHumanApprovalTests, Motion_VerticalJump) {

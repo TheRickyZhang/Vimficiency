@@ -273,15 +273,17 @@ TEST_F(MotionOptimizerOutputCorrectness, SubBufferMotionCorrectness) {
     }
   }
 
-  // Print summary statistics
-  stats.print();
-  cerr << "\n=== Summary ===" << endl;
-  cerr << "Total sequences tested: " << totalSequences << endl;
-  cerr << "Failed sequences: " << failedSequences << endl;
-  cerr << "  - Escaped bounds: " << escapedBounds << endl;
-  double failRate = totalSequences > 0 ? (100.0 * failedSequences / totalSequences) : 0;
-  cerr << "Failure rate: " << failRate << "%" << endl;
-
   EXPECT_GT(totalSequences, 0) << "Should have tested some sequences";
   EXPECT_EQ(failedSequences, 0) << failedSequences << " sequences produced incorrect results";
+
+  // Print summary statistics only on failure
+  if (failedSequences > 0) {
+    stats.print();
+    cerr << "\n=== Summary ===" << endl;
+    cerr << "Total sequences tested: " << totalSequences << endl;
+    cerr << "Failed sequences: " << failedSequences << endl;
+    cerr << "  - Escaped bounds: " << escapedBounds << endl;
+    double failRate = totalSequences > 0 ? (100.0 * failedSequences / totalSequences) : 0;
+    cerr << "Failure rate: " << failRate << "%" << endl;
+  }
 }

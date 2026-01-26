@@ -293,7 +293,7 @@ double CompositionOptimizer::heuristic(const CompositionState& s, int editsCompl
     // else: inside range, distance = 0
   }
 
-  return params.costWeight * s.getEffort() + h;
+  return params.effortWeight * s.getEffort() + params.distanceWeight * h;
 }
 
 int CompositionOptimizer::bufferPosToEditIndex(const Position& bufferPos, const DiffState& diff) const {

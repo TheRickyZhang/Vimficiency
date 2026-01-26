@@ -16,6 +16,8 @@ EditSearchContext::EditSearchContext(const Lines& initialLines,
       leftColOffset(static_cast<int>(boundary.prefix().size())),
       rightColOffset(static_cast<int>(boundary.suffix().size())),
       effectiveLines(initialLines),
+      effortWeight(params.effortWeight),
+      distanceWeight(params.distanceWeight),
       totalPositions(0) {
 
   // Build effectiveLines with prefix/suffix baked in
@@ -54,13 +56,14 @@ void EditSearchContext::exploreNewState(EditState&& state) {
 
 void EditSearchContext::initStartingPositions(const Lines& initialLines) {
   int startIndex = 0;
-  double startCost = heuristic(effectiveLines);
+  // Initial priority: effortWeight * 0 + distanceWeight * distance = distanceWeight * distance
+  double startPriority = computePriority(0.0, effectiveLines);
 
   for (int line = 0; line < static_cast<int>(initialLines.size()); line++) {
     int lineCols = initialLines[line].empty() ? 1 : static_cast<int>(initialLines[line].size());
     for (int col = 0; col < lineCols; col++) {
       int effCol = col + (line == 0 ? leftColOffset : 0);
-      pq.push(EditState(effectiveLines, Position(line, effCol), startIndex, startCost));
+      pq.push(EditState(effectiveLines, Position(line, effCol), startIndex, startPriority));
       startIndex++;
     }
   }
@@ -87,7 +90,7 @@ pair<int, int> EditSearchContext::computeEditBounds(
   return {contentBegin, contentEnd};
 }
 
-double EditSearchContext::heuristic(const Lines& lines) const {
+double EditSearchContext::distanceHeuristic(const Lines& lines) const {
   int total = 0;
   for (size_t i = 0; i < lines.size(); i++) {
     int lineLen = static_cast<int>(lines[i].size());

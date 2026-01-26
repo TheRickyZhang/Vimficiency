@@ -7,7 +7,6 @@ Review human tests.
 
 
 Can skip F-motions if no endpoints found?
-Any inclusive boundaries we can more cleanly model as half-open?
 Benchmark search time based on buffer size, search space, A* vs Dijkstra. And what order/frequency results found.
 Extend a lot of EditOptimizer-specific changes to MotionOptimizer.
 
