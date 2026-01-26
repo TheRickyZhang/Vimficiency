@@ -10,12 +10,12 @@
 
 #include <gtest/gtest.h>
 
-#include <random>
-
 #include "Editor/Motion.h"
 #include "Editor/NavContext.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
+#include "Utils/RandomBufferHelpers.h"
+#include "Utils/RandomGeneration.h"
 
 using namespace std;
 
@@ -57,37 +57,31 @@ struct RandomLineTest {
   int cursorCol;
 };
 
-RandomLineTest generateRandomLineBuffer(mt19937& rng, int numLines) {
+RandomLineTest generateRandomLineBuffer(int numLines) {
   RandomLineTest test;
 
-  const string chars = "abcdefghijklmnopqrstuvwxyz";
-  uniform_int_distribution<int> lineLen(0, 40);  // Include empty lines
-  uniform_int_distribution<int> leadingSpaces(0, 5);
-
   for (int i = 0; i < numLines; i++) {
-    int len = lineLen(rng);
+    int len = RandomGen::range(0, 40);  // Include empty lines
     string line;
 
     // Random leading whitespace
-    int spaces = leadingSpaces(rng);
+    int spaces = RandomGen::range(0, 5);
     for (int j = 0; j < spaces && j < len; j++) {
       line += ' ';
     }
 
     // Rest is random chars
     for (int j = spaces; j < len; j++) {
-      line += chars[rng() % chars.size()];
+      line += RandomGen::pick(CharPools::ALPHA);
     }
     test.lines.push_back(line);
   }
 
   // Random cursor position
-  uniform_int_distribution<int> lineDist(0, numLines - 1);
-  test.cursorLine = lineDist(rng);
-  int lineLen2 = test.lines[test.cursorLine].size();
+  test.cursorLine = RandomGen::range(0, numLines - 1);
+  int lineLen2 = static_cast<int>(test.lines[test.cursorLine].size());
   if (lineLen2 > 0) {
-    uniform_int_distribution<int> colDist(0, lineLen2 - 1);
-    test.cursorCol = colDist(rng);
+    test.cursorCol = RandomGen::range(0, lineLen2 - 1);
   } else {
     test.cursorCol = 0;
   }
@@ -125,11 +119,11 @@ bool linePositionsMatch(Position ours, Position neovim, const string& motion,
 void testLineMotionRandom(NeovimOracle& oracle, const NavContext& navContext,
                           const string& motion, int numIterations, int numLines,
                           unsigned seed = 42) {
-  mt19937 rng(seed);
+  RandomGen::seed(seed);
   int failures = 0;
 
   for (int i = 0; i < numIterations; i++) {
-    auto test = generateRandomLineBuffer(rng, numLines);
+    auto test = generateRandomLineBuffer(numLines);
 
     // Our implementation
     Position start(test.cursorLine, test.cursorCol);

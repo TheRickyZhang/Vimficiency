@@ -25,7 +25,7 @@ class EditOptimizerHumanApprovalTests : public ::testing::Test {
 protected:
   inline static const Config config = Config::uniform();
   inline static NavContext navContext = NavContext();
-  inline static OptimizerParams params = OptimizerParams(40, 5e4, 1.0, 3.0);
+  inline static OptimizerParams params = OptimizerParams{.maxResults = 40, .maxNodesExplored = 50000, .exploreFactor = 3.0};
   inline static EditOptimizer opt = EditOptimizer(config, params);
 
   static void SetUpTestSuite() {

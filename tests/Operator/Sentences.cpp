@@ -15,9 +15,8 @@
 #include "Editor/Range.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
+#include "Utils/RandomGeneration.h"
 #include "VimCore/VimEndpointUtils.h"
-
-#include <random>
 
 using namespace std;
 
@@ -30,8 +29,6 @@ protected:
   static unique_ptr<NeovimOracle> oracle_;
   static void SetUpTestSuite() { oracle_ = make_unique<NeovimOracle>(); }
   static void TearDownTestSuite() { oracle_.reset(); }
-
-  mt19937 rng{42};
 };
 
 unique_ptr<NeovimOracle> SentencesTest::oracle_;
@@ -60,7 +57,7 @@ struct SentenceBoundaryTest {
 };
 
 // Generate a random buffer with sentence structure and boundary markers
-SentenceBoundaryTest generateSentenceBoundaryBuffer(mt19937& rng, int numLines) {
+SentenceBoundaryTest generateSentenceBoundaryBuffer(int numLines) {
   SentenceBoundaryTest test;
 
   // Word templates
@@ -75,27 +72,22 @@ SentenceBoundaryTest generateSentenceBoundaryBuffer(mt19937& rng, int numLines) 
   test.leftMarker = "LEFTMARK";
   test.rightMarker = "RIGHTMARK";
 
-  uniform_int_distribution<int> blankDist(0, 4);  // ~20% blank lines
-  uniform_int_distribution<int> wordCount(2, 4);
-  uniform_int_distribution<size_t> wordDist(0, words.size() - 1);
-  uniform_int_distribution<size_t> endingDist(0, endings.size() - 1);
-
   numLines = max(numLines, 5);
 
   // Build buffer with sentences
   for (int i = 0; i < numLines; i++) {
-    if (blankDist(rng) == 0 && i > 0 && i < numLines - 1) {
+    if (RandomGen::chance(1, 5) && i > 0 && i < numLines - 1) {  // ~20% blank lines
       test.lines.push_back("");
     } else {
       string line;
-      int numWords = wordCount(rng);
+      int numWords = RandomGen::range(2, 4);
       for (int w = 0; w < numWords; w++) {
         if (w > 0) line += " ";
-        string word = words[wordDist(rng)];
+        string word = RandomGen::pick(words);
         if (w == 0) word[0] = static_cast<char>(toupper(word[0]));
         line += word;
       }
-      line += endings[endingDist(rng)];
+      line += RandomGen::pick(endings);
       test.lines.push_back(line);
     }
   }
@@ -135,8 +127,7 @@ SentenceBoundaryTest generateSentenceBoundaryBuffer(mt19937& rng, int numLines) 
 
   int lineLen = static_cast<int>(test.lines[test.cursorLine].size());
   if (lineLen > 0) {
-    uniform_int_distribution<int> colDist(0, lineLen - 1);
-    test.cursorCol = colDist(rng);
+    test.cursorCol = RandomGen::range(0, lineLen - 1);
   } else {
     test.cursorCol = 0;
   }
@@ -213,13 +204,14 @@ TEST_F(SentencesTest, InnerSentence_OnBlankLine) {
 // =============================================================================
 
 TEST_F(SentencesTest, InnerSentence_RandomBuffer) {
+  RandomGen::seed(42);
   const int NUM_ITERATIONS = 50;
 
   int total = 0, passed = 0;
 
   for (int i = 0; i < NUM_ITERATIONS; i++) {
-    uniform_int_distribution<int> linesDist(5, 10);
-    auto test = generateSentenceBoundaryBuffer(rng, linesDist(rng));
+    int numLines = RandomGen::range(5, 10);
+    auto test = generateSentenceBoundaryBuffer(numLines);
 
     total++;
 
@@ -252,13 +244,14 @@ TEST_F(SentencesTest, InnerSentence_RandomBuffer) {
 }
 
 TEST_F(SentencesTest, AroundSentence_RandomBuffer) {
+  RandomGen::seed(123);
   const int NUM_ITERATIONS = 50;
 
   int total = 0, passed = 0;
 
   for (int i = 0; i < NUM_ITERATIONS; i++) {
-    uniform_int_distribution<int> linesDist(5, 10);
-    auto test = generateSentenceBoundaryBuffer(rng, linesDist(rng));
+    int numLines = RandomGen::range(5, 10);
+    auto test = generateSentenceBoundaryBuffer(numLines);
 
     total++;
 

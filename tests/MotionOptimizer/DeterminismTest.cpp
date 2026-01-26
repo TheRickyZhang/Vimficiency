@@ -5,15 +5,15 @@
 // Verifies that optimizers are deterministic (no unordered_map iteration issues, etc.)
 
 #include <gtest/gtest.h>
-#include <random>
 
+#include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/MotionOptimizer.h"
-#include "Boundary/MotionBoundary.h"
 #include "State/RunningEffort.h"
 #include "Utils/Lines.h"
-#include "Utils/EditTestGenerators.h"
+#include "Utils/RandomBufferHelpers.h"
+#include "Utils/RandomGeneration.h"
 
 using namespace std;
 
@@ -39,26 +39,26 @@ NavContext MotionOptimizerDeterminismTests::navContext;
 
 TEST_F(MotionOptimizerDeterminismTests, SameInputProducesSameOutput) {
   const int NUM_ITERATIONS = 30;
-  mt19937 rng(44);
+  RandomGen::seed(44);
 
   int failures = 0;
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-    Lines lines = randomLines(rng, 2 + rng() % 2, 10, 25);
-    Position start = randomPosition(rng, lines);
-    Position end = randomPosition(rng, lines);
+    Lines lines = randomLines(RandomGen::range(2, 3), 10, 25);
+    Position start = randomPosition(lines);
+    Position end = randomPosition(lines);
 
     MotionOptimizer opt1(config);
     MotionOptimizer opt2(config);
 
-    auto results1 = opt1.optimize(
+    auto [results1, stats1] = opt1.optimize(
       lines, start, RunningEffort(), end, "jjjjj", navContext,
-      MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams(10, 1e4, 1.0, 2.0)
+      MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams{}
     );
 
-    auto results2 = opt2.optimize(
+    auto [results2, stats2] = opt2.optimize(
       lines, start, RunningEffort(), end, "jjjjj", navContext,
-      MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams(10, 1e4, 1.0, 2.0)
+      MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams{}
     );
 
     if (results1.size() != results2.size()) {

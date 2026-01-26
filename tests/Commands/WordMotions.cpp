@@ -11,12 +11,12 @@
 
 #include <gtest/gtest.h>
 
-#include <random>
-
 #include "Editor/Motion.h"
 #include "Editor/NavContext.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
+#include "Utils/RandomBufferHelpers.h"
+#include "Utils/RandomGeneration.h"
 
 using namespace std;
 
@@ -57,28 +57,20 @@ struct RandomMotionTest {
 };
 
 // Generate a random buffer with a valid cursor position
-RandomMotionTest generateRandomMotionBuffer(mt19937& rng, int numLines) {
+RandomMotionTest generateRandomMotionBuffer(int numLines) {
   RandomMotionTest test;
 
-  // Minimal char pools - word boundaries depend on character CLASS, not specific chars
-  const string keywords = "abcd";
-  const string symbols = ".,";
-  const string whitespace = "    ";  // Just spaces for simplicity
-
-  uniform_int_distribution<int> lineLen(5, 40);
-  uniform_int_distribution<int> charTypeDist(0, 2);  // 0=keyword, 1=symbol, 2=space
-
   for (int i = 0; i < numLines; i++) {
-    int len = lineLen(rng);
+    int len = RandomGen::range(5, 40);
     string line;
     line.reserve(len);
 
     for (int j = 0; j < len; j++) {
-      int charType = charTypeDist(rng);
+      int charType = RandomGen::range(0, 2);  // 0=keyword, 1=symbol, 2=space
       if (charType == 0) {
-        line += keywords[rng() % keywords.size()];
+        line += RandomGen::pick(CharPools::KEYWORDS);
       } else if (charType == 1) {
-        line += symbols[rng() % symbols.size()];
+        line += RandomGen::pick(CharPools::SYMBOLS);
       } else {
         line += ' ';
       }
@@ -87,12 +79,10 @@ RandomMotionTest generateRandomMotionBuffer(mt19937& rng, int numLines) {
   }
 
   // Pick a random cursor position
-  uniform_int_distribution<int> lineDist(0, numLines - 1);
-  test.cursorLine = lineDist(rng);
-  int lineLen2 = test.lines[test.cursorLine].size();
+  test.cursorLine = RandomGen::range(0, numLines - 1);
+  int lineLen2 = static_cast<int>(test.lines[test.cursorLine].size());
   if (lineLen2 > 0) {
-    uniform_int_distribution<int> colDist(0, lineLen2 - 1);
-    test.cursorCol = colDist(rng);
+    test.cursorCol = RandomGen::range(0, lineLen2 - 1);
   } else {
     test.cursorCol = 0;
   }
@@ -130,11 +120,11 @@ bool positionsMatch(Position ours, Position neovim, const string& motion,
 // Test a single motion with random buffers
 void testMotionRandom(NeovimOracle& oracle, const string& motion, int numIterations, int numLines,
                       unsigned seed = 42) {
-  mt19937 rng(seed);
+  RandomGen::seed(seed);
   int failures = 0;
 
   for (int i = 0; i < numIterations; i++) {
-    auto test = generateRandomMotionBuffer(rng, numLines);
+    auto test = generateRandomMotionBuffer(numLines);
 
     // Our implementation
     Position start(test.cursorLine, test.cursorCol);

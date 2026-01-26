@@ -4,6 +4,9 @@ Implement CompositionOptimizer
 Implement quote and bracket text object motions (see quoteFlags/bracketFlags)
 Handle pureInsertion case
 Review human tests.
+Implement Benchmark tests for getting an understanding of performance scaling.
+Use RandomGeneration utils. Make sure realistic settings!
+Return a SearchStopReason for optimize calls for more details.
 
 
 Can skip F-motions if no endpoints found?

@@ -50,8 +50,8 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_SimpleHorizontal) {
   MotionOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, RunningEffort(), end, "lllll", navContext,
-    MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams(10, 1e4, 1.0, 2.0)
-  );
+    MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams{}
+  ).results;
   // printResultsDebug(results, "Simple horizontal movement 0→5");
 
   EXPECT_FALSE(results.empty()) << "Should find at least one path";
@@ -68,8 +68,8 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_VerticalJump) {
   MotionOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, RunningEffort(), end, "jjj", navContext,
-    MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams(10, 1e4, 1.0, 2.0)
-  );
+    MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams{}
+  ).results;
 
   // printResults(results, "Vertical jump 3 lines");
 
@@ -93,8 +93,8 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_WordMotions) {
   MotionOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, RunningEffort(), end, "www", navContext,
-    MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams(10, 1e4, 1.0, 2.0)
-  );
+    MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams{}
+  ).results;
 
   // printResults(results, "Word motions to 'four'");
 
@@ -114,8 +114,8 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_MixedMotions) {
   MotionOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, RunningEffort(), end, "jjllllllllll", navContext,
-    MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams(15, 1e4, 1.0, 2.0)
-  );
+    MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams{.maxResults = 15}
+  ).results;
 
   // printResults(results, "Mixed motions to line 2, col 11");
 

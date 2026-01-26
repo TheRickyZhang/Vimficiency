@@ -4,14 +4,14 @@
 // Verifies that optimizers are deterministic (no unordered_map iteration issues, etc.)
 
 #include <gtest/gtest.h>
-#include <random>
 
+#include "Boundary/EditBoundary.h"
 #include "Editor/NavContext.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer.h"
-#include "Boundary/EditBoundary.h"
-#include "Utils/Lines.h"
 #include "Utils/EditTestGenerators.h"
+#include "Utils/Lines.h"
+#include "Utils/RandomGeneration.h"
 
 using namespace std;
 
@@ -37,16 +37,16 @@ NavContext EditOptimizerDeterminismTests::navContext;
 
 TEST_F(EditOptimizerDeterminismTests, SameInputProducesSameOutput) {
   const int NUM_ITERATIONS = 30;
-  mt19937 rng(45);
+  RandomGen::seed(45);
 
   int failures = 0;
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-    Lines lines = randomLines(rng, 1 + rng() % 2, 4, 8);
+    Lines lines = randomLines(RandomGen::range(1, 2), 4, 8);
     EditBoundary boundary(lines, {0, 0}, lines.lastPos());
 
-    EditOptimizer opt1(config, OptimizerParams(10, 1e4, 1.0, 2.0));
-    EditOptimizer opt2(config, OptimizerParams(10, 1e4, 1.0, 2.0));
+    EditOptimizer opt1(config, OptimizerParams{});
+    EditOptimizer opt2(config, OptimizerParams{});
 
     EditResult res1 = opt1.optimizeEdit(lines, {""}, boundary);
     EditResult res2 = opt2.optimizeEdit(lines, {""}, boundary);

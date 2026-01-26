@@ -12,7 +12,6 @@
 #include "Utils/RandomBufferHelpers.h"  // Core random generation
 #include "VimCore/VimEndpointUtils.h"
 
-#include <random>
 #include <string>
 #include <vector>
 
@@ -77,7 +76,7 @@ struct RandomBufferTest {
 };
 
 // Generate a random buffer with boundary positions
-RandomBufferTest generateRandomBuffer(std::mt19937& rng, int numLines);
+RandomBufferTest generateRandomBuffer(int numLines);
 
 // =============================================================================
 // Boundary Crossing Verification

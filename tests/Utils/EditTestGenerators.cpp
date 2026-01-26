@@ -5,6 +5,8 @@
 
 #include "EditTestGenerators.h"
 
+#include "Utils/RandomGeneration.h"
+
 using namespace std;
 
 // =============================================================================
@@ -57,16 +59,15 @@ string EmbeddedEditRegion::expectedAfterDeletion() const {
 // =============================================================================
 
 EmbeddedEditRegion generateSingleLineEmbedded(
-    mt19937& rng,
     int prefixLen,
     int contentLen,
     int suffixLen) {
 
   EmbeddedEditRegion result;
 
-  result.prefix = randomWord(rng, prefixLen);
-  string content = randomWord(rng, contentLen);
-  result.suffix = randomWord(rng, suffixLen);
+  result.prefix = randomWord(prefixLen);
+  string content = randomWord(contentLen);
+  result.suffix = randomWord(suffixLen);
 
   result.fullBuffer = {result.prefix + content + result.suffix};
   result.editRegion = {content};
@@ -80,7 +81,6 @@ EmbeddedEditRegion generateSingleLineEmbedded(
 }
 
 EmbeddedEditRegion generateMultiLineEmbedded(
-    mt19937& rng,
     int numLines,
     int minLineLen,
     int maxLineLen,
@@ -90,11 +90,11 @@ EmbeddedEditRegion generateMultiLineEmbedded(
   EmbeddedEditRegion result;
 
   // Generate edit region content
-  result.editRegion = randomLines(rng, numLines, minLineLen, maxLineLen);
+  result.editRegion = randomLines(numLines, minLineLen, maxLineLen);
 
   // Generate prefix and suffix
-  result.prefix = randomWord(rng, prefixLen);
-  result.suffix = randomWord(rng, suffixLen);
+  result.prefix = randomWord(prefixLen);
+  result.suffix = randomWord(suffixLen);
 
   // Build full buffer with prefix/suffix baked in
   result.fullBuffer.reserve(numLines);
@@ -119,18 +119,18 @@ EmbeddedEditRegion generateMultiLineEmbedded(
   return result;
 }
 
-EmbeddedEditRegion generateRandomSingleLineEmbedded(mt19937& rng) {
-  int prefixLen = 1 + rng() % 2;   // 1-2 chars
-  int contentLen = 2 + rng() % 3;  // 2-4 chars
-  int suffixLen = 1 + rng() % 2;   // 1-2 chars
-  return generateSingleLineEmbedded(rng, prefixLen, contentLen, suffixLen);
+EmbeddedEditRegion generateRandomSingleLineEmbedded() {
+  int prefixLen = RandomGen::range(1, 2);
+  int contentLen = RandomGen::range(2, 4);
+  int suffixLen = RandomGen::range(1, 2);
+  return generateSingleLineEmbedded(prefixLen, contentLen, suffixLen);
 }
 
-EmbeddedEditRegion generateRandomMultiLineEmbedded(mt19937& rng) {
-  int numLines = 2 + rng() % 3;    // 2-4 lines
+EmbeddedEditRegion generateRandomMultiLineEmbedded() {
+  int numLines = RandomGen::range(2, 4);
   int minLineLen = 3;
   int maxLineLen = 5;
-  int prefixLen = 1 + rng() % 3;   // 1-3 chars
-  int suffixLen = 1 + rng() % 3;   // 1-3 chars
-  return generateMultiLineEmbedded(rng, numLines, minLineLen, maxLineLen, prefixLen, suffixLen);
+  int prefixLen = RandomGen::range(1, 3);
+  int suffixLen = RandomGen::range(1, 3);
+  return generateMultiLineEmbedded(numLines, minLineLen, maxLineLen, prefixLen, suffixLen);
 }

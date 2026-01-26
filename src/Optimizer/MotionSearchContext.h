@@ -7,6 +7,7 @@
 
 #include "Config.h"
 #include "OptimizerParams.h"
+#include "SearchStats.h"
 #include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
 #include "Editor/Position.h"
@@ -89,7 +90,7 @@ struct MotionSearchContext {
 
   // Check if search should continue
   bool shouldContinue() const {
-    return !pq.empty() && totalExplored < params.maxSearchDepth;
+    return !pq.empty() && totalExplored < params.maxNodesExplored;
   }
 
   // Pop next state from queue (caller handles staleness check)
@@ -104,5 +105,21 @@ struct MotionSearchContext {
   bool isStale(const MotionState& s) const {
     auto it = costMap.find(s.getKey());
     return it != costMap.end() && it->second < s.getCost();
+  }
+
+  // Get search stats - call after search completes
+  SearchStats getStats(int resultsFound) const {
+    SearchStats stats;
+    stats.nodesExplored = totalExplored;
+    stats.resultsFound = resultsFound;
+
+    if (resultsFound >= params.maxResults) {
+      stats.stopReason = SearchStopReason::MaxResultsReached;
+    } else if (totalExplored >= params.maxNodesExplored) {
+      stats.stopReason = SearchStopReason::NodeLimitReached;
+    } else if (pq.empty()) {
+      stats.stopReason = SearchStopReason::QueueExhausted;
+    }
+    return stats;
   }
 };

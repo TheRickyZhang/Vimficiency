@@ -5,17 +5,18 @@
 
 #include <gtest/gtest.h>
 #include <memory>
-#include <random>
 
+#include "Boundary/EditBoundary.h"
 #include "Editor/Edit.h"
 #include "Editor/Mode.h"
 #include "Editor/Position.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer.h"
-#include "Boundary/EditBoundary.h"
 #include "Utils/EditTestGenerators.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
+#include "Utils/RandomBufferHelpers.h"
+#include "Utils/RandomGeneration.h"
 
 using namespace std;
 
@@ -23,7 +24,7 @@ class EditOptimizerOutputCorrectness : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle;
   Config config = Config::uniform();
-  EditOptimizer opt{config, OptimizerParams(30, 1e4, 1.0, 2.0)};
+  EditOptimizer opt{config, OptimizerParams{.maxResults = 30}};
 
   static void SetUpTestSuite() { oracle = make_unique<NeovimOracle>(); }
   static void TearDownTestSuite() { oracle.reset(); }
@@ -39,11 +40,11 @@ unique_ptr<NeovimOracle> EditOptimizerOutputCorrectness::oracle;
 // Boundary checking works correctly since positions don't shift across lines
 TEST_F(EditOptimizerOutputCorrectness, SingleLineEmbedded) {
   const int NUM_ITERATIONS = 50;
-  mt19937 rng(42);
+  RandomGen::seed(42);
   int passed = 0, total = 0;
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-    auto test = generateRandomSingleLineEmbedded(rng);
+    auto test = generateRandomSingleLineEmbedded();
     EditResult res = opt.optimizeEdit(test.editRegion, {""}, test.makeBoundary());
     string expected = test.expectedAfterDeletion();
 
@@ -79,12 +80,12 @@ TEST_F(EditOptimizerOutputCorrectness, SingleLineEmbedded) {
 TEST_F(EditOptimizerOutputCorrectness, MultiLineFullBuffer) {
   oracle->restart();
   const int NUM_ITERATIONS = 30;
-  mt19937 rng(43);
+  RandomGen::seed(43);
   int passed = 0, total = 0;
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-    int numLines = 2 + rng() % 2;  // 2-3 lines
-    Lines source = randomLines(rng, numLines, 4, 8);
+    int numLines = RandomGen::range(2, 3);
+    Lines source = randomLines(numLines, 4, 8);
     EditBoundary boundary(source, {0, 0}, source.lastPos());
     EditResult res = opt.optimizeEdit(source, {""}, boundary);
 
@@ -118,13 +119,13 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineFullBuffer) {
 TEST_F(EditOptimizerOutputCorrectness, DISABLED_Replacement_SameLength) {
   oracle->restart();
   const int NUM_ITERATIONS = 30;
-  mt19937 rng(44);
+  RandomGen::seed(44);
   int passed = 0, total = 0;
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-    int wordLen = 5 + (rng() % 5);
-    string original = randomWord(rng, wordLen);
-    string replacement = randomWord(rng, wordLen);
+    int wordLen = RandomGen::range(5, 9);
+    string original = randomWord(wordLen);
+    string replacement = randomWord(wordLen);
     if (original == replacement) continue;
 
     Lines source = {original};
@@ -166,11 +167,11 @@ TEST_F(EditOptimizerOutputCorrectness, DISABLED_Replacement_SameLength) {
 TEST_F(EditOptimizerOutputCorrectness, MultiLineEmbedded) {
   oracle->restart();
   const int NUM_ITERATIONS = 50;
-  mt19937 rng(45);
+  RandomGen::seed(45);
   int passed = 0, total = 0;
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-    auto test = generateRandomMultiLineEmbedded(rng);
+    auto test = generateRandomMultiLineEmbedded();
     EditResult res = opt.optimizeEdit(test.editRegion, {""}, test.makeBoundary());
     string expected = test.expectedAfterDeletion();
 

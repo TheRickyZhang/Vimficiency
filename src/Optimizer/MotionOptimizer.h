@@ -1,11 +1,13 @@
 #pragma once
 
 #include <optional>
+#include <vector>
 
 #include "Config.h"
 #include "Result.h"
 #include "RangeResult.h"
 #include "OptimizerParams.h"
+#include "SearchStats.h"
 #include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
 #include "Editor/Position.h"
@@ -15,6 +17,11 @@
 
 // Backward compatibility alias
 using SearchParams = OptimizerParams;
+
+struct MotionResult {
+  std::vector<Result> results;
+  SearchStats stats;
+};
 
 struct MotionOptimizer {
   Config config;
@@ -26,9 +33,9 @@ struct MotionOptimizer {
   // For movement only. Builds index for faster movement computation.
   // TODO: Only RunningEffort is continued from pre-existing state, everything else can be fresh. (make sure that we set cost += newCost - previousCost, not cost = newCost!)
   
-  // Returns additional effort and sequence to add to the caller site
+  // Returns results and search statistics
   // ~ O(n^2)
-  std::vector<Result> optimize(
+  MotionResult optimize(
     // Core information
     const Lines& lines,
     const Position& startPos,
@@ -49,7 +56,7 @@ struct MotionOptimizer {
 
   // Overload without userSequence - uses unbounded effort exploration
   // Useful when finding optimal path without a user baseline to compare against
-  std::vector<Result> optimize(
+  MotionResult optimize(
     const Lines& lines,
     const Position& startPos,
     const Position& endPos,

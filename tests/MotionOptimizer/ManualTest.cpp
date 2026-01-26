@@ -54,7 +54,7 @@ protected:
     // Pass Position and fresh RunningEffort (no prior typing context in tests)
     // Try to explore more (30 results), lower search depth for speed (2e4)
     return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
-                        boundary, allowedMotions, OptimizerParams(30, 2e4, 1.0, 2.0));
+                        boundary, allowedMotions, OptimizerParams{.maxResults = 30, .maxNodesExplored = 20000}).results;
   }
 
   static vector<RangeResult>
@@ -185,7 +185,7 @@ protected:
                   Config config = Config::uniform()) {
     MotionOptimizer opt(config);
     return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
-                        boundary, allowedMotions, OptimizerParams(30, 2e4, 1.0, 2.0));
+                        boundary, allowedMotions, OptimizerParams{.maxResults = 30, .maxNodesExplored = 20000}).results;
   }
 
   // Helper to check if results contain a sequence

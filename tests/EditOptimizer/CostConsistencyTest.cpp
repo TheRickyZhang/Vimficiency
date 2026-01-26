@@ -1,15 +1,15 @@
 // Verifies that reported costs match independently computed costs.
 
 #include <gtest/gtest.h>
-#include <random>
 
+#include "Boundary/EditBoundary.h"
 #include "Editor/NavContext.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer.h"
-#include "Boundary/EditBoundary.h"
 #include "State/RunningEffort.h"
-#include "Utils/Lines.h"
 #include "Utils/EditTestGenerators.h"
+#include "Utils/Lines.h"
+#include "Utils/RandomGeneration.h"
 
 using namespace std;
 
@@ -32,15 +32,15 @@ NavContext EditOptimizerCostConsistencyTests::navContext;
 
 TEST_F(EditOptimizerCostConsistencyTests, CostMatchesComputed) {
   const int NUM_ITERATIONS = 30;
-  mt19937 rng(43);
+  RandomGen::seed(43);
 
   int totalResults = 0;
   int failures = 0;
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-    Lines lines = randomLines(rng, 1 + rng() % 2, 4, 10);
+    Lines lines = randomLines(RandomGen::range(1, 2), 4, 10);
     EditBoundary boundary(lines, {0, 0}, lines.lastPos());
-    EditOptimizer opt(config, OptimizerParams(10, 1e4, 1.0, 2.0));
+    EditOptimizer opt(config, OptimizerParams{});
 
     EditResult res = opt.optimizeEdit(lines, {""}, boundary);
 

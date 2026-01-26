@@ -1,5 +1,40 @@
 # Testing Guide
 
+## Test Binaries
+
+Three separate test binaries for different purposes:
+
+| Binary | Purpose | Location |
+|--------|---------|----------|
+| `vimficiency_tests` | Unit tests (correctness) | `build/tests/vimficiency_tests` |
+| `vimficiency_benchmarks` | Performance benchmarks | `build/tests/vimficiency_benchmarks` |
+| `vimficiency_debug` | Scratch tests for debugging | `build/tests/vimficiency_debug` |
+
+### Running Tests
+
+```bash
+# Run all unit tests
+./build/tests/vimficiency_tests --gtest_brief=1
+
+# Run specific test suite
+./build/tests/vimficiency_tests --gtest_filter="WordMotionTest.*"
+
+# Run specific test
+./build/tests/vimficiency_tests --gtest_filter="*Manual_EmptyLineIsWord"
+
+# List all tests without running
+./build/tests/vimficiency_tests --gtest_list_tests
+
+# Run all benchmarks
+./build/tests/vimficiency_benchmarks
+
+# Run specific benchmark
+./build/tests/vimficiency_benchmarks --gtest_filter="*BufferSize"
+
+# Run debug tests
+./build/tests/vimficiency_debug
+```
+
 ## Directory Structure
 
 ```
@@ -17,7 +52,7 @@ tests/
 │   ├── Sentences.cpp
 │   ├── Paragraphs.cpp
 │   ├── TextObjects.cpp
-│   └── TestHelpers.cpp
+│   └── TestHelpers.cpp  # Shared helpers (in test_utils lib)
 ├── MotionOptimizer/   # Optimizer output quality and correctness
 │   ├── OutputCorrectnessTest.cpp
 │   ├── CostConsistencyTest.cpp
@@ -25,12 +60,17 @@ tests/
 │   └── HumanApprovalTest.cpp
 ├── EditOptimizer/     # Same structure as MotionOptimizer
 ├── CompositionOptimizer/
+├── Benchmarks/        # Performance benchmarks (separate binary)
+│   ├── BenchUtils.h   # Shared timing/output utilities
+│   └── MotionOptimizerBench.cpp
 ├── Misc/              # Catch-all for other tests
-├── Utils/             # Test infrastructure
-│   ├── NeovimOracle.cpp
+├── Utils/             # Shared test infrastructure (built as static library)
+│   ├── NeovimOracle.cpp    # Neovim ground truth
 │   ├── TestUtils.cpp
-│   └── EditTestGenerators.cpp
-└── Debug.cpp          # Scratchpad for debugging (use DISABLED_ prefix)
+│   ├── EditTestGenerators.cpp
+│   ├── RandomBufferHelpers.h
+│   └── RandomGeneration.h  # RandomGen singleton
+└── Debug.cpp          # Scratchpad for debugging (separate binary)
 ```
 
 ## Test Categories
@@ -84,10 +124,10 @@ TEST_F(WordMotionTest, Manual_EmptyLineIsWord) {
 
 // Randomized: bulk coverage
 TEST_F(WordMotionTest, Random_wMotion) {
-  mt19937 rng(42);  // Fixed seed for reproducibility
+  RandomGen::seed(42);  // Fixed seed for reproducibility
   for (int i = 0; i < 100; i++) {
-    auto buffer = generateRandomBuffer(rng, 5);
-    Position start = randomPosition(rng, buffer);
+    auto buffer = generateRandomBuffer(5);
+    Position start = randomPosition(buffer);
     Position ours = applyMotion(start, "w", buffer);
     auto expected = oracle->simulate(buffer, start.line, start.col, "w");
     EXPECT_EQ(ours.line, expected.row) << "Iteration " << i;
@@ -103,7 +143,7 @@ TEST_F(WordMotionTest, Random_wMotion) {
 
 ## Debugging
 
-- Use `tests/Debug.cpp` for scratchpad debugging with `DISABLED_` prefix
+- Use `tests/Debug.cpp` for scratchpad debugging (separate binary: `./build/tests/vimficiency_debug`)
 - Use `debug()` macro from `Utils/Debug.h` (enabled by default via `VIMFICIENCY_DEBUG`)
 - Use `SequenceTracer` to step through motions (see `vim-utils-principles.md` §5)
 

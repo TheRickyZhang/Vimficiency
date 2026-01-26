@@ -11,14 +11,7 @@
 #include "Utils/Lines.h"
 #include "Utils/RandomBufferHelpers.h"  // Core random generation
 
-#include <random>
 #include <string>
-
-// Re-export core random generation for convenience
-// (These are now inline functions in RandomBufferHelpers.h)
-using ::randomWord;
-using ::randomLines;
-using ::randomPosition;
 
 // =============================================================================
 // Position Index Utilities
@@ -74,7 +67,6 @@ struct EmbeddedEditRegion {
 // Generate a single-line embedded edit region:
 //   fullBuffer = ["prefix_editContent_suffix"]
 EmbeddedEditRegion generateSingleLineEmbedded(
-    std::mt19937& rng,
     int prefixLen,    // 1-3 typical
     int contentLen,   // 3-8 typical
     int suffixLen     // 1-3 typical
@@ -85,7 +77,6 @@ EmbeddedEditRegion generateSingleLineEmbedded(
 //   fullBuffer[1..n-2] = editRegion[1..n-2]
 //   fullBuffer[n-1] = editRegion[n-1] + suffix
 EmbeddedEditRegion generateMultiLineEmbedded(
-    std::mt19937& rng,
     int numLines,     // 2-5 typical
     int minLineLen,   // 3 typical
     int maxLineLen,   // 8 typical
@@ -94,5 +85,5 @@ EmbeddedEditRegion generateMultiLineEmbedded(
 );
 
 // Generate with random parameters within typical ranges
-EmbeddedEditRegion generateRandomSingleLineEmbedded(std::mt19937& rng);
-EmbeddedEditRegion generateRandomMultiLineEmbedded(std::mt19937& rng);
+EmbeddedEditRegion generateRandomSingleLineEmbedded();
+EmbeddedEditRegion generateRandomMultiLineEmbedded();

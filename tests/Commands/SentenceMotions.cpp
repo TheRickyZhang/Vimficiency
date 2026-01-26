@@ -9,12 +9,11 @@
 
 #include <gtest/gtest.h>
 
-#include <random>
-
 #include "Editor/Motion.h"
 #include "Editor/NavContext.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
+#include "Utils/RandomGeneration.h"
 
 using namespace std;
 
@@ -61,7 +60,7 @@ struct RandomSentenceTest {
 };
 
 // Generate a random buffer with sentence structure
-RandomSentenceTest generateRandomSentenceBuffer(mt19937& rng, int numLines) {
+RandomSentenceTest generateRandomSentenceBuffer(int numLines) {
   RandomSentenceTest test;
 
   // Word templates
@@ -73,35 +72,28 @@ RandomSentenceTest generateRandomSentenceBuffer(mt19937& rng, int numLines) {
   // Sentence endings
   const vector<string> endings = {".", "!", "?", ".\"", "!'", "?\""};
 
-  uniform_int_distribution<int> blankDist(0, 5);  // ~17% blank lines
-  uniform_int_distribution<int> wordCount(2, 6);
-  uniform_int_distribution<int> sentenceCount(1, 3);
-  uniform_int_distribution<size_t> wordDist(0, words.size() - 1);
-  uniform_int_distribution<size_t> endingDist(0, endings.size() - 1);
-
   for (int i = 0; i < numLines; i++) {
-    if (blankDist(rng) == 0) {
-      // Blank line
+    if (RandomGen::chance(1, 6)) {  // ~17% blank lines
       test.lines.push_back("");
     } else {
       // Content line with sentences
       string line;
-      int numSentences = sentenceCount(rng);
+      int numSentences = RandomGen::range(1, 3);
 
       for (int s = 0; s < numSentences; s++) {
         if (s > 0) line += "  ";  // Two spaces between sentences
 
-        int numWords = wordCount(rng);
+        int numWords = RandomGen::range(2, 6);
         for (int w = 0; w < numWords; w++) {
           if (w > 0) line += " ";
-          string word = words[wordDist(rng)];
+          string word = RandomGen::pick(words);
           if (w == 0) {
             // Capitalize first letter
             word[0] = static_cast<char>(toupper(word[0]));
           }
           line += word;
         }
-        line += endings[endingDist(rng)];
+        line += RandomGen::pick(endings);
       }
 
       test.lines.push_back(line);
@@ -121,13 +113,11 @@ RandomSentenceTest generateRandomSentenceBuffer(mt19937& rng, int numLines) {
   }
 
   // Pick a random cursor position
-  uniform_int_distribution<int> lineDist(0, numLines - 1);
-  test.cursorLine = lineDist(rng);
+  test.cursorLine = RandomGen::range(0, numLines - 1);
 
   int lineLen = static_cast<int>(test.lines[test.cursorLine].size());
   if (lineLen > 0) {
-    uniform_int_distribution<int> colDist(0, lineLen - 1);
-    test.cursorCol = colDist(rng);
+    test.cursorCol = RandomGen::range(0, lineLen - 1);
   } else {
     test.cursorCol = 0;
   }
@@ -140,13 +130,13 @@ RandomSentenceTest generateRandomSentenceBuffer(mt19937& rng, int numLines) {
 // =============================================================================
 
 TEST_F(SentenceMotionsTest, ForwardSentence_RandomBuffer) {
-  mt19937 rng(42);
+  RandomGen::seed(42);
   const int NUM_ITERATIONS = 100;
 
   int passed = 0;
   for (int i = 0; i < NUM_ITERATIONS; i++) {
-    uniform_int_distribution<int> linesDist(3, 10);
-    auto test = generateRandomSentenceBuffer(rng, linesDist(rng));
+    int numLines = RandomGen::range(3, 10);
+    auto test = generateRandomSentenceBuffer(numLines);
 
     Position start(test.cursorLine, test.cursorCol);
     Position ours = simulateMotions(start, ")", test.lines);
@@ -181,13 +171,13 @@ TEST_F(SentenceMotionsTest, ForwardSentence_RandomBuffer) {
 // =============================================================================
 
 TEST_F(SentenceMotionsTest, BackwardSentence_RandomBuffer) {
-  mt19937 rng(123);
+  RandomGen::seed(123);
   const int NUM_ITERATIONS = 100;
 
   int passed = 0;
   for (int i = 0; i < NUM_ITERATIONS; i++) {
-    uniform_int_distribution<int> linesDist(3, 10);
-    auto test = generateRandomSentenceBuffer(rng, linesDist(rng));
+    int numLines = RandomGen::range(3, 10);
+    auto test = generateRandomSentenceBuffer(numLines);
 
     Position start(test.cursorLine, test.cursorCol);
     Position ours = simulateMotions(start, "(", test.lines);

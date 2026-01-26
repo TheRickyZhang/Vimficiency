@@ -8,9 +8,9 @@
 #include <gtest/gtest.h>
 
 #include "TestHelpers.h"
+#include "Utils/RandomBufferHelpers.h"
+#include "Utils/RandomGeneration.h"
 #include "VimCore/VimEndpointUtils.h"
-
-#include <random>
 
 using namespace std;
 
@@ -23,8 +23,6 @@ protected:
   static void SetUpTestSuite() { oracle_ = make_unique<NeovimOracle>(); }
   static void TearDownTestSuite() { oracle_.reset(); }
   static unique_ptr<NeovimOracle> oracle_;
-
-  mt19937 rng{42};
 };
 
 unique_ptr<NeovimOracle> TextObjectsTest::oracle_;
@@ -66,38 +64,30 @@ const vector<TextObjectSpec>& getAllTextObjects() {
 // Text Object Buffer Generation
 // =============================================================================
 
-RandomBufferTest generateTextObjectBuffer(mt19937& rng, int numLines) {
+RandomBufferTest generateTextObjectBuffer(int numLines) {
   RandomBufferTest test;
-
-  // Minimal char pools - word boundaries depend on character CLASS, not specific chars
-  const string keywords = "abcd";
-  const string symbols = ".,";
-
-  uniform_int_distribution<int> lineLen(10, 20);
-  uniform_int_distribution<int> charTypeDist(0, 2);
 
   // Build lines with mixed content
   for (int i = 0; i < numLines; i++) {
-    int len = lineLen(rng);
+    int len = RandomGen::range(10, 20);
     string line;
     line.reserve(len);
 
     for (int j = 0; j < len; j++) {
-      int charType = charTypeDist(rng);
+      int charType = RandomGen::range(0, 2);
       if (charType == 0) {
-        line += keywords[rng() % keywords.size()];
+        line += RandomGen::pick(CharPools::KEYWORDS);
       } else if (charType == 1) {
-        line += symbols[rng() % symbols.size()];
+        line += RandomGen::pick(CharPools::SYMBOLS);
       } else {
-        line += ' ';
+        line += CharPools::SPACE[0];
       }
     }
     test.lines.push_back(line);
   }
 
   // For text objects, use single-line edit region
-  uniform_int_distribution<int> lineDist(0, numLines - 1);
-  int editLine = lineDist(rng);
+  int editLine = RandomGen::range(0, numLines - 1);
   int lineLen2 = test.lines[editLine].size();
 
   // Ensure line is long enough for meaningful edit region
@@ -108,12 +98,8 @@ RandomBufferTest generateTextObjectBuffer(mt19937& rng, int numLines) {
   }
 
   // Pick edit region with room for boundaries
-  uniform_int_distribution<int> startDist(1, max(1, lineLen2 - minEditLen - 1));
-  int editStart = startDist(rng);
-
-  uniform_int_distribution<int> endDist(editStart + minEditLen - 1,
-                                        min(lineLen2 - 2, editStart + 10));
-  int editEnd = endDist(rng);
+  int editStart = RandomGen::range(1, max(1, lineLen2 - minEditLen - 1));
+  int editEnd = RandomGen::range(editStart + minEditLen - 1, min(lineLen2 - 2, editStart + 10));
 
   test.editStartLine = editLine;
   test.editStartCol = editStart;
@@ -121,8 +107,7 @@ RandomBufferTest generateTextObjectBuffer(mt19937& rng, int numLines) {
   test.editEndCol = editEnd;
 
   // Random cursor position within edit region
-  uniform_int_distribution<int> cursorDist(editStart, editEnd);
-  test.cursorCol = cursorDist(rng);
+  test.cursorCol = RandomGen::range(editStart, editEnd);
   test.cursorLine = editLine;
 
   // Set boundary positions
@@ -234,13 +219,14 @@ bool runTextObjectTest(NeovimOracle& oracle, const TextObjectSpec& spec,
 // =============================================================================
 
 TEST_F(TextObjectsTest, RandomBufferStress_SingleLine) {
+  RandomGen::seed(42);
   const int NUM_BUFFERS = 10;
   const auto& textObjects = getAllTextObjects();
 
   int total = 0, passed = 0;
 
   for (int i = 0; i < NUM_BUFFERS; i++) {
-    auto test = generateTextObjectBuffer(rng, 1);
+    auto test = generateTextObjectBuffer(1);
 
     for (const auto& spec : textObjects) {
       total++;
@@ -254,14 +240,15 @@ TEST_F(TextObjectsTest, RandomBufferStress_SingleLine) {
 }
 
 TEST_F(TextObjectsTest, RandomBufferStress_MultiLine) {
+  RandomGen::seed(123);
   const int NUM_BUFFERS = 10;
   const auto& textObjects = getAllTextObjects();
 
   int total = 0, passed = 0;
 
   for (int i = 0; i < NUM_BUFFERS; i++) {
-    uniform_int_distribution<int> linesDist(2, 4);
-    auto test = generateTextObjectBuffer(rng, linesDist(rng));
+    int numLines = RandomGen::range(2, 4);
+    auto test = generateTextObjectBuffer(numLines);
 
     for (const auto& spec : textObjects) {
       total++;

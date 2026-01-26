@@ -9,12 +9,12 @@
 
 #include <gtest/gtest.h>
 
-#include <random>
-
 #include "Editor/Motion.h"
 #include "Editor/NavContext.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
+#include "Utils/RandomBufferHelpers.h"
+#include "Utils/RandomGeneration.h"
 
 using namespace std;
 
@@ -61,26 +61,19 @@ struct RandomParagraphTest {
 };
 
 // Generate a random buffer with paragraph structure
-RandomParagraphTest generateRandomParagraphBuffer(mt19937& rng, int numLines) {
+RandomParagraphTest generateRandomParagraphBuffer(int numLines) {
   RandomParagraphTest test;
 
-  // Simple content for non-blank lines
-  const string contentChars = "abcdefghijklmnopqrstuvwxyz";
-
-  uniform_int_distribution<int> blankDist(0, 3);  // ~25% blank lines
-  uniform_int_distribution<int> lineLen(5, 30);
-
   for (int i = 0; i < numLines; i++) {
-    if (blankDist(rng) == 0) {
-      // Blank line (empty or whitespace-only)
+    if (RandomGen::chance(1, 4)) {  // ~25% blank lines
       test.lines.push_back("");
     } else {
       // Content line
-      int len = lineLen(rng);
+      int len = RandomGen::range(5, 30);
       string line;
       line.reserve(len);
       for (int j = 0; j < len; j++) {
-        line += contentChars[rng() % contentChars.size()];
+        line += RandomGen::pick(CharPools::ALPHA);
       }
       test.lines.push_back(line);
     }
@@ -99,13 +92,11 @@ RandomParagraphTest generateRandomParagraphBuffer(mt19937& rng, int numLines) {
   }
 
   // Pick a random cursor position
-  uniform_int_distribution<int> lineDist(0, numLines - 1);
-  test.cursorLine = lineDist(rng);
+  test.cursorLine = RandomGen::range(0, numLines - 1);
 
   int lineLen2 = test.lines[test.cursorLine].size();
   if (lineLen2 > 0) {
-    uniform_int_distribution<int> colDist(0, lineLen2 - 1);
-    test.cursorCol = colDist(rng);
+    test.cursorCol = RandomGen::range(0, lineLen2 - 1);
   } else {
     test.cursorCol = 0;
   }
@@ -118,13 +109,13 @@ RandomParagraphTest generateRandomParagraphBuffer(mt19937& rng, int numLines) {
 // =============================================================================
 
 TEST_F(ParagraphMotionsTest, ForwardParagraph_RandomBuffer) {
-  mt19937 rng(42);
+  RandomGen::seed(42);
   const int NUM_ITERATIONS = 100;
 
   int passed = 0;
   for (int i = 0; i < NUM_ITERATIONS; i++) {
-    uniform_int_distribution<int> linesDist(3, 15);
-    auto test = generateRandomParagraphBuffer(rng, linesDist(rng));
+    int numLines = RandomGen::range(3, 15);
+    auto test = generateRandomParagraphBuffer(numLines);
 
     Position start(test.cursorLine, test.cursorCol);
     Position ours = simulateMotions(start, "}", test.lines);
@@ -160,13 +151,13 @@ TEST_F(ParagraphMotionsTest, ForwardParagraph_RandomBuffer) {
 // =============================================================================
 
 TEST_F(ParagraphMotionsTest, BackwardParagraph_RandomBuffer) {
-  mt19937 rng(123);
+  RandomGen::seed(123);
   const int NUM_ITERATIONS = 100;
 
   int passed = 0;
   for (int i = 0; i < NUM_ITERATIONS; i++) {
-    uniform_int_distribution<int> linesDist(3, 15);
-    auto test = generateRandomParagraphBuffer(rng, linesDist(rng));
+    int numLines = RandomGen::range(3, 15);
+    auto test = generateRandomParagraphBuffer(numLines);
 
     Position start(test.cursorLine, test.cursorCol);
     Position ours = simulateMotions(start, "{", test.lines);

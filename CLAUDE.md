@@ -51,10 +51,24 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 
 ```bash
 cmake --build build -j
-./build/tests/vimficiency_tests --gtest_brief=1 --gtest_filter="TestName.*"
 ```
 
-**Artifacts:** `build/libvimficiency_core.a`, `build/libvimficiency.so`, `build/vimficiency_cli`, `build/tests/vimficiency_tests`
+**Test binaries** (in `build/tests/`):
+| Binary | Purpose | Example |
+|--------|---------|---------|
+| `vimficiency_tests` | Unit tests | `./build/tests/vimficiency_tests --gtest_brief=1` |
+| `vimficiency_benchmarks` | Performance benchmarks | `./build/tests/vimficiency_benchmarks` |
+| `vimficiency_debug` | Scratch/debug tests | `./build/tests/vimficiency_debug` |
+
+```bash
+# Run specific test
+./build/tests/vimficiency_tests --gtest_brief=1 --gtest_filter="TestName.*"
+
+# Run all benchmarks
+./build/tests/vimficiency_benchmarks
+```
+
+**Other artifacts:** `build/libvimficiency_core.a`, `build/libvimficiency.so`, `build/vimficiency_cli`
 
 **Important:**
 - Don't change directories in your session! Just do everything relative to the project root.

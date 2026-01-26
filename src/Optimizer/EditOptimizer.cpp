@@ -610,7 +610,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
       NavContext navCtx;
 
       // Find best motion from first to last - use unbounded overload
-      auto motionResults = motionOpt.optimize(
+      auto [motionResults, motionStats] = motionOpt.optimize(
           ctx.effectiveLines,
           firstPos,
           lastPos,

@@ -17,9 +17,9 @@
 #include "Editor/LineRange.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
+#include "Utils/RandomBufferHelpers.h"
+#include "Utils/RandomGeneration.h"
 #include "VimCore/VimEndpointUtils.h"
-
-#include <random>
 
 using namespace std;
 
@@ -32,8 +32,6 @@ protected:
   static unique_ptr<NeovimOracle> oracle_;
   static void SetUpTestSuite() { oracle_ = make_unique<NeovimOracle>(); }
   static void TearDownTestSuite() { oracle_.reset(); }
-
-  mt19937 rng{42};
 };
 
 unique_ptr<NeovimOracle> ParagraphsTest::oracle_;
@@ -71,7 +69,7 @@ struct ParagraphBoundaryTest {
 };
 
 // Generate a random buffer with paragraph structure and boundary markers
-ParagraphBoundaryTest generateParagraphBoundaryBuffer(mt19937& rng, int numLines) {
+ParagraphBoundaryTest generateParagraphBoundaryBuffer(int numLines) {
   ParagraphBoundaryTest test;
 
   // Ensure minimum size for meaningful test
@@ -81,20 +79,15 @@ ParagraphBoundaryTest generateParagraphBoundaryBuffer(mt19937& rng, int numLines
   test.topMarker = "TOP_BOUNDARY_MARKER_12345";
   test.bottomMarker = "BOTTOM_BOUNDARY_MARKER_67890";
 
-  // Simple content chars for paragraph lines
-  const string contentChars = "abcdefghijklmnopqrstuvwxyz";
-  uniform_int_distribution<int> blankDist(0, 2);  // ~33% blank lines
-  uniform_int_distribution<int> lineLen(5, 20);
-
   // Generate buffer content
   for (int i = 0; i < numLines; i++) {
-    if (blankDist(rng) == 0) {
+    if (RandomGen::chance(1, 3)) {  // ~33% blank lines
       test.lines.push_back("");
     } else {
-      int len = lineLen(rng);
+      int len = RandomGen::range(5, 20);
       string line;
       for (int j = 0; j < len; j++) {
-        line += contentChars[rng() % contentChars.size()];
+        line += RandomGen::pick(CharPools::ALPHA);
       }
       test.lines.push_back(line);
     }
@@ -102,8 +95,7 @@ ParagraphBoundaryTest generateParagraphBoundaryBuffer(mt19937& rng, int numLines
 
   // Pick edit region (at least 3 lines)
   int editSize = max(3, numLines - 2);  // Leave room for boundaries
-  uniform_int_distribution<int> startDist(1, max(1, numLines - editSize - 1));
-  test.editStartLine = startDist(rng);
+  test.editStartLine = RandomGen::range(1, max(1, numLines - editSize - 1));
   test.editEndLine = min(test.editStartLine + editSize - 1, numLines - 2);
 
   // Insert boundary markers
@@ -137,13 +129,11 @@ ParagraphBoundaryTest generateParagraphBoundaryBuffer(mt19937& rng, int numLines
   }
 
   // Pick cursor position within edit region
-  uniform_int_distribution<int> cursorLineDist(test.editStartLine, test.editEndLine);
-  test.cursorLine = cursorLineDist(rng);
+  test.cursorLine = RandomGen::range(test.editStartLine, test.editEndLine);
 
   int lineLen2 = test.lines[test.cursorLine].size();
   if (lineLen2 > 0) {
-    uniform_int_distribution<int> colDist(0, lineLen2 - 1);
-    test.cursorCol = colDist(rng);
+    test.cursorCol = RandomGen::range(0, lineLen2 - 1);
   } else {
     test.cursorCol = 0;
   }
@@ -228,13 +218,14 @@ TEST_F(ParagraphsTest, AroundParagraph_OnBlankLine) {
 // =============================================================================
 
 TEST_F(ParagraphsTest, InnerParagraph_RandomBuffer) {
+  RandomGen::seed(42);
   const int NUM_ITERATIONS = 50;
 
   int total = 0, passed = 0;
 
   for (int i = 0; i < NUM_ITERATIONS; i++) {
-    uniform_int_distribution<int> linesDist(5, 12);
-    auto test = generateParagraphBoundaryBuffer(rng, linesDist(rng));
+    int numLines = RandomGen::range(5, 12);
+    auto test = generateParagraphBoundaryBuffer(numLines);
 
     total++;
 
@@ -274,13 +265,14 @@ TEST_F(ParagraphsTest, InnerParagraph_RandomBuffer) {
 }
 
 TEST_F(ParagraphsTest, AroundParagraph_RandomBuffer) {
+  RandomGen::seed(123);
   const int NUM_ITERATIONS = 50;
 
   int total = 0, passed = 0;
 
   for (int i = 0; i < NUM_ITERATIONS; i++) {
-    uniform_int_distribution<int> linesDist(5, 12);
-    auto test = generateParagraphBoundaryBuffer(rng, linesDist(rng));
+    int numLines = RandomGen::range(5, 12);
+    auto test = generateParagraphBoundaryBuffer(numLines);
 
     total++;
 

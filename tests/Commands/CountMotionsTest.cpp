@@ -175,7 +175,7 @@ protected:
     MotionOptimizer opt(config);
     MotionBoundary boundary;
     return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
-                        boundary, allowedMotions, OptimizerParams(30, 2e4, 1.0, 2.0));
+                        boundary, allowedMotions, OptimizerParams{.maxResults = 30, .maxNodesExplored = 20000}).results;
   }
 };
 

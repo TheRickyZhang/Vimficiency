@@ -59,7 +59,7 @@ int main(int argc, char* argv[]) {
     user_seq,
     navContext,
     boundary
-  );
+  ).results;
 
   if(res.empty()) {
     cout << "res is empty" << endl;

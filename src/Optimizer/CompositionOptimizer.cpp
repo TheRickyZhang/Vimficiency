@@ -129,7 +129,7 @@ vector<Result> CompositionOptimizer::optimize(
     int editsCompleted = s.getEditsCompleted();
     Mode mode = s.getMode();
 
-    if(++totalExplored > params.maxSearchDepth) {
+    if(++totalExplored > params.maxNodesExplored) {
       debug("maximum total explored count reached");
       break;
     }

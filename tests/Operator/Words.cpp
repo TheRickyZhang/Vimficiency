@@ -7,7 +7,7 @@
 
 #include "TestHelpers.h"
 
-#include <random>
+#include "Utils/RandomGeneration.h"
 
 using namespace std;
 
@@ -17,11 +17,12 @@ using namespace std;
 
 class WordsTest : public ::testing::Test {
 protected:
-  static void SetUpTestSuite() { oracle_ = make_unique<NeovimOracle>(); }
+  static void SetUpTestSuite() {
+    oracle_ = make_unique<NeovimOracle>();
+    RandomGen::seed(42);
+  }
   static void TearDownTestSuite() { oracle_.reset(); }
   static unique_ptr<NeovimOracle> oracle_;
-
-  mt19937 rng{42};
 };
 
 unique_ptr<NeovimOracle> WordsTest::oracle_;
@@ -36,7 +37,7 @@ TEST_F(WordsTest, RandomBufferStress_SingleLine) {
   int total = 0, passed = 0;
 
   for (int i = 0; i < NUM_BUFFERS; i++) {
-    auto test = generateRandomBuffer(rng, 1);
+    auto test = generateRandomBuffer(1);
 
     for (const auto& motion : getAllWordMotions()) {
       total++;
@@ -56,8 +57,7 @@ TEST_F(WordsTest, RandomBufferStress_MultiLine) {
   int total = 0, passed = 0;
 
   for (int i = 0; i < NUM_BUFFERS; i++) {
-    uniform_int_distribution<int> linesDist(2, 5);
-    auto test = generateRandomBuffer(rng, linesDist(rng));
+    auto test = generateRandomBuffer(RandomGen::range(2, 5));
 
     for (const auto& motion : motions) {
       total++;

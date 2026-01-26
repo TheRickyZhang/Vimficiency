@@ -114,7 +114,7 @@ protected:
   Config config = Config::uniform();
 
   EditOptimizer makeOptimizer() {
-    return EditOptimizer(config, OptimizerParams(30, 1e5, 1.0, 2.0));
+    return EditOptimizer(config, OptimizerParams{.maxResults = 30, .maxNodesExplored = 100000});
   }
 
   // Create boundary for full buffer deletion (no constraints)

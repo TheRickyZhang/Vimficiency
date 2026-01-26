@@ -14,10 +14,10 @@
 #include "State/RunningEffort.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
+#include "Utils/RandomGeneration.h"
 
 #include <map>
 #include <memory>
-#include <random>
 
 using namespace std;
 
@@ -50,28 +50,24 @@ protected:
   }
 
   // Generate a random embedded sub-buffer scenario
-  static EmbeddedMotionTest generateEmbeddedTest(mt19937& rng, int fullLines, int subLines) {
+  static EmbeddedMotionTest generateEmbeddedTest(int fullLines, int subLines) {
     EmbeddedMotionTest test;
 
     // Character pool - mixed content for realistic word boundaries
-    // Must match original test for reproducibility
     const string chars = "abcd .,";
-    uniform_int_distribution<int> lineLen(10, 30);
-    uniform_int_distribution<int> charDist(0, static_cast<int>(chars.size()) - 1);
 
     // Generate full buffer
     for (int i = 0; i < fullLines; i++) {
-      int len = lineLen(rng);
+      int len = RandomGen::range(10, 30);
       string line;
       for (int j = 0; j < len; j++) {
-        line += chars[charDist(rng)];
+        line += RandomGen::pick(chars);
       }
       test.fullBuffer.push_back(line);
     }
 
     // Pick sub-buffer region: lines [startLine, endLine]
-    uniform_int_distribution<int> startLineDist(0, max(0, fullLines - subLines));
-    test.subBufferStartLine = startLineDist(rng);
+    test.subBufferStartLine = RandomGen::range(0, max(0, fullLines - subLines));
     int endLine = min(test.subBufferStartLine + subLines - 1, fullLines - 1);
 
     // Extract sub-buffer
@@ -80,11 +76,9 @@ protected:
     }
 
     // Random starting position within sub-buffer
-    uniform_int_distribution<int> subLineDist(0, static_cast<int>(test.subBuffer.size()) - 1);
-    int subLine = subLineDist(rng);
+    int subLine = RandomGen::range(0, static_cast<int>(test.subBuffer.size()) - 1);
     int maxCol = test.subBuffer[subLine].empty() ? 0 : static_cast<int>(test.subBuffer[subLine].size()) - 1;
-    uniform_int_distribution<int> colDist(0, max(0, maxCol));
-    int col = colDist(rng);
+    int col = RandomGen::range(0, max(0, maxCol));
 
     test.subStart = Position(subLine, col);
     test.fullStart = Position(test.subBufferStartLine + subLine, col);
@@ -118,7 +112,7 @@ protected:
                                        const MotionToKeys& allowedMotions) {
     MotionOptimizer opt(Config::uniform());
     return opt.optimize(subBuffer, start, RunningEffort(), end, "jjjjjjjjjj", navContext,
-                        boundary, allowedMotions, OptimizerParams(10, 1e4, 1.0, 2.0));
+                        boundary, allowedMotions, OptimizerParams{}).results;
   }
 };
 
@@ -171,7 +165,7 @@ struct MotionFailureStats {
 
 TEST_F(MotionOptimizerOutputCorrectness, SubBufferMotionCorrectness) {
   // Test that optimizer predictions match Neovim behavior when operating on sub-buffers
-  mt19937 rng(42);
+  RandomGen::seed(42);
   const int iterations = 50;
   int totalSequences = 0;
   int failedSequences = 0;
@@ -194,14 +188,12 @@ TEST_F(MotionOptimizerOutputCorrectness, SubBufferMotionCorrectness) {
     }
 
     // Generate embedded test case with sub-buffer smaller than full buffer
-    auto test = generateEmbeddedTest(rng, 8, 4);
+    auto test = generateEmbeddedTest(8, 4);
 
     // Pick a random end position within the sub-buffer
-    uniform_int_distribution<int> endLineDist(0, static_cast<int>(test.subBuffer.size()) - 1);
-    int endLine = endLineDist(rng);
+    int endLine = RandomGen::range(0, static_cast<int>(test.subBuffer.size()) - 1);
     int maxEndCol = test.subBuffer[endLine].empty() ? 0 : static_cast<int>(test.subBuffer[endLine].size()) - 1;
-    uniform_int_distribution<int> endColDist(0, max(0, maxEndCol));
-    Position subEnd(endLine, endColDist(rng));
+    Position subEnd(endLine, RandomGen::range(0, max(0, maxEndCol)));
 
     // Run optimizer on sub-buffer
     auto results = runOnSubBuffer(test.subBuffer, test.subStart, subEnd, test.boundary, testMotions);

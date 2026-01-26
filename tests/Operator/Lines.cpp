@@ -14,9 +14,9 @@
 #include "Editor/LineRange.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
+#include "Utils/RandomBufferHelpers.h"
+#include "Utils/RandomGeneration.h"
 #include "VimCore/VimEndpointUtils.h"
-
-#include <random>
 
 using namespace std;
 
@@ -29,8 +29,6 @@ protected:
   static void SetUpTestSuite() { oracle_ = make_unique<NeovimOracle>(); }
   static void TearDownTestSuite() { oracle_.reset(); }
   static unique_ptr<NeovimOracle> oracle_;
-
-  mt19937 rng{42};
 
   // Helper to create EditBoundary with specific boundary context
   // left/right chars indicate what's outside the edit region:
@@ -272,37 +270,36 @@ TEST_F(LinesTest, MotionLineEndpoint_D0_MultiLine_NotFirstLine) {
 // =============================================================================
 
 TEST_F(LinesTest, RandomStress_LineDeleteRange) {
+  RandomGen::seed(42);
   const int NUM_TESTS = 50;
   int passed = 0;
 
   for (int i = 0; i < NUM_TESTS; i++) {
     // Generate random lines
-    const string chars = "abcdefghijklmnopqrstuvwxyz ";
-    uniform_int_distribution<int> numLinesDist(1, 5);
-    uniform_int_distribution<int> lineLen(5, 20);
-    int numLines = numLinesDist(rng);
+    int numLines = RandomGen::range(1, 5);
 
     Lines lines;
     for (int j = 0; j < numLines; j++) {
-      int len = lineLen(rng);
+      int len = RandomGen::range(5, 20);
       string line;
       for (int k = 0; k < len; k++) {
-        line += chars[rng() % chars.size()];
+        int charType = RandomGen::range(0, 26);  // 26 alpha + 1 space
+        if (charType < 26) {
+          line += CharPools::ALPHA[charType];
+        } else {
+          line += CharPools::SPACE[0];
+        }
       }
       lines.push_back(line);
     }
 
     // Random cursor position
-    uniform_int_distribution<int> lineDist(0, numLines - 1);
-    int cursorLine = lineDist(rng);
+    int cursorLine = RandomGen::range(0, numLines - 1);
     int curLineLen = lines[cursorLine].size();
-    uniform_int_distribution<int> colDist(0, max(0, curLineLen - 1));
-    int cursorCol = curLineLen > 0 ? colDist(rng) : 0;
+    int cursorCol = curLineLen > 0 ? RandomGen::range(0, max(0, curLineLen - 1)) : 0;
 
-    // Random boundary (50% chance of full line boundary)
-    uniform_int_distribution<int> boundaryChoice(0, 1);
     char leftChar, rightChar;
-    if (boundaryChoice(rng) == 0) {
+    if (RandomGen::chance(1, 2)) {
       leftChar = '\n';
       rightChar = '\n';
     } else {

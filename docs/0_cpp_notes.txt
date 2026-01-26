@@ -32,3 +32,7 @@ Interesting (maybe?) things that have come up:
 - Use strcmp for comparing values of const char*, since == compares the addresses. (Prefer to use string::view, even though 8 more bytes)
 - Look into std::ranges stream-like API; can be powerful, but verbose
 - Violating ODR through lib like GoogleTest can result in malloc/memory failures very difficult to debug.
+- Implementing concepts, first with Indexable in tests/Utils/RandomGeneration
+- Funargs and scope of nested functions
+- Micro-benchmarking with GoogleTest for fundamental choices/impl, but doesn't give full picture of tail latency under real load for trading systems.
+- Aggregate is formally defined in the standard: Basically a minimal, public DTO (struct/class with only public data members). Can use designated initializers (C++ 20)

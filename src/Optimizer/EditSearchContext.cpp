@@ -105,7 +105,7 @@ double EditSearchContext::distanceHeuristic(const Lines& lines) const {
 
 // This is good, but I think we should be able to detect when it stops based on each condition, to let use know whether we have exhausted search (unlikely), reached result threshold, or reached search threshold
 bool EditSearchContext::shouldContinue() const {
-  return !pq.empty() && resultsFound < totalPositions && iterations < params.maxSearchDepth;
+  return !pq.empty() && resultsFound < totalPositions && iterations < params.maxNodesExplored;
 }
 
 // This has potential to be inlined, but worth it for organization

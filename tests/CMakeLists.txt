@@ -19,8 +19,42 @@ set(MSGPACK_USE_BOOST OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(googletest msgpack-c)
 
+# =============================================================================
+# Shared test utilities library
+# =============================================================================
+# Contains common infrastructure used by multiple test binaries:
+# - NeovimOracle for ground truth verification
+# - Random buffer generation helpers
+# - Test helper functions
+
+add_library(test_utils STATIC
+  Utils/EditTestGenerators.cpp
+  Utils/NeovimOracle.cpp
+  Utils/TestUtils.cpp
+  Operator/TestHelpers.cpp
+)
+
+target_include_directories(test_utils
+  PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/Operator
+)
+
+target_link_libraries(test_utils
+  PUBLIC
+    vimficiency_core
+    GTest::gtest
+    msgpack-cxx
+)
+
+# =============================================================================
+# Unit tests binary
+# =============================================================================
+# Main test suite for correctness verification.
+# Run with: ./vimficiency_tests
+
 add_executable(vimficiency_tests
-  # Commands - tests for command execution
+  # Commands - VimCore motion correctness
   Commands/CountMotionsTest.cpp
   Commands/MiscMotions.cpp
   Commands/WordMotions.cpp
@@ -28,8 +62,7 @@ add_executable(vimficiency_tests
   Commands/ParagraphMotions.cpp
   Commands/SentenceMotions.cpp
 
-  # Operator - tests for operator boundary crossing (VimEndpointUtils)
-  Operator/TestHelpers.cpp
+  # Operator - VimCore edit/delete correctness
   Operator/Words.cpp
   Operator/Lines.cpp
   Operator/Paragraphs.cpp
@@ -55,30 +88,48 @@ add_executable(vimficiency_tests
 
   # Misc
   Misc/ConfigurationTest.cpp
-  Misc/DebugSequenceTests.cpp
   Misc/ErrorHandlingTest.cpp
   Misc/HashCollisionTest.cpp
-
-  # Utils
-  Utils/EditTestGenerators.cpp
-  Utils/NeovimOracle.cpp
-  Utils/TestUtils.cpp
-
-  Debug.cpp
-)
-
-target_include_directories(vimficiency_tests
-  PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/Operator
 )
 
 target_link_libraries(vimficiency_tests
   PRIVATE
-    vimficiency_core
+    test_utils
     GTest::gtest_main
-    msgpack-cxx
 )
 
 include(GoogleTest)
 gtest_discover_tests(vimficiency_tests)
+
+# =============================================================================
+# Benchmarks binary
+# =============================================================================
+# Performance benchmarks for optimizers.
+# Run with: ./vimficiency_benchmarks
+
+add_executable(vimficiency_benchmarks
+  Benchmarks/MotionOptimizerBench.cpp
+)
+
+target_link_libraries(vimficiency_benchmarks
+  PRIVATE
+    test_utils
+    GTest::gtest_main
+)
+
+# =============================================================================
+# Debug binary
+# =============================================================================
+# Scratch tests and debugging utilities.
+# Run with: ./vimficiency_debug
+
+add_executable(vimficiency_debug
+  Debug/Debug.cpp
+  Debug/OldDebug.cpp
+)
+
+target_link_libraries(vimficiency_debug
+  PRIVATE
+    test_utils
+    GTest::gtest_main
+)

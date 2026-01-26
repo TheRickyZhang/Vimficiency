@@ -14,7 +14,7 @@
 
 using namespace std;
 
-vector<Result> MotionOptimizer::optimize(
+MotionResult MotionOptimizer::optimize(
     const Lines &lines,
     const Position& startPos,
     const RunningEffort& startingEffort,
@@ -391,7 +391,9 @@ vector<Result> MotionOptimizer::optimize(
     auto [l, c] = state;
     debug(l, c, cost);
   }
-  return res;
+
+  SearchStats stats = ctx.getStats(static_cast<int>(res.size()));
+  return {.results = std::move(res), .stats = stats};
 }
 
 vector<RangeResult> MotionOptimizer::optimizeToRange(
@@ -538,7 +540,7 @@ vector<RangeResult> MotionOptimizer::optimizeToRange(
 }
 
 // Overload without userSequence - uses unbounded effort exploration
-vector<Result> MotionOptimizer::optimize(
+MotionResult MotionOptimizer::optimize(
     const Lines& lines,
     const Position& startPos,
     const Position& endPos,

@@ -1,15 +1,15 @@
 // Verifies that reported costs match independently computed costs.
 
 #include <gtest/gtest.h>
-#include <random>
 
+#include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/MotionOptimizer.h"
-#include "Boundary/MotionBoundary.h"
 #include "State/RunningEffort.h"
 #include "Utils/Lines.h"
-#include "Utils/EditTestGenerators.h"
+#include "Utils/RandomBufferHelpers.h"
+#include "Utils/RandomGeneration.h"
 
 using namespace std;
 
@@ -35,21 +35,21 @@ NavContext MotionOptimizerCostConsistencyTests::navContext;
 
 TEST_F(MotionOptimizerCostConsistencyTests, CostMatchesComputed) {
   const int NUM_ITERATIONS = 50;
-  mt19937 rng(42);
+  RandomGen::seed(42);
   MotionOptimizer opt(config);
 
   int totalResults = 0;
   int failures = 0;
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-    Lines lines = randomLines(rng, 2 + rng() % 3, 8, 25);
-    Position start = randomPosition(rng, lines);
-    Position end = randomPosition(rng, lines);
+    Lines lines = randomLines(RandomGen::range(2, 4), 8, 25);
+    Position start = randomPosition(lines);
+    Position end = randomPosition(lines);
 
     auto results = opt.optimize(
       lines, start, RunningEffort(), end, "jjjjj", navContext,
-      MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams(5, 1e4, 1.0, 2.0)
-    );
+      MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams{.maxResults = 5}
+    ).results;
 
     for (const auto& result : results) {
       if (!result.isValid()) continue;

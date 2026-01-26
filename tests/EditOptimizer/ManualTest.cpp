@@ -23,7 +23,7 @@ class EditOptimizer_ManualTest : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle;
   Config config = Config::uniform();
-  EditOptimizer opt{config, OptimizerParams(30, 1e4, 1.0, 2.0)};
+  EditOptimizer opt{config, OptimizerParams{.maxResults = 30}};
 
   static void SetUpTestSuite() { oracle = make_unique<NeovimOracle>(); }
   static void TearDownTestSuite() { oracle.reset(); }

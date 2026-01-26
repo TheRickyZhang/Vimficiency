@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <iostream>
 
+#include "Utils/RandomGeneration.h"
+
 using namespace std;
 
 // =============================================================================
@@ -36,15 +38,13 @@ const vector<MotionSpec>& getAllWordMotions() {
 // Random Buffer Generation
 // =============================================================================
 
-RandomBufferTest generateRandomBuffer(mt19937& rng, int numLines) {
+RandomBufferTest generateRandomBuffer(int numLines) {
   RandomBufferTest test;
-
-  uniform_int_distribution<int> lineLen(8, 20);
 
   // Build lines with mixed content using shared helper
   for (int i = 0; i < numLines; i++) {
-    int len = lineLen(rng);
-    test.lines.push_back(randomMixedLine(rng, len));
+    int len = RandomGen::range(8, 20);
+    test.lines.push_back(randomProseLine(len));
   }
 
   // === IMPORTANT: effectiveLines Constraint ===
@@ -78,8 +78,7 @@ RandomBufferTest generateRandomBuffer(mt19937& rng, int numLines) {
     endLineLen = test.lines[test.editEndLine].size();
   }
 
-  uniform_int_distribution<int> startColDist(1, max(1, startLineLen - minEditLen));
-  test.editStartCol = startColDist(rng);
+  test.editStartCol = RandomGen::range(1, max(1, startLineLen - minEditLen));
 
   if (test.editStartLine == test.editEndLine) {
     // Ensure valid range: end must be >= start + minEditLen - 1 AND < endLineLen - 1
@@ -91,11 +90,9 @@ RandomBufferTest generateRandomBuffer(mt19937& rng, int numLines) {
       endLineLen = test.lines[test.editEndLine].size();
       maxEnd = endLineLen - 2;
     }
-    uniform_int_distribution<int> endColDist(minEnd, maxEnd);
-    test.editEndCol = endColDist(rng);
+    test.editEndCol = RandomGen::range(minEnd, maxEnd);
   } else {
-    uniform_int_distribution<int> endColDist(minEditLen - 1, endLineLen - 2);
-    test.editEndCol = endColDist(rng);
+    test.editEndCol = RandomGen::range(minEditLen - 1, endLineLen - 2);
   }
 
   // Set boundary positions (just outside the edit region)
@@ -112,24 +109,19 @@ RandomBufferTest generateRandomBuffer(mt19937& rng, int numLines) {
 
   // Random cursor position within edit region
   if (test.editStartLine == test.editEndLine) {
-    uniform_int_distribution<int> cursorColDist(test.editStartCol, test.editEndCol);
-    test.cursorCol = cursorColDist(rng);
+    test.cursorCol = RandomGen::range(test.editStartCol, test.editEndCol);
     test.cursorLine = test.editStartLine;
   } else {
-    uniform_int_distribution<int> cursorLineDist(test.editStartLine, test.editEndLine);
-    test.cursorLine = cursorLineDist(rng);
+    test.cursorLine = RandomGen::range(test.editStartLine, test.editEndLine);
 
     if (test.cursorLine == test.editStartLine) {
       int maxCol = test.lines[test.cursorLine].size() - 1;
-      uniform_int_distribution<int> colDist(test.editStartCol, maxCol);
-      test.cursorCol = colDist(rng);
+      test.cursorCol = RandomGen::range(test.editStartCol, maxCol);
     } else if (test.cursorLine == test.editEndLine) {
-      uniform_int_distribution<int> colDist(0, test.editEndCol);
-      test.cursorCol = colDist(rng);
+      test.cursorCol = RandomGen::range(0, test.editEndCol);
     } else {
       int maxCol = max(0, static_cast<int>(test.lines[test.cursorLine].size()) - 1);
-      uniform_int_distribution<int> colDist(0, maxCol);
-      test.cursorCol = colDist(rng);
+      test.cursorCol = RandomGen::range(0, maxCol);
     }
   }
 
