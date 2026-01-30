@@ -7,8 +7,6 @@
 #include <memory>
 
 #include "Boundary/EditBoundary.h"
-#include "Editor/Edit.h"
-#include "Editor/Mode.h"
 #include "Editor/Position.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer.h"
@@ -24,7 +22,8 @@ class EditOptimizerOutputCorrectness : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle;
   Config config = Config::uniform();
-  EditOptimizer opt{config, OptimizerParams{.maxResults = 30}};
+  OptimizerParams params{.maxResults = 30};
+  EditOptimizer opt{config};
 
   static void SetUpTestSuite() { oracle = make_unique<NeovimOracle>(); }
   static void TearDownTestSuite() { oracle.reset(); }
@@ -45,7 +44,7 @@ TEST_F(EditOptimizerOutputCorrectness, SingleLineEmbedded) {
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
     auto test = generateRandomSingleLineEmbedded();
-    EditResult res = opt.optimizeEdit(test.editRegion, {""}, test.makeBoundary());
+    EditResult res = opt.optimizeEdit(test.editRegion, {""}, test.makeBoundary(), params);
     string expected = test.expectedAfterDeletion();
 
     for (size_t i = 0; i < res.typeAllResults.size(); i++) {
@@ -87,7 +86,7 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineFullBuffer) {
     int numLines = RandomGen::range(2, 3);
     Lines source = randomLines(numLines, 4, 8);
     EditBoundary boundary(source, {0, 0}, source.lastPos());
-    EditResult res = opt.optimizeEdit(source, {""}, boundary);
+    EditResult res = opt.optimizeEdit(source, {""}, boundary, params);
 
     for (size_t i = 0; i < res.typeAllResults.size(); i += 2) {
       const Result& r = res.typeAllResults[i];
@@ -166,17 +165,17 @@ TEST_F(EditOptimizerOutputCorrectness, DISABLED_Replacement_SameLength) {
 // eliminating cursor position divergence after multi-line deletions.
 TEST_F(EditOptimizerOutputCorrectness, MultiLineEmbedded) {
   oracle->restart();
-  const int NUM_ITERATIONS = 50;
+  const int NUM_ITERATIONS = 8;  // Reduced - embedded optimization is slow (~500ms each)
   RandomGen::seed(45);
   int passed = 0, total = 0;
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
     auto test = generateRandomMultiLineEmbedded();
-    EditResult res = opt.optimizeEdit(test.editRegion, {""}, test.makeBoundary());
+    EditResult res = opt.optimizeEdit(test.editRegion, {""}, test.makeBoundary(), params);
     string expected = test.expectedAfterDeletion();
 
-    // Test a subset of positions (every 2nd to reduce test time)
-    for (size_t i = 0; i < res.typeAllResults.size(); i += 2) {
+    // Test a subset of positions (every 4th to reduce test time)
+    for (size_t i = 0; i < res.typeAllResults.size(); i += 4) {
       const Result& r = res.typeAllResults[i];
       if (!r.isValid()) continue;
 

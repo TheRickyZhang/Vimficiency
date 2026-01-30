@@ -2,7 +2,6 @@
 
 #include <vector>
 #include <string>
-#include <optional>
 
 #include "Config.h"
 #include "Result.h"
@@ -18,7 +17,6 @@
 
 struct CompositionOptimizer {
   Config config;
-  OptimizerParams defaultParams;
 
   // CompositionOptimizer-specific parameters
   // Overshooting (going past the next edit region) is penalized more heavily
@@ -29,11 +27,10 @@ struct CompositionOptimizer {
   // Max line length for position key encoding
   int maxLineLength = 100;
 
-  CompositionOptimizer(const Config& config, OptimizerParams params = {},
+  CompositionOptimizer(const Config& config,
                        double overshootPenalty = 3.0, double forwardBias = 2.0,
                        int maxLineLength = 100)
       : config(std::move(config)),
-        defaultParams(params),
         overshootPenalty(overshootPenalty),
         forwardBias(forwardBias),
         maxLineLength(maxLineLength) {}
@@ -51,8 +48,8 @@ struct CompositionOptimizer {
     const MotionBoundary& boundary = MotionBoundary(),
     const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS,
 
-    // Optional search parameter overrides (uses defaultParams if not provided)
-    const std::optional<OptimizerParams>& paramsOverride = std::nullopt
+    // Search parameters (uses struct defaults if not specified via designated initializers)
+    OptimizerParams params = {}
   );
 
   // Manhattan distance

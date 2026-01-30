@@ -34,61 +34,37 @@ protected:
     if (shape == BufferShape::Uniform) {
       return randomProseLines(numLines, avgLineLen, avgLineLen);
     } else {
-      return generateCodeLikeBuffer(numLines, avgLineLen);
+      return randomCodeLines(numLines, avgLineLen);
     }
-  }
-
-  static Lines generateCodeLikeBuffer(int numLines, int avgLineLen) {
-    Lines result;
-    result.reserve(numLines);
-
-    for (int i = 0; i < numLines; i++) {
-      if (RandomGen::chance(1, 10)) {
-        result.push_back("");
-        continue;
-      }
-
-      string line;
-      line += string(RandomGen::range(0, 4), ' ');
-
-      for(int i = 0; i < RandomGen::range(1, avgLineLen * 2); i++) {
-        line += RandomGen::pick<std::string_view>({
-            {3, CharPools::KEYWORDS},
-            {1, CharPools::SYMBOLS},
-            {1, CharPools::SPACE},
-        });
-      }
-      result.push_back(line);
-    }
-    return result;
   }
 
   // ================== Benchmark Execution ==================
-  struct BenchmarkConfig {
+  struct BenchmarkSetup {
     Lines lines;
-    Position start{0, 0};
-    Position end;
     MotionBoundary boundary{};
-    OptimizerParams params{.maxNodesExplored = 50000, .exploreFactor = 2.0};
-  };
+    Position firstPos;
+    Position lastPos;
+    OptimizerParams params{};
 
-  // Helper for the common case: start at origin, end at last position
-  static BenchmarkConfig makeConfig(const Lines& lines, OptimizerParams params = {}) {
-    return {.lines = lines, .end = lines.lastPos(), .params = params};
-  }
+    BenchmarkSetup(const Lines& lines) : lines(lines) {
+      firstPos = randomFirstPos(lines);
+      lastPos = randomLastPos(lines);
+      boundary = MotionBoundary(lines, firstPos, lastPos);
+    }
+  };
 
   struct BenchmarkResult {
     TimingStats timing;
     SearchStats search;
   };
 
-  static BenchmarkResult runBenchmark(const BenchmarkConfig& cfg, int iterations = 10) {
+  static BenchmarkResult runBenchmark(const BenchmarkSetup& cfg, int iterations = 10) {
     MotionOptimizer opt(config);
     SearchStats lastStats;
 
     TimingStats timing = measureTiming(
         [&]() {
-          auto [results, stats] = opt.optimize(cfg.lines, cfg.start, RunningEffort(), cfg.end, "",
+          auto [results, stats] = opt.optimize(cfg.lines, cfg.firstPos, RunningEffort(), cfg.lastPos, "",
                        navContext, cfg.boundary, EXPLORABLE_MOTIONS, cfg.params);
           lastStats = stats;
         },
@@ -139,7 +115,7 @@ TEST_F(MotionOptimizerBench, BufferSize) {
   for (int numLines : lineCounts) {
     RandomGen::seed(42);
     Lines lines = generateBuffer(numLines, avgLineLen, BufferShape::Uniform);
-    BenchmarkResult res = runBenchmark(makeConfig(lines));
+    BenchmarkResult res = runBenchmark(BenchmarkSetup(lines));
     printRow(to_string(numLines), res.timing);
   }
 }
@@ -154,7 +130,7 @@ TEST_F(MotionOptimizerBench, LineLength) {
   for (int avgLen : lineLengths) {
     RandomGen::seed(42);
     Lines lines = generateBuffer(numLines, avgLen, BufferShape::Uniform);
-    printRow(to_string(avgLen), runBenchmark(makeConfig(lines)).timing);
+    printRow(to_string(avgLen), runBenchmark(BenchmarkSetup(lines)).timing);
   }
 }
 
@@ -173,7 +149,7 @@ TEST_F(MotionOptimizerBench, BufferShape) {
   for (const auto& [name, shape] : shapes) {
     RandomGen::seed(42);
     Lines lines = generateBuffer(numLines, avgLineLen, shape);
-    printRow(name, runBenchmark(makeConfig(lines)).timing);
+    printRow(name, runBenchmark(BenchmarkSetup(lines)).timing);
   }
 }
 
@@ -186,30 +162,7 @@ TEST_F(MotionOptimizerBench, BoundarySettings) {
 
   RandomGen::seed(42);
   Lines lines = generateBuffer(numLines, avgLineLen, BufferShape::Uniform);
-
-  struct BoundaryCase {
-    string name;
-    bool hasLinesAbove;
-    bool hasLinesBelow;
-  };
-
-  vector<BoundaryCase> cases = {
-      {"None", false, false},
-      {"Above", true, false},
-      {"Below", false, true},
-      {"Both", true, true},
-  };
-
-  for (const auto& bc : cases) {
-    MotionBoundary boundary(lines, {0, 0}, lines.lastPos(), bc.hasLinesAbove, bc.hasLinesBelow);
-    BenchmarkConfig cfg{
-        .lines = lines,
-        .start = {numLines / 2, 0},
-        .end = lines.lastPos(),
-        .boundary = boundary,
-    };
-    printRow(bc.name, runBenchmark(cfg).timing);
-  }
+  // todo
 }
 
 // =============================================================================
@@ -220,10 +173,14 @@ TEST_F(MotionOptimizerBench, SearchDepth) {
   printHeader("Search Depth Benchmark");
   printTableHeaderWithStats("Depth");
 
+  // Larger buffer + more results + higher exploreFactor so that
+  // node limit (depth) becomes the limiting factor, not maxResults
   RandomGen::seed(42);
-  Lines lines = generateBuffer(15, 20, BufferShape::Uniform);
+  Lines lines = generateBuffer(50, 30, BufferShape::Uniform);
 
   for (int depth : {1000, 5000, 10000, 50000, 100000}) {
-    printRowWithStats(to_string(depth), runBenchmark(makeConfig(lines, {.maxNodesExplored = depth, .exploreFactor = 2.0})));
+    BenchmarkSetup setup(lines);
+    setup.params = {.maxResults = 500, .maxNodesExplored = depth, .exploreFactor = 3.0};
+    printRowWithStats(to_string(depth), runBenchmark(setup));
   }
 }

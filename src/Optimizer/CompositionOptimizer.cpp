@@ -25,10 +25,8 @@ vector<Result> CompositionOptimizer::optimize(
   const NavContext& navigationContext,
   const MotionBoundary& boundary,
   const MotionToKeys& rawMotionToKeys,
-  const optional<OptimizerParams>& paramsOverride
+  OptimizerParams params
 ) {
-  // Merge defaults with overrides
-  const OptimizerParams params = OptimizerParams::merge(defaultParams, paramsOverride);
 
   // Ensures proper hashing later, and 10 is buffer in case we insert more text, then delete
   for(const string& s : initialLines) { assert(s.size() < static_cast<size_t>(maxLineLength-10)); }

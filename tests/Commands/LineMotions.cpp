@@ -72,7 +72,7 @@ RandomLineTest generateRandomLineBuffer(int numLines) {
 
     // Rest is random chars
     for (int j = spaces; j < len; j++) {
-      line += RandomGen::pick(CharPools::ALPHA);
+      line += RandomGen::pick(CharPools::LETTERS);
     }
     test.lines.push_back(line);
   }

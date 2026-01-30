@@ -93,9 +93,10 @@ private:
 class DebugTest : public ::testing::Test {
 protected:
   Config config = Config::uniform();
+  OptimizerParams params{.maxResults = 30, .maxNodesExplored = 100000};
 
   EditOptimizer makeOptimizer() {
-    return EditOptimizer(config, OptimizerParams(30, 1e5, 1.0, 2.0));
+    return EditOptimizer(config);
   }
 
   // Create boundary for full buffer deletion (no constraints)

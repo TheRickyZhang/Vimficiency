@@ -59,34 +59,10 @@ struct RandomMotionTest {
 // Generate a random buffer with a valid cursor position
 RandomMotionTest generateRandomMotionBuffer(int numLines) {
   RandomMotionTest test;
-
-  for (int i = 0; i < numLines; i++) {
-    int len = RandomGen::range(5, 40);
-    string line;
-    line.reserve(len);
-
-    for (int j = 0; j < len; j++) {
-      int charType = RandomGen::range(0, 2);  // 0=keyword, 1=symbol, 2=space
-      if (charType == 0) {
-        line += RandomGen::pick(CharPools::KEYWORDS);
-      } else if (charType == 1) {
-        line += RandomGen::pick(CharPools::SYMBOLS);
-      } else {
-        line += ' ';
-      }
-    }
-    test.lines.push_back(line);
-  }
-
-  // Pick a random cursor position
-  test.cursorLine = RandomGen::range(0, numLines - 1);
-  int lineLen2 = static_cast<int>(test.lines[test.cursorLine].size());
-  if (lineLen2 > 0) {
-    test.cursorCol = RandomGen::range(0, lineLen2 - 1);
-  } else {
-    test.cursorCol = 0;
-  }
-
+  test.lines = randomLines(numLines, 5, 40);
+  Position pos = randomPosition(test.lines);
+  test.cursorLine = pos.line;
+  test.cursorCol = pos.col;
   return test;
 }
 

@@ -61,8 +61,8 @@ cmake --build build -j
 | `vimficiency_debug` | Scratch/debug tests | `./build/tests/vimficiency_debug` |
 
 ```bash
-# Run specific test
-./build/tests/vimficiency_tests --gtest_brief=1 --gtest_filter="TestName.*"
+# Run all correctness tests
+./build/tests/vimficiency_tests --gtest_brief=1
 
 # Run all benchmarks
 ./build/tests/vimficiency_benchmarks

@@ -23,7 +23,8 @@ class EditOptimizer_ManualTest : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle;
   Config config = Config::uniform();
-  EditOptimizer opt{config, OptimizerParams{.maxResults = 30}};
+  OptimizerParams params{.maxResults = 30};
+  EditOptimizer opt{config};
 
   static void SetUpTestSuite() { oracle = make_unique<NeovimOracle>(); }
   static void TearDownTestSuite() { oracle.reset(); }
@@ -110,7 +111,7 @@ void forEachValidResult(const vector<Result>& results, const Lines& lines, Fn fn
 TEST_F(EditOptimizer_ManualTest, PureDeletion_OracleVerified) {
   // Single test with oracle verification - stress tests cover more shapes
   Lines lines = {"aa", "bb"};
-  vector<Result> res = opt.optimizePureDeletion(lines, EditBoundary(lines, Position(0, 0), lines.lastPos()));
+  vector<Result> res = opt.optimizePureDeletion(lines, EditBoundary(lines, Position(0, 0), lines.lastPos()), params);
 
   EXPECT_TRUE(allPositionsValid(res, lines));
 
@@ -132,7 +133,7 @@ TEST_F(EditOptimizer_ManualTest, Boundary_LinesBelow) {
   Lines editRegion = fullBuffer.getSpan(startPos, endPos);
   EditBoundary boundary(fullBuffer, startPos, endPos);
 
-  EditResult res = opt.optimizeEdit(editRegion, {""}, boundary);
+  EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
   EXPECT_TRUE(allPositionsValid(res.typeAllResults, editRegion));
 }
 
@@ -144,7 +145,7 @@ TEST_F(EditOptimizer_ManualTest, Boundary_SingleLineSurrounded) {
   Lines editRegion = fullBuffer.getSpan(startPos, endPos);
   EditBoundary boundary(fullBuffer, startPos, endPos);
 
-  EditResult res = opt.optimizeEdit(editRegion, {""}, boundary);
+  EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
   // printResultsDebug(res.typeAllResults, "boundary line surrounded");
   EXPECT_TRUE(allPositionsValid(res.typeAllResults, editRegion));
 }
@@ -158,7 +159,7 @@ TEST_F(EditOptimizer_ManualTest, Boundary_PrefixSuffix) {
   Lines editRegion = fullBuffer.getSpan(startPos, endPos);
   EditBoundary boundary(fullBuffer, startPos, endPos);
 
-  EditResult res = opt.optimizeEdit(editRegion, {""}, boundary);
+  EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
 
   // These operations would delete prefix/suffix content
   static const vector<string> FORBIDDEN_OPS = {
@@ -183,7 +184,7 @@ TEST_F(EditOptimizer_ManualTest, Boundary_LinewiseCursorContainment) {
   Lines editRegion = fullBuffer.getSpan(startPos, endPos);
   EditBoundary boundary(fullBuffer, startPos, endPos);
 
-  EditResult res = opt.optimizeEdit(editRegion, {""}, boundary);
+  EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
 
   forEachValidResult(res.typeAllResults, editRegion, [&](Position pos, const string& seq) {
     // Skip visual mode sequences - they may cross boundaries which is a known optimizer limitation

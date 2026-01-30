@@ -25,8 +25,8 @@ class EditOptimizerHumanApprovalTests : public ::testing::Test {
 protected:
   inline static const Config config = Config::uniform();
   inline static NavContext navContext = NavContext();
-  inline static OptimizerParams params = OptimizerParams{.maxResults = 40, .maxNodesExplored = 50000, .exploreFactor = 3.0};
-  inline static EditOptimizer opt = EditOptimizer(config, params);
+  inline static OptimizerParams params{.maxResults = 40, .maxNodesExplored = 50000, .exploreFactor = 3.0};
+  inline static EditOptimizer opt{config};
 
   static void SetUpTestSuite() {
     navContext = NavContext();
@@ -42,7 +42,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionSingleWord) {
   Lines initialLines = {"arstn"};
   EditBoundary boundary(initialLines, {0, 0}, initialLines.lastPos());
 
-  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
+  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary, params);
 
   // printResultsDebug(res, "Delete single word");
   // Single word should use dw or de, not visual mode (too short)
@@ -60,7 +60,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionMultipleLines) {
   };
   EditBoundary boundary(initialLines, {0, 0}, initialLines.lastPos());
 
-  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
+  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary, params);
 
   // printResultsDebug(res, "Delete multiple lines");
   // ASSERT_TRUE(all results costs are <= 4 (always has option of dddd));
@@ -77,7 +77,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTop) {
   Lines editRegion = fullBuffer.getSpan(firstPos, lastPos);
   EditBoundary boundary(fullBuffer, firstPos, lastPos);
 
-  vector<Result> res = opt.optimizePureDeletion(editRegion, boundary);
+  vector<Result> res = opt.optimizePureDeletion(editRegion, boundary, params);
   // printResultsDebug(res, "Delete straddle top");
 }
 
@@ -93,7 +93,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleBottom) {
   Lines editRegion = fullBuffer.getSpan(firstPos, lastPos);
   EditBoundary boundary(fullBuffer, firstPos, lastPos);
 
-  vector<Result> res = opt.optimizePureDeletion(editRegion, boundary);
+  vector<Result> res = opt.optimizePureDeletion(editRegion, boundary, params);
   // printResultsDebug(res, "Delete straddle bottom");
   // ASSERT_TRUE(finds costs <= 5, like dddw)
 }
@@ -109,7 +109,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTopAndBottom) {
   Lines editRegion = fullBuffer.getSpan(firstPos, lastPos);
   EditBoundary boundary(fullBuffer, firstPos, lastPos);
 
-  vector<Result> res = opt.optimizePureDeletion(editRegion, boundary);
+  vector<Result> res = opt.optimizePureDeletion(editRegion, boundary, params);
   // printResultsDebug(res, "Delete straddle top and bottom");
   // ASSERT_TRUE(res[0] == "vjd" (best result by far))
   // ASSERT_TRUE(finds cost <= 7)
@@ -126,7 +126,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionMultiLineFull) {
   };
   EditBoundary boundary(initialLines, {0, 0}, initialLines.lastPos());
 
-  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary);
+  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary, params);
   // printResultsDebug(res, "Delete multi-line full");
   // ASSERT_TRUE(all valid)
 }
@@ -142,7 +142,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_Replacement_Multiline) {
     "bello",
     "worth"
   };
-  EditResult res = opt.optimizeEdit(initialLines, goalLines, EditBoundary());
+  EditResult res = opt.optimizeEdit(initialLines, goalLines, EditBoundary(), params);
   // printResultsDebug(res.replaceResults, "multi line");
   // ASSERT_FALSE(res.replaceResults.empty()) << "Should find replacement strategy";
 }

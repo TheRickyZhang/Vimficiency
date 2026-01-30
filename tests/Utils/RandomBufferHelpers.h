@@ -13,64 +13,94 @@
 #include <string_view>
 
 // Character pools for random buffer generation.
-// Use KEYWORDS/SYMBOLS for word boundary testing (character CLASS matters, not specific chars).
-// Use ALPHA for realistic content where you need variety.
 // Using string_view so they satisfy Indexable concept (have .size() and operator[]).
 namespace CharPools {
-constexpr std::string_view KEYWORDS = "abcdef";                      // Short keyword chars
-constexpr std::string_view ALPHA = "abcdefghijklmnopqrstuvwxyz";     // Full lowercase alphabet
-constexpr std::string_view SYMBOLS = ".,";                           // Punctuation (non-keyword, non-space)
-constexpr std::string_view SPACE = " ";                              // Single space
+  constexpr std::string_view LETTERS = "abcdef"; // keyword class
+  constexpr std::string_view SYMBOLS = ".,";   // non-keyword, non-space
+  constexpr std::string_view SPACE = " ";      // space (others include \r, \t)
 }
 
-// =============================================================================
-// Random Content Generation
-// =============================================================================
 
-// Generate a random word using lowercase letters
 inline std::string randomWord(int len) {
   std::string result;
-  result.reserve(len);
-  for (int i = 0; i < len; i++) {
-    result += RandomGen::pick(CharPools::KEYWORDS);
-  }
+  result.resize_and_overwrite(len, [](char* s, size_t n){
+    for (int i = 0; i < n; i++) {
+      s[i] = RandomGen::pick(CharPools::LETTERS);
+    }
+    return n;
+  });
   return result;
 }
 
-// Generate a random line with prose-like distribution (mostly letters)
-// ~80% letters, ~15% spaces, ~5% symbols
 inline std::string randomProseLine(int len) {
   std::string line;
-  line.reserve(len);
-
-  for (int i = 0; i < len; i++) {
-    line += RandomGen::pick<std::string_view>({
-        {16, CharPools::ALPHA},
-        {3, CharPools::SPACE},
-        {1, CharPools::SYMBOLS},
-    });
-  }
+  line.resize_and_overwrite(len, [](char* s, int n) {
+    for (int i = 0; i < n; i++) {
+      s[i] = RandomGen::pick<std::string_view>({
+          {80, CharPools::LETTERS},
+          {16, CharPools::SPACE},
+          {4, CharPools::SYMBOLS},
+      });
+    }
+    return n;
+  });
   return line;
 }
 
-// Generate random lines of words with specified count and length range
+inline std::string randomLine(int len) {
+  std::string line;
+  line.resize_and_overwrite(len, [](char* s, int n) {
+    for(int i = 0; i < n; i++) {
+        s[i] = RandomGen::pick<std::string_view>({
+          {60, CharPools::LETTERS},
+          {16, CharPools::SPACE},
+          {24, CharPools::SYMBOLS},
+      });
+    }
+    return n;
+  });
+  return line;
+}
+
 inline Lines randomLines(int numLines, int minLen, int maxLen) {
   Lines result;
   result.reserve(numLines);
-
   for (int i = 0; i < numLines; i++) {
-    result.push_back(randomWord(RandomGen::range(minLen, maxLen)));
+    result.push_back(randomLine(RandomGen::range(minLen, maxLen)));
   }
   return result;
 }
 
-// Generate random prose lines (for word boundary testing)
 inline Lines randomProseLines(int numLines, int minLen, int maxLen) {
+  Lines result;
+  result.reserve(numLines);
+  for (int i = 0; i < numLines; i++) {
+    result.push_back(randomProseLine(RandomGen::range(minLen, maxLen)));
+  }
+  return result;
+}
+
+static Lines randomCodeLines(int numLines, int avgLineLen) {
   Lines result;
   result.reserve(numLines);
 
   for (int i = 0; i < numLines; i++) {
-    result.push_back(randomProseLine(RandomGen::range(minLen, maxLen)));
+    if (RandomGen::chance(1, 10)) {
+      result.push_back("");
+      continue;
+    }
+
+    std::string line;
+    line += std::string(RandomGen::range(0, 4), ' ');
+
+    for(int i = 0; i < RandomGen::range(1, avgLineLen * 2); i++) {
+      line += RandomGen::pick<std::string_view>({
+          {3, CharPools::LETTERS},
+          {1, CharPools::SYMBOLS},
+          {1, CharPools::SPACE},
+      });
+    }
+    result.push_back(line);
   }
   return result;
 }
@@ -81,20 +111,16 @@ inline Lines randomProseLines(int numLines, int minLen, int maxLen) {
 
 // Generate a random valid position within the given buffer
 inline Position randomPosition(const Lines& lines) {
-  if (lines.empty()) {
-    return Position(0, 0);
-  }
   int line = RandomGen::range(0, static_cast<int>(lines.size()) - 1);
   int col = lines[line].empty() ? 0 : RandomGen::range(0, static_cast<int>(lines[line].size()) - 1);
   return Position(line, col);
 }
 
-// Generate a random position within a specified line range
-inline Position randomPositionInRange(const Lines& lines, int startLine, int endLine) {
-  if (lines.empty() || startLine > endLine) {
-    return Position(0, 0);
-  }
-  int line = RandomGen::range(startLine, endLine);
-  int col = lines[line].empty() ? 0 : RandomGen::range(0, static_cast<int>(lines[line].size()) - 1);
-  return Position(line, col);
+inline Position randomFirstPos(const Lines& lines) {
+  return Position(0, RandomGen::range(0, lines.front().effectiveSize() - 1));
+}
+
+inline Position randomLastPos(const Lines& lines) {
+  int lastLine = lines.lastLine();
+  return Position(lastLine, RandomGen::range(0, lines[lastLine].effectiveSize() - 1));
 }

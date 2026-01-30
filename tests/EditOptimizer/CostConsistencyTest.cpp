@@ -40,7 +40,7 @@ TEST_F(EditOptimizerCostConsistencyTests, CostMatchesComputed) {
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
     Lines lines = randomLines(RandomGen::range(1, 2), 4, 10);
     EditBoundary boundary(lines, {0, 0}, lines.lastPos());
-    EditOptimizer opt(config, OptimizerParams{});
+    EditOptimizer opt(config);
 
     EditResult res = opt.optimizeEdit(lines, {""}, boundary);
 

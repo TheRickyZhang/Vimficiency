@@ -22,6 +22,11 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
   // - Cursor on different line (db from col 0): remove empty line
   bool cursorOnDeletionLine = (pos.line == r.first.line);
 
+  // Track if this is a backward cross-line deletion from col 0 (db/dB pattern)
+  // Vim has special cursor placement: skip to first non-blank of cursor's original line
+  bool backwardFromCol0 = !cursorOnDeletionLine && pos.col == 0 && pos.line > r.first.line;
+  bool lineWasRemoved = false;
+
   int endCol = r.last.col + 1;  // Inclusive: delete up to and including end.col
 
   if (r.first.line == r.last.line) {
@@ -35,6 +40,7 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
     // - If cursor was on different line (db from col 0): remove empty line
     if (ln.empty() && r.first.col == 0 && lines.size() > 1 && !cursorOnDeletionLine) {
       lines.erase(lines.begin() + r.first.line);
+      lineWasRemoved = true;
     }
   } else {
     // Multi-line deletion: merge first and last line, delete lines in between
@@ -55,6 +61,7 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
     // by other content removes the line entirely rather than leaving it empty.
     if (firstLn.empty() && lines.size() > 1) {
       lines.erase(lines.begin() + r.first.line);
+      lineWasRemoved = true;
     }
 
     assert(!lines.empty());
@@ -65,8 +72,25 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
   if (pos.line >= static_cast<int>(lines.size())) {
     pos.line = static_cast<int>(lines.size()) - 1;
   }
+
   // Compute clamped column and update both col and targetCol
   int newCol = r.first.col;
+
+  // Special case: db/dB from col 0 crossing lines with line removal
+  // Vim places cursor at first non-blank of cursor's original line (now at pos.line)
+  if (backwardFromCol0 && lineWasRemoved && !lines[pos.line].empty()) {
+    const string& line = lines[pos.line];
+    newCol = 0;
+    while (newCol < static_cast<int>(line.size()) &&
+           (line[newCol] == ' ' || line[newCol] == '\t')) {
+      newCol++;
+    }
+    // If entire line is whitespace, stay at col 0
+    if (newCol >= static_cast<int>(line.size())) {
+      newCol = 0;
+    }
+  }
+
   if (mode == Mode::Insert) {
     newCol = min(newCol, static_cast<int>(lines[pos.line].size()));
   } else {
@@ -150,16 +174,8 @@ void joinLines(Lines& lines, Position& pos, bool addSpace) {
   assert (pos.line+1 < lines.size());
 
   string& currentLine = lines[pos.line];
-  int joinCol = static_cast<int>(currentLine.size());
-
-  // Remove trailing whitespace from current line if adding space (J command)
-  if (addSpace) {
-    while (!currentLine.empty() &&
-           (currentLine.back() == ' ' || currentLine.back() == '\t')) {
-      currentLine.pop_back();
-    }
-    joinCol = static_cast<int>(currentLine.size());
-  }
+  // Vim places cursor at original first line length (where join occurred)
+  int originalLen = static_cast<int>(currentLine.size());
 
   // Get next line
   string nextLine = lines[pos.line + 1];
@@ -174,17 +190,19 @@ void joinLines(Lines& lines, Position& pos, bool addSpace) {
     }
   }
 
-  // Join with optional space (only for J when both lines have content)
+  // For J command: add space only if first line doesn't already end with whitespace
+  // Vim does NOT strip trailing whitespace - it keeps it and only adds space when needed
   if (addSpace && !currentLine.empty() && start < nextLine.size()) {
-    // joinspaces: add 2 spaces after .!? (Vim default), else single space (Neovim default)
-    bool needsTwoSpaces = VimOptions::joinSpaces() && !currentLine.empty() &&
-                          (currentLine.back() == '.' || currentLine.back() == '!' || currentLine.back() == '?');
-    if (needsTwoSpaces) {
-      currentLine += "  ";
-      joinCol += 2;
-    } else {
-      currentLine += ' ';
-      joinCol++;
+    bool hasTrailingWhitespace = (currentLine.back() == ' ' || currentLine.back() == '\t');
+    if (!hasTrailingWhitespace) {
+      // joinspaces: add 2 spaces after .!? (Vim default), else single space (Neovim default)
+      bool needsTwoSpaces = VimOptions::joinSpaces() &&
+                            (currentLine.back() == '.' || currentLine.back() == '!' || currentLine.back() == '?');
+      if (needsTwoSpaces) {
+        currentLine += "  ";
+      } else {
+        currentLine += ' ';
+      }
     }
   }
   currentLine += nextLine.substr(start);
@@ -192,13 +210,8 @@ void joinLines(Lines& lines, Position& pos, bool addSpace) {
   // Remove the next line
   lines.erase(lines.begin() + pos.line + 1);
 
-  // J: cursor on inserted space (joinCol - 1)
-  // gJ: cursor on first char of joined content (joinCol)
-  if (addSpace) {
-    pos.setCol(joinCol > 0 ? joinCol - 1 : 0);
-  } else {
-    pos.setCol(joinCol);
-  }
+  // Both J and gJ: cursor at original first line length (position where join occurred)
+  pos.setCol(originalLen);
 }
 
 void openLineBelow(Lines& lines, Position& pos) {

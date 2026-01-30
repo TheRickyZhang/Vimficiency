@@ -1,7 +1,5 @@
 #pragma once
 
-#include <optional>
-
 // Shared search parameters across all optimizers.
 // Use designated initializers to override defaults
 struct OptimizerParams {
@@ -23,11 +21,5 @@ struct OptimizerParams {
         .maxNodesExplored = maxNodesExplored,
         .distanceWeight = 0.0,
     };
-  }
-
-  // Merge: override only the fields that are explicitly set in 'override'
-  static OptimizerParams merge(const OptimizerParams& defaults,
-                                const std::optional<OptimizerParams>& override) {
-    return override.value_or(defaults);
   }
 };

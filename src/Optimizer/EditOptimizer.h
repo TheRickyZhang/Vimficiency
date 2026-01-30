@@ -1,7 +1,6 @@
 #pragma once
 
 #include <vector>
-#include <optional>
 
 #include "Config.h"
 #include "Result.h"
@@ -49,11 +48,8 @@ void tryReplacement(const std::string& deleted,
 
 struct EditOptimizer {
   Config config;
-  OptimizerParams defaultParams;
 
-  EditOptimizer(const Config& config, OptimizerParams params = {})
-      : config(std::move(config)),
-        defaultParams(params) {}
+  EditOptimizer(const Config& config) : config(std::move(config)) {}
 
   // find optimal sequences to transform initialLines to goalLines
   // Either delete all initial and type out result, or use replacement
@@ -62,7 +58,7 @@ struct EditOptimizer {
       const Lines& initialLines,
       const Lines& goalLines,
       EditBoundary editBoundary,
-      const std::optional<OptimizerParams>& paramsOverride = std::nullopt
+      OptimizerParams params = {}
   );
 
   // find optimal sequences to delete all content in initialLines
@@ -71,6 +67,6 @@ struct EditOptimizer {
   std::vector<Result> optimizePureDeletion(
       const Lines& initialLines,
       EditBoundary editBoundary,
-      const std::optional<OptimizerParams>& paramsOverride = std::nullopt
+      OptimizerParams params = {}
   );
 };

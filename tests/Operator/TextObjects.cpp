@@ -66,35 +66,17 @@ const vector<TextObjectSpec>& getAllTextObjects() {
 
 RandomBufferTest generateTextObjectBuffer(int numLines) {
   RandomBufferTest test;
-
-  // Build lines with mixed content
-  for (int i = 0; i < numLines; i++) {
-    int len = RandomGen::range(10, 20);
-    string line;
-    line.reserve(len);
-
-    for (int j = 0; j < len; j++) {
-      int charType = RandomGen::range(0, 2);
-      if (charType == 0) {
-        line += RandomGen::pick(CharPools::KEYWORDS);
-      } else if (charType == 1) {
-        line += RandomGen::pick(CharPools::SYMBOLS);
-      } else {
-        line += CharPools::SPACE[0];
-      }
-    }
-    test.lines.push_back(line);
-  }
+  test.lines = randomLines(numLines, 10, 20);
 
   // For text objects, use single-line edit region
   int editLine = RandomGen::range(0, numLines - 1);
-  int lineLen2 = test.lines[editLine].size();
+  int lineLen2 = static_cast<int>(test.lines[editLine].size());
 
   // Ensure line is long enough for meaningful edit region
   int minEditLen = 4;
   if (lineLen2 < minEditLen + 2) {
     test.lines[editLine] += string(minEditLen + 2 - lineLen2, 'x');
-    lineLen2 = test.lines[editLine].size();
+    lineLen2 = static_cast<int>(test.lines[editLine].size());
   }
 
   // Pick edit region with room for boundaries

@@ -278,20 +278,7 @@ TEST_F(LinesTest, RandomStress_LineDeleteRange) {
     // Generate random lines
     int numLines = RandomGen::range(1, 5);
 
-    Lines lines;
-    for (int j = 0; j < numLines; j++) {
-      int len = RandomGen::range(5, 20);
-      string line;
-      for (int k = 0; k < len; k++) {
-        int charType = RandomGen::range(0, 26);  // 26 alpha + 1 space
-        if (charType < 26) {
-          line += CharPools::ALPHA[charType];
-        } else {
-          line += CharPools::SPACE[0];
-        }
-      }
-      lines.push_back(line);
-    }
+    Lines lines = randomLines(numLines, 5, 20);
 
     // Random cursor position
     int cursorLine = RandomGen::range(0, numLines - 1);

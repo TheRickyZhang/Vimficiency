@@ -45,8 +45,8 @@ TEST_F(EditOptimizerDeterminismTests, SameInputProducesSameOutput) {
     Lines lines = randomLines(RandomGen::range(1, 2), 4, 8);
     EditBoundary boundary(lines, {0, 0}, lines.lastPos());
 
-    EditOptimizer opt1(config, OptimizerParams{});
-    EditOptimizer opt2(config, OptimizerParams{});
+    EditOptimizer opt1(config);
+    EditOptimizer opt2(config);
 
     EditResult res1 = opt1.optimizeEdit(lines, {""}, boundary);
     EditResult res2 = opt2.optimizeEdit(lines, {""}, boundary);

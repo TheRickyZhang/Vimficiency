@@ -111,26 +111,61 @@ Range textObjectCore(
     if (cursorOnWhitespace) {
       // Cursor in whitespace: (Backward, GapEdge) + (Forward, WordEdge)
       start = motionWordCore(cursor, lines, false, EdgeType::GapEdge, isBigWord, false);
+
+      // Neovim's daw does NOT cross newline backward when cursor is on leading
+      // whitespace. Only check this expensive condition when motion crossed lines.
+      if (start.line < cursor.line) {
+        bool allWhitespaceBeforeCursor = true;
+        for (int col = 0; col < cursor.col; col++) {
+          if (!isWhitespace(lines[cursor.line][col])) {
+            allWhitespaceBeforeCursor = false;
+            break;
+          }
+        }
+        if (allWhitespaceBeforeCursor) {
+          start = Position(cursor.line, 0);
+        }
+      }
       end = motionWordCore(cursor, lines, true, EdgeType::WordEdge, isBigWord, false);
     } else {
-      // Cursor in word/symbol: check for trailing whitespace/newline
-      // Use motionWordCore to find word end, check if POSITION_OUTSIDE_BOUNDARY
+      // Cursor in word/symbol: check for trailing whitespace (NOT newline!)
       Position wordEnd = motionWordCore(cursor, lines, true, EdgeType::WordEdge, isBigWord, false);
+      Position wordStart = motionWordCore(cursor, lines, false, EdgeType::WordEdge, isBigWord, false);
+
       bool hasTrailingWs = false;
       if (wordEnd != POSITION_OUTSIDE_BOUNDARY) {
-        Position afterWord = lines.getNextPos(wordEnd);
-        unsigned char afterChar = lines.get(afterWord);
-        hasTrailingWs = isBlank(afterChar);
+        // Check for space/tab AFTER word on SAME LINE (newline doesn't count)
+        int nextCol = wordEnd.col + 1;
+        if (nextCol < static_cast<int>(lines[wordEnd.line].size())) {
+          hasTrailingWs = isWhitespace(lines[wordEnd.line][nextCol]);
+        }
       }
 
       if (hasTrailingWs) {
-        // Has trailing ws/newline: (Backward, WordEdge) + (Forward, GapEdge)
-        start = motionWordCore(cursor, lines, false, EdgeType::WordEdge, isBigWord, false);
+        // Has trailing ws: (Backward, WordEdge) + (Forward, GapEdge)
+        start = wordStart;
         end = motionWordCore(cursor, lines, true, EdgeType::GapEdge, isBigWord, false);
       } else {
-        // No trailing ws: (Backward, GapEdge) + (Forward, WordEdge)
-        start = motionWordCore(cursor, lines, false, EdgeType::GapEdge, isBigWord, false);
-        end = motionWordCore(cursor, lines, true, EdgeType::WordEdge, isBigWord, false);
+        // No trailing ws: include leading whitespace ONLY if there's a word before on same line
+        // Check if there's a non-whitespace char before wordStart on the same line
+        bool hasWordBeforeOnSameLine = false;
+        if (wordStart.line == cursor.line && wordStart.col > 0) {
+          for (int col = 0; col < wordStart.col; col++) {
+            if (!isWhitespace(lines[cursor.line][col])) {
+              hasWordBeforeOnSameLine = true;
+              break;
+            }
+          }
+        }
+
+        if (hasWordBeforeOnSameLine) {
+          // Word before: delete leading whitespace + word
+          start = motionWordCore(cursor, lines, false, EdgeType::GapEdge, isBigWord, false);
+        } else {
+          // No word before: delete word only, keep leading whitespace
+          start = wordStart;
+        }
+        end = wordEnd;
       }
     }
   }
@@ -208,6 +243,26 @@ Range textObjectRange(
     if (cursorOnWhitespace) {
       // Cursor in whitespace: (Backward, GapEdge) + (Forward, WordEdge)
       start = motionWordEndpoint(cursor, lines, false, EdgeType::GapEdge, isBigWord, false, leftColOffset, hasLinesAbove);
+
+      // Neovim's daw does NOT cross newline backward when cursor is on leading
+      // whitespace. Only check this expensive condition when motion crossed lines.
+      if (start != POSITION_OUTSIDE_BOUNDARY && start.line < cursor.line) {
+        bool allWhitespaceBeforeCursor = true;
+        for (int col = 0; col < cursor.col; col++) {
+          if (!isWhitespace(lines[cursor.line][col])) {
+            allWhitespaceBeforeCursor = false;
+            break;
+          }
+        }
+        if (allWhitespaceBeforeCursor) {
+          // Clamp to current line start, checking boundary
+          if (cursor.line == 0 && leftColOffset > 0) {
+            start = POSITION_OUTSIDE_BOUNDARY;
+          } else {
+            start = Position(cursor.line, 0);
+          }
+        }
+      }
       end = motionWordEndpoint(cursor, lines, true, EdgeType::WordEdge, isBigWord, false, rightColOffset, hasLinesBelow);
 
       // If forward motion ended on whitespace, no word was found - signal invalid
@@ -215,23 +270,54 @@ Range textObjectRange(
         end = POSITION_OUTSIDE_BOUNDARY;
       }
     } else {
-      // Cursor in word/symbol: check for trailing whitespace/newline
-      // First check wordEnd without boundary to determine trailing ws
+      // Cursor in word/symbol: check for trailing whitespace (NOT newline!)
       Position wordEnd = motionWordEndpoint(cursor, lines, true, EdgeType::WordEdge, isBigWord, false, 0, false);
+      Position wordStart = motionWordEndpoint(cursor, lines, false, EdgeType::WordEdge, isBigWord, false, 0, false);
+
       bool hasTrailingWs = false;
       if (wordEnd != POSITION_OUTSIDE_BOUNDARY) {
-        Position afterWord = lines.getNextPos(wordEnd);
-        unsigned char afterChar = lines.get(afterWord);
-        hasTrailingWs = isBlank(afterChar);
+        // Check for space/tab AFTER word on SAME LINE (newline doesn't count)
+        int nextCol = wordEnd.col + 1;
+        if (nextCol < static_cast<int>(lines[wordEnd.line].size())) {
+          hasTrailingWs = isWhitespace(lines[wordEnd.line][nextCol]);
+        }
       }
 
       if (hasTrailingWs) {
-        // Has trailing ws/newline: (Backward, WordEdge) + (Forward, GapEdge)
+        // Has trailing ws: (Backward, WordEdge) + (Forward, GapEdge)
         start = motionWordEndpoint(cursor, lines, false, EdgeType::WordEdge, isBigWord, false, leftColOffset, hasLinesAbove);
         end = motionWordEndpoint(cursor, lines, true, EdgeType::GapEdge, isBigWord, false, rightColOffset, hasLinesBelow);
+
+        // daw does NOT cross lines when trailing whitespace ends at EOL
+        // (similar to dw behavior). Clamp to end of current line.
+        if (end != POSITION_OUTSIDE_BOUNDARY && end.line > wordEnd.line) {
+          int lastCol = static_cast<int>(lines[wordEnd.line].size()) - 1;
+          if (lastCol >= 0) {
+            end = Position(wordEnd.line, lastCol);
+          } else {
+            // Empty line edge case - shouldn't happen since we have trailing ws
+            end = wordEnd;
+          }
+        }
       } else {
-        // No trailing ws: (Backward, GapEdge) + (Forward, WordEdge)
-        start = motionWordEndpoint(cursor, lines, false, EdgeType::GapEdge, isBigWord, false, leftColOffset, hasLinesAbove);
+        // No trailing ws: include leading whitespace ONLY if there's a word before on same line
+        bool hasWordBeforeOnSameLine = false;
+        if (wordStart != POSITION_OUTSIDE_BOUNDARY && wordStart.line == cursor.line && wordStart.col > 0) {
+          for (int col = 0; col < wordStart.col; col++) {
+            if (!isWhitespace(lines[cursor.line][col])) {
+              hasWordBeforeOnSameLine = true;
+              break;
+            }
+          }
+        }
+
+        if (hasWordBeforeOnSameLine) {
+          // Word before: delete leading whitespace + word
+          start = motionWordEndpoint(cursor, lines, false, EdgeType::GapEdge, isBigWord, false, leftColOffset, hasLinesAbove);
+        } else {
+          // No word before: delete word only, keep leading whitespace
+          start = motionWordEndpoint(cursor, lines, false, EdgeType::WordEdge, isBigWord, false, leftColOffset, hasLinesAbove);
+        }
         end = motionWordEndpoint(cursor, lines, true, EdgeType::WordEdge, isBigWord, false, rightColOffset, hasLinesBelow);
       }
     }

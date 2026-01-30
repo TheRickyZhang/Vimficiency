@@ -1,6 +1,5 @@
 #pragma once
 
-#include <optional>
 #include <vector>
 
 #include "Config.h"
@@ -25,10 +24,8 @@ struct MotionResult {
 
 struct MotionOptimizer {
   Config config;
-  OptimizerParams defaultParams;
 
-  MotionOptimizer(const Config& config, OptimizerParams params = {})
-      : config(config), defaultParams(params) {}
+  MotionOptimizer(const Config& config) : config(config) {}
 
   // For movement only. Builds index for faster movement computation.
   // TODO: Only RunningEffort is continued from pre-existing state, everything else can be fresh. (make sure that we set cost += newCost - previousCost, not cost = newCost!)
@@ -50,8 +47,8 @@ struct MotionOptimizer {
     const MotionBoundary& boundary = MotionBoundary(),
     const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS,
 
-    // Optional search parameter overrides (uses defaultParams if not provided)
-    const std::optional<OptimizerParams>& paramsOverride = std::nullopt
+    // Search parameters (uses struct defaults if not specified via designated initializers)
+    OptimizerParams params = {}
   );
 
   // Overload without userSequence - uses unbounded effort exploration
@@ -62,7 +59,7 @@ struct MotionOptimizer {
     const Position& endPos,
     const NavContext& navigationContext,
     const MotionBoundary& boundary = MotionBoundary(),
-    const std::optional<OptimizerParams>& paramsOverride = std::nullopt
+    OptimizerParams params = {}
   );
 
   // Multi-sink movement optimization: find paths to any position in [rangeFirst, rangeLast]
@@ -85,7 +82,7 @@ struct MotionOptimizer {
     const MotionBoundary& boundary = MotionBoundary(),
     const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS,
 
-    // Optional search parameter overrides (uses defaultParams if not provided)
-    const std::optional<OptimizerParams>& paramsOverride = std::nullopt
+    // Search parameters (uses struct defaults if not specified via designated initializers)
+    OptimizerParams params = {}
   );
 };

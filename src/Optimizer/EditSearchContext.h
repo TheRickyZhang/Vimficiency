@@ -146,7 +146,7 @@ private:
       int editContentLen, DeletionCallback onDeletion);
   void exploreParagraphEdits(
       const std::vector<Edit::ParagraphEditSpec>& specs,
-      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
+      const Position& cursor, const Lines& lines, LinewiseCallback onLinewise);
   void exploreSentenceEdits(
       const std::vector<Edit::SentenceEditSpec>& specs,
       const Position& cursor, const Lines& lines, DeletionCallback onDeletion);

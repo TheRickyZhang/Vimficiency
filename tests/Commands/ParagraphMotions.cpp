@@ -73,7 +73,7 @@ RandomParagraphTest generateRandomParagraphBuffer(int numLines) {
       string line;
       line.reserve(len);
       for (int j = 0; j < len; j++) {
-        line += RandomGen::pick(CharPools::ALPHA);
+        line += RandomGen::pick(CharPools::LETTERS);
       }
       test.lines.push_back(line);
     }

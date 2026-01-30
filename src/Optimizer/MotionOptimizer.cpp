@@ -23,9 +23,7 @@ MotionResult MotionOptimizer::optimize(
     const NavContext& navContext,
     const MotionBoundary& boundary,
     const MotionToKeys &rawMotionToKeys,
-    const optional<OptimizerParams>& paramsOverride) {
-  // Merge defaults with overrides
-  const OptimizerParams params = OptimizerParams::merge(defaultParams, paramsOverride);
+    OptimizerParams params) {
   // rawMotionToKeys only used for count searchable motion key lookups
   // Spec-based exploration automatically includes all supported motions
 
@@ -407,9 +405,7 @@ vector<RangeResult> MotionOptimizer::optimizeToRange(
     bool allowMultiplePerPosition,
     const MotionBoundary& boundary,
     const MotionToKeys& rawMotionToKeys,
-    const optional<OptimizerParams>& paramsOverride) {
-  // Merge defaults with overrides
-  const OptimizerParams params = OptimizerParams::merge(defaultParams, paramsOverride);
+    OptimizerParams params) {
   // rawMotionToKeys not used in optimizeToRange - spec-based exploration only
 
   double userEffort = getEffort(userSequence, config);
@@ -546,7 +542,7 @@ MotionResult MotionOptimizer::optimize(
     const Position& endPos,
     const NavContext& navigationContext,
     const MotionBoundary& boundary,
-    const optional<OptimizerParams>& paramsOverride) {
+    OptimizerParams params) {
   return optimize(
       lines,
       startPos,
@@ -556,6 +552,6 @@ MotionResult MotionOptimizer::optimize(
       navigationContext,
       boundary,
       EXPLORABLE_MOTIONS,
-      paramsOverride
+      params
   );
 }

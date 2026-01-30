@@ -238,20 +238,18 @@ void tryReplacement(const string &deleted, const string &inserted,
 EditResult
 EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
                             EditBoundary editBoundary,
-                            const optional<OptimizerParams> &paramsOverride) {
+                            OptimizerParams params) {
   assert(initialLines != goalLines);
   assert(!initialLines.empty() && "empty startlines should be handled in compositionEditor by i, a, o, O");
 
   // Delegate to optimizePureDeletion for pure deletion (goalLines empty)
   if (allLinesEmpty(goalLines)) {
-    vector<Result> deletionResults = optimizePureDeletion(initialLines, editBoundary, paramsOverride);
+    vector<Result> deletionResults = optimizePureDeletion(initialLines, editBoundary, params);
     int n = static_cast<int>(deletionResults.size());
     EditResult result(n, {}, -1);
     result.typeAllResults = std::move(deletionResults);
     return result;
   }
-
-  const OptimizerParams &params = paramsOverride.value_or(defaultParams);
 
   // Get replacement results
   vector<Result> replacementResults;
@@ -435,10 +433,8 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
 vector<Result>
 EditOptimizer::optimizePureDeletion(const Lines &initialLines,
                                     EditBoundary editBoundary,
-                                    const optional<OptimizerParams> &paramsOverride) {
+                                    OptimizerParams params) {
   assert(!initialLines.empty() && "empty startlines should be handled in compositionEditor by i, a, o, O");
-
-  const OptimizerParams &params = paramsOverride.value_or(defaultParams);
 
   // Create search context (handles effectiveLines, offsets, search state)
   EditSearchContext ctx(initialLines, editBoundary, params, config);
@@ -606,7 +602,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
 
     // Only try visual if there's actual content to select
     if (lastPos > firstPos || (lastPos.line == firstPos.line && lastPos.col > firstPos.col)) {
-      MotionOptimizer motionOpt(config, params);
+      MotionOptimizer motionOpt(config);
       NavContext navCtx;
 
       // Find best motion from first to last - use unbounded overload
@@ -614,7 +610,9 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
           ctx.effectiveLines,
           firstPos,
           lastPos,
-          navCtx
+          navCtx,
+          MotionBoundary(),
+          params
       );
 
       if (!motionResults.empty() && motionResults[0].isValid()) {

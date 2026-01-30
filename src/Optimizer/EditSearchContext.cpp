@@ -141,6 +141,18 @@ void EditSearchContext::exploreForwardWordEdits(
     if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor)
       continue;
 
+    // Special case for dw/dW: Vim does NOT cross lines.
+    // If endpoint is on a different line, clamp to end of word on current line.
+    if (spec.edgeType == EdgeType::GapEdge && endpoint.line > cursor.line) {
+      // Find word end on current line instead
+      Position wordEnd = VimCore::motionWordEndpoint(
+          cursor, lines, true, EdgeType::WordEdge, spec.isBig,
+          spec.skipCurrent, rightColOffset, editBoundary.hasLinesBelow());
+      if (wordEnd == POSITION_OUTSIDE_BOUNDARY || wordEnd == cursor)
+        continue;
+      endpoint = wordEnd;
+    }
+
     onDeletion(Range(cursor, endpoint), spec.cmd, spec.keys);
   }
 }
@@ -259,13 +271,15 @@ void EditSearchContext::exploreCharEdits(
     int editContentLen, DeletionCallback onDeletion) {
   // Note these can make the cursor end up in edit region, but we can handle inside edit region separately
 
-  // x: delete char at cursor
+  // x: delete char at cursor (must be in content region)
   if (contentStart <= cursor.col && cursor.col < contentEnd) {
     onDeletion(Range(cursor, cursor), "x", Deletion::CHAR.at("x"));
   }
 
   // X: delete char before cursor
-  if (cursor.col > contentStart) {
+  // Both cursor and the char being deleted must be in content region
+  // cursor must be > contentStart AND cursor must be <= contentEnd (for char before to be valid)
+  if (cursor.col > contentStart && cursor.col <= contentEnd) {
     Position before(cursor.line, cursor.col - 1);
     onDeletion(Range(before, before), "X", Deletion::CHAR.at("X"));
   }
@@ -273,14 +287,14 @@ void EditSearchContext::exploreCharEdits(
 
 void EditSearchContext::exploreParagraphEdits(
     const vector<Edit::ParagraphEditSpec>& specs,
-    const Position& cursor, const Lines& lines, DeletionCallback onDeletion) {
+    const Position& cursor, const Lines& lines, LinewiseCallback onLinewise) {
   int lastLine = lines.lastLine();
 
   for (const auto& spec : specs) {
     int endpointLine = VimCore::motionParagraphEndpoint(
         cursor.line, lines, spec.forward, LineEdgeType::NextEdge);
 
-    // Skip if endpoint lands on edge line when bounded (may have been clamped)
+    // Skip if endpoint lands on edge line when bounded
     if (spec.forward) {
       if (editBoundary.hasLinesBelow() && endpointLine == lastLine) continue;
       if (editBoundary.hasSuffix() && endpointLine == lastLine) continue;
@@ -289,24 +303,23 @@ void EditSearchContext::exploreParagraphEdits(
       if (editBoundary.hasPrefix() && endpointLine == 0) continue;
     }
 
-    // Paragraph motions are exclusive: d} deletes up to (not including) the blank line
-    Position endpoint(endpointLine, 0);
-
+    // d{/d} are LINEWISE in Neovim
     if (spec.forward) {
-      // d}: delete from cursor to just before endpoint (exclusive)
-      if (endpoint <= cursor) continue;
-      Position endPos = lines.getPrevPos(endpoint);
-      if (endPos == POSITION_OUTSIDE_BOUNDARY) continue;
-      onDeletion(Range(cursor, endPos), spec.cmd, spec.keys);
-    } else {
-      // d{: delete from endpoint to just before cursor (exclusive)
-      if (endpoint >= cursor) continue;
-      Position endPos = Position(cursor.line, cursor.col - 1);
-      if (cursor.col == 0) {
-        if (cursor.line == 0) continue;
-        endPos = Position(cursor.line - 1, lines[cursor.line - 1].lastCol());
+      // d}: delete from cursor line to line before endpoint (endpoint is blank line)
+      int endLine = endpointLine - 1;
+      if (endLine < cursor.line) continue;
+      // For now, only support single-line deletion (cursor.line == endLine)
+      // Multi-line linewise deletion would need a LineRange callback
+      if (endLine == cursor.line) {
+        onLinewise(cursor.line, spec.cmd, spec.keys);
       }
-      onDeletion(Range(endpoint, endPos), spec.cmd, spec.keys);
+    } else {
+      // d{: delete from endpoint line to cursor line (inclusive)
+      if (endpointLine > cursor.line) continue;
+      // For now, only support single-line deletion
+      if (endpointLine == cursor.line) {
+        onLinewise(cursor.line, spec.cmd, spec.keys);
+      }
     }
   }
 }
@@ -344,6 +357,30 @@ void EditSearchContext::exploreSentenceEdits(
     } else {
       // d(: delete from endpoint to just before cursor (exclusive)
       if (endpoint >= cursor) continue;
+
+      // Skip when cursor is on trailing whitespace at EOL and endpoint is col 0
+      // In this case, Vim converts to linewise deletion (exclusive-linewise rule)
+      // which we don't handle correctly
+      if (endpoint.col == 0 && cursor.line > endpoint.line) {
+        // Check if cursor is on trailing whitespace at end of line
+        bool cursorOnTrailingWs = false;
+        if (cursor.col > 0 && cursor.col < static_cast<int>(lines[cursor.line].size())) {
+          char cursorChar = lines[cursor.line][cursor.col];
+          if (cursorChar == ' ' || cursorChar == '\t') {
+            // Check if all characters after cursor are also whitespace
+            cursorOnTrailingWs = true;
+            for (int c = cursor.col + 1; c < static_cast<int>(lines[cursor.line].size()); c++) {
+              char ch = lines[cursor.line][c];
+              if (ch != ' ' && ch != '\t') {
+                cursorOnTrailingWs = false;
+                break;
+              }
+            }
+          }
+        }
+        if (cursorOnTrailingWs) continue;
+      }
+
       Position endPos = Position(cursor.line, cursor.col - 1);
       if (cursor.col == 0) {
         if (cursor.line == 0) continue;
@@ -449,7 +486,7 @@ void EditSearchContext::exploreAllDeletions(const EditState& state,
   exploreHalfLineEdits(Edit::HALF_LINE_EDITS, cursor, lines, contentBegin, contentEnd, onDeletion);
   exploreFullLineEdits(Edit::FULL_LINE_EDITS, cursor, lines, onLinewise);
   exploreCharEdits(cursor, lines, contentBegin, contentEnd, editContentLen, onDeletion);
-  exploreParagraphEdits(Edit::PARAGRAPH_EDITS, cursor, lines, onDeletion);
+  exploreParagraphEdits(Edit::PARAGRAPH_EDITS, cursor, lines, onLinewise);
   exploreSentenceEdits(Edit::SENTENCE_EDITS, cursor, lines, onDeletion);
   exploreJoinCommands(cursor, lines, onJoin);
 }
