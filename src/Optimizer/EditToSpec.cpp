@@ -90,10 +90,26 @@ const vector<ParagraphEditSpec> PARAGRAPH_EDITS = {
     {"d{", {Key::Key_D, Key::Key_Shift, Key::Key_LBracket}, false},
 };
 
+// Split by Forward for templated dispatch: cmd, keys
+const vector<ParagraphEditSpecNoDir> FORWARD_PARAGRAPH_EDITS = {
+    {"d}", {Key::Key_D, Key::Key_Shift, Key::Key_RBracket}},
+};
+const vector<ParagraphEditSpecNoDir> BACKWARD_PARAGRAPH_EDITS = {
+    {"d{", {Key::Key_D, Key::Key_Shift, Key::Key_LBracket}},
+};
+
 // Sentence motion edits: cmd, keys, forward
 const vector<SentenceEditSpec> SENTENCE_EDITS = {
     {"d)", {Key::Key_D, Key::Key_Shift, Key::Key_0}, true},
     {"d(", {Key::Key_D, Key::Key_Shift, Key::Key_9}, false},
+};
+
+// Split by Forward for templated dispatch: cmd, keys
+const vector<SentenceEditSpecNoDir> FORWARD_SENTENCE_EDITS = {
+    {"d)", {Key::Key_D, Key::Key_Shift, Key::Key_0}},
+};
+const vector<SentenceEditSpecNoDir> BACKWARD_SENTENCE_EDITS = {
+    {"d(", {Key::Key_D, Key::Key_Shift, Key::Key_9}},
 };
 
 } // namespace Edit

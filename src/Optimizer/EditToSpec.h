@@ -91,6 +91,14 @@ struct ParagraphEditSpec {
 };
 extern const std::vector<ParagraphEditSpec> PARAGRAPH_EDITS;
 
+// Split by Forward for templated dispatch
+struct ParagraphEditSpecNoDir {
+  const char* cmd;
+  PhysicalKeys keys;
+};
+extern const std::vector<ParagraphEditSpecNoDir> FORWARD_PARAGRAPH_EDITS;   // d}
+extern const std::vector<ParagraphEditSpecNoDir> BACKWARD_PARAGRAPH_EDITS;  // d{
+
 // Sentence motion edits (d), d()
 struct SentenceEditSpec {
   const char* cmd;
@@ -98,5 +106,13 @@ struct SentenceEditSpec {
   bool forward;  // true for d), false for d(
 };
 extern const std::vector<SentenceEditSpec> SENTENCE_EDITS;
+
+// Split by Forward for templated dispatch
+struct SentenceEditSpecNoDir {
+  const char* cmd;
+  PhysicalKeys keys;
+};
+extern const std::vector<SentenceEditSpecNoDir> FORWARD_SENTENCE_EDITS;   // d)
+extern const std::vector<SentenceEditSpecNoDir> BACKWARD_SENTENCE_EDITS;  // d(
 
 } // namespace Edit

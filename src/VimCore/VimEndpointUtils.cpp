@@ -296,8 +296,9 @@ Range textObjectRange(Position cursor, const Lines& lines, bool isInner,
 // Paragraph endpoint/range computation
 // =============================================================================
 
-int motionParagraphEndpoint(int cursorLine, const Lines& lines, bool forward,
-                            LineEdgeType edgeType, int boundaryLine) {
+// Core implementation - computes endpoint without boundary checking
+template<bool Forward, LineEdgeType Edge>
+static int motionParagraphEndpointCore(int cursorLine, const Lines& lines) {
   int n = static_cast<int>(lines.size());
   if (n == 0)
     return 0;
@@ -307,20 +308,16 @@ int motionParagraphEndpoint(int cursorLine, const Lines& lines, bool forward,
 
   int result = cursorLine;
 
-  switch (edgeType) {
-  case LineEdgeType::BlockEdge: {
+  if constexpr (Edge == LineEdgeType::BlockEdge) {
     // Edge of current same-type block
-    if (forward) {
+    if constexpr (Forward) {
       result = paragraphEndLine(lines, cursorLine);
     } else {
       result = paragraphStartLine(lines, cursorLine);
     }
-    break;
-  }
-
-  case LineEdgeType::GapEdge: {
+  } else if constexpr (Edge == LineEdgeType::GapEdge) {
     // Edge of blank line run adjacent to current paragraph
-    if (forward) {
+    if constexpr (Forward) {
       // Find end of trailing blank lines (after current paragraph)
       int blockEnd = paragraphEndLine(lines, cursorLine);
       if (cursorOnBlank) {
@@ -347,12 +344,9 @@ int motionParagraphEndpoint(int cursorLine, const Lines& lines, bool forward,
         result = blockStart;
       }
     }
-    break;
-  }
-
-  case LineEdgeType::NextEdge: {
+  } else if constexpr (Edge == LineEdgeType::NextEdge) {
     // Edge of next block (}/{ motions go to blank line separator)
-    if (forward) {
+    if constexpr (Forward) {
       // Skip current blank lines
       int i = cursorLine;
       while (i < n && isBlankLineStr(lines[i])) {
@@ -384,21 +378,65 @@ int motionParagraphEndpoint(int cursorLine, const Lines& lines, bool forward,
       // Return blank line, or line 0 if not found
       result = max(i, 0);
     }
-    break;
-  }
   }
 
-  // Check if result crosses boundary
-  if (boundaryLine >= 0) {
-    if (forward && result >= boundaryLine) {
-      return -1; // Outside boundary
-    }
-    if (!forward && result <= boundaryLine) {
-      return -1; // Outside boundary
+  return result;
+}
+
+// Templated version for compile-time dispatch on Forward and Edge
+template<bool Forward, LineEdgeType Edge>
+int motionParagraphEndpoint(int cursorLine, const Lines& lines, bool hasLinesOutside) {
+  int result = motionParagraphEndpointCore<Forward, Edge>(cursorLine, lines);
+
+  // Boundary check
+  if (hasLinesOutside) {
+    int lastLine = static_cast<int>(lines.size()) - 1;
+    if constexpr (Forward) {
+      if (result >= lastLine) {
+        return LINE_OUTSIDE_BOUNDARY;
+      }
+    } else {
+      if (result <= 0) {
+        return LINE_OUTSIDE_BOUNDARY;
+      }
     }
   }
 
   return result;
+}
+
+// Explicit instantiations for templated version
+template int motionParagraphEndpoint<true, LineEdgeType::BlockEdge>(int, const Lines&, bool);
+template int motionParagraphEndpoint<true, LineEdgeType::GapEdge>(int, const Lines&, bool);
+template int motionParagraphEndpoint<true, LineEdgeType::NextEdge>(int, const Lines&, bool);
+template int motionParagraphEndpoint<false, LineEdgeType::BlockEdge>(int, const Lines&, bool);
+template int motionParagraphEndpoint<false, LineEdgeType::GapEdge>(int, const Lines&, bool);
+template int motionParagraphEndpoint<false, LineEdgeType::NextEdge>(int, const Lines&, bool);
+
+// Runtime dispatch version (for internal use in text object functions)
+int motionParagraphEndpoint(int cursorLine, const Lines& lines, bool forward,
+                            LineEdgeType edgeType) {
+  if (forward) {
+    switch (edgeType) {
+      case LineEdgeType::BlockEdge:
+        return motionParagraphEndpointCore<true, LineEdgeType::BlockEdge>(cursorLine, lines);
+      case LineEdgeType::GapEdge:
+        return motionParagraphEndpointCore<true, LineEdgeType::GapEdge>(cursorLine, lines);
+      case LineEdgeType::NextEdge:
+        return motionParagraphEndpointCore<true, LineEdgeType::NextEdge>(cursorLine, lines);
+      default: __builtin_unreachable();
+    }
+  } else {
+    switch (edgeType) {
+      case LineEdgeType::BlockEdge:
+        return motionParagraphEndpointCore<false, LineEdgeType::BlockEdge>(cursorLine, lines);
+      case LineEdgeType::GapEdge:
+        return motionParagraphEndpointCore<false, LineEdgeType::GapEdge>(cursorLine, lines);
+      case LineEdgeType::NextEdge:
+        return motionParagraphEndpointCore<false, LineEdgeType::NextEdge>(cursorLine, lines);
+      default: __builtin_unreachable();
+    }
+  }
 }
 
 LineRange paragraphTextObjectRange(int cursorLine, const Lines& lines,
@@ -699,22 +737,50 @@ static Position motionSentenceEdgeCore(Position cursor, const Lines& lines,
   }
 }
 
+// Templated version for compile-time dispatch on Forward and Edge
+template<bool Forward, SentenceEdgeType Edge>
 Position motionSentenceEndpoint(Position cursor, const Lines& lines,
-                                bool forward, SentenceEdgeType edgeType,
-                                Position boundary) {
-  Position result = motionSentenceEdgeCore(cursor, lines, forward, edgeType);
+                                int boundaryOffset, bool hasLinesOutside) {
+  Position result = motionSentenceEdgeCore(cursor, lines, Forward, Edge);
 
-  // Check if result crosses boundary
-  if (boundary.isValid()) {
-    if (forward && result >= boundary) {
+  // Boundary check (same pattern as motionWordEndpoint)
+  int lastLine = lines.lastLine();
+  if constexpr (Forward) {
+    // Check line boundary
+    if (hasLinesOutside && result.line >= lastLine) {
       return POSITION_OUTSIDE_BOUNDARY;
     }
-    if (!forward && result <= boundary) {
+    // Check column boundary on last line
+    if (boundaryOffset > 0 && result.line == lastLine &&
+        result.col >= static_cast<int>(lines[lastLine].size()) - boundaryOffset) {
+      return POSITION_OUTSIDE_BOUNDARY;
+    }
+  } else {
+    // Check line boundary
+    if (hasLinesOutside && result.line <= 0) {
+      return POSITION_OUTSIDE_BOUNDARY;
+    }
+    // Check column boundary on line 0
+    if (boundaryOffset > 0 && result.line == 0 && result.col < boundaryOffset) {
       return POSITION_OUTSIDE_BOUNDARY;
     }
   }
 
   return result;
+}
+
+// Explicit instantiations for templated version
+template Position motionSentenceEndpoint<true, SentenceEdgeType::SentenceEdge>(Position, const Lines&, int, bool);
+template Position motionSentenceEndpoint<true, SentenceEdgeType::GapEdge>(Position, const Lines&, int, bool);
+template Position motionSentenceEndpoint<true, SentenceEdgeType::NextEdge>(Position, const Lines&, int, bool);
+template Position motionSentenceEndpoint<false, SentenceEdgeType::SentenceEdge>(Position, const Lines&, int, bool);
+template Position motionSentenceEndpoint<false, SentenceEdgeType::GapEdge>(Position, const Lines&, int, bool);
+template Position motionSentenceEndpoint<false, SentenceEdgeType::NextEdge>(Position, const Lines&, int, bool);
+
+// Runtime dispatch version (for internal use in text object functions)
+Position motionSentenceEndpoint(Position cursor, const Lines& lines,
+                                bool forward, SentenceEdgeType edgeType) {
+  return motionSentenceEdgeCore(cursor, lines, forward, edgeType);
 }
 
 Range sentenceTextObjectRange(Position cursor, const Lines& lines, bool isInner,

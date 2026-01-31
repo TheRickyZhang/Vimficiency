@@ -16,6 +16,11 @@
 #include "VimCore/VimCore.h"
 #include "VimCore/VimEndpointUtils.h"
 
+// TODO: Compare benchmarks for a reasonable search with:
+// Forward only (2 instantiations)
+// Forward + Edge (6 instantiations)
+// Forward + Edge + SkipCurrent (12 instantiations)
+
 using namespace std;
 
 class MotionTemplateSpecializationBench : public ::testing::Test {

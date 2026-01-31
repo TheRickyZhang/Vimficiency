@@ -130,74 +130,6 @@ optional<EditState> EditSearchContext::getNextValidState() {
 // Exploration Helper Methods
 // =============================================================================
 
-void EditSearchContext::exploreForwardWordEdits(
-    const vector<Edit::ForwardWordEditSpec>& specs,
-    const Position& cursor, const Lines& lines, DeletionCallback onDeletion) {
-  for (const auto& spec : specs) {
-    Position endpoint = VimCore::motionWordEndpoint(
-        cursor, lines, true, spec.edgeType, spec.isBig, spec.skipCurrent,
-        rightColOffset, editBoundary.hasLinesBelow(), /*lineBounded=*/false);
-
-    if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor)
-      continue;
-
-    // Special case for dw/dW: Vim does NOT cross lines.
-    // If endpoint is on a different line, clamp to end of word on current line.
-    if (spec.edgeType == EdgeType::GapEdge && endpoint.line > cursor.line) {
-      // Find word end on current line instead
-      Position wordEnd = VimCore::motionWordEndpoint(
-          cursor, lines, true, EdgeType::WordEdge, spec.isBig, spec.skipCurrent,
-          rightColOffset, editBoundary.hasLinesBelow(), /*lineBounded=*/false);
-      if (wordEnd == POSITION_OUTSIDE_BOUNDARY || wordEnd == cursor)
-        continue;
-      endpoint = wordEnd;
-    }
-
-    onDeletion(Range(cursor, endpoint), spec.cmd, spec.keys);
-  }
-}
-
-void EditSearchContext::exploreBackwardWordEdits(
-    const vector<Edit::BackwardWordEditSpec>& specs,
-    const Position& cursor, const Lines& lines, DeletionCallback onDeletion) {
-  for (const auto& spec : specs) {
-    // For inclusive backward deletes (dge/dgE), the cursor is part of the
-    // deletion range. Check cursor first before computing endpoint.
-    if (!spec.isExclusiveAtCursor && inBoundaryRegion(cursor, lines))
-      continue;
-
-    Position endpoint = VimCore::motionWordEndpoint(
-        cursor, lines, false, spec.edgeType, spec.isBig, spec.skipCurrent,
-        leftColOffset, editBoundary.hasLinesAbove(), /*lineBounded=*/false);
-
-    if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor)
-      continue;
-
-    // db/dB are EXCLUSIVE at cursor: delete backward but NOT the cursor char.
-    // Three cases:
-    Range range;
-    if (spec.isExclusiveAtCursor) {
-      int cursorContentCol = cursor.col - (cursor.line == 0 ? leftColOffset : 0);
-      if (cursorContentCol > 0) {
-        // 1. Cursor not at content start: range ends at cursor.col - 1
-        range = Range(endpoint, Position(cursor.line, cursor.col - 1));
-      }
-      else if (endpoint.line < cursor.line) {
-        // 2. Cursor at content start AND crossed lines: ends at prev line's last char
-        int prevLine = cursor.line - 1;
-        range = Range(endpoint, Position(prevLine, lines[prevLine].lastCol()));
-      } else {
-        // 3. Cursor at content start AND same line: skip (can't delete backward)
-        continue;
-      }
-    } else {
-      range = Range(endpoint, cursor);
-    }
-
-    onDeletion(range, spec.cmd, spec.keys);
-  }
-}
-
 void EditSearchContext::exploreTextObjectEdits(
     const vector<Edit::TextObjectEditSpec>& specs,
     const Position& cursor, const Lines& lines, DeletionCallback onDeletion) {
@@ -285,26 +217,29 @@ void EditSearchContext::exploreCharEdits(
   }
 }
 
-void EditSearchContext::exploreParagraphEdits(
-    const vector<Edit::ParagraphEditSpec>& specs,
+// Templated helper for paragraph edit exploration
+template<bool Forward>
+void EditSearchContext::exploreParagraphEditsT(
+    const std::vector<Edit::ParagraphEditSpecNoDir>& specs,
     const Position& cursor, const Lines& lines, LinewiseCallback onLinewise) {
   int lastLine = lines.lastLine();
 
+  bool hasLinesOutside = Forward ? editBoundary.hasLinesBelow() : editBoundary.hasLinesAbove();
+  int endpointLine = VimCore::motionParagraphEndpoint<Forward, LineEdgeType::NextEdge>(
+      cursor.line, lines, hasLinesOutside);
+
+  if (endpointLine == VimCore::LINE_OUTSIDE_BOUNDARY) return;
+
+  // Still need prefix/suffix check (column-level protection on edge lines)
+  if constexpr (Forward) {
+    if (editBoundary.hasSuffix() && endpointLine == lastLine) return;
+  } else {
+    if (editBoundary.hasPrefix() && endpointLine == 0) return;
+  }
+
   for (const auto& spec : specs) {
-    int endpointLine = VimCore::motionParagraphEndpoint(
-        cursor.line, lines, spec.forward, LineEdgeType::NextEdge);
-
-    // Skip if endpoint lands on edge line when bounded
-    if (spec.forward) {
-      if (editBoundary.hasLinesBelow() && endpointLine == lastLine) continue;
-      if (editBoundary.hasSuffix() && endpointLine == lastLine) continue;
-    } else {
-      if (editBoundary.hasLinesAbove() && endpointLine == 0) continue;
-      if (editBoundary.hasPrefix() && endpointLine == 0) continue;
-    }
-
     // d{/d} are LINEWISE in Neovim
-    if (spec.forward) {
+    if constexpr (Forward) {
       // d}: delete from cursor line to line before endpoint (endpoint is blank line)
       int endLine = endpointLine - 1;
       if (endLine < cursor.line) continue;
@@ -324,31 +259,39 @@ void EditSearchContext::exploreParagraphEdits(
   }
 }
 
-void EditSearchContext::exploreSentenceEdits(
-    const vector<Edit::SentenceEditSpec>& specs,
+void EditSearchContext::exploreParagraphEdits(
+    const vector<Edit::ParagraphEditSpec>& specs,
+    const Position& cursor, const Lines& lines, LinewiseCallback onLinewise) {
+  // Dispatch to templated versions
+  exploreParagraphEditsT<true>(Edit::FORWARD_PARAGRAPH_EDITS, cursor, lines, onLinewise);
+  exploreParagraphEditsT<false>(Edit::BACKWARD_PARAGRAPH_EDITS, cursor, lines, onLinewise);
+}
+
+// Templated helper for sentence edit exploration
+template<bool Forward>
+void EditSearchContext::exploreSentenceEditsT(
+    const std::vector<Edit::SentenceEditSpecNoDir>& specs,
     const Position& cursor, const Lines& lines, DeletionCallback onDeletion) {
   int lastLine = lines.lastLine();
 
+  int boundaryOffset = Forward ? rightColOffset : leftColOffset;
+  bool hasLinesOutside = Forward ? editBoundary.hasLinesBelow() : editBoundary.hasLinesAbove();
+  Position endpoint = VimCore::motionSentenceEndpoint<Forward, SentenceEdgeType::NextEdge>(
+      cursor, lines, boundaryOffset, hasLinesOutside);
+
+  if (endpoint == POSITION_OUTSIDE_BOUNDARY) return;
+
+  // Still need prefix/suffix check (column-level protection on edge lines)
+  if constexpr (Forward) {
+    if (editBoundary.hasSuffix() && endpoint.line == lastLine &&
+        endpoint.col >= static_cast<int>(lines[lastLine].size()) - rightColOffset) return;
+  } else {
+    if (editBoundary.hasPrefix() && endpoint.line == 0 &&
+        endpoint.col < leftColOffset) return;
+  }
+
   for (const auto& spec : specs) {
-    Position endpoint = VimCore::motionSentenceEndpoint(
-        cursor, lines, spec.forward, SentenceEdgeType::NextEdge);
-
-    if (endpoint == POSITION_OUTSIDE_BOUNDARY) continue;
-
-    // Skip if endpoint lands on edge line when bounded (may have been clamped)
-    if (spec.forward) {
-      if (editBoundary.hasLinesBelow() && endpoint.line == lastLine) continue;
-      // Check if endpoint is in suffix region
-      if (editBoundary.hasSuffix() && endpoint.line == lastLine &&
-          endpoint.col >= static_cast<int>(lines[lastLine].size()) - rightColOffset) continue;
-    } else {
-      if (editBoundary.hasLinesAbove() && endpoint.line == 0) continue;
-      // Check if endpoint is in prefix region
-      if (editBoundary.hasPrefix() && endpoint.line == 0 &&
-          endpoint.col < leftColOffset) continue;
-    }
-
-    if (spec.forward) {
+    if constexpr (Forward) {
       // d): delete from cursor to just before endpoint (exclusive)
       if (endpoint <= cursor) continue;
       Position endPos = lines.getPrevPos(endpoint);
@@ -389,6 +332,14 @@ void EditSearchContext::exploreSentenceEdits(
       onDeletion(Range(endpoint, endPos), spec.cmd, spec.keys);
     }
   }
+}
+
+void EditSearchContext::exploreSentenceEdits(
+    const vector<Edit::SentenceEditSpec>& specs,
+    const Position& cursor, const Lines& lines, DeletionCallback onDeletion) {
+  // Dispatch to templated versions
+  exploreSentenceEditsT<true>(Edit::FORWARD_SENTENCE_EDITS, cursor, lines, onDeletion);
+  exploreSentenceEditsT<false>(Edit::BACKWARD_SENTENCE_EDITS, cursor, lines, onDeletion);
 }
 
 // =============================================================================
@@ -558,10 +509,11 @@ void EditSearchContext::exploreAllDeletions(const EditState& state,
     // (dd == dw == dW)
     exploreFullLineEdits(Edit::EMPTYLINE_FULL_LINE_EDITS, cursor, lines, onLinewise);
 
-    // de/dE
-    exploreForwardWordEdits(Edit::EMPTYLINE_FORWARD_WORD_EDITS, cursor, lines, onDeletion);
-    // db/dB/dge
-    exploreBackwardWordEdits(Edit::EMPTYLINE_BACKWARD_WORD_EDITS, cursor, lines, onDeletion);
+    // de/dE (WordEdge) - use templated version
+    exploreForwardWordEditsT<EdgeType::WordEdge>(Edit::FORWARD_WORDEDGE_EDITS, cursor, lines, onDeletion);
+    // db/dB (WordEdge) + dge/dgE (NextEdge) - dgE equivalent to dge on empty lines
+    exploreBackwardWordEditsT<EdgeType::WordEdge>(Edit::BACKWARD_WORDEDGE_EDITS, cursor, lines, onDeletion);
+    exploreBackwardWordEditsT<EdgeType::NextEdge>(Edit::BACKWARD_NEXTEDGE_EDITS, cursor, lines, onDeletion);
     // J/gJ - can join even from empty lines
     exploreJoinCommands(cursor, lines, onJoin);
     return;

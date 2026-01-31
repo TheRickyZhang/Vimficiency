@@ -133,13 +133,6 @@ private:
       const std::vector<Edit::BackwardWordEditSpecNoEdge>& specs,
       const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
 
-  // Legacy helpers (for compatibility)
-  void exploreForwardWordEdits(
-      const std::vector<Edit::ForwardWordEditSpec>& specs,
-      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
-  void exploreBackwardWordEdits(
-      const std::vector<Edit::BackwardWordEditSpec>& specs,
-      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
   void exploreTextObjectEdits(
       const std::vector<Edit::TextObjectEditSpec>& specs,
       const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
@@ -157,7 +150,15 @@ private:
   void exploreParagraphEdits(
       const std::vector<Edit::ParagraphEditSpec>& specs,
       const Position& cursor, const Lines& lines, LinewiseCallback onLinewise);
+  template<bool Forward>
+  void exploreParagraphEditsT(
+      const std::vector<Edit::ParagraphEditSpecNoDir>& specs,
+      const Position& cursor, const Lines& lines, LinewiseCallback onLinewise);
   void exploreSentenceEdits(
       const std::vector<Edit::SentenceEditSpec>& specs,
+      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
+  template<bool Forward>
+  void exploreSentenceEditsT(
+      const std::vector<Edit::SentenceEditSpecNoDir>& specs,
       const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
 };

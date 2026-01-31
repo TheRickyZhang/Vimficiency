@@ -23,6 +23,18 @@ struct WordMotionSpec {
 };
 extern const std::vector<WordMotionSpec> WORD_MOTIONS;
 
+// Split by Forward/EdgeType for templated dispatch (EdgeType implicit from vector name)
+struct WordMotionSpecNoEdge {
+  const char* cmd;
+  PhysicalKeys keys;
+  bool big;
+  bool skipCurrent;
+};
+extern const std::vector<WordMotionSpecNoEdge> FORWARD_NEXTEDGE_MOTIONS;   // w, W
+extern const std::vector<WordMotionSpecNoEdge> FORWARD_WORDEDGE_MOTIONS;   // e, E
+extern const std::vector<WordMotionSpecNoEdge> BACKWARD_WORDEDGE_MOTIONS;  // b, B
+extern const std::vector<WordMotionSpecNoEdge> BACKWARD_NEXTEDGE_MOTIONS;  // ge, gE
+
 // Paragraph motions ({, })
 struct ParagraphMotionSpec {
   const char* cmd;
@@ -31,6 +43,14 @@ struct ParagraphMotionSpec {
 };
 extern const std::vector<ParagraphMotionSpec> PARAGRAPH_MOTIONS;
 
+// Split by Forward for templated dispatch (EdgeType is always NextEdge for motions)
+struct ParagraphMotionSpecNoDir {
+  const char* cmd;
+  PhysicalKeys keys;
+};
+extern const std::vector<ParagraphMotionSpecNoDir> FORWARD_PARAGRAPH_MOTIONS;   // }
+extern const std::vector<ParagraphMotionSpecNoDir> BACKWARD_PARAGRAPH_MOTIONS;  // {
+
 // Sentence motions ((, ))
 struct SentenceMotionSpec {
   const char* cmd;
@@ -38,6 +58,14 @@ struct SentenceMotionSpec {
   bool forward;
 };
 extern const std::vector<SentenceMotionSpec> SENTENCE_MOTIONS;
+
+// Split by Forward for templated dispatch (EdgeType is always NextEdge for motions)
+struct SentenceMotionSpecNoDir {
+  const char* cmd;
+  PhysicalKeys keys;
+};
+extern const std::vector<SentenceMotionSpecNoDir> FORWARD_SENTENCE_MOTIONS;   // )
+extern const std::vector<SentenceMotionSpecNoDir> BACKWARD_SENTENCE_MOTIONS;  // (
 
 // Simple line motions (h, l, 0, ^, $) - same-line only, no boundary checks
 struct SimpleLineMotionSpec {

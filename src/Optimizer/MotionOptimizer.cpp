@@ -89,96 +89,79 @@ MotionResult MotionOptimizer::optimize(
     ctx.exploreNewState(std::move(newState), goalKey);
   };
 
-  // Word motions - use motionWordEndpoint for boundary checking
-  // Follows EditSearchContext pattern: pass column offset and hasLinesOutside directly
-  auto exploreWordMotion = [&](const MotionState& base, const Motion::WordMotionSpec& spec) {
+  // Word motions - templated exploration for compile-time dispatch
+  // Template parameters: Forward (direction), Edge (EdgeType)
+  auto exploreWordMotionsT = [&]<bool Forward, EdgeType Edge>(
+      const std::vector<Motion::WordMotionSpecNoEdge>& specs,
+      const MotionState& base) {
     Position pos = base.getPos();
 
-    // Compute endpoint FIRST with boundary checking
-    // Forward: protect suffix (rightColOffset cols at end of last line)
-    // Backward: protect prefix (leftColOffset cols at start of line 0)
-    int boundaryOffset = spec.forward ? boundary.rightColOffset() : boundary.leftColOffset();
-    bool hasLinesOutside = spec.forward ? boundary.hasLinesBelow() : boundary.hasLinesAbove();
+    // Boundary params depend on direction (computed once per direction)
+    int boundaryOffset = Forward ? boundary.rightColOffset() : boundary.leftColOffset();
+    bool hasLinesOutside = Forward ? boundary.hasLinesBelow() : boundary.hasLinesAbove();
 
-    Position endpoint = VimCore::motionWordEndpoint(
-        pos, lines, spec.forward, spec.edgeType, spec.big, spec.skipCurrent,
-        boundaryOffset, hasLinesOutside, /*lineBounded=*/false);
+    for (const auto& spec : specs) {
+      Position endpoint = VimCore::motionWordEndpoint<Forward, Edge>(
+          pos, lines, spec.big, spec.skipCurrent,
+          boundaryOffset, hasLinesOutside, /*lineBounded=*/false);
 
-    // Check if motion would escape bounds
-    if (endpoint == POSITION_OUTSIDE_BOUNDARY) {
-      return;  // Motion would escape - skip
+      if (endpoint == POSITION_OUTSIDE_BOUNDARY) {
+        continue;
+      }
+
+      MotionState newState = base;
+      newState.applySingleMotion(spec.cmd, navContext, lines);
+      newState.updateEffort(spec.keys, config);
+      newState.updateCost(ctx.computePriorityToGoal(newState, endPos));
+      ctx.exploreNewState(std::move(newState), goalKey);
     }
-
-    // Motion is safe - apply and explore
-    MotionState newState = base;
-    newState.applySingleMotion(spec.cmd, navContext, lines);
-    newState.updateEffort(spec.keys, config);
-    newState.updateCost(ctx.computePriorityToGoal(newState, endPos));
-    ctx.exploreNewState(std::move(newState), goalKey);
   };
 
-  // Paragraph motions ({, }) - use motionParagraphEndpoint for boundary checking
-  auto exploreParagraphMotion = [&](const MotionState& base, const Motion::ParagraphMotionSpec& spec) {
+  // Paragraph motions ({, }) - templated exploration for compile-time dispatch
+  auto exploreParagraphMotionsT = [&]<bool Forward>(
+      const std::vector<Motion::ParagraphMotionSpecNoDir>& specs,
+      const MotionState& base) {
     Position pos = base.getPos();
-    int lastLine = static_cast<int>(lines.size()) - 1;
 
-    // Compute boundary line for endpoint function
-    // Forward: if hasLinesBelow, can't trust landing on last line (may have been clamped)
-    // Backward: if hasLinesAbove, can't trust landing on first line
-    int boundaryLine = -1;  // -1 means no boundary check
-    if (spec.forward && boundary.hasLinesBelow()) {
-      boundaryLine = lastLine;  // Flag if endpoint >= lastLine
-    } else if (!spec.forward && boundary.hasLinesAbove()) {
-      boundaryLine = 0;  // Flag if endpoint <= 0
-    }
+    bool hasLinesOutside = Forward ? boundary.hasLinesBelow() : boundary.hasLinesAbove();
+    int endpointLine = VimCore::motionParagraphEndpoint<Forward, LineEdgeType::NextEdge>(
+        pos.line, lines, hasLinesOutside);
 
-    int endpointLine = VimCore::motionParagraphEndpoint(
-        pos.line, lines, spec.forward, LineEdgeType::NextEdge, boundaryLine);
-
-    // -1 means motion would escape bounds
-    if (endpointLine == -1) {
+    if (endpointLine == VimCore::LINE_OUTSIDE_BOUNDARY) {
       return;
     }
 
-    // Motion is safe - apply and explore
-    MotionState newState = base;
-    newState.applySingleMotion(spec.cmd, navContext, lines);
-    newState.updateEffort(spec.keys, config);
-    newState.updateCost(ctx.computePriorityToGoal(newState, endPos));
-    ctx.exploreNewState(std::move(newState), goalKey);
+    for (const auto& spec : specs) {
+      MotionState newState = base;
+      newState.applySingleMotion(spec.cmd, navContext, lines);
+      newState.updateEffort(spec.keys, config);
+      newState.updateCost(ctx.computePriorityToGoal(newState, endPos));
+      ctx.exploreNewState(std::move(newState), goalKey);
+    }
   };
 
-  // Sentence motions ((, )) - use motionSentenceEndpoint for boundary checking
-  auto exploreSentenceMotion = [&](const MotionState& base, const Motion::SentenceMotionSpec& spec) {
+  // Sentence motions ((, )) - templated exploration for compile-time dispatch
+  auto exploreSentenceMotionsT = [&]<bool Forward>(
+      const std::vector<Motion::SentenceMotionSpecNoDir>& specs,
+      const MotionState& base) {
     Position pos = base.getPos();
-    int lastLine = static_cast<int>(lines.size()) - 1;
 
-    // Compute boundary position for endpoint function
-    // Forward: if hasLinesBelow, can't trust landing on last line
-    // Backward: if hasLinesAbove, can't trust landing on first line
-    Position boundaryPos = POSITION_OUTSIDE_BOUNDARY;  // Invalid means no boundary check
-    if (spec.forward && boundary.hasLinesBelow()) {
-      // Any position on last line is suspicious
-      boundaryPos = Position(lastLine, 0);
-    } else if (!spec.forward && boundary.hasLinesAbove()) {
-      // Any position on first line is suspicious
-      boundaryPos = Position(0, INT_MAX);
-    }
+    int boundaryOffset = Forward ? boundary.rightColOffset() : boundary.leftColOffset();
+    bool hasLinesOutside = Forward ? boundary.hasLinesBelow() : boundary.hasLinesAbove();
+    Position endpoint = VimCore::motionSentenceEndpoint<Forward, SentenceEdgeType::NextEdge>(
+        pos, lines, boundaryOffset, hasLinesOutside);
 
-    Position endpoint = VimCore::motionSentenceEndpoint(
-        pos, lines, spec.forward, SentenceEdgeType::NextEdge, boundaryPos);
-
-    // POSITION_OUTSIDE_BOUNDARY means motion would escape bounds
     if (endpoint == POSITION_OUTSIDE_BOUNDARY) {
       return;
     }
 
-    // Motion is safe - apply and explore
-    MotionState newState = base;
-    newState.applySingleMotion(spec.cmd, navContext, lines);
-    newState.updateEffort(spec.keys, config);
-    newState.updateCost(ctx.computePriorityToGoal(newState, endPos));
-    ctx.exploreNewState(std::move(newState), goalKey);
+    for (const auto& spec : specs) {
+      MotionState newState = base;
+      newState.applySingleMotion(spec.cmd, navContext, lines);
+      newState.updateEffort(spec.keys, config);
+      newState.updateCost(ctx.computePriorityToGoal(newState, endPos));
+      ctx.exploreNewState(std::move(newState), goalKey);
+    }
   };
 
   // Scroll motions (<C-d>, <C-u>) - check line boundaries
@@ -341,15 +324,15 @@ MotionResult MotionOptimizer::optimize(
     for (const auto& spec : Motion::VERTICAL_MOTIONS) {
       exploreVerticalMotion(s, spec);
     }
-    for (const auto& spec : Motion::WORD_MOTIONS) {
-      exploreWordMotion(s, spec);
-    }
-    for (const auto& spec : Motion::PARAGRAPH_MOTIONS) {
-      exploreParagraphMotion(s, spec);
-    }
-    for (const auto& spec : Motion::SENTENCE_MOTIONS) {
-      exploreSentenceMotion(s, spec);
-    }
+    // Word motions - templated dispatch by direction and EdgeType. Uncommon, but correct syntax
+    exploreWordMotionsT.template operator()<true, EdgeType::NextEdge>(Motion::FORWARD_NEXTEDGE_MOTIONS, s);
+    exploreWordMotionsT.template operator()<true, EdgeType::WordEdge>(Motion::FORWARD_WORDEDGE_MOTIONS, s);
+    exploreWordMotionsT.template operator()<false, EdgeType::WordEdge>(Motion::BACKWARD_WORDEDGE_MOTIONS, s);
+    exploreWordMotionsT.template operator()<false, EdgeType::NextEdge>(Motion::BACKWARD_NEXTEDGE_MOTIONS, s);
+    exploreParagraphMotionsT.template operator()<true>(Motion::FORWARD_PARAGRAPH_MOTIONS, s);
+    exploreParagraphMotionsT.template operator()<false>(Motion::BACKWARD_PARAGRAPH_MOTIONS, s);
+    exploreSentenceMotionsT.template operator()<true>(Motion::FORWARD_SENTENCE_MOTIONS, s);
+    exploreSentenceMotionsT.template operator()<false>(Motion::BACKWARD_SENTENCE_MOTIONS, s);
     for (const auto& spec : Motion::SCROLL_MOTIONS) {
       exploreScrollMotion(s, spec);
     }
@@ -394,6 +377,9 @@ MotionResult MotionOptimizer::optimize(
   return {.results = std::move(res), .stats = stats};
 }
 
+// =================================================
+// optimizeToRange implementation
+// =================================================
 vector<RangeResult> MotionOptimizer::optimizeToRange(
     const Lines& lines,
     const Position& startPos,

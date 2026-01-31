@@ -144,7 +144,7 @@ or `eb.context()` to convert when switching between optimizer types.
 
 ## Endpoint Functions (VimEndpointUtils.h)
 
-Return sentinel values (`POSITION_OUTSIDE_BOUNDARY`, etc.) when crossing:
+Return sentinel values (`POSITION_OUTSIDE_BOUNDARY`, `LINE_OUTSIDE_BOUNDARY`, etc.) when crossing:
 
 ```cpp
 // Words
@@ -153,14 +153,19 @@ Position motionWordEndpoint(cursor, lines, forward, EdgeType, big, skipCurrent,
 Range textObjectRange(cursor, lines, isInner, isBigWord,
                       leftColOffset, rightColOffset, hasLinesAbove, hasLinesBelow);
 
-// Paragraphs
-int motionParagraphEndpoint(cursorLine, lines, forward, LineEdgeType, boundaryLine);
+// Paragraphs - same pattern as motionWordEndpoint
+int motionParagraphEndpoint(cursorLine, lines, forward, LineEdgeType, hasLinesOutside);
 LineRange paragraphTextObjectRange(cursorLine, lines, isInner, topBoundary, bottomBoundary);
 
-// Sentences
-Position motionSentenceEndpoint(cursor, lines, forward, SentenceEdgeType, boundary);
+// Sentences - same pattern as motionWordEndpoint
+Position motionSentenceEndpoint(cursor, lines, forward, SentenceEdgeType,
+                                boundaryOffset, hasLinesOutside);
 Range sentenceTextObjectRange(cursor, lines, isInner, leftBoundary, rightBoundary);
 ```
+
+All motion endpoint functions now follow the same boundary checking pattern:
+- `boundaryOffset`: Column offset for prefix/suffix protection on edge lines
+- `hasLinesOutside`: Boolean flag for line-crossing protection (hasLinesAbove/Below)
 
 ## Crossing Tables (Conceptual)
 

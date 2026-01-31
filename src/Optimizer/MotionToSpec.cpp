@@ -20,16 +20,50 @@ const vector<WordMotionSpec> WORD_MOTIONS = {
     {"gE", {Key::Key_G, Key::Key_Shift, Key::Key_E}, false, EdgeType::NextEdge, true,  false},
 };
 
+// Split by Forward/EdgeType for templated dispatch: cmd, keys, big, skipCurrent
+const vector<WordMotionSpecNoEdge> FORWARD_NEXTEDGE_MOTIONS = {
+    {"w", {Key::Key_W},                 false, false},
+    {"W", {Key::Key_Shift, Key::Key_W}, true,  false},
+};
+const vector<WordMotionSpecNoEdge> FORWARD_WORDEDGE_MOTIONS = {
+    {"e", {Key::Key_E},                 false, true},
+    {"E", {Key::Key_Shift, Key::Key_E}, true,  true},
+};
+const vector<WordMotionSpecNoEdge> BACKWARD_WORDEDGE_MOTIONS = {
+    {"b", {Key::Key_B},                 false, true},
+    {"B", {Key::Key_Shift, Key::Key_B}, true,  true},
+};
+const vector<WordMotionSpecNoEdge> BACKWARD_NEXTEDGE_MOTIONS = {
+    {"ge", {Key::Key_G, Key::Key_E},                 false, false},
+    {"gE", {Key::Key_G, Key::Key_Shift, Key::Key_E}, true,  false},
+};
+
 // Paragraph motions: cmd, keys, forward
 const vector<ParagraphMotionSpec> PARAGRAPH_MOTIONS = {
     {"{", {Key::Key_Shift, Key::Key_LBracket}, false},
     {"}", {Key::Key_Shift, Key::Key_RBracket}, true},
 };
 
+// Split by Forward for templated dispatch: cmd, keys
+const vector<ParagraphMotionSpecNoDir> FORWARD_PARAGRAPH_MOTIONS = {
+    {"}", {Key::Key_Shift, Key::Key_RBracket}},
+};
+const vector<ParagraphMotionSpecNoDir> BACKWARD_PARAGRAPH_MOTIONS = {
+    {"{", {Key::Key_Shift, Key::Key_LBracket}},
+};
+
 // Sentence motions: cmd, keys, forward
 const vector<SentenceMotionSpec> SENTENCE_MOTIONS = {
     {"(", {Key::Key_Shift, Key::Key_9}, false},
     {")", {Key::Key_Shift, Key::Key_0}, true},
+};
+
+// Split by Forward for templated dispatch: cmd, keys
+const vector<SentenceMotionSpecNoDir> FORWARD_SENTENCE_MOTIONS = {
+    {")", {Key::Key_Shift, Key::Key_0}},
+};
+const vector<SentenceMotionSpecNoDir> BACKWARD_SENTENCE_MOTIONS = {
+    {"(", {Key::Key_Shift, Key::Key_9}},
 };
 
 // Simple line motions: cmd, keys

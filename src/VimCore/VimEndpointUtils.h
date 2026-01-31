@@ -111,19 +111,29 @@ Range textObjectRange(
 // =============================================================================
 
 // Returns the line number where a paragraph motion lands.
-// If boundaryLine >= 0 and result would cross it:
-//   forward:  returns -1 if endpointLine >= boundaryLine
-//   backward: returns -1 if endpointLine <= boundaryLine
+//
+// Boundary checking via hasLinesOutside:
+//   forward:  returns LINE_OUTSIDE_BOUNDARY if endpoint >= lastLine
+//             (pass hasLinesBelow)
+//   backward: returns LINE_OUTSIDE_BOUNDARY if endpoint <= 0
+//             (pass hasLinesAbove)
 //
 // LineEdgeType is DIRECTION-INDEPENDENT:
 //   BlockEdge: edge of current same-type block (blank or non-blank)
 //   GapEdge:   edge of blank line run (adjacent to paragraph)
 //   NextEdge:  start/end of next different-type block
+
+// Templated version for compile-time dispatch on Forward and Edge
+template<bool Forward, LineEdgeType Edge>
+int motionParagraphEndpoint(int cursorLine,
+                            const Lines& lines,
+                            bool hasLinesOutside = false);
+
+// Runtime dispatch version (for internal use in text object functions)
 int motionParagraphEndpoint(int cursorLine,
                             const Lines& lines,
                             bool forward,
-                            LineEdgeType edgeType,
-                            int boundaryLine = -1);
+                            LineEdgeType edgeType);
 
 // Returns the line range for a paragraph text object.
 // If boundaries >= 0 and result would cross:
@@ -143,19 +153,37 @@ LineRange paragraphTextObjectRange(int cursorLine,
 // =============================================================================
 
 // Returns the position where a sentence motion lands.
-// If boundary is valid and result would cross it:
-//   forward:  returns POSITION_OUTSIDE_BOUNDARY if endpoint >= boundary
-//   backward: returns POSITION_OUTSIDE_BOUNDARY if endpoint <= boundary
+//
+// Boundary checking via boundaryOffset:
+//   forward:  returns POSITION_OUTSIDE_BOUNDARY if endpoint is in suffix region
+//             (last boundaryOffset cols of last line)
+//   backward: returns POSITION_OUTSIDE_BOUNDARY if endpoint is in prefix region
+//             (first boundaryOffset cols of line 0)
+//   boundaryOffset <= 0: no column boundary checking
+//
+// Boundary checking via hasLinesOutside:
+//   forward:  returns POSITION_OUTSIDE_BOUNDARY if endpoint.line > lastLine
+//             (pass hasLinesBelow)
+//   backward: returns POSITION_OUTSIDE_BOUNDARY if endpoint.line < 0
+//             (pass hasLinesAbove)
 //
 // SentenceEdgeType is DIRECTION-INDEPENDENT:
 //   SentenceEdge: edge of current sentence (punctuation + closers)
 //   GapEdge:      edge of whitespace gap after sentence end
 //   NextEdge:     start of next sentence
+
+// Templated version for compile-time dispatch on Forward and Edge
+template<bool Forward, SentenceEdgeType Edge>
+Position motionSentenceEndpoint(Position cursor,
+                                const Lines& lines,
+                                int boundaryOffset = 0,
+                                bool hasLinesOutside = false);
+
+// Runtime dispatch version (for internal use in text object functions)
 Position motionSentenceEndpoint(Position cursor,
                                 const Lines& lines,
                                 bool forward,
-                                SentenceEdgeType edgeType,
-                                Position boundary = POSITION_OUTSIDE_BOUNDARY);
+                                SentenceEdgeType edgeType);
 
 // Returns the range for a sentence text object.
 // If boundaries are valid and result would cross:
