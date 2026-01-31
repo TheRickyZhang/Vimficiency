@@ -23,6 +23,16 @@ extern const std::vector<ForwardWordEditSpec> FORWARD_WORD_EDITS;
 // Subset: de/dE only (for empty lines where dw/dW equivalent to dd)
 extern const std::vector<ForwardWordEditSpec> EMPTYLINE_FORWARD_WORD_EDITS;
 
+// New: Split by EdgeType for templated dispatch (EdgeType implicit from vector name)
+struct ForwardWordEditSpecNoEdge {
+  const char* cmd;
+  PhysicalKeys keys;
+  bool isBig;
+  bool skipCurrent;
+};
+extern const std::vector<ForwardWordEditSpecNoEdge> FORWARD_WORDEDGE_EDITS;  // de, dE
+extern const std::vector<ForwardWordEditSpecNoEdge> FORWARD_GAPEDGE_EDITS;   // dw, dW
+
 // Backward word motion edits (db, dge, dB, dgE)
 struct BackwardWordEditSpec {
   const char* cmd;
@@ -36,6 +46,17 @@ extern const std::vector<BackwardWordEditSpec> BACKWARD_WORD_EDITS;
 // Subset: db/dB/dge only (dgE equivalent to dge on empty lines)
 extern const std::vector<BackwardWordEditSpec> EMPTYLINE_BACKWARD_WORD_EDITS;
 extern const std::vector<BackwardWordEditSpec> EXCLUSIVE_BACKWARD_WORD_EDITS;
+
+// New: Split by EdgeType for templated dispatch (EdgeType implicit from vector name)
+struct BackwardWordEditSpecNoEdge {
+  const char* cmd;
+  PhysicalKeys keys;
+  bool isBig;
+  bool skipCurrent;
+  bool isExclusiveAtCursor;
+};
+extern const std::vector<BackwardWordEditSpecNoEdge> BACKWARD_WORDEDGE_EDITS;  // db, dB
+extern const std::vector<BackwardWordEditSpecNoEdge> BACKWARD_NEXTEDGE_EDITS;  // dge, dgE
 
 // Text object edits (diw, daw, diW, daW)
 struct TextObjectEditSpec {

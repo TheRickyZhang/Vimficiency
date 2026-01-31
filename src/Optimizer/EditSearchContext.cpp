@@ -391,6 +391,92 @@ void EditSearchContext::exploreSentenceEdits(
   }
 }
 
+// =============================================================================
+// Templated Exploration Helpers - EdgeType known at compile time
+// =============================================================================
+
+template<EdgeType Edge>
+void EditSearchContext::exploreForwardWordEditsT(
+    const vector<Edit::ForwardWordEditSpecNoEdge>& specs,
+    const Position& cursor, const Lines& lines, DeletionCallback onDeletion) {
+  for (const auto& spec : specs) {
+    Position endpoint = VimCore::motionWordEndpoint<true, Edge>(
+        cursor, lines, spec.isBig, spec.skipCurrent,
+        rightColOffset, editBoundary.hasLinesBelow(), /*lineBounded=*/false);
+
+    if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor)
+      continue;
+
+    // Special case for dw/dW (GapEdge): Vim does NOT cross lines.
+    // If endpoint is on a different line, clamp to end of word on current line.
+    if constexpr (Edge == EdgeType::GapEdge) {
+      if (endpoint.line > cursor.line) {
+        // Find word end on current line instead
+        Position wordEnd = VimCore::motionWordEndpoint<true, EdgeType::WordEdge>(
+            cursor, lines, spec.isBig, spec.skipCurrent,
+            rightColOffset, editBoundary.hasLinesBelow(), /*lineBounded=*/false);
+        if (wordEnd == POSITION_OUTSIDE_BOUNDARY || wordEnd == cursor)
+          continue;
+        endpoint = wordEnd;
+      }
+    }
+
+    onDeletion(Range(cursor, endpoint), spec.cmd, spec.keys);
+  }
+}
+
+template<EdgeType Edge>
+void EditSearchContext::exploreBackwardWordEditsT(
+    const vector<Edit::BackwardWordEditSpecNoEdge>& specs,
+    const Position& cursor, const Lines& lines, DeletionCallback onDeletion) {
+  for (const auto& spec : specs) {
+    // For inclusive backward deletes (dge/dgE), the cursor is part of the
+    // deletion range. Check cursor first before computing endpoint.
+    if (!spec.isExclusiveAtCursor && inBoundaryRegion(cursor, lines))
+      continue;
+
+    Position endpoint = VimCore::motionWordEndpoint<false, Edge>(
+        cursor, lines, spec.isBig, spec.skipCurrent,
+        leftColOffset, editBoundary.hasLinesAbove(), /*lineBounded=*/false);
+
+    if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor)
+      continue;
+
+    // db/dB are EXCLUSIVE at cursor: delete backward but NOT the cursor char.
+    // Three cases:
+    Range range;
+    if (spec.isExclusiveAtCursor) {
+      int cursorContentCol = cursor.col - (cursor.line == 0 ? leftColOffset : 0);
+      if (cursorContentCol > 0) {
+        // 1. Cursor not at content start: range ends at cursor.col - 1
+        range = Range(endpoint, Position(cursor.line, cursor.col - 1));
+      }
+      else if (endpoint.line < cursor.line) {
+        // 2. Cursor at content start AND crossed lines: ends at prev line's last char
+        int prevLine = cursor.line - 1;
+        range = Range(endpoint, Position(prevLine, lines[prevLine].lastCol()));
+      } else {
+        // 3. Cursor at content start AND same line: skip (can't delete backward)
+        continue;
+      }
+    } else {
+      range = Range(endpoint, cursor);
+    }
+
+    onDeletion(range, spec.cmd, spec.keys);
+  }
+}
+
+// Explicit template instantiations
+template void EditSearchContext::exploreForwardWordEditsT<EdgeType::WordEdge>(
+    const vector<Edit::ForwardWordEditSpecNoEdge>&, const Position&, const Lines&, DeletionCallback);
+template void EditSearchContext::exploreForwardWordEditsT<EdgeType::GapEdge>(
+    const vector<Edit::ForwardWordEditSpecNoEdge>&, const Position&, const Lines&, DeletionCallback);
+template void EditSearchContext::exploreBackwardWordEditsT<EdgeType::WordEdge>(
+    const vector<Edit::BackwardWordEditSpecNoEdge>&, const Position&, const Lines&, DeletionCallback);
+template void EditSearchContext::exploreBackwardWordEditsT<EdgeType::NextEdge>(
+    const vector<Edit::BackwardWordEditSpecNoEdge>&, const Position&, const Lines&, DeletionCallback);
+
 
 // =============================================================================
 // Main Exploration Entry Point
@@ -430,7 +516,8 @@ void EditSearchContext::exploreAllDeletions(const EditState& state,
   if (cursor.line == lines.lastLine() && rightColOffset > 0 &&
       cursor.col + rightColOffset >= static_cast<int>(lines.getSize(cursor.line))) {
     // Can still do backward deletions that don't touch suffix
-    exploreBackwardWordEdits(Edit::EXCLUSIVE_BACKWARD_WORD_EDITS, cursor, lines, onDeletion);
+    // BACKWARD_WORDEDGE_EDITS = db/dB (same as EXCLUSIVE_BACKWARD_WORD_EDITS)
+    exploreBackwardWordEditsT<EdgeType::WordEdge>(Edit::BACKWARD_WORDEDGE_EDITS, cursor, lines, onDeletion);
 
     if (onMotion) {
       // h: move left within line (away from suffix) - horizontal updates targetCol
@@ -480,8 +567,11 @@ void EditSearchContext::exploreAllDeletions(const EditState& state,
     return;
   }
 
-  exploreForwardWordEdits(Edit::FORWARD_WORD_EDITS, cursor, lines, onDeletion);
-  exploreBackwardWordEdits(Edit::BACKWARD_WORD_EDITS, cursor, lines, onDeletion);
+  // Templated word edits - split by EdgeType for compile-time dispatch
+  exploreForwardWordEditsT<EdgeType::WordEdge>(Edit::FORWARD_WORDEDGE_EDITS, cursor, lines, onDeletion);
+  exploreForwardWordEditsT<EdgeType::GapEdge>(Edit::FORWARD_GAPEDGE_EDITS, cursor, lines, onDeletion);
+  exploreBackwardWordEditsT<EdgeType::WordEdge>(Edit::BACKWARD_WORDEDGE_EDITS, cursor, lines, onDeletion);
+  exploreBackwardWordEditsT<EdgeType::NextEdge>(Edit::BACKWARD_NEXTEDGE_EDITS, cursor, lines, onDeletion);
   exploreTextObjectEdits(Edit::TEXT_OBJECT_EDITS, cursor, lines, onDeletion);
   exploreHalfLineEdits(Edit::HALF_LINE_EDITS, cursor, lines, contentBegin, contentEnd, onDeletion);
   exploreFullLineEdits(Edit::FULL_LINE_EDITS, cursor, lines, onLinewise);

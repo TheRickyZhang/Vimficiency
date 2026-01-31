@@ -109,6 +109,8 @@ gtest_discover_tests(vimficiency_tests)
 
 add_executable(vimficiency_benchmarks
   Benchmarks/MotionOptimizerBench.cpp
+  Benchmarks/MotionTemplateSpecializationBench.cpp
+  Benchmarks/AlternateImplementations.cpp
 )
 
 target_link_libraries(vimficiency_benchmarks

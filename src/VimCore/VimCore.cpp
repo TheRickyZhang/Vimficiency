@@ -118,41 +118,49 @@ bool stepBack(const Lines& lines, int& line, int& col) {
 // 4. Word Motion Core
 // =============================================================================
 
-// Returns: Position after performing - POSITION_OUTSIDE_BOUNDARY: motion hit buffer edge (for boundary detection)
+namespace {
+// Cold path helper for lineBounded returns
+template<bool Forward>
+[[gnu::noinline, gnu::cold]]
+Position handleLineBounded(Position prev, const Lines& lines) {
+  if constexpr (Forward) {
+    return Position(prev.line, lines[prev.line].lastCol());
+  } else {
+    return Position(prev.line, 0);
+  }
+}
+} // anonymous namespace
+
+// Templated version: compile-time dispatch on Forward and Edge
+template<bool Forward, EdgeType Edge>
 Position motionWordCore(Position pos,
                         const Lines& lines,
-                        bool forward,
-                        EdgeType edge,
                         bool big,
                         bool skipCurrent,
                         bool lineBounded) {
   // ---------------------------------------------------------------------------
   // skipCurrent: Move off current position before searching
   // ---------------------------------------------------------------------------
-  // Used by: e/E, b/B, ge/gE. For instance, 'e' at end of word should find NEXT word's end
-  //
-  // Some motions terminate early after just this one step:
-  //   - b/B landing on empty line: empty line IS a word (vim: "An empty line is also a word")
-  //   - ge/gE crossing word boundary: line boundaries count as word boundaries for ge/gE (unlike 'e' which "does not stop in an empty line")
   if (skipCurrent) {
     Position prevPos = pos;
     unsigned char prevChar = lines.get(pos);
 
-    pos = step(lines, pos, forward);
+    pos = step<Forward>(lines, pos);
     if (pos == prevPos) {
-      return POSITION_OUTSIDE_BOUNDARY;  // At buffer edge
+      return POSITION_OUTSIDE_BOUNDARY;
     }
 
     unsigned char currChar = lines.get(pos);
 
     // b/B (backward WordEdge): Empty line is a word, stop here
-    if (!forward && edge == EdgeType::WordEdge && currChar == '\n') {
-      return pos;
+    if constexpr (!Forward && Edge == EdgeType::WordEdge) {
+      if (currChar == '\n') {
+        return pos;
+      }
     }
 
     // ge/gE (backward NextEdge): Line/word boundaries are stopping points
-    // If the single step crossed a word boundary and landed on non-blank, done.
-    if (!forward && edge == EdgeType::NextEdge) {
+    if constexpr (!Forward && Edge == EdgeType::NextEdge) {
       bool crossedLine = (pos.line != prevPos.line);
       bool crossedWordBoundary =
           crossedLine || isBlank(currChar) || isBlank(prevChar) ||
@@ -161,8 +169,7 @@ Position motionWordCore(Position pos,
         return pos;
       }
     }
-    // e/E (forward WordEdge): No early termination - "does not stop in an empty line"
-    // Note: w/W (forward NextEdge) uses skipCurrent=false, so not handled here.
+    // e/E (forward WordEdge): No early termination
   }
 
   unsigned char c = lines.get(pos);
@@ -171,26 +178,18 @@ Position motionWordCore(Position pos,
   if (isBlank(c)) {
     do {
       Position prev = pos;
-      pos = step(lines, pos, forward);
+      pos = step<Forward>(lines, pos);
       if (pos == prev) return POSITION_OUTSIDE_BOUNDARY;
 
-      // Line-bounded: stop at line boundary instead of crossing
       if (lineBounded && pos.line != prev.line) {
-        if (forward) {
-          // Return end of original line
-          int lastCol = lines.getSize(prev.line);
-          return Position(prev.line, lastCol > 0 ? lastCol - 1 : 0);
-        } else {
-          // Return start of original line
-          return Position(prev.line, 0);
-        }
+        return handleLineBounded<Forward>(prev, lines);
       }
 
       c = lines.get(pos);
     } while (isBlank(c));
 
-    if (edge == EdgeType::NextEdge) return pos;
-    if (edge == EdgeType::GapEdge) return stepBack(lines, pos, forward);
+    if constexpr (Edge == EdgeType::NextEdge) return pos;
+    if constexpr (Edge == EdgeType::GapEdge) return stepBack<Forward>(lines, pos);
   }
 
   // Phase 2: Skip same-type chars (current word)
@@ -198,10 +197,9 @@ Position motionWordCore(Position pos,
   bool crossedLine = false;
   do {
     Position prev = pos;
-    pos = step(lines, pos, forward);
+    pos = step<Forward>(lines, pos);
     if (pos == prev) {
-      // Hit buffer edge - for WordEdge, return prev (last char of word)
-      if (edge == EdgeType::WordEdge) return prev;
+      if constexpr (Edge == EdgeType::WordEdge) return prev;
       return POSITION_OUTSIDE_BOUNDARY;
     }
     c = lines.get(pos);
@@ -211,45 +209,78 @@ Position motionWordCore(Position pos,
     }
   } while (!isBlank(c) && (big || isSmallWordChar(c) == startIsWordChar));
 
-  if (edge == EdgeType::WordEdge) return stepBack(lines, pos, forward);
+  if constexpr (Edge == EdgeType::WordEdge) return stepBack<Forward>(lines, pos);
 
   // Empty line is a word
   if (crossedLine && c == '\n') {
-    if (edge == EdgeType::NextEdge) return pos;
-    if (edge == EdgeType::GapEdge) return stepBack(lines, pos, forward);
+    if constexpr (Edge == EdgeType::NextEdge) return pos;
+    if constexpr (Edge == EdgeType::GapEdge) return stepBack<Forward>(lines, pos);
   }
 
   // Phase 3: If at non-blank different type (word only, not WORD)
   if (!isBlank(c)) {
-    if (edge == EdgeType::NextEdge) return pos;
-    if (edge == EdgeType::GapEdge) return stepBack(lines, pos, forward);
+    if constexpr (Edge == EdgeType::NextEdge) return pos;
+    if constexpr (Edge == EdgeType::GapEdge) return stepBack<Forward>(lines, pos);
   }
 
   // Phase 4: Skip whitespace to reach next word (but stop at empty lines)
   while (isWhitespace(c)) {
     Position prev = pos;
-    pos = step(lines, pos, forward);
+    pos = step<Forward>(lines, pos);
     if (pos == prev) return POSITION_OUTSIDE_BOUNDARY;
 
-    // Line-bounded: stop at line boundary instead of crossing
     if (lineBounded && pos.line != prev.line) {
-      if (forward) {
-        int lastCol = lines.getSize(prev.line);
-        return Position(prev.line, lastCol > 0 ? lastCol - 1 : 0);
-      } else {
-        return Position(prev.line, 0);
-      }
+      return handleLineBounded<Forward>(prev, lines);
     }
 
     c = lines.get(pos);
     if (c == '\n') {
-      if (edge == EdgeType::NextEdge) return pos;
-      if (edge == EdgeType::GapEdge) return stepBack(lines, pos, forward);
+      if constexpr (Edge == EdgeType::NextEdge) return pos;
+      if constexpr (Edge == EdgeType::GapEdge) return stepBack<Forward>(lines, pos);
     }
   }
 
-  if (edge == EdgeType::GapEdge) return stepBack(lines, pos, forward);
+  if constexpr (Edge == EdgeType::GapEdge) return stepBack<Forward>(lines, pos);
   return pos;
+}
+
+// Explicit instantiations (6 combinations used by word motions)
+template Position motionWordCore<true, EdgeType::WordEdge>(Position, const Lines&, bool, bool, bool);
+template Position motionWordCore<true, EdgeType::GapEdge>(Position, const Lines&, bool, bool, bool);
+template Position motionWordCore<true, EdgeType::NextEdge>(Position, const Lines&, bool, bool, bool);
+template Position motionWordCore<false, EdgeType::WordEdge>(Position, const Lines&, bool, bool, bool);
+template Position motionWordCore<false, EdgeType::GapEdge>(Position, const Lines&, bool, bool, bool);
+template Position motionWordCore<false, EdgeType::NextEdge>(Position, const Lines&, bool, bool, bool);
+
+// Runtime dispatch version (for compatibility)
+Position motionWordCore(Position pos,
+                        const Lines& lines,
+                        bool forward,
+                        EdgeType edge,
+                        bool big,
+                        bool skipCurrent,
+                        bool lineBounded) {
+  if (forward) {
+    switch (edge) {
+      case EdgeType::WordEdge:
+        return motionWordCore<true, EdgeType::WordEdge>(pos, lines, big, skipCurrent, lineBounded);
+      case EdgeType::GapEdge:
+        return motionWordCore<true, EdgeType::GapEdge>(pos, lines, big, skipCurrent, lineBounded);
+      case EdgeType::NextEdge:
+        return motionWordCore<true, EdgeType::NextEdge>(pos, lines, big, skipCurrent, lineBounded);
+      default: __builtin_unreachable();
+    }
+  } else {
+    switch (edge) {
+      case EdgeType::WordEdge:
+        return motionWordCore<false, EdgeType::WordEdge>(pos, lines, big, skipCurrent, lineBounded);
+      case EdgeType::GapEdge:
+        return motionWordCore<false, EdgeType::GapEdge>(pos, lines, big, skipCurrent, lineBounded);
+      case EdgeType::NextEdge:
+        return motionWordCore<false, EdgeType::NextEdge>(pos, lines, big, skipCurrent, lineBounded);
+      default: __builtin_unreachable();
+    }
+  }
 }
 
 // =============================================================================

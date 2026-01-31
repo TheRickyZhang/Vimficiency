@@ -20,6 +20,16 @@ const vector<ForwardWordEditSpec> EMPTYLINE_FORWARD_WORD_EDITS = {
     {"dE", {Key::Key_D, Key::Key_Shift, Key::Key_E}, EdgeType::WordEdge, true, true},
 };
 
+// Split by EdgeType for templated dispatch: cmd, keys, isBig, skipCurrent
+const vector<ForwardWordEditSpecNoEdge> FORWARD_WORDEDGE_EDITS = {
+    {"de", {Key::Key_D, Key::Key_E}, false, true},
+    {"dE", {Key::Key_D, Key::Key_Shift, Key::Key_E}, true, true},
+};
+const vector<ForwardWordEditSpecNoEdge> FORWARD_GAPEDGE_EDITS = {
+    {"dw", {Key::Key_D, Key::Key_W}, false, false},
+    {"dW", {Key::Key_D, Key::Key_Shift, Key::Key_W}, true, false},
+};
+
 // Backward word edits: cmd, keys, edgeType, isBig, skipCurrent, isExclusiveAtCursor
 const vector<BackwardWordEditSpec> BACKWARD_WORD_EDITS = {
     {"db", {Key::Key_D, Key::Key_B}, EdgeType::WordEdge, false, true, true},
@@ -27,7 +37,6 @@ const vector<BackwardWordEditSpec> BACKWARD_WORD_EDITS = {
     {"dB", {Key::Key_D, Key::Key_Shift, Key::Key_B}, EdgeType::WordEdge, true, true, true},
     {"dgE", {Key::Key_D, Key::Key_G, Key::Key_Shift, Key::Key_E}, EdgeType::NextEdge, true, true, false},
 };
-
 
 const vector<BackwardWordEditSpec> EXCLUSIVE_BACKWARD_WORD_EDITS = {
     {"db", {Key::Key_D, Key::Key_B}, EdgeType::WordEdge, false, true, true},
@@ -39,6 +48,16 @@ const vector<BackwardWordEditSpec> EMPTYLINE_BACKWARD_WORD_EDITS = {
     {"db", {Key::Key_D, Key::Key_B}, EdgeType::WordEdge, false, true, true},
     {"dge", {Key::Key_D, Key::Key_G, Key::Key_E}, EdgeType::NextEdge, false, true, false},
     {"dB", {Key::Key_D, Key::Key_Shift, Key::Key_B}, EdgeType::WordEdge, true, true, true},
+};
+
+// Split by EdgeType for templated dispatch: cmd, keys, isBig, skipCurrent, isExclusiveAtCursor
+const vector<BackwardWordEditSpecNoEdge> BACKWARD_WORDEDGE_EDITS = {
+    {"db", {Key::Key_D, Key::Key_B}, false, true, true},
+    {"dB", {Key::Key_D, Key::Key_Shift, Key::Key_B}, true, true, true},
+};
+const vector<BackwardWordEditSpecNoEdge> BACKWARD_NEXTEDGE_EDITS = {
+    {"dge", {Key::Key_D, Key::Key_G, Key::Key_E}, false, true, false},
+    {"dgE", {Key::Key_D, Key::Key_G, Key::Key_Shift, Key::Key_E}, true, true, false},
 };
 
 const vector<TextObjectEditSpec> TEXT_OBJECT_EDITS = {

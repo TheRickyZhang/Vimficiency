@@ -60,6 +60,19 @@ inline Position stepBack(const Lines& lines, Position pos, bool forward) {
   return forward ? lines.getPrevPos(pos) : lines.getNextPos(pos);
 }
 
+// Templated versions for compile-time dispatch (no runtime branch)
+template<bool Forward>
+inline Position step(const Lines& lines, Position pos) {
+  if constexpr (Forward) return lines.getNextPos(pos);
+  else return lines.getPrevPos(pos);
+}
+
+template<bool Forward>
+inline Position stepBack(const Lines& lines, Position pos) {
+  if constexpr (Forward) return lines.getPrevPos(pos);
+  else return lines.getNextPos(pos);
+}
+
 // Old int-based API (for sentence/paragraph helpers)
 unsigned char getChar(const Lines& lines, int line, int col);
 bool stepFwd(const Lines& lines, int& line, int& col);
@@ -76,6 +89,16 @@ bool stepBack(const Lines& lines, int& line, int& col);
 //   - Backward from whitespace: returns Position(line, 0) instead of crossing to prev line
 //   - Forward through whitespace: returns Position(line, lastCol) instead of crossing to next line
 //   Used by daw text object which doesn't cross lines from indentation.
+
+// Templated version for compile-time dispatch on Forward and Edge
+template<bool Forward, EdgeType Edge>
+Position motionWordCore(Position pos,
+                        const Lines& lines,
+                        bool big,
+                        bool skipCurrent,
+                        bool lineBounded = false);
+
+// Runtime dispatch version (for compatibility with existing code)
 Position motionWordCore(Position pos,
                         const Lines& lines,
                         bool forward,

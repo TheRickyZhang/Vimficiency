@@ -42,6 +42,18 @@ namespace VimCore {
 //
 // lineBounded: When true, motion stops at line boundaries instead of crossing.
 //   Used by daw text object which doesn't cross lines from indentation.
+
+// Templated version for compile-time dispatch on Forward and Edge
+template<bool Forward, EdgeType Edge>
+Position motionWordEndpoint(Position cursor,
+                            const Lines& lines,
+                            bool big,
+                            bool skipCurrent,
+                            int boundaryOffset,
+                            bool hasLinesOutside,
+                            bool lineBounded = false);
+
+// Runtime dispatch version (for compatibility)
 Position motionWordEndpoint(Position cursor,
                             const Lines& lines,
                             bool forward,

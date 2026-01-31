@@ -123,7 +123,17 @@ struct EditSearchContext {
   std::optional<EditState> getNextValidState();
 
 private:
-  // Exploration helpers - allow passing subset vectors for limited exploration
+  // Templated exploration helpers - EdgeType known at compile time
+  template<EdgeType Edge>
+  void exploreForwardWordEditsT(
+      const std::vector<Edit::ForwardWordEditSpecNoEdge>& specs,
+      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
+  template<EdgeType Edge>
+  void exploreBackwardWordEditsT(
+      const std::vector<Edit::BackwardWordEditSpecNoEdge>& specs,
+      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
+
+  // Legacy helpers (for compatibility)
   void exploreForwardWordEdits(
       const std::vector<Edit::ForwardWordEditSpec>& specs,
       const Position& cursor, const Lines& lines, DeletionCallback onDeletion);

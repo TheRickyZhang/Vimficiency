@@ -15,37 +15,31 @@ namespace VimCore {
 // Word endpoint/range computation
 // =============================================================================
 
-Position motionWordEndpoint(Position cursor, const Lines& lines, bool forward,
-                            EdgeType edgeType, bool big, bool skipCurrent,
+// Templated version for compile-time dispatch on Forward and Edge
+template<bool Forward, EdgeType Edge>
+Position motionWordEndpoint(Position cursor, const Lines& lines,
+                            bool big, bool skipCurrent,
                             int boundaryOffset, bool hasLinesOutside,
                             bool lineBounded) {
-  Position result =
-      motionWordCore(cursor, lines, forward, edgeType, big, skipCurrent,
-                     lineBounded);
+  Position result = motionWordCore<Forward, Edge>(cursor, lines, big, skipCurrent, lineBounded);
 
   // If motion hit buffer boundary, check what kind of crossing this is
   if (result == POSITION_OUTSIDE_BOUNDARY) {
-    // Will have exceeded protected region
     if (hasLinesOutside || boundaryOffset > 0) {
       return POSITION_OUTSIDE_BOUNDARY;
     }
-    // No lines outside, no column protection - motion just hit buffer edge,
-    // clamp
     return cursor;
   }
 
-  int lastLine = lines.lastLine();
-
   // Check if result is in protected column boundary region
   if (boundaryOffset > 0) {
-    if (forward) {
-      // Forward: protect suffix (last boundaryOffset cols of last line)
+    int lastLine = lines.lastLine();
+    if constexpr (Forward) {
       if (result.line == lastLine &&
           result.col >= lines.getSize(lastLine) - boundaryOffset) {
         return POSITION_OUTSIDE_BOUNDARY;
       }
     } else {
-      // Backward: protect prefix (first boundaryOffset cols of line 0)
       if (result.line == 0 && result.col < boundaryOffset) {
         return POSITION_OUTSIDE_BOUNDARY;
       }
@@ -53,6 +47,42 @@ Position motionWordEndpoint(Position cursor, const Lines& lines, bool forward,
   }
 
   return result;
+}
+
+// Explicit instantiations
+template Position motionWordEndpoint<true, EdgeType::WordEdge>(Position, const Lines&, bool, bool, int, bool, bool);
+template Position motionWordEndpoint<true, EdgeType::GapEdge>(Position, const Lines&, bool, bool, int, bool, bool);
+template Position motionWordEndpoint<true, EdgeType::NextEdge>(Position, const Lines&, bool, bool, int, bool, bool);
+template Position motionWordEndpoint<false, EdgeType::WordEdge>(Position, const Lines&, bool, bool, int, bool, bool);
+template Position motionWordEndpoint<false, EdgeType::GapEdge>(Position, const Lines&, bool, bool, int, bool, bool);
+template Position motionWordEndpoint<false, EdgeType::NextEdge>(Position, const Lines&, bool, bool, int, bool, bool);
+
+// Runtime dispatch version (for compatibility)
+Position motionWordEndpoint(Position cursor, const Lines& lines, bool forward,
+                            EdgeType edgeType, bool big, bool skipCurrent,
+                            int boundaryOffset, bool hasLinesOutside,
+                            bool lineBounded) {
+  if (forward) {
+    switch (edgeType) {
+      case EdgeType::WordEdge:
+        return motionWordEndpoint<true, EdgeType::WordEdge>(cursor, lines, big, skipCurrent, boundaryOffset, hasLinesOutside, lineBounded);
+      case EdgeType::GapEdge:
+        return motionWordEndpoint<true, EdgeType::GapEdge>(cursor, lines, big, skipCurrent, boundaryOffset, hasLinesOutside, lineBounded);
+      case EdgeType::NextEdge:
+        return motionWordEndpoint<true, EdgeType::NextEdge>(cursor, lines, big, skipCurrent, boundaryOffset, hasLinesOutside, lineBounded);
+      default: __builtin_unreachable();
+    }
+  } else {
+    switch (edgeType) {
+      case EdgeType::WordEdge:
+        return motionWordEndpoint<false, EdgeType::WordEdge>(cursor, lines, big, skipCurrent, boundaryOffset, hasLinesOutside, lineBounded);
+      case EdgeType::GapEdge:
+        return motionWordEndpoint<false, EdgeType::GapEdge>(cursor, lines, big, skipCurrent, boundaryOffset, hasLinesOutside, lineBounded);
+      case EdgeType::NextEdge:
+        return motionWordEndpoint<false, EdgeType::NextEdge>(cursor, lines, big, skipCurrent, boundaryOffset, hasLinesOutside, lineBounded);
+      default: __builtin_unreachable();
+    }
+  }
 }
 
 // Helper to compute whitespace run range. Always returns valid position.
@@ -88,26 +118,20 @@ Range textObjectCore(Position cursor, const Lines& lines, bool isInner,
       return computeWhitespaceRun(cursor, lines);
     } else {
       // Cursor on word/symbol - use motionWordCore directly
-      start = motionWordCore(cursor, lines, false, EdgeType::WordEdge,
-                             isBigWord, false);
-      end = motionWordCore(cursor, lines, true, EdgeType::WordEdge, isBigWord,
-                           false);
+      start = motionWordCore<false, EdgeType::WordEdge>(cursor, lines, isBigWord, false);
+      end = motionWordCore<true, EdgeType::WordEdge>(cursor, lines, isBigWord, false);
     }
   } else {
     // daw/daW: depends on cursor position and trailing whitespace
     if (cursorOnWhitespace) {
       // Cursor in whitespace: (Backward, GapEdge) + (Forward, WordEdge)
       // lineBounded=true: don't cross newline backward from indentation
-      start = motionWordCore(cursor, lines, false, EdgeType::GapEdge, isBigWord,
-                             false, /*lineBounded=*/true);
-      end = motionWordCore(cursor, lines, true, EdgeType::WordEdge, isBigWord,
-                           false);
+      start = motionWordCore<false, EdgeType::GapEdge>(cursor, lines, isBigWord, false, /*lineBounded=*/true);
+      end = motionWordCore<true, EdgeType::WordEdge>(cursor, lines, isBigWord, false);
     } else {
       // Cursor in word/symbol: check for trailing whitespace (NOT newline!)
-      Position wordEnd = motionWordCore(cursor, lines, true, EdgeType::WordEdge,
-                                        isBigWord, false);
-      Position wordStart = motionWordCore(cursor, lines, false,
-                                          EdgeType::WordEdge, isBigWord, false);
+      Position wordEnd = motionWordCore<true, EdgeType::WordEdge>(cursor, lines, isBigWord, false);
+      Position wordStart = motionWordCore<false, EdgeType::WordEdge>(cursor, lines, isBigWord, false);
 
       bool hasTrailingWs = false;
       if (wordEnd != POSITION_OUTSIDE_BOUNDARY) {
@@ -122,15 +146,12 @@ Range textObjectCore(Position cursor, const Lines& lines, bool isInner,
         // Has trailing ws: (Backward, WordEdge) + (Forward, GapEdge)
         // lineBounded=true: trailing whitespace doesn't cross lines
         start = wordStart;
-        end = motionWordCore(cursor, lines, true, EdgeType::GapEdge, isBigWord,
-                             false, /*lineBounded=*/true);
+        end = motionWordCore<true, EdgeType::GapEdge>(cursor, lines, isBigWord, false, /*lineBounded=*/true);
       } else {
         // No trailing ws: include leading whitespace ONLY if there's a word
         // before on same line. Use lineBounded backward GapEdge - if it returns
         // col 0 or crosses lines, there's only indentation before the word.
-        Position gapStart = motionWordCore(cursor, lines, false,
-                                           EdgeType::GapEdge, isBigWord,
-                                           false, /*lineBounded=*/true);
+        Position gapStart = motionWordCore<false, EdgeType::GapEdge>(cursor, lines, isBigWord, false, /*lineBounded=*/true);
         if (gapStart != POSITION_OUTSIDE_BOUNDARY &&
             gapStart.line == cursor.line && gapStart.col > 0) {
           // Word before on same line: include leading whitespace
@@ -203,24 +224,20 @@ Range textObjectRange(Position cursor, const Lines& lines, bool isInner,
       }
     } else {
       // Cursor on word/symbol - use WordEdge motions WITH boundary checking
-      start = motionWordEndpoint(cursor, lines, false, EdgeType::WordEdge,
-                                 isBigWord, false, leftColOffset, hasLinesAbove,
-                                 /*lineBounded=*/false);
-      end = motionWordEndpoint(cursor, lines, true, EdgeType::WordEdge,
-                               isBigWord, false, rightColOffset, hasLinesBelow,
-                               /*lineBounded=*/false);
+      start = motionWordEndpoint<false, EdgeType::WordEdge>(
+          cursor, lines, isBigWord, false, leftColOffset, hasLinesAbove);
+      end = motionWordEndpoint<true, EdgeType::WordEdge>(
+          cursor, lines, isBigWord, false, rightColOffset, hasLinesBelow);
     }
   } else {
     // daw/daW: depends on cursor position and trailing whitespace
     if (cursorOnWhitespace) {
       // Cursor in whitespace: (Backward, GapEdge) + (Forward, WordEdge)
       // lineBounded=true: don't cross newline backward from indentation
-      start = motionWordEndpoint(cursor, lines, false, EdgeType::GapEdge,
-                                 isBigWord, false, leftColOffset, hasLinesAbove,
-                                 /*lineBounded=*/true);
-      end = motionWordEndpoint(cursor, lines, true, EdgeType::WordEdge,
-                               isBigWord, false, rightColOffset, hasLinesBelow,
-                               /*lineBounded=*/false);
+      start = motionWordEndpoint<false, EdgeType::GapEdge>(
+          cursor, lines, isBigWord, false, leftColOffset, hasLinesAbove, /*lineBounded=*/true);
+      end = motionWordEndpoint<true, EdgeType::WordEdge>(
+          cursor, lines, isBigWord, false, rightColOffset, hasLinesBelow);
 
       // If forward motion ended on whitespace, no word was found - signal
       // invalid
@@ -229,12 +246,10 @@ Range textObjectRange(Position cursor, const Lines& lines, bool isInner,
       }
     } else {
       // Cursor in word/symbol: check for trailing whitespace (NOT newline!)
-      Position wordEnd = motionWordEndpoint(cursor, lines, true,
-                                            EdgeType::WordEdge, isBigWord,
-                                            false, 0, false, /*lineBounded=*/false);
-      Position wordStart = motionWordEndpoint(cursor, lines, false,
-                                              EdgeType::WordEdge, isBigWord,
-                                              false, 0, false, /*lineBounded=*/false);
+      Position wordEnd = motionWordEndpoint<true, EdgeType::WordEdge>(
+          cursor, lines, isBigWord, false, 0, false);
+      Position wordStart = motionWordEndpoint<false, EdgeType::WordEdge>(
+          cursor, lines, isBigWord, false, 0, false);
 
       bool hasTrailingWs = false;
       if (wordEnd != POSITION_OUTSIDE_BOUNDARY) {
@@ -248,32 +263,27 @@ Range textObjectRange(Position cursor, const Lines& lines, bool isInner,
       if (hasTrailingWs) {
         // Has trailing ws: (Backward, WordEdge) + (Forward, GapEdge)
         // lineBounded=true: trailing whitespace doesn't cross lines
-        start = motionWordEndpoint(cursor, lines, false, EdgeType::WordEdge,
-                                   isBigWord, false, leftColOffset,
-                                   hasLinesAbove, /*lineBounded=*/false);
-        end = motionWordEndpoint(cursor, lines, true, EdgeType::GapEdge,
-                                 isBigWord, false, rightColOffset,
-                                 hasLinesBelow, /*lineBounded=*/true);
+        start = motionWordEndpoint<false, EdgeType::WordEdge>(
+            cursor, lines, isBigWord, false, leftColOffset, hasLinesAbove);
+        end = motionWordEndpoint<true, EdgeType::GapEdge>(
+            cursor, lines, isBigWord, false, rightColOffset, hasLinesBelow, /*lineBounded=*/true);
       } else {
         // No trailing ws: include leading whitespace ONLY if there's a word
         // before on same line. Use lineBounded backward GapEdge - if it returns
         // col 0 or crosses lines, there's only indentation before the word.
-        Position gapStart = motionWordEndpoint(
-            cursor, lines, false, EdgeType::GapEdge, isBigWord, false,
-            leftColOffset, hasLinesAbove, /*lineBounded=*/true);
+        Position gapStart = motionWordEndpoint<false, EdgeType::GapEdge>(
+            cursor, lines, isBigWord, false, leftColOffset, hasLinesAbove, /*lineBounded=*/true);
         if (gapStart != POSITION_OUTSIDE_BOUNDARY &&
             gapStart.line == cursor.line && gapStart.col > 0) {
           // Word before on same line: include leading whitespace
           start = gapStart;
         } else {
           // At indentation, line start, or no word found: just use word boundaries
-          start = motionWordEndpoint(cursor, lines, false, EdgeType::WordEdge,
-                                     isBigWord, false, leftColOffset,
-                                     hasLinesAbove, /*lineBounded=*/false);
+          start = motionWordEndpoint<false, EdgeType::WordEdge>(
+              cursor, lines, isBigWord, false, leftColOffset, hasLinesAbove);
         }
-        end = motionWordEndpoint(cursor, lines, true, EdgeType::WordEdge,
-                                 isBigWord, false, rightColOffset,
-                                 hasLinesBelow, /*lineBounded=*/false);
+        end = motionWordEndpoint<true, EdgeType::WordEdge>(
+            cursor, lines, isBigWord, false, rightColOffset, hasLinesBelow);
       }
     }
   }
