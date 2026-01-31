@@ -1,5 +1,6 @@
 #pragma once
 
+#include "MotionClassMask.h"
 #include "MotionSearchContext.h"
 #include "MotionToSpec.h"
 #include "BufferIndex.h"
@@ -12,15 +13,23 @@
 // MotionExplorer encapsulates motion exploration logic for the optimizer.
 // Separates exploration methods from the main optimize() function for clarity.
 //
-// Two usage modes:
+// Three usage modes:
 // 1. Single-goal (optimize): Uses goalPos for directional optimization
-// 2. Range-goal (optimizeToRange): Uses exploreAllMotions only, no directional methods
+// 2. Range-goal (optimizeToRange): Uses rangeFirst/rangeLast for range-aware exploration
+// 3. Lightweight: Uses exploreAllStandardMotions only, no directional methods
 class MotionExplorer {
   MotionSearchContext& ctx;
   BufferIndex* bufferIndex_ = nullptr;           // Optional: only for count motions
   const MotionToKeys* motionToKeys_ = nullptr;   // Optional: only for count motions
-  Position goalPos_;                             // For single-goal mode
+
+  // Single-goal mode state
+  Position goalPos_;
   PosKey goalKey_{0, 0};
+
+  // Range mode state
+  Position rangeFirst_;
+  Position rangeLast_;
+  bool isRangeMode_ = false;
 
 public:
   // Full constructor for optimize() with directional exploration
@@ -29,17 +38,30 @@ public:
       : ctx(ctx), bufferIndex_(&bufferIndex), motionToKeys_(&motionToKeys),
         goalPos_(goalPos), goalKey_(goalPos.line, goalPos.col) {}
 
-  // Lightweight constructor for optimizeToRange() - no directional optimization
+  // Range mode constructor for optimizeToRange() with directional exploration
+  MotionExplorer(MotionSearchContext& ctx,
+                 const Position& rangeFirst,
+                 const Position& rangeLast)
+      : ctx(ctx), rangeFirst_(rangeFirst), rangeLast_(rangeLast), isRangeMode_(true) {}
+
+  // Lightweight constructor - no directional optimization
   explicit MotionExplorer(MotionSearchContext& ctx)
       : ctx(ctx) {}
 
-  // Core emit helper - creates new state, applies motion, and queues for exploration
+  // Core emit helper - creates new state, applies motion, and queues for exploration.
+  // Mode-aware: uses goal or range depending on constructor used.
   void emitMotion(const MotionState& base, const char* cmd,
                   Position endpoint, const PhysicalKeys& keys) {
     MotionState newState = base;
     newState.applyMotion(cmd, endpoint, keys, ctx.config);
-    newState.updateCost(ctx.computePriorityToGoal(newState, goalPos_));
-    ctx.exploreNewState(std::move(newState), goalKey_);
+
+    if (isRangeMode_) {
+      newState.updateCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeLast_));
+      ctx.exploreNewStateToRange(std::move(newState), rangeFirst_, rangeLast_);
+    } else {
+      newState.updateCost(ctx.computePriorityToGoal(newState, goalPos_));
+      ctx.exploreNewState(std::move(newState), goalKey_);
+    }
   }
 
   // Simple line motions: h, l, 0, ^, $
@@ -307,7 +329,7 @@ public:
   }
 
   // ==========================================================================
-  // 6-Class Direction-based exploration (single-goal mode only)
+  // 6-Class Direction-based exploration
   // ==========================================================================
   // Classes:
   //   Left:             h, 0, ^
@@ -324,49 +346,32 @@ public:
   //     - Horizontal: Left+Backward OR Right+Forward based on goal.col vs pos.col
   //   Result: 2-4 classes explored per state
 
+  // Explore motion classes based on bitmask
+  void exploreClasses(const MotionState& base, MotionClassMask m) {
+    using M = MotionClassMask;
+    if (has(m, M::Left))          exploreLeftMotions(base);
+    if (has(m, M::Right))         exploreRightMotions(base);
+    if (has(m, M::Up))            exploreUpMotions(base);
+    if (has(m, M::Down))          exploreDownMotions(base);
+    if (has(m, M::ForwardCross))  exploreForwardCrossingMotions(base);
+    if (has(m, M::BackwardCross)) exploreBackwardCrossingMotions(base);
+  }
+
+  // Single-goal directional exploration
   void exploreDirectionalStandardMotions(const MotionState& base) {
     Position pos = base.getPos();
+    MotionClassMask m = classesForSingleGoal(pos.line, pos.col, goalPos_.line, goalPos_.col);
+    exploreClasses(base, m);
+  }
 
-    // Use flags to avoid duplicate exploration
-    bool wantLeft = false, wantRight = false;
-    bool wantUp = false, wantDown = false;
-    bool wantForward = false, wantBackward = false;
-
-    if (pos.line == goalPos_.line) {
-      // Same line: only horizontal + crossing in goal direction
-      if (pos.col > goalPos_.col) {
-        wantLeft = wantBackward = true;
-      } else {
-        wantRight = wantForward = true;
-      }
-    } else if(pos.col == goalPos_.col) {
-      if(pos.line < goalPos_.line) {
-        wantDown = wantForward = true;
-      } else {
-        wantUp = wantBackward = true;
-      }
-    }
-    else {
-      if (pos.line < goalPos_.line) {
-        wantDown = wantForward = true;
-      } else {
-        wantUp = wantBackward = true;
-      }
-
-      if (pos.col > goalPos_.col) {
-        wantLeft = wantBackward = true;
-      } else {
-        wantRight = wantForward = true;
-      }
-    }
-
-    // Call each class at most once
-    if (wantLeft) exploreLeftMotions(base);
-    if (wantRight) exploreRightMotions(base);
-    if (wantUp) exploreUpMotions(base);
-    if (wantDown) exploreDownMotions(base);
-    if (wantForward) exploreForwardCrossingMotions(base);
-    if (wantBackward) exploreBackwardCrossingMotions(base);
+  // Range-goal directional exploration
+  void exploreDirectionalStandardMotionsToRange(const MotionState& base) {
+    assert(isRangeMode_ && "exploreDirectionalStandardMotionsToRange requires range constructor");
+    Position pos = base.getPos();
+    MotionClassMask m = classesForRange(pos.line, pos.col,
+                                         rangeFirst_.line, rangeFirst_.col,
+                                         rangeLast_.line, rangeLast_.col);
+    exploreClasses(base, m);
   }
 
   // --- Left: h, 0, ^ (when fnb < pos.col) ---
@@ -466,4 +471,9 @@ public:
 
   const PosKey& getGoalKey() const { return goalKey_; }
   const Position& getEndPos() const { return goalPos_; }
+
+  // Range mode accessors
+  bool isRangeMode() const { return isRangeMode_; }
+  const Position& getRangeFirst() const { return rangeFirst_; }
+  const Position& getRangeLast() const { return rangeLast_; }
 };

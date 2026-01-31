@@ -1013,4 +1013,3 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJCursor) {
   testJ({"abc ", " def"}, 2, "'abc '/' def'");
   testJ({"abc  ", "def"}, 2, "'abc  '/'def' (2 trailing spaces)");
 }
-

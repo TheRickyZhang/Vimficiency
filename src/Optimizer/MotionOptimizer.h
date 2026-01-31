@@ -22,6 +22,11 @@ struct MotionResult {
   SearchStats stats;
 };
 
+struct RangeMotionResult {
+  std::vector<RangeResult> results;
+  SearchStats stats;
+};
+
 struct MotionOptimizer {
   Config config;
 
@@ -69,8 +74,9 @@ struct MotionOptimizer {
   // - allowMultiplePerPosition=false (default): at most 1 result per end position (best cost)
   // - allowMultiplePerPosition=true: allows multiple results per position (all found paths)
   // Note: resultCount <= range size when allowMultiplePerPosition=false
-  // Disables f-motion and count searches for now (need expanded handling)
-  std::vector<RangeResult> optimizeToRange(
+  // Precondition: startPos must NOT be in [rangeFirst, rangeLast] (nothing to optimize)
+  // Note: Internally dispatches to optimizeToRangeImpl<Forward> based on startPos vs range
+  RangeMotionResult optimizeToRange(
     const Lines& lines,
     const Position& startPos,
     const RunningEffort& startingEffort,  // Continued from caller for correct effort calc
@@ -97,6 +103,22 @@ private:
     const Position& endPos,
     const std::string& userSequence,
     const NavContext& navContext,
+    const MotionBoundary& boundary,
+    const MotionToKeys& rawMotionToKeys,
+    OptimizerParams params
+  );
+
+  // Templated range implementation - Forward known at compile time
+  template<bool Forward>
+  RangeMotionResult optimizeToRangeImpl(
+    const Lines& lines,
+    const Position& startPos,
+    const RunningEffort& startingEffort,
+    const Position& rangeFirst,
+    const Position& rangeLast,
+    const std::string& userSequence,
+    NavContext& navContext,
+    bool allowMultiplePerPosition,
     const MotionBoundary& boundary,
     const MotionToKeys& rawMotionToKeys,
     OptimizerParams params

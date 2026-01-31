@@ -57,7 +57,7 @@ int firstNonBlankColInLineStr(const std::string& s) {
 }
 
 // =============================================================================
-// 3. Position Stepping (old int-based API)
+// 3. Position Stepping
 // =============================================================================
 
 // Char at (line,col):

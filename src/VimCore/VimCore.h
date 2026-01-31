@@ -73,7 +73,6 @@ inline Position stepBack(const Lines& lines, Position pos) {
   else return lines.getNextPos(pos);
 }
 
-// Old int-based API (for sentence/paragraph helpers)
 unsigned char getChar(const Lines& lines, int line, int col);
 bool stepFwd(const Lines& lines, int& line, int& col);
 bool stepBack(const Lines& lines, int& line, int& col);

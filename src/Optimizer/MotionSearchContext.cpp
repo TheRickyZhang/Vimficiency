@@ -18,6 +18,8 @@ MotionSearchContext::MotionSearchContext(const Lines& lines,
       maxEffort(userEffort * params.exploreFactor) {}
 
 void MotionSearchContext::exploreNewState(MotionState&& newState, const PosKey& goalKey) {
+  motionsEmitted++;
+
   // Prune if effort exceeds threshold
   if (newState.getEffort() > maxEffort) {
     return;
@@ -44,6 +46,8 @@ void MotionSearchContext::exploreNewState(MotionState&& newState, const PosKey& 
 void MotionSearchContext::exploreNewStateToRange(MotionState&& newState,
                                                   Position rangeFirst,
                                                   Position rangeLast) {
+  motionsEmitted++;
+
   // Prune if effort exceeds threshold
   if (newState.getEffort() > maxEffort) {
     return;

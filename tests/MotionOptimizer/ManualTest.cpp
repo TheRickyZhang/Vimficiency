@@ -70,7 +70,7 @@ protected:
     // Pass Position and fresh RunningEffort (no prior typing context in tests)
     return opt.optimizeToRange(lines, start, RunningEffort(), rangeBegin, rangeEnd,
                                userSeq, navContext, true, boundary, allowedMotions,
-                               OptimizerParams(maxResults, 2e4, 1.0, 2.0));
+                               OptimizerParams(maxResults, 2e4, 1.0, 2.0)).results;
   }
 };
 

@@ -21,6 +21,9 @@ struct OptimizerParams {
   // Default: false (benchmarks show some edge cases regress with pruning)
   bool useDirectionalPruning = false;
 
+  // Debug: collect explored states in SearchStats (expensive, for debugging only)
+  bool trackExploredStates = false;
+
   // No distance weight = dijkstra instead of A*.
   static OptimizerParams dijkstra(int maxResults = 10, int maxNodesExplored = 50000) {
     return OptimizerParams{

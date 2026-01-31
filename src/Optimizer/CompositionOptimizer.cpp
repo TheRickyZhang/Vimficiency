@@ -200,7 +200,7 @@ vector<Result> CompositionOptimizer::optimize(
       // Pass only Position and RunningEffort - sub-search computes its own effort/cost fresh
       // RangeResult.keyCost returns delta effort for this movement
       MotionOptimizer movementOptimizer(config);
-      vector<RangeResult> movementResults = movementOptimizer.optimizeToRange(
+      auto [movementResults, movementStats] = movementOptimizer.optimizeToRange(
         currentLines,
         pos,
         s.getRunningEffort(),

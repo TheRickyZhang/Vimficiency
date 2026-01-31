@@ -33,7 +33,12 @@ struct MotionSearchContext {
   PriorityQueue pq;
   std::unordered_map<PosKey, double, PosKeyHash> costMap;
   int totalExplored = 0;
+  int motionsEmitted = 0;   // Total motions generated (for stats)
+  int statesSkipped = 0;    // States skipped due to staleness
   double maxEffort;  // userEffort * exploreFactor
+
+  // Debug: optionally track explored states
+  std::vector<ExploredState> exploredStates;
 
   // Constructor
   MotionSearchContext(const Lines& lines,
@@ -106,11 +111,22 @@ struct MotionSearchContext {
     return it != costMap.end() && it->second < s.getCost();
   }
 
+  // Track an explored state (call from main loop when trackExploredStates is true)
+  void trackState(const MotionState& s) {
+    if (params.trackExploredStates) {
+      Position pos = s.getPos();
+      exploredStates.push_back({pos.line, pos.col, s.getMotionSequence()});
+    }
+  }
+
   // Get search stats - call after search completes
   SearchStats getStats(int resultsFound) const {
     SearchStats stats;
     stats.nodesExplored = totalExplored;
     stats.resultsFound = resultsFound;
+    stats.motionsEmitted = motionsEmitted;
+    stats.statesSkipped = statesSkipped;
+    stats.exploredStates = exploredStates;  // Copy if tracking was enabled
 
     if (resultsFound >= params.maxResults) {
       stats.stopReason = SearchStopReason::MaxResultsReached;

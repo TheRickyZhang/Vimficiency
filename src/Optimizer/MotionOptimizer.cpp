@@ -5,9 +5,7 @@
 #include <limits>
 
 #include "BufferIndex.h"
-#include "MotionToSpec.h"
 #include "State/PosKey.h"
-#include "Keyboard/KeyboardModel.h"
 #include "Keyboard/MotionToKeys.h"
 #include "Utils/Debug.h"
 
@@ -81,10 +79,16 @@ MotionResult MotionOptimizer::optimizeImpl(
       }
       continue;
     } else {
-      if (ctx.isStale(s)) continue;
+      if (ctx.isStale(s)) {
+        ctx.statesSkipped++;
+        continue;
+      }
     }
 
     debug("\"" + s.getMotionSequence() + "\"", s.getCost());
+
+    // Track this state if debugging
+    ctx.trackState(s);
 
     // Explore standard motions - use directional pruning if enabled
     if (params.useDirectionalPruning) {
@@ -119,7 +123,9 @@ template MotionResult MotionOptimizer::optimizeImpl<false>(
 // =================================================
 // optimizeToRange implementation
 // =================================================
-vector<RangeResult> MotionOptimizer::optimizeToRange(
+
+// Public entry point - dispatches to templated implementation based on direction
+RangeMotionResult MotionOptimizer::optimizeToRange(
     const Lines& lines,
     const Position& startPos,
     const RunningEffort& startingEffort,
@@ -132,9 +138,44 @@ vector<RangeResult> MotionOptimizer::optimizeToRange(
     const MotionToKeys& rawMotionToKeys,
     OptimizerParams params) {
 
-  double userEffort = getEffort(userSequence, config);
+  // Precondition: startPos must not be in range
+  assert(!(startPos >= rangeFirst && startPos <= rangeLast) &&
+         "startPos must not be in [rangeFirst, rangeLast]");
+
+  if (startPos < rangeFirst) {
+    return optimizeToRangeImpl<true>(lines, startPos, startingEffort, rangeFirst, rangeLast,
+                                      userSequence, navContext, allowMultiplePerPosition,
+                                      boundary, rawMotionToKeys, params);
+  } else {
+    return optimizeToRangeImpl<false>(lines, startPos, startingEffort, rangeFirst, rangeLast,
+                                       userSequence, navContext, allowMultiplePerPosition,
+                                       boundary, rawMotionToKeys, params);
+  }
+}
+
+// Templated implementation - Forward is compile-time constant
+template<bool Forward>
+RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
+    const Lines& lines,
+    const Position& startPos,
+    const RunningEffort& startingEffort,
+    const Position& rangeFirst,
+    const Position& rangeLast,
+    const string& userSequence,
+    NavContext& navContext,
+    bool allowMultiplePerPosition,
+    const MotionBoundary& boundary,
+    const MotionToKeys& rawMotionToKeys,
+    OptimizerParams params) {
+
+  double userEffort = userSequence.empty()
+      ? numeric_limits<double>::max()
+      : getEffort(userSequence, config);
 
   MotionSearchContext ctx(lines, navContext, boundary, params, config, userEffort);
+
+  // Use range mode constructor
+  MotionExplorer explorer(ctx, rangeFirst, rangeLast);
 
   MotionState initialState(startPos, startingEffort, 0.0, 0.0);
 
@@ -144,13 +185,6 @@ vector<RangeResult> MotionOptimizer::optimizeToRange(
 
   auto isInRange = [&](const Position& pos) {
     return pos >= rangeFirst && pos <= rangeLast;
-  };
-
-  auto exploreMotion = [&](const MotionState& base, const char* cmd, const PhysicalKeys& keys) {
-    MotionState newState = base;
-    newState.applySingleMotionWithEffort(cmd, navContext, lines, keys, config);
-    newState.updateCost(ctx.computePriorityToRange(newState, rangeFirst, rangeLast));
-    ctx.exploreNewStateToRange(std::move(newState), rangeFirst, rangeLast);
   };
 
   initialState.updateCost(ctx.computePriorityToRange(initialState, rangeFirst, rangeLast));
@@ -193,29 +227,14 @@ vector<RangeResult> MotionOptimizer::optimizeToRange(
 
     debug("\"" + s.getMotionSequence() + "\"", s.getCost());
 
-    for (const auto& spec : Motion::SIMPLE_LINE_MOTIONS) {
-      exploreMotion(s, spec.cmd, spec.keys);
-    }
-    for (const auto& spec : Motion::VERTICAL_MOTIONS) {
-      exploreMotion(s, spec.cmd, spec.keys);
-    }
-    for (const auto& spec : Motion::WORD_MOTIONS) {
-      exploreMotion(s, spec.cmd, spec.keys);
-    }
-    for (const auto& spec : Motion::PARAGRAPH_MOTIONS) {
-      exploreMotion(s, spec.cmd, spec.keys);
-    }
-    for (const auto& spec : Motion::SENTENCE_MOTIONS) {
-      exploreMotion(s, spec.cmd, spec.keys);
-    }
-    for (const auto& spec : Motion::SCROLL_MOTIONS) {
-      exploreMotion(s, spec.cmd, spec.keys);
-    }
-    if (!boundary.hasLinesAbove()) {
-      exploreMotion(s, Motion::JUMP_MOTIONS[0].cmd, Motion::JUMP_MOTIONS[0].keys);
-    }
-    if (!boundary.hasLinesBelow()) {
-      exploreMotion(s, Motion::JUMP_MOTIONS[1].cmd, Motion::JUMP_MOTIONS[1].keys);
+    // Track this state if debugging
+    ctx.trackState(s);
+
+    // Explore standard motions - use directional pruning if enabled
+    if (params.useDirectionalPruning) {
+      explorer.exploreDirectionalStandardMotionsToRange(s);
+    } else {
+      explorer.exploreAllStandardMotions(s);
     }
   }
 
@@ -226,17 +245,27 @@ vector<RangeResult> MotionOptimizer::optimizeToRange(
     debug(l, c, cost);
   }
 
+  vector<RangeResult> results;
   if (allowMultiplePerPosition) {
-    return allResults;
+    results = std::move(allResults);
   } else {
-    vector<RangeResult> results;
     results.reserve(bestResultByPos.size());
     for (auto& [posKey, result] : bestResultByPos) {
       results.push_back(std::move(result));
     }
-    return results;
   }
+
+  SearchStats stats = ctx.getStats(static_cast<int>(results.size()));
+  return {.results = std::move(results), .stats = stats};
 }
+
+// Explicit template instantiations for optimizeToRangeImpl
+template RangeMotionResult MotionOptimizer::optimizeToRangeImpl<true>(
+    const Lines&, const Position&, const RunningEffort&, const Position&, const Position&,
+    const string&, NavContext&, bool, const MotionBoundary&, const MotionToKeys&, OptimizerParams);
+template RangeMotionResult MotionOptimizer::optimizeToRangeImpl<false>(
+    const Lines&, const Position&, const RunningEffort&, const Position&, const Position&,
+    const string&, NavContext&, bool, const MotionBoundary&, const MotionToKeys&, OptimizerParams);
 
 // Overload without userSequence - uses unbounded effort exploration
 MotionResult MotionOptimizer::optimize(
