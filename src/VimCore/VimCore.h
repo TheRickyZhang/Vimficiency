@@ -71,12 +71,18 @@ bool stepBack(const Lines& lines, int& line, int& col);
 
 // Core motion that returns raw result - POSITION_OUTSIDE_BOUNDARY if motion
 // would go past buffer boundary. Used by VimEndpointUtils for boundary detection.
+//
+// lineBounded: When true, motion stops at line boundaries instead of crossing.
+//   - Backward from whitespace: returns Position(line, 0) instead of crossing to prev line
+//   - Forward through whitespace: returns Position(line, lastCol) instead of crossing to next line
+//   Used by daw text object which doesn't cross lines from indentation.
 Position motionWordCore(Position pos,
                         const Lines& lines,
                         bool forward,
                         EdgeType edgeType,
                         bool big,
-                        bool skipCurrent);
+                        bool skipCurrent,
+                        bool lineBounded = false);
 
 // =============================================================================
 // 5. Paragraph Helpers (depends on line classification)

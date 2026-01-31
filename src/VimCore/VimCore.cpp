@@ -118,13 +118,14 @@ bool stepBack(const Lines& lines, int& line, int& col) {
 // 4. Word Motion Core
 // =============================================================================
 
-// Returns: Position after perfoaming - POSITION_OUTSIDE_BOUNDARY: motion hit buffer edge (for boundary detection)
+// Returns: Position after performing - POSITION_OUTSIDE_BOUNDARY: motion hit buffer edge (for boundary detection)
 Position motionWordCore(Position pos,
                         const Lines& lines,
                         bool forward,
                         EdgeType edge,
                         bool big,
-                        bool skipCurrent) {
+                        bool skipCurrent,
+                        bool lineBounded) {
   // ---------------------------------------------------------------------------
   // skipCurrent: Move off current position before searching
   // ---------------------------------------------------------------------------
@@ -172,6 +173,19 @@ Position motionWordCore(Position pos,
       Position prev = pos;
       pos = step(lines, pos, forward);
       if (pos == prev) return POSITION_OUTSIDE_BOUNDARY;
+
+      // Line-bounded: stop at line boundary instead of crossing
+      if (lineBounded && pos.line != prev.line) {
+        if (forward) {
+          // Return end of original line
+          int lastCol = lines.getSize(prev.line);
+          return Position(prev.line, lastCol > 0 ? lastCol - 1 : 0);
+        } else {
+          // Return start of original line
+          return Position(prev.line, 0);
+        }
+      }
+
       c = lines.get(pos);
     } while (isBlank(c));
 
@@ -216,6 +230,17 @@ Position motionWordCore(Position pos,
     Position prev = pos;
     pos = step(lines, pos, forward);
     if (pos == prev) return POSITION_OUTSIDE_BOUNDARY;
+
+    // Line-bounded: stop at line boundary instead of crossing
+    if (lineBounded && pos.line != prev.line) {
+      if (forward) {
+        int lastCol = lines.getSize(prev.line);
+        return Position(prev.line, lastCol > 0 ? lastCol - 1 : 0);
+      } else {
+        return Position(prev.line, 0);
+      }
+    }
+
     c = lines.get(pos);
     if (c == '\n') {
       if (edge == EdgeType::NextEdge) return pos;

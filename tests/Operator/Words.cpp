@@ -86,7 +86,7 @@ TEST_F(WordsTest, ManualExample_WordMotionForward) {
   // de from 'd' - should it cross to 'h'?
   // Single line, no lines outside
   Position result = VimCore::motionWordEndpoint(
-      cursor, lines, true, EdgeType::WordEdge, false, false, boundaryOffset, false);
+      cursor, lines, true, EdgeType::WordEdge, false, false, boundaryOffset, false, /*lineBounded=*/false);
 
   // 'de' from 'd' goes to end of "def" (col 6), doesn't reach 'h' at col 9
   EXPECT_NE(result, POSITION_OUTSIDE_BOUNDARY);
@@ -103,7 +103,7 @@ TEST_F(WordsTest, ManualExample_WordMotionCrossing) {
   // de from 'c' - should go to end of word (col 7), crossing 'f' at col 5
   // Single line, no lines outside
   Position result = VimCore::motionWordEndpoint(
-      cursor, lines, true, EdgeType::WordEdge, false, false, boundaryOffset, false);
+      cursor, lines, true, EdgeType::WordEdge, false, false, boundaryOffset, false, /*lineBounded=*/false);
 
   EXPECT_EQ(result, POSITION_OUTSIDE_BOUNDARY);
 }
@@ -119,7 +119,7 @@ TEST_F(WordsTest, ManualExample_GapEdgeMotion) {
   // dw from 'a' - should delete "abc   " and stop before 'd'
   // Single line, no lines outside
   Position result = VimCore::motionWordEndpoint(
-      cursor, lines, true, EdgeType::GapEdge, false, false, boundaryOffset, false);
+      cursor, lines, true, EdgeType::GapEdge, false, false, boundaryOffset, false, /*lineBounded=*/false);
 
   // GapEdge stops at last whitespace before next word, which is col 5
   // Since 5 < 6, this should NOT cross the boundary
@@ -137,7 +137,7 @@ TEST_F(WordsTest, ManualExample_BackwardMotion) {
   // db from 'd' - goes to start of "def" (col 4), doesn't reach 'c' at col 2
   // Single line, no lines outside
   Position result = VimCore::motionWordEndpoint(
-      cursor, lines, false, EdgeType::WordEdge, false, false, boundaryOffset, false);
+      cursor, lines, false, EdgeType::WordEdge, false, false, boundaryOffset, false, /*lineBounded=*/false);
 
   EXPECT_NE(result, POSITION_OUTSIDE_BOUNDARY);
 }
@@ -153,7 +153,8 @@ TEST_F(WordsTest, EdgeCase_NoBoundary) {
 
   // Use 0 to indicate no boundary check, no lines outside
   Position result = VimCore::motionWordEndpoint(
-      cursor, lines, true, EdgeType::WordEdge, false, false, 0, false);
+      cursor, lines, true, EdgeType::WordEdge, false, false, 0, false,
+      /*lineBounded=*/false);
 
   EXPECT_NE(result, POSITION_OUTSIDE_BOUNDARY);
   EXPECT_EQ(result.col, 4);  // End of "hello"
@@ -168,7 +169,7 @@ TEST_F(WordsTest, EdgeCase_BoundaryAtEndOfLine) {
   // de from 'h' goes to col 4 ('o'), which equals boundary
   // Single line, no lines outside
   Position result = VimCore::motionWordEndpoint(
-      cursor, lines, true, EdgeType::WordEdge, false, false, boundaryOffset, false);
+      cursor, lines, true, EdgeType::WordEdge, false, false, boundaryOffset, false, /*lineBounded=*/false);
 
   // Result at or past boundary = OUTSIDE_BOUNDARY
   EXPECT_EQ(result, POSITION_OUTSIDE_BOUNDARY);
@@ -185,7 +186,7 @@ TEST_F(WordsTest, EdgeCase_WORD_IncludesSymbols) {
   // dE from 'a' - goes to end of "abc...def" (col 8)
   // Single line, no lines outside
   Position result = VimCore::motionWordEndpoint(
-      cursor, lines, true, EdgeType::WordEdge, true, false, boundaryOffset, false);
+      cursor, lines, true, EdgeType::WordEdge, true, false, boundaryOffset, false, /*lineBounded=*/false);
 
   // Col 8 < col 9, so should NOT cross
   EXPECT_NE(result, POSITION_OUTSIDE_BOUNDARY);
@@ -201,7 +202,7 @@ TEST_F(WordsTest, EdgeCase_EmptyLine) {
   // de from 'a' goes to end of "abc" (col 2), doesn't reach line 2
   // Multi-line, no lines outside (boundary is at line 2 which is last line)
   Position result = VimCore::motionWordEndpoint(
-      cursor, lines, true, EdgeType::WordEdge, false, false, boundaryOffset, false);
+      cursor, lines, true, EdgeType::WordEdge, false, false, boundaryOffset, false, /*lineBounded=*/false);
 
   EXPECT_NE(result, POSITION_OUTSIDE_BOUNDARY);
 }

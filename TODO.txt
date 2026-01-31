@@ -5,8 +5,8 @@ Implement quote and bracket text object motions (see quoteFlags/bracketFlags)
 Handle pureInsertion case
 Review human tests.
 Implement Benchmark tests for getting an understanding of performance scaling.
-Use RandomGeneration utils. Make sure realistic settings!
-Return a SearchStopReason for optimize calls for more details.
+Still improve the RandomGeneration API/usage to be simpler and less verbose
+Try to take Claude's edit fixes and apply abstractions / simplifications over them where possible.
 
 
 Can skip F-motions if no endpoints found?

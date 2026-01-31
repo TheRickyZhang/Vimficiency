@@ -39,6 +39,9 @@ namespace VimCore {
 //             (pass hasLinesBelow)
 //   backward: returns POSITION_OUTSIDE_BOUNDARY if endpoint.line < 0
 //             (pass hasLinesAbove)
+//
+// lineBounded: When true, motion stops at line boundaries instead of crossing.
+//   Used by daw text object which doesn't cross lines from indentation.
 Position motionWordEndpoint(Position cursor,
                             const Lines& lines,
                             bool forward,
@@ -46,7 +49,8 @@ Position motionWordEndpoint(Position cursor,
                             bool big,
                             bool skipCurrent,
                             int boundaryOffset,
-                            bool hasLinesOutside);
+                            bool hasLinesOutside,
+                            bool lineBounded);
 
 // Computes the raw range that a word text object would select.
 // Returns Range where start/end could be POSITION_OUTSIDE_BOUNDARY on overflow.

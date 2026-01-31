@@ -280,7 +280,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateEmbeddedFailures) {
     Position ourPos(2, 0);
 
     // Compute endpoint for db
-    Position endpoint = VimCore::motionWordEndpoint(ourPos, ourLines, false, EdgeType::WordEdge, false, true, 0, false);
+    Position endpoint = VimCore::motionWordEndpoint(ourPos, ourLines, false, EdgeType::WordEdge, false, true, 0, false, /*lineBounded=*/false);
     cerr << "  motion endpoint: [" << endpoint.line << "," << endpoint.col << "]" << endl;
 
     // Compute range for db (exclusive at cursor)
@@ -412,12 +412,12 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateEmbeddedFailures) {
 
     // Test our VimCore endpoint
     cerr << endl << "Our motionWordEndpoint for ge (backward, NextEdge):" << endl;
-    Position ep5 = VimCore::motionWordEndpoint(Position(0,5), test, false, EdgeType::NextEdge, false, true, 3, false);
+    Position ep5 = VimCore::motionWordEndpoint(Position(0,5), test, false, EdgeType::NextEdge, false, true, 3, false, /*lineBounded=*/false);
     cerr << "  from [0,5] with leftColOffset=3: ";
     if (ep5 == POSITION_OUTSIDE_BOUNDARY) cerr << "OUTSIDE_BOUNDARY" << endl;
     else cerr << "[" << ep5.line << "," << ep5.col << "]" << endl;
 
-    Position ep3 = VimCore::motionWordEndpoint(Position(0,3), test, false, EdgeType::NextEdge, false, true, 3, false);
+    Position ep3 = VimCore::motionWordEndpoint(Position(0,3), test, false, EdgeType::NextEdge, false, true, 3, false, /*lineBounded=*/false);
     cerr << "  from [0,3] with leftColOffset=3: ";
     if (ep3 == POSITION_OUTSIDE_BOUNDARY) cerr << "OUTSIDE_BOUNDARY" << endl;
     else cerr << "[" << ep3.line << "," << ep3.col << "]" << endl;
@@ -471,7 +471,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateEmbeddedFailures) {
     cerr << "In suffix? " << cursor.col << " + " << rightColOffset << " >= " << lineLen << " = " << (inSuffix ? "YES" : "NO") << endl;
 
     // Check what motionWordEndpoint returns for dge (backward, NextEdge)
-    Position endpoint = VimCore::motionWordEndpoint(cursor, buf, false, EdgeType::NextEdge, false, true, leftColOffset, false);
+    Position endpoint = VimCore::motionWordEndpoint(cursor, buf, false, EdgeType::NextEdge, false, true, leftColOffset, false, /*lineBounded=*/false);
     cerr << "ge endpoint from [0,5] with leftColOffset=3: ";
     if (endpoint == POSITION_OUTSIDE_BOUNDARY) cerr << "OUTSIDE_BOUNDARY" << endl;
     else cerr << "[" << endpoint.line << "," << endpoint.col << "]" << endl;

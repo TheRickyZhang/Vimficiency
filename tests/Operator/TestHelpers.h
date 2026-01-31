@@ -34,7 +34,7 @@ struct MotionSpec {
                   bool hasLinesOutside) const {
     Position result = VimCore::motionWordEndpoint(
         cursor, lines, isForward, edgeType, isBigWord, skipCurrent,
-        boundaryOffset, hasLinesOutside);
+        boundaryOffset, hasLinesOutside, /*lineBounded=*/false);
     return result == POSITION_OUTSIDE_BOUNDARY;
   }
 };

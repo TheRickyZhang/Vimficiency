@@ -40,3 +40,5 @@ Interesting (maybe?) things that have come up:
 - Inlining, as in substituting the definition in place of where it is called (happens after IR step), improves optimization decisions with visibility so long as it does not bloat the cache too much. Driven entirely by compiler unless explicitly overridden.
 - "inline" the keyword is only about linkage, ie we should deduplicate this definition in the header file.
 - Usage of string::resize_and_overwrite (C++ 23) as a better alternative to reserve and push_back. No equivalent exists for vector yet.
+
+

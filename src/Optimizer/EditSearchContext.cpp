@@ -135,8 +135,8 @@ void EditSearchContext::exploreForwardWordEdits(
     const Position& cursor, const Lines& lines, DeletionCallback onDeletion) {
   for (const auto& spec : specs) {
     Position endpoint = VimCore::motionWordEndpoint(
-        cursor, lines, true, spec.edgeType, spec.isBig,
-        spec.skipCurrent, rightColOffset, editBoundary.hasLinesBelow());
+        cursor, lines, true, spec.edgeType, spec.isBig, spec.skipCurrent,
+        rightColOffset, editBoundary.hasLinesBelow(), /*lineBounded=*/false);
 
     if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor)
       continue;
@@ -146,8 +146,8 @@ void EditSearchContext::exploreForwardWordEdits(
     if (spec.edgeType == EdgeType::GapEdge && endpoint.line > cursor.line) {
       // Find word end on current line instead
       Position wordEnd = VimCore::motionWordEndpoint(
-          cursor, lines, true, EdgeType::WordEdge, spec.isBig,
-          spec.skipCurrent, rightColOffset, editBoundary.hasLinesBelow());
+          cursor, lines, true, EdgeType::WordEdge, spec.isBig, spec.skipCurrent,
+          rightColOffset, editBoundary.hasLinesBelow(), /*lineBounded=*/false);
       if (wordEnd == POSITION_OUTSIDE_BOUNDARY || wordEnd == cursor)
         continue;
       endpoint = wordEnd;
@@ -167,8 +167,8 @@ void EditSearchContext::exploreBackwardWordEdits(
       continue;
 
     Position endpoint = VimCore::motionWordEndpoint(
-        cursor, lines, false, spec.edgeType, spec.isBig,
-        spec.skipCurrent, leftColOffset, editBoundary.hasLinesAbove());
+        cursor, lines, false, spec.edgeType, spec.isBig, spec.skipCurrent,
+        leftColOffset, editBoundary.hasLinesAbove(), /*lineBounded=*/false);
 
     if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor)
       continue;

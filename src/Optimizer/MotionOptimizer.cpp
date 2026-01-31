@@ -102,7 +102,7 @@ MotionResult MotionOptimizer::optimize(
 
     Position endpoint = VimCore::motionWordEndpoint(
         pos, lines, spec.forward, spec.edgeType, spec.big, spec.skipCurrent,
-        boundaryOffset, hasLinesOutside);
+        boundaryOffset, hasLinesOutside, /*lineBounded=*/false);
 
     // Check if motion would escape bounds
     if (endpoint == POSITION_OUTSIDE_BOUNDARY) {
