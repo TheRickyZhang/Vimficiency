@@ -100,4 +100,13 @@ struct ScrollMotionSpec {
 };
 extern const std::vector<ScrollMotionSpec> SCROLL_MOTIONS;
 
+// Split by Forward for templated dispatch (direction implicit from vector name)
+struct ScrollMotionSpecNoDir {
+  const char* cmd;
+  PhysicalKeys keys;
+  bool isHalf;
+};
+extern const std::vector<ScrollMotionSpecNoDir> FORWARD_SCROLL_MOTIONS;   // <C-d>
+extern const std::vector<ScrollMotionSpecNoDir> BACKWARD_SCROLL_MOTIONS;  // <C-u>
+
 } // namespace Motion

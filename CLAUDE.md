@@ -85,7 +85,7 @@ For Lua context, see `lua/CLAUDE.md`.
 - @docs/boundary-logic.md - Word motion and boundary crossing logic, EditBoundary API
 - @docs/edit-boundary-limitations.md - Known limitations with multi-line embedded regions
 - @docs/edit-region-strategy.md - Replace vs change strategy (includes tryReplacement implementation)
-- @docs/optimizer-architecture.md - A* heuristics, MotionOptimizer, EditOptimizer, CompositionOptimizer
+- @docs/optimizer-architecture.md - A* heuristics, MotionOptimizer (6-class motion exploration, templated specs), EditOptimizer, CompositionOptimizer
 - @docs/session-invocation.txt - How vimficiency optimizer sessions are called and stored
 - @docs/testing.md - NeovimOracle, test file conventions, debug printing
 - @docs/utils.md - General utilities (QuoteFlags, BracketFlags, Lines, StringUtils)

@@ -427,6 +427,14 @@ template void EditSearchContext::exploreBackwardWordEditsT<EdgeType::WordEdge>(
     const vector<Edit::BackwardWordEditSpecNoEdge>&, const Position&, const Lines&, DeletionCallback);
 template void EditSearchContext::exploreBackwardWordEditsT<EdgeType::NextEdge>(
     const vector<Edit::BackwardWordEditSpecNoEdge>&, const Position&, const Lines&, DeletionCallback);
+template void EditSearchContext::exploreParagraphEditsT<true>(
+    const vector<Edit::ParagraphEditSpecNoDir>&, const Position&, const Lines&, LinewiseCallback);
+template void EditSearchContext::exploreParagraphEditsT<false>(
+    const vector<Edit::ParagraphEditSpecNoDir>&, const Position&, const Lines&, LinewiseCallback);
+template void EditSearchContext::exploreSentenceEditsT<true>(
+    const vector<Edit::SentenceEditSpecNoDir>&, const Position&, const Lines&, DeletionCallback);
+template void EditSearchContext::exploreSentenceEditsT<false>(
+    const vector<Edit::SentenceEditSpecNoDir>&, const Position&, const Lines&, DeletionCallback);
 
 
 // =============================================================================

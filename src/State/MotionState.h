@@ -53,25 +53,25 @@ public:
   double getCost()                 const { return cost; }
   RunningEffort getRunningEffort() const { return runningEffort; }
 
-  // In most cases, to update, do in this order:
-  // applyMotion
-  // updateEffort
-
-  // Apply commands change pos, mode, and motionSequence
-
-  // Must pass context to brute-force compute
-  void applySingleMotion(std::string motion, const NavContext& navContext, const Lines& lines);
-
-  void applySingleMotionWithKnownColumn(std::string motion, int newCol);
-
-  // When exploring {count}motion, we always know the newPos from index search
-  void applyMotionWithKnownPosition(std::string motion, int cnt, const Position& newPos);
-
-  void updateEffort(const PhysicalKeys& keys, const Config& config);
+  // Main public interface for optimizer - combines position update, sequence append, and effort
+  void applyMotion(const char* cmd, Position endpoint, const PhysicalKeys& keys, const Config& config);
 
   void updateCost(double newCost);
 
-  void setCol(int col) {
-    pos.setCol(col);  // Updates both col and targetCol
-  }
+  // For simulated motion without pre-computed endpoint (used by optimizeToRange)
+  void applySingleMotionWithEffort(const char* motion, const NavContext& navContext,
+                                   const Lines& lines, const PhysicalKeys& keys, const Config& config);
+
+  // Keep for parsing arbitrary strings (tests, etc.)
+  void applySingleMotion(std::string motion, const NavContext& navContext, const Lines& lines);
+
+  // For counted motions with known endpoint
+  void applyCountedMotion(const std::string& motion, int cnt, Position endpoint,
+                          const PhysicalKeys& baseKeys, const Config& config);
+
+  // For f-motions with complex string sequences
+  void applyFMotion(const std::string& motion, int newCol, const PhysicalKeys& keys, const Config& config);
+
+private:
+  void updateEffort(const PhysicalKeys& keys, const Config& config);
 };

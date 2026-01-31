@@ -72,6 +72,56 @@ These motions use different boundary handling:
 - Heuristic: effort * factor + (Manhattan distance to goal)
 - Builds an index over text objects for efficiency, as we guarantee the buffer contents stay the same
 
+### Direction-Based Motion Exploration (6-Class Model)
+
+`MotionExplorer` organizes motions into 6 classes based on their movement behavior:
+
+| Class | Motions | Behavior |
+|-------|---------|----------|
+| Left | `h`, `0`, `^` (when fnb < pos.col) | Pure horizontal left |
+| Right | `l`, `$`, `^` (when fnb > pos.col) | Pure horizontal right |
+| Up | `k`, `<C-u>`, `gg` | Vertical up (predictable column) |
+| Down | `j`, `<C-d>`, `G` | Vertical down (predictable column) |
+| Forward-crossing | `w`, `W`, `e`, `E`, `}`, `)` | Traverses text, unpredictable column when crossing lines |
+| Backward-crossing | `b`, `B`, `ge`, `gE`, `{`, `(` | Same, but backward |
+
+**Selection logic** (in `exploreDirectionalStandardMotions`):
+- Same line: Left+Backward OR Right+Forward (2/6 classes)
+- Same column (different line): Up+Backward OR Down+Forward (2/6 classes)
+- Different line and column:
+  - Vertical: Down+Forward OR Up+Backward based on goal.line vs pos.line
+  - Horizontal: Left+Backward OR Right+Forward based on goal.col vs pos.col
+  - Result: 3-4 classes per state
+
+**Toggle**: `OptimizerParams::useDirectionalPruning` (default: `false`)
+- When `true`: Uses 6-class pruning (~50% fewer motions explored per state)
+- When `false`: Uses `exploreAllStandardMotions` (explores all directions)
+
+The default is off because benchmarks showed some edge cases regress with pruning.
+The infrastructure exists for future tuning.
+
+### Templated Motion Specs
+
+Motion exploration uses templated functions with direction-split spec vectors for compile-time dispatch:
+
+```cpp
+// Word motions - templated on Forward and EdgeType
+exploreWordMotions<true, EdgeType::NextEdge>(Motion::FORWARD_NEXTEDGE_MOTIONS, base);  // w, W
+exploreWordMotions<true, EdgeType::WordEdge>(Motion::FORWARD_WORDEDGE_MOTIONS, base);  // e, E
+exploreWordMotions<false, EdgeType::WordEdge>(Motion::BACKWARD_WORDEDGE_MOTIONS, base); // b, B
+exploreWordMotions<false, EdgeType::NextEdge>(Motion::BACKWARD_NEXTEDGE_MOTIONS, base); // ge, gE
+
+// Paragraph/Sentence - templated on Forward
+exploreParagraphMotions<true>(Motion::FORWARD_PARAGRAPH_MOTIONS, base);   // }
+exploreParagraphMotions<false>(Motion::BACKWARD_PARAGRAPH_MOTIONS, base); // {
+
+// Scroll - templated on Forward
+exploreScrollMotions<true>(base);   // <C-d>
+exploreScrollMotions<false>(base);  // <C-u>
+```
+
+See `MotionToSpec.h` for the spec definitions.
+
 ### MotionResult Structure
 ```cpp
 // TODO: We don't need a mode, since by default always normal

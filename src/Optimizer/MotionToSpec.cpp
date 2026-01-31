@@ -101,4 +101,12 @@ const vector<ScrollMotionSpec> SCROLL_MOTIONS = {
     {"<C-u>", {Key::Key_Ctrl, Key::Key_U}, -1, true},   // half-page up
 };
 
+// Split by Forward for templated dispatch: cmd, keys, isHalf
+const vector<ScrollMotionSpecNoDir> FORWARD_SCROLL_MOTIONS = {
+    {"<C-d>", {Key::Key_Ctrl, Key::Key_D}, true},
+};
+const vector<ScrollMotionSpecNoDir> BACKWARD_SCROLL_MOTIONS = {
+    {"<C-u>", {Key::Key_Ctrl, Key::Key_U}, true},
+};
+
 } // namespace Motion

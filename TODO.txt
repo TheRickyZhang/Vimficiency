@@ -8,6 +8,7 @@ Implement Benchmark tests for getting an understanding of performance scaling.
 Still improve the RandomGeneration API/usage to be simpler and less verbose
 Try to take Claude's edit fixes and apply abstractions / simplifications over them where possible.
 Look into template optimization of functions with many params like motionWordEndpoint. 
+constexpr disabling of searched motions in MotionExplorer/EditExplorer
 
 
 Can skip F-motions if no endpoints found?

@@ -147,25 +147,31 @@ or `eb.context()` to convert when switching between optimizer types.
 Return sentinel values (`POSITION_OUTSIDE_BOUNDARY`, `LINE_OUTSIDE_BOUNDARY`, etc.) when crossing:
 
 ```cpp
-// Words
-Position motionWordEndpoint(cursor, lines, forward, EdgeType, big, skipCurrent,
+// Words - templated on Forward and EdgeType
+template<bool Forward, EdgeType Edge>
+Position motionWordEndpoint(cursor, lines, big, skipCurrent,
                             boundaryOffset, hasLinesOutside);
 Range textObjectRange(cursor, lines, isInner, isBigWord,
                       leftColOffset, rightColOffset, hasLinesAbove, hasLinesBelow);
 
-// Paragraphs - same pattern as motionWordEndpoint
-int motionParagraphEndpoint(cursorLine, lines, forward, LineEdgeType, hasLinesOutside);
+// Paragraphs - templated on Forward and LineEdgeType
+template<bool Forward, LineEdgeType Edge>
+int motionParagraphEndpoint(cursorLine, lines, hasLinesOutside);
 LineRange paragraphTextObjectRange(cursorLine, lines, isInner, topBoundary, bottomBoundary);
 
-// Sentences - same pattern as motionWordEndpoint
-Position motionSentenceEndpoint(cursor, lines, forward, SentenceEdgeType,
-                                boundaryOffset, hasLinesOutside);
+// Sentences - templated on Forward and SentenceEdgeType
+template<bool Forward, SentenceEdgeType Edge>
+Position motionSentenceEndpoint(cursor, lines, boundaryOffset, hasLinesOutside);
 Range sentenceTextObjectRange(cursor, lines, isInner, leftBoundary, rightBoundary);
 ```
 
 All motion endpoint functions now follow the same boundary checking pattern:
+- Templated on `Forward` (direction) and edge type for compile-time dispatch
 - `boundaryOffset`: Column offset for prefix/suffix protection on edge lines
 - `hasLinesOutside`: Boolean flag for line-crossing protection (hasLinesAbove/Below)
+
+Runtime dispatch versions are also available for internal use in text object functions
+(where direction and edge type are determined at runtime).
 
 ## Crossing Tables (Conceptual)
 

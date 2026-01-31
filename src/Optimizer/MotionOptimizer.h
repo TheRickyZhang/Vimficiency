@@ -29,9 +29,10 @@ struct MotionOptimizer {
 
   // For movement only. Builds index for faster movement computation.
   // TODO: Only RunningEffort is continued from pre-existing state, everything else can be fresh. (make sure that we set cost += newCost - previousCost, not cost = newCost!)
-  
+
   // Returns results and search statistics
   // ~ O(n^2)
+  // Note: Internally dispatches to optimizeImpl<Forward> based on startPos vs endPos
   MotionResult optimize(
     // Core information
     const Lines& lines,
@@ -84,5 +85,20 @@ struct MotionOptimizer {
 
     // Search parameters (uses struct defaults if not specified via designated initializers)
     OptimizerParams params = {}
+  );
+
+private:
+  // Templated implementation - Forward known at compile time for branch elimination
+  template<bool Forward>
+  MotionResult optimizeImpl(
+    const Lines& lines,
+    const Position& startPos,
+    const RunningEffort& startingEffort,
+    const Position& endPos,
+    const std::string& userSequence,
+    const NavContext& navContext,
+    const MotionBoundary& boundary,
+    const MotionToKeys& rawMotionToKeys,
+    OptimizerParams params
   );
 };
