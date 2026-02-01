@@ -1,3 +1,9 @@
+// tests/Misc/ConfigurationTest.cpp
+//
+// Tests for configuration effects on optimizer behavior.
+//
+// Run: ./build/tests/vimficiency_tests --gtest_filter="ConfigurationTest.*"
+
 #include <gtest/gtest.h>
 
 #include "Editor/NavContext.h"
@@ -29,7 +35,7 @@ protected:
     MotionOptimizer opt(config);
     MotionBoundary boundary;
     return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
-                        boundary, allowedMotions, OptimizerParams{.maxResults = 30, .maxNodesExplored = 20000}).results;
+                        boundary, allowedMotions, MotionOptimizerParams{.maxResults = 30, .maxNodesExplored = 20000}).results;
   }
 
   // Get cost of best result for a motion

@@ -1,11 +1,9 @@
 // tests/Commands/SentenceMotions.cpp
 //
-// Tests for sentence motion commands () and () using random buffers
+// Tests for sentence motion commands ) and ( using random buffers
 // and NeovimOracle verification. These test pure cursor movement, not deletion.
 //
-// Motion semantics from boundary-logic.md:
-//   )  = (Forward, NextEdge)   - move to start of next sentence
-//   (  = (Backward, NextEdge)  - move to start of previous sentence
+// Run: ./build/tests/vimficiency_tests --gtest_filter="SentenceMotionsTest.*"
 
 #include <gtest/gtest.h>
 

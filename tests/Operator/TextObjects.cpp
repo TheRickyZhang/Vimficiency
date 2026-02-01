@@ -1,9 +1,8 @@
 // tests/Operator/TextObjects.cpp
 //
-// Tests for operator + text object boundary crossing logic.
-// Text objects select a range from cursor position in both directions.
+// Tests for operator + text object boundary crossing logic (diw, daw, etc.)
 //
-// Uses VimCore::textObjectRange for offset-based boundary checking.
+// Run: ./build/tests/vimficiency_tests --gtest_filter="TextObjectsTest.*"
 
 #include <gtest/gtest.h>
 

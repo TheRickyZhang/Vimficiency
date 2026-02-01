@@ -1,4 +1,9 @@
-// OldDebugTest.cpp - Previously used debug tests that were important for finding bugs
+// tests/Debug/OldDebug.cpp
+//
+// Previously used debug tests that were important for finding bugs.
+// Contains disabled tests for tracing and investigating specific behaviors.
+//
+// Run: ./build/tests/vimficiency_debug --gtest_filter="*Debug*"
 
 #include <gtest/gtest.h>
 
@@ -93,7 +98,7 @@ private:
 class DebugTest : public ::testing::Test {
 protected:
   Config config = Config::uniform();
-  OptimizerParams params{.maxResults = 30, .maxNodesExplored = 100000};
+  EditOptimizerParams params{.maxResults = 30, .maxNodesExplored = 100000};
 
   EditOptimizer makeOptimizer() {
     return EditOptimizer(config);
@@ -437,8 +442,8 @@ TEST_F(DebugTest, DISABLED_InvestigateSingleLineSurrounded) {
   cerr << "prefix: '" << boundary.prefix() << "'" << endl;
   cerr << "suffix: '" << boundary.suffix() << "'" << endl;
 
-  EditOptimizer opt(config, OptimizerParams(30, 1e5, 1.0, 2.0));
-  EditResult res = opt.optimizeEdit(editRegion, {""}, boundary);
+  EditOptimizer opt(config);
+  EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, EditOptimizerParams{.maxResults = 30, .maxNodesExplored = 100000});
 
   cerr << "\nResults (typeAllResults):" << endl;
   for (int i = 0; i < static_cast<int>(res.typeAllResults.size()); i++) {
@@ -479,15 +484,15 @@ TEST_F(DebugTest, DISABLED_InvestigatePosition11) {
   // Compare 10K vs 1M iterations
   cerr << "\n=== Comparing iteration limits ===" << endl;
 
-  EditOptimizer opt10k(config, OptimizerParams(30, 1e4, 1.0, 2.0));
-  vector<Result> res10k = opt10k.optimizePureDeletion(initialLines, boundary);
-  cerr << "10K iterations: " << res10k[11].getSequenceString()
-       << " (cost=" << res10k[11].keyCost << ")" << endl;
+  EditOptimizer opt10k(config);
+  EditResult res10k = opt10k.optimizePureDeletion(initialLines, boundary, EditOptimizerParams{.maxResults = 30, .maxNodesExplored = 10000});
+  cerr << "10K iterations: " << res10k.typeAllResults[11].getSequenceString()
+       << " (cost=" << res10k.typeAllResults[11].keyCost << ")" << endl;
 
-  EditOptimizer opt1m(config, OptimizerParams(30, 1e6, 1.0, 2.0));
-  vector<Result> res1m = opt1m.optimizePureDeletion(initialLines, boundary);
-  cerr << "1M iterations:  " << res1m[11].getSequenceString()
-       << " (cost=" << res1m[11].keyCost << ")" << endl;
+  EditOptimizer opt1m(config);
+  EditResult res1m = opt1m.optimizePureDeletion(initialLines, boundary, EditOptimizerParams{.maxResults = 30, .maxNodesExplored = 1000000});
+  cerr << "1M iterations:  " << res1m.typeAllResults[11].getSequenceString()
+       << " (cost=" << res1m.typeAllResults[11].keyCost << ")" << endl;
 }
 
 TEST_F(NeovimOracleDebug, DISABLED_InvestigateJWithSuffix) {

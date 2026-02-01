@@ -2,6 +2,8 @@
 //
 // Random/stress tests for MotionOptimizer output correctness.
 // These tests use randomly generated buffers and verify results against Neovim.
+//
+// Run: ./build/tests/vimficiency_tests --gtest_filter="MotionOptimizerOutputCorrectness.*"
 
 #include <gtest/gtest.h>
 
@@ -112,7 +114,7 @@ protected:
                                        const MotionToKeys& allowedMotions) {
     MotionOptimizer opt(Config::uniform());
     return opt.optimize(subBuffer, start, RunningEffort(), end, "jjjjjjjjjj", navContext,
-                        boundary, allowedMotions, OptimizerParams{}).results;
+                        boundary, allowedMotions, MotionOptimizerParams{}).results;
   }
 };
 

@@ -5,7 +5,8 @@
 
 #include "Config.h"
 #include "Result.h"
-#include "OptimizerParams.h"
+// TODO Change to CompositionOptimizerParams? 
+#include "MotionOptimizerParams.h"
 #include "EditOptimizer.h"
 #include "DiffState.h"
 #include "Boundary/MotionBoundary.h"
@@ -49,7 +50,7 @@ struct CompositionOptimizer {
     const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS,
 
     // Search parameters (uses struct defaults if not specified via designated initializers)
-    OptimizerParams params = {}
+    MotionOptimizerParams params = {}
   );
 
   // Manhattan distance
@@ -60,7 +61,7 @@ struct CompositionOptimizer {
   double heuristic(const CompositionState& s, int editsCompleted,
                    const std::vector<double>& suffixEditCosts,
                    const std::vector<DiffState>& diffStates,
-                   const OptimizerParams& params) const;
+                   const MotionOptimizerParams& params) const;
 
   // Compute suffix sums of minimum edit costs
   // suffixEditCosts[i] = sum of min costs for edits i..totalEdits-1

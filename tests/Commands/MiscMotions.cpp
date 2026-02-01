@@ -1,13 +1,9 @@
 // tests/Commands/MiscMotions.cpp
 //
 // Tests for miscellaneous motion commands not covered in dedicated test files:
-// - Basic motions: h, j, k, l
-// - File motions: gg, G
-// - Character find: f, F, t, T, ;, ,
-// - Scroll motions: <C-d>, <C-u>, <C-f>, <C-b>
+// h, j, k, l, gg, G, f, F, t, T, ;, ,, <C-d>, <C-u>, <C-f>, <C-b>
 //
-// Word motions are in WordMotions.cpp
-// Line motions ($, 0, ^) are in LineMotions.cpp
+// Run: ./build/tests/vimficiency_tests --gtest_filter="MiscMotionsTest.*"
 // Paragraph motions ({, }) are in ParagraphMotions.cpp
 // Sentence motions ((, )) are in SentenceMotions.cpp
 

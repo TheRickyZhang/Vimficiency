@@ -3,6 +3,8 @@
 // Manual tests for EditOptimizer with hardcoded setups.
 // Tests boundary constraints, replacement strategies, and specific behaviors.
 // For random/stress tests, see OutputCorrectnessTest.cpp.
+//
+// Run: ./build/tests/vimficiency_tests --gtest_filter="EditOptimizer_ManualTest.*"
 
 #include <gtest/gtest.h>
 #include <memory>
@@ -23,7 +25,7 @@ class EditOptimizer_ManualTest : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle;
   Config config = Config::uniform();
-  OptimizerParams params{.maxResults = 30};
+  EditOptimizerParams params{};
   EditOptimizer opt{config};
 
   static void SetUpTestSuite() { oracle = make_unique<NeovimOracle>(); }
@@ -111,7 +113,8 @@ void forEachValidResult(const vector<Result>& results, const Lines& lines, Fn fn
 TEST_F(EditOptimizer_ManualTest, PureDeletion_OracleVerified) {
   // Single test with oracle verification - stress tests cover more shapes
   Lines lines = {"aa", "bb"};
-  vector<Result> res = opt.optimizePureDeletion(lines, EditBoundary(lines, Position(0, 0), lines.lastPos()), params);
+  EditResult editRes = opt.optimizePureDeletion(lines, EditBoundary(lines, Position(0, 0), lines.lastPos()), params);
+  const vector<Result>& res = editRes.typeAllResults;
 
   EXPECT_TRUE(allPositionsValid(res, lines));
 

@@ -5,7 +5,7 @@
 #include "Config.h"
 #include "Result.h"
 #include "RangeResult.h"
-#include "OptimizerParams.h"
+#include "MotionOptimizerParams.h"
 #include "SearchStats.h"
 #include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
@@ -13,9 +13,6 @@
 #include "State/RunningEffort.h"
 #include "Keyboard/MotionToKeys.h"
 #include "Utils/Lines.h"
-
-// Backward compatibility alias
-using SearchParams = OptimizerParams;
 
 struct MotionResult {
   std::vector<Result> results;
@@ -54,7 +51,7 @@ struct MotionOptimizer {
     const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS,
 
     // Search parameters (uses struct defaults if not specified via designated initializers)
-    OptimizerParams params = {}
+    MotionOptimizerParams params = {}
   );
 
   // Overload without userSequence - uses unbounded effort exploration
@@ -65,15 +62,12 @@ struct MotionOptimizer {
     const Position& endPos,
     const NavContext& navigationContext,
     const MotionBoundary& boundary = MotionBoundary(),
-    OptimizerParams params = {}
+    MotionOptimizerParams params = {}
   );
 
   // Multi-sink movement optimization: find paths to any position in [rangeFirst, rangeLast]
   // Only RunningEffort maybe continued from previous state.
-  // Returns up to params.maxResults unique end positions.
-  // - allowMultiplePerPosition=false (default): at most 1 result per end position (best cost)
-  // - allowMultiplePerPosition=true: allows multiple results per position (all found paths)
-  // Note: resultCount <= range size when allowMultiplePerPosition=false
+  // Returns up to params.maxResults unique end positions (or total paths if allowMultiplePerPosition).
   // Precondition: startPos must NOT be in [rangeFirst, rangeLast] (nothing to optimize)
   // Note: Internally dispatches to optimizeToRangeImpl<Forward> based on startPos vs range
   RangeMotionResult optimizeToRange(
@@ -85,12 +79,11 @@ struct MotionOptimizer {
     const std::string& userSequence,
     NavContext& navigationContext,
 
-    bool allowMultiplePerPosition = false,
     const MotionBoundary& boundary = MotionBoundary(),
     const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS,
 
-    // Search parameters (uses struct defaults if not specified via designated initializers)
-    OptimizerParams params = {}
+    // Search parameters - use MotionOptimizerRangeParams for range-specific options
+    MotionOptimizerRangeParams params = {}
   );
 
 private:
@@ -105,7 +98,7 @@ private:
     const NavContext& navContext,
     const MotionBoundary& boundary,
     const MotionToKeys& rawMotionToKeys,
-    OptimizerParams params
+    MotionOptimizerParams params
   );
 
   // Templated range implementation - Forward known at compile time
@@ -118,9 +111,8 @@ private:
     const Position& rangeLast,
     const std::string& userSequence,
     NavContext& navContext,
-    bool allowMultiplePerPosition,
     const MotionBoundary& boundary,
     const MotionToKeys& rawMotionToKeys,
-    OptimizerParams params
+    MotionOptimizerRangeParams params
   );
 };

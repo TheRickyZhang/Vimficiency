@@ -6,6 +6,7 @@
 
 #include "EditOptimizer.h"
 #include "EditSearchContext.h"
+#include "Keyboard/KeyboardModel.h"
 #include "MotionOptimizer.h"
 
 #include "Editor/NavContext.h"
@@ -100,21 +101,21 @@ bool allLinesEmpty(const Lines &lines) {
 
 // Convert delete command to change equivalent
 // Returns the change command string, or empty string if no mapping exists
-string deleteToChange(const string& deleteCmd) {
-  assert(!deleteCmd.empty());
+pair<string, PhysicalKeys> deleteToChange(const string& deleteCmd) {
   if (deleteCmd == "D")
-    return "C";
+    return {"C", {Key::Key_Shift, Key::Key_C}};
   if (deleteCmd == "dd")
-    return "cc";
+    return {"cc", {Key::Key_C, Key::Key_C}};
   if (deleteCmd[0] == 'd') {
-    return "c" + deleteCmd.substr(1);
+    string s = deleteCmd.substr(1);
+    return {"c" + s, PhysicalKeys{Key::Key_C}.append(globalTokenizer().tokenize(s))};
   }
   if (deleteCmd == "x")
-    return "s";
+    return {"s", {Key::Key_S}};
   if (deleteCmd == "X")
-    return "hs";
+    return {"hs", {Key::Key_H, Key::Key_S}};
   assert(false && "deleteToChange not supported");
-  return "";
+  return {"", {}};
 }
 
 
@@ -238,17 +239,13 @@ void tryReplacement(const string &deleted, const string &inserted,
 EditResult
 EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
                             EditBoundary editBoundary,
-                            OptimizerParams params) {
+                            EditOptimizerParams params) {
   assert(initialLines != goalLines);
   assert(!initialLines.empty() && "empty startlines should be handled in compositionEditor by i, a, o, O");
 
   // Delegate to optimizePureDeletion for pure deletion (goalLines empty)
   if (allLinesEmpty(goalLines)) {
-    vector<Result> deletionResults = optimizePureDeletion(initialLines, editBoundary, params);
-    int n = static_cast<int>(deletionResults.size());
-    EditResult result(n, {}, -1);
-    result.typeAllResults = std::move(deletionResults);
-    return result;
+    return optimizePureDeletion(initialLines, editBoundary, params);
   }
 
   // Get replacement results
@@ -296,12 +293,11 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
       int idx = newState.getStartIndex();
       if (result.typeAllResults[idx].isValid()) return;
 
-      string changeCmd = deleteToChange(deleteCmd);
+      auto [changeCmd, changeKeys] = deleteToChange(deleteCmd);
       auto [collapseSeq, collapseKeys] =
           buildCollapseSequence(static_cast<int>(lines.size()), newState.getPos().line);
 
       string seqStr = newState.getSeq() + changeCmd + collapseSeq + typedStr;
-      PhysicalKeys changeKeys = globalTokenizer().tokenize(changeCmd);
       RunningEffort effort = newState.getRunningEffort();
       effort.append(changeKeys, config);
       effort.append(collapseKeys, config);
@@ -423,6 +419,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
     );
   }
 
+  result.stats = ctx.getStats();
   return result;
 }
 
@@ -430,10 +427,10 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
 // optimizePureDeletion - simplified deletion-only optimization
 // =============================================================================
 
-vector<Result>
+EditResult
 EditOptimizer::optimizePureDeletion(const Lines &initialLines,
                                     EditBoundary editBoundary,
-                                    OptimizerParams params) {
+                                    EditOptimizerParams params) {
   assert(!initialLines.empty() && "empty startlines should be handled in compositionEditor by i, a, o, O");
 
   // Create search context (handles effectiveLines, offsets, search state)
@@ -443,7 +440,8 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
   // Local alias for goal checking
   const string preSuf = editBoundary.prefix() + editBoundary.suffix();
 
-  vector<Result> results(ctx.totalPositions);
+  EditResult result(ctx.totalPositions, {}, -1);
+  vector<Result>& results = result.typeAllResults;
 
   // Goal check for pure deletion: only single-line goals accepted
   // (can't collapse multiple empty lines without insert mode)
@@ -606,13 +604,14 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
       NavContext navCtx;
 
       // Find best motion from first to last - use unbounded overload
+      // Use default MotionOptimizerParams since this is internal optimization
       auto [motionResults, motionStats] = motionOpt.optimize(
           ctx.effectiveLines,
           firstPos,
           lastPos,
           navCtx,
           MotionBoundary(),
-          params
+          MotionOptimizerParams{}
       );
 
       if (!motionResults.empty() && motionResults[0].isValid()) {
@@ -635,5 +634,6 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
     }
   }
 
-  return results;
+  result.stats = ctx.getStats();
+  return result;
 }

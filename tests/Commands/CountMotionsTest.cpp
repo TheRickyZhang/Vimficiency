@@ -1,3 +1,9 @@
+// tests/Commands/CountMotionsTest.cpp
+//
+// Tests for count prefix motions (e.g., 3w, 5j) and BufferIndex.
+//
+// Run: ./build/tests/vimficiency_tests --gtest_filter="CountMotionsOptimizerTest.*"
+
 #include <gtest/gtest.h>
 
 #include "Optimizer/BufferIndex.h"
@@ -175,7 +181,7 @@ protected:
     MotionOptimizer opt(config);
     MotionBoundary boundary;
     return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
-                        boundary, allowedMotions, OptimizerParams{.maxResults = 30, .maxNodesExplored = 20000}).results;
+                        boundary, allowedMotions, MotionOptimizerParams{.maxResults = 30, .maxNodesExplored = 20000}).results;
   }
 };
 

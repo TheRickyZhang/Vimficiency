@@ -6,19 +6,30 @@
 
 enum class SearchStopReason {
   Unknown,
-  QueueExhausted,    // Search space fully explored
-  NodeLimitReached,  // Hit maxNodesExplored
+  FullyExplored,    // Search space fully explored
+  MaxNodesReached,  // Hit maxNodesExplored
   AllResultsFound,   // Found results for all positions (EditOptimizer)
-  MaxResultsReached, // Found maxResults (for single-goal search)
+  MaxResultsFound, // Found maxResults (for single-goal search)
 };
 
 inline std::string to_string(SearchStopReason reason) {
   switch (reason) {
-    case SearchStopReason::QueueExhausted: return "QueueExhausted";
-    case SearchStopReason::NodeLimitReached: return "NodeLimitReached";
+    case SearchStopReason::FullyExplored: return "QueueExhausted";
+    case SearchStopReason::MaxNodesReached: return "NodeLimitReached";
     case SearchStopReason::AllResultsFound: return "AllResultsFound";
-    case SearchStopReason::MaxResultsReached: return "MaxResultsReached";
+    case SearchStopReason::MaxResultsFound: return "MaxResultsReached";
     default: return "Unknown";
+  }
+}
+
+// Short version for compact table display
+inline std::string toShortString(SearchStopReason reason) {
+  switch (reason) {
+    case SearchStopReason::FullyExplored: return "Queue";
+    case SearchStopReason::MaxNodesReached: return "Limit";
+    case SearchStopReason::AllResultsFound: return "All";
+    case SearchStopReason::MaxResultsFound: return "Max";
+    default: return "?";
   }
 }
 
@@ -30,14 +41,20 @@ struct ExploredState {
 };
 
 struct SearchStats {
+  // Core stats - these determine stop reason
   SearchStopReason stopReason = SearchStopReason::Unknown;
-  int nodesExplored = 0;
-  int resultsFound = 0;
-  int motionsEmitted = 0;  // Total motions generated across all states
-  int statesSkipped = 0;   // States skipped due to staleness
+  int nodesExplored = 0;        // Compared against maxNodesExplored
+  int resultsFound = 0;         // Total results (paths found)
+  int uniquePositionsFound = -1; // Unique positions (-1 = N/A for single-goal searches)
+  int queueSizeAtStop = 0;      // 0 means FullyExplored
 
-  // Debug: optionally collect explored states (expensive, only for debugging)
+  // Debug only (has runtime cost, only enable when needed)
+  int motionsEmitted = 0;
+  int statesSkipped = 0;
   std::vector<ExploredState> exploredStates;
+
+  // Check if this is a range search (has meaningful uniquePositionsFound)
+  bool isRangeSearch() const { return uniquePositionsFound >= 0; }
 
   double avgMotionsPerState() const {
     return nodesExplored > 0 ? static_cast<double>(motionsEmitted) / nodesExplored : 0;
@@ -45,9 +62,11 @@ struct SearchStats {
 
   friend std::ostream& operator<<(std::ostream& os, const SearchStats& s) {
     os << "nodes=" << s.nodesExplored
-       << " results=" << s.resultsFound
-       << " motions=" << s.motionsEmitted
-       << " skipped=" << s.statesSkipped
+       << " results=" << s.resultsFound;
+    if (s.isRangeSearch()) {
+      os << " unique=" << s.uniquePositionsFound;
+    }
+    os << " queue=" << s.queueSizeAtStop
        << " stop=" << to_string(s.stopReason);
     return os;
   }

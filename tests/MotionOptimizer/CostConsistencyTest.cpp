@@ -1,4 +1,8 @@
+// tests/MotionOptimizer/CostConsistencyTest.cpp
+//
 // Verifies that reported costs match independently computed costs.
+//
+// Run: ./build/tests/vimficiency_tests --gtest_filter="MotionOptimizerCostConsistencyTests.*"
 
 #include <gtest/gtest.h>
 
@@ -48,7 +52,7 @@ TEST_F(MotionOptimizerCostConsistencyTests, CostMatchesComputed) {
 
     auto results = opt.optimize(
       lines, start, RunningEffort(), end, "jjjjj", navContext,
-      MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams{.maxResults = 5}
+      MotionBoundary(), EXPLORABLE_MOTIONS, MotionOptimizerParams{.maxResults = 5}
     ).results;
 
     for (const auto& result : results) {

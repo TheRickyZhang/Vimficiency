@@ -2,6 +2,8 @@
 //
 // Random/stress tests for EditOptimizer output correctness.
 // These tests use randomly generated buffers and verify results against Neovim.
+//
+// Run: ./build/tests/vimficiency_tests --gtest_filter="EditOptimizerOutputCorrectness.*"
 
 #include <gtest/gtest.h>
 #include <memory>
@@ -22,7 +24,7 @@ class EditOptimizerOutputCorrectness : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle;
   Config config = Config::uniform();
-  OptimizerParams params{.maxResults = 30};
+  EditOptimizerParams params{};
   EditOptimizer opt{config};
 
   static void SetUpTestSuite() { oracle = make_unique<NeovimOracle>(); }

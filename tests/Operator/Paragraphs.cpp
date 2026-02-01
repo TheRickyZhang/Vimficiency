@@ -1,13 +1,8 @@
 // tests/Operator/Paragraphs.cpp
 //
-// Tests for paragraph-based operator commands (dip, dap, d}, d{)
-// with boundary crossing verification using NeovimOracle.
+// Tests for paragraph-based operator commands (dip, dap, d}, d{).
 //
-// Unlike word operations which are characterwise, paragraph operations
-// are linewise. Boundary checking is simpler: just line comparisons.
-//
-// From boundary-logic.md:
-//   dip: (Backward, BlockEdge) + (Forward, BlockEdge)
+// Run: ./build/tests/vimficiency_tests --gtest_filter="ParagraphsTest.*"
 //   dap: depends on cursor position and trailing blank lines
 //   d}:  delete from cursor to next blank line (linewise behavior)
 //   d{:  delete from cursor to previous blank line (linewise behavior)

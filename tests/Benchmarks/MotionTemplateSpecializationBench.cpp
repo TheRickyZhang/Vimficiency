@@ -3,7 +3,7 @@
 // A/B benchmarks comparing templated vs runtime-dispatch implementations.
 // Measures the performance difference from compile-time dispatch.
 //
-// Run with: ./vimficiency_benchmarks --gtest_filter="*TemplateSpecialization*"
+// Run: ./build/tests/vimficiency_benchmarks --gtest_filter="*TemplateSpecialization*"
 
 #include <gtest/gtest.h>
 

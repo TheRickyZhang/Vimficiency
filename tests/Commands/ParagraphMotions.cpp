@@ -3,9 +3,7 @@
 // Tests for paragraph motion commands (}, {) using random buffers
 // and NeovimOracle verification. These test pure cursor movement, not deletion.
 //
-// Motion semantics from boundary-logic.md:
-//   }  = (Forward, NextEdge)   - move to first blank line after paragraph
-//   {  = (Backward, NextEdge)  - move to first blank line before paragraph
+// Run: ./build/tests/vimficiency_tests --gtest_filter="ParagraphMotionsTest.*"
 
 #include <gtest/gtest.h>
 

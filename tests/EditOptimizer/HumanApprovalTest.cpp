@@ -3,7 +3,8 @@
 // Human-verified examples for EditOptimizer output quality.
 // Since no ground truth optimizer exists, we manually verify that outputs
 // are sensible and contain expected efficient sequences.
-// (first print output, then add various assertions on expected output)
+//
+// Run: ./build/tests/vimficiency_tests --gtest_filter="EditOptimizerHumanApprovalTests.*"
 
 #include <gtest/gtest.h>
 
@@ -11,9 +12,8 @@
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer.h"
 #include "Boundary/EditBoundary.h"
-#include "Optimizer/OptimizerParams.h"
+#include "Optimizer/EditOptimizerParams.h"
 #include "Utils/Lines.h"
-#include "Utils/TestUtils.h"
 
 using namespace std;
 
@@ -25,7 +25,7 @@ class EditOptimizerHumanApprovalTests : public ::testing::Test {
 protected:
   inline static const Config config = Config::uniform();
   inline static NavContext navContext = NavContext();
-  inline static OptimizerParams params{.maxResults = 40, .maxNodesExplored = 50000, .exploreFactor = 3.0};
+  inline static EditOptimizerParams params{.maxNodesExplored = 50000};
   inline static EditOptimizer opt{config};
 
   static void SetUpTestSuite() {
@@ -42,7 +42,8 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionSingleWord) {
   Lines initialLines = {"arstn"};
   EditBoundary boundary(initialLines, {0, 0}, initialLines.lastPos());
 
-  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary, params);
+  EditResult editRes = opt.optimizePureDeletion(initialLines, boundary, params);
+  const vector<Result>& res = editRes.typeAllResults;
 
   // printResultsDebug(res, "Delete single word");
   // Single word should use dw or de, not visual mode (too short)
@@ -60,7 +61,8 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionMultipleLines) {
   };
   EditBoundary boundary(initialLines, {0, 0}, initialLines.lastPos());
 
-  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary, params);
+  EditResult editRes = opt.optimizePureDeletion(initialLines, boundary, params);
+  const vector<Result>& res = editRes.typeAllResults;
 
   // printResultsDebug(res, "Delete multiple lines");
   // ASSERT_TRUE(all results costs are <= 4 (always has option of dddd));
@@ -77,7 +79,8 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTop) {
   Lines editRegion = fullBuffer.getSpan(firstPos, lastPos);
   EditBoundary boundary(fullBuffer, firstPos, lastPos);
 
-  vector<Result> res = opt.optimizePureDeletion(editRegion, boundary, params);
+  EditResult editRes = opt.optimizePureDeletion(editRegion, boundary, params);
+  const vector<Result>& res = editRes.typeAllResults;
   // printResultsDebug(res, "Delete straddle top");
 }
 
@@ -93,7 +96,8 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleBottom) {
   Lines editRegion = fullBuffer.getSpan(firstPos, lastPos);
   EditBoundary boundary(fullBuffer, firstPos, lastPos);
 
-  vector<Result> res = opt.optimizePureDeletion(editRegion, boundary, params);
+  EditResult editRes = opt.optimizePureDeletion(editRegion, boundary, params);
+  const vector<Result>& res = editRes.typeAllResults;
   // printResultsDebug(res, "Delete straddle bottom");
   // ASSERT_TRUE(finds costs <= 5, like dddw)
 }
@@ -109,7 +113,8 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTopAndBottom) {
   Lines editRegion = fullBuffer.getSpan(firstPos, lastPos);
   EditBoundary boundary(fullBuffer, firstPos, lastPos);
 
-  vector<Result> res = opt.optimizePureDeletion(editRegion, boundary, params);
+  EditResult editRes = opt.optimizePureDeletion(editRegion, boundary, params);
+  const vector<Result>& res = editRes.typeAllResults;
   // printResultsDebug(res, "Delete straddle top and bottom");
   // ASSERT_TRUE(res[0] == "vjd" (best result by far))
   // ASSERT_TRUE(finds cost <= 7)
@@ -126,7 +131,8 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionMultiLineFull) {
   };
   EditBoundary boundary(initialLines, {0, 0}, initialLines.lastPos());
 
-  vector<Result> res = opt.optimizePureDeletion(initialLines, boundary, params);
+  EditResult editRes = opt.optimizePureDeletion(initialLines, boundary, params);
+  const vector<Result>& res = editRes.typeAllResults;
   // printResultsDebug(res, "Delete multi-line full");
   // ASSERT_TRUE(all valid)
 }

@@ -25,7 +25,7 @@ vector<Result> CompositionOptimizer::optimize(
   const NavContext& navigationContext,
   const MotionBoundary& boundary,
   const MotionToKeys& rawMotionToKeys,
-  OptimizerParams params
+  MotionOptimizerParams params
 ) {
 
   // Ensures proper hashing later, and 10 is buffer in case we insert more text, then delete
@@ -208,10 +208,9 @@ vector<Result> CompositionOptimizer::optimize(
         nextEdit.lastPos,
         "", // No user sequence reference for sub-optimization
         navContext,
-        false, // allowMultiplePerPosition: only need 1 best path per position
         subBoundary,
         motionToKeys,
-        OptimizerParams(clamp(nextEdit.origCharCount(), 1, 10))  // Max results per movement search
+        MotionOptimizerRangeParams{}.withMaxResults(clamp(nextEdit.origCharCount(), 1, 10))
       );
 
       // Create new CompositionStates from movement results
@@ -266,7 +265,7 @@ double CompositionOptimizer::costToGoal(const Position& curr, const Position& go
 double CompositionOptimizer::heuristic(const CompositionState& s, int editsCompleted,
                                         const vector<double>& suffixEditCosts,
                                         const vector<DiffState>& diffStates,
-                                        const OptimizerParams& params) const {
+                                        const MotionOptimizerParams& params) const {
   // h(n) = distance to next edit region + suffix sum of edit costs
   // Overshooting (going past the next edit) is penalized more heavily than undershooting.
   // Note: If we're processing edits in reverse order, diffStates was already reversed,

@@ -1,3 +1,9 @@
+// tests/Misc/MotionClassMaskTest.cpp
+//
+// Tests for MotionClassMask bitmask logic used in directional pruning.
+//
+// Run: ./build/tests/vimficiency_tests --gtest_filter="*MotionClassMask*"
+
 #include <gtest/gtest.h>
 #include "Optimizer/MotionClassMask.h"
 #include "Editor/Position.h"

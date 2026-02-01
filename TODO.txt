@@ -9,6 +9,9 @@ Still improve the RandomGeneration API/usage to be simpler and less verbose
 Look into template optimization of functions with many params like motionWordEndpoint. 
 Add motionOptimizer improvements / organization to EditOptimizer
 
+Benchmark how many degenerate pops we have, Change maxNodesExplored -> maxValidNodesExplored? (only incremented after popping invalid)
+
+don't need directional edit pruning?
 
 
 

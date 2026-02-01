@@ -3,11 +3,7 @@
 // Tests for word motion commands (w, e, b, ge, W, E, B, gE) using random buffers
 // and NeovimOracle verification. These test pure cursor movement, not deletion.
 //
-// Motion semantics from boundary-logic.md:
-//   w  = (Forward, Next)   - move to START of next word
-//   e  = (Forward, End)    - move to END of current/next word
-//   b  = (Backward, Next)  - move to START of previous word
-//   ge = (Backward, End)   - move to END of previous word
+// Run: ./build/tests/vimficiency_tests --gtest_filter="WordMotionsTest.*"
 
 #include <gtest/gtest.h>
 

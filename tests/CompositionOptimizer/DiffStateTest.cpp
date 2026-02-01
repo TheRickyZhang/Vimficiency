@@ -1,3 +1,9 @@
+// tests/CompositionOptimizer/DiffStateTest.cpp
+//
+// Tests for DiffState computation used in CompositionOptimizer.
+//
+// Run: ./build/tests/vimficiency_tests --gtest_filter="*DiffState*"
+
 #include <gtest/gtest.h>
 
 #include "Optimizer/DiffState.h"

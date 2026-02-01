@@ -5,7 +5,7 @@
 #include <unordered_map>
 
 #include "Config.h"
-#include "OptimizerParams.h"
+#include "MotionOptimizerParams.h"
 #include "SearchStats.h"
 #include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
@@ -21,7 +21,7 @@ struct MotionSearchContext {
   const Lines& lines;
   const NavContext& navContext;
   const MotionBoundary& boundary;
-  const OptimizerParams& params;
+  const MotionOptimizerParams& params;
   const Config& config;
 
   // A* priority weights from params
@@ -44,7 +44,7 @@ struct MotionSearchContext {
   MotionSearchContext(const Lines& lines,
                       const NavContext& navContext,
                       const MotionBoundary& boundary,
-                      const OptimizerParams& params,
+                      const MotionOptimizerParams& params,
                       const Config& config,
                       double userEffort);
 
@@ -124,16 +124,17 @@ struct MotionSearchContext {
     SearchStats stats;
     stats.nodesExplored = totalExplored;
     stats.resultsFound = resultsFound;
+    stats.queueSizeAtStop = static_cast<int>(pq.size());
     stats.motionsEmitted = motionsEmitted;
     stats.statesSkipped = statesSkipped;
     stats.exploredStates = exploredStates;  // Copy if tracking was enabled
 
     if (resultsFound >= params.maxResults) {
-      stats.stopReason = SearchStopReason::MaxResultsReached;
+      stats.stopReason = SearchStopReason::MaxResultsFound;
     } else if (totalExplored >= params.maxNodesExplored) {
-      stats.stopReason = SearchStopReason::NodeLimitReached;
+      stats.stopReason = SearchStopReason::MaxNodesReached;
     } else if (pq.empty()) {
-      stats.stopReason = SearchStopReason::QueueExhausted;
+      stats.stopReason = SearchStopReason::FullyExplored;
     }
     return stats;
   }

@@ -1,13 +1,8 @@
 // tests/Operator/Sentences.cpp
 //
-// Tests for sentence-based operator commands (dis, das)
-// with boundary crossing verification using NeovimOracle.
+// Tests for sentence-based operator commands (dis, das, d), d().
 //
-// Sentences are characterwise like words, not linewise like paragraphs.
-// Boundary checking compares positions.
-//
-// From boundary-logic.md:
-//   dis: (Backward, SentenceEdge) + (Forward, SentenceEdge)
+// Run: ./build/tests/vimficiency_tests --gtest_filter="SentencesTest.*"
 //   das: depends on trailing/leading whitespace
 
 #include <gtest/gtest.h>

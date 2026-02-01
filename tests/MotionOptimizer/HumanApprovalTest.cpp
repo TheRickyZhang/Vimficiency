@@ -4,10 +4,7 @@
 // Since no ground truth optimizer exists, we manually verify that outputs
 // are sensible and contain expected efficient sequences.
 //
-// Workflow:
-// 1. Run test with DISABLED_ prefix first to see output
-// 2. Verify output is sensible
-// 3. Add assertions for expected sequences
+// Run: ./build/tests/vimficiency_tests --gtest_filter="MotionOptimizerHumanApprovalTests.*"
 // 4. Remove DISABLED_ prefix
 
 #include <gtest/gtest.h>
@@ -50,7 +47,7 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_SimpleHorizontal) {
   MotionOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, RunningEffort(), end, "lllll", navContext,
-    MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams{}
+    MotionBoundary(), EXPLORABLE_MOTIONS, MotionOptimizerParams{}
   ).results;
   // printResultsDebug(results, "Simple horizontal movement 0→5");
 
@@ -68,7 +65,7 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_VerticalJump) {
   MotionOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, RunningEffort(), end, "jjj", navContext,
-    MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams{}
+    MotionBoundary(), EXPLORABLE_MOTIONS, MotionOptimizerParams{}
   ).results;
 
   // printResults(results, "Vertical jump 3 lines");
@@ -93,7 +90,7 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_WordMotions) {
   MotionOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, RunningEffort(), end, "www", navContext,
-    MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams{}
+    MotionBoundary(), EXPLORABLE_MOTIONS, MotionOptimizerParams{}
   ).results;
 
   // printResults(results, "Word motions to 'four'");
@@ -114,7 +111,7 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_MixedMotions) {
   MotionOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, RunningEffort(), end, "jjllllllllll", navContext,
-    MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams{.maxResults = 15}
+    MotionBoundary(), EXPLORABLE_MOTIONS, MotionOptimizerParams{.maxResults = 15}
   ).results;
 
   // printResults(results, "Mixed motions to line 2, col 11");

@@ -93,7 +93,7 @@ These motions use different boundary handling:
   - Horizontal: Left+Backward OR Right+Forward based on goal.col vs pos.col
   - Result: 3-4 classes per state
 
-**Toggle**: `OptimizerParams::useDirectionalPruning` (default: `false`)
+**Toggle**: `MotionOptimizerParams::useDirectionalPruning` (default: `true`)
 - When `true`: Uses 6-class pruning (~50% fewer motions explored per state)
 - When `false`: Uses `exploreAllStandardMotions` (explores all directions)
 

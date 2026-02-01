@@ -5,7 +5,7 @@ using namespace std;
 MotionSearchContext::MotionSearchContext(const Lines& lines,
                                          const NavContext& navContext,
                                          const MotionBoundary& boundary,
-                                         const OptimizerParams& params,
+                                         const MotionOptimizerParams& params,
                                          const Config& config,
                                          double userEffort)
     : lines(lines),

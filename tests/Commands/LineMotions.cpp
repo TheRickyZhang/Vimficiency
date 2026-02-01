@@ -3,10 +3,7 @@
 // Tests for line motion commands ($, 0, ^) using random buffers
 // and NeovimOracle verification. These test pure cursor movement, not deletion.
 //
-// Motion semantics:
-//   $  = Move to end of line (last character)
-//   0  = Move to start of line (column 0)
-//   ^  = Move to first non-blank character of line
+// Run: ./build/tests/vimficiency_tests --gtest_filter="LineMotionsTest.*"
 
 #include <gtest/gtest.h>
 

@@ -5,30 +5,22 @@
 #include <unordered_map>
 
 #include "Config.h"
-#include "OptimizerParams.h"
+#include "EditOptimizerParams.h"
+#include "SearchStats.h"
 #include "Boundary/EditBoundary.h"
 #include "Editor/Position.h"
 #include "Editor/Range.h"
-#include "EditToSpec.h"
 #include "Keyboard/KeyboardModel.h"
 #include "State/EditState.h"
 #include "Utils/Lines.h"
-#include "VimCore/VimEndpointUtils.h"
 
-// Callback type for characterwise deletion exploration
-// Called with (range, deleteCmd, deleteKeys) for each valid deletion
+// Forward declaration
+class EditExplorer;
+
+// Callback types (also defined in EditExplorer.h for standalone use)
 using DeletionCallback = std::function<void(const Range&, const char*, const PhysicalKeys&)>;
-
-// Callback type for linewise deletion exploration (dd)
-// Called with (line, deleteCmd, deleteKeys) for each valid linewise deletion
 using LinewiseCallback = std::function<void(int, const char*, const PhysicalKeys&)>;
-
-// Callback type for motion-only exploration (when cursor in boundary region)
-// Called with (newPos, motionCmd, motionKeys) - no buffer change, just cursor movement
 using MotionCallback = std::function<void(const Position&, const char*, const PhysicalKeys&)>;
-
-// Callback type for join command exploration (J/gJ)
-// Called with (addSpace, joinCmd, joinKeys) - modifies buffer by joining current line with next
 using JoinCallback = std::function<void(bool, const char*, const PhysicalKeys&)>;
 
 // Comparator for EditState priority queue.
@@ -50,7 +42,7 @@ struct EditStateComparator {
 struct EditSearchContext {
   // References to external data
   const EditBoundary& editBoundary;
-  const OptimizerParams& params;
+  const EditOptimizerParams& params;
   const Config& config;
 
   // Column offsets for boundary protection (computed from editBoundary)
@@ -72,10 +64,14 @@ struct EditSearchContext {
   int iterations = 0;
   int totalPositions;
 
+  // Stats tracking
+  int motionsEmitted = 0;
+  int statesSkipped = 0;
+
   // Constructor - sets up context from start lines and boundary
   EditSearchContext(const Lines& initialLines,
                     const EditBoundary& boundary,
-                    const OptimizerParams& params,
+                    const EditOptimizerParams& params,
                     const Config& config);
 
   // Check if position is in protected boundary region
@@ -122,43 +118,6 @@ struct EditSearchContext {
   // Returns nullopt if queue becomes empty.
   std::optional<EditState> getNextValidState();
 
-private:
-  // Templated exploration helpers - EdgeType known at compile time
-  template<EdgeType Edge>
-  void exploreForwardWordEditsT(
-      const std::vector<Edit::ForwardWordEditSpecNoEdge>& specs,
-      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
-  template<EdgeType Edge>
-  void exploreBackwardWordEditsT(
-      const std::vector<Edit::BackwardWordEditSpecNoEdge>& specs,
-      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
-
-  void exploreTextObjectEdits(
-      const std::vector<Edit::TextObjectEditSpec>& specs,
-      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
-  void exploreHalfLineEdits(
-      const std::vector<Edit::LineEditSpec>& specs,
-      const Position& cursor, const Lines& lines, int contentStart, int contentEnd,
-      DeletionCallback onDeletion);
-  void exploreFullLineEdits(
-    const std::vector<Edit::FullLineEditSpec>& specs,
-    const Position& cursor, const Lines& lines, LinewiseCallback onLinewise
-  );
-  void exploreCharEdits(
-      const Position& cursor, const Lines& lines, int contentStart, int contentEnd,
-      int editContentLen, DeletionCallback onDeletion);
-  void exploreParagraphEdits(
-      const std::vector<Edit::ParagraphEditSpec>& specs,
-      const Position& cursor, const Lines& lines, LinewiseCallback onLinewise);
-  template<bool Forward>
-  void exploreParagraphEditsT(
-      const std::vector<Edit::ParagraphEditSpecNoDir>& specs,
-      const Position& cursor, const Lines& lines, LinewiseCallback onLinewise);
-  void exploreSentenceEdits(
-      const std::vector<Edit::SentenceEditSpec>& specs,
-      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
-  template<bool Forward>
-  void exploreSentenceEditsT(
-      const std::vector<Edit::SentenceEditSpecNoDir>& specs,
-      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
+  // Build SearchStats from current context state
+  SearchStats getStats() const;
 };

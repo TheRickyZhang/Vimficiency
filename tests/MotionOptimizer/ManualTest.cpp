@@ -3,6 +3,8 @@
 // Manual tests for MotionOptimizer with hardcoded setups.
 // Tests horizontal/vertical motions, range optimization, and boundary constraints.
 // For random/stress tests, see OutputCorrectnessTest.cpp.
+//
+// Run: ./build/tests/vimficiency_tests --gtest_filter="MotionOptimizer_ManualTest.*"
 
 #include <gtest/gtest.h>
 
@@ -54,7 +56,7 @@ protected:
     // Pass Position and fresh RunningEffort (no prior typing context in tests)
     // Try to explore more (30 results), lower search depth for speed (2e4)
     return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
-                        boundary, allowedMotions, OptimizerParams{.maxResults = 30, .maxNodesExplored = 20000}).results;
+                        boundary, allowedMotions, MotionOptimizerParams{.maxResults = 30, .maxNodesExplored = 20000}).results;
   }
 
   static vector<RangeResult>
@@ -69,8 +71,11 @@ protected:
     // allowMultiplePerPosition=true for tests to see all paths
     // Pass Position and fresh RunningEffort (no prior typing context in tests)
     return opt.optimizeToRange(lines, start, RunningEffort(), rangeBegin, rangeEnd,
-                               userSeq, navContext, true, boundary, allowedMotions,
-                               OptimizerParams(maxResults, 2e4, 1.0, 2.0)).results;
+                               userSeq, navContext, boundary, allowedMotions,
+                               MotionOptimizerRangeParams{}
+                                   .withMaxResults(maxResults)
+                                   .withMaxNodesExplored(20000)
+                                   .withAllowMultiplePerPosition(true)).results;
   }
 };
 
@@ -185,7 +190,7 @@ protected:
                   Config config = Config::uniform()) {
     MotionOptimizer opt(config);
     return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
-                        boundary, allowedMotions, OptimizerParams{.maxResults = 30, .maxNodesExplored = 20000}).results;
+                        boundary, allowedMotions, MotionOptimizerParams{.maxResults = 30, .maxNodesExplored = 20000}).results;
   }
 
   // Helper to check if results contain a sequence

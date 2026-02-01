@@ -3,6 +3,7 @@
 #include "MotionExplorer.h"
 
 #include <limits>
+#include <set>
 
 #include "BufferIndex.h"
 #include "State/PosKey.h"
@@ -21,7 +22,7 @@ MotionResult MotionOptimizer::optimize(
     const NavContext& navContext,
     const MotionBoundary& boundary,
     const MotionToKeys &rawMotionToKeys,
-    OptimizerParams params) {
+    MotionOptimizerParams params) {
 
   if (startPos < endPos) {
     return optimizeImpl<true>(lines, startPos, startingEffort, endPos,
@@ -43,7 +44,7 @@ MotionResult MotionOptimizer::optimizeImpl(
     const NavContext& navContext,
     const MotionBoundary& boundary,
     const MotionToKeys &rawMotionToKeys,
-    OptimizerParams params) {
+    MotionOptimizerParams params) {
 
   BufferIndex bufferIndex(lines);
 
@@ -115,10 +116,10 @@ MotionResult MotionOptimizer::optimizeImpl(
 // Explicit template instantiations
 template MotionResult MotionOptimizer::optimizeImpl<true>(
     const Lines&, const Position&, const RunningEffort&, const Position&,
-    const string&, const NavContext&, const MotionBoundary&, const MotionToKeys&, OptimizerParams);
+    const string&, const NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerParams);
 template MotionResult MotionOptimizer::optimizeImpl<false>(
     const Lines&, const Position&, const RunningEffort&, const Position&,
-    const string&, const NavContext&, const MotionBoundary&, const MotionToKeys&, OptimizerParams);
+    const string&, const NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerParams);
 
 // =================================================
 // optimizeToRange implementation
@@ -133,10 +134,9 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
     const Position& rangeLast,
     const string& userSequence,
     NavContext& navContext,
-    bool allowMultiplePerPosition,
     const MotionBoundary& boundary,
     const MotionToKeys& rawMotionToKeys,
-    OptimizerParams params) {
+    MotionOptimizerRangeParams params) {
 
   // Precondition: startPos must not be in range
   assert(!(startPos >= rangeFirst && startPos <= rangeLast) &&
@@ -144,11 +144,11 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
 
   if (startPos < rangeFirst) {
     return optimizeToRangeImpl<true>(lines, startPos, startingEffort, rangeFirst, rangeLast,
-                                      userSequence, navContext, allowMultiplePerPosition,
+                                      userSequence, navContext,
                                       boundary, rawMotionToKeys, params);
   } else {
     return optimizeToRangeImpl<false>(lines, startPos, startingEffort, rangeFirst, rangeLast,
-                                       userSequence, navContext, allowMultiplePerPosition,
+                                       userSequence, navContext,
                                        boundary, rawMotionToKeys, params);
   }
 }
@@ -163,10 +163,9 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     const Position& rangeLast,
     const string& userSequence,
     NavContext& navContext,
-    bool allowMultiplePerPosition,
     const MotionBoundary& boundary,
     const MotionToKeys& rawMotionToKeys,
-    OptimizerParams params) {
+    MotionOptimizerRangeParams params) {
 
   double userEffort = userSequence.empty()
       ? numeric_limits<double>::max()
@@ -187,6 +186,10 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     return pos >= rangeFirst && pos <= rangeLast;
   };
 
+  // Cap effective maxResults at range size (can't find more positions than exist)
+  int rangeSize = lines.spanSize(rangeFirst, rangeLast);
+  int effectiveMaxResults = std::min(params.maxResults, rangeSize);
+
   initialState.updateCost(ctx.computePriorityToRange(initialState, rangeFirst, rangeLast));
   ctx.pq.push(initialState);
   ctx.costMap[initialState.getKey()] = initialState.getCost();
@@ -201,7 +204,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     if (isGoal) {
       double effort = s.getRunningEffort().getEffort(config);
 
-      if (allowMultiplePerPosition) {
+      if (params.allowMultiplePerPosition) {
         allResults.emplace_back(s.getMotionSequence(), effort, pos);
         if (allResults.size() >= static_cast<size_t>(params.maxResults)) {
           debug("optimizeToRange: max results reached");
@@ -212,8 +215,8 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
         if (it == bestResultByPos.end()) {
           bestResultByPos.emplace(stateKey, RangeResult(s.getMotionSequence(), effort, pos));
           uniquePositionsFound++;
-          if (uniquePositionsFound >= params.maxResults) {
-            debug("optimizeToRange: max unique positions reached");
+          if (uniquePositionsFound >= effectiveMaxResults) {
+            debug("optimizeToRange: max unique positions reached (", uniquePositionsFound, "/", rangeSize, ")");
             break;
           }
         } else if (effort < it->second.keyCost) {
@@ -246,26 +249,45 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
   }
 
   vector<RangeResult> results;
-  if (allowMultiplePerPosition) {
+  int uniqueCount = 0;
+  if (params.allowMultiplePerPosition) {
     results = std::move(allResults);
+    // Count unique positions in results
+    set<PosKey> seen;
+    for (const auto& r : results) {
+      seen.insert({r.endPos.line, r.endPos.col});
+    }
+    uniqueCount = static_cast<int>(seen.size());
   } else {
     results.reserve(bestResultByPos.size());
     for (auto& [posKey, result] : bestResultByPos) {
       results.push_back(std::move(result));
     }
+    uniqueCount = static_cast<int>(results.size());
   }
 
   SearchStats stats = ctx.getStats(static_cast<int>(results.size()));
-  return {.results = std::move(results), .stats = stats};
+  stats.uniquePositionsFound = uniqueCount;
+
+  // Override stop reason for range-specific conditions
+  if (uniqueCount >= rangeSize) {
+    // Found all positions in range
+    stats.stopReason = SearchStopReason::AllResultsFound;
+  } else if (static_cast<int>(results.size()) >= params.maxResults) {
+    // Hit maxResults limit (only possible with params.allowMultiplePerPosition)
+    stats.stopReason = SearchStopReason::MaxResultsFound;
+  }
+
+  return RangeMotionResult{std::move(results), stats};
 }
 
 // Explicit template instantiations for optimizeToRangeImpl
 template RangeMotionResult MotionOptimizer::optimizeToRangeImpl<true>(
     const Lines&, const Position&, const RunningEffort&, const Position&, const Position&,
-    const string&, NavContext&, bool, const MotionBoundary&, const MotionToKeys&, OptimizerParams);
+    const string&, NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerRangeParams);
 template RangeMotionResult MotionOptimizer::optimizeToRangeImpl<false>(
     const Lines&, const Position&, const RunningEffort&, const Position&, const Position&,
-    const string&, NavContext&, bool, const MotionBoundary&, const MotionToKeys&, OptimizerParams);
+    const string&, NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerRangeParams);
 
 // Overload without userSequence - uses unbounded effort exploration
 MotionResult MotionOptimizer::optimize(
@@ -274,7 +296,7 @@ MotionResult MotionOptimizer::optimize(
     const Position& endPos,
     const NavContext& navigationContext,
     const MotionBoundary& boundary,
-    OptimizerParams params) {
+    MotionOptimizerParams params) {
   return optimize(
       lines,
       startPos,

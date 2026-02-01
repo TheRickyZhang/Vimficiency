@@ -1,3 +1,9 @@
+// tests/Misc/HashCollisionTest.cpp
+//
+// Tests to verify no hash collisions in edit command parsing.
+//
+// Run: ./build/tests/vimficiency_tests --gtest_filter="*HashCollision*"
+
 #include <gtest/gtest.h>
 #include <string_view>
 

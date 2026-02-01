@@ -4,7 +4,8 @@
 
 #include "Config.h"
 #include "Result.h"
-#include "OptimizerParams.h"
+#include "EditOptimizerParams.h"
+#include "SearchStats.h"
 #include "Boundary/EditBoundary.h"
 
 #include "Utils/Lines.h"
@@ -21,7 +22,10 @@ struct EditResult {
 
   int replaceEnd = -1;
 
-  EditResult(int n, std::vector<Result> replaceResults, int replacemeEnd) : 
+  // Search statistics for debugging and benchmarking
+  SearchStats stats;
+
+  EditResult(int n, std::vector<Result> replaceResults, int replacemeEnd) :
     replaceResults(replaceResults), replaceEnd(replacemeEnd)
   {
     typeAllResults.resize(n);
@@ -58,15 +62,15 @@ struct EditOptimizer {
       const Lines& initialLines,
       const Lines& goalLines,
       EditBoundary editBoundary,
-      OptimizerParams params = {}
+      EditOptimizerParams params = {}
   );
 
   // find optimal sequences to delete all content in initialLines
   // Simpler than optimizeEdit: no typed content, no change conversion
-  // Returns results indexed by flattened starting position
-  std::vector<Result> optimizePureDeletion(
+  // Returns EditResult with typeAllResults indexed by flattened starting position
+  EditResult optimizePureDeletion(
       const Lines& initialLines,
       EditBoundary editBoundary,
-      OptimizerParams params = {}
+      EditOptimizerParams params = {}
   );
 };

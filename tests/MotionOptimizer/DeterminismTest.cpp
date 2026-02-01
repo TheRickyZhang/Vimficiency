@@ -1,8 +1,9 @@
-
-// tests/Optimizer/DeterminismTests.cpp
+// tests/MotionOptimizer/DeterminismTest.cpp
 //
-// Property: same input always produces same output
+// Property: same input always produces same output.
 // Verifies that optimizers are deterministic (no unordered_map iteration issues, etc.)
+//
+// Run: ./build/tests/vimficiency_tests --gtest_filter="MotionOptimizerDeterminismTests.*"
 
 #include <gtest/gtest.h>
 
@@ -53,12 +54,12 @@ TEST_F(MotionOptimizerDeterminismTests, SameInputProducesSameOutput) {
 
     auto [results1, stats1] = opt1.optimize(
       lines, start, RunningEffort(), end, "jjjjj", navContext,
-      MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams{}
+      MotionBoundary(), EXPLORABLE_MOTIONS, MotionOptimizerParams{}
     );
 
     auto [results2, stats2] = opt2.optimize(
       lines, start, RunningEffort(), end, "jjjjj", navContext,
-      MotionBoundary(), EXPLORABLE_MOTIONS, OptimizerParams{}
+      MotionBoundary(), EXPLORABLE_MOTIONS, MotionOptimizerParams{}
     );
 
     if (results1.size() != results2.size()) {

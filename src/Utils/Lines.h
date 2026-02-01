@@ -125,6 +125,32 @@ struct Lines final : std::vector<Line> {
     return result;
   }
 
+  // Count effective cursor positions in range [front, back] (inclusive)
+  // Empty lines count as 1 position
+  int spanSize(const Position& front, const Position& back) const {
+    if (front.line == back.line) {
+      return back.col - front.col + 1;
+    }
+    // First line: from front.col to end (or 1 if empty)
+    int count = std::max(1, static_cast<int>(data()[front.line].size()) - front.col);
+    // Middle lines: full line size (or 1 if empty)
+    for (int i = front.line + 1; i < back.line; i++) {
+      count += std::max(1, static_cast<int>(data()[i].size()));
+    }
+    // Last line: from 0 to back.col
+    count += back.col + 1;
+    return count;
+  }
+
+  // Count total effective cursor positions across all lines
+  int totalPositions() const {
+    int count = 0;
+    for (const auto& line : *this) {
+      count += line.effectiveSize();
+    }
+    return count;
+  }
+
   static bool sameLineLengths(const Lines& x, const Lines& y) {
     if (x.size() != y.size())
       return false;

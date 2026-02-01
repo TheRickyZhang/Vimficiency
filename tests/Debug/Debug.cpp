@@ -1,13 +1,9 @@
-// Debug.cpp - Debug utilities and scratch tests for development
+// tests/Debug/Debug.cpp
 //
-// This file provides:
-// 1. SequenceTracer - Helper class for step-by-step command tracing
-// 2. Debug test fixtures for investigating specific failures
-// 3. Scratch test space for quick experiments
+// Debug utilities and scratch tests for development.
+// Enable a test by removing DISABLED_ prefix.
 //
-// Usage:
-//   - Enable a test by removing DISABLED_ prefix
-//   - Run with: ./vimficiency_tests --gtest_filter="DebugTest.*"
+// Run: ./build/tests/vimficiency_debug --gtest_filter="DebugTest.*"
 //   - Or: ./vimficiency_tests --gtest_filter="NeovimOracleDebug.*"
 
 #include <gtest/gtest.h>
@@ -113,7 +109,7 @@ private:
 class DebugTest : public ::testing::Test {
 protected:
   Config config = Config::uniform();
-  OptimizerParams params{.maxResults = 30, .maxNodesExplored = 100000};
+  EditOptimizerParams params{.maxNodesExplored = 100000};
 
   EditOptimizer makeOptimizer() {
     return EditOptimizer(config);
@@ -500,7 +496,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateEmbeddedFailures) {
     cerr << "Prefix: '" << boundary.prefix() << "', Suffix: '" << boundary.suffix() << "'" << endl;
 
     Config config = Config::uniform();
-    OptimizerParams params{.maxResults = 5, .maxNodesExplored = 50000};
+    EditOptimizerParams params{.maxNodesExplored = 50000};
     EditOptimizer opt(config);
     EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
 

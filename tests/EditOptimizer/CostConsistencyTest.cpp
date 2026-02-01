@@ -1,4 +1,8 @@
+// tests/EditOptimizer/CostConsistencyTest.cpp
+//
 // Verifies that reported costs match independently computed costs.
+//
+// Run: ./build/tests/vimficiency_tests --gtest_filter="EditOptimizerCostConsistencyTests.*"
 
 #include <gtest/gtest.h>
 

@@ -1,12 +1,8 @@
 // tests/Operator/Lines.cpp
 //
-// Tests for operator + line motion boundary crossing logic.
-// Uses VimCore::lineDeleteRange and motionLineEndpoint for boundary checking.
+// Tests for operator + line motion boundary crossing logic (dd, D, d0).
 //
-// Line operations:
-//   dd: Full line delete (linewise) - uses lineDeleteRange
-//   D:  Delete to end of line (characterwise) - uses motionLineEndpoint(forward=true)
-//   d0: Delete to start of line (characterwise) - uses motionLineEndpoint(forward=false)
+// Run: ./build/tests/vimficiency_tests --gtest_filter="LinesTest.*"
 
 #include <gtest/gtest.h>
 

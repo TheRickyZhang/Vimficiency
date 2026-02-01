@@ -2,6 +2,8 @@
 //
 // Tests for operator + word motion boundary crossing logic.
 // Uses VimCore for Position-based boundary prediction.
+//
+// Run: ./build/tests/vimficiency_tests --gtest_filter="WordsTest.*"
 
 #include <gtest/gtest.h>
 

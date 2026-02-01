@@ -1,7 +1,9 @@
-// tests/Optimizer/DeterminismTests.cpp
+// tests/EditOptimizer/DeterminismTest.cpp
 //
-// Property: same input always produces same output
+// Property: same input always produces same output.
 // Verifies that optimizers are deterministic (no unordered_map iteration issues, etc.)
+//
+// Run: ./build/tests/vimficiency_tests --gtest_filter="EditOptimizerDeterminismTests.*"
 
 #include <gtest/gtest.h>
 
