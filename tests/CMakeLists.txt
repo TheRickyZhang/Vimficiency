@@ -30,6 +30,7 @@ FetchContent_MakeAvailable(googletest msgpack-c)
 add_library(test_utils STATIC
   Utils/EditTestGenerators.cpp
   Utils/NeovimOracle.cpp
+  Utils/SeedManager.cpp
   Utils/TestUtils.cpp
   Operator/TestHelpers.cpp
 )

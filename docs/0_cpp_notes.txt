@@ -41,4 +41,5 @@ Interesting (maybe?) things that have come up:
 - "inline" the keyword is only about linkage, ie we should deduplicate this definition in the header file.
 - Usage of string::resize_and_overwrite (C++ 23) as a better alternative to reserve and push_back. No equivalent exists for vector yet.
 - Usage of .template / ::template disambiguation
-- I found a compiler (?) bug when using inline helper functions passed as template arguments
+- Impact of stale object files (or potential compiler bug, but wasn't able to reproduce) when using inline helper functions passed as template arguments
+- Elegance of QuickCheck (Haskell/OCaml) as property-based checking library with generator composition and lazy evaluation shrinking -> RapidCheck in C++ with GTest integration.

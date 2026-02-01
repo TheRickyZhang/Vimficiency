@@ -69,7 +69,9 @@ tests/
 │   ├── TestUtils.cpp
 │   ├── EditTestGenerators.cpp
 │   ├── RandomBufferHelpers.h
-│   └── RandomGeneration.h  # RandomGen singleton
+│   ├── RandomGeneration.h  # RandomGen singleton
+│   ├── SeedManager.h       # Seed mode management
+│   └── SeedManager.cpp
 └── Debug.cpp          # Scratchpad for debugging (separate binary)
 ```
 
@@ -106,6 +108,82 @@ TEST_F(MyTest, Example) {
   EXPECT_EQ(result.col, 6);
 }
 ```
+
+## Seed Management
+
+Tests and benchmarks use `SeedManager` for reproducible randomness. By default, seeds are **random** and logged to a file for replay if needed.
+
+### Modes
+
+| Mode | Behavior | Use Case |
+|------|----------|----------|
+| Random (default) | Generate random seeds, log to `tests/.last_seeds.txt` | Normal testing/benchmarks |
+| Fixed | Deterministic seeds (42, 43, 44, ...) | Debugging, bisecting failures |
+| Replay | Read seeds from log file | Reproduce a previous run |
+
+### Usage in Code
+
+```cpp
+#include "Utils/SeedManager.h"
+
+// Get seeds (uses current mode)
+int seed = SeedManager::instance().getSeed(0);  // First seed
+auto seeds = SeedManager::instance().getSeeds(5);  // Multiple seeds
+
+// Or use the macro
+int seed = TEST_SEED(0);
+
+// Switch to fixed mode for debugging
+SeedManager::instance().setFixedMode();  // Uses 42, 43, 44, ...
+SeedManager::instance().setFixedMode(100);  // Uses 100, 101, 102, ...
+
+// Switch to replay mode
+SeedManager::instance().setReplayMode();  // Uses tests/.last_seeds.txt
+SeedManager::instance().setReplayMode("path/to/seeds.txt");  // Custom file
+
+// Switch back to random
+SeedManager::instance().setRandomMode();
+```
+
+### Usage via Environment Variables
+
+For CI or scripts without code changes:
+
+```bash
+# Fixed seeds (for debugging)
+VIMFICIENCY_SEED_MODE=fixed ./build/tests/vimficiency_benchmarks
+
+# Replay last run's seeds
+VIMFICIENCY_SEED_MODE=replay ./build/tests/vimficiency_benchmarks
+
+# Random seeds (default, explicit)
+VIMFICIENCY_SEED_MODE=random ./build/tests/vimficiency_benchmarks
+
+# Custom seed file
+VIMFICIENCY_SEED_FILE=my_seeds.txt VIMFICIENCY_SEED_MODE=replay ./build/tests/vimficiency_benchmarks
+```
+
+### Reproducing Failures
+
+When a test fails with random seeds:
+
+1. Seeds are already logged in `tests/.last_seeds.txt`
+2. Replay with: `VIMFICIENCY_SEED_MODE=replay ./build/tests/vimficiency_tests`
+3. Once reproduced, switch to fixed mode for debugging: `SeedManager::instance().setFixedMode()`
+
+### Benchmark Multi-Seed Averaging
+
+Benchmarks run multiple iterations with different seeds and aggregate results:
+
+```cpp
+auto& seedMgr = SeedManager::instance();
+for (int i = 0; i < seedCount; i++) {
+  RandomGen::seed(seedMgr.getSeed(i));
+  // ... run benchmark iteration
+}
+```
+
+Results show aggregated stats with star markers (`*`) indicating how many runs hit each stop condition (e.g., `48*****` means all 5 runs hit that limit).
 
 ## Test Writing Strategy
 

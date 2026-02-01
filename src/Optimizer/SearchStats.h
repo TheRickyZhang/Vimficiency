@@ -48,6 +48,13 @@ struct SearchStats {
   int uniquePositionsFound = -1; // Unique positions (-1 = N/A for single-goal searches)
   int queueSizeAtStop = 0;      // 0 means FullyExplored
 
+  // Star counts for multi-seed aggregation (how many runs triggered each condition)
+  // 0 = not aggregated (single run), >0 = count of runs that triggered
+  int searchedStarCount = 0;    // MaxNodesReached
+  int foundStarCount = 0;       // MaxResultsFound (total results limit)
+  int uniqueStarCount = 0;      // AllResultsFound (all unique positions in range)
+  int remainStarCount = 0;      // FullyExplored (queue exhausted)
+
   // Debug only (has runtime cost, only enable when needed)
   int motionsEmitted = 0;
   int statesSkipped = 0;

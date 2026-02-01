@@ -4,29 +4,65 @@
 
 using namespace std;
 
-// Format value with ** markers if it triggered the stop condition
+// Helper: append N stars to value (e.g., "42***" for count=3)
+inline string appendStars(const string& val, int count) {
+  if (count == 0) return val;
+  return val + string(count, '*');
+}
+
+// Format value with star markers based on star counts (for multi-seed aggregation)
+// Star counts > 0 indicate how many runs triggered that condition
+// For single runs (count=0), fall back to checking stopReason
 inline string fmtSearched(const SearchStats& s) {
   string val = to_string(s.nodesExplored);
-  return (s.stopReason == SearchStopReason::MaxNodesReached) ? "*" + val + "*" : val;
+  if (s.searchedStarCount > 0) {
+    return appendStars(val, s.searchedStarCount);
+  }
+  // Single run fallback
+  return (s.stopReason == SearchStopReason::MaxNodesReached) ? val + "*" : val;
 }
 
 inline string fmtFound(const SearchStats& s) {
-  string val;
   if (s.isRangeSearch()) {
-    // Range search: show "unique/total" (e.g., "6/6" or "3/10")
-    val = to_string(s.uniquePositionsFound) + "/" + to_string(s.resultsFound);
+    // Range search: show "unique/total" with separate star markers
+    // uniqueStarCount -> stars on unique part (AllResultsFound)
+    // foundStarCount -> stars on total part (MaxResultsFound)
+    string uniquePart = to_string(s.uniquePositionsFound);
+    string totalPart = to_string(s.resultsFound);
+
+    if (s.uniqueStarCount > 0 || s.foundStarCount > 0) {
+      // Multi-seed: append stars to appropriate part
+      uniquePart = appendStars(uniquePart, s.uniqueStarCount);
+      totalPart = appendStars(totalPart, s.foundStarCount);
+    } else {
+      // Single run fallback
+      if (s.stopReason == SearchStopReason::AllResultsFound) {
+        uniquePart += "*";
+      } else if (s.stopReason == SearchStopReason::MaxResultsFound) {
+        totalPart += "*";
+      }
+    }
+    return uniquePart + "/" + totalPart;
   } else {
-    // Single-goal search: just show total results
-    val = to_string(s.resultsFound);
+    // Single-goal search: just show total results with stars
+    string val = to_string(s.resultsFound);
+    if (s.foundStarCount > 0) {
+      return appendStars(val, s.foundStarCount);
+    }
+    // Single run fallback
+    bool triggered = (s.stopReason == SearchStopReason::MaxResultsFound ||
+                      s.stopReason == SearchStopReason::AllResultsFound);
+    return triggered ? val + "*" : val;
   }
-  bool triggered = (s.stopReason == SearchStopReason::MaxResultsFound ||
-                    s.stopReason == SearchStopReason::AllResultsFound);
-  return triggered ? "*" + val + "*" : val;
 }
 
 inline string fmtRemain(const SearchStats& s) {
   string val = to_string(s.queueSizeAtStop);
-  return (s.stopReason == SearchStopReason::FullyExplored) ? "*" + val + "*" : val;
+  if (s.remainStarCount > 0) {
+    return appendStars(val, s.remainStarCount);
+  }
+  // Single run fallback
+  return (s.stopReason == SearchStopReason::FullyExplored) ? val + "*" : val;
 }
 
 void printTableHeaderWithStats(const string& paramName) {

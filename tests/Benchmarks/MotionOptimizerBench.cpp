@@ -110,9 +110,10 @@ protected:
   };
 
   // ================== Run Functions ==================
+  // Use 2 iterations per seed (warmup handles cache effects)
   static BenchmarkResult runWithParams(const BenchmarkSetup& cfg,
                                        const MotionOptimizerParams& params,
-                                       int iterations = 5) {
+                                       int iterations = DEFAULT_TIMING_ITERATIONS) {
     MotionOptimizer opt(config);
     SearchStats lastStats;
 
@@ -130,7 +131,7 @@ protected:
 
   static BenchmarkResult runRangeWithParams(const RangeBenchmarkSetup& cfg,
                                             const MotionOptimizerRangeParams& params,
-                                            int iterations = 5) {
+                                            int iterations = DEFAULT_TIMING_ITERATIONS) {
     MotionOptimizer opt(config);
     SearchStats lastStats;
 
@@ -147,7 +148,8 @@ protected:
     return {timing, lastStats};
   }
 
-  // ================== Print Helpers ==================
+  // ================== Print Helpers (Single Setup) ==================
+  // For debugging specific setups
   static void printRow(const string& label, const BenchmarkSetup& setup) {
     runUnifiedBenchmark<ENABLE_COMPARISON>(
         label, setup, paramsA(), paramsB(),
@@ -164,6 +166,55 @@ protected:
         });
   }
 
+  // ================== Print Helpers (Multi-Seed) ==================
+  // Averages across 5 different buffer seeds for representative results
+  static void printMultiSeedRow(const string& label, int numLines, int avgLen = 30,
+                                BufferShape shape = BufferShape::CodeLike) {
+    runMultiSeedBenchmark<ENABLE_COMPARISON, MotionOptimizerParams, BenchmarkSetup>(
+        label,
+        [=]() { return BenchmarkSetup(generateBuffer(numLines, avgLen, shape)); },
+        paramsA(), paramsB(),
+        [](const BenchmarkSetup& s, const MotionOptimizerParams& p) {
+          return runWithParams(s, p);
+        });
+  }
+
+  static void printMultiSeedRangeRow(const string& label, int numLines, int avgLen = 30) {
+    runMultiSeedBenchmark<ENABLE_COMPARISON, MotionOptimizerRangeParams, RangeBenchmarkSetup>(
+        label,
+        [=]() { return RangeBenchmarkSetup(generateBuffer(numLines, avgLen)); },
+        rangeParamsA(), rangeParamsB(),
+        [](const RangeBenchmarkSetup& s, const MotionOptimizerRangeParams& p) {
+          return runRangeWithParams(s, p);
+        });
+  }
+
+  // Multi-seed range with explicit range size (for RangeResultSize benchmark)
+  static void printMultiSeedRangeSizeRow(const string& label, int rangeChars, int rangeLines = 1,
+                                         int bufferLines = 20, int avgLen = 30) {
+    runMultiSeedBenchmark<ENABLE_COMPARISON, MotionOptimizerRangeParams, RangeBenchmarkSetup>(
+        label,
+        [=]() { return RangeBenchmarkSetup(generateBuffer(bufferLines, avgLen), rangeChars, rangeLines); },
+        rangeParamsA(), rangeParamsB(),
+        [](const RangeBenchmarkSetup& s, const MotionOptimizerRangeParams& p) {
+          return runRangeWithParams(s, p);
+        });
+  }
+
+  static void printMultiSeedRowWithNodes(const string& label, int numLines, int avgLen,
+                                         int maxNodes, double exploreFactor = 3.0,
+                                         BufferShape shape = BufferShape::CodeLike) {
+    runMultiSeedBenchmark<ENABLE_COMPARISON, MotionOptimizerParams, BenchmarkSetup>(
+        label,
+        [=]() { return BenchmarkSetup(generateBuffer(numLines, avgLen, shape)); },
+        paramsA().withMaxNodesExplored(maxNodes).withExploreFactor(exploreFactor),
+        paramsB().withMaxNodesExplored(maxNodes).withExploreFactor(exploreFactor),
+        [](const BenchmarkSetup& s, const MotionOptimizerParams& p) {
+          return runWithParams(s, p);
+        });
+  }
+
+  // Legacy single-setup helper (kept for specific node limit tests)
   static void printRowWithNodes(const string& label, const BenchmarkSetup& setup,
                                 int maxNodes, double exploreFactor = 3.0) {
     runUnifiedBenchmark<ENABLE_COMPARISON>(
@@ -176,6 +227,46 @@ protected:
   }
 
   // ================== Debug Utilities ==================
+  static void printSetup(const BenchmarkSetup& cfg) {
+    cout << "\n--- Setup Debug ---\n";
+    cout << "Start: (" << cfg.firstPos.line << ", " << cfg.firstPos.col << ")\n";
+    cout << "Goal:  (" << cfg.lastPos.line << ", " << cfg.lastPos.col << ")\n";
+    cout << "Boundary: hasLinesAbove=" << cfg.boundary.hasLinesAbove()
+         << ", hasLinesBelow=" << cfg.boundary.hasLinesBelow() << "\n";
+    cout << "Lines (" << cfg.lines.size() << "):\n";
+    for (size_t i = 0; i < cfg.lines.size(); i++) {
+      cout << "  " << i << ": \"" << cfg.lines[i] << "\"\n";
+    }
+    cout << "---\n\n";
+  }
+
+  static void printSetupWithResults(const BenchmarkSetup& cfg, const MotionOptimizerParams& params) {
+    printSetup(cfg);
+    MotionOptimizer opt(config);
+    auto [results, stats] = opt.optimize(cfg.lines, cfg.firstPos, RunningEffort(),
+                                         cfg.lastPos, "", navContext, cfg.boundary,
+                                         EXPLORABLE_MOTIONS, params);
+    cout << "Results found (" << results.size() << "):\n";
+    for (size_t i = 0; i < min(results.size(), size_t(10)); i++) {
+      cout << "  " << i << ": \"" << results[i].getSequenceString()
+           << "\" (cost=" << fixed << setprecision(2) << results[i].keyCost << ")\n";
+    }
+    cout << "Stats: nodes=" << stats.nodesExplored << ", results=" << stats.resultsFound << "\n";
+    cout << "---\n\n";
+  }
+
+  static void printRangeSetup(const RangeBenchmarkSetup& cfg) {
+    cout << "\n--- Range Setup Debug ---\n";
+    cout << "Start: (" << cfg.startPos.line << ", " << cfg.startPos.col << ")\n";
+    cout << "Range: (" << cfg.rangeFirst.line << ", " << cfg.rangeFirst.col << ") to ("
+         << cfg.rangeLast.line << ", " << cfg.rangeLast.col << ")\n";
+    cout << "Lines (" << cfg.lines.size() << "):\n";
+    for (size_t i = 0; i < cfg.lines.size(); i++) {
+      cout << "  " << i << ": \"" << cfg.lines[i] << "\"\n";
+    }
+    cout << "---\n\n";
+  }
+
   static void printDetailedComparison(const BenchmarkSetup& cfg) {
     cout << "\n--- Detailed Comparison ---\n";
     cout << "Start: (" << cfg.firstPos.line << ", " << cfg.firstPos.col << ")\n";
@@ -238,13 +329,13 @@ TEST_F(MotionOptimizerBench, BufferSize) {
   if constexpr (ENABLE_COMPARISON) {
     cout << "Comparison: " << COMPARISON_NAME << endl;
   }
+  cout << "(Averaged across " << DEFAULT_SEED_COUNT << " seeds - "
+       << getSeedModeDescription() << ")\n";
   printHeader("Buffer Size Benchmark");
   printUnifiedHeader<ENABLE_COMPARISON>("Lines");
 
   for (int numLines : {1, 5, 10, 15, 20, 30}) {
-    RandomGen::seed(42);
-    Lines lines = generateBuffer(numLines, 30);
-    printRow(to_string(numLines), BenchmarkSetup(lines));
+    printMultiSeedRow(to_string(numLines), numLines, 30);
   }
 }
 
@@ -253,9 +344,7 @@ TEST_F(MotionOptimizerBench, LineLength) {
   printUnifiedHeader<ENABLE_COMPARISON>("Chars");
 
   for (int avgLen : {10, 20, 40, 60, 80}) {
-    RandomGen::seed(42);
-    Lines lines = generateBuffer(20, avgLen);
-    printRow(to_string(avgLen), BenchmarkSetup(lines));
+    printMultiSeedRow(to_string(avgLen), 20, avgLen);
   }
 }
 
@@ -267,52 +356,44 @@ TEST_F(MotionOptimizerBench, BufferShape) {
            {"Uniform", BufferShape::Uniform},
            {"Prose", BufferShape::Prose},
            {"CodeLike", BufferShape::CodeLike}}) {
-    RandomGen::seed(42);
-    Lines lines = generateBuffer(20, 30, shape);
-    printRow(name, BenchmarkSetup(lines));
+    printMultiSeedRow(name, 20, 30, shape);
   }
 }
 
-TEST_F(MotionOptimizerBench, RangePruning) {
+
+// Disabled since currently always finds max results in less than search depth. Might make more sense to just look at the depth / search time ratio from other tests.
+TEST_F(MotionOptimizerBench, DISABLED_SearchDepth) {
+  printHeader("Search Depth Benchmark");
+  printUnifiedHeader<ENABLE_COMPARISON>("Depth");
+
+  for (int depth : {1000, 5000, 10000, 50000, 100000}) {
+    printMultiSeedRowWithNodes(to_string(depth), 20, 30, depth, 3.0);
+  }
+}
+
+TEST_F(MotionOptimizerBench, RangeBufferLines) {
   printHeader("Range Optimization Benchmark (optimizeToRange)");
   printUnifiedHeader<ENABLE_COMPARISON>("Lines");
 
   for (int numLines : {5, 10, 20, 30, 40}) {
-    RandomGen::seed(42);
-    Lines lines = generateBuffer(numLines, 30);
-    printRangeRow(to_string(numLines), RangeBenchmarkSetup(lines));
+    printMultiSeedRangeRow(to_string(numLines), numLines, 30);
   }
 }
 
-TEST_F(MotionOptimizerBench, RangeSize) {
-  printHeader("Range Size Benchmark (fixed 20-line buffer)");
+TEST_F(MotionOptimizerBench, RangeResultSize) {
+  printHeader("Range Size Benchmark (20-line buffer, varying range size)");
   printUnifiedHeader<ENABLE_COMPARISON>("Range");
 
-  RandomGen::seed(42);
-  Lines lines = generateBuffer(20, 30);
-
-  for (const auto& [label, chars, numLines] : vector<tuple<string, int, int>>{
+  for (const auto& [label, chars, rangeLines] : vector<tuple<string, int, int>>{
            {"1 col", 1, 1},
            {"3 cols", 3, 1},
            {"6 cols", 6, 1},
            {"10 cols", 10, 1},
            {"30 (2 ln)", 30, 2}}) {
-    printRangeRow(label, RangeBenchmarkSetup(lines, chars, numLines));
+    printMultiSeedRangeSizeRow(label, chars, rangeLines);
   }
 }
 
-TEST_F(MotionOptimizerBench, SearchDepth) {
-  printHeader("Search Depth Benchmark");
-  printUnifiedHeader<ENABLE_COMPARISON>("Depth");
-
-  RandomGen::seed(42);
-  Lines lines = generateBuffer(40, 30);
-  BenchmarkSetup setup(lines);
-
-  for (int depth : {1000, 5000, 10000, 50000, 100000}) {
-    printRowWithNodes(to_string(depth), setup, depth);
-  }
-}
 
 TEST_F(MotionOptimizerBench, DISABLED_DetailedComparison) {
   printHeader("Detailed Single-Case Comparison");
