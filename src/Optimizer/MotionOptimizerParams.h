@@ -8,7 +8,9 @@ struct MotionOptimizerParams {
   // Maximum results (paths) to find to the goal position
   int maxResults = 10;
 
-  // Maximum states processed from priority queue
+  // Maximum non-stale states to process (actual work done, not queue pops).
+  // Stale states (superseded by better paths) don't count toward this limit.
+  // Internal safety cap at 10x this value prevents runaway loops from excessive stale nodes.
   int maxNodesExplored = 50000;
 
   // Search stops when effort > userEffort * exploreFactor

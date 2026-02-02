@@ -98,13 +98,19 @@ double EditSearchContext::distanceHeuristic(const Lines& lines) const {
 }
 
 bool EditSearchContext::shouldContinue() const {
-  return !pq.empty() && resultsFound < totalPositions && iterations < params.maxNodesExplored;
+  if (pq.empty()) return false;
+  if (resultsFound >= totalPositions) return false;
+  if (iterations >= params.maxNodesExplored) return false;
+  // Safety cap: prevent runaway loops if too many stale nodes
+  if (totalPops >= params.maxNodesExplored * SAFETY_MULTIPLIER) return false;
+  return true;
 }
 
 optional<EditState> EditSearchContext::getNextValidState() {
   while (!pq.empty()) {
     EditState s = pq.top();
     pq.pop();
+    totalPops++;  // Track all pops for safety cap
 
     // Skip if this state is outdated (we've found a better path)
     EditStateKey key = s.getKey();

@@ -32,10 +32,15 @@ struct MotionSearchContext {
   using PriorityQueue = std::priority_queue<MotionState, std::vector<MotionState>, std::greater<MotionState>>;
   PriorityQueue pq;
   std::unordered_map<PosKey, double, PosKeyHash> costMap;
-  int totalExplored = 0;
+  int nodesProcessed = 0;   // Non-stale states processed (user-facing limit)
+  int totalPops = 0;        // All pops including stale (internal safety)
   int motionsEmitted = 0;   // Total motions generated (for stats)
   int statesSkipped = 0;    // States skipped due to staleness
   double maxEffort;  // userEffort * exploreFactor
+
+  // Internal safety: hard cap on total pops to prevent runaway loops
+  // If >90% of pops are stale, something is pathologically wrong
+  static constexpr int SAFETY_MULTIPLIER = 10;
 
   // Debug: optionally track explored states
   std::vector<ExploredState> exploredStates;
@@ -94,16 +99,23 @@ struct MotionSearchContext {
 
   // Check if search should continue
   bool shouldContinue() const {
-    return !pq.empty() && totalExplored < params.maxNodesExplored;
+    if (pq.empty()) return false;
+    if (nodesProcessed >= params.maxNodesExplored) return false;
+    // Safety cap: prevent runaway loops if too many stale nodes
+    if (totalPops >= params.maxNodesExplored * SAFETY_MULTIPLIER) return false;
+    return true;
   }
 
-  // Pop next state from queue (caller handles staleness check)
+  // Pop next state from queue (caller must call markProcessed() for non-stale states)
   MotionState popNext() {
     MotionState s = pq.top();
     pq.pop();
-    totalExplored++;
+    totalPops++;
     return s;
   }
+
+  // Call after processing a non-stale state (including goals)
+  void markProcessed() { nodesProcessed++; }
 
   // Check if state is stale (superseded by better path)
   bool isStale(const MotionState& s) const {
@@ -122,7 +134,7 @@ struct MotionSearchContext {
   // Get search stats - call after search completes
   SearchStats getStats(int resultsFound) const {
     SearchStats stats;
-    stats.nodesExplored = totalExplored;
+    stats.nodesExplored = nodesProcessed;
     stats.resultsFound = resultsFound;
     stats.queueSizeAtStop = static_cast<int>(pq.size());
     stats.motionsEmitted = motionsEmitted;
@@ -131,7 +143,7 @@ struct MotionSearchContext {
 
     if (resultsFound >= params.maxResults) {
       stats.stopReason = SearchStopReason::MaxResultsFound;
-    } else if (totalExplored >= params.maxNodesExplored) {
+    } else if (nodesProcessed >= params.maxNodesExplored) {
       stats.stopReason = SearchStopReason::MaxNodesReached;
     } else if (pq.empty()) {
       stats.stopReason = SearchStopReason::FullyExplored;

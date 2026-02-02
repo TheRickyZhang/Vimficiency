@@ -67,6 +67,11 @@ struct EditSearchContext {
   // Stats tracking
   int motionsEmitted = 0;
   int statesSkipped = 0;
+  int totalPops = 0;  // Internal safety: counts all pops including stale
+
+  // Internal safety: hard cap on total pops to prevent runaway loops
+  // If >90% of pops are stale, something is pathologically wrong
+  static constexpr int SAFETY_MULTIPLIER = 10;
 
   // Constructor - sets up context from start lines and boundary
   EditSearchContext(const Lines& initialLines,

@@ -73,6 +73,7 @@ MotionResult MotionOptimizer::optimizeImpl(
     bool isSameLine = (pos.line == endPos.line);
 
     if (isGoal) {
+      ctx.markProcessed();
       res.emplace_back(s.getMotionSequence(), s.getRunningEffort().getEffort(config));
       if (res.size() >= static_cast<size_t>(params.maxResults)) {
         debug("maximum result count reached");
@@ -86,6 +87,7 @@ MotionResult MotionOptimizer::optimizeImpl(
       }
     }
 
+    ctx.markProcessed();
     debug("\"" + s.getMotionSequence() + "\"", s.getCost());
 
     // Track this state if debugging
@@ -202,6 +204,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     bool isGoal = isInRange(pos);
 
     if (isGoal) {
+      ctx.markProcessed();
       double effort = s.getRunningEffort().getEffort(config);
 
       if (params.allowMultiplePerPosition) {
@@ -228,6 +231,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
       if (ctx.isStale(s)) continue;
     }
 
+    ctx.markProcessed();
     debug("\"" + s.getMotionSequence() + "\"", s.getCost());
 
     // Track this state if debugging

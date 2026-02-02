@@ -11,7 +11,9 @@ struct EditOptimizerParams {
   // Maximum total results found across all starting positions
   int maxResults = 10;
 
-  // Maximum nodes to explore before stopping search
+  // Maximum non-stale states to process (actual work done, not queue pops).
+  // Stale states (superseded by better paths) don't count toward this limit.
+  // Internal safety cap at 10x this value prevents runaway loops from excessive stale nodes.
   int maxNodesExplored = 50000;
 
   // Search stops when effort > minEffort * exploreFactor
