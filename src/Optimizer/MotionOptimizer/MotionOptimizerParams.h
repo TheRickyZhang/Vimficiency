@@ -1,37 +1,19 @@
 #pragma once
 
+#include "Optimizer/OptimizerParamsBase.h"
+
 // =============================================================================
 // MotionOptimizerParams - Parameters for MotionOptimizer::optimize()
 // =============================================================================
 
-struct MotionOptimizerParams {
-  // Maximum results (paths) to find to the goal position
-  int maxResults = 10;
-
-  // Maximum non-stale states to process (actual work done, not queue pops).
-  // Stale states (superseded by better paths) don't count toward this limit.
-  // Internal safety cap at 10x this value prevents runaway loops from excessive stale nodes.
-  int maxNodesExplored = 50000;
-
-  // Search stops when effort > userEffort * exploreFactor
-  double exploreFactor = 2.0;
-
+struct MotionOptimizerParams : OptimizerParamsBase {
   // Minimum column distance before exploring f-motion (f{char}). Recommended 2-5.
   int fMotionThreshold = 3;
-
-  // A* priority weights: priority = effortWeight * effort + distanceWeight * heuristic
-  // (default A*): effortWeight=1.0, distanceWeight=1.0
-  // (Dijkstra):   effortWeight=1.0, distanceWeight=0.0
-  double effortWeight = 1.0;
-  double distanceWeight = 1.0;
 
   // Direction-based motion pruning (6-class model):
   // When true, explores only 3-4 of 6 motion classes based on relative position to goal.
   // Trade-off: faster exploration but may miss some edge-case optimal paths.
   bool useDirectionalPruning = true;
-
-  // Debug: collect explored states in SearchStats (expensive, for debugging only)
-  bool trackExploredStates = false;
 
   // Chainable setters for fluent configuration
   MotionOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
@@ -39,14 +21,15 @@ struct MotionOptimizerParams {
   MotionOptimizerParams& withExploreFactor(double v) { exploreFactor = v; return *this; }
   MotionOptimizerParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
   MotionOptimizerParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
+  MotionOptimizerParams& withTrackExploredStates(bool v) { trackExploredStates = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
   static MotionOptimizerParams dijkstra(int maxResults = 10, int maxNodesExplored = 50000) {
-    return MotionOptimizerParams{
-        .maxResults = maxResults,
-        .maxNodesExplored = maxNodesExplored,
-        .distanceWeight = 0.0,
-    };
+    MotionOptimizerParams p;
+    p.maxResults = maxResults;
+    p.maxNodesExplored = maxNodesExplored;
+    p.distanceWeight = 0.0;
+    return p;
   }
 };
 
@@ -67,5 +50,6 @@ struct MotionOptimizerRangeParams : MotionOptimizerParams {
   MotionOptimizerRangeParams& withExploreFactor(double v) { exploreFactor = v; return *this; }
   MotionOptimizerRangeParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
   MotionOptimizerRangeParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
+  MotionOptimizerRangeParams& withTrackExploredStates(bool v) { trackExploredStates = v; return *this; }
   MotionOptimizerRangeParams& withAllowMultiplePerPosition(bool v) { allowMultiplePerPosition = v; return *this; }
 };

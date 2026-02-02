@@ -10,9 +10,9 @@
 
 #include "Editor/NavContext.h"
 #include "Optimizer/Config.h"
-#include "Optimizer/EditOptimizer.h"
+#include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Boundary/EditBoundary.h"
-#include "Optimizer/EditOptimizerParams.h"
+#include "Optimizer/EditOptimizer/EditOptimizerParams.h"
 #include "Utils/Lines.h"
 
 using namespace std;
@@ -25,7 +25,7 @@ class EditOptimizerHumanApprovalTests : public ::testing::Test {
 protected:
   inline static const Config config = Config::uniform();
   inline static NavContext navContext = NavContext();
-  inline static EditOptimizerParams params{.maxNodesExplored = 50000};
+  inline static EditOptimizerParams params;
   inline static EditOptimizer opt{config};
 
   static void SetUpTestSuite() {

@@ -10,7 +10,7 @@
 #include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
 #include "Optimizer/Config.h"
-#include "Optimizer/MotionOptimizer.h"
+#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "State/RunningEffort.h"
 #include "Utils/Lines.h"
 #include "Utils/RandomBufferHelpers.h"

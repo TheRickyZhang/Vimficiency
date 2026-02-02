@@ -2,10 +2,10 @@
 
 #include <vector>
 
-#include "Config.h"
-#include "Result.h"
+#include "Optimizer/Config.h"
+#include "Optimizer/Result.h"
 #include "EditOptimizerParams.h"
-#include "SearchStats.h"
+#include "Optimizer/SearchStats.h"
 #include "Boundary/EditBoundary.h"
 
 #include "Utils/Lines.h"

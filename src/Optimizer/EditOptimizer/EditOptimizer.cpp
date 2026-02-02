@@ -7,7 +7,7 @@
 #include "EditOptimizer.h"
 #include "EditSearchContext.h"
 #include "Keyboard/KeyboardModel.h"
-#include "MotionOptimizer.h"
+#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 
 #include "Editor/NavContext.h"
 #include "Keyboard/CharToKeys.h"
@@ -610,8 +610,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
           firstPos,
           lastPos,
           navCtx,
-          MotionBoundary(),
-          MotionOptimizerParams{}
+          MotionBoundary()
       );
 
       if (!motionResults.empty() && motionResults[0].isValid()) {

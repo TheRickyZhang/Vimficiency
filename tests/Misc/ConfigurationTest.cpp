@@ -12,7 +12,7 @@
 #include "Keyboard/MotionToKeys.h"
 #include "Optimizer/Config.h"
 #include "Boundary/MotionBoundary.h"
-#include "Optimizer/MotionOptimizer.h"
+#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "State/RunningEffort.h"
 
 using namespace std;
@@ -35,7 +35,7 @@ protected:
     MotionOptimizer opt(config);
     MotionBoundary boundary;
     return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
-                        boundary, allowedMotions, MotionOptimizerParams{.maxResults = 30, .maxNodesExplored = 20000}).results;
+                        boundary, allowedMotions, MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000)).results;
   }
 
   // Get cost of best result for a motion

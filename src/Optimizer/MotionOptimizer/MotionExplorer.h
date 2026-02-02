@@ -3,7 +3,7 @@
 #include "MotionClassMask.h"
 #include "MotionSearchContext.h"
 #include "MotionToSpec.h"
-#include "BufferIndex.h"
+#include "Optimizer/BufferIndex.h"
 #include "Keyboard/KeyboardModel.h"
 #include "Keyboard/MotionToKeys.h"
 #include "VimCore/VimCore.h"

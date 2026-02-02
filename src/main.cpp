@@ -3,7 +3,7 @@
 #include "Optimizer/Config.h"
 #include "Boundary/MotionBoundary.h"
 #include "State/RunningEffort.h"
-#include "Optimizer/MotionOptimizer.h"
+#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Editor/Snapshot.h"
 #include "Editor/NavContext.h"
 #include "State/MotionState.h"

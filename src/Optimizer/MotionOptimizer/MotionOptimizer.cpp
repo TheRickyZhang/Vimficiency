@@ -5,7 +5,7 @@
 #include <limits>
 #include <set>
 
-#include "BufferIndex.h"
+#include "Optimizer/BufferIndex.h"
 #include "State/PosKey.h"
 #include "Keyboard/MotionToKeys.h"
 #include "Utils/Debug.h"

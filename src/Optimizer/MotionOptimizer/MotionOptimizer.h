@@ -2,11 +2,11 @@
 
 #include <vector>
 
-#include "Config.h"
-#include "Result.h"
-#include "RangeResult.h"
+#include "Optimizer/Config.h"
+#include "Optimizer/Result.h"
+#include "Optimizer/RangeResult.h"
 #include "MotionOptimizerParams.h"
-#include "SearchStats.h"
+#include "Optimizer/SearchStats.h"
 #include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
 #include "Editor/Position.h"

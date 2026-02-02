@@ -4,9 +4,9 @@
 #include <queue>
 #include <unordered_map>
 
-#include "Config.h"
+#include "Optimizer/Config.h"
 #include "MotionOptimizerParams.h"
-#include "SearchStats.h"
+#include "Optimizer/SearchStats.h"
 #include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
 #include "Editor/Position.h"

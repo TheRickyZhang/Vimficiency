@@ -9,7 +9,7 @@
 #include <gtest/gtest.h>
 
 #include "Optimizer/Config.h"
-#include "Optimizer/EditOptimizer.h"
+#include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Optimizer/BufferIndex.h"
 #include "Boundary/EditBoundary.h"
 #include "Utils/NeovimOracle.h"
@@ -109,7 +109,7 @@ private:
 class DebugTest : public ::testing::Test {
 protected:
   Config config = Config::uniform();
-  EditOptimizerParams params{.maxNodesExplored = 100000};
+  EditOptimizerParams params = EditOptimizerParams{}.withMaxNodesExplored(100000);
 
   EditOptimizer makeOptimizer() {
     return EditOptimizer(config);
@@ -496,7 +496,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateEmbeddedFailures) {
     cerr << "Prefix: '" << boundary.prefix() << "', Suffix: '" << boundary.suffix() << "'" << endl;
 
     Config config = Config::uniform();
-    EditOptimizerParams params{.maxNodesExplored = 50000};
+    EditOptimizerParams params = EditOptimizerParams{}.withMaxNodesExplored(50000);
     EditOptimizer opt(config);
     EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
 

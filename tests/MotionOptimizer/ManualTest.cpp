@@ -14,7 +14,7 @@
 #include "Keyboard/MotionToKeys.h"
 #include "Optimizer/Config.h"
 #include "Boundary/MotionBoundary.h"
-#include "Optimizer/MotionOptimizer.h"
+#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "State/RunningEffort.h"
 #include "Editor/Snapshot.h"
 #include "Editor/Motion.h"
@@ -56,7 +56,7 @@ protected:
     // Pass Position and fresh RunningEffort (no prior typing context in tests)
     // Try to explore more (30 results), lower search depth for speed (2e4)
     return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
-                        boundary, allowedMotions, MotionOptimizerParams{.maxResults = 30, .maxNodesExplored = 20000}).results;
+                        boundary, allowedMotions, MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000)).results;
   }
 
   static vector<RangeResult>
@@ -190,7 +190,7 @@ protected:
                   Config config = Config::uniform()) {
     MotionOptimizer opt(config);
     return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
-                        boundary, allowedMotions, MotionOptimizerParams{.maxResults = 30, .maxNodesExplored = 20000}).results;
+                        boundary, allowedMotions, MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000)).results;
   }
 
   // Helper to check if results contain a sequence

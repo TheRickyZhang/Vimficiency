@@ -9,7 +9,7 @@
 #include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
 #include "Optimizer/Config.h"
-#include "Optimizer/MotionOptimizer.h"
+#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "State/RunningEffort.h"
 #include "Utils/Lines.h"
 #include "Utils/RandomBufferHelpers.h"
@@ -52,7 +52,7 @@ TEST_F(MotionOptimizerCostConsistencyTests, CostMatchesComputed) {
 
     auto results = opt.optimize(
       lines, start, RunningEffort(), end, "jjjjj", navContext,
-      MotionBoundary(), EXPLORABLE_MOTIONS, MotionOptimizerParams{.maxResults = 5}
+      MotionBoundary(), EXPLORABLE_MOTIONS, MotionOptimizerParams{}.withMaxResults(5)
     ).results;
 
     for (const auto& result : results) {

@@ -11,7 +11,7 @@
 #include "Editor/NavContext.h"
 #include "Keyboard/MotionToKeys.h"
 #include "Optimizer/Config.h"
-#include "Optimizer/MotionOptimizer.h"
+#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Boundary/MotionBoundary.h"
 #include "State/RunningEffort.h"
 #include "Utils/Lines.h"

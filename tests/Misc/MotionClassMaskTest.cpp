@@ -5,7 +5,7 @@
 // Run: ./build/tests/vimficiency_tests --gtest_filter="*MotionClassMask*"
 
 #include <gtest/gtest.h>
-#include "Optimizer/MotionClassMask.h"
+#include "Optimizer/MotionOptimizer/MotionClassMask.h"
 #include "Editor/Position.h"
 #include <vector>
 #include <utility>

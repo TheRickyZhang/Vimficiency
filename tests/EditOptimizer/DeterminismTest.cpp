@@ -10,7 +10,7 @@
 #include "Boundary/EditBoundary.h"
 #include "Editor/NavContext.h"
 #include "Optimizer/Config.h"
-#include "Optimizer/EditOptimizer.h"
+#include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Utils/EditTestGenerators.h"
 #include "Utils/Lines.h"
 #include "Utils/RandomGeneration.h"

@@ -6,7 +6,7 @@
 
 #include <gtest/gtest.h>
 
-#include "Optimizer/DiffState.h"
+#include "Optimizer/CompositionOptimizer/DiffState.h"
 #include "Utils/Lines.h"
 
 // Helper: check diffs match expected {deleted, inserted} pairs

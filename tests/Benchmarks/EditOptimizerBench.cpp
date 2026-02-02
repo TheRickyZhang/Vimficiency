@@ -9,8 +9,8 @@
 #include "Benchmarks/BenchUtils.h"
 #include "Boundary/EditBoundary.h"
 #include "Optimizer/Config.h"
-#include "Optimizer/EditOptimizer.h"
-#include "Optimizer/EditOptimizerParams.h"
+#include "Optimizer/EditOptimizer/EditOptimizer.h"
+#include "Optimizer/EditOptimizer/EditOptimizerParams.h"
 #include "Utils/RandomGeneration.h"
 
 using namespace std;

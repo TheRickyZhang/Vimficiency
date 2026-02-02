@@ -11,7 +11,7 @@
 #include "Boundary/EditBoundary.h"
 #include "Editor/Position.h"
 #include "Optimizer/Config.h"
-#include "Optimizer/EditOptimizer.h"
+#include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Utils/EditTestGenerators.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"

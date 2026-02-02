@@ -13,7 +13,7 @@
 #include "Editor/Mode.h"
 #include "Editor/Position.h"
 #include "Optimizer/Config.h"
-#include "Optimizer/EditOptimizer.h"
+#include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Boundary/EditBoundary.h"
 #include "Utils/Lines.h"
 // #include "Utils/TestUtils.h"

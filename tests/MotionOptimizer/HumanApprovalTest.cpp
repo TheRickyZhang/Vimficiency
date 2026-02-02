@@ -11,7 +11,7 @@
 
 #include "Editor/NavContext.h"
 #include "Optimizer/Config.h"
-#include "Optimizer/MotionOptimizer.h"
+#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Boundary/MotionBoundary.h"
 #include "State/RunningEffort.h"
 #include "Utils/Lines.h"
@@ -111,7 +111,7 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_MixedMotions) {
   MotionOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, RunningEffort(), end, "jjllllllllll", navContext,
-    MotionBoundary(), EXPLORABLE_MOTIONS, MotionOptimizerParams{.maxResults = 15}
+    MotionBoundary(), EXPLORABLE_MOTIONS, MotionOptimizerParams{}.withMaxResults(15)
   ).results;
 
   // printResults(results, "Mixed motions to line 2, col 11");
