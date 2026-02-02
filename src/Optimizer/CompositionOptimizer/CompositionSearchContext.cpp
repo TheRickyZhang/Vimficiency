@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <limits>
 
 using namespace std;
 
@@ -31,7 +32,9 @@ CompositionSearchContext::CompositionSearchContext(
       maxLineLength(maxLineLength),
       effortWeight(params.effortWeight),
       distanceWeight(params.distanceWeight),
-      maxEffort(getEffort(userSequence, config) * params.exploreFactor) {
+      maxEffort(userSequence.empty()
+                    ? std::numeric_limits<double>::max()
+                    : getEffort(userSequence, config) * params.exploreFactor) {
 
   // Ensure proper hashing - line lengths must fit in maxLineLength
   for (const string& s : initialLines) {
@@ -164,6 +167,10 @@ void CompositionSearchContext::exploreNewState(CompositionState&& newState) {
 
 bool CompositionSearchContext::canStartEdit(
     const Position& pos, int editsCompleted) const {
+  // Pure insertions are handled separately, not through edit transitions
+  if (diffStates[editsCompleted].isPureInsertion()) {
+    return false;
+  }
   int posKey = this->posToKey(pos);
   if (posKey < 0 || posKey >= static_cast<int>(posToEditIndex.size())) {
     return false;
@@ -194,21 +201,28 @@ vector<double> CompositionSearchContext::computeSuffixEditCosts() const {
   vector<double> suffixCosts(n + 1, 0.0);
 
   for (int i = n - 1; i >= 0; i--) {
-    const auto& editRes = editResults[i];
-    vector<double> costs;
-    for (const Result& r : editRes.typeAllResults) {
-      if (r.isValid()) {
-        costs.push_back(r.keyCost);
-      }
-    }
-
     double medianCost;
-    if (costs.empty()) {
-      medianCost = 100.0;  // Fallback for empty results
+
+    if (!editResults[i].has_value()) {
+      // Pure insertion: estimate cost as insert mode entry + text length + escape
+      // i (1) + text + Esc (1)
+      medianCost = 1.0 + static_cast<double>(diffStates[i].insertedText.size()) + 1.0;
     } else {
-      size_t mid = costs.size() / 2;
-      nth_element(costs.begin(), costs.begin() + mid, costs.end());
-      medianCost = costs[mid];
+      const auto& editRes = *editResults[i];
+      vector<double> costs;
+      for (const Result& r : editRes.typeAllResults) {
+        if (r.isValid()) {
+          costs.push_back(r.keyCost);
+        }
+      }
+
+      if (costs.empty()) {
+        medianCost = 100.0;  // Fallback for empty results
+      } else {
+        size_t mid = costs.size() / 2;
+        nth_element(costs.begin(), costs.begin() + mid, costs.end());
+        medianCost = costs[mid];
+      }
     }
     suffixCosts[i] = suffixCosts[i + 1] + medianCost;
   }
@@ -251,12 +265,18 @@ vector<uint16_t> CompositionSearchContext::buildPosToEditIndex(
   return result;
 }
 
-vector<EditResult> CompositionSearchContext::calculateEditResults() {
+vector<std::optional<EditResult>> CompositionSearchContext::calculateEditResults() {
   EditOptimizer editOptimizer(config);
-  vector<EditResult> results;
+  vector<std::optional<EditResult>> results;
   results.reserve(diffStates.size());
 
   for (const DiffState& diff : diffStates) {
+    // Skip EditOptimizer for pure insertions - handled specially in CompositionOptimizer
+    if (diff.isPureInsertion()) {
+      results.push_back(std::nullopt);
+      continue;
+    }
+
     EditResult result = editOptimizer.optimizeEdit(
         diff.deletedLines(), diff.insertedLines(), diff.boundary);
 

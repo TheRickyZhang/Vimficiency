@@ -10,8 +10,13 @@
 
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
+#include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
+#include "Optimizer/CompositionOptimizer/DiffState.h"
+#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Optimizer/BufferIndex.h"
 #include "Boundary/EditBoundary.h"
+#include "Boundary/MotionBoundary.h"
+#include "Keyboard/MotionToKeys.h"
 #include "Utils/NeovimOracle.h"
 #include "VimCore/VimCore.h"
 #include "VimCore/VimEditUtils.h"
@@ -1008,4 +1013,74 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJCursor) {
   testJ({"abc", " def"}, 2, "'abc'/' def'");
   testJ({"abc ", " def"}, 2, "'abc '/' def'");
   testJ({"abc  ", "def"}, 2, "'abc  '/'def' (2 trailing spaces)");
+}
+
+TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
+  cerr << "=== CompositionOptimizer debug ===" << endl;
+
+  Lines initial = {"hello world"};
+  Lines goal = {"hello there"};
+  Position startPos(0, 0);
+  Position endPos(0, 0);
+
+  cerr << "Initial: " << initial << endl;
+  cerr << "Goal: " << goal << endl;
+  cerr << "Start position: " << startPos << endl;
+
+  // First, check what diffs are computed
+  auto diffs = Myers::calculate(initial, goal);
+  cerr << endl << "Diffs computed: " << diffs.size() << endl;
+  for (size_t i = 0; i < diffs.size(); i++) {
+    cerr << "  Diff " << i << ": '" << diffs[i].deletedText << "' -> '" << diffs[i].insertedText << "'" << endl;
+    cerr << "    firstPos: " << diffs[i].firstPos << ", lastPos: " << diffs[i].lastPos << endl;
+  }
+
+  // Test MotionOptimizer.optimizeToRange directly
+  cerr << endl << "=== Testing MotionOptimizer.optimizeToRange ===" << endl;
+  {
+    Config cfg = Config::uniform();
+    MotionOptimizer movOpt(cfg);
+    Position rangeFirst(0, 6);
+    Position rangeLast(0, 10);
+
+    cerr << "Finding path from " << startPos << " to range [" << rangeFirst << ", " << rangeLast << "]" << endl;
+
+    auto rangeResult = movOpt.optimizeToRange(
+        initial, startPos, RunningEffort(), rangeFirst, rangeLast,
+        "", NavContext(), MotionBoundary(), EXPLORABLE_MOTIONS,
+        MotionOptimizerRangeParams{}.withMaxResults(10));
+
+    cerr << "MotionOptimizer returned " << rangeResult.results.size() << " results" << endl;
+    cerr << "Stats: nodes=" << rangeResult.stats.nodesExplored
+         << " stopReason=" << static_cast<int>(rangeResult.stats.stopReason) << endl;
+
+    for (size_t i = 0; i < rangeResult.results.size() && i < 5; i++) {
+      const auto& r = rangeResult.results[i];
+      cerr << "  Motion " << i << ": '" << r.getSequenceString() << "' -> " << r.endPos
+           << " cost=" << r.keyCost << endl;
+    }
+  }
+
+  // Now run the full optimizer
+  Config config = Config::uniform();
+  CompositionOptimizer opt{config};
+  CompositionOptimizerParams params{};
+
+  cerr << endl << "Running CompositionOptimizer..." << endl;
+  vector<Result> results = opt.optimize(
+      initial, startPos, goal, endPos, "", NavContext(), MotionBoundary(), EXPLORABLE_MOTIONS, params);
+
+  cerr << "Results: " << results.size() << endl;
+  for (size_t i = 0; i < results.size(); i++) {
+    cerr << "  Result " << i << ": '" << results[i].getSequenceString() << "' cost=" << results[i].keyCost << endl;
+  }
+
+  if (!results.empty()) {
+    string seq = results[0].getSequenceString();
+    auto nvim = oracle_->simulate(initial, startPos.line, startPos.col, seq);
+    cerr << endl << "Neovim result for '" << seq << "':" << endl;
+    cerr << "  Lines: " << nvim.lines << endl;
+    cerr << "  Goal:  " << goal << endl;
+    cerr << "  Match: " << (nvim.lines == goal ? "YES" : "NO") << endl;
+  }
 }

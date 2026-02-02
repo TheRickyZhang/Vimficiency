@@ -3,10 +3,8 @@ Insert Mode handling (just a lot more stuff)     ********* (very very difficult)
 Implement CompositionOptimizer
 Implement quote and bracket text object motions (see quoteFlags/bracketFlags)
 Handle pureInsertion case
+
 Review human tests.
-
-don't need directional edit pruning?
-
 
 Can skip F-motions if no endpoints found?
 Benchmark search time based on buffer size, search space, A* vs Dijkstra. And what order/frequency results found.

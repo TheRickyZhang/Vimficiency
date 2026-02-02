@@ -162,6 +162,15 @@ struct Lines final : std::vector<Line> {
     return true;
   }
 
+  // Returns lines [startLine, endLine) - exclusive end like standard iterators
+  // Useful for creating bounded subsets for optimizers.
+  Lines getLineRange(int startLine, int endLine) const {
+    assert(startLine >= 0 && "startLine must be non-negative");
+    assert(endLine <= static_cast<int>(size()) && "endLine must be <= size()");
+    assert(startLine < endLine && "must have at least one line in range");
+    return Lines(begin() + startLine, begin() + endLine);
+  }
+
   friend std::ostream& operator<<(std::ostream& os, const Lines& lines) {
     for (const std::string& s : lines) {
       os << s << "\n";

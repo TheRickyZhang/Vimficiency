@@ -10,6 +10,7 @@
 
 #include "Utils/Lines.h"
 
+
 // TODO: Is it helpful to return some sort of vector<Position> to reuse information about how flat indices -> real positions?
 struct EditResult {
   // Results that involve deleting everything, and typing the end text
@@ -83,7 +84,6 @@ struct EditResult {
 };
 
 std::ostream& operator<<(std::ostream& os, const EditResult& editResult);
-
 
 // Try to find an optimal replacement sequence for same-length transformations.
 // Populates res with results for each starting position (0 to firstDiff).
