@@ -193,6 +193,48 @@ function M.detach(nsid)
 	end
 end
 
+--- Build key sequence string from key events, with deduplication.
+--- Removes duplicate keys caused by operator-pending mode re-evaluation.
+---@param key_seq VimficiencyKeyEvent[]
+---@return string
+function M.build_sequence(key_seq)
+	if #key_seq == 0 then
+		return ""
+	end
+
+	local result = {}
+	local i = 1
+
+	while i <= #key_seq do
+		local curr = key_seq[i]
+		local next = key_seq[i + 1]
+
+		-- Check for operator-pending duplication pattern:
+		-- Same key appears twice, first in operator-pending (no), second in normal/insert
+		local dominated = false
+		if next then
+			local curr_mode = curr.mode:sub(1, 2)
+			local next_mode = next.mode:sub(1, 2)
+			local same_key = curr.key_typed == next.key_typed
+
+			-- If current is in operator-pending and next is same key in different mode,
+			-- keep current (the intentional one) and skip next (the re-evaluation)
+			if same_key and curr_mode == "no" and next_mode ~= "no" then
+				table.insert(result, curr.key_typed)
+				i = i + 2  -- Skip the duplicate
+				dominated = true
+			end
+		end
+
+		if not dominated then
+			table.insert(result, curr.key_typed)
+			i = i + 1
+		end
+	end
+
+	return table.concat(result, "")
+end
+
 --------------------------------------------------------------------------------
 -- Global key listener (for key-count sessions)
 --------------------------------------------------------------------------------

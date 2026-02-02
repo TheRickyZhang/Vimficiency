@@ -1,14 +1,19 @@
 // src/lua_exports.cpp
 
 #include "Editor/Motion.h"
+#include "Editor/SequenceParser.h"
 #include "Keyboard/KeyboardModel.h"
+#include "State/CommandSequence.h"
+#include "State/RunningEffort.h"
 #include "Keyboard/XMacroKeyDefinitions.h"
 #include "Optimizer/Config.h"
 #include "Boundary/MotionBoundary.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
+#include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Utils/CoutCapture.h"
 #include "Utils/Debug.h"
 #include "Utils/Lines.h"
+#include <algorithm>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -131,51 +136,82 @@ const char *vimficiency_finger_name(int index) {
   return g_finger_names[index];
 }
 
-// TODO: Allow this to support character granularity. Currently, it only accepts line ranges,
-// so our first parent boundary will have prefix.empty() and suffix.empty()
+// Supports both motion-only (initialLines == goalLines) and composition (buffer changed) cases.
+// Routing to MotionOptimizer vs CompositionOptimizer is handled internally.
 const char *vimficiency_analyze(
-  const char *text,
+  const char *initial_text,      // buffer at session start
+  const char *goal_text,         // buffer at session end (can equal initial_text for motion-only)
   int boundaryFirstCol, int boundaryLastCol,
   bool hasLinesAbove, bool hasLinesBelow,
   int start_row, int start_col,
   int end_row, int end_col,
-  int totLines,
   const char *keyseq,
   // Viewport state
-  int top_row, int bottom_row, int window_height, int scroll_amount,
+  int window_height, int scroll_amount,
   // How many results to calculate/return
   int RESULTS_CALCULATED
 ) {
   static std::string result_storage;
 
   try {
-    assert(totLines >= 1 && "FFI contract: buffer must have at least one line");
-    auto lines = split_lines(text);
-    assert(static_cast<int>(lines.size()) == totLines);
+    Lines initialLines = split_lines(initial_text);
+    Lines goalLines = split_lines(goal_text);
 
-    Position firstMotionPos(start_row, start_col);
-    Position lastMotionPos(end_row, end_col);
+    assert(!initialLines.empty() && "FFI contract: buffer must have at least one line");
+    assert(!goalLines.empty() && "FFI contract: goal buffer must have at least one line");
+
+    Position initialPos(start_row, start_col);
+    Position goalPos(end_row, end_col);
 
     NavContext navigation_context(window_height, scroll_amount);
-    MotionBoundary boundary(lines,
-        Position(0, boundaryFirstCol),
-        Position(totLines - 1, boundaryLastCol),
-        hasLinesAbove, hasLinesBelow);
 
-    MotionOptimizer opt(g_config_internal);
+    std::vector<Result> res;
 
-    // Pass Position and fresh RunningEffort (no prior typing context from FFI)
-    std::vector<Result> res = opt.optimize(lines, firstMotionPos, RunningEffort(), lastMotionPos, keyseq, navigation_context, boundary, EXPLORABLE_MOTIONS, MotionOptimizerParams{}.withMaxResults(RESULTS_CALCULATED)).results;
+    if (initialLines == goalLines) {
+      // Motion only - use MotionOptimizer (existing logic)
+      MotionBoundary boundary(initialLines,
+          Position(0, boundaryFirstCol),
+          Position(static_cast<int>(initialLines.size()) - 1, boundaryLastCol),
+          hasLinesAbove, hasLinesBelow);
 
-    // Format results
+      MotionOptimizer opt(g_config_internal);
+      res = opt.optimize(initialLines, initialPos, RunningEffort(), goalPos, keyseq, navigation_context, boundary, EXPLORABLE_MOTIONS, MotionOptimizerParams{}.withMaxResults(RESULTS_CALCULATED)).results;
+    } else {
+      // Buffer changed - use CompositionOptimizer
+      MotionBoundary boundary(initialLines,
+          Position(0, boundaryFirstCol),
+          Position(static_cast<int>(initialLines.size()) - 1, boundaryLastCol),
+          hasLinesAbove, hasLinesBelow);
+
+      CompositionOptimizer opt(g_config_internal);
+      res = opt.optimize(initialLines, initialPos, goalLines, goalPos, keyseq, navigation_context, boundary, EXPLORABLE_MOTIONS, CompositionOptimizerParams{}.withMaxResults(RESULTS_CALCULATED));
+    }
+
+    // Calculate user's effort for the sequence they typed
+    double userCost = getEffort(keyseq, g_config_internal);
+
+    // Filter out invalid results
+    std::vector<const Result*> validResults;
+    for (const Result &r : res) {
+      if (!r.isValid()) continue;
+      std::string seq = r.getSequenceString();
+      if (seq.empty()) continue;
+      validResults.push_back(&r);
+    }
+
+    // Sort by cost (ascending)
+    std::sort(validResults.begin(), validResults.end(),
+              [](const Result* a, const Result* b) { return a->keyCost < b->keyCost; });
+
+    // Format results - output raw sequences (Lua handles display formatting)
     std::ostringstream oss;
-    if (res.empty()) {
+    if (validResults.empty()) {
       oss << "no results";
     } else {
-      oss << "size: " << res.size() << "\n";
-      for (const Result &r : res) {
-        oss << r.getSequenceString() << " " << std::fixed << std::setprecision(3)
-            << r.keyCost << "\n";
+      oss << "size: " << validResults.size() << " user_cost: " << std::fixed << std::setprecision(3) << userCost << "\n";
+      for (const Result* r : validResults) {
+        oss << r->getSequenceString() << " "
+            << std::fixed << std::setprecision(3) << r->keyCost << "\n";
       }
     }
 
@@ -217,6 +253,51 @@ const char *vimficiency_tokenize_motions(const char *seq) {
   } catch (const std::exception& e) {
     result_storage = std::string("ERROR: ") + e.what();
   }
+  return result_storage.c_str();
+}
+
+// Tokenize a full Vim sequence (motions, edits, insert-mode text) into tokens
+// Returns newline-separated tokens (e.g., "ciw\nhello\n<Esc>\n2j" for "ciwhello<Esc>2j")
+// Supports:
+//   - Motions: w, j, fa;, etc.
+//   - Delete commands: dd, dw, x, X, D, etc.
+//   - Change commands: ciw, s, A, cc, C, etc.
+//   - Typed text: captured after insert-entering commands until <Esc>
+//   - <Esc>: emitted as its own token
+const char *vimficiency_tokenize_sequence(const char *seq) {
+  static std::string result_storage;
+
+  if (!seq || !*seq) {
+    result_storage = "";
+    return result_storage.c_str();
+  }
+
+  try {
+    std::vector<std::string> tokens = parseSequenceStrings(seq);
+
+    std::ostringstream oss;
+    for (const auto& t : tokens) {
+      oss << t << "\n";
+    }
+    result_storage = oss.str();
+  } catch (const std::exception& e) {
+    result_storage = std::string("ERROR: ") + e.what();
+  }
+  return result_storage.c_str();
+}
+
+// Format a sequence string for human-readable display
+// Tokenizes into logical units and joins with spaces
+// e.g., "3rx<C-d>ciwfoo<Esc>" -> "3rx <C-d> ciw foo <Esc>"
+const char *vimficiency_format_sequence(const char *seq) {
+  static std::string result_storage;
+
+  if (!seq || !*seq) {
+    result_storage = "";
+    return result_storage.c_str();
+  }
+
+  result_storage = formatSequenceForDisplay(seq);
   return result_storage.c_str();
 }
 

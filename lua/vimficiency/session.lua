@@ -36,6 +36,7 @@ end
 ---@param level integer|nil
 local function total_failure(alias, title, text, notify_message, level)
   util.show_output(title, text)
+  -- remove() handles detaching key tracking (which stops macro recording)
   session_store.remove(alias)
   if notify_message or title then
     vim.schedule(function()
@@ -53,14 +54,19 @@ end
 --- Format results for display
 ---@param results VimficiencyResult[]
 ---@param user_seq string|nil
+---@param user_cost number|nil
 ---@return string
-local function format_results_display(results, user_seq)
+local function format_results_display(results, user_seq, user_cost)
   local lines = {}
   if user_seq and user_seq ~= "" then
-    table.insert(lines, string.format("  user: %s", user_seq))
+    local formatted_seq = ffi_lib.format_sequence(user_seq)
+    local cost_str = user_cost and string.format(" (%.2f)", user_cost) or ""
+    table.insert(lines, string.format("  user: %s%s", formatted_seq, cost_str))
   end
   for i, r in ipairs(results) do
-    table.insert(lines, string.format("  %d. %s (%.2f)", i, r.seq, r.cost))
+    -- Format sequence for human-readable display
+    local formatted_seq = ffi_lib.format_sequence(r.seq)
+    table.insert(lines, string.format("  %d. %s (%.2f)", i, formatted_seq, r.cost))
   end
   return table.concat(lines, "\n")
 end
@@ -183,40 +189,64 @@ function M.finish(alias, save_name)
 
   util.check_state_inconsistencies(start_state, end_state)
 
-  local start_search, end_search, buffer_line_count = util.get_search_boundaries(start_state.row, end_state.row)
+  -- Get initial lines (captured at session start) and goal lines (current buffer)
+  local initial_lines = start_state.lines
+  local goal_lines = end_state.lines
+
+  -- Compute search region covering cursor positions + changed lines + padding
+  local start_search, end_search = util.compute_search_region(
+    start_state.row, end_state.row,
+    initial_lines, goal_lines,
+    config.SLICE_PADDING
+  )
 
   if end_search - start_search > config.MAX_SEARCH_LINES then
     total_failure(alias, "finish()", "search range is larger than MAX_SEARCH_LINES")
     return
   end
 
-  local lines = vim.api.nvim_buf_get_lines(buf, start_search, end_search+1, true)
+  -- Slice both initial and goal lines to the search region
+  local function slice_lines(lines, region_start, region_end)
+    local sliced = {}
+    for i = region_start + 1, math.min(region_end + 1, #lines) do
+      table.insert(sliced, lines[i])
+    end
+    return sliced
+  end
 
-  -- Build keyseq string from accumulated key events
-  local keyseq_raw = vim.iter(active.key_seq)
-    :map(function(x) return x.key_typed end)
-    :join("")
+  local initial_slice = slice_lines(initial_lines, start_search, end_search)
+  local goal_slice = slice_lines(goal_lines, start_search, end_search)
+
+  -- Build key sequence from recorded events with deduplication
+  local keyseq_raw = key_tracking.build_sequence(active.key_seq)
+
+  -- DEBUG: See what raw keys were recorded
+  print("DEBUG keyseq_raw:", vim.inspect(keyseq_raw))
+  print("DEBUG key_seq entries:", #active.key_seq)
+  for i, e in ipairs(active.key_seq) do
+    print(string.format("  [%d] mode='%s' typed='%s' sent='%s'", i, e.mode, e.key_typed, e.key_sent))
+  end
 
   -- Apply approximate motion conversions (gj->j, gk->k, etc.)
   local keyseq_str = apply_motion_conversions(keyseq_raw)
 
   -- Calculate positions (relative to search slice, 0-indexed)
-  local rel_start_row = active.start_state.row - start_search
-  local rel_start_col = active.start_state.col
+  local rel_start_row = start_state.row - start_search
+  local rel_start_col = start_state.col
   local rel_end_row = end_state.row - start_search
   local rel_end_col = end_state.col
 
   -- For linewise slicing: boundary covers full lines
+  -- Use initial slice for boundary since that's where motions start
   local boundary_first_col = 0
-  local boundary_last_col = #lines[#lines] - 1  -- last char of last line (0-indexed)
+  local boundary_last_col = #initial_slice[#initial_slice] - 1  -- last char of last line (0-indexed)
   if boundary_last_col < 0 then boundary_last_col = 0 end
   local has_lines_above = start_search > 0
-  local has_lines_below = end_search < buffer_line_count - 1
+  local has_lines_below = end_search < math.max(#initial_lines, #goal_lines) - 1
 
-  ---@type boolean, VimficiencyResult[], string
-  local ok, results, dbg = pcall(
+  local ok, results, user_cost, dbg = pcall(
     ffi_lib.analyze,
-    lines,
+    initial_slice, goal_slice,
     boundary_first_col, boundary_last_col,
     has_lines_above, has_lines_below,
     rel_start_row,
@@ -224,8 +254,6 @@ function M.finish(alias, save_name)
     rel_end_row,
     rel_end_col,
     keyseq_str,
-    start_state.top_row,
-    start_state.bottom_row,
     start_state.window_height,
     start_state.scroll_amount,
     config.RESULTS_CALCULATED
@@ -252,14 +280,16 @@ function M.finish(alias, save_name)
   end
 
   -- Create result and transition from active to result storage
+  -- Store initial_slice for simulation (motion simulation starts from initial state)
   ---@type ResultSession
   local result = {
-    lines = lines,
+    lines = initial_slice,
     start_row = rel_start_row,  -- 0-indexed, relative to lines
     start_col = rel_start_col,
     end_row = rel_end_row,      -- 0-indexed, relative to lines
     end_col = rel_end_col,
     user_seq = keyseq_str,
+    user_cost = user_cost,
     optimal_results = optimal_results,
     timestamp = vim.uv.hrtime(),
   }
@@ -284,7 +314,7 @@ function M.finish(alias, save_name)
   -- Format result summary with position and all results
   local pos_str = string.format("(%d,%d) -> (%d,%d)",
     rel_start_row, rel_start_col, rel_end_row, rel_end_col)
-  local result_display = format_results_display(optimal_results, keyseq_str)
+  local result_display = format_results_display(optimal_results, keyseq_str, user_cost)
   vim.notify(
     "vimficiency finished [" .. alias .. "] " .. pos_str .. save_msg .. "\n" .. result_display,
     vim.log.levels.INFO
@@ -305,6 +335,7 @@ function M.close(alias)
     return
   end
 
+  -- remove() handles detaching key tracking (which stops macro recording)
   session_store.remove(alias)
   vim.notify("vimficiency closed [" .. alias .. "]", vim.log.levels.INFO)
 end
@@ -428,6 +459,8 @@ function M.view(name)
   end
 
   -- Format and display results
+  local user_cost_str = data.user_cost and string.format(" (cost: %.2f)", data.user_cost) or ""
+  local formatted_user_seq = data.user_seq and ffi_lib.format_sequence(data.user_seq) or "(none)"
   local output_lines = {
     "=== " .. name .. " ===",
     "",
@@ -435,14 +468,15 @@ function M.view(name)
       data.start_row, data.start_col,
       data.end_row, data.end_col),
     "",
-    "User sequence: " .. (data.user_seq or "(none)"),
+    "User sequence: " .. formatted_user_seq .. user_cost_str,
     "",
     "Optimal motions:",
   }
 
   local optimal = data.optimal_results or {}
   for i, r in ipairs(optimal) do
-    table.insert(output_lines, string.format("  %d. %s (cost: %.2f)", i, r.seq, r.cost or 0))
+    local formatted_seq = ffi_lib.format_sequence(r.seq)
+    table.insert(output_lines, string.format("  %d. %s (cost: %.2f)", i, formatted_seq, r.cost or 0))
   end
 
   if #optimal == 0 then

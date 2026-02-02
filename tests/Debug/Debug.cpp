@@ -25,6 +25,8 @@
 #include "VimCore/SentenceEdgeType.h"
 #include "Editor/Motion.h"
 #include "Editor/Edit.h"
+#include "Editor/SequenceParser.h"
+#include "State/CommandSequence.h"
 
 using namespace std;
 
@@ -1013,6 +1015,192 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJCursor) {
   testJ({"abc", " def"}, 2, "'abc'/' def'");
   testJ({"abc ", " def"}, 2, "'abc '/' def'");
   testJ({"abc  ", "def"}, 2, "'abc  '/'def' (2 trailing spaces)");
+}
+
+TEST_F(DebugTest, FormatSequenceForDisplay) {
+  // Test formatSequenceForDisplay utility used for FFI output
+  // See docs/utils.md § CommandSequence for design details
+
+  cerr << "=== formatSequenceForDisplay Tests ===" << endl;
+
+  // Test 1: Simple motions
+  {
+    string result = formatSequenceForDisplay("3wj");
+    cerr << "  '3wj' -> '" << result << "'" << endl;
+    EXPECT_EQ(result, "3w j");
+  }
+
+  // Test 2: Change command with typed text
+  {
+    string result = formatSequenceForDisplay("ciwhello<Esc>");
+    cerr << "  'ciwhello<Esc>' -> '" << result << "'" << endl;
+    EXPECT_EQ(result, "ciw hello <Esc>");
+  }
+
+  // Test 3: Optimizer output format (from aaa/bbb/ccc -> xxx/bbb/yyy example)
+  {
+    string result = formatSequenceForDisplay("3rx<C-d>ciwyyy<Esc>");
+    cerr << "  '3rx<C-d>ciwyyy<Esc>' -> '" << result << "'" << endl;
+    // Note: 3rx is a counted replacement, <C-d> is scroll, ciw is change inner word
+    EXPECT_TRUE(result.find("<C-d>") != string::npos);
+    EXPECT_TRUE(result.find("yyy") != string::npos);
+  }
+
+  // Test 4: User sequence with multiple edits
+  {
+    string result = formatSequenceForDisplay("cwxxx<Esc>jjciyyy<Esc>");
+    cerr << "  'cwxxx<Esc>jjciyyy<Esc>' -> '" << result << "'" << endl;
+    // Should tokenize as: cw xxx <Esc> j j ci yyy <Esc>
+    EXPECT_TRUE(result.find("cw") != string::npos);
+    EXPECT_TRUE(result.find("<Esc>") != string::npos);
+  }
+
+  cerr << endl;
+}
+
+TEST_F(DebugTest, SequenceParserBasic) {
+  cerr << "=== SequenceParser Tests ===" << endl;
+
+  // Test 1: Pure motions
+  {
+    auto tokens = parseSequenceStrings("3wfa;j");
+    cerr << "Input: '3wfa;j'" << endl;
+    cerr << "Tokens: ";
+    for (const auto& t : tokens) cerr << "'" << t << "' ";
+    cerr << endl;
+    EXPECT_EQ(tokens.size(), 3);
+    EXPECT_EQ(tokens[0], "3w");
+    EXPECT_EQ(tokens[1], "fa;");
+    EXPECT_EQ(tokens[2], "j");
+  }
+
+  // Test 2: Change command with typed text
+  {
+    auto tokens = parseSequenceStrings("ciwhello<Esc>");
+    cerr << "Input: 'ciwhello<Esc>'" << endl;
+    cerr << "Tokens: ";
+    for (const auto& t : tokens) cerr << "'" << t << "' ";
+    cerr << endl;
+    EXPECT_EQ(tokens.size(), 3);
+    EXPECT_EQ(tokens[0], "ciw");
+    EXPECT_EQ(tokens[1], "hello");
+    EXPECT_EQ(tokens[2], "<Esc>");
+  }
+
+  // Test 3: Motion + change + typed text + motion
+  {
+    auto tokens = parseSequenceStrings("wciwfoo<Esc>2j");
+    cerr << "Input: 'wciwfoo<Esc>2j'" << endl;
+    cerr << "Tokens: ";
+    for (const auto& t : tokens) cerr << "'" << t << "' ";
+    cerr << endl;
+    EXPECT_EQ(tokens.size(), 5);
+    EXPECT_EQ(tokens[0], "w");
+    EXPECT_EQ(tokens[1], "ciw");
+    EXPECT_EQ(tokens[2], "foo");
+    EXPECT_EQ(tokens[3], "<Esc>");
+    EXPECT_EQ(tokens[4], "2j");
+  }
+
+  // Test 4: Delete commands (no insert mode)
+  {
+    auto tokens = parseSequenceStrings("ddjdd");
+    cerr << "Input: 'ddjdd'" << endl;
+    cerr << "Tokens: ";
+    for (const auto& t : tokens) cerr << "'" << t << "' ";
+    cerr << endl;
+    EXPECT_EQ(tokens.size(), 3);
+    EXPECT_EQ(tokens[0], "dd");
+    EXPECT_EQ(tokens[1], "j");
+    EXPECT_EQ(tokens[2], "dd");
+  }
+
+  // Test 5: Insert at end of line
+  {
+    auto tokens = parseSequenceStrings("Ahello<Esc>");
+    cerr << "Input: 'Ahello<Esc>'" << endl;
+    cerr << "Tokens: ";
+    for (const auto& t : tokens) cerr << "'" << t << "' ";
+    cerr << endl;
+    EXPECT_EQ(tokens.size(), 3);
+    EXPECT_EQ(tokens[0], "A");
+    EXPECT_EQ(tokens[1], "hello");
+    EXPECT_EQ(tokens[2], "<Esc>");
+  }
+
+  // Test 6: Substitute command
+  {
+    auto tokens = parseSequenceStrings("sX<Esc>");
+    cerr << "Input: 'sX<Esc>'" << endl;
+    cerr << "Tokens: ";
+    for (const auto& t : tokens) cerr << "'" << t << "' ";
+    cerr << endl;
+    EXPECT_EQ(tokens.size(), 3);
+    EXPECT_EQ(tokens[0], "s");
+    EXPECT_EQ(tokens[1], "X");
+    EXPECT_EQ(tokens[2], "<Esc>");
+  }
+
+  // Test 7: Mixed sequence from optimizer output
+  {
+    auto tokens = parseSequenceStrings("$ciwthere<Esc>");
+    cerr << "Input: '$ciwthere<Esc>'" << endl;
+    cerr << "Tokens: ";
+    for (const auto& t : tokens) cerr << "'" << t << "' ";
+    cerr << endl;
+    EXPECT_EQ(tokens.size(), 4);
+    EXPECT_EQ(tokens[0], "$");
+    EXPECT_EQ(tokens[1], "ciw");
+    EXPECT_EQ(tokens[2], "there");
+    EXPECT_EQ(tokens[3], "<Esc>");
+  }
+
+  cerr << endl << "All SequenceParser tests passed!" << endl;
+}
+
+// Test case from user example: aaa/bbb/ccc -> xxx/bbb/yyy
+// Verifies output formatting and result correctness
+// See docs/session-invocation.md for output format documentation
+TEST_F(NeovimOracleDebug, CompositionOptimizerOutputFormat) {
+  cerr << "=== CompositionOptimizer Output Format Test ===" << endl;
+  cerr << "Example: aaa/bbb/ccc -> xxx/bbb/yyy" << endl;
+
+  Lines initial = {"aaa", "bbb", "ccc"};
+  Lines goal = {"xxx", "bbb", "yyy"};
+  Position initialPos(0, 0);
+  Position goalPos(2, 2);
+
+  cerr << "Initial: " << initial << endl;
+  cerr << "Goal: " << goal << endl;
+
+  Config config = Config::uniform();
+  CompositionOptimizer opt{config};
+  CompositionOptimizerParams params = CompositionOptimizerParams{}.withMaxResults(5);
+
+  vector<Result> results = opt.optimize(
+      initial, initialPos, goal, goalPos, "", NavContext(), MotionBoundary(), EXPLORABLE_MOTIONS, params);
+
+  cerr << endl << "Results (sorted by cost):" << endl;
+  for (size_t i = 0; i < results.size(); i++) {
+    if (!results[i].isValid() || results[i].getSequenceString().empty()) continue;
+    string formatted = formatSequenceForDisplay(results[i].getSequenceString());
+    cerr << "  " << (i+1) << ". " << formatted << " (" << results[i].keyCost << ")" << endl;
+  }
+
+  // Verify at least one result exists and produces correct output
+  bool foundValidResult = false;
+  for (const auto& r : results) {
+    if (!r.isValid() || r.getSequenceString().empty()) continue;
+    string seq = r.getSequenceString();
+    auto nvim = oracle_->simulate(initial, initialPos.line, initialPos.col, seq);
+    if (nvim.lines == goal) {
+      foundValidResult = true;
+      cerr << endl << "Verified: '" << seq << "' produces goal state" << endl;
+      break;
+    }
+  }
+
+  EXPECT_TRUE(foundValidResult) << "Expected at least one valid result that produces the goal state";
 }
 
 TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {

@@ -22,11 +22,11 @@ local config = require("vimficiency.config")
 --- Stored while session is in progress; discarded after finish().
 ---@class ActiveSession
 ---@field id string                    # Unique identifier (for debug/logging)
----@field key_nsid integer             # Key tracking namespace ID (for cleanup)
+---@field key_nsid integer             # Key tracking namespace ID (>= 0 for manual sessions with macro recording, -1 for key sessions)
 ---@field win integer                  # Window where session started
 ---@field buf integer                  # Buffer where session started
 ---@field start_state VimficiencyState # Cursor/viewport state at start
----@field key_seq VimficiencyKeyEvent[] # Accumulated keypresses
+---@field key_seq VimficiencyKeyEvent[] # Accumulated keypresses (used by key sessions, not manual)
 ---@field time_started integer         # hrtime when started
 
 --- ResultSession: data for a completed session, ready for simulate().
@@ -38,6 +38,7 @@ local config = require("vimficiency.config")
 ---@field end_row integer              # 0-indexed, relative to lines
 ---@field end_col integer              # 0-indexed
 ---@field user_seq string              # What the user typed
+---@field user_cost number             # Effort cost of user's sequence
 ---@field optimal_results VimficiencyResult[] # Top N results from optimizer (seq + cost)
 ---@field timestamp integer            # hrtime when finished
 
@@ -46,7 +47,7 @@ local config = require("vimficiency.config")
 --------------------------------------------------------------------------------
 
 ---@param id string
----@param key_nsid integer
+---@param key_nsid integer  >= 0 for manual sessions (with macro recording), -1 for key sessions
 ---@param win integer
 ---@param buf integer
 ---@param start_state VimficiencyState

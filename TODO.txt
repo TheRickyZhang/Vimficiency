@@ -5,6 +5,7 @@ Implement quote and bracket text object motions (see quoteFlags/bracketFlags)
 Handle pureInsertion case
 Add pureInsertion support
 Investigate compositionOptimizer correctness tests
+Add support for CompositionOptimizer in lua
 
 Review human tests.
 

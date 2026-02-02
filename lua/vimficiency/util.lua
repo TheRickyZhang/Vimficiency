@@ -235,7 +235,6 @@ function M.get_search_boundaries(begin_row, end_row)
   return start_search, end_search, nlines
 end
 
-  --Implicit asssertion that the contents of buffer haven't changed since the start. Once we support insert mode in the future, we will want to time the emission of start/end for movement / editing sessions.
 function M.check_state_inconsistencies(start_state, end_state)
   if end_state.scroll_amount ~= start_state.scroll_amount then
     vim.notify("scroll amount changed during session")
@@ -243,6 +242,52 @@ function M.check_state_inconsistencies(start_state, end_state)
   if end_state.window_height ~= start_state.window_height then
     vim.notify("window height changed during session")
   end
+end
+
+--- Find the first and last differing lines between two line arrays
+---@param a string[] First line array
+---@param b string[] Second line array
+---@return integer|nil first_diff 0-indexed first differing line, or nil if equal
+---@return integer|nil last_diff 0-indexed last differing line, or nil if equal
+function M.find_diff_range(a, b)
+  local first_diff, last_diff = nil, nil
+  local max_len = math.max(#a, #b)
+  for i = 1, max_len do
+    if a[i] ~= b[i] then
+      if not first_diff then first_diff = i - 1 end
+      last_diff = i - 1
+    end
+  end
+  return first_diff, last_diff
+end
+
+--- Compute the search region that covers cursor positions and changed lines
+--- Returns (region_start, region_end) as 0-indexed line numbers
+---@param start_row integer 0-indexed start cursor row
+---@param end_row integer 0-indexed end cursor row
+---@param start_lines string[] Buffer lines at session start
+---@param end_lines string[] Buffer lines at session end
+---@param padding integer Number of lines to add above/below
+---@return integer region_start 0-indexed first line of region
+---@return integer region_end 0-indexed last line of region
+function M.compute_search_region(start_row, end_row, start_lines, end_lines, padding)
+  local min_row = math.min(start_row, end_row)
+  local max_row = math.max(start_row, end_row)
+
+  -- Find changed line range (first/last differing line)
+  local first_diff, last_diff = M.find_diff_range(start_lines, end_lines)
+  if first_diff then
+    min_row = math.min(min_row, first_diff)
+    max_row = math.max(max_row, last_diff)
+  end
+
+  -- Apply padding, clamp to buffer bounds
+  -- Use max of both buffer lengths since edits may add/remove lines
+  local buffer_len = math.max(#start_lines, #end_lines)
+  local region_start = math.max(0, min_row - padding)
+  local region_end = math.min(buffer_len - 1, max_row + padding)
+
+  return region_start, region_end
 end
 
 return M

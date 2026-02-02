@@ -148,37 +148,95 @@ local function setup_sim_window(win, buf, lines, row, col, label)
   end)
 end
 
---- Tokenize a sequence for animation, with character-by-character fallback
----@param seq string
----@return string[]
-local function tokenize_for_animation(seq)
-  -- First try the C++ tokenizer (works for optimizer-supported motions)
-  local tokens, err = ffi_lib.tokenize_motions(seq)
-  if not err and tokens and #tokens > 0 then
-    return tokens
+-- Commands that enter insert mode (for detecting typed text tokens)
+local INSERT_COMMANDS = {
+  ["i"] = true, ["I"] = true, ["a"] = true, ["A"] = true,
+  ["o"] = true, ["O"] = true, ["s"] = true, ["S"] = true,
+  ["R"] = true, ["C"] = true, ["cc"] = true,
+}
+
+-- Check if a token is a change command (enters insert mode)
+-- Handles: standalone insert commands, c{motion}, c{textobj}
+---@param token string
+---@return boolean
+local function is_change_command(token)
+  -- Strip leading count
+  local cmd = token:gsub("^%d+", "")
+
+  -- Check standalone commands
+  if INSERT_COMMANDS[cmd] then
+    return true
   end
 
-  -- Fallback: split into individual characters for animation
-  -- This handles user sequences with unsupported motions like gj, gk, etc.
-  local chars = {}
-  local i = 1
-  while i <= #seq do
-    -- Check for <...> style key notation
-    if seq:sub(i, i) == "<" then
-      local close = seq:find(">", i, true)
-      if close then
-        table.insert(chars, seq:sub(i, close))
-        i = close + 1
-      else
-        table.insert(chars, seq:sub(i, i))
-        i = i + 1
+  -- Check c{motion} or c{textobj} patterns
+  if cmd:sub(1, 1) == "c" and #cmd > 1 then
+    return true
+  end
+
+  return false
+end
+
+--- Tokenize a sequence for animation, with character-by-character fallback
+--- Returns two arrays: tokens and their execution chunks
+--- Typed text is chunked into 4-char segments for smooth animation
+---@param seq string
+---@return string[] tokens Array of execution steps
+local function tokenize_for_animation(seq)
+  -- Try the C++ sequence tokenizer first (handles motions + edits + typed text)
+  local tokens, err = ffi_lib.tokenize_sequence(seq)
+  if err or not tokens or #tokens == 0 then
+    -- Fallback to motion tokenizer
+    tokens, err = ffi_lib.tokenize_motions(seq)
+    if err or not tokens or #tokens == 0 then
+      -- Final fallback: split into individual characters
+      local chars = {}
+      local i = 1
+      while i <= #seq do
+        if seq:sub(i, i) == "<" then
+          local close = seq:find(">", i, true)
+          if close then
+            table.insert(chars, seq:sub(i, close))
+            i = close + 1
+          else
+            table.insert(chars, seq:sub(i, i))
+            i = i + 1
+          end
+        else
+          table.insert(chars, seq:sub(i, i))
+          i = i + 1
+        end
       end
-    else
-      table.insert(chars, seq:sub(i, i))
-      i = i + 1
+      return chars
     end
   end
-  return chars
+
+  -- Expand typed text tokens into chunks of 4 chars
+  local expanded = {}
+  local in_insert_mode = false
+  local CHUNK_SIZE = 4
+
+  for _, token in ipairs(tokens) do
+    if token == "<Esc>" then
+      table.insert(expanded, token)
+      in_insert_mode = false
+    elseif in_insert_mode then
+      -- This is typed text - chunk it
+      local i = 1
+      while i <= #token do
+        local chunk_end = math.min(i + CHUNK_SIZE - 1, #token)
+        table.insert(expanded, token:sub(i, chunk_end))
+        i = chunk_end + 1
+      end
+    else
+      -- Check if this command enters insert mode
+      if is_change_command(token) then
+        in_insert_mode = true
+      end
+      table.insert(expanded, token)
+    end
+  end
+
+  return expanded
 end
 
 --- Advance all sequences by one step

@@ -38,12 +38,24 @@ Sessions transition from active to result on `finish()`. Storage uses separate t
 
 ## Key Tracking (key_tracking.lua)
 
-Uses `vim.on_key(callback)` to capture keypresses. Important behaviors:
+Uses `vim.on_key(callback)` to capture keypresses with post-processing deduplication.
 
-**Filtering logic:**
+### Deduplication Logic
+
+When an operator-pending command completes (e.g., `cw`), Neovim re-evaluates and fires the
+motion key twice. `build_sequence()` removes these duplicates by detecting:
+- Same key appearing twice in succession
+- First occurrence in operator-pending mode (`no`)
+- Second occurrence in different mode (normal/insert)
+
+### Filtering logic
 - Command-line mode (`:` prefix, `<Cmd>`) is excluded
 - Multi-key mappings with filtered RHS (Vimfy commands) trigger removal of accumulated LHS keys
 - Single-key remaps and lua-function RHS cannot be reliably detected
+
+### Known limitations
+- Text object final character missing (`ciw` → `c, i, ?`) - Neovim consumes internally before `vim.on_key` fires
+- See neovim/neovim#19426 for `v:motion` feature request that would help
 
 **Approximate motion conversions** (in session.lua):
 - `gj` → `j`, `gk` → `k` (screen-line motions unsupported by optimizer)

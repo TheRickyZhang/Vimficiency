@@ -38,11 +38,12 @@ local M = {}
 ---@field vimficiency_hand_name fun(index: integer): ffi.cdata*
 ---@field vimficiency_get_config fun(): VimficiencyConfigFFI
 ---@field vimficiency_apply_config fun(): nil
----@field vimficiency_analyze fun(text: string, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, start_row: integer, start_col: integer, end_row: integer, end_col: integer, tot_lines: integer, keyseq: string, top_row: integer, bottom_row: integer, window_height: integer, scroll_amount: integer, results_calculated: integer): string
+---@field vimficiency_analyze fun(initial_text: string, goal_text: string, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, start_row: integer, start_col: integer, end_row: integer, end_col: integer, keyseq: string, window_height: integer, scroll_amount: integer, results_calculated: integer): string
 ---@field vimficiency_get_debug fun(): string
 ---@field vimficiency_version fun(): integer
 ---@field vimficiency_debug_config fun(): string
 ---@field vimficiency_tokenize_motions fun(seq: string): string
+---@field vimficiency_tokenize_sequence fun(seq: string): string
 
 ffi.cdef([[
     extern const int VIMFICIENCY_KEY_COUNT;
@@ -79,13 +80,13 @@ ffi.cdef([[
     const char* vimficiency_finger_name(int index);
     const char* vimficiency_hand_name(int index);
     const char* vimficiency_analyze(
-        const char* text,
+        const char* initial_text,
+        const char* goal_text,
         int boundary_first_col, int boundary_last_col,
         bool has_lines_above, bool has_lines_below,
         int start_row, int start_col, int end_row, int end_col,
-        int tot_lines,
         const char* keyseq,
-        int top_row, int bottom_row, int window_height, int scroll_amount,
+        int window_height, int scroll_amount,
         int RESULTS_CALCULATED
     );
     const char* vimficiency_get_debug();
@@ -95,6 +96,10 @@ ffi.cdef([[
     const char* vimficiency_debug_config();
 
     const char* vimficiency_tokenize_motions(const char* seq);
+
+    const char* vimficiency_tokenize_sequence(const char* seq);
+
+    const char* vimficiency_format_sequence(const char* seq);
 ]])
 
 -------- Local Helper Functions --------
@@ -196,7 +201,8 @@ function M.configure(user_config)
 	lib.vimficiency_apply_config()
 end
 
----@param lines string[]
+---@param initial_lines string[] Buffer lines at session start
+---@param goal_lines string[] Buffer lines at session end (can equal initial_lines for motion-only)
 ---@param boundary_first_col integer Column offset at start of boundary (0 for linewise)
 ---@param boundary_last_col integer Last valid column in boundary (lastLineLen-1 for linewise)
 ---@param has_lines_above boolean Whether there are lines above the slice in the full buffer
@@ -206,30 +212,29 @@ end
 ---@param end_row integer (0-indexed, relative to slice)
 ---@param end_col integer (0-indexed)
 ---@param key_seq string
----@param top_row integer
----@param bottom_row integer
 ---@param window_height integer
 ---@param scroll_amount integer
 ---@param RESULTS_CALCULATED integer
----@return VimficiencyResult[] results, string debug
+---@return VimficiencyResult[] results, number user_cost, string debug
 function M.analyze(
-  lines, boundary_first_col, boundary_last_col,
+  initial_lines, goal_lines,
+  boundary_first_col, boundary_last_col,
   has_lines_above, has_lines_below,
   start_row, start_col, end_row, end_col,
   key_seq,
-  top_row, bottom_row, window_height, scroll_amount,
+  window_height, scroll_amount,
   RESULTS_CALCULATED
 )
-	local text = table.concat(lines, "\n")
-	local tot_lines = #lines
+	local initial_text = table.concat(initial_lines, "\n")
+	local goal_text = table.concat(goal_lines, "\n")
 
 	local result = lib.vimficiency_analyze(
-    text, boundary_first_col, boundary_last_col,
+    initial_text, goal_text,
+    boundary_first_col, boundary_last_col,
     has_lines_above, has_lines_below,
     start_row, start_col, end_row, end_col,
-    tot_lines,
     key_seq,
-    top_row, bottom_row, window_height, scroll_amount,
+    window_height, scroll_amount,
     RESULTS_CALCULATED
   )
   local dbg = ffi.string(lib.vimficiency_get_debug())
@@ -240,17 +245,28 @@ function M.analyze(
     error(result_str)
   end
 
-  -- Parse results: format is "size: N\nseq1 cost1\nseq2 cost2\n..."
+  -- Parse results: format is "size: N user_cost: X.XXX\nseq1 cost1\nseq2 cost2\n..."
   ---@class VimficiencyResult
   ---@field seq string Motion sequence
   ---@field cost number Effort cost
 
   ---@type VimficiencyResult[]
   local results = {}
+  local user_cost = 0
   local line_num = 0
   for line in result_str:gmatch("[^\n]+") do
+    -- Stop parsing at debug separator
+    if line:find("----------------DEBUG----------------", 1, true) then
+      break
+    end
     line_num = line_num + 1
-    if line_num > 1 then  -- Skip "size: N" header
+    if line_num == 1 then
+      -- Parse header: "size: N user_cost: X.XXX"
+      local cost_str = line:match("user_cost:%s*(%S+)")
+      if cost_str then
+        user_cost = tonumber(cost_str) or 0
+      end
+    else
       local seq, cost_str = line:match("^(%S+)%s+(%S+)")
       if seq then
         table.insert(results, {
@@ -261,7 +277,7 @@ function M.analyze(
     end
   end
 
-  return results, dbg
+  return results, user_cost, dbg
 end
 
 function M.version()
@@ -290,6 +306,38 @@ function M.tokenize_motions(seq)
   end
   -- Handle trailing newline from C++ (trimws removes empty strings from split)
   return vim.split(result_str, "\n", { plain = true, trimempty = true }), nil
+end
+
+--- Tokenize a full Vim sequence (motions, edits, insert-mode text) into tokens
+--- Supports change commands, typed text, and <Esc>
+---@param seq string Vim sequence (e.g., "ciwhello<Esc>2j")
+---@return string[] Array of tokens (e.g., {"ciw", "hello", "<Esc>", "2j"})
+---@return string|nil error Error message if tokenization failed
+function M.tokenize_sequence(seq)
+  if not seq or seq == "" then
+    return {}, nil
+  end
+  local result_str = ffi.string(lib.vimficiency_tokenize_sequence(seq))
+  if result_str == "" then
+    return {}, nil
+  end
+  -- Check for error from C++
+  if result_str:sub(1, 6) == "ERROR:" then
+    return {}, result_str
+  end
+  -- Handle trailing newline from C++ (trimws removes empty strings from split)
+  return vim.split(result_str, "\n", { plain = true, trimempty = true }), nil
+end
+
+--- Format a sequence string for human-readable display
+--- Tokenizes into logical units and joins with spaces
+---@param seq string Vim sequence (e.g., "3rx<C-d>ciwfoo<Esc>")
+---@return string Formatted sequence (e.g., "3rx <C-d> ciw foo <Esc>")
+function M.format_sequence(seq)
+  if not seq or seq == "" then
+    return ""
+  end
+  return ffi.string(lib.vimficiency_format_sequence(seq))
 end
 
 return M
