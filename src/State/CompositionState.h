@@ -6,7 +6,6 @@
 #include "Editor/Mode.h"
 #include "Editor/Position.h"
 #include "Keyboard/KeyboardModel.h"
-#include "Keyboard/MotionToKeys.h"
 #include "RunningEffort.h"
 #include "Sequence.h"
 
@@ -66,13 +65,7 @@ class CompositionState {
   RunningEffort runningEffort;
 
   // Helper to append to the appropriate mode segment
-  void appendSequence(const std::string& s, const PhysicalKeys& keys, const Config& config) {
-    if (sequences.empty() || sequences.back().mode != mode) {
-      sequences.emplace_back(mode);
-    }
-    sequences.back().append(s);
-    effort = runningEffort.append(keys, config);
-  }
+  void appendSequence(const std::string& s, const PhysicalKeys& keys, const Config& config);
 
 public:
   CompositionState(Position pos, Mode mode, int editsCompleted,
@@ -106,50 +99,37 @@ public:
   RunningEffort getRunningEffort() const { return runningEffort; }
 
   // ==========================================================================
-  // State transitions
+  // State transitions - return new state with transition applied
   // ==========================================================================
 
-  // Apply a movement motion (doesn't change editsCompleted)
-  // Caller must provide new position (computed via motion application)
-  void applyMotion(const std::string& motion, const Position& newPos,
-                     const PhysicalKeys& keys, const Config& config) {
-    pos = newPos;
-    appendSequence(motion, keys, config);
-  }
-
-  // Apply an edit transition (uses pre-computed EditResult)
-  // - editSequences: the sequences for this edit (from EditResult.adj)
+  // Create new state with edit transition applied
+  // - editSequences: the sequences for this edit (from EditResult)
   // - newPos: position after edit completes (end position in edit region)
   // - newMode: mode after edit completes
-  void applyEditTransition(const std::vector<Sequence>& editSequences,
-                           const Position& newPos, Mode newMode,
-                           const Config& config) {
-    pos = newPos;
-    editsCompleted++;
-    // Merge edit sequences into our sequences
-    for (const auto& seq : editSequences) {
-      // Set mode to match each segment's mode before appending
-      mode = seq.mode;
-      PhysicalKeys keys = globalTokenizer().tokenize(seq.keys);
-      appendSequence(seq.keys, keys, config);
-    }
-    mode = newMode;
-  }
+  // Note: caller must set cost via setCost() after computing heuristic
+  [[nodiscard]] CompositionState afterEditTransition(
+      const std::vector<Sequence>& editSequences,
+      const Position& newPos, Mode newMode,
+      const Config& config) const;
 
-  // Apply movement result from MotionOptimizer::optimizeToRange()
+  // Create new state with motion result applied
   // - moveSequences: the sequences for this movement
   // - newPos: position after movement completes
-  void applyMotionResult(const std::vector<Sequence>& moveSequences,
-                           const Position& newPos, const Config& config) {
-    pos = newPos;
-    for (const auto& seq : moveSequences) {
-      PhysicalKeys keys = globalTokenizer().tokenize(seq.keys);
-      appendSequence(seq.keys, keys, config);
-    }
-  }
+  // Note: caller must set cost via setCost() after computing heuristic
+  [[nodiscard]] CompositionState afterMotionResult(
+      const std::vector<Sequence>& moveSequences,
+      const Position& newPos,
+      const Config& config) const;
 
-  void updateCost(double newCost) { cost = newCost; }
+  void setCost(double newCost) { cost = newCost; }
 
-  void setPos(const Position& newPos) { pos = newPos; }
-  void setMode(Mode newMode) { mode = newMode; }
+private:
+  // Internal: apply edit transition to this state (mutates)
+  void applyEditTransitionImpl(const std::vector<Sequence>& editSequences,
+                               const Position& newPos, Mode newMode,
+                               const Config& config);
+
+  // Internal: apply motion result to this state (mutates)
+  void applyMotionResultImpl(const std::vector<Sequence>& moveSequences,
+                             const Position& newPos, const Config& config);
 };

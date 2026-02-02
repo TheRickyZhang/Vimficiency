@@ -52,14 +52,13 @@ public:
   // Mode-aware: uses goal or range depending on constructor used.
   void emitMotion(const MotionState& base, const char* cmd,
                   Position endpoint, const PhysicalKeys& keys) {
-    MotionState newState = base;
-    newState.applyMotion(cmd, endpoint, keys, ctx.config);
+    MotionState newState = base.afterMotion(cmd, endpoint, keys, ctx.config);
 
     if (isRangeMode_) {
-      newState.updateCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeLast_));
+      newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeLast_));
       ctx.exploreNewStateToRange(std::move(newState), rangeFirst_, rangeLast_);
     } else {
-      newState.updateCost(ctx.computePriorityToGoal(newState, goalPos_));
+      newState.setCost(ctx.computePriorityToGoal(newState, goalPos_));
       ctx.exploreNewState(std::move(newState), goalKey_);
     }
   }
@@ -221,18 +220,16 @@ public:
     auto keyIt = motionToKeys.find(motion);
     if (keyIt == motionToKeys.end()) return;
 
-    MotionState newState = base;
-    newState.applyCountedMotion(motion, cnt, newPos, keyIt->second, ctx.config);
-    newState.updateCost(ctx.computePriorityToGoal(newState, goalPos_));
+    MotionState newState = base.afterCountedMotion(motion, cnt, newPos, keyIt->second, ctx.config);
+    newState.setCost(ctx.computePriorityToGoal(newState, goalPos_));
     ctx.exploreNewState(std::move(newState), goalKey_);
   }
 
   // F-motions with known column (internal helper)
   void exploreFMotion(const MotionState& base, const std::string& motion,
                       int newcol, const PhysicalKeys& keys) {
-    MotionState newState = base;
-    newState.applyFMotion(motion, newcol, keys, ctx.config);
-    newState.updateCost(ctx.computePriorityToGoal(newState, goalPos_));
+    MotionState newState = base.afterFMotion(motion, newcol, keys, ctx.config);
+    newState.setCost(ctx.computePriorityToGoal(newState, goalPos_));
     ctx.exploreNewState(std::move(newState), goalKey_);
   }
 

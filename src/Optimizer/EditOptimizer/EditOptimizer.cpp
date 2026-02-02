@@ -285,8 +285,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
   // Deletion handler: apply deletion, check goal, store result or continue search
   auto exploreDeletion = [&](const EditState &base, const Range &range,
                              const char* deleteCmd, const PhysicalKeys &deleteKeys) {
-    EditState newState = base;
-    newState.applyDeletion(range);
+    EditState newState = base.afterDeletion(range);
     const Lines &lines = newState.getLines();
 
     if (isGoalReached(lines)) {
@@ -308,9 +307,8 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
       return;
     }
 
-    newState.appendToSeq(deleteCmd);
-    newState.updateEffort(deleteKeys, config);
-    newState.updateCost(ctx.computePriority(newState.getEffort(), lines));
+    newState.recordSearch(deleteCmd, deleteKeys,
+                          ctx.computePriority(newState.getEffort(), lines), config);
     ctx.exploreNewState(std::move(newState));
   };
 
@@ -318,8 +316,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
   // The cc conversion accounts for the empty line that cc leaves (vs dd which removes it)
   auto exploreLinewise = [&](const EditState &base, int line,
                              const char *deleteCmd, const PhysicalKeys &deleteKeys) {
-    EditState newState = base;
-    newState.applyLinewiseDeletion(line);
+    EditState newState = base.afterLinewiseDeletion(line);
     const Lines &lines = newState.getLines();
 
     // For search continuation: adjust cursor if it escaped below edit region
@@ -359,9 +356,8 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
     }
 
     // Continue search with dd state
-    newState.appendToSeq(searchCmdSeq.c_str());
-    newState.updateEffort(searchCmdKeys, config);
-    newState.updateCost(ctx.computePriority(newState.getEffort(), lines));
+    newState.recordSearch(searchCmdSeq, searchCmdKeys,
+                          ctx.computePriority(newState.getEffort(), lines), config);
     ctx.exploreNewState(std::move(newState));
   };
 
@@ -376,8 +372,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
     // Join handler: J/gJ merges current line with next
     auto exploreJoin = [&](const EditState& base, bool addSpace,
                            const char* joinCmd, const PhysicalKeys& joinKeys) {
-      EditState newState = base;
-      newState.applyJoin(addSpace);
+      EditState newState = base.afterJoin(addSpace);
       const Lines& lines = newState.getLines();
 
       if (isGoalReached(lines)) {
@@ -389,9 +384,8 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
         // For now, just continue search - J is more useful for pure deletion
       }
 
-      newState.appendToSeq(joinCmd);
-      newState.updateEffort(joinKeys, config);
-      newState.updateCost(ctx.computePriority(newState.getEffort(), lines));
+      newState.recordSearch(joinCmd, joinKeys,
+                            ctx.computePriority(newState.getEffort(), lines), config);
       ctx.exploreNewState(std::move(newState));
     };
 
@@ -408,9 +402,8 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
         // Pure cursor movement - no buffer change, no goal check possible
         EditState newState = s;
         newState.setPos(newPos);
-        newState.appendToSeq(cmd);
-        newState.updateEffort(keys, config);
-        newState.updateCost(ctx.computePriority(newState.getEffort(), newState.getLines()));
+        newState.recordSearch(cmd, keys,
+                              ctx.computePriority(newState.getEffort(), newState.getLines()), config);
         ctx.exploreNewState(std::move(newState));
       },
       [&](bool addSpace, const char* cmd, const PhysicalKeys& keys) {
@@ -453,8 +446,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
   // Deletion handler: output delete command directly (no change conversion)
   auto exploreDeletion = [&](const EditState &base, const Range &range,
                              const char *deleteCmd, const PhysicalKeys &deleteKeys) {
-    EditState newState = base;
-    newState.applyDeletion(range);
+    EditState newState = base.afterDeletion(range);
     const Lines &lines = newState.getLines();
 
     // Check goal immediately - multi-source A* needs this since state key doesn't include startIndex
@@ -472,17 +464,15 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
       return;
     }
 
-    newState.appendToSeq(deleteCmd);
-    newState.updateEffort(deleteKeys, config);
-    newState.updateCost(ctx.computePriority(newState.getEffort(), lines));
+    newState.recordSearch(deleteCmd, deleteKeys,
+                          ctx.computePriority(newState.getEffort(), lines), config);
     ctx.exploreNewState(std::move(newState));
   };
 
   // Linewise handler: record dd directly (pure deletion, no cc conversion)
   auto exploreLinewise = [&](const EditState &base, int line,
                              const char *deleteCmd, const PhysicalKeys &deleteKeys) {
-    EditState newState = base;
-    newState.applyLinewiseDeletion(line);
+    EditState newState = base.afterLinewiseDeletion(line);
     const Lines &lines = newState.getLines();
 
     string cmdSeq = deleteCmd;
@@ -516,9 +506,8 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
       return;
     }
 
-    newState.appendToSeq(cmdSeq.c_str());
-    newState.updateEffort(cmdKeys, config);
-    newState.updateCost(ctx.computePriority(newState.getEffort(), lines));
+    newState.recordSearch(cmdSeq, cmdKeys,
+                          ctx.computePriority(newState.getEffort(), lines), config);
     ctx.exploreNewState(std::move(newState));
   };
 
@@ -537,8 +526,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
     // Join handler for pure deletion: J/gJ merges lines without adding new content
     auto exploreJoin = [&](const EditState& base, bool addSpace,
                            const char* joinCmd, const PhysicalKeys& joinKeys) {
-      EditState newState = base;
-      newState.applyJoin(addSpace);
+      EditState newState = base.afterJoin(addSpace);
       const Lines& lines = newState.getLines();
 
       // Check goal immediately - multi-source A* needs this since state key doesn't include startIndex
@@ -556,9 +544,8 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
         return;
       }
 
-      newState.appendToSeq(joinCmd);
-      newState.updateEffort(joinKeys, config);
-      newState.updateCost(ctx.computePriority(newState.getEffort(), lines));
+      newState.recordSearch(joinCmd, joinKeys,
+                            ctx.computePriority(newState.getEffort(), lines), config);
       ctx.exploreNewState(std::move(newState));
     };
 
@@ -575,9 +562,8 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
         // Pure cursor movement - no buffer change, no goal check possible
         EditState newState = s;
         newState.setPos(newPos);
-        newState.appendToSeq(cmd);
-        newState.updateEffort(keys, config);
-        newState.updateCost(ctx.computePriority(newState.getEffort(), newState.getLines()));
+        newState.recordSearch(cmd, keys,
+                              ctx.computePriority(newState.getEffort(), newState.getLines()), config);
         ctx.exploreNewState(std::move(newState));
       },
       [&](bool addSpace, const char* cmd, const PhysicalKeys& keys) {

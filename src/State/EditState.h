@@ -89,45 +89,49 @@ public:
   const RunningEffort& getRunningEffort() const { return runningEffort; }
 
   // -----------------------------------------------------------------------------
-  // State mutation methods
+  // State transitions - return new state with buffer mutation applied
+  // These do NOT record the command - use recordSearch() separately if not goal
   // -----------------------------------------------------------------------------
 
-  // Apply a deletion to the buffer (does NOT update seq - use appendToSeq separately)
-  void applyDeletion(const Range& range) {
-    VimCore::deleteRange(lines, range, pos, Mode::Normal);
+  // Create new state with deletion applied
+  [[nodiscard]] EditState afterDeletion(const Range& range) const {
+    EditState newState = *this;
+    VimCore::deleteRange(newState.lines, range, newState.pos, Mode::Normal);
+    return newState;
   }
 
-  // Apply a linewise deletion (for dd - deletes entire lines including newlines)
-  void applyLinewiseDeletion(int line) {
-    VimCore::deleteRangeLinewise(lines, LineRange(line, line), pos);
+  // Create new state with linewise deletion applied (for dd)
+  [[nodiscard]] EditState afterLinewiseDeletion(int line) const {
+    EditState newState = *this;
+    VimCore::deleteRangeLinewise(newState.lines, LineRange(line, line), newState.pos);
+    return newState;
   }
 
-  // Apply a linewise change (for cc - clears line content, cursor stays at col 0)
-  void applyLinewiseChange(int line) {
-    assert(line >= 0 && line < static_cast<int>(lines.size()));
-    lines[line].clear();
-    pos.line = line;
-    pos.setCol(0);  // Updates both col and targetCol
+  // Create new state with join applied (J/gJ)
+  [[nodiscard]] EditState afterJoin(bool addSpace) const {
+    EditState newState = *this;
+    VimCore::joinLines(newState.lines, newState.pos, addSpace);
+    return newState;
   }
 
-  // Apply J/gJ command (join current line with next)
-  void applyJoin(bool addSpace) {
-    VimCore::joinLines(lines, pos, addSpace);
-  }
+  // -----------------------------------------------------------------------------
+  // Command recording - for continued search (not goal states)
+  // -----------------------------------------------------------------------------
 
-  // Append a command string to the sequence
-  void appendToSeq(const char* cmd) {
+  // Record a search command: appends to sequence, updates effort and cost
+  void recordSearch(const char* cmd, const PhysicalKeys& keys,
+                    double cost, const Config& config) {
     seq_ += cmd;
-  }
-
-  // Update effort with new keys
-  void updateEffort(const PhysicalKeys& keys, const Config& config) {
     effort_ = runningEffort.append(keys, config);
+    cost_ = cost;
   }
 
-  // Update cost (typically effort + heuristic)
-  void updateCost(double newCost) {
-    cost_ = newCost;
+  // Record a search command with string sequence
+  void recordSearch(const std::string& cmd, const PhysicalKeys& keys,
+                    double cost, const Config& config) {
+    seq_ += cmd;
+    effort_ = runningEffort.append(keys, config);
+    cost_ = cost;
   }
 
   // -----------------------------------------------------------------------------

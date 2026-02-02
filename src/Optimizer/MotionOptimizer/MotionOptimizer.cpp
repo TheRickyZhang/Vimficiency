@@ -60,7 +60,7 @@ MotionResult MotionOptimizer::optimizeImpl(
   MotionState initialState(startPos, startingEffort, 0.0, 0.0);
   vector<Result> res;
 
-  initialState.updateCost(ctx.computePriorityToGoal(initialState, endPos));
+  initialState.setCost(ctx.computePriorityToGoal(initialState, endPos));
   ctx.pq.push(initialState);
   ctx.costMap[initialState.getKey()] = initialState.getCost();
 
@@ -135,7 +135,7 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
     const Position& rangeFirst,
     const Position& rangeLast,
     const string& userSequence,
-    NavContext& navContext,
+    const NavContext& navContext,
     const MotionBoundary& boundary,
     const MotionToKeys& rawMotionToKeys,
     MotionOptimizerRangeParams params) {
@@ -164,7 +164,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     const Position& rangeFirst,
     const Position& rangeLast,
     const string& userSequence,
-    NavContext& navContext,
+    const NavContext& navContext,
     const MotionBoundary& boundary,
     const MotionToKeys& rawMotionToKeys,
     MotionOptimizerRangeParams params) {
@@ -192,7 +192,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
   int rangeSize = lines.spanSize(rangeFirst, rangeLast);
   int effectiveMaxResults = std::min(params.maxResults, rangeSize);
 
-  initialState.updateCost(ctx.computePriorityToRange(initialState, rangeFirst, rangeLast));
+  initialState.setCost(ctx.computePriorityToRange(initialState, rangeFirst, rangeLast));
   ctx.pq.push(initialState);
   ctx.costMap[initialState.getKey()] = initialState.getCost();
 
@@ -288,10 +288,10 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
 // Explicit template instantiations for optimizeToRangeImpl
 template RangeMotionResult MotionOptimizer::optimizeToRangeImpl<true>(
     const Lines&, const Position&, const RunningEffort&, const Position&, const Position&,
-    const string&, NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerRangeParams);
+    const string&, const NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerRangeParams);
 template RangeMotionResult MotionOptimizer::optimizeToRangeImpl<false>(
     const Lines&, const Position&, const RunningEffort&, const Position&, const Position&,
-    const string&, NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerRangeParams);
+    const string&, const NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerRangeParams);
 
 // Overload without userSequence - uses unbounded effort exploration
 MotionResult MotionOptimizer::optimize(

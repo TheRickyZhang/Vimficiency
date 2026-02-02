@@ -77,7 +77,7 @@ struct MotionOptimizer {
     const Position& rangeFirst,
     const Position& rangeLast,
     const std::string& userSequence,
-    NavContext& navigationContext,
+    const NavContext& navigationContext,
 
     const MotionBoundary& boundary = MotionBoundary(),
     const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS,
@@ -110,7 +110,7 @@ private:
     const Position& rangeFirst,
     const Position& rangeLast,
     const std::string& userSequence,
-    NavContext& navContext,
+    const NavContext& navContext,
     const MotionBoundary& boundary,
     const MotionToKeys& rawMotionToKeys,
     MotionOptimizerRangeParams params

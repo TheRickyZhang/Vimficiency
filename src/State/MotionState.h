@@ -53,10 +53,25 @@ public:
   double getCost()                 const { return cost; }
   RunningEffort getRunningEffort() const { return runningEffort; }
 
-  // Main public interface for optimizer - combines position update, sequence append, and effort
-  void applyMotion(const char* cmd, Position endpoint, const PhysicalKeys& keys, const Config& config);
+  // ==========================================================================
+  // State transitions - return new state with motion applied
+  // ==========================================================================
 
-  void updateCost(double newCost);
+  // Create new state with motion applied
+  // Note: caller must set cost via setCost() after computing heuristic
+  [[nodiscard]] MotionState afterMotion(const char* cmd, Position endpoint,
+                                        const PhysicalKeys& keys, const Config& config) const;
+
+  // Create new state with counted motion applied (e.g., "3w")
+  [[nodiscard]] MotionState afterCountedMotion(const std::string& motion, int cnt,
+                                               Position endpoint, const PhysicalKeys& baseKeys,
+                                               const Config& config) const;
+
+  // Create new state with f-motion applied (e.g., "fx;;")
+  [[nodiscard]] MotionState afterFMotion(const std::string& motion, int newCol,
+                                         const PhysicalKeys& keys, const Config& config) const;
+
+  void setCost(double newCost) { cost = newCost; }
 
   // For simulated motion without pre-computed endpoint (used by optimizeToRange)
   void applySingleMotionWithEffort(const char* motion, const NavContext& navContext,
@@ -65,13 +80,12 @@ public:
   // Keep for parsing arbitrary strings (tests, etc.)
   void applySingleMotion(std::string motion, const NavContext& navContext, const Lines& lines);
 
-  // For counted motions with known endpoint
-  void applyCountedMotion(const std::string& motion, int cnt, Position endpoint,
-                          const PhysicalKeys& baseKeys, const Config& config);
-
-  // For f-motions with complex string sequences
-  void applyFMotion(const std::string& motion, int newCol, const PhysicalKeys& keys, const Config& config);
-
 private:
   void updateEffort(const PhysicalKeys& keys, const Config& config);
+
+  // Internal: apply motion to this state (mutates)
+  void applyMotionImpl(const char* cmd, Position endpoint, const PhysicalKeys& keys, const Config& config);
+  void applyCountedMotionImpl(const std::string& motion, int cnt, Position endpoint,
+                              const PhysicalKeys& baseKeys, const Config& config);
+  void applyFMotionImpl(const std::string& motion, int newCol, const PhysicalKeys& keys, const Config& config);
 };
