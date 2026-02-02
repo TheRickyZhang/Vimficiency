@@ -73,6 +73,7 @@ add_executable(vimficiency_tests
   # CompositionOptimizer
   CompositionOptimizer/DiffStateTest.cpp
   CompositionOptimizer/ManualTest.cpp
+  CompositionOptimizer/OutputCorrectnessTest.cpp
 
   # EditOptimizer
   EditOptimizer/ManualTest.cpp

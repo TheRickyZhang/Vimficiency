@@ -166,9 +166,9 @@ void EditExplorer::exploreSentenceEdits(
     if constexpr (Forward) {
       // d): delete from cursor to just before endpoint (exclusive)
       if (endpoint <= cursor) continue;
-      Position endPos = lines.getPrevPos(endpoint);
-      if (endPos == POSITION_OUTSIDE_BOUNDARY) continue;
-      onDeletion(Range(cursor, endPos), spec.cmd, spec.keys);
+      Position goalPos = lines.getPrevPos(endpoint);
+      if (goalPos == POSITION_OUTSIDE_BOUNDARY) continue;
+      onDeletion(Range(cursor, goalPos), spec.cmd, spec.keys);
     } else {
       // d(: delete from endpoint to just before cursor (exclusive)
       if (endpoint >= cursor) continue;
@@ -192,12 +192,12 @@ void EditExplorer::exploreSentenceEdits(
         if (cursorOnTrailingWs) continue;
       }
 
-      Position endPos = Position(cursor.line, cursor.col - 1);
+      Position goalPos = Position(cursor.line, cursor.col - 1);
       if (cursor.col == 0) {
         if (cursor.line == 0) continue;
-        endPos = Position(cursor.line - 1, lines[cursor.line - 1].lastCol());
+        goalPos = Position(cursor.line - 1, lines[cursor.line - 1].lastCol());
       }
-      onDeletion(Range(endpoint, endPos), spec.cmd, spec.keys);
+      onDeletion(Range(endpoint, goalPos), spec.cmd, spec.keys);
     }
   }
 }

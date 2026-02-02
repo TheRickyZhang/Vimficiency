@@ -9,6 +9,7 @@
 #include "VimCore/VimCore.h"
 #include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimEndpointUtils.h"
+#include "VimCore/VimOptions.h"
 
 // MotionExplorer encapsulates motion exploration logic for the optimizer.
 // Separates exploration methods from the main optimize() function for clarity.
@@ -189,7 +190,9 @@ public:
           ctx.boundary.hasLinesAbove(), ctx.boundary.hasLinesBelow());
 
       if (targetLine != VimCore::LINE_OUTSIDE_BOUNDARY) {
-        int endpointCol = VimCore::clampCol(ctx.lines, pos.targetCol, targetLine);
+        int endpointCol = VimOptions::startOfLine()
+            ? VimCore::firstNonBlankColInLineStr(ctx.lines[targetLine])
+            : VimCore::clampCol(ctx.lines, pos.targetCol, targetLine);
         Position endpoint(targetLine, endpointCol, pos.targetCol);
         emitMotion(base, spec.cmd, endpoint, spec.keys);
       }
@@ -203,14 +206,19 @@ public:
   }
 
   void exploreJumpMotions(const MotionState& base) {
+    Position pos = base.getPos();
     if (!ctx.boundary.hasLinesAbove()) {
-      int endpointCol = VimCore::firstNonBlankColInLineStr(ctx.lines[0]);
-      emitMotion(base, "gg", {0, endpointCol}, {Key::Key_G, Key::Key_G});
+      int endpointCol = VimOptions::startOfLine()
+          ? VimCore::firstNonBlankColInLineStr(ctx.lines[0])
+          : VimCore::clampCol(ctx.lines, pos.targetCol, 0);
+      emitMotion(base, "gg", {0, endpointCol, pos.targetCol}, {Key::Key_G, Key::Key_G});
     }
     if (!ctx.boundary.hasLinesBelow()) {
       int lastLine = ctx.lines.lastLine();
-      int endpointCol = VimCore::firstNonBlankColInLineStr(ctx.lines[lastLine]);
-      emitMotion(base, "G", {lastLine, endpointCol}, {Key::Key_Shift, Key::Key_G});
+      int endpointCol = VimOptions::startOfLine()
+          ? VimCore::firstNonBlankColInLineStr(ctx.lines[lastLine])
+          : VimCore::clampCol(ctx.lines, pos.targetCol, lastLine);
+      emitMotion(base, "G", {lastLine, endpointCol, pos.targetCol}, {Key::Key_Shift, Key::Key_G});
     }
   }
 
@@ -426,8 +434,10 @@ public:
     exploreScrollMotions<false>(base);
 
     if (!ctx.boundary.hasLinesAbove()) {
-      int endpointCol = VimCore::firstNonBlankColInLineStr(ctx.lines[0]);
-      emitMotion(base, "gg", {0, endpointCol}, {Key::Key_G, Key::Key_G});
+      int endpointCol = VimOptions::startOfLine()
+          ? VimCore::firstNonBlankColInLineStr(ctx.lines[0])
+          : VimCore::clampCol(ctx.lines, pos.targetCol, 0);
+      emitMotion(base, "gg", {0, endpointCol, pos.targetCol}, {Key::Key_G, Key::Key_G});
     }
   }
 
@@ -445,8 +455,10 @@ public:
     exploreScrollMotions<true>(base);
 
     if (!ctx.boundary.hasLinesBelow()) {
-      int endpointCol = VimCore::firstNonBlankColInLineStr(ctx.lines[lastLine]);
-      emitMotion(base, "G", {lastLine, endpointCol}, {Key::Key_Shift, Key::Key_G});
+      int endpointCol = VimOptions::startOfLine()
+          ? VimCore::firstNonBlankColInLineStr(ctx.lines[lastLine])
+          : VimCore::clampCol(ctx.lines, pos.targetCol, lastLine);
+      emitMotion(base, "G", {lastLine, endpointCol, pos.targetCol}, {Key::Key_Shift, Key::Key_G});
     }
   }
 

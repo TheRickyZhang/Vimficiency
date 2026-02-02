@@ -12,14 +12,14 @@
 struct RangeResult {
   std::vector<Sequence> sequences;
   double keyCost;
-  Position endPos;
+  Position goalPos;
 
-  RangeResult() : keyCost(0), endPos(0, 0) {}
+  RangeResult() : keyCost(0), goalPos(0, 0) {}
   RangeResult(std::vector<Sequence> seqs, double c, Position p)
-    : sequences(std::move(seqs)), keyCost(c), endPos(p) {}
+    : sequences(std::move(seqs)), keyCost(c), goalPos(p) {}
 
   // Constructor from string
-  RangeResult(const std::string& s, double c, Position p) : keyCost(c), endPos(p) {
+  RangeResult(const std::string& s, double c, Position p) : keyCost(c), goalPos(p) {
     if (!s.empty()) {
       sequences.emplace_back(s, Mode::Normal);
     }
@@ -40,7 +40,7 @@ struct RangeResult {
       if(i > 0) os << " ";
       os << makePrintable(s.keys);
     }
-    os << " " << r.keyCost << " -> (" << r.endPos.line << "," << r.endPos.col << ")";
+    os << " " << r.keyCost << " -> (" << r.goalPos.line << "," << r.goalPos.col << ")";
     return os;
   }
 };

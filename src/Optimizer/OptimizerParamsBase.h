@@ -25,6 +25,10 @@ struct OptimizerParamsBase {
   double effortWeight = 1.0;
   double distanceWeight = 1.0;
 
+  // Note these might not really belong here, but move later if problems arise
+  int linePaddingAbove = 2;
+  int linePaddingBelow = 2;
+
   // Debug: collect explored states in SearchStats (expensive, for debugging only)
   bool trackExploredStates = false;
 };

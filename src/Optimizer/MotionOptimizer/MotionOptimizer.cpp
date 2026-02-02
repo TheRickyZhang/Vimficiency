@@ -12,22 +12,6 @@
 
 using namespace std;
 
-// COnsider using spans?
-// MotionResult MotionOptimizer::optimize(
-//     const Lines& originalLines,
-//     const Position& startPos,
-//     const RunningEffort& startingEffort,
-//     const Position &endPos,
-//     const string &userSequence,
-//     const NavContext& navContext,
-//     const MotionToKeys &rawMotionToKeys,
-//     MotionOptimizerParams params) {
-//   MotionBoundary boundary = MotionBoundary(originalLines, startPos, endPos);
-//   int mn = min(startPos.line, endPos.line);
-//   int mx = max(startPos.line, endPos.line);
-//   return optimize(originalLines(originalLines.begin + mn, originalLines.begin + mx));
-// }
-
 // Public entry point - dispatches to templated implementation based on direction
 MotionResult MotionOptimizer::optimize(
     const Lines &lines,
@@ -275,7 +259,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     // Count unique positions in results
     set<PosKey> seen;
     for (const auto& r : results) {
-      seen.insert({r.endPos.line, r.endPos.col});
+      seen.insert({r.goalPos.line, r.goalPos.col});
     }
     uniqueCount = static_cast<int>(seen.size());
   } else {

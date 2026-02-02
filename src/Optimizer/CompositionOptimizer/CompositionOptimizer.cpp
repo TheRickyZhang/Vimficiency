@@ -34,16 +34,16 @@ Position computeInsertEndPos(Position insertPos, const string& insertedText) {
 
 } // anonymous namespace
 
-// Note that endPos doesn't matter except for directionality; we want to explore anything that performs the same edits.
+// Note that goalPos doesn't matter except for directionality; we want to explore anything that performs the same edits.
 vector<Result> CompositionOptimizer::optimize(
-    const Lines& initialLines, const Position startPos, const Lines& goalLines,
-    const Position endPos, const string& userSequence,
+    const Lines& initialLines, const Position initialPos, const Lines& goalLines,
+    const Position goalPos, const string& userSequence,
     const NavContext& navigationContext, const MotionBoundary& boundary,
     const MotionToKeys& rawMotionToKeys, CompositionOptimizerParams params) {
   MotionOptimizer motionOptimizer(config);
 
   // Create search context - handles all pre-computation
-  CompositionSearchContext ctx(initialLines, startPos, goalLines, userSequence,
+  CompositionSearchContext ctx(initialLines, initialPos, goalLines, userSequence,
                                navigationContext, boundary, rawMotionToKeys,
                                params, config, overshootPenalty, forwardBias,
                                maxLineLength);
@@ -59,7 +59,7 @@ vector<Result> CompositionOptimizer::optimize(
   vector<Result> results;
 
   // Initialize starting state with heuristic cost
-  CompositionState startingState(startPos, Mode::Normal, 0);
+  CompositionState startingState(initialPos, Mode::Normal, 0);
   startingState.setCost(ctx.heuristic(startingState, 0));
   ctx.pq.push(startingState);
   ctx.costMap[startingState.getKey()] = startingState.getCost();
@@ -104,7 +104,7 @@ vector<Result> CompositionOptimizer::optimize(
           : text;
 
       // Compute end position after insertion completes
-      Position endPos = computeInsertEndPos(insertPos, text);
+      Position goalPos = computeInsertEndPos(insertPos, text);
 
       // Strategy 1: o/O shortcuts (ONLY for new line insertions at col 0)
       if (isNewLineInsertion && insertPos.col == 0) {
@@ -112,7 +112,7 @@ vector<Result> CompositionOptimizer::optimize(
         if (pos.line == insertPos.line - 1 && insertPos.line > 0) {
           string seq = "o" + textContent + "<Esc>";
           CompositionState newState = s.afterEditTransition(
-              {Sequence(seq, Mode::Normal)}, endPos, Mode::Normal, config);
+              {Sequence(seq, Mode::Normal)}, goalPos, Mode::Normal, config);
           newState.setCost(ctx.heuristic(newState, editsCompleted + 1));
           ctx.exploreNewState(std::move(newState));
         }
@@ -120,7 +120,7 @@ vector<Result> CompositionOptimizer::optimize(
         if (pos.line == insertPos.line) {
           string seq = "O" + textContent + "<Esc>";
           CompositionState newState = s.afterEditTransition(
-              {Sequence(seq, Mode::Normal)}, endPos, Mode::Normal, config);
+              {Sequence(seq, Mode::Normal)}, goalPos, Mode::Normal, config);
           newState.setCost(ctx.heuristic(newState, editsCompleted + 1));
           ctx.exploreNewState(std::move(newState));
         }
@@ -130,7 +130,7 @@ vector<Result> CompositionOptimizer::optimize(
       if (pos == insertPos) {
         string seq = "i" + text + "<Esc>";
         CompositionState newState = s.afterEditTransition(
-            {Sequence(seq, Mode::Normal)}, endPos, Mode::Normal, config);
+            {Sequence(seq, Mode::Normal)}, goalPos, Mode::Normal, config);
         newState.setCost(ctx.heuristic(newState, editsCompleted + 1));
         ctx.exploreNewState(std::move(newState));
       }
@@ -145,7 +145,7 @@ vector<Result> CompositionOptimizer::optimize(
         if (insertPos.col == fnb) {
           string seq = "I" + text + "<Esc>";
           CompositionState newState = s.afterEditTransition(
-              {Sequence(seq, Mode::Normal)}, endPos, Mode::Normal, config);
+              {Sequence(seq, Mode::Normal)}, goalPos, Mode::Normal, config);
           newState.setCost(ctx.heuristic(newState, editsCompleted + 1));
           ctx.exploreNewState(std::move(newState));
         }
@@ -153,7 +153,7 @@ vector<Result> CompositionOptimizer::optimize(
         if (insertPos.col == lineEnd) {
           string seq = "A" + text + "<Esc>";
           CompositionState newState = s.afterEditTransition(
-              {Sequence(seq, Mode::Normal)}, endPos, Mode::Normal, config);
+              {Sequence(seq, Mode::Normal)}, goalPos, Mode::Normal, config);
           newState.setCost(ctx.heuristic(newState, editsCompleted + 1));
           ctx.exploreNewState(std::move(newState));
         }
@@ -165,8 +165,8 @@ vector<Result> CompositionOptimizer::optimize(
         int regionStart = min(pos.line, insertPos.line);
         int regionEnd = max(pos.line, insertPos.line);
 
-        int subsetStart = max(0, regionStart - params.preSubbufferPadding);
-        int subsetEnd = min(currentLines.lastLine(), regionEnd + params.postSubbufferPadding);
+        int subsetStart = max(0, regionStart - params.motionLinePaddingAbove);
+        int subsetEnd = min(currentLines.lastLine(), regionEnd + params.motionLinePaddingBelow);
 
         Lines subset = currentLines.getLineRange(subsetStart, subsetEnd + 1);
         int lineOffset = subsetStart;
@@ -184,7 +184,7 @@ vector<Result> CompositionOptimizer::optimize(
             MotionOptimizerRangeParams{}.withMaxResults(3)).results;
 
         for (RangeResult& movResult : movementResults) {
-          movResult.endPos.line += lineOffset;
+          movResult.goalPos.line += lineOffset;
         }
 
         for (const RangeResult& movResult : movementResults) {
@@ -192,7 +192,7 @@ vector<Result> CompositionOptimizer::optimize(
             continue;
 
           CompositionState newState = s.afterMotionResult(
-              movResult.sequences, movResult.endPos, config);
+              movResult.sequences, movResult.goalPos, config);
           newState.setCost(ctx.heuristic(newState, editsCompleted));
           ctx.exploreNewState(std::move(newState));
         }
@@ -213,9 +213,9 @@ vector<Result> CompositionOptimizer::optimize(
       const Result& editRes = editResult.typeAllResults[flatIdx];
       if (editRes.isValid()) {
         // Create new state with edit transition applied
-        // Cursor ends at last char of inserted text (precomputed in editResult.endPos)
+        // Cursor ends at last char of inserted text (precomputed in editResult.goalPos)
         CompositionState newState = s.afterEditTransition(
-            editRes.sequences, editResult.endPos, Mode::Normal, config);
+            editRes.sequences, editResult.goalPos, Mode::Normal, config);
         newState.setCost(ctx.heuristic(newState, editsCompleted + 1));
         ctx.exploreNewState(std::move(newState));
       }
@@ -230,8 +230,8 @@ vector<Result> CompositionOptimizer::optimize(
       int regionStart = min(pos.line, nextEdit.firstPos.line);
       int regionEnd = max(pos.line, nextEdit.lastPos.line);
 
-      int subsetStart = max(0, regionStart - params.preSubbufferPadding);
-      int subsetEnd = min(currentLines.lastLine(), regionEnd + params.postSubbufferPadding);
+      int subsetStart = max(0, regionStart - params.motionLinePaddingAbove);
+      int subsetEnd = min(currentLines.lastLine(), regionEnd + params.motionLinePaddingBelow);
 
       // Create subset (small copy - typically 10-20 lines)
       Lines subset = currentLines.getLineRange(subsetStart, subsetEnd + 1);  // +1 for exclusive end
@@ -260,7 +260,7 @@ vector<Result> CompositionOptimizer::optimize(
 
       // Remap results back to original coordinates
       for (RangeResult& movResult : movementResults) {
-        movResult.endPos.line += lineOffset;
+        movResult.goalPos.line += lineOffset;
       }
 
       // Create new states from movement results
@@ -269,7 +269,7 @@ vector<Result> CompositionOptimizer::optimize(
           continue;
 
         CompositionState newState = s.afterMotionResult(
-            movResult.sequences, movResult.endPos, config);
+            movResult.sequences, movResult.goalPos, config);
         newState.setCost(ctx.heuristic(newState, editsCompleted));
         ctx.exploreNewState(std::move(newState));
       }

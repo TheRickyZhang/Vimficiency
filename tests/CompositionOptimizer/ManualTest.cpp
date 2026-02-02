@@ -32,7 +32,7 @@ protected:
   void expectHasValidResults(
       const vector<Result>& results,
       const Lines& initial,
-      Position startPos,
+      Position initialPos,
       const Lines& goal,
       const string& testContext = "") {
 
@@ -45,11 +45,11 @@ protected:
           << (testContext.empty() ? "" : " (" + testContext + ")");
 
       string seq = results[i].getSequenceString();
-      SimulationResult nvim = oracle->simulate(initial, startPos.line, startPos.col, seq);
+      SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq);
 
       EXPECT_EQ(nvim.lines, goal)
           << "Lines mismatch" << (testContext.empty() ? "" : " (" + testContext + ")")
-          << " for result " << i << " seq='" << seq << "' from " << startPos << "\n"
+          << " for result " << i << " seq='" << seq << "' from " << initialPos << "\n"
           << "  Initial: " << initial << "\n"
           << "  Goal:    " << goal << "\n"
           << "  Got:     " << nvim.lines;
@@ -71,9 +71,10 @@ TEST_F(CompositionOptimizer_ManualTest, SingleEdit_SimpleSubstitution) {
   Position goalPos(0, 10);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, Position(0, 0), "", NavContext(),
+      initial, initialPos, goal, goalPos, "", NavContext(),
       MotionBoundary(), EXPLORABLE_MOTIONS, params);
 
+  for(Result r : results) cout << r.getSequenceString() << endl;
   expectHasValidResults(results, initial, initialPos, goal, "simple substitution");
 }
 
@@ -81,26 +82,28 @@ TEST_F(CompositionOptimizer_ManualTest, SingleEdit_AtCursor) {
   // Cursor already at edit position
   Lines initial = {"aaa"};
   Lines goal = {"bbb"};
-  Position startPos(0, 0);
+  Position initialPos(0, 0);
+  Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, startPos, goal, Position(0, 0), "", NavContext(),
+      initial, initialPos, goal, goalPos, "", NavContext(),
       MotionBoundary(), EXPLORABLE_MOTIONS, params);
 
-  expectHasValidResults(results, initial, startPos, goal, "at cursor");
+  expectHasValidResults(results, initial, initialPos, goal, "at cursor");
 }
 
 TEST_F(CompositionOptimizer_ManualTest, SingleEdit_CursorAfterEdit) {
   // Cursor is after the edit region - needs backward motion
   Lines initial = {"aaa bbb"};
   Lines goal = {"xxx bbb"};
-  Position startPos(0, 6);  // Cursor at end
+  Position initialPos(0, 6);  // Cursor at end
+  Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, startPos, goal, Position(0, 0), "", NavContext(),
+      initial, initialPos, goal, goalPos, "", NavContext(),
       MotionBoundary(), EXPLORABLE_MOTIONS, params);
 
-  expectHasValidResults(results, initial, startPos, goal, "cursor after edit");
+  expectHasValidResults(results, initial, initialPos, goal, "cursor after edit");
 }
 
 // =============================================================================
@@ -111,27 +114,27 @@ TEST_F(CompositionOptimizer_ManualTest, TwoEdits_SameLine) {
   // Two changes on the same line
   Lines initial = {"aaa bbb ccc"};
   Lines goal = {"xxx bbb yyy"};
-  Position startPos(0, 0);
+  Position initialPos(0, 0);
+  Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, startPos, goal, Position(0, 0), "", NavContext(),
+      initial, initialPos, goal, goalPos, "", NavContext(),
       MotionBoundary(), EXPLORABLE_MOTIONS, params);
 
-  expectHasValidResults(results, initial, startPos, goal, "two edits same line");
+  expectHasValidResults(results, initial, initialPos, goal, "two edits same line");
 }
 
-TEST_F(CompositionOptimizer_ManualTest, DISABLED_TwoEdits_DifferentLines) {
-  // TODO: Fix - replacement strategy produces incorrect sequence
-  // Changes on different lines
+TEST_F(CompositionOptimizer_ManualTest, TwoEdits_DifferentLines) {
   Lines initial = {"aaa", "bbb", "ccc"};
   Lines goal = {"xxx", "bbb", "yyy"};
-  Position startPos(0, 0);
+  Position initialPos(0, 0);
+  Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, startPos, goal, Position(0, 0), "", NavContext(),
+      initial, initialPos, goal, goalPos, "", NavContext(),
       MotionBoundary(), EXPLORABLE_MOTIONS, params);
 
-  expectHasValidResults(results, initial, startPos, goal, "two edits different lines");
+  expectHasValidResults(results, initial, initialPos, goal, "two edits different lines");
 }
 
 // =============================================================================
@@ -141,26 +144,28 @@ TEST_F(CompositionOptimizer_ManualTest, DISABLED_TwoEdits_DifferentLines) {
 TEST_F(CompositionOptimizer_ManualTest, PureInsertion) {
   Lines initial = {"hello"};
   Lines goal = {"hello world"};
-  Position startPos(0, 0);
+  Position initialPos(0, 0);
+  Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, startPos, goal, Position(0, 0), "", NavContext(),
+      initial, initialPos, goal, goalPos, "", NavContext(),
       MotionBoundary(), EXPLORABLE_MOTIONS, params);
 
-  expectHasValidResults(results, initial, startPos, goal, "pure insertion");
+  expectHasValidResults(results, initial, initialPos, goal, "pure insertion");
 }
 
 TEST_F(CompositionOptimizer_ManualTest, PureDeletion) {
   // Delete text, leaving nothing
   Lines initial = {"hello world"};
   Lines goal = {"hello"};
-  Position startPos(0, 0);
+  Position initialPos(0, 0);
+  Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, startPos, goal, Position(0, 0), "", NavContext(),
+      initial, initialPos, goal, goalPos, "", NavContext(),
       MotionBoundary(), EXPLORABLE_MOTIONS, params);
 
-  expectHasValidResults(results, initial, startPos, goal, "pure deletion");
+  expectHasValidResults(results, initial, initialPos, goal, "pure deletion");
 }
 
 // =============================================================================
@@ -171,26 +176,28 @@ TEST_F(CompositionOptimizer_ManualTest, DeleteEntireLine) {
   // Delete middle line
   Lines initial = {"aaa", "bbb", "ccc"};
   Lines goal = {"aaa", "ccc"};
-  Position startPos(0, 0);
+  Position initialPos(0, 0);
+  Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, startPos, goal, Position(0, 0), "", NavContext(),
+      initial, initialPos, goal, goalPos, "", NavContext(),
       MotionBoundary(), EXPLORABLE_MOTIONS, params);
 
-  expectHasValidResults(results, initial, startPos, goal, "delete entire line");
+  expectHasValidResults(results, initial, initialPos, goal, "delete entire line");
 }
 
 TEST_F(CompositionOptimizer_ManualTest, InsertNewLine) {
   // Insert a new line
   Lines initial = {"aaa", "ccc"};
   Lines goal = {"aaa", "bbb", "ccc"};
-  Position startPos(0, 0);
+  Position initialPos(0, 0);
+  Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, startPos, goal, Position(0, 0), "", NavContext(),
+      initial, initialPos, goal, goalPos, "", NavContext(),
       MotionBoundary(), EXPLORABLE_MOTIONS, params);
 
-  expectHasValidResults(results, initial, startPos, goal, "insert new line");
+  expectHasValidResults(results, initial, initialPos, goal, "insert new line");
 }
 
 // =============================================================================
@@ -201,16 +208,17 @@ TEST_F(CompositionOptimizer_ManualTest, NoChange_IdenticalBuffers) {
   // When initial == goal, should return empty result or no-op
   Lines initial = {"hello world"};
   Lines goal = {"hello world"};
-  Position startPos(0, 0);
+  Position initialPos(0, 0);
+  Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, startPos, goal, Position(0, 0), "", NavContext(),
+      initial, initialPos, goal, goalPos, "", NavContext(),
       MotionBoundary(), EXPLORABLE_MOTIONS, params);
 
   // Empty results is valid (no changes needed)
   // If there are results, verify they don't break the buffer
   if (!results.empty()) {
-    expectHasValidResults(results, initial, startPos, goal, "no change");
+    expectHasValidResults(results, initial, initialPos, goal, "no change");
   }
 }
 
@@ -222,39 +230,42 @@ TEST_F(CompositionOptimizer_ManualTest, EdgeCase_EmptyToContent) {
   // Empty line to content
   Lines initial = {""};
   Lines goal = {"hello"};
-  Position startPos(0, 0);
+  Position initialPos(0, 0);
+  Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, startPos, goal, Position(0, 0), "", NavContext(),
+      initial, initialPos, goal, goalPos, "", NavContext(),
       MotionBoundary(), EXPLORABLE_MOTIONS, params);
 
-  expectHasValidResults(results, initial, startPos, goal, "empty to content");
+  expectHasValidResults(results, initial, initialPos, goal, "empty to content");
 }
 
 TEST_F(CompositionOptimizer_ManualTest, EdgeCase_ContentToEmpty) {
   // Content to empty line
   Lines initial = {"hello"};
   Lines goal = {""};
-  Position startPos(0, 0);
+  Position initialPos(0, 0);
+  Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, startPos, goal, Position(0, 0), "", NavContext(),
+      initial, initialPos, goal, goalPos, "", NavContext(),
       MotionBoundary(), EXPLORABLE_MOTIONS, params);
 
-  expectHasValidResults(results, initial, startPos, goal, "content to empty");
+  expectHasValidResults(results, initial, initialPos, goal, "content to empty");
 }
 
 TEST_F(CompositionOptimizer_ManualTest, EdgeCase_SingleCharChange) {
   // Single character substitution
   Lines initial = {"abc"};
   Lines goal = {"xbc"};
-  Position startPos(0, 0);
+  Position initialPos(0, 0);
+  Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, startPos, goal, Position(0, 0), "", NavContext(),
+      initial, initialPos, goal, goalPos, "", NavContext(),
       MotionBoundary(), EXPLORABLE_MOTIONS, params);
 
-  expectHasValidResults(results, initial, startPos, goal, "single char change");
+  expectHasValidResults(results, initial, initialPos, goal, "single char change");
 }
 
 // =============================================================================

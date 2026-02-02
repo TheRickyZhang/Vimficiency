@@ -103,12 +103,6 @@ TEST_F(MotionOptimizer_ManualTest, HorizontalMotions) {
 }
 
 
-// TODO: Re-enable when adding support for filtering the universe of explorable motions.
-// This test was designed to verify optimizer behavior with a restricted motion set.
-// Currently, all motions are explored automatically via MotionToSpec.
-TEST_F(MotionOptimizer_ManualTest, DISABLED_VerticalMotions) {
-}
-
 // =============================================================================
 // optimizeToRange tests
 // =============================================================================
@@ -124,8 +118,8 @@ TEST_F(MotionOptimizer_ManualTest, RangeBasic_SameLine) {
 
   EXPECT_FALSE(results.empty()) << "Should find at least one path to range";
   for (const auto& r : results) {
-    EXPECT_GE(r.endPos.col, 5) << "End position should be in range";
-    EXPECT_LE(r.endPos.col, 10) << "End position should be in range";
+    EXPECT_GE(r.goalPos.col, 5) << "End position should be in range";
+    EXPECT_LE(r.goalPos.col, 10) << "End position should be in range";
   }
 }
 
@@ -140,7 +134,7 @@ TEST_F(MotionOptimizer_ManualTest, RangeBasic_MultiLine) {
 
   EXPECT_FALSE(results.empty()) << "Should find at least one path to range";
   for (const auto& r : results) {
-    Position p = r.endPos;
+    Position p = r.goalPos;
     bool inRange = (p >= rangeBegin && p <= rangeEnd);
     EXPECT_TRUE(inRange) << "End position (" << p.line << ", " << p.col << ") should be in range";
   }

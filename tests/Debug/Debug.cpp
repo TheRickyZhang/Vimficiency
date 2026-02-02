@@ -1020,12 +1020,12 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
 
   Lines initial = {"hello world"};
   Lines goal = {"hello there"};
-  Position startPos(0, 0);
-  Position endPos(0, 0);
+  Position initialPos(0, 0);
+  Position goalPos(0, 0);
 
   cerr << "Initial: " << initial << endl;
   cerr << "Goal: " << goal << endl;
-  cerr << "Start position: " << startPos << endl;
+  cerr << "Start position: " << initialPos << endl;
 
   // First, check what diffs are computed
   auto diffs = Myers::calculate(initial, goal);
@@ -1043,10 +1043,10 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
     Position rangeFirst(0, 6);
     Position rangeLast(0, 10);
 
-    cerr << "Finding path from " << startPos << " to range [" << rangeFirst << ", " << rangeLast << "]" << endl;
+    cerr << "Finding path from " << initialPos << " to range [" << rangeFirst << ", " << rangeLast << "]" << endl;
 
     auto rangeResult = movOpt.optimizeToRange(
-        initial, startPos, RunningEffort(), rangeFirst, rangeLast,
+        initial, initialPos, RunningEffort(), rangeFirst, rangeLast,
         "", NavContext(), MotionBoundary(), EXPLORABLE_MOTIONS,
         MotionOptimizerRangeParams{}.withMaxResults(10));
 
@@ -1056,7 +1056,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
 
     for (size_t i = 0; i < rangeResult.results.size() && i < 5; i++) {
       const auto& r = rangeResult.results[i];
-      cerr << "  Motion " << i << ": '" << r.getSequenceString() << "' -> " << r.endPos
+      cerr << "  Motion " << i << ": '" << r.getSequenceString() << "' -> " << r.goalPos
            << " cost=" << r.keyCost << endl;
     }
   }
@@ -1068,7 +1068,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
 
   cerr << endl << "Running CompositionOptimizer..." << endl;
   vector<Result> results = opt.optimize(
-      initial, startPos, goal, endPos, "", NavContext(), MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, "", NavContext(), MotionBoundary(), EXPLORABLE_MOTIONS, params);
 
   cerr << "Results: " << results.size() << endl;
   for (size_t i = 0; i < results.size(); i++) {
@@ -1077,7 +1077,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
 
   if (!results.empty()) {
     string seq = results[0].getSequenceString();
-    auto nvim = oracle_->simulate(initial, startPos.line, startPos.col, seq);
+    auto nvim = oracle_->simulate(initial, initialPos.line, initialPos.col, seq);
     cerr << endl << "Neovim result for '" << seq << "':" << endl;
     cerr << "  Lines: " << nvim.lines << endl;
     cerr << "  Goal:  " << goal << endl;

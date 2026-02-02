@@ -15,6 +15,13 @@ struct MotionOptimizerParams : OptimizerParamsBase {
   // Trade-off: faster exploration but may miss some edge-case optimal paths.
   bool useDirectionalPruning = true;
 
+  // Line padding for sub-buffer slicing.
+  // Controls how many lines above/below the search region to include.
+  // Allows overshoot-and-return paths while bounding search space.
+  // See docs/optimizer/buffer-slicing.md for details.
+  int linePaddingAbove = 2;
+  int linePaddingBelow = 2;
+
   // Chainable setters for fluent configuration
   MotionOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
   MotionOptimizerParams& withMaxNodesExplored(int v) { maxNodesExplored = v; return *this; }
@@ -22,6 +29,9 @@ struct MotionOptimizerParams : OptimizerParamsBase {
   MotionOptimizerParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
   MotionOptimizerParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
   MotionOptimizerParams& withTrackExploredStates(bool v) { trackExploredStates = v; return *this; }
+  MotionOptimizerParams& withLinePaddingAbove(int v) { linePaddingAbove = v; return *this; }
+  MotionOptimizerParams& withLinePaddingBelow(int v) { linePaddingBelow = v; return *this; }
+  MotionOptimizerParams& withLinePadding(int v) { linePaddingAbove = linePaddingBelow = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
   static MotionOptimizerParams dijkstra(int maxResults = 10, int maxNodesExplored = 50000) {
@@ -52,4 +62,7 @@ struct MotionOptimizerRangeParams : MotionOptimizerParams {
   MotionOptimizerRangeParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
   MotionOptimizerRangeParams& withTrackExploredStates(bool v) { trackExploredStates = v; return *this; }
   MotionOptimizerRangeParams& withAllowMultiplePerPosition(bool v) { allowMultiplePerPosition = v; return *this; }
+  MotionOptimizerRangeParams& withLinePaddingAbove(int v) { linePaddingAbove = v; return *this; }
+  MotionOptimizerRangeParams& withLinePaddingBelow(int v) { linePaddingBelow = v; return *this; }
+  MotionOptimizerRangeParams& withLinePadding(int v) { linePaddingAbove = linePaddingBelow = v; return *this; }
 };

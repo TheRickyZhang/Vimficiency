@@ -129,10 +129,10 @@ Position BufferIndex::apply(LandingType type, Position current, int count) const
 }
 
 
-// Returns [undershoot, overshoot] positions closest to endPos, with counts from currPos.
+// Returns [undershoot, overshoot] positions closest to goalPos, with counts from currPos.
 // Returns invalid results (count=0) when no valid positions exist in the search range.
 std::array<RepeatMotionResult, 2>
-BufferIndex::getTwoClosest(LandingType type, Position currPos, Position endPos) const {
+BufferIndex::getTwoClosest(LandingType type, Position currPos, Position goalPos) const {
   const auto& positions = get(type);
 
   // Empty positions vector - return invalid results
@@ -143,12 +143,12 @@ BufferIndex::getTwoClosest(LandingType type, Position currPos, Position endPos) 
   auto calc2 = [&](auto begin, auto end, auto comp) -> std::array<RepeatMotionResult, 2> {
     // onePastCurrIt: first position strictly past currPos (in search direction)
     auto onePastCurrIt = std::upper_bound(begin, end, currPos, comp);
-    // overshootIt: first position >= endPos (in search direction)
-    auto overshootIt   = std::lower_bound(begin, end, endPos,  comp);
+    // overshootIt: first position >= goalPos (in search direction)
+    auto overshootIt   = std::lower_bound(begin, end, goalPos,  comp);
 
     // Handle edge cases where the target is outside the valid range:
-    // - overshootIt == end: endPos is beyond all positions (no overshoot exists)
-    // - overshootIt == begin: endPos is at/before first position (no undershoot exists)
+    // - overshootIt == end: goalPos is beyond all positions (no overshoot exists)
+    // - overshootIt == begin: goalPos is at/before first position (no undershoot exists)
 
     RepeatMotionResult undershoot{};
     RepeatMotionResult overshoot{};
@@ -173,7 +173,7 @@ BufferIndex::getTwoClosest(LandingType type, Position currPos, Position endPos) 
     return {undershoot, overshoot};
   };
 
-  if (endPos > currPos) {
+  if (goalPos > currPos) {
     return calc2(positions.begin(), positions.end(),
                  [](const Position& a, const Position& b) { return a < b; });
   } else {

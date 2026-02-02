@@ -97,7 +97,7 @@ struct CompositionSearchContext {
   // Constructor - performs all pre-computation
   CompositionSearchContext(
       const Lines& initialLines,
-      const Position& startPos,
+      const Position& initialPos,
       const Lines& goalLines,
       const std::string& userSequence,
       const NavContext& navContext,

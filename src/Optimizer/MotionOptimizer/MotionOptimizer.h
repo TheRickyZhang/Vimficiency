@@ -34,20 +34,20 @@ struct MotionOptimizer {
 
   // Returns results and search statistics
   // ~ O(n^2)
-  // Note: Internally dispatches to optimizeImpl<Forward> based on startPos vs endPos
+  // Note: Internally dispatches to optimizeImpl<Forward> based on initialPos vs goalPos
   MotionResult optimize(
     // Core information
     const Lines& lines,
-    const Position& startPos,
+    const Position& initialPos,
     const RunningEffort& startingEffort,  // Continued from caller for correct effort calc
-    const Position& endPos,
+    const Position& goalPos,
     const std::string& userSequence, // What the user typed, for reference
 
     // What's necessary for knowing how to apply some motions
     const NavContext& navigationContext,
 
     // What impacts our universe of exploration options
-    const MotionBoundary& boundary = MotionBoundary(),
+    const MotionBoundary& parentBoundary = MotionBoundary(),
     const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS,
 
     // Search parameters (uses struct defaults if not specified via designated initializers)
@@ -55,11 +55,10 @@ struct MotionOptimizer {
   );
 
   // Overload without userSequence - uses unbounded effort exploration
-  // Useful when finding optimal path without a user baseline to compare against
   MotionResult optimize(
     const Lines& lines,
-    const Position& startPos,
-    const Position& endPos,
+    const Position& initialPos,
+    const Position& goalPos,
     const NavContext& navigationContext,
     const MotionBoundary& boundary = MotionBoundary(),
     MotionOptimizerParams params = {}
@@ -68,11 +67,11 @@ struct MotionOptimizer {
   // Multi-sink movement optimization: find paths to any position in [rangeFirst, rangeLast]
   // Only RunningEffort maybe continued from previous state.
   // Returns up to params.maxResults unique end positions (or total paths if allowMultiplePerPosition).
-  // Precondition: startPos must NOT be in [rangeFirst, rangeLast] (nothing to optimize)
-  // Note: Internally dispatches to optimizeToRangeImpl<Forward> based on startPos vs range
+  // Precondition: initialPos must NOT be in [rangeFirst, rangeLast] (nothing to optimize)
+  // Note: Internally dispatches to optimizeToRangeImpl<Forward> based on initialPos vs range
   RangeMotionResult optimizeToRange(
     const Lines& lines,
-    const Position& startPos,
+    const Position& initialPos,
     const RunningEffort& startingEffort,  // Continued from caller for correct effort calc
     const Position& rangeFirst,
     const Position& rangeLast,
@@ -91,9 +90,9 @@ private:
   template<bool Forward>
   MotionResult optimizeImpl(
     const Lines& lines,
-    const Position& startPos,
+    const Position& initialPos,
     const RunningEffort& startingEffort,
-    const Position& endPos,
+    const Position& goalPos,
     const std::string& userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
@@ -105,7 +104,7 @@ private:
   template<bool Forward>
   RangeMotionResult optimizeToRangeImpl(
     const Lines& lines,
-    const Position& startPos,
+    const Position& initialPos,
     const RunningEffort& startingEffort,
     const Position& rangeFirst,
     const Position& rangeLast,

@@ -71,13 +71,13 @@ protected:
   struct RangeBenchmarkSetup {
     Lines lines;
     MotionBoundary boundary{};
-    Position startPos;
+    Position initialPos;
     Position rangeFirst;
     Position rangeLast;
 
     // Default constructor: uses DEFAULT_RANGE_SIZE (6) columns at end of last line
     RangeBenchmarkSetup(const Lines& lines) : lines(lines) {
-      startPos = {0, 0};
+      initialPos = {0, 0};
       int lastLine = lines.lastLine();
       int lastLineLen = max(1, static_cast<int>(lines[lastLine].size()));
       int rangeSize = min(DEFAULT_RANGE_SIZE, lastLineLen);
@@ -88,7 +88,7 @@ protected:
     }
 
     RangeBenchmarkSetup(const Lines& lines, int rangeChars, int rangeLines = 1) : lines(lines) {
-      startPos = {0, 0};
+      initialPos = {0, 0};
       int lastLine = lines.lastLine();
       int lastLineLen = max(1, static_cast<int>(lines[lastLine].size()));
       rangeLines = min(rangeLines, lastLine + 1);
@@ -138,7 +138,7 @@ protected:
     TimingStats timing = measureTiming(
         [&]() {
           auto [results, stats] = opt.optimizeToRange(
-              cfg.lines, cfg.startPos, RunningEffort(),
+              cfg.lines, cfg.initialPos, RunningEffort(),
               cfg.rangeFirst, cfg.rangeLast, "",
               navContext, cfg.boundary, EXPLORABLE_MOTIONS, params);
           lastStats = stats;
@@ -257,7 +257,7 @@ protected:
 
   static void printRangeSetup(const RangeBenchmarkSetup& cfg) {
     cout << "\n--- Range Setup Debug ---\n";
-    cout << "Start: (" << cfg.startPos.line << ", " << cfg.startPos.col << ")\n";
+    cout << "Start: (" << cfg.initialPos.line << ", " << cfg.initialPos.col << ")\n";
     cout << "Range: (" << cfg.rangeFirst.line << ", " << cfg.rangeFirst.col << ") to ("
          << cfg.rangeLast.line << ", " << cfg.rangeLast.col << ")\n";
     cout << "Lines (" << cfg.lines.size() << "):\n";

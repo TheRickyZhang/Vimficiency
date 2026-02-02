@@ -15,11 +15,12 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   // Trade-off: faster exploration but may miss some edge-case optimal paths.
   bool useDirectionalPruning = true;
 
-  // Line subset padding for MotionOptimizer calls.
-  // Controls how many lines before/after the search region to include.
+  // Line padding for MotionOptimizer calls.
+  // Controls how many lines above/below the search region to include.
   // Allows overshoot-and-return paths while bounding search space.
-  int preSubbufferPadding = 3;
-  int postSubbufferPadding = 3;
+  // See docs/optimizer/buffer-slicing.md for details.
+  int motionLinePaddingAbove = 2;
+  int motionLinePaddingBelow = 2;
 
   // Chainable setters for fluent configuration
   CompositionOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
@@ -28,8 +29,9 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   CompositionOptimizerParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
   CompositionOptimizerParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
   CompositionOptimizerParams& withTrackExploredStates(bool v) { trackExploredStates = v; return *this; }
-  CompositionOptimizerParams& withPreSubbufferPadding(int v) { preSubbufferPadding = v; return *this; }
-  CompositionOptimizerParams& withPostSubbufferPadding(int v) { postSubbufferPadding = v; return *this; }
+  CompositionOptimizerParams& withMotionLinePaddingAbove(int v) { motionLinePaddingAbove = v; return *this; }
+  CompositionOptimizerParams& withMotionLinePaddingBelow(int v) { motionLinePaddingBelow = v; return *this; }
+  CompositionOptimizerParams& withMotionLinePadding(int v) { motionLinePaddingAbove = motionLinePaddingBelow = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
   static CompositionOptimizerParams dijkstra(int maxResults = 10, int maxNodesExplored = 50000) {
@@ -60,6 +62,7 @@ struct CompositionOptimizerRangeParams : CompositionOptimizerParams {
   CompositionOptimizerRangeParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
   CompositionOptimizerRangeParams& withTrackExploredStates(bool v) { trackExploredStates = v; return *this; }
   CompositionOptimizerRangeParams& withAllowMultiplePerPosition(bool v) { allowMultiplePerPosition = v; return *this; }
-  CompositionOptimizerRangeParams& withPreSubbufferPadding(int v) { preSubbufferPadding = v; return *this; }
-  CompositionOptimizerRangeParams& withPostSubbufferPadding(int v) { postSubbufferPadding = v; return *this; }
+  CompositionOptimizerRangeParams& withMotionLinePaddingAbove(int v) { motionLinePaddingAbove = v; return *this; }
+  CompositionOptimizerRangeParams& withMotionLinePaddingBelow(int v) { motionLinePaddingBelow = v; return *this; }
+  CompositionOptimizerRangeParams& withMotionLinePadding(int v) { motionLinePaddingAbove = motionLinePaddingBelow = v; return *this; }
 };

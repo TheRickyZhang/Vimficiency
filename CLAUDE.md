@@ -43,7 +43,7 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 - We allow an empty line, which has size() == 0, but still an index 0 as a valid cursor position
 - But, we do not allow no lines in the buffer, since the cursor must always be in a valid position.
 - Ensure CAREFUL handling of targetCol (Vim's curswant) within Position.h by calling the correct column method
-- We use [begin, end) for half-open intervals, and \[first, last\] for inclusive intervals, such as beginPos/endPos, firstPos/lastPos
+- We use [begin, end) for half-open intervals, and \[first, last\] for inclusive intervals, such as beginPos/goalPos, firstPos/lastPos
 - For pre/post state, we use initial, goal, such as initialLines, goalLines.
 - We highly prioritize speed. Our default optimizer algorithm is an eager A*, which uses results when first searched, which may not be the best, and has some position start starving issues due to inadmissable heuristic.
 - Command parsing functions are only use for arbitrarily parsing commands. For all searches, we should know the exact actions to do for minimal wasted work.

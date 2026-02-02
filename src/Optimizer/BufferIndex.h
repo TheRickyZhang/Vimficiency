@@ -52,9 +52,9 @@ public:
   // Returns current if motion cannot complete
   Position apply(LandingType type, Position current, int count) const;
 
-  // Returns [undershoot, overshoot] positions closest to endPos, with counts from currPos.
-  // Direction inferred from currPos vs endPos. Invalid entries have count <= 1.
-  std::array<RepeatMotionResult, 2> getTwoClosest(LandingType type, Position currPos, Position endPos) const;
+  // Returns [undershoot, overshoot] positions closest to goalPos, with counts from currPos.
+  // Direction inferred from currPos vs goalPos. Invalid entries have count <= 1.
+  std::array<RepeatMotionResult, 2> getTwoClosest(LandingType type, Position currPos, Position goalPos) const;
 
 
   // Debug

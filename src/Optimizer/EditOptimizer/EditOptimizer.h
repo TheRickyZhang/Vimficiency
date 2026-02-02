@@ -44,7 +44,7 @@ struct EditResult {
 
   // Cursor position after edit completes (in buffer coordinates)
   // This is where the cursor lands after the change command + typed text + <Esc>
-  Position endPos;
+  Position goalPos;
 
   EditResult(int n, std::vector<Result> replaceResults, int replacemeEnd) :
     replaceResults(replaceResults), replaceEnd(replacemeEnd)

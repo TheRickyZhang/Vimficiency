@@ -117,7 +117,7 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineFullBuffer) {
   EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
 }
 
-TEST_F(EditOptimizerOutputCorrectness, DISABLED_Replacement_SameLength) {
+TEST_F(EditOptimizerOutputCorrectness, Replacement_SameLength) {
   oracle->restart();
   const int NUM_ITERATIONS = 30;
   RandomGen::seed(44);

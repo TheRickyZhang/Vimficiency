@@ -11,7 +11,7 @@ using namespace std;
 
 CompositionSearchContext::CompositionSearchContext(
     const Lines& initialLines,
-    const Position& startPos,
+    const Position& initialPos,
     const Lines& goalLines,
     const string& userSequence,
     const NavContext& navContext,
@@ -62,8 +62,8 @@ CompositionSearchContext::CompositionSearchContext(
 
   // Determine processing direction based on start position relative to edits
   if (!rawDiffs.empty()) {
-    double distToFirst = costToGoal(startPos, rawDiffs.front().firstPos);
-    double distToLast = costToGoal(startPos, rawDiffs.back().lastPos);
+    double distToFirst = costToGoal(initialPos, rawDiffs.front().firstPos);
+    double distToLast = costToGoal(initialPos, rawDiffs.back().lastPos);
     forward = (distToFirst <= distToLast + forwardBias);
 
     if (!forward) {
@@ -288,16 +288,16 @@ vector<std::optional<EditResult>> CompositionSearchContext::calculateEditResults
     const Lines& inserted = diff.insertedLines();
     if (inserted.empty() || (inserted.size() == 1 && inserted[0].empty())) {
       // Pure deletion or empty insertion: cursor at start of edit region
-      result.endPos = diff.firstPos;
+      result.goalPos = diff.firstPos;
     } else if (inserted.size() == 1) {
       // Single line: cursor at last char of inserted text
-      result.endPos = Position(diff.firstPos.line,
+      result.goalPos = Position(diff.firstPos.line,
                                diff.firstPos.col + static_cast<int>(inserted[0].size()) - 1);
     } else {
       // Multi-line: cursor at last char of last inserted line
       int lastLine = diff.firstPos.line + static_cast<int>(inserted.size()) - 1;
       int lastCol = inserted.back().empty() ? 0 : static_cast<int>(inserted.back().size()) - 1;
-      result.endPos = Position(lastLine, lastCol);
+      result.goalPos = Position(lastLine, lastCol);
     }
 
     // Check if replacement strategy is applicable and better

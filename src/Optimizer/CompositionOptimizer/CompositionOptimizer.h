@@ -36,9 +36,9 @@ struct CompositionOptimizer {
   // Much slower; ~ O(n^2) + Sigma (m_i)^3, higher constant factor.
   std::vector<Result> optimize(
     const Lines& initialLines,
-    const Position startPos,
+    const Position initialPos,
     const Lines& goalLines,
-    const Position endPos,
+    const Position goalPos,
     const std::string& userSequence,
 
     const NavContext& navigationContext,

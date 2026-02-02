@@ -3,6 +3,8 @@ Insert Mode handling (just a lot more stuff)     ********* (very very difficult)
 Implement CompositionOptimizer
 Implement quote and bracket text object motions (see quoteFlags/bracketFlags)
 Handle pureInsertion case
+Add pureInsertion support
+Investigate compositionOptimizer correctness tests
 
 Review human tests.
 

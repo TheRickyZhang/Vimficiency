@@ -589,14 +589,18 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
       MotionOptimizer motionOpt(config);
       NavContext navCtx;
 
-      // Find best motion from first to last - use unbounded overload
-      // Use default MotionOptimizerParams since this is internal optimization
+      // Find best motion from first to last
+      // Use params.motionLinePadding* for consistency with other optimizer calls
+      // See docs/optimizer/buffer-slicing.md for padding rationale
       auto [motionResults, motionStats] = motionOpt.optimize(
           ctx.effectiveLines,
           firstPos,
           lastPos,
           navCtx,
-          MotionBoundary()
+          MotionBoundary(),
+          MotionOptimizerParams{}
+              .withLinePaddingAbove(params.motionLinePaddingAbove)
+              .withLinePaddingBelow(params.motionLinePaddingBelow)
       );
 
       if (!motionResults.empty() && motionResults[0].isValid()) {

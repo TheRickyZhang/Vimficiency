@@ -47,8 +47,8 @@ struct ApplyResult {
       : lines(std::move(lines)), pos(pos), mode(mode) {}
 };
 
-ApplyResult applySequence(const Lines& source, Position startPos, const string& sequence) {
-  ApplyResult result(source, startPos);
+ApplyResult applySequence(const Lines& source, Position initialPos, const string& sequence) {
+  ApplyResult result(source, initialPos);
   for (const auto& op : Edit::parseEdits(sequence)) {
     Edit::applyEdit(result.lines, result.pos, result.mode, op);
   }
@@ -62,13 +62,13 @@ bool cursorStateMatches(const ApplyResult& ours, const SimulationResult& nvim) {
 SimulationResult verifySequenceWithOracle(
     NeovimOracle* oracle,
     const Lines& source,
-    Position startPos,
+    Position initialPos,
     const string& sequence) {
-  SimulationResult nvim = oracle->simulate(source, startPos.line, startPos.col, sequence);
-  ApplyResult ours = applySequence(source, startPos, sequence);
+  SimulationResult nvim = oracle->simulate(source, initialPos.line, initialPos.col, sequence);
+  ApplyResult ours = applySequence(source, initialPos, sequence);
 
   EXPECT_EQ(ours.lines, nvim.lines)
-      << "Lines mismatch for seq='" << sequence << "' from " << startPos << "\n"
+      << "Lines mismatch for seq='" << sequence << "' from " << initialPos << "\n"
       << "  Source: " << source << "\n"
       << "  Ours:   " << ours.lines << "\n"
       << "  Neovim: " << nvim.lines;
@@ -132,9 +132,9 @@ TEST_F(EditOptimizer_ManualTest, PureDeletion_OracleVerified) {
 TEST_F(EditOptimizer_ManualTest, Boundary_LinesBelow) {
   // Edit region has lines below - tests hasLinesBelow constraint
   Lines fullBuffer = {"aa", "bb", "xx"};
-  Position startPos(0, 0), endPos(1, 1);
-  Lines editRegion = fullBuffer.getSpan(startPos, endPos);
-  EditBoundary boundary(fullBuffer, startPos, endPos);
+  Position initialPos(0, 0), goalPos(1, 1);
+  Lines editRegion = fullBuffer.getSpan(initialPos, goalPos);
+  EditBoundary boundary(fullBuffer, initialPos, goalPos);
 
   EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
   EXPECT_TRUE(allPositionsValid(res.typeAllResults, editRegion));
@@ -144,9 +144,9 @@ TEST_F(EditOptimizer_ManualTest, Boundary_SingleLineSurrounded) {
   // Single line edit region surrounded by other lines
   // Can't use dd - must use S/cc
   Lines fullBuffer = {"xx", "hello", "xx"};
-  Position startPos(1, 0), endPos(1, 4);
-  Lines editRegion = fullBuffer.getSpan(startPos, endPos);
-  EditBoundary boundary(fullBuffer, startPos, endPos);
+  Position initialPos(1, 0), goalPos(1, 4);
+  Lines editRegion = fullBuffer.getSpan(initialPos, goalPos);
+  EditBoundary boundary(fullBuffer, initialPos, goalPos);
 
   EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
   // printResultsDebug(res.typeAllResults, "boundary line surrounded");
@@ -156,9 +156,9 @@ TEST_F(EditOptimizer_ManualTest, Boundary_SingleLineSurrounded) {
 TEST_F(EditOptimizer_ManualTest, Boundary_LinewiseCursorContainment) {
   // Verify cursor stays within edit region and surrounding lines unchanged
   Lines fullBuffer = {"xx", "aa", "bb", "yy"};
-  Position startPos(1, 0), endPos(2, 1);
-  Lines editRegion = fullBuffer.getSpan(startPos, endPos);
-  EditBoundary boundary(fullBuffer, startPos, endPos);
+  Position initialPos(1, 0), goalPos(2, 1);
+  Lines editRegion = fullBuffer.getSpan(initialPos, goalPos);
+  EditBoundary boundary(fullBuffer, initialPos, goalPos);
 
   EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
 
@@ -166,7 +166,7 @@ TEST_F(EditOptimizer_ManualTest, Boundary_LinewiseCursorContainment) {
     // Skip visual mode sequences for now
     if (!seq.empty() && seq[0] == 'v') return;
 
-    Position fullBufferPos(pos.line + startPos.line, pos.col);
+    Position fullBufferPos(pos.line + initialPos.line, pos.col);
     ApplyResult applied = applySequence(fullBuffer, fullBufferPos, seq);
 
     EXPECT_EQ(applied.lines[0], "xx") << "Line above modified after '" << seq << "'";

@@ -430,9 +430,9 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceMixedContentFailure) {
 TEST_F(DebugTest, DISABLED_InvestigateSingleLineSurrounded) {
   // From Boundary_SingleLineSurrounded failure
   Lines fullBuffer = {"xx", "hello", "xx"};
-  Position startPos(1, 0), endPos(1, 4);
-  Lines editRegion = fullBuffer.getSpan(startPos, endPos);
-  EditBoundary boundary(fullBuffer, startPos, endPos);
+  Position initialPos(1, 0), goalPos(1, 4);
+  Lines editRegion = fullBuffer.getSpan(initialPos, goalPos);
+  EditBoundary boundary(fullBuffer, initialPos, goalPos);
 
   cerr << "\n=== SingleLineSurrounded Investigation ===" << endl;
   cerr << "fullBuffer: " << fullBuffer << endl;
