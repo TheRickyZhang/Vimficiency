@@ -28,7 +28,6 @@
 // - Pre-computed diff states and edit results
 // - A* priority queue and cost map for state exploration
 // - Heuristic computation with asymmetric overshoot penalty
-// - Position-to-edit-index mapping for efficient lookups
 
 struct CompositionSearchContext {
   // References to external data
@@ -57,12 +56,6 @@ struct CompositionSearchContext {
   // Suffix sums of median edit costs for O(1) heuristic lookup
   // suffixEditCosts[i] = sum of median costs for edits i..totalEdits-1
   std::vector<double> suffixEditCosts;
-
-  // Position -> edit indices bitmask
-  // posToEditIndex[posKey] = bitmask where bit i is set if edit i can start from this position
-  // Supports up to 16 edits per optimize() call
-  static constexpr int MAX_EDITS = 16;
-  std::vector<uint16_t> posToEditIndex;
 
   // Heuristic tuning parameters
   double overshootPenalty;
@@ -112,11 +105,6 @@ struct CompositionSearchContext {
   // ==========================================================================
   // Position conversion helpers
   // ==========================================================================
-
-  // Convert Position to posKey for map lookup
-  int posToKey(const Position& pos) const {
-    return pos.line * maxLineLength + pos.col;
-  }
 
   // Convert flat index within edit region's insertedLines to buffer position
   Position editIndexToBufferPos(int flatIndex, const DiffState& diff) const;
@@ -177,9 +165,6 @@ struct CompositionSearchContext {
     return linesAfterNEdits[editsCompleted];
   }
 
-  // Check if position can start the next edit
-  bool canStartEdit(const Position& pos, int editsCompleted) const;
-
   // Get the edit result for an edit index (asserts non-pure-insertion)
   const EditResult& getEditResult(int editIndex) const {
     assert(editResults[editIndex].has_value() && "Pure insertions have no EditResult");
@@ -206,9 +191,6 @@ struct CompositionSearchContext {
 private:
   // Helper: compute suffix sums of median edit costs
   std::vector<double> computeSuffixEditCosts() const;
-
-  // Helper: build position -> edit index bitmask
-  std::vector<uint16_t> buildPosToEditIndex(int maxPosKey) const;
 
   // Helper: solve each edit region independently (nullopt for pure insertions)
   std::vector<std::optional<EditResult>> calculateEditResults();

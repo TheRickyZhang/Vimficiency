@@ -142,7 +142,7 @@ function M.start(alias)
 
   local key_nsid = key_tracking.attach(function()
     return session_store.get_active(alias)
-  end, function(reason, level)
+  end, function(reason, level) ---@param reason string @param level integer
     session_store.remove(alias)
     if reason then
       vim.schedule(function()
@@ -172,7 +172,18 @@ function M.finish(alias, save_name)
 
   local active = session_store.get_active(alias)
   if not active then
-    vim.notify("Session '" .. alias .. "' not found or already finished", vim.log.levels.ERROR)
+    local session_type = session_store.get_alias_type(alias)
+    if session_type == "key" then
+      if not session_store.is_key_sessions_enabled() then
+        vim.notify("Key sessions not enabled. Run ':Vimfy key on' first.", vim.log.levels.ERROR)
+      else
+        vim.notify("No key session found for '" .. alias .. "' keys ago.", vim.log.levels.ERROR)
+      end
+    elseif session_type == "time" then
+      vim.notify("Time-based sessions not yet implemented.", vim.log.levels.ERROR)
+    else
+      vim.notify("Session '" .. alias .. "' not found or already finished.", vim.log.levels.ERROR)
+    end
     return
   end
 

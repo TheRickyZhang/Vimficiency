@@ -4,16 +4,37 @@ This document describes how buffer slicing works at each layer of the optimizer 
 
 ## Overview
 
-Buffer slicing limits the search region to only the relevant portion of the buffer, with optional padding for overshoot scenarios. This improves performance by reducing the search space while still allowing motions that temporarily overshoot the target.
+Buffer slicing limits the search region to only the relevant portion of the buffer, which improves performance by reducing the search space.
 
 ## Padding Rules
 
 | Target | Padding | Rationale |
 |--------|---------|-----------|
-| MotionOptimizer | Yes (linewise) | Need context for overshoot motions (j, k, w, etc.) |
-| EditOptimizer | No | Exact character-wise edit regions from diff |
+| MotionOptimizer | Yes (linewise) | Potential for overshoot, like $b or }k |
+| EditOptimizer | No | Need exact edit regions (overshoot never optimal )  |
 
-**Key principle**: Anything calling MotionOptimizer should pad linewise. Anything calling EditOptimizer should NOT pad (exact character-wise regions).
+
+When creating sub-buffers, positions must be remapped:
+
+**To subset coordinates** (before calling optimizer):
+```cpp
+Position subsetPos(pos.line - lineOffset, pos.col, pos.targetCol);
+```
+
+**Back to original coordinates** (after getting results):
+```cpp
+result.goalPos.line += lineOffset;
+```
+
+## Boundary Inheritance
+
+When creating sub-buffers, boundary flags are inherited from the parent OR set based on subset position:
+
+```cpp
+MotionBoundary subsetBoundary(subset, subsetFirst, subsetLast,
+    subsetStart > 0 || parentBoundary.hasLinesAbove(),   // lines above
+    subsetEnd < fullBuffer.lastLine() || parentBoundary.hasLinesBelow());  // lines below
+```
 
 ## Layer-by-Layer Behavior
 
@@ -54,7 +75,7 @@ int motionLinePaddingBelow = 1;
 
 EditOptimizer operates on exact edit regions (no padding). However, it internally calls MotionOptimizer for the visual delete path (`v + motion + d`), and uses the `motionLinePadding*` params for that call.
 
-Lower default (1) because `effectiveLines` already includes prefix/suffix context.
+Lower default (1) because `effectiveLines` already includes prefix/suffix context and we only need a single result.
 
 ### 4. CompositionOptimizer → MotionOptimizer
 
@@ -100,31 +121,9 @@ EditResult result = editOptimizer.optimizeEdit(
 
 EditOptimizer receives exact character-wise regions from the Myers diff, with no additional padding.
 
-## Coordinate Remapping
-
-When creating sub-buffers, positions must be remapped:
-
-**To subset coordinates** (before calling optimizer):
-```cpp
-Position subsetPos(pos.line - lineOffset, pos.col, pos.targetCol);
-```
-
-**Back to original coordinates** (after getting results):
-```cpp
-result.goalPos.line += lineOffset;
-```
 
 Note: Only the line is offset; column stays the same.
 
-## Boundary Inheritance
-
-When creating sub-buffers, boundary flags are inherited from the parent OR set based on subset position:
-
-```cpp
-MotionBoundary subsetBoundary(subset, subsetFirst, subsetLast,
-    subsetStart > 0 || parentBoundary.hasLinesAbove(),   // lines above
-    subsetEnd < fullBuffer.lastLine() || parentBoundary.hasLinesBelow());  // lines below
-```
 
 ## Summary Table
 

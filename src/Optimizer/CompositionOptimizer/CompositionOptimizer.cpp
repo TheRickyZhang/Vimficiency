@@ -203,26 +203,32 @@ vector<Result> CompositionOptimizer::optimize(
 
     // ========== EDIT TRANSITIONS ==========
     // Check if we can perform the next edit from current position
-    if (ctx.canStartEdit(pos, editsCompleted)) {
+    // Uses unified check: flatIndexAt encodes the same position validity as the old bitmask
+    bool editTransitionTaken = false;
+    if (!ctx.isPureInsertion(editsCompleted)) {
       const EditResult& editResult = ctx.getEditResult(editsCompleted);
 
       // Convert buffer position to edit region index (O(1) lookup)
+      // flatIndexAt returns -1 for out-of-region lines, and we bounds-check for columns
       int flatIdx = editResult.flatIndexAt(pos);
-      assert(0 <= flatIdx &&
-             flatIdx < static_cast<int>(editResult.typeAllResults.size()));
-      const Result& editRes = editResult.typeAllResults[flatIdx];
-      if (editRes.isValid()) {
-        // Create new state with edit transition applied
-        // Cursor ends at last char of inserted text (precomputed in editResult.goalPos)
-        CompositionState newState = s.afterEditTransition(
-            editRes.sequences, editResult.goalPos, Mode::Normal, config);
-        newState.setCost(ctx.heuristic(newState, editsCompleted + 1));
-        ctx.exploreNewState(std::move(newState));
+      if (flatIdx >= 0 &&
+          flatIdx < static_cast<int>(editResult.typeAllResults.size())) {
+        const Result& editRes = editResult.typeAllResults[flatIdx];
+        if (editRes.isValid()) {
+          editTransitionTaken = true;
+          // Create new state with edit transition applied
+          // Cursor ends at last char of inserted text (precomputed in editResult.goalPos)
+          CompositionState newState = s.afterEditTransition(
+              editRes.sequences, editResult.goalPos, Mode::Normal, config);
+          newState.setCost(ctx.heuristic(newState, editsCompleted + 1));
+          ctx.exploreNewState(std::move(newState));
+        }
       }
     }
+
     // ========== MOVEMENT TRANSITIONS ==========
     // Use MotionOptimizer to find optimal paths to next edit region
-    else {
+    if (!editTransitionTaken) {
       // TODO: Check for bracket/quote motions first
 
       // Calculate line subset bounds for MotionOptimizer

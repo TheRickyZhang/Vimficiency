@@ -55,6 +55,7 @@ motion key twice. `build_sequence()` removes these duplicates by detecting:
 
 ### Known limitations
 - Text object final character missing (`ciw` → `c, i, ?`) - Neovim consumes internally before `vim.on_key` fires
+- See `docs/neovim_on_key_issues.md` for detailed analysis and potential workarounds
 - See neovim/neovim#19426 for `v:motion` feature request that would help
 
 **Approximate motion conversions** (in session.lua):

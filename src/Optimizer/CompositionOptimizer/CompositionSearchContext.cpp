@@ -58,7 +58,6 @@ CompositionSearchContext::CompositionSearchContext(
       Lines(goalLines.begin(), goalLines.end()));
 
   totalEdits = static_cast<int>(rawDiffs.size());
-  assert(totalEdits <= MAX_EDITS && "Too many edits for bitmask representation");
 
   // Determine processing direction based on start position relative to edits
   if (!rawDiffs.empty()) {
@@ -83,14 +82,6 @@ CompositionSearchContext::CompositionSearchContext(
 
   // Compute suffix sums for heuristic
   suffixEditCosts = computeSuffixEditCosts();
-
-  // Build position -> edit index map
-  int maxLineSize = 0;
-  for (const auto& lines : linesAfterNEdits) {
-    maxLineSize = max(maxLineSize, static_cast<int>(lines.size()));
-  }
-  int maxPosKey = maxLineSize * maxLineLength;
-  posToEditIndex = buildPosToEditIndex(maxPosKey);
 }
 
 Position CompositionSearchContext::editIndexToBufferPos(
@@ -165,19 +156,6 @@ void CompositionSearchContext::exploreNewState(CompositionState&& newState) {
   }
 }
 
-bool CompositionSearchContext::canStartEdit(
-    const Position& pos, int editsCompleted) const {
-  // Pure insertions are handled separately, not through edit transitions
-  if (diffStates[editsCompleted].isPureInsertion()) {
-    return false;
-  }
-  int posKey = this->posToKey(pos);
-  if (posKey < 0 || posKey >= static_cast<int>(posToEditIndex.size())) {
-    return false;
-  }
-  return (posToEditIndex[posKey] >> editsCompleted) & 1;
-}
-
 SearchStats CompositionSearchContext::getStats(int resultsFound) const {
   SearchStats stats;
   stats.nodesExplored = nodesProcessed;
@@ -228,41 +206,6 @@ vector<double> CompositionSearchContext::computeSuffixEditCosts() const {
   }
 
   return suffixCosts;
-}
-
-vector<uint16_t> CompositionSearchContext::buildPosToEditIndex(
-    int maxPosKey) const {
-  vector<uint16_t> result(maxPosKey, 0);
-
-  for (int editIdx = 0; editIdx < static_cast<int>(diffStates.size());
-       editIdx++) {
-    const DiffState& diff = diffStates[editIdx];
-    uint16_t editMask = static_cast<uint16_t>(1 << editIdx);
-
-    if (diff.isPureInsertion()) {
-      // Pure insertion: mark only the insertion point
-      int posKey = posToKey(diff.firstPos);
-      if (posKey >= 0 && posKey < maxPosKey) {
-        result[posKey] |= editMask;
-      }
-    } else {
-      // Deletion or replacement: mark positions from firstPos to lastPos
-      for (int line = diff.firstPos.line; line <= diff.lastPos.line; line++) {
-        int startCol = (line == diff.firstPos.line) ? diff.firstPos.col : 0;
-        int endCol =
-            (line == diff.lastPos.line) ? diff.lastPos.col : maxLineLength - 1;
-
-        for (int col = startCol; col <= endCol; col++) {
-          int posKey = line * maxLineLength + col;
-          if (posKey >= 0 && posKey < maxPosKey) {
-            result[posKey] |= editMask;
-          }
-        }
-      }
-    }
-  }
-
-  return result;
 }
 
 vector<std::optional<EditResult>> CompositionSearchContext::calculateEditResults() {

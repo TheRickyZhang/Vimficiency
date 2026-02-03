@@ -84,8 +84,8 @@ For Lua context, see `lua/CLAUDE.md`.
 
 ## Deep Dive References
 - @docs/boundary-logic.md - Word motion and boundary crossing logic, EditBoundary API
-- @docs/edit-boundary-limitations.md - Known limitations with multi-line embedded regions
 - @docs/edit-region-strategy.md - Replace vs change strategy (includes tryReplacement implementation)
+- @docs/neovim_on_key_issues.md - vim.on_key limitations, operator-pending duplication, missing text object keys
 - @docs/optimizer-architecture.md - A* heuristics, MotionOptimizer (6-class motion exploration, templated specs), EditOptimizer, CompositionOptimizer
 - @docs/session-invocation.txt - How vimficiency optimizer sessions are called and stored
 - @docs/testing.md - NeovimOracle, test file conventions, debug printing
