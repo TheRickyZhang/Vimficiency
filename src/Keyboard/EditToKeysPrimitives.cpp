@@ -5,7 +5,7 @@
 
 using namespace std;
 
-// combineAll is provided by MotionToKeysPrimitives.cpp (same underlying type)
+// combineAll is in CommandToKeys.cpp
 
 // Convert a string to PhysicalKeys using CHAR_TO_KEYS
 static PhysicalKeys stringToKeys(const string& s) {

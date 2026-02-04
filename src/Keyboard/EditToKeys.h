@@ -1,10 +1,10 @@
 #pragma once
 
 
-#include "Keyboard/StringToKeys.h"
+#include "Keyboard/CommandToKeys.h"
 
 // Edit string to PhysicalKeys mapping (parallel to MotionToKeys)
-using EditToKeys = StringToKeys;
+using EditToKeys = CommandToKeys;
 
 // =============================================================================
 // Edit Categories - organized by reach/constraint

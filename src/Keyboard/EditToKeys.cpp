@@ -1,5 +1,6 @@
 #include "EditToKeys.h"
 #include "EditToKeysPrimitives.h"
+#include "Keyboard/MotionToKeysPrimitives.h"
 
 using namespace std;
 

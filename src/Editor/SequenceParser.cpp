@@ -2,7 +2,6 @@
 
 #include "SequenceParser.h"
 #include "Keyboard/MotionToKeys.h"
-#include <stdexcept>
 #include <unordered_set>
 
 using namespace std;

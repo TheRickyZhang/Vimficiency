@@ -6,11 +6,11 @@
 #include "CharToKeys.h"
 #include "SequenceTokenizer.h"
 #include "Optimizer/BufferIndex.h"  // for CountableMotionPair, LandingType
-#include "Keyboard/StringToKeys.h"
+#include "Keyboard/CommandToKeys.h"
 
 // std::less<> enables transparent comparison - allows lookup with string_view
 // without allocating a temporary std::string
-using MotionToKeys = StringToKeys;
+using MotionToKeys = CommandToKeys;
 
 // =============================================================================
 // Motion Maps

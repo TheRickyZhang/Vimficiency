@@ -132,5 +132,5 @@ The weighted sum of these metrics produces the final effort score used by the op
 
 1. **New physical key**: Add to `VIMFICIENCY_KEYS` macro, update `KEY_COUNT`
 2. **New character mapping**: Add to appropriate `CharMappings` category
-3. **New motion**: Add to `MotionToKeysPrimitives.cpp` and relevant motion maps
+3. **New motion**: Add to `MotionToKeysPrimitives.h` and relevant motion maps
 4. **New edit**: Add to `EditToKeysPrimitives.cpp` and relevant edit maps

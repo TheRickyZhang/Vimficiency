@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "KeyboardModel.h"
-#include "StringToKeys.h"
+#include "CommandToKeys.h"
 
 // Used for physical key presses (calculating effort) only!
 // For semantic tokenization, see parseMotions() in Motion.h
@@ -15,8 +15,8 @@ public:
   // std::less<> enables transparent comparison (lookup with string_view without allocation)
 
   // Build from action + motion maps (they must outlive the tokenizer).
-  SequenceTokenizer(const StringToKeys &actions,
-                    const StringToKeys &motions);
+  SequenceTokenizer(const CommandToKeys &actions,
+                    const CommandToKeys &motions);
 
   PhysicalKeys tokenize(std::string_view s) const;
 

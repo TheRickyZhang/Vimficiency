@@ -1,17 +1,8 @@
 #pragma once
 
-#include <functional>
-#include <initializer_list>
-#include <string>
-
 #include "MotionToKeys.h"
 
-// Use reference_wrapper to avoid overhead of copying, while giving concrete objects to initializer list
-MotionToKeys combineAll(std::initializer_list<std::reference_wrapper<const MotionToKeys>> maps);
-
-CharToKeys combineAllToCharKeySeq( std::initializer_list<std::reference_wrapper<const MotionToKeys>> maps);
-
-std::vector<std::string> combineAllMotionsToList(std::initializer_list<std::reference_wrapper<const MotionToKeys>>);
+// combineAll, combineAllToCharKeySeq, combineAllToList are in CommandToKeys.h
 
 // -------------------- BEGIN Vim Semantic Building Blocks --------------------
 const MotionToKeys hjkl = {
