@@ -3,32 +3,25 @@
 #include <sstream>
 #include <string>
 #include <ostream>
-#include <vector>
 
 #include "State/Sequence.h"
-#include "Utils/StringUtils.h"
 
 struct Result {
-  std::vector<Sequence> sequences;
+  Sequence sequence;
   double keyCost;
 
   Result() : keyCost(0) {}
-  Result(std::vector<Sequence> seqs, double c) : sequences(std::move(seqs)), keyCost(c) {}
-
-  // Constructor from string (creates single Normal mode sequence)
-  Result(const std::string& s, double c) : keyCost(c) {
-    if (!s.empty()) {
-      sequences.emplace_back(s, Mode::Normal);
-    }
-  }
+  Result(Sequence seq, double c) : sequence(std::move(seq)), keyCost(c) {}
+  Result(const std::string& s, double c) : sequence(s), keyCost(c) {}
+  Result(std::string&& s, double c) : sequence(std::move(s)), keyCost(c) {}
 
   bool isValid() const {
-    return !sequences.empty();
+    return !sequence.empty();
   }
 
-  // Get flattened string representation
+  // Get string representation
   std::string getSequenceString() const {
-    return flattenSequences(sequences);
+    return sequence.keys;
   }
 
   std::string to_string() {
@@ -38,15 +31,7 @@ struct Result {
   }
 
   friend std::ostream& operator<<(std::ostream& os, const Result& r) {
-    for(size_t i = 0; i < r.sequences.size(); i++) {
-      const Sequence& s = r.sequences[i];
-      if(i == 0 && s.mode == Mode::Insert) os << "I: ";
-      if(i > 0) os << " ";
-      os << makePrintable(s.keys);
-    }
-    os << " " << r.keyCost;
+    os << r.sequence << " " << r.keyCost;
     return os;
   }
 };
-
-

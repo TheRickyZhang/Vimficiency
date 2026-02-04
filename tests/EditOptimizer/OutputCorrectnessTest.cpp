@@ -131,29 +131,22 @@ TEST_F(EditOptimizerOutputCorrectness, Replacement_SameLength) {
 
     Lines source = {original};
 
-    vector<Result> results;
-    int lastPos = -1;
-    tryReplacement(original, replacement, config, lastPos, results);
-    if (results.empty()) continue;
+    auto result = tryReplacement(original, replacement, config);
+    if (!result.has_value() || !result->isValid()) continue;
+    total++;
 
-    // Results[k] is designed to be applied from starting position k
-    for (size_t k = 0; k < results.size(); k++) {
-      const Result& r = results[k];
-      if (!r.isValid()) continue;
-      total++;
+    // Result is for starting position 0
+    string seq = result->getSequenceString();
+    auto nvim = oracle->simulate(source, 0, 0, seq);
 
-      string seq = r.getSequenceString();
-      auto nvim = oracle->simulate(source, 0, static_cast<int>(k), seq);
-
-      if (nvim.lines.size() == 1 && nvim.lines[0] == replacement) {
-        passed++;
-      } else {
-        if (total - passed <= 3) {
-          cerr << "FAIL iter=" << iter << " startCol=" << k << " seq='" << seq << "'\n"
-               << "  Original: '" << original << "'\n"
-               << "  Expected: '" << replacement << "'\n"
-               << "  Got: " << nvim.lines << endl;
-        }
+    if (nvim.lines.size() == 1 && nvim.lines[0] == replacement) {
+      passed++;
+    } else {
+      if (total - passed <= 3) {
+        cerr << "FAIL iter=" << iter << " seq='" << seq << "'\n"
+             << "  Original: '" << original << "'\n"
+             << "  Expected: '" << replacement << "'\n"
+             << "  Got: " << nvim.lines << endl;
       }
     }
   }

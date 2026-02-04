@@ -3,11 +3,8 @@
 #include "EditToKeys.h"
 #include "MotionToKeysPrimitives.h"  // For combineAll (same underlying type)
 
-#include <functional>
 #include <initializer_list>
 #include <vector>
-
-// combineAll is provided by MotionToKeysPrimitives.h (EditToKeys == MotionToKeys == StringToKeys)
 
 // Generate all combinations from multiple character slots
 // Example: makeCombinations({"d", "c"}, {"i", "a"}, {"w", "W"})

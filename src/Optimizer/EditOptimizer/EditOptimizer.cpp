@@ -25,23 +25,13 @@ using namespace std;
 
 ostream& operator<<(ostream& os, const EditResult& editResult) {
   os << "typeAllResults: ";
-  for(int i = 0; i < editResult.typeAllResults.size(); i++) {
+  for(size_t i = 0; i < editResult.typeAllResults.size(); i++) {
     const auto& res = editResult.typeAllResults[i];
     os << (res.isValid() ? res.getSequenceString() : "_");
 
-    if(i < editResult.typeAllResults.size()) os << " ";
-    else os << "\n";
+    if(i < editResult.typeAllResults.size() - 1) os << " ";
   }
-  if(!editResult.replaceResults.empty()) {
-    os << "replaecmentResults: ";
-    for(int i = 0; i < editResult.replaceResults.size(); i++) {
-      const auto& res = editResult.replaceResults[i];
-      os << (res.isValid() ? res.getSequenceString() : "_");
-      if(i < editResult.typeAllResults.size()) os << " ";
-      else os << "\n";
-    }  
-    os << "replacementEnd: " << editResult.replaceEnd << "\n";
-  }
+  os << "\n";
   return os;
 }
 
@@ -141,9 +131,9 @@ pair<string, PhysicalKeys> buildTypedCommands(const Lines &goalLines) {
 } // anonymous namespace
 
 // replacement strategy for same-length transformations
-void tryReplacement(const string &deleted, const string &inserted,
-                    const Config &config, int &lastReplacementPos,
-                    vector<Result> &res) {
+// Returns result for position 0 only (the only position ever consumed)
+optional<Result> tryReplacement(const string &deleted, const string &inserted,
+                                const Config &config) {
   assert(deleted.size() == inserted.size());
   assert(deleted != inserted);
 
@@ -155,25 +145,7 @@ void tryReplacement(const string &deleted, const string &inserted,
     }
   }
 
-  int sz = static_cast<int>(diff.size());
   int firstDiff = diff[0];
-  lastReplacementPos = diff.back();
-
-  // stats[i] = (prefix to move from position i to firstDiff, effort)
-  vector<pair<string, RunningEffort>> stats(firstDiff + 1);
-  for (int i = 0; i <= firstDiff; i++) {
-    pair<string, RunningEffort> temp;
-    if (i < firstDiff) {
-      int diff = firstDiff - i;
-      if(diff <= 2) {
-        temp.first = string(diff, 'l');
-        temp.second.append(PhysicalKeys(diff, Key::Key_L), config);
-      } else {
-        temp.second.append({CharMappings::digitsArr[diff], Key::Key_L}, config);
-      }
-    }
-    stats[i] = temp;
-  }
 
   // Build replacement sequence from firstDiff onward
   // Group consecutive diff positions into runs, use R-mode for runs of 2+
@@ -222,14 +194,23 @@ void tryReplacement(const string &deleted, const string &inserted,
     }
   }
 
-  // Build results for each starting position
-  res.resize(stats.size());
-  for (size_t k = 0; k < stats.size(); k++) {
-    auto [prefix, runningEffort] = stats[k];
-    PhysicalKeys keys = globalTokenizer().tokenize(seq);
-    double effort = runningEffort.append(keys, config);
-    res[k] = Result(prefix + seq, effort);
+  // Build result for position 0 only
+  // If firstDiff > 0, we need to move right to reach the first change
+  string prefix;
+  RunningEffort runningEffort;
+  if (firstDiff > 0) {
+    if (firstDiff <= 2) {
+      prefix = string(firstDiff, 'l');
+      runningEffort.append(PhysicalKeys(firstDiff, Key::Key_L), config);
+    } else {
+      prefix = to_string(firstDiff) + "l";
+      runningEffort.append({CharMappings::digitsArr[firstDiff], Key::Key_L}, config);
+    }
   }
+
+  PhysicalKeys keys = globalTokenizer().tokenize(seq);
+  double effort = runningEffort.append(keys, config);
+  return Result(prefix + seq, effort);
 }
 
 // =============================================================================
@@ -248,15 +229,6 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
     return optimizePureDeletion(initialLines, editBoundary, params);
   }
 
-  // Get replacement results
-  vector<Result> replacementResults;
-  int lastReplacementPos = -1;
-  if (initialLines.size() == 1 && goalLines.size() == 1 &&
-      initialLines[0].size() == goalLines[0].size() && !initialLines[0].empty()) {
-    tryReplacement(initialLines[0], goalLines[0], config, lastReplacementPos,
-                   replacementResults);
-  }
-
   // Create search context (handles effectiveLines, offsets, search state)
   EditSearchContext ctx(initialLines, editBoundary, params, config);
   ctx.initStartingPositions(initialLines);
@@ -266,7 +238,14 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
   const auto& suf = editBoundary.suffix();
   const string preSuf = pre + suf;
 
-  EditResult result(ctx.totalPositions, replacementResults, lastReplacementPos);
+  EditResult result(ctx.totalPositions);
+
+  // Check if replacement strategy is applicable (same-length, single-line)
+  optional<Result> replacementResult;
+  if (initialLines.size() == 1 && goalLines.size() == 1 &&
+      initialLines[0].size() == goalLines[0].size() && !initialLines[0].empty()) {
+    replacementResult = tryReplacement(initialLines[0], goalLines[0], config);
+  }
 
   // Precompute typed content for goal state
   auto [typedStr, typedKeys] = buildTypedCommands(goalLines);
@@ -412,6 +391,14 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
     );
   }
 
+  // Merge replacement result at position 0 if it's better
+  if (replacementResult.has_value()) {
+    if (!result.typeAllResults[0].isValid() ||
+        replacementResult->keyCost < result.typeAllResults[0].keyCost) {
+      result.typeAllResults[0] = *replacementResult;
+    }
+  }
+
   result.stats = ctx.getStats();
   return result;
 }
@@ -433,7 +420,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
   // Local alias for goal checking
   const string preSuf = editBoundary.prefix() + editBoundary.suffix();
 
-  EditResult result(ctx.totalPositions, {}, -1);
+  EditResult result(ctx.totalPositions);
   vector<Result>& results = result.typeAllResults;
 
   // Goal check for pure deletion: only single-line goals accepted

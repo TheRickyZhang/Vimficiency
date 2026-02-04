@@ -11,11 +11,16 @@
 // - Partial line changes (e.g., "aaa bbb" -> "aaa ccc" = just "bbb"->"ccc")
 // - Changes spanning multiple lines
 // - Changes starting/ending mid-line
+//
+// Uses HALF-OPEN interval semantics: [beginPos, endPos)
+// - beginPos: First character that differs (inclusive)
+// - endPos: One past last character that differs (exclusive, may be virtual column)
+// Benefits: Empty ranges are natural (beginPos == endPos), no -1 adjustments needed.
 struct DiffState {
   // Character-precise edit region bounds (in original buffer coordinates)
-  // These define exactly which characters need to change
-  Position firstPos;  // First character that differs (inclusive)
-  Position lastPos;   // Last character that differs (inclusive)
+  // Half-open: [beginPos, endPos) defines exactly which characters need to change
+  Position beginPos;  // First character that differs (inclusive)
+  Position endPos;    // One past last character (exclusive, half-open)
 
   // The actual content being deleted/inserted (flattened with \n for newlines)
   std::string deletedText;   // Characters being removed (may contain \n)
@@ -26,9 +31,9 @@ struct DiffState {
   EditBoundary boundary;
 
   // Constructor with all fields
-  DiffState(Position first, Position last, std::string deleted,
+  DiffState(Position begin, Position end, std::string deleted,
             std::string inserted, EditBoundary bnd)
-      : firstPos(first), lastPos(last), deletedText(std::move(deleted)),
+      : beginPos(begin), endPos(end), deletedText(std::move(deleted)),
         insertedText(std::move(inserted)), boundary(std::move(bnd)) {}
 
   // Convert to Lines format for EditOptimizer compatibility
@@ -36,18 +41,20 @@ struct DiffState {
   Lines insertedLines() const { return Lines::unflatten(insertedText); }
 
   // Derived accessors
-  int origLineStart() const { return firstPos.line; }
+  int origLineStart() const { return beginPos.line; }
   int origLineCount() const { return deletedLines().size(); }
-  int newLineStart() const { return firstPos.line; }  // Same as origLineStart after adjustment
+  int newLineStart() const { return beginPos.line; }  // Same as origLineStart after adjustment
   int newLineCount() const { return insertedLines().size(); }
 
   int origCharCount() const { return static_cast<int>(deletedText.size()); }
   int newCharCount() const { return static_cast<int>(insertedText.size()); }
 
   // Convenience: is this a pure insertion, deletion, or replacement?
-  bool isPureInsertion() const { return deletedText.empty() && !insertedText.empty(); }
-  bool isPureDeletion() const { return !deletedText.empty() && insertedText.empty(); }
-  bool isReplacement() const { return !deletedText.empty() && !insertedText.empty(); }
+  // With half-open semantics: empty range (beginPos == endPos) means no deleted content
+  bool isPureInsertion() const { return beginPos == endPos && !insertedText.empty(); }
+  bool isPureDeletion() const { return beginPos != endPos && insertedText.empty(); }
+  bool isReplacement() const { return beginPos != endPos && !insertedText.empty(); }
+  bool hasDeletedContent() const { return beginPos != endPos; }
 };
 
 // Character-level Myers diff algorithm.

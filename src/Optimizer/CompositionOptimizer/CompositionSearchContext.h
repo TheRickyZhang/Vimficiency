@@ -1,9 +1,7 @@
 #pragma once
 
 #include <cassert>
-#include <cstdint>
 #include <functional>
-#include <optional>
 #include <queue>
 #include <unordered_map>
 #include <vector>
@@ -46,8 +44,8 @@ struct CompositionSearchContext {
   std::vector<DiffState> diffStates;
   int totalEdits;
 
-  // Pre-computed edit solutions (one EditResult per diff, nullopt for pure insertions)
-  std::vector<std::optional<EditResult>> editResults;
+  // Pre-computed edit solutions (one EditResult per diff, including pure insertions)
+  std::vector<EditResult> editResults;
 
   // Intermediate buffer states: linesAfterNEdits[i] = buffer after i edits applied
   // linesAfterNEdits[0] = initialLines, linesAfterNEdits[totalEdits] = goalLines
@@ -165,12 +163,6 @@ struct CompositionSearchContext {
     return linesAfterNEdits[editsCompleted];
   }
 
-  // Get the edit result for an edit index (asserts non-pure-insertion)
-  const EditResult& getEditResult(int editIndex) const {
-    assert(editResults[editIndex].has_value() && "Pure insertions have no EditResult");
-    return *editResults[editIndex];
-  }
-
   // Check if the edit at this index is a pure insertion
   bool isPureInsertion(int editIndex) const {
     return diffStates[editIndex].isPureInsertion();
@@ -192,8 +184,8 @@ private:
   // Helper: compute suffix sums of median edit costs
   std::vector<double> computeSuffixEditCosts() const;
 
-  // Helper: solve each edit region independently (nullopt for pure insertions)
-  std::vector<std::optional<EditResult>> calculateEditResults();
+  // Helper: solve each edit region independently
+  std::vector<EditResult> calculateEditResults();
 
   // Helper: build intermediate buffer states after each diff
   std::vector<Lines> calculateLinesAfterDiffs(const Lines& initialLines) const;

@@ -75,7 +75,7 @@ TEST(DiffStateTest, PureDeletion) {
 TEST(DiffStateTest, MultiLine_ChangeOneLine) {
   auto diffs = Myers::calculate({"aaa", "bbb", "ccc"}, {"aaa", "xxx", "ccc"});
   expectDiffs(diffs, {{"bbb", "xxx"}});
-  EXPECT_EQ(diffs[0].firstPos.line, 1);
+  EXPECT_EQ(diffs[0].beginPos.line, 1);
 }
 
 TEST(DiffStateTest, MultiLine_ChangesOnDifferentLines) {
@@ -146,24 +146,25 @@ TEST(DiffStateTest, WordBoundary_ParensPreserveInner) {
 }
 
 // =============================================================================
-// Position Calculation
+// Position Calculation (Half-Open Semantics)
 // =============================================================================
 
 TEST(DiffStateTest, Position_SingleCharChange) {
   auto diffs = Myers::calculate({"abcde"}, {"abXde"});
-  EXPECT_EQ(diffs[0].firstPos.col, 2);
-  EXPECT_EQ(diffs[0].lastPos.col, 2); // Single char: posEnd == posBegin
+  EXPECT_EQ(diffs[0].beginPos.col, 2);
+  EXPECT_EQ(diffs[0].endPos.col, 3); // Half-open: one past last char
 }
 
 TEST(DiffStateTest, Position_MultiCharChange) {
   auto diffs = Myers::calculate({"hello world"}, {"hello there"});
-  EXPECT_EQ(diffs[0].firstPos.col, 6); // Start of "world"
-  EXPECT_EQ(diffs[0].lastPos.col, 10);  // End of "world"
+  EXPECT_EQ(diffs[0].beginPos.col, 6); // Start of "world"
+  EXPECT_EQ(diffs[0].endPos.col, 11);  // Half-open: one past "d" in "world"
 }
 
 TEST(DiffStateTest, Position_PureInsertion) {
   auto diffs = Myers::calculate({"hello"}, {"hello world"});
-  EXPECT_EQ(diffs[0].firstPos, diffs[0].lastPos); // Insertion point
+  EXPECT_EQ(diffs[0].beginPos, diffs[0].endPos); // Empty range for pure insertion
+  EXPECT_TRUE(diffs[0].isPureInsertion());
 }
 
 // =============================================================================
@@ -203,7 +204,7 @@ TEST(DiffStateTest, LongLineSmallChange) {
   std::string prefix(50, 'x');
   auto diffs = Myers::calculate({prefix + "aaa"}, {prefix + "bbb"});
   expectDiffs(diffs, {{"aaa", "bbb"}});
-  EXPECT_EQ(diffs[0].firstPos.col, 50);
+  EXPECT_EQ(diffs[0].beginPos.col, 50);
 }
 
 // =============================================================================

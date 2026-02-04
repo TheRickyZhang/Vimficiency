@@ -1,20 +1,16 @@
 #pragma once
 
+#include <ostream>
 #include <string>
-#include <vector>
 
-#include "Editor/Mode.h"
-
-// Represents a sequence of Vim commands/keys as a string, tagged with the mode
-// it was executed in. Used by state classes to track the command history.
+// Represents a sequence of Vim commands/keys as a string.
+// Used by state classes to track the command history.
 struct Sequence {
   std::string keys;
-  Mode mode = Mode::Normal;
 
   Sequence() = default;
-  Sequence(Mode m) : mode(m) {}
-  Sequence(const std::string& k, Mode m) : keys(k), mode(m) {}
-  Sequence(std::string&& k, Mode m) : keys(std::move(k)), mode(m) {}
+  Sequence(const std::string& k) : keys(k) {}
+  Sequence(std::string&& k) : keys(std::move(k)) {}
 
   bool empty() const { return keys.empty(); }
 
@@ -22,20 +18,15 @@ struct Sequence {
   void append(char c) { keys += c; }
 
   bool operator==(const Sequence& other) const {
-    return keys == other.keys && mode == other.mode;
+    return keys == other.keys;
   }
   bool operator!=(const Sequence& other) const {
     return !(*this == other);
   }
 
-  // friend std::ostream& operator<<(std::ostream& os, const Sequence& seq) {
-  //   os << (seq.mode == Mode::Normal ? "Normal" : "Insert") << ": ";
-  //   os << seq.keys;
-  //   return os;
-  // }
+  // Stream output with mode-separated spacing
+  // Parses the sequence to identify mode transitions (insert entries via
+  // i/I/a/A/o/O/s/S/C/R/c{motion}, insert exits via <Esc>) and inserts
+  // spaces between segments.
+  friend std::ostream& operator<<(std::ostream& os, const Sequence& seq);
 };
-
-// Helper to get flattened string from vector<Sequence>
-std::string flattenSequences(const std::vector<Sequence>& seqs);
-
-

@@ -182,43 +182,35 @@ TEST_F(EditOptimizer_ManualTest, Boundary_LinewiseCursorContainment) {
 
 TEST_F(EditOptimizer_ManualTest, Replacement_SingleChar) {
   // "hello" -> "jello" - single char at position 0
-  vector<Result> results;
-  int lastPos = -1;
-  tryReplacement("hello", "jello", config, lastPos, results);
+  auto result = tryReplacement("hello", "jello", config);
 
-  ASSERT_FALSE(results.empty());
-  EXPECT_EQ(results[0].getSequenceString(), "rj");
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->getSequenceString(), "rj");
 }
 
 TEST_F(EditOptimizer_ManualTest, Replacement_SingleCharMiddle) {
   // "fresh" -> "frosh" - single char at position 2
-  vector<Result> results;
-  int lastPos = -1;
-  tryReplacement("fresh", "frosh", config, lastPos, results);
+  auto result = tryReplacement("fresh", "frosh", config);
 
-  ASSERT_FALSE(results.empty());
-  string seq = results[0].getSequenceString();
+  ASSERT_TRUE(result.has_value());
+  string seq = result->getSequenceString();
   EXPECT_TRUE(seq.find("ro") != string::npos) << "Expected 'ro' in: " << seq;
 }
 
 TEST_F(EditOptimizer_ManualTest, Replacement_ConsecutiveChars) {
   // "abc" -> "xyz" - all three chars differ, should use R mode
-  vector<Result> results;
-  int lastPos = -1;
-  tryReplacement("abc", "xyz", config, lastPos, results);
+  auto result = tryReplacement("abc", "xyz", config);
 
-  ASSERT_FALSE(results.empty());
-  EXPECT_TRUE(results[0].isValid());
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result->isValid());
 }
 
 TEST_F(EditOptimizer_ManualTest, Replacement_SparseChars) {
   // "0000000" -> "1001001" - three non-consecutive diffs
-  vector<Result> results;
-  int lastPos = -1;
-  tryReplacement("0000000", "1001001", config, lastPos, results);
+  auto result = tryReplacement("0000000", "1001001", config);
 
-  ASSERT_FALSE(results.empty());
-  string seq = results[0].getSequenceString();
+  ASSERT_TRUE(result.has_value());
+  string seq = result->getSequenceString();
 
   // Count r1 occurrences
   size_t replaceCount = 0;

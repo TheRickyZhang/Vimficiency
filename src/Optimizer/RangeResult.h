@@ -2,45 +2,34 @@
 
 #include <string>
 #include <ostream>
-#include <vector>
 
 #include "Editor/Position.h"
 #include "State/Sequence.h"
-#include "Utils/StringUtils.h"
 
 // Result with end position, used by optimizeToRange
 struct RangeResult {
-  std::vector<Sequence> sequences;
+  Sequence sequence;
   double keyCost;
   Position goalPos;
 
   RangeResult() : keyCost(0), goalPos(0, 0) {}
-  RangeResult(std::vector<Sequence> seqs, double c, Position p)
-    : sequences(std::move(seqs)), keyCost(c), goalPos(p) {}
-
-  // Constructor from string
-  RangeResult(const std::string& s, double c, Position p) : keyCost(c), goalPos(p) {
-    if (!s.empty()) {
-      sequences.emplace_back(s, Mode::Normal);
-    }
-  }
+  RangeResult(Sequence seq, double c, Position p)
+    : sequence(std::move(seq)), keyCost(c), goalPos(p) {}
+  RangeResult(const std::string& s, double c, Position p)
+    : sequence(s), keyCost(c), goalPos(p) {}
+  RangeResult(std::string&& s, double c, Position p)
+    : sequence(std::move(s)), keyCost(c), goalPos(p) {}
 
   bool isValid() const {
-    return !sequences.empty();
+    return !sequence.empty();
   }
 
   std::string getSequenceString() const {
-    return flattenSequences(sequences);
+    return sequence.keys;
   }
 
   friend std::ostream& operator<<(std::ostream& os, const RangeResult& r) {
-    for(size_t i = 0; i < r.sequences.size(); i++) {
-      const Sequence& s = r.sequences[i];
-      if(i == 0 && s.mode == Mode::Insert) os << "I: ";
-      if(i > 0) os << " ";
-      os << makePrintable(s.keys);
-    }
-    os << " " << r.keyCost << " -> (" << r.goalPos.line << "," << r.goalPos.col << ")";
+    os << r.sequence << " " << r.keyCost << " -> (" << r.goalPos.line << "," << r.goalPos.col << ")";
     return os;
   }
 };

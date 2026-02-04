@@ -1,7 +1,6 @@
 #pragma once
 
 #include <string>
-#include <vector>
 
 #include "Editor/Mode.h"
 #include "Editor/Position.h"
@@ -56,15 +55,15 @@ class CompositionState {
   // Index into edit sequence / line state stored externally, 0 = no edits done
   int editsCompleted;
 
-  // Command sequences grouped by mode (for display output)
-  std::vector<Sequence> sequences;
+  // Concatenated command sequence
+  Sequence sequence;
 
   double effort;
   double cost;
 
   RunningEffort runningEffort;
 
-  // Helper to append to the appropriate mode segment
+  // Helper to append to sequence and update effort
   void appendSequence(const std::string& s, const PhysicalKeys& keys, const Config& config);
 
 public:
@@ -88,11 +87,11 @@ public:
   Mode getMode() const { return mode; }
   int getEditsCompleted() const { return editsCompleted; }
 
-  // Get sequences grouped by mode
-  const std::vector<Sequence>& getSequences() const { return sequences; }
+  // Get sequence
+  const Sequence& getSequence() const { return sequence; }
 
   // Get flattened string representation
-  std::string getMotionSequence() const { return flattenSequences(sequences); }
+  std::string getMotionSequence() const { return sequence.keys; }
 
   double getEffort() const { return effort; }
   double getCost() const { return cost; }
@@ -103,21 +102,21 @@ public:
   // ==========================================================================
 
   // Create new state with edit transition applied
-  // - editSequences: the sequences for this edit (from EditResult)
+  // - editSequence: the sequence for this edit (from EditResult)
   // - newPos: position after edit completes (end position in edit region)
   // - newMode: mode after edit completes
   // Note: caller must set cost via setCost() after computing heuristic
   [[nodiscard]] CompositionState afterEditTransition(
-      const std::vector<Sequence>& editSequences,
+      const Sequence& editSequence,
       const Position& newPos, Mode newMode,
       const Config& config) const;
 
   // Create new state with motion result applied
-  // - moveSequences: the sequences for this movement
+  // - moveSequence: the sequence for this movement
   // - newPos: position after movement completes
   // Note: caller must set cost via setCost() after computing heuristic
   [[nodiscard]] CompositionState afterMotionResult(
-      const std::vector<Sequence>& moveSequences,
+      const Sequence& moveSequence,
       const Position& newPos,
       const Config& config) const;
 
@@ -125,11 +124,11 @@ public:
 
 private:
   // Internal: apply edit transition to this state (mutates)
-  void applyEditTransitionImpl(const std::vector<Sequence>& editSequences,
+  void applyEditTransitionImpl(const Sequence& editSequence,
                                const Position& newPos, Mode newMode,
                                const Config& config);
 
   // Internal: apply motion result to this state (mutates)
-  void applyMotionResultImpl(const std::vector<Sequence>& moveSequences,
+  void applyMotionResultImpl(const Sequence& moveSequence,
                              const Position& newPos, const Config& config);
 };

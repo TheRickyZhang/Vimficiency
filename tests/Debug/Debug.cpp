@@ -1220,7 +1220,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
   cerr << endl << "Diffs computed: " << diffs.size() << endl;
   for (size_t i = 0; i < diffs.size(); i++) {
     cerr << "  Diff " << i << ": '" << diffs[i].deletedText << "' -> '" << diffs[i].insertedText << "'" << endl;
-    cerr << "    firstPos: " << diffs[i].firstPos << ", lastPos: " << diffs[i].lastPos << endl;
+    cerr << "    beginPos: " << diffs[i].beginPos << ", endPos: " << diffs[i].endPos << endl;
   }
 
   // Test MotionOptimizer.optimizeToRange directly

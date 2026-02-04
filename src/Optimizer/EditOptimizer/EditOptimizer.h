@@ -13,15 +13,9 @@
 
 // TODO: Is it helpful to return some sort of vector<Position> to reuse information about how flat indices -> real positions?
 struct EditResult {
-  // Results that involve deleting everything, and typing the end text
-  // [start, end] for each result is [index, sz-1]
+  // Results indexed by flattened starting position
+  // typeAllResults[0] contains the best result for position 0 (may be replacement or delete+type)
   std::vector<Result> typeAllResults;
-
-  // Results that involve replacement. We go in order, so all starts <= first change, end = last change
-  // [start, end] for each result is [index, replacementEnd]
-  std::vector<Result> replaceResults;
-
-  int replaceEnd = -1;
 
   // Search statistics for debugging and benchmarking
   SearchStats stats;
@@ -46,9 +40,7 @@ struct EditResult {
   // This is where the cursor lands after the change command + typed text + <Esc>
   Position goalPos;
 
-  EditResult(int n, std::vector<Result> replaceResults, int replacemeEnd) :
-    replaceResults(replaceResults), replaceEnd(replacemeEnd)
-  {
+  explicit EditResult(int n) {
     typeAllResults.resize(n);
   }
 
@@ -86,18 +78,15 @@ struct EditResult {
 std::ostream& operator<<(std::ostream& os, const EditResult& editResult);
 
 // Try to find an optimal replacement sequence for same-length transformations.
-// Populates res with results for each starting position (0 to firstDiff).
+// Returns the result for starting position 0 (the only one ever consumed).
 //
-// @param deleted            The characters being removed (no newlines)
-// @param inserted           The characters being added (must be same length as deleted)
-// @param config             Keyboard config for cost calculation
-// @param lastReplacementPos Output: column of last replacement (for cursor tracking)
-// @param res                Output: results indexed by starting position
-void tryReplacement(const std::string& deleted,
-                    const std::string& inserted,
-                    const Config& config,
-                    int& lastReplacementPos,
-                    std::vector<Result>& res);
+// @param deleted   The characters being removed (no newlines)
+// @param inserted  The characters being added (must be same length as deleted)
+// @param config    Keyboard config for cost calculation
+// @return Result for position 0, or nullopt if replacement not applicable
+std::optional<Result> tryReplacement(const std::string& deleted,
+                                     const std::string& inserted,
+                                     const Config& config);
 
 
 struct EditOptimizer {

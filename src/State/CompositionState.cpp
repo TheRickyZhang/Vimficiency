@@ -6,10 +6,7 @@ using namespace std;
 
 void CompositionState::appendSequence(const string& s, const PhysicalKeys& keys,
                                       const Config& config) {
-  if (sequences.empty() || sequences.back().mode != mode) {
-    sequences.emplace_back(mode);
-  }
-  sequences.back().append(s);
+  sequence.append(s);
   effort = runningEffort.append(keys, config);
 }
 
@@ -18,20 +15,20 @@ void CompositionState::appendSequence(const string& s, const PhysicalKeys& keys,
 // =============================================================================
 
 CompositionState CompositionState::afterEditTransition(
-    const vector<Sequence>& editSequences,
+    const Sequence& editSequence,
     const Position& newPos, Mode newMode,
     const Config& config) const {
   CompositionState newState = *this;
-  newState.applyEditTransitionImpl(editSequences, newPos, newMode, config);
+  newState.applyEditTransitionImpl(editSequence, newPos, newMode, config);
   return newState;
 }
 
 CompositionState CompositionState::afterMotionResult(
-    const vector<Sequence>& moveSequences,
+    const Sequence& moveSequence,
     const Position& newPos,
     const Config& config) const {
   CompositionState newState = *this;
-  newState.applyMotionResultImpl(moveSequences, newPos, config);
+  newState.applyMotionResultImpl(moveSequence, newPos, config);
   return newState;
 }
 
@@ -40,27 +37,20 @@ CompositionState CompositionState::afterMotionResult(
 // =============================================================================
 
 void CompositionState::applyEditTransitionImpl(
-    const vector<Sequence>& editSequences,
+    const Sequence& editSequence,
     const Position& newPos, Mode newMode,
     const Config& config) {
   pos = newPos;
   editsCompleted++;
-  // Merge edit sequences into our sequences
-  for (const auto& seq : editSequences) {
-    // Set mode to match each segment's mode before appending
-    mode = seq.mode;
-    PhysicalKeys keys = globalTokenizer().tokenize(seq.keys);
-    appendSequence(seq.keys, keys, config);
-  }
+  PhysicalKeys keys = globalTokenizer().tokenize(editSequence.keys);
+  appendSequence(editSequence.keys, keys, config);
   mode = newMode;
 }
 
 void CompositionState::applyMotionResultImpl(
-    const vector<Sequence>& moveSequences,
+    const Sequence& moveSequence,
     const Position& newPos, const Config& config) {
   pos = newPos;
-  for (const auto& seq : moveSequences) {
-    PhysicalKeys keys = globalTokenizer().tokenize(seq.keys);
-    appendSequence(seq.keys, keys, config);
-  }
+  PhysicalKeys keys = globalTokenizer().tokenize(moveSequence.keys);
+  appendSequence(moveSequence.keys, keys, config);
 }

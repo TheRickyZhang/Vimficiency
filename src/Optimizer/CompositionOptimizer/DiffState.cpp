@@ -359,22 +359,37 @@ vector<DiffState> calculate(const Lines& initialLines, const Lines& goalLines) {
 
     // Only create a diff if there's actually something to change
     if (!deleted.empty() || !inserted.empty()) {
-      // Compute position bounds
+      // Compute position bounds using half-open semantics
       Position posBegin = flatIndexToPosition(startOrigIdx, startText);
 
-      // posEnd is inclusive, so it's the position of the last deleted char
-      // For pure insertions, posEnd == posBegin (insertion point)
+      // posEnd is one past last char (half-open)
+      // For pure insertions, posEnd == posBegin (empty range)
+      // Uses virtual columns: increment col without wrapping, track lines for embedded newlines
       Position posEnd;
       if (deleted.empty()) {
         posEnd = posBegin;
       } else {
-        posEnd = flatIndexToPosition(startOrigIdx + static_cast<int>(deleted.size()) - 1, startText);
+        // Compute half-open end position
+        int line = posBegin.line;
+        int col = posBegin.col;
+        for (char c : deleted) {
+          if (c == '\n') {
+            line++;
+            col = 0;
+          } else {
+            col++;
+          }
+        }
+        posEnd = Position(line, col);  // col is one past last char (half-open)
       }
 
       // Construct DiffState with EditBoundary computed from buffer context
+      // EditBoundary uses inclusive lastPos, so convert from half-open
+      Position inclusiveEnd = deleted.empty() ? posBegin
+          : Position(posEnd.line, posEnd.col - 1);
       result.emplace_back(
           posBegin, posEnd, std::move(deleted), std::move(inserted),
-          EditBoundary(initialLines, posBegin, posEnd));
+          EditBoundary(initialLines, posBegin, inclusiveEnd));
     }
 
     // Skip the long KEEP run we found (or remaining KEEPs at end)
@@ -393,7 +408,7 @@ Lines applyDiffState(const DiffState& diff, const Lines& lines) {
   string text = lines.flatten();
 
   // Find the flat indices for the edit region
-  int startIdx = positionToFlatIndex(diff.firstPos, lines);
+  int startIdx = positionToFlatIndex(diff.beginPos, lines);
   int endIdx;
 
   if (diff.deletedText.empty()) {
@@ -491,7 +506,7 @@ Lines applyAllDiffState(const vector<DiffState>& diffs, const Lines& initialLine
   // Pre-compute all flat indices for all diffs (using original positions)
   vector<pair<int, int>> indices;  // (startIdx, endIdx) for each diff
   for (const auto& diff : diffs) {
-    int startIdx = posToFlatIdx(diff.firstPos);
+    int startIdx = posToFlatIdx(diff.beginPos);
     int endIdx = startIdx;
     if (!diff.deletedText.empty()) {
       endIdx = startIdx + static_cast<int>(diff.deletedText.size());

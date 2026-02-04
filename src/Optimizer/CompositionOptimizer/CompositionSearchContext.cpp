@@ -1,6 +1,7 @@
 #include "CompositionSearchContext.h"
 
-#include "Keyboard/CharToKeys.h"
+#include "Keyboard/MotionToKeys.h"
+#include "State/RunningEffort.h"
 #include "Utils/Debug.h"
 
 #include <algorithm>
@@ -61,8 +62,8 @@ CompositionSearchContext::CompositionSearchContext(
 
   // Determine processing direction based on start position relative to edits
   if (!rawDiffs.empty()) {
-    double distToFirst = costToGoal(initialPos, rawDiffs.front().firstPos);
-    double distToLast = costToGoal(initialPos, rawDiffs.back().lastPos);
+    double distToFirst = costToGoal(initialPos, rawDiffs.front().beginPos);
+    double distToLast = costToGoal(initialPos, rawDiffs.back().endPos);
     forward = (distToFirst <= distToLast + forwardBias);
 
     if (!forward) {
@@ -94,7 +95,7 @@ Position CompositionSearchContext::editIndexToBufferPos(
     if (remaining < lineLen) {
       int col = remaining;
       if (i == 0) {
-        col += diff.firstPos.col;
+        col += diff.beginPos.col;
       }
       return Position(diff.newLineStart() + i, col);
     }
@@ -103,10 +104,10 @@ Position CompositionSearchContext::editIndexToBufferPos(
 
   // Index was at end of last line
   int lastLine = diff.newLineStart() + static_cast<int>(inserted.size()) - 1;
-  int lastCol = inserted.empty() ? diff.firstPos.col
+  int lastCol = inserted.empty() ? diff.beginPos.col
                                  : static_cast<int>(inserted.back().size());
   if (!inserted.empty() && inserted.size() == 1) {
-    lastCol += diff.firstPos.col;
+    lastCol += diff.beginPos.col;
   }
   return Position(lastLine, lastCol);
 }
@@ -122,14 +123,22 @@ double CompositionSearchContext::heuristic(
     const DiffState& nextEdit = diffStates[editsCompleted];
     Position pos = s.getPos();
 
-    if (pos < nextEdit.firstPos) {
-      // Undershooting: normal cost to reach the edit
-      h += costToGoal(pos, nextEdit.firstPos);
-    } else if (pos > nextEdit.lastPos) {
-      // Overshooting: went past the edit, heavily penalized
-      h += overshootPenalty * costToGoal(pos, nextEdit.lastPos);
+    if (nextEdit.beginPos == nextEdit.endPos) {
+      // Pure insertion: only beginPos is valid entry point
+      if (pos != nextEdit.beginPos) {
+        h += costToGoal(pos, nextEdit.beginPos);
+      }
+    } else {
+      // Regular edit: half-open range [beginPos, endPos)
+      if (pos < nextEdit.beginPos) {
+        // Undershooting: normal cost to reach the edit
+        h += costToGoal(pos, nextEdit.beginPos);
+      } else if (pos >= nextEdit.endPos) {
+        // Overshooting: endPos is one past valid, add 1 to distance for penalty
+        h += overshootPenalty * (costToGoal(pos, nextEdit.endPos) + 1);
+      }
+      // else: inside range [beginPos, endPos), distance = 0
     }
-    // else: inside range, distance = 0
   }
 
   return effortWeight * s.getEffort() + distanceWeight * h;
@@ -181,42 +190,73 @@ vector<double> CompositionSearchContext::computeSuffixEditCosts() const {
   for (int i = n - 1; i >= 0; i--) {
     double medianCost;
 
-    if (!editResults[i].has_value()) {
-      // Pure insertion: estimate cost as insert mode entry + text length + escape
-      // i (1) + text + Esc (1)
-      medianCost = 1.0 + static_cast<double>(diffStates[i].insertedText.size()) + 1.0;
-    } else {
-      const auto& editRes = *editResults[i];
-      vector<double> costs;
-      for (const Result& r : editRes.typeAllResults) {
-        if (r.isValid()) {
-          costs.push_back(r.keyCost);
-        }
-      }
-
-      if (costs.empty()) {
-        medianCost = 100.0;  // Fallback for empty results
-      } else {
-        size_t mid = costs.size() / 2;
-        nth_element(costs.begin(), costs.begin() + mid, costs.end());
-        medianCost = costs[mid];
+    // All edits now have EditResult (including pure insertions)
+    const auto& editRes = editResults[i];
+    vector<double> costs;
+    for (const Result& r : editRes.typeAllResults) {
+      if (r.isValid()) {
+        costs.push_back(r.keyCost);
       }
     }
+
+    if (costs.empty()) {
+      medianCost = 100.0;  // Fallback for empty results
+    } else {
+      size_t mid = costs.size() / 2;
+      nth_element(costs.begin(), costs.begin() + mid, costs.end());
+      medianCost = costs[mid];
+    }
+
     suffixCosts[i] = suffixCosts[i + 1] + medianCost;
   }
 
   return suffixCosts;
 }
 
-vector<std::optional<EditResult>> CompositionSearchContext::calculateEditResults() {
+// Helper: compute cursor position after insertion
+// Cursor ends on last char of inserted text, or stays at insertPos if empty
+static Position computeInsertEndPos(Position insertPos, const string& insertedText) {
+  if (insertedText.empty()) {
+    return insertPos;
+  }
+  Lines inserted = Lines::unflatten(insertedText);
+  if (inserted.size() == 1) {
+    // Single line: cursor at last char
+    int endCol = insertPos.col + static_cast<int>(inserted[0].size()) - 1;
+    return Position(insertPos.line, max(0, endCol));
+  } else {
+    // Multi-line: cursor at last char of last line
+    int lastLine = insertPos.line + static_cast<int>(inserted.size()) - 1;
+    int lastCol = inserted.back().empty() ? 0 : static_cast<int>(inserted.back().size()) - 1;
+    return Position(lastLine, lastCol);
+  }
+}
+
+vector<EditResult> CompositionSearchContext::calculateEditResults() {
   EditOptimizer editOptimizer(config);
-  vector<std::optional<EditResult>> results;
+  vector<EditResult> results;
   results.reserve(diffStates.size());
 
   for (const DiffState& diff : diffStates) {
-    // Skip EditOptimizer for pure insertions - handled specially in CompositionOptimizer
+    // Handle pure insertions: create single-entry EditResult with precomputed "i + text + <Esc>"
     if (diff.isPureInsertion()) {
-      results.push_back(std::nullopt);
+      EditResult result(1);  // Single entry for position 0 (the insertion point)
+
+      // Compute goalPos (same logic as regular edits)
+      result.goalPos = computeInsertEndPos(diff.beginPos, diff.insertedText);
+
+      // Build insert sequence: i + text + <Esc>
+      string seq = "i" + diff.insertedText + "<Esc>";
+      PhysicalKeys keys = globalTokenizer().tokenize(seq);
+      double effort = RunningEffort().append(keys, config);
+      result.typeAllResults[0] = Result(Sequence(seq), effort);
+
+      // lineBaseIndex for single-point insertion
+      result.firstLine = diff.beginPos.line;
+      result.firstCol = diff.beginPos.col;
+      result.lineBaseIndex = {-diff.beginPos.col};  // flatIndexAt(beginPos) == 0
+
+      results.push_back(std::move(result));
       continue;
     }
 
@@ -224,60 +264,27 @@ vector<std::optional<EditResult>> CompositionSearchContext::calculateEditResults
         diff.deletedLines(), diff.insertedLines(), diff.boundary);
 
     // Compute lineBaseIndex for O(1) buffer position to flat index lookup
-    result.computeLineBaseIndex(diff.deletedLines(), diff.firstPos.line, diff.firstPos.col);
+    result.computeLineBaseIndex(diff.deletedLines(), diff.beginPos.line, diff.beginPos.col);
 
     // Compute cursor position after edit completes
     // After change + typed text + <Esc>, cursor is at last char of inserted text
     const Lines& inserted = diff.insertedLines();
     if (inserted.empty() || (inserted.size() == 1 && inserted[0].empty())) {
       // Pure deletion or empty insertion: cursor at start of edit region
-      result.goalPos = diff.firstPos;
+      result.goalPos = diff.beginPos;
     } else if (inserted.size() == 1) {
       // Single line: cursor at last char of inserted text
-      result.goalPos = Position(diff.firstPos.line,
-                               diff.firstPos.col + static_cast<int>(inserted[0].size()) - 1);
+      result.goalPos = Position(diff.beginPos.line,
+                               diff.beginPos.col + static_cast<int>(inserted[0].size()) - 1);
     } else {
       // Multi-line: cursor at last char of last inserted line
-      int lastLine = diff.firstPos.line + static_cast<int>(inserted.size()) - 1;
+      int lastLine = diff.beginPos.line + static_cast<int>(inserted.size()) - 1;
       int lastCol = inserted.back().empty() ? 0 : static_cast<int>(inserted.back().size()) - 1;
       result.goalPos = Position(lastLine, lastCol);
     }
 
-    // Check if replacement strategy is applicable and better
-    if (diff.deletedText.size() == diff.insertedText.size() &&
-        diff.deletedText.find('\n') == string::npos &&
-        diff.insertedText.find('\n') == string::npos &&
-        !diff.deletedText.empty() && diff.deletedText != diff.insertedText) {
-
-      vector<Result> replResults;
-      int lastReplacementPos = -1;
-      tryReplacement(diff.deletedText, diff.insertedText, config,
-                     lastReplacementPos, replResults);
-
-      if (!replResults.empty() && replResults[0].isValid()) {
-        Result replResult = replResults[0];
-
-        if (!result.typeAllResults.empty() &&
-            result.typeAllResults[0].isValid()) {
-          // Calculate deletion + typing cost
-          double typingCost = 0;
-          for (char c : diff.insertedText) {
-            auto it = CHAR_TO_KEYS.find(c);
-            if (it != CHAR_TO_KEYS.end()) {
-              typingCost += it->second.size();
-            }
-          }
-          double deletionTotalCost = result.typeAllResults[0].keyCost + typingCost;
-
-          if (replResult.keyCost < deletionTotalCost) {
-            result.typeAllResults[0] = replResult;
-            debug("Replacement is cheaper for diff: ", diff.deletedText,
-                  " -> ", diff.insertedText, " (", replResult.keyCost, " vs ",
-                  deletionTotalCost, ")");
-          }
-        }
-      }
-    }
+    // Note: Replacement vs delete+type comparison is now handled inside EditOptimizer::optimizeEdit
+    // The best result for position 0 is already stored in typeAllResults[0]
 
     results.push_back(std::move(result));
   }

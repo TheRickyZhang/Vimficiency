@@ -91,4 +91,4 @@ For Lua context, see `lua/CLAUDE.md`.
 - @docs/testing.md - NeovimOracle, test file conventions, debug printing
 - @docs/utils.md - General utilities (QuoteFlags, BracketFlags, Lines, StringUtils)
 - @docs/vim-utils-principles.md - State validation, empty handling, MotionUtils vs EndpointUtils, **targetCol handling**
-- @docs/x-macros.md - Key definitions, supported commands, sequence parsing
+- @docs/core/keyboard.md - Keyboard module, key definitions (X macros), sequence-to-keys conversion, effort model
