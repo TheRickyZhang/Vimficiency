@@ -12,3 +12,5 @@ docs/vim/
 
 # Test seed files (generated when using random seeds)
 tests/.last_seeds.txt
+build-asan/
+build*/

@@ -11,8 +11,6 @@ class BracketFlags {
   static constexpr uint8_t Angle  = 1 << 3;  // <>
 
 
-  // When you have raw char (2 comparisons)
-  // Accepts either opener or closer
   static constexpr uint8_t maskFor(char c) {
     switch(c) {
       case '(': case ')': return Paren;

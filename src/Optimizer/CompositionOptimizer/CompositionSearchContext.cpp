@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cassert>
 #include <limits>
+#include <tuple>
 
 using namespace std;
 
@@ -80,6 +81,9 @@ CompositionSearchContext::CompositionSearchContext(
 
   // Solve each edit region
   editResults = calculateEditResults();
+
+  // Compute text object contexts for shortcuts
+  textObjectContexts = computeTextObjectContexts();
 
   // Compute suffix sums for heuristic
   suffixEditCosts = computeSuffixEditCosts();
@@ -304,3 +308,184 @@ vector<Lines> CompositionSearchContext::calculateLinesAfterDiffs(
 
   return result;
 }
+
+// =============================================================================
+// Text Object Context Computation
+// =============================================================================
+
+namespace {
+
+// Helper: find quote pair matching [beginCol, endCol) on a single line
+// Returns {openCol, closeCol, isAround} where isAround indicates if this is an "around" match
+// For "inner": open < beginCol, inner region [open+1, close) == [beginCol, endCol)
+// For "around": around region [open, close+1) == [beginCol, endCol)
+tuple<int, int, bool> findMatchingQuotePair(const string& line, int beginCol, int endCol, char quote) {
+  // Collect all quote positions
+  vector<int> quotePositions;
+  for (int i = 0; i < static_cast<int>(line.size()); i++) {
+    if (line[i] == quote) {
+      quotePositions.push_back(i);
+    }
+  }
+
+  // Check each pair for inner or around match
+  // Quotes pair in order: 0-1, 2-3, 4-5, etc.
+  for (size_t i = 0; i + 1 < quotePositions.size(); i += 2) {
+    int open = quotePositions[i];
+    int close = quotePositions[i + 1];
+
+    // Check inner match: [open+1, close) == [beginCol, endCol)
+    if (open + 1 == beginCol && close == endCol) {
+      return {open, close, false};  // inner match
+    }
+
+    // Check around match: [open, close+1) == [beginCol, endCol)
+    if (open == beginCol && close + 1 == endCol) {
+      return {open, close, true};  // around match
+    }
+  }
+  return {-1, -1, false};
+}
+
+// Helper: find bracket pair matching [beginCol, endCol) on a single line
+// Returns {openCol, closeCol, isAround} where isAround indicates if this is an "around" match
+// For "inner": inner region [open+1, close) == [beginCol, endCol)
+// For "around": around region [open, close+1) == [beginCol, endCol)
+tuple<int, int, bool> findMatchingBracketPair(const string& line, int beginCol, int endCol,
+                                               char open, char close) {
+  int bestOpen = -1;
+  int bestClose = -1;
+  bool bestIsAround = false;
+
+  // Find all bracket pairs and check for matches
+  vector<int> openStack;
+  for (int i = 0; i < static_cast<int>(line.size()); i++) {
+    if (line[i] == open) {
+      openStack.push_back(i);
+    } else if (line[i] == close && !openStack.empty()) {
+      int openPos = openStack.back();
+      openStack.pop_back();
+
+      // Check inner match: [openPos+1, i) == [beginCol, endCol)
+      if (openPos + 1 == beginCol && i == endCol) {
+        // Prefer innermost (larger openPos)
+        if (bestOpen == -1 || openPos > bestOpen) {
+          bestOpen = openPos;
+          bestClose = i;
+          bestIsAround = false;
+        }
+      }
+
+      // Check around match: [openPos, i+1) == [beginCol, endCol)
+      if (openPos == beginCol && i + 1 == endCol) {
+        if (bestOpen == -1 || openPos > bestOpen) {
+          bestOpen = openPos;
+          bestClose = i;
+          bestIsAround = true;
+        }
+      }
+    }
+  }
+
+  return {bestOpen, bestClose, bestIsAround};
+}
+
+// Scan quotes for a single edit, populating context
+void scanQuotesForEdit(TextObjectContext& ctx, const string& line,
+                       int beginCol, int endCol) {
+  int lineLen = static_cast<int>(line.size());
+  if (lineLen == 0) return;
+
+  ctx.validQuoteMask.resize(lineLen);
+
+  for (char quote : {'"', '\'', '`'}) {
+    auto [openCol, closeCol, isAround] = findMatchingQuotePair(line, beginCol, endCol, quote);
+    if (openCol == -1) continue;
+    if (closeCol >= lineLen) continue;
+
+    if (isAround) {
+      ctx.useAroundQuote.add(quote);
+    }
+
+    // Find first quote of this type on line
+    int firstQuoteOfType = -1;
+    for (int col = 0; col < lineLen; col++) {
+      if (line[col] == quote) {
+        firstQuoteOfType = col;
+        break;
+      }
+    }
+
+    if (firstQuoteOfType == openCol) {
+      // This is the first pair - all positions from 0 to closeCol are valid
+      for (int col = 0; col <= closeCol; col++) {
+        ctx.validQuoteMask[col].add(quote);
+      }
+    } else if (firstQuoteOfType >= 0) {
+      // Not the first pair - only positions before the first quote are valid
+      for (int col = 0; col < firstQuoteOfType; col++) {
+        ctx.validQuoteMask[col].add(quote);
+      }
+    }
+  }
+}
+
+// Scan brackets for a single edit, populating context
+void scanBracketsForEdit(TextObjectContext& ctx, const string& line,
+                         int beginCol, int endCol) {
+  int lineLen = static_cast<int>(line.size());
+  if (lineLen == 0) return;
+
+  ctx.validBracketMask.resize(lineLen);
+
+  for (auto [open, close] : vector<pair<char, char>>{{'(', ')'}, {'[', ']'}, {'{', '}'}, {'<', '>'}}) {
+    auto [openCol, closeCol, isAround] = findMatchingBracketPair(line, beginCol, endCol, open, close);
+    if (openCol == -1) continue;
+    if (openCol >= lineLen || closeCol >= lineLen) continue;
+
+    if (isAround) {
+      ctx.useAroundBracket.add(open);
+    }
+
+    // Mark valid positions: columns where balance is 0 and col <= openCol
+    int balance = 0;
+    for (int col = 0; col < lineLen; col++) {
+      if (balance == 0 && col <= openCol) {
+        ctx.validBracketMask[col].add(open);
+      }
+      if (line[col] == open) balance++;
+      else if (line[col] == close) balance--;
+    }
+  }
+}
+
+} // anonymous namespace
+
+vector<TextObjectContext> CompositionSearchContext::computeTextObjectContexts() const {
+  vector<TextObjectContext> contexts;
+  contexts.resize(totalEdits);
+
+  for (int i = 0; i < totalEdits; i++) {
+    const DiffState& diff = diffStates[i];
+    TextObjectContext& ctx = contexts[i];
+
+    // Skip pure insertions (no content to match against)
+    if (diff.isPureInsertion()) continue;
+
+    // Skip multi-line edits (quotes are single-line only, brackets need more work)
+    if (diff.beginPos.line != diff.endPos.line) continue;
+
+    const Lines& buffer = linesAfterNEdits[i];
+    if (diff.beginPos.line >= static_cast<int>(buffer.size())) continue;
+
+    const string& line = buffer[diff.beginPos.line];
+    ctx.line = diff.beginPos.line;
+
+    // endPos.col is half-open (one past last deleted char)
+    scanQuotesForEdit(ctx, line, diff.beginPos.col, diff.endPos.col);
+    scanBracketsForEdit(ctx, line, diff.beginPos.col, diff.endPos.col);
+  }
+
+  return contexts;
+}
+

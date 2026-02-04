@@ -16,7 +16,51 @@
 #include "Editor/Position.h"
 #include "Keyboard/MotionToKeys.h"
 #include "State/CompositionState.h"
+#include "Utils/BracketFlags.h"
 #include "Utils/Lines.h"
+#include "Utils/QuoteFlags.h"
+
+// =============================================================================
+// TextObjectContext
+// =============================================================================
+// Per-edit tracking of valid text object entry points.
+// For each column on the edit's line, tracks which quote/bracket types
+// can be used as text objects to reach the edit region from that column.
+
+struct TextObjectContext {
+  // For quotes: validQuoteMask[col] has bits set for quote types valid from col.
+  // A quote type is valid from col if:
+  //   1. No prior quote of that type exists on this line (would pair with earlier)
+  //   2. A valid quote pair of that type contains the edit region
+  std::vector<QuoteFlags> validQuoteMask;  // Indexed by column
+
+  // For brackets: validBracketMask[col] has bits set for bracket types valid from col.
+  // A bracket type is valid from col if:
+  //   1. Balance is 0 at col (not inside a pair of that type)
+  //   2. The next forward pair of that type contains the edit region
+  std::vector<BracketFlags> validBracketMask;  // Indexed by column
+
+  // Whether to use around (true) or inner (false) for each delimiter type
+  // Set based on whether edit region includes delimiters
+  QuoteFlags useAroundQuote;
+  BracketFlags useAroundBracket;
+
+  // Line this context applies to (-1 if not applicable, e.g., pure insertion)
+  int line = -1;
+
+  // Explicit default constructor to ensure proper initialization
+  TextObjectContext() : validQuoteMask(), validBracketMask(), useAroundQuote(), useAroundBracket(), line(-1) {}
+
+  bool hasAnyValid() const {
+    for (const auto& mask : validQuoteMask) {
+      if (mask.seen('"') || mask.seen('\'') || mask.seen('`')) return true;
+    }
+    for (const auto& mask : validBracketMask) {
+      if (mask.seen('(') || mask.seen('[') || mask.seen('{') || mask.seen('<')) return true;
+    }
+    return false;
+  }
+};
 
 // =============================================================================
 // CompositionSearchContext
@@ -50,6 +94,10 @@ struct CompositionSearchContext {
   // Intermediate buffer states: linesAfterNEdits[i] = buffer after i edits applied
   // linesAfterNEdits[0] = initialLines, linesAfterNEdits[totalEdits] = goalLines
   std::vector<Lines> linesAfterNEdits;
+
+  // Text object shortcut contexts: one per edit, tracks valid quote/bracket entry points
+  // textObjectContexts[i] applies to edit i, using buffer linesAfterNEdits[i]
+  std::vector<TextObjectContext> textObjectContexts;
 
   // Suffix sums of median edit costs for O(1) heuristic lookup
   // suffixEditCosts[i] = sum of median costs for edits i..totalEdits-1
@@ -189,4 +237,7 @@ private:
 
   // Helper: build intermediate buffer states after each diff
   std::vector<Lines> calculateLinesAfterDiffs(const Lines& initialLines) const;
+
+  // Helper: compute text object contexts for each edit
+  std::vector<TextObjectContext> computeTextObjectContexts() const;
 };

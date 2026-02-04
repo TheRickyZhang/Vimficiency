@@ -24,6 +24,81 @@ namespace {
 // Neovim RPC message types
 constexpr int RPC_REQUEST = 0;
 constexpr int RPC_RESPONSE = 1;
+
+// Convert special key notation for nvim_input().
+//
+// nvim_input() parses <...> as special keys synchronously (no timeout).
+// This means literal '<' (like in "ci<") would hang waiting for '>'.
+//
+// Strategy:
+// - Recognized special keys (<Esc>, <CR>, <C-x>, etc.) → raw bytes
+// - Unrecognized '<' → <lt> (Neovim's canonical escape for literal '<')
+std::string convertSpecialKeys(const std::string& keys) {
+  std::string result;
+  result.reserve(keys.size() * 2);  // May expand due to <lt> escaping
+
+  size_t i = 0;
+  while (i < keys.size()) {
+    if (keys[i] == '<') {
+      // Look for closing '>'
+      size_t closePos = keys.find('>', i + 1);
+      if (closePos != std::string::npos) {
+        std::string tag = keys.substr(i + 1, closePos - i - 1);
+
+        // Convert to lowercase for case-insensitive matching
+        std::string tagLower;
+        for (char c : tag) tagLower += std::tolower(c);
+
+        // Check for known special keys and convert to raw bytes
+        bool matched = true;
+        if (tagLower == "esc" || tagLower == "escape") {
+          result += '\x1b';
+        } else if (tagLower == "cr" || tagLower == "enter" || tagLower == "return") {
+          result += '\r';
+        } else if (tagLower == "tab") {
+          result += '\t';
+        } else if (tagLower == "bs" || tagLower == "backspace") {
+          result += '\x7f';
+        } else if (tagLower == "del" || tagLower == "delete") {
+          result += "\x1b[3~";  // ANSI delete sequence
+        } else if (tagLower == "space") {
+          result += ' ';
+        } else if (tagLower == "lt") {
+          result += '<';
+        } else if (tagLower == "gt") {
+          result += '>';
+        } else if (tagLower.size() >= 2 && tagLower[0] == 'c' && tagLower[1] == '-') {
+          // Control key: <C-x> -> Ctrl+x
+          if (tagLower.size() == 3) {
+            char base = tagLower[2];
+            if (base >= 'a' && base <= 'z') {
+              result += static_cast<char>(base - 'a' + 1);
+            } else if (base == '[') {
+              result += '\x1b';  // C-[ is Escape
+            } else {
+              matched = false;
+            }
+          } else {
+            matched = false;
+          }
+        } else {
+          matched = false;
+        }
+
+        if (matched) {
+          i = closePos + 1;
+          continue;
+        }
+      }
+      // Unrecognized or unclosed '<' - escape as <lt> for nvim_input
+      result += "<lt>";
+      i++;
+      continue;
+    }
+    result += keys[i++];
+  }
+  return result;
+}
 } // namespace
 
 struct NeovimOracle::Impl {
@@ -253,9 +328,11 @@ SimulationResult NeovimOracle::simulate(const Lines &lines,
   }
 
   // Use nvim_input (preserves mode correctly) then force processing via
-  // nvim_exec_lua
+  // nvim_exec_lua. Convert special keys to raw bytes to avoid ambiguity
+  // when literal '<' appears in commands like "ci<".
   {
-    auto args = msgpack::object(std::make_tuple(keys), z);
+    std::string convertedKeys = convertSpecialKeys(keys);
+    auto args = msgpack::object(std::make_tuple(convertedKeys), z);
     impl_->send_request("nvim_input", args);
     impl_->recv_response();
   }

@@ -190,7 +190,45 @@ vector<Result> CompositionOptimizer::optimize(
     // ========== MOVEMENT TRANSITIONS ==========
     // Use MotionOptimizer to find optimal paths to next edit region
     if (!editTransitionTaken) {
-      // TODO: Check for bracket/quote motions first
+      // Check for bracket/quote text object shortcuts
+      // These allow reaching the edit region from positions before it on the same line
+      const TextObjectContext& toCtx = ctx.textObjectContexts[editsCompleted];
+      if (toCtx.line == pos.line) {
+        const EditResult& editResult = ctx.editResults[editsCompleted];
+        const string& insertedText = nextEdit.insertedText;
+
+        // Check valid quotes from this position
+        if (pos.col < static_cast<int>(toCtx.validQuoteMask.size())) {
+          const QuoteFlags& validQuotes = toCtx.validQuoteMask[pos.col];
+          for (char q : {'"', '\'', '`'}) {
+            if (validQuotes.seen(q)) {
+              // Build sequence: c + i/a + quote + insertedText + <Esc>
+              char modifier = toCtx.useAroundQuote.seen(q) ? 'a' : 'i';
+              string seq = string("c") + modifier + q + insertedText + "<Esc>";
+              CompositionState newState = s.afterEditTransition(
+                  Sequence(seq), editResult.goalPos, Mode::Normal, config);
+              newState.setCost(ctx.heuristic(newState, editsCompleted + 1));
+              ctx.exploreNewState(std::move(newState));
+            }
+          }
+        }
+
+        // Check valid brackets from this position
+        if (pos.col < static_cast<int>(toCtx.validBracketMask.size())) {
+          const BracketFlags& validBrackets = toCtx.validBracketMask[pos.col];
+          for (char b : {'(', '[', '{', '<'}) {
+            if (validBrackets.seen(b)) {
+              // Build sequence: c + i/a + bracket + insertedText + <Esc>
+              char modifier = toCtx.useAroundBracket.seen(b) ? 'a' : 'i';
+              string seq = string("c") + modifier + b + insertedText + "<Esc>";
+              CompositionState newState = s.afterEditTransition(
+                  Sequence(seq), editResult.goalPos, Mode::Normal, config);
+              newState.setCost(ctx.heuristic(newState, editsCompleted + 1));
+              ctx.exploreNewState(std::move(newState));
+            }
+          }
+        }
+      }
 
       // Calculate line subset bounds for MotionOptimizer
       // Include padding to allow overshoot-and-return paths

@@ -185,6 +185,35 @@ for (int i = 0; i < seedCount; i++) {
 
 Results show aggregated stats with star markers (`*`) indicating how many runs hit each stop condition (e.g., `48*****` means all 5 runs hit that limit).
 
+## Test Fixture Naming (ODR Violation Prevention)
+
+**CRITICAL**: Test fixture names must NOT match any `struct`/`class` names in `src/`.
+
+C++ ODR (One Definition Rule) violations occur when the same type name has different definitions in different translation units. This causes **silent memory corruption** that's extremely hard to debug - ASan sees corrupted memory but can't explain why.
+
+### Naming Convention
+
+Always suffix test fixtures with `Test`, `Tests`, `Bench`, or similar:
+
+```cpp
+// BAD - may collide with struct TextObjectContext in src/
+class TextObjectContext : public ::testing::Test { };
+
+// GOOD - clearly a test fixture
+class TextObjectContextTest : public ::testing::Test { };
+```
+
+### Verification
+
+Run this to check for potential collisions:
+
+```bash
+# Find test fixtures that might collide with production types
+scripts/check-test-fixture-names.sh
+```
+
+This compares test fixture names against all struct/class names in `src/` and reports any exact matches.
+
 ## Test Writing Strategy
 
 Each test file should have two sections:

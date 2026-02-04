@@ -1203,6 +1203,110 @@ TEST_F(NeovimOracleDebug, CompositionOptimizerOutputFormat) {
   EXPECT_TRUE(foundValidResult) << "Expected at least one valid result that produces the goal state";
 }
 
+TEST_F(NeovimOracleDebug, InvestigateTextObjectShortcuts) {
+  cerr << "=== Text Object Shortcuts Investigation ===" << endl;
+
+  // Test 1: ci( behavior from different positions
+  cerr << endl << "=== ci( from different positions ===" << endl;
+  {
+    Lines source = {"foo ((hello)) bar"};
+    cerr << "Source: '" << source[0] << "'" << endl;
+    cerr << "Inner parens at 5,11; outer at 4,12" << endl;
+    cerr << "Edit region for 'hello'->'goodbye' would be [6,11)" << endl;
+
+    for (int col = 0; col <= 5; col++) {
+      auto r = oracle_->simulate(source, 0, col, "ci(goodbye<Esc>");
+      cerr << "  ci( at col " << col << ": '" << r.lines[0] << "'" << endl;
+    }
+  }
+
+  // Test 2: ci" from different positions
+  cerr << endl << "=== ci\" from different positions ===" << endl;
+  {
+    Lines source = {"foo \"hello\" bar"};
+    cerr << "Source: '" << source[0] << "'" << endl;
+    cerr << "Quotes at cols 4 and 10" << endl;
+    cerr << "Edit region for 'hello'->'goodbye' would be [5,10)" << endl;
+
+    for (int col = 0; col <= 5; col++) {
+      auto r = oracle_->simulate(source, 0, col, "ci\"goodbye<Esc>");
+      cerr << "  ci\" at col " << col << ": '" << r.lines[0] << "'" << endl;
+    }
+  }
+
+  // Test 3: What happens with quotes when there's an earlier quote?
+  cerr << endl << "=== ci\" with earlier quote on line ===" << endl;
+  {
+    Lines source = {"a\"b \"hello\" bar"};
+    cerr << "Source: '" << source[0] << "'" << endl;
+    cerr << "Quotes at cols 1, 4, 10" << endl;
+
+    auto r0 = oracle_->simulate(source, 0, 0, "ci\"goodbye<Esc>");
+    cerr << "  ci\" at col 0: '" << r0.lines[0] << "'" << endl;
+
+    auto r3 = oracle_->simulate(source, 0, 3, "ci\"goodbye<Esc>");
+    cerr << "  ci\" at col 3: '" << r3.lines[0] << "'" << endl;
+
+    auto r5 = oracle_->simulate(source, 0, 5, "ci\"goodbye<Esc>");
+    cerr << "  ci\" at col 5: '" << r5.lines[0] << "'" << endl;
+  }
+
+  // Test 4: Simple quote case
+  cerr << endl << "=== Simple quote case ===" << endl;
+  {
+    Lines source = {"\"hello\""};
+    cerr << "Source: '" << source[0] << "'" << endl;
+
+    auto r0 = oracle_->simulate(source, 0, 0, "ci\"goodbye<Esc>");
+    cerr << "  ci\" at col 0 (on quote): '" << r0.lines[0] << "'" << endl;
+
+    auto r1 = oracle_->simulate(source, 0, 1, "ci\"goodbye<Esc>");
+    cerr << "  ci\" at col 1 (on 'h'): '" << r1.lines[0] << "'" << endl;
+  }
+
+  // Test 5: Check what DiffState produces for the quote test case
+  cerr << endl << "=== DiffState for quote test ===" << endl;
+  {
+    Lines initial = {"foo \"hello\" bar"};
+    Lines goal = {"foo \"goodbye\" bar"};
+
+    auto diffs = Myers::calculate(initial, goal);
+    cerr << "Diffs: " << diffs.size() << endl;
+    for (size_t i = 0; i < diffs.size(); i++) {
+      cerr << "  Diff " << i << ": deleted='" << diffs[i].deletedText
+           << "' inserted='" << diffs[i].insertedText << "'" << endl;
+      cerr << "    beginPos=(" << diffs[i].beginPos.line << "," << diffs[i].beginPos.col
+           << ") endPos=(" << diffs[i].endPos.line << "," << diffs[i].endPos.col << ")" << endl;
+    }
+  }
+
+  // Test 6: Run the composition optimizer and see what it produces
+  cerr << endl << "=== CompositionOptimizer for quote test ===" << endl;
+  {
+    Lines initial = {"foo \"hello\" bar"};
+    Lines goal = {"foo \"goodbye\" bar"};
+    Position initialPos(0, 0);
+
+    Config config = Config::uniform();
+    CompositionOptimizer opt{config};
+    CompositionOptimizerParams params = CompositionOptimizerParams{}.withMaxResults(10);
+
+    vector<Result> results = opt.optimize(
+        initial, initialPos, goal, Position(0,0), "", NavContext(),
+        MotionBoundary(), EXPLORABLE_MOTIONS, params);
+
+    cerr << "Results: " << results.size() << endl;
+    for (size_t i = 0; i < results.size(); i++) {
+      string seq = results[i].getSequenceString();
+      cerr << "  " << i << ": '" << seq << "' cost=" << results[i].keyCost << endl;
+
+      auto nvim = oracle_->simulate(initial, 0, 0, seq);
+      bool correct = (nvim.lines == goal);
+      cerr << "      -> '" << nvim.lines[0] << "' " << (correct ? "OK" : "WRONG") << endl;
+    }
+  }
+}
+
 TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
   cerr << "=== CompositionOptimizer debug ===" << endl;
 
