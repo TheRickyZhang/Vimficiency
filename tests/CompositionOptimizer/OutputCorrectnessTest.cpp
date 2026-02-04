@@ -22,6 +22,7 @@ using namespace std;
 class DISABLED_CompositionOptimizerOutputCorrectness : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle;
+  static const int NUM_ITERATIONS = 30;
   Config config = Config::uniform();
   CompositionOptimizer opt{config};
   CompositionOptimizerParams params{};
@@ -62,7 +63,6 @@ unique_ptr<NeovimOracle> DISABLED_CompositionOptimizerOutputCorrectness::oracle;
 // Random single-line substitutions
 TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, SingleLine_Substitution) {
   RandomGen::seed(42);
-  const int NUM_ITERATIONS = 30;
   int passed = 0, total = 0;
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
@@ -124,9 +124,8 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, SingleLine_Substitution) 
 
 // Random multi-line with single edit
 TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, MultiLine_SingleEdit) {
-  oracle->restart();
+
   RandomGen::seed(43);
-  const int NUM_ITERATIONS = 25;
   int passed = 0, total = 0;
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
@@ -196,9 +195,8 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, MultiLine_SingleEdit) {
 
 // Random pure insertions (adding text without removing)
 TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, PureInsertion) {
-  oracle->restart();
+
   RandomGen::seed(44);
-  const int NUM_ITERATIONS = 25;
   int passed = 0, total = 0;
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
@@ -258,9 +256,8 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, PureInsertion) {
 
 // Random pure deletions (removing text without adding)
 TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, PureDeletion) {
-  oracle->restart();
+
   RandomGen::seed(45);
-  const int NUM_ITERATIONS = 25;
   int passed = 0, total = 0;
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
@@ -323,9 +320,8 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, PureDeletion) {
 
 // Insert new lines
 TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, InsertNewLine) {
-  oracle->restart();
+
   RandomGen::seed(46);
-  const int NUM_ITERATIONS = 20;
   int passed = 0, total = 0;
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
@@ -377,9 +373,8 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, InsertNewLine) {
 
 // Delete entire lines
 TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, DeleteEntireLine) {
-  oracle->restart();
+
   RandomGen::seed(47);
-  const int NUM_ITERATIONS = 20;
   int passed = 0, total = 0;
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
@@ -434,9 +429,8 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, DeleteEntireLine) {
 
 // Two edits on the same line
 TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, TwoEdits_SameLine) {
-  oracle->restart();
+
   RandomGen::seed(48);
-  const int NUM_ITERATIONS = 20;
   int passed = 0, total = 0;
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
@@ -492,9 +486,8 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, TwoEdits_SameLine) {
 
 // Two edits on different lines
 TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, TwoEdits_DifferentLines) {
-  oracle->restart();
+
   RandomGen::seed(49);
-  const int NUM_ITERATIONS = 20;
   int passed = 0, total = 0;
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {

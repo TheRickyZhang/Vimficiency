@@ -1435,6 +1435,97 @@ TEST_F(NeovimOracleDebug, InvestigateTextObjectShortcuts) {
   }
 }
 
+TEST_F(NeovimOracleDebug, InvestigateMaskBugs) {
+  Config config = Config::uniform();
+  CompositionOptimizerParams params{};
+
+  auto makeCtx = [&](const Lines& initial, const Lines& goal) {
+    return CompositionSearchContext(
+        initial, Position(0, 0), goal, "",
+        NavContext(), MotionBoundary(), EXPLORABLE_MOTIONS, params, config);
+  };
+
+  // Bug 1: Bracket mask doesn't mark positions INSIDE the brackets
+  cerr << "\n=== Bug 1: Bracket positions inside pair ===" << endl;
+  {
+    Lines initial = {"foo (hello) bar"};
+    Lines goal = {"foo (X) bar"};
+    auto ctx = makeCtx(initial, goal);
+    const auto& toCtx = ctx.textObjectContexts[0];
+    const auto& diff = ctx.diffStates[0];
+
+    cerr << "Line: '" << initial[0] << "'" << endl;
+    cerr << "Diff: deleted='" << diff.deletedText << "' inserted='" << diff.insertedText
+         << "' begin=(" << diff.beginPos.line << "," << diff.beginPos.col
+         << ") end=(" << diff.endPos.line << "," << diff.endPos.col << ")" << endl;
+    cerr << "toCtx.line=" << toCtx.line << endl;
+
+    cerr << "Bracket mask for '(':" << endl;
+    for (int col = 0; col < static_cast<int>(initial[0].size()); col++) {
+      bool maskValid = col < static_cast<int>(toCtx.validBracketMask.size())
+                       && toCtx.validBracketMask[col].seen('(');
+      auto r = oracle_->simulate(initial, 0, col, "ci(X<Esc>");
+      bool oracleValid = (r.lines == goal);
+      cerr << "  col " << col << ": mask=" << maskValid << " oracle=" << oracleValid
+           << (maskValid != oracleValid ? " MISMATCH" : "") << endl;
+    }
+  }
+
+  // Bug 2: Quote mask for second pair
+  cerr << "\n=== Bug 2: Quote second pair ===" << endl;
+  {
+    Lines initial = {"aaa \"first\" bbb \"second\" ccc"};
+    Lines goal = {"aaa \"first\" bbb \"X\" ccc"};
+    auto ctx = makeCtx(initial, goal);
+    const auto& toCtx = ctx.textObjectContexts[0];
+    const auto& diff = ctx.diffStates[0];
+
+    cerr << "Line: '" << initial[0] << "'" << endl;
+    cerr << "Diff: deleted='" << diff.deletedText << "' inserted='" << diff.insertedText
+         << "' begin=(" << diff.beginPos.line << "," << diff.beginPos.col
+         << ") end=(" << diff.endPos.line << "," << diff.endPos.col << ")" << endl;
+
+    cerr << "Quote mask for '\"':" << endl;
+    for (int col = 0; col < static_cast<int>(initial[0].size()); col++) {
+      bool maskValid = col < static_cast<int>(toCtx.validQuoteMask.size())
+                       && toCtx.validQuoteMask[col].seen('"');
+      auto r = oracle_->simulate(initial, 0, col, "ci\"X<Esc>");
+      bool oracleValid = (r.lines == goal);
+      char ch = initial[0][col];
+      cerr << "  col " << col << " '" << ch << "': mask=" << maskValid
+           << " oracle=" << oracleValid
+           << (maskValid != oracleValid ? " MISMATCH" : "") << endl;
+    }
+  }
+
+  // Bug 3: Nested brackets - inner pair
+  cerr << "\n=== Bug 3: Nested brackets (inner) ===" << endl;
+  {
+    Lines initial = {"a ((hello)) c"};
+    Lines goal = {"a ((X)) c"};
+    auto ctx = makeCtx(initial, goal);
+    const auto& toCtx = ctx.textObjectContexts[0];
+    const auto& diff = ctx.diffStates[0];
+
+    cerr << "Line: '" << initial[0] << "'" << endl;
+    cerr << "Diff: deleted='" << diff.deletedText << "' inserted='" << diff.insertedText
+         << "' begin=(" << diff.beginPos.line << "," << diff.beginPos.col
+         << ") end=(" << diff.endPos.line << "," << diff.endPos.col << ")" << endl;
+
+    cerr << "Bracket mask for '(':" << endl;
+    for (int col = 0; col < static_cast<int>(initial[0].size()); col++) {
+      bool maskValid = col < static_cast<int>(toCtx.validBracketMask.size())
+                       && toCtx.validBracketMask[col].seen('(');
+      auto r = oracle_->simulate(initial, 0, col, "ci(X<Esc>");
+      bool oracleValid = (r.lines == goal);
+      char ch = initial[0][col];
+      cerr << "  col " << col << " '" << ch << "': mask=" << maskValid
+           << " oracle=" << oracleValid
+           << (maskValid != oracleValid ? " MISMATCH" : "") << endl;
+    }
+  }
+}
+
 TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
   cerr << "=== CompositionOptimizer debug ===" << endl;
 

@@ -435,13 +435,15 @@ void scanQuotesForEdit(TextObjectContext& ctx, const string& line,
     }
 
     if (firstQuoteOfType == openCol) {
-      // This is the first pair - all positions from 0 to closeCol are valid
+      // First pair: Neovim forward-searches from any position before closeCol
+      // and finds this pair. Positions inside the pair also use this pair.
       for (int col = 0; col <= closeCol; col++) {
         ctx.validQuoteMask[col].add(quote);
       }
-    } else if (firstQuoteOfType >= 0) {
-      // Not the first pair - only positions before the first quote are valid
-      for (int col = 0; col < firstQuoteOfType; col++) {
+    } else {
+      // Subsequent pair: only positions ON or INSIDE the pair are valid.
+      // From before the pair, ci" forward-searches and hits an earlier pair.
+      for (int col = openCol; col <= closeCol; col++) {
         ctx.validQuoteMask[col].add(quote);
       }
     }
@@ -465,10 +467,28 @@ void scanBracketsForEdit(TextObjectContext& ctx, const string& line,
       ctx.useAroundBracket.add(open);
     }
 
-    // Mark valid positions: columns where balance is 0 and col <= openCol
+    // Precompute: first opening bracket of this type at or after each column.
+    // Used to check if forward-search from a position reaches the target pair.
+    vector<int> firstOpenForward(lineLen, -1);
+    {
+      int nextOpen = -1;
+      for (int col = lineLen - 1; col >= 0; col--) {
+        if (line[col] == open) nextOpen = col;
+        firstOpenForward[col] = nextOpen;
+      }
+    }
+
+    // Mark valid positions:
+    // 1. Inside the target pair (openCol..closeCol): always valid
+    //    (Neovim uses innermost pair containing cursor)
+    // 2. Before the pair at balance=0: valid only if forward-search
+    //    reaches the target pair's openCol (no earlier bracket in the way)
     int balance = 0;
     for (int col = 0; col < lineLen; col++) {
-      if (balance == 0 && col <= openCol) {
+      bool insidePair = (col >= openCol && col <= closeCol);
+      bool forwardReachesPair = (col < openCol && balance == 0 &&
+                                 firstOpenForward[col] == openCol);
+      if (insidePair || forwardReachesPair) {
         ctx.validBracketMask[col].add(open);
       }
       if (line[col] == open) balance++;

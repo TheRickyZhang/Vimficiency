@@ -184,11 +184,6 @@ TEST_F(MotionOptimizerOutputCorrectness, SubBufferMotionCorrectness) {
   });
 
   for (int i = 0; i < iterations; i++) {
-    // Restart oracle periodically to avoid connection issues
-    if (i > 0 && i % 20 == 0) {
-      oracle->restart();
-    }
-
     // Generate embedded test case with sub-buffer smaller than full buffer
     auto test = generateEmbeddedTest(8, 4);
 

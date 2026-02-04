@@ -274,11 +274,15 @@ void NeovimOracle::restart() {
   impl_->msg_id = 0;
   impl_->start();
   impl_->configureWindowSize();
+  callsSinceRestart_ = 0;
 }
 
 SimulationResult NeovimOracle::simulate(const Lines &lines,
                                         int startRow, int startCol,
                                         const std::string &keys) {
+  if (++callsSinceRestart_ >= AUTO_RESTART_INTERVAL) {
+    restart();
+  }
   msgpack::zone z;
 
   // nvim_create_buf(listed=false, scratch=true)

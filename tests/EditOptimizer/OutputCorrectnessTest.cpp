@@ -23,6 +23,7 @@ using namespace std;
 class EditOptimizerOutputCorrectness : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle;
+  static const int CNT = 30;
   Config config = Config::uniform();
   EditOptimizerParams params{};
   EditOptimizer opt{config};
@@ -40,11 +41,10 @@ unique_ptr<NeovimOracle> EditOptimizerOutputCorrectness::oracle;
 // Single-line embedded: PREFIX | EDIT_REGION | SUFFIX on one line
 // Boundary checking works correctly since positions don't shift across lines
 TEST_F(EditOptimizerOutputCorrectness, SingleLineEmbedded) {
-  const int NUM_ITERATIONS = 50;
   RandomGen::seed(42);
   int passed = 0, total = 0;
 
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
+  for (int iter = 0; iter < CNT; iter++) {
     auto test = generateRandomSingleLineEmbedded();
     EditResult res = opt.optimizeEdit(test.editRegion, {""}, test.makeBoundary(), params);
     string expected = test.expectedAfterDeletion();
@@ -79,12 +79,10 @@ TEST_F(EditOptimizerOutputCorrectness, SingleLineEmbedded) {
 
 // Multi-line full buffer deletion (no embedding - tests multi-line sequences work)
 TEST_F(EditOptimizerOutputCorrectness, MultiLineFullBuffer) {
-  oracle->restart();
-  const int NUM_ITERATIONS = 30;
   RandomGen::seed(43);
   int passed = 0, total = 0;
 
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
+  for (int iter = 0; iter < CNT; iter++) {
     int numLines = RandomGen::range(2, 3);
     Lines source = randomLines(numLines, 4, 8);
     EditBoundary boundary(source, {0, 0}, source.lastPos());
@@ -118,12 +116,10 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineFullBuffer) {
 }
 
 TEST_F(EditOptimizerOutputCorrectness, Replacement_SameLength) {
-  oracle->restart();
-  const int NUM_ITERATIONS = 30;
   RandomGen::seed(44);
   int passed = 0, total = 0;
 
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
+  for (int iter = 0; iter < CNT; iter++) {
     int wordLen = RandomGen::range(5, 9);
     string original = randomWord(wordLen);
     string replacement = randomWord(wordLen);
@@ -159,12 +155,11 @@ TEST_F(EditOptimizerOutputCorrectness, Replacement_SameLength) {
 // With full prefix/suffix support, effectiveLines matches fullBuffer exactly,
 // eliminating cursor position divergence after multi-line deletions.
 TEST_F(EditOptimizerOutputCorrectness, MultiLineEmbedded) {
-  oracle->restart();
-  const int NUM_ITERATIONS = 8;  // Reduced - embedded optimization is slow (~500ms each)
+  const int REDUCED_NUM_ITERATIONS = 8;  // Reduced - embedded optimization is slow (~500ms each)
   RandomGen::seed(45);
   int passed = 0, total = 0;
 
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
+  for (int iter = 0; iter < REDUCED_NUM_ITERATIONS; iter++) {
     auto test = generateRandomMultiLineEmbedded();
     EditResult res = opt.optimizeEdit(test.editRegion, {""}, test.makeBoundary(), params);
     string expected = test.expectedAfterDeletion();

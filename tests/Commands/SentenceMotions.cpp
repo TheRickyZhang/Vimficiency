@@ -23,6 +23,7 @@ class SentenceMotionsTest : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle;
   static NavContext navContext;
+  static const int NUM_ITERATIONS = 100;
 
   static void SetUpTestSuite() {
     oracle = make_unique<NeovimOracle>();
@@ -129,8 +130,6 @@ RandomSentenceTest generateRandomSentenceBuffer(int numLines) {
 
 TEST_F(SentenceMotionsTest, ForwardSentence_RandomBuffer) {
   RandomGen::seed(42);
-  const int NUM_ITERATIONS = 100;
-
   int passed = 0;
   for (int i = 0; i < NUM_ITERATIONS; i++) {
     int numLines = RandomGen::range(3, 10);
@@ -170,7 +169,6 @@ TEST_F(SentenceMotionsTest, ForwardSentence_RandomBuffer) {
 
 TEST_F(SentenceMotionsTest, BackwardSentence_RandomBuffer) {
   RandomGen::seed(123);
-  const int NUM_ITERATIONS = 100;
 
   int passed = 0;
   for (int i = 0; i < NUM_ITERATIONS; i++) {

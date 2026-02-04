@@ -24,6 +24,7 @@ class ParagraphMotionsTest : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle;
   static NavContext navContext;
+  static const int NUM_ITERATIONS = 100;
 
   static void SetUpTestSuite() {
     oracle = make_unique<NeovimOracle>();
@@ -108,8 +109,6 @@ RandomParagraphTest generateRandomParagraphBuffer(int numLines) {
 
 TEST_F(ParagraphMotionsTest, ForwardParagraph_RandomBuffer) {
   RandomGen::seed(42);
-  const int NUM_ITERATIONS = 100;
-
   int passed = 0;
   for (int i = 0; i < NUM_ITERATIONS; i++) {
     int numLines = RandomGen::range(3, 15);
@@ -150,7 +149,6 @@ TEST_F(ParagraphMotionsTest, ForwardParagraph_RandomBuffer) {
 
 TEST_F(ParagraphMotionsTest, BackwardParagraph_RandomBuffer) {
   RandomGen::seed(123);
-  const int NUM_ITERATIONS = 100;
 
   int passed = 0;
   for (int i = 0; i < NUM_ITERATIONS; i++) {
