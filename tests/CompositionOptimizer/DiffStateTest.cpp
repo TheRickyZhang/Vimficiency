@@ -285,3 +285,71 @@ TEST(DiffStateTest, SimpleJoin) {
   auto diffs = Myers::calculate(start, end);
   expectRoundTrip(start, end);
 }
+
+// =============================================================================
+// Pure Newline Boundary Preservation
+// =============================================================================
+// Pure newlines (\n, \n\n) are structural boundaries and should NOT be absorbed
+// into adjacent diffs, even though they have <3 non-whitespace chars.
+//
+// Myers::calculate preserves pure newlines as structural boundaries, then
+// merges adjacent end-of-line insertion + "\n" insertion into a single diff.
+
+TEST(DiffStateTest, PureNewline_SingleNewlinePreserved) {
+  // "a\nc" -> "ab\n\nc"
+  auto diffs = Myers::calculate({"a", "c"}, {"ab", "", "c"});
+
+  ASSERT_EQ(diffs.size(), 1);
+  EXPECT_TRUE(diffs[0].isPureInsertion());
+  EXPECT_EQ(diffs[0].insertedText, "b\n");
+  EXPECT_EQ(diffs[0].beginPos, Position(0, 1));
+
+  expectRoundTrip({"a", "c"}, {"ab", "", "c"});
+}
+
+TEST(DiffStateTest, PureNewline_MultipleNewlinesPreserved) {
+  // "a\nc" -> "ab\n\n\nc" (two empty lines inserted)
+  // Myers preserves structural newlines as boundary.
+  // Merge only handles B == "\n", so "b" and "\n\n" remain separate.
+  auto diffs = Myers::calculate({"a", "c"}, {"ab", "", "", "c"});
+
+  ASSERT_EQ(diffs.size(), 2);
+  EXPECT_TRUE(diffs[0].isPureInsertion());
+  EXPECT_TRUE(diffs[1].isPureInsertion());
+  EXPECT_EQ(diffs[0].insertedText, "b");
+  EXPECT_EQ(diffs[1].insertedText, "\n\n");
+
+  expectRoundTrip({"a", "c"}, {"ab", "", "", "c"});
+}
+
+TEST(DiffStateTest, PureNewline_NewlineWithIndentAbsorbed) {
+  // "\n  " (newline + spaces) should be absorbed (not pure newlines)
+  auto diffs = Myers::calculate({"a", "  c"}, {"ab", "  c"});
+
+  // Should be 1 diff since "\n  " has non-newline chars
+  ASSERT_EQ(diffs.size(), 1);
+  EXPECT_EQ(diffs[0].insertedText, "b");
+
+  expectRoundTrip({"a", "  c"}, {"ab", "  c"});
+}
+
+TEST(DiffStateTest, PureNewline_EachLineIndependent) {
+  // "a\nb\nc" -> "x\ny\nz" should produce 3 separate replacements
+  // Each line change is independent
+  auto diffs = Myers::calculate({"a", "b", "c"}, {"x", "y", "z"});
+
+  ASSERT_EQ(diffs.size(), 3) << "Each line change should be separate";
+  expectDiffs(diffs, {{"a", "x"}, {"b", "y"}, {"c", "z"}});
+
+  expectRoundTrip({"a", "b", "c"}, {"x", "y", "z"});
+}
+
+TEST(DiffStateTest, PureNewline_EmptyLinesBetweenChanges) {
+  // Changes separated by empty lines should be separate diffs
+  auto diffs = Myers::calculate({"a", "", "", "b"}, {"x", "", "", "y"});
+
+  ASSERT_EQ(diffs.size(), 2);
+  expectDiffs(diffs, {{"a", "x"}, {"b", "y"}});
+
+  expectRoundTrip({"a", "", "", "b"}, {"x", "", "", "y"});
+}

@@ -273,17 +273,24 @@ vector<DiffState> calculate(const Lines& initialLines, const Lines& goalLines) {
       // Rule 0: Cross-line matches with little content are likely coincidental
       // e.g., "\n  r" matching just because both files have "return" at same indent
       // This applies even to "long" matches since "\n   x" is 5 chars but weak
+      // Exception: pure newlines ("\n", "\n\n") are structural boundaries - preserve them
       bool containsNewline = false;
       int nonWhitespaceCount = 0;
+      int newlineCount = 0;
       for (int k = 0; k < keepCount; k++) {
         char c = startText[origIdx + k];
-        if (c == '\n') containsNewline = true;
+        if (c == '\n') {
+          containsNewline = true;
+          newlineCount++;
+        }
         if (!std::isspace(static_cast<unsigned char>(c))) nonWhitespaceCount++;
       }
       bool atEnd = (peekIdx >= ops.size());
+      bool isPureNewlines = (newlineCount == keepCount);
       // Require at least 3 non-whitespace chars for cross-line matches to be meaningful
-      if (containsNewline && nonWhitespaceCount < 3 && !atEnd) {
-        // Cross-line match with < 2 non-whitespace chars - absorb
+      // But preserve pure newlines as they are structural boundaries
+      if (containsNewline && nonWhitespaceCount < 3 && !atEnd && !isPureNewlines) {
+        // Cross-line match with weak content (not pure newlines) - absorb
         for (int k = 0; k < keepCount; k++) {
           deleted += startText[origIdx];
           inserted += endText[newIdx];
@@ -297,7 +304,14 @@ vector<DiffState> calculate(const Lines& initialLines, const Lines& goalLines) {
       if (keepCount >= MIN_MATCH_LENGTH) {
         // Long enough match - finalize this diff
         break;
-      } else {
+      }
+
+      // Pure newlines are structural boundaries - preserve regardless of length
+      if (isPureNewlines) {
+        break;
+      }
+
+      {
         // Short match - decide whether to preserve or absorb
         bool isPureInsertion = deleted.empty();
         bool isPureDeletion = inserted.empty();
@@ -397,6 +411,40 @@ vector<DiffState> calculate(const Lines& initialLines, const Lines& goalLines) {
       origIdx++;
       newIdx++;
       opIdx++;
+    }
+  }
+
+  // Merge adjacent pure insertions where the first is at end-of-line
+  // and the second is "\n" at start of next line.
+  // E.g., insert "b" at (0,1) + insert "\n" at (1,0) → insert "b\n" at (0,1)
+  if (result.size() >= 2) {
+    vector<DiffState> merged;
+    size_t i = 0;
+    while (i < result.size()) {
+      if (i + 1 < result.size()) {
+        const DiffState& a = result[i];
+        const DiffState& b = result[i + 1];
+
+        if (a.isPureInsertion() && b.isPureInsertion() &&
+            a.insertedText.find('\n') == string::npos &&
+            b.insertedText == "\n" &&
+            a.beginPos.line + 1 == b.beginPos.line &&
+            b.beginPos.col == 0) {
+          int lineLen = static_cast<int>(initialLines[a.beginPos.line].size());
+          if (a.beginPos.col == lineLen) {
+            DiffState mergedDiff = a;
+            mergedDiff.insertedText += "\n";
+            merged.push_back(std::move(mergedDiff));
+            i += 2;
+            continue;
+          }
+        }
+      }
+      merged.push_back(result[i]);
+      i++;
+    }
+    if (merged.size() != result.size()) {
+      result = std::move(merged);
     }
   }
 

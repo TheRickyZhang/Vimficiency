@@ -22,6 +22,10 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   int motionLinePaddingAbove = 2;
   int motionLinePaddingBelow = 2;
 
+  // Heuristic penalty for overshooting (going past the next edit region).
+  // Overshooting is penalized more than undershooting since it requires backtracking.
+  double overshootPenalty = 3.0;
+
   // Chainable setters for fluent configuration
   CompositionOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
   CompositionOptimizerParams& withMaxNodesExplored(int v) { maxNodesExplored = v; return *this; }

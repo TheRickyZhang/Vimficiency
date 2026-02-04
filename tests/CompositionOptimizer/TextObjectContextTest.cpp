@@ -11,6 +11,7 @@
 
 #include "Utils/NeovimOracle.h"
 #include "Utils/Lines.h"
+#include "Utils/RandomBufferHelpers.h"
 
 using namespace std;
 
@@ -76,27 +77,17 @@ TEST_F(TextObjectContextTest, QuoteDetection_Manual) {
 
 TEST_F(TextObjectContextTest, QuoteDetection_Random) {
   // Random test cases for quote text objects
-  srand(42);
+  RandomGen::seed(42);
   const int NUM_ITERATIONS = 50;
+  constexpr string_view QUOTES = "\"'`";
 
   for (int i = 0; i < NUM_ITERATIONS; i++) {
     if (i % 10 == 0) oracle->restart();
-    // Generate random content (no quotes)
-    int contentLen = 3 + rand() % 8;
-    string content;
-    for (int j = 0; j < contentLen; j++) {
-      content += 'a' + rand() % 26;
-    }
 
-    // Generate random prefix/suffix (no quotes)
-    int prefixLen = rand() % 5;
-    int suffixLen = rand() % 5;
-    string prefix, suffix;
-    for (int j = 0; j < prefixLen; j++) prefix += 'a' + rand() % 26;
-    for (int j = 0; j < suffixLen; j++) suffix += 'a' + rand() % 26;
-
-    // Pick a quote type
-    char quote = "\"'`"[rand() % 3];
+    string content = randomWord(RandomGen::range(3, 10));
+    string prefix = randomWord(RandomGen::range(0, 4));
+    string suffix = randomWord(RandomGen::range(0, 4));
+    char quote = RandomGen::pick(QUOTES);
 
     // Build line: prefix + quote + content + quote + suffix
     string line = prefix + quote + content + quote + suffix;
@@ -188,7 +179,7 @@ TEST_F(TextObjectContextTest, BracketDetection_Manual) {
 
 TEST_F(TextObjectContextTest, BracketDetection_Random) {
   oracle->restart();
-  srand(43);
+  RandomGen::seed(43);
   const int NUM_ITERATIONS = 50;
 
   // All bracket types including angle brackets
@@ -196,21 +187,11 @@ TEST_F(TextObjectContextTest, BracketDetection_Random) {
 
   for (int i = 0; i < NUM_ITERATIONS; i++) {
     if (i % 10 == 0) oracle->restart();
-    // Generate random content (no brackets)
-    int contentLen = 3 + rand() % 8;
-    string content;
-    for (int j = 0; j < contentLen; j++) {
-      content += 'a' + rand() % 26;
-    }
 
-    // Generate random prefix/suffix (no brackets)
-    int prefixLen = rand() % 5;
-    int suffixLen = rand() % 5;
-    string prefix, suffix;
-    for (int j = 0; j < prefixLen; j++) prefix += 'a' + rand() % 26;
-    for (int j = 0; j < suffixLen; j++) suffix += 'a' + rand() % 26;
-
-    auto [open, close] = brackets[rand() % brackets.size()];
+    string content = randomWord(RandomGen::range(3, 10));
+    string prefix = randomWord(RandomGen::range(0, 4));
+    string suffix = randomWord(RandomGen::range(0, 4));
+    auto [open, close] = RandomGen::pick(brackets);
 
     string line = prefix + open + content + close + suffix;
 

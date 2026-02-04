@@ -53,7 +53,7 @@ TEST_F(EditOptimizerDeterminismTests, SameInputProducesSameOutput) {
     EditResult res1 = opt1.optimizeEdit(lines, {""}, boundary);
     EditResult res2 = opt2.optimizeEdit(lines, {""}, boundary);
 
-    if (res1.typeAllResults.size() != res2.typeAllResults.size()) {
+    if (res1.results.size() != res2.results.size()) {
       failures++;
       if (failures <= 3) {
         cerr << "Iter " << iter << ": Different result counts" << endl;
@@ -62,9 +62,9 @@ TEST_F(EditOptimizerDeterminismTests, SameInputProducesSameOutput) {
     }
 
     bool mismatch = false;
-    for (size_t i = 0; i < res1.typeAllResults.size() && !mismatch; i++) {
-      const auto& r1 = res1.typeAllResults[i];
-      const auto& r2 = res2.typeAllResults[i];
+    for (size_t i = 0; i < res1.results.size() && !mismatch; i++) {
+      const auto& r1 = res1.results[i];
+      const auto& r2 = res2.results[i];
 
       if (r1.isValid() != r2.isValid()) {
         mismatch = true;

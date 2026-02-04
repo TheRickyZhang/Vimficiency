@@ -49,8 +49,8 @@ TEST_F(EditOptimizerOutputCorrectness, SingleLineEmbedded) {
     EditResult res = opt.optimizeEdit(test.editRegion, {""}, test.makeBoundary(), params);
     string expected = test.expectedAfterDeletion();
 
-    for (size_t i = 0; i < res.typeAllResults.size(); i++) {
-      const Result& r = res.typeAllResults[i];
+    for (size_t i = 0; i < res.results.size(); i++) {
+      const Result& r = res.results[i];
       if (!r.isValid()) continue;
 
       Position editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
@@ -90,8 +90,8 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineFullBuffer) {
     EditBoundary boundary(source, {0, 0}, source.lastPos());
     EditResult res = opt.optimizeEdit(source, {""}, boundary, params);
 
-    for (size_t i = 0; i < res.typeAllResults.size(); i += 2) {
-      const Result& r = res.typeAllResults[i];
+    for (size_t i = 0; i < res.results.size(); i += 2) {
+      const Result& r = res.results[i];
       if (!r.isValid()) continue;
 
       Position pos = fromFlatIndex(static_cast<int>(i), source);
@@ -170,8 +170,8 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineEmbedded) {
     string expected = test.expectedAfterDeletion();
 
     // Test a subset of positions (every 4th to reduce test time)
-    for (size_t i = 0; i < res.typeAllResults.size(); i += 4) {
-      const Result& r = res.typeAllResults[i];
+    for (size_t i = 0; i < res.results.size(); i += 4) {
+      const Result& r = res.results[i];
       if (!r.isValid()) continue;
 
       Position editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);

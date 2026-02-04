@@ -81,8 +81,6 @@ struct CompositionSearchContext {
   // Filtered motion keys (gg/G removed based on boundary)
   MotionToKeys motionToKeys;
 
-  // Processing direction (true = forward/left-to-right)
-  bool forward;
 
   // Pre-computed diff data
   std::vector<DiffState> diffStates;
@@ -105,7 +103,6 @@ struct CompositionSearchContext {
 
   // Heuristic tuning parameters
   double overshootPenalty;
-  double forwardBias;
   int maxLineLength;
 
   // A* priority weights from params
@@ -143,10 +140,7 @@ struct CompositionSearchContext {
       const MotionBoundary& boundary,
       const MotionToKeys& rawMotionToKeys,
       const CompositionOptimizerParams& params,
-      const Config& config,
-      double overshootPenalty,
-      double forwardBias,
-      int maxLineLength);
+      const Config& config);
 
   // ==========================================================================
   // Position conversion helpers
@@ -169,11 +163,21 @@ struct CompositionSearchContext {
   double heuristic(const CompositionState& s, int editsCompleted) const;
 
   // ==========================================================================
-  // State management
+  // State exploration - single entry points for state transitions
   // ==========================================================================
 
-  // Add state to priority queue if it improves on existing cost
-  void exploreNewState(CompositionState&& newState);
+  // Explore an edit transition: create state, compute cost, add to queue
+  // editsAfter = editsCompleted after this edit (editsCompleted + 1)
+  void exploreEditTransition(const CompositionState& current,
+                             const Sequence& editSequence,
+                             const Position& goalPos,
+                             int editsAfter);
+
+  // Explore a motion transition: create state, compute cost, add to queue
+  void exploreMotionTransition(const CompositionState& current,
+                               const Sequence& moveSequence,
+                               const Position& goalPos,
+                               int editsCompleted);
 
   // Check if search should continue
   bool shouldContinue() const {
@@ -211,11 +215,6 @@ struct CompositionSearchContext {
     return linesAfterNEdits[editsCompleted];
   }
 
-  // Check if the edit at this index is a pure insertion
-  bool isPureInsertion(int editIndex) const {
-    return diffStates[editIndex].isPureInsertion();
-  }
-
   // Get the diff state for an edit index
   const DiffState& getDiffState(int editIndex) const {
     return diffStates[editIndex];
@@ -229,6 +228,9 @@ struct CompositionSearchContext {
   SearchStats getStats(int resultsFound) const;
 
 private:
+  // Internal: add state to priority queue if it improves on existing cost
+  void exploreNewState(CompositionState&& newState);
+
   // Helper: compute suffix sums of median edit costs
   std::vector<double> computeSuffixEditCosts() const;
 
@@ -240,4 +242,5 @@ private:
 
   // Helper: compute text object contexts for each edit
   std::vector<TextObjectContext> computeTextObjectContexts() const;
+
 };

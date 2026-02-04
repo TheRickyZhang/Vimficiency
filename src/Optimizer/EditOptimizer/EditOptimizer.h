@@ -15,7 +15,7 @@
 struct EditResult {
   // Results indexed by flattened starting position
   // typeAllResults[0] contains the best result for position 0 (may be replacement or delete+type)
-  std::vector<Result> typeAllResults;
+  std::vector<Result> results;
 
   // Search statistics for debugging and benchmarking
   SearchStats stats;
@@ -41,7 +41,7 @@ struct EditResult {
   Position goalPos;
 
   explicit EditResult(int n) {
-    typeAllResults.resize(n);
+    results.resize(n);
   }
 
   // Compute lineBaseIndex for O(1) buffer position to flat index conversion

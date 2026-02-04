@@ -25,11 +25,11 @@ using namespace std;
 
 ostream& operator<<(ostream& os, const EditResult& editResult) {
   os << "typeAllResults: ";
-  for(size_t i = 0; i < editResult.typeAllResults.size(); i++) {
-    const auto& res = editResult.typeAllResults[i];
+  for(size_t i = 0; i < editResult.results.size(); i++) {
+    const auto& res = editResult.results[i];
     os << (res.isValid() ? res.getSequenceString() : "_");
 
-    if(i < editResult.typeAllResults.size() - 1) os << " ";
+    if(i < editResult.results.size() - 1) os << " ";
   }
   os << "\n";
   return os;
@@ -269,7 +269,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
 
     if (isGoalReached(lines)) {
       int idx = newState.getStartIndex();
-      if (result.typeAllResults[idx].isValid()) return;
+      if (result.results[idx].isValid()) return;
 
       auto [changeCmd, changeKeys] = deleteToChange(deleteCmd);
       auto [collapseSeq, collapseKeys] =
@@ -281,7 +281,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
       effort.append(collapseKeys, config);
       double totalEffort = effort.append(typedKeys, config);
 
-      result.typeAllResults[idx] = Result(seqStr, totalEffort);
+      result.results[idx] = Result(seqStr, totalEffort);
       ctx.resultsFound++;
       return;
     }
@@ -315,7 +315,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
 
     if (isGoalReached(lines)) {
       int idx = newState.getStartIndex();
-      if (result.typeAllResults[idx].isValid()) return;
+      if (result.results[idx].isValid()) return;
 
       // Convert dd -> cc: the cc equivalent has one more line (the empty line it leaves)
       // Cursor position for cc would be at `line` (the cleared line, not the dd cursor)
@@ -329,7 +329,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
       effort.append(collapseKeys, config);
       double totalEffort = effort.append(typedKeys, config);
 
-      result.typeAllResults[idx] = Result(seqStr, totalEffort);
+      result.results[idx] = Result(seqStr, totalEffort);
       ctx.resultsFound++;
       return;
     }
@@ -356,7 +356,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
 
       if (isGoalReached(lines)) {
         int idx = newState.getStartIndex();
-        if (result.typeAllResults[idx].isValid()) return;
+        if (result.results[idx].isValid()) return;
 
         // For optimizeEdit, we need to enter insert mode to type content
         // J doesn't enter insert mode, so we need to use a change command after
@@ -393,9 +393,9 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
 
   // Merge replacement result at position 0 if it's better
   if (replacementResult.has_value()) {
-    if (!result.typeAllResults[0].isValid() ||
-        replacementResult->keyCost < result.typeAllResults[0].keyCost) {
-      result.typeAllResults[0] = *replacementResult;
+    if (!result.results[0].isValid() ||
+        replacementResult->keyCost < result.results[0].keyCost) {
+      result.results[0] = *replacementResult;
     }
   }
 
@@ -421,7 +421,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
   const string preSuf = editBoundary.prefix() + editBoundary.suffix();
 
   EditResult result(ctx.totalPositions);
-  vector<Result>& results = result.typeAllResults;
+  vector<Result>& results = result.results;
 
   // Goal check for pure deletion: only single-line goals accepted
   // (can't collapse multiple empty lines without insert mode)

@@ -51,8 +51,7 @@ vector<Result> CompositionOptimizer::optimize(
   // Create search context - handles all pre-computation
   CompositionSearchContext ctx(initialLines, initialPos, goalLines, userSequence,
                                navigationContext, boundary, rawMotionToKeys,
-                               params, config, overshootPenalty, forwardBias,
-                               maxLineLength);
+                               params, config);
 
   if (ctx.totalEdits == 0) {
     return {};
@@ -96,69 +95,121 @@ vector<Result> CompositionOptimizer::optimize(
     const Lines& currentLines = ctx.getLinesAfter(editsCompleted);
     const DiffState& nextEdit = ctx.getDiffState(editsCompleted);
 
-    // ========== PURE INSERTION SHORTCUTS ==========
-    // Pure insertions now have EditResult with precomputed "i + text + <Esc>" at position 0
-    // The base case (at insertPos, use "i") is handled by EDIT TRANSITIONS below
-    // Here we only handle special shortcuts: o/O for new lines, I/A for inline
-    if (ctx.isPureInsertion(editsCompleted)) {
+    // ========== PURE INSERTION HANDLING ==========
+    // Pure insertions have no edit region to transition into.
+    // We explore navigation + insertion strategies: o/I/A shortcuts or i fallback.
+    if (nextEdit.isPureInsertion()) {
+      const EditResult& editResult = ctx.editResults[editsCompleted];
       Position insertPos = nextEdit.beginPos;
       const string& text = nextEdit.insertedText;
-      const EditResult& editResult = ctx.editResults[editsCompleted];
 
-      // Detect if this is a "new line" insertion (text ends with \n) vs inline insertion
-      // o/O create the newline themselves, so strip trailing \n from text
       bool isNewLineInsertion = !text.empty() && text.back() == '\n';
       string textContent = isNewLineInsertion
           ? text.substr(0, text.size() - 1)
           : text;
 
-      // Use precomputed goalPos from editResult
-      Position goalPos = editResult.goalPos;
+      // Escape newlines in text for use in Vim sequences (replace \n with <CR>)
+      auto escapeNewlines = [](const string& s) {
+        string result;
+        result.reserve(s.size());
+        for (char c : s) {
+          if (c == '\n') {
+            result += "<CR>";
+          } else {
+            result += c;
+          }
+        }
+        return result;
+      };
 
-      // o/O shortcuts (ONLY for new line insertions at col 0)
-      if (isNewLineInsertion && insertPos.col == 0) {
-        // `o` from line N-1 creates new line at N (inserts below current line)
-        if (pos.line == insertPos.line - 1 && insertPos.line > 0) {
-          string seq = "o" + textContent + "<Esc>";
-          CompositionState newState = s.afterEditTransition(
-              Sequence(seq), goalPos, Mode::Normal, config);
-          newState.setCost(ctx.heuristic(newState, editsCompleted + 1));
-          ctx.exploreNewState(std::move(newState));
+      // Helper to explore an insertion strategy: navigate to line range, then insert
+      auto exploreInsertionStrategy = [&](int targetLine, int firstCol, int lastCol,
+                                          const string& insertCmd) {
+        bool inRange = (pos.line == targetLine &&
+                        pos.col >= firstCol && pos.col <= lastCol);
+
+        if (inRange) {
+          // Already in valid range - use insert command directly
+          ctx.exploreEditTransition(s, Sequence(insertCmd), editResult.goalPos,
+                                    editsCompleted + 1);
+        } else {
+          // Navigate to range, then use insert command
+          int regionStart = min(pos.line, targetLine);
+          int regionEnd = max(pos.line, targetLine);
+          int subsetStart = max(0, regionStart - params.motionLinePaddingAbove);
+          int subsetEnd = min(currentLines.lastLine(),
+                              regionEnd + params.motionLinePaddingBelow);
+
+          Lines subset = currentLines.getLineRange(subsetStart, subsetEnd + 1);
+          int lineOffset = subsetStart;
+
+          Position subsetPos(pos.line - lineOffset, pos.col, pos.targetCol);
+          Position subsetFirst(targetLine - lineOffset, firstCol);
+          Position subsetLast(targetLine - lineOffset, lastCol);
+
+          MotionBoundary subsetBoundary(subset, subsetFirst, subsetLast,
+              subsetStart > 0 || boundary.hasLinesAbove(),
+              subsetEnd < currentLines.lastLine() || boundary.hasLinesBelow());
+
+          vector<RangeResult> results = motionOptimizer.optimizeToRange(
+              subset, subsetPos, s.getRunningEffort(), subsetFirst, subsetLast,
+              "", navigationContext, subsetBoundary, ctx.motionToKeys,
+              MotionOptimizerRangeParams{}.withMaxResults(1)).results;
+
+          for (RangeResult& movResult : results) {
+            if (!movResult.isValid()) continue;
+            movResult.goalPos.line += lineOffset;
+
+            Sequence fullSeq = movResult.sequence;
+            fullSeq.append(insertCmd);
+            ctx.exploreEditTransition(s, fullSeq, editResult.goalPos,
+                                      editsCompleted + 1);
+          }
         }
-        // `O` from line N creates new line at N (inserts above current line)
-        if (pos.line == insertPos.line) {
-          string seq = "O" + textContent + "<Esc>";
-          CompositionState newState = s.afterEditTransition(
-              Sequence(seq), goalPos, Mode::Normal, config);
-          newState.setCost(ctx.heuristic(newState, editsCompleted + 1));
-          ctx.exploreNewState(std::move(newState));
-        }
+      };
+
+      // o: new line insertion at col 0 - navigate to line above
+      if (isNewLineInsertion && insertPos.col == 0 && insertPos.line > 0) {
+        int targetLine = insertPos.line - 1;
+        int lastCol = currentLines[targetLine].empty()
+            ? 0 : static_cast<int>(currentLines[targetLine].size()) - 1;
+        exploreInsertionStrategy(targetLine, 0, lastCol,
+                                 "o" + escapeNewlines(textContent) + "<Esc>");
       }
 
-      // I/A shortcuts (for inline insertions on same line)
-      // These insert INTO existing line, NOT for creating new lines
-      if (pos.line == insertPos.line && !isNewLineInsertion) {
-        int fnb = VimCore::firstNonBlankColInLineStr(currentLines[pos.line]);
-        int lineEnd = static_cast<int>(currentLines[pos.line].size());
-
-        // I gets to first non-blank
+      // I: insertion at first non-blank - navigate anywhere on line
+      if (!isNewLineInsertion) {
+        int fnb = VimCore::firstNonBlankColInLineStr(currentLines[insertPos.line]);
         if (insertPos.col == fnb) {
-          string seq = "I" + text + "<Esc>";
-          CompositionState newState = s.afterEditTransition(
-              Sequence(seq), goalPos, Mode::Normal, config);
-          newState.setCost(ctx.heuristic(newState, editsCompleted + 1));
-          ctx.exploreNewState(std::move(newState));
-        }
-        // A appends at end of line
-        if (insertPos.col == lineEnd) {
-          string seq = "A" + text + "<Esc>";
-          CompositionState newState = s.afterEditTransition(
-              Sequence(seq), goalPos, Mode::Normal, config);
-          newState.setCost(ctx.heuristic(newState, editsCompleted + 1));
-          ctx.exploreNewState(std::move(newState));
+          int lastCol = currentLines[insertPos.line].empty()
+              ? 0 : static_cast<int>(currentLines[insertPos.line].size()) - 1;
+          exploreInsertionStrategy(insertPos.line, 0, lastCol,
+                                   "I" + escapeNewlines(text) + "<Esc>");
         }
       }
-      // Fall through to EDIT TRANSITIONS for the base "i" case and MOVEMENT TRANSITIONS
+
+      // A: insertion at end of line - navigate anywhere on line
+      {
+        int lineLen = static_cast<int>(currentLines[insertPos.line].size());
+        if (insertPos.col == lineLen) {
+          int lastCol = lineLen == 0 ? 0 : lineLen - 1;
+          if (isNewLineInsertion) {
+            // Text ends with newline: use A + content + <CR> + <Esc>
+            exploreInsertionStrategy(insertPos.line, 0, lastCol,
+                                     "A" + escapeNewlines(textContent) + "<CR><Esc>");
+          } else {
+            exploreInsertionStrategy(insertPos.line, 0, lastCol,
+                                     "A" + escapeNewlines(text) + "<Esc>");
+          }
+        }
+      }
+
+      // i: fallback - navigate to exact insertion position
+      // Use escapeNewlines to convert \n to <CR> for valid Vim syntax
+      exploreInsertionStrategy(insertPos.line, insertPos.col, insertPos.col,
+                               "i" + escapeNewlines(text) + "<Esc>");
+
+      continue;  // Skip EDIT TRANSITIONS and MOVEMENT TRANSITIONS
     }
 
     // ========== EDIT TRANSITIONS ==========
@@ -173,16 +224,13 @@ vector<Result> CompositionOptimizer::optimize(
       // flatIndexAt returns -1 for out-of-region lines, and we bounds-check for columns
       int flatIdx = editResult.flatIndexAt(pos);
       if (flatIdx >= 0 &&
-          flatIdx < static_cast<int>(editResult.typeAllResults.size())) {
-        const Result& editRes = editResult.typeAllResults[flatIdx];
+          flatIdx < static_cast<int>(editResult.results.size())) {
+        const Result& editRes = editResult.results[flatIdx];
         if (editRes.isValid()) {
           editTransitionTaken = true;
-          // Create new state with edit transition applied
           // Cursor ends at last char of inserted text (precomputed in editResult.goalPos)
-          CompositionState newState = s.afterEditTransition(
-              editRes.sequence, editResult.goalPos, Mode::Normal, config);
-          newState.setCost(ctx.heuristic(newState, editsCompleted + 1));
-          ctx.exploreNewState(std::move(newState));
+          ctx.exploreEditTransition(s, editRes.sequence, editResult.goalPos,
+                                    editsCompleted + 1);
         }
       }
     }
@@ -205,10 +253,8 @@ vector<Result> CompositionOptimizer::optimize(
               // Build sequence: c + i/a + quote + insertedText + <Esc>
               char modifier = toCtx.useAroundQuote.seen(q) ? 'a' : 'i';
               string seq = string("c") + modifier + q + insertedText + "<Esc>";
-              CompositionState newState = s.afterEditTransition(
-                  Sequence(seq), editResult.goalPos, Mode::Normal, config);
-              newState.setCost(ctx.heuristic(newState, editsCompleted + 1));
-              ctx.exploreNewState(std::move(newState));
+              ctx.exploreEditTransition(s, Sequence(seq), editResult.goalPos,
+                                        editsCompleted + 1);
             }
           }
         }
@@ -221,10 +267,8 @@ vector<Result> CompositionOptimizer::optimize(
               // Build sequence: c + i/a + bracket + insertedText + <Esc>
               char modifier = toCtx.useAroundBracket.seen(b) ? 'a' : 'i';
               string seq = string("c") + modifier + b + insertedText + "<Esc>";
-              CompositionState newState = s.afterEditTransition(
-                  Sequence(seq), editResult.goalPos, Mode::Normal, config);
-              newState.setCost(ctx.heuristic(newState, editsCompleted + 1));
-              ctx.exploreNewState(std::move(newState));
+              ctx.exploreEditTransition(s, Sequence(seq), editResult.goalPos,
+                                        editsCompleted + 1);
             }
           }
         }
@@ -279,10 +323,8 @@ vector<Result> CompositionOptimizer::optimize(
         if (!movResult.isValid())
           continue;
 
-        CompositionState newState = s.afterMotionResult(
-            movResult.sequence, movResult.goalPos, config);
-        newState.setCost(ctx.heuristic(newState, editsCompleted));
-        ctx.exploreNewState(std::move(newState));
+        ctx.exploreMotionTransition(s, movResult.sequence, movResult.goalPos,
+                                    editsCompleted);
       }
     }
   }

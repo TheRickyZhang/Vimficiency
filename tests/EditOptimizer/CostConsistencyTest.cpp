@@ -48,7 +48,7 @@ TEST_F(EditOptimizerCostConsistencyTests, CostMatchesComputed) {
 
     EditResult res = opt.optimizeEdit(lines, {""}, boundary);
 
-    for (const auto& result : res.typeAllResults) {
+    for (const auto& result : res.results) {
       if (!result.isValid()) continue;
       totalResults++;
 

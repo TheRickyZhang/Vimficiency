@@ -114,7 +114,7 @@ TEST_F(EditOptimizer_ManualTest, PureDeletion_OracleVerified) {
   // Single test with oracle verification - stress tests cover more shapes
   Lines lines = {"aa", "bb"};
   EditResult editRes = opt.optimizePureDeletion(lines, EditBoundary(lines, Position(0, 0), lines.lastPos()), params);
-  const vector<Result>& res = editRes.typeAllResults;
+  const vector<Result>& res = editRes.results;
 
   EXPECT_TRUE(allPositionsValid(res, lines));
 
@@ -137,7 +137,7 @@ TEST_F(EditOptimizer_ManualTest, Boundary_LinesBelow) {
   EditBoundary boundary(fullBuffer, initialPos, goalPos);
 
   EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
-  EXPECT_TRUE(allPositionsValid(res.typeAllResults, editRegion));
+  EXPECT_TRUE(allPositionsValid(res.results, editRegion));
 }
 
 TEST_F(EditOptimizer_ManualTest, Boundary_SingleLineSurrounded) {
@@ -150,7 +150,7 @@ TEST_F(EditOptimizer_ManualTest, Boundary_SingleLineSurrounded) {
 
   EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
   // printResultsDebug(res.typeAllResults, "boundary line surrounded");
-  EXPECT_TRUE(allPositionsValid(res.typeAllResults, editRegion));
+  EXPECT_TRUE(allPositionsValid(res.results, editRegion));
 }
 
 TEST_F(EditOptimizer_ManualTest, Boundary_LinewiseCursorContainment) {
@@ -162,7 +162,7 @@ TEST_F(EditOptimizer_ManualTest, Boundary_LinewiseCursorContainment) {
 
   EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
 
-  forEachValidResult(res.typeAllResults, editRegion, [&](Position pos, const string& seq) {
+  forEachValidResult(res.results, editRegion, [&](Position pos, const string& seq) {
     // Skip visual mode sequences for now
     if (!seq.empty() && seq[0] == 'v') return;
 

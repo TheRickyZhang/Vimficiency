@@ -20,18 +20,14 @@ CompositionSearchContext::CompositionSearchContext(
     const MotionBoundary& boundary,
     const MotionToKeys& rawMotionToKeys,
     const CompositionOptimizerParams& params,
-    const Config& config,
-    double overshootPenalty,
-    double forwardBias,
-    int maxLineLength)
+    const Config& config)
     : config(config),
       params(params),
       navContext(navContext),
       boundary(boundary),
       motionToKeys(rawMotionToKeys),
-      overshootPenalty(overshootPenalty),
-      forwardBias(forwardBias),
-      maxLineLength(maxLineLength),
+      overshootPenalty(params.overshootPenalty),
+      maxLineLength(1000),
       effortWeight(params.effortWeight),
       distanceWeight(params.distanceWeight),
       maxEffort(userSequence.empty()
@@ -65,10 +61,10 @@ CompositionSearchContext::CompositionSearchContext(
   if (!rawDiffs.empty()) {
     double distToFirst = costToGoal(initialPos, rawDiffs.front().beginPos);
     double distToLast = costToGoal(initialPos, rawDiffs.back().endPos);
-    forward = (distToFirst <= distToLast + forwardBias);
+    bool processForward = (distToFirst <= distToLast + 1.0);  // Slight bias toward forward
 
-    if (!forward) {
-      reverse(rawDiffs.begin(), rawDiffs.end());
+    if (!processForward) {
+      std::reverse(rawDiffs.begin(), rawDiffs.end());
       debug("Processing edits in reverse order (backward)");
     }
 
@@ -148,6 +144,28 @@ double CompositionSearchContext::heuristic(
   return effortWeight * s.getEffort() + distanceWeight * h;
 }
 
+void CompositionSearchContext::exploreEditTransition(
+    const CompositionState& current,
+    const Sequence& editSequence,
+    const Position& goalPos,
+    int editsAfter) {
+  CompositionState newState = current.afterEditTransition(
+      editSequence, goalPos, Mode::Normal, config);
+  newState.setCost(heuristic(newState, editsAfter));
+  exploreNewState(std::move(newState));
+}
+
+void CompositionSearchContext::exploreMotionTransition(
+    const CompositionState& current,
+    const Sequence& moveSequence,
+    const Position& goalPos,
+    int editsCompleted) {
+  CompositionState newState = current.afterMotionResult(
+      moveSequence, goalPos, config);
+  newState.setCost(heuristic(newState, editsCompleted));
+  exploreNewState(std::move(newState));
+}
+
 void CompositionSearchContext::exploreNewState(CompositionState&& newState) {
   if (newState.getEffort() > maxEffort) {
     return;
@@ -197,7 +215,7 @@ vector<double> CompositionSearchContext::computeSuffixEditCosts() const {
     // All edits now have EditResult (including pure insertions)
     const auto& editRes = editResults[i];
     vector<double> costs;
-    for (const Result& r : editRes.typeAllResults) {
+    for (const Result& r : editRes.results) {
       if (r.isValid()) {
         costs.push_back(r.keyCost);
       }
@@ -253,7 +271,7 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
       string seq = "i" + diff.insertedText + "<Esc>";
       PhysicalKeys keys = globalTokenizer().tokenize(seq);
       double effort = RunningEffort().append(keys, config);
-      result.typeAllResults[0] = Result(Sequence(seq), effort);
+      result.results[0] = Result(Sequence(seq), effort);
 
       // lineBaseIndex for single-point insertion
       result.firstLine = diff.beginPos.line;
@@ -488,4 +506,5 @@ vector<TextObjectContext> CompositionSearchContext::computeTextObjectContexts() 
 
   return contexts;
 }
+
 
