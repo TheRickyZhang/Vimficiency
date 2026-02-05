@@ -1,1 +1,18 @@
-I like ["stneir]tns" ?
+  Summary of fixes applied
+
+  3 bugs fixed (all in the optimizer's correctness):
+
+  1. Boundary bug in edit/motion path (CompositionOptimizer.cpp:231): MotionBoundary for the motion optimizer was constructed with the edit range positions (localRangeFirst, localRangeLast) instead of the full subset extent. This clamped motions like
+   $ to the edit range edge, making the optimizer believe $ landed inside the edit region when it actually went to EOL.
+  2. Same boundary bug in pure insertion path (CompositionOptimizer.cpp:128): The exploreInsertionStrategy lambda had the identical boundary bug, causing same-issue with $ for pure insertions.
+  3. $ targetCol bug (MotionExplorer.h:91): The $ motion in the optimizer used a 2-parameter Position constructor {pos.line, dollarCol}, which set targetCol = dollarCol instead of TARGETCOL_EOL. This meant $ followed by vertical motions (j, <C-d>)
+  didn't stick to end-of-line, producing wrong cursor positions on cross-line movements.
+  4. cc collapse sequence overcounting (EditOptimizer.cpp:324): buildCollapseSequence(lines.size() + 1, line) incorrectly added +1 when dd on a single-line buffer left an artificial empty line (buffer invariant). Used pre-dd line count instead, which
+   correctly represents the cc equivalent's line count.
+
+  Remaining 3 failures (different root causes)
+
+  All remaining failures are vim simulation fidelity issues:
+
+  - Autoindent (TwoEdits_DifferentLines 6/30 fail, InsertNewLine 3/30 fail): cc and A<CR> on lines with leading whitespace - neovim preserves indentation but the optimizer doesn't account for this.
+  - cw trailing space (MultiLine_SingleEdit 1/30 fail): Vim's cw doesn't include trailing whitespace (known vim quirk), but the optimizer's simulation includes it.

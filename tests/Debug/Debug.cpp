@@ -638,8 +638,8 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateEmbeddedFailures) {
     if (flatIdx < static_cast<int>(res.results.size())) {
       const auto& r = res.results[flatIdx];
       if (r.isValid()) {
-        cerr << "Result: '" << r.getSequenceString() << "'" << endl;
-        auto nvim = oracle_->simulate(fullBuffer, 1, 3, r.getSequenceString());
+        cerr << "Result: '" << r.sequence << "'" << endl;
+        auto nvim = oracle_->simulate(fullBuffer, 1, 3, r.sequence.keys);
         cerr << "Neovim: '" << nvim.lines.flatten() << "', Expected: 'ccbc'" << endl;
       } else {
         cerr << "INVALID" << endl;
@@ -1309,17 +1309,17 @@ TEST_F(NeovimOracleDebug, CompositionOptimizerOutputFormat) {
 
   cerr << endl << "Results (sorted by cost):" << endl;
   for (size_t i = 0; i < results.size(); i++) {
-    if (!results[i].isValid() || results[i].getSequenceString().empty()) continue;
-    string formatted = formatSequenceForDisplay(results[i].getSequenceString());
+    if (!results[i].isValid() || results[i].sequence.empty()) continue;
+    string formatted = formatSequenceForDisplay(results[i].sequence.keys);
     cerr << "  " << (i+1) << ". " << formatted << " (" << results[i].keyCost << ")" << endl;
   }
 
   // Verify at least one result exists and produces correct output
   bool foundValidResult = false;
   for (const auto& r : results) {
-    if (!r.isValid() || r.getSequenceString().empty()) continue;
-    string seq = r.getSequenceString();
-    auto nvim = oracle_->simulate(initial, initialPos.line, initialPos.col, seq);
+    if (!r.isValid() || r.sequence.empty()) continue;
+    const auto& seq = r.sequence;
+    auto nvim = oracle_->simulate(initial, initialPos.line, initialPos.col, seq.keys);
     if (nvim.lines == goal) {
       foundValidResult = true;
       cerr << endl << "Verified: '" << seq << "' produces goal state" << endl;
@@ -1423,10 +1423,10 @@ TEST_F(NeovimOracleDebug, InvestigateTextObjectShortcuts) {
 
     cerr << "Results: " << results.size() << endl;
     for (size_t i = 0; i < results.size(); i++) {
-      string seq = results[i].getSequenceString();
+      const auto& seq = results[i].sequence;
       cerr << "  " << i << ": '" << seq << "' cost=" << results[i].keyCost << endl;
 
-      auto nvim = oracle_->simulate(initial, 0, 0, seq);
+      auto nvim = oracle_->simulate(initial, 0, 0, seq.keys);
       bool correct = (nvim.lines == goal);
       cerr << "      -> '" << nvim.lines[0] << "' " << (correct ? "OK" : "WRONG") << endl;
     }
@@ -1580,15 +1580,256 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
 
   cerr << "Results: " << results.size() << endl;
   for (size_t i = 0; i < results.size(); i++) {
-    cerr << "  Result " << i << ": '" << results[i].getSequenceString() << "' cost=" << results[i].keyCost << endl;
+    cerr << "  Result " << i << ": '" << results[i].sequence << "' cost=" << results[i].keyCost << endl;
   }
 
   if (!results.empty()) {
-    string seq = results[0].getSequenceString();
-    auto nvim = oracle_->simulate(initial, initialPos.line, initialPos.col, seq);
+    const auto& seq = results[0].sequence;
+    auto nvim = oracle_->simulate(initial, initialPos.line, initialPos.col, seq.keys);
     cerr << endl << "Neovim result for '" << seq << "':" << endl;
     cerr << "  Lines: " << nvim.lines << endl;
     cerr << "  Goal:  " << goal << endl;
     cerr << "  Match: " << (nvim.lines == goal ? "YES" : "NO") << endl;
+  }
+}
+
+// =============================================================================
+// CompositionOptimizer Debug: Trace A* search for a specific failure
+// =============================================================================
+
+TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
+  // Reproduce TwoEdits_DifferentLines iter=0:
+  //   Initial: 'b,f,dd' / 'b,, ca..b' / 'ab ,e d..f'
+  //   Goal: 'bbba' / 'b,, ca..b' / 'fbbf'
+  //   Bad result: 'lcEbba<Esc> <C-d>cc<Del>fbbf<Esc>' - cc<Del> produces empty line
+  Lines initial = {"b,f,dd", "b,, ca..b", "ab ,e d..f"};
+  Lines goal = {"bbba", "b,, ca..b", "fbbf"};
+  Position initialPos(0, 0);
+  Position goalPos(0, 0);
+  Config config = Config::uniform();
+
+  // First, run the actual optimizer and print all results
+  cerr << "\n========== STEP 0: Actual Optimizer Results ==========" << endl;
+  {
+    CompositionOptimizer opt(config);
+    CompositionOptimizerParams optParams{};
+    auto actualResults = opt.optimize(initial, initialPos, goal, goalPos, optParams);
+    cerr << "  Total results: " << actualResults.size() << endl;
+    auto oracle = make_unique<NeovimOracle>();
+    for (size_t i = 0; i < actualResults.size(); i++) {
+      auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, actualResults[i].sequence.keys);
+      cerr << "  [" << i << "] seq='" << actualResults[i].sequence
+           << "' cost=" << actualResults[i].keyCost
+           << " nvim=" << (nvim.lines == goal ? "OK" : "WRONG")
+           << " got=" << nvim.lines << endl;
+    }
+  }
+
+  cerr << "\n========== STEP 1: Myers Diff ==========" << endl;
+  auto diffs = Myers::calculate(initial, goal);
+  cerr << "Number of diffs: " << diffs.size() << endl;
+  for (size_t i = 0; i < diffs.size(); i++) {
+    const auto& d = diffs[i];
+    cerr << "  Diff " << i << ": beginPos=(" << d.beginPos.line << "," << d.beginPos.col << ")"
+         << " endPos=(" << d.endPos.line << "," << d.endPos.col << ")"
+         << " deleted='" << d.deletedText << "' inserted='" << d.insertedText << "'"
+         << " isPure=" << (d.isPureInsertion() ? "ins" : d.isPureDeletion() ? "del" : "repl")
+         << endl;
+  }
+
+  cerr << "\n========== STEP 2: EditOptimizer for each diff ==========" << endl;
+  EditOptimizer editOpt(config);
+  for (size_t i = 0; i < diffs.size(); i++) {
+    const auto& d = diffs[i];
+    if (d.isPureInsertion()) {
+      cerr << "  Diff " << i << ": pure insertion, skipping EditOptimizer" << endl;
+      continue;
+    }
+    EditResult editResult = editOpt.optimizeEdit(d.deletedLines(), d.insertedLines(), d.boundary);
+    editResult.computeLineBaseIndex(d.deletedLines(), d.beginPos.line, d.beginPos.col);
+
+    cerr << "  Diff " << i << ": EditResult has " << editResult.results.size() << " positions"
+         << " firstLine=" << editResult.firstLine << " firstCol=" << editResult.firstCol
+         << " lineBaseIndex=[";
+    for (size_t j = 0; j < editResult.lineBaseIndex.size(); j++) {
+      if (j > 0) cerr << ",";
+      cerr << editResult.lineBaseIndex[j];
+    }
+    cerr << "]" << endl;
+
+    for (size_t j = 0; j < editResult.results.size(); j++) {
+      const auto& r = editResult.results[j];
+      if (r.isValid()) {
+        cerr << "    pos " << j << ": seq='" << r.sequence << "' cost=" << r.keyCost << endl;
+      } else {
+        cerr << "    pos " << j << ": INVALID" << endl;
+      }
+    }
+
+    // Test flatIndexAt for various cursor positions
+    cerr << "  flatIndexAt tests:" << endl;
+    for (int col = 0; col < static_cast<int>(initial[0].size()); col++) {
+      auto idx = editResult.flatIndexAt(0, col);
+      if (idx.has_value()) {
+        cerr << "    col=" << col << " -> flatIdx=" << *idx << endl;
+      }
+    }
+  }
+
+  cerr << "\n========== STEP 3: MotionOptimizer optimizeToRange ==========" << endl;
+  {
+    assert(!diffs.empty());
+    const auto& d = diffs[0];
+    Position inclusiveLast = d.inclusiveLastPos();
+    Position rangeFirst = d.beginPos;
+    Position rangeLast = inclusiveLast;
+
+    cerr << "  Range: [(" << rangeFirst.line << "," << rangeFirst.col << "), ("
+         << rangeLast.line << "," << rangeLast.col << ")]" << endl;
+    cerr << "  StartPos: (" << initialPos.line << "," << initialPos.col << ")" << endl;
+
+    MotionBoundary boundary(initial,
+        Position(0, 0),
+        Position(0, static_cast<int>(initial[0].size()) - 1),
+        false, false);
+
+    MotionOptimizer motionOpt(config);
+    NavContext navCtx;
+    MotionToKeys motionToKeys;
+
+    auto rangeResult = motionOpt.optimizeToRange(
+        initial, initialPos, rangeFirst, rangeLast,
+        MotionOptimizerRangeParams{}.withMaxResults(10), "",
+        boundary, RunningEffort(), navCtx, motionToKeys);
+
+    cerr << "  Range results: " << rangeResult.results.size() << endl;
+    for (size_t i = 0; i < rangeResult.results.size(); i++) {
+      const auto& r = rangeResult.results[i];
+      if (r.isValid()) {
+        cerr << "    [" << i << "] seq='" << r.sequence << "' cost=" << r.keyCost
+             << " goalPos=(" << r.goalPos.line << "," << r.goalPos.col << ")" << endl;
+      }
+    }
+  }
+
+  cerr << "\n========== STEP 4: Trace A* Search ==========" << endl;
+  {
+    CompositionOptimizerParams params{};
+    MotionOptimizer motionOpt(config);
+    NavContext navCtx;
+    MotionToKeys motionKeys;
+    MotionBoundary boundary(initial,
+        Position(0, 0),
+        Position(0, static_cast<int>(initial[0].size()) - 1),
+        false, false);
+
+    CompositionSearchContext ctx(initial, initialPos, goal, "",
+        navCtx, boundary, motionKeys, params, config);
+
+    cerr << "  totalEdits=" << ctx.totalEdits << endl;
+    for (int i = 0; i < ctx.totalEdits; i++) {
+      const auto& d = ctx.diffStates[i];
+      cerr << "  diff[" << i << "]: begin=(" << d.beginPos.line << "," << d.beginPos.col
+           << ") end=(" << d.endPos.line << "," << d.endPos.col << ")" << endl;
+      const auto& er = ctx.editResults[i];
+      cerr << "    editResult: " << er.results.size() << " positions, firstLine="
+           << er.firstLine << " firstCol=" << er.firstCol << " goalPos=("
+           << er.goalPos.line << "," << er.goalPos.col << ")" << endl;
+    }
+
+    // Push initial state (same as CompositionOptimizer::optimize does)
+    CompositionState startingState(initialPos, Mode::Normal, 0);
+    startingState.setCost(ctx.heuristic(startingState, 0));
+    ctx.pq.push(startingState);
+    ctx.costMap[startingState.getKey()] = startingState.getCost();
+
+    // Manual A* trace — pop states and print what happens
+    int popCount = 0;
+    vector<Result> results;
+    while (ctx.shouldContinue() && popCount < 50) {
+      CompositionState s = ctx.popNext();
+      Position pos = s.getPos();
+      int editsCompleted = s.getEditsCompleted();
+      popCount++;
+
+      if (ctx.isGoal(s)) {
+        cerr << "  POP " << popCount << ": GOAL pos=(" << pos.line << "," << pos.col
+             << ") edits=" << editsCompleted
+             << " seq='" << s.getSequence() << "' effort=" << s.getEffort()
+             << " cost=" << s.getCost() << endl;
+        results.emplace_back(s.getMotionSequence(), s.getRunningEffort().getEffort(config));
+        if (results.size() >= 3) break;
+        continue;
+      }
+
+      if (ctx.isStale(s)) {
+        cerr << "  POP " << popCount << ": STALE pos=(" << pos.line << "," << pos.col
+             << ") edits=" << editsCompleted << " seq='" << s.getSequence() << "'" << endl;
+        continue;
+      }
+      ctx.markProcessed();
+
+      const Lines& currentLines = ctx.getLinesAfter(editsCompleted);
+      const DiffState& nextEdit = ctx.getDiffState(editsCompleted);
+
+      if (nextEdit.isPureInsertion()) {
+        cerr << "  POP " << popCount << ": PURE_INS pos=(" << pos.line << "," << pos.col
+             << ") edits=" << editsCompleted << " seq='" << s.getSequence() << "'" << endl;
+        continue; // skip insertion handling for this trace
+      }
+
+      const EditResult& editResult = ctx.editResults[editsCompleted];
+      auto flatIdx = editResult.flatIndexAt(pos.line, pos.col);
+
+      cerr << "  POP " << popCount << ": pos=(" << pos.line << "," << pos.col
+           << ") edits=" << editsCompleted << " seq='" << s.getSequence()
+           << "' effort=" << s.getEffort() << " cost=" << s.getCost()
+           << " flatIdx=" << (flatIdx.has_value() ? to_string(*flatIdx) : "null") << endl;
+
+      if (flatIdx.has_value() && editResult.results[*flatIdx].isValid()) {
+        // Edit transition
+        cerr << "    -> EDIT: seq='" << editResult.results[*flatIdx].sequence << "'" << endl;
+        ctx.exploreEditTransition(s, editResult.results[*flatIdx].sequence,
+                                  editResult.goalPos, editsCompleted + 1);
+      } else {
+        // Motion search
+        Position inclusiveLast = nextEdit.inclusiveLastPos();
+        auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
+            min(pos.line, nextEdit.beginPos.line),
+            max(pos.line, inclusiveLast.line),
+            params.motionPaddingAbove, params.motionPaddingBelow);
+
+        Lines subset = currentLines.getLineRange(beginLine, endLine);
+        Position localPos(pos.line - beginLine, pos.col, pos.targetCol);
+        Position localRangeFirst(nextEdit.beginPos.line - beginLine, nextEdit.beginPos.col);
+        Position localRangeLast(inclusiveLast.line - beginLine, inclusiveLast.col);
+
+        MotionBoundary subsetBoundary(subset, localRangeFirst, localRangeLast,
+            beginLine > 0 || boundary.hasLinesAbove(),
+            endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
+
+        auto movementResults = motionOpt.optimizeToRange(
+            subset, localPos, localRangeFirst, localRangeLast,
+            MotionOptimizerRangeParams{}.withMaxResults(
+                clamp(nextEdit.origCharCount(), 1, 10)), "",
+            subsetBoundary, s.getRunningEffort(), navCtx, ctx.motionToKeys).results;
+
+        for (auto& movResult : movementResults) {
+          if (!movResult.isValid()) continue;
+          movResult.goalPos.line += beginLine;
+          cerr << "    -> MOTION: seq='" << movResult.sequence << "' goalPos=("
+               << movResult.goalPos.line << "," << movResult.goalPos.col << ")" << endl;
+          ctx.exploreMotionTransition(s, movResult.sequence, movResult.goalPos, editsCompleted);
+        }
+      }
+    }
+
+    cerr << "\nFinal results: " << results.size() << endl;
+    auto oracle = make_unique<NeovimOracle>();
+    for (size_t i = 0; i < results.size(); i++) {
+      auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, results[i].sequence.keys);
+      cerr << "  [" << i << "] seq='" << results[i].sequence << "' cost=" << results[i].keyCost
+           << " nvim=" << (nvim.lines == goal ? "OK" : "WRONG") << " got=" << nvim.lines << endl;
+    }
   }
 }

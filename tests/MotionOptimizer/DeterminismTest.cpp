@@ -70,13 +70,13 @@ TEST_F(MotionOptimizerDeterminismTests, SameInputProducesSameOutput) {
     }
 
     for (size_t i = 0; i < results1.size(); i++) {
-      if (results1[i].getSequenceString() != results2[i].getSequenceString() ||
+      if (results1[i].sequence != results2[i].sequence ||
           abs(results1[i].keyCost - results2[i].keyCost) > 1e-6) {
         failures++;
         if (failures <= 3) {
           cerr << "Iter " << iter << ": Result " << i << " differs\n"
-               << "  Run 1: " << results1[i].getSequenceString() << "\n"
-               << "  Run 2: " << results2[i].getSequenceString() << endl;
+               << "  Run 1: " << results1[i].sequence << "\n"
+               << "  Run 2: " << results2[i].sequence << endl;
         }
         break;
       }

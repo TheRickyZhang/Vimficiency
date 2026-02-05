@@ -16,7 +16,7 @@ Lines readLines(istream &in) {
 
 bool contains_all(const vector<Result>& v, initializer_list<string> need){
   unordered_set<string> s;
-  for(Result r : v) s.insert(r.getSequenceString());
+  for(const auto& r : v) s.insert(r.sequence.keys);
   for(const auto& x : need) if(s.find(x)==s.end()) return false;
   return true;
 }

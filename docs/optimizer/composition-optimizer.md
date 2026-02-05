@@ -25,6 +25,13 @@
 - Since each edit can introduce new destructive content, we must calculate for each edit.
 
 ## Pure Insertions
-- Because a pure insertion has no starting point, we must handle it from the higher composition level. 
+- Because a pure insertion has no starting point, we must handle it from the higher composition level.
 - We perform a similar movement search, but augmented with the option of using o/O if we need a new line, and I/A in place of a final $/^ movement, and i/a otherwise.
+- Each strategy defines a range of valid cursor positions from which its mode-entry command produces the correct edit:
+  - `o`: any column on the line above (for new-line insertions at col 0)
+  - `I`: any column on the target line (inserts at first non-blank)
+  - `A`: any column on the target line (appends at end-of-line)
+  - `i`: exact insertion column only (fallback)
+- The mode-entry command determines the actual insert position independent of where in the range we land, so the final cursor position after typing + Esc is always `editResult.goalPos`.
+- When navigating to the valid range, the `MotionBoundary` must use the full subset extent, not the target range (see `docs/optimizer/buffer-slicing.md` § Boundary vs Target Range).
 

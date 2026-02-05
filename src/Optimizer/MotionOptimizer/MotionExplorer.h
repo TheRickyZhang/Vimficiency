@@ -88,7 +88,7 @@ public:
 
     int dollarCol = lastCol - rightBound;
     if (dollarCol > pos.col && dollarCol >= leftBound)
-      emitMotion(base, "$", {pos.line, dollarCol}, {Key::Key_Shift, Key::Key_4});
+      emitMotion(base, "$", {pos.line, dollarCol, TARGETCOL_EOL}, {Key::Key_Shift, Key::Key_4});
   }
 
   // Vertical motions: j, k
@@ -413,7 +413,7 @@ public:
 
     int dollarCol = lastCol - rightBound;
     if (dollarCol > pos.col && dollarCol >= leftBound)
-      emitMotion(base, "$", {pos.line, dollarCol}, {Key::Key_Shift, Key::Key_4});
+      emitMotion(base, "$", {pos.line, dollarCol, TARGETCOL_EOL}, {Key::Key_Shift, Key::Key_4});
 
     // ^ can move right if cursor is before first non-blank
     int fnb = VimCore::firstNonBlankColInLineStr(ctx.lines[pos.line]);

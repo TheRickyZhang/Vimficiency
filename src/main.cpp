@@ -65,7 +65,7 @@ int main(int argc, char* argv[]) {
   } else {
     cout << "res" << endl;
     for(Result r : res) {
-      cout << r.getSequenceString() << " " << std::format("{:3f}", r.keyCost) << endl;
+      cout << r.sequence << " " << std::format("{:3f}", r.keyCost) << endl;
     }
   }
 

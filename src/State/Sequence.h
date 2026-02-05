@@ -13,16 +13,18 @@ struct Sequence {
   Sequence(std::string&& k) : keys(std::move(k)) {}
 
   bool empty() const { return keys.empty(); }
+  size_t size() const { return keys.size(); }
 
   void append(const std::string& s) { keys += s; }
   void append(char c) { keys += c; }
 
-  bool operator==(const Sequence& other) const {
-    return keys == other.keys;
-  }
-  bool operator!=(const Sequence& other) const {
-    return !(*this == other);
-  }
+  bool operator==(const Sequence& other) const { return keys == other.keys; }
+  bool operator!=(const Sequence& other) const { return !(*this == other); }
+  bool operator==(const std::string& s) const { return keys == s; }
+  bool operator!=(const std::string& s) const { return keys != s; }
+  bool operator==(const char* s) const { return keys == s; }
+  bool operator!=(const char* s) const { return keys != s; }
+  bool operator<(const Sequence& other) const { return keys < other.keys; }
 
   // Stream output with mode-separated spacing
   // Parses the sequence to identify mode transitions (insert entries via

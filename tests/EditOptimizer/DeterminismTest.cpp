@@ -68,7 +68,7 @@ TEST_F(EditOptimizerDeterminismTests, SameInputProducesSameOutput) {
 
       if (r1.isValid() != r2.isValid()) {
         mismatch = true;
-      } else if (r1.isValid() && r1.getSequenceString() != r2.getSequenceString()) {
+      } else if (r1.isValid() && r1.sequence != r2.sequence) {
         mismatch = true;
       }
     }

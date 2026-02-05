@@ -30,6 +30,14 @@ There are 6 natural movement classes:
 - When `false`: Uses `exploreAllStandardMotions` (explores all directions)
 
 
+### $ and TARGETCOL_EOL
+
+The `$` motion must emit its goal position with `targetCol = TARGETCOL_EOL` (INT_MAX), not `targetCol = dollarCol`. This ensures subsequent vertical motions (`j`, `k`, `<C-d>`) stick to end-of-line via `clampColPreservingTarget`. Use the 3-param Position constructor:
+
+```cpp
+emitMotion(base, "$", {pos.line, dollarCol, TARGETCOL_EOL}, ...);
+```
+
 ## Buffer Index
 - We first process the entire buffer once with crossing motions (as they aren't easily predictable) to determine where the "anchor" points are.
 - Then, simulating {n}{motion} becomes finding the nth anchor from this position.

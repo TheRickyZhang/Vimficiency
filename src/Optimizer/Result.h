@@ -19,9 +19,8 @@ struct Result {
     return !sequence.empty();
   }
 
-  // Get string representation
-  std::string getSequenceString() const {
-    return sequence.keys;
+  const Sequence& getSequenceString() const {
+    return sequence;
   }
 
   std::string to_string() {

@@ -192,7 +192,7 @@ protected:
   // Helper to check if results contain a sequence
   static bool hasSequence(const vector<Result>& results, const string& seq) {
     return std::any_of(results.begin(), results.end(),
-        [&seq](const Result& r) { return r.getSequenceString() == seq; });
+        [&seq](const Result& r) { return r.sequence == seq; });
   }
 };
 

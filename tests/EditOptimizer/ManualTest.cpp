@@ -100,7 +100,7 @@ void forEachValidResult(const vector<Result>& results, const Lines& lines, Fn fn
     for (int c = 0; c < lines[r].effectiveSize(); c++) {
       const Result& result = results[idx++];
       if (result.isValid()) {
-        fn(Position(r, c), result.getSequenceString());
+        fn(Position(r, c), result.sequence);
       }
     }
   }
@@ -118,8 +118,8 @@ TEST_F(EditOptimizer_ManualTest, PureDeletion_OracleVerified) {
 
   EXPECT_TRUE(allPositionsValid(res, lines));
 
-  forEachValidResult(res, lines, [&](Position pos, const string& seq) {
-    SimulationResult nvimRes = verifySequenceWithOracle(oracle.get(), lines, pos, seq);
+  forEachValidResult(res, lines, [&](Position pos, const auto& seq) {
+    SimulationResult nvimRes = verifySequenceWithOracle(oracle.get(), lines, pos, seq.keys);
     EXPECT_TRUE(nvimRes.lines.isEmpty() && nvimRes.mode == Mode::Normal)
         << "Sequence '" << seq << "' from " << pos << " did not reach goal";
   });
@@ -162,12 +162,12 @@ TEST_F(EditOptimizer_ManualTest, Boundary_LinewiseCursorContainment) {
 
   EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
 
-  forEachValidResult(res.results, editRegion, [&](Position pos, const string& seq) {
+  forEachValidResult(res.results, editRegion, [&](Position pos, const auto& seq) {
     // Skip visual mode sequences for now
-    if (!seq.empty() && seq[0] == 'v') return;
+    if (!seq.empty() && seq.keys[0] == 'v') return;
 
     Position fullBufferPos(pos.line + initialPos.line, pos.col);
-    ApplyResult applied = applySequence(fullBuffer, fullBufferPos, seq);
+    ApplyResult applied = applySequence(fullBuffer, fullBufferPos, seq.keys);
 
     EXPECT_EQ(applied.lines[0], "xx") << "Line above modified after '" << seq << "'";
     EXPECT_EQ(applied.lines.back(), "yy") << "Line below modified after '" << seq << "'";
@@ -185,7 +185,7 @@ TEST_F(EditOptimizer_ManualTest, Replacement_SingleChar) {
   auto result = tryReplacement("hello", "jello", config);
 
   ASSERT_TRUE(result.has_value());
-  EXPECT_EQ(result->getSequenceString(), "rj");
+  EXPECT_EQ(result->sequence, "rj");
 }
 
 TEST_F(EditOptimizer_ManualTest, Replacement_SingleCharMiddle) {
@@ -193,8 +193,8 @@ TEST_F(EditOptimizer_ManualTest, Replacement_SingleCharMiddle) {
   auto result = tryReplacement("fresh", "frosh", config);
 
   ASSERT_TRUE(result.has_value());
-  string seq = result->getSequenceString();
-  EXPECT_TRUE(seq.find("ro") != string::npos) << "Expected 'ro' in: " << seq;
+  const auto& seq = result->getSequenceString();
+  EXPECT_TRUE(seq.keys.find("ro") != string::npos) << "Expected 'ro' in: " << seq;
 }
 
 TEST_F(EditOptimizer_ManualTest, Replacement_ConsecutiveChars) {
@@ -210,12 +210,12 @@ TEST_F(EditOptimizer_ManualTest, Replacement_SparseChars) {
   auto result = tryReplacement("0000000", "1001001", config);
 
   ASSERT_TRUE(result.has_value());
-  string seq = result->getSequenceString();
+  const auto& seq = result->getSequenceString();
 
   // Count r1 occurrences
   size_t replaceCount = 0;
-  for (size_t i = 0; i + 1 < seq.size(); i++) {
-    if (seq[i] == 'r' && seq[i + 1] == '1') replaceCount++;
+  for (size_t i = 0; i + 1 < seq.keys.size(); i++) {
+    if (seq.keys[i] == 'r' && seq.keys[i + 1] == '1') replaceCount++;
   }
   EXPECT_GE(replaceCount, 3u) << "Expected at least 3 'r1' in: " << seq;
 }

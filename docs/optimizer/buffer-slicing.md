@@ -124,6 +124,27 @@ EditOptimizer receives exact character-wise regions from the Myers diff, with no
 
 Note: Only the line is offset; column stays the same.
 
+## Boundary vs Target Range
+
+When calling `optimizeToRange`, the **boundary** and the **target range** serve different purposes:
+
+- **Target range** (`rangeFirst`, `rangeLast`): Defines which positions count as "in range" for the optimizer's goal check. This is the edit region or insertion point.
+- **Boundary** (`MotionBoundary`): Defines the navigable extent that clamps motion endpoints like `$`, `0`, `^`. This should be the full subset extent, not the target range.
+
+Using the target range as the boundary is incorrect — it causes `BoundaryContext` to compute `leftColOffset`/`rightColOffset` that clamp motions to the target range edges. For example, `$` would land at the edit region's last column instead of the actual end-of-line.
+
+```cpp
+// CORRECT: boundary = full subset extent
+Position subsetFirst(0, 0);
+Position subsetLast(static_cast<int>(subset.size()) - 1,
+    std::max(0, static_cast<int>(subset.back().size()) - 1));
+MotionBoundary subsetBoundary(subset, subsetFirst, subsetLast, ...);
+
+// WRONG: boundary = target range (would clamp $ to range edge)
+// MotionBoundary subsetBoundary(subset, localRangeFirst, localRangeLast, ...);
+```
+
+This applies to both code paths in CompositionOptimizer: the edit/motion transition path and the pure insertion path.
 
 ## Summary Table
 

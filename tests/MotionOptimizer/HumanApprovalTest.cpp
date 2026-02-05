@@ -117,7 +117,7 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_MixedMotions) {
   // Should find something more efficient than 12 l's
   bool foundEfficient = false;
   for (const auto& r : results) {
-    if (r.getSequenceString().size() < 12) {
+    if (r.sequence.size() < 12) {
       foundEfficient = true;
       break;
     }

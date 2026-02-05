@@ -79,4 +79,59 @@ This worked by accident when diffs didn't insert/delete lines before subsequent 
 
 **Fix:** Removed `adjustForSequential` entirely. Inlined the adjustment into `calculateLinesAfterDiffs`, which already has the intermediate `Lines` at each step. The adjustment converts positions to flat character indices against the original buffer, applies a cumulative offset (sum of `insertedText.size() - deletedText.size()` from prior diffs), then converts back to `(line, col)` against the current intermediate buffer. See `docs/optimizer/diff-generation.md`.
 
+## Subset boundary used target range instead of full subset extent
+
+In `CompositionOptimizer.cpp`, when creating sub-buffers for `MotionOptimizer::optimizeToRange`, the `MotionBoundary` was constructed using the **target edit range** (`localRangeFirst`, `localRangeLast`) as the boundary positions. This caused `BoundaryContext` to compute `leftColOffset`/`rightColOffset` that clamped motions like `$` and `0` to the edit range edges instead of the full subset extent.
+
+The bug existed in both code paths: the edit/motion transition path and the pure insertion path (`exploreInsertionStrategy` lambda). Both construct subsets and call `optimizeToRange`.
+
+**Symptom:** Motions like `$` would land at the edit range edge instead of end-of-line, producing incorrect sequences. Manifested as failures in `SingleLine_Substitution`, `PureInsertion`, and `PureDeletion` tests.
+
+**Fix:** Use `subsetFirst(0, 0)` and `subsetLast(subset.size()-1, subset.back().size()-1)` for the boundary, since the boundary should represent the full navigable extent of the subset, not the target range. The target range is only for `optimizeToRange`'s `isInRange` check.
+
+```cpp
+// Boundary uses full subset extent, not the target range.
+Position subsetFirst(0, 0);
+Position subsetLast(static_cast<int>(subset.size()) - 1,
+    std::max(0, static_cast<int>(subset.back().size()) - 1));
+MotionBoundary subsetBoundary(subset, subsetFirst, subsetLast, ...);
+```
+
+## $ motion missing TARGETCOL_EOL
+
+In `MotionExplorer.h`, the `$` motion emitted its goal position using the 2-param Position constructor `{pos.line, dollarCol}`, which sets `targetCol = dollarCol`. The correct behavior is `targetCol = TARGETCOL_EOL` (INT_MAX), which makes subsequent vertical motions (`j`, `k`, `<C-d>`, etc.) stick to end-of-line.
+
+**Symptom:** Sequences like `$<C-d>` would land at the wrong column on the target line. After `$` on a line of length 10 (dollarCol=9), a subsequent `j` to a line of length 20 would go to col 9 instead of col 19.
+
+**Fix:** Use the 3-param constructor to explicitly set `TARGETCOL_EOL`:
+```cpp
+emitMotion(base, "$", {pos.line, dollarCol, TARGETCOL_EOL}, {Key::Key_Shift, Key::Key_4});
+```
+
+**Pattern:** This is a specific instance of the general targetCol pitfall documented above — always use the 3-param Position constructor when the target column semantics differ from the actual column.
+
+## cc collapse sequence overcounting on single-line buffers
+
+In `EditOptimizer.cpp`, the dd→cc conversion computes how many `<BS>`/`<Del>` keystrokes are needed to collapse a multi-line cc result to a single line. The original code used `lines.size() + 1` as the total line count, where `lines` is the post-dd buffer. The `+1` accounts for the line that `cc` preserves but `dd` removes.
+
+However, when `dd` operates on the **last line** of a single-line buffer, the buffer invariant (`lines.empty() → lines.push_back("")`) creates an artificial empty line. So `lines.size()` is already 1, and `+1` gives 2 — but `cc` on a 1-line buffer has only 1 line (no collapse needed). This produced a spurious `<Del>` keystroke.
+
+**Symptom:** Sequences like `cc<Del>text<Esc>` would produce an empty buffer instead of the expected single line. The extra `<Del>` deleted the line that `cc` just created.
+
+**Fix:** Use `base.getLines().size()` (the pre-dd line count) instead of `lines.size() + 1`. The pre-dd buffer accurately represents what `cc` would operate on:
+```cpp
+int ccLineCount = static_cast<int>(base.getLines().size());
+auto [collapseSeq, collapseKeys] = buildCollapseSequence(ccLineCount, line);
+```
+
+# Known vim simulation gaps
+
+## Autoindent with cc and A+Enter
+
+Neovim's `cc` on a line with leading whitespace preserves the indentation, placing the cursor at the first non-blank column in insert mode. Similarly, `A<CR>` copies indentation from the current line to the new line. The optimizer does not model autoindent behavior, so it may suggest sequences that produce incorrect results on indented lines.
+
+## cw trailing space
+
+Vim has a well-known quirk: `cw` does not include trailing whitespace when the cursor is on a non-blank character, unlike `dw` which does. The optimizer currently treats `cw` like `ce` (as Vim does) but there may be edge cases around this behavior at word boundaries.
+
 

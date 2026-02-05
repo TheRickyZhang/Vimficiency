@@ -218,10 +218,10 @@ TEST_F(ConfigurationTest, CustomKeyCostAffectsOptimizer) {
   double expensiveJCost = -1;
 
   for (const auto& r : normalResults) {
-    if (r.getSequenceString() == "j") { normalJCost = r.keyCost; break; }
+    if (r.sequence == "j") { normalJCost = r.keyCost; break; }
   }
   for (const auto& r : expensiveResults) {
-    if (r.getSequenceString() == "j") { expensiveJCost = r.keyCost; break; }
+    if (r.sequence == "j") { expensiveJCost = r.keyCost; break; }
   }
 
   if (normalJCost > 0 && expensiveJCost > 0) {

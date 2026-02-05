@@ -57,8 +57,8 @@ TEST_F(EditOptimizerOutputCorrectness, SingleLineEmbedded) {
       Position bufferPos = test.toFullBufferPos(editPos);
 
       total++;
-      string seq = r.getSequenceString();
-      auto result = oracle->simulate(test.fullBuffer, bufferPos.line, bufferPos.col, seq);
+      const auto& seq = r.getSequenceString();
+      auto result = oracle->simulate(test.fullBuffer, bufferPos.line, bufferPos.col, seq.keys);
 
       if (result.lines.flatten() == expected) {
         passed++;
@@ -95,8 +95,8 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineFullBuffer) {
       Position pos = fromFlatIndex(static_cast<int>(i), source);
 
       total++;
-      string seq = r.getSequenceString();
-      auto nvim = oracle->simulate(source, pos.line, pos.col, seq);
+      const auto& seq = r.getSequenceString();
+      auto nvim = oracle->simulate(source, pos.line, pos.col, seq.keys);
 
       bool ok = (nvim.lines.size() == 1 && nvim.lines[0].empty()) || nvim.lines.empty();
       if (ok) {
@@ -132,8 +132,8 @@ TEST_F(EditOptimizerOutputCorrectness, Replacement_SameLength) {
     total++;
 
     // Result is for starting position 0
-    string seq = result->getSequenceString();
-    auto nvim = oracle->simulate(source, 0, 0, seq);
+    const auto& seq = result->getSequenceString();
+    auto nvim = oracle->simulate(source, 0, 0, seq.keys);
 
     if (nvim.lines.size() == 1 && nvim.lines[0] == replacement) {
       passed++;
@@ -173,8 +173,8 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineEmbedded) {
       Position bufferPos = test.toFullBufferPos(editPos);
 
       total++;
-      string seq = r.getSequenceString();
-      auto nvim = oracle->simulate(test.fullBuffer, bufferPos.line, bufferPos.col, seq);
+      const auto& seq = r.getSequenceString();
+      auto nvim = oracle->simulate(test.fullBuffer, bufferPos.line, bufferPos.col, seq.keys);
 
       if (nvim.lines.flatten() == expected) {
         passed++;

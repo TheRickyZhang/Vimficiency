@@ -24,8 +24,8 @@ struct RangeResult {
     return !sequence.empty();
   }
 
-  std::string getSequenceString() const {
-    return sequence.keys;
+  const Sequence& getSequenceString() const {
+    return sequence;
   }
 
   friend std::ostream& operator<<(std::ostream& os, const RangeResult& r) {

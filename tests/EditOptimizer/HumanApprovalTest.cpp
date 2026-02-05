@@ -48,8 +48,8 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionSingleWord) {
   // printResultsDebug(res, "Delete single word");
   // Single word should use dw or de, not visual mode (too short)
   ASSERT_TRUE(res[0].isValid());
-  string seq = res[0].getSequenceString();
-  EXPECT_TRUE(seq.find("dw") != string::npos || seq.find("de") != string::npos)
+  const auto& seq = res[0].getSequenceString();
+  EXPECT_TRUE(seq.keys.find("dw") != string::npos || seq.keys.find("de") != string::npos)
       << "Expected dw or de for single word, got: " << seq;
 }
 

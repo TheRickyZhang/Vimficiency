@@ -43,3 +43,13 @@ lineBaseIndex[1] = 5 (afterwards consider cumulative character count)`
 
 Then, converting a real position to flat index takes only 3 operations. This improves over a 5-operation resolution without tracking lineBaseIndex, and a 2-operation resolution would require a lot of storage for looking up region -> flatIndex directly.
 
+## dd→cc Conversion
+
+When the best edit strategy is a linewise delete (`dd`) followed by insert-mode typing, the optimizer converts this to `cc` (change line) which preserves the line while clearing its contents. Since `cc` keeps the line but `dd` removes it, the conversion must account for the difference in line count.
+
+The `buildCollapseSequence` function generates `<BS>`/`<Del>` keystrokes to collapse extra lines that `cc` leaves behind (when the replacement text has fewer lines than the original). It takes `totalLines` (the number of lines `cc` operates on) and `line` (the cursor line within that range):
+- Lines before cursor → `<BS>` keystrokes
+- Lines after cursor → `<Del>` keystrokes
+
+The correct `totalLines` for this conversion is `base.getLines().size()` (the pre-dd line count), since that represents the buffer state that `cc` would actually operate on. Using `lines.size() + 1` (post-dd buffer + 1) fails when `dd` on the last line of a single-line buffer triggers the buffer invariant (`lines.empty() → lines.push_back("")`), making `lines.size()` already 1 and the `+1` overcounting.
+

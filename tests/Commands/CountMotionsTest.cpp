@@ -287,7 +287,7 @@ TEST_F(CountMotionsOptimizerTest, SmallCount_NotEmitted) {
   // Should find "w", not "1w"
   bool has_1w = false;
   for (const auto& r : results) {
-    if (r.getSequenceString() == "1w") {
+    if (r.sequence == "1w") {
       has_1w = true;
       break;
     }

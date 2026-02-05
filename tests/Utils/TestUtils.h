@@ -19,7 +19,7 @@
 // Check if any result contains the exact sequence
 inline bool hasSequence(const std::vector<Result>& results, const std::string& seq) {
   return std::any_of(results.begin(), results.end(),
-      [&seq](const Result& r) { return r.getSequenceString() == seq; });
+      [&seq](const Result& r) { return r.sequence == seq; });
 }
 
 // Check if any result contains a sequence starting with prefix
@@ -27,9 +27,8 @@ inline bool hasSequenceStartingWith(const std::vector<Result>& results,
                                     const std::string& prefix) {
   return std::any_of(results.begin(), results.end(),
       [&prefix](const Result& r) {
-        const std::string& seq = r.getSequenceString();
-        return seq.size() >= prefix.size() &&
-               seq.substr(0, prefix.size()) == prefix;
+        return r.sequence.size() >= prefix.size() &&
+               r.sequence.keys.substr(0, prefix.size()) == prefix;
       });
 }
 
@@ -38,7 +37,7 @@ inline void printResultsDebug(const std::vector<Result>& results,
                               const std::string& description) {
   std::cerr << "\n=== " << description << " ===" << std::endl;
   for (size_t i = 0; i < results.size(); i++) {
-    std::cerr << "  " << i << ": " << results[i].getSequenceString()
+    std::cerr << "  " << i << ": " << results[i].sequence
               << " (cost=" << results[i].keyCost << ")" << std::endl;
   }
 }

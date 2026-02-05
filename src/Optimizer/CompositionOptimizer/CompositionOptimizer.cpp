@@ -125,7 +125,13 @@ vector<Result> CompositionOptimizer::optimize(
           Position localRangeFirst(targetLine - beginLine, firstCol);
           Position localRangeLast(targetLine - beginLine, lastCol);
 
-          MotionBoundary subsetBoundary(subset, localRangeFirst, localRangeLast,
+          // Boundary uses full subset extent, not the target range.
+          // The target range is only for optimizeToRange's isInRange check.
+          // Using the target range as boundary would clamp motions like $ to the range edge.
+          Position subsetFirst(0, 0);
+          Position subsetLast(static_cast<int>(subset.size()) - 1,
+              std::max(0, static_cast<int>(subset.back().size()) - 1));
+          MotionBoundary subsetBoundary(subset, subsetFirst, subsetLast,
               beginLine > 0 || boundary.hasLinesAbove(),
               endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
@@ -228,7 +234,13 @@ vector<Result> CompositionOptimizer::optimize(
       Position localRangeFirst(nextEdit.beginPos.line - beginLine, nextEdit.beginPos.col);
       Position localRangeLast(inclusiveLast.line - beginLine, inclusiveLast.col);
 
-      MotionBoundary subsetBoundary(subset, localRangeFirst, localRangeLast,
+      // Boundary uses full subset extent, not the edit range.
+      // The edit range is only the target for optimizeToRange's isInRange check.
+      // Using the edit range as boundary would clamp motions like $ to the range edge.
+      Position subsetFirst(0, 0);
+      Position subsetLast(static_cast<int>(subset.size()) - 1,
+          std::max(0, static_cast<int>(subset.back().size()) - 1));
+      MotionBoundary subsetBoundary(subset, subsetFirst, subsetLast,
           beginLine > 0 || boundary.hasLinesAbove(),
           endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 

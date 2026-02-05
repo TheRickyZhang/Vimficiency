@@ -58,8 +58,8 @@ TEST_F(MotionOptimizerCostConsistencyTests, CostMatchesComputed) {
       if (!result.isValid()) continue;
       totalResults++;
 
-      string seq = result.getSequenceString();
-      double computedCost = getEffort(seq, config);
+      const auto& seq = result.getSequenceString();
+      double computedCost = getEffort(seq.keys, config);
       double reportedCost = result.keyCost;
 
       if (abs(computedCost - reportedCost) > 1e-6) {

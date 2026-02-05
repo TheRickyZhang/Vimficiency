@@ -198,8 +198,7 @@ const char *vimficiency_analyze(
     std::vector<const Result*> validResults;
     for (const Result &r : res) {
       if (!r.isValid()) continue;
-      std::string seq = r.getSequenceString();
-      if (seq.empty()) continue;
+      if (r.sequence.empty()) continue;
       validResults.push_back(&r);
     }
 
@@ -214,7 +213,7 @@ const char *vimficiency_analyze(
     } else {
       oss << "size: " << validResults.size() << " user_cost: " << std::fixed << std::setprecision(3) << userCost << "\n";
       for (const Result* r : validResults) {
-        oss << r->getSequenceString() << " "
+        oss << r->sequence << " "
             << std::fixed << std::setprecision(3) << r->keyCost << "\n";
       }
     }

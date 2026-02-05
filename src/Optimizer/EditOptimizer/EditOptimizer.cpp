@@ -27,7 +27,7 @@ ostream& operator<<(ostream& os, const EditResult& editResult) {
   os << "typeAllResults: ";
   for(size_t i = 0; i < editResult.results.size(); i++) {
     const auto& res = editResult.results[i];
-    os << (res.isValid() ? res.getSequenceString() : "_");
+    if (res.isValid()) os << res.sequence; else os << "_";
 
     if(i < editResult.results.size() - 1) os << " ";
   }
@@ -317,11 +317,14 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
       int idx = newState.getStartIndex();
       if (result.results[idx].isValid()) return;
 
-      // Convert dd -> cc: the cc equivalent has one more line (the empty line it leaves)
-      // Cursor position for cc would be at `line` (the cleared line, not the dd cursor)
+      // Convert dd -> cc: cc preserves the line count while dd removes a line.
+      // Use pre-dd line count since that's what cc would operate on.
+      // (When dd empties the buffer, an artificial empty line is added by invariant,
+      // making lines.size()+1 overcounting — the cc equivalent has the same 1 line.)
       static const PhysicalKeys ccKeys = {Key::Key_C, Key::Key_C};
+      int ccLineCount = static_cast<int>(base.getLines().size());
       auto [collapseSeq, collapseKeys] =
-          buildCollapseSequence(static_cast<int>(lines.size()) + 1, line);
+          buildCollapseSequence(ccLineCount, line);
 
       string seqStr = newState.getSeq() + "cc" + collapseSeq + typedStr;
       RunningEffort effort = newState.getRunningEffort();
@@ -590,19 +593,21 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
 
       if (!motionResults.empty() && motionResults[0].isValid()) {
         // Build visual mode sequence: v + motion + d
-        string visualSeq = "v" + motionResults[0].getSequenceString() + "d";
+        Sequence visualSeq("v");
+        visualSeq.append(motionResults[0].sequence.keys);
+        visualSeq.append("d");
 
         // Calculate effort: v + motion + d
         RunningEffort effort;
         static const PhysicalKeys vKey = {Key::Key_V};
         static const PhysicalKeys dKey = {Key::Key_D};
         effort.append(vKey, config);
-        effort.append(globalTokenizer().tokenize(motionResults[0].getSequenceString()), config);
+        effort.append(globalTokenizer().tokenize(motionResults[0].sequence.keys), config);
         double totalEffort = effort.append(dKey, config);
 
         // Compare with existing result[0] and use better one
         if (!results[0].isValid() || totalEffort < results[0].keyCost) {
-          results[0] = Result(visualSeq, totalEffort);
+          results[0] = Result(std::move(visualSeq), totalEffort);
         }
       }
     }

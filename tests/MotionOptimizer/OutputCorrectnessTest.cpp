@@ -198,13 +198,13 @@ TEST_F(MotionOptimizerOutputCorrectness, SubBufferMotionCorrectness) {
     // For each result, verify against Neovim on full buffer
     for (const auto& result : results) {
       totalSequences++;
-      string seq = result.getSequenceString();
+      const auto& seq = result.getSequenceString();
 
       // Apply sequence to FULL buffer via Neovim
       SimulationResult neovimResult;
       try {
         neovimResult = oracle->simulate(test.fullBuffer,
-            test.fullStart.line, test.fullStart.col, seq);
+            test.fullStart.line, test.fullStart.col, seq.keys);
       } catch (const exception& e) {
         // Oracle connection issue - restart and skip this iteration
         oracle->restart();
@@ -213,7 +213,7 @@ TEST_F(MotionOptimizerOutputCorrectness, SubBufferMotionCorrectness) {
       Position neovimEnd(neovimResult.row, neovimResult.col);
 
       // Apply same sequence to sub-buffer using our simulation
-      Position ourEnd = simulateMotions(test.subStart, seq, test.subBuffer);
+      Position ourEnd = simulateMotions(test.subStart, seq.keys, test.subBuffer);
 
       // Convert Neovim result to sub-buffer coords
       auto [inBounds, neovimSubPos] = toSubBufferPos(neovimEnd, test.subBufferStartLine,
@@ -229,7 +229,7 @@ TEST_F(MotionOptimizerOutputCorrectness, SubBufferMotionCorrectness) {
         escapedBounds++;
       }
 
-      stats.record(seq, posMatch);
+      stats.record(seq.keys, posMatch);
 
       if (!posMatch) {
         failedSequences++;

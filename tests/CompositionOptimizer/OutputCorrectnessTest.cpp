@@ -11,7 +11,6 @@
 #include "Editor/Position.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
-#include "Boundary/MotionBoundary.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomBufferHelpers.h"
@@ -19,7 +18,7 @@
 
 using namespace std;
 
-class DISABLED_CompositionOptimizerOutputCorrectness : public ::testing::Test {
+class CompositionOptimizerOutputCorrectness : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle;
   static const int NUM_ITERATIONS = 30;
@@ -41,8 +40,8 @@ protected:
     for (size_t i = 0; i < results.size(); i++) {
       if (!results[i].isValid()) continue;
 
-      string seq = results[i].getSequenceString();
-      SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq);
+      const auto& seq = results[i].getSequenceString();
+      SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.keys);
 
       EXPECT_EQ(nvim.lines, goal)
           << "Result " << i << " failed" << (testContext.empty() ? "" : " (" + testContext + ")")
@@ -54,14 +53,14 @@ protected:
   }
 };
 
-unique_ptr<NeovimOracle> DISABLED_CompositionOptimizerOutputCorrectness::oracle;
+unique_ptr<NeovimOracle> CompositionOptimizerOutputCorrectness::oracle;
 
 // =============================================================================
 // Single Edit Stress Tests
 // =============================================================================
 
 // Random single-line substitutions
-TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, SingleLine_Substitution) {
+TEST_F(CompositionOptimizerOutputCorrectness, SingleLine_Substitution) {
   RandomGen::seed(42);
   int passed = 0, total = 0;
 
@@ -103,15 +102,23 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, SingleLine_Substitution) 
     }
 
     // Verify first result
-    string seq = results[0].getSequenceString();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq);
+    const auto& seq = results[0].getSequenceString();
+    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.keys);
 
     if (nvim.lines == goal) {
       passed++;
     } else {
       if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " seq='" << seq << "'\n"
+        // Build visual marker for edit region
+        string marker(editStart, ' ');
+        marker += string(editEnd - editStart, '^');
+
+        cerr << "FAIL iter=" << iter << " seq='" << seq << "'"
+             << " initialPos=(0," << cursorCol << ")\n"
              << "  Initial: '" << line << "'\n"
+             << "            " << marker << "\n"
+             << "  Edit:     [" << editStart << "," << editEnd << ") '"
+             << line.substr(editStart, editLen) << "' -> '" << replacement << "'\n"
              << "  Goal:    '" << goalStr << "'\n"
              << "  Got:     " << nvim.lines << endl;
       }
@@ -122,7 +129,7 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, SingleLine_Substitution) 
 }
 
 // Random multi-line with single edit
-TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, MultiLine_SingleEdit) {
+TEST_F(CompositionOptimizerOutputCorrectness, MultiLine_SingleEdit) {
 
   RandomGen::seed(43);
   int passed = 0, total = 0;
@@ -169,8 +176,8 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, MultiLine_SingleEdit) {
       continue;
     }
 
-    string seq = results[0].getSequenceString();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq);
+    const auto& seq = results[0].getSequenceString();
+    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.keys);
 
     if (nvim.lines == goal) {
       passed++;
@@ -192,7 +199,7 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, MultiLine_SingleEdit) {
 // =============================================================================
 
 // Random pure insertions (adding text without removing)
-TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, PureInsertion) {
+TEST_F(CompositionOptimizerOutputCorrectness, PureInsertion) {
 
   RandomGen::seed(44);
   int passed = 0, total = 0;
@@ -233,8 +240,8 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, PureInsertion) {
       continue;
     }
 
-    string seq = results[0].getSequenceString();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq);
+    const auto& seq = results[0].getSequenceString();
+    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.keys);
 
     if (nvim.lines == goal) {
       passed++;
@@ -252,7 +259,7 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, PureInsertion) {
 }
 
 // Random pure deletions (removing text without adding)
-TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, PureDeletion) {
+TEST_F(CompositionOptimizerOutputCorrectness, PureDeletion) {
 
   RandomGen::seed(45);
   int passed = 0, total = 0;
@@ -292,8 +299,8 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, PureDeletion) {
       continue;
     }
 
-    string seq = results[0].getSequenceString();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq);
+    const auto& seq = results[0].getSequenceString();
+    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.keys);
 
     if (nvim.lines == goal) {
       passed++;
@@ -315,7 +322,7 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, PureDeletion) {
 // =============================================================================
 
 // Insert new lines
-TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, InsertNewLine) {
+TEST_F(CompositionOptimizerOutputCorrectness, InsertNewLine) {
 
   RandomGen::seed(46);
   int passed = 0, total = 0;
@@ -348,8 +355,8 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, InsertNewLine) {
       continue;
     }
 
-    string seq = results[0].getSequenceString();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq);
+    const auto& seq = results[0].getSequenceString();
+    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.keys);
 
     if (nvim.lines == goal) {
       passed++;
@@ -367,7 +374,7 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, InsertNewLine) {
 }
 
 // Delete entire lines
-TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, DeleteEntireLine) {
+TEST_F(CompositionOptimizerOutputCorrectness, DeleteEntireLine) {
 
   RandomGen::seed(47);
   int passed = 0, total = 0;
@@ -399,8 +406,8 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, DeleteEntireLine) {
       continue;
     }
 
-    string seq = results[0].getSequenceString();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq);
+    const auto& seq = results[0].getSequenceString();
+    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.keys);
 
     if (nvim.lines == goal) {
       passed++;
@@ -422,7 +429,7 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, DeleteEntireLine) {
 // =============================================================================
 
 // Two edits on the same line
-TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, TwoEdits_SameLine) {
+TEST_F(CompositionOptimizerOutputCorrectness, TwoEdits_SameLine) {
 
   RandomGen::seed(48);
   int passed = 0, total = 0;
@@ -459,8 +466,8 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, TwoEdits_SameLine) {
       continue;
     }
 
-    string seq = results[0].getSequenceString();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq);
+    const auto& seq = results[0].getSequenceString();
+    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.keys);
 
     if (nvim.lines == goal) {
       passed++;
@@ -478,7 +485,7 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, TwoEdits_SameLine) {
 }
 
 // Two edits on different lines
-TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, TwoEdits_DifferentLines) {
+TEST_F(CompositionOptimizerOutputCorrectness, TwoEdits_DifferentLines) {
 
   RandomGen::seed(49);
   int passed = 0, total = 0;
@@ -508,8 +515,8 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, TwoEdits_DifferentLines) 
       continue;
     }
 
-    string seq = results[0].getSequenceString();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq);
+    const auto& seq = results[0].getSequenceString();
+    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.keys);
 
     if (nvim.lines == goal) {
       passed++;
