@@ -11,6 +11,7 @@
 // |--------------|------------------|---------------------------|
 // | startofline  | OFF              | ON                        |
 // | joinspaces   | OFF              | ON                        |
+// | autoindent   | ON               | OFF                       |
 // | Y mapping    | y$ (to EOL)      | yy (whole line)           |
 //
 // startofline affects: gg, G, <C-d>, <C-u>, <C-f>, <C-b>, dd, H, M, L
@@ -49,6 +50,17 @@ constexpr bool yIsYankLine() {
     return true;
 #else
     return false;
+#endif
+}
+
+// Returns true if autoindent is enabled
+// Neovim has autoindent ON by default; Vim has it OFF
+// Affects insert-mode text after o, cc, <CR>: copies indent from source line
+constexpr bool autoindent() {
+#ifdef VIMFICIENCY_LEGACY_VIM
+    return false;
+#else
+    return true;
 #endif
 }
 

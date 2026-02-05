@@ -8,6 +8,7 @@
 #include "Utils/QuoteFlags.h"
 #include "Utils/StringUtils.h"
 #include "VimCore/VimCore.h"
+#include "VimCore/VimOptions.h"
 
 #include <algorithm>
 #include <cassert>
@@ -29,6 +30,65 @@ Position computeInsertEndPos(Position insertPos, const string& insertedText) {
     int lastCol = inserted.back().empty() ? 0 : static_cast<int>(inserted.back().size()) - 1;
     return Position(lastLine, lastCol);
   }
+}
+
+// Build autoindent-aware insert text for insert-mode commands (o, A, I, i).
+//
+// Takes the raw insert text (may contain \n for multi-line), the source line's
+// indent (provided by autoindent on the first typed line), and an optional
+// prefix for computing continuation autoindent.
+//
+// Returns the command string to type (with <CR> for newlines, <C-u> where needed).
+// Does NOT include the mode-entry command (o/A/etc.) or <Esc>.
+string buildAutoindentInsert(string_view text, string_view sourceIndent,
+                             string_view linePrefix = "") {
+  if constexpr (!VimOptions::autoindent()) {
+    return escapeNewlines(text);
+  }
+
+  Lines lines = Lines::unflatten(string(text));
+  string result;
+
+  for (size_t i = 0; i < lines.size(); i++) {
+    string_view line = lines[i];
+
+    // Compute expected autoindent for this line
+    string_view autoindent;
+    if (i == 0) {
+      autoindent = sourceIndent;
+    } else if (i == 1 && !linePrefix.empty()) {
+      // First continuation: autoindent from prefix + goalLines[0]
+      auto prefixWs = leadingWhitespace(linePrefix);
+      if (prefixWs.size() == linePrefix.size()) {
+        auto goalWs = leadingWhitespace(lines[0]);
+        thread_local string combinedIndent;
+        combinedIndent.assign(linePrefix.size() + goalWs.size(), ' ');
+        autoindent = combinedIndent;
+      } else {
+        autoindent = prefixWs;
+      }
+    } else {
+      autoindent = (i > 0) ? leadingWhitespace(lines[i - 1]) : string_view{};
+    }
+
+    if (!autoindent.empty() && line.size() >= autoindent.size() &&
+        line.substr(0, autoindent.size()) == autoindent) {
+      // Strip — autoindent provides the prefix
+      result.append(line.substr(autoindent.size()));
+    } else if (!autoindent.empty()) {
+      // Clear autoindent and type full line
+      result += "<C-u>";
+      result.append(line);
+    } else {
+      result.append(line);
+    }
+
+    if (i < lines.size() - 1) {
+      result += "<CR>";
+    }
+  }
+
+  return result;
 }
 
 } // anonymous namespace
@@ -158,25 +218,44 @@ vector<Result> CompositionOptimizer::optimize(
         int targetLine = insertPos.line - 1;
         int lastCol = currentLines[targetLine].empty()
             ? 0 : static_cast<int>(currentLines[targetLine].size()) - 1;
+        string_view sourceIndent = VimOptions::autoindent()
+            ? leadingWhitespace(currentLines[targetLine])
+            : string_view{};
+        string insertText = buildAutoindentInsert(nextEdit.insertedTextBody(), sourceIndent);
         exploreInsertionStrategy(targetLine, 0, lastCol,
-                                 "o" + escapeNewlines(nextEdit.insertedTextBody()) + "<Esc>");
+                                 "o" + insertText + "<Esc>");
       } else {
-        // I/A/i: escapeNewlines naturally handles any \n in insertedText
+        // I/A/i: handle autoindent for multi-line insertions
         int fnb = VimCore::firstNonBlankColInLineStr(currentLines[insertPos.line]);
         int lineLen = static_cast<int>(currentLines[insertPos.line].size());
         int lastCol = lineLen == 0 ? 0 : lineLen - 1;
-        string escaped = escapeNewlines(nextEdit.insertedText);
+        bool hasNewline = nextEdit.insertedText.find('\n') != string::npos;
 
         if (insertPos.col == fnb) {
           // I: insert at first non-blank - navigate anywhere on line
+          // For multi-line, prefix before cursor is the indent (text before FNB)
+          string escaped = hasNewline
+              ? buildAutoindentInsert(nextEdit.insertedText, "",
+                    currentLines[insertPos.line].substr(0, fnb))
+              : escapeNewlines(nextEdit.insertedText);
           exploreInsertionStrategy(insertPos.line, 0, lastCol,
                                    "I" + escaped + "<Esc>");
         } else if (insertPos.col == lineLen) {
           // A: append at end of line - navigate anywhere on line
+          // For multi-line, prefix is the entire current line
+          string escaped = hasNewline
+              ? buildAutoindentInsert(nextEdit.insertedText, "",
+                    currentLines[insertPos.line])
+              : escapeNewlines(nextEdit.insertedText);
           exploreInsertionStrategy(insertPos.line, 0, lastCol,
                                    "A" + escaped + "<Esc>");
         } else {
           // i: fallback - navigate to exact position
+          // For multi-line, prefix is text before cursor
+          string escaped = hasNewline
+              ? buildAutoindentInsert(nextEdit.insertedText, "",
+                    currentLines[insertPos.line].substr(0, insertPos.col))
+              : escapeNewlines(nextEdit.insertedText);
           exploreInsertionStrategy(insertPos.line, insertPos.col, insertPos.col,
                                    "i" + escaped + "<Esc>");
         }

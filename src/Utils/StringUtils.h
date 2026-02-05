@@ -19,6 +19,18 @@ inline std::string makePrintable(const std::string& s) {
   return result;
 }
 
+// Return the leading whitespace (spaces only) of a string
+inline std::string_view leadingWhitespace(std::string_view s) {
+  size_t i = 0;
+  while (i < s.size() && s[i] == ' ') i++;
+  return s.substr(0, i);
+}
+
+// Count leading spaces in a string
+inline int leadingSpaceCount(std::string_view s) {
+  return static_cast<int>(leadingWhitespace(s).size());
+}
+
 // Replace literal newlines with <CR> for use in Vim command sequences
 inline std::string escapeNewlines(std::string_view s) {
   std::string result;

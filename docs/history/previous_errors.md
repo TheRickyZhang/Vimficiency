@@ -130,8 +130,10 @@ auto [collapseSeq, collapseKeys] = buildCollapseSequence(ccLineCount, line);
 
 Neovim's `cc` on a line with leading whitespace preserves the indentation, placing the cursor at the first non-blank column in insert mode. Similarly, `A<CR>` copies indentation from the current line to the new line. The optimizer does not model autoindent behavior, so it may suggest sequences that produce incorrect results on indented lines.
 
-## cw trailing space
+## cw trailing space (delete→change conversion)
 
-Vim has a well-known quirk: `cw` does not include trailing whitespace when the cursor is on a non-blank character, unlike `dw` which does. The optimizer currently treats `cw` like `ce` (as Vim does) but there may be edge cases around this behavior at word boundaries.
+Vim treats `cw`/`cW` like `ce`/`cE` — they don't include trailing whitespace, unlike `dw`/`dW`. The `deleteToChange` function in EditOptimizer previously converted `dw` → `cw`, which would produce incorrect results when `dw` deleted trailing whitespace to reach the goal.
+
+**Fix:** Convert `dw`/`dW` to `dwi`/`dWi` (delete then enter insert mode) instead of `cw`/`cW`. No per-call equivalence check is needed because `de`/`dE` (WordEdge) is explored before `dw`/`dW` (GapEdge) — when the ranges are identical, `de` stores its result first and `dw` is skipped. So `dw` only reaches the goal when trailing whitespace made the difference, meaning `cw` is always wrong. See `docs/optimizer/edit-optimizer.md` § dw/dW → dwi/dWi.
 
 

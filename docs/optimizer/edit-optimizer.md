@@ -43,6 +43,14 @@ lineBaseIndex[1] = 5 (afterwards consider cumulative character count)`
 
 Then, converting a real position to flat index takes only 3 operations. This improves over a 5-operation resolution without tracking lineBaseIndex, and a 2-operation resolution would require a lot of storage for looking up region -> flatIndex directly.
 
+## dw/dW → dwi/dWi (not cw/cW)
+
+The delete→change conversion (`deleteToChange`) converts `dw`/`dW` to `dwi`/`dWi` instead of `cw`/`cW`. This is because vim treats `cw`/`cW` like `ce`/`cE` — they don't include trailing whitespace, while `dw`/`dW` does (GapEdge vs WordEdge).
+
+We unconditionally use `dwi`/`dWi` without checking whether `cw` would be equivalent, because the exploration order makes the check unnecessary. In `exploreAllDeletions`, WordEdge edits (`de`/`dE`) are explored **before** GapEdge edits (`dw`/`dW`). When `dw` and `de` produce the same deletion range (no trailing whitespace), `de` reaches the goal first and stores its result. The `dw` callback then hits the early-out `if (result.results[idx].isValid()) return` and is skipped. So `dw` only reaches the goal when `de` didn't — meaning the trailing whitespace is what made `dw` reach the goal, and `cw` would always be wrong.
+
+This is a case where **exploration order affects correctness** of the delete→change conversion. If GapEdge were explored before WordEdge, we would need a per-call equivalence check.
+
 ## dd→cc Conversion
 
 When the best edit strategy is a linewise delete (`dd`) followed by insert-mode typing, the optimizer converts this to `cc` (change line) which preserves the line while clearing its contents. Since `cc` keeps the line but `dd` removes it, the conversion must account for the difference in line count.

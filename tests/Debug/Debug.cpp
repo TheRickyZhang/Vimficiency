@@ -1594,6 +1594,105 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
 }
 
 // =============================================================================
+// InsertNewLine iter=27: ciw mismatch investigation
+// =============================================================================
+
+TEST_F(NeovimOracleDebug, InvestigateCiwMismatch) {
+  // FAIL iter=27 seq='jciwcba<CR>b<Esc>'
+  //   Initial: bba  c / b b,
+  //   Goal:    bba  c / cba / b b,
+  //   Got:     bba  c / cba / bb,    ← space missing
+
+  Lines initial = {"bba  c", "b b, "};
+  Position initialPos(0, 0);
+
+  cerr << "=== Neovim step-by-step ===" << endl;
+  auto tracer = makeTracer(initial, 0, 0);
+  tracer.trace("j");
+  tracer.trace("ciwcba<CR>b<Esc>");
+  tracer.printSummary();
+
+  // Now trace more granularly: j alone, then ciw alone
+  cerr << endl << "=== Neovim: j motion only ===" << endl;
+  {
+    auto r = oracle_->simulate(initial, 0, 0, "j");
+    cerr << "  After j from (0,0): cursor=(" << r.row << "," << r.col << ")" << endl;
+    cerr << "  Buffer: " << r.lines << endl;
+
+    // Now ciw from that position
+    cerr << endl << "=== Neovim: ciw text object range check ===" << endl;
+    // Use diw to see what it deletes (same range as ciw, stays in normal mode)
+    auto rdiw = oracle_->simulate(initial, r.row, r.col, "diw");
+    cerr << "  After diw from (" << r.row << "," << r.col << "): buffer='" << rdiw.lines[r.row] << "'" << endl;
+    cerr << "  Full buffer: " << rdiw.lines << endl;
+    cerr << "  Cursor: (" << rdiw.row << "," << rdiw.col << ")" << endl;
+  }
+
+  cerr << endl << "=== Our VimCore simulation ===" << endl;
+  {
+    Lines ourLines = initial;
+    Position pos(0, 0);
+
+    // Simulate j: move down, preserve targetCol
+    pos.line = 1;
+    int lastCol = ourLines[1].empty() ? 0 : static_cast<int>(ourLines[1].size()) - 1;
+    pos.clampColPreservingTarget(std::min(pos.targetCol, lastCol));
+    cerr << "  After j: pos=(" << pos.line << "," << pos.col
+         << ") targetCol=" << pos.targetCol << endl;
+    cerr << "  Char at cursor: '" << ourLines[pos.line][pos.col] << "'" << endl;
+
+    // Simulate ciw: compute text object range
+    Range iwRange = VimCore::textObject(pos, ourLines, /*isInner=*/true, /*isBigWord=*/false);
+    cerr << "  textObject(iw) range: [(" << iwRange.first.line << "," << iwRange.first.col
+         << "), (" << iwRange.last.line << "," << iwRange.last.col << ")]" << endl;
+    cerr << "  Deleted text: '";
+    for (int c = iwRange.first.col; c <= iwRange.last.col; c++) {
+      cerr << ourLines[iwRange.first.line][c];
+    }
+    cerr << "'" << endl;
+
+    // Apply deletion (change mode)
+    VimCore::deleteRange(ourLines, iwRange, pos, Mode::Insert);
+    cerr << "  After ciw deletion: buffer=" << ourLines << endl;
+    cerr << "  Cursor: (" << pos.line << "," << pos.col << ")" << endl;
+    cerr << "  Line content: '" << ourLines[pos.line] << "'" << endl;
+  }
+
+  // Isolate: does <CR> in insert mode strip leading whitespace?
+  cerr << endl << "=== <CR> whitespace stripping test ===" << endl;
+  {
+    // Insert mode Enter on "cba b, " at col 3 — does it strip the leading space?
+    // Use i to enter insert at col 0, type "cba", then Enter
+    auto r1 = oracle_->simulate({" b, "}, 0, 0, "icba<CR><Esc>");
+    cerr << "  ' b, ' -> i + type 'cba<CR>' -> " << r1.lines << endl;
+    cerr << "  Line 1 content: '" << (r1.lines.size() > 1 ? r1.lines[1] : "(none)") << "'" << endl;
+
+    // Same but no leading space
+    auto r2 = oracle_->simulate({"b, "}, 0, 0, "icba<CR><Esc>");
+    cerr << "  'b, ' -> i + type 'cba<CR>' -> " << r2.lines << endl;
+
+    // Direct test: Enter in middle of line with space after cursor
+    auto r3 = oracle_->simulate({"abc def"}, 0, 3, "a<CR><Esc>");
+    cerr << "  'abc def' -> a at col 3 + <CR> -> " << r3.lines << endl;
+    cerr << "  Line 1: '" << (r3.lines.size() > 1 ? r3.lines[1] : "(none)") << "'" << endl;
+
+    // Enter with leading whitespace after cursor
+    auto r4 = oracle_->simulate({"abc  def"}, 0, 3, "a<CR><Esc>");
+    cerr << "  'abc  def' -> a at col 3 + <CR> -> " << r4.lines << endl;
+    cerr << "  Line 1: '" << (r4.lines.size() > 1 ? r4.lines[1] : "(none)") << "'" << endl;
+  }
+
+  // Also verify the full sequence with <CR>/<Esc> notation
+  cerr << endl << "=== Full sequence result ===" << endl;
+  {
+    auto r = oracle_->simulate(initial, 0, 0, "jciwcba<CR>b<Esc>");
+    cerr << "  Result: " << r.lines << endl;
+    cerr << "  Expected: " << Lines{"bba  c", "cba", "b b, "} << endl;
+    cerr << "  Match: " << (r.lines == Lines{"bba  c", "cba", "b b, "} ? "YES" : "NO") << endl;
+  }
+}
+
+// =============================================================================
 // CompositionOptimizer Debug: Trace A* search for a specific failure
 // =============================================================================
 

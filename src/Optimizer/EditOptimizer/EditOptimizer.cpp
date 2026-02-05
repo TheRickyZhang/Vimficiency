@@ -13,6 +13,8 @@
 #include "Keyboard/CharToKeys.h"
 #include "Keyboard/MotionToKeys.h"
 #include "State/RunningEffort.h"
+#include "Utils/StringUtils.h"
+#include "VimCore/VimOptions.h"
 
 #include <algorithm>
 #include <optional>
@@ -91,11 +93,22 @@ bool allLinesEmpty(const Lines &lines) {
 
 // Convert delete command to change equivalent
 // Returns the change command string, or empty string if no mapping exists
+//
+// dw/dW are converted to dwi/dWi (delete + enter insert) rather than cw/cW because
+// vim treats cw/cW like ce/cE (doesn't include trailing whitespace). This conversion
+// is only reached when dw/dW is the last delete that reaches the goal — and since
+// de/dE (WordEdge) is explored before dw/dW (GapEdge) in exploreAllDeletions, the
+// de result is already stored when the ranges are identical. So dw reaching the goal
+// implies de didn't, meaning dw deleted trailing whitespace that cw would skip.
 pair<string, PhysicalKeys> deleteToChange(const string& deleteCmd) {
   if (deleteCmd == "D")
     return {"C", {Key::Key_Shift, Key::Key_C}};
   if (deleteCmd == "dd")
     return {"cc", {Key::Key_C, Key::Key_C}};
+  if (deleteCmd == "dw")
+    return {"dwi", {Key::Key_D, Key::Key_W, Key::Key_I}};
+  if (deleteCmd == "dW")
+    return {"dWi", {Key::Key_D, Key::Key_Shift, Key::Key_W, Key::Key_I}};
   if (deleteCmd[0] == 'd') {
     string s = deleteCmd.substr(1);
     return {"c" + s, PhysicalKeys{Key::Key_C}.append(globalTokenizer().tokenize(s))};
@@ -109,20 +122,121 @@ pair<string, PhysicalKeys> deleteToChange(const string& deleteCmd) {
 }
 
 
-// Build the typed content string from goalLines
-pair<string, PhysicalKeys> buildTypedCommands(const Lines &goalLines) {
+// Build the typed content string from goalLines, accounting for Neovim autoindent.
+//
+// When autoindent is active, entering insert mode via cc/c{motion}/o copies
+// leading whitespace from the source line. Each subsequent <CR> copies indent
+// from the current line. We either strip the autoindent (if it matches the goal
+// line's prefix) or prepend <C-u> to clear it before typing the full line.
+//
+// Parameters:
+//   goalLines          - the lines to type out
+//   initialAutoindent  - indent provided on the first typed line (e.g. from cc's source line)
+//   linePrefix         - text before edit region on first line (for computing line 1+ autoindent)
+//   suffixLeadingSpaces - whitespace to restore on last line (stripped from suffix by <CR>)
+pair<string, PhysicalKeys> buildTypedCommands(
+    const Lines &goalLines,
+    string_view initialAutoindent = "",
+    string_view linePrefix = "",
+    int suffixLeadingSpaces = 0) {
   string str;
   PhysicalKeys keys;
+
+  static const PhysicalKeys ctrlUKeys = {Key::Key_Ctrl, Key::Key_U};
+
   for (size_t i = 0; i < goalLines.size(); i++) {
-    str += goalLines[i];
-    for (int c : goalLines[i]) {
-      keys.append(CHAR_TO_KEYS.at(c));
+    string_view line = goalLines[i];
+
+    if constexpr (VimOptions::autoindent()) {
+      // Compute expected autoindent for this line
+      string_view autoindent;
+      if (i == 0) {
+        autoindent = initialAutoindent;
+      } else {
+        // autoindent for line i comes from the actual buffer content of line i-1,
+        // which is always the goal line (whether we stripped or <C-u>'d, the result matches)
+        if (i == 1 && !linePrefix.empty()) {
+          // First continuation line: autoindent comes from prefix + goalLines[0]
+          // But we only need the leading whitespace, and prefix is the text before
+          // the edit region. If prefix is all spaces, they contribute; otherwise
+          // leading whitespace stops at the first non-space in prefix.
+          // Since autoindent = leadingWhitespace(full_line), and full_line = prefix + goalLine[0],
+          // it's just leadingWhitespace(prefix + goalLines[0]).
+          // Optimization: if prefix starts with non-space, autoindent = "".
+          // If prefix is all spaces, autoindent = prefix + leadingWhitespace(goalLines[0]).
+          if (!linePrefix.empty() && linePrefix[0] != ' ') {
+            autoindent = "";
+          } else {
+            // prefix is all spaces (or we need to check more carefully)
+            auto prefixWs = leadingWhitespace(linePrefix);
+            if (prefixWs.size() == linePrefix.size()) {
+              // prefix is entirely spaces
+              auto goalWs = leadingWhitespace(goalLines[i - 1]);
+              // combined leading ws = prefix.size() + goalWs.size()
+              // but autoindent is that combined length worth of spaces
+              // We store it as a string since we need to compare with goal line
+              // Use a static thread_local to avoid allocation in the common case
+              thread_local string combinedIndent;
+              combinedIndent.assign(linePrefix.size() + goalWs.size(), ' ');
+              autoindent = combinedIndent;
+            } else {
+              autoindent = prefixWs;
+            }
+          }
+        } else {
+          autoindent = leadingWhitespace(goalLines[i - 1]);
+        }
+      }
+
+      if (!autoindent.empty() && line.size() >= autoindent.size() &&
+          line.substr(0, autoindent.size()) == autoindent) {
+        // Goal line starts with expected autoindent — strip it, autoindent provides it
+        string_view remaining = line.substr(autoindent.size());
+        str.append(remaining);
+        for (char c : remaining) {
+          keys.append(CHAR_TO_KEYS.at(c));
+        }
+      } else if (!autoindent.empty()) {
+        // Goal line doesn't match autoindent — clear with <C-u> and type full line
+        str += "<C-u>";
+        keys.append(ctrlUKeys);
+        str.append(line);
+        for (char c : line) {
+          keys.append(CHAR_TO_KEYS.at(c));
+        }
+      } else {
+        // No autoindent — type full line
+        str.append(line);
+        for (char c : line) {
+          keys.append(CHAR_TO_KEYS.at(c));
+        }
+      }
+    } else {
+      // autoindent off — type full line as before
+      str.append(line);
+      for (char c : line) {
+        keys.append(CHAR_TO_KEYS.at(c));
+      }
     }
+
     if (i < goalLines.size() - 1) {
       str += "<CR>";
       keys.push_back(Key::Key_Enter);
     }
   }
+
+  // On the last typed line, restore suffix leading whitespace that was stripped
+  // by <CR> autoindent behavior. Only needed for multi-line edits where the suffix
+  // has leading spaces (char-wise edits that span lines).
+  if constexpr (VimOptions::autoindent()) {
+    if (suffixLeadingSpaces > 0 && goalLines.size() > 1) {
+      for (int i = 0; i < suffixLeadingSpaces; i++) {
+        str += ' ';
+        keys.append(CHAR_TO_KEYS.at(' '));
+      }
+    }
+  }
+
   str += "<Esc>";
   keys.push_back(Key::Key_Esc);
   return {str, keys};
@@ -247,8 +361,11 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
     replacementResult = tryReplacement(initialLines[0], goalLines[0], config);
   }
 
-  // Precompute typed content for goal state
-  auto [typedStr, typedKeys] = buildTypedCommands(goalLines);
+  // Precompute typed content for char-wise goal state
+  // For char-wise edits (c{motion}), no autoindent on the first line;
+  // continuation lines after <CR> get autoindent from the previous line.
+  int sufLeadingSpaces = (goalLines.size() > 1) ? leadingSpaceCount(suf) : 0;
+  auto [typedStr, typedKeys] = buildTypedCommands(goalLines, "", pre, sufLeadingSpaces);
 
   // Goal check for regular edit: accepts multi-line (for collapse via <BS>/<Del>)
   auto isGoalReached = [&](const Lines &lines) -> bool {
@@ -326,11 +443,18 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
       auto [collapseSeq, collapseKeys] =
           buildCollapseSequence(ccLineCount, line);
 
-      string seqStr = newState.getSeq() + "cc" + collapseSeq + typedStr;
+      // cc preserves the source line's indent — compute typed commands lazily
+      // since the autoindent depends on which line is being cc'd
+      string_view ccAutoindent = VimOptions::autoindent()
+          ? leadingWhitespace(base.getLines()[line])
+          : string_view{};
+      auto [ccTypedStr, ccTypedKeys] = buildTypedCommands(goalLines, ccAutoindent);
+
+      string seqStr = newState.getSeq() + "cc" + collapseSeq + ccTypedStr;
       RunningEffort effort = newState.getRunningEffort();
       effort.append(ccKeys, config);
       effort.append(collapseKeys, config);
-      double totalEffort = effort.append(typedKeys, config);
+      double totalEffort = effort.append(ccTypedKeys, config);
 
       result.results[idx] = Result(seqStr, totalEffort);
       ctx.resultsFound++;
