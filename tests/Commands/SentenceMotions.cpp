@@ -23,7 +23,7 @@ class SentenceMotionsTest : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle;
   static NavContext navContext;
-  static const int NUM_ITERATIONS = 100;
+  static constexpr int NUM_ITERATIONS = 100;
 
   static void SetUpTestSuite() {
     oracle = make_unique<NeovimOracle>();

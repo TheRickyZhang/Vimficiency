@@ -10,20 +10,6 @@ Add support for CompositionOptimizer in lua
 Review human tests.
 Move compositionOptimizer params from class to optimizerParams
 
-// Check if the edit at this index is a pure insertion
-bool isPureInsertion(int editIndex) const {
-  return diffStates[editIndex].isPureInsertion();
-}
-We shouldn't need this - since we may call isPureInsertion many times, shoduln't we just store separate vector<bool> for whether they are pure insertion?
-
-// Generate random prefix/suffix (no brackets)
-int prefixLen = rand() % 5;
-int suffixLen = rand() % 5;
-string prefix, suffix;
-for (int j = 0; j < prefixLen; j++) prefix += 'a' + rand() % 26;
-for (int j = 0; j < suffixLen; j++) suffix += 'a' + rand() % 26;
-
-We should not need to do this brute force construction - we should have a helper in RandomGen that can do this random length, then sample random char pool. Infact, you could probably just reuse the letters pool that is already there. a
 
 
 Can skip F-motions if no endpoints found?

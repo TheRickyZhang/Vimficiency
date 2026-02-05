@@ -473,58 +473,6 @@ Lines applyDiffState(const DiffState& diff, const Lines& lines) {
   return Lines::unflatten(newText);
 }
 
-vector<DiffState> adjustForSequential(const vector<DiffState>& diffs) {
-  vector<DiffState> result;
-  result.reserve(diffs.size());
-
-  // Track cumulative offset in characters
-  int charOffset = 0;
-
-  for (const auto& diff : diffs) {
-    DiffState adjusted = diff;
-
-    // Adjust positions based on cumulative character offset
-    // This is more complex for character-level diffs because
-    // we need to track both line and column changes
-
-    // For simplicity, we'll track the offset and recompute positions
-    // when applying. The key insight is that each diff changes the
-    // buffer by: insertedText.size() - deletedText.size() characters.
-
-    // We need to adjust posBegin and posEnd based on previous diffs.
-    // This requires tracking how many newlines were added/removed.
-
-    // Count newlines in deleted vs inserted
-    int deletedNewlines = count(diff.deletedText.begin(), diff.deletedText.end(), '\n');
-    int insertedNewlines = count(diff.insertedText.begin(), diff.insertedText.end(), '\n');
-    int lineOffset = insertedNewlines - deletedNewlines;
-
-    // For now, use a simpler approach: adjust line numbers only
-    // This works when diffs don't overlap within a line
-    // (which is guaranteed by our sequential processing)
-
-    // Actually, for character-level diffs that may be mid-line,
-    // we need to be more careful. Let's track the cumulative effect.
-
-    // Simplified: just adjust line numbers based on previous diffs
-    // The column adjustment is complex and depends on whether
-    // the previous diff was on the same line.
-
-    // For the MVP, we'll use line-based adjustment similar to before
-    // This may need refinement for complex multi-line edits.
-
-    // We'll store the original positions and let applyDiffState
-    // handle the actual application correctly.
-
-    result.push_back(std::move(adjusted));
-  }
-
-  // For now, return as-is. The sequential application in
-  // calculateLinesAfterDiffs handles this correctly by
-  // applying each diff to the result of the previous.
-  return diffs;
-}
-
 Lines applyAllDiffState(const vector<DiffState>& diffs, const Lines& initialLines) {
   // Compute all flat indices upfront using the ORIGINAL text positions
   string text = initialLines.flatten();

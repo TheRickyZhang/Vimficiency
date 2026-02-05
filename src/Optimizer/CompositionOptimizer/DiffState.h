@@ -75,13 +75,6 @@ Lines applyDiffState(
     const DiffState& diff,
     const Lines& lines);
 
-// Adjust diff indices for sequential application.
-// Input diffs have indices relative to original buffer.
-// Output diffs have indices relative to buffer state after all previous diffs.
-// Use this when applying diffs one at a time to track intermediate states.
-std::vector<DiffState> adjustForSequential(
-    const std::vector<DiffState>& diffs);
-
 // Apply all diffs in sequence to initialLines
 Lines applyAllDiffState(
     const std::vector<DiffState>& diffs,

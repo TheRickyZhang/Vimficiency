@@ -68,8 +68,7 @@ CompositionSearchContext::CompositionSearchContext(
       debug("Processing edits in reverse order (backward)");
     }
 
-    // Adjust indices for sequential application
-    diffStates = Myers::adjustForSequential(rawDiffs);
+    diffStates = std::move(rawDiffs);
   }
 
   // Build intermediate buffer states
@@ -314,14 +313,65 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
   return results;
 }
 
+// Convert (line, col) to flat character index in a Lines buffer.
+// Each line is followed by a \n separator (except conceptually the last,
+// but flatten() joins with \n so line i occupies [base, base+len] where
+// base = sum of (lines[j].size()+1) for j<i).
+static int posToFlat(const Position& pos, const Lines& lines) {
+  int idx = 0;
+  for (int i = 0; i < pos.line && i < static_cast<int>(lines.size()); i++) {
+    idx += static_cast<int>(lines[i].size()) + 1;  // +1 for \n
+  }
+  idx += pos.col;
+  return idx;
+}
+
+// Convert flat character index back to (line, col) given a Lines buffer.
+static Position flatToPos(int flatIdx, const Lines& lines) {
+  int remaining = flatIdx;
+  for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+    int lineLen = static_cast<int>(lines[i].size());
+    if (remaining <= lineLen) {
+      return Position(i, remaining);
+    }
+    remaining -= lineLen + 1;  // +1 for \n
+  }
+  // Past end — clamp to end of last line
+  int lastLine = static_cast<int>(lines.size()) - 1;
+  return Position(lastLine, static_cast<int>(lines[lastLine].size()));
+}
+
 vector<Lines> CompositionSearchContext::calculateLinesAfterDiffs(
-    const Lines& initialLines) const {
+    const Lines& initialLines) {
   assert(totalEdits == static_cast<int>(diffStates.size()));
   vector<Lines> result(totalEdits + 1);
   result[0] = initialLines;
 
-  for (int i = 1; i <= totalEdits; i++) {
-    result[i] = Myers::applyDiffState(diffStates[i - 1], result[i - 1]);
+  int cumulativeOffset = 0;
+
+  for (int i = 0; i < totalEdits; i++) {
+    if (cumulativeOffset != 0) {
+      // Adjust positions from original-buffer space to intermediate-buffer space.
+      // Convert to flat index against original buffer, shift by cumulative delta,
+      // then convert back to (line, col) against the current intermediate buffer.
+      auto adjustPos = [&](const Position& pos) -> Position {
+        int flatIdx = posToFlat(pos, initialLines);
+        flatIdx += cumulativeOffset;
+        return flatToPos(flatIdx, result[i]);
+      };
+
+      diffStates[i].beginPos = adjustPos(diffStates[i].beginPos);
+      if (diffStates[i].hasDeletedContent()) {
+        diffStates[i].endPos = adjustPos(diffStates[i].endPos);
+      } else {
+        diffStates[i].endPos = diffStates[i].beginPos;  // pure insertion
+      }
+    }
+
+    result[i + 1] = Myers::applyDiffState(diffStates[i], result[i]);
+
+    cumulativeOffset += static_cast<int>(diffStates[i].insertedText.size())
+                      - static_cast<int>(diffStates[i].deletedText.size());
   }
 
   return result;

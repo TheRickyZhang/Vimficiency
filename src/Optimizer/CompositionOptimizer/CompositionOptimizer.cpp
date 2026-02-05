@@ -16,16 +16,12 @@ namespace {
 // Compute cursor position after insertion (same for i/a/o/O/I/A + text + Esc)
 // Cursor ends on last char of inserted text, or stays at insertPos if empty
 Position computeInsertEndPos(Position insertPos, const string& insertedText) {
-  if (insertedText.empty()) {
-    return insertPos;
-  }
+  assert(!insertedText.empty());
   Lines inserted = Lines::unflatten(insertedText);
   if (inserted.size() == 1) {
-    // Single line: cursor at last char
     int endCol = insertPos.col + static_cast<int>(inserted[0].size()) - 1;
     return Position(insertPos.line, max(0, endCol));
   } else {
-    // Multi-line: cursor at last char of last line
     int lastLine = insertPos.line + static_cast<int>(inserted.size()) - 1;
     int lastCol = inserted.back().empty() ? 0 : static_cast<int>(inserted.back().size()) - 1;
     return Position(lastLine, lastCol);

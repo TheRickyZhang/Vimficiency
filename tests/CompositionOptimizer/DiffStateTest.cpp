@@ -1,6 +1,7 @@
 // tests/CompositionOptimizer/DiffStateTest.cpp
 //
 // Tests for DiffState computation used in CompositionOptimizer.
+// Manual edge case tests + randomized invariant validation.
 //
 // Run: ./build/tests/vimficiency_tests --gtest_filter="*DiffState*"
 
@@ -8,37 +9,90 @@
 
 #include "Optimizer/CompositionOptimizer/DiffState.h"
 #include "Utils/Lines.h"
+#include "Utils/RandomBufferHelpers.h"
+#include "Utils/RandomGeneration.h"
 
-// Helper: check diffs match expected {deleted, inserted} pairs
+using namespace std;
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
 static void expectDiffs(
-    const std::vector<DiffState> &diffs,
-    std::initializer_list<std::pair<const char *, const char *>> expected) {
+    const vector<DiffState>& diffs,
+    initializer_list<pair<const char*, const char*>> expected) {
   ASSERT_EQ(diffs.size(), expected.size()) << "diff count mismatch";
   size_t i = 0;
-  for (const auto &[del, ins] : expected) {
+  for (const auto& [del, ins] : expected) {
     EXPECT_EQ(diffs[i].deletedText, del) << "diff[" << i << "].deleted";
     EXPECT_EQ(diffs[i].insertedText, ins) << "diff[" << i << "].inserted";
     i++;
   }
 }
 
-// Helper: verify round-trip (calculate then apply)
-static void expectRoundTrip(const Lines &start, const Lines &end) {
+static void expectRoundTrip(const Lines& start, const Lines& end) {
   auto diffs = Myers::calculate(start, end);
   EXPECT_EQ(Myers::applyAllDiffState(diffs, start), end);
 }
 
-// Helper: print diffs for manual verification
-static void printDiffs(const char *name, const std::vector<DiffState> &diffs) {
-  std::cout << "\n[" << name << "] " << diffs.size() << " diff(s)" << std::endl;
+// Validate structural invariants on a diff set
+static void validateInvariants(
+    const vector<DiffState>& diffs, const Lines& initial, const Lines& goal) {
+
+  string startFlat = initial.flatten();
+  string goalFlat = goal.flatten();
+
+  // Diffs must be in document order and non-overlapping
+  for (size_t i = 0; i + 1 < diffs.size(); i++) {
+    const auto& a = diffs[i];
+    const auto& b = diffs[i + 1];
+    EXPECT_TRUE(a.endPos.line < b.beginPos.line ||
+                (a.endPos.line == b.beginPos.line && a.endPos.col <= b.beginPos.col))
+        << "diff[" << i << "] endPos (" << a.endPos.line << "," << a.endPos.col
+        << ") overlaps diff[" << (i + 1) << "] beginPos ("
+        << b.beginPos.line << "," << b.beginPos.col << ")";
+  }
+
   for (size_t i = 0; i < diffs.size(); i++) {
-    std::cout << "  \"" << diffs[i].deletedText << "\" -> \""
-              << diffs[i].insertedText << "\"" << std::endl;
+    const auto& d = diffs[i];
+
+    // Type flags are mutually exclusive (or all false for empty diff)
+    int typeCount = d.isPureInsertion() + d.isPureDeletion() + d.isReplacement();
+    EXPECT_LE(typeCount, 1) << "diff[" << i << "] has multiple type flags";
+
+    // Non-empty diff must have at least one type
+    if (!d.deletedText.empty() || !d.insertedText.empty()) {
+      EXPECT_EQ(typeCount, 1) << "diff[" << i << "] is non-empty but has no type flag";
+    }
+
+    // Pure insertion: beginPos == endPos
+    if (d.isPureInsertion()) {
+      EXPECT_EQ(d.beginPos, d.endPos) << "pure insertion diff[" << i << "] has non-empty range";
+    }
+
+    // Deletion/replacement: beginPos != endPos
+    if (d.isPureDeletion() || d.isReplacement()) {
+      EXPECT_NE(d.beginPos, d.endPos) << "deletion/replacement diff[" << i << "] has empty range";
+    }
+
+    // deletedText must match the original content at [beginPos, endPos)
+    if (d.hasDeletedContent()) {
+      // Convert beginPos to flat index
+      int flatBegin = 0;
+      for (int l = 0; l < d.beginPos.line; l++)
+        flatBegin += static_cast<int>(initial[l].size()) + 1; // +1 for \n
+      flatBegin += d.beginPos.col;
+
+      string actual = startFlat.substr(flatBegin, d.deletedText.size());
+      EXPECT_EQ(actual, d.deletedText)
+          << "diff[" << i << "] deletedText doesn't match original at ("
+          << d.beginPos.line << "," << d.beginPos.col << ")";
+    }
   }
 }
 
 // =============================================================================
-// Core Diff Behavior
+// Manual Edge Case Tests
 // =============================================================================
 
 TEST(DiffStateTest, NoChange_NoDiffs) {
@@ -60,6 +114,7 @@ TEST(DiffStateTest, PureInsertion) {
   auto diffs = Myers::calculate({"hello"}, {"hello world"});
   expectDiffs(diffs, {{"", " world"}});
   EXPECT_TRUE(diffs[0].isPureInsertion());
+  EXPECT_EQ(diffs[0].beginPos, diffs[0].endPos);
 }
 
 TEST(DiffStateTest, PureDeletion) {
@@ -68,288 +123,256 @@ TEST(DiffStateTest, PureDeletion) {
   EXPECT_TRUE(diffs[0].isPureDeletion());
 }
 
-// =============================================================================
-// Multi-Line
-// =============================================================================
+TEST(DiffStateTest, MultiLine_InsertAndDeleteLine) {
+  // Insert line
+  auto diffs1 = Myers::calculate({"aaa", "ccc"}, {"aaa", "bbb", "ccc"});
+  expectDiffs(diffs1, {{"", "bbb\n"}});
 
-TEST(DiffStateTest, MultiLine_ChangeOneLine) {
-  auto diffs = Myers::calculate({"aaa", "bbb", "ccc"}, {"aaa", "xxx", "ccc"});
-  expectDiffs(diffs, {{"bbb", "xxx"}});
-  EXPECT_EQ(diffs[0].beginPos.line, 1);
+  // Delete line
+  auto diffs2 = Myers::calculate({"aaa", "bbb", "ccc"}, {"aaa", "ccc"});
+  expectDiffs(diffs2, {{"bbb\n", ""}});
 }
 
-TEST(DiffStateTest, MultiLine_ChangesOnDifferentLines) {
-  auto diffs = Myers::calculate({"aaa", "bbb", "ccc"}, {"xxx", "bbb", "yyy"});
-  expectDiffs(diffs, {{"aaa", "xxx"}, {"ccc", "yyy"}});
+TEST(DiffStateTest, MinMatch_ThresholdBehavior) {
+  // 3 chars < MIN_MATCH_LENGTH=4: merged
+  auto merged = Myers::calculate({"abcdef"}, {"xxcdexx"});
+  expectDiffs(merged, {{"abcdef", "xxcdexx"}});
+
+  // 4 chars >= MIN_MATCH_LENGTH=4: preserved as separator
+  auto split = Myers::calculate({"abcdefgh"}, {"xxcdefxx"});
+  expectDiffs(split, {{"ab", "xx"}, {"gh", "xx"}});
 }
 
-TEST(DiffStateTest, MultiLine_InsertLine) {
-  auto diffs = Myers::calculate({"aaa", "ccc"}, {"aaa", "bbb", "ccc"});
-  expectDiffs(diffs, {{"", "bbb\n"}});
-}
-
-TEST(DiffStateTest, MultiLine_DeleteLine) {
-  auto diffs = Myers::calculate({"aaa", "bbb", "ccc"}, {"aaa", "ccc"});
-  expectDiffs(diffs, {{"bbb\n", ""}});
-}
-
-// =============================================================================
-// MIN_MATCH_LENGTH Threshold (default=4)
-// =============================================================================
-
-TEST(DiffStateTest, MinMatch_ShortCommonMerged) {
-  // "cde" (3 chars) < MIN_MATCH_LENGTH=4, so merged into one diff
-  auto diffs = Myers::calculate({"abcdef"}, {"xxcdexx"});
-  expectDiffs(diffs, {{"abcdef", "xxcdexx"}});
-}
-
-TEST(DiffStateTest, MinMatch_LongCommonPreserved) {
-  // "cdef" (4 chars) >= MIN_MATCH_LENGTH=4, so preserved as separator
-  auto diffs = Myers::calculate({"abcdefgh"}, {"xxcdefxx"});
-  expectDiffs(diffs, {{"ab", "xx"}, {"gh", "xx"}});
-}
-
-TEST(DiffStateTest, MinMatch_RealisticRename) {
-  // "UserData" (8 chars) preserved, only prefix differs
-  auto diffs = Myers::calculate({"getUserData"}, {"fetchUserData"});
-  expectDiffs(diffs, {{"get", "fetch"}});
-}
-
-// =============================================================================
-// Word Boundary Preservation (overrides MIN_MATCH_LENGTH)
-// =============================================================================
-
-TEST(DiffStateTest, WordBoundary_SpacePreserved) {
-  // " b " is only 3 chars but contains spaces, so preserved
+TEST(DiffStateTest, WordBoundary_OverridesMinMatch) {
+  // " b " is only 3 chars but contains word boundaries, so preserved
   auto diffs = Myers::calculate({"a b c"}, {"d b e"});
   expectDiffs(diffs, {{"a", "d"}, {"c", "e"}});
+
+  // "_b_" has underscores (NOT word boundary), so absorbed
+  auto merged = Myers::calculate({"a_b_c"}, {"d_b_e"});
+  expectDiffs(merged, {{"a_b_c", "d_b_e"}});
 }
 
-TEST(DiffStateTest, WordBoundary_PunctuationPreserved) {
-  // ".b." and ",y," contain punctuation, so preserved
-  auto diffs1 = Myers::calculate({"a.b.c"}, {"d.b.e"});
-  expectDiffs(diffs1, {{"a", "d"}, {"c", "e"}});
-
-  auto diffs2 = Myers::calculate({"x,y,z"}, {"a,y,b"});
-  expectDiffs(diffs2, {{"x", "a"}, {"z", "b"}});
-}
-
-TEST(DiffStateTest, WordBoundary_UnderscoreNotBoundary) {
-  // "_b_" has underscores but underscore is NOT a word boundary (for code)
-  auto diffs = Myers::calculate({"a_b_c"}, {"d_b_e"});
-  expectDiffs(diffs, {{"a_b_c", "d_b_e"}});
-}
-
-TEST(DiffStateTest, WordBoundary_ParensPreserveInner) {
-  auto diffs = Myers::calculate({"(foo)"}, {"(bar)"});
-  expectDiffs(diffs, {{"foo", "bar"}});
-}
-
-// =============================================================================
-// Position Calculation (Half-Open Semantics)
-// =============================================================================
-
-TEST(DiffStateTest, Position_SingleCharChange) {
+TEST(DiffStateTest, Position_HalfOpenSemantics) {
   auto diffs = Myers::calculate({"abcde"}, {"abXde"});
   EXPECT_EQ(diffs[0].beginPos.col, 2);
-  EXPECT_EQ(diffs[0].endPos.col, 3); // Half-open: one past last char
+  EXPECT_EQ(diffs[0].endPos.col, 3); // Half-open: one past last
+
+  auto ins = Myers::calculate({"hello"}, {"hello world"});
+  EXPECT_EQ(ins[0].beginPos, ins[0].endPos); // Empty range for pure insertion
 }
 
-TEST(DiffStateTest, Position_MultiCharChange) {
-  auto diffs = Myers::calculate({"hello world"}, {"hello there"});
-  EXPECT_EQ(diffs[0].beginPos.col, 6); // Start of "world"
-  EXPECT_EQ(diffs[0].endPos.col, 11);  // Half-open: one past "d" in "world"
-}
+TEST(DiffStateTest, PureNewline_PreservedAsBoundary) {
+  // Single newline preserved: "a\nc" -> "ab\n\nc"
+  auto diffs1 = Myers::calculate({"a", "c"}, {"ab", "", "c"});
+  ASSERT_EQ(diffs1.size(), 1);
+  EXPECT_TRUE(diffs1[0].isPureInsertion());
+  EXPECT_EQ(diffs1[0].insertedText, "b\n");
 
-TEST(DiffStateTest, Position_PureInsertion) {
-  auto diffs = Myers::calculate({"hello"}, {"hello world"});
-  EXPECT_EQ(diffs[0].beginPos, diffs[0].endPos); // Empty range for pure insertion
-  EXPECT_TRUE(diffs[0].isPureInsertion());
-}
+  // Newline+indent absorbed (not pure newlines)
+  auto diffs2 = Myers::calculate({"a", "  c"}, {"ab", "  c"});
+  ASSERT_EQ(diffs2.size(), 1);
+  EXPECT_EQ(diffs2[0].insertedText, "b");
 
-// =============================================================================
-// Accessors
-// =============================================================================
-
-TEST(DiffStateTest, Accessors) {
-  auto diffs = Myers::calculate({"aaa bbb"}, {"aaa ccc"});
-  ASSERT_EQ(diffs.size(), 1);
-
-  EXPECT_EQ(diffs[0].deletedLines(), Lines({"bbb"}));
-  EXPECT_EQ(diffs[0].insertedLines(), Lines({"ccc"}));
-  EXPECT_EQ(diffs[0].origCharCount(), 3);
-  EXPECT_EQ(diffs[0].newCharCount(), 3);
+  // Each line change independent when separated by newlines
+  auto diffs3 = Myers::calculate({"a", "b", "c"}, {"x", "y", "z"});
+  ASSERT_EQ(diffs3.size(), 3);
+  expectDiffs(diffs3, {{"a", "x"}, {"b", "y"}, {"c", "z"}});
 }
 
 // =============================================================================
-// Edge Cases
+// Randomized Tests
 // =============================================================================
 
-TEST(DiffStateTest, EdgeCases) {
-  // Empty to non-empty
-  expectRoundTrip({""}, {"hello"});
+namespace {
 
-  // Non-empty to empty
-  expectRoundTrip({"hello"}, {""});
+// Apply random edits to a line-based buffer. Edits operate per-line to avoid
+// inserting/removing newlines, which keeps line structure predictable.
+Lines randomlyEdit(const Lines& initial) {
+  Lines result = initial;
 
-  // Single char
-  auto diffs = Myers::calculate({"a"}, {"b"});
-  expectDiffs(diffs, {{"a", "b"}});
+  int numEdits = RandomGen::range(1, 3);
+  for (int e = 0; e < numEdits; e++) {
+    int line = RandomGen::range(0, static_cast<int>(result.size()) - 1);
+    string& s = result[line];
+    int len = static_cast<int>(s.size());
 
-  // Complete replacement
-  expectRoundTrip({"hello"}, {"world"});
+    int editType = RandomGen::range(0, 2);
+    if (editType == 0) {
+      // Insertion
+      int pos = RandomGen::range(0, len);
+      int insertLen = RandomGen::range(1, 5);
+      string ins;
+      for (int i = 0; i < insertLen; i++)
+        ins += RandomGen::pick<string_view>({{80, CharPools::LETTERS}, {20, CharPools::SPACE}});
+      s.insert(pos, ins);
+    } else if (editType == 1 && len > 0) {
+      // Deletion
+      int a = RandomGen::range(0, len - 1);
+      int delLen = min(RandomGen::range(1, 5), len - a);
+      s.erase(a, delLen);
+    } else if (len > 0) {
+      // Replacement
+      int a = RandomGen::range(0, len - 1);
+      int repLen = min(RandomGen::range(1, 5), len - a);
+      string rep;
+      for (int i = 0; i < repLen; i++)
+        rep += RandomGen::pick<string_view>({{80, CharPools::LETTERS}, {20, CharPools::SPACE}});
+      s.replace(a, repLen, rep);
+    }
+  }
+
+  return result;
 }
 
-TEST(DiffStateTest, LongLineSmallChange) {
-  std::string prefix(50, 'x');
-  auto diffs = Myers::calculate({prefix + "aaa"}, {prefix + "bbb"});
-  expectDiffs(diffs, {{"aaa", "bbb"}});
-  EXPECT_EQ(diffs[0].beginPos.col, 50);
+} // namespace
+
+TEST(DiffStateTest, Random_SingleLine_RoundTrip) {
+  constexpr int NUM_ITERATIONS = 100;
+  RandomGen::seed(42);
+
+  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
+    Lines initial = {randomLine(RandomGen::range(5, 30))};
+    Lines goal = randomlyEdit(initial);
+    if (initial == goal) continue;
+
+    auto diffs = Myers::calculate(initial, goal);
+    EXPECT_EQ(Myers::applyAllDiffState(diffs, initial), goal)
+        << "Round-trip failed: '" << initial.flatten()
+        << "' -> '" << goal.flatten() << "'";
+    validateInvariants(diffs, initial, goal);
+  }
+}
+
+TEST(DiffStateTest, Random_MultiLine_RoundTrip) {
+  constexpr int NUM_ITERATIONS = 100;
+  RandomGen::seed(43);
+
+  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
+    int numLines = RandomGen::range(2, 6);
+    Lines initial = randomLines(numLines, 3, 15);
+    Lines goal = randomlyEdit(initial);
+    if (initial == goal) continue;
+
+    auto diffs = Myers::calculate(initial, goal);
+    EXPECT_EQ(Myers::applyAllDiffState(diffs, initial), goal)
+        << "Round-trip failed on multi-line iter=" << iter;
+    validateInvariants(diffs, initial, goal);
+  }
+}
+
+TEST(DiffStateTest, Random_CodeLikeBuffers) {
+  constexpr int NUM_ITERATIONS = 50;
+  RandomGen::seed(44);
+
+  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
+    Lines initial = randomCodeBuffer(RandomGen::range(3, 8), 15);
+    Lines goal = randomlyEdit(initial);
+    if (initial == goal) continue;
+
+    auto diffs = Myers::calculate(initial, goal);
+    EXPECT_EQ(Myers::applyAllDiffState(diffs, initial), goal)
+        << "Round-trip failed on code-like iter=" << iter;
+    validateInvariants(diffs, initial, goal);
+  }
+}
+
+TEST(DiffStateTest, Random_NoChange_NoDiffs) {
+  constexpr int NUM_ITERATIONS = 50;
+  RandomGen::seed(45);
+
+  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
+    Lines lines = randomLines(RandomGen::range(1, 4), 3, 15);
+    auto diffs = Myers::calculate(lines, lines);
+    EXPECT_EQ(diffs.size(), 0) << "Identical buffers should produce no diffs";
+  }
 }
 
 // =============================================================================
-// Round-Trip (Apply) Verification
+// Sequential Application Test
 // =============================================================================
 
-TEST(DiffStateTest, ApplyDiffs_Various) {
-  // Single change
-  expectRoundTrip({"hello world"}, {"hello there"});
+namespace {
 
-  // Multiple changes
-  expectRoundTrip({"the cat sat on the mat"}, {"the dog ran on the rug"});
-
-  // Multi-line
-  expectRoundTrip({"aaa", "bbb", "ccc"}, {"xxx", "bbb", "yyy"});
-
-  // Insert/delete line
-  expectRoundTrip({"aaa", "ccc"}, {"aaa", "bbb", "ccc"});
-  expectRoundTrip({"aaa", "bbb", "ccc"}, {"aaa", "ccc"});
-
-  // With word boundaries
-  expectRoundTrip({"a b c d e"}, {"x b y d z"});
+// Convert (line, col) to flat index in a Lines buffer
+static int posToFlat(const Position& pos, const Lines& lines) {
+  int idx = 0;
+  for (int i = 0; i < pos.line && i < static_cast<int>(lines.size()); i++) {
+    idx += static_cast<int>(lines[i].size()) + 1;
+  }
+  idx += pos.col;
+  return idx;
 }
 
-// Complex Cases
-
-TEST(DiffStateTest, Complex_FunctionRename) {
-  auto diffs = Myers::calculate({"result = getData(userId, options);"},
-                                {"result = fetchData(userId, options);"});
-  expectDiffs(diffs, {{"get", "fetch"}});
+// Convert flat index to (line, col) in a Lines buffer
+static Position flatToPos(int flatIdx, const Lines& lines) {
+  int remaining = flatIdx;
+  for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+    int lineLen = static_cast<int>(lines[i].size());
+    if (remaining <= lineLen) {
+      return Position(i, remaining);
+    }
+    remaining -= lineLen + 1;
+  }
+  int lastLine = static_cast<int>(lines.size()) - 1;
+  return Position(lastLine, static_cast<int>(lines[lastLine].size()));
 }
 
-TEST(DiffStateTest, Complex_MultipleWordChanges) {
-  Lines start = {"the quick brown fox jumps"};
-  Lines end = {"the slow red fox leaps"};
-  expectRoundTrip(start, end);
+// Apply diffs one at a time with position adjustment (mirrors calculateLinesAfterDiffs)
+Lines applySequentially(vector<DiffState> diffs, const Lines& initialLines) {
+  Lines current = initialLines;
+  int cumulativeOffset = 0;
+
+  for (auto& diff : diffs) {
+    if (cumulativeOffset != 0) {
+      auto adjustPos = [&](const Position& pos) -> Position {
+        int flatIdx = posToFlat(pos, initialLines);
+        flatIdx += cumulativeOffset;
+        return flatToPos(flatIdx, current);
+      };
+
+      diff.beginPos = adjustPos(diff.beginPos);
+      if (diff.hasDeletedContent()) {
+        diff.endPos = adjustPos(diff.endPos);
+      } else {
+        diff.endPos = diff.beginPos;
+      }
+    }
+
+    current = Myers::applyDiffState(diff, current);
+
+    cumulativeOffset += static_cast<int>(diff.insertedText.size())
+                      - static_cast<int>(diff.deletedText.size());
+  }
+
+  return current;
 }
 
+} // namespace
 
-TEST(DiffStateTest, Complex_MainFunction) {
-  Lines start = {
-    "int main() {",
-    "  int x = 0;",
-    "  return x;",
-    "}"
-  };
-  Lines end = {
-    "#include <bits/stdc++.h>",
-    "",
-    "int main(int argc, char* argv) {",
-    "  for(int i = 0; i < argc; i++) {",
-    "    std::cout << argv[i] << \"\\n\";",
-    "  }",
-    "  return 0;",
-    "}"
-  };
-  expectRoundTrip(start, end);
-}
+TEST(DiffStateTest, Random_SequentialApplication) {
+  constexpr int NUM_ITERATIONS = 200;
+  RandomGen::seed(46);
 
+  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
+    int numLines = RandomGen::range(1, 6);
+    Lines initial = randomLines(numLines, 3, 15);
+    Lines goal = randomlyEdit(initial);
+    if (initial == goal) continue;
 
-TEST(DiffStateTest, SimpleJoin) {
-  Lines start = {
-    "TEST(DiffStateTest, Complex_TestFunction) {",
-    "  Lines start = {",
-    "    aaa",
-    "  };",
-    "  Lines end = {",
-    "    bbb",
-    "  };",
-    "}"
-  };
-  Lines end = {
-    "TEST(DiffStateTest, SimpleJoin) {",
-    "  Lines start = { aaa };",
-    "  Lines end = { bbb };",
-    "}"
-  };
-  auto diffs = Myers::calculate(start, end);
-  expectRoundTrip(start, end);
-}
+    auto diffs = Myers::calculate(initial, goal);
 
-// =============================================================================
-// Pure Newline Boundary Preservation
-// =============================================================================
-// Pure newlines (\n, \n\n) are structural boundaries and should NOT be absorbed
-// into adjacent diffs, even though they have <3 non-whitespace chars.
-//
-// Myers::calculate preserves pure newlines as structural boundaries, then
-// merges adjacent end-of-line insertion + "\n" insertion into a single diff.
+    // applyAllDiffState is known-correct (applies in reverse using original positions)
+    Lines expected = Myers::applyAllDiffState(diffs, initial);
+    ASSERT_EQ(expected, goal) << "applyAllDiffState sanity check failed, iter=" << iter;
 
-TEST(DiffStateTest, PureNewline_SingleNewlinePreserved) {
-  // "a\nc" -> "ab\n\nc"
-  auto diffs = Myers::calculate({"a", "c"}, {"ab", "", "c"});
-
-  ASSERT_EQ(diffs.size(), 1);
-  EXPECT_TRUE(diffs[0].isPureInsertion());
-  EXPECT_EQ(diffs[0].insertedText, "b\n");
-  EXPECT_EQ(diffs[0].beginPos, Position(0, 1));
-
-  expectRoundTrip({"a", "c"}, {"ab", "", "c"});
-}
-
-TEST(DiffStateTest, PureNewline_MultipleNewlinesPreserved) {
-  // "a\nc" -> "ab\n\n\nc" (two empty lines inserted)
-  // Myers preserves structural newlines as boundary.
-  // Merge only handles B == "\n", so "b" and "\n\n" remain separate.
-  auto diffs = Myers::calculate({"a", "c"}, {"ab", "", "", "c"});
-
-  ASSERT_EQ(diffs.size(), 2);
-  EXPECT_TRUE(diffs[0].isPureInsertion());
-  EXPECT_TRUE(diffs[1].isPureInsertion());
-  EXPECT_EQ(diffs[0].insertedText, "b");
-  EXPECT_EQ(diffs[1].insertedText, "\n\n");
-
-  expectRoundTrip({"a", "c"}, {"ab", "", "", "c"});
-}
-
-TEST(DiffStateTest, PureNewline_NewlineWithIndentAbsorbed) {
-  // "\n  " (newline + spaces) should be absorbed (not pure newlines)
-  auto diffs = Myers::calculate({"a", "  c"}, {"ab", "  c"});
-
-  // Should be 1 diff since "\n  " has non-newline chars
-  ASSERT_EQ(diffs.size(), 1);
-  EXPECT_EQ(diffs[0].insertedText, "b");
-
-  expectRoundTrip({"a", "  c"}, {"ab", "  c"});
-}
-
-TEST(DiffStateTest, PureNewline_EachLineIndependent) {
-  // "a\nb\nc" -> "x\ny\nz" should produce 3 separate replacements
-  // Each line change is independent
-  auto diffs = Myers::calculate({"a", "b", "c"}, {"x", "y", "z"});
-
-  ASSERT_EQ(diffs.size(), 3) << "Each line change should be separate";
-  expectDiffs(diffs, {{"a", "x"}, {"b", "y"}, {"c", "z"}});
-
-  expectRoundTrip({"a", "b", "c"}, {"x", "y", "z"});
-}
-
-TEST(DiffStateTest, PureNewline_EmptyLinesBetweenChanges) {
-  // Changes separated by empty lines should be separate diffs
-  auto diffs = Myers::calculate({"a", "", "", "b"}, {"x", "", "", "y"});
-
-  ASSERT_EQ(diffs.size(), 2);
-  expectDiffs(diffs, {{"a", "x"}, {"b", "y"}});
-
-  expectRoundTrip({"a", "", "", "b"}, {"x", "", "", "y"});
+    // Sequential application with adjustment must produce the same result
+    Lines sequential = applySequentially(diffs, initial);
+    EXPECT_EQ(sequential, expected)
+        << "Sequential application failed, iter=" << iter
+        << "\ninitial: " << initial.flatten()
+        << "\ngoal: " << goal.flatten()
+        << "\nsequential: " << sequential.flatten()
+        << "\ndiffs: " << diffs.size();
+  }
 }

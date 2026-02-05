@@ -238,7 +238,8 @@ private:
   std::vector<EditResult> calculateEditResults();
 
   // Helper: build intermediate buffer states after each diff
-  std::vector<Lines> calculateLinesAfterDiffs(const Lines& initialLines) const;
+  // Non-const: adjusts diffStates positions from original-buffer to intermediate-buffer coordinates
+  std::vector<Lines> calculateLinesAfterDiffs(const Lines& initialLines);
 
   // Helper: compute text object contexts for each edit
   std::vector<TextObjectContext> computeTextObjectContexts() const;
