@@ -1449,7 +1449,7 @@ TEST_F(NeovimOracleDebug, InvestigateMaskBugs) {
     Lines initial = {"foo (hello) bar"};
     Lines goal = {"foo (X) bar"};
     auto ctx = makeCtx(initial, goal);
-    const auto& toCtx = ctx.textObjectContexts[0];
+    const auto& toCtx = ctx.bracketQuoteContexts[0];
     const auto& diff = ctx.diffStates[0];
 
     cerr << "Line: '" << initial[0] << "'" << endl;
@@ -1475,7 +1475,7 @@ TEST_F(NeovimOracleDebug, InvestigateMaskBugs) {
     Lines initial = {"aaa \"first\" bbb \"second\" ccc"};
     Lines goal = {"aaa \"first\" bbb \"X\" ccc"};
     auto ctx = makeCtx(initial, goal);
-    const auto& toCtx = ctx.textObjectContexts[0];
+    const auto& toCtx = ctx.bracketQuoteContexts[0];
     const auto& diff = ctx.diffStates[0];
 
     cerr << "Line: '" << initial[0] << "'" << endl;
@@ -1502,7 +1502,7 @@ TEST_F(NeovimOracleDebug, InvestigateMaskBugs) {
     Lines initial = {"a ((hello)) c"};
     Lines goal = {"a ((X)) c"};
     auto ctx = makeCtx(initial, goal);
-    const auto& toCtx = ctx.textObjectContexts[0];
+    const auto& toCtx = ctx.bracketQuoteContexts[0];
     const auto& diff = ctx.diffStates[0];
 
     cerr << "Line: '" << initial[0] << "'" << endl;

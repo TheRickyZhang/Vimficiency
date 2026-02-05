@@ -57,6 +57,13 @@ struct DiffState {
   bool isReplacement() const { return beginPos != endPos && !insertedText.empty(); }
   bool hasDeletedContent() const { return beginPos != endPos; }
 
+  // Half-open endPos converted to inclusive last position
+  Position inclusiveLastPos() const {
+    return hasDeletedContent()
+        ? Position(endPos.line, endPos.col - 1)
+        : beginPos;
+  }
+
   // Does insertedText end with a newline? (for o/A+<CR> insertion strategies)
   bool isNewLineInsertion() const { return !insertedText.empty() && insertedText.back() == '\n'; }
 

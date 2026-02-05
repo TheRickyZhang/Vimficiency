@@ -3,7 +3,9 @@
 #include "CompositionSearchContext.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "State/CompositionState.h"
+#include "Utils/BracketFlags.h"
 #include "Utils/Debug.h"
+#include "Utils/QuoteFlags.h"
 #include "Utils/StringUtils.h"
 #include "VimCore/VimCore.h"
 
@@ -27,12 +29,6 @@ Position computeInsertEndPos(Position insertPos, const string& insertedText) {
     int lastCol = inserted.back().empty() ? 0 : static_cast<int>(inserted.back().size()) - 1;
     return Position(lastLine, lastCol);
   }
-}
-
-// Convert half-open endPos to inclusive lastPos for range-based operations
-// With virtual column approach, endPos.line is always correct
-Position halfOpenToInclusive(const Position& endPos) {
-  return Position(endPos.line, endPos.col - 1);
 }
 
 } // anonymous namespace
@@ -151,104 +147,67 @@ vector<Result> CompositionOptimizer::optimize(
         }
       };
 
-      // o: new line insertion at col 0 - navigate to line above
+      // o: skip the trailing newline since the command opens a new line
       if (isNewLineInsertion && insertPos.col == 0 && insertPos.line > 0) {
         int targetLine = insertPos.line - 1;
         int lastCol = currentLines[targetLine].empty()
             ? 0 : static_cast<int>(currentLines[targetLine].size()) - 1;
         exploreInsertionStrategy(targetLine, 0, lastCol,
                                  "o" + escapeNewlines(nextEdit.insertedTextBody()) + "<Esc>");
-      }
-
-      // I: insertion at first non-blank - navigate anywhere on line
-      if (!isNewLineInsertion) {
+      } else {
+        // I/A/i: escapeNewlines naturally handles any \n in insertedText
         int fnb = VimCore::firstNonBlankColInLineStr(currentLines[insertPos.line]);
-        if (insertPos.col == fnb) {
-          int lastCol = currentLines[insertPos.line].empty()
-              ? 0 : static_cast<int>(currentLines[insertPos.line].size()) - 1;
-          exploreInsertionStrategy(insertPos.line, 0, lastCol,
-                                   "I" + escapeNewlines(nextEdit.insertedText) + "<Esc>");
-        }
-      }
-
-      // A: insertion at end of line - navigate anywhere on line
-      {
         int lineLen = static_cast<int>(currentLines[insertPos.line].size());
-        if (insertPos.col == lineLen) {
-          int lastCol = lineLen == 0 ? 0 : lineLen - 1;
-          if (isNewLineInsertion) {
-            // Text ends with newline: use A + content + <CR> + <Esc>
-            exploreInsertionStrategy(insertPos.line, 0, lastCol,
-                                     "A" + escapeNewlines(nextEdit.insertedTextBody()) + "<CR><Esc>");
-          } else {
-            exploreInsertionStrategy(insertPos.line, 0, lastCol,
-                                     "A" + escapeNewlines(nextEdit.insertedText) + "<Esc>");
-          }
+        int lastCol = lineLen == 0 ? 0 : lineLen - 1;
+        string escaped = escapeNewlines(nextEdit.insertedText);
+
+        if (insertPos.col == fnb) {
+          // I: insert at first non-blank - navigate anywhere on line
+          exploreInsertionStrategy(insertPos.line, 0, lastCol,
+                                   "I" + escaped + "<Esc>");
+        } else if (insertPos.col == lineLen) {
+          // A: append at end of line - navigate anywhere on line
+          exploreInsertionStrategy(insertPos.line, 0, lastCol,
+                                   "A" + escaped + "<Esc>");
+        } else {
+          // i: fallback - navigate to exact position
+          exploreInsertionStrategy(insertPos.line, insertPos.col, insertPos.col,
+                                   "i" + escaped + "<Esc>");
         }
       }
-
-      // i: fallback - navigate to exact insertion position
-      exploreInsertionStrategy(insertPos.line, insertPos.col, insertPos.col,
-                               "i" + escapeNewlines(nextEdit.insertedText) + "<Esc>");
-
-      continue;  // Skip EDIT TRANSITIONS and MOVEMENT TRANSITIONS
+      continue;
     }
 
-    // ========== EDIT TRANSITIONS ==========
-    // Check if we can perform the next edit from current position
-    // Uses unified check: flatIndexAt encodes the same position validity as the old bitmask
-    // Now handles both regular edits AND pure insertions (which have single-entry EditResult)
-    bool editTransitionTaken = false;
-    {
-      const EditResult& editResult = ctx.editResults[editsCompleted];
+    // ========== EDIT vs MOVEMENT TRANSITIONS ==========
+    const EditResult& editResult = ctx.editResults[editsCompleted];
+    auto flatIdx = editResult.flatIndexAt(pos.line, pos.col);
 
-      // Convert buffer position to edit region index (O(1) lookup)
-      // flatIndexAt returns -1 for out-of-region lines, and we bounds-check for columns
-      int flatIdx = editResult.flatIndexAt(pos);
-      if (flatIdx >= 0 &&
-          flatIdx < static_cast<int>(editResult.results.size())) {
-        const Result& editRes = editResult.results[flatIdx];
-        if (editRes.isValid()) {
-          editTransitionTaken = true;
-          // Cursor ends at last char of inserted text (precomputed in editResult.goalPos)
-          ctx.exploreEditTransition(s, editRes.sequence, editResult.goalPos,
-                                    editsCompleted + 1);
-        }
-      }
-    }
-
-    // ========== MOVEMENT TRANSITIONS ==========
-    // Use MotionOptimizer to find optimal paths to next edit region
-    if (!editTransitionTaken) {
+    if (flatIdx.has_value() && editResult.results[*flatIdx].isValid()) {
+      ctx.exploreEditTransition(s, editResult.results[*flatIdx].sequence,
+                                editResult.goalPos, editsCompleted + 1);
+    } else {
       // Check for bracket/quote text object shortcuts
       // These allow reaching the edit region from positions before it on the same line
-      const TextObjectContext& toCtx = ctx.textObjectContexts[editsCompleted];
-      if (toCtx.line == pos.line) {
+      const BracketQuoteContext& bqContext = ctx.bracketQuoteContexts[editsCompleted];
+      if (bqContext.line == pos.line) {
         const EditResult& editResult = ctx.editResults[editsCompleted];
         const string& insertedText = nextEdit.insertedText;
 
-        // Check valid quotes from this position
-        if (pos.col < static_cast<int>(toCtx.validQuoteMask.size())) {
-          const QuoteFlags& validQuotes = toCtx.validQuoteMask[pos.col];
-          for (char q : {'"', '\'', '`'}) {
-            if (validQuotes.seen(q)) {
+        if (pos.col < static_cast<int>(bqContext.validQuoteMask.size())) {
+          for (char q : QuoteFlags::ALL_QUOTES) {
+            if (bqContext.validQuoteMask[pos.col].seen(q)) {
               // Build sequence: c + i/a + quote + insertedText + <Esc>
-              char modifier = toCtx.useAroundQuote.seen(q) ? 'a' : 'i';
-              string seq = string("c") + modifier + q + insertedText + "<Esc>";
+              string seq = string("c") + bqContext.quoteModifier(q) + q + insertedText + "<Esc>";
               ctx.exploreEditTransition(s, Sequence(seq), editResult.goalPos,
                                         editsCompleted + 1);
             }
           }
         }
-
-        // Check valid brackets from this position
-        if (pos.col < static_cast<int>(toCtx.validBracketMask.size())) {
-          const BracketFlags& validBrackets = toCtx.validBracketMask[pos.col];
-          for (char b : {'(', '[', '{', '<'}) {
-            if (validBrackets.seen(b)) {
+        if (pos.col < static_cast<int>(bqContext.validBracketMask.size())) {
+          for (char b : BracketFlags::ALL_BRACKETS) {
+            if (bqContext.validBracketMask[pos.col].seen(b)) {
               // Build sequence: c + i/a + bracket + insertedText + <Esc>
-              char modifier = toCtx.useAroundBracket.seen(b) ? 'a' : 'i';
-              string seq = string("c") + modifier + b + insertedText + "<Esc>";
+              string seq = string("c") + bqContext.bracketModifier(b) + b + insertedText + "<Esc>";
               ctx.exploreEditTransition(s, Sequence(seq), editResult.goalPos,
                                         editsCompleted + 1);
             }
@@ -256,30 +215,22 @@ vector<Result> CompositionOptimizer::optimize(
         }
       }
 
-      // Slice a padded subset around [pos, edit region] for MotionOptimizer.
-      // Padding allows overshoot-and-return paths (e.g., j then k to reach a column).
-      int regionStart = min(pos.line, nextEdit.beginPos.line);
-      int regionEnd = max(pos.line, nextEdit.endPos.line);
+      // Slice a padded subset around [pos, edit region] for MotionOptimizer
+      Position inclusiveLast = nextEdit.inclusiveLastPos();
+      auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
+          min(pos.line, nextEdit.beginPos.line),
+          max(pos.line, inclusiveLast.line),
+          params.motionPaddingAbove, params.motionPaddingBelow);
 
-      int subsetStart = max(0, regionStart - params.motionPaddingAbove);
-      int subsetEnd = min(currentLines.lastLine(), regionEnd + params.motionPaddingBelow);
+      Lines subset = currentLines.getLineRange(beginLine, endLine);
 
-      Lines subset = currentLines.getLineRange(subsetStart, subsetEnd + 1);  // +1 for exclusive end
-
-      // Remap positions to subset-local coordinates.
-      // localRangeFirst/Last = the edit region's target range in subset coords,
-      // NOT the subset bounds themselves (beginLine/endLine).
-      int lineOffset = subsetStart;
-      Position localPos(pos.line - lineOffset, pos.col, pos.targetCol);
-      Position localRangeFirst(nextEdit.beginPos.line - lineOffset, nextEdit.beginPos.col);
-      Position inclusiveLast = nextEdit.hasDeletedContent()
-          ? halfOpenToInclusive(nextEdit.endPos)
-          : nextEdit.beginPos;
-      Position localRangeLast(inclusiveLast.line - lineOffset, inclusiveLast.col);
+      Position localPos(pos.line - beginLine, pos.col, pos.targetCol);
+      Position localRangeFirst(nextEdit.beginPos.line - beginLine, nextEdit.beginPos.col);
+      Position localRangeLast(inclusiveLast.line - beginLine, inclusiveLast.col);
 
       MotionBoundary subsetBoundary(subset, localRangeFirst, localRangeLast,
-          subsetStart > 0 || boundary.hasLinesAbove(),
-          subsetEnd < currentLines.lastLine() || boundary.hasLinesBelow());
+          beginLine > 0 || boundary.hasLinesAbove(),
+          endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
       vector<RangeResult> movementResults = motionOptimizer.optimizeToRange(
           subset, localPos, localRangeFirst, localRangeLast,
@@ -288,15 +239,11 @@ vector<Result> CompositionOptimizer::optimize(
           subsetBoundary, s.getRunningEffort(),
           navigationContext, ctx.motionToKeys).results;
 
-      // Remap results back to full-buffer coordinates
       for (RangeResult& movResult : movementResults) {
-        movResult.goalPos.line += lineOffset;
-      }
+        if (!movResult.isValid()) continue;
 
-      for (const RangeResult& movResult : movementResults) {
-        if (!movResult.isValid())
-          continue;
-
+        // Remap results back to full-buffer coordinates
+        movResult.goalPos.line += beginLine;
         ctx.exploreMotionTransition(s, movResult.sequence, movResult.goalPos,
                                     editsCompleted);
       }

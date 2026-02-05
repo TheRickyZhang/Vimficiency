@@ -27,7 +27,7 @@
 // For each column on the edit's line, tracks which quote/bracket types
 // can be used as text objects to reach the edit region from that column.
 
-struct TextObjectContext {
+struct BracketQuoteContext {
   // For quotes: validQuoteMask[col] has bits set for quote types valid from col.
   // A quote type is valid from col if:
   //   1. No prior quote of that type exists on this line (would pair with earlier)
@@ -49,7 +49,7 @@ struct TextObjectContext {
   int line = -1;
 
   // Explicit default constructor to ensure proper initialization
-  TextObjectContext() : validQuoteMask(), validBracketMask(), useAroundQuote(), useAroundBracket(), line(-1) {}
+  BracketQuoteContext() : validQuoteMask(), validBracketMask(), useAroundQuote(), useAroundBracket(), line(-1) {}
 
   bool hasAnyValid() const {
     for (const auto& mask : validQuoteMask) {
@@ -59,6 +59,13 @@ struct TextObjectContext {
       if (mask.seen('(') || mask.seen('[') || mask.seen('{') || mask.seen('<')) return true;
     }
     return false;
+  }
+
+  char quoteModifier(char q) const {
+    return useAroundQuote.seen(q) ? 'a' : 'i';
+  }
+  char bracketModifier(char b) const {
+    return useAroundBracket.seen(b) ? 'a' : 'i';
   }
 };
 
@@ -95,7 +102,7 @@ struct CompositionSearchContext {
 
   // Text object shortcut contexts: one per edit, tracks valid quote/bracket entry points
   // textObjectContexts[i] applies to edit i, using buffer linesAfterNEdits[i]
-  std::vector<TextObjectContext> textObjectContexts;
+  std::vector<BracketQuoteContext> bracketQuoteContexts;
 
   // Suffix sums of median edit costs for O(1) heuristic lookup
   // suffixEditCosts[i] = sum of median costs for edits i..totalEdits-1
@@ -242,6 +249,6 @@ private:
   std::vector<Lines> calculateLinesAfterDiffs(const Lines& initialLines);
 
   // Helper: compute text object contexts for each edit
-  std::vector<TextObjectContext> computeTextObjectContexts() const;
+  std::vector<BracketQuoteContext> computeTextObjectContexts() const;
 
 };

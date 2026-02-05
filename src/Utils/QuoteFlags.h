@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
 
 
 class QuoteFlags {
@@ -28,4 +29,6 @@ public:
     return flags & maskFor(c);
   }
   void reset() { flags = 0; }
+
+  static constexpr std::array<char, 3> ALL_QUOTES = {'"', '\'', '`'};
 };

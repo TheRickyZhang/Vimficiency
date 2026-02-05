@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <vector>
 
 #include "Optimizer/Config.h"
@@ -60,18 +61,17 @@ struct EditResult {
     }
   }
 
-  // Convert buffer position to flat index within edit region
-  // Returns -1 if position is not in the edit region
-  int flatIndexAt(int bufferLine, int bufferCol) const {
+  // Convert buffer position to flat index within edit region.
+  // Returns nullopt if position is not in the edit region (wrong line, or
+  // column before/after the region on a valid line).
+  std::optional<int> flatIndexAt(int bufferLine, int bufferCol) const {
     int editLine = bufferLine - firstLine;
-    if (editLine < 0 || editLine >= static_cast<int>(lineBaseIndex.size())) {
-      return -1;
-    }
-    return lineBaseIndex[editLine] + bufferCol;
-  }
-
-  int flatIndexAt(const Position& bufferPos) const {
-    return flatIndexAt(bufferPos.line, bufferPos.col);
+    if (editLine < 0 || editLine >= static_cast<int>(lineBaseIndex.size()))
+      return std::nullopt;
+    int idx = lineBaseIndex[editLine] + bufferCol;
+    if (idx < 0 || idx >= static_cast<int>(results.size()))
+      return std::nullopt;
+    return idx;
   }
 };
 

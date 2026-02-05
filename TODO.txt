@@ -18,6 +18,9 @@ Extend a lot of EditOptimizer-specific changes to MotionOptimizer.
 
 constexpr disabling of searched motions in MotionExplorer/EditExplorer
 
+Is it possible to save processing on copying state, then adjusting in optimizer search? (Can save memory with persistent data structures, but that is not the limiting factor)
+
+
 Quote pseudocode:
 Precompute Edit regions
 For each computed state, from the newly implemented edit section to start of next edit section (suppose i just applied first edit: aa aa cc -> aa bb cc. Then we consider region from first b to space before c), basically whatever indices are valid on the same line, but before next edit.

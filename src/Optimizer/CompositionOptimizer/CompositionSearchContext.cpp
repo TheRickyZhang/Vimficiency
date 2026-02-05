@@ -78,7 +78,7 @@ CompositionSearchContext::CompositionSearchContext(
   editResults = calculateEditResults();
 
   // Compute text object contexts for shortcuts
-  textObjectContexts = computeTextObjectContexts();
+  bracketQuoteContexts = computeTextObjectContexts();
 
   // Compute suffix sums for heuristic
   suffixEditCosts = computeSuffixEditCosts();
@@ -459,7 +459,7 @@ tuple<int, int, bool> findMatchingBracketPair(const string& line, int beginCol, 
 }
 
 // Scan quotes for a single edit, populating context
-void scanQuotesForEdit(TextObjectContext& ctx, const string& line,
+void scanQuotesForEdit(BracketQuoteContext& ctx, const string& line,
                        int beginCol, int endCol) {
   int lineLen = static_cast<int>(line.size());
   if (lineLen == 0) return;
@@ -501,7 +501,7 @@ void scanQuotesForEdit(TextObjectContext& ctx, const string& line,
 }
 
 // Scan brackets for a single edit, populating context
-void scanBracketsForEdit(TextObjectContext& ctx, const string& line,
+void scanBracketsForEdit(BracketQuoteContext& ctx, const string& line,
                          int beginCol, int endCol) {
   int lineLen = static_cast<int>(line.size());
   if (lineLen == 0) return;
@@ -549,13 +549,13 @@ void scanBracketsForEdit(TextObjectContext& ctx, const string& line,
 
 } // anonymous namespace
 
-vector<TextObjectContext> CompositionSearchContext::computeTextObjectContexts() const {
-  vector<TextObjectContext> contexts;
+vector<BracketQuoteContext> CompositionSearchContext::computeTextObjectContexts() const {
+  vector<BracketQuoteContext> contexts;
   contexts.resize(totalEdits);
 
   for (int i = 0; i < totalEdits; i++) {
     const DiffState& diff = diffStates[i];
-    TextObjectContext& ctx = contexts[i];
+    BracketQuoteContext& ctx = contexts[i];
 
     // Skip pure insertions (no content to match against)
     if (diff.isPureInsertion()) continue;

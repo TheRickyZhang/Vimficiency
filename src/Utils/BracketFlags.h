@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
 
 class BracketFlags {
   uint8_t flags = 0;
@@ -29,4 +30,6 @@ public:
     return flags & maskFor(c);
   }
   void reset() { flags = 0; }
+
+  static constexpr std::array<char, 4> ALL_BRACKETS = {'(', '[', '{', '<'};
 };

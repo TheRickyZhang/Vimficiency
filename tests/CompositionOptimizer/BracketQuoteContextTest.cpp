@@ -53,7 +53,7 @@ protected:
   // Validate mask for any delimiter type (quote or bracket) against oracle.
   void validateMask(
       const Lines& initial, const Lines& goal,
-      const TextObjectContext& toCtx, const DiffState& diff, char delim) {
+      const BracketQuoteContext& toCtx, const DiffState& diff, char delim) {
     if (toCtx.line < 0) return;
 
     bool quote = isQuoteChar(delim);
@@ -84,7 +84,7 @@ protected:
   void validateSingleEdit(const Lines& initial, const Lines& goal, char delim) {
     auto ctx = makeContext(initial, goal);
     ASSERT_EQ(ctx.totalEdits, 1);
-    validateMask(initial, goal, ctx.textObjectContexts[0], ctx.diffStates[0], delim);
+    validateMask(initial, goal, ctx.bracketQuoteContexts[0], ctx.diffStates[0], delim);
   }
 };
 
@@ -125,14 +125,14 @@ TEST_F(TextObjectContextTest, InnerBracket_NestedEditOuter) {
 TEST_F(TextObjectContextTest, NoDelimiters) {
   auto ctx = makeContext({"hello world"}, {"hello there"});
   ASSERT_EQ(ctx.totalEdits, 1);
-  EXPECT_FALSE(ctx.textObjectContexts[0].hasAnyValid());
+  EXPECT_FALSE(ctx.bracketQuoteContexts[0].hasAnyValid());
 }
 
 // Pure insertion: context should be skipped (line == -1)
 TEST_F(TextObjectContextTest, PureInsertion_SkipsContext) {
   auto ctx = makeContext({"hello"}, {"hello world"});
   ASSERT_EQ(ctx.totalEdits, 1);
-  EXPECT_EQ(ctx.textObjectContexts[0].line, -1);
+  EXPECT_EQ(ctx.bracketQuoteContexts[0].line, -1);
 }
 
 // =============================================================================
@@ -198,7 +198,7 @@ TEST_F(TextObjectContextTest, Random_FullyRandom) {
       states[i + 1] = Myers::applyDiffState(ctx.diffStates[i], states[i]);
 
     for (int e = 0; e < ctx.totalEdits; e++) {
-      const auto& toCtx = ctx.textObjectContexts[e];
+      const auto& toCtx = ctx.bracketQuoteContexts[e];
       if (toCtx.line < 0) continue;
 
       const Lines& editInitial = states[e];
