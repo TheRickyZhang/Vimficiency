@@ -34,8 +34,9 @@ protected:
                const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS) {
     MotionOptimizer opt(config);
     MotionBoundary boundary;
-    return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
-                        boundary, allowedMotions, MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000)).results;
+    return opt.optimize(lines, start, end,
+                        MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
+                        userSeq, boundary, RunningEffort(), navContext, allowedMotions).results;
   }
 
   // Get cost of best result for a motion

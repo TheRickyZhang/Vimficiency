@@ -175,7 +175,9 @@ const char *vimficiency_analyze(
           hasLinesAbove, hasLinesBelow);
 
       MotionOptimizer opt(g_config_internal);
-      res = opt.optimize(initialLines, initialPos, RunningEffort(), goalPos, keyseq, navigation_context, boundary, EXPLORABLE_MOTIONS, MotionOptimizerParams{}.withMaxResults(RESULTS_CALCULATED)).results;
+      res = opt.optimize(initialLines, initialPos, goalPos,
+          MotionOptimizerParams{}.withMaxResults(RESULTS_CALCULATED), keyseq,
+          boundary, RunningEffort(), navigation_context).results;
     } else {
       // Buffer changed - use CompositionOptimizer
       MotionBoundary boundary(initialLines,
@@ -184,7 +186,9 @@ const char *vimficiency_analyze(
           hasLinesAbove, hasLinesBelow);
 
       CompositionOptimizer opt(g_config_internal);
-      res = opt.optimize(initialLines, initialPos, goalLines, goalPos, keyseq, navigation_context, boundary, EXPLORABLE_MOTIONS, CompositionOptimizerParams{}.withMaxResults(RESULTS_CALCULATED));
+      res = opt.optimize(initialLines, initialPos, goalLines, goalPos,
+          CompositionOptimizerParams{}.withMaxResults(RESULTS_CALCULATED), keyseq,
+          boundary, navigation_context);
     }
 
     // Calculate user's effort for the sequence they typed

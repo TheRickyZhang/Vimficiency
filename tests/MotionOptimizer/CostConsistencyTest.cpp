@@ -51,8 +51,7 @@ TEST_F(MotionOptimizerCostConsistencyTests, CostMatchesComputed) {
     Position end = randomPosition(lines);
 
     auto results = opt.optimize(
-      lines, start, RunningEffort(), end, "jjjjj", navContext,
-      MotionBoundary(), EXPLORABLE_MOTIONS, MotionOptimizerParams{}.withMaxResults(5)
+      lines, start, end, MotionOptimizerParams{}.withMaxResults(5), "jjjjj"
     ).results;
 
     for (const auto& result : results) {

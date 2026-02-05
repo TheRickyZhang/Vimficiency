@@ -304,8 +304,7 @@ TEST_F(DebugTest, CompositionDiffMerging) {
 
     CompositionOptimizer opt(config);
     vector<Result> results = opt.optimize(
-        initial, initialPos, goal, Position(0, 0), "", NavContext(),
-        MotionBoundary(), EXPLORABLE_MOTIONS, params);
+        initial, initialPos, goal, Position(0, 0), params);
 
     cerr << "  Results: " << results.size() << endl;
     for (size_t i = 0; i < results.size(); i++) {
@@ -1306,7 +1305,7 @@ TEST_F(NeovimOracleDebug, CompositionOptimizerOutputFormat) {
   CompositionOptimizerParams params = CompositionOptimizerParams{}.withMaxResults(5);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(), MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   cerr << endl << "Results (sorted by cost):" << endl;
   for (size_t i = 0; i < results.size(); i++) {
@@ -1420,8 +1419,7 @@ TEST_F(NeovimOracleDebug, InvestigateTextObjectShortcuts) {
     CompositionOptimizerParams params = CompositionOptimizerParams{}.withMaxResults(10);
 
     vector<Result> results = opt.optimize(
-        initial, initialPos, goal, Position(0,0), "", NavContext(),
-        MotionBoundary(), EXPLORABLE_MOTIONS, params);
+        initial, initialPos, goal, Position(0,0), params);
 
     cerr << "Results: " << results.size() << endl;
     for (size_t i = 0; i < results.size(); i++) {
@@ -1557,8 +1555,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
     cerr << "Finding path from " << initialPos << " to range [" << rangeFirst << ", " << rangeLast << "]" << endl;
 
     auto rangeResult = movOpt.optimizeToRange(
-        initial, initialPos, RunningEffort(), rangeFirst, rangeLast,
-        "", NavContext(), MotionBoundary(), EXPLORABLE_MOTIONS,
+        initial, initialPos, rangeFirst, rangeLast,
         MotionOptimizerRangeParams{}.withMaxResults(10));
 
     cerr << "MotionOptimizer returned " << rangeResult.results.size() << " results" << endl;
@@ -1579,7 +1576,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
 
   cerr << endl << "Running CompositionOptimizer..." << endl;
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(), MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   cerr << "Results: " << results.size() << endl;
   for (size_t i = 0; i < results.size(); i++) {

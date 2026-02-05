@@ -14,15 +14,15 @@ using namespace std;
 
 // Public entry point - dispatches to templated implementation based on direction
 MotionResult MotionOptimizer::optimize(
-    const Lines &lines,
+    const Lines& lines,
     const Position& startPos,
-    const RunningEffort& startingEffort,
-    const Position &endPos,
-    const string &userSequence,
-    const NavContext& navContext,
+    const Position& endPos,
+    MotionOptimizerParams params,
+    const string& userSequence,
     const MotionBoundary& boundary,
-    const MotionToKeys &rawMotionToKeys,
-    MotionOptimizerParams params) {
+    const RunningEffort& startingEffort,
+    const NavContext& navContext,
+    const MotionToKeys& rawMotionToKeys) {
 
   if (startPos < endPos) {
     return optimizeImpl<true>(lines, startPos, startingEffort, endPos,
@@ -131,14 +131,14 @@ template MotionResult MotionOptimizer::optimizeImpl<false>(
 RangeMotionResult MotionOptimizer::optimizeToRange(
     const Lines& lines,
     const Position& startPos,
-    const RunningEffort& startingEffort,
     const Position& rangeFirst,
     const Position& rangeLast,
+    MotionOptimizerRangeParams params,
     const string& userSequence,
-    const NavContext& navContext,
     const MotionBoundary& boundary,
-    const MotionToKeys& rawMotionToKeys,
-    MotionOptimizerRangeParams params) {
+    const RunningEffort& startingEffort,
+    const NavContext& navContext,
+    const MotionToKeys& rawMotionToKeys) {
 
   // Precondition: startPos must not be in range
   assert(!(startPos >= rangeFirst && startPos <= rangeLast) &&
@@ -293,23 +293,3 @@ template RangeMotionResult MotionOptimizer::optimizeToRangeImpl<false>(
     const Lines&, const Position&, const RunningEffort&, const Position&, const Position&,
     const string&, const NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerRangeParams);
 
-// Overload without userSequence - uses unbounded effort exploration
-MotionResult MotionOptimizer::optimize(
-    const Lines& lines,
-    const Position& startPos,
-    const Position& endPos,
-    const NavContext& navigationContext,
-    const MotionBoundary& boundary,
-    MotionOptimizerParams params) {
-  return optimize(
-      lines,
-      startPos,
-      RunningEffort(),
-      endPos,
-      "",
-      navigationContext,
-      boundary,
-      EXPLORABLE_MOTIONS,
-      params
-  );
-}

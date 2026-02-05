@@ -39,50 +39,44 @@ struct MotionOptimizer {
     // Core information
     const Lines& lines,
     const Position& initialPos,
-    const RunningEffort& startingEffort,  // Continued from caller for correct effort calc
     const Position& goalPos,
-    const std::string& userSequence, // What the user typed, for reference
 
-    // What's necessary for knowing how to apply some motions
-    const NavContext& navigationContext,
+    // Search tuning (can adjust with designated initializers)
+    MotionOptimizerParams params = {},
+    const std::string& userSequence = "", // What the user typed, which informs stopping point.
 
-    // What impacts our universe of exploration options
+    // Continuation from broader context
     const MotionBoundary& parentBoundary = MotionBoundary(),
-    const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS,
+    const RunningEffort& startingEffort  = RunningEffort(),
 
-    // Search parameters (uses struct defaults if not specified via designated initializers)
-    MotionOptimizerParams params = {}
+    // Niche settings
+    const NavContext& navigationContext = NavContext(),
+    const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS
   );
 
-  // Overload without userSequence - uses unbounded effort exploration
-  MotionResult optimize(
-    const Lines& lines,
-    const Position& initialPos,
-    const Position& goalPos,
-    const NavContext& navigationContext,
-    const MotionBoundary& boundary = MotionBoundary(),
-    MotionOptimizerParams params = {}
-  );
 
   // Multi-sink movement optimization: find paths to any position in [rangeFirst, rangeLast]
-  // Only RunningEffort maybe continued from previous state.
   // Returns up to params.maxResults unique end positions (or total paths if allowMultiplePerPosition).
   // Precondition: initialPos must NOT be in [rangeFirst, rangeLast] (nothing to optimize)
   // Note: Internally dispatches to optimizeToRangeImpl<Forward> based on initialPos vs range
   RangeMotionResult optimizeToRange(
+    // Core information
     const Lines& lines,
     const Position& initialPos,
-    const RunningEffort& startingEffort,  // Continued from caller for correct effort calc
     const Position& rangeFirst,
     const Position& rangeLast,
-    const std::string& userSequence,
-    const NavContext& navigationContext,
 
+    // Search tuning
+    MotionOptimizerRangeParams params = {},
+    const std::string& userSequence = "",
+
+    // Continuation from broader context
     const MotionBoundary& boundary = MotionBoundary(),
-    const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS,
+    const RunningEffort& startingEffort = RunningEffort(),
 
-    // Search parameters - use MotionOptimizerRangeParams for range-specific options
-    MotionOptimizerRangeParams params = {}
+    // Niche settings
+    const NavContext& navigationContext = NavContext(),
+    const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS
   );
 
 private:

@@ -71,8 +71,7 @@ TEST_F(CompositionOptimizer_ManualTest, SingleEdit_SimpleSubstitution) {
   Position goalPos(0, 10);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   for(Result r : results) cout << r.getSequenceString() << endl;
   expectHasValidResults(results, initial, initialPos, goal, "simple substitution");
@@ -86,8 +85,7 @@ TEST_F(CompositionOptimizer_ManualTest, SingleEdit_AtCursor) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   expectHasValidResults(results, initial, initialPos, goal, "at cursor");
 }
@@ -100,8 +98,7 @@ TEST_F(CompositionOptimizer_ManualTest, SingleEdit_CursorAfterEdit) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   expectHasValidResults(results, initial, initialPos, goal, "cursor after edit");
 }
@@ -118,8 +115,7 @@ TEST_F(CompositionOptimizer_ManualTest, TwoEdits_SameLine) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   expectHasValidResults(results, initial, initialPos, goal, "two edits same line");
 }
@@ -131,8 +127,7 @@ TEST_F(CompositionOptimizer_ManualTest, TwoEdits_DifferentLines) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   expectHasValidResults(results, initial, initialPos, goal, "two edits different lines");
 }
@@ -148,8 +143,7 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   expectHasValidResults(results, initial, initialPos, goal, "pure insertion");
 }
@@ -162,8 +156,7 @@ TEST_F(CompositionOptimizer_ManualTest, PureDeletion) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   expectHasValidResults(results, initial, initialPos, goal, "pure deletion");
 }
@@ -180,8 +173,7 @@ TEST_F(CompositionOptimizer_ManualTest, DeleteEntireLine) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   expectHasValidResults(results, initial, initialPos, goal, "delete entire line");
 }
@@ -194,8 +186,7 @@ TEST_F(CompositionOptimizer_ManualTest, InsertNewLine) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   expectHasValidResults(results, initial, initialPos, goal, "insert new line");
 }
@@ -212,8 +203,7 @@ TEST_F(CompositionOptimizer_ManualTest, NoChange_IdenticalBuffers) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   // Empty results is valid (no changes needed)
   // If there are results, verify they don't break the buffer
@@ -234,8 +224,7 @@ TEST_F(CompositionOptimizer_ManualTest, EdgeCase_EmptyToContent) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   expectHasValidResults(results, initial, initialPos, goal, "empty to content");
 }
@@ -248,8 +237,7 @@ TEST_F(CompositionOptimizer_ManualTest, EdgeCase_ContentToEmpty) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   expectHasValidResults(results, initial, initialPos, goal, "content to empty");
 }
@@ -262,8 +250,7 @@ TEST_F(CompositionOptimizer_ManualTest, EdgeCase_SingleCharChange) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   expectHasValidResults(results, initial, initialPos, goal, "single char change");
 }
@@ -280,8 +267,7 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerQuote_CursorBefore) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
@@ -308,8 +294,7 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerQuote_CursorInside) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
@@ -337,8 +322,7 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_AroundQuote) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
@@ -363,8 +347,7 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerParen) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
@@ -391,8 +374,7 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerBrace) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
@@ -419,8 +401,7 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerBracket) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
@@ -448,8 +429,7 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_NotValidAfterQuote) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
@@ -475,8 +455,7 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_NestedBrackets) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
@@ -501,8 +480,7 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_SingleQuote) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
@@ -533,8 +511,7 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_NewLineBetween) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   expectHasValidResults(results, initial, initialPos, goal, "new line insertion");
 
@@ -557,8 +534,7 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_AppendToLine) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   expectHasValidResults(results, initial, initialPos, goal, "append to line");
 
@@ -582,8 +558,7 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_AppendWithNewline) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   expectHasValidResults(results, initial, initialPos, goal, "append with newline");
 }
@@ -596,8 +571,7 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_InsertAtStart) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   expectHasValidResults(results, initial, initialPos, goal, "insert at start");
 }
@@ -610,8 +584,7 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_InsertInMiddle) {
   Position goalPos(0, 0);
 
   vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, "", NavContext(),
-      MotionBoundary(), EXPLORABLE_MOTIONS, params);
+      initial, initialPos, goal, goalPos, params);
 
   expectHasValidResults(results, initial, initialPos, goal, "insert in middle");
 }

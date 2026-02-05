@@ -54,10 +54,9 @@ int main(int argc, char* argv[]) {
   vector<Result> res = o.optimize(
     start_snapshot.lines,
     start_position,
-    RunningEffort(),
     end_position,
+    {},
     user_seq,
-    navContext,
     boundary
   ).results;
 

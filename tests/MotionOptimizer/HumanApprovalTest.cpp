@@ -46,8 +46,7 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_SimpleHorizontal) {
 
   MotionOptimizer opt(config);
   auto results = opt.optimize(
-    lines, start, RunningEffort(), end, "lllll", navContext,
-    MotionBoundary(), EXPLORABLE_MOTIONS, MotionOptimizerParams{}
+    lines, start, end, {}, "lllll"
   ).results;
   // printResultsDebug(results, "Simple horizontal movement 0→5");
 
@@ -64,8 +63,7 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_VerticalJump) {
 
   MotionOptimizer opt(config);
   auto results = opt.optimize(
-    lines, start, RunningEffort(), end, "jjj", navContext,
-    MotionBoundary(), EXPLORABLE_MOTIONS, MotionOptimizerParams{}
+    lines, start, end, {}, "jjj"
   ).results;
 
   // printResults(results, "Vertical jump 3 lines");
@@ -89,8 +87,7 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_WordMotions) {
 
   MotionOptimizer opt(config);
   auto results = opt.optimize(
-    lines, start, RunningEffort(), end, "www", navContext,
-    MotionBoundary(), EXPLORABLE_MOTIONS, MotionOptimizerParams{}
+    lines, start, end, {}, "www"
   ).results;
 
   // printResults(results, "Word motions to 'four'");
@@ -110,8 +107,7 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_MixedMotions) {
 
   MotionOptimizer opt(config);
   auto results = opt.optimize(
-    lines, start, RunningEffort(), end, "jjllllllllll", navContext,
-    MotionBoundary(), EXPLORABLE_MOTIONS, MotionOptimizerParams{}.withMaxResults(15)
+    lines, start, end, MotionOptimizerParams{}.withMaxResults(15), "jjllllllllll"
   ).results;
 
   // printResults(results, "Mixed motions to line 2, col 11");

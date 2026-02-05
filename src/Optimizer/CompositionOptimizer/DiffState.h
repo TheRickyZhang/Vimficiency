@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string_view>
 #include <vector>
 
 #include "Boundary/EditBoundary.h"
@@ -55,6 +56,17 @@ struct DiffState {
   bool isPureDeletion() const { return beginPos != endPos && insertedText.empty(); }
   bool isReplacement() const { return beginPos != endPos && !insertedText.empty(); }
   bool hasDeletedContent() const { return beginPos != endPos; }
+
+  // Does insertedText end with a newline? (for o/A+<CR> insertion strategies)
+  bool isNewLineInsertion() const { return !insertedText.empty() && insertedText.back() == '\n'; }
+
+  // insertedText without trailing \n (when the mode-entry command handles the newline)
+  std::string_view insertedTextBody() const {
+    if (isNewLineInsertion()) {
+      return std::string_view(insertedText.data(), insertedText.size() - 1);
+    }
+    return insertedText;
+  }
 };
 
 // Character-level Myers diff algorithm.

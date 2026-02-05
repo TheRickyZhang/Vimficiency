@@ -119,9 +119,8 @@ protected:
 
     TimingStats timing = measureTiming(
         [&]() {
-          auto [results, stats] = opt.optimize(cfg.lines, cfg.firstPos, RunningEffort(),
-                                               cfg.lastPos, "", navContext, cfg.boundary,
-                                               EXPLORABLE_MOTIONS, params);
+          auto [results, stats] = opt.optimize(cfg.lines, cfg.firstPos, cfg.lastPos,
+                                               params, "", cfg.boundary);
           lastStats = stats;
         },
         iterations);
@@ -138,9 +137,8 @@ protected:
     TimingStats timing = measureTiming(
         [&]() {
           auto [results, stats] = opt.optimizeToRange(
-              cfg.lines, cfg.initialPos, RunningEffort(),
-              cfg.rangeFirst, cfg.rangeLast, "",
-              navContext, cfg.boundary, EXPLORABLE_MOTIONS, params);
+              cfg.lines, cfg.initialPos, cfg.rangeFirst, cfg.rangeLast,
+              params, "", cfg.boundary);
           lastStats = stats;
         },
         iterations);
@@ -243,9 +241,8 @@ protected:
   static void printSetupWithResults(const BenchmarkSetup& cfg, const MotionOptimizerParams& params) {
     printSetup(cfg);
     MotionOptimizer opt(config);
-    auto [results, stats] = opt.optimize(cfg.lines, cfg.firstPos, RunningEffort(),
-                                         cfg.lastPos, "", navContext, cfg.boundary,
-                                         EXPLORABLE_MOTIONS, params);
+    auto [results, stats] = opt.optimize(cfg.lines, cfg.firstPos, cfg.lastPos,
+                                         params, "", cfg.boundary);
     cout << "Results found (" << results.size() << "):\n";
     for (size_t i = 0; i < min(results.size(), size_t(10)); i++) {
       cout << "  " << i << ": \"" << results[i].getSequenceString()
@@ -276,8 +273,8 @@ protected:
     auto runDetailed = [&](MotionOptimizerParams params) {
       params.trackExploredStates = true;
       MotionOptimizer opt(config);
-      return opt.optimize(cfg.lines, cfg.firstPos, RunningEffort(), cfg.lastPos, "",
-                          navContext, cfg.boundary, EXPLORABLE_MOTIONS, params);
+      return opt.optimize(cfg.lines, cfg.firstPos, cfg.lastPos, params,
+                          "", cfg.boundary);
     };
 
     auto [resA, statsA] = runDetailed(paramsA());

@@ -55,8 +55,9 @@ protected:
     MotionBoundary boundary;
     // Pass Position and fresh RunningEffort (no prior typing context in tests)
     // Try to explore more (30 results), lower search depth for speed (2e4)
-    return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
-                        boundary, allowedMotions, MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000)).results;
+    return opt.optimize(lines, start, end,
+                        MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
+                        userSeq, boundary, RunningEffort(), navContext, allowedMotions).results;
   }
 
   static vector<RangeResult>
@@ -70,12 +71,12 @@ protected:
     MotionBoundary boundary;
     // allowMultiplePerPosition=true for tests to see all paths
     // Pass Position and fresh RunningEffort (no prior typing context in tests)
-    return opt.optimizeToRange(lines, start, RunningEffort(), rangeBegin, rangeEnd,
-                               userSeq, navContext, boundary, allowedMotions,
+    return opt.optimizeToRange(lines, start, rangeBegin, rangeEnd,
                                MotionOptimizerRangeParams{}
                                    .withMaxResults(maxResults)
                                    .withMaxNodesExplored(20000)
-                                   .withAllowMultiplePerPosition(true)).results;
+                                   .withAllowMultiplePerPosition(true),
+                               userSeq, boundary, RunningEffort(), navContext, allowedMotions).results;
   }
 };
 
@@ -183,8 +184,9 @@ protected:
                   const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS,
                   Config config = Config::uniform()) {
     MotionOptimizer opt(config);
-    return opt.optimize(lines, start, RunningEffort(), end, userSeq, navContext,
-                        boundary, allowedMotions, MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000)).results;
+    return opt.optimize(lines, start, end,
+                        MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
+                        userSeq, boundary, RunningEffort(), navContext, allowedMotions).results;
   }
 
   // Helper to check if results contain a sequence

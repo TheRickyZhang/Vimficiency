@@ -113,8 +113,8 @@ protected:
                                        const MotionBoundary& boundary,
                                        const MotionToKeys& allowedMotions) {
     MotionOptimizer opt(Config::uniform());
-    return opt.optimize(subBuffer, start, RunningEffort(), end, "jjjjjjjjjj", navContext,
-                        boundary, allowedMotions, MotionOptimizerParams{}).results;
+    return opt.optimize(subBuffer, start, end, {},
+                        "jjjjjjjjjj", boundary, RunningEffort(), navContext, allowedMotions).results;
   }
 };
 

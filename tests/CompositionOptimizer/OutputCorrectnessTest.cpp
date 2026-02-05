@@ -90,8 +90,7 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, SingleLine_Substitution) 
     Position goalPos(0, 0);
 
     vector<Result> results = opt.optimize(
-        initial, initialPos, goal, goalPos, "", NavContext(),
-        MotionBoundary(), EXPLORABLE_MOTIONS, params);
+        initial, initialPos, goal, goalPos, params);
 
     total++;
     if (results.empty()) {
@@ -158,8 +157,7 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, MultiLine_SingleEdit) {
     Position goalPos(0, 0);
 
     vector<Result> results = opt.optimize(
-        initial, initialPos, goal, goalPos, "", NavContext(),
-        MotionBoundary(), EXPLORABLE_MOTIONS, params);
+        initial, initialPos, goal, goalPos, params);
 
     total++;
     if (results.empty()) {
@@ -223,8 +221,7 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, PureInsertion) {
     Position goalPos(0, 0);
 
     vector<Result> results = opt.optimize(
-        initial, initialPos, goal, goalPos, "", NavContext(),
-        MotionBoundary(), EXPLORABLE_MOTIONS, params);
+        initial, initialPos, goal, goalPos, params);
 
     total++;
     if (results.empty()) {
@@ -283,8 +280,7 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, PureDeletion) {
     Position goalPos(0, 0);
 
     vector<Result> results = opt.optimize(
-        initial, initialPos, goal, goalPos, "", NavContext(),
-        MotionBoundary(), EXPLORABLE_MOTIONS, params);
+        initial, initialPos, goal, goalPos, params);
 
     total++;
     if (results.empty()) {
@@ -340,8 +336,7 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, InsertNewLine) {
     Position goalPos(0, 0);
 
     vector<Result> results = opt.optimize(
-        initial, initialPos, goal, goalPos, "", NavContext(),
-        MotionBoundary(), EXPLORABLE_MOTIONS, params);
+        initial, initialPos, goal, goalPos, params);
 
     total++;
     if (results.empty()) {
@@ -392,8 +387,7 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, DeleteEntireLine) {
     Position goalPos(0, 0);
 
     vector<Result> results = opt.optimize(
-        initial, initialPos, goal, goalPos, "", NavContext(),
-        MotionBoundary(), EXPLORABLE_MOTIONS, params);
+        initial, initialPos, goal, goalPos, params);
 
     total++;
     if (results.empty()) {
@@ -453,8 +447,7 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, TwoEdits_SameLine) {
     Position goalPos(0, 0);
 
     vector<Result> results = opt.optimize(
-        initial, initialPos, goal, goalPos, "", NavContext(),
-        MotionBoundary(), EXPLORABLE_MOTIONS, params);
+        initial, initialPos, goal, goalPos, params);
 
     total++;
     if (results.empty()) {
@@ -503,8 +496,7 @@ TEST_F(DISABLED_CompositionOptimizerOutputCorrectness, TwoEdits_DifferentLines) 
     Position goalPos(0, 0);
 
     vector<Result> results = opt.optimize(
-        initial, initialPos, goal, goalPos, "", NavContext(),
-        MotionBoundary(), EXPLORABLE_MOTIONS, params);
+        initial, initialPos, goal, goalPos, params);
 
     total++;
     if (results.empty()) {

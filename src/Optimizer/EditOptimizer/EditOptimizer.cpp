@@ -583,8 +583,6 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
           ctx.effectiveLines,
           firstPos,
           lastPos,
-          navCtx,
-          MotionBoundary(),
           MotionOptimizerParams{}
               .withLinePaddingAbove(params.motionLinePaddingAbove)
               .withLinePaddingBelow(params.motionLinePaddingBelow)

@@ -19,8 +19,8 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   // Controls how many lines above/below the search region to include.
   // Allows overshoot-and-return paths while bounding search space.
   // See docs/optimizer/buffer-slicing.md for details.
-  int motionLinePaddingAbove = 2;
-  int motionLinePaddingBelow = 2;
+  int motionPaddingAbove = 1;
+  int motionPaddingBelow = 1;
 
   // Heuristic penalty for overshooting (going past the next edit region).
   // Overshooting is penalized more than undershooting since it requires backtracking.
@@ -33,9 +33,9 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   CompositionOptimizerParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
   CompositionOptimizerParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
   CompositionOptimizerParams& withTrackExploredStates(bool v) { trackExploredStates = v; return *this; }
-  CompositionOptimizerParams& withMotionLinePaddingAbove(int v) { motionLinePaddingAbove = v; return *this; }
-  CompositionOptimizerParams& withMotionLinePaddingBelow(int v) { motionLinePaddingBelow = v; return *this; }
-  CompositionOptimizerParams& withMotionLinePadding(int v) { motionLinePaddingAbove = motionLinePaddingBelow = v; return *this; }
+  CompositionOptimizerParams& withMotionLinePaddingAbove(int v) { motionPaddingAbove = v; return *this; }
+  CompositionOptimizerParams& withMotionLinePaddingBelow(int v) { motionPaddingBelow = v; return *this; }
+  CompositionOptimizerParams& withMotionLinePadding(int v) { motionPaddingAbove = motionPaddingBelow = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
   static CompositionOptimizerParams dijkstra(int maxResults = 10, int maxNodesExplored = 50000) {
@@ -66,7 +66,7 @@ struct CompositionOptimizerRangeParams : CompositionOptimizerParams {
   CompositionOptimizerRangeParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
   CompositionOptimizerRangeParams& withTrackExploredStates(bool v) { trackExploredStates = v; return *this; }
   CompositionOptimizerRangeParams& withAllowMultiplePerPosition(bool v) { allowMultiplePerPosition = v; return *this; }
-  CompositionOptimizerRangeParams& withMotionLinePaddingAbove(int v) { motionLinePaddingAbove = v; return *this; }
-  CompositionOptimizerRangeParams& withMotionLinePaddingBelow(int v) { motionLinePaddingBelow = v; return *this; }
-  CompositionOptimizerRangeParams& withMotionLinePadding(int v) { motionLinePaddingAbove = motionLinePaddingBelow = v; return *this; }
+  CompositionOptimizerRangeParams& withMotionLinePaddingAbove(int v) { motionPaddingAbove = v; return *this; }
+  CompositionOptimizerRangeParams& withMotionLinePaddingBelow(int v) { motionPaddingBelow = v; return *this; }
+  CompositionOptimizerRangeParams& withMotionLinePadding(int v) { motionPaddingAbove = motionPaddingBelow = v; return *this; }
 };

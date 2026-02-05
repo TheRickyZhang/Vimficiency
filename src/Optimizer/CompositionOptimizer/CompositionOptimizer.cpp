@@ -4,6 +4,7 @@
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "State/CompositionState.h"
 #include "Utils/Debug.h"
+#include "Utils/StringUtils.h"
 #include "VimCore/VimCore.h"
 
 #include <algorithm>
@@ -39,9 +40,9 @@ Position halfOpenToInclusive(const Position& endPos) {
 // Note that goalPos doesn't matter except for directionality; we want to explore anything that performs the same edits.
 vector<Result> CompositionOptimizer::optimize(
     const Lines& initialLines, const Position initialPos, const Lines& goalLines,
-    const Position goalPos, const string& userSequence,
-    const NavContext& navigationContext, const MotionBoundary& boundary,
-    const MotionToKeys& rawMotionToKeys, CompositionOptimizerParams params) {
+    const Position goalPos, CompositionOptimizerParams params,
+    const string& userSequence, const MotionBoundary& boundary,
+    const NavContext& navigationContext, const MotionToKeys& rawMotionToKeys) {
   MotionOptimizer motionOptimizer(config);
 
   // Create search context - handles all pre-computation
@@ -97,64 +98,50 @@ vector<Result> CompositionOptimizer::optimize(
     if (nextEdit.isPureInsertion()) {
       const EditResult& editResult = ctx.editResults[editsCompleted];
       Position insertPos = nextEdit.beginPos;
-      const string& text = nextEdit.insertedText;
+      bool isNewLineInsertion = nextEdit.isNewLineInsertion();
 
-      bool isNewLineInsertion = !text.empty() && text.back() == '\n';
-      string textContent = isNewLineInsertion
-          ? text.substr(0, text.size() - 1)
-          : text;
-
-      // Escape newlines in text for use in Vim sequences (replace \n with <CR>)
-      auto escapeNewlines = [](const string& s) {
-        string result;
-        result.reserve(s.size());
-        for (char c : s) {
-          if (c == '\n') {
-            result += "<CR>";
-          } else {
-            result += c;
-          }
-        }
-        return result;
-      };
-
-      // Helper to explore an insertion strategy: navigate to line range, then insert
+      // Explore an insertion strategy by navigating to a valid range, then inserting.
+      //
+      // Each strategy (o/I/A/i) defines a range of cursor positions from which its
+      // mode-entry command produces the correct edit. For example, `o` works from
+      // any column on the line above, while `i` requires the exact insertion column.
+      //
+      // The mode-entry command (o/I/A/i) determines the actual insert position
+      // independent of where in the range we land, so the final cursor position
+      // after typing + Esc is always editResult.goalPos regardless of movement result.
       auto exploreInsertionStrategy = [&](int targetLine, int firstCol, int lastCol,
                                           const string& insertCmd) {
         bool inRange = (pos.line == targetLine &&
                         pos.col >= firstCol && pos.col <= lastCol);
 
         if (inRange) {
-          // Already in valid range - use insert command directly
           ctx.exploreEditTransition(s, Sequence(insertCmd), editResult.goalPos,
                                     editsCompleted + 1);
         } else {
-          // Navigate to range, then use insert command
-          int regionStart = min(pos.line, targetLine);
-          int regionEnd = max(pos.line, targetLine);
-          int subsetStart = max(0, regionStart - params.motionLinePaddingAbove);
-          int subsetEnd = min(currentLines.lastLine(),
-                              regionEnd + params.motionLinePaddingBelow);
+          // Slice a padded subset around [pos, target] for MotionOptimizer
+          auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
+              pos.line, targetLine, params.motionPaddingAbove, params.motionPaddingBelow);
 
-          Lines subset = currentLines.getLineRange(subsetStart, subsetEnd + 1);
-          int lineOffset = subsetStart;
+          Lines subset = currentLines.getLineRange(beginLine, endLine);
 
-          Position subsetPos(pos.line - lineOffset, pos.col, pos.targetCol);
-          Position subsetFirst(targetLine - lineOffset, firstCol);
-          Position subsetLast(targetLine - lineOffset, lastCol);
+          // Remap positions to subset-local coordinates
+          Position localPos(pos.line - beginLine, pos.col, pos.targetCol);
+          Position localRangeFirst(targetLine - beginLine, firstCol);
+          Position localRangeLast(targetLine - beginLine, lastCol);
 
-          MotionBoundary subsetBoundary(subset, subsetFirst, subsetLast,
-              subsetStart > 0 || boundary.hasLinesAbove(),
-              subsetEnd < currentLines.lastLine() || boundary.hasLinesBelow());
+          MotionBoundary subsetBoundary(subset, localRangeFirst, localRangeLast,
+              beginLine > 0 || boundary.hasLinesAbove(),
+              endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
           vector<RangeResult> results = motionOptimizer.optimizeToRange(
-              subset, subsetPos, s.getRunningEffort(), subsetFirst, subsetLast,
-              "", navigationContext, subsetBoundary, ctx.motionToKeys,
-              MotionOptimizerRangeParams{}.withMaxResults(1)).results;
+              subset, localPos, localRangeFirst, localRangeLast,
+              MotionOptimizerRangeParams{}.withMaxResults(1), "",
+              subsetBoundary, s.getRunningEffort(),
+              navigationContext, ctx.motionToKeys).results;
 
           for (RangeResult& movResult : results) {
             if (!movResult.isValid()) continue;
-            movResult.goalPos.line += lineOffset;
+            movResult.goalPos.line += beginLine;  // remap back to full-buffer coords
 
             Sequence fullSeq = movResult.sequence;
             fullSeq.append(insertCmd);
@@ -170,7 +157,7 @@ vector<Result> CompositionOptimizer::optimize(
         int lastCol = currentLines[targetLine].empty()
             ? 0 : static_cast<int>(currentLines[targetLine].size()) - 1;
         exploreInsertionStrategy(targetLine, 0, lastCol,
-                                 "o" + escapeNewlines(textContent) + "<Esc>");
+                                 "o" + escapeNewlines(nextEdit.insertedTextBody()) + "<Esc>");
       }
 
       // I: insertion at first non-blank - navigate anywhere on line
@@ -180,7 +167,7 @@ vector<Result> CompositionOptimizer::optimize(
           int lastCol = currentLines[insertPos.line].empty()
               ? 0 : static_cast<int>(currentLines[insertPos.line].size()) - 1;
           exploreInsertionStrategy(insertPos.line, 0, lastCol,
-                                   "I" + escapeNewlines(text) + "<Esc>");
+                                   "I" + escapeNewlines(nextEdit.insertedText) + "<Esc>");
         }
       }
 
@@ -192,18 +179,17 @@ vector<Result> CompositionOptimizer::optimize(
           if (isNewLineInsertion) {
             // Text ends with newline: use A + content + <CR> + <Esc>
             exploreInsertionStrategy(insertPos.line, 0, lastCol,
-                                     "A" + escapeNewlines(textContent) + "<CR><Esc>");
+                                     "A" + escapeNewlines(nextEdit.insertedTextBody()) + "<CR><Esc>");
           } else {
             exploreInsertionStrategy(insertPos.line, 0, lastCol,
-                                     "A" + escapeNewlines(text) + "<Esc>");
+                                     "A" + escapeNewlines(nextEdit.insertedText) + "<Esc>");
           }
         }
       }
 
       // i: fallback - navigate to exact insertion position
-      // Use escapeNewlines to convert \n to <CR> for valid Vim syntax
       exploreInsertionStrategy(insertPos.line, insertPos.col, insertPos.col,
-                               "i" + escapeNewlines(text) + "<Esc>");
+                               "i" + escapeNewlines(nextEdit.insertedText) + "<Esc>");
 
       continue;  // Skip EDIT TRANSITIONS and MOVEMENT TRANSITIONS
     }
@@ -270,51 +256,43 @@ vector<Result> CompositionOptimizer::optimize(
         }
       }
 
-      // Calculate line subset bounds for MotionOptimizer
-      // Include padding to allow overshoot-and-return paths
-      // With half-open semantics, endPos.line is always the correct last affected line
+      // Slice a padded subset around [pos, edit region] for MotionOptimizer.
+      // Padding allows overshoot-and-return paths (e.g., j then k to reach a column).
       int regionStart = min(pos.line, nextEdit.beginPos.line);
       int regionEnd = max(pos.line, nextEdit.endPos.line);
 
-      int subsetStart = max(0, regionStart - params.motionLinePaddingAbove);
-      int subsetEnd = min(currentLines.lastLine(), regionEnd + params.motionLinePaddingBelow);
+      int subsetStart = max(0, regionStart - params.motionPaddingAbove);
+      int subsetEnd = min(currentLines.lastLine(), regionEnd + params.motionPaddingBelow);
 
-      // Create subset (small copy - typically 10-20 lines)
       Lines subset = currentLines.getLineRange(subsetStart, subsetEnd + 1);  // +1 for exclusive end
 
-      // Remap positions to subset coordinates
-      // Convert half-open endPos to inclusive lastPos for MotionBoundary
+      // Remap positions to subset-local coordinates.
+      // localRangeFirst/Last = the edit region's target range in subset coords,
+      // NOT the subset bounds themselves (beginLine/endLine).
       int lineOffset = subsetStart;
-      Position subsetPos(pos.line - lineOffset, pos.col, pos.targetCol);
-      Position subsetFirst(nextEdit.beginPos.line - lineOffset, nextEdit.beginPos.col);
-      // For pure insertions (beginPos == endPos), use beginPos as both first and last
+      Position localPos(pos.line - lineOffset, pos.col, pos.targetCol);
+      Position localRangeFirst(nextEdit.beginPos.line - lineOffset, nextEdit.beginPos.col);
       Position inclusiveLast = nextEdit.hasDeletedContent()
           ? halfOpenToInclusive(nextEdit.endPos)
           : nextEdit.beginPos;
-      Position subsetLast(inclusiveLast.line - lineOffset, inclusiveLast.col);
+      Position localRangeLast(inclusiveLast.line - lineOffset, inclusiveLast.col);
 
-      // Create boundary for subset, inheriting parent constraints
-      // hasLinesAbove = true if subsetStart > 0 OR parent.hasLinesAbove
-      // hasLinesBelow = true if subsetEnd < currentLines.lastLine() OR parent.hasLinesBelow
-      MotionBoundary subsetBoundary(subset, subsetFirst, subsetLast,
+      MotionBoundary subsetBoundary(subset, localRangeFirst, localRangeLast,
           subsetStart > 0 || boundary.hasLinesAbove(),
           subsetEnd < currentLines.lastLine() || boundary.hasLinesBelow());
 
-      // Use MotionOptimizer to find paths to edit region in bounded subset
       vector<RangeResult> movementResults = motionOptimizer.optimizeToRange(
-          subset, subsetPos, s.getRunningEffort(), subsetFirst,
-          subsetLast,
-          "", // No user sequence reference for sub-optimization
-          navigationContext, subsetBoundary, ctx.motionToKeys,
+          subset, localPos, localRangeFirst, localRangeLast,
           MotionOptimizerRangeParams{}.withMaxResults(
-              clamp(nextEdit.origCharCount(), 1, 10))).results;
+              clamp(nextEdit.origCharCount(), 1, 10)), "",
+          subsetBoundary, s.getRunningEffort(),
+          navigationContext, ctx.motionToKeys).results;
 
-      // Remap results back to original coordinates
+      // Remap results back to full-buffer coordinates
       for (RangeResult& movResult : movementResults) {
         movResult.goalPos.line += lineOffset;
       }
 
-      // Create new states from movement results
       for (const RangeResult& movResult : movementResults) {
         if (!movResult.isValid())
           continue;

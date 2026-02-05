@@ -53,13 +53,11 @@ TEST_F(MotionOptimizerDeterminismTests, SameInputProducesSameOutput) {
     MotionOptimizer opt2(config);
 
     auto [results1, stats1] = opt1.optimize(
-      lines, start, RunningEffort(), end, "jjjjj", navContext,
-      MotionBoundary(), EXPLORABLE_MOTIONS, MotionOptimizerParams{}
+      lines, start, end, {}, "jjjjj"
     );
 
     auto [results2, stats2] = opt2.optimize(
-      lines, start, RunningEffort(), end, "jjjjj", navContext,
-      MotionBoundary(), EXPLORABLE_MOTIONS, MotionOptimizerParams{}
+      lines, start, end, {}, "jjjjj"
     );
 
     if (results1.size() != results2.size()) {

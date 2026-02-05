@@ -44,3 +44,4 @@ Interesting (maybe?) things that have come up:
 - Impact of stale object files (or potential compiler bug, but wasn't able to reproduce) when using inline helper functions passed as template arguments
 - Elegance of QuickCheck (Haskell/OCaml) as property-based checking library with generator composition and lazy evaluation shrinking -> RapidCheck in C++ with GTest integration.
 - ODR violations are very insidious, with complete undefined behavior. Very easy to make without compiler warning with naming google tests!
+- std::minmax, std::partial_sum, std::transform_reduce
