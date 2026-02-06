@@ -1,4 +1,5 @@
 #include "VimEditUtils.h"
+#include "VimCore.h"
 #include "VimOptions.h"
 
 #include <algorithm>
@@ -114,11 +115,16 @@ void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos) {
   }
 
   pos.line = min(r.firstLine, static_cast<int>(lines.size()) - 1);
-  // dd resets targetCol to the clamped column (unlike vertical motions which preserve it)
-  if (lines[pos.line].empty()) {
-    pos.setCol(0);
+  if constexpr (VimOptions::startOfLine()) {
+    // Legacy Vim: dd goes to first non-blank of the new current line
+    pos.setCol(firstNonBlankColInLineStr(lines[pos.line]));
   } else {
-    pos.setCol(min(pos.targetCol, static_cast<int>(lines[pos.line].size()) - 1));
+    // Neovim: dd resets targetCol to the clamped column
+    if (lines[pos.line].empty()) {
+      pos.setCol(0);
+    } else {
+      pos.setCol(min(pos.targetCol, static_cast<int>(lines[pos.line].size()) - 1));
+    }
   }
 }
 

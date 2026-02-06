@@ -1,14 +1,13 @@
 #include "CompositionOptimizer.h"
 
 #include "CompositionSearchContext.h"
+#include "Optimizer/BuildTypedCommands.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "State/CompositionState.h"
 #include "Utils/BracketFlags.h"
 #include "Utils/Debug.h"
 #include "Utils/QuoteFlags.h"
-#include "Utils/StringUtils.h"
 #include "VimCore/VimCore.h"
-#include "VimCore/VimOptions.h"
 
 #include <algorithm>
 #include <cassert>
@@ -30,79 +29,6 @@ Position computeInsertEndPos(Position insertPos, const string& insertedText) {
     int lastCol = inserted.back().empty() ? 0 : static_cast<int>(inserted.back().size()) - 1;
     return Position(lastLine, lastCol);
   }
-}
-
-// Build autoindent-aware insert text for insert-mode commands (o, A, I, i).
-//
-// Takes the raw insert text (may contain \n for multi-line), the source line's
-// indent (provided by autoindent on the first typed line), and an optional
-// prefix for computing continuation autoindent.
-//
-// Returns the command string to type (with <CR> for newlines, <C-u>/<BS> where needed).
-// Does NOT include the mode-entry command (o/A/etc.) or <Esc>.
-string buildAutoindentInsert(string_view text, string_view sourceIndent,
-                             string_view linePrefix = "") {
-  if constexpr (!VimOptions::autoindent()) {
-    return escapeNewlines(text);
-  }
-
-  Lines lines = Lines::unflatten(string(text));
-  string result;
-
-  auto getLine = [&](size_t j) -> string_view { return lines[j]; };
-
-  // Helper: emit a line given expected autoindent
-  // Cases: (1) no autoindent, (2) goal matches, (3) goal has less indent, (4) mismatch
-  auto emitLine = [&](string_view line, string_view autoindent) {
-    // Case 1: no autoindent — type full line
-    if (autoindent.empty()) {
-      result.append(line);
-      return;
-    }
-
-    // Case 2: goal starts with autoindent — strip it
-    if (line.size() >= autoindent.size() &&
-        line.substr(0, autoindent.size()) == autoindent) {
-      result.append(line.substr(autoindent.size()));
-      return;
-    }
-
-    // Case 3: autoindent starts with goal's indent — use <BS> if more efficient
-    // <BS> in autoindent deletes to previous shiftwidth boundary, not just 1 space.
-    auto goalIndent = leadingWhitespace(line);
-    if (autoindent.size() > goalIndent.size() &&
-        autoindent.substr(0, goalIndent.size()) == goalIndent) {
-      int bsNeeded = bsCountForIndent(
-          static_cast<int>(autoindent.size()),
-          static_cast<int>(goalIndent.size()),
-          VimOptions::shiftwidth());
-      if (bsNeeded >= 0) {
-        int remainder = static_cast<int>(line.size() - goalIndent.size());
-        // <BS> is better when: bsNeeded + remainder < 2 + line.size()
-        if (bsNeeded + remainder < 2 + static_cast<int>(line.size())) {
-          for (int j = 0; j < bsNeeded; j++) {
-            result += "<BS>";
-          }
-          result.append(line.substr(goalIndent.size()));
-          return;
-        }
-      }
-    }
-
-    // Case 4: mismatch — clear with <C-u> and type full line
-    result += "<C-u>";
-    result.append(line);
-  };
-
-  // Main loop: handle all lines uniformly via helpers
-  for (size_t i = 0; i < lines.size(); i++) {
-    if (i > 0) {
-      result += "<CR>";
-    }
-    emitLine(lines[i], computeAutoindent(i, sourceIndent, linePrefix, getLine));
-  }
-
-  return result;
 }
 
 } // anonymous namespace
@@ -235,43 +161,38 @@ vector<Result> CompositionOptimizer::optimize(
         string_view sourceIndent = VimOptions::autoindent()
             ? leadingWhitespace(currentLines[targetLine])
             : string_view{};
-        string insertText = buildAutoindentInsert(nextEdit.insertedTextBody(), sourceIndent);
+        Lines insertLines = Lines::unflatten(string(nextEdit.insertedTextBody()));
+        auto [insertText, _] = buildTypedCommands(insertLines, sourceIndent);
         exploreInsertionStrategy(targetLine, 0, lastCol,
-                                 "o" + insertText + "<Esc>");
+                                 "o" + insertText);
       } else {
         // I/A/i: handle autoindent for multi-line insertions
         int fnb = VimCore::firstNonBlankColInLineStr(currentLines[insertPos.line]);
         int lineLen = static_cast<int>(currentLines[insertPos.line].size());
         int lastCol = lineLen == 0 ? 0 : lineLen - 1;
-        bool hasNewline = nextEdit.insertedText.find('\n') != string::npos;
+        Lines insertLines = Lines::unflatten(nextEdit.insertedText);
 
         if (insertPos.col == fnb) {
           // I: insert at first non-blank - navigate anywhere on line
           // For multi-line, prefix before cursor is the indent (text before FNB)
-          string escaped = hasNewline
-              ? buildAutoindentInsert(nextEdit.insertedText, "",
-                    currentLines[insertPos.line].substr(0, fnb))
-              : escapeNewlines(nextEdit.insertedText);
+          auto [escaped, _] = buildTypedCommands(insertLines, "",
+              currentLines[insertPos.line].substr(0, fnb));
           exploreInsertionStrategy(insertPos.line, 0, lastCol,
-                                   "I" + escaped + "<Esc>");
+                                   "I" + escaped);
         } else if (insertPos.col == lineLen) {
           // A: append at end of line - navigate anywhere on line
           // For multi-line, prefix is the entire current line
-          string escaped = hasNewline
-              ? buildAutoindentInsert(nextEdit.insertedText, "",
-                    currentLines[insertPos.line])
-              : escapeNewlines(nextEdit.insertedText);
+          auto [escaped, _] = buildTypedCommands(insertLines, "",
+              currentLines[insertPos.line]);
           exploreInsertionStrategy(insertPos.line, 0, lastCol,
-                                   "A" + escaped + "<Esc>");
+                                   "A" + escaped);
         } else {
           // i: fallback - navigate to exact position
           // For multi-line, prefix is text before cursor
-          string escaped = hasNewline
-              ? buildAutoindentInsert(nextEdit.insertedText, "",
-                    currentLines[insertPos.line].substr(0, insertPos.col))
-              : escapeNewlines(nextEdit.insertedText);
+          auto [escaped, _] = buildTypedCommands(insertLines, "",
+              currentLines[insertPos.line].substr(0, insertPos.col));
           exploreInsertionStrategy(insertPos.line, insertPos.col, insertPos.col,
-                                   "i" + escaped + "<Esc>");
+                                   "i" + escaped);
         }
       }
       continue;

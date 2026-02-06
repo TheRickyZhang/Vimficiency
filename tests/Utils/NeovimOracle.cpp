@@ -1,5 +1,7 @@
 #include "Utils/NeovimOracle.h"
 
+#include "VimCore/VimOptions.h"
+
 #include <msgpack.hpp>
 
 #include <fcntl.h>
@@ -60,7 +62,7 @@ std::string convertSpecialKeys(const std::string& keys) {
         } else if (tagLower == "bs" || tagLower == "backspace") {
           result += '\x08';  // ASCII BS (not \x7f DEL — Neovim treats them differently)
         } else if (tagLower == "del" || tagLower == "delete") {
-          result += "\x1b[3~";  // ANSI delete sequence
+          result += "<Del>";  // Pass through for nvim_input (ANSI \x1b[3~ misparses as ESC + [3~)
         } else if (tagLower == "space") {
           result += ' ';
         } else if (tagLower == "lt") {
@@ -258,11 +260,36 @@ struct NeovimOracle::Impl {
     auto args = msgpack::object(std::make_tuple(0, 39), z);
     call_void("nvim_win_set_height", args);
   }
+
+  // Configure nvim options to match compile-time VimOptions.
+  // Neovim's compiled-in defaults match our non-legacy settings, but when
+  // VIMFICIENCY_LEGACY_VIM is defined we need to explicitly set them.
+  void configureVimOptions() {
+    auto setOption = [&](const char* option) {
+      call("nvim_command", std::string(option));
+    };
+    if constexpr (VimOptions::startOfLine()) {
+      setOption("set startofline");
+    } else {
+      setOption("set nostartofline");
+    }
+    if constexpr (VimOptions::joinSpaces()) {
+      setOption("set joinspaces");
+    } else {
+      setOption("set nojoinspaces");
+    }
+    if constexpr (VimOptions::autoindent()) {
+      setOption("set autoindent");
+    } else {
+      setOption("set noautoindent");
+    }
+  }
 };
 
 NeovimOracle::NeovimOracle() : impl_(std::make_unique<Impl>()) {
   impl_->start();
   impl_->configureWindowSize();
+  impl_->configureVimOptions();
 }
 
 NeovimOracle::~NeovimOracle() = default;
@@ -274,6 +301,7 @@ void NeovimOracle::restart() {
   impl_->msg_id = 0;
   impl_->start();
   impl_->configureWindowSize();
+  impl_->configureVimOptions();
   callsSinceRestart_ = 0;
 }
 

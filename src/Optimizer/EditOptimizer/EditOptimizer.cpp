@@ -7,14 +7,12 @@
 #include "EditOptimizer.h"
 #include "EditSearchContext.h"
 #include "Keyboard/KeyboardModel.h"
+#include "Optimizer/BuildTypedCommands.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 
 #include "Editor/NavContext.h"
-#include "Keyboard/CharToKeys.h"
 #include "Keyboard/MotionToKeys.h"
 #include "State/RunningEffort.h"
-#include "Utils/StringUtils.h"
-#include "VimCore/VimOptions.h"
 
 #include <algorithm>
 #include <optional>
@@ -100,143 +98,33 @@ bool allLinesEmpty(const Lines &lines) {
 // de/dE (WordEdge) is explored before dw/dW (GapEdge) in exploreAllDeletions, the
 // de result is already stored when the ranges are identical. So dw reaching the goal
 // implies de didn't, meaning dw deleted trailing whitespace that cw would skip.
-pair<string, PhysicalKeys> deleteToChange(const string& deleteCmd) {
-  if (deleteCmd == "D")
+pair<string, PhysicalKeys> deleteToChange(const char* deleteCmd,
+                                           const PhysicalKeys& deleteKeys) {
+  if (!strcmp(deleteCmd, "D"))
     return {"C", {Key::Key_Shift, Key::Key_C}};
-  if (deleteCmd == "dd")
+  if (!strcmp(deleteCmd, "dd"))
     return {"cc", {Key::Key_C, Key::Key_C}};
-  if (deleteCmd == "dw")
+  if (!strcmp(deleteCmd, "dw"))
     return {"dwi", {Key::Key_D, Key::Key_W, Key::Key_I}};
-  if (deleteCmd == "dW")
+  if (!strcmp(deleteCmd, "dW"))
     return {"dWi", {Key::Key_D, Key::Key_Shift, Key::Key_W, Key::Key_I}};
   if (deleteCmd[0] == 'd') {
-    string s = deleteCmd.substr(1);
-    return {"c" + s, PhysicalKeys{Key::Key_C}.append(globalTokenizer().tokenize(s))};
+    // Generic d{motion} → c{motion}: Key_C + motion keys (skip Key_D)
+    assert(deleteKeys.view()[0] == Key::Key_D);
+    PhysicalKeys changeKeys = {Key::Key_C};
+    for (size_t i = 1; i < deleteKeys.size(); i++) {
+      changeKeys.push_back(deleteKeys.view()[i]);
+    }
+    return {"c" + string(deleteCmd + 1), changeKeys};
   }
-  if (deleteCmd == "x")
+  if (!strcmp(deleteCmd, "x"))
     return {"s", {Key::Key_S}};
-  if (deleteCmd == "X")
+  if (!strcmp(deleteCmd, "X"))
     return {"hs", {Key::Key_H, Key::Key_S}};
   assert(false && "deleteToChange not supported");
   return {"", {}};
 }
 
-
-// Build the typed content string from goalLines, accounting for Neovim autoindent.
-//
-// When autoindent is active, entering insert mode via cc/c{motion}/o copies
-// leading whitespace from the source line. Each subsequent <CR> copies indent
-// from the current line. We handle autoindent by:
-//   - Stripping it if the goal line starts with the same indent
-//   - Using <BS> to remove excess spaces if autoindent is longer than goal's indent
-//   - Using <C-u> to clear the line if there's no prefix relationship
-//
-// Parameters:
-//   goalLines          - the lines to type out
-//   initialAutoindent  - indent provided on the first typed line (e.g. from cc's source line)
-//   linePrefix         - text before edit region on first line (for computing line 1+ autoindent)
-//   suffixLeadingSpaces - whitespace to restore on last line (stripped from suffix by <CR>)
-pair<string, PhysicalKeys> buildTypedCommands(
-    const Lines &goalLines,
-    string_view initialAutoindent = "",
-    string_view linePrefix = "",
-    int suffixLeadingSpaces = 0) {
-  string str;
-  PhysicalKeys keys;
-
-  static const PhysicalKeys ctrlUKeys = {Key::Key_Ctrl, Key::Key_U};
-
-  // Helper: append text content to str and keys
-  auto appendText = [&](string_view text) {
-    str.append(text);
-    for (char c : text) {
-      keys.append(CHAR_TO_KEYS.at(c));
-    }
-  };
-
-  auto getLine = [&](size_t j) -> string_view { return goalLines[j]; };
-
-  // Helper: emit keys for a line given expected autoindent
-  // Cases: (1) no autoindent, (2) goal matches, (3) goal has less indent, (4) mismatch
-  auto emitLine = [&](string_view line, string_view autoindent) {
-    // Case 1: no autoindent — type full line
-    if (autoindent.empty()) {
-      appendText(line);
-      return;
-    }
-
-    // Case 2: goal starts with autoindent — strip it
-    if (line.size() >= autoindent.size() &&
-        line.substr(0, autoindent.size()) == autoindent) {
-      appendText(line.substr(autoindent.size()));
-      return;
-    }
-
-    // Case 3: autoindent starts with goal's indent — use <BS> if more efficient
-    // <BS> in autoindent deletes to previous shiftwidth boundary, not just 1 space.
-    auto goalIndent = leadingWhitespace(line);
-    if (autoindent.size() > goalIndent.size() &&
-        autoindent.substr(0, goalIndent.size()) == goalIndent) {
-      int bsNeeded = bsCountForIndent(
-          static_cast<int>(autoindent.size()),
-          static_cast<int>(goalIndent.size()),
-          VimOptions::shiftwidth());
-      if (bsNeeded >= 0) {
-        int remainder = static_cast<int>(line.size() - goalIndent.size());
-        // <BS> is better when: bsNeeded + remainder < 2 + line.size()
-        if (bsNeeded + remainder < 2 + static_cast<int>(line.size())) {
-          for (int j = 0; j < bsNeeded; j++) {
-            str += "<BS>";
-            keys.push_back(Key::Key_Backspace);
-          }
-          appendText(line.substr(goalIndent.size()));
-          return;
-        }
-      }
-    }
-
-    // Case 4: mismatch — clear with <C-u> and type full line
-    str += "<C-u>";
-    keys.append(ctrlUKeys);
-    appendText(line);
-  };
-
-  // Main loop: handle all lines uniformly via helpers
-  if constexpr (VimOptions::autoindent()) {
-    for (size_t i = 0; i < goalLines.size(); i++) {
-      if (i > 0) {
-        str += "<CR>";
-        keys.push_back(Key::Key_Enter);
-      }
-      emitLine(goalLines[i], computeAutoindent(i, initialAutoindent, linePrefix, getLine));
-    }
-  } else {
-    // autoindent off — type full lines directly
-    for (size_t i = 0; i < goalLines.size(); i++) {
-      if (i > 0) {
-        str += "<CR>";
-        keys.push_back(Key::Key_Enter);
-      }
-      appendText(goalLines[i]);
-    }
-  }
-
-  // On the last typed line, restore suffix leading whitespace that was stripped
-  // by <CR> autoindent behavior. Only needed for multi-line edits where the suffix
-  // has leading spaces (char-wise edits that span lines).
-  if constexpr (VimOptions::autoindent()) {
-    if (suffixLeadingSpaces > 0 && goalLines.size() > 1) {
-      for (int i = 0; i < suffixLeadingSpaces; i++) {
-        str += ' ';
-        keys.append(CHAR_TO_KEYS.at(' '));
-      }
-    }
-  }
-
-  str += "<Esc>";
-  keys.push_back(Key::Key_Esc);
-  return {str, keys};
-}
 
 } // anonymous namespace
 
@@ -259,7 +147,13 @@ optional<Result> tryReplacement(const string &deleted, const string &inserted,
 
   // Build replacement sequence from firstDiff onward
   // Group consecutive diff positions into runs, use R-mode for runs of 2+
+  // Build string and PhysicalKeys in parallel to avoid post-hoc tokenization.
   string seq;
+  PhysicalKeys seqKeys;
+  static const PhysicalKeys rKey = {Key::Key_R};
+  static const PhysicalKeys lKey = {Key::Key_L};
+  static const PhysicalKeys fKey = {Key::Key_F};
+
   size_t i = 0;
   while (i < diff.size()) {
     int runStart = diff[i];
@@ -275,9 +169,13 @@ optional<Result> tryReplacement(const string &deleted, const string &inserted,
     if (runLength == 1) {
       seq += "r";
       seq += inserted[runStart];
+      seqKeys.append(rKey);
+      seqKeys.append(CHAR_TO_KEYS.at(inserted[runStart]));
     } else {
       // Can use {cnt}r if same consecutive inserted
       seq += to_string(runLength) + "r" + inserted[runStart];
+      seqKeys.append(makeCountedKeys(runLength, rKey));
+      seqKeys.append(CHAR_TO_KEYS.at(inserted[runStart]));
     }
 
     // Navigate to next run if there is one
@@ -289,6 +187,7 @@ optional<Result> tryReplacement(const string &deleted, const string &inserted,
 
       if (dist <= 2) {
         seq += string(dist, 'l');
+        seqKeys.append(lKey, dist);
       } else {
         // Try f-motion: check if target char appears only once in range
         char findChar = deleted[nextPos]; // char at target position in original
@@ -297,8 +196,11 @@ optional<Result> tryReplacement(const string &deleted, const string &inserted,
         if (occurrences == 0) {
           seq += "f";
           seq += findChar;
+          seqKeys.append(fKey);
+          seqKeys.append(CHAR_TO_KEYS.at(findChar));
         } else {
           seq += to_string(dist) + "l";
+          seqKeys.append(makeCountedKeys(dist, lKey));
         }
       }
     }
@@ -314,12 +216,11 @@ optional<Result> tryReplacement(const string &deleted, const string &inserted,
       runningEffort.append(PhysicalKeys(firstDiff, Key::Key_L), config);
     } else {
       prefix = to_string(firstDiff) + "l";
-      runningEffort.append({CharMappings::digitsArr[firstDiff], Key::Key_L}, config);
+      runningEffort.append(makeCountedKeys(firstDiff, lKey), config);
     }
   }
 
-  PhysicalKeys keys = globalTokenizer().tokenize(seq);
-  double effort = runningEffort.append(keys, config);
+  double effort = runningEffort.append(seqKeys, config);
   return Result(prefix + seq, effort);
 }
 
@@ -352,8 +253,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
 
   // Check if replacement strategy is applicable (same-length, single-line)
   optional<Result> replacementResult;
-  if (initialLines.size() == 1 && goalLines.size() == 1 &&
-      initialLines[0].size() == goalLines[0].size() && !initialLines[0].empty()) {
+  if (initialLines.size() == 1 && goalLines.size() == 1 && initialLines[0].size() == goalLines[0].size()) {
     replacementResult = tryReplacement(initialLines[0], goalLines[0], config);
   }
 
@@ -384,7 +284,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
       int idx = newState.getStartIndex();
       if (result.results[idx].isValid()) return;
 
-      auto [changeCmd, changeKeys] = deleteToChange(deleteCmd);
+      auto [changeCmd, changeKeys] = deleteToChange(deleteCmd, deleteKeys);
       auto [collapseSeq, collapseKeys] =
           buildCollapseSequence(static_cast<int>(lines.size()), newState.getPos().line);
 

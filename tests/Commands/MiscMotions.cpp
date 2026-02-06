@@ -11,6 +11,7 @@
 #include "Utils/TestUtils.h"
 #include "Editor/Motion.h"
 #include "Editor/NavContext.h"
+#include "VimCore/VimOptions.h"
 
 using namespace std;
 
@@ -112,6 +113,7 @@ TEST_F(MiscMotionsTest, JK_HandlesEmptyLines) {
 // =============================================================================
 
 TEST_F(MiscMotionsTest, GG_GoesToFirstLine) {
+  if constexpr (VimOptions::startOfLine()) GTEST_SKIP() << "Neovim-only (column preservation)";
   Position p1 = simulateMotions({3, 5}, "gg", a2_block_lines);
   EXPECT_EQ(p1.line, 0);
   EXPECT_EQ(p1.col, 5);
@@ -123,6 +125,7 @@ TEST_F(MiscMotionsTest, GG_GoesToFirstLine) {
 }
 
 TEST_F(MiscMotionsTest, G_GoesToLastLine) {
+  if constexpr (VimOptions::startOfLine()) GTEST_SKIP() << "Neovim-only (column preservation)";
   int lastLine = a2_block_lines.size() - 1;
   Position p = simulateMotions({0, 5}, "G", a2_block_lines);
   EXPECT_EQ(p.line, lastLine);
@@ -130,6 +133,7 @@ TEST_F(MiscMotionsTest, G_GoesToLastLine) {
 }
 
 TEST_F(MiscMotionsTest, GG_G_RoundTrip) {
+  if constexpr (VimOptions::startOfLine()) GTEST_SKIP() << "Neovim-only (column preservation)";
   Position start(2, 5);
   Position atTop = simulateMotions(start, "gg", a2_block_lines);
   Position atBottom = simulateMotions(atTop, "G", a2_block_lines);
@@ -308,6 +312,7 @@ TEST_F(MiscMotionsTest, CtrlD_StopsAtEndOfFile) {
 }
 
 TEST_F(MiscMotionsTest, CtrlD_PreservesColumn) {
+  if constexpr (VimOptions::startOfLine()) GTEST_SKIP() << "Neovim-only (column preservation)";
   auto lines = makeLines(100);
   NavContext nav(40, 20);
 
@@ -315,6 +320,7 @@ TEST_F(MiscMotionsTest, CtrlD_PreservesColumn) {
 }
 
 TEST_F(MiscMotionsTest, CtrlD_ClampsColumnOnShorterLine) {
+  if constexpr (VimOptions::startOfLine()) GTEST_SKIP() << "Neovim-only (column preservation)";
   Lines lines = {
     "long line here",
     "short",
@@ -346,6 +352,7 @@ TEST_F(MiscMotionsTest, CtrlU_StopsAtTopOfFile) {
 }
 
 TEST_F(MiscMotionsTest, CtrlU_PreservesColumn) {
+  if constexpr (VimOptions::startOfLine()) GTEST_SKIP() << "Neovim-only (column preservation)";
   auto lines = makeLines(100);
   NavContext nav(40, 20);
 

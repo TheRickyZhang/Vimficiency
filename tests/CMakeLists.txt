@@ -95,6 +95,7 @@ add_executable(vimficiency_tests
   Misc/ErrorHandlingTest.cpp
   Misc/HashCollisionTest.cpp
   Misc/MotionClassMaskTest.cpp
+  Misc/VimOptionsTest.cpp
 )
 
 target_link_libraries(vimficiency_tests

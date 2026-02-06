@@ -31,33 +31,6 @@ inline int leadingSpaceCount(std::string_view s) {
   return static_cast<int>(leadingWhitespace(s).size());
 }
 
-// Compute what autoindent Neovim provides for a given line during insert-mode typing.
-// Line 0: uses initialIndent (from cc source line or mode-entry command).
-// Line 1 with non-empty linePrefix: autoindent from prefix + goalLines[0].
-// Line 2+: autoindent from previous goal line.
-// getLine(i) returns string_view of goal line i.
-inline std::string_view computeAutoindent(
-    size_t lineIndex,
-    std::string_view initialIndent,
-    std::string_view linePrefix,
-    auto&& getLine) {
-  if (lineIndex == 0) return initialIndent;
-
-  if (lineIndex == 1 && !linePrefix.empty()) {
-    auto prefixWs = leadingWhitespace(linePrefix);
-    if (prefixWs.size() == linePrefix.size()) {
-      // prefix is entirely spaces — combined indent
-      auto goalWs = leadingWhitespace(getLine(lineIndex - 1));
-      thread_local std::string combinedIndent;
-      combinedIndent.assign(linePrefix.size() + goalWs.size(), ' ');
-      return combinedIndent;
-    }
-    return prefixWs;
-  }
-
-  return leadingWhitespace(getLine(lineIndex - 1));
-}
-
 // Compute number of <BS> presses to reduce indent from `from` to `to` spaces.
 // In autoindent context, <BS> deletes to the previous shiftwidth boundary, not
 // just 1 space. Returns -1 if <BS> overshoots past `to` (can't land exactly).

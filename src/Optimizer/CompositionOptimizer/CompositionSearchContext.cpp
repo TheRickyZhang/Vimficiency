@@ -1,6 +1,7 @@
 #include "CompositionSearchContext.h"
 
 #include "Keyboard/MotionToKeys.h"
+#include "Optimizer/BuildTypedCommands.h"
 #include "State/RunningEffort.h"
 #include "Utils/Debug.h"
 
@@ -266,11 +267,14 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
       // Compute goalPos (same logic as regular edits)
       result.goalPos = computeInsertEndPos(diff.beginPos, diff.insertedText);
 
-      // Build insert sequence: i + text + <Esc>
-      string seq = "i" + diff.insertedText + "<Esc>";
-      PhysicalKeys keys = globalTokenizer().tokenize(seq);
-      double effort = RunningEffort().append(keys, config);
-      result.results[0] = Result(Sequence(seq), effort);
+      // Build insert sequence: i + typed content + <Esc>
+      Lines insertLines = Lines::unflatten(diff.insertedText);
+      auto [typedStr, typedKeys] = buildTypedCommands(insertLines);
+      static const PhysicalKeys iKey = {Key::Key_I};
+      RunningEffort runningEffort;
+      runningEffort.append(iKey, config);
+      double effort = runningEffort.append(typedKeys, config);
+      result.results[0] = Result(Sequence("i" + typedStr), effort);
 
       // lineBaseIndex for single-point insertion
       result.firstLine = diff.beginPos.line;

@@ -10,6 +10,7 @@ Add support for CompositionOptimizer in lua
 Review human tests.
 Move compositionOptimizer params from class to optimizerParams
 
+Add automatic detection of user's neovim settings, ex. shiftwidth
 
 
 Can skip F-motions if no endpoints found?

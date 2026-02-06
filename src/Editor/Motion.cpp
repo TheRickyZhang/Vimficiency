@@ -1,6 +1,8 @@
 #include "Motion.h"
 #include "Editor/NavContext.h"
+#include "VimCore/VimCore.h"
 #include "VimCore/VimMotionUtils.h"
+#include "VimCore/VimOptions.h"
 
 #include "Keyboard/MotionToKeys.h"
 
@@ -147,13 +149,19 @@ void applyParsedMotion(Position& pos, Mode& mode,
   } else if (motion == "gg") {
     // Special: set line. Because it's 1 based, subtract 1
     pos.line = hasCount ? count-1 : 0;
-    // Vertical movement: clamp col to line length but preserve targetCol
-    pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
+    if constexpr (VimOptions::startOfLine()) {
+      pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+    } else {
+      pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
+    }
   } else if (motion == "G") {
     // Special: set line. Because it's 1 based, subtract 1
     pos.line = hasCount ? min(count-1, n-1) : n-1;
-    // Vertical movement: clamp col to line length but preserve targetCol
-    pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
+    if constexpr (VimOptions::startOfLine()) {
+      pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+    } else {
+      pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
+    }
   }
   // Words
   // Note: motionW/motionE may return "past end" positions for delete operations.
@@ -221,20 +229,29 @@ void applyParsedMotion(Position& pos, Mode& mode,
   else if (motion == "<C-d>") {
     int amount = hasCount ? count : navContext.scrollAmount;
     pos.line = min(pos.line + amount, n - 1);
-    // Vertical movement: clamp col to line length but preserve targetCol
-    pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
+    if constexpr (VimOptions::startOfLine()) {
+      pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+    } else {
+      pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
+    }
   }
   else if (motion == "<C-u>") {
     int amount = hasCount ? count : navContext.scrollAmount;
     pos.line = max(pos.line - amount, 0);
-    // Vertical movement: clamp col to line length but preserve targetCol
-    pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
+    if constexpr (VimOptions::startOfLine()) {
+      pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+    } else {
+      pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
+    }
   }
   else if (motion == "<C-f>") {
     for(int i = 0; i < count; i++) {
       int jump = max(0, navContext.windowHeight - 2);
       pos.line = min(pos.line + jump, n - 1);
-      // Vertical movement: clamp col to line length but preserve targetCol
+    }
+    if constexpr (VimOptions::startOfLine()) {
+      pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+    } else {
       pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
     }
   }
@@ -242,7 +259,10 @@ void applyParsedMotion(Position& pos, Mode& mode,
     for(int i = 0; i < count; i++) {
       int jump = max(0, navContext.windowHeight - 2);
       pos.line = max(pos.line - jump, 0);
-      // Vertical movement: clamp col to line length but preserve targetCol
+    }
+    if constexpr (VimOptions::startOfLine()) {
+      pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+    } else {
       pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
     }
   }
