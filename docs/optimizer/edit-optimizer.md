@@ -61,3 +61,55 @@ The `buildCollapseSequence` function generates `<BS>`/`<Del>` keystrokes to coll
 
 The correct `totalLines` for this conversion is `base.getLines().size()` (the pre-dd line count), since that represents the buffer state that `cc` would actually operate on. Using `lines.size() + 1` (post-dd buffer + 1) fails when `dd` on the last line of a single-line buffer triggers the buffer invariant (`lines.empty() → lines.push_back("")`), making `lines.size()` already 1 and the `+1` overcounting.
 
+## Autoindent Handling
+
+When `VimOptions::autoindent()` is true (Neovim default), entering insert mode via `cc`/`c{motion}` copies leading whitespace from the source line. Each subsequent `<CR>` copies indent from the current line. The `buildTypedCommands` function accounts for this.
+
+### Core Problem
+
+For each goal line, we must determine what indent Neovim provides automatically (the "autoindent") and handle the mismatch:
+
+| Case | Condition | Action |
+|------|-----------|--------|
+| No autoindent | autoindent empty | Type full line |
+| Goal matches | goal starts with autoindent | Strip autoindent, type remainder |
+| Goal has less indent | autoindent starts with goal's indent | `<BS>` × excess, type remainder |
+| Mismatch | neither is prefix | `<C-u>` + type full line |
+
+### Autoindent Source by Line
+
+- **Line 0**: `initialAutoindent` param (from cc's source line, or empty for char-wise)
+- **Line 1**: `leadingWhitespace(linePrefix + goalLines[0])` — buffer line 0 is prefix + goal
+- **Line 2+**: `leadingWhitespace(goalLines[i-1])` — previous goal line
+
+### Parameters
+
+- `initialAutoindent`: Indent provided on first typed line (cc preserves source line indent)
+- `linePrefix`: Text before edit region on first line (for computing line 1 autoindent)
+- `suffixLeadingSpaces`: Whitespace to restore on last line for multi-line char-wise edits
+
+### `<BS>` Optimization
+
+When autoindent provides more spaces than the goal line needs, `<BS>` can be more efficient than `<C-u>`. However, `<BS>` in autoindent context **deletes to the previous `shiftwidth` boundary** (default 8), not just 1 space. This means `<BS>` can only land on multiples of `shiftwidth`:
+
+```
+autoindent = "                " (16 spaces, sw=8)
+goal line  = "        foo" (8 spaces + "foo")
+
+<C-u> + type "        foo" = 2 + 11 = 13 keys
+1× <BS> + "foo"             = 1 + 3  = 4 keys  ← better! (16 → 8 in one BS)
+
+autoindent = "     " (5 spaces, sw=8)
+goal line  = "  foo" (2 spaces + "foo")
+
+BS would go 5 → 0 (overshoots past 2) — cannot use <BS>, fall through to <C-u>
+```
+
+`bsCountForIndent(from, to, sw)` computes the number of `<BS>` presses needed, returning -1 if `<BS>` overshoots past the target (i.e., the target is not reachable via shiftwidth boundaries).
+
+The condition for `<BS>` being better: `bsNeeded + remainder < 2 + goalLine.size()` where:
+- `bsNeeded = bsCountForIndent(autoindent.size(), goalIndent.size(), shiftwidth)`
+- `remainder = goalLine.size() - goalIndent.size()`
+
+**Important:** Neovim requires `\x08` (ASCII BS) for backspace in insert mode, not `\x7f` (ASCII DEL). While most terminals send `\x7f` for the Backspace key, Neovim only treats `\x08` as able to delete autoindent. The `\x7f` byte is silently ignored over autoindent whitespace.
+

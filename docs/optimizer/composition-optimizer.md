@@ -35,3 +35,16 @@
 - The mode-entry command determines the actual insert position independent of where in the range we land, so the final cursor position after typing + Esc is always `editResult.goalPos`.
 - When navigating to the valid range, the `MotionBoundary` must use the full subset extent, not the target range (see `docs/optimizer/buffer-slicing.md` § Boundary vs Target Range).
 
+### Autoindent in Pure Insertions
+
+For `o`/`A`/`I`/`i` with multi-line insertions, `buildAutoindentInsert` applies the same strip/backspace/clear logic as `buildTypedCommands` (see `docs/optimizer/edit-optimizer.md` § Autoindent Handling):
+
+| Command | Source indent | Line prefix |
+|---------|--------------|-------------|
+| `o` | `leadingWhitespace(currentLines[targetLine])` | (empty) |
+| `A` | (empty) | current line |
+| `I` | (empty) | text before first non-blank |
+| `i` | (empty) | text before cursor |
+
+The source indent is provided by autoindent on the first typed line after mode entry. The line prefix is used to compute continuation autoindent for subsequent lines after `<CR>`.
+

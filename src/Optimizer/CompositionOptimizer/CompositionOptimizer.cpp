@@ -38,7 +38,7 @@ Position computeInsertEndPos(Position insertPos, const string& insertedText) {
 // indent (provided by autoindent on the first typed line), and an optional
 // prefix for computing continuation autoindent.
 //
-// Returns the command string to type (with <CR> for newlines, <C-u> where needed).
+// Returns the command string to type (with <CR> for newlines, <C-u>/<BS> where needed).
 // Does NOT include the mode-entry command (o/A/etc.) or <Esc>.
 string buildAutoindentInsert(string_view text, string_view sourceIndent,
                              string_view linePrefix = "") {
@@ -49,43 +49,57 @@ string buildAutoindentInsert(string_view text, string_view sourceIndent,
   Lines lines = Lines::unflatten(string(text));
   string result;
 
-  for (size_t i = 0; i < lines.size(); i++) {
-    string_view line = lines[i];
+  auto getLine = [&](size_t j) -> string_view { return lines[j]; };
 
-    // Compute expected autoindent for this line
-    string_view autoindent;
-    if (i == 0) {
-      autoindent = sourceIndent;
-    } else if (i == 1 && !linePrefix.empty()) {
-      // First continuation: autoindent from prefix + goalLines[0]
-      auto prefixWs = leadingWhitespace(linePrefix);
-      if (prefixWs.size() == linePrefix.size()) {
-        auto goalWs = leadingWhitespace(lines[0]);
-        thread_local string combinedIndent;
-        combinedIndent.assign(linePrefix.size() + goalWs.size(), ' ');
-        autoindent = combinedIndent;
-      } else {
-        autoindent = prefixWs;
-      }
-    } else {
-      autoindent = (i > 0) ? leadingWhitespace(lines[i - 1]) : string_view{};
+  // Helper: emit a line given expected autoindent
+  // Cases: (1) no autoindent, (2) goal matches, (3) goal has less indent, (4) mismatch
+  auto emitLine = [&](string_view line, string_view autoindent) {
+    // Case 1: no autoindent — type full line
+    if (autoindent.empty()) {
+      result.append(line);
+      return;
     }
 
-    if (!autoindent.empty() && line.size() >= autoindent.size() &&
+    // Case 2: goal starts with autoindent — strip it
+    if (line.size() >= autoindent.size() &&
         line.substr(0, autoindent.size()) == autoindent) {
-      // Strip — autoindent provides the prefix
       result.append(line.substr(autoindent.size()));
-    } else if (!autoindent.empty()) {
-      // Clear autoindent and type full line
-      result += "<C-u>";
-      result.append(line);
-    } else {
-      result.append(line);
+      return;
     }
 
-    if (i < lines.size() - 1) {
+    // Case 3: autoindent starts with goal's indent — use <BS> if more efficient
+    // <BS> in autoindent deletes to previous shiftwidth boundary, not just 1 space.
+    auto goalIndent = leadingWhitespace(line);
+    if (autoindent.size() > goalIndent.size() &&
+        autoindent.substr(0, goalIndent.size()) == goalIndent) {
+      int bsNeeded = bsCountForIndent(
+          static_cast<int>(autoindent.size()),
+          static_cast<int>(goalIndent.size()),
+          VimOptions::shiftwidth());
+      if (bsNeeded >= 0) {
+        int remainder = static_cast<int>(line.size() - goalIndent.size());
+        // <BS> is better when: bsNeeded + remainder < 2 + line.size()
+        if (bsNeeded + remainder < 2 + static_cast<int>(line.size())) {
+          for (int j = 0; j < bsNeeded; j++) {
+            result += "<BS>";
+          }
+          result.append(line.substr(goalIndent.size()));
+          return;
+        }
+      }
+    }
+
+    // Case 4: mismatch — clear with <C-u> and type full line
+    result += "<C-u>";
+    result.append(line);
+  };
+
+  // Main loop: handle all lines uniformly via helpers
+  for (size_t i = 0; i < lines.size(); i++) {
+    if (i > 0) {
       result += "<CR>";
     }
+    emitLine(lines[i], computeAutoindent(i, sourceIndent, linePrefix, getLine));
   }
 
   return result;

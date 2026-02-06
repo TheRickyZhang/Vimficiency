@@ -126,8 +126,10 @@ pair<string, PhysicalKeys> deleteToChange(const string& deleteCmd) {
 //
 // When autoindent is active, entering insert mode via cc/c{motion}/o copies
 // leading whitespace from the source line. Each subsequent <CR> copies indent
-// from the current line. We either strip the autoindent (if it matches the goal
-// line's prefix) or prepend <C-u> to clear it before typing the full line.
+// from the current line. We handle autoindent by:
+//   - Stripping it if the goal line starts with the same indent
+//   - Using <BS> to remove excess spaces if autoindent is longer than goal's indent
+//   - Using <C-u> to clear the line if there's no prefix relationship
 //
 // Parameters:
 //   goalLines          - the lines to type out
@@ -144,84 +146,78 @@ pair<string, PhysicalKeys> buildTypedCommands(
 
   static const PhysicalKeys ctrlUKeys = {Key::Key_Ctrl, Key::Key_U};
 
-  for (size_t i = 0; i < goalLines.size(); i++) {
-    string_view line = goalLines[i];
+  // Helper: append text content to str and keys
+  auto appendText = [&](string_view text) {
+    str.append(text);
+    for (char c : text) {
+      keys.append(CHAR_TO_KEYS.at(c));
+    }
+  };
 
-    if constexpr (VimOptions::autoindent()) {
-      // Compute expected autoindent for this line
-      string_view autoindent;
-      if (i == 0) {
-        autoindent = initialAutoindent;
-      } else {
-        // autoindent for line i comes from the actual buffer content of line i-1,
-        // which is always the goal line (whether we stripped or <C-u>'d, the result matches)
-        if (i == 1 && !linePrefix.empty()) {
-          // First continuation line: autoindent comes from prefix + goalLines[0]
-          // But we only need the leading whitespace, and prefix is the text before
-          // the edit region. If prefix is all spaces, they contribute; otherwise
-          // leading whitespace stops at the first non-space in prefix.
-          // Since autoindent = leadingWhitespace(full_line), and full_line = prefix + goalLine[0],
-          // it's just leadingWhitespace(prefix + goalLines[0]).
-          // Optimization: if prefix starts with non-space, autoindent = "".
-          // If prefix is all spaces, autoindent = prefix + leadingWhitespace(goalLines[0]).
-          if (!linePrefix.empty() && linePrefix[0] != ' ') {
-            autoindent = "";
-          } else {
-            // prefix is all spaces (or we need to check more carefully)
-            auto prefixWs = leadingWhitespace(linePrefix);
-            if (prefixWs.size() == linePrefix.size()) {
-              // prefix is entirely spaces
-              auto goalWs = leadingWhitespace(goalLines[i - 1]);
-              // combined leading ws = prefix.size() + goalWs.size()
-              // but autoindent is that combined length worth of spaces
-              // We store it as a string since we need to compare with goal line
-              // Use a static thread_local to avoid allocation in the common case
-              thread_local string combinedIndent;
-              combinedIndent.assign(linePrefix.size() + goalWs.size(), ' ');
-              autoindent = combinedIndent;
-            } else {
-              autoindent = prefixWs;
-            }
+  auto getLine = [&](size_t j) -> string_view { return goalLines[j]; };
+
+  // Helper: emit keys for a line given expected autoindent
+  // Cases: (1) no autoindent, (2) goal matches, (3) goal has less indent, (4) mismatch
+  auto emitLine = [&](string_view line, string_view autoindent) {
+    // Case 1: no autoindent — type full line
+    if (autoindent.empty()) {
+      appendText(line);
+      return;
+    }
+
+    // Case 2: goal starts with autoindent — strip it
+    if (line.size() >= autoindent.size() &&
+        line.substr(0, autoindent.size()) == autoindent) {
+      appendText(line.substr(autoindent.size()));
+      return;
+    }
+
+    // Case 3: autoindent starts with goal's indent — use <BS> if more efficient
+    // <BS> in autoindent deletes to previous shiftwidth boundary, not just 1 space.
+    auto goalIndent = leadingWhitespace(line);
+    if (autoindent.size() > goalIndent.size() &&
+        autoindent.substr(0, goalIndent.size()) == goalIndent) {
+      int bsNeeded = bsCountForIndent(
+          static_cast<int>(autoindent.size()),
+          static_cast<int>(goalIndent.size()),
+          VimOptions::shiftwidth());
+      if (bsNeeded >= 0) {
+        int remainder = static_cast<int>(line.size() - goalIndent.size());
+        // <BS> is better when: bsNeeded + remainder < 2 + line.size()
+        if (bsNeeded + remainder < 2 + static_cast<int>(line.size())) {
+          for (int j = 0; j < bsNeeded; j++) {
+            str += "<BS>";
+            keys.push_back(Key::Key_Backspace);
           }
-        } else {
-          autoindent = leadingWhitespace(goalLines[i - 1]);
+          appendText(line.substr(goalIndent.size()));
+          return;
         }
-      }
-
-      if (!autoindent.empty() && line.size() >= autoindent.size() &&
-          line.substr(0, autoindent.size()) == autoindent) {
-        // Goal line starts with expected autoindent — strip it, autoindent provides it
-        string_view remaining = line.substr(autoindent.size());
-        str.append(remaining);
-        for (char c : remaining) {
-          keys.append(CHAR_TO_KEYS.at(c));
-        }
-      } else if (!autoindent.empty()) {
-        // Goal line doesn't match autoindent — clear with <C-u> and type full line
-        str += "<C-u>";
-        keys.append(ctrlUKeys);
-        str.append(line);
-        for (char c : line) {
-          keys.append(CHAR_TO_KEYS.at(c));
-        }
-      } else {
-        // No autoindent — type full line
-        str.append(line);
-        for (char c : line) {
-          keys.append(CHAR_TO_KEYS.at(c));
-        }
-      }
-    } else {
-      // autoindent off — type full line as before
-      str.append(line);
-      for (char c : line) {
-        keys.append(CHAR_TO_KEYS.at(c));
       }
     }
 
-    if (i < goalLines.size() - 1) {
-      str += "<CR>";
-      keys.push_back(Key::Key_Enter);
+    // Case 4: mismatch — clear with <C-u> and type full line
+    str += "<C-u>";
+    keys.append(ctrlUKeys);
+    appendText(line);
+  };
+
+  // Main loop: handle all lines uniformly via helpers
+  if constexpr (VimOptions::autoindent()) {
+    for (size_t i = 0; i < goalLines.size(); i++) {
+      if (i > 0) {
+        str += "<CR>";
+        keys.push_back(Key::Key_Enter);
+      }
+      emitLine(goalLines[i], computeAutoindent(i, initialAutoindent, linePrefix, getLine));
+    }
+  } else {
+    // autoindent off — type full lines directly
+    for (size_t i = 0; i < goalLines.size(); i++) {
+      if (i > 0) {
+        str += "<CR>";
+        keys.push_back(Key::Key_Enter);
+      }
+      appendText(goalLines[i]);
     }
   }
 

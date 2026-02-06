@@ -74,6 +74,7 @@ cmake --build build -j
 **Important:**
 - Don't change directories in your session! Just do everything relative to the project root.
 - Never use `rm -rf build` unless something appears corrupted. The build directory contains downloaded libraries (googletest, etc.) that take time to re-fetch.
+- Do not use python or write to tmp for debugging! Always debug print in tests/debug.
 
 When verifying any new feature, run all tests, but only analyze if there is some failed output that is related to the current task.
 

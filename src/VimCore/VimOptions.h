@@ -64,4 +64,11 @@ constexpr bool autoindent() {
 #endif
 }
 
+// Shiftwidth: number of spaces per indent level.
+// Affects <BS> in autoindent context (deletes to previous shiftwidth boundary).
+// Both Vim and Neovim default to 8.
+constexpr int shiftwidth() {
+    return 8;
+}
+
 } // namespace VimOptions

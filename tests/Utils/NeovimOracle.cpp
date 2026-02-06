@@ -58,7 +58,7 @@ std::string convertSpecialKeys(const std::string& keys) {
         } else if (tagLower == "tab") {
           result += '\t';
         } else if (tagLower == "bs" || tagLower == "backspace") {
-          result += '\x7f';
+          result += '\x08';  // ASCII BS (not \x7f DEL — Neovim treats them differently)
         } else if (tagLower == "del" || tagLower == "delete") {
           result += "\x1b[3~";  // ANSI delete sequence
         } else if (tagLower == "space") {

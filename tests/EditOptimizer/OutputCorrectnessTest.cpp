@@ -194,3 +194,161 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineEmbedded) {
   // With full prefix/suffix support, expect 100% pass rate
   EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
 }
+
+// =============================================================================
+// Change Tests (non-empty goalLines, oracle-verified typing path)
+// =============================================================================
+
+// Single-line change: random initial and goal content, full-buffer boundary
+TEST_F(EditOptimizerOutputCorrectness, SingleLine_Change) {
+  RandomGen::seed(50);
+  int passed = 0, total = 0;
+
+  for (int iter = 0; iter < CNT; iter++) {
+    int initLen = RandomGen::range(5, 8);
+    int goalLen = RandomGen::range(3, 7);
+    Lines source = {randomLine(initLen)};
+    Lines goal = {randomLine(goalLen)};
+    if (source == goal) continue;
+
+    EditBoundary boundary(source, {0, 0}, source.lastPos());
+    EditResult res = opt.optimizeEdit(source, goal, boundary, params);
+
+    for (size_t i = 0; i < res.results.size(); i++) {
+      const Result& r = res.results[i];
+      if (!r.isValid()) continue;
+
+      Position pos = fromFlatIndex(static_cast<int>(i), source);
+
+      total++;
+      const auto& seq = r.getSequenceString();
+      auto nvim = oracle->simulate(source, pos.line, pos.col, seq.keys);
+
+      if (nvim.lines == goal) {
+        passed++;
+      } else {
+        if (total - passed <= 3) {
+          cerr << "FAIL iter=" << iter << " pos=[" << pos.line << "," << pos.col
+               << "] seq='" << seq << "'\n"
+               << "  Source: " << source << "\n"
+               << "  Goal: " << goal << "\n"
+               << "  Got: " << nvim.lines << endl;
+        }
+      }
+    }
+  }
+
+  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+}
+
+// Multi-line change: different source/goal content, full-buffer boundary
+TEST_F(EditOptimizerOutputCorrectness, MultiLine_FullBufferChange) {
+  RandomGen::seed(51);
+  int passed = 0, total = 0;
+
+  for (int iter = 0; iter < CNT; iter++) {
+    int numLines = RandomGen::range(2, 3);
+    Lines source = randomLines(numLines, 4, 8);
+    Lines goal = randomLines(numLines, 4, 8);
+    if (source == goal) continue;
+
+    EditBoundary boundary(source, {0, 0}, source.lastPos());
+    EditResult res = opt.optimizeEdit(source, goal, boundary, params);
+
+    for (size_t i = 0; i < res.results.size(); i += 2) {
+      const Result& r = res.results[i];
+      if (!r.isValid()) continue;
+
+      Position pos = fromFlatIndex(static_cast<int>(i), source);
+
+      total++;
+      const auto& seq = r.getSequenceString();
+      auto nvim = oracle->simulate(source, pos.line, pos.col, seq.keys);
+
+      if (nvim.lines == goal) {
+        passed++;
+      } else {
+        if (total - passed <= 3) {
+          cerr << "FAIL iter=" << iter << " pos=[" << pos.line << "," << pos.col
+               << "] seq='" << seq << "'\n"
+               << "  Source: " << source << "\n"
+               << "  Goal: " << goal << "\n"
+               << "  Got: " << nvim.lines << endl;
+        }
+      }
+    }
+  }
+
+  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+}
+
+// Multi-line embedded change: prefix/suffix around edit region with different goal content
+TEST_F(EditOptimizerOutputCorrectness, MultiLine_EmbeddedChange) {
+  const int REDUCED_NUM_ITERATIONS = 8;
+  RandomGen::seed(52);
+  int passed = 0, total = 0;
+
+  for (int iter = 0; iter < REDUCED_NUM_ITERATIONS; iter++) {
+    auto test = generateRandomMultiLineEmbedded();
+
+    // Generate goal lines: same count as editRegion, with possible indentation
+    int numGoalLines = static_cast<int>(test.editRegion.size());
+    Lines goal = randomLines(numGoalLines, 4, 8);
+
+    // Skip if same as edit region (unlikely but possible)
+    if (goal == test.editRegion) continue;
+
+    EditResult res = opt.optimizeEdit(test.editRegion, goal, test.makeBoundary(), params);
+
+    // Build expected full buffer: prefix + goal + suffix
+    Lines expectedFull;
+    for (int i = 0; i < numGoalLines; i++) {
+      string line;
+      if (i == 0) line += test.prefix;
+      line += goal[i];
+      if (i == numGoalLines - 1) line += test.suffix;
+      expectedFull.push_back(line);
+    }
+    string expected = expectedFull.flatten();
+
+    // Test a subset of positions (every 4th to reduce test time)
+    for (size_t i = 0; i < res.results.size(); i += 4) {
+      const Result& r = res.results[i];
+      if (!r.isValid()) continue;
+
+      Position editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
+      Position bufferPos = test.toFullBufferPos(editPos);
+
+      total++;
+      const auto& seq = r.getSequenceString();
+
+      // Build the full buffer with goal content for oracle simulation
+      Lines fullWithGoal;
+      for (int j = 0; j < numGoalLines; j++) {
+        string line;
+        if (j == 0) line += test.prefix;
+        line += test.editRegion[j];
+        if (j == numGoalLines - 1) line += test.suffix;
+        fullWithGoal.push_back(line);
+      }
+
+      auto nvim = oracle->simulate(test.fullBuffer, bufferPos.line, bufferPos.col, seq.keys);
+
+      if (nvim.lines.flatten() == expected) {
+        passed++;
+      } else {
+        if (total - passed <= 3) {
+          cerr << "FAIL iter=" << iter << " editPos=[" << editPos.line << "," << editPos.col
+               << "] bufferPos=[" << bufferPos.line << "," << bufferPos.col << "] seq='" << seq << "'\n"
+               << "  FullBuffer: " << test.fullBuffer << "\n"
+               << "  EditRegion: " << test.editRegion << "\n"
+               << "  Goal: " << goal << "\n"
+               << "  Expected: '" << expected << "'\n"
+               << "  Got: '" << nvim.lines.flatten() << "'" << endl;
+        }
+      }
+    }
+  }
+
+  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+}
