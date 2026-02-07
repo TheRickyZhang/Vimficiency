@@ -45,3 +45,4 @@ Interesting (maybe?) things that have come up:
 - Elegance of QuickCheck (Haskell/OCaml) as property-based checking library with generator composition and lazy evaluation shrinking -> RapidCheck in C++ with GTest integration.
 - ODR violations are very insidious, with complete undefined behavior. Very easy to make without compiler warning with naming google tests!
 - std::minmax, std::partial_sum, std::transform_reduce
+- Have protected constructor for indicating not to use base class directly

@@ -7,6 +7,9 @@
 // =============================================================================
 
 struct CompositionOptimizerParams : OptimizerParamsBase {
+  // Explicit default: matches base but documents intent.
+  CompositionOptimizerParams() { maxResults = 10; }
+
   // Minimum column distance before exploring f-motion (f{char}). Recommended 2-5.
   int fMotionThreshold = 3;
 

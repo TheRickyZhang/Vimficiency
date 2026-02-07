@@ -25,7 +25,7 @@ struct OptimizerParamsBase {
   double effortWeight = 1.0;
   double distanceWeight = 1.0;
 
-  // Note these might not really belong here, but move later if problems arise
+  // Note these might not really belong here, bgut
   int linePaddingAbove = 2;
   int linePaddingBelow = 2;
 

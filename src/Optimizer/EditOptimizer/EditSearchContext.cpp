@@ -99,7 +99,8 @@ double EditSearchContext::distanceHeuristic(const Lines& lines) const {
 
 bool EditSearchContext::shouldContinue() const {
   if (pq.empty()) return false;
-  if (resultsFound >= totalPositions) return false;
+  if (uniquePositionsCovered >= totalPositions) return false;
+  if (resultsFound >= params.maxResults) return false;
   if (iterations >= params.maxNodesExplored) return false;
   // Safety cap: prevent runaway loops if too many stale nodes
   if (totalPops >= params.maxNodesExplored * SAFETY_MULTIPLIER) return false;
@@ -136,8 +137,10 @@ SearchStats EditSearchContext::getStats() const {
   // Determine stop reason
   if (pq.empty()) {
     stats.stopReason = SearchStopReason::FullyExplored;
-  } else if (resultsFound >= totalPositions) {
+  } else if (uniquePositionsCovered >= totalPositions) {
     stats.stopReason = SearchStopReason::AllResultsFound;
+  } else if (resultsFound >= params.maxResults) {
+    stats.stopReason = SearchStopReason::MaxResultsFound;
   } else if (iterations >= params.maxNodesExplored) {
     stats.stopReason = SearchStopReason::MaxNodesReached;
   }

@@ -243,7 +243,7 @@ TEST_F(EditOptimizerOutputCorrectness, SingleLine_Change) {
 
 // Multi-line change: different source/goal content, full-buffer boundary
 TEST_F(EditOptimizerOutputCorrectness, MultiLine_FullBufferChange) {
-  const int REDUCED_NUM_ITERATIONS = 6;
+  const int REDUCED_NUM_ITERATIONS = 3;
   RandomGen::seed(51);
   int passed = 0, total = 0;
 

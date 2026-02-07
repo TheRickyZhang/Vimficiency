@@ -319,6 +319,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
 
       results[idx] = Result(seqStr, totalEffort);
       ctx.resultsFound++;
+      ctx.uniquePositionsCovered++;
       return;
     }
 
@@ -377,6 +378,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
 
       results[idx] = Result(seqStr, totalEffort);
       ctx.resultsFound++;
+      ctx.uniquePositionsCovered++;
       return;
     }
 
@@ -490,8 +492,9 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
       bool isNew = !results[idx].isValid();
       if (isNew || totalEffort < results[idx].keyCost) {
         results[idx] = Result(newState.getSeq() + deleteCmd, totalEffort);
-        if (isNew) ctx.resultsFound++;
       }
+      ctx.resultsFound++;
+      if (isNew) ctx.uniquePositionsCovered++;
       return;
     }
 
@@ -532,8 +535,9 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
       bool isNew = !results[idx].isValid();
       if (isNew || totalEffort < results[idx].keyCost) {
         results[idx] = Result(newState.getSeq() + cmdSeq, totalEffort);
-        if (isNew) ctx.resultsFound++;
       }
+      ctx.resultsFound++;
+      if (isNew) ctx.uniquePositionsCovered++;
       return;
     }
 
@@ -570,8 +574,9 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
         bool isNew = !results[idx].isValid();
         if (isNew || totalEffort < results[idx].keyCost) {
           results[idx] = Result(newState.getSeq() + joinCmd, totalEffort);
-          if (isNew) ctx.resultsFound++;
         }
+        ctx.resultsFound++;
+        if (isNew) ctx.uniquePositionsCovered++;
         return;
       }
 

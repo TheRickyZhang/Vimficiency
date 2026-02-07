@@ -228,6 +228,10 @@ vector<Result> CompositionOptimizer::optimize(
         }
       }
 
+      // If cursor is already inside the edit range but no edit result was found
+      // (e.g. maxResults budget exhausted), skip motion search — we're already there.
+      if (pos >= nextEdit.beginPos && pos < nextEdit.endPos) continue;
+
       // Slice a padded subset around [pos, edit region] for MotionOptimizer
       auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
           min(pos.line, nextEdit.beginPos.line),
