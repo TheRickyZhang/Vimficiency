@@ -11,7 +11,7 @@ Review human tests.
 Move compositionOptimizer params from class to optimizerParams
 
 Add automatic detection of user's neovim settings, ex. shiftwidth
-
+Change const string& -> string_view in params where read-only
 
 Can skip F-motions if no endpoints found?
 Benchmark search time based on buffer size, search space, A* vs Dijkstra. And what order/frequency results found.

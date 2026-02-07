@@ -14,7 +14,8 @@ const EditBoundary& EditBoundary::noParent() {
 // =============================================================================
 
 // Construct from buffer context, optionally inheriting from parent
-EditBoundary::EditBoundary(const Lines &lines, Position firstPos, Position lastPos,
+// endPos is exclusive: one past the last valid cursor position
+EditBoundary::EditBoundary(const Lines &lines, Position firstPos, Position endPos,
                            const EditBoundary &parent)
     : prefix_(), suffix_(),
       hasLinesAbove_(parent.hasLinesAbove()),
@@ -37,12 +38,12 @@ EditBoundary::EditBoundary(const Lines &lines, Position firstPos, Position lastP
     prefix_ = parent.prefix();
   }
 
-  const string &lastLine = lines[lastPos.line];
+  const string &lastLine = lines[endPos.line];
   int endSize = static_cast<int>(lastLine.size());
   // Extract full suffix from current lines, or inherit from parent if at edge
-  if (lastPos.col + 1 < endSize) {
-    suffix_ = lastLine.substr(lastPos.col + 1);
-  } else if (lastPos.line + 1 < static_cast<int>(lines.size())) {
+  if (endPos.col < endSize) {
+    suffix_ = lastLine.substr(endPos.col);
+  } else if (endPos.line + 1 < static_cast<int>(lines.size())) {
     // At end of line but not last line of these lines - no suffix
     suffix_ = "";
   } else {
@@ -52,7 +53,7 @@ EditBoundary::EditBoundary(const Lines &lines, Position firstPos, Position lastP
 
   hasLinesAbove_ = parent.hasLinesAbove() || (firstPos.line > 0);
   hasLinesBelow_ = parent.hasLinesBelow() ||
-                  (lastPos.line + 1 < static_cast<int>(lines.size()));
+                  (endPos.line + 1 < static_cast<int>(lines.size()));
 
   // Scan prefix for quotes/brackets
   for (char c : prefix_) {

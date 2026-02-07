@@ -141,34 +141,34 @@ TEST(MotionClassMaskTest, MatchesExistingBooleanLogic) {
 // =============================================================================
 
 TEST(MotionClassMaskTest, InRangeReturnsNone) {
-  // Inside range should return None
-  EXPECT_EQ(classesForRange(5, 5, 5, 3, 5, 10), M::None);  // Same line, between
-  EXPECT_EQ(classesForRange(6, 5, 5, 3, 8, 10), M::None);  // Middle line
-  EXPECT_EQ(classesForRange(5, 3, 5, 3, 8, 10), M::None);  // At rangeFirst
-  EXPECT_EQ(classesForRange(8, 10, 5, 3, 8, 10), M::None); // At rangeLast
+  // Inside range [first, end) should return None
+  EXPECT_EQ(classesForRange(5, 5, 5, 3, 5, 11), M::None);  // Same line, between
+  EXPECT_EQ(classesForRange(6, 5, 5, 3, 8, 11), M::None);  // Middle line
+  EXPECT_EQ(classesForRange(5, 3, 5, 3, 8, 11), M::None);  // At rangeFirst
+  EXPECT_EQ(classesForRange(8, 10, 5, 3, 8, 11), M::None); // At last inclusive position
 }
 
 TEST(MotionClassMaskTest, BeforeRangeOnSameLine) {
   // Same line as rangeFirst, but col < rangeFirst.col
   // Should include Right + ForwardCross (to reach rangeFirst)
   // And since range spans lines, Down is also valid
-  M actual = classesForRange(5, 0, 5, 5, 8, 10);
+  M actual = classesForRange(5, 0, 5, 5, 8, 11);
   EXPECT_TRUE(has(actual, M::Right));
   EXPECT_TRUE(has(actual, M::ForwardCross));
 }
 
 TEST(MotionClassMaskTest, AfterRangeOnSameLine) {
-  // Same line as rangeLast, but col > rangeLast.col
-  // Should include Left + BackwardCross (to reach rangeLast)
+  // Same line as rangeEnd, but col >= rangeEnd.col
+  // Should include Left + BackwardCross (to reach last inclusive position)
   // And since range spans lines, Up is also valid
-  M actual = classesForRange(8, 15, 5, 3, 8, 10);
+  M actual = classesForRange(8, 15, 5, 3, 8, 11);
   EXPECT_TRUE(has(actual, M::Left));
   EXPECT_TRUE(has(actual, M::BackwardCross));
 }
 
 TEST(MotionClassMaskTest, AboveRange) {
   // Above range => Down + Forward
-  M actual = classesForRange(2, 5, 5, 3, 8, 10);
+  M actual = classesForRange(2, 5, 5, 3, 8, 11);
   EXPECT_TRUE(has(actual, M::Down));
   EXPECT_TRUE(has(actual, M::ForwardCross));
   EXPECT_FALSE(has(actual, M::Up));
@@ -176,16 +176,18 @@ TEST(MotionClassMaskTest, AboveRange) {
 
 TEST(MotionClassMaskTest, BelowRange) {
   // Below range => Up + Backward
-  M actual = classesForRange(12, 5, 5, 3, 8, 10);
+  M actual = classesForRange(12, 5, 5, 3, 8, 11);
   EXPECT_TRUE(has(actual, M::Up));
   EXPECT_TRUE(has(actual, M::BackwardCross));
   EXPECT_FALSE(has(actual, M::Down));
 }
 
 TEST(MotionClassMaskTest, RangeClassesContainEndpointUnion) {
-  // Verify classesForRange returns at least the union of classes for rangeFirst and rangeLast
+  // Verify classesForRange returns at least the union of classes for rangeFirst and last inclusive pos
   Position rangeFirst{5, 3, 3};
-  Position rangeLast{8, 10, 10};
+  Position rangeEnd{8, 11, 11};
+  // Last inclusive position for single-goal targeting
+  Position lastInclusive{8, 10, 10};
 
   std::vector<Position> testPositions = {
       {2, 0, 0}, {2, 5, 5}, {2, 15, 15},     // Above range
@@ -196,10 +198,10 @@ TEST(MotionClassMaskTest, RangeClassesContainEndpointUnion) {
 
   for (const auto& pos : testPositions) {
     M endpointUnion = classesForSingleGoal(pos.line, pos.col, rangeFirst.line, rangeFirst.col)
-                    | classesForSingleGoal(pos.line, pos.col, rangeLast.line, rangeLast.col);
+                    | classesForSingleGoal(pos.line, pos.col, lastInclusive.line, lastInclusive.col);
     M actual = classesForRange(pos.line, pos.col,
                                 rangeFirst.line, rangeFirst.col,
-                                rangeLast.line, rangeLast.col);
+                                rangeEnd.line, rangeEnd.col);
 
     // actual should contain at least the endpoint union (may have additional classes)
     EXPECT_EQ(actual & endpointUnion, endpointUnion)
@@ -211,15 +213,15 @@ TEST(MotionClassMaskTest, RangeClassesContainEndpointUnion) {
 
 TEST(MotionClassMaskTest, BoundaryLineEdgeCases) {
   // On first line of range, before first col, multi-line range => Down added
-  M actual1 = classesForRange(5, 0, 5, 5, 8, 10);
+  M actual1 = classesForRange(5, 0, 5, 5, 8, 11);
   EXPECT_TRUE(has(actual1, M::Down)) << "Should add Down when on first line but before range start";
 
-  // On last line of range, after last col, multi-line range => Up added
-  M actual2 = classesForRange(8, 15, 5, 5, 8, 10);
+  // On last line of range, after range end col, multi-line range => Up added
+  M actual2 = classesForRange(8, 15, 5, 5, 8, 11);
   EXPECT_TRUE(has(actual2, M::Up)) << "Should add Up when on last line but after range end";
 
   // Single-line range - no extra vertical needed
-  M actual3 = classesForRange(5, 0, 5, 5, 5, 10);
+  M actual3 = classesForRange(5, 0, 5, 5, 5, 11);
   // This is before on same line, so only needs Right + ForwardCross
   EXPECT_TRUE(has(actual3, M::Right));
   EXPECT_TRUE(has(actual3, M::ForwardCross));

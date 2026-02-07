@@ -45,7 +45,7 @@ void MotionSearchContext::exploreNewState(MotionState&& newState, const PosKey& 
 
 void MotionSearchContext::exploreNewStateToRange(MotionState&& newState,
                                                   Position rangeFirst,
-                                                  Position rangeLast) {
+                                                  Position rangeEnd) {
   motionsEmitted++;
 
   // Prune if effort exceeds threshold
@@ -58,8 +58,8 @@ void MotionSearchContext::exploreNewStateToRange(MotionState&& newState,
   Position pos = newState.getPos();
   auto it = costMap.find(newKey);
 
-  // Check if position is in goal range
-  bool isInRange = pos >= rangeFirst && pos <= rangeLast;
+  // Check if position is in goal range [rangeFirst, rangeEnd)
+  bool isInRange = pos >= rangeFirst && pos < rangeEnd;
 
   if (it == costMap.end()) {
     // New state - don't cache positions in range (allow multiple results)

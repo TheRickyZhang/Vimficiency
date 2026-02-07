@@ -7,14 +7,14 @@ const MotionBoundary& MotionBoundary::noParent() {
 }
 
 // Construct from buffer context, optionally inheriting from parent
-MotionBoundary::MotionBoundary(const Lines& lines, Position firstPos, Position lastPos,
+MotionBoundary::MotionBoundary(const Lines& lines, Position firstPos, Position endPos,
                                const MotionBoundary& parent)
-    : ctx_(lines, firstPos, lastPos, parent.ctx_) {}
+    : ctx_(lines, firstPos, endPos, parent.ctx_) {}
 
 // Construct with explicit external context flags (for FFI)
-MotionBoundary::MotionBoundary(const Lines& lines, Position firstPos, Position lastPos,
+MotionBoundary::MotionBoundary(const Lines& lines, Position firstPos, Position endPos,
                                bool hasLinesAbove, bool hasLinesBelow)
-    : ctx_(lines, firstPos, lastPos, hasLinesAbove, hasLinesBelow) {}
+    : ctx_(lines, firstPos, endPos, hasLinesAbove, hasLinesBelow) {}
 
 // Construct from EditBoundary
 MotionBoundary::MotionBoundary(const EditBoundary& eb)

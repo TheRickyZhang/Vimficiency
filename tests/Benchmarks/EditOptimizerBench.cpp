@@ -53,7 +53,7 @@ protected:
     BenchmarkSetup(const Lines& lines)
         : initialLines(lines),
           goalLines({""}),
-          boundary(lines, Position(0, 0), lines.lastPos()) {}
+          boundary(lines, Position(0, 0), lines.endPos()) {}
 
     // Custom goal
     BenchmarkSetup(const Lines& initial, const Lines& goal, const EditBoundary& b)
@@ -178,9 +178,9 @@ TEST_F(EditOptimizerBench, BoundaryConstraints) {
   // With prefix (first half of first line is protected)
   {
     Position firstPos(0, 15);
-    Position lastPos = fullBuffer.lastPos();
-    Lines editRegion = fullBuffer.getSpan(firstPos, lastPos);
-    EditBoundary boundary(fullBuffer, firstPos, lastPos);
+    Position endPos = fullBuffer.endPos();
+    Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
+    EditBoundary boundary(fullBuffer, firstPos, endPos);
     printRow("Prefix", BenchmarkSetup(editRegion, {""}, boundary));
   }
 
@@ -189,9 +189,9 @@ TEST_F(EditOptimizerBench, BoundaryConstraints) {
     Position firstPos(0, 0);
     int lastLine = fullBuffer.lastLine();
     int midCol = static_cast<int>(fullBuffer[lastLine].size()) / 2;
-    Position lastPos(lastLine, midCol);
-    Lines editRegion = fullBuffer.getSpan(firstPos, lastPos);
-    EditBoundary boundary(fullBuffer, firstPos, lastPos);
+    Position endPos(lastLine, midCol + 1);
+    Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
+    EditBoundary boundary(fullBuffer, firstPos, endPos);
     printRow("Suffix", BenchmarkSetup(editRegion, {""}, boundary));
   }
 
@@ -200,9 +200,9 @@ TEST_F(EditOptimizerBench, BoundaryConstraints) {
     Position firstPos(0, 10);
     int lastLine = fullBuffer.lastLine();
     int lastLineLen = static_cast<int>(fullBuffer[lastLine].size());
-    Position lastPos(lastLine, max(0, lastLineLen - 10));
-    Lines editRegion = fullBuffer.getSpan(firstPos, lastPos);
-    EditBoundary boundary(fullBuffer, firstPos, lastPos);
+    Position endPos(lastLine, max(1, lastLineLen - 10 + 1));
+    Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
+    EditBoundary boundary(fullBuffer, firstPos, endPos);
     printRow("Both", BenchmarkSetup(editRegion, {""}, boundary));
   }
 }

@@ -64,31 +64,35 @@ constexpr MotionClassMask classesForSingleGoal(int posLine, int posCol,
   return m;
 }
 
-// Compute motion classes needed to reach any point in a range.
-// Returns union of classes for targeting rangeFirst vs rangeLast,
+// Compute motion classes needed to reach any point in a range [first, end).
+// Returns union of classes for targeting rangeFirst vs last inclusive position,
 // plus additional vertical classes for boundary line edge cases.
 constexpr MotionClassMask classesForRange(int posLine, int posCol,
                                            int rfLine, int rfCol,
-                                           int rlLine, int rlCol) {
+                                           int reLine, int reCol) {
   using M = MotionClassMask;
 
-  // Check if in range (lexicographic ordering)
+  // Check if in range [first, end) using lexicographic ordering
   bool afterFirst = (posLine > rfLine) || (posLine == rfLine && posCol >= rfCol);
-  bool beforeLast = (posLine < rlLine) || (posLine == rlLine && posCol <= rlCol);
+  bool beforeEnd = (posLine < reLine) || (posLine == reLine && posCol < reCol);
 
-  if (afterFirst && beforeLast) {
+  if (afterFirst && beforeEnd) {
     return M::None;  // Already in range
   }
 
-  // Take union of classes for targeting rangeFirst vs rangeLast
+  // Last inclusive position for goal targeting
+  int rlLine = reLine;
+  int rlCol = reCol - 1;
+
+  // Take union of classes for targeting rangeFirst vs last inclusive position
   MotionClassMask m = classesForSingleGoal(posLine, posCol, rfLine, rfCol)
                     | classesForSingleGoal(posLine, posCol, rlLine, rlCol);
 
   // Additional: if on boundary line, may need extra vertical to enter range
-  if (posLine == rfLine && posCol < rfCol && rfLine < rlLine) {
+  if (posLine == rfLine && posCol < rfCol && rfLine < reLine) {
     m = m | M::Down;  // Can go down into range
   }
-  if (posLine == rlLine && posCol > rlCol && rfLine < rlLine) {
+  if (posLine == reLine && posCol >= reCol && rfLine < reLine) {
     m = m | M::Up;    // Can go up into range
   }
 

@@ -49,8 +49,8 @@ TEST_F(EditOptimizerOutputCorrectness, SingleLineEmbedded) {
     EditResult res = opt.optimizeEdit(test.editRegion, {""}, test.makeBoundary(), params);
     string expected = test.expectedAfterDeletion();
 
-    for (size_t i = 0; i < res.results.size(); i++) {
-      const Result& r = res.results[i];
+    for (size_t i = 0; i < res.resultCount(); i++) {
+      const Result& r = res.getResults()[i];
       if (!r.isValid()) continue;
 
       Position editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
@@ -85,11 +85,11 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineFullBuffer) {
   for (int iter = 0; iter < CNT; iter++) {
     int numLines = RandomGen::range(2, 3);
     Lines source = randomLines(numLines, 4, 8);
-    EditBoundary boundary(source, {0, 0}, source.lastPos());
+    EditBoundary boundary(source, {0, 0}, source.endPos());
     EditResult res = opt.optimizeEdit(source, {""}, boundary, params);
 
-    for (size_t i = 0; i < res.results.size(); i += 2) {
-      const Result& r = res.results[i];
+    for (size_t i = 0; i < res.resultCount(); i += 2) {
+      const Result& r = res.getResults()[i];
       if (!r.isValid()) continue;
 
       Position pos = fromFlatIndex(static_cast<int>(i), source);
@@ -165,8 +165,8 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineEmbedded) {
     string expected = test.expectedAfterDeletion();
 
     // Test a subset of positions (every 4th to reduce test time)
-    for (size_t i = 0; i < res.results.size(); i += 4) {
-      const Result& r = res.results[i];
+    for (size_t i = 0; i < res.resultCount(); i += 4) {
+      const Result& r = res.getResults()[i];
       if (!r.isValid()) continue;
 
       Position editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
@@ -211,11 +211,11 @@ TEST_F(EditOptimizerOutputCorrectness, SingleLine_Change) {
     Lines goal = {randomLine(goalLen)};
     if (source == goal) continue;
 
-    EditBoundary boundary(source, {0, 0}, source.lastPos());
+    EditBoundary boundary(source, {0, 0}, source.endPos());
     EditResult res = opt.optimizeEdit(source, goal, boundary, params);
 
-    for (size_t i = 0; i < res.results.size(); i++) {
-      const Result& r = res.results[i];
+    for (size_t i = 0; i < res.resultCount(); i++) {
+      const Result& r = res.getResults()[i];
       if (!r.isValid()) continue;
 
       Position pos = fromFlatIndex(static_cast<int>(i), source);
@@ -252,11 +252,11 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLine_FullBufferChange) {
     Lines goal = randomLines(numLines, 4, 8);
     if (source == goal) continue;
 
-    EditBoundary boundary(source, {0, 0}, source.lastPos());
+    EditBoundary boundary(source, {0, 0}, source.endPos());
     EditResult res = opt.optimizeEdit(source, goal, boundary, params);
 
-    for (size_t i = 0; i < res.results.size(); i += 2) {
-      const Result& r = res.results[i];
+    for (size_t i = 0; i < res.resultCount(); i += 2) {
+      const Result& r = res.getResults()[i];
       if (!r.isValid()) continue;
 
       Position pos = fromFlatIndex(static_cast<int>(i), source);
@@ -312,8 +312,8 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLine_EmbeddedChange) {
     string expected = expectedFull.flatten();
 
     // Test a subset of positions (every 4th to reduce test time)
-    for (size_t i = 0; i < res.results.size(); i += 4) {
-      const Result& r = res.results[i];
+    for (size_t i = 0; i < res.resultCount(); i += 4) {
+      const Result& r = res.getResults()[i];
       if (!r.isValid()) continue;
 
       Position editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);

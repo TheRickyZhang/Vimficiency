@@ -87,9 +87,8 @@ protected:
 
     // Set up boundary from full buffer positions
     Position firstPos(test.subBufferStartLine, 0);
-    Position lastPos(endLine, test.fullBuffer[endLine].empty() ? 0 :
-                     static_cast<int>(test.fullBuffer[endLine].size()) - 1);
-    test.boundary = MotionBoundary(test.fullBuffer, firstPos, lastPos);
+    Position endPos(endLine, test.fullBuffer[endLine].effectiveSize());
+    test.boundary = MotionBoundary(test.fullBuffer, firstPos, endPos);
 
     return test;
   }

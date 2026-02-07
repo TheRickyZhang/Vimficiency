@@ -45,7 +45,7 @@ TEST_F(EditOptimizerDeterminismTests, SameInputProducesSameOutput) {
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
     Lines lines = randomLines(RandomGen::range(1, 2), 4, 8);
-    EditBoundary boundary(lines, {0, 0}, lines.lastPos());
+    EditBoundary boundary(lines, {0, 0}, lines.endPos());
 
     EditOptimizer opt1(config);
     EditOptimizer opt2(config);
@@ -53,7 +53,7 @@ TEST_F(EditOptimizerDeterminismTests, SameInputProducesSameOutput) {
     EditResult res1 = opt1.optimizeEdit(lines, {""}, boundary);
     EditResult res2 = opt2.optimizeEdit(lines, {""}, boundary);
 
-    if (res1.results.size() != res2.results.size()) {
+    if (res1.resultCount() != res2.resultCount()) {
       failures++;
       if (failures <= 3) {
         cerr << "Iter " << iter << ": Different result counts" << endl;
@@ -62,9 +62,9 @@ TEST_F(EditOptimizerDeterminismTests, SameInputProducesSameOutput) {
     }
 
     bool mismatch = false;
-    for (size_t i = 0; i < res1.results.size() && !mismatch; i++) {
-      const auto& r1 = res1.results[i];
-      const auto& r2 = res2.results[i];
+    for (size_t i = 0; i < res1.resultCount() && !mismatch; i++) {
+      const auto& r1 = res1.getResults()[i];
+      const auto& r2 = res2.getResults()[i];
 
       if (r1.isValid() != r2.isValid()) {
         mismatch = true;

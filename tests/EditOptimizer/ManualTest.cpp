@@ -113,8 +113,8 @@ void forEachValidResult(const vector<Result>& results, const Lines& lines, Fn fn
 TEST_F(EditOptimizer_ManualTest, PureDeletion_OracleVerified) {
   // Single test with oracle verification - stress tests cover more shapes
   Lines lines = {"aa", "bb"};
-  EditResult editRes = opt.optimizePureDeletion(lines, EditBoundary(lines, Position(0, 0), lines.lastPos()), params);
-  const vector<Result>& res = editRes.results;
+  EditResult editRes = opt.optimizePureDeletion(lines, EditBoundary(lines, Position(0, 0), lines.endPos()), params);
+  const vector<Result>& res = editRes.getResults();
 
   EXPECT_TRUE(allPositionsValid(res, lines));
 
@@ -132,37 +132,37 @@ TEST_F(EditOptimizer_ManualTest, PureDeletion_OracleVerified) {
 TEST_F(EditOptimizer_ManualTest, Boundary_LinesBelow) {
   // Edit region has lines below - tests hasLinesBelow constraint
   Lines fullBuffer = {"aa", "bb", "xx"};
-  Position initialPos(0, 0), goalPos(1, 1);
-  Lines editRegion = fullBuffer.getSpan(initialPos, goalPos);
-  EditBoundary boundary(fullBuffer, initialPos, goalPos);
+  Position initialPos(0, 0), endPos(1, 2);
+  Lines editRegion = fullBuffer.getSpan(initialPos, endPos);
+  EditBoundary boundary(fullBuffer, initialPos, endPos);
 
   EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
-  EXPECT_TRUE(allPositionsValid(res.results, editRegion));
+  EXPECT_TRUE(allPositionsValid(res.getResults(), editRegion));
 }
 
 TEST_F(EditOptimizer_ManualTest, Boundary_SingleLineSurrounded) {
   // Single line edit region surrounded by other lines
   // Can't use dd - must use S/cc
   Lines fullBuffer = {"xx", "hello", "xx"};
-  Position initialPos(1, 0), goalPos(1, 4);
-  Lines editRegion = fullBuffer.getSpan(initialPos, goalPos);
-  EditBoundary boundary(fullBuffer, initialPos, goalPos);
+  Position initialPos(1, 0), endPos(1, 5);
+  Lines editRegion = fullBuffer.getSpan(initialPos, endPos);
+  EditBoundary boundary(fullBuffer, initialPos, endPos);
 
   EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
   // printResultsDebug(res.typeAllResults, "boundary line surrounded");
-  EXPECT_TRUE(allPositionsValid(res.results, editRegion));
+  EXPECT_TRUE(allPositionsValid(res.getResults(), editRegion));
 }
 
 TEST_F(EditOptimizer_ManualTest, Boundary_LinewiseCursorContainment) {
   // Verify cursor stays within edit region and surrounding lines unchanged
   Lines fullBuffer = {"xx", "aa", "bb", "yy"};
-  Position initialPos(1, 0), goalPos(2, 1);
-  Lines editRegion = fullBuffer.getSpan(initialPos, goalPos);
-  EditBoundary boundary(fullBuffer, initialPos, goalPos);
+  Position initialPos(1, 0), endPos(2, 2);
+  Lines editRegion = fullBuffer.getSpan(initialPos, endPos);
+  EditBoundary boundary(fullBuffer, initialPos, endPos);
 
   EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
 
-  forEachValidResult(res.results, editRegion, [&](Position pos, const auto& seq) {
+  forEachValidResult(res.getResults(), editRegion, [&](Position pos, const auto& seq) {
     // Skip visual mode sequences for now
     if (!seq.empty() && seq.keys[0] == 'v') return;
 

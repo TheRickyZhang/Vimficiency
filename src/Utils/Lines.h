@@ -106,39 +106,43 @@ struct Lines final : std::vector<Line> {
 
   Position lastPos() const { return Position(lastLine(), back().lastCol()); }
 
+  // Exclusive end: one past the last valid cursor position on the last line
+  Position endPos() const { return Position(lastLine(), back().effectiveSize()); }
+
   char get(const Position& pos) const {
     assert(pos.line < static_cast<int>(size()) && "Lines::get() position out of bounds");
     return data()[pos.line].get(pos.col);
   }
 
-  Lines getSpan(const Position& front, const Position& back) const {
+  // Get span of text from front (inclusive) to end (exclusive)
+  Lines getSpan(const Position& front, const Position& end) const {
     Lines result;
-    if (front.line == back.line) {
-      result.push_back(data()[front.line].substr(front.col, back.col - front.col + 1));
+    if (front.line == end.line) {
+      result.push_back(data()[front.line].substr(front.col, end.col - front.col));
     } else {
       result.push_back(data()[front.line].substr(front.col));
-      for (int i = front.line + 1; i < back.line; i++) {
+      for (int i = front.line + 1; i < end.line; i++) {
         result.push_back(data()[i]);
       }
-      result.push_back(data()[back.line].substr(0, back.col + 1));
+      result.push_back(data()[end.line].substr(0, end.col));
     }
     return result;
   }
 
-  // Count effective cursor positions in range [front, back] (inclusive)
+  // Count effective cursor positions in range [front, end) (exclusive end)
   // Empty lines count as 1 position
-  int spanSize(const Position& front, const Position& back) const {
-    if (front.line == back.line) {
-      return back.col - front.col + 1;
+  int spanSize(const Position& front, const Position& end) const {
+    if (front.line == end.line) {
+      return end.col - front.col;
     }
     // First line: from front.col to end (or 1 if empty)
     int count = std::max(1, static_cast<int>(data()[front.line].size()) - front.col);
     // Middle lines: full line size (or 1 if empty)
-    for (int i = front.line + 1; i < back.line; i++) {
+    for (int i = front.line + 1; i < end.line; i++) {
       count += std::max(1, static_cast<int>(data()[i].size()));
     }
-    // Last line: from 0 to back.col
-    count += back.col + 1;
+    // Last line: from 0 to end.col
+    count += end.col;
     return count;
   }
 

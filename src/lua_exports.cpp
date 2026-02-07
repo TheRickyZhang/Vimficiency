@@ -171,7 +171,7 @@ const char *vimficiency_analyze(
       // Motion only - use MotionOptimizer (existing logic)
       MotionBoundary boundary(initialLines,
           Position(0, boundaryFirstCol),
-          Position(static_cast<int>(initialLines.size()) - 1, boundaryLastCol),
+          Position(static_cast<int>(initialLines.size()) - 1, boundaryLastCol + 1),
           hasLinesAbove, hasLinesBelow);
 
       MotionOptimizer opt(g_config_internal);
@@ -182,7 +182,7 @@ const char *vimficiency_analyze(
       // Buffer changed - use CompositionOptimizer
       MotionBoundary boundary(initialLines,
           Position(0, boundaryFirstCol),
-          Position(static_cast<int>(initialLines.size()) - 1, boundaryLastCol),
+          Position(static_cast<int>(initialLines.size()) - 1, boundaryLastCol + 1),
           hasLinesAbove, hasLinesBelow);
 
       CompositionOptimizer opt(g_config_internal);

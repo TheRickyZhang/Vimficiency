@@ -23,13 +23,36 @@ using namespace std;
 // Internal Helpers
 // =============================================================================
 
+EditResult::EditResult(vector<Result> results, SearchStats stats,
+                       const Lines& initialLines, int bufferFirstLine,
+                       int bufferFirstCol, Position goalPos)
+    : stats(std::move(stats)),
+      results_(std::move(results)) {
+  initFlatIndex(initialLines, bufferFirstLine, bufferFirstCol, goalPos);
+}
+
+void EditResult::initFlatIndex(const Lines& initialLines, int bufferFirstLine,
+                               int bufferFirstCol, Position gp) {
+  firstLine_ = bufferFirstLine;
+  firstCol_ = bufferFirstCol;
+  goalPos = gp;
+  lineBaseIndex_.clear();
+  lineBaseIndex_.reserve(initialLines.size());
+  int cumSum = 0;
+  for (size_t i = 0; i < initialLines.size(); i++) {
+    int colOffset = (i == 0) ? firstCol_ : 0;
+    lineBaseIndex_.push_back(cumSum - colOffset);
+    cumSum += static_cast<int>(initialLines[i].size());
+  }
+}
+
 ostream& operator<<(ostream& os, const EditResult& editResult) {
   os << "typeAllResults: ";
-  for(size_t i = 0; i < editResult.results.size(); i++) {
-    const auto& res = editResult.results[i];
+  for(size_t i = 0; i < editResult.results_.size(); i++) {
+    const auto& res = editResult.results_[i];
     if (res.isValid()) os << res.sequence; else os << "_";
 
-    if(i < editResult.results.size() - 1) os << " ";
+    if(i < editResult.results_.size() - 1) os << " ";
   }
   os << "\n";
   return os;
@@ -249,7 +272,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
   const auto& suf = editBoundary.suffix();
   const string preSuf = pre + suf;
 
-  EditResult result(ctx.totalPositions);
+  vector<Result> results(ctx.totalPositions);
 
   // Check if replacement strategy is applicable (same-length, single-line)
   optional<Result> replacementResult;
@@ -282,7 +305,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
 
     if (isGoalReached(lines)) {
       int idx = newState.getStartIndex();
-      if (result.results[idx].isValid()) return;
+      if (results[idx].isValid()) return;
 
       auto [changeCmd, changeKeys] = deleteToChange(deleteCmd, deleteKeys);
       auto [collapseSeq, collapseKeys] =
@@ -294,7 +317,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
       effort.append(collapseKeys, config);
       double totalEffort = effort.append(typedKeys, config);
 
-      result.results[idx] = Result(seqStr, totalEffort);
+      results[idx] = Result(seqStr, totalEffort);
       ctx.resultsFound++;
       return;
     }
@@ -328,7 +351,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
 
     if (isGoalReached(lines)) {
       int idx = newState.getStartIndex();
-      if (result.results[idx].isValid()) return;
+      if (results[idx].isValid()) return;
 
       // Convert dd -> cc: cc preserves the line count while dd removes a line.
       // Use pre-dd line count since that's what cc would operate on.
@@ -352,7 +375,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
       effort.append(collapseKeys, config);
       double totalEffort = effort.append(ccTypedKeys, config);
 
-      result.results[idx] = Result(seqStr, totalEffort);
+      results[idx] = Result(seqStr, totalEffort);
       ctx.resultsFound++;
       return;
     }
@@ -379,7 +402,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
 
       if (isGoalReached(lines)) {
         int idx = newState.getStartIndex();
-        if (result.results[idx].isValid()) return;
+        if (results[idx].isValid()) return;
 
         // For optimizeEdit, we need to enter insert mode to type content
         // J doesn't enter insert mode, so we need to use a change command after
@@ -416,14 +439,13 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
 
   // Merge replacement result at position 0 if it's better
   if (replacementResult.has_value()) {
-    if (!result.results[0].isValid() ||
-        replacementResult->keyCost < result.results[0].keyCost) {
-      result.results[0] = *replacementResult;
+    if (!results[0].isValid() ||
+        replacementResult->keyCost < results[0].keyCost) {
+      results[0] = *replacementResult;
     }
   }
 
-  result.stats = ctx.getStats();
-  return result;
+  return EditResult(std::move(results), ctx.getStats());
 }
 
 // =============================================================================
@@ -443,8 +465,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
   // Local alias for goal checking
   const string preSuf = editBoundary.prefix() + editBoundary.suffix();
 
-  EditResult result(ctx.totalPositions);
-  vector<Result>& results = result.results;
+  vector<Result> results(ctx.totalPositions);
 
   // Goal check for pure deletion: only single-line goals accepted
   // (can't collapse multiple empty lines without insert mode)
@@ -633,6 +654,5 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
     }
   }
 
-  result.stats = ctx.getStats();
-  return result;
+  return EditResult(std::move(results), ctx.getStats());
 }

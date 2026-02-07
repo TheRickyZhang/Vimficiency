@@ -75,7 +75,7 @@ EmbeddedEditRegion generateSingleLineEmbedded(
   result.startLine = 0;
   result.startCol = static_cast<int>(result.prefix.size());
   result.endLine = 0;
-  result.endCol = result.startCol + static_cast<int>(content.size()) - 1;
+  result.endCol = result.startCol + static_cast<int>(content.size());
 
   return result;
 }
@@ -114,7 +114,7 @@ EmbeddedEditRegion generateMultiLineEmbedded(
   result.startCol = static_cast<int>(result.prefix.size());
   result.endLine = numLines - 1;
   result.endCol = static_cast<int>(result.fullBuffer[result.endLine].size()) -
-                  static_cast<int>(result.suffix.size()) - 1;
+                  static_cast<int>(result.suffix.size());
 
   return result;
 }

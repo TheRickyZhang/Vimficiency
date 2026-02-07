@@ -106,9 +106,7 @@ protected:
 
   // Create boundary for full buffer deletion (no constraints)
   EditBoundary makeFullBufferBoundary(const Lines& source) {
-    int lastLine = static_cast<int>(source.size()) - 1;
-    int lastCol = source[lastLine].empty() ? 0 : static_cast<int>(source[lastLine].size()) - 1;
-    return EditBoundary(source, Position(0, 0), Position(lastLine, lastCol));
+    return EditBoundary(source, Position(0, 0), source.endPos());
   }
 };
 
@@ -430,9 +428,9 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceMixedContentFailure) {
 TEST_F(DebugTest, DISABLED_InvestigateSingleLineSurrounded) {
   // From Boundary_SingleLineSurrounded failure
   Lines fullBuffer = {"xx", "hello", "xx"};
-  Position initialPos(1, 0), goalPos(1, 4);
-  Lines editRegion = fullBuffer.getSpan(initialPos, goalPos);
-  EditBoundary boundary(fullBuffer, initialPos, goalPos);
+  Position initialPos(1, 0), endPos(1, 5);
+  Lines editRegion = fullBuffer.getSpan(initialPos, endPos);
+  EditBoundary boundary(fullBuffer, initialPos, endPos);
 
   cerr << "\n=== SingleLineSurrounded Investigation ===" << endl;
   cerr << "fullBuffer: " << fullBuffer << endl;
@@ -461,7 +459,7 @@ TEST_F(DebugTest, DISABLED_InvestigatePosition11) {
   // With 1M iterations, finds d{D (cost 3) - actually better!
   // Conclusion: The fix works, but search budget affects results
   Lines initialLines = {"aa bb", "arst neio"};
-  EditBoundary boundary(initialLines, {0, 0}, initialLines.lastPos());
+  EditBoundary boundary(initialLines, {0, 0}, initialLines.endPos());
 
   // Position 11 is line 1, col 6 ('e' in "arst neio")
   cerr << "\n=== Position 11 Investigation ===" << endl;

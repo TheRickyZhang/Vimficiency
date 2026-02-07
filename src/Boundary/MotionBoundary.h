@@ -24,11 +24,13 @@ public:
   static const MotionBoundary& noParent();
 
   // Construct from buffer context, optionally inheriting from parent
-  MotionBoundary(const Lines& lines, Position firstPos, Position lastPos,
+  // endPos is exclusive: one past the last valid cursor position on the last line
+  MotionBoundary(const Lines& lines, Position firstPos, Position endPos,
                  const MotionBoundary& parent = noParent());
 
   // Construct with explicit external context flags (for FFI)
-  MotionBoundary(const Lines& lines, Position firstPos, Position lastPos,
+  // endPos is exclusive: one past the last valid cursor position on the last line
+  MotionBoundary(const Lines& lines, Position firstPos, Position endPos,
                  bool hasLinesAbove, bool hasLinesBelow);
 
   // Construct from EditBoundary (for conversion when switching optimizer types)
