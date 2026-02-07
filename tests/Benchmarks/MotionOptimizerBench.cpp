@@ -10,11 +10,9 @@
 #include "Benchmarks/BenchUtils.h"
 #include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
-#include "Keyboard/MotionToKeys.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizerParams.h"
-#include "State/RunningEffort.h"
 #include "Utils/RandomGeneration.h"
 
 using namespace std;
@@ -23,7 +21,7 @@ using namespace std;
 // A/B Comparison Configuration
 // =============================================================================
 
-constexpr bool ENABLE_COMPARISON = true;
+constexpr bool ENABLE_COMPARISON = false;
 constexpr const char* COMPARISON_NAME = "Directional Pruning (A = on, B = off)";
 
 // NOTE: Must be static, not inline - inline causes incorrect behavior with templates

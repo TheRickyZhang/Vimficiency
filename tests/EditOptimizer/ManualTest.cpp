@@ -6,6 +6,7 @@
 //
 // Run: ./build/tests/vimficiency_tests --gtest_filter="EditOptimizer_ManualTest.*"
 
+#include <climits>
 #include <gtest/gtest.h>
 #include <memory>
 
@@ -25,7 +26,8 @@ class EditOptimizer_ManualTest : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle;
   Config config = Config::uniform();
-  EditOptimizerParams params{};
+  // For correctness on small buffers, set int max upper bound
+  EditOptimizerParams params = EditOptimizerParams{}.withMaxResults(INT_MAX);
   EditOptimizer opt{config};
 
   static void SetUpTestSuite() { oracle = make_unique<NeovimOracle>(); }

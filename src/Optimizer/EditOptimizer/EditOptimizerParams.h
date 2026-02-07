@@ -1,21 +1,19 @@
 #pragma once
 
-#include <climits>
-
 #include "Optimizer/OptimizerParamsBase.h"
 
 // =============================================================================
 // EditOptimizerParams - Parameters for EditOptimizer
 // =============================================================================
 // EditOptimizer searches from ALL starting positions simultaneously.
-// maxResults limits total results across all positions.
-// Default is unlimited (all positions) since EditOptimizer's multi-source search
-// naturally bounds by totalPositions. Callers can set a lower limit to cap search.
+// maxResults limits total completions reaching goal state.
+// Higher default than other optimizers because multi-source search produces
+// duplicate completions (same position reached via different paths).
+// The search is also implicitly bounded by totalPositions (unique starting
+// positions covered) in shouldContinue().
 
 struct EditOptimizerParams : OptimizerParamsBase {
-  // Override base default: EditOptimizer finds results for all positions by default.
-  // The search is also bounded by totalPositions in shouldContinue().
-  EditOptimizerParams() { maxResults = INT_MAX; }
+  EditOptimizerParams() { maxResults = 20; }
   // Line padding for internal MotionOptimizer calls (visual delete path).
   // Lower default than CompositionOptimizer since effectiveLines already
   // includes prefix/suffix context. Adjustable to 0 for no padding.

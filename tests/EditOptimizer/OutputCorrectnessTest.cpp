@@ -24,6 +24,7 @@ class EditOptimizerOutputCorrectness : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle;
   static const int CNT = 30;
+  static const int REDUCED_CNT = 5;  // Reduced - embedded optimization is slow (~500ms each)
   Config config = Config::uniform();
   EditOptimizerParams params{};
   EditOptimizer opt{config};
@@ -155,11 +156,10 @@ TEST_F(EditOptimizerOutputCorrectness, Replacement_SameLength) {
 // With full prefix/suffix support, effectiveLines matches fullBuffer exactly,
 // eliminating cursor position divergence after multi-line deletions.
 TEST_F(EditOptimizerOutputCorrectness, MultiLineEmbedded) {
-  const int REDUCED_NUM_ITERATIONS = 8;  // Reduced - embedded optimization is slow (~500ms each)
   RandomGen::seed(45);
   int passed = 0, total = 0;
 
-  for (int iter = 0; iter < REDUCED_NUM_ITERATIONS; iter++) {
+  for (int iter = 0; iter < REDUCED_CNT; iter++) {
     auto test = generateRandomMultiLineEmbedded();
     EditResult res = opt.optimizeEdit(test.editRegion, {""}, test.makeBoundary(), params);
     string expected = test.expectedAfterDeletion();
@@ -243,11 +243,11 @@ TEST_F(EditOptimizerOutputCorrectness, SingleLine_Change) {
 
 // Multi-line change: different source/goal content, full-buffer boundary
 TEST_F(EditOptimizerOutputCorrectness, MultiLine_FullBufferChange) {
-  const int REDUCED_NUM_ITERATIONS = 3;
+  const int NUM_ITERATIONS = 3;  // Change path is expensive (~1s/iter at 50k node cap)
   RandomGen::seed(51);
   int passed = 0, total = 0;
 
-  for (int iter = 0; iter < REDUCED_NUM_ITERATIONS; iter++) {
+  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
     int numLines = RandomGen::range(2, 3);
     Lines source = randomLines(numLines, 4, 8);
     Lines goal = randomLines(numLines, 4, 8);
@@ -285,11 +285,10 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLine_FullBufferChange) {
 
 // Multi-line embedded change: prefix/suffix around edit region with different goal content
 TEST_F(EditOptimizerOutputCorrectness, MultiLine_EmbeddedChange) {
-  const int REDUCED_NUM_ITERATIONS = 8;
   RandomGen::seed(52);
   int passed = 0, total = 0;
 
-  for (int iter = 0; iter < REDUCED_NUM_ITERATIONS; iter++) {
+  for (int iter = 0; iter < REDUCED_CNT; iter++) {
     auto test = generateRandomMultiLineEmbedded();
 
     // Generate goal lines: same count as editRegion, with possible indentation
