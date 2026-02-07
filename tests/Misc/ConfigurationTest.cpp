@@ -30,21 +30,19 @@ protected:
   static vector<Result>
   runOptimizer(const Lines &lines, Position start,
                Position end, const string &userSeq,
-               Config config,
-               const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS) {
+               Config config) {
     MotionOptimizer opt(config);
     MotionBoundary boundary;
     return opt.optimize(lines, start, end,
                         MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
-                        userSeq, boundary, RunningEffort(), navContext, allowedMotions).results;
+                        userSeq, boundary, RunningEffort(), navContext).results;
   }
 
   // Get cost of best result for a motion
   static double getBestCost(const Lines &lines, Position start,
                             Position end, const string &userSeq,
-                            Config config,
-                            const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS) {
-    auto results = runOptimizer(lines, start, end, userSeq, config, allowedMotions);
+                            Config config) {
+    auto results = runOptimizer(lines, start, end, userSeq, config);
     if (results.empty()) return -1;
     return results[0].keyCost;
   }
@@ -107,10 +105,9 @@ TEST_F(ConfigurationTest, LayoutAffectsOptimizer) {
   Position end(3, 0);
   string userSeq = "jjj";
 
-  auto motions = getSlicedMotionToKeys({"j", "k"});
-  double uniformCost = getBestCost(a2_block_lines, start, end, userSeq, Config::uniform(), motions);
-  double qwertyCost = getBestCost(a2_block_lines, start, end, userSeq, Config::qwerty(), motions);
-  double colemakCost = getBestCost(a2_block_lines, start, end, userSeq, Config::colemakDh(), motions);
+  double uniformCost = getBestCost(a2_block_lines, start, end, userSeq, Config::uniform());
+  double qwertyCost = getBestCost(a2_block_lines, start, end, userSeq, Config::qwerty());
+  double colemakCost = getBestCost(a2_block_lines, start, end, userSeq, Config::colemakDh());
 
   // All should find valid results
   EXPECT_GT(uniformCost, 0);
@@ -200,14 +197,12 @@ TEST_F(ConfigurationTest, CustomKeyCostAffectsOptimizer) {
 
   // Normal uniform config
   Config normal = Config::uniform();
-  auto normalResults = runOptimizer(a2_block_lines, start, end, userSeq, normal,
-                                     getSlicedMotionToKeys({"j", "k", "+", "-"}));
+  auto normalResults = runOptimizer(a2_block_lines, start, end, userSeq, normal);
 
   // Make j very expensive
   Config expensiveJ = Config::uniform();
   expensiveJ.keyInfo[static_cast<size_t>(Key::Key_J)].base_cost = 100.0;
-  auto expensiveResults = runOptimizer(a2_block_lines, start, end, userSeq, expensiveJ,
-                                        getSlicedMotionToKeys({"j", "k", "+", "-"}));
+  auto expensiveResults = runOptimizer(a2_block_lines, start, end, userSeq, expensiveJ);
 
   ASSERT_FALSE(normalResults.empty());
   ASSERT_FALSE(expensiveResults.empty());

@@ -41,7 +41,6 @@ protected:
   static vector<Result>
   runOptimizer(const Lines &lines, Position start,
                Position end, const string &userSeq,
-               const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS,
                vector<KeyAdjustment> adjustments = {},
                Config config = Config::uniform()
                ) {
@@ -57,7 +56,7 @@ protected:
     // Try to explore more (30 results), lower search depth for speed (2e4)
     return opt.optimize(lines, start, end,
                         MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
-                        userSeq, boundary, RunningEffort(), navContext, allowedMotions).results;
+                        userSeq, boundary, RunningEffort(), navContext).results;
   }
 
   static vector<RangeResult>
@@ -65,7 +64,6 @@ protected:
                       Position rangeBegin, Position rangeEnd,
                       const string &userSeq,
                       int maxResults = 10,
-                      const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS,
                       Config config = Config::uniform()) {
     MotionOptimizer opt(config);
     MotionBoundary boundary;
@@ -76,7 +74,7 @@ protected:
                                    .withMaxResults(maxResults)
                                    .withMaxNodesExplored(20000)
                                    .withAllowMultiplePerPosition(true),
-                               userSeq, boundary, RunningEffort(), navContext, allowedMotions).results;
+                               userSeq, boundary, RunningEffort(), navContext).results;
   }
 };
 
@@ -181,12 +179,11 @@ protected:
   static vector<Result>
   runWithBoundary(const Lines& lines, Position start, Position end,
                   const string& userSeq, const MotionBoundary& boundary,
-                  const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS,
                   Config config = Config::uniform()) {
     MotionOptimizer opt(config);
     return opt.optimize(lines, start, end,
                         MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
-                        userSeq, boundary, RunningEffort(), navContext, allowedMotions).results;
+                        userSeq, boundary, RunningEffort(), navContext).results;
   }
 
   // Helper to check if results contain a sequence
@@ -205,8 +202,7 @@ TEST_F(MotionBoundaryTest, DefaultBoundary_AllowsGG) {
 
   MotionBoundary boundary;  // default: no exclusions
 
-  auto results = runWithBoundary(lines, start, end, "kk", boundary,
-                                 getSlicedMotionToKeys({"j", "k", "gg"}));
+  auto results = runWithBoundary(lines, start, end, "kk", boundary);
 
   EXPECT_TRUE(hasSequence(results, "gg")) << "Default boundary should allow gg";
 }
@@ -223,8 +219,7 @@ TEST_F(MotionBoundaryTest, ExcludeGG_RemovesGG) {
   // firstPos=(2,0) means hasLinesAbove=true, endPos=(5,6) means hasLinesBelow=false
   MotionBoundary boundary(fullBuffer, Position(2, 0), Position(5, 6));
 
-  auto results = runWithBoundary(subBuffer, start, end, "kk", boundary,
-                                 getSlicedMotionToKeys({"j", "k", "gg"}));
+  auto results = runWithBoundary(subBuffer, start, end, "kk", boundary);
 
   EXPECT_FALSE(hasSequence(results, "gg")) << "Boundary with hasLinesAbove should exclude gg";
   EXPECT_TRUE(hasSequence(results, "kk")) << "Should still find alternative path";
@@ -237,8 +232,7 @@ TEST_F(MotionBoundaryTest, DefaultBoundary_AllowsG) {
 
   MotionBoundary boundary;  // default: no exclusions
 
-  auto results = runWithBoundary(lines, start, end, "jj", boundary,
-                                 getSlicedMotionToKeys({"j", "k", "G"}));
+  auto results = runWithBoundary(lines, start, end, "jj", boundary);
 
   EXPECT_TRUE(hasSequence(results, "G")) << "Default boundary should allow G";
 }
@@ -254,8 +248,7 @@ TEST_F(MotionBoundaryTest, ExcludeG_RemovesG) {
   // Boundary computed from sub-region: firstPos=(0,0) hasLinesAbove=false, endPos=(3,5) hasLinesBelow=true
   MotionBoundary boundary(fullBuffer, Position(0, 0), Position(3, 5));
 
-  auto results = runWithBoundary(subBuffer, start, end, "jj", boundary,
-                                 getSlicedMotionToKeys({"j", "k", "G"}));
+  auto results = runWithBoundary(subBuffer, start, end, "jj", boundary);
 
   EXPECT_FALSE(hasSequence(results, "G")) << "Boundary with hasLinesBelow should exclude G";
   EXPECT_TRUE(hasSequence(results, "jj")) << "Should still find alternative path";
@@ -276,8 +269,7 @@ TEST_F(MotionBoundaryTest, LeftColOffset_FiltersPrefixPositions) {
   // Boundary from position (0,7) to (0,13) gives leftColOffset=7
   MotionBoundary boundary(lines, Position(0, 7), Position(0, 13));
 
-  auto results = runWithBoundary(lines, start, end, "hhhhh", boundary,
-                                 getSlicedMotionToKeys({"h", "l"}));
+  auto results = runWithBoundary(lines, start, end, "hhhhh", boundary);
 
   // With filtering removed, the optimizer WILL find a path to the prefix region
   EXPECT_FALSE(results.empty())
@@ -285,8 +277,7 @@ TEST_F(MotionBoundaryTest, LeftColOffset_FiltersPrefixPositions) {
 
   // Should still find path to valid position
   Position end2(0, 8);  // Valid position after prefix
-  auto results2 = runWithBoundary(lines, start, end2, "hh", boundary,
-                                  getSlicedMotionToKeys({"h", "l"}));
+  auto results2 = runWithBoundary(lines, start, end2, "hh", boundary);
   EXPECT_FALSE(results2.empty()) << "Should find path to valid positions";
 }
 
@@ -305,8 +296,7 @@ TEST_F(MotionBoundaryTest, RightColOffset_FiltersSuffixPositions) {
   // Boundary from position (0,0) to (0,7) gives rightColOffset = 13-7 = 6
   MotionBoundary boundary(lines, Position(0, 0), Position(0, 7));
 
-  auto results = runWithBoundary(lines, start, end, "lllllll", boundary,
-                                 getSlicedMotionToKeys({"h", "l"}));
+  auto results = runWithBoundary(lines, start, end, "lllllll", boundary);
 
   // With filtering removed, the optimizer WILL find a path to the suffix region
   EXPECT_FALSE(results.empty())
@@ -314,8 +304,7 @@ TEST_F(MotionBoundaryTest, RightColOffset_FiltersSuffixPositions) {
 
   // Should still find path to valid position
   Position end2(0, 6);  // Valid position before suffix (col 7 is where suffix starts)
-  auto results2 = runWithBoundary(lines, start, end2, "lll", boundary,
-                                  getSlicedMotionToKeys({"h", "l"}));
+  auto results2 = runWithBoundary(lines, start, end2, "lll", boundary);
   EXPECT_FALSE(results2.empty()) << "Should find path to valid positions";
 }
 

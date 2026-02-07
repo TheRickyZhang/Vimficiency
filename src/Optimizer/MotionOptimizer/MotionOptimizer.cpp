@@ -7,7 +7,6 @@
 
 #include "Optimizer/BufferIndex.h"
 #include "State/PosKey.h"
-#include "Keyboard/MotionToKeys.h"
 #include "Utils/Debug.h"
 
 using namespace std;
@@ -21,15 +20,14 @@ MotionResult MotionOptimizer::optimize(
     string_view userSequence,
     const MotionBoundary& boundary,
     const RunningEffort& startingEffort,
-    const NavContext& navContext,
-    const MotionToKeys& rawMotionToKeys) {
+    const NavContext& navContext) {
 
   if (startPos < endPos) {
     return optimizeImpl<true>(lines, startPos, startingEffort, endPos,
-                              userSequence, navContext, boundary, rawMotionToKeys, params);
+                              userSequence, navContext, boundary, params);
   } else {
     return optimizeImpl<false>(lines, startPos, startingEffort, endPos,
-                               userSequence, navContext, boundary, rawMotionToKeys, params);
+                               userSequence, navContext, boundary, params);
   }
 }
 
@@ -43,7 +41,6 @@ MotionResult MotionOptimizer::optimizeImpl(
     string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
-    const MotionToKeys &rawMotionToKeys,
     MotionOptimizerParams params) {
 
   BufferIndex bufferIndex(lines);
@@ -55,7 +52,7 @@ MotionResult MotionOptimizer::optimizeImpl(
   debug("user effort for sequence", userSequence, "is", userEffort);
 
   MotionSearchContext ctx(lines, navContext, boundary, params, config, userEffort);
-  MotionExplorer explorer(ctx, endPos, bufferIndex, rawMotionToKeys);
+  MotionExplorer explorer(ctx, endPos, bufferIndex);
 
   MotionState initialState(startPos, startingEffort, 0.0, 0.0);
   vector<Result> res;
@@ -118,10 +115,10 @@ MotionResult MotionOptimizer::optimizeImpl(
 // Explicit template instantiations
 template MotionResult MotionOptimizer::optimizeImpl<true>(
     const Lines&, const Position&, const RunningEffort&, const Position&,
-    string_view, const NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerParams);
+    string_view, const NavContext&, const MotionBoundary&, MotionOptimizerParams);
 template MotionResult MotionOptimizer::optimizeImpl<false>(
     const Lines&, const Position&, const RunningEffort&, const Position&,
-    string_view, const NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerParams);
+    string_view, const NavContext&, const MotionBoundary&, MotionOptimizerParams);
 
 // =================================================
 // optimizeToRange implementation
@@ -137,8 +134,7 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
     string_view userSequence,
     const MotionBoundary& boundary,
     const RunningEffort& startingEffort,
-    const NavContext& navContext,
-    const MotionToKeys& rawMotionToKeys) {
+    const NavContext& navContext) {
 
   // Precondition: startPos must not be in range [rangeFirst, rangeEnd)
   assert(!(startPos >= rangeFirst && startPos < rangeEnd) &&
@@ -147,11 +143,11 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
   if (startPos < rangeFirst) {
     return optimizeToRangeImpl<true>(lines, startPos, startingEffort, rangeFirst, rangeEnd,
                                       userSequence, navContext,
-                                      boundary, rawMotionToKeys, params);
+                                      boundary, params);
   } else {
     return optimizeToRangeImpl<false>(lines, startPos, startingEffort, rangeFirst, rangeEnd,
                                        userSequence, navContext,
-                                       boundary, rawMotionToKeys, params);
+                                       boundary, params);
   }
 }
 
@@ -166,7 +162,6 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
-    const MotionToKeys& rawMotionToKeys,
     MotionOptimizerRangeParams params) {
 
   double userEffort = userSequence.empty()
@@ -288,8 +283,8 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
 // Explicit template instantiations for optimizeToRangeImpl
 template RangeMotionResult MotionOptimizer::optimizeToRangeImpl<true>(
     const Lines&, const Position&, const RunningEffort&, const Position&, const Position&,
-    string_view, const NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerRangeParams);
+    string_view, const NavContext&, const MotionBoundary&, MotionOptimizerRangeParams);
 template RangeMotionResult MotionOptimizer::optimizeToRangeImpl<false>(
     const Lines&, const Position&, const RunningEffort&, const Position&, const Position&,
-    string_view, const NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerRangeParams);
+    string_view, const NavContext&, const MotionBoundary&, MotionOptimizerRangeParams);
 

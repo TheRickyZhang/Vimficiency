@@ -21,21 +21,11 @@ struct EditResult {
   // Search statistics for debugging and benchmarking
   SearchStats stats;
 
-  // Takes ownership of optimizer-built results. No flat index yet;
-  // call initFlatIndex() to set up buffer-position mapping.
-  EditResult(std::vector<Result> results, SearchStats stats)
-      : stats(std::move(stats)), results_(std::move(results)) {}
-
-  // Full constructor: initializes all fields including lineBaseIndex computation.
-  // Used by consumers that have the complete edit context available.
+  // Constructor: initializes results and flat index for buffer-position lookup.
+  // Buffer-position params default to edit-region-local (line 0, col 0).
   EditResult(std::vector<Result> results, SearchStats stats,
-             const Lines& initialLines, int bufferFirstLine, int bufferFirstCol,
-             Position goalPos);
-
-  // Set up buffer-position mapping for O(1) lookup via resultAt().
-  // Can be called after construction to defer flat index setup.
-  void initFlatIndex(const Lines& initialLines, int bufferFirstLine,
-                     int bufferFirstCol, Position goalPos);
+             const Lines& initialLines, int bufferFirstLine = 0,
+             int bufferFirstCol = 0, Position goalPos = {0, 0});
 
   // Look up the result for a buffer position. Returns nullptr if the position
   // is outside the edit region or the result at that position is invalid.
@@ -98,7 +88,10 @@ struct EditOptimizer {
       const Lines& initialLines,
       const Lines& goalLines,
       EditBoundary editBoundary,
-      EditOptimizerParams params = {}
+      EditOptimizerParams params = {},
+      int bufferFirstLine = 0,
+      int bufferFirstCol = 0,
+      Position goalPos = {0, 0}
   );
 
   // find optimal sequences to delete all content in initialLines
@@ -107,6 +100,9 @@ struct EditOptimizer {
   EditResult optimizePureDeletion(
       const Lines& initialLines,
       EditBoundary editBoundary,
-      EditOptimizerParams params = {}
+      EditOptimizerParams params = {},
+      int bufferFirstLine = 0,
+      int bufferFirstCol = 0,
+      Position goalPos = {0, 0}
   );
 };

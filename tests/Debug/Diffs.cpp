@@ -74,7 +74,7 @@ TEST_F(DebugTest, CompositionDiffMerging) {
 
     // Create context to trigger merge
     CompositionSearchContext ctx(initial, Position(0, 0), goal, "",
-        NavContext(), MotionBoundary(), EXPLORABLE_MOTIONS, params, config);
+        NavContext(), MotionBoundary(), params, config);
 
     cerr << "  Merged diffs: " << ctx.totalEdits << endl;
     for (int i = 0; i < ctx.totalEdits; i++) {
@@ -113,8 +113,9 @@ TEST_F(DebugTest, CompositionDiffMerging) {
     Position initialPos(0, 0);
 
     CompositionOptimizer opt(config);
-    vector<Result> results = opt.optimize(
+    auto compResult = opt.optimize(
         initial, initialPos, goal, Position(0, 0), params);
+    const auto& results = compResult.results;
 
     cerr << "  Results: " << results.size() << endl;
     for (size_t i = 0; i < results.size(); i++) {

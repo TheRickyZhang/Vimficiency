@@ -177,13 +177,12 @@ protected:
       Position start,
       Position end,
       const string& userSeq,
-      const MotionToKeys& allowedMotions = EXPLORABLE_MOTIONS,
       Config config = Config::uniform()) {
     MotionOptimizer opt(config);
     MotionBoundary boundary;
     return opt.optimize(lines, start, end,
                         MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
-                        userSeq, boundary, RunningEffort(), navContext, allowedMotions).results;
+                        userSeq, boundary, RunningEffort(), navContext).results;
   }
 };
 
@@ -268,8 +267,7 @@ TEST_F(CountMotionsOptimizerTest, CountParagraph_Global) {
   string userSeq = "}}";
 
   auto results = runOptimizer(
-    multiWordLines, start, end, userSeq,
-    getSlicedMotionToKeys({"j", "k", "{", "}"})
+    multiWordLines, start, end, userSeq
   );
 
   // Should find paragraph-based motions
@@ -307,16 +305,16 @@ TEST(CountableMotionPairTest, LineMotionsContainExpectedPairs) {
   bool hasWORDEnd = false;
 
   for (const auto& pair : COUNT_SEARCHABLE_MOTIONS_LINE) {
-    if (pair.forward == "w" && pair.backward == "b" && pair.type == LandingType::WordBegin) {
+    if (pair.forward.seq.keys == "w" && pair.backward.seq.keys == "b" && pair.type == LandingType::WordBegin) {
       hasWordBegin = true;
     }
-    if (pair.forward == "e" && pair.backward == "ge" && pair.type == LandingType::WordEnd) {
+    if (pair.forward.seq.keys == "e" && pair.backward.seq.keys == "ge" && pair.type == LandingType::WordEnd) {
       hasWordEnd = true;
     }
-    if (pair.forward == "W" && pair.backward == "B" && pair.type == LandingType::WORDBegin) {
+    if (pair.forward.seq.keys == "W" && pair.backward.seq.keys == "B" && pair.type == LandingType::WORDBegin) {
       hasWORDBegin = true;
     }
-    if (pair.forward == "E" && pair.backward == "gE" && pair.type == LandingType::WORDEnd) {
+    if (pair.forward.seq.keys == "E" && pair.backward.seq.keys == "gE" && pair.type == LandingType::WORDEnd) {
       hasWORDEnd = true;
     }
   }
@@ -332,10 +330,10 @@ TEST(CountableMotionPairTest, GlobalMotionsContainParagraphAndSentence) {
   bool hasSentence = false;
 
   for (const auto& pair : COUNT_SEARCHABLE_MOTIONS_GLOBAL) {
-    if (pair.forward == "}" && pair.backward == "{" && pair.type == LandingType::Paragraph) {
+    if (pair.forward.seq.keys == "}" && pair.backward.seq.keys == "{" && pair.type == LandingType::Paragraph) {
       hasParagraph = true;
     }
-    if (pair.forward == ")" && pair.backward == "(" && pair.type == LandingType::Sentence) {
+    if (pair.forward.seq.keys == ")" && pair.backward.seq.keys == "(" && pair.type == LandingType::Sentence) {
       hasSentence = true;
     }
   }

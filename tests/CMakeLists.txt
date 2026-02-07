@@ -77,6 +77,7 @@ add_executable(vimficiency_tests
   CompositionOptimizer/ManualTest.cpp
   CompositionOptimizer/OutputCorrectnessTest.cpp
   CompositionOptimizer/BracketQuoteContextTest.cpp
+  CompositionOptimizer/HumanApprovalTest.cpp
 
   # EditOptimizer
   EditOptimizer/ManualTest.cpp

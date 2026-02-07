@@ -35,16 +35,20 @@ Position computeInsertEndPos(Position insertPos, const string& insertedText) {
 } // anonymous namespace
 
 // Note that goalPos doesn't matter except for directionality; we want to explore anything that performs the same edits.
-vector<Result> CompositionOptimizer::optimize(
+CompositionResult CompositionOptimizer::optimize(
     const Lines& initialLines, const Position initialPos, const Lines& goalLines,
     const Position goalPos, CompositionOptimizerParams params,
     string_view userSequence, const MotionBoundary& boundary,
-    const NavContext& navigationContext, const MotionToKeys& rawMotionToKeys) {
+    const NavContext& navigationContext) {
+  if(goalPos < initialPos) {
+    debug("only support forward motion in CompositionOptimizer");
+  }
+
   MotionOptimizer motionOptimizer(config);
 
   // Create search context - handles all pre-computation
   CompositionSearchContext ctx(initialLines, initialPos, goalLines, userSequence,
-                               navigationContext, boundary, rawMotionToKeys,
+                               navigationContext, boundary,
                                params, config);
 
   if (ctx.totalEdits == 0) {
@@ -54,6 +58,9 @@ vector<Result> CompositionOptimizer::optimize(
     debug("Cannot support more than 16 edits");
     return {};
   }
+
+  // Cursor position after last edit completes
+  Position resultGoalPos = ctx.editResults.back().goalPos;
 
   vector<Result> results;
 
@@ -133,7 +140,7 @@ vector<Result> CompositionOptimizer::optimize(
               subset, localPos, localRangeFirst, localRangeEnd,
               MotionOptimizerRangeParams{}.withMaxResults(1), "",
               subsetBoundary, s.getRunningEffort(),
-              navigationContext, ctx.motionToKeys).results;
+              navigationContext).results;
 
           for (RangeResult& movResult : results) {
             if (!movResult.isValid()) continue;
@@ -260,7 +267,7 @@ vector<Result> CompositionOptimizer::optimize(
           MotionOptimizerRangeParams{}.withMaxResults(
               clamp(nextEdit.origCharCount(), 1, 10)), "",
           subsetBoundary, s.getRunningEffort(),
-          navigationContext, ctx.motionToKeys).results;
+          navigationContext).results;
 
       for (RangeResult& movResult : movementResults) {
         if (!movResult.isValid()) continue;
@@ -273,5 +280,6 @@ vector<Result> CompositionOptimizer::optimize(
     }
   }
 
-  return results;
+  return {std::move(results), ctx.getStats(static_cast<int>(results.size())),
+          resultGoalPos, std::move(ctx.diffStates)};
 }

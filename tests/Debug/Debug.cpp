@@ -269,8 +269,9 @@ TEST_F(NeovimOracleDebug, InvestigateTextObjectShortcuts) {
     CompositionOptimizer opt{config};
     CompositionOptimizerParams params = CompositionOptimizerParams{}.withMaxResults(10);
 
-    vector<Result> results = opt.optimize(
+    auto compResult = opt.optimize(
         initial, initialPos, goal, Position(0,0), params);
+    const auto& results = compResult.results;
 
     cerr << "Results: " << results.size() << endl;
     for (size_t i = 0; i < results.size(); i++) {
@@ -291,7 +292,7 @@ TEST_F(NeovimOracleDebug, InvestigateMaskBugs) {
   auto makeCtx = [&](const Lines& initial, const Lines& goal) {
     return CompositionSearchContext(
         initial, Position(0, 0), goal, "",
-        NavContext(), MotionBoundary(), EXPLORABLE_MOTIONS, params, config);
+        NavContext(), MotionBoundary(), params, config);
   };
 
   // Bug 1: Bracket mask doesn't mark positions INSIDE the brackets
@@ -426,8 +427,9 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
   CompositionOptimizerParams params{};
 
   cerr << endl << "Running CompositionOptimizer..." << endl;
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   cerr << "Results: " << results.size() << endl;
   for (size_t i = 0; i < results.size(); i++) {
@@ -563,7 +565,8 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
   {
     CompositionOptimizer opt(config);
     CompositionOptimizerParams optParams{};
-    auto actualResults = opt.optimize(initial, initialPos, goal, goalPos, optParams);
+    auto compResult = opt.optimize(initial, initialPos, goal, goalPos, optParams);
+    const auto& actualResults = compResult.results;
     cerr << "  Total results: " << actualResults.size() << endl;
     auto oracle = make_unique<NeovimOracle>();
     for (size_t i = 0; i < actualResults.size(); i++) {
@@ -595,8 +598,9 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
       cerr << "  Diff " << i << ": pure insertion, skipping EditOptimizer" << endl;
       continue;
     }
-    EditResult editResult = editOpt.optimizeEdit(d.deletedLines(), d.insertedLines(), d.boundary);
-    editResult.initFlatIndex(d.deletedLines(), d.beginPos.line, d.beginPos.col, d.beginPos);
+    EditResult editResult = editOpt.optimizeEdit(
+        d.deletedLines(), d.insertedLines(), d.boundary, {},
+        d.beginPos.line, d.beginPos.col, d.beginPos);
 
     cerr << "  Diff " << i << ": EditResult has " << editResult.resultCount() << " positions" << endl;
 
@@ -637,12 +641,11 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
 
     MotionOptimizer motionOpt(config);
     NavContext navCtx;
-    MotionToKeys motionToKeys;
 
     auto rangeResult = motionOpt.optimizeToRange(
         initial, initialPos, rangeFirst, rangeEnd,
         MotionOptimizerRangeParams{}.withMaxResults(10), "",
-        boundary, RunningEffort(), navCtx, motionToKeys);
+        boundary, RunningEffort(), navCtx);
 
     cerr << "  Range results: " << rangeResult.results.size() << endl;
     for (size_t i = 0; i < rangeResult.results.size(); i++) {
@@ -659,14 +662,13 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     CompositionOptimizerParams params{};
     MotionOptimizer motionOpt(config);
     NavContext navCtx;
-    MotionToKeys motionKeys;
     MotionBoundary boundary(initial,
         Position(0, 0),
         Position(0, static_cast<int>(initial[0].size()) - 1),
         false, false);
 
     CompositionSearchContext ctx(initial, initialPos, goal, "",
-        navCtx, boundary, motionKeys, params, config);
+        navCtx, boundary, params, config);
 
     cerr << "  totalEdits=" << ctx.totalEdits << endl;
     for (int i = 0; i < ctx.totalEdits; i++) {
@@ -754,7 +756,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
             subset, localPos, localRangeFirst, localRangeEnd,
             MotionOptimizerRangeParams{}.withMaxResults(
                 clamp(nextEdit.origCharCount(), 1, 10)), "",
-            subsetBoundary, s.getRunningEffort(), navCtx, ctx.motionToKeys).results;
+            subsetBoundary, s.getRunningEffort(), navCtx).results;
 
         for (auto& movResult : movementResults) {
           if (!movResult.isValid()) continue;

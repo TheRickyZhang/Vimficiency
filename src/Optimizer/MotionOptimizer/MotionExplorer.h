@@ -4,7 +4,7 @@
 #include "MotionSearchContext.h"
 #include "MotionToSpec.h"
 #include "Optimizer/BufferIndex.h"
-#include "Keyboard/KeyboardModel.h"
+#include "Keyboard/KeyedSequence.h"
 #include "Keyboard/MotionToKeys.h"
 #include "VimCore/VimCore.h"
 #include "VimCore/VimMotionUtils.h"
@@ -21,7 +21,6 @@
 class MotionExplorer {
   MotionSearchContext& ctx;
   BufferIndex* bufferIndex_ = nullptr;           // Optional: only for count motions
-  const MotionToKeys* motionToKeys_ = nullptr;   // Optional: only for count motions
 
   // Single-goal mode state
   Position goalPos_;
@@ -35,8 +34,8 @@ class MotionExplorer {
 public:
   // Full constructor for optimize() with directional exploration
   MotionExplorer(MotionSearchContext& ctx, const Position& goalPos,
-                 BufferIndex& bufferIndex, const MotionToKeys& motionToKeys)
-      : ctx(ctx), bufferIndex_(&bufferIndex), motionToKeys_(&motionToKeys),
+                 BufferIndex& bufferIndex)
+      : ctx(ctx), bufferIndex_(&bufferIndex),
         goalPos_(goalPos), goalKey_(goalPos.line, goalPos.col) {}
 
   // Range mode constructor for optimizeToRange() with directional exploration
@@ -51,9 +50,8 @@ public:
 
   // Core emit helper - creates new state, applies motion, and queues for exploration.
   // Mode-aware: uses goal or range depending on constructor used.
-  void emitMotion(const MotionState& base, std::string_view cmd,
-                  Position endpoint, const PhysicalKeys& keys) {
-    MotionState newState = base.afterMotion(cmd, endpoint, keys, ctx.config);
+  void emitMotion(const MotionState& base, const KeyedSequence& ks, Position endpoint) {
+    MotionState newState = base.afterMotion(ks, endpoint, ctx.config);
 
     if (isRangeMode_) {
       newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeEnd_));
@@ -74,21 +72,21 @@ public:
     int rightBound = (pos.line == ctx.lines.lastLine()) ? ctx.boundary.rightColOffset() : 0;
 
     if (pos.col > leftBound)
-      emitMotion(base, "h", {pos.line, pos.col - 1}, {Key::Key_H});
+      emitMotion(base, KeyedSequence::h, {pos.line, pos.col - 1});
 
     if (pos.col < lastCol - rightBound)
-      emitMotion(base, "l", {pos.line, pos.col + 1}, {Key::Key_L});
+      emitMotion(base, KeyedSequence::l, {pos.line, pos.col + 1});
 
     if (pos.col > leftBound)
-      emitMotion(base, "0", {pos.line, leftBound}, {Key::Key_0});
+      emitMotion(base, KeyedSequence::Zero, {pos.line, leftBound});
 
     int fnb = VimCore::firstNonBlankColInLineStr(ctx.lines[pos.line]);
     if (fnb >= leftBound && fnb <= lastCol - rightBound && fnb != pos.col)
-      emitMotion(base, "^", {pos.line, fnb}, {Key::Key_Shift, Key::Key_6});
+      emitMotion(base, KeyedSequence::Caret, {pos.line, fnb});
 
     int dollarCol = lastCol - rightBound;
     if (dollarCol > pos.col && dollarCol >= leftBound)
-      emitMotion(base, "$", {pos.line, dollarCol, TARGETCOL_EOL}, {Key::Key_Shift, Key::Key_4});
+      emitMotion(base, KeyedSequence::Dollar, {pos.line, dollarCol, TARGETCOL_EOL});
   }
 
   // Vertical motions: j, k
@@ -99,13 +97,13 @@ public:
     if (pos.line < lastLine) {
       int newLine = pos.line + 1;
       int newCol = VimCore::clampCol(ctx.lines, pos.targetCol, newLine);
-      emitMotion(base, "j", {newLine, newCol, pos.targetCol}, {Key::Key_J});
+      emitMotion(base, KeyedSequence::j, {newLine, newCol, pos.targetCol});
     }
 
     if (pos.line > 0) {
       int newLine = pos.line - 1;
       int newCol = VimCore::clampCol(ctx.lines, pos.targetCol, newLine);
-      emitMotion(base, "k", {newLine, newCol, pos.targetCol}, {Key::Key_K});
+      emitMotion(base, KeyedSequence::k, {newLine, newCol, pos.targetCol});
     }
   }
 
@@ -123,7 +121,7 @@ public:
           boundaryOffset, hasLinesOutside, false);
 
       if (endpoint != POSITION_OUTSIDE_BOUNDARY) {
-        emitMotion(base, spec.cmd, endpoint, spec.keys);
+        emitMotion(base, spec.ks, endpoint);
       }
     }
   }
@@ -150,7 +148,7 @@ public:
     Position endpoint(endpointLine, endpointCol);
 
     for (const auto& spec : specs) {
-      emitMotion(base, spec.cmd, endpoint, spec.keys);
+      emitMotion(base, spec.ks, endpoint);
     }
   }
 
@@ -168,7 +166,7 @@ public:
     if (endpoint == POSITION_OUTSIDE_BOUNDARY) return;
 
     for (const auto& spec : specs) {
-      emitMotion(base, spec.cmd, endpoint, spec.keys);
+      emitMotion(base, spec.ks, endpoint);
     }
   }
 
@@ -194,7 +192,7 @@ public:
             ? VimCore::firstNonBlankColInLineStr(ctx.lines[targetLine])
             : VimCore::clampCol(ctx.lines, pos.targetCol, targetLine);
         Position endpoint(targetLine, endpointCol, pos.targetCol);
-        emitMotion(base, spec.cmd, endpoint, spec.keys);
+        emitMotion(base, spec.ks, endpoint);
       }
     }
   }
@@ -211,32 +209,28 @@ public:
       int endpointCol = VimOptions::startOfLine()
           ? VimCore::firstNonBlankColInLineStr(ctx.lines[0])
           : VimCore::clampCol(ctx.lines, pos.targetCol, 0);
-      emitMotion(base, "gg", {0, endpointCol, pos.targetCol}, {Key::Key_G, Key::Key_G});
+      emitMotion(base, KeyedSequence::gg, {0, endpointCol, pos.targetCol});
     }
     if (!ctx.boundary.hasLinesBelow()) {
       int lastLine = ctx.lines.lastLine();
       int endpointCol = VimOptions::startOfLine()
           ? VimCore::firstNonBlankColInLineStr(ctx.lines[lastLine])
           : VimCore::clampCol(ctx.lines, pos.targetCol, lastLine);
-      emitMotion(base, "G", {lastLine, endpointCol, pos.targetCol}, {Key::Key_Shift, Key::Key_G});
+      emitMotion(base, KeyedSequence::G, {lastLine, endpointCol, pos.targetCol});
     }
   }
 
   // Counted motions with pre-computed endpoint
-  void exploreCountMotion(const MotionState& base, std::string_view motion, int cnt,
-                          const Position& newPos, const MotionToKeys& motionToKeys) {
-    auto keyIt = motionToKeys.find(motion);
-    if (keyIt == motionToKeys.end()) return;
-
-    MotionState newState = base.afterCountedMotion(motion, cnt, newPos, keyIt->second, ctx.config);
+  void exploreCountMotion(const MotionState& base, const KeyedSequence& baseMotion,
+                          int cnt, const Position& newPos) {
+    MotionState newState = base.afterCountedMotion(baseMotion, cnt, newPos, ctx.config);
     newState.setCost(ctx.computePriorityToGoal(newState, goalPos_));
     ctx.exploreNewState(std::move(newState), goalKey_);
   }
 
   // F-motions with known column (internal helper)
-  void exploreFMotion(const MotionState& base, std::string_view motion,
-                      int newcol, const PhysicalKeys& keys) {
-    MotionState newState = base.afterFMotion(motion, newcol, keys, ctx.config);
+  void exploreFMotion(const MotionState& base, const KeyedSequence& fMotion, int newcol) {
+    MotionState newState = base.afterFMotion(fMotion, newcol, ctx.config);
     newState.setCost(ctx.computePriorityToGoal(newState, goalPos_));
     ctx.exploreNewState(std::move(newState), goalKey_);
   }
@@ -262,13 +256,12 @@ public:
       auto charIt = CHAR_TO_KEYS.find(c);
       if (charIt == CHAR_TO_KEYS.end()) continue;
 
-      std::string motion;
-      PhysicalKeys keys;
-      motion += firstMotion;               keys.append(CHAR_TO_KEYS.at(firstMotion));
-      motion += c;                         keys.append(charIt->second);
-      motion += std::string(cnt, repeatMotion);  keys.append(CHAR_TO_KEYS.at(repeatMotion), cnt);
+      KeyedSequence fMotion;
+      fMotion.appendChar(firstMotion);
+      fMotion.appendChar(c);
+      fMotion.appendCharRepeated(repeatMotion, cnt);
 
-      exploreFMotion(base, motion, col, keys);
+      exploreFMotion(base, fMotion, col);
     }
   }
 
@@ -276,18 +269,18 @@ public:
   template<bool Forward>
   void exploreCountMotionsImpl(const MotionState& base,
                                const std::vector<CountableMotionPair>& motionPairs) {
-    assert(bufferIndex_ && motionToKeys_ && "Count motions require goal-based constructor");
+    assert(bufferIndex_ && "Count motions require goal-based constructor");
     Position pos = base.getPos();
 
     for (const auto& pair : motionPairs) {
-      const std::string& motion = Forward ? pair.forward : pair.backward;
+      const KeyedSequence& motion = Forward ? pair.forward : pair.backward;
       auto results = bufferIndex_->getTwoClosest(pair.type, pos, goalPos_);
 
       for (const auto& r : results) {
         if (!r.valid()) continue;
         if (ctx.boundary.hasLinesAbove() && r.pos.line == 0) continue;
         if (ctx.boundary.hasLinesBelow() && r.pos.line == ctx.lines.lastLine()) continue;
-        exploreCountMotion(base, motion, r.count, r.pos, *motionToKeys_);
+        exploreCountMotion(base, motion, r.count, r.pos);
       }
     }
   }
@@ -389,14 +382,14 @@ public:
     int rightBound = (pos.line == lastLine) ? ctx.boundary.rightColOffset() : 0;
 
     if (pos.col > leftBound)
-      emitMotion(base, "h", {pos.line, pos.col - 1}, {Key::Key_H});
+      emitMotion(base, KeyedSequence::h, {pos.line, pos.col - 1});
 
     if (pos.col > leftBound)
-      emitMotion(base, "0", {pos.line, leftBound}, {Key::Key_0});
+      emitMotion(base, KeyedSequence::Zero, {pos.line, leftBound});
 
     int fnb = VimCore::firstNonBlankColInLineStr(ctx.lines[pos.line]);
     if (fnb >= leftBound && fnb <= lastCol - rightBound && fnb < pos.col)
-      emitMotion(base, "^", {pos.line, fnb}, {Key::Key_Shift, Key::Key_6});
+      emitMotion(base, KeyedSequence::Caret, {pos.line, fnb});
   }
 
   // --- Right: l, $, ^ (when fnb > pos.col) ---
@@ -409,16 +402,16 @@ public:
     int rightBound = (pos.line == lastLine) ? ctx.boundary.rightColOffset() : 0;
 
     if (pos.col < lastCol - rightBound)
-      emitMotion(base, "l", {pos.line, pos.col + 1}, {Key::Key_L});
+      emitMotion(base, KeyedSequence::l, {pos.line, pos.col + 1});
 
     int dollarCol = lastCol - rightBound;
     if (dollarCol > pos.col && dollarCol >= leftBound)
-      emitMotion(base, "$", {pos.line, dollarCol, TARGETCOL_EOL}, {Key::Key_Shift, Key::Key_4});
+      emitMotion(base, KeyedSequence::Dollar, {pos.line, dollarCol, TARGETCOL_EOL});
 
     // ^ can move right if cursor is before first non-blank
     int fnb = VimCore::firstNonBlankColInLineStr(ctx.lines[pos.line]);
     if (fnb >= leftBound && fnb <= lastCol - rightBound && fnb > pos.col)
-      emitMotion(base, "^", {pos.line, fnb}, {Key::Key_Shift, Key::Key_6});
+      emitMotion(base, KeyedSequence::Caret, {pos.line, fnb});
   }
 
   // --- Up: k, <C-u>, gg ---
@@ -428,7 +421,7 @@ public:
     if (pos.line > 0) {
       int newLine = pos.line - 1;
       int newCol = VimCore::clampCol(ctx.lines, pos.targetCol, newLine);
-      emitMotion(base, "k", {newLine, newCol, pos.targetCol}, {Key::Key_K});
+      emitMotion(base, KeyedSequence::k, {newLine, newCol, pos.targetCol});
     }
 
     exploreScrollMotions<false>(base);
@@ -437,7 +430,7 @@ public:
       int endpointCol = VimOptions::startOfLine()
           ? VimCore::firstNonBlankColInLineStr(ctx.lines[0])
           : VimCore::clampCol(ctx.lines, pos.targetCol, 0);
-      emitMotion(base, "gg", {0, endpointCol, pos.targetCol}, {Key::Key_G, Key::Key_G});
+      emitMotion(base, KeyedSequence::gg, {0, endpointCol, pos.targetCol});
     }
   }
 
@@ -449,7 +442,7 @@ public:
     if (pos.line < lastLine) {
       int newLine = pos.line + 1;
       int newCol = VimCore::clampCol(ctx.lines, pos.targetCol, newLine);
-      emitMotion(base, "j", {newLine, newCol, pos.targetCol}, {Key::Key_J});
+      emitMotion(base, KeyedSequence::j, {newLine, newCol, pos.targetCol});
     }
 
     exploreScrollMotions<true>(base);
@@ -458,7 +451,7 @@ public:
       int endpointCol = VimOptions::startOfLine()
           ? VimCore::firstNonBlankColInLineStr(ctx.lines[lastLine])
           : VimCore::clampCol(ctx.lines, pos.targetCol, lastLine);
-      emitMotion(base, "G", {lastLine, endpointCol, pos.targetCol}, {Key::Key_Shift, Key::Key_G});
+      emitMotion(base, KeyedSequence::G, {lastLine, endpointCol, pos.targetCol});
     }
   }
 

@@ -12,7 +12,6 @@
 #include "Editor/NavContext.h"
 #include "Editor/Position.h"
 #include "State/RunningEffort.h"
-#include "Keyboard/MotionToKeys.h"
 #include "Utils/Lines.h"
 
 struct MotionResult {
@@ -51,8 +50,7 @@ struct MotionOptimizer {
     const RunningEffort& startingEffort  = RunningEffort(),
 
     // Niche settings
-    const NavContext& navigationContext = NavContext(),
-    const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS
+    const NavContext& navigationContext = NavContext()
   );
 
 
@@ -76,8 +74,7 @@ struct MotionOptimizer {
     const RunningEffort& startingEffort = RunningEffort(),
 
     // Niche settings
-    const NavContext& navigationContext = NavContext(),
-    const MotionToKeys& rawMotionToKeys = EXPLORABLE_MOTIONS
+    const NavContext& navigationContext = NavContext()
   );
 
 private:
@@ -91,7 +88,6 @@ private:
     std::string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
-    const MotionToKeys& rawMotionToKeys,
     MotionOptimizerParams params
   );
 
@@ -106,7 +102,6 @@ private:
     std::string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
-    const MotionToKeys& rawMotionToKeys,
     MotionOptimizerRangeParams params
   );
 };

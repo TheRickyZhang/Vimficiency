@@ -8,6 +8,7 @@
 #include "Editor/Position.h"
 #include "Editor/Mode.h"
 #include "Editor/NavContext.h"
+#include "Keyboard/KeyedSequence.h"
 #include "Utils/Lines.h"
 
 
@@ -61,17 +62,16 @@ public:
 
   // Create new state with motion applied
   // Note: caller must set cost via setCost() after computing heuristic
-  [[nodiscard]] MotionState afterMotion(std::string_view cmd, Position endpoint,
-                                        const PhysicalKeys& keys, const Config& config) const;
+  [[nodiscard]] MotionState afterMotion(const KeyedSequence& ks, Position endpoint,
+                                        const Config& config) const;
 
   // Create new state with counted motion applied (e.g., "3w")
-  [[nodiscard]] MotionState afterCountedMotion(std::string_view motion, int cnt,
-                                               Position endpoint, const PhysicalKeys& baseKeys,
-                                               const Config& config) const;
+  [[nodiscard]] MotionState afterCountedMotion(const KeyedSequence& baseMotion, int cnt,
+                                               Position endpoint, const Config& config) const;
 
   // Create new state with f-motion applied (e.g., "fx;;")
-  [[nodiscard]] MotionState afterFMotion(std::string_view motion, int newCol,
-                                         const PhysicalKeys& keys, const Config& config) const;
+  [[nodiscard]] MotionState afterFMotion(const KeyedSequence& fMotion, int newCol,
+                                         const Config& config) const;
 
   void setCost(double newCost) { cost = newCost; }
 
@@ -86,8 +86,7 @@ private:
   void updateEffort(const PhysicalKeys& keys, const Config& config);
 
   // Internal: apply motion to this state (mutates)
-  void applyMotionImpl(std::string_view cmd, Position endpoint, const PhysicalKeys& keys, const Config& config);
-  void applyCountedMotionImpl(std::string_view motion, int cnt, Position endpoint,
-                              const PhysicalKeys& baseKeys, const Config& config);
-  void applyFMotionImpl(std::string_view motion, int newCol, const PhysicalKeys& keys, const Config& config);
+  void applyMotionImpl(const KeyedSequence& ks, Position endpoint, const Config& config);
+  void applyCountedMotionImpl(const KeyedSequence& baseMotion, int cnt, Position endpoint, const Config& config);
+  void applyFMotionImpl(const KeyedSequence& fMotion, int newCol, const Config& config);
 };

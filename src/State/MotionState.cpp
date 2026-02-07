@@ -22,24 +22,24 @@ void MotionState::applySingleMotionWithEffort(string_view motion, const NavConte
 // Public factory methods - return new state with motion applied
 // =============================================================================
 
-MotionState MotionState::afterMotion(string_view cmd, Position endpoint,
-                                     const PhysicalKeys& keys, const Config& config) const {
+MotionState MotionState::afterMotion(const KeyedSequence& ks, Position endpoint,
+                                     const Config& config) const {
   MotionState newState = *this;
-  newState.applyMotionImpl(cmd, endpoint, keys, config);
+  newState.applyMotionImpl(ks, endpoint, config);
   return newState;
 }
 
-MotionState MotionState::afterCountedMotion(string_view motion, int cnt, Position endpoint,
-                                            const PhysicalKeys& baseKeys, const Config& config) const {
+MotionState MotionState::afterCountedMotion(const KeyedSequence& baseMotion, int cnt,
+                                            Position endpoint, const Config& config) const {
   MotionState newState = *this;
-  newState.applyCountedMotionImpl(motion, cnt, endpoint, baseKeys, config);
+  newState.applyCountedMotionImpl(baseMotion, cnt, endpoint, config);
   return newState;
 }
 
-MotionState MotionState::afterFMotion(string_view motion, int newCol,
-                                      const PhysicalKeys& keys, const Config& config) const {
+MotionState MotionState::afterFMotion(const KeyedSequence& fMotion, int newCol,
+                                      const Config& config) const {
   MotionState newState = *this;
-  newState.applyFMotionImpl(motion, newCol, keys, config);
+  newState.applyFMotionImpl(fMotion, newCol, config);
   return newState;
 }
 
@@ -47,28 +47,28 @@ MotionState MotionState::afterFMotion(string_view motion, int newCol,
 // Private implementation - mutating methods
 // =============================================================================
 
-void MotionState::applyMotionImpl(string_view cmd, Position endpoint,
-                                  const PhysicalKeys& keys, const Config& config) {
+void MotionState::applyMotionImpl(const KeyedSequence& ks, Position endpoint,
+                                  const Config& config) {
   pos = endpoint;
-  motionSequence.append(cmd);
-  effort = runningEffort.append(keys, config);
+  motionSequence.append(ks.seq.keys);
+  effort = runningEffort.append(ks.keys, config);
 }
 
-void MotionState::applyCountedMotionImpl(string_view motion, int cnt, Position endpoint,
-                                         const PhysicalKeys& baseKeys, const Config& config) {
+void MotionState::applyCountedMotionImpl(const KeyedSequence& baseMotion, int cnt,
+                                         Position endpoint, const Config& config) {
   pos = endpoint;
   if (cnt > 0) {
     motionSequence.append(to_string(cnt));
   }
-  motionSequence.append(motion);
-  effort = runningEffort.append(makeCountedKeys(abs(cnt), baseKeys), config);
+  motionSequence.append(baseMotion.seq.keys);
+  effort = runningEffort.append(makeCountedKeys(abs(cnt), baseMotion.keys), config);
 }
 
-void MotionState::applyFMotionImpl(string_view motion, int newCol,
-                                   const PhysicalKeys& keys, const Config& config) {
+void MotionState::applyFMotionImpl(const KeyedSequence& fMotion, int newCol,
+                                   const Config& config) {
   pos.setCol(newCol);
-  motionSequence.append(motion);
-  effort = runningEffort.append(keys, config);
+  motionSequence.append(fMotion.seq.keys);
+  effort = runningEffort.append(fMotion.keys, config);
 }
 
 void MotionState::updateEffort(const PhysicalKeys& keys, const Config& config) {

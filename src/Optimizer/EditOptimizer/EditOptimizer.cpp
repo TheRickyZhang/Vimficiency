@@ -27,17 +27,11 @@ using namespace std;
 EditResult::EditResult(vector<Result> results, SearchStats stats,
                        const Lines& initialLines, int bufferFirstLine,
                        int bufferFirstCol, Position goalPos)
-    : stats(std::move(stats)),
-      results_(std::move(results)) {
-  initFlatIndex(initialLines, bufferFirstLine, bufferFirstCol, goalPos);
-}
-
-void EditResult::initFlatIndex(const Lines& initialLines, int bufferFirstLine,
-                               int bufferFirstCol, Position gp) {
-  firstLine_ = bufferFirstLine;
-  firstCol_ = bufferFirstCol;
-  goalPos = gp;
-  lineBaseIndex_.clear();
+    : goalPos(goalPos),
+      stats(std::move(stats)),
+      results_(std::move(results)),
+      firstLine_(bufferFirstLine),
+      firstCol_(bufferFirstCol) {
   lineBaseIndex_.reserve(initialLines.size());
   int cumSum = 0;
   for (size_t i = 0; i < initialLines.size(); i++) {
@@ -216,13 +210,16 @@ optional<Result> tryReplacement(string_view deleted, string_view inserted,
 EditResult
 EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
                             EditBoundary editBoundary,
-                            EditOptimizerParams params) {
+                            EditOptimizerParams params,
+                            int bufferFirstLine, int bufferFirstCol,
+                            Position goalPos) {
   assert(initialLines != goalLines);
   assert(!initialLines.empty() && "empty startlines should be handled in compositionEditor by i, a, o, O");
 
   // Delegate to optimizePureDeletion for pure deletion (goalLines empty)
   if (allLinesEmpty(goalLines)) {
-    return optimizePureDeletion(initialLines, editBoundary, params);
+    return optimizePureDeletion(initialLines, editBoundary, params,
+                                bufferFirstLine, bufferFirstCol, goalPos);
   }
 
   // Create search context (handles effectiveLines, offsets, search state)
@@ -408,7 +405,8 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
     }
   }
 
-  return EditResult(std::move(results), ctx.getStats());
+  return EditResult(std::move(results), ctx.getStats(), initialLines,
+                    bufferFirstLine, bufferFirstCol, goalPos);
 }
 
 // =============================================================================
@@ -418,7 +416,9 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
 EditResult
 EditOptimizer::optimizePureDeletion(const Lines &initialLines,
                                     EditBoundary editBoundary,
-                                    EditOptimizerParams params) {
+                                    EditOptimizerParams params,
+                                    int bufferFirstLine, int bufferFirstCol,
+                                    Position goalPos) {
   assert(!initialLines.empty() && "empty startlines should be handled in compositionEditor by i, a, o, O");
 
   // Create search context (handles effectiveLines, offsets, search state)
@@ -620,5 +620,6 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
     }
   }
 
-  return EditResult(std::move(results), ctx.getStats());
+  return EditResult(std::move(results), ctx.getStats(), initialLines,
+                    bufferFirstLine, bufferFirstCol, goalPos);
 }

@@ -12,7 +12,6 @@
 #include "Editor/Position.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
-#include "Boundary/MotionBoundary.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
 
@@ -70,8 +69,9 @@ TEST_F(CompositionOptimizer_ManualTest, SingleEdit_SimpleSubstitution) {
   Position initialPos(0, 0);
   Position goalPos(0, 10);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   for(Result r : results) cout << r.sequence << endl;
   expectHasValidResults(results, initial, initialPos, goal, "simple substitution");
@@ -84,24 +84,13 @@ TEST_F(CompositionOptimizer_ManualTest, SingleEdit_AtCursor) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   expectHasValidResults(results, initial, initialPos, goal, "at cursor");
 }
 
-TEST_F(CompositionOptimizer_ManualTest, SingleEdit_CursorAfterEdit) {
-  // Cursor is after the edit region - needs backward motion
-  Lines initial = {"aaa bbb"};
-  Lines goal = {"xxx bbb"};
-  Position initialPos(0, 6);  // Cursor at end
-  Position goalPos(0, 0);
-
-  vector<Result> results = opt.optimize(
-      initial, initialPos, goal, goalPos, params);
-
-  expectHasValidResults(results, initial, initialPos, goal, "cursor after edit");
-}
 
 // =============================================================================
 // Multiple Edit Tests
@@ -114,8 +103,9 @@ TEST_F(CompositionOptimizer_ManualTest, TwoEdits_SameLine) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   expectHasValidResults(results, initial, initialPos, goal, "two edits same line");
 }
@@ -126,8 +116,9 @@ TEST_F(CompositionOptimizer_ManualTest, TwoEdits_DifferentLines) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   expectHasValidResults(results, initial, initialPos, goal, "two edits different lines");
 }
@@ -142,8 +133,9 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   expectHasValidResults(results, initial, initialPos, goal, "pure insertion");
 }
@@ -155,8 +147,9 @@ TEST_F(CompositionOptimizer_ManualTest, PureDeletion) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   expectHasValidResults(results, initial, initialPos, goal, "pure deletion");
 }
@@ -172,8 +165,9 @@ TEST_F(CompositionOptimizer_ManualTest, DeleteEntireLine) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   expectHasValidResults(results, initial, initialPos, goal, "delete entire line");
 }
@@ -185,8 +179,9 @@ TEST_F(CompositionOptimizer_ManualTest, InsertNewLine) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   expectHasValidResults(results, initial, initialPos, goal, "insert new line");
 }
@@ -202,8 +197,9 @@ TEST_F(CompositionOptimizer_ManualTest, NoChange_IdenticalBuffers) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   // Empty results is valid (no changes needed)
   // If there are results, verify they don't break the buffer
@@ -223,8 +219,9 @@ TEST_F(CompositionOptimizer_ManualTest, EdgeCase_EmptyToContent) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   expectHasValidResults(results, initial, initialPos, goal, "empty to content");
 }
@@ -236,8 +233,9 @@ TEST_F(CompositionOptimizer_ManualTest, EdgeCase_ContentToEmpty) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   expectHasValidResults(results, initial, initialPos, goal, "content to empty");
 }
@@ -249,8 +247,9 @@ TEST_F(CompositionOptimizer_ManualTest, EdgeCase_SingleCharChange) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   expectHasValidResults(results, initial, initialPos, goal, "single char change");
 }
@@ -266,8 +265,9 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerQuote_CursorBefore) {
   Position initialPos(0, 0);  // Cursor at 'f'
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
@@ -293,8 +293,9 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerQuote_CursorInside) {
   Position initialPos(0, 0);  // Cursor at opening quote
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
@@ -321,8 +322,9 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_AroundQuote) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
@@ -346,8 +348,9 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerParen) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
@@ -373,8 +376,9 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerBrace) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
@@ -400,8 +404,9 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerBracket) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
@@ -428,8 +433,9 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_NotValidAfterQuote) {
   Position initialPos(0, 3);  // Cursor at ' ', after first quote pair
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
@@ -454,8 +460,9 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_NestedBrackets) {
   Position initialPos(0, 5);  // Cursor on inner '('
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
@@ -479,8 +486,9 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_SingleQuote) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
@@ -510,8 +518,9 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_NewLineBetween) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   expectHasValidResults(results, initial, initialPos, goal, "new line insertion");
 
@@ -533,8 +542,9 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_AppendToLine) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   expectHasValidResults(results, initial, initialPos, goal, "append to line");
 
@@ -557,8 +567,9 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_AppendWithNewline) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   expectHasValidResults(results, initial, initialPos, goal, "append with newline");
 }
@@ -570,8 +581,9 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_InsertAtStart) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   expectHasValidResults(results, initial, initialPos, goal, "insert at start");
 }
@@ -583,8 +595,9 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_InsertInMiddle) {
   Position initialPos(0, 0);
   Position goalPos(0, 0);
 
-  vector<Result> results = opt.optimize(
+  auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.results;
 
   expectHasValidResults(results, initial, initialPos, goal, "insert in middle");
 }

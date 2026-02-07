@@ -188,7 +188,7 @@ const char *vimficiency_analyze(
       CompositionOptimizer opt(g_config_internal);
       res = opt.optimize(initialLines, initialPos, goalLines, goalPos,
           CompositionOptimizerParams{}.withMaxResults(RESULTS_CALCULATED), keyseq,
-          boundary, navigation_context);
+          boundary, navigation_context).results;
     }
 
     // Calculate user's effort for the sequence they typed

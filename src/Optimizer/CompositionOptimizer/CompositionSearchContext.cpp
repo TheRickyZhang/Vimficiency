@@ -1,7 +1,6 @@
 #include "CompositionSearchContext.h"
 
 #include "Keyboard/KeyedSequence.h"
-#include "Keyboard/MotionToKeys.h"
 #include "Optimizer/BuildTypedCommands.h"
 #include "State/RunningEffort.h"
 #include "Utils/Debug.h"
@@ -20,14 +19,12 @@ CompositionSearchContext::CompositionSearchContext(
     string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
-    const MotionToKeys& rawMotionToKeys,
     const CompositionOptimizerParams& params,
     const Config& config)
     : config(config),
       params(params),
       navContext(navContext),
       boundary(boundary),
-      motionToKeys(rawMotionToKeys),
       overshootPenalty(params.overshootPenalty),
       maxLineLength(1000),
       effortWeight(params.effortWeight),
@@ -42,14 +39,6 @@ CompositionSearchContext::CompositionSearchContext(
   }
   for (const string& s : goalLines) {
     assert(s.size() < static_cast<size_t>(maxLineLength - 10));
-  }
-
-  // Filter motion keys based on boundary
-  if (boundary.hasLinesBelow()) {
-    motionToKeys.erase("G");
-  }
-  if (boundary.hasLinesAbove()) {
-    motionToKeys.erase("gg");
   }
 
   // Get minimal diff between start and end buffers
@@ -284,9 +273,6 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
       continue;
     }
 
-    EditResult optResult = editOptimizer.optimizeEdit(
-        diff.deletedLines(), diff.insertedLines(), diff.boundary);
-
     // Compute cursor position after edit completes
     // After change + typed text + <Esc>, cursor is at last char of inserted text
     Position goalPos;
@@ -305,8 +291,9 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
       goalPos = Position(lastLine, lastCol);
     }
 
-    optResult.initFlatIndex(diff.deletedLines(), diff.beginPos.line,
-                            diff.beginPos.col, goalPos);
+    EditResult optResult = editOptimizer.optimizeEdit(
+        diff.deletedLines(), diff.insertedLines(), diff.boundary, {},
+        diff.beginPos.line, diff.beginPos.col, goalPos);
     results.push_back(std::move(optResult));
   }
 

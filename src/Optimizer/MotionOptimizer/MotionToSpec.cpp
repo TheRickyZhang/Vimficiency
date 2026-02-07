@@ -1,93 +1,94 @@
 #include "MotionToSpec.h"
 using namespace std;
+using KS = KeyedSequence;
 
 // =============================================================================
 // Motion Operation Specs - tables for MotionOptimizer
 // =============================================================================
-// Keys from MotionToKeysPrimitives.h, specs from MotionOptimizer.cpp
+// Keys from KeyedSequence motion constants
 
 namespace Motion {
 
-// Word motions: cmd, keys, forward, edgeType, big, skipCurrent
+// Word motions: ks, forward, edgeType, big, skipCurrent
 const vector<WordMotionSpec> WORD_MOTIONS = {
-    {"w",  {Key::Key_W},                             true,  EdgeType::NextEdge, false, false},
-    {"W",  {Key::Key_Shift, Key::Key_W},             true,  EdgeType::NextEdge, true,  false},
-    {"b",  {Key::Key_B},                             false, EdgeType::WordEdge, false, true},
-    {"B",  {Key::Key_Shift, Key::Key_B},             false, EdgeType::WordEdge, true,  true},
-    {"e",  {Key::Key_E},                             true,  EdgeType::WordEdge, false, true},
-    {"E",  {Key::Key_Shift, Key::Key_E},             true,  EdgeType::WordEdge, true,  true},
-    {"ge", {Key::Key_G, Key::Key_E},                 false, EdgeType::NextEdge, false, false},
-    {"gE", {Key::Key_G, Key::Key_Shift, Key::Key_E}, false, EdgeType::NextEdge, true,  false},
+    {KS::w,  true,  EdgeType::NextEdge, false, false},
+    {KS::W,  true,  EdgeType::NextEdge, true,  false},
+    {KS::b,  false, EdgeType::WordEdge, false, true},
+    {KS::B,  false, EdgeType::WordEdge, true,  true},
+    {KS::e,  true,  EdgeType::WordEdge, false, true},
+    {KS::E,  true,  EdgeType::WordEdge, true,  true},
+    {KS::ge, false, EdgeType::NextEdge, false, false},
+    {KS::gE, false, EdgeType::NextEdge, true,  false},
 };
 
-// Split by Forward/EdgeType for templated dispatch: cmd, keys, big, skipCurrent
+// Split by Forward/EdgeType for templated dispatch: ks, big, skipCurrent
 const vector<WordMotionSpecNoEdge> FORWARD_NEXTEDGE_MOTIONS = {
-    {"w", {Key::Key_W},                 false, false},
-    {"W", {Key::Key_Shift, Key::Key_W}, true,  false},
+    {KS::w, false, false},
+    {KS::W, true,  false},
 };
 const vector<WordMotionSpecNoEdge> FORWARD_WORDEDGE_MOTIONS = {
-    {"e", {Key::Key_E},                 false, true},
-    {"E", {Key::Key_Shift, Key::Key_E}, true,  true},
+    {KS::e, false, true},
+    {KS::E, true,  true},
 };
 const vector<WordMotionSpecNoEdge> BACKWARD_WORDEDGE_MOTIONS = {
-    {"b", {Key::Key_B},                 false, true},
-    {"B", {Key::Key_Shift, Key::Key_B}, true,  true},
+    {KS::b, false, true},
+    {KS::B, true,  true},
 };
 const vector<WordMotionSpecNoEdge> BACKWARD_NEXTEDGE_MOTIONS = {
-    {"ge", {Key::Key_G, Key::Key_E},                 false, false},
-    {"gE", {Key::Key_G, Key::Key_Shift, Key::Key_E}, true,  false},
+    {KS::ge, false, false},
+    {KS::gE, true,  false},
 };
 
-// Paragraph motions: cmd, keys, forward
+// Paragraph motions: ks, forward
 const vector<ParagraphMotionSpec> PARAGRAPH_MOTIONS = {
-    {"{", {Key::Key_Shift, Key::Key_LBracket}, false},
-    {"}", {Key::Key_Shift, Key::Key_RBracket}, true},
+    {KS::LBrace, false},
+    {KS::RBrace, true},
 };
 
-// Split by Forward for templated dispatch: cmd, keys
+// Split by Forward for templated dispatch: ks
 const vector<ParagraphMotionSpecNoDir> FORWARD_PARAGRAPH_MOTIONS = {
-    {"}", {Key::Key_Shift, Key::Key_RBracket}},
+    {KS::RBrace},
 };
 const vector<ParagraphMotionSpecNoDir> BACKWARD_PARAGRAPH_MOTIONS = {
-    {"{", {Key::Key_Shift, Key::Key_LBracket}},
+    {KS::LBrace},
 };
 
-// Sentence motions: cmd, keys, forward
+// Sentence motions: ks, forward
 const vector<SentenceMotionSpec> SENTENCE_MOTIONS = {
-    {"(", {Key::Key_Shift, Key::Key_9}, false},
-    {")", {Key::Key_Shift, Key::Key_0}, true},
+    {KS::LParen, false},
+    {KS::RParen, true},
 };
 
-// Split by Forward for templated dispatch: cmd, keys
+// Split by Forward for templated dispatch: ks
 const vector<SentenceMotionSpecNoDir> FORWARD_SENTENCE_MOTIONS = {
-    {")", {Key::Key_Shift, Key::Key_0}},
+    {KS::RParen},
 };
 const vector<SentenceMotionSpecNoDir> BACKWARD_SENTENCE_MOTIONS = {
-    {"(", {Key::Key_Shift, Key::Key_9}},
+    {KS::LParen},
 };
 
-// Simple line motions: cmd, keys
+// Simple line motions: ks
 const vector<SimpleLineMotionSpec> SIMPLE_LINE_MOTIONS = {
-    {"h", {Key::Key_H}},
-    {"l", {Key::Key_L}},
-    {"0", {Key::Key_0}},
-    {"^", {Key::Key_Shift, Key::Key_6}},
-    {"$", {Key::Key_Shift, Key::Key_4}},
+    {KS::h},
+    {KS::l},
+    {KS::Zero},
+    {KS::Caret},
+    {KS::Dollar},
 };
 
-// Vertical motions: cmd, keys, isDown
+// Vertical motions: ks, isDown
 const vector<VerticalMotionSpec> VERTICAL_MOTIONS = {
-    {"j", {Key::Key_J}, true},
-    {"k", {Key::Key_K}, false},
+    {KS::j, true},
+    {KS::k, false},
 };
 
-// Jump motions: cmd, keys, toStart
+// Jump motions: ks, toStart
 const vector<JumpMotionSpec> JUMP_MOTIONS = {
-    {"gg", {Key::Key_G, Key::Key_G},   true},
-    {"G",  {Key::Key_Shift, Key::Key_G}, false},
+    {KS::gg, true},
+    {KS::G,  false},
 };
 
-// Scroll motions: cmd, keys, shiftMultiplier, isHalf
+// Scroll motions: ks, shiftMultiplier, isHalf
 // NOTE: <C-f> and <C-b> (full-page scroll) are NOT included because they depend on
 // viewport state that we don't track. These commands scroll the window, and when the
 // buffer is smaller than the window or cursor is near buffer edges, they may not move
@@ -97,16 +98,16 @@ const vector<JumpMotionSpec> JUMP_MOTIONS = {
 // 3. Handle edge cases where scrolling is not possible
 // <C-d> and <C-u> are more predictable as they move by a fixed scroll amount.
 const vector<ScrollMotionSpec> SCROLL_MOTIONS = {
-    {"<C-d>", {Key::Key_Ctrl, Key::Key_D}, +1, true},   // half-page down
-    {"<C-u>", {Key::Key_Ctrl, Key::Key_U}, -1, true},   // half-page up
+    {KS::CtrlD, +1, true},   // half-page down
+    {KS::CtrlU, -1, true},   // half-page up
 };
 
-// Split by Forward for templated dispatch: cmd, keys, isHalf
+// Split by Forward for templated dispatch: ks, isHalf
 const vector<ScrollMotionSpecNoDir> FORWARD_SCROLL_MOTIONS = {
-    {"<C-d>", {Key::Key_Ctrl, Key::Key_D}, true},
+    {KS::CtrlD, true},
 };
 const vector<ScrollMotionSpecNoDir> BACKWARD_SCROLL_MOTIONS = {
-    {"<C-u>", {Key::Key_Ctrl, Key::Key_U}, true},
+    {KS::CtrlU, true},
 };
 
 } // namespace Motion

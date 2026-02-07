@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include "Editor/Position.h"
+#include "Keyboard/KeyedSequence.h"
 #include "Utils/Lines.h"
 
 struct RepeatMotionResult {
@@ -26,8 +27,8 @@ enum class LandingType : size_t {
 
 // Pairs a forward/backward motion with its landing type for count-searchable motions
 struct CountableMotionPair {
-  std::string forward;   // e.g., "w", "e", "W", "}"
-  std::string backward;  // e.g., "b", "ge", "B", "{"
+  KeyedSequence forward;   // e.g., KeyedSequence::w, KeyedSequence::e
+  KeyedSequence backward;  // e.g., KeyedSequence::b, KeyedSequence::ge
   LandingType type;
 };
 

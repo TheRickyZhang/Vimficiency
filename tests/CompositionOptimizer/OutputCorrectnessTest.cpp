@@ -88,8 +88,9 @@ TEST_F(CompositionOptimizerOutputCorrectness, SingleLine_Substitution) {
     Position initialPos(0, cursorCol);
     Position goalPos(0, 0);
 
-    vector<Result> results = opt.optimize(
+    auto compResult = opt.optimize(
         initial, initialPos, goal, goalPos, params);
+    const auto& results = compResult.results;
 
     total++;
     if (results.empty()) {
@@ -163,8 +164,9 @@ TEST_F(CompositionOptimizerOutputCorrectness, MultiLine_SingleEdit) {
     Position initialPos(cursorLine, cursorCol);
     Position goalPos(0, 0);
 
-    vector<Result> results = opt.optimize(
+    auto compResult = opt.optimize(
         initial, initialPos, goal, goalPos, params);
+    const auto& results = compResult.results;
 
     total++;
     if (results.empty()) {
@@ -227,8 +229,9 @@ TEST_F(CompositionOptimizerOutputCorrectness, PureInsertion) {
     Position initialPos(0, 0);
     Position goalPos(0, 0);
 
-    vector<Result> results = opt.optimize(
+    auto compResult = opt.optimize(
         initial, initialPos, goal, goalPos, params);
+    const auto& results = compResult.results;
 
     total++;
     if (results.empty()) {
@@ -286,8 +289,9 @@ TEST_F(CompositionOptimizerOutputCorrectness, PureDeletion) {
     Position initialPos(0, 0);
     Position goalPos(0, 0);
 
-    vector<Result> results = opt.optimize(
+    auto compResult = opt.optimize(
         initial, initialPos, goal, goalPos, params);
+    const auto& results = compResult.results;
 
     total++;
     if (results.empty()) {
@@ -342,8 +346,9 @@ TEST_F(CompositionOptimizerOutputCorrectness, InsertNewLine) {
     Position initialPos(0, 0);
     Position goalPos(0, 0);
 
-    vector<Result> results = opt.optimize(
+    auto compResult = opt.optimize(
         initial, initialPos, goal, goalPos, params);
+    const auto& results = compResult.results;
 
     total++;
     if (results.empty()) {
@@ -393,8 +398,9 @@ TEST_F(CompositionOptimizerOutputCorrectness, DeleteEntireLine) {
     Position initialPos(0, 0);
     Position goalPos(0, 0);
 
-    vector<Result> results = opt.optimize(
+    auto compResult = opt.optimize(
         initial, initialPos, goal, goalPos, params);
+    const auto& results = compResult.results;
 
     total++;
     if (results.empty()) {
@@ -453,8 +459,9 @@ TEST_F(CompositionOptimizerOutputCorrectness, TwoEdits_SameLine) {
     Position initialPos(0, 0);
     Position goalPos(0, 0);
 
-    vector<Result> results = opt.optimize(
+    auto compResult = opt.optimize(
         initial, initialPos, goal, goalPos, params);
+    const auto& results = compResult.results;
 
     total++;
     if (results.empty()) {
@@ -502,8 +509,9 @@ TEST_F(CompositionOptimizerOutputCorrectness, TwoEdits_DifferentLines) {
     Position initialPos(0, 0);
     Position goalPos(0, 0);
 
-    vector<Result> results = opt.optimize(
+    auto compResult = opt.optimize(
         initial, initialPos, goal, goalPos, params);
+    const auto& results = compResult.results;
 
     total++;
     if (results.empty()) {

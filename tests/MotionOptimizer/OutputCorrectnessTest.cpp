@@ -9,7 +9,6 @@
 
 #include "Editor/Motion.h"
 #include "Editor/NavContext.h"
-#include "Keyboard/MotionToKeys.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Boundary/MotionBoundary.h"
@@ -109,11 +108,10 @@ protected:
 
   // Run optimizer on sub-buffer
   static vector<Result> runOnSubBuffer(const Lines& subBuffer, Position start, Position end,
-                                       const MotionBoundary& boundary,
-                                       const MotionToKeys& allowedMotions) {
+                                       const MotionBoundary& boundary) {
     MotionOptimizer opt(Config::uniform());
     return opt.optimize(subBuffer, start, end, {},
-                        "jjjjjjjjjj", boundary, RunningEffort(), navContext, allowedMotions).results;
+                        "jjjjjjjjjj", boundary, RunningEffort(), navContext).results;
   }
 };
 
@@ -173,15 +171,6 @@ TEST_F(MotionOptimizerOutputCorrectness, SubBufferMotionCorrectness) {
   int escapedBounds = 0;
   MotionFailureStats stats;
 
-  // Motions to test on sub-buffers
-  MotionToKeys testMotions = getSlicedMotionToKeys({
-    "j", "k",           // vertical
-    "w", "W", "b", "B", // word motions
-    "e", "E",           // end word
-    "{", "}",           // paragraph
-    "(", ")",           // sentence
-  });
-
   for (int i = 0; i < iterations; i++) {
     // Generate embedded test case with sub-buffer smaller than full buffer
     auto test = generateEmbeddedTest(8, 4);
@@ -192,7 +181,7 @@ TEST_F(MotionOptimizerOutputCorrectness, SubBufferMotionCorrectness) {
     Position subEnd(endLine, RandomGen::range(0, max(0, maxEndCol)));
 
     // Run optimizer on sub-buffer
-    auto results = runOnSubBuffer(test.subBuffer, test.subStart, subEnd, test.boundary, testMotions);
+    auto results = runOnSubBuffer(test.subBuffer, test.subStart, subEnd, test.boundary);
 
     // For each result, verify against Neovim on full buffer
     for (const auto& result : results) {

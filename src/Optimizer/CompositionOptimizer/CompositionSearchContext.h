@@ -14,7 +14,6 @@
 #include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
 #include "Editor/Position.h"
-#include "Keyboard/MotionToKeys.h"
 #include "State/CompositionState.h"
 #include "Utils/BracketFlags.h"
 #include "Utils/Lines.h"
@@ -85,9 +84,6 @@ struct CompositionSearchContext {
   const NavContext& navContext;
   const MotionBoundary& boundary;
 
-  // Filtered motion keys (gg/G removed based on boundary)
-  MotionToKeys motionToKeys;
-
 
   // Pre-computed diff data
   std::vector<DiffState> diffStates;
@@ -145,7 +141,6 @@ struct CompositionSearchContext {
       std::string_view userSequence,
       const NavContext& navContext,
       const MotionBoundary& boundary,
-      const MotionToKeys& rawMotionToKeys,
       const CompositionOptimizerParams& params,
       const Config& config);
 

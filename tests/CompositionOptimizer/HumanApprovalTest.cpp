@@ -1,0 +1,77 @@
+// tests/CompositionOptimizer/HumanApprovalTest.cpp
+//
+// Human-verified examples for CompositionOptimizer output quality.
+// Since no ground truth optimizer exists, we manually verify that outputs
+// are sensible and contain expected efficient sequences.
+//
+// Run: ./build/tests/vimficiency_tests --gtest_filter="CompositionOptimizerHumanApprovalTests.*"
+
+#include <gtest/gtest.h>
+#include <memory>
+
+#include "Editor/Position.h"
+#include "Optimizer/Config.h"
+#include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
+#include "Utils/Lines.h"
+#include "Utils/NeovimOracle.h"
+
+using namespace std;
+
+class CompositionOptimizerHumanApprovalTests : public ::testing::Test {
+protected:
+  static unique_ptr<NeovimOracle> oracle;
+  Config config = Config::uniform();
+  CompositionOptimizer opt{config};
+  CompositionOptimizerParams params{};
+
+  static void SetUpTestSuite() { oracle = make_unique<NeovimOracle>(); }
+  static void TearDownTestSuite() { oracle.reset(); }
+
+  // Run optimizer and verify all results achieve goal state via Neovim oracle
+  void verifyResults(
+      const Lines& initial, Position initialPos,
+      const Lines& goal, Position goalPos,
+      const string& context = "") {
+    auto compResult = opt.optimize(initial, initialPos, goal, goalPos, params);
+    const auto& results = compResult.results;
+
+    ASSERT_FALSE(results.empty()) << "No results" << ctx(context);
+    for (size_t i = 0; i < results.size(); i++) {
+      ASSERT_TRUE(results[i].isValid()) << "Result " << i << " invalid" << ctx(context);
+      SimulationResult nvim = oracle->simulate(
+          initial, initialPos.line, initialPos.col, results[i].sequence.keys);
+      EXPECT_TRUE(nvim.lines == goal)
+          << "Result " << i << " seq='" << results[i].sequence << "'" << ctx(context)
+          << "\n  Initial: " << initial << "\n  Goal: " << goal << "\n  Got: " << nvim.lines;
+    }
+  }
+
+private:
+  static string ctx(const string& s) { return s.empty() ? "" : " (" + s + ")"; }
+};
+
+unique_ptr<NeovimOracle> CompositionOptimizerHumanApprovalTests::oracle;
+
+// =============================================================================
+// Examples (to be filled in)
+// =============================================================================
+TEST_F(CompositionOptimizerHumanApprovalTests, DISABLED_Example1) {
+  // Delete a short word
+  Lines initialLines = {
+    "steak is pretty nice",
+    "don't you think?"
+  };
+  Lines afterLines = {
+    "Dry-brined steak is excellent",
+    "don't you agree?"
+  };
+  Position initialPos(0, 0);
+  Position afterPos(initialLines.endPos());
+  MotionBoundary boundary(initialLines, initialPos, afterPos);
+
+  CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos);
+  cout << res << endl;
+
+  verifyResults(initialLines, initialPos, afterLines, res.goalPos);
+}
+

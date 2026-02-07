@@ -47,7 +47,7 @@ protected:
   CompositionSearchContext makeContext(const Lines& initial, const Lines& goal) {
     return CompositionSearchContext(
         initial, Position(0, 0), goal, "",
-        NavContext(), MotionBoundary(), EXPLORABLE_MOTIONS, params, config);
+        NavContext(), MotionBoundary(), params, config);
   }
 
   // Validate mask for any delimiter type (quote or bracket) against oracle.
