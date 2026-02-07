@@ -132,7 +132,7 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
     const Lines& lines,
     const Position& startPos,
     const Position& rangeFirst,
-    const Position& rangeLast,
+    const Position& rangeEnd,
     MotionOptimizerRangeParams params,
     const string& userSequence,
     const MotionBoundary& boundary,
@@ -140,16 +140,16 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
     const NavContext& navContext,
     const MotionToKeys& rawMotionToKeys) {
 
-  // Precondition: startPos must not be in range
-  assert(!(startPos >= rangeFirst && startPos <= rangeLast) &&
-         "startPos must not be in [rangeFirst, rangeLast]");
+  // Precondition: startPos must not be in range [rangeFirst, rangeEnd)
+  assert(!(startPos >= rangeFirst && startPos < rangeEnd) &&
+         "startPos must not be in [rangeFirst, rangeEnd)");
 
   if (startPos < rangeFirst) {
-    return optimizeToRangeImpl<true>(lines, startPos, startingEffort, rangeFirst, rangeLast,
+    return optimizeToRangeImpl<true>(lines, startPos, startingEffort, rangeFirst, rangeEnd,
                                       userSequence, navContext,
                                       boundary, rawMotionToKeys, params);
   } else {
-    return optimizeToRangeImpl<false>(lines, startPos, startingEffort, rangeFirst, rangeLast,
+    return optimizeToRangeImpl<false>(lines, startPos, startingEffort, rangeFirst, rangeEnd,
                                        userSequence, navContext,
                                        boundary, rawMotionToKeys, params);
   }
@@ -162,7 +162,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     const Position& startPos,
     const RunningEffort& startingEffort,
     const Position& rangeFirst,
-    const Position& rangeLast,
+    const Position& rangeEnd,
     const string& userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
@@ -176,7 +176,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
   MotionSearchContext ctx(lines, navContext, boundary, params, config, userEffort);
 
   // Use range mode constructor
-  MotionExplorer explorer(ctx, rangeFirst, rangeLast);
+  MotionExplorer explorer(ctx, rangeFirst, rangeEnd);
 
   MotionState initialState(startPos, startingEffort, 0.0, 0.0);
 
@@ -185,14 +185,14 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
   int uniquePositionsFound = 0;
 
   auto isInRange = [&](const Position& pos) {
-    return pos >= rangeFirst && pos <= rangeLast;
+    return pos >= rangeFirst && pos < rangeEnd;
   };
 
   // Cap effective maxResults at range size (can't find more positions than exist)
-  int rangeSize = lines.spanSize(rangeFirst, rangeLast);
+  int rangeSize = lines.spanSize(rangeFirst, rangeEnd);
   int effectiveMaxResults = std::min(params.maxResults, rangeSize);
 
-  initialState.setCost(ctx.computePriorityToRange(initialState, rangeFirst, rangeLast));
+  initialState.setCost(ctx.computePriorityToRange(initialState, rangeFirst, rangeEnd));
   ctx.pq.push(initialState);
   ctx.costMap[initialState.getKey()] = initialState.getCost();
 

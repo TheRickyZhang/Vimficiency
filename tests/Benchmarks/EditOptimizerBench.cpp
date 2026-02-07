@@ -22,13 +22,14 @@ using namespace std;
 constexpr bool ENABLE_COMPARISON = false;
 constexpr const char* COMPARISON_NAME = "Default vs Experimental";
 
-inline EditOptimizerParams paramsA() {
+// NOTE: Must be static, not inline - inline causes incorrect behavior with templates
+static EditOptimizerParams paramsA() {
   EditOptimizerParams p;
   // Baseline configuration
   return p;
 }
 
-inline EditOptimizerParams paramsB() {
+static EditOptimizerParams paramsB() {
   EditOptimizerParams p;
   // Experimental configuration
   return p;
@@ -53,7 +54,7 @@ protected:
     BenchmarkSetup(const Lines& lines)
         : initialLines(lines),
           goalLines({""}),
-          boundary(lines, Position(0, 0), lines.lastPos()) {}
+          boundary(lines, Position(0, 0), lines.endPos()) {}
 
     // Custom goal
     BenchmarkSetup(const Lines& initial, const Lines& goal, const EditBoundary& b)
@@ -62,7 +63,7 @@ protected:
 
   static BenchmarkResult runWithParams(const BenchmarkSetup& cfg,
                                        const EditOptimizerParams& params,
-                                       int iterations = 10) {
+                                       int iterations = DEFAULT_TIMING_ITERATIONS) {
     EditOptimizer opt(config);
     SearchStats lastStats;
 
@@ -76,19 +77,56 @@ protected:
     return {timing, lastStats};
   }
 
+  static int maxResultsFor(const BenchmarkSetup& setup) {
+    return max(10, setup.initialLines.totalPositions() / 4);
+  }
+
+  // Apply maxResults cap based on the setup's totalPositions
+  static EditOptimizerParams withCap(EditOptimizerParams p, const BenchmarkSetup& s) {
+    return p.withMaxResults(max(10, s.initialLines.totalPositions() / 4));
+  }
+
+  // ================== Print Helpers (Multi-Seed) ==================
+  static void printMultiSeedRow(const string& label, int numLines, int avgLen = 30,
+                                BufferShape shape = BufferShape::CodeLike) {
+    runMultiSeedBenchmark<ENABLE_COMPARISON, EditOptimizerParams, BenchmarkSetup>(
+        label,
+        [=]() { return BenchmarkSetup(generateBuffer(numLines, avgLen, shape)); },
+        paramsA(), paramsB(),
+        [](const BenchmarkSetup& s, const EditOptimizerParams& p) {
+          return runWithParams(s, withCap(p, s));
+        });
+  }
+
+  static void printMultiSeedRowWithNodes(const string& label, int numLines, int avgLen,
+                                         int maxNodes) {
+    runMultiSeedBenchmark<ENABLE_COMPARISON, EditOptimizerParams, BenchmarkSetup>(
+        label,
+        [=]() { return BenchmarkSetup(generateBuffer(numLines, avgLen)); },
+        paramsA().withMaxNodesExplored(maxNodes),
+        paramsB().withMaxNodesExplored(maxNodes),
+        [](const BenchmarkSetup& s, const EditOptimizerParams& p) {
+          return runWithParams(s, withCap(p, s));
+        });
+  }
+
+  // ================== Print Helpers (Single Setup) ==================
   static void printRow(const string& label, const BenchmarkSetup& setup) {
+    int mr = maxResultsFor(setup);
     runUnifiedBenchmark<ENABLE_COMPARISON>(
-        label, setup, paramsA(), paramsB(),
+        label, setup,
+        paramsA().withMaxResults(mr), paramsB().withMaxResults(mr),
         [](const BenchmarkSetup& s, const EditOptimizerParams& p) {
           return runWithParams(s, p);
         });
   }
 
   static void printRowWithNodes(const string& label, const BenchmarkSetup& setup, int maxNodes) {
+    int mr = maxResultsFor(setup);
     runUnifiedBenchmark<ENABLE_COMPARISON>(
         label, setup,
-        paramsA().withMaxNodesExplored(maxNodes),
-        paramsB().withMaxNodesExplored(maxNodes),
+        paramsA().withMaxNodesExplored(maxNodes).withMaxResults(mr),
+        paramsB().withMaxNodesExplored(maxNodes).withMaxResults(mr),
         [](const BenchmarkSetup& s, const EditOptimizerParams& p) {
           return runWithParams(s, p);
         });
@@ -106,13 +144,13 @@ TEST_F(EditOptimizerBench, BufferSize) {
   if constexpr (ENABLE_COMPARISON) {
     cout << "Comparison: " << COMPARISON_NAME << endl;
   }
+  cout << "(Averaged across " << DEFAULT_SEED_COUNT << " seeds - "
+       << getSeedModeDescription() << ")\n";
   printHeader("Buffer Size Benchmark (Pure Deletion)");
   printUnifiedHeader<ENABLE_COMPARISON>("Lines");
 
   for (int numLines : {1, 3, 5, 10, 15}) {
-    RandomGen::seed(42);
-    Lines lines = generateBuffer(numLines, 30);
-    printRow(to_string(numLines), BenchmarkSetup(lines));
+    printMultiSeedRow(to_string(numLines), numLines, 30);
   }
 }
 
@@ -121,9 +159,7 @@ TEST_F(EditOptimizerBench, LineLength) {
   printUnifiedHeader<ENABLE_COMPARISON>("Chars");
 
   for (int avgLen : {10, 20, 40, 60}) {
-    RandomGen::seed(42);
-    Lines lines = generateBuffer(5, avgLen);
-    printRow(to_string(avgLen), BenchmarkSetup(lines));
+    printMultiSeedRow(to_string(avgLen), 5, avgLen);
   }
 }
 
@@ -135,9 +171,7 @@ TEST_F(EditOptimizerBench, BufferShape) {
            {"Uniform", BufferShape::Uniform},
            {"Prose", BufferShape::Prose},
            {"CodeLike", BufferShape::CodeLike}}) {
-    RandomGen::seed(42);
-    Lines lines = generateBuffer(10, 30, shape);
-    printRow(name, BenchmarkSetup(lines));
+    printMultiSeedRow(name, 10, 30, shape);
   }
 }
 
@@ -145,12 +179,8 @@ TEST_F(EditOptimizerBench, SearchDepth) {
   printHeader("Search Depth Benchmark");
   printUnifiedHeader<ENABLE_COMPARISON>("Depth");
 
-  RandomGen::seed(42);
-  Lines lines = generateBuffer(15, 30);
-  BenchmarkSetup setup(lines);
-
   for (int depth : {1000, 5000, 10000, 50000}) {
-    printRowWithNodes(to_string(depth), setup, depth);
+    printMultiSeedRowWithNodes(to_string(depth), 15, 30, depth);
   }
 }
 
@@ -159,9 +189,7 @@ TEST_F(EditOptimizerBench, MultiLineDelete) {
   printUnifiedHeader<ENABLE_COMPARISON>("Lines");
 
   for (int numLines : {2, 4, 6, 8, 10}) {
-    RandomGen::seed(42);
-    Lines lines = generateBuffer(numLines, 20);
-    printRow(to_string(numLines), BenchmarkSetup(lines));
+    printMultiSeedRow(to_string(numLines), numLines, 20);
   }
 }
 
@@ -178,9 +206,9 @@ TEST_F(EditOptimizerBench, BoundaryConstraints) {
   // With prefix (first half of first line is protected)
   {
     Position firstPos(0, 15);
-    Position lastPos = fullBuffer.lastPos();
-    Lines editRegion = fullBuffer.getSpan(firstPos, lastPos);
-    EditBoundary boundary(fullBuffer, firstPos, lastPos);
+    Position endPos = fullBuffer.endPos();
+    Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
+    EditBoundary boundary(fullBuffer, firstPos, endPos);
     printRow("Prefix", BenchmarkSetup(editRegion, {""}, boundary));
   }
 
@@ -189,9 +217,9 @@ TEST_F(EditOptimizerBench, BoundaryConstraints) {
     Position firstPos(0, 0);
     int lastLine = fullBuffer.lastLine();
     int midCol = static_cast<int>(fullBuffer[lastLine].size()) / 2;
-    Position lastPos(lastLine, midCol);
-    Lines editRegion = fullBuffer.getSpan(firstPos, lastPos);
-    EditBoundary boundary(fullBuffer, firstPos, lastPos);
+    Position endPos(lastLine, midCol + 1);
+    Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
+    EditBoundary boundary(fullBuffer, firstPos, endPos);
     printRow("Suffix", BenchmarkSetup(editRegion, {""}, boundary));
   }
 
@@ -200,9 +228,9 @@ TEST_F(EditOptimizerBench, BoundaryConstraints) {
     Position firstPos(0, 10);
     int lastLine = fullBuffer.lastLine();
     int lastLineLen = static_cast<int>(fullBuffer[lastLine].size());
-    Position lastPos(lastLine, max(0, lastLineLen - 10));
-    Lines editRegion = fullBuffer.getSpan(firstPos, lastPos);
-    EditBoundary boundary(fullBuffer, firstPos, lastPos);
+    Position endPos(lastLine, max(1, lastLineLen - 10 + 1));
+    Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
+    EditBoundary boundary(fullBuffer, firstPos, endPos);
     printRow("Both", BenchmarkSetup(editRegion, {""}, boundary));
   }
 }

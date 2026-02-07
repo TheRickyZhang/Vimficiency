@@ -48,7 +48,7 @@ struct EmbeddedEditRegion {
   int startLine;         // Edit region start in fullBuffer coordinates
   int startCol;          // Edit region start column
   int endLine;           // Edit region end in fullBuffer coordinates
-  int endCol;            // Edit region end column (inclusive)
+  int endCol;            // Edit region end column (exclusive)
 
   // Construct EditBoundary for use with EditOptimizer
   EditBoundary makeBoundary() const;

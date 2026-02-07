@@ -1,5 +1,7 @@
 #pragma once
 
+#include <climits>
+
 #include "Optimizer/OptimizerParamsBase.h"
 
 // =============================================================================
@@ -7,8 +9,13 @@
 // =============================================================================
 // EditOptimizer searches from ALL starting positions simultaneously.
 // maxResults limits total results across all positions.
+// Default is unlimited (all positions) since EditOptimizer's multi-source search
+// naturally bounds by totalPositions. Callers can set a lower limit to cap search.
 
 struct EditOptimizerParams : OptimizerParamsBase {
+  // Override base default: EditOptimizer finds results for all positions by default.
+  // The search is also bounded by totalPositions in shouldContinue().
+  EditOptimizerParams() { maxResults = INT_MAX; }
   // Line padding for internal MotionOptimizer calls (visual delete path).
   // Lower default than CompositionOptimizer since effectiveLines already
   // includes prefix/suffix context. Adjustable to 0 for no padding.
@@ -19,8 +26,6 @@ struct EditOptimizerParams : OptimizerParamsBase {
   // Chainable setters for fluent configuration
   EditOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
   EditOptimizerParams& withMaxNodesExplored(int v) { maxNodesExplored = v; return *this; }
-  EditOptimizerParams& withExploreFactor(double v) { exploreFactor = v; return *this; }
-  EditOptimizerParams& withTrackExploredStates(bool v) { trackExploredStates = v; return *this; }
   EditOptimizerParams& withMotionLinePaddingAbove(int v) { motionLinePaddingAbove = v; return *this; }
   EditOptimizerParams& withMotionLinePaddingBelow(int v) { motionLinePaddingBelow = v; return *this; }
   EditOptimizerParams& withMotionLinePadding(int v) { motionLinePaddingAbove = motionLinePaddingBelow = v; return *this; }

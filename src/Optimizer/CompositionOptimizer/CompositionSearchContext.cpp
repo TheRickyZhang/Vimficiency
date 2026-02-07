@@ -215,7 +215,7 @@ vector<double> CompositionSearchContext::computeSuffixEditCosts() const {
     // All edits now have EditResult (including pure insertions)
     const auto& editRes = editResults[i];
     vector<double> costs;
-    for (const Result& r : editRes.results) {
+    for (const Result& r : editRes.getResults()) {
       if (r.isValid()) {
         costs.push_back(r.keyCost);
       }
@@ -262,11 +262,6 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
   for (const DiffState& diff : diffStates) {
     // Handle pure insertions: create single-entry EditResult with precomputed "i + text + <Esc>"
     if (diff.isPureInsertion()) {
-      EditResult result(1);  // Single entry for position 0 (the insertion point)
-
-      // Compute goalPos (same logic as regular edits)
-      result.goalPos = computeInsertEndPos(diff.beginPos, diff.insertedText);
-
       // Build insert sequence: i + typed content + <Esc>
       Lines insertLines = Lines::unflatten(diff.insertedText);
       auto [typedStr, typedKeys] = buildTypedCommands(insertLines);
@@ -274,44 +269,44 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
       RunningEffort runningEffort;
       runningEffort.append(iKey, config);
       double effort = runningEffort.append(typedKeys, config);
-      result.results[0] = Result(Sequence("i" + typedStr), effort);
 
-      // lineBaseIndex for single-point insertion
-      result.firstLine = diff.beginPos.line;
-      result.firstCol = diff.beginPos.col;
-      result.lineBaseIndex = {-diff.beginPos.col};  // flatIndexAt(beginPos) == 0
+      std::vector<Result> insertResults(1);
+      insertResults[0] = Result(Sequence("i" + typedStr), effort);
+
+      Position goalPos = computeInsertEndPos(diff.beginPos, diff.insertedText);
+      // Use single-char Lines for lineBaseIndex computation (insertion point has no content)
+      Lines singlePoint = {""};
+      EditResult result(std::move(insertResults), {}, singlePoint,
+                        diff.beginPos.line, diff.beginPos.col, goalPos);
 
       results.push_back(std::move(result));
       continue;
     }
 
-    EditResult result = editOptimizer.optimizeEdit(
+    EditResult optResult = editOptimizer.optimizeEdit(
         diff.deletedLines(), diff.insertedLines(), diff.boundary);
-
-    // Compute lineBaseIndex for O(1) buffer position to flat index lookup
-    result.computeLineBaseIndex(diff.deletedLines(), diff.beginPos.line, diff.beginPos.col);
 
     // Compute cursor position after edit completes
     // After change + typed text + <Esc>, cursor is at last char of inserted text
+    Position goalPos;
     const Lines& inserted = diff.insertedLines();
     if (inserted.empty() || (inserted.size() == 1 && inserted[0].empty())) {
       // Pure deletion or empty insertion: cursor at start of edit region
-      result.goalPos = diff.beginPos;
+      goalPos = diff.beginPos;
     } else if (inserted.size() == 1) {
       // Single line: cursor at last char of inserted text
-      result.goalPos = Position(diff.beginPos.line,
-                               diff.beginPos.col + static_cast<int>(inserted[0].size()) - 1);
+      goalPos = Position(diff.beginPos.line,
+                         diff.beginPos.col + static_cast<int>(inserted[0].size()) - 1);
     } else {
       // Multi-line: cursor at last char of last inserted line
       int lastLine = diff.beginPos.line + static_cast<int>(inserted.size()) - 1;
       int lastCol = inserted.back().empty() ? 0 : static_cast<int>(inserted.back().size()) - 1;
-      result.goalPos = Position(lastLine, lastCol);
+      goalPos = Position(lastLine, lastCol);
     }
 
-    // Note: Replacement vs delete+type comparison is now handled inside EditOptimizer::optimizeEdit
-    // The best result for position 0 is already stored in typeAllResults[0]
-
-    results.push_back(std::move(result));
+    optResult.initFlatIndex(diff.deletedLines(), diff.beginPos.line,
+                            diff.beginPos.col, goalPos);
+    results.push_back(std::move(optResult));
   }
 
   return results;

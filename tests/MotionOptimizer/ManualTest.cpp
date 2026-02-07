@@ -220,8 +220,8 @@ TEST_F(MotionBoundaryTest, ExcludeGG_RemovesGG) {
   Position end(0, 0);
 
   // Boundary computed from sub-region within full buffer
-  // firstPos=(2,0) means hasLinesAbove=true, lastPos=(5,5) means hasLinesBelow=false
-  MotionBoundary boundary(fullBuffer, Position(2, 0), Position(5, 5));
+  // firstPos=(2,0) means hasLinesAbove=true, endPos=(5,6) means hasLinesBelow=false
+  MotionBoundary boundary(fullBuffer, Position(2, 0), Position(5, 6));
 
   auto results = runWithBoundary(subBuffer, start, end, "kk", boundary,
                                  getSlicedMotionToKeys({"j", "k", "gg"}));
@@ -251,7 +251,7 @@ TEST_F(MotionBoundaryTest, ExcludeG_RemovesG) {
   Position start(1, 0);
   Position end(3, 0);
 
-  // Boundary computed from sub-region: firstPos=(0,0) hasLinesAbove=false, lastPos=(3,5) hasLinesBelow=true
+  // Boundary computed from sub-region: firstPos=(0,0) hasLinesAbove=false, endPos=(3,5) hasLinesBelow=true
   MotionBoundary boundary(fullBuffer, Position(0, 0), Position(3, 5));
 
   auto results = runWithBoundary(subBuffer, start, end, "jj", boundary,
@@ -273,8 +273,8 @@ TEST_F(MotionBoundaryTest, LeftColOffset_FiltersPrefixPositions) {
   Position end(0, 5);     // End in prefix region
 
   // leftColOffset = 7 (prefix "prefix_" length)
-  // Boundary from position (0,7) to (0,12) gives leftColOffset=7
-  MotionBoundary boundary(lines, Position(0, 7), Position(0, 12));
+  // Boundary from position (0,7) to (0,13) gives leftColOffset=7
+  MotionBoundary boundary(lines, Position(0, 7), Position(0, 13));
 
   auto results = runWithBoundary(lines, start, end, "hhhhh", boundary,
                                  getSlicedMotionToKeys({"h", "l"}));
@@ -302,8 +302,8 @@ TEST_F(MotionBoundaryTest, RightColOffset_FiltersSuffixPositions) {
   Position end(0, 10);    // End in suffix region
 
   // rightColOffset = 6 (suffix "_suffix" without the 's' at col 7)
-  // Boundary from position (0,0) to (0,6) gives rightColOffset = 13-1-6 = 6
-  MotionBoundary boundary(lines, Position(0, 0), Position(0, 6));
+  // Boundary from position (0,0) to (0,7) gives rightColOffset = 13-7 = 6
+  MotionBoundary boundary(lines, Position(0, 0), Position(0, 7));
 
   auto results = runWithBoundary(lines, start, end, "lllllll", boundary,
                                  getSlicedMotionToKeys({"h", "l"}));
@@ -327,10 +327,10 @@ TEST_F(MotionBoundaryTest, IsPositionInBounds_WithColConstraints) {
 
   // Build a 3-line buffer where:
   // - line 0 has prefix of 3 chars, so firstPos=(0,3)
-  // - line 2 has length 15, suffix of 5 chars, so lastPos=(2,9) (last valid col is 14-5=9)
+  // - line 2 has length 15, suffix of 5 chars, so endPos=(2,10) (exclusive past col 9)
   Lines lines = {"pppxxxxxx", "middle_content", "xxxxxxxxxxxxxxx"};  // line 2 has 15 chars
-  // Boundary from (0,3) to (2,9): leftColOffset=3, rightColOffset=15-1-9=5
-  MotionBoundary boundary(lines, Position(0, 3), Position(2, 9));
+  // Boundary from (0,3) to (2,10): leftColOffset=3, rightColOffset=15-10=5
+  MotionBoundary boundary(lines, Position(0, 3), Position(2, 10));
 
   int lastLine = 2;
   int lastLineLength = 15;

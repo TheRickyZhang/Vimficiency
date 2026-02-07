@@ -97,14 +97,7 @@ vector<Result> CompositionOptimizer::optimize(
       bool isNewLineInsertion = nextEdit.isNewLineInsertion();
 
       // Explore an insertion strategy by navigating to a valid range, then inserting.
-      //
-      // Each strategy (o/I/A/i) defines a range of cursor positions from which its
-      // mode-entry command produces the correct edit. For example, `o` works from
-      // any column on the line above, while `i` requires the exact insertion column.
-      //
-      // The mode-entry command (o/I/A/i) determines the actual insert position
-      // independent of where in the range we land, so the final cursor position
-      // after typing + Esc is always editResult.goalPos regardless of movement result.
+      // o, I, A -> anywhere in 
       auto exploreInsertionStrategy = [&](int targetLine, int firstCol, int lastCol,
                                           const string& insertCmd) {
         bool inRange = (pos.line == targetLine &&
@@ -123,20 +116,20 @@ vector<Result> CompositionOptimizer::optimize(
           // Remap positions to subset-local coordinates
           Position localPos(pos.line - beginLine, pos.col, pos.targetCol);
           Position localRangeFirst(targetLine - beginLine, firstCol);
-          Position localRangeLast(targetLine - beginLine, lastCol);
+          Position localRangeEnd(targetLine - beginLine, lastCol + 1);
 
           // Boundary uses full subset extent, not the target range.
           // The target range is only for optimizeToRange's isInRange check.
           // Using the target range as boundary would clamp motions like $ to the range edge.
           Position subsetFirst(0, 0);
-          Position subsetLast(static_cast<int>(subset.size()) - 1,
-              std::max(0, static_cast<int>(subset.back().size()) - 1));
-          MotionBoundary subsetBoundary(subset, subsetFirst, subsetLast,
+          Position subsetEnd(static_cast<int>(subset.size()) - 1,
+              subset.back().effectiveSize());
+          MotionBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
               beginLine > 0 || boundary.hasLinesAbove(),
               endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
           vector<RangeResult> results = motionOptimizer.optimizeToRange(
-              subset, localPos, localRangeFirst, localRangeLast,
+              subset, localPos, localRangeFirst, localRangeEnd,
               MotionOptimizerRangeParams{}.withMaxResults(1), "",
               subsetBoundary, s.getRunningEffort(),
               navigationContext, ctx.motionToKeys).results;
@@ -200,10 +193,10 @@ vector<Result> CompositionOptimizer::optimize(
 
     // ========== EDIT vs MOVEMENT TRANSITIONS ==========
     const EditResult& editResult = ctx.editResults[editsCompleted];
-    auto flatIdx = editResult.flatIndexAt(pos.line, pos.col);
+    const Result* res = editResult.resultAt(pos.line, pos.col);
 
-    if (flatIdx.has_value() && editResult.results[*flatIdx].isValid()) {
-      ctx.exploreEditTransition(s, editResult.results[*flatIdx].sequence,
+    if (res) {
+      ctx.exploreEditTransition(s, res->sequence,
                                 editResult.goalPos, editsCompleted + 1);
     } else {
       // Check for bracket/quote text object shortcuts
@@ -235,31 +228,34 @@ vector<Result> CompositionOptimizer::optimize(
         }
       }
 
+      // If cursor is already inside the edit range but no edit result was found
+      // (e.g. maxResults budget exhausted), skip motion search — we're already there.
+      if (pos >= nextEdit.beginPos && pos < nextEdit.endPos) continue;
+
       // Slice a padded subset around [pos, edit region] for MotionOptimizer
-      Position inclusiveLast = nextEdit.inclusiveLastPos();
       auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
           min(pos.line, nextEdit.beginPos.line),
-          max(pos.line, inclusiveLast.line),
+          max(pos.line, nextEdit.endPos.line),
           params.motionPaddingAbove, params.motionPaddingBelow);
 
       Lines subset = currentLines.getLineRange(beginLine, endLine);
 
       Position localPos(pos.line - beginLine, pos.col, pos.targetCol);
       Position localRangeFirst(nextEdit.beginPos.line - beginLine, nextEdit.beginPos.col);
-      Position localRangeLast(inclusiveLast.line - beginLine, inclusiveLast.col);
+      Position localRangeEnd(nextEdit.endPos.line - beginLine, nextEdit.endPos.col);
 
       // Boundary uses full subset extent, not the edit range.
       // The edit range is only the target for optimizeToRange's isInRange check.
       // Using the edit range as boundary would clamp motions like $ to the range edge.
       Position subsetFirst(0, 0);
-      Position subsetLast(static_cast<int>(subset.size()) - 1,
-          std::max(0, static_cast<int>(subset.back().size()) - 1));
-      MotionBoundary subsetBoundary(subset, subsetFirst, subsetLast,
+      Position subsetEnd(static_cast<int>(subset.size()) - 1,
+          subset.back().effectiveSize());
+      MotionBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
           beginLine > 0 || boundary.hasLinesAbove(),
           endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
       vector<RangeResult> movementResults = motionOptimizer.optimizeToRange(
-          subset, localPos, localRangeFirst, localRangeLast,
+          subset, localPos, localRangeFirst, localRangeEnd,
           MotionOptimizerRangeParams{}.withMaxResults(
               clamp(nextEdit.origCharCount(), 1, 10)), "",
           subsetBoundary, s.getRunningEffort(),

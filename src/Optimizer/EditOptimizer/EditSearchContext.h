@@ -60,7 +60,8 @@ struct EditSearchContext {
   using PriorityQueue = std::priority_queue<EditState, std::vector<EditState>, EditStateComparator>;
   PriorityQueue pq;
   std::unordered_map<EditStateKey, double, EditStateKeyHash> costMap;
-  int resultsFound = 0;
+  int resultsFound = 0;            // Total completions reaching goal (consistent with other optimizers)
+  int uniquePositionsCovered = 0;  // Unique starting positions that have a result
   int iterations = 0;
   int totalPositions;
 

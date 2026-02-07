@@ -28,7 +28,8 @@ struct EditBoundary {
   static const EditBoundary& noParent();
 
   // Construct from buffer context, optionally inheriting from parent
-  EditBoundary(const Lines& lines, Position firstPos, Position lastPos,
+  // endPos is exclusive: one past the last valid cursor position on the last line
+  EditBoundary(const Lines& lines, Position firstPos, Position endPos,
                const EditBoundary& parent = noParent());
 
   // Getters for boundary content
@@ -83,6 +84,6 @@ private:
   BracketFlags firstLineBrackets_;
   BracketFlags lastLineBrackets_;
 
-  void computeBoundaryChars(const Lines& lines, Position firstPos, Position lastPos);
-  void scanQuotesAndBrackets(const Lines& lines, Position firstPos, Position lastPos);
+  void computeBoundaryChars(const Lines& lines, Position firstPos, Position endPos);
+  void scanQuotesAndBrackets(const Lines& lines, Position firstPos, Position endPos);
 };

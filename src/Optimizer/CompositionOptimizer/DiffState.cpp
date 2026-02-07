@@ -394,16 +394,14 @@ vector<DiffState> calculate(const Lines& initialLines, const Lines& goalLines) {
             col++;
           }
         }
-        posEnd = Position(line, col);  // col is one past last char (half-open)
+        posEnd = Position(line, col);  // col may be 0 on next line if deleted ends with \n
       }
 
       // Construct DiffState with EditBoundary computed from buffer context
-      // EditBoundary uses inclusive lastPos, so convert from half-open
-      Position inclusiveEnd = deleted.empty() ? posBegin
-          : Position(posEnd.line, posEnd.col - 1);
+      // EditBoundary now takes exclusive endPos directly
       result.emplace_back(
           posBegin, posEnd, std::move(deleted), std::move(inserted),
-          EditBoundary(initialLines, posBegin, inclusiveEnd));
+          EditBoundary(initialLines, posBegin, posEnd));
     }
 
     // Skip the long KEEP run we found (or remaining KEEPs at end)

@@ -24,10 +24,12 @@ struct BoundaryContext {
   BoundaryContext() = default;
 
   // Compute from buffer positions, optionally inheriting from parent context
-  BoundaryContext(const Lines& lines, Position firstPos, Position lastPos,
+  // endPos is exclusive: one past the last valid cursor position on the last line
+  BoundaryContext(const Lines& lines, Position firstPos, Position endPos,
                   const BoundaryContext& parent);
 
   // Compute from explicit flags (for FFI or when parent flags are known)
-  BoundaryContext(const Lines& lines, Position firstPos, Position lastPos,
+  // endPos is exclusive: one past the last valid cursor position on the last line
+  BoundaryContext(const Lines& lines, Position firstPos, Position endPos,
                   bool parentHasLinesAbove, bool parentHasLinesBelow);
 };

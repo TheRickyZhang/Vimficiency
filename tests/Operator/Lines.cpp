@@ -65,11 +65,11 @@ protected:
     int firstLine = lineOffset;
     int firstCol = (left != '\n' && left != NO_CHAR) ? 1 : 0;
     int lastLine = lineOffset + static_cast<int>(lines.size()) - 1;
-    int lastCol = testLines[lastLine].empty() ? 0 :
-        static_cast<int>(testLines[lastLine].size()) - 1 - ((right != '\n' && right != NO_CHAR) ? 1 : 0);
-    if (lastCol < 0) lastCol = 0;
+    int endCol = testLines[lastLine].empty() ? 1 :
+        static_cast<int>(testLines[lastLine].size()) - ((right != '\n' && right != NO_CHAR) ? 1 : 0);
+    if (endCol < 1) endCol = 1;
 
-    return EditBoundary(testLines, Position(firstLine, firstCol), Position(lastLine, lastCol));
+    return EditBoundary(testLines, Position(firstLine, firstCol), Position(lastLine, endCol));
   }
 };
 

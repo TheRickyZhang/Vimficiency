@@ -16,7 +16,7 @@
 //
 // Three usage modes:
 // 1. Single-goal (optimize): Uses goalPos for directional optimization
-// 2. Range-goal (optimizeToRange): Uses rangeFirst/rangeLast for range-aware exploration
+// 2. Range-goal (optimizeToRange): Uses rangeFirst/rangeEnd for range-aware exploration
 // 3. Lightweight: Uses exploreAllStandardMotions only, no directional methods
 class MotionExplorer {
   MotionSearchContext& ctx;
@@ -29,7 +29,7 @@ class MotionExplorer {
 
   // Range mode state
   Position rangeFirst_;
-  Position rangeLast_;
+  Position rangeEnd_;
   bool isRangeMode_ = false;
 
 public:
@@ -42,8 +42,8 @@ public:
   // Range mode constructor for optimizeToRange() with directional exploration
   MotionExplorer(MotionSearchContext& ctx,
                  const Position& rangeFirst,
-                 const Position& rangeLast)
-      : ctx(ctx), rangeFirst_(rangeFirst), rangeLast_(rangeLast), isRangeMode_(true) {}
+                 const Position& rangeEnd)
+      : ctx(ctx), rangeFirst_(rangeFirst), rangeEnd_(rangeEnd), isRangeMode_(true) {}
 
   // Lightweight constructor - no directional optimization
   explicit MotionExplorer(MotionSearchContext& ctx)
@@ -56,8 +56,8 @@ public:
     MotionState newState = base.afterMotion(cmd, endpoint, keys, ctx.config);
 
     if (isRangeMode_) {
-      newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeLast_));
-      ctx.exploreNewStateToRange(std::move(newState), rangeFirst_, rangeLast_);
+      newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeEnd_));
+      ctx.exploreNewStateToRange(std::move(newState), rangeFirst_, rangeEnd_);
     } else {
       newState.setCost(ctx.computePriorityToGoal(newState, goalPos_));
       ctx.exploreNewState(std::move(newState), goalKey_);
@@ -375,7 +375,7 @@ public:
     Position pos = base.getPos();
     MotionClassMask m = classesForRange(pos.line, pos.col,
                                          rangeFirst_.line, rangeFirst_.col,
-                                         rangeLast_.line, rangeLast_.col);
+                                         rangeEnd_.line, rangeEnd_.col);
     exploreClasses(base, m);
   }
 
@@ -484,5 +484,5 @@ public:
   // Range mode accessors
   bool isRangeMode() const { return isRangeMode_; }
   const Position& getRangeFirst() const { return rangeFirst_; }
-  const Position& getRangeLast() const { return rangeLast_; }
+  const Position& getRangeEnd() const { return rangeEnd_; }
 };

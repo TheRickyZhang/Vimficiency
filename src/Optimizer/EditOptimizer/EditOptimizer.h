@@ -12,67 +12,63 @@
 #include "Utils/Lines.h"
 
 
-// TODO: Is it helpful to return some sort of vector<Position> to reuse information about how flat indices -> real positions?
 struct EditResult {
-  // Results indexed by flattened starting position
-  // typeAllResults[0] contains the best result for position 0 (may be replacement or delete+type)
-  std::vector<Result> results;
+  // Cursor position after edit completes (in buffer coordinates)
+  // This is where the cursor lands after the change command + typed text + <Esc>
+  Position goalPos;
 
   // Search statistics for debugging and benchmarking
   SearchStats stats;
+
+  // Takes ownership of optimizer-built results. No flat index yet;
+  // call initFlatIndex() to set up buffer-position mapping.
+  EditResult(std::vector<Result> results, SearchStats stats)
+      : stats(std::move(stats)), results_(std::move(results)) {}
+
+  // Full constructor: initializes all fields including lineBaseIndex computation.
+  // Used by consumers that have the complete edit context available.
+  EditResult(std::vector<Result> results, SearchStats stats,
+             const Lines& initialLines, int bufferFirstLine, int bufferFirstCol,
+             Position goalPos);
+
+  // Set up buffer-position mapping for O(1) lookup via resultAt().
+  // Can be called after construction to defer flat index setup.
+  void initFlatIndex(const Lines& initialLines, int bufferFirstLine,
+                     int bufferFirstCol, Position goalPos);
+
+  // Look up the result for a buffer position. Returns nullptr if the position
+  // is outside the edit region or the result at that position is invalid.
+  const Result* resultAt(int bufferLine, int bufferCol) const {
+    int editLine = bufferLine - firstLine_;
+    if (editLine < 0 || editLine >= static_cast<int>(lineBaseIndex_.size()))
+      return nullptr;
+    int idx = lineBaseIndex_[editLine] + bufferCol;
+    if (idx < 0 || idx >= static_cast<int>(results_.size()))
+      return nullptr;
+    const Result& r = results_[idx];
+    return r.isValid() ? &r : nullptr;
+  }
+
+  // Read-only access to the full results vector (for iteration, suffix cost computation, tests)
+  const std::vector<Result>& getResults() const { return results_; }
+
+  // Number of result entries
+  size_t resultCount() const { return results_.size(); }
+
+private:
+  // Results indexed by flattened starting position
+  std::vector<Result> results_;
 
   // Precomputed for O(1) flat index lookup from buffer positions
   // lineBaseIndex[i] = sum of effective sizes of lines 0..i-1, minus column offset
   // Column offset is firstCol for line 0, else 0
   //
   // Usage: flatIndex = lineBaseIndex[bufferLine - firstLine] + bufferCol
-  //
-  // Example for edit region {"hello", "world"} starting at buffer pos (5, 3):
-  //   lineBaseIndex[0] = 0 - 3 = -3      (first line, subtract firstCol)
-  //   lineBaseIndex[1] = 5 - 0 = 5       (second line, no offset)
-  //
-  // Buffer pos (5, 7) -> flatIndex = lineBaseIndex[0] + 7 = -3 + 7 = 4  (4th char of "hello")
-  // Buffer pos (6, 2) -> flatIndex = lineBaseIndex[1] + 2 = 5 + 2 = 7   (7th char overall)
-  int firstLine = 0;
-  int firstCol = 0;
-  std::vector<int> lineBaseIndex;
+  int firstLine_ = 0;
+  int firstCol_ = 0;
+  std::vector<int> lineBaseIndex_;
 
-  // Cursor position after edit completes (in buffer coordinates)
-  // This is where the cursor lands after the change command + typed text + <Esc>
-  Position goalPos;
-
-  explicit EditResult(int n) {
-    results.resize(n);
-  }
-
-  // Compute lineBaseIndex for O(1) buffer position to flat index conversion
-  // Must be called after construction with the initial lines and buffer coordinates
-  void computeLineBaseIndex(const Lines& initialLines, int bufferFirstLine, int bufferFirstCol) {
-    firstLine = bufferFirstLine;
-    firstCol = bufferFirstCol;
-    lineBaseIndex.clear();
-    lineBaseIndex.reserve(initialLines.size());
-
-    int cumSum = 0;
-    for (size_t i = 0; i < initialLines.size(); i++) {
-      int colOffset = (i == 0) ? firstCol : 0;
-      lineBaseIndex.push_back(cumSum - colOffset);
-      cumSum += static_cast<int>(initialLines[i].size());
-    }
-  }
-
-  // Convert buffer position to flat index within edit region.
-  // Returns nullopt if position is not in the edit region (wrong line, or
-  // column before/after the region on a valid line).
-  std::optional<int> flatIndexAt(int bufferLine, int bufferCol) const {
-    int editLine = bufferLine - firstLine;
-    if (editLine < 0 || editLine >= static_cast<int>(lineBaseIndex.size()))
-      return std::nullopt;
-    int idx = lineBaseIndex[editLine] + bufferCol;
-    if (idx < 0 || idx >= static_cast<int>(results.size()))
-      return std::nullopt;
-    return idx;
-  }
+  friend std::ostream& operator<<(std::ostream& os, const EditResult& editResult);
 };
 
 std::ostream& operator<<(std::ostream& os, const EditResult& editResult);

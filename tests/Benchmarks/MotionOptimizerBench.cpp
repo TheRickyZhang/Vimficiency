@@ -64,7 +64,8 @@ protected:
     BenchmarkSetup(const Lines& lines) : lines(lines) {
       firstPos = randomFirstPos(lines);
       lastPos = randomLastPos(lines);
-      boundary = MotionBoundary(lines, firstPos, lastPos, true, true);
+      Position boundaryEnd(lastPos.line, lastPos.col + 1);
+      boundary = MotionBoundary(lines, firstPos, boundaryEnd, true, true);
     }
   };
 
@@ -73,7 +74,7 @@ protected:
     MotionBoundary boundary{};
     Position initialPos;
     Position rangeFirst;
-    Position rangeLast;
+    Position rangeEnd;
 
     // Default constructor: uses DEFAULT_RANGE_SIZE (6) columns at end of last line
     RangeBenchmarkSetup(const Lines& lines) : lines(lines) {
@@ -83,8 +84,8 @@ protected:
       int rangeSize = min(DEFAULT_RANGE_SIZE, lastLineLen);
       int startCol = max(0, lastLineLen - rangeSize);
       rangeFirst = {lastLine, startCol};
-      rangeLast = {lastLine, lastLineLen - 1};
-      boundary = MotionBoundary(lines, rangeFirst, rangeLast, true, true);
+      rangeEnd = {lastLine, lastLineLen};
+      boundary = MotionBoundary(lines, rangeFirst, rangeEnd, true, true);
     }
 
     RangeBenchmarkSetup(const Lines& lines, int rangeChars, int rangeLines = 1) : lines(lines) {
@@ -97,15 +98,15 @@ protected:
         int actualChars = min(rangeChars, lastLineLen);
         int startCol = max(0, lastLineLen - actualChars);
         rangeFirst = {lastLine, startCol};
-        rangeLast = {lastLine, lastLineLen - 1};
+        rangeEnd = {lastLine, lastLineLen};
       } else {
         int firstLine = lastLine - rangeLines + 1;
         int firstLineLen = max(1, static_cast<int>(lines[firstLine].size()));
         int startCol = max(0, firstLineLen / 2);
         rangeFirst = {firstLine, startCol};
-        rangeLast = {lastLine, lastLineLen - 1};
+        rangeEnd = {lastLine, lastLineLen};
       }
-      boundary = MotionBoundary(lines, rangeFirst, rangeLast, true, true);
+      boundary = MotionBoundary(lines, rangeFirst, rangeEnd, true, true);
     }
   };
 
@@ -137,7 +138,7 @@ protected:
     TimingStats timing = measureTiming(
         [&]() {
           auto [results, stats] = opt.optimizeToRange(
-              cfg.lines, cfg.initialPos, cfg.rangeFirst, cfg.rangeLast,
+              cfg.lines, cfg.initialPos, cfg.rangeFirst, cfg.rangeEnd,
               params, "", cfg.boundary);
           lastStats = stats;
         },
@@ -256,7 +257,7 @@ protected:
     cout << "\n--- Range Setup Debug ---\n";
     cout << "Start: (" << cfg.initialPos.line << ", " << cfg.initialPos.col << ")\n";
     cout << "Range: (" << cfg.rangeFirst.line << ", " << cfg.rangeFirst.col << ") to ("
-         << cfg.rangeLast.line << ", " << cfg.rangeLast.col << ")\n";
+         << cfg.rangeEnd.line << ", " << cfg.rangeEnd.col << ")\n";
     cout << "Lines (" << cfg.lines.size() << "):\n";
     for (size_t i = 0; i < cfg.lines.size(); i++) {
       cout << "  " << i << ": \"" << cfg.lines[i] << "\"\n";
