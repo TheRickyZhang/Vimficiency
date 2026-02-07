@@ -39,7 +39,7 @@ bool isSentenceCloser(unsigned char c) {
 // 2. String/Line Helpers
 // =============================================================================
 
-bool isBlankLineStr(const std::string& s) {
+bool isBlankLineStr(std::string_view s) {
   for (unsigned char c : s) {
     if (c != ' ' && c != '\t')
       return false;
@@ -47,7 +47,7 @@ bool isBlankLineStr(const std::string& s) {
   return true; // empty or whitespace-only
 }
 
-int firstNonBlankColInLineStr(const std::string& s) {
+int firstNonBlankColInLineStr(std::string_view s) {
   for (int i = 0; i < (int)s.size(); ++i) {
     unsigned char c = (unsigned char)s[i];
     if (c != ' ' && c != '\t')

@@ -367,7 +367,7 @@ void motionSentencePrev(Position &pos, const Lines &lines) {
 // Returns destination column, or -1 if target not found
 // forward: true for f/t, false for F/T
 // till: true for t/T (stop one short), false for f/F (land on target)
-int findCharInLine(char target, const string &line,
+int findCharInLine(char target, string_view line,
                    int startCol, bool forward, bool till) {
   const int n = static_cast<int>(line.size());
 
@@ -396,7 +396,7 @@ int findCharInLine(char target, const string &line,
 template <bool Forward>
 vector<tuple<char, int, int>>
 generateFMotions(int currCol, int targetCol,
-                 const string &line, int threshold) {
+                 string_view line, int threshold) {
   vector<tuple<char, int, int>> res;
   const int n = static_cast<int>(line.size());
 
@@ -441,9 +441,9 @@ generateFMotions(int currCol, int targetCol,
 }
 
 template std::vector<std::tuple<char, int, int>>
-generateFMotions<true>(int, int, const std::string &, int);
+generateFMotions<true>(int, int, std::string_view, int);
 
 template std::vector<std::tuple<char, int, int>>
-generateFMotions<false>(int, int, const std::string &, int);
+generateFMotions<false>(int, int, std::string_view, int);
 
 } // namespace VimCore

@@ -6,6 +6,7 @@
 
 #include "EditOptimizer.h"
 #include "EditSearchContext.h"
+#include "Keyboard/KeyedSequence.h"
 #include "Keyboard/KeyboardModel.h"
 #include "Optimizer/BuildTypedCommands.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
@@ -62,44 +63,11 @@ namespace {
 
 // Build collapse sequence to merge multi-line goal state into single line.
 // <BS> joins current line with previous, <Del> joins with next.
-pair<string, PhysicalKeys> buildCollapseSequence(int totalLines, int cursorLine) {
-  string seq;
-  PhysicalKeys keys;
-
-  if (totalLines > 1) {
-    int linesBefore = cursorLine;
-    int linesAfter = totalLines - 1 - cursorLine;
-
-    for (int i = 0; i < linesBefore; i++) {
-      seq += "<BS>";
-      keys.push_back(Key::Key_Backspace);
-    }
-    for (int i = 0; i < linesAfter; i++) {
-      seq += "<Del>";
-      keys.push_back(Key::Key_Delete);
-    }
-  }
-
-  return {seq, keys};
-}
-
-// Compute remaining edit content for heuristic (excluding prefix/suffix)
-double computeRemainingHeuristic(const Lines &lines, int leftColOffset,
-                                  int rightColOffset) {
-  double remaining = 0;
-  int lastLine = static_cast<int>(lines.size()) - 1;
-  for (int i = 0; i <= lastLine; i++) {
-    int start = (i == 0) ? leftColOffset : 0;
-    int end = static_cast<int>(lines[i].size());
-    if (i == lastLine && rightColOffset > 0) {
-      end -= rightColOffset;
-    }
-    remaining += max(0, end - start);
-    if (i < lastLine) {
-      remaining += 1; // Newline
-    }
-  }
-  return remaining;
+KeyedSequence buildCollapseSequence(int totalLines, int cursorLine) {
+  KeyedSequence ks;
+  ks.appendRepeated(KeyedSequence::BS, cursorLine);
+  ks.appendRepeated(KeyedSequence::Del, totalLines - 1 - cursorLine);
+  return ks;
 }
 
 // Check if buffer is effectively empty (all lines are empty strings)
@@ -113,7 +81,7 @@ bool allLinesEmpty(const Lines &lines) {
 
 
 // Convert delete command to change equivalent
-// Returns the change command string, or empty string if no mapping exists
+// Returns the change command KeyedSequence, or empty if no mapping exists
 //
 // dw/dW are converted to dwi/dWi (delete + enter insert) rather than cw/cW because
 // vim treats cw/cW like ce/cE (doesn't include trailing whitespace). This conversion
@@ -121,15 +89,15 @@ bool allLinesEmpty(const Lines &lines) {
 // de/dE (WordEdge) is explored before dw/dW (GapEdge) in exploreAllDeletions, the
 // de result is already stored when the ranges are identical. So dw reaching the goal
 // implies de didn't, meaning dw deleted trailing whitespace that cw would skip.
-pair<string, PhysicalKeys> deleteToChange(const char* deleteCmd,
-                                           const PhysicalKeys& deleteKeys) {
-  if (!strcmp(deleteCmd, "D"))
+KeyedSequence deleteToChange(string_view deleteCmd,
+                              const PhysicalKeys& deleteKeys) {
+  if (deleteCmd == "D")
     return {"C", {Key::Key_Shift, Key::Key_C}};
-  if (!strcmp(deleteCmd, "dd"))
+  if (deleteCmd == "dd")
     return {"cc", {Key::Key_C, Key::Key_C}};
-  if (!strcmp(deleteCmd, "dw"))
+  if (deleteCmd == "dw")
     return {"dwi", {Key::Key_D, Key::Key_W, Key::Key_I}};
-  if (!strcmp(deleteCmd, "dW"))
+  if (deleteCmd == "dW")
     return {"dWi", {Key::Key_D, Key::Key_Shift, Key::Key_W, Key::Key_I}};
   if (deleteCmd[0] == 'd') {
     // Generic d{motion} → c{motion}: Key_C + motion keys (skip Key_D)
@@ -138,14 +106,14 @@ pair<string, PhysicalKeys> deleteToChange(const char* deleteCmd,
     for (size_t i = 1; i < deleteKeys.size(); i++) {
       changeKeys.push_back(deleteKeys.view()[i]);
     }
-    return {"c" + string(deleteCmd + 1), changeKeys};
+    return {string("c") + string(deleteCmd.substr(1)), std::move(changeKeys)};
   }
-  if (!strcmp(deleteCmd, "x"))
+  if (deleteCmd == "x")
     return {"s", {Key::Key_S}};
-  if (!strcmp(deleteCmd, "X"))
+  if (deleteCmd == "X")
     return {"hs", {Key::Key_H, Key::Key_S}};
   assert(false && "deleteToChange not supported");
-  return {"", {}};
+  return {};
 }
 
 
@@ -153,7 +121,7 @@ pair<string, PhysicalKeys> deleteToChange(const char* deleteCmd,
 
 // replacement strategy for same-length transformations
 // Returns result for position 0 only (the only position ever consumed)
-optional<Result> tryReplacement(const string &deleted, const string &inserted,
+optional<Result> tryReplacement(string_view deleted, string_view inserted,
                                 const Config &config) {
   assert(deleted.size() == inserted.size());
   assert(deleted != inserted);
@@ -170,12 +138,10 @@ optional<Result> tryReplacement(const string &deleted, const string &inserted,
 
   // Build replacement sequence from firstDiff onward
   // Group consecutive diff positions into runs, use R-mode for runs of 2+
-  // Build string and PhysicalKeys in parallel to avoid post-hoc tokenization.
-  string seq;
-  PhysicalKeys seqKeys;
-  static const PhysicalKeys rKey = {Key::Key_R};
-  static const PhysicalKeys lKey = {Key::Key_L};
-  static const PhysicalKeys fKey = {Key::Key_F};
+  KeyedSequence ks;
+  static const KeyedSequence rCmd("r", {Key::Key_R});
+  static const KeyedSequence lCmd("l", {Key::Key_L});
+  static const KeyedSequence fCmd("f", {Key::Key_F});
 
   size_t i = 0;
   while (i < diff.size()) {
@@ -190,15 +156,12 @@ optional<Result> tryReplacement(const string &deleted, const string &inserted,
 
     int runLength = static_cast<int>(j - i + 1);
     if (runLength == 1) {
-      seq += "r";
-      seq += inserted[runStart];
-      seqKeys.append(rKey);
-      seqKeys.append(CHAR_TO_KEYS.at(inserted[runStart]));
+      ks += rCmd;
+      ks.appendChar(inserted[runStart]);
     } else {
       // Can use {cnt}r if same consecutive inserted
-      seq += to_string(runLength) + "r" + inserted[runStart];
-      seqKeys.append(makeCountedKeys(runLength, rKey));
-      seqKeys.append(CHAR_TO_KEYS.at(inserted[runStart]));
+      ks.appendCounted(runLength, rCmd);
+      ks.appendChar(inserted[runStart]);
     }
 
     // Navigate to next run if there is one
@@ -209,21 +172,17 @@ optional<Result> tryReplacement(const string &deleted, const string &inserted,
       int dist = nextPos - prevPos;
 
       if (dist <= 2) {
-        seq += string(dist, 'l');
-        seqKeys.append(lKey, dist);
+        ks.appendRepeated(lCmd, dist);
       } else {
         // Try f-motion: check if target char appears only once in range
         char findChar = deleted[nextPos]; // char at target position in original
         int occurrences = (count(deleted.begin() + prevPos + 1,
                                  deleted.begin() + nextPos, findChar));
         if (occurrences == 0) {
-          seq += "f";
-          seq += findChar;
-          seqKeys.append(fKey);
-          seqKeys.append(CHAR_TO_KEYS.at(findChar));
+          ks += fCmd;
+          ks.appendChar(findChar);
         } else {
-          seq += to_string(dist) + "l";
-          seqKeys.append(makeCountedKeys(dist, lKey));
+          ks.appendCounted(dist, lCmd);
         }
       }
     }
@@ -231,20 +190,23 @@ optional<Result> tryReplacement(const string &deleted, const string &inserted,
 
   // Build result for position 0 only
   // If firstDiff > 0, we need to move right to reach the first change
-  string prefix;
+  KeyedSequence prefix;
   RunningEffort runningEffort;
   if (firstDiff > 0) {
     if (firstDiff <= 2) {
-      prefix = string(firstDiff, 'l');
+      prefix.appendRepeated(lCmd, firstDiff);
       runningEffort.append(PhysicalKeys(firstDiff, Key::Key_L), config);
     } else {
-      prefix = to_string(firstDiff) + "l";
-      runningEffort.append(makeCountedKeys(firstDiff, lKey), config);
+      prefix.appendCounted(firstDiff, lCmd);
+      runningEffort.append(makeCountedKeys(firstDiff, {Key::Key_L}), config);
     }
   }
 
-  double effort = runningEffort.append(seqKeys, config);
-  return Result(prefix + seq, effort);
+  double effort = runningEffort.append(ks.keys, config);
+  KeyedSequence full;
+  full += prefix;
+  full += ks;
+  return Result(std::move(full.seq), effort);
 }
 
 // =============================================================================
@@ -284,7 +246,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
   // For char-wise edits (c{motion}), no autoindent on the first line;
   // continuation lines after <CR> get autoindent from the previous line.
   int sufLeadingSpaces = (goalLines.size() > 1) ? leadingSpaceCount(suf) : 0;
-  auto [typedStr, typedKeys] = buildTypedCommands(goalLines, "", pre, sufLeadingSpaces);
+  KeyedSequence typed = buildTypedCommands(goalLines, "", pre, sufLeadingSpaces);
 
   // Goal check for regular edit: accepts multi-line (for collapse via <BS>/<Del>)
   auto isGoalReached = [&](const Lines &lines) -> bool {
@@ -299,7 +261,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
 
   // Deletion handler: apply deletion, check goal, store result or continue search
   auto exploreDeletion = [&](const EditState &base, const Range &range,
-                             const char* deleteCmd, const PhysicalKeys &deleteKeys) {
+                             string_view deleteCmd, const PhysicalKeys &deleteKeys) {
     EditState newState = base.afterDeletion(range);
     const Lines &lines = newState.getLines();
 
@@ -307,15 +269,15 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
       int idx = newState.getStartIndex();
       if (results[idx].isValid()) return;
 
-      auto [changeCmd, changeKeys] = deleteToChange(deleteCmd, deleteKeys);
-      auto [collapseSeq, collapseKeys] =
-          buildCollapseSequence(static_cast<int>(lines.size()), newState.getPos().line);
+      KeyedSequence change = deleteToChange(deleteCmd, deleteKeys);
+      KeyedSequence collapse = buildCollapseSequence(
+          static_cast<int>(lines.size()), newState.getPos().line);
 
-      string seqStr = newState.getSeq() + changeCmd + collapseSeq + typedStr;
+      string seqStr = newState.getSeq() + change.seq.keys + collapse.seq.keys + typed.seq.keys;
       RunningEffort effort = newState.getRunningEffort();
-      effort.append(changeKeys, config);
-      effort.append(collapseKeys, config);
-      double totalEffort = effort.append(typedKeys, config);
+      effort.append(change.keys, config);
+      effort.append(collapse.keys, config);
+      double totalEffort = effort.append(typed.keys, config);
 
       results[idx] = Result(seqStr, totalEffort);
       ctx.resultsFound++;
@@ -331,18 +293,16 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
   // Linewise handler: search with dd, record result as cc + collapseSeq + typedStr
   // The cc conversion accounts for the empty line that cc leaves (vs dd which removes it)
   auto exploreLinewise = [&](const EditState &base, int line,
-                             const char *deleteCmd, const PhysicalKeys &deleteKeys) {
+                             string_view deleteCmd, const PhysicalKeys &deleteKeys) {
     EditState newState = base.afterLinewiseDeletion(line);
     const Lines &lines = newState.getLines();
 
     // For search continuation: adjust cursor if it escaped below edit region
-    string searchCmdSeq = deleteCmd;
-    PhysicalKeys searchCmdKeys = deleteKeys;
+    KeyedSequence searchCmd(deleteCmd, deleteKeys);
     Position pos = newState.getPos();
     int lastValidLine = static_cast<int>(lines.size()) - 1;
     if (editBoundary.hasLinesBelow() && lastValidLine >= 0 && pos.line > lastValidLine) {
-      searchCmdSeq += "k";
-      searchCmdKeys.push_back(Key::Key_K);
+      searchCmd.append("k", {Key::Key_K});
       pos.line = lastValidLine;
       // k motion preserves targetCol (sticky column behavior)
       pos.clampColPreservingTarget(lines[pos.line].empty() ? 0 :
@@ -358,23 +318,24 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
       // Use pre-dd line count since that's what cc would operate on.
       // (When dd empties the buffer, an artificial empty line is added by invariant,
       // making lines.size()+1 overcounting — the cc equivalent has the same 1 line.)
-      static const PhysicalKeys ccKeys = {Key::Key_C, Key::Key_C};
+      static const KeyedSequence ccCmd("cc", {Key::Key_C, Key::Key_C});
       int ccLineCount = static_cast<int>(base.getLines().size());
-      auto [collapseSeq, collapseKeys] =
-          buildCollapseSequence(ccLineCount, line);
+      KeyedSequence collapse = buildCollapseSequence(ccLineCount, line);
 
       // cc preserves the source line's indent — compute typed commands lazily
       // since the autoindent depends on which line is being cc'd
       string_view ccAutoindent = VimOptions::autoindent()
           ? leadingWhitespace(base.getLines()[line])
           : string_view{};
-      auto [ccTypedStr, ccTypedKeys] = buildTypedCommands(goalLines, ccAutoindent);
+      KeyedSequence ccTyped = buildTypedCommands(goalLines, ccAutoindent);
 
-      string seqStr = newState.getSeq() + "cc" + collapseSeq + ccTypedStr;
+      KeyedSequence full = ccCmd;
+      full += collapse;
+      full += ccTyped;
+
+      string seqStr = newState.getSeq() + full.seq.keys;
       RunningEffort effort = newState.getRunningEffort();
-      effort.append(ccKeys, config);
-      effort.append(collapseKeys, config);
-      double totalEffort = effort.append(ccTypedKeys, config);
+      double totalEffort = effort.append(full.keys, config);
 
       results[idx] = Result(seqStr, totalEffort);
       ctx.resultsFound++;
@@ -383,7 +344,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
     }
 
     // Continue search with dd state
-    newState.recordSearch(searchCmdSeq, searchCmdKeys,
+    newState.recordSearch(searchCmd.seq.keys, searchCmd.keys,
                           ctx.computePriority(newState.getEffort(), lines), config);
     ctx.exploreNewState(std::move(newState));
   };
@@ -398,7 +359,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
 
     // Join handler: J/gJ merges current line with next
     auto exploreJoin = [&](const EditState& base, bool addSpace,
-                           const char* joinCmd, const PhysicalKeys& joinKeys) {
+                           string_view joinCmd, const PhysicalKeys& joinKeys) {
       EditState newState = base.afterJoin(addSpace);
       const Lines& lines = newState.getLines();
 
@@ -419,13 +380,13 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
     // Explore all deletions (characterwise + linewise) via EditSearchContext
     ctx.exploreAllDeletions(
       s,
-      [&](const Range& range, const char* cmd, const PhysicalKeys& keys) {
+      [&](const Range& range, string_view cmd, const PhysicalKeys& keys) {
         exploreDeletion(s, range, cmd, keys);
       },
-      [&](int line, const char* cmd, const PhysicalKeys& keys) {
+      [&](int line, string_view cmd, const PhysicalKeys& keys) {
         exploreLinewise(s, line, cmd, keys);
       },
-      [&](const Position& newPos, const char* cmd, const PhysicalKeys& keys) {
+      [&](const Position& newPos, string_view cmd, const PhysicalKeys& keys) {
         // Pure cursor movement - no buffer change, no goal check possible
         EditState newState = s;
         newState.setPos(newPos);
@@ -433,7 +394,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
                               ctx.computePriority(newState.getEffort(), newState.getLines()), config);
         ctx.exploreNewState(std::move(newState));
       },
-      [&](bool addSpace, const char* cmd, const PhysicalKeys& keys) {
+      [&](bool addSpace, string_view cmd, const PhysicalKeys& keys) {
         exploreJoin(s, addSpace, cmd, keys);
       }
     );
@@ -478,7 +439,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
 
   // Deletion handler: output delete command directly (no change conversion)
   auto exploreDeletion = [&](const EditState &base, const Range &range,
-                             const char *deleteCmd, const PhysicalKeys &deleteKeys) {
+                             string_view deleteCmd, const PhysicalKeys &deleteKeys) {
     EditState newState = base.afterDeletion(range);
     const Lines &lines = newState.getLines();
 
@@ -491,7 +452,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
 
       bool isNew = !results[idx].isValid();
       if (isNew || totalEffort < results[idx].keyCost) {
-        results[idx] = Result(newState.getSeq() + deleteCmd, totalEffort);
+        results[idx] = Result(string(newState.getSeq()).append(deleteCmd), totalEffort);
       }
       ctx.resultsFound++;
       if (isNew) ctx.uniquePositionsCovered++;
@@ -505,11 +466,11 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
 
   // Linewise handler: record dd directly (pure deletion, no cc conversion)
   auto exploreLinewise = [&](const EditState &base, int line,
-                             const char *deleteCmd, const PhysicalKeys &deleteKeys) {
+                             string_view deleteCmd, const PhysicalKeys &deleteKeys) {
     EditState newState = base.afterLinewiseDeletion(line);
     const Lines &lines = newState.getLines();
 
-    string cmdSeq = deleteCmd;
+    string cmdSeq(deleteCmd);
     PhysicalKeys cmdKeys = deleteKeys;
 
     // Adjust cursor if it escaped below edit region
@@ -560,7 +521,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
 
     // Join handler for pure deletion: J/gJ merges lines without adding new content
     auto exploreJoin = [&](const EditState& base, bool addSpace,
-                           const char* joinCmd, const PhysicalKeys& joinKeys) {
+                           string_view joinCmd, const PhysicalKeys& joinKeys) {
       EditState newState = base.afterJoin(addSpace);
       const Lines& lines = newState.getLines();
 
@@ -573,7 +534,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
 
         bool isNew = !results[idx].isValid();
         if (isNew || totalEffort < results[idx].keyCost) {
-          results[idx] = Result(newState.getSeq() + joinCmd, totalEffort);
+          results[idx] = Result(string(newState.getSeq()).append(joinCmd), totalEffort);
         }
         ctx.resultsFound++;
         if (isNew) ctx.uniquePositionsCovered++;
@@ -588,13 +549,13 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
     // Explore all deletions (characterwise + linewise) via EditSearchContext
     ctx.exploreAllDeletions(
       s,
-      [&](const Range& range, const char* cmd, const PhysicalKeys& keys) {
+      [&](const Range& range, string_view cmd, const PhysicalKeys& keys) {
         exploreDeletion(s, range, cmd, keys);
       },
-      [&](int line, const char* cmd, const PhysicalKeys& keys) {
+      [&](int line, string_view cmd, const PhysicalKeys& keys) {
         exploreLinewise(s, line, cmd, keys);
       },
-      [&](const Position& newPos, const char* cmd, const PhysicalKeys& keys) {
+      [&](const Position& newPos, string_view cmd, const PhysicalKeys& keys) {
         // Pure cursor movement - no buffer change, no goal check possible
         EditState newState = s;
         newState.setPos(newPos);
@@ -602,7 +563,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
                               ctx.computePriority(newState.getEffort(), newState.getLines()), config);
         ctx.exploreNewState(std::move(newState));
       },
-      [&](bool addSpace, const char* cmd, const PhysicalKeys& keys) {
+      [&](bool addSpace, string_view cmd, const PhysicalKeys& keys) {
         exploreJoin(s, addSpace, cmd, keys);
       }
     );

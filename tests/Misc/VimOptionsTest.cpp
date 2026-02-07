@@ -291,16 +291,16 @@ TEST_F(VimOptionsTest, BuildTypedCommands_MatchesOracle_CC) {
   string_view autoindent = VimOptions::autoindent()
       ? leadingWhitespace(initialLines[0])
       : string_view("");
-  auto [seq, keys] = buildTypedCommands(goalLines, autoindent);
+  KeyedSequence typed = buildTypedCommands(goalLines, autoindent);
 
   // Replay in oracle: cc enters insert with autoindent, then our sequence
-  string fullSeq = "cc" + seq;
+  string fullSeq = "cc" + typed.seq.keys;
   auto result = oracleSimulate(initialLines, 0, 0, fullSeq);
 
   ASSERT_EQ(result.lines.size(), goalLines.size());
   for (size_t i = 0; i < goalLines.size(); i++) {
     EXPECT_EQ(result.lines[i], goalLines[i])
-        << "Line " << i << " mismatch for typed sequence: " << seq;
+        << "Line " << i << " mismatch for typed sequence: " << typed.seq;
   }
 }
 
@@ -311,14 +311,14 @@ TEST_F(VimOptionsTest, BuildTypedCommands_MultiLine) {
   string_view autoindent = VimOptions::autoindent()
       ? leadingWhitespace(initialLines[0])
       : string_view("");
-  auto [seq, keys] = buildTypedCommands(goalLines, autoindent);
+  KeyedSequence typed = buildTypedCommands(goalLines, autoindent);
 
-  string fullSeq = "cc" + seq;
+  string fullSeq = "cc" + typed.seq.keys;
   auto result = oracleSimulate(initialLines, 0, 0, fullSeq);
 
   ASSERT_EQ(result.lines.size(), goalLines.size());
   for (size_t i = 0; i < goalLines.size(); i++) {
     EXPECT_EQ(result.lines[i], goalLines[i])
-        << "Line " << i << " mismatch for typed sequence: " << seq;
+        << "Line " << i << " mismatch for typed sequence: " << typed.seq;
   }
 }

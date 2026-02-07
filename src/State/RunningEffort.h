@@ -40,5 +40,5 @@ public:
   void reset();
 };
 
-double getEffort(const std::string &seq, const Config &cfg);
+double getEffort(std::string_view seq, const Config &cfg);
 

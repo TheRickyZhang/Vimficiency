@@ -1,7 +1,7 @@
 #pragma once
 
+#include <string_view>
 #include <vector>
-#include <string>
 
 #include "Optimizer/Config.h"
 #include "Optimizer/Result.h"
@@ -28,7 +28,7 @@ struct CompositionOptimizer {
 
     // Search tuning
     CompositionOptimizerParams params = {},
-    const std::string& userSequence = "",
+    std::string_view userSequence = "",
 
     // Continuation from broader context
     const MotionBoundary& boundary = MotionBoundary(),

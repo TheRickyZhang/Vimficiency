@@ -4,6 +4,7 @@
 
 #include "PosKey.h"
 #include "RunningEffort.h"
+#include "Sequence.h"
 #include "Editor/Position.h"
 #include "Editor/Mode.h"
 #include "Editor/NavContext.h"
@@ -17,7 +18,7 @@ class MotionState {
   Mode mode;
 
   // Progress so far
-  std::string motionSequence;
+  Sequence motionSequence;
 
   // Necessary for ranking states
   double effort;
@@ -46,12 +47,13 @@ public:
   PosKey getKey() const {
     return PosKey(pos.line, pos.col);
   }
-  Position getPos()                const { return pos; }
-  Mode getMode()                   const { return mode; }
-  std::string getMotionSequence()  const { return motionSequence; }
-  double getEffort()               const { return effort; }
-  double getCost()                 const { return cost; }
-  RunningEffort getRunningEffort() const { return runningEffort; }
+  Position getPos()                       const { return pos; }
+  Mode getMode()                          const { return mode; }
+  const Sequence& getSequence()            const { return motionSequence; }
+  const std::string& getMotionSequence()  const { return motionSequence.keys; }
+  double getEffort()                      const { return effort; }
+  double getCost()                        const { return cost; }
+  const RunningEffort& getRunningEffort() const { return runningEffort; }
 
   // ==========================================================================
   // State transitions - return new state with motion applied
@@ -59,33 +61,33 @@ public:
 
   // Create new state with motion applied
   // Note: caller must set cost via setCost() after computing heuristic
-  [[nodiscard]] MotionState afterMotion(const char* cmd, Position endpoint,
+  [[nodiscard]] MotionState afterMotion(std::string_view cmd, Position endpoint,
                                         const PhysicalKeys& keys, const Config& config) const;
 
   // Create new state with counted motion applied (e.g., "3w")
-  [[nodiscard]] MotionState afterCountedMotion(const std::string& motion, int cnt,
+  [[nodiscard]] MotionState afterCountedMotion(std::string_view motion, int cnt,
                                                Position endpoint, const PhysicalKeys& baseKeys,
                                                const Config& config) const;
 
   // Create new state with f-motion applied (e.g., "fx;;")
-  [[nodiscard]] MotionState afterFMotion(const std::string& motion, int newCol,
+  [[nodiscard]] MotionState afterFMotion(std::string_view motion, int newCol,
                                          const PhysicalKeys& keys, const Config& config) const;
 
   void setCost(double newCost) { cost = newCost; }
 
   // For simulated motion without pre-computed endpoint (used by optimizeToRange)
-  void applySingleMotionWithEffort(const char* motion, const NavContext& navContext,
+  void applySingleMotionWithEffort(std::string_view motion, const NavContext& navContext,
                                    const Lines& lines, const PhysicalKeys& keys, const Config& config);
 
   // Keep for parsing arbitrary strings (tests, etc.)
-  void applySingleMotion(std::string motion, const NavContext& navContext, const Lines& lines);
+  void applySingleMotion(std::string_view motion, const NavContext& navContext, const Lines& lines);
 
 private:
   void updateEffort(const PhysicalKeys& keys, const Config& config);
 
   // Internal: apply motion to this state (mutates)
-  void applyMotionImpl(const char* cmd, Position endpoint, const PhysicalKeys& keys, const Config& config);
-  void applyCountedMotionImpl(const std::string& motion, int cnt, Position endpoint,
+  void applyMotionImpl(std::string_view cmd, Position endpoint, const PhysicalKeys& keys, const Config& config);
+  void applyCountedMotionImpl(std::string_view motion, int cnt, Position endpoint,
                               const PhysicalKeys& baseKeys, const Config& config);
-  void applyFMotionImpl(const std::string& motion, int newCol, const PhysicalKeys& keys, const Config& config);
+  void applyFMotionImpl(std::string_view motion, int newCol, const PhysicalKeys& keys, const Config& config);
 };

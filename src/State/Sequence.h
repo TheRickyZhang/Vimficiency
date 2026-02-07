@@ -2,6 +2,7 @@
 
 #include <ostream>
 #include <string>
+#include <string_view>
 
 // Represents a sequence of Vim commands/keys as a string.
 // Used by state classes to track the command history.
@@ -15,7 +16,7 @@ struct Sequence {
   bool empty() const { return keys.empty(); }
   size_t size() const { return keys.size(); }
 
-  void append(const std::string& s) { keys += s; }
+  void append(std::string_view s) { keys += s; }
   void append(char c) { keys += c; }
 
   bool operator==(const Sequence& other) const { return keys == other.keys; }

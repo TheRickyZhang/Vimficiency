@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <string>
+#include <string_view>
 #include <tuple>
 
 #include "EdgeType.h"
@@ -79,9 +80,9 @@ void motionSentenceNext(Position& pos, const Lines& lines);
 // Returns destination column, or -1 if target not found
 // forward: true for f/t, false for F/T
 // till: true for t/T (stop one short), false for f/F (land on target)
-int findCharInLine(char target, const std::string& line, int startCol, bool forward, bool till);
+int findCharInLine(char target, std::string_view line, int startCol, bool forward, bool till);
 
 template<bool Forward>
-std::vector<std::tuple<char, int, int>> generateFMotions(int currCol, int targetCol, const std::string& line, int threshold);
+std::vector<std::tuple<char, int, int>> generateFMotions(int currCol, int targetCol, std::string_view line, int threshold);
 
 } // namespace VimCore

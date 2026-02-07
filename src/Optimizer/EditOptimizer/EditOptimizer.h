@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <string_view>
 #include <vector>
 
 #include "Optimizer/Config.h"
@@ -80,8 +81,8 @@ std::ostream& operator<<(std::ostream& os, const EditResult& editResult);
 // @param inserted  The characters being added (must be same length as deleted)
 // @param config    Keyboard config for cost calculation
 // @return Result for position 0, or nullopt if replacement not applicable
-std::optional<Result> tryReplacement(const std::string& deleted,
-                                     const std::string& inserted,
+std::optional<Result> tryReplacement(std::string_view deleted,
+                                     std::string_view inserted,
                                      const Config& config);
 
 

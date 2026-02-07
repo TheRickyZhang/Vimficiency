@@ -1,5 +1,6 @@
 #include "CompositionSearchContext.h"
 
+#include "Keyboard/KeyedSequence.h"
 #include "Keyboard/MotionToKeys.h"
 #include "Optimizer/BuildTypedCommands.h"
 #include "State/RunningEffort.h"
@@ -16,7 +17,7 @@ CompositionSearchContext::CompositionSearchContext(
     const Lines& initialLines,
     const Position& initialPos,
     const Lines& goalLines,
-    const string& userSequence,
+    string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
     const MotionToKeys& rawMotionToKeys,
@@ -264,14 +265,14 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
     if (diff.isPureInsertion()) {
       // Build insert sequence: i + typed content + <Esc>
       Lines insertLines = Lines::unflatten(diff.insertedText);
-      auto [typedStr, typedKeys] = buildTypedCommands(insertLines);
-      static const PhysicalKeys iKey = {Key::Key_I};
+      static const KeyedSequence iCmd("i", {Key::Key_I});
+      KeyedSequence full = iCmd;
+      full += buildTypedCommands(insertLines);
       RunningEffort runningEffort;
-      runningEffort.append(iKey, config);
-      double effort = runningEffort.append(typedKeys, config);
+      double effort = runningEffort.append(full.keys, config);
 
       std::vector<Result> insertResults(1);
-      insertResults[0] = Result(Sequence("i" + typedStr), effort);
+      insertResults[0] = Result(std::move(full.seq), effort);
 
       Position goalPos = computeInsertEndPos(diff.beginPos, diff.insertedText);
       // Use single-char Lines for lineBaseIndex computation (insertion point has no content)

@@ -113,7 +113,7 @@ void RunningEffort::reset() {
   run_len         = 0;
 }
 
-double getEffort(const std::string &seq,
+double getEffort(std::string_view seq,
                  const Config      &cfg) {
   PhysicalKeys keys = globalTokenizer().tokenize(seq);
   RunningEffort st;

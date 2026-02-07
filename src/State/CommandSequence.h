@@ -2,10 +2,11 @@
 
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // Forward declaration
-std::vector<std::string> parseSequenceStrings(const std::string& seq);
+std::vector<std::string> parseSequenceStrings(std::string_view seq);
 
 // CommandSequence extends std::string with formatted output for display.
 //
@@ -33,4 +34,4 @@ struct CommandSequence : std::string {
 };
 
 // Utility function to format any sequence string (for use without CommandSequence)
-std::string formatSequenceForDisplay(const std::string& seq);
+std::string formatSequenceForDisplay(std::string_view seq);

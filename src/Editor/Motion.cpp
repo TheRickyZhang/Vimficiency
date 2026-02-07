@@ -19,7 +19,7 @@ std::ostream& operator<<(std::ostream& os, const ParsedMotion& motion) {
 // IMPORTANT: Returned ParsedMotions contain string_views into seq - caller must ensure seq outlives usage.
 
   // TODO: Once the motions we support are stable, and if it makes sense in how we implement vim's object model, consider representing motions as an enum instead of string. Then it would be no return, as harder to read/debug, but more efficient.
-std::vector<ParsedMotion> parseMotions(const std::string &seq) {
+std::vector<ParsedMotion> parseMotions(std::string_view seq) {
   std::string_view sv(seq);  // Create view to avoid allocations
   std::vector<ParsedMotion> result;
   size_t i = 0;
@@ -272,13 +272,13 @@ void applyParsedMotion(Position& pos, Mode& mode,
 }
 
 
-void applySingleMotion(Position& pos, Mode& mode, const string& motion, const Lines& lines, const NavContext& navContext) {
+void applySingleMotion(Position& pos, Mode& mode, string_view motion, const Lines& lines, const NavContext& navContext) {
   applyParsedMotion(pos, mode, ParsedMotion(motion, 0), lines, navContext);
 }
 
 // Return the result if we were to simulate motionSeq at current state
 // Important that pos is passed by copy! We wouldn't want to change any state.
-Position simulateMotions(Position pos, const std::string& motionSeq, const Lines& lines,
+Position simulateMotions(Position pos, std::string_view motionSeq, const Lines& lines,
                          const NavContext& navContext) {
   assert(!lines.empty() && "Lines can't be empty");
   Mode mode = Mode::Normal;  // Motions don't change mode, so use dummy

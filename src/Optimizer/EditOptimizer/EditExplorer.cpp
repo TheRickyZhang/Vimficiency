@@ -5,8 +5,6 @@
 #include "Keyboard/MotionToKeysPrimitives.h"
 #include "VimCore/VimEndpointUtils.h"
 
-#include <cstring>
-
 using namespace std;
 
 EditExplorer::EditExplorer(EditSearchContext& ctx) : ctx_(ctx) {}
@@ -46,7 +44,7 @@ void EditExplorer::exploreHalfLineEdits(
   int lastEditLine = lines.lastLine();
 
   for (const Edit::LineEditSpec& spec : specs) {
-    if (!strcmp(spec.cmd, "D")) {
+    if (spec.cmd == "D") {
       if (cursor.line == lastEditLine && ctx_.editBoundary.hasSuffix()) continue;
 
       int lineLen = static_cast<int>(lines[cursor.line].size());
@@ -60,7 +58,7 @@ void EditExplorer::exploreHalfLineEdits(
       if (endCol < cursor.col) continue;
       Range range(cursor, Position(cursor.line, endCol));
       onDeletion(range, spec.cmd, spec.keys);
-    } else if (!strcmp(spec.cmd, "d0")) {
+    } else if (spec.cmd == "d0") {
       if (cursor.line == 0 && ctx_.editBoundary.hasPrefix()) continue;
 
       int lineContentStart = (cursor.line == 0) ? ctx_.leftColOffset : 0;
@@ -306,7 +304,7 @@ void EditExplorer::exploreJoinCommands(
   // Explore both J (with space) and gJ (without space)
   for (const auto& [cmd, keys] : Deletion::JOIN) {
     bool addSpace = (cmd == "J");
-    onJoin(addSpace, cmd.c_str(), keys);
+    onJoin(addSpace, cmd, keys);
   }
 }
 

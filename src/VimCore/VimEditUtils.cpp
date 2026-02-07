@@ -128,7 +128,7 @@ void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos) {
   }
 }
 
-void insertText(Lines& lines, Position& pos, const string& text) {
+void insertText(Lines& lines, Position& pos, string_view text) {
   if (text.empty()) return;
 
   assert(!lines.empty() && "Lines invariant: buffer always has at least one line");

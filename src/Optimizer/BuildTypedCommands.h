@@ -1,14 +1,11 @@
 #pragma once
 
-#include "Keyboard/CharToKeys.h"
-#include "Keyboard/KeyboardModel.h"
+#include "Keyboard/KeyedSequence.h"
 #include "Utils/Lines.h"
 #include "Utils/StringUtils.h"
 #include "VimCore/VimOptions.h"
 
-#include <string>
 #include <string_view>
-#include <utility>
 
 // Build the typed content string from goalLines, accounting for Neovim autoindent.
 //
@@ -25,38 +22,27 @@
 //   linePrefix         - text before edit region on first line (for computing line 1+ autoindent)
 //   suffixLeadingSpaces - whitespace to restore on last line (stripped from suffix by <CR>)
 //
-// Returns sequence string + physical keys, including trailing <Esc>.
-inline std::pair<std::string, PhysicalKeys> buildTypedCommands(
+// Returns KeyedSequence including trailing <Esc>.
+inline KeyedSequence buildTypedCommands(
     const Lines &goalLines,
     std::string_view initialAutoindent = "",
     std::string_view linePrefix = "",
     int suffixLeadingSpaces = 0) {
-  std::string str;
-  PhysicalKeys keys;
-
-  static const PhysicalKeys ctrlUKeys = {Key::Key_Ctrl, Key::Key_U};
-
-  // Helper: append text content to str and keys
-  auto appendText = [&](std::string_view text) {
-    str.append(text);
-    for (char c : text) {
-      keys.append(CHAR_TO_KEYS.at(c));
-    }
-  };
+  KeyedSequence ks;
 
   // Helper: emit keys for a line given expected autoindent
   // Cases: (1) no autoindent, (2) goal matches, (3) goal has less indent, (4) mismatch
   auto emitLine = [&](std::string_view line, std::string_view autoindent) {
     // Case 1: no autoindent — type full line
     if (autoindent.empty()) {
-      appendText(line);
+      ks.appendText(line);
       return;
     }
 
     // Case 2: goal starts with autoindent — strip it
     if (line.size() >= autoindent.size() &&
         line.substr(0, autoindent.size()) == autoindent) {
-      appendText(line.substr(autoindent.size()));
+      ks.appendText(line.substr(autoindent.size()));
       return;
     }
 
@@ -73,20 +59,16 @@ inline std::pair<std::string, PhysicalKeys> buildTypedCommands(
         int remainder = static_cast<int>(line.size() - goalIndent.size());
         // <BS> is better when: bsNeeded + remainder < 2 + line.size()
         if (bsNeeded + remainder < 2 + static_cast<int>(line.size())) {
-          for (int j = 0; j < bsNeeded; j++) {
-            str += "<BS>";
-            keys.push_back(Key::Key_Backspace);
-          }
-          appendText(line.substr(goalIndent.size()));
+          ks.appendRepeated(KeyedSequence::BS, bsNeeded);
+          ks.appendText(line.substr(goalIndent.size()));
           return;
         }
       }
     }
 
     // Case 4: mismatch — clear with <C-u> and type full line
-    str += "<C-u>";
-    keys.append(ctrlUKeys);
-    appendText(line);
+    ks += KeyedSequence::CtrlU;
+    ks.appendText(line);
   };
 
   // Compute what autoindent Neovim provides for a given line during insert-mode typing.
@@ -114,20 +96,14 @@ inline std::pair<std::string, PhysicalKeys> buildTypedCommands(
   // Main loop: handle all lines uniformly via helpers
   if constexpr (VimOptions::autoindent()) {
     for (size_t i = 0; i < goalLines.size(); i++) {
-      if (i > 0) {
-        str += "<CR>";
-        keys.push_back(Key::Key_Enter);
-      }
+      if (i > 0) ks += KeyedSequence::CR;
       emitLine(goalLines[i], autoindentFor(i));
     }
   } else {
     // autoindent off — type full lines directly
     for (size_t i = 0; i < goalLines.size(); i++) {
-      if (i > 0) {
-        str += "<CR>";
-        keys.push_back(Key::Key_Enter);
-      }
-      appendText(goalLines[i]);
+      if (i > 0) ks += KeyedSequence::CR;
+      ks.appendText(goalLines[i]);
     }
   }
 
@@ -136,14 +112,10 @@ inline std::pair<std::string, PhysicalKeys> buildTypedCommands(
   // has leading spaces (char-wise edits that span lines).
   if constexpr (VimOptions::autoindent()) {
     if (suffixLeadingSpaces > 0 && goalLines.size() > 1) {
-      for (int i = 0; i < suffixLeadingSpaces; i++) {
-        str += ' ';
-        keys.append(CHAR_TO_KEYS.at(' '));
-      }
+      ks.appendCharRepeated(' ', suffixLeadingSpaces);
     }
   }
 
-  str += "<Esc>";
-  keys.push_back(Key::Key_Esc);
-  return {str, keys};
+  ks += KeyedSequence::Esc;
+  return ks;
 }

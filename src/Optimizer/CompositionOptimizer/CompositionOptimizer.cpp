@@ -1,6 +1,7 @@
 #include "CompositionOptimizer.h"
 
 #include "CompositionSearchContext.h"
+#include "Keyboard/KeyedSequence.h"
 #include "Optimizer/BuildTypedCommands.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "State/CompositionState.h"
@@ -37,7 +38,7 @@ Position computeInsertEndPos(Position insertPos, const string& insertedText) {
 vector<Result> CompositionOptimizer::optimize(
     const Lines& initialLines, const Position initialPos, const Lines& goalLines,
     const Position goalPos, CompositionOptimizerParams params,
-    const string& userSequence, const MotionBoundary& boundary,
+    string_view userSequence, const MotionBoundary& boundary,
     const NavContext& navigationContext, const MotionToKeys& rawMotionToKeys) {
   MotionOptimizer motionOptimizer(config);
 
@@ -155,9 +156,9 @@ vector<Result> CompositionOptimizer::optimize(
             ? leadingWhitespace(currentLines[targetLine])
             : string_view{};
         Lines insertLines = Lines::unflatten(string(nextEdit.insertedTextBody()));
-        auto [insertText, _] = buildTypedCommands(insertLines, sourceIndent);
+        KeyedSequence typed = buildTypedCommands(insertLines, sourceIndent);
         exploreInsertionStrategy(targetLine, 0, lastCol,
-                                 "o" + insertText);
+                                 "o" + typed.seq.keys);
       } else {
         // I/A/i: handle autoindent for multi-line insertions
         int fnb = VimCore::firstNonBlankColInLineStr(currentLines[insertPos.line]);
@@ -168,24 +169,24 @@ vector<Result> CompositionOptimizer::optimize(
         if (insertPos.col == fnb) {
           // I: insert at first non-blank - navigate anywhere on line
           // For multi-line, prefix before cursor is the indent (text before FNB)
-          auto [escaped, _] = buildTypedCommands(insertLines, "",
+          KeyedSequence escaped = buildTypedCommands(insertLines, "",
               currentLines[insertPos.line].substr(0, fnb));
           exploreInsertionStrategy(insertPos.line, 0, lastCol,
-                                   "I" + escaped);
+                                   "I" + escaped.seq.keys);
         } else if (insertPos.col == lineLen) {
           // A: append at end of line - navigate anywhere on line
           // For multi-line, prefix is the entire current line
-          auto [escaped, _] = buildTypedCommands(insertLines, "",
+          KeyedSequence escaped = buildTypedCommands(insertLines, "",
               currentLines[insertPos.line]);
           exploreInsertionStrategy(insertPos.line, 0, lastCol,
-                                   "A" + escaped);
+                                   "A" + escaped.seq.keys);
         } else {
           // i: fallback - navigate to exact position
           // For multi-line, prefix is text before cursor
-          auto [escaped, _] = buildTypedCommands(insertLines, "",
+          KeyedSequence escaped = buildTypedCommands(insertLines, "",
               currentLines[insertPos.line].substr(0, insertPos.col));
           exploreInsertionStrategy(insertPos.line, insertPos.col, insertPos.col,
-                                   "i" + escaped);
+                                   "i" + escaped.seq.keys);
         }
       }
       continue;

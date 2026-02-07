@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string_view>
 #include <vector>
 
 #include "Optimizer/Config.h"
@@ -43,7 +44,7 @@ struct MotionOptimizer {
 
     // Search tuning (can adjust with designated initializers)
     MotionOptimizerParams params = {},
-    const std::string& userSequence = "", // What the user typed, which informs stopping point.
+    std::string_view userSequence = "", // What the user typed, which informs stopping point.
 
     // Continuation from broader context
     const MotionBoundary& parentBoundary = MotionBoundary(),
@@ -68,7 +69,7 @@ struct MotionOptimizer {
 
     // Search tuning
     MotionOptimizerRangeParams params = {},
-    const std::string& userSequence = "",
+    std::string_view userSequence = "",
 
     // Continuation from broader context
     const MotionBoundary& boundary = MotionBoundary(),
@@ -87,7 +88,7 @@ private:
     const Position& initialPos,
     const RunningEffort& startingEffort,
     const Position& goalPos,
-    const std::string& userSequence,
+    std::string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
     const MotionToKeys& rawMotionToKeys,
@@ -102,7 +103,7 @@ private:
     const RunningEffort& startingEffort,
     const Position& rangeFirst,
     const Position& rangeEnd,
-    const std::string& userSequence,
+    std::string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
     const MotionToKeys& rawMotionToKeys,

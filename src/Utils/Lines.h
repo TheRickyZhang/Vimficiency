@@ -4,6 +4,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <Editor/Position.h>
@@ -51,7 +52,13 @@ struct Lines final : std::vector<Line> {
   }
 
   std::string flatten() const {
+    size_t total = 0;
+    for (size_t i = 0; i < size(); i++) {
+      if (i > 0) total++;  // newline
+      total += (*this)[i].size();
+    }
     std::string result;
+    result.reserve(total);
     for (size_t i = 0; i < size(); i++) {
       if (i > 0)
         result += '\n';
@@ -60,15 +67,15 @@ struct Lines final : std::vector<Line> {
     return result;
   }
 
-  static Lines unflatten(const std::string& text) {
+  static Lines unflatten(std::string_view text) {
     Lines result;
     size_t start = 0;
     size_t pos;
-    while ((pos = text.find('\n', start)) != std::string::npos) {
-      result.push_back(text.substr(start, pos - start));
+    while ((pos = text.find('\n', start)) != std::string_view::npos) {
+      result.push_back(std::string(text.substr(start, pos - start)));
       start = pos + 1;
     }
-    result.push_back(text.substr(start));
+    result.push_back(std::string(text.substr(start)));
     assert(!result.empty() && "Lines invariant: buffer must have at least one line");
     return result;
   }

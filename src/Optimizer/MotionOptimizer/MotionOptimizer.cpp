@@ -18,7 +18,7 @@ MotionResult MotionOptimizer::optimize(
     const Position& startPos,
     const Position& endPos,
     MotionOptimizerParams params,
-    const string& userSequence,
+    string_view userSequence,
     const MotionBoundary& boundary,
     const RunningEffort& startingEffort,
     const NavContext& navContext,
@@ -40,7 +40,7 @@ MotionResult MotionOptimizer::optimizeImpl(
     const Position& startPos,
     const RunningEffort& startingEffort,
     const Position &endPos,
-    const string &userSequence,
+    string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
     const MotionToKeys &rawMotionToKeys,
@@ -118,10 +118,10 @@ MotionResult MotionOptimizer::optimizeImpl(
 // Explicit template instantiations
 template MotionResult MotionOptimizer::optimizeImpl<true>(
     const Lines&, const Position&, const RunningEffort&, const Position&,
-    const string&, const NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerParams);
+    string_view, const NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerParams);
 template MotionResult MotionOptimizer::optimizeImpl<false>(
     const Lines&, const Position&, const RunningEffort&, const Position&,
-    const string&, const NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerParams);
+    string_view, const NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerParams);
 
 // =================================================
 // optimizeToRange implementation
@@ -134,7 +134,7 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
     const Position& rangeFirst,
     const Position& rangeEnd,
     MotionOptimizerRangeParams params,
-    const string& userSequence,
+    string_view userSequence,
     const MotionBoundary& boundary,
     const RunningEffort& startingEffort,
     const NavContext& navContext,
@@ -163,7 +163,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     const RunningEffort& startingEffort,
     const Position& rangeFirst,
     const Position& rangeEnd,
-    const string& userSequence,
+    string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
     const MotionToKeys& rawMotionToKeys,
@@ -288,8 +288,8 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
 // Explicit template instantiations for optimizeToRangeImpl
 template RangeMotionResult MotionOptimizer::optimizeToRangeImpl<true>(
     const Lines&, const Position&, const RunningEffort&, const Position&, const Position&,
-    const string&, const NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerRangeParams);
+    string_view, const NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerRangeParams);
 template RangeMotionResult MotionOptimizer::optimizeToRangeImpl<false>(
     const Lines&, const Position&, const RunningEffort&, const Position&, const Position&,
-    const string&, const NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerRangeParams);
+    string_view, const NavContext&, const MotionBoundary&, const MotionToKeys&, MotionOptimizerRangeParams);
 

@@ -142,7 +142,7 @@ struct CompositionSearchContext {
       const Lines& initialLines,
       const Position& initialPos,
       const Lines& goalLines,
-      const std::string& userSequence,
+      std::string_view userSequence,
       const NavContext& navContext,
       const MotionBoundary& boundary,
       const MotionToKeys& rawMotionToKeys,

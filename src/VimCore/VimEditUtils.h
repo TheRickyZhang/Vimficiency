@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 
 #include "Editor/Mode.h"
 #include "Editor/Position.h"
@@ -49,7 +50,7 @@ void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos);
 
 // Insert text at position. Handles newlines (splits into multiple lines).
 // After insert, pos is at end of inserted text.
-void insertText(Lines& lines, Position& pos, const std::string& text);
+void insertText(Lines& lines, Position& pos, std::string_view text);
 
 // J/gJ - join current line with next
 // addSpace=true: strip trailing/leading whitespace, add single space (J)

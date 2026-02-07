@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 
 #include "Editor/Mode.h"
 #include "Editor/Position.h"
@@ -64,7 +65,7 @@ class CompositionState {
   RunningEffort runningEffort;
 
   // Helper to append to sequence and update effort
-  void appendSequence(const std::string& s, const PhysicalKeys& keys, const Config& config);
+  void appendSequence(std::string_view s, const PhysicalKeys& keys, const Config& config);
 
 public:
   CompositionState(Position pos, Mode mode, int editsCompleted,
@@ -91,11 +92,11 @@ public:
   const Sequence& getSequence() const { return sequence; }
 
   // Get flattened string representation
-  std::string getMotionSequence() const { return sequence.keys; }
+  const std::string& getMotionSequence() const { return sequence.keys; }
 
   double getEffort() const { return effort; }
   double getCost() const { return cost; }
-  RunningEffort getRunningEffort() const { return runningEffort; }
+  const RunningEffort& getRunningEffort() const { return runningEffort; }
 
   // ==========================================================================
   // State transitions - return new state with transition applied

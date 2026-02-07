@@ -4,7 +4,7 @@
 #include <string_view>
 
 // Escape special characters for readable display (newlines -> \n, etc.)
-inline std::string makePrintable(const std::string& s) {
+inline std::string makePrintable(std::string_view s) {
   std::string result;
   result.reserve(s.size() * 2);
   for (char c : s) {

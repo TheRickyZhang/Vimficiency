@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <queue>
+#include <string_view>
 #include <unordered_map>
 
 #include "Optimizer/Config.h"
@@ -18,10 +19,10 @@
 class EditExplorer;
 
 // Callback types (also defined in EditExplorer.h for standalone use)
-using DeletionCallback = std::function<void(const Range&, const char*, const PhysicalKeys&)>;
-using LinewiseCallback = std::function<void(int, const char*, const PhysicalKeys&)>;
-using MotionCallback = std::function<void(const Position&, const char*, const PhysicalKeys&)>;
-using JoinCallback = std::function<void(bool, const char*, const PhysicalKeys&)>;
+using DeletionCallback = std::function<void(const Range&, std::string_view, const PhysicalKeys&)>;
+using LinewiseCallback = std::function<void(int, std::string_view, const PhysicalKeys&)>;
+using MotionCallback = std::function<void(const Position&, std::string_view, const PhysicalKeys&)>;
+using JoinCallback = std::function<void(bool, std::string_view, const PhysicalKeys&)>;
 
 // Comparator for EditState priority queue.
 // Uses getCost() which is computed as: effortWeight * effort + distanceWeight * heuristic

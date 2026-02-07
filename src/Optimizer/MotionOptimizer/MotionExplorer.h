@@ -51,7 +51,7 @@ public:
 
   // Core emit helper - creates new state, applies motion, and queues for exploration.
   // Mode-aware: uses goal or range depending on constructor used.
-  void emitMotion(const MotionState& base, const char* cmd,
+  void emitMotion(const MotionState& base, std::string_view cmd,
                   Position endpoint, const PhysicalKeys& keys) {
     MotionState newState = base.afterMotion(cmd, endpoint, keys, ctx.config);
 
@@ -223,7 +223,7 @@ public:
   }
 
   // Counted motions with pre-computed endpoint
-  void exploreCountMotion(const MotionState& base, const std::string& motion, int cnt,
+  void exploreCountMotion(const MotionState& base, std::string_view motion, int cnt,
                           const Position& newPos, const MotionToKeys& motionToKeys) {
     auto keyIt = motionToKeys.find(motion);
     if (keyIt == motionToKeys.end()) return;
@@ -234,7 +234,7 @@ public:
   }
 
   // F-motions with known column (internal helper)
-  void exploreFMotion(const MotionState& base, const std::string& motion,
+  void exploreFMotion(const MotionState& base, std::string_view motion,
                       int newcol, const PhysicalKeys& keys) {
     MotionState newState = base.afterFMotion(motion, newcol, keys, ctx.config);
     newState.setCost(ctx.computePriorityToGoal(newState, goalPos_));

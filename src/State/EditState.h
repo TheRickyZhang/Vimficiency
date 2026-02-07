@@ -2,8 +2,9 @@
 
 #include <ostream>
 #include <sstream>
-#include <vector>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "Editor/LineRange.h"
 #include "Editor/Mode.h"
@@ -119,15 +120,7 @@ public:
   // -----------------------------------------------------------------------------
 
   // Record a search command: appends to sequence, updates effort and cost
-  void recordSearch(const char* cmd, const PhysicalKeys& keys,
-                    double cost, const Config& config) {
-    seq_ += cmd;
-    effort_ = runningEffort.append(keys, config);
-    cost_ = cost;
-  }
-
-  // Record a search command with string sequence
-  void recordSearch(const std::string& cmd, const PhysicalKeys& keys,
+  void recordSearch(std::string_view cmd, const PhysicalKeys& keys,
                     double cost, const Config& config) {
     seq_ += cmd;
     effort_ = runningEffort.append(keys, config);

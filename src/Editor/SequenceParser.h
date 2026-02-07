@@ -3,6 +3,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 // Token types for parsed sequences
@@ -32,7 +33,7 @@ struct SequenceToken {
 //   - d{motion}, d{text-object}, D, dd, x, X, J, gJ
 //
 // After a Change token, everything until <Esc> is captured as TypedText.
-std::vector<SequenceToken> parseSequence(const std::string& seq);
+std::vector<SequenceToken> parseSequence(std::string_view seq);
 
 // Simplified version that returns just the token strings (for FFI)
-std::vector<std::string> parseSequenceStrings(const std::string& seq);
+std::vector<std::string> parseSequenceStrings(std::string_view seq);

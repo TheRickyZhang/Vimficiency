@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Mode.h"
@@ -47,7 +48,7 @@ void yankRange(Lines& lines, Position& pos, Mode mode, const Range& range);
 // Called directly for typed characters in Insert mode.
 // -----------------------------------------------------------------------------
 
-void insertText(Lines& lines, Position& pos, Mode mode, const std::string& text);
+void insertText(Lines& lines, Position& pos, Mode mode, std::string_view text);
 
 // -----------------------------------------------------------------------------
 // Edit dispatcher
@@ -60,9 +61,9 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit);
 // Handles operators (d, c) + motions/text objects, special keys (<Esc>, <CR>, etc.),
 // and counts.
 // IMPORTANT: Returned ParsedEdits contain string_views into seq - caller must ensure seq outlives usage.
-std::vector<ParsedEdit> parseEdits(const std::string& seq);
+std::vector<ParsedEdit> parseEdits(std::string_view seq);
 
 void simulateEdits(Position& pos, Mode& mode, const NavContext& navContext,
-                          const std::string& motionSeq,
+                          std::string_view motionSeq,
                           const Lines& lines);
 } // namespace Edit

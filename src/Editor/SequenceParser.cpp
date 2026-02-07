@@ -227,7 +227,7 @@ pair<string, size_t> parseTypedText(string_view sv, size_t i) {
 
 }  // namespace
 
-vector<SequenceToken> parseSequence(const string& seq) {
+vector<SequenceToken> parseSequence(string_view seq) {
   vector<SequenceToken> tokens;
   string_view sv(seq);
   size_t i = 0;
@@ -294,7 +294,7 @@ vector<SequenceToken> parseSequence(const string& seq) {
   return tokens;
 }
 
-vector<string> parseSequenceStrings(const string& seq) {
+vector<string> parseSequenceStrings(string_view seq) {
   auto tokens = parseSequence(seq);
   vector<string> result;
   result.reserve(tokens.size());

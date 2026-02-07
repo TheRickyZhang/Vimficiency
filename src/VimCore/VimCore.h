@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "Editor/Position.h"
@@ -42,10 +43,10 @@ bool isSentenceCloser(unsigned char c);
 // =============================================================================
 
 // Check if line is blank (empty or whitespace-only)
-bool isBlankLineStr(const std::string& s);
+bool isBlankLineStr(std::string_view s);
 
 // Return column of first non-blank character (or 0 if all blank)
-int firstNonBlankColInLineStr(const std::string& s);
+int firstNonBlankColInLineStr(std::string_view s);
 
 // =============================================================================
 // 3. Position Stepping (depends on Lines)

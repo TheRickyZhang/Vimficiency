@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Mode.h"
@@ -35,18 +36,18 @@ public:
 std::ostream& operator<<(std::ostream& os, const ParsedMotion& motion);
 
 // Parse a motion sequence into individual ParsedMotion tokens
-std::vector<ParsedMotion> parseMotions(const std::string& seq);
+std::vector<ParsedMotion> parseMotions(std::string_view seq);
 
 void applyParsedMotion(Position& pos, Mode& mode, 
                        const ParsedMotion& motion, const Lines& lines,
                       const NavContext& navContext);
 
 // Currently only to be externally called in State::applyMotion.
-void applySingleMotion(Position& pos, Mode& mode, const std::string& motion,
+void applySingleMotion(Position& pos, Mode& mode, std::string_view motion,
                        const Lines& lines, const NavContext& navContext);
 
 // Parses the motion sequence, and returns the result if they are applied to the
 // current state
-Position simulateMotions(Position pos, const std::string& motionSeq,
+Position simulateMotions(Position pos, std::string_view motionSeq,
                          const Lines& lines,
                          const NavContext& navContext = NavContext());

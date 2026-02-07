@@ -76,7 +76,7 @@ cmake --build build -j
 - Never use `rm -rf build` unless something appears corrupted. The build directory contains downloaded libraries (googletest, etc.) that take time to re-fetch.
 - Do not use python or write to tmp for debugging! Always debug print in tests/debug.
 
-When verifying any new feature, run all tests, but only analyze if there is some failed output that is related to the current task.
+Generally, only run the regular (correctness) test suite after making a change to ensure compatibility. You should only run benchmarks when making a significant optimizer algorithmic change.
 
 ## FFI Bridge
 Exposes C ABI for LuaJIT in `lua_exports.cpp`. **Position indexing:** Internal code is 0-indexed; Neovim is 1-indexed. Conversion happens at FFI boundary.

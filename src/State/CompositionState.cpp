@@ -4,7 +4,7 @@
 
 using namespace std;
 
-void CompositionState::appendSequence(const string& s, const PhysicalKeys& keys,
+void CompositionState::appendSequence(string_view s, const PhysicalKeys& keys,
                                       const Config& config) {
   sequence.append(s);
   effort = runningEffort.append(keys, config);

@@ -5,7 +5,7 @@ std::string CommandSequence::formatted() const {
   return formatSequenceForDisplay(*this);
 }
 
-std::string formatSequenceForDisplay(const std::string& seq) {
+std::string formatSequenceForDisplay(std::string_view seq) {
   if (seq.empty()) {
     return "";
   }
@@ -13,7 +13,7 @@ std::string formatSequenceForDisplay(const std::string& seq) {
   std::vector<std::string> tokens = parseSequenceStrings(seq);
 
   if (tokens.empty()) {
-    return seq;  // Fallback to raw string if parsing fails
+    return std::string(seq);  // Fallback to raw string if parsing fails
   }
 
   std::string result;

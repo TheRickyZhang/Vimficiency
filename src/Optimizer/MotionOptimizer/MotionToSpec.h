@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string_view>
 #include <vector>
 #include "VimCore/EdgeType.h"
 #include "Keyboard/KeyboardModel.h"
@@ -14,7 +15,7 @@ namespace Motion {
 
 // Word motions (w, b, e, ge, W, B, E, gE)
 struct WordMotionSpec {
-  const char* cmd;
+  std::string_view cmd;
   PhysicalKeys keys;
   bool forward;
   EdgeType edgeType;
@@ -25,7 +26,7 @@ extern const std::vector<WordMotionSpec> WORD_MOTIONS;
 
 // Split by Forward/EdgeType for templated dispatch (EdgeType implicit from vector name)
 struct WordMotionSpecNoEdge {
-  const char* cmd;
+  std::string_view cmd;
   PhysicalKeys keys;
   bool big;
   bool skipCurrent;
@@ -37,7 +38,7 @@ extern const std::vector<WordMotionSpecNoEdge> BACKWARD_NEXTEDGE_MOTIONS;  // ge
 
 // Paragraph motions ({, })
 struct ParagraphMotionSpec {
-  const char* cmd;
+  std::string_view cmd;
   PhysicalKeys keys;
   bool forward;
 };
@@ -45,7 +46,7 @@ extern const std::vector<ParagraphMotionSpec> PARAGRAPH_MOTIONS;
 
 // Split by Forward for templated dispatch (EdgeType is always NextEdge for motions)
 struct ParagraphMotionSpecNoDir {
-  const char* cmd;
+  std::string_view cmd;
   PhysicalKeys keys;
 };
 extern const std::vector<ParagraphMotionSpecNoDir> FORWARD_PARAGRAPH_MOTIONS;   // }
@@ -53,7 +54,7 @@ extern const std::vector<ParagraphMotionSpecNoDir> BACKWARD_PARAGRAPH_MOTIONS;  
 
 // Sentence motions ((, ))
 struct SentenceMotionSpec {
-  const char* cmd;
+  std::string_view cmd;
   PhysicalKeys keys;
   bool forward;
 };
@@ -61,7 +62,7 @@ extern const std::vector<SentenceMotionSpec> SENTENCE_MOTIONS;
 
 // Split by Forward for templated dispatch (EdgeType is always NextEdge for motions)
 struct SentenceMotionSpecNoDir {
-  const char* cmd;
+  std::string_view cmd;
   PhysicalKeys keys;
 };
 extern const std::vector<SentenceMotionSpecNoDir> FORWARD_SENTENCE_MOTIONS;   // )
@@ -69,14 +70,14 @@ extern const std::vector<SentenceMotionSpecNoDir> BACKWARD_SENTENCE_MOTIONS;  //
 
 // Simple line motions (h, l, 0, ^, $) - same-line only, no boundary checks
 struct SimpleLineMotionSpec {
-  const char* cmd;
+  std::string_view cmd;
   PhysicalKeys keys;
 };
 extern const std::vector<SimpleLineMotionSpec> SIMPLE_LINE_MOTIONS;
 
 // Vertical motions (j, k)
 struct VerticalMotionSpec {
-  const char* cmd;
+  std::string_view cmd;
   PhysicalKeys keys;
   bool isDown;
 };
@@ -84,7 +85,7 @@ extern const std::vector<VerticalMotionSpec> VERTICAL_MOTIONS;
 
 // Jump motions (gg, G)
 struct JumpMotionSpec {
-  const char* cmd;
+  std::string_view cmd;
   PhysicalKeys keys;
   bool toStart;  // gg=true, G=false
 };
@@ -93,7 +94,7 @@ extern const std::vector<JumpMotionSpec> JUMP_MOTIONS;
 // Scroll motions (<C-d>, <C-u>)
 // NOTE: <C-f> and <C-b> are excluded - see MotionToSpec.cpp for details
 struct ScrollMotionSpec {
-  const char* cmd;
+  std::string_view cmd;
   PhysicalKeys keys;
   int shiftMultiplier;  // +1 for down, -1 for up
   bool isHalf;          // true for C-d/C-u (always true now, kept for future extensibility)
@@ -102,7 +103,7 @@ extern const std::vector<ScrollMotionSpec> SCROLL_MOTIONS;
 
 // Split by Forward for templated dispatch (direction implicit from vector name)
 struct ScrollMotionSpecNoDir {
-  const char* cmd;
+  std::string_view cmd;
   PhysicalKeys keys;
   bool isHalf;
 };

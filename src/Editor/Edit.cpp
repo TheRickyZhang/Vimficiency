@@ -179,7 +179,7 @@ void yankRange(Lines& lines, Position& pos, Mode mode, const Range& range) {
 // Insert mode text insertion (called directly for typed characters)
 // -----------------------------------------------------------------------------
 
-void insertText(Lines& lines, Position& pos, Mode mode, const string& text) {
+void insertText(Lines& lines, Position& pos, Mode mode, string_view text) {
   assert(mode == Mode::Insert);
   VimCore::insertText(lines, pos, text);
 }
@@ -938,7 +938,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit) 
 // Edit Sequence Parsing
 // =============================================================================
 
-vector<ParsedEdit> parseEdits(const string& seq) {
+vector<ParsedEdit> parseEdits(string_view seq) {
   string_view sv(seq);
   vector<ParsedEdit> result;
   size_t i = 0;
