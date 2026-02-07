@@ -55,6 +55,8 @@ target_link_libraries(test_utils
 # Run with: ./vimficiency_tests
 
 add_executable(vimficiency_tests
+  TestMain.cpp
+
   # Commands - VimCore motion correctness
   Commands/CountMotionsTest.cpp
   Commands/MiscMotions.cpp
@@ -101,7 +103,7 @@ add_executable(vimficiency_tests
 target_link_libraries(vimficiency_tests
   PRIVATE
     test_utils
-    GTest::gtest_main
+    GTest::gtest
 )
 
 include(GoogleTest)

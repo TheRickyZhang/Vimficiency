@@ -394,13 +394,7 @@ vector<DiffState> calculate(const Lines& initialLines, const Lines& goalLines) {
             col++;
           }
         }
-        // Snap back if we crossed to col=0 on next line (deleted ended with \n).
-        // endPos stays on the last included line with col = line.size() (exclusive).
-        if (col == 0 && line > posBegin.line) {
-          line--;
-          col = static_cast<int>(initialLines[line].size());
-        }
-        posEnd = Position(line, col);
+        posEnd = Position(line, col);  // col may be 0 on next line if deleted ends with \n
       }
 
       // Construct DiffState with EditBoundary computed from buffer context

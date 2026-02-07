@@ -10,6 +10,10 @@ Add support for CompositionOptimizer in lua
 Review human tests.
 Move compositionOptimizer params from class to optimizerParams
 
+Review performance degredation:\
+add auto-indent support -> makes all tests go from 3 seconds -> 6 seconds (maybe expected?)
+add backspace for autoindent -> goes from 6 seconds -> 30 seconds
+
 Add automatic detection of user's neovim settings, ex. shiftwidth
 Change const string& -> string_view in params where read-only
 

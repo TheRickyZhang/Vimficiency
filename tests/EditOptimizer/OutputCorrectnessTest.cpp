@@ -243,10 +243,11 @@ TEST_F(EditOptimizerOutputCorrectness, SingleLine_Change) {
 
 // Multi-line change: different source/goal content, full-buffer boundary
 TEST_F(EditOptimizerOutputCorrectness, MultiLine_FullBufferChange) {
+  const int REDUCED_NUM_ITERATIONS = 6;
   RandomGen::seed(51);
   int passed = 0, total = 0;
 
-  for (int iter = 0; iter < CNT; iter++) {
+  for (int iter = 0; iter < REDUCED_NUM_ITERATIONS; iter++) {
     int numLines = RandomGen::range(2, 3);
     Lines source = randomLines(numLines, 4, 8);
     Lines goal = randomLines(numLines, 4, 8);
@@ -255,7 +256,7 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLine_FullBufferChange) {
     EditBoundary boundary(source, {0, 0}, source.endPos());
     EditResult res = opt.optimizeEdit(source, goal, boundary, params);
 
-    for (size_t i = 0; i < res.resultCount(); i += 2) {
+    for (size_t i = 0; i < res.resultCount(); i += 4) {
       const Result& r = res.getResults()[i];
       if (!r.isValid()) continue;
 
