@@ -19,19 +19,21 @@ using namespace std;
 // A/B Comparison Configuration
 // =============================================================================
 
-constexpr bool ENABLE_COMPARISON = false;
-constexpr const char* COMPARISON_NAME = "A* (heuristic) vs Dijkstra (no heuristic)";
+constexpr bool ENABLE_COMPARISON = true;
+constexpr const char* COMPARISON_NAME = "Standard vs SuffixCache";
 
 // NOTE: Must be static, not inline - inline causes incorrect behavior with templates
 static EditOptimizerParams paramsA() {
   EditOptimizerParams p;
-  // A*: default heuristic (effortWeight=1.0, distanceWeight=1.0)
+  // Standard A*: default heuristic, no suffix cache
   return p;
 }
 
 static EditOptimizerParams paramsB() {
-  // Dijkstra: no heuristic (effortWeight=1.0, distanceWeight=0.0)
-  return EditOptimizerParams::dijkstra(20, 50000);
+  EditOptimizerParams p;
+  // A* with suffix cache for cross-position sharing
+  p.useSuffixCache = true;
+  return p;
 }
 
 // =============================================================================
@@ -72,7 +74,9 @@ protected:
         [&]() {
           EditResult result = isPureDeletion
               ? opt.optimizePureDeletion(cfg.initialLines, cfg.boundary, params)
-              : opt.optimizeEdit(cfg.initialLines, cfg.goalLines, cfg.boundary, params);
+              : params.useSuffixCache
+                  ? opt.optimizeEditWithSuffixCache(cfg.initialLines, cfg.goalLines, cfg.boundary, params)
+                  : opt.optimizeEdit(cfg.initialLines, cfg.goalLines, cfg.boundary, params);
           lastStats = result.stats;
         },
         iterations);

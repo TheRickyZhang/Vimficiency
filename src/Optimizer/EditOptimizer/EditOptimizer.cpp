@@ -629,3 +629,290 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
   return EditResult(std::move(results), ctx.getStats(), initialLines,
                     bufferFirstLine, bufferFirstCol, goalPos);
 }
+
+// =============================================================================
+// optimizeEditWithSuffixCache - cross-position sharing via suffix caching
+// =============================================================================
+
+EditResult
+EditOptimizer::optimizeEditWithSuffixCache(
+    const Lines &initialLines, const Lines &goalLines,
+    EditBoundary editBoundary, EditOptimizerParams params,
+    int bufferFirstLine, int bufferFirstCol, Position goalPos) {
+  assert(initialLines != goalLines);
+  assert(!initialLines.empty());
+
+  // Delegate to optimizePureDeletion for pure deletion (goalLines empty)
+  if (allLinesEmpty(goalLines)) {
+    return optimizePureDeletion(initialLines, editBoundary, params,
+                                bufferFirstLine, bufferFirstCol, goalPos);
+  }
+
+  // Create search context (handles effectiveLines, offsets, search state)
+  EditSearchContext ctx(initialLines, editBoundary, params, config);
+  ctx.initStartingPositions(initialLines);
+
+  // Local aliases for goal checking
+  const auto& pre = editBoundary.prefix();
+  const auto& suf = editBoundary.suffix();
+  const string preSuf = pre + suf;
+
+  vector<Result> results(ctx.totalPositions);
+
+  // Check if replacement strategy is applicable (same-length, single-line)
+  optional<Result> replacementResult;
+  if (initialLines.size() == 1 && goalLines.size() == 1 &&
+      initialLines[0].size() == goalLines[0].size()) {
+    replacementResult = tryReplacement(initialLines[0], goalLines[0], config);
+  }
+
+  // Precompute typed content for char-wise goal state
+  int sufLeadingSpaces = (goalLines.size() > 1) ? leadingSpaceCount(suf) : 0;
+  KeyedSequence typed = buildTypedCommands(goalLines, "", pre, sufLeadingSpaces);
+
+  // Goal check: accepts multi-line (for collapse via <BS>/<Del>)
+  auto isGoalReached = [&](const Lines &lines) -> bool {
+    if (lines.size() == 1) return lines[0] == preSuf;
+    if (lines[0] != pre) return false;
+    if (lines.back() != suf) return false;
+    for (size_t i = 1; i < lines.size() - 1; i++) {
+      if (!lines[i].empty()) return false;
+    }
+    return true;
+  };
+
+  // ---- Suffix cache structures ----
+  SuffixCacheMap suffixCache;
+  vector<CommittedState> committedStates;
+  committedStates.reserve(params.maxNodesExplored);
+
+  int cacheHits = 0;
+  int cachePopulations = 0;
+
+  // Helper: populate suffix cache by walking backward from a goal
+  auto populateSuffixCache = [&](int goalCommitIdx,
+                                  const KeyedSequence& goalSuffix,
+                                  const RunningEffort& goalSuffixEffort) {
+    cachePopulations++;
+    KeyedSequence accumKs = goalSuffix;
+    RunningEffort accumEffort = goalSuffixEffort;
+
+    int idx = goalCommitIdx;
+    while (idx >= 0) {
+      const auto& cs = committedStates[idx];
+
+      // Cache this state if not already cached (first = cheapest by A*)
+      if (suffixCache.find(cs.key) == suffixCache.end()) {
+        suffixCache[cs.key] = SuffixValue{accumKs, accumEffort};
+      }
+
+      // Walk to parent
+      if (cs.parentCommitIdx < 0) break;
+
+      // Prepend this state's transition to the accumulator
+      KeyedSequence transitionKs(cs.transitionSeq, cs.transitionKeys);
+      RunningEffort transitionEffort;
+      transitionEffort.append(cs.transitionKeys, config);
+
+      // New accumulated: transition + old accumulated
+      KeyedSequence newKs = transitionKs;
+      newKs += accumKs;
+      accumKs = std::move(newKs);
+      accumEffort = RunningEffort::merge(transitionEffort, accumEffort);
+
+      idx = cs.parentCommitIdx;
+    }
+  };
+
+  // ---- Deletion handler ----
+  auto exploreDeletion = [&](const EditState &base, const Range &range,
+                             string_view deleteCmd, const PhysicalKeys &deleteKeys,
+                             int commitIdx) {
+    EditState newState = base.afterDeletion(range);
+    const Lines &lines = newState.getLines();
+
+    if (isGoalReached(lines)) {
+      int idx = newState.getStartIndex();
+      if (results[idx].isValid()) return;
+
+      KeyedSequence change = deleteToChange(deleteCmd, deleteKeys);
+      KeyedSequence collapse = buildCollapseSequence(
+          static_cast<int>(lines.size()), newState.getPos().line);
+
+      string seqStr = newState.getSeq() + change.seq.keys + collapse.seq.keys + typed.seq.keys;
+      RunningEffort effort = newState.getRunningEffort();
+      effort.append(change.keys, config);
+      effort.append(collapse.keys, config);
+      double totalEffort = effort.append(typed.keys, config);
+
+      results[idx] = Result(seqStr, totalEffort);
+      ctx.resultsFound++;
+      ctx.uniquePositionsCovered++;
+
+      // Populate suffix cache: suffix = change + collapse + typed
+      KeyedSequence goalSuffix = change;
+      goalSuffix += collapse;
+      goalSuffix += typed;
+      RunningEffort goalSuffixEffort;
+      goalSuffixEffort.append(goalSuffix.keys, config);
+      populateSuffixCache(commitIdx, goalSuffix, goalSuffixEffort);
+      return;
+    }
+
+    newState.setParentInfo(commitIdx, deleteCmd, deleteKeys);
+    newState.recordSearch(deleteCmd, deleteKeys,
+                          ctx.computePriority(newState.getEffort(), lines), config);
+    ctx.exploreNewState(std::move(newState));
+  };
+
+  // ---- Linewise handler ----
+  auto exploreLinewise = [&](const EditState &base, int line,
+                             string_view deleteCmd, const PhysicalKeys &deleteKeys,
+                             int commitIdx) {
+    EditState newState = base.afterLinewiseDeletion(line);
+    const Lines &lines = newState.getLines();
+
+    // Adjust cursor if escaped below edit region
+    KeyedSequence searchCmd(deleteCmd, deleteKeys);
+    Position pos = newState.getPos();
+    int lastValidLine = static_cast<int>(lines.size()) - 1;
+    if (editBoundary.hasLinesBelow() && lastValidLine >= 0 && pos.line > lastValidLine) {
+      searchCmd.append("k", {Key::Key_K});
+      pos.line = lastValidLine;
+      pos.clampColPreservingTarget(lines[pos.line].empty() ? 0 :
+                 min(pos.targetCol, static_cast<int>(lines[pos.line].size()) - 1));
+      newState.setPos(pos);
+    }
+
+    if (isGoalReached(lines)) {
+      int idx = newState.getStartIndex();
+      if (results[idx].isValid()) return;
+
+      static const KeyedSequence ccCmd("cc", {Key::Key_C, Key::Key_C});
+      int ccLineCount = static_cast<int>(base.getLines().size());
+      KeyedSequence collapse = buildCollapseSequence(ccLineCount, line);
+
+      string_view ccAutoindent = VimOptions::autoindent()
+          ? leadingWhitespace(base.getLines()[line])
+          : string_view{};
+      KeyedSequence ccTyped = buildTypedCommands(goalLines, ccAutoindent);
+
+      KeyedSequence full = ccCmd;
+      full += collapse;
+      full += ccTyped;
+
+      string seqStr = newState.getSeq() + full.seq.keys;
+      RunningEffort effort = newState.getRunningEffort();
+      double totalEffort = effort.append(full.keys, config);
+
+      results[idx] = Result(seqStr, totalEffort);
+      ctx.resultsFound++;
+      ctx.uniquePositionsCovered++;
+
+      // Populate suffix cache: suffix = cc + collapse + ccTyped
+      RunningEffort goalSuffixEffort;
+      goalSuffixEffort.append(full.keys, config);
+      populateSuffixCache(commitIdx, full, goalSuffixEffort);
+      return;
+    }
+
+    newState.setParentInfo(commitIdx, searchCmd.seq.keys, searchCmd.keys);
+    newState.recordSearch(searchCmd.seq.keys, searchCmd.keys,
+                          ctx.computePriority(newState.getEffort(), lines), config);
+    ctx.exploreNewState(std::move(newState));
+  };
+
+  // ---- Main search loop ----
+  while (ctx.shouldContinue()) {
+    ctx.iterations++;
+
+    auto maybeState = ctx.getNextValidState();
+    if (!maybeState) continue;
+    EditState s = std::move(*maybeState);
+
+    // Early stopping: skip if this startIndex already has a result
+    if (results[s.getStartIndex()].isValid()) continue;
+
+    // Commit this state
+    SuffixKey sk(s.getLines(), s.getPos(), s.getMode());
+    int commitIdx = static_cast<int>(committedStates.size());
+    committedStates.emplace_back(
+        sk, s.getParentCommitIdx(),
+        s.getTransitionSeq(), s.getTransitionKeys());
+
+    // Check suffix cache
+    auto cacheIt = suffixCache.find(sk);
+    if (cacheIt != suffixCache.end()) {
+      cacheHits++;
+      int idx = s.getStartIndex();
+      if (!results[idx].isValid()) {
+        const SuffixValue& sv = cacheIt->second;
+        string seqStr = s.getSeq() + sv.ks.seq.keys;
+        RunningEffort mergedEffort = RunningEffort::merge(s.getRunningEffort(), sv.effort);
+        double totalEffort = mergedEffort.getEffort(config);
+
+        results[idx] = Result(seqStr, totalEffort);
+        ctx.resultsFound++;
+        ctx.uniquePositionsCovered++;
+      }
+      continue;  // Skip exploration — suffix provides the result
+    }
+
+    // Join handler
+    auto exploreJoin = [&](const EditState& base, bool addSpace,
+                           string_view joinCmd, const PhysicalKeys& joinKeys) {
+      EditState newState = base.afterJoin(addSpace);
+      const Lines& lines = newState.getLines();
+
+      if (isGoalReached(lines)) {
+        int idx = newState.getStartIndex();
+        if (results[idx].isValid()) return;
+        // J doesn't enter insert mode; continue search
+      }
+
+      newState.setParentInfo(commitIdx, joinCmd, joinKeys);
+      newState.recordSearch(joinCmd, joinKeys,
+                            ctx.computePriority(newState.getEffort(), lines), config);
+      ctx.exploreNewState(std::move(newState));
+    };
+
+    // Explore all deletions
+    ctx.exploreAllDeletions(
+      s,
+      [&](const Range& range, string_view cmd, const PhysicalKeys& keys) {
+        exploreDeletion(s, range, cmd, keys, commitIdx);
+      },
+      [&](int line, string_view cmd, const PhysicalKeys& keys) {
+        exploreLinewise(s, line, cmd, keys, commitIdx);
+      },
+      [&](const Position& newPos, string_view cmd, const PhysicalKeys& keys) {
+        EditState newState = s;
+        newState.setPos(newPos);
+        newState.setParentInfo(commitIdx, cmd, keys);
+        newState.recordSearch(cmd, keys,
+                              ctx.computePriority(newState.getEffort(), newState.getLines()), config);
+        ctx.exploreNewState(std::move(newState));
+      },
+      [&](bool addSpace, string_view cmd, const PhysicalKeys& keys) {
+        exploreJoin(s, addSpace, cmd, keys);
+      }
+    );
+  }
+
+  // Merge replacement result at position 0 if it's better
+  if (replacementResult.has_value()) {
+    if (!results[0].isValid() ||
+        replacementResult->keyCost < results[0].keyCost) {
+      results[0] = *replacementResult;
+    }
+  }
+
+  // Build stats with cache info
+  SearchStats stats = ctx.getStats();
+  stats.cacheHits = cacheHits;
+  stats.cacheEntries = static_cast<int>(suffixCache.size());
+  stats.cachePopulations = cachePopulations;
+
+  return EditResult(std::move(results), stats, initialLines,
+                    bufferFirstLine, bufferFirstCol, goalPos);
+}

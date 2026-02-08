@@ -7,7 +7,7 @@
 #include "Editor/Mode.h"
 #include "Keyboard/KeyboardModel.h"
 #include "Keyboard/KeyedSequence.h"
-#include "State/EditState.h"
+#include "State/RunningEffort.h"
 #include "Utils/Lines.h"
 
 // =============================================================================
@@ -48,7 +48,8 @@ struct SuffixKeyHash {
 };
 
 struct SuffixValue {
-  KeyedSequence ks;
+  KeyedSequence ks;       // Suffix command sequence + physical keys
+  RunningEffort effort;   // Pre-computed effort for just the suffix
 };
 
 using SuffixCacheMap = std::unordered_map<SuffixKey, SuffixValue, SuffixKeyHash>;
@@ -65,15 +66,3 @@ struct CommittedState {
       : key(std::move(k)), parentCommitIdx(parentIdx),
         transitionSeq(std::move(seq)), transitionKeys(std::move(keys)) {}
 };
-
-// Parent info: tracks cheapest parent for each EditStateKey during exploration
-struct ParentInfo {
-  int commitIdx;               // Index into committedStates vector
-  std::string transitionSeq;   // Command from parent to this state
-  PhysicalKeys transitionKeys;
-  double cost;                 // Cost of reaching this state via this parent
-
-  bool operator>(const ParentInfo& other) const { return cost > other.cost; }
-};
-
-using ParentMap = std::unordered_map<EditStateKey, ParentInfo, EditStateKeyHash>;

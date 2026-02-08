@@ -1006,6 +1006,75 @@ TEST_F(DebugTest, InvestigateHumanApproval1) {
 // EditOptimizer for multi-line diff: why only 1 starting position finds a result
 // =============================================================================
 
+TEST_F(DebugTest, SuffixCacheComparison) {
+  // Compare standard vs suffix-cached EditOptimizer on the Switzerland -> Florida case
+  Lines deletedLines = {"Switzerland", "Inconspicuous, even"};
+  Lines insertedLines = {"Florida"};
+
+  Lines bufferAtEdit = {"I saw a pig in barn in Switzerland", "Inconspicuous, even"};
+  Position editBeginPos(0, 23);
+  Position editEndPos(1, 19);
+  EditBoundary boundary(bufferAtEdit, editBeginPos, editEndPos);
+
+  EditOptimizer editOpt(config);
+
+  // Standard search
+  cerr << "\n=== Standard optimizeEdit ===" << endl;
+  EditResult stdResult = editOpt.optimizeEdit(
+      deletedLines, insertedLines, boundary, params,
+      editBeginPos.line, editBeginPos.col, Position(0, 29));
+
+  int stdValid = 0;
+  for (size_t i = 0; i < stdResult.resultCount(); i++) {
+    if (stdResult.getResults()[i].isValid()) stdValid++;
+  }
+  cerr << "  nodes=" << stdResult.stats.nodesExplored
+       << " results=" << stdResult.stats.resultsFound
+       << " valid=" << stdValid << "/" << stdResult.resultCount()
+       << " stop=" << to_string(stdResult.stats.stopReason) << endl;
+  for (size_t i = 0; i < stdResult.resultCount(); i++) {
+    if (stdResult.getResults()[i].isValid()) {
+      cerr << "  pos " << i << ": '" << stdResult.getResults()[i].sequence
+           << "' cost=" << stdResult.getResults()[i].keyCost << endl;
+    }
+  }
+
+  // Suffix-cached search
+  cerr << "\n=== optimizeEditWithSuffixCache ===" << endl;
+  EditResult cacheResult = editOpt.optimizeEditWithSuffixCache(
+      deletedLines, insertedLines, boundary, params,
+      editBeginPos.line, editBeginPos.col, Position(0, 29));
+
+  int cacheValid = 0;
+  for (size_t i = 0; i < cacheResult.resultCount(); i++) {
+    if (cacheResult.getResults()[i].isValid()) cacheValid++;
+  }
+  cerr << "  nodes=" << cacheResult.stats.nodesExplored
+       << " results=" << cacheResult.stats.resultsFound
+       << " valid=" << cacheValid << "/" << cacheResult.resultCount()
+       << " stop=" << to_string(cacheResult.stats.stopReason)
+       << " cacheHits=" << cacheResult.stats.cacheHits
+       << " cacheEntries=" << cacheResult.stats.cacheEntries
+       << " populations=" << cacheResult.stats.cachePopulations << endl;
+  for (size_t i = 0; i < cacheResult.resultCount(); i++) {
+    if (cacheResult.getResults()[i].isValid()) {
+      cerr << "  pos " << i << ": '" << cacheResult.getResults()[i].sequence
+           << "' cost=" << cacheResult.getResults()[i].keyCost << endl;
+    }
+  }
+
+  // Summary
+  cerr << "\n=== Summary ===" << endl;
+  cerr << "Standard: " << stdValid << " valid results, "
+       << stdResult.stats.nodesExplored << " nodes" << endl;
+  cerr << "SuffixCache: " << cacheValid << " valid results, "
+       << cacheResult.stats.nodesExplored << " nodes, "
+       << cacheResult.stats.cacheHits << " cache hits" << endl;
+  if (cacheValid > stdValid) {
+    cerr << "SuffixCache found " << (cacheValid - stdValid) << " MORE results!" << endl;
+  }
+}
+
 TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
   // Diff 3 from TelescopingChanges:
   //   deleted: "Switzerland\nInconspicuous, even" (2 lines)

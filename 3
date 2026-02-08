@@ -92,40 +92,23 @@ TEST_F(CompositionOptimizerHumanApprovalTests, TelescopingChanges) {
   verifyResults(initialLines, initialPos, afterLines, res.goalPos);
 }
 
-// TEST_F(CompositionOptimizerHumanApprovalTests, JoinLines) {
-//   // Delete a short word
-//   Lines initialLines = {
-//     "aaa",
-//     "bbb",
-//     "ccc"
-//   };
-//   Lines afterLines = {
-//     "aaa bbb ccc?"
-//   };
-//   Position initialPos(0, 2);
-//   Position afterPos(initialLines.endPos());
-//   MotionBoundary boundary(initialLines, initialPos, afterPos, true, true);
-//
-//   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos);
-//   cout << res << endl;
-//   // verifyResults(initialLines, initialPos, afterLines, res.goalPos);
-// }
+TEST_F(CompositionOptimizerHumanApprovalTests, JoinLines) {
+  // Delete a short word
+  Lines initialLines = {
+    "aaa",
+    "bbb",
+    "ccc"
+  };
+  Lines afterLines = {
+    "aaa bbb ccc?"
+  };
+  Position initialPos(0, 2);
+  Position afterPos(initialLines.endPos());
+  MotionBoundary boundary(initialLines, initialPos, afterPos, true, true);
 
+  CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos);
+  cout << res << endl;
+  verifyResults(initialLines, initialPos, afterLines, res.goalPos);
+}
 
-// TEST_F(CompositionOptimizerHumanApprovalTests, ModifyInParentheses) {
-//   // Delete a short word
-//   Lines initialLines = {
-//     "int main(int argc, char** argv) { return 0; }",
-//   };
-//   Lines afterLines = {
-//     "aaa bbb ccc?"
-//   };
-//   Position initialPos(0, 2);
-//   Position afterPos(initialLines.endPos());
-//   MotionBoundary boundary(initialLines, initialPos, afterPos, true, true);
-//
-//   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos);
-//   cout << res << endl;
-//   // verifyResults(initialLines, initialPos, afterLines, res.goalPos);
-// }
 
