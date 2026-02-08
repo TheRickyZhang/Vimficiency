@@ -27,6 +27,8 @@ struct EditBoundary {
   EditBoundary() = default;
   static const EditBoundary& noParent();
 
+  // The default constructor has NO PARENT, so basically any motions are possible
+  // To specify restricted motions for lines, call with hasLinesBelow = false, hasLinesAbove = false
   // Construct from buffer context, optionally inheriting from parent
   // endPos is exclusive: one past the last valid cursor position on the last line
   EditBoundary(const Lines& lines, Position firstPos, Position endPos,

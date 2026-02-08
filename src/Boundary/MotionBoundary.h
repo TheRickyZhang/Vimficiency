@@ -28,6 +28,9 @@ public:
   MotionBoundary(const Lines& lines, Position firstPos, Position endPos,
                  const MotionBoundary& parent = noParent());
 
+  // The default constructor has NO PARENT, so basically any motions are possible
+  // To specify restricted motions for lines, call with hasLinesBelow = false, hasLinesAbove = false
+
   // Construct with explicit external context flags (for FFI)
   // endPos is exclusive: one past the last valid cursor position on the last line
   MotionBoundary(const Lines& lines, Position firstPos, Position endPos,

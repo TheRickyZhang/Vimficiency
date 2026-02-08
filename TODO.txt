@@ -6,11 +6,16 @@ Add compositionOptimizer human tests
 Add support for CompositionOptimizer in lua
 Move compositionOptimizer params from class to optimizerParams
 
+Speed up correct (vs previously "eager" variant) version of EditOptimizer while still respecting delete -> change conversion; right now may be a bit wasteful with extra storage in Edit search state
+
 Add automatic detection of user's neovim settings, ex. shiftwidth
 
 Can skip F-motions if no endpoints found?
 Benchmark search time based on buffer size, search space, A* vs Dijkstra. And what order/frequency results found.
 Extend a lot of EditOptimizer-specific changes to MotionOptimizer.
+
+Implement {cnt} motions in EditOptimizer (+ should appear in Composition?)
+Implement J motions
 
 constexpr disabling of searched motions in MotionExplorer/EditExplorer
 

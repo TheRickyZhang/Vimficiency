@@ -125,30 +125,6 @@ TEST_F(KeyedSequenceBankTest, StaticConstantsLackEffort) {
 }
 
 // =============================================================================
-// hasCachedId is correct
-// =============================================================================
-
-TEST_F(KeyedSequenceBankTest, StaticConstantsHaveCachedId) {
-  // All 27 static constants should have cached IDs
-  EXPECT_TRUE(KeyedSequence::h.hasCachedId());
-  EXPECT_TRUE(KeyedSequence::j.hasCachedId());
-  EXPECT_TRUE(KeyedSequence::w.hasCachedId());
-  EXPECT_TRUE(KeyedSequence::gg.hasCachedId());
-  EXPECT_TRUE(KeyedSequence::Dollar.hasCachedId());
-  EXPECT_TRUE(KeyedSequence::CtrlD.hasCachedId());
-  EXPECT_TRUE(KeyedSequence::gE.hasCachedId());
-}
-
-TEST_F(KeyedSequenceBankTest, DynamicSequencesLackCachedId) {
-  // Dynamically built KeyedSequences should NOT have a cached ID
-  KeyedSequence dynamic("fx", {Key::Key_F, Key::Key_X});
-  EXPECT_FALSE(dynamic.hasCachedId());
-
-  KeyedSequence empty;
-  EXPECT_FALSE(empty.hasCachedId());
-}
-
-// =============================================================================
 // ksById round-trip
 // =============================================================================
 
@@ -156,8 +132,6 @@ TEST_F(KeyedSequenceBankTest, KsByIdRoundTrip) {
   for (int i = 0; i < KS_COUNT; ++i) {
     KSId id = static_cast<KSId>(i);
     const KeyedSequence& ks = ksById(id);
-    EXPECT_EQ(ks.id, id) << "ksById(" << i << ") has wrong id";
-    EXPECT_TRUE(ks.hasCachedId());
     EXPECT_FALSE(ks.keys.empty()) << "KSId " << i << " has empty keys";
   }
 }

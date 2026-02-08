@@ -31,16 +31,12 @@ static_assert(KS_COUNT == 27, "Expected 27 static KeyedSequence constants");
 struct KeyedSequence {
   Sequence seq;
   PhysicalKeys keys;
-  KSId id = KSId::COUNT;  // COUNT means "no cached id"
   RunningEffort effort;           // Pre-computed by bank; default-constructed (empty) for dynamic sequences
-  bool effortPopulated = false;   // True only for bank-populated entries
 
   KeyedSequence() = default;
   KeyedSequence(std::string_view s, PhysicalKeys k) : seq(std::string(s)), keys(std::move(k)) {}
-  KeyedSequence(std::string_view s, PhysicalKeys k, KSId id) : seq(std::string(s)), keys(std::move(k)), id(id) {}
 
-  bool hasCachedId() const { return id != KSId::COUNT; }
-  bool hasEffort() const { return effortPopulated; }
+  bool hasEffort() const { return effort.getStrokes() > 0; }
 
   KeyedSequence& operator+=(const KeyedSequence& other) {
     seq.append(other.seq.keys);
@@ -94,7 +90,7 @@ struct KeyedSequence {
 
 // Static constant definitions — generated via X-macro
 #define KS_DEFINE(name, seqStr, keyGroup) \
-  inline const KeyedSequence KeyedSequence::name{seqStr, {STRIP_PARENS(keyGroup)}, KSId::name};
+  inline const KeyedSequence KeyedSequence::name{seqStr, {STRIP_PARENS(keyGroup)}};
 VIMFICIENCY_KEYED_SEQUENCES(KS_DEFINE)
 #undef KS_DEFINE
 

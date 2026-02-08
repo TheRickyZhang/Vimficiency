@@ -1,7 +1,0 @@
-I saw a pig in barn in 
-Florida
-
-
-Diffs: {0}=del 'Today ' {1}='giraffe'->'pig' {2}='museum'->'barn' {3}='Switzerland\nInconspicuous, even'->'Florida'
-  [0] dwewwce {0}<Esc> ewce {1}<Esc> EwDjcc {2}<Esc> 35
-srtneiorts

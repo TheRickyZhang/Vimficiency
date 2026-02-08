@@ -147,6 +147,25 @@ if (hadDeletedContent) { ... }
 
 Neovim's `cc` on a line with leading whitespace preserves the indentation, placing the cursor at the first non-blank column in insert mode. Similarly, `A<CR>` copies indentation from the current line to the new line. The optimizer does not model autoindent behavior, so it may suggest sequences that produce incorrect results on indented lines.
 
+## calculateLinesAfterDiffs skipped adjustment when cumulativeOffset was 0
+
+In `calculateLinesAfterDiffs`, position adjustment for diffs was gated on `if (cumulativeOffset != 0)`. This meant that when earlier diffs changed the *line structure* of the buffer without changing the total character count (offset = 0), subsequent diff positions were not adjusted.
+
+**Trigger condition:** A diff replaces `\n` with ` ` (or vice versa). The deleted and inserted text have the same length (1 char each), so `cumulativeOffset` remains 0. But the buffer's line structure changes: what was line 1, col 0 in the original may now be line 0, col N in the intermediate buffer.
+
+**Example:**
+```
+Initial: ["aaa", "bbb", "ccc", "ddd"]  (4 lines)
+Goal:    ["aaa bbb", "ccc ddd"]         (2 lines)
+Diff 0: '\n' -> ' ' at (0,3)..(1,0)    (offset = 0)
+Diff 1: '\n' -> ' ' at (2,3)..(3,0)    (offset = 0)
+```
+After diff 0, buffer is `["aaa bbb", "ccc", "ddd"]`. Diff 1's original position `(2,3)..(3,0)` is wrong in this intermediate buffer -- it should be `(1,3)..(2,0)`. But since `cumulativeOffset == 0`, adjustment was skipped entirely.
+
+**Fix:** Changed the condition from `if (cumulativeOffset != 0)` to `if (i > 0)` -- always adjust positions for diffs after the first, regardless of cumulative offset. The flat-index round-trip through `posToFlat` / `flatToPos` correctly handles line structure changes even when the total character count is unchanged.
+
+**Pattern:** Don't use a shortcut condition (offset == 0) to skip position adjustment when the underlying coordinate system (line/col) can change independently of the flat character count.
+
 ## cw trailing space (delete→change conversion)
 
 Vim treats `cw`/`cW` like `ce`/`cE` — they don't include trailing whitespace, unlike `dw`/`dW`. The `deleteToChange` function in EditOptimizer previously converted `dw` → `cw`, which would produce incorrect results when `dw` deleted trailing whitespace to reach the goal.

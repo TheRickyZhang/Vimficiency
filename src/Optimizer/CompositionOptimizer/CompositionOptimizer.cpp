@@ -230,7 +230,18 @@ CompositionResult CompositionOptimizer::optimize(
             "cost:", res->keyCost);
       ctx.exploreEditTransition(s, res->sequence,
                                 editResult.goalPos, editsCompleted + 1);
-    } else {
+    }
+
+    // J plan: offered from any column on the entry line
+    const auto& joinPlan = ctx.joinPlans[editsCompleted];
+    if (joinPlan && pos.line == joinPlan->entryLine) {
+      debug("  J plan at line", pos.line, "seq:", "\"" + joinPlan->sequence.keys + "\"",
+            "effort:", joinPlan->effort);
+      ctx.exploreEditTransition(s, joinPlan->sequence, joinPlan->goalPos,
+                                editsCompleted + 1);
+    }
+
+    if (!res) {
       // Check for bracket/quote text object shortcuts
       // These allow reaching the edit region from positions before it on the same line
       const BracketQuoteContext& bqContext = ctx.bracketQuoteContexts[editsCompleted];
@@ -314,6 +325,48 @@ CompositionResult CompositionOptimizer::optimize(
               "->", movResult.goalPos);
         ctx.exploreMotionTransition(s, movResult.sequence, movResult.goalPos,
                                     editsCompleted);
+      }
+
+      // If a J plan exists for this edit and cursor isn't on the entry line,
+      // also search for motions to the J plan's entry line (full line range).
+      // This handles cases where the edit region is unreachable (e.g., \n → space)
+      // but J can fire from anywhere on the entry line.
+      if (joinPlan && pos.line != joinPlan->entryLine) {
+        int jLine = joinPlan->entryLine;
+        int jLineLen = currentLines[jLine].effectiveSize();
+        Position jRangeFirst(jLine, 0);
+        Position jRangeEnd(jLine, jLineLen);
+
+        auto [jBeginLine, jEndLine] = currentLines.minmaxBoundWithPadding(
+            min(pos.line, jLine), max(pos.line, jLine),
+            params.motionPaddingAbove, params.motionPaddingBelow);
+
+        Lines jSubset = currentLines.getLineRange(jBeginLine, jEndLine);
+        Position jLocalPos(pos.line - jBeginLine, pos.col, pos.targetCol);
+        Position jLocalFirst(jLine - jBeginLine, 0);
+        Position jLocalEnd(jLine - jBeginLine, jLineLen);
+
+        Position jSubsetFirst(0, 0);
+        Position jSubsetEnd(static_cast<int>(jSubset.size()) - 1,
+            jSubset.back().effectiveSize());
+        MotionBoundary jSubsetBoundary(jSubset, jSubsetFirst, jSubsetEnd,
+            jBeginLine > 0 || boundary.hasLinesAbove(),
+            jEndLine <= currentLines.lastLine() || boundary.hasLinesBelow());
+
+        vector<RangeResult> jMovResults = motionOptimizer.optimizeToRange(
+            jSubset, jLocalPos, jLocalFirst, jLocalEnd,
+            MotionOptimizerRangeParams{}.withMaxResults(1), "",
+            jSubsetBoundary, s.getRunningEffort(),
+            navigationContext).results;
+
+        for (RangeResult& movResult : jMovResults) {
+          if (!movResult.isValid()) continue;
+          movResult.goalPos.line += jBeginLine;
+          debug("    J-motion:", "\"" + movResult.sequence.keys + "\"",
+                "->", movResult.goalPos);
+          ctx.exploreMotionTransition(s, movResult.sequence, movResult.goalPos,
+                                      editsCompleted);
+        }
       }
     }
   }

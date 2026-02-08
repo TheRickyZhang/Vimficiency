@@ -16,6 +16,82 @@
   - Inter-edit: move from edit end to a next edit start (MotionOptimizer::optimizeToRange)
 - By storing the previous edit command, we can also quickly check if . will work. (TODO)
 
+## J (Join Lines) Plans
+
+When a diff has more source lines than target lines, the `J` command can collapse lines more cheaply than retyping content. The composition optimizer pre-computes `JoinPlan`s for eligible diffs and offers them as alternative edit transitions in the A* search.
+
+### Why J lives at the composition level
+
+The EditOptimizer cannot find J sequences for two structural reasons:
+1. **Boundary constraints**: In a diff like `\n` -> ` ` with prefix "aaa" and suffix "bbb", boundary positions prevent J from firing -- it operates on full lines, not bounded regions.
+2. **Goal mismatch**: J transforms content (strips leading whitespace, adds space), but EditOptimizer's "delete then type" paradigm expects pure deletions followed by insertions.
+
+At the composition level, J works naturally: the cursor operates on the full intermediate buffer without boundary constraints.
+
+### Algorithm: Partition -> J per Group -> EditOptimizer Residual
+
+For a diff with N source lines -> M target lines (N > M):
+
+1. **Partition** N source lines into M contiguous groups, where group k maps to target line k
+2. **Match quality check** -- if joined group content is too different from target (common prefix+suffix ratio < 0.3), skip J for this diff
+3. **Per group**: simulate J joins using `VimCore::joinLines` semantics, then run EditOptimizer on the single-line residual (joined line vs target line)
+4. **Assemble**: concatenate all groups' sequences (J's + residual + `j` between groups) into one `JoinPlan`
+
+**Partition finding:**
+- M=1 (most common): trivial -- all N lines form one group
+- M>=2: DP in O(N^2 * M), minimizing length mismatch between joined groups and target lines
+
+### JoinPlan struct
+
+```cpp
+struct JoinPlan {
+  Sequence sequence;   // Full assembled sequence (J's + residuals + j's)
+  Position goalPos;    // Cursor position after plan executes
+  double effort;       // Pre-computed effort
+  int entryLine;       // Cursor must be on this line (any column)
+};
+```
+
+### Integration into A* search
+
+J plans are explored as **additional** edit transitions, independent of the regular EditResult path:
+
+```cpp
+// Regular edit path
+if (res) {
+    ctx.exploreEditTransition(s, res->sequence, ...);
+}
+
+// J plan path: offered from any column on the entry line
+if (joinPlan && pos.line == joinPlan->entryLine) {
+    ctx.exploreEditTransition(s, joinPlan->sequence, ...);
+}
+```
+
+When the cursor is not on the J plan's entry line, a dedicated motion search finds paths to the entry line (full line range, not just the edit region). This handles cases where the edit region has virtual positions that regular motion search can't reach (e.g., `endPos` past end-of-line for `\n` -> ` ` diffs).
+
+A* naturally picks whichever path (regular edit, J plan, or text object) produces the lowest cost.
+
+### J simulation fidelity
+
+J plan computation uses `VimCore::joinLines` which matches Neovim's semantics:
+- Strips leading whitespace from the joined line
+- Adds a space between lines (unless current line ends with whitespace or joined line is empty)
+- Cursor lands at original line length (position where join occurred)
+- `joinspaces` option: adds 2 spaces after `.`, `!`, `?`
+
+### Suffix cost integration
+
+J plan efforts are included in `computeSuffixEditCosts()` alongside regular edit costs, improving the A* heuristic by reflecting cheaper J alternatives.
+
+### Files
+
+| File | Role |
+|------|------|
+| `JoinPlan.h` | JoinPlan struct definition |
+| `CompositionSearchContext.cpp` | `computeJoinPlans()` implementation |
+| `CompositionOptimizer.cpp` | A* integration (J plan exploration + entry line motion search) |
+
 ## Quote/Bracket Motions
 - Motions like ci"/cab allow us to combine an Inter-edit with the next Intra-edit.
 - Since we are moving in order, quotes are only valid if the first quote on this line, and the quote after that are within the next edit region.

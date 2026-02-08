@@ -121,7 +121,7 @@ public:
           boundaryOffset, hasLinesOutside, false);
 
       if (endpoint != POSITION_OUTSIDE_BOUNDARY) {
-        emitMotion(base, ctx.bank.byId(spec.ks.id), endpoint);
+        emitMotion(base, ctx.bank.byId(spec.ksId), endpoint);
       }
     }
   }
@@ -148,7 +148,7 @@ public:
     Position endpoint(endpointLine, endpointCol);
 
     for (const auto& spec : specs) {
-      emitMotion(base, ctx.bank.byId(spec.ks.id), endpoint);
+      emitMotion(base, ctx.bank.byId(spec.ksId), endpoint);
     }
   }
 
@@ -166,7 +166,7 @@ public:
     if (endpoint == POSITION_OUTSIDE_BOUNDARY) return;
 
     for (const auto& spec : specs) {
-      emitMotion(base, ctx.bank.byId(spec.ks.id), endpoint);
+      emitMotion(base, ctx.bank.byId(spec.ksId), endpoint);
     }
   }
 
@@ -192,7 +192,7 @@ public:
             ? VimCore::firstNonBlankColInLineStr(ctx.lines[targetLine])
             : VimCore::clampCol(ctx.lines, pos.targetCol, targetLine);
         Position endpoint(targetLine, endpointCol, pos.targetCol);
-        emitMotion(base, ctx.bank.byId(spec.ks.id), endpoint);
+        emitMotion(base, ctx.bank.byId(spec.ksId), endpoint);
       }
     }
   }

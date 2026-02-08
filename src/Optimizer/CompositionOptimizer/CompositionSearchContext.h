@@ -2,12 +2,14 @@
 
 #include <cassert>
 #include <functional>
+#include <optional>
 #include <queue>
 #include <unordered_map>
 #include <vector>
 
 #include "CompositionOptimizerParams.h"
 #include "DiffState.h"
+#include "JoinPlan.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Optimizer/SearchStats.h"
@@ -91,6 +93,9 @@ struct CompositionSearchContext {
 
   // Pre-computed edit solutions (one EditResult per diff, including pure insertions)
   std::vector<EditResult> editResults;
+
+  // Pre-computed J (join lines) plans: one per diff, present when J is viable
+  std::vector<std::optional<JoinPlan>> joinPlans;
 
   // Intermediate buffer states: linesAfterNEdits[i] = buffer after i edits applied
   // linesAfterNEdits[0] = initialLines, linesAfterNEdits[totalEdits] = goalLines
@@ -245,5 +250,8 @@ private:
 
   // Helper: compute text object contexts for each edit
   std::vector<BracketQuoteContext> computeTextObjectContexts() const;
+
+  // Helper: compute J (join lines) plans for diffs where source has more lines than target
+  std::vector<std::optional<JoinPlan>> computeJoinPlans();
 
 };

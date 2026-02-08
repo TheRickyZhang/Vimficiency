@@ -955,6 +955,105 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
   }
 }
 
+TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
+  // Debug the J plan computation for various cases
+  cerr << "\n=== JoinPlan Debug ===" << endl;
+
+  auto dumpJoinPlan = [&](const string& label, const Lines& initial, const Lines& goal,
+                          Position initialPos) {
+    cerr << "\n--- " << label << " ---" << endl;
+    cerr << "Initial: " << initial;
+    cerr << "Goal:    " << goal;
+
+    // Step 1: Myers diffs
+    auto diffs = Myers::calculate(initial, goal);
+    cerr << "Diffs: " << diffs.size() << endl;
+    for (size_t i = 0; i < diffs.size(); i++) {
+      const auto& d = diffs[i];
+      cerr << "  [" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
+           << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
+           << " del='" << makePrintable(d.deletedText) << "'"
+           << " ins='" << makePrintable(d.insertedText) << "'"
+           << endl;
+      cerr << "    deletedLines: " << d.deletedLines();
+      cerr << "    insertedLines: " << d.insertedLines();
+      cerr << "    boundary: prefix='" << d.boundary.prefix() << "' suffix='" << d.boundary.suffix() << "'" << endl;
+    }
+
+    // Step 2: CompositionSearchContext (triggers computeJoinPlans)
+    CompositionOptimizerParams compParams{};
+    CompositionSearchContext ctx(initial, initialPos, goal, "",
+        NavContext(), MotionBoundary(), compParams, config);
+    cerr << "totalEdits=" << ctx.totalEdits << endl;
+
+    for (int i = 0; i < ctx.totalEdits; i++) {
+      const auto& d = ctx.diffStates[i];
+      cerr << "  diff[" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
+           << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
+           << " del='" << makePrintable(d.deletedText) << "'"
+           << " ins='" << makePrintable(d.insertedText) << "'" << endl;
+      cerr << "    buffer[" << i << "]: " << ctx.linesAfterNEdits[i];
+
+      if (ctx.joinPlans[i]) {
+        cerr << "    JOIN PLAN: seq='" << ctx.joinPlans[i]->sequence.keys
+             << "' effort=" << ctx.joinPlans[i]->effort
+             << " entryLine=" << ctx.joinPlans[i]->entryLine
+             << " goalPos=(" << ctx.joinPlans[i]->goalPos.line
+             << "," << ctx.joinPlans[i]->goalPos.col << ")" << endl;
+      } else {
+        cerr << "    JOIN PLAN: none" << endl;
+      }
+    }
+
+    // Step 3: Full optimizer
+    CompositionOptimizer opt{config};
+    auto compResult = opt.optimize(initial, initialPos, goal, goal.lastPos(), compParams);
+    cerr << "Results: " << compResult.results.size() << endl;
+    for (size_t i = 0; i < compResult.results.size(); i++) {
+      cerr << "  [" << i << "] '" << compResult.results[i].sequence
+           << "' cost=" << compResult.results[i].keyCost << endl;
+    }
+  };
+
+  // Case 1: JoinLinesExact — "hello\nworld" → "hello world"
+  dumpJoinPlan("JoinLinesExact",
+      {"hello", "world"}, {"hello world"}, Position(0, 0));
+
+  // Case 2: JoinLinesWithResidual — "aaa\nxxx\nccc" → "aaa bbb ccc"
+  dumpJoinPlan("JoinLinesWithResidual",
+      {"aaa", "xxx", "ccc"}, {"aaa bbb ccc"}, Position(0, 0));
+
+  // Case 3: JoinLinesPartialJoin — 4 lines → 2 lines
+  dumpJoinPlan("JoinLinesPartialJoin",
+      {"aaa", "bbb", "ccc", "ddd"}, {"aaa bbb", "ccc ddd"}, Position(0, 0));
+
+  // Case 3b: Debug motionOptimizer for PartialJoin
+  cerr << "\n--- PartialJoin MotionOptimizer debug ---" << endl;
+  {
+    Lines buffer = {"aaa bbb", "ccc", "ddd"};
+    Position pos(0, 3);
+    Position rangeFirst(1, 3);
+    Position rangeEnd(2, 0);
+    MotionBoundary boundary(buffer, Position(0, 0), buffer.endPos());
+
+    MotionOptimizer motionOpt(config);
+    NavContext navCtx;
+    auto rangeResult = motionOpt.optimizeToRange(
+        buffer, pos, rangeFirst, rangeEnd,
+        MotionOptimizerRangeParams{}.withMaxResults(5), "",
+        boundary, RunningEffort(), navCtx);
+
+    cerr << "Motion results: " << rangeResult.results.size() << endl;
+    for (size_t i = 0; i < rangeResult.results.size(); i++) {
+      if (rangeResult.results[i].isValid()) {
+        cerr << "  [" << i << "] '" << rangeResult.results[i].sequence
+             << "' -> (" << rangeResult.results[i].goalPos.line << ","
+             << rangeResult.results[i].goalPos.col << ")" << endl;
+      }
+    }
+  }
+}
+
 TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
   Lines initial = {"aaa", "bbb", "ccc"};
   Lines goal = {"aaa bbb ccc?"};

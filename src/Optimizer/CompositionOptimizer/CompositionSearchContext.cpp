@@ -5,6 +5,7 @@
 #include "State/RunningEffort.h"
 #include "Utils/Debug.h"
 #include "Utils/StringUtils.h"
+#include "VimCore/VimEditUtils.h"
 
 #include <algorithm>
 #include <cassert>
@@ -98,6 +99,18 @@ CompositionSearchContext::CompositionSearchContext(
           validCount, "results, best cost:",
           validCount > 0 ? bestCost : -1.0,
           "goalPos:", er.goalPos);
+  }
+
+  // Compute J (join lines) plans
+  joinPlans = computeJoinPlans();
+
+  debug("--- join plans ---");
+  for (int i = 0; i < static_cast<int>(joinPlans.size()); i++) {
+    if (joinPlans[i]) {
+      debug("  joinPlan[" + to_string(i) + "]: seq='" + joinPlans[i]->sequence.keys + "'",
+            "effort:", joinPlans[i]->effort, "entryLine:", joinPlans[i]->entryLine,
+            "goalPos:", joinPlans[i]->goalPos);
+    }
   }
 
   // Compute text object contexts for shortcuts
@@ -261,6 +274,11 @@ vector<double> CompositionSearchContext::computeSuffixEditCosts() const {
       }
     }
 
+    // Include J plan effort if available
+    if (i < static_cast<int>(joinPlans.size()) && joinPlans[i]) {
+      costs.push_back(joinPlans[i]->effort);
+    }
+
     if (costs.empty()) {
       medianCost = 100.0;  // Fallback for empty results
     } else {
@@ -387,10 +405,13 @@ vector<Lines> CompositionSearchContext::calculateLinesAfterDiffs(
   int cumulativeOffset = 0;
 
   for (int i = 0; i < totalEdits; i++) {
-    if (cumulativeOffset != 0) {
+    if (i > 0) {
       // Adjust positions from original-buffer space to intermediate-buffer space.
       // Convert to flat index against original buffer, shift by cumulative delta,
       // then convert back to (line, col) against the current intermediate buffer.
+      // Must always adjust when i > 0, even if cumulativeOffset == 0, because
+      // earlier diffs may have changed line structure (e.g., \n → space) without
+      // changing character count.
       auto adjustPos = [&](const Position& pos) -> Position {
         int flatIdx = posToFlat(pos, initialLines);
         flatIdx += cumulativeOffset;
@@ -618,4 +639,260 @@ vector<BracketQuoteContext> CompositionSearchContext::computeTextObjectContexts(
   return contexts;
 }
 
+// =============================================================================
+// J (Join Lines) Plan Computation
+// =============================================================================
 
+namespace {
+
+// Simulate Vim's J command on a set of source lines, returning the joined result
+// and the cursor column after each J. Uses VimEditUtils::joinLines semantics.
+struct JoinSimulation {
+  string joinedLine;          // Result after all J's
+  vector<int> cursorCols;     // Cursor col after each J (size = numJoins)
+
+  static JoinSimulation simulate(const Lines& srcLines, int first, int last) {
+    JoinSimulation sim;
+    Lines workLines(srcLines.begin() + first, srcLines.begin() + last + 1);
+    Position pos(0, 0);
+
+    for (int l = first + 1; l <= last; l++) {
+      VimCore::joinLines(workLines, pos, /*addSpace=*/true);
+      sim.cursorCols.push_back(pos.col);
+    }
+    sim.joinedLine = workLines[0];
+    return sim;
+  }
+};
+
+// Compute common prefix length between two strings
+int commonPrefixLen(string_view a, string_view b) {
+  int n = static_cast<int>(min(a.size(), b.size()));
+  for (int i = 0; i < n; i++) {
+    if (a[i] != b[i]) return i;
+  }
+  return n;
+}
+
+// Compute common suffix length between two strings (non-overlapping with prefix)
+int commonSuffixLen(string_view a, string_view b, int prefixLen) {
+  int la = static_cast<int>(a.size());
+  int lb = static_cast<int>(b.size());
+  int maxSuffix = min(la, lb) - prefixLen;
+  int count = 0;
+  for (int i = 0; i < maxSuffix; i++) {
+    if (a[la - 1 - i] != b[lb - 1 - i]) break;
+    count++;
+  }
+  return count;
+}
+
+} // anonymous namespace
+
+vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
+  vector<optional<JoinPlan>> plans(totalEdits);
+  EditOptimizer editOptimizer(config);
+
+  for (int i = 0; i < totalEdits; i++) {
+    const DiffState& diff = diffStates[i];
+
+    // Quick reject: pure insertions can't use J
+    if (diff.isPureInsertion()) continue;
+
+    // Get the full buffer lines spanning the diff region (not just the changed text).
+    // J operates on complete buffer lines, including the unchanged prefix/suffix.
+    const Lines& buffer = linesAfterNEdits[i];
+    int srcFirstLine = diff.beginPos.line;
+    // endPos is half-open. The diff spans from beginPos to endPos.
+    // If endPos.col == 0, the deletion ends at the start of endPos.line, meaning
+    // the last source line with deleted content is endPos.line - 1. But for J,
+    // we still need endPos.line if the newline between lines was deleted (which
+    // brought content from endPos.line onto the joined result).
+    // Use the number of lines in deletedLines() to determine the span.
+    Lines delLines = diff.deletedLines();
+    int srcLastLine = srcFirstLine + static_cast<int>(delLines.size()) - 1;
+    if (srcLastLine >= static_cast<int>(buffer.size())) continue;
+
+    int N = srcLastLine - srcFirstLine + 1;  // number of source lines in buffer
+
+    // Get corresponding target lines from the post-diff buffer
+    const Lines& bufferAfter = linesAfterNEdits[i + 1];
+    // Determine target line count: same first line, but fewer lines after diff applied
+    Lines tgtLines = diff.insertedLines();
+    int M = static_cast<int>(tgtLines.size());
+
+    // For M>1 or M==1, we need the full target lines (with prefix/suffix reattached)
+    // Reconstruct full target lines by attaching the prefix and suffix
+    const string& prefix = diff.boundary.prefix();
+    const string& suffix = diff.boundary.suffix();
+
+    // Build full source lines (from buffer)
+    Lines srcLines = buffer.getLineRange(srcFirstLine, srcLastLine + 1);
+
+    // Build full target lines (reattach prefix to first line, suffix to last line)
+    Lines fullTgtLines;
+    for (int t = 0; t < M; t++) {
+      string line = tgtLines[t];
+      if (t == 0 && M == 1) {
+        line = prefix + line + suffix;
+      } else if (t == 0) {
+        line = prefix + line;
+      } else if (t == M - 1) {
+        line = line + suffix;
+      }
+      fullTgtLines.push_back(std::move(line));
+    }
+
+    // Need more source lines than target lines for J to be useful
+    if (N <= M) continue;
+
+    debug("  joinPlan[" + to_string(i) + "]: considering N=" + to_string(N) +
+          " -> M=" + to_string(M) + " srcLines=" + to_string(srcFirstLine) +
+          ".." + to_string(srcLastLine));
+
+    // === Find best partition of N source lines into M groups ===
+    // partition[k] = {first, last} inclusive indices into srcLines (0-based)
+    vector<pair<int, int>> partition(M);
+
+    if (M == 1) {
+      partition[0] = {0, N - 1};
+    } else {
+      // Prefix sums of source line lengths for O(1) joined length computation
+      // Note: this uses a simplified model; actual J join adds spaces and strips ws.
+      // For partition finding, line lengths are a good enough approximation.
+      vector<int> prefLen(N + 1, 0);
+      for (int s = 0; s < N; s++) {
+        prefLen[s + 1] = prefLen[s] + static_cast<int>(srcLines[s].size());
+      }
+      auto joinedLen = [&](int a, int b) -> int {
+        return prefLen[b + 1] - prefLen[a] + (b - a);
+      };
+
+      constexpr int INF = 1000000;
+      vector<vector<int>> dp(N + 1, vector<int>(M + 1, INF));
+      vector<vector<int>> choice(N + 1, vector<int>(M + 1, -1));
+      dp[N][M] = 0;
+
+      for (int t = M - 1; t >= 0; t--) {
+        int tgtLen = static_cast<int>(fullTgtLines[t].size());
+        for (int s = N - (M - t); s >= t; s--) {
+          for (int k = s; k <= N - (M - t); k++) {
+            int groupCost = abs(joinedLen(s, k) - tgtLen);
+            int total = groupCost + dp[k + 1][t + 1];
+            if (total < dp[s][t]) {
+              dp[s][t] = total;
+              choice[s][t] = k;
+            }
+          }
+        }
+      }
+
+      int s = 0;
+      for (int t = 0; t < M; t++) {
+        int k = choice[s][t];
+        partition[t] = {s, k};
+        s = k + 1;
+      }
+    }
+
+    // === Check match quality for each group ===
+    bool viable = true;
+    for (int g = 0; g < M; g++) {
+      auto [first, last] = partition[g];
+      if (first == last) continue;
+
+      auto sim = JoinSimulation::simulate(srcLines, first, last);
+      int cpLen = commonPrefixLen(sim.joinedLine, fullTgtLines[g]);
+      int csLen = commonSuffixLen(sim.joinedLine, fullTgtLines[g], cpLen);
+      int commonLen = cpLen + csLen;
+      int maxLen = max(static_cast<int>(sim.joinedLine.size()),
+                       static_cast<int>(fullTgtLines[g].size()));
+      double matchRatio = maxLen > 0 ? static_cast<double>(commonLen) / maxLen : 1.0;
+      if (matchRatio < 0.3) {
+        debug("    group " + to_string(g) + " matchRatio=" + to_string(matchRatio) +
+              " below threshold, skipping J plan");
+        viable = false;
+        break;
+      }
+    }
+    if (!viable) continue;
+
+    // === Per-group processing: simulate J, compute residual ===
+    Sequence fullSeq;
+    Position lastGoalPos(0, 0);
+    bool failed = false;
+
+    for (int g = 0; g < M; g++) {
+      auto [first, last] = partition[g];
+      int numJoins = last - first;
+
+      if (g > 0) {
+        fullSeq.append("j");
+      }
+
+      for (int j = 0; j < numJoins; j++) {
+        fullSeq.append("J");
+      }
+
+      // Simulate J to get joined content and cursor position
+      auto sim = JoinSimulation::simulate(srcLines, first, last);
+      int cursorCol = numJoins > 0 ? sim.cursorCols.back() : 0;
+
+      // Check if residual edit is needed (joined line vs full target line)
+      if (sim.joinedLine != fullTgtLines[g]) {
+        // Run EditOptimizer on the full joined line vs full target line.
+        // The full line is the edit region (no prefix/suffix beyond what's
+        // already on the line). This avoids cursor-position misalignment issues.
+        Lines residualInitial = {sim.joinedLine};
+        Lines residualGoal = {fullTgtLines[g]};
+
+        // The entire joined line is the edit region (single line, no prefix/suffix)
+        EditBoundary groupBoundary;
+
+        Position residualGoalPos(0,
+            fullTgtLines[g].empty() ? 0
+            : static_cast<int>(fullTgtLines[g].size()) - 1);
+
+        EditResult residualResult = editOptimizer.optimizeEdit(
+            residualInitial, residualGoal, groupBoundary, {},
+            0, 0, residualGoalPos);
+
+        // Look up result at cursor position after J
+        const Result* res = residualResult.resultAt(0, cursorCol);
+        if (!res) {
+          debug("    group " + to_string(g) + " no EditResult at cursorCol=" +
+                to_string(cursorCol) + ", skipping J plan");
+          failed = true;
+          break;
+        }
+
+        fullSeq.append(res->sequence.keys);
+        lastGoalPos = residualResult.goalPos;
+      } else {
+        lastGoalPos = Position(0, cursorCol);
+      }
+    }
+
+    if (failed) continue;
+
+    // Compute goalPos in buffer coordinates
+    Position goalPos;
+    if (M == 1) {
+      goalPos = Position(diff.beginPos.line, lastGoalPos.col);
+    } else {
+      int bufferLine = diff.beginPos.line + M - 1;
+      goalPos = Position(bufferLine, lastGoalPos.col);
+    }
+
+    double effort = getEffort(fullSeq.keys, config);
+
+    plans[i] = JoinPlan{
+      .sequence = std::move(fullSeq),
+      .goalPos = goalPos,
+      .effort = effort,
+      .entryLine = diff.beginPos.line
+    };
+  }
+
+  return plans;
+}

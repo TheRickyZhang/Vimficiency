@@ -21,7 +21,6 @@ struct KeyedSequenceBank {
 #define KS_BANK_INIT(name, seqStr, keyGroup) \
     name = KeyedSequence::name; \
     name.effort.append(name.keys, cfg); \
-    name.effortPopulated = true; \
     byIdTable_[static_cast<uint8_t>(KSId::name)] = &this->name;
     VIMFICIENCY_KEYED_SEQUENCES(KS_BANK_INIT)
 #undef KS_BANK_INIT

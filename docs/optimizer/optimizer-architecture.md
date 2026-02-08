@@ -3,7 +3,7 @@
 We have three different Optimizers. Here is a short description:
 - MotionOptimizer: Pure movements from start -> (finish or finishRange) over a constant buffer
 - EditOptimizer: Changing start buffer state -> end buffer state, assuming that we delete all old text first, then type new text out
-- CompositionOptimizer: Orchestrates logic combining MotionOptimizer and EditOptimizer for any transition. Determines how to break up edit regions and chain movement and edit search to satisfy regions in order.
+- CompositionOptimizer: Orchestrates logic combining MotionOptimizer and EditOptimizer for any transition. Determines how to break up edit regions and chain movement and edit search to satisfy regions in order. Also pre-computes J (join lines) plans for diffs where source has more lines than target, offering them as alternative edit transitions in the A* search (see `docs/optimizer/composition-optimizer.md` § J Plans).
 
 ## Dependence
 MotionOptimizer: independent

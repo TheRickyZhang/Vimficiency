@@ -1,94 +1,93 @@
 #include "MotionToSpec.h"
 using namespace std;
-using KS = KeyedSequence;
 
 // =============================================================================
 // Motion Operation Specs - tables for MotionOptimizer
 // =============================================================================
-// Keys from KeyedSequence motion constants
+// KSId references for bank lookup during A* search
 
 namespace Motion {
 
-// Word motions: ks, forward, edgeType, big, skipCurrent
+// Word motions: ksId, forward, edgeType, big, skipCurrent
 const vector<WordMotionSpec> WORD_MOTIONS = {
-    {KS::w,  true,  EdgeType::NextEdge, false, false},
-    {KS::W,  true,  EdgeType::NextEdge, true,  false},
-    {KS::b,  false, EdgeType::WordEdge, false, true},
-    {KS::B,  false, EdgeType::WordEdge, true,  true},
-    {KS::e,  true,  EdgeType::WordEdge, false, true},
-    {KS::E,  true,  EdgeType::WordEdge, true,  true},
-    {KS::ge, false, EdgeType::NextEdge, false, false},
-    {KS::gE, false, EdgeType::NextEdge, true,  false},
+    {KSId::w,  true,  EdgeType::NextEdge, false, false},
+    {KSId::W,  true,  EdgeType::NextEdge, true,  false},
+    {KSId::b,  false, EdgeType::WordEdge, false, true},
+    {KSId::B,  false, EdgeType::WordEdge, true,  true},
+    {KSId::e,  true,  EdgeType::WordEdge, false, true},
+    {KSId::E,  true,  EdgeType::WordEdge, true,  true},
+    {KSId::ge, false, EdgeType::NextEdge, false, false},
+    {KSId::gE, false, EdgeType::NextEdge, true,  false},
 };
 
-// Split by Forward/EdgeType for templated dispatch: ks, big, skipCurrent
+// Split by Forward/EdgeType for templated dispatch: ksId, big, skipCurrent
 const vector<WordMotionSpecNoEdge> FORWARD_NEXTEDGE_MOTIONS = {
-    {KS::w, false, false},
-    {KS::W, true,  false},
+    {KSId::w, false, false},
+    {KSId::W, true,  false},
 };
 const vector<WordMotionSpecNoEdge> FORWARD_WORDEDGE_MOTIONS = {
-    {KS::e, false, true},
-    {KS::E, true,  true},
+    {KSId::e, false, true},
+    {KSId::E, true,  true},
 };
 const vector<WordMotionSpecNoEdge> BACKWARD_WORDEDGE_MOTIONS = {
-    {KS::b, false, true},
-    {KS::B, true,  true},
+    {KSId::b, false, true},
+    {KSId::B, true,  true},
 };
 const vector<WordMotionSpecNoEdge> BACKWARD_NEXTEDGE_MOTIONS = {
-    {KS::ge, false, false},
-    {KS::gE, true,  false},
+    {KSId::ge, false, false},
+    {KSId::gE, true,  false},
 };
 
-// Paragraph motions: ks, forward
+// Paragraph motions: ksId, forward
 const vector<ParagraphMotionSpec> PARAGRAPH_MOTIONS = {
-    {KS::LBrace, false},
-    {KS::RBrace, true},
+    {KSId::LBrace, false},
+    {KSId::RBrace, true},
 };
 
-// Split by Forward for templated dispatch: ks
+// Split by Forward for templated dispatch: ksId
 const vector<ParagraphMotionSpecNoDir> FORWARD_PARAGRAPH_MOTIONS = {
-    {KS::RBrace},
+    {KSId::RBrace},
 };
 const vector<ParagraphMotionSpecNoDir> BACKWARD_PARAGRAPH_MOTIONS = {
-    {KS::LBrace},
+    {KSId::LBrace},
 };
 
-// Sentence motions: ks, forward
+// Sentence motions: ksId, forward
 const vector<SentenceMotionSpec> SENTENCE_MOTIONS = {
-    {KS::LParen, false},
-    {KS::RParen, true},
+    {KSId::LParen, false},
+    {KSId::RParen, true},
 };
 
-// Split by Forward for templated dispatch: ks
+// Split by Forward for templated dispatch: ksId
 const vector<SentenceMotionSpecNoDir> FORWARD_SENTENCE_MOTIONS = {
-    {KS::RParen},
+    {KSId::RParen},
 };
 const vector<SentenceMotionSpecNoDir> BACKWARD_SENTENCE_MOTIONS = {
-    {KS::LParen},
+    {KSId::LParen},
 };
 
-// Simple line motions: ks
+// Simple line motions: ksId
 const vector<SimpleLineMotionSpec> SIMPLE_LINE_MOTIONS = {
-    {KS::h},
-    {KS::l},
-    {KS::Zero},
-    {KS::Caret},
-    {KS::Dollar},
+    {KSId::h},
+    {KSId::l},
+    {KSId::Zero},
+    {KSId::Caret},
+    {KSId::Dollar},
 };
 
-// Vertical motions: ks, isDown
+// Vertical motions: ksId, isDown
 const vector<VerticalMotionSpec> VERTICAL_MOTIONS = {
-    {KS::j, true},
-    {KS::k, false},
+    {KSId::j, true},
+    {KSId::k, false},
 };
 
-// Jump motions: ks, toStart
+// Jump motions: ksId, toStart
 const vector<JumpMotionSpec> JUMP_MOTIONS = {
-    {KS::gg, true},
-    {KS::G,  false},
+    {KSId::gg, true},
+    {KSId::G,  false},
 };
 
-// Scroll motions: ks, shiftMultiplier, isHalf
+// Scroll motions: ksId, shiftMultiplier, isHalf
 // NOTE: <C-f> and <C-b> (full-page scroll) are NOT included because they depend on
 // viewport state that we don't track. These commands scroll the window, and when the
 // buffer is smaller than the window or cursor is near buffer edges, they may not move
@@ -98,16 +97,16 @@ const vector<JumpMotionSpec> JUMP_MOTIONS = {
 // 3. Handle edge cases where scrolling is not possible
 // <C-d> and <C-u> are more predictable as they move by a fixed scroll amount.
 const vector<ScrollMotionSpec> SCROLL_MOTIONS = {
-    {KS::CtrlD, +1, true},   // half-page down
-    {KS::CtrlU, -1, true},   // half-page up
+    {KSId::CtrlD, +1, true},   // half-page down
+    {KSId::CtrlU, -1, true},   // half-page up
 };
 
-// Split by Forward for templated dispatch: ks, isHalf
+// Split by Forward for templated dispatch: ksId, isHalf
 const vector<ScrollMotionSpecNoDir> FORWARD_SCROLL_MOTIONS = {
-    {KS::CtrlD, true},
+    {KSId::CtrlD, true},
 };
 const vector<ScrollMotionSpecNoDir> BACKWARD_SCROLL_MOTIONS = {
-    {KS::CtrlU, true},
+    {KSId::CtrlU, true},
 };
 
 } // namespace Motion
