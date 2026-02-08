@@ -1,22 +1,23 @@
-// tests/Misc/EffortCacheTest.cpp
+// tests/Misc/KeyedSequenceBankTest.cpp
 //
-// Verifies that EffortCache pre-computed efforts match naive append, and that
-// merge(prefix, cache.get(id)) == prefix.append(ks.keys, cfg) for all 27.
+// Verifies that KeyedSequenceBank pre-computed efforts match naive append, and
+// that merge(prefix, bank.byId(id).effort) == prefix.append(ks.keys, cfg)
+// for all 27 static KeyedSequences.
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="EffortCache*"
+// Run: ./build/tests/vimficiency_tests --gtest_filter="KeyedSequenceBank*"
 
 #include <gtest/gtest.h>
 
 #include "Keyboard/KeyedSequence.h"
+#include "Keyboard/KeyedSequenceBank.h"
 #include "Keyboard/MotionToKeys.h"
 #include "Optimizer/Config.h"
-#include "State/EffortCache.h"
 #include "State/MotionState.h"
 #include "State/RunningEffort.h"
 
 using namespace std;
 
-class EffortCacheTest : public ::testing::Test {
+class KeyedSequenceBankTest : public ::testing::Test {
 protected:
   Config qwerty  = Config::qwerty();
   Config colemak = Config::colemakDh();
@@ -24,11 +25,11 @@ protected:
 };
 
 // =============================================================================
-// All 27 cache entries match naive append
+// All 27 bank entries match naive append
 // =============================================================================
 
-TEST_F(EffortCacheTest, AllEntriesMatchNaiveQwerty) {
-  EffortCache cache(qwerty);
+TEST_F(KeyedSequenceBankTest, AllEntriesMatchNaiveQwerty) {
+  KeyedSequenceBank bank(qwerty);
   for (int i = 0; i < KS_COUNT; ++i) {
     KSId id = static_cast<KSId>(i);
     const KeyedSequence& ks = ksById(id);
@@ -36,15 +37,15 @@ TEST_F(EffortCacheTest, AllEntriesMatchNaiveQwerty) {
     RunningEffort naive;
     naive.append(ks.keys, qwerty);
 
-    EXPECT_DOUBLE_EQ(naive.getEffort(qwerty), cache.get(id).getEffort(qwerty))
+    EXPECT_DOUBLE_EQ(naive.getEffort(qwerty), bank.byId(id).effort.getEffort(qwerty))
         << "Mismatch for KSId " << i << " (seq: " << ks.seq.keys << ")";
-    EXPECT_EQ(naive.getStrokes(), cache.get(id).getStrokes())
+    EXPECT_EQ(naive.getStrokes(), bank.byId(id).effort.getStrokes())
         << "Stroke mismatch for KSId " << i;
   }
 }
 
-TEST_F(EffortCacheTest, AllEntriesMatchNaiveColemak) {
-  EffortCache cache(colemak);
+TEST_F(KeyedSequenceBankTest, AllEntriesMatchNaiveColemak) {
+  KeyedSequenceBank bank(colemak);
   for (int i = 0; i < KS_COUNT; ++i) {
     KSId id = static_cast<KSId>(i);
     const KeyedSequence& ks = ksById(id);
@@ -52,13 +53,13 @@ TEST_F(EffortCacheTest, AllEntriesMatchNaiveColemak) {
     RunningEffort naive;
     naive.append(ks.keys, colemak);
 
-    EXPECT_DOUBLE_EQ(naive.getEffort(colemak), cache.get(id).getEffort(colemak))
+    EXPECT_DOUBLE_EQ(naive.getEffort(colemak), bank.byId(id).effort.getEffort(colemak))
         << "Mismatch for KSId " << i;
   }
 }
 
-TEST_F(EffortCacheTest, AllEntriesMatchNaiveUniform) {
-  EffortCache cache(uniform);
+TEST_F(KeyedSequenceBankTest, AllEntriesMatchNaiveUniform) {
+  KeyedSequenceBank bank(uniform);
   for (int i = 0; i < KS_COUNT; ++i) {
     KSId id = static_cast<KSId>(i);
     const KeyedSequence& ks = ksById(id);
@@ -66,17 +67,17 @@ TEST_F(EffortCacheTest, AllEntriesMatchNaiveUniform) {
     RunningEffort naive;
     naive.append(ks.keys, uniform);
 
-    EXPECT_DOUBLE_EQ(naive.getEffort(uniform), cache.get(id).getEffort(uniform))
+    EXPECT_DOUBLE_EQ(naive.getEffort(uniform), bank.byId(id).effort.getEffort(uniform))
         << "Mismatch for KSId " << i;
   }
 }
 
 // =============================================================================
-// merge(prefix, cache.get(id)) == prefix.append(ks.keys, cfg) for all 27
+// merge(prefix, bank.byId(id).effort) == prefix.append(ks.keys, cfg) for all 27
 // =============================================================================
 
-TEST_F(EffortCacheTest, MergeWithPrefixMatchesAppendForAll) {
-  EffortCache cache(qwerty);
+TEST_F(KeyedSequenceBankTest, MergeWithPrefixMatchesAppendForAll) {
+  KeyedSequenceBank bank(qwerty);
 
   // Build a non-trivial prefix: "3w" (multi-key, cross-hand)
   PhysicalKeys prefixKeys = globalTokenizer().tokenize("3w");
@@ -91,8 +92,8 @@ TEST_F(EffortCacheTest, MergeWithPrefixMatchesAppendForAll) {
     RunningEffort naive = prefix;
     naive.append(ks.keys, qwerty);
 
-    // Cached: merge
-    RunningEffort merged = RunningEffort::merge(prefix, cache.get(id));
+    // Bank: merge
+    RunningEffort merged = RunningEffort::merge(prefix, bank.byId(id).effort);
 
     EXPECT_DOUBLE_EQ(naive.getEffort(qwerty), merged.getEffort(qwerty))
         << "merge mismatch for KSId " << i << " (seq: " << ks.seq.keys << ")";
@@ -102,10 +103,32 @@ TEST_F(EffortCacheTest, MergeWithPrefixMatchesAppendForAll) {
 }
 
 // =============================================================================
+// hasEffort: bank entries vs raw statics
+// =============================================================================
+
+TEST_F(KeyedSequenceBankTest, BankEntriesHaveEffort) {
+  KeyedSequenceBank bank(qwerty);
+  EXPECT_TRUE(bank.h.hasEffort());
+  EXPECT_TRUE(bank.j.hasEffort());
+  EXPECT_TRUE(bank.w.hasEffort());
+  EXPECT_TRUE(bank.gg.hasEffort());
+  EXPECT_TRUE(bank.Dollar.hasEffort());
+  EXPECT_TRUE(bank.CtrlD.hasEffort());
+  EXPECT_TRUE(bank.gE.hasEffort());
+}
+
+TEST_F(KeyedSequenceBankTest, StaticConstantsLackEffort) {
+  // Global statics should NOT have effort populated
+  EXPECT_FALSE(KeyedSequence::h.hasEffort());
+  EXPECT_FALSE(KeyedSequence::w.hasEffort());
+  EXPECT_FALSE(KeyedSequence::gg.hasEffort());
+}
+
+// =============================================================================
 // hasCachedId is correct
 // =============================================================================
 
-TEST_F(EffortCacheTest, StaticConstantsHaveCachedId) {
+TEST_F(KeyedSequenceBankTest, StaticConstantsHaveCachedId) {
   // All 27 static constants should have cached IDs
   EXPECT_TRUE(KeyedSequence::h.hasCachedId());
   EXPECT_TRUE(KeyedSequence::j.hasCachedId());
@@ -116,7 +139,7 @@ TEST_F(EffortCacheTest, StaticConstantsHaveCachedId) {
   EXPECT_TRUE(KeyedSequence::gE.hasCachedId());
 }
 
-TEST_F(EffortCacheTest, DynamicSequencesLackCachedId) {
+TEST_F(KeyedSequenceBankTest, DynamicSequencesLackCachedId) {
   // Dynamically built KeyedSequences should NOT have a cached ID
   KeyedSequence dynamic("fx", {Key::Key_F, Key::Key_X});
   EXPECT_FALSE(dynamic.hasCachedId());
@@ -129,7 +152,7 @@ TEST_F(EffortCacheTest, DynamicSequencesLackCachedId) {
 // ksById round-trip
 // =============================================================================
 
-TEST_F(EffortCacheTest, KsByIdRoundTrip) {
+TEST_F(KeyedSequenceBankTest, KsByIdRoundTrip) {
   for (int i = 0; i < KS_COUNT; ++i) {
     KSId id = static_cast<KSId>(i);
     const KeyedSequence& ks = ksById(id);
@@ -140,11 +163,11 @@ TEST_F(EffortCacheTest, KsByIdRoundTrip) {
 }
 
 // =============================================================================
-// afterMotion with cache == without cache
+// afterMotion with bank-populated ks == with raw static ks
 // =============================================================================
 
-TEST_F(EffortCacheTest, AfterMotionWithCacheMatchesWithout) {
-  EffortCache cache(qwerty);
+TEST_F(KeyedSequenceBankTest, AfterMotionWithBankMatchesWithout) {
+  KeyedSequenceBank bank(qwerty);
 
   // Starting state with some prefix effort
   PhysicalKeys prefixKeys = globalTokenizer().tokenize("2j");
@@ -153,24 +176,27 @@ TEST_F(EffortCacheTest, AfterMotionWithCacheMatchesWithout) {
 
   MotionState state(Position(2, 0, 0), prefixEffort, initialEffort, 0.0);
 
-  // Test a few static motions
-  struct TestCase { const KeyedSequence& ks; Position endpoint; };
+  // Test a few static motions: bank entry (has effort) vs raw static (no effort)
+  struct TestCase { KSId id; Position endpoint; };
   TestCase cases[] = {
-    {KeyedSequence::w,      Position(2, 5, 5)},
-    {KeyedSequence::j,      Position(3, 0, 0)},
-    {KeyedSequence::Dollar, Position(2, 10, TARGETCOL_EOL)},
-    {KeyedSequence::gg,     Position(0, 0, 0)},
-    {KeyedSequence::gE,     Position(1, 3, 3)},
+    {KSId::w,      Position(2, 5, 5)},
+    {KSId::j,      Position(3, 0, 0)},
+    {KSId::Dollar, Position(2, 10, TARGETCOL_EOL)},
+    {KSId::gg,     Position(0, 0, 0)},
+    {KSId::gE,     Position(1, 3, 3)},
   };
 
   for (const auto& tc : cases) {
-    MotionState withCache = state.afterMotion(tc.ks, tc.endpoint, qwerty, &cache);
-    MotionState withoutCache = state.afterMotion(tc.ks, tc.endpoint, qwerty, nullptr);
+    const KeyedSequence& bankKs = bank.byId(tc.id);
+    const KeyedSequence& rawKs = ksById(tc.id);
 
-    EXPECT_DOUBLE_EQ(withCache.getEffort(), withoutCache.getEffort())
-        << "Effort mismatch for seq: " << tc.ks.seq.keys;
-    EXPECT_EQ(withCache.getRunningEffort().getStrokes(),
-              withoutCache.getRunningEffort().getStrokes())
-        << "Stroke mismatch for seq: " << tc.ks.seq.keys;
+    MotionState withBank = state.afterMotion(bankKs, tc.endpoint, qwerty);
+    MotionState withoutBank = state.afterMotion(rawKs, tc.endpoint, qwerty);
+
+    EXPECT_DOUBLE_EQ(withBank.getEffort(), withoutBank.getEffort())
+        << "Effort mismatch for seq: " << rawKs.seq.keys;
+    EXPECT_EQ(withBank.getRunningEffort().getStrokes(),
+              withoutBank.getRunningEffort().getStrokes())
+        << "Stroke mismatch for seq: " << rawKs.seq.keys;
   }
 }

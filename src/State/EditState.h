@@ -67,6 +67,8 @@ class EditState {
   double effort_ = 0.0;           // Cached effort value
   double cost_ = 0.0;             // Priority = effort + heuristic
 
+  bool isGoal_ = false;  // True when state has reached the goal
+
   // Parent tracking for suffix cache (only used by optimizeEditWithSuffixCache)
   int parentCommitIdx_ = -1;          // Index into committedStates (-1 for seeds)
   std::string transitionSeq_{};       // Command that produced this state from parent
@@ -94,6 +96,19 @@ public:
   double getCost() const { return cost_; }
   const std::string& getSeq() const { return seq_; }
   const RunningEffort& getRunningEffort() const { return runningEffort; }
+
+  // Goal state flag
+  bool isGoal() const { return isGoal_; }
+
+  // Record the goal suffix directly into this state's seq/effort.
+  // After this call, Result can be trivially constructed from getSeq()/getEffort().
+  void recordGoal(std::string_view goalSuffix, const PhysicalKeys& goalKeys,
+                  double effortWeight, const Config& config) {
+    seq_ += goalSuffix;
+    effort_ = runningEffort.append(goalKeys, config);
+    cost_ = effortWeight * effort_;
+    isGoal_ = true;
+  }
 
   // Parent tracking (suffix cache)
   void setParentInfo(int commitIdx, std::string_view seq, const PhysicalKeys& keys) {

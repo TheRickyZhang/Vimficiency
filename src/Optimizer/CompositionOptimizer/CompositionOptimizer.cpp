@@ -72,6 +72,8 @@ CompositionResult CompositionOptimizer::optimize(
   ctx.pq.push(startingState);
   ctx.costMap[startingState.getKey()] = startingState.getCost();
 
+  debug("=== CompositionOptimizer A* search ===");
+
   while (ctx.shouldContinue()) {
     CompositionState s = ctx.popNext();
     Position pos = s.getPos();
@@ -80,8 +82,10 @@ CompositionResult CompositionOptimizer::optimize(
     ctx.markProcessed();
 
     if (ctx.isGoal(s)) {
-      results.emplace_back(s.getMotionSequence(),
-                           s.getRunningEffort().getEffort(config));
+      double effort = s.getRunningEffort().getEffort(config);
+      debug("GOAL #" + to_string(results.size()) + ":",
+            "\"" + s.getMotionSequence() + "\"", "effort:", effort);
+      results.emplace_back(s.getMotionSequence(), effort);
       if (results.size() >= static_cast<size_t>(params.maxResults)) {
         debug("maximum result count reached");
         break;
@@ -94,6 +98,10 @@ CompositionResult CompositionOptimizer::optimize(
       continue;
     }
 
+    debug("pop:", "\"" + s.getMotionSequence() + "\"",
+          "pos:", pos, "edits:", editsCompleted,
+          "cost:", s.getCost(), "effort:", s.getEffort());
+
     // Get current buffer state
     const Lines& currentLines = ctx.getLinesAfter(editsCompleted);
     const DiffState& nextEdit = ctx.getDiffState(editsCompleted);
@@ -102,6 +110,8 @@ CompositionResult CompositionOptimizer::optimize(
     // Pure insertions have no edit region to transition into.
     // We explore navigation + insertion strategies: o/I/A shortcuts or i fallback.
     if (nextEdit.isPureInsertion()) {
+      debug("  pure insertion at", nextEdit.beginPos,
+            "text='" + makePrintable(nextEdit.insertedText) + "'");
       const EditResult& editResult = ctx.editResults[editsCompleted];
       Position insertPos = nextEdit.beginPos;
       bool isNewLineInsertion = nextEdit.isNewLineInsertion();
@@ -158,6 +168,7 @@ CompositionResult CompositionOptimizer::optimize(
 
       // o: skip the trailing newline since the command opens a new line
       if (isNewLineInsertion && insertPos.col == 0 && insertPos.line > 0) {
+        debug("    exploring o-strategy on line", insertPos.line - 1);
         int targetLine = insertPos.line - 1;
         int lastCol = currentLines[targetLine].empty()
             ? 0 : static_cast<int>(currentLines[targetLine].size()) - 1;
@@ -176,6 +187,7 @@ CompositionResult CompositionOptimizer::optimize(
         Lines insertLines = Lines::unflatten(nextEdit.insertedText);
 
         if (insertPos.col == fnb) {
+          debug("    exploring I/i-strategy at fnb col", fnb);
           // I: insert at first non-blank - navigate anywhere on line
           // For multi-line, prefix before cursor is the indent (text before FNB)
           KeyedSequence escaped = buildTypedCommands(insertLines, "",
@@ -186,6 +198,7 @@ CompositionResult CompositionOptimizer::optimize(
           exploreInsertionStrategy(insertPos.line, insertPos.col, insertPos.col,
                                    "i" + escaped.seq.keys);
         } else if (insertPos.col == lineLen) {
+          debug("    exploring A/a-strategy at eol col", lineLen);
           // A: append at end of line - navigate anywhere on line
           // For multi-line, prefix is the entire current line
           KeyedSequence escaped = buildTypedCommands(insertLines, "",
@@ -196,6 +209,7 @@ CompositionResult CompositionOptimizer::optimize(
           exploreInsertionStrategy(insertPos.line, lastCol, lastCol,
                                    "a" + escaped.seq.keys);
         } else {
+          debug("    exploring i-strategy at col", insertPos.col);
           // i: fallback - navigate to exact position
           // For multi-line, prefix is text before cursor
           KeyedSequence escaped = buildTypedCommands(insertLines, "",
@@ -212,6 +226,8 @@ CompositionResult CompositionOptimizer::optimize(
     const Result* res = editResult.resultAt(pos.line, pos.col);
 
     if (res) {
+      debug("  edit found at", pos, "seq:", "\"" + res->sequence.keys + "\"",
+            "cost:", res->keyCost);
       ctx.exploreEditTransition(s, res->sequence,
                                 editResult.goalPos, editsCompleted + 1);
     } else {
@@ -219,6 +235,7 @@ CompositionResult CompositionOptimizer::optimize(
       // These allow reaching the edit region from positions before it on the same line
       const BracketQuoteContext& bqContext = ctx.bracketQuoteContexts[editsCompleted];
       if (bqContext.line == pos.line) {
+        debug("  checking text objects at col", pos.col, "on line", pos.line);
         const EditResult& editResult = ctx.editResults[editsCompleted];
         const string& insertedText = nextEdit.insertedText;
 
@@ -227,6 +244,7 @@ CompositionResult CompositionOptimizer::optimize(
             if (bqContext.validQuoteMask[pos.col].seen(q)) {
               // Build sequence: c + i/a + quote + insertedText + <Esc>
               string seq = string("c") + bqContext.quoteModifier(q) + q + insertedText + "<Esc>";
+              debug("    quote textobj:", string(1, bqContext.quoteModifier(q)) + q);
               ctx.exploreEditTransition(s, Sequence(seq), editResult.goalPos,
                                         editsCompleted + 1);
             }
@@ -237,6 +255,7 @@ CompositionResult CompositionOptimizer::optimize(
             if (bqContext.validBracketMask[pos.col].seen(b)) {
               // Build sequence: c + i/a + bracket + insertedText + <Esc>
               string seq = string("c") + bqContext.bracketModifier(b) + b + insertedText + "<Esc>";
+              debug("    bracket textobj:", string(1, bqContext.bracketModifier(b)) + b);
               ctx.exploreEditTransition(s, Sequence(seq), editResult.goalPos,
                                         editsCompleted + 1);
             }
@@ -246,7 +265,10 @@ CompositionResult CompositionOptimizer::optimize(
 
       // If cursor is already inside the edit range but no edit result was found
       // (e.g. maxResults budget exhausted), skip motion search — we're already there.
-      if (pos >= nextEdit.beginPos && pos < nextEdit.endPos) continue;
+      if (pos >= nextEdit.beginPos && pos < nextEdit.endPos) {
+        debug("  inside edit range but no result at", pos, "- skipping");
+        continue;
+      }
 
       // Slice a padded subset around [pos, edit region] for MotionOptimizer
       auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
@@ -270,6 +292,11 @@ CompositionResult CompositionOptimizer::optimize(
           beginLine > 0 || boundary.hasLinesAbove(),
           endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
+      debug("  motion search from", pos, "to edit region [" +
+            to_string(nextEdit.beginPos.line) + "," + to_string(nextEdit.beginPos.col)
+            + ")-[" + to_string(nextEdit.endPos.line) + "," +
+            to_string(nextEdit.endPos.col) + ")");
+
       vector<RangeResult> movementResults = motionOptimizer.optimizeToRange(
           subset, localPos, localRangeFirst, localRangeEnd,
           MotionOptimizerRangeParams{}.withMaxResults(
@@ -277,16 +304,26 @@ CompositionResult CompositionOptimizer::optimize(
           subsetBoundary, s.getRunningEffort(),
           navigationContext).results;
 
+      debug("  motion results:", static_cast<int>(movementResults.size()));
       for (RangeResult& movResult : movementResults) {
         if (!movResult.isValid()) continue;
 
         // Remap results back to full-buffer coordinates
         movResult.goalPos.line += beginLine;
+        debug("    motion:", "\"" + movResult.sequence.keys + "\"",
+              "->", movResult.goalPos);
         ctx.exploreMotionTransition(s, movResult.sequence, movResult.goalPos,
                                     editsCompleted);
       }
     }
   }
+
+  debug("=== CompositionOptimizer done ===");
+  debug("results:", static_cast<int>(results.size()),
+        "nodes:", ctx.nodesProcessed,
+        "pops:", ctx.totalPops,
+        "skipped:", ctx.statesSkipped,
+        "queueRemaining:", static_cast<int>(ctx.pq.size()));
 
   return {std::move(results), ctx.getStats(static_cast<int>(results.size())),
           resultGoalPos, std::move(ctx.diffStates)};

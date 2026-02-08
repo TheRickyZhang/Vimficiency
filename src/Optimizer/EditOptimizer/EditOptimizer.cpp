@@ -233,6 +233,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
   const string preSuf = pre + suf;
 
   vector<Result> results(ctx.totalPositions);
+  const bool isLazy = params.searchMode == SearchMode::Lazy;
 
   // Check if replacement strategy is applicable (same-length, single-line)
   optional<Result> replacementResult;
@@ -264,22 +265,22 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
     const Lines &lines = newState.getLines();
 
     if (isGoalReached(lines)) {
-      int idx = newState.getStartIndex();
-      if (results[idx].isValid()) return;
-
-      KeyedSequence change = deleteToChange(deleteCmd, deleteKeys);
-      KeyedSequence collapse = buildCollapseSequence(
+      KeyedSequence goalSuffix = deleteToChange(deleteCmd, deleteKeys);
+      goalSuffix += buildCollapseSequence(
           static_cast<int>(lines.size()), newState.getPos().line);
+      goalSuffix += typed;
 
-      string seqStr = newState.getSeq() + change.seq.keys + collapse.seq.keys + typed.seq.keys;
-      RunningEffort effort = newState.getRunningEffort();
-      effort.append(change.keys, config);
-      effort.append(collapse.keys, config);
-      double totalEffort = effort.append(typed.keys, config);
+      newState.recordGoal(goalSuffix.seq.keys, goalSuffix.keys, ctx.effortWeight, config);
 
-      results[idx] = Result(seqStr, totalEffort);
-      ctx.resultsFound++;
-      ctx.uniquePositionsCovered++;
+      if (isLazy) {
+        ctx.pushGoalState(std::move(newState));
+      } else {
+        int idx = newState.getStartIndex();
+        if (results[idx].isValid()) return;
+        results[idx] = Result(newState.getSeq(), newState.getEffort());
+        ctx.resultsFound++;
+        ctx.uniquePositionsCovered++;
+      }
       return;
     }
 
@@ -309,35 +310,34 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
     }
 
     if (isGoalReached(lines)) {
-      int idx = newState.getStartIndex();
-      if (results[idx].isValid()) return;
-
       // Convert dd -> cc: cc preserves the line count while dd removes a line.
       // Use pre-dd line count since that's what cc would operate on.
-      // (When dd empties the buffer, an artificial empty line is added by invariant,
-      // making lines.size()+1 overcounting — the cc equivalent has the same 1 line.)
       static const KeyedSequence ccCmd("cc", {Key::Key_C, Key::Key_C});
       int ccLineCount = static_cast<int>(base.getLines().size());
-      KeyedSequence collapse = buildCollapseSequence(ccLineCount, line);
 
-      // cc preserves the source line's indent — compute typed commands lazily
-      // since the autoindent depends on which line is being cc'd
-      string_view ccAutoindent = VimOptions::autoindent()
-          ? leadingWhitespace(base.getLines()[line])
-          : string_view{};
-      KeyedSequence ccTyped = buildTypedCommands(goalLines, ccAutoindent);
+      // cc with autoindent places cursor after indent. Insert <C-u> to clear
+      // autoindent back to col 0 so collapse <BS> presses all go to line joins.
+      // Then reuse pre-computed `typed` (which assumes col 0 / empty autoindent).
+      KeyedSequence goalSuffix = ccCmd;
+      if constexpr (VimOptions::autoindent()) {
+        if (!leadingWhitespace(base.getLines()[line]).empty()) {
+          goalSuffix += KeyedSequence::CtrlU;
+        }
+      }
+      goalSuffix += buildCollapseSequence(ccLineCount, line);
+      goalSuffix += typed;
 
-      KeyedSequence full = ccCmd;
-      full += collapse;
-      full += ccTyped;
+      newState.recordGoal(goalSuffix.seq.keys, goalSuffix.keys, ctx.effortWeight, config);
 
-      string seqStr = newState.getSeq() + full.seq.keys;
-      RunningEffort effort = newState.getRunningEffort();
-      double totalEffort = effort.append(full.keys, config);
-
-      results[idx] = Result(seqStr, totalEffort);
-      ctx.resultsFound++;
-      ctx.uniquePositionsCovered++;
+      if (isLazy) {
+        ctx.pushGoalState(std::move(newState));
+      } else {
+        int idx = newState.getStartIndex();
+        if (results[idx].isValid()) return;
+        results[idx] = Result(newState.getSeq(), newState.getEffort());
+        ctx.resultsFound++;
+        ctx.uniquePositionsCovered++;
+      }
       return;
     }
 
@@ -355,9 +355,19 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
     if (!maybeState) continue;
     EditState s = std::move(*maybeState);
 
+    // Handle goal states popped from PQ
+    if (s.isGoal()) {
+      int idx = s.getStartIndex();
+      bool isNew = !results[idx].isValid();
+      if (isNew || s.getEffort() < results[idx].keyCost) {
+        results[idx] = Result(s.getSeq(), s.getEffort());
+      }
+      ctx.resultsFound++;
+      if (isNew) ctx.uniquePositionsCovered++;
+      continue;
+    }
+
     // Early stopping: skip if this startIndex already has a result
-    // Since A* explores in cost order, first result found is optimal
-    // (typed content cost is fixed, so deletion path cost determines optimality)
     if (results[s.getStartIndex()].isValid()) continue;
 
     // Join handler: J/gJ merges current line with next
@@ -435,6 +445,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
   const string preSuf = editBoundary.prefix() + editBoundary.suffix();
 
   vector<Result> results(ctx.totalPositions);
+  const bool isLazy = params.searchMode == SearchMode::Lazy;
 
   // Goal check for pure deletion: only single-line goals accepted
   // (can't collapse multiple empty lines without insert mode)
@@ -452,16 +463,20 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
     // Check goal immediately - multi-source A* needs this since state key doesn't include startIndex
     // Update if better since exploration order doesn't guarantee optimality per-source
     if (isGoalReached(lines)) {
-      int idx = newState.getStartIndex();
-      RunningEffort effort = newState.getRunningEffort();
-      double totalEffort = effort.append(deleteKeys, config);
+      KeyedSequence goalSuffix(deleteCmd, deleteKeys);
+      newState.recordGoal(goalSuffix.seq.keys, goalSuffix.keys, ctx.effortWeight, config);
 
-      bool isNew = !results[idx].isValid();
-      if (isNew || totalEffort < results[idx].keyCost) {
-        results[idx] = Result(string(newState.getSeq()).append(deleteCmd), totalEffort);
+      if (isLazy) {
+        ctx.pushGoalState(std::move(newState));
+      } else {
+        int idx = newState.getStartIndex();
+        bool isNew = !results[idx].isValid();
+        if (isNew || newState.getEffort() < results[idx].keyCost) {
+          results[idx] = Result(newState.getSeq(), newState.getEffort());
+        }
+        ctx.resultsFound++;
+        if (isNew) ctx.uniquePositionsCovered++;
       }
-      ctx.resultsFound++;
-      if (isNew) ctx.uniquePositionsCovered++;
       return;
     }
 
@@ -476,15 +491,12 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
     EditState newState = base.afterLinewiseDeletion(line);
     const Lines &lines = newState.getLines();
 
-    string cmdSeq(deleteCmd);
-    PhysicalKeys cmdKeys = deleteKeys;
-
-    // Adjust cursor if it escaped below edit region
+    // For search continuation: adjust cursor if it escaped below edit region
+    KeyedSequence searchCmd(deleteCmd, deleteKeys);
     Position pos = newState.getPos();
     int lastValidLine = static_cast<int>(lines.size()) - 1;
     if (editBoundary.hasLinesBelow() && lastValidLine >= 0 && pos.line > lastValidLine) {
-      cmdSeq += "k";
-      cmdKeys.push_back(Key::Key_K);
+      searchCmd.append("k", {Key::Key_K});
       pos.line = lastValidLine;
       // k motion preserves targetCol (sticky column behavior)
       pos.clampColPreservingTarget(lines[pos.line].empty() ? 0 :
@@ -495,20 +507,24 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
     // Check goal immediately - multi-source A* needs this since state key doesn't include startIndex
     // Update if better since exploration order doesn't guarantee optimality per-source
     if (isGoalReached(lines)) {
-      int idx = newState.getStartIndex();
-      RunningEffort effort = newState.getRunningEffort();
-      double totalEffort = effort.append(cmdKeys, config);
+      KeyedSequence goalSuffix(deleteCmd, deleteKeys);
+      newState.recordGoal(goalSuffix.seq.keys, goalSuffix.keys, ctx.effortWeight, config);
 
-      bool isNew = !results[idx].isValid();
-      if (isNew || totalEffort < results[idx].keyCost) {
-        results[idx] = Result(newState.getSeq() + cmdSeq, totalEffort);
+      if (isLazy) {
+        ctx.pushGoalState(std::move(newState));
+      } else {
+        int idx = newState.getStartIndex();
+        bool isNew = !results[idx].isValid();
+        if (isNew || newState.getEffort() < results[idx].keyCost) {
+          results[idx] = Result(newState.getSeq(), newState.getEffort());
+        }
+        ctx.resultsFound++;
+        if (isNew) ctx.uniquePositionsCovered++;
       }
-      ctx.resultsFound++;
-      if (isNew) ctx.uniquePositionsCovered++;
       return;
     }
 
-    newState.recordSearch(cmdSeq, cmdKeys,
+    newState.recordSearch(searchCmd.seq.keys, searchCmd.keys,
                           ctx.computePriority(newState.getEffort(), lines), config);
     ctx.exploreNewState(std::move(newState));
   };
@@ -521,8 +537,19 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
     if (!maybeState) continue;
     EditState s = std::move(*maybeState);
 
+    // Handle goal states popped from PQ
+    if (s.isGoal()) {
+      int idx = s.getStartIndex();
+      bool isNew = !results[idx].isValid();
+      if (isNew || s.getEffort() < results[idx].keyCost) {
+        results[idx] = Result(s.getSeq(), s.getEffort());
+      }
+      ctx.resultsFound++;
+      if (isNew) ctx.uniquePositionsCovered++;
+      continue;
+    }
+
     // Early stopping: skip if this startIndex already has a result
-    // Since A* explores in cost order, first result found is optimal
     if (results[s.getStartIndex()].isValid()) continue;
 
     // Join handler for pure deletion: J/gJ merges lines without adding new content
@@ -534,16 +561,20 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
       // Check goal immediately - multi-source A* needs this since state key doesn't include startIndex
       // Update if better since exploration order doesn't guarantee optimality per-source
       if (isGoalReached(lines)) {
-        int idx = newState.getStartIndex();
-        RunningEffort effort = newState.getRunningEffort();
-        double totalEffort = effort.append(joinKeys, config);
+        KeyedSequence goalSuffix(joinCmd, joinKeys);
+        newState.recordGoal(goalSuffix.seq.keys, goalSuffix.keys, ctx.effortWeight, config);
 
-        bool isNew = !results[idx].isValid();
-        if (isNew || totalEffort < results[idx].keyCost) {
-          results[idx] = Result(string(newState.getSeq()).append(joinCmd), totalEffort);
+        if (isLazy) {
+          ctx.pushGoalState(std::move(newState));
+        } else {
+          int idx = newState.getStartIndex();
+          bool isNew = !results[idx].isValid();
+          if (isNew || newState.getEffort() < results[idx].keyCost) {
+            results[idx] = Result(newState.getSeq(), newState.getEffort());
+          }
+          ctx.resultsFound++;
+          if (isNew) ctx.uniquePositionsCovered++;
         }
-        ctx.resultsFound++;
-        if (isNew) ctx.uniquePositionsCovered++;
         return;
       }
 
@@ -735,24 +766,17 @@ EditOptimizer::optimizeEditWithSuffixCache(
       int idx = newState.getStartIndex();
       if (results[idx].isValid()) return;
 
-      KeyedSequence change = deleteToChange(deleteCmd, deleteKeys);
-      KeyedSequence collapse = buildCollapseSequence(
+      KeyedSequence goalSuffix = deleteToChange(deleteCmd, deleteKeys);
+      goalSuffix += buildCollapseSequence(
           static_cast<int>(lines.size()), newState.getPos().line);
+      goalSuffix += typed;
 
-      string seqStr = newState.getSeq() + change.seq.keys + collapse.seq.keys + typed.seq.keys;
-      RunningEffort effort = newState.getRunningEffort();
-      effort.append(change.keys, config);
-      effort.append(collapse.keys, config);
-      double totalEffort = effort.append(typed.keys, config);
-
-      results[idx] = Result(seqStr, totalEffort);
+      newState.recordGoal(goalSuffix.seq.keys, goalSuffix.keys, ctx.effortWeight, config);
+      results[idx] = Result(newState.getSeq(), newState.getEffort());
       ctx.resultsFound++;
       ctx.uniquePositionsCovered++;
 
-      // Populate suffix cache: suffix = change + collapse + typed
-      KeyedSequence goalSuffix = change;
-      goalSuffix += collapse;
-      goalSuffix += typed;
+      // Populate suffix cache
       RunningEffort goalSuffixEffort;
       goalSuffixEffort.append(goalSuffix.keys, config);
       populateSuffixCache(commitIdx, goalSuffix, goalSuffixEffort);
@@ -790,29 +814,28 @@ EditOptimizer::optimizeEditWithSuffixCache(
 
       static const KeyedSequence ccCmd("cc", {Key::Key_C, Key::Key_C});
       int ccLineCount = static_cast<int>(base.getLines().size());
-      KeyedSequence collapse = buildCollapseSequence(ccLineCount, line);
 
-      string_view ccAutoindent = VimOptions::autoindent()
-          ? leadingWhitespace(base.getLines()[line])
-          : string_view{};
-      KeyedSequence ccTyped = buildTypedCommands(goalLines, ccAutoindent);
+      // cc with autoindent places cursor after indent. Insert <C-u> to clear
+      // autoindent back to col 0 so collapse <BS> presses all go to line joins.
+      // Then reuse pre-computed `typed` (which assumes col 0 / empty autoindent).
+      KeyedSequence goalSuffix = ccCmd;
+      if constexpr (VimOptions::autoindent()) {
+        if (!leadingWhitespace(base.getLines()[line]).empty()) {
+          goalSuffix += KeyedSequence::CtrlU;
+        }
+      }
+      goalSuffix += buildCollapseSequence(ccLineCount, line);
+      goalSuffix += typed;
 
-      KeyedSequence full = ccCmd;
-      full += collapse;
-      full += ccTyped;
-
-      string seqStr = newState.getSeq() + full.seq.keys;
-      RunningEffort effort = newState.getRunningEffort();
-      double totalEffort = effort.append(full.keys, config);
-
-      results[idx] = Result(seqStr, totalEffort);
+      newState.recordGoal(goalSuffix.seq.keys, goalSuffix.keys, ctx.effortWeight, config);
+      results[idx] = Result(newState.getSeq(), newState.getEffort());
       ctx.resultsFound++;
       ctx.uniquePositionsCovered++;
 
-      // Populate suffix cache: suffix = cc + collapse + ccTyped
+      // Populate suffix cache
       RunningEffort goalSuffixEffort;
-      goalSuffixEffort.append(full.keys, config);
-      populateSuffixCache(commitIdx, full, goalSuffixEffort);
+      goalSuffixEffort.append(goalSuffix.keys, config);
+      populateSuffixCache(commitIdx, goalSuffix, goalSuffixEffort);
       return;
     }
 

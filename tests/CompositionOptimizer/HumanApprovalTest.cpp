@@ -10,6 +10,7 @@
 #include <memory>
 
 #include "Editor/Position.h"
+#include "Optimizer/CompositionOptimizer/CompositionOptimizerParams.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Utils/Lines.h"
@@ -92,24 +93,24 @@ TEST_F(CompositionOptimizerHumanApprovalTests, TelescopingChanges) {
   verifyResults(initialLines, initialPos, afterLines, res.goalPos);
 }
 
-// TEST_F(CompositionOptimizerHumanApprovalTests, JoinLines) {
-//   // Delete a short word
-//   Lines initialLines = {
-//     "aaa",
-//     "bbb",
-//     "ccc"
-//   };
-//   Lines afterLines = {
-//     "aaa bbb ccc?"
-//   };
-//   Position initialPos(0, 2);
-//   Position afterPos(initialLines.endPos());
-//   MotionBoundary boundary(initialLines, initialPos, afterPos, true, true);
-//
-//   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos);
-//   cout << res << endl;
-//   // verifyResults(initialLines, initialPos, afterLines, res.goalPos);
-// }
+TEST_F(CompositionOptimizerHumanApprovalTests, JoinLines) {
+  // Delete a short word
+  Lines initialLines = {
+    "aaa",
+    "bbb",
+    "ccc"
+  };
+  Lines afterLines = {
+    "aaa bbb ccc?"
+  };
+  Position initialPos(0, 2);
+  Position afterPos(initialLines.endPos());
+  MotionBoundary boundary(initialLines, initialPos, afterPos, true, true);
+
+  CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos, CompositionOptimizerParams{}, "", boundary);
+  cout << res << endl;
+  verifyResults(initialLines, initialPos, afterLines, res.goalPos);
+}
 
 
 // TEST_F(CompositionOptimizerHumanApprovalTests, ModifyInParentheses) {

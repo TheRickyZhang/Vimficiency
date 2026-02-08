@@ -4,6 +4,7 @@
 #include "Optimizer/BuildTypedCommands.h"
 #include "State/RunningEffort.h"
 #include "Utils/Debug.h"
+#include "Utils/StringUtils.h"
 
 #include <algorithm>
 #include <cassert>
@@ -62,17 +63,61 @@ CompositionSearchContext::CompositionSearchContext(
     diffStates = std::move(rawDiffs);
   }
 
+  debug("=== CompositionOptimizer setup ===");
+  debug("totalEdits:", totalEdits, " initialPos:", initialPos,
+        " maxEffort:", maxEffort);
+  for (int i = 0; i < totalEdits; i++) {
+    const DiffState& d = diffStates[i];
+    const char* kind = d.isPureInsertion() ? "INS" :
+                       d.isPureDeletion()  ? "DEL" : "REP";
+    debug("  diff[" + to_string(i) + "]:", kind,
+          "at [" + to_string(d.beginPos.line) + "," + to_string(d.beginPos.col) + ")-["
+          + to_string(d.endPos.line) + "," + to_string(d.endPos.col) + ")",
+          "del='" + makePrintable(d.deletedText) + "'",
+          "ins='" + makePrintable(d.insertedText) + "'");
+  }
+
   // Build intermediate buffer states
   linesAfterNEdits = calculateLinesAfterDiffs(initialLines);
 
   // Solve each edit region
   editResults = calculateEditResults();
 
+  debug("--- edit results ---");
+  for (int i = 0; i < static_cast<int>(editResults.size()); i++) {
+    const auto& er = editResults[i];
+    int validCount = 0;
+    double bestCost = numeric_limits<double>::max();
+    for (const Result& r : er.getResults()) {
+      if (r.isValid()) {
+        validCount++;
+        bestCost = min(bestCost, r.keyCost);
+      }
+    }
+    debug("  edit[" + to_string(i) + "]:",
+          validCount, "results, best cost:",
+          validCount > 0 ? bestCost : -1.0,
+          "goalPos:", er.goalPos);
+  }
+
   // Compute text object contexts for shortcuts
   bracketQuoteContexts = computeTextObjectContexts();
 
+  for (int i = 0; i < static_cast<int>(bracketQuoteContexts.size()); i++) {
+    if (bracketQuoteContexts[i].hasAnyValid()) {
+      debug("  textObj[" + to_string(i) + "]: active on line",
+            bracketQuoteContexts[i].line);
+    }
+  }
+
   // Compute suffix sums for heuristic
   suffixEditCosts = computeSuffixEditCosts();
+
+  debug("--- suffix edit costs ---");
+  for (int i = 0; i <= totalEdits; i++) {
+    debug("  suffixCost[" + to_string(i) + "]:", suffixEditCosts[i]);
+  }
+  debug("=== setup complete ===");
 }
 
 Position CompositionSearchContext::editIndexToBufferPos(
@@ -158,6 +203,8 @@ void CompositionSearchContext::exploreMotionTransition(
 
 void CompositionSearchContext::exploreNewState(CompositionState&& newState) {
   if (newState.getEffort() > maxEffort) {
+    debug("  pruned (effort", newState.getEffort(), ">", maxEffort, "):",
+          "\"" + newState.getMotionSequence() + "\"");
     return;
   }
 
@@ -174,6 +221,9 @@ void CompositionSearchContext::exploreNewState(CompositionState&& newState) {
   } else if (newCost <= it->second) {
     it->second = newCost;
     pq.push(std::move(newState));
+  } else {
+    debug("  not enqueued (cost", newCost, ">=", it->second, "):",
+          "\"" + newState.getMotionSequence() + "\"");
   }
 }
 

@@ -3,6 +3,7 @@
 #include "KeyboardModel.h"
 #include "CharToKeys.h"
 #include "XMacroKeyedSequenceDefinitions.h"
+#include "State/RunningEffort.h"
 #include "State/Sequence.h"
 
 #include <array>
@@ -31,12 +32,15 @@ struct KeyedSequence {
   Sequence seq;
   PhysicalKeys keys;
   KSId id = KSId::COUNT;  // COUNT means "no cached id"
+  RunningEffort effort;           // Pre-computed by bank; default-constructed (empty) for dynamic sequences
+  bool effortPopulated = false;   // True only for bank-populated entries
 
   KeyedSequence() = default;
   KeyedSequence(std::string_view s, PhysicalKeys k) : seq(std::string(s)), keys(std::move(k)) {}
   KeyedSequence(std::string_view s, PhysicalKeys k, KSId id) : seq(std::string(s)), keys(std::move(k)), id(id) {}
 
   bool hasCachedId() const { return id != KSId::COUNT; }
+  bool hasEffort() const { return effortPopulated; }
 
   KeyedSequence& operator+=(const KeyedSequence& other) {
     seq.append(other.seq.keys);

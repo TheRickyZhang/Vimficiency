@@ -353,9 +353,10 @@ void EditExplorer::exploreAllDeletions(const EditState& state,
   auto [contentBegin, contentEnd] = computeEditBounds(lines, cursor);
   int editContentLen = contentEnd - contentBegin;
 
-  // Empty line: explore limited set
+  // Empty editable content: either a truly empty line, or a line that is
+  // entirely prefix/suffix with no editable region. Explore limited set.
   if (editContentLen <= 0) {
-    assert(lines[cursor.line].size() == 0);
+    assert(lines[cursor.line].empty() || ctx_.inBoundaryRegion(cursor, lines));
 
     exploreFullLineEdits(Edit::EMPTYLINE_FULL_LINE_EDITS, cursor, lines, onLinewise);
     exploreForwardWordEdits<EdgeType::WordEdge>(Edit::FORWARD_WORDEDGE_EDITS, cursor, lines, onDeletion);

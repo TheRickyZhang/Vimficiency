@@ -20,19 +20,19 @@ using namespace std;
 // =============================================================================
 
 constexpr bool ENABLE_COMPARISON = true;
-constexpr const char* COMPARISON_NAME = "Standard vs SuffixCache";
+constexpr const char* COMPARISON_NAME = "Search Mode (A = Eager, B = Lazy)";
 
 // NOTE: Must be static, not inline - inline causes incorrect behavior with templates
 static EditOptimizerParams paramsA() {
   EditOptimizerParams p;
-  // Standard A*: default heuristic, no suffix cache
+  // Eager: check goals during generation (default)
   return p;
 }
 
 static EditOptimizerParams paramsB() {
   EditOptimizerParams p;
-  // A* with suffix cache for cross-position sharing
-  p.useSuffixCache = true;
+  // Lazy: push goal states through PQ, record on pop
+  p.searchMode = SearchMode::Lazy;
   return p;
 }
 

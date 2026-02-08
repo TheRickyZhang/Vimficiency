@@ -17,6 +17,7 @@
 #include "Boundary/EditBoundary.h"
 #include "Boundary/MotionBoundary.h"
 #include "Keyboard/MotionToKeys.h"
+#include "Utils/EditTestGenerators.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/StringUtils.h"
 #include "VimCore/VimEditUtils.h"
@@ -954,6 +955,105 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
   }
 }
 
+TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
+  Lines initial = {"aaa", "bbb", "ccc"};
+  Lines goal = {"aaa bbb ccc?"};
+  Position initialPos(0, 2);
+
+  // Step 1: Myers diffs
+  cerr << "\n=== Myers Diffs ===" << endl;
+  auto diffs = Myers::calculate(initial, goal);
+  for (size_t i = 0; i < diffs.size(); i++) {
+    const auto& d = diffs[i];
+    cerr << "  [" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
+         << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
+         << " del='" << makePrintable(d.deletedText) << "'"
+         << " ins='" << makePrintable(d.insertedText) << "'"
+         << " type=" << (d.isPureInsertion() ? "INSERT" : d.isPureDeletion() ? "DELETE" : "REPLACE")
+         << endl;
+    cerr << "    boundary: prefix='" << d.boundary.prefix() << "' suffix='" << d.boundary.suffix() << "'"
+         << " linesAbove=" << d.boundary.hasLinesAbove()
+         << " linesBelow=" << d.boundary.hasLinesBelow() << endl;
+    cerr << "    deletedLines: " << d.deletedLines() << endl;
+    cerr << "    insertedLines: " << d.insertedLines() << endl;
+  }
+
+  // Step 2: CompositionSearchContext (tests calculateLinesAfterDiffs + calculateEditResults)
+  cerr << "\n=== CompositionSearchContext ===" << endl;
+  CompositionOptimizerParams compParams{};
+  CompositionSearchContext ctx(initial, initialPos, goal, "",
+      NavContext(), MotionBoundary(), compParams, config);
+  cerr << "totalEdits=" << ctx.totalEdits << endl;
+  for (int i = 0; i < ctx.totalEdits; i++) {
+    const auto& d = ctx.diffStates[i];
+    cerr << "  [" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
+         << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
+         << " del='" << makePrintable(d.deletedText) << "'"
+         << " ins='" << makePrintable(d.insertedText) << "'"
+         << " type=" << (d.isPureInsertion() ? "INSERT" : d.isPureDeletion() ? "DELETE" : "REPLACE")
+         << endl;
+    cerr << "    buffer[" << i << "]: " << ctx.linesAfterNEdits[i] << endl;
+    cerr << "    boundary: prefix='" << d.boundary.prefix() << "' suffix='" << d.boundary.suffix() << "'"
+         << " linesAbove=" << d.boundary.hasLinesAbove()
+         << " linesBelow=" << d.boundary.hasLinesBelow() << endl;
+  }
+  cerr << "  goalBuffer: " << ctx.linesAfterNEdits[ctx.totalEdits] << endl;
+
+  // Step 3: Try each edit independently through EditOptimizer
+  cerr << "\n=== EditOptimizer per diff ===" << endl;
+  EditOptimizer editOpt(config);
+  for (int i = 0; i < ctx.totalEdits; i++) {
+    const auto& d = ctx.diffStates[i];
+    if (d.isPureInsertion()) {
+      cerr << "  diff[" << i << "]: pure insertion, skip" << endl;
+      continue;
+    }
+    cerr << "  diff[" << i << "]: calling optimizeEdit..." << endl;
+    cerr << "    deletedLines: " << d.deletedLines() << endl;
+    cerr << "    insertedLines: " << d.insertedLines() << endl;
+    cerr << "    boundary prefix='" << d.boundary.prefix() << "' suffix='" << d.boundary.suffix() << "'" << endl;
+    cerr << "    lineBase=" << d.beginPos.line << " colBase=" << d.beginPos.col << endl;
+
+    EditResult result = editOpt.optimizeEdit(
+        d.deletedLines(), d.insertedLines(), d.boundary, {},
+        d.beginPos.line, d.beginPos.col, d.beginPos);
+
+    cerr << "    -> results: " << result.stats.resultsFound
+         << " nodes: " << result.stats.nodesExplored << endl;
+    for (size_t j = 0; j < result.resultCount(); j++) {
+      if (result.getResults()[j].isValid()) {
+        cerr << "    [" << j << "] '" << result.getResults()[j].sequence
+             << "' cost=" << result.getResults()[j].keyCost << endl;
+      }
+    }
+  }
+
+  // Step 4: Show what upstream fix would produce (stripped empty first line)
+  cerr << "\n=== Upstream fix comparison ===" << endl;
+  {
+    const auto& d = ctx.diffStates[0];
+    Lines deleted = d.deletedLines();
+    Lines inserted = d.insertedLines();
+    cerr << "  Original: deletedLines=" << deleted << " → insertedLines=" << inserted << endl;
+
+    if (deleted.size() > 1 && deleted[0].empty() && !d.boundary.prefix().empty()) {
+      deleted.erase(deleted.begin());
+      cerr << "  After strip: deletedLines=" << deleted << " → insertedLines=" << inserted << endl;
+      cerr << "  Edit region now starts at (1,0), no prefix" << endl;
+      cerr << "  Buffer before edit: " << ctx.linesAfterNEdits[0] << endl;
+
+      // If EditOptimizer transforms ["bbb","ccc"] → [" bbb ccc?"],
+      // what does the buffer look like?
+      Lines beforeEdit = ctx.linesAfterNEdits[0];
+      // The edit replaces lines 1-2 content with the single line " bbb ccc?"
+      // But the \n between line 0 and line 1 is preserved!
+      cerr << "  After edit: [\"" << beforeEdit[0] << "\", \" bbb ccc?\"]" << endl;
+      cerr << "  Expected:   [\"aaa bbb ccc?\"]" << endl;
+      cerr << "  MISMATCH: upstream fix preserves \\n between prefix line and edit region!" << endl;
+    }
+  }
+}
+
 TEST_F(DebugTest, InvestigateHumanApproval1) {
   Lines initial = {"steak is pretty nice", "don't you think?"};
   Lines goal = {"Dry-brined steak is excellent", "don't you agree?"};
@@ -1073,6 +1173,90 @@ TEST_F(DebugTest, SuffixCacheComparison) {
   if (cacheValid > stdValid) {
     cerr << "SuffixCache found " << (cacheValid - stdValid) << " MORE results!" << endl;
   }
+}
+
+// =============================================================================
+// Verify cc + <C-u> for linewise goal with indented lines
+// =============================================================================
+TEST_F(DebugTest, CcAutoindentCollapse) {
+  // Scenario: initial has indented line, goal replaces content.
+  // The linewise path uses cc which inherits autoindent from the deleted line.
+  // After the fix, <C-u> clears autoindent so collapse <BS> joins lines correctly.
+  //
+  // Initial: "    indented" (4 spaces indent)
+  // Goal:    "replaced"
+  // Boundary: no prefix/suffix (full buffer replacement)
+  // Expected: cc<C-u>replaced<Esc> (linewise path)
+  //
+  // Without fix: cc gives autoindent "    ", then <BS> presses remove
+  // spaces instead of joining lines → wrong result.
+
+  Lines initial = {"    indented"};
+  Lines goal = {"replaced"};
+
+  EditBoundary boundary(initial, Position(0, 0), initial.endPos());
+
+  EditResult result = makeOptimizer().optimizeEdit(
+      initial, goal, boundary, params,
+      0, 0, Position(0, 0));
+
+  // Verify at least one result is valid
+  bool anyValid = false;
+  for (size_t i = 0; i < result.resultCount(); i++) {
+    if (result.getResults()[i].isValid()) {
+      anyValid = true;
+      const auto& seq = result.getResults()[i].sequence;
+      cerr << "  pos " << i << ": '" << seq << "' cost="
+           << result.getResults()[i].keyCost << endl;
+    }
+  }
+  ASSERT_TRUE(anyValid) << "No valid results found";
+
+  // Oracle-verify all results
+  auto oracle = make_unique<NeovimOracle>();
+  int passed = 0, total = 0;
+  for (size_t i = 0; i < result.resultCount(); i++) {
+    const Result& r = result.getResults()[i];
+    if (!r.isValid()) continue;
+    total++;
+
+    Position editPos = fromFlatIndex(static_cast<int>(i), initial);
+    auto nvim = oracle->simulate(initial, editPos.line, editPos.col, r.getSequenceString().keys);
+    if (nvim.lines == goal) {
+      passed++;
+    } else {
+      cerr << "FAIL pos=" << i << " seq='" << r.sequence
+           << "' got=" << nvim.lines << " expected=" << goal << endl;
+    }
+  }
+  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+
+  // Multi-line test: two indented lines → single line
+  cerr << "\n=== Multi-line indented test ===" << endl;
+  Lines initial2 = {"    hello", "        world"};
+  Lines goal2 = {"replaced"};
+  EditBoundary boundary2(initial2, Position(0, 0), initial2.endPos());
+
+  EditResult result2 = makeOptimizer().optimizeEdit(
+      initial2, goal2, boundary2, params,
+      0, 0, Position(0, 0));
+
+  int passed2 = 0, total2 = 0;
+  for (size_t i = 0; i < result2.resultCount(); i++) {
+    const Result& r = result2.getResults()[i];
+    if (!r.isValid()) continue;
+    total2++;
+
+    Position editPos = fromFlatIndex(static_cast<int>(i), initial2);
+    auto nvim = oracle->simulate(initial2, editPos.line, editPos.col, r.getSequenceString().keys);
+    if (nvim.lines == goal2) {
+      passed2++;
+    } else {
+      cerr << "FAIL pos=" << i << " seq='" << r.sequence
+           << "' got=" << nvim.lines << " expected=" << goal2 << endl;
+    }
+  }
+  EXPECT_EQ(passed2, total2) << "Multi-line: " << passed2 << "/" << total2 << " passed";
 }
 
 TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {

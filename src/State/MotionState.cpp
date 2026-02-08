@@ -1,5 +1,4 @@
 #include "MotionState.h"
-#include "EffortCache.h"
 #include "Editor/Motion.h"
 
 using namespace std;
@@ -24,10 +23,9 @@ void MotionState::applySingleMotionWithEffort(string_view motion, const NavConte
 // =============================================================================
 
 MotionState MotionState::afterMotion(const KeyedSequence& ks, Position endpoint,
-                                     const Config& config,
-                                     const EffortCache* cache) const {
+                                     const Config& config) const {
   MotionState newState = *this;
-  newState.applyMotionImpl(ks, endpoint, config, cache);
+  newState.applyMotionImpl(ks, endpoint, config);
   return newState;
 }
 
@@ -50,11 +48,11 @@ MotionState MotionState::afterFMotion(const KeyedSequence& fMotion, int newCol,
 // =============================================================================
 
 void MotionState::applyMotionImpl(const KeyedSequence& ks, Position endpoint,
-                                  const Config& config, const EffortCache* cache) {
+                                  const Config& config) {
   pos = endpoint;
   motionSequence.append(ks.seq.keys);
-  if (cache && ks.hasCachedId()) {
-    runningEffort = RunningEffort::merge(runningEffort, cache->get(ks.id));
+  if (ks.hasEffort()) {
+    runningEffort = RunningEffort::merge(runningEffort, ks.effort);
     effort = runningEffort.getEffort(config);
   } else {
     effort = runningEffort.append(ks.keys, config);

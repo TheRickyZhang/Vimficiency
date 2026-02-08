@@ -48,6 +48,11 @@ void EditSearchContext::exploreNewState(EditState&& state) {
   }
 }
 
+void EditSearchContext::pushGoalState(EditState&& state) {
+  motionsEmitted++;
+  pq.push(std::move(state));
+}
+
 void EditSearchContext::initStartingPositions(const Lines& initialLines) {
   int startIndex = 0;
   // Initial priority: effortWeight * 0 + distanceWeight * distance = distanceWeight * distance
@@ -57,6 +62,14 @@ void EditSearchContext::initStartingPositions(const Lines& initialLines) {
     int lineCols = initialLines[line].empty() ? 1 : static_cast<int>(initialLines[line].size());
     for (int col = 0; col < lineCols; col++) {
       int effCol = col + (line == 0 ? leftColOffset : 0);
+      // Skip positions past the end of the effective line. This happens when
+      // a deleted line is empty but has a prefix: the "cursor" at the prefix
+      // boundary (effCol == line length) isn't a valid normal-mode position.
+      int effLineLen = static_cast<int>(effectiveLines[line].size());
+      if (effLineLen > 0 && effCol >= effLineLen) {
+        startIndex++;
+        continue;
+      }
       pq.push(EditState(effectiveLines, Position(line, effCol), startIndex, startPriority));
       startIndex++;
     }
@@ -112,6 +125,9 @@ optional<EditState> EditSearchContext::getNextValidState() {
     EditState s = pq.top();
     pq.pop();
     totalPops++;  // Track all pops for safety cap
+
+    // Goal states bypass costMap — always valid
+    if (s.isGoal()) return s;
 
     // Skip if this state is outdated (we've found a better path)
     EditStateKey key = s.getKey();

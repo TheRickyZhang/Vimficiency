@@ -11,9 +11,6 @@
 #include "Keyboard/KeyedSequence.h"
 #include "Utils/Lines.h"
 
-class EffortCache;
-
-
 // Entire simulated editor state (for now, only position+mode+effort).
 class MotionState {
   // Visible, core editor state
@@ -65,8 +62,7 @@ public:
   // Create new state with motion applied
   // Note: caller must set cost via setCost() after computing heuristic
   [[nodiscard]] MotionState afterMotion(const KeyedSequence& ks, Position endpoint,
-                                        const Config& config,
-                                        const EffortCache* cache = nullptr) const;
+                                        const Config& config) const;
 
   // Create new state with counted motion applied (e.g., "3w")
   [[nodiscard]] MotionState afterCountedMotion(const KeyedSequence& baseMotion, int cnt,
@@ -89,8 +85,7 @@ private:
   void updateEffort(const PhysicalKeys& keys, const Config& config);
 
   // Internal: apply motion to this state (mutates)
-  void applyMotionImpl(const KeyedSequence& ks, Position endpoint, const Config& config,
-                       const EffortCache* cache);
+  void applyMotionImpl(const KeyedSequence& ks, Position endpoint, const Config& config);
   void applyCountedMotionImpl(const KeyedSequence& baseMotion, int cnt, Position endpoint, const Config& config);
   void applyFMotionImpl(const KeyedSequence& fMotion, int newCol, const Config& config);
 };
