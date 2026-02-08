@@ -21,13 +21,8 @@ struct CompositionResult {
 
   const std::vector<Result>& getResults() const { return results; }
 
-  friend std::ostream& operator<<(std::ostream& os, const CompositionResult& cr) {
-    os << cr.stats << " goalPos=" << cr.goalPos << "\n";
-    for (size_t i = 0; i < cr.results.size(); i++) {
-      os << "  [" << i << "] " << cr.results[i] << "\n";
-    }
-    return os;
-  }
+  // Prints diff legend with {n} placeholders, then results with typed text substituted.
+  friend std::ostream& operator<<(std::ostream& os, const CompositionResult& cr);
 };
 
 struct CompositionOptimizer {

@@ -124,6 +124,23 @@ int ccLineCount = static_cast<int>(base.getLines().size());
 auto [collapseSeq, collapseKeys] = buildCollapseSequence(ccLineCount, line);
 ```
 
+## calculateLinesAfterDiffs check-after-mutation
+
+In `calculateLinesAfterDiffs`, the code adjusts `beginPos` then checks `hasDeletedContent()` (which compares `beginPos != endPos`) to decide whether to adjust `endPos`. But after adjusting `beginPos`, the comparison is between the **adjusted** beginPos and the **unadjusted** endPos. When the cumulative offset from prior diffs equals the deleted text length, the adjusted beginPos coincidentally equals the unadjusted endPos, making `hasDeletedContent()` return false. The diff is then misclassified as a pure insertion, generating `i` (insert without deletion) instead of `ce`/`cw` (change).
+
+**Trigger condition:** `cumulativeOffset == deletedText.size()` (in flat index terms). This naturally occurs when a pure insertion precedes a replacement and the insertion length equals the replacement's deletion length — e.g., prepending "Dry-brined " (11 chars) before replacing "pretty nice" (11 chars).
+
+**Symptom:** Optimizer produces `wi excellent` instead of `wce excellent`, inserting text without deleting the original.
+
+**Fix:** Save `hasDeletedContent()` before mutating `beginPos`:
+```cpp
+bool hadDeletedContent = diffStates[i].hasDeletedContent();
+diffStates[i].beginPos = adjustPos(diffStates[i].beginPos);
+if (hadDeletedContent) { ... }
+```
+
+**Pattern:** Never check a predicate that depends on a field you just mutated. Save the check result first, or use an immutable proxy (`!deletedText.empty()`).
+
 # Known vim simulation gaps
 
 ## Autoindent with cc and A+Enter

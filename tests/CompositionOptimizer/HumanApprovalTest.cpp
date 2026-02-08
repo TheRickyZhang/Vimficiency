@@ -55,7 +55,7 @@ unique_ptr<NeovimOracle> CompositionOptimizerHumanApprovalTests::oracle;
 // =============================================================================
 // Examples (to be filled in)
 // =============================================================================
-TEST_F(CompositionOptimizerHumanApprovalTests, DISABLED_Example1) {
+TEST_F(CompositionOptimizerHumanApprovalTests, Example1) {
   // Delete a short word
   Lines initialLines = {
     "steak is pretty nice",
@@ -71,7 +71,25 @@ TEST_F(CompositionOptimizerHumanApprovalTests, DISABLED_Example1) {
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos);
   cout << res << endl;
-
   verifyResults(initialLines, initialPos, afterLines, res.goalPos);
 }
+
+TEST_F(CompositionOptimizerHumanApprovalTests, TelescopingChanges) {
+  // Delete a short word
+  Lines initialLines = {
+    "Today I saw a giraffe in museum in Switzerland",
+    "Inconspicuous, even"
+  };
+  Lines afterLines = {
+    "I saw a pig in barn in Florida"
+  };
+  Position initialPos(0, 0);
+  Position afterPos(initialLines.endPos());
+  MotionBoundary boundary(initialLines, initialPos, afterPos);
+
+  CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos);
+  cout << res << endl;
+  verifyResults(initialLines, initialPos, afterLines, res.goalPos);
+}
+
 

@@ -20,19 +20,18 @@ using namespace std;
 // =============================================================================
 
 constexpr bool ENABLE_COMPARISON = false;
-constexpr const char* COMPARISON_NAME = "Default vs Experimental";
+constexpr const char* COMPARISON_NAME = "A* (heuristic) vs Dijkstra (no heuristic)";
 
 // NOTE: Must be static, not inline - inline causes incorrect behavior with templates
 static EditOptimizerParams paramsA() {
   EditOptimizerParams p;
-  // Baseline configuration
+  // A*: default heuristic (effortWeight=1.0, distanceWeight=1.0)
   return p;
 }
 
 static EditOptimizerParams paramsB() {
-  EditOptimizerParams p;
-  // Experimental configuration
-  return p;
+  // Dijkstra: no heuristic (effortWeight=1.0, distanceWeight=0.0)
+  return EditOptimizerParams::dijkstra(20, 50000);
 }
 
 // =============================================================================
@@ -67,9 +66,13 @@ protected:
     EditOptimizer opt(config);
     SearchStats lastStats;
 
+    bool isPureDeletion = (cfg.goalLines.size() == 1 && cfg.goalLines[0].empty());
+
     TimingStats timing = measureTiming(
         [&]() {
-          EditResult result = opt.optimizePureDeletion(cfg.initialLines, cfg.boundary, params);
+          EditResult result = isPureDeletion
+              ? opt.optimizePureDeletion(cfg.initialLines, cfg.boundary, params)
+              : opt.optimizeEdit(cfg.initialLines, cfg.goalLines, cfg.boundary, params);
           lastStats = result.stats;
         },
         iterations);
@@ -232,5 +235,69 @@ TEST_F(EditOptimizerBench, BoundaryConstraints) {
     Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
     EditBoundary boundary(fullBuffer, firstPos, endPos);
     printRow("Both", BenchmarkSetup(editRegion, {""}, boundary));
+  }
+}
+
+TEST_F(EditOptimizerBench, MultiLineEdit) {
+  printHeader("Multi-Line Edit (Replacement) Benchmark");
+  printUnifiedHeader<ENABLE_COMPARISON>("Case");
+
+  // Multi-line deletion replaced with single-line insertion
+  // This is the case where J-based paths matter most
+  auto makeMultiLineEditSetup = [](const Lines& buffer, const Lines& goal,
+                                    Position editBegin, Position editEnd) {
+    Lines editRegion = buffer.getSpan(editBegin, editEnd);
+    EditBoundary boundary(buffer, editBegin, editEnd);
+    return BenchmarkSetup(editRegion, goal, boundary);
+  };
+
+  // Case 1: Realistic - 2 lines with prefix, replace with 1 word
+  {
+    Lines buffer = {"I saw a pig in barn in Switzerland", "Inconspicuous, even"};
+    Lines goal = {"Florida"};
+    Position editBegin(0, 23);
+    Position editEnd(1, 19);
+    printRow("2L->1w", makeMultiLineEditSetup(buffer, goal, editBegin, editEnd));
+  }
+
+  // Case 2: 3 lines replaced with short text
+  {
+    Lines buffer = {"The quick brown fox jumps over the lazy dog",
+                    "and then runs around the park",
+                    "before going home to sleep"};
+    Lines goal = {"walked away"};
+    Position editBegin(0, 20);
+    Position editEnd(2, 26);
+    printRow("3L->1w", makeMultiLineEditSetup(buffer, goal, editBegin, editEnd));
+  }
+
+  // Case 3: 5 lines with prefix+suffix
+  {
+    Lines buffer = {"prefix stuff delete me line one",
+                    "delete me line two",
+                    "delete me line three",
+                    "delete me line four",
+                    "delete me line five and suffix here"};
+    Lines goal = {"replaced"};
+    Position editBegin(0, 13);
+    Position editEnd(4, 22);
+    printRow("5L+bnd", makeMultiLineEditSetup(buffer, goal, editBegin, editEnd));
+  }
+
+  // Case 4: Random multi-line edits (averaged across seeds)
+  for (int numLines : {2, 4, 6}) {
+    runMultiSeedBenchmark<ENABLE_COMPARISON, EditOptimizerParams, BenchmarkSetup>(
+        to_string(numLines) + "L rand",
+        [=]() {
+          Lines buffer = generateBuffer(numLines, 25);
+          // Replace all content with a short word
+          Lines goal = {"replacement"};
+          EditBoundary boundary(buffer, Position(0, 0), buffer.endPos());
+          return BenchmarkSetup(buffer, goal, boundary);
+        },
+        paramsA(), paramsB(),
+        [](const BenchmarkSetup& s, const EditOptimizerParams& p) {
+          return runWithParams(s, withCap(p, s));
+        });
   }
 }

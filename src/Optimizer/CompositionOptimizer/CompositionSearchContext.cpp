@@ -347,8 +347,12 @@ vector<Lines> CompositionSearchContext::calculateLinesAfterDiffs(
         return flatToPos(flatIdx, result[i]);
       };
 
+      // Must check before mutating beginPos — hasDeletedContent() compares
+      // beginPos != endPos, and the adjusted beginPos may coincidentally equal
+      // the unadjusted endPos (see previous_errors.md).
+      bool hadDeletedContent = diffStates[i].hasDeletedContent();
       diffStates[i].beginPos = adjustPos(diffStates[i].beginPos);
-      if (diffStates[i].hasDeletedContent()) {
+      if (hadDeletedContent) {
         diffStates[i].endPos = adjustPos(diffStates[i].endPos);
       } else {
         diffStates[i].endPos = diffStates[i].beginPos;  // pure insertion

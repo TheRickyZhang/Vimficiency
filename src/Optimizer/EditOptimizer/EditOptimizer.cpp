@@ -354,6 +354,11 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
     if (!maybeState) continue;
     EditState s = std::move(*maybeState);
 
+    // Early stopping: skip if this startIndex already has a result
+    // Since A* explores in cost order, first result found is optimal
+    // (typed content cost is fixed, so deletion path cost determines optimality)
+    if (results[s.getStartIndex()].isValid()) continue;
+
     // Join handler: J/gJ merges current line with next
     auto exploreJoin = [&](const EditState& base, bool addSpace,
                            string_view joinCmd, const PhysicalKeys& joinKeys) {

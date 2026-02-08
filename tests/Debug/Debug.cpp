@@ -18,6 +18,7 @@
 #include "Boundary/MotionBoundary.h"
 #include "Keyboard/MotionToKeys.h"
 #include "Utils/NeovimOracle.h"
+#include "Utils/StringUtils.h"
 #include "VimCore/VimEditUtils.h"
 #include "VimCore/VimEndpointUtils.h"
 
@@ -776,4 +777,333 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
            << " nvim=" << (nvim.lines == goal ? "OK" : "WRONG") << " got=" << nvim.lines << endl;
     }
   }
+}
+
+// =============================================================================
+// HumanApproval Example1: `i` instead of `ce`/`cw` for replacement edits
+// =============================================================================
+
+TEST_F(DebugTest, InvestigateTelescopingSearch) {
+  Lines initial = {"Today I saw a giraffe in museum in Switzerland",
+                    "Inconspicuous, even"};
+  Lines goal = {"I saw a pig in barn in Florida"};
+  Position initialPos(0, 0);
+
+  CompositionOptimizerParams compParams{};
+
+  // Step 1: Diffs and intermediate buffers
+  cerr << "\n=== Step 1: Diffs ===" << endl;
+  CompositionSearchContext ctx(initial, initialPos, goal, "",
+      NavContext(), MotionBoundary(), compParams, config);
+  cerr << "totalEdits=" << ctx.totalEdits << endl;
+  for (int i = 0; i < ctx.totalEdits; i++) {
+    const auto& d = ctx.diffStates[i];
+    cerr << "  diff[" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
+         << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
+         << " del='" << makePrintable(d.deletedText) << "'"
+         << " ins='" << makePrintable(d.insertedText) << "'"
+         << " type=" << (d.isPureInsertion() ? "INSERT" : d.isPureDeletion() ? "DELETE" : "REPLACE")
+         << endl;
+    cerr << "    buffer[" << i << "]: " << ctx.linesAfterNEdits[i] << endl;
+  }
+
+  // Step 2: Edit results for each diff
+  cerr << "\n=== Step 2: EditResults per diff ===" << endl;
+  for (int i = 0; i < ctx.totalEdits; i++) {
+    const auto& er = ctx.editResults[i];
+    const auto& d = ctx.diffStates[i];
+    cerr << "  edit[" << i << "] goalPos=(" << er.goalPos.line << "," << er.goalPos.col
+         << ") resultCount=" << er.resultCount() << endl;
+
+    // Show valid results at each position in the edit region
+    int validCount = 0;
+    for (size_t j = 0; j < er.getResults().size(); j++) {
+      if (er.getResults()[j].isValid()) {
+        validCount++;
+        if (validCount <= 5) {
+          cerr << "    pos " << j << ": '" << er.getResults()[j].sequence << "' cost="
+               << er.getResults()[j].keyCost << endl;
+        }
+      }
+    }
+    cerr << "    total valid: " << validCount << " / " << er.resultCount() << endl;
+
+    // Specifically check positions that should have results
+    const auto& buf = ctx.linesAfterNEdits[i];
+    for (int line = d.beginPos.line; line <= min(d.endPos.line, static_cast<int>(buf.size()) - 1); line++) {
+      int startCol = (line == d.beginPos.line) ? d.beginPos.col : 0;
+      int endCol = (line == d.endPos.line) ? d.endPos.col : static_cast<int>(buf[line].size());
+      for (int col = startCol; col < endCol; col++) {
+        const Result* r = er.resultAt(line, col);
+        if (r) {
+          cerr << "    resultAt(" << line << "," << col << "): '"
+               << r->sequence << "' cost=" << r->keyCost << endl;
+        }
+      }
+    }
+  }
+
+  // Step 3: A* search trace
+  cerr << "\n=== Step 3: A* Search Trace ===" << endl;
+  MotionOptimizer motionOpt(config);
+  NavContext navCtx;
+  MotionBoundary boundary;
+
+  CompositionState startingState(initialPos, Mode::Normal, 0);
+  startingState.setCost(ctx.heuristic(startingState, 0));
+  ctx.pq.push(startingState);
+  ctx.costMap[startingState.getKey()] = startingState.getCost();
+
+  int popCount = 0;
+  vector<Result> results;
+  while (ctx.shouldContinue() && popCount < 100) {
+    CompositionState s = ctx.popNext();
+    Position pos = s.getPos();
+    int editsCompleted = s.getEditsCompleted();
+    popCount++;
+
+    if (ctx.isGoal(s)) {
+      cerr << "  POP " << popCount << ": GOAL seq='" << s.getSequence()
+           << "' effort=" << s.getEffort() << " cost=" << s.getCost() << endl;
+      results.emplace_back(s.getMotionSequence(), s.getRunningEffort().getEffort(config));
+      if (results.size() >= 5) break;
+      continue;
+    }
+
+    if (ctx.isStale(s)) {
+      cerr << "  POP " << popCount << ": STALE pos=(" << pos.line << "," << pos.col
+           << ") edits=" << editsCompleted << " seq='" << s.getSequence() << "'" << endl;
+      continue;
+    }
+    ctx.markProcessed();
+
+    const Lines& currentLines = ctx.getLinesAfter(editsCompleted);
+    const DiffState& nextEdit = ctx.getDiffState(editsCompleted);
+
+    cerr << "  POP " << popCount << ": pos=(" << pos.line << "," << pos.col
+         << ") edits=" << editsCompleted << " seq='" << s.getSequence()
+         << "' effort=" << s.getEffort() << " cost=" << s.getCost() << endl;
+
+    // Pure insertion handling
+    if (nextEdit.isPureInsertion()) {
+      cerr << "    -> PURE_INSERTION at (" << nextEdit.beginPos.line << "," << nextEdit.beginPos.col << ")" << endl;
+      // Let the real optimizer handle this; just note it
+      continue;
+    }
+
+    // Edit transition
+    const EditResult& editResult = ctx.editResults[editsCompleted];
+    const Result* res = editResult.resultAt(pos.line, pos.col);
+
+    if (res) {
+      cerr << "    -> EDIT: '" << res->sequence << "' cost=" << res->keyCost
+           << " -> goalPos=(" << editResult.goalPos.line << "," << editResult.goalPos.col << ")" << endl;
+      ctx.exploreEditTransition(s, res->sequence, editResult.goalPos, editsCompleted + 1);
+    } else {
+      cerr << "    -> NO EDIT at pos, searching motions..." << endl;
+
+      if (pos >= nextEdit.beginPos && pos < nextEdit.endPos) {
+        cerr << "    -> IN RANGE but no result, skip" << endl;
+        continue;
+      }
+
+      auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
+          min(pos.line, nextEdit.beginPos.line),
+          max(pos.line, nextEdit.endPos.line),
+          compParams.motionPaddingAbove, compParams.motionPaddingBelow);
+
+      Lines subset = currentLines.getLineRange(beginLine, endLine);
+      Position localPos(pos.line - beginLine, pos.col, pos.targetCol);
+      Position localRangeFirst(nextEdit.beginPos.line - beginLine, nextEdit.beginPos.col);
+      Position localRangeEnd(nextEdit.endPos.line - beginLine, nextEdit.endPos.col);
+
+      Position subsetFirst(0, 0);
+      Position subsetEnd(static_cast<int>(subset.size()) - 1,
+          subset.back().effectiveSize());
+      MotionBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
+          beginLine > 0, endLine <= currentLines.lastLine());
+
+      auto rangeResults = motionOpt.optimizeToRange(
+          subset, localPos, localRangeFirst, localRangeEnd,
+          MotionOptimizerRangeParams{}.withMaxResults(
+              clamp(nextEdit.origCharCount(), 1, 10)), "",
+          subsetBoundary, s.getRunningEffort(), navCtx).results;
+
+      cerr << "    -> MOTIONS found: " << rangeResults.size() << endl;
+      for (auto& movResult : rangeResults) {
+        if (!movResult.isValid()) continue;
+        movResult.goalPos.line += beginLine;
+        cerr << "      motion '" << movResult.sequence << "' -> ("
+             << movResult.goalPos.line << "," << movResult.goalPos.col << ")" << endl;
+        ctx.exploreMotionTransition(s, movResult.sequence, movResult.goalPos, editsCompleted);
+      }
+    }
+  }
+
+  cerr << "\nSearch exhausted after " << popCount << " pops, " << results.size() << " results" << endl;
+  cerr << "Queue remaining: " << ctx.pq.size() << endl;
+
+  // Verify results
+  if (!results.empty()) {
+    auto oracle = make_unique<NeovimOracle>();
+    for (size_t i = 0; i < results.size(); i++) {
+      auto nvim = oracle->simulate(initial, 0, 0, results[i].sequence.keys);
+      cerr << "  [" << i << "] '" << results[i].sequence << "' "
+           << (nvim.lines == goal ? "OK" : "WRONG") << endl;
+    }
+  }
+}
+
+TEST_F(DebugTest, InvestigateHumanApproval1) {
+  Lines initial = {"steak is pretty nice", "don't you think?"};
+  Lines goal = {"Dry-brined steak is excellent", "don't you agree?"};
+
+  // Step 1: Raw Myers diffs
+  cerr << "\n=== Raw Myers Diffs ===" << endl;
+  auto diffs = Myers::calculate(initial, goal);
+  for (size_t i = 0; i < diffs.size(); i++) {
+    const auto& d = diffs[i];
+    cerr << "  [" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
+         << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
+         << " del='" << d.deletedText << "' ins='" << d.insertedText << "'"
+         << " type=" << (d.isPureInsertion() ? "INSERT" : d.isPureDeletion() ? "DELETE" : "REPLACE")
+         << endl;
+  }
+
+  // Step 2: CompositionSearchContext (after position adjustments)
+  cerr << "\n=== CompositionSearchContext ===" << endl;
+  CompositionOptimizerParams compParams{};
+  CompositionSearchContext ctx(initial, Position(0,0), goal, "",
+      NavContext(), MotionBoundary(), compParams, config);
+  cerr << "totalEdits=" << ctx.totalEdits << endl;
+  for (int i = 0; i < ctx.totalEdits; i++) {
+    const auto& d = ctx.diffStates[i];
+    cerr << "  [" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
+         << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
+         << " del='" << d.deletedText << "' ins='" << d.insertedText << "'"
+         << " type=" << (d.isPureInsertion() ? "INSERT" : d.isPureDeletion() ? "DELETE" : "REPLACE")
+         << endl;
+    cerr << "    buffer[" << i << "]: " << ctx.linesAfterNEdits[i] << endl;
+  }
+
+  // Step 3: Full optimizer results with oracle verification
+  cerr << "\n=== Optimizer Results ===" << endl;
+  CompositionOptimizer opt{config};
+  auto compResult = opt.optimize(initial, Position(0,0), goal, Position(0,0), compParams);
+  cerr << compResult;
+
+  auto oracle = make_unique<NeovimOracle>();
+  for (size_t i = 0; i < compResult.results.size(); i++) {
+    const auto& seq = compResult.results[i].sequence;
+    auto nvim = oracle->simulate(initial, 0, 0, seq.keys);
+    bool correct = (nvim.lines == goal);
+    cerr << "  [" << i << "] oracle: " << (correct ? "OK" : "WRONG")
+         << " got=" << nvim.lines << endl;
+  }
+}
+
+// =============================================================================
+// EditOptimizer for multi-line diff: why only 1 starting position finds a result
+// =============================================================================
+
+TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
+  // Diff 3 from TelescopingChanges:
+  //   deleted: "Switzerland\nInconspicuous, even" (2 lines)
+  //   inserted: "Florida" (1 line)
+  //   prefix: "I saw a pig in barn in " (23 chars)
+  //   suffix: "" (end of buffer)
+  //   boundary: hasLinesAbove=false (depends on how constructed), hasLinesBelow=false
+
+  Lines deletedLines = {"Switzerland", "Inconspicuous, even"};
+  Lines insertedLines = {"Florida"};
+
+  // Reconstruct the buffer context for boundary
+  // The intermediate buffer at edit 3 looks like:
+  // ["I saw a pig in barn in Switzerland", "Inconspicuous, even"]
+  Lines bufferAtEdit3 = {"I saw a pig in barn in Switzerland", "Inconspicuous, even"};
+  Position editBeginPos(0, 23);  // 'S' of Switzerland
+  Position editEndPos(1, 19);    // one past 'n' of even (half-open, end of buffer content)
+
+  EditBoundary boundary(bufferAtEdit3, editBeginPos, editEndPos);
+  cerr << "\n=== EditBoundary ===" << endl;
+  cerr << "  prefix: '" << boundary.prefix() << "' (" << boundary.prefix().size() << " chars)" << endl;
+  cerr << "  suffix: '" << boundary.suffix() << "' (" << boundary.suffix().size() << " chars)" << endl;
+  cerr << "  hasLinesAbove: " << boundary.hasLinesAbove() << endl;
+  cerr << "  hasLinesBelow: " << boundary.hasLinesBelow() << endl;
+
+  // Run EditOptimizer with default params
+  cerr << "\n=== EditOptimizer (default params) ===" << endl;
+  EditOptimizer editOpt(config);
+  EditOptimizerParams defaultParams;
+  cerr << "  maxNodesExplored=" << defaultParams.maxNodesExplored
+       << " maxResults=" << defaultParams.maxResults << endl;
+
+  EditResult result = editOpt.optimizeEdit(
+      deletedLines, insertedLines, boundary, defaultParams,
+      editBeginPos.line, editBeginPos.col, Position(0, 29));
+
+  cerr << "  stats: nodes=" << result.stats.nodesExplored
+       << " results=" << result.stats.resultsFound
+       << " queueSize=" << result.stats.queueSizeAtStop
+       << " stopReason=" << static_cast<int>(result.stats.stopReason)
+       << " skipped=" << result.stats.statesSkipped << endl;
+
+  int validCount = 0;
+  for (size_t i = 0; i < result.resultCount(); i++) {
+    if (result.getResults()[i].isValid()) {
+      validCount++;
+      cerr << "  pos " << i << ": '" << result.getResults()[i].sequence
+           << "' cost=" << result.getResults()[i].keyCost << endl;
+    }
+  }
+  cerr << "  valid: " << validCount << " / " << result.resultCount() << endl;
+
+  // Run with much higher budget
+  cerr << "\n=== EditOptimizer (500k nodes) ===" << endl;
+  EditOptimizerParams bigParams = EditOptimizerParams{}
+      .withMaxNodesExplored(500000);
+
+  EditResult bigResult = editOpt.optimizeEdit(
+      deletedLines, insertedLines, boundary, bigParams,
+      editBeginPos.line, editBeginPos.col, Position(0, 29));
+
+  cerr << "  stats: nodes=" << bigResult.stats.nodesExplored
+       << " results=" << bigResult.stats.resultsFound
+       << " queueSize=" << bigResult.stats.queueSizeAtStop
+       << " stopReason=" << static_cast<int>(bigResult.stats.stopReason)
+       << " skipped=" << bigResult.stats.statesSkipped << endl;
+
+  int bigValidCount = 0;
+  for (size_t i = 0; i < bigResult.resultCount(); i++) {
+    if (bigResult.getResults()[i].isValid()) {
+      bigValidCount++;
+      cerr << "  pos " << i << ": '" << bigResult.getResults()[i].sequence
+           << "' cost=" << bigResult.getResults()[i].keyCost << endl;
+    }
+  }
+  cerr << "  valid: " << bigValidCount << " / " << bigResult.resultCount() << endl;
+
+  // Run with Dijkstra mode (no heuristic bias)
+  cerr << "\n=== EditOptimizer (Dijkstra) ===" << endl;
+  EditOptimizerParams dijkstraParams = EditOptimizerParams::dijkstra(30, 500000);
+
+  EditResult dijResult = editOpt.optimizeEdit(
+      deletedLines, insertedLines, boundary, dijkstraParams,
+      editBeginPos.line, editBeginPos.col, Position(0, 29));
+
+  cerr << "  stats: nodes=" << dijResult.stats.nodesExplored
+       << " results=" << dijResult.stats.resultsFound
+       << " queueSize=" << dijResult.stats.queueSizeAtStop
+       << " stopReason=" << static_cast<int>(dijResult.stats.stopReason)
+       << " skipped=" << dijResult.stats.statesSkipped << endl;
+
+  int dijValidCount = 0;
+  for (size_t i = 0; i < dijResult.resultCount(); i++) {
+    if (dijResult.getResults()[i].isValid()) {
+      dijValidCount++;
+      cerr << "  pos " << i << ": '" << dijResult.getResults()[i].sequence
+           << "' cost=" << dijResult.getResults()[i].keyCost << endl;
+    }
+  }
+  cerr << "  valid: " << dijValidCount << " / " << dijResult.resultCount() << endl;
 }

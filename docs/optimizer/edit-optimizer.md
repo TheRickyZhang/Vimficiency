@@ -26,6 +26,15 @@ But here, we pop state -> explore deletions -> check if goal, so that we can con
 - We consider states unique by their position and mode, independent of starting index. Thus, it is possible to "exhaust" good states from searching from a specific starting index.
 - This is much better for efficiency, and we are only concerned with the best sequences, so this is not a major issue.
 
+### Early Stopping
+Both `optimizeEdit` and `optimizePureDeletion` use early stopping: once a result is found for a startIndex, further states from that index are skipped (`if (results[s.getStartIndex()].isValid()) continue`). This is safe because A* explores states in cost order, and typed content cost is fixed regardless of path, so the first deletion path found for a position is optimal.
+
+Without early stopping, heuristic bias causes start-position starvation in multi-line edits. The A* heuristic favors states that are "closer" to the goal in character count. For multi-line regions, `D`/`dd` reduce character count dramatically (removing entire lines), while `J` barely moves the needle (newline → space = net -1 character). This causes the search to heavily favor delete-based paths, and once position 0 finds its result, the search continues to re-explore position 0's continuations (each still cheaper by heuristic) while other positions starve.
+
+Additionally, the shared costMap (states keyed by buffer+cursor, not startIndex) means multiple positions converging to the same intermediate state only keep the cheapest path, further starving positions that need more expensive initial operations.
+
+Early stopping resolves this: once a position's result is found, its states are immediately pruned, freeing the search budget for remaining positions.
+
 ## Boundary Shift Handling
 - Since Edits are naturally the only exact-position constrained region, we have particular method of resolving among flat indices.
 - Consider an original buffer with:

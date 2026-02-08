@@ -1,6 +1,7 @@
 #include "CompositionOptimizer.h"
 
 #include "CompositionSearchContext.h"
+#include "Editor/SequenceParser.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Optimizer/BuildTypedCommands.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
@@ -8,6 +9,7 @@
 #include "Utils/BracketFlags.h"
 #include "Utils/Debug.h"
 #include "Utils/QuoteFlags.h"
+#include "Utils/StringUtils.h"
 #include "VimCore/VimCore.h"
 
 #include <algorithm>
@@ -180,6 +182,9 @@ CompositionResult CompositionOptimizer::optimize(
               currentLines[insertPos.line].substr(0, fnb));
           exploreInsertionStrategy(insertPos.line, 0, lastCol,
                                    "I" + escaped.seq.keys);
+          // Also explore i at exact position (cheaper when cursor is already there)
+          exploreInsertionStrategy(insertPos.line, insertPos.col, insertPos.col,
+                                   "i" + escaped.seq.keys);
         } else if (insertPos.col == lineLen) {
           // A: append at end of line - navigate anywhere on line
           // For multi-line, prefix is the entire current line
@@ -187,6 +192,9 @@ CompositionResult CompositionOptimizer::optimize(
               currentLines[insertPos.line]);
           exploreInsertionStrategy(insertPos.line, 0, lastCol,
                                    "A" + escaped.seq.keys);
+          // Also explore a at last column (cheaper when cursor is already at $)
+          exploreInsertionStrategy(insertPos.line, lastCol, lastCol,
+                                   "a" + escaped.seq.keys);
         } else {
           // i: fallback - navigate to exact position
           // For multi-line, prefix is text before cursor
@@ -282,4 +290,76 @@ CompositionResult CompositionOptimizer::optimize(
 
   return {std::move(results), ctx.getStats(static_cast<int>(results.size())),
           resultGoalPos, std::move(ctx.diffStates)};
+}
+
+ostream& operator<<(ostream& os, const CompositionResult& cr) {
+  os << cr.stats << " goalPos=" << cr.goalPos << "\n";
+
+  // Print diff legend: all diffs get sequential {n} labels.
+  if (!cr.diffs.empty()) {
+    os << "Diffs:";
+    for (size_t i = 0; i < cr.diffs.size(); i++) {
+      const auto& d = cr.diffs[i];
+      os << " {" << i << "}=";
+      if (d.isPureInsertion()) {
+        os << "ins '" << makePrintable(d.insertedText) << "'";
+      } else if (d.isPureDeletion()) {
+        os << "del '" << makePrintable(d.deletedText) << "'";
+      } else {
+        os << "'" << makePrintable(d.deletedText) << "'->'" << makePrintable(d.insertedText) << "'";
+      }
+    }
+    os << "\n";
+  }
+
+  // Print each result with edit operations replaced by {n} placeholders.
+  // diffIdx tracks which diff we're on: advances on Delete tokens that match
+  // pure deletion diffs, and on TypedText tokens (replacements/insertions).
+  for (size_t i = 0; i < cr.results.size(); i++) {
+    os << "  [" << i << "] ";
+
+    vector<SequenceToken> tokens = parseSequence(cr.results[i].sequence.keys);
+    int diffIdx = 0;
+    int numDiffs = static_cast<int>(cr.diffs.size());
+    for (size_t j = 0; j < tokens.size(); j++) {
+      auto type = tokens[j].type;
+
+      // Spacing before this token
+      if (j > 0) {
+        auto prev = tokens[j - 1].type;
+        if (prev == TokenType::Escape || prev == TokenType::Delete ||
+            type == TokenType::Delete ||
+            (prev == TokenType::Change && type == TokenType::TypedText)) {
+          os << " ";
+        }
+      }
+
+      if (type == TokenType::Delete &&
+          diffIdx < numDiffs && cr.diffs[diffIdx].isPureDeletion()) {
+        // Pure deletion diff: show command as-is, advance diffIdx
+        os << makePrintable(tokens[j].text);
+        diffIdx++;
+      } else if (type == TokenType::TypedText && diffIdx < numDiffs) {
+        // Replacement/insertion: strip leading control chars (<BS>, <Del>)
+        // and show them before the {n} placeholder.
+        string_view text = tokens[j].text;
+        while (text.starts_with("<BS>") || text.starts_with("<Del>")) {
+          if (text.starts_with("<BS>")) {
+            os << "<BS>";
+            text.remove_prefix(4);
+          } else {
+            os << "<Del>";
+            text.remove_prefix(5);
+          }
+        }
+        os << "{" << diffIdx++ << "}";
+      } else {
+        os << makePrintable(tokens[j].text);
+      }
+    }
+
+    os << " " << cr.results[i].keyCost << "\n";
+  }
+
+  return os;
 }
