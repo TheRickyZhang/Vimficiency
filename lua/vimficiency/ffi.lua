@@ -14,7 +14,6 @@ local M = {}
 ---@field w_same_finger number
 ---@field w_same_key number
 ---@field w_alt_bonus number
----@field w_run_pen number
 ---@field w_roll_good number
 ---@field w_roll_bad number
 
@@ -55,7 +54,6 @@ ffi.cdef([[
         double w_same_finger;
         double w_same_key;
         double w_alt_bonus;
-        double w_run_pen;
         double w_roll_good;
         double w_roll_bad;
     } C_ScoreWeights;
@@ -174,9 +172,6 @@ function M.configure(user_config)
 		end
 		if w.w_alt_bonus then
 			cw.w_alt_bonus = w.w_alt_bonus
-		end
-		if w.w_run_pen then
-			cw.w_run_pen = w.w_run_pen
 		end
 		if w.w_roll_good then
 			cw.w_roll_good = w.w_roll_good

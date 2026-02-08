@@ -3,3 +3,13 @@ You need to be very clear with LLMs!
 One thing that is very helpful is having it create randomized tests with an objective truth verifier, such as: generating a random buffer / edit location, and verifying that the result is the same as running it directly through a Neovim instance.
 
 On the flip side, it can be a real pain if your tests have a subtle flaw, as it is generally assumed they are ironclad. For instance, I did not set up my EditBoundary to have private members, so rather than using constructor directly, Claude Code created a proxy instance, then changed its member variables directly, which was incorrect compared to the actual situation. Don't rely on Claude making correct tests for you without some backing source!
+
+There was massive performance difference between pure deletions (fast) and regular edits (slow), which didn't make sense as they were performing same core work - after investigation we found that there was a missing break condition in edits that caused massive reexploration, causing massive (>100x) speedups:
+┌─────────┬────────────────────┬─────────────────────────────┐
+  │  Case   │    Before (A*)     │ After (A* + early stopping) │
+  ├─────────┼────────────────────┼─────────────────────────────┤
+  │ 2L→1w   │ 1021ms, 9/30 found │ 4ms, 10 found               │
+  ├─────────┼────────────────────┼─────────────────────────────┤
+  │ 3L→1w   │ 5341ms, 1 found    │ 17ms, 19 found              │
+  ├─────────┼────────────────────┼─────────────────────────────┤
+  │ 2L rand │ 918ms, 3 found     │ 1.6ms, 9 found              │

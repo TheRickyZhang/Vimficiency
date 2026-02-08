@@ -38,7 +38,6 @@ struct C_ScoreWeights {
   double w_same_finger{};
   double w_same_key{};
   double w_alt_bonus{};
-  double w_run_pen{};
   double w_roll_good{};
   double w_roll_bad{};
 };
@@ -92,7 +91,6 @@ static void sync_config() {
   g_config_internal.weights.w_same_finger = g_config_ffi.weights.w_same_finger;
   g_config_internal.weights.w_same_key = g_config_ffi.weights.w_same_key;
   g_config_internal.weights.w_alt_bonus = g_config_ffi.weights.w_alt_bonus;
-  g_config_internal.weights.w_run_pen = g_config_ffi.weights.w_run_pen;
   g_config_internal.weights.w_roll_good = g_config_ffi.weights.w_roll_good;
   g_config_internal.weights.w_roll_bad = g_config_ffi.weights.w_roll_bad;
 

@@ -95,6 +95,8 @@ add_executable(vimficiency_tests
 
   # Misc
   Misc/ConfigurationTest.cpp
+  Misc/EffortCacheTest.cpp
+  Misc/EffortCompositionTest.cpp
   Misc/ErrorHandlingTest.cpp
   Misc/HashCollisionTest.cpp
   Misc/MotionClassMaskTest.cpp

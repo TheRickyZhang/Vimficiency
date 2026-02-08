@@ -24,7 +24,6 @@ struct ScoreWeights final {
   double w_same_finger{}; // Pressing same finger
   double w_same_key{};    // It is actually easier to process repeated key types.
   double w_alt_bonus{};   // alternating hands
-  double w_run_pen{};     // penalty per step beyond RUN_THRESHOLD
   double w_roll_good{};   // "good" rolls
   double w_roll_bad{};    // "bad" rolls
 
@@ -34,7 +33,6 @@ struct ScoreWeights final {
       w_same_finger(0),
       w_same_key(-0.2),
       w_alt_bonus(-0.1),
-      w_run_pen(0.0),
       w_roll_good(-0.2),
       w_roll_bad(0.2)
   {
@@ -42,10 +40,9 @@ struct ScoreWeights final {
   }
 
   ScoreWeights(double key, double same_finger, double same_key,
-               double alt_hand_bonus, double run_pen, double roll_good,
-               double roll_bad)
+               double alt_hand_bonus, double roll_good, double roll_bad)
     :  w_same_finger(same_finger), w_same_key(same_key),
-              w_alt_bonus(alt_hand_bonus), w_run_pen(run_pen),
+              w_alt_bonus(alt_hand_bonus),
               w_roll_good(roll_good), w_roll_bad(roll_bad) {}
 };
 

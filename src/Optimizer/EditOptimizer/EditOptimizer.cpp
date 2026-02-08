@@ -6,6 +6,7 @@
 
 #include "EditOptimizer.h"
 #include "EditSearchContext.h"
+#include "SuffixCache.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Keyboard/KeyboardModel.h"
 #include "Optimizer/BuildTypedCommands.h"

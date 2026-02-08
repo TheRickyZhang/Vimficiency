@@ -94,6 +94,20 @@ struct EditOptimizer {
       Position goalPos = {0, 0}
   );
 
+  // Same as optimizeEdit, but with suffix caching for cross-position sharing.
+  // When one starting position finds a path through an intermediate state,
+  // the remaining commands are cached so other positions reaching the same
+  // state get an instant result.
+  EditResult optimizeEditWithSuffixCache(
+      const Lines& initialLines,
+      const Lines& goalLines,
+      EditBoundary editBoundary,
+      EditOptimizerParams params = {},
+      int bufferFirstLine = 0,
+      int bufferFirstCol = 0,
+      Position goalPos = {0, 0}
+  );
+
   // find optimal sequences to delete all content in initialLines
   // Simpler than optimizeEdit: no typed content, no change conversion
   // Returns EditResult with typeAllResults indexed by flattened starting position

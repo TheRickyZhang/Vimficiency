@@ -10,6 +10,7 @@
 #include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
 #include "Editor/Position.h"
+#include "State/EffortCache.h"
 #include "State/MotionState.h"
 #include "State/PosKey.h"
 #include "Utils/Lines.h"
@@ -23,6 +24,9 @@ struct MotionSearchContext {
   const MotionBoundary& boundary;
   const MotionOptimizerParams& params;
   const Config& config;
+
+  // Pre-computed effort for static KeyedSequences (O(1) merge in hot path)
+  EffortCache effortCache;
 
   // A* priority weights from params
   double effortWeight;

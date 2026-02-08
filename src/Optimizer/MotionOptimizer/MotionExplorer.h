@@ -51,7 +51,7 @@ public:
   // Core emit helper - creates new state, applies motion, and queues for exploration.
   // Mode-aware: uses goal or range depending on constructor used.
   void emitMotion(const MotionState& base, const KeyedSequence& ks, Position endpoint) {
-    MotionState newState = base.afterMotion(ks, endpoint, ctx.config);
+    MotionState newState = base.afterMotion(ks, endpoint, ctx.config, &ctx.effortCache);
 
     if (isRangeMode_) {
       newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeEnd_));

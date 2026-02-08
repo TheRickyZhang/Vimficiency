@@ -55,6 +55,11 @@ struct SearchStats {
   int uniqueStarCount = 0;      // AllResultsFound (all unique positions in range)
   int remainStarCount = 0;      // FullyExplored (queue exhausted)
 
+  // Suffix cache stats (only populated by suffix-cached search)
+  int cacheHits = 0;
+  int cacheEntries = 0;
+  int cachePopulations = 0;
+
   // Debug only (has runtime cost, only enable when needed)
   int motionsEmitted = 0;
   int statesSkipped = 0;

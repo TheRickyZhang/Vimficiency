@@ -13,7 +13,6 @@ static constexpr int KEY_COUNT = 61;
 static constexpr int FINGER_COUNT = 10;
 static constexpr int HAND_COUNT = 2; // Unless you're an amputee or an alien; not that those are correlated
 
-static constexpr int RUN_THRESHOLD = 4; // More consecutive on same hand -> penalty
 
 
 #define ENUM_VALUE(name, str) name,

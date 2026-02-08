@@ -2,17 +2,41 @@
 
 #include "KeyboardModel.h"
 #include "CharToKeys.h"
+#include "XMacroKeyedSequenceDefinitions.h"
 #include "State/Sequence.h"
 
+#include <array>
 #include <string>
 #include <string_view>
+
+// =============================================================================
+// KSId: compile-time identifier for each static KeyedSequence constant
+// =============================================================================
+
+#define KS_ENUM_VALUE(name, seq, keys) name,
+enum class KSId : uint8_t {
+  VIMFICIENCY_KEYED_SEQUENCES(KS_ENUM_VALUE)
+  COUNT
+};
+#undef KS_ENUM_VALUE
+
+static constexpr int KS_COUNT = static_cast<int>(KSId::COUNT);
+static_assert(KS_COUNT == 27, "Expected 27 static KeyedSequence constants");
+
+// =============================================================================
+// KeyedSequence
+// =============================================================================
 
 struct KeyedSequence {
   Sequence seq;
   PhysicalKeys keys;
+  KSId id = KSId::COUNT;  // COUNT means "no cached id"
 
   KeyedSequence() = default;
   KeyedSequence(std::string_view s, PhysicalKeys k) : seq(std::string(s)), keys(std::move(k)) {}
+  KeyedSequence(std::string_view s, PhysicalKeys k, KSId id) : seq(std::string(s)), keys(std::move(k)), id(id) {}
+
+  bool hasCachedId() const { return id != KSId::COUNT; }
 
   KeyedSequence& operator+=(const KeyedSequence& other) {
     seq.append(other.seq.keys);
@@ -58,57 +82,28 @@ struct KeyedSequence {
     keys.append(makeCountedKeys(count, base.keys));
   }
 
-  static const KeyedSequence BS;
-  static const KeyedSequence Del;
-  static const KeyedSequence Esc;
-  static const KeyedSequence CR;
-  static const KeyedSequence CtrlU;
-
-  // Motion constants
-  static const KeyedSequence h, l, Zero, Caret, Dollar;
-  static const KeyedSequence j, k;
-  static const KeyedSequence w, b, e, ge, W, B, E, gE;
-  static const KeyedSequence gg, G;
-  static const KeyedSequence LBrace, RBrace, LParen, RParen;
-  static const KeyedSequence CtrlD;
+  // Static constants — declared via X-macro
+#define KS_DECLARE(name, seq, keys) static const KeyedSequence name;
+  VIMFICIENCY_KEYED_SEQUENCES(KS_DECLARE)
+#undef KS_DECLARE
 };
 
-inline const KeyedSequence KeyedSequence::BS{"<BS>", {Key::Key_Backspace}};
-inline const KeyedSequence KeyedSequence::Del{"<Del>", {Key::Key_Delete}};
-inline const KeyedSequence KeyedSequence::Esc{"<Esc>", {Key::Key_Esc}};
-inline const KeyedSequence KeyedSequence::CR{"<CR>", {Key::Key_Enter}};
-inline const KeyedSequence KeyedSequence::CtrlU{"<C-u>", {Key::Key_Ctrl, Key::Key_U}};
+// Static constant definitions — generated via X-macro
+#define KS_DEFINE(name, seqStr, keyGroup) \
+  inline const KeyedSequence KeyedSequence::name{seqStr, {STRIP_PARENS(keyGroup)}, KSId::name};
+VIMFICIENCY_KEYED_SEQUENCES(KS_DEFINE)
+#undef KS_DEFINE
 
-// Horizontal
-inline const KeyedSequence KeyedSequence::h{"h", {Key::Key_H}};
-inline const KeyedSequence KeyedSequence::l{"l", {Key::Key_L}};
-inline const KeyedSequence KeyedSequence::Zero{"0", {Key::Key_0}};
-inline const KeyedSequence KeyedSequence::Caret{"^", {Key::Key_Shift, Key::Key_6}};
-inline const KeyedSequence KeyedSequence::Dollar{"$", {Key::Key_Shift, Key::Key_4}};
+// =============================================================================
+// ksById: O(1) lookup from KSId to const KeyedSequence&
+// =============================================================================
 
-// Vertical
-inline const KeyedSequence KeyedSequence::j{"j", {Key::Key_J}};
-inline const KeyedSequence KeyedSequence::k{"k", {Key::Key_K}};
-
-// Word motions
-inline const KeyedSequence KeyedSequence::w{"w", {Key::Key_W}};
-inline const KeyedSequence KeyedSequence::b{"b", {Key::Key_B}};
-inline const KeyedSequence KeyedSequence::e{"e", {Key::Key_E}};
-inline const KeyedSequence KeyedSequence::ge{"ge", {Key::Key_G, Key::Key_E}};
-inline const KeyedSequence KeyedSequence::W{"W", {Key::Key_Shift, Key::Key_W}};
-inline const KeyedSequence KeyedSequence::B{"B", {Key::Key_Shift, Key::Key_B}};
-inline const KeyedSequence KeyedSequence::E{"E", {Key::Key_Shift, Key::Key_E}};
-inline const KeyedSequence KeyedSequence::gE{"gE", {Key::Key_G, Key::Key_Shift, Key::Key_E}};
-
-// Jumps
-inline const KeyedSequence KeyedSequence::gg{"gg", {Key::Key_G, Key::Key_G}};
-inline const KeyedSequence KeyedSequence::G{"G", {Key::Key_Shift, Key::Key_G}};
-
-// Paragraph/Sentence
-inline const KeyedSequence KeyedSequence::LBrace{"{", {Key::Key_Shift, Key::Key_LBracket}};
-inline const KeyedSequence KeyedSequence::RBrace{"}", {Key::Key_Shift, Key::Key_RBracket}};
-inline const KeyedSequence KeyedSequence::LParen{"(", {Key::Key_Shift, Key::Key_9}};
-inline const KeyedSequence KeyedSequence::RParen{")", {Key::Key_Shift, Key::Key_0}};
-
-// Scroll
-inline const KeyedSequence KeyedSequence::CtrlD{"<C-d>", {Key::Key_Ctrl, Key::Key_D}};
+inline const KeyedSequence& ksById(KSId id) {
+  // Flat array of pointers, initialized once via X-macro
+#define KS_PTR(name, seq, keys) &KeyedSequence::name,
+  static const std::array<const KeyedSequence*, KS_COUNT> table = {{
+    VIMFICIENCY_KEYED_SEQUENCES(KS_PTR)
+  }};
+#undef KS_PTR
+  return *table[static_cast<uint8_t>(id)];
+}
