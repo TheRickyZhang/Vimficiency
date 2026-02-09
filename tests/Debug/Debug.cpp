@@ -124,6 +124,122 @@ protected:
 };
 
 TEST_F(DebugTest, Placeholder) {
+  auto oracle = make_unique<NeovimOracle>();
+
+  // Reproduce TwoEdits_SameLine iter=12
+  cerr << "=== TwoEdits_SameLine iter=12 ===" << endl;
+  {
+    Config config = Config::uniform();
+    CompositionOptimizer opt{config};
+    CompositionOptimizerParams params = CompositionOptimizerParams{}.withMaxResults(5);
+
+    // Reproduce iter=12 from the test (seed=48)
+    Lines initial = {"ffb decd bdf"};
+    Lines goal = {"cbb decd fed"};
+    Position initialPos(0, 0);
+
+    auto compResult = opt.optimize(initial, initialPos, goal, Position(0, 0), params);
+    const auto& results = compResult.results;
+
+    cerr << "Results: " << results.size() << endl;
+    for (size_t i = 0; i < results.size(); i++) {
+      const auto& seq = results[i].sequence;
+      // Print sequence bytes
+      cerr << "  [" << i << "] seq='" << seq << "' (len=" << seq.keys.size() << ")" << endl;
+      cerr << "       bytes: ";
+      for (char c : seq.keys) cerr << static_cast<int>(static_cast<unsigned char>(c)) << " ";
+      cerr << endl;
+      cerr << "       cost=" << results[i].keyCost << endl;
+
+      auto nvim = oracle->simulate(initial, 0, 0, seq.keys);
+      cerr << "       nvim: " << nvim.lines << (nvim.lines == goal ? " OK" : " WRONG") << endl;
+    }
+  }
+
+  // Also trace step by step what the edit optimizer produces for each diff
+  cerr << "\n=== Diff regions ===" << endl;
+  {
+    Lines initial = {"ffb decd bdf"};
+    Lines goal = {"cbb decd fed"};
+    auto diffs = Myers::calculate(initial, goal);
+    cerr << "Diffs: " << diffs.size() << endl;
+    for (size_t i = 0; i < diffs.size(); i++) {
+      const auto& d = diffs[i];
+      cerr << "  [" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
+           << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
+           << " del='" << d.deletedText << "' ins='" << d.insertedText << "'"
+           << " prefix='" << d.boundary.prefix() << "' suffix='" << d.boundary.suffix() << "'"
+           << endl;
+    }
+
+    // Edit optimizer for each diff
+    Config config = Config::uniform();
+    EditOptimizer editOpt(config);
+    for (size_t i = 0; i < diffs.size(); i++) {
+      const auto& d = diffs[i];
+      if (d.isPureInsertion()) continue;
+      EditResult result = editOpt.optimizeEdit(
+          d.deletedLines(), d.insertedLines(), d.boundary, {},
+          d.beginPos.line, d.beginPos.col, d.beginPos);
+      cerr << "  Edit[" << i << "] goalPos=(" << result.goalPos.line << "," << result.goalPos.col
+           << ") results:" << endl;
+      for (size_t j = 0; j < result.resultCount(); j++) {
+        if (result.getResults()[j].isValid()) {
+          cerr << "    pos " << j << ": '" << result.getResults()[j].sequence
+               << "' cost=" << result.getResults()[j].keyCost << endl;
+        }
+      }
+    }
+  }
+
+  // SingleLine_Substitution iter=0
+  cerr << "\n=== SingleLine_Substitution iter=0 ===" << endl;
+  {
+    Config config = Config::uniform();
+    CompositionOptimizer opt{config};
+    CompositionOptimizerParams params = CompositionOptimizerParams{}.withMaxResults(5);
+
+    Lines initial = {"efbeeddacaaa"};
+    Lines goal = {"efbedaeaaa"};
+
+    auto compResult = opt.optimize(initial, Position(0,0), goal, Position(0,0), params);
+    cerr << "Results: " << compResult.results.size() << endl;
+    for (size_t i = 0; i < compResult.results.size(); i++) {
+      cerr << "  [" << i << "] '" << compResult.results[i].sequence
+           << "' cost=" << compResult.results[i].keyCost << endl;
+    }
+
+    auto diffs = Myers::calculate(initial, goal);
+    cerr << "Diffs: " << diffs.size() << endl;
+    for (size_t i = 0; i < diffs.size(); i++) {
+      const auto& d = diffs[i];
+      cerr << "  [" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
+           << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
+           << " del='" << d.deletedText << "' ins='" << d.insertedText << "'"
+           << " prefix='" << d.boundary.prefix() << "' suffix='" << d.boundary.suffix() << "'"
+           << endl;
+
+      if (!d.isPureInsertion()) {
+        EditOptimizer editOpt(config);
+        EditResult result = editOpt.optimizeEdit(
+            d.deletedLines(), d.insertedLines(), d.boundary, {},
+            d.beginPos.line, d.beginPos.col, d.beginPos);
+        int validCount = 0;
+        for (size_t j = 0; j < result.resultCount(); j++) {
+          if (result.getResults()[j].isValid()) validCount++;
+        }
+        cerr << "    Edit valid: " << validCount << "/" << result.resultCount()
+             << " nodes=" << result.stats.nodesExplored << endl;
+        for (size_t j = 0; j < result.resultCount(); j++) {
+          if (result.getResults()[j].isValid()) {
+            cerr << "    pos " << j << ": '" << result.getResults()[j].sequence
+                 << "' cost=" << result.getResults()[j].keyCost << endl;
+          }
+        }
+      }
+    }
+  }
+
   EXPECT_TRUE(true);
 }
 
@@ -1458,4 +1574,107 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
     }
   }
   cerr << "  valid: " << dijValidCount << " / " << dijResult.resultCount() << endl;
+}
+
+// ============================================================================
+// Lazy mode failure investigation
+// ============================================================================
+
+TEST_F(NeovimOracleDebug, InvestigateLazyFailures) {
+  // Test full sequences as single oracle calls (mode changes must be in one call)
+
+  // JoinLinesWithResidual: ljDce  bbb ccc<Esc>
+  cerr << "=== JoinLinesWithResidual ===" << endl;
+  {
+    Lines buf = {"aaa", "xxx", "ccc"};
+    auto r = oracle_->simulate(buf, 0, 0, "ljDce bbb ccc\x1b");
+    cerr << "  Input: " << buf << " pos=(0,0)" << endl;
+    cerr << "  Seq: ljDce bbb ccc<Esc>" << endl;
+    cerr << "  Got: " << r.lines << " pos=(" << r.row << "," << r.col << ")" << endl;
+    cerr << "  Expected: aaa bbb ccc" << endl << endl;
+  }
+
+  // Also trace step by step with proper mode handling
+  cerr << "=== JoinLinesWithResidual step-by-step ===" << endl;
+  {
+    auto tracer = makeTracer({"aaa", "xxx", "ccc"}, 0, 0);
+    tracer.trace("lj");
+    tracer.trace("D");
+    tracer.trace("ce bbb ccc\x1b");  // ce + insert text together
+    tracer.printSummary();
+  }
+
+  // DeleteEntireLine: jd}C b.baaa<Esc>
+  cerr << "=== DeleteEntireLine ===" << endl;
+  {
+    Lines buf = {",ba .e,c", "ede,bb.", "b.baaa"};
+    auto r = oracle_->simulate(buf, 0, 0, "jd}C b.baaa\x1b");
+    cerr << "  Input: " << buf << " pos=(0,0)" << endl;
+    cerr << "  Seq: jd}C b.baaa<Esc>" << endl;
+    cerr << "  Got: " << r.lines << " pos=(" << r.row << "," << r.col << ")" << endl;
+    cerr << "  Expected: ,ba .e,c | b.baaa" << endl << endl;
+  }
+
+  // What does d} actually do from line 1 on 3 non-blank lines?
+  cerr << "=== d} from line 1 on 3 non-blank lines ===" << endl;
+  {
+    auto tracer = makeTracer({",ba .e,c", "ede,bb.", "b.baaa"}, 1, 0);
+    tracer.trace("d}");
+    tracer.printSummary();
+  }
+
+  // TwoEdits_SameLine: rcl rbEwCfed<Esc>
+  cerr << "=== TwoEdits_SameLine ===" << endl;
+  {
+    Lines buf = {"ffb decd bdf"};
+    auto r = oracle_->simulate(buf, 0, 0, "rcl rbEwCfed\x1b");
+    cerr << "  Input: " << buf << " pos=(0,0)" << endl;
+    cerr << "  Seq: rcl rbEwCfed<Esc>" << endl;
+    cerr << "  Got: " << r.lines << " pos=(" << r.row << "," << r.col << ")" << endl;
+    cerr << "  Expected: cbb decd fed" << endl << endl;
+  }
+
+  // Step through the space issue
+  cerr << "=== TwoEdits_SameLine step-by-step ===" << endl;
+  {
+    auto tracer = makeTracer({"ffb decd bdf"}, 0, 0);
+    tracer.trace("rc");
+    tracer.trace("l");
+    tracer.trace("rb");
+    tracer.trace("EwCfed\x1b");
+    tracer.printSummary();
+  }
+
+  // JoinLines: jDcE  bbb ccc?<Esc>
+  cerr << "=== JoinLines ===" << endl;
+  {
+    Lines buf = {"aaa", "bbb", "ccc"};
+    auto r = oracle_->simulate(buf, 0, 0, "jDcE bbb ccc?\x1b");
+    cerr << "  Input: " << buf << " pos=(0,0)" << endl;
+    cerr << "  Seq: jDcE bbb ccc?<Esc>" << endl;
+    cerr << "  Got: " << r.lines << " pos=(" << r.row << "," << r.col << ")" << endl;
+    cerr << "  Expected: aaa bbb ccc?" << endl << endl;
+  }
+
+  // Example1: I Dry-brined <Esc> EEwC excellent<Esc> gegebjcaw agree<Esc>
+  cerr << "=== Example1 ===" << endl;
+  {
+    Lines buf = {"steak is pretty nice", "don't you think?"};
+    auto r = oracle_->simulate(buf, 0, 0,
+        "I Dry-brined \x1b" "EEwCexcellent\x1b" "gegebjcaw agree\x1b");
+    cerr << "  Input: " << buf << " pos=(0,0)" << endl;
+    cerr << "  Seq: I Dry-brined <Esc>EEwCexcellent<Esc>gegebjcaw agree<Esc>" << endl;
+    cerr << "  Got: " << r.lines << " pos=(" << r.row << "," << r.col << ")" << endl;
+    cerr << "  Expected: Dry-brined steak is excellent | don't you agree?" << endl << endl;
+  }
+
+  // d} behavior investigation
+  cerr << "=== d} on single paragraph (3 lines, no blanks) ===" << endl;
+  {
+    Lines buf3 = {"line1", "line2", "line3"};
+    for (int line = 0; line < 3; line++) {
+      auto r = oracle_->simulate(buf3, line, 0, "d}");
+      cerr << "  d} from line " << line << ": " << r.lines << endl;
+    }
+  }
 }

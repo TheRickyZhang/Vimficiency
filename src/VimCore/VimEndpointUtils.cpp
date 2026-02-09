@@ -278,9 +278,19 @@ Range textObjectRange(Position cursor, const Lines& lines, bool isInner,
           // Word before on same line: include leading whitespace
           start = gapStart;
         } else {
-          // At indentation, line start, or no word found: just use word boundaries
-          start = motionWordEndpoint<false, EdgeType::WordEdge>(
+          // Check if we're rejecting because boundary clips the whitespace.
+          // If whitespace exists before the word but falls in the prefix
+          // boundary, Vim's `aw` would still include it — reject to avoid
+          // producing a range that disagrees with actual Vim behavior.
+          Position wordStart = motionWordEndpoint<false, EdgeType::WordEdge>(
               cursor, lines, isBigWord, false, leftColOffset, hasLinesAbove);
+          if (wordStart != POSITION_OUTSIDE_BOUNDARY &&
+              wordStart.line == cursor.line && wordStart.col > 0 &&
+              isBlank(lines[wordStart.line][wordStart.col - 1])) {
+            start = POSITION_OUTSIDE_BOUNDARY;
+          } else {
+            start = wordStart;
+          }
         }
         end = motionWordEndpoint<true, EdgeType::WordEdge>(
             cursor, lines, isBigWord, false, rightColOffset, hasLinesBelow);

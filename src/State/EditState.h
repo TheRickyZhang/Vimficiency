@@ -100,13 +100,12 @@ public:
   // Goal state flag
   bool isGoal() const { return isGoal_; }
 
-  // Record the goal suffix directly into this state's seq/effort.
-  // After this call, Result can be trivially constructed from getSeq()/getEffort().
-  void recordGoal(std::string_view goalSuffix, const PhysicalKeys& goalKeys,
-                  double effortWeight, const Config& config) {
+  // Record goal with externally-computed effort (pure cost, no RunningEffort mutation).
+  // The caller computes goalEffort from a copied RunningEffort so this state stays clean.
+  void recordGoalCost(std::string_view goalSuffix, double goalEffort, double effortWeight) {
     seq_ += goalSuffix;
-    effort_ = runningEffort.append(goalKeys, config);
-    cost_ = effortWeight * effort_;
+    effort_ = goalEffort;
+    cost_ = effortWeight * goalEffort;
     isGoal_ = true;
   }
 

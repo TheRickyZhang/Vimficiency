@@ -275,9 +275,38 @@ CompositionResult CompositionOptimizer::optimize(
       }
 
       // If cursor is already inside the edit range but no edit result was found
-      // (e.g. maxResults budget exhausted), skip motion search — we're already there.
+      // (e.g. maxResults budget exhausted), try simple h/l motions to reach
+      // nearby positions within the range that DO have valid results.
+      // We can't use optimizeToRange here since it forbids startPos inside range.
       if (pos >= nextEdit.beginPos && pos < nextEdit.endPos) {
-        debug("  inside edit range but no result at", pos, "- skipping");
+        // Single-line case: scan for valid results and generate h/l motions
+        if (nextEdit.beginPos.line == nextEdit.endPos.line ||
+            nextEdit.beginPos.line == pos.line) {
+          int rangeBeginCol = (pos.line == nextEdit.beginPos.line)
+                                  ? nextEdit.beginPos.col : 0;
+          int rangeEndCol = (pos.line == nextEdit.endPos.line)
+                                ? nextEdit.endPos.col
+                                : currentLines[pos.line].effectiveSize();
+          for (int col = rangeBeginCol; col < rangeEndCol; ++col) {
+            if (col == pos.col) continue;
+            const Result* nearby = editResult.resultAt(pos.line, col);
+            if (!nearby) continue;
+            int dist = col - pos.col;
+            Sequence motionSeq;
+            if (dist > 0) {
+              if (dist > 1) motionSeq.append(to_string(dist));
+              motionSeq.append('l');
+            } else {
+              if (-dist > 1) motionSeq.append(to_string(-dist));
+              motionSeq.append('h');
+            }
+            Position goalPos(pos.line, col);
+            debug("    intra-range motion:", "\"" + motionSeq.keys + "\"",
+                  "->", goalPos);
+            ctx.exploreMotionTransition(s, motionSeq, goalPos, editsCompleted);
+          }
+        }
+        debug("  inside edit range but no result at", pos, "- skipping range motion");
         continue;
       }
 

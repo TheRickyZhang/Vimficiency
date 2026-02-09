@@ -3,6 +3,7 @@
 #include "Boundary/EditBoundary.h"
 #include "Keyboard/EditToKeys.h"
 #include "Keyboard/MotionToKeysPrimitives.h"
+#include "VimCore/VimCore.h"
 #include "VimCore/VimEndpointUtils.h"
 
 using namespace std;
@@ -121,18 +122,20 @@ void EditExplorer::exploreParagraphEdits(
 
   for (const auto& spec : specs) {
     if constexpr (Forward) {
-      // d}: delete from cursor line to line before endpoint (endpoint is blank line)
-      int endLine = endpointLine - 1;
+      // d}: delete from cursor line through the line before the blank separator.
+      // At EOF (endpoint is last line, not blank), d} deletes through endpoint.
+      bool endpointIsBlank = VimCore::isBlankLineStr(lines[endpointLine]);
+      int endLine = endpointIsBlank ? endpointLine - 1 : endpointLine;
       if (endLine < cursor.line) continue;
+      // Only support single-line d} (onLinewise takes one line)
       if (endLine == cursor.line) {
         onLinewise(cursor.line, spec.cmd, spec.keys);
       }
     } else {
-      // d{: delete from endpoint line to cursor line (inclusive)
-      if (endpointLine > cursor.line) continue;
-      if (endpointLine == cursor.line) {
-        onLinewise(cursor.line, spec.cmd, spec.keys);
-      }
+      // d{: when endpointLine == cursor.line, { stays on the same line and
+      // d{ is characterwise exclusive (not linewise), so skip.
+      // Multi-line d{ (endpointLine < cursor.line) not yet modeled.
+      if (endpointLine >= cursor.line) continue;
     }
   }
 }

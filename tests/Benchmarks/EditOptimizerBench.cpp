@@ -20,19 +20,17 @@ using namespace std;
 // =============================================================================
 
 constexpr bool ENABLE_COMPARISON = true;
-constexpr const char* COMPARISON_NAME = "Search Mode (A = Eager, B = Lazy)";
+constexpr const char* COMPARISON_NAME = "Standard vs SuffixCache";
 
 // NOTE: Must be static, not inline - inline causes incorrect behavior with templates
 static EditOptimizerParams paramsA() {
   EditOptimizerParams p;
-  // Eager: check goals during generation (default)
   return p;
 }
 
 static EditOptimizerParams paramsB() {
   EditOptimizerParams p;
-  // Lazy: push goal states through PQ, record on pop
-  p.searchMode = SearchMode::Lazy;
+  p.useSuffixCache = true;
   return p;
 }
 

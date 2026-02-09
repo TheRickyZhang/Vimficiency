@@ -2,8 +2,6 @@
 
 #include "Optimizer/OptimizerParamsBase.h"
 
-enum class SearchMode { Eager, Lazy };
-
 // =============================================================================
 // EditOptimizerParams - Parameters for EditOptimizer
 // =============================================================================
@@ -30,13 +28,9 @@ struct EditOptimizerParams : OptimizerParamsBase {
   EditOptimizerParams& withMotionLinePaddingBelow(int v) { motionLinePaddingBelow = v; return *this; }
   EditOptimizerParams& withMotionLinePadding(int v) { motionLinePaddingAbove = motionLinePaddingBelow = v; return *this; }
   EditOptimizerParams& withSuffixCache(bool v) { useSuffixCache = v; return *this; }
-  EditOptimizerParams& withSearchMode(SearchMode v) { searchMode = v; return *this; }
 
   // Whether to use suffix caching for cross-position sharing
   bool useSuffixCache = false;
-
-  // Search mode: Eager checks goals during generation, Lazy pushes goal states through PQ
-  SearchMode searchMode = SearchMode::Eager;
 
   // Factory for Dijkstra mode (no heuristic)
   static EditOptimizerParams dijkstra(int maxResults = 10, int maxNodesExplored = 50000) {

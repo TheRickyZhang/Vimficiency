@@ -184,10 +184,11 @@ TEST_F(EditOptimizer_ManualTest, Boundary_LinewiseCursorContainment) {
 
 TEST_F(EditOptimizer_ManualTest, Replacement_SingleChar) {
   // "hello" -> "jello" - single char at position 0
+  // Cursor positioned at end of inserted text (col 4) after replacement
   auto result = tryReplacement("hello", "jello", config);
 
   ASSERT_TRUE(result.has_value());
-  EXPECT_EQ(result->sequence, "rj");
+  EXPECT_EQ(result->sequence, "rj4l");
 }
 
 TEST_F(EditOptimizer_ManualTest, Replacement_SingleCharMiddle) {
