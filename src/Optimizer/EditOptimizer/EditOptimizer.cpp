@@ -301,7 +301,7 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
     Position pos = newState.getPos();
     int lastValidLine = static_cast<int>(lines.size()) - 1;
     if (editBoundary.hasLinesBelow() && lastValidLine >= 0 && pos.line > lastValidLine) {
-      searchCmd.append("k", {Key::Key_K});
+      searchCmd += KeyedSequence::k;
       pos.line = lastValidLine;
       // k motion preserves targetCol (sticky column behavior)
       pos.clampColPreservingTarget(lines[pos.line].empty() ? 0 :
@@ -496,7 +496,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
     Position pos = newState.getPos();
     int lastValidLine = static_cast<int>(lines.size()) - 1;
     if (editBoundary.hasLinesBelow() && lastValidLine >= 0 && pos.line > lastValidLine) {
-      searchCmd.append("k", {Key::Key_K});
+      searchCmd += KeyedSequence::k;
       pos.line = lastValidLine;
       // k motion preserves targetCol (sticky column behavior)
       pos.clampColPreservingTarget(lines[pos.line].empty() ? 0 :
@@ -801,7 +801,7 @@ EditOptimizer::optimizeEditWithSuffixCache(
     Position pos = newState.getPos();
     int lastValidLine = static_cast<int>(lines.size()) - 1;
     if (editBoundary.hasLinesBelow() && lastValidLine >= 0 && pos.line > lastValidLine) {
-      searchCmd.append("k", {Key::Key_K});
+      searchCmd += KeyedSequence::k;
       pos.line = lastValidLine;
       pos.clampColPreservingTarget(lines[pos.line].empty() ? 0 :
                  min(pos.targetCol, static_cast<int>(lines[pos.line].size()) - 1));

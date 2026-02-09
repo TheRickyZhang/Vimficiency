@@ -51,12 +51,7 @@ void MotionState::applyMotionImpl(const KeyedSequence& ks, Position endpoint,
                                   const Config& config) {
   pos = endpoint;
   motionSequence.append(ks.seq.keys);
-  if (ks.hasEffort()) {
-    runningEffort = RunningEffort::merge(runningEffort, ks.effort);
-    effort = runningEffort.getEffort(config);
-  } else {
-    effort = runningEffort.append(ks.keys, config);
-  }
+  effort = runningEffort.append(ks.keys, config);
 }
 
 void MotionState::applyCountedMotionImpl(const KeyedSequence& baseMotion, int cnt,

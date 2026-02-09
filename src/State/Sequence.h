@@ -18,6 +18,8 @@ struct Sequence {
 
   void append(std::string_view s) { keys += s; }
   void append(char c) { keys += c; }
+  void append(int count, char c) { keys.append(count, c); }
+  void append(int count, std::string_view s) { for (int i = 0; i < count; i++) keys += s; }
 
   bool operator==(const Sequence& other) const { return keys == other.keys; }
   bool operator!=(const Sequence& other) const { return !(*this == other); }

@@ -72,21 +72,21 @@ public:
     int rightBound = (pos.line == ctx.lines.lastLine()) ? ctx.boundary.rightColOffset() : 0;
 
     if (pos.col > leftBound)
-      emitMotion(base, ctx.bank.h, {pos.line, pos.col - 1});
+      emitMotion(base, KeyedSequence::h, {pos.line, pos.col - 1});
 
     if (pos.col < lastCol - rightBound)
-      emitMotion(base, ctx.bank.l, {pos.line, pos.col + 1});
+      emitMotion(base, KeyedSequence::l, {pos.line, pos.col + 1});
 
     if (pos.col > leftBound)
-      emitMotion(base, ctx.bank.Zero, {pos.line, leftBound});
+      emitMotion(base, KeyedSequence::Zero, {pos.line, leftBound});
 
     int fnb = VimCore::firstNonBlankColInLineStr(ctx.lines[pos.line]);
     if (fnb >= leftBound && fnb <= lastCol - rightBound && fnb != pos.col)
-      emitMotion(base, ctx.bank.Caret, {pos.line, fnb});
+      emitMotion(base, KeyedSequence::Caret, {pos.line, fnb});
 
     int dollarCol = lastCol - rightBound;
     if (dollarCol > pos.col && dollarCol >= leftBound)
-      emitMotion(base, ctx.bank.Dollar, {pos.line, dollarCol, TARGETCOL_EOL});
+      emitMotion(base, KeyedSequence::Dollar, {pos.line, dollarCol, TARGETCOL_EOL});
   }
 
   // Vertical motions: j, k
@@ -97,13 +97,13 @@ public:
     if (pos.line < lastLine) {
       int newLine = pos.line + 1;
       int newCol = VimCore::clampCol(ctx.lines, pos.targetCol, newLine);
-      emitMotion(base, ctx.bank.j, {newLine, newCol, pos.targetCol});
+      emitMotion(base, KeyedSequence::j, {newLine, newCol, pos.targetCol});
     }
 
     if (pos.line > 0) {
       int newLine = pos.line - 1;
       int newCol = VimCore::clampCol(ctx.lines, pos.targetCol, newLine);
-      emitMotion(base, ctx.bank.k, {newLine, newCol, pos.targetCol});
+      emitMotion(base, KeyedSequence::k, {newLine, newCol, pos.targetCol});
     }
   }
 
@@ -121,7 +121,7 @@ public:
           boundaryOffset, hasLinesOutside, false);
 
       if (endpoint != POSITION_OUTSIDE_BOUNDARY) {
-        emitMotion(base, ctx.bank.byId(spec.ksId), endpoint);
+        emitMotion(base, ksById(spec.ksId), endpoint);
       }
     }
   }
@@ -148,7 +148,7 @@ public:
     Position endpoint(endpointLine, endpointCol);
 
     for (const auto& spec : specs) {
-      emitMotion(base, ctx.bank.byId(spec.ksId), endpoint);
+      emitMotion(base, ksById(spec.ksId), endpoint);
     }
   }
 
@@ -166,7 +166,7 @@ public:
     if (endpoint == POSITION_OUTSIDE_BOUNDARY) return;
 
     for (const auto& spec : specs) {
-      emitMotion(base, ctx.bank.byId(spec.ksId), endpoint);
+      emitMotion(base, ksById(spec.ksId), endpoint);
     }
   }
 
@@ -192,7 +192,7 @@ public:
             ? VimCore::firstNonBlankColInLineStr(ctx.lines[targetLine])
             : VimCore::clampCol(ctx.lines, pos.targetCol, targetLine);
         Position endpoint(targetLine, endpointCol, pos.targetCol);
-        emitMotion(base, ctx.bank.byId(spec.ksId), endpoint);
+        emitMotion(base, ksById(spec.ksId), endpoint);
       }
     }
   }
@@ -209,14 +209,14 @@ public:
       int endpointCol = VimOptions::startOfLine()
           ? VimCore::firstNonBlankColInLineStr(ctx.lines[0])
           : VimCore::clampCol(ctx.lines, pos.targetCol, 0);
-      emitMotion(base, ctx.bank.gg, {0, endpointCol, pos.targetCol});
+      emitMotion(base, KeyedSequence::gg, {0, endpointCol, pos.targetCol});
     }
     if (!ctx.boundary.hasLinesBelow()) {
       int lastLine = ctx.lines.lastLine();
       int endpointCol = VimOptions::startOfLine()
           ? VimCore::firstNonBlankColInLineStr(ctx.lines[lastLine])
           : VimCore::clampCol(ctx.lines, pos.targetCol, lastLine);
-      emitMotion(base, ctx.bank.G, {lastLine, endpointCol, pos.targetCol});
+      emitMotion(base, KeyedSequence::G, {lastLine, endpointCol, pos.targetCol});
     }
   }
 
@@ -259,7 +259,7 @@ public:
       KeyedSequence fMotion;
       fMotion.appendChar(firstMotion);
       fMotion.appendChar(c);
-      fMotion.appendCharRepeated(repeatMotion, cnt);
+      fMotion.appendChar(repeatMotion, cnt);
 
       exploreFMotion(base, fMotion, col);
     }
@@ -382,14 +382,14 @@ public:
     int rightBound = (pos.line == lastLine) ? ctx.boundary.rightColOffset() : 0;
 
     if (pos.col > leftBound)
-      emitMotion(base, ctx.bank.h, {pos.line, pos.col - 1});
+      emitMotion(base, KeyedSequence::h, {pos.line, pos.col - 1});
 
     if (pos.col > leftBound)
-      emitMotion(base, ctx.bank.Zero, {pos.line, leftBound});
+      emitMotion(base, KeyedSequence::Zero, {pos.line, leftBound});
 
     int fnb = VimCore::firstNonBlankColInLineStr(ctx.lines[pos.line]);
     if (fnb >= leftBound && fnb <= lastCol - rightBound && fnb < pos.col)
-      emitMotion(base, ctx.bank.Caret, {pos.line, fnb});
+      emitMotion(base, KeyedSequence::Caret, {pos.line, fnb});
   }
 
   // --- Right: l, $, ^ (when fnb > pos.col) ---
@@ -402,16 +402,16 @@ public:
     int rightBound = (pos.line == lastLine) ? ctx.boundary.rightColOffset() : 0;
 
     if (pos.col < lastCol - rightBound)
-      emitMotion(base, ctx.bank.l, {pos.line, pos.col + 1});
+      emitMotion(base, KeyedSequence::l, {pos.line, pos.col + 1});
 
     int dollarCol = lastCol - rightBound;
     if (dollarCol > pos.col && dollarCol >= leftBound)
-      emitMotion(base, ctx.bank.Dollar, {pos.line, dollarCol, TARGETCOL_EOL});
+      emitMotion(base, KeyedSequence::Dollar, {pos.line, dollarCol, TARGETCOL_EOL});
 
     // ^ can move right if cursor is before first non-blank
     int fnb = VimCore::firstNonBlankColInLineStr(ctx.lines[pos.line]);
     if (fnb >= leftBound && fnb <= lastCol - rightBound && fnb > pos.col)
-      emitMotion(base, ctx.bank.Caret, {pos.line, fnb});
+      emitMotion(base, KeyedSequence::Caret, {pos.line, fnb});
   }
 
   // --- Up: k, <C-u>, gg ---
@@ -421,7 +421,7 @@ public:
     if (pos.line > 0) {
       int newLine = pos.line - 1;
       int newCol = VimCore::clampCol(ctx.lines, pos.targetCol, newLine);
-      emitMotion(base, ctx.bank.k, {newLine, newCol, pos.targetCol});
+      emitMotion(base, KeyedSequence::k, {newLine, newCol, pos.targetCol});
     }
 
     exploreScrollMotions<false>(base);
@@ -430,7 +430,7 @@ public:
       int endpointCol = VimOptions::startOfLine()
           ? VimCore::firstNonBlankColInLineStr(ctx.lines[0])
           : VimCore::clampCol(ctx.lines, pos.targetCol, 0);
-      emitMotion(base, ctx.bank.gg, {0, endpointCol, pos.targetCol});
+      emitMotion(base, KeyedSequence::gg, {0, endpointCol, pos.targetCol});
     }
   }
 
@@ -442,7 +442,7 @@ public:
     if (pos.line < lastLine) {
       int newLine = pos.line + 1;
       int newCol = VimCore::clampCol(ctx.lines, pos.targetCol, newLine);
-      emitMotion(base, ctx.bank.j, {newLine, newCol, pos.targetCol});
+      emitMotion(base, KeyedSequence::j, {newLine, newCol, pos.targetCol});
     }
 
     exploreScrollMotions<true>(base);
@@ -451,7 +451,7 @@ public:
       int endpointCol = VimOptions::startOfLine()
           ? VimCore::firstNonBlankColInLineStr(ctx.lines[lastLine])
           : VimCore::clampCol(ctx.lines, pos.targetCol, lastLine);
-      emitMotion(base, ctx.bank.G, {lastLine, endpointCol, pos.targetCol});
+      emitMotion(base, KeyedSequence::G, {lastLine, endpointCol, pos.targetCol});
     }
   }
 

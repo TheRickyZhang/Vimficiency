@@ -10,7 +10,6 @@
 #include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
 #include "Editor/Position.h"
-#include "Keyboard/KeyedSequenceBank.h"
 #include "State/MotionState.h"
 #include "State/PosKey.h"
 #include "Utils/Lines.h"
@@ -24,9 +23,6 @@ struct MotionSearchContext {
   const MotionBoundary& boundary;
   const MotionOptimizerParams& params;
   const Config& config;
-
-  // Pre-computed KeyedSequences with embedded effort (O(1) merge in hot path)
-  KeyedSequenceBank bank;
 
   // A* priority weights from params
   double effortWeight;

@@ -44,14 +44,9 @@ struct KeyedSequence {
     return *this;
   }
 
-  void append(std::string_view s, const PhysicalKeys& k) {
-    seq.append(s);
-    keys += k;
-  }
-
-  void appendChar(char c) {
-    seq.append(c);
-    keys.append(CHAR_TO_KEYS.at(c));
+  void appendChar(char c, int count = 1) {
+    seq.append(count, c);
+    keys.append(CHAR_TO_KEYS.at(c), count);
   }
 
   void appendText(std::string_view text) {
@@ -61,19 +56,9 @@ struct KeyedSequence {
     }
   }
 
-  void appendCharRepeated(char c, int count) {
-    const PhysicalKeys& charKeys = CHAR_TO_KEYS.at(c);
-    for (int i = 0; i < count; i++) {
-      seq.append(c);
-      keys.append(charKeys);
-    }
-  }
-
   void appendRepeated(const KeyedSequence& ks, int count) {
-    for (int i = 0; i < count; i++) {
-      seq.append(ks.seq.keys);
-      keys.append(ks.keys);
-    }
+    seq.append(count, std::string_view(ks.seq.keys));
+    keys.append(ks.keys, count);
   }
 
   void appendCounted(int count, const KeyedSequence& base) {

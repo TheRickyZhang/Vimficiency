@@ -112,7 +112,7 @@ inline KeyedSequence buildTypedCommands(
   // has leading spaces (char-wise edits that span lines).
   if constexpr (VimOptions::autoindent()) {
     if (suffixLeadingSpaces > 0 && goalLines.size() > 1) {
-      ks.appendCharRepeated(' ', suffixLeadingSpaces);
+      ks.appendChar(' ', suffixLeadingSpaces);
     }
   }
 
