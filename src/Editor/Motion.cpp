@@ -1,4 +1,7 @@
 #include "Motion.h"
+
+#include <ostream>
+
 #include "Editor/NavContext.h"
 #include "VimCore/VimCore.h"
 #include "VimCore/VimMotionUtils.h"

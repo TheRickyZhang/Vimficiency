@@ -106,18 +106,6 @@ jobs:
         with:
           name: benchmark-results
 
-      # One-time: remove stale result JSONs accidentally committed by old workflow's git add -A
-      - name: Clean stale artifacts from gh-pages
-        run: |
-          git fetch origin gh-pages
-          git checkout gh-pages
-          git rm -f --ignore-unmatch edit_result.json motion_result.json composition_result.json \
-            bench/style.css bench/common.js
-          git -c user.name=github-actions -c user.email=github-actions@github.com \
-            commit -m "Clean stale artifacts" || true
-          git push origin gh-pages
-          git checkout -
-
       - name: Store EditOptimizer results
         uses: benchmark-action/github-action-benchmark@v1
         with:

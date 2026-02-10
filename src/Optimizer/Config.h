@@ -1,4 +1,8 @@
 #pragma once
+
+#include <array>
+#include <string>
+
 #include "Keyboard/KeyboardModel.h"
 #include "Utils/Debug.h"
 // #include "State.h"

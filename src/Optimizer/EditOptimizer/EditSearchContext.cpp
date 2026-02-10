@@ -1,6 +1,8 @@
 #include "EditSearchContext.h"
 #include "EditExplorer.h"
 
+#include <iostream>
+
 using namespace std;
 
 EditSearchContext::EditSearchContext(const Lines& initialLines,

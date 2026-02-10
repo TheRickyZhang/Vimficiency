@@ -1,6 +1,7 @@
 #include "Optimizer/Config.h"
 
-#include <bits/stdc++.h>
+#include <vector>
+
 using namespace std;
 
 void fillQwerty(Config& cfg);

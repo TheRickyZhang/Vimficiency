@@ -1,7 +1,10 @@
-#include <bits/stdc++.h>
+#include "MotionToKeys.h"
+
+#include <string>
+#include <vector>
+
 using namespace std;
 
-#include "MotionToKeys.h"
 #include "MotionToKeysPrimitives.h"
 #include "Utils/Debug.h"
 

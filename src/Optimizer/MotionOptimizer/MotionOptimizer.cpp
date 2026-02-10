@@ -3,6 +3,7 @@
 #include "MotionExplorer.h"
 
 #include <limits>
+#include <map>
 #include <set>
 
 #include "Optimizer/BufferIndex.h"

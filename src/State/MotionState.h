@@ -1,7 +1,5 @@
 #pragma once
 
-#include <bits/stdc++.h>
-
 #include "PosKey.h"
 #include "RunningEffort.h"
 #include "Sequence.h"

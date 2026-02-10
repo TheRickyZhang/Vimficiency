@@ -1,9 +1,9 @@
 #pragma once
 
-#include <bits/stdc++.h>
-#include "KeyboardModel.h"
+#include <cassert>
+#include <cstdint>
 
-using namespace std;
+#include "KeyboardModel.h"
 
 inline FingerPosition fingerToPosition(Finger f) {
   assert(f != Finger::None);

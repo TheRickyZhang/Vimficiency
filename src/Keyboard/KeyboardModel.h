@@ -2,9 +2,8 @@
 
 #include <cassert>
 #include <cstdint>
-#include <ostream>
+#include <iosfwd>
 #include <span>
-#include <string.h>
 #include <vector>
 
 #include "XMacroKeyDefinitions.h"

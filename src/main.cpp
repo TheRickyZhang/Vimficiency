@@ -1,4 +1,8 @@
-#include <bits/stdc++.h>
+#include <filesystem>
+#include <format>
+#include <iostream>
+#include <string>
+#include <vector>
 
 #include "Optimizer/Config.h"
 #include "Boundary/MotionBoundary.h"

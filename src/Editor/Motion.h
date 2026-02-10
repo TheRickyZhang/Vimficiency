@@ -3,7 +3,7 @@
 // buffer content.
 #pragma once
 
-#include <iostream>
+#include <iosfwd>
 #include <string>
 #include <string_view>
 #include <vector>

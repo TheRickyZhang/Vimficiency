@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cassert>
-#include <iostream>
+#include <ostream>
 #include <memory>
 #include <string>
 #include <string_view>
