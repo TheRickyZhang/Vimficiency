@@ -31,35 +31,108 @@ jobs:
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF
           cmake --build build -j$(nproc)
-      - name: Run benchmarks
+      - name: Run EditOptimizer benchmarks
         run: |
           VIMFICIENCY_SEED_MODE=fixed \
           ./build/tests/vimficiency_benchmarks \
+            --benchmark_filter="EditOptimizer.*" \
             --benchmark_format=json \
-            --benchmark_out=benchmark_result.json
+            --benchmark_out=edit_result.json
+      - name: Run MotionOptimizer benchmarks
+        run: |
+          VIMFICIENCY_SEED_MODE=fixed \
+          ./build/tests/vimficiency_benchmarks \
+            --benchmark_filter="MotionOptimizer.*" \
+            --benchmark_format=json \
+            --benchmark_out=motion_result.json
+      - name: Run CompositionOptimizer benchmarks
+        run: |
+          VIMFICIENCY_SEED_MODE=fixed \
+          ./build/tests/vimficiency_benchmarks \
+            --benchmark_filter="CompositionOptimizer.*" \
+            --benchmark_format=json \
+            --benchmark_out=composition_result.json
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-result
-          path: benchmark_result.json
+          name: benchmark-results
+          path: |
+            edit_result.json
+            motion_result.json
+            composition_result.json
 
   benchmark-store:
     runs-on: ubuntu-latest
     needs: benchmark-run
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Download benchmark results
         uses: actions/download-artifact@v4
         with:
-          name: benchmark-result
-      - name: Store benchmark result
+          name: benchmark-results
+      - name: Store EditOptimizer results
         uses: benchmark-action/github-action-benchmark@v1
         with:
           tool: 'googlecpp'
-          output-file-path: benchmark_result.json
+          output-file-path: edit_result.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: true
+          benchmark-data-dir-path: bench/edit
           alert-threshold: '150%'
           comment-on-alert: true
           fail-on-alert: false
+      - name: Store MotionOptimizer results
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'googlecpp'
+          output-file-path: motion_result.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          benchmark-data-dir-path: bench/motion
+          alert-threshold: '150%'
+          comment-on-alert: true
+          fail-on-alert: false
+      - name: Store CompositionOptimizer results
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'googlecpp'
+          output-file-path: composition_result.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          benchmark-data-dir-path: bench/composition
+          alert-threshold: '150%'
+          comment-on-alert: true
+          fail-on-alert: false
+      - name: Create index page
+        run: |
+          git fetch origin gh-pages
+          git checkout gh-pages
+          cat > index.html << 'HTMLEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Vimficiency Benchmarks</title>
+            <style>
+              body { font-family: system-ui, sans-serif; max-width: 600px; margin: 80px auto; padding: 0 20px; }
+              h1 { margin-bottom: 8px; }
+              p { color: #666; margin-bottom: 32px; }
+              a { display: block; padding: 12px 16px; margin: 8px 0; background: #f5f5f5; border-radius: 6px; color: #333; text-decoration: none; }
+              a:hover { background: #e8e8e8; }
+            </style>
+          </head>
+          <body>
+            <h1>Vimficiency Benchmarks</h1>
+            <p>Performance tracking across commits</p>
+            <a href="bench/edit/">EditOptimizer</a>
+            <a href="bench/motion/">MotionOptimizer</a>
+            <a href="bench/composition/">CompositionOptimizer</a>
+          </body>
+          </html>
+          HTMLEOF
+          git add index.html
+          git -c user.name=github-actions -c user.email=github-actions@github.com \
+            commit -m "Update index page" --allow-empty || true
+          git push origin gh-pages
