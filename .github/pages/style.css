@@ -1,0 +1,208 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #fafafa;
+  color: #1a1a1a;
+  font-size: 17px;
+  line-height: 1.5;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 24px;
+}
+
+h1 { font-size: 2rem; font-weight: 800; margin-bottom: 4px; }
+h2 { font-size: 1.5rem; font-weight: 700; margin-bottom: 16px; }
+
+.subtitle {
+  color: #666;
+  font-size: 1.1rem;
+  margin-bottom: 40px;
+}
+
+.empty {
+  color: #888;
+  font-size: 1.1rem;
+  padding: 40px 0;
+}
+
+/* ── Index page ── */
+
+.optimizer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.optimizer-card {
+  display: block;
+  padding: 24px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.optimizer-card:hover {
+  border-color: #4285f4;
+  box-shadow: 0 2px 8px rgba(66, 133, 244, 0.15);
+}
+
+.optimizer-card h3 { font-size: 1.25rem; font-weight: 700; margin-bottom: 4px; }
+.optimizer-card p { color: #666; font-size: 0.95rem; }
+
+/* ── Summary cards ── */
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.summary-card {
+  display: block;
+  padding: 20px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.summary-card:hover {
+  border-color: #4285f4;
+  box-shadow: 0 2px 8px rgba(66, 133, 244, 0.12);
+}
+
+.card-title { font-weight: 700; font-size: 1.1rem; margin-bottom: 8px; }
+.card-value { font-size: 1.5rem; font-weight: 800; color: #333; }
+.card-meta { font-size: 0.9rem; color: #888; margin-top: 4px; }
+
+.trend-good { color: #34a853; font-weight: 600; }
+.trend-bad { color: #ea4335; font-weight: 600; }
+.trend-neutral { color: #888; }
+
+/* ── Navigation ── */
+
+.breadcrumb { margin-bottom: 24px; font-size: 1rem; }
+.breadcrumb a { color: #4285f4; text-decoration: none; font-weight: 600; }
+.breadcrumb a:hover { text-decoration: underline; }
+.breadcrumb .sep { color: #999; margin: 0 8px; }
+
+.category-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.back-link {
+  font-size: 0.95rem;
+  color: #4285f4;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.back-link:hover { text-decoration: underline; }
+
+/* ── Chart grid ── */
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 40px;
+}
+
+@media (max-width: 768px) {
+  .chart-grid { grid-template-columns: 1fr; }
+}
+
+.chart-card {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 16px;
+  cursor: pointer;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.chart-card:hover {
+  border-color: #4285f4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.chart-card h4 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #333;
+}
+
+.chart-wrapper {
+  position: relative;
+  height: 200px;
+}
+
+/* ── Fullscreen modal ── */
+
+.modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 1000;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+}
+
+.modal-overlay.active { display: flex; }
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  padding: 32px;
+  width: 100%;
+  max-width: 1000px;
+  max-height: 90vh;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.modal-header h3 { font-size: 1.3rem; font-weight: 700; }
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.8rem;
+  cursor: pointer;
+  color: #666;
+  padding: 4px 8px;
+  line-height: 1;
+}
+
+.modal-close:hover { color: #333; }
+
+.modal-chart {
+  position: relative;
+  height: 500px;
+}
+
+/* ── View sections ── */
+
+.view-section { display: none; }
+.view-section.active { display: block; }

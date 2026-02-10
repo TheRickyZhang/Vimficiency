@@ -8,12 +8,27 @@ jobs:
       image: archlinux:latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache pacman packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/pacman/pkg
+          key: pacman-test-${{ runner.os }}
+
       - name: Install deps
         run: pacman -Syu --noconfirm base-devel cmake git neovim
+
+      - name: Cache build dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: deps-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+
       - name: Build
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF
           cmake --build build -j$(nproc)
+
       - name: Unit tests
         run: ./build/tests/vimficiency_tests --gtest_brief=1
 
@@ -25,12 +40,27 @@ jobs:
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache pacman packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/pacman/pkg
+          key: pacman-bench-${{ runner.os }}
+
       - name: Install deps
         run: pacman -Syu --noconfirm base-devel cmake git
+
+      - name: Cache build dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: deps-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+
       - name: Build (Release)
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF
           cmake --build build -j$(nproc)
+
       - name: Run EditOptimizer benchmarks
         run: |
           VIMFICIENCY_SEED_MODE=fixed \
@@ -52,6 +82,7 @@ jobs:
             --benchmark_filter="CompositionOptimizer.*" \
             --benchmark_format=json \
             --benchmark_out=composition_result.json
+
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
         with:
@@ -69,10 +100,12 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+
       - name: Download benchmark results
         uses: actions/download-artifact@v4
         with:
           name: benchmark-results
+
       - name: Store EditOptimizer results
         uses: benchmark-action/github-action-benchmark@v1
         with:
@@ -106,33 +139,29 @@ jobs:
           alert-threshold: '150%'
           comment-on-alert: true
           fail-on-alert: false
-      - name: Create index page
+
+      - name: Deploy custom pages
         run: |
+          # Save page templates from main branch before switching
+          cp -r .github/pages /tmp/bench-pages
+
+          # Switch to gh-pages (includes data.js from benchmark-action)
           git fetch origin gh-pages
           git checkout gh-pages
-          cat > index.html << 'HTMLEOF'
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>Vimficiency Benchmarks</title>
-            <style>
-              body { font-family: system-ui, sans-serif; max-width: 600px; margin: 80px auto; padding: 0 20px; }
-              h1 { margin-bottom: 8px; }
-              p { color: #666; margin-bottom: 32px; }
-              a { display: block; padding: 12px 16px; margin: 8px 0; background: #f5f5f5; border-radius: 6px; color: #333; text-decoration: none; }
-              a:hover { background: #e8e8e8; }
-            </style>
-          </head>
-          <body>
-            <h1>Vimficiency Benchmarks</h1>
-            <p>Performance tracking across commits</p>
-            <a href="bench/edit/">EditOptimizer</a>
-            <a href="bench/motion/">MotionOptimizer</a>
-            <a href="bench/composition/">CompositionOptimizer</a>
-          </body>
-          </html>
-          HTMLEOF
-          git add index.html
+
+          # Deploy root index and shared assets
+          cp /tmp/bench-pages/index.html ./index.html
+          mkdir -p bench
+          cp /tmp/bench-pages/style.css bench/style.css
+          cp /tmp/bench-pages/common.js bench/common.js
+          touch .nojekyll
+
+          # Deploy optimizer pages (overrides benchmark-action's generated HTML)
+          for dir in bench/edit bench/motion bench/composition; do
+            [ -d "$dir" ] && cp /tmp/bench-pages/optimizer.html "$dir/index.html"
+          done
+
+          git add -A
           git -c user.name=github-actions -c user.email=github-actions@github.com \
-            commit -m "Update index page" --allow-empty || true
+            commit -m "Update benchmark pages" || true
           git push origin gh-pages

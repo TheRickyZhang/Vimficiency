@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Benchmarks</title>
+  <link rel="stylesheet" href="../style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+  <div class="container">
+    <div class="breadcrumb">
+      <a href="../..">Vimficiency</a>
+      <span class="sep">&#x203A;</span>
+      <span id="page-title">Benchmarks</span>
+    </div>
+    <h1 id="optimizer-title">Benchmarks</h1>
+    <p class="subtitle">Performance tracking across commits</p>
+    <div id="content"></div>
+  </div>
+  <script src="data.js"></script>
+  <script src="../common.js"></script>
+  <script>renderOptimizer('content');</script>
+</body>
+</html>

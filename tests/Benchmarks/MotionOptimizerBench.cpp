@@ -12,7 +12,6 @@
 
 #include "Benchmarks/BenchUtils.h"
 #include "Boundary/MotionBoundary.h"
-#include "Editor/NavContext.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizerParams.h"
