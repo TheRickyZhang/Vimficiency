@@ -12,35 +12,36 @@
 // Suffix Cache Types - for cross-position sharing in EditOptimizer
 // =============================================================================
 
-// Key for suffix cache: (Lines, Position, Mode) WITHOUT startIndex
-// This enables sharing cached suffixes across different starting positions
+// Key for suffix cache: (linesHash, lineCount, Position, Mode) WITHOUT startIndex
+// This enables sharing cached suffixes across different starting positions.
+// Uses precomputed 64-bit hash instead of full buffer copy for O(1) key construction.
 struct SuffixKey {
-  Lines lines;
+  size_t linesHash;
+  int lineCount;
   int line;
   int col;
   Mode mode;
 
-  SuffixKey(const Lines& l, int ln, int c, Mode m)
-      : lines(l), line(ln), col(c), mode(m) {}
+  SuffixKey(size_t lh, int lc, int ln, int c, Mode m)
+      : linesHash(lh), lineCount(lc), line(ln), col(c), mode(m) {}
 
-  SuffixKey(const Lines& l, Position p, Mode m)
-      : lines(l), line(p.line), col(p.col), mode(m) {}
+  SuffixKey(size_t lh, int lc, Position p, Mode m)
+      : linesHash(lh), lineCount(lc), line(p.line), col(p.col), mode(m) {}
 
   bool operator==(const SuffixKey& other) const {
-    return line == other.line && col == other.col
-        && mode == other.mode && lines == other.lines;
+    return linesHash == other.linesHash && lineCount == other.lineCount
+        && line == other.line && col == other.col
+        && mode == other.mode;
   }
 };
 
 struct SuffixKeyHash {
   size_t operator()(const SuffixKey& k) const {
-    size_t h = 0;
+    size_t h = k.linesHash;
+    h ^= std::hash<int>{}(k.lineCount) + 0x9e3779b9 + (h << 6) + (h >> 2);
     h ^= std::hash<int>{}(k.line) + 0x9e3779b9 + (h << 6) + (h >> 2);
     h ^= std::hash<int>{}(k.col) + 0x9e3779b9 + (h << 6) + (h >> 2);
     h ^= std::hash<int>{}(static_cast<int>(k.mode)) + 0x9e3779b9 + (h << 6) + (h >> 2);
-    // Hash first line content (Lines invariant: always at least one line)
-    h ^= std::hash<std::string>{}(k.lines[0]) + 0x9e3779b9 + (h << 6) + (h >> 2);
-    h ^= std::hash<size_t>{}(k.lines.size()) + 0x9e3779b9 + (h << 6) + (h >> 2);
     return h;
   }
 };

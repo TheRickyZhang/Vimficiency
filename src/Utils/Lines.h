@@ -198,5 +198,22 @@ struct Lines final : std::vector<Line> {
   }
 };
 
+// FNV-1a hash over all line contents + line count.
+// Used to replace full buffer copies in A* costmap keys.
+inline size_t hashLines(const Lines& lines) {
+  size_t h = 0xcbf29ce484222325ULL;
+  for (const auto& line : lines) {
+    for (char c : line) {
+      h ^= static_cast<size_t>(static_cast<unsigned char>(c));
+      h *= 0x100000001b3ULL;
+    }
+    h ^= '\n';
+    h *= 0x100000001b3ULL;
+  }
+  h ^= lines.size();
+  h *= 0x100000001b3ULL;
+  return h;
+}
+
 // Copy-on-write shared Lines for efficient state sharing in A* search.
 using SharedLines = std::shared_ptr<const Lines>;

@@ -21,32 +21,31 @@
 // =============================================================================
 
 struct EditStateKey {
-  Lines lines;
+  size_t linesHash;
+  int lineCount;
   int line;
   int col;
   Mode mode;
   int startIndex;  // Include startIndex so each starting position has independent search
 
-  EditStateKey(const Lines& l, Position p, Mode m, int idx)
-      : lines(l), line(p.line), col(p.col), mode(m), startIndex(idx) {}
+  EditStateKey(size_t lh, int lc, Position p, Mode m, int idx)
+      : linesHash(lh), lineCount(lc), line(p.line), col(p.col), mode(m), startIndex(idx) {}
 
   bool operator==(const EditStateKey& other) const {
-    return line == other.line && col == other.col
-        && mode == other.mode && startIndex == other.startIndex
-        && lines == other.lines;
+    return linesHash == other.linesHash && lineCount == other.lineCount
+        && line == other.line && col == other.col
+        && mode == other.mode && startIndex == other.startIndex;
   }
 };
 
 struct EditStateKeyHash {
   size_t operator()(const EditStateKey& k) const {
-    size_t h = 0;
+    size_t h = k.linesHash;
+    h ^= std::hash<int>{}(k.lineCount) + 0x9e3779b9 + (h << 6) + (h >> 2);
     h ^= std::hash<int>{}(k.line) + 0x9e3779b9 + (h << 6) + (h >> 2);
     h ^= std::hash<int>{}(k.col) + 0x9e3779b9 + (h << 6) + (h >> 2);
     h ^= std::hash<int>{}(static_cast<int>(k.mode)) + 0x9e3779b9 + (h << 6) + (h >> 2);
     h ^= std::hash<int>{}(k.startIndex) + 0x9e3779b9 + (h << 6) + (h >> 2);
-    // Hash first line content for differentiation (Lines invariant: always at least one line)
-    h ^= std::hash<std::string>{}(k.lines[0]) + 0x9e3779b9 + (h << 6) + (h >> 2);
-    h ^= std::hash<size_t>{}(k.lines.size()) + 0x9e3779b9 + (h << 6) + (h >> 2);
     return h;
   }
 };
@@ -60,6 +59,7 @@ class EditState {
   Position pos;                   // Cursor position
   Mode mode = Mode::Normal;       // Current editing mode
   int startIndex;                 // Which starting position this search is for
+  size_t linesHash_;              // Precomputed FNV-1a hash of buffer content
 
   std::string seq_{};             // Sequence of operations taken
   RunningEffort runningEffort{};  // Typing effort tracker (internal)
@@ -70,7 +70,8 @@ class EditState {
 
 public:
   EditState(Lines lines, Position pos, int startIndex, double initialCost)
-    : lines(std::move(lines)), pos(pos), startIndex(startIndex), cost_(initialCost) {}
+    : lines(std::move(lines)), pos(pos), startIndex(startIndex),
+      linesHash_(hashLines(this->lines)), cost_(initialCost) {}
 
   // For priority queue ordering (min-heap) - default uses cost (A*)
   bool operator>(const EditState& other) const { return cost_ > other.cost_; }
@@ -84,8 +85,9 @@ public:
   void setPos(Position newPos) { pos = newPos; }
   Mode getMode() const { return mode; }
   int getStartIndex() const { return startIndex; }
+  size_t getLinesHash() const { return linesHash_; }
 
-  EditStateKey getKey() const { return EditStateKey(lines, pos, mode, startIndex); }
+  EditStateKey getKey() const { return EditStateKey(linesHash_, static_cast<int>(lines.size()), pos, mode, startIndex); }
   double getEffort() const { return effort_; }
   double getCost() const { return cost_; }
   const std::string& getSeq() const { return seq_; }
@@ -112,6 +114,7 @@ public:
   [[nodiscard]] EditState afterDeletion(const Range& range) const {
     EditState newState = *this;
     VimCore::deleteRange(newState.lines, range, newState.pos, Mode::Normal);
+    newState.linesHash_ = hashLines(newState.lines);
     return newState;
   }
 
@@ -119,6 +122,7 @@ public:
   [[nodiscard]] EditState afterLinewiseDeletion(int line) const {
     EditState newState = *this;
     VimCore::deleteRangeLinewise(newState.lines, LineRange(line, line), newState.pos);
+    newState.linesHash_ = hashLines(newState.lines);
     return newState;
   }
 
@@ -126,6 +130,7 @@ public:
   [[nodiscard]] EditState afterJoin(bool addSpace) const {
     EditState newState = *this;
     VimCore::joinLines(newState.lines, newState.pos, addSpace);
+    newState.linesHash_ = hashLines(newState.lines);
     return newState;
   }
 

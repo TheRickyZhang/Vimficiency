@@ -527,7 +527,8 @@ EditOptimizer::optimizeEdit(
     Mode replayMode = Mode::Normal;
 
     // Cache the seed state (suffix[0] = full search + goal suffix)
-    SuffixKey seedKey(replayLines, replayPos, replayMode);
+    size_t replayHash = hashLines(replayLines);
+    SuffixKey seedKey(replayHash, static_cast<int>(replayLines.size()), replayPos, replayMode);
     if (suffixCache.find(seedKey) == suffixCache.end()) {
       suffixCache[seedKey] = SuffixValue{suffixKs[0], suffixEfforts[0]};
     }
@@ -536,7 +537,8 @@ EditOptimizer::optimizeEdit(
     for (int i = 0; i < n; i++) {
       Edit::applyEdit(replayLines, replayPos, replayMode, edits[i]);
 
-      SuffixKey sk(replayLines, replayPos, replayMode);
+      replayHash = hashLines(replayLines);
+      SuffixKey sk(replayHash, static_cast<int>(replayLines.size()), replayPos, replayMode);
       if (suffixCache.find(sk) == suffixCache.end()) {
         suffixCache[sk] = SuffixValue{suffixKs[i + 1], suffixEfforts[i + 1]};
       }
@@ -647,7 +649,7 @@ EditOptimizer::optimizeEdit(
     if (results[s.getStartIndex()].isValid()) continue;
 
     // Check suffix cache
-    SuffixKey sk(s.getLines(), s.getPos(), s.getMode());
+    SuffixKey sk(s.getLinesHash(), static_cast<int>(s.getLines().size()), s.getPos(), s.getMode());
     auto cacheIt = suffixCache.find(sk);
     if (cacheIt != suffixCache.end()) {
       cacheHits++;
