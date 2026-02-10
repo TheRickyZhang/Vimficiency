@@ -359,7 +359,7 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
       goalPos = Position(lastLine, lastCol);
     }
 
-    EditResult optResult = editOptimizer.optimizeEdit(
+    EditResult optResult = editOptimizer.optimizeEditWithSuffixCache(
         diff.deletedLines(), diff.insertedLines(), diff.boundary, {},
         diff.beginPos.line, diff.beginPos.col, goalPos);
     results.push_back(std::move(optResult));
@@ -853,7 +853,7 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
             fullTgtLines[g].empty() ? 0
             : static_cast<int>(fullTgtLines[g].size()) - 1);
 
-        EditResult residualResult = editOptimizer.optimizeEdit(
+        EditResult residualResult = editOptimizer.optimizeEditWithSuffixCache(
             residualInitial, residualGoal, groupBoundary, {},
             0, 0, residualGoalPos);
 

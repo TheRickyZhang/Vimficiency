@@ -1,10 +1,14 @@
 // tests/Benchmarks/EditOptimizerBench.cpp
 //
-// Performance benchmarks for EditOptimizer.
+// Performance benchmarks for EditOptimizer using Google Benchmark.
 //
-// Run: ./build/tests/vimficiency_benchmarks --gtest_filter="*EditOptimizer*"
+// Run: ./build/tests/vimficiency_benchmarks --benchmark_filter="EditOptimizer.*"
 
-#include <gtest/gtest.h>
+#include <algorithm>
+#include <string>
+#include <vector>
+
+#include <benchmark/benchmark.h>
 
 #include "Benchmarks/BenchUtils.h"
 #include "Boundary/EditBoundary.h"
@@ -15,17 +19,16 @@
 
 using namespace std;
 
+namespace {
+
 // =============================================================================
 // A/B Comparison Configuration
 // =============================================================================
 
 constexpr bool ENABLE_COMPARISON = true;
-constexpr const char* COMPARISON_NAME = "Standard vs SuffixCache";
 
-// NOTE: Must be static, not inline - inline causes incorrect behavior with templates
 static EditOptimizerParams paramsA() {
-  EditOptimizerParams p;
-  return p;
+  return EditOptimizerParams{};
 }
 
 static EditOptimizerParams paramsB() {
@@ -38,268 +41,368 @@ static EditOptimizerParams paramsB() {
 // Benchmark Infrastructure
 // =============================================================================
 
-class EditOptimizerBench : public ::testing::Test {
-protected:
-  static Config config;
+static Config benchConfig = Config::uniform();
 
-  static void SetUpTestSuite() { RandomGen::seed(42); }
+struct BenchmarkSetup {
+  Lines initialLines;
+  Lines goalLines;
+  EditBoundary boundary;
 
-  struct BenchmarkSetup {
-    Lines initialLines;
-    Lines goalLines;
-    EditBoundary boundary;
+  // Pure deletion: delete all content
+  BenchmarkSetup(const Lines& lines)
+      : initialLines(lines),
+        goalLines({""}),
+        boundary(lines, Position(0, 0), lines.endPos()) {}
 
-    // Pure deletion: delete all content
-    BenchmarkSetup(const Lines& lines)
-        : initialLines(lines),
-          goalLines({""}),
-          boundary(lines, Position(0, 0), lines.endPos()) {}
-
-    // Custom goal
-    BenchmarkSetup(const Lines& initial, const Lines& goal, const EditBoundary& b)
-        : initialLines(initial), goalLines(goal), boundary(b) {}
-  };
-
-  static BenchmarkResult runWithParams(const BenchmarkSetup& cfg,
-                                       const EditOptimizerParams& params,
-                                       int iterations = DEFAULT_TIMING_ITERATIONS) {
-    EditOptimizer opt(config);
-    SearchStats lastStats;
-
-    bool isPureDeletion = (cfg.goalLines.size() == 1 && cfg.goalLines[0].empty());
-
-    TimingStats timing = measureTiming(
-        [&]() {
-          EditResult result = isPureDeletion
-              ? opt.optimizePureDeletion(cfg.initialLines, cfg.boundary, params)
-              : params.useSuffixCache
-                  ? opt.optimizeEditWithSuffixCache(cfg.initialLines, cfg.goalLines, cfg.boundary, params)
-                  : opt.optimizeEdit(cfg.initialLines, cfg.goalLines, cfg.boundary, params);
-          lastStats = result.stats;
-        },
-        iterations);
-
-    return {timing, lastStats};
-  }
-
-  static int maxResultsFor(const BenchmarkSetup& setup) {
-    return max(10, setup.initialLines.totalPositions() / 4);
-  }
-
-  // Apply maxResults cap based on the setup's totalPositions
-  static EditOptimizerParams withCap(EditOptimizerParams p, const BenchmarkSetup& s) {
-    return p.withMaxResults(max(10, s.initialLines.totalPositions() / 4));
-  }
-
-  // ================== Print Helpers (Multi-Seed) ==================
-  static void printMultiSeedRow(const string& label, int numLines, int avgLen = 30,
-                                BufferShape shape = BufferShape::CodeLike) {
-    runMultiSeedBenchmark<ENABLE_COMPARISON, EditOptimizerParams, BenchmarkSetup>(
-        label,
-        [=]() { return BenchmarkSetup(generateBuffer(numLines, avgLen, shape)); },
-        paramsA(), paramsB(),
-        [](const BenchmarkSetup& s, const EditOptimizerParams& p) {
-          return runWithParams(s, withCap(p, s));
-        });
-  }
-
-  static void printMultiSeedRowWithNodes(const string& label, int numLines, int avgLen,
-                                         int maxNodes) {
-    runMultiSeedBenchmark<ENABLE_COMPARISON, EditOptimizerParams, BenchmarkSetup>(
-        label,
-        [=]() { return BenchmarkSetup(generateBuffer(numLines, avgLen)); },
-        paramsA().withMaxNodesExplored(maxNodes),
-        paramsB().withMaxNodesExplored(maxNodes),
-        [](const BenchmarkSetup& s, const EditOptimizerParams& p) {
-          return runWithParams(s, withCap(p, s));
-        });
-  }
-
-  // ================== Print Helpers (Single Setup) ==================
-  static void printRow(const string& label, const BenchmarkSetup& setup) {
-    int mr = maxResultsFor(setup);
-    runUnifiedBenchmark<ENABLE_COMPARISON>(
-        label, setup,
-        paramsA().withMaxResults(mr), paramsB().withMaxResults(mr),
-        [](const BenchmarkSetup& s, const EditOptimizerParams& p) {
-          return runWithParams(s, p);
-        });
-  }
-
-  static void printRowWithNodes(const string& label, const BenchmarkSetup& setup, int maxNodes) {
-    int mr = maxResultsFor(setup);
-    runUnifiedBenchmark<ENABLE_COMPARISON>(
-        label, setup,
-        paramsA().withMaxNodesExplored(maxNodes).withMaxResults(mr),
-        paramsB().withMaxNodesExplored(maxNodes).withMaxResults(mr),
-        [](const BenchmarkSetup& s, const EditOptimizerParams& p) {
-          return runWithParams(s, p);
-        });
-  }
+  // Custom goal
+  BenchmarkSetup(const Lines& initial, const Lines& goal, const EditBoundary& b)
+      : initialLines(initial), goalLines(goal), boundary(b) {}
 };
 
-Config EditOptimizerBench::config = Config::uniform();
+static void runWithParams(const BenchmarkSetup& cfg,
+                          const EditOptimizerParams& params,
+                          SearchStats& outStats) {
+  EditOptimizer opt(benchConfig);
+  bool isPureDeletion = (cfg.goalLines.size() == 1 && cfg.goalLines[0].empty());
+
+  EditResult result = isPureDeletion
+      ? opt.optimizePureDeletion(cfg.initialLines, cfg.boundary, params)
+      : params.useSuffixCache
+          ? opt.optimizeEditWithSuffixCache(cfg.initialLines, cfg.goalLines, cfg.boundary, params)
+          : opt.optimizeEdit(cfg.initialLines, cfg.goalLines, cfg.boundary, params);
+  outStats = result.stats;
+}
+
+static int maxResultsFor(const BenchmarkSetup& setup) {
+  return max(10, setup.initialLines.totalPositions() / 4);
+}
+
+static EditOptimizerParams withCap(EditOptimizerParams p, const BenchmarkSetup& s) {
+  return p.withMaxResults(max(10, s.initialLines.totalPositions() / 4));
+}
 
 // =============================================================================
-// Benchmarks
+// Benchmark Functions
 // =============================================================================
 
-TEST_F(EditOptimizerBench, BufferSize) {
-  printBanner("EditOptimizer Benchmark Suite");
-  if constexpr (ENABLE_COMPARISON) {
-    cout << "Comparison: " << COMPARISON_NAME << endl;
+static void BM_EditBufferSize(benchmark::State& state, bool useSuffixCache) {
+  int numLines = static_cast<int>(state.range(0));
+  auto& seedMgr = SeedManager::instance();
+  SearchStats lastStats;
+  int iter = 0;
+  for (auto _ : state) {
+    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
+    auto setup = BenchmarkSetup(generateBuffer(numLines, 30));
+    auto params = useSuffixCache ? paramsB() : paramsA();
+    runWithParams(setup, withCap(params, setup), lastStats);
+    iter++;
   }
-  cout << "(Averaged across " << DEFAULT_SEED_COUNT << " seeds - "
-       << getSeedModeDescription() << ")\n";
-  printHeader("Buffer Size Benchmark (Pure Deletion)");
-  printUnifiedHeader<ENABLE_COMPARISON>("Lines");
+  setSearchCounters(state, lastStats);
+}
 
-  for (int numLines : {1, 3, 5, 10, 15}) {
-    printMultiSeedRow(to_string(numLines), numLines, 30);
+static void BM_EditLineLength(benchmark::State& state, bool useSuffixCache) {
+  int avgLen = static_cast<int>(state.range(0));
+  auto& seedMgr = SeedManager::instance();
+  SearchStats lastStats;
+  int iter = 0;
+  for (auto _ : state) {
+    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
+    auto setup = BenchmarkSetup(generateBuffer(5, avgLen));
+    auto params = useSuffixCache ? paramsB() : paramsA();
+    runWithParams(setup, withCap(params, setup), lastStats);
+    iter++;
+  }
+  setSearchCounters(state, lastStats);
+}
+
+static void BM_EditBufferShape(benchmark::State& state, bool useSuffixCache, BufferShape shape) {
+  auto& seedMgr = SeedManager::instance();
+  SearchStats lastStats;
+  int iter = 0;
+  for (auto _ : state) {
+    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
+    auto setup = BenchmarkSetup(generateBuffer(10, 30, shape));
+    auto params = useSuffixCache ? paramsB() : paramsA();
+    runWithParams(setup, withCap(params, setup), lastStats);
+    iter++;
+  }
+  setSearchCounters(state, lastStats);
+}
+
+static void BM_EditSearchDepth(benchmark::State& state, bool useSuffixCache) {
+  int maxNodes = static_cast<int>(state.range(0));
+  auto& seedMgr = SeedManager::instance();
+  SearchStats lastStats;
+  int iter = 0;
+  for (auto _ : state) {
+    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
+    auto setup = BenchmarkSetup(generateBuffer(15, 30));
+    auto params = useSuffixCache ? paramsB() : paramsA();
+    params.maxNodesExplored = maxNodes;
+    runWithParams(setup, withCap(params, setup), lastStats);
+    iter++;
+  }
+  setSearchCounters(state, lastStats);
+}
+
+static void BM_EditMultiLineDelete(benchmark::State& state, bool useSuffixCache) {
+  int numLines = static_cast<int>(state.range(0));
+  auto& seedMgr = SeedManager::instance();
+  SearchStats lastStats;
+  int iter = 0;
+  for (auto _ : state) {
+    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
+    auto setup = BenchmarkSetup(generateBuffer(numLines, 20));
+    auto params = useSuffixCache ? paramsB() : paramsA();
+    runWithParams(setup, withCap(params, setup), lastStats);
+    iter++;
+  }
+  setSearchCounters(state, lastStats);
+}
+
+static void BM_EditBoundaryConstraints(benchmark::State& state, bool useSuffixCache, int boundaryType) {
+  SearchStats lastStats;
+  for (auto _ : state) {
+    RandomGen::seed(42);
+    Lines fullBuffer = generateBuffer(10, 30);
+    auto params = useSuffixCache ? paramsB() : paramsA();
+
+    BenchmarkSetup setup(fullBuffer);
+    switch (boundaryType) {
+      case 0: // None
+        break;
+      case 1: { // Prefix
+        Position firstPos(0, 15);
+        Position endPos = fullBuffer.endPos();
+        Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
+        EditBoundary boundary(fullBuffer, firstPos, endPos);
+        setup = BenchmarkSetup(editRegion, {""}, boundary);
+        break;
+      }
+      case 2: { // Suffix
+        Position firstPos(0, 0);
+        int lastLine = fullBuffer.lastLine();
+        int midCol = static_cast<int>(fullBuffer[lastLine].size()) / 2;
+        Position endPos(lastLine, midCol + 1);
+        Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
+        EditBoundary boundary(fullBuffer, firstPos, endPos);
+        setup = BenchmarkSetup(editRegion, {""}, boundary);
+        break;
+      }
+      case 3: { // Both
+        Position firstPos(0, 10);
+        int lastLine = fullBuffer.lastLine();
+        int lastLineLen = static_cast<int>(fullBuffer[lastLine].size());
+        Position endPos(lastLine, max(1, lastLineLen - 10 + 1));
+        Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
+        EditBoundary boundary(fullBuffer, firstPos, endPos);
+        setup = BenchmarkSetup(editRegion, {""}, boundary);
+        break;
+      }
+    }
+    int mr = maxResultsFor(setup);
+    runWithParams(setup, params.withMaxResults(mr), lastStats);
+  }
+  setSearchCounters(state, lastStats);
+}
+
+static void BM_EditMultiLineFixed(benchmark::State& state, bool useSuffixCache, int caseNum) {
+  SearchStats lastStats;
+  for (auto _ : state) {
+    auto params = useSuffixCache ? paramsB() : paramsA();
+    BenchmarkSetup setup({""});
+
+    auto makeSetup = [](const Lines& buffer, const Lines& goal,
+                        Position editBegin, Position editEnd) {
+      Lines editRegion = buffer.getSpan(editBegin, editEnd);
+      EditBoundary boundary(buffer, editBegin, editEnd);
+      return BenchmarkSetup(editRegion, goal, boundary);
+    };
+
+    switch (caseNum) {
+      case 0: { // 2L->1w
+        Lines buffer = {"I saw a pig in barn in Switzerland", "Inconspicuous, even"};
+        Lines goal = {"Florida"};
+        setup = makeSetup(buffer, goal, Position(0, 23), Position(1, 19));
+        break;
+      }
+      case 1: { // 3L->1w
+        Lines buffer = {"The quick brown fox jumps over the lazy dog",
+                        "and then runs around the park",
+                        "before going home to sleep"};
+        Lines goal = {"walked away"};
+        setup = makeSetup(buffer, goal, Position(0, 20), Position(2, 26));
+        break;
+      }
+      case 2: { // 5L+bnd
+        Lines buffer = {"prefix stuff delete me line one",
+                        "delete me line two",
+                        "delete me line three",
+                        "delete me line four",
+                        "delete me line five and suffix here"};
+        Lines goal = {"replaced"};
+        setup = makeSetup(buffer, goal, Position(0, 13), Position(4, 22));
+        break;
+      }
+    }
+    int mr = maxResultsFor(setup);
+    runWithParams(setup, params.withMaxResults(mr), lastStats);
+  }
+  setSearchCounters(state, lastStats);
+}
+
+static void BM_EditMultiLineRandom(benchmark::State& state, bool useSuffixCache) {
+  int numLines = static_cast<int>(state.range(0));
+  auto& seedMgr = SeedManager::instance();
+  SearchStats lastStats;
+  int iter = 0;
+  for (auto _ : state) {
+    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
+    Lines buffer = generateBuffer(numLines, 25);
+    Lines goal = {"replacement"};
+    EditBoundary boundary(buffer, Position(0, 0), buffer.endPos());
+    auto setup = BenchmarkSetup(buffer, goal, boundary);
+    auto params = useSuffixCache ? paramsB() : paramsA();
+    runWithParams(setup, withCap(params, setup), lastStats);
+    iter++;
+  }
+  setSearchCounters(state, lastStats);
+}
+
+// Small full-content change: matches MultiLine_FullBufferChange pattern
+// (2-3 lines × 4-8 chars, initial → different goal, default params)
+static void BM_EditSmallChange(benchmark::State& state, bool useSuffixCache) {
+  int numLines = static_cast<int>(state.range(0));
+  auto& seedMgr = SeedManager::instance();
+  SearchStats lastStats;
+  int iter = 0;
+  for (auto _ : state) {
+    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
+    Lines source = randomLines(numLines, 4, 8);
+    Lines goal = randomLines(numLines, 4, 8);
+    if (source == goal) goal[0] = "changed";
+    EditBoundary boundary(source, {0, 0}, source.endPos());
+    auto setup = BenchmarkSetup(source, goal, boundary);
+    auto params = useSuffixCache ? paramsB() : paramsA();
+    runWithParams(setup, params, lastStats);  // default maxResults, no cap
+    iter++;
+  }
+  setSearchCounters(state, lastStats);
+}
+
+// Small embedded change: matches MultiLine_EmbeddedChange pattern
+// (edit region with prefix/suffix boundary, small lines)
+static void BM_EditSmallEmbeddedChange(benchmark::State& state, bool useSuffixCache) {
+  int numLines = static_cast<int>(state.range(0));
+  auto& seedMgr = SeedManager::instance();
+  SearchStats lastStats;
+  int iter = 0;
+  for (auto _ : state) {
+    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
+    // Generate full buffer, carve out edit region with prefix/suffix
+    Lines fullBuffer = randomLines(numLines + 1, 8, 15);
+    int prefixLen = min(4, static_cast<int>(fullBuffer[0].size()) / 2);
+    int lastLine = static_cast<int>(fullBuffer.size()) - 1;
+    int suffixLen = min(4, static_cast<int>(fullBuffer[lastLine].size()) / 2);
+    Position firstPos(0, prefixLen);
+    Position endPos(lastLine, static_cast<int>(fullBuffer[lastLine].size()) - suffixLen);
+    if (endPos.col <= 0) endPos.col = static_cast<int>(fullBuffer[lastLine].size());
+    Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
+    EditBoundary boundary(fullBuffer, firstPos, endPos);
+    Lines goal = randomLines(static_cast<int>(editRegion.size()), 4, 8);
+    auto setup = BenchmarkSetup(editRegion, goal, boundary);
+    auto params = useSuffixCache ? paramsB() : paramsA();
+    runWithParams(setup, params, lastStats);  // default maxResults, no cap
+    iter++;
+  }
+  setSearchCounters(state, lastStats);
+}
+
+// =============================================================================
+// Registration
+// =============================================================================
+
+// Helper to register A/B variants
+template <typename... Args>
+static void registerBenchmark(const string& name, void(*fn)(benchmark::State&, bool, Args...), Args... args) {
+  benchmark::RegisterBenchmark(name + "/Standard", fn, false, args...);
+  if (ENABLE_COMPARISON) {
+    benchmark::RegisterBenchmark(name + "/SuffixCache", fn, true, args...);
   }
 }
 
-TEST_F(EditOptimizerBench, LineLength) {
-  printHeader("Line Length Benchmark");
-  printUnifiedHeader<ENABLE_COMPARISON>("Chars");
+// Overload for parameterized (Arg) benchmarks
+static void registerArgBenchmark(const string& name, void(*fn)(benchmark::State&, bool),
+                                 const vector<int>& args) {
+  auto* a = benchmark::RegisterBenchmark(name + "/Standard", fn, false);
+  for (int v : args) a->Arg(v);
+  a->Iterations(DEFAULT_SEED_COUNT);
 
-  for (int avgLen : {10, 20, 40, 60}) {
-    printMultiSeedRow(to_string(avgLen), 5, avgLen);
+  if (ENABLE_COMPARISON) {
+    auto* b = benchmark::RegisterBenchmark(name + "/SuffixCache", fn, true);
+    for (int v : args) b->Arg(v);
+    b->Iterations(DEFAULT_SEED_COUNT);
   }
 }
 
-TEST_F(EditOptimizerBench, BufferShape) {
-  printHeader("Buffer Shape Benchmark");
-  printUnifiedHeader<ENABLE_COMPARISON>("Shape");
+// Static initialization block to register all benchmarks
+static int registerEditBenchmarks = []() {
+  // BufferSize
+  registerArgBenchmark("EditOptimizer/BufferSize", BM_EditBufferSize,
+                       {1, 3, 5, 10, 15});
 
+  // LineLength
+  registerArgBenchmark("EditOptimizer/LineLength", BM_EditLineLength,
+                       {10, 20, 40, 60});
+
+  // BufferShape
   for (const auto& [name, shape] : vector<pair<string, BufferShape>>{
            {"Uniform", BufferShape::Uniform},
            {"Prose", BufferShape::Prose},
            {"CodeLike", BufferShape::CodeLike}}) {
-    printMultiSeedRow(name, 10, 30, shape);
-  }
-}
-
-TEST_F(EditOptimizerBench, SearchDepth) {
-  printHeader("Search Depth Benchmark");
-  printUnifiedHeader<ENABLE_COMPARISON>("Depth");
-
-  for (int depth : {1000, 5000, 10000, 50000}) {
-    printMultiSeedRowWithNodes(to_string(depth), 15, 30, depth);
-  }
-}
-
-TEST_F(EditOptimizerBench, MultiLineDelete) {
-  printHeader("Multi-Line Deletion Benchmark");
-  printUnifiedHeader<ENABLE_COMPARISON>("Lines");
-
-  for (int numLines : {2, 4, 6, 8, 10}) {
-    printMultiSeedRow(to_string(numLines), numLines, 20);
-  }
-}
-
-TEST_F(EditOptimizerBench, BoundaryConstraints) {
-  printHeader("Boundary Constraints Benchmark");
-  printUnifiedHeader<ENABLE_COMPARISON>("Boundary");
-
-  RandomGen::seed(42);
-  Lines fullBuffer = generateBuffer(10, 30);
-
-  // Full buffer (no boundary constraints)
-  printRow("None", BenchmarkSetup(fullBuffer));
-
-  // With prefix (first half of first line is protected)
-  {
-    Position firstPos(0, 15);
-    Position endPos = fullBuffer.endPos();
-    Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
-    EditBoundary boundary(fullBuffer, firstPos, endPos);
-    printRow("Prefix", BenchmarkSetup(editRegion, {""}, boundary));
+    auto* a = benchmark::RegisterBenchmark(
+        "EditOptimizer/BufferShape/" + name + "/Standard", BM_EditBufferShape, false, shape);
+    a->Iterations(DEFAULT_SEED_COUNT);
+    if (ENABLE_COMPARISON) {
+      auto* b = benchmark::RegisterBenchmark(
+          "EditOptimizer/BufferShape/" + name + "/SuffixCache", BM_EditBufferShape, true, shape);
+      b->Iterations(DEFAULT_SEED_COUNT);
+    }
   }
 
-  // With suffix (second half of last line is protected)
-  {
-    Position firstPos(0, 0);
-    int lastLine = fullBuffer.lastLine();
-    int midCol = static_cast<int>(fullBuffer[lastLine].size()) / 2;
-    Position endPos(lastLine, midCol + 1);
-    Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
-    EditBoundary boundary(fullBuffer, firstPos, endPos);
-    printRow("Suffix", BenchmarkSetup(editRegion, {""}, boundary));
+  // SearchDepth
+  registerArgBenchmark("EditOptimizer/SearchDepth", BM_EditSearchDepth,
+                       {1000, 5000, 10000, 50000});
+
+  // MultiLineDelete
+  registerArgBenchmark("EditOptimizer/MultiLineDelete", BM_EditMultiLineDelete,
+                       {2, 4, 6, 8, 10});
+
+  // BoundaryConstraints
+  for (const auto& [name, type] : vector<pair<string, int>>{
+           {"None", 0}, {"Prefix", 1}, {"Suffix", 2}, {"Both", 3}}) {
+    registerBenchmark("EditOptimizer/Boundary/" + name, BM_EditBoundaryConstraints, type);
   }
 
-  // With both prefix and suffix
-  {
-    Position firstPos(0, 10);
-    int lastLine = fullBuffer.lastLine();
-    int lastLineLen = static_cast<int>(fullBuffer[lastLine].size());
-    Position endPos(lastLine, max(1, lastLineLen - 10 + 1));
-    Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
-    EditBoundary boundary(fullBuffer, firstPos, endPos);
-    printRow("Both", BenchmarkSetup(editRegion, {""}, boundary));
-  }
-}
-
-TEST_F(EditOptimizerBench, MultiLineEdit) {
-  printHeader("Multi-Line Edit (Replacement) Benchmark");
-  printUnifiedHeader<ENABLE_COMPARISON>("Case");
-
-  // Multi-line deletion replaced with single-line insertion
-  // This is the case where J-based paths matter most
-  auto makeMultiLineEditSetup = [](const Lines& buffer, const Lines& goal,
-                                    Position editBegin, Position editEnd) {
-    Lines editRegion = buffer.getSpan(editBegin, editEnd);
-    EditBoundary boundary(buffer, editBegin, editEnd);
-    return BenchmarkSetup(editRegion, goal, boundary);
-  };
-
-  // Case 1: Realistic - 2 lines with prefix, replace with 1 word
-  {
-    Lines buffer = {"I saw a pig in barn in Switzerland", "Inconspicuous, even"};
-    Lines goal = {"Florida"};
-    Position editBegin(0, 23);
-    Position editEnd(1, 19);
-    printRow("2L->1w", makeMultiLineEditSetup(buffer, goal, editBegin, editEnd));
+  // MultiLineEdit - fixed cases
+  for (const auto& [name, caseNum] : vector<pair<string, int>>{
+           {"2L->1w", 0}, {"3L->1w", 1}, {"5L+bnd", 2}}) {
+    registerBenchmark("EditOptimizer/MultiLineEdit/" + name, BM_EditMultiLineFixed, caseNum);
   }
 
-  // Case 2: 3 lines replaced with short text
-  {
-    Lines buffer = {"The quick brown fox jumps over the lazy dog",
-                    "and then runs around the park",
-                    "before going home to sleep"};
-    Lines goal = {"walked away"};
-    Position editBegin(0, 20);
-    Position editEnd(2, 26);
-    printRow("3L->1w", makeMultiLineEditSetup(buffer, goal, editBegin, editEnd));
-  }
+  // MultiLineEdit - random
+  registerArgBenchmark("EditOptimizer/MultiLineEdit/Random", BM_EditMultiLineRandom,
+                       {2, 4, 6});
 
-  // Case 3: 5 lines with prefix+suffix
-  {
-    Lines buffer = {"prefix stuff delete me line one",
-                    "delete me line two",
-                    "delete me line three",
-                    "delete me line four",
-                    "delete me line five and suffix here"};
-    Lines goal = {"replaced"};
-    Position editBegin(0, 13);
-    Position editEnd(4, 22);
-    printRow("5L+bnd", makeMultiLineEditSetup(buffer, goal, editBegin, editEnd));
-  }
+  // SmallChange - matches correctness test pattern (small region, full content change)
+  registerArgBenchmark("EditOptimizer/SmallChange", BM_EditSmallChange,
+                       {1, 2, 3});
 
-  // Case 4: Random multi-line edits (averaged across seeds)
-  for (int numLines : {2, 4, 6}) {
-    runMultiSeedBenchmark<ENABLE_COMPARISON, EditOptimizerParams, BenchmarkSetup>(
-        to_string(numLines) + "L rand",
-        [=]() {
-          Lines buffer = generateBuffer(numLines, 25);
-          // Replace all content with a short word
-          Lines goal = {"replacement"};
-          EditBoundary boundary(buffer, Position(0, 0), buffer.endPos());
-          return BenchmarkSetup(buffer, goal, boundary);
-        },
-        paramsA(), paramsB(),
-        [](const BenchmarkSetup& s, const EditOptimizerParams& p) {
-          return runWithParams(s, withCap(p, s));
-        });
-  }
-}
+  // SmallEmbeddedChange - small edit region with prefix/suffix boundary
+  registerArgBenchmark("EditOptimizer/SmallEmbeddedChange", BM_EditSmallEmbeddedChange,
+                       {1, 2, 3});
+
+  return 0;
+}();
+
+} // namespace

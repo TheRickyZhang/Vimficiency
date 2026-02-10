@@ -241,6 +241,13 @@ EditOptimizer::optimizeEdit(const Lines &initialLines, const Lines &goalLines,
                                 bufferFirstLine, bufferFirstCol, goalPos);
   }
 
+  // Delegate to suffix cache variant when enabled (dramatically faster for
+  // small edit regions because found paths are shared across starting positions)
+  if (params.useSuffixCache) {
+    return optimizeEditWithSuffixCache(initialLines, goalLines, editBoundary,
+                                       params, bufferFirstLine, bufferFirstCol, goalPos);
+  }
+
   // Create search context (handles effectiveLines, offsets, search state)
   EditSearchContext ctx(initialLines, editBoundary, params, config);
   ctx.initStartingPositions(initialLines);

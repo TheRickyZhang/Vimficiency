@@ -30,7 +30,7 @@ struct EditOptimizerParams : OptimizerParamsBase {
   EditOptimizerParams& withSuffixCache(bool v) { useSuffixCache = v; return *this; }
 
   // Whether to use suffix caching for cross-position sharing
-  bool useSuffixCache = false;
+  bool useSuffixCache = true;
 
   // Factory for Dijkstra mode (no heuristic)
   static EditOptimizerParams dijkstra(int maxResults = 10, int maxNodesExplored = 50000) {

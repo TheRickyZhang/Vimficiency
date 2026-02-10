@@ -12,12 +12,21 @@ FetchContent_Declare(
   GIT_TAG        cpp-7.0.0
 )
 
+FetchContent_Declare(
+  googlebenchmark
+  GIT_REPOSITORY https://github.com/google/benchmark.git
+  GIT_TAG        v1.9.1
+)
+
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 set(MSGPACK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(MSGPACK_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(MSGPACK_USE_BOOST OFF CACHE BOOL "" FORCE)
+set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
+set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(googletest msgpack-c)
+FetchContent_MakeAvailable(googletest msgpack-c googlebenchmark)
 
 # =============================================================================
 # Shared test utilities library
@@ -118,17 +127,16 @@ gtest_discover_tests(vimficiency_tests)
 # Run with: ./vimficiency_benchmarks
 
 add_executable(vimficiency_benchmarks
-  Benchmarks/BenchUtils.cpp
+  Benchmarks/BenchmarkMain.cpp
   Benchmarks/EditOptimizerBench.cpp
   Benchmarks/MotionOptimizerBench.cpp
-  Benchmarks/MotionTemplateSpecializationBench.cpp
-  Benchmarks/AlternateImplementations.cpp
+  Benchmarks/CompositionOptimizerBench.cpp
 )
 
 target_link_libraries(vimficiency_benchmarks
   PRIVATE
     test_utils
-    GTest::gtest_main
+    benchmark::benchmark
 )
 
 # =============================================================================
