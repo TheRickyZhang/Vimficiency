@@ -1,0 +1,65 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: pacman -Syu --noconfirm base-devel cmake git neovim
+      - name: Build
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF
+          cmake --build build -j$(nproc)
+      - name: Unit tests
+        run: ./build/tests/vimficiency_tests --gtest_brief=1
+
+  benchmark-run:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: pacman -Syu --noconfirm base-devel cmake git
+      - name: Build (Release)
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF
+          cmake --build build -j$(nproc)
+      - name: Run benchmarks
+        run: |
+          VIMFICIENCY_SEED_MODE=fixed \
+          ./build/tests/vimficiency_benchmarks \
+            --benchmark_format=json \
+            --benchmark_out=benchmark_result.json
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-result
+          path: benchmark_result.json
+
+  benchmark-store:
+    runs-on: ubuntu-latest
+    needs: benchmark-run
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download benchmark results
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-result
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'googlecpp'
+          output-file-path: benchmark_result.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          alert-threshold: '150%'
+          comment-on-alert: true
+          fail-on-alert: false

@@ -1357,8 +1357,8 @@ TEST_F(DebugTest, SuffixCacheComparison) {
   }
 
   // Suffix-cached search
-  cerr << "\n=== optimizeEditWithSuffixCache ===" << endl;
-  EditResult cacheResult = editOpt.optimizeEditWithSuffixCache(
+  cerr << "\n=== optimizeEdit (suffix cached) ===" << endl;
+  EditResult cacheResult = editOpt.optimizeEdit(
       deletedLines, insertedLines, boundary, params,
       editBeginPos.line, editBeginPos.col, Position(0, 29));
 

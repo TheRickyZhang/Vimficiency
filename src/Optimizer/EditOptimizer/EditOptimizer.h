@@ -82,23 +82,11 @@ struct EditOptimizer {
   EditOptimizer(const Config& config) : config(std::move(config)) {}
 
   // find optimal sequences to transform initialLines to goalLines
-  // Either delete all initial and type out result, or use replacement
+  // Uses suffix caching for cross-position sharing: when one starting position
+  // finds a path through an intermediate state, the remaining commands are
+  // cached so other positions reaching the same state get an instant result.
   // Returns results indexed by flattened starting position
   EditResult optimizeEdit(
-      const Lines& initialLines,
-      const Lines& goalLines,
-      EditBoundary editBoundary,
-      EditOptimizerParams params = {},
-      int bufferFirstLine = 0,
-      int bufferFirstCol = 0,
-      Position goalPos = {0, 0}
-  );
-
-  // Same as optimizeEdit, but with suffix caching for cross-position sharing.
-  // When one starting position finds a path through an intermediate state,
-  // the remaining commands are cached so other positions reaching the same
-  // state get an instant result.
-  EditResult optimizeEditWithSuffixCache(
       const Lines& initialLines,
       const Lines& goalLines,
       EditBoundary editBoundary,
