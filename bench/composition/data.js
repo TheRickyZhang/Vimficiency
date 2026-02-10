@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1770744013438,
+  "lastUpdate": 1770744170037,
   "repoUrl": "https://github.com/TheRickyZhang/Vimficiency",
   "entries": {
     "Benchmark": [
@@ -264,6 +264,90 @@ window.BENCHMARK_DATA = {
             "value": 6657875.999997032,
             "unit": "ns/iter",
             "extra": "iterations: 5\ncpu: 6657916.4 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "rickyzhang196@outlook.com",
+            "name": "Ricky Zhang",
+            "username": "TheRickyZhang"
+          },
+          "committer": {
+            "email": "rickyzhang196@outlook.com",
+            "name": "Ricky Zhang",
+            "username": "TheRickyZhang"
+          },
+          "distinct": true,
+          "id": "0741b40879c6561db0a23fd5c1a20d74bec19274",
+          "message": "use modern bun, ts for site",
+          "timestamp": "2026-02-10T12:17:22-05:00",
+          "tree_id": "601fa46251ee8ee9b301e55ba5774e0034605c2e",
+          "url": "https://github.com/TheRickyZhang/Vimficiency/commit/0741b40879c6561db0a23fd5c1a20d74bec19274"
+        },
+        "date": 1770744169164,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "CompositionOptimizer/TwoEdits_DiffLines/iterations:5",
+            "value": 416251.1999993512,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 409570.8 ns\nthreads: 1"
+          },
+          {
+            "name": "CompositionOptimizer/TwoEdits_SameLine/iterations:5",
+            "value": 114632.20000678119,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 112443.80000000002 ns\nthreads: 1"
+          },
+          {
+            "name": "CompositionOptimizer/SingleLineSub/iterations:5",
+            "value": 243280.20000439213,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 243406.60000000003 ns\nthreads: 1"
+          },
+          {
+            "name": "CompositionOptimizer/MultiLineSingleEdit/2/iterations:5",
+            "value": 139654.800000244,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 139797 ns\nthreads: 1"
+          },
+          {
+            "name": "CompositionOptimizer/MultiLineSingleEdit/3/iterations:5",
+            "value": 193044.3999981435,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 193098.40000000002 ns\nthreads: 1"
+          },
+          {
+            "name": "CompositionOptimizer/MultiLineSingleEdit/5/iterations:5",
+            "value": 374805.80000419647,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 374902.00000000023 ns\nthreads: 1"
+          },
+          {
+            "name": "CompositionOptimizer/MultiLineMultiEdit/5/iterations:5",
+            "value": 739000.0000100371,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 739144.2000000002 ns\nthreads: 1"
+          },
+          {
+            "name": "CompositionOptimizer/MultiLineMultiEdit/10/iterations:5",
+            "value": 1476529.199999277,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 1476637.4000000001 ns\nthreads: 1"
+          },
+          {
+            "name": "CompositionOptimizer/MultiLineMultiEdit/20/iterations:5",
+            "value": 4456790.000006095,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 4456922.6 ns\nthreads: 1"
+          },
+          {
+            "name": "CompositionOptimizer/MultiLineMultiEdit/40/iterations:5",
+            "value": 7758831.199998895,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 7753349.000000002 ns\nthreads: 1"
           }
         ]
       }
