@@ -636,12 +636,8 @@ EditOptimizer::optimizeEdit(
     // Early stopping: skip if this startIndex already has a result
     if (results[s.getStartIndex()].isValid()) continue;
 
-    // Check goal at pop time — guaranteed lowest cost.
-    // Goal states have mode=Insert (set by recordGoalSearch during exploration),
-    // confirming the goal suffix (change + collapse + typed) was appended to seq.
-    // Normal-mode states that happen to match preSuf (e.g. after J) lack the
-    // suffix and must NOT be recorded as complete results.
-    if (s.getMode() == Mode::Insert && isGoalReached(s.getLines())) {
+    // Check goal at pop time — guaranteed lowest cost
+    if (isGoalReached(s.getLines())) {
       int idx = s.getStartIndex();
       if (!results[idx].isValid()) {
         results[idx] = Result(s.getSeq(), s.getEffort());
@@ -671,11 +667,31 @@ EditOptimizer::optimizeEdit(
     }
 
     // Join handler: J/gJ merges lines without entering insert mode.
-    // Even if buffer reaches goal, J can't produce the typed content,
-    // so we continue search (the state may reach a deletion goal later).
+    // When buffer reaches goal, build suffix: J + enter insert + collapse + typed.
     auto exploreJoin = [&](const EditState& base, bool addSpace,
                            string_view joinCmd, const PhysicalKeys& joinKeys) {
       EditState newState = base.afterJoin(addSpace);
+
+      if (isGoalReached(newState.getLines())) {
+        // J reaches preSuf — enter insert mode at cursor (the join point)
+        // to type the goal content
+        static const KeyedSequence iCmd("i", {Key::Key_I});
+        KeyedSequence goalSuffix(joinCmd, joinKeys);
+        goalSuffix += iCmd;
+        goalSuffix += buildCollapseSequence(
+            static_cast<int>(newState.getLines().size()), newState.getPos().line);
+        goalSuffix += typed;
+
+        // Populate suffix cache during exploration (needs base context)
+        RunningEffort goalSuffixEffort;
+        goalSuffixEffort.append(goalSuffix.keys, config);
+        replayAndCacheSuffix(base.getStartIndex(), base.getSeq(), goalSuffix, goalSuffixEffort);
+
+        newState.recordGoalSearch(goalSuffix.seq.keys, goalSuffix.keys, ctx.effortWeight, config);
+        ctx.exploreNewState(std::move(newState));
+        return;
+      }
+
       newState.recordSearch(joinCmd, joinKeys,
                             ctx.computePriority(newState.getEffort(), newState.getLines()), config);
       ctx.exploreNewState(std::move(newState));
