@@ -172,4 +172,76 @@ Vim treats `cw`/`cW` like `ce`/`cE` — they don't include trailing whitespace, 
 
 **Fix:** Convert `dw`/`dW` to `dwi`/`dWi` (delete then enter insert mode) instead of `cw`/`cW`. No per-call equivalence check is needed because `de`/`dE` (WordEdge) is explored before `dw`/`dW` (GapEdge) — when the ranges are identical, `de` stores its result first and `dw` is skipped. So `dw` only reaches the goal when trailing whitespace made the difference, meaning `cw` is always wrong. See `docs/optimizer/edit-optimizer.md` § dw/dW → dwi/dWi.
 
+## exploreDeletion collapse sequence used d{motion} line count instead of c{motion}
 
+In `EditOptimizer.cpp`, `exploreDeletion` converts `d{motion}` results to `c{motion}` equivalents and computes how many `<BS>`/`<Del>` keystrokes are needed to collapse multi-line `cc` results to a single line. For multi-line `d{motion}` (e.g., `dj`), the code used the post-delete buffer's line count (`lines.size()`), but `c{motion}` doesn't remove lines the way `d{motion}` does — it replaces the range with an empty insert-mode line. The effective line count for the collapse should reflect the pre-delete buffer minus the lines *merged* by the motion, not the lines *removed*.
+
+**Example:** `dj` on a 3-line buffer removes 2 lines, leaving 1 line. `cj` on the same buffer replaces lines 0-1 with an empty line, leaving 2 lines (the empty line + the original line 2). Using post-`dj` line count (1) undercounts the collapse.
+
+**Fix:** Use `base.getLines().size() - (lastLine - firstLine)` where `firstLine`/`lastLine` come from the deletion range. This computes what `c{motion}` would produce: original lines minus the merged span (but keeping one line for the insertion point). The `dw`/`dW` case still uses the post-delete line count since those convert to `dwi`/`dWi` (delete-then-insert), not change.
+
+## lineBaseIndex computation for empty lines in EditResult
+
+In `EditResult::EditResult`, the constructor builds a `lineBaseIndex_` for O(1) flat-index lookup from buffer coordinates. The cumulative sum added `initialLines[i].size()` per line, but empty lines have 0 `size()` despite having 1 valid cursor position (col 0). This caused flat-index underflow for positions on or after empty lines.
+
+**Fix:** Use `max(1, size)` for the per-line position count:
+```cpp
+int positions = initialLines[i].empty() ? 1 : static_cast<int>(initialLines[i].size());
+cumSum += positions;
+```
+This matches `initStartingPositions` in the search, which also counts 1 position for empty lines.
+
+## textObjectRange daw rejects when boundary clips leading whitespace
+
+In `VimEndpointUtils.cpp`, `textObjectRange` handles `daw` on a word with no trailing whitespace by including leading whitespace instead. The backward `GapEdge` search finds the start of leading whitespace. If it returns col 0 (indicating only indentation before the word), the range falls back to `WordEdge` (word-only, no whitespace).
+
+However, when used in the EditOptimizer with a prefix boundary (`leftColOffset > 0`), the backward `GapEdge` search can return the boundary start instead of the true whitespace start. This could land at col > 0, making the code think there's a prior word — producing a range that disagrees with Vim's actual `daw` behavior (which would include whitespace all the way to line start).
+
+**Fix:** After the `GapEdge` search returns `POSITION_OUTSIDE_BOUNDARY` or col 0, check whether whitespace actually exists before the word but falls within the boundary. If the `WordEdge` start is at col > 0 and the character before it is blank, the boundary is clipping leading whitespace — reject the range by setting `start = POSITION_OUTSIDE_BOUNDARY`:
+```cpp
+if (wordStart != POSITION_OUTSIDE_BOUNDARY &&
+    wordStart.line == cursor.line && wordStart.col > 0 &&
+    isBlank(lines[wordStart.line][wordStart.col - 1])) {
+  start = POSITION_OUTSIDE_BOUNDARY;
+}
+```
+
+## tryReplacement cursor position mismatch with goalPos
+
+In `EditOptimizer.cpp`, `tryReplacement` builds a sequence of `r{char}` commands to transform same-length text. After executing the replacements, the cursor lands on the last *differing* position (`diff.back()`). But the `CompositionOptimizer` sets `goalPos` to the last character of the inserted text (`beginPos.col + inserted.size() - 1`), matching where `c{motion} + typed + <Esc>` would leave the cursor.
+
+When Myers diff merges a short common suffix into the edit region (e.g., `"ffb"→"cbb"` includes the common `'b'`), the last differing position is before the end of inserted text. The `CompositionOptimizer` uses `goalPos` to plan subsequent motions, so the mismatch causes wrong motion targets.
+
+**Example:** `"ffb"→"cbb"`: diff positions are [0, 1]. `tryReplacement` produces `rclrb`, cursor at col 1. But `goalPos` is col 2. Next motion is planned from col 2 but cursor is actually at col 1.
+
+**Fix:** After the last replacement, append `l` movements to reach the end of the inserted text, matching goalPos:
+```cpp
+int lastDiff = diff.back();
+int endPos = static_cast<int>(inserted.size()) - 1;
+if (lastDiff < endPos) {
+  int dist = endPos - lastDiff;
+  if (dist <= 2) ks.appendRepeated(lCmd, dist);
+  else ks.appendCounted(dist, lCmd);
+}
+```
+This ensures all result paths in an `EditResult` leave the cursor at the same `goalPos`.
+
+## CompositionOptimizer skipped motion search inside edit range (always-lazy)
+
+In `CompositionOptimizer.cpp`, when the cursor is inside the edit range but no edit result exists at that position, the code unconditionally skipped motion search (`continue`). This was correct when every position in the range had a result, but with always-lazy mode (limited search budget), many positions may lack results while nearby positions within the range DO have results.
+
+**Symptom:** "No result" failures in `SingleLine_Substitution` — the cursor starts inside the edit range at a position without a result, and no transition is explored.
+
+**Fix:** Instead of unconditionally skipping, scan the edit range for nearby positions with valid results and generate simple `h`/`l` motion transitions to reach them. `optimizeToRange` can't be used here because it asserts `startPos` is not inside the range. The intra-range motion search only fires for same-line positions:
+```cpp
+if (pos >= nextEdit.beginPos && pos < nextEdit.endPos) {
+  for (int col = rangeBeginCol; col < rangeEndCol; ++col) {
+    if (col == pos.col) continue;
+    const Result* nearby = editResult.resultAt(pos.line, col);
+    if (!nearby) continue;
+    // Generate counted h/l motion to reach col
+    ctx.exploreMotionTransition(s, motionSeq, Position(pos.line, col), editsCompleted);
+  }
+  continue;
+}
+```

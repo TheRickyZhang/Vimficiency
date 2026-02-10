@@ -123,6 +123,21 @@ struct EditSearchContext {
   void exploreJoinCommands(const Position& cursor, const Lines& lines, JoinCallback onJoin);
 
 
+  // Convert startIndex to seed position in effectiveLines coordinates.
+  // Reverses the flat indexing used by initStartingPositions.
+  Position seedPositionFor(int startIndex, const Lines& initialLines) const {
+    int remaining = startIndex;
+    for (int r = 0; r < static_cast<int>(initialLines.size()); r++) {
+      int lineSize = initialLines[r].empty() ? 1 : static_cast<int>(initialLines[r].size());
+      if (remaining < lineSize) {
+        int effCol = remaining + (r == 0 ? leftColOffset : 0);
+        return Position(r, effCol);
+      }
+      remaining -= lineSize;
+    }
+    return Position(-1, -1);  // Invalid
+  }
+
   // Check if search should continue
   bool shouldContinue() const;
 

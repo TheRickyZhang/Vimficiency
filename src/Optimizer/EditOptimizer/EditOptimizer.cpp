@@ -12,6 +12,7 @@
 #include "Optimizer/BuildTypedCommands.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 
+#include "Editor/Edit.h"
 #include "Editor/NavContext.h"
 #include "Keyboard/MotionToKeys.h"
 #include "State/RunningEffort.h"
@@ -692,51 +693,76 @@ EditOptimizer::optimizeEditWithSuffixCache(
 
   // ---- Suffix cache structures ----
   SuffixCacheMap suffixCache;
-  vector<CommittedState> committedStates;
-  committedStates.reserve(params.maxNodesExplored);
 
   int cacheHits = 0;
   int cachePopulations = 0;
 
-  // Helper: populate suffix cache by walking backward from a goal
-  auto populateSuffixCache = [&](int goalCommitIdx,
-                                  const KeyedSequence& goalSuffix,
-                                  const RunningEffort& goalSuffixEffort) {
+  // Helper: replay search sequence from seed state, caching suffixes at each
+  // intermediate position. Called when a goal is found. Parses the accumulated
+  // search sequence into individual edits and replays them forward from the
+  // seed state, building suffix KeyedSequences backward from the goal suffix.
+  auto replayAndCacheSuffix = [&](int startIndex, const string& searchSeq,
+                                   const KeyedSequence& goalSuffix,
+                                   const RunningEffort& goalSuffixEffort) {
     cachePopulations++;
-    KeyedSequence accumKs = goalSuffix;
-    RunningEffort accumEffort = goalSuffixEffort;
 
-    int idx = goalCommitIdx;
-    while (idx >= 0) {
-      const auto& cs = committedStates[idx];
+    // Parse search sequence into individual edits
+    vector<ParsedEdit> edits = Edit::parseEdits(searchSeq);
+    int n = static_cast<int>(edits.size());
+    if (n == 0) return;
 
-      // Cache this state if not already cached (first = cheapest by A*)
-      if (suffixCache.find(cs.key) == suffixCache.end()) {
-        suffixCache[cs.key] = SuffixValue{accumKs, accumEffort};
+    // The searchSeq string must outlive the ParsedEdits (they hold string_views)
+    // — searchSeq is a const ref to the goal state's seq which stays alive.
+
+    // Tokenize each edit to get PhysicalKeys
+    vector<PhysicalKeys> editKeys(n);
+    for (int i = 0; i < n; i++) {
+      editKeys[i] = globalTokenizer().tokenize(edits[i].edit);
+    }
+
+    // Build suffix KeyedSequences BACKWARD: suffix[i] = edit[i..n-1] + goalSuffix
+    // suffix[n] = goalSuffix (at the goal state)
+    // suffix[i] = edit[i] + suffix[i+1]
+    vector<KeyedSequence> suffixKs(n + 1);
+    vector<RunningEffort> suffixEfforts(n + 1);
+    suffixKs[n] = goalSuffix;
+    suffixEfforts[n] = goalSuffixEffort;
+
+    for (int i = n - 1; i >= 0; i--) {
+      KeyedSequence editKs(edits[i].edit, editKeys[i]);
+      suffixKs[i] = editKs;
+      suffixKs[i] += suffixKs[i + 1];
+
+      RunningEffort editEffort;
+      editEffort.append(editKeys[i], config);
+      suffixEfforts[i] = RunningEffort::merge(editEffort, suffixEfforts[i + 1]);
+    }
+
+    // Replay FORWARD from seed state, caching at each intermediate position
+    Lines replayLines = ctx.effectiveLines;
+    Position replayPos = ctx.seedPositionFor(startIndex, initialLines);
+    Mode replayMode = Mode::Normal;
+
+    // Cache the seed state (suffix[0] = full search + goal suffix)
+    SuffixKey seedKey(replayLines, replayPos, replayMode);
+    if (suffixCache.find(seedKey) == suffixCache.end()) {
+      suffixCache[seedKey] = SuffixValue{suffixKs[0], suffixEfforts[0]};
+    }
+
+    // Replay each edit and cache intermediate states
+    for (int i = 0; i < n; i++) {
+      Edit::applyEdit(replayLines, replayPos, replayMode, edits[i]);
+
+      SuffixKey sk(replayLines, replayPos, replayMode);
+      if (suffixCache.find(sk) == suffixCache.end()) {
+        suffixCache[sk] = SuffixValue{suffixKs[i + 1], suffixEfforts[i + 1]};
       }
-
-      // Walk to parent
-      if (cs.parentCommitIdx < 0) break;
-
-      // Prepend this state's transition to the accumulator
-      KeyedSequence transitionKs(cs.transitionSeq, cs.transitionKeys);
-      RunningEffort transitionEffort;
-      transitionEffort.append(cs.transitionKeys, config);
-
-      // New accumulated: transition + old accumulated
-      KeyedSequence newKs = transitionKs;
-      newKs += accumKs;
-      accumKs = std::move(newKs);
-      accumEffort = RunningEffort::merge(transitionEffort, accumEffort);
-
-      idx = cs.parentCommitIdx;
     }
   };
 
   // ---- Deletion handler ----
   auto exploreDeletion = [&](const EditState &base, const Range &range,
-                             string_view deleteCmd, const PhysicalKeys &deleteKeys,
-                             int commitIdx) {
+                             string_view deleteCmd, const PhysicalKeys &deleteKeys) {
     EditState newState = base.afterDeletion(range);
     const Lines &lines = newState.getLines();
 
@@ -756,14 +782,14 @@ EditOptimizer::optimizeEditWithSuffixCache(
       ctx.resultsFound++;
       ctx.uniquePositionsCovered++;
 
-      // Populate suffix cache
+      // Populate suffix cache via replay
       RunningEffort goalSuffixEffort;
       goalSuffixEffort.append(goalSuffix.keys, config);
-      populateSuffixCache(commitIdx, goalSuffix, goalSuffixEffort);
+      replayAndCacheSuffix(newState.getStartIndex(), base.getSeq(),
+                           goalSuffix, goalSuffixEffort);
       return;
     }
 
-    newState.setParentInfo(commitIdx, deleteCmd, deleteKeys);
     newState.recordSearch(deleteCmd, deleteKeys,
                           ctx.computePriority(newState.getEffort(), lines), config);
     ctx.exploreNewState(std::move(newState));
@@ -771,8 +797,7 @@ EditOptimizer::optimizeEditWithSuffixCache(
 
   // ---- Linewise handler ----
   auto exploreLinewise = [&](const EditState &base, int line,
-                             string_view deleteCmd, const PhysicalKeys &deleteKeys,
-                             int commitIdx) {
+                             string_view deleteCmd, const PhysicalKeys &deleteKeys) {
     EditState newState = base.afterLinewiseDeletion(line);
     const Lines &lines = newState.getLines();
 
@@ -814,14 +839,14 @@ EditOptimizer::optimizeEditWithSuffixCache(
       ctx.resultsFound++;
       ctx.uniquePositionsCovered++;
 
-      // Populate suffix cache
+      // Populate suffix cache via replay
       RunningEffort goalSuffixEffort;
       goalSuffixEffort.append(goalSuffix.keys, config);
-      populateSuffixCache(commitIdx, goalSuffix, goalSuffixEffort);
+      replayAndCacheSuffix(newState.getStartIndex(), base.getSeq(),
+                           goalSuffix, goalSuffixEffort);
       return;
     }
 
-    newState.setParentInfo(commitIdx, searchCmd.seq.keys, searchCmd.keys);
     newState.recordSearch(searchCmd.seq.keys, searchCmd.keys,
                           ctx.computePriority(newState.getEffort(), lines), config);
     ctx.exploreNewState(std::move(newState));
@@ -838,14 +863,8 @@ EditOptimizer::optimizeEditWithSuffixCache(
     // Early stopping: skip if this startIndex already has a result
     if (results[s.getStartIndex()].isValid()) continue;
 
-    // Commit this state
-    SuffixKey sk(s.getLines(), s.getPos(), s.getMode());
-    int commitIdx = static_cast<int>(committedStates.size());
-    committedStates.emplace_back(
-        sk, s.getParentCommitIdx(),
-        s.getTransitionSeq(), s.getTransitionKeys());
-
     // Check suffix cache
+    SuffixKey sk(s.getLines(), s.getPos(), s.getMode());
     auto cacheIt = suffixCache.find(sk);
     if (cacheIt != suffixCache.end()) {
       cacheHits++;
@@ -875,7 +894,6 @@ EditOptimizer::optimizeEditWithSuffixCache(
         // J doesn't enter insert mode; continue search
       }
 
-      newState.setParentInfo(commitIdx, joinCmd, joinKeys);
       newState.recordSearch(joinCmd, joinKeys,
                             ctx.computePriority(newState.getEffort(), lines), config);
       ctx.exploreNewState(std::move(newState));
@@ -885,15 +903,14 @@ EditOptimizer::optimizeEditWithSuffixCache(
     ctx.exploreAllDeletions(
       s,
       [&](const Range& range, string_view cmd, const PhysicalKeys& keys) {
-        exploreDeletion(s, range, cmd, keys, commitIdx);
+        exploreDeletion(s, range, cmd, keys);
       },
       [&](int line, string_view cmd, const PhysicalKeys& keys) {
-        exploreLinewise(s, line, cmd, keys, commitIdx);
+        exploreLinewise(s, line, cmd, keys);
       },
       [&](const Position& newPos, string_view cmd, const PhysicalKeys& keys) {
         EditState newState = s;
         newState.setPos(newPos);
-        newState.setParentInfo(commitIdx, cmd, keys);
         newState.recordSearch(cmd, keys,
                               ctx.computePriority(newState.getEffort(), newState.getLines()), config);
         ctx.exploreNewState(std::move(newState));

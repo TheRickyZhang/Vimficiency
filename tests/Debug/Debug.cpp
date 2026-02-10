@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 
+#include "Editor/Edit.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
@@ -20,6 +21,7 @@
 #include "Utils/EditTestGenerators.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/StringUtils.h"
+#include "State/EditState.h"
 #include "VimCore/VimEditUtils.h"
 #include "VimCore/VimEndpointUtils.h"
 
@@ -1676,5 +1678,172 @@ TEST_F(NeovimOracleDebug, InvestigateLazyFailures) {
       auto r = oracle_->simulate(buf3, line, 0, "d}");
       cerr << "  d} from line " << line << ": " << r.lines << endl;
     }
+  }
+}
+
+// =============================================================================
+// ReplayVerification: Edit::applyEdit matches optimizer state transitions
+// =============================================================================
+// This validates the replay-based suffix cache: when we replay a search
+// sequence via Edit::applyEdit, the intermediate (lines, pos) must match
+// what the optimizer's EditState transitions produce.
+
+// Helper: apply a single command via Edit::applyEdit
+static pair<Lines, Position> applyViaEdit(const Lines& lines, Position pos, string_view cmd) {
+  Lines result = lines;
+  Mode mode = Mode::Normal;
+  auto edits = Edit::parseEdits(cmd);
+  for (const auto& e : edits) {
+    Edit::applyEdit(result, pos, mode, e);
+  }
+  return {result, pos};
+}
+
+TEST_F(DebugTest, ReplayVerification_Charwise) {
+  // Test charwise deletions: Edit::applyEdit vs VimCore::deleteRange
+  // (EditState::afterDeletion delegates to VimCore::deleteRange)
+  Lines buf = {"hello world", "foo bar"};
+
+  // x from (0,5): delete single char (space)
+  {
+    Position start(0, 5);
+    Range range(start, start);
+    auto [editLines, editPos] = applyViaEdit(buf, start, "x");
+
+    Lines coreLines = buf;
+    Position corePos = start;
+    VimCore::deleteRange(coreLines, range, corePos, Mode::Normal);
+    EXPECT_EQ(editLines, coreLines) << "x lines mismatch";
+    EXPECT_EQ(editPos.line, corePos.line) << "x line mismatch";
+    EXPECT_EQ(editPos.col, corePos.col) << "x col mismatch";
+  }
+
+  // D from (0,5): delete to end of line
+  {
+    Position start(0, 5);
+    Range range(start, Position(0, static_cast<int>(buf[0].size()) - 1));
+    auto [editLines, editPos] = applyViaEdit(buf, start, "D");
+
+    Lines coreLines = buf;
+    Position corePos = start;
+    VimCore::deleteRange(coreLines, range, corePos, Mode::Normal);
+    EXPECT_EQ(editLines, coreLines) << "D lines mismatch";
+    EXPECT_EQ(editPos.line, corePos.line) << "D line mismatch";
+    EXPECT_EQ(editPos.col, corePos.col) << "D col mismatch";
+  }
+}
+
+TEST_F(DebugTest, ReplayVerification_Linewise) {
+  // Test dd: Edit::applyEdit vs EditState::afterLinewiseDeletion
+  Lines buf = {"first line", "second line", "third line"};
+
+  // dd from line 0
+  {
+    Position start(0, 3);
+    auto [editLines, editPos] = applyViaEdit(buf, start, "dd");
+
+    EditState state(buf, start, 0, 0.0);
+    EditState after = state.afterLinewiseDeletion(0);
+    EXPECT_EQ(editLines, after.getLines()) << "dd line 0 lines mismatch";
+    EXPECT_EQ(editPos.line, after.getPos().line) << "dd line 0 pos.line mismatch";
+    EXPECT_EQ(editPos.col, after.getPos().col) << "dd line 0 pos.col mismatch";
+    EXPECT_EQ(editPos.targetCol, after.getPos().targetCol) << "dd line 0 targetCol mismatch";
+  }
+
+  // dd from line 1
+  {
+    Position start(1, 5);
+    auto [editLines, editPos] = applyViaEdit(buf, start, "dd");
+
+    EditState state(buf, start, 0, 0.0);
+    EditState after = state.afterLinewiseDeletion(1);
+    EXPECT_EQ(editLines, after.getLines()) << "dd line 1 lines mismatch";
+    EXPECT_EQ(editPos.line, after.getPos().line) << "dd line 1 pos.line mismatch";
+    EXPECT_EQ(editPos.col, after.getPos().col) << "dd line 1 pos.col mismatch";
+    EXPECT_EQ(editPos.targetCol, after.getPos().targetCol) << "dd line 1 targetCol mismatch";
+  }
+
+  // dd on last line (buffer becomes single line)
+  {
+    Position start(2, 0);
+    auto [editLines, editPos] = applyViaEdit(buf, start, "dd");
+
+    EditState state(buf, start, 0, 0.0);
+    EditState after = state.afterLinewiseDeletion(2);
+    EXPECT_EQ(editLines, after.getLines()) << "dd last line lines mismatch";
+    EXPECT_EQ(editPos.line, after.getPos().line) << "dd last line pos.line mismatch";
+    EXPECT_EQ(editPos.col, after.getPos().col) << "dd last line pos.col mismatch";
+    EXPECT_EQ(editPos.targetCol, after.getPos().targetCol) << "dd last line targetCol mismatch";
+  }
+
+  // dd with targetCol > line length (tests targetCol reset)
+  {
+    Lines buf2 = {"long line here", "ab", "medium line"};
+    Position start(1, 1, 10);  // col=1 but targetCol=10
+    auto [editLines, editPos] = applyViaEdit(buf2, start, "dd");
+
+    EditState state(buf2, start, 0, 0.0);
+    EditState after = state.afterLinewiseDeletion(1);
+    EXPECT_EQ(editLines, after.getLines()) << "dd targetCol lines mismatch";
+    EXPECT_EQ(editPos, after.getPos()) << "dd targetCol pos mismatch";
+  }
+}
+
+TEST_F(DebugTest, ReplayVerification_Join) {
+  // Test J/gJ: Edit::applyEdit vs EditState::afterJoin
+  Lines buf = {"hello  ", "  world", "end"};
+
+  // J (add space)
+  {
+    Position start(0, 2);
+    auto [editLines, editPos] = applyViaEdit(buf, start, "J");
+
+    EditState state(buf, start, 0, 0.0);
+    EditState after = state.afterJoin(true);
+    EXPECT_EQ(editLines, after.getLines()) << "J lines mismatch";
+    EXPECT_EQ(editPos, after.getPos()) << "J pos mismatch";
+  }
+
+  // gJ (no space)
+  {
+    Position start(0, 2);
+    auto [editLines, editPos] = applyViaEdit(buf, start, "gJ");
+
+    EditState state(buf, start, 0, 0.0);
+    EditState after = state.afterJoin(false);
+    EXPECT_EQ(editLines, after.getLines()) << "gJ lines mismatch";
+    EXPECT_EQ(editPos, after.getPos()) << "gJ pos mismatch";
+  }
+
+  // J on empty next line
+  {
+    Lines buf2 = {"hello", "", "world"};
+    Position start(0, 2);
+    auto [editLines, editPos] = applyViaEdit(buf2, start, "J");
+
+    EditState state(buf2, start, 0, 0.0);
+    EditState after = state.afterJoin(true);
+    EXPECT_EQ(editLines, after.getLines()) << "J empty lines mismatch";
+    EXPECT_EQ(editPos, after.getPos()) << "J empty pos mismatch";
+  }
+}
+
+TEST_F(DebugTest, ReplayVerification_Motion) {
+  // Test motion commands: Edit::applyEdit position matches setPos
+  Lines buf = {"hello world", "foo bar", "end"};
+
+  struct MotionTest { string cmd; Position start; Position expected; };
+  vector<MotionTest> tests = {
+    {"h", Position(0, 5), Position(0, 4)},
+    {"l", Position(0, 5), Position(0, 6)},
+    {"j", Position(0, 5), Position(1, 5)},
+    {"k", Position(1, 3), Position(0, 3)},
+  };
+
+  for (const auto& t : tests) {
+    auto [editLines, editPos] = applyViaEdit(buf, t.start, t.cmd);
+    EXPECT_EQ(editPos.line, t.expected.line) << t.cmd << " line mismatch";
+    EXPECT_EQ(editPos.col, t.expected.col) << t.cmd << " col mismatch";
+    EXPECT_EQ(editLines, buf) << t.cmd << " should not modify buffer";
   }
 }

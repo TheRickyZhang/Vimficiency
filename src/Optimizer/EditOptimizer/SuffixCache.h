@@ -2,10 +2,8 @@
 
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 #include "Editor/Mode.h"
-#include "Keyboard/KeyboardModel.h"
 #include "Keyboard/KeyedSequence.h"
 #include "State/RunningEffort.h"
 #include "Utils/Lines.h"
@@ -53,16 +51,3 @@ struct SuffixValue {
 };
 
 using SuffixCacheMap = std::unordered_map<SuffixKey, SuffixValue, SuffixKeyHash>;
-
-// Committed state: stored when a state is popped from the priority queue
-// Used to walk backward and populate suffix cache when a goal is reached
-struct CommittedState {
-  SuffixKey key;
-  int parentCommitIdx;         // -1 for root (seed) states
-  std::string transitionSeq;   // Command from parent to here
-  PhysicalKeys transitionKeys;
-
-  CommittedState(SuffixKey k, int parentIdx, std::string seq, PhysicalKeys keys)
-      : key(std::move(k)), parentCommitIdx(parentIdx),
-        transitionSeq(std::move(seq)), transitionKeys(std::move(keys)) {}
-};

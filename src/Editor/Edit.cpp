@@ -337,8 +337,12 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit) 
           // Vim default: go to first non-blank, update targetCol
           pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
         } else {
-          // Neovim default: preserve column (clamp to line length) - vertical movement
-          pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
+          // Neovim default: dd resets targetCol to the clamped column
+          if (lines[pos.line].empty()) {
+            pos.setCol(0);
+          } else {
+            pos.setCol(min(pos.targetCol, static_cast<int>(lines[pos.line].size()) - 1));
+          }
         }
         return;
 
