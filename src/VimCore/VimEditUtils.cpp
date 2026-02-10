@@ -39,7 +39,9 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
     // Vim behavior for empty lines after single-line deletion:
     // - If cursor was on the same line (D at col 0): keep empty line
     // - If cursor was on different line (db from col 0): remove empty line
-    if (ln.empty() && r.first.col == 0 && lines.size() > 1 && !cursorOnDeletionLine) {
+    // - Change commands (Insert mode) always keep empty lines
+    if (ln.empty() && r.first.col == 0 && lines.size() > 1 && !cursorOnDeletionLine
+        && mode != Mode::Insert) {
       lines.erase(lines.begin() + r.first.line);
       lineWasRemoved = true;
     }
@@ -60,7 +62,8 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
     // there are other lines in the buffer, remove the empty line.
     // This matches neovim's behavior where `de` on a single-char line followed
     // by other content removes the line entirely rather than leaving it empty.
-    if (firstLn.empty() && lines.size() > 1) {
+    // Change commands (Insert mode) keep empty lines — the user will type on them.
+    if (firstLn.empty() && lines.size() > 1 && mode != Mode::Insert) {
       lines.erase(lines.begin() + r.first.line);
       lineWasRemoved = true;
     }

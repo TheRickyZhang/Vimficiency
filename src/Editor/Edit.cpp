@@ -611,9 +611,23 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit) 
         {
           Position goalPos = pos;
           for (int i = 0; i < count; i++) VimCore::motionParagraphNext(goalPos, lines);
-          // d} is exclusive: delete up to but not including the blank line
-          if (goalPos > pos) {
-            Position inclusiveEnd = lines.getPrevPos(goalPos);
+          // } is exclusive. Two special cases match Vim's operator behavior:
+          //
+          // 1. Col-0 linewise: when } lands at col 0 on a line past the start,
+          //    Vim converts the exclusive motion to linewise (deletes whole lines
+          //    from pos.line to goalPos.line - 1).
+          //
+          // 2. EOF inclusive: when } reaches the last non-blank line,
+          //    motionParagraphNext lands ON the last char (not past it).
+          //    The position is already inclusive — don't apply exclusive backup.
+          //    Also handle goalPos == pos (cursor already at last char).
+          bool atCol0 = goalPos.col == 0 && goalPos.line > pos.line && pos.col == 0;
+          bool atEof = goalPos.line == lines.lastLine()
+                    && !VimCore::isBlankLineStr(lines[goalPos.line]);
+          if (atCol0) {
+            VimCore::deleteRangeLinewise(lines, LineRange(pos.line, goalPos.line - 1), pos);
+          } else if (atEof ? (goalPos >= pos) : (goalPos > pos)) {
+            Position inclusiveEnd = atEof ? goalPos : lines.getPrevPos(goalPos);
             if (inclusiveEnd != POSITION_OUTSIDE_BOUNDARY && inclusiveEnd >= pos) {
               Range r(pos, inclusiveEnd);
               VimCore::deleteRange(lines, r, pos, e[0] == 'c' ? Mode::Insert : Mode::Normal);

@@ -297,6 +297,163 @@ std::unique_ptr<NeovimOracle> NeovimOracleDebug::oracle_;
 // Begin Debug Tests
 // ============================================================================
 
+TEST_F(NeovimOracleDebug, DISABLED_InvestigateJoinLinesResidual) {
+  // CompositionOptimizer_ManualTest.JoinLinesWithResidual
+  // Initial: aaa\nxxx\nccc → Goal: aaa bbb ccc
+  // Diff {0}='\nxxx\nccc' → ' bbb ccc'
+  // Edit region: lines after "aaa" (prefix="aaa", suffix="")
+  cerr << "=== Edit optimizer for JoinLinesWithResidual ===" << endl;
+
+  Lines fullBuffer = {"aaa", "xxx", "ccc"};
+  // Edit region: the content to change is "\nxxx\nccc" starting at (0,3)
+  // initialLines = ["", "xxx", "ccc"] (3 lines - the newline creates empty first line)
+  Lines editRegion = {"", "xxx", "ccc"};
+  Lines goalLines = {" bbb ccc"};
+
+  Position initialPos(0, 3);  // start of edit region in full buffer
+  Position endPos = fullBuffer.endPos();  // end of buffer
+  EditBoundary boundary(fullBuffer, initialPos, endPos);
+
+  cerr << "  prefix='" << boundary.prefix() << "' suffix='" << boundary.suffix() << "'" << endl;
+  cerr << "  editRegion=" << editRegion << " goalLines=" << goalLines << endl;
+
+  Config config = Config::uniform();
+  EditOptimizer opt(config);
+  EditOptimizerParams params = EditOptimizerParams{}.withMaxResults(INT_MAX);
+  EditResult res = opt.optimizeEdit(editRegion, goalLines, boundary, params);
+
+  int idx = 0;
+  for (int r = 0; r < static_cast<int>(editRegion.size()); r++) {
+    for (int c = 0; c < editRegion[r].effectiveSize(); c++) {
+      const Result& result = res.getResults()[idx];
+      if (result.isValid()) {
+        cerr << "  [" << r << "," << c << "] seq='" << result.sequence
+             << "' cost=" << result.keyCost << endl;
+
+        // Byte dump for debugging
+        cerr << "    bytes:";
+        for (unsigned char ch : result.sequence.keys) {
+          if (ch >= 0x20 && ch < 0x7f) cerr << " '" << ch << "'";
+          else cerr << " 0x" << std::hex << (int)ch << std::dec;
+        }
+        cerr << endl;
+
+        // Verify with oracle: apply in the full buffer context
+        int fullRow = r + static_cast<int>(initialPos.line);
+        int fullCol = c + (r == 0 ? static_cast<int>(initialPos.col) : 0);
+        auto nvim = oracle_->simulate(fullBuffer, fullRow, fullCol, result.sequence.keys);
+        Lines goal = {"aaa bbb ccc"};
+        if (nvim.lines != goal) {
+          cerr << "    MISMATCH: got " << nvim.lines << " expected " << goal << endl;
+        } else {
+          cerr << "    OK" << endl;
+        }
+      }
+      idx++;
+    }
+  }
+}
+
+TEST_F(NeovimOracleDebug, DISABLED_InvestigateJoinBehavior) {
+  // FAIL iter=20 seq='jDJ'
+  //   Initial: debceb,\nd a, a\n .ec
+  //   Goal: debceb,\n .ec
+  //   Got: debceb,\n.ec
+  cerr << "=== jDJ step-by-step ===" << endl;
+  {
+    auto tracer = makeTracer({"debceb,", "d a, a", " .ec"}, 0, 0);
+    tracer.trace("j");
+    tracer.trace("D");
+    tracer.trace("J");
+    tracer.printSummary();
+  }
+
+  // Also test J behavior on empty line joining with leading-space line
+  cerr << endl << "=== J on empty line + leading space ===" << endl;
+  {
+    auto tracer = makeTracer({"debceb,", "", " .ec"}, 1, 0);
+    tracer.trace("J");
+    tracer.printSummary();
+  }
+
+  // Compare our sim
+  cerr << endl << "=== Our sim for J on empty + leading space ===" << endl;
+  {
+    Lines simLines = {"debceb,", "", " .ec"};
+    Position simPos(1, 0);
+    Mode simMode = Mode::Normal;
+    Edit::applyEdit(simLines, simPos, simMode, Edit::parseEdits("J")[0]);
+    cerr << "  Lines: " << simLines << " pos=" << simPos << endl;
+  }
+
+  // Also check: J from various line contents
+  auto testJ = [&](Lines source, int row, int col) {
+    cerr << "=== J on " << source << " from (" << row << "," << col << ") ===" << endl;
+    auto nvim = oracle_->simulate(source, row, col, "J");
+    cerr << "  Neovim: " << nvim.lines << " cursor=(" << nvim.row << "," << nvim.col << ")" << endl;
+
+    Lines simLines = source;
+    Position simPos(row, col);
+    Mode simMode = Mode::Normal;
+    Edit::applyEdit(simLines, simPos, simMode, Edit::parseEdits("J")[0]);
+    cerr << "  Ours:   " << simLines << " cursor=" << simPos << endl;
+
+    bool match = (simLines == nvim.lines && simPos.line == nvim.row && simPos.col == nvim.col);
+    cerr << "  " << (match ? "MATCH" : "MISMATCH") << endl << endl;
+  };
+
+  testJ({"abc", "def"}, 0, 0);          // normal join
+  testJ({"abc", " def"}, 0, 0);         // next line has leading space
+  testJ({"abc", "  def"}, 0, 0);        // next line has leading spaces
+  testJ({"", "def"}, 0, 0);             // empty current line
+  testJ({"", " def"}, 0, 0);            // empty current + leading space
+  testJ({"abc ", "def"}, 0, 0);         // current ends with space
+  testJ({"abc.", "def"}, 0, 0);         // current ends with period
+  testJ({"abc", ""}, 0, 0);             // next line is empty
+  testJ({"", ""}, 0, 0);                // both empty
+}
+
+TEST_F(NeovimOracleDebug, DISABLED_InvestigateDCloseBrace) {
+  // d} is characterwise - deletes from cursor pos to end of paragraph
+  // Verify our sim matches neovim
+
+  auto testCase = [&](Lines source, int row, int col) {
+    cerr << "=== d} on " << source << " from (" << row << "," << col << ") ===" << endl;
+
+    // Oracle
+    auto nvim = oracle_->simulate(source, row, col, "d}");
+    cerr << "  Neovim: " << nvim.lines << " cursor=(" << nvim.row << "," << nvim.col << ")" << endl;
+
+    // Our sim
+    Lines simLines = source;
+    Position simPos(row, col);
+    Mode simMode = Mode::Normal;
+    auto edits = Edit::parseEdits("d}");
+    for (const auto& e : edits) Edit::applyEdit(simLines, simPos, simMode, e);
+    cerr << "  Ours:   " << simLines << " cursor=" << simPos << endl;
+
+    bool match = (simLines == nvim.lines && simPos.line == nvim.row && simPos.col == nvim.col);
+    cerr << "  " << (match ? "MATCH" : "MISMATCH") << endl << endl;
+  };
+
+  // Single line cases
+  testCase({" eceba"}, 0, 0);
+  testCase({" eceba"}, 0, 2);
+  testCase({" eceba"}, 0, 5);
+  testCase({"hello"}, 0, 0);
+  testCase({"hello"}, 0, 2);
+
+  // Multi-line (single paragraph)
+  testCase({"abc", "def"}, 0, 0);
+  testCase({"abc", "def"}, 0, 1);
+  testCase({"abc", "def"}, 1, 0);
+  testCase({"abc", "def"}, 1, 1);
+
+  // Multi-line with blank line (two paragraphs)
+  testCase({"abc", "", "def"}, 0, 0);
+  testCase({"abc", "", "def"}, 0, 1);
+  testCase({"abc", "", "def"}, 2, 0);
+}
 
 // Test that CompositionSearchContext merges adjacent pure insertions
 
@@ -1844,5 +2001,168 @@ TEST_F(DebugTest, ReplayVerification_Motion) {
     EXPECT_EQ(editPos.line, t.expected.line) << t.cmd << " line mismatch";
     EXPECT_EQ(editPos.col, t.expected.col) << t.cmd << " col mismatch";
     EXPECT_EQ(editLines, buf) << t.cmd << " should not modify buffer";
+  }
+}
+
+TEST_F(NeovimOracleDebug, DISABLED_TraceDeleteEntireLineIter20) {
+  // DeleteEntireLine iter=20: jDJ produces wrong result
+  // Initial: ["debceb,", "d a, a", " .ec"]
+  // Goal:    ["debceb,", " .ec"]
+  // Seq: jDJ → ["debceb,", ".ec"] (strips leading space from " .ec")
+  cerr << "=== DeleteEntireLine iter=20 ===" << endl;
+
+  Lines initial = {"debceb,", "d a, a", " .ec"};
+  Lines goal = {"debceb,", " .ec"};
+
+  // Run composition optimizer
+  Config config = Config::uniform();
+  CompositionOptimizer opt{config};
+  CompositionOptimizerParams params;
+
+  auto res = opt.optimize(initial, Position(0,0), goal, Position(0,0), params);
+  cerr << "Results: " << res.results.size() << endl;
+  for (size_t i = 0; i < res.results.size(); i++) {
+    const auto& r = res.results[i];
+    cerr << "  [" << i << "] seq='" << r.sequence << "' cost=" << r.keyCost << endl;
+    auto nvim = oracle_->simulate(initial, 0, 0, r.sequence.keys);
+    cerr << "    nvim: " << nvim.lines << (nvim.lines == goal ? " OK" : " WRONG") << endl;
+  }
+
+  // Also check diffs
+  auto diffs = Myers::calculate(initial, goal);
+  cerr << "\nDiffs: " << diffs.size() << endl;
+  for (size_t i = 0; i < diffs.size(); i++) {
+    const auto& d = diffs[i];
+    cerr << "  [" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
+         << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
+         << " del='" << d.deletedText << "' ins='" << d.insertedText << "'"
+         << " prefix='" << d.boundary.prefix() << "' suffix='" << d.boundary.suffix() << "'"
+         << " hasAbove=" << d.boundary.hasLinesAbove()
+         << " hasBelow=" << d.boundary.hasLinesBelow()
+         << endl;
+
+    if (!d.isPureInsertion()) {
+      EditOptimizer editOpt(config);
+      EditOptimizerParams eparams;
+
+      // Check if pure deletion
+      if (d.insertedText.empty()) {
+        cerr << "    Pure deletion" << endl;
+        EditResult eres = editOpt.optimizePureDeletion(
+            d.deletedLines(), d.boundary, eparams);
+        for (size_t j = 0; j < eres.resultCount(); j++) {
+          if (eres.getResults()[j].isValid()) {
+            cerr << "    pos " << j << ": '" << eres.getResults()[j].sequence
+                 << "' cost=" << eres.getResults()[j].keyCost << endl;
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST_F(NeovimOracleDebug, DISABLED_TraceJoinLinesResidualEditOpt) {
+  // Trace why jdawce<typed><Esc> is missing <BS> collapse
+  // Initial: ["aaa", "xxx", "ccc"], goal: ["aaa bbb ccc"]
+  // Diff: '\nxxx\nccc' -> ' bbb ccc', prefix="aaa", suffix=""
+  // Edit region effective lines: ["aaa", "xxx", "ccc"]
+  cerr << "=== Trace JoinLinesResidual Edit Optimizer ===" << endl;
+
+  // Step 1: Verify what daw does at (1,0) on ["aaa", "xxx", "ccc"]
+  cerr << "\n--- Step 1: daw at (1,0) ---" << endl;
+  {
+    Lines buf = {"aaa", "xxx", "ccc"};
+    // Oracle
+    auto nvim = oracle_->simulate(buf, 1, 0, "daw");
+    cerr << "  Neovim daw: " << nvim.lines << " cursor=(" << nvim.row << "," << nvim.col << ")" << endl;
+
+    // Our sim
+    Lines simBuf = buf;
+    Position simPos(1, 0);
+    Mode simMode = Mode::Normal;
+    Edit::applyEdit(simBuf, simPos, simMode, Edit::parseEdits("daw")[0]);
+    cerr << "  Our daw:    " << simBuf << " cursor=" << simPos << endl;
+    bool match = simBuf == nvim.lines;
+    cerr << "  " << (match ? "MATCH" : "MISMATCH") << endl;
+  }
+
+  // Step 2: What does de do at (1,0) on ["aaa", "", "ccc"]?
+  cerr << "\n--- Step 2: de at (1,0) on ['aaa', '', 'ccc'] ---" << endl;
+  {
+    Lines buf = {"aaa", "", "ccc"};
+    auto nvim = oracle_->simulate(buf, 1, 0, "de");
+    cerr << "  Neovim de: " << nvim.lines << " cursor=(" << nvim.row << "," << nvim.col << ")" << endl;
+
+    Lines simBuf = buf;
+    Position simPos(1, 0);
+    Mode simMode = Mode::Normal;
+    Edit::applyEdit(simBuf, simPos, simMode, Edit::parseEdits("de")[0]);
+    cerr << "  Our de:    " << simBuf << " cursor=" << simPos << endl;
+    bool match = simBuf == nvim.lines;
+    cerr << "  " << (match ? "MATCH" : "MISMATCH") << endl;
+  }
+
+  // Step 3: What does textObjectRange return for aw at (1,0)?
+  cerr << "\n--- Step 3: textObjectRange aw at (1,0) on ['aaa', 'xxx', 'ccc'] ---" << endl;
+  {
+    Lines buf = {"aaa", "xxx", "ccc"};
+    // No boundary (full buffer)
+    Range r = VimCore::textObjectRange(Position(1,0), buf, false, false, 0, 0, false, false);
+    cerr << "  aw range: (" << r.first.line << "," << r.first.col
+         << ")-(" << r.last.line << "," << r.last.col << ")" << endl;
+
+    // With hasLinesAbove=true (as the edit boundary would have)
+    Range r2 = VimCore::textObjectRange(Position(1,0), buf, false, false, 0, 0, true, false);
+    cerr << "  aw range (hasAbove): (" << r2.first.line << "," << r2.first.col
+         << ")-(" << r2.last.line << "," << r2.last.col << ")" << endl;
+  }
+
+  // Step 4: Run the actual edit optimizer and check all results
+  cerr << "\n--- Step 4: Edit optimizer results ---" << endl;
+  {
+    Lines initial = {"aaa", "xxx", "ccc"};
+    Lines goal = {"aaa bbb ccc"};
+
+    // Build boundary from full buffer perspective
+    Position beginPos(0, 3);  // After "aaa"
+    Position endPos = initial.endPos();
+    EditBoundary boundary(initial, beginPos, endPos);
+    cerr << "  prefix='" << boundary.prefix() << "' suffix='" << boundary.suffix() << "'" << endl;
+    cerr << "  hasLinesAbove=" << boundary.hasLinesAbove()
+         << " hasLinesBelow=" << boundary.hasLinesBelow()
+         << " hasPrefix=" << boundary.hasPrefix()
+         << " hasSuffix=" << boundary.hasSuffix() << endl;
+
+    // The edit region: content after prefix "aaa"
+    // deletedLines includes newlines and content: "\nxxx\nccc" -> ["", "xxx", "ccc"]
+    Lines deletedLines = {"", "xxx", "ccc"};
+    Lines insertedLines = {" bbb ccc"};
+
+    Config config = Config::uniform();
+    EditOptimizer opt(config);
+    EditResult res = opt.optimizeEdit(deletedLines, insertedLines, boundary, {});
+
+    cerr << "  results: " << res.resultCount() << " total" << endl;
+    int idx = 0;
+    Lines effectiveLines = {"aaa", "xxx", "ccc"};
+    for (int r = 0; r < static_cast<int>(deletedLines.size()); r++) {
+      for (int c = 0; c < deletedLines[r].effectiveSize(); c++) {
+        const Result& result = res.getResults()[idx];
+        if (result.isValid()) {
+          int fullRow = r + (r == 0 ? static_cast<int>(beginPos.line) : 0);
+          // For row 0, col offset is beginPos.col; for others, no offset
+          // Actually need to compute proper full-buffer position
+          cerr << "  [" << r << "," << c << "] seq='" << result.sequence
+               << "' cost=" << result.keyCost << endl;
+          cerr << "    bytes:";
+          for (unsigned char ch : result.sequence.keys) {
+            if (ch >= 0x20 && ch < 0x7f) cerr << " '" << ch << "'";
+            else cerr << " 0x" << hex << (int)ch << dec;
+          }
+          cerr << endl;
+        }
+        idx++;
+      }
+    }
   }
 }

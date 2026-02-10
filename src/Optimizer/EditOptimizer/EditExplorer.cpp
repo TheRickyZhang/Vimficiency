@@ -104,7 +104,8 @@ void EditExplorer::exploreCharEdits(
 template<bool Forward>
 void EditExplorer::exploreParagraphEdits(
     const std::vector<Edit::ParagraphEditSpecNoDir>& specs,
-    const Position& cursor, const Lines& lines, LinewiseCallback onLinewise) {
+    const Position& cursor, const Lines& lines,
+    DeletionCallback onDeletion, LinewiseCallback onLinewise) {
   int lastLine = lines.lastLine();
 
   bool hasLinesOutside = Forward ? ctx_.editBoundary.hasLinesBelow() : ctx_.editBoundary.hasLinesAbove();
@@ -122,15 +123,16 @@ void EditExplorer::exploreParagraphEdits(
 
   for (const auto& spec : specs) {
     if constexpr (Forward) {
-      // d}: delete from cursor line through the line before the blank separator.
+      // d}: characterwise delete from cursor through the paragraph end.
       // At EOF (endpoint is last line, not blank), d} deletes through endpoint.
+      // At a blank separator, d} deletes up to (not including) the blank line.
+      // The linewise case (cursor at col 0) is already covered by dd.
       bool endpointIsBlank = VimCore::isBlankLineStr(lines[endpointLine]);
       int endLine = endpointIsBlank ? endpointLine - 1 : endpointLine;
       if (endLine < cursor.line) continue;
-      // Only support single-line d} (onLinewise takes one line)
-      if (endLine == cursor.line) {
-        onLinewise(cursor.line, spec.cmd, spec.keys);
-      }
+      int endCol = std::max(0, static_cast<int>(lines[endLine].size()) - 1);
+      Range r(cursor, Position(endLine, endCol));
+      onDeletion(r, spec.cmd, spec.keys);
     } else {
       // d{: when endpointLine == cursor.line, { stays on the same line and
       // d{ is characterwise exclusive (not linewise), so skip.
@@ -280,9 +282,9 @@ template void EditExplorer::exploreBackwardWordEdits<EdgeType::WordEdge>(
 template void EditExplorer::exploreBackwardWordEdits<EdgeType::NextEdge>(
     const vector<Edit::BackwardWordEditSpecNoEdge>&, const Position&, const Lines&, DeletionCallback);
 template void EditExplorer::exploreParagraphEdits<true>(
-    const vector<Edit::ParagraphEditSpecNoDir>&, const Position&, const Lines&, LinewiseCallback);
+    const vector<Edit::ParagraphEditSpecNoDir>&, const Position&, const Lines&, DeletionCallback, LinewiseCallback);
 template void EditExplorer::exploreParagraphEdits<false>(
-    const vector<Edit::ParagraphEditSpecNoDir>&, const Position&, const Lines&, LinewiseCallback);
+    const vector<Edit::ParagraphEditSpecNoDir>&, const Position&, const Lines&, DeletionCallback, LinewiseCallback);
 template void EditExplorer::exploreSentenceEdits<true>(
     const vector<Edit::SentenceEditSpecNoDir>&, const Position&, const Lines&, DeletionCallback);
 template void EditExplorer::exploreSentenceEdits<false>(
@@ -378,8 +380,8 @@ void EditExplorer::exploreAllDeletions(const EditState& state,
   exploreHalfLineEdits(Edit::HALF_LINE_EDITS, cursor, lines, contentBegin, contentEnd, onDeletion);
   exploreFullLineEdits(Edit::FULL_LINE_EDITS, cursor, lines, onLinewise);
   exploreCharEdits(cursor, lines, contentBegin, contentEnd, editContentLen, onDeletion);
-  exploreParagraphEdits<true>(Edit::FORWARD_PARAGRAPH_EDITS, cursor, lines, onLinewise);
-  exploreParagraphEdits<false>(Edit::BACKWARD_PARAGRAPH_EDITS, cursor, lines, onLinewise);
+  exploreParagraphEdits<true>(Edit::FORWARD_PARAGRAPH_EDITS, cursor, lines, onDeletion, onLinewise);
+  exploreParagraphEdits<false>(Edit::BACKWARD_PARAGRAPH_EDITS, cursor, lines, onDeletion, onLinewise);
   exploreSentenceEdits<true>(Edit::FORWARD_SENTENCE_EDITS, cursor, lines, onDeletion);
   exploreSentenceEdits<false>(Edit::BACKWARD_SENTENCE_EDITS, cursor, lines, onDeletion);
   exploreJoinCommands(cursor, lines, onJoin);

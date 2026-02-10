@@ -59,7 +59,8 @@ public:
   template<bool Forward>
   void exploreParagraphEdits(
       const std::vector<Edit::ParagraphEditSpecNoDir>& specs,
-      const Position& cursor, const Lines& lines, LinewiseCallback onLinewise);
+      const Position& cursor, const Lines& lines,
+      DeletionCallback onDeletion, LinewiseCallback onLinewise);
 
   template<bool Forward>
   void exploreSentenceEdits(

@@ -90,9 +90,23 @@ public:
   const std::string& getSeq() const { return seq_; }
   const RunningEffort& getRunningEffort() const { return runningEffort; }
 
+  // Record a goal-reaching command with real effort in cost.
+  // Unlike recordSearch (which uses an externally-computed cost that lags behind
+  // the real effort), this computes cost = effortWeight * realEffort, giving
+  // correct PQ ordering for goal states (distance heuristic = 0 at goal).
+  // Sets mode to Insert so the costMap key is distinct from intermediate
+  // Normal-mode states at the same (buffer, position).
+  void recordGoalSearch(std::string_view cmd, const PhysicalKeys& keys,
+                        double effortWeight, const Config& config) {
+    seq_ += cmd;
+    effort_ = runningEffort.append(keys, config);
+    cost_ = effortWeight * effort_;
+    mode = Mode::Insert;
+  }
+
   // -----------------------------------------------------------------------------
   // State transitions - return new state with buffer mutation applied
-  // These do NOT record the command - use recordSearch() separately if not goal
+  // These do NOT record the command - use recordSearch() separately
   // -----------------------------------------------------------------------------
 
   // Create new state with deletion applied

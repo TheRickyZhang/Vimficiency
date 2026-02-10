@@ -246,21 +246,6 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
 
   vector<Result> results(ctx.totalPositions);
 
-  // Helper: record goal result directly from base state + goal command.
-  // Returns true if result was recorded (new for this position).
-  auto recordGoal = [&](const EditState& base, string_view goalCmd,
-                        const PhysicalKeys& goalKeys) -> bool {
-    int idx = base.getStartIndex();
-    if (results[idx].isValid()) return false;
-
-    RunningEffort re = base.getRunningEffort();
-    double goalEffort = re.append(goalKeys, config);
-    results[idx] = Result(base.getSeq() + string(goalCmd), goalEffort);
-    ctx.resultsFound++;
-    ctx.uniquePositionsCovered++;
-    return true;
-  };
-
   // Goal check: strict (single line matching preSuf)
   auto isGoalReached = [&](const Lines &lines) -> bool {
     return lines.size() == 1 && lines[0] == preSuf;
@@ -272,7 +257,8 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
     EditState newState = base.afterDeletion(range);
 
     if (isGoalReached(newState.getLines())) {
-      recordGoal(base, deleteCmd, deleteKeys);
+      newState.recordGoalSearch(deleteCmd, deleteKeys, ctx.effortWeight, config);
+      ctx.exploreNewState(std::move(newState));
       return;
     }
 
@@ -289,7 +275,8 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
 
     // Goal check before cursor adjustment (goal doesn't need 'k' escape)
     if (isGoalReached(lines)) {
-      recordGoal(base, deleteCmd, deleteKeys);
+      newState.recordGoalSearch(deleteCmd, deleteKeys, ctx.effortWeight, config);
+      ctx.exploreNewState(std::move(newState));
       return;
     }
 
@@ -314,8 +301,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
     if (!maybeState) continue;
     EditState s = std::move(*maybeState);
 
-    // Safety: catch goal states at pop time (e.g. reached via paths
-    // not covered by exploration callbacks)
+    // Check goal at pop time — guaranteed lowest cost
     if (isGoalReached(s.getLines())) {
       int idx = s.getStartIndex();
       if (!results[idx].isValid()) {
@@ -335,7 +321,8 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
       EditState newState = base.afterJoin(addSpace);
 
       if (isGoalReached(newState.getLines())) {
-        recordGoal(base, joinCmd, joinKeys);
+        newState.recordGoalSearch(joinCmd, joinKeys, ctx.effortWeight, config);
+        ctx.exploreNewState(std::move(newState));
         return;
       }
 
@@ -551,24 +538,35 @@ EditOptimizer::optimizeEdit(
     const Lines &lines = newState.getLines();
 
     if (isGoalReached(lines)) {
-      int idx = base.getStartIndex();
-      if (results[idx].isValid()) return;
+      // The goal suffix uses deleteToChange (a change command, Insert mode).
+      // Change commands keep empty lines that delete commands remove (Vim behavior).
+      // Use the change variant's buffer for building the collapse sequence.
+      Lines changeLines = base.getLines();
+      Position changePos = base.getPos();
+      VimCore::deleteRange(changeLines, range, changePos, Mode::Insert);
+
+      if (!isGoalReached(changeLines)) {
+        // Change variant doesn't reach goal — can't use deleteToChange.
+        // Record as non-goal state and continue searching.
+        newState.recordSearch(deleteCmd, deleteKeys,
+                              ctx.computePriority(newState.getEffort(), lines), config);
+        ctx.exploreNewState(std::move(newState));
+        return;
+      }
 
       KeyedSequence goalSuffix = deleteToChange(deleteCmd, deleteKeys);
       goalSuffix += buildCollapseSequence(
-          static_cast<int>(lines.size()), newState.getPos().line);
+          static_cast<int>(changeLines.size()), changePos.line);
       goalSuffix += typed;
 
-      RunningEffort re = base.getRunningEffort();
-      double goalEffort = re.append(goalSuffix.keys, config);
-      results[idx] = Result(base.getSeq() + goalSuffix.seq.keys, goalEffort);
-      ctx.resultsFound++;
-      ctx.uniquePositionsCovered++;
-
-      // Populate suffix cache via replay
+      // Populate suffix cache during exploration (needs base context)
       RunningEffort goalSuffixEffort;
       goalSuffixEffort.append(goalSuffix.keys, config);
-      replayAndCacheSuffix(idx, base.getSeq(), goalSuffix, goalSuffixEffort);
+      replayAndCacheSuffix(base.getStartIndex(), base.getSeq(), goalSuffix, goalSuffixEffort);
+
+      // Push goal state for pop-time recording
+      newState.recordGoalSearch(goalSuffix.seq.keys, goalSuffix.keys, ctx.effortWeight, config);
+      ctx.exploreNewState(std::move(newState));
       return;
     }
 
@@ -596,9 +594,6 @@ EditOptimizer::optimizeEdit(
     }
 
     if (isGoalReached(lines)) {
-      int idx = base.getStartIndex();
-      if (results[idx].isValid()) return;
-
       static const KeyedSequence ccCmd("cc", {Key::Key_C, Key::Key_C});
       int ccLineCount = static_cast<int>(base.getLines().size());
 
@@ -614,16 +609,14 @@ EditOptimizer::optimizeEdit(
       goalSuffix += buildCollapseSequence(ccLineCount, line);
       goalSuffix += typed;
 
-      RunningEffort re = base.getRunningEffort();
-      double goalEffort = re.append(goalSuffix.keys, config);
-      results[idx] = Result(base.getSeq() + goalSuffix.seq.keys, goalEffort);
-      ctx.resultsFound++;
-      ctx.uniquePositionsCovered++;
-
-      // Populate suffix cache via replay
+      // Populate suffix cache during exploration (needs base context)
       RunningEffort goalSuffixEffort;
       goalSuffixEffort.append(goalSuffix.keys, config);
-      replayAndCacheSuffix(idx, base.getSeq(), goalSuffix, goalSuffixEffort);
+      replayAndCacheSuffix(base.getStartIndex(), base.getSeq(), goalSuffix, goalSuffixEffort);
+
+      // Push goal state for pop-time recording
+      newState.recordGoalSearch(goalSuffix.seq.keys, goalSuffix.keys, ctx.effortWeight, config);
+      ctx.exploreNewState(std::move(newState));
       return;
     }
 
@@ -642,6 +635,21 @@ EditOptimizer::optimizeEdit(
 
     // Early stopping: skip if this startIndex already has a result
     if (results[s.getStartIndex()].isValid()) continue;
+
+    // Check goal at pop time — guaranteed lowest cost.
+    // Goal states have mode=Insert (set by recordGoalSearch during exploration),
+    // confirming the goal suffix (change + collapse + typed) was appended to seq.
+    // Normal-mode states that happen to match preSuf (e.g. after J) lack the
+    // suffix and must NOT be recorded as complete results.
+    if (s.getMode() == Mode::Insert && isGoalReached(s.getLines())) {
+      int idx = s.getStartIndex();
+      if (!results[idx].isValid()) {
+        results[idx] = Result(s.getSeq(), s.getEffort());
+        ctx.resultsFound++;
+        ctx.uniquePositionsCovered++;
+      }
+      continue;
+    }
 
     // Check suffix cache
     SuffixKey sk(s.getLinesHash(), static_cast<int>(s.getLines().size()), s.getPos(), s.getMode());
