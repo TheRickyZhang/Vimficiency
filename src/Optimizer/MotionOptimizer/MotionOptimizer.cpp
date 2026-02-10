@@ -1,10 +1,11 @@
 #include "MotionOptimizer.h"
-#include "MotionSearchContext.h"
-#include "MotionExplorer.h"
 
 #include <limits>
 #include <map>
 #include <set>
+
+#include "MotionSearchContext.h"
+#include "MotionExplorer.h"
 
 #include "Optimizer/BufferIndex.h"
 #include "State/PosKey.h"

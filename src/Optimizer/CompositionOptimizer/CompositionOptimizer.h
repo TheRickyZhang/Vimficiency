@@ -3,11 +3,12 @@
 #include <string_view>
 #include <vector>
 
+#include "CompositionOptimizerParams.h"
 #include "DiffState.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/Result.h"
 #include "Optimizer/SearchStats.h"
-#include "CompositionOptimizerParams.h"
+
 #include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
 #include "Editor/Position.h"

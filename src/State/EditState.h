@@ -65,8 +65,6 @@ class EditState {
   double effort_ = 0.0;           // Cached effort value
   double cost_ = 0.0;             // Priority = effort + heuristic
 
-  bool isGoal_ = false;  // True when state has reached the goal
-
 public:
   EditState(Lines lines, Position pos, int startIndex, double initialCost)
     : lines(std::move(lines)), pos(pos), startIndex(startIndex),
@@ -91,18 +89,6 @@ public:
   double getCost() const { return cost_; }
   const std::string& getSeq() const { return seq_; }
   const RunningEffort& getRunningEffort() const { return runningEffort; }
-
-  // Goal state flag
-  bool isGoal() const { return isGoal_; }
-
-  // Record goal with externally-computed effort (pure cost, no RunningEffort mutation).
-  // The caller computes goalEffort from a copied RunningEffort so this state stays clean.
-  void recordGoalCost(std::string_view goalSuffix, double goalEffort, double effortWeight) {
-    seq_ += goalSuffix;
-    effort_ = goalEffort;
-    cost_ = effortWeight * goalEffort;
-    isGoal_ = true;
-  }
 
   // -----------------------------------------------------------------------------
   // State transitions - return new state with buffer mutation applied

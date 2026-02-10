@@ -87,11 +87,6 @@ struct EditSearchContext {
   // Add state to priority queue if it improves on existing cost
   void exploreNewState(EditState&& state);
 
-  // Push a goal state directly to the priority queue, bypassing costMap.
-  // Goal states have isGoal() == true; their cost is incomparable with
-  // intermediate search states at the same (lines, pos).
-  void pushGoalState(EditState&& state);
-
   // Initialize priority queue with all starting positions
   void initStartingPositions(const Lines& initialLines);
 

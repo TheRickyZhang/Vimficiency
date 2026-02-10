@@ -1,16 +1,17 @@
 #include "CompositionSearchContext.h"
 
-#include "Keyboard/KeyedSequence.h"
-#include "Optimizer/BuildTypedCommands.h"
-#include "State/RunningEffort.h"
-#include "Utils/Debug.h"
-#include "Utils/StringUtils.h"
-#include "VimCore/VimEditUtils.h"
-
 #include <algorithm>
 #include <cassert>
 #include <limits>
 #include <tuple>
+
+#include "Optimizer/BuildTypedCommands.h"
+
+#include "Keyboard/KeyedSequence.h"
+#include "State/RunningEffort.h"
+#include "Utils/Debug.h"
+#include "Utils/StringUtils.h"
+#include "VimCore/VimEditUtils.h"
 
 using namespace std;
 

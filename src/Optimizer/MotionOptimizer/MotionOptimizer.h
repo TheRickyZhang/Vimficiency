@@ -3,11 +3,13 @@
 #include <string_view>
 #include <vector>
 
-#include "Optimizer/Config.h"
-#include "Optimizer/Result.h"
-#include "Optimizer/RangeResult.h"
 #include "MotionOptimizerParams.h"
+
+#include "Optimizer/Config.h"
+#include "Optimizer/RangeResult.h"
+#include "Optimizer/Result.h"
 #include "Optimizer/SearchStats.h"
+
 #include "Boundary/MotionBoundary.h"
 #include "Editor/NavContext.h"
 #include "Editor/Position.h"

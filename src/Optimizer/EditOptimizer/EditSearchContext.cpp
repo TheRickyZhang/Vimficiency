@@ -50,11 +50,6 @@ void EditSearchContext::exploreNewState(EditState&& state) {
   }
 }
 
-void EditSearchContext::pushGoalState(EditState&& state) {
-  motionsEmitted++;
-  pq.push(std::move(state));
-}
-
 void EditSearchContext::initStartingPositions(const Lines& initialLines) {
   int startIndex = 0;
   // Initial priority: effortWeight * 0 + distanceWeight * distance = distanceWeight * distance
@@ -127,9 +122,6 @@ optional<EditState> EditSearchContext::getNextValidState() {
     EditState s = pq.top();
     pq.pop();
     totalPops++;  // Track all pops for safety cap
-
-    // Goal states bypass costMap — always valid
-    if (s.isGoal()) return s;
 
     // Skip if this state is outdated (we've found a better path)
     EditStateKey key = s.getKey();

@@ -1,19 +1,20 @@
 #include "CompositionOptimizer.h"
 
+#include <algorithm>
+#include <cassert>
+
 #include "CompositionSearchContext.h"
-#include "Editor/SequenceParser.h"
-#include "Keyboard/KeyedSequence.h"
 #include "Optimizer/BuildTypedCommands.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
+
+#include "Editor/SequenceParser.h"
+#include "Keyboard/KeyedSequence.h"
 #include "State/CompositionState.h"
 #include "Utils/BracketFlags.h"
 #include "Utils/Debug.h"
 #include "Utils/QuoteFlags.h"
 #include "Utils/StringUtils.h"
 #include "VimCore/VimCore.h"
-
-#include <algorithm>
-#include <cassert>
 
 using namespace std;
 
