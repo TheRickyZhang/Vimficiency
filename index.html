@@ -1,20 +1,29 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Vimficiency Benchmarks</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 600px; margin: 80px auto; padding: 0 20px; }
-    h1 { margin-bottom: 8px; }
-    p { color: #666; margin-bottom: 32px; }
-    a { display: block; padding: 12px 16px; margin: 8px 0; background: #f5f5f5; border-radius: 6px; color: #333; text-decoration: none; }
-    a:hover { background: #e8e8e8; }
-  </style>
+  <link rel="stylesheet" href="bench/style.css">
 </head>
 <body>
-  <h1>Vimficiency Benchmarks</h1>
-  <p>Performance tracking across commits</p>
-  <a href="bench/edit/">EditOptimizer</a>
-  <a href="bench/motion/">MotionOptimizer</a>
-  <a href="bench/composition/">CompositionOptimizer</a>
+  <div class="container">
+    <h1>Vimficiency Benchmarks</h1>
+    <p class="subtitle">Performance tracking across commits</p>
+    <div class="optimizer-grid" id="optimizer-grid">
+      <a class="optimizer-card" href="bench/edit/">
+        <h3>EditOptimizer</h3>
+        <p>Edit operation optimization</p>
+      </a>
+      <a class="optimizer-card" href="bench/motion/">
+        <h3>MotionOptimizer</h3>
+        <p>Cursor motion optimization</p>
+      </a>
+      <a class="optimizer-card" href="bench/composition/">
+        <h3>CompositionOptimizer</h3>
+        <p>Full composition optimization</p>
+      </a>
+    </div>
+  </div>
 </body>
 </html>

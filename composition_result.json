@@ -1,0 +1,144 @@
+{
+  "context": {
+    "date": "2026-02-10T16:26:12+00:00",
+    "host_name": "7f5c90f0eef7",
+    "executable": "./build/tests/vimficiency_benchmarks",
+    "num_cpus": 4,
+    "mhz_per_cpu": 3226,
+    "cpu_scaling_enabled": false,
+    "caches": [
+      {
+        "type": "Data",
+        "level": 1,
+        "size": 32768,
+        "num_sharing": 2
+      },
+      {
+        "type": "Instruction",
+        "level": 1,
+        "size": 32768,
+        "num_sharing": 2
+      },
+      {
+        "type": "Unified",
+        "level": 2,
+        "size": 524288,
+        "num_sharing": 2
+      },
+      {
+        "type": "Unified",
+        "level": 3,
+        "size": 33554432,
+        "num_sharing": 4
+      }
+    ],
+    "load_avg": [2.82227,1.2832,0.497559],
+    "library_version": "v1.9.1",
+    "library_build_type": "release",
+    "json_schema_version": 1
+  },
+  "benchmarks": [
+    {
+      "name": "CompositionOptimizer/TwoEdits_DiffLines/iterations:5",
+      "family_index": 0,
+      "per_family_instance_index": 0,
+      "run_name": "CompositionOptimizer/TwoEdits_DiffLines/iterations:5",
+      "run_type": "iteration",
+      "repetitions": 1,
+      "repetition_index": 0,
+      "threads": 1,
+      "iterations": 5,
+      "real_time": 3.9220580000005610e+05,
+      "cpu_time": 3.9193780000000005e+05,
+      "time_unit": "ns",
+      "Found": 0.0000000000000000e+00,
+      "Remain": 0.0000000000000000e+00,
+      "Searched": 2.3999999999999999e+00
+    },
+    {
+      "name": "CompositionOptimizer/TwoEdits_SameLine/iterations:5",
+      "family_index": 1,
+      "per_family_instance_index": 0,
+      "run_name": "CompositionOptimizer/TwoEdits_SameLine/iterations:5",
+      "run_type": "iteration",
+      "repetitions": 1,
+      "repetition_index": 0,
+      "threads": 1,
+      "iterations": 5,
+      "real_time": 1.2769159999947988e+05,
+      "cpu_time": 1.2785460000000002e+05,
+      "time_unit": "ns",
+      "Found": 0.0000000000000000e+00,
+      "Remain": 0.0000000000000000e+00,
+      "Searched": 1.2000000000000000e+00
+    },
+    {
+      "name": "CompositionOptimizer/SingleLineSub/iterations:5",
+      "family_index": 2,
+      "per_family_instance_index": 0,
+      "run_name": "CompositionOptimizer/SingleLineSub/iterations:5",
+      "run_type": "iteration",
+      "repetitions": 1,
+      "repetition_index": 0,
+      "threads": 1,
+      "iterations": 5,
+      "real_time": 2.3491519999652155e+05,
+      "cpu_time": 2.3498279999999999e+05,
+      "time_unit": "ns",
+      "Found": 0.0000000000000000e+00,
+      "Remain": 0.0000000000000000e+00,
+      "Searched": 4.0000000000000002e-01
+    },
+    {
+      "name": "CompositionOptimizer/MultiLineSingleEdit/2/iterations:5",
+      "family_index": 3,
+      "per_family_instance_index": 0,
+      "run_name": "CompositionOptimizer/MultiLineSingleEdit/2/iterations:5",
+      "run_type": "iteration",
+      "repetitions": 1,
+      "repetition_index": 0,
+      "threads": 1,
+      "iterations": 5,
+      "real_time": 1.0845599999811384e+05,
+      "cpu_time": 1.0859679999999997e+05,
+      "time_unit": "ns",
+      "Found": 0.0000000000000000e+00,
+      "Remain": 0.0000000000000000e+00,
+      "Searched": 4.0000000000000002e-01
+    },
+    {
+      "name": "CompositionOptimizer/MultiLineSingleEdit/3/iterations:5",
+      "family_index": 3,
+      "per_family_instance_index": 1,
+      "run_name": "CompositionOptimizer/MultiLineSingleEdit/3/iterations:5",
+      "run_type": "iteration",
+      "repetitions": 1,
+      "repetition_index": 0,
+      "threads": 1,
+      "iterations": 5,
+      "real_time": 1.4265140000020439e+05,
+      "cpu_time": 1.4275260000000018e+05,
+      "time_unit": "ns",
+      "Found": 0.0000000000000000e+00,
+      "Remain": 0.0000000000000000e+00,
+      "Searched": 4.0000000000000002e-01
+    },
+    {
+      "name": "CompositionOptimizer/MultiLineSingleEdit/5/iterations:5",
+      "family_index": 3,
+      "per_family_instance_index": 2,
+      "run_name": "CompositionOptimizer/MultiLineSingleEdit/5/iterations:5",
+      "run_type": "iteration",
+      "repetitions": 1,
+      "repetition_index": 0,
+      "threads": 1,
+      "iterations": 5,
+      "real_time": 3.1408840000040072e+05,
+      "cpu_time": 3.1420280000000016e+05,
+      "time_unit": "ns",
+      "Found": 0.0000000000000000e+00,
+      "Remain": 0.0000000000000000e+00,
+      "Searched": 2.2000000000000002e+00
+    }
+  ]
+}
