@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1770745447725,
+  "lastUpdate": 1770747449054,
   "repoUrl": "https://github.com/TheRickyZhang/Vimficiency",
   "entries": {
     "Benchmark": [
@@ -1476,6 +1476,252 @@ window.BENCHMARK_DATA = {
             "value": 922191.6000001328,
             "unit": "ns/iter",
             "extra": "iterations: 5\ncpu: 922322.200000103 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "rickyzhang196@outlook.com",
+            "name": "Ricky Zhang",
+            "username": "TheRickyZhang"
+          },
+          "committer": {
+            "email": "rickyzhang196@outlook.com",
+            "name": "Ricky Zhang",
+            "username": "TheRickyZhang"
+          },
+          "distinct": true,
+          "id": "dbdec49cf804c67cb1419fe40113fac69e8e29fa",
+          "message": "fix extra web includes",
+          "timestamp": "2026-02-10T13:12:24-05:00",
+          "tree_id": "520137b867066eec2f187c7ff3ecd4be8bc1d6a8",
+          "url": "https://github.com/TheRickyZhang/Vimficiency/commit/dbdec49cf804c67cb1419fe40113fac69e8e29fa"
+        },
+        "date": 1770747447959,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "EditOptimizer/BufferSize/1/iterations:5",
+            "value": 184920.80000100943,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 184730.40000000002 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/BufferSize/3/iterations:5",
+            "value": 778842.2000032824,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 778874.4000000001 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/BufferSize/5/iterations:5",
+            "value": 2129538.799999864,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 2129635.6000000006 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/BufferSize/10/iterations:5",
+            "value": 9475379.799999928,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 9475647.2 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/BufferSize/15/iterations:5",
+            "value": 19116790.99999901,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 19115304.200000003 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/LineLength/10/iterations:5",
+            "value": 618737.5999957111,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 618805.9999999995 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/LineLength/20/iterations:5",
+            "value": 1467085.5999952438,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 1467145.999999997 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/LineLength/40/iterations:5",
+            "value": 2400516.0000001523,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 2400622.9999999963 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/LineLength/60/iterations:5",
+            "value": 4760458.399999834,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 4760732.200000001 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/BufferShape/Uniform/iterations:5",
+            "value": 9110443.399998758,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 9110842.8 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/BufferShape/Prose/iterations:5",
+            "value": 40588838.79999939,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 40585980.80000001 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/BufferShape/CodeLike/iterations:5",
+            "value": 8751415.999995515,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 8748613.2 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SearchDepth/1000/iterations:5",
+            "value": 1828270.999999404,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 1828497.799999984 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SearchDepth/5000/iterations:5",
+            "value": 6575616.999998601,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 6571306.799999999 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SearchDepth/10000/iterations:5",
+            "value": 12387267.600001905,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 12384076.799999999 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SearchDepth/50000/iterations:5",
+            "value": 18866967.799999658,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 18865235.800000012 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineDelete/2/iterations:5",
+            "value": 264262.79999895993,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 264317.0000000028 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineDelete/4/iterations:5",
+            "value": 874396.399996158,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 874513.00000001 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineDelete/6/iterations:5",
+            "value": 2105355.599996983,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 2105352.199999988 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineDelete/8/iterations:5",
+            "value": 3421966.6000012695,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 3422192.0000000014 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineDelete/10/iterations:5",
+            "value": 5029203.599997345,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 5029359.200000005 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/Boundary/None",
+            "value": 7911595.03370792,
+            "unit": "ns/iter",
+            "extra": "iterations: 89\ncpu: 7910630.179775282 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/Boundary/Prefix",
+            "value": 8330061.440476231,
+            "unit": "ns/iter",
+            "extra": "iterations: 84\ncpu: 8329167.6428571455 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/Boundary/Suffix",
+            "value": 8998084.679487232,
+            "unit": "ns/iter",
+            "extra": "iterations: 78\ncpu: 8997003.730769234 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/Boundary/Both",
+            "value": 54709583.41666687,
+            "unit": "ns/iter",
+            "extra": "iterations: 12\ncpu: 54697964.16666665 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineEdit/2L->1w",
+            "value": 92697.19234842433,
+            "unit": "ns/iter",
+            "extra": "iterations: 7554\ncpu: 92689.35120465975 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineEdit/3L->1w",
+            "value": 1149860.2660098302,
+            "unit": "ns/iter",
+            "extra": "iterations: 609\ncpu: 1149730.8407224962 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineEdit/5L+bnd",
+            "value": 2693457.1583011616,
+            "unit": "ns/iter",
+            "extra": "iterations: 259\ncpu: 2693087.84942085 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineEdit/Random/2/iterations:5",
+            "value": 343857.2000050044,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 343957.40000014997 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineEdit/Random/4/iterations:5",
+            "value": 966476.0000021033,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 966476.4000000048 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineEdit/Random/6/iterations:5",
+            "value": 1673742.600002015,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 1673857.5999999838 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SmallChange/1/iterations:5",
+            "value": 83716.19999820723,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 83698.19999991535 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SmallChange/2/iterations:5",
+            "value": 210264.00000323518,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 210326.20000003278 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SmallChange/3/iterations:5",
+            "value": 392587.80000182014,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 392688.4000000186 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SmallEmbeddedChange/1/iterations:5",
+            "value": 413937.79999907565,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 414048.20000003895 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SmallEmbeddedChange/2/iterations:5",
+            "value": 1917516.99999827,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 1917612.2000001073 ns\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SmallEmbeddedChange/3/iterations:5",
+            "value": 946171.9999990236,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 946256.8000000004 ns\nthreads: 1"
           }
         ]
       }
