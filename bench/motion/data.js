@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1770744167878,
+  "lastUpdate": 1770745450757,
   "repoUrl": "https://github.com/TheRickyZhang/Vimficiency",
   "entries": {
     "Benchmark": [
@@ -840,6 +840,174 @@ window.BENCHMARK_DATA = {
             "value": 10243188.800006919,
             "unit": "ns/iter",
             "extra": "iterations: 5\ncpu: 10243544.2 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "rickyzhang196@outlook.com",
+            "name": "Ricky Zhang",
+            "username": "TheRickyZhang"
+          },
+          "committer": {
+            "email": "rickyzhang196@outlook.com",
+            "name": "Ricky Zhang",
+            "username": "TheRickyZhang"
+          },
+          "distinct": true,
+          "id": "b688eca6a098f39492d32b1dbdf79e73f2a4d9d8",
+          "message": "temp store",
+          "timestamp": "2026-02-10T12:36:23-05:00",
+          "tree_id": "2892c815d2ab2789877de455dca9e915f2590c35",
+          "url": "https://github.com/TheRickyZhang/Vimficiency/commit/b688eca6a098f39492d32b1dbdf79e73f2a4d9d8"
+        },
+        "date": 1770745450005,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "MotionOptimizer/BufferSize/Standard/1/iterations:5",
+            "value": 37210.19999716191,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 36878.80000000001 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/BufferSize/Standard/5/iterations:5",
+            "value": 118953.79999486977,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 118923.20000000003 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/BufferSize/Standard/10/iterations:5",
+            "value": 332524.60000312567,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 332609.60000000003 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/BufferSize/Standard/15/iterations:5",
+            "value": 636303.6000038846,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 636392.2000000001 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/BufferSize/Standard/20/iterations:5",
+            "value": 207783.99999699104,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 207945.79999999993 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/BufferSize/Standard/30/iterations:5",
+            "value": 139358.60000060528,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 139465.8 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/LineLength/Standard/10/iterations:5",
+            "value": 112900.60000419544,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 112958.39999999995 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/LineLength/Standard/20/iterations:5",
+            "value": 1505613.2000040633,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 1505667.5999999999 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/LineLength/Standard/40/iterations:5",
+            "value": 234428.20000241225,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 234483.1999999998 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/LineLength/Standard/60/iterations:5",
+            "value": 791598.2000042732,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 783721.8 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/LineLength/Standard/80/iterations:5",
+            "value": 22219592.599998347,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 22217934.800000004 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/BufferShape/Uniform/Standard/iterations:5",
+            "value": 397660.99999951624,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 397862.80000000395 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/BufferShape/Prose/Standard/iterations:5",
+            "value": 226628.3999972529,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 226693.59999999971 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/BufferShape/CodeLike/Standard/iterations:5",
+            "value": 260133.19999833583,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 260207.60000000088 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/RangeBufferLines/Standard/5/iterations:5",
+            "value": 606855.0000009055,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 606986.4000000036 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/RangeBufferLines/Standard/10/iterations:5",
+            "value": 15460687.000000918,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 15460894.599999998 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/RangeBufferLines/Standard/20/iterations:5",
+            "value": 13541404.800002966,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 13541623.00000001 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/RangeBufferLines/Standard/30/iterations:5",
+            "value": 17111433.600001644,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 17111496.000000004 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/RangeBufferLines/Standard/40/iterations:5",
+            "value": 24894673.00000001,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 24891964.8 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/RangeResultSize/1col/Standard/iterations:5",
+            "value": 127702.99999829149,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 127754.40000000193 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/RangeResultSize/3cols/Standard/iterations:5",
+            "value": 2362301.7999966578,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 2362634.400000008 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/RangeResultSize/6cols/Standard/iterations:5",
+            "value": 13603462.399998989,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 13603599.4 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/RangeResultSize/10cols/Standard/iterations:5",
+            "value": 14484868.400001004,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 14485084.799999991 ns\nthreads: 1"
+          },
+          {
+            "name": "MotionOptimizer/RangeResultSize/30_2ln/Standard/iterations:5",
+            "value": 10417297.800000824,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 10417772.400000013 ns\nthreads: 1"
           }
         ]
       }
