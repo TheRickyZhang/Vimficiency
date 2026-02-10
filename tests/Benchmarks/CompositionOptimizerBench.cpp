@@ -111,6 +111,37 @@ static void BM_CompMultiLineSingleEdit(benchmark::State& state) {
   setSearchCounters(state, lastStats);
 }
 
+// Multi-line multi-edit: 3 edits spread across a buffer of varying size.
+// Fixed edit count isolates the effect of buffer size (longer motions between diffs).
+static void BM_CompMultiLineMultiEdit(benchmark::State& state) {
+  int numLines = static_cast<int>(state.range(0));
+  constexpr int NUM_EDITS = 3;
+  auto& seedMgr = SeedManager::instance();
+  SearchStats lastStats;
+  int iter = 0;
+  for (auto _ : state) {
+    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
+    Lines initial = randomLines(numLines, 8, 15);
+    Lines goal = initial;
+    // Spread edits evenly: near start, middle, and end
+    int editLines[NUM_EDITS] = {
+      0,
+      numLines / 2,
+      numLines - 1
+    };
+    for (int line : editLines) {
+      goal[line] = randomWord(RandomGen::range(4, 12));
+      if (goal[line] == initial[line]) goal[line] = "changed";
+    }
+
+    CompositionOptimizer opt(benchConfig);
+    auto result = opt.optimize(initial, {0, 0}, goal, {0, 0});
+    lastStats = result.stats;
+    iter++;
+  }
+  setSearchCounters(state, lastStats);
+}
+
 // =============================================================================
 // Registration
 // =============================================================================
@@ -132,6 +163,11 @@ static int registerCompositionBenchmarks = []() {
       "CompositionOptimizer/MultiLineSingleEdit", BM_CompMultiLineSingleEdit);
   for (int v : {2, 3, 5}) d->Arg(v);
   d->Iterations(DEFAULT_SEED_COUNT);
+
+  auto* e = benchmark::RegisterBenchmark(
+      "CompositionOptimizer/MultiLineMultiEdit", BM_CompMultiLineMultiEdit);
+  for (int v : {5, 10, 20, 40}) e->Arg(v);
+  e->Iterations(DEFAULT_SEED_COUNT);
 
   return 0;
 }();

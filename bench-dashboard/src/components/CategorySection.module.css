@@ -1,0 +1,52 @@
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.backLink {
+  font-size: 0.95rem;
+  color: #4285f4;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.backLink:hover { text-decoration: underline; }
+
+.chartGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 40px;
+}
+
+@media (max-width: 768px) {
+  .chartGrid { grid-template-columns: 1fr; }
+}
+
+.chartCard {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 16px;
+  cursor: pointer;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.chartCard:hover {
+  border-color: #4285f4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.chartCard h4 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #333;
+}
+
+.chartWrapper {
+  position: relative;
+  height: 200px;
+}

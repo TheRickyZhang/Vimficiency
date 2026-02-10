@@ -14,3 +14,7 @@ docs/vim/
 tests/.last_seeds.txt
 build-asan/
 build*/
+
+# Bench dashboard
+bench-dashboard/node_modules/
+bench-dashboard/dist/

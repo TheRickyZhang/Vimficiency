@@ -17,7 +17,6 @@
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Boundary/EditBoundary.h"
 #include "Boundary/MotionBoundary.h"
-#include "Keyboard/MotionToKeys.h"
 #include "Utils/EditTestGenerators.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/StringUtils.h"

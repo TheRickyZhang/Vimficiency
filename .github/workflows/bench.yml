@@ -106,6 +106,18 @@ jobs:
         with:
           name: benchmark-results
 
+      # One-time: remove stale result JSONs accidentally committed by old workflow's git add -A
+      - name: Clean stale artifacts from gh-pages
+        run: |
+          git fetch origin gh-pages
+          git checkout gh-pages
+          git rm -f --ignore-unmatch edit_result.json motion_result.json composition_result.json \
+            bench/style.css bench/common.js
+          git -c user.name=github-actions -c user.email=github-actions@github.com \
+            commit -m "Clean stale artifacts" || true
+          git push origin gh-pages
+          git checkout -
+
       - name: Store EditOptimizer results
         uses: benchmark-action/github-action-benchmark@v1
         with:
@@ -140,28 +152,33 @@ jobs:
           comment-on-alert: true
           fail-on-alert: false
 
-      - name: Deploy custom pages
-        run: |
-          # Save page templates from main branch before switching
-          cp -r .github/pages /tmp/bench-pages
+      - uses: oven-sh/setup-bun@v2
 
-          # Switch to gh-pages (includes data.js from benchmark-action)
+      - name: Build dashboard
+        working-directory: bench-dashboard
+        run: bun install --frozen-lockfile && bun run build
+
+      - name: Deploy dashboard
+        run: |
+          cp -r bench-dashboard/dist /tmp/dashboard-dist
+
           git fetch origin gh-pages
           git checkout gh-pages
 
-          # Deploy root index and shared assets
-          cp /tmp/bench-pages/index.html ./index.html
-          mkdir -p bench
-          cp /tmp/bench-pages/style.css bench/style.css
-          cp /tmp/bench-pages/common.js bench/common.js
+          # Root index
+          cp /tmp/dashboard-dist/index.html ./index.html
           touch .nojekyll
 
-          # Deploy optimizer pages (overrides benchmark-action's generated HTML)
+          # Shared assets
+          mkdir -p bench/assets
+          cp -r /tmp/dashboard-dist/assets/* bench/assets/ 2>/dev/null || true
+
+          # Optimizer pages (preserves existing data.js)
           for dir in bench/edit bench/motion bench/composition; do
-            [ -d "$dir" ] && cp /tmp/bench-pages/optimizer.html "$dir/index.html"
+            [ -d "$dir" ] && cp /tmp/dashboard-dist/optimizer.html "$dir/index.html"
           done
 
-          git add -A
+          git add index.html .nojekyll bench/assets/ bench/*/index.html
           git -c user.name=github-actions -c user.email=github-actions@github.com \
-            commit -m "Update benchmark pages" || true
+            commit -m "Update benchmark dashboard" || true
           git push origin gh-pages
