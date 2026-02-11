@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1770777950234,
+  "lastUpdate": 1770778834592,
   "repoUrl": "https://github.com/TheRickyZhang/Vimficiency",
   "entries": {
     "Benchmark": [
@@ -3444,6 +3444,252 @@ window.BENCHMARK_DATA = {
             "value": 106944441.39999746,
             "unit": "ns/iter",
             "extra": "iterations: 5\ncpu: 106.93116220000006 ms\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "rickyzhang196@outlook.com",
+            "name": "Ricky Zhang",
+            "username": "TheRickyZhang"
+          },
+          "committer": {
+            "email": "rickyzhang196@outlook.com",
+            "name": "Ricky Zhang",
+            "username": "TheRickyZhang"
+          },
+          "distinct": true,
+          "id": "d40d66b483f9a8fe260af370f89ce8a5ee433499",
+          "message": "fix more underlying bugs that popped up",
+          "timestamp": "2026-02-10T21:56:04-05:00",
+          "tree_id": "db81af959ad02238017113a7609c64330a4ef616",
+          "url": "https://github.com/TheRickyZhang/Vimficiency/commit/d40d66b483f9a8fe260af370f89ce8a5ee433499"
+        },
+        "date": 1770778833527,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "EditOptimizer/BufferSize/1/iterations:5",
+            "value": 144197.39999311787,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 0.1439808 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/BufferSize/3/iterations:5",
+            "value": 557621.999996627,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 0.5577232000000001 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/BufferSize/5/iterations:5",
+            "value": 1097585.0000022547,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 1.0976774000000002 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/BufferSize/10/iterations:5",
+            "value": 4264130.000001387,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 4.2642712 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/BufferSize/15/iterations:5",
+            "value": 9780931.000000237,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 9.781090799999998 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/LineLength/10/iterations:5",
+            "value": 349625.3999969667,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 0.3483642000000009 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/LineLength/20/iterations:5",
+            "value": 766187.599992918,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 0.7662223999999995 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/LineLength/40/iterations:5",
+            "value": 1323785.8000024972,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 1.3238533999999995 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/LineLength/60/iterations:5",
+            "value": 2674625.8000002853,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 2.6748296000000003 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/BufferShape/Uniform/iterations:5",
+            "value": 3105222.5999928853,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 3.1056601999999986 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/BufferShape/Prose/iterations:5",
+            "value": 26936502.60000595,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 26.935102399999998 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/BufferShape/CodeLike/iterations:5",
+            "value": 4134141.2000065246,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 4.1343986 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SearchDepth/1000/iterations:5",
+            "value": 2291035.2000053534,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 2.2911433999999953 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SearchDepth/5000/iterations:5",
+            "value": 8085875.399990528,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 8.086390800000009 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SearchDepth/10000/iterations:5",
+            "value": 9547056.000008069,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 9.547488599999998 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SearchDepth/50000/iterations:5",
+            "value": 9603936.20000559,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 9.604052200000002 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineDelete/2/iterations:5",
+            "value": 279736.79999604425,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 0.2797082000000062 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineDelete/4/iterations:5",
+            "value": 517521.2000040119,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 0.5175983999999967 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineDelete/6/iterations:5",
+            "value": 920864.5999933651,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 0.9209213999999966 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineDelete/8/iterations:5",
+            "value": 1341550.7999980035,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 1.3416667999999965 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineDelete/10/iterations:5",
+            "value": 1945246.8000054068,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 1.9453118000000047 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/Boundary/None",
+            "value": 4911601.718309696,
+            "unit": "ns/iter",
+            "extra": "iterations: 142\ncpu: 4.911049767605633 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/Boundary/Prefix",
+            "value": 6521288.945454402,
+            "unit": "ns/iter",
+            "extra": "iterations: 110\ncpu: 6.519818536363637 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/Boundary/Suffix",
+            "value": 54430569.25000178,
+            "unit": "ns/iter",
+            "extra": "iterations: 12\ncpu: 54.42802791666668 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/Boundary/Both",
+            "value": 48583124.142855436,
+            "unit": "ns/iter",
+            "extra": "iterations: 14\ncpu: 48.578076571428575 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineEdit/2L->1w",
+            "value": 251650.60277877282,
+            "unit": "ns/iter",
+            "extra": "iterations: 2807\ncpu: 0.25162240719629475 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineEdit/3L->1w",
+            "value": 511032.5325530364,
+            "unit": "ns/iter",
+            "extra": "iterations: 1367\ncpu: 0.511009524506218 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineEdit/5L+bnd",
+            "value": 2255088.3890674626,
+            "unit": "ns/iter",
+            "extra": "iterations: 311\ncpu: 2.254645032154342 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineEdit/Random/2/iterations:5",
+            "value": 468645.80000374187,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 0.4687411999999114 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineEdit/Random/4/iterations:5",
+            "value": 924491.599994326,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 0.924619999999976 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/MultiLineEdit/Random/6/iterations:5",
+            "value": 1394101.200003206,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 1.3942067999998642 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SmallChange/1/iterations:5",
+            "value": 187055.5999971657,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 0.18716540000003334 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SmallChange/2/iterations:5",
+            "value": 362463.4000061633,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 0.36256300000001573 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SmallChange/3/iterations:5",
+            "value": 610404.5999904884,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 0.6105218000000079 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SmallEmbeddedChange/1/iterations:5",
+            "value": 379457.1999947039,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 0.37713600000000014 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SmallEmbeddedChange/2/iterations:5",
+            "value": 2199516.2000052915,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 2.199634599999989 ms\nthreads: 1"
+          },
+          {
+            "name": "EditOptimizer/SmallEmbeddedChange/3/iterations:5",
+            "value": 1077479.3999985377,
+            "unit": "ns/iter",
+            "extra": "iterations: 5\ncpu: 1.077589800000034 ms\nthreads: 1"
           }
         ]
       }
