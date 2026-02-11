@@ -413,6 +413,92 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJoinBehavior) {
   testJ({"", ""}, 0, 0);                // both empty
 }
 
+TEST_F(NeovimOracleDebug, DISABLED_InvestigateCCloseBrace) {
+  // c} vs d}: Vim's exclusive-linewise rule. When exclusive motion lands at
+  // col 0: d converts to linewise, c stays characterwise (backs up one char).
+  // Use c}X<Esc> to compare in normal mode (avoids <Esc> cursor-backup noise).
+
+  auto testBoth = [&](Lines source, int row, int col) {
+    cerr << "=== source=" << source << " pos=(" << row << "," << col << ") ===" << endl;
+
+    // d}
+    auto dResult = oracle_->simulate(source, row, col, "d}");
+    cerr << "  d}: " << dResult.lines << " cursor=(" << dResult.row << "," << dResult.col << ")" << endl;
+
+    // c}X<Esc> — type "X" so we can see where insert mode cursor was
+    auto cResult = oracle_->simulate(source, row, col, "c}X<Esc>");
+    cerr << "  c}X<Esc>: " << cResult.lines << " cursor=(" << cResult.row << "," << cResult.col << ")" << endl;
+
+    // Our sim for d}
+    {
+      Lines simLines = source;
+      Position simPos(row, col);
+      Mode simMode = Mode::Normal;
+      auto edits = Edit::parseEdits("d}");
+      for (const auto& e : edits) Edit::applyEdit(simLines, simPos, simMode, e);
+      bool match = (simLines == dResult.lines && simPos.line == dResult.row && simPos.col == dResult.col);
+      cerr << "  d} sim: " << simLines << " cursor=" << simPos << (match ? " MATCH" : " MISMATCH") << endl;
+    }
+
+    // Our sim for c}X<Esc>
+    {
+      Lines simLines = source;
+      Position simPos(row, col);
+      Mode simMode = Mode::Normal;
+      auto edits = Edit::parseEdits("c}");
+      for (const auto& e : edits) Edit::applyEdit(simLines, simPos, simMode, e);
+      // Type "X" in insert mode
+      VimCore::insertText(simLines, simPos, "X");
+      // <Esc> backs up one
+      if (simPos.col > 0) simPos.setCol(simPos.col - 1);
+      bool match = (simLines == cResult.lines && simPos.line == cResult.row && simPos.col == cResult.col);
+      cerr << "  c}X sim: " << simLines << " cursor=" << simPos << (match ? " MATCH" : " MISMATCH") << endl;
+    }
+    cerr << endl;
+  };
+
+  // Key case: cursor at col 0, } lands at col 0 on next blank line
+  testBoth({"abc", "def"}, 0, 0);       // single paragraph, 2 lines, EOF
+  testBoth({"abc", "def", "ghi"}, 0, 0); // single paragraph, 3 lines, EOF
+  testBoth({"abc", "def", "ghi"}, 1, 0); // from middle line, EOF
+  testBoth({"abc", "", "def"}, 0, 0);    // two paragraphs, lands at col 0
+  testBoth({"abc", "", "def"}, 0, 1);    // two paragraphs, not at col 0
+  testBoth({"abc", "def"}, 0, 1);        // single paragraph, EOF, pos.col != 0
+
+  // The failing test case: aaa/xxx/ccc, cursor at (1,0)
+  testBoth({"aaa", "xxx", "ccc"}, 1, 0);
+
+  // Does pos.col matter for the linewise conversion?
+  testBoth({"abc", "def", "", "ghi"}, 0, 0);
+  testBoth({"abc", "def", "", "ghi"}, 0, 1);
+  testBoth({"abc", "def", "", "ghi"}, 0, 2);
+
+  // Compare c}<BS> vs d}i vs d}A for the failing case
+  cerr << "=== Comparing alternatives for aaa/xxx/ccc from (1,0) ===" << endl;
+  {
+    Lines src = {"aaa", "xxx", "ccc"};
+    auto r1 = oracle_->simulate(src, 1, 0, "c}\x08 bbb ccc<Esc>");
+    cerr << "  c}<BS> bbb ccc<Esc>: " << r1.lines << " cursor=(" << r1.row << "," << r1.col << ")" << endl;
+
+    auto r2 = oracle_->simulate(src, 1, 0, "d}i bbb ccc<Esc>");
+    cerr << "  d}i bbb ccc<Esc>: " << r2.lines << " cursor=(" << r2.row << "," << r2.col << ")" << endl;
+
+    auto r3 = oracle_->simulate(src, 1, 0, "d}A bbb ccc<Esc>");
+    cerr << "  d}A bbb ccc<Esc>: " << r3.lines << " cursor=(" << r3.row << "," << r3.col << ")" << endl;
+  }
+
+  // Also test the atCol0 case: abc/def//ghi from (0,0)
+  cerr << "=== Comparing alternatives for abc/def//ghi from (0,0) ===" << endl;
+  {
+    Lines src = {"abc", "def", "", "ghi"};
+    auto r1 = oracle_->simulate(src, 0, 0, "c}\x08X<Esc>");
+    cerr << "  c}<BS>X<Esc>: " << r1.lines << " cursor=(" << r1.row << "," << r1.col << ")" << endl;
+
+    auto r2 = oracle_->simulate(src, 0, 0, "d}iX<Esc>");
+    cerr << "  d}iX<Esc>: " << r2.lines << " cursor=(" << r2.row << "," << r2.col << ")" << endl;
+  }
+}
+
 TEST_F(NeovimOracleDebug, DISABLED_InvestigateDCloseBrace) {
   // d} is characterwise - deletes from cursor pos to end of paragraph
   // Verify our sim matches neovim

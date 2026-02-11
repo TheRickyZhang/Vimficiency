@@ -613,19 +613,35 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit) 
           for (int i = 0; i < count; i++) VimCore::motionParagraphNext(goalPos, lines);
           // } is exclusive. Two special cases match Vim's operator behavior:
           //
-          // 1. Col-0 linewise: when } lands at col 0 on a line past the start,
-          //    Vim converts the exclusive motion to linewise (deletes whole lines
-          //    from pos.line to goalPos.line - 1).
+          // 1. Col-0 exclusive-to-linewise: when } lands at col 0 on a line
+          //    past the start, Vim's exclusive-linewise rule applies:
+          //    - d}: converts to linewise (deletes whole lines pos..goalPos-1)
+          //    - c}: stays characterwise, backs up to end of goalPos-1 line
+          //      (see :help exclusive-linewise — c forces characterwise)
           //
           // 2. EOF inclusive: when } reaches the last non-blank line,
           //    motionParagraphNext lands ON the last char (not past it).
           //    The position is already inclusive — don't apply exclusive backup.
           //    Also handle goalPos == pos (cursor already at last char).
-          bool atCol0 = goalPos.col == 0 && goalPos.line > pos.line && pos.col == 0;
+          bool atCol0 = goalPos.col == 0 && goalPos.line > pos.line;
           bool atEof = goalPos.line == lines.lastLine()
                     && !VimCore::isBlankLineStr(lines[goalPos.line]);
           if (atCol0) {
-            VimCore::deleteRangeLinewise(lines, LineRange(pos.line, goalPos.line - 1), pos);
+            if (e[0] == 'd' && pos.col == 0) {
+              // d} with cursor at col 0: full linewise conversion
+              VimCore::deleteRangeLinewise(lines, LineRange(pos.line, goalPos.line - 1), pos);
+            } else {
+              // c}: stays characterwise (exclusive-linewise rule)
+              // d} with pos.col > 0: also characterwise (partial first line)
+              // Both back up endpoint to end of goalPos.line - 1
+              int backLine = goalPos.line - 1;
+              int backCol = lines[backLine].empty() ? 0 : static_cast<int>(lines[backLine].size()) - 1;
+              Position inclusiveEnd(backLine, backCol);
+              if (inclusiveEnd >= pos) {
+                Range r(pos, inclusiveEnd);
+                VimCore::deleteRange(lines, r, pos, e[0] == 'c' ? Mode::Insert : Mode::Normal);
+              }
+            }
           } else if (atEof ? (goalPos >= pos) : (goalPos > pos)) {
             Position inclusiveEnd = atEof ? goalPos : lines.getPrevPos(goalPos);
             if (inclusiveEnd != POSITION_OUTSIDE_BOUNDARY && inclusiveEnd >= pos) {

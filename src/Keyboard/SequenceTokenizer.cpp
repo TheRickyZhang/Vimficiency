@@ -1,4 +1,5 @@
 #include "SequenceTokenizer.h"
+#include "CharToKeys.h"
 
 #include <algorithm>
 #include <stdexcept>
@@ -45,12 +46,18 @@ PhysicalKeys SequenceTokenizer::tokenize(string_view s) const {
       }
     }
     if(!matched){
-      // include position + a small preview for debugging
+      // Fallback: single character via CHAR_TO_KEYS (handles typed content)
       char ch = s[i];
-      throw runtime_error(
-        "Malformed key sequence at position " + to_string(i) +
-        " near '" + string(1,ch) + "'"
-      );
+      auto it = CHAR_TO_KEYS.find(ch);
+      if (it != CHAR_TO_KEYS.end()) {
+        out.append(it->second);
+        i++;
+      } else {
+        throw runtime_error(
+          "Malformed key sequence at position " + to_string(i) +
+          " near '" + string(1,ch) + "'"
+        );
+      }
     }
   }
   return out;

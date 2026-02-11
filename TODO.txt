@@ -10,14 +10,12 @@ Speed up correct (vs previously "eager" variant) version of EditOptimizer while 
 Verify usage of KeySequence; are the statics (runtime built during optimizer initialization) used efficiently?
 Verify J motions
 
-❯   Change: d} characterwise exploration
-    Impact: +N states for multi-line spans
-    Justification: Fixes semantic gap — multi-line d} was previously unexplored\
-  \
-  CAn you elaborate on this? What do you mean we are exploring more states? From any give position, we can only explore
-  d} from that position, right?
 
 Add automatic detection of user's neovim settings, ex. shiftwidth
+
+TODO:
+Implement .
+explore count motions in edit optimizer
 
 Can skip F-motions if no endpoints found?
 Benchmark search time based on buffer size, search space, A* vs Dijkstra. And what order/frequency results found.

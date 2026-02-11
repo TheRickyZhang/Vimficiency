@@ -80,8 +80,7 @@ bool allLinesEmpty(const Lines &lines) {
 }
 
 
-// Convert delete command to change equivalent
-// Returns the change command KeyedSequence, or empty if no mapping exists
+// Convert characterwise delete command to change equivalent.
 //
 // dw/dW are converted to dwi/dWi (delete + enter insert) rather than cw/cW because
 // vim treats cw/cW like ce/cE (doesn't include trailing whitespace). This conversion
@@ -89,31 +88,40 @@ bool allLinesEmpty(const Lines &lines) {
 // de/dE (WordEdge) is explored before dw/dW (GapEdge) in exploreAllDeletions, the
 // de result is already stored when the ranges are identical. So dw reaching the goal
 // implies de didn't, meaning dw deleted trailing whitespace that cw would skip.
-KeyedSequence deleteToChange(string_view deleteCmd,
-                              const PhysicalKeys& deleteKeys) {
+KeyedSequence deleteToChangeChar(string_view deleteCmd,
+                                  const PhysicalKeys& deleteKeys) {
   if (deleteCmd == "D")
     return {"C", {Key::Key_Shift, Key::Key_C}};
-  if (deleteCmd == "dd")
-    return {"cc", {Key::Key_C, Key::Key_C}};
   if (deleteCmd == "dw")
     return {"dwi", {Key::Key_D, Key::Key_W, Key::Key_I}};
   if (deleteCmd == "dW")
     return {"dWi", {Key::Key_D, Key::Key_Shift, Key::Key_W, Key::Key_I}};
   if (deleteCmd[0] == 'd') {
-    // Generic d{motion} → c{motion}: Key_C + motion keys (skip Key_D)
-    assert(deleteKeys.view()[0] == Key::Key_D);
-    PhysicalKeys changeKeys = {Key::Key_C};
-    for (size_t i = 1; i < deleteKeys.size(); i++) {
-      changeKeys.push_back(deleteKeys.view()[i]);
-    }
-    return {string("c") + string(deleteCmd.substr(1)), std::move(changeKeys)};
+    return {string("c") + string(deleteCmd.substr(1)), deleteKeys.asChange()};
   }
   if (deleteCmd == "x")
     return {"s", {Key::Key_S}};
   if (deleteCmd == "X")
     return {"hs", {Key::Key_H, Key::Key_S}};
-  assert(false && "deleteToChange not supported");
+  assert(false && "deleteToChangeChar: unsupported command");
   return {};
+}
+
+// Convert linewise delete command to change equivalent.
+KeyedSequence deleteToChangeLine(string_view deleteCmd,
+                                  const PhysicalKeys& deleteKeys,
+                                  string_view lineContent) {
+  // dd is special: cc when no autoindent issue, 0C when autoindent would
+  if (deleteCmd == "dd") {
+    if constexpr (VimOptions::autoindent()) {
+      if (!leadingWhitespace(lineContent).empty()) {
+        return {"0C", {Key::Key_0, Key::Key_Shift, Key::Key_C}};
+      }
+    }
+    return {"cc", {Key::Key_C, Key::Key_C}};
+  }
+
+  return {string("c") + string(deleteCmd.substr(1)), deleteKeys.asChange()};
 }
 
 
@@ -503,9 +511,10 @@ EditOptimizer::optimizeEdit(
       suffixCache[seedKey] = SuffixValue{suffixKs[0], suffixEfforts[0]};
     }
 
-    // Replay each edit and cache intermediate states
+    // Replay each edit and cache; stop when entering Insert mode
     for (int i = 0; i < n; i++) {
       Edit::applyEdit(replayLines, replayPos, replayMode, edits[i]);
+      if (replayMode == Mode::Insert) break;
 
       replayHash = hashLines(replayLines);
       SuffixKey sk(replayHash, static_cast<int>(replayLines.size()), replayPos, replayMode);
@@ -517,10 +526,38 @@ EditOptimizer::optimizeEdit(
 
   // Helper: build goal suffix for a deletion that reaches goal.
   // Converts delete→change and appends collapse + typed content.
+  //
+  // The change command (c) uses Insert mode for deleteRange, which preserves
+  // empty merged lines that Normal mode (d) would remove. We detect this
+  // cheaply from the range rather than re-simulating the deletion.
+  // See docs/core/vim-edge-cases.md §2 for the full explanation.
   auto buildGoalSuffix = [&](string_view deleteCmd, const PhysicalKeys& deleteKeys,
-                             const Lines& lines, const Position& pos) -> KeyedSequence {
-    KeyedSequence goalSuffix = deleteToChange(deleteCmd, deleteKeys);
-    goalSuffix += buildCollapseSequence(static_cast<int>(lines.size()), pos.line);
+                             const Lines& postDelLines, const Position& postDelPos,
+                             const Lines& preDelLines, const Range& range) -> KeyedSequence {
+    int totalLines = static_cast<int>(postDelLines.size());
+    int cursorLine = postDelPos.line;
+
+    // Check if Insert mode would keep an empty merged line that Normal mode
+    // removed. Condition: multiline range starting at col 0, where the merged
+    // line (prefix of first line + suffix of last line) is empty, and there
+    // are still other lines remaining after the merge.
+    if (range.first.line != range.last.line && range.first.col == 0) {
+      const string& lastLine = preDelLines[range.last.line];
+      if (range.last.col >= static_cast<int>(lastLine.size()) - 1) {
+        int linesAfterMerge = static_cast<int>(preDelLines.size())
+                            - (range.last.line - range.first.line);
+        if (linesAfterMerge > 1) {
+          // Insert mode keeps the empty line; Normal mode removed it.
+          // Insert mode cursor stays on the empty merged line (one
+          // line higher than Normal mode clamped position) -> one more <BS>
+          totalLines++;
+          cursorLine++;
+        }
+      }
+    }
+
+    KeyedSequence goalSuffix = deleteToChangeChar(deleteCmd, deleteKeys);
+    goalSuffix += buildCollapseSequence(totalLines, cursorLine);
     goalSuffix += typed;
     return goalSuffix;
   };
@@ -532,7 +569,9 @@ EditOptimizer::optimizeEdit(
     const Lines &lines = newState.getLines();
 
     if (isGoalReached(lines)) {
-      KeyedSequence goalSuffix = buildGoalSuffix(deleteCmd, deleteKeys, lines, newState.getPos());
+      KeyedSequence goalSuffix = buildGoalSuffix(deleteCmd, deleteKeys,
+                                                  lines, newState.getPos(),
+                                                  base.getLines(), range);
 
       RunningEffort suffixEffort;
       suffixEffort.append(goalSuffix.keys, config);
@@ -557,16 +596,9 @@ EditOptimizer::optimizeEdit(
     const Lines &lines = newState.getLines();
 
     if (isGoalReached(lines)) {
-      static const KeyedSequence ccCmd("cc", {Key::Key_C, Key::Key_C});
       int ccLineCount = static_cast<int>(base.getLines().size());
 
-      // cc with autoindent places cursor after indent. <C-u> clears it.
-      KeyedSequence goalSuffix = ccCmd;
-      if constexpr (VimOptions::autoindent()) {
-        if (!leadingWhitespace(base.getLines()[line]).empty()) {
-          goalSuffix += KeyedSequence::CtrlU;
-        }
-      }
+      KeyedSequence goalSuffix = deleteToChangeLine(deleteCmd, deleteKeys, base.getLines()[line]);
       goalSuffix += buildCollapseSequence(ccLineCount, line);
       goalSuffix += typed;
 
