@@ -84,6 +84,7 @@ Exposes C ABI for LuaJIT in `lua_exports.cpp`. **Position indexing:** Internal c
 For Lua context, see `lua/CLAUDE.md`.
 
 ## Deep Dive References
+- @docs/ci-and-benchmarks.md - CI workflow (test/benchmark/deploy), benchmark dashboard (`bench-dashboard/`), gh-pages layout
 - @docs/boundary-logic.md - Word motion and boundary crossing logic, EditBoundary API
 - @docs/edit-region-strategy.md - Replace vs change strategy (includes tryReplacement implementation)
 - @docs/neovim_on_key_issues.md - vim.on_key limitations, operator-pending duplication, missing text object keys
