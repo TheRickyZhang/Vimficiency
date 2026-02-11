@@ -100,6 +100,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download benchmark results
         uses: actions/download-artifact@v4
@@ -153,6 +155,23 @@ jobs:
           git fetch origin gh-pages
           git checkout gh-pages
 
+          # Prune benchmark entries for commits no longer on main
+          git log origin/main --format=%H > /tmp/valid-commits.txt
+          for dir in bench/edit bench/motion bench/composition; do
+            [ -f "$dir/data.js" ] || continue
+            node -e "
+              const fs = require('fs');
+              const valid = new Set(fs.readFileSync('/tmp/valid-commits.txt', 'utf8').trim().split('\n'));
+              const src = fs.readFileSync('$dir/data.js', 'utf8');
+              const json = src.replace(/^window\.BENCHMARK_DATA\s*=\s*/, '').replace(/;\s*$/, '');
+              const data = JSON.parse(json);
+              for (const [key, runs] of Object.entries(data.entries)) {
+                data.entries[key] = runs.filter(r => valid.has(r.commit.id));
+              }
+              fs.writeFileSync('$dir/data.js', 'window.BENCHMARK_DATA = ' + JSON.stringify(data, null, 2) + ';\n');
+            "
+          done
+
           # Root index
           cp /tmp/dashboard-dist/index.html ./index.html
           touch .nojekyll
@@ -166,7 +185,7 @@ jobs:
             [ -d "$dir" ] && cp /tmp/dashboard-dist/optimizer.html "$dir/index.html"
           done
 
-          git add index.html .nojekyll bench/assets/ bench/*/index.html
+          git add index.html .nojekyll bench/
           git -c user.name=github-actions -c user.email=github-actions@github.com \
             commit -m "Update benchmark dashboard" || true
           git push origin gh-pages

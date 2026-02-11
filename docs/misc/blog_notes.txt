@@ -13,3 +13,24 @@ There was massive performance difference between pure deletions (fast) and regul
   │ 3L→1w   │ 5341ms, 1 found    │ 17ms, 19 found              │
   ├─────────┼────────────────────┼─────────────────────────────┤
   │ 2L rand │ 918ms, 3 found     │ 1.6ms, 9 found              │
+
+Little things can have huge impacts on code.
+  ┌───────────────────────┬───────────┬───────────┬─────────┐
+  │       Benchmark       │ Regressed │ After fix │ Speedup │
+  ├───────────────────────┼───────────┼───────────┼─────────┤
+  │ SmallChange/2         │ 74.7 ms   │ 0.33 ms   │ 227x    │
+  ├───────────────────────┼───────────┼───────────┼─────────┤
+  │ SmallChange/3         │ 110.5 ms  │ 0.55 ms   │ 201x    │
+  ├───────────────────────┼───────────┼───────────┼─────────┤
+  │ SmallEmbeddedChange/1 │ 57.6 ms   │ 1.1 ms    │ 52x     │
+  ├───────────────────────┼───────────┼───────────┼─────────┤
+  │ SmallEmbeddedChange/2 │ 93.6 ms   │ 3.4 ms    │ 28x     │
+  ├───────────────────────┼───────────┼───────────┼─────────┤
+  │ SmallEmbeddedChange/3 │ 106.9 ms  │ 7.2 ms    │ 15x     │
+  └───────────────────────┴───────────┴───────────┴─────────┘
+  Performance fully restored. The issue was that moving replayAndCacheSuffix from find-time to pop-time starved the suffix
+  cache — intermediate states never got cached, so every starting position redundantly explored the full search space.
+  Restoring find-time calls (with the complete goal suffix in cached entries) brings back the cache's pruning power.
+
+
+How to solve problem of stale benchmark data history when there are force pushes / retrospective merges that overwrite existing, requiring commit <-> data sync.
