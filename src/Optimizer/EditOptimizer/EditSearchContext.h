@@ -102,6 +102,11 @@ struct EditSearchContext {
     return effortWeight * effort + distanceWeight * distanceHeuristic(lines);
   }
 
+  // Heuristic cost component (for recordSearch's heuristicCost parameter)
+  double heuristicCost(const Lines& lines) const {
+    return distanceWeight * distanceHeuristic(lines);
+  }
+
   // Explore all valid deletions from current state
   // Calls onDeletion for characterwise deletions, onLinewise for full-line (dd)
   // Pass nullptr for onLinewise to skip linewise exploration

@@ -90,20 +90,6 @@ public:
   const std::string& getSeq() const { return seq_; }
   const RunningEffort& getRunningEffort() const { return runningEffort; }
 
-  // Record a goal-reaching command with real effort in cost.
-  // Unlike recordSearch (which uses an externally-computed cost that lags behind
-  // the real effort), this computes cost = effortWeight * realEffort, giving
-  // correct PQ ordering for goal states (distance heuristic = 0 at goal).
-  // Sets mode to Insert so the costMap key is distinct from intermediate
-  // Normal-mode states at the same (buffer, position).
-  void recordGoalSearch(std::string_view cmd, const PhysicalKeys& keys,
-                        double effortWeight, const Config& config) {
-    seq_ += cmd;
-    effort_ = runningEffort.append(keys, config);
-    cost_ = effortWeight * effort_;
-    mode = Mode::Insert;
-  }
-
   // -----------------------------------------------------------------------------
   // State transitions - return new state with buffer mutation applied
   // These do NOT record the command - use recordSearch() separately
@@ -134,15 +120,16 @@ public:
   }
 
   // -----------------------------------------------------------------------------
-  // Command recording - for continued search (not goal states)
+  // Command recording
   // -----------------------------------------------------------------------------
 
-  // Record a search command: appends to sequence, updates effort and cost
+  // Record a search command: appends to sequence, updates effort, computes cost.
+  // Cost = effortWeight * actualEffort + heuristicCost (heuristicCost = 0 at goal).
   void recordSearch(std::string_view cmd, const PhysicalKeys& keys,
-                    double cost, const Config& config) {
+                    double effortWeight, double heuristicCost, const Config& config) {
     seq_ += cmd;
     effort_ = runningEffort.append(keys, config);
-    cost_ = cost;
+    cost_ = effortWeight * effort_ + heuristicCost;
   }
 
   // -----------------------------------------------------------------------------

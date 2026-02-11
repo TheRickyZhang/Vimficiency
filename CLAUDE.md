@@ -45,7 +45,7 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 - Ensure CAREFUL handling of targetCol (Vim's curswant) within Position.h by calling the correct column method
 - We use [begin, end) for half-open intervals, and \[first, last\] for inclusive intervals, such as beginPos/goalPos, firstPos/lastPos
 - For pre/post state, we use initial, goal, such as initialLines, goalLines.
-- We highly prioritize speed. Our default optimizer algorithm is an eager A*, which uses results when first searched, which may not be the best, and has some position start starving issues due to inadmissable heuristic.
+- **Correctness first, then speed.** The EditOptimizer uses correct A* goal recording: goal states go through the priority queue and are recorded at pop time, guaranteeing lowest-cost results. This costs ~2x vs the old "record first-found" approach but eliminates suboptimal results from inadmissible heuristic ordering. The heuristic is inadmissible (overestimates), so pop-time recording is necessary for correctness. Accept this cost; do not regress to eager first-found recording.
 - Command parsing functions are only use for arbitrarily parsing commands. For all searches, we should know the exact actions to do for minimal wasted work.
 
 ## Build Commands

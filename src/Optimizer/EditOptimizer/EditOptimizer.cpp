@@ -251,37 +251,29 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
     return lines.size() == 1 && lines[0] == preSuf;
   };
 
-  // Deletion handler: output delete command directly (no change conversion)
+  // Deletion handler
   auto exploreDeletion = [&](const EditState &base, const Range &range,
                              string_view deleteCmd, const PhysicalKeys &deleteKeys) {
     EditState newState = base.afterDeletion(range);
-
-    if (isGoalReached(newState.getLines())) {
-      newState.recordGoalSearch(deleteCmd, deleteKeys, ctx.effortWeight, config);
-      ctx.exploreNewState(std::move(newState));
-      return;
-    }
-
     newState.recordSearch(deleteCmd, deleteKeys,
-                          ctx.computePriority(newState.getEffort(), newState.getLines()), config);
+                          ctx.effortWeight, ctx.heuristicCost(newState.getLines()), config);
     ctx.exploreNewState(std::move(newState));
   };
 
-  // Linewise handler: record dd directly (pure deletion, no cc conversion)
+  // Linewise handler: goal check before cursor adjustment (goal doesn't need 'k' escape)
   auto exploreLinewise = [&](const EditState &base, int line,
                              string_view deleteCmd, const PhysicalKeys &deleteKeys) {
     EditState newState = base.afterLinewiseDeletion(line);
     const Lines &lines = newState.getLines();
 
-    // Goal check before cursor adjustment (goal doesn't need 'k' escape)
     if (isGoalReached(lines)) {
-      newState.recordGoalSearch(deleteCmd, deleteKeys, ctx.effortWeight, config);
+      newState.recordSearch(deleteCmd, deleteKeys,
+                            ctx.effortWeight, 0.0, config);
       ctx.exploreNewState(std::move(newState));
       return;
     }
 
     // For search continuation: adjust cursor if it escaped below edit region.
-    // See optimizeEdit's exploreLinewise for detailed comment.
     KeyedSequence searchCmd(deleteCmd, deleteKeys);
     if (editBoundary.hasLinesBelow() &&
         line >= static_cast<int>(lines.size())) {
@@ -289,7 +281,16 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
     }
 
     newState.recordSearch(searchCmd.seq.keys, searchCmd.keys,
-                          ctx.computePriority(newState.getEffort(), lines), config);
+                          ctx.effortWeight, ctx.heuristicCost(lines), config);
+    ctx.exploreNewState(std::move(newState));
+  };
+
+  // Join handler
+  auto exploreJoin = [&](const EditState& base, bool addSpace,
+                         string_view joinCmd, const PhysicalKeys& joinKeys) {
+    EditState newState = base.afterJoin(addSpace);
+    newState.recordSearch(joinCmd, joinKeys,
+                          ctx.effortWeight, ctx.heuristicCost(newState.getLines()), config);
     ctx.exploreNewState(std::move(newState));
   };
 
@@ -315,23 +316,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
     // Early stopping: skip if this startIndex already has a result
     if (results[s.getStartIndex()].isValid()) continue;
 
-    // Join handler for pure deletion: J/gJ merges lines without adding new content
-    auto exploreJoin = [&](const EditState& base, bool addSpace,
-                           string_view joinCmd, const PhysicalKeys& joinKeys) {
-      EditState newState = base.afterJoin(addSpace);
-
-      if (isGoalReached(newState.getLines())) {
-        newState.recordGoalSearch(joinCmd, joinKeys, ctx.effortWeight, config);
-        ctx.exploreNewState(std::move(newState));
-        return;
-      }
-
-      newState.recordSearch(joinCmd, joinKeys,
-                            ctx.computePriority(newState.getEffort(), newState.getLines()), config);
-      ctx.exploreNewState(std::move(newState));
-    };
-
-    // Explore all deletions (characterwise + linewise) via EditSearchContext
+    // Explore all deletions (characterwise + linewise)
     ctx.exploreAllDeletions(
       s,
       [&](const Range& range, string_view cmd, const PhysicalKeys& keys) {
@@ -341,11 +326,10 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
         exploreLinewise(s, line, cmd, keys);
       },
       [&](const Position& newPos, string_view cmd, const PhysicalKeys& keys) {
-        // Pure cursor movement - no buffer change, no goal check possible
         EditState newState = s;
         newState.setPos(newPos);
         newState.recordSearch(cmd, keys,
-                              ctx.computePriority(newState.getEffort(), newState.getLines()), config);
+                              ctx.effortWeight, ctx.heuristicCost(newState.getLines()), config);
         ctx.exploreNewState(std::move(newState));
       },
       [&](bool addSpace, string_view cmd, const PhysicalKeys& keys) {
@@ -531,57 +515,72 @@ EditOptimizer::optimizeEdit(
     }
   };
 
-  // ---- Deletion handler ----
+  // Helper: build goal suffix for a deletion that reaches goal.
+  // Converts delete→change and appends collapse + typed content.
+  auto buildGoalSuffix = [&](string_view deleteCmd, const PhysicalKeys& deleteKeys,
+                             const Lines& lines, const Position& pos) -> KeyedSequence {
+    KeyedSequence goalSuffix = deleteToChange(deleteCmd, deleteKeys);
+    goalSuffix += buildCollapseSequence(static_cast<int>(lines.size()), pos.line);
+    goalSuffix += typed;
+    return goalSuffix;
+  };
+
+  // Deletion handler: if goal reached, convert delete→change (lookahead).
   auto exploreDeletion = [&](const EditState &base, const Range &range,
                              string_view deleteCmd, const PhysicalKeys &deleteKeys) {
     EditState newState = base.afterDeletion(range);
     const Lines &lines = newState.getLines();
 
     if (isGoalReached(lines)) {
-      // The goal suffix uses deleteToChange (a change command, Insert mode).
-      // Change commands keep empty lines that delete commands remove (Vim behavior).
-      // Use the change variant's buffer for building the collapse sequence.
-      Lines changeLines = base.getLines();
-      Position changePos = base.getPos();
-      VimCore::deleteRange(changeLines, range, changePos, Mode::Insert);
+      KeyedSequence goalSuffix = buildGoalSuffix(deleteCmd, deleteKeys, lines, newState.getPos());
 
-      if (!isGoalReached(changeLines)) {
-        // Change variant doesn't reach goal — can't use deleteToChange.
-        // Record as non-goal state and continue searching.
-        newState.recordSearch(deleteCmd, deleteKeys,
-                              ctx.computePriority(newState.getEffort(), lines), config);
-        ctx.exploreNewState(std::move(newState));
-        return;
-      }
+      RunningEffort suffixEffort;
+      suffixEffort.append(goalSuffix.keys, config);
+      replayAndCacheSuffix(base.getStartIndex(), base.getSeq(), goalSuffix, suffixEffort);
 
-      KeyedSequence goalSuffix = deleteToChange(deleteCmd, deleteKeys);
-      goalSuffix += buildCollapseSequence(
-          static_cast<int>(changeLines.size()), changePos.line);
-      goalSuffix += typed;
-
-      // Populate suffix cache during exploration (needs base context)
-      RunningEffort goalSuffixEffort;
-      goalSuffixEffort.append(goalSuffix.keys, config);
-      replayAndCacheSuffix(base.getStartIndex(), base.getSeq(), goalSuffix, goalSuffixEffort);
-
-      // Push goal state for pop-time recording
-      newState.recordGoalSearch(goalSuffix.seq.keys, goalSuffix.keys, ctx.effortWeight, config);
+      newState.recordSearch(goalSuffix.seq.keys, goalSuffix.keys,
+                            ctx.effortWeight, 0.0, config);
       ctx.exploreNewState(std::move(newState));
       return;
     }
 
     newState.recordSearch(deleteCmd, deleteKeys,
-                          ctx.computePriority(newState.getEffort(), lines), config);
+                          ctx.effortWeight, ctx.heuristicCost(lines), config);
     ctx.exploreNewState(std::move(newState));
   };
 
-  // ---- Linewise handler ----
+  // Linewise handler: goal check before cursor adjustment (goal doesn't need 'k' escape).
+  // dd→cc conversion for goal states.
   auto exploreLinewise = [&](const EditState &base, int line,
                              string_view deleteCmd, const PhysicalKeys &deleteKeys) {
     EditState newState = base.afterLinewiseDeletion(line);
     const Lines &lines = newState.getLines();
 
-    // Adjust cursor if escaped below edit region
+    if (isGoalReached(lines)) {
+      static const KeyedSequence ccCmd("cc", {Key::Key_C, Key::Key_C});
+      int ccLineCount = static_cast<int>(base.getLines().size());
+
+      // cc with autoindent places cursor after indent. <C-u> clears it.
+      KeyedSequence goalSuffix = ccCmd;
+      if constexpr (VimOptions::autoindent()) {
+        if (!leadingWhitespace(base.getLines()[line]).empty()) {
+          goalSuffix += KeyedSequence::CtrlU;
+        }
+      }
+      goalSuffix += buildCollapseSequence(ccLineCount, line);
+      goalSuffix += typed;
+
+      RunningEffort suffixEffort;
+      suffixEffort.append(goalSuffix.keys, config);
+      replayAndCacheSuffix(base.getStartIndex(), base.getSeq(), goalSuffix, suffixEffort);
+
+      newState.recordSearch(goalSuffix.seq.keys, goalSuffix.keys,
+                            ctx.effortWeight, 0.0, config);
+      ctx.exploreNewState(std::move(newState));
+      return;
+    }
+
+    // For non-goal: adjust cursor if escaped below edit region
     KeyedSequence searchCmd(deleteCmd, deleteKeys);
     Position pos = newState.getPos();
     int lastValidLine = static_cast<int>(lines.size()) - 1;
@@ -593,35 +592,36 @@ EditOptimizer::optimizeEdit(
       newState.setPos(pos);
     }
 
-    if (isGoalReached(lines)) {
-      static const KeyedSequence ccCmd("cc", {Key::Key_C, Key::Key_C});
-      int ccLineCount = static_cast<int>(base.getLines().size());
+    newState.recordSearch(searchCmd.seq.keys, searchCmd.keys,
+                          ctx.effortWeight, ctx.heuristicCost(lines), config);
+    ctx.exploreNewState(std::move(newState));
+  };
 
-      // cc with autoindent places cursor after indent. Insert <C-u> to clear
-      // autoindent back to col 0 so collapse <BS> presses all go to line joins.
-      // Then reuse pre-computed `typed` (which assumes col 0 / empty autoindent).
-      KeyedSequence goalSuffix = ccCmd;
-      if constexpr (VimOptions::autoindent()) {
-        if (!leadingWhitespace(base.getLines()[line]).empty()) {
-          goalSuffix += KeyedSequence::CtrlU;
-        }
-      }
-      goalSuffix += buildCollapseSequence(ccLineCount, line);
+  // Join handler: if goal reached, J + enter insert + collapse + typed.
+  auto exploreJoin = [&](const EditState& base, bool addSpace,
+                         string_view joinCmd, const PhysicalKeys& joinKeys) {
+    EditState newState = base.afterJoin(addSpace);
+
+    if (isGoalReached(newState.getLines())) {
+      static const KeyedSequence iCmd("i", {Key::Key_I});
+      KeyedSequence goalSuffix(joinCmd, joinKeys);
+      goalSuffix += iCmd;
+      goalSuffix += buildCollapseSequence(
+          static_cast<int>(newState.getLines().size()), newState.getPos().line);
       goalSuffix += typed;
 
-      // Populate suffix cache during exploration (needs base context)
-      RunningEffort goalSuffixEffort;
-      goalSuffixEffort.append(goalSuffix.keys, config);
-      replayAndCacheSuffix(base.getStartIndex(), base.getSeq(), goalSuffix, goalSuffixEffort);
+      RunningEffort suffixEffort;
+      suffixEffort.append(goalSuffix.keys, config);
+      replayAndCacheSuffix(base.getStartIndex(), base.getSeq(), goalSuffix, suffixEffort);
 
-      // Push goal state for pop-time recording
-      newState.recordGoalSearch(goalSuffix.seq.keys, goalSuffix.keys, ctx.effortWeight, config);
+      newState.recordSearch(goalSuffix.seq.keys, goalSuffix.keys,
+                            ctx.effortWeight, 0.0, config);
       ctx.exploreNewState(std::move(newState));
       return;
     }
 
-    newState.recordSearch(searchCmd.seq.keys, searchCmd.keys,
-                          ctx.computePriority(newState.getEffort(), lines), config);
+    newState.recordSearch(joinCmd, joinKeys,
+                          ctx.effortWeight, ctx.heuristicCost(newState.getLines()), config);
     ctx.exploreNewState(std::move(newState));
   };
 
@@ -663,39 +663,8 @@ EditOptimizer::optimizeEdit(
         ctx.resultsFound++;
         ctx.uniquePositionsCovered++;
       }
-      continue;  // Skip exploration — suffix provides the result
+      continue;
     }
-
-    // Join handler: J/gJ merges lines without entering insert mode.
-    // When buffer reaches goal, build suffix: J + enter insert + collapse + typed.
-    auto exploreJoin = [&](const EditState& base, bool addSpace,
-                           string_view joinCmd, const PhysicalKeys& joinKeys) {
-      EditState newState = base.afterJoin(addSpace);
-
-      if (isGoalReached(newState.getLines())) {
-        // J reaches preSuf — enter insert mode at cursor (the join point)
-        // to type the goal content
-        static const KeyedSequence iCmd("i", {Key::Key_I});
-        KeyedSequence goalSuffix(joinCmd, joinKeys);
-        goalSuffix += iCmd;
-        goalSuffix += buildCollapseSequence(
-            static_cast<int>(newState.getLines().size()), newState.getPos().line);
-        goalSuffix += typed;
-
-        // Populate suffix cache during exploration (needs base context)
-        RunningEffort goalSuffixEffort;
-        goalSuffixEffort.append(goalSuffix.keys, config);
-        replayAndCacheSuffix(base.getStartIndex(), base.getSeq(), goalSuffix, goalSuffixEffort);
-
-        newState.recordGoalSearch(goalSuffix.seq.keys, goalSuffix.keys, ctx.effortWeight, config);
-        ctx.exploreNewState(std::move(newState));
-        return;
-      }
-
-      newState.recordSearch(joinCmd, joinKeys,
-                            ctx.computePriority(newState.getEffort(), newState.getLines()), config);
-      ctx.exploreNewState(std::move(newState));
-    };
 
     // Explore all deletions
     ctx.exploreAllDeletions(
@@ -710,7 +679,7 @@ EditOptimizer::optimizeEdit(
         EditState newState = s;
         newState.setPos(newPos);
         newState.recordSearch(cmd, keys,
-                              ctx.computePriority(newState.getEffort(), newState.getLines()), config);
+                              ctx.effortWeight, ctx.heuristicCost(newState.getLines()), config);
         ctx.exploreNewState(std::move(newState));
       },
       [&](bool addSpace, string_view cmd, const PhysicalKeys& keys) {
