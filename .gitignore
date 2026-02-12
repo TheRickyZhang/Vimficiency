@@ -1,0 +1,10 @@
+# gh-pages only needs: index.html, .nojekyll, bench/
+# Ignore everything else (main-branch worktree files)
+*
+
+# Allow gh-pages content
+!.gitignore
+!.nojekyll
+!index.html
+!bench/
+!bench/**
