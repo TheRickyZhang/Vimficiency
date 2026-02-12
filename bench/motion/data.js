@@ -173,4 +173,4 @@ window.BENCHMARK_DATA = {
       }
     ]
   }
-}
+};
