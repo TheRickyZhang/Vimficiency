@@ -1,0 +1,45 @@
+name: Remove benchmark data
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: '7+ char commit SHA to remove from benchmark data'
+        required: true
+        type: string
+
+jobs:
+  remove:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+
+      - name: Remove benchmark data for ${{ inputs.sha }}
+        run: |
+          SHA="${{ inputs.sha }}"
+          for dir in bench/edit bench/motion bench/composition; do
+            [ -f "$dir/data.js" ] || continue
+            node -e "
+              const fs = require('fs');
+              const src = fs.readFileSync('$dir/data.js', 'utf8');
+              const json = src.replace(/^window\.BENCHMARK_DATA\s*=\s*/, '').replace(/;\s*$/, '');
+              const data = JSON.parse(json);
+              for (const [key, runs] of Object.entries(data.entries)) {
+                const before = runs.length;
+                data.entries[key] = runs.filter(r => r.commit.id.indexOf('$SHA') !== 0);
+                console.log('$dir: ' + before + ' -> ' + data.entries[key].length);
+              }
+              fs.writeFileSync('$dir/data.js', 'window.BENCHMARK_DATA = ' + JSON.stringify(data) + ';\n');
+            "
+          done
+
+      - name: Commit and push
+        run: |
+          git add bench/edit/data.js bench/motion/data.js bench/composition/data.js
+          git -c user.name=github-actions -c user.email=github-actions@github.com \
+            commit -m "Remove benchmark data for ${{ inputs.sha }}" || { echo "Nothing to remove for ${{ inputs.sha }}"; exit 1; }
+          git push origin gh-pages
