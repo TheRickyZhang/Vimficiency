@@ -9,9 +9,10 @@ interface Props {
   series: TimePoint[];
   unit: Unit;
   large?: boolean;
+  onPointClick?: (sha: string) => void;
 }
 
-export function BenchmarkChart({ series, unit, large }: Props) {
+export function BenchmarkChart({ series, unit, large, onPointClick }: Props) {
   return (
     <Line
       data={{
@@ -31,6 +32,13 @@ export function BenchmarkChart({ series, unit, large }: Props) {
         responsive: true,
         maintainAspectRatio: false,
         animation: { duration: 250 },
+        onClick: onPointClick ? (_event, elements) => {
+          if (elements.length > 0) {
+            const idx = elements[0]!.index;
+            const sha = series[idx]?.sha;
+            if (sha) onPointClick(sha);
+          }
+        } : undefined,
         plugins: {
           legend: { display: false },
           tooltip: {

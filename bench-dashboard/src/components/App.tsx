@@ -10,6 +10,32 @@ export function App() {
     () => location.hash.substring(1) || null,
   );
 
+  const storageKey = `vimficiency-hidden-${optimizerName}`;
+  const [hiddenShas, setHiddenShas] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  useEffect(() => {
+    if (hiddenShas.size > 0) {
+      localStorage.setItem(storageKey, JSON.stringify([...hiddenShas]));
+    } else {
+      localStorage.removeItem(storageKey);
+    }
+  }, [hiddenShas, storageKey]);
+
+  const onHide = useCallback((sha: string) => {
+    setHiddenShas((prev) => new Set([...prev, sha]));
+  }, []);
+
+  const onResetHidden = useCallback(() => {
+    setHiddenShas(new Set());
+  }, []);
+
   const navigate = useCallback((cat: string | null) => {
     location.hash = cat ?? '';
     setActiveCategory(cat);
@@ -42,6 +68,9 @@ export function App() {
         category={catNames}
         benchNames={categories[catNames]}
         data={data}
+        hiddenShas={hiddenShas}
+        onHide={onHide}
+        onResetHidden={onResetHidden}
         onBack={() => navigate(null)}
       />
     );

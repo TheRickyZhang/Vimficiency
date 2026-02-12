@@ -22,13 +22,47 @@
 .header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 20px;
 }
 
 .header h3 {
   font-size: 1.3rem;
   font-weight: 700;
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: #999;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hiddenInfo {
+  font-size: 0.85rem;
+  color: #666;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.resetBtn {
+  background: none;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #666;
+  cursor: pointer;
+  padding: 2px 8px;
+}
+
+.resetBtn:hover {
+  border-color: #999;
+  color: #333;
 }
 
 .close {

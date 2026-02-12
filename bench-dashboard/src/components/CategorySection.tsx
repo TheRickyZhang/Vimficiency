@@ -10,15 +10,18 @@ interface Props {
   category: string;
   benchNames: string[];
   data: BenchmarkRun[];
+  hiddenShas: Set<string>;
+  onHide: (sha: string) => void;
+  onResetHidden: () => void;
   onBack: () => void;
 }
 
-export function CategorySection({ category, benchNames, data, onBack }: Props) {
+export function CategorySection({ category, benchNames, data, hiddenShas, onHide, onResetHidden, onBack }: Props) {
   const [modal, setModal] = useState<{ title: string; idx: number } | null>(null);
 
   const charts = benchNames.map((benchName) => {
     const detail = parseName(benchName).detail;
-    const series = timeSeries(data, benchName);
+    const series = timeSeries(data, benchName, hiddenShas);
     const unit = bestUnit(series.map((s) => s.val));
     return { benchName, detail, series, unit };
   }).filter((c) => c.series.length > 0);
@@ -48,6 +51,9 @@ export function CategorySection({ category, benchNames, data, onBack }: Props) {
           title={modalData.detail}
           series={modalData.series}
           unit={modalData.unit}
+          hiddenCount={hiddenShas.size}
+          onPointClick={onHide}
+          onResetHidden={onResetHidden}
           onClose={() => setModal(null)}
         />
       )}

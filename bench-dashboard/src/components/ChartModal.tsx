@@ -9,10 +9,13 @@ interface Props {
   title: string;
   series: TimePoint[];
   unit: Unit;
+  hiddenCount: number;
+  onPointClick: (sha: string) => void;
+  onResetHidden: () => void;
   onClose: () => void;
 }
 
-export function ChartModal({ title, series, unit, onClose }: Props) {
+export function ChartModal({ title, series, unit, hiddenCount, onPointClick, onResetHidden, onClose }: Props) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -29,11 +32,22 @@ export function ChartModal({ title, series, unit, onClose }: Props) {
     <div className={styles.overlay} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className={styles.content}>
         <div className={styles.header}>
-          <h3>{title}</h3>
-          <button className={styles.close} onClick={onClose}>&times;</button>
+          <div>
+            <h3>{title}</h3>
+            <span className={styles.hint}>Click a point to hide it</span>
+          </div>
+          <div className={styles.headerRight}>
+            {hiddenCount > 0 && (
+              <span className={styles.hiddenInfo}>
+                {hiddenCount} hidden
+                <button className={styles.resetBtn} onClick={onResetHidden}>Reset</button>
+              </span>
+            )}
+            <button className={styles.close} onClick={onClose}>&times;</button>
+          </div>
         </div>
         <div className={styles.chart}>
-          <BenchmarkChart series={series} unit={unit} large />
+          <BenchmarkChart series={series} unit={unit} large onPointClick={onPointClick} />
         </div>
       </div>
     </div>,

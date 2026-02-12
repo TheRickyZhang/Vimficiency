@@ -100,8 +100,6 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Download benchmark results
         uses: actions/download-artifact@v4
@@ -155,20 +153,18 @@ jobs:
           git fetch origin gh-pages
           git checkout gh-pages
 
-          # Prune benchmark entries for commits no longer on main
-          git log origin/main --format=%H > /tmp/valid-commits.txt
+          # Keep only the last 100 benchmark entries per suite
           for dir in bench/edit bench/motion bench/composition; do
             [ -f "$dir/data.js" ] || continue
             node -e "
               const fs = require('fs');
-              const valid = new Set(fs.readFileSync('/tmp/valid-commits.txt', 'utf8').trim().split('\n'));
               const src = fs.readFileSync('$dir/data.js', 'utf8');
               const json = src.replace(/^window\.BENCHMARK_DATA\s*=\s*/, '').replace(/;\s*$/, '');
               const data = JSON.parse(json);
               for (const [key, runs] of Object.entries(data.entries)) {
-                data.entries[key] = runs.filter(r => valid.has(r.commit.id));
+                data.entries[key] = runs.slice(-100);
               }
-              fs.writeFileSync('$dir/data.js', 'window.BENCHMARK_DATA = ' + JSON.stringify(data, null, 2) + ';\n');
+              fs.writeFileSync('$dir/data.js', 'window.BENCHMARK_DATA = ' + JSON.stringify(data) + ';\n');
             "
           done
 

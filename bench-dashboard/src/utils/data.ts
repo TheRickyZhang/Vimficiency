@@ -37,13 +37,15 @@ export function discoverCategories(data: BenchmarkRun[]): Record<string, string[
   return cats;
 }
 
-export function timeSeries(data: BenchmarkRun[], benchName: string): TimePoint[] {
+export function timeSeries(data: BenchmarkRun[], benchName: string, hiddenShas?: Set<string>): TimePoint[] {
   const series: TimePoint[] = [];
   for (const commit of data) {
+    const sha = commit.commit.id.substring(0, 7);
+    if (hiddenShas?.has(sha)) continue;
     const b = commit.benches.find((x) => x.name === benchName);
     if (b) {
       series.push({
-        sha: commit.commit.id.substring(0, 7),
+        sha,
         val: b.value,
         msg: commit.commit.message.split('\n')[0] ?? '',
       });
