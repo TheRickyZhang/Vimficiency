@@ -297,6 +297,115 @@ std::unique_ptr<NeovimOracle> NeovimOracleDebug::oracle_;
 // Begin Debug Tests
 // ============================================================================
 
+TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
+  // FAIL iter=11 seq='db..s fba<Esc>' initialPos=(0,2)
+  //   Initial: 'bbcffdbeafcbfabbdc'
+  //   Edit:     [0,5) 'bbcff' -> 'fba'
+  //   Goal:    'fbadbeafcbfabbdc'
+  //   Got:     fbaffdbeafcbfabbdc
+
+  Lines initial = {"bbcffdbeafcbfabbdc"};
+  Lines goal = {"fbadbeafcbfabbdc"};
+  Position initialPos(0, 2);
+
+  // Step 1: Trace the winning sequence step by step with oracle
+  cerr << "=== Oracle trace of db..s fba<Esc> ===" << endl;
+  {
+    auto tracer = makeTracer(initial, 0, 2);
+    tracer.trace("db");
+    tracer.trace(".");   // repeats db
+    tracer.trace(".");   // repeats db again
+    tracer.traceFullSequence("db..s fba\x1b");
+  }
+
+  // Step 2: Run the composition optimizer and show what it finds
+  cerr << "\n=== Composition Optimizer ===" << endl;
+  {
+    Config config = Config::uniform();
+    CompositionOptimizer opt{config};
+    CompositionOptimizerParams params = CompositionOptimizerParams{}.withMaxResults(5);
+    auto compResult = opt.optimize(initial, initialPos, goal, Position(0, 0), params);
+    for (size_t i = 0; i < compResult.results.size(); i++) {
+      const auto& seq = compResult.results[i].getSequenceString();
+      cerr << "  [" << i << "] '" << compResult.results[i].sequence
+           << "' cost=" << compResult.results[i].keyCost << endl;
+      auto nvim = oracle_->simulate(initial, 0, 2, seq.keys);
+      cerr << "    nvim: " << nvim.lines << (nvim.lines == goal ? " OK" : " WRONG") << endl;
+    }
+  }
+
+  // Step 3: Run the edit optimizer directly on the diff
+  cerr << "\n=== Edit Optimizer for [0,5) ===" << endl;
+  {
+    Config config = Config::uniform();
+    auto diffs = Myers::calculate(initial, goal);
+    for (size_t i = 0; i < diffs.size(); i++) {
+      const auto& d = diffs[i];
+      cerr << "  Diff[" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
+           << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
+           << " del='" << d.deletedText << "' ins='" << d.insertedText << "'"
+           << " prefix='" << d.boundary.prefix() << "' suffix='" << d.boundary.suffix() << "'"
+           << endl;
+
+      if (!d.isPureInsertion()) {
+        EditOptimizer editOpt(config);
+        EditOptimizerParams params = EditOptimizerParams{}.withMaxResults(INT_MAX);
+        EditResult result = editOpt.optimizeEdit(
+            d.deletedLines(), d.insertedLines(), d.boundary, params,
+            d.beginPos.line, d.beginPos.col, d.beginPos);
+        for (size_t j = 0; j < result.resultCount(); j++) {
+          const auto& r = result.getResults()[j];
+          if (r.isValid()) {
+            cerr << "    pos " << j << ": '" << r.sequence
+                 << "' cost=" << r.keyCost << endl;
+            // Verify each with oracle
+            int fullCol = static_cast<int>(j) + (d.beginPos.line == 0 ? d.beginPos.col : 0);
+            auto nvim = oracle_->simulate(initial, 0, fullCol, r.sequence.keys);
+            if (nvim.lines != goal) {
+              cerr << "      MISMATCH: got " << nvim.lines << endl;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Step 4: Trace what our simulator thinks db does vs Neovim
+  cerr << "\n=== Our sim vs Oracle for db at various positions ===" << endl;
+  {
+    Lines buf = {"bbcffdbeafcbfabbdc"};
+    for (int col : {0, 1, 2, 3}) {
+      // Our sim
+      Position pos(0, col);
+      Lines simBuf = buf;
+      Position simEndpoint = VimCore::motionWordEndpoint<false, EdgeType::WordEdge>(
+          pos, simBuf, false, true, 0, false, false);
+      cerr << "  col=" << col << " b_endpoint=(" << simEndpoint.line << "," << simEndpoint.col << ")";
+      if (simEndpoint == pos) {
+        cerr << " (no move)" << endl;
+      } else {
+        // Compute range like the explorer does (isExclusiveAtCursor)
+        Range range;
+        if (col > 0) {
+          range = Range(simEndpoint, Position(0, col - 1));
+        } else {
+          cerr << " (col=0, exclusive skip)" << endl;
+          continue;
+        }
+        Lines afterBuf = buf;
+        Position afterPos = pos;
+        VimCore::deleteRange(afterBuf, range, afterPos);
+        cerr << " range=(" << range.first.col << "," << range.last.col << ")"
+             << " after='" << afterBuf[0] << "' pos=" << afterPos.col << endl;
+      }
+
+      // Oracle
+      auto nvim = oracle_->simulate(buf, 0, col, "db");
+      cerr << "    oracle: '" << nvim.lines[0] << "' pos=" << nvim.col << endl;
+    }
+  }
+}
+
 TEST_F(NeovimOracleDebug, DISABLED_InvestigateJoinLinesResidual) {
   // CompositionOptimizer_ManualTest.JoinLinesWithResidual
   // Initial: aaa\nxxx\nccc → Goal: aaa bbb ccc

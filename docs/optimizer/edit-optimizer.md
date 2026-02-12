@@ -51,9 +51,25 @@ Naively, `EditStateKey` stored a full `Lines` copy. With `getKey()` called 2+ ti
 
 `EditStateKey` stores `(linesHash, lineCount, line, col, mode, startIndex)` instead of the full `Lines` object. Both the hash function and equality operator use only these scalar fields — no buffer copying or content comparison.
 
-The same pattern applies to `SuffixKey` in the suffix cache.
+The same pattern applies to `SuffixKey` in the suffix cache (see below).
 
 **Collision risk**: 64-bit FNV-1a over ~10^4 states gives collision probability ~5×10^-12 per search. A hash collision would cause a state to be incorrectly pruned as "already visited," potentially missing a better path for one starting position — a minor quality degradation, not a correctness violation.
+
+## Suffix Cache
+
+When a search path reaches the goal, `replayAndCacheSuffix` replays the winning sequence forward from the seed state, caching the remaining suffix at each intermediate buffer state. This enables cross-position sharing: if a different starting position reaches the same intermediate state, the cached suffix completes the path without further exploration.
+
+**Key**: `SuffixKey = (linesHash, lineCount, pos, mode)` — deliberately excludes `startIndex` to enable sharing.
+
+**Dot-context handling**: `.` (dot) repeats the last edit, but `lastEdit` is not in `SuffixKey`. A cached suffix starting with `.` is ambiguous — the dot could repeat different commands depending on which path reaches it. To fix this, when caching a suffix that starts with `.`, the first dot is expanded to the explicit command it repeats (e.g., `..s` → `x.s`). Both variants are stored in `SuffixValue`:
+
+- `ks` / `effort`: Expanded variant (first dot → explicit command). Always correct regardless of `lastEdit` context.
+- `dotKs` / `dotEffort`: Original variant with leading `.`. Lower cost but only valid when `lastEdit` matches.
+- `expandedDotCmd`: The command that replaced `.` (empty if no expansion needed).
+
+At lookup: if `lastEdit == expandedDotCmd`, use the dot variant; otherwise use the expanded variant.
+
+Subsequent dots (after the first explicit command) are unambiguous — they repeat whatever the first command established.
 
 ## Boundary Shift Handling
 - Since Edits are naturally the only exact-position constrained region, we have particular method of resolving among flat indices.

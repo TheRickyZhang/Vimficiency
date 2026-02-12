@@ -49,6 +49,14 @@ struct SuffixKeyHash {
 struct SuffixValue {
   KeyedSequence ks;       // Suffix command sequence + physical keys
   RunningEffort effort;   // Pre-computed effort for just the suffix
+
+  // Dot-context fields: when the suffix originally started with '.', the first
+  // dot is expanded to the explicit command for context-independent caching.
+  // At lookup time, if the searcher's lastEdit matches expandedDotCmd, the dot
+  // variant (lower cost) is used instead.
+  std::string expandedDotCmd;  // Command that replaced '.'; empty if no expansion
+  KeyedSequence dotKs;         // Original suffix with leading '.'
+  RunningEffort dotEffort;     // Effort for dot variant
 };
 
 using SuffixCacheMap = std::unordered_map<SuffixKey, SuffixValue, SuffixKeyHash>;

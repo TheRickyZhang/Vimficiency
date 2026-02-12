@@ -51,7 +51,7 @@ export function CategorySection({ category, benchNames, data, hiddenShas, onHide
           title={modalData.detail}
           series={modalData.series}
           unit={modalData.unit}
-          hiddenCount={hiddenShas.size}
+          hiddenShas={hiddenShas}
           onPointClick={onHide}
           onResetHidden={onResetHidden}
           onClose={() => setModal(null)}

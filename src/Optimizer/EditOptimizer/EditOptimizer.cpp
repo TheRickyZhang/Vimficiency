@@ -284,7 +284,6 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
         line >= static_cast<int>(lines.size());
     double hCost = ctx.heuristicCost(lines);
 
-    // Dot path only when eligible (same state, strictly lower cost)
     bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == deleteCmd;
     if (isDot) {
       KeyedSequence dotCmd(".", KeyedSequence::Period.keys);
@@ -525,7 +524,27 @@ EditOptimizer::optimizeEdit(
       replayHash = hashLines(replayLines);
       SuffixKey sk(replayHash, static_cast<int>(replayLines.size()), replayPos, replayMode);
       if (suffixCache.find(sk) == suffixCache.end()) {
-        suffixCache[sk] = SuffixValue{suffixKs[i + 1], suffixEfforts[i + 1]};
+        SuffixValue sv{suffixKs[i + 1], suffixEfforts[i + 1]};
+
+        // If suffix starts with '.', expand the first dot to the explicit command
+        // for context-independent caching. Store both variants so we can collapse
+        // back to '.' at lookup time when lastEdit matches.
+        if (i + 1 < n && edits[i + 1].edit == "." && !lastEditCmd.empty()) {
+          PhysicalKeys expandedKeys = globalTokenizer().tokenize(lastEditCmd);
+          KeyedSequence expanded(lastEditCmd, expandedKeys);
+          expanded += suffixKs[i + 2];
+
+          RunningEffort expandedEffort;
+          expandedEffort.append(expanded.keys, config);
+
+          sv.expandedDotCmd = lastEditCmd;
+          sv.dotKs = sv.ks;       // original with '.'
+          sv.dotEffort = sv.effort;
+          sv.ks = expanded;
+          sv.effort = expandedEffort;
+        }
+
+        suffixCache[sk] = std::move(sv);
       }
     }
   };
@@ -672,7 +691,6 @@ EditOptimizer::optimizeEdit(
 
     double hCost = ctx.heuristicCost(lines);
 
-    // Dot path only when eligible (same state, strictly lower cost)
     if (isDot) {
       KeyedSequence dotCmd(".", KeyedSequence::Period.keys);
       if (needsKEscape) dotCmd += KeyedSequence::k;
@@ -764,8 +782,14 @@ EditOptimizer::optimizeEdit(
       int idx = s.getStartIndex();
       if (!results[idx].isValid()) {
         const SuffixValue& sv = cacheIt->second;
-        string seqStr = s.getSeq() + sv.ks.seq.keys;
-        RunningEffort mergedEffort = RunningEffort::merge(s.getRunningEffort(), sv.effort);
+
+        // Use dot variant if searcher's lastEdit matches the expanded command
+        bool useDot = !sv.expandedDotCmd.empty() && s.getLastEdit() == sv.expandedDotCmd;
+        const KeyedSequence& suffix = useDot ? sv.dotKs : sv.ks;
+        const RunningEffort& suffixEffort = useDot ? sv.dotEffort : sv.effort;
+
+        string seqStr = s.getSeq() + suffix.seq.keys;
+        RunningEffort mergedEffort = RunningEffort::merge(s.getRunningEffort(), suffixEffort);
         double totalEffort = mergedEffort.getEffort(config);
 
         results[idx] = Result(seqStr, totalEffort);

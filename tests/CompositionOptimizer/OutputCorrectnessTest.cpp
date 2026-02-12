@@ -60,7 +60,7 @@ unique_ptr<NeovimOracle> CompositionOptimizerOutputCorrectness::oracle;
 // =============================================================================
 
 // Random single-line substitutions
-TEST_F(CompositionOptimizerOutputCorrectness, SingleLine_Substitution) {
+TEST_F(CompositionOptimizerOutputCorrectness, SingleLine_Edit) {
   RandomGen::seed(42);
   int passed = 0, total = 0;
 

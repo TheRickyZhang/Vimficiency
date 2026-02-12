@@ -65,6 +65,36 @@
   color: #333;
 }
 
+.deleteBtn {
+  background: none;
+  border: 1px solid #e57373;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #c62828;
+  cursor: pointer;
+  padding: 2px 8px;
+}
+
+.deleteBtn:hover {
+  background: #ffebee;
+  border-color: #c62828;
+}
+
+.deleteBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.deleteSuccess {
+  font-size: 0.8rem;
+  color: #2e7d32;
+}
+
+.deleteError {
+  font-size: 0.8rem;
+  color: #c62828;
+}
+
 .close {
   background: none;
   border: none;
