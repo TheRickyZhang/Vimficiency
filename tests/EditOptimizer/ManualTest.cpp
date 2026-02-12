@@ -51,8 +51,9 @@ struct ApplyResult {
 
 ApplyResult applySequence(const Lines& source, Position initialPos, const string& sequence) {
   ApplyResult result(source, initialPos);
+  string lastEditCmd;
   for (const auto& op : Edit::parseEdits(sequence)) {
-    Edit::applyEdit(result.lines, result.pos, result.mode, op);
+    Edit::applyEdit(result.lines, result.pos, result.mode, op, &lastEditCmd);
   }
   return result;
 }

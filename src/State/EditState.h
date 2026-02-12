@@ -61,6 +61,7 @@ class EditState {
   size_t linesHash_;              // Precomputed FNV-1a hash of buffer content
 
   std::string seq_{};             // Sequence of operations taken
+  std::string lastEdit_{};        // Last edit command for dot repeat (not in EditStateKey)
   RunningEffort runningEffort{};  // Typing effort tracker (internal)
   double effort_ = 0.0;           // Cached effort value
   double cost_ = 0.0;             // Priority = effort + heuristic
@@ -88,6 +89,8 @@ public:
   double getEffort() const { return effort_; }
   double getCost() const { return cost_; }
   const std::string& getSeq() const { return seq_; }
+  const std::string& getLastEdit() const { return lastEdit_; }
+  void setLastEdit(std::string_view cmd) { lastEdit_ = cmd; }
   const RunningEffort& getRunningEffort() const { return runningEffort; }
 
   // -----------------------------------------------------------------------------

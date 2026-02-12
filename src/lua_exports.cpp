@@ -13,6 +13,7 @@
 #include "Utils/CoutCapture.h"
 #include "Utils/Debug.h"
 #include "Utils/Lines.h"
+#include "VimCore/VimOptions.h"
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
@@ -54,6 +55,7 @@ struct VimficiencyConfigFFI {
   C_ScoreWeights weights{};
   C_KeyInfo keys[KEY_COUNT]{};
   int slice_buffer_amount{};
+  int32_t shiftwidth = -1; // -1 = use default (8)
 };
 
 // Helper to split string by newlines
@@ -106,6 +108,11 @@ static void sync_config() {
       dst.finger = static_cast<Finger>(src.finger);
       dst.base_cost = src.base_cost;
     }
+  }
+
+  // Apply runtime shiftwidth override (sentinel -1 = keep default of 8)
+  if (g_config_ffi.shiftwidth >= 0) {
+    VimOptions::shiftwidthRef() = g_config_ffi.shiftwidth;
   }
 }
 

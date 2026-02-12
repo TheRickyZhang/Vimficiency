@@ -55,7 +55,11 @@ void insertText(Lines& lines, Position& pos, Mode mode, std::string_view text);
 // Routes parsed edit commands to appropriate operations.
 // -----------------------------------------------------------------------------
 
-void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit);
+// Apply a single parsed edit. If lastEditCmd is non-null, '.' repeats the
+// last buffer-modifying command stored there, and buffer-modifying commands
+// update it. Callers that don't need dot repeat can omit the parameter.
+void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
+               std::string* lastEditCmd = nullptr);
 
 // Parse an edit sequence string into individual ParsedEdit tokens.
 // Handles operators (d, c) + motions/text objects, special keys (<Esc>, <CR>, etc.),

@@ -1,6 +1,7 @@
 #pragma once
 
-// VimOptions.h - Compile-time options for Vim/Neovim behavior differences
+// VimOptions.h - Compile-time options for Vim/Neovim behavior differences,
+// plus runtime-configurable shiftwidth.
 //
 // By default, vimficiency uses NEOVIM defaults (the modern sensible defaults).
 // Define VIMFICIENCY_LEGACY_VIM to use traditional Vim defaults instead.
@@ -24,8 +25,6 @@
 
 namespace VimOptions {
 
-// Returns true if startofline behavior should be used
-// (go to first non-blank on line-changing commands)
 constexpr bool startOfLine() {
 #ifdef VIMFICIENCY_LEGACY_VIM
     return true;
@@ -34,8 +33,6 @@ constexpr bool startOfLine() {
 #endif
 }
 
-// Returns true if joinspaces behavior should be used
-// (two spaces after .!? when joining lines)
 constexpr bool joinSpaces() {
 #ifdef VIMFICIENCY_LEGACY_VIM
     return true;
@@ -44,7 +41,6 @@ constexpr bool joinSpaces() {
 #endif
 }
 
-// Returns true if Y should behave like yy (yank line) instead of y$ (yank to EOL)
 constexpr bool yIsYankLine() {
 #ifdef VIMFICIENCY_LEGACY_VIM
     return true;
@@ -53,9 +49,6 @@ constexpr bool yIsYankLine() {
 #endif
 }
 
-// Returns true if autoindent is enabled
-// Neovim has autoindent ON by default; Vim has it OFF
-// Affects insert-mode text after o, cc, <CR>: copies indent from source line
 constexpr bool autoindent() {
 #ifdef VIMFICIENCY_LEGACY_VIM
     return false;
@@ -66,9 +59,14 @@ constexpr bool autoindent() {
 
 // Shiftwidth: number of spaces per indent level.
 // Affects <BS> in autoindent context (deletes to previous shiftwidth boundary).
-// Both Vim and Neovim default to 8.
-constexpr int shiftwidth() {
-    return 8;
+// Runtime-configurable via FFI (auto-detected from Neovim's vim.o.shiftwidth).
+inline int& shiftwidthRef() {
+    static int sw = 8;
+    return sw;
+}
+
+inline int shiftwidth() {
+    return shiftwidthRef();
 }
 
 } // namespace VimOptions

@@ -37,7 +37,10 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 
 **Current limitations**: No `*`, `#`, `%` motions; no search (`/`, `n`, `N`); no visual mode
 
-## Important Design to keep in mind!
+## Important Debug Principles
+Always use tests/Debug to investigate complex issues through direct, side-by-side comparison using NeovimOracle, finding the exact point our state differs from expectation.
+
+## Other Principles
 - All positions are 0-indexed
 - Always use our Lines type to represent buffer content, which provides additional helpful methods
 - We allow an empty line, which has size() == 0, but still an index 0 as a valid cursor position

@@ -6,9 +6,11 @@ Add compositionOptimizer human tests
 Add support for CompositionOptimizer in lua
 Move compositionOptimizer params from class to optimizerParams
 
-Speed up correct (vs previously "eager" variant) version of EditOptimizer while still respecting delete -> change conversion; right now may be a bit wasteful with extra storage in Edit search state
 Verify usage of KeySequence; are the statics (runtime built during optimizer initialization) used efficiently?
 Verify J motions
+
+Always keep hashing in mind
+Improve organization of benchmark site
 
 
 Add automatic detection of user's neovim settings, ex. shiftwidth

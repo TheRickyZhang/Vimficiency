@@ -41,4 +41,6 @@
     X(LParen, "(",      (Key::Key_Shift, Key::Key_9)) \
     X(RParen, ")",      (Key::Key_Shift, Key::Key_0)) \
     /* Scroll motions */ \
-    X(CtrlD,  "<C-d>",  (Key::Key_Ctrl, Key::Key_D))
+    X(CtrlD,  "<C-d>",  (Key::Key_Ctrl, Key::Key_D)) \
+    /* Dot repeat */ \
+    X(Period, ".",       (Key::Key_Period))

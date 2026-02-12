@@ -22,7 +22,7 @@ enum class KSId : uint8_t {
 #undef KS_ENUM_VALUE
 
 static constexpr int KS_COUNT = static_cast<int>(KSId::COUNT);
-static_assert(KS_COUNT == 27, "Expected 27 static KeyedSequence constants");
+static_assert(KS_COUNT == 28, "Expected 28 static KeyedSequence constants");
 
 // =============================================================================
 // KeyedSequence

@@ -248,6 +248,11 @@ end
 function M.setup(user_config)
 	user_config = user_config or {}
 
+	-- Auto-detect shiftwidth from Neovim (user config overrides)
+	if not user_config.shiftwidth then
+		user_config.shiftwidth = vim.o.shiftwidth
+	end
+
 	-- Take lua parts
 	import_lua_config(user_config)
 	-- Push to C++

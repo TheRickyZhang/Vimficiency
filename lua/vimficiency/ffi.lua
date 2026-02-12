@@ -27,6 +27,7 @@ local M = {}
 ---@field weights C_ScoreWeights
 ---@field keys C_KeyInfo[]
 ---@field slice_buffer_count integer
+---@field shiftwidth integer  -- -1 = use default (8)
 
 ---@class VimficiencyLib
 ---@field VIMFICIENCY_KEY_COUNT integer
@@ -69,6 +70,7 @@ ffi.cdef([[
         C_ScoreWeights weights;
         C_KeyInfo keys[64];  // assert(64 >= key_count)
         int slice_buffer_amount;
+        int32_t shiftwidth;
     } VimficiencyConfigFFI;
 
     VimficiencyConfigFFI* vimficiency_get_config();
@@ -191,6 +193,10 @@ function M.configure(user_config)
 
   if user_config.slice_buffer_amount then
     config.slice_buffer_count = user_config.slice_buffer_amount
+  end
+
+  if user_config.shiftwidth then
+    config.shiftwidth = user_config.shiftwidth
   end
 
 	lib.vimficiency_apply_config()

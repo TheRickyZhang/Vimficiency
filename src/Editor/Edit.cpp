@@ -192,13 +192,46 @@ void insertText(Lines& lines, Position& pos, Mode mode, string_view text) {
 // Note: something like 3dw on a line may do nothing on 2nd/3rd dw, but since
 // we can't prune that easily without doing equivalent work as the action, it's fine.
 // TODO: we can apply the same technique to Motions as well
-void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit) {
+void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
+               string* lastEditCmd) {
   // Lines invariant: buffer always has at least one line (minimum: {""})
   assert(!lines.empty());
 
   string_view e = edit.edit;
   int count = edit.effectiveCount();
   size_t h = hash(e);
+
+  // Dot repeat: replay the last buffer-modifying command
+  if (mode == Mode::Normal && e == ".") {
+    if (!lastEditCmd || lastEditCmd->empty()) {
+      throw runtime_error(". with no previous edit to repeat");
+    }
+    ParsedEdit repeat{*lastEditCmd, edit.hasCount() ? count : 0};
+    applyEdit(lines, pos, mode, repeat, nullptr);  // don't update lastEditCmd
+    return;
+  }
+
+  // Update dot repeat register for buffer-modifying Normal mode commands.
+  // Done pre-execution; pure motions and mode-entering commands are excluded.
+  if (lastEditCmd && mode == Mode::Normal) {
+    bool isMotion = false;
+    if (e.size() == 1) {
+      switch (e[0]) {
+        case 'j': case 'k': case 'h': case 'l':
+        case 'w': case 'W': case 'b': case 'B':
+        case 'e': case 'E': case '0': case '^': case '$':
+        case '}': case '{': case ')': case '(':
+        case 'i': case 'I': case 'a': case 'A':
+          isMotion = true; break;
+        default: break;
+      }
+    } else if (e == "ge" || e == "gE") {
+      isMotion = true;
+    }
+    if (!isMotion) {
+      *lastEditCmd = string(e);
+    }
+  }
 
   string& line = lines[pos.line];
   int n = static_cast<int>(lines.size());
