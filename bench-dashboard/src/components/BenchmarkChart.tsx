@@ -1,6 +1,6 @@
 import { useRef, useCallback } from 'react';
 import { Line } from 'react-chartjs-2';
-import type { TooltipModel, Chart } from 'chart.js';
+import type { TooltipModel, Chart, ChartEvent } from 'chart.js';
 import type { Unit } from '../utils/format';
 import type { TimePoint } from '../utils/data';
 
@@ -12,6 +12,15 @@ interface Props {
   unit: Unit;
   large?: boolean;
   onPointClick?: (sha: string) => void;
+}
+
+function isXAxisClick(chart: Chart, event: ChartEvent): number | null {
+  const { x, y } = event;
+  if (x == null || y == null) return null;
+  if (y <= chart.chartArea.bottom) return null;
+  const idx = Math.round(chart.scales.x!.getValueForPixel(x)!);
+  if (idx < 0 || idx >= chart.data.labels!.length) return null;
+  return idx;
 }
 
 export function BenchmarkChart({ series, unit, large, onPointClick }: Props) {
@@ -70,13 +79,26 @@ export function BenchmarkChart({ series, unit, large, onPointClick }: Props) {
         responsive: true,
         maintainAspectRatio: false,
         animation: { duration: 250 },
-        onClick: onPointClick ? (_event, elements) => {
-          if (elements.length > 0) {
+        onClick: (event, elements, chart) => {
+          const axisIdx = isXAxisClick(chart, event);
+          if (axisIdx != null) {
+            const url = series[axisIdx]?.commitUrl;
+            if (url) {
+              (event.native as MouseEvent | undefined)?.stopPropagation();
+              window.open(url, '_blank');
+            }
+            return;
+          }
+          if (onPointClick && elements.length > 0) {
             const idx = elements[0]!.index;
             const sha = series[idx]?.sha;
             if (sha) onPointClick(sha);
           }
-        } : undefined,
+        },
+        onHover: (event, _elements, chart) => {
+          const axisIdx = isXAxisClick(chart, event);
+          chart.canvas.style.cursor = axisIdx != null ? 'pointer' : '';
+        },
         plugins: {
           legend: { display: false },
           tooltip: large ? {
@@ -92,7 +114,7 @@ export function BenchmarkChart({ series, unit, large, onPointClick }: Props) {
           },
         },
         scales: {
-          x: { ticks: { font: { size: large ? 12 : 10 }, maxTicksLimit: large ? 15 : 8 } },
+          x: { ticks: { color: '#4285f4', font: { size: large ? 12 : 10 }, maxTicksLimit: large ? 15 : 8 } },
           y: {
             title: { display: true, text: unit.l, font: { size: 13, weight: 'bold' } },
             ticks: { font: { size: large ? 12 : 11 } },

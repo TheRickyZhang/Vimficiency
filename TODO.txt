@@ -13,21 +13,20 @@ Always keep hashing in mind
 Improve organization of benchmark site
 
 
-Add automatic detection of user's neovim settings, ex. shiftwidth
-
 TODO:
 Implement .
 explore count motions in edit optimizer
 
 Can skip F-motions if no endpoints found?
-Benchmark search time based on buffer size, search space, A* vs Dijkstra. And what order/frequency results found.
-Extend a lot of EditOptimizer-specific changes to MotionOptimizer.
 
 Implement {cnt} motions in EditOptimizer (+ should appear in Composition?)
 
 constexpr disabling of searched motions in MotionExplorer/EditExplorer
 
 Is it possible to save processing on copying state, then adjusting in optimizer search? (Can save memory with persistent data structures, but that is not the limiting factor)
+
+Things to ask Blake about:
+How to associate KeyedSequence{Command, Key(s)} with running effort
 
 
 Quote pseudocode:
@@ -48,29 +47,18 @@ Otherwise, containing bracket pair contains space before next edit start.
 Then, when searching after applying an edit, we can simply check from the just-completed edit section whether we can do a bracket action or not.
 
 
-Think about how to detect ci", cib from CompositionOptimizer scope (can move and edit)
-ci": Simply goes forward linewise, so can always call if next edit region surrounded by "" (and doesn't contain any " inside?)
-cib: Also goes forward (?) but multiline, can match starting parenth backwards, so can only call when parentheses balance is 0 (?).
-Can address with a preprocessing.
-
 == Misc:
-- $ should set targetCol to infinity.
 - Distinguish between USER_EXPLORE_FACTOR and ABSOLUTE_EXPLORE_FACTOR (stop at minimum of the results with these) 
 Insert
-
-(){} boundary motions are iffy - keep in mind for future reference.
-
-If we are searching 0-4 normal, our insert search is 0-4 BECAUSE our normal is already extended doing [l, r) (don't want to delete that 4th character itself).
-So don't do X for i=0, x for i=n-1, or <Backspace> for i=0, or <Delete> for i=n-1.
-Symmetry maintained!
 
 
 - Transition tests to RapidCheck (formalize property-based testing + automatic shrinking, see RapidCheckAdoption.md)
 
 Ranked by natural development order and priority. Complexity level (?) in * stars.
 
-- Dot operator, brute force (worth space?)         **
 - simple symbols: *, #, %                          ***
+- Niche commands: -/+, ~, gu, gU,                  *
+
 - Search, n/N (heuristic best-matching prefix)     ***
 - Separate pattern detection for potential macros? ***
 - Visual Mode                                      ******
@@ -78,7 +66,6 @@ Ranked by natural development order and priority. Complexity level (?) in * star
 - Feedback on preferred motion paradigms over time ****
 - minimal register/macro use detecting repetition  ***
 - Reinforcement learning?                          *****
-- Niche commands: -/+, ~, gu, gU,                  *
 
 
 Done:

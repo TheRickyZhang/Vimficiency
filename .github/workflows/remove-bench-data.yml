@@ -16,25 +16,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
+          sparse-checkout: scripts/bench-data.js
+          path: main-scripts
+
+      - uses: actions/checkout@v4
+        with:
           ref: gh-pages
 
       - name: Remove benchmark data for ${{ inputs.sha }}
         run: |
           SHA="${{ inputs.sha }}"
           for dir in bench/edit bench/motion bench/composition; do
-            [ -f "$dir/data.js" ] || continue
-            node -e "
-              const fs = require('fs');
-              const src = fs.readFileSync('$dir/data.js', 'utf8');
-              const json = src.replace(/^window\.BENCHMARK_DATA\s*=\s*/, '').replace(/;\s*$/, '');
-              const data = JSON.parse(json);
-              for (const [key, runs] of Object.entries(data.entries)) {
-                const before = runs.length;
-                data.entries[key] = runs.filter(r => r.commit.id.indexOf('$SHA') !== 0);
-                console.log('$dir: ' + before + ' -> ' + data.entries[key].length);
-              }
-              fs.writeFileSync('$dir/data.js', 'window.BENCHMARK_DATA = ' + JSON.stringify(data) + ';\n');
-            "
+            [ -f "$dir/data.js" ] && node main-scripts/scripts/bench-data.js remove "$dir" "$SHA"
           done
 
       - name: Commit and push

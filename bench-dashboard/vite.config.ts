@@ -7,6 +7,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
+        home: 'index.html',
         optimizer: 'optimizer.html',
       },
     },

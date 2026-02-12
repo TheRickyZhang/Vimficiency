@@ -151,7 +151,9 @@ CompositionResult CompositionOptimizer::optimize(
 
           vector<RangeResult> results = motionOptimizer.optimizeToRange(
               subset, localPos, localRangeFirst, localRangeEnd,
-              MotionOptimizerRangeParams{}.withMaxResults(1), "",
+              MotionOptimizerRangeParams{}
+                  .withMaxResults(1)
+                  .withMinCountRepeat(params.minCountRepeat), "",
               subsetBoundary, s.getRunningEffort(),
               navigationContext).results;
 
@@ -311,8 +313,9 @@ CompositionResult CompositionOptimizer::optimize(
 
       vector<RangeResult> movementResults = motionOptimizer.optimizeToRange(
           subset, localPos, localRangeFirst, localRangeEnd,
-          MotionOptimizerRangeParams{}.withMaxResults(
-              clamp(nextEdit.origCharCount(), 1, 10)), "",
+          MotionOptimizerRangeParams{}
+              .withMaxResults(clamp(nextEdit.origCharCount(), 1, 10))
+              .withMinCountRepeat(params.minCountRepeat), "",
           subsetBoundary, s.getRunningEffort(),
           navigationContext).results;
 
@@ -356,7 +359,9 @@ CompositionResult CompositionOptimizer::optimize(
 
         vector<RangeResult> jMovResults = motionOptimizer.optimizeToRange(
             jSubset, jLocalPos, jLocalFirst, jLocalEnd,
-            MotionOptimizerRangeParams{}.withMaxResults(1), "",
+            MotionOptimizerRangeParams{}
+                .withMaxResults(1)
+                .withMinCountRepeat(params.minCountRepeat), "",
             jSubsetBoundary, s.getRunningEffort(),
             navigationContext).results;
 

@@ -39,6 +39,7 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   CompositionOptimizerParams& withMotionLinePaddingAbove(int v) { motionPaddingAbove = v; return *this; }
   CompositionOptimizerParams& withMotionLinePaddingBelow(int v) { motionPaddingBelow = v; return *this; }
   CompositionOptimizerParams& withMotionLinePadding(int v) { motionPaddingAbove = motionPaddingBelow = v; return *this; }
+  CompositionOptimizerParams& withMinCountRepeat(int v) { minCountRepeat = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
   static CompositionOptimizerParams dijkstra(int maxResults = 10, int maxNodesExplored = 50000) {
@@ -72,4 +73,5 @@ struct CompositionOptimizerRangeParams : CompositionOptimizerParams {
   CompositionOptimizerRangeParams& withMotionLinePaddingAbove(int v) { motionPaddingAbove = v; return *this; }
   CompositionOptimizerRangeParams& withMotionLinePaddingBelow(int v) { motionPaddingBelow = v; return *this; }
   CompositionOptimizerRangeParams& withMotionLinePadding(int v) { motionPaddingAbove = motionPaddingBelow = v; return *this; }
+  CompositionOptimizerRangeParams& withMinCountRepeat(int v) { minCountRepeat = v; return *this; }
 };

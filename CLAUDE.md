@@ -97,3 +97,4 @@ For Lua context, see `lua/CLAUDE.md`.
 - @docs/utils.md - General utilities (QuoteFlags, BracketFlags, Lines, StringUtils)
 - @docs/vim-utils-principles.md - State validation, empty handling, MotionUtils vs EndpointUtils, **targetCol handling**
 - @docs/core/keyboard.md - Keyboard module, key definitions (X macros), sequence-to-keys conversion, effort model
+- @docs/core/counted-edit-semantics.md - Why `{n}{edit}` ≠ `{edit}` repeated n times, safe counted edit generation strategy

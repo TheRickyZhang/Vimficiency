@@ -361,7 +361,8 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
     }
 
     EditResult optResult = editOptimizer.optimizeEdit(
-        diff.deletedLines(), diff.insertedLines(), diff.boundary, {},
+        diff.deletedLines(), diff.insertedLines(), diff.boundary,
+        EditOptimizerParams{}.withMinCountRepeat(params.minCountRepeat),
         diff.beginPos.line, diff.beginPos.col, goalPos);
     results.push_back(std::move(optResult));
   }
@@ -855,7 +856,8 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
             : static_cast<int>(fullTgtLines[g].size()) - 1);
 
         EditResult residualResult = editOptimizer.optimizeEdit(
-            residualInitial, residualGoal, groupBoundary, {},
+            residualInitial, residualGoal, groupBoundary,
+            EditOptimizerParams{}.withMinCountRepeat(params.minCountRepeat),
             0, 0, residualGoalPos);
 
         // Look up result at cursor position after J

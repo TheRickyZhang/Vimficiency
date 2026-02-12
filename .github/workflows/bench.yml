@@ -18,11 +18,12 @@ jobs:
       - name: Install deps
         run: pacman -Syu --noconfirm base-devel cmake git neovim
 
-      - name: Cache build dependencies
+      - name: Cache build directory
         uses: actions/cache@v4
         with:
-          path: build/_deps
-          key: deps-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+          path: build
+          key: build-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt', 'src/**', 'tests/**') }}
+          restore-keys: build-
 
       - name: Build
         run: |
@@ -38,9 +39,11 @@ jobs:
       image: archlinux:latest
     needs: test
     if: github.ref == 'refs/heads/main'
+    env:
+      GIT_CONFIG_COUNT: 1
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: '*'
     steps:
-      - uses: actions/checkout@v4
-
       - name: Cache pacman packages
         uses: actions/cache@v4
         with:
@@ -50,11 +53,16 @@ jobs:
       - name: Install deps
         run: pacman -Syu --noconfirm base-devel cmake git
 
-      - name: Cache build dependencies
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Cache build directory
         uses: actions/cache@v4
         with:
-          path: build/_deps
-          key: deps-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+          path: build
+          key: build-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt', 'src/**', 'tests/**') }}
+          restore-keys: build-
 
       - name: Build (Release)
         run: |
@@ -83,6 +91,32 @@ jobs:
             --benchmark_format=json \
             --benchmark_out=composition_result.json
 
+      - name: Build and run baseline benchmarks
+        run: |
+          CURRENT=$(git rev-parse HEAD)
+          git checkout HEAD~1
+
+          # Incremental rebuild — only recompiles files changed in the last commit
+          cmake --build build -j$(nproc)
+
+          VIMFICIENCY_SEED_MODE=fixed \
+          ./build/tests/vimficiency_benchmarks \
+            --benchmark_filter="EditOptimizer.*" \
+            --benchmark_format=json \
+            --benchmark_out=baseline_edit.json
+          VIMFICIENCY_SEED_MODE=fixed \
+          ./build/tests/vimficiency_benchmarks \
+            --benchmark_filter="MotionOptimizer.*" \
+            --benchmark_format=json \
+            --benchmark_out=baseline_motion.json
+          VIMFICIENCY_SEED_MODE=fixed \
+          ./build/tests/vimficiency_benchmarks \
+            --benchmark_filter="CompositionOptimizer.*" \
+            --benchmark_format=json \
+            --benchmark_out=baseline_composition.json
+
+          git checkout $CURRENT
+
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
         with:
@@ -91,6 +125,9 @@ jobs:
             edit_result.json
             motion_result.json
             composition_result.json
+            baseline_edit.json
+            baseline_motion.json
+            baseline_composition.json
 
   benchmark-store:
     runs-on: ubuntu-latest
@@ -105,6 +142,16 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: benchmark-results
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Compare against baseline
+        continue-on-error: true
+        run: |
+          bun scripts/bench-compare.ts \
+            edit_result.json baseline_edit.json \
+            motion_result.json baseline_motion.json \
+            composition_result.json baseline_composition.json
 
       - name: Store EditOptimizer results
         uses: benchmark-action/github-action-benchmark@v1
@@ -140,8 +187,6 @@ jobs:
           comment-on-alert: true
           fail-on-alert: false
 
-      - uses: oven-sh/setup-bun@v2
-
       - name: Build dashboard
         working-directory: bench-dashboard
         run: bun install --frozen-lockfile && bun run build
@@ -149,23 +194,14 @@ jobs:
       - name: Deploy dashboard
         run: |
           cp -r bench-dashboard/dist /tmp/dashboard-dist
+          cp scripts/bench-data.js /tmp/bench-data.js
 
           git fetch origin gh-pages
           git checkout gh-pages
 
           # Keep only the last 100 benchmark entries per suite
           for dir in bench/edit bench/motion bench/composition; do
-            [ -f "$dir/data.js" ] || continue
-            node -e "
-              const fs = require('fs');
-              const src = fs.readFileSync('$dir/data.js', 'utf8');
-              const json = src.replace(/^window\.BENCHMARK_DATA\s*=\s*/, '').replace(/;\s*$/, '');
-              const data = JSON.parse(json);
-              for (const [key, runs] of Object.entries(data.entries)) {
-                data.entries[key] = runs.slice(-100);
-              }
-              fs.writeFileSync('$dir/data.js', 'window.BENCHMARK_DATA = ' + JSON.stringify(data) + ';\n');
-            "
+            [ -f "$dir/data.js" ] && node /tmp/bench-data.js prune "$dir"
           done
 
           # Root index

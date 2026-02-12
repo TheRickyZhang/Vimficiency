@@ -125,6 +125,82 @@ KeyedSequence deleteToChangeLine(string_view deleteCmd,
 }
 
 
+// Edits where N{edit} produces the same result as repeating {edit} N times.
+// Only single-character operations qualify: for operator+motion combos like de,
+// Vim interprets the count on the motion (d4e ≠ dededede), and for linewise
+// commands like dd/J, the count changes the scope (4dd = delete 4 lines at once,
+// not dd repeated 4 times).
+bool isSafeForCountCollapse(string_view edit) {
+  return edit == "x" || edit == "X" || edit == "~";
+}
+
+// Post-hoc collapse of dot-repeated edits into counted form.
+// Scans each result's sequence for a safe edit followed by consecutive '.' tokens.
+// If the group count >= minCountRepeat, replaces with {count}{edit} and keeps
+// the collapsed version only if it has lower or equal effort.
+void collapseCountRepeats(vector<Result>& results, int minCountRepeat,
+                          const Config& config) {
+  if (minCountRepeat <= 1) return;
+
+  for (auto& result : results) {
+    if (!result.isValid()) continue;
+
+    vector<ParsedEdit> edits = Edit::parseEdits(result.sequence.keys);
+    if (edits.empty()) continue;
+
+    // Scan for collapsible groups: safe edit + consecutive dots
+    bool anyCollapsed = false;
+    vector<pair<int, int>> collapseRanges; // (startIdx, count) of groups to collapse
+
+    for (int i = 0; i < static_cast<int>(edits.size()); i++) {
+      if (edits[i].hasCount()) continue;
+      if (!isSafeForCountCollapse(edits[i].edit)) continue;
+
+      // Count consecutive dots after this edit
+      int dotCount = 0;
+      int j = i + 1;
+      while (j < static_cast<int>(edits.size()) && edits[j].edit == ".") {
+        dotCount++;
+        j++;
+      }
+
+      int totalReps = 1 + dotCount;
+      if (totalReps >= minCountRepeat) {
+        collapseRanges.push_back({i, totalReps});
+        anyCollapsed = true;
+        i = j - 1; // skip past the dots
+      }
+    }
+
+    if (!anyCollapsed) continue;
+
+    // Rebuild sequence with collapsed groups
+    string newSeq;
+    int editIdx = 0;
+    size_t collapseIdx = 0;
+
+    while (editIdx < static_cast<int>(edits.size())) {
+      if (collapseIdx < collapseRanges.size() &&
+          editIdx == collapseRanges[collapseIdx].first) {
+        int count = collapseRanges[collapseIdx].second;
+        newSeq += to_string(count);
+        newSeq += edits[editIdx].edit;
+        editIdx += count; // skip the edit + its dots
+        collapseIdx++;
+      } else {
+        newSeq += edits[editIdx].edit;
+        editIdx++;
+      }
+    }
+
+    double newEffort = getEffort(newSeq, config);
+    if (newEffort <= result.keyCost) {
+      result.sequence = Sequence(std::move(newSeq));
+      result.keyCost = newEffort;
+    }
+  }
+}
+
 } // anonymous namespace
 
 // replacement strategy for same-length transformations
@@ -377,6 +453,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
           MotionOptimizerParams{}
               .withLinePaddingAbove(params.motionLinePaddingAbove)
               .withLinePaddingBelow(params.motionLinePaddingBelow)
+              .withMinCountRepeat(params.minCountRepeat)
       );
 
       if (!motionResults.empty() && motionResults[0].isValid()) {
@@ -400,6 +477,8 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
       }
     }
   }
+
+  collapseCountRepeats(results, params.minCountRepeat, config);
 
   return EditResult(std::move(results), ctx.getStats(), initialLines,
                     bufferFirstLine, bufferFirstCol, goalPos);
@@ -828,6 +907,8 @@ EditOptimizer::optimizeEdit(
       results[0] = *replacementResult;
     }
   }
+
+  collapseCountRepeats(results, params.minCountRepeat, config);
 
   // Build stats with cache info
   SearchStats stats = ctx.getStats();

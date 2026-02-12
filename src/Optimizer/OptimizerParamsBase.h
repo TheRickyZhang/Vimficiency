@@ -29,6 +29,10 @@ struct OptimizerParamsBase {
   int linePaddingAbove = 2;
   int linePaddingBelow = 2;
 
+  // Minimum count before emitting counted motions/edits (e.g., 4 means 3w→www, 4w→4w).
+  // Positions reachable via count < threshold are still found by step-by-step A* exploration.
+  int minCountRepeat = 4;
+
   // Debug: collect explored states in SearchStats (expensive, for debugging only)
   bool trackExploredStates = false;
 };

@@ -97,7 +97,7 @@ TEST_F(MotionOptimizer_ManualTest, HorizontalMotions) {
 
   // Note: "2e" and "ee" are functionally equivalent; optimizer may prefer count-prefixed
   // f motions may not be explored within result limit depending on search order
-  EXPECT_TRUE(contains_all(results, {user_seq, "wE", "2e", "2E"}))
+  EXPECT_TRUE(contains_all(results, {user_seq, "wE"}))
       << "Missing expected sequences";
 }
 
@@ -339,6 +339,45 @@ TEST_F(MotionBoundaryTest, IsPositionInBounds_WithColConstraints) {
   EXPECT_TRUE(boundary.isPositionInBounds(Position(2, 9), lastLine, lastLineLength)) << "col 9 < 10 (last valid)";
   EXPECT_FALSE(boundary.isPositionInBounds(Position(2, 10), lastLine, lastLineLength)) << "col 10 == 10 (first in suffix)";
   EXPECT_FALSE(boundary.isPositionInBounds(Position(2, 14), lastLine, lastLineLength)) << "col 14 > 10";
+}
+
+// =============================================================================
+// minCountRepeat threshold tests
+// =============================================================================
+
+TEST_F(MotionOptimizer_ManualTest, MinCountRepeat_BlocksSmallCounts) {
+  // "one two three four five six" — 4w reaches "five" (col 20)
+  Lines lines = {"one two three four five six"};
+  Position start(0, 0);
+  Position end(0, 14); // "four" — reachable by 3w
+
+  MotionOptimizer opt(Config::uniform());
+  MotionBoundary boundary;
+
+  // With default minCountRepeat=4, count=3 should NOT appear as "3w"
+  auto results = opt.optimize(lines, start, end,
+      MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
+      "", boundary, RunningEffort(), navContext).results;
+
+  EXPECT_FALSE(hasSequence(results, "3w")) << "3w should be blocked by minCountRepeat=4";
+  EXPECT_FALSE(hasSequence(results, "3W")) << "3W should be blocked by minCountRepeat=4";
+}
+
+TEST_F(MotionOptimizer_ManualTest, MinCountRepeat_LowThresholdAllowsSmallCounts) {
+  Lines lines = {"one two three four five six"};
+  Position start(0, 0);
+  Position end(0, 14); // "four" — reachable by 3w
+
+  MotionOptimizer opt(Config::uniform());
+  MotionBoundary boundary;
+
+  // With minCountRepeat=2, count=3 SHOULD appear
+  auto results = opt.optimize(lines, start, end,
+      MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000)
+          .withMinCountRepeat(2),
+      "", boundary, RunningEffort(), navContext).results;
+
+  EXPECT_TRUE(hasSequence(results, "3w")) << "3w should be allowed with minCountRepeat=2";
 }
 
 // =============================================================================

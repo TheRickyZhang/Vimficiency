@@ -278,6 +278,7 @@ public:
 
       for (const auto& r : results) {
         if (!r.valid()) continue;
+        if (r.count < ctx.params.minCountRepeat) continue;
         if (ctx.boundary.hasLinesAbove() && r.pos.line == 0) continue;
         if (ctx.boundary.hasLinesBelow() && r.pos.line == ctx.lines.lastLine()) continue;
         exploreCountMotion(base, motion, r.count, r.pos);

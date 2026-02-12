@@ -27,6 +27,7 @@ struct EditOptimizerParams : OptimizerParamsBase {
   EditOptimizerParams& withMotionLinePaddingAbove(int v) { motionLinePaddingAbove = v; return *this; }
   EditOptimizerParams& withMotionLinePaddingBelow(int v) { motionLinePaddingBelow = v; return *this; }
   EditOptimizerParams& withMotionLinePadding(int v) { motionLinePaddingAbove = motionLinePaddingBelow = v; return *this; }
+  EditOptimizerParams& withMinCountRepeat(int v) { minCountRepeat = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
   static EditOptimizerParams dijkstra(int maxResults = 10, int maxNodesExplored = 50000) {
