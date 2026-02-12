@@ -87,6 +87,13 @@ struct EditSearchContext {
   // Add state to priority queue if it improves on existing cost
   void exploreNewState(EditState&& state);
 
+  // Explore a state via normal path (move) and optionally dot path (copy).
+  // Checks dot eligibility first and copies only when needed.
+  // Normal path always moves afterState and sets lastEdit to cmd.
+  void exploreWithDot(EditState&& afterState, const EditState& base,
+                      std::string_view cmd, const PhysicalKeys& keys,
+                      double hCost);
+
   // Initialize priority queue with all starting positions
   void initStartingPositions(const Lines& initialLines);
 

@@ -1,4 +1,6 @@
+import { useRef, useCallback } from 'react';
 import { Line } from 'react-chartjs-2';
+import type { TooltipModel, Chart } from 'chart.js';
 import type { Unit } from '../utils/format';
 import type { TimePoint } from '../utils/data';
 
@@ -13,6 +15,42 @@ interface Props {
 }
 
 export function BenchmarkChart({ series, unit, large, onPointClick }: Props) {
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
+
+  const externalTooltip = useCallback((context: { chart: Chart; tooltip: TooltipModel<'line'> }) => {
+    const { chart, tooltip } = context;
+    let el = tooltipRef.current;
+    if (!el) {
+      el = document.createElement('div');
+      el.style.cssText = 'position:absolute;pointer-events:auto;background:#1a1a2e;color:#fff;border-radius:8px;padding:10px 14px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:9999;transition:opacity 0.15s;max-width:350px';
+      chart.canvas.parentNode!.appendChild(el);
+      tooltipRef.current = el;
+    }
+
+    if (tooltip.opacity === 0) {
+      el.style.opacity = '0';
+      el.style.pointerEvents = 'none';
+      return;
+    }
+
+    const idx = tooltip.dataPoints?.[0]?.dataIndex;
+    if (idx == null) return;
+    const point = series[idx];
+    if (!point) return;
+
+    const valText = (point.val / unit.d).toFixed(2) + ' ' + unit.l;
+    el.innerHTML = `<div style="font-weight:600;margin-bottom:4px;line-height:1.3">${point.msg}</div>`
+      + `<div style="margin-bottom:4px">${valText}</div>`
+      + `<a href="${point.commitUrl}" target="_blank" rel="noopener" style="color:#7cb3ff;text-decoration:none;font-family:monospace;font-size:12px" onmouseenter="this.style.textDecoration='underline'" onmouseleave="this.style.textDecoration='none'">${point.sha}</a>`;
+
+    el.style.opacity = '1';
+    el.style.pointerEvents = 'auto';
+
+    const { offsetLeft, offsetTop } = chart.canvas;
+    el.style.left = offsetLeft + tooltip.caretX + 'px';
+    el.style.top = offsetTop + tooltip.caretY - el.offsetHeight - 12 + 'px';
+  }, [series, unit]);
+
   return (
     <Line
       data={{
@@ -41,7 +79,10 @@ export function BenchmarkChart({ series, unit, large, onPointClick }: Props) {
         } : undefined,
         plugins: {
           legend: { display: false },
-          tooltip: {
+          tooltip: large ? {
+            enabled: false,
+            external: externalTooltip,
+          } : {
             titleFont: { size: 14, weight: 'bold' },
             bodyFont: { size: 13 },
             callbacks: {

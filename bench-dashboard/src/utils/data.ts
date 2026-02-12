@@ -7,6 +7,7 @@ export interface ParsedName {
 
 export interface TimePoint {
   sha: string;
+  commitUrl: string;
   val: number;
   msg: string;
 }
@@ -37,7 +38,12 @@ export function discoverCategories(data: BenchmarkRun[]): Record<string, string[
   return cats;
 }
 
+export function getRepoUrl(): string {
+  return window.BENCHMARK_DATA?.repoUrl ?? '';
+}
+
 export function timeSeries(data: BenchmarkRun[], benchName: string, hiddenShas?: Set<string>): TimePoint[] {
+  const repoUrl = getRepoUrl();
   const series: TimePoint[] = [];
   for (const commit of data) {
     const sha = commit.commit.id.substring(0, 7);
@@ -46,6 +52,7 @@ export function timeSeries(data: BenchmarkRun[], benchName: string, hiddenShas?:
     if (b) {
       series.push({
         sha,
+        commitUrl: commit.commit.url || `${repoUrl}/commit/${commit.commit.id}`,
         val: b.value,
         msg: commit.commit.message.split('\n')[0] ?? '',
       });
