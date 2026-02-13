@@ -106,18 +106,6 @@
   <div class="container">
     <h1>Vimficiency Benchmarks</h1>
     <p class="subtitle">Performance tracking across commits</p>
-    <div id="changes-section">
-      <div class="changes-grid">
-        <div id="regressions-col" style="display:none">
-          <h3>Largest Regressions</h3>
-          <div class="change-list" id="regressions-list"></div>
-        </div>
-        <div id="improvements-col" style="display:none">
-          <h3>Largest Improvements</h3>
-          <div class="change-list" id="improvements-list"></div>
-        </div>
-      </div>
-    </div>
     <h2>Optimizers</h2>
     <div class="optimizer-grid">
       <a class="optimizer-card" href="bench/edit/">
@@ -132,6 +120,19 @@
         <h3>CompositionOptimizer</h3>
         <p>Full composition optimization</p>
       </a>
+    </div>
+
+    <div id="changes-section">
+      <div class="changes-grid">
+        <div id="regressions-col" style="display:none">
+          <h3>Largest Regressions</h3>
+          <div class="change-list" id="regressions-list"></div>
+        </div>
+        <div id="improvements-col" style="display:none">
+          <h3>Largest Improvements</h3>
+          <div class="change-list" id="improvements-list"></div>
+        </div>
+      </div>
     </div>
   </div>
   <script type="module" src="./src/pages/home.ts"></script>

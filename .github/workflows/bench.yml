@@ -26,17 +26,9 @@ jobs:
 
       - name: Build
         run: |
-          echo "--- ccache location ---"
-          which ccache && ccache --version | head -1
-          echo "--- cmake configure ---"
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF \
             -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-          echo "--- verify launcher in cmake cache ---"
-          grep LAUNCHER build/CMakeCache.txt || echo "LAUNCHER not found in CMakeCache!"
-          echo "--- sample compile command (verbose) ---"
-          cmake --build build -j1 -- VERBOSE=1 2>&1 | grep -m2 'Building CXX\|g++-14' || true
-          echo "--- full build ---"
           cmake --build build -j$(nproc)
 
       - name: Unit tests

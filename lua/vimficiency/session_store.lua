@@ -37,7 +37,7 @@ local config = require("vimficiency.config")
 ---@field start_col integer            # 0-indexed
 ---@field end_row integer              # 0-indexed, relative to lines
 ---@field end_col integer              # 0-indexed
----@field user_seq.str()ing              # What the user typed
+---@field user_seq string              # What the user typed
 ---@field user_cost number             # Effort cost of user's sequence
 ---@field optimal_results VimficiencyResult[] # Top N results from optimizer (seq + cost)
 ---@field timestamp integer            # hrtime when finished

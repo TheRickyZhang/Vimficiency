@@ -19,7 +19,7 @@ local APPROXIMATE_MOTION_CONVERSIONS = {
 }
 
 --- Apply approximate motion conversions to a key sequence string
----@param keyseq.str()ing
+---@param keyseq string
 ---@return string
 local function apply_motion_conversions(keyseq)
   local result = keyseq
@@ -53,7 +53,7 @@ end
 
 --- Format results for display
 ---@param results VimficiencyResult[]
----@param user_seq.str()ing|nil
+---@param user_seq string|nil
 ---@param user_cost number|nil
 ---@return string
 local function format_results_display(results, user_seq, user_cost)
@@ -239,7 +239,7 @@ function M.finish(alias, save_name)
   end
 
   -- Apply approximate motion conversions (gj->j, gk->k, etc.)
-  local keyseq.str() = apply_motion_conversions(keyseq_raw)
+  local keyseq_str = apply_motion_conversions(keyseq_raw)
 
   -- Calculate positions (relative to search slice, 0-indexed)
   local rel_start_row = start_state.row - start_search
@@ -264,7 +264,7 @@ function M.finish(alias, save_name)
     rel_start_col,
     rel_end_row,
     rel_end_col,
-    keyseq.str(),
+    keyseq_str,
     start_state.window_height,
     start_state.scroll_amount,
     config.RESULTS_CALCULATED
@@ -299,7 +299,7 @@ function M.finish(alias, save_name)
     start_col = rel_start_col,
     end_row = rel_end_row,      -- 0-indexed, relative to lines
     end_col = rel_end_col,
-    user_seq = keyseq.str(),
+    user_seq = keyseq_str,
     user_cost = user_cost,
     optimal_results = optimal_results,
     timestamp = vim.uv.hrtime(),
@@ -325,7 +325,7 @@ function M.finish(alias, save_name)
   -- Format result summary with position and all results
   local pos_str = string.format("(%d,%d) -> (%d,%d)",
     rel_start_row, rel_start_col, rel_end_row, rel_end_col)
-  local result_display = format_results_display(optimal_results, keyseq.str(), user_cost)
+  local result_display = format_results_display(optimal_results, keyseq_str, user_cost)
   vim.notify(
     "vimficiency finished [" .. alias .. "] " .. pos_str .. save_msg .. "\n" .. result_display,
     vim.log.levels.INFO
