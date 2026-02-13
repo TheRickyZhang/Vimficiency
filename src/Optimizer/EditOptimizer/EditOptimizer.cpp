@@ -677,10 +677,16 @@ EditOptimizer::optimizeEdit(
     // The searchSeq string must outlive the ParsedEdits (they hold string_views)
     // — searchSeq is a const ref to the goal state's seq which stays alive.
 
-    // Tokenize each edit to get PhysicalKeys
+    // Build full command strings (with count prefix) and tokenize
+    vector<string> editStrs(n);
     vector<PhysicalKeys> editKeys(n);
     for (int i = 0; i < n; i++) {
-      editKeys[i] = globalTokenizer().tokenize(edits[i].edit);
+      if (edits[i].hasCount()) {
+        editStrs[i] = to_string(edits[i].effectiveCount()) + string(edits[i].edit);
+      } else {
+        editStrs[i] = string(edits[i].edit);
+      }
+      editKeys[i] = globalTokenizer().tokenize(editStrs[i]);
     }
 
     // Build suffix KeyedSequences BACKWARD: suffix[i] = edit[i..n-1] + goalSuffix
@@ -692,7 +698,7 @@ EditOptimizer::optimizeEdit(
     suffixEfforts[n] = goalSuffixEffort;
 
     for (int i = n - 1; i >= 0; i--) {
-      KeyedSequence editKs(edits[i].edit, editKeys[i]);
+      KeyedSequence editKs(editStrs[i], editKeys[i]);
       suffixKs[i] = editKs;
       suffixKs[i] += suffixKs[i + 1];
 

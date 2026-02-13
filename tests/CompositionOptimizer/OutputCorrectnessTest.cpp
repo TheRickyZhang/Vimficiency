@@ -75,7 +75,6 @@ TEST_F(CompositionOptimizerOutputCorrectness, SingleLine_Edit) {
     int editLen = RandomGen::range(1, min(5, lineLen - editStart));
     int editEnd = editStart + editLen;
 
-    // Generate replacement text (different length ok)
     int replaceLen = RandomGen::range(1, 6);
     string replacement = randomWord(replaceLen);
 

@@ -4,24 +4,21 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
+    env:
+      CCACHE_DIR: ~/.cache/ccache
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache pacman packages
-        uses: actions/cache@v4
-        with:
-          path: /var/cache/pacman/pkg
-          key: pacman-test-${{ runner.os }}
-
       - name: Install deps
-        run: pacman -Syu --noconfirm base-devel cmake git neovim ccache
+        run: |
+          sudo apt-get update && sudo apt-get install -y gcc-14 g++-14 ccache
+          curl -LO https://github.com/neovim/neovim/releases/download/v0.11.5/nvim-linux-x86_64.tar.gz
+          sudo tar xzf nvim-linux-x86_64.tar.gz -C /usr/local --strip-components=1
 
       - name: Cache ccache
         uses: actions/cache@v4
         with:
-          path: /root/.cache/ccache
+          path: ~/.cache/ccache
           key: ccache-test-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
             ccache-test-${{ github.ref }}-
@@ -31,11 +28,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/_deps
-          key: deps-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+          key: deps-v2-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
 
       - name: Build
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF \
+            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j$(nproc)
 
@@ -44,32 +42,22 @@ jobs:
 
   benchmark-run:
     runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
     needs: test
     if: github.ref == 'refs/heads/main'
     env:
-      GIT_CONFIG_COUNT: 1
-      GIT_CONFIG_KEY_0: safe.directory
-      GIT_CONFIG_VALUE_0: '*'
+      CCACHE_DIR: ~/.cache/ccache
     steps:
-      - name: Cache pacman packages
-        uses: actions/cache@v4
-        with:
-          path: /var/cache/pacman/pkg
-          key: pacman-bench-${{ runner.os }}
-
-      - name: Install deps
-        run: pacman -Syu --noconfirm base-devel cmake git ccache
-
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y gcc-14 g++-14 ccache
+
       - name: Cache ccache
         uses: actions/cache@v4
         with:
-          path: /root/.cache/ccache
+          path: ~/.cache/ccache
           key: ccache-bench-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
             ccache-bench-${{ github.ref }}-
@@ -79,11 +67,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/_deps
-          key: deps-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+          key: deps-v2-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
 
       - name: Build (Release)
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF \
+            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j$(nproc)
 

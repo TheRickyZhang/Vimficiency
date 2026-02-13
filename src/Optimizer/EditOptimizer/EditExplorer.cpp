@@ -6,6 +6,7 @@
 #include "Keyboard/MotionToKeysPrimitives.h"
 #include "VimCore/VimCore.h"
 #include "VimCore/VimEndpointUtils.h"
+#include "VimCore/VimMotionUtils.h"
 
 #include <algorithm>
 
@@ -390,18 +391,27 @@ void EditExplorer::exploreCountedWordEdits(
   if (!onDeletion) return;
   if (minCountRepeat < 2) return;
 
-  static constexpr int MAX_COUNT_ITERATIONS = 15;
+  static constexpr int MAX_COUNT_ITERATIONS = 9;
+
+  // Use raw motion functions (motionE, motionW, motionB, motionGe) to match
+  // Edit::applyEdit exactly. The boundary-aware motionWordEndpoint can diverge
+  // from applyEdit after A* deletions change the buffer structure.
 
   // Forward word-end edits: {n}de, {n}dE
   for (const auto& spec : Edit::FORWARD_WORDEDGE_EDITS) {
     Position prev = cursor;
-    // Run single-motion iterations to find the endpoint for each count
     for (int count = 1; count <= MAX_COUNT_ITERATIONS; count++) {
-      Position endpoint = VimCore::motionWordEndpoint<true, EdgeType::WordEdge>(
-          prev, lines, spec.isBig, spec.skipCurrent,
-          ctx_.rightColOffset, ctx_.editBoundary.hasLinesBelow(), false);
+      Position endpoint = prev;
+      VimCore::motionE(endpoint, lines, spec.isBig);
 
-      if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == prev) break;
+      if (endpoint == prev) break;
+      if (endpoint.line != cursor.line) break;
+
+      // Handle past-end position (clamp to last valid char)
+      int lineLen = static_cast<int>(lines[endpoint.line].size());
+      if (endpoint.col >= lineLen) endpoint.setCol(lineLen - 1);
+
+      if (inBoundaryRegion(endpoint, lines)) break;
 
       if (count >= minCountRepeat) {
         PhysicalKeys countedKeys = makeCountedKeys(count, spec.keys);
@@ -417,28 +427,32 @@ void EditExplorer::exploreCountedWordEdits(
   for (const auto& spec : Edit::FORWARD_GAPEDGE_EDITS) {
     Position prev = cursor;
     for (int count = 1; count <= MAX_COUNT_ITERATIONS; count++) {
-      Position endpoint = VimCore::motionWordEndpoint<true, EdgeType::GapEdge>(
-          prev, lines, spec.isBig, spec.skipCurrent,
-          ctx_.rightColOffset, ctx_.editBoundary.hasLinesBelow(), false);
+      Position endpoint = prev;
+      VimCore::motionW(endpoint, lines, spec.isBig);
 
-      if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == prev) break;
+      if (endpoint == prev) break;
+      if (endpoint.line != cursor.line) break;
 
-      // dw/dW cross-line restriction: if endpoint crosses lines, fall back to word-end
-      if (endpoint.line > cursor.line) {
-        Position wordEnd = VimCore::motionWordEndpoint<true, EdgeType::WordEdge>(
-            prev, lines, spec.isBig, spec.skipCurrent,
-            ctx_.rightColOffset, ctx_.editBoundary.hasLinesBelow(), false);
-        if (wordEnd == POSITION_OUTSIDE_BOUNDARY || wordEnd == prev) break;
-        endpoint = wordEnd;
+      // motionW returns exclusive end (start of next word).
+      // Convert to inclusive: [cursor, endpoint-1]
+      int lineLen = static_cast<int>(lines[endpoint.line].size());
+      Position inclusiveEnd;
+      if (endpoint.col >= lineLen) {
+        // Past end — delete to last char (matches deleteToNextWord)
+        inclusiveEnd = Position(endpoint.line, lineLen - 1);
+      } else {
+        inclusiveEnd = Position(endpoint.line, endpoint.col - 1);
       }
+
+      if (inBoundaryRegion(inclusiveEnd, lines)) break;
 
       if (count >= minCountRepeat) {
         PhysicalKeys countedKeys = makeCountedKeys(count, spec.keys);
         string cmd = to_string(count) + string(spec.cmd);
-        onDeletion(Range(cursor, endpoint), cmd, countedKeys);
+        onDeletion(Range(cursor, inclusiveEnd), cmd, countedKeys);
       }
 
-      prev = endpoint;
+      prev = endpoint;  // Next iteration starts from motionW's exclusive position
     }
   }
 
@@ -446,24 +460,18 @@ void EditExplorer::exploreCountedWordEdits(
   for (const auto& spec : Edit::BACKWARD_WORDEDGE_EDITS) {
     Position prev = cursor;
     for (int count = 1; count <= MAX_COUNT_ITERATIONS; count++) {
-      Position endpoint = VimCore::motionWordEndpoint<false, EdgeType::WordEdge>(
-          prev, lines, spec.isBig, spec.skipCurrent,
-          ctx_.leftColOffset, ctx_.editBoundary.hasLinesAbove(), false);
+      Position endpoint = prev;
+      VimCore::motionB(endpoint, lines, spec.isBig);
 
-      if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == prev) break;
+      if (endpoint == prev) break;
+      if (endpoint.line != cursor.line) break;
+
+      if (inBoundaryRegion(endpoint, lines)) break;
 
       if (count >= minCountRepeat) {
         // db/dB are exclusive at cursor: range is [endpoint, cursor-1]
-        int cursorContentCol = cursor.col - (cursor.line == 0 ? ctx_.leftColOffset : 0);
-        Range range;
-        if (cursorContentCol > 0) {
-          range = Range(endpoint, Position(cursor.line, cursor.col - 1));
-        } else if (endpoint.line < cursor.line) {
-          int prevLine = cursor.line - 1;
-          range = Range(endpoint, Position(prevLine, lines[prevLine].lastCol()));
-        } else {
-          break;
-        }
+        if (cursor.col <= (cursor.line == 0 ? ctx_.leftColOffset : 0)) break;
+        Range range(endpoint, Position(cursor.line, cursor.col - 1));
 
         PhysicalKeys countedKeys = makeCountedKeys(count, spec.keys);
         string cmd = to_string(count) + string(spec.cmd);
@@ -476,20 +484,20 @@ void EditExplorer::exploreCountedWordEdits(
 
   // Backward word-end edits: {n}dge, {n}dgE
   for (const auto& spec : Edit::BACKWARD_NEXTEDGE_EDITS) {
-    // For inclusive backward deletes (dge/dgE), check cursor first
     if (!spec.isExclusiveAtCursor && inBoundaryRegion(cursor, lines))
       continue;
 
     Position prev = cursor;
     for (int count = 1; count <= MAX_COUNT_ITERATIONS; count++) {
-      Position endpoint = VimCore::motionWordEndpoint<false, EdgeType::NextEdge>(
-          prev, lines, spec.isBig, spec.skipCurrent,
-          ctx_.leftColOffset, ctx_.editBoundary.hasLinesAbove(), false);
+      Position endpoint = prev;
+      VimCore::motionGe(endpoint, lines, spec.isBig);
 
-      if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == prev) break;
+      if (endpoint == prev) break;
+      if (endpoint.line != cursor.line) break;
+
+      if (inBoundaryRegion(endpoint, lines)) break;
 
       if (count >= minCountRepeat) {
-        // dge/dgE are inclusive: range is [endpoint, cursor]
         PhysicalKeys countedKeys = makeCountedKeys(count, spec.keys);
         string cmd = to_string(count) + string(spec.cmd);
         onDeletion(Range(endpoint, cursor), cmd, countedKeys);

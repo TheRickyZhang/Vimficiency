@@ -206,7 +206,14 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
     if (!lastEditCmd || lastEditCmd->empty()) {
       throw runtime_error(". with no previous edit to repeat");
     }
-    ParsedEdit repeat{*lastEditCmd, edit.hasCount() ? count : 0};
+    // Parse count from lastEditCmd (e.g., "5de" → edit="de", count=5)
+    auto parsed = parseEdits(*lastEditCmd);
+    assert(!parsed.empty());
+    ParsedEdit repeat = parsed[0];
+    // Explicit count on '.' overrides the stored count
+    if (edit.hasCount()) {
+      repeat = ParsedEdit{repeat.edit, count};
+    }
     applyEdit(lines, pos, mode, repeat, nullptr);  // don't update lastEditCmd
     return;
   }
@@ -229,7 +236,12 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
       isMotion = true;
     }
     if (!isMotion) {
-      *lastEditCmd = string(e);
+      // Store full command including count prefix for correct dot repeat
+      if (edit.hasCount()) {
+        *lastEditCmd = to_string(count) + string(e);
+      } else {
+        *lastEditCmd = string(e);
+      }
     }
   }
 
@@ -343,19 +355,24 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
         pos.setCol(pos.col + count - 1);
         return;
 
-      case hash("J"):
-        if (pos.line + count >= n) {
-          throw runtime_error("J requires " + to_string(count) + " lines below");
+      case hash("J"): {
+        // {count}J joins max(count, 2) lines = max(count, 2) - 1 join operations
+        int joinOps = max(count, 2) - 1;
+        if (pos.line + joinOps >= n) {
+          throw runtime_error("J requires " + to_string(joinOps) + " lines below");
         }
-        for (int i = 0; i < count; i++) VimCore::joinLines(lines, pos, true);
+        for (int i = 0; i < joinOps; i++) VimCore::joinLines(lines, pos, true);
         return;
+      }
 
-      case hash("gJ"):
-        if (pos.line + count >= n) {
-          throw runtime_error("gJ requires " + to_string(count) + " lines below");
+      case hash("gJ"): {
+        int joinOps = max(count, 2) - 1;
+        if (pos.line + joinOps >= n) {
+          throw runtime_error("gJ requires " + to_string(joinOps) + " lines below");
         }
-        for (int i = 0; i < count; i++) VimCore::joinLines(lines, pos, false);
+        for (int i = 0; i < joinOps; i++) VimCore::joinLines(lines, pos, false);
         return;
+      }
 
       case hash("dd"):
         if (pos.line + count > n) {

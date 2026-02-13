@@ -124,6 +124,161 @@ protected:
   }
 };
 
+TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
+  // Reproduce 5L+bnd benchmark crash: "j requires 1 lines below"
+  Lines buffer = {"prefix stuff delete me line one",
+                  "delete me line two",
+                  "delete me line three",
+                  "delete me line four",
+                  "delete me line five and suffix here"};
+  Lines goal = {"replaced"};
+  Position editBegin(0, 13);
+  Position editEnd(4, 22);
+
+  Lines editRegion = buffer.getSpan(editBegin, editEnd);
+  EditBoundary boundary(buffer, editBegin, editEnd);
+
+  // Reconstruct effective lines
+  Lines eff = editRegion;
+  eff.front().insert(0, boundary.prefix());
+  eff.back() += boundary.suffix();
+
+  cerr << "editRegion: " << editRegion << endl;
+  cerr << "prefix: '" << boundary.prefix() << "' suffix: '" << boundary.suffix() << "'" << endl;
+  cerr << "effectiveLines (" << eff.size() << " lines):" << endl;
+  for (size_t i = 0; i < eff.size(); i++) {
+    cerr << "  [" << i << "] '" << eff[i] << "'" << endl;
+  }
+
+  // Run optimizer and get results, then replay each result to find the crashing one
+  EditOptimizer opt(config);
+  int mr = max(10, editRegion.totalPositions() / 4);
+  EditOptimizerParams p = EditOptimizerParams{}.withMaxResults(mr);
+
+  // The crash is in suffix cache replay (replayAndCacheSuffix).
+  // Let's try to find which sequence fails by replaying results manually.
+  // First, just replay all possible A* sequences on effectiveLines step-by-step.
+  // We'll do this by trying each possible dj/dk-containing sequence.
+
+  // Build a set of test sequences
+  vector<string> testSeqs = {
+    "djk", "djkdd", "djkddj", "djk.j",
+    "ddjdj", "ddjdjk", "djkddk",
+    "D4gJ7dbDjd0dw.x",  // Crashing sequence from replayAndCacheSuffix
+    "djk.k", "djk..k",
+  };
+
+  for (const auto& seq : testSeqs) {
+    Lines test = eff;
+    Position pos(0, 13);  // first edit position in effective lines
+    Mode mode = Mode::Normal;
+    string lastEdit;
+
+    auto edits = Edit::parseEdits(seq);
+    bool crashed = false;
+    cerr << "Replay '" << seq << "': ";
+    for (size_t i = 0; i < edits.size(); i++) {
+      try {
+        Edit::applyEdit(test, pos, mode, edits[i], &lastEdit);
+      } catch (const exception& ex) {
+        cerr << "CRASH at step " << i << " ('" << edits[i].edit
+             << "'): " << ex.what()
+             << " | lines=" << test.size()
+             << " pos=(" << pos.line << "," << pos.col << ")" << endl;
+        crashed = true;
+        break;
+      }
+    }
+    if (!crashed) {
+      cerr << "OK lines=" << test.size()
+           << " pos=(" << pos.line << "," << pos.col << ")" << endl;
+    }
+  }
+
+  // Detailed step-by-step trace of the crashing sequence
+  cerr << "\n--- Step-by-step trace of D4gJ7dbDjd0dw.x ---" << endl;
+  {
+    Lines test = eff;
+    Position pos(0, 13);
+    Mode mode = Mode::Normal;
+    string lastEdit;
+    string seq = "D4gJ7dbDjd0dw.x";
+    auto edits = Edit::parseEdits(seq);
+    for (size_t i = 0; i < edits.size(); i++) {
+      cerr << "  Before step " << i << " ('" << edits[i].edit
+           << "' count=" << edits[i].effectiveCount()
+           << "): lines=" << test.size()
+           << " pos=(" << pos.line << "," << pos.col << ")"
+           << " lastEdit='" << lastEdit << "'" << endl;
+      for (size_t li = 0; li < test.size(); li++)
+        cerr << "    [" << li << "] '" << test[li] << "'" << endl;
+      try {
+        Edit::applyEdit(test, pos, mode, edits[i], &lastEdit);
+      } catch (const exception& ex) {
+        cerr << "  CRASH: " << ex.what() << endl;
+        break;
+      }
+    }
+  }
+
+  // The crash is inside replayAndCacheSuffix. To find the crashing sequence,
+  // we need to instrument the replay. Since we can't add prints to production
+  // code, let's directly test: replay each A* goal sequence on effective lines
+  // to find which one crashes.
+  // First, run a pure-deletion variant (no suffix cache) to check if it crashes.
+  cerr << "\n--- Running pure deletion ---" << endl;
+  {
+    EditOptimizer opt2(config);
+    auto result = opt2.optimizeEdit(editRegion, {""}, boundary, p);
+    cerr << "Pure deletion OK, results=" << result.resultCount() << endl;
+
+    // Now replay each result
+    for (size_t i = 0; i < result.resultCount(); i++) {
+      const auto& r = result.getResults()[i];
+      if (!r.isValid()) continue;
+      const string& seq = r.getSequenceString().keys;
+
+      Lines test = eff;
+      Position pos = fromFlatIndex(static_cast<int>(i), editRegion);
+      pos.col += (pos.line == 0 ? boundary.prefix().size() : 0);
+      Mode mode = Mode::Normal;
+      string lastEdit;
+
+      auto edits = Edit::parseEdits(seq);
+      for (size_t j = 0; j < edits.size(); j++) {
+        try {
+          Edit::applyEdit(test, pos, mode, edits[j], &lastEdit);
+        } catch (const exception& ex) {
+          cerr << "REPLAY CRASH idx=" << i << " seq='" << seq << "' step=" << j
+               << " edit='" << edits[j].edit << "' count=" << edits[j].effectiveCount()
+               << ": " << ex.what() << endl;
+          cerr << "  lines=" << test << " pos=(" << pos.line << "," << pos.col << ")" << endl;
+          break;
+        }
+      }
+    }
+  }
+
+  cerr << "\n--- Running full optimizer (edit with goal) ---" << endl;
+  try {
+    auto result = opt.optimizeEdit(editRegion, goal, boundary, p);
+    cerr << "Full optimizer OK, results=" << result.resultCount() << endl;
+  } catch (const exception& ex) {
+    cerr << "OPTIMIZER CRASH: " << ex.what() << endl;
+  }
+
+  // Test without counted edits: use minCountRepeat=999 to disable
+  cerr << "\n--- Without counted edits (minCountRepeat=999) ---" << endl;
+  try {
+    EditOptimizer opt3(config);
+    EditOptimizerParams p3 = EditOptimizerParams{}.withMaxResults(mr).withMinCountRepeat(999);
+    auto result = opt3.optimizeEdit(editRegion, goal, boundary, p3);
+    cerr << "No-counted OK, results=" << result.resultCount() << endl;
+  } catch (const exception& ex) {
+    cerr << "No-counted CRASH: " << ex.what() << endl;
+  }
+}
+
 TEST_F(DebugTest, DISABLED_InvestigateCountedWordEdit) {
   auto oracle = make_unique<NeovimOracle>();
 
