@@ -3,8 +3,6 @@
 
 #include <iostream>
 
-#include "Keyboard/KeyedSequence.h"
-
 using namespace std;
 
 EditSearchContext::EditSearchContext(const Lines& initialLines,
@@ -53,16 +51,15 @@ void EditSearchContext::exploreNewState(EditState&& state) {
 }
 
 void EditSearchContext::exploreWithDot(EditState&& afterState, const EditState& base,
-                                       std::string_view cmd, const PhysicalKeys& keys,
-                                       double hCost) {
-  bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == cmd;
+                                       const KeyedSequence& ks, double hCost) {
+  bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.keys;
 
   if (isDot) {
     // Dot path only: same resulting state as normal, strictly lower cost
     afterState.recordSearch(".", KeyedSequence::Period.keys, effortWeight, hCost, config);
   } else {
-    afterState.recordSearch(cmd, keys, effortWeight, hCost, config);
-    afterState.setLastEdit(cmd);
+    afterState.recordSearch(ks.seq.keys, ks.keys, effortWeight, hCost, config);
+    afterState.setLastEdit(ks.seq.keys);
   }
   exploreNewState(std::move(afterState));
 }

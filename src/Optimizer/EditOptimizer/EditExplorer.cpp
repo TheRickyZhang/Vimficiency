@@ -2,8 +2,6 @@
 #include "EditSearchContext.h"
 #include "EditToSpec.h"
 #include "Boundary/EditBoundary.h"
-#include "Keyboard/EditToKeys.h"
-#include "Keyboard/MotionToKeysPrimitives.h"
 #include "VimCore/VimCore.h"
 #include "VimCore/VimEndpointUtils.h"
 #include "VimCore/VimMotionUtils.h"
@@ -38,7 +36,7 @@ void EditExplorer::exploreTextObjectEdits(
     if (range.first == POSITION_OUTSIDE_BOUNDARY || range.last == POSITION_OUTSIDE_BOUNDARY)
       continue;
 
-    onDeletion(range, spec.cmd, spec.keys);
+    onDeletion(range, spec.ks);
   }
 }
 
@@ -49,7 +47,7 @@ void EditExplorer::exploreHalfLineEdits(
   int lastEditLine = lines.lastLine();
 
   for (const Edit::LineEditSpec& spec : specs) {
-    if (spec.cmd == "D") {
+    if (spec.ks.seq.keys == "D") {
       if (cursor.line == lastEditLine && ctx_.editBoundary.hasSuffix()) continue;
 
       int lineLen = static_cast<int>(lines[cursor.line].size());
@@ -62,15 +60,15 @@ void EditExplorer::exploreHalfLineEdits(
       int endCol = lineContentEnd - 1;
       if (endCol < cursor.col) continue;
       Range range(cursor, Position(cursor.line, endCol));
-      onDeletion(range, spec.cmd, spec.keys);
-    } else if (spec.cmd == "d0") {
+      onDeletion(range, spec.ks);
+    } else if (spec.ks.seq.keys == "d0") {
       if (cursor.line == 0 && ctx_.editBoundary.hasPrefix()) continue;
 
       int lineContentStart = (cursor.line == 0) ? ctx_.leftColOffset : 0;
       if (cursor.col <= lineContentStart) continue;
       Range range(Position(cursor.line, lineContentStart),
                   Position(cursor.line, cursor.col - 1));
-      onDeletion(range, spec.cmd, spec.keys);
+      onDeletion(range, spec.ks);
     } else {
       assert(false && "Unexpected half-line edit command");
     }
@@ -85,22 +83,25 @@ void EditExplorer::exploreFullLineEdits(
     return;
   }
   for (const auto& spec : specs) {
-    onLinewise(cursor.line, spec.cmd, spec.keys);
+    onLinewise(cursor.line, spec.ks);
   }
 }
 
 void EditExplorer::exploreCharEdits(
     const Position& cursor, const Lines& lines, int contentStart, int contentEnd,
     int editContentLen, DeletionCallback onDeletion) {
+  static const KeyedSequence xKS("x", {Key::Key_X});
+  static const KeyedSequence XKS("X", {Key::Key_Shift, Key::Key_X});
+
   // x: delete char at cursor (must be in content region)
   if (contentStart <= cursor.col && cursor.col < contentEnd) {
-    onDeletion(Range(cursor, cursor), "x", Deletion::CHAR.at("x"));
+    onDeletion(Range(cursor, cursor), xKS);
   }
 
   // X: delete char before cursor
   if (cursor.col > contentStart && cursor.col <= contentEnd) {
     Position before(cursor.line, cursor.col - 1);
-    onDeletion(Range(before, before), "X", Deletion::CHAR.at("X"));
+    onDeletion(Range(before, before), XKS);
   }
 }
 
@@ -136,7 +137,7 @@ void EditExplorer::exploreParagraphEdits(
       if (endLine < cursor.line) continue;
       int endCol = std::max(0, static_cast<int>(lines[endLine].size()) - 1);
       Range r(cursor, Position(endLine, endCol));
-      onDeletion(r, spec.cmd, spec.keys);
+      onDeletion(r, spec.ks);
     } else {
       // d{: when endpointLine == cursor.line, { stays on the same line and
       // d{ is characterwise exclusive (not linewise), so skip.
@@ -175,7 +176,7 @@ void EditExplorer::exploreSentenceEdits(
       if (endpoint <= cursor) continue;
       Position goalPos = lines.getPrevPos(endpoint);
       if (goalPos == POSITION_OUTSIDE_BOUNDARY) continue;
-      onDeletion(Range(cursor, goalPos), spec.cmd, spec.keys);
+      onDeletion(Range(cursor, goalPos), spec.ks);
     } else {
       // d(: delete from endpoint to just before cursor (exclusive)
       if (endpoint >= cursor) continue;
@@ -204,7 +205,7 @@ void EditExplorer::exploreSentenceEdits(
         if (cursor.line == 0) continue;
         goalPos = Position(cursor.line - 1, lines[cursor.line - 1].lastCol());
       }
-      onDeletion(Range(endpoint, goalPos), spec.cmd, spec.keys);
+      onDeletion(Range(endpoint, goalPos), spec.ks);
     }
   }
 }
@@ -237,7 +238,7 @@ void EditExplorer::exploreForwardWordEdits(
       }
     }
 
-    onDeletion(Range(cursor, endpoint), spec.cmd, spec.keys);
+    onDeletion(Range(cursor, endpoint), spec.ks);
   }
 }
 
@@ -272,7 +273,7 @@ void EditExplorer::exploreBackwardWordEdits(
       range = Range(endpoint, cursor);
     }
 
-    onDeletion(range, spec.cmd, spec.keys);
+    onDeletion(range, spec.ks);
   }
 }
 
@@ -312,8 +313,8 @@ void EditExplorer::exploreCountedLineEdits(
     bool skipDj = (cursor.line == 0 && hasPrefix) ||
                   (cursor.line + 1 == lastLine && hasSuffix);
     if (!skipDj) {
-      static const PhysicalKeys djKeys = {Key::Key_D, Key::Key_J};
-      onCountedLinewise(LineRange(cursor.line, cursor.line + 1), "dj", djKeys);
+      static const KeyedSequence djKS("dj", {Key::Key_D, Key::Key_J});
+      onCountedLinewise(LineRange(cursor.line, cursor.line + 1), djKS);
     }
   }
 
@@ -322,8 +323,8 @@ void EditExplorer::exploreCountedLineEdits(
     bool skipDk = (cursor.line - 1 == 0 && hasPrefix) ||
                   (cursor.line == lastLine && hasSuffix);
     if (!skipDk) {
-      static const PhysicalKeys dkKeys = {Key::Key_D, Key::Key_K};
-      onCountedLinewise(LineRange(cursor.line - 1, cursor.line), "dk", dkKeys);
+      static const KeyedSequence dkKS("dk", {Key::Key_D, Key::Key_K});
+      onCountedLinewise(LineRange(cursor.line - 1, cursor.line), dkKS);
     }
   }
 
@@ -336,12 +337,12 @@ void EditExplorer::exploreCountedLineEdits(
   if (lastDeletable < cursor.line) return;
 
   int maxCount = lastDeletable - cursor.line + 1;
-  static const PhysicalKeys ddKeys = {Key::Key_D, Key::Key_D};
+  static const KeyedSequence ddKS("dd", {Key::Key_D, Key::Key_D});
 
   for (int n = max(2, minCountRepeat); n <= maxCount; n++) {
-    PhysicalKeys countedKeys = makeCountedKeys(n, ddKeys);
-    string cmd = to_string(n) + "dd";
-    onCountedLinewise(LineRange(cursor.line, cursor.line + n - 1), cmd, countedKeys);
+    KeyedSequence countedKS;
+    countedKS.appendCounted(n, ddKS);
+    onCountedLinewise(LineRange(cursor.line, cursor.line + n - 1), countedKS);
   }
 }
 
@@ -370,18 +371,18 @@ void EditExplorer::exploreCountedJoinCommands(
 
   if (maxLinesBelow < 1) return;
 
-  static const PhysicalKeys jKeys = {Key::Key_Shift, Key::Key_J};
-  static const PhysicalKeys gjKeys = {Key::Key_G, Key::Key_Shift, Key::Key_J};
+  static const KeyedSequence JKS("J", {Key::Key_Shift, Key::Key_J});
+  static const KeyedSequence gJKS("gJ", {Key::Key_G, Key::Key_Shift, Key::Key_J});
 
   // count means "join count lines" (current + count-1 below)
   // so count=2 joins current + 1 below, count=3 joins current + 2 below, etc.
   for (int count = max(2, minCountRepeat); count <= maxLinesBelow + 1; count++) {
-    PhysicalKeys countedJKeys = makeCountedKeys(count, jKeys);
-    PhysicalKeys countedGjKeys = makeCountedKeys(count, gjKeys);
-    string jCmd = to_string(count) + "J";
-    string gjCmd = to_string(count) + "gJ";
-    onCountedJoin(count, true, jCmd, countedJKeys);
-    onCountedJoin(count, false, gjCmd, countedGjKeys);
+    KeyedSequence countedJKS;
+    countedJKS.appendCounted(count, JKS);
+    KeyedSequence countedGjKS;
+    countedGjKS.appendCounted(count, gJKS);
+    onCountedJoin(count, true, countedJKS);
+    onCountedJoin(count, false, countedGjKS);
   }
 }
 
@@ -414,9 +415,9 @@ void EditExplorer::exploreCountedWordEdits(
       if (inBoundaryRegion(endpoint, lines)) break;
 
       if (count >= minCountRepeat) {
-        PhysicalKeys countedKeys = makeCountedKeys(count, spec.keys);
-        string cmd = to_string(count) + string(spec.cmd);
-        onDeletion(Range(cursor, endpoint), cmd, countedKeys);
+        KeyedSequence countedKS;
+        countedKS.appendCounted(count, spec.ks);
+        onDeletion(Range(cursor, endpoint), countedKS);
       }
 
       prev = endpoint;
@@ -447,9 +448,9 @@ void EditExplorer::exploreCountedWordEdits(
       if (inBoundaryRegion(inclusiveEnd, lines)) break;
 
       if (count >= minCountRepeat) {
-        PhysicalKeys countedKeys = makeCountedKeys(count, spec.keys);
-        string cmd = to_string(count) + string(spec.cmd);
-        onDeletion(Range(cursor, inclusiveEnd), cmd, countedKeys);
+        KeyedSequence countedKS;
+        countedKS.appendCounted(count, spec.ks);
+        onDeletion(Range(cursor, inclusiveEnd), countedKS);
       }
 
       prev = endpoint;  // Next iteration starts from motionW's exclusive position
@@ -473,9 +474,9 @@ void EditExplorer::exploreCountedWordEdits(
         if (cursor.col <= (cursor.line == 0 ? ctx_.leftColOffset : 0)) break;
         Range range(endpoint, Position(cursor.line, cursor.col - 1));
 
-        PhysicalKeys countedKeys = makeCountedKeys(count, spec.keys);
-        string cmd = to_string(count) + string(spec.cmd);
-        onDeletion(range, cmd, countedKeys);
+        KeyedSequence countedKS;
+        countedKS.appendCounted(count, spec.ks);
+        onDeletion(range, countedKS);
       }
 
       prev = endpoint;
@@ -498,9 +499,9 @@ void EditExplorer::exploreCountedWordEdits(
       if (inBoundaryRegion(endpoint, lines)) break;
 
       if (count >= minCountRepeat) {
-        PhysicalKeys countedKeys = makeCountedKeys(count, spec.keys);
-        string cmd = to_string(count) + string(spec.cmd);
-        onDeletion(Range(endpoint, cursor), cmd, countedKeys);
+        KeyedSequence countedKS;
+        countedKS.appendCounted(count, spec.ks);
+        onDeletion(Range(endpoint, cursor), countedKS);
       }
 
       prev = endpoint;
@@ -525,10 +526,10 @@ void EditExplorer::exploreJoinCommands(
   if (nextLine == lines.lastLine() && ctx_.editBoundary.hasLinesBelow()) return;
 
   // Explore both J (with space) and gJ (without space)
-  for (const auto& [cmd, keys] : Deletion::JOIN) {
-    bool addSpace = (cmd == "J");
-    onJoin(addSpace, cmd, keys);
-  }
+  static const KeyedSequence JKS("J", {Key::Key_Shift, Key::Key_J});
+  static const KeyedSequence gJKS("gJ", {Key::Key_G, Key::Key_Shift, Key::Key_J});
+  onJoin(true, JKS);
+  onJoin(false, gJKS);
 }
 
 void EditExplorer::exploreAllDeletions(const EditState& state,
@@ -547,11 +548,11 @@ void EditExplorer::exploreAllDeletions(const EditState& state,
 
     if (onMotion) {
       // h: move left within line (away from suffix)
-      if (cursor.col > 0) { onMotion(Position(cursor.line, cursor.col - 1), "h", hjkl.at("h")); }
+      if (cursor.col > 0) { onMotion(Position(cursor.line, cursor.col - 1), KeyedSequence::h); }
       // k: move up to previous line (escape suffix line entirely)
       if (cursor.line > 0) {
         int newCol = min(cursor.targetCol, lines[cursor.line - 1].lastCol());
-        onMotion(Position(cursor.line - 1, newCol, cursor.targetCol), "k", hjkl.at("k"));
+        onMotion(Position(cursor.line - 1, newCol, cursor.targetCol), KeyedSequence::k);
       }
     }
     return;
@@ -562,12 +563,12 @@ void EditExplorer::exploreAllDeletions(const EditState& state,
     if (onMotion) {
       // l: move right within line (away from prefix)
       if (cursor.col < static_cast<int>(lines[0].size()) - 1) {
-        onMotion(Position(0, cursor.col + 1), "l", hjkl.at("l"));
+        onMotion(Position(0, cursor.col + 1), KeyedSequence::l);
       }
       // j: move down to next line (escape prefix line entirely)
       if (lines.lastLine() > 0) {
         int newCol = min(cursor.targetCol, lines[1].lastCol());
-        onMotion(Position(1, newCol, cursor.targetCol), "j", hjkl.at("j"));
+        onMotion(Position(1, newCol, cursor.targetCol), KeyedSequence::j);
       }
     }
     return;

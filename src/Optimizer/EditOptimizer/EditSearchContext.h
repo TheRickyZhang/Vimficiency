@@ -2,7 +2,6 @@
 
 #include <functional>
 #include <queue>
-#include <string_view>
 #include <unordered_map>
 
 #include "Optimizer/Config.h"
@@ -12,7 +11,7 @@
 #include "Editor/LineRange.h"
 #include "Editor/Position.h"
 #include "Editor/Range.h"
-#include "Keyboard/KeyboardModel.h"
+#include "Keyboard/KeyedSequence.h"
 #include "State/EditState.h"
 #include "Utils/Lines.h"
 
@@ -20,14 +19,14 @@
 class EditExplorer;
 
 // Callback types (also defined in EditExplorer.h for standalone use)
-using DeletionCallback = std::function<void(const Range&, std::string_view, const PhysicalKeys&)>;
-using LinewiseCallback = std::function<void(int, std::string_view, const PhysicalKeys&)>;
-using MotionCallback = std::function<void(const Position&, std::string_view, const PhysicalKeys&)>;
-using JoinCallback = std::function<void(bool, std::string_view, const PhysicalKeys&)>;
+using DeletionCallback = std::function<void(const Range&, const KeyedSequence&)>;
+using LinewiseCallback = std::function<void(int, const KeyedSequence&)>;
+using MotionCallback = std::function<void(const Position&, const KeyedSequence&)>;
+using JoinCallback = std::function<void(bool, const KeyedSequence&)>;
 
 // Counted operation callbacks
-using CountedLinewiseCallback = std::function<void(LineRange, std::string_view, const PhysicalKeys&)>;
-using CountedJoinCallback = std::function<void(int count, bool addSpace, std::string_view, const PhysicalKeys&)>;
+using CountedLinewiseCallback = std::function<void(LineRange, const KeyedSequence&)>;
+using CountedJoinCallback = std::function<void(int count, bool addSpace, const KeyedSequence&)>;
 
 // Comparator for EditState priority queue.
 // Uses getCost() which is computed as: effortWeight * effort + distanceWeight * heuristic
@@ -96,8 +95,7 @@ struct EditSearchContext {
   // Checks dot eligibility first and copies only when needed.
   // Normal path always moves afterState and sets lastEdit to cmd.
   void exploreWithDot(EditState&& afterState, const EditState& base,
-                      std::string_view cmd, const PhysicalKeys& keys,
-                      double hCost);
+                      const KeyedSequence& ks, double hCost);
 
   // Initialize priority queue with all starting positions
   void initStartingPositions(const Lines& initialLines);

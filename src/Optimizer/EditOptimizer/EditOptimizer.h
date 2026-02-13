@@ -29,6 +29,8 @@ struct EditResult {
 
   // Look up the result for a buffer position. Returns nullptr if the position
   // is outside the edit region or the result at that position is invalid.
+  // Return a nullable, const & view.
+  // TODO (C++ 26): use optional<const T&>
   const Result* resultAt(int bufferLine, int bufferCol) const {
     int editLine = bufferLine - firstLine_;
     if (editLine < 0 || editLine >= static_cast<int>(lineBaseIndex_.size()))
