@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { BenchmarkRun } from '../types/benchmark';
 import { parseName, timeSeries } from '../utils/data';
 import { bestUnit } from '../utils/format';
@@ -14,9 +14,11 @@ interface Props {
   onHide: (sha: string) => void;
   onResetHidden: () => void;
   onBack: () => void;
+  initialBench?: string | null;
+  onBenchOpened?: () => void;
 }
 
-export function CategorySection({ category, benchNames, data, hiddenShas, onHide, onResetHidden, onBack }: Props) {
+export function CategorySection({ category, benchNames, data, hiddenShas, onHide, onResetHidden, onBack, initialBench, onBenchOpened }: Props) {
   const [modal, setModal] = useState<{ title: string; idx: number } | null>(null);
 
   const charts = benchNames.map((benchName) => {
@@ -25,6 +27,17 @@ export function CategorySection({ category, benchNames, data, hiddenShas, onHide
     const unit = bestUnit(series.map((s) => s.val));
     return { benchName, detail, series, unit };
   }).filter((c) => c.series.length > 0);
+
+  // Auto-open modal for a specific benchmark when navigating from changes section
+  useEffect(() => {
+    if (initialBench) {
+      const idx = charts.findIndex((c) => c.benchName === initialBench);
+      if (idx >= 0) {
+        setModal({ title: charts[idx]!.detail, idx });
+      }
+      onBenchOpened?.();
+    }
+  }, [initialBench]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const modalData = modal !== null ? charts[modal.idx] : undefined;
 
@@ -38,7 +51,9 @@ export function CategorySection({ category, benchNames, data, hiddenShas, onHide
       </div>
       <div className={styles.chartGrid}>
         {charts.map((c, i) => (
-          <div key={c.benchName} className={styles.chartCard} onClick={() => setModal({ title: c.detail, idx: i })}>
+          <div key={c.benchName} className={styles.chartCard} onClick={(e) => {
+            if (!(e.nativeEvent as any).__xAxisHandled) setModal({ title: c.detail, idx: i });
+          }}>
             <h4>{c.detail}</h4>
             <div className={styles.chartWrapper}>
               <BenchmarkChart series={c.series} unit={c.unit} />

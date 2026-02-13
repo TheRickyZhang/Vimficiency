@@ -153,6 +153,14 @@ public:
     cost_ = effortWeight * effort_ + heuristicCost;
   }
 
+  // Overload using pre-computed effort (from effort cache) — avoids recomputing from keys.
+  void recordSearch(std::string_view cmd, const RunningEffort& precomputed,
+                    double effortWeight, double heuristicCost, const Config& config) {
+    seq_ += cmd;
+    effort_ = runningEffort.appendFrom(precomputed, config);
+    cost_ = effortWeight * effort_ + heuristicCost;
+  }
+
   // -----------------------------------------------------------------------------
   // Debug/Output
   // -----------------------------------------------------------------------------

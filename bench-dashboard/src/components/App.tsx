@@ -9,6 +9,7 @@ export function App() {
   const [activeCategory, setActiveCategory] = useState<string | null>(
     () => location.hash.substring(1) || null,
   );
+  const [openBench, setOpenBench] = useState<string | null>(null);
 
   const storageKey = `vimficiency-hidden-${optimizerName}`;
   const [hiddenShas, setHiddenShas] = useState<Set<string>>(() => {
@@ -36,14 +37,18 @@ export function App() {
     setHiddenShas(new Set());
   }, []);
 
-  const navigate = useCallback((cat: string | null) => {
+  const navigate = useCallback((cat: string | null, benchName?: string) => {
     location.hash = cat ?? '';
     setActiveCategory(cat);
+    setOpenBench(benchName ?? null);
     window.scrollTo(0, 0);
   }, []);
 
   useEffect(() => {
-    const handler = () => setActiveCategory(location.hash.substring(1) || null);
+    const handler = () => {
+      setActiveCategory(location.hash.substring(1) || null);
+      setOpenBench(null);
+    };
     window.addEventListener('hashchange', handler);
     return () => window.removeEventListener('hashchange', handler);
   }, []);
@@ -72,6 +77,8 @@ export function App() {
         onHide={onHide}
         onResetHidden={onResetHidden}
         onBack={() => navigate(null)}
+        initialBench={openBench}
+        onBenchOpened={() => setOpenBench(null)}
       />
     );
   }
@@ -81,6 +88,7 @@ export function App() {
       categories={categories}
       data={data}
       onSelect={(cat) => navigate(cat)}
+      onSelectBench={(cat, bench) => navigate(cat, bench)}
     />
   );
 }

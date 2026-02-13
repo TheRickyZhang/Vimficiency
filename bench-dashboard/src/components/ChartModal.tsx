@@ -62,7 +62,7 @@ export function ChartModal({ title, series, unit, hiddenShas, onPointClick, onRe
         <div className={styles.header}>
           <div>
             <h3>{title}</h3>
-            <span className={styles.hint}>Click a point to hide it</span>
+            <span className={styles.hint}>Click a point to hide it &middot; Scroll to zoom &middot; Drag to pan</span>
           </div>
           <div className={styles.headerRight}>
             {hiddenCount > 0 && (

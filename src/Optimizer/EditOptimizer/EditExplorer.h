@@ -8,6 +8,7 @@
 #include "Editor/Range.h"
 #include "Keyboard/KeyedSequence.h"
 #include "State/EditState.h"
+#include "State/RunningEffort.h"
 #include "Utils/Lines.h"
 #include "VimCore/EdgeType.h"
 
@@ -16,14 +17,15 @@ struct EditSearchContext;
 struct EditBoundary;
 
 // Forward declare callback types (defined in EditSearchContext.h)
-using DeletionCallback = std::function<void(const Range&, const KeyedSequence&)>;
-using LinewiseCallback = std::function<void(int, const KeyedSequence&)>;
-using MotionCallback = std::function<void(const Position&, const KeyedSequence&)>;
-using JoinCallback = std::function<void(bool, const KeyedSequence&)>;
+// Each callback receives a pre-computed RunningEffort for the KeyedSequence.
+using DeletionCallback = std::function<void(const Range&, const KeyedSequence&, const RunningEffort&)>;
+using LinewiseCallback = std::function<void(int, const KeyedSequence&, const RunningEffort&)>;
+using MotionCallback = std::function<void(const Position&, const KeyedSequence&, const RunningEffort&)>;
+using JoinCallback = std::function<void(bool, const KeyedSequence&, const RunningEffort&)>;
 
 // Counted operation callbacks
-using CountedLinewiseCallback = std::function<void(LineRange, const KeyedSequence&)>;
-using CountedJoinCallback = std::function<void(int count, bool addSpace, const KeyedSequence&)>;
+using CountedLinewiseCallback = std::function<void(LineRange, const KeyedSequence&, const RunningEffort&)>;
+using CountedJoinCallback = std::function<void(int count, bool addSpace, const KeyedSequence&, const RunningEffort&)>;
 
 // EditExplorer handles exploration of edit operations from a given state.
 // Separated from EditSearchContext for cleaner organization and future extensibility.

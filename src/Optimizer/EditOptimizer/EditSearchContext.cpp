@@ -1,9 +1,18 @@
 #include "EditSearchContext.h"
 #include "EditExplorer.h"
+#include "EditToSpec.h"
 
 #include <iostream>
 
 using namespace std;
+
+// Helper: precompute RunningEffort for a KeyedSequence and cache by address.
+static void cacheEffort(unordered_map<const void*, RunningEffort>& cache,
+                        const KeyedSequence& ks, const Config& config) {
+  RunningEffort re;
+  re.append(ks.keys, config);
+  cache[&ks] = re;
+}
 
 EditSearchContext::EditSearchContext(const Lines& initialLines,
                                      const EditBoundary& boundary,
@@ -24,6 +33,28 @@ EditSearchContext::EditSearchContext(const Lines& initialLines,
   const auto& suf = editBoundary.suffix();
   if (!pre.empty()) effectiveLines.front().insert(0, pre);
   if (!suf.empty()) effectiveLines.back() += suf;
+
+  // Pre-compute effort for all static KeyedSequence constants (X-macro entries)
+  for (int i = 0; i < KS_COUNT; ++i) {
+    cacheEffort(effortCache_, ksById(static_cast<KSId>(i)), config);
+  }
+
+  // Pre-compute effort for spec table entries
+  for (const auto& s : Edit::FORWARD_WORDEDGE_EDITS) cacheEffort(effortCache_, s.ks, config);
+  for (const auto& s : Edit::FORWARD_GAPEDGE_EDITS)  cacheEffort(effortCache_, s.ks, config);
+  for (const auto& s : Edit::BACKWARD_WORDEDGE_EDITS) cacheEffort(effortCache_, s.ks, config);
+  for (const auto& s : Edit::BACKWARD_NEXTEDGE_EDITS) cacheEffort(effortCache_, s.ks, config);
+  for (const auto& s : Edit::TEXT_OBJECT_EDITS) cacheEffort(effortCache_, s.ks, config);
+  for (const auto& s : Edit::HALF_LINE_EDITS)  cacheEffort(effortCache_, s.ks, config);
+  for (const auto& s : Edit::FULL_LINE_EDITS)  cacheEffort(effortCache_, s.ks, config);
+  for (const auto& s : Edit::EMPTYLINE_FULL_LINE_EDITS) cacheEffort(effortCache_, s.ks, config);
+  for (const auto& s : Edit::FORWARD_PARAGRAPH_EDITS)  cacheEffort(effortCache_, s.ks, config);
+  for (const auto& s : Edit::BACKWARD_PARAGRAPH_EDITS) cacheEffort(effortCache_, s.ks, config);
+  for (const auto& s : Edit::FORWARD_SENTENCE_EDITS)   cacheEffort(effortCache_, s.ks, config);
+  for (const auto& s : Edit::BACKWARD_SENTENCE_EDITS)  cacheEffort(effortCache_, s.ks, config);
+
+  // Cache Period separately for fast dot-repeat access
+  periodEffort_ = effortCache_[&KeyedSequence::Period];
 }
 
 bool EditSearchContext::inBoundaryRegion(const Position& pos, const Lines& lines) const {
@@ -51,14 +82,15 @@ void EditSearchContext::exploreNewState(EditState&& state) {
 }
 
 void EditSearchContext::exploreWithDot(EditState&& afterState, const EditState& base,
-                                       const KeyedSequence& ks, double hCost) {
+                                       const KeyedSequence& ks, const RunningEffort& effort,
+                                       double hCost) {
   bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.view();
 
   if (isDot) {
-    // Dot path only: same resulting state as normal, strictly lower cost
-    afterState.recordSearch(".", KeyedSequence::Period.keys, effortWeight, hCost, config);
+    // Dot path: use pre-computed Period effort (always available)
+    afterState.recordSearch(".", periodEffort_, effortWeight, hCost, config);
   } else {
-    afterState.recordSearch(ks.seq.view(), ks.keys, effortWeight, hCost, config);
+    afterState.recordSearch(ks.seq.view(), effort, effortWeight, hCost, config);
     afterState.setLastEdit(ks.seq.view());
   }
   exploreNewState(std::move(afterState));

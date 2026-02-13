@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import { Line } from 'react-chartjs-2';
 import type { TooltipModel, Chart, ChartEvent } from 'chart.js';
 import type { Unit } from '../utils/format';
@@ -25,21 +25,62 @@ function isXAxisClick(chart: Chart, event: ChartEvent): number | null {
 
 export function BenchmarkChart({ series, unit, large, onPointClick }: Props) {
   const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mouseInTooltipRef = useRef(false);
+
+  // Cleanup tooltip on unmount
+  useEffect(() => {
+    return () => {
+      if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+      if (tooltipRef.current) {
+        tooltipRef.current.remove();
+        tooltipRef.current = null;
+      }
+    };
+  }, []);
 
   const externalTooltip = useCallback((context: { chart: Chart; tooltip: TooltipModel<'line'> }) => {
     const { chart, tooltip } = context;
     let el = tooltipRef.current;
     if (!el) {
       el = document.createElement('div');
-      el.style.cssText = 'position:absolute;pointer-events:auto;background:#1a1a2e;color:#fff;border-radius:8px;padding:10px 14px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:9999;transition:opacity 0.15s;max-width:350px';
+      el.style.cssText = 'position:absolute;pointer-events:auto;background:#1a1a2e;color:#fff;border-radius:8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:9999;transition:opacity 0.15s;max-width:350px';
+      // Padding includes extra bottom padding to bridge gap to data point
+      el.style.padding = '10px 14px 18px 14px';
+      el.addEventListener('mouseenter', () => {
+        mouseInTooltipRef.current = true;
+        if (hideTimeoutRef.current) {
+          clearTimeout(hideTimeoutRef.current);
+          hideTimeoutRef.current = null;
+        }
+      });
+      el.addEventListener('mouseleave', () => {
+        mouseInTooltipRef.current = false;
+        el!.style.opacity = '0';
+        el!.style.pointerEvents = 'none';
+      });
       chart.canvas.parentNode!.appendChild(el);
       tooltipRef.current = el;
     }
 
     if (tooltip.opacity === 0) {
-      el.style.opacity = '0';
-      el.style.pointerEvents = 'none';
+      // Delay hiding so user can move mouse into tooltip
+      if (!mouseInTooltipRef.current && !hideTimeoutRef.current) {
+        hideTimeoutRef.current = setTimeout(() => {
+          hideTimeoutRef.current = null;
+          if (!mouseInTooltipRef.current && el) {
+            el.style.opacity = '0';
+            el.style.pointerEvents = 'none';
+          }
+        }, 200);
+      }
       return;
+    }
+
+    // Cancel any pending hide since tooltip is being shown for a (new) point
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
     }
 
     const idx = tooltip.dataPoints?.[0]?.dataIndex;
@@ -56,8 +97,9 @@ export function BenchmarkChart({ series, unit, large, onPointClick }: Props) {
     el.style.pointerEvents = 'auto';
 
     const { offsetLeft, offsetTop } = chart.canvas;
+    // Position so bottom of tooltip (including bridge padding) reaches the point
     el.style.left = offsetLeft + tooltip.caretX + 'px';
-    el.style.top = offsetTop + tooltip.caretY - el.offsetHeight - 12 + 'px';
+    el.style.top = offsetTop + tooltip.caretY - el.offsetHeight + 'px';
   }, [series, unit]);
 
   return (
@@ -71,7 +113,8 @@ export function BenchmarkChart({ series, unit, large, onPointClick }: Props) {
           fill: true,
           tension: 0.3,
           pointRadius: large ? 4 : 3,
-          pointHoverRadius: large ? 7 : 5,
+          pointHoverRadius: large ? 8 : 5,
+          pointHitRadius: large ? 20 : 10,
           borderWidth: 2,
         }],
       }}
@@ -84,7 +127,8 @@ export function BenchmarkChart({ series, unit, large, onPointClick }: Props) {
           if (axisIdx != null) {
             const url = series[axisIdx]?.commitUrl;
             if (url) {
-              (event.native as MouseEvent | undefined)?.stopPropagation();
+              const native = event.native as any;
+              if (native) native.__xAxisHandled = true;
               window.open(url, '_blank');
             }
             return;
@@ -105,18 +149,30 @@ export function BenchmarkChart({ series, unit, large, onPointClick }: Props) {
             enabled: false,
             external: externalTooltip,
           } : {
-            titleFont: { size: 14, weight: 'bold' },
+            titleFont: { size: 14, weight: 'bold' as const },
             bodyFont: { size: 13 },
             callbacks: {
               title: (ctx) => series[ctx[0]!.dataIndex]?.msg ?? '',
               label: (ctx) => (ctx.parsed.y ?? 0).toFixed(2) + ' ' + unit.l,
             },
           },
+          zoom: large ? {
+            pan: {
+              enabled: true,
+              mode: 'x' as const,
+              modifierKey: undefined,
+            },
+            zoom: {
+              wheel: { enabled: true },
+              pinch: { enabled: true },
+              mode: 'x' as const,
+            },
+          } : undefined,
         },
         scales: {
           x: { ticks: { color: '#4285f4', font: { size: large ? 12 : 10 }, maxTicksLimit: large ? 15 : 8 } },
           y: {
-            title: { display: true, text: unit.l, font: { size: 13, weight: 'bold' } },
+            title: { display: true, text: unit.l, font: { size: 13, weight: 'bold' as const } },
             ticks: { font: { size: large ? 12 : 11 } },
             beginAtZero: true,
           },

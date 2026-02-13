@@ -19,14 +19,15 @@
 class EditExplorer;
 
 // Callback types (also defined in EditExplorer.h for standalone use)
-using DeletionCallback = std::function<void(const Range&, const KeyedSequence&)>;
-using LinewiseCallback = std::function<void(int, const KeyedSequence&)>;
-using MotionCallback = std::function<void(const Position&, const KeyedSequence&)>;
-using JoinCallback = std::function<void(bool, const KeyedSequence&)>;
+// Each callback receives a pre-computed RunningEffort for the KeyedSequence.
+using DeletionCallback = std::function<void(const Range&, const KeyedSequence&, const RunningEffort&)>;
+using LinewiseCallback = std::function<void(int, const KeyedSequence&, const RunningEffort&)>;
+using MotionCallback = std::function<void(const Position&, const KeyedSequence&, const RunningEffort&)>;
+using JoinCallback = std::function<void(bool, const KeyedSequence&, const RunningEffort&)>;
 
 // Counted operation callbacks
-using CountedLinewiseCallback = std::function<void(LineRange, const KeyedSequence&)>;
-using CountedJoinCallback = std::function<void(int count, bool addSpace, const KeyedSequence&)>;
+using CountedLinewiseCallback = std::function<void(LineRange, const KeyedSequence&, const RunningEffort&)>;
+using CountedJoinCallback = std::function<void(int count, bool addSpace, const KeyedSequence&, const RunningEffort&)>;
 
 // Comparator for EditState priority queue.
 // Uses getCost() which is computed as: effortWeight * effort + distanceWeight * heuristic
@@ -60,6 +61,12 @@ struct EditSearchContext {
   // A* priority weights from params (priority = effortWeight * effort + distanceWeight * distance)
   double effortWeight;
   double distanceWeight;
+
+  // Pre-computed RunningEffort for static KeyedSequence constants (address-keyed).
+  // Populated at construction for all X-macro entries and spec table entries.
+  // Use effortFor() to look up — only valid for known static KS (asserts on miss).
+  std::unordered_map<const void*, RunningEffort> effortCache_;
+  RunningEffort periodEffort_;
 
   // Search state
   using PriorityQueue = std::priority_queue<EditState, std::vector<EditState>, EditStateComparator>;
@@ -95,7 +102,8 @@ struct EditSearchContext {
   // Checks dot eligibility first and copies only when needed.
   // Normal path always moves afterState and sets lastEdit to cmd.
   void exploreWithDot(EditState&& afterState, const EditState& base,
-                      const KeyedSequence& ks, double hCost);
+                      const KeyedSequence& ks, const RunningEffort& effort,
+                      double hCost);
 
   // Initialize priority queue with all starting positions
   void initStartingPositions(const Lines& initialLines);
@@ -115,6 +123,14 @@ struct EditSearchContext {
   // Heuristic cost component (for recordSearch's heuristicCost parameter)
   double heuristicCost(const Lines& lines) const {
     return distanceWeight * distanceHeuristic(lines);
+  }
+
+  // Look up pre-computed effort for a known static KeyedSequence (by address).
+  // Only call for X-macro KS constants or spec table entries — asserts on miss.
+  const RunningEffort& effortFor(const KeyedSequence& ks) const {
+    auto it = effortCache_.find(&ks);
+    assert(it != effortCache_.end() && "effortFor called with unknown KeyedSequence");
+    return it->second;
   }
 
   // Explore all valid deletions from current state

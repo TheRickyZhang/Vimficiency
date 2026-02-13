@@ -9,9 +9,10 @@ import {
   Filler,
   Tooltip,
 } from 'chart.js';
+import zoomPlugin from 'chartjs-plugin-zoom';
 import { App } from '../components/App';
 
-Chart.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
+Chart.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, zoomPlugin);
 
 (async () => {
   try {
