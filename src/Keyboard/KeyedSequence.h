@@ -3,7 +3,6 @@
 #include "KeyboardModel.h"
 #include "CharToKeys.h"
 #include "XMacroKeyedSequenceDefinitions.h"
-#include "State/RunningEffort.h"
 #include "State/Sequence.h"
 
 #include <array>
@@ -31,12 +30,9 @@ static_assert(KS_COUNT == 28, "Expected 28 static KeyedSequence constants");
 struct KeyedSequence {
   Sequence seq;
   PhysicalKeys keys;
-  RunningEffort effort;           // Pre-computed by bank; default-constructed (empty) for dynamic sequences
 
   KeyedSequence() = default;
   KeyedSequence(std::string_view s, PhysicalKeys k) : seq(std::string(s)), keys(std::move(k)) {}
-
-  bool hasEffort() const { return effort.getStrokes() > 0; }
 
   KeyedSequence& operator+=(const KeyedSequence& other) {
     seq.append(other.seq.keys);

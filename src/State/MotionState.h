@@ -62,6 +62,10 @@ public:
   [[nodiscard]] MotionState afterMotion(const KeyedSequence& ks, Position endpoint,
                                         const Config& config) const;
 
+  // Overload using pre-computed effort (from EffortBank) — avoids recomputing from keys
+  [[nodiscard]] MotionState afterMotion(const KeyedSequence& ks, const RunningEffort& precomputed,
+                                        Position endpoint, const Config& config) const;
+
   // Create new state with counted motion applied (e.g., "3w")
   [[nodiscard]] MotionState afterCountedMotion(const KeyedSequence& baseMotion, int cnt,
                                                Position endpoint, const Config& config) const;
@@ -84,6 +88,8 @@ private:
 
   // Internal: apply motion to this state (mutates)
   void applyMotionImpl(const KeyedSequence& ks, Position endpoint, const Config& config);
+  void applyMotionImpl(const KeyedSequence& ks, const RunningEffort& precomputed,
+                       Position endpoint, const Config& config);
   void applyCountedMotionImpl(const KeyedSequence& baseMotion, int cnt, Position endpoint, const Config& config);
   void applyFMotionImpl(const KeyedSequence& fMotion, int newCol, const Config& config);
 };

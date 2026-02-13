@@ -29,6 +29,13 @@ MotionState MotionState::afterMotion(const KeyedSequence& ks, Position endpoint,
   return newState;
 }
 
+MotionState MotionState::afterMotion(const KeyedSequence& ks, const RunningEffort& precomputed,
+                                     Position endpoint, const Config& config) const {
+  MotionState newState = *this;
+  newState.applyMotionImpl(ks, precomputed, endpoint, config);
+  return newState;
+}
+
 MotionState MotionState::afterCountedMotion(const KeyedSequence& baseMotion, int cnt,
                                             Position endpoint, const Config& config) const {
   MotionState newState = *this;
@@ -52,6 +59,13 @@ void MotionState::applyMotionImpl(const KeyedSequence& ks, Position endpoint,
   pos = endpoint;
   motionSequence.append(ks.seq.keys);
   effort = runningEffort.append(ks.keys, config);
+}
+
+void MotionState::applyMotionImpl(const KeyedSequence& ks, const RunningEffort& precomputed,
+                                  Position endpoint, const Config& config) {
+  pos = endpoint;
+  motionSequence.append(ks.seq.keys);
+  effort = runningEffort.appendFrom(precomputed, config);
 }
 
 void MotionState::applyCountedMotionImpl(const KeyedSequence& baseMotion, int cnt,

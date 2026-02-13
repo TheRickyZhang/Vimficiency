@@ -13,6 +13,7 @@ MotionSearchContext::MotionSearchContext(const Lines& lines,
       boundary(boundary),
       params(params),
       config(config),
+      bank(config),
       effortWeight(params.effortWeight),
       distanceWeight(params.distanceWeight),
       maxEffort(userEffort * params.exploreFactor) {}

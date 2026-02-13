@@ -46,6 +46,11 @@ public:
   // merge(a, b) == appending all of b's keys after a sequentially.
   static RunningEffort merge(const RunningEffort& a, const RunningEffort& b);
 
+  // In-place append of a pre-computed effort segment in O(1).
+  // Same result as merge(*this, other) but mutates *this.
+  // Returns getEffort(model).
+  double appendFrom(const RunningEffort& other, const Config& model);
+
   int getStrokes() const { return strokes; }
 };
 

@@ -8,6 +8,7 @@
 #include "MotionOptimizerParams.h"
 #include "Optimizer/SearchStats.h"
 #include "Boundary/MotionBoundary.h"
+#include "State/EffortBank.h"
 #include "Editor/NavContext.h"
 #include "Editor/Position.h"
 #include "State/MotionState.h"
@@ -23,6 +24,9 @@ struct MotionSearchContext {
   const MotionBoundary& boundary;
   const MotionOptimizerParams& params;
   const Config& config;
+
+  // Pre-computed effort for static KeyedSequence constants
+  EffortBank bank;
 
   // A* priority weights from params
   double effortWeight;
