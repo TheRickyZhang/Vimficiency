@@ -19,15 +19,16 @@
 class EditExplorer;
 
 // Callback types (also defined in EditExplorer.h for standalone use)
-// Each callback receives a pre-computed RunningEffort for the KeyedSequence.
-using DeletionCallback = std::function<void(const Range&, const KeyedSequence&, const RunningEffort&)>;
-using LinewiseCallback = std::function<void(int, const KeyedSequence&, const RunningEffort&)>;
+// Each callback receives (count, baseKS, effort). count=0 for uncounted commands.
+// MotionCallback is unchanged — motions don't go through exploreWithDot or dot repeat.
+using DeletionCallback = std::function<void(const Range&, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
+using LinewiseCallback = std::function<void(int line, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
 using MotionCallback = std::function<void(const Position&, const KeyedSequence&, const RunningEffort&)>;
-using JoinCallback = std::function<void(bool, const KeyedSequence&, const RunningEffort&)>;
+using JoinCallback = std::function<void(bool addSpace, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
 
 // Counted operation callbacks
-using CountedLinewiseCallback = std::function<void(LineRange, const KeyedSequence&, const RunningEffort&)>;
-using CountedJoinCallback = std::function<void(int count, bool addSpace, const KeyedSequence&, const RunningEffort&)>;
+using CountedLinewiseCallback = std::function<void(LineRange, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
+using CountedJoinCallback = std::function<void(int count, bool addSpace, const KeyedSequence& baseKS, const RunningEffort&)>;
 
 // Comparator for EditState priority queue.
 // Uses getCost() which is computed as: effortWeight * effort + distanceWeight * heuristic
@@ -100,10 +101,10 @@ struct EditSearchContext {
 
   // Explore a state via normal path (move) and optionally dot path (copy).
   // Checks dot eligibility first and copies only when needed.
-  // Normal path always moves afterState and sets lastEdit to cmd.
+  // Normal path always moves afterState and sets lastEdit to (count, baseCmd).
   void exploreWithDot(EditState&& afterState, const EditState& base,
-                      const KeyedSequence& ks, const RunningEffort& effort,
-                      double hCost);
+                      int count, const KeyedSequence& baseKS,
+                      const RunningEffort& effort, double hCost);
 
   // Initialize priority queue with all starting positions
   void initStartingPositions(const Lines& initialLines);
@@ -156,6 +157,9 @@ struct EditSearchContext {
 
   // Explore counted word edits ({n}de, {n}dw, etc.) from current state
   void exploreCountedWordEdits(const EditState& state, DeletionCallback cb);
+
+  // Explore counted char edits ({n}x) from current state
+  void exploreCountedCharEdits(const EditState& state, DeletionCallback cb);
 
 
   // Convert startIndex to seed position in effectiveLines coordinates.

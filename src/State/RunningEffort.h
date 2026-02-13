@@ -22,6 +22,7 @@ private:
   double sum_alt_bonus     = 0.0; // count of alternations (to be rewarded)
   double sum_roll_good     = 0.0; // count of "good" rolls
   double sum_roll_bad      = 0.0; // count of "bad" rolls
+  double penalty_          = 0.0; // additive penalty (e.g., cognitive overhead)
 
   // Boundary metadata for monoid composition
   Key    first_key         = Key::None;
@@ -37,6 +38,8 @@ private:
 
 public:
   double getEffort(const Config &model) const;
+
+  void addPenalty(double p) { penalty_ += p; }
 
   double append(const PhysicalKeys& keys, const Config& model);
 

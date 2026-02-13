@@ -247,6 +247,8 @@ SearchStats CompositionSearchContext::getStats(int resultsFound) const {
   stats.resultsFound = resultsFound;
   stats.queueSizeAtStop = static_cast<int>(pq.size());
   stats.statesSkipped = statesSkipped;
+  stats.motionNodesExplored = motionNodesExplored;
+  stats.editNodesExplored = editNodesExplored;
 
   if (resultsFound >= params.maxResults) {
     stats.stopReason = SearchStopReason::MaxResultsFound;
@@ -364,6 +366,7 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
         diff.deletedLines(), diff.insertedLines(), diff.boundary,
         EditOptimizerParams{}.withMinCountRepeat(params.minCountRepeat),
         diff.beginPos.line, diff.beginPos.col, goalPos);
+    editNodesExplored += optResult.stats.nodesExplored;
     results.push_back(std::move(optResult));
   }
 
@@ -859,6 +862,7 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
             residualInitial, residualGoal, groupBoundary,
             EditOptimizerParams{}.withMinCountRepeat(params.minCountRepeat),
             0, 0, residualGoalPos);
+        editNodesExplored += residualResult.stats.nodesExplored;
 
         // Look up result at cursor position after J
         const Result* res = residualResult.resultAt(0, cursorCol);

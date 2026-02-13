@@ -25,6 +25,9 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   int motionPaddingAbove = 1;
   int motionPaddingBelow = 1;
 
+  // Cognitive overhead penalty for counted commands. Default 0.0 (disabled).
+  double countOverhead = 0.0;
+
   // Heuristic penalty for overshooting (going past the next edit region).
   // Overshooting is penalized more than undershooting since it requires backtracking.
   double overshootPenalty = 3.0;
@@ -40,6 +43,7 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   CompositionOptimizerParams& withMotionLinePaddingBelow(int v) { motionPaddingBelow = v; return *this; }
   CompositionOptimizerParams& withMotionLinePadding(int v) { motionPaddingAbove = motionPaddingBelow = v; return *this; }
   CompositionOptimizerParams& withMinCountRepeat(int v) { minCountRepeat = v; return *this; }
+  CompositionOptimizerParams& withCountOverhead(double v) { countOverhead = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
   static CompositionOptimizerParams dijkstra(int maxResults = 10, int maxNodesExplored = 50000) {
@@ -74,4 +78,5 @@ struct CompositionOptimizerRangeParams : CompositionOptimizerParams {
   CompositionOptimizerRangeParams& withMotionLinePaddingBelow(int v) { motionPaddingBelow = v; return *this; }
   CompositionOptimizerRangeParams& withMotionLinePadding(int v) { motionPaddingAbove = motionPaddingBelow = v; return *this; }
   CompositionOptimizerRangeParams& withMinCountRepeat(int v) { minCountRepeat = v; return *this; }
+  CompositionOptimizerRangeParams& withCountOverhead(double v) { countOverhead = v; return *this; }
 };

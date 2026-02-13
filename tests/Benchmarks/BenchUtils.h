@@ -65,4 +65,10 @@ inline void setSearchCounters(benchmark::State& state, const SearchStats& stats)
     state.counters["Unique"] = benchmark::Counter(
         stats.uniquePositionsFound, benchmark::Counter::kAvgIterations);
   }
+  if (stats.motionNodesExplored > 0 || stats.editNodesExplored > 0) {
+    state.counters["MotionNodes"] = benchmark::Counter(
+        stats.motionNodesExplored, benchmark::Counter::kAvgIterations);
+    state.counters["EditNodes"] = benchmark::Counter(
+        stats.editNodesExplored, benchmark::Counter::kAvgIterations);
+  }
 }

@@ -1,7 +1,7 @@
 // tests/Benchmarks/CompositionOptimizerBench.cpp
 //
 // Performance benchmarks for CompositionOptimizer using Google Benchmark.
-// Covers patterns from correctness tests: small multi-diff edits on 2-3 line buffers.
+// Each category varies one parameter against consistent defaults.
 //
 // Run: ./build/tests/vimficiency_benchmarks --benchmark_filter="CompositionOptimizer.*"
 
@@ -18,24 +18,121 @@
 
 using namespace std;
 
+namespace {
+
+// =============================================================================
+// Defaults — each benchmark overrides exactly one of these
+// =============================================================================
+
+constexpr int DEFAULT_LINES     = 15;
+constexpr int DEFAULT_AVG_LEN   = 20;
+constexpr int DEFAULT_EDIT_COUNT = 5;
+constexpr BufferShape DEFAULT_SHAPE = BufferShape::CodeLike;
+
 static Config benchConfig = Config::uniform();
+
+// =============================================================================
+// Shared Setup Helper
+// =============================================================================
+
+struct CompBenchSetup {
+  Lines initial;
+  Lines goal;
+};
+
+// Generate initial buffer, then produce goal by replacing content on
+// evenly-spaced edit lines with random words of similar length.
+static CompBenchSetup makeDefaultSetup(int numLines, int avgLen, int editCount,
+                                        BufferShape shape = DEFAULT_SHAPE) {
+  Lines initial = generateBuffer(numLines, avgLen, shape);
+  Lines goal = initial;
+  for (int e = 0; e < editCount; e++) {
+    int line = editCount <= 1 ? numLines / 2
+                              : e * (numLines - 1) / max(1, editCount - 1);
+    int len = max(1, static_cast<int>(initial[line].size()));
+    goal[line] = randomWord(len);
+    if (goal[line] == initial[line]) goal[line] = "changed";
+  }
+  return {initial, goal};
+}
 
 // =============================================================================
 // Benchmark Functions
 // =============================================================================
 
-// Two edits on different lines: matches TwoEdits_DifferentLines pattern
-// (3 lines, edit line 0 and line 2, keep middle unchanged)
-static void BM_CompTwoEditsDiffLines(benchmark::State& state) {
+// --- EditCount: varies number of separate edits ---
+static void BM_CompEditCount(benchmark::State& state) {
+  int editCount = static_cast<int>(state.range(0));
   auto& seedMgr = SeedManager::instance();
   SearchStats lastStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
-    Lines initial = randomLines(3, 5, 10);
+    auto [initial, goal] = makeDefaultSetup(DEFAULT_LINES, DEFAULT_AVG_LEN, editCount);
+    CompositionOptimizer opt(benchConfig);
+    auto result = opt.optimize(initial, {0, 0}, goal, {0, 0});
+    lastStats = result.stats;
+    iter++;
+  }
+  setSearchCounters(state, lastStats);
+}
+
+// --- EditSize: varies how much each edit changes ---
+enum class EditSizeType { Small, Medium, Large, MultiLine };
+
+static void BM_CompEditSize(benchmark::State& state, EditSizeType sizeType) {
+  auto& seedMgr = SeedManager::instance();
+  SearchStats lastStats;
+  int iter = 0;
+  for (auto _ : state) {
+    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
+    Lines initial = generateBuffer(DEFAULT_LINES, DEFAULT_AVG_LEN, DEFAULT_SHAPE);
     Lines goal = initial;
-    goal[0] = randomWord(RandomGen::range(4, 8));
-    goal[2] = randomWord(RandomGen::range(4, 8));
+
+    for (int e = 0; e < DEFAULT_EDIT_COUNT; e++) {
+      int line = e * (DEFAULT_LINES - 1) / max(1, DEFAULT_EDIT_COUNT - 1);
+      int lineLen = max(1, static_cast<int>(initial[line].size()));
+
+      switch (sizeType) {
+        case EditSizeType::Small: {
+          // Replace ~5 chars at a random offset
+          string modified = initial[line];
+          int replaceLen = min(5, lineLen);
+          int offset = RandomGen::range(0, max(0, lineLen - replaceLen));
+          for (int i = offset; i < offset + replaceLen && i < lineLen; i++)
+            modified[i] = RandomGen::pick(CharPools::LETTERS);
+          goal[line] = modified;
+          if (goal[line] == initial[line]) goal[line][offset] = 'z';
+          break;
+        }
+        case EditSizeType::Medium: {
+          // Replace second half of line (~10 chars)
+          string modified = initial[line];
+          int start = lineLen / 2;
+          for (int i = start; i < lineLen; i++)
+            modified[i] = RandomGen::pick(CharPools::LETTERS);
+          goal[line] = modified;
+          if (goal[line] == initial[line]) goal[line][start] = 'z';
+          break;
+        }
+        case EditSizeType::Large:
+          // Replace entire line
+          goal[line] = randomWord(lineLen);
+          if (goal[line] == initial[line]) goal[line] = "changed";
+          break;
+        case EditSizeType::MultiLine: {
+          // Merge edit line with next line, replace with ~50 char content
+          if (line + 1 < static_cast<int>(goal.size())) {
+            goal[line] = randomWord(DEFAULT_AVG_LEN * 5 / 2);
+            goal.erase(goal.begin() + line + 1);
+          } else {
+            goal[line] = randomWord(DEFAULT_AVG_LEN * 5 / 2);
+          }
+          break;
+        }
+      }
+    }
+    if (goal == initial) goal[0] = "changed";
 
     CompositionOptimizer opt(benchConfig);
     auto result = opt.optimize(initial, {0, 0}, goal, {0, 0});
@@ -45,41 +142,58 @@ static void BM_CompTwoEditsDiffLines(benchmark::State& state) {
   setSearchCounters(state, lastStats);
 }
 
-// Two edits on same line: matches TwoEdits_SameLine pattern
-static void BM_CompTwoEditsSameLine(benchmark::State& state) {
+// --- DeletionBalance: varies deletion vs insertion ratio ---
+enum class BalanceType { PureDel, Shrink, Balanced, Grow, PureIns };
+
+static void BM_CompDeletionBalance(benchmark::State& state, BalanceType balType) {
   auto& seedMgr = SeedManager::instance();
   SearchStats lastStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
-    string line = randomWord(RandomGen::range(8, 15));
-    Lines initial = {line};
-    // Change first 3 and last 3 chars
-    string goal = line;
-    for (int i = 0; i < min(3, static_cast<int>(goal.size())); i++)
-      goal[i] = 'a' + RandomGen::range(0, 25);
-    for (int i = max(0, static_cast<int>(goal.size()) - 3); i < static_cast<int>(goal.size()); i++)
-      goal[i] = 'a' + RandomGen::range(0, 25);
-    if (goal == line) goal[0] = (line[0] == 'z') ? 'a' : 'z';
+    Lines initial = generateBuffer(DEFAULT_LINES, DEFAULT_AVG_LEN, DEFAULT_SHAPE);
+    Lines goal = initial;
 
-    CompositionOptimizer opt(benchConfig);
-    auto result = opt.optimize(initial, {0, 0}, {goal}, {0, 0});
-    lastStats = result.stats;
-    iter++;
-  }
-  setSearchCounters(state, lastStats);
-}
+    // Collect edit lines (in reverse order for safe erasure)
+    vector<int> editLines;
+    for (int e = 0; e < DEFAULT_EDIT_COUNT; e++) {
+      int line = e * (DEFAULT_LINES - 1) / max(1, DEFAULT_EDIT_COUNT - 1);
+      editLines.push_back(line);
+    }
 
-// Single line substitution: matches SingleLine_Substitution pattern
-static void BM_CompSingleLineSub(benchmark::State& state) {
-  auto& seedMgr = SeedManager::instance();
-  SearchStats lastStats;
-  int iter = 0;
-  for (auto _ : state) {
-    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
-    Lines initial = randomLines(1, 10, 20);
-    Lines goal = randomLines(1, 10, 20);
-    if (initial == goal) goal[0] = "different";
+    switch (balType) {
+      case BalanceType::PureDel:
+        // Remove edit lines entirely (reverse order to preserve indices)
+        for (int i = static_cast<int>(editLines.size()) - 1; i >= 0; i--)
+          goal.erase(goal.begin() + editLines[i]);
+        if (goal.empty()) goal.push_back("");
+        break;
+      case BalanceType::Shrink:
+        // Replace edit lines with short words
+        for (int line : editLines)
+          goal[line] = randomWord(5);
+        break;
+      case BalanceType::Balanced:
+        // Replace with similar-length content (default)
+        for (int line : editLines) {
+          int len = max(1, static_cast<int>(initial[line].size()));
+          goal[line] = randomWord(len);
+          if (goal[line] == initial[line]) goal[line] = "changed";
+        }
+        break;
+      case BalanceType::Grow:
+        // Replace edit lines with long strings
+        for (int line : editLines)
+          goal[line] = randomWord(DEFAULT_AVG_LEN * 5 / 2);
+        break;
+      case BalanceType::PureIns:
+        // Insert new lines after each edit line (reverse order to preserve indices)
+        for (int i = static_cast<int>(editLines.size()) - 1; i >= 0; i--)
+          goal.insert(goal.begin() + editLines[i] + 1,
+                      randomWord(DEFAULT_AVG_LEN));
+        break;
+    }
+    if (goal == initial) goal[0] = "changed";
 
     CompositionOptimizer opt(benchConfig);
     auto result = opt.optimize(initial, {0, 0}, goal, {0, 0});
@@ -89,48 +203,42 @@ static void BM_CompSingleLineSub(benchmark::State& state) {
   setSearchCounters(state, lastStats);
 }
 
-// Multi-line single edit: matches MultiLine_SingleEdit pattern
-static void BM_CompMultiLineSingleEdit(benchmark::State& state) {
-  int numLines = static_cast<int>(state.range(0));
+// --- CharDist: varies character composition of the buffer ---
+enum class CharDistType { Alpha, MixedSymbol, HighSpace, Prose };
+
+static void BM_CompCharDist(benchmark::State& state, CharDistType charType) {
   auto& seedMgr = SeedManager::instance();
   SearchStats lastStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
-    Lines initial = randomLines(numLines, 5, 10);
-    Lines goal = initial;
-    // Change one line
-    int editLine = RandomGen::range(0, numLines - 1);
-    goal[editLine] = randomWord(RandomGen::range(4, 8));
 
-    CompositionOptimizer opt(benchConfig);
-    auto result = opt.optimize(initial, {0, 0}, goal, {0, 0});
-    lastStats = result.stats;
-    iter++;
-  }
-  setSearchCounters(state, lastStats);
-}
+    Lines initial;
+    initial.reserve(DEFAULT_LINES);
+    for (int i = 0; i < DEFAULT_LINES; i++) {
+      int len = RandomGen::range(DEFAULT_AVG_LEN / 2, DEFAULT_AVG_LEN * 3 / 2);
+      switch (charType) {
+        case CharDistType::Alpha:
+          initial.push_back(randomAlphaLine(len));
+          break;
+        case CharDistType::MixedSymbol:
+          initial.push_back(randomLine(len));  // 24% symbols
+          break;
+        case CharDistType::HighSpace:
+          initial.push_back(randomHighSpaceLine(len));
+          break;
+        case CharDistType::Prose:
+          initial.push_back(randomProseLine(len));
+          break;
+      }
+    }
 
-// Multi-line multi-edit: 3 edits spread across a buffer of varying size.
-// Fixed edit count isolates the effect of buffer size (longer motions between diffs).
-static void BM_CompMultiLineMultiEdit(benchmark::State& state) {
-  int numLines = static_cast<int>(state.range(0));
-  constexpr int NUM_EDITS = 3;
-  auto& seedMgr = SeedManager::instance();
-  SearchStats lastStats;
-  int iter = 0;
-  for (auto _ : state) {
-    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
-    Lines initial = randomLines(numLines, 8, 15);
+    // Apply default edits
     Lines goal = initial;
-    // Spread edits evenly: near start, middle, and end
-    int editLines[NUM_EDITS] = {
-      0,
-      numLines / 2,
-      numLines - 1
-    };
-    for (int line : editLines) {
-      goal[line] = randomWord(RandomGen::range(4, 12));
+    for (int e = 0; e < DEFAULT_EDIT_COUNT; e++) {
+      int line = e * (DEFAULT_LINES - 1) / max(1, DEFAULT_EDIT_COUNT - 1);
+      int len = max(1, static_cast<int>(initial[line].size()));
+      goal[line] = randomWord(len);
       if (goal[line] == initial[line]) goal[line] = "changed";
     }
 
@@ -142,32 +250,104 @@ static void BM_CompMultiLineMultiEdit(benchmark::State& state) {
   setSearchCounters(state, lastStats);
 }
 
+// --- BufferSize: varies total buffer size ---
+static void BM_CompBufferSize(benchmark::State& state) {
+  int numLines = static_cast<int>(state.range(0));
+  int editCount = min(DEFAULT_EDIT_COUNT, numLines);
+  auto& seedMgr = SeedManager::instance();
+  SearchStats lastStats;
+  int iter = 0;
+  for (auto _ : state) {
+    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
+    auto [initial, goal] = makeDefaultSetup(numLines, DEFAULT_AVG_LEN, editCount);
+    CompositionOptimizer opt(benchConfig);
+    auto result = opt.optimize(initial, {0, 0}, goal, {0, 0});
+    lastStats = result.stats;
+    iter++;
+  }
+  setSearchCounters(state, lastStats);
+}
+
+// --- LineLength: varies average line length ---
+static void BM_CompLineLength(benchmark::State& state) {
+  int avgLen = static_cast<int>(state.range(0));
+  auto& seedMgr = SeedManager::instance();
+  SearchStats lastStats;
+  int iter = 0;
+  for (auto _ : state) {
+    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
+    auto [initial, goal] = makeDefaultSetup(DEFAULT_LINES, avgLen, DEFAULT_EDIT_COUNT);
+    CompositionOptimizer opt(benchConfig);
+    auto result = opt.optimize(initial, {0, 0}, goal, {0, 0});
+    lastStats = result.stats;
+    iter++;
+  }
+  setSearchCounters(state, lastStats);
+}
+
+// =============================================================================
+// Registration Helpers
+// =============================================================================
+
+static void registerArgBenchmark(const string& name, void(*fn)(benchmark::State&),
+                                  const vector<int>& args) {
+  auto* b = benchmark::RegisterBenchmark(name, fn);
+  for (int v : args) b->Arg(v);
+  b->Iterations(DEFAULT_SEED_COUNT);
+}
+
 // =============================================================================
 // Registration
 // =============================================================================
 
 static int registerCompositionBenchmarks = []() {
-  auto* a = benchmark::RegisterBenchmark(
-      "CompositionOptimizer/TwoEdits_DiffLines", BM_CompTwoEditsDiffLines);
-  a->Iterations(DEFAULT_SEED_COUNT);
+  // EditCount
+  registerArgBenchmark("CompositionOptimizer/EditCount", BM_CompEditCount,
+                       {1, 2, 5, 8});
 
-  auto* b = benchmark::RegisterBenchmark(
-      "CompositionOptimizer/TwoEdits_SameLine", BM_CompTwoEditsSameLine);
-  b->Iterations(DEFAULT_SEED_COUNT);
+  // EditSize
+  for (const auto& [name, type] : vector<pair<string, EditSizeType>>{
+           {"Small", EditSizeType::Small},
+           {"Medium", EditSizeType::Medium},
+           {"Large", EditSizeType::Large},
+           {"MultiLine", EditSizeType::MultiLine}}) {
+    auto* b = benchmark::RegisterBenchmark(
+        "CompositionOptimizer/EditSize/" + name, BM_CompEditSize, type);
+    b->Iterations(DEFAULT_SEED_COUNT);
+  }
 
-  auto* c = benchmark::RegisterBenchmark(
-      "CompositionOptimizer/SingleLineSub", BM_CompSingleLineSub);
-  c->Iterations(DEFAULT_SEED_COUNT);
+  // DeletionBalance
+  for (const auto& [name, type] : vector<pair<string, BalanceType>>{
+           {"PureDel", BalanceType::PureDel},
+           {"Shrink", BalanceType::Shrink},
+           {"Balanced", BalanceType::Balanced},
+           {"Grow", BalanceType::Grow},
+           {"PureIns", BalanceType::PureIns}}) {
+    auto* b = benchmark::RegisterBenchmark(
+        "CompositionOptimizer/DeletionBalance/" + name, BM_CompDeletionBalance, type);
+    b->Iterations(DEFAULT_SEED_COUNT);
+  }
 
-  auto* d = benchmark::RegisterBenchmark(
-      "CompositionOptimizer/MultiLineSingleEdit", BM_CompMultiLineSingleEdit);
-  for (int v : {2, 3, 5}) d->Arg(v);
-  d->Iterations(DEFAULT_SEED_COUNT);
+  // CharDist
+  for (const auto& [name, type] : vector<pair<string, CharDistType>>{
+           {"Alpha", CharDistType::Alpha},
+           {"MixedSymbol", CharDistType::MixedSymbol},
+           {"HighSpace", CharDistType::HighSpace},
+           {"Prose", CharDistType::Prose}}) {
+    auto* b = benchmark::RegisterBenchmark(
+        "CompositionOptimizer/CharDist/" + name, BM_CompCharDist, type);
+    b->Iterations(DEFAULT_SEED_COUNT);
+  }
 
-  auto* e = benchmark::RegisterBenchmark(
-      "CompositionOptimizer/MultiLineMultiEdit", BM_CompMultiLineMultiEdit);
-  for (int v : {5, 10, 20, 40}) e->Arg(v);
-  e->Iterations(DEFAULT_SEED_COUNT);
+  // BufferSize
+  registerArgBenchmark("CompositionOptimizer/BufferSize", BM_CompBufferSize,
+                       {5, 10, 20, 40});
+
+  // LineLength
+  registerArgBenchmark("CompositionOptimizer/LineLength", BM_CompLineLength,
+                       {10, 20, 40, 60});
 
   return 0;
 }();
+
+} // namespace

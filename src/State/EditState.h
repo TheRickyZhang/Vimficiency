@@ -61,7 +61,8 @@ class EditState {
   size_t linesHash_;              // Precomputed FNV-1a hash of buffer content
 
   std::string seq_{};             // Sequence of operations taken
-  std::string lastEdit_{};        // Last edit command for dot repeat (not in EditStateKey)
+  int lastEditCount_ = 0;         // Count prefix of last edit for dot repeat (0 = uncounted)
+  std::string lastEditBase_{};    // Base command of last edit for dot repeat (not in EditStateKey)
   RunningEffort runningEffort{};  // Typing effort tracker (internal)
   double effort_ = 0.0;           // Cached effort value
   double cost_ = 0.0;             // Priority = effort + heuristic
@@ -89,8 +90,10 @@ public:
   double getEffort() const { return effort_; }
   double getCost() const { return cost_; }
   const std::string& getSeq() const { return seq_; }
-  const std::string& getLastEdit() const { return lastEdit_; }
-  void setLastEdit(std::string_view cmd) { lastEdit_ = cmd; }
+  int getLastEditCount() const { return lastEditCount_; }
+  const std::string& getLastEditBase() const { return lastEditBase_; }
+  bool hasLastEdit() const { return !lastEditBase_.empty(); }
+  void setLastEdit(int count, std::string_view base) { lastEditCount_ = count; lastEditBase_ = base; }
   const RunningEffort& getRunningEffort() const { return runningEffort; }
 
   // -----------------------------------------------------------------------------
@@ -158,6 +161,24 @@ public:
                     double effortWeight, double heuristicCost, const Config& config) {
     seq_ += cmd;
     effort_ = runningEffort.appendFrom(precomputed, config);
+    cost_ = effortWeight * effort_ + heuristicCost;
+  }
+
+  // Counted overload: prepends count digits to base command in sequence string.
+  // count=0 means uncounted (base command only).
+  void recordSearch(int count, std::string_view baseCmd, const RunningEffort& precomputed,
+                    double effortWeight, double heuristicCost, const Config& config) {
+    if (count > 0) seq_ += std::to_string(count);
+    seq_ += baseCmd;
+    effort_ = runningEffort.appendFrom(precomputed, config);
+    cost_ = effortWeight * effort_ + heuristicCost;
+  }
+
+  void recordSearch(int count, std::string_view baseCmd, const PhysicalKeys& keys,
+                    double effortWeight, double heuristicCost, const Config& config) {
+    if (count > 0) seq_ += std::to_string(count);
+    seq_ += baseCmd;
+    effort_ = runningEffort.append(keys, config);
     cost_ = effortWeight * effort_ + heuristicCost;
   }
 

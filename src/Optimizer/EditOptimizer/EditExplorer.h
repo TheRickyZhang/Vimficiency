@@ -17,15 +17,16 @@ struct EditSearchContext;
 struct EditBoundary;
 
 // Forward declare callback types (defined in EditSearchContext.h)
-// Each callback receives a pre-computed RunningEffort for the KeyedSequence.
-using DeletionCallback = std::function<void(const Range&, const KeyedSequence&, const RunningEffort&)>;
-using LinewiseCallback = std::function<void(int, const KeyedSequence&, const RunningEffort&)>;
+// Each callback receives (count, baseKS, effort). count=0 for uncounted commands.
+// MotionCallback is unchanged — motions don't go through exploreWithDot or dot repeat.
+using DeletionCallback = std::function<void(const Range&, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
+using LinewiseCallback = std::function<void(int line, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
 using MotionCallback = std::function<void(const Position&, const KeyedSequence&, const RunningEffort&)>;
-using JoinCallback = std::function<void(bool, const KeyedSequence&, const RunningEffort&)>;
+using JoinCallback = std::function<void(bool addSpace, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
 
 // Counted operation callbacks
-using CountedLinewiseCallback = std::function<void(LineRange, const KeyedSequence&, const RunningEffort&)>;
-using CountedJoinCallback = std::function<void(int count, bool addSpace, const KeyedSequence&, const RunningEffort&)>;
+using CountedLinewiseCallback = std::function<void(LineRange, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
+using CountedJoinCallback = std::function<void(int count, bool addSpace, const KeyedSequence& baseKS, const RunningEffort&)>;
 
 // EditExplorer handles exploration of edit operations from a given state.
 // Separated from EditSearchContext for cleaner organization and future extensibility.
@@ -60,6 +61,12 @@ public:
   // Explore counted word edits: {n}de, {n}dE, {n}dw, {n}dW, {n}db, {n}dB, {n}dge, {n}dgE
   void exploreCountedWordEdits(const Position& cursor, const Lines& lines,
                                int minCountRepeat, DeletionCallback onDeletion);
+
+  // Explore counted char edits: {n}x
+  void exploreCountedCharEdits(const Position& cursor, const Lines& lines,
+                               int contentStart, int contentEnd,
+                               int minCountRepeat, double countOverhead,
+                               DeletionCallback onDeletion);
 
   // ================== Templated Exploration Methods ==================
   // EdgeType known at compile time for branch elimination

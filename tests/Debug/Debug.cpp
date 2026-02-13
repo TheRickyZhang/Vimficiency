@@ -2632,3 +2632,60 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceJoinLinesResidualEditOpt) {
     }
   }
 }
+
+// ============================================================================
+// Investigate d) sentence delete divergence from Neovim
+// Our model stops `)` at the period; Neovim goes past it at end-of-buffer.
+// ============================================================================
+
+class NeovimOracleDebugSentence : public ::testing::Test {
+protected:
+  static unique_ptr<NeovimOracle> oracle;
+  static void SetUpTestSuite() { oracle = make_unique<NeovimOracle>(); }
+  static void TearDownTestSuite() { oracle.reset(); }
+};
+unique_ptr<NeovimOracle> NeovimOracleDebugSentence::oracle;
+
+TEST_F(NeovimOracleDebugSentence, DISABLED_SentenceDeleteDivergence) {
+  // Failing case from EditOptimizerOutputCorrectness.SingleLine_Change iter=8
+  // Source: "c bedf.", pos [0,1], full sequence "d)cge ddfecdb<Esc>"
+  Lines source = {"c bedf."};
+
+  // Step 1: What does Neovim produce for d) from [0,1]?
+  auto nvimD = oracle->simulate(source, 0, 1, "d)");
+  cerr << "Neovim d) from [0,1] in 'c bedf.':" << endl;
+  cerr << "  lines=" << nvimD.lines << " pos=" << nvimD.row << "," << nvimD.col << endl;
+
+  // Step 2: What does our model produce for d) from [0,1]?
+  Lines modelLines = source;
+  Position modelPos(0, 1);
+  Mode modelMode = Mode::Normal;
+  string lastEdit;
+  auto edits = Edit::parseEdits("d)");
+  for (auto& e : edits) {
+    Edit::applyEdit(modelLines, modelPos, modelMode, e, &lastEdit);
+  }
+  cerr << "Model d) from [0,1] in 'c bedf.':" << endl;
+  cerr << "  lines=" << modelLines << " pos=" << modelPos.line << "," << modelPos.col << endl;
+
+  // Step 3: Do they match?
+  bool bufferMatch = nvimD.lines == modelLines;
+  bool posMatch = (nvimD.row == modelPos.line && nvimD.col == modelPos.col);
+  cerr << "Buffer match: " << bufferMatch << " Position match: " << posMatch << endl;
+
+  // Step 4: What does the full sequence produce in Neovim?
+  auto nvimFull = oracle->simulate(source, 0, 1, "d)cge ddfecdb\x1b");
+  cerr << "Neovim full 'd)cge ddfecdb<Esc>' from [0,1]:" << endl;
+  cerr << "  lines=" << nvimFull.lines << " pos=" << nvimFull.row << "," << nvimFull.col << endl;
+
+  // Step 5: From the Neovim post-d) state, what does cge produce?
+  auto nvimCge = oracle->simulate(nvimD.lines, nvimD.row, nvimD.col, "cge ddfecdb\x1b");
+  cerr << "Neovim 'cge ddfecdb<Esc>' from post-d) state:" << endl;
+  cerr << "  lines=" << nvimCge.lines << " pos=" << nvimCge.row << "," << nvimCge.col << endl;
+
+  // Step 6: From the MODEL post-d) state, what does cge produce in Neovim?
+  auto nvimCge2 = oracle->simulate(modelLines, modelPos.line, modelPos.col,
+                                    "cge ddfecdb\x1b");
+  cerr << "Neovim 'cge ddfecdb<Esc>' from MODEL post-d) state:" << endl;
+  cerr << "  lines=" << nvimCge2.lines << " pos=" << nvimCge2.row << "," << nvimCge2.col << endl;
+}

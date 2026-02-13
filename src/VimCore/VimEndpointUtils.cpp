@@ -565,7 +565,11 @@ static Position motionSentenceEdgeCore(Position cursor, const Lines& lines,
 
         // Skip past the punctuation mark
         if (!stepFwd(lines, l, k)) {
-          // At EOF - return sentence end position
+          // At EOF after sentence-ending punctuation.
+          // For NextEdge: return one-past-end so exclusive d) includes the punctuation.
+          // For SentenceEdge/GapEdge: return the punctuation position itself.
+          if (edgeType == SentenceEdgeType::NextEdge)
+            return Position(endLine, endCol + 1);
           return Position(endLine, endCol);
         }
 

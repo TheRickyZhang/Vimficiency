@@ -52,6 +52,32 @@ inline std::string randomWord(int len) {
   return result;
 }
 
+inline std::string randomAlphaLine(int len) {
+  std::string result;
+  result.resize_and_overwrite(len, [](char* s, size_t n) {
+    for (int i = 0; i < static_cast<int>(n); i++) {
+      s[i] = RandomGen::pick(CharPools::LETTERS);
+    }
+    return n;
+  });
+  return result;
+}
+
+inline std::string randomHighSpaceLine(int len) {
+  std::string line;
+  line.resize_and_overwrite(len, [](char* s, int n) {
+    for (int i = 0; i < n; i++) {
+      s[i] = RandomGen::pick<std::string_view>({
+          {50, CharPools::SPACE},
+          {30, CharPools::LETTERS},
+          {20, CharPools::SYMBOLS},
+      });
+    }
+    return n;
+  });
+  return line;
+}
+
 inline std::string randomProseLine(int len) {
   std::string line;
   line.resize_and_overwrite(len, [](char* s, int n) {

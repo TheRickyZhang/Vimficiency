@@ -57,6 +57,7 @@ struct SuffixValue {
   std::string expandedDotCmd;  // Command that replaced '.'; empty if no expansion
   KeyedSequence dotKs;         // Original suffix with leading '.'
   RunningEffort dotEffort;     // Effort for dot variant
+
 };
 
 using SuffixCacheMap = std::unordered_map<SuffixKey, SuffixValue, SuffixKeyHash>;

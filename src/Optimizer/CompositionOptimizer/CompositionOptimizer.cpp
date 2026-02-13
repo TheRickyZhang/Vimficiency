@@ -149,15 +149,16 @@ CompositionResult CompositionOptimizer::optimize(
               beginLine > 0 || boundary.hasLinesAbove(),
               endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
-          vector<RangeResult> results = motionOptimizer.optimizeToRange(
+          auto motionResult = motionOptimizer.optimizeToRange(
               subset, localPos, localRangeFirst, localRangeEnd,
               MotionOptimizerRangeParams{}
                   .withMaxResults(1)
                   .withMinCountRepeat(params.minCountRepeat), "",
               subsetBoundary, s.getRunningEffort(),
-              navigationContext).results;
+              navigationContext);
+          ctx.motionNodesExplored += motionResult.stats.nodesExplored;
 
-          for (RangeResult& movResult : results) {
+          for (RangeResult& movResult : motionResult.results) {
             if (!movResult.isValid()) continue;
             movResult.goalPos.line += beginLine;  // remap back to full-buffer coords
 
@@ -311,16 +312,17 @@ CompositionResult CompositionOptimizer::optimize(
             + ")-[" + to_string(nextEdit.endPos.line) + "," +
             to_string(nextEdit.endPos.col) + ")");
 
-      vector<RangeResult> movementResults = motionOptimizer.optimizeToRange(
+      auto motionResult = motionOptimizer.optimizeToRange(
           subset, localPos, localRangeFirst, localRangeEnd,
           MotionOptimizerRangeParams{}
               .withMaxResults(clamp(nextEdit.origCharCount(), 1, 10))
               .withMinCountRepeat(params.minCountRepeat), "",
           subsetBoundary, s.getRunningEffort(),
-          navigationContext).results;
+          navigationContext);
+      ctx.motionNodesExplored += motionResult.stats.nodesExplored;
 
-      debug("  motion results:", static_cast<int>(movementResults.size()));
-      for (RangeResult& movResult : movementResults) {
+      debug("  motion results:", static_cast<int>(motionResult.results.size()));
+      for (RangeResult& movResult : motionResult.results) {
         if (!movResult.isValid()) continue;
 
         // Remap results back to full-buffer coordinates
@@ -357,15 +359,16 @@ CompositionResult CompositionOptimizer::optimize(
             jBeginLine > 0 || boundary.hasLinesAbove(),
             jEndLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
-        vector<RangeResult> jMovResults = motionOptimizer.optimizeToRange(
+        auto jMotionResult = motionOptimizer.optimizeToRange(
             jSubset, jLocalPos, jLocalFirst, jLocalEnd,
             MotionOptimizerRangeParams{}
                 .withMaxResults(1)
                 .withMinCountRepeat(params.minCountRepeat), "",
             jSubsetBoundary, s.getRunningEffort(),
-            navigationContext).results;
+            navigationContext);
+        ctx.motionNodesExplored += jMotionResult.stats.nodesExplored;
 
-        for (RangeResult& movResult : jMovResults) {
+        for (RangeResult& movResult : jMotionResult.results) {
           if (!movResult.isValid()) continue;
           movResult.goalPos.line += jBeginLine;
           debug("    J-motion:", "\"" + movResult.sequence.str() + "\"",

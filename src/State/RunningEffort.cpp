@@ -15,7 +15,7 @@ double RunningEffort::getEffort(const Config &model) const {
   s += w.w_roll_good   * sum_roll_good;
   s += w.w_roll_bad    * sum_roll_bad;
 
-  return s;
+  return s + penalty_;
 }
 
 // Returns total effort after appending keys
@@ -93,6 +93,8 @@ void RunningEffort::reset() {
   last_key        = Key::None;
   last_finger     = Finger::None;
   last_hand       = Hand::None;
+
+  penalty_        = 0.0;
 }
 
 RunningEffort RunningEffort::merge(const RunningEffort& a, const RunningEffort& b) {
@@ -144,6 +146,8 @@ RunningEffort RunningEffort::merge(const RunningEffort& a, const RunningEffort& 
   r.last_finger  = b.last_finger;
   r.last_hand    = b.last_hand;
 
+  r.penalty_     = a.penalty_ + b.penalty_;
+
   return r;
 }
 
@@ -193,6 +197,8 @@ double RunningEffort::appendFrom(const RunningEffort& other, const Config& model
   last_key    = other.last_key;
   last_finger = other.last_finger;
   last_hand   = other.last_hand;
+
+  penalty_    += other.penalty_;
 
   return getEffort(model);
 }

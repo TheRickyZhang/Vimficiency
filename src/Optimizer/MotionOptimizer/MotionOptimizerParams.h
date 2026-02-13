@@ -25,6 +25,9 @@ struct MotionOptimizerParams : OptimizerParamsBase {
   int linePaddingAbove = 2;
   int linePaddingBelow = 2;
 
+  // Cognitive overhead penalty for counted commands. Default 0.0 (disabled).
+  double countOverhead = 0.0;
+
   // Chainable setters for fluent configuration
   MotionOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
   MotionOptimizerParams& withMaxNodesExplored(int v) { maxNodesExplored = v; return *this; }
@@ -36,6 +39,7 @@ struct MotionOptimizerParams : OptimizerParamsBase {
   MotionOptimizerParams& withLinePaddingBelow(int v) { linePaddingBelow = v; return *this; }
   MotionOptimizerParams& withLinePadding(int v) { linePaddingAbove = linePaddingBelow = v; return *this; }
   MotionOptimizerParams& withMinCountRepeat(int v) { minCountRepeat = v; return *this; }
+  MotionOptimizerParams& withCountOverhead(double v) { countOverhead = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
   static MotionOptimizerParams dijkstra(int maxResults = 10, int maxNodesExplored = 50000) {
@@ -70,4 +74,5 @@ struct MotionOptimizerRangeParams : MotionOptimizerParams {
   MotionOptimizerRangeParams& withLinePaddingBelow(int v) { linePaddingBelow = v; return *this; }
   MotionOptimizerRangeParams& withLinePadding(int v) { linePaddingAbove = linePaddingBelow = v; return *this; }
   MotionOptimizerRangeParams& withMinCountRepeat(int v) { minCountRepeat = v; return *this; }
+  MotionOptimizerRangeParams& withCountOverhead(double v) { countOverhead = v; return *this; }
 };

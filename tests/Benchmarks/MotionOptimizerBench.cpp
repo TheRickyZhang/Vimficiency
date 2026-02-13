@@ -206,7 +206,8 @@ static void BM_MotionRangeResultSize(benchmark::State& state, bool useB,
 
 static void registerArgBenchmark(const string& name, void(*fn)(benchmark::State&, bool),
                                  const vector<int>& args) {
-  auto* a = benchmark::RegisterBenchmark(name + "/Standard", fn, false);
+  auto* a = benchmark::RegisterBenchmark(
+      ENABLE_COMPARISON ? name + "/Standard" : name, fn, false);
   for (int v : args) a->Arg(v);
   a->Iterations(DEFAULT_SEED_COUNT);
 
@@ -231,12 +232,13 @@ static int registerMotionBenchmarks = []() {
            {"Uniform", BufferShape::Uniform},
            {"Prose", BufferShape::Prose},
            {"CodeLike", BufferShape::CodeLike}}) {
+    string benchName = "MotionOptimizer/BufferShape/" + name;
     auto* a = benchmark::RegisterBenchmark(
-        "MotionOptimizer/BufferShape/" + name + "/Standard", BM_MotionBufferShape, false, shape);
+        ENABLE_COMPARISON ? benchName + "/Standard" : benchName, BM_MotionBufferShape, false, shape);
     a->Iterations(DEFAULT_SEED_COUNT);
     if (ENABLE_COMPARISON) {
       auto* b = benchmark::RegisterBenchmark(
-          "MotionOptimizer/BufferShape/" + name + "/NoPruning", BM_MotionBufferShape, true, shape);
+          benchName + "/NoPruning", BM_MotionBufferShape, true, shape);
       b->Iterations(DEFAULT_SEED_COUNT);
     }
   }
@@ -252,13 +254,14 @@ static int registerMotionBenchmarks = []() {
            {"6cols", 6, 1},
            {"10cols", 10, 1},
            {"30_2ln", 30, 2}}) {
+    string benchName = "MotionOptimizer/RangeResultSize/" + label;
     auto* a = benchmark::RegisterBenchmark(
-        "MotionOptimizer/RangeResultSize/" + label + "/Standard",
+        ENABLE_COMPARISON ? benchName + "/Standard" : benchName,
         BM_MotionRangeResultSize, false, chars, rangeLines);
     a->Iterations(DEFAULT_SEED_COUNT);
     if (ENABLE_COMPARISON) {
       auto* b = benchmark::RegisterBenchmark(
-          "MotionOptimizer/RangeResultSize/" + label + "/NoPruning",
+          benchName + "/NoPruning",
           BM_MotionRangeResultSize, true, chars, rangeLines);
       b->Iterations(DEFAULT_SEED_COUNT);
     }

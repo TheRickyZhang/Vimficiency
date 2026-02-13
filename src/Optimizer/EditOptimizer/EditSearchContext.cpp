@@ -82,16 +82,18 @@ void EditSearchContext::exploreNewState(EditState&& state) {
 }
 
 void EditSearchContext::exploreWithDot(EditState&& afterState, const EditState& base,
-                                       const KeyedSequence& ks, const RunningEffort& effort,
-                                       double hCost) {
-  bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.view();
+                                       int count, const KeyedSequence& baseKS,
+                                       const RunningEffort& effort, double hCost) {
+  bool isDot = base.hasLastEdit() &&
+               base.getLastEditCount() == count &&
+               base.getLastEditBase() == baseKS.seq.view();
 
   if (isDot) {
     // Dot path: use pre-computed Period effort (always available)
     afterState.recordSearch(".", periodEffort_, effortWeight, hCost, config);
   } else {
-    afterState.recordSearch(ks.seq.view(), effort, effortWeight, hCost, config);
-    afterState.setLastEdit(ks.seq.view());
+    afterState.recordSearch(count, baseKS.seq.view(), effort, effortWeight, hCost, config);
+    afterState.setLastEdit(count, baseKS.seq.view());
   }
   exploreNewState(std::move(afterState));
 }
@@ -242,4 +244,14 @@ void EditSearchContext::exploreCountedWordEdits(const EditState& state,
   EditExplorer explorer(*this);
   explorer.exploreCountedWordEdits(state.getPos(), state.getLines(),
                                    params.minCountRepeat, cb);
+}
+
+void EditSearchContext::exploreCountedCharEdits(const EditState& state,
+                                                 DeletionCallback cb) {
+  EditExplorer explorer(*this);
+  const Lines& lines = state.getLines();
+  const Position& cursor = state.getPos();
+  auto [contentStart, contentEnd] = computeEditBounds(lines, cursor);
+  explorer.exploreCountedCharEdits(cursor, lines, contentStart, contentEnd,
+                                   params.minCountRepeat, params.countOverhead, cb);
 }

@@ -60,6 +60,10 @@ struct SearchStats {
   int cacheEntries = 0;
   int cachePopulations = 0;
 
+  // Sub-optimizer aggregate stats (CompositionOptimizer only)
+  int motionNodesExplored = 0;  // Sum of nodesExplored across all MotionOptimizer calls
+  int editNodesExplored = 0;    // Sum of nodesExplored across all EditOptimizer calls
+
   // Debug only (has runtime cost, only enable when needed)
   int motionsEmitted = 0;
   int statesSkipped = 0;
@@ -80,6 +84,10 @@ struct SearchStats {
     }
     os << " queue=" << s.queueSizeAtStop
        << " stop=" << to_string(s.stopReason);
+    if (s.motionNodesExplored > 0 || s.editNodesExplored > 0) {
+      os << " motionNodes=" << s.motionNodesExplored
+         << " editNodes=" << s.editNodesExplored;
+    }
     return os;
   }
 };

@@ -131,6 +131,10 @@ struct CompositionSearchContext {
   int totalPops = 0;
   int statesSkipped = 0;
 
+  // Sub-optimizer aggregate stats
+  int motionNodesExplored = 0;
+  int editNodesExplored = 0;
+
   // Internal safety: hard cap on total pops to prevent runaway loops
   static constexpr int SAFETY_MULTIPLIER = 10;
 
