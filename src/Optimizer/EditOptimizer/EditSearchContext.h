@@ -9,6 +9,7 @@
 #include "EditOptimizerParams.h"
 #include "Optimizer/SearchStats.h"
 #include "Boundary/EditBoundary.h"
+#include "Editor/LineRange.h"
 #include "Editor/Position.h"
 #include "Editor/Range.h"
 #include "Keyboard/KeyboardModel.h"
@@ -23,6 +24,10 @@ using DeletionCallback = std::function<void(const Range&, std::string_view, cons
 using LinewiseCallback = std::function<void(int, std::string_view, const PhysicalKeys&)>;
 using MotionCallback = std::function<void(const Position&, std::string_view, const PhysicalKeys&)>;
 using JoinCallback = std::function<void(bool, std::string_view, const PhysicalKeys&)>;
+
+// Counted operation callbacks
+using CountedLinewiseCallback = std::function<void(LineRange, std::string_view, const PhysicalKeys&)>;
+using CountedJoinCallback = std::function<void(int count, bool addSpace, std::string_view, const PhysicalKeys&)>;
 
 // Comparator for EditState priority queue.
 // Uses getCost() which is computed as: effortWeight * effort + distanceWeight * heuristic
@@ -128,6 +133,15 @@ struct EditSearchContext {
   // Explore J/gJ commands from current state
   // Only valid when cursor line has a next line and joining wouldn't cross into suffix boundary
   void exploreJoinCommands(const Position& cursor, const Lines& lines, JoinCallback onJoin);
+
+  // Explore counted line edits (dj, dk, {n}dd) from current state
+  void exploreCountedLineEdits(const EditState& state, CountedLinewiseCallback cb);
+
+  // Explore counted join commands ({n}J, {n}gJ) from current state
+  void exploreCountedJoinCommands(const EditState& state, CountedJoinCallback cb);
+
+  // Explore counted word edits ({n}de, {n}dw, etc.) from current state
+  void exploreCountedWordEdits(const EditState& state, DeletionCallback cb);
 
 
   // Convert startIndex to seed position in effectiveLines coordinates.

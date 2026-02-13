@@ -16,18 +16,27 @@ jobs:
           key: pacman-test-${{ runner.os }}
 
       - name: Install deps
-        run: pacman -Syu --noconfirm base-devel cmake git neovim
+        run: pacman -Syu --noconfirm base-devel cmake git neovim ccache
 
-      - name: Cache build directory
+      - name: Cache ccache
         uses: actions/cache@v4
         with:
-          path: build
-          key: build-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt', 'src/**', 'tests/**') }}
-          restore-keys: build-
+          path: /root/.cache/ccache
+          key: ccache-test-${{ github.ref }}-${{ github.sha }}
+          restore-keys: |
+            ccache-test-${{ github.ref }}-
+            ccache-test-
+
+      - name: Cache build deps
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: deps-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
 
       - name: Build
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j$(nproc)
 
       - name: Unit tests
@@ -51,22 +60,31 @@ jobs:
           key: pacman-bench-${{ runner.os }}
 
       - name: Install deps
-        run: pacman -Syu --noconfirm base-devel cmake git
+        run: pacman -Syu --noconfirm base-devel cmake git ccache
 
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
-      - name: Cache build directory
+      - name: Cache ccache
         uses: actions/cache@v4
         with:
-          path: build
-          key: build-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt', 'src/**', 'tests/**') }}
-          restore-keys: build-
+          path: /root/.cache/ccache
+          key: ccache-bench-${{ github.ref }}-${{ github.sha }}
+          restore-keys: |
+            ccache-bench-${{ github.ref }}-
+            ccache-bench-
+
+      - name: Cache build deps
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: deps-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
 
       - name: Build (Release)
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j$(nproc)
 
       - name: Run EditOptimizer benchmarks
@@ -96,7 +114,6 @@ jobs:
           CURRENT=$(git rev-parse HEAD)
           git checkout HEAD~1
 
-          # Incremental rebuild — only recompiles files changed in the last commit
           cmake --build build -j$(nproc)
 
           VIMFICIENCY_SEED_MODE=fixed \

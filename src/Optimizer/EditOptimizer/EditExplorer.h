@@ -4,6 +4,7 @@
 #include <string_view>
 
 #include "EditToSpec.h"
+#include "Editor/LineRange.h"
 #include "Editor/Position.h"
 #include "Editor/Range.h"
 #include "Keyboard/KeyboardModel.h"
@@ -20,6 +21,10 @@ using DeletionCallback = std::function<void(const Range&, std::string_view, cons
 using LinewiseCallback = std::function<void(int, std::string_view, const PhysicalKeys&)>;
 using MotionCallback = std::function<void(const Position&, std::string_view, const PhysicalKeys&)>;
 using JoinCallback = std::function<void(bool, std::string_view, const PhysicalKeys&)>;
+
+// Counted operation callbacks
+using CountedLinewiseCallback = std::function<void(LineRange, std::string_view, const PhysicalKeys&)>;
+using CountedJoinCallback = std::function<void(int count, bool addSpace, std::string_view, const PhysicalKeys&)>;
 
 // EditExplorer handles exploration of edit operations from a given state.
 // Separated from EditSearchContext for cleaner organization and future extensibility.
@@ -42,6 +47,18 @@ public:
 
   // Explore J/gJ commands
   void exploreJoinCommands(const Position& cursor, const Lines& lines, JoinCallback onJoin);
+
+  // Explore counted line edits: dj, dk, {n}dd
+  void exploreCountedLineEdits(const Position& cursor, const Lines& lines,
+                               int minCountRepeat, CountedLinewiseCallback onCountedLinewise);
+
+  // Explore counted join commands: {n}J, {n}gJ
+  void exploreCountedJoinCommands(const Position& cursor, const Lines& lines,
+                                  int minCountRepeat, CountedJoinCallback onCountedJoin);
+
+  // Explore counted word edits: {n}de, {n}dE, {n}dw, {n}dW, {n}db, {n}dB, {n}dge, {n}dgE
+  void exploreCountedWordEdits(const Position& cursor, const Lines& lines,
+                               int minCountRepeat, DeletionCallback onDeletion);
 
   // ================== Templated Exploration Methods ==================
   // EdgeType known at compile time for branch elimination

@@ -114,10 +114,28 @@ public:
     return newState;
   }
 
+  // Create new state with multi-line linewise deletion applied (for dj, dk, {n}dd)
+  [[nodiscard]] EditState afterMultiLinewiseDeletion(LineRange range) const {
+    EditState newState = *this;
+    VimCore::deleteRangeLinewise(newState.lines, range, newState.pos);
+    newState.linesHash_ = hashLines(newState.lines);
+    return newState;
+  }
+
   // Create new state with join applied (J/gJ)
   [[nodiscard]] EditState afterJoin(bool addSpace) const {
     EditState newState = *this;
     VimCore::joinLines(newState.lines, newState.pos, addSpace);
+    newState.linesHash_ = hashLines(newState.lines);
+    return newState;
+  }
+
+  // Create new state with multiple joins applied ({n}J, {n}gJ: joins count lines)
+  [[nodiscard]] EditState afterMultiJoin(int count, bool addSpace) const {
+    EditState newState = *this;
+    for (int i = 0; i < count - 1; i++) {
+      VimCore::joinLines(newState.lines, newState.pos, addSpace);
+    }
     newState.linesHash_ = hashLines(newState.lines);
     return newState;
   }

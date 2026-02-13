@@ -1,0 +1,4 @@
+FAIL iter=0 editPos=[0,4] bufferPos=[0,5] seq='de4Xx'
+
+,e
+.fe bd

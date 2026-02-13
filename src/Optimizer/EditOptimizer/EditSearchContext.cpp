@@ -193,3 +193,24 @@ void EditSearchContext::exploreAllDeletions(const EditState& state,
   EditExplorer explorer(*this);
   explorer.exploreAllDeletions(state, onDeletion, onLinewise, onMotion, onJoin);
 }
+
+void EditSearchContext::exploreCountedLineEdits(const EditState& state,
+                                                 CountedLinewiseCallback cb) {
+  EditExplorer explorer(*this);
+  explorer.exploreCountedLineEdits(state.getPos(), state.getLines(),
+                                   params.minCountRepeat, cb);
+}
+
+void EditSearchContext::exploreCountedJoinCommands(const EditState& state,
+                                                    CountedJoinCallback cb) {
+  EditExplorer explorer(*this);
+  explorer.exploreCountedJoinCommands(state.getPos(), state.getLines(),
+                                      params.minCountRepeat, cb);
+}
+
+void EditSearchContext::exploreCountedWordEdits(const EditState& state,
+                                                 DeletionCallback cb) {
+  EditExplorer explorer(*this);
+  explorer.exploreCountedWordEdits(state.getPos(), state.getLines(),
+                                   params.minCountRepeat, cb);
+}

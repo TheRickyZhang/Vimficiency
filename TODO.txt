@@ -16,6 +16,7 @@ Improve organization of benchmark site
 TODO:
 Implement .
 explore count motions in edit optimizer
+No runtime errors; change to asserts
 
 Can skip F-motions if no endpoints found?
 

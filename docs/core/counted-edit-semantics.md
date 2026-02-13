@@ -52,8 +52,8 @@ For `d{motion}` commands, `{n}d{motion}` is parsed as `d{n}{motion}` — the cou
 Buffer: "one two three four five"
 Cursor at col 0
 
-4de: d4e → delete from col 0 to 4th word-end (col 16, 'r' of "four")
      Result: " five"
+4de: d4e → delete from col 0 to 4th word-end (col 16, 'r' of "four")
 
 de...: de deletes "one" → " two three four five", cursor at 0
        de deletes " two" → " three four five", cursor at 0

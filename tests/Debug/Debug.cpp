@@ -124,7 +124,123 @@ protected:
   }
 };
 
-TEST_F(DebugTest, Placeholder) {
+TEST_F(DebugTest, DISABLED_InvestigateCountedWordEdit) {
+  auto oracle = make_unique<NeovimOracle>();
+
+  // Reproduce MultiLineEmbedded iter=0 failure
+  // FullBuffer: acffce\nadf\n ,e\n.fe bd
+  // EditRegion: cffce\nadf\n ,e\n.fe   (prefix="a", suffix="bd")
+  // Failing seq: 'de4Xx' from editPos=[0,4] bufferPos=[0,5]
+  // Expected: 'abd', Got: '\n ,e\n.fe bd'
+  cerr << "=== Investigate CountedWordEdit Bug ===" << endl;
+
+  Lines fullBuffer = {"acffce", "adf", " ,e", ".fe bd"};
+  Lines editRegion = {"cffce", "adf", " ,e", ".fe "};
+  string expected = "abd";
+  int bufRow = 0, bufCol = 5;
+
+  // Step 1: Trace the sequence step-by-step in Neovim
+  cerr << "\n--- Step-by-step trace in Neovim ---" << endl;
+  {
+    SequenceTracer tracer(oracle.get(), fullBuffer, bufRow, bufCol);
+    tracer.trace("de");
+    tracer.trace("X");
+    tracer.trace("X");
+    tracer.trace("X");
+    tracer.trace("X");
+    tracer.trace("x");
+    tracer.printSummary();
+  }
+
+  // Step 2: Trace collapsed version in Neovim
+  cerr << "\n--- Collapsed trace in Neovim ---" << endl;
+  {
+    SequenceTracer tracer(oracle.get(), fullBuffer, bufRow, bufCol);
+    tracer.trace("de");
+    tracer.trace("4X");
+    tracer.trace("x");
+    tracer.printSummary();
+  }
+
+  // Step 3: Full sequence at once
+  cerr << "\n--- Full sequences ---" << endl;
+  {
+    auto r1 = oracle->simulate(fullBuffer, bufRow, bufCol, "deXXXXx");
+    cerr << "deXXXXx: " << r1.lines << " flat='" << r1.lines.flatten() << "'" << endl;
+    auto r2 = oracle->simulate(fullBuffer, bufRow, bufCol, "de4Xx");
+    cerr << "de4Xx:   " << r2.lines << " flat='" << r2.lines.flatten() << "'" << endl;
+  }
+
+  // Step 4: Our simulator step-by-step
+  cerr << "\n--- Our simulator step-by-step ---" << endl;
+  {
+    Lines simBuf = fullBuffer;
+    Position simPos(bufRow, bufCol);
+    Mode mode = Mode::Normal;
+    string lastEdit;
+
+    auto edits = Edit::parseEdits("deXXXXx");
+    for (const auto& e : edits) {
+      cerr << "Before '" << e.edit << "': buf=" << simBuf << " pos=(" << simPos.line << "," << simPos.col << ")" << endl;
+      Edit::applyEdit(simBuf, simPos, mode, e, &lastEdit);
+      cerr << "After:  buf=" << simBuf << " pos=(" << simPos.line << "," << simPos.col << ")" << endl;
+    }
+    cerr << "Final flat: '" << simBuf.flatten() << "'" << endl;
+  }
+
+  // Step 5: Trace on EFFECTIVE lines (with prefix/suffix baked in)
+  cerr << "\n--- Our simulator on effective lines ---" << endl;
+  {
+    Lines effLines = {"acffce", "adf", " ,e", ".fe bd"};
+    Position simPos(0, 5);  // editPos [0,4] + leftColOffset 1 = col 5
+    Mode mode = Mode::Normal;
+    string lastEdit;
+
+    auto edits = Edit::parseEdits("deX...x");
+    for (const auto& e : edits) {
+      cerr << "Before '" << e.edit << "': buf=" << effLines << " pos=(" << simPos.line << "," << simPos.col << ")" << endl;
+      Edit::applyEdit(effLines, simPos, mode, e, &lastEdit);
+      cerr << "After:  buf=" << effLines << " pos=(" << simPos.line << "," << simPos.col << ")" << endl;
+    }
+    cerr << "Final: " << effLines << " flat='" << effLines.flatten() << "'" << endl;
+    cerr << "Goal check: size=" << effLines.size() << " [0]='" << effLines[0] << "'" << endl;
+  }
+
+  // Step 5b: Check hash collision potential - compute hash at different intermediate states
+  cerr << "\n--- Hash collision check ---" << endl;
+  {
+    Lines goal = {"abd"};
+    size_t goalHash = hashLines(goal);
+    cerr << "Goal hash: " << goalHash << " lines=" << goal << endl;
+
+    // After deXXXXx on effective lines
+    Lines afterSeq = {"", " ,e", ".fe bd"};
+    size_t seqHash = hashLines(afterSeq);
+    cerr << "After deXXXXx hash: " << seqHash << " lines=" << afterSeq << endl;
+    cerr << "Hash collision: " << (goalHash == seqHash ? "YES" : "no") << endl;
+  }
+
+  // Step 6: Now run optimizer and see what it produces
+  cerr << "\n--- Optimizer output ---" << endl;
+  {
+    EditOptimizer opt(config);
+    EditBoundary boundary(fullBuffer, Position(0, 1), Position(3, 3));  // prefix="a", suffix="bd"
+    EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
+    int idx = 0;
+    for (int line = 0; line < static_cast<int>(editRegion.size()); line++) {
+      int cols = editRegion[line].empty() ? 1 : static_cast<int>(editRegion[line].size());
+      for (int col = 0; col < cols; col++) {
+        const Result& r = res.getResults()[idx];
+        if (r.isValid() && idx == 4) {  // editPos [0,4]
+          cerr << "editPos=[" << line << "," << col << "] seq='" << r.getSequenceString() << "' cost=" << r.keyCost << endl;
+        }
+        idx++;
+      }
+    }
+  }
+}
+
+TEST_F(DebugTest, DISABLED_Placeholder) {
   auto oracle = make_unique<NeovimOracle>();
 
   // Reproduce TwoEdits_SameLine iter=12

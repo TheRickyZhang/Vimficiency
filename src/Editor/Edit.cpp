@@ -285,6 +285,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
       case hash("dw"): case hash("dW"): case hash("db"): case hash("dB"):
       case hash("de"): case hash("dE"): case hash("dge"): case hash("dgE"):
       case hash("d}"): case hash("d{"): case hash("d)"): case hash("d("):
+      case hash("dj"): case hash("dk"):
       case hash("cw"): case hash("cW"): case hash("cb"): case hash("cB"):
       case hash("ce"): case hash("cE"): case hash("cge"): case hash("cgE"):
       case hash("c}"): case hash("c{"): case hash("c)"): case hash("c("):
@@ -447,6 +448,58 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
           throw runtime_error(string(e) + " at start of buffer has no effect");
         }
         deleteBackToWordEnd(lines, pos, count, e == "dgE", Mode::Normal);
+        return;
+
+      // dj: linewise delete current line + count lines below
+      case hash("dj"):
+        {
+          int lastLine = pos.line + count;
+          if (lastLine >= n) {
+            throw runtime_error("dj requires " + to_string(count) + " lines below");
+          }
+          VimCore::deleteRangeLinewise(lines, LineRange(pos.line, lastLine), pos);
+        }
+        return;
+
+      // dk: linewise delete current line + count lines above
+      case hash("dk"):
+        {
+          int firstLine = pos.line - count;
+          if (firstLine < 0) {
+            throw runtime_error("dk requires " + to_string(count) + " lines above");
+          }
+          VimCore::deleteRangeLinewise(lines, LineRange(firstLine, pos.line), pos);
+        }
+        return;
+
+      // cj: change current line + count lines below (linewise)
+      case hash("cj"):
+        {
+          int lastLine = pos.line + count;
+          if (lastLine >= n) {
+            throw runtime_error("cj requires " + to_string(count) + " lines below");
+          }
+          // cj deletes lines and replaces with empty insert line
+          lines.erase(lines.begin() + pos.line, lines.begin() + lastLine + 1);
+          lines.insert(lines.begin() + pos.line, "");
+          pos.setCol(0);
+          mode = Mode::Insert;
+        }
+        return;
+
+      // ck: change current line + count lines above (linewise)
+      case hash("ck"):
+        {
+          int firstLine = pos.line - count;
+          if (firstLine < 0) {
+            throw runtime_error("ck requires " + to_string(count) + " lines above");
+          }
+          lines.erase(lines.begin() + firstLine, lines.begin() + pos.line + 1);
+          lines.insert(lines.begin() + firstLine, "");
+          pos.line = firstLine;
+          pos.setCol(0);
+          mode = Mode::Insert;
+        }
         return;
 
       case hash("d0"):

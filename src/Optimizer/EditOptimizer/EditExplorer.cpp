@@ -1,10 +1,13 @@
 #include "EditExplorer.h"
 #include "EditSearchContext.h"
+#include "EditToSpec.h"
 #include "Boundary/EditBoundary.h"
 #include "Keyboard/EditToKeys.h"
 #include "Keyboard/MotionToKeysPrimitives.h"
 #include "VimCore/VimCore.h"
 #include "VimCore/VimEndpointUtils.h"
+
+#include <algorithm>
 
 using namespace std;
 
@@ -289,6 +292,213 @@ template void EditExplorer::exploreSentenceEdits<true>(
     const vector<Edit::SentenceEditSpecNoDir>&, const Position&, const Lines&, DeletionCallback);
 template void EditExplorer::exploreSentenceEdits<false>(
     const vector<Edit::SentenceEditSpecNoDir>&, const Position&, const Lines&, DeletionCallback);
+
+// =============================================================================
+// Counted Exploration Methods
+// =============================================================================
+
+void EditExplorer::exploreCountedLineEdits(
+    const Position& cursor, const Lines& lines,
+    int minCountRepeat, CountedLinewiseCallback onCountedLinewise) {
+  if (!onCountedLinewise) return;
+
+  int lastLine = lines.lastLine();
+  bool hasPrefix = ctx_.editBoundary.hasPrefix();
+  bool hasSuffix = ctx_.editBoundary.hasSuffix();
+
+  // dj: 2-line delete downward (always explored, it's 2 keystrokes not a counted command)
+  if (cursor.line + 1 <= lastLine) {
+    bool skipDj = (cursor.line == 0 && hasPrefix) ||
+                  (cursor.line + 1 == lastLine && hasSuffix);
+    if (!skipDj) {
+      static const PhysicalKeys djKeys = {Key::Key_D, Key::Key_J};
+      onCountedLinewise(LineRange(cursor.line, cursor.line + 1), "dj", djKeys);
+    }
+  }
+
+  // dk: 2-line delete upward (always explored, it's 2 keystrokes not a counted command)
+  if (cursor.line - 1 >= 0) {
+    bool skipDk = (cursor.line - 1 == 0 && hasPrefix) ||
+                  (cursor.line == lastLine && hasSuffix);
+    if (!skipDk) {
+      static const PhysicalKeys dkKeys = {Key::Key_D, Key::Key_K};
+      onCountedLinewise(LineRange(cursor.line - 1, cursor.line), "dk", dkKeys);
+    }
+  }
+
+  // {n}dd: counted line delete (n >= minCountRepeat)
+  if (cursor.line == 0 && hasPrefix) return;
+
+  // Find last deletable line (respecting suffix boundary)
+  int lastDeletable = lastLine;
+  if (hasSuffix) lastDeletable = lastLine - 1;
+  if (lastDeletable < cursor.line) return;
+
+  int maxCount = lastDeletable - cursor.line + 1;
+  static const PhysicalKeys ddKeys = {Key::Key_D, Key::Key_D};
+
+  for (int n = max(2, minCountRepeat); n <= maxCount; n++) {
+    PhysicalKeys countedKeys = makeCountedKeys(n, ddKeys);
+    string cmd = to_string(n) + "dd";
+    onCountedLinewise(LineRange(cursor.line, cursor.line + n - 1), cmd, countedKeys);
+  }
+}
+
+void EditExplorer::exploreCountedJoinCommands(
+    const Position& cursor, const Lines& lines,
+    int minCountRepeat, CountedJoinCallback onCountedJoin) {
+  if (!onCountedJoin) return;
+
+  int lastLine = lines.lastLine();
+  if (cursor.line >= lastLine) return;
+
+  // Find max count: need count-1 lines below cursor
+  int maxLinesBelow = lastLine - cursor.line;
+
+  // Don't join into suffix boundary
+  if (ctx_.editBoundary.hasLinesBelow() && cursor.line + maxLinesBelow == lastLine) {
+    maxLinesBelow--;
+  }
+  // Also check suffix on the last line in the range
+  if (ctx_.editBoundary.hasSuffix()) {
+    // Can't join the last line if it has suffix
+    if (cursor.line + maxLinesBelow == lastLine) {
+      maxLinesBelow--;
+    }
+  }
+
+  if (maxLinesBelow < 1) return;
+
+  static const PhysicalKeys jKeys = {Key::Key_Shift, Key::Key_J};
+  static const PhysicalKeys gjKeys = {Key::Key_G, Key::Key_Shift, Key::Key_J};
+
+  // count means "join count lines" (current + count-1 below)
+  // so count=2 joins current + 1 below, count=3 joins current + 2 below, etc.
+  for (int count = max(2, minCountRepeat); count <= maxLinesBelow + 1; count++) {
+    PhysicalKeys countedJKeys = makeCountedKeys(count, jKeys);
+    PhysicalKeys countedGjKeys = makeCountedKeys(count, gjKeys);
+    string jCmd = to_string(count) + "J";
+    string gjCmd = to_string(count) + "gJ";
+    onCountedJoin(count, true, jCmd, countedJKeys);
+    onCountedJoin(count, false, gjCmd, countedGjKeys);
+  }
+}
+
+void EditExplorer::exploreCountedWordEdits(
+    const Position& cursor, const Lines& lines,
+    int minCountRepeat, DeletionCallback onDeletion) {
+  if (!onDeletion) return;
+  if (minCountRepeat < 2) return;
+
+  static constexpr int MAX_COUNT_ITERATIONS = 15;
+
+  // Forward word-end edits: {n}de, {n}dE
+  for (const auto& spec : Edit::FORWARD_WORDEDGE_EDITS) {
+    Position prev = cursor;
+    // Run single-motion iterations to find the endpoint for each count
+    for (int count = 1; count <= MAX_COUNT_ITERATIONS; count++) {
+      Position endpoint = VimCore::motionWordEndpoint<true, EdgeType::WordEdge>(
+          prev, lines, spec.isBig, spec.skipCurrent,
+          ctx_.rightColOffset, ctx_.editBoundary.hasLinesBelow(), false);
+
+      if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == prev) break;
+
+      if (count >= minCountRepeat) {
+        PhysicalKeys countedKeys = makeCountedKeys(count, spec.keys);
+        string cmd = to_string(count) + string(spec.cmd);
+        onDeletion(Range(cursor, endpoint), cmd, countedKeys);
+      }
+
+      prev = endpoint;
+    }
+  }
+
+  // Forward word-gap edits: {n}dw, {n}dW
+  for (const auto& spec : Edit::FORWARD_GAPEDGE_EDITS) {
+    Position prev = cursor;
+    for (int count = 1; count <= MAX_COUNT_ITERATIONS; count++) {
+      Position endpoint = VimCore::motionWordEndpoint<true, EdgeType::GapEdge>(
+          prev, lines, spec.isBig, spec.skipCurrent,
+          ctx_.rightColOffset, ctx_.editBoundary.hasLinesBelow(), false);
+
+      if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == prev) break;
+
+      // dw/dW cross-line restriction: if endpoint crosses lines, fall back to word-end
+      if (endpoint.line > cursor.line) {
+        Position wordEnd = VimCore::motionWordEndpoint<true, EdgeType::WordEdge>(
+            prev, lines, spec.isBig, spec.skipCurrent,
+            ctx_.rightColOffset, ctx_.editBoundary.hasLinesBelow(), false);
+        if (wordEnd == POSITION_OUTSIDE_BOUNDARY || wordEnd == prev) break;
+        endpoint = wordEnd;
+      }
+
+      if (count >= minCountRepeat) {
+        PhysicalKeys countedKeys = makeCountedKeys(count, spec.keys);
+        string cmd = to_string(count) + string(spec.cmd);
+        onDeletion(Range(cursor, endpoint), cmd, countedKeys);
+      }
+
+      prev = endpoint;
+    }
+  }
+
+  // Backward word edits: {n}db, {n}dB
+  for (const auto& spec : Edit::BACKWARD_WORDEDGE_EDITS) {
+    Position prev = cursor;
+    for (int count = 1; count <= MAX_COUNT_ITERATIONS; count++) {
+      Position endpoint = VimCore::motionWordEndpoint<false, EdgeType::WordEdge>(
+          prev, lines, spec.isBig, spec.skipCurrent,
+          ctx_.leftColOffset, ctx_.editBoundary.hasLinesAbove(), false);
+
+      if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == prev) break;
+
+      if (count >= minCountRepeat) {
+        // db/dB are exclusive at cursor: range is [endpoint, cursor-1]
+        int cursorContentCol = cursor.col - (cursor.line == 0 ? ctx_.leftColOffset : 0);
+        Range range;
+        if (cursorContentCol > 0) {
+          range = Range(endpoint, Position(cursor.line, cursor.col - 1));
+        } else if (endpoint.line < cursor.line) {
+          int prevLine = cursor.line - 1;
+          range = Range(endpoint, Position(prevLine, lines[prevLine].lastCol()));
+        } else {
+          break;
+        }
+
+        PhysicalKeys countedKeys = makeCountedKeys(count, spec.keys);
+        string cmd = to_string(count) + string(spec.cmd);
+        onDeletion(range, cmd, countedKeys);
+      }
+
+      prev = endpoint;
+    }
+  }
+
+  // Backward word-end edits: {n}dge, {n}dgE
+  for (const auto& spec : Edit::BACKWARD_NEXTEDGE_EDITS) {
+    // For inclusive backward deletes (dge/dgE), check cursor first
+    if (!spec.isExclusiveAtCursor && inBoundaryRegion(cursor, lines))
+      continue;
+
+    Position prev = cursor;
+    for (int count = 1; count <= MAX_COUNT_ITERATIONS; count++) {
+      Position endpoint = VimCore::motionWordEndpoint<false, EdgeType::NextEdge>(
+          prev, lines, spec.isBig, spec.skipCurrent,
+          ctx_.leftColOffset, ctx_.editBoundary.hasLinesAbove(), false);
+
+      if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == prev) break;
+
+      if (count >= minCountRepeat) {
+        // dge/dgE are inclusive: range is [endpoint, cursor]
+        PhysicalKeys countedKeys = makeCountedKeys(count, spec.keys);
+        string cmd = to_string(count) + string(spec.cmd);
+        onDeletion(Range(endpoint, cursor), cmd, countedKeys);
+      }
+
+      prev = endpoint;
+    }
+  }
+}
 
 // =============================================================================
 // Main Exploration Entry Point
