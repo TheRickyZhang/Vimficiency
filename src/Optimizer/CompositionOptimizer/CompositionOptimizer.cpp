@@ -85,8 +85,8 @@ CompositionResult CompositionOptimizer::optimize(
     if (ctx.isGoal(s)) {
       double effort = s.getRunningEffort().getEffort(config);
       debug("GOAL #" + to_string(results.size()) + ":",
-            "\"" + s.getMotionSequence() + "\"", "effort:", effort);
-      results.emplace_back(s.getMotionSequence(), effort);
+            "\"" + s.getSequence().str() + "\"", "effort:", effort);
+      results.emplace_back(s.getSequence().str(), effort);
       if (results.size() >= static_cast<size_t>(params.maxResults)) {
         debug("maximum result count reached");
         break;
@@ -99,7 +99,7 @@ CompositionResult CompositionOptimizer::optimize(
       continue;
     }
 
-    debug("pop:", "\"" + s.getMotionSequence() + "\"",
+    debug("pop:", "\"" + s.getSequence().str() + "\"",
           "pos:", pos, "edits:", editsCompleted,
           "cost:", s.getCost(), "effort:", s.getEffort());
 
@@ -181,7 +181,7 @@ CompositionResult CompositionOptimizer::optimize(
         Lines insertLines = Lines::unflatten(string(nextEdit.insertedTextBody()));
         KeyedSequence typed = buildTypedCommands(insertLines, sourceIndent);
         exploreInsertionStrategy(targetLine, 0, lastCol,
-                                 "o" + typed.seq.keys);
+                                 "o" + typed.seq.str());
       } else {
         // I/A/i: handle autoindent for multi-line insertions
         int fnb = VimCore::firstNonBlankColInLineStr(currentLines[insertPos.line]);
@@ -196,10 +196,10 @@ CompositionResult CompositionOptimizer::optimize(
           KeyedSequence escaped = buildTypedCommands(insertLines, "",
               currentLines[insertPos.line].substr(0, fnb));
           exploreInsertionStrategy(insertPos.line, 0, lastCol,
-                                   "I" + escaped.seq.keys);
+                                   "I" + escaped.seq.str());
           // Also explore i at exact position (cheaper when cursor is already there)
           exploreInsertionStrategy(insertPos.line, insertPos.col, insertPos.col,
-                                   "i" + escaped.seq.keys);
+                                   "i" + escaped.seq.str());
         } else if (insertPos.col == lineLen) {
           debug("    exploring A/a-strategy at eol col", lineLen);
           // A: append at end of line - navigate anywhere on line
@@ -207,10 +207,10 @@ CompositionResult CompositionOptimizer::optimize(
           KeyedSequence escaped = buildTypedCommands(insertLines, "",
               currentLines[insertPos.line]);
           exploreInsertionStrategy(insertPos.line, 0, lastCol,
-                                   "A" + escaped.seq.keys);
+                                   "A" + escaped.seq.str());
           // Also explore a at last column (cheaper when cursor is already at $)
           exploreInsertionStrategy(insertPos.line, lastCol, lastCol,
-                                   "a" + escaped.seq.keys);
+                                   "a" + escaped.seq.str());
         } else {
           debug("    exploring i-strategy at col", insertPos.col);
           // i: fallback - navigate to exact position
@@ -218,7 +218,7 @@ CompositionResult CompositionOptimizer::optimize(
           KeyedSequence escaped = buildTypedCommands(insertLines, "",
               currentLines[insertPos.line].substr(0, insertPos.col));
           exploreInsertionStrategy(insertPos.line, insertPos.col, insertPos.col,
-                                   "i" + escaped.seq.keys);
+                                   "i" + escaped.seq.str());
         }
       }
       continue;
@@ -229,7 +229,7 @@ CompositionResult CompositionOptimizer::optimize(
     const Result* res = editResult.resultAt(pos.line, pos.col);
 
     if (res) {
-      debug("  edit found at", pos, "seq:", "\"" + res->sequence.keys + "\"",
+      debug("  edit found at", pos, "seq:", "\"" + res->sequence.str() + "\"",
             "cost:", res->keyCost);
       ctx.exploreEditTransition(s, res->sequence,
                                 editResult.goalPos, editsCompleted + 1);
@@ -238,7 +238,7 @@ CompositionResult CompositionOptimizer::optimize(
     // J plan: offered from any column on the entry line
     const auto& joinPlan = ctx.joinPlans[editsCompleted];
     if (joinPlan && pos.line == joinPlan->entryLine) {
-      debug("  J plan at line", pos.line, "seq:", "\"" + joinPlan->sequence.keys + "\"",
+      debug("  J plan at line", pos.line, "seq:", "\"" + joinPlan->sequence.str() + "\"",
             "effort:", joinPlan->effort);
       ctx.exploreEditTransition(s, joinPlan->sequence, joinPlan->goalPos,
                                 editsCompleted + 1);
@@ -325,7 +325,7 @@ CompositionResult CompositionOptimizer::optimize(
 
         // Remap results back to full-buffer coordinates
         movResult.goalPos.line += beginLine;
-        debug("    motion:", "\"" + movResult.sequence.keys + "\"",
+        debug("    motion:", "\"" + movResult.sequence.str() + "\"",
               "->", movResult.goalPos);
         ctx.exploreMotionTransition(s, movResult.sequence, movResult.goalPos,
                                     editsCompleted);
@@ -368,7 +368,7 @@ CompositionResult CompositionOptimizer::optimize(
         for (RangeResult& movResult : jMovResults) {
           if (!movResult.isValid()) continue;
           movResult.goalPos.line += jBeginLine;
-          debug("    J-motion:", "\"" + movResult.sequence.keys + "\"",
+          debug("    J-motion:", "\"" + movResult.sequence.str() + "\"",
                 "->", movResult.goalPos);
           ctx.exploreMotionTransition(s, movResult.sequence, movResult.goalPos,
                                       editsCompleted);
@@ -414,7 +414,7 @@ ostream& operator<<(ostream& os, const CompositionResult& cr) {
   for (size_t i = 0; i < cr.results.size(); i++) {
     os << "  [" << i << "] ";
 
-    vector<SequenceToken> tokens = parseSequence(cr.results[i].sequence.keys);
+    vector<SequenceToken> tokens = parseSequence(cr.results[i].sequence.view());
     int diffIdx = 0;
     int numDiffs = static_cast<int>(cr.diffs.size());
     for (size_t j = 0; j < tokens.size(); j++) {

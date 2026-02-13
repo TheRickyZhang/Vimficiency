@@ -28,7 +28,7 @@ inline bool hasSequenceStartingWith(const std::vector<Result>& results,
   return std::any_of(results.begin(), results.end(),
       [&prefix](const Result& r) {
         return r.sequence.size() >= prefix.size() &&
-               r.sequence.keys.substr(0, prefix.size()) == prefix;
+               r.sequence.view().substr(0, prefix.size()) == prefix;
       });
 }
 

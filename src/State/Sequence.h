@@ -6,8 +6,9 @@
 
 // Represents a sequence of Vim commands/keys as a string.
 // Used by state classes to track the command history.
-struct Sequence {
+class Sequence {
   std::string keys;
+public:
 
   Sequence() = default;
   Sequence(const std::string& k) : keys(k) {}
@@ -28,6 +29,13 @@ struct Sequence {
   bool operator==(const char* s) const { return keys == s; }
   bool operator!=(const char* s) const { return keys != s; }
   bool operator<(const Sequence& other) const { return keys < other.keys; }
+
+  // Preferred: non-owning view of the underlying string.
+  std::string_view view() const { return keys; }
+
+  // Use when const string& is needed (string concatenation with +,
+  // APIs taking const string&, constructing owned copies).
+  const std::string& str() const { return keys; }
 
   // Stream output with mode-separated spacing
   // Parses the sequence to identify mode transitions (insert entries via

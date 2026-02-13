@@ -236,7 +236,7 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
     for (size_t i = 0; i < result.resultCount(); i++) {
       const auto& r = result.getResults()[i];
       if (!r.isValid()) continue;
-      const string& seq = r.getSequenceString().keys;
+      const string& seq = r.getSequenceString().str();
 
       Lines test = eff;
       Position pos = fromFlatIndex(static_cast<int>(i), editRegion);
@@ -417,13 +417,13 @@ TEST_F(DebugTest, DISABLED_Placeholder) {
     for (size_t i = 0; i < results.size(); i++) {
       const auto& seq = results[i].sequence;
       // Print sequence bytes
-      cerr << "  [" << i << "] seq='" << seq << "' (len=" << seq.keys.size() << ")" << endl;
+      cerr << "  [" << i << "] seq='" << seq << "' (len=" << seq.size() << ")" << endl;
       cerr << "       bytes: ";
-      for (char c : seq.keys) cerr << static_cast<int>(static_cast<unsigned char>(c)) << " ";
+      for (char c : seq.view()) cerr << static_cast<int>(static_cast<unsigned char>(c)) << " ";
       cerr << endl;
       cerr << "       cost=" << results[i].keyCost << endl;
 
-      auto nvim = oracle->simulate(initial, 0, 0, seq.keys);
+      auto nvim = oracle->simulate(initial, 0, 0, seq.str());
       cerr << "       nvim: " << nvim.lines << (nvim.lines == goal ? " OK" : " WRONG") << endl;
     }
   }
@@ -600,7 +600,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
       const auto& seq = compResult.results[i].getSequenceString();
       cerr << "  [" << i << "] '" << compResult.results[i].sequence
            << "' cost=" << compResult.results[i].keyCost << endl;
-      auto nvim = oracle_->simulate(initial, 0, 2, seq.keys);
+      auto nvim = oracle_->simulate(initial, 0, 2, seq.str());
       cerr << "    nvim: " << nvim.lines << (nvim.lines == goal ? " OK" : " WRONG") << endl;
     }
   }
@@ -631,7 +631,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
                  << "' cost=" << r.keyCost << endl;
             // Verify each with oracle
             int fullCol = static_cast<int>(j) + (d.beginPos.line == 0 ? d.beginPos.col : 0);
-            auto nvim = oracle_->simulate(initial, 0, fullCol, r.sequence.keys);
+            auto nvim = oracle_->simulate(initial, 0, fullCol, r.sequence.str());
             if (nvim.lines != goal) {
               cerr << "      MISMATCH: got " << nvim.lines << endl;
             }
@@ -712,7 +712,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJoinLinesResidual) {
 
         // Byte dump for debugging
         cerr << "    bytes:";
-        for (unsigned char ch : result.sequence.keys) {
+        for (unsigned char ch : result.sequence.view()) {
           if (ch >= 0x20 && ch < 0x7f) cerr << " '" << ch << "'";
           else cerr << " 0x" << std::hex << (int)ch << std::dec;
         }
@@ -721,7 +721,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJoinLinesResidual) {
         // Verify with oracle: apply in the full buffer context
         int fullRow = r + static_cast<int>(initialPos.line);
         int fullCol = c + (r == 0 ? static_cast<int>(initialPos.col) : 0);
-        auto nvim = oracle_->simulate(fullBuffer, fullRow, fullCol, result.sequence.keys);
+        auto nvim = oracle_->simulate(fullBuffer, fullRow, fullCol, result.sequence.str());
         Lines goal = {"aaa bbb ccc"};
         if (nvim.lines != goal) {
           cerr << "    MISMATCH: got " << nvim.lines << " expected " << goal << endl;
@@ -1020,7 +1020,7 @@ TEST_F(NeovimOracleDebug, InvestigateTextObjectShortcuts) {
       const auto& seq = results[i].sequence;
       cerr << "  " << i << ": '" << seq << "' cost=" << results[i].keyCost << endl;
 
-      auto nvim = oracle_->simulate(initial, 0, 0, seq.keys);
+      auto nvim = oracle_->simulate(initial, 0, 0, seq.str());
       bool correct = (nvim.lines == goal);
       cerr << "      -> '" << nvim.lines[0] << "' " << (correct ? "OK" : "WRONG") << endl;
     }
@@ -1180,7 +1180,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
 
   if (!results.empty()) {
     const auto& seq = results[0].sequence;
-    auto nvim = oracle_->simulate(initial, initialPos.line, initialPos.col, seq.keys);
+    auto nvim = oracle_->simulate(initial, initialPos.line, initialPos.col, seq.str());
     cerr << endl << "Neovim result for '" << seq << "':" << endl;
     cerr << "  Lines: " << nvim.lines << endl;
     cerr << "  Goal:  " << goal << endl;
@@ -1312,7 +1312,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     cerr << "  Total results: " << actualResults.size() << endl;
     auto oracle = make_unique<NeovimOracle>();
     for (size_t i = 0; i < actualResults.size(); i++) {
-      auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, actualResults[i].sequence.keys);
+      auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, actualResults[i].sequence.str());
       cerr << "  [" << i << "] seq='" << actualResults[i].sequence
            << "' cost=" << actualResults[i].keyCost
            << " nvim=" << (nvim.lines == goal ? "OK" : "WRONG")
@@ -1442,7 +1442,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
              << ") edits=" << editsCompleted
              << " seq='" << s.getSequence() << "' effort=" << s.getEffort()
              << " cost=" << s.getCost() << endl;
-        results.emplace_back(s.getMotionSequence(), s.getRunningEffort().getEffort(config));
+        results.emplace_back(s.getSequence().str(), s.getRunningEffort().getEffort(config));
         if (results.size() >= 3) break;
         continue;
       }
@@ -1513,7 +1513,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     cerr << "\nFinal results: " << results.size() << endl;
     auto oracle = make_unique<NeovimOracle>();
     for (size_t i = 0; i < results.size(); i++) {
-      auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, results[i].sequence.keys);
+      auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, results[i].sequence.str());
       cerr << "  [" << i << "] seq='" << results[i].sequence << "' cost=" << results[i].keyCost
            << " nvim=" << (nvim.lines == goal ? "OK" : "WRONG") << " got=" << nvim.lines << endl;
     }
@@ -1606,7 +1606,7 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
     if (ctx.isGoal(s)) {
       cerr << "  POP " << popCount << ": GOAL seq='" << s.getSequence()
            << "' effort=" << s.getEffort() << " cost=" << s.getCost() << endl;
-      results.emplace_back(s.getMotionSequence(), s.getRunningEffort().getEffort(config));
+      results.emplace_back(s.getSequence().str(), s.getRunningEffort().getEffort(config));
       if (results.size() >= 5) break;
       continue;
     }
@@ -1688,7 +1688,7 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
   if (!results.empty()) {
     auto oracle = make_unique<NeovimOracle>();
     for (size_t i = 0; i < results.size(); i++) {
-      auto nvim = oracle->simulate(initial, 0, 0, results[i].sequence.keys);
+      auto nvim = oracle->simulate(initial, 0, 0, results[i].sequence.str());
       cerr << "  [" << i << "] '" << results[i].sequence << "' "
            << (nvim.lines == goal ? "OK" : "WRONG") << endl;
     }
@@ -1735,7 +1735,7 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
       cerr << "    buffer[" << i << "]: " << ctx.linesAfterNEdits[i];
 
       if (ctx.joinPlans[i]) {
-        cerr << "    JOIN PLAN: seq='" << ctx.joinPlans[i]->sequence.keys
+        cerr << "    JOIN PLAN: seq='" << ctx.joinPlans[i]->sequence.view()
              << "' effort=" << ctx.joinPlans[i]->effort
              << " entryLine=" << ctx.joinPlans[i]->entryLine
              << " goalPos=(" << ctx.joinPlans[i]->goalPos.line
@@ -1934,7 +1934,7 @@ TEST_F(DebugTest, InvestigateHumanApproval1) {
   auto oracle = make_unique<NeovimOracle>();
   for (size_t i = 0; i < compResult.results.size(); i++) {
     const auto& seq = compResult.results[i].sequence;
-    auto nvim = oracle->simulate(initial, 0, 0, seq.keys);
+    auto nvim = oracle->simulate(initial, 0, 0, seq.str());
     bool correct = (nvim.lines == goal);
     cerr << "  [" << i << "] oracle: " << (correct ? "OK" : "WRONG")
          << " got=" << nvim.lines << endl;
@@ -2060,7 +2060,7 @@ TEST_F(DebugTest, CcAutoindentCollapse) {
     total++;
 
     Position editPos = fromFlatIndex(static_cast<int>(i), initial);
-    auto nvim = oracle->simulate(initial, editPos.line, editPos.col, r.getSequenceString().keys);
+    auto nvim = oracle->simulate(initial, editPos.line, editPos.col, r.getSequenceString().str());
     if (nvim.lines == goal) {
       passed++;
     } else {
@@ -2087,7 +2087,7 @@ TEST_F(DebugTest, CcAutoindentCollapse) {
     total2++;
 
     Position editPos = fromFlatIndex(static_cast<int>(i), initial2);
-    auto nvim = oracle->simulate(initial2, editPos.line, editPos.col, r.getSequenceString().keys);
+    auto nvim = oracle->simulate(initial2, editPos.line, editPos.col, r.getSequenceString().str());
     if (nvim.lines == goal2) {
       passed2++;
     } else {
@@ -2490,7 +2490,7 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceDeleteEntireLineIter20) {
   for (size_t i = 0; i < res.results.size(); i++) {
     const auto& r = res.results[i];
     cerr << "  [" << i << "] seq='" << r.sequence << "' cost=" << r.keyCost << endl;
-    auto nvim = oracle_->simulate(initial, 0, 0, r.sequence.keys);
+    auto nvim = oracle_->simulate(initial, 0, 0, r.sequence.str());
     cerr << "    nvim: " << nvim.lines << (nvim.lines == goal ? " OK" : " WRONG") << endl;
   }
 
@@ -2621,7 +2621,7 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceJoinLinesResidualEditOpt) {
           cerr << "  [" << r << "," << c << "] seq='" << result.sequence
                << "' cost=" << result.keyCost << endl;
           cerr << "    bytes:";
-          for (unsigned char ch : result.sequence.keys) {
+          for (unsigned char ch : result.sequence.view()) {
             if (ch >= 0x20 && ch < 0x7f) cerr << " '" << ch << "'";
             else cerr << " 0x" << hex << (int)ch << dec;
           }

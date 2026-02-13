@@ -18,7 +18,9 @@ jobs:
         with:
           ref: main
           sparse-checkout: scripts/bench-data.js
-          path: main-scripts
+
+      - name: Save script
+        run: cp scripts/bench-data.js /tmp/bench-data.js
 
       - uses: actions/checkout@v4
         with:
@@ -28,7 +30,7 @@ jobs:
         run: |
           SHA="${{ inputs.sha }}"
           for dir in bench/edit bench/motion bench/composition; do
-            [ -f "$dir/data.js" ] && node main-scripts/scripts/bench-data.js remove "$dir" "$SHA"
+            [ -f "$dir/data.js" ] && node /tmp/bench-data.js remove "$dir" "$SHA"
           done
 
       - name: Commit and push

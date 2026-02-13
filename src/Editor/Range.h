@@ -20,6 +20,14 @@ struct Range {
   bool isValid() const {
     return first.isValid() && last.isValid();
   }
+
+  bool spansMultiple() const {
+    return first.line != last.line;
+  }
+
+  int size() const {
+    return last.line - first.line + 1;
+  }
 };
 
 // Sentinel value for "range outside boundary" / "operation would cross boundary"

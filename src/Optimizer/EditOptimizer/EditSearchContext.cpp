@@ -52,14 +52,14 @@ void EditSearchContext::exploreNewState(EditState&& state) {
 
 void EditSearchContext::exploreWithDot(EditState&& afterState, const EditState& base,
                                        const KeyedSequence& ks, double hCost) {
-  bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.keys;
+  bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.view();
 
   if (isDot) {
     // Dot path only: same resulting state as normal, strictly lower cost
     afterState.recordSearch(".", KeyedSequence::Period.keys, effortWeight, hCost, config);
   } else {
-    afterState.recordSearch(ks.seq.keys, ks.keys, effortWeight, hCost, config);
-    afterState.setLastEdit(ks.seq.keys);
+    afterState.recordSearch(ks.seq.view(), ks.keys, effortWeight, hCost, config);
+    afterState.setLastEdit(ks.seq.view());
   }
   exploreNewState(std::move(afterState));
 }

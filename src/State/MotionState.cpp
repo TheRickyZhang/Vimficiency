@@ -57,14 +57,14 @@ MotionState MotionState::afterFMotion(const KeyedSequence& fMotion, int newCol,
 void MotionState::applyMotionImpl(const KeyedSequence& ks, Position endpoint,
                                   const Config& config) {
   pos = endpoint;
-  motionSequence.append(ks.seq.keys);
+  motionSequence.append(ks.seq.view());
   effort = runningEffort.append(ks.keys, config);
 }
 
 void MotionState::applyMotionImpl(const KeyedSequence& ks, const RunningEffort& precomputed,
                                   Position endpoint, const Config& config) {
   pos = endpoint;
-  motionSequence.append(ks.seq.keys);
+  motionSequence.append(ks.seq.view());
   effort = runningEffort.appendFrom(precomputed, config);
 }
 
@@ -74,14 +74,14 @@ void MotionState::applyCountedMotionImpl(const KeyedSequence& baseMotion, int cn
   if (cnt > 0) {
     motionSequence.append(to_string(cnt));
   }
-  motionSequence.append(baseMotion.seq.keys);
+  motionSequence.append(baseMotion.seq.view());
   effort = runningEffort.append(makeCountedKeys(abs(cnt), baseMotion.keys), config);
 }
 
 void MotionState::applyFMotionImpl(const KeyedSequence& fMotion, int newCol,
                                    const Config& config) {
   pos.setCol(newCol);
-  motionSequence.append(fMotion.seq.keys);
+  motionSequence.append(fMotion.seq.view());
   effort = runningEffort.append(fMotion.keys, config);
 }
 

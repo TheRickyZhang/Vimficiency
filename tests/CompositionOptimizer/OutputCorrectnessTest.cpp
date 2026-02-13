@@ -41,7 +41,7 @@ protected:
       if (!results[i].isValid()) continue;
 
       const auto& seq = results[i].getSequenceString();
-      SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.keys);
+      SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
 
       EXPECT_EQ(nvim.lines, goal)
           << "Result " << i << " failed" << (testContext.empty() ? "" : " (" + testContext + ")")
@@ -103,7 +103,7 @@ TEST_F(CompositionOptimizerOutputCorrectness, SingleLine_Edit) {
 
     // Verify first result
     const auto& seq = results[0].getSequenceString();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.keys);
+    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
 
     if (nvim.lines == goal) {
       passed++;
@@ -178,7 +178,7 @@ TEST_F(CompositionOptimizerOutputCorrectness, MultiLine_SingleEdit) {
     }
 
     const auto& seq = results[0].getSequenceString();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.keys);
+    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
 
     if (nvim.lines == goal) {
       passed++;
@@ -243,7 +243,7 @@ TEST_F(CompositionOptimizerOutputCorrectness, PureInsertion) {
     }
 
     const auto& seq = results[0].getSequenceString();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.keys);
+    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
 
     if (nvim.lines == goal) {
       passed++;
@@ -303,7 +303,7 @@ TEST_F(CompositionOptimizerOutputCorrectness, PureDeletion) {
     }
 
     const auto& seq = results[0].getSequenceString();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.keys);
+    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
 
     if (nvim.lines == goal) {
       passed++;
@@ -360,7 +360,7 @@ TEST_F(CompositionOptimizerOutputCorrectness, InsertNewLine) {
     }
 
     const auto& seq = results[0].getSequenceString();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.keys);
+    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
 
     if (nvim.lines == goal) {
       passed++;
@@ -412,7 +412,7 @@ TEST_F(CompositionOptimizerOutputCorrectness, DeleteEntireLine) {
     }
 
     const auto& seq = results[0].getSequenceString();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.keys);
+    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
 
     if (nvim.lines == goal) {
       passed++;
@@ -473,7 +473,7 @@ TEST_F(CompositionOptimizerOutputCorrectness, TwoEdits_SameLine) {
     }
 
     const auto& seq = results[0].getSequenceString();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.keys);
+    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
 
     if (nvim.lines == goal) {
       passed++;
@@ -523,7 +523,7 @@ TEST_F(CompositionOptimizerOutputCorrectness, TwoEdits_DifferentLines) {
     }
 
     const auto& seq = results[0].getSequenceString();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.keys);
+    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
 
     if (nvim.lines == goal) {
       passed++;

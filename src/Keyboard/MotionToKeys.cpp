@@ -12,12 +12,12 @@ vector<string> getCountableMotions(const vector<CountableMotionPair>& firstVec, 
   vector<string> res;
   res.reserve(2 * (firstVec.size() + secondVec.size()));
   for(const auto& x : firstVec) {
-    res.push_back(x.forward.seq.keys);
-    res.push_back(x.backward.seq.keys);
+    res.push_back(x.forward.seq.str());
+    res.push_back(x.backward.seq.str());
   }
   for(const auto& x : secondVec) {
-    res.push_back(x.forward.seq.keys);
-    res.push_back(x.backward.seq.keys);
+    res.push_back(x.forward.seq.str());
+    res.push_back(x.backward.seq.str());
   }
   return res;
 }

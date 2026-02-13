@@ -59,7 +59,7 @@ TEST_F(EditOptimizerOutputCorrectness, SingleLineEmbedded) {
 
       total++;
       const auto& seq = r.getSequenceString();
-      auto result = oracle->simulate(test.fullBuffer, bufferPos.line, bufferPos.col, seq.keys);
+      auto result = oracle->simulate(test.fullBuffer, bufferPos.line, bufferPos.col, seq.str());
 
       if (result.lines.flatten() == expected) {
         passed++;
@@ -97,7 +97,7 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineFullBuffer) {
 
       total++;
       const auto& seq = r.getSequenceString();
-      auto nvim = oracle->simulate(source, pos.line, pos.col, seq.keys);
+      auto nvim = oracle->simulate(source, pos.line, pos.col, seq.str());
 
       bool ok = (nvim.lines.size() == 1 && nvim.lines[0].empty()) || nvim.lines.empty();
       if (ok) {
@@ -134,7 +134,7 @@ TEST_F(EditOptimizerOutputCorrectness, Replacement_SameLength) {
 
     // Result is for starting position 0
     const auto& seq = result->getSequenceString();
-    auto nvim = oracle->simulate(source, 0, 0, seq.keys);
+    auto nvim = oracle->simulate(source, 0, 0, seq.str());
 
     if (nvim.lines.size() == 1 && nvim.lines[0] == replacement) {
       passed++;
@@ -174,7 +174,7 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineEmbedded) {
 
       total++;
       const auto& seq = r.getSequenceString();
-      auto nvim = oracle->simulate(test.fullBuffer, bufferPos.line, bufferPos.col, seq.keys);
+      auto nvim = oracle->simulate(test.fullBuffer, bufferPos.line, bufferPos.col, seq.str());
 
       if (nvim.lines.flatten() == expected) {
         passed++;
@@ -222,7 +222,7 @@ TEST_F(EditOptimizerOutputCorrectness, SingleLine_Change) {
 
       total++;
       const auto& seq = r.getSequenceString();
-      auto nvim = oracle->simulate(source, pos.line, pos.col, seq.keys);
+      auto nvim = oracle->simulate(source, pos.line, pos.col, seq.str());
 
       if (nvim.lines == goal) {
         passed++;
@@ -264,7 +264,7 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLine_FullBufferChange) {
 
       total++;
       const auto& seq = r.getSequenceString();
-      auto nvim = oracle->simulate(source, pos.line, pos.col, seq.keys);
+      auto nvim = oracle->simulate(source, pos.line, pos.col, seq.str());
 
       if (nvim.lines == goal) {
         passed++;
@@ -332,7 +332,7 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLine_EmbeddedChange) {
         fullWithGoal.push_back(line);
       }
 
-      auto nvim = oracle->simulate(test.fullBuffer, bufferPos.line, bufferPos.col, seq.keys);
+      auto nvim = oracle->simulate(test.fullBuffer, bufferPos.line, bufferPos.col, seq.str());
 
       if (nvim.lines.flatten() == expected) {
         passed++;

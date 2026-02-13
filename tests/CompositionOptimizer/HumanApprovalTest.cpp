@@ -48,7 +48,7 @@ protected:
     for (size_t i = 0; i < results.size(); i++) {
       ASSERT_TRUE(results[i].isValid()) << "Result " << i << " invalid" << ctx(context);
       SimulationResult nvim = oracle->simulate(
-          initial, initialPos.line, initialPos.col, results[i].sequence.keys);
+          initial, initialPos.line, initialPos.col, results[i].sequence.str());
       EXPECT_TRUE(nvim.lines == goal)
           << "Result " << i << " seq='" << results[i].sequence << "'" << ctx(context)
           << "\n  Initial: " << initial << "\n  Goal: " << goal << "\n  Got: " << nvim.lines;
@@ -63,7 +63,7 @@ protected:
       const string& context = "") {
     ASSERT_TRUE(result.isValid()) << "Result invalid" << ctx(context);
     SimulationResult nvim = oracle->simulate(
-        initial, initialPos.line, initialPos.col, result.sequence.keys);
+        initial, initialPos.line, initialPos.col, result.sequence.str());
     EXPECT_TRUE(nvim.lines == goal)
         << "seq='" << result.sequence << "'" << ctx(context)
         << "\n  Initial: " << initial << "\n  Goal: " << goal << "\n  Got: " << nvim.lines;
@@ -93,7 +93,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, Example1) {
   MotionBoundary boundary(initialLines, initialPos, afterPos);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos);
-  cout << res << endl;
+  // cout << res << endl;
   verifyResults(initialLines, initialPos, afterLines, res.goalPos);
 }
 
@@ -111,7 +111,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, TelescopingChanges) {
   MotionBoundary boundary(initialLines, initialPos, afterPos);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos);
-  cout << res << endl;
+  // cout << res << endl;
   verifyResults(initialLines, initialPos, afterLines, res.goalPos);
 }
 
@@ -130,7 +130,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLines) {
   MotionBoundary boundary(initialLines, initialPos, afterPos, true, true);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos, CompositionOptimizerParams{}, "", boundary);
-  cout << res << endl;
+  // cout << res << endl;
   verifyResults(initialLines, initialPos, afterLines, res.goalPos);
 }
 
@@ -143,7 +143,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesExact) {
   Position goalPos = goal.lastPos();
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
-  cout << "JoinLinesExact:\n" << res << endl;
+  // cout << "JoinLinesExact:\n" << res << endl;
   verifyResults(initial, initialPos, goal, res.goalPos);
 }
 
@@ -155,7 +155,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesWithIndent) {
   Position goalPos = goal.lastPos();
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
-  cout << "JoinLinesWithIndent:\n" << res << endl;
+  // cout << "JoinLinesWithIndent:\n" << res << endl;
   ASSERT_FALSE(res.results.empty());
   // Verify J-based result (result 0); other results may have pre-existing oracle mismatches
   verifySingleResult(res.results[0], initial, initialPos, goal, "J path");
@@ -169,7 +169,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesWithResidual) {
   Position goalPos = goal.lastPos();
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
-  cout << "JoinLinesWithResidual:\n" << res << endl;
+  // cout << "JoinLinesWithResidual:\n" << res << endl;
   ASSERT_FALSE(res.results.empty());
   // Verify J-based result (result 0); other results may have pre-existing oracle mismatches
   verifySingleResult(res.results[0], initial, initialPos, goal, "J path");
@@ -185,7 +185,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesPartialJoin) {
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos,
       params, "", boundary);
-  cout << "JoinLinesPartialJoin:\n" << res << endl;
+  // cout << "JoinLinesPartialJoin:\n" << res << endl;
   verifyResults(initial, initialPos, goal, res.goalPos);
 }
 
@@ -197,7 +197,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesNoViable) {
   Position goalPos = goal.lastPos();
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
-  cout << "JoinLinesNoViable:\n" << res << endl;
+  // cout << "JoinLinesNoViable:\n" << res << endl;
   // Just verify results exist; oracle verification skipped due to pre-existing
   // newline-insertion bugs unrelated to J plans
   EXPECT_FALSE(res.results.empty());

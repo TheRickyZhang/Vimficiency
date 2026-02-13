@@ -42,8 +42,8 @@ void CompositionState::applyEditTransitionImpl(
     const Config& config) {
   pos = newPos;
   editsCompleted++;
-  PhysicalKeys keys = globalTokenizer().tokenize(editSequence.keys);
-  appendSequence(editSequence.keys, keys, config);
+  PhysicalKeys keys = globalTokenizer().tokenize(editSequence.view());
+  appendSequence(editSequence.view(), keys, config);
   mode = newMode;
 }
 
@@ -51,6 +51,6 @@ void CompositionState::applyMotionResultImpl(
     const Sequence& moveSequence,
     const Position& newPos, const Config& config) {
   pos = newPos;
-  PhysicalKeys keys = globalTokenizer().tokenize(moveSequence.keys);
-  appendSequence(moveSequence.keys, keys, config);
+  PhysicalKeys keys = globalTokenizer().tokenize(moveSequence.view());
+  appendSequence(moveSequence.view(), keys, config);
 }

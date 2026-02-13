@@ -47,7 +47,7 @@ void EditExplorer::exploreHalfLineEdits(
   int lastEditLine = lines.lastLine();
 
   for (const Edit::LineEditSpec& spec : specs) {
-    if (spec.ks.seq.keys == "D") {
+    if (spec.ks.seq.view() == "D") {
       if (cursor.line == lastEditLine && ctx_.editBoundary.hasSuffix()) continue;
 
       int lineLen = static_cast<int>(lines[cursor.line].size());
@@ -61,7 +61,7 @@ void EditExplorer::exploreHalfLineEdits(
       if (endCol < cursor.col) continue;
       Range range(cursor, Position(cursor.line, endCol));
       onDeletion(range, spec.ks);
-    } else if (spec.ks.seq.keys == "d0") {
+    } else if (spec.ks.seq.view() == "d0") {
       if (cursor.line == 0 && ctx_.editBoundary.hasPrefix()) continue;
 
       int lineContentStart = (cursor.line == 0) ? ctx_.leftColOffset : 0;

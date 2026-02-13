@@ -305,16 +305,16 @@ TEST(CountableMotionPairTest, LineMotionsContainExpectedPairs) {
   bool hasWORDEnd = false;
 
   for (const auto& pair : COUNT_SEARCHABLE_MOTIONS_LINE) {
-    if (pair.forward.seq.keys == "w" && pair.backward.seq.keys == "b" && pair.type == LandingType::WordBegin) {
+    if (pair.forward.seq.view() == "w" && pair.backward.seq.view() == "b" && pair.type == LandingType::WordBegin) {
       hasWordBegin = true;
     }
-    if (pair.forward.seq.keys == "e" && pair.backward.seq.keys == "ge" && pair.type == LandingType::WordEnd) {
+    if (pair.forward.seq.view() == "e" && pair.backward.seq.view() == "ge" && pair.type == LandingType::WordEnd) {
       hasWordEnd = true;
     }
-    if (pair.forward.seq.keys == "W" && pair.backward.seq.keys == "B" && pair.type == LandingType::WORDBegin) {
+    if (pair.forward.seq.view() == "W" && pair.backward.seq.view() == "B" && pair.type == LandingType::WORDBegin) {
       hasWORDBegin = true;
     }
-    if (pair.forward.seq.keys == "E" && pair.backward.seq.keys == "gE" && pair.type == LandingType::WORDEnd) {
+    if (pair.forward.seq.view() == "E" && pair.backward.seq.view() == "gE" && pair.type == LandingType::WORDEnd) {
       hasWORDEnd = true;
     }
   }
@@ -330,10 +330,10 @@ TEST(CountableMotionPairTest, GlobalMotionsContainParagraphAndSentence) {
   bool hasSentence = false;
 
   for (const auto& pair : COUNT_SEARCHABLE_MOTIONS_GLOBAL) {
-    if (pair.forward.seq.keys == "}" && pair.backward.seq.keys == "{" && pair.type == LandingType::Paragraph) {
+    if (pair.forward.seq.view() == "}" && pair.backward.seq.view() == "{" && pair.type == LandingType::Paragraph) {
       hasParagraph = true;
     }
-    if (pair.forward.seq.keys == ")" && pair.backward.seq.keys == "(" && pair.type == LandingType::Sentence) {
+    if (pair.forward.seq.view() == ")" && pair.backward.seq.view() == "(" && pair.type == LandingType::Sentence) {
       hasSentence = true;
     }
   }

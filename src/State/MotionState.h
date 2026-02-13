@@ -48,7 +48,6 @@ public:
   Position getPos()                       const { return pos; }
   Mode getMode()                          const { return mode; }
   const Sequence& getSequence()            const { return motionSequence; }
-  const std::string& getMotionSequence()  const { return motionSequence.keys; }
   double getEffort()                      const { return effort; }
   double getCost()                        const { return cost; }
   const RunningEffort& getRunningEffort() const { return runningEffort; }

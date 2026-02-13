@@ -179,7 +179,7 @@ end
 --- Tokenize a sequence for animation, with character-by-character fallback
 --- Returns two arrays: tokens and their execution chunks
 --- Typed text is chunked into 4-char segments for smooth animation
----@param seq string
+---@param seq.str()ing
 ---@return string[] tokens Array of execution steps
 local function tokenize_for_animation(seq)
   -- Try the C++ sequence tokenizer first (handles motions + edits + typed text)

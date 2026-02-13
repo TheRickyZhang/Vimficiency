@@ -108,7 +108,7 @@ CompositionSearchContext::CompositionSearchContext(
   debug("--- join plans ---");
   for (int i = 0; i < static_cast<int>(joinPlans.size()); i++) {
     if (joinPlans[i]) {
-      debug("  joinPlan[" + to_string(i) + "]: seq='" + joinPlans[i]->sequence.keys + "'",
+      debug("  joinPlan[" + to_string(i) + "]: seq='" + joinPlans[i]->sequence.str() + "'",
             "effort:", joinPlans[i]->effort, "entryLine:", joinPlans[i]->entryLine,
             "goalPos:", joinPlans[i]->goalPos);
     }
@@ -218,7 +218,7 @@ void CompositionSearchContext::exploreMotionTransition(
 void CompositionSearchContext::exploreNewState(CompositionState&& newState) {
   if (newState.getEffort() > maxEffort) {
     debug("  pruned (effort", newState.getEffort(), ">", maxEffort, "):",
-          "\"" + newState.getMotionSequence() + "\"");
+          "\"" + newState.getSequence().str() + "\"");
     return;
   }
 
@@ -237,7 +237,7 @@ void CompositionSearchContext::exploreNewState(CompositionState&& newState) {
     pq.push(std::move(newState));
   } else {
     debug("  not enqueued (cost", newCost, ">=", it->second, "):",
-          "\"" + newState.getMotionSequence() + "\"");
+          "\"" + newState.getSequence().str() + "\"");
   }
 }
 
@@ -869,7 +869,7 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
           break;
         }
 
-        fullSeq.append(res->sequence.keys);
+        fullSeq.append(res->sequence.view());
         lastGoalPos = residualResult.goalPos;
       } else {
         lastGoalPos = Position(0, cursorCol);
@@ -887,7 +887,7 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
       goalPos = Position(bufferLine, lastGoalPos.col);
     }
 
-    double effort = getEffort(fullSeq.keys, config);
+    double effort = getEffort(fullSeq.view(), config);
 
     plans[i] = JoinPlan{
       .sequence = std::move(fullSeq),

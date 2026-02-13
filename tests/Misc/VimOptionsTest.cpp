@@ -294,7 +294,7 @@ TEST_F(VimOptionsTest, BuildTypedCommands_MatchesOracle_CC) {
   KeyedSequence typed = buildTypedCommands(goalLines, autoindent);
 
   // Replay in oracle: cc enters insert with autoindent, then our sequence
-  string fullSeq = "cc" + typed.seq.keys;
+  string fullSeq = "cc" + typed.seq.str();
   auto result = oracleSimulate(initialLines, 0, 0, fullSeq);
 
   ASSERT_EQ(result.lines.size(), goalLines.size());
@@ -313,7 +313,7 @@ TEST_F(VimOptionsTest, BuildTypedCommands_MultiLine) {
       : string_view("");
   KeyedSequence typed = buildTypedCommands(goalLines, autoindent);
 
-  string fullSeq = "cc" + typed.seq.keys;
+  string fullSeq = "cc" + typed.seq.str();
   auto result = oracleSimulate(initialLines, 0, 0, fullSeq);
 
   ASSERT_EQ(result.lines.size(), goalLines.size());

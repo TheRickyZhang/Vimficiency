@@ -73,7 +73,7 @@ MotionResult MotionOptimizer::optimizeImpl(
 
     if (isGoal) {
       ctx.markProcessed();
-      res.emplace_back(s.getMotionSequence(), s.getRunningEffort().getEffort(config));
+      res.emplace_back(s.getSequence().str(), s.getRunningEffort().getEffort(config));
       if (res.size() >= static_cast<size_t>(params.maxResults)) {
         debug("maximum result count reached");
         break;
@@ -87,7 +87,7 @@ MotionResult MotionOptimizer::optimizeImpl(
     }
 
     ctx.markProcessed();
-    debug("\"" + s.getMotionSequence() + "\"", s.getCost());
+    debug("\"" + s.getSequence().str() + "\"", s.getCost());
 
     // Track this state if debugging
     ctx.trackState(s);
@@ -205,7 +205,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
       double effort = s.getRunningEffort().getEffort(config);
 
       if (params.allowMultiplePerPosition) {
-        allResults.emplace_back(s.getMotionSequence(), effort, pos);
+        allResults.emplace_back(s.getSequence().str(), effort, pos);
         if (allResults.size() >= static_cast<size_t>(params.maxResults)) {
           debug("optimizeToRange: max results reached");
           break;
@@ -213,14 +213,14 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
       } else {
         auto it = bestResultByPos.find(stateKey);
         if (it == bestResultByPos.end()) {
-          bestResultByPos.emplace(stateKey, RangeResult(s.getMotionSequence(), effort, pos));
+          bestResultByPos.emplace(stateKey, RangeResult(s.getSequence().str(), effort, pos));
           uniquePositionsFound++;
           if (uniquePositionsFound >= effectiveMaxResults) {
             debug("optimizeToRange: max unique positions reached (", uniquePositionsFound, "/", rangeSize, ")");
             break;
           }
         } else if (effort < it->second.keyCost) {
-          it->second = RangeResult(s.getMotionSequence(), effort, pos);
+          it->second = RangeResult(s.getSequence().str(), effort, pos);
         }
       }
       continue;
@@ -229,7 +229,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     }
 
     ctx.markProcessed();
-    debug("\"" + s.getMotionSequence() + "\"", s.getCost());
+    debug("\"" + s.getSequence().str() + "\"", s.getCost());
 
     // Track this state if debugging
     ctx.trackState(s);

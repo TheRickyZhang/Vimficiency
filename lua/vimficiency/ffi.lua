@@ -212,7 +212,7 @@ end
 ---@param start_col integer (0-indexed)
 ---@param end_row integer (0-indexed, relative to slice)
 ---@param end_col integer (0-indexed)
----@param key_seq string
+---@param key_seq.str()ing
 ---@param window_height integer
 ---@param scroll_amount integer
 ---@param RESULTS_CALCULATED integer
@@ -248,7 +248,7 @@ function M.analyze(
 
   -- Parse results: format is "size: N user_cost: X.XXX\nseq1 cost1\nseq2 cost2\n..."
   ---@class VimficiencyResult
-  ---@field seq string Motion sequence
+  ---@field seq.str()ing Motion sequence
   ---@field cost number Effort cost
 
   ---@type VimficiencyResult[]
@@ -290,7 +290,7 @@ function M.debug_config()
 end
 
 --- Tokenize a motion sequence into individual tokens
----@param seq string Motion sequence (e.g., "3wfx;j")
+---@param seq.str()ing Motion sequence (e.g., "3wfx;j")
 ---@return string[] Array of motion tokens (e.g., {"3w", "fx;", "j"})
 ---@return string|nil error Error message if tokenization failed
 function M.tokenize_motions(seq)
@@ -311,7 +311,7 @@ end
 
 --- Tokenize a full Vim sequence (motions, edits, insert-mode text) into tokens
 --- Supports change commands, typed text, and <Esc>
----@param seq string Vim sequence (e.g., "ciwhello<Esc>2j")
+---@param seq.str()ing Vim sequence (e.g., "ciwhello<Esc>2j")
 ---@return string[] Array of tokens (e.g., {"ciw", "hello", "<Esc>", "2j"})
 ---@return string|nil error Error message if tokenization failed
 function M.tokenize_sequence(seq)
@@ -332,7 +332,7 @@ end
 
 --- Format a sequence string for human-readable display
 --- Tokenizes into logical units and joins with spaces
----@param seq string Vim sequence (e.g., "3rx<C-d>ciwfoo<Esc>")
+---@param seq.str()ing Vim sequence (e.g., "3rx<C-d>ciwfoo<Esc>")
 ---@return string Formatted sequence (e.g., "3rx <C-d> ciw foo <Esc>")
 function M.format_sequence(seq)
   if not seq or seq == "" then

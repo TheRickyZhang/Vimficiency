@@ -53,7 +53,7 @@ TEST_F(EditOptimizerCostConsistencyTests, CostMatchesComputed) {
       totalResults++;
 
       const auto& seq = result.getSequenceString();
-      double computedCost = getEffort(seq.keys, config);
+      double computedCost = getEffort(seq.view(), config);
       double reportedCost = result.keyCost;
 
       if (abs(computedCost - reportedCost) > 1e-6) {

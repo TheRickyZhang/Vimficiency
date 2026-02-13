@@ -19,23 +19,26 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ccache
-          key: ccache-test-${{ github.ref }}-${{ github.sha }}
+          key: ccache-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
-            ccache-test-${{ github.ref }}-
-            ccache-test-
+            ccache-${{ github.ref }}-
+            ccache-
 
       - name: Cache build deps
         uses: actions/cache@v4
         with:
           path: build/_deps
           key: deps-v2-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+          restore-keys: deps-v2-
 
       - name: Build
         run: |
+          ccache --zero-stats
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF \
             -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j$(nproc)
+          ccache --show-stats
 
       - name: Unit tests
         run: ./build/tests/vimficiency_tests --gtest_brief=1
@@ -58,23 +61,26 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ccache
-          key: ccache-bench-${{ github.ref }}-${{ github.sha }}
+          key: ccache-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
-            ccache-bench-${{ github.ref }}-
-            ccache-bench-
+            ccache-${{ github.ref }}-
+            ccache-
 
       - name: Cache build deps
         uses: actions/cache@v4
         with:
           path: build/_deps
           key: deps-v2-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+          restore-keys: deps-v2-
 
       - name: Build (Release)
         run: |
+          ccache --zero-stats
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF \
             -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j$(nproc)
+          ccache --show-stats
 
       - name: Run EditOptimizer benchmarks
         run: |
@@ -103,7 +109,12 @@ jobs:
           CURRENT=$(git rev-parse HEAD)
           git checkout HEAD~1
 
+          ccache --zero-stats
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF \
+            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j$(nproc)
+          ccache --show-stats
 
           VIMFICIENCY_SEED_MODE=fixed \
           ./build/tests/vimficiency_benchmarks \

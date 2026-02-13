@@ -79,7 +79,7 @@ KeyedSequence buildCollapseSequence(int totalLines, int cursorLine) {
 // de result is already stored when the ranges are identical. So dw reaching the goal
 // implies de didn't, meaning dw deleted trailing whitespace that cw would skip.
 KeyedSequence deleteToChangeChar(const KeyedSequence& deleteKS) {
-  string_view deleteCmd = deleteKS.seq.keys;
+  string_view deleteCmd = deleteKS.seq.view();
   const PhysicalKeys& deleteKeys = deleteKS.keys;
 
   if (deleteCmd == "D")
@@ -140,7 +140,7 @@ KeyedSequence deleteToChangeChar(const KeyedSequence& deleteKS) {
 // Convert linewise delete command to change equivalent.
 KeyedSequence deleteToChangeLine(const KeyedSequence& deleteKS,
                                   string_view lineContent) {
-  string_view deleteCmd = deleteKS.seq.keys;
+  string_view deleteCmd = deleteKS.seq.view();
   const PhysicalKeys& deleteKeys = deleteKS.keys;
 
   // dd is special: cc when no autoindent issue, 0C when autoindent would
@@ -204,7 +204,7 @@ void collapseCountRepeats(vector<Result>& results, int minCountRepeat,
   for (auto& result : results) {
     if (!result.isValid()) continue;
 
-    vector<ParsedEdit> edits = Edit::parseEdits(result.sequence.keys);
+    vector<ParsedEdit> edits = Edit::parseEdits(result.sequence.view());
     if (edits.empty()) continue;
 
     // Scan for collapsible groups: safe edit + consecutive dots
@@ -422,16 +422,16 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
         line >= static_cast<int>(lines.size());
     double hCost = ctx.heuristicCost(lines);
 
-    bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.keys;
+    bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.view();
     if (isDot) {
       KeyedSequence dotCmd(".", KeyedSequence::Period.keys);
       if (needsKEscape) dotCmd += KeyedSequence::k;
-      afterDel.recordSearch(dotCmd.seq.keys, dotCmd.keys, ctx.effortWeight, hCost, config);
+      afterDel.recordSearch(dotCmd.seq.view(), dotCmd.keys, ctx.effortWeight, hCost, config);
     } else {
       KeyedSequence searchCmd = ks;
       if (needsKEscape) searchCmd += KeyedSequence::k;
-      afterDel.recordSearch(searchCmd.seq.keys, searchCmd.keys, ctx.effortWeight, hCost, config);
-      afterDel.setLastEdit(ks.seq.keys);
+      afterDel.recordSearch(searchCmd.seq.view(), searchCmd.keys, ctx.effortWeight, hCost, config);
+      afterDel.setLastEdit(ks.seq.view());
     }
     ctx.exploreNewState(std::move(afterDel));
   };
@@ -460,16 +460,16 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
         range.firstLine >= static_cast<int>(lines.size());
     double hCost = ctx.heuristicCost(lines);
 
-    bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.keys;
+    bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.view();
     if (isDot) {
       KeyedSequence dotCmd(".", KeyedSequence::Period.keys);
       if (needsKEscape) dotCmd += KeyedSequence::k;
-      afterDel.recordSearch(dotCmd.seq.keys, dotCmd.keys, ctx.effortWeight, hCost, config);
+      afterDel.recordSearch(dotCmd.seq.view(), dotCmd.keys, ctx.effortWeight, hCost, config);
     } else {
       KeyedSequence searchCmd = ks;
       if (needsKEscape) searchCmd += KeyedSequence::k;
-      afterDel.recordSearch(searchCmd.seq.keys, searchCmd.keys, ctx.effortWeight, hCost, config);
-      afterDel.setLastEdit(ks.seq.keys);
+      afterDel.recordSearch(searchCmd.seq.view(), searchCmd.keys, ctx.effortWeight, hCost, config);
+      afterDel.setLastEdit(ks.seq.view());
     }
     ctx.exploreNewState(std::move(afterDel));
   };
@@ -516,7 +516,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
       [&](const Position& newPos, const KeyedSequence& ks) {
         EditState newState = s;
         newState.setPos(newPos);
-        newState.recordSearch(ks.seq.keys, ks.keys,
+        newState.recordSearch(ks.seq.view(), ks.keys,
                               ctx.effortWeight, ctx.heuristicCost(newState.getLines()), config);
         ctx.exploreNewState(std::move(newState));
       },
@@ -573,7 +573,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
       if (!motionResults.empty() && motionResults[0].isValid()) {
         // Build visual mode sequence: v + motion + d
         Sequence visualSeq("v");
-        visualSeq.append(motionResults[0].sequence.keys);
+        visualSeq.append(motionResults[0].sequence.view());
         visualSeq.append("d");
 
         // Calculate effort: v + motion + d
@@ -581,7 +581,7 @@ EditOptimizer::optimizePureDeletion(const Lines &initialLines,
         static const PhysicalKeys vKey = {Key::Key_V};
         static const PhysicalKeys dKey = {Key::Key_D};
         effort.append(vKey, config);
-        effort.append(globalTokenizer().tokenize(motionResults[0].sequence.keys), config);
+        effort.append(globalTokenizer().tokenize(motionResults[0].sequence.view()), config);
         double totalEffort = effort.append(dKey, config);
 
         // Compare with existing result[0] and use better one
@@ -750,36 +750,21 @@ EditOptimizer::optimizeEdit(
     }
   };
 
-  // Helper: build goal suffix for a deletion that reaches goal.
-  // Converts delete→change and appends collapse + typed content.
-  //
-  // The change command (c) uses Insert mode for deleteRange, which preserves
-  // empty merged lines that Normal mode (d) would remove. We detect this
-  // cheaply from the range rather than re-simulating the deletion.
-  // See docs/core/vim-edge-cases.md §2 for the full explanation.
+  // Converts delete -> change and appends collapse + typed content.
   auto buildGoalSuffix = [&](const KeyedSequence& deleteKS,
                              const Lines& postDelLines, const Position& postDelPos,
                              const Lines& preDelLines, const Range& range) -> KeyedSequence {
     int totalLines = static_cast<int>(postDelLines.size());
     int cursorLine = postDelPos.line;
 
-    // This operates on a Range, not a LineRange, hence we have more specific logic for this!
-    // Check if Insert mode would keep an empty merged line that Normal mode
-    // removed. Condition: multiline range starting at col 0, where the merged
-    // line (prefix of first line + suffix of last line) is empty, and there
-    // are still other lines remaining after the merge.
-    if (range.first.line != range.last.line && range.first.col == 0) {
-      const string& lastLine = preDelLines[range.last.line];
-      if (range.last.col >= static_cast<int>(lastLine.size()) - 1) {
-        int linesAfterMerge = static_cast<int>(preDelLines.size())
-                            - (range.last.line - range.first.line);
-        if (linesAfterMerge > 1) {
-          // Insert mode keeps the empty line; Normal mode removed it.
-          // Insert mode cursor stays on the empty merged line (one
-          // line higher than Normal mode clamped position) -> one more <BS>
-          totalLines++;
-          cursorLine++;
-        }
+    // It is best to retrospectively adjust here because of our delete -> change model rather than re-simulating the deletion.
+    // All conditions here are needed: multiline range fully covering lines and there are still other lines remaining after the merge. Easiest way to check is with visual + delete!
+    // Note this is characterwise, NOT linewise. That has different logic
+    if (range.spansMultiple() && range.first.col == 0 && range.last.col >= preDelLines[range.last.line].size() - 1) {
+      // We didn't delete everything -> adjust for one additional kept new line
+      if (preDelLines.size() - range.size() > 0) {
+        totalLines++;
+        cursorLine++;
       }
     }
 
@@ -794,7 +779,7 @@ EditOptimizer::optimizeEdit(
                              const KeyedSequence& ks) {
     EditState afterDel = base.afterDeletion(range);
     const Lines &lines = afterDel.getLines();
-    bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.keys;
+    bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.view();
 
     if (isGoalReached(lines)) {
       // Normal goal path
@@ -808,9 +793,9 @@ EditOptimizer::optimizeEdit(
         replayAndCacheSuffix(base.getStartIndex(), base.getSeq(), goalSuffix, suffixEffort);
 
         EditState realState = afterDel;
-        realState.recordSearch(goalSuffix.seq.keys, goalSuffix.keys,
+        realState.recordSearch(goalSuffix.seq.view(), goalSuffix.keys,
                               ctx.effortWeight, 0.0, config);
-        realState.setLastEdit(ks.seq.keys);
+        realState.setLastEdit(ks.seq.view());
         ctx.exploreNewState(std::move(realState));
       }
 
@@ -824,7 +809,7 @@ EditOptimizer::optimizeEdit(
         dotSuffix += typed;
 
         EditState dotState = std::move(afterDel);
-        dotState.recordSearch(dotSuffix.seq.keys, dotSuffix.keys,
+        dotState.recordSearch(dotSuffix.seq.view(), dotSuffix.keys,
                               ctx.effortWeight, 0.0, config);
         ctx.exploreNewState(std::move(dotState));
       }
@@ -841,7 +826,7 @@ EditOptimizer::optimizeEdit(
                              const KeyedSequence& ks) {
     EditState afterDel = base.afterLinewiseDeletion(line);
     const Lines &lines = afterDel.getLines();
-    bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.keys;
+    bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.view();
 
     if (isGoalReached(lines)) {
       // Normal goal path
@@ -857,9 +842,9 @@ EditOptimizer::optimizeEdit(
         replayAndCacheSuffix(base.getStartIndex(), base.getSeq(), goalSuffix, suffixEffort);
 
         EditState realState = afterDel;
-        realState.recordSearch(goalSuffix.seq.keys, goalSuffix.keys,
+        realState.recordSearch(goalSuffix.seq.view(), goalSuffix.keys,
                               ctx.effortWeight, 0.0, config);
-        realState.setLastEdit(ks.seq.keys);
+        realState.setLastEdit(ks.seq.view());
         ctx.exploreNewState(std::move(realState));
       }
 
@@ -873,7 +858,7 @@ EditOptimizer::optimizeEdit(
         dotSuffix += typed;
 
         EditState dotState = std::move(afterDel);
-        dotState.recordSearch(dotSuffix.seq.keys, dotSuffix.keys,
+        dotState.recordSearch(dotSuffix.seq.view(), dotSuffix.keys,
                               ctx.effortWeight, 0.0, config);
         ctx.exploreNewState(std::move(dotState));
       }
@@ -896,12 +881,12 @@ EditOptimizer::optimizeEdit(
     if (isDot) {
       KeyedSequence dotCmd(".", KeyedSequence::Period.keys);
       if (needsKEscape) dotCmd += KeyedSequence::k;
-      afterDel.recordSearch(dotCmd.seq.keys, dotCmd.keys, ctx.effortWeight, hCost, config);
+      afterDel.recordSearch(dotCmd.seq.view(), dotCmd.keys, ctx.effortWeight, hCost, config);
     } else {
       KeyedSequence searchCmd = ks;
       if (needsKEscape) searchCmd += KeyedSequence::k;
-      afterDel.recordSearch(searchCmd.seq.keys, searchCmd.keys, ctx.effortWeight, hCost, config);
-      afterDel.setLastEdit(ks.seq.keys);
+      afterDel.recordSearch(searchCmd.seq.view(), searchCmd.keys, ctx.effortWeight, hCost, config);
+      afterDel.setLastEdit(ks.seq.view());
     }
     ctx.exploreNewState(std::move(afterDel));
   };
@@ -910,7 +895,7 @@ EditOptimizer::optimizeEdit(
   auto exploreJoin = [&](const EditState& base, bool addSpace,
                          const KeyedSequence& ks) {
     EditState afterJn = base.afterJoin(addSpace);
-    bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.keys;
+    bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.view();
 
     if (isGoalReached(afterJn.getLines())) {
       // Normal goal path
@@ -927,9 +912,9 @@ EditOptimizer::optimizeEdit(
         replayAndCacheSuffix(base.getStartIndex(), base.getSeq(), goalSuffix, suffixEffort);
 
         EditState realState = afterJn;
-        realState.recordSearch(goalSuffix.seq.keys, goalSuffix.keys,
+        realState.recordSearch(goalSuffix.seq.view(), goalSuffix.keys,
                               ctx.effortWeight, 0.0, config);
-        realState.setLastEdit(ks.seq.keys);
+        realState.setLastEdit(ks.seq.view());
         ctx.exploreNewState(std::move(realState));
       }
 
@@ -943,7 +928,7 @@ EditOptimizer::optimizeEdit(
         dotSuffix += typed;
 
         EditState dotState = std::move(afterJn);
-        dotState.recordSearch(dotSuffix.seq.keys, dotSuffix.keys,
+        dotState.recordSearch(dotSuffix.seq.view(), dotSuffix.keys,
                               ctx.effortWeight, 0.0, config);
         ctx.exploreNewState(std::move(dotState));
       }
@@ -959,7 +944,7 @@ EditOptimizer::optimizeEdit(
                                      const KeyedSequence& ks) {
     EditState afterDel = base.afterMultiLinewiseDeletion(range);
     const Lines& lines = afterDel.getLines();
-    bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.keys;
+    bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.view();
     int lineCount = range.lastLine - range.firstLine + 1;
 
     if (isGoalReached(lines)) {
@@ -978,9 +963,9 @@ EditOptimizer::optimizeEdit(
         replayAndCacheSuffix(base.getStartIndex(), base.getSeq(), goalSuffix, suffixEffort);
 
         EditState realState = afterDel;
-        realState.recordSearch(goalSuffix.seq.keys, goalSuffix.keys,
+        realState.recordSearch(goalSuffix.seq.view(), goalSuffix.keys,
                               ctx.effortWeight, 0.0, config);
-        realState.setLastEdit(ks.seq.keys);
+        realState.setLastEdit(ks.seq.view());
         ctx.exploreNewState(std::move(realState));
       }
 
@@ -994,7 +979,7 @@ EditOptimizer::optimizeEdit(
         dotSuffix += typed;
 
         EditState dotState = std::move(afterDel);
-        dotState.recordSearch(dotSuffix.seq.keys, dotSuffix.keys,
+        dotState.recordSearch(dotSuffix.seq.view(), dotSuffix.keys,
                               ctx.effortWeight, 0.0, config);
         ctx.exploreNewState(std::move(dotState));
       }
@@ -1017,12 +1002,12 @@ EditOptimizer::optimizeEdit(
     if (isDot) {
       KeyedSequence dotCmd(".", KeyedSequence::Period.keys);
       if (needsKEscape) dotCmd += KeyedSequence::k;
-      afterDel.recordSearch(dotCmd.seq.keys, dotCmd.keys, ctx.effortWeight, hCost2, config);
+      afterDel.recordSearch(dotCmd.seq.view(), dotCmd.keys, ctx.effortWeight, hCost2, config);
     } else {
       KeyedSequence searchCmd = ks;
       if (needsKEscape) searchCmd += KeyedSequence::k;
-      afterDel.recordSearch(searchCmd.seq.keys, searchCmd.keys, ctx.effortWeight, hCost2, config);
-      afterDel.setLastEdit(ks.seq.keys);
+      afterDel.recordSearch(searchCmd.seq.view(), searchCmd.keys, ctx.effortWeight, hCost2, config);
+      afterDel.setLastEdit(ks.seq.view());
     }
     ctx.exploreNewState(std::move(afterDel));
   };
@@ -1031,7 +1016,7 @@ EditOptimizer::optimizeEdit(
   auto exploreCountedJoin = [&](const EditState& base, int count, bool addSpace,
                                  const KeyedSequence& ks) {
     EditState afterJn = base.afterMultiJoin(count, addSpace);
-    bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.keys;
+    bool isDot = !base.getLastEdit().empty() && base.getLastEdit() == ks.seq.view();
 
     if (isGoalReached(afterJn.getLines())) {
       // Normal goal path
@@ -1048,9 +1033,9 @@ EditOptimizer::optimizeEdit(
         replayAndCacheSuffix(base.getStartIndex(), base.getSeq(), goalSuffix, suffixEffort);
 
         EditState realState = afterJn;
-        realState.recordSearch(goalSuffix.seq.keys, goalSuffix.keys,
+        realState.recordSearch(goalSuffix.seq.view(), goalSuffix.keys,
                               ctx.effortWeight, 0.0, config);
-        realState.setLastEdit(ks.seq.keys);
+        realState.setLastEdit(ks.seq.view());
         ctx.exploreNewState(std::move(realState));
       }
 
@@ -1064,7 +1049,7 @@ EditOptimizer::optimizeEdit(
         dotSuffix += typed;
 
         EditState dotState = std::move(afterJn);
-        dotState.recordSearch(dotSuffix.seq.keys, dotSuffix.keys,
+        dotState.recordSearch(dotSuffix.seq.view(), dotSuffix.keys,
                               ctx.effortWeight, 0.0, config);
         ctx.exploreNewState(std::move(dotState));
       }
@@ -1111,7 +1096,7 @@ EditOptimizer::optimizeEdit(
         const KeyedSequence& suffix = useDot ? sv.dotKs : sv.ks;
         const RunningEffort& suffixEffort = useDot ? sv.dotEffort : sv.effort;
 
-        string seqStr = s.getSeq() + suffix.seq.keys;
+        string seqStr = s.getSeq() + suffix.seq.str();
         RunningEffort mergedEffort = RunningEffort::merge(s.getRunningEffort(), suffixEffort);
         double totalEffort = mergedEffort.getEffort(config);
 
@@ -1134,7 +1119,7 @@ EditOptimizer::optimizeEdit(
       [&](const Position& newPos, const KeyedSequence& ks) {
         EditState newState = s;
         newState.setPos(newPos);
-        newState.recordSearch(ks.seq.keys, ks.keys,
+        newState.recordSearch(ks.seq.view(), ks.keys,
                               ctx.effortWeight, ctx.heuristicCost(newState.getLines()), config);
         ctx.exploreNewState(std::move(newState));
       },

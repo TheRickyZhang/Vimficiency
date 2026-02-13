@@ -1,6 +1,5 @@
 #pragma once
 
-#include <string>
 #include <string_view>
 
 #include "Editor/Mode.h"
@@ -90,9 +89,6 @@ public:
 
   // Get sequence
   const Sequence& getSequence() const { return sequence; }
-
-  // Get flattened string representation
-  const std::string& getMotionSequence() const { return sequence.keys; }
 
   double getEffort() const { return effort; }
   double getCost() const { return cost; }

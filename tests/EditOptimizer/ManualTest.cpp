@@ -122,7 +122,7 @@ TEST_F(EditOptimizer_ManualTest, PureDeletion_OracleVerified) {
   EXPECT_TRUE(allPositionsValid(res, lines));
 
   forEachValidResult(res, lines, [&](Position pos, const auto& seq) {
-    SimulationResult nvimRes = verifySequenceWithOracle(oracle.get(), lines, pos, seq.keys);
+    SimulationResult nvimRes = verifySequenceWithOracle(oracle.get(), lines, pos, seq.str());
     EXPECT_TRUE(nvimRes.lines.isEmpty() && nvimRes.mode == Mode::Normal)
         << "Sequence '" << seq << "' from " << pos << " did not reach goal";
   });
@@ -167,10 +167,10 @@ TEST_F(EditOptimizer_ManualTest, Boundary_LinewiseCursorContainment) {
 
   forEachValidResult(res.getResults(), editRegion, [&](Position pos, const auto& seq) {
     // Skip visual mode sequences for now
-    if (!seq.empty() && seq.keys[0] == 'v') return;
+    if (!seq.empty() && seq.view()[0] == 'v') return;
 
     Position fullBufferPos(pos.line + initialPos.line, pos.col);
-    ApplyResult applied = applySequence(fullBuffer, fullBufferPos, seq.keys);
+    ApplyResult applied = applySequence(fullBuffer, fullBufferPos, seq.str());
 
     EXPECT_EQ(applied.lines[0], "xx") << "Line above modified after '" << seq << "'";
     EXPECT_EQ(applied.lines.back(), "yy") << "Line below modified after '" << seq << "'";
@@ -198,7 +198,7 @@ TEST_F(EditOptimizer_ManualTest, Replacement_SingleCharMiddle) {
 
   ASSERT_TRUE(result.has_value());
   const auto& seq = result->getSequenceString();
-  EXPECT_TRUE(seq.keys.find("ro") != string::npos) << "Expected 'ro' in: " << seq;
+  EXPECT_TRUE(seq.view().find("ro") != string::npos) << "Expected 'ro' in: " << seq;
 }
 
 TEST_F(EditOptimizer_ManualTest, Replacement_ConsecutiveChars) {
@@ -218,8 +218,8 @@ TEST_F(EditOptimizer_ManualTest, Replacement_SparseChars) {
 
   // Count r1 occurrences
   size_t replaceCount = 0;
-  for (size_t i = 0; i + 1 < seq.keys.size(); i++) {
-    if (seq.keys[i] == 'r' && seq.keys[i + 1] == '1') replaceCount++;
+  for (size_t i = 0; i + 1 < seq.size(); i++) {
+    if (seq.view()[i] == 'r' && seq.view()[i + 1] == '1') replaceCount++;
   }
   EXPECT_GE(replaceCount, 3u) << "Expected at least 3 'r1' in: " << seq;
 }

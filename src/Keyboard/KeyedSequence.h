@@ -35,7 +35,7 @@ struct KeyedSequence {
   KeyedSequence(std::string_view s, PhysicalKeys k) : seq(std::string(s)), keys(std::move(k)) {}
 
   KeyedSequence& operator+=(const KeyedSequence& other) {
-    seq.append(other.seq.keys);
+    seq.append(other.seq.view());
     keys += other.keys;
     return *this;
   }
@@ -53,13 +53,13 @@ struct KeyedSequence {
   }
 
   void appendRepeated(const KeyedSequence& ks, int count) {
-    seq.append(count, std::string_view(ks.seq.keys));
+    seq.append(count, ks.seq.view());
     keys.append(ks.keys, count);
   }
 
   void appendCounted(int count, const KeyedSequence& base) {
     seq.append(std::to_string(count));
-    seq.append(base.seq.keys);
+    seq.append(base.seq.view());
     keys.append(makeCountedKeys(count, base.keys));
   }
 
