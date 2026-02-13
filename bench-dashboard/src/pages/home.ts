@@ -22,11 +22,14 @@ interface Change {
   detail: string;
   optimizer: string;
   pctChange: number;
+  ratio: number;
   prevNs: number;
   currNs: number;
 }
 
 const OPTIMIZERS = ['edit', 'motion', 'composition'] as const;
+const MAX_ITEMS = 5;
+const ALERT_RATIO = 1.5;
 
 async function fetchData(optimizer: string): Promise<BenchData | null> {
   try {
@@ -70,47 +73,95 @@ async function loadChanges(): Promise<Change[]> {
       const prevNs = toNs(prevBench.value, prevBench.unit);
       if (prevNs === 0) continue;
 
-      const pctChange = ((currNs - prevNs) / prevNs) * 100;
+      const ratio = currNs / prevNs;
+      const pctChange = (ratio - 1) * 100;
+      if (Math.abs(pctChange) < 1) continue;
       const { category, detail } = parseName(bench.name);
 
-      changes.push({ name: bench.name, category, detail, optimizer: opt, pctChange, prevNs, currNs });
+      changes.push({ name: bench.name, category, detail, optimizer: opt, pctChange, ratio, prevNs, currNs });
     }
   }
 
-  changes.sort((a, b) => Math.abs(b.pctChange) - Math.abs(a.pctChange));
-  return changes.slice(0, 5);
+  return changes;
+}
+
+function optimizerLabel(opt: string): string {
+  return opt.charAt(0).toUpperCase() + opt.slice(1);
+}
+
+function renderItem(c: Change): HTMLAnchorElement {
+  const item = document.createElement('a');
+  item.className = 'change-item';
+  item.href = `bench/${c.optimizer}/?bench=${encodeURIComponent(c.name)}#${encodeURIComponent(c.category)}`;
+
+  const left = document.createElement('div');
+  left.className = 'change-left';
+  const detail = document.createElement('span');
+  detail.className = 'change-detail';
+  detail.textContent = c.detail;
+  const meta = document.createElement('span');
+  meta.className = 'change-meta';
+  meta.textContent = `${optimizerLabel(c.optimizer)} / ${c.category}`;
+  left.appendChild(detail);
+  left.appendChild(meta);
+
+  const right = document.createElement('div');
+  right.className = 'change-right';
+
+  const overThreshold = c.ratio >= ALERT_RATIO || c.ratio <= 1 / ALERT_RATIO;
+  if (overThreshold) {
+    const warn = document.createElement('span');
+    warn.className = 'change-warn';
+    warn.textContent = '\u26A0';
+    warn.title = 'Exceeds alert threshold';
+    right.appendChild(warn);
+  }
+
+  const times = document.createElement('span');
+  times.className = 'change-times';
+  times.textContent = `${fmtTime(c.prevNs)} \u2192 ${fmtTime(c.currNs)}`;
+  right.appendChild(times);
+
+  const pct = document.createElement('span');
+  const sign = c.pctChange >= 0 ? '+' : '';
+  pct.textContent = `${sign}${c.pctChange.toFixed(1)}%`;
+  pct.className = `change-pct ${c.pctChange > 0 ? 'regression' : 'improvement'}`;
+  right.appendChild(pct);
+
+  item.appendChild(left);
+  item.appendChild(right);
+  return item;
 }
 
 function render(changes: Change[]) {
-  if (changes.length === 0) return;
+  const regressions = changes
+    .filter((c) => c.pctChange > 0)
+    .sort((a, b) => b.pctChange - a.pctChange)
+    .slice(0, MAX_ITEMS);
 
-  const container = document.getElementById('top-changes')!;
-  const list = document.getElementById('change-list')!;
+  const improvements = changes
+    .filter((c) => c.pctChange < 0)
+    .sort((a, b) => a.pctChange - b.pctChange)
+    .slice(0, MAX_ITEMS);
 
-  for (const c of changes) {
-    const item = document.createElement('div');
-    item.className = 'change-item';
+  if (!regressions.length && !improvements.length) return;
 
-    const link = document.createElement('a');
-    link.href = `bench/${c.optimizer}/`;
-    link.textContent = `${c.category} / ${c.detail}`;
+  const section = document.getElementById('changes-section')!;
+  section.style.display = 'block';
 
-    const pct = document.createElement('span');
-    const sign = c.pctChange >= 0 ? '+' : '';
-    pct.textContent = `${sign}${c.pctChange.toFixed(1)}%`;
-    pct.className = `change-pct ${c.pctChange > 0 ? 'regression' : 'improvement'}`;
-
-    const times = document.createElement('span');
-    times.className = 'change-times';
-    times.textContent = `${fmtTime(c.prevNs)} \u2192 ${fmtTime(c.currNs)}`;
-
-    item.appendChild(link);
-    item.appendChild(pct);
-    item.appendChild(times);
-    list.appendChild(item);
+  if (regressions.length) {
+    const col = document.getElementById('regressions-col')!;
+    const list = document.getElementById('regressions-list')!;
+    col.style.display = 'block';
+    for (const c of regressions) list.appendChild(renderItem(c));
   }
 
-  container.style.display = 'block';
+  if (improvements.length) {
+    const col = document.getElementById('improvements-col')!;
+    const list = document.getElementById('improvements-list')!;
+    col.style.display = 'block';
+    for (const c of improvements) list.appendChild(renderItem(c));
+  }
 }
 
 loadChanges().then(render);

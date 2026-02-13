@@ -7,9 +7,11 @@ import styles from './App.module.css';
 export function App() {
   const { data, categories, optimizerName } = useBenchmarkData();
   const [activeCategory, setActiveCategory] = useState<string | null>(
-    () => location.hash.substring(1) || null,
+    () => decodeURIComponent(location.hash.substring(1)) || null,
   );
-  const [openBench, setOpenBench] = useState<string | null>(null);
+  const [openBench, setOpenBench] = useState<string | null>(
+    () => new URLSearchParams(location.search).get('bench'),
+  );
 
   const storageKey = `vimficiency-hidden-${optimizerName}`;
   const [hiddenShas, setHiddenShas] = useState<Set<string>>(() => {
@@ -46,7 +48,7 @@ export function App() {
 
   useEffect(() => {
     const handler = () => {
-      setActiveCategory(location.hash.substring(1) || null);
+      setActiveCategory(decodeURIComponent(location.hash.substring(1)) || null);
       setOpenBench(null);
     };
     window.addEventListener('hashchange', handler);

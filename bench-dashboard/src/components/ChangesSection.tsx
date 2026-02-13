@@ -4,7 +4,7 @@ import { fmtTime } from '../utils/format';
 import styles from './ChangesSection.module.css';
 
 const ALERT_RATIO = 1.5;
-const MAX_ITEMS = 5;
+const MAX_ITEMS = 3;
 
 interface BenchChange {
   benchName: string;
