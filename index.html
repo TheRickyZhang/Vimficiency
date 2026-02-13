@@ -16,6 +16,7 @@
     .container { max-width: 1200px; margin: 0 auto; padding: 40px 24px; }
     h1 { font-size: 2rem; font-weight: 800; margin-bottom: 4px; }
     h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 12px; }
+    h3 { font-size: 1rem; font-weight: 700; color: #555; margin-bottom: 8px; }
     .subtitle { color: #666; font-size: 1.1rem; margin-bottom: 40px; }
     .optimizer-grid {
       display: grid;
@@ -36,43 +37,90 @@
       border-color: #4285f4;
       box-shadow: 0 2px 8px rgba(66, 133, 244, 0.15);
     }
-    .optimizer-card h3 { font-size: 1.25rem; font-weight: 700; margin-bottom: 4px; }
+    .optimizer-card h3 { font-size: 1.25rem; font-weight: 700; margin-bottom: 4px; color: inherit; }
     .optimizer-card p { color: #666; font-size: 0.95rem; }
-    #top-changes { display: none; margin-top: 40px; }
-    .change-list { display: flex; flex-direction: column; gap: 8px; }
+    #changes-section { display: none; margin-bottom: 40px; }
+    .changes-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 768px) {
+      .changes-grid { grid-template-columns: 1fr; }
+    }
+    .change-list { display: flex; flex-direction: column; gap: 4px; }
     .change-item {
       display: flex;
-      align-items: baseline;
-      gap: 12px;
-      padding: 10px 14px;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
       background: white;
-      border: 1px solid #e0e0e0;
+      border: 1px solid #e8e8e8;
       border-radius: 6px;
-      font-size: 0.95rem;
-    }
-    .change-item a {
-      color: inherit;
       text-decoration: none;
-      font-weight: 600;
-      flex: 1;
+      color: inherit;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .change-item:hover {
+      border-color: #4285f4;
+      box-shadow: 0 1px 4px rgba(66, 133, 244, 0.12);
+    }
+    .change-left {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
       min-width: 0;
+    }
+    .change-detail {
+      font-weight: 600;
+      font-size: 0.9rem;
+      white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      white-space: nowrap;
     }
-    .change-item a:hover { text-decoration: underline; }
-    .change-pct { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .change-pct.regression { color: #d93025; }
-    .change-pct.improvement { color: #1e8e3e; }
-    .change-times { color: #888; font-size: 0.85rem; white-space: nowrap; }
+    .change-meta {
+      font-size: 0.75rem;
+      color: #999;
+    }
+    .change-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .change-times {
+      font-size: 0.8rem;
+      color: #888;
+    }
+    .change-pct {
+      font-weight: 700;
+      font-size: 0.9rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .change-pct.regression { color: #ea4335; }
+    .change-pct.improvement { color: #34a853; }
+    .change-warn { font-size: 1.1rem; color: #f9a825; }
   </style>
-  <script type="module" crossorigin src="/Vimficiency/bench/assets/home-CcWE2dEU.js"></script>
+  <script type="module" crossorigin src="/Vimficiency/bench/assets/home-CiCfPBgt.js"></script>
   <link rel="modulepreload" crossorigin href="/Vimficiency/bench/assets/data-Blj_EWU5.js">
 </head>
 <body>
   <div class="container">
     <h1>Vimficiency Benchmarks</h1>
     <p class="subtitle">Performance tracking across commits</p>
+    <div id="changes-section">
+      <div class="changes-grid">
+        <div id="regressions-col" style="display:none">
+          <h3>Largest Regressions</h3>
+          <div class="change-list" id="regressions-list"></div>
+        </div>
+        <div id="improvements-col" style="display:none">
+          <h3>Largest Improvements</h3>
+          <div class="change-list" id="improvements-list"></div>
+        </div>
+      </div>
+    </div>
+    <h2>Optimizers</h2>
     <div class="optimizer-grid">
       <a class="optimizer-card" href="bench/edit/">
         <h3>EditOptimizer</h3>
@@ -86,10 +134,6 @@
         <h3>CompositionOptimizer</h3>
         <p>Full composition optimization</p>
       </a>
-    </div>
-    <div id="top-changes">
-      <h2>Biggest recent changes</h2>
-      <div class="change-list" id="change-list"></div>
     </div>
   </div>
 </body>
