@@ -1,4 +1,5 @@
 import type { BenchmarkData, BenchmarkRun } from '../types/benchmark';
+import type { Nanoseconds } from './format';
 
 export interface ParsedName {
   category: string;
@@ -8,7 +9,7 @@ export interface ParsedName {
 export interface TimePoint {
   sha: string;
   commitUrl: string;
-  val: number;
+  val: Nanoseconds;
   msg: string;
 }
 
@@ -36,11 +37,13 @@ export function discoverCategories(data: BenchmarkRun[]): Record<string, string[
 }
 
 /** Convert a benchmark value to nanoseconds based on the stored unit string. */
-function toNanoseconds(value: number, unit: string): number {
-  if (unit.startsWith('s')) return value * 1e9;
-  if (unit.startsWith('ms')) return value * 1e6;
-  if (unit.startsWith('us') || unit.startsWith('\u00b5s')) return value * 1e3;
-  return value; // already ns
+export function toNanoseconds(value: number, unit: string): Nanoseconds {
+  let ns: number;
+  if (unit.startsWith('ms')) ns = value * 1e6;
+  else if (unit.startsWith('us') || unit.startsWith('\u00b5s')) ns = value * 1e3;
+  else if (unit.startsWith('s')) ns = value * 1e9;
+  else ns = value; // already ns
+  return ns as Nanoseconds;
 }
 
 export function timeSeries(data: BenchmarkRun[], benchName: string, repoUrl: string, hiddenShas?: Set<string>): TimePoint[] {

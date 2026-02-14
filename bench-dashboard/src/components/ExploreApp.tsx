@@ -3,8 +3,6 @@ import type { ExplorationData, ExplorationCase } from '../types/exploration';
 import { EffortHistogram } from './EffortHistogram';
 import { ExplorationTimeline } from './ExplorationTimeline';
 import { ExplorationTree } from './ExplorationTree';
-import { ExplorationTreeGraph } from './ExplorationTreeGraph';
-import { SequencePrefixTable } from './SequencePrefixTable';
 
 function findCase(cases: ExplorationCase[], query: string | null): ExplorationCase | undefined {
   if (!query) return cases[0];
@@ -45,18 +43,18 @@ export function ExploreApp({ data, initialCase }: Props) {
   return (
     <div>
       <h1>Search Space Explorer</h1>
-      <p className="subtitle">A* explored states visualization</p>
+      <p className="text-[#666] text-[1.1rem] mb-10">A* explored states visualization</p>
 
       {/* Controls */}
-      <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+      <div className="flex gap-4 mb-6 flex-wrap">
         <div>
-          <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#555', display: 'block', marginBottom: 4 }}>
+          <label className="text-[0.85rem] font-semibold text-[#555] block mb-1">
             Commit
           </label>
           <select
             value={commitIdx}
             onChange={(e) => { setCommitIdx(Number(e.target.value)); setSelectedCaseName(null); setSelectedResultSeq(null); }}
-            style={selectStyle}
+            className="px-3 py-1.5 text-[0.9rem] rounded-md border border-[#ccc] bg-surface"
           >
             {data.entries.map((e, i) => (
               <option key={e.commit.id} value={i}>
@@ -67,13 +65,13 @@ export function ExploreApp({ data, initialCase }: Props) {
         </div>
 
         <div>
-          <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#555', display: 'block', marginBottom: 4 }}>
+          <label className="text-[0.85rem] font-semibold text-[#555] block mb-1">
             Case
           </label>
           <select
             value={activeCase?.name ?? ''}
             onChange={(e) => { setSelectedCaseName(e.target.value); setSelectedResultSeq(null); }}
-            style={selectStyle}
+            className="px-3 py-1.5 text-[0.9rem] rounded-md border border-[#ccc] bg-surface"
           >
             {cases.map((c) => (
               <option key={c.name} value={c.name}>
@@ -88,28 +86,23 @@ export function ExploreApp({ data, initialCase }: Props) {
         <div>
           {/* Found Results — most important, at the top */}
           {sortedResults.length > 0 && (
-            <Card title="Found Sequences" style={{ marginBottom: 24 }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {sortedResults.map((r, i) => {
+            <Card title="Found Sequences" className="mb-6">
+              <div className="flex flex-wrap gap-2">
+                {sortedResults.map((r) => {
                   const seq = r.tokens.join('');
                   const isSelected = selectedResultSeq === seq;
-                  const isBest = i === 0;
                   return (
                     <div
                       key={seq}
                       onClick={() => setSelectedResultSeq(isSelected ? null : seq)}
-                      style={{
-                        display: 'flex', alignItems: 'baseline', gap: 8,
-                        padding: '6px 14px',
-                        background: isSelected ? '#e3f2fd' : isBest ? '#e8f5e9' : '#f5f5f5',
-                        border: `2px solid ${isSelected ? '#1976d2' : isBest ? '#4caf50' : '#e0e0e0'}`,
-                        borderRadius: 6,
-                        cursor: 'pointer',
-                        transition: 'border-color 0.15s, background 0.15s',
-                      }}
+                      className={`flex items-baseline gap-2 px-3.5 py-1.5 rounded-md cursor-pointer transition-[border-color,background] duration-150 border-2 ${
+                        isSelected
+                          ? 'bg-[#e3f2fd] border-[#1976d2]'
+                          : 'bg-[#f5f5f5] border-border'
+                      }`}
                     >
-                      <code style={{ fontWeight: 700, fontSize: '1rem' }}>{seq}</code>
-                      <span style={{ fontSize: '0.8rem', color: '#888' }}>
+                      <code className="font-bold text-base">{seq}</code>
+                      <span className="text-[0.8rem] text-muted">
                         {r.effort.toFixed(2)}
                       </span>
                     </div>
@@ -117,7 +110,7 @@ export function ExploreApp({ data, initialCase }: Props) {
                 })}
               </div>
               {selectedResultSeq && (
-                <div style={{ fontSize: '0.75rem', color: '#888', marginTop: 6 }}>
+                <div className="text-xs text-muted mt-1.5">
                   Click again to deselect
                 </div>
               )}
@@ -125,7 +118,7 @@ export function ExploreApp({ data, initialCase }: Props) {
           )}
 
           {/* Stats summary */}
-          <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+          <div className="flex gap-4 mb-6 flex-wrap">
             <Stat label="Nodes explored" value={activeCase.nodesExplored.toLocaleString()} />
             <Stat label="States tracked" value={activeCase.states.length.toLocaleString()} />
             <Stat label="Max effort" value={
@@ -141,16 +134,12 @@ export function ExploreApp({ data, initialCase }: Props) {
           </div>
 
           {/* Exploration Tree */}
-          <Card title="Exploration Tree" style={{ marginBottom: 24 }}>
-            {activeCase.states.length <= 1000 ? (
-              <ExplorationTreeGraph states={activeCase.states} results={sortedResults} selectedSeq={selectedResultSeq} />
-            ) : (
-              <ExplorationTree states={activeCase.states} />
-            )}
+          <Card title="Exploration Tree" className="mb-6">
+            <ExplorationTree states={activeCase.states} results={sortedResults} />
           </Card>
 
           {/* Charts */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
+          <div className="grid grid-cols-2 gap-6 mb-6">
             <Card title="Effort Distribution">
               <EffortHistogram states={activeCase.states} results={sortedResults} selectedSeq={selectedResultSeq} />
             </Card>
@@ -158,40 +147,25 @@ export function ExploreApp({ data, initialCase }: Props) {
               <ExplorationTimeline states={activeCase.states} />
             </Card>
           </div>
-
-          <Card title="Top First Moves">
-            <SequencePrefixTable states={activeCase.states} />
-          </Card>
         </div>
       )}
     </div>
   );
 }
 
-const selectStyle: React.CSSProperties = {
-  padding: '6px 12px', fontSize: '0.9rem', borderRadius: 6,
-  border: '1px solid #ccc', background: 'white',
-};
-
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{
-      background: 'white', border: '1px solid #e0e0e0', borderRadius: 8,
-      padding: '10px 16px', minWidth: 100,
-    }}>
-      <div style={{ fontSize: '0.75rem', color: '#888', fontWeight: 600, marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>{value}</div>
+    <div className="bg-surface border border-border rounded-lg px-4 py-2.5 min-w-[100px]">
+      <div className="text-xs text-muted font-semibold mb-0.5">{label}</div>
+      <div className="text-[1.2rem] font-extrabold">{value}</div>
     </div>
   );
 }
 
-function Card({ title, children, style }: { title: string; children: React.ReactNode; style?: React.CSSProperties }) {
+function Card({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
   return (
-    <div style={{
-      background: 'white', border: '1px solid #e0e0e0', borderRadius: 8,
-      padding: 20, ...style,
-    }}>
-      <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 12, color: '#333' }}>{title}</h3>
+    <div className={`bg-surface border border-border rounded-lg p-5 ${className ?? ''}`}>
+      <h3 className="text-base font-bold mb-3 text-[#333]">{title}</h3>
       {children}
     </div>
   );

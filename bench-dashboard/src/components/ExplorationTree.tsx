@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import type { ExploredStateEntry } from '../types/exploration';
+import type { ExploredStateEntry, FoundResultEntry } from '../types/exploration';
 
 export interface TreeNode {
   move: string;       // the motion/edit that leads to this node
@@ -55,17 +55,21 @@ export function buildTree(states: ExploredStateEntry[]): TreeNode {
   return root;
 }
 
-interface TreeNodeProps {
+interface TreeNodeRowProps {
   node: TreeNode;
   depth: number;
   totalStates: number;
   defaultExpanded: boolean;
+  foundSeqs: Set<string>;
+  isLast: boolean;
+  ancestorPrefixes: boolean[]; // for each ancestor depth, whether it's the last sibling
 }
 
-function TreeNodeRow({ node, depth, totalStates, defaultExpanded }: TreeNodeProps) {
+function TreeNodeRow({ node, depth, totalStates, defaultExpanded, foundSeqs, isLast, ancestorPrefixes }: TreeNodeRowProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const hasChildren = node.children.size > 0;
-  const pct = ((node.count / totalStates) * 100).toFixed(1);
+  const isLeaf = !hasChildren;
+  const isFound = foundSeqs.has(node.fullSeq);
 
   // Sort children by count descending
   const sortedChildren = useMemo(() =>
@@ -73,63 +77,76 @@ function TreeNodeRow({ node, depth, totalStates, defaultExpanded }: TreeNodeProp
     [node.children]
   );
 
-  // Color based on % of total exploration
-  const barWidth = Math.max(2, (node.count / totalStates) * 100);
-  const barColor = node.count > totalStates * 0.1 ? '#4285f4'
-    : node.count > totalStates * 0.02 ? '#34a853'
-    : '#ccc';
+  // Tree connector lines
+  const connectors = ancestorPrefixes.map((isLastAtDepth, i) => (
+    <span key={i} className="inline-block w-5 text-center text-border select-none">
+      {isLastAtDepth ? '' : '\u2502'}
+    </span>
+  ));
+
+  const branchChar = isLast ? '\u2514' : '\u251C';
 
   return (
     <>
-      <tr
+      <div
+        className={`flex items-center py-0.5 ${hasChildren ? 'cursor-pointer hover:bg-[#f5f5f5]' : ''}`}
         onClick={() => hasChildren && setExpanded(!expanded)}
-        style={{
-          cursor: hasChildren ? 'pointer' : 'default',
-          background: depth === 0 ? '#f8f9fa' : undefined,
-        }}
       >
-        <td style={{ padding: '3px 8px', whiteSpace: 'nowrap' }}>
-          <span style={{ display: 'inline-block', width: depth * 20 }} />
-          {hasChildren ? (
-            <span style={{ display: 'inline-block', width: 16, color: '#888', fontSize: '0.8rem' }}>
-              {expanded ? '\u25BC' : '\u25B6'}
-            </span>
-          ) : (
-            <span style={{ display: 'inline-block', width: 16 }} />
-          )}
-          <code style={{
-            fontWeight: depth === 0 ? 400 : 600,
-            fontSize: '0.9rem',
-            background: depth > 0 ? '#f0f0f0' : undefined,
-            padding: depth > 0 ? '1px 4px' : undefined,
-            borderRadius: 3,
-          }}>
-            {node.move}
-          </code>
-        </td>
-        <td style={{ padding: '3px 8px', textAlign: 'right', fontSize: '0.85rem', color: '#555' }}>
+        {/* Tree connectors */}
+        {depth > 0 && (
+          <span className="font-mono text-border text-[0.85rem] select-none whitespace-pre">
+            {connectors}
+            <span className="inline-block w-5 text-center">{branchChar}\u2500</span>
+          </span>
+        )}
+
+        {/* Expand/collapse indicator */}
+        {hasChildren ? (
+          <span className="inline-block w-4 text-muted text-[0.75rem] text-center shrink-0">
+            {expanded ? '\u25BC' : '\u25B6'}
+          </span>
+        ) : (
+          <span className="inline-block w-4 shrink-0" />
+        )}
+
+        {/* Move label */}
+        <code className={`text-[0.9rem] px-1 py-px rounded-[3px] ${
+          isFound ? 'font-bold bg-good/15 text-good' : 'font-semibold bg-[#f0f0f0]'
+        }`}>
+          {node.move}
+        </code>
+
+        {/* Metadata */}
+        <span className="text-[0.8rem] text-muted ml-2">
           {node.effort.toFixed(2)}
-        </td>
-        <td style={{ padding: '3px 8px', textAlign: 'right', fontSize: '0.85rem' }}>
-          {node.count}
-        </td>
-        <td style={{ padding: '3px 8px', width: 120 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{
-              height: 8, width: `${barWidth}%`, background: barColor,
-              borderRadius: 4, minWidth: 2, transition: 'width 0.2s',
-            }} />
-            <span style={{ fontSize: '0.75rem', color: '#888' }}>{pct}%</span>
-          </div>
-        </td>
-      </tr>
-      {expanded && sortedChildren.map((child) => (
+        </span>
+        <span className="text-xs text-[#bbb] ml-2">
+          {node.count} state{node.count !== 1 ? 's' : ''}
+        </span>
+
+        {/* Leaf tags */}
+        {isLeaf && isFound && (
+          <span className="ml-2 text-xs font-semibold text-good bg-good/10 px-1.5 py-px rounded">
+            found
+          </span>
+        )}
+        {isLeaf && !isFound && (
+          <span className="ml-2 text-xs text-muted">
+            pruned
+          </span>
+        )}
+      </div>
+
+      {expanded && sortedChildren.map((child, i) => (
         <TreeNodeRow
           key={child.move}
           node={child}
           depth={depth + 1}
           totalStates={totalStates}
-          defaultExpanded={depth < 1 && child.count > totalStates * 0.1}
+          defaultExpanded={child.count > totalStates * 0.05}
+          foundSeqs={foundSeqs}
+          isLast={i === sortedChildren.length - 1}
+          ancestorPrefixes={[...ancestorPrefixes, isLast]}
         />
       ))}
     </>
@@ -138,10 +155,17 @@ function TreeNodeRow({ node, depth, totalStates, defaultExpanded }: TreeNodeProp
 
 interface Props {
   states: ExploredStateEntry[];
+  results?: FoundResultEntry[];
 }
 
-export function ExplorationTree({ states }: Props) {
+export function ExplorationTree({ states, results }: Props) {
   const tree = useMemo(() => buildTree(states), [states]);
+
+  const foundSeqs = useMemo(() => {
+    const s = new Set<string>();
+    if (results) for (const r of results) s.add(r.tokens.join(''));
+    return s;
+  }, [results]);
 
   if (!states.length) return null;
 
@@ -152,30 +176,26 @@ export function ExplorationTree({ states }: Props) {
   );
 
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{
-        width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem',
-      }}>
-        <thead>
-          <tr style={{ borderBottom: '2px solid #e0e0e0', textAlign: 'left' }}>
-            <th style={{ padding: '6px 8px', fontWeight: 700 }}>Move</th>
-            <th style={{ padding: '6px 8px', fontWeight: 700, textAlign: 'right' }}>Min Effort</th>
-            <th style={{ padding: '6px 8px', fontWeight: 700, textAlign: 'right' }}>States</th>
-            <th style={{ padding: '6px 8px', fontWeight: 700 }}>Share</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sortedRootChildren.map((child) => (
-            <TreeNodeRow
-              key={child.move}
-              node={child}
-              depth={0}
-              totalStates={states.length}
-              defaultExpanded={child.count > states.length * 0.1}
-            />
-          ))}
-        </tbody>
-      </table>
+    <div className="font-mono text-[0.9rem]">
+      {/* Root node */}
+      <div className="flex items-center py-0.5 text-muted">
+        <span className="inline-block w-4" />
+        <code className="text-[0.9rem] font-normal">(start)</code>
+        <span className="text-xs ml-2">{states.length} states total</span>
+      </div>
+
+      {sortedRootChildren.map((child, i) => (
+        <TreeNodeRow
+          key={child.move}
+          node={child}
+          depth={1}
+          totalStates={states.length}
+          defaultExpanded={child.count > states.length * 0.05}
+          foundSeqs={foundSeqs}
+          isLast={i === sortedRootChildren.length - 1}
+          ancestorPrefixes={[]}
+        />
+      ))}
     </div>
   );
 }

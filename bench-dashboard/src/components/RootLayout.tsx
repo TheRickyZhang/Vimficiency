@@ -20,20 +20,20 @@ export function RootLayout() {
     if (isExplore) {
       title = `Search Space — ${label} — Vimficiency`;
       breadcrumb = (
-        <div className="breadcrumb">
-          <Link to="/">Vimficiency</Link>
-          <span className="sep">&#x203A;</span>
-          <Link to="/$optimizer" params={{ optimizer: optimizerParam }} search={{ cat: undefined, bench: undefined }}>{label}</Link>
-          <span className="sep">&#x203A;</span>
+        <div className="mb-6 text-base">
+          <Link to="/" className="text-brand no-underline font-semibold hover:underline">Vimficiency</Link>
+          <span className="text-[#999] mx-2">&#x203A;</span>
+          <Link to="/$optimizer" params={{ optimizer: optimizerParam }} search={{ cat: undefined, bench: undefined }} className="text-brand no-underline font-semibold hover:underline">{label}</Link>
+          <span className="text-[#999] mx-2">&#x203A;</span>
           <span>Search Space</span>
         </div>
       );
     } else {
       title = `${label} — Vimficiency Benchmarks`;
       breadcrumb = (
-        <div className="breadcrumb">
-          <Link to="/">Vimficiency</Link>
-          <span className="sep">&#x203A;</span>
+        <div className="mb-6 text-base">
+          <Link to="/" className="text-brand no-underline font-semibold hover:underline">Vimficiency</Link>
+          <span className="text-[#999] mx-2">&#x203A;</span>
           <span>{label}</span>
         </div>
       );
@@ -43,7 +43,7 @@ export function RootLayout() {
   document.title = title;
 
   return (
-    <div className="container">
+    <div className="max-w-[1200px] mx-auto px-6 py-10">
       {breadcrumb}
       <Outlet />
     </div>

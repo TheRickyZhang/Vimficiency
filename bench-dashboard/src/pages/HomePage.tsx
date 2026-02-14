@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { homeRoute, type OptimizerSlug } from '../router';
-import { parseName } from '../utils/data';
-import { fmtTime } from '../utils/format';
+import { parseName, toNanoseconds } from '../utils/data';
+import { fmtTime, type Nanoseconds } from '../utils/format';
 
 interface Change {
   name: string;
@@ -10,8 +10,8 @@ interface Change {
   optimizer: OptimizerSlug;
   pctChange: number;
   ratio: number;
-  prevNs: number;
-  currNs: number;
+  prevNs: Nanoseconds;
+  currNs: Nanoseconds;
 }
 
 const MAX_ITEMS = 5;
@@ -22,13 +22,6 @@ const OPTIMIZER_LABELS: Record<OptimizerSlug, { title: string; desc: string }> =
   motion: { title: 'MotionOptimizer', desc: 'Cursor motion optimization' },
   composition: { title: 'CompositionOptimizer', desc: 'Full composition optimization' },
 };
-
-function toNs(value: number, unit: string): number {
-  if (unit === 's') return value * 1e9;
-  if (unit === 'ms') return value * 1e6;
-  if (unit === 'us') return value * 1e3;
-  return value;
-}
 
 export function HomePage() {
   const { optimizers } = homeRoute.useLoaderData();
@@ -44,8 +37,8 @@ export function HomePage() {
     for (const bench of latest.benches) {
       const prevBench = prevMap.get(bench.name);
       if (!prevBench) continue;
-      const currNs = toNs(bench.value, bench.unit);
-      const prevNs = toNs(prevBench.value, prevBench.unit);
+      const currNs = toNanoseconds(bench.value, bench.unit);
+      const prevNs = toNanoseconds(prevBench.value, prevBench.unit);
       if (prevNs === 0) continue;
       const ratio = currNs / prevNs;
       const pctChange = (ratio - 1) * 100;
@@ -68,39 +61,22 @@ export function HomePage() {
   return (
     <>
       <h1>Vimficiency Benchmarks</h1>
-      <p className="subtitle">Performance tracking across commits</p>
+      <p className="text-[#666] text-[1.1rem] mb-10">Performance tracking across commits</p>
 
       <h2>Optimizers</h2>
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-        gap: 16,
-      }}>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">
         {(['edit', 'motion', 'composition'] as const).map((slug) => (
           <Link
             key={slug}
             to="/$optimizer"
             params={{ optimizer: slug }}
             search={{ cat: undefined, bench: undefined }}
-            style={{
-              display: 'block', padding: 24, background: 'white',
-              border: '1px solid #e0e0e0', borderRadius: 8,
-              textDecoration: 'none', color: 'inherit',
-              transition: 'border-color 0.15s, box-shadow 0.15s',
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.borderColor = '#4285f4';
-              e.currentTarget.style.boxShadow = '0 2px 8px rgba(66, 133, 244, 0.15)';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.borderColor = '#e0e0e0';
-              e.currentTarget.style.boxShadow = 'none';
-            }}
+            className="block p-6 bg-surface border border-border rounded-lg no-underline text-inherit transition-[border-color,box-shadow] duration-150 hover:border-brand hover:shadow-[0_2px_8px_rgba(66,133,244,0.15)]"
           >
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 4, color: 'inherit' }}>
+            <h3 className="text-[1.25rem] font-bold mb-1 text-inherit">
               {OPTIMIZER_LABELS[slug].title}
             </h3>
-            <p style={{ color: '#666', fontSize: '0.95rem' }}>
+            <p className="text-[#666] text-[0.95rem]">
               {OPTIMIZER_LABELS[slug].desc}
             </p>
           </Link>
@@ -108,16 +84,12 @@ export function HomePage() {
       </div>
 
       {(regressions.length > 0 || improvements.length > 0) && (
-        <div style={{ marginTop: 40 }}>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: 24,
-          }}>
+        <div className="mt-10">
+          <div className="grid grid-cols-2 gap-6">
             {regressions.length > 0 && (
               <div>
                 <h3>Largest Regressions</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div className="flex flex-col gap-1">
                   {regressions.map((c) => (
                     <ChangeItem key={`${c.optimizer}-${c.name}`} change={c} />
                   ))}
@@ -127,7 +99,7 @@ export function HomePage() {
             {improvements.length > 0 && (
               <div>
                 <h3>Largest Improvements</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div className="flex flex-col gap-1">
                   {improvements.map((c) => (
                     <ChangeItem key={`${c.optimizer}-${c.name}`} change={c} />
                   ))}
@@ -151,43 +123,26 @@ function ChangeItem({ change: c }: { change: Change }) {
       to="/$optimizer"
       params={{ optimizer: c.optimizer }}
       search={{ cat: c.category, bench: c.name }}
-      style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '8px 12px', background: 'white',
-        border: '1px solid #e8e8e8', borderRadius: 6,
-        textDecoration: 'none', color: 'inherit',
-        transition: 'border-color 0.15s, box-shadow 0.15s',
-      }}
-      onMouseOver={(e) => {
-        e.currentTarget.style.borderColor = '#4285f4';
-        e.currentTarget.style.boxShadow = '0 1px 4px rgba(66, 133, 244, 0.12)';
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.borderColor = '#e8e8e8';
-        e.currentTarget.style.boxShadow = 'none';
-      }}
+      className="flex justify-between items-center px-3 py-2 bg-surface border border-border-light rounded-md no-underline text-inherit transition-[border-color,box-shadow] duration-150 hover:border-brand hover:shadow-[0_1px_4px_rgba(66,133,244,0.12)]"
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-        <span style={{ fontWeight: 600, fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div className="flex flex-col gap-px min-w-0">
+        <span className="font-semibold text-[0.9rem] whitespace-nowrap overflow-hidden text-ellipsis">
           {c.detail}
         </span>
-        <span style={{ fontSize: '0.75rem', color: '#999' }}>
+        <span className="text-xs text-[#999]">
           {label} / {c.category}
         </span>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+      <div className="flex items-center gap-2 shrink-0">
         {overThreshold && (
-          <span style={{ fontSize: '1.1rem', color: '#f9a825' }} title="Exceeds alert threshold">
+          <span className="text-[1.1rem] text-warn" title="Exceeds alert threshold">
             {'\u26A0'}
           </span>
         )}
-        <span style={{ fontSize: '0.8rem', color: '#888' }}>
+        <span className="text-[0.8rem] text-muted">
           {fmtTime(c.prevNs)} {'\u2192'} {fmtTime(c.currNs)}
         </span>
-        <span style={{
-          fontWeight: 700, fontSize: '0.9rem', fontVariantNumeric: 'tabular-nums',
-          color: c.pctChange > 0 ? '#ea4335' : '#34a853',
-        }}>
+        <span className={`font-bold text-[0.9rem] tabular-nums ${c.pctChange > 0 ? 'text-bad' : 'text-good'}`}>
           {sign}{c.pctChange.toFixed(1)}%
         </span>
       </div>

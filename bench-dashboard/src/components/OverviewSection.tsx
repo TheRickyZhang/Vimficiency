@@ -1,7 +1,6 @@
 import type { BenchmarkRun } from '../types/benchmark';
 import { SummaryCard } from './SummaryCard';
 import { ChangesSection } from './ChangesSection';
-import styles from './OverviewSection.module.css';
 
 interface Props {
   categories: Record<string, string[]>;
@@ -16,7 +15,7 @@ export function OverviewSection({ categories, data, onSelect, onSelectBench }: P
     <div>
       <ChangesSection categories={categories} data={data} onSelect={onSelectBench} />
       <h2>Categories</h2>
-      <div className={styles.summaryGrid}>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3 mb-8">
         {entries.map(([cat, names]) => (
           <SummaryCard
             key={cat}

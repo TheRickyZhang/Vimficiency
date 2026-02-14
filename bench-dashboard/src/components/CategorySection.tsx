@@ -5,7 +5,6 @@ import { parseName, timeSeries } from '../utils/data';
 import { bestUnit } from '../utils/format';
 import { BenchmarkChart } from './BenchmarkChart';
 import { ChartModal } from './ChartModal';
-import styles from './CategorySection.module.css';
 
 interface Props {
   category: string;
@@ -46,36 +45,31 @@ export function CategorySection({ category, benchNames, data, optimizer, repoUrl
 
   return (
     <div>
-      <div className={styles.header}>
-        <a href="#" className={styles.backLink} onClick={(e) => { e.preventDefault(); onBack(); }}>
+      <div className="flex items-center gap-4 mb-5">
+        <a href="#" className="text-[0.95rem] text-brand no-underline font-semibold hover:underline" onClick={(e) => { e.preventDefault(); onBack(); }}>
           &larr; All categories
         </a>
         <h2>{category}</h2>
       </div>
-      <div className={styles.chartGrid}>
+      <div className="grid grid-cols-2 gap-4 mb-10 max-md:grid-cols-1">
         {charts.map((c, i) => (
-          <div key={c.benchName} className={styles.chartCard} onClick={(e) => {
+          <div key={c.benchName} className="bg-surface border border-border rounded-lg p-4 cursor-default transition-[box-shadow,border-color] duration-150 hover:border-brand hover:shadow-[0_2px_8px_rgba(0,0,0,0.1)]" onClick={(e) => {
             if (!(e.nativeEvent as any).__xAxisHandled) setModal({ title: c.detail, idx: i }); // eslint-disable-line @typescript-eslint/no-explicit-any
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <h4 style={{ margin: 0 }}>{c.detail}</h4>
+            <div className="flex justify-between items-center mb-2">
+              <h4 className="m-0 text-base font-bold text-[#333]">{c.detail}</h4>
               <Link
                 to="/$optimizer/explore"
                 params={{ optimizer }}
                 search={{ case: category + '/' + c.detail }}
                 onClick={(e) => e.stopPropagation()}
                 title="Explore search space"
-                style={{
-                  fontSize: '0.75rem', color: '#4285f4', textDecoration: 'none',
-                  fontWeight: 600, padding: '2px 8px', borderRadius: 4,
-                  border: '1px solid #d0d0d0', background: '#f8f9fa',
-                  whiteSpace: 'nowrap',
-                }}
+                className="text-xs text-brand no-underline font-semibold px-2 py-0.5 rounded border border-[#d0d0d0] bg-[#f8f9fa] whitespace-nowrap cursor-pointer"
               >
                 Explore
               </Link>
             </div>
-            <div className={styles.chartWrapper}>
+            <div className="relative h-[200px]">
               <BenchmarkChart series={c.series} unit={c.unit} />
             </div>
           </div>

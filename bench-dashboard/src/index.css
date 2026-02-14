@@ -1,4 +1,15 @@
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #4285f4;
+  --color-good: #34a853;
+  --color-bad: #ea4335;
+  --color-warn: #f9a825;
+  --color-border: #e0e0e0;
+  --color-border-light: #e8e8e8;
+  --color-surface: white;
+  --color-muted: #888;
+}
 
 body {
   font-family: system-ui, -apple-system, sans-serif;
@@ -8,15 +19,6 @@ body {
   line-height: 1.5;
 }
 
-.container { max-width: 1200px; margin: 0 auto; padding: 40px 24px; }
-
 h1 { font-size: 2rem; font-weight: 800; margin-bottom: 4px; }
 h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 12px; }
 h3 { font-size: 1rem; font-weight: 700; color: #555; margin-bottom: 8px; }
-
-.subtitle { color: #666; font-size: 1.1rem; margin-bottom: 40px; }
-
-.breadcrumb { margin-bottom: 24px; font-size: 1rem; }
-.breadcrumb a { color: #4285f4; text-decoration: none; font-weight: 600; }
-.breadcrumb a:hover { text-decoration: underline; }
-.breadcrumb .sep { color: #999; margin: 0 8px; }

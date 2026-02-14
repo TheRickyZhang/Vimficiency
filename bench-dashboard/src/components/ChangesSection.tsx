@@ -1,7 +1,6 @@
 import type { BenchmarkRun } from '../types/benchmark';
-import { parseName } from '../utils/data';
-import { fmtTime } from '../utils/format';
-import styles from './ChangesSection.module.css';
+import { parseName, toNanoseconds } from '../utils/data';
+import { fmtTime, type Nanoseconds } from '../utils/format';
 
 const ALERT_RATIO = 1.5;
 const MAX_ITEMS = 3;
@@ -12,7 +11,7 @@ interface BenchChange {
   detail: string;
   pctChange: number;
   ratio: number;
-  latestVal: number;
+  latestVal: Nanoseconds;
 }
 
 interface Props {
@@ -32,7 +31,10 @@ function computeChanges(categories: Record<string, string[]>, data: BenchmarkRun
       const lb = latest.benches.find((b) => b.name === name);
       const pb = prev.benches.find((b) => b.name === name);
       if (!lb || !pb || pb.value === 0) continue;
-      const ratio = lb.value / pb.value;
+      const currNs = toNanoseconds(lb.value, lb.unit);
+      const prevNs = toNanoseconds(pb.value, pb.unit);
+      if (prevNs === 0) continue;
+      const ratio = currNs / prevNs;
       const pct = (ratio - 1) * 100;
       if (Math.abs(pct) < 1) continue; // skip negligible changes
       changes.push({
@@ -41,7 +43,7 @@ function computeChanges(categories: Record<string, string[]>, data: BenchmarkRun
         detail: parseName(name).detail,
         pctChange: pct,
         ratio,
-        latestVal: lb.value,
+        latestVal: currNs,
       });
     }
   }
@@ -55,15 +57,15 @@ function ChangeItem({ change, onSelect }: { change: BenchChange; onSelect: () =>
   const sign = isRegression ? '+' : '';
 
   return (
-    <button className={styles.item} onClick={onSelect}>
-      <div className={styles.itemLeft}>
-        <span className={styles.detail}>{change.detail}</span>
-        <span className={styles.category}>{change.category}</span>
+    <button className="flex justify-between items-center px-3 py-2 bg-surface border border-border-light rounded-md cursor-pointer transition-[border-color,box-shadow] duration-150 text-left font-[inherit] text-inherit w-full hover:border-brand hover:shadow-[0_1px_4px_rgba(66,133,244,0.12)]" onClick={onSelect}>
+      <div className="flex flex-col gap-px min-w-0">
+        <span className="font-semibold text-[0.9rem] whitespace-nowrap overflow-hidden text-ellipsis">{change.detail}</span>
+        <span className="text-xs text-[#999]">{change.category}</span>
       </div>
-      <div className={styles.itemRight}>
-        {overThreshold && <span className={styles.warn} title="Exceeds alert threshold">&#x26A0;</span>}
-        <span className={styles.val}>{fmtTime(change.latestVal)}</span>
-        <span className={isRegression ? styles.bad : styles.good}>
+      <div className="flex items-center gap-2 shrink-0">
+        {overThreshold && <span className="text-[1.1rem] text-warn" title="Exceeds alert threshold">&#x26A0;</span>}
+        <span className="text-[0.8rem] text-muted">{fmtTime(change.latestVal)}</span>
+        <span className={`font-bold text-[0.9rem] ${isRegression ? 'text-bad' : 'text-good'}`}>
           {sign}{change.pctChange.toFixed(1)}%
         </span>
       </div>
@@ -88,11 +90,11 @@ export function ChangesSection({ categories, data, onSelect }: Props) {
   if (!regressions.length && !improvements.length) return null;
 
   return (
-    <div className={styles.container}>
+    <div className="grid grid-cols-2 gap-6 mb-8 max-md:grid-cols-1">
       {regressions.length > 0 && (
         <div>
-          <h3 className={styles.heading}>Largest Regressions</h3>
-          <div className={styles.list}>
+          <h3>Largest Regressions</h3>
+          <div className="flex flex-col gap-1">
             {regressions.map((c) => (
               <ChangeItem key={c.benchName} change={c} onSelect={() => onSelect(c.category, c.benchName)} />
             ))}
@@ -101,8 +103,8 @@ export function ChangesSection({ categories, data, onSelect }: Props) {
       )}
       {improvements.length > 0 && (
         <div>
-          <h3 className={styles.heading}>Largest Improvements</h3>
-          <div className={styles.list}>
+          <h3>Largest Improvements</h3>
+          <div className="flex flex-col gap-1">
             {improvements.map((c) => (
               <ChangeItem key={c.benchName} change={c} onSelect={() => onSelect(c.category, c.benchName)} />
             ))}
