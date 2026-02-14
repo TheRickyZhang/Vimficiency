@@ -384,8 +384,6 @@ void EditExplorer::exploreCountedWordEdits(
     int minCountRepeat, DeletionCallback onDeletion) {
   if (!onDeletion) return;
   if (minCountRepeat < 2) return;
-  // Cursor in boundary region: deletions from here would include prefix/suffix chars
-  if (inBoundaryRegion(cursor, lines)) return;
 
   static constexpr int MAX_COUNT_ITERATIONS = 9;
 
@@ -568,65 +566,16 @@ void EditExplorer::exploreJoinCommands(
 void EditExplorer::exploreAllDeletions(const EditState& state,
                                        DeletionCallback onDeletion,
                                        LinewiseCallback onLinewise,
-                                       MotionCallback onMotion,
                                        JoinCallback onJoin) {
   const Lines& lines = state.getLines();
   Position cursor = state.getPos();
 
-  // Right boundary (suffix region): cursor on last line, in suffix columns
-  if (cursor.line == lines.lastLine() && ctx_.rightColOffset > 0 &&
-      cursor.col + ctx_.rightColOffset >= static_cast<int>(lines.getSize(cursor.line))) {
-    int firstSuffixCol = static_cast<int>(lines.getSize(cursor.line)) - ctx_.rightColOffset;
-
-    // At exactly the first suffix column, backward word edits are safe:
-    // they delete [endpoint, cursor.col-1] which is entirely in content.
-    if (cursor.col == firstSuffixCol && firstSuffixCol > 0) {
-      exploreBackwardWordEdits<EdgeType::WordEdge>(Edit::BACKWARD_WORDEDGE_EDITS, cursor, lines, onDeletion);
-      exploreBackwardWordEdits<EdgeType::NextEdge>(Edit::BACKWARD_NEXTEDGE_EDITS, cursor, lines, onDeletion);
-    }
-
-    // Motions to escape the suffix region
-    if (onMotion) {
-      // h: move left within line (away from suffix)
-      if (cursor.col > 0) {
-        onMotion(Position(cursor.line, cursor.col - 1), KeyedSequence::h,
-                 ctx_.effortFor(KeyedSequence::h));
-      }
-      // k: move up to previous line (escape suffix line entirely)
-      if (cursor.line > 0) {
-        int newCol = min(cursor.targetCol, lines[cursor.line - 1].lastCol());
-        onMotion(Position(cursor.line - 1, newCol, cursor.targetCol), KeyedSequence::k,
-                 ctx_.effortFor(KeyedSequence::k));
-      }
-    }
-    return;
-  }
-
-  // Left boundary (prefix region): cursor on line 0, in prefix columns
-  if (cursor.line == 0 && cursor.col < ctx_.leftColOffset) {
-    if (onMotion) {
-      // l: move right within line (away from prefix)
-      if (cursor.col < static_cast<int>(lines[0].size()) - 1) {
-        onMotion(Position(0, cursor.col + 1), KeyedSequence::l,
-                 ctx_.effortFor(KeyedSequence::l));
-      }
-      // j: move down to next line (escape prefix line entirely)
-      if (lines.lastLine() > 0) {
-        int newCol = min(cursor.targetCol, lines[1].lastCol());
-        onMotion(Position(1, newCol, cursor.targetCol), KeyedSequence::j,
-                 ctx_.effortFor(KeyedSequence::j));
-      }
-    }
-    return;
-  }
-
   auto [contentBegin, contentEnd] = computeEditBounds(lines, cursor);
   int editContentLen = contentEnd - contentBegin;
 
-  // Empty editable content: either a truly empty line, or a line that is
-  // entirely prefix/suffix with no editable region. Explore limited set.
+  // Empty editable content on a truly empty line. Explore limited set.
   if (editContentLen <= 0) {
-    assert(lines[cursor.line].empty() || ctx_.inBoundaryRegion(cursor, lines));
+    assert(lines[cursor.line].empty());
 
     exploreFullLineEdits(Edit::EMPTYLINE_FULL_LINE_EDITS, cursor, lines, onLinewise);
     exploreForwardWordEdits<EdgeType::WordEdge>(Edit::FORWARD_WORDEDGE_EDITS, cursor, lines, onDeletion);

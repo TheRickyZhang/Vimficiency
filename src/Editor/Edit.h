@@ -58,8 +58,11 @@ void insertText(Lines& lines, Position& pos, Mode mode, std::string_view text);
 // Apply a single parsed edit. If lastEditCmd is non-null, '.' repeats the
 // last buffer-modifying command stored there, and buffer-modifying commands
 // update it. Callers that don't need dot repeat can omit the parameter.
+// hasLinesBelow: when true, linewise deletions (dd, dj, dk) that remove the
+// last lines leave pos.line past end instead of clamping. This models the
+// edit-region context where the real buffer has lines below.
 void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
-               std::string* lastEditCmd = nullptr);
+               std::string* lastEditCmd = nullptr, bool hasLinesBelow = false);
 
 // Parse an edit sequence string into individual ParsedEdit tokens.
 // Handles operators (d, c) + motions/text objects, special keys (<Esc>, <CR>, etc.),

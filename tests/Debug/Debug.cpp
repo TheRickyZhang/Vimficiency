@@ -2767,3 +2767,34 @@ TEST_F(DebugTest, DISABLED_CompositionEditSizeSmallCrash) {
   auto result = opt.optimize(initial, {0, 0}, goal, {0, 0});
   cerr << "OK - nodes=" << result.stats.nodesExplored << endl;
 }
+
+// =============================================================================
+// Diagnose why CompositionOptimizer benchmarks find 0 results
+// =============================================================================
+TEST_F(DebugTest, DISABLED_DiagnoseCompBenchFound0) {
+  // Test all 5 seeds that benchmarks use (42..46) to see which find 0 results
+  constexpr int DEFAULT_LINES = 15;
+  constexpr int DEFAULT_AVG_LEN = 20;
+  constexpr int DEFAULT_EDIT_COUNT = 5;
+
+  for (int seed = 42; seed <= 46; seed++) {
+    RandomGen::seed(seed);
+    Lines initial = randomCodeBuffer(DEFAULT_LINES, DEFAULT_AVG_LEN);
+    Lines goal = initial;
+    for (int e = 0; e < DEFAULT_EDIT_COUNT; e++) {
+      int line = e * (DEFAULT_LINES - 1) / max(1, DEFAULT_EDIT_COUNT - 1);
+      int len = max(1, static_cast<int>(initial[line].size()));
+      goal[line] = randomWord(len);
+      if (goal[line] == initial[line]) goal[line] = "changed";
+    }
+
+    CompositionOptimizerParams params;
+    CompositionOptimizer opt(config);
+    auto result = opt.optimize(initial, {0,0}, goal, {0,0}, params);
+    cerr << "seed=" << seed
+         << " results=" << result.results.size()
+         << " stats.resultsFound=" << result.stats.resultsFound
+         << " nodes=" << result.stats.nodesExplored
+         << " stop=" << static_cast<int>(result.stats.stopReason) << endl;
+  }
+}

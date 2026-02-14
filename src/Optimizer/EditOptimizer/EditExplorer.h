@@ -18,10 +18,8 @@ struct EditBoundary;
 
 // Forward declare callback types (defined in EditSearchContext.h)
 // Each callback receives (count, baseKS, effort). count=0 for uncounted commands.
-// MotionCallback is unchanged — motions don't go through exploreWithDot or dot repeat.
 using DeletionCallback = std::function<void(const Range&, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
 using LinewiseCallback = std::function<void(int line, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
-using MotionCallback = std::function<void(const Position&, const KeyedSequence&, const RunningEffort&)>;
 using JoinCallback = std::function<void(bool addSpace, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
 
 // Counted operation callbacks
@@ -41,10 +39,10 @@ public:
 
   // Main entry point: explore all valid deletions from current state
   // Calls callbacks for each valid operation found
+  // Caller must check boundary region before calling (via exploreBoundaryEscape).
   void exploreAllDeletions(const EditState& state,
                            DeletionCallback onDeletion,
                            LinewiseCallback onLinewise = nullptr,
-                           MotionCallback onMotion = nullptr,
                            JoinCallback onJoin = nullptr);
 
   // Explore J/gJ commands

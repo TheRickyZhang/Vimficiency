@@ -110,17 +110,19 @@ public:
   }
 
   // Create new state with linewise deletion applied (for dd)
-  [[nodiscard]] EditState afterLinewiseDeletion(int line) const {
+  // hasLinesBelow: if true, cursor is not clamped when deleting the last line
+  [[nodiscard]] EditState afterLinewiseDeletion(int line, bool hasLinesBelow = false) const {
     EditState newState = *this;
-    VimCore::deleteRangeLinewise(newState.lines, LineRange(line, line), newState.pos);
+    VimCore::deleteRangeLinewise(newState.lines, LineRange(line, line), newState.pos, hasLinesBelow);
     newState.linesHash_ = hashLines(newState.lines);
     return newState;
   }
 
   // Create new state with multi-line linewise deletion applied (for dj, dk, {n}dd)
-  [[nodiscard]] EditState afterMultiLinewiseDeletion(LineRange range) const {
+  // hasLinesBelow: if true, cursor is not clamped when deleting the last line
+  [[nodiscard]] EditState afterMultiLinewiseDeletion(LineRange range, bool hasLinesBelow = false) const {
     EditState newState = *this;
-    VimCore::deleteRangeLinewise(newState.lines, range, newState.pos);
+    VimCore::deleteRangeLinewise(newState.lines, range, newState.pos, hasLinesBelow);
     newState.linesHash_ = hashLines(newState.lines);
     return newState;
   }

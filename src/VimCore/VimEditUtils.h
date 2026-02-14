@@ -46,7 +46,10 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode = Mo
 
 // Delete entire lines. Modifies lines and updates pos.
 // Pos goes to first non-blank of the line following the deleted range.
-void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos);
+// hasLinesBelow: if true, cursor is not clamped when deletion includes the last line,
+// because the real buffer has lines below that the cursor would land on.
+void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos,
+                         bool hasLinesBelow = false);
 
 // Insert text at position. Handles newlines (splits into multiple lines).
 // After insert, pos is at end of inserted text.

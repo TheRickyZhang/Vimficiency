@@ -57,7 +57,7 @@ Some motions behave differently when used with operators:
 ## J/gJ
   - Keep trailing whitespace intact instead of stripping
   - Only insert space if first line doesn't already end with whitespace
-  - Ensure cursor = original first line length (position where join occurred)
+  - Cursor at original first line length (position where join occurred), but clamp to last valid normal-mode column. When the next line is empty (or all-whitespace with `J`), `originalLen == currentLine.size()` which is past-end in normal mode.
 
 ## db/dB from col 0
 
@@ -226,38 +226,21 @@ if (lastDiff < endPos) {
 ```
 This ensures all result paths in an `EditResult` leave the cursor at the same `goalPos`.
 
-## Counted edit exploration bypassing boundary guards
+## Boundary region edits: centralized escape
 
-In `EditOptimizer.cpp`, `exploreAllDeletions` (lines 574-613 of `EditExplorer.cpp`) checks if the cursor is in the prefix or suffix boundary region and returns early with only motions allowed. However, `exploreCountedWordEdits` and `exploreCountedCharEdits` are called separately after `exploreAllDeletions` in the main search loop (line 666-673) and did **not** have these boundary guards.
+Cursor positions in the prefix/suffix boundary region cannot perform regular edits — only escape motions (h/l/j/k to get back into the content region) and backward word edits from the first suffix column. Originally, boundary checks were scattered across `exploreAllDeletions`, `exploreCountedWordEdits`, and `exploreCountedCharEdits`, each with slightly different logic.
 
-**Trigger:** CompositionOptimizer creates edit regions with prefix/suffix boundaries. After edits like `5x` put the cursor in the suffix, a `k` motion moves to the prefix region (e.g., line 0 with `leftColOffset=1`). From there, `exploreCountedWordEdits` explores `4de` which deletes prefix content — producing a `contentEnd < contentBegin` assertion failure.
+**Fix:** Centralized into `exploreBoundaryEscape()` at the top of the main search loop. Returns `true` (with escape motions/safe backward edits emitted) when cursor is in boundary; caller does `continue`. A single `assert(!inBoundaryRegion)` after it guarantees all subsequent exploration functions operate on content positions. Fine-grained per-edit endpoint checks (whether a deletion range crosses *into* the boundary) remain in the individual exploration functions.
 
-**Fix:** Added `if (inBoundaryRegion(cursor, lines)) return;` at the top of both `EditExplorer::exploreCountedWordEdits` and `EditSearchContext::exploreCountedCharEdits`.
+## Linewise deletion cursor past-end with hasLinesBelow
 
-Additionally, re-enabled backward word edits (db, dB, dge, dgE) from exactly the first suffix column, since those delete `[endpoint, cursor.col-1]` which is entirely within the content region:
-```cpp
-if (cursor.col == firstSuffixCol && firstSuffixCol > 0) {
-  exploreBackwardWordEdits<EdgeType::WordEdge>(...);
-  exploreBackwardWordEdits<EdgeType::NextEdge>(...);
-}
-```
+When `dd` operates on the last line of effective lines and `editBoundary.hasLinesBelow()` is true, the real buffer has a line below that the cursor lands on. Previously, `deleteRangeLinewise` always clamped cursor to `min(firstLine, size-1)`, hiding this.
 
-## needsKEscape replay divergence after dd from last effective line
+**Fix:** Added `hasLinesBelow` parameter to `deleteRangeLinewise` (and `EditState::afterLinewiseDeletion`/`afterMultiLinewiseDeletion`). When `hasLinesBelow && firstLine >= newSize`, cursor stays past-end (at `firstLine`) instead of clamping. The A* search detects `needsKEscape = pos.line >= lines.size()`, clamps cursor to `size()-1`, then:
+- **Goal path:** cursor is valid for `emitEditGoal`/`buildCollapseSequence`
+- **Non-goal path:** `k` is appended to the command sequence; `applyEdit` handles past-end `k` during replay
 
-When `dd` operates on the last line of effective lines and `editBoundary.hasLinesBelow()` is true, the real buffer has a line below that the cursor lands on, but the effective lines representation has already clamped via `deleteRangeLinewise` to `min(line, size-1)`. The `k` escape command corrects this in the real buffer but creates a divergence during `replayAndCacheSuffix`, which replays on effective lines.
-
-Three sub-issues were fixed:
-
-**1. `needsKEscape` condition never triggering for non-PureDeletion:**
-The original check `pos.line > lastValidLine` was always false because `deleteRangeLinewise` already clamps the position. Changed to `line >= static_cast<int>(lines.size())` which checks the *pre-clamp* line index.
-
-**2. `k` at line 0 asserting instead of being a no-op:**
-In `Edit::applyEdit`, `k` previously asserted that `pos.line > 0`. In real Vim, `k` at line 0 is a no-op. Changed to `pos.line = max(0, pos.line - count)` to match Vim behavior. This prevents replay crashes when `dd` from the only remaining line appends `k` to the sequence.
-
-**3. A\* cursor position diverging from replay position:**
-After `dd` + `k`, the A\* search had cursor at `size-1` (clamped by `deleteRangeLinewise`) but replay produces `max(0, size-2)` (clamped, then `k` moves up one more). Fixed `exploreLinewiseNonGoal` to set cursor to `max(0, size-2)` when `needsKEscape` is true, matching what replay produces.
-
-**Known limitation:** The A\* search explores from `max(0, size-2)` which is one line above where the real buffer cursor would be after `dd+k` from the last effective line. This is consistent with replay (so no crashes), but the explored states start from a slightly different position than the real buffer. In practice this is rarely impactful since the cursor lands on the correct line in the real buffer regardless.
+Key design: cursor clamping happens **before** the goal check in `exploreLinewise`/`exploreCountedLinewise`, guaranteeing valid cursor at all subsequent points.
 
 ## CompositionOptimizerBench MultiLine vector OOB
 
@@ -283,9 +266,38 @@ if (pos >= nextEdit.beginPos && pos < nextEdit.endPos) {
 }
 ```
 
+## CompositionOptimizer move-before-use in return statement
 
+In `CompositionOptimizer.cpp`, the `optimize()` return statement used braced-init-list construction:
+```cpp
+return {std::move(results), ctx.getStats(static_cast<int>(results.size())),
+        resultGoalPos, std::move(ctx.diffStates)};
+```
 
+C++ braced-init-list evaluation is left-to-right (guaranteed since C++11). `std::move(results)` empties the vector, then `results.size()` evaluates to 0. So `stats.resultsFound` was always 0 regardless of how many results were actually found.
 
+**Symptom:** Benchmark "Found" counter always showed 0 for all CompositionOptimizer benchmarks, despite the optimizer successfully finding 5-10 results per run.
 
+**Fix:** Capture the size before the move:
+```cpp
+int numResults = static_cast<int>(results.size());
+return {std::move(results), ctx.getStats(numResults),
+        resultGoalPos, std::move(ctx.diffStates)};
+```
 
+**Pattern:** Never read a value from a container after `std::move`-ing it in the same expression. Braced-init-list left-to-right evaluation makes this especially treacherous — it compiles without warning but silently produces wrong results.
+
+## Benchmark stats accumulation: overwrite instead of sum
+
+All three benchmark files (`EditOptimizerBench.cpp`, `MotionOptimizerBench.cpp`, `CompositionOptimizerBench.cpp`) used assignment instead of accumulation for per-iteration stats:
+```cpp
+lastStats = result.stats;  // Only captures the LAST iteration
+```
+
+With `benchmark::Counter::kAvgIterations`, Google Benchmark divides the counter value by iteration count. Since only the last iteration's stats were stored, the displayed values were 1/N of one iteration instead of the true per-iteration average.
+
+**Fix:** Added `accumulateStats()` in `BenchUtils.h` that sums all fields across iterations, and changed all benchmark loops to use it:
+```cpp
+accumulateStats(totalStats, result.stats);
+```
 

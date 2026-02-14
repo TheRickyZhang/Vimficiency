@@ -387,7 +387,8 @@ CompositionResult CompositionOptimizer::optimize(
         "skipped:", ctx.statesSkipped,
         "queueRemaining:", static_cast<int>(ctx.pq.size()));
 
-  return {std::move(results), ctx.getStats(static_cast<int>(results.size())),
+  int numResults = static_cast<int>(results.size());
+  return {std::move(results), ctx.getStats(numResults),
           resultGoalPos, std::move(ctx.diffStates)};
 }
 

@@ -54,6 +54,20 @@ inline std::string getSeedModeDescription() {
 // Google Benchmark Custom Counters
 // =============================================================================
 
+// Accumulate stats across iterations. Call once per iteration inside the loop.
+inline void accumulateStats(SearchStats& accumulated, const SearchStats& iteration) {
+  accumulated.nodesExplored += iteration.nodesExplored;
+  accumulated.resultsFound += iteration.resultsFound;
+  accumulated.queueSizeAtStop += iteration.queueSizeAtStop;
+  accumulated.statesSkipped += iteration.statesSkipped;
+  if (iteration.isRangeSearch()) {
+    if (!accumulated.isRangeSearch()) accumulated.uniquePositionsFound = 0;
+    accumulated.uniquePositionsFound += iteration.uniquePositionsFound;
+  }
+  accumulated.motionNodesExplored += iteration.motionNodesExplored;
+  accumulated.editNodesExplored += iteration.editNodesExplored;
+}
+
 inline void setSearchCounters(benchmark::State& state, const SearchStats& stats) {
   state.counters["Searched"] = benchmark::Counter(
       stats.nodesExplored, benchmark::Counter::kAvgIterations);

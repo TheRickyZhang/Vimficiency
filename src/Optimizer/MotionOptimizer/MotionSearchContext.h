@@ -43,8 +43,7 @@ struct MotionSearchContext {
   double maxEffort;  // userEffort * exploreFactor
 
   // Internal safety: hard cap on total pops to prevent runaway loops
-  // If >90% of pops are stale, something is pathologically wrong
-  static constexpr int SAFETY_MULTIPLIER = 10;
+  static constexpr int SAFETY_MULTIPLIER = 2;
 
   // Debug: optionally track explored states
   std::vector<ExploredState> exploredStates;

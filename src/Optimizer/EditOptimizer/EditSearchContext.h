@@ -97,6 +97,13 @@ struct EditSearchContext {
   // Check if position is in protected boundary region
   bool inBoundaryRegion(const Position& pos, const Lines& lines) const;
 
+  // If cursor is in boundary region, explore escape motions and safe backward
+  // word edits from first suffix col. Returns true if handled (caller should
+  // skip further edit exploration), false if cursor is in normal content.
+  bool exploreBoundaryEscape(const EditState& state,
+                             DeletionCallback onDeletion,
+                             MotionCallback onMotion);
+
   // Add state to priority queue if it improves on existing cost
   void exploreNewState(EditState&& state);
 
@@ -138,12 +145,11 @@ struct EditSearchContext {
   // Explore all valid deletions from current state
   // Calls onDeletion for characterwise deletions, onLinewise for full-line (dd)
   // Pass nullptr for onLinewise to skip linewise exploration
-  // Pass onMotion to explore pure cursor movements when cursor is in boundary region
   // Pass onJoin to explore J/gJ commands when valid
+  // Caller must check boundary region before calling (via exploreBoundaryEscape).
   void exploreAllDeletions(const EditState& state,
                            DeletionCallback onDeletion,
                            LinewiseCallback onLinewise = nullptr,
-                           MotionCallback onMotion = nullptr,
                            JoinCallback onJoin = nullptr);
 
   // Explore J/gJ commands from current state

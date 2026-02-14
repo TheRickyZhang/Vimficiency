@@ -69,6 +69,60 @@ bool EditSearchContext::inBoundaryRegion(const Position& pos, const Lines& lines
   return false;
 }
 
+bool EditSearchContext::exploreBoundaryEscape(const EditState& state,
+                                              DeletionCallback onDeletion,
+                                              MotionCallback onMotion) {
+  const Lines& lines = state.getLines();
+  const Position& cursor = state.getPos();
+
+  // Suffix region: cursor on last line, in suffix columns
+  if (cursor.line == lines.lastLine() && rightColOffset > 0 &&
+      cursor.col + rightColOffset >= static_cast<int>(lines.getSize(cursor.line))) {
+    int firstSuffixCol = static_cast<int>(lines.getSize(cursor.line)) - rightColOffset;
+
+    // At exactly the first suffix column, backward word edits are safe:
+    // they delete [endpoint, cursor.col-1] which is entirely in content.
+    if (onDeletion && cursor.col == firstSuffixCol && firstSuffixCol > 0) {
+      EditExplorer explorer(*this);
+      explorer.exploreBackwardWordEdits<EdgeType::WordEdge>(
+          Edit::BACKWARD_WORDEDGE_EDITS, cursor, lines, onDeletion);
+      explorer.exploreBackwardWordEdits<EdgeType::NextEdge>(
+          Edit::BACKWARD_NEXTEDGE_EDITS, cursor, lines, onDeletion);
+    }
+
+    if (onMotion) {
+      if (cursor.col > 0) {
+        onMotion(Position(cursor.line, cursor.col - 1), KeyedSequence::h,
+                 effortFor(KeyedSequence::h));
+      }
+      if (cursor.line > 0) {
+        int newCol = std::min(cursor.targetCol, lines[cursor.line - 1].lastCol());
+        onMotion(Position(cursor.line - 1, newCol, cursor.targetCol), KeyedSequence::k,
+                 effortFor(KeyedSequence::k));
+      }
+    }
+    return true;
+  }
+
+  // Prefix region: cursor on line 0, in prefix columns
+  if (cursor.line == 0 && cursor.col < leftColOffset) {
+    if (onMotion) {
+      if (cursor.col < static_cast<int>(lines[0].size()) - 1) {
+        onMotion(Position(0, cursor.col + 1), KeyedSequence::l,
+                 effortFor(KeyedSequence::l));
+      }
+      if (lines.lastLine() > 0) {
+        int newCol = std::min(cursor.targetCol, lines[1].lastCol());
+        onMotion(Position(1, newCol, cursor.targetCol), KeyedSequence::j,
+                 effortFor(KeyedSequence::j));
+      }
+    }
+    return true;
+  }
+
+  return false;
+}
+
 void EditSearchContext::exploreNewState(EditState&& state) {
   motionsEmitted++;  // Track total operations emitted
 
@@ -225,10 +279,9 @@ void EditSearchContext::exploreJoinCommands(
 void EditSearchContext::exploreAllDeletions(const EditState& state,
                                             DeletionCallback onDeletion,
                                             LinewiseCallback onLinewise,
-                                            MotionCallback onMotion,
                                             JoinCallback onJoin) {
   EditExplorer explorer(*this);
-  explorer.exploreAllDeletions(state, onDeletion, onLinewise, onMotion, onJoin);
+  explorer.exploreAllDeletions(state, onDeletion, onLinewise, onJoin);
 }
 
 void EditSearchContext::exploreCountedLineEdits(const EditState& state,
@@ -257,8 +310,6 @@ void EditSearchContext::exploreCountedCharEdits(const EditState& state,
   EditExplorer explorer(*this);
   const Lines& lines = state.getLines();
   const Position& cursor = state.getPos();
-  // Cursor in boundary region: deletions from here would include prefix/suffix chars
-  if (inBoundaryRegion(cursor, lines)) return;
   auto [contentStart, contentEnd] = computeEditBounds(lines, cursor);
   explorer.exploreCountedCharEdits(cursor, lines, contentStart, contentEnd,
                                    params.minCountRepeat, params.countOverhead, cb);

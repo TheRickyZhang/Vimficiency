@@ -103,7 +103,8 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
   pos.setCol(newCol);
 }
 
-void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos) {
+void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos,
+                         bool hasLinesBelow) {
   LineRange r = range;
   r.normalize();
 
@@ -117,7 +118,17 @@ void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos) {
     lines.push_back("");
   }
 
-  pos.line = min(r.firstLine, static_cast<int>(lines.size()) - 1);
+  int newSize = static_cast<int>(lines.size());
+
+  // If deletion removed the last lines and there are lines below in the real
+  // buffer, cursor goes to the line below (past the end of effective lines).
+  // Column is left unset — caller must apply 'k' to bring it back in range.
+  if (hasLinesBelow && r.firstLine >= newSize) {
+    pos.line = r.firstLine;  // Past end of effective lines
+    return;
+  }
+
+  pos.line = min(r.firstLine, newSize - 1);
   if constexpr (VimOptions::startOfLine()) {
     // Legacy Vim: dd goes to first non-blank of the new current line
     pos.setCol(firstNonBlankColInLineStr(lines[pos.line]));
@@ -219,8 +230,10 @@ void joinLines(Lines& lines, Position& pos, bool addSpace) {
   // Remove the next line
   lines.erase(lines.begin() + pos.line + 1);
 
-  // Both J and gJ: cursor at original first line length (position where join occurred)
-  pos.setCol(originalLen);
+  // Both J and gJ: cursor at original first line length (position where join occurred).
+  // Clamp to last valid normal-mode column (join with empty next line leaves cursor at end).
+  int lastCol = currentLine.empty() ? 0 : static_cast<int>(currentLine.size()) - 1;
+  pos.setCol(min(originalLen, lastCol));
 }
 
 void openLineBelow(Lines& lines, Position& pos) {

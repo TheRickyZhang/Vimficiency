@@ -64,6 +64,8 @@ namespace {
 // Build collapse sequence to merge multi-line goal state into single line.
 // <BS> joins current line with previous, <Del> joins with next.
 KeyedSequence buildCollapseSequence(int totalLines, int cursorLine) {
+  assert(cursorLine >= 0 && cursorLine < totalLines &&
+         "cursorLine must be within [0, totalLines)");
   KeyedSequence ks;
   ks.appendRepeated(KeyedSequence::BS, cursorLine);
   ks.appendRepeated(KeyedSequence::Del, totalLines - 1 - cursorLine);
@@ -304,7 +306,8 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
 
     string lastEditCmd;
     for (int i = 0; i < n; i++) {
-      Edit::applyEdit(replayLines, replayPos, replayMode, edits[i], &lastEditCmd);
+      Edit::applyEdit(replayLines, replayPos, replayMode, edits[i], &lastEditCmd,
+                       editBoundary.hasLinesBelow());
       if (replayMode == Mode::Insert) break;
 
       replayHash = hashLines(replayLines);
@@ -357,19 +360,8 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
   auto exploreLinewiseNonGoal = [&](EditState& afterDel, const EditState& base,
                                      bool needsKEscape, int count,
                                      const KeyedSequence& baseKS, double hCost) {
-    if (needsKEscape) {
-      // In the real buffer, dd from the last line puts cursor on the line below,
-      // then k moves it back up. In effective lines, dd clamps to lastValidLine,
-      // then k goes to max(0, lastValidLine-1). Set the A* cursor to match
-      // the replay position so exploration and replay stay consistent.
-      const Lines& lines = afterDel.getLines();
-      Position pos = afterDel.getPos();
-      int kTargetLine = max(0, static_cast<int>(lines.size()) - 2);
-      pos.line = kTargetLine;
-      pos.clampColPreservingTarget(lines[pos.line].empty() ? 0 :
-                 min(pos.targetCol, static_cast<int>(lines[pos.line].size()) - 1));
-      afterDel.setPos(pos);
-    }
+    // Cursor already clamped by caller (exploreLinewise/exploreCountedLinewise).
+    // needsKEscape only controls whether 'k' is appended to the command sequence.
 
     bool isDot = base.hasLastEdit() &&
                  base.getLastEditCount() == count &&
@@ -458,8 +450,20 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
   // Linewise handler
   auto exploreLinewise = [&](const EditState &base, int line,
                              int count, const KeyedSequence& baseKS, const RunningEffort& effort) {
-    EditState afterDel = base.afterLinewiseDeletion(line);
+    bool hasLinesBelow = editBoundary.hasLinesBelow();
+    EditState afterDel = base.afterLinewiseDeletion(line, hasLinesBelow);
     const Lines &lines = afterDel.getLines();
+
+    // Detect and resolve past-end cursor (dd from last effective line with hasLinesBelow).
+    // Must happen before goal check so cursor is always valid at goal time.
+    bool needsKEscape = afterDel.getPos().line >= static_cast<int>(lines.size());
+    if (needsKEscape) {
+      Position pos = afterDel.getPos();
+      pos.line = static_cast<int>(lines.size()) - 1;
+      pos.clampColPreservingTarget(lines[pos.line].empty() ? 0
+          : min(pos.targetCol, static_cast<int>(lines[pos.line].size()) - 1));
+      afterDel.setPos(pos);
+    }
 
     if (isGoalReached(lines)) {
       if constexpr (PureDeletion) {
@@ -477,17 +481,8 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
       return;
     }
 
-    // Non-goal: k-escape logic
-    // In the full buffer with hasLinesBelow, dd from the last line puts cursor
-    // on the line below the edit region. We emit 'k' to move back up.
-    // In effective lines, deleteRangeLinewise clamps the cursor, so k is a
-    // no-op (Vim behavior: k at line 0 stays at line 0).
-    {
-      bool needsKEscape = editBoundary.hasLinesBelow() &&
-                          line >= static_cast<int>(lines.size());
-      double hCost = ctx.heuristicCost(lines);
-      exploreLinewiseNonGoal(afterDel, base, needsKEscape, count, baseKS, hCost);
-    }
+    double hCost = ctx.heuristicCost(lines);
+    exploreLinewiseNonGoal(afterDel, base, needsKEscape, count, baseKS, hCost);
   };
 
   // Join handler
@@ -522,8 +517,19 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
   // Counted linewise handler (dj, dk, {n}dd)
   auto exploreCountedLinewise = [&](const EditState& base, LineRange range,
                                      int count, const KeyedSequence& baseKS, const RunningEffort& effort) {
-    EditState afterDel = base.afterMultiLinewiseDeletion(range);
+    bool hasLinesBelow = editBoundary.hasLinesBelow();
+    EditState afterDel = base.afterMultiLinewiseDeletion(range, hasLinesBelow);
     const Lines& lines = afterDel.getLines();
+
+    // Detect and resolve past-end cursor before goal check (same as exploreLinewise).
+    bool needsKEscape = afterDel.getPos().line >= static_cast<int>(lines.size());
+    if (needsKEscape) {
+      Position pos = afterDel.getPos();
+      pos.line = static_cast<int>(lines.size()) - 1;
+      pos.clampColPreservingTarget(lines[pos.line].empty() ? 0
+          : min(pos.targetCol, static_cast<int>(lines[pos.line].size()) - 1));
+      afterDel.setPos(pos);
+    }
 
     if (isGoalReached(lines)) {
       if constexpr (PureDeletion) {
@@ -542,13 +548,8 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
       return;
     }
 
-    // Non-goal: k-escape logic (same principle as single-line dd)
-    {
-      bool needsKEscape = editBoundary.hasLinesBelow() &&
-                          range.firstLine >= static_cast<int>(lines.size());
-      double hCost = ctx.heuristicCost(lines);
-      exploreLinewiseNonGoal(afterDel, base, needsKEscape, count, baseKS, hCost);
-    }
+    double hCost = ctx.heuristicCost(lines);
+    exploreLinewiseNonGoal(afterDel, base, needsKEscape, count, baseKS, hCost);
   };
 
   // Counted join handler ({n}J, {n}gJ)
@@ -636,21 +637,30 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
       }
     }
 
+    // Boundary region: cursor is in prefix/suffix — only escape motions
+    // and safe backward word edits from first suffix col.
+    auto deletionCb = [&](const Range& range, int count, const KeyedSequence& baseKS, const RunningEffort& effort) {
+      exploreDeletion(s, range, count, baseKS, effort);
+    };
+    auto motionCb = [&](const Position& newPos, const KeyedSequence& ks, const RunningEffort& effort) {
+      EditState newState = s;
+      newState.setPos(newPos);
+      newState.recordSearch(ks.seq.view(), effort, ctx.effortWeight,
+                            ctx.heuristicCost(newState.getLines()), config);
+      ctx.exploreNewState(std::move(newState));
+    };
+
+    if (ctx.exploreBoundaryEscape(s, deletionCb, motionCb)) continue;
+
+    // Past this point, cursor is guaranteed inside the edit region.
+    assert(!ctx.inBoundaryRegion(s.getPos(), s.getLines()));
+
     // Explore all deletions (characterwise + linewise)
     ctx.exploreAllDeletions(
       s,
-      [&](const Range& range, int count, const KeyedSequence& baseKS, const RunningEffort& effort) {
-        exploreDeletion(s, range, count, baseKS, effort);
-      },
+      deletionCb,
       [&](int line, int count, const KeyedSequence& baseKS, const RunningEffort& effort) {
         exploreLinewise(s, line, count, baseKS, effort);
-      },
-      [&](const Position& newPos, const KeyedSequence& ks, const RunningEffort& effort) {
-        EditState newState = s;
-        newState.setPos(newPos);
-        newState.recordSearch(ks.seq.view(), effort, ctx.effortWeight,
-                              ctx.heuristicCost(newState.getLines()), config);
-        ctx.exploreNewState(std::move(newState));
       },
       [&](bool addSpace, int count, const KeyedSequence& baseKS, const RunningEffort& effort) {
         exploreJoin(s, addSpace, count, baseKS, effort);
@@ -666,14 +676,8 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
       [&](int count, bool addSpace, const KeyedSequence& baseKS, const RunningEffort& effort) {
         exploreCountedJoin(s, count, addSpace, baseKS, effort);
       });
-    ctx.exploreCountedWordEdits(s,
-      [&](const Range& range, int count, const KeyedSequence& baseKS, const RunningEffort& effort) {
-        exploreDeletion(s, range, count, baseKS, effort);
-      });
-    ctx.exploreCountedCharEdits(s,
-      [&](const Range& range, int count, const KeyedSequence& baseKS, const RunningEffort& effort) {
-        exploreDeletion(s, range, count, baseKS, effort);
-      });
+    ctx.exploreCountedWordEdits(s, deletionCb);
+    ctx.exploreCountedCharEdits(s, deletionCb);
   }
 
   // ---- Post-loop ----

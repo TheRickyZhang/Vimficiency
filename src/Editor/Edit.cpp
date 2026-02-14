@@ -192,7 +192,7 @@ void insertText(Lines& lines, Position& pos, Mode mode, string_view text) {
 // we can't prune that easily without doing equivalent work as the action, it's fine.
 // TODO: we can apply the same technique to Motions as well
 void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
-               string* lastEditCmd) {
+               string* lastEditCmd, bool hasLinesBelow) {
   // Lines invariant: buffer always has at least one line (minimum: {""})
   assert(!lines.empty());
 
@@ -211,7 +211,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
     if (edit.hasCount()) {
       repeat = ParsedEdit{repeat.edit, count};
     }
-    applyEdit(lines, pos, mode, repeat, nullptr);  // don't update lastEditCmd
+    applyEdit(lines, pos, mode, repeat, nullptr, hasLinesBelow);  // don't update lastEditCmd
     return;
   }
 
@@ -242,8 +242,19 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
     }
   }
 
-  string& line = lines[pos.line];
   int n = static_cast<int>(lines.size());
+
+  // Past-end cursor: only valid after linewise deletion with hasLinesBelow.
+  // The only valid command from here is 'k' to move back into the buffer.
+  if (pos.line >= n) {
+    assert(hasLinesBelow && "cursor past end only valid with hasLinesBelow");
+    assert(e == "k" && "only 'k' is valid from past-end cursor");
+    pos.line = max(0, pos.line - count);
+    pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
+    return;
+  }
+
+  string& line = lines[pos.line];
   int m = static_cast<int>(line.size());
 
   // Handle visual mode sequences first (before empty line check)
@@ -380,6 +391,11 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
         if (lines.empty()) {
           lines.push_back("");
         }
+        if (hasLinesBelow && pos.line >= static_cast<int>(lines.size())) {
+          // Cursor past end: real buffer has lines below. Leave pos.line
+          // unclamped; caller will apply 'k' to move back in range.
+          return;
+        }
         pos.line = min(pos.line, static_cast<int>(lines.size()) - 1);
         if (VimOptions::startOfLine()) {
           // Vim default: go to first non-blank, update targetCol
@@ -471,7 +487,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
           if (lastLine >= n) {
             assert(false && "dj requires more lines below");
           }
-          VimCore::deleteRangeLinewise(lines, LineRange(pos.line, lastLine), pos);
+          VimCore::deleteRangeLinewise(lines, LineRange(pos.line, lastLine), pos, hasLinesBelow);
         }
         return;
 
@@ -482,7 +498,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
           if (firstLine < 0) {
             assert(false && "dk requires more lines above");
           }
-          VimCore::deleteRangeLinewise(lines, LineRange(firstLine, pos.line), pos);
+          VimCore::deleteRangeLinewise(lines, LineRange(firstLine, pos.line), pos, hasLinesBelow);
         }
         return;
 
