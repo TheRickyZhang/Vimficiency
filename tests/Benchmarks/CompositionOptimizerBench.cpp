@@ -90,8 +90,10 @@ static void BM_CompEditSize(benchmark::State& state, EditSizeType sizeType) {
     Lines goal = initial;
 
     for (int e = 0; e < DEFAULT_EDIT_COUNT; e++) {
-      int line = e * (DEFAULT_LINES - 1) / max(1, DEFAULT_EDIT_COUNT - 1);
-      int lineLen = max(1, static_cast<int>(initial[line].size()));
+      int goalSize = static_cast<int>(goal.size());
+      int line = e * (goalSize - 1) / max(1, DEFAULT_EDIT_COUNT - 1);
+      line = min(line, goalSize - 1);  // Clamp after MultiLine shrinks goal
+      int lineLen = max(1, static_cast<int>(initial[min(line, static_cast<int>(initial.size()) - 1)].size()));
 
       switch (sizeType) {
         case EditSizeType::Small: {

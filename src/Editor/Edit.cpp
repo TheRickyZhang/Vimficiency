@@ -10,7 +10,6 @@
 #include "Utils/Lines.h"
 
 #include <cassert>
-#include <stdexcept>
 #include <algorithm>
 
 using namespace std;
@@ -203,9 +202,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
 
   // Dot repeat: replay the last buffer-modifying command
   if (mode == Mode::Normal && e == ".") {
-    if (!lastEditCmd || lastEditCmd->empty()) {
-      throw runtime_error(". with no previous edit to repeat");
-    }
+    assert(lastEditCmd && !lastEditCmd->empty() && ". with no previous edit to repeat");
     // Parse count from lastEditCmd (e.g., "5de" → edit="de", count=5)
     auto parsed = parseEdits(*lastEditCmd);
     assert(!parsed.empty());
@@ -254,7 +251,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
   if (mode == Mode::Normal && e.size() >= 2 && e[0] == 'v') {
     char op = e.back();  // 'd' or 'c'
     if (op != 'd' && op != 'c') {
-      throw runtime_error("Visual mode sequence must end with 'd' or 'c': " + string(e));
+      assert(false && "Visual mode sequence must end with 'd' or 'c'");
     }
 
     // Extract motion part (between 'v' and operator)
@@ -308,7 +305,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
       case hash("}"): case hash("{"): case hash(")"): case hash("("):
         break;  // Fall through to main switch
       default:
-        throw runtime_error("Edit '" + string(e) + "' invalid on empty line");
+        assert(false && "Edit invalid on empty line");
     }
   }
 
@@ -316,7 +313,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
     // Handle r{char} specially. Recall this fails if not enough characters.
     if (e.size() == 2 && e[0] == 'r') {
       if (pos.col + count > m) {
-        throw runtime_error("r{char} requires " + to_string(count) + " chars but only " + to_string(m - pos.col) + " available");
+        assert(false && "r{char} requires more chars than available");
       }
       char newChar = e[1];
       for (int i = 0; i < count; i++) {
@@ -329,7 +326,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
     switch (hash(e)) {
       case hash("x"):
         if (pos.col + count > m) {
-          throw runtime_error("x requires " + to_string(count) + " chars");
+          assert(false && "x requires more chars");
         }
         line.erase(pos.col, count);
         pos.setCol(clampedToLastChar(line, pos.col));
@@ -337,7 +334,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
 
       case hash("X"):
         if (count > pos.col) {
-          throw runtime_error("X requires " + to_string(count) + " chars before cursor");
+          assert(false && "X requires more chars before cursor");
         }
         line.erase(pos.col - count, count);
         pos.setCol(pos.col - count);
@@ -345,7 +342,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
 
       case hash("~"):
         if (pos.col + count > m) {
-          throw runtime_error("~ requires " + to_string(count) + " chars");
+          assert(false && "~ requires more chars");
         }
         for (int i = 0; i < count; i++) {
           char& c = line[pos.col + i];
@@ -359,7 +356,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
         // {count}J joins max(count, 2) lines = max(count, 2) - 1 join operations
         int joinOps = max(count, 2) - 1;
         if (pos.line + joinOps >= n) {
-          throw runtime_error("J requires " + to_string(joinOps) + " lines below");
+          assert(false && "J requires more lines below");
         }
         for (int i = 0; i < joinOps; i++) VimCore::joinLines(lines, pos, true);
         return;
@@ -368,7 +365,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
       case hash("gJ"): {
         int joinOps = max(count, 2) - 1;
         if (pos.line + joinOps >= n) {
-          throw runtime_error("gJ requires " + to_string(joinOps) + " lines below");
+          assert(false && "gJ requires more lines below");
         }
         for (int i = 0; i < joinOps; i++) VimCore::joinLines(lines, pos, false);
         return;
@@ -376,7 +373,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
 
       case hash("dd"):
         if (pos.line + count > n) {
-          throw runtime_error("dd requires " + to_string(count) + " lines");
+          assert(false && "dd requires more lines");
         }
         lines.erase(lines.begin() + pos.line, lines.begin() + pos.line + count);
         // Maintain invariant: buffer always has at least one line
@@ -415,7 +412,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
 
       case hash("s"):
         if (pos.col + count > m) {
-          throw runtime_error("s requires " + to_string(count) + " chars");
+          assert(false && "s requires more chars");
         }
         line.erase(pos.col, count);
         mode = Mode::Insert;
@@ -454,7 +451,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
       case hash("db"):
       case hash("dB"):
         if (pos.line == 0 && pos.col == 0) {
-          throw runtime_error(string(e) + " at start of buffer has no effect");
+          assert(false && "db/dB at start of buffer has no effect");
         }
         deleteBackToWordStart(lines, pos, count, e == "dB", Mode::Normal);
         return;
@@ -462,7 +459,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
       case hash("dge"):
       case hash("dgE"):
         if (pos.line == 0 && pos.col == 0) {
-          throw runtime_error(string(e) + " at start of buffer has no effect");
+          assert(false && "dge/dgE at start of buffer has no effect");
         }
         deleteBackToWordEnd(lines, pos, count, e == "dgE", Mode::Normal);
         return;
@@ -472,7 +469,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
         {
           int lastLine = pos.line + count;
           if (lastLine >= n) {
-            throw runtime_error("dj requires " + to_string(count) + " lines below");
+            assert(false && "dj requires more lines below");
           }
           VimCore::deleteRangeLinewise(lines, LineRange(pos.line, lastLine), pos);
         }
@@ -483,7 +480,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
         {
           int firstLine = pos.line - count;
           if (firstLine < 0) {
-            throw runtime_error("dk requires " + to_string(count) + " lines above");
+            assert(false && "dk requires more lines above");
           }
           VimCore::deleteRangeLinewise(lines, LineRange(firstLine, pos.line), pos);
         }
@@ -494,7 +491,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
         {
           int lastLine = pos.line + count;
           if (lastLine >= n) {
-            throw runtime_error("cj requires " + to_string(count) + " lines below");
+            assert(false && "cj requires more lines below");
           }
           // cj deletes lines and replaces with empty insert line
           lines.erase(lines.begin() + pos.line, lines.begin() + lastLine + 1);
@@ -509,7 +506,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
         {
           int firstLine = pos.line - count;
           if (firstLine < 0) {
-            throw runtime_error("ck requires " + to_string(count) + " lines above");
+            assert(false && "ck requires more lines above");
           }
           lines.erase(lines.begin() + firstLine, lines.begin() + pos.line + 1);
           lines.insert(lines.begin() + firstLine, "");
@@ -524,7 +521,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
           debug("d0: count", count, "ignored (0 motion doesn't use count)");
         }
         if (pos.col == 0) {
-          throw runtime_error("d0 at column 0 has no effect");
+          assert(false && "d0 at column 0 has no effect");
         }
         {
           Range r(Position(pos.line, 0), Position(pos.line, pos.col - 1));
@@ -539,7 +536,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
         {
           int firstNonBlank = VimCore::firstNonBlankColInLineStr(lines[pos.line]);
           if (firstNonBlank >= pos.col) {
-            throw runtime_error("d^ at or before first non-blank has no effect");
+            assert(false && "d^ at or before first non-blank has no effect");
           }
           Range r(Position(pos.line, firstNonBlank), Position(pos.line, pos.col - 1));
           VimCore::deleteRange(lines, r, pos);
@@ -616,7 +613,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
       case hash("cb"):
       case hash("cB"):
         if (pos.line == 0 && pos.col == 0) {
-          throw runtime_error(string(e) + " at start of buffer has no effect");
+          assert(false && "cb/cB at start of buffer has no effect");
         }
         {
           bool big = (e == "cB");
@@ -646,7 +643,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
       case hash("cge"):
       case hash("cgE"):
         if (pos.line == 0 && pos.col == 0) {
-          throw runtime_error(string(e) + " at start of buffer has no effect");
+          assert(false && "cge/cgE at start of buffer has no effect");
         }
         deleteBackToWordEnd(lines, pos, count, e == "cgE", Mode::Insert);
         mode = Mode::Insert;
@@ -657,7 +654,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
           debug("c0: count", count, "ignored (0 motion doesn't use count)");
         }
         if (pos.col == 0) {
-          throw runtime_error("c0 at column 0 has no effect");
+          assert(false && "c0 at column 0 has no effect");
         }
         {
           Range r(Position(pos.line, 0), Position(pos.line, pos.col - 1));
@@ -673,7 +670,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
         {
           int firstNonBlank = VimCore::firstNonBlankColInLineStr(lines[pos.line]);
           if (firstNonBlank >= pos.col) {
-            throw runtime_error("c^ at or before first non-blank has no effect");
+            assert(false && "c^ at or before first non-blank has no effect");
           }
           Range r(Position(pos.line, firstNonBlank), Position(pos.line, pos.col - 1));
           VimCore::deleteRange(lines, r, pos);
@@ -684,7 +681,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
       case hash("C"):
       case hash("c$"):
         if (pos.line + count > n) {
-          throw runtime_error("c$ requires " + to_string(count) + " lines but only " + to_string(n - pos.line) + " available");
+          assert(false && "c$ requires more lines than available");
         }
         {
           int endLine = pos.line + count - 1;
@@ -698,7 +695,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
       case hash("D"):
       case hash("d$"):
         if (pos.line + count > n) {
-          throw runtime_error("d$ requires " + to_string(count) + " lines but only " + to_string(n - pos.line) + " available");
+          assert(false && "d$ requires more lines than available");
         }
         {
           int endLine = pos.line + count - 1;
@@ -813,30 +810,27 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
       // --- Navigation motions (for EditOptimizer) ---
       case hash("j"):
         if (pos.line + count >= n) {
-          throw runtime_error("j requires " + to_string(count) + " lines below");
+          assert(false && "j requires more lines below");
         }
         pos.line += count;
         pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
         return;
 
       case hash("k"):
-        if (pos.line < count) {
-          throw runtime_error("k requires " + to_string(count) + " lines above");
-        }
-        pos.line -= count;
+        pos.line = max(0, pos.line - count);
         pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
         return;
 
       case hash("h"):
         if (pos.col < count) {
-          throw runtime_error("h requires " + to_string(count) + " chars left");
+          assert(false && "h requires more chars left");
         }
         pos.setCol(pos.col - count);
         return;
 
       case hash("l"):
         if (pos.col + count >= m) {
-          throw runtime_error("l requires " + to_string(count) + " chars right");
+          assert(false && "l requires more chars right");
         }
         pos.setCol(pos.col + count);
         return;
@@ -937,7 +931,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
         r = inner ? VimTextObjectsDeprecated::innerBracket(lines, pos, '<', '>')
                   : VimTextObjectsDeprecated::aroundBracket(lines, pos, '<', '>');
       } else {
-        throw runtime_error("Unknown text object: " + string(1, obj));
+        assert(false && "Unknown text object");
       }
 
       // Apply operator to range (all ranges are now inclusive)
@@ -965,7 +959,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
 
       case hash("<BS>"):
         if (pos.col == 0 && pos.line == 0) {
-          throw runtime_error("<BS> at start of buffer has no effect");
+          assert(false && "<BS> at start of buffer has no effect");
         }
         if (pos.col == 0) {
           // Join with previous line
@@ -985,7 +979,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
         {
           int len = static_cast<int>(lines[pos.line].size());
           if (pos.col >= len && pos.line + 1 >= static_cast<int>(lines.size())) {
-            throw runtime_error("<Del> at end of buffer has no effect");
+            assert(false && "<Del> at end of buffer has no effect");
           }
           if (pos.col >= len) {
             // At end of line - join with next line
@@ -1004,7 +998,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
 
       case hash("<C-u>"):
         if (pos.col == 0) {
-          throw runtime_error("<C-u> at start of line has no effect");
+          assert(false && "<C-u> at start of line has no effect");
         }
         {
           Range r(Position(pos.line, 0), Position(pos.line, pos.col - 1));
@@ -1014,7 +1008,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
 
       case hash("<C-w>"):
         if (pos.col == 0) {
-          throw runtime_error("<C-w> at start of line has no effect");
+          assert(false && "<C-w> at start of line has no effect");
         }
         {
           int col = pos.col - 1;
@@ -1036,21 +1030,21 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
 
       case hash("<Left>"):
         if (pos.col == 0) {
-          throw runtime_error("<Left> at start of line has no effect");
+          assert(false && "<Left> at start of line has no effect");
         }
         pos.setCol(pos.col - 1);
         return;
 
       case hash("<Right>"):
         if (pos.col >= static_cast<int>(lines[pos.line].size())) {
-          throw runtime_error("<Right> at end of line has no effect");
+          assert(false && "<Right> at end of line has no effect");
         }
         pos.setCol(pos.col + 1);
         return;
 
       case hash("<Up>"):
         if (pos.line == 0) {
-          throw runtime_error("<Up> at first line has no effect");
+          assert(false && "<Up> at first line has no effect");
         }
         pos.line--;
         // Insert mode <Up>/<Down> use sticky column behavior like j/k
@@ -1059,7 +1053,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
 
       case hash("<Down>"):
         if (pos.line + 1 >= static_cast<int>(lines.size())) {
-          throw runtime_error("<Down> at last line has no effect");
+          assert(false && "<Down> at last line has no effect");
         }
         pos.line++;
         // Insert mode <Up>/<Down> use sticky column behavior like j/k
@@ -1068,7 +1062,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
     }
   }
 
-  throw runtime_error("Unknown edit: " + string(e));
+  assert(false && "Unknown edit");
 }
 
 // =============================================================================
@@ -1106,7 +1100,7 @@ vector<ParsedEdit> parseEdits(string_view seq) {
         i = close + 1;
         continue;
       }
-      throw runtime_error("Malformed special key at: " + string(sv.substr(i)));
+      assert(false && "Malformed special key");
     }
 
     // Handle r{char} - replace with specific character

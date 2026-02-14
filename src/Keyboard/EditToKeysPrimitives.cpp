@@ -1,7 +1,7 @@
 #include "EditToKeysPrimitives.h"
 #include "CharToKeys.h"
 
-#include <stdexcept>
+#include <cassert>
 
 using namespace std;
 
@@ -13,7 +13,7 @@ static PhysicalKeys stringToKeys(const string& s) {
   for (char c : s) {
     auto it = CHAR_TO_KEYS.find(c);
     if (it == CHAR_TO_KEYS.end()) {
-      throw runtime_error("makeCombinations: unknown char '" + string(1, c) + "'");
+      assert(false && "makeCombinations: unknown char");
     }
     for (Key k : it->second) {
       result.push_back(k);

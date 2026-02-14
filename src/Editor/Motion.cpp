@@ -1,5 +1,6 @@
 #include "Motion.h"
 
+#include <cassert>
 #include <ostream>
 
 #include "Editor/NavContext.h"
@@ -68,7 +69,7 @@ std::vector<ParsedMotion> parseMotions(std::string_view seq) {
         }
         // If not a known motion, fall through to error
       }
-      throw std::runtime_error("Unknown or malformed special key at: " + string(sv.substr(i)));
+      assert(false && "Unknown or malformed special key");
     }
 
     // Standard longest-match for other motions
@@ -83,7 +84,7 @@ std::vector<ParsedMotion> parseMotions(std::string_view seq) {
       }
     }
     if (!matched) {
-      throw std::runtime_error("Unknown motion at: " + string(sv.substr(i)));
+      assert(false && "Unknown motion");
     }
   }
   return result;
@@ -270,7 +271,7 @@ void applyParsedMotion(Position& pos, Mode& mode,
     }
   }
   else {
-    throw std::runtime_error("Unsupported motion: " + std::string(motion));
+    assert(false && "Unsupported motion");
   }
 }
 

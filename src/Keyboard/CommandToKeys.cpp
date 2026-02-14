@@ -1,5 +1,6 @@
 #include "CommandToKeys.h"
 
+#include <cassert>
 #include <iostream>
 #include <set>
 
@@ -29,7 +30,7 @@ CharToKeys combineAllToCharKeySeq(initializer_list<reference_wrapper<const Comma
   for (const auto& mpref : maps) {
     const auto& mp = mpref.get();
     for (const auto& [k, v] : mp) {
-      if (k.size() != 1) throw runtime_error("key must be length 1: " + k);
+      if (k.size() != 1) assert(false && "key must be length 1");
       char c = k[0];
       auto [it, inserted] = res.try_emplace(c, v);
       if (!inserted) {

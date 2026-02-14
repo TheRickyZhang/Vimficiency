@@ -2,6 +2,8 @@
 #include "EditExplorer.h"
 #include "EditToSpec.h"
 
+#include <cassert>
+#include <iostream>
 
 using namespace std;
 
@@ -131,6 +133,15 @@ pair<int, int> EditSearchContext::computeEditBounds(
   if (cursor.line == lines.lastLine() && rightColOffset > 0) {
     contentEnd -= rightColOffset;
   }
+  if (contentEnd < 0 || contentEnd < contentBegin) {
+    cerr << "computeEditBounds FAIL: contentEnd=" << contentEnd
+         << " contentBegin=" << contentBegin
+         << " rawLineLen=" << rawLineLen
+         << " rightColOffset=" << rightColOffset
+         << " leftColOffset=" << leftColOffset
+         << " cursor=" << cursor
+         << " lines(" << lines.size() << "): " << lines << endl;
+  }
   assert(contentEnd >= 0);
   assert(contentBegin >= 0);
   assert(contentEnd >= contentBegin);
@@ -246,6 +257,8 @@ void EditSearchContext::exploreCountedCharEdits(const EditState& state,
   EditExplorer explorer(*this);
   const Lines& lines = state.getLines();
   const Position& cursor = state.getPos();
+  // Cursor in boundary region: deletions from here would include prefix/suffix chars
+  if (inBoundaryRegion(cursor, lines)) return;
   auto [contentStart, contentEnd] = computeEditBounds(lines, cursor);
   explorer.exploreCountedCharEdits(cursor, lines, contentStart, contentEnd,
                                    params.minCountRepeat, params.countOverhead, cb);

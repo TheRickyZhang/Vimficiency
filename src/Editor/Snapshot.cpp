@@ -1,3 +1,4 @@
+#include <cassert>
 #include <fstream>
 
 #include "Snapshot.h"
@@ -6,11 +7,11 @@ using namespace std;
 
 Snapshot load_snapshot(const std::filesystem::path& path) {
   ifstream in(path);
-  if(!in) throw runtime_error("Can't read");
+  if(!in) assert(false && "Can't read");
 
   string header;
   if(!getline(in, header)) {
-    throw runtime_error("Snapshot empty");
+    assert(false && "Snapshot empty");
   }
 
   string magic;
@@ -18,44 +19,44 @@ Snapshot load_snapshot(const std::filesystem::path& path) {
   {
     istringstream ss(header);
     if(! (ss >> magic >> version)) {
-      throw runtime_error("bad header");
+      assert(false && "bad header");
     }
   }
   if(magic != "vimficiency" || version != 1) {
-    throw runtime_error("unsupported version");
+    assert(false && "unsupported version");
   }
 
   string filename;
   if(!getline(in, filename)) {
-    throw runtime_error("No filename");
+    assert(false && "No filename");
   }
   
   string bufname;
   if(!getline(in, bufname)) {
-    throw runtime_error("No buffer name");
+    assert(false && "No buffer name");
   }
 
   int row, col;
   string rowcol;
   if(!getline(in, rowcol)) {
-    throw runtime_error("No row or col");
+    assert(false && "No row or col");
   }
   {
     istringstream ss(rowcol);
     if(!(ss >> row >> col)) {
-      throw runtime_error("Huh");
+      assert(false && "Huh");
     }
   }
 
   int topRow, bottomRow, windowHeight, scrollAmount;
   string navContext;
   if(!getline(in, navContext)) {
-    throw runtime_error("No navContext");
+    assert(false && "No navContext");
   }
   {
     istringstream ss(navContext);
     if(!(ss >> topRow >> bottomRow >> windowHeight >> scrollAmount)) {
-      throw runtime_error("Bad navContext");
+      assert(false && "Bad navContext");
     }
   }
 

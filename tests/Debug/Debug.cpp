@@ -19,6 +19,7 @@
 #include "Boundary/MotionBoundary.h"
 #include "Utils/EditTestGenerators.h"
 #include "Utils/NeovimOracle.h"
+#include "Utils/RandomBufferHelpers.h"
 #include "Utils/StringUtils.h"
 #include "State/EditState.h"
 #include "VimCore/VimEditUtils.h"
@@ -2688,4 +2689,81 @@ TEST_F(NeovimOracleDebugSentence, DISABLED_SentenceDeleteDivergence) {
                                     "cge ddfecdb\x1b");
   cerr << "Neovim 'cge ddfecdb<Esc>' from MODEL post-d) state:" << endl;
   cerr << "  lines=" << nvimCge2.lines << " pos=" << nvimCge2.row << "," << nvimCge2.col << endl;
+}
+
+// Reproduce CompositionOptimizer/EditSize/Small crash - seed 44
+TEST_F(DebugTest, DISABLED_CompositionMultiLineCrash) {
+  // Was reproducing EditSize/MultiLine crash: "Edit invalid on empty line"
+  // Root cause: needsKEscape k moved cursor one line too far in effective lines
+  // because deleteRangeLinewise already clamped. Fixed by setting A* cursor to
+  // max(0, size-2) to match replay position after dd+k.
+  constexpr int DEFAULT_LINES = 15;
+  constexpr int DEFAULT_AVG_LEN = 20;
+  constexpr int DEFAULT_EDIT_COUNT = 5;
+
+  for (int seed = 42; seed <= 46; seed++) {
+    RandomGen::seed(seed);
+    Lines initial = randomCodeBuffer(DEFAULT_LINES, DEFAULT_AVG_LEN);
+    Lines goal = initial;
+    for (int e = 0; e < DEFAULT_EDIT_COUNT; e++) {
+      int goalSize = static_cast<int>(goal.size());
+      int line = e * (goalSize - 1) / max(1, DEFAULT_EDIT_COUNT - 1);
+      line = min(line, goalSize - 1);
+      if (line + 1 < static_cast<int>(goal.size())) {
+        goal[line] = randomWord(DEFAULT_AVG_LEN * 5 / 2);
+        goal.erase(goal.begin() + line + 1);
+      } else {
+        goal[line] = randomWord(DEFAULT_AVG_LEN * 5 / 2);
+      }
+    }
+    Config config = Config::uniform();
+    CompositionOptimizer opt(config);
+    opt.optimize(initial, {0, 0}, goal, {0, 0});
+  }
+}
+
+TEST_F(DebugTest, DISABLED_CompositionEditSizeSmallCrash) {
+  // Exact inputs that crash (from seed 44):
+  Lines initial = {
+    "e.cdc.d f..a;",
+    ",fdbda fb ,a a ab.e e.daea e ,",
+    "fa  .af.   ..cbd ,b, a e.bd ,",
+    "eeac, b fa.,e., dadd ac,.a ec",
+    "bcaed aee.. f.",
+    "dc c,.,ebdce,",
+    ".ffb..fc.c.d fecbedccdad cd  {",
+    "}",
+    "",
+    "",
+    ". aedff efbf",
+    "edfc b ,e,aebcf.  cd. . ;",
+    "dd,bff d,d,d ,",
+    "ca,fcb,b f,da e,,b ,aa,   ;",
+    "ed,da  ,b,d.d;"
+  };
+  Lines goal = {
+    "e.cdbcacf..a;",
+    ",fdbda fb ,a a ab.e e.daea e ,",
+    "fa  .af.   ..cbd ,b, a e.bd ,",
+    "eeac, b fa.,ebdccbdd ac,.a ec",
+    "bcaed aee.. f.",
+    "dc c,.,ebdce,",
+    ".ffb..fc.c.d fecbedccdad cd  {",
+    "e",
+    "",
+    "",
+    ". cbbab efbf",
+    "edfc b ,e,aebcf.  cd. . ;",
+    "dd,bff d,d,d ,",
+    "ca,fcb,b f,da e,,b ,aa,   ;",
+    "ed,deeffb,d.d;"
+  };
+
+  cerr << "Initial: " << initial << endl;
+  cerr << "Goal:    " << goal << endl;
+
+  Config config = Config::uniform();
+  CompositionOptimizer opt(config);
+  auto result = opt.optimize(initial, {0, 0}, goal, {0, 0});
+  cerr << "OK - nodes=" << result.stats.nodesExplored << endl;
 }

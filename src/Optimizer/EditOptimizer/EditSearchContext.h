@@ -87,6 +87,7 @@ struct EditSearchContext {
   // If >90% of pops are stale, something is pathologically wrong
   static constexpr int SAFETY_MULTIPLIER = 10;
 
+
   // Constructor - sets up context from start lines and boundary
   EditSearchContext(const Lines& initialLines,
                     const EditBoundary& boundary,

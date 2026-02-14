@@ -2,7 +2,7 @@
 #include "CharToKeys.h"
 
 #include <algorithm>
-#include <stdexcept>
+#include <cassert>
 
 using namespace std;
 
@@ -53,10 +53,7 @@ PhysicalKeys SequenceTokenizer::tokenize(string_view s) const {
         out.append(it->second);
         i++;
       } else {
-        throw runtime_error(
-          "Malformed key sequence at position " + to_string(i) +
-          " near '" + string(1,ch) + "'"
-        );
+        assert(false && "Malformed key sequence");
       }
     }
   }

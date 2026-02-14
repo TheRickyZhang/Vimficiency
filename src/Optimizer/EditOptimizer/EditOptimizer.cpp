@@ -358,10 +358,14 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
                                      bool needsKEscape, int count,
                                      const KeyedSequence& baseKS, double hCost) {
     if (needsKEscape) {
+      // In the real buffer, dd from the last line puts cursor on the line below,
+      // then k moves it back up. In effective lines, dd clamps to lastValidLine,
+      // then k goes to max(0, lastValidLine-1). Set the A* cursor to match
+      // the replay position so exploration and replay stay consistent.
       const Lines& lines = afterDel.getLines();
       Position pos = afterDel.getPos();
-      int lastValidLine = static_cast<int>(lines.size()) - 1;
-      pos.line = lastValidLine;
+      int kTargetLine = max(0, static_cast<int>(lines.size()) - 2);
+      pos.line = kTargetLine;
       pos.clampColPreservingTarget(lines[pos.line].empty() ? 0 :
                  min(pos.targetCol, static_cast<int>(lines[pos.line].size()) - 1));
       afterDel.setPos(pos);
@@ -474,15 +478,13 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
     }
 
     // Non-goal: k-escape logic
-    if constexpr (PureDeletion) {
+    // In the full buffer with hasLinesBelow, dd from the last line puts cursor
+    // on the line below the edit region. We emit 'k' to move back up.
+    // In effective lines, deleteRangeLinewise clamps the cursor, so k is a
+    // no-op (Vim behavior: k at line 0 stays at line 0).
+    {
       bool needsKEscape = editBoundary.hasLinesBelow() &&
-          line >= static_cast<int>(lines.size());
-      double hCost = ctx.heuristicCost(lines);
-      exploreLinewiseNonGoal(afterDel, base, needsKEscape, count, baseKS, hCost);
-    } else {
-      Position pos = afterDel.getPos();
-      int lastValidLine = static_cast<int>(lines.size()) - 1;
-      bool needsKEscape = editBoundary.hasLinesBelow() && lastValidLine >= 0 && pos.line > lastValidLine;
+                          line >= static_cast<int>(lines.size());
       double hCost = ctx.heuristicCost(lines);
       exploreLinewiseNonGoal(afterDel, base, needsKEscape, count, baseKS, hCost);
     }
@@ -540,11 +542,13 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
       return;
     }
 
-    // Non-goal: k-escape logic
-    bool needsKEscape = editBoundary.hasLinesBelow() &&
-        range.firstLine >= static_cast<int>(lines.size());
-    double hCost = ctx.heuristicCost(lines);
-    exploreLinewiseNonGoal(afterDel, base, needsKEscape, count, baseKS, hCost);
+    // Non-goal: k-escape logic (same principle as single-line dd)
+    {
+      bool needsKEscape = editBoundary.hasLinesBelow() &&
+                          range.firstLine >= static_cast<int>(lines.size());
+      double hCost = ctx.heuristicCost(lines);
+      exploreLinewiseNonGoal(afterDel, base, needsKEscape, count, baseKS, hCost);
+    }
   };
 
   // Counted join handler ({n}J, {n}gJ)

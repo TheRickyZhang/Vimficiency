@@ -5,6 +5,7 @@
 #include "Utils/Lines.h"
 
 #include <algorithm>
+#include <cassert>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
@@ -63,7 +64,7 @@ inline Lines load(const std::string& filename) {
               "data" / "TestFiles" / filename;
   std::ifstream file(path);
   if (!file) {
-    throw std::runtime_error("Cannot open: " + path.string());
+    assert(false && "Cannot open test file");
   }
   Lines lines;
   std::string line;

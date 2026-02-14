@@ -384,6 +384,8 @@ void EditExplorer::exploreCountedWordEdits(
     int minCountRepeat, DeletionCallback onDeletion) {
   if (!onDeletion) return;
   if (minCountRepeat < 2) return;
+  // Cursor in boundary region: deletions from here would include prefix/suffix chars
+  if (inBoundaryRegion(cursor, lines)) return;
 
   static constexpr int MAX_COUNT_ITERATIONS = 9;
 
@@ -574,9 +576,16 @@ void EditExplorer::exploreAllDeletions(const EditState& state,
   // Right boundary (suffix region): cursor on last line, in suffix columns
   if (cursor.line == lines.lastLine() && ctx_.rightColOffset > 0 &&
       cursor.col + ctx_.rightColOffset >= static_cast<int>(lines.getSize(cursor.line))) {
-    // Can still do backward deletions that don't touch suffix
-    exploreBackwardWordEdits<EdgeType::WordEdge>(Edit::BACKWARD_WORDEDGE_EDITS, cursor, lines, onDeletion);
+    int firstSuffixCol = static_cast<int>(lines.getSize(cursor.line)) - ctx_.rightColOffset;
 
+    // At exactly the first suffix column, backward word edits are safe:
+    // they delete [endpoint, cursor.col-1] which is entirely in content.
+    if (cursor.col == firstSuffixCol && firstSuffixCol > 0) {
+      exploreBackwardWordEdits<EdgeType::WordEdge>(Edit::BACKWARD_WORDEDGE_EDITS, cursor, lines, onDeletion);
+      exploreBackwardWordEdits<EdgeType::NextEdge>(Edit::BACKWARD_NEXTEDGE_EDITS, cursor, lines, onDeletion);
+    }
+
+    // Motions to escape the suffix region
     if (onMotion) {
       // h: move left within line (away from suffix)
       if (cursor.col > 0) {

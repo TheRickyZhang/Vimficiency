@@ -6,23 +6,14 @@
 
 #include "Optimizer/Config.h"
 #include "Boundary/MotionBoundary.h"
-#include "State/RunningEffort.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Editor/Snapshot.h"
 #include "Editor/NavContext.h"
-#include "State/MotionState.h"
 #include "Utils/Debug.h"
 
 using namespace std;
 namespace fs = std::filesystem;
 
-// TODO move to testing file (oh and write proper tests!)
-  // fs::path fn = fs::path(TESTFILES_DIR) / "uniform.txt";
-  // ifstream fin(fn);
-  // if(!fin) {
-  //     throw runtime_error("Can't read uniform.txt");
-  // }
-  // vector<string> lines = readLines(fin);
 
 int main(int argc, char* argv[]) {
   if(argc != 4) {
