@@ -87,6 +87,9 @@ struct EditSearchContext {
   // If >90% of pops are stale, something is pathologically wrong
   static constexpr int SAFETY_MULTIPLIER = 10;
 
+  // Debug: optionally track explored states
+  std::vector<ExploredState> exploredStates;
+
 
   // Constructor - sets up context from start lines and boundary
   EditSearchContext(const Lines& initialLines,
@@ -190,6 +193,14 @@ struct EditSearchContext {
   // Pop next valid state from queue, skipping stale states.
   // Returns nullopt if queue becomes empty.
   std::optional<EditState> getNextValidState();
+
+  // Track an explored state (call from main loop when trackExploredStates is true)
+  void trackState(const EditState& s) {
+    if (params.trackExploredStates) {
+      Position pos = s.getPos();
+      exploredStates.push_back({pos.line, pos.col, s.getEffort(), s.getSeq()});
+    }
+  }
 
   // Build SearchStats from current context state
   SearchStats getStats() const;

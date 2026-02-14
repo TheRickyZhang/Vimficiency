@@ -33,6 +33,7 @@ struct EditOptimizerParams : OptimizerParamsBase {
   EditOptimizerParams& withMotionLinePadding(int v) { motionLinePaddingAbove = motionLinePaddingBelow = v; return *this; }
   EditOptimizerParams& withMinCountRepeat(int v) { minCountRepeat = v; return *this; }
   EditOptimizerParams& withCountOverhead(double v) { countOverhead = v; return *this; }
+  EditOptimizerParams& withTrackExploredStates(bool v) { trackExploredStates = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
   static EditOptimizerParams dijkstra(int maxResults = 10, int maxNodesExplored = 50000) {

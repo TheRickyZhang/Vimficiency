@@ -68,23 +68,26 @@ jobs:
         run: |
           VIMFICIENCY_SEED_MODE=fixed \
           ./build/tests/vimficiency_benchmarks \
-            --benchmark_filter="EditOptimizer.*" \
+            --benchmark_filter="EditOpt.*" \
             --benchmark_format=json \
             --benchmark_out=edit_result.json
       - name: Run MotionOptimizer benchmarks
         run: |
           VIMFICIENCY_SEED_MODE=fixed \
           ./build/tests/vimficiency_benchmarks \
-            --benchmark_filter="MotionOptimizer.*" \
+            --benchmark_filter="MotionOpt.*" \
             --benchmark_format=json \
             --benchmark_out=motion_result.json
       - name: Run CompositionOptimizer benchmarks
         run: |
           VIMFICIENCY_SEED_MODE=fixed \
           ./build/tests/vimficiency_benchmarks \
-            --benchmark_filter="CompositionOptimizer.*" \
+            --benchmark_filter="CompositionOpt.*" \
             --benchmark_format=json \
             --benchmark_out=composition_result.json
+
+      - name: Collect exploration data
+        run: VIMFICIENCY_SEED_MODE=fixed ./build/tests/vimficiency_explore
 
       - name: Build and run baseline benchmarks
         run: |
@@ -98,17 +101,17 @@ jobs:
 
           VIMFICIENCY_SEED_MODE=fixed \
           ./build/tests/vimficiency_benchmarks \
-            --benchmark_filter="EditOptimizer.*" \
+            --benchmark_filter="EditOpt.*" \
             --benchmark_format=json \
             --benchmark_out=baseline_edit.json
           VIMFICIENCY_SEED_MODE=fixed \
           ./build/tests/vimficiency_benchmarks \
-            --benchmark_filter="MotionOptimizer.*" \
+            --benchmark_filter="MotionOpt.*" \
             --benchmark_format=json \
             --benchmark_out=baseline_motion.json
           VIMFICIENCY_SEED_MODE=fixed \
           ./build/tests/vimficiency_benchmarks \
-            --benchmark_filter="CompositionOptimizer.*" \
+            --benchmark_filter="CompositionOpt.*" \
             --benchmark_format=json \
             --benchmark_out=baseline_composition.json
 
@@ -125,6 +128,9 @@ jobs:
             baseline_edit.json
             baseline_motion.json
             baseline_composition.json
+            edit_explore.json
+            motion_explore.json
+            composition_explore.json
 
   benchmark-store:
     runs-on: ubuntu-latest
@@ -193,12 +199,59 @@ jobs:
           cp -r bench-dashboard/dist /tmp/dashboard-dist
           cp scripts/bench-data.js /tmp/bench-data.js
 
+          # Save exploration data before switching branches
+          cp edit_explore.json /tmp/edit_explore.json
+          cp motion_explore.json /tmp/motion_explore.json
+          cp composition_explore.json /tmp/composition_explore.json
+
           git fetch origin gh-pages
           git checkout gh-pages
 
           # Keep only the last 100 benchmark entries per suite
           for dir in bench/edit bench/motion bench/composition; do
             [ -f "$dir/data.js" ] && node /tmp/bench-data.js prune "$dir"
+          done
+
+          # Merge exploration data into explore.js (keep last 5 entries)
+          COMMIT_ID="${{ github.sha }}"
+          COMMIT_MSG=$(echo '${{ github.event.head_commit.message }}' | head -1)
+          COMMIT_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          COMMIT_DATE=$(date +%s%3N)
+          COMMIT_AUTHOR="${{ github.actor }}"
+          REPO_URL="https://github.com/${{ github.repository }}"
+
+          for pair in "edit:/tmp/edit_explore.json" "motion:/tmp/motion_explore.json" "composition:/tmp/composition_explore.json"; do
+            optimizer="${pair%%:*}"
+            explore_json="${pair#*:}"
+            dir="bench/$optimizer"
+            explore_js="$dir/explore.js"
+            mkdir -p "$dir"
+
+            node -e "
+              const fs = require('fs');
+              const newData = JSON.parse(fs.readFileSync('$explore_json', 'utf8'));
+              let existing = { lastUpdate: 0, entries: [] };
+              try {
+                const src = fs.readFileSync('$explore_js', 'utf8');
+                const json = src.replace(/^window\\.EXPLORATION_DATA\\s*=\\s*/, '').replace(/;\\s*$/, '');
+                existing = JSON.parse(json);
+              } catch {}
+              existing.entries.push({
+                commit: {
+                  id: '$COMMIT_ID',
+                  message: $(node -e "process.stdout.write(JSON.stringify('$COMMIT_MSG'))"),
+                  timestamp: '$COMMIT_TS',
+                  url: '$REPO_URL/commit/$COMMIT_ID',
+                  author: { username: '$COMMIT_AUTHOR' }
+                },
+                date: $COMMIT_DATE,
+                cases: newData.cases
+              });
+              existing.entries = existing.entries.slice(-5);
+              existing.lastUpdate = Date.now();
+              fs.writeFileSync('$explore_js', 'window.EXPLORATION_DATA = ' + JSON.stringify(existing));
+              console.log('  ' + '$optimizer' + ': ' + existing.entries.length + ' entries');
+            "
           done
 
           # Root index
@@ -209,9 +262,10 @@ jobs:
           mkdir -p bench/assets
           cp -r /tmp/dashboard-dist/assets/* bench/assets/ 2>/dev/null || true
 
-          # Optimizer pages (preserves existing data.js)
+          # Optimizer pages and explore pages (preserves existing data.js and explore.js)
           for dir in bench/edit bench/motion bench/composition; do
             [ -d "$dir" ] && cp /tmp/dashboard-dist/optimizer.html "$dir/index.html"
+            [ -d "$dir" ] && mkdir -p "$dir/explore" && cp /tmp/dashboard-dist/explore.html "$dir/explore/index.html" 2>/dev/null || true
           done
 
           git add index.html .nojekyll bench/

@@ -589,6 +589,8 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
     if (!maybeState) continue;
     EditState s = std::move(*maybeState);
 
+    ctx.trackState(s);
+
     // Check goal at pop time — guaranteed lowest cost
     if (isGoalReached(s.getLines())) {
       int idx = s.getStartIndex();

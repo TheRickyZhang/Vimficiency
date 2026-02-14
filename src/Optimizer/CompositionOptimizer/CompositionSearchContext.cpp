@@ -249,6 +249,7 @@ SearchStats CompositionSearchContext::getStats(int resultsFound) const {
   stats.statesSkipped = statesSkipped;
   stats.motionNodesExplored = motionNodesExplored;
   stats.editNodesExplored = editNodesExplored;
+  stats.exploredStates = exploredStates;
 
   if (resultsFound >= params.maxResults) {
     stats.stopReason = SearchStopReason::MaxResultsFound;

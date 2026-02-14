@@ -54,7 +54,22 @@ export function CategorySection({ category, benchNames, data, hiddenShas, onHide
           <div key={c.benchName} className={styles.chartCard} onClick={(e) => {
             if (!(e.nativeEvent as any).__xAxisHandled) setModal({ title: c.detail, idx: i });
           }}>
-            <h4>{c.detail}</h4>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <h4 style={{ margin: 0 }}>{c.detail}</h4>
+              <a
+                href={`explore/?case=${encodeURIComponent(c.detail)}`}
+                onClick={(e) => e.stopPropagation()}
+                title="Explore search space"
+                style={{
+                  fontSize: '0.75rem', color: '#4285f4', textDecoration: 'none',
+                  fontWeight: 600, padding: '2px 8px', borderRadius: 4,
+                  border: '1px solid #d0d0d0', background: '#f8f9fa',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Explore
+              </a>
+            </div>
             <div className={styles.chartWrapper}>
               <BenchmarkChart series={c.series} unit={c.unit} />
             </div>

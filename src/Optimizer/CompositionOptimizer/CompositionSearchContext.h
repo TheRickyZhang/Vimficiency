@@ -135,6 +135,9 @@ struct CompositionSearchContext {
   int motionNodesExplored = 0;
   int editNodesExplored = 0;
 
+  // Debug: optionally track explored states
+  std::vector<ExploredState> exploredStates;
+
   // Internal safety: hard cap on total pops to prevent runaway loops
   static constexpr int SAFETY_MULTIPLIER = 10;
 
@@ -234,6 +237,14 @@ struct CompositionSearchContext {
   // ==========================================================================
   // Stats
   // ==========================================================================
+
+  // Track an explored state (call from main loop when trackExploredStates is true)
+  void trackState(const CompositionState& s) {
+    if (params.trackExploredStates) {
+      Position pos = s.getPos();
+      exploredStates.push_back({pos.line, pos.col, s.getEffort(), s.getSequence().str()});
+    }
+  }
 
   // Build SearchStats from current context state
   SearchStats getStats(int resultsFound) const;

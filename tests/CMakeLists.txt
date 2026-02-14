@@ -140,6 +140,21 @@ target_link_libraries(vimficiency_benchmarks
 )
 
 # =============================================================================
+# Exploration collector binary
+# =============================================================================
+# Collects A* explored states for dashboard visualization.
+# Run with: VIMFICIENCY_SEED_MODE=fixed ./vimficiency_explore
+
+add_executable(vimficiency_explore
+  Exploration/ExplorationCollector.cpp
+)
+
+target_link_libraries(vimficiency_explore
+  PRIVATE
+    test_utils
+)
+
+# =============================================================================
 # Debug binary
 # =============================================================================
 # Scratch tests and debugging utilities.

@@ -37,6 +37,7 @@ inline std::string toShortString(SearchStopReason reason) {
 struct ExploredState {
   int line;
   int col;
+  double effort;
   std::string sequence;  // How we got here
 };
 

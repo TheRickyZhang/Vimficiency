@@ -9,6 +9,7 @@ export default defineConfig({
       input: {
         home: 'index.html',
         optimizer: 'optimizer.html',
+        explore: 'explore.html',
       },
     },
   },

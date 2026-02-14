@@ -251,6 +251,7 @@ SearchStats EditSearchContext::getStats() const {
   stats.queueSizeAtStop = static_cast<int>(pq.size());
   stats.motionsEmitted = motionsEmitted;
   stats.statesSkipped = statesSkipped;
+  stats.exploredStates = exploredStates;
 
   // Determine stop reason
   if (pq.empty()) {

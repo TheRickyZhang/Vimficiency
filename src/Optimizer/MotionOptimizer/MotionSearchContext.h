@@ -131,7 +131,7 @@ struct MotionSearchContext {
   void trackState(const MotionState& s) {
     if (params.trackExploredStates) {
       Position pos = s.getPos();
-      exploredStates.push_back({pos.line, pos.col, s.getSequence().str()});
+      exploredStates.push_back({pos.line, pos.col, s.getEffort(), s.getSequence().str()});
     }
   }
 

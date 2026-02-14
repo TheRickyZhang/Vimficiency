@@ -99,6 +99,8 @@ CompositionResult CompositionOptimizer::optimize(
       continue;
     }
 
+    ctx.trackState(s);
+
     debug("pop:", "\"" + s.getSequence().str() + "\"",
           "pos:", pos, "edits:", editsCompleted,
           "cost:", s.getCost(), "effort:", s.getEffort());
