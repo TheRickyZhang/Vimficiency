@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,21 @@
 using namespace std;
 
 static Config config = Config::uniform();
+
+// =============================================================================
+// Case data: stats + found results
+// =============================================================================
+
+struct FoundResult {
+  string sequence;
+  double effort;
+};
+
+struct ExploreCase {
+  string name;
+  SearchStats stats;
+  vector<FoundResult> results;
+};
 
 // =============================================================================
 // Minimal JSON writer
@@ -57,17 +73,28 @@ static string truncateSeq(const string& seq, size_t maxLen = 20) {
 }
 
 static void writeExplorationJson(const string& filename,
-                                  const vector<pair<string, SearchStats>>& cases) {
+                                  const vector<ExploreCase>& cases) {
   ofstream out(filename);
   out << "{\n  \"cases\": [\n";
   for (size_t i = 0; i < cases.size(); i++) {
-    const auto& [name, stats] = cases[i];
+    const auto& ec = cases[i];
     out << "    {\n";
-    out << "      \"name\": \"" << jsonEscape(name) << "\",\n";
-    out << "      \"nodesExplored\": " << stats.nodesExplored << ",\n";
+    out << "      \"name\": \"" << jsonEscape(ec.name) << "\",\n";
+    out << "      \"nodesExplored\": " << ec.stats.nodesExplored << ",\n";
+
+    // Found results (optimal sequences)
+    out << "      \"results\": [";
+    for (size_t r = 0; r < ec.results.size(); r++) {
+      if (r > 0) out << ",";
+      out << "\n        {\"seq\": \"" << jsonEscape(ec.results[r].sequence)
+          << "\", \"effort\": " << ec.results[r].effort << "}";
+    }
+    out << "\n      ],\n";
+
+    // Explored states
     out << "      \"states\": [";
-    for (size_t j = 0; j < stats.exploredStates.size(); j++) {
-      const auto& s = stats.exploredStates[j];
+    for (size_t j = 0; j < ec.stats.exploredStates.size(); j++) {
+      const auto& s = ec.stats.exploredStates[j];
       if (j > 0) out << ",";
       out << "\n        {\"effort\": " << s.effort
           << ", \"seq\": \"" << jsonEscape(truncateSeq(s.sequence)) << "\"}";
@@ -85,8 +112,8 @@ static void writeExplorationJson(const string& filename,
 // Motion cases
 // =============================================================================
 
-static vector<pair<string, SearchStats>> collectMotionCases() {
-  vector<pair<string, SearchStats>> cases;
+static vector<ExploreCase> collectMotionCases() {
+  vector<ExploreCase> cases;
   auto& seedMgr = SeedManager::instance();
 
   struct MotionCase {
@@ -118,7 +145,15 @@ static vector<pair<string, SearchStats>> collectMotionCases() {
 
     MotionOptimizer opt(config);
     auto result = opt.optimize(lines, firstPos, lastPos, params, "", boundary);
-    cases.emplace_back(mc.name, result.stats);
+
+    vector<FoundResult> found;
+    for (const auto& r : result.results) {
+      if (r.isValid()) {
+        found.push_back({r.sequence.str(), r.keyCost});
+      }
+    }
+
+    cases.push_back({mc.name, result.stats, std::move(found)});
   }
 
   return cases;
@@ -128,14 +163,13 @@ static vector<pair<string, SearchStats>> collectMotionCases() {
 // Edit cases
 // =============================================================================
 
-static vector<pair<string, SearchStats>> collectEditCases() {
-  vector<pair<string, SearchStats>> cases;
+static vector<ExploreCase> collectEditCases() {
+  vector<ExploreCase> cases;
   auto& seedMgr = SeedManager::instance();
 
   EditOptimizerParams params;
   params.trackExploredStates = true;
 
-  // Pure deletion cases
   struct EditCase {
     string name;
     int numLines;
@@ -152,6 +186,30 @@ static vector<pair<string, SearchStats>> collectEditCases() {
     {"LineLength/60", 5, 60},
   };
 
+  auto collectEditResults = [](const EditResult& result) {
+    vector<FoundResult> found;
+    // Deduplicate: EditResult has one result per starting position,
+    // collect unique valid sequences sorted by effort
+    map<string, double> bestBySeq;
+    for (const auto& r : result.getResults()) {
+      if (r.isValid()) {
+        auto it = bestBySeq.find(r.sequence.str());
+        if (it == bestBySeq.end() || r.keyCost < it->second) {
+          bestBySeq[r.sequence.str()] = r.keyCost;
+        }
+      }
+    }
+    for (const auto& [seq, effort] : bestBySeq) {
+      found.push_back({seq, effort});
+    }
+    sort(found.begin(), found.end(), [](const auto& a, const auto& b) {
+      return a.effort < b.effort;
+    });
+    // Keep top 10
+    if (found.size() > 10) found.resize(10);
+    return found;
+  };
+
   for (const auto& ec : pureDeletionCases) {
     RandomGen::seed(seedMgr.getSeed(0));
     Lines lines = randomCodeBuffer(ec.numLines, ec.avgLen);
@@ -161,10 +219,10 @@ static vector<pair<string, SearchStats>> collectEditCases() {
 
     EditOptimizer opt(config);
     auto result = opt.optimizePureDeletion(lines, boundary, p);
-    cases.emplace_back(ec.name, result.stats);
+    cases.push_back({ec.name, result.stats, collectEditResults(result)});
   }
 
-  // Multi-line edit cases
+  // Multi-line edit case
   {
     RandomGen::seed(seedMgr.getSeed(0));
     Lines buffer = {"I saw a pig in barn in Switzerland", "Inconspicuous, even"};
@@ -176,7 +234,7 @@ static vector<pair<string, SearchStats>> collectEditCases() {
 
     EditOptimizer opt(config);
     auto result = opt.optimizeEdit(editRegion, goal, boundary, p);
-    cases.emplace_back("MultiLineEdit/2L->1w", result.stats);
+    cases.push_back({"MultiLineEdit/2L->1w", result.stats, collectEditResults(result)});
   }
 
   return cases;
@@ -190,8 +248,8 @@ static Lines generateBuffer(int numLines, int avgLineLen) {
   return randomCodeBuffer(numLines, avgLineLen);
 }
 
-static vector<pair<string, SearchStats>> collectCompositionCases() {
-  vector<pair<string, SearchStats>> cases;
+static vector<ExploreCase> collectCompositionCases() {
+  vector<ExploreCase> cases;
   auto& seedMgr = SeedManager::instance();
 
   CompositionOptimizerParams params;
@@ -233,7 +291,15 @@ static vector<pair<string, SearchStats>> collectCompositionCases() {
 
     CompositionOptimizer opt(config);
     auto result = opt.optimize(initial, {0, 0}, goal, {0, 0}, params);
-    cases.emplace_back(cc.name, result.stats);
+
+    vector<FoundResult> found;
+    for (const auto& r : result.results) {
+      if (r.isValid()) {
+        found.push_back({r.sequence.str(), r.keyCost});
+      }
+    }
+
+    cases.push_back({cc.name, result.stats, std::move(found)});
   }
 
   return cases;

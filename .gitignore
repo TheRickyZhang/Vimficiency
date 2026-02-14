@@ -15,6 +15,9 @@ tests/.last_seeds.txt
 build-asan/
 build*/
 
+# Exploration collector output
+*_explore.json
+
 # Bench dashboard
 bench-dashboard/node_modules/
 bench-dashboard/dist/

@@ -57,7 +57,7 @@ export function CategorySection({ category, benchNames, data, hiddenShas, onHide
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <h4 style={{ margin: 0 }}>{c.detail}</h4>
               <a
-                href={`explore/?case=${encodeURIComponent(c.detail)}`}
+                href={`explore/?case=${encodeURIComponent(category + '/' + c.detail)}`}
                 onClick={(e) => e.stopPropagation()}
                 title="Explore search space"
                 style={{

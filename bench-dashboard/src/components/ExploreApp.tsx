@@ -2,10 +2,22 @@ import { useState, useMemo } from 'react';
 import type { ExplorationData, ExplorationCase } from '../types/exploration';
 import { EffortHistogram } from './EffortHistogram';
 import { ExplorationTimeline } from './ExplorationTimeline';
+import { ExplorationTree } from './ExplorationTree';
 import { SequencePrefixTable } from './SequencePrefixTable';
 
 function getExplorationData(): ExplorationData | null {
   return window.EXPLORATION_DATA ?? null;
+}
+
+function findCase(cases: ExplorationCase[], query: string | null): ExplorationCase | undefined {
+  if (!query) return cases[0];
+  // Exact match
+  const exact = cases.find((c) => c.name === query);
+  if (exact) return exact;
+  // Partial match (query is suffix of name or vice versa)
+  const partial = cases.find((c) => c.name.endsWith(query) || query.endsWith(c.name));
+  if (partial) return partial;
+  return cases[0];
 }
 
 export function ExploreApp() {
@@ -16,19 +28,24 @@ export function ExploreApp() {
   const [commitIdx, setCommitIdx] = useState<number>(() => {
     return data ? data.entries.length - 1 : 0;
   });
-  const [selectedCase, setSelectedCase] = useState<string | null>(initialCase);
+
+  const entry = data?.entries[commitIdx];
+  const cases = entry?.cases ?? [];
+
+  // Resolve initial case, defaulting to first case
+  const resolvedInitial = useMemo(() => findCase(cases, initialCase), [cases, initialCase]);
+  const [selectedCaseName, setSelectedCaseName] = useState<string | null>(null);
+
+  // Active case: use explicit selection if set, otherwise resolved initial
+  const activeCase = selectedCaseName
+    ? cases.find((c) => c.name === selectedCaseName) ?? resolvedInitial
+    : resolvedInitial;
 
   if (!data || !data.entries.length) {
     return <p style={{ color: '#666', fontSize: '1.1rem' }}>No exploration data yet. Push to main to generate.</p>;
   }
 
-  const entry = data.entries[commitIdx];
   if (!entry) return null;
-
-  const cases = entry.cases;
-  const activeCase: ExplorationCase | undefined = selectedCase
-    ? cases.find((c) => c.name === selectedCase)
-    : cases[0];
 
   return (
     <div>
@@ -40,11 +57,8 @@ export function ExploreApp() {
           </label>
           <select
             value={commitIdx}
-            onChange={(e) => setCommitIdx(Number(e.target.value))}
-            style={{
-              padding: '6px 12px', fontSize: '0.9rem', borderRadius: 6,
-              border: '1px solid #ccc', background: 'white',
-            }}
+            onChange={(e) => { setCommitIdx(Number(e.target.value)); setSelectedCaseName(null); }}
+            style={selectStyle}
           >
             {data.entries.map((e, i) => (
               <option key={e.commit.id} value={i}>
@@ -60,11 +74,8 @@ export function ExploreApp() {
           </label>
           <select
             value={activeCase?.name ?? ''}
-            onChange={(e) => setSelectedCase(e.target.value)}
-            style={{
-              padding: '6px 12px', fontSize: '0.9rem', borderRadius: 6,
-              border: '1px solid #ccc', background: 'white',
-            }}
+            onChange={(e) => setSelectedCaseName(e.target.value)}
+            style={selectStyle}
           >
             {cases.map((c) => (
               <option key={c.name} value={c.name}>
@@ -77,10 +88,29 @@ export function ExploreApp() {
 
       {activeCase && (
         <div>
+          {/* Found Results — most important, at the top */}
+          {activeCase.results && activeCase.results.length > 0 && (
+            <Card title="Found Sequences" style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {activeCase.results.map((r, i) => (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'baseline', gap: 8,
+                    padding: '6px 14px', background: i === 0 ? '#e8f5e9' : '#f5f5f5',
+                    border: `1px solid ${i === 0 ? '#4caf50' : '#e0e0e0'}`,
+                    borderRadius: 6,
+                  }}>
+                    <code style={{ fontWeight: 700, fontSize: '1rem' }}>{r.seq}</code>
+                    <span style={{ fontSize: '0.8rem', color: '#888' }}>
+                      {r.effort.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
           {/* Stats summary */}
-          <div style={{
-            display: 'flex', gap: 24, marginBottom: 24, flexWrap: 'wrap',
-          }}>
+          <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
             <Stat label="Nodes explored" value={activeCase.nodesExplored.toLocaleString()} />
             <Stat label="States tracked" value={activeCase.states.length.toLocaleString()} />
             <Stat label="Max effort" value={
@@ -95,8 +125,13 @@ export function ExploreApp() {
             } />
           </div>
 
-          {/* Visualizations */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 32 }}>
+          {/* Exploration Tree */}
+          <Card title="Exploration Tree" style={{ marginBottom: 24 }}>
+            <ExplorationTree states={activeCase.states} />
+          </Card>
+
+          {/* Charts */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
             <Card title="Effort Distribution">
               <EffortHistogram states={activeCase.states} />
             </Card>
@@ -114,23 +149,28 @@ export function ExploreApp() {
   );
 }
 
+const selectStyle: React.CSSProperties = {
+  padding: '6px 12px', fontSize: '0.9rem', borderRadius: 6,
+  border: '1px solid #ccc', background: 'white',
+};
+
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div style={{
       background: 'white', border: '1px solid #e0e0e0', borderRadius: 8,
-      padding: '12px 20px', minWidth: 120,
+      padding: '10px 16px', minWidth: 100,
     }}>
-      <div style={{ fontSize: '0.8rem', color: '#888', fontWeight: 600, marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: '1.3rem', fontWeight: 800 }}>{value}</div>
+      <div style={{ fontSize: '0.75rem', color: '#888', fontWeight: 600, marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>{value}</div>
     </div>
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ title, children, style }: { title: string; children: React.ReactNode; style?: React.CSSProperties }) {
   return (
     <div style={{
       background: 'white', border: '1px solid #e0e0e0', borderRadius: 8,
-      padding: 20,
+      padding: 20, ...style,
     }}>
       <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 12, color: '#333' }}>{title}</h3>
       {children}

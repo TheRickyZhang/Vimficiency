@@ -9,6 +9,10 @@ window.EXPLORATION_DATA = {
         {
           name: "BufferSize/5",
           nodesExplored: 106,
+          results: [
+            { seq: "3jw", effort: 3.2 },
+            { seq: "Gk$", effort: 5.8 },
+          ],
           states: [
             { effort: 0.0, seq: "" },
             { effort: 1.0, seq: "j" },
@@ -40,6 +44,10 @@ window.EXPLORATION_DATA = {
         {
           name: "LineLength/40",
           nodesExplored: 85,
+          results: [
+            { seq: "2w", effort: 2.5 },
+            { seq: "ww", effort: 2.8 },
+          ],
           states: [
             { effort: 0.0, seq: "" },
             { effort: 1.0, seq: "l" },
@@ -66,6 +74,9 @@ window.EXPLORATION_DATA = {
         {
           name: "BufferSize/10",
           nodesExplored: 200,
+          results: [
+            { seq: "5jw", effort: 5.0 },
+          ],
           states: Array.from({ length: 80 }, (_, i) => ({
             effort: i * 0.15,
             seq: ["j", "k", "l", "h", "w", "b", "e", "0", "$", "G"][i % 10] + (i > 10 ? "j".repeat(Math.floor(i / 10)) : "")
@@ -80,6 +91,9 @@ window.EXPLORATION_DATA = {
         {
           name: "BufferSize/5",
           nodesExplored: 95,
+          results: [
+            { seq: "3jw", effort: 3.2 },
+          ],
           states: [
             { effort: 0.0, seq: "" },
             { effort: 1.0, seq: "j" },
@@ -99,6 +113,9 @@ window.EXPLORATION_DATA = {
         {
           name: "LineLength/40",
           nodesExplored: 70,
+          results: [
+            { seq: "2w", effort: 2.5 },
+          ],
           states: [
             { effort: 0.0, seq: "" },
             { effort: 1.0, seq: "l" },
@@ -116,6 +133,9 @@ window.EXPLORATION_DATA = {
         {
           name: "BufferSize/10",
           nodesExplored: 180,
+          results: [
+            { seq: "4jw", effort: 4.5 },
+          ],
           states: Array.from({ length: 70 }, (_, i) => ({
             effort: i * 0.16,
             seq: ["j", "k", "l", "h", "w", "b", "e", "0", "$", "G"][i % 10] + (i > 10 ? "j".repeat(Math.floor(i / 10)) : "")

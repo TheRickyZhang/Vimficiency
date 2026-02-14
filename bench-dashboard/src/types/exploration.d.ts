@@ -5,9 +5,15 @@ export interface ExploredStateEntry {
   seq: string;
 }
 
+export interface FoundResultEntry {
+  seq: string;
+  effort: number;
+}
+
 export interface ExplorationCase {
   name: string;
   nodesExplored: number;
+  results: FoundResultEntry[];
   states: ExploredStateEntry[];
 }
 
