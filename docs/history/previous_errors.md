@@ -226,6 +226,43 @@ if (lastDiff < endPos) {
 ```
 This ensures all result paths in an `EditResult` leave the cursor at the same `goalPos`.
 
+## Counted edit exploration bypassing boundary guards
+
+In `EditOptimizer.cpp`, `exploreAllDeletions` (lines 574-613 of `EditExplorer.cpp`) checks if the cursor is in the prefix or suffix boundary region and returns early with only motions allowed. However, `exploreCountedWordEdits` and `exploreCountedCharEdits` are called separately after `exploreAllDeletions` in the main search loop (line 666-673) and did **not** have these boundary guards.
+
+**Trigger:** CompositionOptimizer creates edit regions with prefix/suffix boundaries. After edits like `5x` put the cursor in the suffix, a `k` motion moves to the prefix region (e.g., line 0 with `leftColOffset=1`). From there, `exploreCountedWordEdits` explores `4de` which deletes prefix content — producing a `contentEnd < contentBegin` assertion failure.
+
+**Fix:** Added `if (inBoundaryRegion(cursor, lines)) return;` at the top of both `EditExplorer::exploreCountedWordEdits` and `EditSearchContext::exploreCountedCharEdits`.
+
+Additionally, re-enabled backward word edits (db, dB, dge, dgE) from exactly the first suffix column, since those delete `[endpoint, cursor.col-1]` which is entirely within the content region:
+```cpp
+if (cursor.col == firstSuffixCol && firstSuffixCol > 0) {
+  exploreBackwardWordEdits<EdgeType::WordEdge>(...);
+  exploreBackwardWordEdits<EdgeType::NextEdge>(...);
+}
+```
+
+## needsKEscape replay divergence after dd from last effective line
+
+When `dd` operates on the last line of effective lines and `editBoundary.hasLinesBelow()` is true, the real buffer has a line below that the cursor lands on, but the effective lines representation has already clamped via `deleteRangeLinewise` to `min(line, size-1)`. The `k` escape command corrects this in the real buffer but creates a divergence during `replayAndCacheSuffix`, which replays on effective lines.
+
+Three sub-issues were fixed:
+
+**1. `needsKEscape` condition never triggering for non-PureDeletion:**
+The original check `pos.line > lastValidLine` was always false because `deleteRangeLinewise` already clamps the position. Changed to `line >= static_cast<int>(lines.size())` which checks the *pre-clamp* line index.
+
+**2. `k` at line 0 asserting instead of being a no-op:**
+In `Edit::applyEdit`, `k` previously asserted that `pos.line > 0`. In real Vim, `k` at line 0 is a no-op. Changed to `pos.line = max(0, pos.line - count)` to match Vim behavior. This prevents replay crashes when `dd` from the only remaining line appends `k` to the sequence.
+
+**3. A\* cursor position diverging from replay position:**
+After `dd` + `k`, the A\* search had cursor at `size-1` (clamped by `deleteRangeLinewise`) but replay produces `max(0, size-2)` (clamped, then `k` moves up one more). Fixed `exploreLinewiseNonGoal` to set cursor to `max(0, size-2)` when `needsKEscape` is true, matching what replay produces.
+
+**Known limitation:** The A\* search explores from `max(0, size-2)` which is one line above where the real buffer cursor would be after `dd+k` from the last effective line. This is consistent with replay (so no crashes), but the explored states start from a slightly different position than the real buffer. In practice this is rarely impactful since the cursor lands on the correct line in the real buffer regardless.
+
+## CompositionOptimizerBench MultiLine vector OOB
+
+In `BM_CompEditSize`'s `MultiLine` case, `goal.erase()` shrinks the vector but subsequent iterations still compute `line` from `DEFAULT_LINES` (the original size). Fixed by using `goal.size()` and clamping after each iteration.
+
 ## CompositionOptimizer skipped motion search inside edit range (always-lazy)
 
 In `CompositionOptimizer.cpp`, when the cursor is inside the edit range but no edit result exists at that position, the code unconditionally skipped motion search (`continue`). This was correct when every position in the range had a result, but with always-lazy mode (limited search budget), many positions may lack results while nearby positions within the range DO have results.
