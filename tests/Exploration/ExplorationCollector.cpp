@@ -205,7 +205,7 @@ static void writeExplorationJson(const string& filename,
     for (size_t j = 0; j < ec.stats.exploredStates.size(); j++) {
       const auto& s = ec.stats.exploredStates[j];
       if (j > 0) out << ",";
-      auto tokens = tokenizeSequence(truncateSeq(s.sequence));
+      auto tokens = tokenizeSequence(s.sequence);
       out << "\n        {\"effort\": " << s.effort << ", \"tokens\": [";
       for (size_t t = 0; t < tokens.size(); t++) {
         if (t > 0) out << ", ";

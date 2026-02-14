@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { ExplorationData, ExplorationCase } from '../types/exploration';
 import { EffortHistogram } from './EffortHistogram';
 import { ExplorationTimeline } from './ExplorationTimeline';
@@ -27,7 +27,6 @@ export function ExploreApp({ data, initialCase }: Props) {
   // Resolve initial case, defaulting to first case
   const resolvedInitial = useMemo(() => findCase(cases, initialCase), [cases, initialCase]);
   const [selectedCaseName, setSelectedCaseName] = useState<string | null>(null);
-  const [selectedResultSeq, setSelectedResultSeq] = useState<string | null>(null);
 
   // Active case: use explicit selection if set, otherwise resolved initial
   const activeCase = selectedCaseName
@@ -39,6 +38,34 @@ export function ExploreApp({ data, initialCase }: Props) {
     [...(activeCase?.results ?? [])].sort((a, b) => a.effort - b.effort),
     [activeCase?.results]
   );
+
+  // Multi-select: set of selected result sequences
+  const [selectedSeqs, setSelectedSeqs] = useState<Set<string>>(() => new Set());
+
+  // Reset selection to best result when case or commit changes
+  const activeCaseKey = `${commitIdx}:${activeCase?.name}`;
+  useEffect(() => {
+    if (sortedResults.length > 0) {
+      setSelectedSeqs(new Set([sortedResults[0]!.tokens.join('')]));
+    } else {
+      setSelectedSeqs(new Set());
+    }
+  }, [activeCaseKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleSeq = (seq: string) => {
+    setSelectedSeqs((prev) => {
+      const next = new Set(prev);
+      if (next.has(seq)) {
+        next.delete(seq);
+      } else {
+        next.add(seq);
+      }
+      return next;
+    });
+  };
+
+  // For EffortHistogram: pass first selected or null
+  const primarySelectedSeq = selectedSeqs.size > 0 ? [...selectedSeqs][0]! : null;
 
   return (
     <div>
@@ -53,7 +80,7 @@ export function ExploreApp({ data, initialCase }: Props) {
           </label>
           <select
             value={commitIdx}
-            onChange={(e) => { setCommitIdx(Number(e.target.value)); setSelectedCaseName(null); setSelectedResultSeq(null); }}
+            onChange={(e) => { setCommitIdx(Number(e.target.value)); setSelectedCaseName(null); }}
             className="px-3 py-1.5 text-[0.9rem] rounded-md border border-[#ccc] bg-surface"
           >
             {data.entries.map((e, i) => (
@@ -70,7 +97,7 @@ export function ExploreApp({ data, initialCase }: Props) {
           </label>
           <select
             value={activeCase?.name ?? ''}
-            onChange={(e) => { setSelectedCaseName(e.target.value); setSelectedResultSeq(null); }}
+            onChange={(e) => { setSelectedCaseName(e.target.value); }}
             className="px-3 py-1.5 text-[0.9rem] rounded-md border border-[#ccc] bg-surface"
           >
             {cases.map((c) => (
@@ -84,17 +111,17 @@ export function ExploreApp({ data, initialCase }: Props) {
 
       {activeCase && (
         <div>
-          {/* Found Results — most important, at the top */}
+          {/* Found Results — multi-select toggles */}
           {sortedResults.length > 0 && (
             <Card title="Found Sequences" className="mb-6">
               <div className="flex flex-wrap gap-2">
                 {sortedResults.map((r) => {
                   const seq = r.tokens.join('');
-                  const isSelected = selectedResultSeq === seq;
+                  const isSelected = selectedSeqs.has(seq);
                   return (
                     <div
                       key={seq}
-                      onClick={() => setSelectedResultSeq(isSelected ? null : seq)}
+                      onClick={() => toggleSeq(seq)}
                       className={`flex items-baseline gap-2 px-3.5 py-1.5 rounded-md cursor-pointer transition-[border-color,background] duration-150 border-2 ${
                         isSelected
                           ? 'bg-[#e3f2fd] border-[#1976d2]'
@@ -109,11 +136,9 @@ export function ExploreApp({ data, initialCase }: Props) {
                   );
                 })}
               </div>
-              {selectedResultSeq && (
-                <div className="text-xs text-muted mt-1.5">
-                  Click again to deselect
-                </div>
-              )}
+              <div className="text-xs text-muted mt-1.5">
+                Click to toggle paths in tree (multi-select)
+              </div>
             </Card>
           )}
 
@@ -135,13 +160,17 @@ export function ExploreApp({ data, initialCase }: Props) {
 
           {/* Exploration Tree */}
           <Card title="Exploration Tree" className="mb-6">
-            <ExplorationTree states={activeCase.states} results={sortedResults} />
+            <ExplorationTree
+              states={activeCase.states}
+              results={sortedResults}
+              selectedSeqs={selectedSeqs}
+            />
           </Card>
 
           {/* Charts */}
           <div className="grid grid-cols-2 gap-6 mb-6">
             <Card title="Effort Distribution">
-              <EffortHistogram states={activeCase.states} results={sortedResults} selectedSeq={selectedResultSeq} />
+              <EffortHistogram states={activeCase.states} results={sortedResults} selectedSeq={primarySelectedSeq} />
             </Card>
             <Card title="Exploration Timeline">
               <ExplorationTimeline states={activeCase.states} />

@@ -6,9 +6,9 @@ Vimficiency bridges this gap by analyzing your editing actions and suggesting mo
 
 
 ## Requirements
-- Neovim 0.10+
-- CMake 3.16+
-- C++17 compiler
+- Neovim 0.11+
+- CMake 4.1+
+- C++23
 
 ## Build
 ```bash
