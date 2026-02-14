@@ -1,0 +1,126 @@
+{
+  "lastUpdate": 1704240000000,
+  "entries": [
+    {
+      "commit": { "id": "abc1234567890", "message": "Initial exploration", "timestamp": "2025-01-02T00:00:00Z", "url": "#", "author": { "username": "dev" } },
+      "date": 1704153600000,
+      "cases": [
+        {
+          "name": "BufferSize/5",
+          "nodesExplored": 106,
+          "results": [
+            { "tokens": ["3j", "w"], "effort": 3.2 },
+            { "tokens": ["G", "k", "$"], "effort": 5.8 }
+          ],
+          "states": [
+            { "effort": 0.0, "tokens": [] },
+            { "effort": 1.0, "tokens": ["j"] },
+            { "effort": 1.0, "tokens": ["k"] },
+            { "effort": 1.0, "tokens": ["l"] },
+            { "effort": 1.0, "tokens": ["h"] },
+            { "effort": 1.2, "tokens": ["w"] },
+            { "effort": 1.2, "tokens": ["b"] },
+            { "effort": 1.5, "tokens": ["e"] },
+            { "effort": 2.0, "tokens": ["j", "j"] },
+            { "effort": 2.0, "tokens": ["j", "l"] },
+            { "effort": 2.1, "tokens": ["j", "w"] },
+            { "effort": 2.2, "tokens": ["k", "k"] },
+            { "effort": 2.3, "tokens": ["w", "w"] },
+            { "effort": 2.5, "tokens": ["3j"] },
+            { "effort": 2.8, "tokens": ["j", "j", "j"] },
+            { "effort": 3.0, "tokens": ["3w"] },
+            { "effort": 3.2, "tokens": ["j", "j", "l"] },
+            { "effort": 3.2, "tokens": ["3j", "w"] },
+            { "effort": 3.5, "tokens": ["4j"] },
+            { "effort": 3.8, "tokens": ["j", "j", "j", "j"] },
+            { "effort": 4.0, "tokens": ["3w", "l"] },
+            { "effort": 4.2, "tokens": ["j", "j", "j", "j", "l"] },
+            { "effort": 4.5, "tokens": ["5j"] },
+            { "effort": 5.0, "tokens": ["G", "k"] },
+            { "effort": 5.5, "tokens": ["G"] },
+            { "effort": 5.8, "tokens": ["G", "k", "$"] }
+          ]
+        },
+        {
+          "name": "LineLength/40",
+          "nodesExplored": 85,
+          "results": [
+            { "tokens": ["2w"], "effort": 2.5 },
+            { "tokens": ["w", "w"], "effort": 2.8 }
+          ],
+          "states": [
+            { "effort": 0.0, "tokens": [] },
+            { "effort": 1.0, "tokens": ["l"] },
+            { "effort": 1.0, "tokens": ["h"] },
+            { "effort": 1.2, "tokens": ["w"] },
+            { "effort": 1.2, "tokens": ["b"] },
+            { "effort": 1.5, "tokens": ["e"] },
+            { "effort": 2.0, "tokens": ["l", "l"] },
+            { "effort": 2.0, "tokens": ["w", "l"] },
+            { "effort": 2.2, "tokens": ["w", "w"] },
+            { "effort": 2.5, "tokens": ["2w"] },
+            { "effort": 2.8, "tokens": ["3w"] },
+            { "effort": 3.0, "tokens": ["fl"] },
+            { "effort": 3.2, "tokens": ["fa"] },
+            { "effort": 3.5, "tokens": ["$"] },
+            { "effort": 4.0, "tokens": ["0"] },
+            { "effort": 4.2, "tokens": ["^"] },
+            { "effort": 4.5, "tokens": ["4w"] },
+            { "effort": 5.0, "tokens": ["f;", "w"] },
+            { "effort": 5.5, "tokens": ["2f;"] },
+            { "effort": 6.0, "tokens": ["$", "b"] }
+          ]
+        }
+      ]
+    },
+    {
+      "commit": { "id": "def4567890123", "message": "Optimize search", "timestamp": "2025-01-03T00:00:00Z", "url": "#", "author": { "username": "dev" } },
+      "date": 1704240000000,
+      "cases": [
+        {
+          "name": "BufferSize/5",
+          "nodesExplored": 95,
+          "results": [
+            { "tokens": ["3j", "w"], "effort": 3.2 }
+          ],
+          "states": [
+            { "effort": 0.0, "tokens": [] },
+            { "effort": 1.0, "tokens": ["j"] },
+            { "effort": 1.0, "tokens": ["l"] },
+            { "effort": 1.2, "tokens": ["w"] },
+            { "effort": 2.0, "tokens": ["j", "j"] },
+            { "effort": 2.1, "tokens": ["j", "w"] },
+            { "effort": 2.5, "tokens": ["3j"] },
+            { "effort": 3.0, "tokens": ["3w"] },
+            { "effort": 3.2, "tokens": ["3j", "w"] },
+            { "effort": 3.5, "tokens": ["4j"] },
+            { "effort": 4.0, "tokens": ["3w", "l"] },
+            { "effort": 4.5, "tokens": ["5j"] },
+            { "effort": 5.0, "tokens": ["G", "k"] },
+            { "effort": 5.5, "tokens": ["G"] }
+          ]
+        },
+        {
+          "name": "LineLength/40",
+          "nodesExplored": 70,
+          "results": [
+            { "tokens": ["2w"], "effort": 2.5 }
+          ],
+          "states": [
+            { "effort": 0.0, "tokens": [] },
+            { "effort": 1.0, "tokens": ["l"] },
+            { "effort": 1.2, "tokens": ["w"] },
+            { "effort": 2.0, "tokens": ["w", "l"] },
+            { "effort": 2.2, "tokens": ["w", "w"] },
+            { "effort": 2.5, "tokens": ["2w"] },
+            { "effort": 3.0, "tokens": ["fl"] },
+            { "effort": 3.5, "tokens": ["$"] },
+            { "effort": 4.0, "tokens": ["0"] },
+            { "effort": 4.5, "tokens": ["4w"] },
+            { "effort": 5.0, "tokens": ["f;", "w"] }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -36,7 +36,7 @@ The single workflow file defines three jobs, all running on `ubuntu-latest`:
 
 ### Benchmark data (`data.json`)
 
-Google Benchmark outputs JSON → `scripts/bench-data.js ingest` parses it and appends to `bench/{optimizer}/data.json` on gh-pages. The dashboard fetches this JSON directly.
+Google Benchmark outputs JSON → `scripts/bench-data.js ingest` parses it and appends to `{optimizer}/data.json` on gh-pages. The dashboard fetches this JSON directly.
 
 **Format:**
 ```json
@@ -59,7 +59,7 @@ Google Benchmark outputs JSON → `scripts/bench-data.js ingest` parses it and a
 
 ### Exploration data (`explore.json`)
 
-`vimficiency_explore` outputs JSON → CI merges it into `bench/{optimizer}/explore.json` on gh-pages. The dashboard fetches this JSON directly.
+`vimficiency_explore` outputs JSON → CI merges it into `{optimizer}/explore.json` on gh-pages. The dashboard fetches this JSON directly.
 
 ### Migration from legacy format
 
@@ -67,11 +67,12 @@ The `bench-data.js` script automatically migrates from the old `data.js` format 
 
 ## Benchmark Dashboard (`bench-dashboard/`)
 
-A React + TypeScript + Vite app that renders benchmark history charts.
+A single-page React + TypeScript + Vite app using TanStack Router for client-side navigation.
 
 ### Stack
 - **Runtime/package manager:** Bun
 - **Framework:** React 19, TypeScript 5.7
+- **Routing:** TanStack Router (code-based routes)
 - **Build:** Vite 6 with `@vitejs/plugin-react`
 - **Charts:** Chart.js + react-chartjs-2
 
@@ -80,28 +81,37 @@ A React + TypeScript + Vite app that renders benchmark history charts.
 bench-dashboard/
 ├── package.json
 ├── bun.lock
-├── vite.config.ts          # base: '/bench/', entries: optimizer.html, explore.html, index.html
+├── vite.config.ts          # base: '/Vimficiency/', single entry
 ├── tsconfig.json
-├── optimizer.html           # Vite entry — React app for benchmark charts
-├── explore.html             # Vite entry — React app for search space visualization
+├── index.html              # SPA shell (single Vite entry point)
 ├── public/
-│   ├── index.html           # Static landing page (copied to gh-pages root)
-│   ├── data.json            # Dev fixture with sample benchmark data
-│   └── explore.json         # Dev fixture with sample exploration data
+│   ├── edit/               # Dev fixtures per optimizer
+│   │   ├── data.json
+│   │   └── explore.json
+│   ├── motion/
+│   │   ├── data.json
+│   │   └── explore.json
+│   └── composition/
+│       ├── data.json
+│       └── explore.json
 └── src/
+    ├── main.tsx            # App entry: Chart.js registration, RouterProvider
+    ├── router.ts           # Route tree, loaders, search param validation
+    ├── index.css            # Global shared styles
     ├── pages/
-    │   ├── optimizer.tsx     # Entry: fetches data.json, renders App
-    │   └── explore.tsx       # Entry: fetches explore.json, renders ExploreApp
-    ├── components/           # App, ExploreApp, BenchmarkChart, CategorySection, etc.
-    ├── types/                # benchmark.d.ts, exploration.d.ts
-    └── utils/                # data parsing, formatting, github API
+    │   ├── HomePage.tsx     # Home: optimizer cards + changes
+    │   ├── OptimizerPage.tsx # Benchmark charts (wraps App)
+    │   └── ExplorePage.tsx  # Search space explorer (wraps ExploreApp)
+    ├── components/          # RootLayout, App, ExploreApp, BenchmarkChart, etc.
+    ├── types/               # benchmark.d.ts, exploration.d.ts
+    └── utils/               # data parsing, formatting, github API
 ```
 
 ### How data flows
 - In production, `data.json` and `explore.json` are plain JSON files on gh-pages
-- Entry points (`optimizer.tsx`, `explore.tsx`) fetch and parse them, then pass typed data as props to components
-- No global variables, no `window.*` access, no `declare global`
-- In dev, `public/data.json` and `public/explore.json` provide sample fixture data
+- TanStack Router loaders fetch data before components render
+- Route search params (`?cat=X`, `?bench=X`, `?case=X`) replace hash-based navigation
+- In dev, `public/{optimizer}/data.json` and `public/{optimizer}/explore.json` provide sample fixture data
 
 ### Local development
 ```bash
@@ -128,26 +138,25 @@ This mirrors exactly what CI runs. If this succeeds, the CI dashboard step will 
 
 ```
 gh-pages/
-├── index.html              # Landing page (from bench-dashboard/public/index.html)
+├── index.html              # SPA entry (same file at all paths)
 ├── .nojekyll               # Disables Jekyll processing
-└── bench/
-    ├── assets/             # Vite-built JS/CSS bundles
-    ├── edit/
-    │   ├── index.html      # Optimizer page (from optimizer.html build)
-    │   ├── data.json       # Benchmark data (written by bench-data.js ingest)
-    │   ├── explore.json    # Exploration data (written by CI deploy step)
-    │   └── explore/
-    │       └── index.html  # Explore page (from explore.html build)
-    ├── motion/
-    │   ├── index.html
-    │   ├── data.json
-    │   ├── explore.json
-    │   └── explore/
-    │       └── index.html
-    └── composition/
-        ├── index.html
-        ├── data.json
-        ├── explore.json
+├── assets/                 # Vite-built JS/CSS bundles
+├── edit/
+│   ├── index.html          # SPA entry (copy of root index.html)
+│   ├── data.json           # Benchmark data (written by bench-data.js ingest)
+│   ├── explore.json        # Exploration data (written by CI deploy step)
+│   └── explore/
+│       └── index.html      # SPA entry (copy of root index.html)
+├── motion/
+│   ├── index.html
+│   ├── data.json
+│   ├── explore.json
+│   └── explore/
+│       └── index.html
+└── composition/
+    ├── index.html
+    ├── data.json
+    ├── explore.json
         └── explore/
             └── index.html
 ```

@@ -17,12 +17,10 @@ function findCase(cases: ExplorationCase[], query: string | null): ExplorationCa
 
 interface Props {
   data: ExplorationData;
+  initialCase: string | null;
 }
 
-export function ExploreApp({ data }: Props) {
-  const params = useMemo(() => new URLSearchParams(location.search), []);
-  const initialCase = params.get('case');
-
+export function ExploreApp({ data, initialCase }: Props) {
   const [commitIdx, setCommitIdx] = useState<number>(data.entries.length - 1);
 
   const entry = data.entries[commitIdx]!;
@@ -46,6 +44,9 @@ export function ExploreApp({ data }: Props) {
 
   return (
     <div>
+      <h1>Search Space Explorer</h1>
+      <p className="subtitle">A* explored states visualization</p>
+
       {/* Controls */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
         <div>

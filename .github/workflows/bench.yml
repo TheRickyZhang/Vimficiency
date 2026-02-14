@@ -181,13 +181,21 @@ jobs:
           git fetch origin gh-pages
           git checkout gh-pages
 
+          # One-time migration: move data from old bench/ layout to flat layout
+          for optimizer in edit motion composition; do
+            if [ -d "bench/$optimizer" ] && [ ! -d "$optimizer" ]; then
+              echo "Migrating bench/$optimizer -> $optimizer"
+              mv "bench/$optimizer" "$optimizer"
+            fi
+          done
+          rm -rf bench
+
           # Ingest benchmark results into data.json (migrates from data.js on first run)
           for pair in "edit:/tmp/edit_result.json" "motion:/tmp/motion_result.json" "composition:/tmp/composition_result.json"; do
             optimizer="${pair%%:*}"
             result="${pair#*:}"
-            dir="bench/$optimizer"
-            mkdir -p "$dir"
-            node /tmp/bench-data.js ingest "$dir" "$result" \
+            mkdir -p "$optimizer"
+            node /tmp/bench-data.js ingest "$optimizer" "$result" \
               --commit-id="$COMMIT_ID" \
               --commit-msg="$COMMIT_MSG" \
               --commit-ts="$COMMIT_TS" \
@@ -196,7 +204,7 @@ jobs:
           done
 
           # Prune to last 100 entries per suite
-          for dir in bench/edit bench/motion bench/composition; do
+          for dir in edit motion composition; do
             [ -f "$dir/data.json" ] && node /tmp/bench-data.js prune "$dir"
           done
 
@@ -204,8 +212,7 @@ jobs:
           for pair in "edit:/tmp/edit_explore.json" "motion:/tmp/motion_explore.json" "composition:/tmp/composition_explore.json"; do
             optimizer="${pair%%:*}"
             explore_json="${pair#*:}"
-            dir="bench/$optimizer"
-            mkdir -p "$dir"
+            mkdir -p "$optimizer"
 
             node -e "
               const fs = require('fs');
@@ -213,10 +220,10 @@ jobs:
               let existing = { lastUpdate: 0, entries: [] };
               try {
                 // Try JSON first, fall back to legacy JS format
-                if (fs.existsSync('$dir/explore.json')) {
-                  existing = JSON.parse(fs.readFileSync('$dir/explore.json', 'utf8'));
-                } else if (fs.existsSync('$dir/explore.js')) {
-                  const src = fs.readFileSync('$dir/explore.js', 'utf8');
+                if (fs.existsSync('$optimizer/explore.json')) {
+                  existing = JSON.parse(fs.readFileSync('$optimizer/explore.json', 'utf8'));
+                } else if (fs.existsSync('$optimizer/explore.js')) {
+                  const src = fs.readFileSync('$optimizer/explore.js', 'utf8');
                   const json = src.replace(/^window\\.EXPLORATION_DATA\\s*=\\s*/, '').replace(/;\\s*$/, '');
                   existing = JSON.parse(json);
                   console.log('  Migrating explore.js -> explore.json');
@@ -235,26 +242,21 @@ jobs:
               });
               existing.entries = existing.entries.slice(-5);
               existing.lastUpdate = Date.now();
-              fs.writeFileSync('$dir/explore.json', JSON.stringify(existing));
+              fs.writeFileSync('$optimizer/explore.json', JSON.stringify(existing));
               console.log('  ' + '$optimizer' + ': ' + existing.entries.length + ' entries');
             "
           done
 
-          # Root index
+          # Root index (SPA: same index.html serves all routes)
           cp /tmp/dashboard-dist/index.html ./index.html
+          cp /tmp/dashboard-dist/index.html ./404.html
           touch .nojekyll
 
           # Shared assets
-          mkdir -p bench/assets
-          cp -r /tmp/dashboard-dist/assets/* bench/assets/ 2>/dev/null || true
+          mkdir -p assets
+          cp -r /tmp/dashboard-dist/assets/* assets/ 2>/dev/null || true
 
-          # Optimizer pages and explore pages (preserves existing data.json and explore.json)
-          for dir in bench/edit bench/motion bench/composition; do
-            [ -d "$dir" ] && cp /tmp/dashboard-dist/optimizer.html "$dir/index.html"
-            [ -d "$dir" ] && mkdir -p "$dir/explore" && cp /tmp/dashboard-dist/explore.html "$dir/explore/index.html" 2>/dev/null || true
-          done
-
-          git add index.html .nojekyll bench/
+          git add -f index.html 404.html .nojekyll assets/ edit/ motion/ composition/
           git -c user.name=github-actions -c user.email=github-actions@github.com \
             commit -m "Update benchmark dashboard" || true
           git push origin gh-pages

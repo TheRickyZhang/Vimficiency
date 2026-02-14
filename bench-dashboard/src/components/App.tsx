@@ -7,17 +7,15 @@ interface Props {
   data: BenchmarkRun[];
   categories: Record<string, string[]>;
   optimizerName: string;
+  optimizer: string;
   repoUrl: string;
+  activeCategory: string | null;
+  openBench: string | null;
+  onNavigate: (cat: string | null, benchName?: string) => void;
+  onBenchConsumed: () => void;
 }
 
-export function App({ data, categories, optimizerName, repoUrl }: Props) {
-  const [activeCategory, setActiveCategory] = useState<string | null>(
-    () => decodeURIComponent(location.hash.substring(1)) || null,
-  );
-  const [openBench, setOpenBench] = useState<string | null>(
-    () => new URLSearchParams(location.search).get('bench'),
-  );
-
+export function App({ data, categories, optimizerName, optimizer, repoUrl, activeCategory, openBench, onNavigate, onBenchConsumed }: Props) {
   const storageKey = `vimficiency-hidden-${optimizerName}`;
   const [hiddenShas, setHiddenShas] = useState<Set<string>>(() => {
     try {
@@ -44,55 +42,44 @@ export function App({ data, categories, optimizerName, repoUrl }: Props) {
     setHiddenShas(new Set());
   }, []);
 
-  const navigate = useCallback((cat: string | null, benchName?: string) => {
-    location.hash = cat ?? '';
-    setActiveCategory(cat);
-    setOpenBench(benchName ?? null);
-    window.scrollTo(0, 0);
-  }, []);
-
   useEffect(() => {
-    const handler = () => {
-      setActiveCategory(decodeURIComponent(location.hash.substring(1)) || null);
-      setOpenBench(null);
-    };
-    window.addEventListener('hashchange', handler);
-    return () => window.removeEventListener('hashchange', handler);
-  }, []);
-
-  useEffect(() => {
-    const title = document.getElementById('optimizer-title');
-    const page = document.getElementById('page-title');
-    if (title) title.textContent = optimizerName;
-    if (page) page.textContent = optimizerName;
     document.title = `${optimizerName} — Vimficiency Benchmarks`;
   }, [optimizerName]);
 
-  const catNames = categories[activeCategory ?? ''] ? activeCategory : null;
+  const validCategory = categories[activeCategory ?? ''] ? activeCategory : null;
 
-  if (catNames && categories[catNames]) {
+  if (validCategory && categories[validCategory]) {
     return (
-      <CategorySection
-        category={catNames}
-        benchNames={categories[catNames]}
-        data={data}
-        repoUrl={repoUrl}
-        hiddenShas={hiddenShas}
-        onHide={onHide}
-        onResetHidden={onResetHidden}
-        onBack={() => navigate(null)}
-        initialBench={openBench}
-        onBenchOpened={() => setOpenBench(null)}
-      />
+      <>
+        <h1>{optimizerName}</h1>
+        <p className="subtitle">Performance tracking across commits</p>
+        <CategorySection
+          category={validCategory}
+          benchNames={categories[validCategory]}
+          data={data}
+          optimizer={optimizer}
+          repoUrl={repoUrl}
+          hiddenShas={hiddenShas}
+          onHide={onHide}
+          onResetHidden={onResetHidden}
+          onBack={() => onNavigate(null)}
+          initialBench={openBench}
+          onBenchOpened={onBenchConsumed}
+        />
+      </>
     );
   }
 
   return (
-    <OverviewSection
-      categories={categories}
-      data={data}
-      onSelect={(cat) => navigate(cat)}
-      onSelectBench={(cat, bench) => navigate(cat, bench)}
-    />
+    <>
+      <h1>{optimizerName}</h1>
+      <p className="subtitle">Performance tracking across commits</p>
+      <OverviewSection
+        categories={categories}
+        data={data}
+        onSelect={(cat) => onNavigate(cat)}
+        onSelectBench={(cat, bench) => onNavigate(cat, bench)}
+      />
+    </>
   );
 }

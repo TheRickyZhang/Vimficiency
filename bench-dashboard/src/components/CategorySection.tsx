@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from '@tanstack/react-router';
 import type { BenchmarkRun } from '../types/benchmark';
 import { parseName, timeSeries } from '../utils/data';
 import { bestUnit } from '../utils/format';
@@ -10,6 +11,7 @@ interface Props {
   category: string;
   benchNames: string[];
   data: BenchmarkRun[];
+  optimizer: string;
   repoUrl: string;
   hiddenShas: Set<string>;
   onHide: (sha: string) => void;
@@ -19,7 +21,7 @@ interface Props {
   onBenchOpened?: () => void;
 }
 
-export function CategorySection({ category, benchNames, data, repoUrl, hiddenShas, onHide, onResetHidden, onBack, initialBench, onBenchOpened }: Props) {
+export function CategorySection({ category, benchNames, data, optimizer, repoUrl, hiddenShas, onHide, onResetHidden, onBack, initialBench, onBenchOpened }: Props) {
   const [modal, setModal] = useState<{ title: string; idx: number } | null>(null);
 
   const charts = benchNames.map((benchName) => {
@@ -53,12 +55,14 @@ export function CategorySection({ category, benchNames, data, repoUrl, hiddenSha
       <div className={styles.chartGrid}>
         {charts.map((c, i) => (
           <div key={c.benchName} className={styles.chartCard} onClick={(e) => {
-            if (!(e.nativeEvent as any).__xAxisHandled) setModal({ title: c.detail, idx: i });
+            if (!(e.nativeEvent as any).__xAxisHandled) setModal({ title: c.detail, idx: i }); // eslint-disable-line @typescript-eslint/no-explicit-any
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <h4 style={{ margin: 0 }}>{c.detail}</h4>
-              <a
-                href={`explore/?case=${encodeURIComponent(category + '/' + c.detail)}`}
+              <Link
+                to="/$optimizer/explore"
+                params={{ optimizer }}
+                search={{ case: category + '/' + c.detail }}
                 onClick={(e) => e.stopPropagation()}
                 title="Explore search space"
                 style={{
@@ -69,7 +73,7 @@ export function CategorySection({ category, benchNames, data, repoUrl, hiddenSha
                 }}
               >
                 Explore
-              </a>
+              </Link>
             </div>
             <div className={styles.chartWrapper}>
               <BenchmarkChart series={c.series} unit={c.unit} />

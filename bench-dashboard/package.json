@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tanstack/react-router": "^1.159.10",
     "@types/d3-hierarchy": "^3.1.7",
     "chart.js": "^4.4.0",
     "chartjs-plugin-zoom": "^2.2.0",
