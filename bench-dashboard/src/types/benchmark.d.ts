@@ -25,9 +25,3 @@ export interface BenchmarkData {
   repoUrl: string;
   entries: Record<string, BenchmarkRun[]>;
 }
-
-declare global {
-  interface Window {
-    BENCHMARK_DATA?: BenchmarkData;
-  }
-}

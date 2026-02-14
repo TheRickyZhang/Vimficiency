@@ -1,4 +1,4 @@
-import type { BenchmarkRun } from '../types/benchmark';
+import type { BenchmarkData, BenchmarkRun } from '../types/benchmark';
 
 export interface ParsedName {
   category: string;
@@ -12,11 +12,9 @@ export interface TimePoint {
   msg: string;
 }
 
-export function getData(): BenchmarkRun[] {
-  if (!window.BENCHMARK_DATA) return [];
-  const entries = window.BENCHMARK_DATA.entries;
-  const key = Object.keys(entries)[0];
-  return key ? entries[key] ?? [] : [];
+/** Extract the benchmark run array from parsed data. Called once at startup. */
+export function loadBenchmarkData(raw: BenchmarkData): BenchmarkRun[] {
+  return Object.values(raw.entries)[0]!;
 }
 
 export function parseName(fullName: string): ParsedName {
@@ -28,7 +26,6 @@ export function parseName(fullName: string): ParsedName {
 }
 
 export function discoverCategories(data: BenchmarkRun[]): Record<string, string[]> {
-  if (!data.length) return {};
   const latest = data[data.length - 1]!;
   const cats: Record<string, string[]> = {};
   for (const b of latest.benches) {
@@ -38,12 +35,15 @@ export function discoverCategories(data: BenchmarkRun[]): Record<string, string[
   return cats;
 }
 
-export function getRepoUrl(): string {
-  return window.BENCHMARK_DATA?.repoUrl ?? '';
+/** Convert a benchmark value to nanoseconds based on the stored unit string. */
+function toNanoseconds(value: number, unit: string): number {
+  if (unit.startsWith('s')) return value * 1e9;
+  if (unit.startsWith('ms')) return value * 1e6;
+  if (unit.startsWith('us') || unit.startsWith('\u00b5s')) return value * 1e3;
+  return value; // already ns
 }
 
-export function timeSeries(data: BenchmarkRun[], benchName: string, hiddenShas?: Set<string>): TimePoint[] {
-  const repoUrl = getRepoUrl();
+export function timeSeries(data: BenchmarkRun[], benchName: string, repoUrl: string, hiddenShas?: Set<string>): TimePoint[] {
   const series: TimePoint[] = [];
   for (const commit of data) {
     const sha = commit.commit.id.substring(0, 7);
@@ -53,7 +53,7 @@ export function timeSeries(data: BenchmarkRun[], benchName: string, hiddenShas?:
       series.push({
         sha,
         commitUrl: commit.commit.url || `${repoUrl}/commit/${commit.commit.id}`,
-        val: b.value,
+        val: toNanoseconds(b.value, b.unit),
         msg: commit.commit.message.split('\n')[0] ?? '',
       });
     }

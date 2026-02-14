@@ -11,12 +11,13 @@ interface Props {
   series: TimePoint[];
   unit: Unit;
   hiddenShas: Set<string>;
+  repoUrl: string;
   onPointClick: (sha: string) => void;
   onResetHidden: () => void;
   onClose: () => void;
 }
 
-export function ChartModal({ title, series, unit, hiddenShas, onPointClick, onResetHidden, onClose }: Props) {
+export function ChartModal({ title, series, unit, hiddenShas, repoUrl, onPointClick, onResetHidden, onClose }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [deleteMsg, setDeleteMsg] = useState<{ text: string; error: boolean } | null>(null);
   const hiddenCount = hiddenShas.size;
@@ -46,7 +47,7 @@ export function ChartModal({ title, series, unit, hiddenShas, onPointClick, onRe
     try {
       const shas = [...hiddenShas];
       for (const sha of shas) {
-        await deleteBenchCommit(sha, token);
+        await deleteBenchCommit(sha, token, repoUrl);
       }
       setDeleteMsg({ text: `Triggered removal of ${shas.length} commit(s). Takes ~30s to apply.`, error: false });
     } catch (e) {

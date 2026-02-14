@@ -10,22 +10,28 @@ import {
   Tooltip,
 } from 'chart.js';
 import zoomPlugin from 'chartjs-plugin-zoom';
+import type { BenchmarkData } from '../types/benchmark';
 import { App } from '../components/App';
+import { loadBenchmarkData, discoverCategories } from '../utils/data';
 
 Chart.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, zoomPlugin);
 
 (async () => {
-  try {
-    const res = await fetch(`data.js?_=${Date.now()}`);
-    const text = await res.text();
-    new Function(text)();
-  } catch {
-    // App handles missing data gracefully
+  const res = await fetch(`data.json?_=${Date.now()}`);
+  const raw: BenchmarkData = await res.json();
+
+  const data = loadBenchmarkData(raw);
+  const categories = discoverCategories(data);
+
+  let optimizerName = 'Benchmarks';
+  const firstName = data[data.length - 1]!.benches[0]?.name;
+  if (firstName) {
+    optimizerName = firstName.split('/')[0] ?? 'Benchmarks';
   }
 
   createRoot(document.getElementById('content')!).render(
     <StrictMode>
-      <App />
+      <App data={data} categories={categories} optimizerName={optimizerName} repoUrl={raw.repoUrl} />
     </StrictMode>,
   );
 })();

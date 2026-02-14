@@ -1,13 +1,16 @@
+import { useMemo } from 'react';
 import { Bar } from 'react-chartjs-2';
-import type { ExploredStateEntry } from '../types/exploration';
+import type { ExploredStateEntry, FoundResultEntry } from '../types/exploration';
 
 interface Props {
   states: ExploredStateEntry[];
+  results?: FoundResultEntry[];
+  selectedSeq?: string | null;
 }
 
 const BINS = 40;
 
-export function EffortHistogram({ states }: Props) {
+export function EffortHistogram({ states, results, selectedSeq }: Props) {
   if (!states.length) return null;
 
   const efforts = states.map((s) => s.effort);
@@ -24,6 +27,28 @@ export function EffortHistogram({ states }: Props) {
 
   const labels = counts.map((_, i) => (min + (i + 0.5) * binSize).toFixed(1));
 
+  // Compute per-bar colors based on found results
+  const barColors = useMemo(() => {
+    const resultEfforts = (results ?? []).map((r) => r.effort);
+    const selectedEffort = selectedSeq
+      ? results?.find((r) => r.tokens.join('') === selectedSeq)?.effort ?? null
+      : null;
+
+    return counts.map((_, i) => {
+      const binLo = min + i * binSize;
+      const binHi = min + (i + 1) * binSize;
+      const inBin = (e: number) => (i === BINS - 1) ? (e >= binLo && e <= binHi) : (e >= binLo && e < binHi);
+
+      if (selectedEffort !== null && inBin(selectedEffort)) {
+        return '#1976d2'; // selected result: blue
+      }
+      if (resultEfforts.some(inBin)) {
+        return '#4caf50'; // any found result: green
+      }
+      return '#4285f4'; // default: blue
+    });
+  }, [counts, results, selectedSeq, min, binSize]);
+
   return (
     <div style={{ height: 260 }}>
       <Bar
@@ -31,7 +56,7 @@ export function EffortHistogram({ states }: Props) {
           labels,
           datasets: [{
             data: counts,
-            backgroundColor: '#4285f4',
+            backgroundColor: barColors,
             borderRadius: 2,
           }],
         }}

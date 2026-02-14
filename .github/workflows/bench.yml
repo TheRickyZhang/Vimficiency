@@ -156,75 +156,55 @@ jobs:
             motion_result.json baseline_motion.json \
             composition_result.json baseline_composition.json
 
-      - name: Store EditOptimizer results
-        uses: benchmark-action/github-action-benchmark@v1
-        with:
-          tool: 'googlecpp'
-          output-file-path: edit_result.json
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
-          benchmark-data-dir-path: bench/edit
-          alert-threshold: '150%'
-          comment-on-alert: true
-          fail-on-alert: false
-      - name: Store MotionOptimizer results
-        uses: benchmark-action/github-action-benchmark@v1
-        with:
-          tool: 'googlecpp'
-          output-file-path: motion_result.json
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
-          benchmark-data-dir-path: bench/motion
-          alert-threshold: '150%'
-          comment-on-alert: true
-          fail-on-alert: false
-      - name: Store CompositionOptimizer results
-        uses: benchmark-action/github-action-benchmark@v1
-        with:
-          tool: 'googlecpp'
-          output-file-path: composition_result.json
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
-          benchmark-data-dir-path: bench/composition
-          alert-threshold: '150%'
-          comment-on-alert: true
-          fail-on-alert: false
-
       - name: Build dashboard
         working-directory: bench-dashboard
         run: bun install --frozen-lockfile && bun run build
 
-      - name: Deploy dashboard
+      - name: Deploy to gh-pages
         run: |
+          # Save artifacts before switching branches
           cp -r bench-dashboard/dist /tmp/dashboard-dist
           cp scripts/bench-data.js /tmp/bench-data.js
-
-          # Save exploration data before switching branches
+          cp edit_result.json /tmp/edit_result.json
+          cp motion_result.json /tmp/motion_result.json
+          cp composition_result.json /tmp/composition_result.json
           cp edit_explore.json /tmp/edit_explore.json
           cp motion_explore.json /tmp/motion_explore.json
           cp composition_explore.json /tmp/composition_explore.json
 
-          git fetch origin gh-pages
-          git checkout gh-pages
-
-          # Keep only the last 100 benchmark entries per suite
-          for dir in bench/edit bench/motion bench/composition; do
-            [ -f "$dir/data.js" ] && node /tmp/bench-data.js prune "$dir"
-          done
-
-          # Merge exploration data into explore.js (keep last 5 entries)
           COMMIT_ID="${{ github.sha }}"
           COMMIT_MSG=$(echo '${{ github.event.head_commit.message }}' | head -1)
           COMMIT_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          COMMIT_DATE=$(date +%s%3N)
           COMMIT_AUTHOR="${{ github.actor }}"
           REPO_URL="https://github.com/${{ github.repository }}"
 
+          git fetch origin gh-pages
+          git checkout gh-pages
+
+          # Ingest benchmark results into data.json (migrates from data.js on first run)
+          for pair in "edit:/tmp/edit_result.json" "motion:/tmp/motion_result.json" "composition:/tmp/composition_result.json"; do
+            optimizer="${pair%%:*}"
+            result="${pair#*:}"
+            dir="bench/$optimizer"
+            mkdir -p "$dir"
+            node /tmp/bench-data.js ingest "$dir" "$result" \
+              --commit-id="$COMMIT_ID" \
+              --commit-msg="$COMMIT_MSG" \
+              --commit-ts="$COMMIT_TS" \
+              --author="$COMMIT_AUTHOR" \
+              --repo-url="$REPO_URL"
+          done
+
+          # Prune to last 100 entries per suite
+          for dir in bench/edit bench/motion bench/composition; do
+            [ -f "$dir/data.json" ] && node /tmp/bench-data.js prune "$dir"
+          done
+
+          # Merge exploration data into explore.json (keep last 5 entries)
           for pair in "edit:/tmp/edit_explore.json" "motion:/tmp/motion_explore.json" "composition:/tmp/composition_explore.json"; do
             optimizer="${pair%%:*}"
             explore_json="${pair#*:}"
             dir="bench/$optimizer"
-            explore_js="$dir/explore.js"
             mkdir -p "$dir"
 
             node -e "
@@ -232,9 +212,15 @@ jobs:
               const newData = JSON.parse(fs.readFileSync('$explore_json', 'utf8'));
               let existing = { lastUpdate: 0, entries: [] };
               try {
-                const src = fs.readFileSync('$explore_js', 'utf8');
-                const json = src.replace(/^window\\.EXPLORATION_DATA\\s*=\\s*/, '').replace(/;\\s*$/, '');
-                existing = JSON.parse(json);
+                // Try JSON first, fall back to legacy JS format
+                if (fs.existsSync('$dir/explore.json')) {
+                  existing = JSON.parse(fs.readFileSync('$dir/explore.json', 'utf8'));
+                } else if (fs.existsSync('$dir/explore.js')) {
+                  const src = fs.readFileSync('$dir/explore.js', 'utf8');
+                  const json = src.replace(/^window\\.EXPLORATION_DATA\\s*=\\s*/, '').replace(/;\\s*$/, '');
+                  existing = JSON.parse(json);
+                  console.log('  Migrating explore.js -> explore.json');
+                }
               } catch {}
               existing.entries.push({
                 commit: {
@@ -244,12 +230,12 @@ jobs:
                   url: '$REPO_URL/commit/$COMMIT_ID',
                   author: { username: '$COMMIT_AUTHOR' }
                 },
-                date: $COMMIT_DATE,
+                date: Date.now(),
                 cases: newData.cases
               });
               existing.entries = existing.entries.slice(-5);
               existing.lastUpdate = Date.now();
-              fs.writeFileSync('$explore_js', 'window.EXPLORATION_DATA = ' + JSON.stringify(existing));
+              fs.writeFileSync('$dir/explore.json', JSON.stringify(existing));
               console.log('  ' + '$optimizer' + ': ' + existing.entries.length + ' entries');
             "
           done
@@ -262,7 +248,7 @@ jobs:
           mkdir -p bench/assets
           cp -r /tmp/dashboard-dist/assets/* bench/assets/ 2>/dev/null || true
 
-          # Optimizer pages and explore pages (preserves existing data.js and explore.js)
+          # Optimizer pages and explore pages (preserves existing data.json and explore.json)
           for dir in bench/edit bench/motion bench/composition; do
             [ -d "$dir" ] && cp /tmp/dashboard-dist/optimizer.html "$dir/index.html"
             [ -d "$dir" ] && mkdir -p "$dir/explore" && cp /tmp/dashboard-dist/explore.html "$dir/explore/index.html" 2>/dev/null || true

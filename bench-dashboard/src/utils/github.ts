@@ -12,15 +12,13 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
-function getRepoInfo(): { owner: string; repo: string } | null {
-  const url = window.BENCHMARK_DATA?.repoUrl;
-  if (!url) return null;
-  const match = url.match(/github\.com\/([^/]+)\/([^/]+)/);
+function parseRepoInfo(repoUrl: string): { owner: string; repo: string } | null {
+  const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
   return match ? { owner: match[1]!, repo: match[2]! } : null;
 }
 
-export async function deleteBenchCommit(sha: string, token: string): Promise<void> {
-  const info = getRepoInfo();
+export async function deleteBenchCommit(sha: string, token: string, repoUrl: string): Promise<void> {
+  const info = parseRepoInfo(repoUrl);
   if (!info) throw new Error('Cannot determine repo from benchmark data');
 
   const res = await fetch(

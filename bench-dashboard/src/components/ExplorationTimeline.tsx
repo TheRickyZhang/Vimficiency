@@ -42,7 +42,7 @@ export function ExplorationTimeline({ states }: Props) {
                   const idx = ctx.dataIndex;
                   const s = states[idx];
                   if (!s) return '';
-                  return [`Effort: ${s.effort.toFixed(3)}`, `Seq: ${s.seq || '(start)'}`];
+                  return [`Effort: ${s.effort.toFixed(3)}`, `Seq: ${s.tokens.join('') || '(start)'}`];
                 },
               },
             },

@@ -2,11 +2,11 @@ import type { BenchmarkCommit } from './benchmark';
 
 export interface ExploredStateEntry {
   effort: number;
-  seq: string;
+  tokens: string[];
 }
 
 export interface FoundResultEntry {
-  seq: string;
+  tokens: string[];
   effort: number;
 }
 
@@ -26,10 +26,4 @@ export interface ExplorationCommitEntry {
 export interface ExplorationData {
   lastUpdate: number;
   entries: ExplorationCommitEntry[];
-}
-
-declare global {
-  interface Window {
-    EXPLORATION_DATA?: ExplorationData;
-  }
 }

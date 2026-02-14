@@ -1,11 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useBenchmarkData } from '../hooks/useBenchmarkData';
+import type { BenchmarkRun } from '../types/benchmark';
 import { OverviewSection } from './OverviewSection';
 import { CategorySection } from './CategorySection';
-import styles from './App.module.css';
 
-export function App() {
-  const { data, categories, optimizerName } = useBenchmarkData();
+interface Props {
+  data: BenchmarkRun[];
+  categories: Record<string, string[]>;
+  optimizerName: string;
+  repoUrl: string;
+}
+
+export function App({ data, categories, optimizerName, repoUrl }: Props) {
   const [activeCategory, setActiveCategory] = useState<string | null>(
     () => decodeURIComponent(location.hash.substring(1)) || null,
   );
@@ -63,10 +68,6 @@ export function App() {
     document.title = `${optimizerName} — Vimficiency Benchmarks`;
   }, [optimizerName]);
 
-  if (!data.length) {
-    return <p className={styles.empty}>No benchmark data yet. Push to main to generate.</p>;
-  }
-
   const catNames = categories[activeCategory ?? ''] ? activeCategory : null;
 
   if (catNames && categories[catNames]) {
@@ -75,6 +76,7 @@ export function App() {
         category={catNames}
         benchNames={categories[catNames]}
         data={data}
+        repoUrl={repoUrl}
         hiddenShas={hiddenShas}
         onHide={onHide}
         onResetHidden={onResetHidden}

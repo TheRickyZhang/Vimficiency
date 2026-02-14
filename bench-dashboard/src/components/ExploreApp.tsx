@@ -3,49 +3,46 @@ import type { ExplorationData, ExplorationCase } from '../types/exploration';
 import { EffortHistogram } from './EffortHistogram';
 import { ExplorationTimeline } from './ExplorationTimeline';
 import { ExplorationTree } from './ExplorationTree';
+import { ExplorationTreeGraph } from './ExplorationTreeGraph';
 import { SequencePrefixTable } from './SequencePrefixTable';
-
-function getExplorationData(): ExplorationData | null {
-  return window.EXPLORATION_DATA ?? null;
-}
 
 function findCase(cases: ExplorationCase[], query: string | null): ExplorationCase | undefined {
   if (!query) return cases[0];
-  // Exact match
   const exact = cases.find((c) => c.name === query);
   if (exact) return exact;
-  // Partial match (query is suffix of name or vice versa)
   const partial = cases.find((c) => c.name.endsWith(query) || query.endsWith(c.name));
   if (partial) return partial;
   return cases[0];
 }
 
-export function ExploreApp() {
-  const data = useMemo(() => getExplorationData(), []);
+interface Props {
+  data: ExplorationData;
+}
+
+export function ExploreApp({ data }: Props) {
   const params = useMemo(() => new URLSearchParams(location.search), []);
   const initialCase = params.get('case');
 
-  const [commitIdx, setCommitIdx] = useState<number>(() => {
-    return data ? data.entries.length - 1 : 0;
-  });
+  const [commitIdx, setCommitIdx] = useState<number>(data.entries.length - 1);
 
-  const entry = data?.entries[commitIdx];
-  const cases = entry?.cases ?? [];
+  const entry = data.entries[commitIdx]!;
+  const cases = entry.cases;
 
   // Resolve initial case, defaulting to first case
   const resolvedInitial = useMemo(() => findCase(cases, initialCase), [cases, initialCase]);
   const [selectedCaseName, setSelectedCaseName] = useState<string | null>(null);
+  const [selectedResultSeq, setSelectedResultSeq] = useState<string | null>(null);
 
   // Active case: use explicit selection if set, otherwise resolved initial
   const activeCase = selectedCaseName
     ? cases.find((c) => c.name === selectedCaseName) ?? resolvedInitial
     : resolvedInitial;
 
-  if (!data || !data.entries.length) {
-    return <p style={{ color: '#666', fontSize: '1.1rem' }}>No exploration data yet. Push to main to generate.</p>;
-  }
-
-  if (!entry) return null;
+  // Sort results by increasing effort
+  const sortedResults = useMemo(() =>
+    [...(activeCase?.results ?? [])].sort((a, b) => a.effort - b.effort),
+    [activeCase?.results]
+  );
 
   return (
     <div>
@@ -57,7 +54,7 @@ export function ExploreApp() {
           </label>
           <select
             value={commitIdx}
-            onChange={(e) => { setCommitIdx(Number(e.target.value)); setSelectedCaseName(null); }}
+            onChange={(e) => { setCommitIdx(Number(e.target.value)); setSelectedCaseName(null); setSelectedResultSeq(null); }}
             style={selectStyle}
           >
             {data.entries.map((e, i) => (
@@ -74,7 +71,7 @@ export function ExploreApp() {
           </label>
           <select
             value={activeCase?.name ?? ''}
-            onChange={(e) => setSelectedCaseName(e.target.value)}
+            onChange={(e) => { setSelectedCaseName(e.target.value); setSelectedResultSeq(null); }}
             style={selectStyle}
           >
             {cases.map((c) => (
@@ -89,23 +86,40 @@ export function ExploreApp() {
       {activeCase && (
         <div>
           {/* Found Results — most important, at the top */}
-          {activeCase.results && activeCase.results.length > 0 && (
+          {sortedResults.length > 0 && (
             <Card title="Found Sequences" style={{ marginBottom: 24 }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {activeCase.results.map((r, i) => (
-                  <div key={i} style={{
-                    display: 'flex', alignItems: 'baseline', gap: 8,
-                    padding: '6px 14px', background: i === 0 ? '#e8f5e9' : '#f5f5f5',
-                    border: `1px solid ${i === 0 ? '#4caf50' : '#e0e0e0'}`,
-                    borderRadius: 6,
-                  }}>
-                    <code style={{ fontWeight: 700, fontSize: '1rem' }}>{r.seq}</code>
-                    <span style={{ fontSize: '0.8rem', color: '#888' }}>
-                      {r.effort.toFixed(2)}
-                    </span>
-                  </div>
-                ))}
+                {sortedResults.map((r, i) => {
+                  const seq = r.tokens.join('');
+                  const isSelected = selectedResultSeq === seq;
+                  const isBest = i === 0;
+                  return (
+                    <div
+                      key={seq}
+                      onClick={() => setSelectedResultSeq(isSelected ? null : seq)}
+                      style={{
+                        display: 'flex', alignItems: 'baseline', gap: 8,
+                        padding: '6px 14px',
+                        background: isSelected ? '#e3f2fd' : isBest ? '#e8f5e9' : '#f5f5f5',
+                        border: `2px solid ${isSelected ? '#1976d2' : isBest ? '#4caf50' : '#e0e0e0'}`,
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        transition: 'border-color 0.15s, background 0.15s',
+                      }}
+                    >
+                      <code style={{ fontWeight: 700, fontSize: '1rem' }}>{seq}</code>
+                      <span style={{ fontSize: '0.8rem', color: '#888' }}>
+                        {r.effort.toFixed(2)}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
+              {selectedResultSeq && (
+                <div style={{ fontSize: '0.75rem', color: '#888', marginTop: 6 }}>
+                  Click again to deselect
+                </div>
+              )}
             </Card>
           )}
 
@@ -127,13 +141,17 @@ export function ExploreApp() {
 
           {/* Exploration Tree */}
           <Card title="Exploration Tree" style={{ marginBottom: 24 }}>
-            <ExplorationTree states={activeCase.states} />
+            {activeCase.states.length <= 1000 ? (
+              <ExplorationTreeGraph states={activeCase.states} results={sortedResults} selectedSeq={selectedResultSeq} />
+            ) : (
+              <ExplorationTree states={activeCase.states} />
+            )}
           </Card>
 
           {/* Charts */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
             <Card title="Effort Distribution">
-              <EffortHistogram states={activeCase.states} />
+              <EffortHistogram states={activeCase.states} results={sortedResults} selectedSeq={selectedResultSeq} />
             </Card>
             <Card title="Exploration Timeline">
               <ExplorationTimeline states={activeCase.states} />

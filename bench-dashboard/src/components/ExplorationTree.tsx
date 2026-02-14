@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import type { ExploredStateEntry } from '../types/exploration';
 
-interface TreeNode {
+export interface TreeNode {
   move: string;       // the motion/edit that leads to this node
   fullSeq: string;    // full sequence from root
   effort: number;     // effort at this node (min of all states with this prefix)
@@ -10,58 +10,7 @@ interface TreeNode {
   children: Map<string, TreeNode>;
 }
 
-// Simple tokenizer: splits Vim sequence into individual moves
-// Handles: digits+letter (counted), f/F/t/T+char, single chars, <Esc>, etc.
-function tokenize(seq: string): string[] {
-  const tokens: string[] = [];
-  let i = 0;
-  while (i < seq.length) {
-    // Counted motion: digits followed by a letter
-    if (seq[i]! >= '0' && seq[i]! <= '9') {
-      let j = i;
-      while (j < seq.length && seq[j]! >= '0' && seq[j]! <= '9') j++;
-      if (j < seq.length) {
-        // Check for two-char commands after count: dd, dw, de, db, etc.
-        if (j + 1 < seq.length && seq[j] === 'd' && 'dewbWBEjk'.includes(seq[j + 1]!)) {
-          tokens.push(seq.substring(i, j + 2));
-          i = j + 2;
-        } else {
-          tokens.push(seq.substring(i, j + 1));
-          i = j + 1;
-        }
-      } else {
-        tokens.push(seq.substring(i));
-        i = j;
-      }
-    }
-    // f/F/t/T + target char
-    else if ('fFtT'.includes(seq[i]!) && i + 1 < seq.length) {
-      tokens.push(seq.substring(i, i + 2));
-      i += 2;
-    }
-    // Two-char operators: dd, dw, de, db, dW, dB, dE, gj, gk, ge, gE, gg
-    else if (i + 1 < seq.length && (
-      (seq[i] === 'd' && 'dewbWBEjk$0'.includes(seq[i + 1]!)) ||
-      (seq[i] === 'g' && 'jkeEg'.includes(seq[i + 1]!))
-    )) {
-      tokens.push(seq.substring(i, i + 2));
-      i += 2;
-    }
-    // Special: <Esc> represented as \x1b or similar
-    else if (seq[i] === '\x1b') {
-      tokens.push('<Esc>');
-      i++;
-    }
-    // Single char
-    else {
-      tokens.push(seq[i]!);
-      i++;
-    }
-  }
-  return tokens;
-}
-
-function buildTree(states: ExploredStateEntry[]): TreeNode {
+export function buildTree(states: ExploredStateEntry[]): TreeNode {
   const root: TreeNode = {
     move: '(root)',
     fullSeq: '',
@@ -72,13 +21,13 @@ function buildTree(states: ExploredStateEntry[]): TreeNode {
   };
 
   for (const state of states) {
-    if (!state.seq) {
+    const tokens = state.tokens;
+    if (!tokens.length) {
       root.directCount++;
       root.effort = state.effort;
       continue;
     }
 
-    const tokens = tokenize(state.seq);
     let node = root;
 
     for (let i = 0; i < tokens.length; i++) {

@@ -4,18 +4,13 @@ interface Props {
   states: ExploredStateEntry[];
 }
 
-function getPrefix(seq: string, len: number): string {
-  if (seq.length <= len) return seq || '(start)';
-  return seq.substring(0, len);
-}
-
 export function SequencePrefixTable({ states }: Props) {
   if (!states.length) return null;
 
-  // Group by first 1-char prefix
+  // Group by first token (command)
   const prefixCounts = new Map<string, { count: number; avgEffort: number; totalEffort: number }>();
   for (const s of states) {
-    const prefix = getPrefix(s.seq, 1);
+    const prefix = s.tokens[0] ?? '(start)';
     const entry = prefixCounts.get(prefix);
     if (entry) {
       entry.count++;

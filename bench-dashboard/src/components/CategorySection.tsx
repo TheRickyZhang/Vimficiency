@@ -10,6 +10,7 @@ interface Props {
   category: string;
   benchNames: string[];
   data: BenchmarkRun[];
+  repoUrl: string;
   hiddenShas: Set<string>;
   onHide: (sha: string) => void;
   onResetHidden: () => void;
@@ -18,12 +19,12 @@ interface Props {
   onBenchOpened?: () => void;
 }
 
-export function CategorySection({ category, benchNames, data, hiddenShas, onHide, onResetHidden, onBack, initialBench, onBenchOpened }: Props) {
+export function CategorySection({ category, benchNames, data, repoUrl, hiddenShas, onHide, onResetHidden, onBack, initialBench, onBenchOpened }: Props) {
   const [modal, setModal] = useState<{ title: string; idx: number } | null>(null);
 
   const charts = benchNames.map((benchName) => {
     const detail = parseName(benchName).detail;
-    const series = timeSeries(data, benchName, hiddenShas);
+    const series = timeSeries(data, benchName, repoUrl, hiddenShas);
     const unit = bestUnit(series.map((s) => s.val));
     return { benchName, detail, series, unit };
   }).filter((c) => c.series.length > 0);
@@ -82,6 +83,7 @@ export function CategorySection({ category, benchNames, data, hiddenShas, onHide
           series={modalData.series}
           unit={modalData.unit}
           hiddenShas={hiddenShas}
+          repoUrl={repoUrl}
           onPointClick={onHide}
           onResetHidden={onResetHidden}
           onClose={() => setModal(null)}

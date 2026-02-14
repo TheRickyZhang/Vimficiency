@@ -2,11 +2,11 @@
 
 ## CI Workflow (`.github/workflows/bench.yml`)
 
-The single workflow file defines three jobs, all running on `ubuntu-latest` with an Arch Linux container:
+The single workflow file defines three jobs, all running on `ubuntu-latest`:
 
 ### Job 1: `test` (every push and PR)
 
-1. Installs `base-devel cmake git neovim` via pacman
+1. Installs gcc-14, g++-14, and neovim
 2. Builds the project in Release mode (`-DVIMFICIENCY_DEBUG=OFF`)
 3. Runs unit tests: `./build/tests/vimficiency_tests --gtest_brief=1`
 
@@ -14,23 +14,56 @@ The single workflow file defines three jobs, all running on `ubuntu-latest` with
 
 1. Builds the project in Release mode (same as `test`, but no neovim needed)
 2. Runs three benchmark suites with deterministic seeds (`VIMFICIENCY_SEED_MODE=fixed`):
-   - `EditOptimizer.*` → `edit_result.json`
-   - `MotionOptimizer.*` → `motion_result.json`
-   - `CompositionOptimizer.*` → `composition_result.json`
-3. Uploads the three JSON files as a `benchmark-results` artifact
+   - `EditOpt.*` → `edit_result.json`
+   - `MotionOpt.*` → `motion_result.json`
+   - `CompositionOpt.*` → `composition_result.json`
+3. Collects exploration data via `vimficiency_explore`
+4. Builds and runs baseline benchmarks against HEAD~1 for comparison
+5. Uploads all JSON files as a `benchmark-results` artifact
 
 ### Job 3: `benchmark-store` (main branch only, after `benchmark-run`)
 
 1. Downloads benchmark artifact
-2. Uses [`benchmark-action/github-action-benchmark@v1`](https://github.com/benchmark-action/github-action-benchmark) to store results in the `gh-pages` branch under `bench/{edit,motion,composition}/data.js`
-   - Alert threshold: 150% regression
-   - Comments on alert, but does not fail the build
+2. Compares current vs baseline results (`scripts/bench-compare.ts`)
 3. Builds the dashboard site (`bench-dashboard/`) with Bun + Vite
-4. Deploys the built dashboard to `gh-pages`:
-   - Root `index.html` → landing page linking to each optimizer
-   - `bench/{edit,motion,composition}/index.html` → per-optimizer chart pages
-   - `bench/assets/` → shared JS/CSS bundles
-   - Each optimizer dir also has `data.js` (written by benchmark-action, not the dashboard build)
+4. Deploys to `gh-pages`:
+   - Ingests benchmark results into `data.json` using `scripts/bench-data.js ingest`
+   - Merges exploration data into `explore.json` (keeps last 5 entries)
+   - Prunes benchmark data to last 100 entries per suite
+   - Copies dashboard HTML/JS/CSS assets
+
+## Data Pipeline
+
+### Benchmark data (`data.json`)
+
+Google Benchmark outputs JSON → `scripts/bench-data.js ingest` parses it and appends to `bench/{optimizer}/data.json` on gh-pages. The dashboard fetches this JSON directly.
+
+**Format:**
+```json
+{
+  "lastUpdate": 1704240000000,
+  "repoUrl": "https://github.com/owner/repo",
+  "entries": {
+    "EditOpt": [
+      {
+        "commit": { "id": "...", "message": "...", "timestamp": "...", "url": "...", "author": { "username": "..." } },
+        "date": 1704240000000,
+        "benches": [
+          { "name": "EditOpt/BufferSize/1/iterations:5", "value": 1.693, "unit": "ms/iter" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Exploration data (`explore.json`)
+
+`vimficiency_explore` outputs JSON → CI merges it into `bench/{optimizer}/explore.json` on gh-pages. The dashboard fetches this JSON directly.
+
+### Migration from legacy format
+
+The `bench-data.js` script automatically migrates from the old `data.js` format (`window.BENCHMARK_DATA = {...}`) to plain `data.json` on first run. Similarly for `explore.js` → `explore.json`.
 
 ## Benchmark Dashboard (`bench-dashboard/`)
 
@@ -47,24 +80,28 @@ A React + TypeScript + Vite app that renders benchmark history charts.
 bench-dashboard/
 ├── package.json
 ├── bun.lock
-├── vite.config.ts          # base: '/bench/', single entry: optimizer.html
+├── vite.config.ts          # base: '/bench/', entries: optimizer.html, explore.html, index.html
 ├── tsconfig.json
-├── optimizer.html           # Vite entry — loads data.js then React app
+├── optimizer.html           # Vite entry — React app for benchmark charts
+├── explore.html             # Vite entry — React app for search space visualization
 ├── public/
 │   ├── index.html           # Static landing page (copied to gh-pages root)
-│   └── data.js              # Dev fixture with sample benchmark data
+│   ├── data.json            # Dev fixture with sample benchmark data
+│   └── explore.json         # Dev fixture with sample exploration data
 └── src/
-    ├── pages/optimizer.tsx   # Entry point for per-optimizer page
-    ├── components/           # App, BenchmarkChart, CategorySection, ChartModal, etc.
-    ├── hooks/                # useBenchmarkData
-    ├── types/                # benchmark.d.ts
-    └── utils/                # data parsing, formatting
+    ├── pages/
+    │   ├── optimizer.tsx     # Entry: fetches data.json, renders App
+    │   └── explore.tsx       # Entry: fetches explore.json, renders ExploreApp
+    ├── components/           # App, ExploreApp, BenchmarkChart, CategorySection, etc.
+    ├── types/                # benchmark.d.ts, exploration.d.ts
+    └── utils/                # data parsing, formatting, github API
 ```
 
 ### How data flows
-- In production, `benchmark-action` writes a `data.js` file into each `bench/{optimizer}/` directory on `gh-pages`. This script sets `window.BENCHMARK_DATA` with the full commit history.
-- The React app reads `window.BENCHMARK_DATA` at runtime and renders charts.
-- In dev, `public/data.js` provides sample fixture data.
+- In production, `data.json` and `explore.json` are plain JSON files on gh-pages
+- Entry points (`optimizer.tsx`, `explore.tsx`) fetch and parse them, then pass typed data as props to components
+- No global variables, no `window.*` access, no `declare global`
+- In dev, `public/data.json` and `public/explore.json` provide sample fixture data
 
 ### Local development
 ```bash
@@ -97,13 +134,22 @@ gh-pages/
     ├── assets/             # Vite-built JS/CSS bundles
     ├── edit/
     │   ├── index.html      # Optimizer page (from optimizer.html build)
-    │   └── data.js         # Benchmark data (written by benchmark-action)
+    │   ├── data.json       # Benchmark data (written by bench-data.js ingest)
+    │   ├── explore.json    # Exploration data (written by CI deploy step)
+    │   └── explore/
+    │       └── index.html  # Explore page (from explore.html build)
     ├── motion/
     │   ├── index.html
-    │   └── data.js
+    │   ├── data.json
+    │   ├── explore.json
+    │   └── explore/
+    │       └── index.html
     └── composition/
         ├── index.html
-        └── data.js
+        ├── data.json
+        ├── explore.json
+        └── explore/
+            └── index.html
 ```
 
 ## Gitignore
