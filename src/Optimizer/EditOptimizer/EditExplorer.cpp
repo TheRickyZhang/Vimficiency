@@ -390,10 +390,16 @@ void EditExplorer::exploreCountedWordEdits(
   // Use raw motion functions (motionE, motionW, motionB, motionGe) to match
   // Edit::applyEdit exactly. The boundary-aware motionWordEndpoint can diverge
   // from applyEdit after A* deletions change the buffer structure.
+  //
+  // Only emit the max valid count per motion type (the furthest reachable
+  // endpoint that stays on the same line). Intermediate counts add branching
+  // with little benefit — they're reachable via uncounted + dot repeat.
 
   // Forward word-end edits: {n}de, {n}dE
   for (const auto& spec : Edit::FORWARD_WORDEDGE_EDITS) {
     Position prev = cursor;
+    Position lastEndpoint;
+    int lastCount = 0;
     for (int count = 1; count <= MAX_COUNT_ITERATIONS; count++) {
       Position endpoint = prev;
       VimCore::motionE(endpoint, lines, spec.isBig);
@@ -407,19 +413,22 @@ void EditExplorer::exploreCountedWordEdits(
 
       if (inBoundaryRegion(endpoint, lines)) break;
 
-      if (count >= minCountRepeat) {
-        RunningEffort countedEffort;
-        countedEffort.append(makeCountedKeys(count, spec.ks.keys), ctx_.config);
-        onDeletion(Range(cursor, endpoint), count, spec.ks, countedEffort);
-      }
-
+      lastEndpoint = endpoint;
+      lastCount = count;
       prev = endpoint;
+    }
+    if (lastCount >= minCountRepeat) {
+      RunningEffort countedEffort;
+      countedEffort.append(makeCountedKeys(lastCount, spec.ks.keys), ctx_.config);
+      onDeletion(Range(cursor, lastEndpoint), lastCount, spec.ks, countedEffort);
     }
   }
 
   // Forward word-gap edits: {n}dw, {n}dW
   for (const auto& spec : Edit::FORWARD_GAPEDGE_EDITS) {
     Position prev = cursor;
+    Position lastInclusiveEnd;
+    int lastCount = 0;
     for (int count = 1; count <= MAX_COUNT_ITERATIONS; count++) {
       Position endpoint = prev;
       VimCore::motionW(endpoint, lines, spec.isBig);
@@ -440,19 +449,22 @@ void EditExplorer::exploreCountedWordEdits(
 
       if (inBoundaryRegion(inclusiveEnd, lines)) break;
 
-      if (count >= minCountRepeat) {
-        RunningEffort countedEffort;
-        countedEffort.append(makeCountedKeys(count, spec.ks.keys), ctx_.config);
-        onDeletion(Range(cursor, inclusiveEnd), count, spec.ks, countedEffort);
-      }
-
+      lastInclusiveEnd = inclusiveEnd;
+      lastCount = count;
       prev = endpoint;  // Next iteration starts from motionW's exclusive position
+    }
+    if (lastCount >= minCountRepeat) {
+      RunningEffort countedEffort;
+      countedEffort.append(makeCountedKeys(lastCount, spec.ks.keys), ctx_.config);
+      onDeletion(Range(cursor, lastInclusiveEnd), lastCount, spec.ks, countedEffort);
     }
   }
 
   // Backward word edits: {n}db, {n}dB
   for (const auto& spec : Edit::BACKWARD_WORDEDGE_EDITS) {
     Position prev = cursor;
+    Position lastEndpoint;
+    int lastCount = 0;
     for (int count = 1; count <= MAX_COUNT_ITERATIONS; count++) {
       Position endpoint = prev;
       VimCore::motionB(endpoint, lines, spec.isBig);
@@ -462,17 +474,18 @@ void EditExplorer::exploreCountedWordEdits(
 
       if (inBoundaryRegion(endpoint, lines)) break;
 
-      if (count >= minCountRepeat) {
-        // db/dB are exclusive at cursor: range is [endpoint, cursor-1]
-        if (cursor.col <= (cursor.line == 0 ? ctx_.leftColOffset : 0)) break;
-        Range range(endpoint, Position(cursor.line, cursor.col - 1));
-
-        RunningEffort countedEffort;
-        countedEffort.append(makeCountedKeys(count, spec.ks.keys), ctx_.config);
-        onDeletion(range, count, spec.ks, countedEffort);
-      }
-
+      lastEndpoint = endpoint;
+      lastCount = count;
       prev = endpoint;
+    }
+    if (lastCount >= minCountRepeat) {
+      // db/dB are exclusive at cursor: range is [endpoint, cursor-1]
+      if (cursor.col > (cursor.line == 0 ? ctx_.leftColOffset : 0)) {
+        Range range(lastEndpoint, Position(cursor.line, cursor.col - 1));
+        RunningEffort countedEffort;
+        countedEffort.append(makeCountedKeys(lastCount, spec.ks.keys), ctx_.config);
+        onDeletion(range, lastCount, spec.ks, countedEffort);
+      }
     }
   }
 
@@ -482,6 +495,8 @@ void EditExplorer::exploreCountedWordEdits(
       continue;
 
     Position prev = cursor;
+    Position lastEndpoint;
+    int lastCount = 0;
     for (int count = 1; count <= MAX_COUNT_ITERATIONS; count++) {
       Position endpoint = prev;
       VimCore::motionGe(endpoint, lines, spec.isBig);
@@ -491,13 +506,14 @@ void EditExplorer::exploreCountedWordEdits(
 
       if (inBoundaryRegion(endpoint, lines)) break;
 
-      if (count >= minCountRepeat) {
-        RunningEffort countedEffort;
-        countedEffort.append(makeCountedKeys(count, spec.ks.keys), ctx_.config);
-        onDeletion(Range(endpoint, cursor), count, spec.ks, countedEffort);
-      }
-
+      lastEndpoint = endpoint;
+      lastCount = count;
       prev = endpoint;
+    }
+    if (lastCount >= minCountRepeat) {
+      RunningEffort countedEffort;
+      countedEffort.append(makeCountedKeys(lastCount, spec.ks.keys), ctx_.config);
+      onDeletion(Range(lastEndpoint, cursor), lastCount, spec.ks, countedEffort);
     }
   }
 }
@@ -513,16 +529,17 @@ void EditExplorer::exploreCountedCharEdits(
   // Only x (forward delete at cursor)
   if (contentStart > cursor.col || cursor.col >= contentEnd) return;
 
-  int maxCount = contentEnd - cursor.col;
+  // Only emit the max count (delete all remaining content chars from cursor).
+  // Intermediate counts are reachable via uncounted x + dot repeat.
   static constexpr int MAX_COUNT_DIGIT = 9;
+  int count = min(contentEnd - cursor.col, MAX_COUNT_DIGIT);
+  if (count < minCountRepeat) return;
 
-  for (int count = max(2, minCountRepeat); count <= min(maxCount, MAX_COUNT_DIGIT); count++) {
-    Range range(cursor, Position(cursor.line, cursor.col + count - 1));
-    RunningEffort effort;
-    effort.append(makeCountedKeys(count, KeyedSequence::x.keys), ctx_.config);
-    effort.addPenalty(countOverhead);
-    onDeletion(range, count, KeyedSequence::x, effort);
-  }
+  Range range(cursor, Position(cursor.line, cursor.col + count - 1));
+  RunningEffort effort;
+  effort.append(makeCountedKeys(count, KeyedSequence::x.keys), ctx_.config);
+  effort.addPenalty(countOverhead);
+  onDeletion(range, count, KeyedSequence::x, effort);
 }
 
 // =============================================================================

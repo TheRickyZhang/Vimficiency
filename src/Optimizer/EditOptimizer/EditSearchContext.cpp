@@ -2,7 +2,6 @@
 #include "EditExplorer.h"
 #include "EditToSpec.h"
 
-#include <iostream>
 
 using namespace std;
 
@@ -131,10 +130,6 @@ pair<int, int> EditSearchContext::computeEditBounds(
 
   if (cursor.line == lines.lastLine() && rightColOffset > 0) {
     contentEnd -= rightColOffset;
-  }
-  if (contentEnd < 0) {
-    cerr << "contentEnd < 0: lines=" << lines << " cursor=" << cursor.line << "," << cursor.col
-         << " rawLineLen=" << rawLineLen << " rightColOffset=" << rightColOffset << endl;
   }
   assert(contentEnd >= 0);
   assert(contentBegin >= 0);
