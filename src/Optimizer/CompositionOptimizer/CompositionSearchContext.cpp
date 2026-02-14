@@ -325,8 +325,7 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
     if (diff.isPureInsertion()) {
       // Build insert sequence: i + typed content + <Esc>
       Lines insertLines = Lines::unflatten(diff.insertedText);
-      static const KeyedSequence iCmd("i", {Key::Key_I});
-      KeyedSequence full = iCmd;
+      KeyedSequence full = KeyedSequence::i;
       full += buildTypedCommands(insertLines);
       RunningEffort runningEffort;
       double effort = runningEffort.append(full.keys, config);

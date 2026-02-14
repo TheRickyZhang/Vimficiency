@@ -1,7 +1,5 @@
 #pragma once
 
-#include <optional>
-#include <string_view>
 #include <vector>
 
 #include "Optimizer/Config.h"
@@ -66,17 +64,6 @@ private:
 
 std::ostream& operator<<(std::ostream& os, const EditResult& editResult);
 
-// Try to find an optimal replacement sequence for same-length transformations.
-// Returns the result for starting position 0 (the only one ever consumed).
-//
-// @param deleted   The characters being removed (no newlines)
-// @param inserted  The characters being added (must be same length as deleted)
-// @param config    Keyboard config for cost calculation
-// @return Result for position 0, or nullopt if replacement not applicable
-std::optional<Result> tryReplacement(std::string_view deleted,
-                                     std::string_view inserted,
-                                     const Config& config);
-
 
 struct EditOptimizer {
   Config config;
@@ -108,5 +95,18 @@ struct EditOptimizer {
       int bufferFirstLine = 0,
       int bufferFirstCol = 0,
       Position goalPos = {0, 0}
+  );
+
+private:
+  // Unified implementation: PureDeletion=true for deletion-only, false for full edit
+  template<bool PureDeletion>
+  EditResult optimizeImpl(
+      const Lines& initialLines,
+      const Lines& goalLines,
+      EditBoundary editBoundary,
+      EditOptimizerParams params,
+      int bufferFirstLine,
+      int bufferFirstCol,
+      Position goalPos
   );
 };

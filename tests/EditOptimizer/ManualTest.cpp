@@ -179,51 +179,6 @@ TEST_F(EditOptimizer_ManualTest, Boundary_LinewiseCursorContainment) {
   });
 }
 
-// =============================================================================
-// Replacement Strategy Tests
-// =============================================================================
-
-TEST_F(EditOptimizer_ManualTest, Replacement_SingleChar) {
-  // "hello" -> "jello" - single char at position 0
-  // Cursor positioned at end of inserted text (col 4) after replacement
-  auto result = tryReplacement("hello", "jello", config);
-
-  ASSERT_TRUE(result.has_value());
-  EXPECT_EQ(result->sequence, "rj4l");
-}
-
-TEST_F(EditOptimizer_ManualTest, Replacement_SingleCharMiddle) {
-  // "fresh" -> "frosh" - single char at position 2
-  auto result = tryReplacement("fresh", "frosh", config);
-
-  ASSERT_TRUE(result.has_value());
-  const auto& seq = result->getSequenceString();
-  EXPECT_TRUE(seq.view().find("ro") != string::npos) << "Expected 'ro' in: " << seq;
-}
-
-TEST_F(EditOptimizer_ManualTest, Replacement_ConsecutiveChars) {
-  // "abc" -> "xyz" - all three chars differ, should use R mode
-  auto result = tryReplacement("abc", "xyz", config);
-
-  ASSERT_TRUE(result.has_value());
-  EXPECT_TRUE(result->isValid());
-}
-
-TEST_F(EditOptimizer_ManualTest, Replacement_SparseChars) {
-  // "0000000" -> "1001001" - three non-consecutive diffs
-  auto result = tryReplacement("0000000", "1001001", config);
-
-  ASSERT_TRUE(result.has_value());
-  const auto& seq = result->getSequenceString();
-
-  // Count r1 occurrences
-  size_t replaceCount = 0;
-  for (size_t i = 0; i + 1 < seq.size(); i++) {
-    if (seq.view()[i] == 'r' && seq.view()[i + 1] == '1') replaceCount++;
-  }
-  EXPECT_GE(replaceCount, 3u) << "Expected at least 3 'r1' in: " << seq;
-}
-
 
 // =============================================================================
 // Note: Stress tests (random buffers) are in OutputCorrectnessTest.cpp

@@ -47,6 +47,15 @@
     _KS(CtrlD,  "<C-d>",  (Key::Key_Ctrl, Key::Key_D)) \
     /* Dot repeat */ \
     _KS(Period, ".",       (Key::Key_Period)) \
+    /* Normal-mode commands */ \
+    _KS(f,      "f",      (Key::Key_F)) \
+    _KS(r,      "r",      (Key::Key_R)) \
+    _KS(i,      "i",      (Key::Key_I)) \
+    _KS(s,      "s",      (Key::Key_S)) \
+    _KS(C,      "C",      (Key::Key_Shift, Key::Key_C)) \
+    _KS(cc,     "cc",     (Key::Key_C, Key::Key_C)) \
+    _KS(hs,     "hs",     (Key::Key_H, Key::Key_S)) \
+    _KS(ZeroC,  "0C",     (Key::Key_0, Key::Key_Shift, Key::Key_C)) \
     /* Edit commands */ \
     _KS(x,      "x",      (Key::Key_X)) \
     _KS(X,      "X",      (Key::Key_Shift, Key::Key_X)) \

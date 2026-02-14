@@ -127,13 +127,15 @@ TEST_F(EditOptimizerOutputCorrectness, Replacement_SameLength) {
     if (original == replacement) continue;
 
     Lines source = {original};
+    Lines goal = {replacement};
+    EditBoundary boundary(source, {0, 0}, source.endPos());
+    EditResult res = opt.optimizeEdit(source, goal, boundary, params);
 
-    auto result = tryReplacement(original, replacement, config);
-    if (!result.has_value() || !result->isValid()) continue;
+    const Result& r = res.getResults()[0];
+    if (!r.isValid()) continue;
     total++;
 
-    // Result is for starting position 0
-    const auto& seq = result->getSequenceString();
+    const auto& seq = r.getSequenceString();
     auto nvim = oracle->simulate(source, 0, 0, seq.str());
 
     if (nvim.lines.size() == 1 && nvim.lines[0] == replacement) {
