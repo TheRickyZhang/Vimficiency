@@ -1,6 +1,5 @@
 import type { BenchmarkRun } from '../types/benchmark';
 import { parseName, toNanoseconds } from '../utils/data';
-import { fmtTime, type Nanoseconds } from '../utils/format';
 
 const ALERT_RATIO = 1.5;
 const MAX_ITEMS = 3;
@@ -11,7 +10,7 @@ interface BenchChange {
   detail: string;
   pctChange: number;
   ratio: number;
-  latestVal: Nanoseconds;
+  relativeVal: number;
 }
 
 interface Props {
@@ -23,27 +22,27 @@ interface Props {
 function computeChanges(categories: Record<string, string[]>, data: BenchmarkRun[]): BenchChange[] {
   if (data.length < 2) return [];
   const latest = data[data.length - 1]!;
-  const prev = data[data.length - 2]!;
+  const first = data[0]!;
   const changes: BenchChange[] = [];
 
   for (const [cat, names] of Object.entries(categories)) {
     for (const name of names) {
       const lb = latest.benches.find((b) => b.name === name);
-      const pb = prev.benches.find((b) => b.name === name);
-      if (!lb || !pb || pb.value === 0) continue;
+      const fb = first.benches.find((b) => b.name === name);
+      if (!lb || !fb) continue;
       const currNs = toNanoseconds(lb.value, lb.unit);
-      const prevNs = toNanoseconds(pb.value, pb.unit);
-      if (prevNs === 0) continue;
-      const ratio = currNs / prevNs;
+      const baseNs = toNanoseconds(fb.value, fb.unit);
+      if (baseNs === 0) continue;
+      const ratio = currNs / baseNs;
       const pct = (ratio - 1) * 100;
-      if (Math.abs(pct) < 1) continue; // skip negligible changes
+      if (Math.abs(pct) < 10) continue; // only show >=10% changes
       changes.push({
         benchName: name,
         category: cat,
         detail: parseName(name).detail,
         pctChange: pct,
         ratio,
-        latestVal: currNs,
+        relativeVal: ratio,
       });
     }
   }
@@ -64,7 +63,7 @@ function ChangeItem({ change, onSelect }: { change: BenchChange; onSelect: () =>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         {overThreshold && <span className="text-[1.1rem] text-warn" title="Exceeds alert threshold">&#x26A0;</span>}
-        <span className="text-[0.8rem] text-muted">{fmtTime(change.latestVal)}</span>
+        <span className="text-[0.8rem] text-muted">{change.relativeVal.toFixed(2)}&times;</span>
         <span className={`font-bold text-[0.9rem] ${isRegression ? 'text-bad' : 'text-good'}`}>
           {sign}{change.pctChange.toFixed(1)}%
         </span>
@@ -75,7 +74,6 @@ function ChangeItem({ change, onSelect }: { change: BenchChange; onSelect: () =>
 
 export function ChangesSection({ categories, data, onSelect }: Props) {
   const changes = computeChanges(categories, data);
-  if (!changes.length) return null;
 
   const regressions = changes
     .filter((c) => c.pctChange > 0)
@@ -87,30 +85,32 @@ export function ChangesSection({ categories, data, onSelect }: Props) {
     .sort((a, b) => a.pctChange - b.pctChange)
     .slice(0, MAX_ITEMS);
 
-  if (!regressions.length && !improvements.length) return null;
-
   return (
     <div className="grid grid-cols-2 gap-6 mb-8 max-md:grid-cols-1">
-      {regressions.length > 0 && (
-        <div>
-          <h3>Largest Regressions</h3>
+      <div>
+        <h3>Largest Regressions</h3>
+        {regressions.length > 0 ? (
           <div className="flex flex-col gap-1">
             {regressions.map((c) => (
               <ChangeItem key={c.benchName} change={c} onSelect={() => onSelect(c.category, c.benchName)} />
             ))}
           </div>
-        </div>
-      )}
-      {improvements.length > 0 && (
-        <div>
-          <h3>Largest Improvements</h3>
+        ) : (
+          <p className="text-sm text-muted">None</p>
+        )}
+      </div>
+      <div>
+        <h3>Largest Improvements</h3>
+        {improvements.length > 0 ? (
           <div className="flex flex-col gap-1">
             {improvements.map((c) => (
               <ChangeItem key={c.benchName} change={c} onSelect={() => onSelect(c.category, c.benchName)} />
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <p className="text-sm text-muted">None</p>
+        )}
+      </div>
     </div>
   );
 }

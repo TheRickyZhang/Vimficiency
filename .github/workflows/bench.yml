@@ -46,14 +46,8 @@ jobs:
       - name: Install deps
         run: sudo apt-get update && sudo apt-get install -y gcc-14 g++-14 libpfm4-dev
 
-      - name: Check perf counter support
-        run: |
-          echo "=== perf_event_paranoid ==="
-          cat /proc/sys/kernel/perf_event_paranoid || echo "not available"
-          echo "=== perf stat test ==="
-          perf stat -e instructions,cycles echo hello 2>&1 || echo "perf stat failed"
-          echo "=== Google Benchmark perf counters test ==="
-          # Will be tested after build with actual benchmark binary
+      - name: Enable perf counters
+        run: sudo sysctl -w kernel.perf_event_paranoid=1
 
       - uses: hendrikmuhs/ccache-action@v1
         with:
@@ -70,22 +64,19 @@ jobs:
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF \
             -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DBENCHMARK_ENABLE_LIBPFM=ON
           cmake --build build -j$(nproc)
 
-      - name: Test perf counters with benchmark binary
-        continue-on-error: true
+      - name: Run EditOptimizer benchmarks
         run: |
           VIMFICIENCY_SEED_MODE=fixed \
           ./build/tests/vimficiency_benchmarks \
             --benchmark_filter="EditOpt.*" \
-            --benchmark_repetitions=1 \
-            --benchmark_min_time=0.001s \
-            --benchmark_perf_counters=INSTRUCTIONS,CYCLES \
-            --benchmark_format=json 2>&1 | head -60
-
-      - name: Run EditOptimizer benchmarks
-        run: |
+            --benchmark_format=json \
+            --benchmark_out=edit_result.json \
+            --benchmark_perf_counters=INSTRUCTIONS \
+          || \
           VIMFICIENCY_SEED_MODE=fixed \
           ./build/tests/vimficiency_benchmarks \
             --benchmark_filter="EditOpt.*" \
@@ -97,9 +88,23 @@ jobs:
           ./build/tests/vimficiency_benchmarks \
             --benchmark_filter="MotionOpt.*" \
             --benchmark_format=json \
+            --benchmark_out=motion_result.json \
+            --benchmark_perf_counters=INSTRUCTIONS \
+          || \
+          VIMFICIENCY_SEED_MODE=fixed \
+          ./build/tests/vimficiency_benchmarks \
+            --benchmark_filter="MotionOpt.*" \
+            --benchmark_format=json \
             --benchmark_out=motion_result.json
       - name: Run CompositionOptimizer benchmarks
         run: |
+          VIMFICIENCY_SEED_MODE=fixed \
+          ./build/tests/vimficiency_benchmarks \
+            --benchmark_filter="CompositionOpt.*" \
+            --benchmark_format=json \
+            --benchmark_out=composition_result.json \
+            --benchmark_perf_counters=INSTRUCTIONS \
+          || \
           VIMFICIENCY_SEED_MODE=fixed \
           ./build/tests/vimficiency_benchmarks \
             --benchmark_filter="CompositionOpt.*" \
@@ -184,7 +189,7 @@ jobs:
         run: |
           # Save artifacts before switching branches
           cp -r bench-dashboard/dist /tmp/dashboard-dist
-          cp scripts/bench-data.js /tmp/bench-data.js
+          cp scripts/bench-data.ts /tmp/bench-data.ts
           cp edit_result.json /tmp/edit_result.json
           cp motion_result.json /tmp/motion_result.json
           cp composition_result.json /tmp/composition_result.json
@@ -215,7 +220,7 @@ jobs:
             optimizer="${pair%%:*}"
             result="${pair#*:}"
             mkdir -p "$optimizer"
-            node /tmp/bench-data.js ingest "$optimizer" "$result" \
+            bun /tmp/bench-data.ts ingest "$optimizer" "$result" \
               --commit-id="$COMMIT_ID" \
               --commit-msg="$COMMIT_MSG" \
               --commit-ts="$COMMIT_TS" \
@@ -225,7 +230,7 @@ jobs:
 
           # Prune to last 100 entries per suite
           for dir in edit motion composition; do
-            [ -f "$dir/data.json" ] && node /tmp/bench-data.js prune "$dir"
+            [ -f "$dir/data.json" ] && bun /tmp/bench-data.ts prune "$dir"
           done
 
           # Merge exploration data into explore.json (keep last 5 entries)

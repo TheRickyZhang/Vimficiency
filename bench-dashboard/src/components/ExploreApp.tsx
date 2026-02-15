@@ -110,36 +110,35 @@ export function ExploreApp({ data, initialCase }: Props) {
       <h1>Search Space Explorer</h1>
       <p className="text-[#666] text-[1.1rem] mb-10">A* explored states visualization</p>
 
-      {/* Controls */}
-      <div className="flex gap-4 mb-6 flex-wrap items-end">
-        {/* Commit with left/right arrows */}
-        <div>
-          <label className="form-label">Commit</label>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => stepCommit(-1)}
-              disabled={commitIdx <= 0}
-              className="px-2 py-1.5 rounded-md border border-[#ccc] bg-surface text-sm cursor-pointer disabled:opacity-30 disabled:cursor-default hover:bg-[#f0f0f0]"
-              title="Previous commit"
-            >&larr;</button>
-            <SearchableSelect
-              value={String(commitIdx)}
-              options={data.entries.map((e, i) => ({
-                value: String(i),
-                label: `${e.commit.id.substring(0, 7)} — ${e.commit.message.split('\n')[0]?.substring(0, 40)}`,
-              }))}
-              onChange={(v) => { setCommitIdx(Number(v)); setSelectedCaseName(null); }}
-            />
-            <button
-              onClick={() => stepCommit(1)}
-              disabled={commitIdx >= data.entries.length - 1}
-              className="px-2 py-1.5 rounded-md border border-[#ccc] bg-surface text-sm cursor-pointer disabled:opacity-30 disabled:cursor-default hover:bg-[#f0f0f0]"
-              title="Next commit"
-            >&rarr;</button>
-          </div>
+      {/* Commit row */}
+      <div className="mb-4 flex flex-col items-center">
+        <label className="form-label">Commit</label>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => stepCommit(-1)}
+            disabled={commitIdx <= 0}
+            className="px-2 py-1.5 rounded-md border border-[#ccc] bg-surface text-sm cursor-pointer disabled:opacity-30 disabled:cursor-default hover:bg-[#f0f0f0]"
+            title="Previous commit"
+          >&larr;</button>
+          <SearchableSelect
+            value={String(commitIdx)}
+            options={data.entries.map((e, i) => ({
+              value: String(i),
+              label: `${e.commit.id.substring(0, 7)} — ${e.commit.message.split('\n')[0]?.substring(0, 40)}`,
+            }))}
+            onChange={(v) => { setCommitIdx(Number(v)); setSelectedCaseName(null); }}
+          />
+          <button
+            onClick={() => stepCommit(1)}
+            disabled={commitIdx >= data.entries.length - 1}
+            className="px-2 py-1.5 rounded-md border border-[#ccc] bg-surface text-sm cursor-pointer disabled:opacity-30 disabled:cursor-default hover:bg-[#f0f0f0]"
+            title="Next commit"
+          >&rarr;</button>
         </div>
+      </div>
 
-        {/* Category */}
+      {/* Type / Size row */}
+      <div className="flex gap-4 mb-6 flex-wrap items-end justify-center">
         <div>
           <label className="form-label">Type</label>
           <SearchableSelect
@@ -149,7 +148,6 @@ export function ExploreApp({ data, initialCase }: Props) {
           />
         </div>
 
-        {/* Param */}
         {paramsForCategory.length > 0 && (
           <div>
             <label className="form-label">Size</label>
@@ -167,6 +165,22 @@ export function ExploreApp({ data, initialCase }: Props) {
 
       {activeCase && (
         <div>
+          {/* Stats summary */}
+          <div className="flex gap-4 mb-6 flex-wrap justify-center">
+            <Stat label="Nodes explored" value={activeCase.nodesExplored.toLocaleString()} />
+            <Stat label="States tracked" value={activeCase.states.length.toLocaleString()} />
+            <Stat label="Max effort" value={
+              activeCase.states.length > 0
+                ? Math.max(...activeCase.states.map((s) => s.effort)).toFixed(2)
+                : '—'
+            } />
+            <Stat label="Median effort" value={
+              activeCase.states.length > 0
+                ? median(activeCase.states.map((s) => s.effort)).toFixed(2)
+                : '—'
+            } />
+          </div>
+
           {/* Found Results — multi-select toggles */}
           {sortedResults.length > 0 && (
             <Card title="Found Sequences" className="mb-6">
@@ -184,7 +198,9 @@ export function ExploreApp({ data, initialCase }: Props) {
                           : 'bg-[#f5f5f5] border-border'
                       }`}
                     >
-                      <code className="font-bold text-base">{seq}</code>
+                      <code className="font-bold text-base" title={seq.length > 30 ? seq : undefined}>
+                        {seq.length > 30 ? seq.slice(0, 27) + '...' : seq}
+                      </code>
                       <span className="text-[0.8rem] text-muted">
                         {r.effort.toFixed(2)}
                       </span>
@@ -197,22 +213,6 @@ export function ExploreApp({ data, initialCase }: Props) {
               </div>
             </Card>
           )}
-
-          {/* Stats summary */}
-          <div className="flex gap-4 mb-6 flex-wrap justify-center">
-            <Stat label="Nodes explored" value={activeCase.nodesExplored.toLocaleString()} />
-            <Stat label="States tracked" value={activeCase.states.length.toLocaleString()} />
-            <Stat label="Max effort" value={
-              activeCase.states.length > 0
-                ? Math.max(...activeCase.states.map((s) => s.effort)).toFixed(2)
-                : '—'
-            } />
-            <Stat label="Median effort" value={
-              activeCase.states.length > 0
-                ? median(activeCase.states.map((s) => s.effort)).toFixed(2)
-                : '—'
-            } />
-          </div>
 
           {/* Exploration Tree */}
           <Card title="Exploration Tree" className="mb-6">

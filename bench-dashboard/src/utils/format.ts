@@ -16,7 +16,7 @@ export interface Unit {
 export function fmtTime(value: Nanoseconds): string {
   if (value >= 1e9) return (value / 1e9).toFixed(2) + ' s';
   if (value >= 1e6) return (value / 1e6).toFixed(2) + ' ms';
-  if (value >= 1e3) return (value / 1e3).toFixed(1) + ' us';
+  if (value >= 1e3) return (value / 1e3).toFixed(1) + ' \u00B5s';
   return Math.round(value) + ' ns';
 }
 

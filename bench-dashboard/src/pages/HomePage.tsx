@@ -17,10 +17,10 @@ interface Change {
 const MAX_ITEMS = 5;
 const ALERT_RATIO = 1.5;
 
-const OPTIMIZER_LABELS: Record<OptimizerSlug, { title: string; desc: string }> = {
-  edit: { title: 'EditOptimizer', desc: 'Edit operation optimization' },
-  motion: { title: 'MotionOptimizer', desc: 'Cursor motion optimization' },
-  composition: { title: 'CompositionOptimizer', desc: 'Full composition optimization' },
+const OPTIMIZER_LABELS: Record<OptimizerSlug, string> = {
+  edit: 'EditOptimizer',
+  motion: 'MotionOptimizer',
+  composition: 'CompositionOptimizer',
 };
 
 export function HomePage() {
@@ -42,7 +42,7 @@ export function HomePage() {
       if (prevNs === 0) continue;
       const ratio = currNs / prevNs;
       const pctChange = (ratio - 1) * 100;
-      if (Math.abs(pctChange) < 1) continue;
+      if (Math.abs(pctChange) < 10) continue; // only show >=10% changes
       const { category, detail } = parseName(bench.name);
       changes.push({ name: bench.name, category, detail, optimizer: slug, pctChange, ratio, prevNs, currNs });
     }
@@ -73,42 +73,41 @@ export function HomePage() {
             search={{ cat: undefined, bench: undefined }}
             className="block card card-hover p-6 no-underline text-inherit"
           >
-            <h3 className="text-[1.25rem] font-bold mb-1 text-inherit">
-              {OPTIMIZER_LABELS[slug].title}
-            </h3>
-            <p className="text-[#666] text-[0.95rem]">
-              {OPTIMIZER_LABELS[slug].desc}
-            </p>
+            <div className="text-[1.4rem] font-bold text-inherit">
+              {OPTIMIZER_LABELS[slug]}
+            </div>
           </Link>
         ))}
       </div>
 
-      {(regressions.length > 0 || improvements.length > 0) && (
-        <div className="mt-10">
-          <div className="grid grid-cols-2 gap-6">
-            {regressions.length > 0 && (
-              <div>
-                <h3>Largest Regressions</h3>
-                <div className="flex flex-col gap-1">
-                  {regressions.map((c) => (
-                    <ChangeItem key={`${c.optimizer}-${c.name}`} change={c} />
-                  ))}
-                </div>
+      <div className="mt-10">
+        <div className="grid grid-cols-2 gap-6">
+          <div>
+            <h3>Largest Regressions</h3>
+            {regressions.length > 0 ? (
+              <div className="flex flex-col gap-1">
+                {regressions.map((c) => (
+                  <ChangeItem key={`${c.optimizer}-${c.name}`} change={c} />
+                ))}
               </div>
+            ) : (
+              <p className="text-sm text-muted">None</p>
             )}
-            {improvements.length > 0 && (
-              <div>
-                <h3>Largest Improvements</h3>
-                <div className="flex flex-col gap-1">
-                  {improvements.map((c) => (
-                    <ChangeItem key={`${c.optimizer}-${c.name}`} change={c} />
-                  ))}
-                </div>
+          </div>
+          <div>
+            <h3>Largest Improvements</h3>
+            {improvements.length > 0 ? (
+              <div className="flex flex-col gap-1">
+                {improvements.map((c) => (
+                  <ChangeItem key={`${c.optimizer}-${c.name}`} change={c} />
+                ))}
               </div>
+            ) : (
+              <p className="text-sm text-muted">None</p>
             )}
           </div>
         </div>
-      )}
+      </div>
     </>
   );
 }

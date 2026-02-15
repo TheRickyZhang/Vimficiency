@@ -13,7 +13,6 @@ export function OverviewSection({ categories, data, onSelect, onSelectBench }: P
   const entries = Object.entries(categories);
   return (
     <div>
-      <ChangesSection categories={categories} data={data} onSelect={onSelectBench} />
       <h2>Categories</h2>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3 mb-8">
         {entries.map(([cat, names]) => (
@@ -26,6 +25,7 @@ export function OverviewSection({ categories, data, onSelect, onSelectBench }: P
           />
         ))}
       </div>
+      <ChangesSection categories={categories} data={data} onSelect={onSelectBench} />
     </div>
   );
 }

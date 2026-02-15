@@ -11,6 +11,7 @@ export interface TimePoint {
   commitUrl: string;
   val: Nanoseconds;
   msg: string;
+  instructions?: number;
 }
 
 /** Extract the benchmark run array from parsed data. Called once at startup. */
@@ -46,20 +47,28 @@ export function toNanoseconds(value: number, unit: string): Nanoseconds {
   return ns as Nanoseconds;
 }
 
-export function timeSeries(data: BenchmarkRun[], benchName: string, repoUrl: string, hiddenShas?: Set<string>): TimePoint[] {
+export function timeSeries(data: BenchmarkRun[], benchName: string, repoUrl: string): TimePoint[] {
   const series: TimePoint[] = [];
   for (const commit of data) {
     const sha = commit.commit.id.substring(0, 7);
-    if (hiddenShas?.has(sha)) continue;
     const b = commit.benches.find((x) => x.name === benchName);
     if (b) {
       series.push({
         sha,
-        commitUrl: commit.commit.url || `${repoUrl}/commit/${commit.commit.id}`,
+        commitUrl: (commit.commit.url && commit.commit.url !== '#') ? commit.commit.url : `${repoUrl}/commit/${commit.commit.id}`,
         val: toNanoseconds(b.value, b.unit),
         msg: commit.commit.message.split('\n')[0] ?? '',
+        instructions: b.instructions,
       });
     }
   }
   return series;
+}
+
+/** Compute relative time series normalized to first data point = 1.0. */
+export function computeRelativeSeries(points: TimePoint[]): (number | null)[] {
+  if (points.length === 0) return [];
+  const base = points[0]!.val;
+  if (base === 0) return points.map(() => null);
+  return points.map((p) => p.val / base);
 }

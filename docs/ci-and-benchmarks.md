@@ -27,7 +27,7 @@ The single workflow file defines three jobs, all running on `ubuntu-latest`:
 2. Compares current vs baseline results (`scripts/bench-compare.ts`)
 3. Builds the dashboard site (`bench-dashboard/`) with Bun + Vite
 4. Deploys to `gh-pages`:
-   - Ingests benchmark results into `data.json` using `scripts/bench-data.js ingest`
+   - Ingests benchmark results into `data.json` using `scripts/bench-data.ts ingest`
    - Merges exploration data into `explore.json` (keeps last 5 entries)
    - Prunes benchmark data to last 100 entries per suite
    - Copies dashboard HTML/JS/CSS assets
@@ -36,7 +36,7 @@ The single workflow file defines three jobs, all running on `ubuntu-latest`:
 
 ### Benchmark data (`data.json`)
 
-Google Benchmark outputs JSON → `scripts/bench-data.js ingest` parses it and appends to `{optimizer}/data.json` on gh-pages. The dashboard fetches this JSON directly.
+Google Benchmark outputs JSON → `scripts/bench-data.ts ingest` parses it and appends to `{optimizer}/data.json` on gh-pages. The dashboard fetches this JSON directly.
 
 **Format:**
 ```json
@@ -63,7 +63,7 @@ Google Benchmark outputs JSON → `scripts/bench-data.js ingest` parses it and a
 
 ### Migration from legacy format
 
-The `bench-data.js` script automatically migrates from the old `data.js` format (`window.BENCHMARK_DATA = {...}`) to plain `data.json` on first run. Similarly for `explore.js` → `explore.json`.
+The `bench-data.ts` script automatically migrates from the old `data.js` format (`window.BENCHMARK_DATA = {...}`) to plain `data.json` on first run. Similarly for `explore.js` → `explore.json`.
 
 ## Benchmark Dashboard (`bench-dashboard/`)
 
@@ -143,7 +143,7 @@ gh-pages/
 ├── assets/                 # Vite-built JS/CSS bundles
 ├── edit/
 │   ├── index.html          # SPA entry (copy of root index.html)
-│   ├── data.json           # Benchmark data (written by bench-data.js ingest)
+│   ├── data.json           # Benchmark data (written by bench-data.ts ingest)
 │   ├── explore.json        # Exploration data (written by CI deploy step)
 │   └── explore/
 │       └── index.html      # SPA entry (copy of root index.html)

@@ -40,16 +40,19 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 ## Important Debug Principles
 Always use tests/Debug to investigate complex issues through direct, side-by-side comparison using NeovimOracle, finding the exact point our state differs from expectation.
 
-## Other Principles
+## Specific Principles
 - All positions are 0-indexed
 - Always use our Lines type to represent buffer content, which provides additional helpful methods
 - We allow an empty line, which has size() == 0, but still an index 0 as a valid cursor position
 - But, we do not allow no lines in the buffer, since the cursor must always be in a valid position.
 - Ensure CAREFUL handling of targetCol (Vim's curswant) within Position.h by calling the correct column method
-- We use [begin, end) for half-open intervals, and \[first, last\] for inclusive intervals, such as beginPos/goalPos, firstPos/lastPos
 - For pre/post state, we use initial, goal, such as initialLines, goalLines.
+
+## Design Principles
 - **Correctness first, then speed.** The EditOptimizer uses correct A* goal recording: goal states go through the priority queue and are recorded at pop time, guaranteeing lowest-cost results. This costs ~2x vs the old "record first-found" approach but eliminates suboptimal results from inadmissible heuristic ordering. The heuristic is inadmissible (overestimates), so pop-time recording is necessary for correctness. Accept this cost; do not regress to eager first-found recording.
+- We use [begin, end) for half-open intervals, and \[first, last\] for inclusive intervals, such as beginPos/goalPos, firstPos/lastPos
 - Command parsing functions are only use for arbitrarily parsing commands. For all searches, we should know the exact actions to do for minimal wasted work.
+- Always use TypeScript over JavaScript for website actions. We generally prefer more modern technologies and libraries where possible.
 
 ## Build Commands
 

@@ -190,8 +190,8 @@ const NODE_H = 36;
 const NODE_SPACING_Y = 70;
 const CHAR_W_MONO = 7.8;
 const CHAR_W_SMALL = 5.4;
-const NODE_PAD = 20;
-const MIN_NODE_W = 38;
+const NODE_PAD = 12;
+const MIN_NODE_W = 30;
 const NODE_GAP = 12;
 
 function computeNodeWidth(node: VisibleNode): number {
@@ -206,7 +206,7 @@ function computeNodeWidth(node: VisibleNode): number {
 // --- Node colors (subtle differences) ---
 
 function nodeFill(node: VisibleNode): string {
-  if (node.isFound) return '#e8f5e9';
+  if (node.isFound) return '#c8e6c9';
   if (node.childCount === 0) return '#ffffff';
   if (node.level === 2) return '#f2f8f2';
   if (node.level === 1) return '#f0f4ff';
@@ -214,7 +214,7 @@ function nodeFill(node: VisibleNode): string {
 }
 
 function nodeStroke(node: VisibleNode): string {
-  if (node.isFound) return '#34a853';
+  if (node.isFound) return '#2e7d32';
   return '#d0d0d0';
 }
 
@@ -247,11 +247,6 @@ export function ExplorationTree({ states, results, selectedSeqs }: Props) {
   }, [states, results]);
 
   const treeRoot = useMemo(() => buildTree(allEntries), [allEntries]);
-  const foundSeqs = useMemo(() => {
-    const s = new Set<string>();
-    if (results) for (const r of results) s.add(r.tokens.join(''));
-    return s;
-  }, [results]);
 
   const solutionPaths = useMemo(
     () => markSolutionPaths(treeRoot, selectedSeqs),
@@ -262,9 +257,10 @@ export function ExplorationTree({ states, results, selectedSeqs }: Props) {
   const selKey = useMemo(() => [...selectedSeqs].sort().join('\0'), [selectedSeqs]);
   useEffect(() => { setOverrides(new Map()); }, [selKey]);
 
+  // Use selectedSeqs (not all foundSeqs) for green highlighting
   const visibleRoot = useMemo(
-    () => buildVisibleTree(treeRoot, solutionPaths, foundSeqs, overrides),
-    [treeRoot, solutionPaths, foundSeqs, overrides],
+    () => buildVisibleTree(treeRoot, solutionPaths, selectedSeqs, overrides),
+    [treeRoot, solutionPaths, selectedSeqs, overrides],
   );
 
   const nodeWidths = useMemo(() => {
@@ -450,7 +446,7 @@ export function ExplorationTree({ states, results, selectedSeqs }: Props) {
       {tooltip && (
         <div
           className="absolute pointer-events-none bg-[#333] text-white text-xs px-2.5 py-1.5 rounded shadow-lg"
-          style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(-50%, -100%)', zIndex: 10 }}
+          style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(-50%, 12px)', zIndex: 10 }}
         >
           {tooltip.node.isSummary ? (
             <>

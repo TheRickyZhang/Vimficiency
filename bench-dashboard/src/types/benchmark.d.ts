@@ -12,6 +12,7 @@ export interface BenchmarkEntry {
   unit: string;
   range?: string;
   extra?: string;
+  instructions?: number;
 }
 
 export interface BenchmarkRun {

@@ -1,25 +1,71 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Shared read/transform/write logic for benchmark data.json files.
 //
 // Usage:
-//   node scripts/bench-data.js ingest <dir> <result.json> --commit-id=... --commit-msg=... --commit-ts=... --author=... --repo-url=...
-//   node scripts/bench-data.js prune <dir> [max=100]
-//   node scripts/bench-data.js remove <dir> <sha-prefix>
+//   bun scripts/bench-data.ts ingest <dir> <result.json> --commit-id=... --commit-msg=... --commit-ts=... --author=... --repo-url=...
+//   bun scripts/bench-data.ts prune <dir> [max=100]
+//   bun scripts/bench-data.ts remove <dir> <sha-prefix>
 
-const fs = require("fs");
-const path = require("path");
+import { existsSync, readFileSync, writeFileSync } from "fs";
+import { join } from "path";
+
+interface BenchEntry {
+  name: string;
+  value: number;
+  unit: string;
+  instructions?: number;
+}
+
+interface CommitInfo {
+  id: string;
+  message: string;
+  timestamp: string;
+  url: string;
+  author: { username: string };
+}
+
+interface BenchmarkRun {
+  commit: CommitInfo;
+  date: number;
+  benches: BenchEntry[];
+}
+
+interface BenchmarkData {
+  lastUpdate: number;
+  repoUrl: string;
+  entries: Record<string, BenchmarkRun[]>;
+}
+
+interface GoogleBenchmark {
+  name: string;
+  real_time: number;
+  time_unit: string;
+  INSTRUCTIONS?: number;
+}
+
+interface GoogleBenchmarkJSON {
+  benchmarks: GoogleBenchmark[];
+}
+
+interface IngestOpts {
+  commitId: string;
+  commitMsg: string;
+  commitTs: string;
+  author: string;
+  repoUrl: string;
+}
 
 // Read data.json, falling back to legacy data.js (window.BENCHMARK_DATA = ...)
-function readData(dir) {
-  const jsonPath = path.join(dir, "data.json");
-  const jsPath = path.join(dir, "data.js");
+function readData(dir: string): BenchmarkData | null {
+  const jsonPath = join(dir, "data.json");
+  const jsPath = join(dir, "data.js");
 
-  if (fs.existsSync(jsonPath)) {
-    return JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+  if (existsSync(jsonPath)) {
+    return JSON.parse(readFileSync(jsonPath, "utf8"));
   }
 
-  if (fs.existsSync(jsPath)) {
-    const src = fs.readFileSync(jsPath, "utf8");
+  if (existsSync(jsPath)) {
+    const src = readFileSync(jsPath, "utf8");
     const json = src
       .replace(/^window\.BENCHMARK_DATA\s*=\s*/, "")
       .replace(/;\s*$/, "");
@@ -30,21 +76,25 @@ function readData(dir) {
   return null;
 }
 
-function writeData(dir, data) {
-  fs.writeFileSync(path.join(dir, "data.json"), JSON.stringify(data, null, 0));
+function writeData(dir: string, data: BenchmarkData): void {
+  writeFileSync(join(dir, "data.json"), JSON.stringify(data, null, 0));
 }
 
 // Parse Google Benchmark JSON and append a benchmark run to data.json
-function ingest(dir, resultFile, opts) {
-  const result = JSON.parse(fs.readFileSync(resultFile, "utf8"));
+function ingest(dir: string, resultFile: string, opts: IngestOpts): void {
+  const result: GoogleBenchmarkJSON = JSON.parse(readFileSync(resultFile, "utf8"));
 
-  const benches = result.benchmarks.map((b) => ({
-    name: b.name,
-    value: b.real_time,
-    unit: b.time_unit + "/iter",
-  }));
+  const benches: BenchEntry[] = result.benchmarks.map((b) => {
+    const entry: BenchEntry = {
+      name: b.name,
+      value: b.real_time,
+      unit: b.time_unit + "/iter",
+    };
+    if (b.INSTRUCTIONS != null) entry.instructions = b.INSTRUCTIONS;
+    return entry;
+  });
 
-  const entry = {
+  const entry: BenchmarkRun = {
     commit: {
       id: opts.commitId,
       message: opts.commitMsg,
@@ -80,7 +130,7 @@ function ingest(dir, resultFile, opts) {
   );
 }
 
-function prune(dir, max) {
+function prune(dir: string, max: number): void {
   const data = readData(dir);
   if (!data) {
     console.log(`  ${dir}: no data found, skipping`);
@@ -96,7 +146,7 @@ function prune(dir, max) {
   writeData(dir, data);
 }
 
-function remove(dir, shaPrefix) {
+function remove(dir: string, shaPrefix: string): void {
   const data = readData(dir);
   if (!data) {
     console.log(`  ${dir}: no data found, skipping`);
@@ -118,25 +168,25 @@ function remove(dir, shaPrefix) {
 const args = process.argv.slice(2);
 const command = args[0];
 
-function parseOpts(args) {
-  const opts = {};
+function parseOpts(args: string[]): IngestOpts {
+  const raw: Record<string, string> = {};
   for (const arg of args) {
     const m = arg.match(/^--([a-z-]+)=(.*)$/);
     if (m) {
       // --commit-id -> commitId
-      const key = m[1].replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-      opts[key] = m[2];
+      const key = m[1]!.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+      raw[key] = m[2]!;
     }
   }
-  return opts;
+  return raw as unknown as IngestOpts;
 }
 
 if (!command) {
   console.error(
     "Usage:\n" +
-      "  node scripts/bench-data.js ingest <dir> <result.json> --commit-id=... --commit-msg=... --commit-ts=... --author=... --repo-url=...\n" +
-      "  node scripts/bench-data.js prune <dir> [max=100]\n" +
-      "  node scripts/bench-data.js remove <dir> <sha-prefix>"
+      "  bun scripts/bench-data.ts ingest <dir> <result.json> --commit-id=... --commit-msg=... --commit-ts=... --author=... --repo-url=...\n" +
+      "  bun scripts/bench-data.ts prune <dir> [max=100]\n" +
+      "  bun scripts/bench-data.ts remove <dir> <sha-prefix>"
   );
   process.exit(1);
 }
@@ -145,19 +195,18 @@ try {
   if (command === "ingest") {
     const dir = args[1];
     const resultFile = args[2];
-    const opts = parseOpts(args.slice(3));
     if (!dir || !resultFile) {
       console.error("ingest requires <dir> and <result.json>");
       process.exit(1);
     }
-    ingest(dir, resultFile, opts);
+    ingest(dir, resultFile, parseOpts(args.slice(3)));
   } else if (command === "prune") {
     const dir = args[1];
     if (!dir) {
       console.error("prune requires <dir>");
       process.exit(1);
     }
-    const max = parseInt(args[2], 10) || 100;
+    const max = parseInt(args[2] ?? "", 10) || 100;
     prune(dir, max);
   } else if (command === "remove") {
     const dir = args[1];
@@ -172,6 +221,6 @@ try {
     process.exit(1);
   }
 } catch (err) {
-  console.error(`Error: ${err.message}`);
+  console.error(`Error: ${(err as Error).message}`);
   process.exit(1);
 }

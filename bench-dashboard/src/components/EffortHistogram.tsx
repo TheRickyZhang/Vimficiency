@@ -39,9 +39,9 @@ export function EffortHistogram({ states, results, selectedSeq }: Props) {
       const binHi = binStart + i + 1;
       const inBin = (e: number) => (i === numBins - 1) ? (e >= binLo && e <= binHi) : (e >= binLo && e < binHi);
 
-      if (selectedEffort !== null && inBin(selectedEffort)) return '#1976d2';
-      if (resultEfforts.some(inBin)) return '#4caf50';
-      return '#4285f4';
+      if (selectedEffort !== null && inBin(selectedEffort)) return '#1565c0'; // selected: dark blue
+      if (resultEfforts.some(inBin)) return '#43a047'; // found result: vivid green
+      return '#b0c4de'; // default: muted blue-gray
     });
   }, [counts, results, selectedSeq, binStart, numBins]);
 

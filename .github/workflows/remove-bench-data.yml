@@ -17,10 +17,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-          sparse-checkout: scripts/bench-data.js
+          sparse-checkout: scripts/bench-data.ts
 
       - name: Save script
-        run: cp scripts/bench-data.js /tmp/bench-data.js
+        run: cp scripts/bench-data.ts /tmp/bench-data.ts
+
+      - uses: oven-sh/setup-bun@v2
 
       - uses: actions/checkout@v4
         with:
@@ -29,13 +31,13 @@ jobs:
       - name: Remove benchmark data for ${{ inputs.sha }}
         run: |
           SHA="${{ inputs.sha }}"
-          for dir in bench/edit bench/motion bench/composition; do
-            [ -f "$dir/data.js" ] && node /tmp/bench-data.js remove "$dir" "$SHA"
+          for dir in edit motion composition; do
+            [ -f "$dir/data.json" ] && bun /tmp/bench-data.ts remove "$dir" "$SHA"
           done
 
       - name: Commit and push
         run: |
-          git add bench/edit/data.js bench/motion/data.js bench/composition/data.js
+          git add -f edit/data.json motion/data.json composition/data.json
           git -c user.name=github-actions -c user.email=github-actions@github.com \
             commit -m "Remove benchmark data for ${{ inputs.sha }}" || { echo "Nothing to remove for ${{ inputs.sha }}"; exit 1; }
           git push origin gh-pages

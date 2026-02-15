@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
 import type { BenchmarkRun } from '../types/benchmark';
 import { OverviewSection } from './OverviewSection';
 import { CategorySection } from './CategorySection';
@@ -16,32 +16,6 @@ interface Props {
 }
 
 export function App({ data, categories, optimizerName, optimizer, repoUrl, activeCategory, openBench, onNavigate, onBenchConsumed }: Props) {
-  const storageKey = `vimficiency-hidden-${optimizerName}`;
-  const [hiddenShas, setHiddenShas] = useState<Set<string>>(() => {
-    try {
-      const stored = localStorage.getItem(storageKey);
-      return stored ? new Set(JSON.parse(stored)) : new Set();
-    } catch {
-      return new Set();
-    }
-  });
-
-  useEffect(() => {
-    if (hiddenShas.size > 0) {
-      localStorage.setItem(storageKey, JSON.stringify([...hiddenShas]));
-    } else {
-      localStorage.removeItem(storageKey);
-    }
-  }, [hiddenShas, storageKey]);
-
-  const onHide = useCallback((sha: string) => {
-    setHiddenShas((prev) => new Set([...prev, sha]));
-  }, []);
-
-  const onResetHidden = useCallback(() => {
-    setHiddenShas(new Set());
-  }, []);
-
   useEffect(() => {
     document.title = `${optimizerName} — Vimficiency Benchmarks`;
   }, [optimizerName]);
@@ -59,10 +33,6 @@ export function App({ data, categories, optimizerName, optimizer, repoUrl, activ
           data={data}
           optimizer={optimizer}
           repoUrl={repoUrl}
-          hiddenShas={hiddenShas}
-          onHide={onHide}
-          onResetHidden={onResetHidden}
-          onBack={() => onNavigate(null)}
           initialBench={openBench}
           onBenchOpened={onBenchConsumed}
         />

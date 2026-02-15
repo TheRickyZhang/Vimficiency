@@ -1,4 +1,17 @@
-FAIL iter=0 editPos=[0,4] bufferPos=[0,5] seq='de4Xx'
-
-,e
-.fe bd
+int k, n, m;
+void solve() {
+  cin >> n >> m >> k;
+  int l = k-1, r = n-k;
+  int mn = min(l, r);
+  int mx = max(l, r);
+  // Can we fortify in bot,h directions?
+  int needed = (mn-1) + mn + mn;
+  if(m >= needed) {
+    cout << 2*mn + 1 + min((m-needed) / 2, mx-mn) << en;
+  } else {
+    int x = (m+1) / 3;
+    int res = 2*x + 1 + (m - (3*x - 1) >= 2 ? 1 : 0);
+    cout << res << en;
+  }
+}
+ 

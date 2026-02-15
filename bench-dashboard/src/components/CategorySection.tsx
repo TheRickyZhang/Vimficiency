@@ -4,6 +4,8 @@ import type { BenchmarkRun } from '../types/benchmark';
 import { parseName, timeSeries } from '../utils/data';
 import { bestUnit } from '../utils/format';
 import { BenchmarkChart } from './BenchmarkChart';
+import type { Metric } from './BenchmarkChart';
+import { MetricToggles } from './MetricToggles';
 import { ChartModal } from './ChartModal';
 
 interface Props {
@@ -12,23 +14,27 @@ interface Props {
   data: BenchmarkRun[];
   optimizer: string;
   repoUrl: string;
-  hiddenShas: Set<string>;
-  onHide: (sha: string) => void;
-  onResetHidden: () => void;
-  onBack: () => void;
   initialBench?: string | null;
   onBenchOpened?: () => void;
 }
 
-export function CategorySection({ category, benchNames, data, optimizer, repoUrl, hiddenShas, onHide, onResetHidden, onBack, initialBench, onBenchOpened }: Props) {
+function defaultMetrics(charts: { series: { val: number }[] }[]): Set<Metric> {
+  // Default to relative, but fall back to wallclock if all series have <=1 point
+  const hasMultiPoint = charts.some((c) => c.series.length > 1);
+  return new Set<Metric>([hasMultiPoint ? 'relative' : 'wallclock']);
+}
+
+export function CategorySection({ category, benchNames, data, optimizer, repoUrl, initialBench, onBenchOpened }: Props) {
   const [modal, setModal] = useState<{ title: string; idx: number } | null>(null);
 
   const charts = benchNames.map((benchName) => {
     const detail = parseName(benchName).detail;
-    const series = timeSeries(data, benchName, repoUrl, hiddenShas);
+    const series = timeSeries(data, benchName, repoUrl);
     const unit = bestUnit(series.map((s) => s.val));
     return { benchName, detail, series, unit };
   }).filter((c) => c.series.length > 0);
+
+  const [activeMetrics, setActiveMetrics] = useState<Set<Metric>>(() => defaultMetrics(charts));
 
   // Auto-open modal for a specific benchmark when navigating from changes section
   useEffect(() => {
@@ -45,11 +51,9 @@ export function CategorySection({ category, benchNames, data, optimizer, repoUrl
 
   return (
     <div>
-      <div className="flex items-center gap-4 mb-5">
-        <a href="#" className="text-[0.95rem] link-brand" onClick={(e) => { e.preventDefault(); onBack(); }}>
-          &larr; All categories
-        </a>
-        <h2>{category}</h2>
+      <div className="flex justify-between items-center mb-3">
+        <h2 className="mb-0">{category}</h2>
+        <MetricToggles activeMetrics={activeMetrics} onChange={setActiveMetrics} />
       </div>
       <div className="grid grid-cols-2 gap-4 mb-10 max-md:grid-cols-1">
         {charts.map((c, i) => (
@@ -64,13 +68,13 @@ export function CategorySection({ category, benchNames, data, optimizer, repoUrl
                 search={{ case: category + '/' + c.detail }}
                 onClick={(e) => e.stopPropagation()}
                 title="Explore search space"
-                className="text-xs text-brand no-underline font-semibold px-2 py-0.5 rounded border border-[#d0d0d0] bg-[#f8f9fa] whitespace-nowrap cursor-pointer"
+                className="explore-btn"
               >
                 Explore
               </Link>
             </div>
             <div className="relative h-[200px]">
-              <BenchmarkChart series={c.series} unit={c.unit} />
+              <BenchmarkChart series={c.series} unit={c.unit} activeMetrics={activeMetrics} />
             </div>
           </div>
         ))}
@@ -80,11 +84,10 @@ export function CategorySection({ category, benchNames, data, optimizer, repoUrl
           title={modalData.detail}
           series={modalData.series}
           unit={modalData.unit}
-          hiddenShas={hiddenShas}
-          repoUrl={repoUrl}
-          onPointClick={onHide}
-          onResetHidden={onResetHidden}
           onClose={() => setModal(null)}
+          exploreLink={{ optimizer, case: category + '/' + modalData.detail }}
+          activeMetrics={activeMetrics}
+          onMetricsChange={setActiveMetrics}
         />
       )}
     </div>

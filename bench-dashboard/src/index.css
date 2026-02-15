@@ -49,3 +49,7 @@ p { text-align: center; }
 .fullscreen-btn {
   @apply absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-md bg-[#f0f0f0] hover:bg-[#e0e0e0] border border-[#ccc] text-[#555] cursor-pointer;
 }
+
+.explore-btn {
+  @apply text-sm text-brand no-underline font-semibold px-3 py-1 rounded-md border border-[#d0d0d0] bg-[#f8f9fa] whitespace-nowrap cursor-pointer transition-[transform,box-shadow] duration-150 hover:-translate-y-0.5 hover:shadow-[0_2px_6px_rgba(0,0,0,0.1)];
+}

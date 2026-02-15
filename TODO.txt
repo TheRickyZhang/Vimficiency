@@ -14,7 +14,8 @@ Improve organization of benchmark site
 
 
 TODO:
-Implement .
+Migrate to modules when greater scope
+
 explore count motions in edit optimizer
 No runtime errors; change to asserts
 
@@ -25,6 +26,7 @@ Implement {cnt} motions in EditOptimizer (+ should appear in Composition?)
 constexpr disabling of searched motions in MotionExplorer/EditExplorer
 
 Is it possible to save processing on copying state, then adjusting in optimizer search? (Can save memory with persistent data structures, but that is not the limiting factor)
+
 
 Things to ask Blake about:
 How to associate KeyedSequence{Command, Key(s)} with running effort
