@@ -46,14 +46,14 @@ export function CategorySection({ category, benchNames, data, optimizer, repoUrl
   return (
     <div>
       <div className="flex items-center gap-4 mb-5">
-        <a href="#" className="text-[0.95rem] text-brand no-underline font-semibold hover:underline" onClick={(e) => { e.preventDefault(); onBack(); }}>
+        <a href="#" className="text-[0.95rem] link-brand" onClick={(e) => { e.preventDefault(); onBack(); }}>
           &larr; All categories
         </a>
         <h2>{category}</h2>
       </div>
       <div className="grid grid-cols-2 gap-4 mb-10 max-md:grid-cols-1">
         {charts.map((c, i) => (
-          <div key={c.benchName} className="bg-surface border border-border rounded-lg p-4 cursor-default transition-[box-shadow,border-color] duration-150 hover:border-brand hover:shadow-[0_2px_8px_rgba(0,0,0,0.1)]" onClick={(e) => {
+          <div key={c.benchName} className="card card-hover p-4 cursor-default" onClick={(e) => {
             if (!(e.nativeEvent as any).__xAxisHandled) setModal({ title: c.detail, idx: i }); // eslint-disable-line @typescript-eslint/no-explicit-any
           }}>
             <div className="flex justify-between items-center mb-2">

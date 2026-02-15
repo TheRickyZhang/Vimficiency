@@ -21,9 +21,9 @@ export function RootLayout() {
       title = `Search Space — ${label} — Vimficiency`;
       breadcrumb = (
         <div className="mb-6 text-base">
-          <Link to="/" className="text-brand no-underline font-semibold hover:underline">Vimficiency</Link>
+          <Link to="/" className="link-brand">Vimficiency</Link>
           <span className="text-[#999] mx-2">&#x203A;</span>
-          <Link to="/$optimizer" params={{ optimizer: optimizerParam }} search={{ cat: undefined, bench: undefined }} className="text-brand no-underline font-semibold hover:underline">{label}</Link>
+          <Link to="/$optimizer" params={{ optimizer: optimizerParam }} search={{ cat: undefined, bench: undefined }} className="link-brand">{label}</Link>
           <span className="text-[#999] mx-2">&#x203A;</span>
           <span>Search Space</span>
         </div>
@@ -32,7 +32,7 @@ export function RootLayout() {
       title = `${label} — Vimficiency Benchmarks`;
       breadcrumb = (
         <div className="mb-6 text-base">
-          <Link to="/" className="text-brand no-underline font-semibold hover:underline">Vimficiency</Link>
+          <Link to="/" className="link-brand">Vimficiency</Link>
           <span className="text-[#999] mx-2">&#x203A;</span>
           <span>{label}</span>
         </div>

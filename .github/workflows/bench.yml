@@ -44,7 +44,16 @@ jobs:
           fetch-depth: 2
 
       - name: Install deps
-        run: sudo apt-get update && sudo apt-get install -y gcc-14 g++-14
+        run: sudo apt-get update && sudo apt-get install -y gcc-14 g++-14 libpfm4-dev
+
+      - name: Check perf counter support
+        run: |
+          echo "=== perf_event_paranoid ==="
+          cat /proc/sys/kernel/perf_event_paranoid || echo "not available"
+          echo "=== perf stat test ==="
+          perf stat -e instructions,cycles echo hello 2>&1 || echo "perf stat failed"
+          echo "=== Google Benchmark perf counters test ==="
+          # Will be tested after build with actual benchmark binary
 
       - uses: hendrikmuhs/ccache-action@v1
         with:
@@ -63,6 +72,17 @@ jobs:
             -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j$(nproc)
+
+      - name: Test perf counters with benchmark binary
+        continue-on-error: true
+        run: |
+          VIMFICIENCY_SEED_MODE=fixed \
+          ./build/tests/vimficiency_benchmarks \
+            --benchmark_filter="EditOpt.*" \
+            --benchmark_repetitions=1 \
+            --benchmark_min_time=0.001s \
+            --benchmark_perf_counters=INSTRUCTIONS,CYCLES \
+            --benchmark_format=json 2>&1 | head -60
 
       - name: Run EditOptimizer benchmarks
         run: |

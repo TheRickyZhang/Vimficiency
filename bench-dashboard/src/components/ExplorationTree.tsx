@@ -4,7 +4,7 @@ import { select } from 'd3-selection';
 import { zoom as d3zoom, zoomIdentity } from 'd3-zoom';
 import type { ExploredStateEntry, FoundResultEntry } from '../types/exploration';
 
-// --- TreeNode (kept, exported for types) ---
+// --- TreeNode ---
 
 export interface TreeNode {
   move: string;
@@ -24,15 +24,9 @@ export function buildTree(states: ExploredStateEntry[]): TreeNode {
     directCount: 0,
     children: new Map(),
   };
-
   for (const state of states) {
     const tokens = state.tokens;
-    if (!tokens.length) {
-      root.directCount++;
-      root.effort = state.effort;
-      continue;
-    }
-
+    if (!tokens.length) { root.directCount++; root.effort = state.effort; continue; }
     let node = root;
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i]!;
@@ -53,25 +47,19 @@ export function buildTree(states: ExploredStateEntry[]): TreeNode {
         child.directCount++;
         child.effort = Math.min(child.effort, state.effort);
       }
+      node = child;
     }
   }
-
   return root;
 }
 
 // --- Solution path marking ---
-// Walk from root toward each selected sequence, marking every node on the path.
-// Handles shared prefixes naturally: if "jw" and "jl" are both selected,
-// "j" is marked by both walks.
 
 function markSolutionPaths(root: TreeNode, selectedSeqs: Set<string>): Set<string> {
   const onPath = new Set<string>();
   for (const seq of selectedSeqs) {
     const walk = (node: TreeNode): boolean => {
-      if (node.fullSeq === seq) {
-        onPath.add(node.fullSeq);
-        return true;
-      }
+      if (node.fullSeq === seq) { onPath.add(node.fullSeq); return true; }
       for (const child of node.children.values()) {
         if (seq.startsWith(child.fullSeq) && walk(child)) {
           onPath.add(node.fullSeq);
@@ -85,7 +73,17 @@ function markSolutionPaths(root: TreeNode, selectedSeqs: Set<string>): Set<strin
   return onPath;
 }
 
-// --- Visible tree (d3-compatible) ---
+// --- Visible tree ---
+//
+// Three expansion levels (total order):
+//   0: hidden — children replaced by a single "..." summary
+//   1: partial — solution-path children + fill to MIN_CHILDREN total + "..." for rest
+//   2: full — all children shown
+//
+// Default: solution-path nodes (and root) → level 1, others → level 0
+// Clicking a node cycles: 0 → 1 → 2 → 0
+
+const MIN_CHILDREN = 3;
 
 interface VisibleNode {
   id: string;
@@ -98,33 +96,51 @@ interface VisibleNode {
   isSummary: boolean;
   summaryBranches: number;
   summaryNodes: number;
-  originalChildren: TreeNode[];
+  parentFullSeq: string;
+  childCount: number;
+  level: number;
   children?: VisibleNode[];
+}
+
+function makeSummary(parentSeq: string, branches: TreeNode[]): VisibleNode {
+  const totalNodes = branches.reduce((sum, c) => sum + c.count, 0);
+  return {
+    id: parentSeq + '::...',
+    move: '...',
+    fullSeq: parentSeq + '::...',
+    effort: 0,
+    count: totalNodes,
+    isFound: false,
+    isOnPath: false,
+    isSummary: true,
+    summaryBranches: branches.length,
+    summaryNodes: totalNodes,
+    parentFullSeq: parentSeq,
+    childCount: 0,
+    level: 0,
+    children: undefined,
+  };
 }
 
 function buildVisibleTree(
   root: TreeNode,
   solutionPaths: Set<string>,
   foundSeqs: Set<string>,
-  expandedSet: Set<string>,
-  collapsedSet: Set<string>,
+  overrides: Map<string, number>,
 ): VisibleNode {
   const convert = (node: TreeNode): VisibleNode => {
-    const isOnPath = solutionPaths.has(node.fullSeq);
-    const isFound = foundSeqs.has(node.fullSeq);
+    const { fullSeq } = node;
+    const isOnPath = solutionPaths.has(fullSeq);
+    const isFound = foundSeqs.has(fullSeq);
+    const defaultLevel = (isOnPath || fullSeq === '') ? 1 : 0;
+    const level = overrides.get(fullSeq) ?? defaultLevel;
 
-    const userExpanded = expandedSet.has(node.fullSeq);
-    const userCollapsed = collapsedSet.has(node.fullSeq);
+    const sorted = [...node.children.values()].sort((a, b) => b.count - a.count);
 
-    // Default: expanded if on a selected path
-    const showChildren = userExpanded || (isOnPath && !userCollapsed);
-
-    const sortedChildren = [...node.children.values()].sort((a, b) => b.count - a.count);
-
-    const mkLeaf = (): VisibleNode => ({
-      id: node.fullSeq || '_root',
+    const mk = (children?: VisibleNode[]): VisibleNode => ({
+      id: fullSeq || '_root',
       move: node.move,
-      fullSeq: node.fullSeq,
+      fullSeq,
       effort: node.effort,
       count: node.count,
       isFound,
@@ -132,79 +148,77 @@ function buildVisibleTree(
       isSummary: false,
       summaryBranches: 0,
       summaryNodes: 0,
-      originalChildren: sortedChildren,
-      children: undefined,
+      parentFullSeq: '',
+      childCount: node.children.size,
+      level,
+      children,
     });
 
-    if (!showChildren || sortedChildren.length === 0) return mkLeaf();
+    if (sorted.length === 0) return mk();
 
-    // Separate children on a selected path from the rest
-    const pathChildren: TreeNode[] = [];
-    const otherChildren: TreeNode[] = [];
-    for (const child of sortedChildren) {
-      if (solutionPaths.has(child.fullSeq)) {
-        pathChildren.push(child);
-      } else {
-        otherChildren.push(child);
-      }
+    // Level 0: single "..." for all children
+    if (level === 0) return mk([makeSummary(fullSeq, sorted)]);
+
+    // Level 2: all children
+    if (level === 2) return mk(sorted.map(c => convert(c)));
+
+    // Level 1: path children + fill to MIN_CHILDREN
+    const pathCh: TreeNode[] = [];
+    const otherCh: TreeNode[] = [];
+    for (const c of sorted) {
+      if (solutionPaths.has(c.fullSeq)) pathCh.push(c);
+      else otherCh.push(c);
     }
 
-    const visibleChildren: VisibleNode[] = pathChildren.map(convert);
+    const vis: VisibleNode[] = pathCh.map(c => convert(c));
+    const fill = Math.max(0, MIN_CHILDREN - pathCh.length);
+    const shown = Math.min(fill, otherCh.length);
+    for (let i = 0; i < shown; i++) vis.push(convert(otherCh[i]!));
 
-    // Non-path children: collapse into summary unless user expanded
-    if (otherChildren.length > 0) {
-      const summaryId = node.fullSeq + '::summary';
-      const summaryExpanded = expandedSet.has(summaryId);
+    const hidden = otherCh.slice(shown);
+    if (hidden.length > 0) vis.push(makeSummary(fullSeq, hidden));
 
-      if (summaryExpanded) {
-        for (const child of otherChildren) {
-          visibleChildren.push(convert(child));
-        }
-      } else {
-        const totalNodes = otherChildren.reduce((sum, c) => sum + c.count, 0);
-        visibleChildren.push({
-          id: summaryId,
-          move: '',
-          fullSeq: summaryId,
-          effort: 0,
-          count: totalNodes,
-          isFound: false,
-          isOnPath: false,
-          isSummary: true,
-          summaryBranches: otherChildren.length,
-          summaryNodes: totalNodes,
-          originalChildren: otherChildren,
-          children: undefined,
-        });
-      }
-    }
-
-    return {
-      id: node.fullSeq || '_root',
-      move: node.move,
-      fullSeq: node.fullSeq,
-      effort: node.effort,
-      count: node.count,
-      isFound,
-      isOnPath,
-      isSummary: false,
-      summaryBranches: 0,
-      summaryNodes: 0,
-      originalChildren: sortedChildren,
-      children: visibleChildren.length > 0 ? visibleChildren : undefined,
-    };
+    return mk(vis.length > 0 ? vis : undefined);
   };
 
   return convert(root);
 }
 
-// --- Layout constants ---
-const NODE_W = 120;
-const NODE_H = 36;
-const NODE_SPACING_X = 140;
-const NODE_SPACING_Y = 70;
+// --- Layout ---
 
-// --- SVG Tree Component ---
+const NODE_H = 36;
+const NODE_SPACING_Y = 70;
+const CHAR_W_MONO = 7.8;
+const CHAR_W_SMALL = 5.4;
+const NODE_PAD = 20;
+const MIN_NODE_W = 38;
+const NODE_GAP = 12;
+
+function computeNodeWidth(node: VisibleNode): number {
+  if (node.isSummary) return 72;
+  const moveText = node.fullSeq === '' ? '(start)' : node.move;
+  const subText = `${node.effort.toFixed(1)} \u00B7 ${node.count}`;
+  const moveW = moveText.length * CHAR_W_MONO;
+  const subW = subText.length * CHAR_W_SMALL;
+  return Math.max(MIN_NODE_W, Math.ceil(Math.max(moveW, subW)) + NODE_PAD);
+}
+
+// --- Node colors (subtle differences) ---
+
+function nodeFill(node: VisibleNode): string {
+  if (node.isFound) return '#e8f5e9';
+  if (node.childCount === 0) return '#ffffff';
+  if (node.level === 2) return '#f2f8f2';
+  if (node.level === 1) return '#f0f4ff';
+  return '#f5f5f5';
+}
+
+function nodeStroke(node: VisibleNode): string {
+  if (node.isFound) return '#34a853';
+  return '#d0d0d0';
+}
+
+// --- Component ---
 
 interface Props {
   states: ExploredStateEntry[];
@@ -215,102 +229,104 @@ interface Props {
 export function ExplorationTree({ states, results, selectedSeqs }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const gRef = useRef<SVGGElement>(null);
-  const [expandedSet, setExpandedSet] = useState<Set<string>>(new Set());
-  const [collapsedSet, setCollapsedSet] = useState<Set<string>>(new Set());
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [overrides, setOverrides] = useState<Map<string, number>>(new Map());
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; node: VisibleNode } | null>(null);
 
-  const treeRoot = useMemo(() => buildTree(states), [states]);
+  // Merge states + results for complete root-to-leaf paths
+  const allEntries = useMemo(() => {
+    const entries: ExploredStateEntry[] = [...states];
+    const keys = new Set(states.map(s => s.tokens.join('\0')));
+    if (results) {
+      for (const r of results) {
+        if (!keys.has(r.tokens.join('\0'))) entries.push({ effort: r.effort, tokens: r.tokens });
+      }
+    }
+    return entries;
+  }, [states, results]);
 
-  // All found sequences — for green "found" highlighting on nodes
+  const treeRoot = useMemo(() => buildTree(allEntries), [allEntries]);
   const foundSeqs = useMemo(() => {
     const s = new Set<string>();
     if (results) for (const r of results) s.add(r.tokens.join(''));
     return s;
   }, [results]);
 
-  // Selected sequences drive which paths are auto-expanded
   const solutionPaths = useMemo(
     () => markSolutionPaths(treeRoot, selectedSeqs),
     [treeRoot, selectedSeqs],
   );
 
-  // Clear manual overrides when selection changes so new paths open cleanly
-  const selectionKey = useMemo(() => [...selectedSeqs].sort().join('\0'), [selectedSeqs]);
-  useEffect(() => {
-    setExpandedSet(new Set());
-    setCollapsedSet(new Set());
-  }, [selectionKey]);
+  // Reset overrides when selection changes
+  const selKey = useMemo(() => [...selectedSeqs].sort().join('\0'), [selectedSeqs]);
+  useEffect(() => { setOverrides(new Map()); }, [selKey]);
 
   const visibleRoot = useMemo(
-    () => buildVisibleTree(treeRoot, solutionPaths, foundSeqs, expandedSet, collapsedSet),
-    [treeRoot, solutionPaths, foundSeqs, expandedSet, collapsedSet],
+    () => buildVisibleTree(treeRoot, solutionPaths, foundSeqs, overrides),
+    [treeRoot, solutionPaths, foundSeqs, overrides],
   );
 
-  // d3 layout
-  const layout = useMemo(() => {
-    const root = hierarchy(visibleRoot, (d) => d.children);
-    const treeLayout = d3tree<VisibleNode>().nodeSize([NODE_SPACING_X, NODE_SPACING_Y]);
-    treeLayout(root);
-    return root;
+  const nodeWidths = useMemo(() => {
+    const m = new Map<string, number>();
+    const walk = (n: VisibleNode) => { m.set(n.id, computeNodeWidth(n)); n.children?.forEach(walk); };
+    walk(visibleRoot);
+    return m;
   }, [visibleRoot]);
 
-  // Pan/zoom setup
+  const layout = useMemo(() => {
+    const root = hierarchy(visibleRoot, d => d.children);
+    d3tree<VisibleNode>()
+      .nodeSize([1, NODE_SPACING_Y])
+      .separation((a, b) => {
+        const wa = nodeWidths.get(a.data.id) ?? 60;
+        const wb = nodeWidths.get(b.data.id) ?? 60;
+        return (wa + wb) / 2 + NODE_GAP;
+      })(root);
+    return root;
+  }, [visibleRoot, nodeWidths]);
+
+  // d3-zoom
   useEffect(() => {
     const svg = svgRef.current;
     const g = gRef.current;
     if (!svg || !g) return;
-
     const zoomBehavior = d3zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 3])
-      .on('zoom', (event) => {
-        select(g).attr('transform', event.transform.toString());
-      });
-
+      .on('zoom', e => select(g).attr('transform', e.transform.toString()));
     select(svg).call(zoomBehavior);
-
-    // Initial: center the root node
-    const svgRect = svg.getBoundingClientRect();
-    const initialX = svgRect.width / 2;
-    const initialY = 40;
-    select(svg).call(
-      zoomBehavior.transform,
-      zoomIdentity.translate(initialX, initialY).scale(1),
-    );
-
-    return () => {
-      select(svg).on('.zoom', null);
-    };
+    const rect = svg.getBoundingClientRect();
+    select(svg).call(zoomBehavior.transform, zoomIdentity.translate(rect.width / 2, 40));
+    return () => { select(svg).on('.zoom', null); };
   }, []);
 
-  const handleNodeClick = useCallback((node: VisibleNode) => {
-    const key = node.fullSeq;
+  // Fullscreen API
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
 
-    if (node.isSummary) {
-      setExpandedSet((prev) => {
-        const next = new Set(prev);
-        next.add(key);
-        return next;
-      });
-      return;
-    }
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else containerRef.current?.requestFullscreen();
+  }, []);
 
-    // Toggle: if default is expanded (on path), add to collapsedSet;
-    //         if default is collapsed (not on path), add to expandedSet
-    if (node.isOnPath) {
-      setCollapsedSet((prev) => {
-        const next = new Set(prev);
-        if (next.has(key)) next.delete(key);
-        else next.add(key);
-        return next;
-      });
-    } else {
-      setExpandedSet((prev) => {
-        const next = new Set(prev);
-        if (next.has(key)) next.delete(key);
-        else next.add(key);
-        return next;
-      });
-    }
+  // Click node to cycle expansion (0 → 1 → 2 → 0)
+  const solRef = useRef(solutionPaths);
+  solRef.current = solutionPaths;
+
+  const toggleNode = useCallback((fullSeq: string) => {
+    setOverrides(prev => {
+      const next = new Map(prev);
+      const isOnPath = solRef.current.has(fullSeq);
+      const def = (isOnPath || fullSeq === '') ? 1 : 0;
+      const cur = prev.get(fullSeq) ?? def;
+      const nxt = (cur + 1) % 3;
+      if (nxt === def) next.delete(fullSeq);
+      else next.set(fullSeq, nxt);
+      return next;
+    });
   }, []);
 
   if (!states.length) return null;
@@ -319,100 +335,135 @@ export function ExplorationTree({ states, results, selectedSeqs }: Props) {
   const links = layout.links();
 
   return (
-    <div className="relative" style={{ height: 500 }}>
+    <div
+      ref={containerRef}
+      className="relative"
+      style={{ height: isFullscreen ? '100vh' : 500, background: '#fafafa' }}
+    >
       <svg
         ref={svgRef}
         width="100%"
         height="100%"
-        style={{ cursor: 'grab', background: '#fafafa', borderRadius: 8 }}
+        style={{ cursor: 'grab', background: '#fafafa', borderRadius: isFullscreen ? 0 : 8 }}
       >
         <g ref={gRef}>
-          {/* Links */}
           {links.map((link, i) => {
             const sx = link.source.x!;
             const sy = link.source.y! + NODE_H / 2;
             const tx = link.target.x!;
             const ty = link.target.y! - NODE_H / 2;
             const my = (sy + ty) / 2;
-            const path = `M${sx},${sy} C${sx},${my} ${tx},${my} ${tx},${ty}`;
             const td = link.target.data;
-            const isOnSolution = td.isOnPath && !td.isSummary;
             return (
               <path
                 key={i}
-                d={path}
+                d={`M${sx},${sy} C${sx},${my} ${tx},${my} ${tx},${ty}`}
                 fill="none"
-                stroke={isOnSolution ? '#34a853' : '#ccc'}
-                strokeWidth={isOnSolution ? 2 : 1}
+                stroke={td.isOnPath && !td.isSummary ? '#34a853' : '#ccc'}
+                strokeWidth={td.isOnPath && !td.isSummary ? 2 : 1}
                 strokeDasharray={td.isSummary ? '4,3' : undefined}
               />
             );
           })}
 
-          {/* Nodes */}
-          {nodes.map((d) => {
+          {nodes.map(d => {
             const node = d.data;
             const x = d.x!;
             const y = d.y!;
-            const hasChildren = node.originalChildren.length > 0;
-            const isExpanded = d.children != null && d.children.length > 0;
+            const w = nodeWidths.get(node.id) ?? 60;
+
+            if (node.isSummary) {
+              return (
+                <g
+                  key={node.id}
+                  transform={`translate(${x},${y})`}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => toggleNode(node.parentFullSeq)}
+                  onMouseEnter={e => showTooltip(e, node)}
+                  onMouseLeave={() => setTooltip(null)}
+                >
+                  <rect
+                    x={-w / 2} y={-NODE_H / 2} width={w} height={NODE_H} rx={6}
+                    fill="#f5f5f5" stroke="#999" strokeWidth={1} strokeDasharray="4,3"
+                  />
+                  <text textAnchor="middle" dominantBaseline="central" y={-4} fontSize={11} fill="#888">
+                    ...
+                  </text>
+                  <text textAnchor="middle" dominantBaseline="central" y={10} fontSize={9} fill="#aaa">
+                    {node.summaryNodes} st
+                  </text>
+                </g>
+              );
+            }
+
+            const fill = nodeFill(node);
+            const stroke = nodeStroke(node);
+            const isRoot = node.fullSeq === '';
+            const clickable = node.childCount > 0;
 
             return (
               <g
                 key={node.id}
                 transform={`translate(${x},${y})`}
-                style={{ cursor: hasChildren || node.isSummary ? 'pointer' : 'default' }}
-                onClick={() => (hasChildren || node.isSummary) && handleNodeClick(node)}
-                onMouseEnter={(e) => {
-                  const svgRect = svgRef.current?.getBoundingClientRect();
-                  if (svgRect) {
-                    setTooltip({
-                      x: e.clientX - svgRect.left,
-                      y: e.clientY - svgRect.top - 10,
-                      node,
-                    });
-                  }
-                }}
+                style={{ cursor: clickable ? 'pointer' : 'default' }}
+                onClick={() => clickable && toggleNode(node.fullSeq)}
+                onMouseEnter={e => showTooltip(e, node)}
                 onMouseLeave={() => setTooltip(null)}
               >
-                {node.isSummary ? (
-                  <SummaryNodeSVG node={node} />
-                ) : (
-                  <TreeNodeSVG
-                    node={node}
-                    hasChildren={hasChildren}
-                    isExpanded={isExpanded}
-                  />
-                )}
+                <rect
+                  x={-w / 2} y={-NODE_H / 2} width={w} height={NODE_H} rx={6}
+                  fill={fill} stroke={stroke} strokeWidth={node.isFound ? 2 : 1}
+                />
+                <text
+                  textAnchor="middle" dominantBaseline="central" y={-4}
+                  fontSize={isRoot ? 11 : 13} fontFamily="monospace"
+                  fontWeight={node.isFound ? 700 : 600}
+                  fill={node.isFound ? '#2e7d32' : '#333'}
+                >
+                  {isRoot ? '(start)' : node.move}
+                </text>
+                <text textAnchor="middle" dominantBaseline="central" y={12} fontSize={9} fill="#888">
+                  {node.effort.toFixed(1)} {'\u00B7'} {node.count}
+                </text>
               </g>
             );
           })}
         </g>
       </svg>
 
+      {/* Fullscreen toggle */}
+      <button
+        onClick={toggleFullscreen}
+        className="fullscreen-btn"
+        title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+      >
+        <svg viewBox="0 0 16 16" width="14" height="14">
+          {isFullscreen ? (
+            <path d="M5 2v3H2M11 2v3h3M2 11h3v3M14 11h-3v3" fill="none" stroke="currentColor" strokeWidth="1.5" />
+          ) : (
+            <path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+          )}
+        </svg>
+      </button>
+
       {/* Tooltip */}
       {tooltip && (
         <div
           className="absolute pointer-events-none bg-[#333] text-white text-xs px-2.5 py-1.5 rounded shadow-lg"
-          style={{
-            left: tooltip.x,
-            top: tooltip.y,
-            transform: 'translate(-50%, -100%)',
-            zIndex: 10,
-          }}
+          style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(-50%, -100%)', zIndex: 10 }}
         >
           {tooltip.node.isSummary ? (
             <>
-              {tooltip.node.summaryBranches} branches, {tooltip.node.summaryNodes} states
-              <br />
-              <span className="text-[#aaa]">Click to expand</span>
+              {tooltip.node.summaryBranches} branch{tooltip.node.summaryBranches !== 1 ? 'es' : ''},{' '}
+              {tooltip.node.summaryNodes} states
+              <br /><span className="text-[#aaa]">Click to expand</span>
             </>
           ) : (
             <>
               <span className="font-bold">{tooltip.node.fullSeq || '(start)'}</span>
-              <br />
-              effort: {tooltip.node.effort.toFixed(2)} &middot; {tooltip.node.count} state{tooltip.node.count !== 1 ? 's' : ''}
+              <br />effort: {tooltip.node.effort.toFixed(2)} {'\u00B7'} {tooltip.node.count} state{tooltip.node.count !== 1 ? 's' : ''}
               {tooltip.node.isFound && <><br /><span className="text-[#4caf50] font-bold">found result</span></>}
+              {tooltip.node.childCount > 0 && <><br /><span className="text-[#aaa]">Click to toggle expansion</span></>}
             </>
           )}
         </div>
@@ -420,119 +471,15 @@ export function ExplorationTree({ states, results, selectedSeqs }: Props) {
 
       {/* Legend */}
       <div className="absolute bottom-2 right-2 text-xs text-muted flex gap-3 bg-white/80 px-2 py-1 rounded">
-        <span><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#34a853] mr-1 align-middle" />selected path</span>
+        <span><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#34a853] mr-1 align-middle" />solution path</span>
         <span><span className="inline-block w-2.5 h-2.5 rounded-sm border border-dashed border-[#999] bg-[#f5f5f5] mr-1 align-middle" />collapsed</span>
         <span>scroll to zoom, drag to pan</span>
       </div>
     </div>
   );
-}
 
-// --- Individual node renderers ---
-
-function TreeNodeSVG({
-  node,
-  hasChildren,
-  isExpanded,
-}: {
-  node: VisibleNode;
-  hasChildren: boolean;
-  isExpanded: boolean;
-}) {
-  const w = NODE_W;
-  const h = NODE_H;
-  const isFound = node.isFound;
-  const isRoot = node.fullSeq === '';
-
-  const fill = isFound ? '#e8f5e9' : isRoot ? '#e3f2fd' : '#fff';
-  const stroke = isFound ? '#34a853' : isRoot ? '#1976d2' : '#ccc';
-
-  return (
-    <>
-      <rect
-        x={-w / 2}
-        y={-h / 2}
-        width={w}
-        height={h}
-        rx={6}
-        fill={fill}
-        stroke={stroke}
-        strokeWidth={isFound ? 2 : 1}
-      />
-      {/* Move label */}
-      <text
-        textAnchor="middle"
-        dominantBaseline="central"
-        y={-4}
-        fontSize={isRoot ? 11 : 13}
-        fontFamily="monospace"
-        fontWeight={isFound ? 700 : 600}
-        fill={isFound ? '#2e7d32' : '#333'}
-      >
-        {isRoot ? '(start)' : node.move}
-      </text>
-      {/* Effort + count */}
-      <text
-        textAnchor="middle"
-        dominantBaseline="central"
-        y={12}
-        fontSize={9}
-        fill="#888"
-      >
-        {node.effort.toFixed(1)} &middot; {node.count}
-      </text>
-      {/* Expand/collapse indicator */}
-      {hasChildren && (
-        <text
-          textAnchor="middle"
-          dominantBaseline="central"
-          x={w / 2 - 10}
-          y={0}
-          fontSize={8}
-          fill="#888"
-        >
-          {isExpanded ? '\u25BC' : '\u25B6'}
-        </text>
-      )}
-    </>
-  );
-}
-
-function SummaryNodeSVG({ node }: { node: VisibleNode }) {
-  const w = NODE_W;
-  const h = NODE_H;
-
-  return (
-    <>
-      <rect
-        x={-w / 2}
-        y={-h / 2}
-        width={w}
-        height={h}
-        rx={6}
-        fill="#f5f5f5"
-        stroke="#999"
-        strokeWidth={1}
-        strokeDasharray="4,3"
-      />
-      <text
-        textAnchor="middle"
-        dominantBaseline="central"
-        y={-4}
-        fontSize={10}
-        fill="#888"
-      >
-        {node.summaryBranches} branch{node.summaryBranches !== 1 ? 'es' : ''}
-      </text>
-      <text
-        textAnchor="middle"
-        dominantBaseline="central"
-        y={10}
-        fontSize={9}
-        fill="#aaa"
-      >
-        {node.summaryNodes} states
-      </text>
-    </>
-  );
+  function showTooltip(e: React.MouseEvent, node: VisibleNode) {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (rect) setTooltip({ x: e.clientX - rect.left, y: e.clientY - rect.top - 10, node });
+  }
 }

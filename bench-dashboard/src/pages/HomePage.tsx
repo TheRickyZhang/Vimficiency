@@ -71,7 +71,7 @@ export function HomePage() {
             to="/$optimizer"
             params={{ optimizer: slug }}
             search={{ cat: undefined, bench: undefined }}
-            className="block p-6 bg-surface border border-border rounded-lg no-underline text-inherit transition-[border-color,box-shadow] duration-150 hover:border-brand hover:shadow-[0_2px_8px_rgba(66,133,244,0.15)]"
+            className="block card card-hover p-6 no-underline text-inherit"
           >
             <h3 className="text-[1.25rem] font-bold mb-1 text-inherit">
               {OPTIMIZER_LABELS[slug].title}
@@ -123,7 +123,7 @@ function ChangeItem({ change: c }: { change: Change }) {
       to="/$optimizer"
       params={{ optimizer: c.optimizer }}
       search={{ cat: c.category, bench: c.name }}
-      className="flex justify-between items-center px-3 py-2 bg-surface border border-border-light rounded-md no-underline text-inherit transition-[border-color,box-shadow] duration-150 hover:border-brand hover:shadow-[0_1px_4px_rgba(66,133,244,0.12)]"
+      className="change-item no-underline"
     >
       <div className="flex flex-col gap-px min-w-0">
         <span className="font-semibold text-[0.9rem] whitespace-nowrap overflow-hidden text-ellipsis">

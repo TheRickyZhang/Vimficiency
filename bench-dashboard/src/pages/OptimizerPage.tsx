@@ -8,6 +8,15 @@ export function OptimizerPage() {
   const { optimizer } = optimizerIndexRoute.useParams();
   const navigate = useNavigate({ from: optimizerIndexRoute.fullPath });
 
+  if (!data) {
+    return (
+      <>
+        <h1>{optimizer.charAt(0).toUpperCase() + optimizer.slice(1)}Optimizer</h1>
+        <p className="subtitle">No benchmark data available. Run benchmarks to populate.</p>
+      </>
+    );
+  }
+
   return (
     <App
       data={data}

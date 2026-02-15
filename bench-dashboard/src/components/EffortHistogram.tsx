@@ -8,26 +8,26 @@ interface Props {
   selectedSeq?: string | null;
 }
 
-const BINS = 40;
-
 export function EffortHistogram({ states, results, selectedSeq }: Props) {
   if (!states.length) return null;
 
   const efforts = states.map((s) => s.effort);
-  const min = Math.min(...efforts);
-  const max = Math.max(...efforts);
-  const range = max - min || 1;
-  const binSize = range / BINS;
+  const minE = Math.min(...efforts);
+  const maxE = Math.max(...efforts);
 
-  const counts = new Array<number>(BINS).fill(0);
+  // Integer-unit bins: each bin spans 1 unit of effort
+  const binStart = Math.floor(minE);
+  const binEnd = Math.ceil(maxE);
+  const numBins = Math.max(1, binEnd - binStart);
+
+  const counts = new Array<number>(numBins).fill(0);
   for (const e of efforts) {
-    const idx = Math.min(Math.floor((e - min) / binSize), BINS - 1);
+    const idx = Math.min(Math.floor(e - binStart), numBins - 1);
     counts[idx]!++;
   }
 
-  const labels = counts.map((_, i) => (min + (i + 0.5) * binSize).toFixed(1));
+  const labels = counts.map((_, i) => String(binStart + i));
 
-  // Compute per-bar colors based on found results
   const barColors = useMemo(() => {
     const resultEfforts = (results ?? []).map((r) => r.effort);
     const selectedEffort = selectedSeq
@@ -35,19 +35,15 @@ export function EffortHistogram({ states, results, selectedSeq }: Props) {
       : null;
 
     return counts.map((_, i) => {
-      const binLo = min + i * binSize;
-      const binHi = min + (i + 1) * binSize;
-      const inBin = (e: number) => (i === BINS - 1) ? (e >= binLo && e <= binHi) : (e >= binLo && e < binHi);
+      const binLo = binStart + i;
+      const binHi = binStart + i + 1;
+      const inBin = (e: number) => (i === numBins - 1) ? (e >= binLo && e <= binHi) : (e >= binLo && e < binHi);
 
-      if (selectedEffort !== null && inBin(selectedEffort)) {
-        return '#1976d2'; // selected result: blue
-      }
-      if (resultEfforts.some(inBin)) {
-        return '#4caf50'; // any found result: green
-      }
-      return '#4285f4'; // default: blue
+      if (selectedEffort !== null && inBin(selectedEffort)) return '#1976d2';
+      if (resultEfforts.some(inBin)) return '#4caf50';
+      return '#4285f4';
     });
-  }, [counts, results, selectedSeq, min, binSize]);
+  }, [counts, results, selectedSeq, binStart, numBins]);
 
   return (
     <div style={{ height: 260 }}>
@@ -70,9 +66,7 @@ export function EffortHistogram({ states, results, selectedSeq }: Props) {
               callbacks: {
                 title: (ctx) => {
                   const i = ctx[0]!.dataIndex;
-                  const lo = (min + i * binSize).toFixed(2);
-                  const hi = (min + (i + 1) * binSize).toFixed(2);
-                  return `Effort ${lo} - ${hi}`;
+                  return `Effort ${binStart + i} – ${binStart + i + 1}`;
                 },
                 label: (ctx) => `${ctx.parsed.y} states`,
               },
@@ -81,7 +75,7 @@ export function EffortHistogram({ states, results, selectedSeq }: Props) {
           scales: {
             x: {
               title: { display: true, text: 'Effort', font: { weight: 'bold' as const } },
-              ticks: { maxTicksLimit: 10, font: { size: 10 } },
+              ticks: { maxTicksLimit: 20, font: { size: 10 } },
             },
             y: {
               title: { display: true, text: 'Count', font: { weight: 'bold' as const } },

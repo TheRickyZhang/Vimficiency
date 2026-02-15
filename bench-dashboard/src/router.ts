@@ -56,7 +56,7 @@ const optimizerLayoutRoute = createRoute({
 });
 
 export interface OptimizerLoaderData {
-  data: ReturnType<typeof loadBenchmarkData>;
+  data: ReturnType<typeof loadBenchmarkData> | null;
   categories: ReturnType<typeof discoverCategories>;
   optimizerName: string;
   repoUrl: string;
@@ -66,16 +66,21 @@ export const optimizerIndexRoute = createRoute({
   getParentRoute: () => optimizerLayoutRoute,
   path: '/',
   loader: async ({ params }): Promise<OptimizerLoaderData> => {
-    const res = await fetch(`${base}${params.optimizer}/data.json?_=${Date.now()}`);
-    const raw: BenchmarkData = await res.json();
-    const data = loadBenchmarkData(raw);
-    const categories = discoverCategories(data);
-    let optimizerName = 'Benchmarks';
-    const firstName = data[data.length - 1]?.benches[0]?.name;
-    if (firstName) {
-      optimizerName = firstName.split('/')[0] ?? 'Benchmarks';
+    try {
+      const res = await fetch(`${base}${params.optimizer}/data.json?_=${Date.now()}`);
+      if (!res.ok) return { data: null, categories: {}, optimizerName: 'Benchmarks', repoUrl: '' };
+      const raw: BenchmarkData = await res.json();
+      const data = loadBenchmarkData(raw);
+      const categories = discoverCategories(data);
+      let optimizerName = 'Benchmarks';
+      const firstName = data[data.length - 1]?.benches[0]?.name;
+      if (firstName) {
+        optimizerName = firstName.split('/')[0] ?? 'Benchmarks';
+      }
+      return { data, categories, optimizerName, repoUrl: raw.repoUrl };
+    } catch {
+      return { data: null, categories: {}, optimizerName: 'Benchmarks', repoUrl: '' };
     }
-    return { data, categories, optimizerName, repoUrl: raw.repoUrl };
   },
   validateSearch: (search: Record<string, unknown>) => ({
     cat: (search['cat'] as string) || undefined,
@@ -87,9 +92,14 @@ export const optimizerIndexRoute = createRoute({
 export const exploreRoute = createRoute({
   getParentRoute: () => optimizerLayoutRoute,
   path: '/explore',
-  loader: async ({ params }): Promise<ExplorationData> => {
-    const res = await fetch(`${base}${params.optimizer}/explore.json?_=${Date.now()}`);
-    return await res.json();
+  loader: async ({ params }): Promise<ExplorationData | null> => {
+    try {
+      const res = await fetch(`${base}${params.optimizer}/explore.json?_=${Date.now()}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
   },
   validateSearch: (search: Record<string, unknown>) => ({
     case: (search['case'] as string) || undefined,

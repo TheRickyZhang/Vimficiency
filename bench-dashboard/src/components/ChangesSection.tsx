@@ -57,7 +57,7 @@ function ChangeItem({ change, onSelect }: { change: BenchChange; onSelect: () =>
   const sign = isRegression ? '+' : '';
 
   return (
-    <button className="flex justify-between items-center px-3 py-2 bg-surface border border-border-light rounded-md cursor-pointer transition-[border-color,box-shadow] duration-150 text-left font-[inherit] text-inherit w-full hover:border-brand hover:shadow-[0_1px_4px_rgba(66,133,244,0.12)]" onClick={onSelect}>
+    <button className="change-item cursor-pointer text-left font-[inherit] w-full" onClick={onSelect}>
       <div className="flex flex-col gap-px min-w-0">
         <span className="font-semibold text-[0.9rem] whitespace-nowrap overflow-hidden text-ellipsis">{change.detail}</span>
         <span className="text-xs text-[#999]">{change.category}</span>

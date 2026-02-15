@@ -21,3 +21,5 @@ build*/
 # Bench dashboard
 bench-dashboard/node_modules/
 bench-dashboard/dist/
+bench-dashboard/public/*/data.json
+bench-dashboard/public/*/explore.json

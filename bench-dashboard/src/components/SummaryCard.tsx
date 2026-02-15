@@ -31,7 +31,7 @@ export function SummaryCard({ category, benchNames, data, onClick }: Props) {
     : undefined;
 
   return (
-    <a className="block p-5 bg-surface border border-border rounded-lg no-underline text-inherit transition-[border-color,box-shadow] duration-150 hover:border-brand hover:shadow-[0_2px_8px_rgba(66,133,244,0.12)]" href={`#${category}`} onClick={(e) => { e.preventDefault(); onClick(); }}>
+    <a className="block card card-hover p-5 no-underline text-inherit" href={`#${category}`} onClick={(e) => { e.preventDefault(); onClick(); }}>
       <div className="font-bold text-[1.1rem] mb-2">{category}</div>
       <div className="text-2xl font-extrabold text-[#333]">{fmtTime(avg)}</div>
       <div className="text-[0.9rem] text-muted mt-1">

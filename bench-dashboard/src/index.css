@@ -19,6 +19,33 @@ body {
   line-height: 1.5;
 }
 
-h1 { font-size: 2rem; font-weight: 800; margin-bottom: 4px; }
-h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 12px; }
-h3 { font-size: 1rem; font-weight: 700; color: #555; margin-bottom: 8px; }
+h1 { font-size: 2rem; font-weight: 800; margin-bottom: 4px; text-align: center; }
+h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 12px; text-align: center; }
+h3 { font-size: 1rem; font-weight: 700; color: #555; margin-bottom: 8px; text-align: center; }
+p { text-align: center; }
+
+/* Reusable component utilities */
+
+.card {
+  @apply bg-surface border border-border rounded-lg;
+}
+
+.card-hover {
+  @apply transition-[border-color,box-shadow] duration-150 hover:border-brand hover:shadow-[0_2px_8px_rgba(66,133,244,0.12)];
+}
+
+.change-item {
+  @apply flex justify-between items-center px-3 py-2 bg-surface border border-border-light rounded-md text-inherit transition-[border-color,box-shadow] duration-150 hover:border-brand hover:shadow-[0_1px_4px_rgba(66,133,244,0.12)];
+}
+
+.form-label {
+  @apply text-[0.85rem] font-semibold text-[#555] block mb-1;
+}
+
+.link-brand {
+  @apply text-brand no-underline font-semibold hover:underline;
+}
+
+.fullscreen-btn {
+  @apply absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-md bg-[#f0f0f0] hover:bg-[#e0e0e0] border border-[#ccc] text-[#555] cursor-pointer;
+}
