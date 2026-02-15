@@ -249,7 +249,8 @@ SearchStats CompositionSearchContext::getStats(int resultsFound) const {
   stats.statesSkipped = statesSkipped;
   stats.motionNodesExplored = motionNodesExplored;
   stats.editNodesExplored = editNodesExplored;
-  stats.exploredStates = exploredStates;
+  // exploredStates not copied — composition uses CompositionExploredState,
+  // accessed directly via ctx.exploredStates in ExplorationCollector
 
   if (resultsFound >= params.maxResults) {
     stats.stopReason = SearchStopReason::MaxResultsFound;

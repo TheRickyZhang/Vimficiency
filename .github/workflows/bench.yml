@@ -203,9 +203,12 @@ jobs:
               --repo-url="$REPO_URL"
           done
 
-          # Prune to last 100 entries per suite
+          # Remove stale suites (from benchmark renames) and prune to last 100 entries
           for dir in edit motion composition; do
-            [ -f "$dir/data.json" ] && bun /tmp/bench-data.ts prune "$dir"
+            if [ -f "$dir/data.json" ]; then
+              bun /tmp/bench-data.ts clean-suites "$dir"
+              bun /tmp/bench-data.ts prune "$dir"
+            fi
           done
 
           # Merge exploration data into explore.json (keep last 5 entries)

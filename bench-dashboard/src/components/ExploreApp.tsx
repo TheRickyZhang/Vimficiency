@@ -1,8 +1,35 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import type { ExplorationData, ExplorationCase } from '../types/exploration';
+import type { ExplorationData, ExplorationCase, ChunkedStateEntry, ChunkedResultEntry, SequenceChunk, ExploredStateEntry, FoundResultEntry } from '../types/exploration';
+import { BufferPreview } from './BufferPreview';
 import { EffortHistogram } from './EffortHistogram';
 import { ExplorationTimeline } from './ExplorationTimeline';
 import { ExplorationTree } from './ExplorationTree';
+
+const SUPERSCRIPTS = ['\u00B9', '\u00B2', '\u00B3', '\u2074', '\u2075', '\u2076', '\u2077', '\u2078', '\u2079'];
+
+function isChunkedCase(c: ExplorationCase): boolean {
+  return Array.isArray(c.contents);
+}
+
+function chunkDisplayKey(c: SequenceChunk): string {
+  if (c.contentId != null && c.contentId >= 0) return c.text + (SUPERSCRIPTS[c.contentId] ?? `[${c.contentId}]`);
+  return c.text;
+}
+
+// Transform chunked states → flat ExploredStateEntry for tree/histogram/timeline
+function chunkedStatesToFlat(states: ChunkedStateEntry[]): ExploredStateEntry[] {
+  return states.map(s => ({
+    effort: s.effort,
+    tokens: s.chunks.map(chunkDisplayKey),
+  }));
+}
+
+function chunkedResultsToFlat(results: ChunkedResultEntry[]): FoundResultEntry[] {
+  return results.map(r => ({
+    effort: r.effort,
+    tokens: r.chunks.map(chunkDisplayKey),
+  }));
+}
 
 function findCase(cases: ExplorationCase[], query: string | null): ExplorationCase | undefined {
   if (!query) return cases[0];
@@ -40,6 +67,8 @@ export function ExploreApp({ data, initialCase }: Props) {
     ? cases.find((c) => c.name === selectedCaseName) ?? resolvedInitial
     : resolvedInitial;
 
+  const chunked = activeCase ? isChunkedCase(activeCase) : false;
+
   // Parse cases into categories and params
   const { categories, paramsByCategory } = useMemo(() => {
     const cats = new Map<string, string[]>();
@@ -64,14 +93,28 @@ export function ExploreApp({ data, initialCase }: Props) {
     setSelectedCaseName(`${activeCategory}/${param}`);
   };
 
-  // Sort results by increasing effort
-  const sortedResults = useMemo(() =>
-    [...(activeCase?.results ?? [])].sort((a, b) => a.effort - b.effort),
-    [activeCase?.results]
-  );
+  // For chunked cases, transform data; for flat cases, use directly
+  const { flatStates, sortedResults } = useMemo(() => {
+    if (!activeCase) return { flatStates: [] as ExploredStateEntry[], sortedResults: [] as FoundResultEntry[] };
+
+    if (chunked) {
+      const cStates = activeCase.states as unknown as ChunkedStateEntry[];
+      const cResults = activeCase.results as unknown as ChunkedResultEntry[];
+      const fs = chunkedStatesToFlat(cStates);
+      const fr = chunkedResultsToFlat(cResults);
+      const sorted = [...fr].sort((a, b) => a.effort - b.effort);
+      return { flatStates: fs, sortedResults: sorted };
+    }
+
+    const sorted = [...(activeCase.results ?? [])].sort((a, b) => a.effort - b.effort);
+    return { flatStates: activeCase.states, sortedResults: sorted };
+  }, [activeCase, chunked]);
 
   // Multi-select: set of selected result sequences
   const [selectedSeqs, setSelectedSeqs] = useState<Set<string>>(() => new Set());
+
+  // Side panel for chunk detail
+  const [selectedChunk, setSelectedChunk] = useState<{ chunkIndex: number; chunkText: string; type: 'motion' | 'edit' } | null>(null);
 
   // Reset selection to best result when case or commit changes
   const activeCaseKey = `${commitIdx}:${activeCase?.name}`;
@@ -81,6 +124,7 @@ export function ExploreApp({ data, initialCase }: Props) {
     } else {
       setSelectedSeqs(new Set());
     }
+    setSelectedChunk(null);
   }, [activeCaseKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleSeq = (seq: string) => {
@@ -95,6 +139,45 @@ export function ExploreApp({ data, initialCase }: Props) {
   // For EffortHistogram: pass first selected or null
   const primarySelectedSeq = selectedSeqs.size > 0 ? [...selectedSeqs][0]! : null;
 
+  // Build sub-tree data for the side panel (motion chunk detail)
+  const detailTreeData = useMemo(() => {
+    if (!selectedChunk || !chunked || !activeCase) return null;
+
+    const cStates = activeCase.states as unknown as ChunkedStateEntry[];
+    const cResults = activeCase.results as unknown as ChunkedResultEntry[];
+
+    // Determine editsCompleted for this motion chunk by counting edit chunks before it
+    // in the first result's chunk list (canonical ordering)
+    let targetEditsCompleted = 0;
+    if (cResults.length > 0) {
+      const r = cResults[0]!;
+      for (let i = 0; i < selectedChunk.chunkIndex && i < r.chunks.length; i++) {
+        if (r.chunks[i]!.type === 'edit') targetEditsCompleted++;
+      }
+    }
+
+    // Filter states that have this chunk and extract its tokens
+    const subStates: ExploredStateEntry[] = [];
+    for (const s of cStates) {
+      if (s.editsCompleted !== targetEditsCompleted) continue;
+      if (selectedChunk.chunkIndex >= s.chunks.length) continue;
+      const chunk = s.chunks[selectedChunk.chunkIndex];
+      if (!chunk || chunk.type !== 'motion') continue;
+      subStates.push({ effort: s.effort, tokens: chunk.tokens });
+    }
+
+    // Also get sub-tokens from results for this chunk
+    const subResults: FoundResultEntry[] = [];
+    for (const r of cResults) {
+      if (selectedChunk.chunkIndex >= r.chunks.length) continue;
+      const chunk = r.chunks[selectedChunk.chunkIndex]!;
+      if (chunk.type !== 'motion') continue;
+      subResults.push({ effort: r.effort, tokens: chunk.tokens });
+    }
+
+    return { states: subStates, results: subResults };
+  }, [selectedChunk, chunked, activeCase]);
+
   // Commit step
   const stepCommit = (delta: number) => {
     setCommitIdx((prev) => {
@@ -104,6 +187,27 @@ export function ExploreApp({ data, initialCase }: Props) {
     });
     setSelectedCaseName(null);
   };
+
+  // Expandable token indices: only motion chunks have detail states
+  const expandableTokens = useMemo(() => {
+    if (!chunked || !activeCase) return undefined;
+    const cResults = activeCase.results as unknown as ChunkedResultEntry[];
+    if (!cResults.length) return undefined;
+    const set = new Set<number>();
+    const r = cResults[0]!;
+    for (let i = 0; i < r.chunks.length; i++) {
+      if (r.chunks[i]!.type === 'motion') set.add(i);
+    }
+    return set.size > 0 ? set : undefined;
+  }, [chunked, activeCase]);
+
+  // Chunk detail callback for ExplorationTree
+  const onChunkDetail = useCallback((tokenIndex: number, tokenText: string) => {
+    if (!chunked) return;
+    setSelectedChunk(prev =>
+      prev?.chunkIndex === tokenIndex ? null : { chunkIndex: tokenIndex, chunkText: tokenText, type: 'motion' }
+    );
+  }, [chunked]);
 
   return (
     <div>
@@ -163,24 +267,12 @@ export function ExploreApp({ data, initialCase }: Props) {
         )}
       </div>
 
+      {activeCase?.context && (
+        <BufferPreview context={activeCase.context} diffs={activeCase.diffs} />
+      )}
+
       {activeCase && (
         <div>
-          {/* Stats summary */}
-          <div className="flex gap-4 mb-6 flex-wrap justify-center">
-            <Stat label="Nodes explored" value={activeCase.nodesExplored.toLocaleString()} />
-            <Stat label="States tracked" value={activeCase.states.length.toLocaleString()} />
-            <Stat label="Max effort" value={
-              activeCase.states.length > 0
-                ? Math.max(...activeCase.states.map((s) => s.effort)).toFixed(2)
-                : '—'
-            } />
-            <Stat label="Median effort" value={
-              activeCase.states.length > 0
-                ? median(activeCase.states.map((s) => s.effort)).toFixed(2)
-                : '—'
-            } />
-          </div>
-
           {/* Found Results — multi-select toggles */}
           {sortedResults.length > 0 && (
             <Card title="Found Sequences" className="mb-6">
@@ -188,6 +280,33 @@ export function ExploreApp({ data, initialCase }: Props) {
                 {sortedResults.map((r) => {
                   const seq = r.tokens.join('');
                   const isSelected = selectedSeqs.has(seq);
+
+                  // Color-coded rendering for chunked results
+                  const renderTokens = () => {
+                    if (!chunked) {
+                      const display = seq.length > 30 ? seq.slice(0, 27) + '...' : seq;
+                      return <code className="font-bold text-base" title={seq.length > 30 ? seq : undefined}>{display}</code>;
+                    }
+                    // Render chunk texts with motion=blue, edit=orange
+                    const cResult = (activeCase!.results as unknown as ChunkedResultEntry[])
+                      .find(cr => cr.chunks.map(chunkDisplayKey).join('') === seq);
+                    if (!cResult) {
+                      return <code className="font-bold text-base">{seq.length > 30 ? seq.slice(0, 27) + '...' : seq}</code>;
+                    }
+                    return (
+                      <code className="font-bold text-base">
+                        {cResult.chunks.map((ch, i) => (
+                          <span key={i}>
+                            {i > 0 && <span className="text-[#999]">{'\u00B7'}</span>}
+                            <span className={ch.type === 'motion' ? 'text-[#1565c0]' : 'text-[#e65100]'}>
+                              {chunkDisplayKey(ch)}
+                            </span>
+                          </span>
+                        ))}
+                      </code>
+                    );
+                  };
+
                   return (
                     <div
                       key={seq}
@@ -198,9 +317,7 @@ export function ExploreApp({ data, initialCase }: Props) {
                           : 'bg-[#f5f5f5] border-border'
                       }`}
                     >
-                      <code className="font-bold text-base" title={seq.length > 30 ? seq : undefined}>
-                        {seq.length > 30 ? seq.slice(0, 27) + '...' : seq}
-                      </code>
+                      {renderTokens()}
                       <span className="text-[0.8rem] text-muted">
                         {r.effort.toFixed(2)}
                       </span>
@@ -211,38 +328,78 @@ export function ExploreApp({ data, initialCase }: Props) {
               <div className="text-xs text-muted mt-1.5">
                 Click to toggle paths in tree (multi-select)
               </div>
+              {/* Typed content legend (chunked mode) */}
+              {chunked && activeCase.contents && activeCase.contents.length > 0 && (
+                <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t border-[#eee]">
+                  {activeCase.contents.map((content, i) => (
+                    <div key={i} className="flex items-baseline gap-1.5 bg-[#fff8e1] px-3 py-1 rounded border border-[#ffe082]">
+                      <span className="font-bold text-[#e65100]">{SUPERSCRIPTS[i] ?? `[${i}]`}</span>
+                      <code className="text-sm text-[#333] max-w-[300px] truncate" title={content}>
+                        {content.length > 30 ? content.slice(0, 27) + '...' : content}
+                      </code>
+                    </div>
+                  ))}
+                </div>
+              )}
             </Card>
           )}
 
-          {/* Exploration Tree */}
-          <Card title="Exploration Tree" className="mb-6">
-            <ExplorationTree
-              states={activeCase.states}
-              results={sortedResults}
-              selectedSeqs={selectedSeqs}
-            />
+          {/* Exploration Tree + optional side panel */}
+          <Card title={`Exploration Tree (${activeCase.nodesExplored.toLocaleString()} nodes explored)`} className="mb-6">
+            <div className={selectedChunk ? 'flex' : ''}>
+              <div className={selectedChunk ? 'flex-1 min-w-0' : ''}>
+                <ExplorationTree
+                  states={flatStates}
+                  results={sortedResults}
+                  selectedSeqs={selectedSeqs}
+                  expandableTokens={expandableTokens}
+                  onChunkDetail={chunked ? onChunkDetail : undefined}
+                />
+              </div>
+              {selectedChunk && detailTreeData && (
+                <div className="flex-1 min-w-0 border-l border-[#e0e0e0]">
+                  <div className="flex items-center justify-between mb-2 px-3 pt-1">
+                    <h4 className="text-sm font-bold text-[#333]">
+                      <span className={selectedChunk.type === 'motion' ? 'text-[#1565c0]' : 'text-[#e65100]'}>
+                        {selectedChunk.type}
+                      </span>
+                      {' chunk: '}
+                      <code>{selectedChunk.chunkText}</code>
+                    </h4>
+                    <button
+                      onClick={() => setSelectedChunk(null)}
+                      className="text-xs text-muted hover:text-[#333] px-1"
+                    >
+                      close
+                    </button>
+                  </div>
+                  {detailTreeData.states.length > 0 ? (
+                    <ExplorationTree
+                      states={detailTreeData.states}
+                      results={detailTreeData.results}
+                      selectedSeqs={new Set()}
+                    />
+                  ) : (
+                    <div className="text-sm text-muted py-4 text-center">
+                      No detail states for this chunk
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </Card>
 
           {/* Charts */}
           <div className="grid grid-cols-2 gap-6 mb-6">
             <ExpandableCard title="Effort Distribution">
-              <EffortHistogram states={activeCase.states} results={sortedResults} selectedSeq={primarySelectedSeq} />
+              <EffortHistogram states={flatStates} results={sortedResults} selectedSeq={primarySelectedSeq} />
             </ExpandableCard>
             <ExpandableCard title="Exploration Timeline">
-              <ExplorationTimeline states={activeCase.states} />
+              <ExplorationTimeline states={flatStates} />
             </ExpandableCard>
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="card px-4 py-2.5 min-w-[100px]">
-      <div className="text-xs text-muted font-semibold mb-0.5">{label}</div>
-      <div className="text-[1.2rem] font-extrabold">{value}</div>
     </div>
   );
 }
@@ -373,11 +530,4 @@ function SearchableSelect({ value, options, onChange }: {
       )}
     </div>
   );
-}
-
-function median(values: number[]): number {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }

@@ -190,12 +190,17 @@ const NODE_H = 36;
 const NODE_SPACING_Y = 70;
 const CHAR_W_MONO = 7.8;
 const CHAR_W_SMALL = 5.4;
-const NODE_PAD = 12;
+const NODE_PAD = 8;
 const MIN_NODE_W = 30;
 const NODE_GAP = 12;
 
 function computeNodeWidth(node: VisibleNode): number {
-  if (node.isSummary) return 72;
+  if (node.isSummary) {
+    const topW = 3 * CHAR_W_MONO; // "..."
+    const subText = `${node.summaryNodes} st`;
+    const subW = subText.length * CHAR_W_SMALL;
+    return Math.max(MIN_NODE_W, Math.ceil(Math.max(topW, subW)) + NODE_PAD);
+  }
   const moveText = node.fullSeq === '' ? '(start)' : node.move;
   const subText = `${node.effort.toFixed(1)} \u00B7 ${node.count}`;
   const moveW = moveText.length * CHAR_W_MONO;
@@ -224,15 +229,20 @@ interface Props {
   states: ExploredStateEntry[];
   results?: FoundResultEntry[];
   selectedSeqs: Set<string>;
+  /** Token indices (0-based depth-1) that can be expanded via right-click/ctrl+click */
+  expandableTokens?: Set<number>;
+  onChunkDetail?: (tokenIndex: number, tokenText: string) => void;
 }
 
-export function ExplorationTree({ states, results, selectedSeqs }: Props) {
+export function ExplorationTree({ states, results, selectedSeqs, expandableTokens, onChunkDetail }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const gRef = useRef<SVGGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [overrides, setOverrides] = useState<Map<string, number>>(new Map());
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; node: VisibleNode } | null>(null);
+  const [zoomScale, setZoomScale] = useState(1);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; tokenIndex: number; tokenText: string } | null>(null);
 
   // Merge states + results for complete root-to-leaf paths
   const allEntries = useMemo(() => {
@@ -289,7 +299,10 @@ export function ExplorationTree({ states, results, selectedSeqs }: Props) {
     if (!svg || !g) return;
     const zoomBehavior = d3zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 3])
-      .on('zoom', e => select(g).attr('transform', e.transform.toString()));
+      .on('zoom', e => {
+        select(g).attr('transform', e.transform.toString());
+        setZoomScale(e.transform.k);
+      });
     select(svg).call(zoomBehavior);
     const rect = svg.getBoundingClientRect();
     select(svg).call(zoomBehavior.transform, zoomIdentity.translate(rect.width / 2, 40));
@@ -367,6 +380,7 @@ export function ExplorationTree({ states, results, selectedSeqs }: Props) {
             const x = d.x!;
             const y = d.y!;
             const w = nodeWidths.get(node.id) ?? 60;
+            const showDetail = zoomScale >= 0.6;
 
             if (node.isSummary) {
               return (
@@ -382,12 +396,14 @@ export function ExplorationTree({ states, results, selectedSeqs }: Props) {
                     x={-w / 2} y={-NODE_H / 2} width={w} height={NODE_H} rx={6}
                     fill="#f5f5f5" stroke="#999" strokeWidth={1} strokeDasharray="4,3"
                   />
-                  <text textAnchor="middle" dominantBaseline="central" y={-4} fontSize={11} fill="#888">
+                  <text textAnchor="middle" dominantBaseline="central" y={showDetail ? -4 : 0} fontSize={11} fill="#888">
                     ...
                   </text>
-                  <text textAnchor="middle" dominantBaseline="central" y={10} fontSize={9} fill="#aaa">
-                    {node.summaryNodes} st
-                  </text>
+                  {showDetail && (
+                    <text textAnchor="middle" dominantBaseline="central" y={10} fontSize={9} fill="#aaa">
+                      {node.summaryNodes} st
+                    </text>
+                  )}
                 </g>
               );
             }
@@ -396,13 +412,33 @@ export function ExplorationTree({ states, results, selectedSeqs }: Props) {
             const stroke = nodeStroke(node);
             const isRoot = node.fullSeq === '';
             const clickable = node.childCount > 0;
+            const tokenIndex = d.depth - 1; // depth 1 = token 0
 
             return (
               <g
                 key={node.id}
                 transform={`translate(${x},${y})`}
                 style={{ cursor: clickable ? 'pointer' : 'default' }}
-                onClick={() => clickable && toggleNode(node.fullSeq)}
+                onClick={(e) => {
+                  if (onChunkDetail && expandableTokens?.has(tokenIndex) && (e.ctrlKey || e.metaKey)) {
+                    onChunkDetail(tokenIndex, node.move);
+                    return;
+                  }
+                  if (clickable) toggleNode(node.fullSeq);
+                }}
+                onContextMenu={(e) => {
+                  if (!onChunkDetail || !expandableTokens?.has(tokenIndex)) return;
+                  e.preventDefault();
+                  const containerRect = containerRef.current?.getBoundingClientRect();
+                  if (containerRect) {
+                    setContextMenu({
+                      x: e.clientX - containerRect.left,
+                      y: e.clientY - containerRect.top,
+                      tokenIndex,
+                      tokenText: node.move,
+                    });
+                  }
+                }}
                 onMouseEnter={e => showTooltip(e, node)}
                 onMouseLeave={() => setTooltip(null)}
               >
@@ -411,16 +447,18 @@ export function ExplorationTree({ states, results, selectedSeqs }: Props) {
                   fill={fill} stroke={stroke} strokeWidth={node.isFound ? 2 : 1}
                 />
                 <text
-                  textAnchor="middle" dominantBaseline="central" y={-4}
+                  textAnchor="middle" dominantBaseline="central" y={showDetail ? -4 : 0}
                   fontSize={isRoot ? 11 : 13} fontFamily="monospace"
                   fontWeight={node.isFound ? 700 : 600}
                   fill={node.isFound ? '#2e7d32' : '#333'}
                 >
                   {isRoot ? '(start)' : node.move}
                 </text>
-                <text textAnchor="middle" dominantBaseline="central" y={12} fontSize={9} fill="#888">
-                  {node.effort.toFixed(1)} {'\u00B7'} {node.count}
-                </text>
+                {showDetail && (
+                  <text textAnchor="middle" dominantBaseline="central" y={12} fontSize={9} fill="#888">
+                    {node.effort.toFixed(1)} {'\u00B7'} {node.count}
+                  </text>
+                )}
               </g>
             );
           })}
@@ -446,7 +484,7 @@ export function ExplorationTree({ states, results, selectedSeqs }: Props) {
       {tooltip && (
         <div
           className="absolute pointer-events-none bg-[#333] text-white text-xs px-2.5 py-1.5 rounded shadow-lg"
-          style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(-50%, 12px)', zIndex: 10 }}
+          style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(-50%, 4px)', zIndex: 10 }}
         >
           {tooltip.node.isSummary ? (
             <>
@@ -465,6 +503,27 @@ export function ExplorationTree({ states, results, selectedSeqs }: Props) {
         </div>
       )}
 
+      {/* Context menu */}
+      {contextMenu && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setContextMenu(null)} onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }} />
+          <div
+            className="absolute z-40 bg-white border border-[#ccc] rounded shadow-lg py-1 min-w-[140px]"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+          >
+            <div
+              className="px-3 py-1.5 text-sm cursor-pointer hover:bg-[#f0f4ff]"
+              onClick={() => {
+                onChunkDetail?.(contextMenu.tokenIndex, contextMenu.tokenText);
+                setContextMenu(null);
+              }}
+            >
+              Expand chunk
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Legend */}
       <div className="absolute bottom-2 right-2 text-xs text-muted flex gap-3 bg-white/80 px-2 py-1 rounded">
         <span><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#34a853] mr-1 align-middle" />solution path</span>
@@ -475,7 +534,14 @@ export function ExplorationTree({ states, results, selectedSeqs }: Props) {
   );
 
   function showTooltip(e: React.MouseEvent, node: VisibleNode) {
-    const rect = svgRef.current?.getBoundingClientRect();
-    if (rect) setTooltip({ x: e.clientX - rect.left, y: e.clientY - rect.top - 10, node });
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    const nodeRect = (e.currentTarget as SVGElement).getBoundingClientRect();
+    if (containerRect) {
+      setTooltip({
+        x: nodeRect.left + nodeRect.width / 2 - containerRect.left,
+        y: nodeRect.bottom - containerRect.top,
+        node,
+      });
+    }
   }
 }

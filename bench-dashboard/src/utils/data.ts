@@ -14,9 +14,16 @@ export interface TimePoint {
   cpuTime?: Nanoseconds;
 }
 
-/** Extract the benchmark run array from parsed data. Called once at startup. */
+/** Extract the benchmark run array from parsed data. Called once at startup.
+ *  Uses the suite with the most recent entry (handles rename from Benchmark -> EditOpt etc.). */
 export function loadBenchmarkData(raw: BenchmarkData): BenchmarkRun[] {
-  return Object.values(raw.entries)[0]!;
+  const suites = Object.values(raw.entries);
+  if (suites.length <= 1) return suites[0] ?? [];
+  return suites.reduce((best, suite) => {
+    const bestDate = best[best.length - 1]?.date ?? 0;
+    const suiteDate = suite[suite.length - 1]?.date ?? 0;
+    return suiteDate > bestDate ? suite : best;
+  });
 }
 
 export function parseName(fullName: string): ParsedName {

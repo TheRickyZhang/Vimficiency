@@ -143,6 +143,37 @@ function prune(dir: string, max: number): void {
   writeData(dir, data);
 }
 
+function cleanSuites(dir: string): void {
+  const data = readData(dir);
+  if (!data) {
+    console.log(`  ${dir}: no data found, skipping`);
+    return;
+  }
+
+  const keys = Object.keys(data.entries);
+  if (keys.length <= 1) return;
+
+  // Keep only the suite with the most recent entry
+  let bestKey = keys[0]!;
+  let bestDate = 0;
+  for (const [key, runs] of Object.entries(data.entries)) {
+    const latest = runs[runs.length - 1]?.date ?? 0;
+    if (latest > bestDate) {
+      bestDate = latest;
+      bestKey = key;
+    }
+  }
+
+  for (const key of keys) {
+    if (key !== bestKey) {
+      console.log(`  ${dir}: removing stale suite "${key}" (${data.entries[key]!.length} entries)`);
+      delete data.entries[key];
+    }
+  }
+
+  writeData(dir, data);
+}
+
 function remove(dir: string, shaPrefix: string): void {
   const data = readData(dir);
   if (!data) {
@@ -183,7 +214,8 @@ if (!command) {
     "Usage:\n" +
       "  bun scripts/bench-data.ts ingest <dir> <result.json> --commit-id=... --commit-msg=... --commit-ts=... --author=... --repo-url=...\n" +
       "  bun scripts/bench-data.ts prune <dir> [max=100]\n" +
-      "  bun scripts/bench-data.ts remove <dir> <sha-prefix>"
+      "  bun scripts/bench-data.ts remove <dir> <sha-prefix>\n" +
+      "  bun scripts/bench-data.ts clean-suites <dir>"
   );
   process.exit(1);
 }
@@ -213,6 +245,13 @@ try {
       process.exit(1);
     }
     remove(dir, shaPrefix);
+  } else if (command === "clean-suites") {
+    const dir = args[1];
+    if (!dir) {
+      console.error("clean-suites requires <dir>");
+      process.exit(1);
+    }
+    cleanSuites(dir);
   } else {
     console.error(`Unknown command: ${command}`);
     process.exit(1);

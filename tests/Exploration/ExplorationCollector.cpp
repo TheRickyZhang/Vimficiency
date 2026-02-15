@@ -13,10 +13,13 @@
 #include <iostream>
 #include <map>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "Boundary/EditBoundary.h"
 #include "Boundary/MotionBoundary.h"
+#include "Editor/SequenceChunker.h"
+#include "Optimizer/CompositionOptimizer/DiffState.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
@@ -41,10 +44,22 @@ struct FoundResult {
   double effort;
 };
 
+struct ContextData {
+  vector<string> initialLines;
+  vector<string> goalLines;
+  int initialCursorLine = -1, initialCursorCol = -1;
+  int goalCursorLine = -1, goalCursorCol = -1;
+  string prefix;
+  string suffix;
+  bool hasLinesAbove = false;
+  bool hasLinesBelow = false;
+};
+
 struct ExploreCase {
   string name;
   SearchStats stats;
   vector<FoundResult> results;
+  ContextData context;
 };
 
 // =============================================================================
@@ -176,6 +191,43 @@ static vector<string> tokenizeSequence(const string& seq) {
   return tokens;
 }
 
+static void writeContextJson(ofstream& out, const ContextData& ctx) {
+  out << "      \"context\": {\n";
+  out << "        \"initialLines\": [";
+  for (size_t i = 0; i < ctx.initialLines.size(); i++) {
+    if (i > 0) out << ", ";
+    out << "\"" << jsonEscape(ctx.initialLines[i]) << "\"";
+  }
+  out << "],\n";
+  out << "        \"goalLines\": [";
+  for (size_t i = 0; i < ctx.goalLines.size(); i++) {
+    if (i > 0) out << ", ";
+    out << "\"" << jsonEscape(ctx.goalLines[i]) << "\"";
+  }
+  out << "]";
+  if (ctx.initialCursorLine >= 0) {
+    out << ",\n        \"initialCursor\": [" << ctx.initialCursorLine
+        << ", " << ctx.initialCursorCol << "]";
+  }
+  if (ctx.goalCursorLine >= 0) {
+    out << ",\n        \"goalCursor\": [" << ctx.goalCursorLine
+        << ", " << ctx.goalCursorCol << "]";
+  }
+  if (!ctx.prefix.empty()) {
+    out << ",\n        \"prefix\": \"" << jsonEscape(ctx.prefix) << "\"";
+  }
+  if (!ctx.suffix.empty()) {
+    out << ",\n        \"suffix\": \"" << jsonEscape(ctx.suffix) << "\"";
+  }
+  if (ctx.hasLinesAbove) {
+    out << ",\n        \"hasLinesAbove\": true";
+  }
+  if (ctx.hasLinesBelow) {
+    out << ",\n        \"hasLinesBelow\": true";
+  }
+  out << "\n      },\n";
+}
+
 static void writeExplorationJson(const string& filename,
                                   const vector<ExploreCase>& cases) {
   ofstream out(filename);
@@ -185,6 +237,7 @@ static void writeExplorationJson(const string& filename,
     out << "    {\n";
     out << "      \"name\": \"" << jsonEscape(ec.name) << "\",\n";
     out << "      \"nodesExplored\": " << ec.stats.nodesExplored << ",\n";
+    writeContextJson(out, ec.context);
 
     // Found results (optimal sequences)
     out << "      \"results\": [";
@@ -212,6 +265,148 @@ static void writeExplorationJson(const string& filename,
         out << "\"" << jsonEscape(tokens[t]) << "\"";
       }
       out << "]}";
+    }
+    out << "\n      ]\n";
+    out << "    }";
+    if (i + 1 < cases.size()) out << ",";
+    out << "\n";
+  }
+  out << "  ]\n}\n";
+  cout << "Wrote " << filename << " (" << cases.size() << " cases)\n";
+}
+
+// =============================================================================
+// Composition-specific case data and JSON writer
+// =============================================================================
+
+struct CompositionExploreCase {
+  string name;
+  int nodesExplored;
+  vector<FoundResult> results;
+  vector<CompositionExploredState> states;
+  ContextData context;
+  vector<DiffState> diffs;
+};
+
+static void writeChunksJson(ofstream& out, const vector<SequenceChunk>& chunks) {
+  out << "[";
+  for (size_t c = 0; c < chunks.size(); c++) {
+    if (c > 0) out << ", ";
+    const auto& ch = chunks[c];
+    out << "{\"type\": \"" << (ch.type == SequenceChunk::Motion ? "motion" : "edit")
+        << "\", \"text\": \"" << jsonEscape(ch.text) << "\", \"tokens\": [";
+    for (size_t t = 0; t < ch.tokens.size(); t++) {
+      if (t > 0) out << ", ";
+      out << "\"" << jsonEscape(ch.tokens[t]) << "\"";
+    }
+    out << "]";
+    if (ch.contentId >= 0) {
+      out << ", \"contentId\": " << ch.contentId;
+    }
+    out << "}";
+  }
+  out << "]";
+}
+
+static void writeCompositionExplorationJson(const string& filename,
+                                             const vector<CompositionExploreCase>& cases) {
+  ofstream out(filename);
+  out << "{\n  \"cases\": [\n";
+  for (size_t i = 0; i < cases.size(); i++) {
+    const auto& ec = cases[i];
+    out << "    {\n";
+    out << "      \"name\": \"" << jsonEscape(ec.name) << "\",\n";
+    out << "      \"nodesExplored\": " << ec.nodesExplored << ",\n";
+    writeContextJson(out, ec.context);
+
+    // Diffs (character-level change regions)
+    out << "      \"diffs\": [";
+    for (size_t d = 0; d < ec.diffs.size(); d++) {
+      if (d > 0) out << ",";
+      const auto& diff = ec.diffs[d];
+      out << "\n        {\"beginLine\": " << diff.beginPos.line
+          << ", \"beginCol\": " << diff.beginPos.col
+          << ", \"endLine\": " << diff.endPos.line
+          << ", \"endCol\": " << diff.endPos.col
+          << ", \"deletedText\": \"" << jsonEscape(diff.deletedText) << "\""
+          << ", \"insertedText\": \"" << jsonEscape(diff.insertedText) << "\""
+          << "}";
+    }
+    out << "\n      ],\n";
+
+    // Chunk all results and collect global contents for this case
+    vector<ChunkedSequence> chunkedResults;
+    vector<string> globalContents;
+    unordered_map<string, int> contentRemap;
+
+    for (const auto& r : ec.results) {
+      auto chunked = chunkCompositionSequence(r.sequence);
+      // Remap content IDs to global
+      for (auto& ch : chunked.chunks) {
+        if (ch.contentId >= 0) {
+          const string& content = chunked.contents[ch.contentId];
+          auto it = contentRemap.find(content);
+          if (it != contentRemap.end()) {
+            ch.contentId = it->second;
+          } else {
+            int newId = static_cast<int>(globalContents.size());
+            globalContents.push_back(content);
+            contentRemap[content] = newId;
+            ch.contentId = newId;
+          }
+        }
+      }
+      chunkedResults.push_back(std::move(chunked));
+    }
+
+    // Chunk all states too (to collect any additional contents)
+    vector<ChunkedSequence> chunkedStates;
+    for (const auto& s : ec.states) {
+      auto chunked = chunkCompositionSequence(s.sequence);
+      for (auto& ch : chunked.chunks) {
+        if (ch.contentId >= 0) {
+          const string& content = chunked.contents[ch.contentId];
+          auto it = contentRemap.find(content);
+          if (it != contentRemap.end()) {
+            ch.contentId = it->second;
+          } else {
+            int newId = static_cast<int>(globalContents.size());
+            globalContents.push_back(content);
+            contentRemap[content] = newId;
+            ch.contentId = newId;
+          }
+        }
+      }
+      chunkedStates.push_back(std::move(chunked));
+    }
+
+    // Contents
+    out << "      \"contents\": [";
+    for (size_t c = 0; c < globalContents.size(); c++) {
+      if (c > 0) out << ", ";
+      out << "\"" << jsonEscape(globalContents[c]) << "\"";
+    }
+    out << "],\n";
+
+    // Results
+    out << "      \"results\": [";
+    for (size_t r = 0; r < ec.results.size(); r++) {
+      if (r > 0) out << ",";
+      out << "\n        {\"effort\": " << ec.results[r].effort << ", \"chunks\": ";
+      writeChunksJson(out, chunkedResults[r].chunks);
+      out << "}";
+    }
+    out << "\n      ],\n";
+
+    // States
+    out << "      \"states\": [";
+    for (size_t j = 0; j < ec.states.size(); j++) {
+      if (j > 0) out << ",";
+      out << "\n        {\"effort\": " << ec.states[j].effort
+          << ", \"editsCompleted\": " << ec.states[j].editsCompleted
+          << ", \"chunks\": ";
+      writeChunksJson(out, chunkedStates[j].chunks);
+      out << "}";
     }
     out << "\n      ]\n";
     out << "    }";
@@ -267,7 +462,17 @@ static vector<ExploreCase> collectMotionCases() {
       }
     }
 
-    cases.push_back({mc.name, result.stats, std::move(found)});
+    ContextData ctx;
+    for (const auto& l : lines) ctx.initialLines.push_back(l);
+    ctx.goalLines = ctx.initialLines;
+    ctx.initialCursorLine = firstPos.line;
+    ctx.initialCursorCol = firstPos.col;
+    ctx.goalCursorLine = lastPos.line;
+    ctx.goalCursorCol = lastPos.col;
+    ctx.hasLinesAbove = true;
+    ctx.hasLinesBelow = true;
+
+    cases.push_back({mc.name, result.stats, std::move(found), std::move(ctx)});
   }
 
   return cases;
@@ -333,7 +538,18 @@ static vector<ExploreCase> collectEditCases() {
 
     EditOptimizer opt(config);
     auto result = opt.optimizePureDeletion(lines, boundary, p);
-    cases.push_back({ec.name, result.stats, collectEditResults(result)});
+
+    ContextData ctx;
+    for (const auto& l : lines) ctx.initialLines.push_back(l);
+    // goalLines empty — pure deletion
+    ctx.initialCursorLine = 0;
+    ctx.initialCursorCol = 0;
+    ctx.prefix = boundary.prefix();
+    ctx.suffix = boundary.suffix();
+    ctx.hasLinesAbove = boundary.hasLinesAbove();
+    ctx.hasLinesBelow = boundary.hasLinesBelow();
+
+    cases.push_back({ec.name, result.stats, collectEditResults(result), std::move(ctx)});
   }
 
   // Multi-line edit case
@@ -348,7 +564,20 @@ static vector<ExploreCase> collectEditCases() {
 
     EditOptimizer opt(config);
     auto result = opt.optimizeEdit(editRegion, goal, boundary, p);
-    cases.push_back({"MultiLineEdit/2L->1w", result.stats, collectEditResults(result)});
+
+    ContextData ctx;
+    for (const auto& l : editRegion) ctx.initialLines.push_back(l);
+    for (const auto& l : goal) ctx.goalLines.push_back(l);
+    ctx.initialCursorLine = 0;
+    ctx.initialCursorCol = 0;
+    ctx.goalCursorLine = 0;
+    ctx.goalCursorCol = 0;
+    ctx.prefix = boundary.prefix();
+    ctx.suffix = boundary.suffix();
+    ctx.hasLinesAbove = boundary.hasLinesAbove();
+    ctx.hasLinesBelow = boundary.hasLinesBelow();
+
+    cases.push_back({"MultiLineEdit/2L->1w", result.stats, collectEditResults(result), std::move(ctx)});
   }
 
   return cases;
@@ -362,8 +591,8 @@ static Lines generateBuffer(int numLines, int avgLineLen) {
   return randomCodeBuffer(numLines, avgLineLen);
 }
 
-static vector<ExploreCase> collectCompositionCases() {
-  vector<ExploreCase> cases;
+static vector<CompositionExploreCase> collectCompositionCases() {
+  vector<CompositionExploreCase> cases;
   auto& seedMgr = SeedManager::instance();
 
   CompositionOptimizerParams params;
@@ -413,7 +642,19 @@ static vector<ExploreCase> collectCompositionCases() {
       }
     }
 
-    cases.push_back({cc.name, result.stats, std::move(found)});
+    ContextData ctx;
+    for (const auto& l : initial) ctx.initialLines.push_back(l);
+    for (const auto& l : goal) ctx.goalLines.push_back(l);
+    ctx.initialCursorLine = 0;
+    ctx.initialCursorCol = 0;
+    ctx.goalCursorLine = 0;
+    ctx.goalCursorCol = 0;
+
+    cases.push_back({cc.name, result.stats.nodesExplored,
+                     std::move(found),
+                     std::move(result.compositionExploredStates),
+                     std::move(ctx),
+                     std::move(result.diffs)});
   }
 
   return cases;
@@ -435,7 +676,7 @@ int main() {
   writeExplorationJson("edit_explore.json", editCases);
 
   auto compositionCases = collectCompositionCases();
-  writeExplorationJson("composition_explore.json", compositionCases);
+  writeCompositionExplorationJson("composition_explore.json", compositionCases);
 
   cout << "\nDone.\n";
   return 0;

@@ -71,6 +71,15 @@ struct BracketQuoteContext {
 };
 
 // =============================================================================
+// CompositionExploredState
+// =============================================================================
+// Extends ExploredState with composition-specific tracking.
+
+struct CompositionExploredState : ExploredState {
+  int editsCompleted;
+};
+
+// =============================================================================
 // CompositionSearchContext
 // =============================================================================
 // Encapsulates shared state and logic for composition optimization search.
@@ -135,8 +144,8 @@ struct CompositionSearchContext {
   int motionNodesExplored = 0;
   int editNodesExplored = 0;
 
-  // Debug: optionally track explored states
-  std::vector<ExploredState> exploredStates;
+  // Debug: optionally track explored states (composition-specific)
+  std::vector<CompositionExploredState> exploredStates;
 
   // Internal safety: hard cap on total pops to prevent runaway loops
   static constexpr int SAFETY_MULTIPLIER = 10;
@@ -242,7 +251,8 @@ struct CompositionSearchContext {
   void trackState(const CompositionState& s) {
     if (params.trackExploredStates) {
       Position pos = s.getPos();
-      exploredStates.push_back({pos.line, pos.col, s.getEffort(), s.getSequence().str()});
+      exploredStates.push_back({{pos.line, pos.col, s.getEffort(), s.getSequence().str()},
+                                s.getEditsCompleted()});
     }
   }
 

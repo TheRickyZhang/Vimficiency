@@ -11,7 +11,10 @@ interface Props {
 export function EffortHistogram({ states, results, selectedSeq }: Props) {
   if (!states.length) return null;
 
-  const efforts = states.map((s) => s.effort);
+  // Skip trivial starting state (effort 0 / depth 0)
+  const efforts = states.map((s) => s.effort).filter((e) => e > 0);
+  if (!efforts.length) return null;
+
   const minE = Math.min(...efforts);
   const maxE = Math.max(...efforts);
 
@@ -60,6 +63,7 @@ export function EffortHistogram({ states, results, selectedSeq }: Props) {
           responsive: true,
           maintainAspectRatio: false,
           animation: { duration: 200 },
+          layout: { padding: { top: 16 } },
           plugins: {
             legend: { display: false },
             tooltip: {

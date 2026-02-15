@@ -117,9 +117,14 @@ pair<string, size_t> tryParseDelete(string_view sv, size_t i) {
 
   char c = sv[i];
 
-  // Single-char deletes
-  if (c == 'x' || c == 'X' || c == 'D') {
+  // Single-char deletes/edits that stay in normal mode
+  if (c == 'x' || c == 'X' || c == 'D' || c == '.' || c == '~') {
     return {string(1, c), 1};
+  }
+
+  // r{char} (replace single char, stays in normal mode)
+  if (c == 'r' && i + 1 < sv.size()) {
+    return {string(sv.substr(i, 2)), 2};
   }
 
   // J, gJ (join lines)

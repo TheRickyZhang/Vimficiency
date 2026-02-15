@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "CompositionOptimizerParams.h"
+#include "CompositionSearchContext.h"
 #include "DiffState.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/Result.h"
@@ -19,6 +20,9 @@ struct CompositionResult {
   SearchStats stats;
   Position goalPos;  // Cursor position after last edit completes
   std::vector<DiffState> diffs;  // Character-level diff regions used
+
+  // Composition-specific explored states (only populated when trackExploredStates=true)
+  std::vector<CompositionExploredState> compositionExploredStates;
 
   const std::vector<Result>& getResults() const { return results; }
 
