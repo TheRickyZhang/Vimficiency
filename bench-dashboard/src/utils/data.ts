@@ -11,7 +11,7 @@ export interface TimePoint {
   commitUrl: string;
   val: Nanoseconds;
   msg: string;
-  instructions?: number;
+  cpuTime?: Nanoseconds;
 }
 
 /** Extract the benchmark run array from parsed data. Called once at startup. */
@@ -58,7 +58,7 @@ export function timeSeries(data: BenchmarkRun[], benchName: string, repoUrl: str
         commitUrl: (commit.commit.url && commit.commit.url !== '#') ? commit.commit.url : `${repoUrl}/commit/${commit.commit.id}`,
         val: toNanoseconds(b.value, b.unit),
         msg: commit.commit.message.split('\n')[0] ?? '',
-        instructions: b.instructions,
+        cpuTime: b.cpuTime != null ? toNanoseconds(b.cpuTime, b.unit) : undefined,
       });
     }
   }

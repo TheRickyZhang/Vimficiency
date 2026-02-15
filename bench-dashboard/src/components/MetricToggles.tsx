@@ -2,7 +2,7 @@ import type { Metric } from './BenchmarkChart';
 
 const METRICS: { key: Metric; label: string; color: string }[] = [
   { key: 'wallclock', label: 'Wall Clock', color: '#4285f4' },
-  { key: 'instructions', label: 'Instructions', color: '#9c27b0' },
+  { key: 'cputime', label: 'CPU Time', color: '#9c27b0' },
   { key: 'relative', label: 'Relative', color: '#34a853' },
 ];
 

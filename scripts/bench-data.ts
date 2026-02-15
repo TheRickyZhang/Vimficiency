@@ -13,7 +13,7 @@ interface BenchEntry {
   name: string;
   value: number;
   unit: string;
-  instructions?: number;
+  cpuTime?: number;
 }
 
 interface CommitInfo {
@@ -39,8 +39,8 @@ interface BenchmarkData {
 interface GoogleBenchmark {
   name: string;
   real_time: number;
+  cpu_time: number;
   time_unit: string;
-  INSTRUCTIONS?: number;
 }
 
 interface GoogleBenchmarkJSON {
@@ -84,15 +84,12 @@ function writeData(dir: string, data: BenchmarkData): void {
 function ingest(dir: string, resultFile: string, opts: IngestOpts): void {
   const result: GoogleBenchmarkJSON = JSON.parse(readFileSync(resultFile, "utf8"));
 
-  const benches: BenchEntry[] = result.benchmarks.map((b) => {
-    const entry: BenchEntry = {
-      name: b.name,
-      value: b.real_time,
-      unit: b.time_unit + "/iter",
-    };
-    if (b.INSTRUCTIONS != null) entry.instructions = b.INSTRUCTIONS;
-    return entry;
-  });
+  const benches: BenchEntry[] = result.benchmarks.map((b) => ({
+    name: b.name,
+    value: b.real_time,
+    unit: b.time_unit + "/iter",
+    cpuTime: b.cpu_time,
+  }));
 
   const entry: BenchmarkRun = {
     commit: {

@@ -44,10 +44,7 @@ jobs:
           fetch-depth: 2
 
       - name: Install deps
-        run: sudo apt-get update && sudo apt-get install -y gcc-14 g++-14 libpfm4-dev
-
-      - name: Enable perf counters
-        run: sudo sysctl -w kernel.perf_event_paranoid=1
+        run: sudo apt-get update && sudo apt-get install -y gcc-14 g++-14
 
       - uses: hendrikmuhs/ccache-action@v1
         with:
@@ -64,19 +61,11 @@ jobs:
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF \
             -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DBENCHMARK_ENABLE_LIBPFM=ON
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j$(nproc)
 
       - name: Run EditOptimizer benchmarks
         run: |
-          VIMFICIENCY_SEED_MODE=fixed \
-          ./build/tests/vimficiency_benchmarks \
-            --benchmark_filter="EditOpt.*" \
-            --benchmark_format=json \
-            --benchmark_out=edit_result.json \
-            --benchmark_perf_counters=INSTRUCTIONS \
-          || \
           VIMFICIENCY_SEED_MODE=fixed \
           ./build/tests/vimficiency_benchmarks \
             --benchmark_filter="EditOpt.*" \
@@ -88,23 +77,9 @@ jobs:
           ./build/tests/vimficiency_benchmarks \
             --benchmark_filter="MotionOpt.*" \
             --benchmark_format=json \
-            --benchmark_out=motion_result.json \
-            --benchmark_perf_counters=INSTRUCTIONS \
-          || \
-          VIMFICIENCY_SEED_MODE=fixed \
-          ./build/tests/vimficiency_benchmarks \
-            --benchmark_filter="MotionOpt.*" \
-            --benchmark_format=json \
             --benchmark_out=motion_result.json
       - name: Run CompositionOptimizer benchmarks
         run: |
-          VIMFICIENCY_SEED_MODE=fixed \
-          ./build/tests/vimficiency_benchmarks \
-            --benchmark_filter="CompositionOpt.*" \
-            --benchmark_format=json \
-            --benchmark_out=composition_result.json \
-            --benchmark_perf_counters=INSTRUCTIONS \
-          || \
           VIMFICIENCY_SEED_MODE=fixed \
           ./build/tests/vimficiency_benchmarks \
             --benchmark_filter="CompositionOpt.*" \

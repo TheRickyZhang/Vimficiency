@@ -5,17 +5,17 @@ import type { Unit } from '../utils/format';
 import type { TimePoint } from '../utils/data';
 import { computeRelativeSeries } from '../utils/data';
 
-export type Metric = 'wallclock' | 'instructions' | 'relative';
+export type Metric = 'wallclock' | 'cputime' | 'relative';
 
 const METRIC_COLORS: Record<Metric, string> = {
   wallclock: '#4285f4',
-  instructions: '#9c27b0',
+  cputime: '#9c27b0',
   relative: '#34a853',
 };
 
 const METRIC_LABELS: Record<Metric, string> = {
   wallclock: 'Wall Clock',
-  instructions: 'Instructions',
+  cputime: 'CPU Time',
   relative: 'Relative',
 };
 
@@ -40,6 +40,7 @@ function buildDatasets(series: TimePoint[], unit: Unit, activeMetrics: Set<Metri
   const pointRadius = large ? 4 : 3;
   const pointHoverRadius = large ? 8 : 5;
   const pointHitRadius = large ? 30 : 10;
+  const hasTimeMetric = activeMetrics.has('wallclock') || activeMetrics.has('cputime');
 
   if (activeMetrics.has('wallclock')) {
     const color = METRIC_COLORS.wallclock;
@@ -58,22 +59,22 @@ function buildDatasets(series: TimePoint[], unit: Unit, activeMetrics: Set<Metri
     });
   }
 
-  if (activeMetrics.has('instructions')) {
-    const color = METRIC_COLORS.instructions;
-    const hasData = series.some((s) => s.instructions != null);
+  if (activeMetrics.has('cputime')) {
+    const color = METRIC_COLORS.cputime;
+    const hasData = series.some((s) => s.cpuTime != null);
     if (hasData) {
       datasets.push({
-        label: METRIC_LABELS.instructions,
-        data: series.map((s) => s.instructions != null ? s.instructions / 1000 : null),
+        label: METRIC_LABELS.cputime,
+        data: series.map((s) => s.cpuTime != null ? s.cpuTime / unit.d : null),
         borderColor: color,
         backgroundColor: color + '18',
-        fill: false,
+        fill: activeMetrics.size === 1,
         tension: 0.3,
         pointRadius,
         pointHoverRadius,
         pointHitRadius,
         borderWidth: 2,
-        yAxisID: activeMetrics.has('wallclock') ? 'y1' : 'y',
+        yAxisID: 'y',
       });
     }
   }
@@ -92,7 +93,7 @@ function buildDatasets(series: TimePoint[], unit: Unit, activeMetrics: Set<Metri
       pointHoverRadius,
       pointHitRadius,
       borderWidth: 2,
-      yAxisID: activeMetrics.has('wallclock') ? 'y1' : 'y',
+      yAxisID: hasTimeMetric ? 'y1' : 'y',
     });
   }
 
@@ -116,7 +117,8 @@ export function BenchmarkChart({ series, unit, large, activeMetrics: activeMetri
     };
   }, []);
 
-  const needsRightAxis = activeMetrics.has('wallclock') && (activeMetrics.has('instructions') || activeMetrics.has('relative'));
+  const hasTimeMetric = activeMetrics.has('wallclock') || activeMetrics.has('cputime');
+  const needsRightAxis = hasTimeMetric && activeMetrics.has('relative');
 
   const externalTooltip = useCallback((context: { chart: Chart; tooltip: TooltipModel<'line'> }) => {
     const { chart, tooltip } = context;
@@ -124,7 +126,6 @@ export function BenchmarkChart({ series, unit, large, activeMetrics: activeMetri
     if (!el) {
       el = document.createElement('div');
       el.style.cssText = 'position:absolute;pointer-events:auto;background:#1a1a2e;color:#fff;border-radius:8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:9999;transition:opacity 0.15s;max-width:350px';
-      // Padding includes extra bottom padding to bridge gap to data point
       el.style.padding = '10px 14px 18px 14px';
       el.addEventListener('mouseenter', () => {
         mouseInTooltipRef.current = true;
@@ -143,7 +144,6 @@ export function BenchmarkChart({ series, unit, large, activeMetrics: activeMetri
     }
 
     if (tooltip.opacity === 0) {
-      // Delay hiding so user can move mouse into tooltip
       if (!mouseInTooltipRef.current && !hideTimeoutRef.current) {
         hideTimeoutRef.current = setTimeout(() => {
           hideTimeoutRef.current = null;
@@ -156,7 +156,6 @@ export function BenchmarkChart({ series, unit, large, activeMetrics: activeMetri
       return;
     }
 
-    // Cancel any pending hide since tooltip is being shown for a (new) point
     if (hideTimeoutRef.current) {
       clearTimeout(hideTimeoutRef.current);
       hideTimeoutRef.current = null;
@@ -169,10 +168,10 @@ export function BenchmarkChart({ series, unit, large, activeMetrics: activeMetri
 
     const lines: string[] = [];
     if (activeMetrics.has('wallclock')) {
-      lines.push(`<span style="color:${METRIC_COLORS.wallclock}">\u25CF</span> ${(point.val / unit.d).toFixed(2)} ${unit.l}`);
+      lines.push(`<span style="color:${METRIC_COLORS.wallclock}">\u25CF</span> Wall: ${(point.val / unit.d).toFixed(2)} ${unit.l}`);
     }
-    if (activeMetrics.has('instructions') && point.instructions != null) {
-      lines.push(`<span style="color:${METRIC_COLORS.instructions}">\u25CF</span> ${(point.instructions / 1000).toFixed(1)}k instr`);
+    if (activeMetrics.has('cputime') && point.cpuTime != null) {
+      lines.push(`<span style="color:${METRIC_COLORS.cputime}">\u25CF</span> CPU: ${(point.cpuTime / unit.d).toFixed(2)} ${unit.l}`);
     }
     if (activeMetrics.has('relative')) {
       const relData = computeRelativeSeries(series);
@@ -190,17 +189,11 @@ export function BenchmarkChart({ series, unit, large, activeMetrics: activeMetri
     el.style.pointerEvents = 'auto';
 
     const { offsetLeft, offsetTop } = chart.canvas;
-    // Position so bottom of tooltip (including bridge padding) reaches the point
     el.style.left = offsetLeft + tooltip.caretX + 'px';
     el.style.top = offsetTop + tooltip.caretY - el.offsetHeight + 'px';
   }, [series, unit, activeMetrics]);
 
   const datasets = buildDatasets(series, unit, activeMetrics, large);
-
-  // Determine right axis label
-  const rightAxisLabel = activeMetrics.has('instructions') && activeMetrics.has('relative')
-    ? 'k instr / \u00D7'
-    : activeMetrics.has('instructions') ? 'k instr' : '\u00D7';
 
   return (
     <Line
@@ -248,7 +241,6 @@ export function BenchmarkChart({ series, unit, large, activeMetrics: activeMetri
                 const val = ctx.parsed.y;
                 if (val == null) return '';
                 if (dsLabel === METRIC_LABELS.relative) return `${dsLabel}: ${val.toFixed(3)}\u00D7`;
-                if (dsLabel === METRIC_LABELS.instructions) return `${dsLabel}: ${val.toFixed(1)}k instr`;
                 return `${dsLabel}: ${val.toFixed(2)} ${unit.l}`;
               },
             },
@@ -272,9 +264,7 @@ export function BenchmarkChart({ series, unit, large, activeMetrics: activeMetri
             position: 'left',
             title: {
               display: true,
-              text: activeMetrics.has('wallclock') ? unit.l
-                : activeMetrics.has('instructions') ? 'k instr'
-                : '\u00D7',
+              text: hasTimeMetric ? unit.l : '\u00D7',
               font: { size: 13, weight: 'bold' as const },
             },
             ticks: { font: { size: large ? 12 : 11 } },
@@ -283,7 +273,7 @@ export function BenchmarkChart({ series, unit, large, activeMetrics: activeMetri
           ...(needsRightAxis ? {
             y1: {
               position: 'right' as const,
-              title: { display: true, text: rightAxisLabel, font: { size: 13, weight: 'bold' as const } },
+              title: { display: true, text: '\u00D7', font: { size: 13, weight: 'bold' as const } },
               ticks: { font: { size: large ? 12 : 11 } },
               grid: { drawOnChartArea: false },
               beginAtZero: true,

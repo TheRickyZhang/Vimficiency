@@ -12,7 +12,7 @@ export interface BenchmarkEntry {
   unit: string;
   range?: string;
   extra?: string;
-  instructions?: number;
+  cpuTime?: number;
 }
 
 export interface BenchmarkRun {
