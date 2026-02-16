@@ -392,7 +392,8 @@ CompositionResult CompositionOptimizer::optimize(
   int numResults = static_cast<int>(results.size());
   return {std::move(results), ctx.getStats(numResults),
           resultGoalPos, std::move(ctx.diffStates),
-          std::move(ctx.exploredStates)};
+          std::move(ctx.exploredStates),
+          std::move(ctx.editResults)};
 }
 
 ostream& operator<<(ostream& os, const CompositionResult& cr) {

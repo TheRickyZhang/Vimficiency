@@ -204,6 +204,28 @@ optional<Result> tryReplacement(string_view deleted, string_view inserted,
   return Result(std::move(ks.seq), totalEffort);
 }
 
+// Compute keys to adjust autoindent from `autoindentLen` to `targetIndentLen`.
+// Returns empty if already matching. Uses BS when landing on shiftwidth boundary,
+// extra spaces when autoindent is too short, or C-u + retype when BS overshoots.
+KeyedSequence computeIndentAdjustment(int autoindentLen, int targetIndentLen) {
+  if (autoindentLen == targetIndentLen) return {};
+  KeyedSequence ks;
+  if (autoindentLen < targetIndentLen) {
+    ks.appendChar(' ', targetIndentLen - autoindentLen);
+    return ks;
+  }
+  // autoindentLen > targetIndentLen: try BS to target
+  int bsNeeded = bsCountForIndent(autoindentLen, targetIndentLen, VimOptions::shiftwidth());
+  if (bsNeeded >= 0) {
+    ks.appendRepeated(KeyedSequence::BS, bsNeeded);
+    return ks;
+  }
+  // BS can't land on target — C-u clears to 0, then retype target
+  ks += KeyedSequence::CtrlU;
+  if (targetIndentLen > 0) ks.appendChar(' ', targetIndentLen);
+  return ks;
+}
+
 } // anonymous namespace
 
 // =============================================================================
@@ -212,8 +234,7 @@ optional<Result> tryReplacement(string_view deleted, string_view inserted,
 // =============================================================================
 
 template<bool PureDeletion>
-EditResult
-EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
+EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
                             EditBoundary editBoundary, EditOptimizerParams params,
                             int bufferFirstLine, int bufferFirstCol,
                             Position goalPos) {
@@ -224,21 +245,39 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
   ctx.initStartingPositions(initialLines);
 
   // Local aliases for goal checking
-  [[maybe_unused]] const auto& pre = editBoundary.prefix();
-  [[maybe_unused]] const auto& suf = editBoundary.suffix();
+  const auto& pre = editBoundary.prefix();
+  const auto& suf = editBoundary.suffix();
   const string preSuf = pre + suf;
 
   vector<Result> results(ctx.totalPositions);
 
-  // ---- Edit-only structures ----
+  // ---- Edit-only state (unused in PureDeletion mode) ----
   [[maybe_unused]] KeyedSequence typed;
+  [[maybe_unused]] RunningEffort typedEffort;
   [[maybe_unused]] SuffixCacheMap suffixCache;
   [[maybe_unused]] int cacheHits = 0;
   [[maybe_unused]] int cachePopulations = 0;
+  // Pre-computed typed content assuming first-line autoindent matches goal indent.
+  // Used by linewise change paths (cc/cj/ck) where autoindent is provided.
+  [[maybe_unused]] int goalFirstIndentLen = 0;
+  [[maybe_unused]] KeyedSequence typedAfterIndent;
+  [[maybe_unused]] RunningEffort afterIndentEffort;
 
   if constexpr (!PureDeletion) {
-    int sufLeadingSpaces = (goalLines.size() > 1) ? leadingSpaceCount(suf) : 0;
-    typed = buildTypedCommands(goalLines, "", pre, sufLeadingSpaces);
+    typed = buildTypedCommands(goalLines, "", pre, suf);
+    typedEffort.append(typed.keys, config);
+
+    if constexpr (VimOptions::autoindent()) {
+      goalFirstIndentLen = leadingSpaceCount(goalLines[0]);
+      if (goalFirstIndentLen > 0) {
+        // typed starts with goalFirstIndentLen literal spaces — slice to get
+        // the version that assumes autoindent provides them.
+        typedAfterIndent = KeyedSequence(
+            typed.seq.view().substr(goalFirstIndentLen),
+            PhysicalKeys(typed.keys.view().subspan(goalFirstIndentLen)));
+        afterIndentEffort.append(typedAfterIndent.keys, config);
+      }
+    }
   }
 
   // Goal check
@@ -256,8 +295,9 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
     return false;
   };
 
-  // ---- Edit-only: suffix cache helpers ----
-  // Helper: replay search sequence from seed state, caching suffixes at each
+  // ---- Edit-only helpers (unused in PureDeletion mode) ----
+
+  // Replay search sequence from seed state, caching suffixes at each
   // intermediate position. Called when a goal is found.
   [[maybe_unused]] auto replayAndCacheSuffix = [&](int startIndex, const string& searchSeq,
                                    const KeyedSequence& goalSuffix,
@@ -335,8 +375,9 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
     }
   };
 
-  // Edit-only: converts delete -> change and appends collapse + typed content
-  [[maybe_unused]] auto buildGoalSuffix = [&](int count, const KeyedSequence& baseKS,
+  // Converts delete -> change and builds collapse prefix (without typed content).
+  // Returns changeCmd + collapse, enabling O(1) effort via merge with typedEffort.
+  [[maybe_unused]] auto buildChangePrefix = [&](int count, const KeyedSequence& baseKS,
                              const Lines& postDelLines, const Position& postDelPos,
                              const Lines& preDelLines, const Range& range) -> KeyedSequence {
     int totalLines = static_cast<int>(postDelLines.size());
@@ -349,14 +390,62 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
       }
     }
 
-    KeyedSequence goalSuffix = deleteToChangeChar(count, baseKS);
-    goalSuffix += buildCollapseSequence(totalLines, cursorLine);
-    goalSuffix += typed;
-    return goalSuffix;
+    KeyedSequence prefix = deleteToChangeChar(count, baseKS);
+    prefix += buildCollapseSequence(totalLines, cursorLine);
+    return prefix;
   };
 
-  // ---- Shared: non-goal linewise handler (k-escape + dot) ----
-  // Used by both exploreLinewise and exploreCountedLinewise
+  // Emit goal via d→c conversion + suffix cache + dot goal path.
+  //
+  // Takes the full goalSuffix (changeCmd + [autoindentClear] + collapse + typed) and
+  // its pre-computed effort. The effort is built via O(1) RunningEffort::merge at each
+  // call site: compute effort for the prefix (changeCmd + clear + collapse), then merge
+  // with pre-computed typedEffort — avoiding re-iteration of typed keys at every goal.
+  [[maybe_unused]] auto emitEditGoal = [&](EditState& afterState, const EditState& base,
+                                            int count, const KeyedSequence& baseKS,
+                                            const KeyedSequence& goalSuffix,
+                                            const RunningEffort& goalSuffixEffort,
+                                            bool isDot) {
+    // Normal goal path
+    {
+      replayAndCacheSuffix(base.getStartIndex(), base.getSeq(), goalSuffix, goalSuffixEffort);
+
+      EditState realState = afterState;
+      realState.recordSearch(goalSuffix.seq.view(), goalSuffixEffort,
+                            ctx.effortWeight, 0.0, config);
+      realState.setLastEdit(count, baseKS.seq.view());
+      ctx.exploreNewState(std::move(realState));
+    }
+
+    // Dot goal path: . + i + collapse + typed (skip replayAndCacheSuffix).
+    // The dot repeats the deletion, then 'i' enters insert mode without autoindent,
+    // so no autoindent clearing is needed here.
+    if (isDot) {
+      const auto& iCmd = KeyedSequence::i;
+      KeyedSequence dotSuffix(".", KeyedSequence::Period.keys);
+      dotSuffix += iCmd;
+      KeyedSequence collapse = buildCollapseSequence(
+          static_cast<int>(afterState.getLines().size()), afterState.getPos().line);
+      dotSuffix += collapse;
+
+      // O(1) effort: compute prefix effort, merge with pre-computed typedEffort
+      RunningEffort dotPrefixEffort;
+      dotPrefixEffort.append(dotSuffix.keys, config);
+      RunningEffort dotSuffixEffort = RunningEffort::merge(dotPrefixEffort, typedEffort);
+
+      dotSuffix += typed;
+
+      EditState dotState = std::move(afterState);
+      dotState.recordSearch(dotSuffix.seq.view(), dotSuffixEffort,
+                            ctx.effortWeight, 0.0, config);
+      ctx.exploreNewState(std::move(dotState));
+    }
+  };
+
+  // ---- Shared helpers ----
+
+  // Non-goal linewise handler (k-escape + dot).
+  // Used by both exploreLinewise and exploreCountedLinewise.
   auto exploreLinewiseNonGoal = [&](EditState& afterDel, const EditState& base,
                                      bool needsKEscape, int count,
                                      const KeyedSequence& baseKS, double hCost) {
@@ -386,40 +475,6 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
     ctx.exploreNewState(std::move(afterDel));
   };
 
-  // ---- Edit-only: goal path helpers ----
-  // Emit goal via d→c conversion + suffix cache + dot goal path
-  [[maybe_unused]] auto emitEditGoal = [&](EditState& afterState, const EditState& base,
-                                            int count, const KeyedSequence& baseKS,
-                                            const KeyedSequence& goalSuffix, bool isDot) {
-    // Normal goal path
-    {
-      RunningEffort suffixEffort;
-      suffixEffort.append(goalSuffix.keys, config);
-      replayAndCacheSuffix(base.getStartIndex(), base.getSeq(), goalSuffix, suffixEffort);
-
-      EditState realState = afterState;
-      realState.recordSearch(goalSuffix.seq.view(), goalSuffix.keys,
-                            ctx.effortWeight, 0.0, config);
-      realState.setLastEdit(count, baseKS.seq.view());
-      ctx.exploreNewState(std::move(realState));
-    }
-
-    // Dot goal path: . + i + collapse + typed (skip replayAndCacheSuffix)
-    if (isDot) {
-      const auto& iCmd = KeyedSequence::i;
-      KeyedSequence dotSuffix(".", KeyedSequence::Period.keys);
-      dotSuffix += iCmd;
-      dotSuffix += buildCollapseSequence(
-          static_cast<int>(afterState.getLines().size()), afterState.getPos().line);
-      dotSuffix += typed;
-
-      EditState dotState = std::move(afterState);
-      dotState.recordSearch(dotSuffix.seq.view(), dotSuffix.keys,
-                            ctx.effortWeight, 0.0, config);
-      ctx.exploreNewState(std::move(dotState));
-    }
-  };
-
   // ---- Handlers ----
 
   // Deletion handler
@@ -435,10 +490,15 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
         bool isDot = base.hasLastEdit() &&
                      base.getLastEditCount() == count &&
                      base.getLastEditBase() == baseKS.seq.view();
-        KeyedSequence goalSuffix = buildGoalSuffix(count, baseKS,
-                                                    lines, afterDel.getPos(),
-                                                    base.getLines(), range);
-        emitEditGoal(afterDel, base, count, baseKS, goalSuffix, isDot);
+        KeyedSequence changePrefix = buildChangePrefix(count, baseKS,
+                                                        lines, afterDel.getPos(),
+                                                        base.getLines(), range);
+        RunningEffort prefixEffort;
+        prefixEffort.append(changePrefix.keys, config);
+        RunningEffort goalSuffixEffort = RunningEffort::merge(prefixEffort, typedEffort);
+        KeyedSequence goalSuffix = changePrefix;
+        goalSuffix += typed;
+        emitEditGoal(afterDel, base, count, baseKS, goalSuffix, goalSuffixEffort, isDot);
       }
       return;
     }
@@ -473,10 +533,42 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
                      base.getLastEditCount() == count &&
                      base.getLastEditBase() == baseKS.seq.view();
         int ccLineCount = static_cast<int>(base.getLines().size());
-        KeyedSequence goalSuffix = deleteToChangeLine(count, baseKS, base.getLines()[line]);
-        goalSuffix += buildCollapseSequence(ccLineCount, line);
-        goalSuffix += typed;
-        emitEditGoal(afterDel, base, count, baseKS, goalSuffix, isDot);
+        KeyedSequence changeCmd = deleteToChangeLine(count, baseKS, base.getLines()[line]);
+        bool isLinewise = false;
+        if constexpr (VimOptions::autoindent()) {
+          isLinewise = (changeCmd.seq.view() != "0C");
+        }
+        int autoindentLen = isLinewise ? leadingSpaceCount(base.getLines()[line]) : 0;
+        bool needsCollapse = ccLineCount > 1;
+
+        KeyedSequence changePrefix = changeCmd;
+        bool useAfterIndent = false;
+        // Collapse BS×cursorLine + Del×rest. Only BS interacts with autoindent.
+        bool bsInCollapse = needsCollapse && line > 0;
+        if (isLinewise && !bsInCollapse) {
+          // Safe: no BS in collapse. Adjust autoindent to goal indent.
+          changePrefix += computeIndentAdjustment(autoindentLen, goalFirstIndentLen);
+          changePrefix += buildCollapseSequence(ccLineCount, line);
+          useAfterIndent = goalFirstIndentLen > 0;
+        } else if (isLinewise && bsInCollapse) {
+          // BS in collapse: account for autoindent in BS count.
+          // bsCountForIndent(x, 0, sw) always succeeds (0 is always a sw boundary).
+          int bsClear = autoindentLen > 0
+              ? bsCountForIndent(autoindentLen, 0, VimOptions::shiftwidth()) : 0;
+          changePrefix.appendRepeated(KeyedSequence::BS, bsClear + line);
+          changePrefix.appendRepeated(KeyedSequence::Del, ccLineCount - 1 - line);
+        } else {
+          changePrefix += buildCollapseSequence(ccLineCount, line);
+        }
+
+        const auto& suffixTyped = useAfterIndent ? typedAfterIndent : typed;
+        const auto& suffixEffort = useAfterIndent ? afterIndentEffort : typedEffort;
+        RunningEffort prefixEffort;
+        prefixEffort.append(changePrefix.keys, config);
+        RunningEffort goalSuffixEffort = RunningEffort::merge(prefixEffort, suffixEffort);
+        KeyedSequence goalSuffix = changePrefix;
+        goalSuffix += suffixTyped;
+        emitEditGoal(afterDel, base, count, baseKS, goalSuffix, goalSuffixEffort, isDot);
       }
       return;
     }
@@ -498,14 +590,18 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
                      base.getLastEditCount() == count &&
                      base.getLastEditBase() == baseKS.seq.view();
         const auto& iCmd = KeyedSequence::i;
-        KeyedSequence goalSuffix;
-        if (count > 0) goalSuffix.appendCounted(count, baseKS);
-        else goalSuffix = baseKS;
-        goalSuffix += iCmd;
-        goalSuffix += buildCollapseSequence(
+        KeyedSequence changePrefix;
+        if (count > 0) changePrefix.appendCounted(count, baseKS);
+        else changePrefix = baseKS;
+        changePrefix += iCmd;
+        changePrefix += buildCollapseSequence(
             static_cast<int>(afterJn.getLines().size()), afterJn.getPos().line);
+        RunningEffort prefixEffort;
+        prefixEffort.append(changePrefix.keys, config);
+        RunningEffort goalSuffixEffort = RunningEffort::merge(prefixEffort, typedEffort);
+        KeyedSequence goalSuffix = changePrefix;
         goalSuffix += typed;
-        emitEditGoal(afterJn, base, count, baseKS, goalSuffix, isDot);
+        emitEditGoal(afterJn, base, count, baseKS, goalSuffix, goalSuffixEffort, isDot);
       }
       return;
     }
@@ -540,10 +636,43 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
                      base.getLastEditBase() == baseKS.seq.view();
         int lineCount = range.lastLine - range.firstLine + 1;
         int ccLineCount = static_cast<int>(base.getLines().size()) - lineCount + 1;
-        KeyedSequence goalSuffix = deleteToChangeLine(count, baseKS, base.getLines()[range.firstLine]);
-        goalSuffix += buildCollapseSequence(ccLineCount, range.firstLine);
-        goalSuffix += typed;
-        emitEditGoal(afterDel, base, count, baseKS, goalSuffix, isDot);
+        KeyedSequence changeCmd = deleteToChangeLine(count, baseKS, base.getLines()[range.firstLine]);
+        // Counted linewise changes ({n}cc, cj, ck) are always linewise — autoindent applies
+        int autoindentLen = 0;
+        if constexpr (VimOptions::autoindent()) {
+          autoindentLen = leadingSpaceCount(base.getLines()[range.firstLine]);
+        }
+        bool needsCollapse = ccLineCount > 1;
+
+        KeyedSequence changePrefix = changeCmd;
+        bool useAfterIndent = false;
+        // Collapse BS×cursorLine + Del×rest. Only BS interacts with autoindent.
+        bool bsInCollapse = needsCollapse && range.firstLine > 0;
+        if constexpr (VimOptions::autoindent()) {
+          if (!bsInCollapse) {
+            // Safe: no BS in collapse. Adjust autoindent to goal indent.
+            changePrefix += computeIndentAdjustment(autoindentLen, goalFirstIndentLen);
+            changePrefix += buildCollapseSequence(ccLineCount, range.firstLine);
+            useAfterIndent = goalFirstIndentLen > 0;
+          } else {
+            // BS in collapse: account for autoindent in BS count.
+            int bsClear = autoindentLen > 0
+                ? bsCountForIndent(autoindentLen, 0, VimOptions::shiftwidth()) : 0;
+            changePrefix.appendRepeated(KeyedSequence::BS, bsClear + range.firstLine);
+            changePrefix.appendRepeated(KeyedSequence::Del, ccLineCount - 1 - range.firstLine);
+          }
+        } else {
+          changePrefix += buildCollapseSequence(ccLineCount, range.firstLine);
+        }
+
+        const auto& suffixTyped = useAfterIndent ? typedAfterIndent : typed;
+        const auto& suffixEffort = useAfterIndent ? afterIndentEffort : typedEffort;
+        RunningEffort prefixEffort;
+        prefixEffort.append(changePrefix.keys, config);
+        RunningEffort goalSuffixEffort = RunningEffort::merge(prefixEffort, suffixEffort);
+        KeyedSequence goalSuffix = changePrefix;
+        goalSuffix += suffixTyped;
+        emitEditGoal(afterDel, base, count, baseKS, goalSuffix, goalSuffixEffort, isDot);
       }
       return;
     }
@@ -565,14 +694,18 @@ EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
                      base.getLastEditCount() == count &&
                      base.getLastEditBase() == baseKS.seq.view();
         const auto& iCmd = KeyedSequence::i;
-        KeyedSequence goalSuffix;
-        if (count > 0) goalSuffix.appendCounted(count, baseKS);
-        else goalSuffix = baseKS;
-        goalSuffix += iCmd;
-        goalSuffix += buildCollapseSequence(
+        KeyedSequence changePrefix;
+        if (count > 0) changePrefix.appendCounted(count, baseKS);
+        else changePrefix = baseKS;
+        changePrefix += iCmd;
+        changePrefix += buildCollapseSequence(
             static_cast<int>(afterJn.getLines().size()), afterJn.getPos().line);
+        RunningEffort prefixEffort;
+        prefixEffort.append(changePrefix.keys, config);
+        RunningEffort goalSuffixEffort = RunningEffort::merge(prefixEffort, typedEffort);
+        KeyedSequence goalSuffix = changePrefix;
         goalSuffix += typed;
-        emitEditGoal(afterJn, base, count, baseKS, goalSuffix, isDot);
+        emitEditGoal(afterJn, base, count, baseKS, goalSuffix, goalSuffixEffort, isDot);
       }
       return;
     }
@@ -764,15 +897,6 @@ template EditResult EditOptimizer::optimizeImpl<false>(
 // Public dispatchers
 // =============================================================================
 
-EditResult
-EditOptimizer::optimizePureDeletion(const Lines &initialLines,
-                                    EditBoundary editBoundary,
-                                    EditOptimizerParams params,
-                                    int bufferFirstLine, int bufferFirstCol,
-                                    Position goalPos) {
-  return optimizeImpl<true>(initialLines, Lines{}, editBoundary, params,
-                            bufferFirstLine, bufferFirstCol, goalPos);
-}
 
 EditResult
 EditOptimizer::optimizeEdit(
@@ -782,11 +906,11 @@ EditOptimizer::optimizeEdit(
   assert(initialLines != goalLines);
   assert(!initialLines.empty());
 
-  // Delegate to optimizePureDeletion for pure deletion (goalLines empty)
+  // Delegate to pure deletion if goal lines effectively empty
   if (all_of(goalLines.begin(), goalLines.end(), [](Line l) {
     return l.empty();
   })) {
-    return optimizePureDeletion(initialLines, editBoundary, params,
+    return optimizeImpl<true>(initialLines, Lines{}, editBoundary, params,
                                 bufferFirstLine, bufferFirstCol, goalPos);
   }
 

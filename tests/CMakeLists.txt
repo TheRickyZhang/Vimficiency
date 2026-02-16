@@ -170,3 +170,18 @@ target_link_libraries(vimficiency_debug
     test_utils
     GTest::gtest_main
 )
+
+# =============================================================================
+# Diff debug tool
+# =============================================================================
+# Visualize how Myers diff splits buffer changes into regions.
+# Run with: ./vimficiency_diff_debug 'aaa\nbbb\nccc' 'ccc\nddd'
+
+add_executable(vimficiency_diff_debug
+  Debug/DiffDebug.cpp
+)
+
+target_link_libraries(vimficiency_diff_debug
+  PRIVATE
+    vimficiency_core
+)

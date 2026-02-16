@@ -47,11 +47,7 @@ static void runBenchmark(const BenchmarkSetup& cfg,
                          const EditOptimizerParams& params,
                          SearchStats& outStats) {
   EditOptimizer opt(benchConfig);
-  bool isPureDeletion = (cfg.goalLines.size() == 1 && cfg.goalLines[0].empty());
-
-  EditResult result = isPureDeletion
-      ? opt.optimizePureDeletion(cfg.initialLines, cfg.boundary, params)
-      : opt.optimizeEdit(cfg.initialLines, cfg.goalLines, cfg.boundary, params);
+  EditResult result = opt.optimizeEdit(cfg.initialLines, cfg.goalLines, cfg.boundary, params);
   accumulateStats(outStats, result.stats);
 }
 

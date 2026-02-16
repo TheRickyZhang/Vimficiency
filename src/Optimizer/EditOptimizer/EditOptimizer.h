@@ -85,17 +85,6 @@ struct EditOptimizer {
       Position goalPos = {0, 0}
   );
 
-  // find optimal sequences to delete all content in initialLines
-  // Simpler than optimizeEdit: no typed content, no change conversion
-  // Returns EditResult with typeAllResults indexed by flattened starting position
-  EditResult optimizePureDeletion(
-      const Lines& initialLines,
-      EditBoundary editBoundary,
-      EditOptimizerParams params = {},
-      int bufferFirstLine = 0,
-      int bufferFirstCol = 0,
-      Position goalPos = {0, 0}
-  );
 
 private:
   // Unified implementation: PureDeletion=true for deletion-only, false for full edit

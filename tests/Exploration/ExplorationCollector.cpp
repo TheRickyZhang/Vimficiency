@@ -279,6 +279,11 @@ static void writeExplorationJson(const string& filename,
 // Composition-specific case data and JSON writer
 // =============================================================================
 
+struct PerDiffEditExploration {
+  vector<ExploredState> states;
+  vector<FoundResult> results;
+};
+
 struct CompositionExploreCase {
   string name;
   int nodesExplored;
@@ -286,6 +291,7 @@ struct CompositionExploreCase {
   vector<CompositionExploredState> states;
   ContextData context;
   vector<DiffState> diffs;
+  vector<PerDiffEditExploration> editDetails;
 };
 
 static void writeChunksJson(ofstream& out, const vector<SequenceChunk>& chunks) {
@@ -319,7 +325,7 @@ static void writeCompositionExplorationJson(const string& filename,
     out << "      \"nodesExplored\": " << ec.nodesExplored << ",\n";
     writeContextJson(out, ec.context);
 
-    // Diffs (character-level change regions)
+    // Diffs (character-level change regions) with per-diff edit exploration data
     out << "      \"diffs\": [";
     for (size_t d = 0; d < ec.diffs.size(); d++) {
       if (d > 0) out << ",";
@@ -329,8 +335,41 @@ static void writeCompositionExplorationJson(const string& filename,
           << ", \"endLine\": " << diff.endPos.line
           << ", \"endCol\": " << diff.endPos.col
           << ", \"deletedText\": \"" << jsonEscape(diff.deletedText) << "\""
-          << ", \"insertedText\": \"" << jsonEscape(diff.insertedText) << "\""
-          << "}";
+          << ", \"insertedText\": \"" << jsonEscape(diff.insertedText) << "\"";
+
+      // Per-diff edit exploration data
+      if (d < ec.editDetails.size()) {
+        const auto& detail = ec.editDetails[d];
+
+        out << ", \"editStates\": [";
+        for (size_t s = 0; s < detail.states.size(); s++) {
+          if (s > 0) out << ",";
+          const auto& st = detail.states[s];
+          auto tokens = tokenizeSequence(st.sequence);
+          out << "\n          {\"effort\": " << st.effort << ", \"tokens\": [";
+          for (size_t t = 0; t < tokens.size(); t++) {
+            if (t > 0) out << ", ";
+            out << "\"" << jsonEscape(tokens[t]) << "\"";
+          }
+          out << "]}";
+        }
+        out << "]";
+
+        out << ", \"editResults\": [";
+        for (size_t r = 0; r < detail.results.size(); r++) {
+          if (r > 0) out << ",";
+          auto tokens = tokenizeSequence(detail.results[r].sequence);
+          out << "\n          {\"effort\": " << detail.results[r].effort << ", \"tokens\": [";
+          for (size_t t = 0; t < tokens.size(); t++) {
+            if (t > 0) out << ", ";
+            out << "\"" << jsonEscape(tokens[t]) << "\"";
+          }
+          out << "]}";
+        }
+        out << "]";
+      }
+
+      out << "}";
     }
     out << "\n      ],\n";
 
@@ -537,7 +576,7 @@ static vector<ExploreCase> collectEditCases() {
     p.maxResults = max(10, lines.totalPositions() / 4);
 
     EditOptimizer opt(config);
-    auto result = opt.optimizePureDeletion(lines, boundary, p);
+    auto result = opt.optimizeEdit(lines, {}, boundary, p);
 
     ContextData ctx;
     for (const auto& l : lines) ctx.initialLines.push_back(l);
@@ -650,11 +689,38 @@ static vector<CompositionExploreCase> collectCompositionCases() {
     ctx.goalCursorLine = 0;
     ctx.goalCursorCol = 0;
 
+    // Extract per-diff edit exploration data
+    vector<PerDiffEditExploration> editDetails;
+    for (auto& editResult : result.editResults) {
+      PerDiffEditExploration detail;
+      detail.states = std::move(editResult.stats.exploredStates);
+
+      // Collect unique best results from all starting positions
+      map<string, double> bestBySeq;
+      for (const auto& r : editResult.getResults()) {
+        if (r.isValid()) {
+          auto it = bestBySeq.find(r.sequence.str());
+          if (it == bestBySeq.end() || r.keyCost < it->second) {
+            bestBySeq[r.sequence.str()] = r.keyCost;
+          }
+        }
+      }
+      for (const auto& [seq, effort] : bestBySeq) {
+        detail.results.push_back({seq, effort});
+      }
+      sort(detail.results.begin(), detail.results.end(),
+           [](const auto& a, const auto& b) { return a.effort < b.effort; });
+      if (detail.results.size() > 10) detail.results.resize(10);
+
+      editDetails.push_back(std::move(detail));
+    }
+
     cases.push_back({cc.name, result.stats.nodesExplored,
                      std::move(found),
                      std::move(result.compositionExploredStates),
                      std::move(ctx),
-                     std::move(result.diffs)});
+                     std::move(result.diffs),
+                     std::move(editDetails)});
   }
 
   return cases;

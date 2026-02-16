@@ -396,6 +396,87 @@ TEST_F(DebugTest, DISABLED_InvestigateCountedWordEdit) {
   }
 }
 
+TEST_F(DebugTest, DISABLED_DiffRegionInvestigation) {
+  // Investigate how Myers diff splits buffer changes into regions,
+  // and whether pre-A* line trimming would add value beyond what
+  // CompositionOptimizer already handles via Myers.
+
+  auto printDiffs = [](const Lines& initial, const Lines& goal, const string& label) {
+    auto diffs = Myers::calculate(initial, goal);
+    cerr << "=== " << label << " ===" << endl;
+    cerr << "  initial: " << initial << endl;
+    cerr << "  goal:    " << goal << endl;
+    cerr << "  " << diffs.size() << " diff region(s):" << endl;
+    for (size_t i = 0; i < diffs.size(); i++) {
+      const auto& d = diffs[i];
+      const char* kind = d.isPureInsertion() ? "INSERT"
+                       : d.isPureDeletion()  ? "DELETE"
+                                             : "REPLACE";
+      cerr << "    [" << i << "] " << kind
+           << " (" << d.beginPos.line << "," << d.beginPos.col << ")"
+           << "->(" << d.endPos.line << "," << d.endPos.col << ")"
+           << " del=\"" << d.deletedText << "\" ins=\"" << d.insertedText << "\""
+           << " pre=\"" << d.boundary.prefix() << "\" suf=\"" << d.boundary.suffix() << "\""
+           << " above=" << d.boundary.hasLinesAbove()
+           << " below=" << d.boundary.hasLinesBelow() << endl;
+    }
+    cerr << endl;
+  };
+
+  // Case 1: Matching prefix+suffix lines — Myers should isolate the middle change
+  printDiffs({"aaa", "bbb", "ccc"}, {"aaa", "xxx", "ccc"},
+             "Matching prefix+suffix lines");
+
+  // Case 2: Matching prefix lines only
+  printDiffs({"aaa", "bbb", "ccc"}, {"aaa", "xxx", "ddd"},
+             "Matching prefix lines only");
+
+  // Case 3: Matching suffix lines only
+  printDiffs({"aaa", "bbb", "ccc"}, {"xxx", "yyy", "ccc"},
+             "Matching suffix lines only");
+
+  // Case 4: Sub-line prefix match (interesting for EditOptimizer trimming)
+  printDiffs({"hello world"}, {"hello earth"},
+             "Sub-line prefix match");
+
+  // Case 5: Sub-line suffix match
+  printDiffs({"hello world"}, {"goodbye world"},
+             "Sub-line suffix match");
+
+  // Case 6: Sub-line both ends match
+  printDiffs({"the quick brown fox"}, {"the slow brown fox"},
+             "Sub-line both ends match");
+
+  // Case 7: Multi-line with common indent
+  printDiffs({"    if (x) {", "        foo();", "    }"},
+             {"    if (x) {", "        bar();", "    }"},
+             "Common indent multi-line");
+
+  // Case 8: Multiple scattered changes on one line
+  printDiffs({"abcdefghij"}, {"xbcdeyghij"},
+             "Multiple scattered single-char changes");
+
+  // Case 9: Line insertion (pure insertion)
+  printDiffs({"aaa", "ccc"}, {"aaa", "bbb", "ccc"},
+             "Line insertion");
+
+  // Case 10: Line deletion (pure deletion)
+  printDiffs({"aaa", "bbb", "ccc"}, {"aaa", "ccc"},
+             "Line deletion");
+
+  // Case 11: Realistic code edit — variable rename
+  printDiffs({"int count = 0;", "count++;", "return count;"},
+             {"int total = 0;", "total++;", "return total;"},
+             "Variable rename (count->total)");
+
+  // Case 12: Large matching context, small change
+  printDiffs({"line1", "line2", "line3", "line4", "CHANGE", "line6", "line7", "line8"},
+             {"line1", "line2", "line3", "line4", "FIXED",  "line6", "line7", "line8"},
+             "Large context, single line change");
+
+  EXPECT_TRUE(true);
+}
+
 TEST_F(DebugTest, DISABLED_Placeholder) {
   auto oracle = make_unique<NeovimOracle>();
 
@@ -2515,8 +2596,8 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceDeleteEntireLineIter20) {
       // Check if pure deletion
       if (d.insertedText.empty()) {
         cerr << "    Pure deletion" << endl;
-        EditResult eres = editOpt.optimizePureDeletion(
-            d.deletedLines(), d.boundary, eparams);
+        EditResult eres = editOpt.optimizeEdit(
+            d.deletedLines(), {}, d.boundary, eparams);
         for (size_t j = 0; j < eres.resultCount(); j++) {
           if (eres.getResults()[j].isValid()) {
             cerr << "    pos " << j << ": '" << eres.getResults()[j].sequence

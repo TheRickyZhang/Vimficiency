@@ -9,25 +9,24 @@
 
 // Build the typed content string from goalLines, accounting for Neovim autoindent.
 //
-// When autoindent is active, entering insert mode via cc/c{motion}/o copies
-// leading whitespace from the source line. Each subsequent <CR> copies indent
-// from the current line. We handle autoindent by:
-//   - Stripping it if the goal line starts with the same indent
-//   - Using <BS> to remove excess spaces if autoindent is longer than goal's indent
-//   - Using <C-u> to clear the line if there's no prefix relationship
-//
 // Parameters:
 //   goalLines          - the lines to type out
 //   initialAutoindent  - indent provided on the first typed line (e.g. from cc's source line)
 //   linePrefix         - text before edit region on first line (for computing line 1+ autoindent)
-//   suffixLeadingSpaces - whitespace to restore on last line (stripped from suffix by <CR>)
+//   suffix             - text after edit region on last line. When typing multi-line content,
+//                         <CR> pushes the suffix to a new line, and Neovim strips its leading
+//                         whitespace during the split. We re-type those spaces before <Esc>.
+//                         Example: "prefix|cursor|  suffix" -> type "a\nb" ->
+//                           "prefixa"  /  "[autoindent]b[cursor]suffix" (spaces stripped)
+//                         Not needed for single-line goals since no <CR> is typed.
 //
 // Returns KeyedSequence including trailing <Esc>.
 inline KeyedSequence buildTypedCommands(
     const Lines &goalLines,
-    std::string_view initialAutoindent = "",
+    std::string_view initialAutoindent = "", // indent on first typed line
     std::string_view linePrefix = "",
-    int suffixLeadingSpaces = 0) {
+    std::string_view suffix = ""             // If multi-line goal, leading spaces in suffix may need to be retyped
+) {
   KeyedSequence ks;
 
   // Helper: emit keys for a line given expected autoindent
@@ -107,12 +106,13 @@ inline KeyedSequence buildTypedCommands(
     }
   }
 
-  // On the last typed line, restore suffix leading whitespace that was stripped
-  // by <CR> autoindent behavior. Only needed for multi-line edits where the suffix
-  // has leading spaces (char-wise edits that span lines).
+  // Restore suffix leading whitespace stripped by <CR> (see suffix param docs).
   if constexpr (VimOptions::autoindent()) {
-    if (suffixLeadingSpaces > 0 && goalLines.size() > 1) {
-      ks.appendChar(' ', suffixLeadingSpaces);
+    if (goalLines.size() > 1) {
+      int suffixSpaces = leadingSpaceCount(suffix);
+      if (suffixSpaces > 0) {
+        ks.appendChar(' ', suffixSpaces);
+      }
     }
   }
 

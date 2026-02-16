@@ -37,6 +37,9 @@ export interface DiffRegion {
   endCol: number;
   deletedText: string;
   insertedText: string;
+  // Per-diff edit exploration data (when trackExploredStates=true)
+  editStates?: ExploredStateEntry[];
+  editResults?: FoundResultEntry[];
 }
 
 export interface BufferContext {

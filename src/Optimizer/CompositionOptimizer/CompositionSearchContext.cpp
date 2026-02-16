@@ -365,7 +365,9 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
 
     EditResult optResult = editOptimizer.optimizeEdit(
         diff.deletedLines(), diff.insertedLines(), diff.boundary,
-        EditOptimizerParams{}.withMinCountRepeat(params.minCountRepeat),
+        EditOptimizerParams{}
+            .withMinCountRepeat(params.minCountRepeat)
+            .withTrackExploredStates(params.trackExploredStates),
         diff.beginPos.line, diff.beginPos.col, goalPos);
     editNodesExplored += optResult.stats.nodesExplored;
     results.push_back(std::move(optResult));

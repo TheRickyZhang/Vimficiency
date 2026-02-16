@@ -139,15 +139,31 @@ export function ExploreApp({ data, initialCase }: Props) {
   // For EffortHistogram: pass first selected or null
   const primarySelectedSeq = selectedSeqs.size > 0 ? [...selectedSeqs][0]! : null;
 
-  // Build sub-tree data for the side panel (motion chunk detail)
+  // Build sub-tree data for the side panel (motion or edit chunk detail)
   const detailTreeData = useMemo(() => {
     if (!selectedChunk || !chunked || !activeCase) return null;
 
     const cStates = activeCase.states as unknown as ChunkedStateEntry[];
     const cResults = activeCase.results as unknown as ChunkedResultEntry[];
 
-    // Determine editsCompleted for this motion chunk by counting edit chunks before it
-    // in the first result's chunk list (canonical ordering)
+    if (selectedChunk.type === 'edit') {
+      // Edit chunk: pull from diffs[editIndex].editStates/editResults
+      let editIdx = 0;
+      if (cResults.length > 0) {
+        const r = cResults[0]!;
+        for (let i = 0; i < selectedChunk.chunkIndex && i < r.chunks.length; i++) {
+          if (r.chunks[i]!.type === 'edit') editIdx++;
+        }
+      }
+      const diff = activeCase.diffs?.[editIdx];
+      if (!diff) return null;
+      return {
+        states: diff.editStates ?? [],
+        results: diff.editResults ?? [],
+      };
+    }
+
+    // Motion chunk: filter composition explored states by editsCompleted
     let targetEditsCompleted = 0;
     if (cResults.length > 0) {
       const r = cResults[0]!;
@@ -156,7 +172,6 @@ export function ExploreApp({ data, initialCase }: Props) {
       }
     }
 
-    // Filter states that have this chunk and extract its tokens
     const subStates: ExploredStateEntry[] = [];
     for (const s of cStates) {
       if (s.editsCompleted !== targetEditsCompleted) continue;
@@ -166,7 +181,6 @@ export function ExploreApp({ data, initialCase }: Props) {
       subStates.push({ effort: s.effort, tokens: chunk.tokens });
     }
 
-    // Also get sub-tokens from results for this chunk
     const subResults: FoundResultEntry[] = [];
     for (const r of cResults) {
       if (selectedChunk.chunkIndex >= r.chunks.length) continue;
@@ -188,7 +202,7 @@ export function ExploreApp({ data, initialCase }: Props) {
     setSelectedCaseName(null);
   };
 
-  // Expandable token indices: only motion chunks have detail states
+  // Expandable token indices: motion chunks + edit chunks with editStates
   const expandableTokens = useMemo(() => {
     if (!chunked || !activeCase) return undefined;
     const cResults = activeCase.results as unknown as ChunkedResultEntry[];
@@ -196,18 +210,36 @@ export function ExploreApp({ data, initialCase }: Props) {
     const set = new Set<number>();
     const r = cResults[0]!;
     for (let i = 0; i < r.chunks.length; i++) {
-      if (r.chunks[i]!.type === 'motion') set.add(i);
+      const ch = r.chunks[i]!;
+      if (ch.type === 'motion') {
+        set.add(i);
+      } else if (ch.type === 'edit' && activeCase.diffs) {
+        // Count which diff index this edit chunk corresponds to
+        let editIdx = 0;
+        for (let j = 0; j < i; j++) {
+          if (r.chunks[j]!.type === 'edit') editIdx++;
+        }
+        const diff = activeCase.diffs[editIdx];
+        if (diff?.editStates && diff.editStates.length > 0) {
+          set.add(i);
+        }
+      }
     }
     return set.size > 0 ? set : undefined;
   }, [chunked, activeCase]);
 
   // Chunk detail callback for ExplorationTree
   const onChunkDetail = useCallback((tokenIndex: number, tokenText: string) => {
-    if (!chunked) return;
+    if (!chunked || !activeCase) return;
+    const cResults = activeCase.results as unknown as ChunkedResultEntry[];
+    let type: 'motion' | 'edit' = 'motion';
+    if (cResults.length > 0 && tokenIndex < cResults[0]!.chunks.length) {
+      type = cResults[0]!.chunks[tokenIndex]!.type;
+    }
     setSelectedChunk(prev =>
-      prev?.chunkIndex === tokenIndex ? null : { chunkIndex: tokenIndex, chunkText: tokenText, type: 'motion' }
+      prev?.chunkIndex === tokenIndex ? null : { chunkIndex: tokenIndex, chunkText: tokenText, type }
     );
-  }, [chunked]);
+  }, [chunked, activeCase]);
 
   return (
     <div>

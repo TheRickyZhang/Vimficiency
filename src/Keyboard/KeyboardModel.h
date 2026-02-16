@@ -39,6 +39,7 @@ public:
   PhysicalKeys() = default;
   PhysicalKeys(std::initializer_list<Key> init) : keys(init) {}
   PhysicalKeys(size_t count, Key k) : keys(count, k) {}
+  PhysicalKeys(std::span<const Key> s) : keys(s.begin(), s.end()) {}
 
   size_t size() const { return keys.size(); }
   bool empty() const { return keys.empty(); }

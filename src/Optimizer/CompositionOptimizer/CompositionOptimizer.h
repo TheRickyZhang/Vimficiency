@@ -7,6 +7,7 @@
 #include "CompositionSearchContext.h"
 #include "DiffState.h"
 #include "Optimizer/Config.h"
+#include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Optimizer/Result.h"
 #include "Optimizer/SearchStats.h"
 
@@ -23,6 +24,9 @@ struct CompositionResult {
 
   // Composition-specific explored states (only populated when trackExploredStates=true)
   std::vector<CompositionExploredState> compositionExploredStates;
+
+  // Per-diff edit optimization results (only populated when trackExploredStates=true)
+  std::vector<EditResult> editResults;
 
   const std::vector<Result>& getResults() const { return results; }
 

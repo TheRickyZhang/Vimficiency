@@ -45,7 +45,6 @@ struct EditStateComparator {
 };
 
 // EditSearchContext encapsulates shared state and logic for edit optimization search.
-// Used by both optimizeEdit and optimizePureDeletion to avoid massive code duplication.
 struct EditSearchContext {
   // References to external data
   const EditBoundary& editBoundary;
