@@ -1,12 +1,18 @@
 #pragma once
 
+#include <cassert>
+#include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "Editor/Mode.h"
 #include "Keyboard/KeyedSequence.h"
 #include "State/RunningEffort.h"
-#include "Utils/Lines.h"
+#include "Editor/Position.h"
 
 // =============================================================================
 // Suffix Cache Types - for cross-position sharing in EditOptimizer
@@ -46,18 +52,124 @@ struct SuffixKeyHash {
   }
 };
 
+// Shared suffix program for one replayed search result.
+// Stores parsed commands once, then materializes full suffixes lazily by index.
+struct SuffixProgram {
+  std::vector<KeyedSequence> editCmds;
+  KeyedSequence goalSuffix;
+  mutable std::vector<std::optional<KeyedSequence>> memoizedSuffixes;
+
+  SuffixProgram(std::vector<KeyedSequence> cmds, KeyedSequence goal)
+      : editCmds(std::move(cmds)),
+        goalSuffix(std::move(goal)),
+        memoizedSuffixes(editCmds.size() + 1) {}
+
+  int size() const { return static_cast<int>(editCmds.size()); }
+
+  const KeyedSequence& suffixFrom(int startIndex) const {
+    assert(startIndex >= 0 && startIndex <= size());
+    auto& slot = memoizedSuffixes[startIndex];
+    if (!slot.has_value()) {
+      if (startIndex == size()) {
+        slot = goalSuffix;
+      } else {
+        KeyedSequence ks = editCmds[startIndex];
+        ks += suffixFrom(startIndex + 1);
+        slot = std::move(ks);
+      }
+    }
+    return *slot;
+  }
+};
+
+struct SuffixVariant {
+  int startIndex = -1;
+  KeyedSequence prefix;
+  RunningEffort effort;
+  mutable std::optional<KeyedSequence> memoizedPrefixedSuffix;
+
+  const KeyedSequence& suffix(const SuffixProgram& program) const {
+    assert(startIndex >= 0);
+
+    // Most variants are just "program suffix from i" with no prefix.
+    if (prefix.seq.empty() && prefix.keys.empty()) {
+      return program.suffixFrom(startIndex);
+    }
+
+    if (!memoizedPrefixedSuffix.has_value()) {
+      KeyedSequence ks = prefix;
+      ks += program.suffixFrom(startIndex);
+      memoizedPrefixedSuffix = std::move(ks);
+    }
+    return *memoizedPrefixedSuffix;
+  }
+};
+
 struct SuffixValue {
-  KeyedSequence ks;       // Suffix command sequence + physical keys
-  RunningEffort effort;   // Pre-computed effort for just the suffix
+  std::shared_ptr<const SuffixProgram> program;
+  SuffixVariant expandedVariant;
+  struct DotOverride {
+    std::string matchCmd;
+    int startIndex = -1;
+    RunningEffort effort;
+  };
+  // Possible optimization (medium confidence): replace per-entry heap allocation
+  // with an arena/pool only if profiling shows dotOverride allocations are hot.
+  std::unique_ptr<DotOverride> dotOverride;
 
-  // Dot-context fields: when the suffix originally started with '.', the first
-  // dot is expanded to the explicit command for context-independent caching.
-  // At lookup time, if the searcher's lastEdit matches expandedDotCmd, the dot
-  // variant (lower cost) is used instead.
-  std::string expandedDotCmd;  // Command that replaced '.'; empty if no expansion
-  KeyedSequence dotKs;         // Original suffix with leading '.'
-  RunningEffort dotEffort;     // Effort for dot variant
+  SuffixValue() = default;
 
+  // Plain entry: no leading dot special-case.
+  SuffixValue(std::shared_ptr<const SuffixProgram> program,
+              int expandedStartIndex, const RunningEffort& expandedEffort)
+      : program(std::move(program)) {
+    expandedVariant.startIndex = expandedStartIndex;
+    expandedVariant.effort = expandedEffort;
+  }
+
+  // Entry where leading dot was expanded into explicit command.
+  // The dotOverride keeps the original dot variant for matching last-edit contexts.
+  SuffixValue(std::shared_ptr<const SuffixProgram> program,
+              int expandedStartIndex, KeyedSequence expandedPrefix,
+              const RunningEffort& expandedEffort,
+              std::string dotMatchCmd,
+              int dotStartIndex, const RunningEffort& dotEffort)
+      : program(std::move(program)) {
+    expandedVariant.startIndex = expandedStartIndex;
+    expandedVariant.prefix = std::move(expandedPrefix);
+    expandedVariant.effort = expandedEffort;
+    dotOverride = std::make_unique<DotOverride>(
+        DotOverride{std::move(dotMatchCmd), dotStartIndex, dotEffort});
+  }
+
+  bool canUseDot(int lastEditCount, std::string_view lastEditBase) const {
+    if (!dotOverride) return false;
+    return matchesCountedCmd(dotOverride->matchCmd, lastEditCount, lastEditBase);
+  }
+
+  const KeyedSequence& suffix(bool useDot = false) const {
+    assert(program != nullptr);
+    if (useDot && dotOverride) {
+      return program->suffixFrom(dotOverride->startIndex);
+    }
+    return expandedVariant.suffix(*program);
+  }
+
+  const RunningEffort& suffixEffort(bool useDot = false) const {
+    if (useDot && dotOverride) {
+      return dotOverride->effort;
+    }
+    return expandedVariant.effort;
+  }
+
+private:
+  static bool matchesCountedCmd(std::string_view full, int cnt, std::string_view base) {
+    if (cnt == 0) return full == base;
+    std::string countStr = std::to_string(cnt);
+    return full.size() == countStr.size() + base.size() &&
+           full.substr(0, countStr.size()) == countStr &&
+           full.substr(countStr.size()) == base;
+  }
 };
 
 using SuffixCacheMap = std::unordered_map<SuffixKey, SuffixValue, SuffixKeyHash>;

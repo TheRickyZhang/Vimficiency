@@ -32,7 +32,14 @@ jobs:
           cmake --build build -j$(nproc)
 
       - name: Unit tests
-        run: ./build/tests/vimficiency_tests --gtest_brief=1
+        run: ./build/tests/vimficiency_tests --gtest_brief=1 --gtest_output=json:test_timing.json
+
+      - name: Upload test timing
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-timing
+          path: test_timing.json
 
   benchmark-run:
     runs-on: ubuntu-latest
@@ -146,6 +153,11 @@ jobs:
         with:
           name: benchmark-results
 
+      - name: Download test timing
+        uses: actions/download-artifact@v4
+        with:
+          name: test-timing
+
       - uses: oven-sh/setup-bun@v2
 
       - name: Compare against baseline
@@ -162,9 +174,13 @@ jobs:
 
       - name: Deploy to gh-pages
         run: |
+          # Convert test timing to benchmark format
+          bun scripts/convert-gtest-timing.ts test_timing.json test_timing_bench.json
+
           # Save artifacts before switching branches
           cp -r bench-dashboard/dist /tmp/dashboard-dist
           cp scripts/bench-data.ts /tmp/bench-data.ts
+          cp test_timing_bench.json /tmp/test_timing_bench.json
           cp edit_result.json /tmp/edit_result.json
           cp motion_result.json /tmp/motion_result.json
           cp composition_result.json /tmp/composition_result.json
@@ -191,7 +207,7 @@ jobs:
           rm -rf bench
 
           # Ingest benchmark results into data.json (migrates from data.js on first run)
-          for pair in "edit:/tmp/edit_result.json" "motion:/tmp/motion_result.json" "composition:/tmp/composition_result.json"; do
+          for pair in "edit:/tmp/edit_result.json" "motion:/tmp/motion_result.json" "composition:/tmp/composition_result.json" "tests:/tmp/test_timing_bench.json"; do
             optimizer="${pair%%:*}"
             result="${pair#*:}"
             mkdir -p "$optimizer"
@@ -204,7 +220,7 @@ jobs:
           done
 
           # Remove stale suites (from benchmark renames) and prune to last 100 entries
-          for dir in edit motion composition; do
+          for dir in edit motion composition tests; do
             if [ -f "$dir/data.json" ]; then
               bun /tmp/bench-data.ts clean-suites "$dir"
               bun /tmp/bench-data.ts prune "$dir"
@@ -259,7 +275,7 @@ jobs:
           mkdir -p assets
           cp -r /tmp/dashboard-dist/assets/* assets/ 2>/dev/null || true
 
-          git add -f index.html 404.html .nojekyll assets/ edit/ motion/ composition/
+          git add -f index.html 404.html .nojekyll assets/ edit/ motion/ composition/ tests/
           git -c user.name=github-actions -c user.email=github-actions@github.com \
             commit -m "Update benchmark dashboard" || true
           git push origin gh-pages

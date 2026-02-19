@@ -21,6 +21,7 @@ const OPTIMIZER_LABELS: Record<OptimizerSlug, string> = {
   edit: 'EditOptimizer',
   motion: 'MotionOptimizer',
   composition: 'CompositionOptimizer',
+  tests: 'Unit Tests',
 };
 
 export function HomePage() {
@@ -65,7 +66,7 @@ export function HomePage() {
 
       <h2>Optimizers</h2>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">
-        {(['edit', 'motion', 'composition'] as const).map((slug) => (
+        {(['edit', 'motion', 'composition', 'tests'] as const).map((slug) => (
           <Link
             key={slug}
             to="/$optimizer"

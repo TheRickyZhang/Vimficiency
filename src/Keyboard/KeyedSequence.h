@@ -55,6 +55,7 @@ struct KeyedSequence {
     }
   }
 
+  // Literally repeats the key sequence count times. Generally only used for 1 < count < max_repeat_length, 
   void appendRepeated(const KeyedSequence& ks, int count) {
     seq.append(count, ks.seq.view());
     keys.append(ks.keys, count);

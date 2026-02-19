@@ -316,7 +316,9 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
       case hash("}"): case hash("{"): case hash(")"): case hash("("):
         break;  // Fall through to main switch
       default:
-        assert(false && "Edit invalid on empty line");
+        std::string msg = "Edit " + std::string(e) + " invalid on empty line";
+        const char* res = msg.c_str();
+        assert(false && res);
     }
   }
 

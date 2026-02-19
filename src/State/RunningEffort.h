@@ -55,7 +55,7 @@ public:
   double appendFrom(const RunningEffort& other, const Config& model);
 
   int getStrokes() const { return strokes; }
+  double getPenalty() const { return penalty_; }
 };
 
 double getEffort(std::string_view seq, const Config &cfg);
-

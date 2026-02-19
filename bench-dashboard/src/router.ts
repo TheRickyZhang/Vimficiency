@@ -7,7 +7,7 @@ import { HomePage } from './pages/HomePage';
 import { OptimizerPage } from './pages/OptimizerPage';
 import { ExplorePage } from './pages/ExplorePage';
 
-const VALID_OPTIMIZERS = ['edit', 'motion', 'composition'] as const;
+const VALID_OPTIMIZERS = ['edit', 'motion', 'composition', 'tests'] as const;
 export type OptimizerSlug = (typeof VALID_OPTIMIZERS)[number];
 
 const base = import.meta.env.BASE_URL; // '/Vimficiency/'

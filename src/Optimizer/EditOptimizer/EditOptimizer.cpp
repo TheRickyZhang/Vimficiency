@@ -7,19 +7,17 @@
 #include "EditOptimizer.h"
 
 #include <algorithm>
+#include <memory>
 #include <optional>
 
 #include "EditSearchContext.h"
 #include "SuffixCache.h"
 
 #include "Editor/Edit.h"
-#include "Editor/NavContext.h"
 #include "Keyboard/KeyboardModel.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Keyboard/MotionToKeys.h"
 #include "Optimizer/BuildTypedCommands.h"
-#include "Optimizer/CountPenalty.h"
-#include "Optimizer/GlobalRuntimeOptions.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "State/RunningEffort.h"
 #include "Utils/Indentation.h"
@@ -90,7 +88,7 @@ KeyedSequence deleteToChangeChar(int count, const KeyedSequence& baseKS) {
     result = KeyedSequence::hs;
   } else if (baseCmd == "dw" || baseCmd == "dW") {
     // dw/dW -> dwi/dWi rather than cw/cW because cw/cW == ce/cE (no trailing whitespace). Since de is explored before dw in exploreAllDeletions, we must retain deleting the trailing whitespace
-    // Blake
+    // TODO Blake
     result.appendCounted(count, baseKS);
     result += KeyedSequence::i;
     return result;
@@ -198,55 +196,16 @@ optional<Result> tryReplacement(string_view deleted, string_view inserted,
   return Result(std::move(ks.seq), totalEffort);
 }
 
-template<CountClass C>
-RunningEffort mergeGoalSuffixEffortWithPenalty(const KeyedSequence& prefix,
-                                               const RunningEffort& typedSuffixEffort,
-                                               int count, int span,
-                                               const Config& config) {
+RunningEffort mergeGoalSuffixEffort(const KeyedSequence& prefix,
+                                    const RunningEffort& typedSuffixEffort,
+                                    const RunningEffort& commandEffort,
+                                    const Config& config) {
   RunningEffort prefixEffort;
   prefixEffort.append(prefix.keys, config);
-  if (count > 1) {
-    CountPenaltyInput in{count, span};
-    double penalty = runtimeCountPenalty<C>(in);
-    if (penalty > 0.0) {
-      prefixEffort.addPenalty(penalty);
-    }
+  double penalty = commandEffort.getPenalty();
+  if (penalty > 0.0) {
+    prefixEffort.addPenalty(penalty);
   }
-  return RunningEffort::merge(prefixEffort, typedSuffixEffort);
-}
-
-RunningEffort mergeGoalSuffixEffortWithDeletionPenalty(const KeyedSequence& prefix,
-                                                       const RunningEffort& typedSuffixEffort,
-                                                       int count, int span,
-                                                       const KeyedSequence& baseKS,
-                                                       const Config& config) {
-  RunningEffort prefixEffort;
-  prefixEffort.append(prefix.keys, config);
-
-  if (count > 1) {
-    CountPenaltyInput in{count, span};
-    string_view baseCmd = baseKS.seq.view();
-    bool matched = true;
-    if (baseCmd == "x") {
-      prefixEffort.addPenalty(runtimeCountPenalty<CountClass::EditChar>(in));
-    } else if (baseCmd == "de" || baseCmd == "dw" ||
-               baseCmd == "db" || baseCmd == "dge") {
-      prefixEffort.addPenalty(runtimeCountPenalty<CountClass::EditWord>(in));
-    } else if (baseCmd == "dE" || baseCmd == "dW" ||
-               baseCmd == "dB" || baseCmd == "dgE") {
-      prefixEffort.addPenalty(runtimeCountPenalty<CountClass::EditWORD>(in));
-    } else if (baseCmd == "d}" || baseCmd == "d{") {
-      prefixEffort.addPenalty(runtimeCountPenalty<CountClass::EditParagraph>(in));
-    } else if (baseCmd == "d)" || baseCmd == "d(") {
-      prefixEffort.addPenalty(runtimeCountPenalty<CountClass::EditSentence>(in));
-    } else if (baseCmd == "dd" || baseCmd == "dj" || baseCmd == "dk") {
-      prefixEffort.addPenalty(runtimeCountPenalty<CountClass::EditLine>(in));
-    } else {
-      matched = false;
-    }
-    assert(matched && "Unsupported counted deletion command for count penalty");
-  }
-
   return RunningEffort::merge(prefixEffort, typedSuffixEffort);
 }
 
@@ -398,10 +357,9 @@ struct ModePolicy<false> {
     }
   }
 
+  // Comprised of empty lines
   bool isGoalReached(const Lines& lines) const {
     if (lines.size() == 1) return lines[0] == preSuf;
-
-    // Multi-line acceptance for collapse via <BS>/<Del>
     if (lines[0] != pre) return false;
     if (lines.back() != suf) return false;
     for (size_t i = 1; i < lines.size() - 1; i++) {
@@ -416,79 +374,145 @@ struct ModePolicy<false> {
            base.getLastEditBase() == baseKS.seq.view();
   }
 
-  void replayAndCacheSuffix(int startIndex, const string& searchSeq,
-                            const KeyedSequence& goalSuffix,
-                            const RunningEffort& goalSuffixEffort) {
-    cachePopulations++;
-
-    vector<ParsedEdit> edits = Edit::parseEdits(searchSeq);
+  vector<KeyedSequence> buildKeyedSequencesFromParsedEdits(const vector<ParsedEdit>& edits) const {
     int n = static_cast<int>(edits.size());
-    if (n == 0) return;
-
-    vector<string> editStrs(n);
-    vector<PhysicalKeys> editKeys(n);
+    vector<KeyedSequence> res(n);
     for (int i = 0; i < n; i++) {
+      string editStr;
       if (edits[i].hasCount()) {
-        editStrs[i] = to_string(edits[i].effectiveCount()) + string(edits[i].edit);
+        editStr = to_string(edits[i].effectiveCount()) + string(edits[i].edit);
       } else {
-        editStrs[i] = string(edits[i].edit);
+        editStr = string(edits[i].edit);
       }
-      editKeys[i] = globalTokenizer().tokenize(editStrs[i]);
+      res[i] = KeyedSequence(editStr, globalTokenizer().tokenize(editStr));
     }
+    return res;
+  }
 
-    vector<KeyedSequence> suffixKs(n + 1);
+  vector<RunningEffort> buildRawSuffixEfforts(const SuffixProgram& program,
+                                              const RunningEffort& terminalSuffixEffort,
+                                              int extraPenaltyIndex,
+                                              double extraPenalty) const {
+    int n = program.size();
     vector<RunningEffort> suffixEfforts(n + 1);
-    suffixKs[n] = goalSuffix;
-    suffixEfforts[n] = goalSuffixEffort;
+    suffixEfforts[n] = terminalSuffixEffort;
 
+    // Context-free tail table: suffixEfforts[i] is the effort of edits[i..] + terminal suffix
+    // with '.' kept literal. Per-state dot expansion composes on top of this.
     for (int i = n - 1; i >= 0; i--) {
-      KeyedSequence editKs(editStrs[i], editKeys[i]);
-      suffixKs[i] = editKs;
-      suffixKs[i] += suffixKs[i + 1];
-
       RunningEffort editEffort;
-      editEffort.append(editKeys[i], config);
+      editEffort.append(program.editCmds[i].keys, config);
+      if (i == extraPenaltyIndex && extraPenalty > 0.0) {
+        editEffort.addPenalty(extraPenalty);
+      }
       suffixEfforts[i] = RunningEffort::merge(editEffort, suffixEfforts[i + 1]);
     }
+    return suffixEfforts;
+  }
 
-    Lines replayLines = ctx.effectiveLines;
-    Position replayPos = ctx.seedPositionFor(startIndex, initialLines);
-    Mode replayMode = Mode::Normal;
+  SuffixValue buildSuffixValueForNextIndex(
+      const shared_ptr<const SuffixProgram>& suffixProgram,
+      const vector<ParsedEdit>& dotAwareEdits,
+      const vector<RunningEffort>& rawSuffixEfforts,
+      int nextIndex,
+      const string& lastEditCmd) const {
+    int programSize = suffixProgram->size();
+    assert(nextIndex >= 0 && nextIndex <= programSize);
 
-    size_t replayHash = hashLines(replayLines);
-    SuffixKey seedKey(replayHash, static_cast<int>(replayLines.size()), replayPos, replayMode);
-    if (suffixCache.find(seedKey) == suffixCache.end()) {
-      suffixCache[seedKey] = SuffixValue{suffixKs[0], suffixEfforts[0]};
+    // Default path is always context-independent. Dot expansion only applies
+    // when this index maps to a parsed edit token in dotAwareEdits.
+    if (nextIndex >= static_cast<int>(dotAwareEdits.size()) ||
+        dotAwareEdits[nextIndex].edit != "." || lastEditCmd.empty()) {
+      return SuffixValue(suffixProgram, nextIndex, rawSuffixEfforts[nextIndex]);
     }
 
-    string lastEditCmd;
-    for (int i = 0; i < n; i++) {
-      Edit::applyEdit(replayLines, replayPos, replayMode, edits[i], &lastEditCmd,
-                      editBoundary.hasLinesBelow());
-      if (replayMode == Mode::Insert) break;
+    // Leading dot at nextIndex:
+    // - Expanded default variant: {lastEditCmd} + edits[nextIndex+1..]
+    // - Optional dot override: edits[nextIndex..] (for matching last-edit context)
+    // lastEditCmd must come from replay semantics; it is not simply previous parsed token.
+    // Example: "dwj." -> previous token before '.' is "j", but dot repeats "dw".
+    KeyedSequence expandedPrefix(lastEditCmd, globalTokenizer().tokenize(lastEditCmd));
+    RunningEffort expandedPrefixEffort;
+    expandedPrefixEffort.append(expandedPrefix.keys, config);
 
-      replayHash = hashLines(replayLines);
+    // Possible optimization (high confidence): cache RunningEffort for repeated
+    // lastEditCmd strings within this replay call to avoid recomputing prefix effort.
+    RunningEffort expandedEffort =
+        RunningEffort::merge(expandedPrefixEffort, rawSuffixEfforts[nextIndex + 1]);
+
+    return SuffixValue(
+        suffixProgram, nextIndex + 1, std::move(expandedPrefix), expandedEffort,
+        lastEditCmd, nextIndex, rawSuffixEfforts[nextIndex]);
+  }
+
+  // TODO: verify semantics and performance
+  //
+  // Build suffix-cache entries for every intermediate state reached while replaying
+  // the discovered search sequence from one seed position.
+  //
+  // Preconditions:
+  // - searchPrefixSeq is the already-discovered prefix from seed -> base state.
+  // - completionSuffix is the synthesized final edit segment from base state.
+  // - typedSuffix is the terminal insert payload after completionSuffix.
+  //   Example: final "ciwapple<Esc>" can be split as:
+  //     searchPrefixSeq="", completionSuffix="ciw", typedSuffix="apple<Esc>".
+  //
+  // Cache invariant: from a cached key (lines hash + size + pos + mode), the stored
+  // suffix is a valid continuation to goal, with matching pre-computed effort.
+  void replayAndCacheSuffix(int startIndex, const string& searchPrefixSeq,
+                            const KeyedSequence& completionSuffix,
+                            double completionPenalty,
+                            const KeyedSequence& typedSuffix,
+                            const RunningEffort& typedSuffixEffort) {
+    cachePopulations++;
+
+    // Flow:
+    // - Build semantic edit program: [searchPrefix edits] + [completionSuffix as one edit].
+    // - Use typedSuffix as the terminal suffix.
+    // - Replay only the searchPrefix edits to recover exact state keys/lastEditCmd.
+    vector<ParsedEdit> prefixEdits = Edit::parseEdits(searchPrefixSeq);
+    int prefixEditCount = static_cast<int>(prefixEdits.size());
+    vector<KeyedSequence> replayEditCmds = buildKeyedSequencesFromParsedEdits(prefixEdits);
+    replayEditCmds.push_back(completionSuffix);
+    int programEditCount = static_cast<int>(replayEditCmds.size());
+    // Shared across many cache entries from this replay.
+    auto suffixProgram = make_shared<SuffixProgram>(std::move(replayEditCmds), typedSuffix);
+
+    // Raw tail efforts intentionally keep '.' unexpanded; expansion needs per-state lastEditCmd.
+    // completionPenalty is attached at the completion edit (index prefixEditCount).
+    vector<RunningEffort> rawSuffixEfforts =
+        buildRawSuffixEfforts(*suffixProgram, typedSuffixEffort,
+                              prefixEditCount, completionPenalty);
+
+    // 3) Initialize replay state at this seed position.
+    Lines replayLines = ctx.effectiveLines;
+    Position replayPos = ctx.seedPositionFor(startIndex, initialLines);
+    // applyEdit mutates mode by reference; replay starts in Normal.
+    Mode replayMode = Mode::Normal;
+
+    // 4) Cache current state, then replay one prefix edit.
+    // We cache programEditCount indices (0..programEditCount-1):
+    // - 0..prefixEditCount-1: remaining searchPrefix edits + completion + typed
+    // - prefixEditCount: completion + typed
+    // typed-only index is intentionally skipped.
+    //
+    // lastEditCmd is maintained by applyEdit using real dot-repeat semantics.
+    // This is not trivially prefixEdits[nextIndex-1] (e.g. in "dwj.", lastEditCmd at '.'
+    // is "dw", not "j").
+    string lastEditCmd;
+    for (int nextIndex = 0; nextIndex < programEditCount; nextIndex++) {
+      size_t replayHash = hashLines(replayLines);
       SuffixKey sk(replayHash, static_cast<int>(replayLines.size()), replayPos, replayMode);
       if (suffixCache.find(sk) == suffixCache.end()) {
-        SuffixValue sv{suffixKs[i + 1], suffixEfforts[i + 1]};
-
-        if (i + 1 < n && edits[i + 1].edit == "." && !lastEditCmd.empty()) {
-          PhysicalKeys expandedKeys = globalTokenizer().tokenize(lastEditCmd);
-          KeyedSequence expanded(lastEditCmd, expandedKeys);
-          expanded += suffixKs[i + 2];
-
-          RunningEffort expandedEffort;
-          expandedEffort.append(expanded.keys, config);
-
-          sv.expandedDotCmd = lastEditCmd;
-          sv.dotKs = sv.ks;
-          sv.dotEffort = sv.effort;
-          sv.ks = expanded;
-          sv.effort = expandedEffort;
-        }
-
-        suffixCache[sk] = std::move(sv);
+        suffixCache[sk] = buildSuffixValueForNextIndex(
+            suffixProgram, prefixEdits, rawSuffixEfforts, nextIndex, lastEditCmd);
       }
+
+      if (nextIndex >= prefixEditCount) break;
+
+      Edit::applyEdit(replayLines, replayPos, replayMode, prefixEdits[nextIndex], &lastEditCmd,
+                      editBoundary.hasLinesBelow());
+      // if (replayMode == Mode::Insert) break;
     }
   }
 
@@ -514,12 +538,21 @@ struct ModePolicy<false> {
   // Emit goal via d→c conversion + suffix cache + dot goal path.
   void emitEditGoal(EditState& afterState, const EditState& base,
                     int count, const KeyedSequence& baseKS,
-                    const KeyedSequence& goalSuffix,
-                    const RunningEffort& goalSuffixEffort,
+                    const KeyedSequence& completionSuffix,
+                    const RunningEffort& completionEffort,
+                    const KeyedSequence& typedSuffix,
+                    const RunningEffort& typedSuffixEffort,
                     bool isDot) {
+    RunningEffort goalSuffixEffort =
+        mergeGoalSuffixEffort(completionSuffix, typedSuffixEffort, completionEffort, config);
+    KeyedSequence goalSuffix = completionSuffix;
+    goalSuffix += typedSuffix;
+
     // Normal goal path
     {
-      replayAndCacheSuffix(base.getStartIndex(), base.getSeq(), goalSuffix, goalSuffixEffort);
+      replayAndCacheSuffix(base.getStartIndex(), base.getSeq(),
+                           completionSuffix, completionEffort.getPenalty(),
+                           typedSuffix, typedSuffixEffort);
 
       EditState realState = afterState;
       realState.recordSearch(goalSuffix.seq.view(), goalSuffixEffort,
@@ -554,21 +587,18 @@ struct ModePolicy<false> {
   }
 
   void onDeletionGoal(EditState& afterDel, const EditState& base, const Range& range,
-                      int count, const KeyedSequence& baseKS, const RunningEffort&) {
+                      int count, const KeyedSequence& baseKS, const RunningEffort& effort) {
     bool isDot = isDotRepeat(base, count, baseKS);
     KeyedSequence changePrefix = buildChangePrefix(count, baseKS,
                                                    afterDel.getLines(), afterDel.getPos(),
                                                    base.getLines(), range);
-    RunningEffort goalSuffixEffort = mergeGoalSuffixEffortWithDeletionPenalty(
-        changePrefix, typedEffort, count, count, baseKS, config);
-    KeyedSequence goalSuffix = changePrefix;
-    goalSuffix += typed;
-    emitEditGoal(afterDel, base, count, baseKS, goalSuffix, goalSuffixEffort, isDot);
+    emitEditGoal(afterDel, base, count, baseKS,
+                 changePrefix, effort, typed, typedEffort, isDot);
   }
 
   void onLinewiseGoal(EditState& afterDel, const EditState& base, int line,
                       int count, const KeyedSequence& baseKS,
-                      const RunningEffort&) {
+                      const RunningEffort& effort) {
     bool isDot = isDotRepeat(base, count, baseKS);
     int ccLineCount = static_cast<int>(base.getLines().size());
     KeyedSequence changeCmd = deleteToChangeLine(count, baseKS, base.getLines()[line]);
@@ -600,16 +630,13 @@ struct ModePolicy<false> {
 
     const auto& suffixTyped = useAfterIndent ? typedAfterIndent : typed;
     const auto& suffixEffort = useAfterIndent ? afterIndentEffort : typedEffort;
-    RunningEffort goalSuffixEffort = mergeGoalSuffixEffortWithPenalty<CountClass::EditLine>(
-        changePrefix, suffixEffort, count, count, config);
-    KeyedSequence goalSuffix = changePrefix;
-    goalSuffix += suffixTyped;
-    emitEditGoal(afterDel, base, count, baseKS, goalSuffix, goalSuffixEffort, isDot);
+    emitEditGoal(afterDel, base, count, baseKS,
+                 changePrefix, effort, suffixTyped, suffixEffort, isDot);
   }
 
   void onJoinGoal(EditState& afterJn, const EditState& base,
                   int count, const KeyedSequence& baseKS,
-                  const RunningEffort&) {
+                  const RunningEffort& effort) {
     bool isDot = isDotRepeat(base, count, baseKS);
     const auto& iCmd = KeyedSequence::i;
     KeyedSequence changePrefix;
@@ -617,16 +644,13 @@ struct ModePolicy<false> {
     changePrefix += iCmd;
     changePrefix += buildCollapseSequence(
         static_cast<int>(afterJn.getLines().size()), afterJn.getPos().line);
-    RunningEffort goalSuffixEffort = mergeGoalSuffixEffortWithPenalty<CountClass::Join>(
-        changePrefix, typedEffort, count, count, config);
-    KeyedSequence goalSuffix = changePrefix;
-    goalSuffix += typed;
-    emitEditGoal(afterJn, base, count, baseKS, goalSuffix, goalSuffixEffort, isDot);
+    emitEditGoal(afterJn, base, count, baseKS,
+                 changePrefix, effort, typed, typedEffort, isDot);
   }
 
   void onCountedLinewiseGoal(EditState& afterDel, const EditState& base,
                              LineRange range, int count, const KeyedSequence& baseKS,
-                             const RunningEffort&) {
+                             const RunningEffort& effort) {
     bool isDot = isDotRepeat(base, count, baseKS);
     int lineCount = range.lastLine - range.firstLine + 1;
     int ccLineCount = static_cast<int>(base.getLines().size()) - lineCount + 1;
@@ -660,16 +684,13 @@ struct ModePolicy<false> {
 
     const auto& suffixTyped = useAfterIndent ? typedAfterIndent : typed;
     const auto& suffixEffort = useAfterIndent ? afterIndentEffort : typedEffort;
-    RunningEffort goalSuffixEffort = mergeGoalSuffixEffortWithPenalty<CountClass::EditLine>(
-        changePrefix, suffixEffort, count, count, config);
-    KeyedSequence goalSuffix = changePrefix;
-    goalSuffix += suffixTyped;
-    emitEditGoal(afterDel, base, count, baseKS, goalSuffix, goalSuffixEffort, isDot);
+    emitEditGoal(afterDel, base, count, baseKS,
+                 changePrefix, effort, suffixTyped, suffixEffort, isDot);
   }
 
   void onCountedJoinGoal(EditState& afterJn, const EditState& base,
                          int count, const KeyedSequence& baseKS,
-                         const RunningEffort&) {
+                         const RunningEffort& effort) {
     bool isDot = isDotRepeat(base, count, baseKS);
     const auto& iCmd = KeyedSequence::i;
     KeyedSequence changePrefix;
@@ -677,11 +698,8 @@ struct ModePolicy<false> {
     changePrefix += iCmd;
     changePrefix += buildCollapseSequence(
         static_cast<int>(afterJn.getLines().size()), afterJn.getPos().line);
-    RunningEffort goalSuffixEffort = mergeGoalSuffixEffortWithPenalty<CountClass::Join>(
-        changePrefix, typedEffort, count, count, config);
-    KeyedSequence goalSuffix = changePrefix;
-    goalSuffix += typed;
-    emitEditGoal(afterJn, base, count, baseKS, goalSuffix, goalSuffixEffort, isDot);
+    emitEditGoal(afterJn, base, count, baseKS,
+                 changePrefix, effort, typed, typedEffort, isDot);
   }
 
   bool tryUseSuffixCache(const EditState& s, vector<Result>& results) {
@@ -694,17 +712,9 @@ struct ModePolicy<false> {
     if (!results[idx].isValid()) {
       const SuffixValue& sv = cacheIt->second;
 
-      auto matchesCountedCmd = [](string_view full, int cnt, string_view base) {
-        if (cnt == 0) return full == base;
-        string countStr = to_string(cnt);
-        return full.size() == countStr.size() + base.size() &&
-               full.substr(0, countStr.size()) == countStr &&
-               full.substr(countStr.size()) == base;
-      };
-      bool useDot = !sv.expandedDotCmd.empty() &&
-                    matchesCountedCmd(sv.expandedDotCmd, s.getLastEditCount(), s.getLastEditBase());
-      const KeyedSequence& suffix = useDot ? sv.dotKs : sv.ks;
-      const RunningEffort& suffixEffort = useDot ? sv.dotEffort : sv.effort;
+      bool useDot = sv.canUseDot(s.getLastEditCount(), s.getLastEditBase());
+      const KeyedSequence& suffix = sv.suffix(useDot);
+      const RunningEffort& suffixEffort = sv.suffixEffort(useDot);
 
       string seqStr = s.getSeq() + suffix.seq.str();
       RunningEffort mergedEffort = RunningEffort::merge(s.getRunningEffort(), suffixEffort);
