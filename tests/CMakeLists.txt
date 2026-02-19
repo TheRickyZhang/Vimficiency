@@ -89,6 +89,7 @@ add_executable(vimficiency_tests
   CompositionOptimizer/HumanApprovalTest.cpp
 
   # EditOptimizer
+  EditOptimizer/CountPenaltyIntegrationTest.cpp
   EditOptimizer/ManualTest.cpp
   EditOptimizer/OutputCorrectnessTest.cpp
   EditOptimizer/CostConsistencyTest.cpp
@@ -104,6 +105,8 @@ add_executable(vimficiency_tests
 
   # Misc
   Misc/ConfigurationTest.cpp
+  Misc/CountPenaltyFFITest.cpp
+  Misc/CountPenaltyTest.cpp
   Misc/EffortCompositionTest.cpp
   Misc/ErrorHandlingTest.cpp
   Misc/HashCollisionTest.cpp

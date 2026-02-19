@@ -34,10 +34,7 @@ struct KeyedSequence {
   KeyedSequence() = default;
   KeyedSequence(std::string_view s, PhysicalKeys k) : seq(std::string(s)), keys(std::move(k)) {}
   KeyedSequence(int count, const KeyedSequence& base) {
-    count = std::max(count, 1);
-    seq.append(std::to_string(count));
-    seq.append(base.seq.view());
-    keys.append(makeCountedKeys(count, base.keys));
+    appendCounted(count, base);
   }
 
   KeyedSequence& operator+=(const KeyedSequence& other) {
@@ -64,6 +61,12 @@ struct KeyedSequence {
   }
 
   void appendCounted(int count, const KeyedSequence& base) {
+    assert(count >= 0);
+    if (count == 0) {
+      seq.append(base.seq.view());
+      keys.append(base.keys);
+      return;
+    }
     seq.append(std::to_string(count));
     seq.append(base.seq.view());
     keys.append(makeCountedKeys(count, base.keys));

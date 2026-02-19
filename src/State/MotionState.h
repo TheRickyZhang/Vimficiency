@@ -67,7 +67,8 @@ public:
 
   // Create new state with counted motion applied (e.g., "3w")
   [[nodiscard]] MotionState afterCountedMotion(const KeyedSequence& baseMotion, int cnt,
-                                               Position endpoint, const Config& config) const;
+                                               Position endpoint, const Config& config,
+                                               double extraPenalty) const;
 
   // Create new state with f-motion applied (e.g., "fx;;")
   [[nodiscard]] MotionState afterFMotion(const KeyedSequence& fMotion, int newCol,
@@ -89,6 +90,8 @@ private:
   void applyMotionImpl(const KeyedSequence& ks, Position endpoint, const Config& config);
   void applyMotionImpl(const KeyedSequence& ks, const RunningEffort& precomputed,
                        Position endpoint, const Config& config);
-  void applyCountedMotionImpl(const KeyedSequence& baseMotion, int cnt, Position endpoint, const Config& config);
+  void applyCountedMotionImpl(const KeyedSequence& baseMotion, int cnt,
+                              Position endpoint, const Config& config,
+                              double extraPenalty);
   void applyFMotionImpl(const KeyedSequence& fMotion, int newCol, const Config& config);
 };

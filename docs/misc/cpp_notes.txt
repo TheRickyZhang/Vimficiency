@@ -46,3 +46,4 @@ Interesting (maybe?) things that have come up:
 - ODR violations are very insidious, with complete undefined behavior. Very easy to make without compiler warning with naming google tests!
 - std::minmax, std::partial_sum, std::transform_reduce
 - Have protected constructor for indicating not to use base class directly
+- Policy template pattern; variable specializations (C++ 14) as more direct traits struct

@@ -63,7 +63,7 @@ public:
   // Explore counted char edits: {n}x
   void exploreCountedCharEdits(const Position& cursor, const Lines& lines,
                                int contentStart, int contentEnd,
-                               int minCountRepeat, double countOverhead,
+                               int minCountRepeat,
                                DeletionCallback onDeletion);
 
   // ================== Templated Exploration Methods ==================

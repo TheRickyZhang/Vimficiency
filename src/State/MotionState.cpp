@@ -37,9 +37,10 @@ MotionState MotionState::afterMotion(const KeyedSequence& ks, const RunningEffor
 }
 
 MotionState MotionState::afterCountedMotion(const KeyedSequence& baseMotion, int cnt,
-                                            Position endpoint, const Config& config) const {
+                                            Position endpoint, const Config& config,
+                                            double extraPenalty) const {
   MotionState newState = *this;
-  newState.applyCountedMotionImpl(baseMotion, cnt, endpoint, config);
+  newState.applyCountedMotionImpl(baseMotion, cnt, endpoint, config, extraPenalty);
   return newState;
 }
 
@@ -69,13 +70,18 @@ void MotionState::applyMotionImpl(const KeyedSequence& ks, const RunningEffort& 
 }
 
 void MotionState::applyCountedMotionImpl(const KeyedSequence& baseMotion, int cnt,
-                                         Position endpoint, const Config& config) {
+                                         Position endpoint, const Config& config,
+                                         double extraPenalty) {
   pos = endpoint;
   if (cnt > 0) {
     motionSequence.append(to_string(cnt));
   }
   motionSequence.append(baseMotion.seq.view());
   effort = runningEffort.append(makeCountedKeys(abs(cnt), baseMotion.keys), config);
+  if (extraPenalty > 0.0) {
+    runningEffort.addPenalty(extraPenalty);
+    effort = runningEffort.getEffort(config);
+  }
 }
 
 void MotionState::applyFMotionImpl(const KeyedSequence& fMotion, int newCol,

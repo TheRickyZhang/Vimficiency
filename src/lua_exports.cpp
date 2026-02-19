@@ -7,6 +7,8 @@
 #include "State/RunningEffort.h"
 #include "Keyboard/XMacroKeyDefinitions.h"
 #include "Optimizer/Config.h"
+#include "Optimizer/CountPenalty.h"
+#include "Optimizer/GlobalRuntimeOptions.h"
 #include "Boundary/MotionBoundary.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
@@ -27,6 +29,25 @@ static const char *g_key_names[] = {VIMFICIENCY_KEYS(STRING_VALUE)};
 static const char *g_hand_names[] = {VIMFICIENCY_HANDS(STRING_VALUE)};
 static const char *g_finger_names[] = {VIMFICIENCY_FINGERS(STRING_VALUE)};
 #undef STRING_VALUE
+
+static const char* g_count_class_names[] = {
+  "MotionChar",
+  "MotionWord",
+  "MotionWORD",
+  "MotionLine",
+  "MotionParagraph",
+  "MotionSentence",
+  "MotionJump",
+  "EditChar",
+  "EditWord",
+  "EditWORD",
+  "EditLine",
+  "EditParagraph",
+  "EditSentence",
+  "Join",
+};
+static_assert(sizeof(g_count_class_names) / sizeof(g_count_class_names[0]) == CountClassCOUNT,
+              "Count class name table must match CountClass enum");
 
 enum DEFAULT_KEYBOARD {
   NONE,
@@ -50,12 +71,23 @@ struct C_KeyInfo {
   double base_cost = 0.0;
 };
 
+struct C_CountPenaltyOverride {
+  bool has_base = false;
+  double base = 0.0;
+  bool has_count_slope = false;
+  double count_slope = 0.0;
+  bool has_span_slope = false;
+  double span_slope = 0.0;
+};
+
 struct VimficiencyConfigFFI {
   DEFAULT_KEYBOARD default_keyboard = UNIFORM;
   C_ScoreWeights weights{};
   C_KeyInfo keys[KEY_COUNT]{};
   int slice_buffer_amount{};
   int32_t shiftwidth = -1; // -1 = use default (8)
+  bool use_count_penalty_overrides = false;
+  C_CountPenaltyOverride count_penalty_overrides[CountClassCOUNT]{};
 };
 
 // Helper to split string by newlines
@@ -114,6 +146,26 @@ static void sync_config() {
   if (g_config_ffi.shiftwidth >= 0) {
     VimOptions::shiftwidthRef() = g_config_ffi.shiftwidth;
   }
+
+  auto& runtimeOptions = globalRuntimeOptions();
+  runtimeOptions.useCountPenaltyOverrides = g_config_ffi.use_count_penalty_overrides;
+  runtimeOptions.countPenaltyOverrides = {};
+  for (size_t i = 0; i < CountClassCOUNT; i++) {
+    const auto& src = g_config_ffi.count_penalty_overrides[i];
+    PartialCountPenaltyParams dst;
+    if (src.has_base) {
+      dst.base = src.base;
+    }
+    if (src.has_count_slope) {
+      dst.countSlope = src.count_slope;
+    }
+    if (src.has_span_slope) {
+      dst.spanSlope = src.span_slope;
+    }
+    if (dst.base || dst.countSlope || dst.spanSlope) {
+      runtimeOptions.countPenaltyOverrides[i] = dst;
+    }
+  }
 }
 
 extern "C" {
@@ -122,6 +174,7 @@ extern "C" {
 extern const int VIMFICIENCY_KEY_COUNT = KEY_COUNT;
 extern const int VIMFICIENCY_FINGER_COUNT = FINGER_COUNT;
 extern const int VIMFICIENCY_HAND_COUNT = HAND_COUNT;
+extern const int VIMFICIENCY_COUNT_CLASS_COUNT = static_cast<int>(CountClassCOUNT);
 
 VimficiencyConfigFFI *vimficiency_get_config() { return &g_config_ffi; }
 void vimficiency_apply_config() { sync_config(); }
@@ -140,6 +193,11 @@ const char *vimficiency_finger_name(int index) {
   if (index < 0 || index >= VIMFICIENCY_FINGER_COUNT)
     return nullptr;
   return g_finger_names[index];
+}
+const char *vimficiency_count_class_name(int index) {
+  if (index < 0 || index >= VIMFICIENCY_COUNT_CLASS_COUNT)
+    return nullptr;
+  return g_count_class_names[index];
 }
 
 // Supports both motion-only (initialLines == goalLines) and composition (buffer changed) cases.
@@ -326,6 +384,8 @@ const char *vimficiency_debug_config() {
   oss << "\n--- Weights (Internal) ---\n";
   oss << "w_key: " << g_config_internal.weights.w_key << "\n";
   oss << "w_same_finger: " << g_config_internal.weights.w_same_finger << "\n";
+  oss << "\n--- Count Penalty Overrides ---\n";
+  oss << "use_count_penalty_overrides: " << g_config_ffi.use_count_penalty_overrides << "\n";
 
   oss << "\n--- Sample Keys (Internal) ---\n";
   // Show a few keys to verify

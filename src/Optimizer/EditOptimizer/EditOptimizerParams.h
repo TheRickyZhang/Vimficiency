@@ -21,10 +21,6 @@ struct EditOptimizerParams : OptimizerParamsBase {
   int motionLinePaddingAbove = 1;
   int motionLinePaddingBelow = 1;
 
-  // Cognitive overhead penalty for counted commands (e.g., counting characters for {n}x).
-  // Added to effort for each counted edit explored. Default 0.0 (disabled).
-  double countOverhead = 0.0;
-
   // Chainable setters for fluent configuration
   EditOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
   EditOptimizerParams& withMaxNodesExplored(int v) { maxNodesExplored = v; return *this; }
@@ -32,7 +28,6 @@ struct EditOptimizerParams : OptimizerParamsBase {
   EditOptimizerParams& withMotionLinePaddingBelow(int v) { motionLinePaddingBelow = v; return *this; }
   EditOptimizerParams& withMotionLinePadding(int v) { motionLinePaddingAbove = motionLinePaddingBelow = v; return *this; }
   EditOptimizerParams& withMinCountRepeat(int v) { minCountRepeat = v; return *this; }
-  EditOptimizerParams& withCountOverhead(double v) { countOverhead = v; return *this; }
   EditOptimizerParams& withTrackExploredStates(bool v) { trackExploredStates = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)

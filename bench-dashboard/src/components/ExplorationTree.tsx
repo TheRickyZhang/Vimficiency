@@ -127,6 +127,7 @@ function buildVisibleTree(
   solutionPaths: Set<string>,
   foundSeqs: Set<string>,
   overrides: Map<string, number>,
+  useExplorationOrder: boolean,
 ): VisibleNode {
   const convert = (node: TreeNode): VisibleNode => {
     const { fullSeq } = node;
@@ -135,7 +136,11 @@ function buildVisibleTree(
     const defaultLevel = (isOnPath || fullSeq === '') ? 1 : 0;
     const level = overrides.get(fullSeq) ?? defaultLevel;
 
-    const sorted = [...node.children.values()].sort((a, b) => b.count - a.count);
+    const childArr = [...node.children.values()];
+    // Map insertion order = A* pop order (exploration order)
+    const sorted = useExplorationOrder
+      ? childArr
+      : childArr.sort((a, b) => b.count - a.count);
 
     const mk = (children?: VisibleNode[]): VisibleNode => ({
       id: fullSeq || '_root',
@@ -243,6 +248,7 @@ export function ExplorationTree({ states, results, selectedSeqs, expandableToken
   const [tooltip, setTooltip] = useState<{ x: number; y: number; node: VisibleNode } | null>(null);
   const [zoomScale, setZoomScale] = useState(1);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; tokenIndex: number; tokenText: string } | null>(null);
+  const [explorationOrder, setExplorationOrder] = useState(false);
 
   // Merge states + results for complete root-to-leaf paths
   const allEntries = useMemo(() => {
@@ -269,8 +275,8 @@ export function ExplorationTree({ states, results, selectedSeqs, expandableToken
 
   // Use selectedSeqs (not all foundSeqs) for green highlighting
   const visibleRoot = useMemo(
-    () => buildVisibleTree(treeRoot, solutionPaths, selectedSeqs, overrides),
-    [treeRoot, solutionPaths, selectedSeqs, overrides],
+    () => buildVisibleTree(treeRoot, solutionPaths, selectedSeqs, overrides, explorationOrder),
+    [treeRoot, solutionPaths, selectedSeqs, overrides, explorationOrder],
   );
 
   const nodeWidths = useMemo(() => {
@@ -480,6 +486,31 @@ export function ExplorationTree({ states, results, selectedSeqs, expandableToken
         </svg>
       </button>
 
+      {/* Exploration order toggle */}
+      <button
+        onClick={() => setExplorationOrder(v => !v)}
+        className="fullscreen-btn"
+        title={explorationOrder ? 'Sort by count (most explored first)' : 'Sort by exploration order (A* pop order)'}
+        style={{ top: 44 }}
+      >
+        <svg viewBox="0 0 16 16" width="14" height="14">
+          {explorationOrder ? (
+            // Clock/order icon
+            <g fill="none" stroke="currentColor" strokeWidth="1.5">
+              <circle cx="8" cy="8" r="6" />
+              <path d="M8 4v4l3 2" />
+            </g>
+          ) : (
+            // Bar chart / count icon
+            <g fill="currentColor">
+              <rect x="2" y="9" width="3" height="5" rx="0.5" />
+              <rect x="6.5" y="5" width="3" height="9" rx="0.5" />
+              <rect x="11" y="2" width="3" height="12" rx="0.5" />
+            </g>
+          )}
+        </svg>
+      </button>
+
       {/* Tooltip */}
       {tooltip && (
         <div
@@ -528,6 +559,7 @@ export function ExplorationTree({ states, results, selectedSeqs, expandableToken
       <div className="absolute bottom-2 right-2 text-xs text-muted flex gap-3 bg-white/80 px-2 py-1 rounded">
         <span><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#34a853] mr-1 align-middle" />solution path</span>
         <span><span className="inline-block w-2.5 h-2.5 rounded-sm border border-dashed border-[#999] bg-[#f5f5f5] mr-1 align-middle" />collapsed</span>
+        <span>{explorationOrder ? 'exploration order' : 'count order'}</span>
         <span>scroll to zoom, drag to pan</span>
       </div>
     </div>

@@ -11,6 +11,7 @@
 #include "Editor/Motion.h"
 #include "Editor/NavContext.h"
 #include "Optimizer/BuildTypedCommands.h"
+#include "Utils/Indentation.h"
 #include "Utils/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "VimCore/VimEditUtils.h"

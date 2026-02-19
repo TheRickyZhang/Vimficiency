@@ -4,6 +4,8 @@
 #include "MotionSearchContext.h"
 #include "MotionToSpec.h"
 #include "Optimizer/BufferIndex.h"
+#include "Optimizer/CountPenalty.h"
+#include "Optimizer/GlobalRuntimeOptions.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Keyboard/MotionToKeys.h"
 #include "VimCore/VimCore.h"
@@ -222,10 +224,20 @@ public:
     }
   }
 
-  // Counted motions with pre-computed endpoint
+  template<CountClass C>
+  static double resolveCountPenalty(const CountPenaltyInput& in) {
+    return runtimeCountPenalty<C>(in);
+  }
+
+  template<CountClass C>
   void exploreCountMotion(const MotionState& base, const KeyedSequence& baseMotion,
                           int cnt, const Position& newPos) {
-    MotionState newState = base.afterCountedMotion(baseMotion, cnt, newPos, ctx.config);
+    CountPenaltyInput in;
+    in.count = cnt;
+    in.span = cnt;
+    double penalty = resolveCountPenalty<C>(in);
+
+    MotionState newState = base.afterCountedMotion(baseMotion, cnt, newPos, ctx.config, penalty);
     newState.setCost(ctx.computePriorityToGoal(newState, goalPos_));
     ctx.exploreNewState(std::move(newState), goalKey_);
   }
@@ -267,37 +279,94 @@ public:
     }
   }
 
-  // Count motion exploration - templated implementation
-  template<bool Forward>
-  void exploreCountMotionsImpl(const MotionState& base,
-                               const std::vector<CountableMotionPair>& motionPairs) {
+  template<bool Forward, LandingType LT, CountClass C, KSId ForwardKS, KSId BackwardKS>
+  void exploreCountedSpec(const MotionState& base) {
     assert(bufferIndex_ && "Count motions require goal-based constructor");
     Position pos = base.getPos();
+    const KeyedSequence& motion = []() -> const KeyedSequence& {
+      if constexpr (Forward) return ksById(ForwardKS);
+      else return ksById(BackwardKS);
+    }();
 
-    for (const auto& pair : motionPairs) {
-      const KeyedSequence& motion = Forward ? pair.forward : pair.backward;
-      auto results = bufferIndex_->getTwoClosest(pair.type, pos, goalPos_);
+    auto results = bufferIndex_->getTwoClosest(LT, pos, goalPos_);
 
-      for (const auto& r : results) {
-        if (!r.valid()) continue;
-        if (r.count < ctx.params.minCountRepeat) continue;
-        if (ctx.boundary.hasLinesAbove() && r.pos.line == 0) continue;
-        if (ctx.boundary.hasLinesBelow() && r.pos.line == ctx.lines.lastLine()) continue;
-        exploreCountMotion(base, motion, r.count, r.pos);
-      }
+    for (const auto& r : results) {
+      if (!r.valid()) continue;
+      if (r.count < ctx.params.minCountRepeat) continue;
+      if (ctx.boundary.hasLinesAbove() && r.pos.line == 0) continue;
+      if (ctx.boundary.hasLinesBelow() && r.pos.line == ctx.lines.lastLine()) continue;
+      exploreCountMotion<C>(base, motion, r.count, r.pos);
     }
   }
 
   // Line-local count motions (word motions - used when on same line as goal)
   template<bool Forward>
   void exploreLineCountMotions(const MotionState& base) {
-    exploreCountMotionsImpl<Forward>(base, COUNT_SEARCHABLE_MOTIONS_LINE);
+    exploreCountedSpec<Forward, LandingType::WordBegin, CountClass::MotionWord,
+                       KSId::w, KSId::b>(base);
+    exploreCountedSpec<Forward, LandingType::WordEnd, CountClass::MotionWord,
+                       KSId::e, KSId::ge>(base);
+    exploreCountedSpec<Forward, LandingType::WORDBegin, CountClass::MotionWORD,
+                       KSId::W, KSId::B>(base);
+    exploreCountedSpec<Forward, LandingType::WORDEnd, CountClass::MotionWORD,
+                       KSId::E, KSId::gE>(base);
   }
 
   // Global count motions (paragraph/sentence motions)
   template<bool Forward>
   void exploreGlobalCountMotions(const MotionState& base) {
-    exploreCountMotionsImpl<Forward>(base, COUNT_SEARCHABLE_MOTIONS_GLOBAL);
+    exploreCountedSpec<Forward, LandingType::Paragraph, CountClass::MotionParagraph,
+                       KSId::RBrace, KSId::LBrace>(base);
+    exploreCountedSpec<Forward, LandingType::Sentence, CountClass::MotionSentence,
+                       KSId::RParen, KSId::LParen>(base);
+  }
+
+  // Counted vertical motions: {count}j or {count}k
+  template<bool Forward>
+  void exploreCountedVerticalMotions(const MotionState& base) {
+    Position pos = base.getPos();
+    int lastLine = ctx.lines.lastLine();
+
+    // Cap at 20 lines; future: could be viewport-based
+    constexpr int MAX_LINE_JUMP = 20;
+
+    int linesAvailable = Forward ? (lastLine - pos.line) : pos.line;
+    int maxCount = std::min(MAX_LINE_JUMP, linesAvailable);
+
+    const KeyedSequence& motion = Forward ? KeyedSequence::j : KeyedSequence::k;
+
+    for (int cnt = ctx.params.minCountRepeat; cnt <= maxCount; cnt++) {
+      int newLine = Forward ? (pos.line + cnt) : (pos.line - cnt);
+
+      // Boundary guard: don't land on boundary lines
+      if (ctx.boundary.hasLinesAbove() && newLine == 0) continue;
+      if (ctx.boundary.hasLinesBelow() && newLine == lastLine) continue;
+
+      int newCol = VimCore::clampCol(ctx.lines, pos.targetCol, newLine);
+      exploreCountMotion<CountClass::MotionLine>(base, motion, cnt, {newLine, newCol, pos.targetCol});
+    }
+  }
+
+  // Counted horizontal motions: {count}l or {count}h
+  template<bool Forward>
+  void exploreCountedHorizontalMotions(const MotionState& base) {
+    Position pos = base.getPos();
+    int lastCol = ctx.lines[pos.line].lastCol();
+    int lastLine = ctx.lines.lastLine();
+
+    int leftBound = (pos.line == 0) ? ctx.boundary.leftColOffset() : 0;
+    int rightBound = (pos.line == lastLine) ? ctx.boundary.rightColOffset() : 0;
+
+    int maxCount = Forward
+        ? (lastCol - rightBound - pos.col)
+        : (pos.col - leftBound);
+
+    const KeyedSequence& motion = Forward ? KeyedSequence::l : KeyedSequence::h;
+
+    for (int cnt = ctx.params.minCountRepeat; cnt <= maxCount; cnt++) {
+      int newCol = Forward ? (pos.col + cnt) : (pos.col - cnt);
+      exploreCountMotion<CountClass::MotionChar>(base, motion, cnt, {pos.line, newCol});
+    }
   }
 
   // Unified directional dispatch - call this from the main loop
@@ -306,8 +375,10 @@ public:
     if (isSameLine) {
       exploreFMotions<Forward>(base);
       exploreLineCountMotions<Forward>(base);
+      exploreCountedHorizontalMotions<Forward>(base);
     }
     exploreGlobalCountMotions<Forward>(base);
+    exploreCountedVerticalMotions<Forward>(base);
   }
 
   // ==========================================================================

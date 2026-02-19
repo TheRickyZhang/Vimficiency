@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Keyboard/KeyedSequence.h"
+#include "Utils/Indentation.h"
 #include "Utils/Lines.h"
-#include "Utils/StringUtils.h"
 #include "VimCore/VimOptions.h"
 
 #include <string_view>

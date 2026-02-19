@@ -2,6 +2,8 @@
 #include "EditSearchContext.h"
 #include "EditToSpec.h"
 #include "Boundary/EditBoundary.h"
+#include "Optimizer/CountPenalty.h"
+#include "Optimizer/GlobalRuntimeOptions.h"
 #include "VimCore/VimCore.h"
 #include "VimCore/VimEndpointUtils.h"
 #include "VimCore/VimMotionUtils.h"
@@ -9,6 +11,26 @@
 #include <algorithm>
 
 using namespace std;
+
+namespace {
+template<CountClass C>
+double resolveCountPenalty(const CountPenaltyInput& in) {
+  return runtimeCountPenalty<C>(in);
+}
+
+template<CountClass C>
+RunningEffort buildCountedEffort(const Config& config, int count,
+                                 const KeyedSequence& baseKS, int span) {
+  RunningEffort effort;
+  effort.append(makeCountedKeys(count, baseKS.keys), config);
+  CountPenaltyInput input{count, span};
+  double penalty = resolveCountPenalty<C>(input);
+  if (penalty > 0.0) {
+    effort.addPenalty(penalty);
+  }
+  return effort;
+}
+}  // namespace
 
 EditExplorer::EditExplorer(EditSearchContext& ctx) : ctx_(ctx) {}
 
@@ -335,8 +357,8 @@ void EditExplorer::exploreCountedLineEdits(
 
   int maxCount = lastDeletable - cursor.line + 1;
   for (int n = max(2, minCountRepeat); n <= maxCount; n++) {
-    RunningEffort countedEffort;
-    countedEffort.append(makeCountedKeys(n, KeyedSequence::dd.keys), ctx_.config);
+    RunningEffort countedEffort =
+        buildCountedEffort<CountClass::EditLine>(ctx_.config, n, KeyedSequence::dd, n);
     onCountedLinewise(LineRange(cursor.line, cursor.line + n - 1), n, KeyedSequence::dd, countedEffort);
   }
 }
@@ -369,12 +391,12 @@ void EditExplorer::exploreCountedJoinCommands(
   // count means "join count lines" (current + count-1 below)
   // so count=2 joins current + 1 below, count=3 joins current + 2 below, etc.
   for (int count = max(2, minCountRepeat); count <= maxLinesBelow + 1; count++) {
-    RunningEffort jEffort;
-    jEffort.append(makeCountedKeys(count, KeyedSequence::J.keys), ctx_.config);
+    RunningEffort jEffort =
+        buildCountedEffort<CountClass::Join>(ctx_.config, count, KeyedSequence::J, count);
     onCountedJoin(count, true, KeyedSequence::J, jEffort);
 
-    RunningEffort gjEffort;
-    gjEffort.append(makeCountedKeys(count, KeyedSequence::gJ.keys), ctx_.config);
+    RunningEffort gjEffort =
+        buildCountedEffort<CountClass::Join>(ctx_.config, count, KeyedSequence::gJ, count);
     onCountedJoin(count, false, KeyedSequence::gJ, gjEffort);
   }
 }
@@ -418,8 +440,9 @@ void EditExplorer::exploreCountedWordEdits(
       prev = endpoint;
     }
     if (lastCount >= minCountRepeat) {
-      RunningEffort countedEffort;
-      countedEffort.append(makeCountedKeys(lastCount, spec.ks.keys), ctx_.config);
+      RunningEffort countedEffort = spec.isBig
+          ? buildCountedEffort<CountClass::EditWORD>(ctx_.config, lastCount, spec.ks, lastCount)
+          : buildCountedEffort<CountClass::EditWord>(ctx_.config, lastCount, spec.ks, lastCount);
       onDeletion(Range(cursor, lastEndpoint), lastCount, spec.ks, countedEffort);
     }
   }
@@ -454,8 +477,9 @@ void EditExplorer::exploreCountedWordEdits(
       prev = endpoint;  // Next iteration starts from motionW's exclusive position
     }
     if (lastCount >= minCountRepeat) {
-      RunningEffort countedEffort;
-      countedEffort.append(makeCountedKeys(lastCount, spec.ks.keys), ctx_.config);
+      RunningEffort countedEffort = spec.isBig
+          ? buildCountedEffort<CountClass::EditWORD>(ctx_.config, lastCount, spec.ks, lastCount)
+          : buildCountedEffort<CountClass::EditWord>(ctx_.config, lastCount, spec.ks, lastCount);
       onDeletion(Range(cursor, lastInclusiveEnd), lastCount, spec.ks, countedEffort);
     }
   }
@@ -482,8 +506,9 @@ void EditExplorer::exploreCountedWordEdits(
       // db/dB are exclusive at cursor: range is [endpoint, cursor-1]
       if (cursor.col > (cursor.line == 0 ? ctx_.leftColOffset : 0)) {
         Range range(lastEndpoint, Position(cursor.line, cursor.col - 1));
-        RunningEffort countedEffort;
-        countedEffort.append(makeCountedKeys(lastCount, spec.ks.keys), ctx_.config);
+        RunningEffort countedEffort = spec.isBig
+            ? buildCountedEffort<CountClass::EditWORD>(ctx_.config, lastCount, spec.ks, lastCount)
+            : buildCountedEffort<CountClass::EditWord>(ctx_.config, lastCount, spec.ks, lastCount);
         onDeletion(range, lastCount, spec.ks, countedEffort);
       }
     }
@@ -511,8 +536,9 @@ void EditExplorer::exploreCountedWordEdits(
       prev = endpoint;
     }
     if (lastCount >= minCountRepeat) {
-      RunningEffort countedEffort;
-      countedEffort.append(makeCountedKeys(lastCount, spec.ks.keys), ctx_.config);
+      RunningEffort countedEffort = spec.isBig
+          ? buildCountedEffort<CountClass::EditWORD>(ctx_.config, lastCount, spec.ks, lastCount)
+          : buildCountedEffort<CountClass::EditWord>(ctx_.config, lastCount, spec.ks, lastCount);
       onDeletion(Range(lastEndpoint, cursor), lastCount, spec.ks, countedEffort);
     }
   }
@@ -521,7 +547,7 @@ void EditExplorer::exploreCountedWordEdits(
 void EditExplorer::exploreCountedCharEdits(
     const Position& cursor, const Lines& lines,
     int contentStart, int contentEnd,
-    int minCountRepeat, double countOverhead,
+    int minCountRepeat,
     DeletionCallback onDeletion) {
   if (!onDeletion) return;
   if (minCountRepeat < 2) return;
@@ -536,9 +562,8 @@ void EditExplorer::exploreCountedCharEdits(
   if (count < minCountRepeat) return;
 
   Range range(cursor, Position(cursor.line, cursor.col + count - 1));
-  RunningEffort effort;
-  effort.append(makeCountedKeys(count, KeyedSequence::x.keys), ctx_.config);
-  effort.addPenalty(countOverhead);
+  RunningEffort effort =
+      buildCountedEffort<CountClass::EditChar>(ctx_.config, count, KeyedSequence::x, count);
   onDeletion(range, count, KeyedSequence::x, effort);
 }
 

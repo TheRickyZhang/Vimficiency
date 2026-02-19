@@ -11,11 +11,28 @@
 
 #include "Keyboard/MotionToKeys.h"
 #include "Optimizer/Config.h"
+#include "Optimizer/CountPenalty.h"
+#include "Optimizer/GlobalRuntimeOptions.h"
 #include "Boundary/MotionBoundary.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "State/RunningEffort.h"
 
 using namespace std;
+
+namespace {
+struct RuntimeOptionsGuard {
+  GlobalRuntimeOptions saved;
+  RuntimeOptionsGuard() : saved(globalRuntimeOptions()) {}
+  ~RuntimeOptionsGuard() { globalRuntimeOptions() = saved; }
+};
+
+const Result* findBySequence(const vector<Result>& results, string_view seq) {
+  for (const auto& r : results) {
+    if (r.sequence.view() == seq) return &r;
+  }
+  return nullptr;
+}
+}  // namespace
 
 class ConfigurationTest : public ::testing::Test {
 protected:
@@ -223,6 +240,51 @@ TEST_F(ConfigurationTest, CustomKeyCostAffectsOptimizer) {
     EXPECT_GT(expensiveJCost, normalJCost)
         << "Expensive J config should result in higher cost for 'j' motion";
   }
+}
+
+TEST_F(ConfigurationTest, CountPenaltyOverrideAffectsMotionRanking) {
+  RuntimeOptionsGuard guard;
+
+  Lines lines = {"one two three four five six"};
+  Position start(0, 0);
+  Position end(0, 19);  // reachable via 4w
+
+  MotionOptimizer opt(Config::uniform());
+  MotionBoundary boundary;
+  MotionOptimizerParams params = MotionOptimizerParams{}
+      .withMaxResults(30)
+      .withMaxNodesExplored(20000)
+      .withMinCountRepeat(4);
+
+  auto baseResults = opt.optimize(lines, start, end, params, "",
+                                  boundary, RunningEffort(), navContext).results;
+  ASSERT_FALSE(baseResults.empty());
+
+  const Result* baseCounted = findBySequence(baseResults, "4w");
+  ASSERT_NE(baseCounted, nullptr) << "Expected baseline to include 4w";
+
+  auto& opts = globalRuntimeOptions();
+  opts.useCountPenaltyOverrides = true;
+  opts.countPenaltyOverrides = {};
+  PartialCountPenaltyParams motionWordOverride;
+  motionWordOverride.base = 50.0;
+  motionWordOverride.countSlope = 0.0;
+  motionWordOverride.spanSlope = 0.0;
+  opts.countPenaltyOverrides[toIndex(CountClass::MotionWord)] = motionWordOverride;
+
+  auto overrideResults = opt.optimize(lines, start, end, params, "",
+                                      boundary, RunningEffort(), navContext).results;
+  ASSERT_FALSE(overrideResults.empty());
+
+  const Result* overrideCounted = findBySequence(overrideResults, "4w");
+  if (overrideCounted) {
+    EXPECT_GT(overrideCounted->keyCost, baseCounted->keyCost + 40.0);
+  } else {
+    SUCCEED() << "4w pruned from results under high count penalty override";
+  }
+
+  EXPECT_NE(overrideResults[0].sequence.view(), "4w")
+      << "High MotionWord override should push 4w off top rank";
 }
 
 // =============================================================================

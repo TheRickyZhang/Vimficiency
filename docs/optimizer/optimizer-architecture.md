@@ -15,6 +15,7 @@ They all share:
 - Effort for typing the sequence
 - Boundary of the subbuffer received. Motions can have padding to allow for the possibility of overshoot + revert, while Edits must be exact.
 - Usage of Endpoint/Range functions for checking if a motion would cross outside the boundary.
+- Counted-command cognitive penalties (see `docs/optimizer/count-penalty.md`)
 - Return some container of Results:
 ``` cpp
 struct Result {

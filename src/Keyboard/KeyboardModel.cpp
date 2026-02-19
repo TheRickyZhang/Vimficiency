@@ -20,6 +20,9 @@ std::ostream& operator<<(std::ostream& os, const PhysicalKeys& ks) {
 }
 
 PhysicalKeys makeCountedKeys(int count, const PhysicalKeys& motionKeys) {
+  assert(count >= 0);
+  if (count == 0) return motionKeys;
+
   PhysicalKeys keys;
   for (char c : std::to_string(count)) {
     keys.append(CHAR_TO_KEYS.at(c));

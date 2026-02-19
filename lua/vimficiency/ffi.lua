@@ -22,20 +22,32 @@ local M = {}
 ---@field finger integer
 ---@field base_cost number
 
+---@class C_CountPenaltyOverride
+---@field has_base boolean
+---@field base number
+---@field has_count_slope boolean
+---@field count_slope number
+---@field has_span_slope boolean
+---@field span_slope number
+
 ---@class VimficiencyConfigFFI
 ---@field default_keyboard integer
 ---@field weights C_ScoreWeights
 ---@field keys C_KeyInfo[]
----@field slice_buffer_count integer
+---@field slice_buffer_amount integer
 ---@field shiftwidth integer  -- -1 = use default (8)
+---@field use_count_penalty_overrides boolean
+---@field count_penalty_overrides C_CountPenaltyOverride[]
 
 ---@class VimficiencyLib
 ---@field VIMFICIENCY_KEY_COUNT integer
 ---@field VIMFICIENCY_FINGER_COUNT integer
 ---@field VIMFICIENCY_HAND_COUNT integer
+---@field VIMFICIENCY_COUNT_CLASS_COUNT integer
 ---@field vimficiency_key_name fun(index: integer): ffi.cdata*
 ---@field vimficiency_finger_name fun(index: integer): ffi.cdata*
 ---@field vimficiency_hand_name fun(index: integer): ffi.cdata*
+---@field vimficiency_count_class_name fun(index: integer): ffi.cdata*
 ---@field vimficiency_get_config fun(): VimficiencyConfigFFI
 ---@field vimficiency_apply_config fun(): nil
 ---@field vimficiency_analyze fun(initial_text: string, goal_text: string, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, start_row: integer, start_col: integer, end_row: integer, end_col: integer, keyseq: string, window_height: integer, scroll_amount: integer, results_calculated: integer): string
@@ -49,6 +61,7 @@ ffi.cdef([[
     extern const int VIMFICIENCY_KEY_COUNT;
     extern const int VIMFICIENCY_FINGER_COUNT;
     extern const int VIMFICIENCY_HAND_COUNT;
+    extern const int VIMFICIENCY_COUNT_CLASS_COUNT;
 
     typedef struct {
         double w_key;
@@ -66,11 +79,22 @@ ffi.cdef([[
     } C_KeyInfo;
 
     typedef struct {
+        bool has_base;
+        double base;
+        bool has_count_slope;
+        double count_slope;
+        bool has_span_slope;
+        double span_slope;
+    } C_CountPenaltyOverride;
+
+    typedef struct {
         int default_keyboard;
         C_ScoreWeights weights;
-        C_KeyInfo keys[64];  // assert(64 >= key_count)
+        C_KeyInfo keys[61];  // must match C++ KEY_COUNT
         int slice_buffer_amount;
         int32_t shiftwidth;
+        bool use_count_penalty_overrides;
+        C_CountPenaltyOverride count_penalty_overrides[14];  // must match C++ CountClassCOUNT
     } VimficiencyConfigFFI;
 
     VimficiencyConfigFFI* vimficiency_get_config();
@@ -79,6 +103,7 @@ ffi.cdef([[
     const char* vimficiency_key_name(int index);
     const char* vimficiency_finger_name(int index);
     const char* vimficiency_hand_name(int index);
+    const char* vimficiency_count_class_name(int index);
     const char* vimficiency_analyze(
         const char* initial_text,
         const char* goal_text,
@@ -150,6 +175,7 @@ local lib = load_lib()
 M.Key = build_enum(lib.VIMFICIENCY_KEY_COUNT, lib.vimficiency_key_name)
 M.Finger = build_enum(lib.VIMFICIENCY_FINGER_COUNT, lib.vimficiency_finger_name)
 M.Hand = build_enum(lib.VIMFICIENCY_HAND_COUNT, lib.vimficiency_hand_name)
+M.CountClass = build_enum(lib.VIMFICIENCY_COUNT_CLASS_COUNT, lib.vimficiency_count_class_name)
 
 -- ---@param user_config VimficiencyConfigFFI
 function M.configure(user_config)
@@ -192,11 +218,58 @@ function M.configure(user_config)
 	end
 
   if user_config.slice_buffer_amount then
-    config.slice_buffer_count = user_config.slice_buffer_amount
+    config.slice_buffer_amount = user_config.slice_buffer_amount
   end
 
   if user_config.shiftwidth then
     config.shiftwidth = user_config.shiftwidth
+  end
+
+  if user_config.use_count_penalty_overrides ~= nil then
+    config.use_count_penalty_overrides = user_config.use_count_penalty_overrides
+  end
+
+  if user_config.count_penalty_overrides then
+    if user_config.use_count_penalty_overrides == nil then
+      config.use_count_penalty_overrides = true
+    end
+
+    for i = 0, lib.VIMFICIENCY_COUNT_CLASS_COUNT - 1 do
+      local dst = config.count_penalty_overrides[i]
+      dst.has_base = false
+      dst.has_count_slope = false
+      dst.has_span_slope = false
+    end
+
+    for class_key, override in pairs(user_config.count_penalty_overrides) do
+      local class_index = nil
+      if type(class_key) == "number" then
+        class_index = class_key
+      else
+        class_index = M.CountClass[class_key]
+      end
+
+      if class_index == nil then
+        error("Unknown count penalty class: " .. tostring(class_key))
+      end
+      if class_index < 0 or class_index >= lib.VIMFICIENCY_COUNT_CLASS_COUNT then
+        error("Count penalty class out of range: " .. tostring(class_key))
+      end
+
+      local dst = config.count_penalty_overrides[class_index]
+      if override.base ~= nil then
+        dst.has_base = true
+        dst.base = override.base
+      end
+      if override.count_slope ~= nil then
+        dst.has_count_slope = true
+        dst.count_slope = override.count_slope
+      end
+      if override.span_slope ~= nil then
+        dst.has_span_slope = true
+        dst.span_slope = override.span_slope
+      end
+    end
   end
 
 	lib.vimficiency_apply_config()

@@ -12,6 +12,7 @@
 #include "State/CompositionState.h"
 #include "Utils/BracketFlags.h"
 #include "Utils/Debug.h"
+#include "Utils/Indentation.h"
 #include "Utils/QuoteFlags.h"
 #include "Utils/StringUtils.h"
 #include "VimCore/VimCore.h"

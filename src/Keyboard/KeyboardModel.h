@@ -66,8 +66,10 @@ public:
 
 std::ostream& operator<<(std::ostream& os, const PhysicalKeys& ks);
 
-// Build keys for a counted motion: {count digits} + {motion keys}
-// E.g., makeCountedKeys(3, wKeys) -> "3" + "w"
+// Build keys for an optionally-counted motion:
+// - count > 0: {count digits} + {motion keys}
+// - count = 0: uncounted {motion keys}
+// E.g., makeCountedKeys(3, wKeys) -> "3" + "w", makeCountedKeys(0, wKeys) -> "w"
 PhysicalKeys makeCountedKeys(int count, const PhysicalKeys& motionKeys);
 
 static_assert(KEY_COUNT == static_cast<uint8_t>(Key::None),

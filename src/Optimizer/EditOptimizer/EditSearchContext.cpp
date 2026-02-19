@@ -313,5 +313,5 @@ void EditSearchContext::exploreCountedCharEdits(const EditState& state,
   const Position& cursor = state.getPos();
   auto [contentStart, contentEnd] = computeEditBounds(lines, cursor);
   explorer.exploreCountedCharEdits(cursor, lines, contentStart, contentEnd,
-                                   params.minCountRepeat, params.countOverhead, cb);
+                                   params.minCountRepeat, cb);
 }
