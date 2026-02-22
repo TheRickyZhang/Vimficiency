@@ -36,6 +36,18 @@ Position computeInsertEndPos(Position insertPos, const string& insertedText) {
   }
 }
 
+// Clamp cursor to a valid normal-mode position on concrete post-edit lines.
+// Uses targetCol when available so vertical sticky-column intent is preserved.
+Position clampGoalPosToLines(const Position& pos, const Lines& lines) {
+  if (lines.empty()) return Position(0, 0);
+
+  int line = clamp(pos.line, 0, lines.lastLine());
+  int wantedCol = pos.targetCol >= 0 ? pos.targetCol : pos.col;
+  int maxCol = lines[line].empty() ? 0 : static_cast<int>(lines[line].size()) - 1;
+  int col = clamp(wantedCol, 0, maxCol);
+  return Position(line, col, wantedCol);
+}
+
 } // anonymous namespace
 
 // Note that goalPos doesn't matter except for directionality; we want to explore anything that performs the same edits.
@@ -233,10 +245,20 @@ CompositionResult CompositionOptimizer::optimize(
     const Result* res = editResult.resultAt(pos.line, pos.col);
 
     if (res) {
+      Position editGoalPos = editResult.goalPos;
+      if (nextEdit.isPureDeletion()) {
+        int idx = editResult.resultIndexAt(pos.line, pos.col);
+        const auto& perStartGoals = ctx.pureDeletionGoalPosByEdit[editsCompleted];
+        if (idx >= 0 && idx < static_cast<int>(perStartGoals.size())) {
+          editGoalPos = perStartGoals[static_cast<size_t>(idx)];
+        }
+        const Lines& linesAfterEdit = ctx.getLinesAfter(editsCompleted + 1);
+        editGoalPos = clampGoalPosToLines(editGoalPos, linesAfterEdit);
+      }
       debug("  edit found at", pos, "seq:", "\"" + res->sequence.str() + "\"",
-            "cost:", res->keyCost);
+            "cost:", res->keyCost, "goalPos:", editGoalPos);
       ctx.exploreEditTransition(s, res->sequence,
-                                editResult.goalPos, editsCompleted + 1);
+                                editGoalPos, editsCompleted + 1);
     }
 
     // J plan: offered from any column on the entry line

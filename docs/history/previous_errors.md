@@ -301,3 +301,20 @@ With `benchmark::Counter::kAvgIterations`, Google Benchmark divides the counter 
 accumulateStats(totalStats, result.stats);
 ```
 
+
+
+### Problem: Buffer Copying
+
+Naively, `EditStateKey` stored a full `Lines` copy. With `getKey()` called 2+ times per explored state (once in `exploreNewState`, once in `getNextValidState`), and buffers of ~300 bytes on a 10-line edit, this produced megabytes of unnecessary copying per search. The hash function also only hashed `lines[0]` + `lines.size()`, producing many collisions and triggering expensive `operator==` comparisons over full buffer content.
+
+### Solution: Precomputed Content Hash
+
+`EditState` carries a precomputed 64-bit FNV-1a hash (`linesHash_`) over all buffer content. This hash is:
+- Computed once in the `EditState` constructor
+- Recomputed after each buffer mutation (`afterDeletion`, `afterLinewiseDeletion`, `afterJoin`)
+
+`EditStateKey` stores `(linesHash, lineCount, line, col, mode, startIndex)` instead of the full `Lines` object. Both the hash function and equality operator use only these scalar fields — no buffer copying or content comparison.
+
+The same pattern applies to `SuffixKey` in the suffix cache (see below).
+
+**Collision risk**: 64-bit FNV-1a over ~10^4 states gives collision probability ~5×10^-12 per search. A hash collision would cause a state to be incorrectly pruned as "already visited," potentially missing a better path for one starting position — a minor quality degradation, not a correctness violation.

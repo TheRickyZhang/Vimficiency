@@ -50,8 +50,8 @@ TEST_F(EditOptimizerDeterminismTests, SameInputProducesSameOutput) {
     EditOptimizer opt1(config);
     EditOptimizer opt2(config);
 
-    EditResult res1 = opt1.optimizeEdit(lines, {""}, boundary);
-    EditResult res2 = opt2.optimizeEdit(lines, {""}, boundary);
+    EditResult res1 = opt1.optimizePureDeletion(lines, boundary).editResult;
+    EditResult res2 = opt2.optimizePureDeletion(lines, boundary).editResult;
 
     if (res1.resultCount() != res2.resultCount()) {
       failures++;

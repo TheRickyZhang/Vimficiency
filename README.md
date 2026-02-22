@@ -4,6 +4,8 @@ One of the biggest challenges people face with learning Vim motions is the high 
 
 Vimficiency bridges this gap by analyzing your editing actions and suggesting more efficient key sequences, with best effort awareness of possible actions and customizability. It is genuinely a difficult algorithmic and heuristical problem!
 
+The benchmark site is available here:
+https://therickyzhang.github.io/Vimficiency/
 
 ## Requirements
 - Neovim 0.11+

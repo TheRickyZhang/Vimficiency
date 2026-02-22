@@ -230,7 +230,7 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
   cerr << "\n--- Running pure deletion ---" << endl;
   {
     EditOptimizer opt2(config);
-    auto result = opt2.optimizeEdit(editRegion, {""}, boundary, p);
+    auto result = opt2.optimizePureDeletion(editRegion, boundary, p).editResult;
     cerr << "Pure deletion OK, results=" << result.resultCount() << endl;
 
     // Now replay each result
@@ -381,7 +381,7 @@ TEST_F(DebugTest, DISABLED_InvestigateCountedWordEdit) {
   {
     EditOptimizer opt(config);
     EditBoundary boundary(fullBuffer, Position(0, 1), Position(3, 3));  // prefix="a", suffix="bd"
-    EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
+    EditResult res = opt.optimizePureDeletion(editRegion, boundary, params).editResult;
     int idx = 0;
     for (int line = 0; line < static_cast<int>(editRegion.size()); line++) {
       int cols = editRegion[line].empty() ? 1 : static_cast<int>(editRegion[line].size());

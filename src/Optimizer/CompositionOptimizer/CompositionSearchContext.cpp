@@ -321,8 +321,10 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
   EditOptimizer editOptimizer(config);
   vector<EditResult> results;
   results.reserve(diffStates.size());
+  pureDeletionGoalPosByEdit.assign(diffStates.size(), {});
 
-  for (const DiffState& diff : diffStates) {
+  for (size_t i = 0; i < diffStates.size(); i++) {
+    const DiffState& diff = diffStates[i];
     // Handle pure insertions: create single-entry EditResult with precomputed "i + text + <Esc>"
     if (diff.isPureInsertion()) {
       // Build insert sequence: i + typed content + <Esc>
@@ -342,6 +344,19 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
                         diff.beginPos.line, diff.beginPos.col, goalPos);
 
       results.push_back(std::move(result));
+      continue;
+    }
+
+    if (diff.isPureDeletion()) {
+      PureDeletionEditResult pureResult = editOptimizer.optimizePureDeletion(
+          diff.deletedLines(), diff.boundary,
+          EditOptimizerParams{}
+              .withMinCountRepeat(params.minCountRepeat)
+              .withTrackExploredStates(params.trackExploredStates),
+          diff.beginPos.line, diff.beginPos.col, diff.beginPos);
+      editNodesExplored += pureResult.editResult.stats.nodesExplored;
+      pureDeletionGoalPosByEdit[i] = std::move(pureResult.goalPosByStart);
+      results.push_back(std::move(pureResult.editResult));
       continue;
     }
 
@@ -852,19 +867,26 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
         // The full line is the edit region (no prefix/suffix beyond what's
         // already on the line). This avoids cursor-position misalignment issues.
         Lines residualInitial = {sim.joinedLine};
-        Lines residualGoal = {fullTgtLines[g]};
-
         // The entire joined line is the edit region (single line, no prefix/suffix)
         EditBoundary groupBoundary;
 
         Position residualGoalPos(0,
             fullTgtLines[g].empty() ? 0
             : static_cast<int>(fullTgtLines[g].size()) - 1);
+        EditOptimizerParams residualParams =
+            EditOptimizerParams{}.withMinCountRepeat(params.minCountRepeat);
 
-        EditResult residualResult = editOptimizer.optimizeEdit(
-            residualInitial, residualGoal, groupBoundary,
-            EditOptimizerParams{}.withMinCountRepeat(params.minCountRepeat),
-            0, 0, residualGoalPos);
+        EditResult residualResult = [&]() -> EditResult {
+          if (fullTgtLines[g].empty()) {
+            return editOptimizer.optimizePureDeletion(
+                residualInitial, groupBoundary, residualParams,
+                0, 0, residualGoalPos).editResult;
+          }
+          Lines residualGoal = {fullTgtLines[g]};
+          return editOptimizer.optimizeEdit(
+              residualInitial, residualGoal, groupBoundary, residualParams,
+              0, 0, residualGoalPos);
+        }();
         editNodesExplored += residualResult.stats.nodesExplored;
 
         // Look up result at cursor position after J

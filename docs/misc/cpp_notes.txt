@@ -47,3 +47,4 @@ Interesting (maybe?) things that have come up:
 - std::minmax, std::partial_sum, std::transform_reduce
 - Have protected constructor for indicating not to use base class directly
 - Policy template pattern; variable specializations (C++ 14) as more direct traits struct
+- How to develop an API supporting compile-time parameters still open to runtime configuration later

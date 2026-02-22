@@ -753,16 +753,55 @@ struct ModePolicy<false> {
 
 } // anonymous namespace
 
+template<bool Capture>
+struct PureDeletionGoalCapture;
+
+template<>
+struct PureDeletionGoalCapture<false> {
+  explicit PureDeletionGoalCapture(int) {}
+
+  void onGoal(int, const Position&) {}
+
+  EditResult finalize(EditResult&& editResult, int) {
+    return std::move(editResult);
+  }
+};
+
+template<>
+struct PureDeletionGoalCapture<true> {
+  vector<Position> goalPosByStart;
+
+  explicit PureDeletionGoalCapture(int totalPositions)
+      : goalPosByStart(static_cast<size_t>(totalPositions), Position(-1, -1, -1)) {}
+
+  void onGoal(int idx, const Position& pos) {
+    goalPosByStart[static_cast<size_t>(idx)] = pos;
+  }
+
+  PureDeletionEditResult finalize(EditResult&& editResult, int bufferFirstLine) {
+    // Convert per-result positions from edit-local coordinates to buffer
+    // coordinates. For line-OOB pure deletion terminals, line maps to the
+    // corresponding line below the edit region in full-buffer coordinates;
+    // column is clamped later where full post-edit lines are available.
+    for (Position& p : goalPosByStart) {
+      if (p.line < 0) continue;
+      p.line += bufferFirstLine;
+    }
+    return PureDeletionEditResult{std::move(editResult), std::move(goalPosByStart)};
+  }
+};
+
 // =============================================================================
 // =============================================================================
 // optimizeImpl - unified template for both pure deletion and full edit
 // =============================================================================
 
 template<bool PureDeletion>
-EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
-                            EditBoundary editBoundary, EditOptimizerParams params,
-                            int bufferFirstLine, int bufferFirstCol,
-                            Position goalPos) {
+auto EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
+                                 EditBoundary editBoundary, EditOptimizerParams params,
+                                 int bufferFirstLine, int bufferFirstCol,
+                                 Position goalPos)
+    -> OptimizeImplResult<PureDeletion> {
   assert(!initialLines.empty() && "empty startlines should be handled in compositionEditor by i, a, o, O");
 
   // Create search context (handles effectiveLines, offsets, search state)
@@ -775,50 +814,13 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
   const string preSuf = pre + suf;
 
   vector<Result> results(ctx.totalPositions);
+  PureDeletionGoalCapture<PureDeletion> goalCapture(ctx.totalPositions);
   ModePolicy<PureDeletion> mode(ctx, config, editBoundary, initialLines, goalLines,
                                 pre, suf, preSuf);
 
   // Goal check
   auto isGoalReached = [&](const Lines &lines) -> bool {
     return mode.isGoalReached(lines);
-  };
-
-  // Non-goal linewise handler (k-escape + dot).
-  // Used by both exploreLinewise and exploreCountedLinewise.
-  auto exploreLinewiseNonGoal = [&](EditState& afterDel, const EditState& base,
-                                     bool needsKEscape, int count,
-                                     const KeyedSequence& baseKS, const RunningEffort& effort,
-                                     double hCost) {
-    // Cursor already clamped by caller (exploreLinewise/exploreCountedLinewise).
-    // needsKEscape only controls whether 'k' is appended to the command sequence.
-
-    bool isDot = base.hasLastEdit() &&
-                 base.getLastEditCount() == count &&
-                 base.getLastEditBase() == baseKS.seq.view();
-    if (isDot) {
-      if (needsKEscape) {
-        KeyedSequence dotCmd(".", KeyedSequence::Period.keys);
-        dotCmd += KeyedSequence::k;
-        RunningEffort dotEffort = ctx.effortFor(KeyedSequence::Period);
-        dotEffort.appendFrom(ctx.effortFor(KeyedSequence::k), config);
-        afterDel.recordSearch(dotCmd.seq.view(), dotEffort, ctx.effortWeight, hCost, config);
-      } else {
-        afterDel.recordSearch(".", ctx.effortFor(KeyedSequence::Period), ctx.effortWeight, hCost, config);
-      }
-    } else {
-      if (needsKEscape) {
-        KeyedSequence searchCmd;
-        searchCmd.appendCounted(count, baseKS);
-        searchCmd += KeyedSequence::k;
-        RunningEffort fullEffort = effort;
-        fullEffort.appendFrom(ctx.effortFor(KeyedSequence::k), config);
-        afterDel.recordSearch(searchCmd.seq.view(), fullEffort, ctx.effortWeight, hCost, config);
-      } else {
-        afterDel.recordSearch(count, baseKS.seq.view(), effort, ctx.effortWeight, hCost, config);
-      }
-      afterDel.setLastEdit(count, baseKS.seq.view());
-    }
-    ctx.exploreNewState(std::move(afterDel));
   };
 
   // ---- Handlers ----
@@ -845,24 +847,27 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
     EditState afterDel = base.afterLinewiseDeletion(line, hasLinesBelow);
     const Lines &lines = afterDel.getLines();
 
-    // Detect and resolve past-end cursor (dd from last effective line with hasLinesBelow).
-    // Must happen before goal check so cursor is always valid at goal time.
-    bool needsKEscape = afterDel.getPos().line >= static_cast<int>(lines.size());
-    if (needsKEscape) {
-      Position pos = afterDel.getPos();
-      pos.line = static_cast<int>(lines.size()) - 1;
-      pos.clampColPreservingTarget(lines[pos.line].empty() ? 0
-          : min(pos.targetCol, static_cast<int>(lines[pos.line].size()) - 1));
-      afterDel.setPos(pos);
-    }
+    // Linewise delete can land one line below effective lines when hasLinesBelow=true.
+    // Policy:
+    // - Pure deletion may accept this only as a terminal goal transition.
+    // - All non-goal transitions must keep cursor line in effective bounds.
+    bool lineOOB = afterDel.getPos().line < 0 ||
+                   afterDel.getPos().line >= static_cast<int>(lines.size());
 
     if (isGoalReached(lines)) {
+      if (lineOOB) {
+        if constexpr (!PureDeletion) {
+          return;
+        }
+      }
       mode.onLinewiseGoal(afterDel, base, line, count, baseKS, effort);
       return;
     }
 
+    if (lineOOB) return;
+
     double hCost = ctx.heuristicCost(lines);
-    exploreLinewiseNonGoal(afterDel, base, needsKEscape, count, baseKS, effort, hCost);
+    ctx.exploreWithDot(std::move(afterDel), base, count, baseKS, effort, hCost);
   };
 
   // Join handler
@@ -886,23 +891,24 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
     EditState afterDel = base.afterMultiLinewiseDeletion(range, hasLinesBelow);
     const Lines& lines = afterDel.getLines();
 
-    // Detect and resolve past-end cursor before goal check (same as exploreLinewise).
-    bool needsKEscape = afterDel.getPos().line >= static_cast<int>(lines.size());
-    if (needsKEscape) {
-      Position pos = afterDel.getPos();
-      pos.line = static_cast<int>(lines.size()) - 1;
-      pos.clampColPreservingTarget(lines[pos.line].empty() ? 0
-          : min(pos.targetCol, static_cast<int>(lines[pos.line].size()) - 1));
-      afterDel.setPos(pos);
-    }
+    // Same policy as uncounted linewise delete.
+    bool lineOOB = afterDel.getPos().line < 0 ||
+                   afterDel.getPos().line >= static_cast<int>(lines.size());
 
     if (isGoalReached(lines)) {
+      if (lineOOB) {
+        if constexpr (!PureDeletion) {
+          return;
+        }
+      }
       mode.onCountedLinewiseGoal(afterDel, base, range, count, baseKS, effort);
       return;
     }
 
+    if (lineOOB) return;
+
     double hCost = ctx.heuristicCost(lines);
-    exploreLinewiseNonGoal(afterDel, base, needsKEscape, count, baseKS, effort, hCost);
+    ctx.exploreWithDot(std::move(afterDel), base, count, baseKS, effort, hCost);
   };
 
   // Counted join handler ({n}J, {n}gJ)
@@ -934,11 +940,16 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
       int idx = s.getStartIndex();
       if (!results[idx].isValid()) {
         results[idx] = Result(s.getSeq(), s.getEffort());
+        goalCapture.onGoal(idx, s.getPos());
         ctx.resultsFound++;
         ctx.uniquePositionsCovered++;
       }
       continue;
     }
+
+    assert(s.getPos().line >= 0 &&
+           s.getPos().line <= s.getLines().lastLine() &&
+           "non-goal edit state must have in-bounds cursor line");
 
     // Early stopping: skip if this startIndex already has a result
     if (results[s.getStartIndex()].isValid()) continue;
@@ -988,17 +999,16 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
     ctx.exploreCountedCharEdits(s, deletionCb);
   }
 
-  return mode.finalize(std::move(results), initialLines, goalLines, params,
-                       bufferFirstLine, bufferFirstCol, goalPos);
+  EditResult out = mode.finalize(std::move(results), initialLines, goalLines, params,
+                                 bufferFirstLine, bufferFirstCol, goalPos);
+  return goalCapture.finalize(std::move(out), bufferFirstLine);
 }
 
 // Explicit template instantiations
-template EditResult EditOptimizer::optimizeImpl<true>(
-    const Lines&, const Lines&, EditBoundary, EditOptimizerParams,
-    int, int, Position);
 template EditResult EditOptimizer::optimizeImpl<false>(
-    const Lines&, const Lines&, EditBoundary, EditOptimizerParams,
-    int, int, Position);
+    const Lines&, const Lines&, EditBoundary, EditOptimizerParams, int, int, Position);
+template PureDeletionEditResult EditOptimizer::optimizeImpl<true>(
+    const Lines&, const Lines&, EditBoundary, EditOptimizerParams, int, int, Position);
 
 // =============================================================================
 // Public dispatchers
@@ -1012,15 +1022,24 @@ EditOptimizer::optimizeEdit(
     int bufferFirstLine, int bufferFirstCol, Position goalPos) {
   assert(initialLines != goalLines);
   assert(!initialLines.empty());
-
-  // Delegate to pure deletion if goal lines effectively empty
-  if (all_of(goalLines.begin(), goalLines.end(), [](Line l) {
-    return l.empty();
-  })) {
-    return optimizeImpl<true>(initialLines, Lines{}, editBoundary, params,
-                                bufferFirstLine, bufferFirstCol, goalPos);
-  }
+  bool pureDeletionGoal = goalLines.empty() ||
+                          (goalLines.size() == 1 && goalLines[0].empty());
+  assert(!pureDeletionGoal &&
+         "optimizeEdit does not accept empty goalLines; use optimizePureDeletion for pure deletions");
 
   return optimizeImpl<false>(initialLines, goalLines, editBoundary, params,
                              bufferFirstLine, bufferFirstCol, goalPos);
+}
+
+PureDeletionEditResult EditOptimizer::optimizePureDeletion(
+    const Lines& initialLines,
+    EditBoundary editBoundary,
+    EditOptimizerParams params,
+    int bufferFirstLine,
+    int bufferFirstCol,
+    Position goalPos) {
+  assert(!initialLines.empty());
+  return optimizeImpl<true>(
+      initialLines, Lines{}, editBoundary, params,
+      bufferFirstLine, bufferFirstCol, goalPos);
 }

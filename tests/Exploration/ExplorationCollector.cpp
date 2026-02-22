@@ -576,7 +576,7 @@ static vector<ExploreCase> collectEditCases() {
     p.maxResults = max(10, lines.totalPositions() / 4);
 
     EditOptimizer opt(config);
-    auto result = opt.optimizeEdit(lines, {}, boundary, p);
+    auto result = opt.optimizePureDeletion(lines, boundary, p).editResult;
 
     ContextData ctx;
     for (const auto& l : lines) ctx.initialLines.push_back(l);

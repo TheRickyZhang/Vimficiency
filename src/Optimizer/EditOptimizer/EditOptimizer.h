@@ -1,5 +1,6 @@
 #pragma once
 
+#include <type_traits>
 #include <vector>
 
 #include "Optimizer/Config.h"
@@ -30,13 +31,9 @@ struct EditResult {
   // Return a nullable, const & view.
   // TODO (C++ 26): use optional<const T&>
   const Result* resultAt(int bufferLine, int bufferCol) const {
-    int editLine = bufferLine - firstLine_;
-    if (editLine < 0 || editLine >= static_cast<int>(lineBaseIndex_.size()))
-      return nullptr;
-    int idx = lineBaseIndex_[editLine] + bufferCol;
-    if (idx < 0 || idx >= static_cast<int>(results_.size()))
-      return nullptr;
-    const Result& r = results_[idx];
+    int idx = resultIndexAt(bufferLine, bufferCol);
+    if (idx < 0) return nullptr;
+    const Result& r = results_[static_cast<size_t>(idx)];
     return r.isValid() ? &r : nullptr;
   }
 
@@ -45,6 +42,17 @@ struct EditResult {
 
   // Number of result entries
   size_t resultCount() const { return results_.size(); }
+
+  // Flat result index for a buffer position, or -1 if out of range.
+  int resultIndexAt(int bufferLine, int bufferCol) const {
+    int editLine = bufferLine - firstLine_;
+    if (editLine < 0 || editLine >= static_cast<int>(lineBaseIndex_.size()))
+      return -1;
+    int idx = lineBaseIndex_[editLine] + bufferCol;
+    if (idx < 0 || idx >= static_cast<int>(results_.size()))
+      return -1;
+    return idx;
+  }
 
 private:
   // Results indexed by flattened starting position
@@ -64,6 +72,12 @@ private:
 
 std::ostream& operator<<(std::ostream& os, const EditResult& editResult);
 
+struct PureDeletionEditResult {
+  EditResult editResult;
+  // Per-start goal cursor positions in buffer coordinates (same flat index as EditResult::getResults()).
+  std::vector<Position> goalPosByStart;
+};
+
 
 struct EditOptimizer {
   Config config;
@@ -74,6 +88,8 @@ struct EditOptimizer {
   // Uses suffix caching for cross-position sharing: when one starting position
   // finds a path through an intermediate state, the remaining commands are
   // cached so other positions reaching the same state get an instant result.
+  // goalLines must not be a pure-deletion goal ({} or {""}); pure deletions
+  // should use optimizePureDeletion().
   // Returns results indexed by flattened starting position
   EditResult optimizeEdit(
       const Lines& initialLines,
@@ -85,11 +101,26 @@ struct EditOptimizer {
       Position goalPos = {0, 0}
   );
 
+  PureDeletionEditResult optimizePureDeletion(
+      const Lines& initialLines,
+      EditBoundary editBoundary,
+      EditOptimizerParams params = {},
+      int bufferFirstLine = 0,
+      int bufferFirstCol = 0,
+      Position goalPos = {0, 0}
+  );
+
 
 private:
+  template<bool PureDeletion>
+  using OptimizeImplResult =
+      std::conditional_t<PureDeletion,
+                         PureDeletionEditResult,
+                         EditResult>;
+
   // Unified implementation: PureDeletion=true for deletion-only, false for full edit
   template<bool PureDeletion>
-  EditResult optimizeImpl(
+  OptimizeImplResult<PureDeletion> optimizeImpl(
       const Lines& initialLines,
       const Lines& goalLines,
       EditBoundary editBoundary,

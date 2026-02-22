@@ -203,6 +203,30 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesNoViable) {
   EXPECT_FALSE(res.results.empty());
 }
 
+TEST_F(CompositionOptimizerHumanApprovalTests, PureDeletionPositionAdjustment) {
+  // Pure deletion across disjoint lines should keep cursor transitions sensible.
+  Lines initial = {
+    "aaa",
+    "bbb",
+    "ccc",
+    "ddd"
+  };
+  Lines goal = {
+    "bbb",
+    "ccc"
+  };
+  Position initialPos(0, 0);
+  Position goalPos = goal.lastPos();
+
+  Config customConfig = Config::uniform();
+  customConfig.keyInfo[static_cast<int>(Key::Key_J)].base_cost = 0.1;
+  CompositionOptimizer custom_opt{customConfig};
+  CompositionResult res = custom_opt.optimize(initial, initialPos, goal, goalPos);
+  for(Result r : res.getResults()) {
+    cout << r << endl;
+  }
+  verifyCompResult(res, initial, initialPos, goal, "PureDeletionPositionAdjustment");
+}
 // TEST_F(CompositionOptimizerHumanApprovalTests, ModifyInParentheses) {
 //   // Delete a short word
 //   Lines initialLines = {
@@ -219,4 +243,3 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesNoViable) {
 //   cout << res << endl;
 //   // verifyResults(initialLines, initialPos, afterLines, res.goalPos);
 // }
-

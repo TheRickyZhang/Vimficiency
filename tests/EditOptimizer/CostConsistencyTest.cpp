@@ -46,7 +46,7 @@ TEST_F(EditOptimizerCostConsistencyTests, CostMatchesComputed) {
     EditBoundary boundary(lines, {0, 0}, lines.endPos());
     EditOptimizer opt(config);
 
-    EditResult res = opt.optimizeEdit(lines, {""}, boundary);
+    EditResult res = opt.optimizePureDeletion(lines, boundary).editResult;
 
     for (const auto& result : res.getResults()) {
       if (!result.isValid()) continue;

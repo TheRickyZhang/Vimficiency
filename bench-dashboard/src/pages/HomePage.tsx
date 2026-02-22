@@ -1,7 +1,8 @@
 import { Link } from '@tanstack/react-router';
 import { homeRoute, type OptimizerSlug } from '../router';
-import { parseName, toNanoseconds } from '../utils/data';
-import { fmtTime, type Nanoseconds } from '../utils/format';
+import { parseName, toNanoseconds, timeSeries, loadBenchmarkData } from '../utils/data';
+import { fmtTime, bestUnit, type Nanoseconds } from '../utils/format';
+import { BenchmarkChart } from '../components/BenchmarkChart';
 
 interface Change {
   name: string;
@@ -17,11 +18,10 @@ interface Change {
 const MAX_ITEMS = 5;
 const ALERT_RATIO = 1.5;
 
-const OPTIMIZER_LABELS: Record<OptimizerSlug, string> = {
+const OPTIMIZER_LABELS: Partial<Record<OptimizerSlug, string>> = {
   edit: 'EditOptimizer',
   motion: 'MotionOptimizer',
   composition: 'CompositionOptimizer',
-  tests: 'Unit Tests',
 };
 
 export function HomePage() {
@@ -29,6 +29,7 @@ export function HomePage() {
 
   const changes: Change[] = [];
   for (const { slug, data } of optimizers) {
+    if (slug === 'tests') continue;
     const runs = Object.values(data.entries)[0];
     if (!runs || runs.length < 2) continue;
     const latest = runs[runs.length - 1]!;
@@ -59,6 +60,15 @@ export function HomePage() {
     .sort((a, b) => a.pctChange - b.pctChange)
     .slice(0, MAX_ITEMS);
 
+  const testOptimizer = optimizers.find((o) => o.slug === 'tests');
+  const testSeries = (() => {
+    if (!testOptimizer) return null;
+    const runs = loadBenchmarkData(testOptimizer.data);
+    const totalName = 'Tests/Total/All';
+    const points = timeSeries(runs, totalName, testOptimizer.data.repoUrl);
+    return points.length > 0 ? points : null;
+  })();
+
   return (
     <>
       <h1>Vimficiency Benchmarks</h1>
@@ -66,7 +76,7 @@ export function HomePage() {
 
       <h2>Optimizers</h2>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">
-        {(['edit', 'motion', 'composition', 'tests'] as const).map((slug) => (
+        {(['edit', 'motion', 'composition'] as const).map((slug) => (
           <Link
             key={slug}
             to="/$optimizer"
@@ -80,6 +90,15 @@ export function HomePage() {
           </Link>
         ))}
       </div>
+
+      {testSeries && (
+        <div className="mt-10">
+          <h2>Test Duration</h2>
+          <div style={{ height: 300 }}>
+            <BenchmarkChart series={testSeries} unit={bestUnit(testSeries.map((p) => p.val))} />
+          </div>
+        </div>
+      )}
 
       <div className="mt-10">
         <div className="grid grid-cols-2 gap-6">

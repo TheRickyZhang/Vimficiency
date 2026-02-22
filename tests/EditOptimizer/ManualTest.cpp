@@ -116,7 +116,10 @@ void forEachValidResult(const vector<Result>& results, const Lines& lines, Fn fn
 TEST_F(EditOptimizer_ManualTest, PureDeletion_OracleVerified) {
   // Single test with oracle verification - stress tests cover more shapes
   Lines lines = {"aa", "bb"};
-  EditResult editRes = opt.optimizeEdit(lines, {}, EditBoundary(lines, Position(0, 0), lines.endPos()), params);
+  EditResult editRes = opt.optimizePureDeletion(
+      lines,
+      EditBoundary(lines, Position(0, 0), lines.endPos()),
+      params).editResult;
   const vector<Result>& res = editRes.getResults();
 
   EXPECT_TRUE(allPositionsValid(res, lines));
@@ -139,7 +142,7 @@ TEST_F(EditOptimizer_ManualTest, Boundary_LinesBelow) {
   Lines editRegion = fullBuffer.getSpan(initialPos, endPos);
   EditBoundary boundary(fullBuffer, initialPos, endPos);
 
-  EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
+  EditResult res = opt.optimizePureDeletion(editRegion, boundary, params).editResult;
   EXPECT_TRUE(allPositionsValid(res.getResults(), editRegion));
 }
 
@@ -151,7 +154,7 @@ TEST_F(EditOptimizer_ManualTest, Boundary_SingleLineSurrounded) {
   Lines editRegion = fullBuffer.getSpan(initialPos, endPos);
   EditBoundary boundary(fullBuffer, initialPos, endPos);
 
-  EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
+  EditResult res = opt.optimizePureDeletion(editRegion, boundary, params).editResult;
   // printResultsDebug(res.typeAllResults, "boundary line surrounded");
   EXPECT_TRUE(allPositionsValid(res.getResults(), editRegion));
 }
@@ -163,7 +166,7 @@ TEST_F(EditOptimizer_ManualTest, Boundary_LinewiseCursorContainment) {
   Lines editRegion = fullBuffer.getSpan(initialPos, endPos);
   EditBoundary boundary(fullBuffer, initialPos, endPos);
 
-  EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, params);
+  EditResult res = opt.optimizePureDeletion(editRegion, boundary, params).editResult;
 
   forEachValidResult(res.getResults(), editRegion, [&](Position pos, const auto& seq) {
     // Skip visual mode sequences for now

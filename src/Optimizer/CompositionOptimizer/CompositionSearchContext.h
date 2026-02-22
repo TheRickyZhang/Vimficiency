@@ -103,6 +103,11 @@ struct CompositionSearchContext {
   // Pre-computed edit solutions (one EditResult per diff, including pure insertions)
   std::vector<EditResult> editResults;
 
+  // For pure-deletion diffs only: per-start cursor landing positions after the
+  // selected edit sequence (same flat indexing as editResults[i].getResults()).
+  // Empty for non-pure-deletion diffs.
+  std::vector<std::vector<Position>> pureDeletionGoalPosByEdit;
+
   // Pre-computed J (join lines) plans: one per diff, present when J is viable
   std::vector<std::optional<JoinPlan>> joinPlans;
 

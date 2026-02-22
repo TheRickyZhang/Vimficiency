@@ -47,7 +47,7 @@ TEST_F(EditOptimizerOutputCorrectness, SingleLineEmbedded) {
 
   for (int iter = 0; iter < CNT; iter++) {
     auto test = generateRandomSingleLineEmbedded();
-    EditResult res = opt.optimizeEdit(test.editRegion, {""}, test.makeBoundary(), params);
+    EditResult res = opt.optimizePureDeletion(test.editRegion, test.makeBoundary(), params).editResult;
     string expected = test.expectedAfterDeletion();
 
     for (size_t i = 0; i < res.resultCount(); i++) {
@@ -87,7 +87,7 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineFullBuffer) {
     int numLines = RandomGen::range(2, 3);
     Lines source = randomLines(numLines, 4, 8);
     EditBoundary boundary(source, {0, 0}, source.endPos());
-    EditResult res = opt.optimizeEdit(source, {""}, boundary, params);
+    EditResult res = opt.optimizePureDeletion(source, boundary, params).editResult;
 
     for (size_t i = 0; i < res.resultCount(); i += 2) {
       const Result& r = res.getResults()[i];
@@ -163,7 +163,7 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineEmbedded) {
 
   for (int iter = 0; iter < REDUCED_CNT; iter++) {
     auto test = generateRandomMultiLineEmbedded();
-    EditResult res = opt.optimizeEdit(test.editRegion, {""}, test.makeBoundary(), params);
+    EditResult res = opt.optimizePureDeletion(test.editRegion, test.makeBoundary(), params).editResult;
     string expected = test.expectedAfterDeletion();
 
     // Test a subset of positions (every 4th to reduce test time)

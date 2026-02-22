@@ -441,7 +441,9 @@ TEST_F(DebugTest, DISABLED_InvestigateSingleLineSurrounded) {
   cerr << "suffix: '" << boundary.suffix() << "'" << endl;
 
   EditOptimizer opt(config);
-  EditResult res = opt.optimizeEdit(editRegion, {""}, boundary, EditOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(100000));
+  EditResult res = opt.optimizePureDeletion(
+      editRegion, boundary,
+      EditOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(100000)).editResult;
 
   cerr << "\nResults (typeAllResults):" << endl;
   for (int i = 0; i < static_cast<int>(res.typeAllResults.size()); i++) {
@@ -483,12 +485,16 @@ TEST_F(DebugTest, DISABLED_InvestigatePosition11) {
   cerr << "\n=== Comparing iteration limits ===" << endl;
 
   EditOptimizer opt10k(config);
-  EditResult res10k = opt10k.optimizePureDeletion(initialLines, boundary, EditOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(10000));
+  EditResult res10k = opt10k.optimizePureDeletion(
+      initialLines, boundary,
+      EditOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(10000)).editResult;
   cerr << "10K iterations: " << res10k.typeAllResults[11].getSequenceString()
        << " (cost=" << res10k.typeAllResults[11].keyCost << ")" << endl;
 
   EditOptimizer opt1m(config);
-  EditResult res1m = opt1m.optimizePureDeletion(initialLines, boundary, EditOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(1000000));
+  EditResult res1m = opt1m.optimizePureDeletion(
+      initialLines, boundary,
+      EditOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(1000000)).editResult;
   cerr << "1M iterations:  " << res1m.typeAllResults[11].getSequenceString()
        << " (cost=" << res1m.typeAllResults[11].keyCost << ")" << endl;
 }
