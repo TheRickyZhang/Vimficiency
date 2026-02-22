@@ -1,7 +1,7 @@
 #pragma once
 
 #include <vector>
-#include "VimCore/EdgeType.h"
+#include "VimTypes/EdgeType.h"
 #include "Keyboard/KeyedSequence.h"
 
 // =============================================================================

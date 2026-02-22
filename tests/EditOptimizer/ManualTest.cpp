@@ -10,13 +10,13 @@
 #include <gtest/gtest.h>
 #include <memory>
 
-#include "Editor/Edit.h"
-#include "Editor/Mode.h"
-#include "Editor/Position.h"
+#include "Interpreter/EditInterpreter.h"
+#include "VimTypes/Mode.h"
+#include "VimTypes/Position.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Boundary/EditBoundary.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Lines.h"
 // #include "Utils/TestUtils.h"
 #include "Utils/NeovimOracle.h"
 

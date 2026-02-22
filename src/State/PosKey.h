@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstddef>
-#include "Editor/Position.h"
+#include "VimTypes/Position.h"
 
 struct PosKey {
   int line;

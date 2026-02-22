@@ -5,7 +5,7 @@
 #include <cassert>
 
 #include "Boundary/EditBoundary.h"
-#include "Editor/Position.h"
+#include "VimTypes/Position.h"
 
 using namespace std;
 

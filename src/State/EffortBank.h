@@ -3,8 +3,8 @@
 #include <array>
 
 #include "RunningEffort.h"
+#include "Keyboard/Config.h"
 #include "Keyboard/KeyedSequence.h"
-#include "Optimizer/Config.h"
 
 // Pre-computed RunningEffort for each static KeyedSequence constant (indexed by KSId).
 // Avoids recomputing effort from keys on every emitMotion call.
@@ -13,7 +13,7 @@ struct EffortBank {
 
   explicit EffortBank(const Config& config) {
     for (int i = 0; i < KS_COUNT; ++i) {
-      efforts[i].append(ksById(static_cast<KSId>(i)).keys, config);
+      efforts[i] = RunningEffort(ksById(static_cast<KSId>(i)).keys, config);
     }
   }
 

@@ -5,7 +5,6 @@
 
 #include "CharToKeys.h"
 #include "SequenceTokenizer.h"
-#include "Optimizer/BufferIndex.h"  // for CountableMotionPair, LandingType
 #include "Keyboard/CommandToKeys.h"
 
 // std::less<> enables transparent comparison - allows lookup with string_view
@@ -28,15 +27,6 @@ extern const MotionToKeys EXPLORABLE_MOTIONS;
 
 // Single-character to PhysicalKeys mapping (for f/F/t/T motion targets)
 extern const CharToKeys CHAR_TO_KEYS;
-
-// COUNT_SEARCHABLE = what motions we want to find best prefix counts for
-// Only apply when same line as end
-extern const std::vector<CountableMotionPair> COUNT_SEARCHABLE_MOTIONS_LINE;
-// No restrictions
-extern const std::vector<CountableMotionPair> COUNT_SEARCHABLE_MOTIONS_GLOBAL;
-
-// Combine line + global
-extern const std::vector<std::string> COUNT_SEARCHABLE_MOTIONS;
 
 // =============================================================================
 // Utilities

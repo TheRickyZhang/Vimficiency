@@ -94,8 +94,8 @@ Several maps for different purposes:
 | `ACTION_MOTIONS_TO_KEYS` | Physical actions for tokenizing raw input |
 | `ALL_MOTIONS` | All supported vim motions for parsing/validation |
 | `EXPLORABLE_MOTIONS` | Motions directly usable in optimizer search (excludes f/F/t/T which need target char) |
-| `COUNT_SEARCHABLE_MOTIONS_LINE` | Motions where we search for optimal count (same-line only) |
-| `COUNT_SEARCHABLE_MOTIONS_GLOBAL` | Motions where we search for optimal count (any position) |
+
+Count-search motion pair specs (`w/b`, `e/ge`, paragraph/sentence categories) are owned by MotionOptimizer (`Optimizer/MotionOptimizer/CountableMotionPair.h`), not Keyboard.
 
 ### EditToKeys (`EditToKeys.h`)
 

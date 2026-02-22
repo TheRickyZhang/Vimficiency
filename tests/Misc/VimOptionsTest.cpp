@@ -8,11 +8,11 @@
 
 #include <gtest/gtest.h>
 
-#include "Editor/Motion.h"
-#include "Editor/NavContext.h"
+#include "Interpreter/MotionInterpreter.h"
+#include "VimTypes/NavContext.h"
 #include "Optimizer/BuildTypedCommands.h"
-#include "Utils/Indentation.h"
-#include "Utils/Lines.h"
+#include "Optimizer/Indentation.h"
+#include "VimTypes/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "VimCore/VimEditUtils.h"
 #include "VimCore/VimOptions.h"

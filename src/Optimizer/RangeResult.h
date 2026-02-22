@@ -3,8 +3,8 @@
 #include <string>
 #include <ostream>
 
-#include "Editor/Position.h"
-#include "State/Sequence.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Sequence.h"
 
 // Result with end position, used by optimizeToRange
 struct RangeResult {

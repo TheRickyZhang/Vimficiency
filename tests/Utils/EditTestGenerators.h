@@ -7,8 +7,8 @@
 #pragma once
 
 #include "Boundary/EditBoundary.h"
-#include "Editor/Position.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Lines.h"
 #include "Utils/RandomBufferHelpers.h"  // Core random generation
 
 #include <string>

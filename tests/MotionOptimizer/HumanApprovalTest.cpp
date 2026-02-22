@@ -9,12 +9,12 @@
 
 #include <gtest/gtest.h>
 
-#include "Editor/NavContext.h"
+#include "VimTypes/NavContext.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Boundary/MotionBoundary.h"
 #include "State/RunningEffort.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Lines.h"
 #include "Utils/TestUtils.h"  // hasSequence, hasSequenceStartingWith, printResultsDebug
 
 using namespace std;

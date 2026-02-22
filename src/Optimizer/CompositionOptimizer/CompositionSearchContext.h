@@ -14,12 +14,12 @@
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Optimizer/SearchStats.h"
 #include "Boundary/MotionBoundary.h"
-#include "Editor/NavContext.h"
-#include "Editor/Position.h"
+#include "VimTypes/NavContext.h"
+#include "VimTypes/Position.h"
 #include "State/CompositionState.h"
-#include "Utils/BracketFlags.h"
-#include "Utils/Lines.h"
-#include "Utils/QuoteFlags.h"
+#include "VimTypes/BracketFlags.h"
+#include "VimTypes/Lines.h"
+#include "VimTypes/QuoteFlags.h"
 
 // =============================================================================
 // TextObjectContext

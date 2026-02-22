@@ -5,8 +5,8 @@
 #include <string_view>
 #include <tuple>
 
-#include "EdgeType.h"
-#include "Utils/Lines.h"
+#include "VimTypes/EdgeType.h"
+#include "VimTypes/Lines.h"
 
 namespace VimCore {
 

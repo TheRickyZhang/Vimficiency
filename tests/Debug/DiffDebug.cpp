@@ -15,7 +15,7 @@
 #include <string>
 
 #include "Optimizer/CompositionOptimizer/DiffState.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Lines.h"
 
 using namespace std;
 

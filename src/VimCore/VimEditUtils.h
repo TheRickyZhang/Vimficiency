@@ -3,11 +3,11 @@
 #include <string>
 #include <string_view>
 
-#include "Editor/Mode.h"
-#include "Editor/Position.h"
-#include "Editor/Range.h"
-#include "Editor/LineRange.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Mode.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Range.h"
+#include "VimTypes/LineRange.h"
+#include "VimTypes/Lines.h"
 
 // Edit operations that modify buffer content.
 //

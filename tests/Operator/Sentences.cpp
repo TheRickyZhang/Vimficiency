@@ -7,8 +7,8 @@
 
 #include <gtest/gtest.h>
 
-#include "Editor/Range.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Range.h"
+#include "VimTypes/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomGeneration.h"
 #include "VimCore/VimEndpointUtils.h"

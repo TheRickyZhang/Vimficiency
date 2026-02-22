@@ -8,12 +8,12 @@
 
 #include <gtest/gtest.h>
 
-#include "Editor/NavContext.h"
+#include "VimTypes/NavContext.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Boundary/EditBoundary.h"
 #include "Optimizer/EditOptimizer/EditOptimizerParams.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Lines.h"
 
 using namespace std;
 

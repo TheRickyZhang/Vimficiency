@@ -2,12 +2,12 @@
 
 #include "PosKey.h"
 #include "RunningEffort.h"
-#include "Sequence.h"
-#include "Editor/Position.h"
-#include "Editor/Mode.h"
-#include "Editor/NavContext.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Mode.h"
+#include "VimTypes/Sequence.h"
+#include "VimTypes/NavContext.h"
 #include "Keyboard/KeyedSequence.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Lines.h"
 
 // Entire simulated editor state (for now, only position+mode+effort).
 class MotionState {

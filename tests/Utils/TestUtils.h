@@ -2,7 +2,7 @@
 
 #include "Optimizer/Result.h"
 #include "Keyboard/KeyboardModel.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Lines.h"
 
 #include <algorithm>
 #include <cassert>

@@ -19,7 +19,7 @@ std::ostream& operator<<(std::ostream& os, const PhysicalKeys& ks) {
   return os;
 }
 
-PhysicalKeys makeCountedKeys(int count, const PhysicalKeys& motionKeys) {
+PhysicalKeys makeCountedKeys(const PhysicalKeys& motionKeys, int count) {
   assert(count >= 0);
   if (count == 0) return motionKeys;
 

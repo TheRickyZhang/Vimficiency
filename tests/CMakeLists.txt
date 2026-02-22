@@ -149,6 +149,7 @@ target_link_libraries(vimficiency_benchmarks
 # Run with: VIMFICIENCY_SEED_MODE=fixed ./vimficiency_explore
 
 add_executable(vimficiency_explore
+  Exploration/SequenceChunker.cpp
   Exploration/ExplorationCollector.cpp
 )
 

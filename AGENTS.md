@@ -5,8 +5,10 @@
 Vimficiency is a Vim bindings optimizer that analyzes user's actions and recommends more efficient sequences. The general algorithm is a heuristical A* search with keyboard-aware cost modeling, powered by a high-level, efficient vim command simulator.
 
 **Folder structure:**
+- `src/VimTypes`: Shared vim-facing value types and enums (positions/ranges/modes/sequences/lines/flags/landing and edge categories)
 - `lua/vimficiency/`: Neovim-level code (buffer management, session storage)
-- `src/Editor`: Neovim editor representation
+- `src/Interpreter`: Arbitrary command parsing/interpreting adapters (`parse*`, `apply*`, `simulate*`)
+- `src/Session`: Snapshot/session file I/O
 - `src/Keyboard`: Keyboard primitives and sequence-to-key conversion
 - `src/Optimizer`: Algorithm logic for optimization
 - `src/State`: State tracked in Optimizer classes
@@ -15,7 +17,7 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 - `src/lua_exports.cpp`: C++ to Lua FFI interface
 - `tests/`: GoogleTest suite
 
-**Dependency order** (most to least dependent): Optimizer → Editor, State → Keyboard, VimCore
+**Dependency order** (most to least dependent): Optimizer → State/Interpreter/VimCore/Keyboard/Boundary/Utils/VimTypes, State → Interpreter/VimCore/Keyboard/Utils/VimTypes, Interpreter → VimCore/Keyboard/Utils/VimTypes, Session → VimTypes, VimCore → Boundary/Utils/VimTypes, Keyboard → Utils/VimTypes, Boundary → Utils/VimTypes
 
 ## Terminology
 - **Key**: Physical key (61 supported, defined in KeyboardModel.h)

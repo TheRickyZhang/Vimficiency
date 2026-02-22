@@ -10,9 +10,7 @@ using namespace std;
 // Helper: precompute RunningEffort for a KeyedSequence and cache by address.
 static void cacheEffort(unordered_map<const void*, RunningEffort>& cache,
                         const KeyedSequence& ks, const Config& config) {
-  RunningEffort re;
-  re.append(ks.keys, config);
-  cache[&ks] = re;
+  cache[&ks] = RunningEffort(ks.keys, config);
 }
 
 EditSearchContext::EditSearchContext(const Lines& initialLines,
@@ -92,13 +90,13 @@ bool EditSearchContext::exploreBoundaryEscape(const EditState& state,
 
     if (onMotion) {
       if (cursor.col > 0) {
-        onMotion(Position(cursor.line, cursor.col - 1), KeyedSequence::h,
-                 effortFor(KeyedSequence::h));
+        onMotion(Position(cursor.line, cursor.col - 1),
+                 SequenceBinding(KeyedSequence::h, effortFor(KeyedSequence::h)));
       }
       if (cursor.line > 0) {
         int newCol = std::min(cursor.targetCol, lines[cursor.line - 1].lastCol());
-        onMotion(Position(cursor.line - 1, newCol, cursor.targetCol), KeyedSequence::k,
-                 effortFor(KeyedSequence::k));
+        onMotion(Position(cursor.line - 1, newCol, cursor.targetCol),
+                 SequenceBinding(KeyedSequence::k, effortFor(KeyedSequence::k)));
       }
     }
     return true;
@@ -108,13 +106,13 @@ bool EditSearchContext::exploreBoundaryEscape(const EditState& state,
   if (cursor.line == 0 && cursor.col < leftColOffset) {
     if (onMotion) {
       if (cursor.col < static_cast<int>(lines[0].size()) - 1) {
-        onMotion(Position(0, cursor.col + 1), KeyedSequence::l,
-                 effortFor(KeyedSequence::l));
+        onMotion(Position(0, cursor.col + 1),
+                 SequenceBinding(KeyedSequence::l, effortFor(KeyedSequence::l)));
       }
       if (lines.lastLine() > 0) {
         int newCol = std::min(cursor.targetCol, lines[1].lastCol());
-        onMotion(Position(1, newCol, cursor.targetCol), KeyedSequence::j,
-                 effortFor(KeyedSequence::j));
+        onMotion(Position(1, newCol, cursor.targetCol),
+                 SequenceBinding(KeyedSequence::j, effortFor(KeyedSequence::j)));
       }
     }
     return true;
@@ -137,18 +135,18 @@ void EditSearchContext::exploreNewState(EditState&& state) {
 }
 
 void EditSearchContext::exploreWithDot(EditState&& afterState, const EditState& base,
-                                       int count, const KeyedSequence& baseKS,
-                                       const RunningEffort& effort, double hCost) {
+                                       const SequenceBinding& sourceCmd, double hCost) {
   bool isDot = base.hasLastEdit() &&
-               base.getLastEditCount() == count &&
-               base.getLastEditBase() == baseKS.seq.view();
+               base.getLastEditCount() == sourceCmd.count &&
+               base.getLastEditBase() == sourceCmd.base.seq.view();
 
   if (isDot) {
     // Dot path: use pre-computed Period effort (always available)
     afterState.recordSearch(".", periodEffort_, effortWeight, hCost, config);
   } else {
-    afterState.recordSearch(count, baseKS.seq.view(), effort, effortWeight, hCost, config);
-    afterState.setLastEdit(count, baseKS.seq.view());
+    afterState.recordSearch(sourceCmd.count, sourceCmd.base.seq.view(),
+                            sourceCmd.effort, effortWeight, hCost, config);
+    afterState.setLastEdit(sourceCmd.count, sourceCmd.base.seq.view());
   }
   exploreNewState(std::move(afterState));
 }

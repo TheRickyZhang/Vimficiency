@@ -6,7 +6,7 @@
 
 #include <gtest/gtest.h>
 #include "Optimizer/MotionOptimizer/MotionClassMask.h"
-#include "Editor/Position.h"
+#include "VimTypes/Position.h"
 #include <vector>
 #include <utility>
 

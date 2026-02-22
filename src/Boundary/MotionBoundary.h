@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Boundary/BoundaryContext.h"
-#include "Editor/Position.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Lines.h"
 
 // Forward declaration
 struct EditBoundary;

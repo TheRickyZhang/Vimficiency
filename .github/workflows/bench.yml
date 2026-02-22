@@ -2,8 +2,16 @@ name: CI
 on: [push, pull_request]
 
 jobs:
+  dependency-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint module dependencies
+        run: ./scripts/lint-module-deps.sh
+
   test:
     runs-on: ubuntu-latest
+    needs: dependency-lint
     steps:
       - uses: actions/checkout@v4
 

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Editor/Position.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Lines.h"
 
 // =============================================================================
 // BoundaryContext: Shared boundary offset/line info for constrained operations

@@ -38,7 +38,7 @@ class PhysicalKeys {
 public:
   PhysicalKeys() = default;
   PhysicalKeys(std::initializer_list<Key> init) : keys(init) {}
-  PhysicalKeys(size_t count, Key k) : keys(count, k) {}
+  PhysicalKeys(Key k, size_t count) : keys(count, k) {}
   PhysicalKeys(std::span<const Key> s) : keys(s.begin(), s.end()) {}
 
   size_t size() const { return keys.size(); }
@@ -69,8 +69,8 @@ std::ostream& operator<<(std::ostream& os, const PhysicalKeys& ks);
 // Build keys for an optionally-counted motion:
 // - count > 0: {count digits} + {motion keys}
 // - count = 0: uncounted {motion keys}
-// E.g., makeCountedKeys(3, wKeys) -> "3" + "w", makeCountedKeys(0, wKeys) -> "w"
-PhysicalKeys makeCountedKeys(int count, const PhysicalKeys& motionKeys);
+// E.g., makeCountedKeys(wKeys, 3) -> "3" + "w", makeCountedKeys(wKeys, 0) -> "w"
+PhysicalKeys makeCountedKeys(const PhysicalKeys& motionKeys, int count);
 
 static_assert(KEY_COUNT == static_cast<uint8_t>(Key::None),
               "key counts do not match");

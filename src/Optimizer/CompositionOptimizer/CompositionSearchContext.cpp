@@ -331,8 +331,8 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
       Lines insertLines = Lines::unflatten(diff.insertedText);
       KeyedSequence full = KeyedSequence::i;
       full += buildTypedCommands(insertLines);
-      RunningEffort runningEffort;
-      double effort = runningEffort.append(full.keys, config);
+      RunningEffort runningEffort(full.keys, config);
+      double effort = runningEffort.getEffort(config);
 
       std::vector<Result> insertResults(1);
       insertResults[0] = Result(std::move(full.seq), effort);

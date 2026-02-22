@@ -1,7 +1,6 @@
 #include <filesystem>
 #include <string>
-#include <vector>
-#include "Utils/Lines.h"
+#include "VimTypes/Lines.h"
 
 struct Snapshot {
   std::string bufname;

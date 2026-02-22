@@ -1,4 +1,4 @@
-#include "Edit.h"
+#include "EditInterpreter.h"
 #include "VimCore/VimCore.h"
 #include "VimCore/VimEditUtils.h"
 #include "VimCore/VimEndpointUtils.h"
@@ -7,7 +7,7 @@
 #include "VimCore/VimTextObjectsDeprecated.h"
 #include "VimCore/VimCore.h"
 #include "Utils/Debug.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Lines.h"
 
 #include <cassert>
 #include <algorithm>
@@ -174,16 +174,6 @@ void yankRange(Lines& lines, Position& pos, Mode mode, const Range& range) {
   pos = r.first;
 }
 
-// -----------------------------------------------------------------------------
-// Insert mode text insertion (called directly for typed characters)
-// -----------------------------------------------------------------------------
-
-void insertText(Lines& lines, Position& pos, Mode mode, string_view text) {
-  assert(mode == Mode::Insert);
-  VimCore::insertText(lines, pos, text);
-}
-
-// -----------------------------------------------------------------------------
 // Application
 // -----------------------------------------------------------------------------
 

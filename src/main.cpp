@@ -7,8 +7,8 @@
 #include "Optimizer/Config.h"
 #include "Boundary/MotionBoundary.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
-#include "Editor/Snapshot.h"
-#include "Editor/NavContext.h"
+#include "Session/Snapshot.h"
+#include "VimTypes/NavContext.h"
 #include "Utils/Debug.h"
 
 using namespace std;

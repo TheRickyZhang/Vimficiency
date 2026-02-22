@@ -3,28 +3,29 @@
 #include <functional>
 
 #include "EditToSpec.h"
-#include "Editor/LineRange.h"
-#include "Editor/Position.h"
-#include "Editor/Range.h"
+#include "VimTypes/LineRange.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Range.h"
 #include "Keyboard/KeyedSequence.h"
 #include "State/EditState.h"
+#include "Optimizer/SequenceBinding.h"
 #include "State/RunningEffort.h"
-#include "Utils/Lines.h"
-#include "VimCore/EdgeType.h"
+#include "VimTypes/Lines.h"
+#include "VimTypes/EdgeType.h"
 
 // Forward declarations
 struct EditSearchContext;
 struct EditBoundary;
 
 // Forward declare callback types (defined in EditSearchContext.h)
-// Each callback receives (count, baseKS, effort). count=0 for uncounted commands.
-using DeletionCallback = std::function<void(const Range&, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
-using LinewiseCallback = std::function<void(int line, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
-using JoinCallback = std::function<void(bool addSpace, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
+// Each callback receives a fully bound command payload.
+using DeletionCallback = std::function<void(const Range&, const SequenceBinding&)>;
+using LinewiseCallback = std::function<void(int line, const SequenceBinding&)>;
+using JoinCallback = std::function<void(bool addSpace, const SequenceBinding&)>;
 
 // Counted operation callbacks
-using CountedLinewiseCallback = std::function<void(LineRange, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
-using CountedJoinCallback = std::function<void(int count, bool addSpace, const KeyedSequence& baseKS, const RunningEffort&)>;
+using CountedLinewiseCallback = std::function<void(LineRange, const SequenceBinding&)>;
+using CountedJoinCallback = std::function<void(bool addSpace, const SequenceBinding&)>;
 
 // EditExplorer handles exploration of edit operations from a given state.
 // Separated from EditSearchContext for cleaner organization and future extensibility.

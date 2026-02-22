@@ -1,12 +1,11 @@
 // src/lua_exports.cpp
 
-#include "Editor/Motion.h"
-#include "Editor/SequenceParser.h"
+#include "Interpreter/MotionInterpreter.h"
+#include "Interpreter/SequenceParser.h"
 #include "Keyboard/KeyboardModel.h"
 #include "State/CommandSequence.h"
 #include "State/RunningEffort.h"
 #include "Keyboard/XMacroKeyDefinitions.h"
-#include "Optimizer/Config.h"
 #include "Optimizer/CountPenalty.h"
 #include "Optimizer/GlobalRuntimeOptions.h"
 #include "Boundary/MotionBoundary.h"
@@ -14,7 +13,7 @@
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Utils/CoutCapture.h"
 #include "Utils/Debug.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Lines.h"
 #include "VimCore/VimOptions.h"
 #include <algorithm>
 #include <iomanip>

@@ -6,8 +6,8 @@
 
 #pragma once
 
-#include "Editor/Position.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomBufferHelpers.h"  // Core random generation
 #include "VimCore/VimEndpointUtils.h"

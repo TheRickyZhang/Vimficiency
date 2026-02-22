@@ -7,9 +7,9 @@
 
 #include <gtest/gtest.h>
 
-#include "Editor/Motion.h"
-#include "Editor/NavContext.h"
-#include "Utils/Lines.h"
+#include "Interpreter/MotionInterpreter.h"
+#include "VimTypes/NavContext.h"
+#include "VimTypes/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomGeneration.h"
 

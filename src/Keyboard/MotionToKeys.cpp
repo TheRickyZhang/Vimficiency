@@ -8,20 +8,6 @@ using namespace std;
 #include "MotionToKeysPrimitives.h"
 #include "Utils/Debug.h"
 
-vector<string> getCountableMotions(const vector<CountableMotionPair>& firstVec, const vector<CountableMotionPair>& secondVec) {
-  vector<string> res;
-  res.reserve(2 * (firstVec.size() + secondVec.size()));
-  for(const auto& x : firstVec) {
-    res.push_back(x.forward.seq.str());
-    res.push_back(x.backward.seq.str());
-  }
-  for(const auto& x : secondVec) {
-    res.push_back(x.forward.seq.str());
-    res.push_back(x.backward.seq.str());
-  }
-  return res;
-}
-
 // =============================================================================
 // Global Tokenizer
 // =============================================================================
@@ -89,23 +75,6 @@ static MotionToKeys buildAllMotions() {
 const MotionToKeys ALL_MOTIONS = buildAllMotions();
 
 // CHAR_TO_KEYS is now defined in CharToKeys.cpp
-
-using KS = KeyedSequence;
-
-const vector<CountableMotionPair> COUNT_SEARCHABLE_MOTIONS_LINE = {
-  {KS::w,      KS::b,  LandingType::WordBegin},
-  {KS::e,      KS::ge, LandingType::WordEnd},
-  {KS::W,      KS::B,  LandingType::WORDBegin},
-  {KS::E,      KS::gE, LandingType::WORDEnd},
-};
-
-const vector<CountableMotionPair> COUNT_SEARCHABLE_MOTIONS_GLOBAL = {
-  {KS::RBrace, KS::LBrace, LandingType::Paragraph},
-  {KS::RParen, KS::LParen, LandingType::Sentence},
-  // Note: scrolls (<C-f>, <C-b>, etc.) don't map to LandingType - handle separately
-};
-
-const vector<string> COUNT_SEARCHABLE_MOTIONS = getCountableMotions(COUNT_SEARCHABLE_MOTIONS_LINE, COUNT_SEARCHABLE_MOTIONS_GLOBAL);
 
 // =============================================================================
 // Utilities

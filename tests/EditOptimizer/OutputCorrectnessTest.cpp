@@ -9,11 +9,11 @@
 #include <memory>
 
 #include "Boundary/EditBoundary.h"
-#include "Editor/Position.h"
+#include "VimTypes/Position.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Utils/EditTestGenerators.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"

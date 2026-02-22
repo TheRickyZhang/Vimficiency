@@ -10,11 +10,11 @@
 #include <memory>
 
 #include "Boundary/MotionBoundary.h"
-#include "Editor/NavContext.h"
+#include "VimTypes/NavContext.h"
 #include "Keyboard/MotionToKeys.h"
 #include "Optimizer/CompositionOptimizer/CompositionSearchContext.h"
 #include "Optimizer/Config.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomGeneration.h"
 

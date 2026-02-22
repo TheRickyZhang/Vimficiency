@@ -2,11 +2,11 @@
 
 #include <string_view>
 
-#include "Editor/Mode.h"
-#include "Editor/Position.h"
+#include "VimTypes/Mode.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Sequence.h"
 #include "Keyboard/KeyboardModel.h"
 #include "RunningEffort.h"
-#include "Sequence.h"
 
 // =============================================================================
 // CompositionStateKey: Unique identifier for deduplication in A* search

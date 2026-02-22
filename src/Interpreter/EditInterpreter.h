@@ -4,11 +4,11 @@
 #include <string_view>
 #include <vector>
 
-#include "Mode.h"
-#include "Position.h"
-#include "Range.h"
-#include "NavContext.h"
-#include "Utils/Lines.h"
+#include "VimTypes/NavContext.h"
+#include "VimTypes/Mode.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Range.h"
+#include "VimTypes/Lines.h"
 
 // Parsed edit (operator + motion/text-object, or single-key command)
 class ParsedEdit {
@@ -43,14 +43,6 @@ void changeRange(Lines& lines, Position& pos, Mode& mode, const Range& range);
 // y{range} - yank range (Normal mode only, no buffer change)
 void yankRange(Lines& lines, Position& pos, Mode mode, const Range& range);
 
-// -----------------------------------------------------------------------------
-// Insert mode text insertion
-// Called directly for typed characters in Insert mode.
-// -----------------------------------------------------------------------------
-
-void insertText(Lines& lines, Position& pos, Mode mode, std::string_view text);
-
-// -----------------------------------------------------------------------------
 // Edit dispatcher
 // Routes parsed edit commands to appropriate operations.
 // -----------------------------------------------------------------------------

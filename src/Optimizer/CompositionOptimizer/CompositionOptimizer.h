@@ -12,9 +12,9 @@
 #include "Optimizer/SearchStats.h"
 
 #include "Boundary/MotionBoundary.h"
-#include "Editor/NavContext.h"
-#include "Editor/Position.h"
-#include "Utils/Lines.h"
+#include "VimTypes/NavContext.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Lines.h"
 
 struct CompositionResult {
   std::vector<Result> results;

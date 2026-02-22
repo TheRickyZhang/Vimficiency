@@ -7,8 +7,8 @@
 #include <gtest/gtest.h>
 
 #include "Boundary/EditBoundary.h"
-#include "Editor/LineRange.h"
-#include "Utils/Lines.h"
+#include "VimTypes/LineRange.h"
+#include "VimTypes/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"

@@ -4,8 +4,8 @@
 #include <vector>
 
 #include "Boundary/EditBoundary.h"
-#include "Editor/Position.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Lines.h"
 
 // Represents a single contiguous change region at CHARACTER granularity.
 // Unlike line-level diffs, this can represent:

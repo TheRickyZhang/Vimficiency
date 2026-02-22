@@ -5,13 +5,13 @@
 #include <string>
 #include <string_view>
 
-#include "Editor/LineRange.h"
-#include "Editor/Mode.h"
-#include "Editor/Position.h"
-#include "Editor/Range.h"
-#include "Optimizer/Config.h"
+#include "Keyboard/Config.h"
+#include "VimTypes/LineRange.h"
+#include "VimTypes/Mode.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Range.h"
 #include "RunningEffort.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Lines.h"
 #include "Keyboard/KeyboardModel.h"
 #include "VimCore/VimEditUtils.h"
 
@@ -198,4 +198,3 @@ public:
     return os;
   }
 };
-

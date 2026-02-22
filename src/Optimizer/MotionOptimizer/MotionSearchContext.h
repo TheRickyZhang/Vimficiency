@@ -9,11 +9,11 @@
 #include "Optimizer/SearchStats.h"
 #include "Boundary/MotionBoundary.h"
 #include "State/EffortBank.h"
-#include "Editor/NavContext.h"
-#include "Editor/Position.h"
+#include "VimTypes/NavContext.h"
+#include "VimTypes/Position.h"
 #include "State/MotionState.h"
 #include "State/PosKey.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Lines.h"
 
 // MotionSearchContext encapsulates shared state and logic for motion optimization search.
 // Used by both optimize() (single goal) and optimizeToRange() (range goal).

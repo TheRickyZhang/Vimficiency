@@ -4,6 +4,10 @@
 #include "Keyboard/KeyboardUtils.h"
 #include "Keyboard/MotionToKeys.h"
 
+RunningEffort::RunningEffort(const PhysicalKeys& keys, const Config& model) {
+  append(keys, model);
+}
+
 double RunningEffort::getEffort(const Config &model) const {
   const auto &w = model.weights;
 
@@ -206,7 +210,6 @@ double RunningEffort::appendFrom(const RunningEffort& other, const Config& model
 double getEffort(std::string_view seq,
                  const Config      &cfg) {
   PhysicalKeys keys = globalTokenizer().tokenize(seq);
-  RunningEffort st;
-  return st.append(keys, cfg);
+  RunningEffort st(keys, cfg);
+  return st.getEffort(cfg);
 }
-

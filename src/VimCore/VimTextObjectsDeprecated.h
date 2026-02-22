@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Editor/Range.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Range.h"
+#include "VimTypes/Lines.h"
 
 // =============================================================================
 // DEPRECATED: Quote and Bracket text object implementations

@@ -4,9 +4,9 @@
 #include <string_view>
 #include <utility>
 
-#include "Editor/Position.h"
-#include "Utils/Lines.h"
-#include "EdgeType.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Lines.h"
+#include "VimTypes/EdgeType.h"
 
 // VimCore: Character classification, string helpers, position stepping,
 // and core word motion logic. Used by VimMotionUtils, VimEndpointUtils,

@@ -8,10 +8,10 @@
 #include <string_view>
 #include <vector>
 
-#include "Mode.h"
-#include "NavContext.h"
-#include "Position.h"
-#include "Utils/Lines.h"
+#include "VimTypes/NavContext.h"
+#include "VimTypes/Mode.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Lines.h"
 
 struct ParsedMotion {
 private:

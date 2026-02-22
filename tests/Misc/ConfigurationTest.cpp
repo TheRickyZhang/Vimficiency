@@ -6,7 +6,7 @@
 
 #include <gtest/gtest.h>
 
-#include "Editor/NavContext.h"
+#include "VimTypes/NavContext.h"
 #include "Utils/TestUtils.h"
 
 #include "Keyboard/MotionToKeys.h"

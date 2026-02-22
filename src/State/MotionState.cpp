@@ -1,5 +1,5 @@
 #include "MotionState.h"
-#include "Editor/Motion.h"
+#include "Interpreter/MotionInterpreter.h"
 
 using namespace std;
 
@@ -77,7 +77,7 @@ void MotionState::applyCountedMotionImpl(const KeyedSequence& baseMotion, int cn
     motionSequence.append(to_string(cnt));
   }
   motionSequence.append(baseMotion.seq.view());
-  effort = runningEffort.append(makeCountedKeys(abs(cnt), baseMotion.keys), config);
+  effort = runningEffort.append(makeCountedKeys(baseMotion.keys, abs(cnt)), config);
   if (extraPenalty > 0.0) {
     runningEffort.addPenalty(extraPenalty);
     effort = runningEffort.getEffort(config);

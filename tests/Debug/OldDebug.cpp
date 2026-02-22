@@ -15,9 +15,9 @@
 // #include "VimCore/VimCore.h"
 // #include "VimCore/VimEndpointUtils.h"
 // #include "VimCore/VimMotionUtils.h"
-// #include "VimCore/SentenceEdgeType.h"
-// #include "Editor/Motion.h"
-// #include "Editor/Edit.h"
+// #include "VimTypes/SentenceEdgeType.h"
+// #include "Interpreter/MotionInterpreter.h"
+// #include "Interpreter/EditInterpreter.h"
 
 using namespace std;
 

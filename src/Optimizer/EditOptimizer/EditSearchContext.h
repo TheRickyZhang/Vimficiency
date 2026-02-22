@@ -8,27 +8,28 @@
 #include "EditOptimizerParams.h"
 #include "Optimizer/SearchStats.h"
 #include "Boundary/EditBoundary.h"
-#include "Editor/LineRange.h"
-#include "Editor/Position.h"
-#include "Editor/Range.h"
+#include "VimTypes/LineRange.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Range.h"
 #include "Keyboard/KeyedSequence.h"
 #include "State/EditState.h"
-#include "Utils/Lines.h"
+#include "Optimizer/SequenceBinding.h"
+#include "VimTypes/Lines.h"
 
 // Forward declaration
 class EditExplorer;
 
 // Callback types (also defined in EditExplorer.h for standalone use)
-// Each callback receives (count, baseKS, effort). count=0 for uncounted commands.
-// MotionCallback is unchanged — motions don't go through exploreWithDot or dot repeat.
-using DeletionCallback = std::function<void(const Range&, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
-using LinewiseCallback = std::function<void(int line, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
-using MotionCallback = std::function<void(const Position&, const KeyedSequence&, const RunningEffort&)>;
-using JoinCallback = std::function<void(bool addSpace, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
+// Each callback receives a fully bound command payload:
+// (count, base command, associated effort).
+using DeletionCallback = std::function<void(const Range&, const SequenceBinding&)>;
+using LinewiseCallback = std::function<void(int line, const SequenceBinding&)>;
+using MotionCallback = std::function<void(const Position&, const SequenceBinding&)>;
+using JoinCallback = std::function<void(bool addSpace, const SequenceBinding&)>;
 
 // Counted operation callbacks
-using CountedLinewiseCallback = std::function<void(LineRange, int count, const KeyedSequence& baseKS, const RunningEffort&)>;
-using CountedJoinCallback = std::function<void(int count, bool addSpace, const KeyedSequence& baseKS, const RunningEffort&)>;
+using CountedLinewiseCallback = std::function<void(LineRange, const SequenceBinding&)>;
+using CountedJoinCallback = std::function<void(bool addSpace, const SequenceBinding&)>;
 
 // Comparator for EditState priority queue.
 // Uses getCost() which is computed as: effortWeight * effort + distanceWeight * heuristic
@@ -113,8 +114,7 @@ struct EditSearchContext {
   // Checks dot eligibility first and copies only when needed.
   // Normal path always moves afterState and sets lastEdit to (count, baseCmd).
   void exploreWithDot(EditState&& afterState, const EditState& base,
-                      int count, const KeyedSequence& baseKS,
-                      const RunningEffort& effort, double hCost);
+                      const SequenceBinding& sourceCmd, double hCost);
 
   // Initialize priority queue with all starting positions
   void initStartingPositions(const Lines& initialLines);

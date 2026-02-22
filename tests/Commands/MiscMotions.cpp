@@ -9,8 +9,8 @@
 
 #include <gtest/gtest.h>
 #include "Utils/TestUtils.h"
-#include "Editor/Motion.h"
-#include "Editor/NavContext.h"
+#include "Interpreter/MotionInterpreter.h"
+#include "VimTypes/NavContext.h"
 #include "VimCore/VimOptions.h"
 
 using namespace std;

@@ -9,11 +9,11 @@
 #include <gtest/gtest.h>
 #include <memory>
 
-#include "Editor/Position.h"
+#include "VimTypes/Position.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Boundary/MotionBoundary.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Lines.h"
 #include "Utils/NeovimOracle.h"
 
 using namespace std;

@@ -1,6 +1,6 @@
 #include "EditBoundary.h"
-#include "Editor/Position.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Lines.h"
 
 using namespace std;
 

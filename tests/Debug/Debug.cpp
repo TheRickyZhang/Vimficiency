@@ -8,7 +8,7 @@
 
 #include <gtest/gtest.h>
 
-#include "Editor/Edit.h"
+#include "Interpreter/EditInterpreter.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"

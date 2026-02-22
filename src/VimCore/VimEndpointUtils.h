@@ -1,11 +1,11 @@
 #pragma once
 
-#include "EdgeType.h"
-#include "LineEdgeType.h"
-#include "SentenceEdgeType.h"
-#include "Editor/Range.h"
-#include "Editor/LineRange.h"
-#include "Utils/Lines.h"
+#include "VimTypes/EdgeType.h"
+#include "VimTypes/LineEdgeType.h"
+#include "VimTypes/SentenceEdgeType.h"
+#include "VimTypes/Range.h"
+#include "VimTypes/LineRange.h"
+#include "VimTypes/Lines.h"
 
 // Forward declaration
 struct EditBoundary;

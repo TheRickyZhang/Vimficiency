@@ -1,11 +1,11 @@
 #pragma once
 
 #include "Boundary/BoundaryContext.h"
-#include "Editor/Position.h"
-#include "Utils/BracketFlags.h"
-#include "Utils/Lines.h"
-#include "Utils/NoChar.h"
-#include "Utils/QuoteFlags.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/BracketFlags.h"
+#include "VimTypes/Lines.h"
+#include "VimTypes/NoChar.h"
+#include "VimTypes/QuoteFlags.h"
 
 // =============================================================================
 // EditBoundary: Pre-computed boundary info for constrained edit operations

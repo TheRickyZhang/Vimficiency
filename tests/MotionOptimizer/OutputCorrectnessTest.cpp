@@ -7,13 +7,13 @@
 
 #include <gtest/gtest.h>
 
-#include "Editor/Motion.h"
-#include "Editor/NavContext.h"
+#include "Interpreter/MotionInterpreter.h"
+#include "VimTypes/NavContext.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Boundary/MotionBoundary.h"
 #include "State/RunningEffort.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomGeneration.h"
 

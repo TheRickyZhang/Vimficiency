@@ -8,7 +8,7 @@
 
 #include <gtest/gtest.h>
 
-#include "Editor/NavContext.h"
+#include "VimTypes/NavContext.h"
 #include "Utils/TestUtils.h"
 
 #include "Keyboard/MotionToKeys.h"
@@ -16,9 +16,9 @@
 #include "Boundary/MotionBoundary.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "State/RunningEffort.h"
-#include "Editor/Snapshot.h"
-#include "Editor/Motion.h"
-#include "Utils/Lines.h"
+#include "Session/Snapshot.h"
+#include "Interpreter/MotionInterpreter.h"
+#include "VimTypes/Lines.h"
 
 using namespace std;
 

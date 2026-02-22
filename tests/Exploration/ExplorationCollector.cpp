@@ -18,7 +18,7 @@
 
 #include "Boundary/EditBoundary.h"
 #include "Boundary/MotionBoundary.h"
-#include "Editor/SequenceChunker.h"
+#include "Exploration/SequenceChunker.h"
 #include "Optimizer/CompositionOptimizer/DiffState.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"

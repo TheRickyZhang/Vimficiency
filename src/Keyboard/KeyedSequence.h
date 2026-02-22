@@ -3,7 +3,7 @@
 #include "KeyboardModel.h"
 #include "CharToKeys.h"
 #include "XMacroKeyedSequenceDefinitions.h"
-#include "State/Sequence.h"
+#include "VimTypes/Sequence.h"
 
 #include <array>
 #include <string>
@@ -33,8 +33,8 @@ struct KeyedSequence {
 
   KeyedSequence() = default;
   KeyedSequence(std::string_view s, PhysicalKeys k) : seq(std::string(s)), keys(std::move(k)) {}
-  KeyedSequence(int count, const KeyedSequence& base) {
-    appendCounted(count, base);
+  KeyedSequence(const KeyedSequence& base, int count) {
+    appendCounted(base, count);
   }
 
   KeyedSequence& operator+=(const KeyedSequence& other) {
@@ -61,7 +61,7 @@ struct KeyedSequence {
     keys.append(ks.keys, count);
   }
 
-  void appendCounted(int count, const KeyedSequence& base) {
+  void appendCounted(const KeyedSequence& base, int count) {
     assert(count >= 0);
     if (count == 0) {
       seq.append(base.seq.view());
@@ -70,7 +70,7 @@ struct KeyedSequence {
     }
     seq.append(std::to_string(count));
     seq.append(base.seq.view());
-    keys.append(makeCountedKeys(count, base.keys));
+    keys.append(makeCountedKeys(base.keys, count));
   }
 
   // Convert delete command to its change equivalent (d→c in both seq and keys).

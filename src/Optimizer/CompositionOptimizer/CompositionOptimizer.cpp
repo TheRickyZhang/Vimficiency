@@ -8,13 +8,13 @@
 #include "Optimizer/BuildTypedCommands.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 
-#include "Editor/SequenceParser.h"
+#include "Interpreter/SequenceParser.h"
 #include "Keyboard/KeyedSequence.h"
 #include "State/CompositionState.h"
-#include "Utils/BracketFlags.h"
+#include "VimTypes/BracketFlags.h"
 #include "Utils/Debug.h"
-#include "Utils/Indentation.h"
-#include "Utils/QuoteFlags.h"
+#include "Optimizer/Indentation.h"
+#include "VimTypes/QuoteFlags.h"
 #include "Utils/StringUtils.h"
 #include "VimCore/VimCore.h"
 

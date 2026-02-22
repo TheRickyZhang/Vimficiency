@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include "Editor/Position.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Lines.h"
 #include "Utils/RandomGeneration.h"
 
 #include <string>

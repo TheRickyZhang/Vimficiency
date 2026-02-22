@@ -9,7 +9,7 @@
 #include "Optimizer/SearchStats.h"
 #include "Boundary/EditBoundary.h"
 
-#include "Utils/Lines.h"
+#include "VimTypes/Lines.h"
 
 
 struct EditResult {

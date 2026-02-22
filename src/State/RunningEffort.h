@@ -2,8 +2,8 @@
 
 #include <string_view>
 
+#include "Keyboard/Config.h"
 #include "Keyboard/KeyboardModel.h"
-#include "Optimizer/Config.h"
 
 // -----------------------------------------------------------------------------
 // Composable effort model (monoid over key sequences).
@@ -37,6 +37,9 @@ private:
   void appendSingle(Key key, const Config &model);
 
 public:
+  RunningEffort() = default;
+  explicit RunningEffort(const PhysicalKeys& keys, const Config& model);
+
   double getEffort(const Config &model) const;
 
   void addPenalty(double p) { penalty_ += p; }

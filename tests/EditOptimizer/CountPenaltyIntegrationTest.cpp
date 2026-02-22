@@ -7,7 +7,7 @@
 #include "Optimizer/EditOptimizer/EditOptimizerParams.h"
 #include "Optimizer/EditOptimizer/EditSearchContext.h"
 #include "Optimizer/GlobalRuntimeOptions.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Lines.h"
 
 namespace {
 struct RuntimeOptionsGuard {
@@ -31,9 +31,9 @@ TEST(EditCountPenaltyIntegrationTest, CountedLineEditsIncludeRuntimePenalty) {
   double baseline = -1.0;
   explorer.exploreCountedLineEdits(
       cursor, lines, 2,
-      [&](LineRange, int count, const KeyedSequence& baseKS, const RunningEffort& effort) {
-        if (count == 3 && baseKS.seq.view() == "dd") {
-          baseline = effort.getEffort(config);
+      [&](LineRange, const SequenceBinding& sourceCmd) {
+        if (sourceCmd.count == 3 && sourceCmd.base.seq.view() == "dd") {
+          baseline = sourceCmd.effort.getEffort(config);
         }
       });
   ASSERT_GT(baseline, 0.0);
@@ -50,9 +50,9 @@ TEST(EditCountPenaltyIntegrationTest, CountedLineEditsIncludeRuntimePenalty) {
   double overridden = -1.0;
   explorer.exploreCountedLineEdits(
       cursor, lines, 2,
-      [&](LineRange, int count, const KeyedSequence& baseKS, const RunningEffort& effort) {
-        if (count == 3 && baseKS.seq.view() == "dd") {
-          overridden = effort.getEffort(config);
+      [&](LineRange, const SequenceBinding& sourceCmd) {
+        if (sourceCmd.count == 3 && sourceCmd.base.seq.view() == "dd") {
+          overridden = sourceCmd.effort.getEffort(config);
         }
       });
   ASSERT_GT(overridden, 0.0);
@@ -73,9 +73,9 @@ TEST(EditCountPenaltyIntegrationTest, CountedJoinEditsIncludeRuntimePenalty) {
   double baseline = -1.0;
   explorer.exploreCountedJoinCommands(
       cursor, lines, 2,
-      [&](int count, bool addSpace, const KeyedSequence& baseKS, const RunningEffort& effort) {
-        if (!addSpace && count == 3 && baseKS.seq.view() == "gJ") {
-          baseline = effort.getEffort(config);
+      [&](bool addSpace, const SequenceBinding& sourceCmd) {
+        if (!addSpace && sourceCmd.count == 3 && sourceCmd.base.seq.view() == "gJ") {
+          baseline = sourceCmd.effort.getEffort(config);
         }
       });
   ASSERT_GT(baseline, 0.0);
@@ -92,12 +92,11 @@ TEST(EditCountPenaltyIntegrationTest, CountedJoinEditsIncludeRuntimePenalty) {
   double overridden = -1.0;
   explorer.exploreCountedJoinCommands(
       cursor, lines, 2,
-      [&](int count, bool addSpace, const KeyedSequence& baseKS, const RunningEffort& effort) {
-        if (!addSpace && count == 3 && baseKS.seq.view() == "gJ") {
-          overridden = effort.getEffort(config);
+      [&](bool addSpace, const SequenceBinding& sourceCmd) {
+        if (!addSpace && sourceCmd.count == 3 && sourceCmd.base.seq.view() == "gJ") {
+          overridden = sourceCmd.effort.getEffort(config);
         }
       });
   ASSERT_GT(overridden, 0.0);
   EXPECT_GT(overridden, baseline + 15.0);
 }
-

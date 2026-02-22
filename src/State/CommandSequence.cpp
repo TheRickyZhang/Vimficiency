@@ -1,5 +1,5 @@
 #include "CommandSequence.h"
-#include "Editor/SequenceParser.h"
+#include "Interpreter/SequenceParser.h"
 
 std::string CommandSequence::formatted() const {
   return formatSequenceForDisplay(*this);

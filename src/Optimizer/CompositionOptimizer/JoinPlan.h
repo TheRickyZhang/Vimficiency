@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Editor/Position.h"
-#include "State/Sequence.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Sequence.h"
 
 // A pre-computed plan to join source lines using the J command,
 // optionally followed by residual edits on the joined result.

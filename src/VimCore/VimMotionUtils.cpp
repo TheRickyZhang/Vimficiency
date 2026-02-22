@@ -1,14 +1,14 @@
 #include "VimMotionUtils.h"
 #include "VimCore.h"
 #include "VimEndpointUtils.h"
-#include "EdgeType.h"
-#include "LineEdgeType.h"
+#include "VimTypes/EdgeType.h"
+#include "VimTypes/LineEdgeType.h"
 
 #include <algorithm>
 #include <array>
 #include <cassert>
 
-#include "Editor/Position.h"
+#include "VimTypes/Position.h"
 #include "Utils/Debug.h"
 
 using namespace std;

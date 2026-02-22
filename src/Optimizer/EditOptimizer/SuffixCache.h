@@ -9,10 +9,10 @@
 #include <utility>
 #include <vector>
 
-#include "Editor/Mode.h"
+#include "VimTypes/Mode.h"
 #include "Keyboard/KeyedSequence.h"
 #include "State/RunningEffort.h"
-#include "Editor/Position.h"
+#include "VimTypes/Position.h"
 
 // =============================================================================
 // Suffix Cache Types - for cross-position sharing in EditOptimizer

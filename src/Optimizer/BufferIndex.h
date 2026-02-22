@@ -3,33 +3,15 @@
 #include <array>
 #include <vector>
 #include <string>
-#include "Editor/Position.h"
-#include "Keyboard/KeyedSequence.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Position.h"
+#include "VimTypes/Lines.h"
+#include "VimTypes/LandingType.h"
 
 struct RepeatMotionResult {
   Position pos{-1, -1};
   int count = 0;  // count <= 1 means invalid (not worth emitting {count}{motion})
 
   bool valid() const { return count > 1; }
-};
-
-// Landing position categories - used as array index
-enum class LandingType : size_t {
-  WordBegin = 0,  // w, b
-  WordEnd = 1,    // e, ge
-  WORDBegin = 2,  // W, B
-  WORDEnd = 3,    // E, gE
-  Paragraph = 4,  // {, }
-  Sentence = 5,   // (, )
-  COUNT = 6
-};
-
-// Pairs a forward/backward motion with its landing type for count-searchable motions
-struct CountableMotionPair {
-  KeyedSequence forward;   // e.g., KeyedSequence::w, KeyedSequence::e
-  KeyedSequence backward;  // e.g., KeyedSequence::b, KeyedSequence::ge
-  LandingType type;
 };
 
 class BufferIndex {

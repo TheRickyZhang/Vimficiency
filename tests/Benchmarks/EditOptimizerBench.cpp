@@ -27,6 +27,10 @@ namespace {
 
 static Config benchConfig = Config::uniform();
 
+static bool isPureDeletionGoal(const Lines& goalLines) {
+  return goalLines.empty() || (goalLines.size() == 1 && goalLines[0].empty());
+}
+
 struct BenchmarkSetup {
   Lines initialLines;
   Lines goalLines;
@@ -47,6 +51,13 @@ static void runBenchmark(const BenchmarkSetup& cfg,
                          const EditOptimizerParams& params,
                          SearchStats& outStats) {
   EditOptimizer opt(benchConfig);
+  if (isPureDeletionGoal(cfg.goalLines)) {
+    PureDeletionEditResult result =
+        opt.optimizePureDeletion(cfg.initialLines, cfg.boundary, params);
+    accumulateStats(outStats, result.editResult.stats);
+    return;
+  }
+
   EditResult result = opt.optimizeEdit(cfg.initialLines, cfg.goalLines, cfg.boundary, params);
   accumulateStats(outStats, result.stats);
 }

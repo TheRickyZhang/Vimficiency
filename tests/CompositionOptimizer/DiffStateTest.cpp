@@ -8,7 +8,7 @@
 #include <gtest/gtest.h>
 
 #include "Optimizer/CompositionOptimizer/DiffState.h"
-#include "Utils/Lines.h"
+#include "VimTypes/Lines.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
 

@@ -1,9 +1,9 @@
-#include "Motion.h"
+#include "MotionInterpreter.h"
 
 #include <cassert>
 #include <ostream>
 
-#include "Editor/NavContext.h"
+#include "VimTypes/NavContext.h"
 #include "VimCore/VimCore.h"
 #include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimOptions.h"

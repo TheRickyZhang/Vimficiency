@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Position.h"
+#include "VimTypes/Position.h"
 
 // A character-wise region in the buffer. Always inclusive, can span across lines.
 struct Range {

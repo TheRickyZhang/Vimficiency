@@ -1,5 +1,5 @@
 #include "SequenceChunker.h"
-#include "SequenceParser.h"
+#include "Interpreter/SequenceParser.h"
 
 #include <unordered_map>
 
