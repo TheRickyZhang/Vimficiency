@@ -76,6 +76,11 @@ struct PureDeletionEditResult {
   EditResult editResult;
   // Per-start goal cursor positions in buffer coordinates (same flat index as EditResult::getResults()).
   std::vector<Position> goalPosByStart;
+
+  friend std::ostream& operator<<(std::ostream& os, const PureDeletionEditResult& pdr) {
+    os << pdr.editResult;
+    return os;
+  }
 };
 
 

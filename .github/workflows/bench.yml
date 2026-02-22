@@ -180,6 +180,7 @@ jobs:
           # Save artifacts before switching branches
           cp -r bench-dashboard/dist /tmp/dashboard-dist
           cp scripts/bench-data.ts /tmp/bench-data.ts
+          cp scripts/explore-data.ts /tmp/explore-data.ts
           cp test_timing_bench.json /tmp/test_timing_bench.json
           cp edit_result.json /tmp/edit_result.json
           cp motion_result.json /tmp/motion_result.json
@@ -227,43 +228,24 @@ jobs:
             fi
           done
 
-          # Merge exploration data into explore.json (keep last 5 entries)
+          # Ingest exploration data into explore.json (strip states from older entries)
           for pair in "edit:/tmp/edit_explore.json" "motion:/tmp/motion_explore.json" "composition:/tmp/composition_explore.json"; do
             optimizer="${pair%%:*}"
             explore_json="${pair#*:}"
             mkdir -p "$optimizer"
+            bun /tmp/explore-data.ts ingest "$optimizer" "$explore_json" \
+              --commit-id="$COMMIT_ID" \
+              --commit-msg="$COMMIT_MSG" \
+              --commit-ts="$COMMIT_TS" \
+              --author="$COMMIT_AUTHOR" \
+              --repo-url="$REPO_URL"
+          done
 
-            node -e "
-              const fs = require('fs');
-              const newData = JSON.parse(fs.readFileSync('$explore_json', 'utf8'));
-              let existing = { lastUpdate: 0, entries: [] };
-              try {
-                // Try JSON first, fall back to legacy JS format
-                if (fs.existsSync('$optimizer/explore.json')) {
-                  existing = JSON.parse(fs.readFileSync('$optimizer/explore.json', 'utf8'));
-                } else if (fs.existsSync('$optimizer/explore.js')) {
-                  const src = fs.readFileSync('$optimizer/explore.js', 'utf8');
-                  const json = src.replace(/^window\\.EXPLORATION_DATA\\s*=\\s*/, '').replace(/;\\s*$/, '');
-                  existing = JSON.parse(json);
-                  console.log('  Migrating explore.js -> explore.json');
-                }
-              } catch {}
-              existing.entries.push({
-                commit: {
-                  id: '$COMMIT_ID',
-                  message: $(node -e "process.stdout.write(JSON.stringify('$COMMIT_MSG'))"),
-                  timestamp: '$COMMIT_TS',
-                  url: '$REPO_URL/commit/$COMMIT_ID',
-                  author: { username: '$COMMIT_AUTHOR' }
-                },
-                date: Date.now(),
-                cases: newData.cases
-              });
-              existing.entries = existing.entries.slice(-5);
-              existing.lastUpdate = Date.now();
-              fs.writeFileSync('$optimizer/explore.json', JSON.stringify(existing));
-              console.log('  ' + '$optimizer' + ': ' + existing.entries.length + ' entries');
-            "
+          # Prune exploration data to last 100 entries
+          for dir in edit motion composition; do
+            if [ -f "$dir/explore.json" ]; then
+              bun /tmp/explore-data.ts prune "$dir"
+            fi
           done
 
           # Root index (SPA: same index.html serves all routes)

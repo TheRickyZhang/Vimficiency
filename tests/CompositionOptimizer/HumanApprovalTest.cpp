@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 #include <memory>
+#include <algorithm>
 
 #include "Editor/Position.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizerParams.h"
@@ -67,6 +68,20 @@ protected:
     EXPECT_TRUE(nvim.lines == goal)
         << "seq='" << result.sequence << "'" << ctx(context)
         << "\n  Initial: " << initial << "\n  Goal: " << goal << "\n  Got: " << nvim.lines;
+  }
+
+  void verifyDiParenShortcutPolicy(const CompositionResult& compResult) {
+    auto hasPureDeletionDiff = ranges::any_of(compResult.diffs, [](const DiffState& d) {
+      return d.isPureDeletion();
+    });
+    auto foundDiParen = ranges::any_of(compResult.getResults(), [](const Result& r) {
+      return r.isValid() && r.sequence.view().find("di(") != string::npos;
+    });
+    if (hasPureDeletionDiff) {
+      EXPECT_TRUE(foundDiParen) << "Expected pure-deletion text-object shortcut di( in results";
+    } else {
+      EXPECT_FALSE(foundDiParen) << "di( should only be generated for pure-deletion diffs";
+    }
   }
 
 private:
@@ -227,19 +242,49 @@ TEST_F(CompositionOptimizerHumanApprovalTests, PureDeletionPositionAdjustment) {
   }
   verifyCompResult(res, initial, initialPos, goal, "PureDeletionPositionAdjustment");
 }
-// TEST_F(CompositionOptimizerHumanApprovalTests, ModifyInParentheses) {
-//   // Delete a short word
-//   Lines initialLines = {
-//     "int main(int argc, char** argv) { return 0; }",
-//   };
-//   Lines afterLines = {
-//     "aaa bbb ccc?"
-//   };
-//   Position initialPos(0, 2);
-//   Position afterPos(initialLines.endPos());
-//   MotionBoundary boundary(initialLines, initialPos, afterPos, true, true);
-//
-//   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos);
-//   cout << res << endl;
-//   // verifyResults(initialLines, initialPos, afterLines, res.goalPos);
-// }
+
+TEST_F(CompositionOptimizerHumanApprovalTests, ModifyInParentheses) {
+  // Delete a short word
+  Lines initialLines = {
+    "int main(int argc, char** argv) { return 0; }",
+  };
+  Lines afterLines = {
+    "int main() { return 0; }"
+  };
+  Position initialPos(0, 0);
+  Position afterPos(initialLines.endPos());
+  MotionBoundary boundary(initialLines, initialPos, afterPos, true, true);
+
+  CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos, {}, "", boundary);
+  cout << res << endl;
+  verifyDiParenShortcutPolicy(res);
+  verifyCompResult(res, initialLines, initialPos, afterLines, "ModifyInParentheses");
+}
+
+
+TEST_F(CompositionOptimizerHumanApprovalTests, ModifyInParenthesesMultiple) {
+  Lines initialLines = Lines::unflatten(R"(int main(int argc, char** argv) {
+  int n{3};
+  vector<int> a(n, 0);
+  for(int i = 0; i < n; i++) {
+    cout << a[i] << endl;
+  }
+})");
+
+  Lines goalLines = Lines::unflatten(R"(int main() {
+  int n{4};
+  vector<double> a(n, 0);
+  for(int i = 0; i < n; i++) {
+    cout << a[n-i-1] << endl;
+  }
+})");
+  Position initialPos(0, 0);
+  Position initialEndPos = initialLines.endPos();
+  Position goalPos = goalLines.endPos();
+  MotionBoundary boundary(initialLines, initialPos, initialEndPos, true, true);
+
+  CompositionResult res = opt.optimize(initialLines, initialPos, goalLines, goalPos, {}, "", boundary);
+  cout << res << endl;
+  verifyDiParenShortcutPolicy(res);
+  verifyCompResult(res, initialLines, initialPos, goalLines, "ModifyInParenthesesMultiple");
+}

@@ -19,11 +19,27 @@
 struct MotionResult {
   std::vector<Result> results;
   SearchStats stats;
+
+  friend std::ostream& operator<<(std::ostream& os, const MotionResult& mr) {
+    os << mr.stats << "\n";
+    for (size_t i = 0; i < mr.results.size(); i++) {
+      os << "  [" << i << "] " << mr.results[i] << "\n";
+    }
+    return os;
+  }
 };
 
 struct RangeMotionResult {
   std::vector<RangeResult> results;
   SearchStats stats;
+
+  friend std::ostream& operator<<(std::ostream& os, const RangeMotionResult& mr) {
+    os << mr.stats << "\n";
+    for (size_t i = 0; i < mr.results.size(); i++) {
+      os << "  [" << i << "] " << mr.results[i] << "\n";
+    }
+    return os;
+  }
 };
 
 struct MotionOptimizer {

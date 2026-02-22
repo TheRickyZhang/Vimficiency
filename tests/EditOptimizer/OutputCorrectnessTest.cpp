@@ -31,6 +31,10 @@ protected:
 
   static void SetUpTestSuite() { oracle = make_unique<NeovimOracle>(); }
   static void TearDownTestSuite() { oracle.reset(); }
+
+  EditResult pureDeletionResult(const Lines& initialLines, EditBoundary boundary) {
+    return opt.optimizePureDeletion(initialLines, boundary, params).editResult;
+  }
 };
 
 unique_ptr<NeovimOracle> EditOptimizerOutputCorrectness::oracle;
@@ -47,7 +51,7 @@ TEST_F(EditOptimizerOutputCorrectness, SingleLineEmbedded) {
 
   for (int iter = 0; iter < CNT; iter++) {
     auto test = generateRandomSingleLineEmbedded();
-    EditResult res = opt.optimizePureDeletion(test.editRegion, test.makeBoundary(), params).editResult;
+    EditResult res = pureDeletionResult(test.editRegion, test.makeBoundary());
     string expected = test.expectedAfterDeletion();
 
     for (size_t i = 0; i < res.resultCount(); i++) {
@@ -87,7 +91,7 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineFullBuffer) {
     int numLines = RandomGen::range(2, 3);
     Lines source = randomLines(numLines, 4, 8);
     EditBoundary boundary(source, {0, 0}, source.endPos());
-    EditResult res = opt.optimizePureDeletion(source, boundary, params).editResult;
+    EditResult res = pureDeletionResult(source, boundary);
 
     for (size_t i = 0; i < res.resultCount(); i += 2) {
       const Result& r = res.getResults()[i];
@@ -163,7 +167,7 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineEmbedded) {
 
   for (int iter = 0; iter < REDUCED_CNT; iter++) {
     auto test = generateRandomMultiLineEmbedded();
-    EditResult res = opt.optimizePureDeletion(test.editRegion, test.makeBoundary(), params).editResult;
+    EditResult res = pureDeletionResult(test.editRegion, test.makeBoundary());
     string expected = test.expectedAfterDeletion();
 
     // Test a subset of positions (every 4th to reduce test time)

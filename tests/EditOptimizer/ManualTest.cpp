@@ -32,6 +32,10 @@ protected:
 
   static void SetUpTestSuite() { oracle = make_unique<NeovimOracle>(); }
   static void TearDownTestSuite() { oracle.reset(); }
+
+  EditResult pureDeletionResult(const Lines& initialLines, EditBoundary boundary) {
+    return opt.optimizePureDeletion(initialLines, boundary, params).editResult;
+  }
 };
 
 unique_ptr<NeovimOracle> EditOptimizer_ManualTest::oracle;
@@ -116,10 +120,9 @@ void forEachValidResult(const vector<Result>& results, const Lines& lines, Fn fn
 TEST_F(EditOptimizer_ManualTest, PureDeletion_OracleVerified) {
   // Single test with oracle verification - stress tests cover more shapes
   Lines lines = {"aa", "bb"};
-  EditResult editRes = opt.optimizePureDeletion(
+  EditResult editRes = pureDeletionResult(
       lines,
-      EditBoundary(lines, Position(0, 0), lines.endPos()),
-      params).editResult;
+      EditBoundary(lines, Position(0, 0), lines.endPos()));
   const vector<Result>& res = editRes.getResults();
 
   EXPECT_TRUE(allPositionsValid(res, lines));
@@ -142,7 +145,7 @@ TEST_F(EditOptimizer_ManualTest, Boundary_LinesBelow) {
   Lines editRegion = fullBuffer.getSpan(initialPos, endPos);
   EditBoundary boundary(fullBuffer, initialPos, endPos);
 
-  EditResult res = opt.optimizePureDeletion(editRegion, boundary, params).editResult;
+  EditResult res = pureDeletionResult(editRegion, boundary);
   EXPECT_TRUE(allPositionsValid(res.getResults(), editRegion));
 }
 
@@ -154,7 +157,7 @@ TEST_F(EditOptimizer_ManualTest, Boundary_SingleLineSurrounded) {
   Lines editRegion = fullBuffer.getSpan(initialPos, endPos);
   EditBoundary boundary(fullBuffer, initialPos, endPos);
 
-  EditResult res = opt.optimizePureDeletion(editRegion, boundary, params).editResult;
+  EditResult res = pureDeletionResult(editRegion, boundary);
   // printResultsDebug(res.typeAllResults, "boundary line surrounded");
   EXPECT_TRUE(allPositionsValid(res.getResults(), editRegion));
 }
@@ -166,7 +169,7 @@ TEST_F(EditOptimizer_ManualTest, Boundary_LinewiseCursorContainment) {
   Lines editRegion = fullBuffer.getSpan(initialPos, endPos);
   EditBoundary boundary(fullBuffer, initialPos, endPos);
 
-  EditResult res = opt.optimizePureDeletion(editRegion, boundary, params).editResult;
+  EditResult res = pureDeletionResult(editRegion, boundary);
 
   forEachValidResult(res.getResults(), editRegion, [&](Position pos, const auto& seq) {
     // Skip visual mode sequences for now

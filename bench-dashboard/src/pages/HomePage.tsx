@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { homeRoute, type OptimizerSlug } from '../router';
 import { parseName, toNanoseconds, timeSeries, loadBenchmarkData } from '../utils/data';
-import { fmtTime, bestUnit, type Nanoseconds } from '../utils/format';
+import { bestUnit } from '../utils/format';
 import { BenchmarkChart } from '../components/BenchmarkChart';
 
 interface Change {
@@ -11,8 +11,6 @@ interface Change {
   optimizer: OptimizerSlug;
   pctChange: number;
   ratio: number;
-  prevNs: Nanoseconds;
-  currNs: Nanoseconds;
 }
 
 const MAX_ITEMS = 5;
@@ -46,7 +44,7 @@ export function HomePage() {
       const pctChange = (ratio - 1) * 100;
       if (Math.abs(pctChange) < 10) continue; // only show >=10% changes
       const { category, detail } = parseName(bench.name);
-      changes.push({ name: bench.name, category, detail, optimizer: slug, pctChange, ratio, prevNs, currNs });
+      changes.push({ name: bench.name, category, detail, optimizer: slug, pctChange, ratio });
     }
   }
 
@@ -91,15 +89,6 @@ export function HomePage() {
         ))}
       </div>
 
-      {testSeries && (
-        <div className="mt-10">
-          <h2>Test Duration</h2>
-          <div style={{ height: 300 }}>
-            <BenchmarkChart series={testSeries} unit={bestUnit(testSeries.map((p) => p.val))} />
-          </div>
-        </div>
-      )}
-
       <div className="mt-10">
         <div className="grid grid-cols-2 gap-6">
           <div>
@@ -128,6 +117,15 @@ export function HomePage() {
           </div>
         </div>
       </div>
+
+      {testSeries && (
+        <div className="mt-10 max-w-[60%]">
+          <h2>Test Duration</h2>
+          <div style={{ height: 250 }}>
+            <BenchmarkChart series={testSeries} unit={bestUnit(testSeries.map((p) => p.val))} />
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -158,9 +156,6 @@ function ChangeItem({ change: c }: { change: Change }) {
             {'\u26A0'}
           </span>
         )}
-        <span className="text-[0.8rem] text-muted">
-          {fmtTime(c.prevNs)} {'\u2192'} {fmtTime(c.currNs)}
-        </span>
         <span className={`font-bold text-[0.9rem] tabular-nums ${c.pctChange > 0 ? 'text-bad' : 'text-good'}`}>
           {sign}{c.pctChange.toFixed(1)}%
         </span>

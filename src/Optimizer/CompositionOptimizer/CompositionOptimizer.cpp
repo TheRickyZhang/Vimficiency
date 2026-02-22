@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cctype>
 
 #include "CompositionSearchContext.h"
 #include "Optimizer/BuildTypedCommands.h"
@@ -278,12 +279,20 @@ CompositionResult CompositionOptimizer::optimize(
         debug("  checking text objects at col", pos.col, "on line", pos.line);
         const EditResult& editResult = ctx.editResults[editsCompleted];
         const string& insertedText = nextEdit.insertedText;
+        bool pureDeletion = nextEdit.isPureDeletion();
+        char textObjOp = pureDeletion ? 'd' : 'c';
 
         if (pos.col < static_cast<int>(bqContext.validQuoteMask.size())) {
           for (char q : QuoteFlags::ALL_QUOTES) {
             if (bqContext.validQuoteMask[pos.col].seen(q)) {
-              // Build sequence: c + i/a + quote + insertedText + <Esc>
-              string seq = string("c") + bqContext.quoteModifier(q) + q + insertedText + "<Esc>";
+              // Build sequence:
+              // - pure deletion: d + i/a + quote
+              // - replacement/edit: c + i/a + quote + insertedText + <Esc>
+              string seq = string(1, textObjOp) + bqContext.quoteModifier(q) + q;
+              if (!pureDeletion) {
+                seq += insertedText;
+                seq += "<Esc>";
+              }
               debug("    quote textobj:", string(1, bqContext.quoteModifier(q)) + q);
               ctx.exploreEditTransition(s, Sequence(seq), editResult.goalPos,
                                         editsCompleted + 1);
@@ -293,8 +302,14 @@ CompositionResult CompositionOptimizer::optimize(
         if (pos.col < static_cast<int>(bqContext.validBracketMask.size())) {
           for (char b : BracketFlags::ALL_BRACKETS) {
             if (bqContext.validBracketMask[pos.col].seen(b)) {
-              // Build sequence: c + i/a + bracket + insertedText + <Esc>
-              string seq = string("c") + bqContext.bracketModifier(b) + b + insertedText + "<Esc>";
+              // Build sequence:
+              // - pure deletion: d + i/a + bracket
+              // - replacement/edit: c + i/a + bracket + insertedText + <Esc>
+              string seq = string(1, textObjOp) + bqContext.bracketModifier(b) + b;
+              if (!pureDeletion) {
+                seq += insertedText;
+                seq += "<Esc>";
+              }
               debug("    bracket textobj:", string(1, bqContext.bracketModifier(b)) + b);
               ctx.exploreEditTransition(s, Sequence(seq), editResult.goalPos,
                                         editsCompleted + 1);
@@ -422,6 +437,12 @@ CompositionResult CompositionOptimizer::optimize(
 ostream& operator<<(ostream& os, const CompositionResult& cr) {
   os << cr.stats << " goalPos=" << cr.goalPos << "\n";
 
+  auto isReplaceCharToken = [](string_view tok) {
+    size_t i = 0;
+    while (i < tok.size() && isdigit(static_cast<unsigned char>(tok[i]))) i++;
+    return i + 2 == tok.size() && tok[i] == 'r';
+  };
+
   // Print diff legend: all diffs get sequential {n} labels.
   if (!cr.diffs.empty()) {
     os << "Diffs:";
@@ -440,8 +461,10 @@ ostream& operator<<(ostream& os, const CompositionResult& cr) {
   }
 
   // Print each result with edit operations replaced by {n} placeholders.
-  // diffIdx tracks which diff we're on: advances on Delete tokens that match
-  // pure deletion diffs, and on TypedText tokens (replacements/insertions).
+  // diffIdx tracks which diff we're on: advances on
+  // - Delete tokens matching pure deletion diffs
+  // - r{char} tokens for single-char replacement diffs
+  // - TypedText tokens (replacement/insertion payload)
   for (size_t i = 0; i < cr.results.size(); i++) {
     os << "  [" << i << "] ";
 
@@ -466,6 +489,16 @@ ostream& operator<<(ostream& os, const CompositionResult& cr) {
         // Pure deletion diff: show command as-is, advance diffIdx
         os << makePrintable(tokens[j].text);
         diffIdx++;
+      } else if (type == TokenType::Delete &&
+                 diffIdx < numDiffs &&
+                 !cr.diffs[diffIdx].isPureDeletion() &&
+                 cr.diffs[diffIdx].deletedText.size() == 1 &&
+                 cr.diffs[diffIdx].insertedText.size() == 1 &&
+                 isReplaceCharToken(tokens[j].text)) {
+        // Single-char replacement using r{char} does not produce TypedText.
+        // Show a placeholder after the token so diff labels stay aligned.
+        os << makePrintable(tokens[j].text);
+        os << " {" << diffIdx++ << "}";
       } else if (type == TokenType::TypedText && diffIdx < numDiffs) {
         // Replacement/insertion: strip leading control chars (<BS>, <Del>)
         // and show them before the {n} placeholder.

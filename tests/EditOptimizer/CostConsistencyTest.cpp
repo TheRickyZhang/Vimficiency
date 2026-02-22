@@ -17,6 +17,15 @@
 
 using namespace std;
 
+namespace {
+EditResult pureDeletionResult(
+    EditOptimizer& opt,
+    const Lines& initialLines,
+    EditBoundary boundary) {
+  return opt.optimizePureDeletion(initialLines, boundary).editResult;
+}
+} // namespace
+
 // =============================================================================
 // Test Infrastructure
 // =============================================================================
@@ -46,7 +55,7 @@ TEST_F(EditOptimizerCostConsistencyTests, CostMatchesComputed) {
     EditBoundary boundary(lines, {0, 0}, lines.endPos());
     EditOptimizer opt(config);
 
-    EditResult res = opt.optimizePureDeletion(lines, boundary).editResult;
+    EditResult res = pureDeletionResult(opt, lines, boundary);
 
     for (const auto& result : res.getResults()) {
       if (!result.isValid()) continue;

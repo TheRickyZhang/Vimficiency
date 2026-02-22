@@ -27,6 +27,16 @@
 
 using namespace std;
 
+namespace {
+EditResult pureDeletionResult(
+    EditOptimizer& opt,
+    const Lines& initialLines,
+    EditBoundary boundary,
+    EditOptimizerParams params = {}) {
+  return opt.optimizePureDeletion(initialLines, boundary, params).editResult;
+}
+} // namespace
+
 // ============================================================================
 // SequenceTracer - Helper for step-by-step command tracing
 // ============================================================================
@@ -230,7 +240,7 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
   cerr << "\n--- Running pure deletion ---" << endl;
   {
     EditOptimizer opt2(config);
-    auto result = opt2.optimizePureDeletion(editRegion, boundary, p).editResult;
+    auto result = pureDeletionResult(opt2, editRegion, boundary, p);
     cerr << "Pure deletion OK, results=" << result.resultCount() << endl;
 
     // Now replay each result
@@ -381,7 +391,7 @@ TEST_F(DebugTest, DISABLED_InvestigateCountedWordEdit) {
   {
     EditOptimizer opt(config);
     EditBoundary boundary(fullBuffer, Position(0, 1), Position(3, 3));  // prefix="a", suffix="bd"
-    EditResult res = opt.optimizePureDeletion(editRegion, boundary, params).editResult;
+    EditResult res = pureDeletionResult(opt, editRegion, boundary, params);
     int idx = 0;
     for (int line = 0; line < static_cast<int>(editRegion.size()); line++) {
       int cols = editRegion[line].empty() ? 1 : static_cast<int>(editRegion[line].size());

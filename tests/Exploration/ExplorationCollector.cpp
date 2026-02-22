@@ -35,6 +35,14 @@ using namespace std;
 
 static Config config = Config::uniform();
 
+static EditResult pureDeletionResult(
+    EditOptimizer& opt,
+    const Lines& initialLines,
+    EditBoundary boundary,
+    EditOptimizerParams params = {}) {
+  return opt.optimizePureDeletion(initialLines, boundary, params).editResult;
+}
+
 // =============================================================================
 // Case data: stats + found results
 // =============================================================================
@@ -576,7 +584,7 @@ static vector<ExploreCase> collectEditCases() {
     p.maxResults = max(10, lines.totalPositions() / 4);
 
     EditOptimizer opt(config);
-    auto result = opt.optimizePureDeletion(lines, boundary, p).editResult;
+    auto result = pureDeletionResult(opt, lines, boundary, p);
 
     ContextData ctx;
     for (const auto& l : lines) ctx.initialLines.push_back(l);

@@ -68,6 +68,7 @@ export function ExploreApp({ data, initialCase }: Props) {
     : resolvedInitial;
 
   const chunked = activeCase ? isChunkedCase(activeCase) : false;
+  const hasStates = activeCase ? activeCase.states.length > 0 : false;
 
   // Parse cases into categories and params
   const { categories, paramsByCategory } = useMemo(() => {
@@ -291,7 +292,12 @@ export function ExploreApp({ data, initialCase }: Props) {
               value={activeParam}
               options={paramsForCategory.map((p) => {
                 const c = cases.find((c) => c.name === `${activeCategory}/${p}`);
-                return { value: p, label: `${p}${c ? ` (${c.states.length} st)` : ''}` };
+                const suffix = c
+                  ? c.states.length > 0
+                    ? ` (${c.states.length} st)`
+                    : ` (${c.nodesExplored} nodes)`
+                  : '';
+                return { value: p, label: `${p}${suffix}` };
               })}
               onChange={setParam}
             />
@@ -357,9 +363,11 @@ export function ExploreApp({ data, initialCase }: Props) {
                   );
                 })}
               </div>
-              <div className="text-xs text-muted mt-1.5">
-                Click to toggle paths in tree (multi-select)
-              </div>
+              {hasStates && (
+                <div className="text-xs text-muted mt-1.5">
+                  Click to toggle paths in tree (multi-select)
+                </div>
+              )}
               {/* Typed content legend (chunked mode) */}
               {chunked && activeCase.contents && activeCase.contents.length > 0 && (
                 <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t border-[#eee]">
@@ -376,60 +384,73 @@ export function ExploreApp({ data, initialCase }: Props) {
             </Card>
           )}
 
-          {/* Exploration Tree + optional side panel */}
-          <Card title={`Exploration Tree (${activeCase.nodesExplored.toLocaleString()} nodes explored)`} className="mb-6">
-            <div className={selectedChunk ? 'flex' : ''}>
-              <div className={selectedChunk ? 'flex-1 min-w-0' : ''}>
-                <ExplorationTree
-                  states={flatStates}
-                  results={sortedResults}
-                  selectedSeqs={selectedSeqs}
-                  expandableTokens={expandableTokens}
-                  onChunkDetail={chunked ? onChunkDetail : undefined}
-                />
-              </div>
-              {selectedChunk && detailTreeData && (
-                <div className="flex-1 min-w-0 border-l border-[#e0e0e0]">
-                  <div className="flex items-center justify-between mb-2 px-3 pt-1">
-                    <h4 className="text-sm font-bold text-[#333]">
-                      <span className={selectedChunk.type === 'motion' ? 'text-[#1565c0]' : 'text-[#e65100]'}>
-                        {selectedChunk.type}
-                      </span>
-                      {' chunk: '}
-                      <code>{selectedChunk.chunkText}</code>
-                    </h4>
-                    <button
-                      onClick={() => setSelectedChunk(null)}
-                      className="text-xs text-muted hover:text-[#333] px-1"
-                    >
-                      close
-                    </button>
-                  </div>
-                  {detailTreeData.states.length > 0 ? (
+          {hasStates ? (
+            <>
+              {/* Exploration Tree + optional side panel */}
+              <Card title={`Exploration Tree (${activeCase.nodesExplored.toLocaleString()} nodes explored)`} className="mb-6">
+                <div className={selectedChunk ? 'flex' : ''}>
+                  <div className={selectedChunk ? 'flex-1 min-w-0' : ''}>
                     <ExplorationTree
-                      states={detailTreeData.states}
-                      results={detailTreeData.results}
-                      selectedSeqs={new Set()}
+                      states={flatStates}
+                      results={sortedResults}
+                      selectedSeqs={selectedSeqs}
+                      expandableTokens={expandableTokens}
+                      onChunkDetail={chunked ? onChunkDetail : undefined}
                     />
-                  ) : (
-                    <div className="text-sm text-muted py-4 text-center">
-                      No detail states for this chunk
+                  </div>
+                  {selectedChunk && detailTreeData && (
+                    <div className="flex-1 min-w-0 border-l border-[#e0e0e0]">
+                      <div className="flex items-center justify-between mb-2 px-3 pt-1">
+                        <h4 className="text-sm font-bold text-[#333]">
+                          <span className={selectedChunk.type === 'motion' ? 'text-[#1565c0]' : 'text-[#e65100]'}>
+                            {selectedChunk.type}
+                          </span>
+                          {' chunk: '}
+                          <code>{selectedChunk.chunkText}</code>
+                        </h4>
+                        <button
+                          onClick={() => setSelectedChunk(null)}
+                          className="text-xs text-muted hover:text-[#333] px-1"
+                        >
+                          close
+                        </button>
+                      </div>
+                      {detailTreeData.states.length > 0 ? (
+                        <ExplorationTree
+                          states={detailTreeData.states}
+                          results={detailTreeData.results}
+                          selectedSeqs={new Set()}
+                        />
+                      ) : (
+                        <div className="text-sm text-muted py-4 text-center">
+                          No detail states for this chunk
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-          </Card>
+              </Card>
 
-          {/* Charts */}
-          <div className="grid grid-cols-2 gap-6 mb-6">
-            <ExpandableCard title="Effort Distribution">
-              <EffortHistogram states={flatStates} results={sortedResults} selectedSeq={primarySelectedSeq} />
-            </ExpandableCard>
-            <ExpandableCard title="Exploration Timeline">
-              <ExplorationTimeline states={flatStates} />
-            </ExpandableCard>
-          </div>
+              {/* Charts */}
+              <div className="grid grid-cols-2 gap-6 mb-6">
+                <ExpandableCard title="Effort Distribution">
+                  <EffortHistogram states={flatStates} results={sortedResults} selectedSeq={primarySelectedSeq} />
+                </ExpandableCard>
+                <ExpandableCard title="Exploration Timeline">
+                  <ExplorationTimeline states={flatStates} />
+                </ExpandableCard>
+              </div>
+            </>
+          ) : (
+            <div className="card p-5 mb-6 text-center">
+              <p className="text-sm text-muted">
+                Exploration tree and charts are only available for the latest commit.
+              </p>
+              <p className="text-xs text-muted mt-1">
+                {activeCase.nodesExplored.toLocaleString()} nodes were explored.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>

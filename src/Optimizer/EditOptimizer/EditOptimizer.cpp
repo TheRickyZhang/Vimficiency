@@ -49,14 +49,13 @@ EditResult::EditResult(vector<Result> results, SearchStats stats,
 }
 
 ostream& operator<<(ostream& os, const EditResult& editResult) {
-  os << "typeAllResults: ";
-  for(size_t i = 0; i < editResult.results_.size(); i++) {
+  os << editResult.stats << " goalPos=" << editResult.goalPos << "\n";
+  for (size_t i = 0; i < editResult.results_.size(); i++) {
     const auto& res = editResult.results_[i];
-    if (res.isValid()) os << res.sequence; else os << "_";
-
-    if(i < editResult.results_.size() - 1) os << " ";
+    if (res.isValid()) {
+      os << "  [" << i << "] " << res << "\n";
+    }
   }
-  os << "\n";
   return os;
 }
 
