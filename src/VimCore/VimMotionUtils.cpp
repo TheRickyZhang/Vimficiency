@@ -270,8 +270,9 @@ void motionSentencePrev(Position &pos, const Lines &lines) {
 
   auto [sl, sc] = findCurrentSentenceStart(lines, pos.line, pos.col);
 
-  // If already at sentence start, go to previous sentence start.
-  if (sl == pos.line && sc == pos.col) {
+  // If already at or before sentence start (cursor in inter-sentence
+  // whitespace), go to previous sentence start.
+  if (sl > pos.line || (sl == pos.line && sc >= pos.col)) {
     int l = sl, k = sc;
 
     // Step back past the whitespace/closers that precede this sentence start

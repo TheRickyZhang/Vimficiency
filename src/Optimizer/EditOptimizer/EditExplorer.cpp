@@ -209,16 +209,21 @@ void EditExplorer::exploreSentenceEdits(
       // d): forward — exclusive end = endpoint (motion destination).
       if (endpoint <= cursor) continue;
       Range range(cursor, endpoint);
-      VimCore::adjustExclusiveRange(range, lines);
-      onDeletion(range,
-                 SequenceBinding(KeyedSequence::byId(spec.ksId), ctx_.effortFor(spec.ksId)));
+      auto adj = VimCore::adjustExclusiveRange(range, lines);
+      // Linewise case (both at col 0) is already covered by dd/Ndd.
+      if (adj == VimCore::ExclusiveAdjust::Linewise) continue;
+      if (range.begin < range.end)
+        onDeletion(range,
+                   SequenceBinding(KeyedSequence::byId(spec.ksId), ctx_.effortFor(spec.ksId)));
     } else {
       // d(: backward — exclusive end = cursor (the higher end of the range).
       if (endpoint >= cursor) continue;
       Range range(endpoint, cursor);
-      VimCore::adjustExclusiveRange(range, lines);
-      onDeletion(range,
-                 SequenceBinding(KeyedSequence::byId(spec.ksId), ctx_.effortFor(spec.ksId)));
+      auto adj = VimCore::adjustExclusiveRange(range, lines);
+      if (adj == VimCore::ExclusiveAdjust::Linewise) continue;
+      if (range.begin < range.end)
+        onDeletion(range,
+                   SequenceBinding(KeyedSequence::byId(spec.ksId), ctx_.effortFor(spec.ksId)));
     }
   }
 }

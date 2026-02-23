@@ -839,9 +839,18 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
             }
             // Forward: exclusive end = goalPos (motion destination).
             auto adj = VimCore::adjustExclusiveRange(range, lines);
-            if (adj == VimCore::ExclusiveAdjust::Linewise && e[0] == 'd') {
-              // d}: linewise delete.  c} stays characterwise (Vim forces this).
-              VimCore::deleteRangeLinewise(lines, LineRange(range.begin.line, range.end.line), pos);
+            if (adj == VimCore::ExclusiveAdjust::Linewise) {
+              LineRange lr(range.begin.line, range.end.line);
+              if (e[0] == 'c') {
+                // Linewise change: replace affected lines with empty line
+                lines.erase(lines.begin() + lr.beginLine + 1, lines.begin() + lr.endLine);
+                lines[lr.beginLine] = "";
+                pos = Position(lr.beginLine, 0);
+              } else {
+                VimCore::deleteRangeLinewise(lines, lr, pos);
+                // Exclusive-linewise promotion always goes to first non-blank
+                pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+              }
             } else if (range.begin < range.end) {
               VimCore::deleteRange(lines, range, pos, e[0] == 'c' ? Mode::Insert : Mode::Normal);
             }
@@ -860,7 +869,15 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
             Range range(initialPos, pos);
             auto adj = VimCore::adjustExclusiveRange(range, lines);
             if (adj == VimCore::ExclusiveAdjust::Linewise) {
-              VimCore::deleteRangeLinewise(lines, LineRange(range.begin.line, range.end.line), pos);
+              LineRange lr(range.begin.line, range.end.line);
+              if (e[0] == 'c') {
+                lines.erase(lines.begin() + lr.beginLine + 1, lines.begin() + lr.endLine);
+                lines[lr.beginLine] = "";
+                pos = Position(lr.beginLine, 0);
+              } else {
+                VimCore::deleteRangeLinewise(lines, lr, pos);
+                pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+              }
             } else if (range.begin < range.end) {
               VimCore::deleteRange(lines, range, pos, e[0] == 'c' ? Mode::Insert : Mode::Normal);
             }
@@ -893,8 +910,20 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
           // Forward: exclusive end = goalPos (motion destination).
           if (goalPos != POSITION_OUTSIDE_BOUNDARY && goalPos > pos) {
             Range range(pos, goalPos);
-            VimCore::adjustExclusiveRange(range, lines);
-            VimCore::deleteRange(lines, range, pos, e[0] == 'c' ? Mode::Insert : Mode::Normal);
+            auto adj = VimCore::adjustExclusiveRange(range, lines);
+            if (adj == VimCore::ExclusiveAdjust::Linewise) {
+              LineRange lr(range.begin.line, range.end.line);
+              if (e[0] == 'c') {
+                lines.erase(lines.begin() + lr.beginLine + 1, lines.begin() + lr.endLine);
+                lines[lr.beginLine] = "";
+                pos = Position(lr.beginLine, 0);
+              } else {
+                VimCore::deleteRangeLinewise(lines, lr, pos);
+                pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+              }
+            } else if (range.begin < range.end) {
+              VimCore::deleteRange(lines, range, pos, e[0] == 'c' ? Mode::Insert : Mode::Normal);
+            }
           }
           if (e[0] == 'c') mode = Mode::Insert;
         }
@@ -921,8 +950,20 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
           // Backward: exclusive end = cursor pos (the higher end of the range).
           if (initialPos != POSITION_OUTSIDE_BOUNDARY && initialPos < pos) {
             Range range(initialPos, pos);
-            VimCore::adjustExclusiveRange(range, lines);
-            VimCore::deleteRange(lines, range, pos, e[0] == 'c' ? Mode::Insert : Mode::Normal);
+            auto adj = VimCore::adjustExclusiveRange(range, lines);
+            if (adj == VimCore::ExclusiveAdjust::Linewise) {
+              LineRange lr(range.begin.line, range.end.line);
+              if (e[0] == 'c') {
+                lines.erase(lines.begin() + lr.beginLine + 1, lines.begin() + lr.endLine);
+                lines[lr.beginLine] = "";
+                pos = Position(lr.beginLine, 0);
+              } else {
+                VimCore::deleteRangeLinewise(lines, lr, pos);
+                pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+              }
+            } else if (range.begin < range.end) {
+              VimCore::deleteRange(lines, range, pos, e[0] == 'c' ? Mode::Insert : Mode::Normal);
+            }
           }
           if (e[0] == 'c') mode = Mode::Insert;
         }

@@ -3040,6 +3040,51 @@ TEST_F(DebugTest, DISABLED_ReproduceSmallEmbeddedSentenceCrash) {
   oracleAndInterp("d{", {"abc", "", "def"}, 2, 2);
 }
 
+// Verify c vs d linewise distinction — Copilot review comment
+TEST_F(DebugTest, DISABLED_CopilotReview_ChangeLinewiseDistinction) {
+  auto oracle = std::make_unique<NeovimOracle>();
+
+  auto oracleAndInterp = [&](const string& cmd, const Lines& lines, int row, int col) {
+    auto nv = oracle->simulate(lines, row, col, cmd);
+    cerr << cmd << " from (" << row << "," << col << ") on " << lines << endl;
+    cerr << "  Oracle: " << nv.lines << " pos=(" << nv.row << "," << nv.col << ") mode=" << static_cast<int>(nv.mode) << endl;
+    Lines buf = lines;
+    Position pos(row, col);
+    Mode mode = Mode::Normal;
+    string lastEdit;
+    for (const ParsedEdit& op : Edit::parseEdits(cmd)) {
+      Edit::applyEdit(buf, pos, mode, op, &lastEdit, false, 0, 0, false);
+    }
+    cerr << "  Interp: " << buf << " pos=(" << pos.line << "," << pos.col << ") mode=" << static_cast<int>(mode) << endl;
+    EXPECT_EQ(buf, nv.lines) << "Buffer mismatch for " << cmd;
+    EXPECT_EQ(pos.line, nv.row) << "Row mismatch for " << cmd;
+    EXPECT_EQ(pos.col, nv.col) << "Col mismatch for " << cmd;
+  };
+
+  // c) linewise: both at col 0 — does Vim stay characterwise?
+  cerr << "=== c) linewise cases ===" << endl;
+  oracleAndInterp("c)", {"End.", "Start"}, 0, 0);
+  oracleAndInterp("c)", {"End.", "  Start"}, 0, 0);  // indented: cursor placement differs?
+
+  // c( linewise: cursor at col 0
+  cerr << "=== c( linewise cases ===" << endl;
+  oracleAndInterp("c(", {"End.", "Start"}, 1, 0);
+  oracleAndInterp("c(", {"End.", "  Start"}, 1, 0);
+
+  // c} linewise: both at col 0
+  cerr << "=== c} linewise cases ===" << endl;
+  oracleAndInterp("c}", {"abc", "", "def"}, 0, 0);
+
+  // c{ linewise: both at col 0
+  cerr << "=== c{ linewise cases ===" << endl;
+  oracleAndInterp("c{", {"abc", "", "def"}, 2, 0);
+
+  // d) and d( with indented content — cursor placement check
+  cerr << "=== d)/d( with indented content ===" << endl;
+  oracleAndInterp("d)", {"End.", "  Start"}, 0, 0);
+  oracleAndInterp("d(", {"End.", "  Start"}, 1, 0);
+}
+
 TEST_F(DebugTest, DISABLED_DiagnoseCompBenchFound0) {
   // Test all 5 seeds that benchmarks use (42..46) to see which find 0 results
   constexpr int DEFAULT_LINES = 15;

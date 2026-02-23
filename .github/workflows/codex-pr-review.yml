@@ -29,17 +29,6 @@ jobs:
           git diff --no-color --minimal "$BASE...$HEAD" > /tmp/pr.diff
           echo "diff_lines=$(wc -l </tmp/pr.diff | tr -d ' ')" >> "$GITHUB_OUTPUT"
 
-      - name: Run Codex (structured review)
-        id: codex
-        uses: openai/codex-action@v1
-        with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          model: gpt-5.2-codex
-          codex-args: >-
-            --output-schema .github/codex/schemas/pr_review.schema.json
-        env:
-          CODEX_PROMPT_FILE: /tmp/codex_prompt.txt
-
       - name: Build Codex prompt with diff
         shell: bash
         run: |

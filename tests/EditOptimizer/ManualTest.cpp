@@ -426,5 +426,38 @@ TEST_F(EditOptimizer_ManualTest, ExclusiveLineAdjust_BackwardParagraph_BackedUp)
 }
 
 // =============================================================================
+// Change-vs-Delete Linewise Distinction
+// =============================================================================
+//
+// When exclusive-linewise adjustment promotes a motion to linewise:
+//   d: uses deleteRangeLinewise (removes lines, cursor at first non-blank)
+//   c: replaces affected lines with empty line, enters insert mode
+// Oracle-verified. See VimEditUtils.h for full rule description.
+
+TEST_F(EditOptimizer_ManualTest, ChangeLinewise_ForwardSentence) {
+  verifySequenceWithOracle(oracle.get(), {"End.", "Start"}, {0, 0}, "c)");
+  verifySequenceWithOracle(oracle.get(), {"End.", "  Start"}, {0, 0}, "c)");
+}
+
+TEST_F(EditOptimizer_ManualTest, ChangeLinewise_BackwardSentence) {
+  verifySequenceWithOracle(oracle.get(), {"End.", "Start"}, {1, 0}, "c(");
+  verifySequenceWithOracle(oracle.get(), {"End.", "  Start"}, {1, 0}, "c(");
+}
+
+TEST_F(EditOptimizer_ManualTest, ChangeLinewise_ForwardParagraph) {
+  verifySequenceWithOracle(oracle.get(), {"abc", "", "def"}, {0, 0}, "c}");
+}
+
+TEST_F(EditOptimizer_ManualTest, ChangeLinewise_BackwardParagraph) {
+  verifySequenceWithOracle(oracle.get(), {"abc", "", "def"}, {2, 0}, "c{");
+}
+
+TEST_F(EditOptimizer_ManualTest, DeleteLinewise_IndentedCursorPlacement) {
+  // Linewise delete with indented landing line: cursor at first non-blank
+  verifySequenceWithOracle(oracle.get(), {"End.", "  Start"}, {0, 0}, "d)");
+  verifySequenceWithOracle(oracle.get(), {"End.", "  Start"}, {1, 0}, "d(");
+}
+
+// =============================================================================
 // Note: Stress tests (random buffers) are in OutputCorrectnessTest.cpp
 // =============================================================================
