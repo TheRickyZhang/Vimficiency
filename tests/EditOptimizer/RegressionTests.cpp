@@ -97,7 +97,10 @@ TEST_F(EditOptimizerRegression, BoundaryAwareReplayPrefixKeepsXApplicable) {
   Mode mode = Mode::Normal;
   string lastEditCmd;
 
-  for (const ParsedEdit& op : Edit::parseEdits("Dd)jdaW")) {
+  // Sequence "Dd)jdaW" was valid under old (buggy) d) that didn't consume the
+  // newline. With the fix, d) collapses lines so j would fail. Use "DdaW"
+  // which still exercises boundary-aware prefix replay.
+  for (const ParsedEdit& op : Edit::parseEdits("DdaW")) {
     Edit::applyEdit(replayLines, pos, mode, op, &lastEditCmd,
                     test.boundary.hasLinesBelow(),
                     test.boundary.leftColOffset(),

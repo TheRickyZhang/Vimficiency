@@ -45,7 +45,7 @@ struct TextObjectSpec {
         cursor, lines, isInner, isBigWord, leftColOffset, rightColOffset,
         hasLinesAbove, hasLinesBelow);
     // Check if either endpoint crossed boundary
-    return range.first == POSITION_OUTSIDE_BOUNDARY || range.last == POSITION_OUTSIDE_BOUNDARY;
+    return range.begin == POSITION_OUTSIDE_BOUNDARY || range.end == POSITION_OUTSIDE_BOUNDARY;
   }
 };
 
@@ -313,7 +313,7 @@ TEST_F(TextObjectsTest, TextObjectRange_InnerWord) {
                                           false, false);  // single line, no lines above/below
 
   // diw should NOT reach the boundaries (only selects "def" at cols 4-6)
-  EXPECT_NE(result.first, POSITION_OUTSIDE_BOUNDARY);
+  EXPECT_NE(result.begin, POSITION_OUTSIDE_BOUNDARY);
 }
 
 TEST_F(TextObjectsTest, TextObjectRange_AroundWord) {
@@ -330,7 +330,7 @@ TEST_F(TextObjectsTest, TextObjectRange_AroundWord) {
                                           false, false);  // single line, no lines above/below
 
   // daw should NOT reach the boundaries (selects "def " at cols 4-7)
-  EXPECT_NE(result.first, POSITION_OUTSIDE_BOUNDARY);
+  EXPECT_NE(result.begin, POSITION_OUTSIDE_BOUNDARY);
 }
 
 TEST_F(TextObjectsTest, TextObjectRange_CrossesBoundary) {
@@ -347,7 +347,7 @@ TEST_F(TextObjectsTest, TextObjectRange_CrossesBoundary) {
                                           false, false);  // single line, no lines above/below
 
   // diw on "abc" should reach both boundaries (selects entire word at cols 0-2)
-  EXPECT_EQ(result.first, POSITION_OUTSIDE_BOUNDARY);
+  EXPECT_EQ(result.begin, POSITION_OUTSIDE_BOUNDARY);
 }
 
 TEST_F(TextObjectsTest, TextObjectRange_NoBoundary) {
@@ -358,7 +358,7 @@ TEST_F(TextObjectsTest, TextObjectRange_NoBoundary) {
   // Use 0 to indicate no boundary check, no lines above/below
   Range result = VimCore::textObjectRange(cursor, lines, true, false, 0, 0, false, false);
 
-  EXPECT_NE(result.first, POSITION_OUTSIDE_BOUNDARY);
-  EXPECT_EQ(result.first.col, 0);
-  EXPECT_EQ(result.last.col, 4);  // "hello"
+  EXPECT_NE(result.begin, POSITION_OUTSIDE_BOUNDARY);
+  EXPECT_EQ(result.begin.col, 0);
+  EXPECT_EQ(result.end.col, 5);  // "hello" (exclusive end)
 }

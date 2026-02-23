@@ -30,8 +30,8 @@ struct EditBoundary {
   // The default constructor has NO PARENT, so basically any motions are possible
   // To specify restricted motions for lines, call with hasLinesBelow = false, hasLinesAbove = false
   // Construct from buffer context, optionally inheriting from parent
-  // endPos is exclusive: one past the last valid cursor position on the last line
-  EditBoundary(const Lines& lines, Position firstPos, Position endPos,
+  // endPos is exclusive: one past the last valid cursor position on the end line
+  EditBoundary(const Lines& lines, Position beginPos, Position endPos,
                const EditBoundary& parent = noParent());
 
   // Getters for boundary content
@@ -55,10 +55,10 @@ struct EditBoundary {
   }
 
   // Quote/bracket context for text object operations (read-only)
-  const QuoteFlags& firstLineQuotes() const { return firstLineQuotes_; }
-  const QuoteFlags& lastLineQuotes() const { return lastLineQuotes_; }
-  const BracketFlags& firstLineBrackets() const { return firstLineBrackets_; }
-  const BracketFlags& lastLineBrackets() const { return lastLineBrackets_; }
+  const QuoteFlags& beginLineQuotes() const { return beginLineQuotes_; }
+  const QuoteFlags& endLineQuotes() const { return endLineQuotes_; }
+  const BracketFlags& beginLineBrackets() const { return beginLineBrackets_; }
+  const BracketFlags& endLineBrackets() const { return endLineBrackets_; }
 
   // Helper accessors for boundary char (last char of prefix, first char of suffix)
   char leftChar() const { return prefix_.empty() ? (hasLinesAbove_ ? '\n' : NO_CHAR) : prefix_.back(); }
@@ -69,8 +69,8 @@ struct EditBoundary {
 
 private:
   // Full content before/after the edit region on the same line.
-  // - prefix_: characters before edit region on first line (empty if at line start)
-  // - suffix_: characters after edit region on last line (empty if at line end)
+  // - prefix_: characters before edit region on begin line (empty if at line start)
+  // - suffix_: characters after edit region on end line (empty if at line end)
   // These enable correct cursor behavior after multi-line deletions merge lines.
   std::string prefix_;
   std::string suffix_;
@@ -81,11 +81,11 @@ private:
   bool hasLinesBelow_ = false;
 
   // Quote/bracket context for text object operations
-  QuoteFlags firstLineQuotes_;
-  QuoteFlags lastLineQuotes_;
-  BracketFlags firstLineBrackets_;
-  BracketFlags lastLineBrackets_;
+  QuoteFlags beginLineQuotes_;
+  QuoteFlags endLineQuotes_;
+  BracketFlags beginLineBrackets_;
+  BracketFlags endLineBrackets_;
 
-  void computeBoundaryChars(const Lines& lines, Position firstPos, Position endPos);
-  void scanQuotesAndBrackets(const Lines& lines, Position firstPos, Position endPos);
+  void computeBoundaryChars(const Lines& lines, Position beginPos, Position endPos);
+  void scanQuotesAndBrackets(const Lines& lines, Position beginPos, Position endPos);
 };

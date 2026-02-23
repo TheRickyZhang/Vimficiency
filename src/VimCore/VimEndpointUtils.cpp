@@ -11,6 +11,13 @@ using namespace std;
 
 namespace VimCore {
 
+namespace {
+Position onePastOnSameLine(const Lines& lines, const Position& inclusivePos) {
+  int lineLen = static_cast<int>(lines[inclusivePos.line].size());
+  return Position(inclusivePos.line, std::min(inclusivePos.col + 1, lineLen));
+}
+} // namespace
+
 // =============================================================================
 // Word endpoint/range computation
 // =============================================================================
@@ -85,6 +92,20 @@ Position motionWordEndpoint(Position cursor, const Lines& lines, bool forward,
   }
 }
 
+Position wordEndpointToRangeEnd(Position endpoint,
+                                         const Lines& lines,
+                                         EdgeType edgeType) {
+  if (endpoint == POSITION_OUTSIDE_BOUNDARY) return endpoint;
+  switch (edgeType) {
+    case EdgeType::WordEdge:
+    case EdgeType::GapEdge:
+      return onePastOnSameLine(lines, endpoint);
+    case EdgeType::NextEdge:
+      return endpoint;
+    default: __builtin_unreachable();
+  }
+}
+
 // Helper to compute whitespace run range. Always returns valid position.
 // Used for iw/iW when cursor on whitespace
 static Range computeWhitespaceRun(Position cursor, const Lines& lines) {
@@ -101,7 +122,7 @@ static Range computeWhitespaceRun(Position cursor, const Lines& lines) {
     end = next;
     next = lines.getNextPos(end);
   }
-  return Range(start, end);
+  return Range(start, onePastOnSameLine(lines, end));
 }
 
 Range textObjectCore(Position cursor, const Lines& lines, bool isInner,
@@ -119,7 +140,9 @@ Range textObjectCore(Position cursor, const Lines& lines, bool isInner,
     } else {
       // Cursor on word/symbol - use motionWordCore directly
       start = motionWordCore<false, EdgeType::WordEdge>(cursor, lines, isBigWord, false);
-      end = motionWordCore<true, EdgeType::WordEdge>(cursor, lines, isBigWord, false);
+      end = wordEndpointToRangeEnd(
+          motionWordCore<true, EdgeType::WordEdge>(cursor, lines, isBigWord, false),
+          lines, EdgeType::WordEdge);
     }
   } else {
     // daw/daW: depends on cursor position and trailing whitespace
@@ -127,7 +150,9 @@ Range textObjectCore(Position cursor, const Lines& lines, bool isInner,
       // Cursor in whitespace: (Backward, GapEdge) + (Forward, WordEdge)
       // lineBounded=true: don't cross newline backward from indentation
       start = motionWordCore<false, EdgeType::GapEdge>(cursor, lines, isBigWord, false, /*lineBounded=*/true);
-      end = motionWordCore<true, EdgeType::WordEdge>(cursor, lines, isBigWord, false);
+      end = wordEndpointToRangeEnd(
+          motionWordCore<true, EdgeType::WordEdge>(cursor, lines, isBigWord, false),
+          lines, EdgeType::WordEdge);
     } else {
       // Cursor in word/symbol: check for trailing whitespace (NOT newline!)
       Position wordEnd = motionWordCore<true, EdgeType::WordEdge>(cursor, lines, isBigWord, false);
@@ -146,7 +171,9 @@ Range textObjectCore(Position cursor, const Lines& lines, bool isInner,
         // Has trailing ws: (Backward, WordEdge) + (Forward, GapEdge)
         // lineBounded=true: trailing whitespace doesn't cross lines
         start = wordStart;
-        end = motionWordCore<true, EdgeType::GapEdge>(cursor, lines, isBigWord, false, /*lineBounded=*/true);
+        end = wordEndpointToRangeEnd(
+            motionWordCore<true, EdgeType::GapEdge>(cursor, lines, isBigWord, false, /*lineBounded=*/true),
+            lines, EdgeType::GapEdge);
       } else {
         // No trailing ws: include leading whitespace ONLY if there's a word
         // before on same line. Use lineBounded backward GapEdge - if it returns
@@ -160,12 +187,15 @@ Range textObjectCore(Position cursor, const Lines& lines, bool isInner,
           // At indentation, line start, or no word found: just use word boundaries
           start = wordStart;
         }
-        end = wordEnd;
+        end = wordEndpointToRangeEnd(wordEnd, lines, EdgeType::WordEdge);
       }
     }
   }
 
-  // Return Range where start/end could be POSITION_OUTSIDE_BOUNDARY
+  // Return half-open [begin, end), where invalid endpoints propagate as sentinels.
+  if (!start.isValid() || !end.isValid()) {
+    return Range(start, end);
+  }
   return Range(start, end);
 }
 
@@ -175,15 +205,11 @@ Range textObject(Position cursor, const Lines& lines, bool isInner,
   Range range = textObjectCore(cursor, lines, isInner, isBigWord);
 
   // Clamp POSITION_OUTSIDE_BOUNDARY to buffer edges
-  if (range.first == POSITION_OUTSIDE_BOUNDARY) {
-    range.first = Position(0, 0);
+  if (range.begin == POSITION_OUTSIDE_BOUNDARY) {
+    range.begin = Position(0, 0);
   }
-  if (range.last == POSITION_OUTSIDE_BOUNDARY) {
-    int lastLine = lines.lastLine();
-    int lastCol = lines[lastLine].empty()
-                      ? 0
-                      : static_cast<int>(lines[lastLine].size()) - 1;
-    range.last = Position(lastLine, lastCol);
+  if (range.end == POSITION_OUTSIDE_BOUNDARY) {
+    range.end = lines.endPos();
   }
 
   return range;
@@ -205,8 +231,8 @@ Range textObjectRange(Position cursor, const Lines& lines, bool isInner,
       // Whitespace run doesn't use motionWordEndpoint, so no line crossing
       // possible But we still need to check column boundaries on the result
       Range wsRange = computeWhitespaceRun(cursor, lines);
-      start = wsRange.first;
-      end = wsRange.last;
+      start = wsRange.begin;
+      end = wsRange.end;
 
       // Check left boundary
       if (leftColOffset > 0 && start.line == 0 && start.col < leftColOffset) {
@@ -214,20 +240,30 @@ Range textObjectRange(Position cursor, const Lines& lines, bool isInner,
       }
       // Check right boundary
       if (rightColOffset > 0) {
-        int lastLine = lines.lastLine();
-        if (end.line == lastLine) {
-          int lineLen = static_cast<int>(lines[lastLine].size());
-          if (end.col >= lineLen - rightColOffset) {
-            end = POSITION_OUTSIDE_BOUNDARY;
+        Position tail = lines.getPrevPos(end);
+        if (tail == POSITION_OUTSIDE_BOUNDARY) {
+          end = POSITION_OUTSIDE_BOUNDARY;
+        } else {
+          int lastLine = lines.lastLine();
+          if (tail.line == lastLine) {
+            int lineLen = static_cast<int>(lines[lastLine].size());
+            if (tail.col >= lineLen - rightColOffset) {
+              end = POSITION_OUTSIDE_BOUNDARY;
+            }
           }
         }
       }
+
+      // Whitespace-run path is already half-open.
+      return Range(start, end);
     } else {
       // Cursor on word/symbol - use WordEdge motions WITH boundary checking
       start = motionWordEndpoint<false, EdgeType::WordEdge>(
           cursor, lines, isBigWord, false, leftColOffset, hasLinesAbove);
-      end = motionWordEndpoint<true, EdgeType::WordEdge>(
-          cursor, lines, isBigWord, false, rightColOffset, hasLinesBelow);
+      end = wordEndpointToRangeEnd(
+          motionWordEndpoint<true, EdgeType::WordEdge>(
+              cursor, lines, isBigWord, false, rightColOffset, hasLinesBelow),
+          lines, EdgeType::WordEdge);
     }
   } else {
     // daw/daW: depends on cursor position and trailing whitespace
@@ -236,12 +272,13 @@ Range textObjectRange(Position cursor, const Lines& lines, bool isInner,
       // lineBounded=true: don't cross newline backward from indentation
       start = motionWordEndpoint<false, EdgeType::GapEdge>(
           cursor, lines, isBigWord, false, leftColOffset, hasLinesAbove, /*lineBounded=*/true);
-      end = motionWordEndpoint<true, EdgeType::WordEdge>(
+      Position wordEnd = motionWordEndpoint<true, EdgeType::WordEdge>(
           cursor, lines, isBigWord, false, rightColOffset, hasLinesBelow);
+      end = wordEndpointToRangeEnd(wordEnd, lines, EdgeType::WordEdge);
 
       // If forward motion ended on whitespace, no word was found - signal
       // invalid
-      if (end != POSITION_OUTSIDE_BOUNDARY && isBlank(lines.get(end))) {
+      if (wordEnd != POSITION_OUTSIDE_BOUNDARY && isBlank(lines.get(wordEnd))) {
         end = POSITION_OUTSIDE_BOUNDARY;
       }
     } else {
@@ -265,8 +302,10 @@ Range textObjectRange(Position cursor, const Lines& lines, bool isInner,
         // lineBounded=true: trailing whitespace doesn't cross lines
         start = motionWordEndpoint<false, EdgeType::WordEdge>(
             cursor, lines, isBigWord, false, leftColOffset, hasLinesAbove);
-        end = motionWordEndpoint<true, EdgeType::GapEdge>(
-            cursor, lines, isBigWord, false, rightColOffset, hasLinesBelow, /*lineBounded=*/true);
+        end = wordEndpointToRangeEnd(
+            motionWordEndpoint<true, EdgeType::GapEdge>(
+                cursor, lines, isBigWord, false, rightColOffset, hasLinesBelow, /*lineBounded=*/true),
+            lines, EdgeType::GapEdge);
       } else {
         // No trailing ws: include leading whitespace ONLY if there's a word
         // before on same line. Use lineBounded backward GapEdge - if it returns
@@ -292,13 +331,18 @@ Range textObjectRange(Position cursor, const Lines& lines, bool isInner,
             start = wordStart;
           }
         }
-        end = motionWordEndpoint<true, EdgeType::WordEdge>(
-            cursor, lines, isBigWord, false, rightColOffset, hasLinesBelow);
+        end = wordEndpointToRangeEnd(
+            motionWordEndpoint<true, EdgeType::WordEdge>(
+                cursor, lines, isBigWord, false, rightColOffset, hasLinesBelow),
+            lines, EdgeType::WordEdge);
       }
     }
   }
 
-  // Return Range where start/end could be POSITION_OUTSIDE_BOUNDARY
+  // Return half-open [begin, end), where invalid endpoints propagate as sentinels.
+  if (!start.isValid() || !end.isValid()) {
+    return Range(start, end);
+  }
   return Range(start, end);
 }
 
@@ -459,14 +503,16 @@ LineRange paragraphTextObjectRange(int cursorLine, const Lines& lines,
   cursorLine = std::clamp(cursorLine, 0, n - 1);
   bool cursorOnBlank = isBlankLineStr(lines[cursorLine]);
 
-  int startLine, endLine;
+  int startLine;
+  int endLine;
 
   if (isInner) {
     // dip: (Backward, BlockEdge) + (Forward, BlockEdge)
     startLine = motionParagraphEndpoint(cursorLine, lines, false,
                                         LineEdgeType::BlockEdge);
-    endLine = motionParagraphEndpoint(cursorLine, lines, true,
-                                      LineEdgeType::BlockEdge);
+    int blockEndLine = motionParagraphEndpoint(cursorLine, lines, true,
+                                               LineEdgeType::BlockEdge);
+    endLine = blockEndLine + 1;
   } else if (cursorOnBlank) {
     // dap on blank line: (Backward, BlockEdge) + select blank run + following
     // paragraph
@@ -478,11 +524,12 @@ LineRange paragraphTextObjectRange(int cursorLine, const Lines& lines,
                                            LineEdgeType::BlockEdge);
     if (blankEnd + 1 < n) {
       // There's a non-blank paragraph after - include it
-      endLine = motionParagraphEndpoint(blankEnd + 1, lines, true,
-                                        LineEdgeType::BlockEdge);
+      int followingBlockEnd = motionParagraphEndpoint(blankEnd + 1, lines, true,
+                                                      LineEdgeType::BlockEdge);
+      endLine = followingBlockEnd + 1;
     } else {
       // No paragraph after, just the blank lines
-      endLine = blankEnd;
+      endLine = blankEnd + 1;
     }
   } else {
     // Cursor on non-blank line
@@ -497,14 +544,16 @@ LineRange paragraphTextObjectRange(int cursorLine, const Lines& lines,
       // Has trailing blank lines: (Backward, BlockEdge) + (Forward, GapEdge)
       startLine = motionParagraphEndpoint(cursorLine, lines, false,
                                           LineEdgeType::BlockEdge);
-      endLine = motionParagraphEndpoint(cursorLine, lines, true,
-                                        LineEdgeType::GapEdge);
+      int gapEndLine = motionParagraphEndpoint(cursorLine, lines, true,
+                                               LineEdgeType::GapEdge);
+      endLine = gapEndLine + 1;
     } else {
       // No trailing blanks: (Backward, GapEdge) + (Forward, BlockEdge)
       startLine = motionParagraphEndpoint(cursorLine, lines, false,
                                           LineEdgeType::GapEdge);
-      endLine = motionParagraphEndpoint(cursorLine, lines, true,
-                                        LineEdgeType::BlockEdge);
+      int blockEndLine = motionParagraphEndpoint(cursorLine, lines, true,
+                                                 LineEdgeType::BlockEdge);
+      endLine = blockEndLine + 1;
     }
   }
 
@@ -512,7 +561,7 @@ LineRange paragraphTextObjectRange(int cursorLine, const Lines& lines,
   if (topBoundary >= 0 && startLine <= topBoundary) {
     return LINE_RANGE_OUTSIDE_BOUNDARY;
   }
-  if (bottomBoundary >= 0 && endLine >= bottomBoundary) {
+  if (bottomBoundary >= 0 && endLine > bottomBoundary) {
     return LINE_RANGE_OUTSIDE_BOUNDARY;
   }
 
@@ -797,6 +846,20 @@ Position motionSentenceEndpoint(Position cursor, const Lines& lines,
   return motionSentenceEdgeCore(cursor, lines, forward, edgeType);
 }
 
+Position sentenceEndpointToRangeEnd(Position endpoint,
+                                             const Lines& lines,
+                                             SentenceEdgeType edgeType) {
+  if (endpoint == POSITION_OUTSIDE_BOUNDARY) return endpoint;
+  switch (edgeType) {
+    case SentenceEdgeType::SentenceEdge:
+    case SentenceEdgeType::GapEdge:
+      return onePastOnSameLine(lines, endpoint);
+    case SentenceEdgeType::NextEdge:
+      return endpoint;
+    default: __builtin_unreachable();
+  }
+}
+
 Range sentenceTextObjectRange(Position cursor, const Lines& lines, bool isInner,
                               Position leftBoundary, Position rightBoundary) {
   int n = static_cast<int>(lines.size());
@@ -809,8 +872,9 @@ Range sentenceTextObjectRange(Position cursor, const Lines& lines, bool isInner,
 
   // Find sentence end by searching forward from sentence start
   Position sentenceStart(startLine, startCol);
-  Position sentenceEnd = motionSentenceEndpoint(sentenceStart, lines, true,
-                                                SentenceEdgeType::SentenceEdge);
+  Position sentenceEnd = sentenceEndpointToRangeEnd(
+      motionSentenceEndpoint(sentenceStart, lines, true, SentenceEdgeType::SentenceEdge),
+      lines, SentenceEdgeType::SentenceEdge);
 
   Position resultStart, resultEnd;
 
@@ -820,13 +884,12 @@ Range sentenceTextObjectRange(Position cursor, const Lines& lines, bool isInner,
     resultEnd = sentenceEnd;
   } else {
     // das: include trailing whitespace (or leading if no trailing)
-    Position gapEnd = motionSentenceEndpoint(sentenceStart, lines, true,
-                                             SentenceEdgeType::GapEdge);
+    Position gapEnd = sentenceEndpointToRangeEnd(
+        motionSentenceEndpoint(sentenceStart, lines, true, SentenceEdgeType::GapEdge),
+        lines, SentenceEdgeType::GapEdge);
 
-    // Check if there's trailing whitespace/blank lines
-    bool hasTrailing =
-        (gapEnd.line > sentenceEnd.line ||
-         (gapEnd.line == sentenceEnd.line && gapEnd.col > sentenceEnd.col));
+    // Check if there's trailing whitespace/blank lines.
+    bool hasTrailing = gapEnd > sentenceEnd;
 
     if (hasTrailing) {
       // Include trailing whitespace
@@ -854,11 +917,11 @@ Range sentenceTextObjectRange(Position cursor, const Lines& lines, bool isInner,
     }
   }
 
-  // Check if result crosses boundaries
+  // Check if result crosses boundaries using half-open semantics.
   if (leftBoundary.isValid() && resultStart <= leftBoundary) {
     return RANGE_OUTSIDE_BOUNDARY;
   }
-  if (rightBoundary.isValid() && resultEnd >= rightBoundary) {
+  if (rightBoundary.isValid() && resultEnd > rightBoundary) {
     return RANGE_OUTSIDE_BOUNDARY;
   }
 
@@ -943,7 +1006,7 @@ LineRange lineDeleteRange(Position cursor, const Lines& lines,
     return LINE_RANGE_OUTSIDE_BOUNDARY;
   }
 
-  return LineRange(line, line);
+  return LineRange(line, line + 1);
 }
 
 } // namespace VimCore

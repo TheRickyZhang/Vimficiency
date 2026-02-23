@@ -23,14 +23,14 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateRemainingFailures) {
 
     // Simulate dd
     cerr << "Before dd: " << testLines << " pos=(" << pos.line << "," << pos.col << ")" << endl;
-    VimCore::deleteRangeLinewise(testLines, LineRange(0, 0), pos);
+    VimCore::deleteRangeLinewise(testLines, LineRange(0, 1), pos);
     cerr << "After dd: " << testLines << " pos=(" << pos.line << "," << pos.col << ")" << endl;
 
     // Simulate daw - first check what textObjectRange returns
     cerr << endl << "textObjectRange for daw at (" << pos.line << "," << pos.col << "):" << endl;
     Range dawRange = VimCore::textObjectRange(pos, testLines, false, false, 0, 0, false, false);
-    cerr << "  Range: [" << dawRange.first.line << "," << dawRange.first.col << "] to ["
-         << dawRange.last.line << "," << dawRange.last.col << "]" << endl;
+    cerr << "  Range: [" << dawRange.begin.line << "," << dawRange.begin.col << "] to ["
+         << dawRange.end.line << "," << dawRange.end.col << "]" << endl;
 
     // Apply the deletion
     VimCore::deleteRange(testLines, dawRange, pos, Mode::Normal);

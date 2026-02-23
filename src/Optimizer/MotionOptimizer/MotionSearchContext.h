@@ -65,13 +65,13 @@ struct MotionSearchContext {
     return std::abs(goal.line - pos.line) + std::abs(goal.targetCol - pos.targetCol);
   }
 
-  // Distance to closest point in a range [rangeFirst, rangeEnd)
-  double distanceToRange(Position pos, Position rangeFirst, Position rangeEnd) const {
-    if (pos >= rangeFirst && pos < rangeEnd) {
+  // Distance to closest point in a range [rangeBegin, rangeEnd)
+  double distanceToRange(Position pos, Position rangeBegin, Position rangeEnd,
+                         Position rangeTail) const {
+    if (pos >= rangeBegin && pos < rangeEnd) {
       return 0.0;  // Inside range
     }
-    // For distance computation, use the last inclusive position
-    Position closest = (pos < rangeFirst) ? rangeFirst : Position(rangeEnd.line, rangeEnd.col - 1);
+    Position closest = (pos < rangeBegin) ? rangeBegin : rangeTail;
     return distanceToGoal(pos, closest);
   }
 
@@ -85,9 +85,12 @@ struct MotionSearchContext {
     return computePriority(s.getEffort(), distanceToGoal(s.getPos(), goal));
   }
 
-  // Convenience: compute priority for range goal [first, end)
-  double computePriorityToRange(const MotionState& s, Position first, Position end) const {
-    return computePriority(s.getEffort(), distanceToRange(s.getPos(), first, end));
+  // Convenience: compute priority for range goal [rangeBegin, rangeEnd)
+  double computePriorityToRange(const MotionState& s, Position rangeBegin, Position rangeEnd,
+                                Position rangeTail) const {
+    return computePriority(
+        s.getEffort(),
+        distanceToRange(s.getPos(), rangeBegin, rangeEnd, rangeTail));
   }
 
   // ==========================================================================
@@ -99,7 +102,7 @@ struct MotionSearchContext {
   void exploreNewState(MotionState&& state, const PosKey& goalKey);
 
   // Variant for range goals: positions in range are not cached
-  void exploreNewStateToRange(MotionState&& state, Position rangeFirst, Position rangeEnd);
+  void exploreNewStateToRange(MotionState&& state, Position rangeBegin, Position rangeEnd);
 
   // Check if search should continue
   bool shouldContinue() const {

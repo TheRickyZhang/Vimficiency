@@ -134,12 +134,12 @@ CompositionResult CompositionOptimizer::optimize(
       Position insertPos = nextEdit.beginPos;
       bool isNewLineInsertion = nextEdit.isNewLineInsertion();
 
-      // Explore an insertion strategy by navigating to a valid range, then inserting.
-      // o, I, A -> anywhere in 
-      auto exploreInsertionStrategy = [&](int targetLine, int firstCol, int lastCol,
+      // Explore an insertion strategy by navigating to a valid half-open target range,
+      // then inserting.
+      auto exploreInsertionStrategy = [&](int targetLine, int beginCol, int endCol,
                                           const string& insertCmd) {
         bool inRange = (pos.line == targetLine &&
-                        pos.col >= firstCol && pos.col <= lastCol);
+                        pos.col >= beginCol && pos.col < endCol);
 
         if (inRange) {
           ctx.exploreEditTransition(s, Sequence(insertCmd), editResult.goalPos,
@@ -147,14 +147,15 @@ CompositionResult CompositionOptimizer::optimize(
         } else {
           // Slice a padded subset around [pos, target] for MotionOptimizer
           auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
-              pos.line, targetLine, params.motionPaddingAbove, params.motionPaddingBelow);
+              min(pos.line, targetLine), max(pos.line, targetLine) + 1,
+              params.motionPaddingAbove, params.motionPaddingBelow);
 
           Lines subset = currentLines.getLineRange(beginLine, endLine);
 
           // Remap positions to subset-local coordinates
           Position localPos(pos.line - beginLine, pos.col, pos.targetCol);
-          Position localRangeFirst(targetLine - beginLine, firstCol);
-          Position localRangeEnd(targetLine - beginLine, lastCol + 1);
+          Position localRangeBegin(targetLine - beginLine, beginCol);
+          Position localRangeEnd(targetLine - beginLine, endCol);
 
           // Boundary uses full subset extent, not the target range.
           // The target range is only for optimizeToRange's isInRange check.
@@ -167,7 +168,7 @@ CompositionResult CompositionOptimizer::optimize(
               endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
           auto motionResult = motionOptimizer.optimizeToRange(
-              subset, localPos, localRangeFirst, localRangeEnd,
+              subset, localPos, localRangeBegin, localRangeEnd,
               MotionOptimizerRangeParams{}
                   .withMaxResults(1)
                   .withMinCountRepeat(params.minPrefixCount)
@@ -193,20 +194,20 @@ CompositionResult CompositionOptimizer::optimize(
       if (isNewLineInsertion && insertPos.col == 0 && insertPos.line > 0) {
         debug("    exploring o-strategy on line", insertPos.line - 1);
         int targetLine = insertPos.line - 1;
-        int lastCol = currentLines[targetLine].empty()
-            ? 0 : static_cast<int>(currentLines[targetLine].size()) - 1;
+        int lineEnd = currentLines[targetLine].effectiveSize();
         string_view sourceIndent = VimOptions::autoindent()
             ? leadingWhitespace(currentLines[targetLine])
             : string_view{};
         Lines insertLines = Lines::unflatten(string(nextEdit.insertedTextBody()));
         KeyedSequence typed = buildTypedCommands(insertLines, sourceIndent);
-        exploreInsertionStrategy(targetLine, 0, lastCol,
+        exploreInsertionStrategy(targetLine, 0, lineEnd,
                                  "o" + typed.seq.str());
       } else {
         // I/A/i: handle autoindent for multi-line insertions
         int fnb = VimCore::firstNonBlankColInLineStr(currentLines[insertPos.line]);
         int lineLen = static_cast<int>(currentLines[insertPos.line].size());
-        int lastCol = lineLen == 0 ? 0 : lineLen - 1;
+        int lineEnd = currentLines[insertPos.line].effectiveSize();
+        int lastContentCol = lineEnd - 1;
         Lines insertLines = Lines::unflatten(nextEdit.insertedText);
 
         if (insertPos.col == fnb) {
@@ -215,10 +216,10 @@ CompositionResult CompositionOptimizer::optimize(
           // For multi-line, prefix before cursor is the indent (text before FNB)
           KeyedSequence escaped = buildTypedCommands(insertLines, "",
               currentLines[insertPos.line].substr(0, fnb));
-          exploreInsertionStrategy(insertPos.line, 0, lastCol,
+          exploreInsertionStrategy(insertPos.line, 0, lineEnd,
                                    "I" + escaped.seq.str());
           // Also explore i at exact position (cheaper when cursor is already there)
-          exploreInsertionStrategy(insertPos.line, insertPos.col, insertPos.col,
+          exploreInsertionStrategy(insertPos.line, insertPos.col, insertPos.col + 1,
                                    "i" + escaped.seq.str());
         } else if (insertPos.col == lineLen) {
           debug("    exploring A/a-strategy at eol col", lineLen);
@@ -226,10 +227,10 @@ CompositionResult CompositionOptimizer::optimize(
           // For multi-line, prefix is the entire current line
           KeyedSequence escaped = buildTypedCommands(insertLines, "",
               currentLines[insertPos.line]);
-          exploreInsertionStrategy(insertPos.line, 0, lastCol,
+          exploreInsertionStrategy(insertPos.line, 0, lineEnd,
                                    "A" + escaped.seq.str());
           // Also explore a at last column (cheaper when cursor is already at $)
-          exploreInsertionStrategy(insertPos.line, lastCol, lastCol,
+          exploreInsertionStrategy(insertPos.line, lastContentCol, lastContentCol + 1,
                                    "a" + escaped.seq.str());
         } else {
           debug("    exploring i-strategy at col", insertPos.col);
@@ -237,7 +238,7 @@ CompositionResult CompositionOptimizer::optimize(
           // For multi-line, prefix is text before cursor
           KeyedSequence escaped = buildTypedCommands(insertLines, "",
               currentLines[insertPos.line].substr(0, insertPos.col));
-          exploreInsertionStrategy(insertPos.line, insertPos.col, insertPos.col,
+          exploreInsertionStrategy(insertPos.line, insertPos.col, insertPos.col + 1,
                                    "i" + escaped.seq.str());
         }
       }
@@ -329,15 +330,16 @@ CompositionResult CompositionOptimizer::optimize(
       }
 
       // Slice a padded subset around [pos, edit region] for MotionOptimizer
+      int editEndLine = nextEdit.endPos.line + (nextEdit.endPos.col > 0 ? 1 : 0);
       auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
           min(pos.line, nextEdit.beginPos.line),
-          max(pos.line, nextEdit.endPos.line),
+          max(pos.line + 1, editEndLine),
           params.motionPaddingAbove, params.motionPaddingBelow);
 
       Lines subset = currentLines.getLineRange(beginLine, endLine);
 
       Position localPos(pos.line - beginLine, pos.col, pos.targetCol);
-      Position localRangeFirst(nextEdit.beginPos.line - beginLine, nextEdit.beginPos.col);
+      Position localRangeBegin(nextEdit.beginPos.line - beginLine, nextEdit.beginPos.col);
       Position localRangeEnd(nextEdit.endPos.line - beginLine, nextEdit.endPos.col);
 
       // Boundary uses full subset extent, not the edit range.
@@ -356,7 +358,7 @@ CompositionResult CompositionOptimizer::optimize(
             to_string(nextEdit.endPos.col) + ")");
 
       auto motionResult = motionOptimizer.optimizeToRange(
-          subset, localPos, localRangeFirst, localRangeEnd,
+          subset, localPos, localRangeBegin, localRangeEnd,
           MotionOptimizerRangeParams{}
               .withMaxResults(clamp(nextEdit.origCharCount(), 1, 10))
               .withMinCountRepeat(params.minPrefixCount)
@@ -385,11 +387,8 @@ CompositionResult CompositionOptimizer::optimize(
       if (joinPlan && pos.line != joinPlan->entryLine) {
         int jLine = joinPlan->entryLine;
         int jLineLen = currentLines[jLine].effectiveSize();
-        Position jRangeFirst(jLine, 0);
-        Position jRangeEnd(jLine, jLineLen);
-
         auto [jBeginLine, jEndLine] = currentLines.minmaxBoundWithPadding(
-            min(pos.line, jLine), max(pos.line, jLine),
+            min(pos.line, jLine), max(pos.line, jLine) + 1,
             params.motionPaddingAbove, params.motionPaddingBelow);
 
         Lines jSubset = currentLines.getLineRange(jBeginLine, jEndLine);

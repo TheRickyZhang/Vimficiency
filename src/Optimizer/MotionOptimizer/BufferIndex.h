@@ -38,12 +38,12 @@ public:
   // Direction inferred from currPos vs goalPos. Invalid entries have count <= 1.
   std::array<RepeatMotionResult, 2> getTwoClosest(LandingType type, Position currPos, Position goalPos) const;
 
-  // Returns positions near range [rangeFirst, rangeEnd): one undershoot (last before range),
+  // Returns positions near range [rangeBegin, rangeEnd): one undershoot (last before range),
   // all in-range positions, and one overshoot (first past range), each with count from currPos.
-  // Direction inferred from currPos vs rangeFirst.
+  // Direction inferred from currPos vs rangeBegin.
   std::vector<RepeatMotionResult> getClosestInRange(
       LandingType type, Position currPos,
-      Position rangeFirst, Position rangeEnd) const;
+      Position rangeBegin, Position rangeEnd) const;
 
   // Debug
   size_t count(LandingType type) const { return get(type).size(); }

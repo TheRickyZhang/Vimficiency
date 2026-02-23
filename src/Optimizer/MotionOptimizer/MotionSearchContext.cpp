@@ -45,7 +45,7 @@ void MotionSearchContext::exploreNewState(MotionState&& newState, const PosKey& 
 }
 
 void MotionSearchContext::exploreNewStateToRange(MotionState&& newState,
-                                                  Position rangeFirst,
+                                                  Position rangeBegin,
                                                   Position rangeEnd) {
   motionsEmitted++;
 
@@ -59,8 +59,8 @@ void MotionSearchContext::exploreNewStateToRange(MotionState&& newState,
   Position pos = newState.getPos();
   auto it = costMap.find(newKey);
 
-  // Check if position is in goal range [rangeFirst, rangeEnd)
-  bool isInRange = pos >= rangeFirst && pos < rangeEnd;
+  // Check if position is in goal range [rangeBegin, rangeEnd)
+  bool isInRange = pos >= rangeBegin && pos < rangeEnd;
 
   if (it == costMap.end()) {
     // New state - don't cache positions in range (allow multiple results)

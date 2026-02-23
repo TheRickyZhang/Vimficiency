@@ -7,6 +7,13 @@ using namespace std;
 
 namespace VimTextObjectsLegacy {
 
+namespace {
+Position onePastOnSameLine(const Lines& lines, const Position& inclusivePos) {
+  int lineLen = static_cast<int>(lines[inclusivePos.line].size());
+  return Position(inclusivePos.line, std::min(inclusivePos.col + 1, lineLen));
+}
+} // namespace
+
 // -----------------------------------------------------------------------------
 // Quote text objects (i", a", i', a')
 // -----------------------------------------------------------------------------
@@ -69,21 +76,24 @@ Range innerQuote(const Lines& lines, Position pos, char quote) {
     return RANGE_OUTSIDE_BOUNDARY;
   }
 
-  return Range(Position(line, openQuote + 1), Position(line, closeQuote - 1));
+  return Range(Position(line, openQuote + 1), Position(line, closeQuote));
 }
 
 Range aroundQuote(const Lines& lines, Position pos, char quote) {
   Range inner = innerQuote(lines, pos, quote);
 
   // If inner is empty/invalid, return it
-  if (inner.first.line != inner.last.line) return inner;
+  if (!inner.isValid() || inner.isEmpty()) return inner;
+  if (inner.begin.line != inner.end.line) return inner;
 
-  int line = inner.first.line;
+  int line = inner.begin.line;
   const string& ln = lines[line];
 
   // Expand to include the quotes
-  int startCol = inner.first.col > 0 ? inner.first.col - 1 : inner.first.col;
-  int endCol = inner.last.col < static_cast<int>(ln.size()) - 1 ? inner.last.col + 1 : inner.last.col;
+  int startCol = inner.begin.col > 0 ? inner.begin.col - 1 : inner.begin.col;
+  int endCol = inner.end.col < static_cast<int>(ln.size())
+                   ? inner.end.col + 1
+                   : inner.end.col;
 
   return Range(Position(line, startCol), Position(line, endCol));
 }
@@ -183,18 +193,11 @@ Range innerBracket(const Lines& lines, Position pos, char open, char close) {
     start.setCol(0);
   }
 
-  // End before close bracket
+  // End is exclusive: at close bracket position.
   Position end = closePos;
-  if (end.col > 0) {
-    end.setCol(end.col - 1);
-  } else if (end.line > 0) {
-    end.line--;
-    end.setCol(static_cast<int>(lines[end.line].size()) - 1);
-    if (end.col < 0) end.setCol(0);
-  }
 
   // Handle empty brackets like ()
-  if (start.line > end.line || (start.line == end.line && start.col > end.col)) {
+  if (start >= end) {
     return RANGE_OUTSIDE_BOUNDARY;  // Empty
   }
 
@@ -208,7 +211,7 @@ Range aroundBracket(const Lines& lines, Position pos, char open, char close) {
     return Range(pos, pos);
   }
 
-  return Range(openPos, closePos);
+  return Range(openPos, onePastOnSameLine(lines, closePos));
 }
 
 } // namespace VimTextObjectsLegacy

@@ -113,7 +113,7 @@ public:
   // hasLinesBelow: if true, cursor is not clamped when deleting the last line
   [[nodiscard]] EditState afterLinewiseDeletion(int line, bool hasLinesBelow = false) const {
     EditState newState = *this;
-    VimCore::deleteRangeLinewise(newState.lines, LineRange(line, line), newState.pos, hasLinesBelow);
+    VimCore::deleteRangeLinewise(newState.lines, LineRange(line, line + 1), newState.pos, hasLinesBelow);
     newState.linesHash_ = hashLines(newState.lines);
     return newState;
   }

@@ -30,17 +30,17 @@ using namespace std;
 // =============================================================================
 
 EditResult::EditResult(vector<Result> results, SearchStats stats,
-                       const Lines& initialLines, int bufferFirstLine,
-                       int bufferFirstCol, Position goalPos)
+                       const Lines& initialLines, int bufferBeginLine,
+                       int bufferBeginCol, Position goalPos)
     : goalPos(goalPos),
       stats(std::move(stats)),
       results_(std::move(results)),
-      firstLine_(bufferFirstLine),
-      firstCol_(bufferFirstCol) {
+      beginLine_(bufferBeginLine),
+      beginCol_(bufferBeginCol) {
   lineBaseIndex_.reserve(initialLines.size());
   int cumSum = 0;
   for (size_t i = 0; i < initialLines.size(); i++) {
-    int colOffset = (i == 0) ? firstCol_ : 0;
+    int colOffset = (i == 0) ? beginCol_ : 0;
     lineBaseIndex_.push_back(cumSum - colOffset);
     // Empty lines have 1 cursor position (col 0), matching initStartingPositions
     int positions = initialLines[i].empty() ? 1 : static_cast<int>(initialLines[i].size());
@@ -267,22 +267,22 @@ struct ModePolicy<true> {
 
   EditResult finalize(vector<Result>&& results, const Lines& initialLines,
                       const Lines&, const EditOptimizerParams& params,
-                      int bufferFirstLine, int bufferFirstCol, Position goalPos) {
+                      int bufferBeginLine, int bufferBeginCol, Position goalPos) {
     // Try visual mode deletion: v{motion}d from first content position to last
     if (ctx.effectiveLines.size() > 1 ||
         static_cast<int>(ctx.effectiveLines[0].size()) > ctx.leftColOffset + ctx.rightColOffset) {
-      Position firstPos(0, ctx.leftColOffset);
+      Position beginPos(0, ctx.leftColOffset);
 
       int lastLine = ctx.effectiveLines.lastLine();
       int lastCol = static_cast<int>(ctx.effectiveLines[lastLine].size()) - 1 - ctx.rightColOffset;
       Position lastPos(lastLine, max(0, lastCol));
 
-      if (lastPos > firstPos || (lastPos.line == firstPos.line && lastPos.col > firstPos.col)) {
+      if (lastPos > beginPos || (lastPos.line == beginPos.line && lastPos.col > beginPos.col)) {
         MotionOptimizer motionOpt(config);
 
         auto [motionResults, motionStats] = motionOpt.optimize(
             ctx.effectiveLines,
-            firstPos,
+            beginPos,
             lastPos,
             MotionOptimizerParams{}
                 .withLinePaddingAbove(params.motionLinePaddingAbove)
@@ -310,7 +310,7 @@ struct ModePolicy<true> {
     }
 
     return EditResult(std::move(results), ctx.getStats(), initialLines,
-                      bufferFirstLine, bufferFirstCol, goalPos);
+                      bufferBeginLine, bufferBeginCol, goalPos);
   }
 };
 
@@ -528,8 +528,21 @@ struct ModePolicy<false> {
     int totalLines = static_cast<int>(postDelLines.size());
     int cursorLine = postDelPos.line;
 
-    if (range.spansMultiple() && range.first.col == 0 &&
-        range.last.col >= preDelLines[range.last.line].size() - 1) {
+    bool rangeEndsAtLineEnd = false;
+    if (range.isValid() && !range.isEmpty()) {
+      if (range.end.col > 0) {
+        rangeEndsAtLineEnd =
+            range.end.col >= static_cast<int>(preDelLines[range.end.line].size());
+      } else if (range.end.line > 0) {
+        // Half-open end at col 0 means range already consumed the previous line
+        // through its end.
+        rangeEndsAtLineEnd = true;
+      }
+    }
+
+    if (range.spansMultiple() &&
+        range.begin.col == 0 &&
+        rangeEndsAtLineEnd) {
       if (preDelLines.size() - range.size() > 0) {
         totalLines++;
         cursorLine++;
@@ -679,34 +692,34 @@ struct ModePolicy<false> {
   void onCountedLinewiseGoal(EditState& afterDel, const EditState& base,
                              LineRange range, const SequenceBinding& sourceCmd) {
     bool isDot = isDotRepeat(base, sourceCmd);
-    int lineCount = range.lastLine - range.firstLine + 1;
+    int lineCount = range.endLine - range.beginLine;
     int ccLineCount = static_cast<int>(base.getLines().size()) - lineCount + 1;
-    KeyedSequence changeCmd = deleteToChangeLine(sourceCmd, base.getLines()[range.firstLine]);
+    KeyedSequence changeCmd = deleteToChangeLine(sourceCmd, base.getLines()[range.beginLine]);
     // Counted linewise changes ({n}cc, cj, ck) are always linewise — autoindent applies
     int autoindentLen = 0;
     if constexpr (VimOptions::autoindent()) {
-      autoindentLen = leadingSpaceCount(base.getLines()[range.firstLine]);
+      autoindentLen = leadingSpaceCount(base.getLines()[range.beginLine]);
     }
     bool needsCollapse = ccLineCount > 1;
 
     KeyedSequence changePrefix = changeCmd;
     bool useAfterIndent = false;
     // Collapse BS×cursorLine + Del×rest. Only BS interacts with autoindent.
-    bool bsInCollapse = needsCollapse && range.firstLine > 0;
+    bool bsInCollapse = needsCollapse && range.beginLine > 0;
     if constexpr (VimOptions::autoindent()) {
       if (!bsInCollapse) {
         // Safe: no BS in collapse. Adjust autoindent to goal indent.
         changePrefix += computeIndentAdjustment(autoindentLen, goalFirstIndentLen);
-        changePrefix += buildCollapseSequence(ccLineCount, range.firstLine);
+        changePrefix += buildCollapseSequence(ccLineCount, range.beginLine);
         useAfterIndent = goalFirstIndentLen > 0;
       } else {
         // BS in collapse: account for autoindent in BS count.
         int bsClear = autoindentLen > 0 ? bsCountForIndent(autoindentLen, 0) : 0;
-        changePrefix.append(KeyedSequence::BS, bsClear + range.firstLine);
-        changePrefix.append(KeyedSequence::Del, ccLineCount - 1 - range.firstLine);
+        changePrefix.append(KeyedSequence::BS, bsClear + range.beginLine);
+        changePrefix.append(KeyedSequence::Del, ccLineCount - 1 - range.beginLine);
       }
     } else {
-      changePrefix += buildCollapseSequence(ccLineCount, range.firstLine);
+      changePrefix += buildCollapseSequence(ccLineCount, range.beginLine);
     }
 
     const auto& suffixTyped = useAfterIndent ? typedAfterIndent : typed;
@@ -756,7 +769,7 @@ struct ModePolicy<false> {
 
   EditResult finalize(vector<Result>&& results, const Lines& initialLines,
                       const Lines& goalLines, const EditOptimizerParams&,
-                      int bufferFirstLine, int bufferFirstCol, Position goalPos) {
+                      int bufferBeginLine, int bufferBeginCol, Position goalPos) {
     // Try replacement strategy (same-length, single-line) with A* budget
     if (results[0].isValid() &&
         initialLines.size() == 1 && goalLines.size() == 1 &&
@@ -774,7 +787,7 @@ struct ModePolicy<false> {
     stats.cachePopulations = cachePopulations;
 
     return EditResult(std::move(results), stats, initialLines,
-                      bufferFirstLine, bufferFirstCol, goalPos);
+                      bufferBeginLine, bufferBeginCol, goalPos);
   }
 };
 
@@ -805,14 +818,14 @@ struct PureDeletionGoalCapture<true> {
     goalPosByStart[static_cast<size_t>(idx)] = pos;
   }
 
-  PureDeletionEditResult finalize(EditResult&& editResult, int bufferFirstLine) {
+  PureDeletionEditResult finalize(EditResult&& editResult, int bufferBeginLine) {
     // Convert per-result positions from edit-local coordinates to buffer
     // coordinates. For line-OOB pure deletion terminals, line maps to the
     // corresponding line below the edit region in full-buffer coordinates;
     // column is clamped later where full post-edit lines are available.
     for (Position& p : goalPosByStart) {
       if (p.line < 0) continue;
-      p.line += bufferFirstLine;
+      p.line += bufferBeginLine;
     }
     return PureDeletionEditResult{std::move(editResult), std::move(goalPosByStart)};
   }
@@ -826,7 +839,7 @@ struct PureDeletionGoalCapture<true> {
 template<bool PureDeletion>
 auto EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
                                  EditBoundary editBoundary, EditOptimizerParams params,
-                                 int bufferFirstLine, int bufferFirstCol,
+                                 int bufferBeginLine, int bufferBeginCol,
                                  Position goalPos)
     -> OptimizeImplResult<PureDeletion> {
   assert(!initialLines.empty() && "empty startlines should be handled in compositionEditor by i, a, o, O");
@@ -1028,8 +1041,8 @@ auto EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLin
   }
 
   EditResult out = mode.finalize(std::move(results), initialLines, goalLines, params,
-                                 bufferFirstLine, bufferFirstCol, goalPos);
-  return goalCapture.finalize(std::move(out), bufferFirstLine);
+                                 bufferBeginLine, bufferBeginCol, goalPos);
+  return goalCapture.finalize(std::move(out), bufferBeginLine);
 }
 
 // Explicit template instantiations
@@ -1047,7 +1060,7 @@ EditResult
 EditOptimizer::optimizeEdit(
     const Lines &initialLines, const Lines &goalLines,
     EditBoundary editBoundary, EditOptimizerParams params,
-    int bufferFirstLine, int bufferFirstCol, Position goalPos) {
+    int bufferBeginLine, int bufferBeginCol, Position goalPos) {
   assert(initialLines != goalLines);
   assert(!initialLines.empty());
   bool pureDeletionGoal = goalLines.empty() ||
@@ -1057,19 +1070,19 @@ EditOptimizer::optimizeEdit(
   params.normalizeCountRepeatBounds();
 
   return optimizeImpl<false>(initialLines, goalLines, editBoundary, params,
-                             bufferFirstLine, bufferFirstCol, goalPos);
+                             bufferBeginLine, bufferBeginCol, goalPos);
 }
 
 PureDeletionEditResult EditOptimizer::optimizePureDeletion(
     const Lines& initialLines,
     EditBoundary editBoundary,
     EditOptimizerParams params,
-    int bufferFirstLine,
-    int bufferFirstCol,
+    int bufferBeginLine,
+    int bufferBeginCol,
     Position goalPos) {
   assert(!initialLines.empty());
   params.normalizeCountRepeatBounds();
   return optimizeImpl<true>(
       initialLines, Lines{}, editBoundary, params,
-      bufferFirstLine, bufferFirstCol, goalPos);
+      bufferBeginLine, bufferBeginCol, goalPos);
 }

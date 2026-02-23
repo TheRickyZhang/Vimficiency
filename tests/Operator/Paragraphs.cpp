@@ -44,7 +44,7 @@ unique_ptr<NeovimOracle> ParagraphsTest::oracle_;
 struct ParagraphBoundaryTest {
   Lines lines;
 
-  // Edit region (line indices, inclusive)
+  // Edit region [editStartLine, editEndLine], inclusive
   int editStartLine;
   int editEndLine;
 
@@ -172,13 +172,13 @@ TEST_F(ParagraphsTest, InnerParagraph_RangeComputation) {
 
   // On non-blank line "second"
   LineRange range = VimCore::paragraphTextObjectRange(1, lines, true);
-  EXPECT_EQ(range.firstLine, 0);  // Start of paragraph block
-  EXPECT_EQ(range.lastLine, 1);    // End of paragraph block
+  EXPECT_EQ(range.beginLine, 0);  // Start of paragraph block
+  EXPECT_EQ(range.endLine, 2);    // End of paragraph block (exclusive)
 
   // On blank line
   LineRange rangeBlank = VimCore::paragraphTextObjectRange(2, lines, true);
-  EXPECT_EQ(rangeBlank.firstLine, 2);  // Just the blank line
-  EXPECT_EQ(rangeBlank.lastLine, 2);
+  EXPECT_EQ(rangeBlank.beginLine, 2);  // Just the blank line
+  EXPECT_EQ(rangeBlank.endLine, 3);
 }
 
 TEST_F(ParagraphsTest, AroundParagraph_WithTrailingBlanks) {
@@ -187,8 +187,8 @@ TEST_F(ParagraphsTest, AroundParagraph_WithTrailingBlanks) {
   // On non-blank line with trailing blanks
   LineRange range = VimCore::paragraphTextObjectRange(0, lines, false);
   // Should include paragraph + trailing blanks
-  EXPECT_EQ(range.firstLine, 0);
-  EXPECT_EQ(range.lastLine, 3);  // Through blank lines
+  EXPECT_EQ(range.beginLine, 0);
+  EXPECT_EQ(range.endLine, 4);  // Through blank lines (exclusive)
 }
 
 TEST_F(ParagraphsTest, AroundParagraph_NoTrailingBlanks) {
@@ -196,8 +196,8 @@ TEST_F(ParagraphsTest, AroundParagraph_NoTrailingBlanks) {
 
   // On non-blank line with no trailing blanks, should include leading blanks
   LineRange range = VimCore::paragraphTextObjectRange(1, lines, false);
-  EXPECT_EQ(range.firstLine, 0);  // Include leading blank
-  EXPECT_EQ(range.lastLine, 2);
+  EXPECT_EQ(range.beginLine, 0);  // Include leading blank
+  EXPECT_EQ(range.endLine, 3);
 }
 
 TEST_F(ParagraphsTest, AroundParagraph_OnBlankLine) {
@@ -205,8 +205,8 @@ TEST_F(ParagraphsTest, AroundParagraph_OnBlankLine) {
 
   // On blank line, should include blank run + following paragraph
   LineRange range = VimCore::paragraphTextObjectRange(1, lines, false);
-  EXPECT_EQ(range.firstLine, 1);  // Start of blank run
-  EXPECT_EQ(range.lastLine, 4);    // End of following paragraph
+  EXPECT_EQ(range.beginLine, 1);  // Start of blank run
+  EXPECT_EQ(range.endLine, 5);    // End of following paragraph (exclusive)
 }
 
 // =============================================================================
@@ -234,8 +234,8 @@ TEST_F(ParagraphsTest, InnerParagraph_RandomBuffer) {
     LineRange range = VimCore::paragraphTextObjectRange(test.cursorLine, test.lines, true);
 
     // Check our prediction
-    bool predictTopCross = test.hasTopBoundary && range.firstLine <= test.topBoundaryLine;
-    bool predictBottomCross = test.hasBottomBoundary && range.lastLine >= test.bottomBoundaryLine;
+    bool predictTopCross = test.hasTopBoundary && range.beginLine <= test.topBoundaryLine;
+    bool predictBottomCross = test.hasBottomBoundary && range.endLine > test.bottomBoundaryLine;
 
     // Failure if: actual crossed but we predicted safe
     bool failure = (topCrossed && !predictTopCross) || (bottomCrossed && !predictBottomCross);
@@ -247,7 +247,7 @@ TEST_F(ParagraphsTest, InnerParagraph_RandomBuffer) {
                     << "Cursor: (" << test.cursorLine << ", " << test.cursorCol << ")\n"
                     << "Edit region: [" << test.editStartLine << ", " << test.editEndLine << "]\n"
                     << "Top boundary: " << test.topBoundaryLine << ", Bottom: " << test.bottomBoundaryLine << "\n"
-                    << "Our range: [" << range.firstLine << ", " << range.lastLine << "]\n"
+                    << "Our range: [" << range.beginLine << ", " << range.endLine << ")\n"
                     << "Top - Predicted: " << (predictTopCross ? "CROSS" : "SAFE")
                     << ", Actual: " << (topCrossed ? "CROSSED" : "SAFE") << "\n"
                     << "Bottom - Predicted: " << (predictBottomCross ? "CROSS" : "SAFE")
@@ -280,8 +280,8 @@ TEST_F(ParagraphsTest, AroundParagraph_RandomBuffer) {
     LineRange range = VimCore::paragraphTextObjectRange(test.cursorLine, test.lines, false);
 
     // Check our prediction
-    bool predictTopCross = test.hasTopBoundary && range.firstLine <= test.topBoundaryLine;
-    bool predictBottomCross = test.hasBottomBoundary && range.lastLine >= test.bottomBoundaryLine;
+    bool predictTopCross = test.hasTopBoundary && range.beginLine <= test.topBoundaryLine;
+    bool predictBottomCross = test.hasBottomBoundary && range.endLine > test.bottomBoundaryLine;
 
     // Failure if: actual crossed but we predicted safe
     bool failure = (topCrossed && !predictTopCross) || (bottomCrossed && !predictBottomCross);
@@ -293,7 +293,7 @@ TEST_F(ParagraphsTest, AroundParagraph_RandomBuffer) {
                     << "Cursor: (" << test.cursorLine << ", " << test.cursorCol << ")\n"
                     << "Edit region: [" << test.editStartLine << ", " << test.editEndLine << "]\n"
                     << "Top boundary: " << test.topBoundaryLine << ", Bottom: " << test.bottomBoundaryLine << "\n"
-                    << "Our range: [" << range.firstLine << ", " << range.lastLine << "]\n"
+                    << "Our range: [" << range.beginLine << ", " << range.endLine << ")\n"
                     << "Top - Predicted: " << (predictTopCross ? "CROSS" : "SAFE")
                     << ", Actual: " << (topCrossed ? "CROSSED" : "SAFE") << "\n"
                     << "Bottom - Predicted: " << (predictBottomCross ? "CROSS" : "SAFE")
@@ -312,8 +312,8 @@ TEST_F(ParagraphsTest, Dip_SingleLineBuffer) {
   Lines lines = {"only line"};
 
   LineRange range = VimCore::paragraphTextObjectRange(0, lines, true);
-  EXPECT_EQ(range.firstLine, 0);
-  EXPECT_EQ(range.lastLine, 0);
+  EXPECT_EQ(range.beginLine, 0);
+  EXPECT_EQ(range.endLine, 1);
 
   // Verify against Neovim
   auto result = oracle_->simulate(lines, 0, 0, "dip");
@@ -325,8 +325,8 @@ TEST_F(ParagraphsTest, Dap_SingleLineBuffer) {
   Lines lines = {"only line"};
 
   LineRange range = VimCore::paragraphTextObjectRange(0, lines, false);
-  EXPECT_EQ(range.firstLine, 0);
-  EXPECT_EQ(range.lastLine, 0);
+  EXPECT_EQ(range.beginLine, 0);
+  EXPECT_EQ(range.endLine, 1);
 }
 
 TEST_F(ParagraphsTest, Dip_AllBlankLines) {
@@ -334,8 +334,8 @@ TEST_F(ParagraphsTest, Dip_AllBlankLines) {
 
   // On blank line, dip selects contiguous blank run
   LineRange range = VimCore::paragraphTextObjectRange(1, lines, true);
-  EXPECT_EQ(range.firstLine, 0);
-  EXPECT_EQ(range.lastLine, 2);
+  EXPECT_EQ(range.beginLine, 0);
+  EXPECT_EQ(range.endLine, 3);
 }
 
 TEST_F(ParagraphsTest, Dap_AtBufferEnd) {
@@ -343,8 +343,8 @@ TEST_F(ParagraphsTest, Dap_AtBufferEnd) {
 
   // dap at end with no trailing blanks should include leading blanks
   LineRange range = VimCore::paragraphTextObjectRange(2, lines, false);
-  EXPECT_EQ(range.firstLine, 1);  // Include leading blank
-  EXPECT_EQ(range.lastLine, 2);
+  EXPECT_EQ(range.beginLine, 1);  // Include leading blank
+  EXPECT_EQ(range.endLine, 3);
 }
 
 TEST_F(ParagraphsTest, Dap_AtBufferStart) {
@@ -352,6 +352,6 @@ TEST_F(ParagraphsTest, Dap_AtBufferStart) {
 
   // dap at start with trailing blanks
   LineRange range = VimCore::paragraphTextObjectRange(0, lines, false);
-  EXPECT_EQ(range.firstLine, 0);
-  EXPECT_EQ(range.lastLine, 1);  // Include trailing blank
+  EXPECT_EQ(range.beginLine, 0);
+  EXPECT_EQ(range.endLine, 2);  // Include trailing blank
 }

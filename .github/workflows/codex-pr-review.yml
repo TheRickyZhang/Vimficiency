@@ -12,38 +12,78 @@ jobs:
   codex_review:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout PR
+      - name: Checkout PR head
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Generate PR diff
+        id: prdiff
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          git fetch --no-tags --prune origin "$BASE"
+          git diff --no-color --minimal "$BASE...$HEAD" > /tmp/pr.diff
+          echo "diff_lines=$(wc -l </tmp/pr.diff | tr -d ' ')" >> "$GITHUB_OUTPUT"
 
       - name: Run Codex (structured review)
         id: codex
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          prompt-file: .github/codex/prompts/review.md
-          # Recommended for review accuracy/consistency in this workflow:
           model: gpt-5.2-codex
           codex-args: >-
             --output-schema .github/codex/schemas/pr_review.schema.json
+        env:
+          CODEX_PROMPT_FILE: /tmp/codex_prompt.txt
+
+      - name: Build Codex prompt with diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/codex_prompt.txt <<'EOF'
+Return JSON that matches the provided schema exactly.
+
+Write a concise PR review focused on:
+- logical/correctness bugs (including UB/lifetime)
+- code smells/design limitations
+- long-term semantic concerns (invariants, API boundaries, coupling)
+
+Rules:
+- body: 5–15 bullets max.
+- comments: only actionable issues; prefer severity high/medium.
+- For each inline comment: use the repo-relative file path, and a line number in the NEW file (RIGHT side).
+- Do not output any extra text outside the JSON.
+
+PR DIFF (base...head):
+EOF
+          cat /tmp/pr.diff >> /tmp/codex_prompt.txt
+
+      - name: Run Codex using the generated prompt
+        id: codex_run
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          model: gpt-5.2-codex
+          codex-args: >-
+            --output-schema .github/codex/schemas/pr_review.schema.json
+          prompt-file: /tmp/codex_prompt.txt
 
       - name: Post GitHub Review (validate + fallback)
         uses: actions/github-script@v7
         with:
           script: |
-            const raw = ${{ toJSON(steps.codex.outputs.final-message) }};
+            const raw = ${{ toJSON(steps.codex_run.outputs.final-message) }};
 
-            function safeJsonParse(s) {
-              try { return JSON.parse(s); } catch { return null; }
-            }
-
+            function safeJsonParse(s) { try { return JSON.parse(s); } catch { return null; } }
             function isString(x) { return typeof x === "string"; }
             function isInt(x) { return Number.isInteger(x); }
 
             const parsed = safeJsonParse(raw);
 
-            // Fallback: if not valid JSON, post as a plain review body.
             if (!parsed || !isString(parsed.body) || !Array.isArray(parsed.comments)) {
               await github.rest.pulls.createReview({
                 owner: context.repo.owner,
@@ -55,34 +95,20 @@ jobs:
               return;
             }
 
-            // Validate inline comments against the checked-out workspace.
             const fs = require("fs");
-
             const comments = [];
+
             for (const c of parsed.comments) {
               if (!c || !isString(c.path) || !isInt(c.line) || c.line < 1) continue;
               if (c.side !== "RIGHT") continue;
               if (!isString(c.body) || !isString(c.severity)) continue;
-
-              // Require at least medium severity to reduce spam (tweakable).
               if (c.severity === "low") continue;
-
-              // Ensure file exists and line is in range.
               if (!fs.existsSync(c.path)) continue;
-              try {
-                const nLines = fs.readFileSync(c.path, "utf8").split("\n").length;
-                if (c.line > nLines) continue;
-              } catch {
-                continue;
-              }
 
-              comments.push({
-                path: c.path,
-                line: c.line,
-                side: "RIGHT",
-                body: `[${c.severity}] ${c.body}`.trim(),
-              });
+              const nLines = fs.readFileSync(c.path, "utf8").split("\n").length;
+              if (c.line > nLines) continue;
 
+              comments.push({ path: c.path, line: c.line, side: "RIGHT", body: `[${c.severity}] ${c.body}` });
               if (comments.length >= 20) break;
             }
 

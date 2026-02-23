@@ -2,21 +2,25 @@
 
 #include <algorithm>
 
-// A line-wise region. Always inclusive.
+// A line-wise region. Half-open: [beginLine, endLine).
 struct LineRange {
-  int firstLine;
-  int lastLine;
+  int beginLine;
+  int endLine;
 
-  constexpr LineRange(int f, int l) : firstLine(f), lastLine(l) {}
+  constexpr LineRange(int begin, int end) : beginLine(begin), endLine(end) {}
 
   void normalize() {
-    if (lastLine < firstLine) {
-      std::swap(firstLine, lastLine);
+    if (endLine < beginLine) {
+      std::swap(beginLine, endLine);
     }
   }
 
   bool isValid() const {
-    return firstLine >= 0;
+    return beginLine >= 0 && endLine >= beginLine;
+  }
+
+  int lineCount() const {
+    return endLine - beginLine;
   }
 };
 

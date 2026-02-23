@@ -64,35 +64,33 @@ constexpr MotionClassMask classesForSingleGoal(int posLine, int posCol,
   return m;
 }
 
-// Compute motion classes needed to reach any point in a range [first, end).
-// Returns union of classes for targeting rangeFirst vs last inclusive position,
-// plus additional vertical classes for boundary line edge cases.
-constexpr MotionClassMask classesForRange(int posLine, int posCol,
-                                           int rfLine, int rfCol,
-                                           int reLine, int reCol) {
+// Compute motion classes needed to reach any point in a range [rangeBegin, rangeEnd).
+// The `rangeTail` target should be the valid position immediately before `rangeEnd`.
+constexpr MotionClassMask classesForRangeWithTail(int posLine, int posCol,
+                                                  int rangeBeginLine, int rangeBeginCol,
+                                                  int rangeEndLine, int rangeEndCol,
+                                                  int rangeTailLine, int rangeTailCol) {
   using M = MotionClassMask;
 
-  // Check if in range [first, end) using lexicographic ordering
-  bool afterFirst = (posLine > rfLine) || (posLine == rfLine && posCol >= rfCol);
-  bool beforeEnd = (posLine < reLine) || (posLine == reLine && posCol < reCol);
+  // Check if in range [rangeBegin, rangeEnd) using lexicographic ordering.
+  bool afterBegin = (posLine > rangeBeginLine)
+      || (posLine == rangeBeginLine && posCol >= rangeBeginCol);
+  bool beforeEnd = (posLine < rangeEndLine)
+      || (posLine == rangeEndLine && posCol < rangeEndCol);
 
-  if (afterFirst && beforeEnd) {
+  if (afterBegin && beforeEnd) {
     return M::None;  // Already in range
   }
 
-  // Last inclusive position for goal targeting
-  int rlLine = reLine;
-  int rlCol = reCol - 1;
-
-  // Take union of classes for targeting rangeFirst vs last inclusive position
-  MotionClassMask m = classesForSingleGoal(posLine, posCol, rfLine, rfCol)
-                    | classesForSingleGoal(posLine, posCol, rlLine, rlCol);
+  // Take union of classes for targeting rangeBegin vs range tail.
+  MotionClassMask m = classesForSingleGoal(posLine, posCol, rangeBeginLine, rangeBeginCol)
+                    | classesForSingleGoal(posLine, posCol, rangeTailLine, rangeTailCol);
 
   // Additional: if on boundary line, may need extra vertical to enter range
-  if (posLine == rfLine && posCol < rfCol && rfLine < reLine) {
+  if (posLine == rangeBeginLine && posCol < rangeBeginCol && rangeBeginLine < rangeEndLine) {
     m = m | M::Down;  // Can go down into range
   }
-  if (posLine == reLine && posCol >= reCol && rfLine < reLine) {
+  if (posLine == rangeEndLine && posCol >= rangeEndCol && rangeBeginLine < rangeEndLine) {
     m = m | M::Up;    // Can go up into range
   }
 
