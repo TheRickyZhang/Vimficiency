@@ -108,13 +108,13 @@ struct Lines final : std::vector<Line> {
     return data()[pos.line].get(pos.col);
   }
 
-  Lines getSpan(const Position& front, const Position& end) const {
+  Lines getSpan(const Position& begin, const Position& end) const {
     Lines result;
-    if (front.line == end.line) {
-      result.push_back(data()[front.line].substr(front.col, end.col - front.col));
+    if (begin.line == end.line) {
+      result.push_back(data()[begin.line].substr(begin.col, end.col - begin.col));
     } else {
-      result.push_back(data()[front.line].substr(front.col));
-      for (int i = front.line + 1; i < end.line; i++) {
+      result.push_back(data()[begin.line].substr(begin.col));
+      for (int i = begin.line + 1; i < end.line; i++) {
         result.push_back(data()[i]);
       }
       result.push_back(data()[end.line].substr(0, end.col));
@@ -122,12 +122,12 @@ struct Lines final : std::vector<Line> {
     return result;
   }
 
-  int spanSize(const Position& front, const Position& end) const {
-    if (front.line == end.line) {
-      return end.col - front.col;
+  int spanSize(const Position& begin, const Position& end) const {
+    if (begin.line == end.line) {
+      return end.col - begin.col;
     }
-    int count = std::max(1, static_cast<int>(data()[front.line].size()) - front.col);
-    for (int i = front.line + 1; i < end.line; i++) {
+    int count = std::max(1, static_cast<int>(data()[begin.line].size()) - begin.col);
+    for (int i = begin.line + 1; i < end.line; i++) {
       count += std::max(1, static_cast<int>(data()[i].size()));
     }
     count += end.col;
@@ -155,17 +155,18 @@ struct Lines final : std::vector<Line> {
   }
 
   Lines getLineRange(int beginLine, int endLine) const {
-    assert(beginLine >= 0 && "startLine must be non-negative");
+    assert(beginLine >= 0 && "beginLine must be non-negative");
     assert(endLine <= static_cast<int>(size()) && "endLine must be <= size()");
     assert(beginLine < endLine && "must have at least one line in range");
     return Lines(begin() + beginLine, begin() + endLine);
   }
 
-  std::pair<int, int> minmaxBoundWithPadding(int firstLine, int lastLine, int padBelow, int padAbove) const {
-    if (firstLine > lastLine) {
-      std::swap(firstLine, lastLine);
+  std::pair<int, int> minmaxBoundWithPadding(int beginLine, int endLine, int padAbove, int padBelow) const {
+    if (beginLine > endLine) {
+      std::swap(beginLine, endLine);
     }
-    return {std::max(0, firstLine - padBelow), std::min(static_cast<int>(size()), lastLine + padAbove + 1)};
+    return {std::max(0, beginLine - padAbove),
+            std::min(static_cast<int>(size()), endLine + padBelow)};
   }
 
   friend std::ostream& operator<<(std::ostream& os, const Lines& lines) {

@@ -67,7 +67,7 @@ struct RangeBenchmarkSetup {
   Lines lines;
   MotionBoundary boundary{};
   Position initialPos;
-  Position rangeFirst;
+  Position rangeBegin;
   Position rangeEnd;
 
   RangeBenchmarkSetup(const Lines& lines) : lines(lines) {
@@ -76,9 +76,9 @@ struct RangeBenchmarkSetup {
     int lastLineLen = max(1, static_cast<int>(lines[lastLine].size()));
     int rangeSize = min(DEFAULT_RANGE_SIZE, lastLineLen);
     int startCol = max(0, lastLineLen - rangeSize);
-    rangeFirst = {lastLine, startCol};
+    rangeBegin = {lastLine, startCol};
     rangeEnd = {lastLine, lastLineLen};
-    boundary = MotionBoundary(lines, rangeFirst, rangeEnd, true, true);
+    boundary = MotionBoundary(lines, rangeBegin, rangeEnd, true, true);
   }
 
   RangeBenchmarkSetup(const Lines& lines, int rangeChars, int rangeLines = 1) : lines(lines) {
@@ -90,16 +90,16 @@ struct RangeBenchmarkSetup {
     if (rangeLines == 1) {
       int actualChars = min(rangeChars, lastLineLen);
       int startCol = max(0, lastLineLen - actualChars);
-      rangeFirst = {lastLine, startCol};
+      rangeBegin = {lastLine, startCol};
       rangeEnd = {lastLine, lastLineLen};
     } else {
-      int firstLine = lastLine - rangeLines + 1;
-      int firstLineLen = max(1, static_cast<int>(lines[firstLine].size()));
-      int startCol = max(0, firstLineLen / 2);
-      rangeFirst = {firstLine, startCol};
+      int beginLine = lastLine - rangeLines + 1;
+      int beginLineLen = max(1, static_cast<int>(lines[beginLine].size()));
+      int startCol = max(0, beginLineLen / 2);
+      rangeBegin = {beginLine, startCol};
       rangeEnd = {lastLine, lastLineLen};
     }
-    boundary = MotionBoundary(lines, rangeFirst, rangeEnd, true, true);
+    boundary = MotionBoundary(lines, rangeBegin, rangeEnd, true, true);
   }
 };
 
@@ -117,7 +117,7 @@ static void runRangeWithParams(const RangeBenchmarkSetup& cfg,
                                SearchStats& outStats) {
   MotionOptimizer opt(benchConfig);
   auto result = opt.optimizeToRange(
-      cfg.lines, cfg.initialPos, cfg.rangeFirst, cfg.rangeEnd,
+      cfg.lines, cfg.initialPos, cfg.rangeBegin, cfg.rangeEnd,
       params, "", cfg.boundary);
   accumulateStats(outStats, result.stats);
 }

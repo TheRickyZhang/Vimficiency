@@ -64,6 +64,14 @@ Position motionWordEndpoint(Position cursor,
                             bool hasLinesOutside,
                             bool lineBounded);
 
+// Convert a word-motion endpoint to a half-open range end.
+// For forward motions:
+// - WordEdge/GapEdge endpoints are inclusive and are advanced by one char.
+// - NextEdge endpoints are already exclusive.
+Position wordEndpointToRangeEnd(Position endpoint,
+                                         const Lines& lines,
+                                         EdgeType edgeType);
+
 // Computes the raw range that a word text object would select.
 // Returns Range where start/end could be POSITION_OUTSIDE_BOUNDARY on overflow.
 // Used internally - prefer textObject() for execution.
@@ -87,12 +95,13 @@ Range textObject(
     bool isBigWord);    // true for W variants
 
 // Returns the range that a word text object would select, with boundary checking.
-// Returns Range where first/last could be POSITION_OUTSIDE_BOUNDARY if crosses.
+// Returns half-open Range [begin, end), where either endpoint can be
+// POSITION_OUTSIDE_BOUNDARY if crossing occurs.
 //
 // Boundary checking (same model as motionWordEndpoint):
-//   leftColOffset > 0:  crosses if range.first is in prefix region
+//   leftColOffset > 0:  crosses if range.begin is in prefix region
 //                       (first leftColOffset cols of line 0)
-//   rightColOffset > 0: crosses if range.last is in suffix region
+//   rightColOffset > 0: crosses if range.end is in suffix region
 //                       (last rightColOffset cols of last line)
 //   hasLinesAbove:      crosses if backward motion goes past line 0
 //   hasLinesBelow:      crosses if forward motion goes past last line
@@ -137,7 +146,7 @@ int motionParagraphEndpoint(int cursorLine,
 
 // Returns the line range for a paragraph text object.
 // If boundaries >= 0 and result would cross:
-//   returns LINE_RANGE_OUTSIDE_BOUNDARY if range.firstLine <= topBoundary or range.lastLine >= bottomBoundary
+//   returns LINE_RANGE_OUTSIDE_BOUNDARY if range.beginLine <= topBoundary or range.endLine > bottomBoundary
 //
 // From boundary-logic.md:
 //   dip: (Backward, BlockEdge) + (Forward, BlockEdge)
@@ -185,9 +194,17 @@ Position motionSentenceEndpoint(Position cursor,
                                 bool forward,
                                 SentenceEdgeType edgeType);
 
+// Convert a sentence-motion endpoint to a half-open range end.
+// For forward motions:
+// - SentenceEdge/GapEdge endpoints are inclusive and are advanced by one char.
+// - NextEdge endpoints are already exclusive.
+Position sentenceEndpointToRangeEnd(Position endpoint,
+                                             const Lines& lines,
+                                             SentenceEdgeType edgeType);
+
 // Returns the range for a sentence text object.
 // If boundaries are valid and result would cross:
-//   returns RANGE_OUTSIDE_BOUNDARY if range.first <= leftBoundary or range.last >= rightBoundary
+//   returns RANGE_OUTSIDE_BOUNDARY if range.begin <= leftBoundary or range.end > rightBoundary
 //
 // From boundary-logic.md:
 //   dis: (Backward, SentenceEdge) + (Forward, SentenceEdge)

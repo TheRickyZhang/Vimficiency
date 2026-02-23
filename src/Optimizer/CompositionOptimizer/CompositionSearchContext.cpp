@@ -682,12 +682,13 @@ struct JoinSimulation {
   string joinedLine;          // Result after all J's
   vector<int> cursorCols;     // Cursor col after each J (size = numJoins)
 
-  static JoinSimulation simulate(const Lines& srcLines, int first, int last) {
+  // Simulate J over half-open source line interval [begin, end).
+  static JoinSimulation simulate(const Lines& srcLines, int begin, int end) {
     JoinSimulation sim;
-    Lines workLines(srcLines.begin() + first, srcLines.begin() + last + 1);
+    Lines workLines(srcLines.begin() + begin, srcLines.begin() + end);
     Position pos(0, 0);
 
-    for (int l = first + 1; l <= last; l++) {
+    for (int l = begin + 1; l < end; l++) {
       VimCore::joinLines(workLines, pos, /*addSpace=*/true);
       sim.cursorCols.push_back(pos.col);
     }
@@ -741,10 +742,10 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
     // brought content from endPos.line onto the joined result).
     // Use the number of lines in deletedLines() to determine the span.
     Lines delLines = diff.deletedLines();
-    int srcLastLine = srcFirstLine + static_cast<int>(delLines.size()) - 1;
-    if (srcLastLine >= static_cast<int>(buffer.size())) continue;
+    int srcEndLine = srcFirstLine + static_cast<int>(delLines.size());
+    if (srcEndLine > static_cast<int>(buffer.size())) continue;
 
-    int N = srcLastLine - srcFirstLine + 1;  // number of source lines in buffer
+    int N = srcEndLine - srcFirstLine;  // number of source lines in buffer
 
     // Get corresponding target lines from the post-diff buffer
     const Lines& bufferAfter = linesAfterNEdits[i + 1];
@@ -758,7 +759,7 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
     const string& suffix = diff.boundary.suffix();
 
     // Build full source lines (from buffer)
-    Lines srcLines = buffer.getLineRange(srcFirstLine, srcLastLine + 1);
+    Lines srcLines = buffer.getLineRange(srcFirstLine, srcEndLine);
 
     // Build full target lines (reattach prefix to first line, suffix to last line)
     Lines fullTgtLines;
@@ -779,14 +780,14 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
 
     debug("  joinPlan[" + to_string(i) + "]: considering N=" + to_string(N) +
           " -> M=" + to_string(M) + " srcLines=" + to_string(srcFirstLine) +
-          ".." + to_string(srcLastLine));
+          ".." + to_string(srcEndLine - 1));
 
     // === Find best partition of N source lines into M groups ===
-    // partition[k] = {first, last} inclusive indices into srcLines (0-based)
+    // partition[k] = {begin, end} half-open indices into srcLines (0-based)
     vector<pair<int, int>> partition(M);
 
     if (M == 1) {
-      partition[0] = {0, N - 1};
+      partition[0] = {0, N};
     } else {
       // Prefix sums of source line lengths for O(1) joined length computation
       // Note: this uses a simplified model; actual J join adds spaces and strips ws.
@@ -821,7 +822,7 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
       int s = 0;
       for (int t = 0; t < M; t++) {
         int k = choice[s][t];
-        partition[t] = {s, k};
+        partition[t] = {s, k + 1};
         s = k + 1;
       }
     }
@@ -829,10 +830,10 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
     // === Check match quality for each group ===
     bool viable = true;
     for (int g = 0; g < M; g++) {
-      auto [first, last] = partition[g];
-      if (first == last) continue;
+      auto [begin, end] = partition[g];
+      if (end - begin <= 1) continue;
 
-      auto sim = JoinSimulation::simulate(srcLines, first, last);
+      auto sim = JoinSimulation::simulate(srcLines, begin, end);
       int cpLen = commonPrefixLen(sim.joinedLine, fullTgtLines[g]);
       int csLen = commonSuffixLen(sim.joinedLine, fullTgtLines[g], cpLen);
       int commonLen = cpLen + csLen;
@@ -854,8 +855,8 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
     bool failed = false;
 
     for (int g = 0; g < M; g++) {
-      auto [first, last] = partition[g];
-      int numJoins = last - first;
+      auto [begin, end] = partition[g];
+      int numJoins = end - begin - 1;
 
       if (g > 0) {
         fullSeq.append("j");
@@ -866,7 +867,7 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
       }
 
       // Simulate J to get joined content and cursor position
-      auto sim = JoinSimulation::simulate(srcLines, first, last);
+      auto sim = JoinSimulation::simulate(srcLines, begin, end);
       int cursorCol = numJoins > 0 ? sim.cursorCols.back() : 0;
 
       // Check if residual edit is needed (joined line vs full target line)

@@ -73,15 +73,15 @@ struct MotionOptimizer {
   );
 
 
-  // Multi-sink movement optimization: find paths to any position in [rangeFirst, rangeEnd)
+  // Multi-sink movement optimization: find paths to any position in [rangeBegin, rangeEnd)
   // Returns up to params.maxResults unique end positions (or total paths if allowMultiplePerPosition).
-  // Precondition: initialPos must NOT be in [rangeFirst, rangeEnd) (nothing to optimize)
+  // Precondition: initialPos must NOT be in [rangeBegin, rangeEnd) (nothing to optimize)
 
   // Simple wrapper to forward constructed BufferIndex
   RangeMotionResult optimizeToRange(
     const Lines& lines,
     const Position& initialPos,
-    const Position& rangeFirst,
+    const Position& rangeBegin,
     const Position& rangeEnd,
     MotionOptimizerRangeParams params = {},
     std::string_view userSequence = "",
@@ -94,7 +94,7 @@ struct MotionOptimizer {
   RangeMotionResult optimizeToRange(
     const Lines& lines,
     const Position& initialPos,
-    const Position& rangeFirst,
+    const Position& rangeBegin,
     const Position& rangeEnd,
     MotionOptimizerRangeParams params,
     std::string_view userSequence,
@@ -124,7 +124,7 @@ private:
     const Lines& lines,
     const Position& initialPos,
     const RunningEffort& startingEffort,
-    const Position& rangeFirst,
+    const Position& rangeBegin,
     const Position& rangeEnd,
     std::string_view userSequence,
     const NavContext& navContext,

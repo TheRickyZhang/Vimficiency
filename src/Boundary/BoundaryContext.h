@@ -19,17 +19,17 @@ struct BoundaryContext {
   bool hasLinesAbove = false;
   bool hasLinesBelow = false;
   int leftColOffset = 0;   // prefix length: columns < this on line 0 are forbidden
-  int rightColOffset = 0;  // suffix length: columns >= (lineLen - this) on last line are forbidden
+  int rightColOffset = 0;  // suffix length: columns >= (lineLen - this) on end line are forbidden
 
   BoundaryContext() = default;
 
   // Compute from buffer positions, optionally inheriting from parent context
-  // endPos is exclusive: one past the last valid cursor position on the last line
-  BoundaryContext(const Lines& lines, Position firstPos, Position endPos,
+  // endPos is exclusive: one past the last valid cursor position on the end line
+  BoundaryContext(const Lines& lines, Position beginPos, Position endPos,
                   const BoundaryContext& parent);
 
   // Compute from explicit flags (for FFI or when parent flags are known)
-  // endPos is exclusive: one past the last valid cursor position on the last line
-  BoundaryContext(const Lines& lines, Position firstPos, Position endPos,
+  // endPos is exclusive: one past the last valid cursor position on the end line
+  BoundaryContext(const Lines& lines, Position beginPos, Position endPos,
                   bool parentHasLinesAbove, bool parentHasLinesBelow);
 };

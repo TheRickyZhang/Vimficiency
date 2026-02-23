@@ -131,7 +131,7 @@ template MotionResult MotionOptimizer::optimizeImpl<false>(
 RangeMotionResult MotionOptimizer::optimizeToRange(
     const Lines& lines,
     const Position& startPos,
-    const Position& rangeFirst,
+    const Position& rangeBegin,
     const Position& rangeEnd,
     MotionOptimizerRangeParams params,
     string_view userSequence,
@@ -139,7 +139,7 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
     const RunningEffort& startingEffort,
     const NavContext& navContext) {
   BufferIndex localIndex(lines);
-  return optimizeToRange(lines, startPos, rangeFirst, rangeEnd, params, userSequence,
+  return optimizeToRange(lines, startPos, rangeBegin, rangeEnd, params, userSequence,
                          boundary, startingEffort, navContext, {&localIndex, 0});
 }
 
@@ -147,7 +147,7 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
 RangeMotionResult MotionOptimizer::optimizeToRange(
     const Lines& lines,
     const Position& startPos,
-    const Position& rangeFirst,
+    const Position& rangeBegin,
     const Position& rangeEnd,
     MotionOptimizerRangeParams params,
     string_view userSequence,
@@ -157,15 +157,15 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
     BufferIndexRef bufferRef) {
   params.normalizeCountRepeatBounds();
 
-  assert(!(startPos >= rangeFirst && startPos < rangeEnd) &&
-         "startPos must not be in [rangeFirst, rangeEnd)");
+  assert(!(startPos >= rangeBegin && startPos < rangeEnd) &&
+         "startPos must not be in [rangeBegin, rangeEnd)");
 
-  if (startPos < rangeFirst)
-    return optimizeToRangeImpl<true>(lines, startPos, startingEffort, rangeFirst, rangeEnd,
+  if (startPos < rangeBegin)
+    return optimizeToRangeImpl<true>(lines, startPos, startingEffort, rangeBegin, rangeEnd,
                                      userSequence, navContext, boundary, params,
                                      *bufferRef.index, bufferRef.lineOffset);
   else
-    return optimizeToRangeImpl<false>(lines, startPos, startingEffort, rangeFirst, rangeEnd,
+    return optimizeToRangeImpl<false>(lines, startPos, startingEffort, rangeBegin, rangeEnd,
                                       userSequence, navContext, boundary, params,
                                       *bufferRef.index, bufferRef.lineOffset);
 }
@@ -177,7 +177,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     const Lines& lines,
     const Position& startPos,
     const RunningEffort& startingEffort,
-    const Position& rangeFirst,
+    const Position& rangeBegin,
     const Position& rangeEnd,
     string_view userSequence,
     const NavContext& navContext,
@@ -192,7 +192,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
 
   MotionSearchContext ctx(lines, navContext, boundary, params, config, userEffort);
 
-  MotionExplorer explorer(ctx, rangeFirst, rangeEnd, bufferIndex, lineOffset);
+  MotionExplorer explorer(ctx, rangeBegin, rangeEnd, bufferIndex, lineOffset);
 
   MotionState initialState(startPos, startingEffort, 0.0, 0.0);
 
@@ -201,14 +201,18 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
   int uniquePositionsFound = 0;
 
   auto isInRange = [&](const Position& pos) {
-    return pos >= rangeFirst && pos < rangeEnd;
+    return pos >= rangeBegin && pos < rangeEnd;
   };
 
   // Cap effective maxResults at range size (can't find more positions than exist)
-  int rangeSize = lines.spanSize(rangeFirst, rangeEnd);
+  int rangeSize = lines.spanSize(rangeBegin, rangeEnd);
   int effectiveMaxResults = std::min(params.maxResults, rangeSize);
+  Position rangeTail = lines.getPrevPos(rangeEnd);
+  if (rangeTail == POSITION_OUTSIDE_BOUNDARY) {
+    rangeTail = rangeBegin;
+  }
 
-  initialState.setCost(ctx.computePriorityToRange(initialState, rangeFirst, rangeEnd));
+  initialState.setCost(ctx.computePriorityToRange(initialState, rangeBegin, rangeEnd, rangeTail));
   ctx.pq.push(initialState);
   ctx.costMap[initialState.getKey()] = initialState.getCost();
 
@@ -260,8 +264,17 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
       explorer.exploreAllStandardMotions(s);
     }
 
-    // Explore counted motions (Forward is compile-time constant)
-    bool isSameLine = (pos.line >= rangeFirst.line && pos.line <= rangeEnd.line);
+    // Explore counted motions (Forward is compile-time constant).
+    // A line is in [rangeBegin, rangeEnd) iff:
+    // - it's strictly between begin/end lines, or
+    // - it's the begin line, or
+    // - it's the end line and rangeEnd has positive column.
+    bool isSameLine = false;
+    if (rangeBegin.line == rangeEnd.line) {
+      isSameLine = (pos.line == rangeBegin.line && rangeEnd.col > rangeBegin.col);
+    } else if (pos.line >= rangeBegin.line && pos.line <= rangeEnd.line) {
+      isSameLine = (pos.line < rangeEnd.line) || (rangeEnd.col > 0);
+    }
     explorer.exploreDirectionalMotionsToRange<Forward>(s, isSameLine);
   }
 

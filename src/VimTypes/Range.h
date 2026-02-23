@@ -1,32 +1,46 @@
 #pragma once
 
+#include "VimTypes/Lines.h"
 #include "VimTypes/Position.h"
 
-// A character-wise region in the buffer. Always inclusive, can span across lines.
+// A character-wise region in the buffer. Half-open: [begin, end).
 struct Range {
-  Position first;
-  Position last;
+  Position begin;
+  Position end;
 
   Range() = default;
-  constexpr Range(Position f, Position l) : first(f), last(l) {}
+  constexpr Range(Position beginPos, Position endPos) : begin(beginPos), end(endPos) {}
 
-  // Ensure first <= last
+  // Ensure begin <= end (lexicographic on line/col).
   void normalize() {
-    if (first > last) {
-      first.swap(last);
+    if (begin > end) {
+      begin.swap(end);
     }
   }
 
   bool isValid() const {
-    return first.isValid() && last.isValid();
+    return begin.isValid() && end.isValid() && end >= begin;
   }
 
   bool spansMultiple() const {
-    return first.line != last.line;
+    return begin.line != end.line;
   }
 
+  bool isEmpty() const {
+    return begin.line == end.line && begin.col == end.col;
+  }
+
+  // Number of lines touched by the half-open range.
+  // Examples:
+  // - [L0:c0, L0:c1) => 1
+  // - [L0:c0, L1:0)  => 1
+  // - [L0:c0, L1:c1) => 2
+  // - empty range    => 0
   int size() const {
-    return last.line - first.line + 1;
+    if (!isValid() || isEmpty()) return 0;
+    if (begin.line == end.line) return 1;
+    return end.col == 0 ? (end.line - begin.line)
+                        : (end.line - begin.line + 1);
   }
 };
 

@@ -186,17 +186,17 @@ BufferIndex::getTwoClosest(LandingType type, Position currPos, Position goalPos)
 
 std::vector<RepeatMotionResult>
 BufferIndex::getClosestInRange(LandingType type, Position currPos,
-                               Position rangeFirst, Position rangeEnd) const {
+                               Position rangeBegin, Position rangeEnd) const {
   const auto& positions = get(type);
   if (positions.empty()) return {};
 
   std::vector<RepeatMotionResult> results;
 
-  // Always use forward iterators; range boundaries [rangeFirst, rangeEnd) are well-defined
-  auto rangeBeginIt = std::lower_bound(positions.begin(), positions.end(), rangeFirst);
+  // Always use forward iterators; range boundaries [rangeBegin, rangeEnd) are well-defined
+  auto rangeBeginIt = std::lower_bound(positions.begin(), positions.end(), rangeBegin);
   auto rangeEndIt   = std::lower_bound(positions.begin(), positions.end(), rangeEnd);
 
-  if (currPos < rangeFirst) {
+  if (currPos < rangeBegin) {
     // Forward: count = hops from currPos forward to reach target
     // upper_bound(currPos) is the first position past cursor; count = distance + 1
     auto onePastCurrIt = std::upper_bound(positions.begin(), positions.end(), currPos);
@@ -238,7 +238,7 @@ BufferIndex::getClosestInRange(LandingType type, Position currPos,
       if (cnt >= 1) results.push_back({*it, cnt});
     }
 
-    // Overshoot (from backward perspective): last position before rangeFirst
+    // Overshoot (from backward perspective): last position before rangeBegin
     if (rangeBeginIt != positions.begin()) {
       auto overshootIt = std::prev(rangeBeginIt);
       int cnt = static_cast<int>(std::distance(overshootIt, currLowerIt));

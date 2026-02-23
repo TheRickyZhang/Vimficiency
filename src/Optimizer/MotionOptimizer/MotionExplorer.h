@@ -18,7 +18,7 @@
 //
 // Three usage modes:
 // 1. Single-goal (optimize): Uses goalPos for directional optimization
-// 2. Range-goal (optimizeToRange): Uses rangeFirst/rangeEnd for range-aware exploration
+// 2. Range-goal (optimizeToRange): Uses rangeBegin/rangeEnd for range-aware exploration
 // 3. Lightweight: Uses exploreAllStandardMotions only, no directional methods
 class MotionExplorer {
   MotionSearchContext& ctx;
@@ -29,8 +29,9 @@ class MotionExplorer {
   PosKey goalKey_{0, 0};
 
   // Range mode state
-  Position rangeFirst_;
+  Position rangeBegin_;
   Position rangeEnd_;
+  Position rangeTail_;
   bool isRangeMode_ = false;
 
 public:
@@ -42,12 +43,17 @@ public:
 
   // Range mode constructor for optimizeToRange() with directional exploration
   MotionExplorer(MotionSearchContext& ctx,
-                 const Position& rangeFirst,
+                 const Position& rangeBegin,
                  const Position& rangeEnd,
                  const BufferIndex& bufferIndex,
                  int lineOffset)
       : ctx(ctx), bufferRef_{&bufferIndex, lineOffset},
-        rangeFirst_(rangeFirst), rangeEnd_(rangeEnd), isRangeMode_(true) {}
+        rangeBegin_(rangeBegin), rangeEnd_(rangeEnd), isRangeMode_(true) {
+    rangeTail_ = ctx.lines.getPrevPos(rangeEnd_);
+    if (rangeTail_ == POSITION_OUTSIDE_BOUNDARY) {
+      rangeTail_ = rangeBegin_;
+    }
+  }
 
   // Lightweight constructor - no directional optimization
   explicit MotionExplorer(MotionSearchContext& ctx)
@@ -61,8 +67,8 @@ public:
     MotionState newState = base.afterMotion(ks, ctx.bank[id], endpoint, ctx.config);
 
     if (isRangeMode_) {
-      newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeEnd_));
-      ctx.exploreNewStateToRange(std::move(newState), rangeFirst_, rangeEnd_);
+      newState.setCost(ctx.computePriorityToRange(newState, rangeBegin_, rangeEnd_, rangeTail_));
+      ctx.exploreNewStateToRange(std::move(newState), rangeBegin_, rangeEnd_);
     } else {
       newState.setCost(ctx.computePriorityToGoal(newState, goalPos_));
       ctx.exploreNewState(std::move(newState), goalKey_);
@@ -238,8 +244,8 @@ public:
 
     MotionState newState = base.afterCountedMotion(baseMotion, cnt, newPos, ctx.config, penalty);
     if (isRangeMode_) {
-      newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeEnd_));
-      ctx.exploreNewStateToRange(std::move(newState), rangeFirst_, rangeEnd_);
+      newState.setCost(ctx.computePriorityToRange(newState, rangeBegin_, rangeEnd_, rangeTail_));
+      ctx.exploreNewStateToRange(std::move(newState), rangeBegin_, rangeEnd_);
     } else {
       newState.setCost(ctx.computePriorityToGoal(newState, goalPos_));
       ctx.exploreNewState(std::move(newState), goalKey_);
@@ -250,8 +256,8 @@ public:
   void exploreFMotion(const MotionState& base, const KeyedSequence& fMotion, int newcol) {
     MotionState newState = base.afterFMotion(fMotion, newcol, ctx.config);
     if (isRangeMode_) {
-      newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeEnd_));
-      ctx.exploreNewStateToRange(std::move(newState), rangeFirst_, rangeEnd_);
+      newState.setCost(ctx.computePriorityToRange(newState, rangeBegin_, rangeEnd_, rangeTail_));
+      ctx.exploreNewStateToRange(std::move(newState), rangeBegin_, rangeEnd_);
     } else {
       newState.setCost(ctx.computePriorityToGoal(newState, goalPos_));
       ctx.exploreNewState(std::move(newState), goalKey_);
@@ -410,17 +416,19 @@ public:
 
     // Convert local → global coordinates for BufferIndex query
     Position globalPos(pos.line + off, pos.col, pos.targetCol);
-    Position globalRangeFirst(rangeFirst_.line + off, rangeFirst_.col);
+    Position globalRangeBegin(rangeBegin_.line + off, rangeBegin_.col);
     Position globalRangeEnd(rangeEnd_.line + off, rangeEnd_.col);
 
-    auto results = bufferRef_.index->getClosestInRange(LT, globalPos, globalRangeFirst, globalRangeEnd);
+    auto results = bufferRef_.index->getClosestInRange(LT, globalPos, globalRangeBegin, globalRangeEnd);
     for (const auto& r : results) {
       if (!r.valid()) continue;
       if (r.count < ctx.params.minPrefixCount) continue;
       if (r.count > ctx.params.maxPrefixCount) continue;
       // Convert global → local coordinates
       Position localPos(r.pos.line - off, r.pos.col);
-      // Boundary guards
+      // Bounds + boundary guards: BufferIndex covers the full buffer,
+      // so results can map outside the local subset.
+      if (localPos.line < 0 || localPos.line > ctx.lines.lastLine()) continue;
       if (ctx.boundary.hasLinesAbove() && localPos.line == 0) continue;
       if (ctx.boundary.hasLinesBelow() && localPos.line == ctx.lines.lastLine()) continue;
       exploreCountMotion<C>(base, motion, r.count, localPos);
@@ -519,9 +527,11 @@ public:
   void exploreDirectionalStandardMotionsToRange(const MotionState& base) {
     assert(isRangeMode_ && "exploreDirectionalStandardMotionsToRange requires range constructor");
     Position pos = base.getPos();
-    MotionClassMask m = classesForRange(pos.line, pos.col,
-                                         rangeFirst_.line, rangeFirst_.col,
-                                         rangeEnd_.line, rangeEnd_.col);
+    MotionClassMask m = classesForRangeWithTail(
+        pos.line, pos.col,
+        rangeBegin_.line, rangeBegin_.col,
+        rangeEnd_.line, rangeEnd_.col,
+        rangeTail_.line, rangeTail_.col);
     exploreClasses(base, m);
   }
 
@@ -629,6 +639,6 @@ public:
 
   // Range mode accessors
   bool isRangeMode() const { return isRangeMode_; }
-  const Position& getRangeFirst() const { return rangeFirst_; }
+  const Position& getRangeBegin() const { return rangeBegin_; }
   const Position& getRangeEnd() const { return rangeEnd_; }
 };

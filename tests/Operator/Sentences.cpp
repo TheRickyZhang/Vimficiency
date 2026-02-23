@@ -168,9 +168,9 @@ TEST_F(SentencesTest, InnerSentence_RangeComputation) {
   Range range = VimCore::sentenceTextObjectRange(Position(0, 17), lines, true);
 
   // Should select "Second sentence."
-  EXPECT_EQ(range.first.line, 0);
-  EXPECT_EQ(range.first.col, 17);  // Start of "Second"
-  EXPECT_GE(range.last.col, 32);    // End includes period
+  EXPECT_EQ(range.begin.line, 0);
+  EXPECT_EQ(range.begin.col, 17);  // Start of "Second"
+  EXPECT_GE(range.end.col, 32);    // End includes period
 }
 
 TEST_F(SentencesTest, AroundSentence_WithTrailingWhitespace) {
@@ -180,9 +180,9 @@ TEST_F(SentencesTest, AroundSentence_WithTrailingWhitespace) {
   Range range = VimCore::sentenceTextObjectRange(Position(0, 0), lines, false);
 
   // Should include trailing whitespace
-  EXPECT_EQ(range.first.line, 0);
-  EXPECT_EQ(range.first.col, 0);
-  EXPECT_GE(range.last.col, 6);  // Past the period into whitespace
+  EXPECT_EQ(range.begin.line, 0);
+  EXPECT_EQ(range.begin.col, 0);
+  EXPECT_GE(range.end.col, 6);  // Past the period into whitespace
 }
 
 TEST_F(SentencesTest, InnerSentence_OnBlankLine) {
@@ -192,7 +192,7 @@ TEST_F(SentencesTest, InnerSentence_OnBlankLine) {
   Range range = VimCore::sentenceTextObjectRange(Position(1, 0), lines, true);
 
   // Range should be valid (not RANGE_OUTSIDE_BOUNDARY)
-  EXPECT_GE(range.first.line, 0);
+  EXPECT_GE(range.begin.line, 0);
 }
 
 // =============================================================================
@@ -276,9 +276,9 @@ TEST_F(SentencesTest, Dis_SingleSentence) {
   Range range = VimCore::sentenceTextObjectRange(Position(0, 5), lines, true);
 
   // Should select entire line content
-  EXPECT_EQ(range.first.line, 0);
-  EXPECT_EQ(range.first.col, 0);
-  EXPECT_EQ(range.last.line, 0);
+  EXPECT_EQ(range.begin.line, 0);
+  EXPECT_EQ(range.begin.col, 0);
+  EXPECT_EQ(range.end.line, 0);
 }
 
 TEST_F(SentencesTest, Das_SingleSentence) {
@@ -287,9 +287,9 @@ TEST_F(SentencesTest, Das_SingleSentence) {
   Range range = VimCore::sentenceTextObjectRange(Position(0, 5), lines, false);
 
   // Should select entire line content (no surrounding whitespace to include)
-  EXPECT_EQ(range.first.line, 0);
-  EXPECT_EQ(range.first.col, 0);
-  EXPECT_EQ(range.last.line, 0);
+  EXPECT_EQ(range.begin.line, 0);
+  EXPECT_EQ(range.begin.col, 0);
+  EXPECT_EQ(range.end.line, 0);
 }
 
 TEST_F(SentencesTest, Dis_WithClosers) {
@@ -299,8 +299,8 @@ TEST_F(SentencesTest, Dis_WithClosers) {
   Range range = VimCore::sentenceTextObjectRange(Position(0, 1), lines, true);
 
   // Range should include up to the closer
-  EXPECT_EQ(range.first.line, 0);
-  EXPECT_EQ(range.first.col, 0);
+  EXPECT_EQ(range.begin.line, 0);
+  EXPECT_EQ(range.begin.col, 0);
 }
 
 TEST_F(SentencesTest, Dis_AcrossBlankLines) {
@@ -309,9 +309,9 @@ TEST_F(SentencesTest, Dis_AcrossBlankLines) {
   // dis on second sentence
   Range range = VimCore::sentenceTextObjectRange(Position(2, 0), lines, true);
 
-  EXPECT_EQ(range.first.line, 2);
-  EXPECT_EQ(range.first.col, 0);
-  EXPECT_EQ(range.last.line, 2);
+  EXPECT_EQ(range.begin.line, 2);
+  EXPECT_EQ(range.begin.col, 0);
+  EXPECT_EQ(range.end.line, 2);
 }
 
 TEST_F(SentencesTest, Das_IncludesTrailingSpace) {
@@ -320,10 +320,10 @@ TEST_F(SentencesTest, Das_IncludesTrailingSpace) {
   // das on "First" should include trailing spaces
   Range range = VimCore::sentenceTextObjectRange(Position(0, 0), lines, false);
 
-  EXPECT_EQ(range.first.line, 0);
-  EXPECT_EQ(range.first.col, 0);
+  EXPECT_EQ(range.begin.line, 0);
+  EXPECT_EQ(range.begin.col, 0);
   // End should be past the period into whitespace
-  EXPECT_GT(range.last.col, 5);
+  EXPECT_GT(range.end.col, 5);
 }
 
 // =============================================================================

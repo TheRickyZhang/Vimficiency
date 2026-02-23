@@ -279,8 +279,8 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDAW) {
   // Simulate daw
   cerr << "Before daw: " << testLines << " pos=(" << pos.line << "," << pos.col << ")" << endl;
   auto range = VimCore::textObject(pos, testLines, false, false);  // daw
-  cerr << "daw range: [" << range.first.line << "," << range.first.col << "] to ["
-       << range.last.line << "," << range.last.col << "]" << endl;
+  cerr << "daw range: [" << range.begin.line << "," << range.begin.col << "] to ["
+       << range.end.line << "," << range.end.col << "]" << endl;
 
   // Test various daw scenarios to understand Neovim's behavior
   cerr << endl << "=== Additional daw tests ===" << endl;

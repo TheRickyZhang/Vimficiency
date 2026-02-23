@@ -23,8 +23,8 @@ struct EditResult {
   // Constructor: initializes results and flat index for buffer-position lookup.
   // Buffer-position params default to edit-region-local (line 0, col 0).
   EditResult(std::vector<Result> results, SearchStats stats,
-             const Lines& initialLines, int bufferFirstLine = 0,
-             int bufferFirstCol = 0, Position goalPos = {0, 0});
+             const Lines& initialLines, int bufferBeginLine = 0,
+             int bufferBeginCol = 0, Position goalPos = {0, 0});
 
   // Look up the result for a buffer position. Returns nullptr if the position
   // is outside the edit region or the result at that position is invalid.
@@ -45,7 +45,7 @@ struct EditResult {
 
   // Flat result index for a buffer position, or -1 if out of range.
   int resultIndexAt(int bufferLine, int bufferCol) const {
-    int editLine = bufferLine - firstLine_;
+    int editLine = bufferLine - beginLine_;
     if (editLine < 0 || editLine >= static_cast<int>(lineBaseIndex_.size()))
       return -1;
     int idx = lineBaseIndex_[editLine] + bufferCol;
@@ -60,11 +60,11 @@ private:
 
   // Precomputed for O(1) flat index lookup from buffer positions
   // lineBaseIndex[i] = sum of effective sizes of lines 0..i-1, minus column offset
-  // Column offset is firstCol for line 0, else 0
+  // Column offset is beginCol for line 0, else 0
   //
-  // Usage: flatIndex = lineBaseIndex[bufferLine - firstLine] + bufferCol
-  int firstLine_ = 0;
-  int firstCol_ = 0;
+  // Usage: flatIndex = lineBaseIndex[bufferLine - beginLine] + bufferCol
+  int beginLine_ = 0;
+  int beginCol_ = 0;
   std::vector<int> lineBaseIndex_;
 
   friend std::ostream& operator<<(std::ostream& os, const EditResult& editResult);
@@ -101,8 +101,8 @@ struct EditOptimizer {
       const Lines& goalLines,
       EditBoundary editBoundary,
       EditOptimizerParams params = {},
-      int bufferFirstLine = 0,
-      int bufferFirstCol = 0,
+      int bufferBeginLine = 0,
+      int bufferBeginCol = 0,
       Position goalPos = {0, 0}
   );
 
@@ -110,8 +110,8 @@ struct EditOptimizer {
       const Lines& initialLines,
       EditBoundary editBoundary,
       EditOptimizerParams params = {},
-      int bufferFirstLine = 0,
-      int bufferFirstCol = 0,
+      int bufferBeginLine = 0,
+      int bufferBeginCol = 0,
       Position goalPos = {0, 0}
   );
 
@@ -130,8 +130,8 @@ private:
       const Lines& goalLines,
       EditBoundary editBoundary,
       EditOptimizerParams params,
-      int bufferFirstLine,
-      int bufferFirstCol,
+      int bufferBeginLine,
+      int bufferBeginCol,
       Position goalPos
   );
 };

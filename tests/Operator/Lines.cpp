@@ -62,14 +62,14 @@ protected:
     }
 
     // Compute positions within testLines for the edit region
-    int firstLine = lineOffset;
+    int beginLine = lineOffset;
     int firstCol = (left != '\n' && left != NO_CHAR) ? 1 : 0;
     int lastLine = lineOffset + static_cast<int>(lines.size()) - 1;
     int endCol = testLines[lastLine].empty() ? 1 :
         static_cast<int>(testLines[lastLine].size()) - ((right != '\n' && right != NO_CHAR) ? 1 : 0);
     if (endCol < 1) endCol = 1;
 
-    return EditBoundary(testLines, Position(firstLine, firstCol), Position(lastLine, endCol));
+    return EditBoundary(testLines, Position(beginLine, firstCol), Position(lastLine, endCol));
   }
 };
 
@@ -89,8 +89,8 @@ TEST_F(LinesTest, LineDeleteRange_SingleLine_FullBoundary) {
   LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
   EXPECT_TRUE(range.isValid()) << "dd should be safe when at full line boundary";
-  EXPECT_EQ(range.firstLine, 0);
-  EXPECT_EQ(range.lastLine, 0);
+  EXPECT_EQ(range.beginLine, 0);
+  EXPECT_EQ(range.endLine, 1);
 }
 
 TEST_F(LinesTest, LineDeleteRange_SingleLine_PartialBoundary) {

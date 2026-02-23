@@ -16,47 +16,53 @@ namespace VimCore {
 void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
   Range r = range;
   r.normalize();
+  if (r.isEmpty()) return;
 
   // Determine if cursor is on the deletion line BEFORE modifying pos.
   // This affects empty line removal behavior:
   // - Cursor on same line (D at col 0): keep empty line
   // - Cursor on different line (db from col 0): remove empty line
-  bool cursorOnDeletionLine = (pos.line == r.first.line);
+  bool cursorOnDeletionLine = (pos.line == r.begin.line);
 
   // Track if this is a backward cross-line deletion from col 0 (db/dB pattern)
   // Vim has special cursor placement: skip to first non-blank of cursor's original line
-  bool backwardFromCol0 = !cursorOnDeletionLine && pos.col == 0 && pos.line > r.first.line;
+  bool backwardFromCol0 = !cursorOnDeletionLine && pos.col == 0 && pos.line > r.begin.line;
   bool lineWasRemoved = false;
 
-  int endCol = r.last.col + 1;  // Inclusive: delete up to and including end.col
+  assert(r.begin.line >= 0 && r.begin.line < static_cast<int>(lines.size()));
+  assert(r.end.line >= r.begin.line && r.end.line < static_cast<int>(lines.size()));
+  assert(r.begin.col >= 0 && r.begin.col <= static_cast<int>(lines[r.begin.line].size()));
+  assert(r.end.col >= 0 && r.end.col <= static_cast<int>(lines[r.end.line].size()));
 
-  if (r.first.line == r.last.line) {
+  if (r.begin.line == r.end.line) {
     // Single line deletion
-    string& ln = lines[r.first.line];
-    endCol = min(endCol, static_cast<int>(ln.size()));
-    ln.erase(r.first.col, endCol - r.first.col);
+    string& ln = lines[r.begin.line];
+    int beginCol = std::clamp(r.begin.col, 0, static_cast<int>(ln.size()));
+    int endCol = std::clamp(r.end.col, beginCol, static_cast<int>(ln.size()));
+    ln.erase(beginCol, endCol - beginCol);
 
     // Vim behavior for empty lines after single-line deletion:
     // - If cursor was on the same line (D at col 0): keep empty line
     // - If cursor was on different line (db from col 0): remove empty line
     // - Change commands (Insert mode) always keep empty lines
-    if (ln.empty() && r.first.col == 0 && lines.size() > 1 && !cursorOnDeletionLine
+    if (ln.empty() && beginCol == 0 && lines.size() > 1 && !cursorOnDeletionLine
         && mode != Mode::Insert) {
-      lines.erase(lines.begin() + r.first.line);
+      lines.erase(lines.begin() + r.begin.line);
       lineWasRemoved = true;
     }
   } else {
     // Multi-line deletion: merge first and last line, delete lines in between
-    string& firstLn = lines[r.first.line];
-    const string& lastLn = lines[r.last.line];
-
-    endCol = min(endCol, static_cast<int>(lastLn.size()));
+    string& firstLn = lines[r.begin.line];
+    const string& endLn = lines[r.end.line];
+    int beginCol = std::clamp(r.begin.col, 0, static_cast<int>(firstLn.size()));
+    int endCol = std::clamp(r.end.col, 0, static_cast<int>(endLn.size()));
 
     // Merge: keep first part of first line + last part of last line
-    firstLn = firstLn.substr(0, r.first.col) + lastLn.substr(endCol);
+    firstLn = firstLn.substr(0, beginCol) + endLn.substr(endCol);
 
-    // Delete lines from startLine+1 to endLine (inclusive)
-    lines.erase(lines.begin() + r.first.line + 1, lines.begin() + r.last.line + 1);
+    // Delete lines from startLine+1 to endLine (inclusive of end line).
+    // end is exclusive within end.line, so end.line content is already merged above.
+    lines.erase(lines.begin() + r.begin.line + 1, lines.begin() + r.end.line + 1);
 
     // Vim behavior: if multi-line deletion results in empty merged line AND
     // there are other lines in the buffer, remove the empty line.
@@ -64,21 +70,21 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
     // by other content removes the line entirely rather than leaving it empty.
     // Change commands (Insert mode) keep empty lines — the user will type on them.
     if (firstLn.empty() && lines.size() > 1 && mode != Mode::Insert) {
-      lines.erase(lines.begin() + r.first.line);
+      lines.erase(lines.begin() + r.begin.line);
       lineWasRemoved = true;
     }
 
     assert(!lines.empty());
   }
 
-  pos.line = r.first.line;
+  pos.line = r.begin.line;
   // Clamp position to valid range after possible line removal
   if (pos.line >= static_cast<int>(lines.size())) {
     pos.line = static_cast<int>(lines.size()) - 1;
   }
 
   // Compute clamped column and update both col and targetCol
-  int newCol = r.first.col;
+  int newCol = r.begin.col;
 
   // Special case: db/dB from col 0 crossing lines with line removal
   // Vim places cursor at first non-blank of cursor's original line (now at pos.line)
@@ -108,10 +114,10 @@ void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos,
   LineRange r = range;
   r.normalize();
 
-  assert(r.firstLine >= 0 && r.firstLine < static_cast<int>(lines.size()));
-  assert(r.lastLine >= 0 && r.lastLine < static_cast<int>(lines.size()));
+  assert(r.beginLine >= 0 && r.beginLine < static_cast<int>(lines.size()));
+  assert(r.endLine > r.beginLine && r.endLine <= static_cast<int>(lines.size()));
 
-  lines.erase(lines.begin() + r.firstLine, lines.begin() + r.lastLine + 1);
+  lines.erase(lines.begin() + r.beginLine, lines.begin() + r.endLine);
 
   // Maintain invariant: buffer always has at least one line
   if (lines.empty()) {
@@ -123,12 +129,12 @@ void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos,
   // If deletion removed the last lines and there are lines below in the real
   // buffer, cursor goes to the line below (past the end of effective lines).
   // Column is left unset — caller must apply 'k' to bring it back in range.
-  if (hasLinesBelow && r.firstLine >= newSize) {
-    pos.line = r.firstLine;  // Past end of effective lines
+  if (hasLinesBelow && r.beginLine >= newSize) {
+    pos.line = r.beginLine;  // Past end of effective lines
     return;
   }
 
-  pos.line = min(r.firstLine, newSize - 1);
+  pos.line = min(r.beginLine, newSize - 1);
   if constexpr (VimOptions::startOfLine()) {
     // Legacy Vim: dd goes to first non-blank of the new current line
     pos.setCol(firstNonBlankColInLineStr(lines[pos.line]));

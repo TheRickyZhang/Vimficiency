@@ -11,8 +11,8 @@ struct EditBoundary;
 //
 // Like EditBoundary, stores information about what's outside the region:
 // - hasLinesAbove/Below: for gg/G exclusion and edge-line checks
-// - leftColOffset: prefix length on first line (0 = no prefix)
-// - rightColOffset: suffix length on last line (0 = no suffix)
+// - leftColOffset: prefix length on begin line (0 = no prefix)
+// - rightColOffset: suffix length on end line (0 = no suffix)
 //
 // Uses BoundaryContext internally for shared offset/line logic.
 
@@ -24,16 +24,16 @@ public:
   static const MotionBoundary& noParent();
 
   // Construct from buffer context, optionally inheriting from parent
-  // endPos is exclusive: one past the last valid cursor position on the last line
-  MotionBoundary(const Lines& lines, Position firstPos, Position endPos,
+  // endPos is exclusive: one past the last valid cursor position on the end line
+  MotionBoundary(const Lines& lines, Position beginPos, Position endPos,
                  const MotionBoundary& parent = noParent());
 
   // The default constructor has NO PARENT, so basically any motions are possible
   // To specify restricted motions for lines, call with hasLinesBelow = false, hasLinesAbove = false
 
   // Construct with explicit external context flags (for FFI)
-  // endPos is exclusive: one past the last valid cursor position on the last line
-  MotionBoundary(const Lines& lines, Position firstPos, Position endPos,
+  // endPos is exclusive: one past the last valid cursor position on the end line
+  MotionBoundary(const Lines& lines, Position beginPos, Position endPos,
                  bool hasLinesAbove, bool hasLinesBelow);
 
   // Construct from EditBoundary (for conversion when switching optimizer types)
