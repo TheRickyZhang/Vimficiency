@@ -182,3 +182,69 @@ BufferIndex::getTwoClosest(LandingType type, Position currPos, Position goalPos)
                  [](const Position& a, const Position& b) { return b < a; });
   }
 }
+
+
+std::vector<RepeatMotionResult>
+BufferIndex::getClosestInRange(LandingType type, Position currPos,
+                               Position rangeFirst, Position rangeEnd) const {
+  const auto& positions = get(type);
+  if (positions.empty()) return {};
+
+  std::vector<RepeatMotionResult> results;
+
+  // Always use forward iterators; range boundaries [rangeFirst, rangeEnd) are well-defined
+  auto rangeBeginIt = std::lower_bound(positions.begin(), positions.end(), rangeFirst);
+  auto rangeEndIt   = std::lower_bound(positions.begin(), positions.end(), rangeEnd);
+
+  if (currPos < rangeFirst) {
+    // Forward: count = hops from currPos forward to reach target
+    // upper_bound(currPos) is the first position past cursor; count = distance + 1
+    auto onePastCurrIt = std::upper_bound(positions.begin(), positions.end(), currPos);
+
+    // Undershoot: last position before range
+    if (rangeBeginIt != positions.begin()) {
+      auto undershootIt = std::prev(rangeBeginIt);
+      int cnt = static_cast<int>(std::distance(onePastCurrIt, undershootIt)) + 1;
+      if (cnt >= 1) results.push_back({*undershootIt, cnt});
+    }
+
+    // All in-range positions
+    for (auto it = rangeBeginIt; it != rangeEndIt; ++it) {
+      int cnt = static_cast<int>(std::distance(onePastCurrIt, it)) + 1;
+      if (cnt >= 1) results.push_back({*it, cnt});
+    }
+
+    // Overshoot: first position past range
+    if (rangeEndIt != positions.end()) {
+      int cnt = static_cast<int>(std::distance(onePastCurrIt, rangeEndIt)) + 1;
+      if (cnt >= 1) results.push_back({*rangeEndIt, cnt});
+    }
+  } else {
+    // Backward: count = hops from currPos backward to reach target
+    // lower_bound(currPos) is first position >= currPos; backward count to target =
+    // distance(target_it, lower_bound(currPos))
+    auto currLowerIt = std::lower_bound(positions.begin(), positions.end(), currPos);
+
+    // Undershoot (from backward perspective): first position >= rangeEnd (between cursor and range)
+    if (rangeEndIt != positions.end()) {
+      int cnt = static_cast<int>(std::distance(rangeEndIt, currLowerIt));
+      if (cnt >= 1) results.push_back({*rangeEndIt, cnt});
+    }
+
+    // All in-range positions (iterate in reverse for natural backward ordering)
+    for (auto it = rangeEndIt; it != rangeBeginIt; ) {
+      --it;
+      int cnt = static_cast<int>(std::distance(it, currLowerIt));
+      if (cnt >= 1) results.push_back({*it, cnt});
+    }
+
+    // Overshoot (from backward perspective): last position before rangeFirst
+    if (rangeBeginIt != positions.begin()) {
+      auto overshootIt = std::prev(rangeBeginIt);
+      int cnt = static_cast<int>(std::distance(overshootIt, currLowerIt));
+      if (cnt >= 1) results.push_back({*overshootIt, cnt});
+    }
+  }
+
+  return results;
+}

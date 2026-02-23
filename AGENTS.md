@@ -102,3 +102,16 @@ For Lua context, see `lua/CLAUDE.md`.
 - @docs/vim-utils-principles.md - State validation, empty handling, MotionUtils vs EndpointUtils, **targetCol handling**
 - @docs/core/keyboard.md - Keyboard module, key definitions (X macros), sequence-to-keys conversion, effort model
 - @docs/core/counted-edit-semantics.md - Why `{n}{edit}` ≠ `{edit}` repeated n times, safe counted edit generation strategy
+
+## PR review focus
+Prioritize:
+1) Logical/correctness bugs, undefined behavior, lifetime issues
+2) Design/code smells and coupling that will hurt future changes
+3) Long-term semantic concerns (API boundaries, invariants, hidden assumptions)
+
+Guidelines:
+- Be concise: prefer bullets.
+
+Output expectations:
+- Summarize first, then list issues.
+- Inline comments only for actionable issues.

@@ -173,7 +173,8 @@ CompositionResult CompositionOptimizer::optimize(
                   .withMinCountRepeat(params.minPrefixCount)
                   .withMaxCountRepeat(params.maxPrefixCount), "",
               subsetBoundary, s.getRunningEffort(),
-              navigationContext);
+              navigationContext,
+              {ctx.getBufferIndex(editsCompleted), beginLine});
           ctx.motionNodesExplored += motionResult.stats.nodesExplored;
 
           for (RangeResult& movResult : motionResult.results) {
@@ -361,7 +362,8 @@ CompositionResult CompositionOptimizer::optimize(
               .withMinCountRepeat(params.minPrefixCount)
               .withMaxCountRepeat(params.maxPrefixCount), "",
           subsetBoundary, s.getRunningEffort(),
-          navigationContext);
+          navigationContext,
+          {ctx.getBufferIndex(editsCompleted), beginLine});
       ctx.motionNodesExplored += motionResult.stats.nodesExplored;
 
       debug("  motion results:", static_cast<int>(motionResult.results.size()));
@@ -409,7 +411,8 @@ CompositionResult CompositionOptimizer::optimize(
                 .withMinCountRepeat(params.minPrefixCount)
                 .withMaxCountRepeat(params.maxPrefixCount), "",
             jSubsetBoundary, s.getRunningEffort(),
-            navigationContext);
+            navigationContext,
+            {ctx.getBufferIndex(editsCompleted), jBeginLine});
         ctx.motionNodesExplored += jMotionResult.stats.nodesExplored;
 
         for (RangeResult& movResult : jMotionResult.results) {

@@ -6,17 +6,16 @@ Add repeated j to motionOptimizer plz :sob:
 
 
 == TODO Stack
-Precompute a BufferIndex for each edit state in compositionOptimizer, as opposed to regenerating it per MotionOptimizer call
+Review implementation of BufferIndex in optimizeToRange() (is it exploring correctly on lines / columns?)
 Make range, lineRange half-open
 9dedexC explored when C would suffice?
 Overall, not enough other early branches explored; heuristic model locks in one branch pretty early
+
 
 == Later:
 Migrate to modules when greater scope
 Always keep hashing in mind
 
-explore count motions in edit optimizer
-No runtime errors; change to asserts
 Allow easy transition to runtime configuration with Settings::runtime flag
 
 
