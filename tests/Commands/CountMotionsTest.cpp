@@ -6,9 +6,7 @@
 
 #include <gtest/gtest.h>
 
-#include "Optimizer/BufferIndex.h"
-#include "Optimizer/Config.h"
-#include "Keyboard/MotionToKeys.h"
+#include "Optimizer/MotionOptimizer/BufferIndex.h"
 #include "Optimizer/MotionOptimizer/CountableMotionPair.h"
 #include "VimTypes/NavContext.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"

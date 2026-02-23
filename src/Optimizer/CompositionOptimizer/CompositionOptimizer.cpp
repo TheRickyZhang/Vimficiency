@@ -10,7 +10,7 @@
 
 #include "Interpreter/SequenceParser.h"
 #include "Keyboard/KeyedSequence.h"
-#include "State/CompositionState.h"
+#include "Optimizer/CompositionOptimizer/CompositionState.h"
 #include "VimTypes/BracketFlags.h"
 #include "Utils/Debug.h"
 #include "Optimizer/Indentation.h"
@@ -57,6 +57,7 @@ CompositionResult CompositionOptimizer::optimize(
     const Position goalPos, CompositionOptimizerParams params,
     string_view userSequence, const MotionBoundary& boundary,
     const NavContext& navigationContext) {
+  params.normalizeCountRepeatBounds();
   if(goalPos < initialPos) {
     debug("only support forward motion in CompositionOptimizer");
   }
@@ -169,7 +170,8 @@ CompositionResult CompositionOptimizer::optimize(
               subset, localPos, localRangeFirst, localRangeEnd,
               MotionOptimizerRangeParams{}
                   .withMaxResults(1)
-                  .withMinCountRepeat(params.minCountRepeat), "",
+                  .withMinCountRepeat(params.minPrefixCount)
+                  .withMaxCountRepeat(params.maxPrefixCount), "",
               subsetBoundary, s.getRunningEffort(),
               navigationContext);
           ctx.motionNodesExplored += motionResult.stats.nodesExplored;
@@ -356,7 +358,8 @@ CompositionResult CompositionOptimizer::optimize(
           subset, localPos, localRangeFirst, localRangeEnd,
           MotionOptimizerRangeParams{}
               .withMaxResults(clamp(nextEdit.origCharCount(), 1, 10))
-              .withMinCountRepeat(params.minCountRepeat), "",
+              .withMinCountRepeat(params.minPrefixCount)
+              .withMaxCountRepeat(params.maxPrefixCount), "",
           subsetBoundary, s.getRunningEffort(),
           navigationContext);
       ctx.motionNodesExplored += motionResult.stats.nodesExplored;
@@ -403,7 +406,8 @@ CompositionResult CompositionOptimizer::optimize(
             jSubset, jLocalPos, jLocalFirst, jLocalEnd,
             MotionOptimizerRangeParams{}
                 .withMaxResults(1)
-                .withMinCountRepeat(params.minCountRepeat), "",
+                .withMinCountRepeat(params.minPrefixCount)
+                .withMaxCountRepeat(params.maxPrefixCount), "",
             jSubsetBoundary, s.getRunningEffort(),
             navigationContext);
         ctx.motionNodesExplored += jMotionResult.stats.nodesExplored;

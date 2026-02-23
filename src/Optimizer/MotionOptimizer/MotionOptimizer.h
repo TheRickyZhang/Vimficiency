@@ -13,7 +13,7 @@
 #include "Boundary/MotionBoundary.h"
 #include "VimTypes/NavContext.h"
 #include "VimTypes/Position.h"
-#include "State/RunningEffort.h"
+#include "Effort/RunningEffort.h"
 #include "VimTypes/Lines.h"
 
 struct MotionResult {

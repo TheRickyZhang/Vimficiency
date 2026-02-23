@@ -10,7 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Keyboard/KeyboardModel.h"
+#include "Keyboard/Key.h"
 #include "Optimizer/CountPenalty.h"
 
 struct C_ScoreWeights {

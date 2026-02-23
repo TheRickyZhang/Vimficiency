@@ -1,17 +1,16 @@
 #pragma once
 
-#include "KeyboardModel.h"
-#include "CharToKeys.h"
-#include "XMacroKeyedSequenceDefinitions.h"
+#include "PhysicalKeys.h"
+#include "Keyboard/ToKeys/CountToKeys.h"
+#include "Keyboard/ToKeys/CharToKeys.h"
+#include "XMacroKeyedSequence.h"
 #include "VimTypes/Sequence.h"
 
 #include <array>
 #include <string>
 #include <string_view>
 
-// =============================================================================
-// KSId: compile-time identifier for each static KeyedSequence constant
-// =============================================================================
+// Note the intentional declaration order in this file with KSId and X-Macro expansions
 
 #define KS_ENUM_VALUE(name, seq, keys) name,
 enum class KSId : uint8_t {
@@ -21,7 +20,7 @@ enum class KSId : uint8_t {
 #undef KS_ENUM_VALUE
 
 static constexpr int KS_COUNT = static_cast<int>(KSId::COUNT);
-static_assert(KS_COUNT == 43, "Expected 43 static KeyedSequence constants");
+static_assert(KS_COUNT == 61, "Expected 61 static KeyedSequence constants");
 
 // =============================================================================
 // KeyedSequence
@@ -33,8 +32,8 @@ struct KeyedSequence {
 
   KeyedSequence() = default;
   KeyedSequence(std::string_view s, PhysicalKeys k) : seq(std::string(s)), keys(std::move(k)) {}
-  KeyedSequence(const KeyedSequence& base, int count) {
-    appendCounted(base, count);
+  KeyedSequence(int count, const KeyedSequence& base) {
+    appendCounted(count, base);
   }
 
   KeyedSequence& operator+=(const KeyedSequence& other) {
@@ -43,34 +42,32 @@ struct KeyedSequence {
     return *this;
   }
 
-  void appendChar(char c, int count = 1) {
-    seq.append(count, c);
+  // Primitive appends
+  void append(char c, int count = 1) {
+    seq.append(c, count);
     keys.append(CHAR_TO_KEYS.at(c), count);
   }
-
-  void appendText(std::string_view text) {
+  void append(std::string_view text) {
+    seq.append(text);
+    keys.reserve(keys.size() + text.size());
+    // Don't move to PhysicalKeys since it creates a circular dependency?
     for (char c : text) {
-      seq.append(c);
       keys.append(CHAR_TO_KEYS.at(c));
     }
   }
 
-  // Literally repeats the key sequence count times. Generally only used for 1 < count < max_repeat_length, 
-  void appendRepeated(const KeyedSequence& ks, int count) {
-    seq.append(count, ks.seq.view());
+  // Same type appends
+  void append(const KeyedSequence& ks, int count) {
+    seq.append(ks.seq.view(), count);
     keys.append(ks.keys, count);
   }
 
-  void appendCounted(const KeyedSequence& base, int count) {
-    assert(count >= 0);
-    if (count == 0) {
-      seq.append(base.seq.view());
-      keys.append(base.keys);
-      return;
-    }
-    seq.append(std::to_string(count));
+  void appendCounted(int count, const KeyedSequence& base) {
+    assert(count >= 2 && count <= MAX_PREFIX_COUNT);
+    seq.append(CountToKeys::textForCount(count));
     seq.append(base.seq.view());
-    keys.append(makeCountedKeys(base.keys, count));
+    keys.append(CountToKeys::keysForCount(count));
+    keys.append(base.keys);
   }
 
   // Convert delete command to its change equivalent (d→c in both seq and keys).
@@ -83,24 +80,25 @@ struct KeyedSequence {
 #define KS_DECLARE(name, seq, keys) static const KeyedSequence name;
   VIMFICIENCY_KEYED_SEQUENCES(KS_DECLARE)
 #undef KS_DECLARE
+
+  // KeyedSequence::byId: KSId -> const predefined KeyedSequence&
+  static const KeyedSequence& byId(KSId id) {
+    // Flat array of pointers, initialized once via X-macro
+#define KS_PTR(name, seq, keys) &KeyedSequence::name,
+    static const std::array<const KeyedSequence*, KS_COUNT> table = {{
+      VIMFICIENCY_KEYED_SEQUENCES(KS_PTR)
+    }};
+#undef KS_PTR
+    return *table[static_cast<uint8_t>(id)];
+  }
 };
+
+// =============================================================================
+// KSId: compile-time identifier for each static KeyedSequence constant
+// =============================================================================
 
 // Static constant definitions — generated via X-macro
 #define KS_DEFINE(name, seqStr, keyGroup) \
   inline const KeyedSequence KeyedSequence::name{seqStr, {STRIP_PARENS(keyGroup)}};
 VIMFICIENCY_KEYED_SEQUENCES(KS_DEFINE)
 #undef KS_DEFINE
-
-// =============================================================================
-// ksById: O(1) lookup from KSId to const KeyedSequence&
-// =============================================================================
-
-inline const KeyedSequence& ksById(KSId id) {
-  // Flat array of pointers, initialized once via X-macro
-#define KS_PTR(name, seq, keys) &KeyedSequence::name,
-  static const std::array<const KeyedSequence*, KS_COUNT> table = {{
-    VIMFICIENCY_KEYED_SEQUENCES(KS_PTR)
-  }};
-#undef KS_PTR
-  return *table[static_cast<uint8_t>(id)];
-}

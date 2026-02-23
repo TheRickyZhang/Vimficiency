@@ -7,8 +7,8 @@
 #include "MotionSearchContext.h"
 #include "MotionExplorer.h"
 
-#include "Optimizer/BufferIndex.h"
-#include "State/PosKey.h"
+#include "BufferIndex.h"
+#include "VimTypes/PosKey.h"
 #include "Utils/Debug.h"
 
 using namespace std;
@@ -23,6 +23,7 @@ MotionResult MotionOptimizer::optimize(
     const MotionBoundary& boundary,
     const RunningEffort& startingEffort,
     const NavContext& navContext) {
+  params.normalizeCountRepeatBounds();
 
   if (startPos < endPos) {
     return optimizeImpl<true>(lines, startPos, startingEffort, endPos,
@@ -137,6 +138,7 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
     const MotionBoundary& boundary,
     const RunningEffort& startingEffort,
     const NavContext& navContext) {
+  params.normalizeCountRepeatBounds();
 
   // Precondition: startPos must not be in range [rangeFirst, rangeEnd)
   assert(!(startPos >= rangeFirst && startPos < rangeEnd) &&
@@ -289,4 +291,3 @@ template RangeMotionResult MotionOptimizer::optimizeToRangeImpl<true>(
 template RangeMotionResult MotionOptimizer::optimizeToRangeImpl<false>(
     const Lines&, const Position&, const RunningEffort&, const Position&, const Position&,
     string_view, const NavContext&, const MotionBoundary&, MotionOptimizerRangeParams);
-

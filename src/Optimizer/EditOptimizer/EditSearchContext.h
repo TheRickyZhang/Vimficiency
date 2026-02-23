@@ -12,7 +12,8 @@
 #include "VimTypes/Position.h"
 #include "VimTypes/Range.h"
 #include "Keyboard/KeyedSequence.h"
-#include "State/EditState.h"
+#include "Effort/EffortBank.h"
+#include "Optimizer/EditOptimizer/EditState.h"
 #include "Optimizer/SequenceBinding.h"
 #include "VimTypes/Lines.h"
 
@@ -63,11 +64,8 @@ struct EditSearchContext {
   double effortWeight;
   double distanceWeight;
 
-  // Pre-computed RunningEffort for static KeyedSequence constants (address-keyed).
-  // Populated at construction for all X-macro entries and spec table entries.
-  // Use effortFor() to look up — only valid for known static KS (asserts on miss).
-  std::unordered_map<const void*, RunningEffort> effortCache_;
-  RunningEffort periodEffort_;
+  // Pre-computed effort for all static KeyedSequence constants (KSId indexed).
+  EffortBank bank;
 
   // Search state
   using PriorityQueue = std::priority_queue<EditState, std::vector<EditState>, EditStateComparator>;
@@ -136,12 +134,9 @@ struct EditSearchContext {
     return distanceWeight * distanceHeuristic(lines);
   }
 
-  // Look up pre-computed effort for a known static KeyedSequence (by address).
-  // Only call for X-macro KS constants or spec table entries — asserts on miss.
-  const RunningEffort& effortFor(const KeyedSequence& ks) const {
-    auto it = effortCache_.find(&ks);
-    assert(it != effortCache_.end() && "effortFor called with unknown KeyedSequence");
-    return it->second;
+  // Look up pre-computed effort for a static KeyedSequence constant.
+  const RunningEffort& effortFor(KSId id) const {
+    return bank[id];
   }
 
   // Explore all valid deletions from current state

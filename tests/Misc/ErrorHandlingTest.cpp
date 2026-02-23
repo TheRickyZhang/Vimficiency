@@ -7,8 +7,8 @@
 #include <gtest/gtest.h>
 #include <stdexcept>
 
-#include "Keyboard/SequenceTokenizer.h"
-#include "Keyboard/MotionToKeys.h"
+#include "Keyboard/ToKeys/SequenceToKeys.h"
+#include "Keyboard/ToKeys/MotionToKeys.h"
 
 using namespace std;
 
@@ -20,16 +20,16 @@ using namespace std;
 // }
 
 
-// Test that SequenceTokenizer throws for unknown key sequences
+// Test that SequenceToKeys throws for unknown key sequences
 // TEST(ErrorHandlingTest, TokenizerThrowsForUnknownSequence) {
-//   const auto& tokenizer = globalTokenizer();
+//   const auto& tokenizer = globalSequenceToKeys();
 //
 //   // Emoji or special chars not in the keyboard model should throw
 //   EXPECT_THROW(tokenizer.tokenize("\x01"), runtime_error);  // Control char
 // }
 
 TEST(ErrorHandlingTest, TokenizerAcceptsValidSequences) {
-  const auto& tokenizer = globalTokenizer();
+  const auto& tokenizer = globalSequenceToKeys();
 
   // Valid alphanumeric keys
   EXPECT_NO_THROW(tokenizer.tokenize("abc"));

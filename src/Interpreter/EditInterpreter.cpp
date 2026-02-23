@@ -4,13 +4,14 @@
 #include "VimCore/VimEndpointUtils.h"
 #include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimOptions.h"
-#include "VimCore/VimTextObjectsDeprecated.h"
+#include "VimCore/VimTextObjectsLegacy.h"
 #include "VimCore/VimCore.h"
 #include "Utils/Debug.h"
 #include "VimTypes/Lines.h"
 
-#include <cassert>
 #include <algorithm>
+#include <cassert>
+#include <limits>
 
 using namespace std;
 
@@ -66,6 +67,17 @@ static bool isPastEndPosition(const Lines& lines, const Position& pos) {
   // Lines invariant: buffer always has at least one line
   if (pos.line >= static_cast<int>(lines.size())) return false;
   return pos.col == static_cast<int>(lines[pos.line].size());
+}
+
+static bool inBoundaryRegion(const Position& pos, const Lines& lines,
+                             int leftColOffset, int rightColOffset) {
+  if (pos.line < 0 || pos.line > lines.lastLine()) return true;
+  if (pos.line == 0 && pos.col < leftColOffset) return true;
+  if (pos.line == lines.lastLine() && rightColOffset > 0 &&
+      pos.col >= static_cast<int>(lines[pos.line].size()) - rightColOffset) {
+    return true;
+  }
+  return false;
 }
 
 // -----------------------------------------------------------------------------
@@ -182,7 +194,9 @@ void yankRange(Lines& lines, Position& pos, Mode mode, const Range& range) {
 // we can't prune that easily without doing equivalent work as the action, it's fine.
 // TODO: we can apply the same technique to Motions as well
 void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
-               string* lastEditCmd, bool hasLinesBelow) {
+               string* lastEditCmd, bool hasLinesBelow,
+               int leftColOffset, int rightColOffset,
+               bool hasLinesAbove) {
   // Lines invariant: buffer always has at least one line (minimum: {""})
   assert(!lines.empty());
 
@@ -201,7 +215,8 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
     if (edit.hasCount()) {
       repeat = ParsedEdit{repeat.edit, count};
     }
-    applyEdit(lines, pos, mode, repeat, nullptr, hasLinesBelow);  // don't update lastEditCmd
+    applyEdit(lines, pos, mode, repeat, nullptr, hasLinesBelow,
+              leftColOffset, rightColOffset, hasLinesAbove);  // don't update lastEditCmd
     return;
   }
 
@@ -246,6 +261,8 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
 
   string& line = lines[pos.line];
   int m = static_cast<int>(line.size());
+  bool hasBoundaryContext =
+      leftColOffset > 0 || rightColOffset > 0 || hasLinesAbove || hasLinesBelow;
 
   // Handle visual mode sequences first (before empty line check)
   // These are parsed as complete tokens like "vjd", "v}d", "vwhjd"
@@ -448,16 +465,71 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
       // --- Word deletion motions (d + motion) ---
       case hash("dw"):
       case hash("dW"):
+        if (hasBoundaryContext && count == 1) {
+          bool big = (e == "dW");
+          Position endpoint = VimCore::motionWordEndpoint<true, EdgeType::GapEdge>(
+              pos, lines, big, false,
+              rightColOffset, hasLinesBelow, /*lineBounded=*/false);
+          if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == pos) {
+            assert(false && "dw/dW has no effect or crosses boundary");
+          }
+          // Match EditExplorer semantics: dw/dW do not cross lines.
+          if (endpoint.line > pos.line) {
+            endpoint = VimCore::motionWordEndpoint<true, EdgeType::WordEdge>(
+                pos, lines, big, false,
+                rightColOffset, hasLinesBelow, /*lineBounded=*/false);
+            if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == pos) {
+              assert(false && "dw/dW has no effect or crosses boundary");
+            }
+          }
+          VimCore::deleteRange(lines, Range(pos, endpoint), pos, Mode::Normal);
+          return;
+        }
         deleteToNextWord(lines, pos, count, e == "dW", Mode::Normal);
         return;
 
       case hash("de"):
       case hash("dE"):
+        if (hasBoundaryContext && count == 1) {
+          bool big = (e == "dE");
+          Position endpoint = VimCore::motionWordEndpoint<true, EdgeType::WordEdge>(
+              pos, lines, big, true,
+              rightColOffset, hasLinesBelow, /*lineBounded=*/false);
+          if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == pos) {
+            assert(false && "de/dE has no effect or crosses boundary");
+          }
+          VimCore::deleteRange(lines, Range(pos, endpoint), pos, Mode::Normal);
+          return;
+        }
         deleteToWordEnd(lines, pos, count, e == "dE", Mode::Normal);
         return;
 
       case hash("db"):
       case hash("dB"):
+        if (hasBoundaryContext && count == 1) {
+          bool big = (e == "dB");
+          Position endpoint = VimCore::motionWordEndpoint<false, EdgeType::WordEdge>(
+              pos, lines, big, true,
+              leftColOffset, hasLinesAbove, /*lineBounded=*/false);
+          if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == pos) {
+            assert(false && "db/dB has no effect or crosses boundary");
+          }
+
+          Position exclusiveEnd = POSITION_OUTSIDE_BOUNDARY;
+          int cursorContentCol = pos.col - (pos.line == 0 ? leftColOffset : 0);
+          if (cursorContentCol > 0) {
+            exclusiveEnd = Position(pos.line, pos.col - 1);
+          } else if (endpoint.line < pos.line) {
+            int prevLine = pos.line - 1;
+            exclusiveEnd = Position(prevLine, lines[prevLine].lastCol());
+          }
+
+          if (exclusiveEnd == POSITION_OUTSIDE_BOUNDARY) {
+            assert(false && "db/dB has no effect at boundary");
+          }
+          VimCore::deleteRange(lines, Range(endpoint, exclusiveEnd), pos, Mode::Normal);
+          return;
+        }
         if (pos.line == 0 && pos.col == 0) {
           assert(false && "db/dB at start of buffer has no effect");
         }
@@ -466,6 +538,21 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
 
       case hash("dge"):
       case hash("dgE"):
+        if (hasBoundaryContext && count == 1) {
+          bool big = (e == "dgE");
+          if (inBoundaryRegion(pos, lines, leftColOffset, rightColOffset)) {
+            assert(false && "dge/dgE has no effect in boundary region");
+          }
+
+          Position endpoint = VimCore::motionWordEndpoint<false, EdgeType::NextEdge>(
+              pos, lines, big, true,
+              leftColOffset, hasLinesAbove, /*lineBounded=*/false);
+          if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == pos) {
+            assert(false && "dge/dgE has no effect or crosses boundary");
+          }
+          VimCore::deleteRange(lines, Range(endpoint, pos), pos, Mode::Normal);
+          return;
+        }
         if (pos.line == 0 && pos.col == 0) {
           assert(false && "dge/dgE at start of buffer has no effect");
         }
@@ -784,9 +871,22 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
       case hash("c)"):
         {
           Position goalPos = pos;
-          for (int i = 0; i < count; i++) VimCore::motionSentenceNext(goalPos, lines);
+          for (int i = 0; i < count; i++) {
+            if (hasBoundaryContext) {
+              Position endpoint =
+                  VimCore::motionSentenceEndpoint<true, SentenceEdgeType::NextEdge>(
+                      goalPos, lines, rightColOffset, hasLinesBelow);
+              if (endpoint == POSITION_OUTSIDE_BOUNDARY) {
+                goalPos = POSITION_OUTSIDE_BOUNDARY;
+                break;
+              }
+              goalPos = endpoint;
+            } else {
+              VimCore::motionSentenceNext(goalPos, lines);
+            }
+          }
           // d) is exclusive: delete up to but not including the sentence start
-          if (goalPos > pos) {
+          if (goalPos != POSITION_OUTSIDE_BOUNDARY && goalPos > pos) {
             Position inclusiveEnd = lines.getPrevPos(goalPos);
             if (inclusiveEnd != POSITION_OUTSIDE_BOUNDARY && inclusiveEnd >= pos) {
               Range r(pos, inclusiveEnd);
@@ -801,9 +901,22 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
       case hash("c("):
         {
           Position initialPos = pos;
-          for (int i = 0; i < count; i++) VimCore::motionSentencePrev(initialPos, lines);
+          for (int i = 0; i < count; i++) {
+            if (hasBoundaryContext) {
+              Position endpoint =
+                  VimCore::motionSentenceEndpoint<false, SentenceEdgeType::NextEdge>(
+                      initialPos, lines, leftColOffset, hasLinesAbove);
+              if (endpoint == POSITION_OUTSIDE_BOUNDARY) {
+                initialPos = POSITION_OUTSIDE_BOUNDARY;
+                break;
+              }
+              initialPos = endpoint;
+            } else {
+              VimCore::motionSentencePrev(initialPos, lines);
+            }
+          }
           // d( is exclusive: delete from motion endpoint to just before cursor
-          if (initialPos < pos) {
+          if (initialPos != POSITION_OUTSIDE_BOUNDARY && initialPos < pos) {
             Position goalPos = pos.col > 0 ? Position(pos.line, pos.col - 1)
                             : (pos.line > 0 ? Position(pos.line - 1, lines[pos.line - 1].lastCol()) : pos);
             if (initialPos <= goalPos) {
@@ -918,26 +1031,34 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
       if (obj == 'w' || obj == 'W') {
         Lines linesWrapper(lines.begin(), lines.end());
         bool bigWord = (obj == 'W');
-        r = VimCore::textObject(pos, linesWrapper, inner, bigWord);
+        bool hasBoundaryContext = leftColOffset > 0 || rightColOffset > 0 ||
+                                  hasLinesAbove || hasLinesBelow;
+        if (hasBoundaryContext) {
+          r = VimCore::textObjectRange(
+              pos, linesWrapper, inner, bigWord,
+              leftColOffset, rightColOffset, hasLinesAbove, hasLinesBelow);
+        } else {
+          r = VimCore::textObject(pos, linesWrapper, inner, bigWord);
+        }
       }
       // Quote objects
       else if (obj == '"' || obj == '\'' || obj == '`') {
-        r = inner ? VimTextObjectsDeprecated::innerQuote(lines, pos, obj)
-                  : VimTextObjectsDeprecated::aroundQuote(lines, pos, obj);
+        r = inner ? VimTextObjectsLegacy::innerQuote(lines, pos, obj)
+                  : VimTextObjectsLegacy::aroundQuote(lines, pos, obj);
       }
       // Bracket objects - handle both opening and closing chars
       else if (obj == '(' || obj == ')' || obj == 'b') {
-        r = inner ? VimTextObjectsDeprecated::innerBracket(lines, pos, '(', ')')
-                  : VimTextObjectsDeprecated::aroundBracket(lines, pos, '(', ')');
+        r = inner ? VimTextObjectsLegacy::innerBracket(lines, pos, '(', ')')
+                  : VimTextObjectsLegacy::aroundBracket(lines, pos, '(', ')');
       } else if (obj == '{' || obj == '}' || obj == 'B') {
-        r = inner ? VimTextObjectsDeprecated::innerBracket(lines, pos, '{', '}')
-                  : VimTextObjectsDeprecated::aroundBracket(lines, pos, '{', '}');
+        r = inner ? VimTextObjectsLegacy::innerBracket(lines, pos, '{', '}')
+                  : VimTextObjectsLegacy::aroundBracket(lines, pos, '{', '}');
       } else if (obj == '[' || obj == ']') {
-        r = inner ? VimTextObjectsDeprecated::innerBracket(lines, pos, '[', ']')
-                  : VimTextObjectsDeprecated::aroundBracket(lines, pos, '[', ']');
+        r = inner ? VimTextObjectsLegacy::innerBracket(lines, pos, '[', ']')
+                  : VimTextObjectsLegacy::aroundBracket(lines, pos, '[', ']');
       } else if (obj == '<' || obj == '>') {
-        r = inner ? VimTextObjectsDeprecated::innerBracket(lines, pos, '<', '>')
-                  : VimTextObjectsDeprecated::aroundBracket(lines, pos, '<', '>');
+        r = inner ? VimTextObjectsLegacy::innerBracket(lines, pos, '<', '>')
+                  : VimTextObjectsLegacy::aroundBracket(lines, pos, '<', '>');
       } else {
         assert(false && "Unknown text object");
       }
@@ -1088,13 +1209,17 @@ vector<ParsedEdit> parseEdits(string_view seq) {
     // Parse optional count prefix
     int cnt = 0;
     if (isdigit(c) && c != '0') {
-      size_t start = i;
+      constexpr int INT_MAX_VALUE = std::numeric_limits<int>::max();
       while (i < sv.size() && isdigit(sv[i])) {
+        int digit = sv[i] - '0';
+        if (cnt > (INT_MAX_VALUE - digit) / 10) {
+          cnt = INT_MAX_VALUE;
+        } else {
+          cnt = cnt * 10 + digit;
+        }
         i++;
       }
-      for (size_t j = start; j < i; j++) {
-        cnt = cnt * 10 + (sv[j] - '0');
-      }
+
       if (i >= sv.size()) break;
       c = sv[i];
     }

@@ -1,6 +1,7 @@
 #include "MotionInterpreter.h"
 
 #include <cassert>
+#include <limits>
 #include <ostream>
 
 #include "VimTypes/NavContext.h"
@@ -8,7 +9,7 @@
 #include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimOptions.h"
 
-#include "Keyboard/MotionToKeys.h"
+#include "Keyboard/ToKeys/MotionToKeys.h"
 
 using namespace std;
 
@@ -19,7 +20,7 @@ std::ostream& operator<<(std::ostream& os, const ParsedMotion& motion) {
   os << motion.motion;
   return os;
 }
-// Does string motion parsing. See SequenceTokenizer for the physical key parsing.
+// Does string motion parsing. See SequenceToKeys for the physical key parsing.
 // IMPORTANT: Returned ParsedMotions contain string_views into seq - caller must ensure seq outlives usage.
 
   // TODO: Once the motions we support are stable, and if it makes sense in how we implement vim's object model, consider representing motions as an enum instead of string. Then it would be no return, as harder to read/debug, but more efficient.
@@ -32,16 +33,19 @@ std::vector<ParsedMotion> parseMotions(std::string_view seq) {
 
     int cnt = 0;
     // 0 is a valid digit except for the first one
-    if(isdigit(c) && c != '0') {
-      size_t start = i;
-      while(i < sv.size() && isdigit(sv[i])) {
+    if (isdigit(c) && c != '0') {
+      constexpr int INT_MAX_VALUE = std::numeric_limits<int>::max();
+      while (i < sv.size() && isdigit(sv[i])) {
+        int digit = sv[i] - '0';
+        if (cnt > (INT_MAX_VALUE - digit) / 10) {
+          cnt = INT_MAX_VALUE;
+        } else {
+          cnt = cnt * 10 + digit;
+        }
         i++;
       }
-      // Parse count from substring
-      cnt = 0;
-      for (size_t j = start; j < i; j++) {
-        cnt = cnt * 10 + (sv[j] - '0');
-      }
+
+      if (i >= sv.size()) break;
       c = sv[i];  // Update c to char after count
     }
 

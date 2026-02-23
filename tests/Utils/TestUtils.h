@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Optimizer/Result.h"
-#include "Keyboard/KeyboardModel.h"
+#include "Keyboard/Key.h"
 #include "VimTypes/Lines.h"
 
 #include <algorithm>
@@ -86,4 +86,3 @@ bool contains_all(const std::vector<Result>& v,
                   std::initializer_list<std::string> need);
 
 void printResults(std::vector<Result>& results);
-

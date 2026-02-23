@@ -3,11 +3,11 @@
 #include "MotionClassMask.h"
 #include "MotionSearchContext.h"
 #include "MotionToSpec.h"
-#include "Optimizer/BufferIndex.h"
+#include "BufferIndex.h"
 #include "Optimizer/CountPenalty.h"
 #include "Optimizer/GlobalRuntimeOptions.h"
 #include "Keyboard/KeyedSequence.h"
-#include "Keyboard/MotionToKeys.h"
+#include "Keyboard/ToKeys/MotionToKeys.h"
 #include "VimCore/VimCore.h"
 #include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimEndpointUtils.h"
@@ -54,7 +54,7 @@ public:
   // Mode-aware: uses goal or range depending on constructor used.
   // Uses pre-computed effort from EffortBank via KSId.
   void emitMotion(const MotionState& base, KSId id, Position endpoint) {
-    const KeyedSequence& ks = ksById(id);
+    const KeyedSequence& ks = KeyedSequence::byId(id);
     MotionState newState = base.afterMotion(ks, ctx.bank[id], endpoint, ctx.config);
 
     if (isRangeMode_) {
@@ -232,6 +232,7 @@ public:
   template<CountClass C>
   void exploreCountMotion(const MotionState& base, const KeyedSequence& baseMotion,
                           int cnt, const Position& newPos) {
+    assert(cnt >= 0 && cnt <= MAX_PREFIX_COUNT);
     CountPenaltyInput in;
     in.count = cnt;
     in.span = cnt;
@@ -271,9 +272,9 @@ public:
       if (charIt == CHAR_TO_KEYS.end()) continue;
 
       KeyedSequence fMotion;
-      fMotion.appendChar(firstMotion);
-      fMotion.appendChar(c);
-      fMotion.appendChar(repeatMotion, cnt);
+      fMotion.append(firstMotion);
+      fMotion.append(c);
+      fMotion.append(repeatMotion, cnt);
 
       exploreFMotion(base, fMotion, col);
     }
@@ -284,15 +285,16 @@ public:
     assert(bufferIndex_ && "Count motions require goal-based constructor");
     Position pos = base.getPos();
     const KeyedSequence& motion = []() -> const KeyedSequence& {
-      if constexpr (Forward) return ksById(ForwardKS);
-      else return ksById(BackwardKS);
+      if constexpr (Forward) return KeyedSequence::byId(ForwardKS);
+      else return KeyedSequence::byId(BackwardKS);
     }();
 
     auto results = bufferIndex_->getTwoClosest(LT, pos, goalPos_);
 
     for (const auto& r : results) {
       if (!r.valid()) continue;
-      if (r.count < ctx.params.minCountRepeat) continue;
+      if (r.count < ctx.params.minPrefixCount) continue;
+      if (r.count > ctx.params.maxPrefixCount) continue;
       if (ctx.boundary.hasLinesAbove() && r.pos.line == 0) continue;
       if (ctx.boundary.hasLinesBelow() && r.pos.line == ctx.lines.lastLine()) continue;
       exploreCountMotion<C>(base, motion, r.count, r.pos);
@@ -332,10 +334,11 @@ public:
 
     int linesAvailable = Forward ? (lastLine - pos.line) : pos.line;
     int maxCount = std::min(MAX_LINE_JUMP, linesAvailable);
+    maxCount = std::min(maxCount, ctx.params.maxPrefixCount);
 
     const KeyedSequence& motion = Forward ? KeyedSequence::j : KeyedSequence::k;
 
-    for (int cnt = ctx.params.minCountRepeat; cnt <= maxCount; cnt++) {
+    for (int cnt = ctx.params.minPrefixCount; cnt <= maxCount; cnt++) {
       int newLine = Forward ? (pos.line + cnt) : (pos.line - cnt);
 
       // Boundary guard: don't land on boundary lines
@@ -360,10 +363,11 @@ public:
     int maxCount = Forward
         ? (lastCol - rightBound - pos.col)
         : (pos.col - leftBound);
+    maxCount = std::min(maxCount, ctx.params.maxPrefixCount);
 
     const KeyedSequence& motion = Forward ? KeyedSequence::l : KeyedSequence::h;
 
-    for (int cnt = ctx.params.minCountRepeat; cnt <= maxCount; cnt++) {
+    for (int cnt = ctx.params.minPrefixCount; cnt <= maxCount; cnt++) {
       int newCol = Forward ? (pos.col + cnt) : (pos.col - cnt);
       exploreCountMotion<CountClass::MotionChar>(base, motion, cnt, {pos.line, newCol});
     }

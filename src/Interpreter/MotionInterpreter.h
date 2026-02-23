@@ -42,7 +42,7 @@ void applyParsedMotion(Position& pos, Mode& mode,
                        const ParsedMotion& motion, const Lines& lines,
                       const NavContext& navContext);
 
-// Currently only to be externally called in State::applyMotion.
+// External entry point for applying a single motion in optimizer state updates.
 void applySingleMotion(Position& pos, Mode& mode, std::string_view motion,
                        const Lines& lines, const NavContext& navContext);
 

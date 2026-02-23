@@ -16,7 +16,7 @@
 #include "Boundary/MotionBoundary.h"
 #include "VimTypes/NavContext.h"
 #include "VimTypes/Position.h"
-#include "State/CompositionState.h"
+#include "Optimizer/CompositionOptimizer/CompositionState.h"
 #include "VimTypes/BracketFlags.h"
 #include "VimTypes/Lines.h"
 #include "VimTypes/QuoteFlags.h"

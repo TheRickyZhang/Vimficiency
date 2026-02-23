@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Keyboard/KeyedSequence.h"
-#include "State/RunningEffort.h"
+#include "Effort/RunningEffort.h"
 
 // Command payload used across EditOptimizer exploration callbacks.
 // - count=0 means uncounted.

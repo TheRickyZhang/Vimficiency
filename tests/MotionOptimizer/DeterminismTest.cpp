@@ -11,7 +11,7 @@
 #include "VimTypes/NavContext.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
-#include "State/RunningEffort.h"
+#include "Effort/RunningEffort.h"
 #include "VimTypes/Lines.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"

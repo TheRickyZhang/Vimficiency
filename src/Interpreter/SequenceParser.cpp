@@ -1,7 +1,9 @@
 // SequenceParser.cpp - Implementation of sequence parsing for animation
 
 #include "SequenceParser.h"
-#include "Keyboard/MotionToKeys.h"
+#include "Keyboard/ToKeys/MotionToKeys.h"
+
+#include <limits>
 #include <unordered_set>
 
 using namespace std;
@@ -45,9 +47,15 @@ int parseCount(string_view sv, size_t& i) {
   if (i >= sv.size() || !isdigit(sv[i]) || sv[i] == '0') {
     return 0;
   }
+  constexpr int INT_MAX_VALUE = std::numeric_limits<int>::max();
   int cnt = 0;
   while (i < sv.size() && isdigit(sv[i])) {
-    cnt = cnt * 10 + (sv[i] - '0');
+    int digit = sv[i] - '0';
+    if (cnt > (INT_MAX_VALUE - digit) / 10) {
+      cnt = INT_MAX_VALUE;
+    } else {
+      cnt = cnt * 10 + digit;
+    }
     i++;
   }
   return cnt;

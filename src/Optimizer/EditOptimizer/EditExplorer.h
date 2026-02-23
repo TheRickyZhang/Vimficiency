@@ -7,9 +7,9 @@
 #include "VimTypes/Position.h"
 #include "VimTypes/Range.h"
 #include "Keyboard/KeyedSequence.h"
-#include "State/EditState.h"
+#include "Optimizer/EditOptimizer/EditState.h"
 #include "Optimizer/SequenceBinding.h"
-#include "State/RunningEffort.h"
+#include "Effort/RunningEffort.h"
 #include "VimTypes/Lines.h"
 #include "VimTypes/EdgeType.h"
 
@@ -51,15 +51,18 @@ public:
 
   // Explore counted line edits: dj, dk, {n}dd
   void exploreCountedLineEdits(const Position& cursor, const Lines& lines,
-                               int minCountRepeat, CountedLinewiseCallback onCountedLinewise);
+                               int minCountRepeat,
+                               CountedLinewiseCallback onCountedLinewise);
 
   // Explore counted join commands: {n}J, {n}gJ
   void exploreCountedJoinCommands(const Position& cursor, const Lines& lines,
-                                  int minCountRepeat, CountedJoinCallback onCountedJoin);
+                                  int minCountRepeat,
+                                  CountedJoinCallback onCountedJoin);
 
   // Explore counted word edits: {n}de, {n}dE, {n}dw, {n}dW, {n}db, {n}dB, {n}dge, {n}dgE
   void exploreCountedWordEdits(const Position& cursor, const Lines& lines,
-                               int minCountRepeat, DeletionCallback onDeletion);
+                               int minCountRepeat,
+                               DeletionCallback onDeletion);
 
   // Explore counted char edits: {n}x
   void exploreCountedCharEdits(const Position& cursor, const Lines& lines,

@@ -14,12 +14,12 @@
 #include "SuffixCache.h"
 
 #include "Interpreter/EditInterpreter.h"
-#include "Keyboard/KeyboardModel.h"
+#include "Keyboard/PhysicalKeys.h"
 #include "Keyboard/KeyedSequence.h"
-#include "Keyboard/MotionToKeys.h"
+#include "Keyboard/ToKeys/MotionToKeys.h"
 #include "Optimizer/BuildTypedCommands.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
-#include "State/RunningEffort.h"
+#include "Effort/RunningEffort.h"
 #include "Optimizer/Indentation.h"
 
 
@@ -67,9 +67,26 @@ KeyedSequence buildCollapseSequence(int totalLines, int cursorLine) {
   assert(cursorLine >= 0 && cursorLine < totalLines &&
          "cursorLine must be within [0, totalLines)");
   KeyedSequence ks;
-  ks.appendRepeated(KeyedSequence::BS, cursorLine);
-  ks.appendRepeated(KeyedSequence::Del, totalLines - 1 - cursorLine);
+  ks.append(KeyedSequence::BS, cursorLine);
+  ks.append(KeyedSequence::Del, totalLines - 1 - cursorLine);
   return ks;
+}
+
+void appendOptionalCount(KeyedSequence& out, int count, const KeyedSequence& base) {
+  assert(count >= 0 && count <= MAX_PREFIX_COUNT);
+  if (count <= 1) {
+    out += base;
+  } else {
+    out.appendCounted(count, base);
+  }
+}
+
+KeyedSequence withOptionalCount(int count, const KeyedSequence& base) {
+  assert(count >= 0 && count <= MAX_PREFIX_COUNT);
+  if (count <= 1) {
+    return base;
+  }
+  return KeyedSequence(count, base);
 }
 
 // Convert a delete command payload to its change-equivalent command.
@@ -87,7 +104,7 @@ KeyedSequence deleteToChangeChar(const SequenceBinding& sourceCmd) {
     result = KeyedSequence::hs;
   } else if (baseCmd == "dw" || baseCmd == "dW") {
     // dw/dW -> dwi/dWi rather than cw/cW because cw/cW == ce/cE (no trailing whitespace). Since de is explored before dw in exploreAllDeletions, we must retain deleting the trailing whitespace
-    result.appendCounted(baseKS, count);
+    appendOptionalCount(result, count, baseKS);
     result += KeyedSequence::i;
     return result;
   } else if (baseCmd.size() > 1 && baseCmd[0] == 'd') {
@@ -96,7 +113,7 @@ KeyedSequence deleteToChangeChar(const SequenceBinding& sourceCmd) {
     assert(false && "unsupported command in EditOptimizer!");
     return {};
   }
-  return KeyedSequence(result, count);
+  return withOptionalCount(count, result);
 }
 
 // Convert a linewise delete command payload to its change-equivalent command.
@@ -117,11 +134,11 @@ KeyedSequence deleteToChangeLine(const SequenceBinding& sourceCmd,
       return KeyedSequence::cc;
     }
     // {n}dd → {n}cc
-    return KeyedSequence(KeyedSequence::cc, count);
+    return withOptionalCount(count, KeyedSequence::cc);
   }
 
   // dj → cj, dk → ck
-  return KeyedSequence(baseKS.asChange(), count);
+  return withOptionalCount(count, baseKS.asChange());
 }
 
 // Replacement strategy for same-length single-line transformations.
@@ -139,8 +156,8 @@ optional<Result> tryReplacement(string_view deleted, string_view inserted,
   KeyedSequence ks;
 
   auto appendNav = [&](int dist) {
-    if (dist <= 2) ks.appendRepeated(KeyedSequence::l, dist);
-    else ks.appendCounted(KeyedSequence::l, dist);
+    if (dist <= 2) ks.append(KeyedSequence::l, dist);
+    else ks.appendCounted(dist, KeyedSequence::l);
   };
 
   // Navigate to first diff
@@ -156,25 +173,25 @@ optional<Result> tryReplacement(string_view deleted, string_view inserted,
     }
 
     int runLength = static_cast<int>(j - i + 1);
-    if (runLength > 1) ks.appendCounted(KeyedSequence::r, runLength);
+    if (runLength > 1) ks.appendCounted(runLength, KeyedSequence::r);
     else ks += KeyedSequence::r;
-    ks.appendChar(inserted[diff[i]]);
+    ks.append(inserted[diff[i]]);
 
     // Navigate to next run
     i = j + 1;
     if (i < diff.size()) {
       int dist = diff[i] - diff[j];
       if (dist <= 2) {
-        ks.appendRepeated(KeyedSequence::l, dist);
+        ks.append(KeyedSequence::l, dist);
       } else {
         char findChar = deleted[diff[i]];
         int occurrences = count(deleted.begin() + diff[j] + 1,
                                 deleted.begin() + diff[i], findChar);
         if (occurrences == 0) {
           ks += KeyedSequence::f;
-          ks.appendChar(findChar);
+          ks.append(findChar);
         } else {
-          ks.appendCounted(KeyedSequence::l, dist);
+          ks.appendCounted(dist, KeyedSequence::l);
         }
       }
     }
@@ -270,7 +287,8 @@ struct ModePolicy<true> {
             MotionOptimizerParams{}
                 .withLinePaddingAbove(params.motionLinePaddingAbove)
                 .withLinePaddingBelow(params.motionLinePaddingBelow)
-                .withMinCountRepeat(params.minCountRepeat)
+                .withMinCountRepeat(params.minPrefixCount)
+                .withMaxCountRepeat(params.maxPrefixCount)
         );
 
         if (!motionResults.empty() && motionResults[0].isValid()) {
@@ -281,7 +299,7 @@ struct ModePolicy<true> {
           static const PhysicalKeys vKey = {Key::Key_V};
           static const PhysicalKeys dKey = {Key::Key_D};
           RunningEffort effort(vKey, config);
-          effort.append(globalTokenizer().tokenize(motionResults[0].sequence.view()), config);
+          effort.append(globalSequenceToKeys().tokenize(motionResults[0].sequence.view()), config);
           double totalEffort = effort.append(dKey, config);
 
           if (!results[0].isValid() || totalEffort < results[0].keyCost) {
@@ -372,7 +390,7 @@ struct ModePolicy<false> {
       } else {
         editStr = string(edits[i].edit);
       }
-      res[i] = KeyedSequence(editStr, globalTokenizer().tokenize(editStr));
+      res[i] = KeyedSequence(editStr, globalSequenceToKeys().tokenize(editStr));
     }
     return res;
   }
@@ -418,7 +436,7 @@ struct ModePolicy<false> {
     // - Optional dot override: edits[nextIndex..] (for matching last-edit context)
     // lastEditCmd must come from replay semantics; it is not simply previous parsed token.
     // Example: "dwj." -> previous token before '.' is "j", but dot repeats "dw".
-    KeyedSequence expandedPrefix(lastEditCmd, globalTokenizer().tokenize(lastEditCmd));
+    KeyedSequence expandedPrefix(lastEditCmd, globalSequenceToKeys().tokenize(lastEditCmd));
     RunningEffort expandedPrefixEffort(expandedPrefix.keys, config);
 
     // Possible optimization (high confidence): cache RunningEffort for repeated
@@ -497,7 +515,9 @@ struct ModePolicy<false> {
       if (nextIndex >= prefixEditCount) break;
 
       Edit::applyEdit(replayLines, replayPos, replayMode, prefixEdits[nextIndex], &lastEditCmd,
-                      editBoundary.hasLinesBelow());
+                      editBoundary.hasLinesBelow(),
+                      ctx.leftColOffset, ctx.rightColOffset,
+                      editBoundary.hasLinesAbove());
       // if (replayMode == Mode::Insert) break;
     }
   }
@@ -630,8 +650,8 @@ struct ModePolicy<false> {
       // BS in collapse: account for autoindent in BS count.
       // bsCountForIndent(x, 0, sw) always succeeds (0 is always a sw boundary).
       int bsClear = autoindentLen > 0 ? bsCountForIndent(autoindentLen, 0) : 0;
-      changePrefix.appendRepeated(KeyedSequence::BS, bsClear + line);
-      changePrefix.appendRepeated(KeyedSequence::Del, ccLineCount - 1 - line);
+      changePrefix.append(KeyedSequence::BS, bsClear + line);
+      changePrefix.append(KeyedSequence::Del, ccLineCount - 1 - line);
     } else {
       changePrefix += buildCollapseSequence(ccLineCount, line);
     }
@@ -648,7 +668,7 @@ struct ModePolicy<false> {
     bool isDot = isDotRepeat(base, sourceCmd);
     const auto& iCmd = KeyedSequence::i;
     KeyedSequence goalCompletionCmd;
-    goalCompletionCmd.appendCounted(sourceCmd.base, sourceCmd.count);
+    appendOptionalCount(goalCompletionCmd, sourceCmd.count, sourceCmd.base);
     goalCompletionCmd += iCmd;
     goalCompletionCmd += buildCollapseSequence(
         static_cast<int>(afterJn.getLines().size()), afterJn.getPos().line);
@@ -682,8 +702,8 @@ struct ModePolicy<false> {
       } else {
         // BS in collapse: account for autoindent in BS count.
         int bsClear = autoindentLen > 0 ? bsCountForIndent(autoindentLen, 0) : 0;
-        changePrefix.appendRepeated(KeyedSequence::BS, bsClear + range.firstLine);
-        changePrefix.appendRepeated(KeyedSequence::Del, ccLineCount - 1 - range.firstLine);
+        changePrefix.append(KeyedSequence::BS, bsClear + range.firstLine);
+        changePrefix.append(KeyedSequence::Del, ccLineCount - 1 - range.firstLine);
       }
     } else {
       changePrefix += buildCollapseSequence(ccLineCount, range.firstLine);
@@ -701,7 +721,7 @@ struct ModePolicy<false> {
     bool isDot = isDotRepeat(base, sourceCmd);
     const auto& iCmd = KeyedSequence::i;
     KeyedSequence goalCompletionCmd;
-    goalCompletionCmd.appendCounted(sourceCmd.base, sourceCmd.count);
+    appendOptionalCount(goalCompletionCmd, sourceCmd.count, sourceCmd.base);
     goalCompletionCmd += iCmd;
     goalCompletionCmd += buildCollapseSequence(
         static_cast<int>(afterJn.getLines().size()), afterJn.getPos().line);
@@ -1034,6 +1054,7 @@ EditOptimizer::optimizeEdit(
                           (goalLines.size() == 1 && goalLines[0].empty());
   assert(!pureDeletionGoal &&
          "optimizeEdit does not accept empty goalLines; use optimizePureDeletion for pure deletions");
+  params.normalizeCountRepeatBounds();
 
   return optimizeImpl<false>(initialLines, goalLines, editBoundary, params,
                              bufferFirstLine, bufferFirstCol, goalPos);
@@ -1047,6 +1068,7 @@ PureDeletionEditResult EditOptimizer::optimizePureDeletion(
     int bufferFirstCol,
     Position goalPos) {
   assert(!initialLines.empty());
+  params.normalizeCountRepeatBounds();
   return optimizeImpl<true>(
       initialLines, Lines{}, editBoundary, params,
       bufferFirstLine, bufferFirstCol, goalPos);

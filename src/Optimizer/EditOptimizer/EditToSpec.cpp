@@ -9,107 +9,107 @@ namespace Edit {
 
 // Forward word edits: ks{cmd, keys}, edgeType, isBig, skipCurrent
 const vector<ForwardWordEditSpec> FORWARD_WORD_EDITS = {
-    {{"de", {Key::Key_D, Key::Key_E}}, EdgeType::WordEdge, false, true},
-    {{"dw", {Key::Key_D, Key::Key_W}}, EdgeType::GapEdge, false, false},
-    {{"dE", {Key::Key_D, Key::Key_Shift, Key::Key_E}}, EdgeType::WordEdge, true, true},
-    {{"dW", {Key::Key_D, Key::Key_Shift, Key::Key_W}}, EdgeType::GapEdge, true, false},
+    {KSId::de, EdgeType::WordEdge, false, true},
+    {KSId::dw, EdgeType::GapEdge, false, false},
+    {KSId::dE, EdgeType::WordEdge, true, true},
+    {KSId::dW, EdgeType::GapEdge, true, false},
 };
 // Subset: de/dE only (dw/dW equivalent to dd on empty lines)
 const vector<ForwardWordEditSpec> EMPTYLINE_FORWARD_WORD_EDITS = {
-    {{"de", {Key::Key_D, Key::Key_E}}, EdgeType::WordEdge, false, true},
-    {{"dE", {Key::Key_D, Key::Key_Shift, Key::Key_E}}, EdgeType::WordEdge, true, true},
+    {KSId::de, EdgeType::WordEdge, false, true},
+    {KSId::dE, EdgeType::WordEdge, true, true},
 };
 
 // Split by EdgeType for templated dispatch: ks{cmd, keys}, isBig, skipCurrent
 const vector<ForwardWordEditSpecNoEdge> FORWARD_WORDEDGE_EDITS = {
-    {{"de", {Key::Key_D, Key::Key_E}}, false, true},
-    {{"dE", {Key::Key_D, Key::Key_Shift, Key::Key_E}}, true, true},
+    {KSId::de, false, true},
+    {KSId::dE, true, true},
 };
 const vector<ForwardWordEditSpecNoEdge> FORWARD_GAPEDGE_EDITS = {
-    {{"dw", {Key::Key_D, Key::Key_W}}, false, false},
-    {{"dW", {Key::Key_D, Key::Key_Shift, Key::Key_W}}, true, false},
+    {KSId::dw, false, false},
+    {KSId::dW, true, false},
 };
 
 // Backward word edits: ks{cmd, keys}, edgeType, isBig, skipCurrent, isExclusiveAtCursor
 const vector<BackwardWordEditSpec> BACKWARD_WORD_EDITS = {
-    {{"db", {Key::Key_D, Key::Key_B}}, EdgeType::WordEdge, false, true, true},
-    {{"dge", {Key::Key_D, Key::Key_G, Key::Key_E}}, EdgeType::NextEdge, false, true, false},
-    {{"dB", {Key::Key_D, Key::Key_Shift, Key::Key_B}}, EdgeType::WordEdge, true, true, true},
-    {{"dgE", {Key::Key_D, Key::Key_G, Key::Key_Shift, Key::Key_E}}, EdgeType::NextEdge, true, true, false},
+    {KSId::db, EdgeType::WordEdge, false, true, true},
+    {KSId::dge, EdgeType::NextEdge, false, true, false},
+    {KSId::dB, EdgeType::WordEdge, true, true, true},
+    {KSId::dgE, EdgeType::NextEdge, true, true, false},
 };
 
 const vector<BackwardWordEditSpec> EXCLUSIVE_BACKWARD_WORD_EDITS = {
-    {{"db", {Key::Key_D, Key::Key_B}}, EdgeType::WordEdge, false, true, true},
-    {{"dB", {Key::Key_D, Key::Key_Shift, Key::Key_B}}, EdgeType::WordEdge, true, true, true},
+    {KSId::db, EdgeType::WordEdge, false, true, true},
+    {KSId::dB, EdgeType::WordEdge, true, true, true},
 };
 
 // Subset: db/dB/dge only (dgE equivalent to dge on empty lines)
 const vector<BackwardWordEditSpec> EMPTYLINE_BACKWARD_WORD_EDITS = {
-    {{"db", {Key::Key_D, Key::Key_B}}, EdgeType::WordEdge, false, true, true},
-    {{"dge", {Key::Key_D, Key::Key_G, Key::Key_E}}, EdgeType::NextEdge, false, true, false},
-    {{"dB", {Key::Key_D, Key::Key_Shift, Key::Key_B}}, EdgeType::WordEdge, true, true, true},
+    {KSId::db, EdgeType::WordEdge, false, true, true},
+    {KSId::dge, EdgeType::NextEdge, false, true, false},
+    {KSId::dB, EdgeType::WordEdge, true, true, true},
 };
 
 // Split by EdgeType for templated dispatch: ks{cmd, keys}, isBig, skipCurrent, isExclusiveAtCursor
 const vector<BackwardWordEditSpecNoEdge> BACKWARD_WORDEDGE_EDITS = {
-    {{"db", {Key::Key_D, Key::Key_B}}, false, true, true},
-    {{"dB", {Key::Key_D, Key::Key_Shift, Key::Key_B}}, true, true, true},
+    {KSId::db, false, true, true},
+    {KSId::dB, true, true, true},
 };
 const vector<BackwardWordEditSpecNoEdge> BACKWARD_NEXTEDGE_EDITS = {
-    {{"dge", {Key::Key_D, Key::Key_G, Key::Key_E}}, false, true, false},
-    {{"dgE", {Key::Key_D, Key::Key_G, Key::Key_Shift, Key::Key_E}}, true, true, false},
+    {KSId::dge, false, true, false},
+    {KSId::dgE, true, true, false},
 };
 
 const vector<TextObjectEditSpec> TEXT_OBJECT_EDITS = {
     // Small word
-    {{"diw", {Key::Key_D, Key::Key_I, Key::Key_W}}, true, false},
-    {{"daw", {Key::Key_D, Key::Key_A, Key::Key_W}}, false, false},
+    {KSId::diw, true, false},
+    {KSId::daw, false, false},
     // Big WORD
-    {{"diW", {Key::Key_D, Key::Key_I, Key::Key_Shift, Key::Key_W}}, true, true},
-    {{"daW", {Key::Key_D, Key::Key_A, Key::Key_Shift, Key::Key_W}}, false, true},
+    {KSId::diW, true, true},
+    {KSId::daW, false, true},
 };
 
 // Line motion edits: ks{cmd, keys}, forward
 const vector<LineEditSpec> HALF_LINE_EDITS = {
     // Forward (to line end)
-    {{"D", {Key::Key_Shift, Key::Key_D}}, true},
+    {KSId::D, true},
     // Backward (to line start)
-    {{"d0", {Key::Key_D, Key::Key_0}}, false},
+    {KSId::d0, false},
 };
 
 // Full line edits: ks{cmd, keys}
 const vector<FullLineEditSpec> FULL_LINE_EDITS = {
-    {{"dd", {Key::Key_D, Key::Key_D}}},
+    {KSId::dd},
 };
 
 const vector<FullLineEditSpec> EMPTYLINE_FULL_LINE_EDITS = FULL_LINE_EDITS;
 
 // Paragraph motion edits: ks{cmd, keys}, forward
 const vector<ParagraphEditSpec> PARAGRAPH_EDITS = {
-    {{"d}", {Key::Key_D, Key::Key_Shift, Key::Key_RBracket}}, true},
-    {{"d{", {Key::Key_D, Key::Key_Shift, Key::Key_LBracket}}, false},
+    {KSId::dRBrace, true},
+    {KSId::dLBrace, false},
 };
 
 // Split by Forward for templated dispatch: ks{cmd, keys}
 const vector<ParagraphEditSpecNoDir> FORWARD_PARAGRAPH_EDITS = {
-    {{"d}", {Key::Key_D, Key::Key_Shift, Key::Key_RBracket}}},
+    {KSId::dRBrace},
 };
 const vector<ParagraphEditSpecNoDir> BACKWARD_PARAGRAPH_EDITS = {
-    {{"d{", {Key::Key_D, Key::Key_Shift, Key::Key_LBracket}}},
+    {KSId::dLBrace},
 };
 
 // Sentence motion edits: ks{cmd, keys}, forward
 const vector<SentenceEditSpec> SENTENCE_EDITS = {
-    {{"d)", {Key::Key_D, Key::Key_Shift, Key::Key_0}}, true},
-    {{"d(", {Key::Key_D, Key::Key_Shift, Key::Key_9}}, false},
+    {KSId::dRParen, true},
+    {KSId::dLParen, false},
 };
 
 // Split by Forward for templated dispatch: ks{cmd, keys}
 const vector<SentenceEditSpecNoDir> FORWARD_SENTENCE_EDITS = {
-    {{"d)", {Key::Key_D, Key::Key_Shift, Key::Key_0}}},
+    {KSId::dRParen},
 };
 const vector<SentenceEditSpecNoDir> BACKWARD_SENTENCE_EDITS = {
-    {{"d(", {Key::Key_D, Key::Key_Shift, Key::Key_9}}},
+    {KSId::dLParen},
 };
 
 } // namespace Edit

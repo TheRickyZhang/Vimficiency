@@ -10,7 +10,7 @@
 #include "VimTypes/NavContext.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
-#include "State/RunningEffort.h"
+#include "Effort/RunningEffort.h"
 #include "Utils/EditTestGenerators.h"
 #include "VimTypes/Lines.h"
 #include "Utils/RandomGeneration.h"

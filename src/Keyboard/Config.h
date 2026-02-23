@@ -3,7 +3,9 @@
 #include <array>
 #include <string>
 
-#include "Keyboard/KeyboardModel.h"
+#include "Finger.h"
+#include "Hand.h"
+#include "Key.h"
 #include "Utils/Debug.h"
 
 // -----------------------------------------------------------------------------
@@ -51,6 +53,7 @@ struct ScoreWeights final {
 struct Config {
   std::array<KeyInfo, KEY_COUNT> keyInfo{};
   
+
   ScoreWeights weights{};
 
   static Config qwerty();

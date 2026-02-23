@@ -10,17 +10,17 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 - `src/Interpreter`: Arbitrary command parsing/interpreting adapters (`parse*`, `apply*`, `simulate*`)
 - `src/Session`: Snapshot/session file I/O
 - `src/Keyboard`: Keyboard primitives and sequence-to-key conversion
+- `src/Effort`: Effort accumulation/cache built on keyboard primitives
 - `src/Optimizer`: Algorithm logic for optimization
-- `src/State`: State tracked in Optimizer classes
 - `src/VimCore`: Explicit vim motion simulation
 - `src/Utils`: Utilities
 - `src/lua_exports.cpp`: C++ to Lua FFI interface
 - `tests/`: GoogleTest suite
 
-**Dependency order** (most to least dependent): Optimizer → State/Interpreter/VimCore/Keyboard/Boundary/Utils/VimTypes, State → Interpreter/VimCore/Keyboard/Utils/VimTypes, Interpreter → VimCore/Keyboard/Utils/VimTypes, Session → VimTypes, VimCore → Boundary/Utils/VimTypes, Keyboard → Utils/VimTypes, Boundary → Utils/VimTypes
+**Dependency order** (most to least dependent): Optimizer → Interpreter/VimCore/Keyboard/Boundary/Effort/Utils/VimTypes, Interpreter → VimCore/Keyboard/Utils/VimTypes, Effort → Keyboard, Session → VimTypes, VimCore → Boundary/Utils/VimTypes, Keyboard → Utils/VimTypes, Boundary → Utils/VimTypes, Utils → VimTypes
 
 ## Terminology
-- **Key**: Physical key (61 supported, defined in KeyboardModel.h)
+- **Key**: Physical key (61 supported, defined in `src/Keyboard/Key.h`)
 - **Sequence**: String of commands in Neovim semantics
 - **Motion**: Commands that only move cursor (includes jumps)
 - **Edit**: Commands that change buffer (operator + motion/text object, replacement, mode change, insert typing)

@@ -35,7 +35,8 @@ struct MotionOptimizerParams : OptimizerParamsBase {
   MotionOptimizerParams& withLinePaddingAbove(int v) { linePaddingAbove = v; return *this; }
   MotionOptimizerParams& withLinePaddingBelow(int v) { linePaddingBelow = v; return *this; }
   MotionOptimizerParams& withLinePadding(int v) { linePaddingAbove = linePaddingBelow = v; return *this; }
-  MotionOptimizerParams& withMinCountRepeat(int v) { minCountRepeat = v; return *this; }
+  MotionOptimizerParams& withMinCountRepeat(int v) { setMinCountRepeat(v); return *this; }
+  MotionOptimizerParams& withMaxCountRepeat(int v) { setMaxCountRepeat(v); return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
   static MotionOptimizerParams dijkstra(int maxResults = 10, int maxNodesExplored = 50000) {
@@ -69,5 +70,6 @@ struct MotionOptimizerRangeParams : MotionOptimizerParams {
   MotionOptimizerRangeParams& withLinePaddingAbove(int v) { linePaddingAbove = v; return *this; }
   MotionOptimizerRangeParams& withLinePaddingBelow(int v) { linePaddingBelow = v; return *this; }
   MotionOptimizerRangeParams& withLinePadding(int v) { linePaddingAbove = linePaddingBelow = v; return *this; }
-  MotionOptimizerRangeParams& withMinCountRepeat(int v) { minCountRepeat = v; return *this; }
+  MotionOptimizerRangeParams& withMinCountRepeat(int v) { setMinCountRepeat(v); return *this; }
+  MotionOptimizerRangeParams& withMaxCountRepeat(int v) { setMaxCountRepeat(v); return *this; }
 };

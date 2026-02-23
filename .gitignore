@@ -7,6 +7,9 @@ install_manifest.txt
 CTestTestfile.cmake
 Makefile
 .cache/
+.nvimlog
+deps*
+deps/*
 
 docs/vim/
 
@@ -23,3 +26,4 @@ bench-dashboard/node_modules/
 bench-dashboard/dist/
 bench-dashboard/public/*/data.json
 bench-dashboard/public/*/explore.json
+

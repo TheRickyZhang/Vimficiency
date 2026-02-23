@@ -17,10 +17,10 @@ public:
   bool empty() const { return keys.empty(); }
   size_t size() const { return keys.size(); }
 
-  void append(std::string_view s) { keys += s; }
-  void append(char c) { keys += c; }
-  void append(int count, char c) { keys.append(count, c); }
-  void append(int count, std::string_view s) { for (int i = 0; i < count; i++) keys += s; }
+  void append(char c, int count = 1) { keys.append(count, c); }
+  void append(std::string_view s, int count = 1) {
+    for (int i = 0; i < count; i++) keys += s;
+  }
 
   bool operator==(const Sequence& other) const { return keys == other.keys; }
   bool operator!=(const Sequence& other) const { return !(*this == other); }

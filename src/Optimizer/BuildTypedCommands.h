@@ -34,14 +34,14 @@ inline KeyedSequence buildTypedCommands(
   auto emitLine = [&](std::string_view line, std::string_view autoindent) {
     // Case 1: no autoindent — type full line
     if (autoindent.empty()) {
-      ks.appendText(line);
+      ks.append(line);
       return;
     }
 
     // Case 2: goal starts with autoindent — strip it
     if (line.size() >= autoindent.size() &&
         line.substr(0, autoindent.size()) == autoindent) {
-      ks.appendText(line.substr(autoindent.size()));
+      ks.append(line.substr(autoindent.size()));
       return;
     }
 
@@ -58,8 +58,8 @@ inline KeyedSequence buildTypedCommands(
         int remainder = static_cast<int>(line.size() - goalIndent.size());
         // <BS> is better when: bsNeeded + remainder < 2 + line.size()
         if (bsNeeded + remainder < 2 + static_cast<int>(line.size())) {
-          ks.appendRepeated(KeyedSequence::BS, bsNeeded);
-          ks.appendText(line.substr(goalIndent.size()));
+          ks.append(KeyedSequence::BS, bsNeeded);
+          ks.append(line.substr(goalIndent.size()));
           return;
         }
       }
@@ -67,7 +67,7 @@ inline KeyedSequence buildTypedCommands(
 
     // Case 4: mismatch — clear with <C-u> and type full line
     ks += KeyedSequence::CtrlU;
-    ks.appendText(line);
+    ks.append(line);
   };
 
   // Compute what autoindent Neovim provides for a given line during insert-mode typing.
@@ -102,7 +102,7 @@ inline KeyedSequence buildTypedCommands(
     // autoindent off — type full lines directly
     for (size_t i = 0; i < goalLines.size(); i++) {
       if (i > 0) ks += KeyedSequence::CR;
-      ks.appendText(goalLines[i]);
+      ks.append(goalLines[i]);
     }
   }
 
@@ -111,7 +111,7 @@ inline KeyedSequence buildTypedCommands(
     if (goalLines.size() > 1) {
       int suffixSpaces = leadingSpaceCount(suffix);
       if (suffixSpaces > 0) {
-        ks.appendChar(' ', suffixSpaces);
+        ks.append(' ', suffixSpaces);
       }
     }
   }

@@ -1,5 +1,10 @@
 #pragma once
 
+#include <algorithm>
+#include <cassert>
+
+#include "Keyboard/ToKeys/CountToKeys.h"
+
 // =============================================================================
 // OptimizerParamsBase - Shared parameters for all optimizer types
 // =============================================================================
@@ -31,7 +36,34 @@ struct OptimizerParamsBase {
 
   // Minimum count before emitting counted motions/edits (e.g., 4 means 3w→www, 4w→4w).
   // Positions reachable via count < threshold are still found by step-by-step A* exploration.
-  int minCountRepeat = 4;
+  int minPrefixCount = 4;
+  // Upper bound for emitting counted motions/edits.
+  // withMaxCountRepeat enforces this to be <= MAX_PREFIX_COUNT.
+  int maxPrefixCount = MAX_PREFIX_COUNT;
+
+  void setMinCountRepeat(int v) {
+    minPrefixCount = std::max(0, v);
+    if (minPrefixCount > maxPrefixCount) {
+      minPrefixCount = maxPrefixCount;
+    }
+  }
+
+  void setMaxCountRepeat(int v) {
+    assert(v >= 0 && v <= MAX_PREFIX_COUNT);
+    maxPrefixCount = v;
+    if (minPrefixCount > maxPrefixCount) {
+      minPrefixCount = maxPrefixCount;
+    }
+  }
+
+  void normalizeCountRepeatBounds() {
+    if (minPrefixCount < 0) {
+      minPrefixCount = 0;
+    }
+    if (minPrefixCount > maxPrefixCount) {
+      minPrefixCount = maxPrefixCount;
+    }
+  }
 
   // Debug: collect explored states in SearchStats (expensive, for debugging only)
   bool trackExploredStates = false;

@@ -18,25 +18,12 @@ See `boundary-logic.md` for when to use each variant.
 
 String manipulation helpers, including `flattenLines()` for buffer-to-string conversion used in edit distance analysis.
 
-## CommandSequence (`State/CommandSequence.h`)
+## Sequence Formatting (`Interpreter/SequenceFormatting.h`)
 
-String wrapper for Vim command sequences with human-readable formatting. Inherits from `std::string` (like `Line`).
+Formatting utility for Vim command sequence display:
 
 ```cpp
-struct CommandSequence : std::string {
-  using std::string::string;
-  CommandSequence(const std::string& s) : std::string(s) {}
-
-  // Format for display: tokenize into logical units and join with spaces
-  // e.g., "3rx<C-d>ciwfoo<Esc>" -> "3rx <C-d> ciw foo <Esc>"
-  std::string formatted() const;
-
-  // Pretty-print via operator<<
-  friend std::ostream& operator<<(std::ostream& os, const CommandSequence& cs);
-};
-
-// Standalone utility for formatting any sequence string
-std::string formatSequenceForDisplay(const std::string& seq);
+std::string formatSequenceForDisplay(std::string_view seq);
 ```
 
 **Tokenization**: Uses `parseSequenceStrings()` from `SequenceParser.h` which splits sequences into:

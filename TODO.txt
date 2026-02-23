@@ -2,17 +2,14 @@
 Insert Mode handling (just a lot more stuff)     ********* (very very difficult)
 Implement CompositionOptimizer
 Add compositionOptimizer human tests
-
-Add support for CompositionOptimizer in lua
-Move compositionOptimizer params from class to optimizerParams
-
 Add repeated j to motionOptimizer plz :sob:
+
+
+== TODO Stack
+Precompute a BufferIndex for each edit state in compositionOptimizer, as opposed to regenerating it per MotionOptimizer call
+Make range, lineRange half-open
 9dedexC explored when C would suffice?
 Overall, not enough other early branches explored; heuristic model locks in one branch pretty early
-
-Make range, lineRange half-open
-Change sequence syntax to (thing, count) order instead of (count, thing)
-
 
 == Later:
 Migrate to modules when greater scope

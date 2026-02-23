@@ -19,7 +19,7 @@ We completed a structural cleanup to enforce explicit module boundaries in `src/
 - Kept sequence ownership split:
   `Sequence` type stays in `VimTypes`, while stream formatting implementation
   lives in `Interpreter` because it depends on higher-level sequence parsing helpers.
-- Moved `RepeatMotionResult` to `src/Optimizer/BufferIndex.h` because it is
+- Moved `RepeatMotionResult` to `src/Optimizer/MotionOptimizer/BufferIndex.h` because it is
   an optimizer/index query result type rather than a shared core primitive.
 - Moved count-search motion pair ownership to MotionOptimizer via
   `src/Optimizer/MotionOptimizer/CountableMotionPair.h`, removing semantic
@@ -40,6 +40,28 @@ We completed a structural cleanup to enforce explicit module boundaries in `src/
   `src/Session/` for snapshot I/O (`Snapshot`).
 - Moved `SequenceChunker` out of `src` into `tests/Exploration/` because it is
   currently exploration/test tooling only.
+- Grouped keyboard command-to-key mapping declarations under
+  `src/Keyboard/ToKeys/` (`CharToKeys`, `CommandToKeys`, `CountToKeys`,
+  `MotionToKeys`, `EditToKeys`, and primitives) to separate mapping catalogs
+  from keyboard value types.
+- Renamed `SequenceTokenizer` to `SequenceToKeys` and moved it to
+  `src/Keyboard/ToKeys/` to clarify that this layer maps command strings to
+  physical key sequences for effort computation, not Vim semantic parsing.
+- Folded `fingerToHand`/`sameHand` into `src/Keyboard/Finger.h` and removed
+  `KeyboardUtils.h` so finger/hand relationship helpers live with the finger
+  type definitions.
+- Dissolved `src/State/` and moved state ownership into optimizer modules:
+  `MotionState` under `src/Optimizer/MotionOptimizer/`, `EditState` under
+  `src/Optimizer/EditOptimizer/`, and `CompositionState` under
+  `src/Optimizer/CompositionOptimizer/`.
+- Moved `EffortBank` to effort scope (`src/Effort/EffortBank.h`)
+  since it is a config-scoped typed-effort cache shared across optimizers.
+- Moved effort modeling to its own module (`src/Effort/RunningEffort.*`) to
+  separate keyboard primitives from runtime effort aggregation.
+- Moved `PosKey` to `src/VimTypes/PosKey.h` as a shared positional value type.
+- Removed the `CommandSequence` wrapper and moved sequence display formatting to
+  `src/Interpreter/SequenceFormatting.*` as interpreter-level parsing/formatting
+  functionality.
 
 
 # EditResult

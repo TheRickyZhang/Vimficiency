@@ -12,7 +12,7 @@
 #include "Optimizer/Config.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Boundary/MotionBoundary.h"
-#include "State/RunningEffort.h"
+#include "Effort/RunningEffort.h"
 #include "VimTypes/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomGeneration.h"

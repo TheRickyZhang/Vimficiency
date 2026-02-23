@@ -6,15 +6,15 @@ cd "$ROOT_DIR"
 
 is_known_module() {
   case "$1" in
-    VimTypes|Optimizer|Interpreter|Session|State|Keyboard|VimCore|Boundary|Utils) return 0 ;;
+    VimTypes|Optimizer|Interpreter|Session|Effort|Keyboard|VimCore|Boundary|Utils) return 0 ;;
     *) return 1 ;;
   esac
 }
 
 is_allowed_edge() {
   case "$1" in
-    "Optimizer->VimTypes"|"Optimizer->Utils"|"Optimizer->Keyboard"|"Optimizer->VimCore"|"Optimizer->State"|"Optimizer->Boundary"|"Optimizer->Interpreter") return 0 ;;
-    "State->VimTypes"|"State->Keyboard"|"State->Interpreter"|"State->Utils"|"State->VimCore") return 0 ;;
+    "Optimizer->VimTypes"|"Optimizer->Utils"|"Optimizer->Keyboard"|"Optimizer->VimCore"|"Optimizer->Boundary"|"Optimizer->Interpreter"|"Optimizer->Effort") return 0 ;;
+    "Effort->Keyboard") return 0 ;;
     "Interpreter->VimTypes"|"Interpreter->VimCore"|"Interpreter->Keyboard"|"Interpreter->Utils") return 0 ;;
     "Session->VimTypes") return 0 ;;
     "VimCore->VimTypes"|"VimCore->Utils"|"VimCore->Boundary") return 0 ;;

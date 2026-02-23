@@ -20,8 +20,12 @@ double resolveCountPenalty(const CountPenaltyInput& in) {
 
 template<CountClass C>
 RunningEffort buildCountedEffort(const Config& config, int count,
-                                 const KeyedSequence& baseKS, int span) {
-  RunningEffort effort(makeCountedKeys(baseKS.keys, count), config);
+                                 KSId baseId, int span) {
+  const KeyedSequence& baseKS = KeyedSequence::byId(baseId);
+  PhysicalKeys keys;
+  keys.append(CountToKeys::keysForCount(count));
+  keys.append(baseKS.keys);
+  RunningEffort effort(keys, config);
   CountPenaltyInput input{count, span};
   double penalty = resolveCountPenalty<C>(input);
   if (penalty > 0.0) {
@@ -57,7 +61,7 @@ void EditExplorer::exploreTextObjectEdits(
     if (range.first == POSITION_OUTSIDE_BOUNDARY || range.last == POSITION_OUTSIDE_BOUNDARY)
       continue;
 
-    onDeletion(range, SequenceBinding(spec.ks, ctx_.effortFor(spec.ks)));
+    onDeletion(range, SequenceBinding(KeyedSequence::byId(spec.ksId), ctx_.effortFor(spec.ksId)));
   }
 }
 
@@ -68,7 +72,7 @@ void EditExplorer::exploreHalfLineEdits(
   int lastEditLine = lines.lastLine();
 
   for (const Edit::LineEditSpec& spec : specs) {
-    if (spec.ks.seq.view() == "D") {
+    if (spec.ksId == KSId::D) {
       if (cursor.line == lastEditLine && ctx_.editBoundary.hasSuffix()) continue;
 
       int lineLen = static_cast<int>(lines[cursor.line].size());
@@ -81,15 +85,15 @@ void EditExplorer::exploreHalfLineEdits(
       int endCol = lineContentEnd - 1;
       if (endCol < cursor.col) continue;
       Range range(cursor, Position(cursor.line, endCol));
-      onDeletion(range, SequenceBinding(spec.ks, ctx_.effortFor(spec.ks)));
-    } else if (spec.ks.seq.view() == "d0") {
+      onDeletion(range, SequenceBinding(KeyedSequence::byId(spec.ksId), ctx_.effortFor(spec.ksId)));
+    } else if (spec.ksId == KSId::d0) {
       if (cursor.line == 0 && ctx_.editBoundary.hasPrefix()) continue;
 
       int lineContentStart = (cursor.line == 0) ? ctx_.leftColOffset : 0;
       if (cursor.col <= lineContentStart) continue;
       Range range(Position(cursor.line, lineContentStart),
                   Position(cursor.line, cursor.col - 1));
-      onDeletion(range, SequenceBinding(spec.ks, ctx_.effortFor(spec.ks)));
+      onDeletion(range, SequenceBinding(KeyedSequence::byId(spec.ksId), ctx_.effortFor(spec.ksId)));
     } else {
       assert(false && "Unexpected half-line edit command");
     }
@@ -104,7 +108,7 @@ void EditExplorer::exploreFullLineEdits(
     return;
   }
   for (const auto& spec : specs) {
-    onLinewise(cursor.line, SequenceBinding(spec.ks, ctx_.effortFor(spec.ks)));
+    onLinewise(cursor.line, SequenceBinding(KeyedSequence::byId(spec.ksId), ctx_.effortFor(spec.ksId)));
   }
 }
 
@@ -114,14 +118,14 @@ void EditExplorer::exploreCharEdits(
   // x: delete char at cursor (must be in content region)
   if (contentStart <= cursor.col && cursor.col < contentEnd) {
     onDeletion(Range(cursor, cursor),
-               SequenceBinding(KeyedSequence::x, ctx_.effortFor(KeyedSequence::x)));
+               SequenceBinding(KeyedSequence::x, ctx_.effortFor(KSId::x)));
   }
 
   // X: delete char before cursor
   if (cursor.col > contentStart && cursor.col <= contentEnd) {
     Position before(cursor.line, cursor.col - 1);
     onDeletion(Range(before, before),
-               SequenceBinding(KeyedSequence::X, ctx_.effortFor(KeyedSequence::X)));
+               SequenceBinding(KeyedSequence::X, ctx_.effortFor(KSId::X)));
   }
 }
 
@@ -157,7 +161,7 @@ void EditExplorer::exploreParagraphEdits(
       if (endLine < cursor.line) continue;
       int endCol = std::max(0, static_cast<int>(lines[endLine].size()) - 1);
       Range r(cursor, Position(endLine, endCol));
-      onDeletion(r, SequenceBinding(spec.ks, ctx_.effortFor(spec.ks)));
+      onDeletion(r, SequenceBinding(KeyedSequence::byId(spec.ksId), ctx_.effortFor(spec.ksId)));
     } else {
       // d{: when endpointLine == cursor.line, { stays on the same line and
       // d{ is characterwise exclusive (not linewise), so skip.
@@ -197,7 +201,7 @@ void EditExplorer::exploreSentenceEdits(
       Position goalPos = lines.getPrevPos(endpoint);
       if (goalPos == POSITION_OUTSIDE_BOUNDARY) continue;
       onDeletion(Range(cursor, goalPos),
-                 SequenceBinding(spec.ks, ctx_.effortFor(spec.ks)));
+                 SequenceBinding(KeyedSequence::byId(spec.ksId), ctx_.effortFor(spec.ksId)));
     } else {
       // d(: delete from endpoint to just before cursor (exclusive)
       if (endpoint >= cursor) continue;
@@ -227,7 +231,7 @@ void EditExplorer::exploreSentenceEdits(
         goalPos = Position(cursor.line - 1, lines[cursor.line - 1].lastCol());
       }
       onDeletion(Range(endpoint, goalPos),
-                 SequenceBinding(spec.ks, ctx_.effortFor(spec.ks)));
+                 SequenceBinding(KeyedSequence::byId(spec.ksId), ctx_.effortFor(spec.ksId)));
     }
   }
 }
@@ -261,7 +265,7 @@ void EditExplorer::exploreForwardWordEdits(
     }
 
     onDeletion(Range(cursor, endpoint),
-               SequenceBinding(spec.ks, ctx_.effortFor(spec.ks)));
+               SequenceBinding(KeyedSequence::byId(spec.ksId), ctx_.effortFor(spec.ksId)));
   }
 }
 
@@ -296,7 +300,7 @@ void EditExplorer::exploreBackwardWordEdits(
       range = Range(endpoint, cursor);
     }
 
-    onDeletion(range, SequenceBinding(spec.ks, ctx_.effortFor(spec.ks)));
+    onDeletion(range, SequenceBinding(KeyedSequence::byId(spec.ksId), ctx_.effortFor(spec.ksId)));
   }
 }
 
@@ -324,8 +328,10 @@ template void EditExplorer::exploreSentenceEdits<false>(
 
 void EditExplorer::exploreCountedLineEdits(
     const Position& cursor, const Lines& lines,
-    int minCountRepeat, CountedLinewiseCallback onCountedLinewise) {
+    int minCountRepeat,
+    CountedLinewiseCallback onCountedLinewise) {
   if (!onCountedLinewise) return;
+  const int maxCountRepeat = ctx_.params.maxPrefixCount;
 
   int lastLine = lines.lastLine();
   bool hasPrefix = ctx_.editBoundary.hasPrefix();
@@ -337,7 +343,7 @@ void EditExplorer::exploreCountedLineEdits(
                   (cursor.line + 1 == lastLine && hasSuffix);
     if (!skipDj) {
       onCountedLinewise(LineRange(cursor.line, cursor.line + 1),
-                        SequenceBinding(KeyedSequence::dj, ctx_.effortFor(KeyedSequence::dj)));
+                        SequenceBinding(KeyedSequence::dj, ctx_.effortFor(KSId::dj)));
     }
   }
 
@@ -347,7 +353,7 @@ void EditExplorer::exploreCountedLineEdits(
                   (cursor.line == lastLine && hasSuffix);
     if (!skipDk) {
       onCountedLinewise(LineRange(cursor.line - 1, cursor.line),
-                        SequenceBinding(KeyedSequence::dk, ctx_.effortFor(KeyedSequence::dk)));
+                        SequenceBinding(KeyedSequence::dk, ctx_.effortFor(KSId::dk)));
     }
   }
 
@@ -360,9 +366,10 @@ void EditExplorer::exploreCountedLineEdits(
   if (lastDeletable < cursor.line) return;
 
   int maxCount = lastDeletable - cursor.line + 1;
+  maxCount = min(maxCount, maxCountRepeat);
   for (int n = max(2, minCountRepeat); n <= maxCount; n++) {
     RunningEffort countedEffort =
-        buildCountedEffort<CountClass::EditLine>(ctx_.config, n, KeyedSequence::dd, n);
+        buildCountedEffort<CountClass::EditLine>(ctx_.config, n, KSId::dd, n);
     onCountedLinewise(LineRange(cursor.line, cursor.line + n - 1),
                       SequenceBinding(KeyedSequence::dd, countedEffort, n));
   }
@@ -370,8 +377,10 @@ void EditExplorer::exploreCountedLineEdits(
 
 void EditExplorer::exploreCountedJoinCommands(
     const Position& cursor, const Lines& lines,
-    int minCountRepeat, CountedJoinCallback onCountedJoin) {
+    int minCountRepeat,
+    CountedJoinCallback onCountedJoin) {
   if (!onCountedJoin) return;
+  const int maxCountRepeat = ctx_.params.maxPrefixCount;
 
   int lastLine = lines.lastLine();
   if (cursor.line >= lastLine) return;
@@ -395,24 +404,28 @@ void EditExplorer::exploreCountedJoinCommands(
 
   // count means "join count lines" (current + count-1 below)
   // so count=2 joins current + 1 below, count=3 joins current + 2 below, etc.
-  for (int count = max(2, minCountRepeat); count <= maxLinesBelow + 1; count++) {
+  int maxCount = min(maxLinesBelow + 1, maxCountRepeat);
+  for (int count = max(2, minCountRepeat); count <= maxCount; count++) {
     RunningEffort jEffort =
-        buildCountedEffort<CountClass::Join>(ctx_.config, count, KeyedSequence::J, count);
+        buildCountedEffort<CountClass::Join>(ctx_.config, count, KSId::J, count);
     onCountedJoin(true, SequenceBinding(KeyedSequence::J, jEffort, count));
 
     RunningEffort gjEffort =
-        buildCountedEffort<CountClass::Join>(ctx_.config, count, KeyedSequence::gJ, count);
+        buildCountedEffort<CountClass::Join>(ctx_.config, count, KSId::gJ, count);
     onCountedJoin(false, SequenceBinding(KeyedSequence::gJ, gjEffort, count));
   }
 }
 
 void EditExplorer::exploreCountedWordEdits(
     const Position& cursor, const Lines& lines,
-    int minCountRepeat, DeletionCallback onDeletion) {
+    int minCountRepeat,
+    DeletionCallback onDeletion) {
   if (!onDeletion) return;
-  if (minCountRepeat < 2) return;
+  const int maxCountRepeat = ctx_.params.maxPrefixCount;
+  if (minCountRepeat < 2 || maxCountRepeat < 2) return;
 
   static constexpr int MAX_COUNT_ITERATIONS = 9;
+  const int maxIterations = min(MAX_COUNT_ITERATIONS, maxCountRepeat);
 
   // Use raw motion functions (motionE, motionW, motionB, motionGe) to match
   // Edit::applyEdit exactly. The boundary-aware motionWordEndpoint can diverge
@@ -427,7 +440,7 @@ void EditExplorer::exploreCountedWordEdits(
     Position prev = cursor;
     Position lastEndpoint;
     int lastCount = 0;
-    for (int count = 1; count <= MAX_COUNT_ITERATIONS; count++) {
+    for (int count = 1; count <= maxIterations; count++) {
       Position endpoint = prev;
       VimCore::motionE(endpoint, lines, spec.isBig);
 
@@ -446,10 +459,10 @@ void EditExplorer::exploreCountedWordEdits(
     }
     if (lastCount >= minCountRepeat) {
       RunningEffort countedEffort = spec.isBig
-          ? buildCountedEffort<CountClass::EditWORD>(ctx_.config, lastCount, spec.ks, lastCount)
-          : buildCountedEffort<CountClass::EditWord>(ctx_.config, lastCount, spec.ks, lastCount);
+          ? buildCountedEffort<CountClass::EditWORD>(ctx_.config, lastCount, spec.ksId, lastCount)
+          : buildCountedEffort<CountClass::EditWord>(ctx_.config, lastCount, spec.ksId, lastCount);
       onDeletion(Range(cursor, lastEndpoint),
-                 SequenceBinding(spec.ks, countedEffort, lastCount));
+                 SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount));
     }
   }
 
@@ -458,7 +471,7 @@ void EditExplorer::exploreCountedWordEdits(
     Position prev = cursor;
     Position lastInclusiveEnd;
     int lastCount = 0;
-    for (int count = 1; count <= MAX_COUNT_ITERATIONS; count++) {
+    for (int count = 1; count <= maxIterations; count++) {
       Position endpoint = prev;
       VimCore::motionW(endpoint, lines, spec.isBig);
 
@@ -484,10 +497,10 @@ void EditExplorer::exploreCountedWordEdits(
     }
     if (lastCount >= minCountRepeat) {
       RunningEffort countedEffort = spec.isBig
-          ? buildCountedEffort<CountClass::EditWORD>(ctx_.config, lastCount, spec.ks, lastCount)
-          : buildCountedEffort<CountClass::EditWord>(ctx_.config, lastCount, spec.ks, lastCount);
+          ? buildCountedEffort<CountClass::EditWORD>(ctx_.config, lastCount, spec.ksId, lastCount)
+          : buildCountedEffort<CountClass::EditWord>(ctx_.config, lastCount, spec.ksId, lastCount);
       onDeletion(Range(cursor, lastInclusiveEnd),
-                 SequenceBinding(spec.ks, countedEffort, lastCount));
+                 SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount));
     }
   }
 
@@ -496,7 +509,7 @@ void EditExplorer::exploreCountedWordEdits(
     Position prev = cursor;
     Position lastEndpoint;
     int lastCount = 0;
-    for (int count = 1; count <= MAX_COUNT_ITERATIONS; count++) {
+    for (int count = 1; count <= maxIterations; count++) {
       Position endpoint = prev;
       VimCore::motionB(endpoint, lines, spec.isBig);
 
@@ -514,9 +527,9 @@ void EditExplorer::exploreCountedWordEdits(
       if (cursor.col > (cursor.line == 0 ? ctx_.leftColOffset : 0)) {
         Range range(lastEndpoint, Position(cursor.line, cursor.col - 1));
         RunningEffort countedEffort = spec.isBig
-            ? buildCountedEffort<CountClass::EditWORD>(ctx_.config, lastCount, spec.ks, lastCount)
-            : buildCountedEffort<CountClass::EditWord>(ctx_.config, lastCount, spec.ks, lastCount);
-        onDeletion(range, SequenceBinding(spec.ks, countedEffort, lastCount));
+            ? buildCountedEffort<CountClass::EditWORD>(ctx_.config, lastCount, spec.ksId, lastCount)
+            : buildCountedEffort<CountClass::EditWord>(ctx_.config, lastCount, spec.ksId, lastCount);
+        onDeletion(range, SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount));
       }
     }
   }
@@ -529,7 +542,7 @@ void EditExplorer::exploreCountedWordEdits(
     Position prev = cursor;
     Position lastEndpoint;
     int lastCount = 0;
-    for (int count = 1; count <= MAX_COUNT_ITERATIONS; count++) {
+    for (int count = 1; count <= maxIterations; count++) {
       Position endpoint = prev;
       VimCore::motionGe(endpoint, lines, spec.isBig);
 
@@ -544,10 +557,10 @@ void EditExplorer::exploreCountedWordEdits(
     }
     if (lastCount >= minCountRepeat) {
       RunningEffort countedEffort = spec.isBig
-          ? buildCountedEffort<CountClass::EditWORD>(ctx_.config, lastCount, spec.ks, lastCount)
-          : buildCountedEffort<CountClass::EditWord>(ctx_.config, lastCount, spec.ks, lastCount);
+          ? buildCountedEffort<CountClass::EditWORD>(ctx_.config, lastCount, spec.ksId, lastCount)
+          : buildCountedEffort<CountClass::EditWord>(ctx_.config, lastCount, spec.ksId, lastCount);
       onDeletion(Range(lastEndpoint, cursor),
-                 SequenceBinding(spec.ks, countedEffort, lastCount));
+                 SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount));
     }
   }
 }
@@ -558,7 +571,8 @@ void EditExplorer::exploreCountedCharEdits(
     int minCountRepeat,
     DeletionCallback onDeletion) {
   if (!onDeletion) return;
-  if (minCountRepeat < 2) return;
+  const int maxCountRepeat = ctx_.params.maxPrefixCount;
+  if (minCountRepeat < 2 || maxCountRepeat < 2) return;
 
   // Only x (forward delete at cursor)
   if (contentStart > cursor.col || cursor.col >= contentEnd) return;
@@ -566,12 +580,12 @@ void EditExplorer::exploreCountedCharEdits(
   // Only emit the max count (delete all remaining content chars from cursor).
   // Intermediate counts are reachable via uncounted x + dot repeat.
   static constexpr int MAX_COUNT_DIGIT = 9;
-  int count = min(contentEnd - cursor.col, MAX_COUNT_DIGIT);
+  int count = min(contentEnd - cursor.col, min(MAX_COUNT_DIGIT, maxCountRepeat));
   if (count < minCountRepeat) return;
 
   Range range(cursor, Position(cursor.line, cursor.col + count - 1));
   RunningEffort effort =
-      buildCountedEffort<CountClass::EditChar>(ctx_.config, count, KeyedSequence::x, count);
+      buildCountedEffort<CountClass::EditChar>(ctx_.config, count, KSId::x, count);
   onDeletion(range, SequenceBinding(KeyedSequence::x, effort, count));
 }
 
@@ -592,8 +606,8 @@ void EditExplorer::exploreJoinCommands(
   if (nextLine == lines.lastLine() && ctx_.editBoundary.hasLinesBelow()) return;
 
   // Explore both J (with space) and gJ (without space)
-  onJoin(true, SequenceBinding(KeyedSequence::J, ctx_.effortFor(KeyedSequence::J)));
-  onJoin(false, SequenceBinding(KeyedSequence::gJ, ctx_.effortFor(KeyedSequence::gJ)));
+  onJoin(true, SequenceBinding(KeyedSequence::J, ctx_.effortFor(KSId::J)));
+  onJoin(false, SequenceBinding(KeyedSequence::gJ, ctx_.effortFor(KSId::gJ)));
 }
 
 void EditExplorer::exploreAllDeletions(const EditState& state,

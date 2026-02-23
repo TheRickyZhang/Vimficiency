@@ -21,7 +21,7 @@
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/StringUtils.h"
-#include "State/EditState.h"
+#include "Optimizer/EditOptimizer/EditState.h"
 #include "VimCore/VimEditUtils.h"
 #include "VimCore/VimEndpointUtils.h"
 

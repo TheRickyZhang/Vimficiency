@@ -11,11 +11,11 @@
 #include "VimTypes/NavContext.h"
 #include "Utils/TestUtils.h"
 
-#include "Keyboard/MotionToKeys.h"
+#include "Keyboard/ToKeys/MotionToKeys.h"
 #include "Optimizer/Config.h"
 #include "Boundary/MotionBoundary.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
-#include "State/RunningEffort.h"
+#include "Effort/RunningEffort.h"
 #include "Session/Snapshot.h"
 #include "Interpreter/MotionInterpreter.h"
 #include "VimTypes/Lines.h"

@@ -1,17 +1,10 @@
 #include "EditSearchContext.h"
 #include "EditExplorer.h"
-#include "EditToSpec.h"
 
 #include <cassert>
 #include <iostream>
 
 using namespace std;
-
-// Helper: precompute RunningEffort for a KeyedSequence and cache by address.
-static void cacheEffort(unordered_map<const void*, RunningEffort>& cache,
-                        const KeyedSequence& ks, const Config& config) {
-  cache[&ks] = RunningEffort(ks.keys, config);
-}
 
 EditSearchContext::EditSearchContext(const Lines& initialLines,
                                      const EditBoundary& boundary,
@@ -23,6 +16,7 @@ EditSearchContext::EditSearchContext(const Lines& initialLines,
       leftColOffset(static_cast<int>(boundary.prefix().size())),
       rightColOffset(static_cast<int>(boundary.suffix().size())),
       effectiveLines(initialLines),
+      bank(config),
       effortWeight(params.effortWeight),
       distanceWeight(params.distanceWeight),
       totalPositions(initialLines.totalPositions()) {
@@ -32,28 +26,6 @@ EditSearchContext::EditSearchContext(const Lines& initialLines,
   const auto& suf = editBoundary.suffix();
   if (!pre.empty()) effectiveLines.front().insert(0, pre);
   if (!suf.empty()) effectiveLines.back() += suf;
-
-  // Pre-compute effort for all static KeyedSequence constants (X-macro entries)
-  for (int i = 0; i < KS_COUNT; ++i) {
-    cacheEffort(effortCache_, ksById(static_cast<KSId>(i)), config);
-  }
-
-  // Pre-compute effort for spec table entries
-  for (const auto& s : Edit::FORWARD_WORDEDGE_EDITS) cacheEffort(effortCache_, s.ks, config);
-  for (const auto& s : Edit::FORWARD_GAPEDGE_EDITS)  cacheEffort(effortCache_, s.ks, config);
-  for (const auto& s : Edit::BACKWARD_WORDEDGE_EDITS) cacheEffort(effortCache_, s.ks, config);
-  for (const auto& s : Edit::BACKWARD_NEXTEDGE_EDITS) cacheEffort(effortCache_, s.ks, config);
-  for (const auto& s : Edit::TEXT_OBJECT_EDITS) cacheEffort(effortCache_, s.ks, config);
-  for (const auto& s : Edit::HALF_LINE_EDITS)  cacheEffort(effortCache_, s.ks, config);
-  for (const auto& s : Edit::FULL_LINE_EDITS)  cacheEffort(effortCache_, s.ks, config);
-  for (const auto& s : Edit::EMPTYLINE_FULL_LINE_EDITS) cacheEffort(effortCache_, s.ks, config);
-  for (const auto& s : Edit::FORWARD_PARAGRAPH_EDITS)  cacheEffort(effortCache_, s.ks, config);
-  for (const auto& s : Edit::BACKWARD_PARAGRAPH_EDITS) cacheEffort(effortCache_, s.ks, config);
-  for (const auto& s : Edit::FORWARD_SENTENCE_EDITS)   cacheEffort(effortCache_, s.ks, config);
-  for (const auto& s : Edit::BACKWARD_SENTENCE_EDITS)  cacheEffort(effortCache_, s.ks, config);
-
-  // Cache Period separately for fast dot-repeat access
-  periodEffort_ = effortCache_[&KeyedSequence::Period];
 }
 
 bool EditSearchContext::inBoundaryRegion(const Position& pos, const Lines& lines) const {
@@ -91,12 +63,12 @@ bool EditSearchContext::exploreBoundaryEscape(const EditState& state,
     if (onMotion) {
       if (cursor.col > 0) {
         onMotion(Position(cursor.line, cursor.col - 1),
-                 SequenceBinding(KeyedSequence::h, effortFor(KeyedSequence::h)));
+                 SequenceBinding(KeyedSequence::h, effortFor(KSId::h)));
       }
       if (cursor.line > 0) {
         int newCol = std::min(cursor.targetCol, lines[cursor.line - 1].lastCol());
         onMotion(Position(cursor.line - 1, newCol, cursor.targetCol),
-                 SequenceBinding(KeyedSequence::k, effortFor(KeyedSequence::k)));
+                 SequenceBinding(KeyedSequence::k, effortFor(KSId::k)));
       }
     }
     return true;
@@ -107,12 +79,12 @@ bool EditSearchContext::exploreBoundaryEscape(const EditState& state,
     if (onMotion) {
       if (cursor.col < static_cast<int>(lines[0].size()) - 1) {
         onMotion(Position(0, cursor.col + 1),
-                 SequenceBinding(KeyedSequence::l, effortFor(KeyedSequence::l)));
+                 SequenceBinding(KeyedSequence::l, effortFor(KSId::l)));
       }
       if (lines.lastLine() > 0) {
         int newCol = std::min(cursor.targetCol, lines[1].lastCol());
         onMotion(Position(1, newCol, cursor.targetCol),
-                 SequenceBinding(KeyedSequence::j, effortFor(KeyedSequence::j)));
+                 SequenceBinding(KeyedSequence::j, effortFor(KSId::j)));
       }
     }
     return true;
@@ -141,8 +113,7 @@ void EditSearchContext::exploreWithDot(EditState&& afterState, const EditState& 
                base.getLastEditBase() == sourceCmd.base.seq.view();
 
   if (isDot) {
-    // Dot path: use pre-computed Period effort (always available)
-    afterState.recordSearch(".", periodEffort_, effortWeight, hCost, config);
+    afterState.recordSearch(".", effortFor(KSId::Period), effortWeight, hCost, config);
   } else {
     afterState.recordSearch(sourceCmd.count, sourceCmd.base.seq.view(),
                             sourceCmd.effort, effortWeight, hCost, config);
@@ -287,21 +258,21 @@ void EditSearchContext::exploreCountedLineEdits(const EditState& state,
                                                  CountedLinewiseCallback cb) {
   EditExplorer explorer(*this);
   explorer.exploreCountedLineEdits(state.getPos(), state.getLines(),
-                                   params.minCountRepeat, cb);
+                                   params.minPrefixCount, cb);
 }
 
 void EditSearchContext::exploreCountedJoinCommands(const EditState& state,
                                                     CountedJoinCallback cb) {
   EditExplorer explorer(*this);
   explorer.exploreCountedJoinCommands(state.getPos(), state.getLines(),
-                                      params.minCountRepeat, cb);
+                                      params.minPrefixCount, cb);
 }
 
 void EditSearchContext::exploreCountedWordEdits(const EditState& state,
                                                  DeletionCallback cb) {
   EditExplorer explorer(*this);
   explorer.exploreCountedWordEdits(state.getPos(), state.getLines(),
-                                   params.minCountRepeat, cb);
+                                   params.minPrefixCount, cb);
 }
 
 void EditSearchContext::exploreCountedCharEdits(const EditState& state,
@@ -311,5 +282,5 @@ void EditSearchContext::exploreCountedCharEdits(const EditState& state,
   const Position& cursor = state.getPos();
   auto [contentStart, contentEnd] = computeEditBounds(lines, cursor);
   explorer.exploreCountedCharEdits(cursor, lines, contentStart, contentEnd,
-                                   params.minCountRepeat, cb);
+                                   params.minPrefixCount, cb);
 }

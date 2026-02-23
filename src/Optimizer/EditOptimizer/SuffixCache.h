@@ -11,7 +11,7 @@
 
 #include "VimTypes/Mode.h"
 #include "Keyboard/KeyedSequence.h"
-#include "State/RunningEffort.h"
+#include "Effort/RunningEffort.h"
 #include "VimTypes/Position.h"
 
 // =============================================================================

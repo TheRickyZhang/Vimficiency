@@ -11,7 +11,7 @@
 
 #include "Boundary/MotionBoundary.h"
 #include "VimTypes/NavContext.h"
-#include "Keyboard/MotionToKeys.h"
+#include "Keyboard/ToKeys/MotionToKeys.h"
 #include "Optimizer/CompositionOptimizer/CompositionSearchContext.h"
 #include "Optimizer/Config.h"
 #include "VimTypes/Lines.h"

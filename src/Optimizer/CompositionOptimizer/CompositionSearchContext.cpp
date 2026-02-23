@@ -8,7 +8,7 @@
 #include "Optimizer/BuildTypedCommands.h"
 
 #include "Keyboard/KeyedSequence.h"
-#include "State/RunningEffort.h"
+#include "Effort/RunningEffort.h"
 #include "Utils/Debug.h"
 #include "Utils/StringUtils.h"
 #include "VimCore/VimEditUtils.h"
@@ -351,7 +351,8 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
       PureDeletionEditResult pureResult = editOptimizer.optimizePureDeletion(
           diff.deletedLines(), diff.boundary,
           EditOptimizerParams{}
-              .withMinCountRepeat(params.minCountRepeat)
+              .withMinCountRepeat(params.minPrefixCount)
+              .withMaxCountRepeat(params.maxPrefixCount)
               .withTrackExploredStates(params.trackExploredStates),
           diff.beginPos.line, diff.beginPos.col, diff.beginPos);
       editNodesExplored += pureResult.editResult.stats.nodesExplored;
@@ -381,7 +382,8 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
     EditResult optResult = editOptimizer.optimizeEdit(
         diff.deletedLines(), diff.insertedLines(), diff.boundary,
         EditOptimizerParams{}
-            .withMinCountRepeat(params.minCountRepeat)
+            .withMinCountRepeat(params.minPrefixCount)
+            .withMaxCountRepeat(params.maxPrefixCount)
             .withTrackExploredStates(params.trackExploredStates),
         diff.beginPos.line, diff.beginPos.col, goalPos);
     editNodesExplored += optResult.stats.nodesExplored;
@@ -874,7 +876,9 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
             fullTgtLines[g].empty() ? 0
             : static_cast<int>(fullTgtLines[g].size()) - 1);
         EditOptimizerParams residualParams =
-            EditOptimizerParams{}.withMinCountRepeat(params.minCountRepeat);
+            EditOptimizerParams{}
+                .withMinCountRepeat(params.minPrefixCount)
+                .withMaxCountRepeat(params.maxPrefixCount);
 
         EditResult residualResult = [&]() -> EditResult {
           if (fullTgtLines[g].empty()) {

@@ -2,10 +2,11 @@
 
 #include "Interpreter/MotionInterpreter.h"
 #include "Interpreter/SequenceParser.h"
-#include "Keyboard/KeyboardModel.h"
-#include "State/CommandSequence.h"
-#include "State/RunningEffort.h"
-#include "Keyboard/XMacroKeyDefinitions.h"
+#include "Interpreter/SequenceFormatting.h"
+#include "Keyboard/Finger.h"
+#include "Keyboard/Hand.h"
+#include "Keyboard/Key.h"
+#include "Effort/RunningEffort.h"
 #include "Optimizer/CountPenalty.h"
 #include "Optimizer/GlobalRuntimeOptions.h"
 #include "Boundary/MotionBoundary.h"
@@ -22,12 +23,23 @@
 #include <vector>
 
 
-// Generate name arrays from same source
-#define STRING_VALUE(name, str) str,
-static const char *g_key_names[] = {VIMFICIENCY_KEYS(STRING_VALUE)};
-static const char *g_hand_names[] = {VIMFICIENCY_HANDS(STRING_VALUE)};
-static const char *g_finger_names[] = {VIMFICIENCY_FINGERS(STRING_VALUE)};
-#undef STRING_VALUE
+static const char* g_key_names[] = {
+#define X(name, str) str,
+#include "Keyboard/XMacroKey.inc"
+#undef X
+};
+
+static const char* g_hand_names[] = {
+#define X(name, str) str,
+#include "Keyboard/XMacroHand.inc"
+#undef X
+};
+
+static const char* g_finger_names[] = {
+#define X(name, str) str,
+#include "Keyboard/XMacroFinger.inc"
+#undef X
+};
 
 static const char* g_count_class_names[] = {
   "MotionChar",

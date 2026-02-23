@@ -38,15 +38,15 @@ inline KeyedSequence computeIndentAdjustment(int autoindentLen, int targetIndent
   if (autoindentLen == targetIndentLen) return {};
   KeyedSequence ks;
   if (autoindentLen < targetIndentLen) {
-    ks.appendChar(' ', targetIndentLen - autoindentLen);
+    ks.append(' ', targetIndentLen - autoindentLen);
     return ks;
   }
   int bsNeeded = bsCountForIndent(autoindentLen, targetIndentLen);
   if (bsNeeded >= 0) {
-    ks.appendRepeated(KeyedSequence::BS, bsNeeded);
+    ks.append(KeyedSequence::BS, bsNeeded);
     return ks;
   }
   ks += KeyedSequence::CtrlU;
-  if (targetIndentLen > 0) ks.appendChar(' ', targetIndentLen);
+  if (targetIndentLen > 0) ks.append(' ', targetIndentLen);
   return ks;
 }

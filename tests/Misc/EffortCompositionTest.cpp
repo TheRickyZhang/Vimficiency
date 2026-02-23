@@ -7,10 +7,10 @@
 
 #include <gtest/gtest.h>
 
-#include "Keyboard/KeyboardModel.h"
-#include "Keyboard/MotionToKeys.h"
+#include "Keyboard/PhysicalKeys.h"
+#include "Keyboard/ToKeys/MotionToKeys.h"
 #include "Optimizer/Config.h"
-#include "State/RunningEffort.h"
+#include "Effort/RunningEffort.h"
 
 using namespace std;
 
@@ -27,7 +27,7 @@ protected:
 
   // Build RunningEffort from a sequence string
   RunningEffort buildEffort(string_view seq) {
-    PhysicalKeys keys = globalTokenizer().tokenize(seq);
+    PhysicalKeys keys = globalSequenceToKeys().tokenize(seq);
     RunningEffort e;
     e.append(keys, qwerty);
     return e;
@@ -55,8 +55,8 @@ protected:
   }
 
   void expectMergeEqualsNaive(string_view aSeq, string_view bSeq) {
-    PhysicalKeys aKeys = globalTokenizer().tokenize(aSeq);
-    PhysicalKeys bKeys = globalTokenizer().tokenize(bSeq);
+    PhysicalKeys aKeys = globalSequenceToKeys().tokenize(aSeq);
+    PhysicalKeys bKeys = globalSequenceToKeys().tokenize(bSeq);
     expectMergeEqualsNaive(aKeys, bKeys);
   }
 };
@@ -176,9 +176,9 @@ TEST_F(EffortCompositionTest, Associativity) {
   // a + (b + c)
   RunningEffort a_bc = RunningEffort::merge(a, RunningEffort::merge(b, c));
   // naive: append all
-  PhysicalKeys aKeys = globalTokenizer().tokenize("3w");
-  PhysicalKeys bKeys = globalTokenizer().tokenize("j");
-  PhysicalKeys cKeys = globalTokenizer().tokenize("2l");
+  PhysicalKeys aKeys = globalSequenceToKeys().tokenize("3w");
+  PhysicalKeys bKeys = globalSequenceToKeys().tokenize("j");
+  PhysicalKeys cKeys = globalSequenceToKeys().tokenize("2l");
   RunningEffort naive;
   naive.append(aKeys, qwerty);
   naive.append(bKeys, qwerty);
@@ -195,9 +195,9 @@ TEST_F(EffortCompositionTest, Associativity) {
 
 TEST_F(EffortCompositionTest, AppendAfterMerge) {
   // Merge a+b, then append more keys — should match fully sequential
-  PhysicalKeys aKeys = globalTokenizer().tokenize("3w");
-  PhysicalKeys bKeys = globalTokenizer().tokenize("j");
-  PhysicalKeys cKeys = globalTokenizer().tokenize("l");
+  PhysicalKeys aKeys = globalSequenceToKeys().tokenize("3w");
+  PhysicalKeys bKeys = globalSequenceToKeys().tokenize("j");
+  PhysicalKeys cKeys = globalSequenceToKeys().tokenize("l");
 
   RunningEffort merged = RunningEffort::merge(buildEffort(aKeys), buildEffort(bKeys));
   merged.append(cKeys, qwerty);
@@ -230,8 +230,8 @@ TEST_F(EffortCompositionTest, SingleKeySplit) {
 
 TEST_F(EffortCompositionTest, UniformConfig) {
   Config uniform = Config::uniform();
-  PhysicalKeys aKeys = globalTokenizer().tokenize("3w");
-  PhysicalKeys bKeys = globalTokenizer().tokenize("2j");
+  PhysicalKeys aKeys = globalSequenceToKeys().tokenize("3w");
+  PhysicalKeys bKeys = globalSequenceToKeys().tokenize("2j");
 
   RunningEffort a, b, naive;
   a.append(aKeys, uniform);
@@ -242,4 +242,3 @@ TEST_F(EffortCompositionTest, UniformConfig) {
   RunningEffort merged = RunningEffort::merge(a, b);
   EXPECT_DOUBLE_EQ(naive.getEffort(uniform), merged.getEffort(uniform));
 }
-

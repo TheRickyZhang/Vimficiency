@@ -53,8 +53,12 @@ void yankRange(Lines& lines, Position& pos, Mode mode, const Range& range);
 // hasLinesBelow: when true, linewise deletions (dd, dj, dk) that remove the
 // last lines leave pos.line past end instead of clamping. This models the
 // edit-region context where the real buffer has lines below.
+// leftColOffset/rightColOffset + hasLinesAbove/hasLinesBelow can be provided to
+// make word text objects boundary-aware (used by EditOptimizer replay).
 void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
-               std::string* lastEditCmd = nullptr, bool hasLinesBelow = false);
+               std::string* lastEditCmd = nullptr, bool hasLinesBelow = false,
+               int leftColOffset = 0, int rightColOffset = 0,
+               bool hasLinesAbove = false);
 
 // Parse an edit sequence string into individual ParsedEdit tokens.
 // Handles operators (d, c) + motions/text objects, special keys (<Esc>, <CR>, etc.),
