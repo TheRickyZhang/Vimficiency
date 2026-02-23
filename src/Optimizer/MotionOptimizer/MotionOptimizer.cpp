@@ -127,7 +127,7 @@ template MotionResult MotionOptimizer::optimizeImpl<false>(
 // optimizeToRange implementation
 // =================================================
 
-// Public entry point - dispatches to templated implementation based on direction
+// Simple bufferIndex forwarder
 RangeMotionResult MotionOptimizer::optimizeToRange(
     const Lines& lines,
     const Position& startPos,
@@ -138,24 +138,40 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
     const MotionBoundary& boundary,
     const RunningEffort& startingEffort,
     const NavContext& navContext) {
+  BufferIndex localIndex(lines);
+  return optimizeToRange(lines, startPos, rangeFirst, rangeEnd, params, userSequence,
+                         boundary, startingEffort, navContext, {&localIndex, 0});
+}
+
+// Minimal overload with caller-provided BufferIndex
+RangeMotionResult MotionOptimizer::optimizeToRange(
+    const Lines& lines,
+    const Position& startPos,
+    const Position& rangeFirst,
+    const Position& rangeEnd,
+    MotionOptimizerRangeParams params,
+    string_view userSequence,
+    const MotionBoundary& boundary,
+    const RunningEffort& startingEffort,
+    const NavContext& navContext,
+    BufferIndexRef bufferRef) {
   params.normalizeCountRepeatBounds();
 
-  // Precondition: startPos must not be in range [rangeFirst, rangeEnd)
   assert(!(startPos >= rangeFirst && startPos < rangeEnd) &&
          "startPos must not be in [rangeFirst, rangeEnd)");
 
-  if (startPos < rangeFirst) {
+  if (startPos < rangeFirst)
     return optimizeToRangeImpl<true>(lines, startPos, startingEffort, rangeFirst, rangeEnd,
-                                      userSequence, navContext,
-                                      boundary, params);
-  } else {
+                                     userSequence, navContext, boundary, params,
+                                     *bufferRef.index, bufferRef.lineOffset);
+  else
     return optimizeToRangeImpl<false>(lines, startPos, startingEffort, rangeFirst, rangeEnd,
-                                       userSequence, navContext,
-                                       boundary, params);
-  }
+                                      userSequence, navContext, boundary, params,
+                                      *bufferRef.index, bufferRef.lineOffset);
 }
 
 // Templated implementation - Forward is compile-time constant
+// Precondition: bufferIndex/lineOffset are always valid (resolved by public optimizeToRange)
 template<bool Forward>
 RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     const Lines& lines,
@@ -166,7 +182,9 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
-    MotionOptimizerRangeParams params) {
+    MotionOptimizerRangeParams params,
+    const BufferIndex& bufferIndex,
+    int lineOffset) {
 
   double userEffort = userSequence.empty()
       ? numeric_limits<double>::max()
@@ -174,8 +192,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
 
   MotionSearchContext ctx(lines, navContext, boundary, params, config, userEffort);
 
-  // Use range mode constructor
-  MotionExplorer explorer(ctx, rangeFirst, rangeEnd);
+  MotionExplorer explorer(ctx, rangeFirst, rangeEnd, bufferIndex, lineOffset);
 
   MotionState initialState(startPos, startingEffort, 0.0, 0.0);
 
@@ -242,6 +259,10 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     } else {
       explorer.exploreAllStandardMotions(s);
     }
+
+    // Explore counted motions (Forward is compile-time constant)
+    bool isSameLine = (pos.line >= rangeFirst.line && pos.line <= rangeEnd.line);
+    explorer.exploreDirectionalMotionsToRange<Forward>(s, isSameLine);
   }
 
   debug("---costMap---");
@@ -287,7 +308,9 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
 // Explicit template instantiations for optimizeToRangeImpl
 template RangeMotionResult MotionOptimizer::optimizeToRangeImpl<true>(
     const Lines&, const Position&, const RunningEffort&, const Position&, const Position&,
-    string_view, const NavContext&, const MotionBoundary&, MotionOptimizerRangeParams);
+    string_view, const NavContext&, const MotionBoundary&, MotionOptimizerRangeParams,
+    const BufferIndex&, int);
 template RangeMotionResult MotionOptimizer::optimizeToRangeImpl<false>(
     const Lines&, const Position&, const RunningEffort&, const Position&, const Position&,
-    string_view, const NavContext&, const MotionBoundary&, MotionOptimizerRangeParams);
+    string_view, const NavContext&, const MotionBoundary&, MotionOptimizerRangeParams,
+    const BufferIndex&, int);

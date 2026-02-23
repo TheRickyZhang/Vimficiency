@@ -35,6 +35,8 @@
       "Bash(nm*)",
       "Bash(pkg-config*)",
       "Bash(bash*)",
+      "Bash(lua scripts/*)",
+      "Bash(dot *)",
 
       "Bash(node*)",
       "Bash(npx*)",

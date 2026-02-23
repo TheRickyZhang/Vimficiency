@@ -82,6 +82,12 @@ CompositionSearchContext::CompositionSearchContext(
   // Build intermediate buffer states
   linesAfterNEdits = calculateLinesAfterDiffs(initialLines);
 
+  // Pre-compute BufferIndex for each edit level (for counted motion exploration)
+  bufferIndices.reserve(totalEdits);
+  for (int i = 0; i < totalEdits; i++) {
+    bufferIndices.emplace_back(linesAfterNEdits[i]);
+  }
+
   // Solve each edit region
   editResults = calculateEditResults();
 

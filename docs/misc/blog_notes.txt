@@ -34,3 +34,14 @@ Little things can have huge impacts on code.
 
 
 How to solve problem of stale benchmark data history when there are force pushes / retrospective merges that overwrite existing, requiring commit <-> data sync.
+
+
+
+Some examples of stupid code:
+
+// Resolve BufferIndex: use external if provided, otherwise build local
+BufferIndex localBufferIndex(lines);
+if (!bufferRef) {
+  bufferRef = {&localBufferIndex, 0};
+}
+creates a buffer index every time at first even though the goal was to use a precomputed buffer index if known!

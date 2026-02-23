@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "comments"],
+  "properties": {
+    "body": { "type": "string" },
+    "comments": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "line", "side", "body", "severity"],
+        "properties": {
+          "path": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "side": { "type": "string", "enum": ["RIGHT"] },
+          "body": { "type": "string" },
+          "severity": { "type": "string", "enum": ["high", "medium", "low"] }
+        }
+      }
+    }
+  }
+}

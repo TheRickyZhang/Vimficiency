@@ -5,7 +5,6 @@
 
 #include "MotionOptimizerParams.h"
 
-#include "Optimizer/Config.h"
 #include "Optimizer/RangeResult.h"
 #include "Optimizer/Result.h"
 #include "Optimizer/SearchStats.h"
@@ -15,6 +14,8 @@
 #include "VimTypes/Position.h"
 #include "Effort/RunningEffort.h"
 #include "VimTypes/Lines.h"
+
+#include "BufferIndex.h"
 
 struct MotionResult {
   std::vector<Result> results;
@@ -75,24 +76,32 @@ struct MotionOptimizer {
   // Multi-sink movement optimization: find paths to any position in [rangeFirst, rangeEnd)
   // Returns up to params.maxResults unique end positions (or total paths if allowMultiplePerPosition).
   // Precondition: initialPos must NOT be in [rangeFirst, rangeEnd) (nothing to optimize)
-  // Note: Internally dispatches to optimizeToRangeImpl<Forward> based on initialPos vs range
+
+  // Simple wrapper to forward constructed BufferIndex
   RangeMotionResult optimizeToRange(
-    // Core information
     const Lines& lines,
     const Position& initialPos,
     const Position& rangeFirst,
     const Position& rangeEnd,
-
-    // Search tuning
     MotionOptimizerRangeParams params = {},
     std::string_view userSequence = "",
-
-    // Continuation from broader context
     const MotionBoundary& boundary = MotionBoundary(),
     const RunningEffort& startingEffort = RunningEffort(),
-
-    // Niche settings
     const NavContext& navigationContext = NavContext()
+  );
+
+  // Overload with caller-provided BufferIndex
+  RangeMotionResult optimizeToRange(
+    const Lines& lines,
+    const Position& initialPos,
+    const Position& rangeFirst,
+    const Position& rangeEnd,
+    MotionOptimizerRangeParams params,
+    std::string_view userSequence,
+    const MotionBoundary& boundary,
+    const RunningEffort& startingEffort,
+    const NavContext& navigationContext,
+    BufferIndexRef bufferRef
   );
 
 private:
@@ -120,6 +129,8 @@ private:
     std::string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
-    MotionOptimizerRangeParams params
+    MotionOptimizerRangeParams params,
+    const BufferIndex& bufferIndex,
+    int lineOffset
   );
 };

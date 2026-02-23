@@ -1,0 +1,96 @@
+name: Codex PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  codex_review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Codex (structured review)
+        id: codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/codex/prompts/review.md
+          # Recommended for review accuracy/consistency in this workflow:
+          model: gpt-5.2-codex
+          codex-args: >-
+            --output-schema .github/codex/schemas/pr_review.schema.json
+
+      - name: Post GitHub Review (validate + fallback)
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const raw = ${{ toJSON(steps.codex.outputs.final-message) }};
+
+            function safeJsonParse(s) {
+              try { return JSON.parse(s); } catch { return null; }
+            }
+
+            function isString(x) { return typeof x === "string"; }
+            function isInt(x) { return Number.isInteger(x); }
+
+            const parsed = safeJsonParse(raw);
+
+            // Fallback: if not valid JSON, post as a plain review body.
+            if (!parsed || !isString(parsed.body) || !Array.isArray(parsed.comments)) {
+              await github.rest.pulls.createReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                event: "COMMENT",
+                body: typeof raw === "string" ? raw : String(raw),
+              });
+              return;
+            }
+
+            // Validate inline comments against the checked-out workspace.
+            const fs = require("fs");
+
+            const comments = [];
+            for (const c of parsed.comments) {
+              if (!c || !isString(c.path) || !isInt(c.line) || c.line < 1) continue;
+              if (c.side !== "RIGHT") continue;
+              if (!isString(c.body) || !isString(c.severity)) continue;
+
+              // Require at least medium severity to reduce spam (tweakable).
+              if (c.severity === "low") continue;
+
+              // Ensure file exists and line is in range.
+              if (!fs.existsSync(c.path)) continue;
+              try {
+                const nLines = fs.readFileSync(c.path, "utf8").split("\n").length;
+                if (c.line > nLines) continue;
+              } catch {
+                continue;
+              }
+
+              comments.push({
+                path: c.path,
+                line: c.line,
+                side: "RIGHT",
+                body: `[${c.severity}] ${c.body}`.trim(),
+              });
+
+              if (comments.length >= 20) break;
+            }
+
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              event: "COMMENT",
+              body: parsed.body,
+              comments,
+            });

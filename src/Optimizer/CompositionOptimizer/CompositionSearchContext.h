@@ -12,6 +12,7 @@
 #include "JoinPlan.h"
 #include "Optimizer/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
+#include "Optimizer/MotionOptimizer/BufferIndex.h"
 #include "Optimizer/SearchStats.h"
 #include "Boundary/MotionBoundary.h"
 #include "VimTypes/NavContext.h"
@@ -114,6 +115,10 @@ struct CompositionSearchContext {
   // Intermediate buffer states: linesAfterNEdits[i] = buffer after i edits applied
   // linesAfterNEdits[0] = initialLines, linesAfterNEdits[totalEdits] = goalLines
   std::vector<Lines> linesAfterNEdits;
+
+  // Pre-computed BufferIndex for each edit level: bufferIndices[i] indexes linesAfterNEdits[i]
+  // Used by optimizeToRange for counted motion exploration
+  std::vector<BufferIndex> bufferIndices;
 
   // Text object shortcut contexts: one per edit, tracks valid quote/bracket entry points
   // textObjectContexts[i] applies to edit i, using buffer linesAfterNEdits[i]
@@ -241,6 +246,13 @@ struct CompositionSearchContext {
   // Get buffer state for a given number of completed edits
   const Lines& getLinesAfter(int editsCompleted) const {
     return linesAfterNEdits[editsCompleted];
+  }
+
+  // Get pre-computed BufferIndex for a given edit level
+  const BufferIndex* getBufferIndex(int editsCompleted) const {
+    if (editsCompleted < 0 || editsCompleted >= static_cast<int>(bufferIndices.size()))
+      return nullptr;
+    return &bufferIndices[editsCompleted];
   }
 
   // Get the diff state for an edit index

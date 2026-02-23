@@ -38,8 +38,24 @@ public:
   // Direction inferred from currPos vs goalPos. Invalid entries have count <= 1.
   std::array<RepeatMotionResult, 2> getTwoClosest(LandingType type, Position currPos, Position goalPos) const;
 
+  // Returns positions near range [rangeFirst, rangeEnd): one undershoot (last before range),
+  // all in-range positions, and one overshoot (first past range), each with count from currPos.
+  // Direction inferred from currPos vs rangeFirst.
+  std::vector<RepeatMotionResult> getClosestInRange(
+      LandingType type, Position currPos,
+      Position rangeFirst, Position rangeEnd) const;
 
   // Debug
   size_t count(LandingType type) const { return get(type).size(); }
   const std::vector<Position>& getPositions(LandingType type) const { return get(type); }
+};
+
+// Non-owning reference to a BufferIndex with a line offset for coordinate conversion.
+// Bundles the two values that only make sense together: a BufferIndex built from a full
+// buffer, and the line offset needed to convert local subset coordinates to/from it.
+struct BufferIndexRef {
+  const BufferIndex* index = nullptr;
+  int lineOffset = 0;
+
+  explicit operator bool() const { return index != nullptr; }
 };

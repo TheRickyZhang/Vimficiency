@@ -22,7 +22,7 @@
 // 3. Lightweight: Uses exploreAllStandardMotions only, no directional methods
 class MotionExplorer {
   MotionSearchContext& ctx;
-  BufferIndex* bufferIndex_ = nullptr;           // Optional: only for count motions
+  BufferIndexRef bufferRef_;                     // Optional: index + offset for count motions
 
   // Single-goal mode state
   Position goalPos_;
@@ -37,14 +37,17 @@ public:
   // Full constructor for optimize() with directional exploration
   MotionExplorer(MotionSearchContext& ctx, const Position& goalPos,
                  BufferIndex& bufferIndex)
-      : ctx(ctx), bufferIndex_(&bufferIndex),
+      : ctx(ctx), bufferRef_{&bufferIndex, 0},
         goalPos_(goalPos), goalKey_(goalPos.line, goalPos.col) {}
 
   // Range mode constructor for optimizeToRange() with directional exploration
   MotionExplorer(MotionSearchContext& ctx,
                  const Position& rangeFirst,
-                 const Position& rangeEnd)
-      : ctx(ctx), rangeFirst_(rangeFirst), rangeEnd_(rangeEnd), isRangeMode_(true) {}
+                 const Position& rangeEnd,
+                 const BufferIndex& bufferIndex,
+                 int lineOffset)
+      : ctx(ctx), bufferRef_{&bufferIndex, lineOffset},
+        rangeFirst_(rangeFirst), rangeEnd_(rangeEnd), isRangeMode_(true) {}
 
   // Lightweight constructor - no directional optimization
   explicit MotionExplorer(MotionSearchContext& ctx)
@@ -225,29 +228,34 @@ public:
   }
 
   template<CountClass C>
-  static double resolveCountPenalty(const CountPenaltyInput& in) {
-    return runtimeCountPenalty<C>(in);
-  }
-
-  template<CountClass C>
   void exploreCountMotion(const MotionState& base, const KeyedSequence& baseMotion,
                           int cnt, const Position& newPos) {
     assert(cnt >= 0 && cnt <= MAX_PREFIX_COUNT);
     CountPenaltyInput in;
     in.count = cnt;
     in.span = cnt;
-    double penalty = resolveCountPenalty<C>(in);
+    double penalty = runtimeCountPenalty<C>(in);
 
     MotionState newState = base.afterCountedMotion(baseMotion, cnt, newPos, ctx.config, penalty);
-    newState.setCost(ctx.computePriorityToGoal(newState, goalPos_));
-    ctx.exploreNewState(std::move(newState), goalKey_);
+    if (isRangeMode_) {
+      newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeEnd_));
+      ctx.exploreNewStateToRange(std::move(newState), rangeFirst_, rangeEnd_);
+    } else {
+      newState.setCost(ctx.computePriorityToGoal(newState, goalPos_));
+      ctx.exploreNewState(std::move(newState), goalKey_);
+    }
   }
 
   // F-motions with known column (internal helper)
   void exploreFMotion(const MotionState& base, const KeyedSequence& fMotion, int newcol) {
     MotionState newState = base.afterFMotion(fMotion, newcol, ctx.config);
-    newState.setCost(ctx.computePriorityToGoal(newState, goalPos_));
-    ctx.exploreNewState(std::move(newState), goalKey_);
+    if (isRangeMode_) {
+      newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeEnd_));
+      ctx.exploreNewStateToRange(std::move(newState), rangeFirst_, rangeEnd_);
+    } else {
+      newState.setCost(ctx.computePriorityToGoal(newState, goalPos_));
+      ctx.exploreNewState(std::move(newState), goalKey_);
+    }
   }
 
   // ==========================================================================
@@ -257,7 +265,7 @@ public:
   // F-motions templated on direction - generates f{c};... or F{c};... sequences
   template<bool Forward>
   void exploreFMotions(const MotionState& base) {
-    assert(bufferIndex_ && "exploreFMotions requires goal-based constructor");
+    assert(bufferRef_ && "exploreFMotions requires goal-based constructor");
     Position pos = base.getPos();
     if (pos.line != goalPos_.line) return;
 
@@ -282,14 +290,14 @@ public:
 
   template<bool Forward, LandingType LT, CountClass C, KSId ForwardKS, KSId BackwardKS>
   void exploreCountedSpec(const MotionState& base) {
-    assert(bufferIndex_ && "Count motions require goal-based constructor");
+    assert(bufferRef_ && "Count motions require goal-based constructor");
     Position pos = base.getPos();
     const KeyedSequence& motion = []() -> const KeyedSequence& {
       if constexpr (Forward) return KeyedSequence::byId(ForwardKS);
       else return KeyedSequence::byId(BackwardKS);
     }();
 
-    auto results = bufferIndex_->getTwoClosest(LT, pos, goalPos_);
+    auto results = bufferRef_.index->getTwoClosest(LT, pos, goalPos_);
 
     for (const auto& r : results) {
       if (!r.valid()) continue;
@@ -382,6 +390,73 @@ public:
       exploreCountedHorizontalMotions<Forward>(base);
     }
     exploreGlobalCountMotions<Forward>(base);
+    exploreCountedVerticalMotions<Forward>(base);
+  }
+
+  // ==========================================================================
+  // Range-aware counted spec exploration (uses BufferIndex with coordinate conversion)
+  // ==========================================================================
+
+  template<bool Forward, LandingType LT, CountClass C, KSId ForwardKS, KSId BackwardKS>
+  void exploreCountedSpecToRange(const MotionState& base) {
+    assert(bufferRef_ && "Count motions to range require BufferIndex");
+    Position pos = base.getPos();
+    const KeyedSequence& motion = []() -> const KeyedSequence& {
+      if constexpr (Forward) return KeyedSequence::byId(ForwardKS);
+      else return KeyedSequence::byId(BackwardKS);
+    }();
+
+    int off = bufferRef_.lineOffset;
+
+    // Convert local → global coordinates for BufferIndex query
+    Position globalPos(pos.line + off, pos.col, pos.targetCol);
+    Position globalRangeFirst(rangeFirst_.line + off, rangeFirst_.col);
+    Position globalRangeEnd(rangeEnd_.line + off, rangeEnd_.col);
+
+    auto results = bufferRef_.index->getClosestInRange(LT, globalPos, globalRangeFirst, globalRangeEnd);
+    for (const auto& r : results) {
+      if (!r.valid()) continue;
+      if (r.count < ctx.params.minPrefixCount) continue;
+      if (r.count > ctx.params.maxPrefixCount) continue;
+      // Convert global → local coordinates
+      Position localPos(r.pos.line - off, r.pos.col);
+      // Boundary guards
+      if (ctx.boundary.hasLinesAbove() && localPos.line == 0) continue;
+      if (ctx.boundary.hasLinesBelow() && localPos.line == ctx.lines.lastLine()) continue;
+      exploreCountMotion<C>(base, motion, r.count, localPos);
+    }
+  }
+
+  // Line-local count motions to range (word motions)
+  template<bool Forward>
+  void exploreLineCountMotionsToRange(const MotionState& base) {
+    exploreCountedSpecToRange<Forward, LandingType::WordBegin, CountClass::MotionWord,
+                              KSId::w, KSId::b>(base);
+    exploreCountedSpecToRange<Forward, LandingType::WordEnd, CountClass::MotionWord,
+                              KSId::e, KSId::ge>(base);
+    exploreCountedSpecToRange<Forward, LandingType::WORDBegin, CountClass::MotionWORD,
+                              KSId::W, KSId::B>(base);
+    exploreCountedSpecToRange<Forward, LandingType::WORDEnd, CountClass::MotionWORD,
+                              KSId::E, KSId::gE>(base);
+  }
+
+  // Global count motions to range (paragraph/sentence motions)
+  template<bool Forward>
+  void exploreGlobalCountMotionsToRange(const MotionState& base) {
+    exploreCountedSpecToRange<Forward, LandingType::Paragraph, CountClass::MotionParagraph,
+                              KSId::RBrace, KSId::LBrace>(base);
+    exploreCountedSpecToRange<Forward, LandingType::Sentence, CountClass::MotionSentence,
+                              KSId::RParen, KSId::LParen>(base);
+  }
+
+  // Unified range directional dispatch - call from optimizeToRangeImpl loop
+  template<bool Forward>
+  void exploreDirectionalMotionsToRange(const MotionState& base, bool isSameLine) {
+    if (isSameLine) {
+      exploreLineCountMotionsToRange<Forward>(base);
+      exploreCountedHorizontalMotions<Forward>(base);
+    }
+    exploreGlobalCountMotionsToRange<Forward>(base);
     exploreCountedVerticalMotions<Forward>(base);
   }
 

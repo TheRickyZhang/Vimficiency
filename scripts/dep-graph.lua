@@ -103,31 +103,104 @@ for src, dsts in pairs(edges) do
   end
 end
 
--- Emit .dot
-print("digraph deps {")
-print("  rankdir=LR;")
-print('  node [shape=box, style=filled, fillcolor="#e8e8e8"];')
+-- Cluster definitions: { name, label, fill_color, edge_color, members }
+local clusters = {
+  { name = "optimizer", label = "Optimizer", color = "#fff3e0", edge = "#d84315",
+    members = {"Optimizer", "Optimizer/CompositionOptimizer",
+               "Optimizer/EditOptimizer", "Optimizer/MotionOptimizer"} },
+  { name = "keyboard",  label = "Input",     color = "#e8f5e9", edge = "#2e7d32",
+    members = {"Keyboard", "Keyboard/ToKeys", "Effort"} },
+  { name = "vim",       label = "Vim Model",  color = "#e3f2fd", edge = "#1565c0",
+    members = {"VimCore", "Boundary"} },
+}
 
--- Nodes
-local sorted_mods = {}
-for m in pairs(modules) do sorted_mods[#sorted_mods + 1] = m end
-table.sort(sorted_mods)
-for _, m in ipairs(sorted_mods) do
-  print(string.format('  "%s";', m))
+-- Map module -> its cluster's edge color
+local mod_edge_color = {}
+local clustered = {}
+for _, cl in ipairs(clusters) do
+  for _, m in ipairs(cl.members) do
+    clustered[m] = true
+    mod_edge_color[m] = cl.edge
+  end
 end
 
--- Edges
+-- Display label: use leaf directory name for nested modules
+local function display_label(mod)
+  if mod == "root" then return "root" end
+  return mod:match("([^/]+)$") or mod
+end
+
+local default_edge_color = "#777777"
+
+-- Emit .dot
+print("digraph deps {")
+print("  rankdir=TB;")
+print("  newrank=true;")
+print("  compound=true;")
+print("  nodesep=0.5;")
+print("  ranksep=0.7;")
+print('  node [shape=box, style="filled,rounded", fillcolor="#e8e8e8",')
+print('        fontname="Helvetica", fontsize=11, margin="0.12,0.06"];')
+print('  edge [fontname="Helvetica", fontsize=8, arrowsize=0.6];')
 print()
+
+-- Clustered nodes
+for _, cl in ipairs(clusters) do
+  print(string.format("  subgraph cluster_%s {", cl.name))
+  print(string.format('    label="%s";', cl.label))
+  print(string.format('    style="filled,rounded"; fillcolor="%s";', cl.color))
+  print('    fontname="Helvetica"; fontsize=12;')
+  for _, m in ipairs(cl.members) do
+    if modules[m] then
+      print(string.format('    "%s" [label="%s"];', m, display_label(m)))
+    end
+  end
+  print("  }")
+  print()
+end
+
+-- Unclustered nodes (skip entry points: root, Session)
+local skip_modules = { root = true, Session = true }
+for m in pairs(modules) do
+  if not clustered[m] and not skip_modules[m] then
+    print(string.format('  "%s" [label="%s"];', m, display_label(m)))
+  end
+end
+print()
+
+-- Layout hints
+print("  // Force Optimizer sub-modules side-by-side")
+print('  { rank=same; "Optimizer/CompositionOptimizer";')
+print('               "Optimizer/EditOptimizer";')
+print('               "Optimizer/MotionOptimizer"; }')
+print("  // Middle layer")
+print('  { rank=same; "Interpreter"; "Effort"; "Keyboard";')
+print('               "Keyboard/ToKeys"; }')
+print("  // Lower layer")
+print('  { rank=same; "VimCore"; "Boundary"; }')
+print("  // Sinks")
+print('  { rank=same; "VimTypes"; "Utils"; }')
+print()
+
+-- Edges: color by source cluster, penwidth by count
 local sorted_src = {}
 for s in pairs(edges) do sorted_src[#sorted_src + 1] = s end
 table.sort(sorted_src)
 for _, src in ipairs(sorted_src) do
-  local sorted_dst = {}
-  for d in pairs(edges[src]) do sorted_dst[#sorted_dst + 1] = d end
-  table.sort(sorted_dst)
-  for _, dst in ipairs(sorted_dst) do
-    local count = edges[src][dst]
-    print(string.format('  "%s" -> "%s" [label="%d"];', src, dst, count))
+  if not skip_modules[src] then
+    local sorted_dst = {}
+    for d in pairs(edges[src]) do sorted_dst[#sorted_dst + 1] = d end
+    table.sort(sorted_dst)
+    local ec = mod_edge_color[src] or default_edge_color
+    for _, dst in ipairs(sorted_dst) do
+      if not skip_modules[dst] then
+        local count = edges[src][dst]
+        local pw = 0.5 + math.log(count + 1) * 0.7
+        print(string.format(
+          '  "%s" -> "%s" [penwidth=%.1f, color="%s", tooltip="%d includes"];',
+          src, dst, pw, ec, count))
+      end
+    end
   end
 end
 
