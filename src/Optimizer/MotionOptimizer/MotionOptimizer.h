@@ -53,7 +53,7 @@ struct MotionOptimizer {
 
   // Returns results and search statistics
   // ~ O(n^2)
-  // Note: Internally converts to point range and delegates to optimizeToRangeImpl
+  // Note: Internally dispatches to optimizeImpl<Forward> based on initialPos vs goalPos
   MotionResult optimize(
     // Core information
     const Lines& lines,
@@ -105,6 +105,19 @@ struct MotionOptimizer {
   );
 
 private:
+  // Templated single-goal implementation - Forward known at compile time
+  template<bool Forward>
+  MotionResult optimizeImpl(
+    const Lines& lines,
+    const CursorPos& initialPos,
+    const RunningEffort& startingEffort,
+    const CursorPos& goalPos,
+    std::string_view userSequence,
+    const NavContext& navContext,
+    const MotionBoundary& boundary,
+    MotionOptimizerParams params
+  );
+
   // Templated range implementation - Forward known at compile time
   template<bool Forward>
   RangeMotionResult optimizeToRangeImpl(

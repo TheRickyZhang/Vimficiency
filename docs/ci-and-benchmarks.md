@@ -2,24 +2,38 @@
 
 ## CI Workflow (`.github/workflows/bench.yml`)
 
-The single workflow file defines three jobs, all running on `ubuntu-latest`:
+The single workflow file defines three jobs, all running on `ubuntu-latest`.
+
+### Dependency setup abstraction
+
+Shared dependency setup is centralized in `.github/actions/setup-ci-deps/action.yml`.
+
+- Always installs `gcc-14` and `g++-14`
+- Optionally installs Neovim (version-controlled by workflow env `NEOVIM_VERSION`)
+- Caches extracted Neovim under `~/.local/neovim/<version>` with key `neovim-<os>-<version>`
+- Adds cached Neovim to `PATH` when enabled
 
 ### Job 1: `test` (every push and PR)
 
-1. Installs gcc-14, g++-14, and neovim
-2. Builds the project in Release mode (`-DVIMFICIENCY_DEBUG=OFF`)
-3. Runs unit tests: `./build/tests/vimficiency_tests --gtest_brief=1`
+1. Runs `setup-ci-deps` with Neovim enabled
+2. Restores compiler cache via `hendrikmuhs/ccache-action@v1` (`key: test`)
+3. Restores CMake dependency cache (`build/_deps`, `deps-v2-*`)
+4. Builds in Release mode (`-DVIMFICIENCY_DEBUG=OFF`)
+5. Runs unit tests: `./build/tests/vimficiency_tests --gtest_brief=1`
 
 ### Job 2: `benchmark-run` (main branch only, after `test` passes)
 
-1. Builds the project in Release mode (same as `test`, but no neovim needed)
-2. Runs three benchmark suites with deterministic seeds (`VIMFICIENCY_SEED_MODE=fixed`):
+1. Runs `setup-ci-deps` without Neovim
+2. Restores compiler cache via `hendrikmuhs/ccache-action@v1` (`key: bench`)
+3. Restores CMake dependency cache (`build/_deps`, `deps-v2-*`)
+4. Builds the project in Release mode
+5. Runs three benchmark suites with deterministic seeds (`VIMFICIENCY_SEED_MODE=fixed`):
    - `EditOpt.*` → `edit_result.json`
    - `MotionOpt.*` → `motion_result.json`
    - `CompositionOpt.*` → `composition_result.json`
-3. Collects exploration data via `vimficiency_explore`
-4. Builds and runs baseline benchmarks against HEAD~1 for comparison
-5. Uploads all JSON files as a `benchmark-results` artifact
+6. Collects exploration data via `vimficiency_explore`
+7. Builds and runs baseline benchmarks against `HEAD~1` for comparison
+8. Uploads all JSON files as a `benchmark-results` artifact
 
 ### Job 3: `benchmark-store` (main branch only, after `benchmark-run`)
 
@@ -31,6 +45,13 @@ The single workflow file defines three jobs, all running on `ubuntu-latest`:
    - Merges exploration data into `explore.json` (keeps last 5 entries)
    - Prunes benchmark data to last 100 entries per suite
    - Copies dashboard HTML/JS/CSS assets
+
+### CI cache and performance notes
+
+- `ccache` cache is restored before build in `test` and `benchmark-run`, reducing repeated compile work.
+- `build/_deps` cache stores CMake-fetched third-party source/build artifacts (for this repo, primarily GoogleTest and related CMake external content).
+- Neovim install in `test` is cached by OS + version. On cache hit, CI skips the GitHub release download and untar.
+- `apt-get update` and apt package installation are intentionally not cached in this workflow. These commands still run on every fresh GitHub-hosted runner, so `Setup CI deps` can remain one of the slower steps even when all project-level caches hit.
 
 ## Data Pipeline
 
