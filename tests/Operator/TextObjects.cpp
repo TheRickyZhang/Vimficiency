@@ -38,7 +38,7 @@ struct TextObjectSpec {
   // Predict if text object would cross boundaries using VimCore
   // Uses offset-based boundary model: leftColOffset protects cols [0, offset) on line 0,
   // rightColOffset protects cols [lineLen-offset, lineLen) on last line
-  bool wouldCross(Position cursor, const Lines& lines,
+  bool wouldCross(CursorPos cursor, const Lines& lines,
                   int leftColOffset, int rightColOffset,
                   bool hasLinesAbove, bool hasLinesBelow) const {
     Range range = VimCore::textObjectRange(
@@ -94,8 +94,8 @@ RandomBufferTest generateTextObjectBuffer(int numLines) {
   // Set boundary positions
   test.hasLeftBoundary = true;
   test.hasRightBoundary = true;
-  test.leftBoundaryPos = Position(editLine, editStart - 1);
-  test.rightBoundaryPos = Position(editLine, editEnd + 1);
+  test.leftBoundaryPos = CursorPos(editLine, editStart - 1);
+  test.rightBoundaryPos = CursorPos(editLine, editEnd + 1);
 
   // Build prefix/suffix
   string& line = test.lines[editLine];
@@ -151,7 +151,7 @@ bool runTextObjectTest(NeovimOracle& oracle, const TextObjectSpec& spec,
   int effectiveLastLine = static_cast<int>(effectiveLines.size()) - 1;
 
   // Cursor position relative to effectiveLines (translate from full buffer coords)
-  Position cursor(test.cursorLine - test.editStartLine, test.cursorCol);
+  CursorPos cursor(test.cursorLine - test.editStartLine, test.cursorCol);
 
   // Compute offsets relative to effectiveLines
   // leftColOffset: prefix length on first line of effectiveLines (line 0)
@@ -302,9 +302,9 @@ TEST_F(TextObjectsTest, DaW_WithTrailingWhitespace) {
 TEST_F(TextObjectsTest, TextObjectRange_InnerWord) {
   // Test that textObjectRange correctly computes range for diw
   Lines lines = {"abc def ghi"};
-  Position cursor(0, 4);           // On 'd' in "def"
-  // Old Position boundary at col 3 → protect cols [0, 4), so leftColOffset = 4
-  // Old Position boundary at col 7 → protect cols [7, 11), so rightColOffset = 11 - 7 = 4
+  CursorPos cursor(0, 4);           // On 'd' in "def"
+  // Old CursorPos boundary at col 3 → protect cols [0, 4), so leftColOffset = 4
+  // Old CursorPos boundary at col 7 → protect cols [7, 11), so rightColOffset = 11 - 7 = 4
   int leftColOffset = 4;   // protect cols 0-3 (space before "def")
   int rightColOffset = 4;  // protect cols 7-10 (space after "def" and beyond)
 
@@ -319,9 +319,9 @@ TEST_F(TextObjectsTest, TextObjectRange_InnerWord) {
 TEST_F(TextObjectsTest, TextObjectRange_AroundWord) {
   // Test that textObjectRange correctly computes range for daw
   Lines lines = {"abc def ghi"};
-  Position cursor(0, 4);           // On 'd' in "def"
-  // Old Position boundary at col 2 → protect cols [0, 3), so leftColOffset = 3
-  // Old Position boundary at col 8 → protect cols [8, 11), so rightColOffset = 11 - 8 = 3
+  CursorPos cursor(0, 4);           // On 'd' in "def"
+  // Old CursorPos boundary at col 2 → protect cols [0, 3), so leftColOffset = 3
+  // Old CursorPos boundary at col 8 → protect cols [8, 11), so rightColOffset = 11 - 8 = 3
   int leftColOffset = 3;   // protect cols 0-2 ('c' in "abc" and before)
   int rightColOffset = 3;  // protect cols 8-10 ('g' in "ghi" and beyond)
 
@@ -336,9 +336,9 @@ TEST_F(TextObjectsTest, TextObjectRange_AroundWord) {
 TEST_F(TextObjectsTest, TextObjectRange_CrossesBoundary) {
   // Test where text object DOES cross a boundary
   Lines lines = {"abc"};
-  Position cursor(0, 1);           // On 'b'
-  // Old Position boundary at col 0 → protect cols [0, 1), so leftColOffset = 1
-  // Old Position boundary at col 2 → protect cols [2, 3), so rightColOffset = 3 - 2 = 1
+  CursorPos cursor(0, 1);           // On 'b'
+  // Old CursorPos boundary at col 0 → protect cols [0, 1), so leftColOffset = 1
+  // Old CursorPos boundary at col 2 → protect cols [2, 3), so rightColOffset = 3 - 2 = 1
   int leftColOffset = 1;   // protect col 0 ('a' - adjacent to word)
   int rightColOffset = 1;  // protect col 2 ('c' - adjacent to word)
 
@@ -353,7 +353,7 @@ TEST_F(TextObjectsTest, TextObjectRange_CrossesBoundary) {
 TEST_F(TextObjectsTest, TextObjectRange_NoBoundary) {
   // When no boundaries are set (offset = 0), text object always succeeds
   Lines lines = {"hello world"};
-  Position cursor(0, 0);
+  CursorPos cursor(0, 0);
 
   // Use 0 to indicate no boundary check, no lines above/below
   Range result = VimCore::textObjectRange(cursor, lines, true, false, 0, 0, false, false);

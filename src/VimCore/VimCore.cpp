@@ -57,7 +57,7 @@ int firstNonBlankColInLineStr(std::string_view s) {
 }
 
 // =============================================================================
-// 3. Position Stepping
+// 3. CursorPos Stepping
 // =============================================================================
 
 // Char at (line,col):
@@ -122,18 +122,18 @@ namespace {
 // Cold path helper for lineBounded returns
 template<bool Forward>
 [[gnu::noinline, gnu::cold]]
-Position handleLineBounded(Position prev, const Lines& lines) {
+CursorPos handleLineBounded(CursorPos prev, const Lines& lines) {
   if constexpr (Forward) {
-    return Position(prev.line, lines[prev.line].lastCol());
+    return CursorPos(prev.line, lines[prev.line].lastCol());
   } else {
-    return Position(prev.line, 0);
+    return CursorPos(prev.line, 0);
   }
 }
 } // anonymous namespace
 
 // Templated version: compile-time dispatch on Forward and Edge
 template<bool Forward, EdgeType Edge>
-Position motionWordCore(Position pos,
+CursorPos motionWordCore(CursorPos pos,
                         const Lines& lines,
                         bool big,
                         bool skipCurrent,
@@ -142,7 +142,7 @@ Position motionWordCore(Position pos,
   // skipCurrent: Move off current position before searching
   // ---------------------------------------------------------------------------
   if (skipCurrent) {
-    Position prevPos = pos;
+    CursorPos prevPos = pos;
     unsigned char prevChar = lines.get(pos);
 
     pos = step<Forward>(lines, pos);
@@ -177,7 +177,7 @@ Position motionWordCore(Position pos,
   // Phase 1: If starting on blank, skip to first non-blank
   if (isBlank(c)) {
     do {
-      Position prev = pos;
+      CursorPos prev = pos;
       pos = step<Forward>(lines, pos);
       if (pos == prev) return POSITION_OUTSIDE_BOUNDARY;
 
@@ -196,7 +196,7 @@ Position motionWordCore(Position pos,
   bool startIsWordChar = isSmallWordChar(c);
   bool crossedLine = false;
   do {
-    Position prev = pos;
+    CursorPos prev = pos;
     pos = step<Forward>(lines, pos);
     if (pos == prev) {
       if constexpr (Edge == EdgeType::WordEdge) return prev;
@@ -225,7 +225,7 @@ Position motionWordCore(Position pos,
 
   // Phase 4: Skip whitespace to reach next word (but stop at empty lines)
   while (isWhitespace(c)) {
-    Position prev = pos;
+    CursorPos prev = pos;
     pos = step<Forward>(lines, pos);
     if (pos == prev) return POSITION_OUTSIDE_BOUNDARY;
 
@@ -245,15 +245,15 @@ Position motionWordCore(Position pos,
 }
 
 // Explicit instantiations (6 combinations used by word motions)
-template Position motionWordCore<true, EdgeType::WordEdge>(Position, const Lines&, bool, bool, bool);
-template Position motionWordCore<true, EdgeType::GapEdge>(Position, const Lines&, bool, bool, bool);
-template Position motionWordCore<true, EdgeType::NextEdge>(Position, const Lines&, bool, bool, bool);
-template Position motionWordCore<false, EdgeType::WordEdge>(Position, const Lines&, bool, bool, bool);
-template Position motionWordCore<false, EdgeType::GapEdge>(Position, const Lines&, bool, bool, bool);
-template Position motionWordCore<false, EdgeType::NextEdge>(Position, const Lines&, bool, bool, bool);
+template CursorPos motionWordCore<true, EdgeType::WordEdge>(CursorPos, const Lines&, bool, bool, bool);
+template CursorPos motionWordCore<true, EdgeType::GapEdge>(CursorPos, const Lines&, bool, bool, bool);
+template CursorPos motionWordCore<true, EdgeType::NextEdge>(CursorPos, const Lines&, bool, bool, bool);
+template CursorPos motionWordCore<false, EdgeType::WordEdge>(CursorPos, const Lines&, bool, bool, bool);
+template CursorPos motionWordCore<false, EdgeType::GapEdge>(CursorPos, const Lines&, bool, bool, bool);
+template CursorPos motionWordCore<false, EdgeType::NextEdge>(CursorPos, const Lines&, bool, bool, bool);
 
 // Runtime dispatch version (for compatibility)
-Position motionWordCore(Position pos,
+CursorPos motionWordCore(CursorPos pos,
                         const Lines& lines,
                         bool forward,
                         EdgeType edge,

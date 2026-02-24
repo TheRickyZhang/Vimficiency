@@ -8,17 +8,17 @@
 
 #include <gtest/gtest.h>
 
-#include "VimTypes/NavContext.h"
+#include "Types/NavContext.h"
 #include "Utils/TestUtils.h"
 
 #include "Keyboard/ToKeys/MotionToKeys.h"
-#include "Optimizer/Config.h"
+#include "Keyboard/Config.h"
 #include "Boundary/MotionBoundary.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Effort/RunningEffort.h"
 #include "Session/Snapshot.h"
 #include "Interpreter/MotionInterpreter.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 
 using namespace std;
 
@@ -39,8 +39,8 @@ protected:
   }
 
   static vector<Result>
-  runOptimizer(const Lines &lines, Position start,
-               Position end, const string &userSeq,
+  runOptimizer(const Lines &lines, CursorPos start,
+               CursorPos end, const string &userSeq,
                vector<KeyAdjustment> adjustments = {},
                Config config = Config::uniform()
                ) {
@@ -52,7 +52,7 @@ protected:
 
     // Tests use full test files, so don't exclude G/gg (default MotionBoundary)
     MotionBoundary boundary;
-    // Pass Position and fresh RunningEffort (no prior typing context in tests)
+    // Pass CursorPos and fresh RunningEffort (no prior typing context in tests)
     // Try to explore more (30 results), lower search depth for speed (2e4)
     return opt.optimize(lines, start, end,
                         MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
@@ -60,15 +60,15 @@ protected:
   }
 
   static vector<RangeResult>
-  runOptimizerToRange(const Lines &lines, Position start,
-                      Position rangeBegin, Position rangeEnd,
+  runOptimizerToRange(const Lines &lines, CursorPos start,
+                      CursorPos rangeBegin, CursorPos rangeEnd,
                       const string &userSeq,
                       int maxResults = 10,
                       Config config = Config::uniform()) {
     MotionOptimizer opt(config);
     MotionBoundary boundary;
     // allowMultiplePerPosition=true for tests to see all paths
-    // Pass Position and fresh RunningEffort (no prior typing context in tests)
+    // Pass CursorPos and fresh RunningEffort (no prior typing context in tests)
     return opt.optimizeToRange(lines, start, rangeBegin, rangeEnd,
                                MotionOptimizerRangeParams{}
                                    .withMaxResults(maxResults)
@@ -87,8 +87,8 @@ NavContext MotionOptimizer_ManualTest::navContext;
 
 TEST_F(MotionOptimizer_ManualTest, HorizontalMotions) {
   const string user_seq = "we";
-  Position start(0, 0);
-  Position end = simulateMotions(start, user_seq, a1_long_line);
+  CursorPos start(0, 0);
+  CursorPos end = simulateMotions(start, user_seq, a1_long_line);
 
   vector<Result> results = runOptimizer(
   a1_long_line,
@@ -109,9 +109,9 @@ TEST_F(MotionOptimizer_ManualTest, HorizontalMotions) {
 TEST_F(MotionOptimizer_ManualTest, RangeBasic_SameLine) {
   // Target range is columns 5-10 on line 0
   Lines lines = {"hello world this is a test line"};
-  Position start(0, 0);
-  Position rangeBegin(0, 5);
-  Position rangeEnd(0, 10);
+  CursorPos start(0, 0);
+  CursorPos rangeBegin(0, 5);
+  CursorPos rangeEnd(0, 10);
 
   vector<RangeResult> results = runOptimizerToRange(lines, start, rangeBegin, rangeEnd, "lllll");
 
@@ -125,15 +125,15 @@ TEST_F(MotionOptimizer_ManualTest, RangeBasic_SameLine) {
 TEST_F(MotionOptimizer_ManualTest, RangeBasic_MultiLine) {
   // Target range spans multiple lines
   Lines lines = {"line one", "line two", "line three", "line four"};
-  Position start(0, 0);
-  Position rangeBegin(1, 0);
-  Position rangeEnd(2, 5);
+  CursorPos start(0, 0);
+  CursorPos rangeBegin(1, 0);
+  CursorPos rangeEnd(2, 5);
 
   vector<RangeResult> results = runOptimizerToRange(lines, start, rangeBegin, rangeEnd, "jj");
 
   EXPECT_FALSE(results.empty()) << "Should find at least one path to range";
   for (const auto& r : results) {
-    Position p = r.goalPos;
+    CursorPos p = r.goalPos;
     bool inRange = (p >= rangeBegin && p <= rangeEnd);
     EXPECT_TRUE(inRange) << "End position (" << p.line << ", " << p.col << ") should be in range";
   }
@@ -142,9 +142,9 @@ TEST_F(MotionOptimizer_ManualTest, RangeBasic_MultiLine) {
 TEST_F(MotionOptimizer_ManualTest, RangeFromMiddle) {
   // Start from middle of file, target range at end
   Lines lines = {"aaa", "bbb", "ccc", "ddd", "eee"};
-  Position start(2, 1);
-  Position rangeBegin(4, 0);
-  Position rangeEnd(4, 2);
+  CursorPos start(2, 1);
+  CursorPos rangeBegin(4, 0);
+  CursorPos rangeEnd(4, 2);
 
   vector<RangeResult> results = runOptimizerToRange(lines, start, rangeBegin, rangeEnd, "jj");
 
@@ -154,9 +154,9 @@ TEST_F(MotionOptimizer_ManualTest, RangeFromMiddle) {
 TEST_F(MotionOptimizer_ManualTest, RangeWithWordMotions) {
   // Test that word motions can land in range
   Lines lines = {"one two three four five six"};
-  Position start(0, 0);
-  Position rangeBegin(0, 8);   // "three" starts at 8
-  Position rangeEnd(0, 17);    // "four" ends at 17
+  CursorPos start(0, 0);
+  CursorPos rangeBegin(0, 8);   // "three" starts at 8
+  CursorPos rangeEnd(0, 17);    // "four" ends at 17
 
   vector<RangeResult> results = runOptimizerToRange(lines, start, rangeBegin, rangeEnd, "www");
 
@@ -177,7 +177,7 @@ protected:
 
   // Helper to run optimizer with specific boundary
   static vector<Result>
-  runWithBoundary(const Lines& lines, Position start, Position end,
+  runWithBoundary(const Lines& lines, CursorPos start, CursorPos end,
                   const string& userSeq, const MotionBoundary& boundary,
                   Config config = Config::uniform()) {
     MotionOptimizer opt(config);
@@ -197,8 +197,8 @@ NavContext MotionBoundaryTest::navContext(0, 0);
 
 TEST_F(MotionBoundaryTest, DefaultBoundary_AllowsGG) {
   Lines lines = {"line0", "line1", "line2", "line3"};
-  Position start(2, 0);
-  Position end(0, 0);  // gg should reach this
+  CursorPos start(2, 0);
+  CursorPos end(0, 0);  // gg should reach this
 
   MotionBoundary boundary;  // default: no exclusions
 
@@ -212,12 +212,12 @@ TEST_F(MotionBoundaryTest, ExcludeGG_RemovesGG) {
   Lines fullBuffer = {"above0", "above1", "line0", "line1", "line2", "line3"};
   // Sub-buffer is lines 2-5 (line0 through line3)
   Lines subBuffer = {"line0", "line1", "line2", "line3"};
-  Position start(2, 0);  // In sub-buffer coords
-  Position end(0, 0);
+  CursorPos start(2, 0);  // In sub-buffer coords
+  CursorPos end(0, 0);
 
   // Boundary computed from sub-region within full buffer
   // firstPos=(2,0) means hasLinesAbove=true, endPos=(5,6) means hasLinesBelow=false
-  MotionBoundary boundary(fullBuffer, Position(2, 0), Position(5, 6));
+  MotionBoundary boundary(fullBuffer, CursorPos(2, 0), CursorPos(5, 6));
 
   auto results = runWithBoundary(subBuffer, start, end, "kk", boundary);
 
@@ -227,8 +227,8 @@ TEST_F(MotionBoundaryTest, ExcludeGG_RemovesGG) {
 
 TEST_F(MotionBoundaryTest, DefaultBoundary_AllowsG) {
   Lines lines = {"line0", "line1", "line2", "line3"};
-  Position start(1, 0);
-  Position end(3, 0);  // G should reach last line
+  CursorPos start(1, 0);
+  CursorPos end(3, 0);  // G should reach last line
 
   MotionBoundary boundary;  // default: no exclusions
 
@@ -242,11 +242,11 @@ TEST_F(MotionBoundaryTest, ExcludeG_RemovesG) {
   Lines fullBuffer = {"line0", "line1", "line2", "line3", "below0", "below1"};
   // Sub-buffer is lines 0-3
   Lines subBuffer = {"line0", "line1", "line2", "line3"};
-  Position start(1, 0);
-  Position end(3, 0);
+  CursorPos start(1, 0);
+  CursorPos end(3, 0);
 
   // Boundary computed from sub-region: firstPos=(0,0) hasLinesAbove=false, endPos=(3,5) hasLinesBelow=true
-  MotionBoundary boundary(fullBuffer, Position(0, 0), Position(3, 5));
+  MotionBoundary boundary(fullBuffer, CursorPos(0, 0), CursorPos(3, 5));
 
   auto results = runWithBoundary(subBuffer, start, end, "jj", boundary);
 
@@ -255,19 +255,19 @@ TEST_F(MotionBoundaryTest, ExcludeG_RemovesG) {
 }
 
 TEST_F(MotionBoundaryTest, LeftColOffset_FiltersPrefixPositions) {
-  // NOTE: Position-based column filtering was removed because it was ineffective
+  // NOTE: CursorPos-based column filtering was removed because it was ineffective
   // for motions that clamp to buffer edges (paragraph, sentence jumps).
   // Single-line column filtering is a known limitation - the optimizer will
   // find paths to prefix/suffix positions on single lines.
   //
   // This test documents current behavior, not desired behavior.
   Lines lines = {"prefix_target"};
-  Position start(0, 10);  // Start in "target" region
-  Position end(0, 5);     // End in prefix region
+  CursorPos start(0, 10);  // Start in "target" region
+  CursorPos end(0, 5);     // End in prefix region
 
   // leftColOffset = 7 (prefix "prefix_" length)
   // Boundary from position (0,7) to (0,13) gives leftColOffset=7
-  MotionBoundary boundary(lines, Position(0, 7), Position(0, 13));
+  MotionBoundary boundary(lines, CursorPos(0, 7), CursorPos(0, 13));
 
   auto results = runWithBoundary(lines, start, end, "hhhhh", boundary);
 
@@ -276,25 +276,25 @@ TEST_F(MotionBoundaryTest, LeftColOffset_FiltersPrefixPositions) {
       << "Without filtering, optimizer finds path to prefix positions";
 
   // Should still find path to valid position
-  Position end2(0, 8);  // Valid position after prefix
+  CursorPos end2(0, 8);  // Valid position after prefix
   auto results2 = runWithBoundary(lines, start, end2, "hh", boundary);
   EXPECT_FALSE(results2.empty()) << "Should find path to valid positions";
 }
 
 TEST_F(MotionBoundaryTest, RightColOffset_FiltersSuffixPositions) {
-  // NOTE: Position-based column filtering was removed because it was ineffective
+  // NOTE: CursorPos-based column filtering was removed because it was ineffective
   // for motions that clamp to buffer edges (paragraph, sentence jumps).
   // Single-line column filtering is a known limitation - the optimizer will
   // find paths to prefix/suffix positions on single lines.
   //
   // This test documents current behavior, not desired behavior.
   Lines lines = {"target_suffix"};  // length=13, suffix "_suffix" starts at col 7
-  Position start(0, 3);   // Start in "target" region
-  Position end(0, 10);    // End in suffix region
+  CursorPos start(0, 3);   // Start in "target" region
+  CursorPos end(0, 10);    // End in suffix region
 
   // rightColOffset = 6 (suffix "_suffix" without the 's' at col 7)
   // Boundary from position (0,0) to (0,7) gives rightColOffset = 13-7 = 6
-  MotionBoundary boundary(lines, Position(0, 0), Position(0, 7));
+  MotionBoundary boundary(lines, CursorPos(0, 0), CursorPos(0, 7));
 
   auto results = runWithBoundary(lines, start, end, "lllllll", boundary);
 
@@ -303,7 +303,7 @@ TEST_F(MotionBoundaryTest, RightColOffset_FiltersSuffixPositions) {
       << "Without filtering, optimizer finds path to suffix positions";
 
   // Should still find path to valid position
-  Position end2(0, 6);  // Valid position before suffix (col 7 is where suffix starts)
+  CursorPos end2(0, 6);  // Valid position before suffix (col 7 is where suffix starts)
   auto results2 = runWithBoundary(lines, start, end2, "lll", boundary);
   EXPECT_FALSE(results2.empty()) << "Should find path to valid positions";
 }
@@ -319,26 +319,26 @@ TEST_F(MotionBoundaryTest, IsPositionInBounds_WithColConstraints) {
   // - line 2 has length 15, suffix of 5 chars, so endPos=(2,10) (exclusive past col 9)
   Lines lines = {"pppxxxxxx", "middle_content", "xxxxxxxxxxxxxxx"};  // line 2 has 15 chars
   // Boundary from (0,3) to (2,10): leftColOffset=3, rightColOffset=15-10=5
-  MotionBoundary boundary(lines, Position(0, 3), Position(2, 10));
+  MotionBoundary boundary(lines, CursorPos(0, 3), CursorPos(2, 10));
 
   int lastLine = 2;
   int lastLineLength = 15;
 
   // First line (line 0): positions < leftColOffset are prefix
-  EXPECT_FALSE(boundary.isPositionInBounds(Position(0, 0), lastLine, lastLineLength)) << "col 0 < leftColOffset";
-  EXPECT_FALSE(boundary.isPositionInBounds(Position(0, 2), lastLine, lastLineLength)) << "col 2 < leftColOffset";
-  EXPECT_TRUE(boundary.isPositionInBounds(Position(0, 3), lastLine, lastLineLength)) << "col 3 == leftColOffset (first valid)";
-  EXPECT_TRUE(boundary.isPositionInBounds(Position(0, 5), lastLine, lastLineLength)) << "col 5 > leftColOffset";
+  EXPECT_FALSE(boundary.isPositionInBounds(CursorPos(0, 0), lastLine, lastLineLength)) << "col 0 < leftColOffset";
+  EXPECT_FALSE(boundary.isPositionInBounds(CursorPos(0, 2), lastLine, lastLineLength)) << "col 2 < leftColOffset";
+  EXPECT_TRUE(boundary.isPositionInBounds(CursorPos(0, 3), lastLine, lastLineLength)) << "col 3 == leftColOffset (first valid)";
+  EXPECT_TRUE(boundary.isPositionInBounds(CursorPos(0, 5), lastLine, lastLineLength)) << "col 5 > leftColOffset";
 
   // Middle line: no column constraints
-  EXPECT_TRUE(boundary.isPositionInBounds(Position(1, 0), lastLine, lastLineLength));
-  EXPECT_TRUE(boundary.isPositionInBounds(Position(1, 10), lastLine, lastLineLength));
+  EXPECT_TRUE(boundary.isPositionInBounds(CursorPos(1, 0), lastLine, lastLineLength));
+  EXPECT_TRUE(boundary.isPositionInBounds(CursorPos(1, 10), lastLine, lastLineLength));
 
   // Last line (line 2): positions >= lastLineLength - rightColOffset = 10 are suffix
-  EXPECT_TRUE(boundary.isPositionInBounds(Position(2, 5), lastLine, lastLineLength)) << "col 5 < 10";
-  EXPECT_TRUE(boundary.isPositionInBounds(Position(2, 9), lastLine, lastLineLength)) << "col 9 < 10 (last valid)";
-  EXPECT_FALSE(boundary.isPositionInBounds(Position(2, 10), lastLine, lastLineLength)) << "col 10 == 10 (first in suffix)";
-  EXPECT_FALSE(boundary.isPositionInBounds(Position(2, 14), lastLine, lastLineLength)) << "col 14 > 10";
+  EXPECT_TRUE(boundary.isPositionInBounds(CursorPos(2, 5), lastLine, lastLineLength)) << "col 5 < 10";
+  EXPECT_TRUE(boundary.isPositionInBounds(CursorPos(2, 9), lastLine, lastLineLength)) << "col 9 < 10 (last valid)";
+  EXPECT_FALSE(boundary.isPositionInBounds(CursorPos(2, 10), lastLine, lastLineLength)) << "col 10 == 10 (first in suffix)";
+  EXPECT_FALSE(boundary.isPositionInBounds(CursorPos(2, 14), lastLine, lastLineLength)) << "col 14 > 10";
 }
 
 // =============================================================================
@@ -348,8 +348,8 @@ TEST_F(MotionBoundaryTest, IsPositionInBounds_WithColConstraints) {
 TEST_F(MotionOptimizer_ManualTest, MinCountRepeat_BlocksSmallCounts) {
   // "one two three four five six" — 4w reaches "five" (col 20)
   Lines lines = {"one two three four five six"};
-  Position start(0, 0);
-  Position end(0, 14); // "four" — reachable by 3w
+  CursorPos start(0, 0);
+  CursorPos end(0, 14); // "four" — reachable by 3w
 
   MotionOptimizer opt(Config::uniform());
   MotionBoundary boundary;
@@ -365,8 +365,8 @@ TEST_F(MotionOptimizer_ManualTest, MinCountRepeat_BlocksSmallCounts) {
 
 TEST_F(MotionOptimizer_ManualTest, MinCountRepeat_LowThresholdAllowsSmallCounts) {
   Lines lines = {"one two three four five six"};
-  Position start(0, 0);
-  Position end(0, 14); // "four" — reachable by 3w
+  CursorPos start(0, 0);
+  CursorPos end(0, 14); // "four" — reachable by 3w
 
   MotionOptimizer opt(Config::uniform());
   MotionBoundary boundary;

@@ -11,12 +11,12 @@
 #include <memory>
 
 #include "Interpreter/EditInterpreter.h"
-#include "VimTypes/Mode.h"
-#include "VimTypes/Position.h"
-#include "Optimizer/Config.h"
+#include "Types/Mode.h"
+#include "Types/CursorPos.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Boundary/EditBoundary.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 // #include "Utils/TestUtils.h"
 #include "Utils/NeovimOracle.h"
 
@@ -46,14 +46,14 @@ unique_ptr<NeovimOracle> EditOptimizer_ManualTest::oracle;
 
 struct ApplyResult {
   Lines lines;
-  Position pos;
+  CursorPos pos;
   Mode mode;
 
-  ApplyResult(Lines lines, Position pos, Mode mode = Mode::Normal)
+  ApplyResult(Lines lines, CursorPos pos, Mode mode = Mode::Normal)
       : lines(std::move(lines)), pos(pos), mode(mode) {}
 };
 
-ApplyResult applySequence(const Lines& source, Position initialPos, const string& sequence) {
+ApplyResult applySequence(const Lines& source, CursorPos initialPos, const string& sequence) {
   ApplyResult result(source, initialPos);
   string lastEditCmd;
   for (const auto& op : Edit::parseEdits(sequence)) {
@@ -69,7 +69,7 @@ bool cursorStateMatches(const ApplyResult& ours, const SimulationResult& nvim) {
 SimulationResult verifySequenceWithOracle(
     NeovimOracle* oracle,
     const Lines& source,
-    Position initialPos,
+    CursorPos initialPos,
     const string& sequence) {
   SimulationResult nvim = oracle->simulate(source, initialPos.line, initialPos.col, sequence);
   ApplyResult ours = applySequence(source, initialPos, sequence);
@@ -107,7 +107,7 @@ void forEachValidResult(const vector<Result>& results, const Lines& lines, Fn fn
     for (int c = 0; c < lines[r].effectiveSize(); c++) {
       const Result& result = results[idx++];
       if (result.isValid()) {
-        fn(Position(r, c), result.sequence);
+        fn(CursorPos(r, c), result.sequence);
       }
     }
   }
@@ -122,12 +122,12 @@ TEST_F(EditOptimizer_ManualTest, PureDeletion_OracleVerified) {
   Lines lines = {"aa", "bb"};
   EditResult editRes = pureDeletionResult(
       lines,
-      EditBoundary(lines, Position(0, 0), lines.endPos()));
+      EditBoundary(lines, CursorPos(0, 0), lines.endPos()));
   const vector<Result>& res = editRes.getResults();
 
   EXPECT_TRUE(allPositionsValid(res, lines));
 
-  forEachValidResult(res, lines, [&](Position pos, const auto& seq) {
+  forEachValidResult(res, lines, [&](CursorPos pos, const auto& seq) {
     SimulationResult nvimRes = verifySequenceWithOracle(oracle.get(), lines, pos, seq.str());
     EXPECT_TRUE(nvimRes.lines.isEmpty() && nvimRes.mode == Mode::Normal)
         << "Sequence '" << seq << "' from " << pos << " did not reach goal";
@@ -141,7 +141,7 @@ TEST_F(EditOptimizer_ManualTest, PureDeletion_OracleVerified) {
 TEST_F(EditOptimizer_ManualTest, Boundary_LinesBelow) {
   // Edit region has lines below - tests hasLinesBelow constraint
   Lines fullBuffer = {"aa", "bb", "xx"};
-  Position initialPos(0, 0), endPos(1, 2);
+  CursorPos initialPos(0, 0), endPos(1, 2);
   Lines editRegion = fullBuffer.getSpan(initialPos, endPos);
   EditBoundary boundary(fullBuffer, initialPos, endPos);
 
@@ -153,7 +153,7 @@ TEST_F(EditOptimizer_ManualTest, Boundary_SingleLineSurrounded) {
   // Single line edit region surrounded by other lines
   // Can't use dd - must use S/cc
   Lines fullBuffer = {"xx", "hello", "xx"};
-  Position initialPos(1, 0), endPos(1, 5);
+  CursorPos initialPos(1, 0), endPos(1, 5);
   Lines editRegion = fullBuffer.getSpan(initialPos, endPos);
   EditBoundary boundary(fullBuffer, initialPos, endPos);
 
@@ -165,17 +165,17 @@ TEST_F(EditOptimizer_ManualTest, Boundary_SingleLineSurrounded) {
 TEST_F(EditOptimizer_ManualTest, Boundary_LinewiseCursorContainment) {
   // Verify cursor stays within edit region and surrounding lines unchanged
   Lines fullBuffer = {"xx", "aa", "bb", "yy"};
-  Position initialPos(1, 0), endPos(2, 2);
+  CursorPos initialPos(1, 0), endPos(2, 2);
   Lines editRegion = fullBuffer.getSpan(initialPos, endPos);
   EditBoundary boundary(fullBuffer, initialPos, endPos);
 
   EditResult res = pureDeletionResult(editRegion, boundary);
 
-  forEachValidResult(res.getResults(), editRegion, [&](Position pos, const auto& seq) {
+  forEachValidResult(res.getResults(), editRegion, [&](CursorPos pos, const auto& seq) {
     // Skip visual mode sequences for now
     if (!seq.empty() && seq.view()[0] == 'v') return;
 
-    Position fullBufferPos(pos.line + initialPos.line, pos.col);
+    CursorPos fullBufferPos(pos.line + initialPos.line, pos.col);
     ApplyResult applied = applySequence(fullBuffer, fullBufferPos, seq.str());
 
     EXPECT_EQ(applied.lines[0], "xx") << "Line above modified after '" << seq << "'";
@@ -204,7 +204,7 @@ void verifyEditGoal(NeovimOracle* oracle, const Lines& source,
     for (int c = 0; c < source[r].effectiveSize(); c++) {
       const Result& res = result.getResults()[idx++];
       if (!res.isValid()) continue;
-      Position pos(r + lineOffset, c);
+      CursorPos pos(r + lineOffset, c);
       SimulationResult nvim = oracle->simulate(
           lineOffset == 0 ? source : Lines{}, pos.line, pos.col, res.sequence.str());
       EXPECT_EQ(nvim.lines, expectedGoal)
@@ -219,12 +219,12 @@ TEST_F(EditOptimizer_ManualTest, AutoindentLinewise_MatchingIndent) {
   // cj with matching indent: autoindent matches goal, no adjustment needed
   Lines initial = {"    aaa", "    bbb"};
   Lines goal = {"    xxx"};
-  EditBoundary boundary(initial, Position(0, 0), initial.endPos());
+  EditBoundary boundary(initial, CursorPos(0, 0), initial.endPos());
 
   EditResult res = opt.optimizeEdit(initial, goal, boundary, params);
   ASSERT_TRUE(res.getResults()[0].isValid());
 
-  forEachValidResult(res.getResults(), initial, [&](Position pos, const auto& seq) {
+  forEachValidResult(res.getResults(), initial, [&](CursorPos pos, const auto& seq) {
     SimulationResult nvim = oracle->simulate(initial, pos.line, pos.col, seq.str());
     EXPECT_EQ(nvim.lines, goal)
         << "Goal mismatch for seq='" << seq << "' from " << pos;
@@ -237,12 +237,12 @@ TEST_F(EditOptimizer_ManualTest, AutoindentLinewise_ExcessAutoindent) {
   // Source line has more indent than goal: autoindent 8, goal 4
   Lines initial = {"        aaa", "    bbb"};
   Lines goal = {"    xxx"};
-  EditBoundary boundary(initial, Position(0, 0), initial.endPos());
+  EditBoundary boundary(initial, CursorPos(0, 0), initial.endPos());
 
   EditResult res = opt.optimizeEdit(initial, goal, boundary, params);
   ASSERT_TRUE(res.getResults()[0].isValid());
 
-  forEachValidResult(res.getResults(), initial, [&](Position pos, const auto& seq) {
+  forEachValidResult(res.getResults(), initial, [&](CursorPos pos, const auto& seq) {
     SimulationResult nvim = oracle->simulate(initial, pos.line, pos.col, seq.str());
     EXPECT_EQ(nvim.lines, goal)
         << "Goal mismatch for seq='" << seq << "' from " << pos;
@@ -255,12 +255,12 @@ TEST_F(EditOptimizer_ManualTest, AutoindentLinewise_InsufficientAutoindent) {
   // Source line has less indent than goal: autoindent 2, goal 8
   Lines initial = {"  aaa", "    bbb"};
   Lines goal = {"        xxx"};
-  EditBoundary boundary(initial, Position(0, 0), initial.endPos());
+  EditBoundary boundary(initial, CursorPos(0, 0), initial.endPos());
 
   EditResult res = opt.optimizeEdit(initial, goal, boundary, params);
   ASSERT_TRUE(res.getResults()[0].isValid());
 
-  forEachValidResult(res.getResults(), initial, [&](Position pos, const auto& seq) {
+  forEachValidResult(res.getResults(), initial, [&](CursorPos pos, const auto& seq) {
     SimulationResult nvim = oracle->simulate(initial, pos.line, pos.col, seq.str());
     EXPECT_EQ(nvim.lines, goal)
         << "Goal mismatch for seq='" << seq << "' from " << pos;
@@ -273,12 +273,12 @@ TEST_F(EditOptimizer_ManualTest, AutoindentLinewise_CountedCC) {
   // {n}cc with indent: counted linewise change on indented lines
   Lines initial = {"    aaa", "    bbb", "    ccc"};
   Lines goal = {"    xxx"};
-  EditBoundary boundary(initial, Position(0, 0), initial.endPos());
+  EditBoundary boundary(initial, CursorPos(0, 0), initial.endPos());
 
   EditResult res = opt.optimizeEdit(initial, goal, boundary, params);
   ASSERT_TRUE(res.getResults()[0].isValid());
 
-  forEachValidResult(res.getResults(), initial, [&](Position pos, const auto& seq) {
+  forEachValidResult(res.getResults(), initial, [&](CursorPos pos, const auto& seq) {
     SimulationResult nvim = oracle->simulate(initial, pos.line, pos.col, seq.str());
     EXPECT_EQ(nvim.lines, goal)
         << "Goal mismatch for seq='" << seq << "' from " << pos;
@@ -290,7 +290,7 @@ TEST_F(EditOptimizer_ManualTest, AutoindentLinewise_CountedCC) {
 TEST_F(EditOptimizer_ManualTest, AutoindentLinewise_WithBoundaryContext) {
   // Linewise change with surrounding lines (hasLinesAbove/Below)
   Lines fullBuffer = {"context_above", "    aaa", "    bbb", "context_below"};
-  Position initialPos(1, 0), endPos(2, 7);
+  CursorPos initialPos(1, 0), endPos(2, 7);
   Lines editRegion = fullBuffer.getSpan(initialPos, endPos);
   EditBoundary boundary(fullBuffer, initialPos, endPos);
   Lines goal = {"    xxx"};
@@ -299,8 +299,8 @@ TEST_F(EditOptimizer_ManualTest, AutoindentLinewise_WithBoundaryContext) {
   ASSERT_TRUE(res.getResults()[0].isValid());
 
   Lines expectedFull = {"context_above", "    xxx", "context_below"};
-  forEachValidResult(res.getResults(), editRegion, [&](Position pos, const auto& seq) {
-    Position fullPos(pos.line + initialPos.line, pos.col);
+  forEachValidResult(res.getResults(), editRegion, [&](CursorPos pos, const auto& seq) {
+    CursorPos fullPos(pos.line + initialPos.line, pos.col);
     SimulationResult nvim = oracle->simulate(fullBuffer, fullPos.line, fullPos.col, seq.str());
     EXPECT_EQ(nvim.lines, expectedFull)
         << "Goal mismatch for seq='" << seq << "' from " << fullPos;
@@ -313,12 +313,12 @@ TEST_F(EditOptimizer_ManualTest, AutoindentLinewise_NoIndent) {
   // Linewise change on unindented lines with indented goal
   Lines initial = {"aaa", "bbb"};
   Lines goal = {"    xxx"};
-  EditBoundary boundary(initial, Position(0, 0), initial.endPos());
+  EditBoundary boundary(initial, CursorPos(0, 0), initial.endPos());
 
   EditResult res = opt.optimizeEdit(initial, goal, boundary, params);
   ASSERT_TRUE(res.getResults()[0].isValid());
 
-  forEachValidResult(res.getResults(), initial, [&](Position pos, const auto& seq) {
+  forEachValidResult(res.getResults(), initial, [&](CursorPos pos, const auto& seq) {
     SimulationResult nvim = oracle->simulate(initial, pos.line, pos.col, seq.str());
     EXPECT_EQ(nvim.lines, goal)
         << "Goal mismatch for seq='" << seq << "' from " << pos;
@@ -332,7 +332,7 @@ TEST_F(EditOptimizer_ManualTest, AutoindentLinewise_CollapseWithBS) {
   // ck from line 2 would change lines [1,2], beginLine=1, needing BS to join
   // with prefix line above. Autoindent from indented source line.
   Lines fullBuffer = {"prefix", "    aaa", "    bbb", "suffix"};
-  Position initialPos(1, 0), endPos(2, 7);
+  CursorPos initialPos(1, 0), endPos(2, 7);
   Lines editRegion = fullBuffer.getSpan(initialPos, endPos);
   EditBoundary boundary(fullBuffer, initialPos, endPos);
   Lines goal = {"    xxx"};
@@ -341,8 +341,8 @@ TEST_F(EditOptimizer_ManualTest, AutoindentLinewise_CollapseWithBS) {
   ASSERT_TRUE(res.getResults()[0].isValid());
 
   Lines expectedFull = {"prefix", "    xxx", "suffix"};
-  forEachValidResult(res.getResults(), editRegion, [&](Position pos, const auto& seq) {
-    Position fullPos(pos.line + initialPos.line, pos.col);
+  forEachValidResult(res.getResults(), editRegion, [&](CursorPos pos, const auto& seq) {
+    CursorPos fullPos(pos.line + initialPos.line, pos.col);
     SimulationResult nvim = oracle->simulate(fullBuffer, fullPos.line, fullPos.col, seq.str());
     EXPECT_EQ(nvim.lines, expectedFull)
         << "Goal mismatch for seq='" << seq << "' from " << fullPos;
@@ -358,10 +358,10 @@ TEST_F(EditOptimizer_ManualTest, AutoindentLinewise_CollapseWithBS) {
 TEST_F(EditOptimizer_ManualTest, SentenceDeleteCrossLine_OracleVerified) {
   // d) where the next sentence starts at col 0 of the next line.
   // The half-open range must span the line boundary: [cursor, nextLineCol0).
-  // Regression: getPrevPos(Position(1,0)) collapses to end-of-line-0,
+  // Regression: getPrevPos(CursorPos(1,0)) collapses to end-of-line-0,
   // producing a single-line range that fails to delete the newline.
   Lines lines = {"End.", "Start"};
-  verifySequenceWithOracle(oracle.get(), lines, Position(0, 0), "d)");
+  verifySequenceWithOracle(oracle.get(), lines, CursorPos(0, 0), "d)");
 }
 
 // =============================================================================

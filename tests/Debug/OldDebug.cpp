@@ -7,7 +7,7 @@
 
 #include <gtest/gtest.h>
 
-// #include "Optimizer/Optimizer/Config.h"
+// #include "Optimizer/Keyboard/Config.h"
 // #include "Optimizer/EditOptimizer/EditOptimizer.h"
 // #include "Optimizer/BufferIndex.h"
 // #include "Boundary/EditBoundary.h"
@@ -15,7 +15,7 @@
 // #include "VimCore/VimCore.h"
 // #include "VimCore/VimEndpointUtils.h"
 // #include "VimCore/VimMotionUtils.h"
-// #include "VimTypes/SentenceEdgeType.h"
+// #include "Types/SentenceEdgeType.h"
 // #include "Interpreter/MotionInterpreter.h"
 // #include "Interpreter/EditInterpreter.h"
 
@@ -106,7 +106,7 @@ protected:
 
   // Create boundary for full buffer deletion (no constraints)
   EditBoundary makeFullBufferBoundary(const Lines& source) {
-    return EditBoundary(source, Position(0, 0), source.endPos());
+    return EditBoundary(source, CursorPos(0, 0), source.endPos());
   }
 };
 
@@ -297,13 +297,13 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentence2ParenFailure) {
 
   // Our simulateMotions
   cerr << "\n=== Our simulateMotions ===" << endl;
-  Position sim1 = simulateMotions(Position(3, 21), "(", subBuffer);
+  CursorPos sim1 = simulateMotions(CursorPos(3, 21), "(", subBuffer);
   cerr << "simulateMotions((3,21), \"(\") = (" << sim1.line << ", " << sim1.col << ")" << endl;
 
-  Position sim2 = simulateMotions(sim1, "(", subBuffer);
+  CursorPos sim2 = simulateMotions(sim1, "(", subBuffer);
   cerr << "simulateMotions((" << sim1.line << "," << sim1.col << "), \"(\") = (" << sim2.line << ", " << sim2.col << ")" << endl;
 
-  Position sim2paren = simulateMotions(Position(3, 21), "2(", subBuffer);
+  CursorPos sim2paren = simulateMotions(CursorPos(3, 21), "2(", subBuffer);
   cerr << "simulateMotions((3,21), \"2(\") = (" << sim2paren.line << ", " << sim2paren.col << ")" << endl;
 
   // BufferIndex sentence positions
@@ -377,16 +377,16 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceMixedContentFailure) {
   auto r1 = oracle_->simulate(subBuffer, 3, 20, "(");
   cerr << "Neovim: ( from (3,20) -> (" << r1.row << ", " << r1.col << ")" << endl;
 
-  Position sim1 = simulateMotions(Position(3, 20), "(", subBuffer);
+  CursorPos sim1 = simulateMotions(CursorPos(3, 20), "(", subBuffer);
   cerr << "Ours:   ( from (3,20) -> (" << sim1.line << ", " << sim1.col << ")" << endl;
 
   // Step through multiple ( motions
   cerr << "\n=== Multiple ( motions from (3,20) ===" << endl;
-  Position pos(3, 20);
+  CursorPos pos(3, 20);
   int row = 3, col = 20;
   for (int i = 1; i <= 6; i++) {
     auto nvim = oracle_->simulate(subBuffer, row, col, "(");
-    Position ours = simulateMotions(pos, "(", subBuffer);
+    CursorPos ours = simulateMotions(pos, "(", subBuffer);
 
     bool match = (nvim.row == ours.line && nvim.col == ours.col);
     cerr << i << "(: neovim=(" << nvim.row << "," << nvim.col << ") "
@@ -402,7 +402,7 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceMixedContentFailure) {
   cerr << "\n=== VimCore::motionSentenceEndpoint trace ===" << endl;
   using namespace VimCore;
 
-  Position ep = motionSentenceEndpoint(Position(3, 20), subBuffer, false, SentenceEdgeType::NextEdge);
+  CursorPos ep = motionSentenceEndpoint(CursorPos(3, 20), subBuffer, false, SentenceEdgeType::NextEdge);
   cerr << "motionSentenceEndpoint((3,20), backward, NextEdge) = (" << ep.line << ", " << ep.col << ")" << endl;
 
   // Test what findCurrentSentenceStart returns
@@ -428,7 +428,7 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceMixedContentFailure) {
 TEST_F(DebugTest, DISABLED_InvestigateSingleLineSurrounded) {
   // From Boundary_SingleLineSurrounded failure
   Lines fullBuffer = {"xx", "hello", "xx"};
-  Position initialPos(1, 0), endPos(1, 5);
+  CursorPos initialPos(1, 0), endPos(1, 5);
   Lines editRegion = fullBuffer.getSpan(initialPos, endPos);
   EditBoundary boundary(fullBuffer, initialPos, endPos);
 
@@ -457,20 +457,20 @@ TEST_F(DebugTest, DISABLED_InvestigateSingleLineSurrounded) {
 }
 
 TEST_F(DebugTest, DISABLED_InvestigatePosition11) {
-  // Position 11 finds d{de (cost 5) instead of dddd (cost 4) with 10K iterations
+  // CursorPos 11 finds d{de (cost 5) instead of dddd (cost 4) with 10K iterations
   // With 1M iterations, finds d{D (cost 3) - actually better!
   // Conclusion: The fix works, but search budget affects results
   Lines initialLines = {"aa bb", "arst neio"};
   EditBoundary boundary(initialLines, {0, 0}, initialLines.endPos());
 
-  // Position 11 is line 1, col 6 ('e' in "arst neio")
-  cerr << "\n=== Position 11 Investigation ===" << endl;
+  // CursorPos 11 is line 1, col 6 ('e' in "arst neio")
+  cerr << "\n=== CursorPos 11 Investigation ===" << endl;
   cerr << "Buffer: " << initialLines << endl;
-  cerr << "Position 11 is (1, 6) = '" << initialLines[1][6] << "'" << endl;
+  cerr << "CursorPos 11 is (1, 6) = '" << initialLines[1][6] << "'" << endl;
 
   // Trace the optimal d{D sequence
   Lines buf = initialLines;
-  Position pos(1, 6);
+  CursorPos pos(1, 6);
   Mode mode = Mode::Normal;
 
   cerr << "\nTracing d{D from (1,6):" << endl;
@@ -525,7 +525,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJWithSuffix) {
 
   // Track our state
   Lines ourBuf = fullBuffer;
-  Position ourPos(0, 4);
+  CursorPos ourPos(0, 4);
   Mode ourMode = Mode::Normal;
 
   for (const auto& cmd : cmds) {
@@ -583,17 +583,17 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceIndexFailure) {
 
   // Test simulateMotions directly
   cerr << "\n=== Direct simulateMotions Test ===" << endl;
-  Position simResult = simulateMotions(Position(3, 6), "2(b", subBuffer);
+  CursorPos simResult = simulateMotions(CursorPos(3, 6), "2(b", subBuffer);
   cerr << "simulateMotions((3,6), \"2(b\", subBuffer) = (" << simResult.line << ", " << simResult.col << ")" << endl;
 
   // Step by step with simulateMotions
-  Position step1 = simulateMotions(Position(3, 6), "(", subBuffer);
+  CursorPos step1 = simulateMotions(CursorPos(3, 6), "(", subBuffer);
   cerr << "simulateMotions((3,6), \"(\", subBuffer) = (" << step1.line << ", " << step1.col << ")" << endl;
 
-  Position step2 = simulateMotions(step1, "(", subBuffer);
+  CursorPos step2 = simulateMotions(step1, "(", subBuffer);
   cerr << "simulateMotions((" << step1.line << "," << step1.col << "), \"(\", subBuffer) = (" << step2.line << ", " << step2.col << ")" << endl;
 
-  Position step3 = simulateMotions(step2, "b", subBuffer);
+  CursorPos step3 = simulateMotions(step2, "b", subBuffer);
   cerr << "simulateMotions((" << step2.line << "," << step2.col << "), \"b\", subBuffer) = (" << step3.line << ", " << step3.col << ")" << endl;
 
   cerr << "\n=== BufferIndex Sentence Positions ===" << endl;
@@ -642,8 +642,8 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceIndexFailure) {
 
   // What our optimizer would predict
   cerr << "\n--- getTwoClosest results for sentence ---" << endl;
-  Position goal(0, 0);  // backwards search
-  auto [under, over] = subIdx.getTwoClosest(LandingType::Sentence, Position(3, 6), goal);
+  CursorPos goal(0, 0);  // backwards search
+  auto [under, over] = subIdx.getTwoClosest(LandingType::Sentence, CursorPos(3, 6), goal);
   if (under.valid()) {
     cerr << "Undershoot: count=" << under.count << " pos=(" << under.pos.line << ", " << under.pos.col << ")" << endl;
   }
@@ -657,16 +657,16 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceIndexFailure) {
   using namespace VimCore;
 
   // Single ( from (3, 6)
-  Position ep1 = motionSentenceEndpoint(Position(3, 6), subBuffer, false, SentenceEdgeType::NextEdge);
+  CursorPos ep1 = motionSentenceEndpoint(CursorPos(3, 6), subBuffer, false, SentenceEdgeType::NextEdge);
   cerr << "motionSentenceEndpoint((3,6), backward) = (" << ep1.line << ", " << ep1.col << ")" << endl;
   cerr << "Neovim ( from (3,6) = (" << subResult1.row << ", " << subResult1.col << ")" << endl;
 
   // Single ( from ep1
-  Position ep2 = motionSentenceEndpoint(ep1, subBuffer, false, SentenceEdgeType::NextEdge);
+  CursorPos ep2 = motionSentenceEndpoint(ep1, subBuffer, false, SentenceEdgeType::NextEdge);
   cerr << "motionSentenceEndpoint((" << ep1.line << "," << ep1.col << "), backward) = (" << ep2.line << ", " << ep2.col << ")" << endl;
 
   // b from ep2
-  Position pos_after_b = ep2;
+  CursorPos pos_after_b = ep2;
   motionB(pos_after_b, subBuffer, false);  // Use motionB which sets skipCurrent=true
   cerr << "After b from (" << ep2.line << "," << ep2.col << ") = (" << pos_after_b.line << ", " << pos_after_b.col << ")" << endl;
   cerr << "Neovim 2(b from (3,6) = (" << subResult3.row << ", " << subResult3.col << ")" << endl;

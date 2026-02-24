@@ -1,22 +1,15 @@
 #pragma once
 #include <climits>
-#include <ostream>
 #include <utility>
+#include "Types/Pos.h"
 
-struct Position {
-  int line = 0;
-  int col = 0;
+// Adds targetCol for full vim-state cursor position representation
+struct CursorPos : Pos {
   int targetCol = 0;  // The column we "want" to be at (for sticky column behavior)
 
-private:
-
-public:
-  Position() = default;
-  constexpr Position(int l, int c) : line(l), targetCol(c), col(c) {}
-  constexpr Position(int l, int c, int tc) : line(l), targetCol(tc), col(c) {}
-
-  // Validity check - positions are invalid when line < 0 (sentinel value)
-  bool isValid() const { return line >= 0; }
+  CursorPos() = default;
+  constexpr CursorPos(int l, int c) : Pos(l, c), targetCol(c) {}
+  constexpr CursorPos(int l, int c, int tc) : Pos(l, c), targetCol(tc) {}
 
   // ==========================================================================
   // Column Assignment Methods
@@ -51,32 +44,13 @@ public:
     col = clampedCol;
   }
 
-  bool operator==(const Position& other) const {
-    return line == other.line && col == other.col && targetCol == other.targetCol;
-  }
-  bool operator!=(const Position& other) const {
-    return !(*this == other);
-  }
-  bool operator<(const Position& other) const {
-    if (line != other.line) return line < other.line;
-    return col < other.col;
-  }
-  bool operator>(const Position& other) const {
-    return other < *this;
-  }
-  bool operator<=(const Position& other) const {
-    return !(other < *this);
-  }
-  bool operator>=(const Position& other) const {
-    return !(*this < other);
-  }
-  void swap(Position& other) noexcept {
+  void swap(CursorPos& other) noexcept {
     std::swap(line, other.line);
     std::swap(col, other.col);
     std::swap(targetCol, other.targetCol);
   }
 
-  friend std::ostream& operator<<(std::ostream& os, const Position& pos) {
+  friend std::ostream& operator<<(std::ostream& os, const CursorPos& pos) {
     os << "(" << pos.line << ", " << pos.col << ")";
     if(pos.targetCol != pos.col) os << "[" << pos.targetCol << "]" << "\n";
     return os;
@@ -85,7 +59,7 @@ public:
 
 // Sentinel value for "position outside boundary" / "operation would cross boundary"
 // Used by endpoint functions when the computed position would exceed given bounds.
-constexpr Position POSITION_OUTSIDE_BOUNDARY{-1, -1, -1};
+constexpr CursorPos POSITION_OUTSIDE_BOUNDARY{-1, -1, -1};
 
 // Special targetCol value for "end of line" (Vim's curswant after $).
 // When targetCol is this value, vertical movements keep cursor at line end.

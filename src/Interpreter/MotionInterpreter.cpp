@@ -4,7 +4,7 @@
 #include <limits>
 #include <ostream>
 
-#include "VimTypes/NavContext.h"
+#include "Types/NavContext.h"
 #include "VimCore/VimCore.h"
 #include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimOptions.h"
@@ -114,7 +114,7 @@ std::vector<ParsedMotion> parseMotions(std::string_view seq) {
 // Directly modifies the position and mode passed in. 
 // We may think of passing in BufferIndex to improve simulating certain count motions.
 // However, I am not sure if it is worth it, as count > 1 is called only in simulateMotion(). It is helpful to compare vs repeated applications as well.
-void applyParsedMotion(Position& pos, Mode& mode,
+void applyParsedMotion(CursorPos& pos, Mode& mode,
                        const ParsedMotion& parsedMotion,
                        const Lines& lines,
                        const NavContext& navContext) {
@@ -280,13 +280,13 @@ void applyParsedMotion(Position& pos, Mode& mode,
 }
 
 
-void applySingleMotion(Position& pos, Mode& mode, string_view motion, const Lines& lines, const NavContext& navContext) {
+void applySingleMotion(CursorPos& pos, Mode& mode, string_view motion, const Lines& lines, const NavContext& navContext) {
   applyParsedMotion(pos, mode, ParsedMotion(motion, 0), lines, navContext);
 }
 
 // Return the result if we were to simulate motionSeq at current state
 // Important that pos is passed by copy! We wouldn't want to change any state.
-Position simulateMotions(Position pos, std::string_view motionSeq, const Lines& lines,
+CursorPos simulateMotions(CursorPos pos, std::string_view motionSeq, const Lines& lines,
                          const NavContext& navContext) {
   assert(!lines.empty() && "Lines can't be empty");
   Mode mode = Mode::Normal;  // Motions don't change mode, so use dummy

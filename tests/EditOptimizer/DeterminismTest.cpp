@@ -8,11 +8,11 @@
 #include <gtest/gtest.h>
 
 #include "Boundary/EditBoundary.h"
-#include "VimTypes/NavContext.h"
-#include "Optimizer/Config.h"
+#include "Types/NavContext.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Utils/EditTestGenerators.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 #include "Utils/RandomGeneration.h"
 
 using namespace std;

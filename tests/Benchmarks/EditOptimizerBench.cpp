@@ -12,7 +12,7 @@
 
 #include "Benchmarks/BenchUtils.h"
 #include "Boundary/EditBoundary.h"
-#include "Optimizer/Config.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Optimizer/EditOptimizer/EditOptimizerParams.h"
 #include "Utils/RandomGeneration.h"
@@ -40,7 +40,7 @@ struct BenchmarkSetup {
   BenchmarkSetup(const Lines& lines)
       : initialLines(lines),
         goalLines({""}),
-        boundary(lines, Position(0, 0), lines.endPos()) {}
+        boundary(lines, CursorPos(0, 0), lines.endPos()) {}
 
   // Custom goal
   BenchmarkSetup(const Lines& initial, const Lines& goal, const EditBoundary& b)
@@ -152,28 +152,28 @@ static void BM_EditBoundaryConstraints(benchmark::State& state, int boundaryType
       case 0: // None
         break;
       case 1: { // Prefix
-        Position firstPos(0, 15);
-        Position endPos = fullBuffer.endPos();
+        CursorPos firstPos(0, 15);
+        CursorPos endPos = fullBuffer.endPos();
         Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
         EditBoundary boundary(fullBuffer, firstPos, endPos);
         setup = BenchmarkSetup(editRegion, {""}, boundary);
         break;
       }
       case 2: { // Suffix
-        Position firstPos(0, 0);
+        CursorPos firstPos(0, 0);
         int lastLine = fullBuffer.lastLine();
         int midCol = static_cast<int>(fullBuffer[lastLine].size()) / 2;
-        Position endPos(lastLine, midCol + 1);
+        CursorPos endPos(lastLine, midCol + 1);
         Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
         EditBoundary boundary(fullBuffer, firstPos, endPos);
         setup = BenchmarkSetup(editRegion, {""}, boundary);
         break;
       }
       case 3: { // Both
-        Position firstPos(0, 10);
+        CursorPos firstPos(0, 10);
         int lastLine = fullBuffer.lastLine();
         int lastLineLen = static_cast<int>(fullBuffer[lastLine].size());
-        Position endPos(lastLine, max(1, lastLineLen - 10 + 1));
+        CursorPos endPos(lastLine, max(1, lastLineLen - 10 + 1));
         Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
         EditBoundary boundary(fullBuffer, firstPos, endPos);
         setup = BenchmarkSetup(editRegion, {""}, boundary);
@@ -192,7 +192,7 @@ static void BM_EditMultiLineFixed(benchmark::State& state, int caseNum) {
     BenchmarkSetup setup({""});
 
     auto makeSetup = [](const Lines& buffer, const Lines& goal,
-                        Position editBegin, Position editEnd) {
+                        CursorPos editBegin, CursorPos editEnd) {
       Lines editRegion = buffer.getSpan(editBegin, editEnd);
       EditBoundary boundary(buffer, editBegin, editEnd);
       return BenchmarkSetup(editRegion, goal, boundary);
@@ -202,7 +202,7 @@ static void BM_EditMultiLineFixed(benchmark::State& state, int caseNum) {
       case 0: { // 2L->1w
         Lines buffer = {"I saw a pig in barn in Switzerland", "Inconspicuous, even"};
         Lines goal = {"Florida"};
-        setup = makeSetup(buffer, goal, Position(0, 23), Position(1, 19));
+        setup = makeSetup(buffer, goal, CursorPos(0, 23), CursorPos(1, 19));
         break;
       }
       case 1: { // 3L->1w
@@ -210,7 +210,7 @@ static void BM_EditMultiLineFixed(benchmark::State& state, int caseNum) {
                         "and then runs around the park",
                         "before going home to sleep"};
         Lines goal = {"walked away"};
-        setup = makeSetup(buffer, goal, Position(0, 20), Position(2, 26));
+        setup = makeSetup(buffer, goal, CursorPos(0, 20), CursorPos(2, 26));
         break;
       }
       case 2: { // 5L+bnd
@@ -220,7 +220,7 @@ static void BM_EditMultiLineFixed(benchmark::State& state, int caseNum) {
                         "delete me line four",
                         "delete me line five and suffix here"};
         Lines goal = {"replaced"};
-        setup = makeSetup(buffer, goal, Position(0, 13), Position(4, 22));
+        setup = makeSetup(buffer, goal, CursorPos(0, 13), CursorPos(4, 22));
         break;
       }
     }
@@ -239,7 +239,7 @@ static void BM_EditMultiLineRandom(benchmark::State& state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
     Lines buffer = generateBuffer(numLines, 25);
     Lines goal = {"replacement"};
-    EditBoundary boundary(buffer, Position(0, 0), buffer.endPos());
+    EditBoundary boundary(buffer, CursorPos(0, 0), buffer.endPos());
     auto setup = BenchmarkSetup(buffer, goal, boundary);
     runBenchmark(setup, withCap({}, setup), totalStats);
     iter++;
@@ -281,8 +281,8 @@ static void BM_EditSmallEmbeddedChange(benchmark::State& state) {
     int prefixLen = min(4, static_cast<int>(fullBuffer[0].size()) / 2);
     int lastLine = static_cast<int>(fullBuffer.size()) - 1;
     int suffixLen = min(4, static_cast<int>(fullBuffer[lastLine].size()) / 2);
-    Position firstPos(0, prefixLen);
-    Position endPos(lastLine, static_cast<int>(fullBuffer[lastLine].size()) - suffixLen);
+    CursorPos firstPos(0, prefixLen);
+    CursorPos endPos(lastLine, static_cast<int>(fullBuffer[lastLine].size()) - suffixLen);
     if (endPos.col <= 0) endPos.col = static_cast<int>(fullBuffer[lastLine].size());
     Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
     EditBoundary boundary(fullBuffer, firstPos, endPos);

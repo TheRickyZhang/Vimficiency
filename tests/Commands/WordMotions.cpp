@@ -8,8 +8,8 @@
 #include <gtest/gtest.h>
 
 #include "Interpreter/MotionInterpreter.h"
-#include "VimTypes/NavContext.h"
-#include "VimTypes/Lines.h"
+#include "Types/NavContext.h"
+#include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
@@ -34,9 +34,9 @@ protected:
   }
 
   // Get expected result from Neovim
-  static Position neovimMotion(const Lines& lines, int startRow, int startCol, const string& keys) {
+  static CursorPos neovimMotion(const Lines& lines, int startRow, int startCol, const string& keys) {
     auto result = oracle->simulate(lines, startRow, startCol, keys);
-    return Position(result.row, result.col);
+    return CursorPos(result.row, result.col);
   }
 };
 
@@ -56,7 +56,7 @@ struct RandomMotionTest {
 RandomMotionTest generateRandomMotionBuffer(int numLines) {
   RandomMotionTest test;
   test.lines = randomLines(numLines, 5, 40);
-  Position pos = randomPosition(test.lines);
+  CursorPos pos = randomPosition(test.lines);
   test.cursorLine = pos.line;
   test.cursorCol = pos.col;
   return test;
@@ -66,7 +66,7 @@ RandomMotionTest generateRandomMotionBuffer(int numLines) {
 // Helper: Compare positions
 // =============================================================================
 
-bool positionsMatch(Position ours, Position neovim, const string& motion,
+bool positionsMatch(CursorPos ours, CursorPos neovim, const string& motion,
                     const RandomMotionTest& test, bool verbose = false) {
   bool match = (ours.line == neovim.line && ours.col == neovim.col);
 
@@ -99,12 +99,12 @@ void testMotionRandom(NeovimOracle& oracle, const string& motion, int numIterati
     auto test = generateRandomMotionBuffer(numLines);
 
     // Our implementation
-    Position start(test.cursorLine, test.cursorCol);
-    Position ours = simulateMotions(start, motion, test.lines);
+    CursorPos start(test.cursorLine, test.cursorCol);
+    CursorPos ours = simulateMotions(start, motion, test.lines);
 
     // Neovim ground truth
     auto result = oracle.simulate(test.lines, test.cursorLine, test.cursorCol, motion);
-    Position neovim(result.row, result.col);
+    CursorPos neovim(result.row, result.col);
 
     if (!positionsMatch(ours, neovim, motion, test, failures < 5)) {
       failures++;
@@ -190,64 +190,64 @@ TEST_F(WordMotionsTest, BigGE_RandomMultiLine) {
 
 TEST_F(WordMotionsTest, W_AtEndOfLine_CrossesToNextLine) {
   Lines lines = {"hello world", "next line"};
-  Position result = simulateMotions({0, 6}, "w", lines);  // Start at 'w' in world
-  Position expected = neovimMotion(lines, 0, 6, "w");
+  CursorPos result = simulateMotions({0, 6}, "w", lines);  // Start at 'w' in world
+  CursorPos expected = neovimMotion(lines, 0, 6, "w");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
 }
 
 TEST_F(WordMotionsTest, W_AtLastWord_StaysAtEnd) {
   Lines lines = {"hello world"};
-  Position result = simulateMotions({0, 6}, "w", lines);  // Start at 'w' in world
-  Position expected = neovimMotion(lines, 0, 6, "w");
+  CursorPos result = simulateMotions({0, 6}, "w", lines);  // Start at 'w' in world
+  CursorPos expected = neovimMotion(lines, 0, 6, "w");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
 }
 
 TEST_F(WordMotionsTest, E_FromWordStart_GoesToWordEnd) {
   Lines lines = {"hello world"};
-  Position result = simulateMotions({0, 0}, "e", lines);  // Start at 'h'
-  Position expected = neovimMotion(lines, 0, 0, "e");
+  CursorPos result = simulateMotions({0, 0}, "e", lines);  // Start at 'h'
+  CursorPos expected = neovimMotion(lines, 0, 0, "e");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
 }
 
 TEST_F(WordMotionsTest, E_FromWordEnd_GoesToNextWordEnd) {
   Lines lines = {"hello world"};
-  Position result = simulateMotions({0, 4}, "e", lines);  // Start at 'o' (end of hello)
-  Position expected = neovimMotion(lines, 0, 4, "e");
+  CursorPos result = simulateMotions({0, 4}, "e", lines);  // Start at 'o' (end of hello)
+  CursorPos expected = neovimMotion(lines, 0, 4, "e");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
 }
 
 TEST_F(WordMotionsTest, B_FromWordStart_GoesToPreviousWordStart) {
   Lines lines = {"hello world"};
-  Position result = simulateMotions({0, 6}, "b", lines);  // Start at 'w' in world
-  Position expected = neovimMotion(lines, 0, 6, "b");
+  CursorPos result = simulateMotions({0, 6}, "b", lines);  // Start at 'w' in world
+  CursorPos expected = neovimMotion(lines, 0, 6, "b");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
 }
 
 TEST_F(WordMotionsTest, B_FromMiddleOfWord_GoesToWordStart) {
   Lines lines = {"hello world"};
-  Position result = simulateMotions({0, 8}, "b", lines);  // Start at 'r' in world
-  Position expected = neovimMotion(lines, 0, 8, "b");
+  CursorPos result = simulateMotions({0, 8}, "b", lines);  // Start at 'r' in world
+  CursorPos expected = neovimMotion(lines, 0, 8, "b");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
 }
 
 TEST_F(WordMotionsTest, GE_FromWordStart_GoesToPreviousWordEnd) {
   Lines lines = {"hello world"};
-  Position result = simulateMotions({0, 6}, "ge", lines);  // Start at 'w' in world
-  Position expected = neovimMotion(lines, 0, 6, "ge");
+  CursorPos result = simulateMotions({0, 6}, "ge", lines);  // Start at 'w' in world
+  CursorPos expected = neovimMotion(lines, 0, 6, "ge");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
 }
 
 TEST_F(WordMotionsTest, GE_FromWordEnd_GoesToPreviousWordEnd) {
   Lines lines = {"hello world test"};
-  Position result = simulateMotions({0, 10}, "ge", lines);  // Start at 'd' (end of world)
-  Position expected = neovimMotion(lines, 0, 10, "ge");
+  CursorPos result = simulateMotions({0, 10}, "ge", lines);  // Start at 'd' (end of world)
+  CursorPos expected = neovimMotion(lines, 0, 10, "ge");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
 }
@@ -255,24 +255,24 @@ TEST_F(WordMotionsTest, GE_FromWordEnd_GoesToPreviousWordEnd) {
 // Symbol/keyword boundary tests
 TEST_F(WordMotionsTest, W_KeywordToSymbol) {
   Lines lines = {"hello.world"};
-  Position result = simulateMotions({0, 0}, "w", lines);
-  Position expected = neovimMotion(lines, 0, 0, "w");
+  CursorPos result = simulateMotions({0, 0}, "w", lines);
+  CursorPos expected = neovimMotion(lines, 0, 0, "w");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
 }
 
 TEST_F(WordMotionsTest, W_SymbolToKeyword) {
   Lines lines = {"...hello"};
-  Position result = simulateMotions({0, 0}, "w", lines);
-  Position expected = neovimMotion(lines, 0, 0, "w");
+  CursorPos result = simulateMotions({0, 0}, "w", lines);
+  CursorPos expected = neovimMotion(lines, 0, 0, "w");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
 }
 
 TEST_F(WordMotionsTest, BigW_TreatsSymbolsAsWord) {
   Lines lines = {"hello...world"};
-  Position result = simulateMotions({0, 0}, "W", lines);  // Should skip past "hello..." to "world"
-  Position expected = neovimMotion(lines, 0, 0, "W");
+  CursorPos result = simulateMotions({0, 0}, "W", lines);  // Should skip past "hello..." to "world"
+  CursorPos expected = neovimMotion(lines, 0, 0, "W");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
 }
@@ -280,16 +280,16 @@ TEST_F(WordMotionsTest, BigW_TreatsSymbolsAsWord) {
 // Whitespace handling
 TEST_F(WordMotionsTest, W_FromWhitespace) {
   Lines lines = {"hello   world"};
-  Position result = simulateMotions({0, 6}, "w", lines);  // Start in whitespace
-  Position expected = neovimMotion(lines, 0, 6, "w");
+  CursorPos result = simulateMotions({0, 6}, "w", lines);  // Start in whitespace
+  CursorPos expected = neovimMotion(lines, 0, 6, "w");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
 }
 
 TEST_F(WordMotionsTest, E_FromWhitespace) {
   Lines lines = {"hello   world"};
-  Position result = simulateMotions({0, 6}, "e", lines);  // Start in whitespace
-  Position expected = neovimMotion(lines, 0, 6, "e");
+  CursorPos result = simulateMotions({0, 6}, "e", lines);  // Start in whitespace
+  CursorPos expected = neovimMotion(lines, 0, 6, "e");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
 }
@@ -297,16 +297,16 @@ TEST_F(WordMotionsTest, E_FromWhitespace) {
 // Multi-line crossing
 TEST_F(WordMotionsTest, W_CrossesEmptyLine) {
   Lines lines = {"hello", "", "world"};
-  Position result = simulateMotions({0, 0}, "w", lines);
-  Position expected = neovimMotion(lines, 0, 0, "w");
+  CursorPos result = simulateMotions({0, 0}, "w", lines);
+  CursorPos expected = neovimMotion(lines, 0, 0, "w");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
 }
 
 TEST_F(WordMotionsTest, B_CrossesEmptyLine) {
   Lines lines = {"hello", "", "world"};
-  Position result = simulateMotions({2, 0}, "b", lines);  // Start at 'w' in world
-  Position expected = neovimMotion(lines, 2, 0, "b");
+  CursorPos result = simulateMotions({2, 0}, "b", lines);  // Start at 'w' in world
+  CursorPos expected = neovimMotion(lines, 2, 0, "b");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
 }
@@ -314,24 +314,24 @@ TEST_F(WordMotionsTest, B_CrossesEmptyLine) {
 // Edge cases at buffer boundaries
 TEST_F(WordMotionsTest, W_AtBufferEnd) {
   Lines lines = {"hello"};
-  Position result = simulateMotions({0, 4}, "w", lines);  // At last char
-  Position expected = neovimMotion(lines, 0, 4, "w");
+  CursorPos result = simulateMotions({0, 4}, "w", lines);  // At last char
+  CursorPos expected = neovimMotion(lines, 0, 4, "w");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
 }
 
 TEST_F(WordMotionsTest, B_AtBufferStart) {
   Lines lines = {"hello"};
-  Position result = simulateMotions({0, 0}, "b", lines);  // At first char
-  Position expected = neovimMotion(lines, 0, 0, "b");
+  CursorPos result = simulateMotions({0, 0}, "b", lines);  // At first char
+  CursorPos expected = neovimMotion(lines, 0, 0, "b");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
 }
 
 TEST_F(WordMotionsTest, GE_AtBufferStart) {
   Lines lines = {"hello"};
-  Position result = simulateMotions({0, 0}, "ge", lines);  // At first char
-  Position expected = neovimMotion(lines, 0, 0, "ge");
+  CursorPos result = simulateMotions({0, 0}, "ge", lines);  // At first char
+  CursorPos expected = neovimMotion(lines, 0, 0, "ge");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
 }

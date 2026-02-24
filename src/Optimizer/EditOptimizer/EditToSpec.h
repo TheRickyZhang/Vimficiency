@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "VimTypes/EdgeType.h"
+#include "Types/EdgeType.h"
 #include "Keyboard/KeyedSequence.h"
 
 // =============================================================================

@@ -13,7 +13,7 @@ namespace VimCore {
 // Multi-Line Buffer Operations
 // =============================================================================
 
-void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
+void deleteRange(Lines& lines, const Range& range, CursorPos& pos, Mode mode) {
   Range r = range;
   r.normalize();
   if (r.isEmpty()) return;
@@ -109,7 +109,7 @@ void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode) {
   pos.setCol(newCol);
 }
 
-void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos,
+void deleteRangeLinewise(Lines& lines, const LineRange& range, CursorPos& pos,
                          bool hasLinesBelow) {
   LineRange r = range;
   r.normalize();
@@ -148,7 +148,7 @@ void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos,
   }
 }
 
-void insertText(Lines& lines, Position& pos, string_view text) {
+void insertText(Lines& lines, CursorPos& pos, string_view text) {
   if (text.empty()) return;
 
   assert(!lines.empty() && "Lines invariant: buffer always has at least one line");
@@ -187,7 +187,7 @@ void insertText(Lines& lines, Position& pos, string_view text) {
       if (i == textLines.size() - 1) {
         // Last line: insert text + after
         lines.insert(lines.begin() + insertPos, textLines[i] + after);
-        pos = Position(insertPos, static_cast<int>(textLines[i].size()));
+        pos = CursorPos(insertPos, static_cast<int>(textLines[i].size()));
       } else {
         lines.insert(lines.begin() + insertPos, textLines[i]);
       }
@@ -196,7 +196,7 @@ void insertText(Lines& lines, Position& pos, string_view text) {
   }
 }
 
-void joinLines(Lines& lines, Position& pos, bool addSpace) {
+void joinLines(Lines& lines, CursorPos& pos, bool addSpace) {
   assert (pos.line+1 < lines.size());
 
   string& currentLine = lines[pos.line];
@@ -242,15 +242,15 @@ void joinLines(Lines& lines, Position& pos, bool addSpace) {
   pos.setCol(min(originalLen, lastCol));
 }
 
-void openLineBelow(Lines& lines, Position& pos) {
+void openLineBelow(Lines& lines, CursorPos& pos) {
   assert(!lines.empty());
   assert(pos.line >= 0 && pos.line < static_cast<int>(lines.size()));
 
   lines.insert(lines.begin() + pos.line + 1, "");
-  pos = Position(pos.line + 1, 0);
+  pos = CursorPos(pos.line + 1, 0);
 }
 
-void openLineAbove(Lines& lines, Position& pos) {
+void openLineAbove(Lines& lines, CursorPos& pos) {
   assert(!lines.empty());
   assert(pos.line >= 0 && pos.line < static_cast<int>(lines.size()));
 

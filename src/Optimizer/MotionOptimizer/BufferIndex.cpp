@@ -8,8 +8,8 @@ using namespace VimCore;
 BufferIndex::BufferIndex(const Lines& buffer) {
   if (buffer.empty()) return;
 
-  Position firstNonBlank{-1, -1};
-  Position lastNonBlank{-1, -1};
+  CursorPos firstNonBlank{-1, -1};
+  CursorPos lastNonBlank{-1, -1};
 
   bool prevWasSentenceEnd = false;
   bool prevLineWasEmpty = true;  // Treat sentinel as empty for paragraph detection
@@ -101,13 +101,13 @@ BufferIndex::BufferIndex(const Lines& buffer) {
   }
 }
 
-Position BufferIndex::apply(LandingType type, Position current, int count) const {
+CursorPos BufferIndex::apply(LandingType type, CursorPos current, int count) const {
   if (count == 0) return current;
 
   const auto& positions = get(type);
   if (positions.empty()) return current;
 
-  Position result = current;
+  CursorPos result = current;
 
   if (count > 0) {
     // Forward: find positions > current
@@ -132,7 +132,7 @@ Position BufferIndex::apply(LandingType type, Position current, int count) const
 // Returns [undershoot, overshoot] positions closest to goalPos, with counts from currPos.
 // Returns invalid results (count=0) when no valid positions exist in the search range.
 std::array<RepeatMotionResult, 2>
-BufferIndex::getTwoClosest(LandingType type, Position currPos, Position goalPos) const {
+BufferIndex::getTwoClosest(LandingType type, CursorPos currPos, CursorPos goalPos) const {
   const auto& positions = get(type);
 
   // Empty positions vector - return invalid results
@@ -175,18 +175,18 @@ BufferIndex::getTwoClosest(LandingType type, Position currPos, Position goalPos)
 
   if (goalPos > currPos) {
     return calc2(positions.begin(), positions.end(),
-                 [](const Position& a, const Position& b) { return a < b; });
+                 [](const CursorPos& a, const CursorPos& b) { return a < b; });
   } else {
     // reverse view is descending, so comparator must flip
     return calc2(positions.rbegin(), positions.rend(),
-                 [](const Position& a, const Position& b) { return b < a; });
+                 [](const CursorPos& a, const CursorPos& b) { return b < a; });
   }
 }
 
 
 std::vector<RepeatMotionResult>
-BufferIndex::getClosestInRange(LandingType type, Position currPos,
-                               Position rangeBegin, Position rangeEnd) const {
+BufferIndex::getClosestInRange(LandingType type, CursorPos currPos,
+                               CursorPos rangeBegin, CursorPos rangeEnd) const {
   const auto& positions = get(type);
   if (positions.empty()) return {};
 

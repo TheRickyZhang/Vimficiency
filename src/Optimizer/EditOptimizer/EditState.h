@@ -6,12 +6,12 @@
 #include <string_view>
 
 #include "Keyboard/Config.h"
-#include "VimTypes/LineRange.h"
-#include "VimTypes/Mode.h"
-#include "VimTypes/Position.h"
-#include "VimTypes/Range.h"
+#include "Types/LineRange.h"
+#include "Types/Mode.h"
+#include "Types/CursorPos.h"
+#include "Types/Range.h"
 #include "Effort/RunningEffort.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 #include "Keyboard/PhysicalKeys.h"
 #include "VimCore/VimEditUtils.h"
 
@@ -27,7 +27,7 @@ struct EditStateKey {
   Mode mode;
   int startIndex;  // Include startIndex so each starting position has independent search
 
-  EditStateKey(size_t lh, int lc, Position p, Mode m, int idx)
+  EditStateKey(size_t lh, int lc, CursorPos p, Mode m, int idx)
       : linesHash(lh), lineCount(lc), line(p.line), col(p.col), mode(m), startIndex(idx) {}
 
   bool operator==(const EditStateKey& other) const {
@@ -55,7 +55,7 @@ struct EditStateKeyHash {
 
 class EditState {
   Lines lines;                    // Current buffer content
-  Position pos;                   // Cursor position
+  CursorPos pos;                   // Cursor position
   Mode mode = Mode::Normal;       // Current editing mode
   int startIndex;                 // Which starting position this search is for
   size_t linesHash_;              // Precomputed FNV-1a hash of buffer content
@@ -68,7 +68,7 @@ class EditState {
   double cost_ = 0.0;             // Priority = effort + heuristic
 
 public:
-  EditState(Lines lines, Position pos, int startIndex, double initialCost)
+  EditState(Lines lines, CursorPos pos, int startIndex, double initialCost)
     : lines(std::move(lines)), pos(pos), startIndex(startIndex),
       linesHash_(hashLines(this->lines)), cost_(initialCost) {}
 
@@ -80,8 +80,8 @@ public:
   // Getters
   // -----------------------------------------------------------------------------
   const Lines& getLines() const { return lines; }
-  Position getPos() const { return pos; }
-  void setPos(Position newPos) { pos = newPos; }
+  CursorPos getPos() const { return pos; }
+  void setPos(CursorPos newPos) { pos = newPos; }
   Mode getMode() const { return mode; }
   int getStartIndex() const { return startIndex; }
   size_t getLinesHash() const { return linesHash_; }

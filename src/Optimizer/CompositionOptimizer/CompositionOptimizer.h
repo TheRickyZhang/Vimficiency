@@ -6,20 +6,20 @@
 #include "CompositionOptimizerParams.h"
 #include "CompositionSearchContext.h"
 #include "DiffState.h"
-#include "Optimizer/Config.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Optimizer/Result.h"
 #include "Optimizer/SearchStats.h"
 
 #include "Boundary/MotionBoundary.h"
-#include "VimTypes/NavContext.h"
-#include "VimTypes/Position.h"
-#include "VimTypes/Lines.h"
+#include "Types/NavContext.h"
+#include "Types/CursorPos.h"
+#include "Types/Lines.h"
 
 struct CompositionResult {
   std::vector<Result> results;
   SearchStats stats;
-  Position goalPos;  // Cursor position after last edit completes
+  CursorPos goalPos;  // Cursor position after last edit completes
   std::vector<DiffState> diffs;  // Character-level diff regions used
 
   // Composition-specific explored states (only populated when trackExploredStates=true)
@@ -44,9 +44,9 @@ struct CompositionOptimizer {
   CompositionResult optimize(
     // Core information
     const Lines& initialLines,
-    const Position initialPos,
+    const CursorPos initialPos,
     const Lines& goalLines,
-    const Position goalPos,
+    const CursorPos goalPos,
 
     // Search tuning
     CompositionOptimizerParams params = {},

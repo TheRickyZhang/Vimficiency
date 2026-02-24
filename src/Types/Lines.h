@@ -8,7 +8,7 @@
 #include <string_view>
 #include <vector>
 
-#include "VimTypes/Position.h"
+#include "Types/CursorPos.h"
 
 struct Line final : std::string {
   using std::string::string;
@@ -78,37 +78,37 @@ struct Lines final : std::vector<Line> {
   int getSize(int line) const { return static_cast<int>(data()[line].size()); }
   bool isEmpty() const { return size() == 1 && data()[0].empty(); }
 
-  Position getNextPos(Position pos) const {
+  CursorPos getNextPos(CursorPos pos) const {
     if (pos.col + 1 < static_cast<int>((*this)[pos.line].size())) {
-      return Position(pos.line, pos.col + 1);
+      return CursorPos(pos.line, pos.col + 1);
     }
     if (pos.line + 1 < static_cast<int>(size())) {
-      return Position(pos.line + 1, 0);
+      return CursorPos(pos.line + 1, 0);
     }
     return pos;
   }
 
-  Position getPrevPos(Position pos) const {
+  CursorPos getPrevPos(CursorPos pos) const {
     if (pos.col > 0) {
-      return Position(pos.line, pos.col - 1);
+      return CursorPos(pos.line, pos.col - 1);
     }
     if (pos.line > 0) {
       int prevLine = pos.line - 1;
       int prevCol = (*this)[prevLine].empty() ? 0 : static_cast<int>((*this)[prevLine].size()) - 1;
-      return Position(prevLine, prevCol);
+      return CursorPos(prevLine, prevCol);
     }
     return pos;
   }
 
-  Position lastPos() const { return Position(lastLine(), back().lastCol()); }
-  Position endPos() const { return Position(lastLine(), back().effectiveSize()); }
+  CursorPos lastPos() const { return CursorPos(lastLine(), back().lastCol()); }
+  CursorPos endPos() const { return CursorPos(lastLine(), back().effectiveSize()); }
 
-  char get(const Position& pos) const {
+  char get(const CursorPos& pos) const {
     assert(pos.line < static_cast<int>(size()) && "Lines::get() position out of bounds");
     return data()[pos.line].get(pos.col);
   }
 
-  Lines getSpan(const Position& begin, const Position& end) const {
+  Lines getSpan(const CursorPos& begin, const CursorPos& end) const {
     Lines result;
     if (begin.line == end.line) {
       result.push_back(data()[begin.line].substr(begin.col, end.col - begin.col));
@@ -122,7 +122,7 @@ struct Lines final : std::vector<Line> {
     return result;
   }
 
-  int spanSize(const Position& begin, const Position& end) const {
+  int spanSize(const CursorPos& begin, const CursorPos& end) const {
     if (begin.line == end.line) {
       return end.col - begin.col;
     }

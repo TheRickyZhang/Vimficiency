@@ -12,7 +12,7 @@
 #include <benchmark/benchmark.h>
 
 #include "Benchmarks/BenchUtils.h"
-#include "Optimizer/Config.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Utils/RandomGeneration.h"
 

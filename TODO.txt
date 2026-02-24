@@ -1,15 +1,20 @@
 == Current priority stack:
 Insert Mode handling (just a lot more stuff)     ********* (very very difficult)
-Implement CompositionOptimizer
-Add compositionOptimizer human tests
-Add repeated j to motionOptimizer plz :sob:
+
+Review implementation of BufferIndex in optimizeToRange() (is it exploring correctly on lines / columns? Correct passed in from composition?)
+
+Review usage of new Pos / CursorPos semantics
+
+Review
+
 
 
 == TODO Stack
-Review implementation of BufferIndex in optimizeToRange() (is it exploring correctly on lines / columns?)
-Make range, lineRange half-open
+Verify universal half-open semantics
 9dedexC explored when C would suffice?
 Overall, not enough other early branches explored; heuristic model locks in one branch pretty early
+
+Overall, just verify for any missed ideas in CompositionOptimizer exploration
 
 
 == Later:

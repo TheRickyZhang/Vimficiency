@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Boundary/BoundaryContext.h"
-#include "VimTypes/Position.h"
-#include "VimTypes/Lines.h"
+#include "Types/CursorPos.h"
+#include "Types/Lines.h"
 
 // Forward declaration
 struct EditBoundary;
@@ -25,7 +25,7 @@ public:
 
   // Construct from buffer context, optionally inheriting from parent
   // endPos is exclusive: one past the last valid cursor position on the end line
-  MotionBoundary(const Lines& lines, Position beginPos, Position endPos,
+  MotionBoundary(const Lines& lines, CursorPos beginPos, CursorPos endPos,
                  const MotionBoundary& parent = noParent());
 
   // The default constructor has NO PARENT, so basically any motions are possible
@@ -33,7 +33,7 @@ public:
 
   // Construct with explicit external context flags (for FFI)
   // endPos is exclusive: one past the last valid cursor position on the end line
-  MotionBoundary(const Lines& lines, Position beginPos, Position endPos,
+  MotionBoundary(const Lines& lines, CursorPos beginPos, CursorPos endPos,
                  bool hasLinesAbove, bool hasLinesBelow);
 
   // Construct from EditBoundary (for conversion when switching optimizer types)
@@ -48,5 +48,5 @@ public:
   // Access underlying context (for EditBoundary construction)
   const BoundaryContext& context() const { return ctx_; }
 
-  bool isPositionInBounds(const Position& pos, int lastLine, int lastLineLength) const;
+  bool isPositionInBounds(const CursorPos& pos, int lastLine, int lastLineLength) const;
 };

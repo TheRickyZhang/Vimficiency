@@ -1,6 +1,6 @@
 #include "Interpreter/SequenceFormatting.h"
 
-#include "VimTypes/Sequence.h"
+#include "Types/Sequence.h"
 
 #include "Interpreter/SequenceParser.h"
 #include "Utils/StringUtils.h"

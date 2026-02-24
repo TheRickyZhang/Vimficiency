@@ -45,3 +45,13 @@ if (!bufferRef) {
   bufferRef = {&localBufferIndex, 0};
 }
 creates a buffer index every time at first even though the goal was to use a precomputed buffer index if known!
+
+
+
+❯   // Convert to range params
+    MotionOptimizerRangeParams rangeParams;
+    static_cast<MotionOptimizerParams&>(rangeParams) = params;
+    rangeParams.allowMultiplePerPosition = true;
+  \
+  \
+This code is so fucking stupid. First of all, the point of different types is to not be able to cats them like this. Second, now you are completely ruining he the semantics by making it range-style when it is clearly not!!

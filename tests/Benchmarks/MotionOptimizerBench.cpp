@@ -12,7 +12,7 @@
 
 #include "Benchmarks/BenchUtils.h"
 #include "Boundary/MotionBoundary.h"
-#include "Optimizer/Config.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizerParams.h"
 #include "Utils/RandomGeneration.h"
@@ -52,13 +52,13 @@ static Config benchConfig = Config::uniform();
 struct BenchmarkSetup {
   Lines lines;
   MotionBoundary boundary{};
-  Position firstPos;
-  Position lastPos;
+  CursorPos firstPos;
+  CursorPos lastPos;
 
   BenchmarkSetup(const Lines& lines) : lines(lines) {
     firstPos = randomFirstPos(this->lines);
     lastPos = randomLastPos(this->lines);
-    Position boundaryEnd(lastPos.line, lastPos.col + 1);
+    CursorPos boundaryEnd(lastPos.line, lastPos.col + 1);
     boundary = MotionBoundary(this->lines, firstPos, boundaryEnd, true, true);
   }
 };
@@ -66,9 +66,9 @@ struct BenchmarkSetup {
 struct RangeBenchmarkSetup {
   Lines lines;
   MotionBoundary boundary{};
-  Position initialPos;
-  Position rangeBegin;
-  Position rangeEnd;
+  CursorPos initialPos;
+  CursorPos rangeBegin;
+  CursorPos rangeEnd;
 
   RangeBenchmarkSetup(const Lines& lines) : lines(lines) {
     initialPos = {0, 0};

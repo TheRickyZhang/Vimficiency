@@ -9,11 +9,11 @@
 #include <memory>
 
 #include "Boundary/EditBoundary.h"
-#include "VimTypes/Position.h"
-#include "Optimizer/Config.h"
+#include "Types/CursorPos.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Utils/EditTestGenerators.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
@@ -58,8 +58,8 @@ TEST_F(EditOptimizerOutputCorrectness, SingleLineEmbedded) {
       const Result& r = res.getResults()[i];
       if (!r.isValid()) continue;
 
-      Position editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
-      Position bufferPos = test.toFullBufferPos(editPos);
+      CursorPos editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
+      CursorPos bufferPos = test.toFullBufferPos(editPos);
 
       total++;
       const auto& seq = r.getSequenceString();
@@ -97,7 +97,7 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineFullBuffer) {
       const Result& r = res.getResults()[i];
       if (!r.isValid()) continue;
 
-      Position pos = fromFlatIndex(static_cast<int>(i), source);
+      CursorPos pos = fromFlatIndex(static_cast<int>(i), source);
 
       total++;
       const auto& seq = r.getSequenceString();
@@ -175,8 +175,8 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineEmbedded) {
       const Result& r = res.getResults()[i];
       if (!r.isValid()) continue;
 
-      Position editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
-      Position bufferPos = test.toFullBufferPos(editPos);
+      CursorPos editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
+      CursorPos bufferPos = test.toFullBufferPos(editPos);
 
       total++;
       const auto& seq = r.getSequenceString();
@@ -224,7 +224,7 @@ TEST_F(EditOptimizerOutputCorrectness, SingleLine_Change) {
       const Result& r = res.getResults()[i];
       if (!r.isValid()) continue;
 
-      Position pos = fromFlatIndex(static_cast<int>(i), source);
+      CursorPos pos = fromFlatIndex(static_cast<int>(i), source);
 
       total++;
       const auto& seq = r.getSequenceString();
@@ -266,7 +266,7 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLine_FullBufferChange) {
       const Result& r = res.getResults()[i];
       if (!r.isValid()) continue;
 
-      Position pos = fromFlatIndex(static_cast<int>(i), source);
+      CursorPos pos = fromFlatIndex(static_cast<int>(i), source);
 
       total++;
       const auto& seq = r.getSequenceString();
@@ -322,8 +322,8 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLine_EmbeddedChange) {
       const Result& r = res.getResults()[i];
       if (!r.isValid()) continue;
 
-      Position editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
-      Position bufferPos = test.toFullBufferPos(editPos);
+      CursorPos editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
+      CursorPos bufferPos = test.toFullBufferPos(editPos);
 
       total++;
       const auto& seq = r.getSequenceString();

@@ -4,11 +4,11 @@
 #include <string>
 #include <vector>
 
-#include "Optimizer/Config.h"
+#include "Keyboard/Config.h"
 #include "Boundary/MotionBoundary.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Session/Snapshot.h"
-#include "VimTypes/NavContext.h"
+#include "Types/NavContext.h"
 #include "Utils/Debug.h"
 
 using namespace std;
@@ -28,8 +28,8 @@ int main(int argc, char* argv[]) {
   Snapshot start_snapshot = load_snapshot(start_path); 
   Snapshot end_snapshot = load_snapshot(end_path); 
 
-  Position start_position(start_snapshot.row, start_snapshot.col);
-  Position end_position(end_snapshot.row, end_snapshot.col);
+  CursorPos start_position(start_snapshot.row, start_snapshot.col);
+  CursorPos end_position(end_snapshot.row, end_snapshot.col);
 
   debug("starting position:", start_snapshot.row, start_snapshot.col);
   debug("ending position:", end_snapshot.row, end_snapshot.col);
@@ -45,7 +45,7 @@ int main(int argc, char* argv[]) {
   // CLI uses full file snapshots, so don't exclude G/gg (default MotionBoundary)
   MotionBoundary boundary;
 
-  // Pass Position and fresh RunningEffort (no prior typing context from CLI)
+  // Pass CursorPos and fresh RunningEffort (no prior typing context from CLI)
   vector<Result> res = o.optimize(
     start_snapshot.lines,
     start_position,

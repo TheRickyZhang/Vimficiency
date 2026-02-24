@@ -9,12 +9,12 @@
 
 #include <gtest/gtest.h>
 
-#include "VimTypes/NavContext.h"
-#include "Optimizer/Config.h"
+#include "Types/NavContext.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Boundary/MotionBoundary.h"
 #include "Effort/RunningEffort.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 #include "Utils/TestUtils.h"  // hasSequence, hasSequenceStartingWith, printResultsDebug
 
 using namespace std;
@@ -41,8 +41,8 @@ NavContext MotionOptimizerHumanApprovalTests::navContext;
 
 TEST_F(MotionOptimizerHumanApprovalTests, Motion_SimpleHorizontal) {
   Lines lines = {"hello world test"};
-  Position start(0, 0);
-  Position end(0, 5);  // At space before "world"
+  CursorPos start(0, 0);
+  CursorPos end(0, 5);  // At space before "world"
 
   MotionOptimizer opt(config);
   auto results = opt.optimize(
@@ -58,8 +58,8 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_SimpleHorizontal) {
 TEST_F(MotionOptimizerHumanApprovalTests, Motion_VerticalJump) {
   // Moving down 3 lines
   Lines lines = {"line one", "line two", "line three", "line four"};
-  Position start(0, 0);
-  Position end(3, 0);
+  CursorPos start(0, 0);
+  CursorPos end(3, 0);
 
   MotionOptimizer opt(config);
   auto results = opt.optimize(
@@ -82,8 +82,8 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_VerticalJump) {
 TEST_F(MotionOptimizerHumanApprovalTests, Motion_WordMotions) {
   // Navigate using word motions
   Lines lines = {"one two three four five"};
-  Position start(0, 0);
-  Position end(0, 14);  // Start of "four"
+  CursorPos start(0, 0);
+  CursorPos end(0, 14);  // Start of "four"
 
   MotionOptimizer opt(config);
   auto results = opt.optimize(
@@ -102,8 +102,8 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_WordMotions) {
 TEST_F(MotionOptimizerHumanApprovalTests, Motion_MixedMotions) {
   // Complex movement requiring mixed motions
   Lines lines = {"first line here", "second line", "third line end"};
-  Position start(0, 0);
-  Position end(2, 11);  // At "end"
+  CursorPos start(0, 0);
+  CursorPos end(2, 11);  // At "end"
 
   MotionOptimizer opt(config);
   auto results = opt.optimize(

@@ -8,9 +8,9 @@ using namespace std;
 namespace VimTextObjectsLegacy {
 
 namespace {
-Position onePastOnSameLine(const Lines& lines, const Position& inclusivePos) {
+CursorPos onePastOnSameLine(const Lines& lines, const CursorPos& inclusivePos) {
   int lineLen = static_cast<int>(lines[inclusivePos.line].size());
-  return Position(inclusivePos.line, std::min(inclusivePos.col + 1, lineLen));
+  return CursorPos(inclusivePos.line, std::min(inclusivePos.col + 1, lineLen));
 }
 } // namespace
 
@@ -18,7 +18,7 @@ Position onePastOnSameLine(const Lines& lines, const Position& inclusivePos) {
 // Quote text objects (i", a", i', a')
 // -----------------------------------------------------------------------------
 
-Range innerQuote(const Lines& lines, Position pos, char quote) {
+Range innerQuote(const Lines& lines, CursorPos pos, char quote) {
   int n = static_cast<int>(lines.size());
   if (n == 0) return Range(pos, pos);
 
@@ -76,10 +76,10 @@ Range innerQuote(const Lines& lines, Position pos, char quote) {
     return RANGE_OUTSIDE_BOUNDARY;
   }
 
-  return Range(Position(line, openQuote + 1), Position(line, closeQuote));
+  return Range(CursorPos(line, openQuote + 1), CursorPos(line, closeQuote));
 }
 
-Range aroundQuote(const Lines& lines, Position pos, char quote) {
+Range aroundQuote(const Lines& lines, CursorPos pos, char quote) {
   Range inner = innerQuote(lines, pos, quote);
 
   // If inner is empty/invalid, return it
@@ -95,7 +95,7 @@ Range aroundQuote(const Lines& lines, Position pos, char quote) {
                    ? inner.end.col + 1
                    : inner.end.col;
 
-  return Range(Position(line, startCol), Position(line, endCol));
+  return Range(CursorPos(line, startCol), CursorPos(line, endCol));
 }
 
 // -----------------------------------------------------------------------------
@@ -103,12 +103,12 @@ Range aroundQuote(const Lines& lines, Position pos, char quote) {
 // -----------------------------------------------------------------------------
 
 // Helper: find matching bracket, handling nesting
-static pair<Position, Position> findMatchingBrackets(
-    const Lines& lines, Position pos, char open, char close) {
+static pair<CursorPos, CursorPos> findMatchingBrackets(
+    const Lines& lines, CursorPos pos, char open, char close) {
 
   int n = static_cast<int>(lines.size());
-  Position openPos(-1, -1);
-  Position closePos(-1, -1);
+  CursorPos openPos(-1, -1);
+  CursorPos closePos(-1, -1);
 
   // Search backward for opening bracket
   int depth = 0;
@@ -137,7 +137,7 @@ static pair<Position, Position> findMatchingBrackets(
         if (ln[c] == close) depth++;
         else if (ln[c] == open) {
           if (depth == 0) {
-            openPos = Position(searchLine, c);
+            openPos = CursorPos(searchLine, c);
             goto foundOpen;
           }
           depth--;
@@ -146,11 +146,11 @@ static pair<Position, Position> findMatchingBrackets(
       searchLine--;
     }
   } else {
-    openPos = Position(line, col);
+    openPos = CursorPos(line, col);
   }
 
 foundOpen:
-  if (openPos.line < 0) return {Position(-1, -1), Position(-1, -1)};
+  if (openPos.line < 0) return {CursorPos(-1, -1), CursorPos(-1, -1)};
 
   // Search forward for closing bracket
   depth = 1;
@@ -166,7 +166,7 @@ foundOpen:
       else if (ln[c] == close) {
         depth--;
         if (depth == 0) {
-          closePos = Position(searchLine, c);
+          closePos = CursorPos(searchLine, c);
           return {openPos, closePos};
         }
       }
@@ -174,10 +174,10 @@ foundOpen:
     searchLine++;
   }
 
-  return {Position(-1, -1), Position(-1, -1)};
+  return {CursorPos(-1, -1), CursorPos(-1, -1)};
 }
 
-Range innerBracket(const Lines& lines, Position pos, char open, char close) {
+Range innerBracket(const Lines& lines, CursorPos pos, char open, char close) {
   auto [openPos, closePos] = findMatchingBrackets(lines, pos, open, close);
 
   if (openPos.line < 0 || closePos.line < 0) {
@@ -186,7 +186,7 @@ Range innerBracket(const Lines& lines, Position pos, char open, char close) {
 
   // Inner: exclude the brackets
   // Start after open bracket
-  Position start = openPos;
+  CursorPos start = openPos;
   start.setCol(start.col + 1);
   if (start.col >= static_cast<int>(lines[start.line].size())) {
     start.line++;
@@ -194,7 +194,7 @@ Range innerBracket(const Lines& lines, Position pos, char open, char close) {
   }
 
   // End is exclusive: at close bracket position.
-  Position end = closePos;
+  CursorPos end = closePos;
 
   // Handle empty brackets like ()
   if (start >= end) {
@@ -204,7 +204,7 @@ Range innerBracket(const Lines& lines, Position pos, char open, char close) {
   return Range(start, end);
 }
 
-Range aroundBracket(const Lines& lines, Position pos, char open, char close) {
+Range aroundBracket(const Lines& lines, CursorPos pos, char open, char close) {
   auto [openPos, closePos] = findMatchingBrackets(lines, pos, open, close);
 
   if (openPos.line < 0 || closePos.line < 0) {

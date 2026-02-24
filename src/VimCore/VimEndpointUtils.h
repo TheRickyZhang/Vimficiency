@@ -1,11 +1,11 @@
 #pragma once
 
-#include "VimTypes/EdgeType.h"
-#include "VimTypes/LineEdgeType.h"
-#include "VimTypes/SentenceEdgeType.h"
-#include "VimTypes/Range.h"
-#include "VimTypes/LineRange.h"
-#include "VimTypes/Lines.h"
+#include "Types/EdgeType.h"
+#include "Types/LineEdgeType.h"
+#include "Types/SentenceEdgeType.h"
+#include "Types/Range.h"
+#include "Types/LineRange.h"
+#include "Types/Lines.h"
 
 // Forward declaration
 struct EditBoundary;
@@ -45,7 +45,7 @@ namespace VimCore {
 
 // Templated version for compile-time dispatch on Forward and Edge
 template<bool Forward, EdgeType Edge>
-Position motionWordEndpoint(Position cursor,
+CursorPos motionWordEndpoint(CursorPos cursor,
                             const Lines& lines,
                             bool big,
                             bool skipCurrent,
@@ -54,7 +54,7 @@ Position motionWordEndpoint(Position cursor,
                             bool lineBounded = false);
 
 // Runtime dispatch version (for compatibility)
-Position motionWordEndpoint(Position cursor,
+CursorPos motionWordEndpoint(CursorPos cursor,
                             const Lines& lines,
                             bool forward,
                             EdgeType edgeType,
@@ -68,7 +68,7 @@ Position motionWordEndpoint(Position cursor,
 // For forward motions:
 // - WordEdge/GapEdge endpoints are inclusive and are advanced by one char.
 // - NextEdge endpoints are already exclusive.
-Position wordEndpointToRangeEnd(Position endpoint,
+CursorPos wordEndpointToRangeEnd(CursorPos endpoint,
                                          const Lines& lines,
                                          EdgeType edgeType);
 
@@ -80,7 +80,7 @@ Position wordEndpointToRangeEnd(Position endpoint,
 //   diw/diW: (Backward, WordEdge) + (Forward, WordEdge)
 //   daw/daW: depends on cursor position and trailing whitespace
 Range textObjectCore(
-    Position cursor,
+    CursorPos cursor,
     const Lines& lines,
     bool isInner,       // true for iw/iW, false for aw/aW
     bool isBigWord);    // true for W variants
@@ -89,7 +89,7 @@ Range textObjectCore(
 // Clamps POSITION_OUTSIDE_BOUNDARY to buffer edges - always returns valid Range.
 // Used for executing text objects (no boundary checking).
 Range textObject(
-    Position cursor,
+    CursorPos cursor,
     const Lines& lines,
     bool isInner,       // true for iw/iW, false for aw/aW
     bool isBigWord);    // true for W variants
@@ -106,7 +106,7 @@ Range textObject(
 //   hasLinesAbove:      crosses if backward motion goes past line 0
 //   hasLinesBelow:      crosses if forward motion goes past last line
 Range textObjectRange(
-    Position cursor,
+    CursorPos cursor,
     const Lines& lines,
     bool isInner,        // true for iw/iW, false for aw/aW
     bool isBigWord,      // true for W variants
@@ -183,13 +183,13 @@ LineRange paragraphTextObjectRange(int cursorLine,
 
 // Templated version for compile-time dispatch on Forward and Edge
 template<bool Forward, SentenceEdgeType Edge>
-Position motionSentenceEndpoint(Position cursor,
+CursorPos motionSentenceEndpoint(CursorPos cursor,
                                 const Lines& lines,
                                 int boundaryOffset = 0,
                                 bool hasLinesOutside = false);
 
 // Runtime dispatch version (for internal use in text object functions)
-Position motionSentenceEndpoint(Position cursor,
+CursorPos motionSentenceEndpoint(CursorPos cursor,
                                 const Lines& lines,
                                 bool forward,
                                 SentenceEdgeType edgeType);
@@ -198,7 +198,7 @@ Position motionSentenceEndpoint(Position cursor,
 // For forward motions:
 // - SentenceEdge/GapEdge endpoints are inclusive and are advanced by one char.
 // - NextEdge endpoints are already exclusive.
-Position sentenceEndpointToRangeEnd(Position endpoint,
+CursorPos sentenceEndpointToRangeEnd(CursorPos endpoint,
                                              const Lines& lines,
                                              SentenceEdgeType edgeType);
 
@@ -209,11 +209,11 @@ Position sentenceEndpointToRangeEnd(Position endpoint,
 // From boundary-logic.md:
 //   dis: (Backward, SentenceEdge) + (Forward, SentenceEdge)
 //   das: depends on cursor position and trailing whitespace
-Range sentenceTextObjectRange(Position cursor,
+Range sentenceTextObjectRange(CursorPos cursor,
                               const Lines& lines,
                               bool isInner,
-                              Position leftBoundary = POSITION_OUTSIDE_BOUNDARY,
-                              Position rightBoundary = POSITION_OUTSIDE_BOUNDARY);
+                              CursorPos leftBoundary = POSITION_OUTSIDE_BOUNDARY,
+                              CursorPos rightBoundary = POSITION_OUTSIDE_BOUNDARY);
 
 // =============================================================================
 // Scroll Endpoint Computation
@@ -250,7 +250,7 @@ constexpr int COL_OUTSIDE_BOUNDARY = -1;
 // Boundary check:
 //   forward:  if on last line and !boundary.atLineEnd(), returns COL_OUTSIDE_BOUNDARY
 //   backward: if on first line and !boundary.atLineStart(), returns COL_OUTSIDE_BOUNDARY
-int motionLineEndpoint(Position cursor,
+int motionLineEndpoint(CursorPos cursor,
                        const Lines& lines,
                        bool forward,
                        const EditBoundary& boundary);
@@ -262,7 +262,7 @@ int motionLineEndpoint(Position cursor,
 //   - cursor is on a middle line (not first or last), OR
 //   - cursor is on first line AND boundary.atLineStart(), OR
 //   - cursor is on last line AND boundary.atLineEnd()
-LineRange lineDeleteRange(Position cursor,
+LineRange lineDeleteRange(CursorPos cursor,
                           const Lines& lines,
                           const EditBoundary& boundary);
 

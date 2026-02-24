@@ -1,7 +1,7 @@
 #pragma once
 
-#include "VimTypes/Range.h"
-#include "VimTypes/Lines.h"
+#include "Types/Range.h"
+#include "Types/Lines.h"
 
 // =============================================================================
 // These are still used - don't delete! Arbitrary implementation of inner/outer quote/bracket
@@ -16,11 +16,11 @@
 namespace VimTextObjectsLegacy {
 
 // Quote text objects (i", a", i', a', i`, a`)
-Range innerQuote(const Lines& lines, Position pos, char quote);
-Range aroundQuote(const Lines& lines, Position pos, char quote);
+Range innerQuote(const Lines& lines, CursorPos pos, char quote);
+Range aroundQuote(const Lines& lines, CursorPos pos, char quote);
 
 // Bracket/paren text objects (i(, a(, i{, a{, i[, a[, i<, a<)
-Range innerBracket(const Lines& lines, Position pos, char open, char close);
-Range aroundBracket(const Lines& lines, Position pos, char open, char close);
+Range innerBracket(const Lines& lines, CursorPos pos, char open, char close);
+Range aroundBracket(const Lines& lines, CursorPos pos, char open, char close);
 
 } // namespace VimTextObjectsLegacy

@@ -8,12 +8,12 @@
 
 #include <gtest/gtest.h>
 
-#include "VimTypes/NavContext.h"
-#include "Optimizer/Config.h"
+#include "Types/NavContext.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Boundary/EditBoundary.h"
 #include "Optimizer/EditOptimizer/EditOptimizerParams.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 
 using namespace std;
 
@@ -82,7 +82,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTop) {
     "arstn arstn",
   };
   // Edit region: from " " in first line to last char
-  Position firstPos(0, 5), endPos(1, 11);
+  CursorPos firstPos(0, 5), endPos(1, 11);
   Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
   EditBoundary boundary(fullBuffer, firstPos, endPos);
 
@@ -99,7 +99,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleBottom) {
     "arstn arstn",
   };
   // Edit region: from first char to " " in second line
-  Position firstPos(0, 0), endPos(1, 6);
+  CursorPos firstPos(0, 0), endPos(1, 6);
   Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
   EditBoundary boundary(fullBuffer, firstPos, endPos);
 
@@ -116,7 +116,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTopAndBottom) {
     "arstn arstn",
   };
   // Edit region: from first " " to second " " (middle portion)
-  Position firstPos(0, 5), endPos(1, 6);
+  CursorPos firstPos(0, 5), endPos(1, 6);
   Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
   EditBoundary boundary(fullBuffer, firstPos, endPos);
 

@@ -8,12 +8,12 @@
 #include <gtest/gtest.h>
 
 #include "Interpreter/MotionInterpreter.h"
-#include "VimTypes/NavContext.h"
-#include "Optimizer/Config.h"
+#include "Types/NavContext.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Boundary/MotionBoundary.h"
 #include "Effort/RunningEffort.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomGeneration.h"
 
@@ -30,8 +30,8 @@ using namespace std;
 struct EmbeddedMotionTest {
   Lines fullBuffer;       // Complete buffer sent to Neovim
   Lines subBuffer;        // Extracted region for optimizer
-  Position subStart;      // Start position in sub-buffer coords
-  Position fullStart;     // Same position in full-buffer coords
+  CursorPos subStart;      // Start position in sub-buffer coords
+  CursorPos fullStart;     // Same position in full-buffer coords
   int subBufferStartLine; // Line offset of sub-buffer within full buffer
   MotionBoundary boundary;
 };
@@ -81,33 +81,33 @@ protected:
     int maxCol = test.subBuffer[subLine].empty() ? 0 : static_cast<int>(test.subBuffer[subLine].size()) - 1;
     int col = RandomGen::range(0, max(0, maxCol));
 
-    test.subStart = Position(subLine, col);
-    test.fullStart = Position(test.subBufferStartLine + subLine, col);
+    test.subStart = CursorPos(subLine, col);
+    test.fullStart = CursorPos(test.subBufferStartLine + subLine, col);
 
     // Set up boundary from full buffer positions
-    Position firstPos(test.subBufferStartLine, 0);
-    Position endPos(endLine, test.fullBuffer[endLine].effectiveSize());
+    CursorPos firstPos(test.subBufferStartLine, 0);
+    CursorPos endPos(endLine, test.fullBuffer[endLine].effectiveSize());
     test.boundary = MotionBoundary(test.fullBuffer, firstPos, endPos);
 
     return test;
   }
 
   // Convert sub-buffer position to full-buffer position
-  static Position toFullBufferPos(const Position& subPos, int subBufferStartLine) {
-    return Position(subPos.line + subBufferStartLine, subPos.col);
+  static CursorPos toFullBufferPos(const CursorPos& subPos, int subBufferStartLine) {
+    return CursorPos(subPos.line + subBufferStartLine, subPos.col);
   }
 
   // Convert full-buffer position to sub-buffer position (with bounds checking)
-  static pair<bool, Position> toSubBufferPos(const Position& fullPos, int subBufferStartLine, int subBufferLines) {
+  static pair<bool, CursorPos> toSubBufferPos(const CursorPos& fullPos, int subBufferStartLine, int subBufferLines) {
     int subLine = fullPos.line - subBufferStartLine;
     if (subLine < 0 || subLine >= subBufferLines) {
-      return {false, Position(0, 0)};
+      return {false, CursorPos(0, 0)};
     }
-    return {true, Position(subLine, fullPos.col)};
+    return {true, CursorPos(subLine, fullPos.col)};
   }
 
   // Run optimizer on sub-buffer
-  static vector<Result> runOnSubBuffer(const Lines& subBuffer, Position start, Position end,
+  static vector<Result> runOnSubBuffer(const Lines& subBuffer, CursorPos start, CursorPos end,
                                        const MotionBoundary& boundary) {
     MotionOptimizer opt(Config::uniform());
     return opt.optimize(subBuffer, start, end, {},
@@ -178,7 +178,7 @@ TEST_F(MotionOptimizerOutputCorrectness, SubBufferMotionCorrectness) {
     // Pick a random end position within the sub-buffer
     int endLine = RandomGen::range(0, static_cast<int>(test.subBuffer.size()) - 1);
     int maxEndCol = test.subBuffer[endLine].empty() ? 0 : static_cast<int>(test.subBuffer[endLine].size()) - 1;
-    Position subEnd(endLine, RandomGen::range(0, max(0, maxEndCol)));
+    CursorPos subEnd(endLine, RandomGen::range(0, max(0, maxEndCol)));
 
     // Run optimizer on sub-buffer
     auto results = runOnSubBuffer(test.subBuffer, test.subStart, subEnd, test.boundary);
@@ -198,10 +198,10 @@ TEST_F(MotionOptimizerOutputCorrectness, SubBufferMotionCorrectness) {
         oracle->restart();
         continue;
       }
-      Position neovimEnd(neovimResult.row, neovimResult.col);
+      CursorPos neovimEnd(neovimResult.row, neovimResult.col);
 
       // Apply same sequence to sub-buffer using our simulation
-      Position ourEnd = simulateMotions(test.subStart, seq.view(), test.subBuffer);
+      CursorPos ourEnd = simulateMotions(test.subStart, seq.view(), test.subBuffer);
 
       // Convert Neovim result to sub-buffer coords
       auto [inBounds, neovimSubPos] = toSubBufferPos(neovimEnd, test.subBufferStartLine,

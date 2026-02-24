@@ -1,27 +1,26 @@
 #pragma once
 
 #include <vector>
-#include <string>
 #include <string_view>
 #include <tuple>
 
-#include "VimTypes/EdgeType.h"
-#include "VimTypes/Lines.h"
+#include "Types/EdgeType.h"
+#include "Types/Lines.h"
 
 namespace VimCore {
 
 // =============================================================================
-// Position Helpers
+// CursorPos Helpers
 // =============================================================================
 
 // Clamp column to valid range for given line
 int clampCol(const Lines& lines, int col, int lineIdx);
 
 // Move column by dx, clamping to valid range
-void moveCol(Position& pos, const Lines& lines, int dx);
+void moveCol(CursorPos& pos, const Lines& lines, int dx);
 
 // Move line by dy, clamping to valid range and updating column
-void moveLine(Position& pos, const Lines& lines, int dy);
+void moveLine(CursorPos& pos, const Lines& lines, int dy);
 
 // =============================================================================
 // Word Motions
@@ -42,7 +41,7 @@ void moveLine(Position& pos, const Lines& lines, int dy);
 //   Backward + NextEdge -> ge/gE (to end of previous word)
 
 // Motion that clamps result to valid positions (standard vim behavior)
-void motionWord(Position& pos,
+void motionWord(CursorPos& pos,
                 const Lines& lines,
                 bool forward,
                 EdgeType edgeType,
@@ -50,28 +49,28 @@ void motionWord(Position& pos,
                 bool skipCurrent = false);
 
 // Named word motion forwarders
-void motionW(Position& pos, const Lines& lines, bool big);
-void motionB(Position& pos, const Lines& lines, bool big);
-void motionE(Position& pos, const Lines& lines, bool big);
-void motionGe(Position& pos, const Lines& lines, bool big);
+void motionW(CursorPos& pos, const Lines& lines, bool big);
+void motionB(CursorPos& pos, const Lines& lines, bool big);
+void motionE(CursorPos& pos, const Lines& lines, bool big);
+void motionGe(CursorPos& pos, const Lines& lines, bool big);
 
 // =============================================================================
 // Paragraph Motions
 // =============================================================================
 
-void motionParagraphPrev(Position& pos, const Lines& lines);
-void motionParagraphNext(Position& pos, const Lines& lines);
+void motionParagraphPrev(CursorPos& pos, const Lines& lines);
+void motionParagraphNext(CursorPos& pos, const Lines& lines);
 
 // Helpers for paragraph edges (used internally and by text objects)
-void moveToParagraphStart(Position& pos, const Lines& lines);
-void moveToParagraphEnd(Position& pos, const Lines& lines);
+void moveToParagraphStart(CursorPos& pos, const Lines& lines);
+void moveToParagraphEnd(CursorPos& pos, const Lines& lines);
 
 // =============================================================================
 // Sentence Motions
 // =============================================================================
 
-void motionSentencePrev(Position& pos, const Lines& lines);
-void motionSentenceNext(Position& pos, const Lines& lines);
+void motionSentencePrev(CursorPos& pos, const Lines& lines);
+void motionSentenceNext(CursorPos& pos, const Lines& lines);
 
 // =============================================================================
 // Character Find Motions (f/F/t/T)

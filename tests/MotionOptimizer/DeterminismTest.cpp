@@ -8,11 +8,11 @@
 #include <gtest/gtest.h>
 
 #include "Boundary/MotionBoundary.h"
-#include "VimTypes/NavContext.h"
-#include "Optimizer/Config.h"
+#include "Types/NavContext.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Effort/RunningEffort.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
 
@@ -46,8 +46,8 @@ TEST_F(MotionOptimizerDeterminismTests, SameInputProducesSameOutput) {
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
     Lines lines = randomLines(RandomGen::range(2, 3), 10, 25);
-    Position start = randomPosition(lines);
-    Position end = randomPosition(lines);
+    CursorPos start = randomPosition(lines);
+    CursorPos end = randomPosition(lines);
 
     MotionOptimizer opt1(config);
     MotionOptimizer opt2(config);

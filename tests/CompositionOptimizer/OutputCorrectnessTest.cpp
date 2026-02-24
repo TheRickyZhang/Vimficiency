@@ -8,10 +8,10 @@
 #include <gtest/gtest.h>
 #include <memory>
 
-#include "VimTypes/Position.h"
-#include "Optimizer/Config.h"
+#include "Types/CursorPos.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
@@ -33,7 +33,7 @@ protected:
   void verifyResults(
       const vector<Result>& results,
       const Lines& initial,
-      Position initialPos,
+      CursorPos initialPos,
       const Lines& goal,
       const string& testContext = "") {
 
@@ -84,8 +84,8 @@ TEST_F(CompositionOptimizerOutputCorrectness, SingleLine_Edit) {
 
     // Random cursor position
     int cursorCol = RandomGen::range(0, max(0, lineLen - 1));
-    Position initialPos(0, cursorCol);
-    Position goalPos(0, 0);
+    CursorPos initialPos(0, cursorCol);
+    CursorPos goalPos(0, 0);
 
     auto compResult = opt.optimize(
         initial, initialPos, goal, goalPos, params);
@@ -160,8 +160,8 @@ TEST_F(CompositionOptimizerOutputCorrectness, MultiLine_SingleEdit) {
     // Random cursor position
     int cursorLine = RandomGen::range(0, numLines - 1);
     int cursorCol = RandomGen::range(0, max(0, static_cast<int>(initial[cursorLine].size()) - 1));
-    Position initialPos(cursorLine, cursorCol);
-    Position goalPos(0, 0);
+    CursorPos initialPos(cursorLine, cursorCol);
+    CursorPos goalPos(0, 0);
 
     auto compResult = opt.optimize(
         initial, initialPos, goal, goalPos, params);
@@ -225,8 +225,8 @@ TEST_F(CompositionOptimizerOutputCorrectness, PureInsertion) {
                        initial[insertLine].substr(insertCol);
 
     // Cursor at beginning
-    Position initialPos(0, 0);
-    Position goalPos(0, 0);
+    CursorPos initialPos(0, 0);
+    CursorPos goalPos(0, 0);
 
     auto compResult = opt.optimize(
         initial, initialPos, goal, goalPos, params);
@@ -285,8 +285,8 @@ TEST_F(CompositionOptimizerOutputCorrectness, PureDeletion) {
     goal[deleteLine] = initial[deleteLine].substr(0, deleteStart) +
                        initial[deleteLine].substr(deleteEnd);
 
-    Position initialPos(0, 0);
-    Position goalPos(0, 0);
+    CursorPos initialPos(0, 0);
+    CursorPos goalPos(0, 0);
 
     auto compResult = opt.optimize(
         initial, initialPos, goal, goalPos, params);
@@ -342,8 +342,8 @@ TEST_F(CompositionOptimizerOutputCorrectness, InsertNewLine) {
     Lines goal = initial;
     goal.insert(goal.begin() + insertAfter + 1, newLine);
 
-    Position initialPos(0, 0);
-    Position goalPos(0, 0);
+    CursorPos initialPos(0, 0);
+    CursorPos goalPos(0, 0);
 
     auto compResult = opt.optimize(
         initial, initialPos, goal, goalPos, params);
@@ -394,8 +394,8 @@ TEST_F(CompositionOptimizerOutputCorrectness, DeleteEntireLine) {
     Lines goal = initial;
     goal.erase(goal.begin() + deleteLine);
 
-    Position initialPos(0, 0);
-    Position goalPos(0, 0);
+    CursorPos initialPos(0, 0);
+    CursorPos goalPos(0, 0);
 
     auto compResult = opt.optimize(
         initial, initialPos, goal, goalPos, params);
@@ -455,8 +455,8 @@ TEST_F(CompositionOptimizerOutputCorrectness, TwoEdits_SameLine) {
     string goalStr = newFirst + middle + newLast;
     Lines goal = {goalStr};
 
-    Position initialPos(0, 0);
-    Position goalPos(0, 0);
+    CursorPos initialPos(0, 0);
+    CursorPos goalPos(0, 0);
 
     auto compResult = opt.optimize(
         initial, initialPos, goal, goalPos, params);
@@ -505,8 +505,8 @@ TEST_F(CompositionOptimizerOutputCorrectness, TwoEdits_DifferentLines) {
     goal[0] = randomWord(RandomGen::range(4, 8));
     goal[2] = randomWord(RandomGen::range(4, 8));
 
-    Position initialPos(0, 0);
-    Position goalPos(0, 0);
+    CursorPos initialPos(0, 0);
+    CursorPos goalPos(0, 0);
 
     auto compResult = opt.optimize(
         initial, initialPos, goal, goalPos, params);

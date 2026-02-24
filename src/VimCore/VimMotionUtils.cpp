@@ -1,14 +1,14 @@
 #include "VimMotionUtils.h"
 #include "VimCore.h"
 #include "VimEndpointUtils.h"
-#include "VimTypes/EdgeType.h"
-#include "VimTypes/LineEdgeType.h"
+#include "Types/EdgeType.h"
+#include "Types/LineEdgeType.h"
 
 #include <algorithm>
 #include <array>
 #include <cassert>
 
-#include "VimTypes/Position.h"
+#include "Types/CursorPos.h"
 #include "Utils/Debug.h"
 
 using namespace std;
@@ -40,10 +40,10 @@ namespace VimCore {
 //
 // =============================================================================
 
-void motionWord(Position &pos, const Lines &lines,
+void motionWord(CursorPos &pos, const Lines &lines,
                 bool forward, EdgeType edgeType, bool big,
                 bool skipCurrent) {
-  Position result =
+  CursorPos result =
       motionWordCore(pos, lines, forward, edgeType, big, skipCurrent);
 
   if (result == POSITION_OUTSIDE_BOUNDARY) {
@@ -53,9 +53,9 @@ void motionWord(Position &pos, const Lines &lines,
       int lastCol = lines[lastLine].empty()
                         ? 0
                         : static_cast<int>(lines[lastLine].size()) - 1;
-      pos = Position(lastLine, lastCol);
+      pos = CursorPos(lastLine, lastCol);
     } else {
-      pos = Position(0, 0);
+      pos = CursorPos(0, 0);
     }
   } else {
     pos = result;
@@ -73,23 +73,23 @@ void motionWord(Position &pos, const Lines &lines,
 //   ge: Backward + End (to previous word end), skip current first
 //
 
-void motionW(Position &pos, const Lines &lines, bool big) {
+void motionW(CursorPos &pos, const Lines &lines, bool big) {
   motionWord(pos, lines, true, EdgeType::NextEdge, big, false);
 }
 
-void motionB(Position &pos, const Lines &lines, bool big) {
+void motionB(CursorPos &pos, const Lines &lines, bool big) {
   // For backward direction, End gives edge opposite to travel = leftmost =
   // START skipCurrent needed so b from word start goes to PREVIOUS word start
   motionWord(pos, lines, false, EdgeType::WordEdge, big, true);
 }
 
-void motionE(Position &pos, const Lines &lines, bool big) {
+void motionE(CursorPos &pos, const Lines &lines, bool big) {
   // e needs to skip current position first, otherwise we'd stay at current word
   // end
   motionWord(pos, lines, true, EdgeType::WordEdge, big, true);
 }
 
-void motionGe(Position &pos, const Lines &lines, bool big) {
+void motionGe(CursorPos &pos, const Lines &lines, bool big) {
   // For backward direction, Next gives edge in travel direction = rightmost =
   // END skipCurrent needed so ge from word end goes to PREVIOUS word end
   motionWord(pos, lines, false, EdgeType::NextEdge, big, true);
@@ -99,7 +99,7 @@ void motionGe(Position &pos, const Lines &lines, bool big) {
 // Paragraph motion forwarders
 // =============================================================================
 
-void motionParagraphPrev(Position &pos, const Lines &lines) {
+void motionParagraphPrev(CursorPos &pos, const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
@@ -109,7 +109,7 @@ void motionParagraphPrev(Position &pos, const Lines &lines) {
   pos.setCol(0);
 }
 
-void motionParagraphNext(Position &pos, const Lines &lines) {
+void motionParagraphNext(CursorPos &pos, const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
@@ -129,7 +129,7 @@ void motionParagraphNext(Position &pos, const Lines &lines) {
 }
 
 // =============================================================================
-// Position helpers
+// CursorPos helpers
 // =============================================================================
 
 int clampCol(const Lines &lines, int col, int lineIdx) {
@@ -141,11 +141,11 @@ int clampCol(const Lines &lines, int col, int lineIdx) {
   return std::clamp(col, 0, len - 1);
 }
 
-void moveCol(Position &pos, const Lines &lines, int dx) {
+void moveCol(CursorPos &pos, const Lines &lines, int dx) {
   pos.setCol(clampCol(lines, pos.col + dx, pos.line));
 }
 
-void moveLine(Position &pos, const Lines &lines, int dy) {
+void moveLine(CursorPos &pos, const Lines &lines, int dy) {
   int n = static_cast<int>(lines.size());
   pos.line = std::clamp(pos.line + dy, 0, n - 1);
   // Vertical movement: clamp col to line length but preserve targetCol
@@ -158,7 +158,7 @@ void moveLine(Position &pos, const Lines &lines, int dy) {
 
 // Move to the "top edge" (start) of the current paragraph.
 // If currently on blank lines, goes to first blank line in that run.
-void moveToParagraphStart(Position &pos, const Lines &lines) {
+void moveToParagraphStart(CursorPos &pos, const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
@@ -174,7 +174,7 @@ void moveToParagraphStart(Position &pos, const Lines &lines) {
 
 // Move to the "bottom edge" (end) of the current paragraph.
 // If currently on blank lines, goes to last blank line in that run.
-void moveToParagraphEnd(Position &pos, const Lines &lines) {
+void moveToParagraphEnd(CursorPos &pos, const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
@@ -189,7 +189,7 @@ void moveToParagraphEnd(Position &pos, const Lines &lines) {
 // Sentence motions
 // =============================================================================
 
-void motionSentenceNext(Position &pos, const Lines &lines) {
+void motionSentenceNext(CursorPos &pos, const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;
@@ -263,7 +263,7 @@ void motionSentenceNext(Position &pos, const Lines &lines) {
   }
 }
 
-void motionSentencePrev(Position &pos, const Lines &lines) {
+void motionSentencePrev(CursorPos &pos, const Lines &lines) {
   int n = (int)lines.size();
   if (n == 0)
     return;

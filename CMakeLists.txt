@@ -31,7 +31,7 @@ file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
     src/Session/*.cpp
     src/Utils/*.cpp
     src/VimCore/*.cpp
-    src/VimTypes/*.cpp
+    src/Types/*.cpp
 )
 add_library(vimficiency_core STATIC ${CORE_SOURCES})
 

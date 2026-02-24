@@ -9,7 +9,7 @@
 #include <gtest/gtest.h>
 
 #include "Interpreter/EditInterpreter.h"
-#include "Optimizer/Config.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Optimizer/CompositionOptimizer/CompositionSearchContext.h"
@@ -131,7 +131,7 @@ protected:
 
   // Create boundary for full buffer deletion (no constraints)
   EditBoundary makeFullBufferBoundary(const Lines& source) {
-    return EditBoundary(source, Position(0, 0), source.endPos());
+    return EditBoundary(source, CursorPos(0, 0), source.endPos());
   }
 };
 
@@ -143,8 +143,8 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
                   "delete me line four",
                   "delete me line five and suffix here"};
   Lines goal = {"replaced"};
-  Position editBegin(0, 13);
-  Position editEnd(4, 22);
+  CursorPos editBegin(0, 13);
+  CursorPos editEnd(4, 22);
 
   Lines editRegion = buffer.getSpan(editBegin, editEnd);
   EditBoundary boundary(buffer, editBegin, editEnd);
@@ -181,7 +181,7 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
 
   for (const auto& seq : testSeqs) {
     Lines test = eff;
-    Position pos(0, 13);  // first edit position in effective lines
+    CursorPos pos(0, 13);  // first edit position in effective lines
     Mode mode = Mode::Normal;
     string lastEdit;
 
@@ -210,7 +210,7 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
   cerr << "\n--- Step-by-step trace of D4gJ7dbDjd0dw.x ---" << endl;
   {
     Lines test = eff;
-    Position pos(0, 13);
+    CursorPos pos(0, 13);
     Mode mode = Mode::Normal;
     string lastEdit;
     string seq = "D4gJ7dbDjd0dw.x";
@@ -250,7 +250,7 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
       const string& seq = r.getSequenceString().str();
 
       Lines test = eff;
-      Position pos = fromFlatIndex(static_cast<int>(i), editRegion);
+      CursorPos pos = fromFlatIndex(static_cast<int>(i), editRegion);
       pos.col += (pos.line == 0 ? boundary.prefix().size() : 0);
       Mode mode = Mode::Normal;
       string lastEdit;
@@ -341,7 +341,7 @@ TEST_F(DebugTest, DISABLED_InvestigateCountedWordEdit) {
   cerr << "\n--- Our simulator step-by-step ---" << endl;
   {
     Lines simBuf = fullBuffer;
-    Position simPos(bufRow, bufCol);
+    CursorPos simPos(bufRow, bufCol);
     Mode mode = Mode::Normal;
     string lastEdit;
 
@@ -358,7 +358,7 @@ TEST_F(DebugTest, DISABLED_InvestigateCountedWordEdit) {
   cerr << "\n--- Our simulator on effective lines ---" << endl;
   {
     Lines effLines = {"acffce", "adf", " ,e", ".fe bd"};
-    Position simPos(0, 5);  // editPos [0,4] + leftColOffset 1 = col 5
+    CursorPos simPos(0, 5);  // editPos [0,4] + leftColOffset 1 = col 5
     Mode mode = Mode::Normal;
     string lastEdit;
 
@@ -390,7 +390,7 @@ TEST_F(DebugTest, DISABLED_InvestigateCountedWordEdit) {
   cerr << "\n--- Optimizer output ---" << endl;
   {
     EditOptimizer opt(config);
-    EditBoundary boundary(fullBuffer, Position(0, 1), Position(3, 3));  // prefix="a", suffix="bd"
+    EditBoundary boundary(fullBuffer, CursorPos(0, 1), CursorPos(3, 3));  // prefix="a", suffix="bd"
     EditResult res = pureDeletionResult(opt, editRegion, boundary, params);
     int idx = 0;
     for (int line = 0; line < static_cast<int>(editRegion.size()); line++) {
@@ -500,9 +500,9 @@ TEST_F(DebugTest, DISABLED_Placeholder) {
     // Reproduce iter=12 from the test (seed=48)
     Lines initial = {"ffb decd bdf"};
     Lines goal = {"cbb decd fed"};
-    Position initialPos(0, 0);
+    CursorPos initialPos(0, 0);
 
-    auto compResult = opt.optimize(initial, initialPos, goal, Position(0, 0), params);
+    auto compResult = opt.optimize(initial, initialPos, goal, CursorPos(0, 0), params);
     const auto& results = compResult.results;
 
     cerr << "Results: " << results.size() << endl;
@@ -566,7 +566,7 @@ TEST_F(DebugTest, DISABLED_Placeholder) {
     Lines initial = {"efbeeddacaaa"};
     Lines goal = {"efbedaeaaa"};
 
-    auto compResult = opt.optimize(initial, Position(0,0), goal, Position(0,0), params);
+    auto compResult = opt.optimize(initial, CursorPos(0,0), goal, CursorPos(0,0), params);
     cerr << "Results: " << compResult.results.size() << endl;
     for (size_t i = 0; i < compResult.results.size(); i++) {
       cerr << "  [" << i << "] '" << compResult.results[i].sequence
@@ -669,7 +669,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
 
   Lines initial = {"bbcffdbeafcbfabbdc"};
   Lines goal = {"fbadbeafcbfabbdc"};
-  Position initialPos(0, 2);
+  CursorPos initialPos(0, 2);
 
   // Step 1: Trace the winning sequence step by step with oracle
   cerr << "=== Oracle trace of db..s fba<Esc> ===" << endl;
@@ -687,7 +687,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
     Config config = Config::uniform();
     CompositionOptimizer opt{config};
     CompositionOptimizerParams params = CompositionOptimizerParams{}.withMaxResults(5);
-    auto compResult = opt.optimize(initial, initialPos, goal, Position(0, 0), params);
+    auto compResult = opt.optimize(initial, initialPos, goal, CursorPos(0, 0), params);
     for (size_t i = 0; i < compResult.results.size(); i++) {
       const auto& seq = compResult.results[i].getSequenceString();
       cerr << "  [" << i << "] '" << compResult.results[i].sequence
@@ -739,9 +739,9 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
     Lines buf = {"bbcffdbeafcbfabbdc"};
     for (int col : {0, 1, 2, 3}) {
       // Our sim
-      Position pos(0, col);
+      CursorPos pos(0, col);
       Lines simBuf = buf;
-      Position simEndpoint = VimCore::motionWordEndpoint<false, EdgeType::WordEdge>(
+      CursorPos simEndpoint = VimCore::motionWordEndpoint<false, EdgeType::WordEdge>(
           pos, simBuf, false, true, 0, false, false);
       cerr << "  col=" << col << " b_endpoint=(" << simEndpoint.line << "," << simEndpoint.col << ")";
       if (simEndpoint == pos) {
@@ -750,13 +750,13 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
         // Compute range like the explorer does (isExclusiveAtCursor)
         Range range;
         if (col > 0) {
-          range = Range(simEndpoint, Position(0, col - 1));
+          range = Range(simEndpoint, CursorPos(0, col - 1));
         } else {
           cerr << " (col=0, exclusive skip)" << endl;
           continue;
         }
         Lines afterBuf = buf;
-        Position afterPos = pos;
+        CursorPos afterPos = pos;
         VimCore::deleteRange(afterBuf, range, afterPos);
         cerr << " range=(" << range.begin.col << "," << range.end.col << ")"
              << " after='" << afterBuf[0] << "' pos=" << afterPos.col << endl;
@@ -782,8 +782,8 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJoinLinesResidual) {
   Lines editRegion = {"", "xxx", "ccc"};
   Lines goalLines = {" bbb ccc"};
 
-  Position initialPos(0, 3);  // start of edit region in full buffer
-  Position endPos = fullBuffer.endPos();  // end of buffer
+  CursorPos initialPos(0, 3);  // start of edit region in full buffer
+  CursorPos endPos = fullBuffer.endPos();  // end of buffer
   EditBoundary boundary(fullBuffer, initialPos, endPos);
 
   cerr << "  prefix='" << boundary.prefix() << "' suffix='" << boundary.suffix() << "'" << endl;
@@ -852,7 +852,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJoinBehavior) {
   cerr << endl << "=== Our sim for J on empty + leading space ===" << endl;
   {
     Lines simLines = {"debceb,", "", " .ec"};
-    Position simPos(1, 0);
+    CursorPos simPos(1, 0);
     Mode simMode = Mode::Normal;
     Edit::applyEdit(simLines, simPos, simMode, Edit::parseEdits("J")[0]);
     cerr << "  Lines: " << simLines << " pos=" << simPos << endl;
@@ -865,7 +865,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJoinBehavior) {
     cerr << "  Neovim: " << nvim.lines << " cursor=(" << nvim.row << "," << nvim.col << ")" << endl;
 
     Lines simLines = source;
-    Position simPos(row, col);
+    CursorPos simPos(row, col);
     Mode simMode = Mode::Normal;
     Edit::applyEdit(simLines, simPos, simMode, Edit::parseEdits("J")[0]);
     cerr << "  Ours:   " << simLines << " cursor=" << simPos << endl;
@@ -904,7 +904,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCCloseBrace) {
     // Our sim for d}
     {
       Lines simLines = source;
-      Position simPos(row, col);
+      CursorPos simPos(row, col);
       Mode simMode = Mode::Normal;
       auto edits = Edit::parseEdits("d}");
       for (const auto& e : edits) Edit::applyEdit(simLines, simPos, simMode, e);
@@ -915,7 +915,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCCloseBrace) {
     // Our sim for c}X<Esc>
     {
       Lines simLines = source;
-      Position simPos(row, col);
+      CursorPos simPos(row, col);
       Mode simMode = Mode::Normal;
       auto edits = Edit::parseEdits("c}");
       for (const auto& e : edits) Edit::applyEdit(simLines, simPos, simMode, e);
@@ -984,7 +984,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDCloseBrace) {
 
     // Our sim
     Lines simLines = source;
-    Position simPos(row, col);
+    CursorPos simPos(row, col);
     Mode simMode = Mode::Normal;
     auto edits = Edit::parseEdits("d}");
     for (const auto& e : edits) Edit::applyEdit(simLines, simPos, simMode, e);
@@ -1097,14 +1097,14 @@ TEST_F(NeovimOracleDebug, InvestigateTextObjectShortcuts) {
   {
     Lines initial = {"foo \"hello\" bar"};
     Lines goal = {"foo \"goodbye\" bar"};
-    Position initialPos(0, 0);
+    CursorPos initialPos(0, 0);
 
     Config config = Config::uniform();
     CompositionOptimizer opt{config};
     CompositionOptimizerParams params = CompositionOptimizerParams{}.withMaxResults(10);
 
     auto compResult = opt.optimize(
-        initial, initialPos, goal, Position(0,0), params);
+        initial, initialPos, goal, CursorPos(0,0), params);
     const auto& results = compResult.results;
 
     cerr << "Results: " << results.size() << endl;
@@ -1125,7 +1125,7 @@ TEST_F(NeovimOracleDebug, InvestigateMaskBugs) {
 
   auto makeCtx = [&](const Lines& initial, const Lines& goal) {
     return CompositionSearchContext(
-        initial, Position(0, 0), goal, "",
+        initial, CursorPos(0, 0), goal, "",
         NavContext(), MotionBoundary(), params, config);
   };
 
@@ -1215,8 +1215,8 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
 
   Lines initial = {"hello world"};
   Lines goal = {"hello there"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   cerr << "Initial: " << initial << endl;
   cerr << "Goal: " << goal << endl;
@@ -1235,8 +1235,8 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
   {
     Config cfg = Config::uniform();
     MotionOptimizer movOpt(cfg);
-    Position rangeBegin(0, 6);
-    Position rangeEnd(0, 11);
+    CursorPos rangeBegin(0, 6);
+    CursorPos rangeEnd(0, 11);
 
     cerr << "Finding path from " << initialPos << " to range [" << rangeBegin << ", " << rangeEnd << ")" << endl;
 
@@ -1291,7 +1291,7 @@ TEST_F(NeovimOracleDebug, InvestigateCiwMismatch) {
   //   Got:     bba  c / cba / bb,    ← space missing
 
   Lines initial = {"bba  c", "b b, "};
-  Position initialPos(0, 0);
+  CursorPos initialPos(0, 0);
 
   cerr << "=== Neovim step-by-step ===" << endl;
   auto tracer = makeTracer(initial, 0, 0);
@@ -1318,7 +1318,7 @@ TEST_F(NeovimOracleDebug, InvestigateCiwMismatch) {
   cerr << endl << "=== Our VimCore simulation ===" << endl;
   {
     Lines ourLines = initial;
-    Position pos(0, 0);
+    CursorPos pos(0, 0);
 
     // Simulate j: move down, preserve targetCol
     pos.line = 1;
@@ -1390,8 +1390,8 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
   //   Bad result: 'lcEbba<Esc> <C-d>cc<Del>fbbf<Esc>' - cc<Del> produces empty line
   Lines initial = {"b,f,dd", "b,, ca..b", "ab ,e d..f"};
   Lines goal = {"bbba", "b,, ca..b", "fbbf"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
   Config config = Config::uniform();
 
   // First, run the actual optimizer and print all results
@@ -1461,16 +1461,16 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
   {
     assert(!diffs.empty());
     const auto& d = diffs[0];
-    Position rangeBegin = d.beginPos;
-    Position rangeEnd = d.endPos;
+    CursorPos rangeBegin = d.beginPos;
+    CursorPos rangeEnd = d.endPos;
 
     cerr << "  Range: [(" << rangeBegin.line << "," << rangeBegin.col << "), ("
          << rangeEnd.line << "," << rangeEnd.col << "))" << endl;
     cerr << "  StartPos: (" << initialPos.line << "," << initialPos.col << ")" << endl;
 
     MotionBoundary boundary(initial,
-        Position(0, 0),
-        Position(0, static_cast<int>(initial[0].size())),
+        CursorPos(0, 0),
+        CursorPos(0, static_cast<int>(initial[0].size())),
         false, false);
 
     MotionOptimizer motionOpt(config);
@@ -1497,8 +1497,8 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     MotionOptimizer motionOpt(config);
     NavContext navCtx;
     MotionBoundary boundary(initial,
-        Position(0, 0),
-        Position(0, static_cast<int>(initial[0].size()) - 1),
+        CursorPos(0, 0),
+        CursorPos(0, static_cast<int>(initial[0].size()) - 1),
         false, false);
 
     CompositionSearchContext ctx(initial, initialPos, goal, "",
@@ -1525,7 +1525,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     vector<Result> results;
     while (ctx.shouldContinue() && popCount < 50) {
       CompositionState s = ctx.popNext();
-      Position pos = s.getPos();
+      CursorPos pos = s.getPos();
       int editsCompleted = s.getEditsCompleted();
       popCount++;
 
@@ -1577,11 +1577,11 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
             params.motionPaddingAbove, params.motionPaddingBelow);
 
         Lines subset = currentLines.getLineRange(beginLine, endLine);
-        Position localPos(pos.line - beginLine, pos.col, pos.targetCol);
-        Position localRangeBegin(nextEdit.beginPos.line - beginLine, nextEdit.beginPos.col);
-        Position localRangeEnd(nextEdit.endPos.line - beginLine, nextEdit.endPos.col);
+        CursorPos localPos(pos.line - beginLine, pos.col, pos.targetCol);
+        CursorPos localRangeBegin(nextEdit.beginPos.line - beginLine, nextEdit.beginPos.col);
+        CursorPos localRangeEnd(nextEdit.endPos.line - beginLine, nextEdit.endPos.col);
 
-        Position subsetEnd(static_cast<int>(subset.size()) - 1,
+        CursorPos subsetEnd(static_cast<int>(subset.size()) - 1,
             subset.back().effectiveSize());
         MotionBoundary subsetBoundary(subset, localRangeBegin, subsetEnd,
             beginLine > 0 || boundary.hasLinesAbove(),
@@ -1621,7 +1621,7 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
   Lines initial = {"Today I saw a giraffe in museum in Switzerland",
                     "Inconspicuous, even"};
   Lines goal = {"I saw a pig in barn in Florida"};
-  Position initialPos(0, 0);
+  CursorPos initialPos(0, 0);
 
   CompositionOptimizerParams compParams{};
 
@@ -1692,7 +1692,7 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
   vector<Result> results;
   while (ctx.shouldContinue() && popCount < 100) {
     CompositionState s = ctx.popNext();
-    Position pos = s.getPos();
+    CursorPos pos = s.getPos();
     int editsCompleted = s.getEditsCompleted();
     popCount++;
 
@@ -1748,12 +1748,12 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
           compParams.motionPaddingAbove, compParams.motionPaddingBelow);
 
       Lines subset = currentLines.getLineRange(beginLine, endLine);
-      Position localPos(pos.line - beginLine, pos.col, pos.targetCol);
-      Position localRangeBegin(nextEdit.beginPos.line - beginLine, nextEdit.beginPos.col);
-      Position localRangeEnd(nextEdit.endPos.line - beginLine, nextEdit.endPos.col);
+      CursorPos localPos(pos.line - beginLine, pos.col, pos.targetCol);
+      CursorPos localRangeBegin(nextEdit.beginPos.line - beginLine, nextEdit.beginPos.col);
+      CursorPos localRangeEnd(nextEdit.endPos.line - beginLine, nextEdit.endPos.col);
 
-      Position subsetFirst(0, 0);
-      Position subsetEnd(static_cast<int>(subset.size()) - 1,
+      CursorPos subsetFirst(0, 0);
+      CursorPos subsetEnd(static_cast<int>(subset.size()) - 1,
           subset.back().effectiveSize());
       MotionBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
           beginLine > 0, endLine <= currentLines.lastLine());
@@ -1794,7 +1794,7 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
   cerr << "\n=== JoinPlan Debug ===" << endl;
 
   auto dumpJoinPlan = [&](const string& label, const Lines& initial, const Lines& goal,
-                          Position initialPos) {
+                          CursorPos initialPos) {
     cerr << "\n--- " << label << " ---" << endl;
     cerr << "Initial: " << initial;
     cerr << "Goal:    " << goal;
@@ -1851,24 +1851,24 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
 
   // Case 1: JoinLinesExact — "hello\nworld" → "hello world"
   dumpJoinPlan("JoinLinesExact",
-      {"hello", "world"}, {"hello world"}, Position(0, 0));
+      {"hello", "world"}, {"hello world"}, CursorPos(0, 0));
 
   // Case 2: JoinLinesWithResidual — "aaa\nxxx\nccc" → "aaa bbb ccc"
   dumpJoinPlan("JoinLinesWithResidual",
-      {"aaa", "xxx", "ccc"}, {"aaa bbb ccc"}, Position(0, 0));
+      {"aaa", "xxx", "ccc"}, {"aaa bbb ccc"}, CursorPos(0, 0));
 
   // Case 3: JoinLinesPartialJoin — 4 lines → 2 lines
   dumpJoinPlan("JoinLinesPartialJoin",
-      {"aaa", "bbb", "ccc", "ddd"}, {"aaa bbb", "ccc ddd"}, Position(0, 0));
+      {"aaa", "bbb", "ccc", "ddd"}, {"aaa bbb", "ccc ddd"}, CursorPos(0, 0));
 
   // Case 3b: Debug motionOptimizer for PartialJoin
   cerr << "\n--- PartialJoin MotionOptimizer debug ---" << endl;
   {
     Lines buffer = {"aaa bbb", "ccc", "ddd"};
-    Position pos(0, 3);
-    Position rangeBegin(1, 3);
-    Position rangeEnd(2, 0);
-    MotionBoundary boundary(buffer, Position(0, 0), buffer.endPos());
+    CursorPos pos(0, 3);
+    CursorPos rangeBegin(1, 3);
+    CursorPos rangeEnd(2, 0);
+    MotionBoundary boundary(buffer, CursorPos(0, 0), buffer.endPos());
 
     MotionOptimizer motionOpt(config);
     NavContext navCtx;
@@ -1891,7 +1891,7 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
 TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
   Lines initial = {"aaa", "bbb", "ccc"};
   Lines goal = {"aaa bbb ccc?"};
-  Position initialPos(0, 2);
+  CursorPos initialPos(0, 2);
 
   // Step 1: Myers diffs
   cerr << "\n=== Myers Diffs ===" << endl;
@@ -2006,7 +2006,7 @@ TEST_F(DebugTest, InvestigateHumanApproval1) {
   // Step 2: CompositionSearchContext (after position adjustments)
   cerr << "\n=== CompositionSearchContext ===" << endl;
   CompositionOptimizerParams compParams{};
-  CompositionSearchContext ctx(initial, Position(0,0), goal, "",
+  CompositionSearchContext ctx(initial, CursorPos(0,0), goal, "",
       NavContext(), MotionBoundary(), compParams, config);
   cerr << "totalEdits=" << ctx.totalEdits << endl;
   for (int i = 0; i < ctx.totalEdits; i++) {
@@ -2022,7 +2022,7 @@ TEST_F(DebugTest, InvestigateHumanApproval1) {
   // Step 3: Full optimizer results with oracle verification
   cerr << "\n=== Optimizer Results ===" << endl;
   CompositionOptimizer opt{config};
-  auto compResult = opt.optimize(initial, Position(0,0), goal, Position(0,0), compParams);
+  auto compResult = opt.optimize(initial, CursorPos(0,0), goal, CursorPos(0,0), compParams);
   cerr << compResult;
 
   auto oracle = make_unique<NeovimOracle>();
@@ -2045,8 +2045,8 @@ TEST_F(DebugTest, SuffixCacheComparison) {
   Lines insertedLines = {"Florida"};
 
   Lines bufferAtEdit = {"I saw a pig in barn in Switzerland", "Inconspicuous, even"};
-  Position editBeginPos(0, 23);
-  Position editEndPos(1, 19);
+  CursorPos editBeginPos(0, 23);
+  CursorPos editEndPos(1, 19);
   EditBoundary boundary(bufferAtEdit, editBeginPos, editEndPos);
 
   EditOptimizer editOpt(config);
@@ -2055,7 +2055,7 @@ TEST_F(DebugTest, SuffixCacheComparison) {
   cerr << "\n=== Standard optimizeEdit ===" << endl;
   EditResult stdResult = editOpt.optimizeEdit(
       deletedLines, insertedLines, boundary, params,
-      editBeginPos.line, editBeginPos.col, Position(0, 29));
+      editBeginPos.line, editBeginPos.col, CursorPos(0, 29));
 
   int stdValid = 0;
   for (size_t i = 0; i < stdResult.resultCount(); i++) {
@@ -2076,7 +2076,7 @@ TEST_F(DebugTest, SuffixCacheComparison) {
   cerr << "\n=== optimizeEdit (suffix cached) ===" << endl;
   EditResult cacheResult = editOpt.optimizeEdit(
       deletedLines, insertedLines, boundary, params,
-      editBeginPos.line, editBeginPos.col, Position(0, 29));
+      editBeginPos.line, editBeginPos.col, CursorPos(0, 29));
 
   int cacheValid = 0;
   for (size_t i = 0; i < cacheResult.resultCount(); i++) {
@@ -2127,11 +2127,11 @@ TEST_F(DebugTest, CcAutoindentCollapse) {
   Lines initial = {"    indented"};
   Lines goal = {"replaced"};
 
-  EditBoundary boundary(initial, Position(0, 0), initial.endPos());
+  EditBoundary boundary(initial, CursorPos(0, 0), initial.endPos());
 
   EditResult result = makeOptimizer().optimizeEdit(
       initial, goal, boundary, params,
-      0, 0, Position(0, 0));
+      0, 0, CursorPos(0, 0));
 
   // Verify at least one result is valid
   bool anyValid = false;
@@ -2153,7 +2153,7 @@ TEST_F(DebugTest, CcAutoindentCollapse) {
     if (!r.isValid()) continue;
     total++;
 
-    Position editPos = fromFlatIndex(static_cast<int>(i), initial);
+    CursorPos editPos = fromFlatIndex(static_cast<int>(i), initial);
     auto nvim = oracle->simulate(initial, editPos.line, editPos.col, r.getSequenceString().str());
     if (nvim.lines == goal) {
       passed++;
@@ -2168,11 +2168,11 @@ TEST_F(DebugTest, CcAutoindentCollapse) {
   cerr << "\n=== Multi-line indented test ===" << endl;
   Lines initial2 = {"    hello", "        world"};
   Lines goal2 = {"replaced"};
-  EditBoundary boundary2(initial2, Position(0, 0), initial2.endPos());
+  EditBoundary boundary2(initial2, CursorPos(0, 0), initial2.endPos());
 
   EditResult result2 = makeOptimizer().optimizeEdit(
       initial2, goal2, boundary2, params,
-      0, 0, Position(0, 0));
+      0, 0, CursorPos(0, 0));
 
   int passed2 = 0, total2 = 0;
   for (size_t i = 0; i < result2.resultCount(); i++) {
@@ -2180,7 +2180,7 @@ TEST_F(DebugTest, CcAutoindentCollapse) {
     if (!r.isValid()) continue;
     total2++;
 
-    Position editPos = fromFlatIndex(static_cast<int>(i), initial2);
+    CursorPos editPos = fromFlatIndex(static_cast<int>(i), initial2);
     auto nvim = oracle->simulate(initial2, editPos.line, editPos.col, r.getSequenceString().str());
     if (nvim.lines == goal2) {
       passed2++;
@@ -2207,8 +2207,8 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
   // The intermediate buffer at edit 3 looks like:
   // ["I saw a pig in barn in Switzerland", "Inconspicuous, even"]
   Lines bufferAtEdit3 = {"I saw a pig in barn in Switzerland", "Inconspicuous, even"};
-  Position editBeginPos(0, 23);  // 'S' of Switzerland
-  Position editEndPos(1, 19);    // one past 'n' of even (half-open, end of buffer content)
+  CursorPos editBeginPos(0, 23);  // 'S' of Switzerland
+  CursorPos editEndPos(1, 19);    // one past 'n' of even (half-open, end of buffer content)
 
   EditBoundary boundary(bufferAtEdit3, editBeginPos, editEndPos);
   cerr << "\n=== EditBoundary ===" << endl;
@@ -2226,7 +2226,7 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
 
   EditResult result = editOpt.optimizeEdit(
       deletedLines, insertedLines, boundary, defaultParams,
-      editBeginPos.line, editBeginPos.col, Position(0, 29));
+      editBeginPos.line, editBeginPos.col, CursorPos(0, 29));
 
   cerr << "  stats: nodes=" << result.stats.nodesExplored
        << " results=" << result.stats.resultsFound
@@ -2251,7 +2251,7 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
 
   EditResult bigResult = editOpt.optimizeEdit(
       deletedLines, insertedLines, boundary, bigParams,
-      editBeginPos.line, editBeginPos.col, Position(0, 29));
+      editBeginPos.line, editBeginPos.col, CursorPos(0, 29));
 
   cerr << "  stats: nodes=" << bigResult.stats.nodesExplored
        << " results=" << bigResult.stats.resultsFound
@@ -2275,7 +2275,7 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
 
   EditResult dijResult = editOpt.optimizeEdit(
       deletedLines, insertedLines, boundary, dijkstraParams,
-      editBeginPos.line, editBeginPos.col, Position(0, 29));
+      editBeginPos.line, editBeginPos.col, CursorPos(0, 29));
 
   cerr << "  stats: nodes=" << dijResult.stats.nodesExplored
        << " results=" << dijResult.stats.resultsFound
@@ -2405,7 +2405,7 @@ TEST_F(NeovimOracleDebug, InvestigateLazyFailures) {
 // what the optimizer's EditState transitions produce.
 
 // Helper: apply a single command via Edit::applyEdit
-static pair<Lines, Position> applyViaEdit(const Lines& lines, Position pos, string_view cmd) {
+static pair<Lines, CursorPos> applyViaEdit(const Lines& lines, CursorPos pos, string_view cmd) {
   Lines result = lines;
   Mode mode = Mode::Normal;
   auto edits = Edit::parseEdits(cmd);
@@ -2422,12 +2422,12 @@ TEST_F(DebugTest, ReplayVerification_Charwise) {
 
   // x from (0,5): delete single char (space)
   {
-    Position start(0, 5);
+    CursorPos start(0, 5);
     Range range(start, start);
     auto [editLines, editPos] = applyViaEdit(buf, start, "x");
 
     Lines coreLines = buf;
-    Position corePos = start;
+    CursorPos corePos = start;
     VimCore::deleteRange(coreLines, range, corePos, Mode::Normal);
     EXPECT_EQ(editLines, coreLines) << "x lines mismatch";
     EXPECT_EQ(editPos.line, corePos.line) << "x line mismatch";
@@ -2436,12 +2436,12 @@ TEST_F(DebugTest, ReplayVerification_Charwise) {
 
   // D from (0,5): delete to end of line
   {
-    Position start(0, 5);
-    Range range(start, Position(0, static_cast<int>(buf[0].size()) - 1));
+    CursorPos start(0, 5);
+    Range range(start, CursorPos(0, static_cast<int>(buf[0].size()) - 1));
     auto [editLines, editPos] = applyViaEdit(buf, start, "D");
 
     Lines coreLines = buf;
-    Position corePos = start;
+    CursorPos corePos = start;
     VimCore::deleteRange(coreLines, range, corePos, Mode::Normal);
     EXPECT_EQ(editLines, coreLines) << "D lines mismatch";
     EXPECT_EQ(editPos.line, corePos.line) << "D line mismatch";
@@ -2455,7 +2455,7 @@ TEST_F(DebugTest, ReplayVerification_Linewise) {
 
   // dd from line 0
   {
-    Position start(0, 3);
+    CursorPos start(0, 3);
     auto [editLines, editPos] = applyViaEdit(buf, start, "dd");
 
     EditState state(buf, start, 0, 0.0);
@@ -2468,7 +2468,7 @@ TEST_F(DebugTest, ReplayVerification_Linewise) {
 
   // dd from line 1
   {
-    Position start(1, 5);
+    CursorPos start(1, 5);
     auto [editLines, editPos] = applyViaEdit(buf, start, "dd");
 
     EditState state(buf, start, 0, 0.0);
@@ -2481,7 +2481,7 @@ TEST_F(DebugTest, ReplayVerification_Linewise) {
 
   // dd on last line (buffer becomes single line)
   {
-    Position start(2, 0);
+    CursorPos start(2, 0);
     auto [editLines, editPos] = applyViaEdit(buf, start, "dd");
 
     EditState state(buf, start, 0, 0.0);
@@ -2495,7 +2495,7 @@ TEST_F(DebugTest, ReplayVerification_Linewise) {
   // dd with targetCol > line length (tests targetCol reset)
   {
     Lines buf2 = {"long line here", "ab", "medium line"};
-    Position start(1, 1, 10);  // col=1 but targetCol=10
+    CursorPos start(1, 1, 10);  // col=1 but targetCol=10
     auto [editLines, editPos] = applyViaEdit(buf2, start, "dd");
 
     EditState state(buf2, start, 0, 0.0);
@@ -2511,7 +2511,7 @@ TEST_F(DebugTest, ReplayVerification_Join) {
 
   // J (add space)
   {
-    Position start(0, 2);
+    CursorPos start(0, 2);
     auto [editLines, editPos] = applyViaEdit(buf, start, "J");
 
     EditState state(buf, start, 0, 0.0);
@@ -2522,7 +2522,7 @@ TEST_F(DebugTest, ReplayVerification_Join) {
 
   // gJ (no space)
   {
-    Position start(0, 2);
+    CursorPos start(0, 2);
     auto [editLines, editPos] = applyViaEdit(buf, start, "gJ");
 
     EditState state(buf, start, 0, 0.0);
@@ -2534,7 +2534,7 @@ TEST_F(DebugTest, ReplayVerification_Join) {
   // J on empty next line
   {
     Lines buf2 = {"hello", "", "world"};
-    Position start(0, 2);
+    CursorPos start(0, 2);
     auto [editLines, editPos] = applyViaEdit(buf2, start, "J");
 
     EditState state(buf2, start, 0, 0.0);
@@ -2548,12 +2548,12 @@ TEST_F(DebugTest, ReplayVerification_Motion) {
   // Test motion commands: Edit::applyEdit position matches setPos
   Lines buf = {"hello world", "foo bar", "end"};
 
-  struct MotionTest { string cmd; Position start; Position expected; };
+  struct MotionTest { string cmd; CursorPos start; CursorPos expected; };
   vector<MotionTest> tests = {
-    {"h", Position(0, 5), Position(0, 4)},
-    {"l", Position(0, 5), Position(0, 6)},
-    {"j", Position(0, 5), Position(1, 5)},
-    {"k", Position(1, 3), Position(0, 3)},
+    {"h", CursorPos(0, 5), CursorPos(0, 4)},
+    {"l", CursorPos(0, 5), CursorPos(0, 6)},
+    {"j", CursorPos(0, 5), CursorPos(1, 5)},
+    {"k", CursorPos(1, 3), CursorPos(0, 3)},
   };
 
   for (const auto& t : tests) {
@@ -2579,7 +2579,7 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceDeleteEntireLineIter20) {
   CompositionOptimizer opt{config};
   CompositionOptimizerParams params;
 
-  auto res = opt.optimize(initial, Position(0,0), goal, Position(0,0), params);
+  auto res = opt.optimize(initial, CursorPos(0,0), goal, CursorPos(0,0), params);
   cerr << "Results: " << res.results.size() << endl;
   for (size_t i = 0; i < res.results.size(); i++) {
     const auto& r = res.results[i];
@@ -2638,7 +2638,7 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceJoinLinesResidualEditOpt) {
 
     // Our sim
     Lines simBuf = buf;
-    Position simPos(1, 0);
+    CursorPos simPos(1, 0);
     Mode simMode = Mode::Normal;
     Edit::applyEdit(simBuf, simPos, simMode, Edit::parseEdits("daw")[0]);
     cerr << "  Our daw:    " << simBuf << " cursor=" << simPos << endl;
@@ -2654,7 +2654,7 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceJoinLinesResidualEditOpt) {
     cerr << "  Neovim de: " << nvim.lines << " cursor=(" << nvim.row << "," << nvim.col << ")" << endl;
 
     Lines simBuf = buf;
-    Position simPos(1, 0);
+    CursorPos simPos(1, 0);
     Mode simMode = Mode::Normal;
     Edit::applyEdit(simBuf, simPos, simMode, Edit::parseEdits("de")[0]);
     cerr << "  Our de:    " << simBuf << " cursor=" << simPos << endl;
@@ -2667,12 +2667,12 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceJoinLinesResidualEditOpt) {
   {
     Lines buf = {"aaa", "xxx", "ccc"};
     // No boundary (full buffer)
-    Range r = VimCore::textObjectRange(Position(1,0), buf, false, false, 0, 0, false, false);
+    Range r = VimCore::textObjectRange(CursorPos(1,0), buf, false, false, 0, 0, false, false);
     cerr << "  aw range: (" << r.begin.line << "," << r.begin.col
          << ")-(" << r.end.line << "," << r.end.col << ")" << endl;
 
     // With hasLinesAbove=true (as the edit boundary would have)
-    Range r2 = VimCore::textObjectRange(Position(1,0), buf, false, false, 0, 0, true, false);
+    Range r2 = VimCore::textObjectRange(CursorPos(1,0), buf, false, false, 0, 0, true, false);
     cerr << "  aw range (hasAbove): (" << r2.begin.line << "," << r2.begin.col
          << ")-(" << r2.end.line << "," << r2.end.col << ")" << endl;
   }
@@ -2684,8 +2684,8 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceJoinLinesResidualEditOpt) {
     Lines goal = {"aaa bbb ccc"};
 
     // Build boundary from full buffer perspective
-    Position beginPos(0, 3);  // After "aaa"
-    Position endPos = initial.endPos();
+    CursorPos beginPos(0, 3);  // After "aaa"
+    CursorPos endPos = initial.endPos();
     EditBoundary boundary(initial, beginPos, endPos);
     cerr << "  prefix='" << boundary.prefix() << "' suffix='" << boundary.suffix() << "'" << endl;
     cerr << "  hasLinesAbove=" << boundary.hasLinesAbove()
@@ -2752,7 +2752,7 @@ TEST_F(NeovimOracleDebugSentence, DISABLED_SentenceDeleteDivergence) {
 
   // Step 2: What does our model produce for d) from [0,1]?
   Lines modelLines = source;
-  Position modelPos(0, 1);
+  CursorPos modelPos(0, 1);
   Mode modelMode = Mode::Normal;
   string lastEdit;
   auto edits = Edit::parseEdits("d)");
@@ -2765,7 +2765,7 @@ TEST_F(NeovimOracleDebugSentence, DISABLED_SentenceDeleteDivergence) {
   // Step 3: Do they match?
   bool bufferMatch = nvimD.lines == modelLines;
   bool posMatch = (nvimD.row == modelPos.line && nvimD.col == modelPos.col);
-  cerr << "Buffer match: " << bufferMatch << " Position match: " << posMatch << endl;
+  cerr << "Buffer match: " << bufferMatch << " CursorPos match: " << posMatch << endl;
 
   // Step 4: What does the full sequence produce in Neovim?
   auto nvimFull = oracle->simulate(source, 0, 1, "d)cge ddfecdb\x1b");
@@ -2874,7 +2874,7 @@ TEST_F(DebugTest, DISABLED_ReproduceSmallEmbeddedSentenceCrash) {
 
   Lines editRegion = {".df.", ".ee  "};
   Lines fullBuffer = {"be.df.", ".ee  cb"};
-  EditBoundary boundary(fullBuffer, Position(0, 2), Position(1, 5));
+  EditBoundary boundary(fullBuffer, CursorPos(0, 2), CursorPos(1, 5));
 
   cerr << "editRegion=" << editRegion << endl;
   cerr << "boundary: hasPrefix=" << boundary.hasPrefix()
@@ -2886,7 +2886,7 @@ TEST_F(DebugTest, DISABLED_ReproduceSmallEmbeddedSentenceCrash) {
 
   // Step-by-step replay of the failing sequence
   Lines buf = editRegion;
-  Position pos(0, 0);
+  CursorPos pos(0, 0);
   Mode mode = Mode::Normal;
   string lastEditCmd;
 
@@ -2910,10 +2910,10 @@ TEST_F(DebugTest, DISABLED_ReproduceSmallEmbeddedSentenceCrash) {
 
   // Now check explorer side: what range does the explorer generate for d) from (0,0)?
   cerr << "\n=== Explorer-side d) range check ===" << endl;
-  Position cursor(0, 0);
+  CursorPos cursor(0, 0);
   int rightColOffset = boundary.rightColOffset();
   bool hasLinesBelow = boundary.hasLinesBelow();
-  Position endpoint = VimCore::motionSentenceEndpoint<true, SentenceEdgeType::NextEdge>(
+  CursorPos endpoint = VimCore::motionSentenceEndpoint<true, SentenceEdgeType::NextEdge>(
       cursor, editRegion, rightColOffset, hasLinesBelow);
   cerr << "motionSentenceEndpoint from (0,0): (" << endpoint.line << "," << endpoint.col << ")" << endl;
   if (endpoint != POSITION_OUTSIDE_BOUNDARY) {
@@ -2921,7 +2921,7 @@ TEST_F(DebugTest, DISABLED_ReproduceSmallEmbeddedSentenceCrash) {
          << endpoint.line << "," << endpoint.col << "))" << endl;
     // Apply the deletion to see what the explorer computes
     Lines explorerBuf = editRegion;
-    Position explorerPos = cursor;
+    CursorPos explorerPos = cursor;
     VimCore::deleteRange(explorerBuf, Range(cursor, endpoint), explorerPos, Mode::Normal);
     cerr << "Explorer d) result: " << explorerBuf << " pos=(" << explorerPos.line << "," << explorerPos.col << ")" << endl;
   }
@@ -2969,7 +2969,7 @@ TEST_F(DebugTest, DISABLED_ReproduceSmallEmbeddedSentenceCrash) {
   cerr << "\n=== Interpreter d) behavior (no boundary) ===" << endl;
   auto interpTest = [](const string& cmd, const Lines& lines, int row, int col) {
     Lines buf = lines;
-    Position pos(row, col);
+    CursorPos pos(row, col);
     Mode mode = Mode::Normal;
     string lastEdit;
     for (const ParsedEdit& op : Edit::parseEdits(cmd)) {

@@ -10,10 +10,10 @@
 #include "Optimizer/SearchStats.h"
 
 #include "Boundary/MotionBoundary.h"
-#include "VimTypes/NavContext.h"
-#include "VimTypes/Position.h"
+#include "Types/NavContext.h"
+#include "Types/CursorPos.h"
 #include "Effort/RunningEffort.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 
 #include "BufferIndex.h"
 
@@ -57,8 +57,8 @@ struct MotionOptimizer {
   MotionResult optimize(
     // Core information
     const Lines& lines,
-    const Position& initialPos,
-    const Position& goalPos,
+    const CursorPos& initialPos,
+    const CursorPos& goalPos,
 
     // Search tuning (can adjust with designated initializers)
     MotionOptimizerParams params = {},
@@ -80,9 +80,9 @@ struct MotionOptimizer {
   // Simple wrapper to forward constructed BufferIndex
   RangeMotionResult optimizeToRange(
     const Lines& lines,
-    const Position& initialPos,
-    const Position& rangeBegin,
-    const Position& rangeEnd,
+    const CursorPos& initialPos,
+    const CursorPos& rangeBegin,
+    const CursorPos& rangeEnd,
     MotionOptimizerRangeParams params = {},
     std::string_view userSequence = "",
     const MotionBoundary& boundary = MotionBoundary(),
@@ -93,9 +93,9 @@ struct MotionOptimizer {
   // Overload with caller-provided BufferIndex
   RangeMotionResult optimizeToRange(
     const Lines& lines,
-    const Position& initialPos,
-    const Position& rangeBegin,
-    const Position& rangeEnd,
+    const CursorPos& initialPos,
+    const CursorPos& rangeBegin,
+    const CursorPos& rangeEnd,
     MotionOptimizerRangeParams params,
     std::string_view userSequence,
     const MotionBoundary& boundary,
@@ -105,13 +105,13 @@ struct MotionOptimizer {
   );
 
 private:
-  // Templated implementation - Forward known at compile time for branch elimination
+  // Templated single-goal implementation - Forward known at compile time
   template<bool Forward>
   MotionResult optimizeImpl(
     const Lines& lines,
-    const Position& initialPos,
+    const CursorPos& initialPos,
     const RunningEffort& startingEffort,
-    const Position& goalPos,
+    const CursorPos& goalPos,
     std::string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
@@ -122,10 +122,10 @@ private:
   template<bool Forward>
   RangeMotionResult optimizeToRangeImpl(
     const Lines& lines,
-    const Position& initialPos,
+    const CursorPos& initialPos,
     const RunningEffort& startingEffort,
-    const Position& rangeBegin,
-    const Position& rangeEnd,
+    const CursorPos& rangeBegin,
+    const CursorPos& rangeEnd,
     std::string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
