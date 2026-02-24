@@ -4,18 +4,18 @@
 #include <queue>
 #include <unordered_map>
 
-#include "Optimizer/Config.h"
+#include "Keyboard/Config.h"
 #include "EditOptimizerParams.h"
 #include "Optimizer/SearchStats.h"
 #include "Boundary/EditBoundary.h"
-#include "VimTypes/LineRange.h"
-#include "VimTypes/Position.h"
-#include "VimTypes/Range.h"
+#include "Types/LineRange.h"
+#include "Types/CursorPos.h"
+#include "Types/Range.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Effort/EffortBank.h"
 #include "Optimizer/EditOptimizer/EditState.h"
 #include "Optimizer/SequenceBinding.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 
 // Forward declaration
 class EditExplorer;
@@ -25,7 +25,7 @@ class EditExplorer;
 // (count, base command, associated effort).
 using DeletionCallback = std::function<void(const Range&, const SequenceBinding&)>;
 using LinewiseCallback = std::function<void(int line, const SequenceBinding&)>;
-using MotionCallback = std::function<void(const Position&, const SequenceBinding&)>;
+using MotionCallback = std::function<void(const CursorPos&, const SequenceBinding&)>;
 using JoinCallback = std::function<void(bool addSpace, const SequenceBinding&)>;
 
 // Counted operation callbacks
@@ -96,7 +96,7 @@ struct EditSearchContext {
                     const Config& config);
 
   // Check if position is in protected boundary region
-  bool inBoundaryRegion(const Position& pos, const Lines& lines) const;
+  bool inBoundaryRegion(const CursorPos& pos, const Lines& lines) const;
 
   // If cursor is in boundary region, explore escape motions and safe backward
   // word edits from first suffix col. Returns true if handled (caller should
@@ -119,7 +119,7 @@ struct EditSearchContext {
 
   // Within a line, get columns that bound the edit content
   // Returns (contentStart, contentEnd)
-  std::pair<int, int> computeEditBounds(const Lines& lines, const Position& cursor) const;
+  std::pair<int, int> computeEditBounds(const Lines& lines, const CursorPos& cursor) const;
 
   // Compute distance heuristic (remaining characters to delete)
   double distanceHeuristic(const Lines& lines) const;
@@ -151,7 +151,7 @@ struct EditSearchContext {
 
   // Explore J/gJ commands from current state
   // Only valid when cursor line has a next line and joining wouldn't cross into suffix boundary
-  void exploreJoinCommands(const Position& cursor, const Lines& lines, JoinCallback onJoin);
+  void exploreJoinCommands(const CursorPos& cursor, const Lines& lines, JoinCallback onJoin);
 
   // Explore counted line edits (dj, dk, {n}dd) from current state
   void exploreCountedLineEdits(const EditState& state, CountedLinewiseCallback cb);
@@ -168,17 +168,17 @@ struct EditSearchContext {
 
   // Convert startIndex to seed position in effectiveLines coordinates.
   // Reverses the flat indexing used by initStartingPositions.
-  Position seedPositionFor(int startIndex, const Lines& initialLines) const {
+  CursorPos seedPositionFor(int startIndex, const Lines& initialLines) const {
     int remaining = startIndex;
     for (int r = 0; r < static_cast<int>(initialLines.size()); r++) {
       int lineSize = initialLines[r].empty() ? 1 : static_cast<int>(initialLines[r].size());
       if (remaining < lineSize) {
         int effCol = remaining + (r == 0 ? leftColOffset : 0);
-        return Position(r, effCol);
+        return CursorPos(r, effCol);
       }
       remaining -= lineSize;
     }
-    return Position(-1, -1);  // Invalid
+    return CursorPos(-1, -1);  // Invalid
   }
 
   // Check if search should continue
@@ -191,7 +191,7 @@ struct EditSearchContext {
   // Track an explored state (call from main loop when trackExploredStates is true)
   void trackState(const EditState& s) {
     if (params.trackExploredStates) {
-      Position pos = s.getPos();
+      CursorPos pos = s.getPos();
       exploredStates.push_back({pos.line, pos.col, s.getEffort(), s.getSeq()});
     }
   }

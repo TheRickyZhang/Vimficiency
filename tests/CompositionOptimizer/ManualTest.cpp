@@ -9,11 +9,11 @@
 #include <gtest/gtest.h>
 #include <memory>
 
-#include "VimTypes/Position.h"
-#include "Optimizer/Config.h"
+#include "Types/CursorPos.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Boundary/MotionBoundary.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
 
 using namespace std;
@@ -31,7 +31,7 @@ protected:
   // Verify a single result achieves goal state via Neovim oracle
   void verifySingleResult(
       const Result& result,
-      const Lines& initial, Position initialPos,
+      const Lines& initial, CursorPos initialPos,
       const Lines& goal,
       const string& context = "") {
     ASSERT_TRUE(result.isValid()) << "Result invalid (" << context << ")";
@@ -46,7 +46,7 @@ protected:
   void expectHasValidResults(
       const vector<Result>& results,
       const Lines& initial,
-      Position initialPos,
+      CursorPos initialPos,
       const Lines& goal,
       const string& testContext = "") {
 
@@ -81,8 +81,8 @@ TEST_F(CompositionOptimizer_ManualTest, SingleEdit_SimpleSubstitution) {
   // Simple word change on same line
   Lines initial = {"hello world"};
   Lines goal = {"hello there"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 10);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 10);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -95,8 +95,8 @@ TEST_F(CompositionOptimizer_ManualTest, SingleEdit_AtCursor) {
   // Cursor already at edit position
   Lines initial = {"aaa"};
   Lines goal = {"bbb"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -114,8 +114,8 @@ TEST_F(CompositionOptimizer_ManualTest, TwoEdits_SameLine) {
   // Two changes on the same line
   Lines initial = {"aaa bbb ccc"};
   Lines goal = {"xxx bbb yyy"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -127,8 +127,8 @@ TEST_F(CompositionOptimizer_ManualTest, TwoEdits_SameLine) {
 TEST_F(CompositionOptimizer_ManualTest, TwoEdits_DifferentLines) {
   Lines initial = {"aaa", "bbb", "ccc"};
   Lines goal = {"xxx", "bbb", "yyy"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -144,8 +144,8 @@ TEST_F(CompositionOptimizer_ManualTest, TwoEdits_DifferentLines) {
 TEST_F(CompositionOptimizer_ManualTest, PureInsertion) {
   Lines initial = {"hello"};
   Lines goal = {"hello world"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -158,8 +158,8 @@ TEST_F(CompositionOptimizer_ManualTest, PureDeletion) {
   // Delete text, leaving nothing
   Lines initial = {"hello world"};
   Lines goal = {"hello"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -176,8 +176,8 @@ TEST_F(CompositionOptimizer_ManualTest, DeleteEntireLine) {
   // Delete middle line
   Lines initial = {"aaa", "bbb", "ccc"};
   Lines goal = {"aaa", "ccc"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -190,8 +190,8 @@ TEST_F(CompositionOptimizer_ManualTest, InsertNewLine) {
   // Insert a new line
   Lines initial = {"aaa", "ccc"};
   Lines goal = {"aaa", "bbb", "ccc"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -208,8 +208,8 @@ TEST_F(CompositionOptimizer_ManualTest, NoChange_IdenticalBuffers) {
   // When initial == goal, should return empty result or no-op
   Lines initial = {"hello world"};
   Lines goal = {"hello world"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -230,8 +230,8 @@ TEST_F(CompositionOptimizer_ManualTest, EdgeCase_EmptyToContent) {
   // Empty line to content
   Lines initial = {""};
   Lines goal = {"hello"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -244,8 +244,8 @@ TEST_F(CompositionOptimizer_ManualTest, EdgeCase_ContentToEmpty) {
   // Content to empty line
   Lines initial = {"hello"};
   Lines goal = {""};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -258,8 +258,8 @@ TEST_F(CompositionOptimizer_ManualTest, EdgeCase_SingleCharChange) {
   // Single character substitution
   Lines initial = {"abc"};
   Lines goal = {"xbc"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -276,8 +276,8 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerQuote_CursorBefore) {
   // Cursor before quoted region - ci" should work
   Lines initial = {"foo \"hello\" bar"};
   Lines goal = {"foo \"goodbye\" bar"};
-  Position initialPos(0, 0);  // Cursor at 'f'
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);  // Cursor at 'f'
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -304,8 +304,8 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerQuote_CursorInside) {
   // Cursor at opening quote - ci" should work
   Lines initial = {"\"hello\""};
   Lines goal = {"\"goodbye\""};
-  Position initialPos(0, 0);  // Cursor at opening quote
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);  // Cursor at opening quote
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -333,8 +333,8 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_AroundQuote) {
   // a" at EOL takes the quotes and leading space instead
   Lines initial = {"foo \"hello\""};
   Lines goal = {"foogoodbye"};  // a" takes " \"hello\"" -> leading space + quotes
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -359,8 +359,8 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerParen) {
   // Inner parentheses text object
   Lines initial = {"foo (hello) bar"};
   Lines goal = {"foo (goodbye) bar"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -387,8 +387,8 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerBrace) {
   // Inner braces text object
   Lines initial = {"foo {hello} bar"};
   Lines goal = {"foo {goodbye} bar"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -415,8 +415,8 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerBracket) {
   // Inner square brackets text object
   Lines initial = {"foo [hello] bar"};
   Lines goal = {"foo [goodbye] bar"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -444,8 +444,8 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_NotValidAfterQuote) {
   // This tests that the optimizer still finds a valid solution using other methods
   Lines initial = {"a\"b \"hello\" bar"};
   Lines goal = {"a\"b \"goodbye\" bar"};
-  Position initialPos(0, 3);  // Cursor at ' ', after first quote pair
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 3);  // Cursor at ' ', after first quote pair
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -471,8 +471,8 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_NestedBrackets) {
   // Start from position 5 (on inner open paren) to target inner pair
   Lines initial = {"foo ((hello)) bar"};
   Lines goal = {"foo ((goodbye)) bar"};
-  Position initialPos(0, 5);  // Cursor on inner '('
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 5);  // Cursor on inner '('
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -497,8 +497,8 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_SingleQuote) {
   // Single quote text object
   Lines initial = {"foo 'hello' bar"};
   Lines goal = {"foo 'goodbye' bar"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -529,8 +529,8 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_NewLineBetween) {
   // Insert new line between existing lines: should use 'o' shortcut
   Lines initial = {"a", "c"};
   Lines goal = {"a", "b", "c"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -553,8 +553,8 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_AppendToLine) {
   // Append to end of line: should use 'A' shortcut
   Lines initial = {"a", "c"};
   Lines goal = {"ab", "c"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -578,8 +578,8 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_AppendWithNewline) {
   // Optimal: A + b + <CR> + <Esc>
   Lines initial = {"a", "c"};
   Lines goal = {"ab", "", "c"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -592,8 +592,8 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_InsertAtStart) {
   // Insert at start of line: should use 'I' shortcut (if at first non-blank)
   Lines initial = {"a", "c"};
   Lines goal = {"ba", "c"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -606,8 +606,8 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_InsertInMiddle) {
   // Insert in middle of line: should use 'i' after navigation
   Lines initial = {"abc", "d"};
   Lines goal = {"axbc", "d"};
-  Position initialPos(0, 0);
-  Position goalPos(0, 0);
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
@@ -620,8 +620,8 @@ TEST_F(CompositionOptimizer_ManualTest, JoinLinesExact) {
   // J alone, no residual: two lines joined with space
   Lines initial = {"hello", "world"};
   Lines goal = {"hello world"};
-  Position initialPos(0, 0);
-  Position goalPos = goal.lastPos();
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos = goal.lastPos();
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
   expectHasValidResults(res.results, initial, initialPos, goal, "J exact");
@@ -638,8 +638,8 @@ TEST_F(CompositionOptimizer_ManualTest, JoinLinesWithIndent) {
   // J strips leading whitespace from next line
   Lines initial = {"aaa", "   bbb"};
   Lines goal = {"aaa bbb"};
-  Position initialPos(0, 0);
-  Position goalPos = goal.lastPos();
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos = goal.lastPos();
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
   ASSERT_FALSE(res.results.empty());
@@ -654,8 +654,8 @@ TEST_F(CompositionOptimizer_ManualTest, JoinLinesWithResidual) {
   // J + residual edit: join 3 lines, then edit the result
   Lines initial = {"aaa", "xxx", "ccc"};
   Lines goal = {"aaa bbb ccc"};
-  Position initialPos(0, 0);
-  Position goalPos = goal.lastPos();
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos = goal.lastPos();
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
   ASSERT_FALSE(res.results.empty());
@@ -674,8 +674,8 @@ TEST_F(CompositionOptimizer_ManualTest, JoinLinesPartialJoin) {
   // M=2 partition: join first two lines, join last two lines
   Lines initial = {"aaa", "bbb", "ccc", "ddd"};
   Lines goal = {"aaa bbb", "ccc ddd"};
-  Position initialPos(0, 0);
-  Position goalPos = goal.lastPos();
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos = goal.lastPos();
   MotionBoundary boundary(initial, initialPos, initial.endPos());
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos,
@@ -693,8 +693,8 @@ TEST_F(CompositionOptimizer_ManualTest, JoinLinesNoViable) {
   // Target has MORE lines than source — J can't help, should still produce results
   Lines initial = {"hello world"};
   Lines goal = {"hello", "world"};
-  Position initialPos(0, 0);
-  Position goalPos = goal.lastPos();
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos = goal.lastPos();
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
   // Just verify results exist; oracle verification skipped due to pre-existing

@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include "VimTypes/Position.h"
-#include "VimTypes/Lines.h"
+#include "Types/CursorPos.h"
+#include "Types/Lines.h"
 #include "Utils/RandomGeneration.h"
 
 #include <string>
@@ -309,21 +309,21 @@ inline Lines randomCodeBuffer(int numLines, int avgLineLen) {
 }
 
 // =============================================================================
-// Random Position Generation
+// Random CursorPos Generation
 // =============================================================================
 
 // Generate a random valid position within the given buffer
-inline Position randomPosition(const Lines& lines) {
+inline CursorPos randomPosition(const Lines& lines) {
   int line = RandomGen::range(0, static_cast<int>(lines.size()) - 1);
   int col = lines[line].empty() ? 0 : RandomGen::range(0, static_cast<int>(lines[line].size()) - 1);
-  return Position(line, col);
+  return CursorPos(line, col);
 }
 
-inline Position randomFirstPos(const Lines& lines) {
-  return Position(0, RandomGen::range(0, lines.front().effectiveSize() - 1));
+inline CursorPos randomFirstPos(const Lines& lines) {
+  return CursorPos(0, RandomGen::range(0, lines.front().effectiveSize() - 1));
 }
 
-inline Position randomLastPos(const Lines& lines) {
+inline CursorPos randomLastPos(const Lines& lines) {
   int lastLine = lines.lastLine();
-  return Position(lastLine, RandomGen::range(0, lines[lastLine].effectiveSize() - 1));
+  return CursorPos(lastLine, RandomGen::range(0, lines[lastLine].effectiveSize() - 1));
 }

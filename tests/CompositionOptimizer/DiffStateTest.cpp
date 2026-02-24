@@ -8,7 +8,7 @@
 #include <gtest/gtest.h>
 
 #include "Optimizer/CompositionOptimizer/DiffState.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
 
@@ -295,7 +295,7 @@ TEST(DiffStateTest, Random_NoChange_NoDiffs) {
 namespace {
 
 // Convert (line, col) to flat index in a Lines buffer
-static int posToFlat(const Position& pos, const Lines& lines) {
+static int posToFlat(const CursorPos& pos, const Lines& lines) {
   int idx = 0;
   for (int i = 0; i < pos.line && i < static_cast<int>(lines.size()); i++) {
     idx += static_cast<int>(lines[i].size()) + 1;
@@ -305,17 +305,17 @@ static int posToFlat(const Position& pos, const Lines& lines) {
 }
 
 // Convert flat index to (line, col) in a Lines buffer
-static Position flatToPos(int flatIdx, const Lines& lines) {
+static CursorPos flatToPos(int flatIdx, const Lines& lines) {
   int remaining = flatIdx;
   for (int i = 0; i < static_cast<int>(lines.size()); i++) {
     int lineLen = static_cast<int>(lines[i].size());
     if (remaining <= lineLen) {
-      return Position(i, remaining);
+      return CursorPos(i, remaining);
     }
     remaining -= lineLen + 1;
   }
   int lastLine = static_cast<int>(lines.size()) - 1;
-  return Position(lastLine, static_cast<int>(lines[lastLine].size()));
+  return CursorPos(lastLine, static_cast<int>(lines[lastLine].size()));
 }
 
 // Apply diffs one at a time with position adjustment (mirrors calculateLinesAfterDiffs)
@@ -325,7 +325,7 @@ Lines applySequentially(vector<DiffState> diffs, const Lines& initialLines) {
 
   for (auto& diff : diffs) {
     if (cumulativeOffset != 0) {
-      auto adjustPos = [&](const Position& pos) -> Position {
+      auto adjustPos = [&](const CursorPos& pos) -> CursorPos {
         int flatIdx = posToFlat(pos, initialLines);
         flatIdx += cumulativeOffset;
         return flatToPos(flatIdx, current);

@@ -18,7 +18,7 @@ MotionSearchContext::MotionSearchContext(const Lines& lines,
       distanceWeight(params.distanceWeight),
       maxEffort(userEffort * params.exploreFactor) {}
 
-void MotionSearchContext::exploreNewState(MotionState&& newState, const PosKey& goalKey) {
+void MotionSearchContext::exploreNewState(MotionState&& newState, const Pos& goalKey) {
   motionsEmitted++;
 
   // Prune if effort exceeds threshold
@@ -27,7 +27,7 @@ void MotionSearchContext::exploreNewState(MotionState&& newState, const PosKey& 
   }
 
   double newCost = newState.getCost();
-  const PosKey newKey = newState.getKey();
+  const Pos newKey = newState.getKey();
   auto it = costMap.find(newKey);
 
   if (it == costMap.end()) {
@@ -45,8 +45,8 @@ void MotionSearchContext::exploreNewState(MotionState&& newState, const PosKey& 
 }
 
 void MotionSearchContext::exploreNewStateToRange(MotionState&& newState,
-                                                  Position rangeBegin,
-                                                  Position rangeEnd) {
+                                                  Pos rangeBegin,
+                                                  Pos rangeEnd) {
   motionsEmitted++;
 
   // Prune if effort exceeds threshold
@@ -55,8 +55,8 @@ void MotionSearchContext::exploreNewStateToRange(MotionState&& newState,
   }
 
   double newCost = newState.getCost();
-  const PosKey newKey = newState.getKey();
-  Position pos = newState.getPos();
+  const Pos newKey = newState.getKey();
+  CursorPos pos = newState.getPos();
   auto it = costMap.find(newKey);
 
   // Check if position is in goal range [rangeBegin, rangeEnd)

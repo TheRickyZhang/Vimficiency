@@ -10,14 +10,14 @@ Then, we can use a SequenceBinding everywhere, and explicitly referring to {Keye
 ## Code organization
 We completed a structural cleanup to enforce explicit module boundaries in `src/` and prevent dependency drift:
 
-- Consolidated shared value ownership under `src/VimTypes/`:
+- Consolidated shared value ownership under `src/Types/`:
   `Position`, `Range`, `LineRange`, `Mode`, `Sequence`, `EdgeType`,
   `LineEdgeType`, `SentenceEdgeType`, and `LandingType`.
-- Moved `NavContext` from `Editor` to `VimTypes` as shared runtime context state.
-- Migrated boundary/value data holders from `Utils` to `VimTypes`:
+- Moved `NavContext` from `Editor` to `Types` as shared runtime context state.
+- Migrated boundary/value data holders from `Utils` to `Types`:
   `Lines`, `BracketFlags`, `QuoteFlags`, and `NoChar`.
 - Kept sequence ownership split:
-  `Sequence` type stays in `VimTypes`, while stream formatting implementation
+  `Sequence` type stays in `Types`, while stream formatting implementation
   lives in `Interpreter` because it depends on higher-level sequence parsing helpers.
 - Moved `RepeatMotionResult` to `src/Optimizer/MotionOptimizer/BufferIndex.h` because it is
   an optimizer/index query result type rather than a shared core primitive.
@@ -25,15 +25,15 @@ We completed a structural cleanup to enforce explicit module boundaries in `src/
   `src/Optimizer/MotionOptimizer/CountableMotionPair.h`, removing semantic
   count-landing coupling from `Keyboard`.
 - Moved config type ownership to Keyboard (`src/Keyboard/Config.h`), with
-  `src/Optimizer/Config.h` kept as a thin forwarding include for compatibility.
+  `src/Keyboard/Config.h` kept as a thin forwarding include for compatibility.
 - Moved `SequenceBinding` ownership to optimizer-wide scope
   (`src/Optimizer/SequenceBinding.h`), removing it from `State`.
 - Moved indentation helpers from `Utils` to `Optimizer`
   (`src/Optimizer/Indentation.h`) to avoid upward dependency from `Utils`.
 - Added dependency enforcement:
   `scripts/lint-module-deps.sh` plus CI gating in `.github/workflows/bench.yml`.
-- Updated dependency lint and architecture docs to treat `VimTypes` as the
-  base module and disallow new upward dependencies from `VimTypes`.
+- Updated dependency lint and architecture docs to treat `Types` as the
+  base module and disallow new upward dependencies from `Types`.
 - Replaced the mixed `Editor` layer with clearer module ownership:
   `src/Interpreter/` for arbitrary command parsing/interpreting adapters
   (`EditInterpreter`, `MotionInterpreter`, `SequenceParser`) and
@@ -58,7 +58,7 @@ We completed a structural cleanup to enforce explicit module boundaries in `src/
   since it is a config-scoped typed-effort cache shared across optimizers.
 - Moved effort modeling to its own module (`src/Effort/RunningEffort.*`) to
   separate keyboard primitives from runtime effort aggregation.
-- Moved `PosKey` to `src/VimTypes/PosKey.h` as a shared positional value type.
+- Moved `PosKey` to `src/Types/PosKey.h` as a shared positional value type.
 - Removed the `CommandSequence` wrapper and moved sequence display formatting to
   `src/Interpreter/SequenceFormatting.*` as interpreter-level parsing/formatting
   functionality.

@@ -3,15 +3,15 @@
 #include <functional>
 
 #include "EditToSpec.h"
-#include "VimTypes/LineRange.h"
-#include "VimTypes/Position.h"
-#include "VimTypes/Range.h"
+#include "Types/LineRange.h"
+#include "Types/CursorPos.h"
+#include "Types/Range.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Optimizer/EditOptimizer/EditState.h"
 #include "Optimizer/SequenceBinding.h"
 #include "Effort/RunningEffort.h"
-#include "VimTypes/Lines.h"
-#include "VimTypes/EdgeType.h"
+#include "Types/Lines.h"
+#include "Types/EdgeType.h"
 
 // Forward declarations
 struct EditSearchContext;
@@ -47,25 +47,25 @@ public:
                            JoinCallback onJoin = nullptr);
 
   // Explore J/gJ commands
-  void exploreJoinCommands(const Position& cursor, const Lines& lines, JoinCallback onJoin);
+  void exploreJoinCommands(const CursorPos& cursor, const Lines& lines, JoinCallback onJoin);
 
   // Explore counted line edits: dj, dk, {n}dd
-  void exploreCountedLineEdits(const Position& cursor, const Lines& lines,
+  void exploreCountedLineEdits(const CursorPos& cursor, const Lines& lines,
                                int minCountRepeat,
                                CountedLinewiseCallback onCountedLinewise);
 
   // Explore counted join commands: {n}J, {n}gJ
-  void exploreCountedJoinCommands(const Position& cursor, const Lines& lines,
+  void exploreCountedJoinCommands(const CursorPos& cursor, const Lines& lines,
                                   int minCountRepeat,
                                   CountedJoinCallback onCountedJoin);
 
   // Explore counted word edits: {n}de, {n}dE, {n}dw, {n}dW, {n}db, {n}dB, {n}dge, {n}dgE
-  void exploreCountedWordEdits(const Position& cursor, const Lines& lines,
+  void exploreCountedWordEdits(const CursorPos& cursor, const Lines& lines,
                                int minCountRepeat,
                                DeletionCallback onDeletion);
 
   // Explore counted char edits: {n}x
-  void exploreCountedCharEdits(const Position& cursor, const Lines& lines,
+  void exploreCountedCharEdits(const CursorPos& cursor, const Lines& lines,
                                int contentStart, int contentEnd,
                                int minCountRepeat,
                                DeletionCallback onDeletion);
@@ -76,40 +76,40 @@ public:
   template<EdgeType Edge>
   void exploreForwardWordEdits(
       const std::vector<Edit::ForwardWordEditSpecNoEdge>& specs,
-      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
+      const CursorPos& cursor, const Lines& lines, DeletionCallback onDeletion);
 
   template<EdgeType Edge>
   void exploreBackwardWordEdits(
       const std::vector<Edit::BackwardWordEditSpecNoEdge>& specs,
-      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
+      const CursorPos& cursor, const Lines& lines, DeletionCallback onDeletion);
 
   template<bool Forward>
   void exploreParagraphEdits(
       const std::vector<Edit::ParagraphEditSpecNoDir>& specs,
-      const Position& cursor, const Lines& lines,
+      const CursorPos& cursor, const Lines& lines,
       DeletionCallback onDeletion, LinewiseCallback onLinewise);
 
   template<bool Forward>
   void exploreSentenceEdits(
       const std::vector<Edit::SentenceEditSpecNoDir>& specs,
-      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
+      const CursorPos& cursor, const Lines& lines, DeletionCallback onDeletion);
 
   // ================== Non-templated Exploration Methods ==================
   void exploreTextObjectEdits(
       const std::vector<Edit::TextObjectEditSpec>& specs,
-      const Position& cursor, const Lines& lines, DeletionCallback onDeletion);
+      const CursorPos& cursor, const Lines& lines, DeletionCallback onDeletion);
 
   void exploreHalfLineEdits(
       const std::vector<Edit::LineEditSpec>& specs,
-      const Position& cursor, const Lines& lines,
+      const CursorPos& cursor, const Lines& lines,
       int contentStart, int contentEnd, DeletionCallback onDeletion);
 
   void exploreFullLineEdits(
       const std::vector<Edit::FullLineEditSpec>& specs,
-      const Position& cursor, const Lines& lines, LinewiseCallback onLinewise);
+      const CursorPos& cursor, const Lines& lines, LinewiseCallback onLinewise);
 
   void exploreCharEdits(
-      const Position& cursor, const Lines& lines,
+      const CursorPos& cursor, const Lines& lines,
       int contentStart, int contentEnd, int editContentLen,
       DeletionCallback onDeletion);
 
@@ -117,6 +117,6 @@ private:
   EditSearchContext& ctx_;
 
   // Helper methods
-  bool inBoundaryRegion(const Position& pos, const Lines& lines) const;
-  std::pair<int, int> computeEditBounds(const Lines& lines, const Position& cursor) const;
+  bool inBoundaryRegion(const CursorPos& pos, const Lines& lines) const;
+  std::pair<int, int> computeEditBounds(const Lines& lines, const CursorPos& cursor) const;
 };

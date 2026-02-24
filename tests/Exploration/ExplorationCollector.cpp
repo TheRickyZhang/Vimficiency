@@ -20,7 +20,7 @@
 #include "Boundary/MotionBoundary.h"
 #include "Exploration/SequenceChunker.h"
 #include "Optimizer/CompositionOptimizer/DiffState.h"
-#include "Optimizer/Config.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Optimizer/EditOptimizer/EditOptimizerParams.h"
@@ -494,9 +494,9 @@ static vector<ExploreCase> collectMotionCases() {
   for (const auto& mc : motionCases) {
     RandomGen::seed(seedMgr.getSeed(0));
     Lines lines = randomCodeBuffer(mc.numLines, mc.avgLen);
-    Position firstPos = randomFirstPos(lines);
-    Position lastPos = randomLastPos(lines);
-    Position boundaryEnd(lastPos.line, lastPos.col + 1);
+    CursorPos firstPos = randomFirstPos(lines);
+    CursorPos lastPos = randomLastPos(lines);
+    CursorPos boundaryEnd(lastPos.line, lastPos.col + 1);
     MotionBoundary boundary(lines, firstPos, boundaryEnd, true, true);
 
     MotionOptimizer opt(config);
@@ -579,7 +579,7 @@ static vector<ExploreCase> collectEditCases() {
   for (const auto& ec : pureDeletionCases) {
     RandomGen::seed(seedMgr.getSeed(0));
     Lines lines = randomCodeBuffer(ec.numLines, ec.avgLen);
-    EditBoundary boundary(lines, Position(0, 0), lines.endPos());
+    EditBoundary boundary(lines, CursorPos(0, 0), lines.endPos());
     auto p = params;
     p.maxResults = max(10, lines.totalPositions() / 4);
 
@@ -604,8 +604,8 @@ static vector<ExploreCase> collectEditCases() {
     RandomGen::seed(seedMgr.getSeed(0));
     Lines buffer = {"I saw a pig in barn in Switzerland", "Inconspicuous, even"};
     Lines goal = {"Florida"};
-    EditBoundary boundary(buffer, Position(0, 23), Position(1, 19));
-    Lines editRegion = buffer.getSpan(Position(0, 23), Position(1, 19));
+    EditBoundary boundary(buffer, CursorPos(0, 23), CursorPos(1, 19));
+    Lines editRegion = buffer.getSpan(CursorPos(0, 23), CursorPos(1, 19));
     auto p = params;
     p.maxResults = max(10, editRegion.totalPositions() / 4);
 

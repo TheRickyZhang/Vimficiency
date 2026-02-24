@@ -4,16 +4,15 @@
 #include <queue>
 #include <unordered_map>
 
-#include "Optimizer/Config.h"
 #include "MotionOptimizerParams.h"
 #include "Optimizer/SearchStats.h"
 #include "Boundary/MotionBoundary.h"
 #include "Effort/EffortBank.h"
-#include "VimTypes/NavContext.h"
-#include "VimTypes/Position.h"
+#include "Types/NavContext.h"
+#include "Types/CursorPos.h"
 #include "Optimizer/MotionOptimizer/MotionState.h"
-#include "VimTypes/PosKey.h"
-#include "VimTypes/Lines.h"
+#include "Types/Pos.h"
+#include "Types/Lines.h"
 
 // MotionSearchContext encapsulates shared state and logic for motion optimization search.
 // Used by both optimize() (single goal) and optimizeToRange() (range goal).
@@ -35,7 +34,7 @@ struct MotionSearchContext {
   // Search state
   using PriorityQueue = std::priority_queue<MotionState, std::vector<MotionState>, std::greater<MotionState>>;
   PriorityQueue pq;
-  std::unordered_map<PosKey, double, PosKeyHash> costMap;
+  std::unordered_map<Pos, double> costMap;
   int nodesProcessed = 0;   // Non-stale states processed (user-facing limit)
   int totalPops = 0;        // All pops including stale (internal safety)
   int motionsEmitted = 0;   // Total motions generated (for stats)
@@ -61,18 +60,18 @@ struct MotionSearchContext {
   // ==========================================================================
 
   // Manhattan distance to a single goal position
-  double distanceToGoal(Position pos, Position goal) const {
+  double distanceToGoal(CursorPos pos, CursorPos goal) const {
     return std::abs(goal.line - pos.line) + std::abs(goal.targetCol - pos.targetCol);
   }
 
-  // Distance to closest point in a range [rangeBegin, rangeEnd)
-  double distanceToRange(Position pos, Position rangeBegin, Position rangeEnd,
-                         Position rangeTail) const {
-    if (pos >= rangeBegin && pos < rangeEnd) {
+  // Distance to closest point in range [rangeFirst, rangeLast] (both inclusive).
+  // Range endpoints are geometric (Pos); cursor pos needs targetCol for heuristic.
+  double distanceToRange(CursorPos pos, Pos rangeFirst, Pos rangeLast) const {
+    if (pos >= rangeFirst && pos <= rangeLast) {
       return 0.0;  // Inside range
     }
-    Position closest = (pos < rangeBegin) ? rangeBegin : rangeTail;
-    return distanceToGoal(pos, closest);
+    Pos closest = (pos < rangeFirst) ? rangeFirst : rangeLast;
+    return std::abs(closest.line - pos.line) + std::abs(closest.col - pos.targetCol);
   }
 
   // Compute A* priority: effortWeight * effort + distanceWeight * distance
@@ -81,16 +80,16 @@ struct MotionSearchContext {
   }
 
   // Convenience: compute priority for single goal
-  double computePriorityToGoal(const MotionState& s, Position goal) const {
+  double computePriorityToGoal(const MotionState& s, CursorPos goal) const {
     return computePriority(s.getEffort(), distanceToGoal(s.getPos(), goal));
   }
 
-  // Convenience: compute priority for range goal [rangeBegin, rangeEnd)
-  double computePriorityToRange(const MotionState& s, Position rangeBegin, Position rangeEnd,
-                                Position rangeTail) const {
+  // Convenience: compute priority for range goal [rangeFirst, rangeLast] (both inclusive)
+  double computePriorityToRange(const MotionState& s, Pos rangeFirst,
+                                Pos rangeLast) const {
     return computePriority(
         s.getEffort(),
-        distanceToRange(s.getPos(), rangeBegin, rangeEnd, rangeTail));
+        distanceToRange(s.getPos(), rangeFirst, rangeLast));
   }
 
   // ==========================================================================
@@ -99,10 +98,11 @@ struct MotionSearchContext {
 
   // Add state to priority queue if it improves on existing cost.
   // goalKey: the goal position key (not cached to allow multiple results)
-  void exploreNewState(MotionState&& state, const PosKey& goalKey);
+  void exploreNewState(MotionState&& state, const Pos& goalKey);
 
-  // Variant for range goals: positions in range are not cached
-  void exploreNewStateToRange(MotionState&& state, Position rangeBegin, Position rangeEnd);
+  // Variant for range goals: positions in range are not cached.
+  // Takes half-open [rangeBegin, rangeEnd) as Pos (geometric only).
+  void exploreNewStateToRange(MotionState&& state, Pos rangeBegin, Pos rangeEnd);
 
   // Check if search should continue
   bool shouldContinue() const {
@@ -133,7 +133,7 @@ struct MotionSearchContext {
   // Track an explored state (call from main loop when trackExploredStates is true)
   void trackState(const MotionState& s) {
     if (params.trackExploredStates) {
-      Position pos = s.getPos();
+      CursorPos pos = s.getPos();
       exploredStates.push_back({pos.line, pos.col, s.getEffort(), s.getSequence().str()});
     }
   }

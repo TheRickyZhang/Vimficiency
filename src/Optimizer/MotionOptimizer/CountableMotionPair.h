@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "Keyboard/KeyedSequence.h"
-#include "VimTypes/LandingType.h"
+#include "Types/LandingType.h"
 
 struct CountableMotionPair {
   KeyedSequence forward;   // e.g., KeyedSequence::w, KeyedSequence::e

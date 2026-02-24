@@ -10,7 +10,7 @@
 using namespace std;
 
 // =============================================================================
-// Position Index Utilities
+// CursorPos Index Utilities
 // =============================================================================
 
 int toFlatIndex(int row, int col, const Lines& lines) {
@@ -21,16 +21,16 @@ int toFlatIndex(int row, int col, const Lines& lines) {
   return idx + col;
 }
 
-Position fromFlatIndex(int flatIdx, const Lines& lines) {
+CursorPos fromFlatIndex(int flatIdx, const Lines& lines) {
   int remaining = flatIdx;
   for (int r = 0; r < static_cast<int>(lines.size()); r++) {
     int lineSize = lines[r].empty() ? 1 : static_cast<int>(lines[r].size());
     if (remaining < lineSize) {
-      return Position(r, remaining);
+      return CursorPos(r, remaining);
     }
     remaining -= lineSize;
   }
-  return Position(-1, -1);  // Invalid
+  return CursorPos(-1, -1);  // Invalid
 }
 
 // =============================================================================
@@ -41,8 +41,8 @@ EditBoundary EmbeddedEditRegion::makeBoundary() const {
   return EditBoundary(fullBuffer, {startLine, startCol}, {endLine, endCol});
 }
 
-Position EmbeddedEditRegion::toFullBufferPos(const Position& editPos) const {
-  Position result = editPos;
+CursorPos EmbeddedEditRegion::toFullBufferPos(const CursorPos& editPos) const {
+  CursorPos result = editPos;
   result.line += startLine;
   if (editPos.line == 0) {
     result.col += static_cast<int>(prefix.size());

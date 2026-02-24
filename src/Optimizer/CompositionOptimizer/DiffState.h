@@ -4,8 +4,8 @@
 #include <vector>
 
 #include "Boundary/EditBoundary.h"
-#include "VimTypes/Position.h"
-#include "VimTypes/Lines.h"
+#include "Types/CursorPos.h"
+#include "Types/Lines.h"
 
 // Represents a single contiguous change region at CHARACTER granularity.
 // Unlike line-level diffs, this can represent:
@@ -20,8 +20,8 @@
 struct DiffState {
   // Character-precise edit region bounds (in original buffer coordinates)
   // Half-open: [beginPos, endPos) defines exactly which characters need to change
-  Position beginPos;  // First character that differs (inclusive)
-  Position endPos;    // One past last character (exclusive, half-open)
+  CursorPos beginPos;  // First character that differs (inclusive)
+  CursorPos endPos;    // One past last character (exclusive, half-open)
 
   // The actual content being deleted/inserted (flattened with \n for newlines)
   std::string deletedText;   // Characters being removed (may contain \n)
@@ -32,7 +32,7 @@ struct DiffState {
   EditBoundary boundary;
 
   // Constructor with all fields
-  DiffState(Position begin, Position end, std::string deleted,
+  DiffState(CursorPos begin, CursorPos end, std::string deleted,
             std::string inserted, EditBoundary bnd)
       : beginPos(begin), endPos(end), deletedText(std::move(deleted)),
         insertedText(std::move(inserted)), boundary(std::move(bnd)) {}

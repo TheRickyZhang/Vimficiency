@@ -73,7 +73,7 @@ TEST_F(DebugTest, CompositionDiffMerging) {
     cerr << "  Goal:    " << goal << endl;
 
     // Create context to trigger merge
-    CompositionSearchContext ctx(initial, Position(0, 0), goal, "",
+    CompositionSearchContext ctx(initial, CursorPos(0, 0), goal, "",
         NavContext(), MotionBoundary(), params, config);
 
     cerr << "  Merged diffs: " << ctx.totalEdits << endl;
@@ -110,11 +110,11 @@ TEST_F(DebugTest, CompositionDiffMerging) {
   {
     Lines initial = {"a", "c"};
     Lines goal = {"ab", "", "c"};
-    Position initialPos(0, 0);
+    CursorPos initialPos(0, 0);
 
     CompositionOptimizer opt(config);
     auto compResult = opt.optimize(
-        initial, initialPos, goal, Position(0, 0), params);
+        initial, initialPos, goal, CursorPos(0, 0), params);
     const auto& results = compResult.results;
 
     cerr << "  Results: " << results.size() << endl;

@@ -8,7 +8,7 @@
 
 #include "Optimizer/MotionOptimizer/BufferIndex.h"
 #include "Optimizer/MotionOptimizer/CountableMotionPair.h"
-#include "VimTypes/NavContext.h"
+#include "Types/NavContext.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Boundary/MotionBoundary.h"
 #include "Utils/TestUtils.h"
@@ -46,8 +46,8 @@ protected:
 
 TEST_F(BufferIndexTest, WordBegin_SingleLine_Forward) {
   BufferIndex idx(singleLine);
-  Position start(0, 0);  // at 'o' of "one"
-  Position goal(0, 18);  // at 'f' of "five"
+  CursorPos start(0, 0);  // at 'o' of "one"
+  CursorPos goal(0, 18);  // at 'f' of "five"
 
   auto [undershoot, overshoot] = idx.getTwoClosest(LandingType::WordBegin, start, goal);
 
@@ -62,8 +62,8 @@ TEST_F(BufferIndexTest, WordBegin_SingleLine_Forward) {
 
 TEST_F(BufferIndexTest, WordBegin_SingleLine_Backward) {
   BufferIndex idx(singleLine);
-  Position start(0, 19);  // at 'f' of "five"
-  Position goal(0, 4);    // at 't' of "two"
+  CursorPos start(0, 19);  // at 'f' of "five"
+  CursorPos goal(0, 4);    // at 't' of "two"
 
   auto [undershoot, overshoot] = idx.getTwoClosest(LandingType::WordBegin, start, goal);
 
@@ -74,8 +74,8 @@ TEST_F(BufferIndexTest, WordBegin_SingleLine_Backward) {
 
 TEST_F(BufferIndexTest, WordBegin_MultiLine) {
   BufferIndex idx(multiLine);
-  Position start(0, 0);
-  Position goal(1, 6);  // "beta" on line 1
+  CursorPos start(0, 0);
+  CursorPos goal(1, 6);  // "beta" on line 1
 
   auto [undershoot, overshoot] = idx.getTwoClosest(LandingType::WordBegin, start, goal);
 
@@ -89,8 +89,8 @@ TEST_F(BufferIndexTest, WordBegin_MultiLine) {
 
 TEST_F(BufferIndexTest, WordEnd_SingleLine_Forward) {
   BufferIndex idx(singleLine);
-  Position start(0, 0);
-  Position goal(0, 17);  // near end of "four"
+  CursorPos start(0, 0);
+  CursorPos goal(0, 17);  // near end of "four"
 
   auto [undershoot, overshoot] = idx.getTwoClosest(LandingType::WordEnd, start, goal);
 
@@ -104,8 +104,8 @@ TEST_F(BufferIndexTest, WordEnd_SingleLine_Forward) {
 
 TEST_F(BufferIndexTest, WORDBegin_CodeLike) {
   BufferIndex idx(codeLike);
-  Position start(0, 0);
-  Position goal(0, 11);  // at '{'
+  CursorPos start(0, 0);
+  CursorPos goal(0, 11);  // at '{'
 
   auto [undershoot, overshoot] = idx.getTwoClosest(LandingType::WORDBegin, start, goal);
 
@@ -119,8 +119,8 @@ TEST_F(BufferIndexTest, WORDBegin_CodeLike) {
 
 TEST_F(BufferIndexTest, Paragraph_AcrossBlankLines) {
   BufferIndex idx(multiLine);
-  Position start(0, 0);
-  Position goal(3, 0);  // "after blank line"
+  CursorPos start(0, 0);
+  CursorPos goal(3, 0);  // "after blank line"
 
   auto [undershoot, overshoot] = idx.getTwoClosest(LandingType::Paragraph, start, goal);
 
@@ -141,8 +141,8 @@ TEST_F(BufferIndexTest, EmptyBuffer) {
 TEST_F(BufferIndexTest, SingleCharLine) {
   Lines single = {"x y z"};
   BufferIndex idx(single);
-  Position start(0, 0);
-  Position goal(0, 4);  // 'z'
+  CursorPos start(0, 0);
+  CursorPos goal(0, 4);  // 'z'
 
   auto [undershoot, overshoot] = idx.getTwoClosest(LandingType::WordBegin, start, goal);
   // Word starts at 0, 2, 4
@@ -173,8 +173,8 @@ protected:
 
   static vector<Result> runOptimizer(
       const Lines& lines,
-      Position start,
-      Position end,
+      CursorPos start,
+      CursorPos end,
       const string& userSeq,
       Config config = Config::uniform()) {
     MotionOptimizer opt(config);
@@ -194,8 +194,8 @@ TEST_F(CountMotionsOptimizerTest, CountW_BasicForward) {
   //  0   4   8     14   19   24  28    34
   // Start at "one", want to get to "five" (5th word)
   // User typed "wwww" but "4w" should be found
-  Position start(0, 0);
-  Position end(0, 19);  // "five" starts at col 19
+  CursorPos start(0, 0);
+  CursorPos end(0, 19);  // "five" starts at col 19
   string userSeq = "wwww";
 
   auto results = runOptimizer(wordLine, start, end, userSeq);
@@ -208,8 +208,8 @@ TEST_F(CountMotionsOptimizerTest, CountB_BasicBackward) {
   // "one two three four five six seven eight"
   //  0   4   8     14   19   24  28    34
   // Start at "eight", want to get to "four"
-  Position start(0, 34);  // "eight" starts at 34
-  Position end(0, 14);    // "four" starts at 14
+  CursorPos start(0, 34);  // "eight" starts at 34
+  CursorPos end(0, 14);    // "four" starts at 14
   string userSeq = "bbbb";
 
   auto results = runOptimizer(wordLine, start, end, userSeq);
@@ -223,8 +223,8 @@ TEST_F(CountMotionsOptimizerTest, CountE_ForwardToWordEnd) {
   //  0   4   8     14   19   24  28    34
   // Word ends: 2, 6, 12, 17, 22, 26, 32, 38
   // Start at beginning, want to get to end of "four"
-  Position start(0, 0);
-  Position end(0, 17);  // end of "four"
+  CursorPos start(0, 0);
+  CursorPos end(0, 17);  // end of "four"
   string userSeq = "eeee";
 
   auto results = runOptimizer(wordLine, start, end, userSeq);
@@ -237,8 +237,8 @@ TEST_F(CountMotionsOptimizerTest, CountGe_BackwardToWordEnd) {
   // "one two three four five six seven eight"
   // Word ends: 2, 6, 12, 17, 22, 26, 32, 38
   // Start at end of "eight" (38), want to get to end of "four" (17)
-  Position start(0, 38);
-  Position end(0, 17);  // end of "four"
+  CursorPos start(0, 38);
+  CursorPos end(0, 17);  // end of "four"
   string userSeq = "gegegege";
 
   auto results = runOptimizer(wordLine, start, end, userSeq);
@@ -249,8 +249,8 @@ TEST_F(CountMotionsOptimizerTest, CountGe_BackwardToWordEnd) {
 
 TEST_F(CountMotionsOptimizerTest, CountW_SameLineOnly) {
   // The COUNT_SEARCHABLE_MOTIONS_LINE should only apply when on same line
-  Position start(0, 0);
-  Position end(1, 6);  // "beta" on line 1
+  CursorPos start(0, 0);
+  CursorPos end(1, 6);  // "beta" on line 1
   string userSeq = "jwww";
 
   auto results = runOptimizer(multiWordLines, start, end, userSeq);
@@ -261,8 +261,8 @@ TEST_F(CountMotionsOptimizerTest, CountW_SameLineOnly) {
 
 TEST_F(CountMotionsOptimizerTest, CountParagraph_Global) {
   // Paragraph motions are in GLOBAL, should work across lines
-  Position start(0, 0);
-  Position end(3, 0);  // "after blank paragraph"
+  CursorPos start(0, 0);
+  CursorPos end(3, 0);  // "after blank paragraph"
   string userSeq = "}}";
 
   auto results = runOptimizer(
@@ -275,8 +275,8 @@ TEST_F(CountMotionsOptimizerTest, CountParagraph_Global) {
 
 TEST_F(CountMotionsOptimizerTest, SmallCount_NotEmitted) {
   // Count of 1 should not be emitted (just use the motion directly)
-  Position start(0, 0);
-  Position end(0, 4);  // "two" - just one w away
+  CursorPos start(0, 0);
+  CursorPos end(0, 4);  // "two" - just one w away
   string userSeq = "w";
 
   auto results = runOptimizer(wordLine, start, end, userSeq);

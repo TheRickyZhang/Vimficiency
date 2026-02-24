@@ -1,7 +1,7 @@
 #pragma once
 
-#include "VimTypes/Position.h"
-#include "VimTypes/Lines.h"
+#include "Types/CursorPos.h"
+#include "Types/Lines.h"
 
 // =============================================================================
 // BoundaryContext: Shared boundary offset/line info for constrained operations
@@ -25,11 +25,11 @@ struct BoundaryContext {
 
   // Compute from buffer positions, optionally inheriting from parent context
   // endPos is exclusive: one past the last valid cursor position on the end line
-  BoundaryContext(const Lines& lines, Position beginPos, Position endPos,
+  BoundaryContext(const Lines& lines, CursorPos beginPos, CursorPos endPos,
                   const BoundaryContext& parent);
 
   // Compute from explicit flags (for FFI or when parent flags are known)
   // endPos is exclusive: one past the last valid cursor position on the end line
-  BoundaryContext(const Lines& lines, Position beginPos, Position endPos,
+  BoundaryContext(const Lines& lines, CursorPos beginPos, CursorPos endPos,
                   bool parentHasLinesAbove, bool parentHasLinesBelow);
 };

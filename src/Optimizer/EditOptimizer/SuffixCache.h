@@ -9,16 +9,16 @@
 #include <utility>
 #include <vector>
 
-#include "VimTypes/Mode.h"
+#include "Types/Mode.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Effort/RunningEffort.h"
-#include "VimTypes/Position.h"
+#include "Types/CursorPos.h"
 
 // =============================================================================
 // Suffix Cache Types - for cross-position sharing in EditOptimizer
 // =============================================================================
 
-// Key for suffix cache: (linesHash, lineCount, Position, Mode) WITHOUT startIndex
+// Key for suffix cache: (linesHash, lineCount, CursorPos, Mode) WITHOUT startIndex
 // This enables sharing cached suffixes across different starting positions.
 // Uses precomputed 64-bit hash instead of full buffer copy for O(1) key construction.
 struct SuffixKey {
@@ -31,7 +31,7 @@ struct SuffixKey {
   SuffixKey(size_t lh, int lc, int ln, int c, Mode m)
       : linesHash(lh), lineCount(lc), line(ln), col(c), mode(m) {}
 
-  SuffixKey(size_t lh, int lc, Position p, Mode m)
+  SuffixKey(size_t lh, int lc, CursorPos p, Mode m)
       : linesHash(lh), lineCount(lc), line(p.line), col(p.col), mode(m) {}
 
   bool operator==(const SuffixKey& other) const {

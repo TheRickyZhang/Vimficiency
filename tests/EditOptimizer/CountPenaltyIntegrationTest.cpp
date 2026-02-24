@@ -1,13 +1,13 @@
 #include <gtest/gtest.h>
 
 #include "Boundary/EditBoundary.h"
-#include "Optimizer/Config.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/CountPenalty.h"
 #include "Optimizer/EditOptimizer/EditExplorer.h"
 #include "Optimizer/EditOptimizer/EditOptimizerParams.h"
 #include "Optimizer/EditOptimizer/EditSearchContext.h"
 #include "Optimizer/GlobalRuntimeOptions.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 
 namespace {
 struct RuntimeOptionsGuard {
@@ -22,11 +22,11 @@ TEST(EditCountPenaltyIntegrationTest, CountedLineEditsIncludeRuntimePenalty) {
 
   Config config = Config::uniform();
   Lines lines = {"a", "b", "c", "d"};
-  EditBoundary boundary(lines, Position(0, 0), lines.endPos());
+  EditBoundary boundary(lines, CursorPos(0, 0), lines.endPos());
   EditOptimizerParams params = EditOptimizerParams{}.withMinCountRepeat(2);
   EditSearchContext ctx(lines, boundary, params, config);
   EditExplorer explorer(ctx);
-  Position cursor(0, 0);
+  CursorPos cursor(0, 0);
 
   double baseline = -1.0;
   explorer.exploreCountedLineEdits(
@@ -64,11 +64,11 @@ TEST(EditCountPenaltyIntegrationTest, CountedJoinEditsIncludeRuntimePenalty) {
 
   Config config = Config::uniform();
   Lines lines = {"a", "b", "c", "d"};
-  EditBoundary boundary(lines, Position(0, 0), lines.endPos());
+  EditBoundary boundary(lines, CursorPos(0, 0), lines.endPos());
   EditOptimizerParams params = EditOptimizerParams{}.withMinCountRepeat(2);
   EditSearchContext ctx(lines, boundary, params, config);
   EditExplorer explorer(ctx);
-  Position cursor(0, 0);
+  CursorPos cursor(0, 0);
 
   double baseline = -1.0;
   explorer.exploreCountedJoinCommands(

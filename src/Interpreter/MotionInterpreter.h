@@ -8,10 +8,10 @@
 #include <string_view>
 #include <vector>
 
-#include "VimTypes/NavContext.h"
-#include "VimTypes/Mode.h"
-#include "VimTypes/Position.h"
-#include "VimTypes/Lines.h"
+#include "Types/NavContext.h"
+#include "Types/Mode.h"
+#include "Types/CursorPos.h"
+#include "Types/Lines.h"
 
 struct ParsedMotion {
 private:
@@ -38,16 +38,16 @@ std::ostream& operator<<(std::ostream& os, const ParsedMotion& motion);
 // Parse a motion sequence into individual ParsedMotion tokens
 std::vector<ParsedMotion> parseMotions(std::string_view seq);
 
-void applyParsedMotion(Position& pos, Mode& mode, 
+void applyParsedMotion(CursorPos& pos, Mode& mode, 
                        const ParsedMotion& motion, const Lines& lines,
                       const NavContext& navContext);
 
 // External entry point for applying a single motion in optimizer state updates.
-void applySingleMotion(Position& pos, Mode& mode, std::string_view motion,
+void applySingleMotion(CursorPos& pos, Mode& mode, std::string_view motion,
                        const Lines& lines, const NavContext& navContext);
 
 // Parses the motion sequence, and returns the result if they are applied to the
 // current state
-Position simulateMotions(Position pos, std::string_view motionSeq,
+CursorPos simulateMotions(CursorPos pos, std::string_view motionSeq,
                          const Lines& lines,
                          const NavContext& navContext = NavContext());

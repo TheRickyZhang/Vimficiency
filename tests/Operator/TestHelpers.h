@@ -6,8 +6,8 @@
 
 #pragma once
 
-#include "VimTypes/Position.h"
-#include "VimTypes/Lines.h"
+#include "Types/CursorPos.h"
+#include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomBufferHelpers.h"  // Core random generation
 #include "VimCore/VimEndpointUtils.h"
@@ -30,9 +30,9 @@ struct MotionSpec {
   // boundaryOffset: for forward, protects suffix (last N cols of last line)
   //                 for backward, protects prefix (first N cols of line 0)
   // hasLinesOutside: for forward, pass hasLinesBelow; for backward, pass hasLinesAbove
-  bool wouldCross(Position cursor, const Lines& lines, int boundaryOffset,
+  bool wouldCross(CursorPos cursor, const Lines& lines, int boundaryOffset,
                   bool hasLinesOutside) const {
-    Position result = VimCore::motionWordEndpoint(
+    CursorPos result = VimCore::motionWordEndpoint(
         cursor, lines, isForward, edgeType, isBigWord, skipCurrent,
         boundaryOffset, hasLinesOutside, /*lineBounded=*/false);
     return result == POSITION_OUTSIDE_BOUNDARY;
@@ -63,8 +63,8 @@ struct RandomBufferTest {
   // Boundary positions (just outside the edit region)
   bool hasLeftBoundary;
   bool hasRightBoundary;
-  Position leftBoundaryPos;
-  Position rightBoundaryPos;
+  CursorPos leftBoundaryPos;
+  CursorPos rightBoundaryPos;
 
   // Context flags
   bool hasLinesAbove;

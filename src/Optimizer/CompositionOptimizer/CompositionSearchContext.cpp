@@ -17,7 +17,7 @@ using namespace std;
 
 CompositionSearchContext::CompositionSearchContext(
     const Lines& initialLines,
-    const Position& initialPos,
+    const CursorPos& initialPos,
     const Lines& goalLines,
     string_view userSequence,
     const NavContext& navContext,
@@ -140,7 +140,7 @@ CompositionSearchContext::CompositionSearchContext(
   debug("=== setup complete ===");
 }
 
-Position CompositionSearchContext::editIndexToBufferPos(
+CursorPos CompositionSearchContext::editIndexToBufferPos(
     int flatIndex, const DiffState& diff) const {
   Lines inserted = diff.insertedLines();
 
@@ -152,7 +152,7 @@ Position CompositionSearchContext::editIndexToBufferPos(
       if (i == 0) {
         col += diff.beginPos.col;
       }
-      return Position(diff.newLineStart() + i, col);
+      return CursorPos(diff.newLineStart() + i, col);
     }
     remaining -= lineLen;
   }
@@ -164,7 +164,7 @@ Position CompositionSearchContext::editIndexToBufferPos(
   if (!inserted.empty() && inserted.size() == 1) {
     lastCol += diff.beginPos.col;
   }
-  return Position(lastLine, lastCol);
+  return CursorPos(lastLine, lastCol);
 }
 
 double CompositionSearchContext::heuristic(
@@ -176,7 +176,7 @@ double CompositionSearchContext::heuristic(
   // Add distance to next edit region with asymmetric penalty
   if (editsCompleted < totalEdits) {
     const DiffState& nextEdit = diffStates[editsCompleted];
-    Position pos = s.getPos();
+    CursorPos pos = s.getPos();
 
     if (nextEdit.beginPos == nextEdit.endPos) {
       // Pure insertion: only beginPos is valid entry point
@@ -202,7 +202,7 @@ double CompositionSearchContext::heuristic(
 void CompositionSearchContext::exploreEditTransition(
     const CompositionState& current,
     const Sequence& editSequence,
-    const Position& goalPos,
+    const CursorPos& goalPos,
     int editsAfter) {
   CompositionState newState = current.afterEditTransition(
       editSequence, goalPos, Mode::Normal, config);
@@ -213,7 +213,7 @@ void CompositionSearchContext::exploreEditTransition(
 void CompositionSearchContext::exploreMotionTransition(
     const CompositionState& current,
     const Sequence& moveSequence,
-    const Position& goalPos,
+    const CursorPos& goalPos,
     int editsCompleted) {
   CompositionState newState = current.afterMotionResult(
       moveSequence, goalPos, config);
@@ -306,7 +306,7 @@ vector<double> CompositionSearchContext::computeSuffixEditCosts() const {
 
 // Helper: compute cursor position after insertion
 // Cursor ends on last char of inserted text, or stays at insertPos if empty
-static Position computeInsertEndPos(Position insertPos, const string& insertedText) {
+static CursorPos computeInsertEndPos(CursorPos insertPos, const string& insertedText) {
   if (insertedText.empty()) {
     return insertPos;
   }
@@ -314,12 +314,12 @@ static Position computeInsertEndPos(Position insertPos, const string& insertedTe
   if (inserted.size() == 1) {
     // Single line: cursor at last char
     int endCol = insertPos.col + static_cast<int>(inserted[0].size()) - 1;
-    return Position(insertPos.line, max(0, endCol));
+    return CursorPos(insertPos.line, max(0, endCol));
   } else {
     // Multi-line: cursor at last char of last line
     int lastLine = insertPos.line + static_cast<int>(inserted.size()) - 1;
     int lastCol = inserted.back().empty() ? 0 : static_cast<int>(inserted.back().size()) - 1;
-    return Position(lastLine, lastCol);
+    return CursorPos(lastLine, lastCol);
   }
 }
 
@@ -343,7 +343,7 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
       std::vector<Result> insertResults(1);
       insertResults[0] = Result(std::move(full.seq), effort);
 
-      Position goalPos = computeInsertEndPos(diff.beginPos, diff.insertedText);
+      CursorPos goalPos = computeInsertEndPos(diff.beginPos, diff.insertedText);
       // Use single-char Lines for lineBaseIndex computation (insertion point has no content)
       Lines singlePoint = {""};
       EditResult result(std::move(insertResults), {}, singlePoint,
@@ -369,20 +369,20 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
 
     // Compute cursor position after edit completes
     // After change + typed text + <Esc>, cursor is at last char of inserted text
-    Position goalPos;
+    CursorPos goalPos;
     const Lines& inserted = diff.insertedLines();
     if (inserted.empty() || (inserted.size() == 1 && inserted[0].empty())) {
       // Pure deletion or empty insertion: cursor at start of edit region
       goalPos = diff.beginPos;
     } else if (inserted.size() == 1) {
       // Single line: cursor at last char of inserted text
-      goalPos = Position(diff.beginPos.line,
+      goalPos = CursorPos(diff.beginPos.line,
                          diff.beginPos.col + static_cast<int>(inserted[0].size()) - 1);
     } else {
       // Multi-line: cursor at last char of last inserted line
       int lastLine = diff.beginPos.line + static_cast<int>(inserted.size()) - 1;
       int lastCol = inserted.back().empty() ? 0 : static_cast<int>(inserted.back().size()) - 1;
-      goalPos = Position(lastLine, lastCol);
+      goalPos = CursorPos(lastLine, lastCol);
     }
 
     EditResult optResult = editOptimizer.optimizeEdit(
@@ -403,7 +403,7 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
 // Each line is followed by a \n separator (except conceptually the last,
 // but flatten() joins with \n so line i occupies [base, base+len] where
 // base = sum of (lines[j].size()+1) for j<i).
-static int posToFlat(const Position& pos, const Lines& lines) {
+static int posToFlat(const CursorPos& pos, const Lines& lines) {
   int idx = 0;
   for (int i = 0; i < pos.line && i < static_cast<int>(lines.size()); i++) {
     idx += static_cast<int>(lines[i].size()) + 1;  // +1 for \n
@@ -413,18 +413,18 @@ static int posToFlat(const Position& pos, const Lines& lines) {
 }
 
 // Convert flat character index back to (line, col) given a Lines buffer.
-static Position flatToPos(int flatIdx, const Lines& lines) {
+static CursorPos flatToPos(int flatIdx, const Lines& lines) {
   int remaining = flatIdx;
   for (int i = 0; i < static_cast<int>(lines.size()); i++) {
     int lineLen = static_cast<int>(lines[i].size());
     if (remaining <= lineLen) {
-      return Position(i, remaining);
+      return CursorPos(i, remaining);
     }
     remaining -= lineLen + 1;  // +1 for \n
   }
   // Past end — clamp to end of last line
   int lastLine = static_cast<int>(lines.size()) - 1;
-  return Position(lastLine, static_cast<int>(lines[lastLine].size()));
+  return CursorPos(lastLine, static_cast<int>(lines[lastLine].size()));
 }
 
 vector<Lines> CompositionSearchContext::calculateLinesAfterDiffs(
@@ -443,7 +443,7 @@ vector<Lines> CompositionSearchContext::calculateLinesAfterDiffs(
       // Must always adjust when i > 0, even if cumulativeOffset == 0, because
       // earlier diffs may have changed line structure (e.g., \n → space) without
       // changing character count.
-      auto adjustPos = [&](const Position& pos) -> Position {
+      auto adjustPos = [&](const CursorPos& pos) -> CursorPos {
         int flatIdx = posToFlat(pos, initialLines);
         flatIdx += cumulativeOffset;
         return flatToPos(flatIdx, result[i]);
@@ -686,7 +686,7 @@ struct JoinSimulation {
   static JoinSimulation simulate(const Lines& srcLines, int begin, int end) {
     JoinSimulation sim;
     Lines workLines(srcLines.begin() + begin, srcLines.begin() + end);
-    Position pos(0, 0);
+    CursorPos pos(0, 0);
 
     for (int l = begin + 1; l < end; l++) {
       VimCore::joinLines(workLines, pos, /*addSpace=*/true);
@@ -851,7 +851,7 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
 
     // === Per-group processing: simulate J, compute residual ===
     Sequence fullSeq;
-    Position lastGoalPos(0, 0);
+    CursorPos lastGoalPos(0, 0);
     bool failed = false;
 
     for (int g = 0; g < M; g++) {
@@ -879,7 +879,7 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
         // The entire joined line is the edit region (single line, no prefix/suffix)
         EditBoundary groupBoundary;
 
-        Position residualGoalPos(0,
+        CursorPos residualGoalPos(0,
             fullTgtLines[g].empty() ? 0
             : static_cast<int>(fullTgtLines[g].size()) - 1);
         EditOptimizerParams residualParams =
@@ -912,19 +912,19 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
         fullSeq.append(res->sequence.view());
         lastGoalPos = residualResult.goalPos;
       } else {
-        lastGoalPos = Position(0, cursorCol);
+        lastGoalPos = CursorPos(0, cursorCol);
       }
     }
 
     if (failed) continue;
 
     // Compute goalPos in buffer coordinates
-    Position goalPos;
+    CursorPos goalPos;
     if (M == 1) {
-      goalPos = Position(diff.beginPos.line, lastGoalPos.col);
+      goalPos = CursorPos(diff.beginPos.line, lastGoalPos.col);
     } else {
       int bufferLine = diff.beginPos.line + M - 1;
-      goalPos = Position(bufferLine, lastGoalPos.col);
+      goalPos = CursorPos(bufferLine, lastGoalPos.col);
     }
 
     double effort = getEffort(fullSeq.view(), config);

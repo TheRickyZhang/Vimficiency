@@ -8,16 +8,16 @@
 #include "MotionExplorer.h"
 
 #include "BufferIndex.h"
-#include "VimTypes/PosKey.h"
+#include "Types/Pos.h"
 #include "Utils/Debug.h"
 
 using namespace std;
 
-// Public entry point - dispatches to templated implementation based on direction
+// Public entry point - converts single goal to point range and delegates
 MotionResult MotionOptimizer::optimize(
     const Lines& lines,
-    const Position& startPos,
-    const Position& endPos,
+    const CursorPos& startPos,
+    const CursorPos& endPos,
     MotionOptimizerParams params,
     string_view userSequence,
     const MotionBoundary& boundary,
@@ -25,103 +25,48 @@ MotionResult MotionOptimizer::optimize(
     const NavContext& navContext) {
   params.normalizeCountRepeatBounds();
 
-  if (startPos < endPos) {
-    return optimizeImpl<true>(lines, startPos, startingEffort, endPos,
-                              userSequence, navContext, boundary, params);
-  } else {
-    return optimizeImpl<false>(lines, startPos, startingEffort, endPos,
-                               userSequence, navContext, boundary, params);
+  // Handle trivial case: already at goal
+  if (startPos == endPos) {
+    double effort = startingEffort.getEffort(config);
+    return {.results = {Result("", effort)}, .stats = {}};
   }
-}
 
-// Templated implementation - Forward is compile-time constant
-template<bool Forward>
-MotionResult MotionOptimizer::optimizeImpl(
-    const Lines &lines,
-    const Position& startPos,
-    const RunningEffort& startingEffort,
-    const Position &endPos,
-    string_view userSequence,
-    const NavContext& navContext,
-    const MotionBoundary& boundary,
-    MotionOptimizerParams params) {
+  // Convert single goal to a point range [endPos, nextPos)
+  CursorPos rangeBegin = endPos;
+  CursorPos rangeEnd = lines.getNextPos(endPos);
+  // If getNextPos returns endPos (at end of buffer), use col+1 as half-open end
+  if (rangeEnd == endPos) {
+    rangeEnd = CursorPos(endPos.line, endPos.col + 1);
+  }
 
   BufferIndex bufferIndex(lines);
 
-  double userEffort = userSequence.empty()
-      ? numeric_limits<double>::max()
-      : getEffort(userSequence, config);
+  // Convert to range params
+  MotionOptimizerRangeParams rangeParams;
+  static_cast<MotionOptimizerParams&>(rangeParams) = params;
+  rangeParams.allowMultiplePerPosition = true;
 
-  debug("user effort for sequence", userSequence, "is", userEffort);
+  RangeMotionResult rangeResult;
+  if (startPos < rangeBegin)
+    rangeResult = optimizeToRangeImpl<true>(lines, startPos, startingEffort,
+                                            rangeBegin, rangeEnd, userSequence,
+                                            navContext, boundary, rangeParams,
+                                            bufferIndex, 0);
+  else
+    rangeResult = optimizeToRangeImpl<false>(lines, startPos, startingEffort,
+                                             rangeBegin, rangeEnd, userSequence,
+                                             navContext, boundary, rangeParams,
+                                             bufferIndex, 0);
 
-  MotionSearchContext ctx(lines, navContext, boundary, params, config, userEffort);
-  MotionExplorer explorer(ctx, endPos, bufferIndex);
-
-  MotionState initialState(startPos, startingEffort, 0.0, 0.0);
-  vector<Result> res;
-
-  initialState.setCost(ctx.computePriorityToGoal(initialState, endPos));
-  ctx.pq.push(initialState);
-  ctx.costMap[initialState.getKey()] = initialState.getCost();
-
-  while (ctx.shouldContinue()) {
-    MotionState s = ctx.popNext();
-    Position pos = s.getPos();
-
-    PosKey stateKey = s.getKey();
-    bool isGoal = (stateKey == explorer.getGoalKey());
-    bool isSameLine = (pos.line == endPos.line);
-
-    if (isGoal) {
-      ctx.markProcessed();
-      res.emplace_back(s.getSequence().str(), s.getRunningEffort().getEffort(config));
-      if (res.size() >= static_cast<size_t>(params.maxResults)) {
-        debug("maximum result count reached");
-        break;
-      }
-      continue;
-    } else {
-      if (ctx.isStale(s)) {
-        ctx.statesSkipped++;
-        continue;
-      }
-    }
-
-    ctx.markProcessed();
-    debug("\"" + s.getSequence().str() + "\"", s.getCost());
-
-    // Track this state if debugging
-    ctx.trackState(s);
-
-    // Explore standard motions - use directional pruning if enabled
-    if (params.useDirectionalPruning) {
-      explorer.exploreDirectionalStandardMotions(s);
-    } else {
-      explorer.exploreAllStandardMotions(s);
-    }
-
-    // Explore directional motions (f/F, count-based word/paragraph/sentence)
-    // Forward is compile-time constant - no runtime branch
-    explorer.exploreDirectionalMotions<Forward>(s, isSameLine);
+  // Convert RangeMotionResult → MotionResult (strip goalPos)
+  vector<Result> results;
+  results.reserve(rangeResult.results.size());
+  for (auto& rr : rangeResult.results) {
+    results.emplace_back(std::move(rr.sequence), rr.keyCost);
   }
 
-  debug("---costMap---");
-  for (auto [state, cost] : ctx.costMap) {
-    auto [l, c] = state;
-    debug(l, c, cost);
-  }
-
-  SearchStats stats = ctx.getStats(static_cast<int>(res.size()));
-  return {.results = std::move(res), .stats = stats};
+  return {.results = std::move(results), .stats = rangeResult.stats};
 }
-
-// Explicit template instantiations
-template MotionResult MotionOptimizer::optimizeImpl<true>(
-    const Lines&, const Position&, const RunningEffort&, const Position&,
-    string_view, const NavContext&, const MotionBoundary&, MotionOptimizerParams);
-template MotionResult MotionOptimizer::optimizeImpl<false>(
-    const Lines&, const Position&, const RunningEffort&, const Position&,
-    string_view, const NavContext&, const MotionBoundary&, MotionOptimizerParams);
 
 // =================================================
 // optimizeToRange implementation
@@ -130,9 +75,9 @@ template MotionResult MotionOptimizer::optimizeImpl<false>(
 // Simple bufferIndex forwarder
 RangeMotionResult MotionOptimizer::optimizeToRange(
     const Lines& lines,
-    const Position& startPos,
-    const Position& rangeBegin,
-    const Position& rangeEnd,
+    const CursorPos& startPos,
+    const CursorPos& rangeBegin,
+    const CursorPos& rangeEnd,
     MotionOptimizerRangeParams params,
     string_view userSequence,
     const MotionBoundary& boundary,
@@ -140,15 +85,15 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
     const NavContext& navContext) {
   BufferIndex localIndex(lines);
   return optimizeToRange(lines, startPos, rangeBegin, rangeEnd, params, userSequence,
-                         boundary, startingEffort, navContext, {&localIndex, 0});
+                         boundary, startingEffort, navContext, BufferIndexRef(localIndex, 0));
 }
 
 // Minimal overload with caller-provided BufferIndex
 RangeMotionResult MotionOptimizer::optimizeToRange(
     const Lines& lines,
-    const Position& startPos,
-    const Position& rangeBegin,
-    const Position& rangeEnd,
+    const CursorPos& startPos,
+    const CursorPos& rangeBegin,
+    const CursorPos& rangeEnd,
     MotionOptimizerRangeParams params,
     string_view userSequence,
     const MotionBoundary& boundary,
@@ -163,11 +108,11 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
   if (startPos < rangeBegin)
     return optimizeToRangeImpl<true>(lines, startPos, startingEffort, rangeBegin, rangeEnd,
                                      userSequence, navContext, boundary, params,
-                                     *bufferRef.index, bufferRef.lineOffset);
+                                     bufferRef.index, bufferRef.lineOffset);
   else
     return optimizeToRangeImpl<false>(lines, startPos, startingEffort, rangeBegin, rangeEnd,
                                       userSequence, navContext, boundary, params,
-                                      *bufferRef.index, bufferRef.lineOffset);
+                                      bufferRef.index, bufferRef.lineOffset);
 }
 
 // Templated implementation - Forward is compile-time constant
@@ -175,10 +120,10 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
 template<bool Forward>
 RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     const Lines& lines,
-    const Position& startPos,
+    const CursorPos& startPos,
     const RunningEffort& startingEffort,
-    const Position& rangeBegin,
-    const Position& rangeEnd,
+    const CursorPos& rangeBegin,
+    const CursorPos& rangeEnd,
     string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
@@ -196,32 +141,29 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
 
   MotionState initialState(startPos, startingEffort, 0.0, 0.0);
 
-  map<PosKey, RangeResult> bestResultByPos;
+  map<Pos, RangeResult> bestResultByPos;
   vector<RangeResult> allResults;
   int uniquePositionsFound = 0;
-
-  auto isInRange = [&](const Position& pos) {
-    return pos >= rangeBegin && pos < rangeEnd;
-  };
 
   // Cap effective maxResults at range size (can't find more positions than exist)
   int rangeSize = lines.spanSize(rangeBegin, rangeEnd);
   int effectiveMaxResults = std::min(params.maxResults, rangeSize);
-  Position rangeTail = lines.getPrevPos(rangeEnd);
-  if (rangeTail == POSITION_OUTSIDE_BOUNDARY) {
-    rangeTail = rangeBegin;
+  // Convert half-open rangeEnd to inclusive rangeLast for distance/priority computation.
+  Pos rangeLast = lines.getPrevPos(rangeEnd);
+  if (!rangeLast.isValid()) {
+    rangeLast = Pos(rangeBegin.line, rangeBegin.col);
   }
 
-  initialState.setCost(ctx.computePriorityToRange(initialState, rangeBegin, rangeEnd, rangeTail));
+  initialState.setCost(ctx.computePriorityToRange(initialState, rangeBegin, rangeLast));
   ctx.pq.push(initialState);
   ctx.costMap[initialState.getKey()] = initialState.getCost();
 
   while (ctx.shouldContinue()) {
     MotionState s = ctx.popNext();
-    Position pos = s.getPos();
+    CursorPos pos = s.getPos();
 
-    PosKey stateKey = s.getKey();
-    bool isGoal = isInRange(pos);
+    Pos stateKey = s.getKey();
+    bool isGoal = (pos >= rangeBegin && pos < rangeEnd);
 
     if (isGoal) {
       ctx.markProcessed();
@@ -259,7 +201,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
 
     // Explore standard motions - use directional pruning if enabled
     if (params.useDirectionalPruning) {
-      explorer.exploreDirectionalStandardMotionsToRange(s);
+      explorer.exploreDirectionalStandardMotions(s);
     } else {
       explorer.exploreAllStandardMotions(s);
     }
@@ -275,11 +217,11 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     } else if (pos.line >= rangeBegin.line && pos.line <= rangeEnd.line) {
       isSameLine = (pos.line < rangeEnd.line) || (rangeEnd.col > 0);
     }
-    explorer.exploreDirectionalMotionsToRange<Forward>(s, isSameLine);
+    explorer.exploreDirectionalMotions<Forward>(s, isSameLine);
   }
 
   debug("---costMap---");
-  map<PosKey, double> tempMap(ctx.costMap.begin(), ctx.costMap.end());
+  map<Pos, double> tempMap(ctx.costMap.begin(), ctx.costMap.end());
   for (auto [state, cost] : tempMap) {
     auto [l, c] = state;
     debug(l, c, cost);
@@ -290,7 +232,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
   if (params.allowMultiplePerPosition) {
     results = std::move(allResults);
     // Count unique positions in results
-    set<PosKey> seen;
+    set<Pos> seen;
     for (const auto& r : results) {
       seen.insert({r.goalPos.line, r.goalPos.col});
     }
@@ -320,10 +262,10 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
 
 // Explicit template instantiations for optimizeToRangeImpl
 template RangeMotionResult MotionOptimizer::optimizeToRangeImpl<true>(
-    const Lines&, const Position&, const RunningEffort&, const Position&, const Position&,
+    const Lines&, const CursorPos&, const RunningEffort&, const CursorPos&, const CursorPos&,
     string_view, const NavContext&, const MotionBoundary&, MotionOptimizerRangeParams,
     const BufferIndex&, int);
 template RangeMotionResult MotionOptimizer::optimizeToRangeImpl<false>(
-    const Lines&, const Position&, const RunningEffort&, const Position&, const Position&,
+    const Lines&, const CursorPos&, const RunningEffort&, const CursorPos&, const CursorPos&,
     string_view, const NavContext&, const MotionBoundary&, MotionOptimizerRangeParams,
     const BufferIndex&, int);

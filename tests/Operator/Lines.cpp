@@ -7,8 +7,8 @@
 #include <gtest/gtest.h>
 
 #include "Boundary/EditBoundary.h"
-#include "VimTypes/LineRange.h"
-#include "VimTypes/Lines.h"
+#include "Types/LineRange.h"
+#include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
@@ -69,7 +69,7 @@ protected:
         static_cast<int>(testLines[lastLine].size()) - ((right != '\n' && right != NO_CHAR) ? 1 : 0);
     if (endCol < 1) endCol = 1;
 
-    return EditBoundary(testLines, Position(beginLine, firstCol), Position(lastLine, endCol));
+    return EditBoundary(testLines, CursorPos(beginLine, firstCol), CursorPos(lastLine, endCol));
   }
 };
 
@@ -82,7 +82,7 @@ unique_ptr<NeovimOracle> LinesTest::oracle_;
 TEST_F(LinesTest, LineDeleteRange_SingleLine_FullBoundary) {
   // Single line buffer with full boundary - dd should be safe
   Lines lines = {"hello world"};
-  Position cursor(0, 5);
+  CursorPos cursor(0, 5);
 
   EditBoundary boundary = makeBoundary(lines, '\n', '\n');
 
@@ -96,7 +96,7 @@ TEST_F(LinesTest, LineDeleteRange_SingleLine_FullBoundary) {
 TEST_F(LinesTest, LineDeleteRange_SingleLine_PartialBoundary) {
   // Single line buffer where edit region doesn't cover full line
   Lines lines = {"hello world"};
-  Position cursor(0, 5);
+  CursorPos cursor(0, 5);
 
   EditBoundary boundary = makeBoundary(lines, 'h', '\n');  // Not at line start
 
@@ -108,7 +108,7 @@ TEST_F(LinesTest, LineDeleteRange_SingleLine_PartialBoundary) {
 TEST_F(LinesTest, LineDeleteRange_MultiLine_MiddleLine) {
   // Multi-line buffer, cursor on middle line - dd always safe
   Lines lines = {"line one", "line two", "line three"};
-  Position cursor(1, 3);  // Middle line
+  CursorPos cursor(1, 3);  // Middle line
 
   EditBoundary boundary = makeBoundary(lines, 'o', 't');  // Partial boundaries
 
@@ -120,7 +120,7 @@ TEST_F(LinesTest, LineDeleteRange_MultiLine_MiddleLine) {
 TEST_F(LinesTest, LineDeleteRange_MultiLine_FirstLine_NoBoundary) {
   // Multi-line, cursor on first line, no left boundary
   Lines lines = {"line one", "line two", "line three"};
-  Position cursor(0, 3);
+  CursorPos cursor(0, 3);
 
   EditBoundary boundary = makeBoundary(lines, '\n', 't');  // At line start
 
@@ -132,7 +132,7 @@ TEST_F(LinesTest, LineDeleteRange_MultiLine_FirstLine_NoBoundary) {
 TEST_F(LinesTest, LineDeleteRange_MultiLine_FirstLine_HasBoundary) {
   // Multi-line, cursor on first line, has left boundary
   Lines lines = {"line one", "line two", "line three"};
-  Position cursor(0, 3);
+  CursorPos cursor(0, 3);
 
   EditBoundary boundary = makeBoundary(lines, 'l', 't');  // Not at line start
 
@@ -144,7 +144,7 @@ TEST_F(LinesTest, LineDeleteRange_MultiLine_FirstLine_HasBoundary) {
 TEST_F(LinesTest, LineDeleteRange_MultiLine_LastLine_NoBoundary) {
   // Multi-line, cursor on last line, no right boundary
   Lines lines = {"line one", "line two", "line three"};
-  Position cursor(2, 3);
+  CursorPos cursor(2, 3);
 
   EditBoundary boundary = makeBoundary(lines, 'o', '\n');  // At line end
 
@@ -156,7 +156,7 @@ TEST_F(LinesTest, LineDeleteRange_MultiLine_LastLine_NoBoundary) {
 TEST_F(LinesTest, LineDeleteRange_MultiLine_LastLine_HasBoundary) {
   // Multi-line, cursor on last line, has right boundary
   Lines lines = {"line one", "line two", "line three"};
-  Position cursor(2, 3);
+  CursorPos cursor(2, 3);
 
   EditBoundary boundary = makeBoundary(lines, 'o', 'e');  // Not at line end
 
@@ -172,7 +172,7 @@ TEST_F(LinesTest, LineDeleteRange_MultiLine_LastLine_HasBoundary) {
 TEST_F(LinesTest, MotionLineEndpoint_D_SingleLine_NoBoundary) {
   // D on single line with no right boundary
   Lines lines = {"hello world"};
-  Position cursor(0, 5);
+  CursorPos cursor(0, 5);
 
   EditBoundary boundary = makeBoundary(lines, '\n', '\n');  // At line end
 
@@ -185,7 +185,7 @@ TEST_F(LinesTest, MotionLineEndpoint_D_SingleLine_NoBoundary) {
 TEST_F(LinesTest, MotionLineEndpoint_D_SingleLine_HasBoundary) {
   // D on single line with right boundary (not at line end)
   Lines lines = {"hello world"};
-  Position cursor(0, 5);
+  CursorPos cursor(0, 5);
 
   EditBoundary boundary = makeBoundary(lines, '\n', 'd');  // Not at line end
 
@@ -197,7 +197,7 @@ TEST_F(LinesTest, MotionLineEndpoint_D_SingleLine_HasBoundary) {
 TEST_F(LinesTest, MotionLineEndpoint_D_MultiLine_NotLastLine) {
   // D on middle line - boundary only matters on last line
   Lines lines = {"line one", "line two", "line three"};
-  Position cursor(1, 3);  // Middle line
+  CursorPos cursor(1, 3);  // Middle line
 
   EditBoundary boundary = makeBoundary(lines, '\n', 'e');  // Not at line end (but we're not on last line)
 
@@ -209,7 +209,7 @@ TEST_F(LinesTest, MotionLineEndpoint_D_MultiLine_NotLastLine) {
 TEST_F(LinesTest, MotionLineEndpoint_D_EmptyLine) {
   // D on empty line
   Lines lines = {"content", "", "more"};
-  Position cursor(1, 0);  // Empty line
+  CursorPos cursor(1, 0);  // Empty line
 
   EditBoundary boundary = makeBoundary(lines, '\n', '\n');
 
@@ -226,7 +226,7 @@ TEST_F(LinesTest, MotionLineEndpoint_D_EmptyLine) {
 TEST_F(LinesTest, MotionLineEndpoint_D0_SingleLine_NoBoundary) {
   // d0 on single line with no left boundary
   Lines lines = {"hello world"};
-  Position cursor(0, 5);
+  CursorPos cursor(0, 5);
 
   EditBoundary boundary = makeBoundary(lines, '\n', '\n');  // At line start
 
@@ -239,7 +239,7 @@ TEST_F(LinesTest, MotionLineEndpoint_D0_SingleLine_NoBoundary) {
 TEST_F(LinesTest, MotionLineEndpoint_D0_SingleLine_HasBoundary) {
   // d0 on single line with left boundary (not at line start)
   Lines lines = {"hello world"};
-  Position cursor(0, 5);
+  CursorPos cursor(0, 5);
 
   EditBoundary boundary = makeBoundary(lines, 'h', '\n');  // Not at line start
 
@@ -251,7 +251,7 @@ TEST_F(LinesTest, MotionLineEndpoint_D0_SingleLine_HasBoundary) {
 TEST_F(LinesTest, MotionLineEndpoint_D0_MultiLine_NotFirstLine) {
   // d0 on middle line - boundary only matters on first line
   Lines lines = {"line one", "line two", "line three"};
-  Position cursor(1, 3);  // Middle line
+  CursorPos cursor(1, 3);  // Middle line
 
   EditBoundary boundary = makeBoundary(lines, 'l', '\n');  // Not at line start (but we're not on first line)
 
@@ -293,7 +293,7 @@ TEST_F(LinesTest, RandomStress_LineDeleteRange) {
     }
 
     EditBoundary boundary = makeBoundary(lines, leftChar, rightChar);
-    Position cursor(cursorLine, cursorCol);
+    CursorPos cursor(cursorLine, cursorCol);
     LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
     // Execute dd in Neovim and verify boundary not crossed

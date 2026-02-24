@@ -1,7 +1,7 @@
 #include "BoundaryContext.h"
 
 // Compute from buffer positions, inheriting from parent context
-BoundaryContext::BoundaryContext(const Lines& lines, Position beginPos, Position endPos,
+BoundaryContext::BoundaryContext(const Lines& lines, CursorPos beginPos, CursorPos endPos,
                                  const BoundaryContext& parent)
     : hasLinesAbove(parent.hasLinesAbove || beginPos.line > 0),
       hasLinesBelow(parent.hasLinesBelow ||
@@ -13,7 +13,7 @@ BoundaryContext::BoundaryContext(const Lines& lines, Position beginPos, Position
 }
 
 // Compute from explicit flags (for FFI)
-BoundaryContext::BoundaryContext(const Lines& lines, Position beginPos, Position endPos,
+BoundaryContext::BoundaryContext(const Lines& lines, CursorPos beginPos, CursorPos endPos,
                                  bool parentHasLinesAbove, bool parentHasLinesBelow)
     : hasLinesAbove(parentHasLinesAbove || beginPos.line > 0),
       hasLinesBelow(parentHasLinesBelow ||

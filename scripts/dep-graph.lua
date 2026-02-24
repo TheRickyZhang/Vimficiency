@@ -179,7 +179,7 @@ print('               "Keyboard/ToKeys"; }')
 print("  // Lower layer")
 print('  { rank=same; "VimCore"; "Boundary"; }')
 print("  // Sinks")
-print('  { rank=same; "VimTypes"; "Utils"; }')
+print('  { rank=same; "Types"; "Utils"; }')
 print()
 
 -- Edges: color by source cluster, penwidth by count

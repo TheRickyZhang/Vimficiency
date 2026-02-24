@@ -9,7 +9,7 @@
 
 #include "Keyboard/PhysicalKeys.h"
 #include "Keyboard/ToKeys/MotionToKeys.h"
-#include "Optimizer/Config.h"
+#include "Keyboard/Config.h"
 #include "Effort/RunningEffort.h"
 
 using namespace std;

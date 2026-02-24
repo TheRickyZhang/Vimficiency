@@ -33,12 +33,12 @@ static bool isWordBoundaryChar(char c) {
 }
 
 // =============================================================================
-// Position Mapping Utilities
+// CursorPos Mapping Utilities
 // =============================================================================
 
-// Convert flat index in flattened text to (line, col) Position
+// Convert flat index in flattened text to (line, col) CursorPos
 // Flattened text uses \n as line separator
-static Position flatIndexToPosition(int idx, const string& flatText) {
+static CursorPos flatIndexToPosition(int idx, const string& flatText) {
   int line = 0;
   int col = 0;
   for (int i = 0; i < idx && i < static_cast<int>(flatText.size()); i++) {
@@ -49,11 +49,11 @@ static Position flatIndexToPosition(int idx, const string& flatText) {
       col++;
     }
   }
-  return Position(line, col);
+  return CursorPos(line, col);
 }
 
-// Convert (line, col) Position to flat index in flattened text
-static int positionToFlatIndex(const Position& pos, const Lines& lines) {
+// Convert (line, col) CursorPos to flat index in flattened text
+static int positionToFlatIndex(const CursorPos& pos, const Lines& lines) {
   int idx = 0;
   for (int i = 0; i < pos.line && i < static_cast<int>(lines.size()); i++) {
     idx += static_cast<int>(lines[i].size()) + 1;  // +1 for \n
@@ -112,11 +112,11 @@ static vector<EditOp> myersTraceback(
       was_insert = false;
     }
 
-    // Position at end of previous round on prev_k diagonal
+    // CursorPos at end of previous round on prev_k diagonal
     int end_x = V_prev[prev_k + offset];
     int end_y = end_x - prev_k;
 
-    // Position right after the edit (before snake/diagonal extension)
+    // CursorPos right after the edit (before snake/diagonal extension)
     int snake_start_x = was_insert ? end_x : end_x + 1;
     int snake_start_y = was_insert ? end_y + 1 : end_y;
 
@@ -374,12 +374,12 @@ vector<DiffState> calculate(const Lines& initialLines, const Lines& goalLines) {
     // Only create a diff if there's actually something to change
     if (!deleted.empty() || !inserted.empty()) {
       // Compute position bounds using half-open semantics
-      Position posBegin = flatIndexToPosition(startOrigIdx, startText);
+      CursorPos posBegin = flatIndexToPosition(startOrigIdx, startText);
 
       // posEnd is one past last char (half-open)
       // For pure insertions, posEnd == posBegin (empty range)
       // Uses virtual columns: increment col without wrapping, track lines for embedded newlines
-      Position posEnd;
+      CursorPos posEnd;
       if (deleted.empty()) {
         posEnd = posBegin;
       } else {
@@ -394,7 +394,7 @@ vector<DiffState> calculate(const Lines& initialLines, const Lines& goalLines) {
             col++;
           }
         }
-        posEnd = Position(line, col);  // col may be 0 on next line if deleted ends with \n
+        posEnd = CursorPos(line, col);  // col may be 0 on next line if deleted ends with \n
       }
 
       // Construct DiffState with EditBoundary computed from buffer context
@@ -475,8 +475,8 @@ Lines applyAllDiffState(const vector<DiffState>& diffs, const Lines& initialLine
   // Compute all flat indices upfront using the ORIGINAL text positions
   string text = initialLines.flatten();
 
-  // Build a map from Position to flat index for the original text
-  auto posToFlatIdx = [&](const Position& pos) -> int {
+  // Build a map from CursorPos to flat index for the original text
+  auto posToFlatIdx = [&](const CursorPos& pos) -> int {
     int idx = 0;
     int line = 0, col = 0;
     for (size_t j = 0; j < text.size(); j++) {
@@ -490,7 +490,7 @@ Lines applyAllDiffState(const vector<DiffState>& diffs, const Lines& initialLine
         col++;
       }
     }
-    // Position at end of text
+    // CursorPos at end of text
     if (line == pos.line && col == pos.col) {
       return static_cast<int>(text.size());
     }

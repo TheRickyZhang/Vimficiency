@@ -14,7 +14,7 @@
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Utils/CoutCapture.h"
 #include "Utils/Debug.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 #include "VimCore/VimOptions.h"
 #include <algorithm>
 #include <iomanip>
@@ -235,8 +235,8 @@ const char *vimficiency_analyze(
     assert(!initialLines.empty() && "FFI contract: buffer must have at least one line");
     assert(!goalLines.empty() && "FFI contract: goal buffer must have at least one line");
 
-    Position initialPos(start_row, start_col);
-    Position goalPos(end_row, end_col);
+    CursorPos initialPos(start_row, start_col);
+    CursorPos goalPos(end_row, end_col);
 
     NavContext navigation_context(window_height, scroll_amount);
 
@@ -245,8 +245,8 @@ const char *vimficiency_analyze(
     if (initialLines == goalLines) {
       // Motion only - use MotionOptimizer (existing logic)
       MotionBoundary boundary(initialLines,
-          Position(0, boundaryFirstCol),
-          Position(static_cast<int>(initialLines.size()) - 1, boundaryLastCol + 1),
+          CursorPos(0, boundaryFirstCol),
+          CursorPos(static_cast<int>(initialLines.size()) - 1, boundaryLastCol + 1),
           hasLinesAbove, hasLinesBelow);
 
       MotionOptimizer opt(g_config_internal);
@@ -256,8 +256,8 @@ const char *vimficiency_analyze(
     } else {
       // Buffer changed - use CompositionOptimizer
       MotionBoundary boundary(initialLines,
-          Position(0, boundaryFirstCol),
-          Position(static_cast<int>(initialLines.size()) - 1, boundaryLastCol + 1),
+          CursorPos(0, boundaryFirstCol),
+          CursorPos(static_cast<int>(initialLines.size()) - 1, boundaryLastCol + 1),
           hasLinesAbove, hasLinesBelow);
 
       CompositionOptimizer opt(g_config_internal);

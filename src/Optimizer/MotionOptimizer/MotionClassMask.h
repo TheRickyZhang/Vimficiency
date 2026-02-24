@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include "Types/Pos.h"
 
 // Bitmask for 6 motion classes - allows O(1) union/intersection.
 // Used by directional pruning to select which motion categories to explore
@@ -30,67 +31,55 @@ constexpr bool has(MotionClassMask mask, MotionClassMask c) {
 
 // Compute motion classes needed to reach a single goal from a position.
 // Returns bitmask of classes that should be explored.
-constexpr MotionClassMask classesForSingleGoal(int posLine, int posCol,
-                                                int goalLine, int goalCol) {
+constexpr MotionClassMask classesForSingleGoal(Pos pos, Pos goal) {
   using M = MotionClassMask;
 
-  if (posLine == goalLine && posCol == goalCol) {
-    return M::None;  // At goal
+  if (pos == goal) {
+    return M::None;
   }
 
-  if (posLine == goalLine) {
-    // Same line: only horizontal + crossing in goal direction
-    return (posCol > goalCol)
+  if (pos.line == goal.line) {
+    return (pos.col > goal.col)
         ? (M::Left | M::BackwardCross)
         : (M::Right | M::ForwardCross);
   }
 
-  if (posCol == goalCol) {
-    // Same column: only vertical + crossing in goal direction
-    return (posLine < goalLine)
+  if (pos.col == goal.col) {
+    return (pos.line < goal.line)
         ? (M::Down | M::ForwardCross)
         : (M::Up | M::BackwardCross);
   }
 
-  // Different line and column: need vertical + horizontal + crossing
-  MotionClassMask m = (posLine < goalLine)
+  MotionClassMask m = (pos.line < goal.line)
       ? (M::Down | M::ForwardCross)
       : (M::Up | M::BackwardCross);
 
-  m = m | ((posCol > goalCol)
+  m = m | ((pos.col > goal.col)
       ? (M::Left | M::BackwardCross)
       : (M::Right | M::ForwardCross));
 
   return m;
 }
 
-// Compute motion classes needed to reach any point in a range [rangeBegin, rangeEnd).
-// The `rangeTail` target should be the valid position immediately before `rangeEnd`.
-constexpr MotionClassMask classesForRangeWithTail(int posLine, int posCol,
-                                                  int rangeBeginLine, int rangeBeginCol,
-                                                  int rangeEndLine, int rangeEndCol,
-                                                  int rangeTailLine, int rangeTailCol) {
+// Compute motion classes needed to reach any point in [rangeFirst, rangeLast] (inclusive).
+// Takes Pos objects — only geometric position matters for directional pruning.
+constexpr MotionClassMask classesForRange(Pos pos, Pos rangeFirst, Pos rangeLast) {
   using M = MotionClassMask;
 
-  // Check if in range [rangeBegin, rangeEnd) using lexicographic ordering.
-  bool afterBegin = (posLine > rangeBeginLine)
-      || (posLine == rangeBeginLine && posCol >= rangeBeginCol);
-  bool beforeEnd = (posLine < rangeEndLine)
-      || (posLine == rangeEndLine && posCol < rangeEndCol);
-
-  if (afterBegin && beforeEnd) {
+  // Check if in range [rangeFirst, rangeLast] using lexicographic ordering.
+  if (pos >= rangeFirst && pos <= rangeLast) {
     return M::None;  // Already in range
   }
 
-  // Take union of classes for targeting rangeBegin vs range tail.
-  MotionClassMask m = classesForSingleGoal(posLine, posCol, rangeBeginLine, rangeBeginCol)
-                    | classesForSingleGoal(posLine, posCol, rangeTailLine, rangeTailCol);
+  // Take union of classes for targeting rangeFirst vs rangeLast.
+  MotionClassMask m = classesForSingleGoal(pos, rangeFirst)
+                    | classesForSingleGoal(pos, rangeLast);
 
   // Additional: if on boundary line, may need extra vertical to enter range
-  if (posLine == rangeBeginLine && posCol < rangeBeginCol && rangeBeginLine < rangeEndLine) {
+  if (pos.line == rangeFirst.line && pos.col < rangeFirst.col && rangeFirst.line < rangeLast.line) {
     m = m | M::Down;  // Can go down into range
   }
-  if (posLine == rangeEndLine && posCol >= rangeEndCol && rangeBeginLine < rangeEndLine) {
+  if (pos.line == rangeLast.line && pos.col > rangeLast.col && rangeFirst.line < rangeLast.line) {
     m = m | M::Up;    // Can go up into range
   }
 

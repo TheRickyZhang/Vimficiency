@@ -9,10 +9,10 @@
 #include <gtest/gtest.h>
 
 #include "Interpreter/MotionInterpreter.h"
-#include "VimTypes/NavContext.h"
+#include "Types/NavContext.h"
 #include "Optimizer/BuildTypedCommands.h"
 #include "Optimizer/Indentation.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "VimCore/VimEditUtils.h"
 #include "VimCore/VimOptions.h"
@@ -36,10 +36,10 @@ protected:
     return oracle->simulate(lines, row, col, keys);
   }
 
-  static Position oracleMotion(const Lines& lines, int row, int col,
+  static CursorPos oracleMotion(const Lines& lines, int row, int col,
                                const string& keys) {
     auto result = oracle->simulate(lines, row, col, keys);
-    return Position(result.row, result.col);
+    return CursorPos(result.row, result.col);
   }
 };
 
@@ -56,7 +56,7 @@ TEST_F(VimOptionsTest, GG_StartOfLine) {
   Lines lines = {"    hello", "world", "  foo"};
   // Cursor starts at col 5 on "world", then gg goes to first line
   auto result = oracleMotion(lines, 1, 4, "gg");
-  Position ours = simulateMotions({1, 4}, "gg", lines, navContext);
+  CursorPos ours = simulateMotions({1, 4}, "gg", lines, navContext);
 
   EXPECT_EQ(ours.line, result.line);
   EXPECT_EQ(ours.col, result.col);
@@ -74,7 +74,7 @@ TEST_F(VimOptionsTest, G_StartOfLine) {
   Lines lines = {"    hello", "world", "  foo"};
   // Cursor at col 0 on first line, G goes to last line
   auto result = oracleMotion(lines, 0, 0, "G");
-  Position ours = simulateMotions({0, 0}, "G", lines, navContext);
+  CursorPos ours = simulateMotions({0, 0}, "G", lines, navContext);
 
   EXPECT_EQ(ours.line, result.line);
   EXPECT_EQ(ours.col, result.col);
@@ -92,7 +92,7 @@ TEST_F(VimOptionsTest, GG_CursorBeyondLineLength) {
   Lines lines = {"ab", "          long line", "cd"};
   // Start at col 15 on long line, gg to short first line
   auto result = oracleMotion(lines, 1, 15, "gg");
-  Position ours = simulateMotions({1, 15}, "gg", lines, navContext);
+  CursorPos ours = simulateMotions({1, 15}, "gg", lines, navContext);
 
   EXPECT_EQ(ours.line, result.line);
   EXPECT_EQ(ours.col, result.col);
@@ -111,7 +111,7 @@ TEST_F(VimOptionsTest, DD_StartOfLine) {
 
   // Our implementation: deleteRangeLinewise handles startOfLine
   Lines ourLines = lines;
-  Position ourPos(0, 0);
+  CursorPos ourPos(0, 0);
   VimCore::deleteRangeLinewise(ourLines, LineRange(0, 1), ourPos);
 
   EXPECT_EQ(ourPos.line, result.row);
@@ -133,7 +133,7 @@ TEST_F(VimOptionsTest, DD_MiddleLine) {
   auto result = oracleSimulate(lines, 1, 6, "dd");
 
   Lines ourLines = lines;
-  Position ourPos(1, 6);
+  CursorPos ourPos(1, 6);
   VimCore::deleteRangeLinewise(ourLines, LineRange(1, 2), ourPos);
 
   EXPECT_EQ(ourPos.line, result.row);
@@ -152,7 +152,7 @@ TEST_F(VimOptionsTest, J_AfterPeriod) {
   auto result = oracleSimulate(lines, 0, 0, "J");
 
   Lines ourLines = lines;
-  Position ourPos(0, 0);
+  CursorPos ourPos(0, 0);
   VimCore::joinLines(ourLines, ourPos, true);
 
   EXPECT_EQ(ourLines, result.lines);
@@ -171,7 +171,7 @@ TEST_F(VimOptionsTest, J_AfterExclamation) {
   auto result = oracleSimulate(lines, 0, 0, "J");
 
   Lines ourLines = lines;
-  Position ourPos(0, 0);
+  CursorPos ourPos(0, 0);
   VimCore::joinLines(ourLines, ourPos, true);
 
   EXPECT_EQ(ourLines, result.lines);
@@ -190,7 +190,7 @@ TEST_F(VimOptionsTest, J_AfterQuestion) {
   auto result = oracleSimulate(lines, 0, 0, "J");
 
   Lines ourLines = lines;
-  Position ourPos(0, 0);
+  CursorPos ourPos(0, 0);
   VimCore::joinLines(ourLines, ourPos, true);
 
   EXPECT_EQ(ourLines, result.lines);
@@ -209,7 +209,7 @@ TEST_F(VimOptionsTest, J_AfterNormalChar_SingleSpaceBothModes) {
   auto result = oracleSimulate(lines, 0, 0, "J");
 
   Lines ourLines = lines;
-  Position ourPos(0, 0);
+  CursorPos ourPos(0, 0);
   VimCore::joinLines(ourLines, ourPos, true);
 
   EXPECT_EQ(ourLines, result.lines);
@@ -221,7 +221,7 @@ TEST_F(VimOptionsTest, J_NextLineLeadingWhitespace) {
   auto result = oracleSimulate(lines, 0, 0, "J");
 
   Lines ourLines = lines;
-  Position ourPos(0, 0);
+  CursorPos ourPos(0, 0);
   VimCore::joinLines(ourLines, ourPos, true);
 
   EXPECT_EQ(ourLines, result.lines);

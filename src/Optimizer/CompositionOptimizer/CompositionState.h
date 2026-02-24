@@ -2,9 +2,9 @@
 
 #include <string_view>
 
-#include "VimTypes/Mode.h"
-#include "VimTypes/Position.h"
-#include "VimTypes/Sequence.h"
+#include "Types/Mode.h"
+#include "Types/CursorPos.h"
+#include "Types/Sequence.h"
 #include "Keyboard/PhysicalKeys.h"
 #include "Effort/RunningEffort.h"
 
@@ -49,7 +49,7 @@ private:
 
 
 class CompositionState {
-  Position pos;
+  CursorPos pos;
   Mode mode;
 
   // Index into edit sequence / line state stored externally, 0 = no edits done
@@ -67,7 +67,7 @@ class CompositionState {
   void appendSequence(std::string_view s, const PhysicalKeys& keys, const Config& config);
 
 public:
-  CompositionState(Position pos, Mode mode, int editsCompleted,
+  CompositionState(CursorPos pos, Mode mode, int editsCompleted,
                    RunningEffort runningEffort = RunningEffort(),
                    double effort = 0.0, double cost = 0.0)
       : pos(pos), mode(mode), editsCompleted(editsCompleted),
@@ -83,7 +83,7 @@ public:
   }
 
   // Accessors
-  Position getPos() const { return pos; }
+  CursorPos getPos() const { return pos; }
   Mode getMode() const { return mode; }
   int getEditsCompleted() const { return editsCompleted; }
 
@@ -105,7 +105,7 @@ public:
   // Note: caller must set cost via setCost() after computing heuristic
   [[nodiscard]] CompositionState afterEditTransition(
       const Sequence& editSequence,
-      const Position& newPos, Mode newMode,
+      const CursorPos& newPos, Mode newMode,
       const Config& config) const;
 
   // Create new state with motion result applied
@@ -114,7 +114,7 @@ public:
   // Note: caller must set cost via setCost() after computing heuristic
   [[nodiscard]] CompositionState afterMotionResult(
       const Sequence& moveSequence,
-      const Position& newPos,
+      const CursorPos& newPos,
       const Config& config) const;
 
   void setCost(double newCost) { cost = newCost; }
@@ -122,10 +122,10 @@ public:
 private:
   // Internal: apply edit transition to this state (mutates)
   void applyEditTransitionImpl(const Sequence& editSequence,
-                               const Position& newPos, Mode newMode,
+                               const CursorPos& newPos, Mode newMode,
                                const Config& config);
 
   // Internal: apply motion result to this state (mutates)
   void applyMotionResultImpl(const Sequence& moveSequence,
-                             const Position& newPos, const Config& config);
+                             const CursorPos& newPos, const Config& config);
 };

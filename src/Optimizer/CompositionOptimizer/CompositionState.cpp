@@ -16,7 +16,7 @@ void CompositionState::appendSequence(string_view s, const PhysicalKeys& keys,
 
 CompositionState CompositionState::afterEditTransition(
     const Sequence& editSequence,
-    const Position& newPos, Mode newMode,
+    const CursorPos& newPos, Mode newMode,
     const Config& config) const {
   CompositionState newState = *this;
   newState.applyEditTransitionImpl(editSequence, newPos, newMode, config);
@@ -25,7 +25,7 @@ CompositionState CompositionState::afterEditTransition(
 
 CompositionState CompositionState::afterMotionResult(
     const Sequence& moveSequence,
-    const Position& newPos,
+    const CursorPos& newPos,
     const Config& config) const {
   CompositionState newState = *this;
   newState.applyMotionResultImpl(moveSequence, newPos, config);
@@ -38,7 +38,7 @@ CompositionState CompositionState::afterMotionResult(
 
 void CompositionState::applyEditTransitionImpl(
     const Sequence& editSequence,
-    const Position& newPos, Mode newMode,
+    const CursorPos& newPos, Mode newMode,
     const Config& config) {
   pos = newPos;
   editsCompleted++;
@@ -49,7 +49,7 @@ void CompositionState::applyEditTransitionImpl(
 
 void CompositionState::applyMotionResultImpl(
     const Sequence& moveSequence,
-    const Position& newPos, const Config& config) {
+    const CursorPos& newPos, const Config& config) {
   pos = newPos;
   PhysicalKeys keys = globalSequenceToKeys().tokenize(moveSequence.view());
   appendSequence(moveSequence.view(), keys, config);

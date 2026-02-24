@@ -19,7 +19,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateRemainingFailures) {
     // Now verify what our VimCore thinks
     cerr << endl << "=== Our VimCore simulation ===" << endl;
     Lines testLines = source;
-    Position pos(0, 2);
+    CursorPos pos(0, 2);
 
     // Simulate dd
     cerr << "Before dd: " << testLines << " pos=(" << pos.line << "," << pos.col << ")" << endl;

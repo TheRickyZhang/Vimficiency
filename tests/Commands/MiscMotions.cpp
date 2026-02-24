@@ -10,7 +10,7 @@
 #include <gtest/gtest.h>
 #include "Utils/TestUtils.h"
 #include "Interpreter/MotionInterpreter.h"
-#include "VimTypes/NavContext.h"
+#include "Types/NavContext.h"
 #include "VimCore/VimOptions.h"
 
 using namespace std;
@@ -32,7 +32,7 @@ protected:
   }
 
   // Helper: assert position
-  static void expectPos(Position actual, int line, int col, const string& msg = "") {
+  static void expectPos(CursorPos actual, int line, int col, const string& msg = "") {
     EXPECT_EQ(actual.line, line) << msg << " (line)";
     EXPECT_EQ(actual.col, col) << msg << " (col)";
   }
@@ -114,12 +114,12 @@ TEST_F(MiscMotionsTest, JK_HandlesEmptyLines) {
 
 TEST_F(MiscMotionsTest, GG_GoesToFirstLine) {
   if constexpr (VimOptions::startOfLine()) GTEST_SKIP() << "Neovim-only (column preservation)";
-  Position p1 = simulateMotions({3, 5}, "gg", a2_block_lines);
+  CursorPos p1 = simulateMotions({3, 5}, "gg", a2_block_lines);
   EXPECT_EQ(p1.line, 0);
   EXPECT_EQ(p1.col, 5);
 
   Lines lines = {"short", "longer line"};
-  Position p2 = simulateMotions({1, 8}, "gg", lines);
+  CursorPos p2 = simulateMotions({1, 8}, "gg", lines);
   EXPECT_EQ(p2.line, 0);
   EXPECT_EQ(p2.col, 4);
 }
@@ -127,17 +127,17 @@ TEST_F(MiscMotionsTest, GG_GoesToFirstLine) {
 TEST_F(MiscMotionsTest, G_GoesToLastLine) {
   if constexpr (VimOptions::startOfLine()) GTEST_SKIP() << "Neovim-only (column preservation)";
   int lastLine = a2_block_lines.size() - 1;
-  Position p = simulateMotions({0, 5}, "G", a2_block_lines);
+  CursorPos p = simulateMotions({0, 5}, "G", a2_block_lines);
   EXPECT_EQ(p.line, lastLine);
   EXPECT_EQ(p.col, 5);
 }
 
 TEST_F(MiscMotionsTest, GG_G_RoundTrip) {
   if constexpr (VimOptions::startOfLine()) GTEST_SKIP() << "Neovim-only (column preservation)";
-  Position start(2, 5);
-  Position atTop = simulateMotions(start, "gg", a2_block_lines);
-  Position atBottom = simulateMotions(atTop, "G", a2_block_lines);
-  Position backToTop = simulateMotions(atBottom, "gg", a2_block_lines);
+  CursorPos start(2, 5);
+  CursorPos atTop = simulateMotions(start, "gg", a2_block_lines);
+  CursorPos atBottom = simulateMotions(atTop, "G", a2_block_lines);
+  CursorPos backToTop = simulateMotions(atBottom, "gg", a2_block_lines);
 
   EXPECT_EQ(atTop.line, 0);
   EXPECT_EQ(atTop.col, 5);
@@ -267,7 +267,7 @@ TEST_F(MiscMotionsTest, CharFind_OnTargetChar) {
 // 4. SCROLL MOTIONS (<C-d>, <C-u>, <C-f>, <C-b>)
 // =============================================================================
 
-static Position simulateWithNav(Position start, const string& motion,
+static CursorPos simulateWithNav(CursorPos start, const string& motion,
                                 const Lines& lines, NavContext nav) {
   return simulateMotions(start, motion, lines, nav);
 }
@@ -328,7 +328,7 @@ TEST_F(MiscMotionsTest, CtrlD_ClampsColumnOnShorterLine) {
   };
   NavContext nav(3, 1);
 
-  Position result = simulateWithNav({0, 10}, "<C-d>", lines, nav);
+  CursorPos result = simulateWithNav({0, 10}, "<C-d>", lines, nav);
   EXPECT_EQ(result.line, 1);
   EXPECT_EQ(result.col, 4) << "Column should clamp to end of shorter line";
 }
@@ -415,12 +415,12 @@ TEST_F(MiscMotionsTest, Scroll_RoundTrip) {
   auto lines = makeLines(100);
   NavContext nav(40, 20);
 
-  Position p1 = simulateWithNav({30, 0}, "<C-d>", lines, nav);
-  Position p2 = simulateWithNav(p1, "<C-u>", lines, nav);
+  CursorPos p1 = simulateWithNav({30, 0}, "<C-d>", lines, nav);
+  CursorPos p2 = simulateWithNav(p1, "<C-u>", lines, nav);
   EXPECT_EQ(p2.line, 30) << "C-d then C-u should return to original";
 
-  Position p3 = simulateWithNav({30, 0}, "<C-f>", lines, nav);
-  Position p4 = simulateWithNav(p3, "<C-b>", lines, nav);
+  CursorPos p3 = simulateWithNav({30, 0}, "<C-f>", lines, nav);
+  CursorPos p4 = simulateWithNav(p3, "<C-b>", lines, nav);
   EXPECT_EQ(p4.line, 30) << "C-f then C-b should return to original";
 }
 
@@ -428,7 +428,7 @@ TEST_F(MiscMotionsTest, Scroll_MultipleScrolls) {
   auto lines = makeLines(100);
   NavContext nav(40, 10);
 
-  Position p = {0, 0};
+  CursorPos p = {0, 0};
   p = simulateWithNav(p, "<C-d>", lines, nav);
   EXPECT_EQ(p.line, 10);
   p = simulateWithNav(p, "<C-d>", lines, nav);
@@ -461,7 +461,7 @@ TEST_F(MiscMotionsTest, Scroll_ZeroScrollAmount) {
   auto lines = makeLines(50);
   NavContext nav(40, 0);
 
-  Position p = simulateWithNav({25, 0}, "<C-d>", lines, nav);
+  CursorPos p = simulateWithNav({25, 0}, "<C-d>", lines, nav);
   EXPECT_EQ(p.line, 25) << "C-d with scroll=0 should not move";
 
   p = simulateWithNav({25, 0}, "<C-u>", lines, nav);
@@ -472,7 +472,7 @@ TEST_F(MiscMotionsTest, Scroll_WindowHeightTwo) {
   auto lines = makeLines(50);
   NavContext nav(2, 1);
 
-  Position p = simulateWithNav({25, 0}, "<C-f>", lines, nav);
+  CursorPos p = simulateWithNav({25, 0}, "<C-f>", lines, nav);
   EXPECT_EQ(p.line, 25) << "C-f with window=2 should not move";
 
   p = simulateWithNav({25, 0}, "<C-b>", lines, nav);
@@ -587,7 +587,7 @@ TEST_F(MiscMotionsTest, FirstAndLastPositions) {
   EXPECT_EQ(simulateMotions({0, 0}, "gg", a2_block_lines).line, 0);
 
   int lastLine = a2_block_lines.size() - 1;
-  Position p = simulateMotions({lastLine, 0}, "G", a2_block_lines);
+  CursorPos p = simulateMotions({lastLine, 0}, "G", a2_block_lines);
   EXPECT_EQ(p.line, lastLine);
 }
 
@@ -597,7 +597,7 @@ TEST_F(MiscMotionsTest, FirstAndLastPositions) {
 
 TEST_F(MiscMotionsTest, Property_H_NeverIncreasesColumn) {
   for(int col = 0; col < 10; col++) {
-    Position result = simulateMotions({0, col}, "h", a1_long_line);
+    CursorPos result = simulateMotions({0, col}, "h", a1_long_line);
     EXPECT_LE(result.col, col) << "h from col " << col << " should not increase col";
     EXPECT_EQ(result.line, 0) << "h should not change line";
   }
@@ -605,7 +605,7 @@ TEST_F(MiscMotionsTest, Property_H_NeverIncreasesColumn) {
 
 TEST_F(MiscMotionsTest, Property_L_NeverDecreasesColumn) {
   for(int col = 0; col < 10; col++) {
-    Position result = simulateMotions({0, col}, "l", a1_long_line);
+    CursorPos result = simulateMotions({0, col}, "l", a1_long_line);
     EXPECT_GE(result.col, col) << "l from col " << col << " should not decrease col";
     EXPECT_EQ(result.line, 0) << "l should not change line";
   }
@@ -613,14 +613,14 @@ TEST_F(MiscMotionsTest, Property_L_NeverDecreasesColumn) {
 
 TEST_F(MiscMotionsTest, Property_J_NeverDecreasesLine) {
   for(int line = 0; line < (int)a2_block_lines.size(); line++) {
-    Position result = simulateMotions({line, 0}, "j", a2_block_lines);
+    CursorPos result = simulateMotions({line, 0}, "j", a2_block_lines);
     EXPECT_GE(result.line, line) << "j from line " << line << " should not decrease line";
   }
 }
 
 TEST_F(MiscMotionsTest, Property_K_NeverIncreasesLine) {
   for(int line = 0; line < (int)a2_block_lines.size(); line++) {
-    Position result = simulateMotions({line, 0}, "k", a2_block_lines);
+    CursorPos result = simulateMotions({line, 0}, "k", a2_block_lines);
     EXPECT_LE(result.line, line) << "k from line " << line << " should not increase line";
   }
 }
@@ -628,7 +628,7 @@ TEST_F(MiscMotionsTest, Property_K_NeverIncreasesLine) {
 TEST_F(MiscMotionsTest, Property_GG_AlwaysLine0) {
   auto lines = makeLines(20);
   for(int line = 0; line < (int)lines.size(); line++) {
-    Position result = simulateMotions({line, 0}, "gg", lines);
+    CursorPos result = simulateMotions({line, 0}, "gg", lines);
     EXPECT_EQ(result.line, 0) << "gg from line " << line << " should go to line 0";
   }
 }
@@ -637,7 +637,7 @@ TEST_F(MiscMotionsTest, Property_G_AlwaysLastLine) {
   auto lines = makeLines(20);
   int lastLine = lines.size() - 1;
   for(int line = 0; line < (int)lines.size(); line++) {
-    Position result = simulateMotions({line, 0}, "G", lines);
+    CursorPos result = simulateMotions({line, 0}, "G", lines);
     EXPECT_EQ(result.line, lastLine) << "G from line " << line << " should go to last line";
   }
 }
