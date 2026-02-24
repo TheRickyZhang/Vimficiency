@@ -5,7 +5,7 @@
 Vimficiency is a Vim bindings optimizer that analyzes user's actions and recommends more efficient sequences. The general algorithm is a heuristical A* search with keyboard-aware cost modeling, powered by a high-level, efficient vim command simulator.
 
 **Folder structure:**
-- `src/VimTypes`: Shared vim-facing value types and enums (positions/ranges/modes/sequences/lines/flags/landing and edge categories)
+- `src/Types`: Shared vim-facing value types and enums (positions/ranges/modes/sequences/lines/flags/landing and edge categories)
 - `lua/vimficiency/`: Neovim-level code (buffer management, session storage)
 - `src/Interpreter`: Arbitrary command parsing/interpreting adapters (`parse*`, `apply*`, `simulate*`)
 - `src/Session`: Snapshot/session file I/O
@@ -17,7 +17,7 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 - `src/lua_exports.cpp`: C++ to Lua FFI interface
 - `tests/`: GoogleTest suite
 
-**Dependency order** (most to least dependent): Optimizer → Interpreter/VimCore/Keyboard/Boundary/Effort/Utils/VimTypes, Interpreter → VimCore/Keyboard/Utils/VimTypes, Effort → Keyboard, Session → VimTypes, VimCore → Boundary/Utils/VimTypes, Keyboard → Utils/VimTypes, Boundary → Utils/VimTypes, Utils → VimTypes
+**Dependency order** (most to least dependent): Optimizer → Interpreter/VimCore/Keyboard/Boundary/Effort/Utils/Types, Interpreter → VimCore/Keyboard/Utils/Types, Effort → Keyboard, Session → Types, VimCore → Boundary/Utils/Types, Keyboard → Utils/Types, Boundary → Utils/Types, Utils → Types
 
 ## Terminology
 - **Key**: Physical key (61 supported, defined in `src/Keyboard/Key.h`)

@@ -10,11 +10,11 @@
 #include <memory>
 #include <algorithm>
 
-#include "VimTypes/Position.h"
+#include "Types/CursorPos.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizerParams.h"
-#include "Optimizer/Config.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
 
 using namespace std;
@@ -31,8 +31,8 @@ protected:
 
   // Run optimizer and verify all results achieve goal state via Neovim oracle
   void verifyResults(
-      const Lines& initial, Position initialPos,
-      const Lines& goal, Position goalPos,
+      const Lines& initial, CursorPos initialPos,
+      const Lines& goal, CursorPos goalPos,
       const string& context = "") {
     auto compResult = opt.optimize(initial, initialPos, goal, goalPos, params);
     verifyCompResult(compResult, initial, initialPos, goal, context);
@@ -41,7 +41,7 @@ protected:
   // Verify all results in a pre-computed CompositionResult
   void verifyCompResult(
       const CompositionResult& compResult,
-      const Lines& initial, Position initialPos,
+      const Lines& initial, CursorPos initialPos,
       const Lines& goal,
       const string& context = "") {
     const auto& results = compResult.results;
@@ -59,7 +59,7 @@ protected:
   // Verify a single result achieves goal state via Neovim oracle
   void verifySingleResult(
       const Result& result,
-      const Lines& initial, Position initialPos,
+      const Lines& initial, CursorPos initialPos,
       const Lines& goal,
       const string& context = "") {
     ASSERT_TRUE(result.isValid()) << "Result invalid" << ctx(context);
@@ -103,8 +103,8 @@ TEST_F(CompositionOptimizerHumanApprovalTests, Example1) {
     "Dry-brined steak is excellent",
     "don't you agree?"
   };
-  Position initialPos(0, 0);
-  Position afterPos(initialLines.endPos());
+  CursorPos initialPos(0, 0);
+  CursorPos afterPos(initialLines.endPos());
   MotionBoundary boundary(initialLines, initialPos, afterPos);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos);
@@ -121,8 +121,8 @@ TEST_F(CompositionOptimizerHumanApprovalTests, TelescopingChanges) {
   Lines afterLines = {
     "I saw a pig in barn in Florida"
   };
-  Position initialPos(0, 0);
-  Position afterPos(initialLines.endPos());
+  CursorPos initialPos(0, 0);
+  CursorPos afterPos(initialLines.endPos());
   MotionBoundary boundary(initialLines, initialPos, afterPos);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos);
@@ -140,8 +140,8 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLines) {
   Lines afterLines = {
     "aaa bbb ccc?"
   };
-  Position initialPos(0, 2);
-  Position afterPos(initialLines.endPos());
+  CursorPos initialPos(0, 2);
+  CursorPos afterPos(initialLines.endPos());
   MotionBoundary boundary(initialLines, initialPos, afterPos, true, true);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos, CompositionOptimizerParams{}, "", boundary);
@@ -154,8 +154,8 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesExact) {
   // J alone, no residual: two lines joined with space
   Lines initial = {"hello", "world"};
   Lines goal = {"hello world"};
-  Position initialPos(0, 0);
-  Position goalPos = goal.lastPos();
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos = goal.lastPos();
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
   // cout << "JoinLinesExact:\n" << res << endl;
@@ -166,8 +166,8 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesWithIndent) {
   // J strips leading whitespace from next line
   Lines initial = {"aaa", "   bbb"};
   Lines goal = {"aaa bbb"};
-  Position initialPos(0, 0);
-  Position goalPos = goal.lastPos();
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos = goal.lastPos();
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
   // cout << "JoinLinesWithIndent:\n" << res << endl;
@@ -180,8 +180,8 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesWithResidual) {
   // J + residual edit: join 3 lines, then edit the result
   Lines initial = {"aaa", "xxx", "ccc"};
   Lines goal = {"aaa bbb ccc"};
-  Position initialPos(0, 0);
-  Position goalPos = goal.lastPos();
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos = goal.lastPos();
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
   // cout << "JoinLinesWithResidual:\n" << res << endl;
@@ -194,8 +194,8 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesPartialJoin) {
   // M=2 partition: join first two lines, join last two lines
   Lines initial = {"aaa", "bbb", "ccc", "ddd"};
   Lines goal = {"aaa bbb", "ccc ddd"};
-  Position initialPos(0, 0);
-  Position goalPos = goal.lastPos();
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos = goal.lastPos();
   MotionBoundary boundary(initial, initialPos, initial.endPos());
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos,
@@ -208,8 +208,8 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesNoViable) {
   // Target has MORE lines than source — J can't help, should still produce results
   Lines initial = {"hello world"};
   Lines goal = {"hello", "world"};
-  Position initialPos(0, 0);
-  Position goalPos = goal.lastPos();
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos = goal.lastPos();
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
   // cout << "JoinLinesNoViable:\n" << res << endl;
@@ -230,8 +230,8 @@ TEST_F(CompositionOptimizerHumanApprovalTests, PureDeletionPositionAdjustment) {
     "bbb",
     "ccc"
   };
-  Position initialPos(0, 0);
-  Position goalPos = goal.lastPos();
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos = goal.lastPos();
 
   Config customConfig = Config::uniform();
   customConfig.keyInfo[static_cast<int>(Key::Key_J)].base_cost = 0.1;
@@ -251,8 +251,8 @@ TEST_F(CompositionOptimizerHumanApprovalTests, ModifyInParentheses) {
   Lines afterLines = {
     "int main() { return 0; }"
   };
-  Position initialPos(0, 0);
-  Position afterPos(initialLines.endPos());
+  CursorPos initialPos(0, 0);
+  CursorPos afterPos(initialLines.endPos());
   MotionBoundary boundary(initialLines, initialPos, afterPos, true, true);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos, {}, "", boundary);
@@ -278,9 +278,9 @@ TEST_F(CompositionOptimizerHumanApprovalTests, ModifyInParenthesesMultiple) {
     cout << a[n-i-1] << endl;
   }
 })");
-  Position initialPos(0, 0);
-  Position initialEndPos = initialLines.endPos();
-  Position goalPos = goalLines.endPos();
+  CursorPos initialPos(0, 0);
+  CursorPos initialEndPos = initialLines.endPos();
+  CursorPos goalPos = goalLines.endPos();
   MotionBoundary boundary(initialLines, initialPos, initialEndPos, true, true);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, goalLines, goalPos, {}, "", boundary);

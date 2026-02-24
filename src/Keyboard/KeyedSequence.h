@@ -4,7 +4,7 @@
 #include "Keyboard/ToKeys/CountToKeys.h"
 #include "Keyboard/ToKeys/CharToKeys.h"
 #include "XMacroKeyedSequence.h"
-#include "VimTypes/Sequence.h"
+#include "Types/Sequence.h"
 
 #include <array>
 #include <string>

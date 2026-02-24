@@ -7,8 +7,8 @@
 
 #include <gtest/gtest.h>
 
-#include "VimTypes/Range.h"
-#include "VimTypes/Lines.h"
+#include "Types/Range.h"
+#include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomGeneration.h"
 #include "VimCore/VimEndpointUtils.h"
@@ -37,8 +37,8 @@ struct SentenceBoundaryTest {
   Lines lines;
 
   // Edit region (character positions)
-  Position editStart;
-  Position editEnd;
+  CursorPos editStart;
+  CursorPos editEnd;
 
   // Cursor position (within edit region)
   int cursorLine;
@@ -111,8 +111,8 @@ SentenceBoundaryTest generateSentenceBoundaryBuffer(int numLines) {
 
   // Define edit region (middle portion, avoiding markers)
   int midLine = numLines / 2;
-  test.editStart = Position(1, 0);
-  test.editEnd = Position(lastLine - 1 >= 1 ? lastLine - 1 : lastLine,
+  test.editStart = CursorPos(1, 0);
+  test.editEnd = CursorPos(lastLine - 1 >= 1 ? lastLine - 1 : lastLine,
                           test.lines[lastLine - 1 >= 1 ? lastLine - 1 : lastLine].size() - 1);
 
   // Pick cursor position in middle
@@ -165,7 +165,7 @@ TEST_F(SentencesTest, InnerSentence_RangeComputation) {
   Lines lines = {"First sentence.  Second sentence."};
 
   // On "Second"
-  Range range = VimCore::sentenceTextObjectRange(Position(0, 17), lines, true);
+  Range range = VimCore::sentenceTextObjectRange(CursorPos(0, 17), lines, true);
 
   // Should select "Second sentence."
   EXPECT_EQ(range.begin.line, 0);
@@ -177,7 +177,7 @@ TEST_F(SentencesTest, AroundSentence_WithTrailingWhitespace) {
   Lines lines = {"First.  Second."};
 
   // On "First" - has trailing whitespace
-  Range range = VimCore::sentenceTextObjectRange(Position(0, 0), lines, false);
+  Range range = VimCore::sentenceTextObjectRange(CursorPos(0, 0), lines, false);
 
   // Should include trailing whitespace
   EXPECT_EQ(range.begin.line, 0);
@@ -189,7 +189,7 @@ TEST_F(SentencesTest, InnerSentence_OnBlankLine) {
   Lines lines = {"First.", "", "Second."};
 
   // dis on blank line - behavior depends on implementation
-  Range range = VimCore::sentenceTextObjectRange(Position(1, 0), lines, true);
+  Range range = VimCore::sentenceTextObjectRange(CursorPos(1, 0), lines, true);
 
   // Range should be valid (not RANGE_OUTSIDE_BOUNDARY)
   EXPECT_GE(range.begin.line, 0);
@@ -218,7 +218,7 @@ TEST_F(SentencesTest, InnerSentence_RandomBuffer) {
 
     // Compute our predicted range
     Range range = VimCore::sentenceTextObjectRange(
-        Position(test.cursorLine, test.cursorCol), test.lines, true);
+        CursorPos(test.cursorLine, test.cursorCol), test.lines, true);
 
     // For sentence boundary prediction, we'd need to compare range to marker positions
     // For now, just verify the operation completes without errors
@@ -273,7 +273,7 @@ TEST_F(SentencesTest, AroundSentence_RandomBuffer) {
 TEST_F(SentencesTest, Dis_SingleSentence) {
   Lines lines = {"Only sentence."};
 
-  Range range = VimCore::sentenceTextObjectRange(Position(0, 5), lines, true);
+  Range range = VimCore::sentenceTextObjectRange(CursorPos(0, 5), lines, true);
 
   // Should select entire line content
   EXPECT_EQ(range.begin.line, 0);
@@ -284,7 +284,7 @@ TEST_F(SentencesTest, Dis_SingleSentence) {
 TEST_F(SentencesTest, Das_SingleSentence) {
   Lines lines = {"Only sentence."};
 
-  Range range = VimCore::sentenceTextObjectRange(Position(0, 5), lines, false);
+  Range range = VimCore::sentenceTextObjectRange(CursorPos(0, 5), lines, false);
 
   // Should select entire line content (no surrounding whitespace to include)
   EXPECT_EQ(range.begin.line, 0);
@@ -296,7 +296,7 @@ TEST_F(SentencesTest, Dis_WithClosers) {
   Lines lines = {"\"Hello!\" she said."};
 
   // dis at "Hello" - sentence ends at !"
-  Range range = VimCore::sentenceTextObjectRange(Position(0, 1), lines, true);
+  Range range = VimCore::sentenceTextObjectRange(CursorPos(0, 1), lines, true);
 
   // Range should include up to the closer
   EXPECT_EQ(range.begin.line, 0);
@@ -307,7 +307,7 @@ TEST_F(SentencesTest, Dis_AcrossBlankLines) {
   Lines lines = {"First sentence.", "", "Second sentence."};
 
   // dis on second sentence
-  Range range = VimCore::sentenceTextObjectRange(Position(2, 0), lines, true);
+  Range range = VimCore::sentenceTextObjectRange(CursorPos(2, 0), lines, true);
 
   EXPECT_EQ(range.begin.line, 2);
   EXPECT_EQ(range.begin.col, 0);
@@ -318,7 +318,7 @@ TEST_F(SentencesTest, Das_IncludesTrailingSpace) {
   Lines lines = {"First.  Second."};
 
   // das on "First" should include trailing spaces
-  Range range = VimCore::sentenceTextObjectRange(Position(0, 0), lines, false);
+  Range range = VimCore::sentenceTextObjectRange(CursorPos(0, 0), lines, false);
 
   EXPECT_EQ(range.begin.line, 0);
   EXPECT_EQ(range.begin.col, 0);

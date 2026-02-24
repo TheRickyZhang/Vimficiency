@@ -6,11 +6,11 @@
 
 #include <gtest/gtest.h>
 
-#include "VimTypes/NavContext.h"
+#include "Types/NavContext.h"
 #include "Utils/TestUtils.h"
 
 #include "Keyboard/ToKeys/MotionToKeys.h"
-#include "Optimizer/Config.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/CountPenalty.h"
 #include "Optimizer/GlobalRuntimeOptions.h"
 #include "Boundary/MotionBoundary.h"
@@ -45,8 +45,8 @@ protected:
   }
 
   static vector<Result>
-  runOptimizer(const Lines &lines, Position start,
-               Position end, const string &userSeq,
+  runOptimizer(const Lines &lines, CursorPos start,
+               CursorPos end, const string &userSeq,
                Config config) {
     MotionOptimizer opt(config);
     MotionBoundary boundary;
@@ -56,8 +56,8 @@ protected:
   }
 
   // Get cost of best result for a motion
-  static double getBestCost(const Lines &lines, Position start,
-                            Position end, const string &userSeq,
+  static double getBestCost(const Lines &lines, CursorPos start,
+                            CursorPos end, const string &userSeq,
                             Config config) {
     auto results = runOptimizer(lines, start, end, userSeq, config);
     if (results.empty()) return -1;
@@ -118,8 +118,8 @@ TEST_F(ConfigurationTest, ColemakDhLayout_DifferentFromQwerty) {
 
 TEST_F(ConfigurationTest, LayoutAffectsOptimizer) {
   // Moving down 3 lines: "3j" or "jjj"
-  Position start(0, 0);
-  Position end(3, 0);
+  CursorPos start(0, 0);
+  CursorPos end(3, 0);
   string userSeq = "jjj";
 
   double uniformCost = getBestCost(a2_block_lines, start, end, userSeq, Config::uniform());
@@ -208,8 +208,8 @@ TEST_F(ConfigurationTest, CustomKeyCostOverride) {
 }
 
 TEST_F(ConfigurationTest, CustomKeyCostAffectsOptimizer) {
-  Position start(0, 0);
-  Position end(1, 0);
+  CursorPos start(0, 0);
+  CursorPos end(1, 0);
   string userSeq = "j";
 
   // Normal uniform config
@@ -246,8 +246,8 @@ TEST_F(ConfigurationTest, CountPenaltyOverrideAffectsMotionRanking) {
   RuntimeOptionsGuard guard;
 
   Lines lines = {"one two three four five six"};
-  Position start(0, 0);
-  Position end(0, 19);  // reachable via 4w
+  CursorPos start(0, 0);
+  CursorPos end(0, 19);  // reachable via 4w
 
   MotionOptimizer opt(Config::uniform());
   MotionBoundary boundary;

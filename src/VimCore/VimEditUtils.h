@@ -3,23 +3,23 @@
 #include <string>
 #include <string_view>
 
-#include "VimTypes/Mode.h"
-#include "VimTypes/Position.h"
-#include "VimTypes/Range.h"
-#include "VimTypes/LineRange.h"
-#include "VimTypes/Lines.h"
+#include "Types/Mode.h"
+#include "Types/CursorPos.h"
+#include "Types/Range.h"
+#include "Types/LineRange.h"
+#include "Types/Lines.h"
 
 // Edit operations that modify buffer content.
 //
 // Design principles:
 // - Assume valid state (use assertions, not defensive clamping)
-// - Minimal API (single-line ops take string& + int&, not Lines& + Position&)
+// - Minimal API (single-line ops take string& + int&, not Lines& + CursorPos&)
 // - No redundant wrappers (inline trivial operations at call sites)
 
 namespace VimCore {
 
 // =============================================================================
-// Position Clamping Helpers
+// CursorPos Clamping Helpers
 // =============================================================================
 
 // Clamp col to valid normal mode range: [0, line.size()-1] or 0 if empty
@@ -101,7 +101,7 @@ enum class ExclusiveAdjust {
 inline ExclusiveAdjust adjustExclusiveRange(Range& range, const Lines& lines) {
   if (range.end.col == 0 && range.end.line > range.begin.line) {
     if (range.begin.col == 0) return ExclusiveAdjust::Linewise;
-    range.end = Position(range.end.line - 1,
+    range.end = CursorPos(range.end.line - 1,
                          static_cast<int>(lines[range.end.line - 1].size()));
     return ExclusiveAdjust::BackedUp;
   }
@@ -118,30 +118,30 @@ inline ExclusiveAdjust adjustExclusiveRange(Range& range, const Lines& lines) {
 // Empty line removal follows Vim behavior:
 //   - Cursor on same line as deletion (e.g., D at col 0): keep empty line
 //   - Cursor on different line (e.g., db from col 0): remove empty line
-void deleteRange(Lines& lines, const Range& range, Position& pos, Mode mode = Mode::Normal);
+void deleteRange(Lines& lines, const Range& range, CursorPos& pos, Mode mode = Mode::Normal);
 
 // Delete entire lines in [beginLine, endLine). Modifies lines and updates pos.
 // Pos goes to first non-blank of the line following the deleted range.
 // hasLinesBelow: if true, cursor is not clamped when deletion includes the last line,
 // because the real buffer has lines below that the cursor would land on.
-void deleteRangeLinewise(Lines& lines, const LineRange& range, Position& pos,
+void deleteRangeLinewise(Lines& lines, const LineRange& range, CursorPos& pos,
                          bool hasLinesBelow = false);
 
 // Insert text at position. Handles newlines (splits into multiple lines).
 // After insert, pos is at end of inserted text.
-void insertText(Lines& lines, Position& pos, std::string_view text);
+void insertText(Lines& lines, CursorPos& pos, std::string_view text);
 
 // J/gJ - join current line with next
 // addSpace=true: strip trailing/leading whitespace, add single space (J)
 // addSpace=false: simple concatenation (gJ)
-void joinLines(Lines& lines, Position& pos, bool addSpace);
+void joinLines(Lines& lines, CursorPos& pos, bool addSpace);
 
 // o - open new line below current, pos moves to new line col 0
 // Precondition: lines not empty
-void openLineBelow(Lines& lines, Position& pos);
+void openLineBelow(Lines& lines, CursorPos& pos);
 
 // O - open new line above current, pos moves to new line col 0
 // Precondition: lines not empty
-void openLineAbove(Lines& lines, Position& pos);
+void openLineAbove(Lines& lines, CursorPos& pos);
 
 } // namespace VimCore

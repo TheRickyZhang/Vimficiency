@@ -10,11 +10,11 @@
 #include <memory>
 
 #include "Boundary/MotionBoundary.h"
-#include "VimTypes/NavContext.h"
+#include "Types/NavContext.h"
 #include "Keyboard/ToKeys/MotionToKeys.h"
 #include "Optimizer/CompositionOptimizer/CompositionSearchContext.h"
-#include "Optimizer/Config.h"
-#include "VimTypes/Lines.h"
+#include "Keyboard/Config.h"
+#include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomGeneration.h"
 
@@ -46,7 +46,7 @@ protected:
 
   CompositionSearchContext makeContext(const Lines& initial, const Lines& goal) {
     return CompositionSearchContext(
-        initial, Position(0, 0), goal, "",
+        initial, CursorPos(0, 0), goal, "",
         NavContext(), MotionBoundary(), params, config);
   }
 

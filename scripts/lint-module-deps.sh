@@ -6,21 +6,21 @@ cd "$ROOT_DIR"
 
 is_known_module() {
   case "$1" in
-    VimTypes|Optimizer|Interpreter|Session|Effort|Keyboard|VimCore|Boundary|Utils) return 0 ;;
+    Types|Optimizer|Interpreter|Session|Effort|Keyboard|VimCore|Boundary|Utils) return 0 ;;
     *) return 1 ;;
   esac
 }
 
 is_allowed_edge() {
   case "$1" in
-    "Optimizer->VimTypes"|"Optimizer->Utils"|"Optimizer->Keyboard"|"Optimizer->VimCore"|"Optimizer->Boundary"|"Optimizer->Interpreter"|"Optimizer->Effort") return 0 ;;
+    "Optimizer->Types"|"Optimizer->Utils"|"Optimizer->Keyboard"|"Optimizer->VimCore"|"Optimizer->Boundary"|"Optimizer->Interpreter"|"Optimizer->Effort") return 0 ;;
     "Effort->Keyboard") return 0 ;;
-    "Interpreter->VimTypes"|"Interpreter->VimCore"|"Interpreter->Keyboard"|"Interpreter->Utils") return 0 ;;
-    "Session->VimTypes") return 0 ;;
-    "VimCore->VimTypes"|"VimCore->Utils"|"VimCore->Boundary") return 0 ;;
-    "Keyboard->VimTypes"|"Keyboard->Utils") return 0 ;;
-    "Boundary->VimTypes"|"Boundary->Utils") return 0 ;;
-    "Utils->VimTypes") return 0 ;;
+    "Interpreter->Types"|"Interpreter->VimCore"|"Interpreter->Keyboard"|"Interpreter->Utils") return 0 ;;
+    "Session->Types") return 0 ;;
+    "VimCore->Types"|"VimCore->Utils"|"VimCore->Boundary") return 0 ;;
+    "Keyboard->Types"|"Keyboard->Utils") return 0 ;;
+    "Boundary->Types"|"Boundary->Utils") return 0 ;;
+    "Utils->Types") return 0 ;;
     *) return 1 ;;
   esac
 }

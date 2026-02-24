@@ -3,21 +3,21 @@
 #include <string>
 #include <ostream>
 
-#include "VimTypes/Position.h"
-#include "VimTypes/Sequence.h"
+#include "Types/CursorPos.h"
+#include "Types/Sequence.h"
 
 // Result with end position, used by optimizeToRange
 struct RangeResult {
   Sequence sequence;
   double keyCost;
-  Position goalPos;
+  CursorPos goalPos;
 
   RangeResult() : keyCost(0), goalPos(0, 0) {}
-  RangeResult(Sequence seq, double c, Position p)
+  RangeResult(Sequence seq, double c, CursorPos p)
     : sequence(std::move(seq)), keyCost(c), goalPos(p) {}
-  RangeResult(const std::string& s, double c, Position p)
+  RangeResult(const std::string& s, double c, CursorPos p)
     : sequence(s), keyCost(c), goalPos(p) {}
-  RangeResult(std::string&& s, double c, Position p)
+  RangeResult(std::string&& s, double c, CursorPos p)
     : sequence(std::move(s)), keyCost(c), goalPos(p) {}
 
   bool isValid() const {

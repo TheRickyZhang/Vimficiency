@@ -9,7 +9,7 @@
 #include <benchmark/benchmark.h>
 
 #include "Optimizer/SearchStats.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/SeedManager.h"
 

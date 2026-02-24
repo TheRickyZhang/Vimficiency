@@ -49,3 +49,4 @@ Interesting (maybe?) things that have come up:
 - Policy template pattern; variable specializations (C++ 14) as more direct traits struct
 - How to develop an API supporting compile-time parameters still open to runtime configuration later
 - std::to_chars really fast at transcription: unusaully locale-independent, non-owning and non-throwing
+- Restrictions on constexpr constructor usage

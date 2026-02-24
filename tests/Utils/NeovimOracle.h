@@ -1,7 +1,7 @@
 #pragma once
 
-#include "VimTypes/Mode.h"
-#include "VimTypes/Lines.h"
+#include "Types/Mode.h"
+#include "Types/Lines.h"
 
 #include <memory>
 #include <string>

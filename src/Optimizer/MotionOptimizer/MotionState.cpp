@@ -23,7 +23,7 @@ void MotionState::applySingleMotionWithEffort(string_view motion, const NavConte
 // Public factory methods - return new state with motion applied
 // =============================================================================
 
-MotionState MotionState::afterMotion(const KeyedSequence& ks, Position endpoint,
+MotionState MotionState::afterMotion(const KeyedSequence& ks, CursorPos endpoint,
                                      const Config& config) const {
   MotionState newState = *this;
   newState.applyMotionImpl(ks, endpoint, config);
@@ -31,14 +31,14 @@ MotionState MotionState::afterMotion(const KeyedSequence& ks, Position endpoint,
 }
 
 MotionState MotionState::afterMotion(const KeyedSequence& ks, const RunningEffort& precomputed,
-                                     Position endpoint, const Config& config) const {
+                                     CursorPos endpoint, const Config& config) const {
   MotionState newState = *this;
   newState.applyMotionImpl(ks, precomputed, endpoint, config);
   return newState;
 }
 
 MotionState MotionState::afterCountedMotion(const KeyedSequence& baseMotion, int cnt,
-                                            Position endpoint, const Config& config,
+                                            CursorPos endpoint, const Config& config,
                                             double extraPenalty) const {
   MotionState newState = *this;
   newState.applyCountedMotionImpl(baseMotion, cnt, endpoint, config, extraPenalty);
@@ -56,7 +56,7 @@ MotionState MotionState::afterFMotion(const KeyedSequence& fMotion, int newCol,
 // Private implementation - mutating methods
 // =============================================================================
 
-void MotionState::applyMotionImpl(const KeyedSequence& ks, Position endpoint,
+void MotionState::applyMotionImpl(const KeyedSequence& ks, CursorPos endpoint,
                                   const Config& config) {
   pos = endpoint;
   motionSequence.append(ks.seq.view());
@@ -64,14 +64,14 @@ void MotionState::applyMotionImpl(const KeyedSequence& ks, Position endpoint,
 }
 
 void MotionState::applyMotionImpl(const KeyedSequence& ks, const RunningEffort& precomputed,
-                                  Position endpoint, const Config& config) {
+                                  CursorPos endpoint, const Config& config) {
   pos = endpoint;
   motionSequence.append(ks.seq.view());
   effort = runningEffort.appendFrom(precomputed, config);
 }
 
 void MotionState::applyCountedMotionImpl(const KeyedSequence& baseMotion, int cnt,
-                                         Position endpoint, const Config& config,
+                                         CursorPos endpoint, const Config& config,
                                          double extraPenalty) {
   assert(abs(cnt) <= MAX_PREFIX_COUNT);
   pos = endpoint;

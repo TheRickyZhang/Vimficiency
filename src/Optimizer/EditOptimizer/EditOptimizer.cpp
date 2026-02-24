@@ -31,7 +31,7 @@ using namespace std;
 
 EditResult::EditResult(vector<Result> results, SearchStats stats,
                        const Lines& initialLines, int bufferBeginLine,
-                       int bufferBeginCol, Position goalPos)
+                       int bufferBeginCol, CursorPos goalPos)
     : goalPos(goalPos),
       stats(std::move(stats)),
       results_(std::move(results)),
@@ -197,7 +197,7 @@ optional<Result> tryReplacement(string_view deleted, string_view inserted,
     }
   }
 
-  // Position cursor at end of inserted text
+  // CursorPos cursor at end of inserted text
   int lastDiff = diff.back();
   int endPos = static_cast<int>(inserted.size()) - 1;
   if (lastDiff < endPos) appendNav(endPos - lastDiff);
@@ -267,15 +267,15 @@ struct ModePolicy<true> {
 
   EditResult finalize(vector<Result>&& results, const Lines& initialLines,
                       const Lines&, const EditOptimizerParams& params,
-                      int bufferBeginLine, int bufferBeginCol, Position goalPos) {
+                      int bufferBeginLine, int bufferBeginCol, CursorPos goalPos) {
     // Try visual mode deletion: v{motion}d from first content position to last
     if (ctx.effectiveLines.size() > 1 ||
         static_cast<int>(ctx.effectiveLines[0].size()) > ctx.leftColOffset + ctx.rightColOffset) {
-      Position beginPos(0, ctx.leftColOffset);
+      CursorPos beginPos(0, ctx.leftColOffset);
 
       int lastLine = ctx.effectiveLines.lastLine();
       int lastCol = static_cast<int>(ctx.effectiveLines[lastLine].size()) - 1 - ctx.rightColOffset;
-      Position lastPos(lastLine, max(0, lastCol));
+      CursorPos lastPos(lastLine, max(0, lastCol));
 
       if (lastPos > beginPos || (lastPos.line == beginPos.line && lastPos.col > beginPos.col)) {
         MotionOptimizer motionOpt(config);
@@ -490,7 +490,7 @@ struct ModePolicy<false> {
 
     // 3) Initialize replay state at this seed position.
     Lines replayLines = ctx.effectiveLines;
-    Position replayPos = ctx.seedPositionFor(startIndex, initialLines);
+    CursorPos replayPos = ctx.seedPositionFor(startIndex, initialLines);
     // applyEdit mutates mode by reference; replay starts in Normal.
     Mode replayMode = Mode::Normal;
 
@@ -523,7 +523,7 @@ struct ModePolicy<false> {
   }
 
   KeyedSequence buildChangePrefix(const SequenceBinding& sourceCmd,
-                                  const Lines& postDelLines, const Position& postDelPos,
+                                  const Lines& postDelLines, const CursorPos& postDelPos,
                                   const Lines& preDelLines, const Range& range) const {
     int totalLines = static_cast<int>(postDelLines.size());
     int cursorLine = postDelPos.line;
@@ -769,7 +769,7 @@ struct ModePolicy<false> {
 
   EditResult finalize(vector<Result>&& results, const Lines& initialLines,
                       const Lines& goalLines, const EditOptimizerParams&,
-                      int bufferBeginLine, int bufferBeginCol, Position goalPos) {
+                      int bufferBeginLine, int bufferBeginCol, CursorPos goalPos) {
     // Try replacement strategy (same-length, single-line) with A* budget
     if (results[0].isValid() &&
         initialLines.size() == 1 && goalLines.size() == 1 &&
@@ -800,7 +800,7 @@ template<>
 struct PureDeletionGoalCapture<false> {
   explicit PureDeletionGoalCapture(int) {}
 
-  void onGoal(int, const Position&) {}
+  void onGoal(int, const CursorPos&) {}
 
   EditResult finalize(EditResult&& editResult, int) {
     return std::move(editResult);
@@ -809,12 +809,12 @@ struct PureDeletionGoalCapture<false> {
 
 template<>
 struct PureDeletionGoalCapture<true> {
-  vector<Position> goalPosByStart;
+  vector<CursorPos> goalPosByStart;
 
   explicit PureDeletionGoalCapture(int totalPositions)
-      : goalPosByStart(static_cast<size_t>(totalPositions), Position(-1, -1, -1)) {}
+      : goalPosByStart(static_cast<size_t>(totalPositions), CursorPos(-1, -1, -1)) {}
 
-  void onGoal(int idx, const Position& pos) {
+  void onGoal(int idx, const CursorPos& pos) {
     goalPosByStart[static_cast<size_t>(idx)] = pos;
   }
 
@@ -823,7 +823,7 @@ struct PureDeletionGoalCapture<true> {
     // coordinates. For line-OOB pure deletion terminals, line maps to the
     // corresponding line below the edit region in full-buffer coordinates;
     // column is clamped later where full post-edit lines are available.
-    for (Position& p : goalPosByStart) {
+    for (CursorPos& p : goalPosByStart) {
       if (p.line < 0) continue;
       p.line += bufferBeginLine;
     }
@@ -840,7 +840,7 @@ template<bool PureDeletion>
 auto EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
                                  EditBoundary editBoundary, EditOptimizerParams params,
                                  int bufferBeginLine, int bufferBeginCol,
-                                 Position goalPos)
+                                 CursorPos goalPos)
     -> OptimizeImplResult<PureDeletion> {
   assert(!initialLines.empty() && "empty startlines should be handled in compositionEditor by i, a, o, O");
 
@@ -1001,7 +1001,7 @@ auto EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLin
     auto deletionCb = [&](const Range& range, const SequenceBinding& sourceCmd) {
       exploreDeletion(s, range, sourceCmd);
     };
-    auto motionCb = [&](const Position& newPos, const SequenceBinding& motionCmd) {
+    auto motionCb = [&](const CursorPos& newPos, const SequenceBinding& motionCmd) {
       assert(motionCmd.count == 0 && "Boundary motions should not carry counts");
       EditState newState = s;
       newState.setPos(newPos);
@@ -1047,9 +1047,9 @@ auto EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLin
 
 // Explicit template instantiations
 template EditResult EditOptimizer::optimizeImpl<false>(
-    const Lines&, const Lines&, EditBoundary, EditOptimizerParams, int, int, Position);
+    const Lines&, const Lines&, EditBoundary, EditOptimizerParams, int, int, CursorPos);
 template PureDeletionEditResult EditOptimizer::optimizeImpl<true>(
-    const Lines&, const Lines&, EditBoundary, EditOptimizerParams, int, int, Position);
+    const Lines&, const Lines&, EditBoundary, EditOptimizerParams, int, int, CursorPos);
 
 // =============================================================================
 // Public dispatchers
@@ -1060,7 +1060,7 @@ EditResult
 EditOptimizer::optimizeEdit(
     const Lines &initialLines, const Lines &goalLines,
     EditBoundary editBoundary, EditOptimizerParams params,
-    int bufferBeginLine, int bufferBeginCol, Position goalPos) {
+    int bufferBeginLine, int bufferBeginCol, CursorPos goalPos) {
   assert(initialLines != goalLines);
   assert(!initialLines.empty());
   bool pureDeletionGoal = goalLines.empty() ||
@@ -1079,7 +1079,7 @@ PureDeletionEditResult EditOptimizer::optimizePureDeletion(
     EditOptimizerParams params,
     int bufferBeginLine,
     int bufferBeginCol,
-    Position goalPos) {
+    CursorPos goalPos) {
   assert(!initialLines.empty());
   params.normalizeCountRepeatBounds();
   return optimizeImpl<true>(

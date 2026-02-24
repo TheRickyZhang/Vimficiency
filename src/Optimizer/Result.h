@@ -4,7 +4,7 @@
 #include <string>
 #include <ostream>
 
-#include "VimTypes/Sequence.h"
+#include "Types/Sequence.h"
 
 struct Result {
   Sequence sequence;

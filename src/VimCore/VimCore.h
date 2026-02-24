@@ -1,12 +1,11 @@
 #pragma once
 
-#include <string>
 #include <string_view>
 #include <utility>
 
-#include "VimTypes/Position.h"
-#include "VimTypes/Lines.h"
-#include "VimTypes/EdgeType.h"
+#include "Types/CursorPos.h"
+#include "Types/Lines.h"
+#include "Types/EdgeType.h"
 
 // VimCore: Character classification, string helpers, position stepping,
 // and core word motion logic. Used by VimMotionUtils, VimEndpointUtils,
@@ -49,27 +48,27 @@ bool isBlankLineStr(std::string_view s);
 int firstNonBlankColInLineStr(std::string_view s);
 
 // =============================================================================
-// 3. Position Stepping (depends on Lines)
+// 3. CursorPos Stepping (depends on Lines)
 // =============================================================================
 
-// Modern Position-based API (inline)
-inline Position step(const Lines& lines, Position pos, bool forward) {
+// Modern CursorPos-based API (inline)
+inline CursorPos step(const Lines& lines, CursorPos pos, bool forward) {
   return forward ? lines.getNextPos(pos) : lines.getPrevPos(pos);
 }
 
-inline Position stepBack(const Lines& lines, Position pos, bool forward) {
+inline CursorPos stepBack(const Lines& lines, CursorPos pos, bool forward) {
   return forward ? lines.getPrevPos(pos) : lines.getNextPos(pos);
 }
 
 // Templated versions for compile-time dispatch (no runtime branch)
 template<bool Forward>
-inline Position step(const Lines& lines, Position pos) {
+inline CursorPos step(const Lines& lines, CursorPos pos) {
   if constexpr (Forward) return lines.getNextPos(pos);
   else return lines.getPrevPos(pos);
 }
 
 template<bool Forward>
-inline Position stepBack(const Lines& lines, Position pos) {
+inline CursorPos stepBack(const Lines& lines, CursorPos pos) {
   if constexpr (Forward) return lines.getPrevPos(pos);
   else return lines.getNextPos(pos);
 }
@@ -86,20 +85,20 @@ bool stepBack(const Lines& lines, int& line, int& col);
 // would go past buffer boundary. Used by VimEndpointUtils for boundary detection.
 //
 // lineBounded: When true, motion stops at line boundaries instead of crossing.
-//   - Backward from whitespace: returns Position(line, 0) instead of crossing to prev line
-//   - Forward through whitespace: returns Position(line, lastCol) instead of crossing to next line
+//   - Backward from whitespace: returns CursorPos(line, 0) instead of crossing to prev line
+//   - Forward through whitespace: returns CursorPos(line, lastCol) instead of crossing to next line
 //   Used by daw text object which doesn't cross lines from indentation.
 
 // Templated version for compile-time dispatch on Forward and Edge
 template<bool Forward, EdgeType Edge>
-Position motionWordCore(Position pos,
+CursorPos motionWordCore(CursorPos pos,
                         const Lines& lines,
                         bool big,
                         bool skipCurrent,
                         bool lineBounded = false);
 
 // Runtime dispatch version (for compatibility with existing code)
-Position motionWordCore(Position pos,
+CursorPos motionWordCore(CursorPos pos,
                         const Lines& lines,
                         bool forward,
                         EdgeType edgeType,

@@ -1,0 +1,48 @@
+name: Setup CI deps
+description: Install compiler toolchain and optional cached Neovim.
+
+inputs:
+  install-neovim:
+    description: Whether to install Neovim and add it to PATH.
+    required: false
+    default: "false"
+  neovim-version:
+    description: Neovim release tag to install when install-neovim is true.
+    required: false
+    default: "v0.11.5"
+
+runs:
+  using: composite
+  steps:
+    - name: Install compiler toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        sudo apt-get install -y gcc-14 g++-14
+
+    - name: Cache Neovim
+      if: ${{ inputs.install-neovim == 'true' }}
+      id: neovim-cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.local/neovim/${{ inputs.neovim-version }}
+        key: neovim-${{ runner.os }}-${{ inputs.neovim-version }}
+
+    - name: Install Neovim
+      if: ${{ inputs.install-neovim == 'true' && steps.neovim-cache.outputs.cache-hit != 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        archive="${RUNNER_TEMP}/nvim-${{ inputs.neovim-version }}-linux-x86_64.tar.gz"
+        install_dir="${HOME}/.local/neovim/${{ inputs.neovim-version }}"
+        curl -fsSL -o "${archive}" "https://github.com/neovim/neovim/releases/download/${{ inputs.neovim-version }}/nvim-linux-x86_64.tar.gz"
+        mkdir -p "${install_dir}"
+        tar -xzf "${archive}" -C "${install_dir}" --strip-components=1
+
+    - name: Add Neovim to PATH
+      if: ${{ inputs.install-neovim == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "${HOME}/.local/neovim/${{ inputs.neovim-version }}/bin" >> "${GITHUB_PATH}"

@@ -1,6 +1,6 @@
 #include "EditBoundary.h"
-#include "VimTypes/Position.h"
-#include "VimTypes/Lines.h"
+#include "Types/CursorPos.h"
+#include "Types/Lines.h"
 
 using namespace std;
 
@@ -15,7 +15,7 @@ const EditBoundary& EditBoundary::noParent() {
 
 // Construct from buffer context, optionally inheriting from parent
 // endPos is exclusive: one past the last valid cursor position
-EditBoundary::EditBoundary(const Lines &lines, Position beginPos, Position endPos,
+EditBoundary::EditBoundary(const Lines &lines, CursorPos beginPos, CursorPos endPos,
                            const EditBoundary &parent)
     : prefix_(), suffix_(),
       hasLinesAbove_(parent.hasLinesAbove()),

@@ -3,19 +3,19 @@
 #include <type_traits>
 #include <vector>
 
-#include "Optimizer/Config.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/Result.h"
 #include "EditOptimizerParams.h"
 #include "Optimizer/SearchStats.h"
 #include "Boundary/EditBoundary.h"
 
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 
 
 struct EditResult {
   // Cursor position after edit completes (in buffer coordinates)
   // This is where the cursor lands after the change command + typed text + <Esc>
-  Position goalPos;
+  CursorPos goalPos;
 
   // Search statistics for debugging and benchmarking
   SearchStats stats;
@@ -24,7 +24,7 @@ struct EditResult {
   // Buffer-position params default to edit-region-local (line 0, col 0).
   EditResult(std::vector<Result> results, SearchStats stats,
              const Lines& initialLines, int bufferBeginLine = 0,
-             int bufferBeginCol = 0, Position goalPos = {0, 0});
+             int bufferBeginCol = 0, CursorPos goalPos = {0, 0});
 
   // Look up the result for a buffer position. Returns nullptr if the position
   // is outside the edit region or the result at that position is invalid.
@@ -75,7 +75,7 @@ std::ostream& operator<<(std::ostream& os, const EditResult& editResult);
 struct PureDeletionEditResult {
   EditResult editResult;
   // Per-start goal cursor positions in buffer coordinates (same flat index as EditResult::getResults()).
-  std::vector<Position> goalPosByStart;
+  std::vector<CursorPos> goalPosByStart;
 
   friend std::ostream& operator<<(std::ostream& os, const PureDeletionEditResult& pdr) {
     os << pdr.editResult;
@@ -103,7 +103,7 @@ struct EditOptimizer {
       EditOptimizerParams params = {},
       int bufferBeginLine = 0,
       int bufferBeginCol = 0,
-      Position goalPos = {0, 0}
+      CursorPos goalPos = {0, 0}
   );
 
   PureDeletionEditResult optimizePureDeletion(
@@ -112,7 +112,7 @@ struct EditOptimizer {
       EditOptimizerParams params = {},
       int bufferBeginLine = 0,
       int bufferBeginCol = 0,
-      Position goalPos = {0, 0}
+      CursorPos goalPos = {0, 0}
   );
 
 
@@ -132,6 +132,6 @@ private:
       EditOptimizerParams params,
       int bufferBeginLine,
       int bufferBeginCol,
-      Position goalPos
+      CursorPos goalPos
   );
 };

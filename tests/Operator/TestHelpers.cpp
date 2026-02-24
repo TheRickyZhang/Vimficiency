@@ -1,7 +1,7 @@
 // tests/Operator/TestHelpers.cpp
 //
 // Implementation of shared test infrastructure for operator boundary crossing tests.
-// Uses VimEndpointUtils for Position-based boundary checking.
+// Uses VimEndpointUtils for CursorPos-based boundary checking.
 
 #include "TestHelpers.h"
 
@@ -101,10 +101,10 @@ RandomBufferTest generateRandomBuffer(int numLines) {
       (test.editEndCol + 1 < static_cast<int>(test.lines[test.editEndLine].size()));
 
   if (test.hasLeftBoundary) {
-    test.leftBoundaryPos = Position(test.editStartLine, test.editStartCol - 1);
+    test.leftBoundaryPos = CursorPos(test.editStartLine, test.editStartCol - 1);
   }
   if (test.hasRightBoundary) {
-    test.rightBoundaryPos = Position(test.editEndLine, test.editEndCol + 1);
+    test.rightBoundaryPos = CursorPos(test.editEndLine, test.editEndCol + 1);
   }
 
   // Random cursor position within edit region
@@ -195,7 +195,7 @@ bool runRandomMotionTest(NeovimOracle& oracle, const MotionSpec& motion,
   bool rightCrossed = test.hasRightBoundary && rightBoundaryCrossed(test, result.lines);
 
   // Predict using VimEndpointUtils
-  Position cursor(test.cursorLine, test.cursorCol);
+  CursorPos cursor(test.cursorLine, test.cursorCol);
   bool hasBoundary = motion.isForward ? test.hasRightBoundary : test.hasLeftBoundary;
 
   bool predictCross = false;

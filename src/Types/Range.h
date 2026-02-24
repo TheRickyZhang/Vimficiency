@@ -1,15 +1,15 @@
 #pragma once
 
-#include "VimTypes/Lines.h"
-#include "VimTypes/Position.h"
+#include "Types/Lines.h"
+#include "Types/CursorPos.h"
 
 // A character-wise region in the buffer. Half-open: [begin, end).
 struct Range {
-  Position begin;
-  Position end;
+  CursorPos begin;
+  CursorPos end;
 
   Range() = default;
-  constexpr Range(Position beginPos, Position endPos) : begin(beginPos), end(endPos) {}
+  constexpr Range(CursorPos beginPos, CursorPos endPos) : begin(beginPos), end(endPos) {}
 
   // Ensure begin <= end (lexicographic on line/col).
   void normalize() {

@@ -274,7 +274,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDAW) {
   // Let's see what our VimCore simulation says
   cerr << endl << "=== Our VimCore simulation ===" << endl;
   Lines testLines = source;
-  Position pos(1, 0);
+  CursorPos pos(1, 0);
 
   // Simulate daw
   cerr << "Before daw: " << testLines << " pos=(" << pos.line << "," << pos.col << ")" << endl;
@@ -320,7 +320,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJCursor) {
   cerr << "  Cursor: [" << r.row << "," << r.col << "]" << endl;
 
   Lines ourLines = lines;
-  Position pos(0, 6);
+  CursorPos pos(0, 6);
   VimCore::joinLines(ourLines, pos, true);
   cerr << endl << "Our VimCore after J:" << endl;
   cerr << "  Buffer: '" << ourLines.flatten() << "'" << endl;
@@ -335,7 +335,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJCursor) {
   auto testJ = [&](Lines l, int startCol, const string& label) {
     auto nvim = oracle_->simulate(l, 0, startCol, "J");
     Lines our = l;
-    Position p(0, startCol);
+    CursorPos p(0, startCol);
     VimCore::joinLines(our, p, true);
     cerr << label << " J at [0," << startCol << "]:" << endl;
     cerr << "  Neovim: '" << nvim.lines.flatten() << "' cursor=[" << nvim.row << "," << nvim.col << "]" << endl;

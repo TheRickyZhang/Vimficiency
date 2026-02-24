@@ -1,11 +1,11 @@
 #pragma once
 
 #include "Boundary/BoundaryContext.h"
-#include "VimTypes/Position.h"
-#include "VimTypes/BracketFlags.h"
-#include "VimTypes/Lines.h"
-#include "VimTypes/NoChar.h"
-#include "VimTypes/QuoteFlags.h"
+#include "Types/CursorPos.h"
+#include "Types/BracketFlags.h"
+#include "Types/Lines.h"
+#include "Types/NoChar.h"
+#include "Types/QuoteFlags.h"
 
 // =============================================================================
 // EditBoundary: Pre-computed boundary info for constrained edit operations
@@ -31,7 +31,7 @@ struct EditBoundary {
   // To specify restricted motions for lines, call with hasLinesBelow = false, hasLinesAbove = false
   // Construct from buffer context, optionally inheriting from parent
   // endPos is exclusive: one past the last valid cursor position on the end line
-  EditBoundary(const Lines& lines, Position beginPos, Position endPos,
+  EditBoundary(const Lines& lines, CursorPos beginPos, CursorPos endPos,
                const EditBoundary& parent = noParent());
 
   // Getters for boundary content
@@ -86,6 +86,6 @@ private:
   BracketFlags beginLineBrackets_;
   BracketFlags endLineBrackets_;
 
-  void computeBoundaryChars(const Lines& lines, Position beginPos, Position endPos);
-  void scanQuotesAndBrackets(const Lines& lines, Position beginPos, Position endPos);
+  void computeBoundaryChars(const Lines& lines, CursorPos beginPos, CursorPos endPos);
+  void scanQuotesAndBrackets(const Lines& lines, CursorPos beginPos, CursorPos endPos);
 };

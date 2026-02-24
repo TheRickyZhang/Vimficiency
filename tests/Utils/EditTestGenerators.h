@@ -7,14 +7,14 @@
 #pragma once
 
 #include "Boundary/EditBoundary.h"
-#include "VimTypes/Position.h"
-#include "VimTypes/Lines.h"
+#include "Types/CursorPos.h"
+#include "Types/Lines.h"
 #include "Utils/RandomBufferHelpers.h"  // Core random generation
 
 #include <string>
 
 // =============================================================================
-// Position Index Utilities
+// CursorPos Index Utilities
 // =============================================================================
 
 // Convert (row, col) to flat index for typeAllResults access.
@@ -23,7 +23,7 @@
 int toFlatIndex(int row, int col, const Lines& lines);
 
 // Convert flat index back to (row, col) position
-Position fromFlatIndex(int flatIdx, const Lines& lines);
+CursorPos fromFlatIndex(int flatIdx, const Lines& lines);
 
 // =============================================================================
 // Embedded Edit Region
@@ -54,7 +54,7 @@ struct EmbeddedEditRegion {
   EditBoundary makeBoundary() const;
 
   // Convert edit region position to fullBuffer position
-  Position toFullBufferPos(const Position& editPos) const;
+  CursorPos toFullBufferPos(const CursorPos& editPos) const;
 
   // Expected result after deleting edit region: prefix + suffix
   std::string expectedAfterDeletion() const;

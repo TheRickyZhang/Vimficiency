@@ -1,18 +1,17 @@
 #pragma once
 
-#include "VimTypes/PosKey.h"
 #include "Effort/RunningEffort.h"
-#include "VimTypes/Position.h"
-#include "VimTypes/Mode.h"
-#include "VimTypes/Sequence.h"
-#include "VimTypes/NavContext.h"
+#include "Types/CursorPos.h"
+#include "Types/Mode.h"
+#include "Types/Sequence.h"
+#include "Types/NavContext.h"
 #include "Keyboard/KeyedSequence.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 
 // Entire simulated editor state (for now, only position+mode+effort).
 class MotionState {
   // Visible, core editor state
-  Position pos;
+  CursorPos pos;
   Mode mode;
 
   // Progress so far
@@ -26,12 +25,12 @@ class MotionState {
   RunningEffort runningEffort;
 
 public:
-  MotionState(Position pos, RunningEffort runningEffort, double effort, double cost)
+  MotionState(CursorPos pos, RunningEffort runningEffort, double effort, double cost)
     : pos(pos), runningEffort(runningEffort), effort(effort), cost(cost), mode(Mode::Normal) {
   }
 
   void reset() {
-    pos = Position(0, 0, 0);
+    pos = CursorPos(0, 0, 0);
     mode = Mode::Normal;
     runningEffort.reset();
   }
@@ -42,10 +41,10 @@ public:
     return cost > other.cost;
   }
 
-  PosKey getKey() const {
-    return PosKey(pos.line, pos.col);
+  Pos getKey() const {
+    return Pos(pos.line, pos.col);
   }
-  Position getPos()                       const { return pos; }
+  CursorPos getPos()                       const { return pos; }
   Mode getMode()                          const { return mode; }
   const Sequence& getSequence()            const { return motionSequence; }
   double getEffort()                      const { return effort; }
@@ -58,16 +57,16 @@ public:
 
   // Create new state with motion applied
   // Note: caller must set cost via setCost() after computing heuristic
-  [[nodiscard]] MotionState afterMotion(const KeyedSequence& ks, Position endpoint,
+  [[nodiscard]] MotionState afterMotion(const KeyedSequence& ks, CursorPos endpoint,
                                         const Config& config) const;
 
   // Overload using pre-computed effort (from EffortBank) — avoids recomputing from keys
   [[nodiscard]] MotionState afterMotion(const KeyedSequence& ks, const RunningEffort& precomputed,
-                                        Position endpoint, const Config& config) const;
+                                        CursorPos endpoint, const Config& config) const;
 
   // Create new state with counted motion applied (e.g., "3w")
   [[nodiscard]] MotionState afterCountedMotion(const KeyedSequence& baseMotion, int cnt,
-                                               Position endpoint, const Config& config,
+                                               CursorPos endpoint, const Config& config,
                                                double extraPenalty) const;
 
   // Create new state with f-motion applied (e.g., "fx;;")
@@ -87,11 +86,11 @@ private:
   void updateEffort(const PhysicalKeys& keys, const Config& config);
 
   // Internal: apply motion to this state (mutates)
-  void applyMotionImpl(const KeyedSequence& ks, Position endpoint, const Config& config);
+  void applyMotionImpl(const KeyedSequence& ks, CursorPos endpoint, const Config& config);
   void applyMotionImpl(const KeyedSequence& ks, const RunningEffort& precomputed,
-                       Position endpoint, const Config& config);
+                       CursorPos endpoint, const Config& config);
   void applyCountedMotionImpl(const KeyedSequence& baseMotion, int cnt,
-                              Position endpoint, const Config& config,
+                              CursorPos endpoint, const Config& config,
                               double extraPenalty);
   void applyFMotionImpl(const KeyedSequence& fMotion, int newCol, const Config& config);
 };

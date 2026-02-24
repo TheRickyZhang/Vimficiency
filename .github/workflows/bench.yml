@@ -1,6 +1,9 @@
 name: CI
 on: [push, pull_request]
 
+env:
+  NEOVIM_VERSION: v0.11.5
+
 jobs:
   dependency-lint:
     runs-on: ubuntu-latest
@@ -15,11 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install deps
-        run: |
-          sudo apt-get update && sudo apt-get install -y gcc-14 g++-14
-          curl -LO https://github.com/neovim/neovim/releases/download/v0.11.5/nvim-linux-x86_64.tar.gz
-          sudo tar xzf nvim-linux-x86_64.tar.gz -C /usr/local --strip-components=1
+      - name: Setup CI deps
+        uses: ./.github/actions/setup-ci-deps
+        with:
+          install-neovim: "true"
+          neovim-version: ${{ env.NEOVIM_VERSION }}
 
       - uses: hendrikmuhs/ccache-action@v1
         with:
@@ -58,8 +61,8 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Install deps
-        run: sudo apt-get update && sudo apt-get install -y gcc-14 g++-14
+      - name: Setup CI deps
+        uses: ./.github/actions/setup-ci-deps
 
       - uses: hendrikmuhs/ccache-action@v1
         with:

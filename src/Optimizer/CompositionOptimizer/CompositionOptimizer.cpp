@@ -11,10 +11,10 @@
 #include "Interpreter/SequenceParser.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Optimizer/CompositionOptimizer/CompositionState.h"
-#include "VimTypes/BracketFlags.h"
+#include "Types/BracketFlags.h"
 #include "Utils/Debug.h"
 #include "Optimizer/Indentation.h"
-#include "VimTypes/QuoteFlags.h"
+#include "Types/QuoteFlags.h"
 #include "Utils/StringUtils.h"
 #include "VimCore/VimCore.h"
 
@@ -24,37 +24,37 @@ namespace {
 
 // Compute cursor position after insertion (same for i/a/o/O/I/A + text + Esc)
 // Cursor ends on last char of inserted text, or stays at insertPos if empty
-Position computeInsertEndPos(Position insertPos, const string& insertedText) {
+CursorPos computeInsertEndPos(CursorPos insertPos, const string& insertedText) {
   assert(!insertedText.empty());
   Lines inserted = Lines::unflatten(insertedText);
   if (inserted.size() == 1) {
     int endCol = insertPos.col + static_cast<int>(inserted[0].size()) - 1;
-    return Position(insertPos.line, max(0, endCol));
+    return CursorPos(insertPos.line, max(0, endCol));
   } else {
     int lastLine = insertPos.line + static_cast<int>(inserted.size()) - 1;
     int lastCol = inserted.back().empty() ? 0 : static_cast<int>(inserted.back().size()) - 1;
-    return Position(lastLine, lastCol);
+    return CursorPos(lastLine, lastCol);
   }
 }
 
 // Clamp cursor to a valid normal-mode position on concrete post-edit lines.
 // Uses targetCol when available so vertical sticky-column intent is preserved.
-Position clampGoalPosToLines(const Position& pos, const Lines& lines) {
-  if (lines.empty()) return Position(0, 0);
+CursorPos clampGoalPosToLines(const CursorPos& pos, const Lines& lines) {
+  if (lines.empty()) return CursorPos(0, 0);
 
   int line = clamp(pos.line, 0, lines.lastLine());
   int wantedCol = pos.targetCol >= 0 ? pos.targetCol : pos.col;
   int maxCol = lines[line].empty() ? 0 : static_cast<int>(lines[line].size()) - 1;
   int col = clamp(wantedCol, 0, maxCol);
-  return Position(line, col, wantedCol);
+  return CursorPos(line, col, wantedCol);
 }
 
 } // anonymous namespace
 
 // Note that goalPos doesn't matter except for directionality; we want to explore anything that performs the same edits.
 CompositionResult CompositionOptimizer::optimize(
-    const Lines& initialLines, const Position initialPos, const Lines& goalLines,
-    const Position goalPos, CompositionOptimizerParams params,
+    const Lines& initialLines, const CursorPos initialPos, const Lines& goalLines,
+    const CursorPos goalPos, CompositionOptimizerParams params,
     string_view userSequence, const MotionBoundary& boundary,
     const NavContext& navigationContext) {
   params.normalizeCountRepeatBounds();
@@ -78,7 +78,7 @@ CompositionResult CompositionOptimizer::optimize(
   }
 
   // Cursor position after last edit completes
-  Position resultGoalPos = ctx.editResults.back().goalPos;
+  CursorPos resultGoalPos = ctx.editResults.back().goalPos;
 
   vector<Result> results;
 
@@ -92,7 +92,7 @@ CompositionResult CompositionOptimizer::optimize(
 
   while (ctx.shouldContinue()) {
     CompositionState s = ctx.popNext();
-    Position pos = s.getPos();
+    CursorPos pos = s.getPos();
     int editsCompleted = s.getEditsCompleted();
 
     ctx.markProcessed();
@@ -131,7 +131,7 @@ CompositionResult CompositionOptimizer::optimize(
       debug("  pure insertion at", nextEdit.beginPos,
             "text='" + makePrintable(nextEdit.insertedText) + "'");
       const EditResult& editResult = ctx.editResults[editsCompleted];
-      Position insertPos = nextEdit.beginPos;
+      CursorPos insertPos = nextEdit.beginPos;
       bool isNewLineInsertion = nextEdit.isNewLineInsertion();
 
       // Explore an insertion strategy by navigating to a valid half-open target range,
@@ -153,15 +153,15 @@ CompositionResult CompositionOptimizer::optimize(
           Lines subset = currentLines.getLineRange(beginLine, endLine);
 
           // Remap positions to subset-local coordinates
-          Position localPos(pos.line - beginLine, pos.col, pos.targetCol);
-          Position localRangeBegin(targetLine - beginLine, beginCol);
-          Position localRangeEnd(targetLine - beginLine, endCol);
+          CursorPos localPos(pos.line - beginLine, pos.col, pos.targetCol);
+          CursorPos localRangeBegin(targetLine - beginLine, beginCol);
+          CursorPos localRangeEnd(targetLine - beginLine, endCol);
 
           // Boundary uses full subset extent, not the target range.
           // The target range is only for optimizeToRange's isInRange check.
           // Using the target range as boundary would clamp motions like $ to the range edge.
-          Position subsetFirst(0, 0);
-          Position subsetEnd(static_cast<int>(subset.size()) - 1,
+          CursorPos subsetFirst(0, 0);
+          CursorPos subsetEnd(static_cast<int>(subset.size()) - 1,
               subset.back().effectiveSize());
           MotionBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
               beginLine > 0 || boundary.hasLinesAbove(),
@@ -175,7 +175,7 @@ CompositionResult CompositionOptimizer::optimize(
                   .withMaxCountRepeat(params.maxPrefixCount), "",
               subsetBoundary, s.getRunningEffort(),
               navigationContext,
-              {ctx.getBufferIndex(editsCompleted), beginLine});
+              BufferIndexRef(*ctx.getBufferIndex(editsCompleted), beginLine));
           ctx.motionNodesExplored += motionResult.stats.nodesExplored;
 
           for (RangeResult& movResult : motionResult.results) {
@@ -250,7 +250,7 @@ CompositionResult CompositionOptimizer::optimize(
     const Result* res = editResult.resultAt(pos.line, pos.col);
 
     if (res) {
-      Position editGoalPos = editResult.goalPos;
+      CursorPos editGoalPos = editResult.goalPos;
       if (nextEdit.isPureDeletion()) {
         int idx = editResult.resultIndexAt(pos.line, pos.col);
         const auto& perStartGoals = ctx.pureDeletionGoalPosByEdit[editsCompleted];
@@ -338,15 +338,15 @@ CompositionResult CompositionOptimizer::optimize(
 
       Lines subset = currentLines.getLineRange(beginLine, endLine);
 
-      Position localPos(pos.line - beginLine, pos.col, pos.targetCol);
-      Position localRangeBegin(nextEdit.beginPos.line - beginLine, nextEdit.beginPos.col);
-      Position localRangeEnd(nextEdit.endPos.line - beginLine, nextEdit.endPos.col);
+      CursorPos localPos(pos.line - beginLine, pos.col, pos.targetCol);
+      CursorPos localRangeBegin(nextEdit.beginPos.line - beginLine, nextEdit.beginPos.col);
+      CursorPos localRangeEnd(nextEdit.endPos.line - beginLine, nextEdit.endPos.col);
 
       // Boundary uses full subset extent, not the edit range.
       // The edit range is only the target for optimizeToRange's isInRange check.
       // Using the edit range as boundary would clamp motions like $ to the range edge.
-      Position subsetFirst(0, 0);
-      Position subsetEnd(static_cast<int>(subset.size()) - 1,
+      CursorPos subsetFirst(0, 0);
+      CursorPos subsetEnd(static_cast<int>(subset.size()) - 1,
           subset.back().effectiveSize());
       MotionBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
           beginLine > 0 || boundary.hasLinesAbove(),
@@ -365,7 +365,7 @@ CompositionResult CompositionOptimizer::optimize(
               .withMaxCountRepeat(params.maxPrefixCount), "",
           subsetBoundary, s.getRunningEffort(),
           navigationContext,
-          {ctx.getBufferIndex(editsCompleted), beginLine});
+          BufferIndexRef(*ctx.getBufferIndex(editsCompleted), beginLine));
       ctx.motionNodesExplored += motionResult.stats.nodesExplored;
 
       debug("  motion results:", static_cast<int>(motionResult.results.size()));
@@ -392,12 +392,12 @@ CompositionResult CompositionOptimizer::optimize(
             params.motionPaddingAbove, params.motionPaddingBelow);
 
         Lines jSubset = currentLines.getLineRange(jBeginLine, jEndLine);
-        Position jLocalPos(pos.line - jBeginLine, pos.col, pos.targetCol);
-        Position jLocalFirst(jLine - jBeginLine, 0);
-        Position jLocalEnd(jLine - jBeginLine, jLineLen);
+        CursorPos jLocalPos(pos.line - jBeginLine, pos.col, pos.targetCol);
+        CursorPos jLocalFirst(jLine - jBeginLine, 0);
+        CursorPos jLocalEnd(jLine - jBeginLine, jLineLen);
 
-        Position jSubsetFirst(0, 0);
-        Position jSubsetEnd(static_cast<int>(jSubset.size()) - 1,
+        CursorPos jSubsetFirst(0, 0);
+        CursorPos jSubsetEnd(static_cast<int>(jSubset.size()) - 1,
             jSubset.back().effectiveSize());
         MotionBoundary jSubsetBoundary(jSubset, jSubsetFirst, jSubsetEnd,
             jBeginLine > 0 || boundary.hasLinesAbove(),
@@ -411,7 +411,7 @@ CompositionResult CompositionOptimizer::optimize(
                 .withMaxCountRepeat(params.maxPrefixCount), "",
             jSubsetBoundary, s.getRunningEffort(),
             navigationContext,
-            {ctx.getBufferIndex(editsCompleted), jBeginLine});
+            BufferIndexRef(*ctx.getBufferIndex(editsCompleted), jBeginLine));
         ctx.motionNodesExplored += jMotionResult.stats.nodesExplored;
 
         for (RangeResult& movResult : jMotionResult.results) {

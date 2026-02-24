@@ -9,8 +9,8 @@
 
 #include <gtest/gtest.h>
 
-#include "VimTypes/LineRange.h"
-#include "VimTypes/Lines.h"
+#include "Types/LineRange.h"
+#include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"

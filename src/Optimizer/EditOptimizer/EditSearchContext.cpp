@@ -28,7 +28,7 @@ EditSearchContext::EditSearchContext(const Lines& initialLines,
   if (!suf.empty()) effectiveLines.back() += suf;
 }
 
-bool EditSearchContext::inBoundaryRegion(const Position& pos, const Lines& lines) const {
+bool EditSearchContext::inBoundaryRegion(const CursorPos& pos, const Lines& lines) const {
   if (pos.line < 0 || pos.line > lines.lastLine()) return true;
 
   if (pos.line == 0 && pos.col < leftColOffset) return true;
@@ -43,7 +43,7 @@ bool EditSearchContext::exploreBoundaryEscape(const EditState& state,
                                               DeletionCallback onDeletion,
                                               MotionCallback onMotion) {
   const Lines& lines = state.getLines();
-  const Position& cursor = state.getPos();
+  const CursorPos& cursor = state.getPos();
 
   // Suffix region: cursor on last line, in suffix columns
   if (cursor.line == lines.lastLine() && rightColOffset > 0 &&
@@ -62,12 +62,12 @@ bool EditSearchContext::exploreBoundaryEscape(const EditState& state,
 
     if (onMotion) {
       if (cursor.col > 0) {
-        onMotion(Position(cursor.line, cursor.col - 1),
+        onMotion(CursorPos(cursor.line, cursor.col - 1),
                  SequenceBinding(KeyedSequence::h, effortFor(KSId::h)));
       }
       if (cursor.line > 0) {
         int newCol = std::min(cursor.targetCol, lines[cursor.line - 1].lastCol());
-        onMotion(Position(cursor.line - 1, newCol, cursor.targetCol),
+        onMotion(CursorPos(cursor.line - 1, newCol, cursor.targetCol),
                  SequenceBinding(KeyedSequence::k, effortFor(KSId::k)));
       }
     }
@@ -78,12 +78,12 @@ bool EditSearchContext::exploreBoundaryEscape(const EditState& state,
   if (cursor.line == 0 && cursor.col < leftColOffset) {
     if (onMotion) {
       if (cursor.col < static_cast<int>(lines[0].size()) - 1) {
-        onMotion(Position(0, cursor.col + 1),
+        onMotion(CursorPos(0, cursor.col + 1),
                  SequenceBinding(KeyedSequence::l, effortFor(KSId::l)));
       }
       if (lines.lastLine() > 0) {
         int newCol = std::min(cursor.targetCol, lines[1].lastCol());
-        onMotion(Position(1, newCol, cursor.targetCol),
+        onMotion(CursorPos(1, newCol, cursor.targetCol),
                  SequenceBinding(KeyedSequence::j, effortFor(KSId::j)));
       }
     }
@@ -139,7 +139,7 @@ void EditSearchContext::initStartingPositions(const Lines& initialLines) {
         startIndex++;
         continue;
       }
-      pq.push(EditState(effectiveLines, Position(line, effCol), startIndex, startPriority));
+      pq.push(EditState(effectiveLines, CursorPos(line, effCol), startIndex, startPriority));
       startIndex++;
     }
   }
@@ -148,7 +148,7 @@ void EditSearchContext::initStartingPositions(const Lines& initialLines) {
 // Returns C++ convention [startCol, endCol) <- EXCLUSIVE END
 // of where the edit region is in this line
 pair<int, int> EditSearchContext::computeEditBounds(
-    const Lines& lines, const Position& cursor) const {
+    const Lines& lines, const CursorPos& cursor) const {
   int rawLineLen = static_cast<int>(lines[cursor.line].size());
   int contentBegin = (cursor.line == 0) ? leftColOffset : 0;
   int contentEnd = rawLineLen;
@@ -241,7 +241,7 @@ SearchStats EditSearchContext::getStats() const {
 // =============================================================================
 
 void EditSearchContext::exploreJoinCommands(
-    const Position& cursor, const Lines& lines, JoinCallback onJoin) {
+    const CursorPos& cursor, const Lines& lines, JoinCallback onJoin) {
   EditExplorer explorer(*this);
   explorer.exploreJoinCommands(cursor, lines, onJoin);
 }
@@ -279,7 +279,7 @@ void EditSearchContext::exploreCountedCharEdits(const EditState& state,
                                                  DeletionCallback cb) {
   EditExplorer explorer(*this);
   const Lines& lines = state.getLines();
-  const Position& cursor = state.getPos();
+  const CursorPos& cursor = state.getPos();
   auto [contentStart, contentEnd] = computeEditBounds(lines, cursor);
   explorer.exploreCountedCharEdits(cursor, lines, contentStart, contentEnd,
                                    params.minPrefixCount, cb);

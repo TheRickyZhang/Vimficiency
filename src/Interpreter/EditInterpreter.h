@@ -4,11 +4,11 @@
 #include <string_view>
 #include <vector>
 
-#include "VimTypes/NavContext.h"
-#include "VimTypes/Mode.h"
-#include "VimTypes/Position.h"
-#include "VimTypes/Range.h"
-#include "VimTypes/Lines.h"
+#include "Types/NavContext.h"
+#include "Types/Mode.h"
+#include "Types/CursorPos.h"
+#include "Types/Range.h"
+#include "Types/Lines.h"
 
 // Parsed edit (operator + motion/text-object, or single-key command)
 class ParsedEdit {
@@ -35,13 +35,13 @@ namespace Edit {
 // -----------------------------------------------------------------------------
 
 // d{range} - delete range (Normal mode only)
-void deleteRange(Lines& lines, Position& pos, Mode mode, const Range& range);
+void deleteRange(Lines& lines, CursorPos& pos, Mode mode, const Range& range);
 
 // c{range} - change range (Normal -> Insert)
-void changeRange(Lines& lines, Position& pos, Mode& mode, const Range& range);
+void changeRange(Lines& lines, CursorPos& pos, Mode& mode, const Range& range);
 
 // y{range} - yank range (Normal mode only, no buffer change)
-void yankRange(Lines& lines, Position& pos, Mode mode, const Range& range);
+void yankRange(Lines& lines, CursorPos& pos, Mode mode, const Range& range);
 
 // Edit dispatcher
 // Routes parsed edit commands to appropriate operations.
@@ -55,7 +55,7 @@ void yankRange(Lines& lines, Position& pos, Mode mode, const Range& range);
 // edit-region context where the real buffer has lines below.
 // leftColOffset/rightColOffset + hasLinesAbove/hasLinesBelow can be provided to
 // make word text objects boundary-aware (used by EditOptimizer replay).
-void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
+void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
                std::string* lastEditCmd = nullptr, bool hasLinesBelow = false,
                int leftColOffset = 0, int rightColOffset = 0,
                bool hasLinesAbove = false);
@@ -66,7 +66,7 @@ void applyEdit(Lines& lines, Position& pos, Mode& mode, const ParsedEdit& edit,
 // IMPORTANT: Returned ParsedEdits contain string_views into seq - caller must ensure seq outlives usage.
 std::vector<ParsedEdit> parseEdits(std::string_view seq);
 
-void simulateEdits(Position& pos, Mode& mode, const NavContext& navContext,
+void simulateEdits(CursorPos& pos, Mode& mode, const NavContext& navContext,
                           std::string_view motionSeq,
                           const Lines& lines);
 } // namespace Edit

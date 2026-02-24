@@ -10,17 +10,17 @@
 #include "CompositionOptimizerParams.h"
 #include "DiffState.h"
 #include "JoinPlan.h"
-#include "Optimizer/Config.h"
+#include "Keyboard/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Optimizer/MotionOptimizer/BufferIndex.h"
 #include "Optimizer/SearchStats.h"
 #include "Boundary/MotionBoundary.h"
-#include "VimTypes/NavContext.h"
-#include "VimTypes/Position.h"
+#include "Types/NavContext.h"
+#include "Types/CursorPos.h"
 #include "Optimizer/CompositionOptimizer/CompositionState.h"
-#include "VimTypes/BracketFlags.h"
-#include "VimTypes/Lines.h"
-#include "VimTypes/QuoteFlags.h"
+#include "Types/BracketFlags.h"
+#include "Types/Lines.h"
+#include "Types/QuoteFlags.h"
 
 // =============================================================================
 // TextObjectContext
@@ -107,7 +107,7 @@ struct CompositionSearchContext {
   // For pure-deletion diffs only: per-start cursor landing positions after the
   // selected edit sequence (same flat indexing as editResults[i].getResults()).
   // Empty for non-pure-deletion diffs.
-  std::vector<std::vector<Position>> pureDeletionGoalPosByEdit;
+  std::vector<std::vector<CursorPos>> pureDeletionGoalPosByEdit;
 
   // Pre-computed J (join lines) plans: one per diff, present when J is viable
   std::vector<std::optional<JoinPlan>> joinPlans;
@@ -167,7 +167,7 @@ struct CompositionSearchContext {
   // Constructor - performs all pre-computation
   CompositionSearchContext(
       const Lines& initialLines,
-      const Position& initialPos,
+      const CursorPos& initialPos,
       const Lines& goalLines,
       std::string_view userSequence,
       const NavContext& navContext,
@@ -176,18 +176,18 @@ struct CompositionSearchContext {
       const Config& config);
 
   // ==========================================================================
-  // Position conversion helpers
+  // CursorPos conversion helpers
   // ==========================================================================
 
   // Convert flat index within edit region's insertedLines to buffer position
-  Position editIndexToBufferPos(int flatIndex, const DiffState& diff) const;
+  CursorPos editIndexToBufferPos(int flatIndex, const DiffState& diff) const;
 
   // ==========================================================================
   // Heuristic and distance computation
   // ==========================================================================
 
   // Manhattan distance between two positions
-  double costToGoal(const Position& curr, const Position& goal) const {
+  double costToGoal(const CursorPos& curr, const CursorPos& goal) const {
     return std::abs(goal.line - curr.line) + std::abs(goal.col - curr.col);
   }
 
@@ -203,13 +203,13 @@ struct CompositionSearchContext {
   // editsAfter = editsCompleted after this edit (editsCompleted + 1)
   void exploreEditTransition(const CompositionState& current,
                              const Sequence& editSequence,
-                             const Position& goalPos,
+                             const CursorPos& goalPos,
                              int editsAfter);
 
   // Explore a motion transition: create state, compute cost, add to queue
   void exploreMotionTransition(const CompositionState& current,
                                const Sequence& moveSequence,
-                               const Position& goalPos,
+                               const CursorPos& goalPos,
                                int editsCompleted);
 
   // Check if search should continue
@@ -267,7 +267,7 @@ struct CompositionSearchContext {
   // Track an explored state (call from main loop when trackExploredStates is true)
   void trackState(const CompositionState& s) {
     if (params.trackExploredStates) {
-      Position pos = s.getPos();
+      CursorPos pos = s.getPos();
       exploredStates.push_back({{pos.line, pos.col, s.getEffort(), s.getSequence().str()},
                                 s.getEditsCompleted()});
     }

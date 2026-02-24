@@ -2,7 +2,7 @@
 
 #include "Keyboard/KeyedSequence.h"
 #include "Optimizer/Indentation.h"
-#include "VimTypes/Lines.h"
+#include "Types/Lines.h"
 #include "VimCore/VimOptions.h"
 
 #include <string_view>
