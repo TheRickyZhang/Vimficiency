@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "fixtures:reset": "bash ./scripts/sync-fixtures.sh",
+    "data:refresh": "bash ./scripts/refresh-local-data.sh",
+    "dev:fixtures": "bun run fixtures:reset && vite",
+    "dev:latest": "bun run data:refresh && vite",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview"

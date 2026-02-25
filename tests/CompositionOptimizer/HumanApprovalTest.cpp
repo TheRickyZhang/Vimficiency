@@ -5,6 +5,9 @@
 // are sensible and contain expected efficient sequences.
 //
 // Run: ./build/tests/vimficiency_tests --gtest_filter="CompositionOptimizerHumanApprovalTests.*"
+//
+// TODO(HUMAN_APPROVAL_HARDEN): Tighten heuristic checks into stable assertions
+// that remain valid across implementation strategy changes.
 
 #include <gtest/gtest.h>
 #include <memory>
@@ -163,6 +166,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesExact) {
 }
 
 TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesWithIndent) {
+  // TODO(HUMAN_APPROVAL_HARDEN): Verify all viable results once known mismatches are fixed.
   // J strips leading whitespace from next line
   Lines initial = {"aaa", "   bbb"};
   Lines goal = {"aaa bbb"};
@@ -177,6 +181,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesWithIndent) {
 }
 
 TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesWithResidual) {
+  // TODO(HUMAN_APPROVAL_HARDEN): Verify all viable results once known mismatches are fixed.
   // J + residual edit: join 3 lines, then edit the result
   Lines initial = {"aaa", "xxx", "ccc"};
   Lines goal = {"aaa bbb ccc"};
@@ -205,6 +210,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesPartialJoin) {
 }
 
 TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesNoViable) {
+  // TODO(HUMAN_APPROVAL_HARDEN): Enable full oracle verification once newline insertion parity is fixed.
   // Target has MORE lines than source — J can't help, should still produce results
   Lines initial = {"hello world"};
   Lines goal = {"hello", "world"};
@@ -237,9 +243,6 @@ TEST_F(CompositionOptimizerHumanApprovalTests, PureDeletionPositionAdjustment) {
   customConfig.keyInfo[static_cast<int>(Key::Key_J)].base_cost = 0.1;
   CompositionOptimizer custom_opt{customConfig};
   CompositionResult res = custom_opt.optimize(initial, initialPos, goal, goalPos);
-  for(Result r : res.getResults()) {
-    cout << r << endl;
-  }
   verifyCompResult(res, initial, initialPos, goal, "PureDeletionPositionAdjustment");
 }
 
@@ -256,7 +259,6 @@ TEST_F(CompositionOptimizerHumanApprovalTests, ModifyInParentheses) {
   MotionBoundary boundary(initialLines, initialPos, afterPos, true, true);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos, {}, "", boundary);
-  cout << res << endl;
   verifyDiParenShortcutPolicy(res);
   verifyCompResult(res, initialLines, initialPos, afterLines, "ModifyInParentheses");
 }
@@ -284,7 +286,6 @@ TEST_F(CompositionOptimizerHumanApprovalTests, ModifyInParenthesesMultiple) {
   MotionBoundary boundary(initialLines, initialPos, initialEndPos, true, true);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, goalLines, goalPos, {}, "", boundary);
-  cout << res << endl;
   verifyDiParenShortcutPolicy(res);
   verifyCompResult(res, initialLines, initialPos, goalLines, "ModifyInParenthesesMultiple");
 }

@@ -186,178 +186,170 @@ void moveToParagraphEnd(CursorPos &pos, const Lines &lines) {
 }
 
 // =============================================================================
-// Sentence motions
+// Sentence motions — closely follows Neovim's findsent() algorithm
 // =============================================================================
+//
+// Uses VimCore's Pos-based stepping (section 3b) which models Vim's virtual
+// NUL terminator at col == lineLen. vimInc/vimDec can land on NUL;
+// vimIncl/vimDecl skip it. See VimCore.h for details.
 
-void motionSentenceNext(CursorPos &pos, const Lines &lines) {
+namespace {
+
+// Convert Vim-model Pos to valid CursorPos (clamp NUL col to last real char).
+inline void posToCursor(const Lines& lines, Pos p, CursorPos& out) {
   int n = (int)lines.size();
-  if (n == 0)
-    return;
+  int l = std::clamp(p.line, 0, n - 1);
+  int len = (int)lines[l].size();
+  out.line = l;
+  out.setCol(len == 0 ? 0 : std::clamp(p.col, 0, len - 1));
+}
 
-  int line = std::clamp(pos.line, 0, n - 1);
-  int col = (int)lines[line].size() == 0
-                ? 0
-                : std::clamp(pos.col, 0, (int)lines[line].size() - 1);
+// Core sentence motion matching Neovim's findsent().
+static void findsent(CursorPos& pos, const Lines& lines, bool forward) {
+  int n = (int)lines.size();
+  if (n == 0) return;
 
-  // If currently on blank run: jump to next nonblank line start.
-  // Special case: if all remaining lines are blank, move to next blank line (if
-  // any).
-  if (isBlankLineStr(lines[line])) {
-    int startLine = line;
-    while (line < n && isBlankLineStr(lines[line]))
-      ++line;
-    if (line >= n) {
-      // All remaining lines are blank - move to next blank line if we can
-      if (startLine + 1 < n) {
-        pos.line = startLine + 1;
-        pos.setCol(0);
-      }
-      return;
-    }
-    pos.line = line;
-    pos.setCol(firstNonBlankColInLineStr(lines[line]));
-    return;
+  int startLine = std::clamp(pos.line, 0, n - 1);
+  int startCol = lines[startLine].empty() ? 0
+      : std::clamp(pos.col, 0, (int)lines[startLine].size() - 1);
+  Pos cur(startLine, startCol);
+  Pos prev = cur;
+  bool noskip = false;
+  bool foundTarget = false;
+
+  // --- Step 1: Handle empty line / paragraph boundary / backward decrement ---
+  unsigned char c = vimGchar(lines, cur);
+  if (c == 0) {
+    // On empty line — skip empty lines in motion direction
+    do {
+      Pos next = forward ? vimIncl(lines, cur) : vimDecl(lines, cur);
+      if (!next.isValid()) break;
+      cur = next;
+    } while (vimGchar(lines, cur) == 0);
+    if (forward) foundTarget = true;
+  } else if (forward && cur.col == 0 && isParaBoundaryLine(lines, cur.line)) {
+    if (cur.line + 1 >= n) return;
+    cur = Pos(cur.line + 1, 0);
+    foundTarget = true;
+  } else if (!forward) {
+    Pos next = vimDecl(lines, cur);
+    if (next.isValid()) cur = next;
   }
 
-  // Check if we're on whitespace/closer that follows a sentence end.
-  // If so, skip directly to next sentence start (we're in the gap).
-  {
-    unsigned char c = getChar(lines, line, col);
-    if (c == ' ' || c == '\t' || isSentenceCloser(c)) {
-      // Search backward to see if there's a sentence end before us on this line
-      int l = line, k = col;
-      while (k > 0) {
-        --k;
-        unsigned char pc = getChar(lines, l, k);
-        if (pc == '.' || pc == '!' || pc == '?') {
-          // Found punctuation - check if it's a valid sentence end
-          if (isSentenceEndAt(lines, l, k)) {
-            // We're in the gap after a sentence end - skip to next sentence
-            // start
-            auto [nl, nk] = skipToSentenceStart(lines, l, k);
-            pos.line = nl;
-            pos.setCol(nk);
-            return;
-          }
+  if (!foundTarget) {
+    // --- Step 2: Back up past whitespace and sentence punctuation ---
+    // Uses decl (not dec) so it crosses line boundaries, skipping NUL.
+    {
+      bool foundDot = false;
+      while (true) {
+        c = vimGchar(lines, cur);
+        if (c == 0) break;
+        if (!isWhitespace(c) && !isSentenceEnd(c) && !isSentenceCloser(c))
+          break;
+
+        Pos probe = vimDecl(lines, cur);
+        if (!probe.isValid()) break;
+        if (forward && lines[probe.line].empty()) break;
+
+        if (foundDot) break;
+        if (isSentenceEnd(c)) foundDot = true;
+
+        // Closers: only back up if preceded by another sentence char
+        if (isSentenceCloser(c)) {
+          unsigned char tc = vimGchar(lines, probe);
+          if (!isSentenceEnd(tc) && !isSentenceCloser(tc) && !isWhitespace(tc))
+            break;
         }
-        if (pc != ' ' && pc != '\t' && !isSentenceCloser(pc)) {
-          // Hit non-whitespace/non-closer that's not punctuation
+
+        cur = vimDecl(lines, cur);
+      }
+    }
+
+    // --- Step 3: Find end of sentence ---
+    // Forward uses incl (skips NUL, crosses lines). Backward uses decl.
+    // The .!? check uses inc (not incl) so it can see NUL at EOL.
+    {
+      Pos scanStart = cur;
+      while (true) {
+        c = vimGchar(lines, cur);
+
+        // NUL (empty line) or paragraph boundary at col 0
+        if (c == 0 || (cur.col == 0 && isParaBoundaryLine(lines, cur.line))) {
+          if (!forward && cur.line != scanStart.line)
+            cur = Pos(cur.line + 1, 0);
           break;
         }
+
+        // Sentence-ending punctuation
+        if (isSentenceEnd(c)) {
+          Pos probe = cur;
+          bool bufferEnd = false;
+          unsigned char tc;
+          // Skip past closers using inc (can land on NUL)
+          do {
+            Pos next = vimInc(lines, probe);
+            if (!next.isValid()) { bufferEnd = true; break; }
+            probe = next;
+            tc = vimGchar(lines, probe);
+          } while (isSentenceCloser(tc));
+
+          if (bufferEnd || isWhitespace(tc) || tc == 0) {
+            cur = probe;
+            // Skip NUL at EOL to cross to next line
+            if (vimGchar(lines, cur) == 0) {
+              Pos next = vimInc(lines, cur);
+              if (next.isValid()) cur = next;
+            }
+            break;
+          }
+        }
+
+        // Advance in scan direction
+        Pos next = forward ? vimIncl(lines, cur) : vimDecl(lines, cur);
+        if (!next.isValid()) {
+          noskip = true;
+          break;
+        }
+        cur = next;
       }
     }
   }
 
-  // Search forward for sentence end, then skip to next sentence start
-  int l = line, k = col;
-  while (true) {
-    if (isSentenceEndAt(lines, l, k)) {
-      auto [nl, nk] = skipToSentenceStart(lines, l, k);
-      pos.line = nl;
-      pos.setCol(nk);
+  // --- Step 4: Skip whitespace (always forward, using incl) ---
+  if (!noskip) {
+    while (true) {
+      c = vimGchar(lines, cur);
+      if (!isWhitespace(c)) break;
+      Pos next = vimIncl(lines, cur);
+      if (!next.isValid()) break;
+      cur = next;
+    }
+  }
+
+  // --- Step 5: Retry if position unchanged ---
+  if (cur == prev) {
+    Pos next = forward ? vimIncl(lines, cur) : vimDecl(lines, cur);
+    if (!next.isValid()) {
+      posToCursor(lines, cur, pos);
       return;
     }
-
-    if (!stepFwd(lines, l, k))
-      return;
+    cur = next;
+    posToCursor(lines, cur, pos);
+    findsent(pos, lines, forward);
+    return;
   }
+
+  posToCursor(lines, cur, pos);
+}
+
+} // anonymous namespace
+
+void motionSentenceNext(CursorPos &pos, const Lines &lines) {
+  findsent(pos, lines, true);
 }
 
 void motionSentencePrev(CursorPos &pos, const Lines &lines) {
-  int n = (int)lines.size();
-  if (n == 0)
-    return;
-
-  auto [sl, sc] = findCurrentSentenceStart(lines, pos.line, pos.col);
-
-  // If already at sentence start, go to previous sentence start.
-  if (sl == pos.line && sc == pos.col) {
-    int l = sl, k = sc;
-
-    // Step back past the whitespace/closers that precede this sentence start
-    // to get into the content of the previous sentence
-    while (true) {
-      if (!stepBack(lines, l, k)) {
-        // At buffer start, can't go further
-        pos.line = sl;
-        pos.setCol(sc);
-        return;
-      }
-
-      // Blank line IS a sentence boundary - stop here
-      if (isBlankLineStr(lines[l])) {
-        pos.line = l;
-        pos.setCol(0);
-        return;
-      }
-
-      unsigned char c = getChar(lines, l, k);
-      // Skip whitespace and closers
-      if (c == ' ' || c == '\t' || isSentenceCloser(c)) {
-        continue;
-      }
-
-      // Sentence-ending punctuation could be a single-char sentence start
-      // if it's preceded by whitespace that follows a previous sentence end.
-      // Example: ". . c" - the second '.' is a sentence start because
-      //          the whitespace before it follows the first '.' (a sentence end).
-      // But "d . c" - the '.' is NOT a sentence start because the whitespace
-      //          follows 'd' (not a sentence end), so '.' is the END of that sentence.
-      if (c == '.' || c == '!' || c == '?') {
-        // Check the character before this punctuation
-        int prevL = l, prevK = k;
-        if (stepBack(lines, prevL, prevK)) {
-          unsigned char prevC = getChar(lines, prevL, prevK);
-          // If preceded by whitespace, check if there's a sentence end before the whitespace
-          if (prevC == ' ' || prevC == '\t' || prevC == '\n') {
-            // Skip back through whitespace to find what precedes it
-            int checkL = prevL, checkK = prevK;
-            while (checkL >= 0) {
-              unsigned char checkC = getChar(lines, checkL, checkK);
-              if (checkC != ' ' && checkC != '\t') {
-                // Found non-whitespace - is it a sentence end or closer?
-                if (checkC == '.' || checkC == '!' || checkC == '?' || isSentenceCloser(checkC)) {
-                  // Whitespace follows a sentence end/closer, so this punctuation
-                  // is the start of a new single-char sentence
-                  pos.line = l;
-                  pos.setCol(k);
-                  return;
-                }
-                // Whitespace follows regular content (like "d . c")
-                // This punctuation is NOT a sentence start - continue stepping back
-                break;
-              }
-              if (!stepBack(lines, checkL, checkK)) {
-                // Reached buffer start through whitespace - this punctuation is a sentence start
-                pos.line = l;
-                pos.setCol(k);
-                return;
-              }
-            }
-          }
-          // Preceded by non-whitespace (like "..") or whitespace after regular content
-          // Continue stepping back
-        } else {
-          // At buffer start - this is the sentence start
-          pos.line = l;
-          pos.setCol(k);
-          return;
-        }
-        continue;
-      }
-
-      // We're now in actual content - find this sentence's start
-      break;
-    }
-
-    auto [psl, psc] = findCurrentSentenceStart(lines, l, k);
-    pos.line = psl;
-    pos.setCol(psc);
-    return;
-  }
-
-  pos.line = sl;
-  pos.setCol(sc);
+  findsent(pos, lines, false);
 }
 
 // =============================================================================

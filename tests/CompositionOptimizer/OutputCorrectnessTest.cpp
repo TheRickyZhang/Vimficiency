@@ -58,6 +58,8 @@ unique_ptr<NeovimOracle> CompositionOptimizerOutputCorrectness::oracle;
 // =============================================================================
 // Single Edit Stress Tests
 // =============================================================================
+// Intentional explicit seeds: each test uses a deterministic random corpus for
+// reproducible correctness checks and easier failure replay.
 
 // Random single-line substitutions
 TEST_F(CompositionOptimizerOutputCorrectness, SingleLine_Edit) {

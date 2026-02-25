@@ -48,7 +48,7 @@ NavContext EditOptimizerDeterminismTests::navContext;
 
 TEST_F(EditOptimizerDeterminismTests, SameInputProducesSameOutput) {
   const int NUM_ITERATIONS = 30;
-  RandomGen::seed(45);
+  RandomGen::seed(TEST_SEED(45));
 
   int failures = 0;
 

@@ -227,6 +227,8 @@ Lines randomlyEdit(const Lines& initial) {
 
 } // namespace
 
+// Intentional explicit seeds: keep randomized diff corpora deterministic so
+// CI failures can be reproduced exactly.
 TEST(DiffStateTest, Random_SingleLine_RoundTrip) {
   constexpr int NUM_ITERATIONS = 100;
   RandomGen::seed(42);

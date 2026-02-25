@@ -1,3 +1,7 @@
+// tests/Debug/Indent.cpp
+// Category: Archive reference-only debug snippets.
+// See docs/tests/debug-taxonomy.md.
+
 /*
 TEST_F(NeovimOracleDebug, DISABLED_InvestigateBackspaceAutoindent) {
   // Test: Does <BS> delete autoindent space after <CR>?

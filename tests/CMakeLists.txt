@@ -92,7 +92,6 @@ add_executable(vimficiency_tests
   EditOptimizer/CountPenaltyIntegrationTest.cpp
   EditOptimizer/ManualTest.cpp
   EditOptimizer/OutputCorrectnessTest.cpp
-  EditOptimizer/CostConsistencyTest.cpp
   EditOptimizer/DeterminismTest.cpp
   EditOptimizer/HumanApprovalTest.cpp
   EditOptimizer/RegressionTests.cpp
@@ -100,7 +99,6 @@ add_executable(vimficiency_tests
   # MotionOptimizer
   MotionOptimizer/ManualTest.cpp
   MotionOptimizer/OutputCorrectnessTest.cpp
-  MotionOptimizer/CostConsistencyTest.cpp
   MotionOptimizer/DeterminismTest.cpp
   MotionOptimizer/HumanApprovalTest.cpp
 
@@ -163,10 +161,13 @@ target_link_libraries(vimficiency_explore
 # Debug binary
 # =============================================================================
 # Scratch tests and debugging utilities.
+# Only Debug/Debug.cpp and Debug/OldDebug.cpp are compiled into this binary.
+# Other Debug/*.cpp files are historical reference artifacts (see docs/tests/debug-taxonomy.md).
 # Run with: ./vimficiency_debug
 
 add_executable(vimficiency_debug
   Debug/Debug.cpp
+  Debug/Motion.cpp
   Debug/OldDebug.cpp
 )
 

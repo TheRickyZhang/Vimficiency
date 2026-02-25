@@ -23,8 +23,6 @@ MotionResult MotionOptimizer::optimize(
     const MotionBoundary& boundary,
     const RunningEffort& startingEffort,
     const NavContext& navContext) {
-  params.normalizeCountRepeatBounds();
-
   if (startPos < endPos) {
     return optimizeImpl<true>(lines, startPos, startingEffort, endPos,
                               userSequence, navContext, boundary, params);
@@ -57,10 +55,7 @@ MotionResult MotionOptimizer::optimizeImpl(
   MotionSearchContext ctx(lines, navContext, boundary, params, config, userEffort);
 
   // Create point range [endPos, nextPos) for the unified MotionExplorer
-  CursorPos rangeEnd = lines.getNextPos(endPos);
-  if (rangeEnd == endPos) {
-    rangeEnd = CursorPos(endPos.line, endPos.col + 1);
-  }
+  CursorPos rangeEnd = lines.getNextPosUnclamped(endPos);
   MotionExplorer explorer(ctx, endPos, rangeEnd, bufferIndex, 0);
 
   Pos goalKey(endPos.line, endPos.col);
@@ -163,19 +158,17 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
     const RunningEffort& startingEffort,
     const NavContext& navContext,
     BufferIndexRef bufferRef) {
-  params.normalizeCountRepeatBounds();
-
   assert(!(startPos >= rangeBegin && startPos < rangeEnd) &&
          "startPos must not be in [rangeBegin, rangeEnd)");
 
   if (startPos < rangeBegin)
     return optimizeToRangeImpl<true>(lines, startPos, startingEffort, rangeBegin, rangeEnd,
                                      userSequence, navContext, boundary, params,
-                                     bufferRef.index, bufferRef.lineOffset);
+                                     bufferRef.index, bufferRef.indexLineOffset);
   else
     return optimizeToRangeImpl<false>(lines, startPos, startingEffort, rangeBegin, rangeEnd,
                                       userSequence, navContext, boundary, params,
-                                      bufferRef.index, bufferRef.lineOffset);
+                                      bufferRef.index, bufferRef.indexLineOffset);
 }
 
 // Templated implementation - Forward is compile-time constant
@@ -192,7 +185,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     const MotionBoundary& boundary,
     MotionOptimizerRangeParams params,
     const BufferIndex& bufferIndex,
-    int lineOffset) {
+    int bufferIndexLineOffset) {
 
   double userEffort = userSequence.empty()
       ? numeric_limits<double>::max()
@@ -200,17 +193,17 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
 
   MotionSearchContext ctx(lines, navContext, boundary, params, config, userEffort);
 
-  MotionExplorer explorer(ctx, rangeBegin, rangeEnd, bufferIndex, lineOffset);
+  MotionExplorer explorer(ctx, rangeBegin, rangeEnd, bufferIndex, bufferIndexLineOffset);
 
   MotionState initialState(startPos, startingEffort, 0.0, 0.0);
-
-  map<Pos, RangeResult> bestResultByPos;
-  vector<RangeResult> allResults;
-  int uniquePositionsFound = 0;
 
   // Cap effective maxResults at range size (can't find more positions than exist)
   int rangeSize = lines.spanSize(rangeBegin, rangeEnd);
   int effectiveMaxResults = std::min(params.maxResults, rangeSize);
+
+  vector<RangeResult> bestResults(rangeSize);
+  vector<RangeResult> allResults;
+  int uniquePositionsFound = 0;
   // Convert half-open rangeEnd to inclusive rangeLast for distance/priority computation.
   Pos rangeLast = lines.getPrevPos(rangeEnd);
   if (!rangeLast.isValid()) {
@@ -239,16 +232,16 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
           break;
         }
       } else {
-        auto it = bestResultByPos.find(stateKey);
-        if (it == bestResultByPos.end()) {
-          bestResultByPos.emplace(stateKey, RangeResult(s.getSequence().str(), effort, pos));
+        int idx = lines.spanSize(rangeBegin, pos);
+        if (!bestResults[idx].isValid()) {
+          bestResults[idx] = RangeResult(s.getSequence().str(), effort, pos);
           uniquePositionsFound++;
           if (uniquePositionsFound >= effectiveMaxResults) {
             debug("optimizeToRange: max unique positions reached (", uniquePositionsFound, "/", rangeSize, ")");
             break;
           }
-        } else if (effort < it->second.keyCost) {
-          it->second = RangeResult(s.getSequence().str(), effort, pos);
+        } else if (effort < bestResults[idx].keyCost) {
+          bestResults[idx] = RangeResult(s.getSequence().str(), effort, pos);
         }
       }
       continue;
@@ -301,9 +294,11 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     }
     uniqueCount = static_cast<int>(seen.size());
   } else {
-    results.reserve(bestResultByPos.size());
-    for (auto& [posKey, result] : bestResultByPos) {
-      results.push_back(std::move(result));
+    results.reserve(uniquePositionsFound);
+    for (auto& r : bestResults) {
+      if (r.isValid()) {
+        results.push_back(std::move(r));
+      }
     }
     uniqueCount = static_cast<int>(results.size());
   }

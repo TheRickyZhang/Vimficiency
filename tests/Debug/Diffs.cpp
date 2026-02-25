@@ -1,3 +1,7 @@
+// tests/Debug/Diffs.cpp
+// Category: Archive reference-only debug snippets.
+// See docs/tests/debug-taxonomy.md.
+
 /*
 TEST_F(DebugTest, DISABLED_InvestigatePureInsertionDiffs) {
   cerr << "=== Pure Insertion Diff Investigation ===" << endl;

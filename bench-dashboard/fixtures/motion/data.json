@@ -1,0 +1,42 @@
+{
+  "lastUpdate": 1738454400000,
+  "repoUrl": "https://github.com/rickyah/Vimficiency",
+  "entries": {
+    "MotionOpt": [
+      {
+        "commit": {
+          "id": "1111111111111111111111111111111111111111",
+          "message": "fixtures: baseline motion benchmarks",
+          "timestamp": "2025-02-01T00:00:00Z",
+          "url": "https://github.com/rickyah/Vimficiency/commit/1111111111111111111111111111111111111111",
+          "author": { "username": "fixtures" }
+        },
+        "date": 1738368000000,
+        "benches": [
+          { "name": "MotionOpt/LineDistance/Short/iterations:5", "value": 54000, "unit": "ns/iter" },
+          { "name": "MotionOpt/LineDistance/Long/iterations:5", "value": 119000, "unit": "ns/iter" },
+          { "name": "MotionOpt/WordMotion/W/iterations:5", "value": 88000, "unit": "ns/iter" },
+          { "name": "MotionOpt/WordMotion/B/iterations:5", "value": 91000, "unit": "ns/iter" },
+          { "name": "MotionOpt/ParagraphMotion/Forward/iterations:5", "value": 133000, "unit": "ns/iter" }
+        ]
+      },
+      {
+        "commit": {
+          "id": "2222222222222222222222222222222222222222",
+          "message": "fixtures: follow-up motion benchmarks",
+          "timestamp": "2025-02-02T00:00:00Z",
+          "url": "https://github.com/rickyah/Vimficiency/commit/2222222222222222222222222222222222222222",
+          "author": { "username": "fixtures" }
+        },
+        "date": 1738454400000,
+        "benches": [
+          { "name": "MotionOpt/LineDistance/Short/iterations:5", "value": 50000, "unit": "ns/iter" },
+          { "name": "MotionOpt/LineDistance/Long/iterations:5", "value": 127000, "unit": "ns/iter" },
+          { "name": "MotionOpt/WordMotion/W/iterations:5", "value": 92000, "unit": "ns/iter" },
+          { "name": "MotionOpt/WordMotion/B/iterations:5", "value": 86000, "unit": "ns/iter" },
+          { "name": "MotionOpt/ParagraphMotion/Forward/iterations:5", "value": 121000, "unit": "ns/iter" }
+        ]
+      }
+    ]
+  }
+}

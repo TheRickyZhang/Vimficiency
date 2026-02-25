@@ -129,7 +129,7 @@ RandomSentenceTest generateRandomSentenceBuffer(int numLines) {
 // =============================================================================
 
 TEST_F(SentenceMotionsTest, ForwardSentence_RandomBuffer) {
-  RandomGen::seed(42);
+  RandomGen::seed(TEST_SEED(42));
   int passed = 0;
   for (int i = 0; i < NUM_ITERATIONS; i++) {
     int numLines = RandomGen::range(3, 10);
@@ -168,7 +168,7 @@ TEST_F(SentenceMotionsTest, ForwardSentence_RandomBuffer) {
 // =============================================================================
 
 TEST_F(SentenceMotionsTest, BackwardSentence_RandomBuffer) {
-  RandomGen::seed(123);
+  RandomGen::seed(TEST_SEED(123));
 
   int passed = 0;
   for (int i = 0; i < NUM_ITERATIONS; i++) {

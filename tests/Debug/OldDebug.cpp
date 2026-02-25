@@ -2,6 +2,7 @@
 //
 // Previously used debug tests that were important for finding bugs.
 // Contains disabled tests for tracing and investigating specific behaviors.
+// Category: Historical (see docs/tests/debug-taxonomy.md).
 //
 // Run: ./build/tests/vimficiency_debug --gtest_filter="*Debug*"
 

@@ -1,0 +1,36 @@
+{
+  "lastUpdate": 1738454400000,
+  "entries": [
+    {
+      "commit": {
+        "id": "2222222222222222222222222222222222222222",
+        "message": "fixtures: edit exploration",
+        "timestamp": "2025-02-02T00:00:00Z",
+        "url": "https://github.com/rickyah/Vimficiency/commit/2222222222222222222222222222222222222222",
+        "author": { "username": "fixtures" }
+      },
+      "date": 1738454400000,
+      "cases": [
+        {
+          "name": "BufferSize/3",
+          "nodesExplored": 42,
+          "context": {
+            "initialLines": ["alpha beta", "gamma"],
+            "goalLines": ["alpha", "gamma"],
+            "initialCursor": [0, 0],
+            "goalCursor": [0, 0]
+          },
+          "results": [
+            { "tokens": ["dw"], "effort": 2.0 },
+            { "tokens": ["de"], "effort": 2.3 }
+          ],
+          "states": [
+            { "effort": 0.0, "tokens": [] },
+            { "effort": 2.0, "tokens": ["dw"] },
+            { "effort": 2.3, "tokens": ["de"] }
+          ]
+        }
+      ]
+    }
+  ]
+}

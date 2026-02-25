@@ -1,0 +1,42 @@
+{
+  "lastUpdate": 1738454400000,
+  "repoUrl": "https://github.com/rickyah/Vimficiency",
+  "entries": {
+    "EditOpt": [
+      {
+        "commit": {
+          "id": "1111111111111111111111111111111111111111",
+          "message": "fixtures: baseline edit benchmarks",
+          "timestamp": "2025-02-01T00:00:00Z",
+          "url": "https://github.com/rickyah/Vimficiency/commit/1111111111111111111111111111111111111111",
+          "author": { "username": "fixtures" }
+        },
+        "date": 1738368000000,
+        "benches": [
+          { "name": "EditOpt/Replace/SingleChar/iterations:5", "value": 82000, "unit": "ns/iter" },
+          { "name": "EditOpt/Replace/Word/iterations:5", "value": 145000, "unit": "ns/iter" },
+          { "name": "EditOpt/Delete/Line/iterations:5", "value": 220000, "unit": "ns/iter" },
+          { "name": "EditOpt/Change/TextObject/iterations:5", "value": 310000, "unit": "ns/iter" },
+          { "name": "EditOpt/Insert/AtEnd/iterations:5", "value": 98000, "unit": "ns/iter" }
+        ]
+      },
+      {
+        "commit": {
+          "id": "2222222222222222222222222222222222222222",
+          "message": "fixtures: follow-up edit benchmarks",
+          "timestamp": "2025-02-02T00:00:00Z",
+          "url": "https://github.com/rickyah/Vimficiency/commit/2222222222222222222222222222222222222222",
+          "author": { "username": "fixtures" }
+        },
+        "date": 1738454400000,
+        "benches": [
+          { "name": "EditOpt/Replace/SingleChar/iterations:5", "value": 76000, "unit": "ns/iter" },
+          { "name": "EditOpt/Replace/Word/iterations:5", "value": 161000, "unit": "ns/iter" },
+          { "name": "EditOpt/Delete/Line/iterations:5", "value": 208000, "unit": "ns/iter" },
+          { "name": "EditOpt/Change/TextObject/iterations:5", "value": 326000, "unit": "ns/iter" },
+          { "name": "EditOpt/Insert/AtEnd/iterations:5", "value": 93000, "unit": "ns/iter" }
+        ]
+      }
+    ]
+  }
+}

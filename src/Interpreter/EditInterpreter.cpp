@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cassert>
 #include <limits>
+#include <stdexcept>
 
 using namespace std;
 
@@ -1233,7 +1234,7 @@ vector<ParsedEdit> parseEdits(string_view seq) {
         i = close + 1;
         continue;
       }
-      assert(false && "Malformed special key");
+      throw runtime_error("Malformed special edit key sequence");
     }
 
     // Handle r{char} - replace with specific character

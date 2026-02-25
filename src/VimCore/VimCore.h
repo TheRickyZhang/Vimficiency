@@ -5,6 +5,7 @@
 
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
+#include "Types/Pos.h"
 #include "Types/EdgeType.h"
 
 // VimCore: Character classification, string helpers, position stepping,
@@ -78,6 +79,30 @@ bool stepFwd(const Lines& lines, int& line, int& col);
 bool stepBack(const Lines& lines, int& line, int& col);
 
 // =============================================================================
+// 3b. Vim-Model Stepping (NUL-aware, for sentence detection)
+// =============================================================================
+//
+// Vim position model: each line has a virtual NUL at col == size().
+// vimGchar returns 0 there. vimInc can land on NUL; vimIncl skips it.
+// Parallel to stepFwd/stepBack but with NUL awareness needed for
+// sentence detection. Returns Pos(-1,-1) (invalid) at buffer boundary.
+
+// Char at Vim-style position. Returns 0 (NUL) at end-of-line or out-of-range.
+unsigned char vimGchar(const Lines& lines, Pos pos);
+
+// Advance one position (can land on NUL).
+Pos  vimInc(const Lines& lines, Pos pos);
+
+// Advance, skipping NUL at end of non-empty lines (crosses lines seamlessly).
+Pos  vimIncl(const Lines& lines, Pos pos);
+
+// Retreat one position (can land on NUL).
+Pos  vimDec(const Lines& lines, Pos pos);
+
+// Retreat, skipping NUL at end of non-empty lines.
+Pos  vimDecl(const Lines& lines, Pos pos);
+
+// =============================================================================
 // 4. Word Motion Core (depends on stepping + char classification)
 // =============================================================================
 
@@ -109,6 +134,9 @@ CursorPos motionWordCore(CursorPos pos,
 // =============================================================================
 // 5. Paragraph Helpers (depends on line classification)
 // =============================================================================
+
+// Empty line or nroff macro line — paragraph boundary for sentence detection.
+bool isParaBoundaryLine(const Lines& lines, int line);
 
 // Returns the first line index of the paragraph containing lineIdx.
 int paragraphStartLine(const Lines& lines, int lineIdx);

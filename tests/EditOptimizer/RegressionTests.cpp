@@ -34,6 +34,7 @@ struct EmbeddedCase {
 EmbeddedCase buildSmallEmbeddedCaseSeed465950() {
   // Reproduces benchmark shape used by EditOpt/SmallEmbeddedChange/3.
   // The historical failure was triggered with this seed.
+  // Keep this fixed seed to guarantee stable reproduction of the historical failure.
   RandomGen::seed(465950);
 
   int numLines = 3;

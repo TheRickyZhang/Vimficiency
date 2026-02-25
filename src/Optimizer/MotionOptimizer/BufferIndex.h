@@ -56,8 +56,8 @@ public:
 // Always valid — use std::optional<BufferIndexRef> when the index may be absent.
 struct BufferIndexRef {
   const BufferIndex& index;
-  int lineOffset;
+  int indexLineOffset;
 
   BufferIndexRef(const BufferIndex& idx, int offset)
-    : index(idx), lineOffset(offset) {}
+    : index(idx), indexLineOffset(offset) {}
 };

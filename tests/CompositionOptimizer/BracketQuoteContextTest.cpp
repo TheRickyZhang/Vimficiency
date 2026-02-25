@@ -176,7 +176,7 @@ bool randomEdit(const string& line, string& goalLine) {
 
 TEST_F(TextObjectContextTest, Random_FullyRandom) {
   const int NUM_ITERATIONS = 20;
-  RandomGen::seed(42);
+  RandomGen::seed(TEST_SEED(42));
   int validated = 0;
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {

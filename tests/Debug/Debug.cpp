@@ -1,6 +1,7 @@
 // tests/Debug/Debug.cpp
 //
 // Debug utilities and scratch tests for development.
+// Category: Active (see docs/tests/debug-taxonomy.md).
 // Enable a test by removing DISABLED_ prefix.
 //
 // Run: ./build/tests/vimficiency_debug --gtest_filter="DebugTest.*"
@@ -22,8 +23,10 @@
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/StringUtils.h"
 #include "Optimizer/EditOptimizer/EditState.h"
+#include "VimCore/VimCore.h"
 #include "VimCore/VimEditUtils.h"
 #include "VimCore/VimEndpointUtils.h"
+#include "VimCore/VimMotionUtils.h"
 
 using namespace std;
 
@@ -2784,6 +2787,111 @@ TEST_F(NeovimOracleDebugSentence, DISABLED_SentenceDeleteDivergence) {
   cerr << "  lines=" << nvimCge2.lines << " pos=" << nvimCge2.row << "," << nvimCge2.col << endl;
 }
 
+// Investigate ) motion divergence in sub-buffer mode.
+// The sub-buffer ) motion lands at a different column than Neovim on the full buffer
+// because sentence boundaries depend on text outside the sub-buffer.
+TEST_F(NeovimOracleDebugSentence, InvestigateSentenceSubBuffer) {
+  // Exact failing case from SubBufferMotionCorrectness
+  Lines fullBuffer = {
+    "  c ,da  c,. c.bdab",
+    "ba d..cbbbd.c,c,,..cdd.aa .",
+    ".,bdd c,a   .bdbaa dbcbd.c,",
+    ".,b,bdb cc,cd,.abcd  ,a",
+    "cd dac,b a ,aa a ,. .a.bb.d.",
+    " d.  ..ccd",
+    ".,.ddcd.,c,,b",
+    "a dbcd,ccada  .ba ,.. bb"
+  };
+  Lines subBuffer = {
+    "cd dac,b a ,aa a ,. .a.bb.d.",
+    " d.  ..ccd",
+    ".,.ddcd.,c,,b",
+    "a dbcd,ccada  .ba ,.. bb"
+  };
+
+  cerr << "=== Full buffer ) motion ===" << endl;
+  auto nvimFull = oracle->simulate(fullBuffer, 5, 0, ")");
+  cerr << "Neovim ) from full[5,0]: (" << nvimFull.row << "," << nvimFull.col << ")" << endl;
+
+  cerr << "\n=== Sub-buffer ) motion ===" << endl;
+  auto nvimSub = oracle->simulate(subBuffer, 1, 0, ")");
+  cerr << "Neovim ) from sub[1,0]: (" << nvimSub.row << "," << nvimSub.col << ")" << endl;
+
+  cerr << "\n=== Our motionSentenceNext on sub-buffer ===" << endl;
+  CursorPos ourPos(1, 0);
+  VimCore::motionSentenceNext(ourPos, subBuffer);
+  cerr << "Our ) from sub[1,0]: (" << ourPos.line << "," << ourPos.col << ")" << endl;
+
+  cerr << "\n=== Our motionSentenceNext on full buffer ===" << endl;
+  CursorPos ourFullPos(5, 0);
+  VimCore::motionSentenceNext(ourFullPos, fullBuffer);
+  cerr << "Our ) from full[5,0]: (" << ourFullPos.line << "," << ourFullPos.col << ")" << endl;
+
+  // The sub-buffer result should match Neovim's sub-buffer result
+  cerr << "\n=== Comparison ===" << endl;
+  cerr << "Neovim full[5,0] -> (" << nvimFull.row << "," << nvimFull.col << ") = sub("
+       << (nvimFull.row - 4) << "," << nvimFull.col << ")" << endl;
+  cerr << "Neovim sub[1,0]  -> (" << nvimSub.row << "," << nvimSub.col << ")" << endl;
+  cerr << "Ours   sub[1,0]  -> (" << ourPos.line << "," << ourPos.col << ")" << endl;
+  cerr << "Ours   full[5,0] -> (" << ourFullPos.line << "," << ourFullPos.col << ")" << endl;
+
+  // Trace sentence boundaries in both buffers
+  cerr << "\n=== Sentence boundary scan in sub-buffer ===" << endl;
+  for (int l = 0; l < (int)subBuffer.size(); l++) {
+    for (int c = 0; c < (int)subBuffer[l].size(); c++) {
+      if (VimCore::isSentenceEndAt(subBuffer, l, c)) {
+        auto [nl, nk] = VimCore::skipToSentenceStart(subBuffer, l, c);
+        cerr << "  SentEnd at sub[" << l << "," << c << "] ('" << subBuffer[l][c]
+             << "') -> next start (" << nl << "," << nk << ")" << endl;
+      }
+    }
+  }
+
+  cerr << "\n=== Sentence boundary scan in full buffer ===" << endl;
+  for (int l = 0; l < (int)fullBuffer.size(); l++) {
+    for (int c = 0; c < (int)fullBuffer[l].size(); c++) {
+      if (VimCore::isSentenceEndAt(fullBuffer, l, c)) {
+        auto [nl, nk] = VimCore::skipToSentenceStart(fullBuffer, l, c);
+        cerr << "  SentEnd at full[" << l << "," << c << "] ('" << fullBuffer[l][c]
+             << "') -> next start (" << nl << "," << nk << ")" << endl;
+      }
+    }
+  }
+}
+
+// Simple test: ) should cross line boundaries to find sentence end
+TEST_F(NeovimOracleDebugSentence, DISABLED_SentenceNextCrossLine) {
+  Lines lines = {"hello world", "end. next sentence"};
+  // From (0,0), ) should find the '.' at (1,3) and go to (1,5)
+  auto nvim = oracle->simulate(lines, 0, 0, ")");
+  cerr << "Nvim ) from (0,0): (" << nvim.row << "," << nvim.col << ")" << endl;
+
+  CursorPos pos(0, 0);
+  VimCore::motionSentenceNext(pos, lines);
+  cerr << "Ours ) from (0,0): (" << pos.line << "," << pos.col << ")" << endl;
+
+  // What about end of line with no sentence end?
+  Lines lines2 = {"hello", "world. next"};
+  auto nvim2 = oracle->simulate(lines2, 0, 0, ")");
+  cerr << "Nvim ) from (0,0) on lines2: (" << nvim2.row << "," << nvim2.col << ")" << endl;
+
+  CursorPos pos2(0, 0);
+  VimCore::motionSentenceNext(pos2, lines2);
+  cerr << "Ours ) from (0,0) on lines2: (" << pos2.line << "," << pos2.col << ")" << endl;
+
+  // What about a simple single-line case?
+  Lines lines3 = {"hello. world"};
+  auto nvim3 = oracle->simulate(lines3, 0, 0, ")");
+  cerr << "Nvim ) from (0,0) on lines3: (" << nvim3.row << "," << nvim3.col << ")" << endl;
+
+  // No sentence end anywhere
+  Lines lines4 = {"hello world", "no punct here"};
+  auto nvim4 = oracle->simulate(lines4, 0, 0, ")");
+  cerr << "Nvim ) from (0,0) on lines4: (" << nvim4.row << "," << nvim4.col << ")" << endl;
+}
+
+// Sentence ) and ( exhaustive stress tests moved to Motion.cpp (historical debug).
+
 // Reproduce CompositionOptimizer/EditSize/Small crash - seed 44
 TEST_F(DebugTest, DISABLED_CompositionMultiLineCrash) {
   // Was reproducing EditSize/MultiLine crash: "Edit invalid on empty line"
@@ -3066,4 +3174,245 @@ TEST_F(DebugTest, DISABLED_DiagnoseCompBenchFound0) {
          << " nodes=" << result.stats.nodesExplored
          << " stop=" << static_cast<int>(result.stats.stopReason) << endl;
   }
+}
+
+// ============================================================================
+// Investigate ca( mask mismatch from BracketQuoteContextTest.Random_FullyRandom
+// ============================================================================
+//
+// Failure: mask says ca( valid from cols 0-7, but Neovim disagrees.
+// Line: e[ d{(")bg)b "ccbf""
+// Question: does Neovim's a( search forward when cursor is outside ()?
+TEST_F(NeovimOracleDebug, DISABLED_InvestigateCaParenMask) {
+  string line = "e[ d{(\")bg)b \"ccbf\"\"";
+  cerr << "Line: '" << line << "' (len=" << line.size() << ")" << endl;
+  cerr << "Cols: ";
+  for (int i = 0; i < (int)line.size(); i++)
+    cerr << "[" << i << "]=" << line[i] << " ";
+  cerr << endl << endl;
+
+  // Test ca( from every column — does Neovim find the () pair?
+  cerr << "=== ca( from each column (replace with 'X') ===" << endl;
+  for (int col = 0; col < (int)line.size(); col++) {
+    auto r = oracle_->simulate({line}, 0, col, "ca(X\x1b");
+    cerr << "  col " << col << " ('" << line[col] << "'): '"
+         << r.lines[0] << "' cursor=(" << r.row << "," << r.col << ")" << endl;
+  }
+
+  // Test ci( from every column
+  cerr << endl << "=== ci( from each column (replace with 'X') ===" << endl;
+  for (int col = 0; col < (int)line.size(); col++) {
+    auto r = oracle_->simulate({line}, 0, col, "ci(X\x1b");
+    cerr << "  col " << col << " ('" << line[col] << "'): '"
+         << r.lines[0] << "' cursor=(" << r.row << "," << r.col << ")" << endl;
+  }
+
+  // Simpler test: does a( forward-search at all?
+  cerr << endl << "=== Simple forward-search test ===" << endl;
+  auto r1 = oracle_->simulate({"abc(def)ghi"}, 0, 0, "ca(X\x1b");
+  cerr << "  'abc(def)ghi' col 0: '" << r1.lines[0] << "'" << endl;
+  auto r2 = oracle_->simulate({"abc(def)ghi"}, 0, 2, "ca(X\x1b");
+  cerr << "  'abc(def)ghi' col 2: '" << r2.lines[0] << "'" << endl;
+  auto r3 = oracle_->simulate({"abc(def)ghi"}, 0, 3, "ca(X\x1b");
+  cerr << "  'abc(def)ghi' col 3: '" << r3.lines[0] << "'" << endl;
+  auto r4 = oracle_->simulate({"abc(def)ghi"}, 0, 5, "ca(X\x1b");
+  cerr << "  'abc(def)ghi' col 5: '" << r4.lines[0] << "'" << endl;
+
+  // With nested: does a( pick innermost from outside?
+  cerr << endl << "=== Nested parens ===" << endl;
+  auto r5 = oracle_->simulate({"a(b(c)d)e"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(b(c)d)e' col 0: '" << r5.lines[0] << "'" << endl;
+  auto r6 = oracle_->simulate({"a(b(c)d)e"}, 0, 1, "ca(X\x1b");
+  cerr << "  'a(b(c)d)e' col 1: '" << r6.lines[0] << "'" << endl;
+  auto r7 = oracle_->simulate({"a(b(c)d)e"}, 0, 4, "ca(X\x1b");
+  cerr << "  'a(b(c)d)e' col 4: '" << r7.lines[0] << "'" << endl;
+
+  // Key question: do unmatched brackets before () block forward search?
+  cerr << endl << "=== Unmatched brackets before () ===" << endl;
+  auto u1 = oracle_->simulate({"[a(bc)d"}, 0, 0, "ca(X\x1b");
+  cerr << "  '[a(bc)d' col 0: '" << u1.lines[0] << "'" << endl;
+  auto u2 = oracle_->simulate({"{a(bc)d"}, 0, 0, "ca(X\x1b");
+  cerr << "  '{a(bc)d' col 0: '" << u2.lines[0] << "'" << endl;
+  auto u3 = oracle_->simulate({"xa(bc)d"}, 0, 0, "ca(X\x1b");
+  cerr << "  'xa(bc)d' col 0: '" << u3.lines[0] << "'" << endl;
+  auto u4 = oracle_->simulate({"x[a(bc)d"}, 0, 0, "ca(X\x1b");
+  cerr << "  'x[a(bc)d' col 0: '" << u4.lines[0] << "'" << endl;
+  auto u5 = oracle_->simulate({"x[(bc)d"}, 0, 0, "ca(X\x1b");
+  cerr << "  'x[(bc)d' col 0: '" << u5.lines[0] << "'" << endl;
+
+  // What about unmatched ) after the pair?
+  cerr << endl << "=== Unmatched ) after pair ===" << endl;
+  auto v1 = oracle_->simulate({"a(bc)d)e"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(bc)d)e' col 0 (extra )): '" << v1.lines[0] << "'" << endl;
+  auto v2 = oracle_->simulate({"a(bc))de"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(bc))de' col 0 (extra ) right after): '" << v2.lines[0] << "'" << endl;
+
+  // Inside the pair still works?
+  cerr << endl << "=== Inside pair with unmatched brackets outside ===" << endl;
+  auto w1 = oracle_->simulate({"[a(bc)d"}, 0, 3, "ca(X\x1b");
+  cerr << "  '[a(bc)d' col 3 (inside): '" << w1.lines[0] << "'" << endl;
+  auto w2 = oracle_->simulate({"{a(bc)d"}, 0, 3, "ca(X\x1b");
+  cerr << "  '{a(bc)d' col 3 (inside): '" << w2.lines[0] << "'" << endl;
+
+  // Does an EXTRA ) after the pair block forward search from before?
+  cerr << endl << "=== Extra ) after pair — forward search from col 0 ===" << endl;
+  auto x1 = oracle_->simulate({"a(bc)d)e"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(bc)d)e' col 0: '" << x1.lines[0] << "'" << endl;  // extra ) after
+  auto x2 = oracle_->simulate({"a(b)c)de"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(b)c)de' col 0: '" << x2.lines[0] << "'" << endl;  // extra ) after
+  auto x3 = oracle_->simulate({"a(b)c)"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(b)c)' col 0: '" << x3.lines[0] << "'" << endl;
+
+  // Stripped-down version of the failing line — is it the " inside () ?
+  cerr << endl << "=== Does \" inside () affect forward search? ===" << endl;
+  auto y1 = oracle_->simulate({"a(\")b)c"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(\")b)c' col 0: '" << y1.lines[0] << "'" << endl;
+  auto y2 = oracle_->simulate({"a(x)b)c"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(x)b)c' col 0: '" << y2.lines[0] << "'" << endl;
+  auto y3 = oracle_->simulate({"a(\")bc"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(\")bc' col 0: '" << y3.lines[0] << "'" << endl;
+  auto y4 = oracle_->simulate({"a(x)bc"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(x)bc' col 0: '" << y4.lines[0] << "'" << endl;
+
+  // Progressive build-up of the failing line
+  cerr << endl << "=== Progressive build-up ===" << endl;
+  auto z1 = oracle_->simulate({"(x)b)"}, 0, 0, "ca(X\x1b");
+  cerr << "  '(x)b)' col 0 (on open paren): '" << z1.lines[0] << "'" << endl;
+  auto z1b = oracle_->simulate({"a(x)b)"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(x)b)' col 0 (before pair): '" << z1b.lines[0] << "'" << endl;
+  auto z2 = oracle_->simulate({"a(\")b)"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(\")b)' col 0: '" << z2.lines[0] << "'" << endl;
+  auto z3 = oracle_->simulate({"a(\")bg)"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(\")bg)' col 0: '" << z3.lines[0] << "'" << endl;
+  auto z4 = oracle_->simulate({"a(\")bg)b"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(\")bg)b' col 0: '" << z4.lines[0] << "'" << endl;
+
+  // =========================================================================
+  // Theory: Neovim's findmatchlimit counts " on the line.
+  // Even count → enable string-skipping (brackets inside strings are skipped).
+  // Odd count → disable string-skipping (all brackets match normally).
+  // =========================================================================
+  cerr << endl << "=== Quote-count theory ===" << endl;
+
+  // 1 quote (odd) → no string-skipping → ) matches
+  auto q1 = oracle_->simulate({"a(\")bc"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(\")bc' col 0 [1 quote, odd]: '" << q1.lines[0] << "'" << endl;
+
+  // 2 quotes (even) → string-skipping → ) inside "..." is skipped
+  auto q2 = oracle_->simulate({"a(\")bc\""}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(\")bc\"' col 0 [2 quotes, even]: '" << q2.lines[0] << "'" << endl;
+
+  // 3 quotes (odd) → no string-skipping
+  auto q3 = oracle_->simulate({"a(\")bc\"d\""}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(\")bc\"d\"' col 0 [3 quotes, odd]: '" << q3.lines[0] << "'" << endl;
+
+  // 4 quotes (even) → string-skipping
+  auto q4 = oracle_->simulate({"a(\")bc\"d\"e\""}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(\")bc\"d\"e\"' col 0 [4 quotes, even]: '" << q4.lines[0] << "'" << endl;
+
+  // Even quotes but ) OUTSIDE the string pairs — should still work?
+  // "x" a(bc)d "y" — quotes are balanced, () is outside strings
+  auto q5 = oracle_->simulate({"\"x\"a(bc)d\"y\""}, 0, 3, "ca(X\x1b");
+  cerr << "  '\"x\"a(bc)d\"y\"' col 3 [4 quotes, () outside strings]: '"
+       << q5.lines[0] << "'" << endl;
+
+  // Same but from col 0 (forward search)
+  auto q5b = oracle_->simulate({"\"x\"a(bc)d\"y\""}, 0, 0, "ca(X\x1b");
+  cerr << "  '\"x\"a(bc)d\"y\"' col 0 [4 quotes, fwd search]: '"
+       << q5b.lines[0] << "'" << endl;
+
+  // Even quotes, ) between first " pair
+  auto q6 = oracle_->simulate({"a\"(bc)\"d"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a\"(bc)\"d' col 0 [2 quotes, () inside string]: '"
+       << q6.lines[0] << "'" << endl;
+
+  // Verify: col on ( directly for even-quote case
+  auto q7 = oracle_->simulate({"a(\")bc\""}, 0, 1, "ca(X\x1b");
+  cerr << "  'a(\")bc\"' col 1 on ( [2 quotes]: '" << q7.lines[0] << "'" << endl;
+
+  // What about single quotes?
+  auto q8 = oracle_->simulate({"a(')bc"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(')bc' col 0 [1 single quote]: '" << q8.lines[0] << "'" << endl;
+  auto q9 = oracle_->simulate({"a(')bc'"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(')bc'' col 0 [2 single quotes]: '" << q9.lines[0] << "'" << endl;
+
+  // Zero quotes — normal matching
+  auto q0 = oracle_->simulate({"a(bc)d"}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(bc)d' col 0 [0 quotes]: '" << q0.lines[0] << "'" << endl;
+
+  // =========================================================================
+  // Zone-matching theory: both ( and ) must be in same "string zone"
+  // Zone = even/odd count of " before the bracket
+  // =========================================================================
+  cerr << endl << "=== Zone-matching verification ===" << endl;
+
+  // ( outside string, ) inside string → no match
+  // a(")b" : ( at 1 [0 " before=even], ) at 3 [1 " before=odd] → different zones
+  auto zm1 = oracle_->simulate({"a(\")b\""}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(\")b\"' col 0 [( outside, ) inside]: '" << zm1.lines[0] << "'" << endl;
+
+  // ( inside string, ) inside string → same zone → match
+  // "a(bc)d" : ( at 2 [1 " before=odd], ) at 5 [1 " before=odd] → same zone
+  auto zm2 = oracle_->simulate({"\"a(bc)d\""}, 0, 0, "ca(X\x1b");
+  cerr << "  '\"a(bc)d\"' col 0 [( inside, ) inside]: '" << zm2.lines[0] << "'" << endl;
+
+  // ( inside string, ) outside string → no match
+  // "a(b"c)d : ( at 2 [1 " before=odd], ) at 5 [2 " before=even] → different zones
+  auto zm3 = oracle_->simulate({"\"a(b\"c)d"}, 0, 0, "ca(X\x1b");
+  cerr << "  '\"a(b\"c)d' col 0 [( inside, ) outside]: '" << zm3.lines[0] << "'" << endl;
+
+  // Does forward search for ( also respect zones?
+  // "(b)"c(d)e : first ( at 1 is inside [1 " before], second ( at 5 is outside [2 " before]
+  // If fwd search skips inside-string (, it finds ( at 5 and matches ) at 7
+  // If fwd search doesn't skip, it finds ( at 1 and... ) at 3 same zone → match
+  auto zm4 = oracle_->simulate({"\"(b)\"c(d)e"}, 0, 0, "ca(X\x1b");
+  cerr << "  '\"(b)\"c(d)e' col 0 [fwd search: skip or not?]: '"
+       << zm4.lines[0] << "'" << endl;
+
+  // Does bracket type matter for string-skipping?
+  // Even quotes, ca[ with ] inside string
+  auto bt1 = oracle_->simulate({"a[\"]b\""}, 0, 0, "ca[X\x1b");
+  cerr << "  'a[\"]b\"' col 0 ca[ [2 quotes]: '" << bt1.lines[0] << "'" << endl;
+  // Even quotes, ca{ with } inside string
+  auto bt2 = oracle_->simulate({"a{\"}b\""}, 0, 0, "ca{X\x1b");
+  cerr << "  'a{\"}b\"' col 0 ca{ [2 quotes]: '" << bt2.lines[0] << "'" << endl;
+
+  // Escaped quotes: does \" count as a quote for zone detection?
+  // If backslash-escaped quotes don't count: \"a(")b → 1 real quote → odd → works
+  // If they do count: \"a(")b → 2 quotes → even → might fail
+  auto esc1 = oracle_->simulate({"\\\"a(\")b"}, 0, 2, "ca(X\x1b");
+  cerr << "  '\\\"a(\")b' col 2 [escaped + real quote]: '"
+       << esc1.lines[0] << "'" << endl;
+
+  // =========================================================================
+  // Vim help says: "unless the number of parens/braces in a line is uneven"
+  // Test: does ODD bracket count override string-skipping?
+  // =========================================================================
+  cerr << endl << "=== Odd bracket count override? ===" << endl;
+
+  // 2 quotes (even), 3 brackets (odd): (a"b))"
+  // If bracket count matters: odd brackets → disable string-skipping → match
+  // If only quote count matters: even quotes → string-skipping active → no match
+  auto ob1 = oracle_->simulate({"(a\"b))\""}, 0, 0, "ca(X\x1b");
+  cerr << "  '(a\"b))\"' col 0 [2 quotes, 3 brackets]: '" << ob1.lines[0] << "'" << endl;
+
+  // 2 quotes (even), 1 bracket (odd): (a"b"
+  auto ob2 = oracle_->simulate({"(a\"b\""}, 0, 0, "ca(X\x1b");
+  cerr << "  '(a\"b\"' col 0 [2 quotes, 1 bracket]: '" << ob2.lines[0] << "'" << endl;
+
+  // 2 quotes, 4 brackets (even): (a"(b)"c)
+  auto ob3 = oracle_->simulate({"(a\"(b)\"c)"}, 0, 0, "ca(X\x1b");
+  cerr << "  '(a\"(b)\"c)' col 0 [2 quotes, 4 brackets]: '" << ob3.lines[0] << "'" << endl;
+
+  // 4 quotes, 3 brackets (odd): "("a"b)
+  auto ob4 = oracle_->simulate({"\"(\"a\"b)"}, 0, 0, "ca(X\x1b");
+  cerr << "  '\"(\"a\"b)' col 0 [4 quotes(!), 3 brackets]: '" << ob4.lines[0] << "'" << endl;
+  // Note: 4 quotes not 3: " at 0, " at 2, " at 4, but wait...
+  // "("a"b) has " at 0, 2, 4 → 3 quotes (odd) → string detection disabled
+  // So this should work regardless of bracket count
+
+  // Let me be precise: 2 quotes, 3 () brackets
+  // a("b)c)"
+  auto ob5 = oracle_->simulate({"a(\"b)c)\""}, 0, 0, "ca(X\x1b");
+  cerr << "  'a(\"b)c)\"' col 0 [2 quotes, 3 () brackets]: '" << ob5.lines[0] << "'" << endl;
 }

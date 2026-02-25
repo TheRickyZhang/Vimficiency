@@ -53,6 +53,7 @@ if (!inputFile || !outputFile) {
 const gtest: GTestOutput = JSON.parse(readFileSync(inputFile, "utf8"));
 
 const benchmarks: GoogleBenchmark[] = [];
+let caseCount = 0;
 
 // Overall total
 const totalMs = parseTimeToMs(gtest.time);
@@ -72,9 +73,20 @@ for (const suite of gtest.testsuites) {
     cpu_time: suiteMs,
     time_unit: "ms",
   });
+
+  for (const testCase of suite.testsuite ?? []) {
+    const caseMs = parseTimeToMs(testCase.time);
+    benchmarks.push({
+      name: `Tests/Cases/${suite.name}.${testCase.name}`,
+      real_time: caseMs,
+      cpu_time: caseMs,
+      time_unit: "ms",
+    });
+    caseCount++;
+  }
 }
 
 writeFileSync(outputFile, JSON.stringify({ benchmarks }, null, 2));
 console.log(
-  `Converted ${gtest.testsuites.length} suites + 1 total -> ${outputFile}`
+  `Converted 1 total + ${gtest.testsuites.length} suites + ${caseCount} cases -> ${outputFile}`
 );

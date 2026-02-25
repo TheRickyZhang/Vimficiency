@@ -214,7 +214,7 @@ TEST_F(ParagraphsTest, AroundParagraph_OnBlankLine) {
 // =============================================================================
 
 TEST_F(ParagraphsTest, InnerParagraph_RandomBuffer) {
-  RandomGen::seed(42);
+  RandomGen::seed(TEST_SEED(42));
   int total = 0, passed = 0;
 
   for (int i = 0; i < NUM_ITERATIONS; i++) {
@@ -259,7 +259,7 @@ TEST_F(ParagraphsTest, InnerParagraph_RandomBuffer) {
 }
 
 TEST_F(ParagraphsTest, AroundParagraph_RandomBuffer) {
-  RandomGen::seed(123);
+  RandomGen::seed(TEST_SEED(123));
 
   int total = 0, passed = 0;
 

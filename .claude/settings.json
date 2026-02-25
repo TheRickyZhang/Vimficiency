@@ -1,8 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(./build/tests/vimficiency_tests:*)",
-      "Bash(./build/tests/vimficiency_benchmarks:*)",
+      "Bash(./build/tests/vimficiency_tests*)",
+      "Bash(./build/tests/vimficiency_benchmarks*)",
+      "Bash(VIMFICIENCY_SEED_MODE=*./build/tests/vimficiency_tests*)",
+      "Bash(for *./build/tests/vimficiency_tests*)",
 
       "Bash(git status*)",
       "Bash(git log*)",

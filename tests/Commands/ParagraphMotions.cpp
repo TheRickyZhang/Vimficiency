@@ -108,7 +108,7 @@ RandomParagraphTest generateRandomParagraphBuffer(int numLines) {
 // =============================================================================
 
 TEST_F(ParagraphMotionsTest, ForwardParagraph_RandomBuffer) {
-  RandomGen::seed(42);
+  RandomGen::seed(TEST_SEED(42));
   int passed = 0;
   for (int i = 0; i < NUM_ITERATIONS; i++) {
     int numLines = RandomGen::range(3, 15);
@@ -148,7 +148,7 @@ TEST_F(ParagraphMotionsTest, ForwardParagraph_RandomBuffer) {
 // =============================================================================
 
 TEST_F(ParagraphMotionsTest, BackwardParagraph_RandomBuffer) {
-  RandomGen::seed(123);
+  RandomGen::seed(TEST_SEED(123));
 
   int passed = 0;
   for (int i = 0; i < NUM_ITERATIONS; i++) {

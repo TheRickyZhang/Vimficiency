@@ -5,6 +5,9 @@
 // are sensible and contain expected efficient sequences.
 //
 // Run: ./build/tests/vimficiency_tests --gtest_filter="EditOptimizerHumanApprovalTests.*"
+//
+// TODO(HUMAN_APPROVAL_HARDEN): Replace placeholder/heuristic checks with
+// objective assertions that survive valid optimizer strategy changes.
 
 #include <gtest/gtest.h>
 
@@ -61,6 +64,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionSingleWord) {
 }
 
 TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionMultipleLines) {
+  // TODO(HUMAN_APPROVAL_HARDEN): Assert bounded cost/sequence quality envelope.
   // Delete multiple words on single line
   Lines initialLines = {
     "aa bb",
@@ -76,6 +80,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionMultipleLines) {
 }
 
 TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTop) {
+  // TODO(HUMAN_APPROVAL_HARDEN): Assert expected boundary-safe top straddle strategy.
   // Delete content with prefix on first line (no suffix)
   Lines fullBuffer = {
     "arstn arstn",
@@ -93,6 +98,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTop) {
 
 
 TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleBottom) {
+  // TODO(HUMAN_APPROVAL_HARDEN): Assert expected boundary-safe bottom straddle strategy.
   // Delete content with suffix on last line (no prefix)
   Lines fullBuffer = {
     "arstn arstn",
@@ -110,6 +116,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleBottom) {
 }
 
 TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTopAndBottom) {
+  // TODO(HUMAN_APPROVAL_HARDEN): Assert acceptable sequence/cost set for both-side straddle.
   // Delete content with both prefix and suffix (middle portion of two lines)
   Lines fullBuffer = {
     "arstn arstn",
@@ -129,6 +136,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTopAndBottom) {
 
 
 TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionMultiLineFull) {
+  // TODO(HUMAN_APPROVAL_HARDEN): Assert linewise strategy quality for full multi-line deletion.
   // Delete multi-line content with no boundary
   // Visual mode v}d should be efficient here
   Lines initialLines = {
@@ -144,8 +152,8 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionMultiLineFull) {
   // ASSERT_TRUE(all valid)
 }
 
-// TODO verify
 TEST_F(EditOptimizerHumanApprovalTests, Edit_Replacement_Multiline) {
+  // TODO(HUMAN_APPROVAL_HARDEN): Assert replacement path validity and quality bounds.
   vector<Result> results;
   Lines initialLines = {
     "hello",

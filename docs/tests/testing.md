@@ -2,13 +2,15 @@
 
 ## Test Binaries
 
-Three separate test binaries for different purposes:
+Primary binaries/tools used in test workflows:
 
 | Binary | Purpose | Location |
 |--------|---------|----------|
 | `vimficiency_tests` | Unit tests (correctness) | `build/tests/vimficiency_tests` |
 | `vimficiency_benchmarks` | Performance benchmarks | `build/tests/vimficiency_benchmarks` |
 | `vimficiency_debug` | Scratch tests for debugging | `build/tests/vimficiency_debug` |
+| `vimficiency_explore` | Search-space data collection for dashboard | `build/tests/vimficiency_explore` |
+| `vimficiency_diff_debug` | Standalone Myers diff visualizer | `build/tests/vimficiency_diff_debug` |
 
 ### Running Tests
 
@@ -16,11 +18,14 @@ Three separate test binaries for different purposes:
 # Run all unit tests
 ./build/tests/vimficiency_tests --gtest_brief=1
 
+# Force random seed mode (overrides an inherited env var)
+VIMFICIENCY_SEED_MODE=random ./build/tests/vimficiency_tests --gtest_brief=1
+
 # Run specific test suite
-./build/tests/vimficiency_tests --gtest_filter="WordMotionTest.*"
+./build/tests/vimficiency_tests --gtest_filter="WordMotionsTest.*"
 
 # Run specific test
-./build/tests/vimficiency_tests --gtest_filter="*Manual_EmptyLineIsWord"
+./build/tests/vimficiency_tests --gtest_filter="WordsTest.EdgeCase_EmptyLine"
 
 # List all tests without running
 ./build/tests/vimficiency_tests --gtest_list_tests
@@ -29,7 +34,10 @@ Three separate test binaries for different purposes:
 ./build/tests/vimficiency_benchmarks
 
 # Run specific benchmark
-./build/tests/vimficiency_benchmarks --gtest_filter="*BufferSize"
+./build/tests/vimficiency_benchmarks --benchmark_filter=".*BufferSize.*"
+
+# Replay the last random-seed run
+VIMFICIENCY_SEED_MODE=replay ./build/tests/vimficiency_tests --gtest_brief=1
 
 # Run debug tests
 ./build/tests/vimficiency_debug
@@ -72,7 +80,7 @@ tests/
 │   ├── RandomGeneration.h  # RandomGen singleton
 │   ├── SeedManager.h       # Seed mode management
 │   └── SeedManager.cpp
-└── Debug.cpp          # Scratchpad for debugging (separate binary)
+└── Debug/             # Debug scratchpad + historical investigation artifacts
 ```
 
 ## Test Categories
@@ -82,6 +90,26 @@ tests/
 | Commands/ | Verify VimCore motions match Neovim | NeovimOracle |
 | Operator/ | Verify VimCore edits match Neovim | NeovimOracle |
 | *Optimizer/ | Verify optimizer outputs are correct and reproducible | Simulation + manual |
+
+## HumanApproval Tests
+
+`*HumanApprovalTest.cpp` files are intentionally heuristic quality checks.
+
+- Keep these tests enabled in `vimficiency_tests` for now.
+- Mark non-objective checks with `TODO(HUMAN_APPROVAL_HARDEN)`.
+- Prefer objective invariants (validity, goal reachability, bounded effort/ranking envelopes) when hardening.
+
+Current audit targets:
+
+- `tests/MotionOptimizer/HumanApprovalTest.cpp`
+- `tests/EditOptimizer/HumanApprovalTest.cpp`
+- `tests/CompositionOptimizer/HumanApprovalTest.cpp`
+
+Audit helper:
+
+```bash
+scripts/check-human-approval-todos.sh
+```
 
 ## Ground Truth: NeovimOracle
 
@@ -121,6 +149,14 @@ Tests and benchmarks use `SeedManager` for reproducible randomness. By default, 
 | Fixed | Deterministic seeds (42, 43, 44, ...) | Debugging, bisecting failures |
 | Replay | Read seeds from log file | Reproduce a previous run |
 
+### Seed Policy (Intentional Explicitness)
+
+- Default test runs should not set `VIMFICIENCY_SEED_MODE=random`; random is already the default.
+- Keep `VIMFICIENCY_SEED_MODE=random` only when you need to override an inherited env var (for example, a shell exported with fixed/replay mode).
+- Keep `VIMFICIENCY_SEED_MODE=fixed` in benchmark/exploration workflows where cross-run and cross-commit comparability matters.
+- In randomized correctness tests, prefer `TEST_SEED(index)` so mode switching (`random`, `fixed`, `replay`) works without code edits.
+- Use literal seeds (for example, `RandomGen::seed(465950)`) only for pinned regressions or intentionally frozen random corpora, and include a short comment explaining why.
+
 ### Usage in Code
 
 ```cpp
@@ -151,25 +187,27 @@ For CI or scripts without code changes:
 
 ```bash
 # Fixed seeds (for debugging)
-VIMFICIENCY_SEED_MODE=fixed ./build/tests/vimficiency_benchmarks
+VIMFICIENCY_SEED_MODE=fixed ./build/tests/vimficiency_tests
 
 # Replay last run's seeds
-VIMFICIENCY_SEED_MODE=replay ./build/tests/vimficiency_benchmarks
+VIMFICIENCY_SEED_MODE=replay ./build/tests/vimficiency_tests
 
-# Random seeds (default, explicit)
-VIMFICIENCY_SEED_MODE=random ./build/tests/vimficiency_benchmarks
+# Random seeds (explicit override; default is already random)
+VIMFICIENCY_SEED_MODE=random ./build/tests/vimficiency_tests
 
 # Custom seed file
-VIMFICIENCY_SEED_FILE=my_seeds.txt VIMFICIENCY_SEED_MODE=replay ./build/tests/vimficiency_benchmarks
+VIMFICIENCY_SEED_FILE=my_seeds.txt VIMFICIENCY_SEED_MODE=replay ./build/tests/vimficiency_tests
 ```
 
 ### Reproducing Failures
 
 When a test fails with random seeds:
 
-1. Seeds are already logged in `tests/.last_seeds.txt`
-2. Replay with: `VIMFICIENCY_SEED_MODE=replay ./build/tests/vimficiency_tests`
-3. Once reproduced, switch to fixed mode for debugging: `SeedManager::instance().setFixedMode()`
+1. Seeds are logged in `tests/.last_seeds.txt` (local) or uploaded as CI artifact (`test-seeds`).
+2. Replay locally with: `VIMFICIENCY_SEED_MODE=replay ./build/tests/vimficiency_tests`.
+3. For CI failures, download the `test-seeds` artifact and run:
+   `VIMFICIENCY_SEED_FILE=<downloaded-file> VIMFICIENCY_SEED_MODE=replay ./build/tests/vimficiency_tests`.
+4. Once reproduced, optionally switch to fixed mode for stepwise debugging: `SeedManager::instance().setFixedMode()`.
 
 ### Benchmark Multi-Seed Averaging
 
@@ -231,7 +269,7 @@ TEST_F(WordMotionTest, Manual_EmptyLineIsWord) {
 
 // Randomized: bulk coverage
 TEST_F(WordMotionTest, Random_wMotion) {
-  RandomGen::seed(42);  // Fixed seed for reproducibility
+  RandomGen::seed(TEST_SEED(0));  // Random-by-default, replayable via SeedManager
   for (int i = 0; i < 100; i++) {
     auto buffer = generateRandomBuffer(5);
     Position start = randomPosition(buffer);
@@ -250,7 +288,10 @@ TEST_F(WordMotionTest, Random_wMotion) {
 
 ## Debugging
 
-- Use `tests/Debug.cpp` for scratchpad debugging (separate binary: `./build/tests/vimficiency_debug`)
+- Use `tests/Debug/Debug.cpp` for active scratchpad debugging (binary: `./build/tests/vimficiency_debug`)
+- `tests/Debug/OldDebug.cpp` is historical but still compiled into `vimficiency_debug`
+- `tests/Debug/Motion.cpp`, `tests/Debug/MiscFailures.cpp`, `tests/Debug/Diffs.cpp`, and `tests/Debug/Indent.cpp` are reference-only unless wired into CMake
+- See `docs/tests/debug-taxonomy.md` for Active/Historical/Archive status
 - Use `debug()` macro from `Utils/Debug.h` (enabled by default via `VIMFICIENCY_DEBUG`)
 - Use `SequenceTracer` to step through motions (see `vim-utils-principles.md` §5)
 

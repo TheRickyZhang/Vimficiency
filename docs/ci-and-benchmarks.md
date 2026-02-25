@@ -19,7 +19,10 @@ Shared dependency setup is centralized in `.github/actions/setup-ci-deps/action.
 2. Restores compiler cache via `hendrikmuhs/ccache-action@v1` (`key: test`)
 3. Restores CMake dependency cache (`build/_deps`, `deps-v2-*`)
 4. Builds in Release mode (`-DVIMFICIENCY_DEBUG=OFF`)
-5. Runs unit tests: `./build/tests/vimficiency_tests --gtest_brief=1`
+5. Runs unit tests (random seed mode by default) and emits GTest timing JSON:
+   `./build/tests/vimficiency_tests --gtest_brief=1 --gtest_output=json:test_timing.json`
+6. Uploads replay seed file (`tests/.last_seeds.txt`) as `test-seeds` artifact (always)
+7. Uploads `test_timing.json` on `main` as `test-timing` artifact
 
 ### Job 2: `benchmark-run` (main branch only, after `test` passes)
 
@@ -27,7 +30,7 @@ Shared dependency setup is centralized in `.github/actions/setup-ci-deps/action.
 2. Restores compiler cache via `hendrikmuhs/ccache-action@v1` (`key: bench`)
 3. Restores CMake dependency cache (`build/_deps`, `deps-v2-*`)
 4. Builds the project in Release mode
-5. Runs three benchmark suites with deterministic seeds (`VIMFICIENCY_SEED_MODE=fixed`):
+5. Runs three benchmark suites with deterministic seeds (`VIMFICIENCY_SEED_MODE=fixed`) so current vs baseline comparisons stay comparable:
    - `EditOpt.*` → `edit_result.json`
    - `MotionOpt.*` → `motion_result.json`
    - `CompositionOpt.*` → `composition_result.json`
@@ -38,10 +41,13 @@ Shared dependency setup is centralized in `.github/actions/setup-ci-deps/action.
 ### Job 3: `benchmark-store` (main branch only, after `benchmark-run`)
 
 1. Downloads benchmark artifact
-2. Compares current vs baseline results (`scripts/bench-compare.ts`)
-3. Builds the dashboard site (`bench-dashboard/`) with Bun + Vite
-4. Deploys to `gh-pages`:
+2. Downloads test timing artifact
+3. Compares current vs baseline results (`scripts/bench-compare.ts`)
+4. Builds the dashboard site (`bench-dashboard/`) with Bun + Vite
+5. Deploys to `gh-pages`:
+   - Converts GTest timing JSON to benchmark-like format via `scripts/convert-gtest-timing.ts`
    - Ingests benchmark results into `data.json` using `scripts/bench-data.ts ingest`
+   - Ingests test timing into `tests/data.json` using the same ingest path
    - Merges exploration data into `explore.json` (keeps last 5 entries)
    - Prunes benchmark data to last 100 entries per suite
    - Copies dashboard HTML/JS/CSS assets
@@ -82,6 +88,16 @@ Google Benchmark outputs JSON → `scripts/bench-data.ts ingest` parses it and a
 
 `vimficiency_explore` outputs JSON → CI merges it into `{optimizer}/explore.json` on gh-pages. The dashboard fetches this JSON directly.
 
+### Test timing data (`tests/data.json`)
+
+`scripts/convert-gtest-timing.ts` converts GTest JSON into benchmark-style entries:
+
+- `Tests/Total/All`
+- `Tests/Suites/<SuiteName>`
+- `Tests/Cases/<SuiteName>.<TestName>`
+
+These are ingested through `bench-data.ts` and displayed on the dashboard home page.
+
 ### Migration from legacy format
 
 The `bench-data.ts` script automatically migrates from the old `data.js` format (`window.BENCHMARK_DATA = {...}`) to plain `data.json` on first run. Similarly for `explore.js` → `explore.json`.
@@ -89,6 +105,9 @@ The `bench-data.ts` script automatically migrates from the old `data.js` format 
 ## Benchmark Dashboard (`bench-dashboard/`)
 
 A single-page React + TypeScript + Vite app using TanStack Router for client-side navigation.
+
+For day-to-day local commands and workflows, start with `bench-dashboard/README.md`.
+Use this document for CI/deploy architecture and data pipeline details.
 
 ### Stack
 - **Runtime/package manager:** Bun
@@ -105,22 +124,39 @@ bench-dashboard/
 ├── vite.config.ts          # base: '/Vimficiency/', single entry
 ├── tsconfig.json
 ├── index.html              # SPA shell (single Vite entry point)
-├── public/
-│   ├── edit/               # Dev fixtures per optimizer
+├── fixtures/               # Tracked deterministic sample data
+│   ├── edit/
 │   │   ├── data.json
 │   │   └── explore.json
 │   ├── motion/
 │   │   ├── data.json
 │   │   └── explore.json
-│   └── composition/
+│   ├── composition/
+│   │   ├── data.json
+│   │   └── explore.json
+│   └── tests/
+│       └── data.json
+├── scripts/
+│   ├── sync-fixtures.sh        # fixtures -> public copy
+│   └── refresh-local-data.sh   # regenerate local benchmark/test data
+├── public/
+│   ├── edit/               # Local generated working set (gitignored JSON)
+│   │   ├── data.json
+│   │   └── explore.json
+│   ├── motion/
+│   │   ├── data.json
+│   │   └── explore.json
+│   ├── composition/
 │       ├── data.json
 │       └── explore.json
+│   └── tests/
+│       └── data.json
 └── src/
     ├── main.tsx            # App entry: Chart.js registration, RouterProvider
     ├── router.ts           # Route tree, loaders, search param validation
     ├── index.css            # Global shared styles
     ├── pages/
-    │   ├── HomePage.tsx     # Home: optimizer cards + changes
+    │   ├── HomePage.tsx     # Home: optimizer changes + test timing (total/suites/cases)
     │   ├── OptimizerPage.tsx # Benchmark charts (wraps App)
     │   └── ExplorePage.tsx  # Search space explorer (wraps ExploreApp)
     ├── components/          # RootLayout, App, ExploreApp, BenchmarkChart, etc.
@@ -132,7 +168,18 @@ bench-dashboard/
 - In production, `data.json` and `explore.json` are plain JSON files on gh-pages
 - TanStack Router loaders fetch data before components render
 - Route search params (`?cat=X`, `?bench=X`, `?case=X`) replace hash-based navigation
-- In dev, `public/{optimizer}/data.json` and `public/{optimizer}/explore.json` provide sample fixture data
+- In dev, dashboard loaders always read from `public/`
+- `fixtures/` holds tracked deterministic samples copied into `public/` by `fixtures:reset`
+- `dev:latest` refreshes `public/` with fresh local benchmark + test timing output
+
+### Local data modes
+
+- **Fixture mode (deterministic, fast):**
+  - `cd bench-dashboard && bun run dev:fixtures`
+  - Resets `public/` from tracked fixtures, then starts Vite.
+- **Latest mode (fresh local output):**
+  - `cd bench-dashboard && bun run dev:latest`
+  - Resets from fixtures, runs local `vimficiency_benchmarks` and `vimficiency_tests`, ingests into `public/`, then starts Vite.
 
 ### Local development
 ```bash
@@ -141,6 +188,12 @@ cd bench-dashboard && bun install
 
 # Dev server with hot reload
 bun run dev
+
+# Dev server with deterministic tracked fixture data
+bun run dev:fixtures
+
+# Dev server with freshly regenerated local data
+bun run dev:latest
 
 # Production build (outputs to bench-dashboard/dist/)
 bun run build
@@ -174,6 +227,9 @@ gh-pages/
 │   ├── explore.json
 │   └── explore/
 │       └── index.html
+├── tests/
+│   ├── data.json            # Test timing trends (total/suites/cases)
+│   └── index.html
 └── composition/
     ├── index.html
     ├── data.json
@@ -184,4 +240,6 @@ gh-pages/
 
 ## Gitignore
 
-`bench-dashboard/node_modules/` and `bench-dashboard/dist/` are gitignored. Source files, `bun.lock`, and `public/` are tracked.
+`bench-dashboard/node_modules/` and `bench-dashboard/dist/` are gitignored.
+`bench-dashboard/public/*/data.json` and `bench-dashboard/public/*/explore.json` are also gitignored (local generated state).
+Tracked fixture data lives under `bench-dashboard/fixtures/`.

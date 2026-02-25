@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <stdexcept>
 
 using namespace std;
 
@@ -53,7 +54,8 @@ PhysicalKeys SequenceToKeys::tokenize(string_view s) const {
         out.append(it->second);
         i++;
       } else {
-        assert(false && "Malformed key sequence");
+        throw std::runtime_error(
+            "Malformed key sequence at byte index " + std::to_string(i));
       }
     }
   }

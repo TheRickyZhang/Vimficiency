@@ -116,7 +116,7 @@ bool linePositionsMatch(CursorPos ours, CursorPos neovim, const string& motion,
 void testLineMotionRandom(NeovimOracle& oracle, const NavContext& navContext,
                           const string& motion, int numIterations, int numLines,
                           unsigned seed = 42) {
-  RandomGen::seed(seed);
+  RandomGen::seed(TEST_SEED(seed));
   int failures = 0;
 
   for (int i = 0; i < numIterations; i++) {

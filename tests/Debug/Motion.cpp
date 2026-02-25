@@ -1,3 +1,128 @@
+// tests/Debug/Motion.cpp
+// Category: Historical reference-only debug snippets.
+// See docs/tests/debug-taxonomy.md.
+
+#include <gtest/gtest.h>
+#include <iostream>
+#include <memory>
+
+#include "Types/CursorPos.h"
+#include "Types/Lines.h"
+#include "Utils/NeovimOracle.h"
+#include "Utils/RandomBufferHelpers.h"
+#include "Utils/RandomGeneration.h"
+#include "VimCore/VimMotionUtils.h"
+
+using namespace std;
+
+// =============================================================================
+// Exhaustive sentence motion stress tests — ~10k positions each against Neovim.
+// Used to validate the findsent() rewrite. Run with:
+//   ./build/tests/vimficiency_debug --gtest_also_run_disabled_tests \
+//     --gtest_filter="SentenceStressTest.*"
+// =============================================================================
+
+class SentenceStressTest : public ::testing::Test {
+protected:
+  static unique_ptr<NeovimOracle> oracle_;
+  static void SetUpTestSuite() { oracle_ = make_unique<NeovimOracle>(); }
+  static void TearDownTestSuite() { oracle_.reset(); }
+};
+
+unique_ptr<NeovimOracle> SentenceStressTest::oracle_;
+
+TEST_F(SentenceStressTest, DISABLED_SentenceNextComprehensive) {
+  RandomGen::seed(TEST_SEED(99));
+  int total = 0, failures = 0;
+
+  for (int iter = 0; iter < 200; iter++) {
+    Lines lines = randomLines(RandomGen::range(2, 6), 5, 20);
+    for (auto& line : lines) {
+      for (auto& ch : line) {
+        if (RandomGen::chance(1, 8)) ch = '.';
+        if (RandomGen::chance(1, 20)) ch = ' ';
+      }
+    }
+
+    for (int startLine = 0; startLine < (int)lines.size(); startLine++) {
+      int maxCol = lines[startLine].empty() ? 0 : (int)lines[startLine].size() - 1;
+      for (int startCol = 0; startCol <= maxCol; startCol++) {
+        total++;
+        CursorPos ourPos(startLine, startCol);
+        VimCore::motionSentenceNext(ourPos, lines);
+
+        auto nvim = oracle_->simulate(lines, startLine, startCol, ")");
+        CursorPos nvimPos(nvim.row, nvim.col);
+
+        if (ourPos.line != nvimPos.line || ourPos.col != nvimPos.col) {
+          failures++;
+          if (failures <= 5) {
+            cerr << "\n=== ) mismatch #" << failures << " (iter=" << iter << ") ===" << endl;
+            cerr << "Buffer:" << endl;
+            for (int l = 0; l < (int)lines.size(); l++)
+              cerr << "  [" << l << "]: \"" << lines[l] << "\"" << endl;
+            cerr << "Start: (" << startLine << "," << startCol << ")" << endl;
+            cerr << "Ours:  (" << ourPos.line << "," << ourPos.col << ")" << endl;
+            cerr << "Nvim:  (" << nvimPos.line << "," << nvimPos.col << ")" << endl;
+          }
+        }
+      }
+    }
+  }
+
+  cerr << "\n=== Sentence ) Summary: " << (total - failures) << "/" << total
+       << " passed (" << failures << " failures) ===" << endl;
+  EXPECT_EQ(failures, 0);
+}
+
+TEST_F(SentenceStressTest, DISABLED_SentencePrevComprehensive) {
+  RandomGen::seed(TEST_SEED(100));
+  int total = 0, failures = 0;
+
+  for (int iter = 0; iter < 200; iter++) {
+    Lines lines = randomLines(RandomGen::range(2, 6), 5, 20);
+    for (auto& line : lines) {
+      for (auto& ch : line) {
+        if (RandomGen::chance(1, 8)) ch = '.';
+        if (RandomGen::chance(1, 20)) ch = ' ';
+      }
+    }
+
+    for (int startLine = 0; startLine < (int)lines.size(); startLine++) {
+      int maxCol = lines[startLine].empty() ? 0 : (int)lines[startLine].size() - 1;
+      for (int startCol = 0; startCol <= maxCol; startCol++) {
+        total++;
+        CursorPos ourPos(startLine, startCol);
+        VimCore::motionSentencePrev(ourPos, lines);
+
+        auto nvim = oracle_->simulate(lines, startLine, startCol, "(");
+        CursorPos nvimPos(nvim.row, nvim.col);
+
+        if (ourPos.line != nvimPos.line || ourPos.col != nvimPos.col) {
+          failures++;
+          if (failures <= 5) {
+            cerr << "\n=== ( mismatch #" << failures << " (iter=" << iter << ") ===" << endl;
+            cerr << "Buffer:" << endl;
+            for (int l = 0; l < (int)lines.size(); l++)
+              cerr << "  [" << l << "]: \"" << lines[l] << "\"" << endl;
+            cerr << "Start: (" << startLine << "," << startCol << ")" << endl;
+            cerr << "Ours:  (" << ourPos.line << "," << ourPos.col << ")" << endl;
+            cerr << "Nvim:  (" << nvimPos.line << "," << nvimPos.col << ")" << endl;
+          }
+        }
+      }
+    }
+  }
+
+  cerr << "\n=== Sentence ( Summary: " << (total - failures) << "/" << total
+       << " passed (" << failures << " failures) ===" << endl;
+  EXPECT_EQ(failures, 0);
+}
+
+// =============================================================================
+// Historical debug snippets (commented out, reference only)
+// =============================================================================
+
 /*
 TEST_F(NeovimOracleDebug, DISABLED_InvestigateSentenceMotion) {
   cerr << "=== Understanding d( sentence motion ===" << endl;

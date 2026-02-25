@@ -21,7 +21,7 @@ class WordsTest : public ::testing::Test {
 protected:
   static void SetUpTestSuite() {
     oracle_ = make_unique<NeovimOracle>();
-    RandomGen::seed(42);
+    RandomGen::seed(TEST_SEED(42));
   }
   static void TearDownTestSuite() { oracle_.reset(); }
   static unique_ptr<NeovimOracle> oracle_;

@@ -43,7 +43,16 @@ jobs:
           cmake --build build -j$(nproc)
 
       - name: Unit tests
+        # Random is the default seed mode; keep this unpinned unless we need an override.
         run: ./build/tests/vimficiency_tests --gtest_brief=1 --gtest_output=json:test_timing.json
+
+      - name: Upload test seed replay log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-seeds
+          path: tests/.last_seeds.txt
+          if-no-files-found: warn
 
       - name: Upload test timing
         if: github.ref == 'refs/heads/main'
@@ -83,6 +92,7 @@ jobs:
           cmake --build build -j$(nproc)
 
       - name: Run EditOptimizer benchmarks
+        # Fixed seed mode is intentional for cross-commit benchmark comparability.
         run: |
           VIMFICIENCY_SEED_MODE=fixed \
           ./build/tests/vimficiency_benchmarks \
@@ -105,6 +115,7 @@ jobs:
             --benchmark_out=composition_result.json
 
       - name: Collect exploration data
+        # Keep exploration output aligned with benchmark seed stream.
         run: VIMFICIENCY_SEED_MODE=fixed ./build/tests/vimficiency_explore
 
       - name: Build and run baseline benchmarks
@@ -117,6 +128,7 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j$(nproc)
 
+          # Baseline and current must use the same deterministic seed stream.
           VIMFICIENCY_SEED_MODE=fixed \
           ./build/tests/vimficiency_benchmarks \
             --benchmark_filter="EditOpt.*" \

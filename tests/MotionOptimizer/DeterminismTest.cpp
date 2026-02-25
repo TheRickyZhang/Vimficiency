@@ -40,7 +40,7 @@ NavContext MotionOptimizerDeterminismTests::navContext;
 
 TEST_F(MotionOptimizerDeterminismTests, SameInputProducesSameOutput) {
   const int NUM_ITERATIONS = 30;
-  RandomGen::seed(44);
+  RandomGen::seed(TEST_SEED(44));
 
   int failures = 0;
 

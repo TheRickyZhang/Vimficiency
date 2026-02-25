@@ -1,0 +1,36 @@
+{
+  "lastUpdate": 1738454400000,
+  "entries": [
+    {
+      "commit": {
+        "id": "2222222222222222222222222222222222222222",
+        "message": "fixtures: motion exploration",
+        "timestamp": "2025-02-02T00:00:00Z",
+        "url": "https://github.com/rickyah/Vimficiency/commit/2222222222222222222222222222222222222222",
+        "author": { "username": "fixtures" }
+      },
+      "date": 1738454400000,
+      "cases": [
+        {
+          "name": "LineDistance/12",
+          "nodesExplored": 58,
+          "context": {
+            "initialLines": ["start", "middle", "target"],
+            "goalLines": ["start", "middle", "target"],
+            "initialCursor": [0, 0],
+            "goalCursor": [2, 0]
+          },
+          "results": [
+            { "tokens": ["2j"], "effort": 1.5 },
+            { "tokens": ["jj"], "effort": 2.0 }
+          ],
+          "states": [
+            { "effort": 0.0, "tokens": [] },
+            { "effort": 1.5, "tokens": ["2j"] },
+            { "effort": 2.0, "tokens": ["jj"] }
+          ]
+        }
+      ]
+    }
+  ]
+}

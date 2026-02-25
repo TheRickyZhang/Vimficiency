@@ -1,3 +1,7 @@
+// tests/Debug/MiscFailures.cpp
+// Category: Historical reference-only debug snippets.
+// See docs/tests/debug-taxonomy.md.
+
 /*
 TEST_F(NeovimOracleDebug, DISABLED_InvestigateRemainingFailures) {
   // These failures have been fixed:

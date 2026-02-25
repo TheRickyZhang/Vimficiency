@@ -1,6 +1,7 @@
 // tests/Debug/DiffDebug.cpp
 //
 // Standalone tool to visualize how Myers diff splits buffer changes into regions.
+// Category: Active (see docs/tests/debug-taxonomy.md).
 //
 // Usage:
 //   ./build/tests/vimficiency_diff_debug <initial> <goal>

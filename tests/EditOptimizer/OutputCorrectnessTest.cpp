@@ -42,6 +42,8 @@ unique_ptr<NeovimOracle> EditOptimizerOutputCorrectness::oracle;
 // =============================================================================
 // Stress Tests (random buffers, oracle-verified)
 // =============================================================================
+// Intentional explicit seeds: each test keeps a stable random corpus so failures
+// are reproducible and isolated when triaging.
 
 // Single-line embedded: PREFIX | EDIT_REGION | SUFFIX on one line
 // Boundary checking works correctly since positions don't shift across lines

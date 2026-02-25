@@ -200,7 +200,7 @@ bool runTextObjectTest(NeovimOracle& oracle, const TextObjectSpec& spec,
 // =============================================================================
 
 TEST_F(TextObjectsTest, RandomBufferStress_SingleLine) {
-  RandomGen::seed(42);
+  RandomGen::seed(TEST_SEED(42));
   const int NUM_BUFFERS = 10;
   const auto& textObjects = getAllTextObjects();
 
@@ -221,7 +221,7 @@ TEST_F(TextObjectsTest, RandomBufferStress_SingleLine) {
 }
 
 TEST_F(TextObjectsTest, RandomBufferStress_MultiLine) {
-  RandomGen::seed(123);
+  RandomGen::seed(TEST_SEED(123));
   const int NUM_BUFFERS = 10;
   const auto& textObjects = getAllTextObjects();
 

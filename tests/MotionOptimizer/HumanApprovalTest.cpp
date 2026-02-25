@@ -5,7 +5,9 @@
 // are sensible and contain expected efficient sequences.
 //
 // Run: ./build/tests/vimficiency_tests --gtest_filter="MotionOptimizerHumanApprovalTests.*"
-// 4. Remove DISABLED_ prefix
+//
+// TODO(HUMAN_APPROVAL_HARDEN): Convert heuristic expectations in this file to
+// objective, stable assertions tied to optimizer guarantees.
 
 #include <gtest/gtest.h>
 
@@ -40,6 +42,7 @@ NavContext MotionOptimizerHumanApprovalTests::navContext;
 // =============================================================================
 
 TEST_F(MotionOptimizerHumanApprovalTests, Motion_SimpleHorizontal) {
+  // TODO(HUMAN_APPROVAL_HARDEN): Assert specific acceptable sequence set/ranking.
   Lines lines = {"hello world test"};
   CursorPos start(0, 0);
   CursorPos end(0, 5);  // At space before "world"
@@ -51,8 +54,6 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_SimpleHorizontal) {
   // printResultsDebug(results, "Simple horizontal movement 0→5");
 
   EXPECT_FALSE(results.empty()) << "Should find at least one path";
-
-  // TODO: Add assertions after reviewing output
 }
 
 TEST_F(MotionOptimizerHumanApprovalTests, Motion_VerticalJump) {

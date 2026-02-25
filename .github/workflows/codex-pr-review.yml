@@ -1,7 +1,10 @@
 name: Codex PR Review
 
 on:
-  pull_request:
+  # pull_request_target allows repository secrets (OPENAI_API_KEY) on fork PRs.
+  # Safety model: this workflow only reads git metadata/diffs and posts review comments;
+  # it does not run project build/test scripts from PR contents.
+  pull_request_target:
     types: [opened, synchronize, reopened]
 
 permissions:
@@ -11,72 +14,76 @@ permissions:
 jobs:
   codex_review:
     runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
     steps:
-      - name: Checkout PR head
+      - name: Checkout PR head (read-only)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Generate PR diff
         id: prdiff
         shell: bash
         run: |
           set -euo pipefail
+          BASE_REPO="${{ github.repository }}"
           BASE="${{ github.event.pull_request.base.sha }}"
           HEAD="${{ github.event.pull_request.head.sha }}"
-          git fetch --no-tags --prune origin "$BASE"
+          git remote add pr-base "https://x-access-token:${{ github.token }}@github.com/${BASE_REPO}.git"
+          git fetch --no-tags --prune pr-base "$BASE"
           git diff --no-color --minimal "$BASE...$HEAD" > /tmp/pr.diff
           echo "diff_lines=$(wc -l </tmp/pr.diff | tr -d ' ')" >> "$GITHUB_OUTPUT"
-
-      - name: Run Codex (structured review)
-        id: codex
-        uses: openai/codex-action@v1
-        with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          model: gpt-5.2-codex
-          codex-args: >-
-            --output-schema .github/codex/schemas/pr_review.schema.json
-        env:
-          CODEX_PROMPT_FILE: /tmp/codex_prompt.txt
 
       - name: Build Codex prompt with diff
         shell: bash
         run: |
           set -euo pipefail
           cat > /tmp/codex_prompt.txt <<'EOF'
-Return JSON that matches the provided schema exactly.
+          Return JSON that matches the provided schema exactly.
 
-Write a concise PR review focused on:
-- logical/correctness bugs (including UB/lifetime)
-- code smells/design limitations
-- long-term semantic concerns (invariants, API boundaries, coupling)
+          Write a concise PR review focused on:
+          - logical/correctness bugs (including UB/lifetime)
+          - code smells/design limitations
+          - long-term semantic concerns (invariants, API boundaries, coupling)
 
-Rules:
-- body: 5–15 bullets max.
-- comments: only actionable issues; prefer severity high/medium.
-- For each inline comment: use the repo-relative file path, and a line number in the NEW file (RIGHT side).
-- Do not output any extra text outside the JSON.
+          Rules:
+          - body: 5-15 bullets max.
+          - comments: only actionable issues; prefer severity high/medium.
+          - For each inline comment: use the repo-relative file path, and a line number in the NEW file (RIGHT side).
+          - Do not output any extra text outside the JSON.
 
-PR DIFF (base...head):
-EOF
+          PR DIFF (base...head):
+          EOF
           cat /tmp/pr.diff >> /tmp/codex_prompt.txt
+
+      - name: Check OpenAI API key
+        if: ${{ env.OPENAI_API_KEY == '' }}
+        shell: bash
+        run: |
+          echo "OPENAI_API_KEY is not configured for this repository."
+          echo "Skipping Codex review."
 
       - name: Run Codex using the generated prompt
         id: codex_run
+        if: ${{ env.OPENAI_API_KEY != '' }}
         uses: openai/codex-action@v1
         with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          openai-api-key: ${{ env.OPENAI_API_KEY }}
           model: gpt-5.2-codex
           codex-args: >-
             --output-schema .github/codex/schemas/pr_review.schema.json
           prompt-file: /tmp/codex_prompt.txt
 
       - name: Post GitHub Review (validate + fallback)
+        if: ${{ env.OPENAI_API_KEY != '' }}
         uses: actions/github-script@v7
         with:
           script: |
-            const raw = ${{ toJSON(steps.codex_run.outputs.final-message) }};
+            const raw = ${{ toJSON(steps.codex_run.outputs['final-message']) }};
 
             function safeJsonParse(s) { try { return JSON.parse(s); } catch { return null; } }
             function isString(x) { return typeof x === "string"; }

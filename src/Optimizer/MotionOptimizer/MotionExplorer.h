@@ -275,7 +275,7 @@ public:
       else return KeyedSequence::byId(BackwardKS);
     }();
 
-    int off = bufferRef_.lineOffset;
+    int off = bufferRef_.indexLineOffset;
 
     // Convert local → global coordinates for BufferIndex query
     CursorPos globalPos(pos.line + off, pos.col, pos.targetCol);

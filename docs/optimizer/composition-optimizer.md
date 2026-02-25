@@ -100,6 +100,15 @@ J plan efforts are included in `computeSuffixEditCosts()` alongside regular edit
 - Thus, we can use a bitmask prefix for quotes, matching with FIRST pair in region, and count prefix for brackets, matching with OUTERMOST pair in region.
 - Since each edit can introduce new destructive content, we must calculate for each edit.
 
+### String-Zone Aware Bracket Matching
+Neovim's `findmatchlimit()` (used by `a(`, `i(`, `%`, etc.) skips brackets inside double-quoted strings. This affects `scanBracketsForEdit`:
+- Count `"` characters on the line. If even (and >0), enable zone detection.
+- Each column's "zone" = count of `"` before it. Odd → inside string, even → outside string.
+- Brackets only match if both are in the same zone (both inside or both outside strings).
+- Balance tracking for forward-search validity also uses zone-filtered counting.
+- Single quotes (`'`) do NOT trigger string detection (despite what `:help %` implies).
+- See `:help cpo-%` and Neovim `search.c:findmatchlimit()` for details.
+
 ## Pure Insertions
 - Because a pure insertion has no starting point, we must handle it from the higher composition level.
 - We perform a similar movement search, but augmented with the option of using o/O if we need a new line, and I/A in place of a final $/^ movement, and i/a otherwise.

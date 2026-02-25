@@ -508,44 +508,87 @@ tuple<int, int, bool> findMatchingQuotePair(const string& line, int beginCol, in
   return {-1, -1, false};
 }
 
+// Neovim's findmatchlimit skips brackets inside double-quoted strings.
+// Active when the line has an even number of " (>0). Each position's "zone"
+// is determined by counting " before it: odd = inside string, even = outside.
+// Brackets only match if both are in the same zone.
+struct StringZones {
+  bool active = false;           // true when zone-aware matching is needed
+  vector<bool> insideString;     // per-column: true = inside string zone
+};
+
+StringZones computeStringZones(const string& line) {
+  int lineLen = static_cast<int>(line.size());
+  int quoteCount = 0;
+  for (int i = 0; i < lineLen; i++) {
+    if (line[i] == '"') quoteCount++;
+  }
+  if (quoteCount == 0 || quoteCount % 2 != 0) return {};
+
+  StringZones zones;
+  zones.active = true;
+  zones.insideString.resize(lineLen);
+  int quotesBefore = 0;
+  for (int i = 0; i < lineLen; i++) {
+    zones.insideString[i] = (quotesBefore % 2 == 1);
+    if (line[i] == '"') quotesBefore++;
+  }
+  return zones;
+}
+
 // Helper: find bracket pair matching [beginCol, endCol) on a single line
 // Returns {openCol, closeCol, isAround} where isAround indicates if this is an "around" match
 // For "inner": inner region [open+1, close) == [beginCol, endCol)
 // For "around": around region [open, close+1) == [beginCol, endCol)
+//
+// When string zones are active, brackets in different zones don't match
+// (Neovim's findmatchlimit skips brackets inside double-quoted strings).
+// We do separate matching passes for each zone to handle this correctly.
 tuple<int, int, bool> findMatchingBracketPair(const string& line, int beginCol, int endCol,
-                                               char open, char close) {
+                                               char open, char close,
+                                               const StringZones& zones) {
+  int lineLen = static_cast<int>(line.size());
   int bestOpen = -1;
   int bestClose = -1;
   bool bestIsAround = false;
 
-  // Find all bracket pairs and check for matches
-  vector<int> openStack;
-  for (int i = 0; i < static_cast<int>(line.size()); i++) {
-    if (line[i] == open) {
-      openStack.push_back(i);
-    } else if (line[i] == close && !openStack.empty()) {
-      int openPos = openStack.back();
-      openStack.pop_back();
+  auto matchInZone = [&](bool targetZone) {
+    vector<int> openStack;
+    for (int i = 0; i < lineLen; i++) {
+      if (zones.active && zones.insideString[i] != targetZone) continue;
 
-      // Check inner match: [openPos+1, i) == [beginCol, endCol)
-      if (openPos + 1 == beginCol && i == endCol) {
-        // Prefer innermost (larger openPos)
-        if (bestOpen == -1 || openPos > bestOpen) {
-          bestOpen = openPos;
-          bestClose = i;
-          bestIsAround = false;
+      if (line[i] == open) {
+        openStack.push_back(i);
+      } else if (line[i] == close && !openStack.empty()) {
+        int openPos = openStack.back();
+        openStack.pop_back();
+
+        // Check inner match: [openPos+1, i) == [beginCol, endCol)
+        if (openPos + 1 == beginCol && i == endCol) {
+          if (bestOpen == -1 || openPos > bestOpen) {
+            bestOpen = openPos;
+            bestClose = i;
+            bestIsAround = false;
+          }
         }
-      }
 
-      // Check around match: [openPos, i+1) == [beginCol, endCol)
-      if (openPos == beginCol && i + 1 == endCol) {
-        if (bestOpen == -1 || openPos > bestOpen) {
-          bestOpen = openPos;
-          bestClose = i;
-          bestIsAround = true;
+        // Check around match: [openPos, i+1) == [beginCol, endCol)
+        if (openPos == beginCol && i + 1 == endCol) {
+          if (bestOpen == -1 || openPos > bestOpen) {
+            bestOpen = openPos;
+            bestClose = i;
+            bestIsAround = true;
+          }
         }
       }
     }
+  };
+
+  if (!zones.active) {
+    matchInZone(false);  // single pass, no filtering
+  } else {
+    matchInZone(false);  // outside-string brackets
+    matchInZone(true);   // inside-string brackets
   }
 
   return {bestOpen, bestClose, bestIsAround};
@@ -600,9 +643,10 @@ void scanBracketsForEdit(BracketQuoteContext& ctx, const string& line,
   if (lineLen == 0) return;
 
   ctx.validBracketMask.resize(lineLen);
+  StringZones zones = computeStringZones(line);
 
   for (auto [open, close] : vector<pair<char, char>>{{'(', ')'}, {'[', ']'}, {'{', '}'}, {'<', '>'}}) {
-    auto [openCol, closeCol, isAround] = findMatchingBracketPair(line, beginCol, endCol, open, close);
+    auto [openCol, closeCol, isAround] = findMatchingBracketPair(line, beginCol, endCol, open, close, zones);
     if (openCol == -1) continue;
     if (openCol >= lineLen || closeCol >= lineLen) continue;
 
@@ -621,6 +665,11 @@ void scanBracketsForEdit(BracketQuoteContext& ctx, const string& line,
       }
     }
 
+    // Determine the target pair's string zone for zone-aware balance tracking.
+    // Neovim's backward search for enclosing brackets is zone-aware: a bracket
+    // in a different zone doesn't count as "enclosing" the cursor position.
+    bool targetZone = zones.active ? zones.insideString[openCol] : false;
+
     // Mark valid positions:
     // 1. Inside the target pair (openCol..closeCol): always valid
     //    (Neovim uses innermost pair containing cursor)
@@ -634,8 +683,10 @@ void scanBracketsForEdit(BracketQuoteContext& ctx, const string& line,
       if (insidePair || forwardReachesPair) {
         ctx.validBracketMask[col].add(open);
       }
-      if (line[col] == open) balance++;
-      else if (line[col] == close) balance--;
+      // Only count brackets in the target pair's zone for balance tracking
+      bool sameZone = !zones.active || zones.insideString[col] == targetZone;
+      if (sameZone && line[col] == open) balance++;
+      else if (sameZone && line[col] == close) balance--;
     }
   }
 }

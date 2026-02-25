@@ -1,0 +1,95 @@
+{
+  "lastUpdate": 1738454400000,
+  "entries": [
+    {
+      "commit": {
+        "id": "2222222222222222222222222222222222222222",
+        "message": "fixtures: composition exploration",
+        "timestamp": "2025-02-02T00:00:00Z",
+        "url": "https://github.com/rickyah/Vimficiency/commit/2222222222222222222222222222222222222222",
+        "author": { "username": "fixtures" }
+      },
+      "date": 1738454400000,
+      "cases": [
+        {
+          "name": "MixedDiff/2",
+          "nodesExplored": 64,
+          "context": {
+            "initialLines": ["int x = 1;", "return x;"],
+            "goalLines": ["int x = 2;", "return x + 1;"],
+            "initialCursor": [0, 0],
+            "goalCursor": [1, 12]
+          },
+          "contents": ["2", " + 1"],
+          "results": [
+            {
+              "effort": 4.3,
+              "chunks": [
+                { "type": "motion", "text": "f1", "tokens": ["f1"] },
+                { "type": "edit", "text": "r", "tokens": ["r"], "contentId": 0 },
+                { "type": "motion", "text": "j$", "tokens": ["j", "$"] },
+                { "type": "edit", "text": "a", "tokens": ["a"], "contentId": 1 }
+              ]
+            }
+          ],
+          "states": [
+            {
+              "effort": 0.0,
+              "editsCompleted": 0,
+              "chunks": []
+            },
+            {
+              "effort": 2.0,
+              "editsCompleted": 0,
+              "chunks": [
+                { "type": "motion", "text": "f1", "tokens": ["f1"] }
+              ]
+            },
+            {
+              "effort": 4.3,
+              "editsCompleted": 2,
+              "chunks": [
+                { "type": "motion", "text": "f1", "tokens": ["f1"] },
+                { "type": "edit", "text": "r", "tokens": ["r"], "contentId": 0 },
+                { "type": "motion", "text": "j$", "tokens": ["j", "$"] },
+                { "type": "edit", "text": "a", "tokens": ["a"], "contentId": 1 }
+              ]
+            }
+          ],
+          "diffs": [
+            {
+              "beginLine": 0,
+              "beginCol": 8,
+              "endLine": 0,
+              "endCol": 9,
+              "deletedText": "1",
+              "insertedText": "2",
+              "editStates": [
+                { "effort": 0.0, "tokens": [] },
+                { "effort": 1.2, "tokens": ["r"] }
+              ],
+              "editResults": [
+                { "effort": 1.2, "tokens": ["r"] }
+              ]
+            },
+            {
+              "beginLine": 1,
+              "beginCol": 8,
+              "endLine": 1,
+              "endCol": 8,
+              "deletedText": "",
+              "insertedText": " + 1",
+              "editStates": [
+                { "effort": 0.0, "tokens": [] },
+                { "effort": 1.1, "tokens": ["a"] }
+              ],
+              "editResults": [
+                { "effort": 1.1, "tokens": ["a"] }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

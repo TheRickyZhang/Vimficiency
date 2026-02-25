@@ -164,7 +164,7 @@ struct MotionFailureStats {
 
 TEST_F(MotionOptimizerOutputCorrectness, SubBufferMotionCorrectness) {
   // Test that optimizer predictions match Neovim behavior when operating on sub-buffers
-  RandomGen::seed(42);
+  RandomGen::seed(TEST_SEED(42));
   const int iterations = 50;
   int totalSequences = 0;
   int failedSequences = 0;

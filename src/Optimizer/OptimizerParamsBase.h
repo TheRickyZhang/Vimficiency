@@ -1,6 +1,5 @@
 #pragma once
 
-#include <algorithm>
 #include <cassert>
 
 #include "Keyboard/ToKeys/CountToKeys.h"
@@ -42,27 +41,15 @@ struct OptimizerParamsBase {
   int maxPrefixCount = MAX_PREFIX_COUNT;
 
   void setMinCountRepeat(int v) {
-    minPrefixCount = std::max(0, v);
-    if (minPrefixCount > maxPrefixCount) {
-      minPrefixCount = maxPrefixCount;
-    }
+    assert(v >= 0 && "minPrefixCount must be non-negative");
+    assert(v <= maxPrefixCount && "minPrefixCount must be <= maxPrefixCount");
+    minPrefixCount = v;
   }
 
   void setMaxCountRepeat(int v) {
-    assert(v >= 0 && v <= MAX_PREFIX_COUNT);
+    assert(v >= 0 && v <= MAX_PREFIX_COUNT && "maxPrefixCount out of range");
+    assert(v >= minPrefixCount && "maxPrefixCount must be >= minPrefixCount");
     maxPrefixCount = v;
-    if (minPrefixCount > maxPrefixCount) {
-      minPrefixCount = maxPrefixCount;
-    }
-  }
-
-  void normalizeCountRepeatBounds() {
-    if (minPrefixCount < 0) {
-      minPrefixCount = 0;
-    }
-    if (minPrefixCount > maxPrefixCount) {
-      minPrefixCount = maxPrefixCount;
-    }
   }
 
   // Debug: collect explored states in SearchStats (expensive, for debugging only)

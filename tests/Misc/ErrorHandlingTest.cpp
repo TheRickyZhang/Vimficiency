@@ -7,26 +7,34 @@
 #include <gtest/gtest.h>
 #include <stdexcept>
 
+#include "Interpreter/EditInterpreter.h"
+#include "Interpreter/MotionInterpreter.h"
 #include "Keyboard/ToKeys/SequenceToKeys.h"
 #include "Keyboard/ToKeys/MotionToKeys.h"
 
 using namespace std;
 
-// Test that parseMotions throws for unknown motions
-// TEST(ErrorHandlingTest, ParseMotionsThrowsForUnknownMotion) {
-//   EXPECT_THROW(parseMotions("q"), runtime_error);
-//   EXPECT_THROW(parseMotions("Z"), runtime_error);
-//   EXPECT_THROW(parseMotions("x"), runtime_error);
-// }
+TEST(ErrorHandlingTest, ParseMotionsRejectsUnknownMotions) {
+  EXPECT_THROW(parseMotions("q"), runtime_error);
+  EXPECT_THROW(parseMotions("Z"), runtime_error);
+  EXPECT_THROW(parseMotions("x"), runtime_error);
+}
 
+TEST(ErrorHandlingTest, ParseMotionsRejectsMalformedSpecialKeys) {
+  EXPECT_THROW(parseMotions("<C-d"), runtime_error);
+  EXPECT_THROW(parseMotions("<bad>"), runtime_error);
+}
 
-// Test that SequenceToKeys throws for unknown key sequences
-// TEST(ErrorHandlingTest, TokenizerThrowsForUnknownSequence) {
-//   const auto& tokenizer = globalSequenceToKeys();
-//
-//   // Emoji or special chars not in the keyboard model should throw
-//   EXPECT_THROW(tokenizer.tokenize("\x01"), runtime_error);  // Control char
-// }
+TEST(ErrorHandlingTest, ParseEditsRejectsMalformedSpecialKeys) {
+  EXPECT_THROW(Edit::parseEdits("<Esc"), runtime_error);
+}
+
+TEST(ErrorHandlingTest, TokenizerRejectsUnknownSequences) {
+  const auto& tokenizer = globalSequenceToKeys();
+
+  EXPECT_THROW(tokenizer.tokenize("\x01"), runtime_error);
+  EXPECT_THROW(tokenizer.tokenize("\xF0\x9F\x98\x80"), runtime_error);
+}
 
 TEST(ErrorHandlingTest, TokenizerAcceptsValidSequences) {
   const auto& tokenizer = globalSequenceToKeys();

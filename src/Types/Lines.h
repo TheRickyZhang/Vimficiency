@@ -88,6 +88,18 @@ struct Lines final : std::vector<Line> {
     return pos;
   }
 
+  // Like getNextPos but returns a past-the-end position at buffer end instead of clamping.
+  // Use for constructing half-open ranges where clamping would create a degenerate [pos, pos).
+  CursorPos getNextPosUnclamped(CursorPos pos) const {
+    if (pos.col + 1 < static_cast<int>((*this)[pos.line].size())) {
+      return CursorPos(pos.line, pos.col + 1);
+    }
+    if (pos.line + 1 < static_cast<int>(size())) {
+      return CursorPos(pos.line + 1, 0);
+    }
+    return CursorPos(pos.line, pos.col + 1);
+  }
+
   CursorPos getPrevPos(CursorPos pos) const {
     if (pos.col > 0) {
       return CursorPos(pos.line, pos.col - 1);

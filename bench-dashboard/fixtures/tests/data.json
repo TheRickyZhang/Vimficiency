@@ -1,0 +1,50 @@
+{
+  "lastUpdate": 1738454400000,
+  "repoUrl": "https://github.com/rickyah/Vimficiency",
+  "entries": {
+    "Tests": [
+      {
+        "commit": {
+          "id": "1111111111111111111111111111111111111111",
+          "message": "fixtures: baseline test timing",
+          "timestamp": "2025-02-01T00:00:00Z",
+          "url": "https://github.com/rickyah/Vimficiency/commit/1111111111111111111111111111111111111111",
+          "author": { "username": "fixtures" }
+        },
+        "date": 1738368000000,
+        "benches": [
+          { "name": "Tests/Total/All", "value": 3100, "unit": "ms/iter" },
+          { "name": "Tests/Suites/WordMotionsTest", "value": 540, "unit": "ms/iter" },
+          { "name": "Tests/Suites/EditOptimizerOutputCorrectness", "value": 810, "unit": "ms/iter" },
+          { "name": "Tests/Suites/CompositionOptimizerOutputCorrectness", "value": 970, "unit": "ms/iter" },
+          { "name": "Tests/Cases/WordMotionsTest.W_RandomSingleLine", "value": 160, "unit": "ms/iter" },
+          { "name": "Tests/Cases/WordMotionsTest.B_RandomSingleLine", "value": 120, "unit": "ms/iter" },
+          { "name": "Tests/Cases/EditOptimizerOutputCorrectness.Random_DeletionOnly", "value": 310, "unit": "ms/iter" },
+          { "name": "Tests/Cases/EditOptimizerOutputCorrectness.Random_InsertOnly", "value": 220, "unit": "ms/iter" },
+          { "name": "Tests/Cases/CompositionOptimizerOutputCorrectness.Random_MixedDiff", "value": 430, "unit": "ms/iter" }
+        ]
+      },
+      {
+        "commit": {
+          "id": "2222222222222222222222222222222222222222",
+          "message": "fixtures: follow-up test timing",
+          "timestamp": "2025-02-02T00:00:00Z",
+          "url": "https://github.com/rickyah/Vimficiency/commit/2222222222222222222222222222222222222222",
+          "author": { "username": "fixtures" }
+        },
+        "date": 1738454400000,
+        "benches": [
+          { "name": "Tests/Total/All", "value": 2960, "unit": "ms/iter" },
+          { "name": "Tests/Suites/WordMotionsTest", "value": 500, "unit": "ms/iter" },
+          { "name": "Tests/Suites/EditOptimizerOutputCorrectness", "value": 890, "unit": "ms/iter" },
+          { "name": "Tests/Suites/CompositionOptimizerOutputCorrectness", "value": 920, "unit": "ms/iter" },
+          { "name": "Tests/Cases/WordMotionsTest.W_RandomSingleLine", "value": 140, "unit": "ms/iter" },
+          { "name": "Tests/Cases/WordMotionsTest.B_RandomSingleLine", "value": 128, "unit": "ms/iter" },
+          { "name": "Tests/Cases/EditOptimizerOutputCorrectness.Random_DeletionOnly", "value": 360, "unit": "ms/iter" },
+          { "name": "Tests/Cases/EditOptimizerOutputCorrectness.Random_InsertOnly", "value": 210, "unit": "ms/iter" },
+          { "name": "Tests/Cases/CompositionOptimizerOutputCorrectness.Random_MixedDiff", "value": 390, "unit": "ms/iter" }
+        ]
+      }
+    ]
+  }
+}

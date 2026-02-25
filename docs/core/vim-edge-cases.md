@@ -111,6 +111,17 @@ When a text object produces an invalid/empty range (e.g., `ciw` on an empty line
 - `d` + text object: does nothing, stays in Normal mode
 - `c` + text object: does nothing to the buffer but **still enters Insert mode**
 
+## 9. Bracket Matching and String Detection
+
+Neovim's `findmatchlimit()` (used by `%`, `a(`, `i(`, `a[`, etc.) skips brackets inside double-quoted strings when `cpo-%` is not set (the default):
+- Count all `"` on the line. If even and >0 → zone detection active.
+- Zone per column = number of `"` before it. Odd → "inside string", even → "outside string".
+- Brackets only match their partner if both are in the same zone.
+- When zone detection is active, the cursor must be in the same zone as the bracket pair for backward search to find it. Balance tracking is also zone-filtered.
+- If `"` count is odd → zone detection disabled; all brackets match normally.
+- Single quotes `'` do NOT trigger string-zone detection (despite what `:help %` suggests).
+- See `:help cpo-%` and `motion.txt` lines 1275-1282.
+
 ## Summary: When Does It Matter?
 
 The d/c divergence matters most when:

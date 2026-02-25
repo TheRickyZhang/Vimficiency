@@ -1,7 +1,8 @@
 import { Link } from '@tanstack/react-router';
+import type { BenchmarkRun } from '../types/benchmark';
 import { homeRoute, type OptimizerSlug } from '../router';
 import { parseName, toNanoseconds, timeSeries, loadBenchmarkData } from '../utils/data';
-import { bestUnit } from '../utils/format';
+import { bestUnit, fmtTime, ns } from '../utils/format';
 import { BenchmarkChart } from '../components/BenchmarkChart';
 
 interface Change {
@@ -13,8 +14,18 @@ interface Change {
   ratio: number;
 }
 
+interface TimingRow {
+  benchName: string;
+  label: string;
+  latestNs: number;
+  pctChange: number | null;
+}
+
 const MAX_ITEMS = 5;
 const ALERT_RATIO = 1.5;
+const TOP_SUITES = 6;
+const TOP_CASES = 10;
+const SUITE_TRENDS = 4;
 
 const OPTIMIZER_LABELS: Partial<Record<OptimizerSlug, string>> = {
   edit: 'EditOptimizer',
@@ -22,13 +33,57 @@ const OPTIMIZER_LABELS: Partial<Record<OptimizerSlug, string>> = {
   composition: 'CompositionOptimizer',
 };
 
+function benchMap(run?: BenchmarkRun): Map<string, { value: number; unit: string }> {
+  const map = new Map<string, { value: number; unit: string }>();
+  for (const bench of run?.benches ?? []) {
+    map.set(bench.name, { value: bench.value, unit: bench.unit });
+  }
+  return map;
+}
+
+function computeTimingRows(runs: BenchmarkRun[], prefix: string, limit: number): TimingRow[] {
+  if (runs.length === 0) return [];
+
+  const latest = runs[runs.length - 1]!;
+  const prev = runs.length > 1 ? runs[runs.length - 2] : undefined;
+  const prevMap = benchMap(prev);
+
+  const rows: TimingRow[] = [];
+  for (const bench of latest.benches) {
+    if (!bench.name.startsWith(prefix)) continue;
+    const latestNs = Number(toNanoseconds(bench.value, bench.unit));
+    const prevBench = prevMap.get(bench.name);
+    let pctChange: number | null = null;
+    if (prevBench) {
+      const prevNs = Number(toNanoseconds(prevBench.value, prevBench.unit));
+      if (prevNs > 0) {
+        pctChange = ((latestNs / prevNs) - 1) * 100;
+      }
+    }
+    rows.push({
+      benchName: bench.name,
+      label: bench.name.slice(prefix.length),
+      latestNs,
+      pctChange,
+    });
+  }
+
+  return rows.sort((a, b) => b.latestNs - a.latestNs).slice(0, limit);
+}
+
+function pctLabel(value: number | null): string {
+  if (value == null) return 'n/a';
+  const sign = value >= 0 ? '+' : '';
+  return `${sign}${value.toFixed(1)}%`;
+}
+
 export function HomePage() {
   const { optimizers } = homeRoute.useLoaderData();
 
   const changes: Change[] = [];
   for (const { slug, data } of optimizers) {
     if (slug === 'tests') continue;
-    const runs = Object.values(data.entries)[0];
+    const runs = loadBenchmarkData(data);
     if (!runs || runs.length < 2) continue;
     const latest = runs[runs.length - 1]!;
     const prev = runs[runs.length - 2]!;
@@ -42,7 +97,7 @@ export function HomePage() {
       if (prevNs === 0) continue;
       const ratio = currNs / prevNs;
       const pctChange = (ratio - 1) * 100;
-      if (Math.abs(pctChange) < 10) continue; // only show >=10% changes
+      if (Math.abs(pctChange) < 10) continue;
       const { category, detail } = parseName(bench.name);
       changes.push({ name: bench.name, category, detail, optimizer: slug, pctChange, ratio });
     }
@@ -59,13 +114,17 @@ export function HomePage() {
     .slice(0, MAX_ITEMS);
 
   const testOptimizer = optimizers.find((o) => o.slug === 'tests');
+  const testRuns = testOptimizer ? loadBenchmarkData(testOptimizer.data) : [];
   const testSeries = (() => {
     if (!testOptimizer) return null;
-    const runs = loadBenchmarkData(testOptimizer.data);
     const totalName = 'Tests/Total/All';
-    const points = timeSeries(runs, totalName, testOptimizer.data.repoUrl);
+    const points = timeSeries(testRuns, totalName, testOptimizer.data.repoUrl);
     return points.length > 0 ? points : null;
   })();
+
+  const suiteRows = computeTimingRows(testRuns, 'Tests/Suites/', TOP_SUITES);
+  const caseRows = computeTimingRows(testRuns, 'Tests/Cases/', TOP_CASES);
+  const suiteTrendRows = suiteRows.slice(0, SUITE_TRENDS);
 
   return (
     <>
@@ -119,10 +178,88 @@ export function HomePage() {
       </div>
 
       {testSeries && (
-        <div className="mt-10 max-w-[60%]">
+        <div className="mt-10">
           <h2>Test Duration</h2>
-          <div style={{ height: 250 }}>
+          <div className="max-w-[60%] mx-auto" style={{ height: 250 }}>
             <BenchmarkChart series={testSeries} unit={bestUnit(testSeries.map((p) => p.val))} />
+          </div>
+        </div>
+      )}
+
+      {suiteRows.length > 0 && (
+        <div className="mt-10">
+          <h2>Slowest Test Suites</h2>
+          <div className="card p-4">
+            <div className="grid grid-cols-[2fr_1fr_1fr] gap-2 text-xs font-bold text-[#666] px-2 pb-2 border-b border-border-light">
+              <span>Suite</span>
+              <span className="text-right">Latest</span>
+              <span className="text-right">vs Prev</span>
+            </div>
+            <div className="flex flex-col">
+              {suiteRows.map((row) => (
+                <div key={row.benchName} className="grid grid-cols-[2fr_1fr_1fr] gap-2 px-2 py-2 border-b border-border-light last:border-b-0">
+                  <span className="text-sm truncate" title={row.label}>{row.label}</span>
+                  <span className="text-right text-sm tabular-nums">{fmtTime(ns(row.latestNs))}</span>
+                  <span
+                    className={`text-right text-sm tabular-nums ${
+                      row.pctChange == null ? 'text-muted' : row.pctChange > 0 ? 'text-bad' : 'text-good'
+                    }`}
+                  >
+                    {pctLabel(row.pctChange)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {suiteTrendRows.length > 0 && testOptimizer && (
+        <div className="mt-10">
+          <h2>Suite Trends</h2>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-4">
+            {suiteTrendRows.map((row) => {
+              const series = timeSeries(testRuns, row.benchName, testOptimizer.data.repoUrl);
+              if (series.length === 0) return null;
+              return (
+                <div key={row.benchName} className="card p-4">
+                  <div className="font-semibold text-sm text-[#333] mb-2 truncate" title={row.label}>
+                    {row.label}
+                  </div>
+                  <div style={{ height: 160 }}>
+                    <BenchmarkChart series={series} unit={bestUnit(series.map((p) => p.val))} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {caseRows.length > 0 && (
+        <div className="mt-10">
+          <h2>Slowest Tests</h2>
+          <div className="card p-4">
+            <div className="grid grid-cols-[2fr_1fr_1fr] gap-2 text-xs font-bold text-[#666] px-2 pb-2 border-b border-border-light">
+              <span>Test</span>
+              <span className="text-right">Latest</span>
+              <span className="text-right">vs Prev</span>
+            </div>
+            <div className="flex flex-col">
+              {caseRows.map((row) => (
+                <div key={row.benchName} className="grid grid-cols-[2fr_1fr_1fr] gap-2 px-2 py-2 border-b border-border-light last:border-b-0">
+                  <span className="text-sm truncate" title={row.label}>{row.label}</span>
+                  <span className="text-right text-sm tabular-nums">{fmtTime(ns(row.latestNs))}</span>
+                  <span
+                    className={`text-right text-sm tabular-nums ${
+                      row.pctChange == null ? 'text-muted' : row.pctChange > 0 ? 'text-bad' : 'text-good'
+                    }`}
+                  >
+                    {pctLabel(row.pctChange)}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

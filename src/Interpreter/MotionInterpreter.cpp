@@ -3,6 +3,7 @@
 #include <cassert>
 #include <limits>
 #include <ostream>
+#include <stdexcept>
 
 #include "Types/NavContext.h"
 #include "VimCore/VimCore.h"
@@ -73,7 +74,9 @@ std::vector<ParsedMotion> parseMotions(std::string_view seq) {
         }
         // If not a known motion, fall through to error
       }
-      assert(false && "Unknown or malformed special key");
+      throw runtime_error(
+          "Unknown or malformed special motion key: " +
+          string(sv.substr(i, min<size_t>(sv.size() - i, 12))));
     }
 
     // Standard longest-match for other motions
@@ -88,7 +91,9 @@ std::vector<ParsedMotion> parseMotions(std::string_view seq) {
       }
     }
     if (!matched) {
-      assert(false && "Unknown motion");
+      throw runtime_error(
+          "Unknown motion near: " +
+          string(sv.substr(i, min<size_t>(sv.size() - i, 4))));
     }
   }
   return result;

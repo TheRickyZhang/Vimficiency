@@ -115,6 +115,109 @@ bool stepBack(const Lines& lines, int& line, int& col) {
 }
 
 // =============================================================================
+// 3b. Vim-Model Stepping (NUL-aware)
+// =============================================================================
+//
+// Parallel to stepFwd/stepBack but aware of the virtual NUL terminator
+// at col == lineLen. vimInc/vimDec can land on NUL; vimIncl/vimDecl skip it.
+// Returns Pos(-1,-1) at buffer boundary (checked via Pos::isValid()).
+
+// Char at Vim-style position. Returns 0 at NUL (col >= lineLen) and
+// out-of-range positions — callers check isValid() for boundary detection.
+unsigned char vimGchar(const Lines& lines, Pos pos) {
+  int n = static_cast<int>(lines.size());
+  if (pos.line < 0 || pos.line >= n)
+    return 0;
+  const auto& ln = lines[pos.line];
+  int len = static_cast<int>(ln.size());
+  if (pos.col < 0 || pos.col >= len)
+    return 0;
+  return static_cast<unsigned char>(ln[pos.col]);
+}
+
+// Advance one position. Can land on NUL (col == lineLen).
+// Compare stepFwd which skips NUL entirely.
+Pos vimInc(const Lines& lines, Pos pos) {
+  int n = static_cast<int>(lines.size());
+  if (pos.line < 0 || pos.line >= n)
+    return Pos(-1, -1);
+  const auto& ln = lines[pos.line];
+  int len = static_cast<int>(ln.size());
+  if (pos.col < len)
+    return Pos(pos.line, pos.col + 1);
+  // At NUL: cross to next line
+  if (pos.line + 1 < n)
+    return Pos(pos.line + 1, 0);
+  return Pos(-1, -1);
+}
+
+// Advance, skipping NUL at end of non-empty lines.
+Pos vimIncl(const Lines& lines, Pos pos) {
+  Pos result = vimInc(lines, pos);
+  if (!result.isValid())
+    return result;
+  // At NUL of non-empty line (col > 0 && col >= len): skip past it
+  int len = static_cast<int>(lines[result.line].size());
+  if (result.col >= len && result.col > 0)
+    result = vimInc(lines, result);
+  return result;
+}
+
+// Retreat one position. Can land on NUL (col == lineLen of prev line).
+// Compare stepBack which lands on last real char.
+Pos vimDec(const Lines& lines, Pos pos) {
+  if (pos.col > 0)
+    return Pos(pos.line, pos.col - 1);
+  if (pos.line > 0) {
+    int len = static_cast<int>(lines[pos.line - 1].size());
+    return Pos(pos.line - 1, len); // NUL position of previous line
+  }
+  return Pos(-1, -1);
+}
+
+// Retreat, skipping NUL at end of non-empty lines.
+Pos vimDecl(const Lines& lines, Pos pos) {
+  Pos result = vimDec(lines, pos);
+  if (!result.isValid())
+    return result;
+  // At NUL of non-empty line (col > 0 && col >= len): skip past it
+  int len = static_cast<int>(lines[result.line].size());
+  if (result.col >= len && result.col > 0)
+    result = vimDec(lines, result);
+  return result;
+}
+
+// Nroff macro matching — Vim's inmacro(). File-local.
+static bool inmacro(const char* opt, char s0, char s1) {
+  for (int i = 0; opt[i]; i += 2) {
+    if (opt[i + 1] == '\0') break;
+    char m0 = opt[i], m1 = opt[i + 1];
+    if ((m0 == s0 || (m0 == ' ' && (s0 == '\0' || s0 == ' '))) &&
+        (m1 == s1 || ((m1 == '\0' || m1 == ' ') &&
+                       (s0 == '\0' || s1 == '\0' || s1 == ' ')))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool isParaBoundaryLine(const Lines& lines, int line) {
+  if (line < 0 || line >= static_cast<int>(lines.size())) return false;
+  const auto& ln = lines[line];
+  if (ln.empty()) return true;
+  if (ln[0] == '\f') return true;
+  if (ln[0] == '.') {
+    static const char* kPara = "IPLPPPQPP TPHPLIPpLpItpplpipbp";
+    static const char* kSections = "SHNHH HUnhsh";
+    char s0 = ln.size() > 1 ? ln[1] : '\0';
+    char s1 = ln.size() > 2 ? ln[2] : '\0';
+    if (inmacro(kSections, s0, s1) || inmacro(kPara, s0, s1))
+      return true;
+  }
+  return false;
+}
+
+// =============================================================================
 // 4. Word Motion Core
 // =============================================================================
 

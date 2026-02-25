@@ -1,0 +1,42 @@
+{
+  "lastUpdate": 1738454400000,
+  "repoUrl": "https://github.com/rickyah/Vimficiency",
+  "entries": {
+    "CompositionOpt": [
+      {
+        "commit": {
+          "id": "1111111111111111111111111111111111111111",
+          "message": "fixtures: baseline composition benchmarks",
+          "timestamp": "2025-02-01T00:00:00Z",
+          "url": "https://github.com/rickyah/Vimficiency/commit/1111111111111111111111111111111111111111",
+          "author": { "username": "fixtures" }
+        },
+        "date": 1738368000000,
+        "benches": [
+          { "name": "CompositionOpt/SmallDiff/DeleteOnly/iterations:5", "value": 181000, "unit": "ns/iter" },
+          { "name": "CompositionOpt/SmallDiff/InsertOnly/iterations:5", "value": 194000, "unit": "ns/iter" },
+          { "name": "CompositionOpt/MixedDiff/SingleRegion/iterations:5", "value": 318000, "unit": "ns/iter" },
+          { "name": "CompositionOpt/MixedDiff/MultiRegion/iterations:5", "value": 501000, "unit": "ns/iter" },
+          { "name": "CompositionOpt/LargeDiff/BlockReplace/iterations:5", "value": 790000, "unit": "ns/iter" }
+        ]
+      },
+      {
+        "commit": {
+          "id": "2222222222222222222222222222222222222222",
+          "message": "fixtures: follow-up composition benchmarks",
+          "timestamp": "2025-02-02T00:00:00Z",
+          "url": "https://github.com/rickyah/Vimficiency/commit/2222222222222222222222222222222222222222",
+          "author": { "username": "fixtures" }
+        },
+        "date": 1738454400000,
+        "benches": [
+          { "name": "CompositionOpt/SmallDiff/DeleteOnly/iterations:5", "value": 173000, "unit": "ns/iter" },
+          { "name": "CompositionOpt/SmallDiff/InsertOnly/iterations:5", "value": 206000, "unit": "ns/iter" },
+          { "name": "CompositionOpt/MixedDiff/SingleRegion/iterations:5", "value": 302000, "unit": "ns/iter" },
+          { "name": "CompositionOpt/MixedDiff/MultiRegion/iterations:5", "value": 540000, "unit": "ns/iter" },
+          { "name": "CompositionOpt/LargeDiff/BlockReplace/iterations:5", "value": 748000, "unit": "ns/iter" }
+        ]
+      }
+    ]
+  }
+}

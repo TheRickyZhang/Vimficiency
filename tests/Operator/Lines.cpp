@@ -266,7 +266,7 @@ TEST_F(LinesTest, MotionLineEndpoint_D0_MultiLine_NotFirstLine) {
 // =============================================================================
 
 TEST_F(LinesTest, RandomStress_LineDeleteRange) {
-  RandomGen::seed(42);
+  RandomGen::seed(TEST_SEED(42));
   const int NUM_TESTS = 50;
   int passed = 0;
 
