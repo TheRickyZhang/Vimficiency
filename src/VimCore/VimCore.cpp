@@ -265,6 +265,13 @@ CursorPos motionWordCore(CursorPos pos,
     // ge/gE (backward NextEdge): Line/word boundaries are stopping points
     if constexpr (!Forward && Edge == EdgeType::NextEdge) {
       bool crossedLine = (pos.line != prevPos.line);
+
+      // Empty lines are standalone words for backward-next semantics.
+      // When stepping back crosses onto an empty line position, stop there.
+      if (currChar == '\n') {
+        return pos;
+      }
+
       bool crossedWordBoundary =
           crossedLine || isBlank(currChar) || isBlank(prevChar) ||
           (!big && isSmallWordChar(currChar) != isSmallWordChar(prevChar));

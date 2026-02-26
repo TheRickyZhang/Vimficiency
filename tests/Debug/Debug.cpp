@@ -10,6 +10,8 @@
 #include <gtest/gtest.h>
 
 #include "Interpreter/EditInterpreter.h"
+#include "Interpreter/MotionInterpreter.h"
+#include "Interpreter/SequenceParser.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
@@ -662,6 +664,48 @@ std::unique_ptr<NeovimOracle> NeovimOracleDebug::oracle_;
 // ============================================================================
 // Begin Debug Tests
 // ============================================================================
+
+TEST_F(NeovimOracleDebug, DISABLED_InvestigateCwWhitespaceEOF) {
+  auto probe = [&](Lines source, int row, int col, string_view seq) {
+    auto nvim = oracle_->simulate(source, row, col, string(seq));
+
+    Lines interp = source;
+    CursorPos pos(row, col);
+    Mode mode = Mode::Normal;
+    string lastEdit;
+    for (const auto& e : Edit::parseEdits(seq)) {
+      Edit::applyEdit(interp, pos, mode, e, &lastEdit);
+    }
+
+    cerr << "seq='" << seq << "' src=" << source
+         << " start=(" << row << "," << col << ")\n";
+    cerr << "  nvim: " << nvim.lines << " pos=(" << nvim.row << "," << nvim.col
+         << ") mode=" << (nvim.mode == Mode::Normal ? "N" : "I") << "\n";
+    cerr << "  ours: " << interp << " pos=(" << pos.line << "," << pos.col
+         << ") mode=" << (mode == Mode::Normal ? "N" : "I") << "\n";
+    int nvimLen = nvim.lines.empty() ? -1 : static_cast<int>(nvim.lines[0].size());
+    int oursLen = interp.empty() ? -1 : static_cast<int>(interp[0].size());
+    bool same = (nvim.lines == interp && nvim.row == pos.line &&
+                 nvim.col == pos.col && nvim.mode == mode);
+    cerr << "  lens: nvim=" << nvimLen << " ours=" << oursLen
+         << " match=" << (same ? "yes" : "no") << "\n";
+  };
+
+  probe({" "}, 0, 0, "cwX<Esc>");
+  probe({" "}, 0, 0, "cw");
+  probe({" "}, 0, 0, "ceX<Esc>");
+  probe({" "}, 0, 0, "dw");
+  probe({"  "}, 0, 0, "cwX<Esc>");
+  probe({"  "}, 0, 0, "ceX<Esc>");
+  probe({"  "}, 0, 0, "dw");
+  probe({"a "}, 0, 1, "cwX<Esc>");
+  probe({"a "}, 0, 1, "ceX<Esc>");
+  probe({"a "}, 0, 0, "dw");
+  probe({"a "}, 0, 0, "de");
+  probe({"a "}, 0, 0, "ceX<Esc>");
+  probe({"a "}, 0, 0, "cwX<Esc>");
+  probe({"a "}, 0, 0, "cw");
+}
 
 TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
   // FAIL iter=11 seq='db..s fba<Esc>' initialPos=(0,2)
@@ -3415,4 +3459,356 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCaParenMask) {
   // a("b)c)"
   auto ob5 = oracle_->simulate({"a(\"b)c)\""}, 0, 0, "ca(X\x1b");
   cerr << "  'a(\"b)c)\"' col 0 [2 quotes, 3 () brackets]: '" << ob5.lines[0] << "'" << endl;
+}
+
+TEST_F(NeovimOracleDebug, DISABLED_TraceDbDwInsertMismatch) {
+  Lines initial = {"hello world"};
+  CursorPos initialPos(0, 0);
+  const string seq = "$dbdwi there<Esc>";
+
+  cerr << "=== Sequence mismatch trace ===" << endl;
+  cerr << "Initial: " << initial << " pos=(" << initialPos.line << "," << initialPos.col << ")" << endl;
+  cerr << "Sequence: '" << seq << "'" << endl;
+
+  auto nvimFull = oracle_->simulate(initial, initialPos.line, initialPos.col, seq);
+  cerr << "Neovim full: " << nvimFull.lines
+       << " pos=(" << nvimFull.row << "," << nvimFull.col << ")" << endl;
+
+  Lines interp = initial;
+  CursorPos pos = initialPos;
+  Mode mode = Mode::Normal;
+  string lastEdit;
+  auto edits = Edit::parseEdits(seq);
+  string prefix;
+  for (int i = 0; i < static_cast<int>(edits.size()); i++) {
+    const ParsedEdit& op = edits[i];
+    prefix += string(op.edit);
+    cerr << "  step[" << i << "] edit='" << op.edit << "' count="
+         << op.effectiveCount() << " mode=" << (mode == Mode::Normal ? "N" : "I") << endl;
+    Edit::applyEdit(interp, pos, mode, op, &lastEdit);
+    cerr << "    interp -> " << interp
+         << " pos=(" << pos.line << "," << pos.col << ") mode="
+         << (mode == Mode::Normal ? "N" : "I") << endl;
+    auto nvimStep = oracle_->simulate(initial, initialPos.line, initialPos.col, prefix);
+    cerr << "    nvim(pfx)-> " << nvimStep.lines
+         << " pos=(" << nvimStep.row << "," << nvimStep.col << ")" << endl;
+  }
+}
+
+TEST_F(NeovimOracleDebug, DISABLED_TraceAutoindentCountedCcMismatch) {
+  Lines initial = {"    aaa", "    bbb", "    ccc"};
+
+  cerr << "=== plain } / { probe ===" << endl;
+  {
+    auto nvimR = oracle_->simulate(initial, 1, 1, "}");
+    auto nvimL = oracle_->simulate(initial, 2, 0, "{");
+    cerr << "  nvim '}' from (1,1): pos=(" << nvimR.row << "," << nvimR.col << ")" << endl;
+    cerr << "  nvim '{' from (2,0): pos=(" << nvimL.row << "," << nvimL.col << ")" << endl;
+
+    CursorPos r(1, 1), l(2, 0);
+    VimCore::motionParagraphNext(r, initial);
+    VimCore::motionParagraphPrev(l, initial);
+    cerr << "  ours  '}' from (1,1): pos=(" << r.line << "," << r.col << ")" << endl;
+    cerr << "  ours  '{' from (2,0): pos=(" << l.line << "," << l.col << ")" << endl;
+  }
+
+  cerr << "\n=== d} probe on line 1 ===" << endl;
+  for (int col = 0; col <= 6; col++) {
+    auto nvim = oracle_->simulate(initial, 1, col, "d}");
+    Lines interp = initial;
+    CursorPos pos(1, col);
+    Mode mode = Mode::Normal;
+    string lastEdit;
+    Edit::applyEdit(interp, pos, mode, ParsedEdit("d}"), &lastEdit);
+    cerr << "  col " << col
+         << " nvim=(" << nvim.row << "," << nvim.col << ") '" << nvim.lines[0] << "'"
+         << " interp=(" << pos.line << "," << pos.col << ") '" << interp[0] << "'"
+         << endl;
+  }
+
+  cerr << "\n=== c} probe on line 0 ===" << endl;
+  for (int col = 1; col <= 4; col++) {
+    auto nvim = oracle_->simulate(initial, 0, col, "c}     xxx<Esc>");
+    Lines interp = initial;
+    CursorPos pos(0, col);
+    Mode mode = Mode::Normal;
+    string lastEdit;
+    for (const auto& op : Edit::parseEdits("c}     xxx<Esc>")) {
+      Edit::applyEdit(interp, pos, mode, op, &lastEdit);
+    }
+    cerr << "  col " << col
+         << " nvim=(" << nvim.row << "," << nvim.col << ") '" << nvim.lines[0] << "'"
+         << " interp=(" << pos.line << "," << pos.col << ") '" << interp[0] << "'"
+         << endl;
+
+    auto nvimAlt = oracle_->simulate(initial, 0, col, "d}i    xxx<Esc>");
+    Lines interpAlt = initial;
+    CursorPos posAlt(0, col);
+    Mode modeAlt = Mode::Normal;
+    string lastAlt;
+    for (const auto& op : Edit::parseEdits("d}i    xxx<Esc>")) {
+      Edit::applyEdit(interpAlt, posAlt, modeAlt, op, &lastAlt);
+    }
+    cerr << "    alt d}i: nvim=(" << nvimAlt.row << "," << nvimAlt.col
+         << ") '" << nvimAlt.lines[0] << "'"
+         << " interp=(" << posAlt.line << "," << posAlt.col << ") '"
+         << interpAlt[0] << "'" << endl;
+  }
+
+  cerr << "\n=== d( probe on line 2 ===" << endl;
+  for (int col = 0; col <= 6; col++) {
+    auto nvim = oracle_->simulate(initial, 2, col, "d(");
+    Lines interp = initial;
+    CursorPos pos(2, col);
+    Mode mode = Mode::Normal;
+    string lastEdit;
+    Edit::applyEdit(interp, pos, mode, ParsedEdit("d("), &lastEdit);
+    cerr << "  col " << col
+         << " nvim=(" << nvim.row << "," << nvim.col << ") '" << nvim.lines[0] << "'"
+         << " interp=(" << pos.line << "," << pos.col << ") '" << interp[0] << "'"
+         << endl;
+  }
+
+  auto dumpLines = [&](const char* tag, const Lines& lines) {
+    cerr << "    " << tag << " lines(" << lines.size() << "):";
+    for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+      cerr << " [" << i << "]='" << lines[i] << "'";
+    }
+    cerr << endl;
+  };
+
+  auto traceOne = [&](CursorPos start, const string& seq) {
+    cerr << "\n--- start=(" << start.line << "," << start.col << ") seq='" << seq << "' ---" << endl;
+    auto nvim = oracle_->simulate(initial, start.line, start.col, seq);
+    cerr << "  nvim: " << nvim.lines << " pos=(" << nvim.row << "," << nvim.col << ")" << endl;
+
+    Lines interp = initial;
+    CursorPos pos = start;
+    Mode mode = Mode::Normal;
+    string lastEdit;
+    auto edits = Edit::parseEdits(seq);
+    for (const ParsedEdit& op : edits) {
+      Edit::applyEdit(interp, pos, mode, op, &lastEdit);
+    }
+    cerr << "  interp: " << interp << " pos=(" << pos.line << "," << pos.col << ") mode="
+         << (mode == Mode::Normal ? "N" : "I") << endl;
+  };
+
+  traceOne(CursorPos(1, 1), "d}ce     xxx<Esc>");
+  traceOne(CursorPos(1, 2), "d}ce     xxx<Esc>");
+  traceOne(CursorPos(1, 3), "d}ce     xxx<Esc>");
+  traceOne(CursorPos(1, 4), "d}ce     xxx<Esc>");
+  traceOne(CursorPos(2, 0), "d(ce     xxx<Esc>");
+  traceOne(CursorPos(2, 0), "d(ce    xxx<Esc>");
+
+  cerr << "\n=== step trace for start=(1,1), seq='d}ce     xxx<Esc>' ===" << endl;
+  {
+    CursorPos start(1, 1);
+    const string seq = "d}ce     xxx<Esc>";
+    Lines interp = initial;
+    CursorPos pos = start;
+    Mode mode = Mode::Normal;
+    string lastEdit;
+    auto edits = Edit::parseEdits(seq);
+    string prefix;
+    for (int i = 0; i < static_cast<int>(edits.size()); i++) {
+      const ParsedEdit& op = edits[i];
+      prefix += string(op.edit);
+      cerr << "  step[" << i << "] op='" << op.edit << "' mode="
+           << (mode == Mode::Normal ? "N" : "I") << endl;
+      Edit::applyEdit(interp, pos, mode, op, &lastEdit);
+      auto nvimStep = oracle_->simulate(initial, start.line, start.col, prefix);
+      dumpLines("interp", interp);
+      cerr << "      pos=(" << pos.line << "," << pos.col
+           << ") mode=" << (mode == Mode::Normal ? "N" : "I") << endl;
+      dumpLines("nvim  ", nvimStep.lines);
+      cerr << "      pos=(" << nvimStep.row << "," << nvimStep.col << ")" << endl;
+    }
+  }
+
+  cerr << "\n=== optimizeEdit sequences (AutoindentLinewise_CountedCC) ===" << endl;
+  {
+    Lines goal = {"    xxx"};
+    EditBoundary boundary(initial, CursorPos(0, 0), initial.endPos());
+    Config config = Config::uniform();
+    EditOptimizer opt(config);
+    EditResult res = opt.optimizeEdit(initial, goal, boundary, EditOptimizerParams{}.withMaxResults(INT_MAX));
+
+    int idx = 0;
+    for (int r = 0; r < static_cast<int>(initial.size()); r++) {
+      for (int c = 0; c < initial[r].effectiveSize(); c++) {
+        const Result& rr = res.getResults()[idx++];
+        if (!rr.isValid()) continue;
+        cerr << "  pos=(" << r << "," << c << ") seq='" << rr.sequence << "'" << endl;
+        cerr << "    bytes:";
+        for (unsigned char ch : rr.sequence.view()) {
+          if (ch >= 0x20 && ch < 0x7f) cerr << " '" << ch << "'";
+          else cerr << " 0x" << hex << static_cast<int>(ch) << dec;
+        }
+        cerr << endl;
+      }
+    }
+  }
+}
+
+TEST_F(NeovimOracleDebug, DISABLED_TraceRemainingCompositionMismatches) {
+  struct Case {
+    Lines initial;
+    CursorPos start;
+    string seq;
+    Lines goal;
+  };
+
+  vector<Case> cases = {
+      {
+          {" ff,d", "edd, e,efa", "  b,."},
+          CursorPos(0, 2),
+          "}xdwi ff<Esc>",
+          {" ff,d", "edd, e,efa", "  bff"},
+      },
+      {
+          {",ccb cb", "c b,a", "f ,c.f"},
+          CursorPos(0, 0),
+          "dEce edec<Esc> <C-d>D.dwi fbe<Esc>",
+          {"edec", "c b,a", "ffbe"},
+      },
+      {
+          {"dcd. ,", "bed cabfca", "a  ,c"},
+          CursorPos(0, 0),
+          "C feafe<Esc> <C-d>D..dwi bade<Esc>",
+          {"feafe", "bed cabfca", "abade"},
+      },
+  };
+
+  auto dump = [&](const char* tag, const Lines& lines, int row, int col, Mode mode) {
+    cerr << "  " << tag << " lines(" << lines.size() << "):";
+    for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+      cerr << " [" << i << "]='" << lines[i] << "'";
+    }
+    cerr << " pos=(" << row << "," << col << ") mode=" << (mode == Mode::Normal ? "N" : "I") << endl;
+  };
+
+  for (int ci = 0; ci < static_cast<int>(cases.size()); ci++) {
+    const auto& c = cases[ci];
+    cerr << "\n=== case " << ci << " ===" << endl;
+    cerr << "seq: '" << c.seq << "' start=(" << c.start.line << "," << c.start.col << ")" << endl;
+
+    auto nvimFull = oracle_->simulate(c.initial, c.start.line, c.start.col, c.seq);
+    cerr << "goal: " << c.goal << endl;
+    cerr << "nvim full: " << nvimFull.lines << " pos=(" << nvimFull.row << "," << nvimFull.col << ")" << endl;
+    if (ci == 0) {
+      auto alt1 = oracle_->simulate(c.initial, c.start.line, c.start.col, "}xcwff<Esc>");
+      auto alt2 = oracle_->simulate(c.initial, c.start.line, c.start.col, "}xbwi ff<Esc>");
+      auto alt3 = oracle_->simulate(c.initial, c.start.line, c.start.col, "}xciwff<Esc>");
+      cerr << "  alt '}xcwff<Esc>': " << alt1.lines << endl;
+      cerr << "  alt '}xbwi ff<Esc>': " << alt2.lines << endl;
+      cerr << "  alt '}xciwff<Esc>': " << alt3.lines << endl;
+      dump("alt1 ", alt1.lines, alt1.row, alt1.col, alt1.mode);
+      dump("alt2 ", alt2.lines, alt2.row, alt2.col, alt2.mode);
+      dump("alt3 ", alt3.lines, alt3.row, alt3.col, alt3.mode);
+
+      auto replayLikeComposition = [&](const string& seq) {
+        Lines simLines = c.initial;
+        CursorPos simPos = c.start;
+        Mode simMode = Mode::Normal;
+        string lastEdit;
+        auto tokens = parseSequence(seq);
+        for (const auto& tok : tokens) {
+          if (tok.type == TokenType::Motion) {
+            if (simMode == Mode::Insert) {
+              VimCore::insertText(simLines, simPos, tok.text);
+            } else {
+              simPos = simulateMotions(simPos, tok.text, simLines);
+            }
+          } else if (tok.type == TokenType::TypedText) {
+            if (simMode == Mode::Insert) VimCore::insertText(simLines, simPos, tok.text);
+          } else {
+            auto edits = Edit::parseEdits(tok.text);
+            for (const auto& e : edits) {
+              Edit::applyEdit(simLines, simPos, simMode, e, &lastEdit);
+            }
+          }
+        }
+        cerr << "  replay '" << seq << "': " << simLines
+             << " pos=(" << simPos.line << "," << simPos.col << ") mode="
+             << (simMode == Mode::Normal ? "N" : "I") << endl;
+      };
+      replayLikeComposition("}xcwff<Esc>");
+      replayLikeComposition("}xdwi ff<Esc>");
+
+      cerr << "  step trace for alt '}xcwff<Esc>'" << endl;
+      {
+        const string seqAlt = "}xcwff<Esc>";
+        Lines interpAlt = c.initial;
+        CursorPos posAlt = c.start;
+        Mode modeAlt = Mode::Normal;
+        string lastAlt;
+        auto editsAlt = Edit::parseEdits(seqAlt);
+        string prefixAlt;
+        for (int si = 0; si < static_cast<int>(editsAlt.size()); si++) {
+          prefixAlt += string(editsAlt[si].edit);
+          Edit::applyEdit(interpAlt, posAlt, modeAlt, editsAlt[si], &lastAlt);
+          auto nStep = oracle_->simulate(c.initial, c.start.line, c.start.col, prefixAlt);
+          bool same = (interpAlt == nStep.lines) &&
+                      (posAlt.line == nStep.row) &&
+                      (posAlt.col == nStep.col) &&
+                      (modeAlt == nStep.mode);
+          cerr << "    [" << si << "] '" << editsAlt[si].edit << "'" << (same ? " OK" : " MISMATCH") << endl;
+          if (!same) {
+            dump("interp", interpAlt, posAlt.line, posAlt.col, modeAlt);
+            dump("nvim  ", nStep.lines, nStep.row, nStep.col, nStep.mode);
+          }
+        }
+      }
+
+      auto diffs = Myers::calculate(c.initial, c.goal);
+      cerr << "  diffs: " << diffs.size() << endl;
+      Config cfg = Config::uniform();
+      EditOptimizer eopt(cfg);
+      for (size_t di = 0; di < diffs.size(); di++) {
+        const auto& d = diffs[di];
+        cerr << "    diff[" << di << "] del='" << d.deletedText
+             << "' ins='" << d.insertedText
+             << "' begin=" << d.beginPos << " end=" << d.endPos
+             << " pre='" << d.boundary.prefix() << "' suf='" << d.boundary.suffix() << "'" << endl;
+        if (d.isPureInsertion()) continue;
+        EditResult er = eopt.optimizeEdit(
+            d.deletedLines(), d.insertedLines(), d.boundary,
+            EditOptimizerParams{}.withMaxResults(INT_MAX),
+            d.beginPos.line, d.beginPos.col, d.beginPos);
+        for (size_t ri = 0; ri < er.resultCount(); ri++) {
+          const auto& r = er.getResults()[ri];
+          if (!r.isValid()) continue;
+          int fullCol = static_cast<int>(ri) + (d.beginPos.line == 0 ? d.beginPos.col : 0);
+          auto n = oracle_->simulate(c.initial, d.beginPos.line, fullCol, r.sequence.str());
+          cerr << "      pos[" << ri << "] seq='" << r.sequence
+               << "' nvim=" << n.lines << endl;
+        }
+      }
+    }
+
+    if (ci == 0) {
+      Lines interp = c.initial;
+      CursorPos pos = c.start;
+      Mode mode = Mode::Normal;
+      string lastEdit;
+      auto edits = Edit::parseEdits(c.seq);
+      string prefix;
+      for (int i = 0; i < static_cast<int>(edits.size()); i++) {
+        const ParsedEdit& op = edits[i];
+        prefix += string(op.edit);
+        Edit::applyEdit(interp, pos, mode, op, &lastEdit);
+        auto nvimStep = oracle_->simulate(c.initial, c.start.line, c.start.col, prefix);
+        bool same = (interp == nvimStep.lines) &&
+                    (pos.line == nvimStep.row) &&
+                    (pos.col == nvimStep.col) &&
+                    (mode == nvimStep.mode);
+        cerr << " step[" << i << "] '" << op.edit << "'" << (same ? " OK" : " MISMATCH") << endl;
+        if (!same) {
+          dump("interp", interp, pos.line, pos.col, mode);
+          dump("nvim  ", nvimStep.lines, nvimStep.row, nvimStep.col, nvimStep.mode);
+        }
+      }
+    }
+  }
 }

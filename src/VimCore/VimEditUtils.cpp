@@ -18,6 +18,9 @@ void deleteRange(Lines& lines, const Range& range, CursorPos& pos, Mode mode) {
   r.normalize();
   if (r.isEmpty()) return;
 
+  const int originalLine = pos.line;
+  const int originalCol = pos.col;
+
   // Determine if cursor is on the deletion line BEFORE modifying pos.
   // This affects empty line removal behavior:
   // - Cursor on same line (D at col 0): keep empty line
@@ -27,10 +30,19 @@ void deleteRange(Lines& lines, const Range& range, CursorPos& pos, Mode mode) {
   // Track if this is a backward cross-line deletion from col 0 (db/dB pattern)
   // Vim has special cursor placement: skip to first non-blank of cursor's original line
   bool backwardFromCol0 = !cursorOnDeletionLine && pos.col == 0 && pos.line > r.begin.line;
+  bool forwardNormalizedToBol = cursorOnDeletionLine &&
+                                r.begin.col == 0 &&
+                                originalCol > 0 &&
+                                r.end.line > r.begin.line;
   bool lineWasRemoved = false;
 
   assert(r.begin.line >= 0 && r.begin.line < static_cast<int>(lines.size()));
   assert(r.end.line >= r.begin.line && r.end.line < static_cast<int>(lines.size()));
+  if (lines[r.end.line].empty() && r.end.col == 1) {
+    // Some forward range builders can represent "one past empty line" as col 1.
+    // Normalize to the only valid empty-line column.
+    r.end.col = 0;
+  }
   assert(r.begin.col >= 0 && r.begin.col <= static_cast<int>(lines[r.begin.line].size()));
   assert(r.end.col >= 0 && r.end.col <= static_cast<int>(lines[r.end.line].size()));
 
@@ -99,6 +111,11 @@ void deleteRange(Lines& lines, const Range& range, CursorPos& pos, Mode mode) {
     if (newCol >= static_cast<int>(line.size())) {
       newCol = 0;
     }
+  }
+  // Forward deletes normalized to BOL from indentation (d}/d) style) keep
+  // the original cursor column after line collapse.
+  else if (forwardNormalizedToBol) {
+    newCol = originalCol;
   }
 
   if (mode == Mode::Insert) {

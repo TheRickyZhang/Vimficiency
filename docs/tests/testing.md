@@ -91,6 +91,41 @@ tests/
 | Operator/ | Verify VimCore edits match Neovim | NeovimOracle |
 | *Optimizer/ | Verify optimizer outputs are correct and reproducible | Simulation + manual |
 
+## Consistency Axes
+
+Explicit cross-check commands for the three consistency axes:
+
+| Axis | Suite | Command |
+|------|-------|---------|
+| Interpreter ↔ Optimizer model | `ExplorerInterpreterConsistency.*` | `./build/tests/vimficiency_tests --gtest_filter="ExplorerInterpreterConsistency*"` |
+| Interpreter ↔ Neovim | `InterpreterOracleConsistency.*` | `./build/tests/vimficiency_tests --gtest_filter="InterpreterOracleConsistency*"` |
+| Optimizer model ↔ Interpreter ↔ Neovim (single commands) | `ThreeAxisCorrectness.*` | `./build/tests/vimficiency_consistency --gtest_filter="ThreeAxisCorrectness*"` |
+
+You can split the new triad checks by command class:
+
+```bash
+./build/tests/vimficiency_consistency --gtest_filter="ThreeAxisCorrectness.SingleMotions_*"
+./build/tests/vimficiency_consistency --gtest_filter="ThreeAxisCorrectness.SingleEdits_*"
+```
+
+Current `ThreeAxisCorrectness` coverage scope and gaps:
+
+- Covered now:
+  - Single motions only: `w W b B e E ge gE 0 ^ $ h l j k ( ) { }`
+  - Single delete-style edits emitted by `EditExplorer::exploreAllDeletions`:
+    `de dE dw dW db dB dge dgE diw daw diW daW D d0 dd x X d} d) d( J gJ`
+  - Full-buffer/no-boundary scenarios only.
+
+- Not covered yet:
+  - Counted motions and counted edits: e.g. `2w`, `3dd`, `2dw`, `2J`, `2x`, `dj`, `dk`.
+  - Change commands and insert-mode transitions: `c*`, `s`, `S`, `C`, typed insert payload + `<Esc>`.
+  - Dot-repeat semantics (`.`), including last-edit replay behavior.
+  - Multi-command sequences (composition), only single commands are checked.
+  - Boundary-context behavior (prefix/suffix, hasLinesAbove/Below, bounded endpoints).
+  - Character-find motion family `f/F/t/T` and repeaters `;` `,`.
+  - Visual mode/text-object combinations outside operator-pending single-command paths.
+  - Optimizer search ordering/cost/ranking guarantees (these are covered in optimizer suites, not triad).
+
 ## HumanApproval Tests
 
 `*HumanApprovalTest.cpp` files are intentionally heuristic quality checks.

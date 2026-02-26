@@ -1,6 +1,7 @@
 #include "VimMotionUtils.h"
 #include "VimCore.h"
 #include "VimEndpointUtils.h"
+#include "VimPortedImpl.h"
 #include "Types/EdgeType.h"
 #include "Types/LineEdgeType.h"
 
@@ -345,11 +346,11 @@ static void findsent(CursorPos& pos, const Lines& lines, bool forward) {
 } // anonymous namespace
 
 void motionSentenceNext(CursorPos &pos, const Lines &lines) {
-  findsent(pos, lines, true);
+  pos = VimCore::findsent(pos, lines, true);
 }
 
 void motionSentencePrev(CursorPos &pos, const Lines &lines) {
-  findsent(pos, lines, false);
+  pos = VimCore::findsent(pos, lines, false);
 }
 
 // =============================================================================

@@ -1,5 +1,6 @@
 #include "VimEndpointUtils.h"
 #include "VimCore.h"
+#include "VimPortedImpl.h"
 
 #include <algorithm>
 #include <cassert>
@@ -201,7 +202,6 @@ Range textObjectCore(CursorPos cursor, const Lines& lines, bool isInner,
 
 Range textObject(CursorPos cursor, const Lines& lines, bool isInner,
                  bool isBigWord) {
-
   Range range = textObjectCore(cursor, lines, isInner, isBigWord);
 
   // Clamp POSITION_OUTSIDE_BOUNDARY to buffer edges
@@ -219,131 +219,17 @@ Range textObject(CursorPos cursor, const Lines& lines, bool isInner,
 Range textObjectRange(CursorPos cursor, const Lines& lines, bool isInner,
                       bool isBigWord, int leftColOffset, int rightColOffset,
                       bool hasLinesAbove, bool hasLinesBelow) {
-
-  unsigned char c = lines.get(cursor);
-  bool cursorOnWhitespace = isBlank(c);
-
-  CursorPos start, end;
-
-  if (isInner) {
-    // diw/diW: (Backward, WordEdge) + (Forward, WordEdge)
-    if (cursorOnWhitespace) {
-      // Whitespace run doesn't use motionWordEndpoint, so no line crossing
-      // possible But we still need to check column boundaries on the result
-      Range wsRange = computeWhitespaceRun(cursor, lines);
-      start = wsRange.begin;
-      end = wsRange.end;
-
-      // Check left boundary
-      if (leftColOffset > 0 && start.line == 0 && start.col < leftColOffset) {
-        start = POSITION_OUTSIDE_BOUNDARY;
-      }
-      // Check right boundary
-      if (rightColOffset > 0) {
-        CursorPos tail = lines.getPrevPos(end);
-        if (tail == POSITION_OUTSIDE_BOUNDARY) {
-          end = POSITION_OUTSIDE_BOUNDARY;
-        } else {
-          int lastLine = lines.lastLine();
-          if (tail.line == lastLine) {
-            int lineLen = static_cast<int>(lines[lastLine].size());
-            if (tail.col >= lineLen - rightColOffset) {
-              end = POSITION_OUTSIDE_BOUNDARY;
-            }
-          }
-        }
-      }
-
-      // Whitespace-run path is already half-open.
-      return Range(start, end);
-    } else {
-      // Cursor on word/symbol - use WordEdge motions WITH boundary checking
-      start = motionWordEndpoint<false, EdgeType::WordEdge>(
-          cursor, lines, isBigWord, false, leftColOffset, hasLinesAbove);
-      end = wordEndpointToRangeEnd(
-          motionWordEndpoint<true, EdgeType::WordEdge>(
-              cursor, lines, isBigWord, false, rightColOffset, hasLinesBelow),
-          lines, EdgeType::WordEdge);
-    }
-  } else {
-    // daw/daW: depends on cursor position and trailing whitespace
-    if (cursorOnWhitespace) {
-      // Cursor in whitespace: (Backward, GapEdge) + (Forward, WordEdge)
-      // lineBounded=true: don't cross newline backward from indentation
-      start = motionWordEndpoint<false, EdgeType::GapEdge>(
-          cursor, lines, isBigWord, false, leftColOffset, hasLinesAbove, /*lineBounded=*/true);
-      CursorPos wordEnd = motionWordEndpoint<true, EdgeType::WordEdge>(
-          cursor, lines, isBigWord, false, rightColOffset, hasLinesBelow);
-      end = wordEndpointToRangeEnd(wordEnd, lines, EdgeType::WordEdge);
-
-      // If forward motion ended on whitespace, no word was found - signal
-      // invalid
-      if (wordEnd != POSITION_OUTSIDE_BOUNDARY && isBlank(lines.get(wordEnd))) {
-        end = POSITION_OUTSIDE_BOUNDARY;
-      }
-    } else {
-      // Cursor in word/symbol: check for trailing whitespace (NOT newline!)
-      CursorPos wordEnd = motionWordEndpoint<true, EdgeType::WordEdge>(
-          cursor, lines, isBigWord, false, 0, false);
-      CursorPos wordStart = motionWordEndpoint<false, EdgeType::WordEdge>(
-          cursor, lines, isBigWord, false, 0, false);
-
-      bool hasTrailingWs = false;
-      if (wordEnd != POSITION_OUTSIDE_BOUNDARY) {
-        // Check for space/tab AFTER word on SAME LINE (newline doesn't count)
-        int nextCol = wordEnd.col + 1;
-        if (nextCol < static_cast<int>(lines[wordEnd.line].size())) {
-          hasTrailingWs = isWhitespace(lines[wordEnd.line][nextCol]);
-        }
-      }
-
-      if (hasTrailingWs) {
-        // Has trailing ws: (Backward, WordEdge) + (Forward, GapEdge)
-        // lineBounded=true: trailing whitespace doesn't cross lines
-        start = motionWordEndpoint<false, EdgeType::WordEdge>(
-            cursor, lines, isBigWord, false, leftColOffset, hasLinesAbove);
-        end = wordEndpointToRangeEnd(
-            motionWordEndpoint<true, EdgeType::GapEdge>(
-                cursor, lines, isBigWord, false, rightColOffset, hasLinesBelow, /*lineBounded=*/true),
-            lines, EdgeType::GapEdge);
-      } else {
-        // No trailing ws: include leading whitespace ONLY if there's a word
-        // before on same line. Use lineBounded backward GapEdge - if it returns
-        // col 0 or crosses lines, there's only indentation before the word.
-        CursorPos gapStart = motionWordEndpoint<false, EdgeType::GapEdge>(
-            cursor, lines, isBigWord, false, leftColOffset, hasLinesAbove, /*lineBounded=*/true);
-        if (gapStart != POSITION_OUTSIDE_BOUNDARY &&
-            gapStart.line == cursor.line && gapStart.col > 0) {
-          // Word before on same line: include leading whitespace
-          start = gapStart;
-        } else {
-          // Check if we're rejecting because boundary clips the whitespace.
-          // If whitespace exists before the word but falls in the prefix
-          // boundary, Vim's `aw` would still include it — reject to avoid
-          // producing a range that disagrees with actual Vim behavior.
-          CursorPos wordStart = motionWordEndpoint<false, EdgeType::WordEdge>(
-              cursor, lines, isBigWord, false, leftColOffset, hasLinesAbove);
-          if (wordStart != POSITION_OUTSIDE_BOUNDARY &&
-              wordStart.line == cursor.line && wordStart.col > 0 &&
-              isBlank(lines[wordStart.line][wordStart.col - 1])) {
-            start = POSITION_OUTSIDE_BOUNDARY;
-          } else {
-            start = wordStart;
-          }
-        }
-        end = wordEndpointToRangeEnd(
-            motionWordEndpoint<true, EdgeType::WordEdge>(
-                cursor, lines, isBigWord, false, rightColOffset, hasLinesBelow),
-            lines, EdgeType::WordEdge);
-      }
-    }
+  // Keep the no-boundary behavior identical between interpreter (textObject)
+  // and explorer/model (textObjectRange).
+  if (leftColOffset == 0 && rightColOffset == 0 &&
+      !hasLinesAbove && !hasLinesBelow) {
+    return textObject(cursor, lines, isInner, isBigWord);
   }
 
-  // Return half-open [begin, end), where invalid endpoints propagate as sentinels.
-  if (!start.isValid() || !end.isValid()) {
-    return Range(start, end);
-  }
-  return Range(start, end);
+  // Boundary-aware variant delegates to ported Neovim current_word().
+  return currentWordBounded(cursor, lines, !isInner, isBigWord,
+                            leftColOffset, rightColOffset,
+                            hasLinesAbove, hasLinesBelow);
 }
 
 // =============================================================================

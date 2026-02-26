@@ -8,6 +8,8 @@
 #include "Optimizer/BuildTypedCommands.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 
+#include "Interpreter/EditInterpreter.h"
+#include "Interpreter/MotionInterpreter.h"
 #include "Interpreter/SequenceParser.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Optimizer/CompositionOptimizer/CompositionState.h"
@@ -17,6 +19,7 @@
 #include "Types/QuoteFlags.h"
 #include "Utils/StringUtils.h"
 #include "VimCore/VimCore.h"
+#include "VimCore/VimEditUtils.h"
 
 using namespace std;
 
@@ -81,6 +84,47 @@ CompositionResult CompositionOptimizer::optimize(
 
   vector<Result> results;
 
+  auto reachesGoalByReplay = [&](const Sequence& sequence) {
+    Lines simLines = initialLines;
+    CursorPos simPos = initialPos;
+    Mode simMode = Mode::Normal;
+    string lastEdit;
+
+    vector<SequenceToken> tokens = parseSequence(sequence.view());
+    for (const SequenceToken& token : tokens) {
+      switch (token.type) {
+        case TokenType::Motion:
+          if (simMode == Mode::Insert) {
+            VimCore::insertText(simLines, simPos, token.text);
+          } else {
+            try {
+              simPos = simulateMotions(simPos, token.text, simLines, navigationContext);
+            } catch (const std::exception&) {
+              return false;
+            }
+          }
+          break;
+
+        case TokenType::Delete:
+        case TokenType::Change:
+        case TokenType::Escape: {
+          vector<ParsedEdit> edits = Edit::parseEdits(token.text);
+          for (const ParsedEdit& op : edits) {
+            Edit::applyEdit(simLines, simPos, simMode, op, &lastEdit);
+          }
+          break;
+        }
+
+        case TokenType::TypedText:
+          if (simMode != Mode::Insert) return false;
+          VimCore::insertText(simLines, simPos, token.text);
+          break;
+      }
+    }
+
+    return simLines == goalLines;
+  };
+
   // Initialize starting state with heuristic cost
   CompositionState startingState(initialPos, Mode::Normal, 0);
   startingState.setCost(ctx.heuristic(startingState, 0));
@@ -97,6 +141,10 @@ CompositionResult CompositionOptimizer::optimize(
     ctx.markProcessed();
 
     if (ctx.isGoal(s)) {
+      if (false && !reachesGoalByReplay(s.getSequence())) {
+        debug("discard non-goal replay:", "\"" + s.getSequence().str() + "\"");
+        continue;
+      }
       double effort = s.getRunningEffort().getEffort(config);
       debug("GOAL #" + to_string(results.size()) + ":",
             "\"" + s.getSequence().str() + "\"", "effort:", effort);

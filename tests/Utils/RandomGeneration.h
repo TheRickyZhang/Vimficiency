@@ -7,6 +7,8 @@
 #include <random>
 #include <utility>
 
+#include "Utils/SeedManager.h"
+
 template <typename T>
 concept Indexable = requires(T t, size_t i) {
   { t[i] };

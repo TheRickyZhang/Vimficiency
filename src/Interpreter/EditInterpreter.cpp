@@ -3,6 +3,7 @@
 #include "VimCore/VimEditUtils.h"
 #include "VimCore/VimEndpointUtils.h"
 #include "VimCore/VimMotionUtils.h"
+#include "VimCore/VimPortedImpl.h"
 #include "VimCore/VimOptions.h"
 #include "VimCore/VimTextObjectsLegacy.h"
 #include "VimCore/VimCore.h"
@@ -87,6 +88,17 @@ static bool inBoundaryRegion(const CursorPos& pos, const Lines& lines,
   return false;
 }
 
+// For forward exclusive operators (d)/d} style), Neovim effectively treats
+// leading indentation as part of linewise crossing behavior.
+static CursorPos normalizeForwardExclusiveStart(const CursorPos& start,
+                                                const CursorPos& goal,
+                                                const Lines& lines) {
+  if (goal.line <= start.line) return start;
+  int firstNonBlank = VimCore::firstNonBlankColInLineStr(lines[start.line]);
+  if (start.col <= firstNonBlank) return CursorPos(start.line, 0);
+  return start;
+}
+
 // -----------------------------------------------------------------------------
 // Shared d/c operator helpers - compute range and delete with given mode
 // These ensure d and c operators have identical range computation.
@@ -113,14 +125,28 @@ static void deleteToWordEnd(Lines& lines, CursorPos& pos, int count, bool big, M
 // dw/dW: delete to next word start (exclusive motion, special line-crossing rule)
 static void deleteToNextWord(Lines& lines, CursorPos& pos, int count, bool big, Mode mode) {
   CursorPos goalPos = pos;
-  for (int i = 0; i < count; i++) VimCore::motionW(goalPos, lines, big);
+  bool hitEof = false;
+  for (int i = 0; i < count; i++) {
+    CursorPos before = goalPos;
+    VimCore::motionW(goalPos, lines, big);
+    if (goalPos == before) {
+      int lineLen = static_cast<int>(lines[before.line].size());
+      bool atLastRealChar = (before.line == lines.lastLine()) &&
+                            (lineLen > 0) &&
+                            (before.col == lineLen - 1);
+      if (atLastRealChar) hitEof = true;
+      break;
+    }
+  }
 
   if (shouldStopAtEndOfLine(count, pos, goalPos, lines)) {
     // Special case: single dw on non-empty line crossing to next line
     deleteToEndOfLine(lines, pos);
-  } else if (isPastEndPosition(lines, goalPos)) {
-    // Motion wanted to go past EOF - delete to last char inclusive
-    goalPos.setCol(static_cast<int>(lines[goalPos.line].size()) - 1);
+  } else if (hitEof || isPastEndPosition(lines, goalPos)) {
+    // Motion wanted to go past EOF - include the last reachable character.
+    if (isPastEndPosition(lines, goalPos)) {
+      goalPos.setCol(static_cast<int>(lines[goalPos.line].size()) - 1);
+    }
     if (goalPos.line > pos.line || goalPos.col >= pos.col) {
       Range r(pos, onePastOnSameLine(lines, goalPos));
       VimCore::deleteRange(lines, r, pos, mode);
@@ -141,6 +167,14 @@ static void deleteToNextWord(Lines& lines, CursorPos& pos, int count, bool big, 
 
 // db/dB: delete backward to word start (exclusive motion)
 static void deleteBackToWordStart(Lines& lines, CursorPos& pos, int count, bool big, Mode mode) {
+  if (count == 1) {
+    Range range = VimCore::deleteWordBackwardRange(pos, lines, big);
+    if (range.begin < range.end) {
+      VimCore::deleteRange(lines, range, pos, mode);
+    }
+    return;
+  }
+
   CursorPos initialPos = pos;
   for (int i = 0; i < count; i++) VimCore::motionB(initialPos, lines, big);
 
@@ -401,6 +435,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
       case hash("dd"):
         if (pos.line + count > n) {
           assert(false && "dd requires more lines");
+          return;
         }
         lines.erase(lines.begin() + pos.line, lines.begin() + pos.line + count);
         // Maintain invariant: buffer always has at least one line
@@ -474,26 +509,22 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
       case hash("dW"):
         if (hasBoundaryContext && count == 1) {
           bool big = (e == "dW");
-          EdgeType endpointEdge = EdgeType::GapEdge;
-          CursorPos endpoint = VimCore::motionWordEndpoint<true, EdgeType::GapEdge>(
-              pos, lines, big, false,
-              rightColOffset, hasLinesBelow, /*lineBounded=*/false);
-          if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == pos) {
+          Range range = VimCore::deleteWordForwardRangeBounded(
+              pos, lines, big, rightColOffset, hasLinesBelow);
+          if (!range.begin.isValid() || !range.end.isValid() ||
+              range.begin == POSITION_OUTSIDE_BOUNDARY ||
+              range.end == POSITION_OUTSIDE_BOUNDARY ||
+              !(range.begin < range.end)) {
             assert(false && "dw/dW has no effect or crosses boundary");
           }
-          // Match EditExplorer semantics: dw/dW do not cross lines.
-          if (endpoint.line > pos.line) {
-            endpoint = VimCore::motionWordEndpoint<true, EdgeType::WordEdge>(
-                pos, lines, big, false,
-                rightColOffset, hasLinesBelow, /*lineBounded=*/false);
-            if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == pos) {
-              assert(false && "dw/dW has no effect or crosses boundary");
-            }
-            endpointEdge = EdgeType::WordEdge;
+          VimCore::deleteRange(lines, range, pos, Mode::Normal);
+          return;
+        }
+        if (count == 1) {
+          Range range = VimCore::deleteWordForwardRange(pos, lines, e == "dW");
+          if (range.begin < range.end) {
+            VimCore::deleteRange(lines, range, pos, Mode::Normal);
           }
-          CursorPos end = VimCore::wordEndpointToRangeEnd(endpoint, lines, endpointEdge);
-          VimCore::deleteRange(lines, Range(pos, end),
-                               pos, Mode::Normal);
           return;
         }
         deleteToNextWord(lines, pos, count, e == "dW", Mode::Normal);
@@ -522,26 +553,13 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
       case hash("dB"):
         if (hasBoundaryContext && count == 1) {
           bool big = (e == "dB");
-          CursorPos endpoint = VimCore::motionWordEndpoint<false, EdgeType::WordEdge>(
-              pos, lines, big, true,
-              leftColOffset, hasLinesAbove, /*lineBounded=*/false);
-          if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == pos) {
+          Range range = VimCore::deleteWordBackwardRangeBounded(
+              pos, lines, big, leftColOffset, hasLinesAbove);
+          if (!range.begin.isValid() || !range.end.isValid() ||
+              !(range.begin < range.end)) {
             assert(false && "db/dB has no effect or crosses boundary");
           }
-
-          CursorPos end = POSITION_OUTSIDE_BOUNDARY;
-          int cursorContentCol = pos.col - (pos.line == 0 ? leftColOffset : 0);
-          if (cursorContentCol > 0) {
-            end = CursorPos(pos.line, pos.col);
-          } else if (endpoint.line < pos.line) {
-            int prevLine = pos.line - 1;
-            end = CursorPos(prevLine, static_cast<int>(lines[prevLine].size()));
-          }
-
-          if (end == POSITION_OUTSIDE_BOUNDARY) {
-            assert(false && "db/dB has no effect at boundary");
-          }
-          VimCore::deleteRange(lines, Range(endpoint, end), pos, Mode::Normal);
+          VimCore::deleteRange(lines, range, pos, Mode::Normal);
           return;
         }
         if (pos.line == 0 && pos.col == 0) {
@@ -581,6 +599,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           int endLine = pos.line + count + 1;
           if (endLine > n) {
             assert(false && "dj requires more lines below");
+            return;
           }
           VimCore::deleteRangeLinewise(lines, LineRange(pos.line, endLine), pos, hasLinesBelow);
         }
@@ -592,6 +611,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           int beginLine = pos.line - count;
           if (beginLine < 0) {
             assert(false && "dk requires more lines above");
+            return;
           }
           VimCore::deleteRangeLinewise(lines, LineRange(beginLine, pos.line + 1), pos, hasLinesBelow);
         }
@@ -667,48 +687,52 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
             return;
           }
           bool big = (e == "cW");
-          unsigned char c = static_cast<unsigned char>(line[pos.col]);
-          bool onWord = big ? VimCore::isBigWordChar(c) : VimCore::isSmallWordChar(c);
+          if (count > 1) {
+            // Counted cw/cW follow c{count}w/c{count}W semantics.
+            deleteToNextWord(lines, pos, count, big, Mode::Insert);
+            mode = Mode::Insert;
+            return;
+          }
 
-          if (onWord) {
-            // On a word: find end of CURRENT word (don't use e motion which goes to next word)
-            // Stay on same line, find last char of current word type
-            auto isWordChar = [big](unsigned char ch) {
-              return big ? VimCore::isBigWordChar(ch) : VimCore::isSmallWordChar(ch);
-            };
-            int endCol = pos.col;
-            int lineLen = static_cast<int>(line.size());
-            while (endCol + 1 < lineLen && isWordChar(static_cast<unsigned char>(line[endCol + 1]))) {
-              endCol++;
+          unsigned char c = static_cast<unsigned char>(line[pos.col]);
+          if (!VimCore::isBlank(c)) {
+            // Single cw/cW on non-blank: change to end of current word class.
+            CursorPos wordEnd = VimCore::motionWordEndpoint<true, EdgeType::WordEdge>(
+                pos, lines, big, false, 0, false);
+            if (wordEnd == POSITION_OUTSIDE_BOUNDARY || wordEnd < pos) {
+              wordEnd = pos;
             }
-            // Delete from current position to end of current word (inclusive)
-            // Use Insert mode for positioning since we're about to enter Insert mode
-            Range r(pos, CursorPos(pos.line, endCol + 1));
+            Range r(pos, onePastOnSameLine(lines, wordEnd));
             VimCore::deleteRange(lines, r, pos, Mode::Insert);
           } else {
-            // On whitespace: use w/W motion (change to start of next word)
+            // On whitespace: use w/W motion and delete through the whitespace run.
             CursorPos goalPos = pos;
-            for (int i = 0; i < count; i++) VimCore::motionW(goalPos, lines, big);
-            if (shouldStopAtEndOfLine(count, pos, goalPos, lines)) {
+            VimCore::motionW(goalPos, lines, big);
+
+            if (goalPos.line == pos.line &&
+                goalPos.col >= pos.col &&
+                goalPos.col < static_cast<int>(lines[goalPos.line].size()) &&
+                VimCore::isBlank(static_cast<unsigned char>(lines[goalPos.line][goalPos.col]))) {
+              // motionW remained inside trailing whitespace (e.g. "  " at EOF).
+              Range r(pos, CursorPos(goalPos.line, goalPos.col + 1));
+              VimCore::deleteRange(lines, r, pos, Mode::Insert);
+            } else if (shouldStopAtEndOfLine(count, pos, goalPos, lines)) {
               deleteToEndOfLine(lines, pos);
             } else if (isPastEndPosition(lines, goalPos)) {
-              // w motion wanted to go past EOF - delete to last char inclusive
               goalPos.setCol(static_cast<int>(lines[goalPos.line].size()) - 1);
               if (goalPos.line > pos.line || goalPos.col >= pos.col) {
                 Range r(pos, CursorPos(goalPos.line, goalPos.col + 1));
-                VimCore::deleteRange(lines, r, pos);
+                VimCore::deleteRange(lines, r, pos, Mode::Insert);
               }
             } else if (goalPos.line > pos.line || goalPos.col > pos.col) {
-              // Normal case: goalPos is already exclusive, except col 0 on next line.
               CursorPos end;
               if (goalPos.col > 0) {
                 end = goalPos;
               } else {
-                // goalPos at col 0 of new line - delete to end of previous line.
                 end = CursorPos(goalPos.line - 1, static_cast<int>(lines[goalPos.line - 1].size()));
               }
               Range r(pos, end);
-              VimCore::deleteRange(lines, r, pos);
+              VimCore::deleteRange(lines, r, pos, Mode::Insert);
             }
           }
           mode = Mode::Insert;
@@ -723,34 +747,32 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
 
       case hash("cb"):
       case hash("cB"):
-        if (pos.line == 0 && pos.col == 0) {
-          assert(false && "cb/cB at start of buffer has no effect");
-        }
         {
           bool big = (e == "cB");
-          CursorPos initialPos = pos;
-          for (int i = 0; i < count; i++) VimCore::motionB(initialPos, lines, big);
-          if (initialPos < pos) {
-            // For cb/cB, don't delete across newline boundaries (same as cw/cW)
-            // If motion crossed to previous line and we're at col 0, only delete
-            // to end of the line where b landed
-            CursorPos goalPos;
-            if (initialPos.line < pos.line && pos.col == 0) {
-              // Delete to end of the line where b landed
-              int lastCol = static_cast<int>(lines[initialPos.line].size()) - 1;
-              goalPos = CursorPos(initialPos.line, lastCol >= 0 ? lastCol : 0);
-            } else {
-              goalPos = CursorPos(pos.line, pos.col > 0 ? pos.col - 1 : 0);
+          if (count == 1) {
+            Range range = hasBoundaryContext
+                ? VimCore::deleteWordBackwardRangeBounded(
+                      pos, lines, big, leftColOffset, hasLinesAbove)
+                : VimCore::deleteWordBackwardRange(pos, lines, big);
+            if (range.begin == POSITION_OUTSIDE_BOUNDARY ||
+                range.end == POSITION_OUTSIDE_BOUNDARY) {
+              assert(false && "cb/cB has no effect or crosses boundary");
+              return;
             }
-            if (initialPos <= goalPos) {
-              CursorPos end =
-                  (initialPos.line < pos.line && pos.col == 0)
-                      ? CursorPos(initialPos.line, static_cast<int>(lines[initialPos.line].size()))
-                      : CursorPos(pos.line, pos.col);
-              Range r(initialPos, end);
-              VimCore::deleteRange(lines, r, pos);
+            if (range.begin < range.end) {
+              VimCore::deleteRange(lines, range, pos, Mode::Insert);
+            } else if (pos.line == 0 && pos.col == 0) {
+              assert(false && "cb/cB at start of buffer has no effect");
+              return;
             }
+            mode = Mode::Insert;
+            return;
           }
+          if (pos.line == 0 && pos.col == 0) {
+            assert(false && "cb/cB at start of buffer has no effect");
+            return;
+          }
+          deleteBackToWordStart(lines, pos, count, big, Mode::Insert);
           mode = Mode::Insert;
         }
         return;
@@ -828,11 +850,14 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
         {
           CursorPos goalPos = pos;
           for (int i = 0; i < count; i++) VimCore::motionParagraphNext(goalPos, lines);
+          CursorPos startPos = (e[0] == 'd')
+              ? normalizeForwardExclusiveStart(pos, goalPos, lines)
+              : pos;
           // Paragraph-specific: } at EOF (last non-blank line) is inclusive.
           bool atEof = goalPos.line == lines.lastLine()
                     && !VimCore::isBlankLineStr(lines[goalPos.line]);
-          if (goalPos > pos || (atEof && goalPos >= pos)) {
-            Range range(pos, goalPos);
+          if (goalPos > startPos || (atEof && goalPos >= startPos)) {
+            Range range(startPos, goalPos);
             if (atEof) {
               // Inclusive at EOF: extend end by one char to make half-open.
               int eofLineLen = static_cast<int>(lines[goalPos.line].size());
@@ -888,14 +913,54 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
               }
               goalPos = endpoint;
             } else {
-              VimCore::motionSentenceNext(goalPos, lines);
+              CursorPos motionGoal = goalPos;
+              VimCore::motionSentenceNext(motionGoal, lines);
+              CursorPos endpointGoal =
+                  VimCore::motionSentenceEndpoint<true, SentenceEdgeType::NextEdge>(
+                      goalPos, lines, 0, false);
+              bool eofOneCharAdvance =
+                  (endpointGoal.line == motionGoal.line) &&
+                  (endpointGoal.line == lines.lastLine()) &&
+                  (endpointGoal.col == motionGoal.col + 1) &&
+                  (endpointGoal.col ==
+                   std::max(0, static_cast<int>(lines[endpointGoal.line].size()) - 1));
+              goalPos = eofOneCharAdvance ? endpointGoal : motionGoal;
             }
           }
+          CursorPos startPos = (e[0] == 'd')
+              ? normalizeForwardExclusiveStart(pos, goalPos, lines)
+              : pos;
           // Forward: exclusive end = goalPos (motion destination).
-          if (goalPos != POSITION_OUTSIDE_BOUNDARY && goalPos > pos) {
-            Range range(pos, goalPos);
-            VimCore::adjustExclusiveRange(range, lines);
-            VimCore::deleteRange(lines, range, pos, e[0] == 'c' ? Mode::Insert : Mode::Normal);
+          if (goalPos != POSITION_OUTSIDE_BOUNDARY && goalPos > startPos) {
+            Range range(startPos, goalPos);
+            bool atEof = (goalPos.line == lines.lastLine()) &&
+                         !VimCore::isBlankLineStr(lines[goalPos.line]) &&
+                         (goalPos.col == std::max(0, static_cast<int>(lines[goalPos.line].size()) - 1));
+            if (atEof) {
+              bool includeEofChar = true;
+              if (goalPos.col == 0) {
+                int pl = goalPos.line;
+                int pc = goalPos.col;
+                if (VimCore::stepBack(lines, pl, pc)) {
+                  unsigned char prevChar = static_cast<unsigned char>(lines[pl][pc]);
+                  if (VimCore::isSentenceEnd(prevChar) ||
+                      VimCore::isSentenceCloser(prevChar)) {
+                    includeEofChar = false;
+                  }
+                }
+              }
+              atEof = includeEofChar;
+            }
+            if (atEof) {
+              int lineLen = static_cast<int>(lines[goalPos.line].size());
+              range.end = CursorPos(goalPos.line, std::min(goalPos.col + 1, lineLen));
+            }
+            auto adj = VimCore::adjustExclusiveRange(range, lines);
+            if (adj == VimCore::ExclusiveAdjust::Linewise && e[0] == 'd') {
+              VimCore::deleteRangeLinewise(lines, LineRange(range.begin.line, range.end.line), pos);
+            } else {
+              VimCore::deleteRange(lines, range, pos, e[0] == 'c' ? Mode::Insert : Mode::Normal);
+            }
           }
           if (e[0] == 'c') mode = Mode::Insert;
         }
@@ -904,6 +969,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
       case hash("d("):
       case hash("c("):
         {
+          CursorPos cursorBefore = pos;
           CursorPos initialPos = pos;
           for (int i = 0; i < count; i++) {
             if (hasBoundaryContext) {
@@ -924,6 +990,15 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
             Range range(initialPos, pos);
             VimCore::adjustExclusiveRange(range, lines);
             VimCore::deleteRange(lines, range, pos, e[0] == 'c' ? Mode::Insert : Mode::Normal);
+            if (e[0] == 'd' &&
+                cursorBefore.col == 0 &&
+                initialPos.line < cursorBefore.line &&
+                initialPos.col == 0 &&
+                pos.line >= 0 &&
+                pos.line < static_cast<int>(lines.size()) &&
+                !lines[pos.line].empty()) {
+              pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+            }
           }
           if (e[0] == 'c') mode = Mode::Insert;
         }
@@ -1190,6 +1265,14 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
         pos.clampColPreservingTarget(min(pos.targetCol, static_cast<int>(lines[pos.line].size())));
         return;
     }
+
+    // Insert mode fallback: plain typed character (including whitespace/punctuation).
+    if (e.size() == 1) {
+      for (int rep = 0; rep < count; rep++) {
+        VimCore::insertText(lines, pos, e);
+      }
+      return;
+    }
   }
 
   assert(false && "Unknown edit");
@@ -1203,8 +1286,38 @@ vector<ParsedEdit> parseEdits(string_view seq) {
   string_view sv(seq);
   vector<ParsedEdit> result;
   size_t i = 0;
+  Mode parseMode = Mode::Normal;
+
+  auto maybeEnterInsert = [&](string_view token) {
+    if (parseMode != Mode::Normal) return;
+    if (token.empty()) return;
+    if (token == "i" || token == "I" || token == "a" || token == "A" ||
+        token == "o" || token == "O" || token == "s" || token == "S" ||
+        token == "R" || (token[0] == 'c' && token.size() > 1)) {
+      parseMode = Mode::Insert;
+    }
+  };
 
   while (i < sv.size()) {
+    // Insert-mode parsing is stateful: everything is literal except <...> keys.
+    if (parseMode == Mode::Insert) {
+      if (sv[i] == '<') {
+        size_t close = sv.find('>', i);
+        if (close == string_view::npos) {
+          throw runtime_error("Malformed special edit key sequence");
+        }
+        string_view special = sv.substr(i, close - i + 1);
+        result.push_back(ParsedEdit{special, 0});
+        i = close + 1;
+        if (special == "<Esc>") parseMode = Mode::Normal;
+        continue;
+      }
+
+      result.push_back(ParsedEdit{sv.substr(i, 1), 0});
+      i++;
+      continue;
+    }
+
     char c = sv[i];
 
     // Parse optional count prefix
@@ -1232,6 +1345,7 @@ vector<ParsedEdit> parseEdits(string_view seq) {
         string_view special = sv.substr(i, close - i + 1);
         result.push_back(ParsedEdit{special, cnt});
         i = close + 1;
+        if (special == "<Esc>") parseMode = Mode::Normal;
         continue;
       }
       throw runtime_error("Malformed special edit key sequence");
@@ -1248,15 +1362,19 @@ vector<ParsedEdit> parseEdits(string_view seq) {
     if (c == 'd' || c == 'c') {
       // Check for doubled operator (dd, cc)
       if (i + 1 < sv.size() && sv[i + 1] == c) {
-        result.push_back(ParsedEdit{sv.substr(i, 2), cnt});
+        string_view tok = sv.substr(i, 2);
+        result.push_back(ParsedEdit{tok, cnt});
         i += 2;
+        maybeEnterInsert(tok);
         continue;
       }
 
       // Check for text objects: d/c + i/a + object
       if (i + 2 < sv.size() && (sv[i + 1] == 'i' || sv[i + 1] == 'a')) {
-        result.push_back(ParsedEdit{sv.substr(i, 3), cnt});
+        string_view tok = sv.substr(i, 3);
+        result.push_back(ParsedEdit{tok, cnt});
         i += 3;
+        maybeEnterInsert(tok);
         continue;
       }
 
@@ -1265,19 +1383,25 @@ vector<ParsedEdit> parseEdits(string_view seq) {
         char next = sv[i + 1];
         // g-prefix motions: dge, dgE
         if (next == 'g' && i + 2 < sv.size()) {
-          result.push_back(ParsedEdit{sv.substr(i, 3), cnt});
+          string_view tok = sv.substr(i, 3);
+          result.push_back(ParsedEdit{tok, cnt});
           i += 3;
+          maybeEnterInsert(tok);
           continue;
         }
         // Simple motions: dw, de, db, d0, d$, etc.
-        result.push_back(ParsedEdit{sv.substr(i, 2), cnt});
+        string_view tok = sv.substr(i, 2);
+        result.push_back(ParsedEdit{tok, cnt});
         i += 2;
+        maybeEnterInsert(tok);
         continue;
       }
 
       // Fallback: just the operator character
-      result.push_back(ParsedEdit{sv.substr(i, 1), cnt});
+      string_view tok = sv.substr(i, 1);
+      result.push_back(ParsedEdit{tok, cnt});
       i++;
+      maybeEnterInsert(tok);
       continue;
     }
 
@@ -1303,13 +1427,19 @@ vector<ParsedEdit> parseEdits(string_view seq) {
       if (i < sv.size()) {
         i++;  // Include the operator
       }
-      result.push_back(ParsedEdit{sv.substr(start, i - start), cnt});
+      string_view tok = sv.substr(start, i - start);
+      result.push_back(ParsedEdit{tok, cnt});
+      if (!tok.empty() && tok.back() == 'c') {
+        parseMode = Mode::Insert;
+      }
       continue;
     }
 
     // Single character (for insert mode typed characters, navigation, etc.)
-    result.push_back(ParsedEdit{sv.substr(i, 1), cnt});
+    string_view tok = sv.substr(i, 1);
+    result.push_back(ParsedEdit{tok, cnt});
     i++;
+    maybeEnterInsert(tok);
   }
 
   return result;

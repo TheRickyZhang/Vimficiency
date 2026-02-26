@@ -92,7 +92,8 @@ public:
   template<bool Forward>
   void exploreSentenceEdits(
       const std::vector<Edit::SentenceEditSpecNoDir>& specs,
-      const CursorPos& cursor, const Lines& lines, DeletionCallback onDeletion);
+      const CursorPos& cursor, const Lines& lines,
+      DeletionCallback onDeletion, LinewiseCallback onLinewise);
 
   // ================== Non-templated Exploration Methods ==================
   void exploreTextObjectEdits(

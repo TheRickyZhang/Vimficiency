@@ -115,7 +115,7 @@ TEST_F(CompositionOptimizerOutputCorrectness, SingleLine_Edit) {
         string marker(editStart, ' ');
         marker += string(editEnd - editStart, '^');
 
-        cerr << "FAIL iter=" << iter << " seq='" << seq << "'"
+        cerr << "FAIL iter=" << iter << " pos=" << initialPos << " seq='" << seq << "'"
              << " initialPos=(0," << cursorCol << ")\n"
              << "  Initial: '" << line << "'\n"
              << "            " << marker << "\n"
@@ -186,7 +186,7 @@ TEST_F(CompositionOptimizerOutputCorrectness, MultiLine_SingleEdit) {
       passed++;
     } else {
       if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " seq='" << seq << "'\n"
+        cerr << "FAIL iter=" << iter << " pos=" << initialPos << " seq='" << seq << "'\n"
              << "  Initial: " << initial << "\n"
              << "  Goal:    " << goal << "\n"
              << "  Got:     " << nvim.lines << endl;
@@ -251,7 +251,7 @@ TEST_F(CompositionOptimizerOutputCorrectness, PureInsertion) {
       passed++;
     } else {
       if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " seq='" << seq << "'\n"
+        cerr << "FAIL iter=" << iter << " pos=" << initialPos << " seq='" << seq << "'\n"
              << "  Initial: " << initial << "\n"
              << "  Goal:    " << goal << "\n"
              << "  Got:     " << nvim.lines << endl;
@@ -311,7 +311,7 @@ TEST_F(CompositionOptimizerOutputCorrectness, PureDeletion) {
       passed++;
     } else {
       if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " seq='" << seq << "'\n"
+        cerr << "FAIL iter=" << iter << " pos=" << initialPos << " seq='" << seq << "'\n"
              << "  Initial: " << initial << "\n"
              << "  Goal:    " << goal << "\n"
              << "  Got:     " << nvim.lines << endl;
@@ -368,7 +368,7 @@ TEST_F(CompositionOptimizerOutputCorrectness, InsertNewLine) {
       passed++;
     } else {
       if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " seq='" << seq << "'\n"
+        cerr << "FAIL iter=" << iter << " pos=" << initialPos << " seq='" << seq << "'\n"
              << "  Initial: " << initial << "\n"
              << "  Goal:    " << goal << "\n"
              << "  Got:     " << nvim.lines << endl;
@@ -420,7 +420,7 @@ TEST_F(CompositionOptimizerOutputCorrectness, DeleteEntireLine) {
       passed++;
     } else {
       if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " seq='" << seq << "'\n"
+        cerr << "FAIL iter=" << iter << " pos=" << initialPos << " seq='" << seq << "'\n"
              << "  Initial: " << initial << "\n"
              << "  Goal:    " << goal << "\n"
              << "  Got:     " << nvim.lines << endl;
@@ -481,7 +481,7 @@ TEST_F(CompositionOptimizerOutputCorrectness, TwoEdits_SameLine) {
       passed++;
     } else {
       if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " seq='" << seq << "'\n"
+        cerr << "FAIL iter=" << iter << " pos=" << initialPos << " seq='" << seq << "'\n"
              << "  Initial: '" << line << "'\n"
              << "  Goal:    '" << goalStr << "'\n"
              << "  Got:     " << nvim.lines << endl;
@@ -531,7 +531,7 @@ TEST_F(CompositionOptimizerOutputCorrectness, TwoEdits_DifferentLines) {
       passed++;
     } else {
       if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " seq='" << seq << "'\n"
+        cerr << "FAIL iter=" << iter << " pos=" << initialPos << " seq='" << seq << "'\n"
              << "  Initial: " << initial << "\n"
              << "  Goal:    " << goal << "\n"
              << "  Got:     " << nvim.lines << endl;

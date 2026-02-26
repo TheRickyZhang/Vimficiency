@@ -94,26 +94,29 @@ KeyedSequence deleteToChangeChar(const SequenceBinding& sourceCmd) {
   int count = sourceCmd.count;
   const KeyedSequence& baseKS = sourceCmd.base;
   string_view baseCmd = baseKS.seq.view();
-  KeyedSequence result;
 
+  if (baseCmd == "x") {
+    return withOptionalCount(count, KeyedSequence::s);
+  }
+  if (baseCmd == "X") {
+    return withOptionalCount(count, KeyedSequence::hs);
+  }
   if (baseCmd == "D") {
-    result = KeyedSequence::C;
-  } else if (baseCmd == "x") {
-    result = KeyedSequence::s;
-  } else if (baseCmd == "X") {
-    result = KeyedSequence::hs;
-  } else if (baseCmd == "dw" || baseCmd == "dW") {
-    // dw/dW -> dwi/dWi rather than cw/cW because cw/cW == ce/cE (no trailing whitespace). Since de is explored before dw in exploreAllDeletions, we must retain deleting the trailing whitespace
+    return withOptionalCount(count, KeyedSequence::C);
+  }
+  if (baseCmd == "dw" || baseCmd == "dW") {
+    // dw/dW include trailing whitespace unlike cw/cW.
+    KeyedSequence result;
     appendOptionalCount(result, count, baseKS);
     result += KeyedSequence::i;
     return result;
-  } else if (baseCmd.size() > 1 && baseCmd[0] == 'd') {
-    result = baseKS.asChange();
-  } else {
-    assert(false && "unsupported command in EditOptimizer!");
-    return {};
   }
-  return withOptionalCount(count, result);
+  if (!baseCmd.empty() && baseCmd[0] == 'd') {
+    return withOptionalCount(count, baseKS.asChange());
+  }
+
+  assert(false && "unsupported command in EditOptimizer!");
+  return {};
 }
 
 // Convert a linewise delete command payload to its change-equivalent command.
@@ -324,6 +327,7 @@ struct ModePolicy<false> {
   const string& pre;
   const string& suf;
   const string& preSuf;
+  Lines effectiveGoalLines;
 
   KeyedSequence typed;
   RunningEffort typedEffort;
@@ -346,9 +350,15 @@ struct ModePolicy<false> {
         goalLines(goalLines),
         pre(pre),
         suf(suf),
-        preSuf(preSuf) {
+        preSuf(preSuf),
+        effectiveGoalLines(goalLines) {
     typed = buildTypedCommands(goalLines, "", pre, suf);
     typedEffort = RunningEffort(typed.keys, config);
+
+    if (!effectiveGoalLines.empty()) {
+      if (!pre.empty()) effectiveGoalLines.front().insert(0, pre);
+      if (!suf.empty()) effectiveGoalLines.back() += suf;
+    }
 
     if constexpr (VimOptions::autoindent()) {
       goalFirstIndentLen = leadingSpaceCount(goalLines[0]);
@@ -468,6 +478,11 @@ struct ModePolicy<false> {
                             double completionPenalty,
                             const KeyedSequence& typedSuffix,
                             const RunningEffort& typedSuffixEffort) {
+    if (hasUnsupportedOperatorSpecialMotion(searchPrefixSeq) ||
+        hasUnsupportedOperatorRepeatMotion(searchPrefixSeq)) {
+      return;
+    }
+
     cachePopulations++;
 
     // Flow:
@@ -514,6 +529,10 @@ struct ModePolicy<false> {
 
       if (nextIndex >= prefixEditCount) break;
 
+      if (replayMode == Mode::Insert &&
+          !isInsertReplayTokenSafe(prefixEdits[nextIndex].edit)) {
+        return;
+      }
       Edit::applyEdit(replayLines, replayPos, replayMode, prefixEdits[nextIndex], &lastEditCmd,
                       editBoundary.hasLinesBelow(),
                       ctx.leftColOffset, ctx.rightColOffset,
@@ -525,6 +544,13 @@ struct ModePolicy<false> {
   KeyedSequence buildChangePrefix(const SequenceBinding& sourceCmd,
                                   const Lines& postDelLines, const CursorPos& postDelPos,
                                   const Lines& preDelLines, const Range& range) const {
+    KeyedSequence prefix = deleteToChangeChar(sourceCmd);
+    return buildChangePrefixFromCompletion(prefix, postDelLines, postDelPos, preDelLines, range);
+  }
+
+  KeyedSequence buildChangePrefixFromCompletion(const KeyedSequence& completionCmd,
+                                                const Lines& postDelLines, const CursorPos& postDelPos,
+                                                const Lines& preDelLines, const Range& range) const {
     int totalLines = static_cast<int>(postDelLines.size());
     int cursorLine = postDelPos.line;
 
@@ -549,9 +575,88 @@ struct ModePolicy<false> {
       }
     }
 
-    KeyedSequence prefix = deleteToChangeChar(sourceCmd);
+    KeyedSequence prefix = completionCmd;
     prefix += buildCollapseSequence(totalLines, cursorLine);
     return prefix;
+  }
+
+  bool reachesEffectiveGoalFromBase(const EditState& base,
+                                    const KeyedSequence& completionPrefix,
+                                    const KeyedSequence& typedSuffix) const {
+    Lines replayLines = base.getLines();
+    CursorPos replayPos = base.getPos();
+    Mode replayMode = base.getMode();
+    string lastEditCmd;
+
+    string replaySeq = completionPrefix.seq.str() + typedSuffix.seq.str();
+    if (hasUnsupportedOperatorSpecialMotion(replaySeq) ||
+        hasUnsupportedOperatorRepeatMotion(replaySeq)) {
+      return false;
+    }
+    vector<ParsedEdit> edits = Edit::parseEdits(replaySeq);
+    for (const ParsedEdit& edit : edits) {
+      if (replayMode == Mode::Insert &&
+          !isInsertReplayTokenSafe(edit.edit)) {
+        return false;
+      }
+      Edit::applyEdit(replayLines, replayPos, replayMode, edit, &lastEditCmd,
+                      editBoundary.hasLinesBelow(),
+                      ctx.leftColOffset, ctx.rightColOffset,
+                      editBoundary.hasLinesAbove());
+    }
+
+    return replayLines == effectiveGoalLines;
+  }
+
+  bool hasUnsafeTypedControls(string_view seq) const {
+    return seq.find("<C-") != string_view::npos ||
+           seq.find("<BS>") != string_view::npos ||
+           seq.find("<Del>") != string_view::npos ||
+           seq.find("<CR>") != string_view::npos ||
+           seq.find("<Left>") != string_view::npos ||
+           seq.find("<Right>") != string_view::npos ||
+           seq.find("<Up>") != string_view::npos ||
+           seq.find("<Down>") != string_view::npos;
+  }
+
+  bool hasRawControlChars(string_view seq) const {
+    for (unsigned char c : seq) {
+      if (c < 0x20 || c == 0x7f) return true;
+    }
+    return false;
+  }
+
+  bool hasUnsupportedOperatorSpecialMotion(string_view seq) const {
+    for (size_t i = 0; i + 1 < seq.size(); i++) {
+      if ((seq[i] == 'c' || seq[i] == 'd') && seq[i + 1] == '<') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool hasUnsupportedOperatorRepeatMotion(string_view seq) const {
+    for (size_t i = 0; i + 1 < seq.size(); i++) {
+      if ((seq[i] == 'c' || seq[i] == 'd') &&
+          (seq[i + 1] == ',' || seq[i + 1] == ';' ||
+           seq[i + 1] == 'f' || seq[i + 1] == 'F' ||
+           seq[i + 1] == 't' || seq[i + 1] == 'T')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool isInsertReplayTokenSafe(string_view tok) const {
+    if (tok.empty()) return false;
+    if (tok[0] != '<') {
+      return tok.size() == 1;
+    }
+    return tok == "<Esc>" || tok == "<BS>" || tok == "<Del>" ||
+           tok == "<CR>" || tok == "<C-u>" || tok == "<C-w>" ||
+           tok == "<C-d>" || tok == "<C-t>" ||
+           tok == "<Left>" || tok == "<Right>" ||
+           tok == "<Up>" || tok == "<Down>";
   }
 
   struct KeyedSegment {
@@ -605,10 +710,21 @@ struct ModePolicy<false> {
     GoalSuffixPath normalGoal = buildGoalSuffixPath(
         goalCompletionCmd, typedVariants.normalTyped, sourceCmd.effort.getPenalty());
 
-    // Normal goal path also seeds suffix cache.
-    replayAndCacheSuffix(base.getStartIndex(), base.getSeq(),
-                         goalCompletionCmd, sourceCmd.effort.getPenalty(),
-                         typedVariants.normalTyped.sequence, typedVariants.normalTyped.effort);
+    // Skip replay-cache population for context-sensitive word/paragraph/sentence
+    // completions where reusing a cached suffix across states can diverge.
+    string_view baseCmd = sourceCmd.base.seq.view();
+    bool cacheSafe =
+        baseCmd != "D" &&
+        baseCmd != "de" && baseCmd != "dE" &&
+        baseCmd != "d}" && baseCmd != "d{" &&
+        baseCmd != "d)" && baseCmd != "d(" &&
+        baseCmd != "daw" && baseCmd != "daW" &&
+        baseCmd != "diw" && baseCmd != "diW";
+    if (cacheSafe) {
+      replayAndCacheSuffix(base.getStartIndex(), base.getSeq(),
+                           goalCompletionCmd, sourceCmd.effort.getPenalty(),
+                           typedVariants.normalTyped.sequence, typedVariants.normalTyped.effort);
+    }
 
     EditState normalState = postCompletionState;
     normalState.recordSearch(normalGoal.sequence.seq.view(), normalGoal.effort,
@@ -631,10 +747,67 @@ struct ModePolicy<false> {
   void onDeletionGoal(EditState& afterDel, const EditState& base, const Range& range,
                       const SequenceBinding& sourceCmd) {
     bool isDot = isDotRepeat(base, sourceCmd);
+
+    TypedGoalVariants typedVariants{{typed, typedEffort}, {typed, typedEffort}};
+
     KeyedSequence goalCompletionCmd = buildChangePrefix(sourceCmd,
                                                         afterDel.getLines(), afterDel.getPos(),
                                                         base.getLines(), range);
-    TypedGoalVariants typedVariants{{typed, typedEffort}, {typed, typedEffort}};
+
+    string_view baseCmd = sourceCmd.base.seq.view();
+    bool canValidate =
+        effectiveGoalLines.size() == 1 &&
+        (baseCmd == "dw" || baseCmd == "dW" ||
+         baseCmd == "de" || baseCmd == "dE" ||
+         baseCmd == "d}" || baseCmd == "d{" ||
+         baseCmd == "d)" || baseCmd == "d(" ||
+         baseCmd == "D" ||
+         baseCmd == "daw" || baseCmd == "daW" ||
+         baseCmd == "diw" || baseCmd == "diW") &&
+        !hasUnsafeTypedControls(typedVariants.normalTyped.sequence.seq.view()) &&
+        !hasUnsafeTypedControls(goalCompletionCmd.seq.view()) &&
+        !hasRawControlChars(typedVariants.normalTyped.sequence.seq.view()) &&
+        !hasRawControlChars(goalCompletionCmd.seq.view()) &&
+        !hasUnsupportedOperatorSpecialMotion(goalCompletionCmd.seq.view()) &&
+        !hasUnsupportedOperatorRepeatMotion(goalCompletionCmd.seq.view());
+
+    if (canValidate) {
+      vector<KeyedSequence> candidates;
+      candidates.push_back(goalCompletionCmd);
+
+      KeyedSequence deleteThenInsert;
+      appendOptionalCount(deleteThenInsert, sourceCmd.count, sourceCmd.base);
+      deleteThenInsert += KeyedSequence::i;
+      KeyedSequence altGoalCompletionCmd = buildChangePrefixFromCompletion(
+          deleteThenInsert, afterDel.getLines(), afterDel.getPos(), base.getLines(), range);
+      if (altGoalCompletionCmd.seq.view() != goalCompletionCmd.seq.view()) {
+        candidates.push_back(std::move(altGoalCompletionCmd));
+      }
+
+      int bestIdx = -1;
+      double bestEffort = 0.0;
+      for (int i = 0; i < static_cast<int>(candidates.size()); i++) {
+        bool valid = reachesEffectiveGoalFromBase(
+            base, candidates[i], typedVariants.normalTyped.sequence);
+        if (!valid) {
+          continue;
+        }
+
+        double effort = mergeGoalSuffixEffort(
+            candidates[i], typedVariants.normalTyped.effort,
+            sourceCmd.effort.getPenalty(), config).getEffort(config);
+        if (bestIdx == -1 || effort < bestEffort) {
+          bestIdx = i;
+          bestEffort = effort;
+        }
+      }
+
+      if (bestIdx < 0) {
+        return;
+      }
+      goalCompletionCmd = candidates[bestIdx];
+    }
+
     emitEditGoal(afterDel, base, sourceCmd, goalCompletionCmd, typedVariants, isDot);
   }
 

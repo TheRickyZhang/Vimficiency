@@ -4,6 +4,7 @@
 #include "Keyboard/ToKeys/MotionToKeys.h"
 
 #include <limits>
+#include <tuple>
 #include <unordered_set>
 
 using namespace std;
@@ -210,6 +211,24 @@ pair<string, size_t> tryParseChange(string_view sv, size_t i) {
   return {"", 0};
 }
 
+// Try to parse a visual-mode edit sequence: v + motion(s) + [d|c]
+// Returns (command string, length consumed, token type) or ("", 0, Motion)
+tuple<string, size_t, TokenType> tryParseVisualEdit(string_view sv, size_t i) {
+  if (i >= sv.size() || sv[i] != 'v') return {"", 0, TokenType::Motion};
+
+  size_t start = i;
+  i++;  // consume 'v'
+  while (i < sv.size() && sv[i] != 'd' && sv[i] != 'c') {
+    i++;
+  }
+  if (i >= sv.size()) return {"", 0, TokenType::Motion};
+
+  char op = sv[i];
+  i++;  // include ending operator
+  TokenType type = (op == 'c') ? TokenType::Change : TokenType::Delete;
+  return {string(sv.substr(start, i - start)), i - start, type};
+}
+
 // Parse typed text until <Esc> is found
 // Returns (typed text, length consumed including <Esc>)
 // If no <Esc> found, returns all remaining text
@@ -271,6 +290,15 @@ vector<SequenceToken> parseSequence(string_view seq) {
         tokens.push_back(SequenceToken(typed, TokenType::TypedText));
       }
       i += len;
+      continue;
+    }
+
+    // Visual-mode edit sequence (v...d / v...c)
+    auto [visualCmd, visualLen, visualType] = tryParseVisualEdit(sv, i);
+    if (!visualCmd.empty()) {
+      tokens.push_back(SequenceToken(countStr + visualCmd, visualType));
+      i += visualLen;
+      if (visualType == TokenType::Change) inInsertMode = true;
       continue;
     }
 

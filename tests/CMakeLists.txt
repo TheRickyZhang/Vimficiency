@@ -96,6 +96,9 @@ add_executable(vimficiency_tests
   EditOptimizer/HumanApprovalTest.cpp
   EditOptimizer/RegressionTests.cpp
 
+  # Cross-axis consistency
+  consistency/three-axis-correctness.cpp
+
   # MotionOptimizer
   MotionOptimizer/ManualTest.cpp
   MotionOptimizer/OutputCorrectnessTest.cpp
@@ -121,6 +124,24 @@ target_link_libraries(vimficiency_tests
 
 include(GoogleTest)
 gtest_discover_tests(vimficiency_tests)
+
+# =============================================================================
+# Three-axis consistency binary
+# =============================================================================
+# Focused triad checks (model vs interpreter vs Neovim oracle).
+# Run with: ./vimficiency_consistency
+
+add_executable(vimficiency_consistency
+  consistency/three-axis-correctness.cpp
+)
+
+target_link_libraries(vimficiency_consistency
+  PRIVATE
+    test_utils
+    GTest::gtest_main
+)
+
+gtest_discover_tests(vimficiency_consistency)
 
 # =============================================================================
 # Benchmarks binary
