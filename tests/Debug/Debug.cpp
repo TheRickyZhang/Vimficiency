@@ -29,6 +29,7 @@
 #include "VimCore/VimEditUtils.h"
 #include "VimCore/VimEndpointUtils.h"
 #include "VimCore/VimMotionUtils.h"
+#include "VimCore/VimPortedImpl.h"
 
 using namespace std;
 
@@ -3065,9 +3066,9 @@ TEST_F(DebugTest, DISABLED_ReproduceSmallEmbeddedSentenceCrash) {
   CursorPos cursor(0, 0);
   int rightColOffset = boundary.rightColOffset();
   bool hasLinesBelow = boundary.hasLinesBelow();
-  CursorPos endpoint = VimCore::motionSentenceEndpoint<true, SentenceEdgeType::NextEdge>(
-      cursor, editRegion, rightColOffset, hasLinesBelow);
-  cerr << "motionSentenceEndpoint from (0,0): (" << endpoint.line << "," << endpoint.col << ")" << endl;
+  CursorPos endpoint = VimCore::findsentBounded(
+      cursor, editRegion, true, rightColOffset, hasLinesBelow);
+  cerr << "findsentBounded from (0,0): (" << endpoint.line << "," << endpoint.col << ")" << endl;
   if (endpoint != POSITION_OUTSIDE_BOUNDARY) {
     cerr << "Explorer d) range: [(" << cursor.line << "," << cursor.col << "), ("
          << endpoint.line << "," << endpoint.col << "))" << endl;

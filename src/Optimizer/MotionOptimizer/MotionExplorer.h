@@ -11,6 +11,7 @@
 #include "VimCore/VimCore.h"
 #include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimEndpointUtils.h"
+#include "VimCore/VimPortedImpl.h"
 #include "VimCore/VimOptions.h"
 
 // MotionExplorer encapsulates motion exploration logic for the optimizer.
@@ -150,17 +151,94 @@ public:
   void exploreSentenceMotions(const std::vector<Motion::SentenceMotionSpecNoDir>& specs,
                               const MotionState& base) {
     CursorPos pos = base.getPos();
+    int lastLine = ctx.lines.lastLine();
+
+    // findsent() can inspect both directions during one motion. When this state
+    // sits on a truncated edge line, the result may depend on hidden context.
+    if (ctx.boundary.hasLinesAbove() && pos.line == 0) return;
+    if (ctx.boundary.hasLinesBelow() && pos.line == lastLine) return;
 
     int boundaryOffset = Forward ? ctx.boundary.rightColOffset() : ctx.boundary.leftColOffset();
     bool hasLinesOutside = Forward ? ctx.boundary.hasLinesBelow() : ctx.boundary.hasLinesAbove();
-    CursorPos endpoint = VimCore::motionSentenceEndpoint<Forward, SentenceEdgeType::NextEdge>(
-        pos, ctx.lines, boundaryOffset, hasLinesOutside);
+    CursorPos endpoint = VimCore::findsentBounded(
+        pos, ctx.lines, Forward, boundaryOffset, hasLinesOutside);
 
     if (endpoint == POSITION_OUTSIDE_BOUNDARY) return;
 
     for (const auto& spec : specs) {
       emitMotion(base, spec.ksId, endpoint);
     }
+  }
+
+  template<KSId MotionKS>
+  CursorPos applySingleCountedBounded(CursorPos pos) const {
+    if constexpr (MotionKS == KSId::w) {
+      return VimCore::motionWordEndpoint<true, EdgeType::NextEdge>(
+          pos, ctx.lines, false, false, ctx.boundary.rightColOffset(),
+          ctx.boundary.hasLinesBelow(), false);
+    } else if constexpr (MotionKS == KSId::W) {
+      return VimCore::motionWordEndpoint<true, EdgeType::NextEdge>(
+          pos, ctx.lines, true, false, ctx.boundary.rightColOffset(),
+          ctx.boundary.hasLinesBelow(), false);
+    } else if constexpr (MotionKS == KSId::e) {
+      return VimCore::motionWordEndpoint<true, EdgeType::WordEdge>(
+          pos, ctx.lines, false, true, ctx.boundary.rightColOffset(),
+          ctx.boundary.hasLinesBelow(), false);
+    } else if constexpr (MotionKS == KSId::E) {
+      return VimCore::motionWordEndpoint<true, EdgeType::WordEdge>(
+          pos, ctx.lines, true, true, ctx.boundary.rightColOffset(),
+          ctx.boundary.hasLinesBelow(), false);
+    } else if constexpr (MotionKS == KSId::b) {
+      return VimCore::motionWordEndpoint<false, EdgeType::WordEdge>(
+          pos, ctx.lines, false, true, ctx.boundary.leftColOffset(),
+          ctx.boundary.hasLinesAbove(), false);
+    } else if constexpr (MotionKS == KSId::B) {
+      return VimCore::motionWordEndpoint<false, EdgeType::WordEdge>(
+          pos, ctx.lines, true, true, ctx.boundary.leftColOffset(),
+          ctx.boundary.hasLinesAbove(), false);
+    } else if constexpr (MotionKS == KSId::ge) {
+      return VimCore::motionWordEndpoint<false, EdgeType::NextEdge>(
+          pos, ctx.lines, false, true, ctx.boundary.leftColOffset(),
+          ctx.boundary.hasLinesAbove(), false);
+    } else if constexpr (MotionKS == KSId::gE) {
+      return VimCore::motionWordEndpoint<false, EdgeType::NextEdge>(
+          pos, ctx.lines, true, true, ctx.boundary.leftColOffset(),
+          ctx.boundary.hasLinesAbove(), false);
+    } else if constexpr (MotionKS == KSId::RBrace) {
+      int line = VimCore::motionParagraphEndpoint<true, LineEdgeType::NextEdge>(
+          pos.line, ctx.lines, ctx.boundary.hasLinesBelow());
+      if (line == VimCore::LINE_OUTSIDE_BOUNDARY) return POSITION_OUTSIDE_BOUNDARY;
+      int col = 0;
+      int lastLine = ctx.lines.lastLine();
+      if (line == lastLine && !VimCore::isBlankLineStr(ctx.lines[line])) {
+        col = std::max(0, static_cast<int>(ctx.lines[line].size()) - 1);
+      }
+      return CursorPos(line, col);
+    } else if constexpr (MotionKS == KSId::LBrace) {
+      int line = VimCore::motionParagraphEndpoint<false, LineEdgeType::NextEdge>(
+          pos.line, ctx.lines, ctx.boundary.hasLinesAbove());
+      if (line == VimCore::LINE_OUTSIDE_BOUNDARY) return POSITION_OUTSIDE_BOUNDARY;
+      return CursorPos(line, 0);
+    } else if constexpr (MotionKS == KSId::RParen) {
+      return VimCore::findsentBounded(pos, ctx.lines, true,
+                                      ctx.boundary.rightColOffset(),
+                                      ctx.boundary.hasLinesBelow());
+    } else if constexpr (MotionKS == KSId::LParen) {
+      return VimCore::findsentBounded(pos, ctx.lines, false,
+                                      ctx.boundary.leftColOffset(),
+                                      ctx.boundary.hasLinesAbove());
+    } else {
+      return POSITION_OUTSIDE_BOUNDARY;
+    }
+  }
+
+  template<KSId MotionKS>
+  CursorPos replayCountedBounded(CursorPos pos, int count) const {
+    for (int i = 0; i < count; i++) {
+      pos = applySingleCountedBounded<MotionKS>(pos);
+      if (pos == POSITION_OUTSIDE_BOUNDARY) return POSITION_OUTSIDE_BOUNDARY;
+    }
+    return pos;
   }
 
   // Scroll motions - templated on direction
@@ -270,6 +348,7 @@ public:
   template<bool Forward, LandingType LT, CountClass C, KSId ForwardKS, KSId BackwardKS>
   void exploreCountedSpec(const MotionState& base) {
     CursorPos pos = base.getPos();
+    constexpr KSId MotionKS = Forward ? ForwardKS : BackwardKS;
     const KeyedSequence& motion = []() -> const KeyedSequence& {
       if constexpr (Forward) return KeyedSequence::byId(ForwardKS);
       else return KeyedSequence::byId(BackwardKS);
@@ -287,8 +366,10 @@ public:
       if (!r.valid()) continue;
       if (r.count < ctx.params.minPrefixCount) continue;
       if (r.count > ctx.params.maxPrefixCount) continue;
-      // Convert global → local coordinates
-      CursorPos localPos(r.pos.line - off, r.pos.col);
+
+      CursorPos localPos = replayCountedBounded<MotionKS>(pos, r.count);
+      if (localPos == POSITION_OUTSIDE_BOUNDARY) continue;
+
       // Bounds + boundary guards: BufferIndex covers the full buffer,
       // so results can map outside the local subset.
       if (localPos.line < 0 || localPos.line > ctx.lines.lastLine()) continue;

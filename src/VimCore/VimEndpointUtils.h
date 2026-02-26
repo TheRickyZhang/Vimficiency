@@ -161,38 +161,9 @@ LineRange paragraphTextObjectRange(int cursorLine,
 // Sentence Endpoint/Range Computation
 // =============================================================================
 
-// Returns the position where a sentence motion lands.
-//
-// Boundary checking via boundaryOffset:
-//   forward:  returns POSITION_OUTSIDE_BOUNDARY if endpoint is in suffix region
-//             (last boundaryOffset cols of last line)
-//   backward: returns POSITION_OUTSIDE_BOUNDARY if endpoint is in prefix region
-//             (first boundaryOffset cols of line 0)
-//   boundaryOffset <= 0: no column boundary checking
-//
-// Boundary checking via hasLinesOutside:
-//   forward:  returns POSITION_OUTSIDE_BOUNDARY if endpoint.line > lastLine
-//             (pass hasLinesBelow)
-//   backward: returns POSITION_OUTSIDE_BOUNDARY if endpoint.line < 0
-//             (pass hasLinesAbove)
-//
-// SentenceEdgeType is DIRECTION-INDEPENDENT:
-//   SentenceEdge: edge of current sentence (punctuation + closers)
-//   GapEdge:      edge of whitespace gap after sentence end
-//   NextEdge:     start of next sentence
-
-// Templated version for compile-time dispatch on Forward and Edge
-template<bool Forward, SentenceEdgeType Edge>
-CursorPos motionSentenceEndpoint(CursorPos cursor,
-                                const Lines& lines,
-                                int boundaryOffset = 0,
-                                bool hasLinesOutside = false);
-
-// Runtime dispatch version (for internal use in text object functions)
-CursorPos motionSentenceEndpoint(CursorPos cursor,
-                                const Lines& lines,
-                                bool forward,
-                                SentenceEdgeType edgeType);
+// Sentence motions now use VimCore::findsent()/findsentBounded() from
+// VimPortedImpl (ported from Neovim). This file keeps only sentence
+// text-object edge/range utilities.
 
 // Convert a sentence-motion endpoint to a half-open range end.
 // For forward motions:

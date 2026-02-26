@@ -229,24 +229,13 @@ void EditExplorer::exploreSentenceEdits(
     int boundaryOffset = Forward ? ctx_.rightColOffset : ctx_.leftColOffset;
     bool hasLinesOutside = Forward ? ctx_.editBoundary.hasLinesBelow()
                                    : ctx_.editBoundary.hasLinesAbove();
-    endpoint = VimCore::motionSentenceEndpoint<Forward, SentenceEdgeType::NextEdge>(
-        cursor, lines, boundaryOffset, hasLinesOutside);
+    endpoint = VimCore::findsentBounded(cursor, lines, Forward,
+                                        boundaryOffset, hasLinesOutside);
   } else {
     if constexpr (Forward) {
-      CursorPos motionGoal = endpoint;
-      VimCore::motionSentenceNext(motionGoal, lines);
-      CursorPos endpointGoal =
-          VimCore::motionSentenceEndpoint<true, SentenceEdgeType::NextEdge>(
-              cursor, lines, 0, false);
-      bool eofOneCharAdvance =
-          (endpointGoal.line == motionGoal.line) &&
-          (endpointGoal.line == lines.lastLine()) &&
-          (endpointGoal.col == motionGoal.col + 1) &&
-          (endpointGoal.col ==
-           std::max(0, static_cast<int>(lines[endpointGoal.line].size()) - 1));
-      endpoint = eofOneCharAdvance ? endpointGoal : motionGoal;
+      endpoint = VimCore::findsent(cursor, lines, true);
     } else {
-      VimCore::motionSentencePrev(endpoint, lines);
+      endpoint = VimCore::findsent(cursor, lines, false);
     }
   }
 

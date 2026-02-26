@@ -1,6 +1,6 @@
 // VimPortedImpl.cpp
 //
-// Implementations ported directly from Neovim's C source.
+// Implementations ported directly from Neovim's C source, with conversions to our types like Line, Position, Range.
 // See VimPortedImpl.h for provenance and rationale.
 
 #include "VimPortedImpl.h"

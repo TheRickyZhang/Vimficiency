@@ -399,12 +399,12 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceMixedContentFailure) {
     pos = ours;
   }
 
-  // Test VimCore::motionSentenceEndpoint directly
-  cerr << "\n=== VimCore::motionSentenceEndpoint trace ===" << endl;
+  // Test VimCore::findsent directly
+  cerr << "\n=== VimCore::findsent trace ===" << endl;
   using namespace VimCore;
 
-  CursorPos ep = motionSentenceEndpoint(CursorPos(3, 20), subBuffer, false, SentenceEdgeType::NextEdge);
-  cerr << "motionSentenceEndpoint((3,20), backward, NextEdge) = (" << ep.line << ", " << ep.col << ")" << endl;
+  CursorPos ep = findsent(CursorPos(3, 20), subBuffer, false);
+  cerr << "findsent((3,20), backward) = (" << ep.line << ", " << ep.col << ")" << endl;
 
   // Test what findCurrentSentenceStart returns
   cerr << "\n=== findCurrentSentenceStart trace ===" << endl;
@@ -652,19 +652,19 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceIndexFailure) {
     cerr << "Overshoot: count=" << over.count << " pos=(" << over.pos.line << ", " << over.pos.col << ")" << endl;
   }
 
-  // Trace VimCore::motionSentenceEndpoint to compare with Neovim
-  cerr << "\n=== VimCore::motionSentenceEndpoint trace ===" << endl;
+  // Trace VimCore::findsent to compare with Neovim
+  cerr << "\n=== VimCore::findsent trace ===" << endl;
 
   using namespace VimCore;
 
   // Single ( from (3, 6)
-  CursorPos ep1 = motionSentenceEndpoint(CursorPos(3, 6), subBuffer, false, SentenceEdgeType::NextEdge);
-  cerr << "motionSentenceEndpoint((3,6), backward) = (" << ep1.line << ", " << ep1.col << ")" << endl;
+  CursorPos ep1 = findsent(CursorPos(3, 6), subBuffer, false);
+  cerr << "findsent((3,6), backward) = (" << ep1.line << ", " << ep1.col << ")" << endl;
   cerr << "Neovim ( from (3,6) = (" << subResult1.row << ", " << subResult1.col << ")" << endl;
 
   // Single ( from ep1
-  CursorPos ep2 = motionSentenceEndpoint(ep1, subBuffer, false, SentenceEdgeType::NextEdge);
-  cerr << "motionSentenceEndpoint((" << ep1.line << "," << ep1.col << "), backward) = (" << ep2.line << ", " << ep2.col << ")" << endl;
+  CursorPos ep2 = findsent(ep1, subBuffer, false);
+  cerr << "findsent((" << ep1.line << "," << ep1.col << "), backward) = (" << ep2.line << ", " << ep2.col << ")" << endl;
 
   // b from ep2
   CursorPos pos_after_b = ep2;

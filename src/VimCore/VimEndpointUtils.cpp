@@ -686,52 +686,6 @@ static CursorPos motionSentenceEdgeCore(CursorPos cursor, const Lines& lines,
   }
 }
 
-// Templated version for compile-time dispatch on Forward and Edge
-template<bool Forward, SentenceEdgeType Edge>
-CursorPos motionSentenceEndpoint(CursorPos cursor, const Lines& lines,
-                                int boundaryOffset, bool hasLinesOutside) {
-  CursorPos result = motionSentenceEdgeCore(cursor, lines, Forward, Edge);
-
-  // Boundary check (same pattern as motionWordEndpoint)
-  int lastLine = lines.lastLine();
-  if constexpr (Forward) {
-    // Check line boundary
-    if (hasLinesOutside && result.line >= lastLine) {
-      return POSITION_OUTSIDE_BOUNDARY;
-    }
-    // Check column boundary on last line
-    if (boundaryOffset > 0 && result.line == lastLine &&
-        result.col >= static_cast<int>(lines[lastLine].size()) - boundaryOffset) {
-      return POSITION_OUTSIDE_BOUNDARY;
-    }
-  } else {
-    // Check line boundary
-    if (hasLinesOutside && result.line <= 0) {
-      return POSITION_OUTSIDE_BOUNDARY;
-    }
-    // Check column boundary on line 0
-    if (boundaryOffset > 0 && result.line == 0 && result.col < boundaryOffset) {
-      return POSITION_OUTSIDE_BOUNDARY;
-    }
-  }
-
-  return result;
-}
-
-// Explicit instantiations for templated version
-template CursorPos motionSentenceEndpoint<true, SentenceEdgeType::SentenceEdge>(CursorPos, const Lines&, int, bool);
-template CursorPos motionSentenceEndpoint<true, SentenceEdgeType::GapEdge>(CursorPos, const Lines&, int, bool);
-template CursorPos motionSentenceEndpoint<true, SentenceEdgeType::NextEdge>(CursorPos, const Lines&, int, bool);
-template CursorPos motionSentenceEndpoint<false, SentenceEdgeType::SentenceEdge>(CursorPos, const Lines&, int, bool);
-template CursorPos motionSentenceEndpoint<false, SentenceEdgeType::GapEdge>(CursorPos, const Lines&, int, bool);
-template CursorPos motionSentenceEndpoint<false, SentenceEdgeType::NextEdge>(CursorPos, const Lines&, int, bool);
-
-// Runtime dispatch version (for internal use in text object functions)
-CursorPos motionSentenceEndpoint(CursorPos cursor, const Lines& lines,
-                                bool forward, SentenceEdgeType edgeType) {
-  return motionSentenceEdgeCore(cursor, lines, forward, edgeType);
-}
-
 CursorPos sentenceEndpointToRangeEnd(CursorPos endpoint,
                                              const Lines& lines,
                                              SentenceEdgeType edgeType) {
@@ -759,7 +713,7 @@ Range sentenceTextObjectRange(CursorPos cursor, const Lines& lines, bool isInner
   // Find sentence end by searching forward from sentence start
   CursorPos sentenceStart(startLine, startCol);
   CursorPos sentenceEnd = sentenceEndpointToRangeEnd(
-      motionSentenceEndpoint(sentenceStart, lines, true, SentenceEdgeType::SentenceEdge),
+      motionSentenceEdgeCore(sentenceStart, lines, true, SentenceEdgeType::SentenceEdge),
       lines, SentenceEdgeType::SentenceEdge);
 
   CursorPos resultStart, resultEnd;
@@ -771,7 +725,7 @@ Range sentenceTextObjectRange(CursorPos cursor, const Lines& lines, bool isInner
   } else {
     // das: include trailing whitespace (or leading if no trailing)
     CursorPos gapEnd = sentenceEndpointToRangeEnd(
-        motionSentenceEndpoint(sentenceStart, lines, true, SentenceEdgeType::GapEdge),
+        motionSentenceEdgeCore(sentenceStart, lines, true, SentenceEdgeType::GapEdge),
         lines, SentenceEdgeType::GapEdge);
 
     // Check if there's trailing whitespace/blank lines.
@@ -784,8 +738,8 @@ Range sentenceTextObjectRange(CursorPos cursor, const Lines& lines, bool isInner
     } else {
       // No trailing whitespace - include leading whitespace
       // Find gap edge backward from sentence start
-      CursorPos gapStart = motionSentenceEndpoint(sentenceStart, lines, false,
-                                                 SentenceEdgeType::GapEdge);
+      CursorPos gapStart = motionSentenceEdgeCore(sentenceStart, lines, false,
+                                                  SentenceEdgeType::GapEdge);
 
       // Check if there's leading whitespace
       bool hasLeading = (gapStart.line < sentenceStart.line ||

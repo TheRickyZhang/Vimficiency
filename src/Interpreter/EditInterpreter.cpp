@@ -904,27 +904,15 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           CursorPos goalPos = pos;
           for (int i = 0; i < count; i++) {
             if (hasBoundaryContext) {
-              CursorPos endpoint =
-                  VimCore::motionSentenceEndpoint<true, SentenceEdgeType::NextEdge>(
-                      goalPos, lines, rightColOffset, hasLinesBelow);
+              CursorPos endpoint = VimCore::findsentBounded(
+                  goalPos, lines, true, rightColOffset, hasLinesBelow);
               if (endpoint == POSITION_OUTSIDE_BOUNDARY) {
                 goalPos = POSITION_OUTSIDE_BOUNDARY;
                 break;
               }
               goalPos = endpoint;
             } else {
-              CursorPos motionGoal = goalPos;
-              VimCore::motionSentenceNext(motionGoal, lines);
-              CursorPos endpointGoal =
-                  VimCore::motionSentenceEndpoint<true, SentenceEdgeType::NextEdge>(
-                      goalPos, lines, 0, false);
-              bool eofOneCharAdvance =
-                  (endpointGoal.line == motionGoal.line) &&
-                  (endpointGoal.line == lines.lastLine()) &&
-                  (endpointGoal.col == motionGoal.col + 1) &&
-                  (endpointGoal.col ==
-                   std::max(0, static_cast<int>(lines[endpointGoal.line].size()) - 1));
-              goalPos = eofOneCharAdvance ? endpointGoal : motionGoal;
+              goalPos = VimCore::findsent(goalPos, lines, true);
             }
           }
           CursorPos startPos = (e[0] == 'd')
@@ -973,16 +961,15 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           CursorPos initialPos = pos;
           for (int i = 0; i < count; i++) {
             if (hasBoundaryContext) {
-              CursorPos endpoint =
-                  VimCore::motionSentenceEndpoint<false, SentenceEdgeType::NextEdge>(
-                      initialPos, lines, leftColOffset, hasLinesAbove);
+              CursorPos endpoint = VimCore::findsentBounded(
+                  initialPos, lines, false, leftColOffset, hasLinesAbove);
               if (endpoint == POSITION_OUTSIDE_BOUNDARY) {
                 initialPos = POSITION_OUTSIDE_BOUNDARY;
                 break;
               }
               initialPos = endpoint;
             } else {
-              VimCore::motionSentencePrev(initialPos, lines);
+              initialPos = VimCore::findsent(initialPos, lines, false);
             }
           }
           // Backward: exclusive end = cursor pos (the higher end of the range).
