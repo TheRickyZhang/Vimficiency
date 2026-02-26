@@ -69,16 +69,16 @@ CompositionResult CompositionOptimizer::optimize(
                                navigationContext, boundary,
                                params, config);
 
-  if (ctx.totalEdits == 0) {
+  if (ctx.totalEdits() == 0) {
     return {};
   }
-  if (ctx.totalEdits > 16) {
+  if (ctx.totalEdits() > 16) {
     debug("Cannot support more than 16 edits");
     return {};
   }
 
   // Cursor position after last edit completes
-  CursorPos resultGoalPos = ctx.editResults.back().goalPos;
+  CursorPos resultGoalPos = ctx.edits.back().editResult.goalPos;
 
   vector<Result> results;
 
@@ -130,7 +130,7 @@ CompositionResult CompositionOptimizer::optimize(
     if (nextEdit.isPureInsertion()) {
       debug("  pure insertion at", nextEdit.beginPos,
             "text='" + makePrintable(nextEdit.insertedText) + "'");
-      const EditResult& editResult = ctx.editResults[editsCompleted];
+      const EditResult& editResult = ctx.edits[editsCompleted].editResult;
       CursorPos insertPos = nextEdit.beginPos;
       bool isNewLineInsertion = nextEdit.isNewLineInsertion();
 
@@ -167,15 +167,20 @@ CompositionResult CompositionOptimizer::optimize(
               beginLine > 0 || boundary.hasLinesAbove(),
               endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
-          auto motionResult = motionOptimizer.optimizeToRange(
-              subset, localPos, localRangeBegin, localRangeEnd,
-              MotionOptimizerRangeParams{}
-                  .withMaxResults(1)
-                  .withMinCountRepeat(params.minPrefixCount)
-                  .withMaxCountRepeat(params.maxPrefixCount), "",
-              subsetBoundary, s.getRunningEffort(),
-              navigationContext,
-              BufferIndexRef(*ctx.getBufferIndex(editsCompleted), beginLine));
+          auto rangeParams = MotionOptimizerRangeParams{}
+              .withMaxResults(1)
+              .withMinCountRepeat(params.minPrefixCount)
+              .withMaxCountRepeat(params.maxPrefixCount);
+          auto bufRef = ctx.makeBufferIndexRef(editsCompleted, beginLine, endLine);
+          auto motionResult = bufRef
+              ? motionOptimizer.optimizeToRange(
+                    subset, localPos, localRangeBegin, localRangeEnd,
+                    rangeParams, "", subsetBoundary, s.getRunningEffort(),
+                    navigationContext, *bufRef)
+              : motionOptimizer.optimizeToRange(
+                    subset, localPos, localRangeBegin, localRangeEnd,
+                    rangeParams, "", subsetBoundary, s.getRunningEffort(),
+                    navigationContext);
           ctx.motionNodesExplored += motionResult.stats.nodesExplored;
 
           for (RangeResult& movResult : motionResult.results) {
@@ -246,14 +251,14 @@ CompositionResult CompositionOptimizer::optimize(
     }
 
     // ========== EDIT vs MOVEMENT TRANSITIONS ==========
-    const EditResult& editResult = ctx.editResults[editsCompleted];
+    const EditResult& editResult = ctx.edits[editsCompleted].editResult;
     const Result* res = editResult.resultAt(pos.line, pos.col);
 
     if (res) {
       CursorPos editGoalPos = editResult.goalPos;
       if (nextEdit.isPureDeletion()) {
         int idx = editResult.resultIndexAt(pos.line, pos.col);
-        const auto& perStartGoals = ctx.pureDeletionGoalPosByEdit[editsCompleted];
+        const auto& perStartGoals = ctx.edits[editsCompleted].pureDeletionGoalPos;
         if (idx >= 0 && idx < static_cast<int>(perStartGoals.size())) {
           editGoalPos = perStartGoals[static_cast<size_t>(idx)];
         }
@@ -267,7 +272,7 @@ CompositionResult CompositionOptimizer::optimize(
     }
 
     // J plan: offered from any column on the entry line
-    const auto& joinPlan = ctx.joinPlans[editsCompleted];
+    const auto& joinPlan = ctx.edits[editsCompleted].joinPlan;
     if (joinPlan && pos.line == joinPlan->entryLine) {
       debug("  J plan at line", pos.line, "seq:", "\"" + joinPlan->sequence.str() + "\"",
             "effort:", joinPlan->effort);
@@ -278,10 +283,10 @@ CompositionResult CompositionOptimizer::optimize(
     if (!res) {
       // Check for bracket/quote text object shortcuts
       // These allow reaching the edit region from positions before it on the same line
-      const BracketQuoteContext& bqContext = ctx.bracketQuoteContexts[editsCompleted];
+      const BracketQuoteContext& bqContext = ctx.edits[editsCompleted].bracketQuoteContext;
       if (bqContext.line == pos.line) {
         debug("  checking text objects at col", pos.col, "on line", pos.line);
-        const EditResult& editResult = ctx.editResults[editsCompleted];
+        const EditResult& editResult = ctx.edits[editsCompleted].editResult;
         const string& insertedText = nextEdit.insertedText;
         bool pureDeletion = nextEdit.isPureDeletion();
         char textObjOp = pureDeletion ? 'd' : 'c';
@@ -357,15 +362,20 @@ CompositionResult CompositionOptimizer::optimize(
             + ")-[" + to_string(nextEdit.endPos.line) + "," +
             to_string(nextEdit.endPos.col) + ")");
 
-      auto motionResult = motionOptimizer.optimizeToRange(
-          subset, localPos, localRangeBegin, localRangeEnd,
-          MotionOptimizerRangeParams{}
-              .withMaxResults(clamp(nextEdit.origCharCount(), 1, 10))
-              .withMinCountRepeat(params.minPrefixCount)
-              .withMaxCountRepeat(params.maxPrefixCount), "",
-          subsetBoundary, s.getRunningEffort(),
-          navigationContext,
-          BufferIndexRef(*ctx.getBufferIndex(editsCompleted), beginLine));
+      auto rangeParams2 = MotionOptimizerRangeParams{}
+          .withMaxResults(clamp(nextEdit.origCharCount(), 1, 10))
+          .withMinCountRepeat(params.minPrefixCount)
+          .withMaxCountRepeat(params.maxPrefixCount);
+      auto bufRef2 = ctx.makeBufferIndexRef(editsCompleted, beginLine, endLine);
+      auto motionResult = bufRef2
+          ? motionOptimizer.optimizeToRange(
+                subset, localPos, localRangeBegin, localRangeEnd,
+                rangeParams2, "", subsetBoundary, s.getRunningEffort(),
+                navigationContext, *bufRef2)
+          : motionOptimizer.optimizeToRange(
+                subset, localPos, localRangeBegin, localRangeEnd,
+                rangeParams2, "", subsetBoundary, s.getRunningEffort(),
+                navigationContext);
       ctx.motionNodesExplored += motionResult.stats.nodesExplored;
 
       debug("  motion results:", static_cast<int>(motionResult.results.size()));
@@ -403,15 +413,20 @@ CompositionResult CompositionOptimizer::optimize(
             jBeginLine > 0 || boundary.hasLinesAbove(),
             jEndLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
-        auto jMotionResult = motionOptimizer.optimizeToRange(
-            jSubset, jLocalPos, jLocalFirst, jLocalEnd,
-            MotionOptimizerRangeParams{}
-                .withMaxResults(1)
-                .withMinCountRepeat(params.minPrefixCount)
-                .withMaxCountRepeat(params.maxPrefixCount), "",
-            jSubsetBoundary, s.getRunningEffort(),
-            navigationContext,
-            BufferIndexRef(*ctx.getBufferIndex(editsCompleted), jBeginLine));
+        auto jRangeParams = MotionOptimizerRangeParams{}
+            .withMaxResults(1)
+            .withMinCountRepeat(params.minPrefixCount)
+            .withMaxCountRepeat(params.maxPrefixCount);
+        auto jBufRef = ctx.makeBufferIndexRef(editsCompleted, jBeginLine, jEndLine);
+        auto jMotionResult = jBufRef
+            ? motionOptimizer.optimizeToRange(
+                  jSubset, jLocalPos, jLocalFirst, jLocalEnd,
+                  jRangeParams, "", jSubsetBoundary, s.getRunningEffort(),
+                  navigationContext, *jBufRef)
+            : motionOptimizer.optimizeToRange(
+                  jSubset, jLocalPos, jLocalFirst, jLocalEnd,
+                  jRangeParams, "", jSubsetBoundary, s.getRunningEffort(),
+                  navigationContext);
         ctx.motionNodesExplored += jMotionResult.stats.nodesExplored;
 
         for (RangeResult& movResult : jMotionResult.results) {
@@ -433,11 +448,21 @@ CompositionResult CompositionOptimizer::optimize(
         "skipped:", ctx.statesSkipped,
         "queueRemaining:", static_cast<int>(ctx.pq.size()));
 
+  // Extract diffStates and editResults from bundled edits for CompositionResult
+  std::vector<DiffState> diffs;
+  std::vector<EditResult> editResults;
+  diffs.reserve(ctx.edits.size());
+  editResults.reserve(ctx.edits.size());
+  for (auto& e : ctx.edits) {
+    diffs.push_back(std::move(e.diffState));
+    editResults.push_back(std::move(e.editResult));
+  }
+
   int numResults = static_cast<int>(results.size());
   return {std::move(results), ctx.getStats(numResults),
-          resultGoalPos, std::move(ctx.diffStates),
+          resultGoalPos, std::move(diffs),
           std::move(ctx.exploredStates),
-          std::move(ctx.editResults)};
+          std::move(editResults)};
 }
 
 ostream& operator<<(ostream& os, const CompositionResult& cr) {

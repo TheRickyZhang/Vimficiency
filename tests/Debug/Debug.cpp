@@ -1135,8 +1135,8 @@ TEST_F(NeovimOracleDebug, InvestigateMaskBugs) {
     Lines initial = {"foo (hello) bar"};
     Lines goal = {"foo (X) bar"};
     auto ctx = makeCtx(initial, goal);
-    const auto& toCtx = ctx.bracketQuoteContexts[0];
-    const auto& diff = ctx.diffStates[0];
+    const auto& toCtx = ctx.edits[0].bracketQuoteContext;
+    const auto& diff = ctx.edits[0].diffState;
 
     cerr << "Line: '" << initial[0] << "'" << endl;
     cerr << "Diff: deleted='" << diff.deletedText << "' inserted='" << diff.insertedText
@@ -1161,8 +1161,8 @@ TEST_F(NeovimOracleDebug, InvestigateMaskBugs) {
     Lines initial = {"aaa \"first\" bbb \"second\" ccc"};
     Lines goal = {"aaa \"first\" bbb \"X\" ccc"};
     auto ctx = makeCtx(initial, goal);
-    const auto& toCtx = ctx.bracketQuoteContexts[0];
-    const auto& diff = ctx.diffStates[0];
+    const auto& toCtx = ctx.edits[0].bracketQuoteContext;
+    const auto& diff = ctx.edits[0].diffState;
 
     cerr << "Line: '" << initial[0] << "'" << endl;
     cerr << "Diff: deleted='" << diff.deletedText << "' inserted='" << diff.insertedText
@@ -1188,8 +1188,8 @@ TEST_F(NeovimOracleDebug, InvestigateMaskBugs) {
     Lines initial = {"a ((hello)) c"};
     Lines goal = {"a ((X)) c"};
     auto ctx = makeCtx(initial, goal);
-    const auto& toCtx = ctx.bracketQuoteContexts[0];
-    const auto& diff = ctx.diffStates[0];
+    const auto& toCtx = ctx.edits[0].bracketQuoteContext;
+    const auto& diff = ctx.edits[0].diffState;
 
     cerr << "Line: '" << initial[0] << "'" << endl;
     cerr << "Diff: deleted='" << diff.deletedText << "' inserted='" << diff.insertedText
@@ -1504,12 +1504,12 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     CompositionSearchContext ctx(initial, initialPos, goal, "",
         navCtx, boundary, params, config);
 
-    cerr << "  totalEdits=" << ctx.totalEdits << endl;
-    for (int i = 0; i < ctx.totalEdits; i++) {
-      const auto& d = ctx.diffStates[i];
+    cerr << "  totalEdits=" << ctx.totalEdits() << endl;
+    for (int i = 0; i < ctx.totalEdits(); i++) {
+      const auto& d = ctx.edits[i].diffState;
       cerr << "  diff[" << i << "]: begin=(" << d.beginPos.line << "," << d.beginPos.col
            << ") end=(" << d.endPos.line << "," << d.endPos.col << ")" << endl;
-      const auto& er = ctx.editResults[i];
+      const auto& er = ctx.edits[i].editResult;
       cerr << "    editResult: " << er.resultCount() << " positions, goalPos=("
            << er.goalPos.line << "," << er.goalPos.col << ")" << endl;
     }
@@ -1555,7 +1555,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
         continue; // skip insertion handling for this trace
       }
 
-      const EditResult& editResult = ctx.editResults[editsCompleted];
+      const EditResult& editResult = ctx.edits[editsCompleted].editResult;
       const Result* editRes = editResult.resultAt(pos.line, pos.col);
 
       cerr << "  POP " << popCount << ": pos=(" << pos.line << "," << pos.col
@@ -1629,23 +1629,23 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
   cerr << "\n=== Step 1: Diffs ===" << endl;
   CompositionSearchContext ctx(initial, initialPos, goal, "",
       NavContext(), MotionBoundary(), compParams, config);
-  cerr << "totalEdits=" << ctx.totalEdits << endl;
-  for (int i = 0; i < ctx.totalEdits; i++) {
-    const auto& d = ctx.diffStates[i];
+  cerr << "totalEdits=" << ctx.totalEdits() << endl;
+  for (int i = 0; i < ctx.totalEdits(); i++) {
+    const auto& d = ctx.edits[i].diffState;
     cerr << "  diff[" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
          << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
          << " del='" << makePrintable(d.deletedText) << "'"
          << " ins='" << makePrintable(d.insertedText) << "'"
          << " type=" << (d.isPureInsertion() ? "INSERT" : d.isPureDeletion() ? "DELETE" : "REPLACE")
          << endl;
-    cerr << "    buffer[" << i << "]: " << ctx.linesAfterNEdits[i] << endl;
+    cerr << "    buffer[" << i << "]: " << ctx.getLinesAfter(i) << endl;
   }
 
   // Step 2: Edit results for each diff
   cerr << "\n=== Step 2: EditResults per diff ===" << endl;
-  for (int i = 0; i < ctx.totalEdits; i++) {
-    const auto& er = ctx.editResults[i];
-    const auto& d = ctx.diffStates[i];
+  for (int i = 0; i < ctx.totalEdits(); i++) {
+    const auto& er = ctx.edits[i].editResult;
+    const auto& d = ctx.edits[i].diffState;
     cerr << "  edit[" << i << "] goalPos=(" << er.goalPos.line << "," << er.goalPos.col
          << ") resultCount=" << er.resultCount() << endl;
 
@@ -1663,7 +1663,7 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
     cerr << "    total valid: " << validCount << " / " << er.resultCount() << endl;
 
     // Specifically check positions that should have results
-    const auto& buf = ctx.linesAfterNEdits[i];
+    const auto& buf = ctx.getLinesAfter(i);
     for (int line = d.beginPos.line; line <= min(d.endPos.line, static_cast<int>(buf.size()) - 1); line++) {
       int startCol = (line == d.beginPos.line) ? d.beginPos.col : 0;
       int endCol = (line == d.endPos.line) ? d.endPos.col : static_cast<int>(buf[line].size());
@@ -1726,7 +1726,7 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
     }
 
     // Edit transition
-    const EditResult& editResult = ctx.editResults[editsCompleted];
+    const EditResult& editResult = ctx.edits[editsCompleted].editResult;
     const Result* res = editResult.resultAt(pos.line, pos.col);
 
     if (res) {
@@ -1818,22 +1818,22 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
     CompositionOptimizerParams compParams{};
     CompositionSearchContext ctx(initial, initialPos, goal, "",
         NavContext(), MotionBoundary(), compParams, config);
-    cerr << "totalEdits=" << ctx.totalEdits << endl;
+    cerr << "totalEdits=" << ctx.totalEdits() << endl;
 
-    for (int i = 0; i < ctx.totalEdits; i++) {
-      const auto& d = ctx.diffStates[i];
+    for (int i = 0; i < ctx.totalEdits(); i++) {
+      const auto& d = ctx.edits[i].diffState;
       cerr << "  diff[" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
            << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
            << " del='" << makePrintable(d.deletedText) << "'"
            << " ins='" << makePrintable(d.insertedText) << "'" << endl;
-      cerr << "    buffer[" << i << "]: " << ctx.linesAfterNEdits[i];
+      cerr << "    buffer[" << i << "]: " << ctx.getLinesAfter(i);
 
-      if (ctx.joinPlans[i]) {
-        cerr << "    JOIN PLAN: seq='" << ctx.joinPlans[i]->sequence.view()
-             << "' effort=" << ctx.joinPlans[i]->effort
-             << " entryLine=" << ctx.joinPlans[i]->entryLine
-             << " goalPos=(" << ctx.joinPlans[i]->goalPos.line
-             << "," << ctx.joinPlans[i]->goalPos.col << ")" << endl;
+      if (ctx.edits[i].joinPlan) {
+        cerr << "    JOIN PLAN: seq='" << ctx.edits[i].joinPlan->sequence.view()
+             << "' effort=" << ctx.edits[i].joinPlan->effort
+             << " entryLine=" << ctx.edits[i].joinPlan->entryLine
+             << " goalPos=(" << ctx.edits[i].joinPlan->goalPos.line
+             << "," << ctx.edits[i].joinPlan->goalPos.col << ")" << endl;
       } else {
         cerr << "    JOIN PLAN: none" << endl;
       }
@@ -1916,27 +1916,27 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
   CompositionOptimizerParams compParams{};
   CompositionSearchContext ctx(initial, initialPos, goal, "",
       NavContext(), MotionBoundary(), compParams, config);
-  cerr << "totalEdits=" << ctx.totalEdits << endl;
-  for (int i = 0; i < ctx.totalEdits; i++) {
-    const auto& d = ctx.diffStates[i];
+  cerr << "totalEdits=" << ctx.totalEdits() << endl;
+  for (int i = 0; i < ctx.totalEdits(); i++) {
+    const auto& d = ctx.edits[i].diffState;
     cerr << "  [" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
          << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
          << " del='" << makePrintable(d.deletedText) << "'"
          << " ins='" << makePrintable(d.insertedText) << "'"
          << " type=" << (d.isPureInsertion() ? "INSERT" : d.isPureDeletion() ? "DELETE" : "REPLACE")
          << endl;
-    cerr << "    buffer[" << i << "]: " << ctx.linesAfterNEdits[i] << endl;
+    cerr << "    buffer[" << i << "]: " << ctx.getLinesAfter(i) << endl;
     cerr << "    boundary: prefix='" << d.boundary.prefix() << "' suffix='" << d.boundary.suffix() << "'"
          << " linesAbove=" << d.boundary.hasLinesAbove()
          << " linesBelow=" << d.boundary.hasLinesBelow() << endl;
   }
-  cerr << "  goalBuffer: " << ctx.linesAfterNEdits[ctx.totalEdits] << endl;
+  cerr << "  goalBuffer: " << ctx.getLinesAfter(ctx.totalEdits()) << endl;
 
   // Step 3: Try each edit independently through EditOptimizer
   cerr << "\n=== EditOptimizer per diff ===" << endl;
   EditOptimizer editOpt(config);
-  for (int i = 0; i < ctx.totalEdits; i++) {
-    const auto& d = ctx.diffStates[i];
+  for (int i = 0; i < ctx.totalEdits(); i++) {
+    const auto& d = ctx.edits[i].diffState;
     if (d.isPureInsertion()) {
       cerr << "  diff[" << i << "]: pure insertion, skip" << endl;
       continue;
@@ -1964,7 +1964,7 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
   // Step 4: Show what upstream fix would produce (stripped empty first line)
   cerr << "\n=== Upstream fix comparison ===" << endl;
   {
-    const auto& d = ctx.diffStates[0];
+    const auto& d = ctx.edits[0].diffState;
     Lines deleted = d.deletedLines();
     Lines inserted = d.insertedLines();
     cerr << "  Original: deletedLines=" << deleted << " → insertedLines=" << inserted << endl;
@@ -1973,11 +1973,11 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
       deleted.erase(deleted.begin());
       cerr << "  After strip: deletedLines=" << deleted << " → insertedLines=" << inserted << endl;
       cerr << "  Edit region now starts at (1,0), no prefix" << endl;
-      cerr << "  Buffer before edit: " << ctx.linesAfterNEdits[0] << endl;
+      cerr << "  Buffer before edit: " << ctx.getLinesAfter(0) << endl;
 
       // If EditOptimizer transforms ["bbb","ccc"] → [" bbb ccc?"],
       // what does the buffer look like?
-      Lines beforeEdit = ctx.linesAfterNEdits[0];
+      Lines beforeEdit = ctx.getLinesAfter(0);
       // The edit replaces lines 1-2 content with the single line " bbb ccc?"
       // But the \n between line 0 and line 1 is preserved!
       cerr << "  After edit: [\"" << beforeEdit[0] << "\", \" bbb ccc?\"]" << endl;
@@ -2008,15 +2008,15 @@ TEST_F(DebugTest, InvestigateHumanApproval1) {
   CompositionOptimizerParams compParams{};
   CompositionSearchContext ctx(initial, CursorPos(0,0), goal, "",
       NavContext(), MotionBoundary(), compParams, config);
-  cerr << "totalEdits=" << ctx.totalEdits << endl;
-  for (int i = 0; i < ctx.totalEdits; i++) {
-    const auto& d = ctx.diffStates[i];
+  cerr << "totalEdits=" << ctx.totalEdits() << endl;
+  for (int i = 0; i < ctx.totalEdits(); i++) {
+    const auto& d = ctx.edits[i].diffState;
     cerr << "  [" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
          << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
          << " del='" << d.deletedText << "' ins='" << d.insertedText << "'"
          << " type=" << (d.isPureInsertion() ? "INSERT" : d.isPureDeletion() ? "DELETE" : "REPLACE")
          << endl;
-    cerr << "    buffer[" << i << "]: " << ctx.linesAfterNEdits[i] << endl;
+    cerr << "    buffer[" << i << "]: " << ctx.getLinesAfter(i) << endl;
   }
 
   // Step 3: Full optimizer results with oracle verification

@@ -10,14 +10,29 @@ export function RootLayout() {
 
   // Determine breadcrumb context from matched routes
   const optimizerParam = (last?.params as Record<string, string>)?.['optimizer'];
-  const isExplore = last?.fullPath?.endsWith('/explore') ?? false;
+  const fullPath = last?.fullPath ?? '';
+  const isChunkDetail = fullPath.includes('/explore/chunk');
+  const isExplore = fullPath.endsWith('/explore') || isChunkDetail;
 
   let breadcrumb: React.ReactNode = null;
   let title = 'Vimficiency Benchmarks';
 
   if (optimizerParam) {
     const label = capitalize(optimizerParam);
-    if (isExplore) {
+    if (isChunkDetail) {
+      title = `Chunk Detail — ${label} — Vimficiency`;
+      breadcrumb = (
+        <div className="mb-6 text-base">
+          <Link to="/" className="link-brand">Vimficiency</Link>
+          <span className="text-[#999] mx-2">&#x203A;</span>
+          <Link to="/$optimizer" params={{ optimizer: optimizerParam }} search={{ cat: undefined, bench: undefined }} className="link-brand">{label}</Link>
+          <span className="text-[#999] mx-2">&#x203A;</span>
+          <Link to="/$optimizer/explore" params={{ optimizer: optimizerParam }} search={{ case: undefined }} className="link-brand">Search Space</Link>
+          <span className="text-[#999] mx-2">&#x203A;</span>
+          <span>Chunk Detail</span>
+        </div>
+      );
+    } else if (isExplore) {
       title = `Search Space — ${label} — Vimficiency`;
       breadcrumb = (
         <div className="mb-6 text-base">

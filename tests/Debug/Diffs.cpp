@@ -76,16 +76,16 @@ TEST_F(DebugTest, CompositionDiffMerging) {
     CompositionSearchContext ctx(initial, CursorPos(0, 0), goal, "",
         NavContext(), MotionBoundary(), params, config);
 
-    cerr << "  Merged diffs: " << ctx.totalEdits << endl;
-    for (int i = 0; i < ctx.totalEdits; i++) {
-      const auto& d = ctx.diffStates[i];
+    cerr << "  Merged diffs: " << ctx.totalEdits() << endl;
+    for (int i = 0; i < ctx.totalEdits(); i++) {
+      const auto& d = ctx.edits[i].diffState;
       cerr << "    [" << i << "] deleted='" << d.deletedText
            << "' inserted='" << d.insertedText << "'" << endl;
       cerr << "        beginPos=(" << d.beginPos.line << "," << d.beginPos.col
            << ") isPureInsertion=" << d.isPureInsertion() << endl;
     }
 
-    EXPECT_EQ(ctx.totalEdits, expectedDiffs) << "Expected " << expectedDiffs
+    EXPECT_EQ(ctx.totalEdits(), expectedDiffs) << "Expected " << expectedDiffs
         << " diff(s) for: " << name;
   };
 

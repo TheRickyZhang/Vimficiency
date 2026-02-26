@@ -26,6 +26,8 @@ class BufferIndex {
   }
 
 public:
+  BufferIndex() = default;
+
   // Builds index with single forward scan through buffer
   // Contains positions that you could land on by applying motion, including the very start/end positions (even if they don't match the pattern)
   BufferIndex(const Lines& buffer);

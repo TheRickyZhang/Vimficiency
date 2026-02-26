@@ -6,6 +6,7 @@ import { RootLayout } from './components/RootLayout';
 import { HomePage } from './pages/HomePage';
 import { OptimizerPage } from './pages/OptimizerPage';
 import { ExplorePage } from './pages/ExplorePage';
+import { ChunkDetailPage } from './pages/ChunkDetailPage';
 
 const VALID_OPTIMIZERS = ['edit', 'motion', 'composition', 'tests'] as const;
 export type OptimizerSlug = (typeof VALID_OPTIMIZERS)[number];
@@ -107,9 +108,28 @@ export const exploreRoute = createRoute({
   component: ExplorePage,
 });
 
+export const chunkDetailRoute = createRoute({
+  getParentRoute: () => optimizerLayoutRoute,
+  path: '/explore/chunk',
+  loader: async ({ params }): Promise<ExplorationData | null> => {
+    try {
+      const res = await fetch(`${base}${params.optimizer}/explore.json?_=${Date.now()}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
+  validateSearch: (search: Record<string, unknown>) => ({
+    case: (search['case'] as string) || undefined,
+    chunkIndex: search['chunkIndex'] != null ? Number(search['chunkIndex']) : undefined,
+  }),
+  component: ChunkDetailPage,
+});
+
 const routeTree = rootRoute.addChildren([
   homeRoute,
-  optimizerLayoutRoute.addChildren([optimizerIndexRoute, exploreRoute]),
+  optimizerLayoutRoute.addChildren([optimizerIndexRoute, chunkDetailRoute, exploreRoute]),
 ]);
 
 export const router = createRouter({

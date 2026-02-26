@@ -1,51 +1,20 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import type { ExplorationData, ExplorationCase, ChunkedStateEntry, ChunkedResultEntry, SequenceChunk, ExploredStateEntry, FoundResultEntry } from '../types/exploration';
+import { useNavigate, useParams } from '@tanstack/react-router';
+import type { ExplorationData, ChunkedStateEntry, ChunkedResultEntry, ExploredStateEntry, FoundResultEntry } from '../types/exploration';
 import { BufferPreview } from './BufferPreview';
 import { EffortHistogram } from './EffortHistogram';
 import { ExplorationTimeline } from './ExplorationTimeline';
 import { ExplorationTree } from './ExplorationTree';
-
-const SUPERSCRIPTS = ['\u00B9', '\u00B2', '\u00B3', '\u2074', '\u2075', '\u2076', '\u2077', '\u2078', '\u2079'];
-
-function isChunkedCase(c: ExplorationCase): boolean {
-  return Array.isArray(c.contents);
-}
-
-function chunkDisplayKey(c: SequenceChunk): string {
-  if (c.contentId != null && c.contentId >= 0) return c.text + (SUPERSCRIPTS[c.contentId] ?? `[${c.contentId}]`);
-  return c.text;
-}
-
-// Transform chunked states → flat ExploredStateEntry for tree/histogram/timeline
-function chunkedStatesToFlat(states: ChunkedStateEntry[]): ExploredStateEntry[] {
-  return states.map(s => ({
-    effort: s.effort,
-    tokens: s.chunks.map(chunkDisplayKey),
-  }));
-}
-
-function chunkedResultsToFlat(results: ChunkedResultEntry[]): FoundResultEntry[] {
-  return results.map(r => ({
-    effort: r.effort,
-    tokens: r.chunks.map(chunkDisplayKey),
-  }));
-}
-
-function findCase(cases: ExplorationCase[], query: string | null): ExplorationCase | undefined {
-  if (!query) return cases[0];
-  const exact = cases.find((c) => c.name === query);
-  if (exact) return exact;
-  const partial = cases.find((c) => c.name.endsWith(query) || query.endsWith(c.name));
-  if (partial) return partial;
-  return cases[0];
-}
-
-// Split case names like "BufferSize/10" into { category: "BufferSize", param: "10" }
-function parseCaseName(name: string): { category: string; param: string } {
-  const slash = name.indexOf('/');
-  if (slash === -1) return { category: name, param: '' };
-  return { category: name.substring(0, slash), param: name.substring(slash + 1) };
-}
+import {
+  SUPERSCRIPTS,
+  isChunkedCase,
+  chunkDisplayKey,
+  chunkedStatesToFlat,
+  chunkedResultsToFlat,
+  findCase,
+  parseCaseName,
+  deriveChunkDetail,
+} from '../utils/exploration';
 
 interface Props {
   data: ExplorationData;
@@ -143,54 +112,7 @@ export function ExploreApp({ data, initialCase }: Props) {
   // Build sub-tree data for the side panel (motion or edit chunk detail)
   const detailTreeData = useMemo(() => {
     if (!selectedChunk || !chunked || !activeCase) return null;
-
-    const cStates = activeCase.states as unknown as ChunkedStateEntry[];
-    const cResults = activeCase.results as unknown as ChunkedResultEntry[];
-
-    if (selectedChunk.type === 'edit') {
-      // Edit chunk: pull from diffs[editIndex].editStates/editResults
-      let editIdx = 0;
-      if (cResults.length > 0) {
-        const r = cResults[0]!;
-        for (let i = 0; i < selectedChunk.chunkIndex && i < r.chunks.length; i++) {
-          if (r.chunks[i]!.type === 'edit') editIdx++;
-        }
-      }
-      const diff = activeCase.diffs?.[editIdx];
-      if (!diff) return null;
-      return {
-        states: diff.editStates ?? [],
-        results: diff.editResults ?? [],
-      };
-    }
-
-    // Motion chunk: filter composition explored states by editsCompleted
-    let targetEditsCompleted = 0;
-    if (cResults.length > 0) {
-      const r = cResults[0]!;
-      for (let i = 0; i < selectedChunk.chunkIndex && i < r.chunks.length; i++) {
-        if (r.chunks[i]!.type === 'edit') targetEditsCompleted++;
-      }
-    }
-
-    const subStates: ExploredStateEntry[] = [];
-    for (const s of cStates) {
-      if (s.editsCompleted !== targetEditsCompleted) continue;
-      if (selectedChunk.chunkIndex >= s.chunks.length) continue;
-      const chunk = s.chunks[selectedChunk.chunkIndex];
-      if (!chunk || chunk.type !== 'motion') continue;
-      subStates.push({ effort: s.effort, tokens: chunk.tokens });
-    }
-
-    const subResults: FoundResultEntry[] = [];
-    for (const r of cResults) {
-      if (selectedChunk.chunkIndex >= r.chunks.length) continue;
-      const chunk = r.chunks[selectedChunk.chunkIndex]!;
-      if (chunk.type !== 'motion') continue;
-      subResults.push({ effort: r.effort, tokens: chunk.tokens });
-    }
-
-    return { states: subStates, results: subResults };
+    return deriveChunkDetail(activeCase, selectedChunk.chunkIndex, selectedChunk.type);
   }, [selectedChunk, chunked, activeCase]);
 
   // Commit step
@@ -228,6 +150,18 @@ export function ExploreApp({ data, initialCase }: Props) {
     }
     return set.size > 0 ? set : undefined;
   }, [chunked, activeCase]);
+
+  // Navigate to chunk detail page
+  const navigate = useNavigate();
+  const { optimizer } = useParams({ strict: false });
+  const onChunkDetailNewPage = useCallback((tokenIndex: number, _tokenText: string) => {
+    if (!activeCase) return;
+    navigate({
+      to: '/$optimizer/explore/chunk',
+      params: { optimizer: optimizer! },
+      search: { case: activeCase.name, chunkIndex: tokenIndex },
+    });
+  }, [activeCase, navigate, optimizer]);
 
   // Chunk detail callback for ExplorationTree
   const onChunkDetail = useCallback((tokenIndex: number, tokenText: string) => {
@@ -396,6 +330,7 @@ export function ExploreApp({ data, initialCase }: Props) {
                       selectedSeqs={selectedSeqs}
                       expandableTokens={expandableTokens}
                       onChunkDetail={chunked ? onChunkDetail : undefined}
+                      onChunkDetailNewPage={chunked ? onChunkDetailNewPage : undefined}
                     />
                   </div>
                   {selectedChunk && detailTreeData && (

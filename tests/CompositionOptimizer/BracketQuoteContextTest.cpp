@@ -11,7 +11,6 @@
 
 #include "Boundary/MotionBoundary.h"
 #include "Types/NavContext.h"
-#include "Keyboard/ToKeys/MotionToKeys.h"
 #include "Optimizer/CompositionOptimizer/CompositionSearchContext.h"
 #include "Keyboard/Config.h"
 #include "Types/Lines.h"
@@ -83,8 +82,8 @@ protected:
   // Convenience: make context and validate a single-edit case
   void validateSingleEdit(const Lines& initial, const Lines& goal, char delim) {
     auto ctx = makeContext(initial, goal);
-    ASSERT_EQ(ctx.totalEdits, 1);
-    validateMask(initial, goal, ctx.bracketQuoteContexts[0], ctx.diffStates[0], delim);
+    ASSERT_EQ(ctx.totalEdits(), 1);
+    validateMask(initial, goal, ctx.edits[0].bracketQuoteContext, ctx.edits[0].diffState, delim);
   }
 };
 
@@ -124,15 +123,15 @@ TEST_F(TextObjectContextTest, InnerBracket_NestedEditOuter) {
 // No delimiters present: nothing should be valid
 TEST_F(TextObjectContextTest, NoDelimiters) {
   auto ctx = makeContext({"hello world"}, {"hello there"});
-  ASSERT_EQ(ctx.totalEdits, 1);
-  EXPECT_FALSE(ctx.bracketQuoteContexts[0].hasAnyValid());
+  ASSERT_EQ(ctx.totalEdits(), 1);
+  EXPECT_FALSE(ctx.edits[0].bracketQuoteContext.hasAnyValid());
 }
 
 // Pure insertion: context should be skipped (line == -1)
 TEST_F(TextObjectContextTest, PureInsertion_SkipsContext) {
   auto ctx = makeContext({"hello"}, {"hello world"});
-  ASSERT_EQ(ctx.totalEdits, 1);
-  EXPECT_EQ(ctx.bracketQuoteContexts[0].line, -1);
+  ASSERT_EQ(ctx.totalEdits(), 1);
+  EXPECT_EQ(ctx.edits[0].bracketQuoteContext.line, -1);
 }
 
 // =============================================================================
@@ -189,16 +188,16 @@ TEST_F(TextObjectContextTest, Random_FullyRandom) {
     Lines goal = {goalLine};
 
     auto ctx = makeContext(initial, goal);
-    if (ctx.totalEdits < 1) continue;
+    if (ctx.totalEdits() < 1) continue;
 
     // Compute intermediate states for multi-edit validation
-    vector<Lines> states(ctx.totalEdits + 1);
+    vector<Lines> states(ctx.totalEdits() + 1);
     states[0] = initial;
-    for (int i = 0; i < ctx.totalEdits; i++)
-      states[i + 1] = Myers::applyDiffState(ctx.diffStates[i], states[i]);
+    for (int i = 0; i < ctx.totalEdits(); i++)
+      states[i + 1] = Myers::applyDiffState(ctx.edits[i].diffState, states[i]);
 
-    for (int e = 0; e < ctx.totalEdits; e++) {
-      const auto& toCtx = ctx.bracketQuoteContexts[e];
+    for (int e = 0; e < ctx.totalEdits(); e++) {
+      const auto& toCtx = ctx.edits[e].bracketQuoteContext;
       if (toCtx.line < 0) continue;
 
       const Lines& editInitial = states[e];
@@ -206,7 +205,7 @@ TEST_F(TextObjectContextTest, Random_FullyRandom) {
 
       validated++;
       for (char d : delimsInLine(editInitial[toCtx.line]))
-        validateMask(editInitial, editGoal, toCtx, ctx.diffStates[e], d);
+        validateMask(editInitial, editGoal, toCtx, ctx.edits[e].diffState, d);
     }
   }
 

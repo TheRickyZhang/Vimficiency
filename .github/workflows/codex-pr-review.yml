@@ -29,37 +29,26 @@ jobs:
           git diff --no-color --minimal "$BASE...$HEAD" > /tmp/pr.diff
           echo "diff_lines=$(wc -l </tmp/pr.diff | tr -d ' ')" >> "$GITHUB_OUTPUT"
 
-      - name: Run Codex (structured review)
-        id: codex
-        uses: openai/codex-action@v1
-        with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          model: gpt-5.2-codex
-          codex-args: >-
-            --output-schema .github/codex/schemas/pr_review.schema.json
-        env:
-          CODEX_PROMPT_FILE: /tmp/codex_prompt.txt
-
       - name: Build Codex prompt with diff
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/codex_prompt.txt <<'EOF'
-Return JSON that matches the provided schema exactly.
-
-Write a concise PR review focused on:
-- logical/correctness bugs (including UB/lifetime)
-- code smells/design limitations
-- long-term semantic concerns (invariants, API boundaries, coupling)
-
-Rules:
-- body: 5–15 bullets max.
-- comments: only actionable issues; prefer severity high/medium.
-- For each inline comment: use the repo-relative file path, and a line number in the NEW file (RIGHT side).
-- Do not output any extra text outside the JSON.
-
-PR DIFF (base...head):
-EOF
+          printf '%s\n' \
+            'Return JSON that matches the provided schema exactly.' \
+            '' \
+            'Write a concise PR review focused on:' \
+            '- logical/correctness bugs (including UB/lifetime)' \
+            '- code smells/design limitations' \
+            '- long-term semantic concerns (invariants, API boundaries, coupling)' \
+            '' \
+            'Rules:' \
+            '- body: 5-15 bullets max.' \
+            '- comments: only actionable issues; prefer severity high/medium.' \
+            '- For each inline comment: use the repo-relative file path, and a line number in the NEW file (RIGHT side).' \
+            '- Do not output any extra text outside the JSON.' \
+            '' \
+            'PR DIFF (base...head):' \
+            > /tmp/codex_prompt.txt
           cat /tmp/pr.diff >> /tmp/codex_prompt.txt
 
       - name: Run Codex using the generated prompt

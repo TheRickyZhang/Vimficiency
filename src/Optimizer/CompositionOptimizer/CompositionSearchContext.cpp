@@ -49,8 +49,6 @@ CompositionSearchContext::CompositionSearchContext(
       Lines(initialLines.begin(), initialLines.end()),
       Lines(goalLines.begin(), goalLines.end()));
 
-  totalEdits = static_cast<int>(rawDiffs.size());
-
   // Determine processing direction based on start position relative to edits
   if (!rawDiffs.empty()) {
     double distToFirst = costToGoal(initialPos, rawDiffs.front().beginPos);
@@ -61,15 +59,19 @@ CompositionSearchContext::CompositionSearchContext(
       std::reverse(rawDiffs.begin(), rawDiffs.end());
       debug("Processing edits in reverse order (backward)");
     }
+  }
 
-    diffStates = std::move(rawDiffs);
+  // Build per-edit data from raw diffs
+  edits.reserve(rawDiffs.size());
+  for (auto& d : rawDiffs) {
+    edits.push_back(PerEditData{std::move(d)});
   }
 
   debug("=== CompositionOptimizer setup ===");
-  debug("totalEdits:", totalEdits, " initialPos:", initialPos,
+  debug("totalEdits:", totalEdits(), " initialPos:", initialPos,
         " maxEffort:", maxEffort);
-  for (int i = 0; i < totalEdits; i++) {
-    const DiffState& d = diffStates[i];
+  for (int i = 0; i < totalEdits(); i++) {
+    const DiffState& d = edits[i].diffState;
     const char* kind = d.isPureInsertion() ? "INS" :
                        d.isPureDeletion()  ? "DEL" : "REP";
     debug("  diff[" + to_string(i) + "]:", kind,
@@ -80,20 +82,43 @@ CompositionSearchContext::CompositionSearchContext(
   }
 
   // Build intermediate buffer states
-  linesAfterNEdits = calculateLinesAfterDiffs(initialLines);
+  linesAfterNEdits_ = calculateLinesAfterDiffs(initialLines);
 
-  // Pre-compute BufferIndex for each edit level (for counted motion exploration)
-  bufferIndices.reserve(totalEdits);
-  for (int i = 0; i < totalEdits; i++) {
-    bufferIndices.emplace_back(linesAfterNEdits[i]);
+  // Pre-compute subset BufferIndex for each edit level (for counted motion exploration).
+  // Each index covers the region between the previous edit and current edit + padding,
+  // which is where the A* search will query motion landing positions.
+  for (int i = 0; i < totalEdits(); i++) {
+    const Lines& buf = linesAfterNEdits_[i];
+    int bufSize = static_cast<int>(buf.size());
+
+    // Determine the line range the cursor could be in when approaching edit i.
+    // For i==0, it's the initial position.
+    // For i>0, it's within the region replaced by edit i-1.
+    int prevMinLine, prevMaxLine;
+    if (i == 0) {
+      prevMinLine = prevMaxLine = initialPos.line;
+    } else {
+      prevMinLine = edits[i - 1].diffState.beginPos.line;
+      prevMaxLine = prevMinLine + edits[i - 1].diffState.newLineCount() - 1;
+    }
+
+    int currMinLine = edits[i].diffState.beginPos.line;
+    int currMaxLine = edits[i].diffState.endPos.line;
+
+    int idxStart = std::max(0, std::min(prevMinLine, currMinLine) - params.motionPaddingAbove);
+    int idxEnd = std::min(bufSize, std::max(prevMaxLine, currMaxLine) + 1 + params.motionPaddingBelow);
+
+    edits[i].bufferIndexStart = idxStart;
+    edits[i].bufferIndexEnd = idxEnd;
+    edits[i].bufferIndex = BufferIndex(buf.getLineRange(idxStart, idxEnd));
   }
 
   // Solve each edit region
-  editResults = calculateEditResults();
+  calculateEditResults();
 
   debug("--- edit results ---");
-  for (int i = 0; i < static_cast<int>(editResults.size()); i++) {
-    const auto& er = editResults[i];
+  for (int i = 0; i < totalEdits(); i++) {
+    const auto& er = edits[i].editResult;
     int validCount = 0;
     double bestCost = numeric_limits<double>::max();
     for (const Result& r : er.getResults()) {
@@ -109,33 +134,33 @@ CompositionSearchContext::CompositionSearchContext(
   }
 
   // Compute J (join lines) plans
-  joinPlans = computeJoinPlans();
+  computeJoinPlans();
 
   debug("--- join plans ---");
-  for (int i = 0; i < static_cast<int>(joinPlans.size()); i++) {
-    if (joinPlans[i]) {
-      debug("  joinPlan[" + to_string(i) + "]: seq='" + joinPlans[i]->sequence.str() + "'",
-            "effort:", joinPlans[i]->effort, "entryLine:", joinPlans[i]->entryLine,
-            "goalPos:", joinPlans[i]->goalPos);
+  for (int i = 0; i < totalEdits(); i++) {
+    if (edits[i].joinPlan) {
+      debug("  joinPlan[" + to_string(i) + "]: seq='" + edits[i].joinPlan->sequence.str() + "'",
+            "effort:", edits[i].joinPlan->effort, "entryLine:", edits[i].joinPlan->entryLine,
+            "goalPos:", edits[i].joinPlan->goalPos);
     }
   }
 
   // Compute text object contexts for shortcuts
-  bracketQuoteContexts = computeTextObjectContexts();
+  computeTextObjectContexts();
 
-  for (int i = 0; i < static_cast<int>(bracketQuoteContexts.size()); i++) {
-    if (bracketQuoteContexts[i].hasAnyValid()) {
+  for (int i = 0; i < totalEdits(); i++) {
+    if (edits[i].bracketQuoteContext.hasAnyValid()) {
       debug("  textObj[" + to_string(i) + "]: active on line",
-            bracketQuoteContexts[i].line);
+            edits[i].bracketQuoteContext.line);
     }
   }
 
   // Compute suffix sums for heuristic
-  suffixEditCosts = computeSuffixEditCosts();
+  suffixEditCosts_ = computeSuffixEditCosts();
 
   debug("--- suffix edit costs ---");
-  for (int i = 0; i <= totalEdits; i++) {
-    debug("  suffixCost[" + to_string(i) + "]:", suffixEditCosts[i]);
+  for (int i = 0; i <= totalEdits(); i++) {
+    debug("  suffixCost[" + to_string(i) + "]:", suffixEditCosts_[i]);
   }
   debug("=== setup complete ===");
 }
@@ -171,11 +196,11 @@ double CompositionSearchContext::heuristic(
     const CompositionState& s, int editsCompleted) const {
   // h(n) = distance to next edit region + suffix sum of edit costs
   // O(1) lookup for remaining edit costs
-  double h = suffixEditCosts[editsCompleted];
+  double h = suffixEditCosts_[editsCompleted];
 
   // Add distance to next edit region with asymmetric penalty
-  if (editsCompleted < totalEdits) {
-    const DiffState& nextEdit = diffStates[editsCompleted];
+  if (editsCompleted < totalEdits()) {
+    const DiffState& nextEdit = edits[editsCompleted].diffState;
     CursorPos pos = s.getPos();
 
     if (nextEdit.beginPos == nextEdit.endPos) {
@@ -197,6 +222,17 @@ double CompositionSearchContext::heuristic(
   }
 
   return effortWeight * s.getEffort() + distanceWeight * h;
+}
+
+optional<BufferIndexRef> CompositionSearchContext::makeBufferIndexRef(
+    int editsCompleted, int motionBeginLine, int motionEndLine) const {
+  if (editsCompleted < 0 || editsCompleted >= totalEdits())
+    return nullopt;
+  const auto& edit = edits[editsCompleted];
+  // Safety: motion search window must be within the indexed range
+  if (motionBeginLine < edit.bufferIndexStart || motionEndLine > edit.bufferIndexEnd)
+    return nullopt;
+  return BufferIndexRef(edit.bufferIndex, motionBeginLine - edit.bufferIndexStart);
 }
 
 void CompositionSearchContext::exploreEditTransition(
@@ -234,7 +270,7 @@ void CompositionSearchContext::exploreNewState(CompositionState&& newState) {
 
   if (it == costMap.end()) {
     // Don't cache goal states (we want multiple results)
-    if (newState.getEditsCompleted() != totalEdits) {
+    if (newState.getEditsCompleted() != totalEdits()) {
       costMap.emplace(newKey, newCost);
     }
     pq.push(std::move(newState));
@@ -270,14 +306,14 @@ SearchStats CompositionSearchContext::getStats(int resultsFound) const {
 }
 
 vector<double> CompositionSearchContext::computeSuffixEditCosts() const {
-  int n = static_cast<int>(editResults.size());
+  int n = totalEdits();
   vector<double> suffixCosts(n + 1, 0.0);
 
   for (int i = n - 1; i >= 0; i--) {
     double medianCost;
 
     // All edits now have EditResult (including pure insertions)
-    const auto& editRes = editResults[i];
+    const auto& editRes = edits[i].editResult;
     vector<double> costs;
     for (const Result& r : editRes.getResults()) {
       if (r.isValid()) {
@@ -286,8 +322,8 @@ vector<double> CompositionSearchContext::computeSuffixEditCosts() const {
     }
 
     // Include J plan effort if available
-    if (i < static_cast<int>(joinPlans.size()) && joinPlans[i]) {
-      costs.push_back(joinPlans[i]->effort);
+    if (edits[i].joinPlan) {
+      costs.push_back(edits[i].joinPlan->effort);
     }
 
     if (costs.empty()) {
@@ -323,14 +359,11 @@ static CursorPos computeInsertEndPos(CursorPos insertPos, const string& inserted
   }
 }
 
-vector<EditResult> CompositionSearchContext::calculateEditResults() {
+void CompositionSearchContext::calculateEditResults() {
   EditOptimizer editOptimizer(config);
-  vector<EditResult> results;
-  results.reserve(diffStates.size());
-  pureDeletionGoalPosByEdit.assign(diffStates.size(), {});
 
-  for (size_t i = 0; i < diffStates.size(); i++) {
-    const DiffState& diff = diffStates[i];
+  for (size_t i = 0; i < edits.size(); i++) {
+    const DiffState& diff = edits[i].diffState;
     // Handle pure insertions: create single-entry EditResult with precomputed "i + text + <Esc>"
     if (diff.isPureInsertion()) {
       // Build insert sequence: i + typed content + <Esc>
@@ -346,10 +379,8 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
       CursorPos goalPos = computeInsertEndPos(diff.beginPos, diff.insertedText);
       // Use single-char Lines for lineBaseIndex computation (insertion point has no content)
       Lines singlePoint = {""};
-      EditResult result(std::move(insertResults), {}, singlePoint,
-                        diff.beginPos.line, diff.beginPos.col, goalPos);
-
-      results.push_back(std::move(result));
+      edits[i].editResult = EditResult(std::move(insertResults), {}, singlePoint,
+                                       diff.beginPos.line, diff.beginPos.col, goalPos);
       continue;
     }
 
@@ -362,8 +393,8 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
               .withTrackExploredStates(params.trackExploredStates),
           diff.beginPos.line, diff.beginPos.col, diff.beginPos);
       editNodesExplored += pureResult.editResult.stats.nodesExplored;
-      pureDeletionGoalPosByEdit[i] = std::move(pureResult.goalPosByStart);
-      results.push_back(std::move(pureResult.editResult));
+      edits[i].pureDeletionGoalPos = std::move(pureResult.goalPosByStart);
+      edits[i].editResult = std::move(pureResult.editResult);
       continue;
     }
 
@@ -393,10 +424,8 @@ vector<EditResult> CompositionSearchContext::calculateEditResults() {
             .withTrackExploredStates(params.trackExploredStates),
         diff.beginPos.line, diff.beginPos.col, goalPos);
     editNodesExplored += optResult.stats.nodesExplored;
-    results.push_back(std::move(optResult));
+    edits[i].editResult = std::move(optResult);
   }
-
-  return results;
 }
 
 // Convert (line, col) to flat character index in a Lines buffer.
@@ -429,13 +458,13 @@ static CursorPos flatToPos(int flatIdx, const Lines& lines) {
 
 vector<Lines> CompositionSearchContext::calculateLinesAfterDiffs(
     const Lines& initialLines) {
-  assert(totalEdits == static_cast<int>(diffStates.size()));
-  vector<Lines> result(totalEdits + 1);
+  vector<Lines> result(totalEdits() + 1);
   result[0] = initialLines;
 
   int cumulativeOffset = 0;
 
-  for (int i = 0; i < totalEdits; i++) {
+  for (int i = 0; i < totalEdits(); i++) {
+    DiffState& diff = edits[i].diffState;
     if (i > 0) {
       // Adjust positions from original-buffer space to intermediate-buffer space.
       // Convert to flat index against original buffer, shift by cumulative delta,
@@ -452,19 +481,19 @@ vector<Lines> CompositionSearchContext::calculateLinesAfterDiffs(
       // Must check before mutating beginPos — hasDeletedContent() compares
       // beginPos != endPos, and the adjusted beginPos may coincidentally equal
       // the unadjusted endPos (see previous_errors.md).
-      bool hadDeletedContent = diffStates[i].hasDeletedContent();
-      diffStates[i].beginPos = adjustPos(diffStates[i].beginPos);
+      bool hadDeletedContent = diff.hasDeletedContent();
+      diff.beginPos = adjustPos(diff.beginPos);
       if (hadDeletedContent) {
-        diffStates[i].endPos = adjustPos(diffStates[i].endPos);
+        diff.endPos = adjustPos(diff.endPos);
       } else {
-        diffStates[i].endPos = diffStates[i].beginPos;  // pure insertion
+        diff.endPos = diff.beginPos;  // pure insertion
       }
     }
 
-    result[i + 1] = Myers::applyDiffState(diffStates[i], result[i]);
+    result[i + 1] = Myers::applyDiffState(diff, result[i]);
 
-    cumulativeOffset += static_cast<int>(diffStates[i].insertedText.size())
-                      - static_cast<int>(diffStates[i].deletedText.size());
+    cumulativeOffset += static_cast<int>(diff.insertedText.size())
+                      - static_cast<int>(diff.deletedText.size());
   }
 
   return result;
@@ -642,13 +671,10 @@ void scanBracketsForEdit(BracketQuoteContext& ctx, const string& line,
 
 } // anonymous namespace
 
-vector<BracketQuoteContext> CompositionSearchContext::computeTextObjectContexts() const {
-  vector<BracketQuoteContext> contexts;
-  contexts.resize(totalEdits);
-
-  for (int i = 0; i < totalEdits; i++) {
-    const DiffState& diff = diffStates[i];
-    BracketQuoteContext& ctx = contexts[i];
+void CompositionSearchContext::computeTextObjectContexts() {
+  for (int i = 0; i < totalEdits(); i++) {
+    const DiffState& diff = edits[i].diffState;
+    BracketQuoteContext& ctx = edits[i].bracketQuoteContext;
 
     // Skip pure insertions (no content to match against)
     if (diff.isPureInsertion()) continue;
@@ -656,7 +682,7 @@ vector<BracketQuoteContext> CompositionSearchContext::computeTextObjectContexts(
     // Skip multi-line edits (quotes are single-line only, brackets need more work)
     if (diff.beginPos.line != diff.endPos.line) continue;
 
-    const Lines& buffer = linesAfterNEdits[i];
+    const Lines& buffer = linesAfterNEdits_[i];
     if (diff.beginPos.line >= static_cast<int>(buffer.size())) continue;
 
     const string& line = buffer[diff.beginPos.line];
@@ -666,8 +692,6 @@ vector<BracketQuoteContext> CompositionSearchContext::computeTextObjectContexts(
     scanQuotesForEdit(ctx, line, diff.beginPos.col, diff.endPos.col);
     scanBracketsForEdit(ctx, line, diff.beginPos.col, diff.endPos.col);
   }
-
-  return contexts;
 }
 
 // =============================================================================
@@ -721,19 +745,18 @@ int commonSuffixLen(string_view a, string_view b, int prefixLen) {
 
 } // anonymous namespace
 
-vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
-  vector<optional<JoinPlan>> plans(totalEdits);
+void CompositionSearchContext::computeJoinPlans() {
   EditOptimizer editOptimizer(config);
 
-  for (int i = 0; i < totalEdits; i++) {
-    const DiffState& diff = diffStates[i];
+  for (int i = 0; i < totalEdits(); i++) {
+    const DiffState& diff = edits[i].diffState;
 
     // Quick reject: pure insertions can't use J
     if (diff.isPureInsertion()) continue;
 
     // Get the full buffer lines spanning the diff region (not just the changed text).
     // J operates on complete buffer lines, including the unchanged prefix/suffix.
-    const Lines& buffer = linesAfterNEdits[i];
+    const Lines& buffer = linesAfterNEdits_[i];
     int srcFirstLine = diff.beginPos.line;
     // endPos is half-open. The diff spans from beginPos to endPos.
     // If endPos.col == 0, the deletion ends at the start of endPos.line, meaning
@@ -748,7 +771,7 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
     int N = srcEndLine - srcFirstLine;  // number of source lines in buffer
 
     // Get corresponding target lines from the post-diff buffer
-    const Lines& bufferAfter = linesAfterNEdits[i + 1];
+    const Lines& bufferAfter = linesAfterNEdits_[i + 1];
     // Determine target line count: same first line, but fewer lines after diff applied
     Lines tgtLines = diff.insertedLines();
     int M = static_cast<int>(tgtLines.size());
@@ -929,13 +952,11 @@ vector<optional<JoinPlan>> CompositionSearchContext::computeJoinPlans() {
 
     double effort = getEffort(fullSeq.view(), config);
 
-    plans[i] = JoinPlan{
+    edits[i].joinPlan = JoinPlan{
       .sequence = std::move(fullSeq),
       .goalPos = goalPos,
       .effort = effort,
       .entryLine = diff.beginPos.line
     };
   }
-
-  return plans;
 }

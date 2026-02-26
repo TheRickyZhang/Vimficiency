@@ -237,9 +237,10 @@ interface Props {
   /** Token indices (0-based depth-1) that can be expanded via right-click/ctrl+click */
   expandableTokens?: Set<number>;
   onChunkDetail?: (tokenIndex: number, tokenText: string) => void;
+  onChunkDetailNewPage?: (tokenIndex: number, tokenText: string) => void;
 }
 
-export function ExplorationTree({ states, results, selectedSeqs, expandableTokens, onChunkDetail }: Props) {
+export function ExplorationTree({ states, results, selectedSeqs, expandableTokens, onChunkDetail, onChunkDetailNewPage }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const gRef = useRef<SVGGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -551,6 +552,17 @@ export function ExplorationTree({ states, results, selectedSeqs, expandableToken
             >
               Expand chunk
             </div>
+            {onChunkDetailNewPage && (
+              <div
+                className="px-3 py-1.5 text-sm cursor-pointer hover:bg-[#f0f4ff]"
+                onClick={() => {
+                  onChunkDetailNewPage(contextMenu.tokenIndex, contextMenu.tokenText);
+                  setContextMenu(null);
+                }}
+              >
+                Open in new page
+              </div>
+            )}
           </div>
         </>
       )}

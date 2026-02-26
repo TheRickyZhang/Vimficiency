@@ -20,6 +20,8 @@ struct EditResult {
   // Search statistics for debugging and benchmarking
   SearchStats stats;
 
+  EditResult() = default;
+
   // Constructor: initializes results and flat index for buffer-position lookup.
   // Buffer-position params default to edit-region-local (line 0, col 0).
   EditResult(std::vector<Result> results, SearchStats stats,

@@ -119,7 +119,7 @@ export function HomePage() {
       </div>
 
       {testSeries && (
-        <div className="mt-10 max-w-[60%]">
+        <div className="mt-10 max-w-[60%] mx-auto">
           <h2>Test Duration</h2>
           <div style={{ height: 250 }}>
             <BenchmarkChart series={testSeries} unit={bestUnit(testSeries.map((p) => p.val))} />
@@ -131,7 +131,7 @@ export function HomePage() {
 }
 
 function ChangeItem({ change: c }: { change: Change }) {
-  const overThreshold = c.ratio >= ALERT_RATIO || c.ratio <= 1 / ALERT_RATIO;
+  const overThreshold = Math.abs(c.pctChange) >= (ALERT_RATIO - 1) * 100;
   const sign = c.pctChange >= 0 ? '+' : '';
   const label = c.optimizer.charAt(0).toUpperCase() + c.optimizer.slice(1);
 

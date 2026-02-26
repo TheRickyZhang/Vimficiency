@@ -96,37 +96,23 @@ struct CompositionSearchContext {
   const NavContext& navContext;
   const MotionBoundary& boundary;
 
+  // Per-edit bundled data (one entry per diff, indexed 0..totalEdits()-1)
+  struct PerEditData {
+    DiffState diffState;
+    EditResult editResult;
+    std::vector<CursorPos> pureDeletionGoalPos;  // empty if not pure-deletion
+    std::optional<JoinPlan> joinPlan;
+    BracketQuoteContext bracketQuoteContext;
 
-  // Pre-computed diff data
-  std::vector<DiffState> diffStates;
-  int totalEdits;
+    // Motion-search acceleration index over a subset of the pre-edit buffer.
+    // Covers lines [bufferIndexStart, bufferIndexEnd) of the pre-edit buffer.
+    BufferIndex bufferIndex;
+    int bufferIndexStart = 0;
+    int bufferIndexEnd = 0;
+  };
+  std::vector<PerEditData> edits;
 
-  // Pre-computed edit solutions (one EditResult per diff, including pure insertions)
-  std::vector<EditResult> editResults;
-
-  // For pure-deletion diffs only: per-start cursor landing positions after the
-  // selected edit sequence (same flat indexing as editResults[i].getResults()).
-  // Empty for non-pure-deletion diffs.
-  std::vector<std::vector<CursorPos>> pureDeletionGoalPosByEdit;
-
-  // Pre-computed J (join lines) plans: one per diff, present when J is viable
-  std::vector<std::optional<JoinPlan>> joinPlans;
-
-  // Intermediate buffer states: linesAfterNEdits[i] = buffer after i edits applied
-  // linesAfterNEdits[0] = initialLines, linesAfterNEdits[totalEdits] = goalLines
-  std::vector<Lines> linesAfterNEdits;
-
-  // Pre-computed BufferIndex for each edit level: bufferIndices[i] indexes linesAfterNEdits[i]
-  // Used by optimizeToRange for counted motion exploration
-  std::vector<BufferIndex> bufferIndices;
-
-  // Text object shortcut contexts: one per edit, tracks valid quote/bracket entry points
-  // textObjectContexts[i] applies to edit i, using buffer linesAfterNEdits[i]
-  std::vector<BracketQuoteContext> bracketQuoteContexts;
-
-  // Suffix sums of median edit costs for O(1) heuristic lookup
-  // suffixEditCosts[i] = sum of median costs for edits i..totalEdits-1
-  std::vector<double> suffixEditCosts;
+  int totalEdits() const { return static_cast<int>(edits.size()); }
 
   // Heuristic tuning parameters
   double overshootPenalty;
@@ -240,24 +226,23 @@ struct CompositionSearchContext {
 
   // Check if this is a goal state
   bool isGoal(const CompositionState& s) const {
-    return s.getEditsCompleted() == totalEdits;
+    return s.getEditsCompleted() == totalEdits();
   }
 
-  // Get buffer state for a given number of completed edits
+  // Get buffer state for a given number of completed edits (0..totalEdits())
   const Lines& getLinesAfter(int editsCompleted) const {
-    return linesAfterNEdits[editsCompleted];
+    return linesAfterNEdits_[editsCompleted];
   }
 
-  // Get pre-computed BufferIndex for a given edit level
-  const BufferIndex* getBufferIndex(int editsCompleted) const {
-    if (editsCompleted < 0 || editsCompleted >= static_cast<int>(bufferIndices.size()))
-      return nullptr;
-    return &bufferIndices[editsCompleted];
-  }
+  // Get pre-computed BufferIndex for a given edit level, adjusted for the motion search window.
+  // Returns nullopt if the motion window [motionBeginLine, motionEndLine) exceeds the indexed range,
+  // signaling the caller to fall back to the overload that builds a local index.
+  std::optional<BufferIndexRef> makeBufferIndexRef(
+      int editsCompleted, int motionBeginLine, int motionEndLine) const;
 
   // Get the diff state for an edit index
   const DiffState& getDiffState(int editIndex) const {
-    return diffStates[editIndex];
+    return edits[editIndex].diffState;
   }
 
   // ==========================================================================
@@ -277,23 +262,27 @@ struct CompositionSearchContext {
   SearchStats getStats(int resultsFound) const;
 
 private:
+  // Fencepost vectors (size = totalEdits() + 1): represent states *between* edits
+  std::vector<Lines> linesAfterNEdits_;
+  std::vector<double> suffixEditCosts_;
+
   // Internal: add state to priority queue if it improves on existing cost
   void exploreNewState(CompositionState&& newState);
 
   // Helper: compute suffix sums of median edit costs
   std::vector<double> computeSuffixEditCosts() const;
 
-  // Helper: solve each edit region independently
-  std::vector<EditResult> calculateEditResults();
+  // Helper: solve each edit region independently, populates edits[i].editResult and edits[i].pureDeletionGoalPos
+  void calculateEditResults();
 
   // Helper: build intermediate buffer states after each diff
-  // Non-const: adjusts diffStates positions from original-buffer to intermediate-buffer coordinates
+  // Non-const: adjusts edits[i].diffState positions from original-buffer to intermediate-buffer coordinates
   std::vector<Lines> calculateLinesAfterDiffs(const Lines& initialLines);
 
-  // Helper: compute text object contexts for each edit
-  std::vector<BracketQuoteContext> computeTextObjectContexts() const;
+  // Helper: compute text object contexts for each edit, populates edits[i].bracketQuoteContext
+  void computeTextObjectContexts();
 
-  // Helper: compute J (join lines) plans for diffs where source has more lines than target
-  std::vector<std::optional<JoinPlan>> computeJoinPlans();
+  // Helper: compute J (join lines) plans for diffs where source has more lines than target, populates edits[i].joinPlan
+  void computeJoinPlans();
 
 };

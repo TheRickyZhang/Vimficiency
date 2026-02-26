@@ -52,7 +52,7 @@ function computeChanges(categories: Record<string, string[]>, data: BenchmarkRun
 
 function ChangeItem({ change, onSelect }: { change: BenchChange; onSelect: () => void }) {
   const isRegression = change.pctChange > 0;
-  const overThreshold = change.ratio >= ALERT_RATIO || change.ratio <= 1 / ALERT_RATIO;
+  const overThreshold = Math.abs(change.pctChange) >= (ALERT_RATIO - 1) * 100;
   const sign = isRegression ? '+' : '';
 
   return (
