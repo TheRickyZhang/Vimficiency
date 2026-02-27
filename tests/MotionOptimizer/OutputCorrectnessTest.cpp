@@ -111,7 +111,7 @@ protected:
                                        const MotionBoundary& boundary) {
     MotionOptimizer opt(Config::uniform());
     return opt.optimize(subBuffer, start, end, {},
-                        "jjjjjjjjjj", boundary, RunningEffort(), navContext).results;
+                        "jjjjjjjjjj", boundary, RunningEffort(), navContext).getResults();
   }
 };
 
@@ -186,7 +186,7 @@ TEST_F(MotionOptimizerOutputCorrectness, SubBufferMotionCorrectness) {
     // For each result, verify against Neovim on full buffer
     for (const auto& result : results) {
       totalSequences++;
-      const auto& seq = result.getSequenceString();
+      const auto& seq = result.getSequence();
 
       // Apply sequence to FULL buffer via Neovim
       SimulationResult neovimResult;

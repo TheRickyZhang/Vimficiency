@@ -99,8 +99,9 @@ struct CompositionSearchContext {
   // Per-edit bundled data (one entry per diff, indexed 0..totalEdits()-1)
   struct PerEditData {
     DiffState diffState;
+
     EditResult editResult;
-    std::vector<CursorPos> pureDeletionGoalPos;  // empty if not pure-deletion
+
     std::optional<JoinPlan> joinPlan;
     BracketQuoteContext bracketQuoteContext;
 
@@ -258,8 +259,8 @@ struct CompositionSearchContext {
     }
   }
 
-  // Build SearchStats from current context state
-  SearchStats getStats(int resultsFound) const;
+  // Build CompositionSearchStats from current context state
+  CompositionSearchStats getStats(int resultsFound) const;
 
 private:
   // Fencepost vectors (size = totalEdits() + 1): represent states *between* edits
@@ -272,7 +273,7 @@ private:
   // Helper: compute suffix sums of median edit costs
   std::vector<double> computeSuffixEditCosts() const;
 
-  // Helper: solve each edit region independently, populates edits[i].editResult and edits[i].pureDeletionGoalPos
+  // Helper: solve each edit region independently, populates edits[i].editResult
   void calculateEditResults();
 
   // Helper: build intermediate buffer states after each diff

@@ -252,7 +252,7 @@ const char *vimficiency_analyze(
       MotionOptimizer opt(g_config_internal);
       res = opt.optimize(initialLines, initialPos, goalPos,
           MotionOptimizerParams{}.withMaxResults(RESULTS_CALCULATED), keyseq,
-          boundary, RunningEffort(), navigation_context).results;
+          boundary, RunningEffort(), navigation_context).getResults();
     } else {
       // Buffer changed - use CompositionOptimizer
       MotionBoundary boundary(initialLines,
@@ -263,7 +263,7 @@ const char *vimficiency_analyze(
       CompositionOptimizer opt(g_config_internal);
       res = opt.optimize(initialLines, initialPos, goalLines, goalPos,
           CompositionOptimizerParams{}.withMaxResults(RESULTS_CALCULATED), keyseq,
-          boundary, navigation_context).results;
+          boundary, navigation_context).getResults();
     }
 
     // Calculate user's effort for the sequence they typed
@@ -273,13 +273,13 @@ const char *vimficiency_analyze(
     std::vector<const Result*> validResults;
     for (const Result &r : res) {
       if (!r.isValid()) continue;
-      if (r.sequence.empty()) continue;
+      if (r.getSequence().empty()) continue;
       validResults.push_back(&r);
     }
 
     // Sort by cost (ascending)
     std::sort(validResults.begin(), validResults.end(),
-              [](const Result* a, const Result* b) { return a->keyCost < b->keyCost; });
+              [](const Result* a, const Result* b) { return a->getCost() < b->getCost(); });
 
     // Format results - output raw sequences (Lua handles display formatting)
     std::ostringstream oss;
@@ -288,8 +288,8 @@ const char *vimficiency_analyze(
     } else {
       oss << "size: " << validResults.size() << " user_cost: " << std::fixed << std::setprecision(3) << userCost << "\n";
       for (const Result* r : validResults) {
-        oss << r->sequence << " "
-            << std::fixed << std::setprecision(3) << r->keyCost << "\n";
+        oss << r->getSequence() << " "
+            << std::fixed << std::setprecision(3) << r->getCost() << "\n";
       }
     }
 

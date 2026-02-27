@@ -28,7 +28,7 @@ struct RuntimeOptionsGuard {
 
 const Result* findBySequence(const vector<Result>& results, string_view seq) {
   for (const auto& r : results) {
-    if (r.sequence.view() == seq) return &r;
+    if (r.getSequence().view() == seq) return &r;
   }
   return nullptr;
 }
@@ -52,7 +52,7 @@ protected:
     MotionBoundary boundary;
     return opt.optimize(lines, start, end,
                         MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
-                        userSeq, boundary, RunningEffort(), navContext).results;
+                        userSeq, boundary, RunningEffort(), navContext).getResults();
   }
 
   // Get cost of best result for a motion
@@ -61,7 +61,7 @@ protected:
                             Config config) {
     auto results = runOptimizer(lines, start, end, userSeq, config);
     if (results.empty()) return -1;
-    return results[0].keyCost;
+    return results[0].getCost();
   }
 };
 
@@ -230,10 +230,10 @@ TEST_F(ConfigurationTest, CustomKeyCostAffectsOptimizer) {
   double expensiveJCost = -1;
 
   for (const auto& r : normalResults) {
-    if (r.sequence == "j") { normalJCost = r.keyCost; break; }
+    if (r.getSequence() == "j") { normalJCost = r.getCost(); break; }
   }
   for (const auto& r : expensiveResults) {
-    if (r.sequence == "j") { expensiveJCost = r.keyCost; break; }
+    if (r.getSequence() == "j") { expensiveJCost = r.getCost(); break; }
   }
 
   if (normalJCost > 0 && expensiveJCost > 0) {
@@ -257,7 +257,7 @@ TEST_F(ConfigurationTest, CountPenaltyOverrideAffectsMotionRanking) {
       .withMinCountRepeat(4);
 
   auto baseResults = opt.optimize(lines, start, end, params, "",
-                                  boundary, RunningEffort(), navContext).results;
+                                  boundary, RunningEffort(), navContext).getResults();
   ASSERT_FALSE(baseResults.empty());
 
   const Result* baseCounted = findBySequence(baseResults, "4w");
@@ -273,17 +273,17 @@ TEST_F(ConfigurationTest, CountPenaltyOverrideAffectsMotionRanking) {
   opts.countPenaltyOverrides[toIndex(CountClass::MotionWord)] = motionWordOverride;
 
   auto overrideResults = opt.optimize(lines, start, end, params, "",
-                                      boundary, RunningEffort(), navContext).results;
+                                      boundary, RunningEffort(), navContext).getResults();
   ASSERT_FALSE(overrideResults.empty());
 
   const Result* overrideCounted = findBySequence(overrideResults, "4w");
   if (overrideCounted) {
-    EXPECT_GT(overrideCounted->keyCost, baseCounted->keyCost + 40.0);
+    EXPECT_GT(overrideCounted->getCost(), baseCounted->getCost() + 40.0);
   } else {
     SUCCEED() << "4w pruned from results under high count penalty override";
   }
 
-  EXPECT_NE(overrideResults[0].sequence.view(), "4w")
+  EXPECT_NE(overrideResults[0].getSequence().view(), "4w")
       << "High MotionWord override should push 4w off top rank";
 }
 

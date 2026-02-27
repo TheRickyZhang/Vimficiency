@@ -105,21 +105,21 @@ struct RangeBenchmarkSetup {
 
 static void runWithParams(const BenchmarkSetup& cfg,
                           const MotionOptimizerParams& params,
-                          SearchStats& outStats) {
+                          MotionSearchStats& outStats) {
   MotionOptimizer opt(benchConfig);
   auto result = opt.optimize(cfg.lines, cfg.firstPos, cfg.lastPos,
                              params, "", cfg.boundary);
-  accumulateStats(outStats, result.stats);
+  accumulateStats(outStats, result.getStats());
 }
 
 static void runRangeWithParams(const RangeBenchmarkSetup& cfg,
                                const MotionOptimizerRangeParams& params,
-                               SearchStats& outStats) {
+                               MotionSearchStats& outStats) {
   MotionOptimizer opt(benchConfig);
   auto result = opt.optimizeToRange(
       cfg.lines, cfg.initialPos, cfg.rangeBegin, cfg.rangeEnd,
       params, "", cfg.boundary);
-  accumulateStats(outStats, result.stats);
+  accumulateStats(outStats, result.getStats());
 }
 
 // =============================================================================
@@ -129,7 +129,7 @@ static void runRangeWithParams(const RangeBenchmarkSetup& cfg,
 static void BM_MotionBufferSize(benchmark::State& state, bool useB) {
   int numLines = static_cast<int>(state.range(0));
   auto& seedMgr = SeedManager::instance();
-  SearchStats totalStats;
+  MotionSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
@@ -144,7 +144,7 @@ static void BM_MotionBufferSize(benchmark::State& state, bool useB) {
 static void BM_MotionLineLength(benchmark::State& state, bool useB) {
   int avgLen = static_cast<int>(state.range(0));
   auto& seedMgr = SeedManager::instance();
-  SearchStats totalStats;
+  MotionSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
@@ -158,7 +158,7 @@ static void BM_MotionLineLength(benchmark::State& state, bool useB) {
 
 static void BM_MotionBufferShape(benchmark::State& state, bool useB, BufferShape shape) {
   auto& seedMgr = SeedManager::instance();
-  SearchStats totalStats;
+  MotionSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
@@ -173,7 +173,7 @@ static void BM_MotionBufferShape(benchmark::State& state, bool useB, BufferShape
 static void BM_MotionRangeBufferLines(benchmark::State& state, bool useB) {
   int numLines = static_cast<int>(state.range(0));
   auto& seedMgr = SeedManager::instance();
-  SearchStats totalStats;
+  MotionSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
@@ -188,7 +188,7 @@ static void BM_MotionRangeBufferLines(benchmark::State& state, bool useB) {
 static void BM_MotionRangeResultSize(benchmark::State& state, bool useB,
                                       int rangeChars, int rangeLines) {
   auto& seedMgr = SeedManager::instance();
-  SearchStats totalStats;
+  MotionSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));

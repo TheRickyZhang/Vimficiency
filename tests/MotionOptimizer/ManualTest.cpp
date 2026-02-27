@@ -56,7 +56,7 @@ protected:
     // Try to explore more (30 results), lower search depth for speed (2e4)
     return opt.optimize(lines, start, end,
                         MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
-                        userSeq, boundary, RunningEffort(), navContext).results;
+                        userSeq, boundary, RunningEffort(), navContext).getResults();
   }
 
   static vector<RangeResult>
@@ -74,7 +74,7 @@ protected:
                                    .withMaxResults(maxResults)
                                    .withMaxNodesExplored(20000)
                                    .withAllowMultiplePerPosition(true),
-                               userSeq, boundary, RunningEffort(), navContext).results;
+                               userSeq, boundary, RunningEffort(), navContext).getResults();
   }
 };
 
@@ -117,8 +117,8 @@ TEST_F(MotionOptimizer_ManualTest, RangeBasic_SameLine) {
 
   EXPECT_FALSE(results.empty()) << "Should find at least one path to range";
   for (const auto& r : results) {
-    EXPECT_GE(r.goalPos.col, 5) << "End position should be in range";
-    EXPECT_LE(r.goalPos.col, 10) << "End position should be in range";
+    EXPECT_GE(r.getGoalPos().col, 5) << "End position should be in range";
+    EXPECT_LE(r.getGoalPos().col, 10) << "End position should be in range";
   }
 }
 
@@ -133,7 +133,7 @@ TEST_F(MotionOptimizer_ManualTest, RangeBasic_MultiLine) {
 
   EXPECT_FALSE(results.empty()) << "Should find at least one path to range";
   for (const auto& r : results) {
-    CursorPos p = r.goalPos;
+    CursorPos p = r.getGoalPos();
     bool inRange = (p >= rangeBegin && p <= rangeEnd);
     EXPECT_TRUE(inRange) << "End position (" << p.line << ", " << p.col << ") should be in range";
   }
@@ -183,13 +183,13 @@ protected:
     MotionOptimizer opt(config);
     return opt.optimize(lines, start, end,
                         MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
-                        userSeq, boundary, RunningEffort(), navContext).results;
+                        userSeq, boundary, RunningEffort(), navContext).getResults();
   }
 
   // Helper to check if results contain a sequence
   static bool hasSequence(const vector<Result>& results, const string& seq) {
     return std::any_of(results.begin(), results.end(),
-        [&seq](const Result& r) { return r.sequence == seq; });
+        [&seq](const Result& r) { return r.getSequence() == seq; });
   }
 };
 
@@ -357,7 +357,7 @@ TEST_F(MotionOptimizer_ManualTest, MinCountRepeat_BlocksSmallCounts) {
   // With default minCountRepeat=4, count=3 should NOT appear as "3w"
   auto results = opt.optimize(lines, start, end,
       MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
-      "", boundary, RunningEffort(), navContext).results;
+      "", boundary, RunningEffort(), navContext).getResults();
 
   EXPECT_FALSE(hasSequence(results, "3w")) << "3w should be blocked by minCountRepeat=4";
   EXPECT_FALSE(hasSequence(results, "3W")) << "3W should be blocked by minCountRepeat=4";
@@ -375,7 +375,7 @@ TEST_F(MotionOptimizer_ManualTest, MinCountRepeat_LowThresholdAllowsSmallCounts)
   auto results = opt.optimize(lines, start, end,
       MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000)
           .withMinCountRepeat(2),
-      "", boundary, RunningEffort(), navContext).results;
+      "", boundary, RunningEffort(), navContext).getResults();
 
   EXPECT_TRUE(hasSequence(results, "3w")) << "3w should be allowed with minCountRepeat=2";
 }

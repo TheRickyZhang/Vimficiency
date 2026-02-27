@@ -22,7 +22,7 @@ EditResult pureDeletionResult(
     EditOptimizer& opt,
     const Lines& initialLines,
     EditBoundary boundary) {
-  return opt.optimizePureDeletion(initialLines, boundary).editResult;
+  return opt.optimizePureDeletion(initialLines, boundary);
 }
 } // namespace
 
@@ -77,7 +77,7 @@ TEST_F(EditOptimizerDeterminismTests, SameInputProducesSameOutput) {
 
       if (r1.isValid() != r2.isValid()) {
         mismatch = true;
-      } else if (r1.isValid() && r1.sequence != r2.sequence) {
+      } else if (r1.isValid() && r1.getSequence() != r2.getSequence()) {
         mismatch = true;
       }
     }

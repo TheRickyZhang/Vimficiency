@@ -34,7 +34,7 @@ protected:
   static void TearDownTestSuite() { oracle.reset(); }
 
   EditResult pureDeletionResult(const Lines& initialLines, EditBoundary boundary) {
-    return opt.optimizePureDeletion(initialLines, boundary, params).editResult;
+    return opt.optimizePureDeletion(initialLines, boundary, params);
   }
 };
 
@@ -107,7 +107,7 @@ void forEachValidResult(const vector<Result>& results, const Lines& lines, Fn fn
     for (int c = 0; c < lines[r].effectiveSize(); c++) {
       const Result& result = results[idx++];
       if (result.isValid()) {
-        fn(CursorPos(r, c), result.sequence);
+        fn(CursorPos(r, c), result.getSequence());
       }
     }
   }
@@ -206,11 +206,11 @@ void verifyEditGoal(NeovimOracle* oracle, const Lines& source,
       if (!res.isValid()) continue;
       CursorPos pos(r + lineOffset, c);
       SimulationResult nvim = oracle->simulate(
-          lineOffset == 0 ? source : Lines{}, pos.line, pos.col, res.sequence.str());
+          lineOffset == 0 ? source : Lines{}, pos.line, pos.col, res.getSequence().str());
       EXPECT_EQ(nvim.lines, expectedGoal)
-          << "Goal mismatch for seq='" << res.sequence << "' from " << pos;
+          << "Goal mismatch for seq='" << res.getSequence() << "' from " << pos;
       EXPECT_EQ(nvim.mode, Mode::Normal)
-          << "Not in normal mode after seq='" << res.sequence << "' from " << pos;
+          << "Not in normal mode after seq='" << res.getSequence() << "' from " << pos;
     }
   }
 }

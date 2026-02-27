@@ -52,15 +52,15 @@ TEST_F(MotionOptimizerCostConsistencyTests, CostMatchesComputed) {
 
     auto results = opt.optimize(
       lines, start, end, MotionOptimizerParams{}.withMaxResults(5), "jjjjj"
-    ).results;
+    ).getResults();
 
     for (const auto& result : results) {
       if (!result.isValid()) continue;
       totalResults++;
 
-      const auto& seq = result.getSequenceString();
+      const auto& seq = result.getSequence();
       double computedCost = getEffort(seq.view(), config);
-      double reportedCost = result.keyCost;
+      double reportedCost = result.getCost();
 
       if (abs(computedCost - reportedCost) > 1e-6) {
         failures++;

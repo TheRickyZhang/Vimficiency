@@ -29,12 +29,12 @@ using namespace std;
 // Internal Helpers
 // =============================================================================
 
-EditResult::EditResult(vector<Result> results, SearchStats stats,
+EditResult::EditResult(vector<Result> results, EditSearchStats stats,
                        const Lines& initialLines, int bufferBeginLine,
                        int bufferBeginCol, CursorPos goalPos)
-    : goalPos(goalPos),
-      stats(std::move(stats)),
-      results_(std::move(results)),
+    : BaseOptimizerResult(std::move(results)),
+      stats_(std::move(stats)),
+      goalPos_(goalPos),
       beginLine_(bufferBeginLine),
       beginCol_(bufferBeginCol) {
   lineBaseIndex_.reserve(initialLines.size());
@@ -49,7 +49,7 @@ EditResult::EditResult(vector<Result> results, SearchStats stats,
 }
 
 ostream& operator<<(ostream& os, const EditResult& editResult) {
-  os << editResult.stats << " goalPos=" << editResult.goalPos << "\n";
+  os << editResult.stats_ << " goalPos=" << editResult.goalPos_ << "\n";
   for (size_t i = 0; i < editResult.results_.size(); i++) {
     const auto& res = editResult.results_[i];
     if (res.isValid()) {
@@ -280,7 +280,7 @@ struct ModePolicy<true> {
       if (lastPos > beginPos || (lastPos.line == beginPos.line && lastPos.col > beginPos.col)) {
         MotionOptimizer motionOpt(config);
 
-        auto [motionResults, motionStats] = motionOpt.optimize(
+        auto motionResult = motionOpt.optimize(
             ctx.effectiveLines,
             beginPos,
             lastPos,
@@ -291,18 +291,19 @@ struct ModePolicy<true> {
                 .withMaxCountRepeat(params.maxPrefixCount)
         );
 
+        const auto& motionResults = motionResult.getResults();
         if (!motionResults.empty() && motionResults[0].isValid()) {
           Sequence visualSeq("v");
-          visualSeq.append(motionResults[0].sequence.view());
+          visualSeq.append(motionResults[0].getSequence().view());
           visualSeq.append("d");
 
           static const PhysicalKeys vKey = {Key::Key_V};
           static const PhysicalKeys dKey = {Key::Key_D};
           RunningEffort effort(vKey, config);
-          effort.append(globalSequenceToKeys().tokenize(motionResults[0].sequence.view()), config);
+          effort.append(globalSequenceToKeys().tokenize(motionResults[0].getSequence().view()), config);
           double totalEffort = effort.append(dKey, config);
 
-          if (!results[0].isValid() || totalEffort < results[0].keyCost) {
+          if (!results[0].isValid() || totalEffort < results[0].getCost()) {
             results[0] = Result(std::move(visualSeq), totalEffort);
           }
         }
@@ -775,13 +776,13 @@ struct ModePolicy<false> {
         initialLines.size() == 1 && goalLines.size() == 1 &&
         initialLines[0].size() == goalLines[0].size()) {
       auto replacementResult = tryReplacement(initialLines[0], goalLines[0],
-                                              config, results[0].keyCost);
+                                              config, results[0].getCost());
       if (replacementResult.has_value()) {
         results[0] = *replacementResult;
       }
     }
 
-    SearchStats stats = ctx.getStats();
+    EditSearchStats stats = ctx.getStats();
     stats.cacheHits = cacheHits;
     stats.cacheEntries = static_cast<int>(suffixCache.size());
     stats.cachePopulations = cachePopulations;
@@ -818,7 +819,7 @@ struct PureDeletionGoalCapture<true> {
     goalPosByStart[static_cast<size_t>(idx)] = pos;
   }
 
-  PureDeletionEditResult finalize(EditResult&& editResult, int bufferBeginLine) {
+  EditResult finalize(EditResult&& editResult, int bufferBeginLine) {
     // Convert per-result positions from edit-local coordinates to buffer
     // coordinates. For line-OOB pure deletion terminals, line maps to the
     // corresponding line below the edit region in full-buffer coordinates;
@@ -827,7 +828,8 @@ struct PureDeletionGoalCapture<true> {
       if (p.line < 0) continue;
       p.line += bufferBeginLine;
     }
-    return PureDeletionEditResult{std::move(editResult), std::move(goalPosByStart)};
+    editResult.setGoalPosByStart(std::move(goalPosByStart));
+    return std::move(editResult);
   }
 };
 
@@ -837,11 +839,10 @@ struct PureDeletionGoalCapture<true> {
 // =============================================================================
 
 template<bool PureDeletion>
-auto EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
-                                 EditBoundary editBoundary, EditOptimizerParams params,
-                                 int bufferBeginLine, int bufferBeginCol,
-                                 CursorPos goalPos)
-    -> OptimizeImplResult<PureDeletion> {
+EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLines,
+                                       EditBoundary editBoundary, EditOptimizerParams params,
+                                       int bufferBeginLine, int bufferBeginCol,
+                                       CursorPos goalPos) {
   assert(!initialLines.empty() && "empty startlines should be handled in compositionEditor by i, a, o, O");
 
   // Create search context (handles effectiveLines, offsets, search state)
@@ -1048,7 +1049,7 @@ auto EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &goalLin
 // Explicit template instantiations
 template EditResult EditOptimizer::optimizeImpl<false>(
     const Lines&, const Lines&, EditBoundary, EditOptimizerParams, int, int, CursorPos);
-template PureDeletionEditResult EditOptimizer::optimizeImpl<true>(
+template EditResult EditOptimizer::optimizeImpl<true>(
     const Lines&, const Lines&, EditBoundary, EditOptimizerParams, int, int, CursorPos);
 
 // =============================================================================
@@ -1073,7 +1074,7 @@ EditOptimizer::optimizeEdit(
                              bufferBeginLine, bufferBeginCol, goalPos);
 }
 
-PureDeletionEditResult EditOptimizer::optimizePureDeletion(
+EditResult EditOptimizer::optimizePureDeletion(
     const Lines& initialLines,
     EditBoundary editBoundary,
     EditOptimizerParams params,

@@ -53,14 +53,14 @@ int main(int argc, char* argv[]) {
     {},
     user_seq,
     boundary
-  ).results;
+  ).getResults();
 
   if(res.empty()) {
     cout << "res is empty" << endl;
   } else {
     cout << "res" << endl;
-    for(Result r : res) {
-      cout << r.sequence << " " << std::format("{:3f}", r.keyCost) << endl;
+    for(const Result& r : res) {
+      cout << r.getSequence() << " " << std::format("{:3f}", r.getCost()) << endl;
     }
   }
 

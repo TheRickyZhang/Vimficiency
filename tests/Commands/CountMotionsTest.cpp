@@ -181,7 +181,7 @@ protected:
     MotionBoundary boundary;
     return opt.optimize(lines, start, end,
                         MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
-                        userSeq, boundary, RunningEffort(), navContext).results;
+                        userSeq, boundary, RunningEffort(), navContext).getResults();
   }
 };
 
@@ -284,7 +284,7 @@ TEST_F(CountMotionsOptimizerTest, SmallCount_NotEmitted) {
   // Should find "w", not "1w"
   bool has_1w = false;
   for (const auto& r : results) {
-    if (r.sequence == "1w") {
+    if (r.getSequence() == "1w") {
       has_1w = true;
       break;
     }

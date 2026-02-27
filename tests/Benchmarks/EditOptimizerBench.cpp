@@ -49,17 +49,17 @@ struct BenchmarkSetup {
 
 static void runBenchmark(const BenchmarkSetup& cfg,
                          const EditOptimizerParams& params,
-                         SearchStats& outStats) {
+                         EditSearchStats& outStats) {
   EditOptimizer opt(benchConfig);
   if (isPureDeletionGoal(cfg.goalLines)) {
-    PureDeletionEditResult result =
+    EditResult result =
         opt.optimizePureDeletion(cfg.initialLines, cfg.boundary, params);
-    accumulateStats(outStats, result.editResult.stats);
+    accumulateStats(outStats, result.getStats());
     return;
   }
 
   EditResult result = opt.optimizeEdit(cfg.initialLines, cfg.goalLines, cfg.boundary, params);
-  accumulateStats(outStats, result.stats);
+  accumulateStats(outStats, result.getStats());
 }
 
 static EditOptimizerParams withCap(EditOptimizerParams p, const BenchmarkSetup& s) {
@@ -73,7 +73,7 @@ static EditOptimizerParams withCap(EditOptimizerParams p, const BenchmarkSetup& 
 static void BM_EditBufferSize(benchmark::State& state) {
   int numLines = static_cast<int>(state.range(0));
   auto& seedMgr = SeedManager::instance();
-  SearchStats totalStats;
+  EditSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
@@ -87,7 +87,7 @@ static void BM_EditBufferSize(benchmark::State& state) {
 static void BM_EditLineLength(benchmark::State& state) {
   int avgLen = static_cast<int>(state.range(0));
   auto& seedMgr = SeedManager::instance();
-  SearchStats totalStats;
+  EditSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
@@ -100,7 +100,7 @@ static void BM_EditLineLength(benchmark::State& state) {
 
 static void BM_EditBufferShape(benchmark::State& state, BufferShape shape) {
   auto& seedMgr = SeedManager::instance();
-  SearchStats totalStats;
+  EditSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
@@ -114,7 +114,7 @@ static void BM_EditBufferShape(benchmark::State& state, BufferShape shape) {
 static void BM_EditSearchDepth(benchmark::State& state) {
   int maxNodes = static_cast<int>(state.range(0));
   auto& seedMgr = SeedManager::instance();
-  SearchStats totalStats;
+  EditSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
@@ -130,7 +130,7 @@ static void BM_EditSearchDepth(benchmark::State& state) {
 static void BM_EditMultiLineDelete(benchmark::State& state) {
   int numLines = static_cast<int>(state.range(0));
   auto& seedMgr = SeedManager::instance();
-  SearchStats totalStats;
+  EditSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
@@ -142,7 +142,7 @@ static void BM_EditMultiLineDelete(benchmark::State& state) {
 }
 
 static void BM_EditBoundaryConstraints(benchmark::State& state, int boundaryType) {
-  SearchStats totalStats;
+  EditSearchStats totalStats;
   for (auto _ : state) {
     RandomGen::seed(42);
     Lines fullBuffer = generateBuffer(10, 30);
@@ -187,7 +187,7 @@ static void BM_EditBoundaryConstraints(benchmark::State& state, int boundaryType
 }
 
 static void BM_EditMultiLineFixed(benchmark::State& state, int caseNum) {
-  SearchStats totalStats;
+  EditSearchStats totalStats;
   for (auto _ : state) {
     BenchmarkSetup setup({""});
 
@@ -233,7 +233,7 @@ static void BM_EditMultiLineFixed(benchmark::State& state, int caseNum) {
 static void BM_EditMultiLineRandom(benchmark::State& state) {
   int numLines = static_cast<int>(state.range(0));
   auto& seedMgr = SeedManager::instance();
-  SearchStats totalStats;
+  EditSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
@@ -252,7 +252,7 @@ static void BM_EditMultiLineRandom(benchmark::State& state) {
 static void BM_EditSmallChange(benchmark::State& state) {
   int numLines = static_cast<int>(state.range(0));
   auto& seedMgr = SeedManager::instance();
-  SearchStats totalStats;
+  EditSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
@@ -272,7 +272,7 @@ static void BM_EditSmallChange(benchmark::State& state) {
 static void BM_EditSmallEmbeddedChange(benchmark::State& state) {
   int numLines = static_cast<int>(state.range(0));
   auto& seedMgr = SeedManager::instance();
-  SearchStats totalStats;
+  EditSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));

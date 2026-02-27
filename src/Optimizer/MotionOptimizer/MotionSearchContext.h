@@ -139,8 +139,8 @@ struct MotionSearchContext {
   }
 
   // Get search stats - call after search completes
-  SearchStats getStats(int resultsFound) const {
-    SearchStats stats;
+  MotionSearchStats getStats(int resultsFound) const {
+    MotionSearchStats stats;
     stats.nodesExplored = nodesProcessed;
     stats.resultsFound = resultsFound;
     stats.queueSizeAtStop = static_cast<int>(pq.size());

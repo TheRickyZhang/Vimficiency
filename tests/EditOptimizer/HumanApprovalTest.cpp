@@ -36,7 +36,7 @@ protected:
       const Lines& initialLines,
       EditBoundary boundary,
       EditOptimizerParams p) {
-    return opt.optimizePureDeletion(initialLines, boundary, p).editResult;
+    return opt.optimizePureDeletion(initialLines, boundary, p);
   }
 };
 
@@ -55,7 +55,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionSingleWord) {
   // printResultsDebug(res, "Delete single word");
   // Single word should use dw or de, not visual mode (too short)
   ASSERT_TRUE(res[0].isValid());
-  const auto& seq = res[0].getSequenceString();
+  const auto& seq = res[0].getSequence();
   EXPECT_TRUE(seq.view().find("dw") != string::npos || seq.view().find("de") != string::npos)
       << "Expected dw or de for single word, got: " << seq;
 }

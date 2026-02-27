@@ -78,7 +78,7 @@ CompositionResult CompositionOptimizer::optimize(
   }
 
   // Cursor position after last edit completes
-  CursorPos resultGoalPos = ctx.edits.back().editResult.goalPos;
+  CursorPos resultGoalPos = ctx.edits.back().editResult.getGoalPos();
 
   vector<Result> results;
 
@@ -142,7 +142,7 @@ CompositionResult CompositionOptimizer::optimize(
                         pos.col >= beginCol && pos.col < endCol);
 
         if (inRange) {
-          ctx.exploreEditTransition(s, Sequence(insertCmd), editResult.goalPos,
+          ctx.exploreEditTransition(s, Sequence(insertCmd), editResult.getGoalPos(),
                                     editsCompleted + 1);
         } else {
           // Slice a padded subset around [pos, target] for MotionOptimizer
@@ -181,15 +181,15 @@ CompositionResult CompositionOptimizer::optimize(
                     subset, localPos, localRangeBegin, localRangeEnd,
                     rangeParams, "", subsetBoundary, s.getRunningEffort(),
                     navigationContext);
-          ctx.motionNodesExplored += motionResult.stats.nodesExplored;
+          ctx.motionNodesExplored += motionResult.getStats().nodesExplored;
 
-          for (RangeResult& movResult : motionResult.results) {
+          for (RangeResult& movResult : motionResult.getResults()) {
             if (!movResult.isValid()) continue;
-            movResult.goalPos.line += beginLine;  // remap back to full-buffer coords
+            movResult.addGoalLineOffset(beginLine);  // remap back to full-buffer coords
 
-            Sequence fullSeq = movResult.sequence;
+            Sequence fullSeq = movResult.getSequence();
             fullSeq.append(insertCmd);
-            ctx.exploreEditTransition(s, fullSeq, editResult.goalPos,
+            ctx.exploreEditTransition(s, fullSeq, editResult.getGoalPos(),
                                       editsCompleted + 1);
           }
         }
@@ -255,19 +255,13 @@ CompositionResult CompositionOptimizer::optimize(
     const Result* res = editResult.resultAt(pos.line, pos.col);
 
     if (res) {
-      CursorPos editGoalPos = editResult.goalPos;
-      if (nextEdit.isPureDeletion()) {
-        int idx = editResult.resultIndexAt(pos.line, pos.col);
-        const auto& perStartGoals = ctx.edits[editsCompleted].pureDeletionGoalPos;
-        if (idx >= 0 && idx < static_cast<int>(perStartGoals.size())) {
-          editGoalPos = perStartGoals[static_cast<size_t>(idx)];
-        }
-        const Lines& linesAfterEdit = ctx.getLinesAfter(editsCompleted + 1);
-        editGoalPos = clampGoalPosToLines(editGoalPos, linesAfterEdit);
+      CursorPos editGoalPos = editResult.goalPosAt(pos.line, pos.col);
+      if (editResult.hasPerStartGoals()) {
+        editGoalPos = clampGoalPosToLines(editGoalPos, ctx.getLinesAfter(editsCompleted + 1));
       }
-      debug("  edit found at", pos, "seq:", "\"" + res->sequence.str() + "\"",
-            "cost:", res->keyCost, "goalPos:", editGoalPos);
-      ctx.exploreEditTransition(s, res->sequence,
+      debug("  edit found at", pos, "seq:", "\"" + res->getSequence().str() + "\"",
+            "cost:", res->getCost(), "goalPos:", editGoalPos);
+      ctx.exploreEditTransition(s, res->getSequence(),
                                 editGoalPos, editsCompleted + 1);
     }
 
@@ -303,7 +297,7 @@ CompositionResult CompositionOptimizer::optimize(
                 seq += "<Esc>";
               }
               debug("    quote textobj:", string(1, bqContext.quoteModifier(q)) + q);
-              ctx.exploreEditTransition(s, Sequence(seq), editResult.goalPos,
+              ctx.exploreEditTransition(s, Sequence(seq), editResult.getGoalPos(),
                                         editsCompleted + 1);
             }
           }
@@ -320,7 +314,7 @@ CompositionResult CompositionOptimizer::optimize(
                 seq += "<Esc>";
               }
               debug("    bracket textobj:", string(1, bqContext.bracketModifier(b)) + b);
-              ctx.exploreEditTransition(s, Sequence(seq), editResult.goalPos,
+              ctx.exploreEditTransition(s, Sequence(seq), editResult.getGoalPos(),
                                         editsCompleted + 1);
             }
           }
@@ -376,17 +370,17 @@ CompositionResult CompositionOptimizer::optimize(
                 subset, localPos, localRangeBegin, localRangeEnd,
                 rangeParams2, "", subsetBoundary, s.getRunningEffort(),
                 navigationContext);
-      ctx.motionNodesExplored += motionResult.stats.nodesExplored;
+      ctx.motionNodesExplored += motionResult.getStats().nodesExplored;
 
-      debug("  motion results:", static_cast<int>(motionResult.results.size()));
-      for (RangeResult& movResult : motionResult.results) {
+      debug("  motion results:", static_cast<int>(motionResult.getResults().size()));
+      for (RangeResult& movResult : motionResult.getResults()) {
         if (!movResult.isValid()) continue;
 
         // Remap results back to full-buffer coordinates
-        movResult.goalPos.line += beginLine;
-        debug("    motion:", "\"" + movResult.sequence.str() + "\"",
-              "->", movResult.goalPos);
-        ctx.exploreMotionTransition(s, movResult.sequence, movResult.goalPos,
+        movResult.addGoalLineOffset(beginLine);
+        debug("    motion:", "\"" + movResult.getSequence().str() + "\"",
+              "->", movResult.getGoalPos());
+        ctx.exploreMotionTransition(s, movResult.getSequence(), movResult.getGoalPos(),
                                     editsCompleted);
       }
 
@@ -427,14 +421,14 @@ CompositionResult CompositionOptimizer::optimize(
                   jSubset, jLocalPos, jLocalFirst, jLocalEnd,
                   jRangeParams, "", jSubsetBoundary, s.getRunningEffort(),
                   navigationContext);
-        ctx.motionNodesExplored += jMotionResult.stats.nodesExplored;
+        ctx.motionNodesExplored += jMotionResult.getStats().nodesExplored;
 
-        for (RangeResult& movResult : jMotionResult.results) {
+        for (RangeResult& movResult : jMotionResult.getResults()) {
           if (!movResult.isValid()) continue;
-          movResult.goalPos.line += jBeginLine;
-          debug("    J-motion:", "\"" + movResult.sequence.str() + "\"",
-                "->", movResult.goalPos);
-          ctx.exploreMotionTransition(s, movResult.sequence, movResult.goalPos,
+          movResult.addGoalLineOffset(jBeginLine);
+          debug("    J-motion:", "\"" + movResult.getSequence().str() + "\"",
+                "->", movResult.getGoalPos());
+          ctx.exploreMotionTransition(s, movResult.getSequence(), movResult.getGoalPos(),
                                       editsCompleted);
         }
       }
@@ -466,7 +460,7 @@ CompositionResult CompositionOptimizer::optimize(
 }
 
 ostream& operator<<(ostream& os, const CompositionResult& cr) {
-  os << cr.stats << " goalPos=" << cr.goalPos << "\n";
+  os << cr.getStats() << " goalPos=" << cr.getGoalPos() << "\n";
 
   auto isReplaceCharToken = [](string_view tok) {
     size_t i = 0;
@@ -474,11 +468,14 @@ ostream& operator<<(ostream& os, const CompositionResult& cr) {
     return i + 2 == tok.size() && tok[i] == 'r';
   };
 
+  const auto& diffs = cr.getDiffs();
+  const auto& results = cr.getResults();
+
   // Print diff legend: all diffs get sequential {n} labels.
-  if (!cr.diffs.empty()) {
+  if (!diffs.empty()) {
     os << "Diffs:";
-    for (size_t i = 0; i < cr.diffs.size(); i++) {
-      const auto& d = cr.diffs[i];
+    for (size_t i = 0; i < diffs.size(); i++) {
+      const auto& d = diffs[i];
       os << " {" << i << "}=";
       if (d.isPureInsertion()) {
         os << "ins '" << makePrintable(d.insertedText) << "'";
@@ -496,12 +493,12 @@ ostream& operator<<(ostream& os, const CompositionResult& cr) {
   // - Delete tokens matching pure deletion diffs
   // - r{char} tokens for single-char replacement diffs
   // - TypedText tokens (replacement/insertion payload)
-  for (size_t i = 0; i < cr.results.size(); i++) {
+  for (size_t i = 0; i < results.size(); i++) {
     os << "  [" << i << "] ";
 
-    vector<SequenceToken> tokens = parseSequence(cr.results[i].sequence.view());
+    vector<SequenceToken> tokens = parseSequence(results[i].getSequence().view());
     int diffIdx = 0;
-    int numDiffs = static_cast<int>(cr.diffs.size());
+    int numDiffs = static_cast<int>(diffs.size());
     for (size_t j = 0; j < tokens.size(); j++) {
       auto type = tokens[j].type;
 
@@ -516,15 +513,15 @@ ostream& operator<<(ostream& os, const CompositionResult& cr) {
       }
 
       if (type == TokenType::Delete &&
-          diffIdx < numDiffs && cr.diffs[diffIdx].isPureDeletion()) {
+          diffIdx < numDiffs && diffs[diffIdx].isPureDeletion()) {
         // Pure deletion diff: show command as-is, advance diffIdx
         os << makePrintable(tokens[j].text);
         diffIdx++;
       } else if (type == TokenType::Delete &&
                  diffIdx < numDiffs &&
-                 !cr.diffs[diffIdx].isPureDeletion() &&
-                 cr.diffs[diffIdx].deletedText.size() == 1 &&
-                 cr.diffs[diffIdx].insertedText.size() == 1 &&
+                 !diffs[diffIdx].isPureDeletion() &&
+                 diffs[diffIdx].deletedText.size() == 1 &&
+                 diffs[diffIdx].insertedText.size() == 1 &&
                  isReplaceCharToken(tokens[j].text)) {
         // Single-char replacement using r{char} does not produce TypedText.
         // Show a placeholder after the token so diff labels stay aligned.
@@ -549,7 +546,7 @@ ostream& operator<<(ostream& os, const CompositionResult& cr) {
       }
     }
 
-    os << " " << cr.results[i].keyCost << "\n";
+    os << " " << results[i].getCost() << "\n";
   }
 
   return os;

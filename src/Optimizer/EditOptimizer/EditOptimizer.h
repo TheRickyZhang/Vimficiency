@@ -1,9 +1,9 @@
 #pragma once
 
-#include <type_traits>
 #include <vector>
 
 #include "Keyboard/Config.h"
+#include "Optimizer/OptimizerResult.h"
 #include "Optimizer/Result.h"
 #include "EditOptimizerParams.h"
 #include "Optimizer/SearchStats.h"
@@ -12,21 +12,16 @@
 #include "Types/Lines.h"
 
 
-struct EditResult {
-  // Cursor position after edit completes (in buffer coordinates)
-  // This is where the cursor lands after the change command + typed text + <Esc>
-  CursorPos goalPos;
-
-  // Search statistics for debugging and benchmarking
-  SearchStats stats;
-
+struct EditResult : BaseOptimizerResult {
   EditResult() = default;
 
   // Constructor: initializes results and flat index for buffer-position lookup.
   // Buffer-position params default to edit-region-local (line 0, col 0).
-  EditResult(std::vector<Result> results, SearchStats stats,
+  EditResult(std::vector<Result> results, EditSearchStats stats,
              const Lines& initialLines, int bufferBeginLine = 0,
              int bufferBeginCol = 0, CursorPos goalPos = {0, 0});
+
+  const EditSearchStats& getStats() const { return stats_; }
 
   // Look up the result for a buffer position. Returns nullptr if the position
   // is outside the edit region or the result at that position is invalid.
@@ -39,11 +34,28 @@ struct EditResult {
     return r.isValid() ? &r : nullptr;
   }
 
-  // Read-only access to the full results vector (for iteration, suffix cost computation, tests)
-  const std::vector<Result>& getResults() const { return results_; }
-
   // Number of result entries
   size_t resultCount() const { return results_.size(); }
+
+  const CursorPos& getGoalPos() const { return goalPos_; }
+
+  // Returns goal position for a given starting position.
+  // Pure deletions: per-start goal from goalPosByStart_ (with fallback to goalPos_).
+  // Regular edits: shared goalPos_.
+  CursorPos goalPosAt(int bufferLine, int bufferCol) const {
+    if (!goalPosByStart_.empty()) {
+      int idx = resultIndexAt(bufferLine, bufferCol);
+      if (idx >= 0 && idx < static_cast<int>(goalPosByStart_.size()))
+        return goalPosByStart_[static_cast<size_t>(idx)];
+    }
+    return goalPos_;
+  }
+
+  bool hasPerStartGoals() const { return !goalPosByStart_.empty(); }
+
+  void setGoalPosByStart(std::vector<CursorPos> goals) {
+    goalPosByStart_ = std::move(goals);
+  }
 
   // Flat result index for a buffer position, or -1 if out of range.
   int resultIndexAt(int bufferLine, int bufferCol) const {
@@ -57,33 +69,17 @@ struct EditResult {
   }
 
 private:
-  // Results indexed by flattened starting position
-  std::vector<Result> results_;
-
-  // Precomputed for O(1) flat index lookup from buffer positions
-  // lineBaseIndex[i] = sum of effective sizes of lines 0..i-1, minus column offset
-  // Column offset is beginCol for line 0, else 0
-  //
-  // Usage: flatIndex = lineBaseIndex[bufferLine - beginLine] + bufferCol
+  EditSearchStats stats_;
+  CursorPos goalPos_;
   int beginLine_ = 0;
   int beginCol_ = 0;
   std::vector<int> lineBaseIndex_;
+  std::vector<CursorPos> goalPosByStart_;
 
   friend std::ostream& operator<<(std::ostream& os, const EditResult& editResult);
 };
 
 std::ostream& operator<<(std::ostream& os, const EditResult& editResult);
-
-struct PureDeletionEditResult {
-  EditResult editResult;
-  // Per-start goal cursor positions in buffer coordinates (same flat index as EditResult::getResults()).
-  std::vector<CursorPos> goalPosByStart;
-
-  friend std::ostream& operator<<(std::ostream& os, const PureDeletionEditResult& pdr) {
-    os << pdr.editResult;
-    return os;
-  }
-};
 
 
 struct EditOptimizer {
@@ -108,7 +104,7 @@ struct EditOptimizer {
       CursorPos goalPos = {0, 0}
   );
 
-  PureDeletionEditResult optimizePureDeletion(
+  EditResult optimizePureDeletion(
       const Lines& initialLines,
       EditBoundary editBoundary,
       EditOptimizerParams params = {},
@@ -119,15 +115,9 @@ struct EditOptimizer {
 
 
 private:
-  template<bool PureDeletion>
-  using OptimizeImplResult =
-      std::conditional_t<PureDeletion,
-                         PureDeletionEditResult,
-                         EditResult>;
-
   // Unified implementation: PureDeletion=true for deletion-only, false for full edit
   template<bool PureDeletion>
-  OptimizeImplResult<PureDeletion> optimizeImpl(
+  EditResult optimizeImpl(
       const Lines& initialLines,
       const Lines& goalLines,
       EditBoundary editBoundary,

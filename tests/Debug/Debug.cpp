@@ -33,7 +33,7 @@ EditResult pureDeletionResult(
     const Lines& initialLines,
     EditBoundary boundary,
     EditOptimizerParams params = {}) {
-  return opt.optimizePureDeletion(initialLines, boundary, params).editResult;
+  return opt.optimizePureDeletion(initialLines, boundary, params);
 }
 } // namespace
 
@@ -247,7 +247,7 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
     for (size_t i = 0; i < result.resultCount(); i++) {
       const auto& r = result.getResults()[i];
       if (!r.isValid()) continue;
-      const string& seq = r.getSequenceString().str();
+      const string& seq = r.getSequence().str();
 
       Lines test = eff;
       CursorPos pos = fromFlatIndex(static_cast<int>(i), editRegion);
@@ -398,7 +398,7 @@ TEST_F(DebugTest, DISABLED_InvestigateCountedWordEdit) {
       for (int col = 0; col < cols; col++) {
         const Result& r = res.getResults()[idx];
         if (r.isValid() && idx == 4) {  // editPos [0,4]
-          cerr << "editPos=[" << line << "," << col << "] seq='" << r.getSequenceString() << "' cost=" << r.keyCost << endl;
+          cerr << "editPos=[" << line << "," << col << "] seq='" << r.getSequence() << "' cost=" << r.getCost() << endl;
         }
         idx++;
       }
@@ -503,17 +503,17 @@ TEST_F(DebugTest, DISABLED_Placeholder) {
     CursorPos initialPos(0, 0);
 
     auto compResult = opt.optimize(initial, initialPos, goal, CursorPos(0, 0), params);
-    const auto& results = compResult.results;
+    const auto& results = compResult.getResults();
 
     cerr << "Results: " << results.size() << endl;
     for (size_t i = 0; i < results.size(); i++) {
-      const auto& seq = results[i].sequence;
+      const auto& seq = results[i].getSequence();
       // Print sequence bytes
       cerr << "  [" << i << "] seq='" << seq << "' (len=" << seq.size() << ")" << endl;
       cerr << "       bytes: ";
       for (char c : seq.view()) cerr << static_cast<int>(static_cast<unsigned char>(c)) << " ";
       cerr << endl;
-      cerr << "       cost=" << results[i].keyCost << endl;
+      cerr << "       cost=" << results[i].getCost() << endl;
 
       auto nvim = oracle->simulate(initial, 0, 0, seq.str());
       cerr << "       nvim: " << nvim.lines << (nvim.lines == goal ? " OK" : " WRONG") << endl;
@@ -545,12 +545,12 @@ TEST_F(DebugTest, DISABLED_Placeholder) {
       EditResult result = editOpt.optimizeEdit(
           d.deletedLines(), d.insertedLines(), d.boundary, {},
           d.beginPos.line, d.beginPos.col, d.beginPos);
-      cerr << "  Edit[" << i << "] goalPos=(" << result.goalPos.line << "," << result.goalPos.col
+      cerr << "  Edit[" << i << "] goalPos=(" << result.getGoalPos().line << "," << result.getGoalPos().col
            << ") results:" << endl;
       for (size_t j = 0; j < result.resultCount(); j++) {
         if (result.getResults()[j].isValid()) {
-          cerr << "    pos " << j << ": '" << result.getResults()[j].sequence
-               << "' cost=" << result.getResults()[j].keyCost << endl;
+          cerr << "    pos " << j << ": '" << result.getResults()[j].getSequence()
+               << "' cost=" << result.getResults()[j].getCost() << endl;
         }
       }
     }
@@ -567,10 +567,10 @@ TEST_F(DebugTest, DISABLED_Placeholder) {
     Lines goal = {"efbedaeaaa"};
 
     auto compResult = opt.optimize(initial, CursorPos(0,0), goal, CursorPos(0,0), params);
-    cerr << "Results: " << compResult.results.size() << endl;
-    for (size_t i = 0; i < compResult.results.size(); i++) {
-      cerr << "  [" << i << "] '" << compResult.results[i].sequence
-           << "' cost=" << compResult.results[i].keyCost << endl;
+    cerr << "Results: " << compResult.getResults().size() << endl;
+    for (size_t i = 0; i < compResult.getResults().size(); i++) {
+      cerr << "  [" << i << "] '" << compResult.getResults()[i].getSequence()
+           << "' cost=" << compResult.getResults()[i].getCost() << endl;
     }
 
     auto diffs = Myers::calculate(initial, goal);
@@ -593,11 +593,11 @@ TEST_F(DebugTest, DISABLED_Placeholder) {
           if (result.getResults()[j].isValid()) validCount++;
         }
         cerr << "    Edit valid: " << validCount << "/" << result.resultCount()
-             << " nodes=" << result.stats.nodesExplored << endl;
+             << " nodes=" << result.getStats().nodesExplored << endl;
         for (size_t j = 0; j < result.resultCount(); j++) {
           if (result.getResults()[j].isValid()) {
-            cerr << "    pos " << j << ": '" << result.getResults()[j].sequence
-                 << "' cost=" << result.getResults()[j].keyCost << endl;
+            cerr << "    pos " << j << ": '" << result.getResults()[j].getSequence()
+                 << "' cost=" << result.getResults()[j].getCost() << endl;
           }
         }
       }
@@ -688,10 +688,10 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
     CompositionOptimizer opt{config};
     CompositionOptimizerParams params = CompositionOptimizerParams{}.withMaxResults(5);
     auto compResult = opt.optimize(initial, initialPos, goal, CursorPos(0, 0), params);
-    for (size_t i = 0; i < compResult.results.size(); i++) {
-      const auto& seq = compResult.results[i].getSequenceString();
-      cerr << "  [" << i << "] '" << compResult.results[i].sequence
-           << "' cost=" << compResult.results[i].keyCost << endl;
+    for (size_t i = 0; i < compResult.getResults().size(); i++) {
+      const auto& seq = compResult.getResults()[i].getSequence();
+      cerr << "  [" << i << "] '" << compResult.getResults()[i].getSequence()
+           << "' cost=" << compResult.getResults()[i].getCost() << endl;
       auto nvim = oracle_->simulate(initial, 0, 2, seq.str());
       cerr << "    nvim: " << nvim.lines << (nvim.lines == goal ? " OK" : " WRONG") << endl;
     }
@@ -719,11 +719,11 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
         for (size_t j = 0; j < result.resultCount(); j++) {
           const auto& r = result.getResults()[j];
           if (r.isValid()) {
-            cerr << "    pos " << j << ": '" << r.sequence
-                 << "' cost=" << r.keyCost << endl;
+            cerr << "    pos " << j << ": '" << r.getSequence()
+                 << "' cost=" << r.getCost() << endl;
             // Verify each with oracle
             int fullCol = static_cast<int>(j) + (d.beginPos.line == 0 ? d.beginPos.col : 0);
-            auto nvim = oracle_->simulate(initial, 0, fullCol, r.sequence.str());
+            auto nvim = oracle_->simulate(initial, 0, fullCol, r.getSequence().str());
             if (nvim.lines != goal) {
               cerr << "      MISMATCH: got " << nvim.lines << endl;
             }
@@ -799,12 +799,12 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJoinLinesResidual) {
     for (int c = 0; c < editRegion[r].effectiveSize(); c++) {
       const Result& result = res.getResults()[idx];
       if (result.isValid()) {
-        cerr << "  [" << r << "," << c << "] seq='" << result.sequence
-             << "' cost=" << result.keyCost << endl;
+        cerr << "  [" << r << "," << c << "] seq='" << result.getSequence()
+             << "' cost=" << result.getCost() << endl;
 
         // Byte dump for debugging
         cerr << "    bytes:";
-        for (unsigned char ch : result.sequence.view()) {
+        for (unsigned char ch : result.getSequence().view()) {
           if (ch >= 0x20 && ch < 0x7f) cerr << " '" << ch << "'";
           else cerr << " 0x" << std::hex << (int)ch << std::dec;
         }
@@ -813,7 +813,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJoinLinesResidual) {
         // Verify with oracle: apply in the full buffer context
         int fullRow = r + static_cast<int>(initialPos.line);
         int fullCol = c + (r == 0 ? static_cast<int>(initialPos.col) : 0);
-        auto nvim = oracle_->simulate(fullBuffer, fullRow, fullCol, result.sequence.str());
+        auto nvim = oracle_->simulate(fullBuffer, fullRow, fullCol, result.getSequence().str());
         Lines goal = {"aaa bbb ccc"};
         if (nvim.lines != goal) {
           cerr << "    MISMATCH: got " << nvim.lines << " expected " << goal << endl;
@@ -1105,12 +1105,12 @@ TEST_F(NeovimOracleDebug, InvestigateTextObjectShortcuts) {
 
     auto compResult = opt.optimize(
         initial, initialPos, goal, CursorPos(0,0), params);
-    const auto& results = compResult.results;
+    const auto& results = compResult.getResults();
 
     cerr << "Results: " << results.size() << endl;
     for (size_t i = 0; i < results.size(); i++) {
-      const auto& seq = results[i].sequence;
-      cerr << "  " << i << ": '" << seq << "' cost=" << results[i].keyCost << endl;
+      const auto& seq = results[i].getSequence();
+      cerr << "  " << i << ": '" << seq << "' cost=" << results[i].getCost() << endl;
 
       auto nvim = oracle_->simulate(initial, 0, 0, seq.str());
       bool correct = (nvim.lines == goal);
@@ -1244,14 +1244,14 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
         initial, initialPos, rangeBegin, rangeEnd,
         MotionOptimizerRangeParams{}.withMaxResults(10));
 
-    cerr << "MotionOptimizer returned " << rangeResult.results.size() << " results" << endl;
-    cerr << "Stats: nodes=" << rangeResult.stats.nodesExplored
-         << " stopReason=" << static_cast<int>(rangeResult.stats.stopReason) << endl;
+    cerr << "MotionOptimizer returned " << rangeResult.getResults().size() << " results" << endl;
+    cerr << "Stats: nodes=" << rangeResult.getStats().nodesExplored
+         << " stopReason=" << static_cast<int>(rangeResult.getStats().stopReason) << endl;
 
-    for (size_t i = 0; i < rangeResult.results.size() && i < 5; i++) {
-      const auto& r = rangeResult.results[i];
-      cerr << "  Motion " << i << ": '" << r.getSequenceString() << "' -> " << r.goalPos
-           << " cost=" << r.keyCost << endl;
+    for (size_t i = 0; i < rangeResult.getResults().size() && i < 5; i++) {
+      const auto& r = rangeResult.getResults()[i];
+      cerr << "  Motion " << i << ": '" << r.getSequence() << "' -> " << r.getGoalPos()
+           << " cost=" << r.getCost() << endl;
     }
   }
 
@@ -1263,15 +1263,15 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
   cerr << endl << "Running CompositionOptimizer..." << endl;
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   cerr << "Results: " << results.size() << endl;
   for (size_t i = 0; i < results.size(); i++) {
-    cerr << "  Result " << i << ": '" << results[i].sequence << "' cost=" << results[i].keyCost << endl;
+    cerr << "  Result " << i << ": '" << results[i].getSequence() << "' cost=" << results[i].getCost() << endl;
   }
 
   if (!results.empty()) {
-    const auto& seq = results[0].sequence;
+    const auto& seq = results[0].getSequence();
     auto nvim = oracle_->simulate(initial, initialPos.line, initialPos.col, seq.str());
     cerr << endl << "Neovim result for '" << seq << "':" << endl;
     cerr << "  Lines: " << nvim.lines << endl;
@@ -1400,13 +1400,13 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     CompositionOptimizer opt(config);
     CompositionOptimizerParams optParams{};
     auto compResult = opt.optimize(initial, initialPos, goal, goalPos, optParams);
-    const auto& actualResults = compResult.results;
+    const auto& actualResults = compResult.getResults();
     cerr << "  Total results: " << actualResults.size() << endl;
     auto oracle = make_unique<NeovimOracle>();
     for (size_t i = 0; i < actualResults.size(); i++) {
-      auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, actualResults[i].sequence.str());
-      cerr << "  [" << i << "] seq='" << actualResults[i].sequence
-           << "' cost=" << actualResults[i].keyCost
+      auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, actualResults[i].getSequence().str());
+      cerr << "  [" << i << "] seq='" << actualResults[i].getSequence()
+           << "' cost=" << actualResults[i].getCost()
            << " nvim=" << (nvim.lines == goal ? "OK" : "WRONG")
            << " got=" << nvim.lines << endl;
     }
@@ -1441,7 +1441,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     for (size_t j = 0; j < editResult.resultCount(); j++) {
       const auto& r = editResult.getResults()[j];
       if (r.isValid()) {
-        cerr << "    pos " << j << ": seq='" << r.sequence << "' cost=" << r.keyCost << endl;
+        cerr << "    pos " << j << ": seq='" << r.getSequence() << "' cost=" << r.getCost() << endl;
       } else {
         cerr << "    pos " << j << ": INVALID" << endl;
       }
@@ -1481,12 +1481,12 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
         MotionOptimizerRangeParams{}.withMaxResults(10), "",
         boundary, RunningEffort(), navCtx);
 
-    cerr << "  Range results: " << rangeResult.results.size() << endl;
-    for (size_t i = 0; i < rangeResult.results.size(); i++) {
-      const auto& r = rangeResult.results[i];
+    cerr << "  Range results: " << rangeResult.getResults().size() << endl;
+    for (size_t i = 0; i < rangeResult.getResults().size(); i++) {
+      const auto& r = rangeResult.getResults()[i];
       if (r.isValid()) {
-        cerr << "    [" << i << "] seq='" << r.sequence << "' cost=" << r.keyCost
-             << " goalPos=(" << r.goalPos.line << "," << r.goalPos.col << ")" << endl;
+        cerr << "    [" << i << "] seq='" << r.getSequence() << "' cost=" << r.getCost()
+             << " goalPos=(" << r.getGoalPos().line << "," << r.getGoalPos().col << ")" << endl;
       }
     }
   }
@@ -1511,7 +1511,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
            << ") end=(" << d.endPos.line << "," << d.endPos.col << ")" << endl;
       const auto& er = ctx.edits[i].editResult;
       cerr << "    editResult: " << er.resultCount() << " positions, goalPos=("
-           << er.goalPos.line << "," << er.goalPos.col << ")" << endl;
+           << er.getGoalPos().line << "," << er.getGoalPos().col << ")" << endl;
     }
 
     // Push initial state (same as CompositionOptimizer::optimize does)
@@ -1565,9 +1565,9 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
 
       if (editRes) {
         // Edit transition
-        cerr << "    -> EDIT: seq='" << editRes->sequence << "'" << endl;
-        ctx.exploreEditTransition(s, editRes->sequence,
-                                  editResult.goalPos, editsCompleted + 1);
+        cerr << "    -> EDIT: seq='" << editRes->getSequence() << "'" << endl;
+        ctx.exploreEditTransition(s, editRes->getSequence(),
+                                  editResult.getGoalPos(), editsCompleted + 1);
       } else {
         // Motion search
         int editEndLine = nextEdit.endPos.line + (nextEdit.endPos.col > 0 ? 1 : 0);
@@ -1591,14 +1591,14 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
             subset, localPos, localRangeBegin, localRangeEnd,
             MotionOptimizerRangeParams{}.withMaxResults(
                 clamp(nextEdit.origCharCount(), 1, 10)), "",
-            subsetBoundary, s.getRunningEffort(), navCtx).results;
+            subsetBoundary, s.getRunningEffort(), navCtx).getResults();
 
         for (auto& movResult : movementResults) {
           if (!movResult.isValid()) continue;
-          movResult.goalPos.line += beginLine;
-          cerr << "    -> MOTION: seq='" << movResult.sequence << "' goalPos=("
-               << movResult.goalPos.line << "," << movResult.goalPos.col << ")" << endl;
-          ctx.exploreMotionTransition(s, movResult.sequence, movResult.goalPos, editsCompleted);
+          movResult.addGoalLineOffset(beginLine);
+          cerr << "    -> MOTION: seq='" << movResult.getSequence() << "' goalPos=("
+               << movResult.getGoalPos().line << "," << movResult.getGoalPos().col << ")" << endl;
+          ctx.exploreMotionTransition(s, movResult.getSequence(), movResult.getGoalPos(), editsCompleted);
         }
       }
     }
@@ -1606,8 +1606,8 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     cerr << "\nFinal results: " << results.size() << endl;
     auto oracle = make_unique<NeovimOracle>();
     for (size_t i = 0; i < results.size(); i++) {
-      auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, results[i].sequence.str());
-      cerr << "  [" << i << "] seq='" << results[i].sequence << "' cost=" << results[i].keyCost
+      auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, results[i].getSequence().str());
+      cerr << "  [" << i << "] seq='" << results[i].getSequence() << "' cost=" << results[i].getCost()
            << " nvim=" << (nvim.lines == goal ? "OK" : "WRONG") << " got=" << nvim.lines << endl;
     }
   }
@@ -1646,7 +1646,7 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
   for (int i = 0; i < ctx.totalEdits(); i++) {
     const auto& er = ctx.edits[i].editResult;
     const auto& d = ctx.edits[i].diffState;
-    cerr << "  edit[" << i << "] goalPos=(" << er.goalPos.line << "," << er.goalPos.col
+    cerr << "  edit[" << i << "] goalPos=(" << er.getGoalPos().line << "," << er.getGoalPos().col
          << ") resultCount=" << er.resultCount() << endl;
 
     // Show valid results at each position in the edit region
@@ -1655,8 +1655,8 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
       if (er.getResults()[j].isValid()) {
         validCount++;
         if (validCount <= 5) {
-          cerr << "    pos " << j << ": '" << er.getResults()[j].sequence << "' cost="
-               << er.getResults()[j].keyCost << endl;
+          cerr << "    pos " << j << ": '" << er.getResults()[j].getSequence() << "' cost="
+               << er.getResults()[j].getCost() << endl;
         }
       }
     }
@@ -1671,7 +1671,7 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
         const Result* r = er.resultAt(line, col);
         if (r) {
           cerr << "    resultAt(" << line << "," << col << "): '"
-               << r->sequence << "' cost=" << r->keyCost << endl;
+               << r->getSequence() << "' cost=" << r->getCost() << endl;
         }
       }
     }
@@ -1730,9 +1730,9 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
     const Result* res = editResult.resultAt(pos.line, pos.col);
 
     if (res) {
-      cerr << "    -> EDIT: '" << res->sequence << "' cost=" << res->keyCost
-           << " -> goalPos=(" << editResult.goalPos.line << "," << editResult.goalPos.col << ")" << endl;
-      ctx.exploreEditTransition(s, res->sequence, editResult.goalPos, editsCompleted + 1);
+      cerr << "    -> EDIT: '" << res->getSequence() << "' cost=" << res->getCost()
+           << " -> goalPos=(" << editResult.getGoalPos().line << "," << editResult.getGoalPos().col << ")" << endl;
+      ctx.exploreEditTransition(s, res->getSequence(), editResult.getGoalPos(), editsCompleted + 1);
     } else {
       cerr << "    -> NO EDIT at pos, searching motions..." << endl;
 
@@ -1762,15 +1762,15 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
           subset, localPos, localRangeBegin, localRangeEnd,
           MotionOptimizerRangeParams{}.withMaxResults(
               clamp(nextEdit.origCharCount(), 1, 10)), "",
-          subsetBoundary, s.getRunningEffort(), navCtx).results;
+          subsetBoundary, s.getRunningEffort(), navCtx).getResults();
 
       cerr << "    -> MOTIONS found: " << rangeResults.size() << endl;
       for (auto& movResult : rangeResults) {
         if (!movResult.isValid()) continue;
-        movResult.goalPos.line += beginLine;
-        cerr << "      motion '" << movResult.sequence << "' -> ("
-             << movResult.goalPos.line << "," << movResult.goalPos.col << ")" << endl;
-        ctx.exploreMotionTransition(s, movResult.sequence, movResult.goalPos, editsCompleted);
+        movResult.addGoalLineOffset(beginLine);
+        cerr << "      motion '" << movResult.getSequence() << "' -> ("
+             << movResult.getGoalPos().line << "," << movResult.getGoalPos().col << ")" << endl;
+        ctx.exploreMotionTransition(s, movResult.getSequence(), movResult.getGoalPos(), editsCompleted);
       }
     }
   }
@@ -1782,8 +1782,8 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
   if (!results.empty()) {
     auto oracle = make_unique<NeovimOracle>();
     for (size_t i = 0; i < results.size(); i++) {
-      auto nvim = oracle->simulate(initial, 0, 0, results[i].sequence.str());
-      cerr << "  [" << i << "] '" << results[i].sequence << "' "
+      auto nvim = oracle->simulate(initial, 0, 0, results[i].getSequence().str());
+      cerr << "  [" << i << "] '" << results[i].getSequence() << "' "
            << (nvim.lines == goal ? "OK" : "WRONG") << endl;
     }
   }
@@ -1842,10 +1842,10 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
     // Step 3: Full optimizer
     CompositionOptimizer opt{config};
     auto compResult = opt.optimize(initial, initialPos, goal, goal.lastPos(), compParams);
-    cerr << "Results: " << compResult.results.size() << endl;
-    for (size_t i = 0; i < compResult.results.size(); i++) {
-      cerr << "  [" << i << "] '" << compResult.results[i].sequence
-           << "' cost=" << compResult.results[i].keyCost << endl;
+    cerr << "Results: " << compResult.getResults().size() << endl;
+    for (size_t i = 0; i < compResult.getResults().size(); i++) {
+      cerr << "  [" << i << "] '" << compResult.getResults()[i].getSequence()
+           << "' cost=" << compResult.getResults()[i].getCost() << endl;
     }
   };
 
@@ -1877,12 +1877,12 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
         MotionOptimizerRangeParams{}.withMaxResults(5), "",
         boundary, RunningEffort(), navCtx);
 
-    cerr << "Motion results: " << rangeResult.results.size() << endl;
-    for (size_t i = 0; i < rangeResult.results.size(); i++) {
-      if (rangeResult.results[i].isValid()) {
-        cerr << "  [" << i << "] '" << rangeResult.results[i].sequence
-             << "' -> (" << rangeResult.results[i].goalPos.line << ","
-             << rangeResult.results[i].goalPos.col << ")" << endl;
+    cerr << "Motion results: " << rangeResult.getResults().size() << endl;
+    for (size_t i = 0; i < rangeResult.getResults().size(); i++) {
+      if (rangeResult.getResults()[i].isValid()) {
+        cerr << "  [" << i << "] '" << rangeResult.getResults()[i].getSequence()
+             << "' -> (" << rangeResult.getResults()[i].getGoalPos().line << ","
+             << rangeResult.getResults()[i].getGoalPos().col << ")" << endl;
       }
     }
   }
@@ -1951,12 +1951,12 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
         d.deletedLines(), d.insertedLines(), d.boundary, {},
         d.beginPos.line, d.beginPos.col, d.beginPos);
 
-    cerr << "    -> results: " << result.stats.resultsFound
-         << " nodes: " << result.stats.nodesExplored << endl;
+    cerr << "    -> results: " << result.getStats().resultsFound
+         << " nodes: " << result.getStats().nodesExplored << endl;
     for (size_t j = 0; j < result.resultCount(); j++) {
       if (result.getResults()[j].isValid()) {
-        cerr << "    [" << j << "] '" << result.getResults()[j].sequence
-             << "' cost=" << result.getResults()[j].keyCost << endl;
+        cerr << "    [" << j << "] '" << result.getResults()[j].getSequence()
+             << "' cost=" << result.getResults()[j].getCost() << endl;
       }
     }
   }
@@ -2026,8 +2026,8 @@ TEST_F(DebugTest, InvestigateHumanApproval1) {
   cerr << compResult;
 
   auto oracle = make_unique<NeovimOracle>();
-  for (size_t i = 0; i < compResult.results.size(); i++) {
-    const auto& seq = compResult.results[i].sequence;
+  for (size_t i = 0; i < compResult.getResults().size(); i++) {
+    const auto& seq = compResult.getResults()[i].getSequence();
     auto nvim = oracle->simulate(initial, 0, 0, seq.str());
     bool correct = (nvim.lines == goal);
     cerr << "  [" << i << "] oracle: " << (correct ? "OK" : "WRONG")
@@ -2061,14 +2061,14 @@ TEST_F(DebugTest, SuffixCacheComparison) {
   for (size_t i = 0; i < stdResult.resultCount(); i++) {
     if (stdResult.getResults()[i].isValid()) stdValid++;
   }
-  cerr << "  nodes=" << stdResult.stats.nodesExplored
-       << " results=" << stdResult.stats.resultsFound
+  cerr << "  nodes=" << stdResult.getStats().nodesExplored
+       << " results=" << stdResult.getStats().resultsFound
        << " valid=" << stdValid << "/" << stdResult.resultCount()
-       << " stop=" << to_string(stdResult.stats.stopReason) << endl;
+       << " stop=" << to_string(stdResult.getStats().stopReason) << endl;
   for (size_t i = 0; i < stdResult.resultCount(); i++) {
     if (stdResult.getResults()[i].isValid()) {
-      cerr << "  pos " << i << ": '" << stdResult.getResults()[i].sequence
-           << "' cost=" << stdResult.getResults()[i].keyCost << endl;
+      cerr << "  pos " << i << ": '" << stdResult.getResults()[i].getSequence()
+           << "' cost=" << stdResult.getResults()[i].getCost() << endl;
     }
   }
 
@@ -2082,27 +2082,27 @@ TEST_F(DebugTest, SuffixCacheComparison) {
   for (size_t i = 0; i < cacheResult.resultCount(); i++) {
     if (cacheResult.getResults()[i].isValid()) cacheValid++;
   }
-  cerr << "  nodes=" << cacheResult.stats.nodesExplored
-       << " results=" << cacheResult.stats.resultsFound
+  cerr << "  nodes=" << cacheResult.getStats().nodesExplored
+       << " results=" << cacheResult.getStats().resultsFound
        << " valid=" << cacheValid << "/" << cacheResult.resultCount()
-       << " stop=" << to_string(cacheResult.stats.stopReason)
-       << " cacheHits=" << cacheResult.stats.cacheHits
-       << " cacheEntries=" << cacheResult.stats.cacheEntries
-       << " populations=" << cacheResult.stats.cachePopulations << endl;
+       << " stop=" << to_string(cacheResult.getStats().stopReason)
+       << " cacheHits=" << cacheResult.getStats().cacheHits
+       << " cacheEntries=" << cacheResult.getStats().cacheEntries
+       << " populations=" << cacheResult.getStats().cachePopulations << endl;
   for (size_t i = 0; i < cacheResult.resultCount(); i++) {
     if (cacheResult.getResults()[i].isValid()) {
-      cerr << "  pos " << i << ": '" << cacheResult.getResults()[i].sequence
-           << "' cost=" << cacheResult.getResults()[i].keyCost << endl;
+      cerr << "  pos " << i << ": '" << cacheResult.getResults()[i].getSequence()
+           << "' cost=" << cacheResult.getResults()[i].getCost() << endl;
     }
   }
 
   // Summary
   cerr << "\n=== Summary ===" << endl;
   cerr << "Standard: " << stdValid << " valid results, "
-       << stdResult.stats.nodesExplored << " nodes" << endl;
+       << stdResult.getStats().nodesExplored << " nodes" << endl;
   cerr << "SuffixCache: " << cacheValid << " valid results, "
-       << cacheResult.stats.nodesExplored << " nodes, "
-       << cacheResult.stats.cacheHits << " cache hits" << endl;
+       << cacheResult.getStats().nodesExplored << " nodes, "
+       << cacheResult.getStats().cacheHits << " cache hits" << endl;
   if (cacheValid > stdValid) {
     cerr << "SuffixCache found " << (cacheValid - stdValid) << " MORE results!" << endl;
   }
@@ -2138,9 +2138,9 @@ TEST_F(DebugTest, CcAutoindentCollapse) {
   for (size_t i = 0; i < result.resultCount(); i++) {
     if (result.getResults()[i].isValid()) {
       anyValid = true;
-      const auto& seq = result.getResults()[i].sequence;
+      const auto& seq = result.getResults()[i].getSequence();
       cerr << "  pos " << i << ": '" << seq << "' cost="
-           << result.getResults()[i].keyCost << endl;
+           << result.getResults()[i].getCost() << endl;
     }
   }
   ASSERT_TRUE(anyValid) << "No valid results found";
@@ -2154,11 +2154,11 @@ TEST_F(DebugTest, CcAutoindentCollapse) {
     total++;
 
     CursorPos editPos = fromFlatIndex(static_cast<int>(i), initial);
-    auto nvim = oracle->simulate(initial, editPos.line, editPos.col, r.getSequenceString().str());
+    auto nvim = oracle->simulate(initial, editPos.line, editPos.col, r.getSequence().str());
     if (nvim.lines == goal) {
       passed++;
     } else {
-      cerr << "FAIL pos=" << i << " seq='" << r.sequence
+      cerr << "FAIL pos=" << i << " seq='" << r.getSequence()
            << "' got=" << nvim.lines << " expected=" << goal << endl;
     }
   }
@@ -2181,11 +2181,11 @@ TEST_F(DebugTest, CcAutoindentCollapse) {
     total2++;
 
     CursorPos editPos = fromFlatIndex(static_cast<int>(i), initial2);
-    auto nvim = oracle->simulate(initial2, editPos.line, editPos.col, r.getSequenceString().str());
+    auto nvim = oracle->simulate(initial2, editPos.line, editPos.col, r.getSequence().str());
     if (nvim.lines == goal2) {
       passed2++;
     } else {
-      cerr << "FAIL pos=" << i << " seq='" << r.sequence
+      cerr << "FAIL pos=" << i << " seq='" << r.getSequence()
            << "' got=" << nvim.lines << " expected=" << goal2 << endl;
     }
   }
@@ -2228,18 +2228,18 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
       deletedLines, insertedLines, boundary, defaultParams,
       editBeginPos.line, editBeginPos.col, CursorPos(0, 29));
 
-  cerr << "  stats: nodes=" << result.stats.nodesExplored
-       << " results=" << result.stats.resultsFound
-       << " queueSize=" << result.stats.queueSizeAtStop
-       << " stopReason=" << static_cast<int>(result.stats.stopReason)
-       << " skipped=" << result.stats.statesSkipped << endl;
+  cerr << "  stats: nodes=" << result.getStats().nodesExplored
+       << " results=" << result.getStats().resultsFound
+       << " queueSize=" << result.getStats().queueSizeAtStop
+       << " stopReason=" << static_cast<int>(result.getStats().stopReason)
+       << " skipped=" << result.getStats().statesSkipped << endl;
 
   int validCount = 0;
   for (size_t i = 0; i < result.resultCount(); i++) {
     if (result.getResults()[i].isValid()) {
       validCount++;
-      cerr << "  pos " << i << ": '" << result.getResults()[i].sequence
-           << "' cost=" << result.getResults()[i].keyCost << endl;
+      cerr << "  pos " << i << ": '" << result.getResults()[i].getSequence()
+           << "' cost=" << result.getResults()[i].getCost() << endl;
     }
   }
   cerr << "  valid: " << validCount << " / " << result.resultCount() << endl;
@@ -2253,18 +2253,18 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
       deletedLines, insertedLines, boundary, bigParams,
       editBeginPos.line, editBeginPos.col, CursorPos(0, 29));
 
-  cerr << "  stats: nodes=" << bigResult.stats.nodesExplored
-       << " results=" << bigResult.stats.resultsFound
-       << " queueSize=" << bigResult.stats.queueSizeAtStop
-       << " stopReason=" << static_cast<int>(bigResult.stats.stopReason)
-       << " skipped=" << bigResult.stats.statesSkipped << endl;
+  cerr << "  stats: nodes=" << bigResult.getStats().nodesExplored
+       << " results=" << bigResult.getStats().resultsFound
+       << " queueSize=" << bigResult.getStats().queueSizeAtStop
+       << " stopReason=" << static_cast<int>(bigResult.getStats().stopReason)
+       << " skipped=" << bigResult.getStats().statesSkipped << endl;
 
   int bigValidCount = 0;
   for (size_t i = 0; i < bigResult.resultCount(); i++) {
     if (bigResult.getResults()[i].isValid()) {
       bigValidCount++;
-      cerr << "  pos " << i << ": '" << bigResult.getResults()[i].sequence
-           << "' cost=" << bigResult.getResults()[i].keyCost << endl;
+      cerr << "  pos " << i << ": '" << bigResult.getResults()[i].getSequence()
+           << "' cost=" << bigResult.getResults()[i].getCost() << endl;
     }
   }
   cerr << "  valid: " << bigValidCount << " / " << bigResult.resultCount() << endl;
@@ -2277,18 +2277,18 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
       deletedLines, insertedLines, boundary, dijkstraParams,
       editBeginPos.line, editBeginPos.col, CursorPos(0, 29));
 
-  cerr << "  stats: nodes=" << dijResult.stats.nodesExplored
-       << " results=" << dijResult.stats.resultsFound
-       << " queueSize=" << dijResult.stats.queueSizeAtStop
-       << " stopReason=" << static_cast<int>(dijResult.stats.stopReason)
-       << " skipped=" << dijResult.stats.statesSkipped << endl;
+  cerr << "  stats: nodes=" << dijResult.getStats().nodesExplored
+       << " results=" << dijResult.getStats().resultsFound
+       << " queueSize=" << dijResult.getStats().queueSizeAtStop
+       << " stopReason=" << static_cast<int>(dijResult.getStats().stopReason)
+       << " skipped=" << dijResult.getStats().statesSkipped << endl;
 
   int dijValidCount = 0;
   for (size_t i = 0; i < dijResult.resultCount(); i++) {
     if (dijResult.getResults()[i].isValid()) {
       dijValidCount++;
-      cerr << "  pos " << i << ": '" << dijResult.getResults()[i].sequence
-           << "' cost=" << dijResult.getResults()[i].keyCost << endl;
+      cerr << "  pos " << i << ": '" << dijResult.getResults()[i].getSequence()
+           << "' cost=" << dijResult.getResults()[i].getCost() << endl;
     }
   }
   cerr << "  valid: " << dijValidCount << " / " << dijResult.resultCount() << endl;
@@ -2580,11 +2580,11 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceDeleteEntireLineIter20) {
   CompositionOptimizerParams params;
 
   auto res = opt.optimize(initial, CursorPos(0,0), goal, CursorPos(0,0), params);
-  cerr << "Results: " << res.results.size() << endl;
-  for (size_t i = 0; i < res.results.size(); i++) {
-    const auto& r = res.results[i];
-    cerr << "  [" << i << "] seq='" << r.sequence << "' cost=" << r.keyCost << endl;
-    auto nvim = oracle_->simulate(initial, 0, 0, r.sequence.str());
+  cerr << "Results: " << res.getResults().size() << endl;
+  for (size_t i = 0; i < res.getResults().size(); i++) {
+    const auto& r = res.getResults()[i];
+    cerr << "  [" << i << "] seq='" << r.getSequence() << "' cost=" << r.getCost() << endl;
+    auto nvim = oracle_->simulate(initial, 0, 0, r.getSequence().str());
     cerr << "    nvim: " << nvim.lines << (nvim.lines == goal ? " OK" : " WRONG") << endl;
   }
 
@@ -2612,8 +2612,8 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceDeleteEntireLineIter20) {
             d.deletedLines(), {}, d.boundary, eparams);
         for (size_t j = 0; j < eres.resultCount(); j++) {
           if (eres.getResults()[j].isValid()) {
-            cerr << "    pos " << j << ": '" << eres.getResults()[j].sequence
-                 << "' cost=" << eres.getResults()[j].keyCost << endl;
+            cerr << "    pos " << j << ": '" << eres.getResults()[j].getSequence()
+                 << "' cost=" << eres.getResults()[j].getCost() << endl;
           }
         }
       }
@@ -2712,10 +2712,10 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceJoinLinesResidualEditOpt) {
           int fullRow = r + (r == 0 ? static_cast<int>(beginPos.line) : 0);
           // For row 0, col offset is beginPos.col; for others, no offset
           // Actually need to compute proper full-buffer position
-          cerr << "  [" << r << "," << c << "] seq='" << result.sequence
-               << "' cost=" << result.keyCost << endl;
+          cerr << "  [" << r << "," << c << "] seq='" << result.getSequence()
+               << "' cost=" << result.getCost() << endl;
           cerr << "    bytes:";
-          for (unsigned char ch : result.sequence.view()) {
+          for (unsigned char ch : result.getSequence().view()) {
             if (ch >= 0x20 && ch < 0x7f) cerr << " '" << ch << "'";
             else cerr << " 0x" << hex << (int)ch << dec;
           }
@@ -2858,7 +2858,7 @@ TEST_F(DebugTest, DISABLED_CompositionEditSizeSmallCrash) {
   Config config = Config::uniform();
   CompositionOptimizer opt(config);
   auto result = opt.optimize(initial, {0, 0}, goal, {0, 0});
-  cerr << "OK - nodes=" << result.stats.nodesExplored << endl;
+  cerr << "OK - nodes=" << result.getStats().nodesExplored << endl;
 }
 
 // =============================================================================
@@ -3061,9 +3061,9 @@ TEST_F(DebugTest, DISABLED_DiagnoseCompBenchFound0) {
     CompositionOptimizer opt(config);
     auto result = opt.optimize(initial, {0,0}, goal, {0,0}, params);
     cerr << "seed=" << seed
-         << " results=" << result.results.size()
-         << " stats.resultsFound=" << result.stats.resultsFound
-         << " nodes=" << result.stats.nodesExplored
-         << " stop=" << static_cast<int>(result.stats.stopReason) << endl;
+         << " results=" << result.getResults().size()
+         << " stats.resultsFound=" << result.getStats().resultsFound
+         << " nodes=" << result.getStats().nodesExplored
+         << " stop=" << static_cast<int>(result.getStats().stopReason) << endl;
   }
 }

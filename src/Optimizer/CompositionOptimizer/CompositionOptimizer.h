@@ -8,6 +8,7 @@
 #include "DiffState.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
+#include "Optimizer/OptimizerResult.h"
 #include "Optimizer/Result.h"
 #include "Optimizer/SearchStats.h"
 
@@ -16,22 +17,38 @@
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 
-struct CompositionResult {
-  std::vector<Result> results;
-  SearchStats stats;
-  CursorPos goalPos;  // Cursor position after last edit completes
-  std::vector<DiffState> diffs;  // Character-level diff regions used
+struct CompositionResult : BaseOptimizerResult {
+  CompositionResult() = default;
 
-  // Composition-specific explored states (only populated when trackExploredStates=true)
-  std::vector<CompositionExploredState> compositionExploredStates;
+  const CompositionSearchStats& getStats() const { return stats_; }
 
-  // Per-diff edit optimization results (only populated when trackExploredStates=true)
-  std::vector<EditResult> editResults;
-
-  const std::vector<Result>& getResults() const { return results; }
+  const CursorPos& getGoalPos() const { return goalPos_; }
+  const std::vector<DiffState>& getDiffs() const { return diffs_; }
+  const std::vector<CompositionExploredState>& getExploredStates() const { return exploredStates_; }
+  std::vector<CompositionExploredState>& getExploredStates() { return exploredStates_; }
+  const std::vector<EditResult>& getEditResults() const { return editResults_; }
+  std::vector<EditResult>& getEditResults() { return editResults_; }
 
   // Prints diff legend with {n} placeholders, then results with typed text substituted.
   friend std::ostream& operator<<(std::ostream& os, const CompositionResult& cr);
+
+private:
+  CompositionSearchStats stats_;
+  CursorPos goalPos_;
+  std::vector<DiffState> diffs_;
+  std::vector<CompositionExploredState> exploredStates_;
+  std::vector<EditResult> editResults_;
+
+  friend struct CompositionOptimizer;
+  CompositionResult(std::vector<Result> results, CompositionSearchStats stats,
+                    CursorPos goalPos, std::vector<DiffState> diffs,
+                    std::vector<CompositionExploredState> exploredStates,
+                    std::vector<EditResult> editResults)
+    : BaseOptimizerResult(std::move(results)),
+      stats_(std::move(stats)),
+      goalPos_(goalPos), diffs_(std::move(diffs)),
+      exploredStates_(std::move(exploredStates)),
+      editResults_(std::move(editResults)) {}
 };
 
 struct CompositionOptimizer {

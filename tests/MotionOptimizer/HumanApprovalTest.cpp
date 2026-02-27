@@ -47,7 +47,7 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_SimpleHorizontal) {
   MotionOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, end, {}, "lllll"
-  ).results;
+  ).getResults();
   // printResultsDebug(results, "Simple horizontal movement 0→5");
 
   EXPECT_FALSE(results.empty()) << "Should find at least one path";
@@ -64,7 +64,7 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_VerticalJump) {
   MotionOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, end, {}, "jjj"
-  ).results;
+  ).getResults();
 
   // printResults(results, "Vertical jump 3 lines");
 
@@ -88,7 +88,7 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_WordMotions) {
   MotionOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, end, {}, "www"
-  ).results;
+  ).getResults();
 
   // printResults(results, "Word motions to 'four'");
 
@@ -108,7 +108,7 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_MixedMotions) {
   MotionOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, end, MotionOptimizerParams{}.withMaxResults(15), "jjllllllllll"
-  ).results;
+  ).getResults();
 
   // printResults(results, "Mixed motions to line 2, col 11");
 
@@ -117,7 +117,7 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_MixedMotions) {
   // Should find something more efficient than 12 l's
   bool foundEfficient = false;
   for (const auto& r : results) {
-    if (r.sequence.size() < 12) {
+    if (r.getSequence().size() < 12) {
       foundEfficient = true;
       break;
     }

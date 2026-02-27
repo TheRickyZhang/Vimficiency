@@ -119,8 +119,8 @@ MotionResult MotionOptimizer::optimizeImpl(
     debug(l, c, cost);
   }
 
-  SearchStats stats = ctx.getStats(static_cast<int>(res.size()));
-  return {.results = std::move(res), .stats = stats};
+  MotionSearchStats stats = ctx.getStats(static_cast<int>(res.size()));
+  return MotionResult(std::move(res), stats);
 }
 
 // Explicit template instantiations
@@ -247,7 +247,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
             debug("optimizeToRange: max unique positions reached (", uniquePositionsFound, "/", rangeSize, ")");
             break;
           }
-        } else if (effort < it->second.keyCost) {
+        } else if (effort < it->second.getCost()) {
           it->second = RangeResult(s.getSequence().str(), effort, pos);
         }
       }
@@ -297,7 +297,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     // Count unique positions in results
     set<Pos> seen;
     for (const auto& r : results) {
-      seen.insert({r.goalPos.line, r.goalPos.col});
+      seen.insert({r.getGoalPos().line, r.getGoalPos().col});
     }
     uniqueCount = static_cast<int>(seen.size());
   } else {
@@ -308,7 +308,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     uniqueCount = static_cast<int>(results.size());
   }
 
-  SearchStats stats = ctx.getStats(static_cast<int>(results.size()));
+  MotionSearchStats stats = ctx.getStats(static_cast<int>(results.size()));
   stats.uniquePositionsFound = uniqueCount;
 
   // Override stop reason for range-specific conditions
@@ -320,7 +320,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     stats.stopReason = SearchStopReason::MaxResultsFound;
   }
 
-  return RangeMotionResult{std::move(results), stats};
+  return RangeMotionResult(std::move(results), stats);
 }
 
 // Explicit template instantiations for optimizeToRangeImpl

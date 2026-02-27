@@ -124,13 +124,13 @@ CompositionSearchContext::CompositionSearchContext(
     for (const Result& r : er.getResults()) {
       if (r.isValid()) {
         validCount++;
-        bestCost = min(bestCost, r.keyCost);
+        bestCost = min(bestCost, r.getCost());
       }
     }
     debug("  edit[" + to_string(i) + "]:",
           validCount, "results, best cost:",
           validCount > 0 ? bestCost : -1.0,
-          "goalPos:", er.goalPos);
+          "goalPos:", er.getGoalPos());
   }
 
   // Compute J (join lines) plans
@@ -283,8 +283,8 @@ void CompositionSearchContext::exploreNewState(CompositionState&& newState) {
   }
 }
 
-SearchStats CompositionSearchContext::getStats(int resultsFound) const {
-  SearchStats stats;
+CompositionSearchStats CompositionSearchContext::getStats(int resultsFound) const {
+  CompositionSearchStats stats;
   stats.nodesExplored = nodesProcessed;
   stats.resultsFound = resultsFound;
   stats.queueSizeAtStop = static_cast<int>(pq.size());
@@ -317,7 +317,7 @@ vector<double> CompositionSearchContext::computeSuffixEditCosts() const {
     vector<double> costs;
     for (const Result& r : editRes.getResults()) {
       if (r.isValid()) {
-        costs.push_back(r.keyCost);
+        costs.push_back(r.getCost());
       }
     }
 
@@ -385,16 +385,14 @@ void CompositionSearchContext::calculateEditResults() {
     }
 
     if (diff.isPureDeletion()) {
-      PureDeletionEditResult pureResult = editOptimizer.optimizePureDeletion(
+      edits[i].editResult = editOptimizer.optimizePureDeletion(
           diff.deletedLines(), diff.boundary,
           EditOptimizerParams{}
               .withMinCountRepeat(params.minPrefixCount)
               .withMaxCountRepeat(params.maxPrefixCount)
               .withTrackExploredStates(params.trackExploredStates),
           diff.beginPos.line, diff.beginPos.col, diff.beginPos);
-      editNodesExplored += pureResult.editResult.stats.nodesExplored;
-      edits[i].pureDeletionGoalPos = std::move(pureResult.goalPosByStart);
-      edits[i].editResult = std::move(pureResult.editResult);
+      editNodesExplored += edits[i].editResult.getStats().nodesExplored;
       continue;
     }
 
@@ -423,7 +421,7 @@ void CompositionSearchContext::calculateEditResults() {
             .withMaxCountRepeat(params.maxPrefixCount)
             .withTrackExploredStates(params.trackExploredStates),
         diff.beginPos.line, diff.beginPos.col, goalPos);
-    editNodesExplored += optResult.stats.nodesExplored;
+    editNodesExplored += optResult.getStats().nodesExplored;
     edits[i].editResult = std::move(optResult);
   }
 }
@@ -914,14 +912,14 @@ void CompositionSearchContext::computeJoinPlans() {
           if (fullTgtLines[g].empty()) {
             return editOptimizer.optimizePureDeletion(
                 residualInitial, groupBoundary, residualParams,
-                0, 0, residualGoalPos).editResult;
+                0, 0, residualGoalPos);
           }
           Lines residualGoal = {fullTgtLines[g]};
           return editOptimizer.optimizeEdit(
               residualInitial, residualGoal, groupBoundary, residualParams,
               0, 0, residualGoalPos);
         }();
-        editNodesExplored += residualResult.stats.nodesExplored;
+        editNodesExplored += residualResult.getStats().nodesExplored;
 
         // Look up result at cursor position after J
         const Result* res = residualResult.resultAt(0, cursorCol);
@@ -932,8 +930,8 @@ void CompositionSearchContext::computeJoinPlans() {
           break;
         }
 
-        fullSeq.append(res->sequence.view());
-        lastGoalPos = residualResult.goalPos;
+        fullSeq.append(res->getSequence().view());
+        lastGoalPos = residualResult.getGoalPos();
       } else {
         lastGoalPos = CursorPos(0, cursorCol);
       }

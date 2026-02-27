@@ -36,9 +36,9 @@ protected:
       const string& context = "") {
     ASSERT_TRUE(result.isValid()) << "Result invalid (" << context << ")";
     SimulationResult nvim = oracle->simulate(
-        initial, initialPos.line, initialPos.col, result.sequence.str());
+        initial, initialPos.line, initialPos.col, result.getSequence().str());
     EXPECT_TRUE(nvim.lines == goal)
-        << "seq='" << result.sequence << "' (" << context << ")"
+        << "seq='" << result.getSequence() << "' (" << context << ")"
         << "\n  Initial: " << initial << "\n  Goal: " << goal << "\n  Got: " << nvim.lines;
   }
 
@@ -58,7 +58,7 @@ protected:
           << "Result " << i << " is invalid"
           << (testContext.empty() ? "" : " (" + testContext + ")");
 
-      const auto& seq = results[i].getSequenceString();
+      const auto& seq = results[i].getSequence();
       SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
 
       EXPECT_EQ(nvim.lines, goal)
@@ -86,7 +86,7 @@ TEST_F(CompositionOptimizer_ManualTest, SingleEdit_SimpleSubstitution) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   expectHasValidResults(results, initial, initialPos, goal, "simple substitution");
 }
@@ -100,7 +100,7 @@ TEST_F(CompositionOptimizer_ManualTest, SingleEdit_AtCursor) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   expectHasValidResults(results, initial, initialPos, goal, "at cursor");
 }
@@ -119,7 +119,7 @@ TEST_F(CompositionOptimizer_ManualTest, TwoEdits_SameLine) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   expectHasValidResults(results, initial, initialPos, goal, "two edits same line");
 }
@@ -132,7 +132,7 @@ TEST_F(CompositionOptimizer_ManualTest, TwoEdits_DifferentLines) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   expectHasValidResults(results, initial, initialPos, goal, "two edits different lines");
 }
@@ -149,7 +149,7 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   expectHasValidResults(results, initial, initialPos, goal, "pure insertion");
 }
@@ -163,7 +163,7 @@ TEST_F(CompositionOptimizer_ManualTest, PureDeletion) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   expectHasValidResults(results, initial, initialPos, goal, "pure deletion");
 }
@@ -181,7 +181,7 @@ TEST_F(CompositionOptimizer_ManualTest, DeleteEntireLine) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   expectHasValidResults(results, initial, initialPos, goal, "delete entire line");
 }
@@ -195,7 +195,7 @@ TEST_F(CompositionOptimizer_ManualTest, InsertNewLine) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   expectHasValidResults(results, initial, initialPos, goal, "insert new line");
 }
@@ -213,7 +213,7 @@ TEST_F(CompositionOptimizer_ManualTest, NoChange_IdenticalBuffers) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   // Empty results is valid (no changes needed)
   // If there are results, verify they don't break the buffer
@@ -235,7 +235,7 @@ TEST_F(CompositionOptimizer_ManualTest, EdgeCase_EmptyToContent) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   expectHasValidResults(results, initial, initialPos, goal, "empty to content");
 }
@@ -249,7 +249,7 @@ TEST_F(CompositionOptimizer_ManualTest, EdgeCase_ContentToEmpty) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   expectHasValidResults(results, initial, initialPos, goal, "content to empty");
 }
@@ -263,7 +263,7 @@ TEST_F(CompositionOptimizer_ManualTest, EdgeCase_SingleCharChange) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   expectHasValidResults(results, initial, initialPos, goal, "single char change");
 }
@@ -281,14 +281,14 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerQuote_CursorBefore) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
   // Verify ci" is among the results and produces correct output
   bool foundValidCiQuote = false;
   for (const Result& r : results) {
-    const auto& seq = r.getSequenceString();
+    const auto& seq = r.getSequence();
     if (seq.view().find("ci\"") != string::npos) {
       SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
       if (nvim.lines == goal) {
@@ -309,14 +309,14 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerQuote_CursorInside) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
   // Verify ci" is among the results and produces correct output
   bool foundValidCiQuote = false;
   for (const Result& r : results) {
-    const auto& seq = r.getSequenceString();
+    const auto& seq = r.getSequence();
     if (seq.view().find("ci\"") != string::npos) {
       SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
       if (nvim.lines == goal) {
@@ -338,14 +338,14 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_AroundQuote) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
   // Verify we get a working result
   bool foundValidResult = false;
   for (const Result& r : results) {
-    const auto& seq = r.getSequenceString();
+    const auto& seq = r.getSequence();
     SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
     if (nvim.lines == goal) {
       foundValidResult = true;
@@ -364,14 +364,14 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerParen) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
   // Verify ci( is among the results and produces correct output
   bool foundValidCiParen = false;
   for (const Result& r : results) {
-    const auto& seq = r.getSequenceString();
+    const auto& seq = r.getSequence();
     if (seq.view().find("ci(") != string::npos) {
       SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
       if (nvim.lines == goal) {
@@ -392,14 +392,14 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerBrace) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
   // Verify ci{ is among the results and produces correct output
   bool foundValidCiBrace = false;
   for (const Result& r : results) {
-    const auto& seq = r.getSequenceString();
+    const auto& seq = r.getSequence();
     if (seq.view().find("ci{") != string::npos) {
       SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
       if (nvim.lines == goal) {
@@ -420,14 +420,14 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerBracket) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
   // Verify ci[ is among the results and produces correct output
   bool foundValidCiBracket = false;
   for (const Result& r : results) {
-    const auto& seq = r.getSequenceString();
+    const auto& seq = r.getSequence();
     if (seq.view().find("ci[") != string::npos) {
       SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
       if (nvim.lines == goal) {
@@ -449,14 +449,14 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_NotValidAfterQuote) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
   // Verify at least one result produces the goal
   bool foundValid = false;
   for (const Result& r : results) {
-    const auto& seq = r.getSequenceString();
+    const auto& seq = r.getSequence();
     SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
     if (nvim.lines == goal) {
       foundValid = true;
@@ -476,14 +476,14 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_NestedBrackets) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
   // Verify at least one result produces the goal
   bool foundValid = false;
   for (const Result& r : results) {
-    const auto& seq = r.getSequenceString();
+    const auto& seq = r.getSequence();
     SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
     if (nvim.lines == goal) {
       foundValid = true;
@@ -502,14 +502,14 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_SingleQuote) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   ASSERT_FALSE(results.empty()) << "No results returned";
 
   // Verify ci' is among the results and produces correct output
   bool foundValidCiSingleQuote = false;
   for (const Result& r : results) {
-    const auto& seq = r.getSequenceString();
+    const auto& seq = r.getSequence();
     if (seq.view().find("ci'") != string::npos) {
       SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
       if (nvim.lines == goal) {
@@ -534,14 +534,14 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_NewLineBetween) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   expectHasValidResults(results, initial, initialPos, goal, "new line insertion");
 
   // Check that 'o' is used (optimal for this case)
   bool usesO = false;
   for (const Result& r : results) {
-    if (r.sequence.view().find("ob") != string::npos) {
+    if (r.getSequence().view().find("ob") != string::npos) {
       usesO = true;
       break;
     }
@@ -558,14 +558,14 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_AppendToLine) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   expectHasValidResults(results, initial, initialPos, goal, "append to line");
 
   // Check that 'A' is used (optimal for this case)
   bool usesA = false;
   for (const Result& r : results) {
-    if (r.sequence.view().find("Ab") != string::npos) {
+    if (r.getSequence().view().find("Ab") != string::npos) {
       usesA = true;
       break;
     }
@@ -583,7 +583,7 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_AppendWithNewline) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   expectHasValidResults(results, initial, initialPos, goal, "append with newline");
 }
@@ -597,7 +597,7 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_InsertAtStart) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   expectHasValidResults(results, initial, initialPos, goal, "insert at start");
 }
@@ -611,7 +611,7 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_InsertInMiddle) {
 
   auto compResult = opt.optimize(
       initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.results;
+  const auto& results = compResult.getResults();
 
   expectHasValidResults(results, initial, initialPos, goal, "insert in middle");
 }
@@ -624,12 +624,12 @@ TEST_F(CompositionOptimizer_ManualTest, JoinLinesExact) {
   CursorPos goalPos = goal.lastPos();
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
-  expectHasValidResults(res.results, initial, initialPos, goal, "J exact");
+  expectHasValidResults(res.getResults(), initial, initialPos, goal, "J exact");
 
   // Check that a result contains "J"
   bool foundJ = false;
-  for (const Result& r : res.results) {
-    if (r.sequence.view().find("J") != string::npos) { foundJ = true; break; }
+  for (const Result& r : res.getResults()) {
+    if (r.getSequence().view().find("J") != string::npos) { foundJ = true; break; }
   }
   EXPECT_TRUE(foundJ) << "Expected a result containing J";
 }
@@ -642,11 +642,11 @@ TEST_F(CompositionOptimizer_ManualTest, JoinLinesWithIndent) {
   CursorPos goalPos = goal.lastPos();
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
-  ASSERT_FALSE(res.results.empty());
+  ASSERT_FALSE(res.getResults().empty());
   // Verify J-based result (result 0); other results may have pre-existing oracle mismatches
-  verifySingleResult(res.results[0], initial, initialPos, goal, "J with indent");
+  verifySingleResult(res.getResults()[0], initial, initialPos, goal, "J with indent");
 
-  EXPECT_TRUE(res.results[0].sequence.view().find("J") != string::npos)
+  EXPECT_TRUE(res.getResults()[0].getSequence().view().find("J") != string::npos)
       << "Expected J in result[0]";
 }
 
@@ -658,14 +658,14 @@ TEST_F(CompositionOptimizer_ManualTest, JoinLinesWithResidual) {
   CursorPos goalPos = goal.lastPos();
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
-  ASSERT_FALSE(res.results.empty());
+  ASSERT_FALSE(res.getResults().empty());
   // Verify top result produces correct output
-  verifySingleResult(res.results[0], initial, initialPos, goal, "J with residual");
+  verifySingleResult(res.getResults()[0], initial, initialPos, goal, "J with residual");
 
   // Check that at least one result uses J
   bool hasJ = false;
-  for (const auto& r : res.results) {
-    if (r.sequence.view().find("J") != string::npos) { hasJ = true; break; }
+  for (const auto& r : res.getResults()) {
+    if (r.getSequence().view().find("J") != string::npos) { hasJ = true; break; }
   }
   EXPECT_TRUE(hasJ) << "Expected at least one result with J";
 }
@@ -680,11 +680,11 @@ TEST_F(CompositionOptimizer_ManualTest, JoinLinesPartialJoin) {
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos,
       params, "", boundary);
-  expectHasValidResults(res.results, initial, initialPos, goal, "J partial join");
+  expectHasValidResults(res.getResults(), initial, initialPos, goal, "J partial join");
 
   bool foundJ = false;
-  for (const Result& r : res.results) {
-    if (r.sequence.view().find("J") != string::npos) { foundJ = true; break; }
+  for (const Result& r : res.getResults()) {
+    if (r.getSequence().view().find("J") != string::npos) { foundJ = true; break; }
   }
   EXPECT_TRUE(foundJ) << "Expected a result containing J";
 }
@@ -699,7 +699,7 @@ TEST_F(CompositionOptimizer_ManualTest, JoinLinesNoViable) {
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
   // Just verify results exist; oracle verification skipped due to pre-existing
   // newline-insertion bugs unrelated to J plans
-  EXPECT_FALSE(res.results.empty());
+  EXPECT_FALSE(res.getResults().empty());
 }
 
 

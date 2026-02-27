@@ -40,7 +40,7 @@ static EditResult pureDeletionResult(
     const Lines& initialLines,
     EditBoundary boundary,
     EditOptimizerParams params = {}) {
-  return opt.optimizePureDeletion(initialLines, boundary, params).editResult;
+  return opt.optimizePureDeletion(initialLines, boundary, params);
 }
 
 // =============================================================================
@@ -65,7 +65,7 @@ struct ContextData {
 
 struct ExploreCase {
   string name;
-  SearchStats stats;
+  BaseSearchStats stats;
   vector<FoundResult> results;
   ContextData context;
 };
@@ -503,9 +503,9 @@ static vector<ExploreCase> collectMotionCases() {
     auto result = opt.optimize(lines, firstPos, lastPos, params, "", boundary);
 
     vector<FoundResult> found;
-    for (const auto& r : result.results) {
+    for (const auto& r : result.getResults()) {
       if (r.isValid()) {
-        found.push_back({r.sequence.str(), r.keyCost});
+        found.push_back({r.getSequence().str(), r.getCost()});
       }
     }
 
@@ -519,7 +519,7 @@ static vector<ExploreCase> collectMotionCases() {
     ctx.hasLinesAbove = true;
     ctx.hasLinesBelow = true;
 
-    cases.push_back({mc.name, result.stats, std::move(found), std::move(ctx)});
+    cases.push_back({mc.name, result.getStats(), std::move(found), std::move(ctx)});
   }
 
   return cases;
@@ -559,9 +559,9 @@ static vector<ExploreCase> collectEditCases() {
     map<string, double> bestBySeq;
     for (const auto& r : result.getResults()) {
       if (r.isValid()) {
-        auto it = bestBySeq.find(r.sequence.str());
-        if (it == bestBySeq.end() || r.keyCost < it->second) {
-          bestBySeq[r.sequence.str()] = r.keyCost;
+        auto it = bestBySeq.find(r.getSequence().str());
+        if (it == bestBySeq.end() || r.getCost() < it->second) {
+          bestBySeq[r.getSequence().str()] = r.getCost();
         }
       }
     }
@@ -596,7 +596,7 @@ static vector<ExploreCase> collectEditCases() {
     ctx.hasLinesAbove = boundary.hasLinesAbove();
     ctx.hasLinesBelow = boundary.hasLinesBelow();
 
-    cases.push_back({ec.name, result.stats, collectEditResults(result), std::move(ctx)});
+    cases.push_back({ec.name, result.getStats(), collectEditResults(result), std::move(ctx)});
   }
 
   // Multi-line edit case
@@ -624,7 +624,7 @@ static vector<ExploreCase> collectEditCases() {
     ctx.hasLinesAbove = boundary.hasLinesAbove();
     ctx.hasLinesBelow = boundary.hasLinesBelow();
 
-    cases.push_back({"MultiLineEdit/2L->1w", result.stats, collectEditResults(result), std::move(ctx)});
+    cases.push_back({"MultiLineEdit/2L->1w", result.getStats(), collectEditResults(result), std::move(ctx)});
   }
 
   return cases;
@@ -683,9 +683,9 @@ static vector<CompositionExploreCase> collectCompositionCases() {
     auto result = opt.optimize(initial, {0, 0}, goal, {0, 0}, params);
 
     vector<FoundResult> found;
-    for (const auto& r : result.results) {
+    for (const auto& r : result.getResults()) {
       if (r.isValid()) {
-        found.push_back({r.sequence.str(), r.keyCost});
+        found.push_back({r.getSequence().str(), r.getCost()});
       }
     }
 
@@ -699,17 +699,17 @@ static vector<CompositionExploreCase> collectCompositionCases() {
 
     // Extract per-diff edit exploration data
     vector<PerDiffEditExploration> editDetails;
-    for (auto& editResult : result.editResults) {
+    for (auto& editResult : result.getEditResults()) {
       PerDiffEditExploration detail;
-      detail.states = std::move(editResult.stats.exploredStates);
+      detail.states = std::move(editResult.getStats().exploredStates);
 
       // Collect unique best results from all starting positions
       map<string, double> bestBySeq;
       for (const auto& r : editResult.getResults()) {
         if (r.isValid()) {
-          auto it = bestBySeq.find(r.sequence.str());
-          if (it == bestBySeq.end() || r.keyCost < it->second) {
-            bestBySeq[r.sequence.str()] = r.keyCost;
+          auto it = bestBySeq.find(r.getSequence().str());
+          if (it == bestBySeq.end() || r.getCost() < it->second) {
+            bestBySeq[r.getSequence().str()] = r.getCost();
           }
         }
       }
@@ -723,11 +723,11 @@ static vector<CompositionExploreCase> collectCompositionCases() {
       editDetails.push_back(std::move(detail));
     }
 
-    cases.push_back({cc.name, result.stats.nodesExplored,
+    cases.push_back({cc.name, result.getStats().nodesExplored,
                      std::move(found),
-                     std::move(result.compositionExploredStates),
+                     std::move(result.getExploredStates()),
                      std::move(ctx),
-                     std::move(result.diffs),
+                     std::move(result.getDiffs()),
                      std::move(editDetails)});
   }
 

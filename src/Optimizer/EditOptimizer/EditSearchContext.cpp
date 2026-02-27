@@ -213,8 +213,8 @@ optional<EditState> EditSearchContext::getNextValidState() {
   return nullopt;
 }
 
-SearchStats EditSearchContext::getStats() const {
-  SearchStats stats;
+EditSearchStats EditSearchContext::getStats() const {
+  EditSearchStats stats;
   stats.nodesExplored = iterations;
   stats.resultsFound = resultsFound;
   stats.queueSizeAtStop = static_cast<int>(pq.size());

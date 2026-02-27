@@ -196,6 +196,6 @@ struct EditSearchContext {
     }
   }
 
-  // Build SearchStats from current context state
-  SearchStats getStats() const;
+  // Build EditSearchStats from current context state
+  EditSearchStats getStats() const;
 };

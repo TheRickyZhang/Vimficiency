@@ -22,16 +22,16 @@ interface Props {
 function computeChanges(categories: Record<string, string[]>, data: BenchmarkRun[]): BenchChange[] {
   if (data.length < 2) return [];
   const latest = data[data.length - 1]!;
-  const first = data[0]!;
+  const prev = data[data.length - 2]!;
   const changes: BenchChange[] = [];
 
   for (const [cat, names] of Object.entries(categories)) {
     for (const name of names) {
       const lb = latest.benches.find((b) => b.name === name);
-      const fb = first.benches.find((b) => b.name === name);
-      if (!lb || !fb) continue;
+      const pb = prev.benches.find((b) => b.name === name);
+      if (!lb || !pb) continue;
       const currNs = toNanoseconds(lb.value, lb.unit);
-      const baseNs = toNanoseconds(fb.value, fb.unit);
+      const baseNs = toNanoseconds(pb.value, pb.unit);
       if (baseNs === 0) continue;
       const ratio = currNs / baseNs;
       const pct = (ratio - 1) * 100;

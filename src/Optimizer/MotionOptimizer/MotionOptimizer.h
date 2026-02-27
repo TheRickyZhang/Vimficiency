@@ -5,6 +5,7 @@
 
 #include "MotionOptimizerParams.h"
 
+#include "Optimizer/OptimizerResult.h"
 #include "Optimizer/RangeResult.h"
 #include "Optimizer/Result.h"
 #include "Optimizer/SearchStats.h"
@@ -17,30 +18,44 @@
 
 #include "BufferIndex.h"
 
-struct MotionResult {
-  std::vector<Result> results;
-  SearchStats stats;
+struct MotionResult : BaseOptimizerResult {
+  const MotionSearchStats& getStats() const { return stats_; }
 
   friend std::ostream& operator<<(std::ostream& os, const MotionResult& mr) {
-    os << mr.stats << "\n";
-    for (size_t i = 0; i < mr.results.size(); i++) {
-      os << "  [" << i << "] " << mr.results[i] << "\n";
+    os << mr.stats_ << "\n";
+    for (size_t i = 0; i < mr.results_.size(); i++) {
+      os << "  [" << i << "] " << mr.results_[i] << "\n";
     }
     return os;
   }
+
+private:
+  MotionSearchStats stats_;
+  friend struct MotionOptimizer;
+  MotionResult(std::vector<Result> results, MotionSearchStats stats)
+    : BaseOptimizerResult(std::move(results)), stats_(std::move(stats)) {}
 };
 
 struct RangeMotionResult {
-  std::vector<RangeResult> results;
-  SearchStats stats;
+  const std::vector<RangeResult>& getResults() const { return results_; }
+  std::vector<RangeResult>& getResults() { return results_; }
+  const MotionSearchStats& getStats() const { return stats_; }
+  size_t resultCount() const { return results_.size(); }
 
   friend std::ostream& operator<<(std::ostream& os, const RangeMotionResult& mr) {
-    os << mr.stats << "\n";
-    for (size_t i = 0; i < mr.results.size(); i++) {
-      os << "  [" << i << "] " << mr.results[i] << "\n";
+    os << mr.stats_ << "\n";
+    for (size_t i = 0; i < mr.results_.size(); i++) {
+      os << "  [" << i << "] " << mr.results_[i] << "\n";
     }
     return os;
   }
+
+private:
+  std::vector<RangeResult> results_;
+  MotionSearchStats stats_;
+  friend struct MotionOptimizer;
+  RangeMotionResult(std::vector<RangeResult> results, MotionSearchStats stats)
+    : results_(std::move(results)), stats_(std::move(stats)) {}
 };
 
 struct MotionOptimizer {

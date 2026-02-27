@@ -443,13 +443,13 @@ TEST_F(DebugTest, DISABLED_InvestigateSingleLineSurrounded) {
   EditOptimizer opt(config);
   EditResult res = opt.optimizePureDeletion(
       editRegion, boundary,
-      EditOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(100000)).editResult;
+      EditOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(100000));
 
   cerr << "\nResults (typeAllResults):" << endl;
   for (int i = 0; i < static_cast<int>(res.typeAllResults.size()); i++) {
     const auto& r = res.typeAllResults[i];
     if (r.isValid()) {
-      cerr << "  " << i << ": " << r.getSequenceString() << " (cost=" << r.keyCost << ")" << endl;
+      cerr << "  " << i << ": " << r.getSequence() << " (cost=" << r.getCost() << ")" << endl;
     } else {
       cerr << "  " << i << ": INVALID" << endl;
     }
@@ -487,16 +487,16 @@ TEST_F(DebugTest, DISABLED_InvestigatePosition11) {
   EditOptimizer opt10k(config);
   EditResult res10k = opt10k.optimizePureDeletion(
       initialLines, boundary,
-      EditOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(10000)).editResult;
-  cerr << "10K iterations: " << res10k.typeAllResults[11].getSequenceString()
-       << " (cost=" << res10k.typeAllResults[11].keyCost << ")" << endl;
+      EditOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(10000));
+  cerr << "10K iterations: " << res10k.typeAllResults[11].getSequence()
+       << " (cost=" << res10k.typeAllResults[11].getCost() << ")" << endl;
 
   EditOptimizer opt1m(config);
   EditResult res1m = opt1m.optimizePureDeletion(
       initialLines, boundary,
-      EditOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(1000000)).editResult;
-  cerr << "1M iterations:  " << res1m.typeAllResults[11].getSequenceString()
-       << " (cost=" << res1m.typeAllResults[11].keyCost << ")" << endl;
+      EditOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(1000000));
+  cerr << "1M iterations:  " << res1m.typeAllResults[11].getSequence()
+       << " (cost=" << res1m.typeAllResults[11].getCost() << ")" << endl;
 }
 
 TEST_F(NeovimOracleDebug, DISABLED_InvestigateJWithSuffix) {

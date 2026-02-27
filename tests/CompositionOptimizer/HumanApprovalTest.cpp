@@ -44,14 +44,14 @@ protected:
       const Lines& initial, CursorPos initialPos,
       const Lines& goal,
       const string& context = "") {
-    const auto& results = compResult.results;
+    const auto& results = compResult.getResults();
     ASSERT_FALSE(results.empty()) << "No results" << ctx(context);
     for (size_t i = 0; i < results.size(); i++) {
       ASSERT_TRUE(results[i].isValid()) << "Result " << i << " invalid" << ctx(context);
       SimulationResult nvim = oracle->simulate(
-          initial, initialPos.line, initialPos.col, results[i].sequence.str());
+          initial, initialPos.line, initialPos.col, results[i].getSequence().str());
       EXPECT_TRUE(nvim.lines == goal)
-          << "Result " << i << " seq='" << results[i].sequence << "'" << ctx(context)
+          << "Result " << i << " seq='" << results[i].getSequence() << "'" << ctx(context)
           << "\n  Initial: " << initial << "\n  Goal: " << goal << "\n  Got: " << nvim.lines;
     }
   }
@@ -64,18 +64,18 @@ protected:
       const string& context = "") {
     ASSERT_TRUE(result.isValid()) << "Result invalid" << ctx(context);
     SimulationResult nvim = oracle->simulate(
-        initial, initialPos.line, initialPos.col, result.sequence.str());
+        initial, initialPos.line, initialPos.col, result.getSequence().str());
     EXPECT_TRUE(nvim.lines == goal)
-        << "seq='" << result.sequence << "'" << ctx(context)
+        << "seq='" << result.getSequence() << "'" << ctx(context)
         << "\n  Initial: " << initial << "\n  Goal: " << goal << "\n  Got: " << nvim.lines;
   }
 
   void verifyDiParenShortcutPolicy(const CompositionResult& compResult) {
-    auto hasPureDeletionDiff = ranges::any_of(compResult.diffs, [](const DiffState& d) {
+    auto hasPureDeletionDiff = ranges::any_of(compResult.getDiffs(), [](const DiffState& d) {
       return d.isPureDeletion();
     });
     auto foundDiParen = ranges::any_of(compResult.getResults(), [](const Result& r) {
-      return r.isValid() && r.sequence.view().find("di(") != string::npos;
+      return r.isValid() && r.getSequence().view().find("di(") != string::npos;
     });
     if (hasPureDeletionDiff) {
       EXPECT_TRUE(foundDiParen) << "Expected pure-deletion text-object shortcut di( in results";
@@ -109,7 +109,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, Example1) {
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos);
   // cout << res << endl;
-  verifyResults(initialLines, initialPos, afterLines, res.goalPos);
+  verifyResults(initialLines, initialPos, afterLines, res.getGoalPos());
 }
 
 TEST_F(CompositionOptimizerHumanApprovalTests, TelescopingChanges) {
@@ -127,7 +127,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, TelescopingChanges) {
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos);
   // cout << res << endl;
-  verifyResults(initialLines, initialPos, afterLines, res.goalPos);
+  verifyResults(initialLines, initialPos, afterLines, res.getGoalPos());
 }
 
 TEST_F(CompositionOptimizerHumanApprovalTests, JoinLines) {
@@ -146,7 +146,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLines) {
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos, CompositionOptimizerParams{}, "", boundary);
   // cout << res << endl;
-  verifyResults(initialLines, initialPos, afterLines, res.goalPos);
+  verifyResults(initialLines, initialPos, afterLines, res.getGoalPos());
 }
 
 
@@ -159,7 +159,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesExact) {
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
   // cout << "JoinLinesExact:\n" << res << endl;
-  verifyResults(initial, initialPos, goal, res.goalPos);
+  verifyResults(initial, initialPos, goal, res.getGoalPos());
 }
 
 TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesWithIndent) {
@@ -171,9 +171,9 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesWithIndent) {
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
   // cout << "JoinLinesWithIndent:\n" << res << endl;
-  ASSERT_FALSE(res.results.empty());
+  ASSERT_FALSE(res.getResults().empty());
   // Verify J-based result (result 0); other results may have pre-existing oracle mismatches
-  verifySingleResult(res.results[0], initial, initialPos, goal, "J path");
+  verifySingleResult(res.getResults()[0], initial, initialPos, goal, "J path");
 }
 
 TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesWithResidual) {
@@ -185,9 +185,9 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesWithResidual) {
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
   // cout << "JoinLinesWithResidual:\n" << res << endl;
-  ASSERT_FALSE(res.results.empty());
+  ASSERT_FALSE(res.getResults().empty());
   // Verify J-based result (result 0); other results may have pre-existing oracle mismatches
-  verifySingleResult(res.results[0], initial, initialPos, goal, "J path");
+  verifySingleResult(res.getResults()[0], initial, initialPos, goal, "J path");
 }
 
 TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesPartialJoin) {
@@ -201,7 +201,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesPartialJoin) {
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos,
       params, "", boundary);
   // cout << "JoinLinesPartialJoin:\n" << res << endl;
-  verifyResults(initial, initialPos, goal, res.goalPos);
+  verifyResults(initial, initialPos, goal, res.getGoalPos());
 }
 
 TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesNoViable) {
@@ -215,7 +215,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesNoViable) {
   // cout << "JoinLinesNoViable:\n" << res << endl;
   // Just verify results exist; oracle verification skipped due to pre-existing
   // newline-insertion bugs unrelated to J plans
-  EXPECT_FALSE(res.results.empty());
+  EXPECT_FALSE(res.getResults().empty());
 }
 
 TEST_F(CompositionOptimizerHumanApprovalTests, PureDeletionPositionAdjustment) {

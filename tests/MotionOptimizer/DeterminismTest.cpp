@@ -52,13 +52,16 @@ TEST_F(MotionOptimizerDeterminismTests, SameInputProducesSameOutput) {
     MotionOptimizer opt1(config);
     MotionOptimizer opt2(config);
 
-    auto [results1, stats1] = opt1.optimize(
+    auto res1 = opt1.optimize(
       lines, start, end, {}, "jjjjj"
     );
 
-    auto [results2, stats2] = opt2.optimize(
+    auto res2 = opt2.optimize(
       lines, start, end, {}, "jjjjj"
     );
+
+    const auto& results1 = res1.getResults();
+    const auto& results2 = res2.getResults();
 
     if (results1.size() != results2.size()) {
       failures++;
@@ -70,13 +73,13 @@ TEST_F(MotionOptimizerDeterminismTests, SameInputProducesSameOutput) {
     }
 
     for (size_t i = 0; i < results1.size(); i++) {
-      if (results1[i].sequence != results2[i].sequence ||
-          abs(results1[i].keyCost - results2[i].keyCost) > 1e-6) {
+      if (results1[i].getSequence() != results2[i].getSequence() ||
+          abs(results1[i].getCost() - results2[i].getCost()) > 1e-6) {
         failures++;
         if (failures <= 3) {
           cerr << "Iter " << iter << ": Result " << i << " differs\n"
-               << "  Run 1: " << results1[i].sequence << "\n"
-               << "  Run 2: " << results2[i].sequence << endl;
+               << "  Run 1: " << results1[i].getSequence() << "\n"
+               << "  Run 2: " << results2[i].getSequence() << endl;
         }
         break;
       }

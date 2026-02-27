@@ -7,21 +7,14 @@
 #include "Types/Sequence.h"
 
 struct Result {
-  Sequence sequence;
-  double keyCost;
+  Result() = default;
+  Result(Sequence seq, double c) : sequence_(std::move(seq)), keyCost_(c) {}
+  Result(const std::string& s, double c) : sequence_(s), keyCost_(c) {}
+  Result(std::string&& s, double c) : sequence_(std::move(s)), keyCost_(c) {}
 
-  Result() : keyCost(0) {}
-  Result(Sequence seq, double c) : sequence(std::move(seq)), keyCost(c) {}
-  Result(const std::string& s, double c) : sequence(s), keyCost(c) {}
-  Result(std::string&& s, double c) : sequence(std::move(s)), keyCost(c) {}
-
-  bool isValid() const {
-    return !sequence.empty();
-  }
-
-  const Sequence& getSequenceString() const {
-    return sequence;
-  }
+  bool isValid() const { return !sequence_.empty(); }
+  const Sequence& getSequence() const { return sequence_; }
+  double getCost() const { return keyCost_; }
 
   std::string to_string() {
     std::ostringstream oss;
@@ -30,7 +23,11 @@ struct Result {
   }
 
   friend std::ostream& operator<<(std::ostream& os, const Result& r) {
-    os << r.sequence << " " << r.keyCost;
+    os << r.sequence_ << " " << r.keyCost_;
     return os;
   }
+
+private:
+  Sequence sequence_;
+  double keyCost_ = 0;
 };

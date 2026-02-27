@@ -115,12 +115,12 @@ TEST_F(DebugTest, CompositionDiffMerging) {
     CompositionOptimizer opt(config);
     auto compResult = opt.optimize(
         initial, initialPos, goal, CursorPos(0, 0), params);
-    const auto& results = compResult.results;
+    const auto& results = compResult.getResults();
 
     cerr << "  Results: " << results.size() << endl;
     for (size_t i = 0; i < results.size(); i++) {
-      cerr << "    [" << i << "] " << results[i].getSequenceString()
-           << " cost=" << results[i].keyCost << endl;
+      cerr << "    [" << i << "] " << results[i].getSequence()
+           << " cost=" << results[i].getCost() << endl;
     }
   }
 }
