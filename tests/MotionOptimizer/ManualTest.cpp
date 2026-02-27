@@ -56,7 +56,7 @@ protected:
     // Try to explore more (30 results), lower search depth for speed (2e4)
     return opt.optimize(lines, start, end,
                         MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
-                        userSeq, boundary, RunningEffort(), navContext).getResults();
+                        userSeq, boundary, navContext).getResults();
   }
 
   static vector<RangeResult>
@@ -68,13 +68,12 @@ protected:
     MotionOptimizer opt(config);
     MotionBoundary boundary;
     // allowMultiplePerPosition=true for tests to see all paths
-    // Pass CursorPos and fresh RunningEffort (no prior typing context in tests)
     return opt.optimizeToRange(lines, start, rangeBegin, rangeEnd,
                                MotionOptimizerRangeParams{}
                                    .withMaxResults(maxResults)
                                    .withMaxNodesExplored(20000)
                                    .withAllowMultiplePerPosition(true),
-                               userSeq, boundary, RunningEffort(), navContext).getResults();
+                               userSeq, boundary, navContext).getResults();
   }
 };
 
@@ -183,7 +182,7 @@ protected:
     MotionOptimizer opt(config);
     return opt.optimize(lines, start, end,
                         MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
-                        userSeq, boundary, RunningEffort(), navContext).getResults();
+                        userSeq, boundary, navContext).getResults();
   }
 
   // Helper to check if results contain a sequence
@@ -357,7 +356,7 @@ TEST_F(MotionOptimizer_ManualTest, MinCountRepeat_BlocksSmallCounts) {
   // With default minCountRepeat=4, count=3 should NOT appear as "3w"
   auto results = opt.optimize(lines, start, end,
       MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
-      "", boundary, RunningEffort(), navContext).getResults();
+      "", boundary, navContext).getResults();
 
   EXPECT_FALSE(hasSequence(results, "3w")) << "3w should be blocked by minCountRepeat=4";
   EXPECT_FALSE(hasSequence(results, "3W")) << "3W should be blocked by minCountRepeat=4";
@@ -375,7 +374,7 @@ TEST_F(MotionOptimizer_ManualTest, MinCountRepeat_LowThresholdAllowsSmallCounts)
   auto results = opt.optimize(lines, start, end,
       MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000)
           .withMinCountRepeat(2),
-      "", boundary, RunningEffort(), navContext).getResults();
+      "", boundary, navContext).getResults();
 
   EXPECT_TRUE(hasSequence(results, "3w")) << "3w should be allowed with minCountRepeat=2";
 }

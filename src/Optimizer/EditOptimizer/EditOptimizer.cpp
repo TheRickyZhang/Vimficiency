@@ -7,6 +7,7 @@
 #include "EditOptimizer.h"
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <optional>
 
@@ -46,6 +47,48 @@ EditResult::EditResult(vector<Result> results, EditSearchStats stats,
     int positions = initialLines[i].empty() ? 1 : static_cast<int>(initialLines[i].size());
     cumSum += positions;
   }
+
+  resultsByStart_.resize(results_.size());
+  for (size_t i = 0; i < results_.size(); i++) {
+    if (results_[i].isValid()) {
+      resultsByStart_[i].push_back(results_[i]);
+    }
+  }
+}
+
+void EditResult::setResultsByStart(vector<vector<Result>> resultsByStart) {
+  if (resultsByStart.size() < results_.size()) {
+    resultsByStart.resize(results_.size());
+  } else if (resultsByStart.size() > results_.size()) {
+    resultsByStart.resize(results_.size());
+  }
+
+  auto sameResult = [](const Result& a, const Result& b) {
+    return a.getSequence() == b.getSequence() &&
+           std::abs(a.getCost() - b.getCost()) < 1e-9;
+  };
+
+  for (size_t i = 0; i < results_.size(); i++) {
+    const Result& best = results_[i];
+    auto& bucket = resultsByStart[i];
+
+    if (!best.isValid()) {
+      bucket.clear();
+      continue;
+    }
+
+    auto it = std::find_if(bucket.begin(), bucket.end(),
+                           [&](const Result& r) { return sameResult(r, best); });
+    if (it != bucket.end()) {
+      Result matched = std::move(*it);
+      bucket.erase(it);
+      bucket.insert(bucket.begin(), std::move(matched));
+    } else {
+      bucket.insert(bucket.begin(), best);
+    }
+  }
+
+  resultsByStart_ = std::move(resultsByStart);
 }
 
 ostream& operator<<(ostream& os, const EditResult& editResult) {
@@ -238,7 +281,8 @@ struct ModePolicy<true> {
     return lines.size() == 1 && lines[0] == preSuf;
   }
 
-  bool tryUseSuffixCache(const EditState&, vector<Result>&) { return false; }
+  bool tryUseSuffixCache(const EditState&, vector<Result>&,
+                         vector<vector<Result>>&, int) { return false; }
 
   void onDeletionGoal(EditState& afterDel, const EditState& base, const Range&,
                       const SequenceBinding& sourceCmd) {
@@ -743,27 +787,37 @@ struct ModePolicy<false> {
     emitEditGoal(afterJn, base, sourceCmd, goalCompletionCmd, typedVariants, isDot);
   }
 
-  bool tryUseSuffixCache(const EditState& s, vector<Result>& results) {
+  bool tryUseSuffixCache(const EditState& s, vector<Result>& results,
+                         vector<vector<Result>>& resultsByStart,
+                         int maxResultsPerStart) {
     SuffixKey sk(s.getLinesHash(), static_cast<int>(s.getLines().size()), s.getPos(), s.getMode());
     auto cacheIt = suffixCache.find(sk);
     if (cacheIt == suffixCache.end()) return false;
 
     cacheHits++;
     int idx = s.getStartIndex();
-    if (!results[idx].isValid()) {
-      const SuffixValue& sv = cacheIt->second;
+    auto& bucket = resultsByStart[static_cast<size_t>(idx)];
+    if (static_cast<int>(bucket.size()) >= maxResultsPerStart) return true;
 
-      bool useDot = sv.canUseDot(s.getLastEditCount(), s.getLastEditBase());
-      const KeyedSequence& suffix = sv.suffix(useDot);
-      const RunningEffort& suffixEffort = sv.suffixEffort(useDot);
+    const SuffixValue& sv = cacheIt->second;
 
-      string seqStr = s.getSeq() + suffix.seq.str();
-      RunningEffort mergedEffort = RunningEffort::merge(s.getRunningEffort(), suffixEffort);
-      double totalEffort = mergedEffort.getEffort(config);
+    bool useDot = sv.canUseDot(s.getLastEditCount(), s.getLastEditBase());
+    const KeyedSequence& suffix = sv.suffix(useDot);
+    const RunningEffort& suffixEffort = sv.suffixEffort(useDot);
 
-      results[idx] = Result(seqStr, totalEffort);
-      ctx.resultsFound++;
+    string seqStr = s.getSeq() + suffix.seq.str();
+    RunningEffort mergedEffort = RunningEffort::merge(s.getRunningEffort(), suffixEffort);
+    double totalEffort = mergedEffort.getEffort(config);
+
+    bool firstForStart = bucket.empty();
+    bucket.emplace_back(seqStr, totalEffort);
+    ctx.resultsFound++;
+    if (firstForStart) {
+      results[idx] = bucket.front();
       ctx.uniquePositionsCovered++;
+    }
+    if (static_cast<int>(bucket.size()) == maxResultsPerStart) {
+      ctx.positionsAtCap++;
     }
     return true;
   }
@@ -844,6 +898,7 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
                                        int bufferBeginLine, int bufferBeginCol,
                                        CursorPos goalPos) {
   assert(!initialLines.empty() && "empty startlines should be handled in compositionEditor by i, a, o, O");
+  params.maxMultiplePerStartPosition = max(1, params.maxMultiplePerStartPosition);
 
   // Create search context (handles effectiveLines, offsets, search state)
   EditSearchContext ctx(initialLines, editBoundary, params, config);
@@ -855,9 +910,34 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
   const string preSuf = pre + suf;
 
   vector<Result> results(ctx.totalPositions);
+  vector<vector<Result>> resultsByStart(static_cast<size_t>(ctx.totalPositions));
   PureDeletionGoalCapture<PureDeletion> goalCapture(ctx.totalPositions);
   ModePolicy<PureDeletion> mode(ctx, config, editBoundary, initialLines, goalLines,
                                 pre, suf, preSuf);
+
+  auto recordResult = [&](const EditState& state,
+                          const Result& result,
+                          bool captureGoalPos) {
+    int idx = state.getStartIndex();
+    auto& bucket = resultsByStart[static_cast<size_t>(idx)];
+    if (static_cast<int>(bucket.size()) >= params.maxMultiplePerStartPosition) return;
+
+    bool firstForStart = bucket.empty();
+    bucket.push_back(result);
+    ctx.resultsFound++;
+
+    if (firstForStart) {
+      results[idx] = bucket.front();
+      if (captureGoalPos) {
+        goalCapture.onGoal(idx, state.getPos());
+      }
+      ctx.uniquePositionsCovered++;
+    }
+
+    if (static_cast<int>(bucket.size()) == params.maxMultiplePerStartPosition) {
+      ctx.positionsAtCap++;
+    }
+  };
 
   // Goal check
   auto isGoalReached = [&](const Lines &lines) -> bool {
@@ -978,13 +1058,7 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
 
     // Check goal at pop time — guaranteed lowest cost
     if (isGoalReached(s.getLines())) {
-      int idx = s.getStartIndex();
-      if (!results[idx].isValid()) {
-        results[idx] = Result(s.getSeq(), s.getEffort());
-        goalCapture.onGoal(idx, s.getPos());
-        ctx.resultsFound++;
-        ctx.uniquePositionsCovered++;
-      }
+      recordResult(s, Result(s.getSeq(), s.getEffort()), true);
       continue;
     }
 
@@ -992,10 +1066,17 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
            s.getPos().line <= s.getLines().lastLine() &&
            "non-goal edit state must have in-bounds cursor line");
 
-    // Early stopping: skip if this startIndex already has a result
-    if (results[s.getStartIndex()].isValid()) continue;
+    // Early stopping: skip if this startIndex already reached its per-start cap.
+    int startIndex = s.getStartIndex();
+    if (static_cast<int>(resultsByStart[static_cast<size_t>(startIndex)].size()) >=
+        params.maxMultiplePerStartPosition) {
+      continue;
+    }
 
-    if (mode.tryUseSuffixCache(s, results)) continue;
+    if (mode.tryUseSuffixCache(s, results, resultsByStart,
+                               params.maxMultiplePerStartPosition)) {
+      continue;
+    }
 
     // Boundary region: cursor is in prefix/suffix — only escape motions
     // and safe backward word edits from first suffix col.
@@ -1043,7 +1124,9 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
 
   EditResult out = mode.finalize(std::move(results), initialLines, goalLines, params,
                                  bufferBeginLine, bufferBeginCol, goalPos);
-  return goalCapture.finalize(std::move(out), bufferBeginLine);
+  out = goalCapture.finalize(std::move(out), bufferBeginLine);
+  out.setResultsByStart(std::move(resultsByStart));
+  return out;
 }
 
 // Explicit template instantiations

@@ -1479,7 +1479,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     auto rangeResult = motionOpt.optimizeToRange(
         initial, initialPos, rangeBegin, rangeEnd,
         MotionOptimizerRangeParams{}.withMaxResults(10), "",
-        boundary, RunningEffort(), navCtx);
+        boundary, navCtx);
 
     cerr << "  Range results: " << rangeResult.getResults().size() << endl;
     for (size_t i = 0; i < rangeResult.getResults().size(); i++) {
@@ -1591,14 +1591,14 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
             subset, localPos, localRangeBegin, localRangeEnd,
             MotionOptimizerRangeParams{}.withMaxResults(
                 clamp(nextEdit.origCharCount(), 1, 10)), "",
-            subsetBoundary, s.getRunningEffort(), navCtx).getResults();
+            subsetBoundary, navCtx).getResults();
 
-        for (auto& movResult : movementResults) {
+        for (const auto& movResult : movementResults) {
           if (!movResult.isValid()) continue;
-          movResult.addGoalLineOffset(beginLine);
+          CursorPos goalPos(movResult.getGoalPos().line + beginLine, movResult.getGoalPos().col);
           cerr << "    -> MOTION: seq='" << movResult.getSequence() << "' goalPos=("
-               << movResult.getGoalPos().line << "," << movResult.getGoalPos().col << ")" << endl;
-          ctx.exploreMotionTransition(s, movResult.getSequence(), movResult.getGoalPos(), editsCompleted);
+               << goalPos.line << "," << goalPos.col << ")" << endl;
+          ctx.exploreMotionTransition(s, movResult.getSequence(), goalPos, editsCompleted);
         }
       }
     }
@@ -1762,15 +1762,15 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
           subset, localPos, localRangeBegin, localRangeEnd,
           MotionOptimizerRangeParams{}.withMaxResults(
               clamp(nextEdit.origCharCount(), 1, 10)), "",
-          subsetBoundary, s.getRunningEffort(), navCtx).getResults();
+          subsetBoundary, navCtx).getResults();
 
       cerr << "    -> MOTIONS found: " << rangeResults.size() << endl;
-      for (auto& movResult : rangeResults) {
+      for (const auto& movResult : rangeResults) {
         if (!movResult.isValid()) continue;
-        movResult.addGoalLineOffset(beginLine);
+        CursorPos goalPos(movResult.getGoalPos().line + beginLine, movResult.getGoalPos().col);
         cerr << "      motion '" << movResult.getSequence() << "' -> ("
-             << movResult.getGoalPos().line << "," << movResult.getGoalPos().col << ")" << endl;
-        ctx.exploreMotionTransition(s, movResult.getSequence(), movResult.getGoalPos(), editsCompleted);
+             << goalPos.line << "," << goalPos.col << ")" << endl;
+        ctx.exploreMotionTransition(s, movResult.getSequence(), goalPos, editsCompleted);
       }
     }
   }
@@ -1875,7 +1875,7 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
     auto rangeResult = motionOpt.optimizeToRange(
         buffer, pos, rangeBegin, rangeEnd,
         MotionOptimizerRangeParams{}.withMaxResults(5), "",
-        boundary, RunningEffort(), navCtx);
+        boundary, navCtx);
 
     cerr << "Motion results: " << rangeResult.getResults().size() << endl;
     for (size_t i = 0; i < rangeResult.getResults().size(); i++) {

@@ -3,7 +3,20 @@
 #include <algorithm>
 #include <cassert>
 
+#include "Utils/StringUtils.h"
+
 using namespace std;
+
+ostream& operator<<(ostream& os, const DiffState& d) {
+  if (d.isPureInsertion()) {
+    os << "ins '" << makePrintable(d.insertedText) << "'";
+  } else if (d.isPureDeletion()) {
+    os << "del '" << makePrintable(d.deletedText) << "'";
+  } else {
+    os << "'" << makePrintable(d.deletedText) << "'->'" << makePrintable(d.insertedText) << "'";
+  }
+  return os;
+}
 
 namespace Myers {
 

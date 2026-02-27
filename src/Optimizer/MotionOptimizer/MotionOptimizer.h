@@ -11,23 +11,16 @@
 #include "Optimizer/SearchStats.h"
 
 #include "Boundary/MotionBoundary.h"
+#include "Keyboard/Config.h"
 #include "Types/NavContext.h"
 #include "Types/CursorPos.h"
-#include "Effort/RunningEffort.h"
 #include "Types/Lines.h"
 
 #include "BufferIndex.h"
 
-struct MotionResult : BaseOptimizerResult {
+// Generally MotionResult / RangeMotinoResult are coupled with MotionOptimizer return results, but if there are cases where they aren't, consider isolating these declarations
+struct MotionResult : BaseOptimizerResult<> {
   const MotionSearchStats& getStats() const { return stats_; }
-
-  friend std::ostream& operator<<(std::ostream& os, const MotionResult& mr) {
-    os << mr.stats_ << "\n";
-    for (size_t i = 0; i < mr.results_.size(); i++) {
-      os << "  [" << i << "] " << mr.results_[i] << "\n";
-    }
-    return os;
-  }
 
 private:
   MotionSearchStats stats_;
@@ -36,35 +29,23 @@ private:
     : BaseOptimizerResult(std::move(results)), stats_(std::move(stats)) {}
 };
 
-struct RangeMotionResult {
-  const std::vector<RangeResult>& getResults() const { return results_; }
-  std::vector<RangeResult>& getResults() { return results_; }
+struct RangeMotionResult : BaseOptimizerResult<RangeResult> {
   const MotionSearchStats& getStats() const { return stats_; }
-  size_t resultCount() const { return results_.size(); }
-
-  friend std::ostream& operator<<(std::ostream& os, const RangeMotionResult& mr) {
-    os << mr.stats_ << "\n";
-    for (size_t i = 0; i < mr.results_.size(); i++) {
-      os << "  [" << i << "] " << mr.results_[i] << "\n";
-    }
-    return os;
-  }
 
 private:
-  std::vector<RangeResult> results_;
   MotionSearchStats stats_;
   friend struct MotionOptimizer;
   RangeMotionResult(std::vector<RangeResult> results, MotionSearchStats stats)
-    : results_(std::move(results)), stats_(std::move(stats)) {}
+    : BaseOptimizerResult(std::move(results)), stats_(std::move(stats)) {}
 };
 
 struct MotionOptimizer {
   Config config;
 
+  // startingEffort was removed: benchmark (StartingEffortTradeoffTest.cpp) showed
+  // Jaccard similarity >=0.988 and 100% best-result overlap with vs without prior
+  // effort context, so the A* exploration order is not meaningfully affected.
   MotionOptimizer(const Config& config) : config(config) {}
-
-  // For movement only. Builds index for faster movement computation.
-  // TODO: Only RunningEffort is continued from pre-existing state, everything else can be fresh. (make sure that we set cost += newCost - previousCost, not cost = newCost!)
 
   // Returns results and search statistics
   // ~ O(n^2)
@@ -81,7 +62,6 @@ struct MotionOptimizer {
 
     // Continuation from broader context
     const MotionBoundary& parentBoundary = MotionBoundary(),
-    const RunningEffort& startingEffort  = RunningEffort(),
 
     // Niche settings
     const NavContext& navigationContext = NavContext()
@@ -101,7 +81,6 @@ struct MotionOptimizer {
     MotionOptimizerRangeParams params = {},
     std::string_view userSequence = "",
     const MotionBoundary& boundary = MotionBoundary(),
-    const RunningEffort& startingEffort = RunningEffort(),
     const NavContext& navigationContext = NavContext()
   );
 
@@ -114,18 +93,16 @@ struct MotionOptimizer {
     MotionOptimizerRangeParams params,
     std::string_view userSequence,
     const MotionBoundary& boundary,
-    const RunningEffort& startingEffort,
     const NavContext& navigationContext,
     BufferIndexRef bufferRef
   );
 
 private:
-  // Templated single-goal implementation - Forward known at compile time
+  // Templated implementations after delegation
   template<bool Forward>
   MotionResult optimizeImpl(
     const Lines& lines,
     const CursorPos& initialPos,
-    const RunningEffort& startingEffort,
     const CursorPos& goalPos,
     std::string_view userSequence,
     const NavContext& navContext,
@@ -133,12 +110,10 @@ private:
     MotionOptimizerParams params
   );
 
-  // Templated range implementation - Forward known at compile time
   template<bool Forward>
   RangeMotionResult optimizeToRangeImpl(
     const Lines& lines,
     const CursorPos& initialPos,
-    const RunningEffort& startingEffort,
     const CursorPos& rangeBegin,
     const CursorPos& rangeEnd,
     std::string_view userSequence,

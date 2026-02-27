@@ -73,6 +73,7 @@ struct EditSearchContext {
   std::unordered_map<EditStateKey, double, EditStateKeyHash> costMap;
   int resultsFound = 0;            // Total completions reaching goal (consistent with other optimizers)
   int uniquePositionsCovered = 0;  // Unique starting positions that have a result
+  int positionsAtCap = 0;          // Starting positions that reached maxResultsPerStart
   int iterations = 0;
   int totalPositions;
 

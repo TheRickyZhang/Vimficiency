@@ -175,17 +175,16 @@ CompositionResult CompositionOptimizer::optimize(
           auto motionResult = bufRef
               ? motionOptimizer.optimizeToRange(
                     subset, localPos, localRangeBegin, localRangeEnd,
-                    rangeParams, "", subsetBoundary, s.getRunningEffort(),
+                    rangeParams, "", subsetBoundary,
                     navigationContext, *bufRef)
               : motionOptimizer.optimizeToRange(
                     subset, localPos, localRangeBegin, localRangeEnd,
-                    rangeParams, "", subsetBoundary, s.getRunningEffort(),
+                    rangeParams, "", subsetBoundary,
                     navigationContext);
           ctx.motionNodesExplored += motionResult.getStats().nodesExplored;
 
-          for (RangeResult& movResult : motionResult.getResults()) {
+          for (const RangeResult& movResult : motionResult.getResults()) {
             if (!movResult.isValid()) continue;
-            movResult.addGoalLineOffset(beginLine);  // remap back to full-buffer coords
 
             Sequence fullSeq = movResult.getSequence();
             fullSeq.append(insertCmd);
@@ -364,23 +363,23 @@ CompositionResult CompositionOptimizer::optimize(
       auto motionResult = bufRef2
           ? motionOptimizer.optimizeToRange(
                 subset, localPos, localRangeBegin, localRangeEnd,
-                rangeParams2, "", subsetBoundary, s.getRunningEffort(),
+                rangeParams2, "", subsetBoundary,
                 navigationContext, *bufRef2)
           : motionOptimizer.optimizeToRange(
                 subset, localPos, localRangeBegin, localRangeEnd,
-                rangeParams2, "", subsetBoundary, s.getRunningEffort(),
+                rangeParams2, "", subsetBoundary,
                 navigationContext);
       ctx.motionNodesExplored += motionResult.getStats().nodesExplored;
 
       debug("  motion results:", static_cast<int>(motionResult.getResults().size()));
-      for (RangeResult& movResult : motionResult.getResults()) {
+      for (const RangeResult& movResult : motionResult.getResults()) {
         if (!movResult.isValid()) continue;
 
         // Remap results back to full-buffer coordinates
-        movResult.addGoalLineOffset(beginLine);
+        CursorPos goalPos(movResult.getGoalPos().line + beginLine, movResult.getGoalPos().col);
         debug("    motion:", "\"" + movResult.getSequence().str() + "\"",
-              "->", movResult.getGoalPos());
-        ctx.exploreMotionTransition(s, movResult.getSequence(), movResult.getGoalPos(),
+              "->", goalPos);
+        ctx.exploreMotionTransition(s, movResult.getSequence(), goalPos,
                                     editsCompleted);
       }
 
@@ -415,20 +414,20 @@ CompositionResult CompositionOptimizer::optimize(
         auto jMotionResult = jBufRef
             ? motionOptimizer.optimizeToRange(
                   jSubset, jLocalPos, jLocalFirst, jLocalEnd,
-                  jRangeParams, "", jSubsetBoundary, s.getRunningEffort(),
+                  jRangeParams, "", jSubsetBoundary,
                   navigationContext, *jBufRef)
             : motionOptimizer.optimizeToRange(
                   jSubset, jLocalPos, jLocalFirst, jLocalEnd,
-                  jRangeParams, "", jSubsetBoundary, s.getRunningEffort(),
+                  jRangeParams, "", jSubsetBoundary,
                   navigationContext);
         ctx.motionNodesExplored += jMotionResult.getStats().nodesExplored;
 
-        for (RangeResult& movResult : jMotionResult.getResults()) {
+        for (const RangeResult& movResult : jMotionResult.getResults()) {
           if (!movResult.isValid()) continue;
-          movResult.addGoalLineOffset(jBeginLine);
+          CursorPos goalPos(movResult.getGoalPos().line + jBeginLine, movResult.getGoalPos().col);
           debug("    J-motion:", "\"" + movResult.getSequence().str() + "\"",
-                "->", movResult.getGoalPos());
-          ctx.exploreMotionTransition(s, movResult.getSequence(), movResult.getGoalPos(),
+                "->", goalPos);
+          ctx.exploreMotionTransition(s, movResult.getSequence(), goalPos,
                                       editsCompleted);
         }
       }
@@ -475,15 +474,7 @@ ostream& operator<<(ostream& os, const CompositionResult& cr) {
   if (!diffs.empty()) {
     os << "Diffs:";
     for (size_t i = 0; i < diffs.size(); i++) {
-      const auto& d = diffs[i];
-      os << " {" << i << "}=";
-      if (d.isPureInsertion()) {
-        os << "ins '" << makePrintable(d.insertedText) << "'";
-      } else if (d.isPureDeletion()) {
-        os << "del '" << makePrintable(d.deletedText) << "'";
-      } else {
-        os << "'" << makePrintable(d.deletedText) << "'->'" << makePrintable(d.insertedText) << "'";
-      }
+      os << " {" << i << "}=" << diffs[i];
     }
     os << "\n";
   }

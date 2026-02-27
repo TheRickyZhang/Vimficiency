@@ -181,7 +181,7 @@ protected:
     MotionBoundary boundary;
     return opt.optimize(lines, start, end,
                         MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
-                        userSeq, boundary, RunningEffort(), navContext).getResults();
+                        userSeq, boundary, navContext).getResults();
   }
 };
 

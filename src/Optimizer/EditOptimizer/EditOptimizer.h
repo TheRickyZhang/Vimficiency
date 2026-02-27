@@ -1,5 +1,6 @@
 #pragma once
 
+#include <span>
 #include <vector>
 
 #include "Keyboard/Config.h"
@@ -12,7 +13,7 @@
 #include "Types/Lines.h"
 
 
-struct EditResult : BaseOptimizerResult {
+struct EditResult : BaseOptimizerResult<> {
   EditResult() = default;
 
   // Constructor: initializes results and flat index for buffer-position lookup.
@@ -37,6 +38,23 @@ struct EditResult : BaseOptimizerResult {
   // Number of result entries
   size_t resultCount() const { return results_.size(); }
 
+  // Number of captured results for this starting position.
+  size_t resultsCountAt(int bufferLine, int bufferCol) const {
+    int idx = resultIndexAt(bufferLine, bufferCol);
+    if (idx < 0) return 0;
+    if (idx >= static_cast<int>(resultsByStart_.size())) return 0;
+    return resultsByStart_[static_cast<size_t>(idx)].size();
+  }
+
+  // All captured results for this starting position (best result first).
+  std::span<const Result> resultsAt(int bufferLine, int bufferCol) const {
+    int idx = resultIndexAt(bufferLine, bufferCol);
+    if (idx < 0) return {};
+    if (idx >= static_cast<int>(resultsByStart_.size())) return {};
+    const auto& bucket = resultsByStart_[static_cast<size_t>(idx)];
+    return {bucket.data(), bucket.size()};
+  }
+
   const CursorPos& getGoalPos() const { return goalPos_; }
 
   // Returns goal position for a given starting position.
@@ -57,6 +75,8 @@ struct EditResult : BaseOptimizerResult {
     goalPosByStart_ = std::move(goals);
   }
 
+  void setResultsByStart(std::vector<std::vector<Result>> resultsByStart);
+
   // Flat result index for a buffer position, or -1 if out of range.
   int resultIndexAt(int bufferLine, int bufferCol) const {
     int editLine = bufferLine - beginLine_;
@@ -75,6 +95,7 @@ private:
   int beginCol_ = 0;
   std::vector<int> lineBaseIndex_;
   std::vector<CursorPos> goalPosByStart_;
+  std::vector<std::vector<Result>> resultsByStart_;
 
   friend std::ostream& operator<<(std::ostream& os, const EditResult& editResult);
 };

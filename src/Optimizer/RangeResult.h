@@ -17,7 +17,6 @@ struct RangeResult : Result {
     : Result(std::move(s), c), goalPos_(p) {}
 
   const CursorPos& getGoalPos() const { return goalPos_; }
-  void addGoalLineOffset(int offset) { goalPos_.line += offset; }
 
   friend std::ostream& operator<<(std::ostream& os, const RangeResult& r) {
     os << r.getSequence() << " " << r.getCost() << " -> (" << r.goalPos_.line << "," << r.goalPos_.col << ")";

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ostream>
 #include <string_view>
 #include <vector>
 
@@ -59,6 +60,9 @@ struct DiffState {
 
   // Does insertedText end with a newline? (for o/A+<CR> insertion strategies)
   bool isNewLineInsertion() const { return !insertedText.empty() && insertedText.back() == '\n'; }
+
+  // Formats as: "ins 'text'", "del 'text'", or "'old'->'new'"
+  friend std::ostream& operator<<(std::ostream& os, const DiffState& d);
 
   // insertedText without trailing \n (when the mode-entry command handles the newline)
   std::string_view insertedTextBody() const {
