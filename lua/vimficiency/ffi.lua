@@ -10,12 +10,12 @@ local M = {}
 --------------------------------------------------------------------------------
 
 ---@class C_ScoreWeights
----@field w_key number
----@field w_same_finger number
----@field w_same_key number
----@field w_alt_bonus number
----@field w_roll_good number
----@field w_roll_bad number
+---@field keyWeight number
+---@field sameFingerWeight number
+---@field sameKeyWeight number
+---@field altHandWeight number
+---@field goodRollWeight number
+---@field badRollWeight number
 
 ---@class C_KeyInfo
 ---@field hand integer
@@ -64,12 +64,12 @@ ffi.cdef([[
     extern const int VIMFICIENCY_COUNT_CLASS_COUNT;
 
     typedef struct {
-        double w_key;
-        double w_same_finger;
-        double w_same_key;
-        double w_alt_bonus;
-        double w_roll_good;
-        double w_roll_bad;
+        double keyWeight;
+        double sameFingerWeight;
+        double sameKeyWeight;
+        double altHandWeight;
+        double goodRollWeight;
+        double badRollWeight;
     } C_ScoreWeights;
 
     typedef struct {
@@ -189,23 +189,23 @@ function M.configure(user_config)
 	if user_config.weights then
 		local w = user_config.weights
 		local cw = config.weights
-		if w.w_key then
-			cw.w_key = w.w_key
+		if w.keyWeight then
+			cw.keyWeight = w.keyWeight
 		end
-		if w.w_same_finger then
-			cw.w_same_finger = w.w_same_finger
+		if w.sameFingerWeight then
+			cw.sameFingerWeight = w.sameFingerWeight
 		end
-		if w.w_same_key then
-			cw.w_same_key = w.w_same_key
+		if w.sameKeyWeight then
+			cw.sameKeyWeight = w.sameKeyWeight
 		end
-		if w.w_alt_bonus then
-			cw.w_alt_bonus = w.w_alt_bonus
+		if w.altHandWeight then
+			cw.altHandWeight = w.altHandWeight
 		end
-		if w.w_roll_good then
-			cw.w_roll_good = w.w_roll_good
+		if w.goodRollWeight then
+			cw.goodRollWeight = w.goodRollWeight
 		end
-		if w.w_roll_bad then
-			cw.w_roll_bad = w.w_roll_bad
+		if w.badRollWeight then
+			cw.badRollWeight = w.badRollWeight
 		end
 	end
 

@@ -42,7 +42,8 @@ Some examples of stupid code:
 // Resolve BufferIndex: use external if provided, otherwise build local
 BufferIndex localBufferIndex(lines);
 if (!bufferRef) {
-  bufferRef = {&localBufferIndex, 0};
+  bufferRef = {&localBufferIndex, 0};:w
+
 }
 creates a buffer index every time at first even though the goal was to use a precomputed buffer index if known!
 
@@ -55,3 +56,9 @@ creates a buffer index every time at first even though the goal was to use a pre
   \
   \
 This code is so fucking stupid. First of all, the point of different types is to not be able to cats them like this. Second, now you are completely ruining he the semantics by making it range-style when it is clearly not!!
+
+
+Write article about snake_case vs PascalCase for namespaces.
+
+Also conventions like this:\
+https://accu.org/journals/overload/22/121/wakely_1923/

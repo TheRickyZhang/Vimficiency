@@ -38,12 +38,21 @@ jobs:
       - name: Build
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF \
+            -DVIMFICIENCY_ENABLE_DEBUG_TRACKING=OFF \
             -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j$(nproc)
 
       - name: Unit tests
         run: ./build/tests/vimficiency_tests --gtest_brief=1 --gtest_output=json:test_timing.json
+
+      - name: Build tracking-enabled exploration target
+        run: |
+          cmake -B build_track -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF \
+            -DVIMFICIENCY_ENABLE_DEBUG_TRACKING=ON \
+            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build_track --target vimficiency_explore -j$(nproc)
 
       - name: Upload test timing
         if: github.ref == 'refs/heads/main'
@@ -78,6 +87,7 @@ jobs:
       - name: Build (Release)
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF \
+            -DVIMFICIENCY_ENABLE_DEBUG_TRACKING=OFF \
             -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j$(nproc)
@@ -105,7 +115,13 @@ jobs:
             --benchmark_out=composition_result.json
 
       - name: Collect exploration data
-        run: VIMFICIENCY_SEED_MODE=fixed ./build/tests/vimficiency_explore
+        run: |
+          cmake -B build_track -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF \
+            -DVIMFICIENCY_ENABLE_DEBUG_TRACKING=ON \
+            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build_track --target vimficiency_explore -j$(nproc)
+          VIMFICIENCY_SEED_MODE=fixed ./build_track/tests/vimficiency_explore
 
       - name: Build and run baseline benchmarks
         run: |
@@ -113,6 +129,7 @@ jobs:
           git checkout HEAD~1
 
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF \
+            -DVIMFICIENCY_ENABLE_DEBUG_TRACKING=OFF \
             -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j$(nproc)
