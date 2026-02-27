@@ -72,12 +72,12 @@ TEST_F(EditOptimizerDeterminismTests, SameInputProducesSameOutput) {
 
     bool mismatch = false;
     for (size_t i = 0; i < res1.resultCount() && !mismatch; i++) {
-      const auto& r1 = res1.getResults()[i];
-      const auto& r2 = res2.getResults()[i];
+      const auto& b1 = res1.getResults()[i];
+      const auto& b2 = res2.getResults()[i];
 
-      if (r1.isValid() != r2.isValid()) {
+      if (b1.empty() != b2.empty()) {
         mismatch = true;
-      } else if (r1.isValid() && r1.getSequence() != r2.getSequence()) {
+      } else if (!b1.empty() && b1[0].getSequence() != b2[0].getSequence()) {
         mismatch = true;
       }
     }

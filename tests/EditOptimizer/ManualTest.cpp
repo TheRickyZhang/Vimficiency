@@ -88,11 +88,11 @@ SimulationResult verifySequenceWithOracle(
   return nvim;
 }
 
-bool allPositionsValid(const vector<Result>& results, const Lines& source) {
+bool allPositionsValid(const vector<vector<Result>>& results, const Lines& source) {
   int idx = 0;
   for (int r = 0; r < static_cast<int>(source.size()); r++) {
     for (int c = 0; c < source[r].effectiveSize(); c++) {
-      if (!results[idx++].isValid()) {
+      if (results[idx++].empty()) {
         return false;
       }
     }
@@ -101,13 +101,13 @@ bool allPositionsValid(const vector<Result>& results, const Lines& source) {
 }
 
 template<typename Fn>
-void forEachValidResult(const vector<Result>& results, const Lines& lines, Fn fn) {
+void forEachValidResult(const vector<vector<Result>>& results, const Lines& lines, Fn fn) {
   int idx = 0;
   for (int r = 0; r < static_cast<int>(lines.size()); r++) {
     for (int c = 0; c < lines[r].effectiveSize(); c++) {
-      const Result& result = results[idx++];
-      if (result.isValid()) {
-        fn(CursorPos(r, c), result.getSequence());
+      const auto& bucket = results[idx++];
+      if (!bucket.empty()) {
+        fn(CursorPos(r, c), bucket[0].getSequence());
       }
     }
   }
@@ -123,7 +123,7 @@ TEST_F(EditOptimizer_ManualTest, PureDeletion_OracleVerified) {
   EditResult editRes = pureDeletionResult(
       lines,
       EditBoundary(lines, CursorPos(0, 0), lines.endPos()));
-  const vector<Result>& res = editRes.getResults();
+  const auto& res = editRes.getResults();
 
   EXPECT_TRUE(allPositionsValid(res, lines));
 
@@ -202,8 +202,9 @@ void verifyEditGoal(NeovimOracle* oracle, const Lines& source,
   int idx = 0;
   for (int r = 0; r < static_cast<int>(source.size()); r++) {
     for (int c = 0; c < source[r].effectiveSize(); c++) {
-      const Result& res = result.getResults()[idx++];
-      if (!res.isValid()) continue;
+      const auto& bucket = result.getResults()[idx++];
+      if (bucket.empty()) continue;
+      const Result& res = bucket[0];
       CursorPos pos(r + lineOffset, c);
       SimulationResult nvim = oracle->simulate(
           lineOffset == 0 ? source : Lines{}, pos.line, pos.col, res.getSequence().str());
@@ -222,7 +223,7 @@ TEST_F(EditOptimizer_ManualTest, AutoindentLinewise_MatchingIndent) {
   EditBoundary boundary(initial, CursorPos(0, 0), initial.endPos());
 
   EditResult res = opt.optimizeEdit(initial, goal, boundary, params);
-  ASSERT_TRUE(res.getResults()[0].isValid());
+  ASSERT_FALSE(res.getResults()[0].empty());
 
   forEachValidResult(res.getResults(), initial, [&](CursorPos pos, const auto& seq) {
     SimulationResult nvim = oracle->simulate(initial, pos.line, pos.col, seq.str());
@@ -240,7 +241,7 @@ TEST_F(EditOptimizer_ManualTest, AutoindentLinewise_ExcessAutoindent) {
   EditBoundary boundary(initial, CursorPos(0, 0), initial.endPos());
 
   EditResult res = opt.optimizeEdit(initial, goal, boundary, params);
-  ASSERT_TRUE(res.getResults()[0].isValid());
+  ASSERT_FALSE(res.getResults()[0].empty());
 
   forEachValidResult(res.getResults(), initial, [&](CursorPos pos, const auto& seq) {
     SimulationResult nvim = oracle->simulate(initial, pos.line, pos.col, seq.str());
@@ -258,7 +259,7 @@ TEST_F(EditOptimizer_ManualTest, AutoindentLinewise_InsufficientAutoindent) {
   EditBoundary boundary(initial, CursorPos(0, 0), initial.endPos());
 
   EditResult res = opt.optimizeEdit(initial, goal, boundary, params);
-  ASSERT_TRUE(res.getResults()[0].isValid());
+  ASSERT_FALSE(res.getResults()[0].empty());
 
   forEachValidResult(res.getResults(), initial, [&](CursorPos pos, const auto& seq) {
     SimulationResult nvim = oracle->simulate(initial, pos.line, pos.col, seq.str());
@@ -276,7 +277,7 @@ TEST_F(EditOptimizer_ManualTest, AutoindentLinewise_CountedCC) {
   EditBoundary boundary(initial, CursorPos(0, 0), initial.endPos());
 
   EditResult res = opt.optimizeEdit(initial, goal, boundary, params);
-  ASSERT_TRUE(res.getResults()[0].isValid());
+  ASSERT_FALSE(res.getResults()[0].empty());
 
   forEachValidResult(res.getResults(), initial, [&](CursorPos pos, const auto& seq) {
     SimulationResult nvim = oracle->simulate(initial, pos.line, pos.col, seq.str());
@@ -296,7 +297,7 @@ TEST_F(EditOptimizer_ManualTest, AutoindentLinewise_WithBoundaryContext) {
   Lines goal = {"    xxx"};
 
   EditResult res = opt.optimizeEdit(editRegion, goal, boundary, params);
-  ASSERT_TRUE(res.getResults()[0].isValid());
+  ASSERT_FALSE(res.getResults()[0].empty());
 
   Lines expectedFull = {"context_above", "    xxx", "context_below"};
   forEachValidResult(res.getResults(), editRegion, [&](CursorPos pos, const auto& seq) {
@@ -316,7 +317,7 @@ TEST_F(EditOptimizer_ManualTest, AutoindentLinewise_NoIndent) {
   EditBoundary boundary(initial, CursorPos(0, 0), initial.endPos());
 
   EditResult res = opt.optimizeEdit(initial, goal, boundary, params);
-  ASSERT_TRUE(res.getResults()[0].isValid());
+  ASSERT_FALSE(res.getResults()[0].empty());
 
   forEachValidResult(res.getResults(), initial, [&](CursorPos pos, const auto& seq) {
     SimulationResult nvim = oracle->simulate(initial, pos.line, pos.col, seq.str());
@@ -338,7 +339,7 @@ TEST_F(EditOptimizer_ManualTest, AutoindentLinewise_CollapseWithBS) {
   Lines goal = {"    xxx"};
 
   EditResult res = opt.optimizeEdit(editRegion, goal, boundary, params);
-  ASSERT_TRUE(res.getResults()[0].isValid());
+  ASSERT_FALSE(res.getResults()[0].empty());
 
   Lines expectedFull = {"prefix", "    xxx", "suffix"};
   forEachValidResult(res.getResults(), editRegion, [&](CursorPos pos, const auto& seq) {

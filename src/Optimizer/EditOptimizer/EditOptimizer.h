@@ -13,45 +13,35 @@
 #include "Types/Lines.h"
 
 
-struct EditResult : BaseOptimizerResult<> {
+struct EditResult : BaseOptimizerResult<std::vector<Result>> {
   EditResult() = default;
 
   // Constructor: initializes results and flat index for buffer-position lookup.
   // Buffer-position params default to edit-region-local (line 0, col 0).
-  EditResult(std::vector<Result> results, EditSearchStats stats,
+  // results is a 2D vector: one bucket of Results per starting position.
+  EditResult(std::vector<std::vector<Result>> results, EditSearchStats stats,
              const Lines& initialLines, int bufferBeginLine = 0,
              int bufferBeginCol = 0, CursorPos goalPos = {0, 0});
 
   const EditSearchStats& getStats() const { return stats_; }
 
-  // Look up the result for a buffer position. Returns nullptr if the position
-  // is outside the edit region or the result at that position is invalid.
+  // Look up the best result for a buffer position. Returns nullptr if the position
+  // is outside the edit region or has no result.
   // Return a nullable, const & view.
   // TODO (C++ 26): use optional<const T&>
   const Result* resultAt(int bufferLine, int bufferCol) const {
     int idx = resultIndexAt(bufferLine, bufferCol);
     if (idx < 0) return nullptr;
-    const Result& r = results_[static_cast<size_t>(idx)];
-    return r.isValid() ? &r : nullptr;
-  }
-
-  // Number of result entries
-  size_t resultCount() const { return results_.size(); }
-
-  // Number of captured results for this starting position.
-  size_t resultsCountAt(int bufferLine, int bufferCol) const {
-    int idx = resultIndexAt(bufferLine, bufferCol);
-    if (idx < 0) return 0;
-    if (idx >= static_cast<int>(resultsByStart_.size())) return 0;
-    return resultsByStart_[static_cast<size_t>(idx)].size();
+    const auto& bucket = results_[static_cast<size_t>(idx)];
+    return bucket.empty() ? nullptr : &bucket[0];
   }
 
   // All captured results for this starting position, sorted by cost (best first).
   std::span<const Result> resultsAt(int bufferLine, int bufferCol) const {
     int idx = resultIndexAt(bufferLine, bufferCol);
     if (idx < 0) return {};
-    if (idx >= static_cast<int>(resultsByStart_.size())) return {};
-    const auto& bucket = resultsByStart_[static_cast<size_t>(idx)];
+    if (idx >= static_cast<int>(results_.size())) return {};
+    const auto& bucket = results_[static_cast<size_t>(idx)];
     return {bucket.data(), bucket.size()};
   }
 
@@ -75,8 +65,6 @@ struct EditResult : BaseOptimizerResult<> {
     goalPosByStart_ = std::move(goals);
   }
 
-  void setResultsByStart(std::vector<std::vector<Result>> resultsByStart);
-
   // Flat result index for a buffer position, or -1 if out of range.
   int resultIndexAt(int bufferLine, int bufferCol) const {
     int editLine = bufferLine - beginLine_;
@@ -95,7 +83,6 @@ private:
   int beginCol_ = 0;
   std::vector<int> lineBaseIndex_;
   std::vector<CursorPos> goalPosByStart_;
-  std::vector<std::vector<Result>> resultsByStart_;
 
   friend std::ostream& operator<<(std::ostream& os, const EditResult& editResult);
 };

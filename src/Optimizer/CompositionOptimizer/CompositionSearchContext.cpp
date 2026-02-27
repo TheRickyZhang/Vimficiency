@@ -121,10 +121,10 @@ CompositionSearchContext::CompositionSearchContext(
     const auto& er = edits[i].editResult;
     int validCount = 0;
     double bestCost = numeric_limits<double>::max();
-    for (const Result& r : er.getResults()) {
-      if (r.isValid()) {
+    for (const auto& bucket : er.getResults()) {
+      if (!bucket.empty()) {
         validCount++;
-        bestCost = min(bestCost, r.getCost());
+        bestCost = min(bestCost, bucket[0].getCost());
       }
     }
     debug("  edit[" + to_string(i) + "]:",
@@ -315,9 +315,9 @@ vector<double> CompositionSearchContext::computeSuffixEditCosts() const {
     // All edits now have EditResult (including pure insertions)
     const auto& editRes = edits[i].editResult;
     vector<double> costs;
-    for (const Result& r : editRes.getResults()) {
-      if (r.isValid()) {
-        costs.push_back(r.getCost());
+    for (const auto& bucket : editRes.getResults()) {
+      if (!bucket.empty()) {
+        costs.push_back(bucket[0].getCost());
       }
     }
 
@@ -373,13 +373,13 @@ void CompositionSearchContext::calculateEditResults() {
       RunningEffort runningEffort(full.keys, config);
       double effort = runningEffort.getEffort(config);
 
-      std::vector<Result> insertResults(1);
-      insertResults[0] = Result(std::move(full.seq), effort);
+      std::vector<std::vector<Result>> insertResultsByStart(1);
+      insertResultsByStart[0].emplace_back(std::move(full.seq), effort);
 
       CursorPos goalPos = computeInsertEndPos(diff.beginPos, diff.insertedText);
       // Use single-char Lines for lineBaseIndex computation (insertion point has no content)
       Lines singlePoint = {""};
-      edits[i].editResult = EditResult(std::move(insertResults), {}, singlePoint,
+      edits[i].editResult = EditResult(std::move(insertResultsByStart), {}, singlePoint,
                                        diff.beginPos.line, diff.beginPos.col, goalPos);
       continue;
     }
@@ -390,6 +390,7 @@ void CompositionSearchContext::calculateEditResults() {
           EditOptimizerParams{}
               .withMinCountRepeat(params.minPrefixCount)
               .withMaxCountRepeat(params.maxPrefixCount)
+              .withMaxMultiplePerStartPosition(params.maxEditResultsPerPosition)
               .withTrackExploredStates(params.trackExploredStates),
           diff.beginPos.line, diff.beginPos.col, diff.beginPos);
       editNodesExplored += edits[i].editResult.getStats().nodesExplored;
@@ -419,6 +420,7 @@ void CompositionSearchContext::calculateEditResults() {
         EditOptimizerParams{}
             .withMinCountRepeat(params.minPrefixCount)
             .withMaxCountRepeat(params.maxPrefixCount)
+            .withMaxMultiplePerStartPosition(params.maxEditResultsPerPosition)
             .withTrackExploredStates(params.trackExploredStates),
         diff.beginPos.line, diff.beginPos.col, goalPos);
     editNodesExplored += optResult.getStats().nodesExplored;

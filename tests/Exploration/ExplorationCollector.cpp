@@ -554,11 +554,11 @@ static vector<ExploreCase> collectEditCases() {
 
   auto collectEditResults = [](const EditResult& result) {
     vector<FoundResult> found;
-    // Deduplicate: EditResult has one result per starting position,
+    // Deduplicate: EditResult has results per starting position,
     // collect unique valid sequences sorted by effort
     map<string, double> bestBySeq;
-    for (const auto& r : result.getResults()) {
-      if (r.isValid()) {
+    for (const auto& bucket : result.getResults()) {
+      for (const auto& r : bucket) {
         auto it = bestBySeq.find(r.getSequence().str());
         if (it == bestBySeq.end() || r.getCost() < it->second) {
           bestBySeq[r.getSequence().str()] = r.getCost();
@@ -705,8 +705,8 @@ static vector<CompositionExploreCase> collectCompositionCases() {
 
       // Collect unique best results from all starting positions
       map<string, double> bestBySeq;
-      for (const auto& r : editResult.getResults()) {
-        if (r.isValid()) {
+      for (const auto& bucket : editResult.getResults()) {
+        for (const auto& r : bucket) {
           auto it = bestBySeq.find(r.getSequence().str());
           if (it == bestBySeq.end() || r.getCost() < it->second) {
             bestBySeq[r.getSequence().str()] = r.getCost();

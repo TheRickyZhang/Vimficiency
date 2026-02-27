@@ -21,7 +21,7 @@ vector<size_t> collectPerStartCounts(const EditResult& result, const Lines& line
   vector<size_t> counts;
   for (int line = 0; line < static_cast<int>(lines.size()); line++) {
     for (int col = 0; col < lines[line].effectiveSize(); col++) {
-      counts.push_back(result.resultsCountAt(line, col));
+      counts.push_back(result.resultsAt(line, col).size());
     }
   }
   return counts;
@@ -46,7 +46,7 @@ TEST_F(EditOptimizerMultipleResultsTest, DefaultKeepsSingleResultPerStart) {
 
   const Result* best = result.resultAt(0, 0);
   ASSERT_NE(best, nullptr);
-  EXPECT_EQ(result.resultsCountAt(0, 0), 1u);
+  EXPECT_EQ(result.resultsAt(0, 0).size(), 1u);
 
   auto all = result.resultsAt(0, 0);
   ASSERT_EQ(all.size(), 1u);
@@ -85,7 +85,7 @@ TEST_F(EditOptimizerMultipleResultsTest, MaxMultiplePerStartPositionLessThanOneC
           .withMaxNodesExplored(100000)
           .withMaxMultiplePerStartPosition(0));
 
-  EXPECT_EQ(result.resultsCountAt(0, 0), 1u);
+  EXPECT_EQ(result.resultsAt(0, 0).size(), 1u);
 }
 
 TEST_F(EditOptimizerMultipleResultsTest, GlobalMaxResultsStillCapsTotalEmittedResults) {
@@ -98,7 +98,7 @@ TEST_F(EditOptimizerMultipleResultsTest, GlobalMaxResultsStillCapsTotalEmittedRe
           .withMaxNodesExplored(100000)
           .withMaxMultiplePerStartPosition(3));
 
-  EXPECT_LE(result.resultsCountAt(0, 0), 2u);
+  EXPECT_LE(result.resultsAt(0, 0).size(), 2u);
   EXPECT_LE(result.getStats().resultsFound, 2);
 }
 

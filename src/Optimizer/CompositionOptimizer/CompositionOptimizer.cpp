@@ -257,16 +257,16 @@ CompositionResult CompositionOptimizer::optimize(
 
     // ========== EDIT vs MOVEMENT TRANSITIONS ==========
     const EditResult& editResult = ctx.edits[editsCompleted].editResult;
-    const Result* res = editResult.resultAt(pos.line, pos.col);
+    auto editAlternatives = editResult.resultsAt(pos.line, pos.col);
 
-    if (res) {
+    for (const Result& res : editAlternatives) {
       CursorPos editGoalPos = editResult.goalPosAt(pos.line, pos.col);
       if (editResult.hasPerStartGoals()) {
         editGoalPos = clampGoalPosToLines(editGoalPos, ctx.getLinesAfter(editsCompleted + 1));
       }
-      debug("  edit found at", pos, "seq:", "\"" + res->getSequence().str() + "\"",
-            "cost:", res->getCost(), "goalPos:", editGoalPos);
-      ctx.exploreEditTransition(s, res->getSequence(),
+      debug("  edit found at", pos, "seq:", "\"" + res.getSequence().str() + "\"",
+            "cost:", res.getCost(), "goalPos:", editGoalPos);
+      ctx.exploreEditTransition(s, res.getSequence(),
                                 editGoalPos, editsCompleted + 1);
     }
 
@@ -279,7 +279,7 @@ CompositionResult CompositionOptimizer::optimize(
                                 editsCompleted + 1);
     }
 
-    if (!res) {
+    if (editAlternatives.empty()) {
       // Check for bracket/quote text object shortcuts
       // These allow reaching the edit region from positions before it on the same line
       const BracketQuoteContext& bqContext = ctx.edits[editsCompleted].bracketQuoteContext;
