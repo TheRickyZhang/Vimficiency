@@ -72,7 +72,7 @@ static vector<size_t> collectPerStartCounts(const EditResult& result, const Line
   vector<size_t> counts;
   for (int line = 0; line < static_cast<int>(lines.size()); line++) {
     for (int col = 0; col < lines[line].effectiveSize(); col++) {
-      counts.push_back(result.resultsCountAt(line, col));
+      counts.push_back(result.resultsAt(line, col).size());
     }
   }
   return counts;
