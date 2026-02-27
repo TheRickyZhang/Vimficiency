@@ -56,15 +56,15 @@ EditResult::EditResult(vector<Result> results, EditSearchStats stats,
 }
 
 void EditResult::setResultsByStart(vector<vector<Result>> resultsByStart) {
-  // Buckets are approximately cost-ordered (A* pop order), but not strictly:
-  // suffix-cache hits can emit results at the prefix's pop time, so a later
-  // prefix + cached suffix may have lower total effort than an earlier entry.
-  // This is fine — results_[i] (from resultAt) is the authoritative best,
-  // and resultsAt() callers don't depend on strict ordering.
   resultsByStart.resize(results_.size());
   for (size_t i = 0; i < results_.size(); i++) {
     if (!results_[i].isValid()) {
       resultsByStart[i].clear();
+    } else {
+      // Sort by cost — pop order is approximate due to inadmissible heuristic
+      // and suffix-cache emissions.
+      std::sort(resultsByStart[i].begin(), resultsByStart[i].end(),
+                [](const Result& a, const Result& b) { return a.getCost() < b.getCost(); });
     }
   }
   resultsByStart_ = std::move(resultsByStart);
@@ -794,8 +794,10 @@ struct ModePolicy<false> {
     bucket.emplace_back(seqStr, totalEffort);
     ctx.resultsFound++;
     if (firstForStart) {
-      results[idx] = bucket.front();
+      results[idx] = bucket.back();
       ctx.uniquePositionsCovered++;
+    } else if (totalEffort < results[idx].getCost()) {
+      results[idx] = bucket.back();
     }
     if (static_cast<int>(bucket.size()) == maxResultsPerStart) {
       ctx.markStartCapped(idx);
@@ -909,11 +911,15 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
     ctx.resultsFound++;
 
     if (firstForStart) {
-      results[idx] = bucket.front();
+      results[idx] = result;
       if (captureGoalPos) {
         goalCapture.onGoal(idx, state.getPos());
       }
       ctx.uniquePositionsCovered++;
+    } else if (result.getCost() < results[idx].getCost()) {
+      // Inadmissible heuristic means pop order != effort order;
+      // a later result can be cheaper than the first.
+      results[idx] = result;
     }
 
     if (static_cast<int>(bucket.size()) == params.maxMultiplePerStartPosition) {

@@ -46,7 +46,7 @@ struct EditResult : BaseOptimizerResult<> {
     return resultsByStart_[static_cast<size_t>(idx)].size();
   }
 
-  // All captured results for this starting position (best result first).
+  // All captured results for this starting position, sorted by cost (best first).
   std::span<const Result> resultsAt(int bufferLine, int bufferCol) const {
     int idx = resultIndexAt(bufferLine, bufferCol);
     if (idx < 0) return {};
