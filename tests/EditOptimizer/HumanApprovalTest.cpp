@@ -50,12 +50,12 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionSingleWord) {
   EditBoundary boundary(initialLines, {0, 0}, initialLines.endPos());
 
   EditResult editRes = pureDeletionResult(initialLines, boundary, params);
-  const vector<Result>& res = editRes.getResults();
+  const auto& res = editRes.getResults();
 
   // printResultsDebug(res, "Delete single word");
   // Single word should use dw or de, not visual mode (too short)
-  ASSERT_TRUE(res[0].isValid());
-  const auto& seq = res[0].getSequence();
+  ASSERT_FALSE(res[0].empty());
+  const auto& seq = res[0][0].getSequence();
   EXPECT_TRUE(seq.view().find("dw") != string::npos || seq.view().find("de") != string::npos)
       << "Expected dw or de for single word, got: " << seq;
 }
@@ -69,7 +69,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionMultipleLines) {
   EditBoundary boundary(initialLines, {0, 0}, initialLines.endPos());
 
   EditResult editRes = pureDeletionResult(initialLines, boundary, params);
-  const vector<Result>& res = editRes.getResults();
+  const auto& res = editRes.getResults();
 
   // printResultsDebug(res, "Delete multiple lines");
   // ASSERT_TRUE(all results costs are <= 4 (always has option of dddd));
@@ -87,7 +87,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTop) {
   EditBoundary boundary(fullBuffer, firstPos, endPos);
 
   EditResult editRes = pureDeletionResult(editRegion, boundary, params);
-  const vector<Result>& res = editRes.getResults();
+  const auto& res = editRes.getResults();
   // printResultsDebug(res, "Delete straddle top");
 }
 
@@ -104,7 +104,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleBottom) {
   EditBoundary boundary(fullBuffer, firstPos, endPos);
 
   EditResult editRes = pureDeletionResult(editRegion, boundary, params);
-  const vector<Result>& res = editRes.getResults();
+  const auto& res = editRes.getResults();
   // printResultsDebug(res, "Delete straddle bottom");
   // ASSERT_TRUE(finds costs <= 5, like dddw)
 }
@@ -121,7 +121,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTopAndBottom) {
   EditBoundary boundary(fullBuffer, firstPos, endPos);
 
   EditResult editRes = pureDeletionResult(editRegion, boundary, params);
-  const vector<Result>& res = editRes.getResults();
+  const auto& res = editRes.getResults();
   // printResultsDebug(res, "Delete straddle top and bottom");
   // ASSERT_TRUE(res[0] == "vjd" (best result by far))
   // ASSERT_TRUE(finds cost <= 7)
@@ -139,7 +139,7 @@ TEST_F(EditOptimizerHumanApprovalTests, Edit_PureDeletionMultiLineFull) {
   EditBoundary boundary(initialLines, {0, 0}, initialLines.endPos());
 
   EditResult editRes = pureDeletionResult(initialLines, boundary, params);
-  const vector<Result>& res = editRes.getResults();
+  const auto& res = editRes.getResults();
   // printResultsDebug(res, "Delete multi-line full");
   // ASSERT_TRUE(all valid)
 }

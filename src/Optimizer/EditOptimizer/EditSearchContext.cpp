@@ -19,7 +19,9 @@ EditSearchContext::EditSearchContext(const Lines& initialLines,
       bank(config),
       effortWeight(params.effortWeight),
       distanceWeight(params.distanceWeight),
-      totalPositions(initialLines.totalPositions()) {
+      totalPositions(initialLines.totalPositions()),
+      pendingByStart(static_cast<size_t>(initialLines.totalPositions()), 0),
+      statusByStart(static_cast<size_t>(initialLines.totalPositions()), StartStatus::Active) {
 
   // Build effectiveLines with prefix/suffix baked in
   const auto& pre = editBoundary.prefix();
@@ -95,6 +97,8 @@ bool EditSearchContext::exploreBoundaryEscape(const EditState& state,
 
 void EditSearchContext::exploreNewState(EditState&& state) {
   motionsEmitted++;  // Track total operations emitted
+  int startIndex = state.getStartIndex();
+  if (!isStartActive(startIndex)) return;
 
   EditStateKey key = state.getKey();
   auto it = costMap.find(key);
@@ -102,6 +106,7 @@ void EditSearchContext::exploreNewState(EditState&& state) {
   double newCost = state.getCost();
   if (it == costMap.end() || newCost <= it->second) {
     costMap[key] = newCost;
+    pendingByStart[static_cast<size_t>(startIndex)]++;
     pq.push(std::move(state));
   }
 }
@@ -139,8 +144,16 @@ void EditSearchContext::initStartingPositions(const Lines& initialLines) {
         startIndex++;
         continue;
       }
+      pendingByStart[static_cast<size_t>(startIndex)]++;
       pq.push(EditState(effectiveLines, CursorPos(line, effCol), startIndex, startPriority));
       startIndex++;
+    }
+  }
+
+  for (int i = 0; i < totalPositions; i++) {
+    if (pendingByStart[static_cast<size_t>(i)] == 0) {
+      statusByStart[static_cast<size_t>(i)] = StartStatus::Exhausted;
+      terminalStarts++;
     }
   }
 }
@@ -186,7 +199,7 @@ double EditSearchContext::distanceHeuristic(const Lines& lines) const {
 
 bool EditSearchContext::shouldContinue() const {
   if (pq.empty()) return false;
-  if (uniquePositionsCovered >= totalPositions) return false;
+  if (terminalStarts >= totalPositions) return false;
   if (resultsFound >= params.maxResults) return false;
   if (iterations >= params.maxNodesExplored) return false;
   // Safety cap: prevent runaway loops if too many stale nodes
@@ -199,18 +212,42 @@ optional<EditState> EditSearchContext::getNextValidState() {
     EditState s = pq.top();
     pq.pop();
     totalPops++;  // Track all pops for safety cap
+    int startIndex = s.getStartIndex();
+    int& pending = pendingByStart[static_cast<size_t>(startIndex)];
+    assert(pending > 0 && "pendingByStart underflow");
+    pending--;
+
+    if (!isStartActive(startIndex)) {
+      continue;
+    }
 
     // Skip if this state is outdated (we've found a better path)
     EditStateKey key = s.getKey();
     auto it = costMap.find(key);
     if (it != costMap.end() && it->second < s.getCost() - 1e-9) {
       statesSkipped++;  // Track skipped stale states
+      maybeMarkStartExhausted(startIndex);
       continue;
     }
 
     return s;
   }
   return nullopt;
+}
+
+void EditSearchContext::markStartCapped(int startIndex) {
+  auto& status = statusByStart[static_cast<size_t>(startIndex)];
+  if (status != StartStatus::Active) return;
+  status = StartStatus::Capped;
+  terminalStarts++;
+}
+
+void EditSearchContext::maybeMarkStartExhausted(int startIndex) {
+  auto& status = statusByStart[static_cast<size_t>(startIndex)];
+  if (status != StartStatus::Active) return;
+  if (pendingByStart[static_cast<size_t>(startIndex)] != 0) return;
+  status = StartStatus::Exhausted;
+  terminalStarts++;
 }
 
 EditSearchStats EditSearchContext::getStats() const {
@@ -225,7 +262,7 @@ EditSearchStats EditSearchContext::getStats() const {
   // Determine stop reason
   if (pq.empty()) {
     stats.stopReason = SearchStopReason::FullyExplored;
-  } else if (uniquePositionsCovered >= totalPositions) {
+  } else if (terminalStarts >= totalPositions) {
     stats.stopReason = SearchStopReason::AllResultsFound;
   } else if (resultsFound >= params.maxResults) {
     stats.stopReason = SearchStopReason::MaxResultsFound;

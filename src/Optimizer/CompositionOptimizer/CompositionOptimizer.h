@@ -17,7 +17,7 @@
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 
-struct CompositionResult : BaseOptimizerResult {
+struct CompositionResult : BaseOptimizerResult<> {
   CompositionResult() = default;
 
   const CompositionSearchStats& getStats() const { return stats_; }

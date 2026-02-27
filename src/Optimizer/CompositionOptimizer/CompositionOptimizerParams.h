@@ -29,6 +29,11 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   // Overshooting is penalized more than undershooting since it requires backtracking.
   double overshootPenalty = 3.0;
 
+  // Maximum number of edit alternatives per starting position to store and explore.
+  // Higher values let CompositionOptimizer consider suboptimal edits that may compose
+  // better with surrounding motion context.
+  int maxEditResultsPerPosition = 1;
+
   // Chainable setters for fluent configuration
   CompositionOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
   CompositionOptimizerParams& withMaxNodesExplored(int v) { maxNodesExplored = v; return *this; }
@@ -41,6 +46,7 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   CompositionOptimizerParams& withMotionLinePadding(int v) { motionPaddingAbove = motionPaddingBelow = v; return *this; }
   CompositionOptimizerParams& withMinCountRepeat(int v) { setMinCountRepeat(v); return *this; }
   CompositionOptimizerParams& withMaxCountRepeat(int v) { setMaxCountRepeat(v); return *this; }
+  CompositionOptimizerParams& withMaxEditResultsPerPosition(int v) { maxEditResultsPerPosition = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
   static CompositionOptimizerParams dijkstra(int maxResults = 10, int maxNodesExplored = 50000) {

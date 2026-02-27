@@ -245,8 +245,9 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
 
     // Now replay each result
     for (size_t i = 0; i < result.resultCount(); i++) {
-      const auto& r = result.getResults()[i];
-      if (!r.isValid()) continue;
+      const auto& bucket = result.getResults()[i];
+      if (bucket.empty()) continue;
+      const auto& r = bucket[0];
       const string& seq = r.getSequence().str();
 
       Lines test = eff;
@@ -396,8 +397,9 @@ TEST_F(DebugTest, DISABLED_InvestigateCountedWordEdit) {
     for (int line = 0; line < static_cast<int>(editRegion.size()); line++) {
       int cols = editRegion[line].empty() ? 1 : static_cast<int>(editRegion[line].size());
       for (int col = 0; col < cols; col++) {
-        const Result& r = res.getResults()[idx];
-        if (r.isValid() && idx == 4) {  // editPos [0,4]
+        const auto& bucket = res.getResults()[idx];
+        if (!bucket.empty() && idx == 4) {  // editPos [0,4]
+          const auto& r = bucket[0];
           cerr << "editPos=[" << line << "," << col << "] seq='" << r.getSequence() << "' cost=" << r.getCost() << endl;
         }
         idx++;
@@ -548,9 +550,10 @@ TEST_F(DebugTest, DISABLED_Placeholder) {
       cerr << "  Edit[" << i << "] goalPos=(" << result.getGoalPos().line << "," << result.getGoalPos().col
            << ") results:" << endl;
       for (size_t j = 0; j < result.resultCount(); j++) {
-        if (result.getResults()[j].isValid()) {
-          cerr << "    pos " << j << ": '" << result.getResults()[j].getSequence()
-               << "' cost=" << result.getResults()[j].getCost() << endl;
+        const auto& bucket = result.getResults()[j];
+        if (!bucket.empty()) {
+          cerr << "    pos " << j << ": '" << bucket[0].getSequence()
+               << "' cost=" << bucket[0].getCost() << endl;
         }
       }
     }
@@ -590,14 +593,15 @@ TEST_F(DebugTest, DISABLED_Placeholder) {
             d.beginPos.line, d.beginPos.col, d.beginPos);
         int validCount = 0;
         for (size_t j = 0; j < result.resultCount(); j++) {
-          if (result.getResults()[j].isValid()) validCount++;
+          if (!result.getResults()[j].empty()) validCount++;
         }
         cerr << "    Edit valid: " << validCount << "/" << result.resultCount()
              << " nodes=" << result.getStats().nodesExplored << endl;
         for (size_t j = 0; j < result.resultCount(); j++) {
-          if (result.getResults()[j].isValid()) {
-            cerr << "    pos " << j << ": '" << result.getResults()[j].getSequence()
-                 << "' cost=" << result.getResults()[j].getCost() << endl;
+          const auto& bucket = result.getResults()[j];
+          if (!bucket.empty()) {
+            cerr << "    pos " << j << ": '" << bucket[0].getSequence()
+                 << "' cost=" << bucket[0].getCost() << endl;
           }
         }
       }
@@ -717,8 +721,9 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
             d.deletedLines(), d.insertedLines(), d.boundary, params,
             d.beginPos.line, d.beginPos.col, d.beginPos);
         for (size_t j = 0; j < result.resultCount(); j++) {
-          const auto& r = result.getResults()[j];
-          if (r.isValid()) {
+          const auto& bucket = result.getResults()[j];
+          if (!bucket.empty()) {
+            const auto& r = bucket[0];
             cerr << "    pos " << j << ": '" << r.getSequence()
                  << "' cost=" << r.getCost() << endl;
             // Verify each with oracle
@@ -797,8 +802,9 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJoinLinesResidual) {
   int idx = 0;
   for (int r = 0; r < static_cast<int>(editRegion.size()); r++) {
     for (int c = 0; c < editRegion[r].effectiveSize(); c++) {
-      const Result& result = res.getResults()[idx];
-      if (result.isValid()) {
+      const auto& bucket = res.getResults()[idx];
+      if (!bucket.empty()) {
+        const auto& result = bucket[0];
         cerr << "  [" << r << "," << c << "] seq='" << result.getSequence()
              << "' cost=" << result.getCost() << endl;
 
@@ -1439,8 +1445,9 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     cerr << "  Diff " << i << ": EditResult has " << editResult.resultCount() << " positions" << endl;
 
     for (size_t j = 0; j < editResult.resultCount(); j++) {
-      const auto& r = editResult.getResults()[j];
-      if (r.isValid()) {
+      const auto& bucket = editResult.getResults()[j];
+      if (!bucket.empty()) {
+        const auto& r = bucket[0];
         cerr << "    pos " << j << ": seq='" << r.getSequence() << "' cost=" << r.getCost() << endl;
       } else {
         cerr << "    pos " << j << ": INVALID" << endl;
@@ -1479,7 +1486,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     auto rangeResult = motionOpt.optimizeToRange(
         initial, initialPos, rangeBegin, rangeEnd,
         MotionOptimizerRangeParams{}.withMaxResults(10), "",
-        boundary, RunningEffort(), navCtx);
+        boundary, navCtx);
 
     cerr << "  Range results: " << rangeResult.getResults().size() << endl;
     for (size_t i = 0; i < rangeResult.getResults().size(); i++) {
@@ -1591,14 +1598,14 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
             subset, localPos, localRangeBegin, localRangeEnd,
             MotionOptimizerRangeParams{}.withMaxResults(
                 clamp(nextEdit.origCharCount(), 1, 10)), "",
-            subsetBoundary, s.getRunningEffort(), navCtx).getResults();
+            subsetBoundary, navCtx).getResults();
 
-        for (auto& movResult : movementResults) {
+        for (const auto& movResult : movementResults) {
           if (!movResult.isValid()) continue;
-          movResult.addGoalLineOffset(beginLine);
+          CursorPos goalPos(movResult.getGoalPos().line + beginLine, movResult.getGoalPos().col);
           cerr << "    -> MOTION: seq='" << movResult.getSequence() << "' goalPos=("
-               << movResult.getGoalPos().line << "," << movResult.getGoalPos().col << ")" << endl;
-          ctx.exploreMotionTransition(s, movResult.getSequence(), movResult.getGoalPos(), editsCompleted);
+               << goalPos.line << "," << goalPos.col << ")" << endl;
+          ctx.exploreMotionTransition(s, movResult.getSequence(), goalPos, editsCompleted);
         }
       }
     }
@@ -1652,11 +1659,12 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
     // Show valid results at each position in the edit region
     int validCount = 0;
     for (size_t j = 0; j < er.getResults().size(); j++) {
-      if (er.getResults()[j].isValid()) {
+      const auto& bucket = er.getResults()[j];
+      if (!bucket.empty()) {
         validCount++;
         if (validCount <= 5) {
-          cerr << "    pos " << j << ": '" << er.getResults()[j].getSequence() << "' cost="
-               << er.getResults()[j].getCost() << endl;
+          cerr << "    pos " << j << ": '" << bucket[0].getSequence() << "' cost="
+               << bucket[0].getCost() << endl;
         }
       }
     }
@@ -1762,15 +1770,15 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
           subset, localPos, localRangeBegin, localRangeEnd,
           MotionOptimizerRangeParams{}.withMaxResults(
               clamp(nextEdit.origCharCount(), 1, 10)), "",
-          subsetBoundary, s.getRunningEffort(), navCtx).getResults();
+          subsetBoundary, navCtx).getResults();
 
       cerr << "    -> MOTIONS found: " << rangeResults.size() << endl;
-      for (auto& movResult : rangeResults) {
+      for (const auto& movResult : rangeResults) {
         if (!movResult.isValid()) continue;
-        movResult.addGoalLineOffset(beginLine);
+        CursorPos goalPos(movResult.getGoalPos().line + beginLine, movResult.getGoalPos().col);
         cerr << "      motion '" << movResult.getSequence() << "' -> ("
-             << movResult.getGoalPos().line << "," << movResult.getGoalPos().col << ")" << endl;
-        ctx.exploreMotionTransition(s, movResult.getSequence(), movResult.getGoalPos(), editsCompleted);
+             << goalPos.line << "," << goalPos.col << ")" << endl;
+        ctx.exploreMotionTransition(s, movResult.getSequence(), goalPos, editsCompleted);
       }
     }
   }
@@ -1875,7 +1883,7 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
     auto rangeResult = motionOpt.optimizeToRange(
         buffer, pos, rangeBegin, rangeEnd,
         MotionOptimizerRangeParams{}.withMaxResults(5), "",
-        boundary, RunningEffort(), navCtx);
+        boundary, navCtx);
 
     cerr << "Motion results: " << rangeResult.getResults().size() << endl;
     for (size_t i = 0; i < rangeResult.getResults().size(); i++) {
@@ -1954,9 +1962,10 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
     cerr << "    -> results: " << result.getStats().resultsFound
          << " nodes: " << result.getStats().nodesExplored << endl;
     for (size_t j = 0; j < result.resultCount(); j++) {
-      if (result.getResults()[j].isValid()) {
-        cerr << "    [" << j << "] '" << result.getResults()[j].getSequence()
-             << "' cost=" << result.getResults()[j].getCost() << endl;
+      const auto& bucket = result.getResults()[j];
+      if (!bucket.empty()) {
+        cerr << "    [" << j << "] '" << bucket[0].getSequence()
+             << "' cost=" << bucket[0].getCost() << endl;
       }
     }
   }
@@ -2059,16 +2068,17 @@ TEST_F(DebugTest, SuffixCacheComparison) {
 
   int stdValid = 0;
   for (size_t i = 0; i < stdResult.resultCount(); i++) {
-    if (stdResult.getResults()[i].isValid()) stdValid++;
+    if (!stdResult.getResults()[i].empty()) stdValid++;
   }
   cerr << "  nodes=" << stdResult.getStats().nodesExplored
        << " results=" << stdResult.getStats().resultsFound
        << " valid=" << stdValid << "/" << stdResult.resultCount()
        << " stop=" << to_string(stdResult.getStats().stopReason) << endl;
   for (size_t i = 0; i < stdResult.resultCount(); i++) {
-    if (stdResult.getResults()[i].isValid()) {
-      cerr << "  pos " << i << ": '" << stdResult.getResults()[i].getSequence()
-           << "' cost=" << stdResult.getResults()[i].getCost() << endl;
+    const auto& bucket = stdResult.getResults()[i];
+    if (!bucket.empty()) {
+      cerr << "  pos " << i << ": '" << bucket[0].getSequence()
+           << "' cost=" << bucket[0].getCost() << endl;
     }
   }
 
@@ -2080,7 +2090,7 @@ TEST_F(DebugTest, SuffixCacheComparison) {
 
   int cacheValid = 0;
   for (size_t i = 0; i < cacheResult.resultCount(); i++) {
-    if (cacheResult.getResults()[i].isValid()) cacheValid++;
+    if (!cacheResult.getResults()[i].empty()) cacheValid++;
   }
   cerr << "  nodes=" << cacheResult.getStats().nodesExplored
        << " results=" << cacheResult.getStats().resultsFound
@@ -2090,9 +2100,10 @@ TEST_F(DebugTest, SuffixCacheComparison) {
        << " cacheEntries=" << cacheResult.getStats().cacheEntries
        << " populations=" << cacheResult.getStats().cachePopulations << endl;
   for (size_t i = 0; i < cacheResult.resultCount(); i++) {
-    if (cacheResult.getResults()[i].isValid()) {
-      cerr << "  pos " << i << ": '" << cacheResult.getResults()[i].getSequence()
-           << "' cost=" << cacheResult.getResults()[i].getCost() << endl;
+    const auto& bucket = cacheResult.getResults()[i];
+    if (!bucket.empty()) {
+      cerr << "  pos " << i << ": '" << bucket[0].getSequence()
+           << "' cost=" << bucket[0].getCost() << endl;
     }
   }
 
@@ -2136,11 +2147,12 @@ TEST_F(DebugTest, CcAutoindentCollapse) {
   // Verify at least one result is valid
   bool anyValid = false;
   for (size_t i = 0; i < result.resultCount(); i++) {
-    if (result.getResults()[i].isValid()) {
+    const auto& bucket = result.getResults()[i];
+    if (!bucket.empty()) {
       anyValid = true;
-      const auto& seq = result.getResults()[i].getSequence();
+      const auto& seq = bucket[0].getSequence();
       cerr << "  pos " << i << ": '" << seq << "' cost="
-           << result.getResults()[i].getCost() << endl;
+           << bucket[0].getCost() << endl;
     }
   }
   ASSERT_TRUE(anyValid) << "No valid results found";
@@ -2149,8 +2161,9 @@ TEST_F(DebugTest, CcAutoindentCollapse) {
   auto oracle = make_unique<NeovimOracle>();
   int passed = 0, total = 0;
   for (size_t i = 0; i < result.resultCount(); i++) {
-    const Result& r = result.getResults()[i];
-    if (!r.isValid()) continue;
+    const auto& bucket = result.getResults()[i];
+    if (bucket.empty()) continue;
+    const auto& r = bucket[0];
     total++;
 
     CursorPos editPos = fromFlatIndex(static_cast<int>(i), initial);
@@ -2176,8 +2189,9 @@ TEST_F(DebugTest, CcAutoindentCollapse) {
 
   int passed2 = 0, total2 = 0;
   for (size_t i = 0; i < result2.resultCount(); i++) {
-    const Result& r = result2.getResults()[i];
-    if (!r.isValid()) continue;
+    const auto& bucket = result2.getResults()[i];
+    if (bucket.empty()) continue;
+    const auto& r = bucket[0];
     total2++;
 
     CursorPos editPos = fromFlatIndex(static_cast<int>(i), initial2);
@@ -2236,10 +2250,11 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
 
   int validCount = 0;
   for (size_t i = 0; i < result.resultCount(); i++) {
-    if (result.getResults()[i].isValid()) {
+    const auto& bucket = result.getResults()[i];
+    if (!bucket.empty()) {
       validCount++;
-      cerr << "  pos " << i << ": '" << result.getResults()[i].getSequence()
-           << "' cost=" << result.getResults()[i].getCost() << endl;
+      cerr << "  pos " << i << ": '" << bucket[0].getSequence()
+           << "' cost=" << bucket[0].getCost() << endl;
     }
   }
   cerr << "  valid: " << validCount << " / " << result.resultCount() << endl;
@@ -2261,10 +2276,11 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
 
   int bigValidCount = 0;
   for (size_t i = 0; i < bigResult.resultCount(); i++) {
-    if (bigResult.getResults()[i].isValid()) {
+    const auto& bucket = bigResult.getResults()[i];
+    if (!bucket.empty()) {
       bigValidCount++;
-      cerr << "  pos " << i << ": '" << bigResult.getResults()[i].getSequence()
-           << "' cost=" << bigResult.getResults()[i].getCost() << endl;
+      cerr << "  pos " << i << ": '" << bucket[0].getSequence()
+           << "' cost=" << bucket[0].getCost() << endl;
     }
   }
   cerr << "  valid: " << bigValidCount << " / " << bigResult.resultCount() << endl;
@@ -2285,10 +2301,11 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
 
   int dijValidCount = 0;
   for (size_t i = 0; i < dijResult.resultCount(); i++) {
-    if (dijResult.getResults()[i].isValid()) {
+    const auto& bucket = dijResult.getResults()[i];
+    if (!bucket.empty()) {
       dijValidCount++;
-      cerr << "  pos " << i << ": '" << dijResult.getResults()[i].getSequence()
-           << "' cost=" << dijResult.getResults()[i].getCost() << endl;
+      cerr << "  pos " << i << ": '" << bucket[0].getSequence()
+           << "' cost=" << bucket[0].getCost() << endl;
     }
   }
   cerr << "  valid: " << dijValidCount << " / " << dijResult.resultCount() << endl;
@@ -2611,9 +2628,10 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceDeleteEntireLineIter20) {
         EditResult eres = editOpt.optimizeEdit(
             d.deletedLines(), {}, d.boundary, eparams);
         for (size_t j = 0; j < eres.resultCount(); j++) {
-          if (eres.getResults()[j].isValid()) {
-            cerr << "    pos " << j << ": '" << eres.getResults()[j].getSequence()
-                 << "' cost=" << eres.getResults()[j].getCost() << endl;
+          const auto& bucket = eres.getResults()[j];
+          if (!bucket.empty()) {
+            cerr << "    pos " << j << ": '" << bucket[0].getSequence()
+                 << "' cost=" << bucket[0].getCost() << endl;
           }
         }
       }
@@ -2707,8 +2725,9 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceJoinLinesResidualEditOpt) {
     Lines effectiveLines = {"aaa", "xxx", "ccc"};
     for (int r = 0; r < static_cast<int>(deletedLines.size()); r++) {
       for (int c = 0; c < deletedLines[r].effectiveSize(); c++) {
-        const Result& result = res.getResults()[idx];
-        if (result.isValid()) {
+        const auto& bucket = res.getResults()[idx];
+        if (!bucket.empty()) {
+          const auto& result = bucket[0];
           int fullRow = r + (r == 0 ? static_cast<int>(beginPos.line) : 0);
           // For row 0, col offset is beginPos.col; for others, no offset
           // Actually need to compute proper full-buffer position

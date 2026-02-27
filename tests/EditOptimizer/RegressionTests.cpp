@@ -78,7 +78,7 @@ TEST_F(EditOptimizerRegression, SmallEmbeddedSeed465950_ReplayBoundaryPathMatche
   // Historical benchmark failure was an internal replay assert; this ensures
   // the optimizer completes and still yields a result for that start index.
   ASSERT_GT(results.size(), 2u);
-  EXPECT_TRUE(results[1].isValid());
+  EXPECT_FALSE(results[1].empty());
 }
 
 TEST_F(EditOptimizerRegression, BoundaryAwareReplayPrefixKeepsXApplicable) {

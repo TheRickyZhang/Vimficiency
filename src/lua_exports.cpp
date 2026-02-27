@@ -252,7 +252,7 @@ const char *vimficiency_analyze(
       MotionOptimizer opt(g_config_internal);
       res = opt.optimize(initialLines, initialPos, goalPos,
           MotionOptimizerParams{}.withMaxResults(RESULTS_CALCULATED), keyseq,
-          boundary, RunningEffort(), navigation_context).getResults();
+          boundary, navigation_context).getResults();
     } else {
       // Buffer changed - use CompositionOptimizer
       MotionBoundary boundary(initialLines,

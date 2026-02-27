@@ -52,7 +52,7 @@ protected:
     MotionBoundary boundary;
     return opt.optimize(lines, start, end,
                         MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
-                        userSeq, boundary, RunningEffort(), navContext).getResults();
+                        userSeq, boundary, navContext).getResults();
   }
 
   // Get cost of best result for a motion
@@ -257,7 +257,7 @@ TEST_F(ConfigurationTest, CountPenaltyOverrideAffectsMotionRanking) {
       .withMinCountRepeat(4);
 
   auto baseResults = opt.optimize(lines, start, end, params, "",
-                                  boundary, RunningEffort(), navContext).getResults();
+                                  boundary, navContext).getResults();
   ASSERT_FALSE(baseResults.empty());
 
   const Result* baseCounted = findBySequence(baseResults, "4w");
@@ -273,7 +273,7 @@ TEST_F(ConfigurationTest, CountPenaltyOverrideAffectsMotionRanking) {
   opts.countPenaltyOverrides[toIndex(CountClass::MotionWord)] = motionWordOverride;
 
   auto overrideResults = opt.optimize(lines, start, end, params, "",
-                                      boundary, RunningEffort(), navContext).getResults();
+                                      boundary, navContext).getResults();
   ASSERT_FALSE(overrideResults.empty());
 
   const Result* overrideCounted = findBySequence(overrideResults, "4w");

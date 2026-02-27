@@ -55,8 +55,9 @@ TEST_F(EditOptimizerOutputCorrectness, SingleLineEmbedded) {
     string expected = test.expectedAfterDeletion();
 
     for (size_t i = 0; i < res.resultCount(); i++) {
-      const Result& r = res.getResults()[i];
-      if (!r.isValid()) continue;
+      const auto& bucket = res.getResults()[i];
+      if (bucket.empty()) continue;
+      const Result& r = bucket[0];
 
       CursorPos editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
       CursorPos bufferPos = test.toFullBufferPos(editPos);
@@ -94,8 +95,9 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineFullBuffer) {
     EditResult res = pureDeletionResult(source, boundary);
 
     for (size_t i = 0; i < res.resultCount(); i += 2) {
-      const Result& r = res.getResults()[i];
-      if (!r.isValid()) continue;
+      const auto& bucket = res.getResults()[i];
+      if (bucket.empty()) continue;
+      const Result& r = bucket[0];
 
       CursorPos pos = fromFlatIndex(static_cast<int>(i), source);
 
@@ -135,8 +137,9 @@ TEST_F(EditOptimizerOutputCorrectness, Replacement_SameLength) {
     EditBoundary boundary(source, {0, 0}, source.endPos());
     EditResult res = opt.optimizeEdit(source, goal, boundary, params);
 
-    const Result& r = res.getResults()[0];
-    if (!r.isValid()) continue;
+    const auto& bucket0 = res.getResults()[0];
+    if (bucket0.empty()) continue;
+    const Result& r = bucket0[0];
     total++;
 
     const auto& seq = r.getSequence();
@@ -172,8 +175,9 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLineEmbedded) {
 
     // Test a subset of positions (every 4th to reduce test time)
     for (size_t i = 0; i < res.resultCount(); i += 4) {
-      const Result& r = res.getResults()[i];
-      if (!r.isValid()) continue;
+      const auto& bucket = res.getResults()[i];
+      if (bucket.empty()) continue;
+      const Result& r = bucket[0];
 
       CursorPos editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
       CursorPos bufferPos = test.toFullBufferPos(editPos);
@@ -221,8 +225,9 @@ TEST_F(EditOptimizerOutputCorrectness, SingleLine_Change) {
     EditResult res = opt.optimizeEdit(source, goal, boundary, params);
 
     for (size_t i = 0; i < res.resultCount(); i++) {
-      const Result& r = res.getResults()[i];
-      if (!r.isValid()) continue;
+      const auto& bucket = res.getResults()[i];
+      if (bucket.empty()) continue;
+      const Result& r = bucket[0];
 
       CursorPos pos = fromFlatIndex(static_cast<int>(i), source);
 
@@ -263,8 +268,9 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLine_FullBufferChange) {
     EditResult res = opt.optimizeEdit(source, goal, boundary, params);
 
     for (size_t i = 0; i < res.resultCount(); i += 4) {
-      const Result& r = res.getResults()[i];
-      if (!r.isValid()) continue;
+      const auto& bucket = res.getResults()[i];
+      if (bucket.empty()) continue;
+      const Result& r = bucket[0];
 
       CursorPos pos = fromFlatIndex(static_cast<int>(i), source);
 
@@ -319,8 +325,9 @@ TEST_F(EditOptimizerOutputCorrectness, MultiLine_EmbeddedChange) {
 
     // Test a subset of positions (every 4th to reduce test time)
     for (size_t i = 0; i < res.resultCount(); i += 4) {
-      const Result& r = res.getResults()[i];
-      if (!r.isValid()) continue;
+      const auto& bucket = res.getResults()[i];
+      if (bucket.empty()) continue;
+      const Result& r = bucket[0];
 
       CursorPos editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
       CursorPos bufferPos = test.toFullBufferPos(editPos);

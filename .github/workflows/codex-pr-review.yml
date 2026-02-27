@@ -4,6 +4,10 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+concurrency:
+  group: codex-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: write
@@ -70,42 +74,107 @@ jobs:
             function safeJsonParse(s) { try { return JSON.parse(s); } catch { return null; } }
             function isString(x) { return typeof x === "string"; }
             function isInt(x) { return Number.isInteger(x); }
+            function parseRightDiffLines(patch) {
+              const lines = new Set();
+              if (!isString(patch)) return lines;
+
+              let inHunk = false;
+              let rightLine = 0;
+
+              for (const row of patch.split("\n")) {
+                const hunk = row.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+                if (hunk) {
+                  inHunk = true;
+                  rightLine = Number(hunk[1]);
+                  continue;
+                }
+                if (!inHunk) continue;
+
+                if (row.startsWith("+") || row.startsWith(" ")) {
+                  lines.add(rightLine);
+                  rightLine++;
+                  continue;
+                }
+                if (row.startsWith("-") || row.startsWith("\\")) continue;
+              }
+              return lines;
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pull_number = context.issue.number;
+            const commit_id = context.payload.pull_request.head.sha;
 
             const parsed = safeJsonParse(raw);
 
             if (!parsed || !isString(parsed.body) || !Array.isArray(parsed.comments)) {
               await github.rest.pulls.createReview({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: context.issue.number,
+                owner,
+                repo,
+                pull_number,
+                commit_id,
                 event: "COMMENT",
                 body: typeof raw === "string" ? raw : String(raw),
               });
               return;
             }
 
-            const fs = require("fs");
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner,
+              repo,
+              pull_number,
+              per_page: 100,
+            });
+            const validLinesByPath = new Map(
+              files.map((f) => [f.filename, parseRightDiffLines(f.patch)])
+            );
+
             const comments = [];
+            let dropped = 0;
 
             for (const c of parsed.comments) {
-              if (!c || !isString(c.path) || !isInt(c.line) || c.line < 1) continue;
-              if (c.side !== "RIGHT") continue;
-              if (!isString(c.body) || !isString(c.severity)) continue;
-              if (c.severity === "low") continue;
-              if (!fs.existsSync(c.path)) continue;
+              if (!c || !isString(c.path) || !isInt(c.line) || c.line < 1) { dropped++; continue; }
+              if (c.side !== "RIGHT") { dropped++; continue; }
+              if (!isString(c.body) || !isString(c.severity)) { dropped++; continue; }
 
-              const nLines = fs.readFileSync(c.path, "utf8").split("\n").length;
-              if (c.line > nLines) continue;
+              const severity = c.severity.toLowerCase();
+              if (severity === "low") { dropped++; continue; }
 
-              comments.push({ path: c.path, line: c.line, side: "RIGHT", body: `[${c.severity}] ${c.body}` });
+              const validLines = validLinesByPath.get(c.path);
+              if (!validLines || !validLines.has(c.line)) { dropped++; continue; }
+
+              comments.push({ path: c.path, line: c.line, side: "RIGHT", body: `[${severity}] ${c.body}` });
               if (comments.length >= 20) break;
             }
 
-            await github.rest.pulls.createReview({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number,
+            const body = dropped > 0
+              ? `${parsed.body}\n\n(Filtered ${dropped} inline comment(s) that did not resolve to this PR diff.)`
+              : parsed.body;
+
+            const review = {
+              owner,
+              repo,
+              pull_number,
+              commit_id,
               event: "COMMENT",
-              body: parsed.body,
+              body,
               comments,
-            });
+            };
+
+            try {
+              await github.rest.pulls.createReview(review);
+            } catch (err) {
+              if (err?.status === 422 && comments.length > 0) {
+                await github.rest.pulls.createReview({
+                  owner,
+                  repo,
+                  pull_number,
+                  commit_id,
+                  event: "COMMENT",
+                  body: `${body}\n\n(Inline comments omitted after GitHub could not resolve at least one target line.)`,
+                  comments: [],
+                });
+                return;
+              }
+              throw err;
+            }

@@ -3,12 +3,6 @@ Insert Mode handling (just a lot more stuff)     ********* (very very difficult)
 
 Review implementation of BufferIndex in optimizeToRange() (is it exploring correctly on lines / columns? Correct passed in from composition?)
 
-Review usage of new Pos / CursorPos semantics
-
-Review
-
-
-
 == TODO Stack
 Verify universal half-open semantics
 9dedexC explored when C would suffice?
@@ -16,6 +10,9 @@ Overall, not enough other early branches explored; heuristic model locks in one 
 
 Overall, just verify for any missed ideas in CompositionOptimizer exploration
 
+Local-only RunningEffort context in MotionOptimizer
+
+Convert allowMultiplePerPosition -> maxMultiplePerPosition for more fine-grained in motion, and have composition pass down this param correctly!
 
 == Later:
 Migrate to modules when greater scope

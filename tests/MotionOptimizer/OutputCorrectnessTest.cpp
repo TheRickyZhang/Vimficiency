@@ -111,7 +111,7 @@ protected:
                                        const MotionBoundary& boundary) {
     MotionOptimizer opt(Config::uniform());
     return opt.optimize(subBuffer, start, end, {},
-                        "jjjjjjjjjj", boundary, RunningEffort(), navContext).getResults();
+                        "jjjjjjjjjj", boundary, navContext).getResults();
   }
 };
 

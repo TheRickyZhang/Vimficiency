@@ -57,8 +57,9 @@ TEST_F(EditOptimizerCostConsistencyTests, CostMatchesComputed) {
 
     EditResult res = pureDeletionResult(opt, lines, boundary);
 
-    for (const auto& result : res.getResults()) {
-      if (!result.isValid()) continue;
+    for (const auto& bucket : res.getResults()) {
+      if (bucket.empty()) continue;
+      const auto& result = bucket[0];
       totalResults++;
 
       const auto& seq = result.getSequence();

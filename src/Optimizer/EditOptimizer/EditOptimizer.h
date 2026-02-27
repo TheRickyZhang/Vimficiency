@@ -1,5 +1,6 @@
 #pragma once
 
+#include <span>
 #include <vector>
 
 #include "Keyboard/Config.h"
@@ -12,30 +13,37 @@
 #include "Types/Lines.h"
 
 
-struct EditResult : BaseOptimizerResult {
+struct EditResult : BaseOptimizerResult<std::vector<Result>> {
   EditResult() = default;
 
   // Constructor: initializes results and flat index for buffer-position lookup.
   // Buffer-position params default to edit-region-local (line 0, col 0).
-  EditResult(std::vector<Result> results, EditSearchStats stats,
+  // results is a 2D vector: one bucket of Results per starting position.
+  EditResult(std::vector<std::vector<Result>> results, EditSearchStats stats,
              const Lines& initialLines, int bufferBeginLine = 0,
              int bufferBeginCol = 0, CursorPos goalPos = {0, 0});
 
   const EditSearchStats& getStats() const { return stats_; }
 
-  // Look up the result for a buffer position. Returns nullptr if the position
-  // is outside the edit region or the result at that position is invalid.
+  // Look up the best result for a buffer position. Returns nullptr if the position
+  // is outside the edit region or has no result.
   // Return a nullable, const & view.
   // TODO (C++ 26): use optional<const T&>
   const Result* resultAt(int bufferLine, int bufferCol) const {
     int idx = resultIndexAt(bufferLine, bufferCol);
     if (idx < 0) return nullptr;
-    const Result& r = results_[static_cast<size_t>(idx)];
-    return r.isValid() ? &r : nullptr;
+    const auto& bucket = results_[static_cast<size_t>(idx)];
+    return bucket.empty() ? nullptr : &bucket[0];
   }
 
-  // Number of result entries
-  size_t resultCount() const { return results_.size(); }
+  // All captured results for this starting position, sorted by cost (best first).
+  std::span<const Result> resultsAt(int bufferLine, int bufferCol) const {
+    int idx = resultIndexAt(bufferLine, bufferCol);
+    if (idx < 0) return {};
+    if (idx >= static_cast<int>(results_.size())) return {};
+    const auto& bucket = results_[static_cast<size_t>(idx)];
+    return {bucket.data(), bucket.size()};
+  }
 
   const CursorPos& getGoalPos() const { return goalPos_; }
 

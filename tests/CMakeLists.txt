@@ -91,6 +91,7 @@ add_executable(vimficiency_tests
   # EditOptimizer
   EditOptimizer/CountPenaltyIntegrationTest.cpp
   EditOptimizer/ManualTest.cpp
+  EditOptimizer/MultipleResultsPerStartTest.cpp
   EditOptimizer/OutputCorrectnessTest.cpp
   EditOptimizer/CostConsistencyTest.cpp
   EditOptimizer/DeterminismTest.cpp
@@ -103,6 +104,7 @@ add_executable(vimficiency_tests
   MotionOptimizer/CostConsistencyTest.cpp
   MotionOptimizer/DeterminismTest.cpp
   MotionOptimizer/HumanApprovalTest.cpp
+  MotionOptimizer/StartingEffortTradeoffTest.cpp
 
   # Misc
   Misc/ConfigurationTest.cpp
