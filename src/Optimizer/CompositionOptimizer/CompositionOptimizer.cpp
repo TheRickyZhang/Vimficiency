@@ -186,6 +186,12 @@ CompositionResult CompositionOptimizer::optimize(
           for (const RangeResult& movResult : motionResult.getResults()) {
             if (!movResult.isValid()) continue;
 
+            const CursorPos& localGoal = movResult.getGoalPos();
+            assert(localGoal >= localRangeBegin && localGoal < localRangeEnd &&
+                   "pure insertion motion goal must be subset-local and inside target range");
+            // Intentionally do not remap localGoal to full-buffer coordinates here:
+            // this branch immediately appends the insertion and transitions using
+            // editResult.getGoalPos(), so intermediate motion endpoint isn't consumed.
             Sequence fullSeq = movResult.getSequence();
             fullSeq.append(insertCmd);
             ctx.exploreEditTransition(s, fullSeq, editResult.getGoalPos(),

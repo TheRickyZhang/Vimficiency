@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <queue>
+#include <cstdint>
 #include <unordered_map>
 
 #include "Keyboard/Config.h"
@@ -48,6 +49,12 @@ struct EditStateComparator {
 
 // EditSearchContext encapsulates shared state and logic for edit optimization search.
 struct EditSearchContext {
+  enum class StartStatus : uint8_t {
+    Active = 0,
+    Capped,
+    Exhausted
+  };
+
   // References to external data
   const EditBoundary& editBoundary;
   const EditOptimizerParams& params;
@@ -73,9 +80,11 @@ struct EditSearchContext {
   std::unordered_map<EditStateKey, double, EditStateKeyHash> costMap;
   int resultsFound = 0;            // Total completions reaching goal (consistent with other optimizers)
   int uniquePositionsCovered = 0;  // Unique starting positions that have a result
-  int positionsAtCap = 0;          // Starting positions that reached maxResultsPerStart
   int iterations = 0;
   int totalPositions;
+  std::vector<int> pendingByStart;
+  std::vector<StartStatus> statusByStart;
+  int terminalStarts = 0;
 
   // Stats tracking
   int motionsEmitted = 0;
@@ -108,6 +117,13 @@ struct EditSearchContext {
 
   // Add state to priority queue if it improves on existing cost
   void exploreNewState(EditState&& state);
+
+  bool isStartActive(int startIndex) const {
+    return statusByStart[static_cast<size_t>(startIndex)] == StartStatus::Active;
+  }
+
+  void markStartCapped(int startIndex);
+  void maybeMarkStartExhausted(int startIndex);
 
   // Explore a state via normal path (move) and optionally dot path (copy).
   // Checks dot eligibility first and copies only when needed.

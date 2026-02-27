@@ -9,8 +9,8 @@
 // maxResults limits total completions reaching goal state.
 // Higher default than other optimizers because multi-source search produces
 // duplicate completions (same position reached via different paths).
-// The search is also implicitly bounded by totalPositions (unique starting
-// positions covered) in shouldContinue().
+// The search also stops when all starts become terminal
+// (either capped or exhausted) in shouldContinue().
 
 struct EditOptimizerParams : OptimizerParamsBase {
   EditOptimizerParams() { maxResults = 20; }

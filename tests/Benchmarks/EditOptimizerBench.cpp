@@ -5,6 +5,8 @@
 // Run: ./build/tests/vimficiency_benchmarks --benchmark_filter="EditOptimizer.*"
 
 #include <algorithm>
+#include <array>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -64,6 +66,55 @@ static void runBenchmark(const BenchmarkSetup& cfg,
 
 static EditOptimizerParams withCap(EditOptimizerParams p, const BenchmarkSetup& s) {
   return p.withMaxResults(max(10, s.initialLines.totalPositions() / 4));
+}
+
+static vector<size_t> collectPerStartCounts(const EditResult& result, const Lines& lines) {
+  vector<size_t> counts;
+  for (int line = 0; line < static_cast<int>(lines.size()); line++) {
+    for (int col = 0; col < lines[line].effectiveSize(); col++) {
+      counts.push_back(result.resultsCountAt(line, col));
+    }
+  }
+  return counts;
+}
+
+static optional<BenchmarkSetup> findMixedTerminalSetup(int perStartCap) {
+  static const array<Lines, 12> candidates = {
+      Lines{"ab"},
+      Lines{"abc"},
+      Lines{"abcd"},
+      Lines{"a", "b"},
+      Lines{"ab", "c"},
+      Lines{"abc", "d"},
+      Lines{"a", "bc"},
+      Lines{"ab", "cd"},
+      Lines{"abc", "de"},
+      Lines{"a", "", "b"},
+      Lines{"ab", "", "cd"},
+      Lines{"abc", "", "def"}
+  };
+
+  EditOptimizer opt(benchConfig);
+  for (const Lines& lines : candidates) {
+    BenchmarkSetup setup(lines);
+    EditOptimizerParams params = EditOptimizerParams{}
+        .withMaxResults(5000)
+        .withMaxNodesExplored(200000)
+        .withMaxMultiplePerStartPosition(perStartCap);
+    EditResult result = opt.optimizePureDeletion(setup.initialLines, setup.boundary, params);
+    if (result.getStats().stopReason != SearchStopReason::AllResultsFound) continue;
+
+    bool hasCapped = false;
+    bool hasUncapped = false;
+    for (size_t c : collectPerStartCounts(result, lines)) {
+      hasCapped |= (c >= static_cast<size_t>(perStartCap));
+      hasUncapped |= (c > 0 && c < static_cast<size_t>(perStartCap));
+    }
+    if (hasCapped && hasUncapped) {
+      return setup;
+    }
+  }
+  return nullopt;
 }
 
 // =============================================================================
@@ -294,6 +345,97 @@ static void BM_EditSmallEmbeddedChange(benchmark::State& state) {
   setSearchCounters(state, totalStats);
 }
 
+// Sensitivity to high maxResults in mixed capped/exhausted per-start scenario.
+// Expected: runtime and explored nodes remain stable once terminal-state stop dominates.
+static void BM_EditMaxResultsTerminal(benchmark::State& state) {
+  int maxResults = static_cast<int>(state.range(0));
+  constexpr int perStartCap = 4;
+  constexpr int maxNodes = 200000;
+
+  static optional<BenchmarkSetup> mixedSetup = findMixedTerminalSetup(perStartCap);
+  if (!mixedSetup.has_value()) {
+    state.SkipWithError("No mixed terminal setup found for EditOpt/MaxResultsTerminal");
+    return;
+  }
+
+  EditSearchStats totalStats;
+  int allResultsFoundCount = 0;
+  for (auto _ : state) {
+    EditOptimizer opt(benchConfig);
+    EditOptimizerParams params = EditOptimizerParams{}
+        .withMaxResults(maxResults)
+        .withMaxNodesExplored(maxNodes)
+        .withMaxMultiplePerStartPosition(perStartCap);
+    EditResult result = opt.optimizePureDeletion(
+        mixedSetup->initialLines, mixedSetup->boundary, params);
+    accumulateStats(totalStats, result.getStats());
+    if (result.getStats().stopReason == SearchStopReason::AllResultsFound) {
+      allResultsFoundCount++;
+    }
+  }
+
+  setSearchCounters(state, totalStats);
+  state.counters["AllStop"] = benchmark::Counter(
+      allResultsFoundCount, benchmark::Counter::kAvgIterations);
+  state.counters["MaxR"] = static_cast<double>(maxResults);
+  state.counters["PerStartCap"] = static_cast<double>(perStartCap);
+}
+
+// Sensitivity to maxMultiplePerStartPosition (per-start result cap).
+// maxResults is kept high so per-start cap drives result collection.
+static void BM_EditPerStartCap(benchmark::State& state) {
+  int perStartCap = static_cast<int>(state.range(0));
+  constexpr int maxResults = 10000;
+  constexpr int maxNodes = 20000;
+  auto& seedMgr = SeedManager::instance();
+
+  EditSearchStats totalStats;
+  int allResultsFoundCount = 0;
+  int maxResultsFoundCount = 0;
+  int maxNodesStopCount = 0;
+  int iter = 0;
+  for (auto _ : state) {
+    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
+
+    BufferShape shape = BufferShape::CodeLike;
+    if (iter % 3 == 1) {
+      shape = BufferShape::Uniform;
+    } else if (iter % 3 == 2) {
+      shape = BufferShape::Prose;
+    }
+    int numLines = RandomGen::range(2, 6);
+    int avgLen = RandomGen::range(6, 16);
+    BenchmarkSetup setup(generateBuffer(numLines, avgLen, shape));
+
+    EditOptimizer opt(benchConfig);
+    EditOptimizerParams params = EditOptimizerParams{}
+        .withMaxResults(maxResults)
+        .withMaxNodesExplored(maxNodes)
+        .withMaxMultiplePerStartPosition(perStartCap);
+    EditResult result = opt.optimizePureDeletion(
+        setup.initialLines, setup.boundary, params);
+    accumulateStats(totalStats, result.getStats());
+    if (result.getStats().stopReason == SearchStopReason::AllResultsFound) {
+      allResultsFoundCount++;
+    } else if (result.getStats().stopReason == SearchStopReason::MaxResultsFound) {
+      maxResultsFoundCount++;
+    } else if (result.getStats().stopReason == SearchStopReason::MaxNodesReached) {
+      maxNodesStopCount++;
+    }
+    iter++;
+  }
+
+  setSearchCounters(state, totalStats);
+  state.counters["AllStop"] = benchmark::Counter(
+      allResultsFoundCount, benchmark::Counter::kAvgIterations);
+  state.counters["MaxStop"] = benchmark::Counter(
+      maxResultsFoundCount, benchmark::Counter::kAvgIterations);
+  state.counters["NodeStop"] = benchmark::Counter(
+      maxNodesStopCount, benchmark::Counter::kAvgIterations);
+  state.counters["PerStartCap"] = static_cast<double>(perStartCap);
+  state.counters["MaxR"] = static_cast<double>(maxResults);
+}
+
 // =============================================================================
 // Registration
 // =============================================================================
@@ -357,6 +499,14 @@ static int registerEditBenchmarks = []() {
   // SmallEmbeddedChange - small edit region with prefix/suffix boundary
   registerArgBenchmark("EditOpt/SmallEmbeddedChange", BM_EditSmallEmbeddedChange,
                        {1, 2, 3});
+
+  // High maxResults sensitivity with per-start multiplicity enabled.
+  registerArgBenchmark("EditOpt/MaxResultsTerminal", BM_EditMaxResultsTerminal,
+                       {1000, 5000, 20000, 100000});
+
+  // Per-start cap sensitivity with high maxResults.
+  registerArgBenchmark("EditOpt/PerStartCap", BM_EditPerStartCap,
+                       {1, 2, 4, 8, 12});
 
   return 0;
 }();

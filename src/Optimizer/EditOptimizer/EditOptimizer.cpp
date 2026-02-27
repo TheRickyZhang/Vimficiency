@@ -57,37 +57,14 @@ EditResult::EditResult(vector<Result> results, EditSearchStats stats,
 }
 
 void EditResult::setResultsByStart(vector<vector<Result>> resultsByStart) {
-  if (resultsByStart.size() < results_.size()) {
-    resultsByStart.resize(results_.size());
-  } else if (resultsByStart.size() > results_.size()) {
-    resultsByStart.resize(results_.size());
-  }
-
-  auto sameResult = [](const Result& a, const Result& b) {
-    return a.getSequence() == b.getSequence() &&
-           std::abs(a.getCost() - b.getCost()) < 1e-9;
-  };
-
+  // Buckets are already ordered by cost (A* pop order) with best at index 0,
+  // matching results_[i]. Just resize to match and store.
+  resultsByStart.resize(results_.size());
   for (size_t i = 0; i < results_.size(); i++) {
-    const Result& best = results_[i];
-    auto& bucket = resultsByStart[i];
-
-    if (!best.isValid()) {
-      bucket.clear();
-      continue;
-    }
-
-    auto it = std::find_if(bucket.begin(), bucket.end(),
-                           [&](const Result& r) { return sameResult(r, best); });
-    if (it != bucket.end()) {
-      Result matched = std::move(*it);
-      bucket.erase(it);
-      bucket.insert(bucket.begin(), std::move(matched));
-    } else {
-      bucket.insert(bucket.begin(), best);
+    if (!results_[i].isValid()) {
+      resultsByStart[i].clear();
     }
   }
-
   resultsByStart_ = std::move(resultsByStart);
 }
 
@@ -790,12 +767,14 @@ struct ModePolicy<false> {
   bool tryUseSuffixCache(const EditState& s, vector<Result>& results,
                          vector<vector<Result>>& resultsByStart,
                          int maxResultsPerStart) {
+    int idx = s.getStartIndex();
+    if (!ctx.isStartActive(idx)) return false;
+
     SuffixKey sk(s.getLinesHash(), static_cast<int>(s.getLines().size()), s.getPos(), s.getMode());
     auto cacheIt = suffixCache.find(sk);
     if (cacheIt == suffixCache.end()) return false;
 
     cacheHits++;
-    int idx = s.getStartIndex();
     auto& bucket = resultsByStart[static_cast<size_t>(idx)];
     if (static_cast<int>(bucket.size()) >= maxResultsPerStart) return true;
 
@@ -817,7 +796,7 @@ struct ModePolicy<false> {
       ctx.uniquePositionsCovered++;
     }
     if (static_cast<int>(bucket.size()) == maxResultsPerStart) {
-      ctx.positionsAtCap++;
+      ctx.markStartCapped(idx);
     }
     return true;
   }
@@ -919,6 +898,7 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
                           const Result& result,
                           bool captureGoalPos) {
     int idx = state.getStartIndex();
+    if (!ctx.isStartActive(idx)) return;
     auto& bucket = resultsByStart[static_cast<size_t>(idx)];
     if (static_cast<int>(bucket.size()) >= params.maxMultiplePerStartPosition) return;
 
@@ -935,7 +915,7 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
     }
 
     if (static_cast<int>(bucket.size()) == params.maxMultiplePerStartPosition) {
-      ctx.positionsAtCap++;
+      ctx.markStartCapped(idx);
     }
   };
 
@@ -1048,17 +1028,22 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
 
   // ---- Main search loop ----
   while (ctx.shouldContinue()) {
-    ctx.iterations++;
 
     auto maybeState = ctx.getNextValidState();
     if (!maybeState) continue;
     EditState s = std::move(*maybeState);
+    int startIndex = s.getStartIndex();
+    if (!ctx.isStartActive(startIndex)) {
+      continue;
+    }
+    ctx.iterations++;
 
     ctx.trackState(s);
 
     // Check goal at pop time — guaranteed lowest cost
     if (isGoalReached(s.getLines())) {
       recordResult(s, Result(s.getSeq(), s.getEffort()), true);
+      ctx.maybeMarkStartExhausted(startIndex);
       continue;
     }
 
@@ -1066,15 +1051,9 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
            s.getPos().line <= s.getLines().lastLine() &&
            "non-goal edit state must have in-bounds cursor line");
 
-    // Early stopping: skip if this startIndex already reached its per-start cap.
-    int startIndex = s.getStartIndex();
-    if (static_cast<int>(resultsByStart[static_cast<size_t>(startIndex)].size()) >=
-        params.maxMultiplePerStartPosition) {
-      continue;
-    }
-
     if (mode.tryUseSuffixCache(s, results, resultsByStart,
                                params.maxMultiplePerStartPosition)) {
+      ctx.maybeMarkStartExhausted(startIndex);
       continue;
     }
 
@@ -1120,6 +1099,7 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
       });
     ctx.exploreCountedWordEdits(s, deletionCb);
     ctx.exploreCountedCharEdits(s, deletionCb);
+    ctx.maybeMarkStartExhausted(startIndex);
   }
 
   EditResult out = mode.finalize(std::move(results), initialLines, goalLines, params,
