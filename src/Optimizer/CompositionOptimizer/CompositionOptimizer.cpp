@@ -381,8 +381,9 @@ CompositionResult CompositionOptimizer::optimize(
       for (const RangeResult& movResult : motionResult.getResults()) {
         if (!movResult.isValid()) continue;
 
-        // Remap results back to full-buffer coordinates
-        CursorPos goalPos(movResult.getGoalPos().line + beginLine, movResult.getGoalPos().col);
+        // Remap results back to full-buffer coordinates (preserving targetCol)
+        CursorPos goalPos = movResult.getGoalPos();
+        goalPos.line += beginLine;
         debug("    motion:", "\"" + movResult.getSequence().str() + "\"",
               "->", goalPos);
         ctx.exploreMotionTransition(s, movResult.getSequence(), goalPos,
@@ -430,7 +431,8 @@ CompositionResult CompositionOptimizer::optimize(
 
         for (const RangeResult& movResult : jMotionResult.getResults()) {
           if (!movResult.isValid()) continue;
-          CursorPos goalPos(movResult.getGoalPos().line + jBeginLine, movResult.getGoalPos().col);
+          CursorPos goalPos = movResult.getGoalPos();
+          goalPos.line += jBeginLine;
           debug("    J-motion:", "\"" + movResult.getSequence().str() + "\"",
                 "->", goalPos);
           ctx.exploreMotionTransition(s, movResult.getSequence(), goalPos,

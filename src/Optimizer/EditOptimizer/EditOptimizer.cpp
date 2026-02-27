@@ -7,7 +7,6 @@
 #include "EditOptimizer.h"
 
 #include <algorithm>
-#include <cmath>
 #include <memory>
 #include <optional>
 
@@ -57,8 +56,11 @@ EditResult::EditResult(vector<Result> results, EditSearchStats stats,
 }
 
 void EditResult::setResultsByStart(vector<vector<Result>> resultsByStart) {
-  // Buckets are already ordered by cost (A* pop order) with best at index 0,
-  // matching results_[i]. Just resize to match and store.
+  // Buckets are approximately cost-ordered (A* pop order), but not strictly:
+  // suffix-cache hits can emit results at the prefix's pop time, so a later
+  // prefix + cached suffix may have lower total effort than an earlier entry.
+  // This is fine — results_[i] (from resultAt) is the authoritative best,
+  // and resultsAt() callers don't depend on strict ordering.
   resultsByStart.resize(results_.size());
   for (size_t i = 0; i < results_.size(); i++) {
     if (!results_[i].isValid()) {
