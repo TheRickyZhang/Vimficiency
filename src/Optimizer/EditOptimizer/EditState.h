@@ -13,6 +13,7 @@
 #include "Effort/RunningEffort.h"
 #include "Types/Lines.h"
 #include "Keyboard/PhysicalKeys.h"
+#include "VimCore/VimCore.h"
 #include "VimCore/VimEditUtils.h"
 
 // =============================================================================
@@ -104,7 +105,30 @@ public:
   // Create new state with deletion applied
   [[nodiscard]] EditState afterDeletion(const Range& range) const {
     EditState newState = *this;
-    VimCore::deleteRange(newState.lines, range, newState.pos, Mode::Normal);
+    VimCore::deleteRangeAndUpdatePos(newState.lines, range, newState.pos, Mode::Normal);
+    newState.linesHash_ = hashLines(newState.lines);
+    return newState;
+  }
+
+  // Create new state with db/dB deletion semantics applied, including the
+  // special post-delete cursor adjustment after removing the begin line.
+  [[nodiscard]] EditState afterBackwardWordDeletion(const Range& range) const {
+    EditState newState = *this;
+    Range normalized = range;
+    normalized.normalize();
+    int oldLineCount = static_cast<int>(newState.lines.size());
+    CursorPos originalPos = newState.pos;
+
+    VimCore::deleteRangeAndUpdatePos(newState.lines, normalized, newState.pos, Mode::Normal);
+
+    if (originalPos.col == 0
+        && originalPos.line > normalized.begin.line
+        && VimCore::didDeleteRangeRemoveBeginLine(
+               normalized, oldLineCount, static_cast<int>(newState.lines.size()))
+        && !newState.lines[newState.pos.line].empty()) {
+      newState.pos.setCol(VimCore::firstNonBlankColInLineStr(newState.lines[newState.pos.line]));
+    }
+
     newState.linesHash_ = hashLines(newState.lines);
     return newState;
   }
@@ -113,7 +137,8 @@ public:
   // hasLinesBelow: if true, cursor is not clamped when deleting the last line
   [[nodiscard]] EditState afterLinewiseDeletion(int line, bool hasLinesBelow = false) const {
     EditState newState = *this;
-    VimCore::deleteRangeLinewise(newState.lines, LineRange(line, line + 1), newState.pos, hasLinesBelow);
+    VimCore::deleteLineRangeAndUpdatePos(
+        newState.lines, LineRange(line, line + 1), newState.pos, hasLinesBelow);
     newState.linesHash_ = hashLines(newState.lines);
     return newState;
   }
@@ -122,7 +147,7 @@ public:
   // hasLinesBelow: if true, cursor is not clamped when deleting the last line
   [[nodiscard]] EditState afterMultiLinewiseDeletion(LineRange range, bool hasLinesBelow = false) const {
     EditState newState = *this;
-    VimCore::deleteRangeLinewise(newState.lines, range, newState.pos, hasLinesBelow);
+    VimCore::deleteLineRangeAndUpdatePos(newState.lines, range, newState.pos, hasLinesBelow);
     newState.linesHash_ = hashLines(newState.lines);
     return newState;
   }

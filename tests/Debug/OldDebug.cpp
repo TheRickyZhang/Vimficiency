@@ -98,7 +98,7 @@ private:
 class DebugTest : public ::testing::Test {
 protected:
   Config config = Config::uniform();
-  EditOptimizerParams params{.maxResults = 30, .maxNodesExplored = 100000};
+  EditOptimizerParams params{.maxResults = 30, .maxTotalPops = 100000};
 
   EditOptimizer makeOptimizer() {
     return EditOptimizer(config);
@@ -443,7 +443,7 @@ TEST_F(DebugTest, DISABLED_InvestigateSingleLineSurrounded) {
   EditOptimizer opt(config);
   EditResult res = opt.optimizePureDeletion(
       editRegion, boundary,
-      EditOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(100000));
+      EditOptimizerParams{}.withMaxResults(30).withMaxTotalPops(100000));
 
   cerr << "\nResults (typeAllResults):" << endl;
   for (int i = 0; i < static_cast<int>(res.typeAllResults.size()); i++) {
@@ -487,14 +487,14 @@ TEST_F(DebugTest, DISABLED_InvestigatePosition11) {
   EditOptimizer opt10k(config);
   EditResult res10k = opt10k.optimizePureDeletion(
       initialLines, boundary,
-      EditOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(10000));
+      EditOptimizerParams{}.withMaxResults(30).withMaxTotalPops(10000));
   cerr << "10K iterations: " << res10k.typeAllResults[11].getSequence()
        << " (cost=" << res10k.typeAllResults[11].getCost() << ")" << endl;
 
   EditOptimizer opt1m(config);
   EditResult res1m = opt1m.optimizePureDeletion(
       initialLines, boundary,
-      EditOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(1000000));
+      EditOptimizerParams{}.withMaxResults(30).withMaxTotalPops(1000000));
   cerr << "1M iterations:  " << res1m.typeAllResults[11].getSequence()
        << " (cost=" << res1m.typeAllResults[11].getCost() << ")" << endl;
 }
@@ -639,17 +639,6 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceIndexFailure) {
 
   auto subResult3 = oracle_->simulate(subBuffer, 3, 6, "2(b");
   cerr << "Sub buffer:  2(b from (3,6) -> (" << subResult3.row << ", " << subResult3.col << ")" << endl;
-
-  // What our optimizer would predict
-  cerr << "\n--- getTwoClosest results for sentence ---" << endl;
-  CursorPos goal(0, 0);  // backwards search
-  auto [under, over] = subIdx.getTwoClosest(LandingType::Sentence, CursorPos(3, 6), goal);
-  if (under.valid()) {
-    cerr << "Undershoot: count=" << under.count << " pos=(" << under.pos.line << ", " << under.pos.col << ")" << endl;
-  }
-  if (over.valid()) {
-    cerr << "Overshoot: count=" << over.count << " pos=(" << over.pos.line << ", " << over.pos.col << ")" << endl;
-  }
 
   // Trace VimCore::motionSentenceEndpoint to compare with Neovim
   cerr << "\n=== VimCore::motionSentenceEndpoint trace ===" << endl;

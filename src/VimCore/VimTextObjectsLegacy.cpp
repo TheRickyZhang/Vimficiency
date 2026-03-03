@@ -1,4 +1,5 @@
 #include "VimTextObjectsLegacy.h"
+#include "VimEditUtils.h"
 
 #include <algorithm>
 #include <utility>
@@ -6,13 +7,6 @@
 using namespace std;
 
 namespace VimTextObjectsLegacy {
-
-namespace {
-CursorPos onePastOnSameLine(const Lines& lines, const CursorPos& inclusivePos) {
-  int lineLen = static_cast<int>(lines[inclusivePos.line].size());
-  return CursorPos(inclusivePos.line, std::min(inclusivePos.col + 1, lineLen));
-}
-} // namespace
 
 // -----------------------------------------------------------------------------
 // Quote text objects (i", a", i', a')
@@ -211,7 +205,7 @@ Range aroundBracket(const Lines& lines, CursorPos pos, char open, char close) {
     return Range(pos, pos);
   }
 
-  return Range(openPos, onePastOnSameLine(lines, closePos));
+  return Range(openPos, VimCore::onePastOnSameLine(lines, closePos));
 }
 
 } // namespace VimTextObjectsLegacy

@@ -35,14 +35,11 @@ struct MotionSearchContext {
   using PriorityQueue = std::priority_queue<MotionState, std::vector<MotionState>, std::greater<MotionState>>;
   PriorityQueue pq;
   std::unordered_map<Pos, double> costMap;
-  int nodesProcessed = 0;   // Non-stale states processed (user-facing limit)
-  int totalPops = 0;        // All pops including stale (internal safety)
+  int nodesProcessed = 0;   // Non-stale states processed (diagnostic metric)
+  int totalPops = 0;        // All pops including stale (hard budget)
   int motionsEmitted = 0;   // Total motions generated (for stats)
   int statesSkipped = 0;    // States skipped due to staleness
   double maxEffort;  // userEffort * exploreFactor
-
-  // Internal safety: hard cap on total pops to prevent runaway loops
-  static constexpr int SAFETY_MULTIPLIER = 2;
 
   // Debug: optionally track explored states
   std::vector<ExploredState> exploredStates;
@@ -107,9 +104,7 @@ struct MotionSearchContext {
   // Check if search should continue
   bool shouldContinue() const {
     if (pq.empty()) return false;
-    if (nodesProcessed >= params.maxNodesExplored) return false;
-    // Safety cap: prevent runaway loops if too many stale nodes
-    if (totalPops >= params.maxNodesExplored * SAFETY_MULTIPLIER) return false;
+    if (totalPops >= params.maxTotalPops) return false;
     return true;
   }
 
@@ -142,6 +137,7 @@ struct MotionSearchContext {
   MotionSearchStats getStats(int resultsFound) const {
     MotionSearchStats stats;
     stats.nodesExplored = nodesProcessed;
+    stats.totalPops = totalPops;
     stats.resultsFound = resultsFound;
     stats.queueSizeAtStop = static_cast<int>(pq.size());
     stats.motionsEmitted = motionsEmitted;
@@ -150,8 +146,8 @@ struct MotionSearchContext {
 
     if (resultsFound >= params.maxResults) {
       stats.stopReason = SearchStopReason::MaxResultsFound;
-    } else if (nodesProcessed >= params.maxNodesExplored) {
-      stats.stopReason = SearchStopReason::MaxNodesReached;
+    } else if (totalPops >= params.maxTotalPops) {
+      stats.stopReason = SearchStopReason::MaxPopsReached;
     } else if (pq.empty()) {
       stats.stopReason = SearchStopReason::FullyExplored;
     }

@@ -50,3 +50,4 @@ Interesting (maybe?) things that have come up:
 - How to develop an API supporting compile-time parameters still open to runtime configuration later
 - std::to_chars really fast at transcription: unusaully locale-independent, non-owning and non-throwing
 - Restrictions on constexpr constructor usage
+- 16 byte rule for threshold on const& vs pass by value; remember that only long, pointer, and size_t went from 4 -> 8 bytes from 32 -> 64 bit architecture

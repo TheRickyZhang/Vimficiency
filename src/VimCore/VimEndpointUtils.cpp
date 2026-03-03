@@ -1,5 +1,6 @@
 #include "VimEndpointUtils.h"
 #include "VimCore.h"
+#include "VimEditUtils.h"
 
 #include <algorithm>
 #include <cassert>
@@ -10,13 +11,6 @@
 using namespace std;
 
 namespace VimCore {
-
-namespace {
-CursorPos onePastOnSameLine(const Lines& lines, const CursorPos& inclusivePos) {
-  int lineLen = static_cast<int>(lines[inclusivePos.line].size());
-  return CursorPos(inclusivePos.line, std::min(inclusivePos.col + 1, lineLen));
-}
-} // namespace
 
 // =============================================================================
 // Word endpoint/range computation
@@ -99,7 +93,7 @@ CursorPos wordEndpointToRangeEnd(CursorPos endpoint,
   switch (edgeType) {
     case EdgeType::WordEdge:
     case EdgeType::GapEdge:
-      return onePastOnSameLine(lines, endpoint);
+      return VimCore::onePastOnSameLine(lines, endpoint);
     case EdgeType::NextEdge:
       return endpoint;
     default: __builtin_unreachable();
@@ -122,7 +116,7 @@ static Range computeWhitespaceRun(CursorPos cursor, const Lines& lines) {
     end = next;
     next = lines.getNextPos(end);
   }
-  return Range(start, onePastOnSameLine(lines, end));
+  return Range(start, VimCore::onePastOnSameLine(lines, end));
 }
 
 Range textObjectCore(CursorPos cursor, const Lines& lines, bool isInner,
@@ -853,7 +847,7 @@ CursorPos sentenceEndpointToRangeEnd(CursorPos endpoint,
   switch (edgeType) {
     case SentenceEdgeType::SentenceEdge:
     case SentenceEdgeType::GapEdge:
-      return onePastOnSameLine(lines, endpoint);
+      return VimCore::onePastOnSameLine(lines, endpoint);
     case SentenceEdgeType::NextEdge:
       return endpoint;
     default: __builtin_unreachable();

@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "MotionOptimizerParams.h"
+#include "BufferIndex.h"
 
 #include "Optimizer/OptimizerResult.h"
 #include "Optimizer/RangeResult.h"
@@ -16,7 +17,6 @@
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 
-#include "BufferIndex.h"
 
 // Generally MotionResult / RangeMotinoResult are coupled with MotionOptimizer return results, but if there are cases where they aren't, consider isolating these declarations
 struct MotionResult : BaseOptimizerResult<> {
@@ -49,7 +49,7 @@ struct MotionOptimizer {
 
   // Returns results and search statistics
   // ~ O(n^2)
-  // Note: Internally dispatches to optimizeImpl<Forward> based on initialPos vs goalPos
+  // firstPos/lastPos are inclusive endpoints; direction is inferred internally.
   MotionResult optimize(
     // Core information
     const Lines& lines,
@@ -72,7 +72,7 @@ struct MotionOptimizer {
   // Returns up to params.maxResults unique end positions (or total paths if allowMultiplePerPosition).
   // Precondition: initialPos must NOT be in [rangeBegin, rangeEnd) (nothing to optimize)
 
-  // Simple wrapper to forward constructed BufferIndex
+  // Convenience overload that builds a local BufferIndex for this call.
   RangeMotionResult optimizeToRange(
     const Lines& lines,
     const CursorPos& initialPos,
@@ -84,7 +84,7 @@ struct MotionOptimizer {
     const NavContext& navigationContext = NavContext()
   );
 
-  // Overload with caller-provided BufferIndex
+  // Overload with caller-provided BufferIndex and coordinate offset.
   RangeMotionResult optimizeToRange(
     const Lines& lines,
     const CursorPos& initialPos,
@@ -94,11 +94,14 @@ struct MotionOptimizer {
     std::string_view userSequence,
     const MotionBoundary& boundary,
     const NavContext& navigationContext,
-    BufferIndexRef bufferRef
+    const BufferIndex& bufferIndex,
+    int lineOffset
   );
 
 private:
-  // Templated implementations after delegation
+  // Templated implementation: single-goal search
+  // initialPos is the cursor origin, goalPos is the inclusive landing target.
+  // Internally converts goalPos to half-open range for MotionExplorer.
   template<bool Forward>
   MotionResult optimizeImpl(
     const Lines& lines,

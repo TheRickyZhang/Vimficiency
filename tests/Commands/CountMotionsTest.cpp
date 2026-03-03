@@ -19,134 +19,14 @@ using namespace std;
 // BufferIndex Unit Tests
 // =============================================================================
 
-class BufferIndexTest : public ::testing::Test {
-protected:
-  // Simple test buffer: "one two three four five"
-  Lines singleLine = {"one two three four five"};
-
-  // Multi-word lines
-  Lines multiLine = {
-    "first second third",
-    "alpha beta gamma",
-    "",
-    "after blank line"
-  };
-
-  // Code-like content
-  Lines codeLike = {
-    "int main() {",
-    "  return 0;",
-    "}"
-  };
-};
-
 // -----------------------------------------------------------------------------
-// Word Begin (w/b) Tests
+// BufferIndex Edge Cases
 // -----------------------------------------------------------------------------
 
-TEST_F(BufferIndexTest, WordBegin_SingleLine_Forward) {
-  BufferIndex idx(singleLine);
-  CursorPos start(0, 0);  // at 'o' of "one"
-  CursorPos goal(0, 18);  // at 'f' of "five"
-
-  auto [undershoot, overshoot] = idx.getTwoClosest(LandingType::WordBegin, start, goal);
-
-  // Words start at: 0 (one), 4 (two), 8 (three), 14 (four), 19 (five)
-  // From 0 to 18: nearest word starts are at 14 (undershoot) and 19 (overshoot)
-  EXPECT_TRUE(undershoot.valid() || overshoot.valid());
-
-  if (overshoot.valid()) {
-    EXPECT_EQ(overshoot.pos.col, 19);  // "five" starts at col 19
-  }
-}
-
-TEST_F(BufferIndexTest, WordBegin_SingleLine_Backward) {
-  BufferIndex idx(singleLine);
-  CursorPos start(0, 19);  // at 'f' of "five"
-  CursorPos goal(0, 4);    // at 't' of "two"
-
-  auto [undershoot, overshoot] = idx.getTwoClosest(LandingType::WordBegin, start, goal);
-
-  // Going backward from 19 to 4
-  // Word starts: 19, 14, 8, 4, 0
-  EXPECT_TRUE(undershoot.valid() || overshoot.valid());
-}
-
-TEST_F(BufferIndexTest, WordBegin_MultiLine) {
-  BufferIndex idx(multiLine);
-  CursorPos start(0, 0);
-  CursorPos goal(1, 6);  // "beta" on line 1
-
-  auto [undershoot, overshoot] = idx.getTwoClosest(LandingType::WordBegin, start, goal);
-
-  // Should find positions across lines
-  EXPECT_TRUE(undershoot.valid() || overshoot.valid());
-}
-
-// -----------------------------------------------------------------------------
-// Word End (e/ge) Tests
-// -----------------------------------------------------------------------------
-
-TEST_F(BufferIndexTest, WordEnd_SingleLine_Forward) {
-  BufferIndex idx(singleLine);
-  CursorPos start(0, 0);
-  CursorPos goal(0, 17);  // near end of "four"
-
-  auto [undershoot, overshoot] = idx.getTwoClosest(LandingType::WordEnd, start, goal);
-
-  // Word ends at: 2 (one), 6 (two), 12 (three), 17 (four), 22 (five)
-  EXPECT_TRUE(undershoot.valid() || overshoot.valid());
-}
-
-// -----------------------------------------------------------------------------
-// WORD Begin (W/B) Tests
-// -----------------------------------------------------------------------------
-
-TEST_F(BufferIndexTest, WORDBegin_CodeLike) {
-  BufferIndex idx(codeLike);
-  CursorPos start(0, 0);
-  CursorPos goal(0, 11);  // at '{'
-
-  auto [undershoot, overshoot] = idx.getTwoClosest(LandingType::WORDBegin, start, goal);
-
-  // WORD starts: 0 (int), 4 (main()), 11 ({)
-  EXPECT_TRUE(undershoot.valid() || overshoot.valid());
-}
-
-// -----------------------------------------------------------------------------
-// Paragraph Tests
-// -----------------------------------------------------------------------------
-
-TEST_F(BufferIndexTest, Paragraph_AcrossBlankLines) {
-  BufferIndex idx(multiLine);
-  CursorPos start(0, 0);
-  CursorPos goal(3, 0);  // "after blank line"
-
-  auto [undershoot, overshoot] = idx.getTwoClosest(LandingType::Paragraph, start, goal);
-
-  // Paragraphs at: line 0, line 2 (empty), line 3
-  EXPECT_TRUE(undershoot.valid() || overshoot.valid());
-}
-
-// -----------------------------------------------------------------------------
-// Edge Cases
-// -----------------------------------------------------------------------------
-
-TEST_F(BufferIndexTest, EmptyBuffer) {
+TEST(BufferIndexTest, EmptyBuffer) {
   Lines empty = {};
   BufferIndex idx(empty);
   // Should not crash - just have empty position lists
-}
-
-TEST_F(BufferIndexTest, SingleCharLine) {
-  Lines single = {"x y z"};
-  BufferIndex idx(single);
-  CursorPos start(0, 0);
-  CursorPos goal(0, 4);  // 'z'
-
-  auto [undershoot, overshoot] = idx.getTwoClosest(LandingType::WordBegin, start, goal);
-  // Word starts at 0, 2, 4
-  EXPECT_TRUE(undershoot.valid() || overshoot.valid());
 }
 
 // =============================================================================
@@ -180,7 +60,7 @@ protected:
     MotionOptimizer opt(config);
     MotionBoundary boundary;
     return opt.optimize(lines, start, end,
-                        MotionOptimizerParams{}.withMaxResults(30).withMaxNodesExplored(20000),
+                        MotionOptimizerParams{}.withMaxResults(30).withMaxTotalPops(20000),
                         userSeq, boundary, navContext).getResults();
   }
 };

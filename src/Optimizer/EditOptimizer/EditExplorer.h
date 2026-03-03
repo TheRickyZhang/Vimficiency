@@ -20,7 +20,7 @@ struct EditBoundary;
 // Forward declare callback types (defined in EditSearchContext.h)
 // Each callback receives a fully bound command payload.
 using DeletionCallback = std::function<void(const Range&, const SequenceBinding&)>;
-using LinewiseCallback = std::function<void(int line, const SequenceBinding&)>;
+using LinewiseCallback = std::function<void(LineRange, const SequenceBinding&)>;
 using JoinCallback = std::function<void(bool addSpace, const SequenceBinding&)>;
 
 // Counted operation callbacks
@@ -92,7 +92,8 @@ public:
   template<bool Forward>
   void exploreSentenceEdits(
       const std::vector<Edit::SentenceEditSpecNoDir>& specs,
-      const CursorPos& cursor, const Lines& lines, DeletionCallback onDeletion);
+      const CursorPos& cursor, const Lines& lines,
+      DeletionCallback onDeletion, LinewiseCallback onLinewise);
 
   // ================== Non-templated Exploration Methods ==================
   void exploreTextObjectEdits(

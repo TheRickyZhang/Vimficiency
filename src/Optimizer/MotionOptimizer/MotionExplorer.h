@@ -21,25 +21,26 @@
 // 2. Lightweight: Uses exploreAllStandardMotions only, no directional methods
 class MotionExplorer {
   MotionSearchContext& ctx;
-  BufferIndexRef bufferRef_;
+  const BufferIndex& bufferIndex_;
+  int bufferLineOffset_;
 
-  // Range state — rangeFirst_/rangeLast_ are inclusive valid positions (Pos),
-  // rangeEnd_ is the half-open end (CursorPos, needed for exploreNewStateToRange).
+  // Range state — rangeFirst_/rangeLast_ are inclusive valid positions,
+  // rangeEnd_ is the half-open end (needed for exploreNewStateToRange).
   Pos rangeFirst_;
   Pos rangeLast_;
-  CursorPos rangeEnd_;
+  Pos rangeEnd_;
 
 public:
   // Range mode constructor for directional exploration.
   // Accepts half-open [rangeBegin, rangeEnd) and converts to inclusive first/last internally.
   MotionExplorer(MotionSearchContext& ctx,
-                 const CursorPos& rangeBegin,
-                 const CursorPos& rangeEnd,
+                 Pos rangeBegin,
+                 Pos rangeEnd,
                  const BufferIndex& bufferIndex,
                  int lineOffset)
-      : ctx(ctx), bufferRef_(bufferIndex, lineOffset),
+      : ctx(ctx), bufferIndex_(bufferIndex), bufferLineOffset_(lineOffset),
         rangeFirst_(rangeBegin), rangeEnd_(rangeEnd) {
-    rangeLast_ = ctx.lines.getPrevPos(rangeEnd_);
+    rangeLast_ = ctx.lines.getPrevPos(CursorPos(rangeEnd_.line, rangeEnd_.col));
     if (!rangeLast_.isValid()) {
       rangeLast_ = rangeFirst_;
     }
@@ -275,14 +276,14 @@ public:
       else return KeyedSequence::byId(BackwardKS);
     }();
 
-    int off = bufferRef_.lineOffset;
+    int off = bufferLineOffset_;
 
     // Convert local → global coordinates for BufferIndex query
-    CursorPos globalPos(pos.line + off, pos.col, pos.targetCol);
-    CursorPos globalRangeFirst(rangeFirst_.line + off, rangeFirst_.col);
-    CursorPos globalRangeEnd(rangeEnd_.line + off, rangeEnd_.col);
+    Pos globalPos(pos.line + off, pos.col);
+    Pos globalRangeFirst(rangeFirst_.line + off, rangeFirst_.col);
+    Pos globalRangeLast(rangeLast_.line + off, rangeLast_.col);
 
-    auto results = bufferRef_.index.getClosestInRange(LT, globalPos, globalRangeFirst, globalRangeEnd);
+    auto results = bufferIndex_.getClosestInRange<Forward>(LT, globalPos, globalRangeFirst, globalRangeLast);
     for (const auto& r : results) {
       if (!r.valid()) continue;
       if (r.count < ctx.params.minPrefixCount) continue;
@@ -538,5 +539,5 @@ public:
 
   // Range accessors
   const Pos& getRangeFirst() const { return rangeFirst_; }
-  const CursorPos& getRangeEnd() const { return rangeEnd_; }
+  const Pos& getRangeEnd() const { return rangeEnd_; }
 };

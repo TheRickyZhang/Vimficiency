@@ -123,7 +123,7 @@ private:
 class DebugTest : public ::testing::Test {
 protected:
   Config config = Config::uniform();
-  EditOptimizerParams params = EditOptimizerParams{}.withMaxNodesExplored(100000);
+  EditOptimizerParams params = EditOptimizerParams{}.withMaxTotalPops(100000);
 
   EditOptimizer makeOptimizer() {
     return EditOptimizer(config);
@@ -762,7 +762,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
         }
         Lines afterBuf = buf;
         CursorPos afterPos = pos;
-        VimCore::deleteRange(afterBuf, range, afterPos);
+        VimCore::deleteRangeAndUpdatePos(afterBuf, range, afterPos);
         cerr << " range=(" << range.begin.col << "," << range.end.col << ")"
              << " after='" << afterBuf[0] << "' pos=" << afterPos.col << endl;
       }
@@ -1345,7 +1345,7 @@ TEST_F(NeovimOracleDebug, InvestigateCiwMismatch) {
     cerr << "'" << endl;
 
     // Apply deletion (change mode)
-    VimCore::deleteRange(ourLines, iwRange, pos, Mode::Insert);
+    VimCore::deleteRangeAndUpdatePos(ourLines, iwRange, pos, Mode::Insert);
     cerr << "  After ciw deletion: buffer=" << ourLines << endl;
     cerr << "  Cursor: (" << pos.line << "," << pos.col << ")" << endl;
     cerr << "  Line content: '" << ourLines[pos.line] << "'" << endl;
@@ -2235,7 +2235,7 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
   cerr << "\n=== EditOptimizer (default params) ===" << endl;
   EditOptimizer editOpt(config);
   EditOptimizerParams defaultParams;
-  cerr << "  maxNodesExplored=" << defaultParams.maxNodesExplored
+  cerr << "  maxTotalPops=" << defaultParams.maxTotalPops
        << " maxResults=" << defaultParams.maxResults << endl;
 
   EditResult result = editOpt.optimizeEdit(
@@ -2260,9 +2260,9 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
   cerr << "  valid: " << validCount << " / " << result.resultCount() << endl;
 
   // Run with much higher budget
-  cerr << "\n=== EditOptimizer (500k nodes) ===" << endl;
+  cerr << "\n=== EditOptimizer (500k pops) ===" << endl;
   EditOptimizerParams bigParams = EditOptimizerParams{}
-      .withMaxNodesExplored(500000);
+      .withMaxTotalPops(500000);
 
   EditResult bigResult = editOpt.optimizeEdit(
       deletedLines, insertedLines, boundary, bigParams,
@@ -2445,7 +2445,7 @@ TEST_F(DebugTest, ReplayVerification_Charwise) {
 
     Lines coreLines = buf;
     CursorPos corePos = start;
-    VimCore::deleteRange(coreLines, range, corePos, Mode::Normal);
+    VimCore::deleteRangeAndUpdatePos(coreLines, range, corePos, Mode::Normal);
     EXPECT_EQ(editLines, coreLines) << "x lines mismatch";
     EXPECT_EQ(editPos.line, corePos.line) << "x line mismatch";
     EXPECT_EQ(editPos.col, corePos.col) << "x col mismatch";
@@ -2459,7 +2459,7 @@ TEST_F(DebugTest, ReplayVerification_Charwise) {
 
     Lines coreLines = buf;
     CursorPos corePos = start;
-    VimCore::deleteRange(coreLines, range, corePos, Mode::Normal);
+    VimCore::deleteRangeAndUpdatePos(coreLines, range, corePos, Mode::Normal);
     EXPECT_EQ(editLines, coreLines) << "D lines mismatch";
     EXPECT_EQ(editPos.line, corePos.line) << "D line mismatch";
     EXPECT_EQ(editPos.col, corePos.col) << "D col mismatch";
@@ -2941,7 +2941,8 @@ TEST_F(DebugTest, DISABLED_ReproduceSmallEmbeddedSentenceCrash) {
     // Apply the deletion to see what the explorer computes
     Lines explorerBuf = editRegion;
     CursorPos explorerPos = cursor;
-    VimCore::deleteRange(explorerBuf, Range(cursor, endpoint), explorerPos, Mode::Normal);
+    VimCore::deleteRangeAndUpdatePos(
+        explorerBuf, Range(cursor, endpoint), explorerPos, Mode::Normal);
     cerr << "Explorer d) result: " << explorerBuf << " pos=(" << explorerPos.line << "," << explorerPos.col << ")" << endl;
   }
 

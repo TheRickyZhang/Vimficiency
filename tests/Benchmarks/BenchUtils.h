@@ -58,6 +58,7 @@ inline std::string getSeedModeDescription() {
 template<typename S>
 void accumulateStats(S& accumulated, const S& iteration) {
   accumulated.nodesExplored += iteration.nodesExplored;
+  accumulated.totalPops += iteration.totalPops;
   accumulated.resultsFound += iteration.resultsFound;
   accumulated.queueSizeAtStop += iteration.queueSizeAtStop;
   accumulated.statesSkipped += iteration.statesSkipped;
@@ -77,6 +78,8 @@ template<typename S>
 void setSearchCounters(benchmark::State& state, const S& stats) {
   state.counters["Searched"] = benchmark::Counter(
       stats.nodesExplored, benchmark::Counter::kAvgIterations);
+  state.counters["Pops"] = benchmark::Counter(
+      stats.totalPops, benchmark::Counter::kAvgIterations);
   state.counters["Found"] = benchmark::Counter(
       stats.resultsFound, benchmark::Counter::kAvgIterations);
   state.counters["Remain"] = benchmark::Counter(

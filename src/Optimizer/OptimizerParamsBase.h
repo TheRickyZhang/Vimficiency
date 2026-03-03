@@ -15,10 +15,9 @@ struct OptimizerParamsBase {
   // Maximum results (paths) to find
   int maxResults = 10;
 
-  // Maximum non-stale states to process (actual work done, not queue pops).
-  // Stale states (superseded by better paths) don't count toward this limit.
-  // Internal safety cap at 10x this value prevents runaway loops from excessive stale nodes.
-  int maxNodesExplored = 50000;
+  // Hard search budget: every priority-queue pop counts, including stale
+  // or otherwise discarded states. This is the primary runtime guard.
+  int maxTotalPops = 50000;
 
   // Search stops when effort > baseEffort * exploreFactor
   // baseEffort is typically user's sequence effort or cheapest result found

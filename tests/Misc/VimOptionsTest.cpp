@@ -112,7 +112,7 @@ TEST_F(VimOptionsTest, DD_StartOfLine) {
   // Our implementation: deleteRangeLinewise handles startOfLine
   Lines ourLines = lines;
   CursorPos ourPos(0, 0);
-  VimCore::deleteRangeLinewise(ourLines, LineRange(0, 1), ourPos);
+  VimCore::deleteLineRangeAndUpdatePos(ourLines, LineRange(0, 1), ourPos);
 
   EXPECT_EQ(ourPos.line, result.row);
   EXPECT_EQ(ourPos.col, result.col);
@@ -134,7 +134,7 @@ TEST_F(VimOptionsTest, DD_MiddleLine) {
 
   Lines ourLines = lines;
   CursorPos ourPos(1, 6);
-  VimCore::deleteRangeLinewise(ourLines, LineRange(1, 2), ourPos);
+  VimCore::deleteLineRangeAndUpdatePos(ourLines, LineRange(1, 2), ourPos);
 
   EXPECT_EQ(ourPos.line, result.row);
   EXPECT_EQ(ourPos.col, result.col);

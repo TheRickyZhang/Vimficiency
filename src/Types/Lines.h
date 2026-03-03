@@ -88,6 +88,13 @@ struct Lines final : std::vector<Line> {
     return pos;
   }
 
+  CursorPos getNextPosUnbounded(CursorPos pos) const {
+    if (pos.col + 1 < static_cast<int>((*this)[pos.line].size())) {
+      return CursorPos(pos.line, pos.col + 1);
+    }
+    return CursorPos(pos.line + 1, 0);
+  }
+
   CursorPos getPrevPos(CursorPos pos) const {
     if (pos.col > 0) {
       return CursorPos(pos.line, pos.col - 1);

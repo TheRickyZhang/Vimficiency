@@ -134,7 +134,7 @@ struct CompositionSearchContext {
 
   // Stats tracking
   int nodesProcessed = 0;
-  int totalPops = 0;
+  int totalPops = 0;  // Hard budget: all queue pops, including stale.
   int statesSkipped = 0;
 
   // Sub-optimizer aggregate stats
@@ -143,9 +143,6 @@ struct CompositionSearchContext {
 
   // Debug: optionally track explored states (composition-specific)
   std::vector<CompositionExploredState> exploredStates;
-
-  // Internal safety: hard cap on total pops to prevent runaway loops
-  static constexpr int SAFETY_MULTIPLIER = 10;
 
   // ==========================================================================
   // Construction
@@ -202,9 +199,7 @@ struct CompositionSearchContext {
   // Check if search should continue
   bool shouldContinue() const {
     if (pq.empty()) return false;
-    if (nodesProcessed >= params.maxNodesExplored) return false;
-    // Safety cap: prevent runaway loops if too many stale nodes
-    if (totalPops >= params.maxNodesExplored * SAFETY_MULTIPLIER) return false;
+    if (totalPops >= params.maxTotalPops) return false;
     return true;
   }
 
@@ -235,11 +230,12 @@ struct CompositionSearchContext {
     return linesAfterNEdits_[editsCompleted];
   }
 
-  // Get pre-computed BufferIndex for a given edit level, adjusted for the motion search window.
-  // Returns nullopt if the motion window [motionBeginLine, motionEndLine) exceeds the indexed range,
-  // signaling the caller to fall back to the overload that builds a local index.
-  std::optional<BufferIndexRef> makeBufferIndexRef(
-      int editsCompleted, int motionBeginLine, int motionEndLine) const;
+  // Get a reusable pre-computed BufferIndex for a given edit level, adjusted for
+  // the motion search window. On failure, clears out-params and returns false so
+  // callers can fall back to the overload that builds a local index.
+  bool tryGetBufferIndex(
+      int editsCompleted, int motionBeginLine, int motionEndLine,
+      const BufferIndex*& outIndex, int& outLineOffset) const;
 
   // Get the diff state for an edit index
   const DiffState& getDiffState(int editIndex) const {

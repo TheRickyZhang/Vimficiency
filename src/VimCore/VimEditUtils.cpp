@@ -9,25 +9,13 @@ using namespace std;
 
 namespace VimCore {
 
-// =============================================================================
-// Multi-Line Buffer Operations
-// =============================================================================
+namespace {
 
-void deleteRange(Lines& lines, const Range& range, CursorPos& pos, Mode mode) {
-  Range r = range;
-  r.normalize();
-  if (r.isEmpty()) return;
-
-  // Determine if cursor is on the deletion line BEFORE modifying pos.
-  // This affects empty line removal behavior:
-  // - Cursor on same line (D at col 0): keep empty line
-  // - Cursor on different line (db from col 0): remove empty line
-  bool cursorOnDeletionLine = (pos.line == r.begin.line);
-
-  // Track if this is a backward cross-line deletion from col 0 (db/dB pattern)
-  // Vim has special cursor placement: skip to first non-blank of cursor's original line
-  bool backwardFromCol0 = !cursorOnDeletionLine && pos.col == 0 && pos.line > r.begin.line;
-  bool lineWasRemoved = false;
+void applyCharDeletionToBuffer(Lines& lines, const Range& r,
+                               const CursorPos& originalPos, Mode mode) {
+  // Whether the original cursor was already on the anchor line affects Vim's
+  // empty-line retention rules when a deletion clears that line.
+  bool cursorOnDeletionLine = (originalPos.line == r.begin.line);
 
   assert(r.begin.line >= 0 && r.begin.line < static_cast<int>(lines.size()));
   assert(r.end.line >= r.begin.line && r.end.line < static_cast<int>(lines.size()));
@@ -35,82 +23,69 @@ void deleteRange(Lines& lines, const Range& range, CursorPos& pos, Mode mode) {
   assert(r.end.col >= 0 && r.end.col <= static_cast<int>(lines[r.end.line].size()));
 
   if (r.begin.line == r.end.line) {
-    // Single line deletion
     string& ln = lines[r.begin.line];
     int beginCol = std::clamp(r.begin.col, 0, static_cast<int>(ln.size()));
     int endCol = std::clamp(r.end.col, beginCol, static_cast<int>(ln.size()));
     ln.erase(beginCol, endCol - beginCol);
 
-    // Vim behavior for empty lines after single-line deletion:
-    // - If cursor was on the same line (D at col 0): keep empty line
-    // - If cursor was on different line (db from col 0): remove empty line
-    // - Change commands (Insert mode) always keep empty lines
     if (ln.empty() && beginCol == 0 && lines.size() > 1 && !cursorOnDeletionLine
         && mode != Mode::Insert) {
       lines.erase(lines.begin() + r.begin.line);
-      lineWasRemoved = true;
     }
-  } else {
-    // Multi-line deletion: merge first and last line, delete lines in between
-    string& firstLn = lines[r.begin.line];
-    const string& endLn = lines[r.end.line];
-    int beginCol = std::clamp(r.begin.col, 0, static_cast<int>(firstLn.size()));
-    int endCol = std::clamp(r.end.col, 0, static_cast<int>(endLn.size()));
-
-    // Merge: keep first part of first line + last part of last line
-    firstLn = firstLn.substr(0, beginCol) + endLn.substr(endCol);
-
-    // Delete lines from startLine+1 to endLine (inclusive of end line).
-    // end is exclusive within end.line, so end.line content is already merged above.
-    lines.erase(lines.begin() + r.begin.line + 1, lines.begin() + r.end.line + 1);
-
-    // Vim behavior: if multi-line deletion results in empty merged line AND
-    // there are other lines in the buffer, remove the empty line.
-    // This matches neovim's behavior where `de` on a single-char line followed
-    // by other content removes the line entirely rather than leaving it empty.
-    // Change commands (Insert mode) keep empty lines — the user will type on them.
-    if (firstLn.empty() && lines.size() > 1 && mode != Mode::Insert) {
-      lines.erase(lines.begin() + r.begin.line);
-      lineWasRemoved = true;
-    }
-
-    assert(!lines.empty());
+    return;
   }
 
+  // Multi-line deletion: merge first and last line, delete lines in between.
+  string& firstLn = lines[r.begin.line];
+  const string& endLn = lines[r.end.line];
+  int beginCol = std::clamp(r.begin.col, 0, static_cast<int>(firstLn.size()));
+  int endCol = std::clamp(r.end.col, 0, static_cast<int>(endLn.size()));
+
+  firstLn = firstLn.substr(0, beginCol) + endLn.substr(endCol);
+  lines.erase(lines.begin() + r.begin.line + 1, lines.begin() + r.end.line + 1);
+
+  if (firstLn.empty() && lines.size() > 1 && mode != Mode::Insert) {
+    lines.erase(lines.begin() + r.begin.line);
+  }
+
+  assert(!lines.empty());
+}
+
+void placeCursorAfterCharDeletion(const Lines& lines, const Range& r,
+                                  CursorPos& pos, Mode mode) {
   pos.line = r.begin.line;
-  // Clamp position to valid range after possible line removal
   if (pos.line >= static_cast<int>(lines.size())) {
     pos.line = static_cast<int>(lines.size()) - 1;
   }
 
-  // Compute clamped column and update both col and targetCol
   int newCol = r.begin.col;
-
-  // Special case: db/dB from col 0 crossing lines with line removal
-  // Vim places cursor at first non-blank of cursor's original line (now at pos.line)
-  if (backwardFromCol0 && lineWasRemoved && !lines[pos.line].empty()) {
-    const string& line = lines[pos.line];
-    newCol = 0;
-    while (newCol < static_cast<int>(line.size()) &&
-           (line[newCol] == ' ' || line[newCol] == '\t')) {
-      newCol++;
-    }
-    // If entire line is whitespace, stay at col 0
-    if (newCol >= static_cast<int>(line.size())) {
-      newCol = 0;
-    }
-  }
-
   if (mode == Mode::Insert) {
     newCol = min(newCol, static_cast<int>(lines[pos.line].size()));
   } else {
-    newCol = lines[pos.line].empty() ? 0 : min(newCol, static_cast<int>(lines[pos.line].size()) - 1);
+    newCol = lines[pos.line].empty()
+        ? 0
+        : min(newCol, static_cast<int>(lines[pos.line].size()) - 1);
   }
   pos.setCol(newCol);
 }
 
-void deleteRangeLinewise(Lines& lines, const LineRange& range, CursorPos& pos,
-                         bool hasLinesBelow) {
+}  // namespace
+
+// =============================================================================
+// Multi-Line Buffer Operations
+// =============================================================================
+
+void deleteRangeAndUpdatePos(Lines& lines, const Range& range, CursorPos& pos, Mode mode) {
+  Range r = range;
+  r.normalize();
+  if (r.isEmpty()) return;
+  CursorPos originalPos = pos;
+  applyCharDeletionToBuffer(lines, r, originalPos, mode);
+  placeCursorAfterCharDeletion(lines, r, pos, mode);
+}
+
+void deleteLineRangeAndUpdatePos(Lines& lines, const LineRange& range, CursorPos& pos,
+                                 bool hasLinesBelow) {
   LineRange r = range;
   r.normalize();
 

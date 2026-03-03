@@ -99,7 +99,7 @@ static optional<BenchmarkSetup> findMixedTerminalSetup(int perStartCap) {
     BenchmarkSetup setup(lines);
     EditOptimizerParams params = EditOptimizerParams{}
         .withMaxResults(5000)
-        .withMaxNodesExplored(200000)
+        .withMaxTotalPops(200000)
         .withMaxMultiplePerStartPosition(perStartCap);
     EditResult result = opt.optimizePureDeletion(setup.initialLines, setup.boundary, params);
     if (result.getStats().stopReason != SearchStopReason::AllResultsFound) continue;
@@ -163,7 +163,7 @@ static void BM_EditBufferShape(benchmark::State& state, BufferShape shape) {
 }
 
 static void BM_EditSearchDepth(benchmark::State& state) {
-  int maxNodes = static_cast<int>(state.range(0));
+  int maxPops = static_cast<int>(state.range(0));
   auto& seedMgr = SeedManager::instance();
   EditSearchStats totalStats;
   int iter = 0;
@@ -171,7 +171,7 @@ static void BM_EditSearchDepth(benchmark::State& state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
     auto setup = BenchmarkSetup(generateBuffer(15, 30));
     EditOptimizerParams params;
-    params.maxNodesExplored = maxNodes;
+    params.maxTotalPops = maxPops;
     runBenchmark(setup, withCap(params, setup), totalStats);
     iter++;
   }
@@ -350,7 +350,7 @@ static void BM_EditSmallEmbeddedChange(benchmark::State& state) {
 static void BM_EditMaxResultsTerminal(benchmark::State& state) {
   int maxResults = static_cast<int>(state.range(0));
   constexpr int perStartCap = 4;
-  constexpr int maxNodes = 200000;
+  constexpr int maxPops = 200000;
 
   static optional<BenchmarkSetup> mixedSetup = findMixedTerminalSetup(perStartCap);
   if (!mixedSetup.has_value()) {
@@ -364,7 +364,7 @@ static void BM_EditMaxResultsTerminal(benchmark::State& state) {
     EditOptimizer opt(benchConfig);
     EditOptimizerParams params = EditOptimizerParams{}
         .withMaxResults(maxResults)
-        .withMaxNodesExplored(maxNodes)
+        .withMaxTotalPops(maxPops)
         .withMaxMultiplePerStartPosition(perStartCap);
     EditResult result = opt.optimizePureDeletion(
         mixedSetup->initialLines, mixedSetup->boundary, params);
@@ -386,13 +386,13 @@ static void BM_EditMaxResultsTerminal(benchmark::State& state) {
 static void BM_EditPerStartCap(benchmark::State& state) {
   int perStartCap = static_cast<int>(state.range(0));
   constexpr int maxResults = 10000;
-  constexpr int maxNodes = 20000;
+  constexpr int maxPops = 20000;
   auto& seedMgr = SeedManager::instance();
 
   EditSearchStats totalStats;
   int allResultsFoundCount = 0;
   int maxResultsFoundCount = 0;
-  int maxNodesStopCount = 0;
+  int maxPopsStopCount = 0;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
@@ -410,7 +410,7 @@ static void BM_EditPerStartCap(benchmark::State& state) {
     EditOptimizer opt(benchConfig);
     EditOptimizerParams params = EditOptimizerParams{}
         .withMaxResults(maxResults)
-        .withMaxNodesExplored(maxNodes)
+        .withMaxTotalPops(maxPops)
         .withMaxMultiplePerStartPosition(perStartCap);
     EditResult result = opt.optimizePureDeletion(
         setup.initialLines, setup.boundary, params);
@@ -419,8 +419,8 @@ static void BM_EditPerStartCap(benchmark::State& state) {
       allResultsFoundCount++;
     } else if (result.getStats().stopReason == SearchStopReason::MaxResultsFound) {
       maxResultsFoundCount++;
-    } else if (result.getStats().stopReason == SearchStopReason::MaxNodesReached) {
-      maxNodesStopCount++;
+    } else if (result.getStats().stopReason == SearchStopReason::MaxPopsReached) {
+      maxPopsStopCount++;
     }
     iter++;
   }
@@ -430,8 +430,8 @@ static void BM_EditPerStartCap(benchmark::State& state) {
       allResultsFoundCount, benchmark::Counter::kAvgIterations);
   state.counters["MaxStop"] = benchmark::Counter(
       maxResultsFoundCount, benchmark::Counter::kAvgIterations);
-  state.counters["NodeStop"] = benchmark::Counter(
-      maxNodesStopCount, benchmark::Counter::kAvgIterations);
+  state.counters["PopStop"] = benchmark::Counter(
+      maxPopsStopCount, benchmark::Counter::kAvgIterations);
   state.counters["PerStartCap"] = static_cast<double>(perStartCap);
   state.counters["MaxR"] = static_cast<double>(maxResults);
 }

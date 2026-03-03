@@ -171,12 +171,15 @@ CompositionResult CompositionOptimizer::optimize(
               .withMaxResults(1)
               .withMinCountRepeat(params.minPrefixCount)
               .withMaxCountRepeat(params.maxPrefixCount);
-          auto bufRef = ctx.makeBufferIndexRef(editsCompleted, beginLine, endLine);
-          auto motionResult = bufRef
+          const BufferIndex* bufferIndex = nullptr;
+          int lineOffset = 0;
+          bool hasBufferIndex = ctx.tryGetBufferIndex(
+              editsCompleted, beginLine, endLine, bufferIndex, lineOffset);
+          auto motionResult = hasBufferIndex
               ? motionOptimizer.optimizeToRange(
                     subset, localPos, localRangeBegin, localRangeEnd,
                     rangeParams, "", subsetBoundary,
-                    navigationContext, *bufRef)
+                    navigationContext, *bufferIndex, lineOffset)
               : motionOptimizer.optimizeToRange(
                     subset, localPos, localRangeBegin, localRangeEnd,
                     rangeParams, "", subsetBoundary,
@@ -365,12 +368,15 @@ CompositionResult CompositionOptimizer::optimize(
           .withMaxResults(clamp(nextEdit.origCharCount(), 1, 10))
           .withMinCountRepeat(params.minPrefixCount)
           .withMaxCountRepeat(params.maxPrefixCount);
-      auto bufRef2 = ctx.makeBufferIndexRef(editsCompleted, beginLine, endLine);
-      auto motionResult = bufRef2
+      const BufferIndex* bufferIndex = nullptr;
+      int lineOffset = 0;
+      bool hasBufferIndex = ctx.tryGetBufferIndex(
+          editsCompleted, beginLine, endLine, bufferIndex, lineOffset);
+      auto motionResult = hasBufferIndex
           ? motionOptimizer.optimizeToRange(
                 subset, localPos, localRangeBegin, localRangeEnd,
                 rangeParams2, "", subsetBoundary,
-                navigationContext, *bufRef2)
+                navigationContext, *bufferIndex, lineOffset)
           : motionOptimizer.optimizeToRange(
                 subset, localPos, localRangeBegin, localRangeEnd,
                 rangeParams2, "", subsetBoundary,
@@ -417,12 +423,15 @@ CompositionResult CompositionOptimizer::optimize(
             .withMaxResults(1)
             .withMinCountRepeat(params.minPrefixCount)
             .withMaxCountRepeat(params.maxPrefixCount);
-        auto jBufRef = ctx.makeBufferIndexRef(editsCompleted, jBeginLine, jEndLine);
-        auto jMotionResult = jBufRef
+        const BufferIndex* jBufferIndex = nullptr;
+        int jLineOffset = 0;
+        bool hasJBufferIndex = ctx.tryGetBufferIndex(
+            editsCompleted, jBeginLine, jEndLine, jBufferIndex, jLineOffset);
+        auto jMotionResult = hasJBufferIndex
             ? motionOptimizer.optimizeToRange(
                   jSubset, jLocalPos, jLocalFirst, jLocalEnd,
                   jRangeParams, "", jSubsetBoundary,
-                  navigationContext, *jBufRef)
+                  navigationContext, *jBufferIndex, jLineOffset)
             : motionOptimizer.optimizeToRange(
                   jSubset, jLocalPos, jLocalFirst, jLocalEnd,
                   jRangeParams, "", jSubsetBoundary,

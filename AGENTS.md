@@ -19,16 +19,20 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 
 **Dependency order** (most to least dependent): Optimizer → Interpreter/VimCore/Keyboard/Boundary/Effort/Utils/Types, Interpreter → VimCore/Keyboard/Utils/Types, Effort → Keyboard, Session → Types, VimCore → Boundary/Utils/Types, Keyboard → Utils/Types, Boundary → Utils/Types, Utils → Types
 
-## Terminology
+## Terminology (Brief)
 - **Key**: Physical key (61 supported, defined in `src/Keyboard/Key.h`)
 - **Sequence**: String of commands in Neovim semantics
+- **Effort**: Estimated difficulty of typing a key sequence
+- KeyedSequence: Key + Sequence
+- Sequence Binding: KeyedSequence + RunningEffort
+
 - **Motion**: Commands that only move cursor (includes jumps)
 - **Edit**: Commands that change buffer (operator + motion/text object, replacement, mode change, insert typing)
 - **ParsedMotion/ParsedEdit**: Command structure with count (0 = default single, positive = prefixed)
-- **Effort**: Estimated difficulty of typing a key sequence
-- **Position**: Contains `line`, `col`, `targetCol`. Use `pos.setCol(c)` for horizontal movements (updates both col and targetCol), `pos.clampColPreservingTarget(c)` for vertical (preserves targetCol). See `docs/vim-utils-principles.md` §5 for detailed guidance and common pitfalls.
-- Effective characters: All positions a character could be in Lines. Notably, a cursor can still be at an empty line. 
-- Effective lines: current region + prefix, suffix added
+
+- Pos: Only contains `line` and `col`.
+- CursorPos: adds `targetCol` and `setCol(c)` vs `clampColPreservingTarget` when Vim's richer curswant is needed.
+- Line/Lines: richer strings representing buffers with helpful methods like effectiveSize(), flatten/unflatten
 
 ## Design Constraints
 

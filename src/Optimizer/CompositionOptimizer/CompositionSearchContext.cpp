@@ -224,15 +224,21 @@ double CompositionSearchContext::heuristic(
   return effortWeight * s.getEffort() + distanceWeight * h;
 }
 
-optional<BufferIndexRef> CompositionSearchContext::makeBufferIndexRef(
-    int editsCompleted, int motionBeginLine, int motionEndLine) const {
+bool CompositionSearchContext::tryGetBufferIndex(
+    int editsCompleted, int motionBeginLine, int motionEndLine,
+    const BufferIndex*& outIndex, int& outLineOffset) const {
+  outIndex = nullptr;
+  outLineOffset = 0;
+
   if (editsCompleted < 0 || editsCompleted >= totalEdits())
-    return nullopt;
+    return false;
   const auto& edit = edits[editsCompleted];
   // Safety: motion search window must be within the indexed range
   if (motionBeginLine < edit.bufferIndexStart || motionEndLine > edit.bufferIndexEnd)
-    return nullopt;
-  return BufferIndexRef(edit.bufferIndex, motionBeginLine - edit.bufferIndexStart);
+    return false;
+  outIndex = &edit.bufferIndex;
+  outLineOffset = motionBeginLine - edit.bufferIndexStart;
+  return true;
 }
 
 void CompositionSearchContext::exploreEditTransition(
@@ -286,6 +292,7 @@ void CompositionSearchContext::exploreNewState(CompositionState&& newState) {
 CompositionSearchStats CompositionSearchContext::getStats(int resultsFound) const {
   CompositionSearchStats stats;
   stats.nodesExplored = nodesProcessed;
+  stats.totalPops = totalPops;
   stats.resultsFound = resultsFound;
   stats.queueSizeAtStop = static_cast<int>(pq.size());
   stats.statesSkipped = statesSkipped;
@@ -296,8 +303,8 @@ CompositionSearchStats CompositionSearchContext::getStats(int resultsFound) cons
 
   if (resultsFound >= params.maxResults) {
     stats.stopReason = SearchStopReason::MaxResultsFound;
-  } else if (nodesProcessed >= params.maxNodesExplored) {
-    stats.stopReason = SearchStopReason::MaxNodesReached;
+  } else if (totalPops >= params.maxTotalPops) {
+    stats.stopReason = SearchStopReason::MaxPopsReached;
   } else if (pq.empty()) {
     stats.stopReason = SearchStopReason::FullyExplored;
   }

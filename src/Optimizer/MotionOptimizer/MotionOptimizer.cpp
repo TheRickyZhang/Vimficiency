@@ -16,19 +16,19 @@ using namespace std;
 // Public entry point - dispatches to templated implementation based on direction
 MotionResult MotionOptimizer::optimize(
     const Lines& lines,
-    const CursorPos& startPos,
-    const CursorPos& endPos,
+    const CursorPos& initialPos,
+    const CursorPos& goalPos,
     MotionOptimizerParams params,
     string_view userSequence,
     const MotionBoundary& boundary,
     const NavContext& navContext) {
   params.normalizeCountRepeatBounds();
 
-  if (startPos < endPos) {
-    return optimizeImpl<true>(lines, startPos, endPos,
+  if (initialPos < goalPos) {
+    return optimizeImpl<true>(lines, initialPos, goalPos,
                               userSequence, navContext, boundary, params);
   } else {
-    return optimizeImpl<false>(lines, startPos, endPos,
+    return optimizeImpl<false>(lines, initialPos, goalPos,
                                userSequence, navContext, boundary, params);
   }
 }
@@ -37,8 +37,8 @@ MotionResult MotionOptimizer::optimize(
 template<bool Forward>
 MotionResult MotionOptimizer::optimizeImpl(
     const Lines &lines,
-    const CursorPos& startPos,
-    const CursorPos &endPos,
+    const CursorPos& initialPos,
+    const CursorPos& goalPos,
     string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
@@ -54,19 +54,19 @@ MotionResult MotionOptimizer::optimizeImpl(
 
   MotionSearchContext ctx(lines, navContext, boundary, params, config, userEffort);
 
-  // Create point range [endPos, nextPos) for the unified MotionExplorer
-  CursorPos rangeEnd = lines.getNextPos(endPos);
-  if (rangeEnd == endPos) {
-    rangeEnd = CursorPos(endPos.line, endPos.col + 1);
+  // Convert point goal to half-open range [goalPos, rangeEnd) for the unified MotionExplorer
+  CursorPos rangeEnd = lines.getNextPos(goalPos);
+  if (rangeEnd == goalPos) {
+    rangeEnd = CursorPos(goalPos.line, goalPos.col + 1);
   }
-  MotionExplorer explorer(ctx, endPos, rangeEnd, bufferIndex, 0);
+  MotionExplorer explorer(ctx, goalPos, rangeEnd, bufferIndex, 0);
 
-  Pos goalKey(endPos.line, endPos.col);
+  Pos goalKey(goalPos.line, goalPos.col);
 
-  MotionState initialState(startPos, RunningEffort(), 0.0, 0.0);
+  MotionState initialState(initialPos, RunningEffort(), 0.0, 0.0);
   vector<Result> res;
 
-  initialState.setCost(ctx.computePriorityToGoal(initialState, endPos));
+  initialState.setCost(ctx.computePriorityToGoal(initialState, goalPos));
   ctx.pq.push(initialState);
   ctx.costMap[initialState.getKey()] = initialState.getCost();
 
@@ -76,7 +76,7 @@ MotionResult MotionOptimizer::optimizeImpl(
 
     Pos stateKey = s.getKey();
     bool isGoal = (stateKey == goalKey);
-    bool isSameLine = (pos.line == endPos.line);
+    bool isSameLine = (pos.line == goalPos.line);
 
     if (isGoal) {
       ctx.markProcessed();
@@ -133,7 +133,7 @@ template MotionResult MotionOptimizer::optimizeImpl<false>(
 // optimizeToRange implementation
 // =================================================
 
-// Simple bufferIndex forwarder
+// Convenience overload that builds a local BufferIndex.
 RangeMotionResult MotionOptimizer::optimizeToRange(
     const Lines& lines,
     const CursorPos& startPos,
@@ -145,10 +145,10 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
     const NavContext& navContext) {
   BufferIndex localIndex(lines);
   return optimizeToRange(lines, startPos, rangeBegin, rangeEnd, params, userSequence,
-                         boundary, navContext, BufferIndexRef(localIndex, 0));
+                         boundary, navContext, localIndex, 0);
 }
 
-// Minimal overload with caller-provided BufferIndex
+// Overload with caller-provided BufferIndex.
 RangeMotionResult MotionOptimizer::optimizeToRange(
     const Lines& lines,
     const CursorPos& startPos,
@@ -158,7 +158,8 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
     string_view userSequence,
     const MotionBoundary& boundary,
     const NavContext& navContext,
-    BufferIndexRef bufferRef) {
+    const BufferIndex& bufferIndex,
+    int lineOffset) {
   params.normalizeCountRepeatBounds();
 
   assert(!(startPos >= rangeBegin && startPos < rangeEnd) &&
@@ -167,11 +168,11 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
   if (startPos < rangeBegin)
     return optimizeToRangeImpl<true>(lines, startPos, rangeBegin, rangeEnd,
                                      userSequence, navContext, boundary, params,
-                                     bufferRef.index, bufferRef.lineOffset);
+                                     bufferIndex, lineOffset);
   else
     return optimizeToRangeImpl<false>(lines, startPos, rangeBegin, rangeEnd,
                                       userSequence, navContext, boundary, params,
-                                      bufferRef.index, bufferRef.lineOffset);
+                                      bufferIndex, lineOffset);
 }
 
 // Templated implementation - Forward is compile-time constant
