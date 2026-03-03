@@ -64,7 +64,7 @@ jobs:
   benchmark-run:
     runs-on: ubuntu-latest
     needs: test
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -115,6 +115,7 @@ jobs:
             --benchmark_out=composition_result.json
 
       - name: Collect exploration data
+        if: github.ref == 'refs/heads/main'
         run: |
           cmake -B build_track -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF \
             -DVIMFICIENCY_ENABLE_DEBUG_TRACKING=ON \
@@ -163,6 +164,13 @@ jobs:
             baseline_edit.json
             baseline_motion.json
             baseline_composition.json
+
+      - name: Upload exploration results
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: exploration-results
+          path: |
             edit_explore.json
             motion_explore.json
             composition_explore.json
@@ -170,11 +178,29 @@ jobs:
   benchmark-store:
     runs-on: ubuntu-latest
     needs: benchmark-run
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'push'
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Compute deploy metadata
+        id: meta
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          SAFE_BRANCH=$(echo "$BRANCH" | sed 's|/|--|g; s|[^a-zA-Z0-9._-]||g')
+          if [ "$BRANCH" = "main" ]; then
+            echo "is-main=true" >> "$GITHUB_OUTPUT"
+            echo "base-path=/Vimficiency/" >> "$GITHUB_OUTPUT"
+            echo "deploy-dir=." >> "$GITHUB_OUTPUT"
+          else
+            echo "is-main=false" >> "$GITHUB_OUTPUT"
+            echo "base-path=/Vimficiency/branch/$SAFE_BRANCH/" >> "$GITHUB_OUTPUT"
+            echo "deploy-dir=branch/$SAFE_BRANCH" >> "$GITHUB_OUTPUT"
+          fi
+          echo "safe-branch=$SAFE_BRANCH" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
 
       - name: Download benchmark results
         uses: actions/download-artifact@v4
@@ -182,9 +208,16 @@ jobs:
           name: benchmark-results
 
       - name: Download test timing
+        if: steps.meta.outputs.is-main == 'true'
         uses: actions/download-artifact@v4
         with:
           name: test-timing
+
+      - name: Download exploration results
+        if: steps.meta.outputs.is-main == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: exploration-results
 
       - uses: oven-sh/setup-bun@v2
 
@@ -198,9 +231,12 @@ jobs:
 
       - name: Build dashboard
         working-directory: bench-dashboard
-        run: bun install --frozen-lockfile && bun run build
+        run: |
+          bun install --frozen-lockfile
+          bun run build -- --base=${{ steps.meta.outputs.base-path }}
 
-      - name: Deploy to gh-pages
+      - name: Deploy to gh-pages (main)
+        if: steps.meta.outputs.is-main == 'true'
         run: |
           # Convert test timing to benchmark format
           bun scripts/convert-gtest-timing.ts test_timing.json test_timing_bench.json
@@ -289,3 +325,86 @@ jobs:
           git -c user.name=github-actions -c user.email=github-actions@github.com \
             commit -m "Update benchmark dashboard" || true
           git push origin gh-pages
+
+      - name: Deploy to gh-pages (branch)
+        if: steps.meta.outputs.is-main == 'false'
+        env:
+          DEPLOY_DIR: ${{ steps.meta.outputs.deploy-dir }}
+        run: |
+          # Save artifacts before switching branches
+          cp -r bench-dashboard/dist /tmp/dashboard-dist
+          cp scripts/bench-data.ts /tmp/bench-data.ts
+          cp edit_result.json /tmp/edit_result.json
+          cp motion_result.json /tmp/motion_result.json
+          cp composition_result.json /tmp/composition_result.json
+
+          COMMIT_ID="${{ github.sha }}"
+          COMMIT_MSG=$(echo '${{ github.event.head_commit.message }}' | head -1)
+          COMMIT_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          COMMIT_AUTHOR="${{ github.actor }}"
+          REPO_URL="https://github.com/${{ github.repository }}"
+
+          git fetch origin gh-pages
+          git checkout gh-pages
+
+          # Seed branch data from main's data.json if not already present
+          for optimizer in edit motion composition; do
+            mkdir -p "$DEPLOY_DIR/$optimizer"
+            if [ ! -f "$DEPLOY_DIR/$optimizer/data.json" ] && [ -f "$optimizer/data.json" ]; then
+              cp "$optimizer/data.json" "$DEPLOY_DIR/$optimizer/data.json"
+            fi
+          done
+
+          # Ingest branch commit's benchmark results (edit, motion, composition only)
+          for pair in "edit:/tmp/edit_result.json" "motion:/tmp/motion_result.json" "composition:/tmp/composition_result.json"; do
+            optimizer="${pair%%:*}"
+            result="${pair#*:}"
+            bun /tmp/bench-data.ts ingest "$DEPLOY_DIR/$optimizer" "$result" \
+              --commit-id="$COMMIT_ID" \
+              --commit-msg="$COMMIT_MSG" \
+              --commit-ts="$COMMIT_TS" \
+              --author="$COMMIT_AUTHOR" \
+              --repo-url="$REPO_URL"
+          done
+
+          # Copy dashboard assets to branch directory
+          cp /tmp/dashboard-dist/index.html "$DEPLOY_DIR/index.html"
+          mkdir -p "$DEPLOY_DIR/assets"
+          cp -r /tmp/dashboard-dist/assets/* "$DEPLOY_DIR/assets/" 2>/dev/null || true
+
+          git add -f "$DEPLOY_DIR/"
+          git -c user.name=github-actions -c user.email=github-actions@github.com \
+            commit -m "Update branch dashboard: ${{ steps.meta.outputs.branch }}" || true
+          git push origin gh-pages
+
+      - name: Comment on PR
+        if: steps.meta.outputs.is-main == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH="${{ steps.meta.outputs.branch }}"
+          DASHBOARD_URL="https://${{ github.repository_owner }}.github.io${{ steps.meta.outputs.base-path }}"
+          MARKER="<!-- bench-dashboard-link -->"
+
+          # Find open PR for this branch
+          PR_NUMBER=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No open PR found for branch $BRANCH, skipping comment"
+            exit 0
+          fi
+
+          BODY="${MARKER}
+          **Benchmark Dashboard:** ${DASHBOARD_URL}
+
+          _Updated at $(date -u +"%Y-%m-%d %H:%M:%S UTC") for commit ${{ github.sha }}_"
+
+          # Check for existing comment with marker
+          EXISTING_COMMENT=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -1)
+
+          if [ -n "$EXISTING_COMMENT" ]; then
+            gh api "repos/${{ github.repository }}/issues/comments/${EXISTING_COMMENT}" \
+              -X PATCH -f body="$BODY"
+          else
+            gh pr comment "$PR_NUMBER" --body "$BODY"
+          fi

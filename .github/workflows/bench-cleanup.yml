@@ -1,0 +1,40 @@
+name: Cleanup branch benchmarks
+
+on:
+  delete:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'delete' && github.event.ref_type == 'branch') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+
+      - name: Remove branch dashboard
+        run: |
+          if [ "${{ github.event_name }}" = "delete" ]; then
+            BRANCH="${{ github.event.ref }}"
+          else
+            BRANCH="${{ github.event.pull_request.head.ref }}"
+          fi
+
+          SAFE_BRANCH=$(echo "$BRANCH" | sed 's|/|--|g; s|[^a-zA-Z0-9._-]||g')
+          DEPLOY_DIR="branch/$SAFE_BRANCH"
+
+          if [ ! -d "$DEPLOY_DIR" ]; then
+            echo "No dashboard found at $DEPLOY_DIR, nothing to clean up"
+            exit 0
+          fi
+
+          git rm -rf "$DEPLOY_DIR"
+          git -c user.name=github-actions -c user.email=github-actions@github.com \
+            commit -m "Remove branch dashboard: $BRANCH"
+          git push origin gh-pages
