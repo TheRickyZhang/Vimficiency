@@ -2,14 +2,12 @@
 
 #include <string_view>
 
+#include "Types/CountPrefixLimits.h"
+
 class PhysicalKeys;
 
-// Hard ceiling for counted prefixes for static array size
-// Runtime count exploration should be <= this
-inline constexpr int MAX_PREFIX_COUNT = 99;
-
 namespace CountToKeys {
-// Returns prebuilt key prefix for a count in [0, MAX_PREFIX_COUNT].
+// Returns prebuilt key prefix for a count in [0, CountPrefixLimits::MAX_PREFIX_COUNT].
 const PhysicalKeys& keysForCount(int count);
 
 // Not technically to keys, but used adjacently

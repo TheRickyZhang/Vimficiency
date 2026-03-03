@@ -36,11 +36,13 @@ static void adjustCursorAfterBackwardWordDelete(const Range& range,
                                                 int oldLineCount,
                                                 const CursorPos& originalPos,
                                                 Lines& lines,
-                                                CursorPos& pos) {
+                                                CursorPos& pos,
+                                                int firstContentCol = 0) {
   Range normalized = range;
   normalized.normalize();
 
-  if (originalPos.col != 0 || originalPos.line <= normalized.begin.line) return;
+  int cursorContentStart = (originalPos.line == 0) ? firstContentCol : 0;
+  if (originalPos.col != cursorContentStart || originalPos.line <= normalized.begin.line) return;
   if (!VimCore::didDeleteRangeRemoveBeginLine(
           normalized, oldLineCount, static_cast<int>(lines.size()))) {
     return;
@@ -547,7 +549,12 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           if (end == POSITION_OUTSIDE_BOUNDARY) {
             assert(false && "db/dB has no effect at boundary");
           }
-          VimCore::deleteRangeAndUpdatePos(lines, Range(endpoint, end), pos, Mode::Normal);
+          Range range(endpoint, end);
+          int oldLineCount = static_cast<int>(lines.size());
+          CursorPos originalPos = pos;
+          VimCore::deleteRangeAndUpdatePos(lines, range, pos, Mode::Normal);
+          adjustCursorAfterBackwardWordDelete(
+              range, oldLineCount, originalPos, lines, pos, leftColOffset);
           return;
         }
         if (pos.line == 0 && pos.col == 0) {

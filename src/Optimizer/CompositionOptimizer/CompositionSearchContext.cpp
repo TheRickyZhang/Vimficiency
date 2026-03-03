@@ -303,7 +303,7 @@ CompositionSearchStats CompositionSearchContext::getStats(int resultsFound) cons
 
   if (resultsFound >= params.maxResults) {
     stats.stopReason = SearchStopReason::MaxResultsFound;
-  } else if (totalPops >= params.maxTotalPops) {
+  } else if (totalPops >= params.maxNodesPopped) {
     stats.stopReason = SearchStopReason::MaxPopsReached;
   } else if (pq.empty()) {
     stats.stopReason = SearchStopReason::FullyExplored;

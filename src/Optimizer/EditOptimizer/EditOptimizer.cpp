@@ -80,7 +80,7 @@ KeyedSequence buildCollapseSequence(int totalLines, int cursorLine) {
 }
 
 void appendOptionalCount(KeyedSequence& out, int count, const KeyedSequence& base) {
-  assert(count >= 0 && count <= MAX_PREFIX_COUNT);
+  assert(count >= 0 && count <= CountPrefixLimits::MAX_PREFIX_COUNT);
   if (count <= 1) {
     out += base;
   } else {
@@ -89,7 +89,7 @@ void appendOptionalCount(KeyedSequence& out, int count, const KeyedSequence& bas
 }
 
 KeyedSequence withOptionalCount(int count, const KeyedSequence& base) {
-  assert(count >= 0 && count <= MAX_PREFIX_COUNT);
+  assert(count >= 0 && count <= CountPrefixLimits::MAX_PREFIX_COUNT);
   if (count <= 1) {
     return base;
   }
@@ -1107,8 +1107,6 @@ EditOptimizer::optimizeEdit(
                           (goalLines.size() == 1 && goalLines[0].empty());
   assert(!pureDeletionGoal &&
          "optimizeEdit does not accept empty goalLines; use optimizePureDeletion for pure deletions");
-  params.normalizeCountRepeatBounds();
-
   return optimizeImpl<false>(initialLines, goalLines, editBoundary, params,
                              bufferBeginLine, bufferBeginCol, goalPos);
 }
@@ -1116,12 +1114,11 @@ EditOptimizer::optimizeEdit(
 EditResult EditOptimizer::optimizePureDeletion(
     const Lines& initialLines,
     EditBoundary editBoundary,
-    EditOptimizerParams params,
-    int bufferBeginLine,
-    int bufferBeginCol,
-    CursorPos goalPos) {
+  EditOptimizerParams params,
+  int bufferBeginLine,
+  int bufferBeginCol,
+  CursorPos goalPos) {
   assert(!initialLines.empty());
-  params.normalizeCountRepeatBounds();
   return optimizeImpl<true>(
       initialLines, Lines{}, editBoundary, params,
       bufferBeginLine, bufferBeginCol, goalPos);

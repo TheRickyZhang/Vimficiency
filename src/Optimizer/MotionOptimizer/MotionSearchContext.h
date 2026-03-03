@@ -104,7 +104,7 @@ struct MotionSearchContext {
   // Check if search should continue
   bool shouldContinue() const {
     if (pq.empty()) return false;
-    if (totalPops >= params.maxTotalPops) return false;
+    if (totalPops >= params.maxNodesPopped) return false;
     return true;
   }
 
@@ -146,7 +146,7 @@ struct MotionSearchContext {
 
     if (resultsFound >= params.maxResults) {
       stats.stopReason = SearchStopReason::MaxResultsFound;
-    } else if (totalPops >= params.maxTotalPops) {
+    } else if (totalPops >= params.maxNodesPopped) {
       stats.stopReason = SearchStopReason::MaxPopsReached;
     } else if (pq.empty()) {
       stats.stopReason = SearchStopReason::FullyExplored;

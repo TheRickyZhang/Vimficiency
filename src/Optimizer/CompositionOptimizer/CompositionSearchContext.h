@@ -199,7 +199,7 @@ struct CompositionSearchContext {
   // Check if search should continue
   bool shouldContinue() const {
     if (pq.empty()) return false;
-    if (totalPops >= params.maxTotalPops) return false;
+    if (totalPops >= params.maxNodesPopped) return false;
     return true;
   }
 

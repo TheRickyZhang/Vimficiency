@@ -162,12 +162,14 @@ void EditExplorer::exploreParagraphEdits(
       int endLine = endpointIsBlank ? endpointLine - 1 : endpointLine;
       if (endLine < cursor.line) continue;
       SequenceBinding cmd(KeyedSequence::byId(spec.ksId), ctx_.effortFor(spec.ksId));
-      if (endpointIsBlank && cursor.col == 0 && onLinewise) {
-        onLinewise(LineRange(cursor.line, endpointLine), cmd);
-      } else {
-        int endColExclusive = static_cast<int>(lines[endLine].size());
-        onDeletion(Range(cursor, CursorPos(endLine, endColExclusive)), cmd);
+      if (endpointIsBlank && cursor.col == 0) {
+        if (onLinewise) {
+          onLinewise(LineRange(cursor.line, endpointLine), cmd);
+        }
+        continue;
       }
+      int endColExclusive = static_cast<int>(lines[endLine].size());
+      onDeletion(Range(cursor, CursorPos(endLine, endColExclusive)), cmd);
     } else {
       // d{: when endpointLine == cursor.line, { stays on the same line and
       // d{ is characterwise exclusive (not linewise), so skip.
@@ -211,27 +213,25 @@ void EditExplorer::exploreSentenceEdits(
       if (endpoint <= cursor) continue;
       Range rawRange(cursor, endpoint);
       auto resolved = VimCore::resolveExclusiveDeleteRange(rawRange, lines, true);
-      if (resolved.kind == VimCore::ResolvedDeleteRangeKind::Linewise && onLinewise) {
-        onLinewise(resolved.lineRange, cmd);
-      } else {
-        onDeletion(resolved.kind == VimCore::ResolvedDeleteRangeKind::Characterwise
-                       ? resolved.charRange
-                       : rawRange,
-                   cmd);
+      if (resolved.kind == VimCore::ResolvedDeleteRangeKind::Linewise) {
+        if (onLinewise) {
+          onLinewise(resolved.lineRange, cmd);
+        }
+        continue;
       }
+      onDeletion(resolved.charRange, cmd);
     } else {
       // d(: backward — exclusive end = cursor (the higher end of the range).
       if (endpoint >= cursor) continue;
       Range rawRange(endpoint, cursor);
       auto resolved = VimCore::resolveExclusiveDeleteRange(rawRange, lines, true);
-      if (resolved.kind == VimCore::ResolvedDeleteRangeKind::Linewise && onLinewise) {
-        onLinewise(resolved.lineRange, cmd);
-      } else {
-        onDeletion(resolved.kind == VimCore::ResolvedDeleteRangeKind::Characterwise
-                       ? resolved.charRange
-                       : rawRange,
-                   cmd);
+      if (resolved.kind == VimCore::ResolvedDeleteRangeKind::Linewise) {
+        if (onLinewise) {
+          onLinewise(resolved.lineRange, cmd);
+        }
+        continue;
       }
+      onDeletion(resolved.charRange, cmd);
     }
   }
 }
@@ -417,7 +417,7 @@ void EditExplorer::exploreCountedWordEdits(
     DeletionCallback onDeletion) {
   if (!onDeletion) return;
   const int maxCountRepeat = ctx_.params.maxPrefixCount;
-  if (minCountRepeat < 2 || maxCountRepeat < 2) return;
+  if (minCountRepeat > maxCountRepeat || maxCountRepeat < 2) return;
 
   static constexpr int MAX_COUNT_ITERATIONS = 9;
   const int maxIterations = min(MAX_COUNT_ITERATIONS, maxCountRepeat);
@@ -568,7 +568,7 @@ void EditExplorer::exploreCountedCharEdits(
     DeletionCallback onDeletion) {
   if (!onDeletion) return;
   const int maxCountRepeat = ctx_.params.maxPrefixCount;
-  if (minCountRepeat < 2 || maxCountRepeat < 2) return;
+  if (minCountRepeat > maxCountRepeat || maxCountRepeat < 2) return;
 
   // Only x (forward delete at cursor)
   if (contentStart > cursor.col || cursor.col >= contentEnd) return;

@@ -36,7 +36,7 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
 
   // Chainable setters for fluent configuration
   CompositionOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
-  CompositionOptimizerParams& withMaxTotalPops(int v) { maxTotalPops = v; return *this; }
+  CompositionOptimizerParams& withMaxNodesPopped(int v) { maxNodesPopped = v; return *this; }
   CompositionOptimizerParams& withExploreFactor(double v) { exploreFactor = v; return *this; }
   CompositionOptimizerParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
   CompositionOptimizerParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
@@ -49,10 +49,10 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   CompositionOptimizerParams& withMaxEditResultsPerPosition(int v) { maxEditResultsPerPosition = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
-  static CompositionOptimizerParams dijkstra(int maxResults = 10, int maxTotalPops = 50000) {
+  static CompositionOptimizerParams dijkstra(int maxResults = 10, int maxNodesPopped = 50000) {
     CompositionOptimizerParams p;
     p.maxResults = maxResults;
-    p.maxTotalPops = maxTotalPops;
+    p.maxNodesPopped = maxNodesPopped;
     p.distanceWeight = 0.0;
     return p;
   }
@@ -71,7 +71,7 @@ struct CompositionOptimizerRangeParams : CompositionOptimizerParams {
 
   // Chainable setters (return derived type for chaining)
   CompositionOptimizerRangeParams& withMaxResults(int v) { maxResults = v; return *this; }
-  CompositionOptimizerRangeParams& withMaxTotalPops(int v) { maxTotalPops = v; return *this; }
+  CompositionOptimizerRangeParams& withMaxNodesPopped(int v) { maxNodesPopped = v; return *this; }
   CompositionOptimizerRangeParams& withExploreFactor(double v) { exploreFactor = v; return *this; }
   CompositionOptimizerRangeParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
   CompositionOptimizerRangeParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }

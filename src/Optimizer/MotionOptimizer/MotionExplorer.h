@@ -8,6 +8,7 @@
 #include "Optimizer/GlobalRuntimeOptions.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Keyboard/ToKeys/MotionToKeys.h"
+#include "Types/CountPrefixLimits.h"
 #include "VimCore/VimCore.h"
 #include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimEndpointUtils.h"
@@ -217,7 +218,7 @@ public:
   template<CountClass C>
   void exploreCountMotion(const MotionState& base, const KeyedSequence& baseMotion,
                           int cnt, const CursorPos& newPos) {
-    assert(cnt >= 0 && cnt <= MAX_PREFIX_COUNT);
+    assert(cnt >= 0 && cnt <= CountPrefixLimits::MAX_PREFIX_COUNT);
     CountPenaltyInput in;
     in.count = cnt;
     in.span = cnt;

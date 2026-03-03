@@ -42,7 +42,7 @@ TEST_F(EditOptimizerMultipleResultsTest, DefaultKeepsSingleResultPerStart) {
       lines, fullBoundary(lines),
       EditOptimizerParams{}
           .withMaxResults(50)
-          .withMaxTotalPops(100000));
+          .withMaxNodesPopped(100000));
 
   const Result* best = result.resultAt(0, 0);
   ASSERT_NE(best, nullptr);
@@ -61,7 +61,7 @@ TEST_F(EditOptimizerMultipleResultsTest, SupportsMultipleResultsPerStartWhenRequ
       lines, fullBoundary(lines),
       EditOptimizerParams{}
           .withMaxResults(50)
-          .withMaxTotalPops(100000)
+          .withMaxNodesPopped(100000)
           .withMaxMultiplePerStartPosition(3));
 
   auto all = result.resultsAt(0, 0);
@@ -82,7 +82,7 @@ TEST_F(EditOptimizerMultipleResultsTest, MaxMultiplePerStartPositionLessThanOneC
       lines, fullBoundary(lines),
       EditOptimizerParams{}
           .withMaxResults(50)
-          .withMaxTotalPops(100000)
+          .withMaxNodesPopped(100000)
           .withMaxMultiplePerStartPosition(0));
 
   EXPECT_EQ(result.resultsAt(0, 0).size(), 1u);
@@ -95,7 +95,7 @@ TEST_F(EditOptimizerMultipleResultsTest, GlobalMaxResultsStillCapsTotalEmittedRe
       lines, fullBoundary(lines),
       EditOptimizerParams{}
           .withMaxResults(2)
-          .withMaxTotalPops(100000)
+          .withMaxNodesPopped(100000)
           .withMaxMultiplePerStartPosition(3));
 
   EXPECT_LE(result.resultsAt(0, 0).size(), 2u);
@@ -127,7 +127,7 @@ TEST_F(EditOptimizerMultipleResultsTest, HighMaxResultsValuesDoNotIncreaseWorkAf
         lines, fullBoundary(lines),
         EditOptimizerParams{}
             .withMaxResults(maxResults)
-            .withMaxTotalPops(maxPops)
+            .withMaxNodesPopped(maxPops)
             .withMaxMultiplePerStartPosition(perStartCap));
   };
 

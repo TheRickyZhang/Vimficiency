@@ -1,9 +1,8 @@
 #pragma once
 
-#include <algorithm>
 #include <cassert>
 
-#include "Keyboard/ToKeys/CountToKeys.h"
+#include "Types/CountPrefixLimits.h"
 
 // =============================================================================
 // OptimizerParamsBase - Shared parameters for all optimizer types
@@ -17,7 +16,7 @@ struct OptimizerParamsBase {
 
   // Hard search budget: every priority-queue pop counts, including stale
   // or otherwise discarded states. This is the primary runtime guard.
-  int maxTotalPops = 50000;
+  int maxNodesPopped = 50000;
 
   // Search stops when effort > baseEffort * exploreFactor
   // baseEffort is typically user's sequence effort or cheapest result found
@@ -29,39 +28,30 @@ struct OptimizerParamsBase {
   double effortWeight = 1.0;
   double distanceWeight = 1.0;
 
-  // Note these might not really belong here, bgut
+  // Note these might not really belong here
   int linePaddingAbove = 2;
   int linePaddingBelow = 2;
 
-  // Minimum count before emitting counted motions/edits (e.g., 4 means 3w→www, 4w→4w).
-  // Positions reachable via count < threshold are still found by step-by-step A* exploration.
+  // Minimum and maximum numbered command counts to search (e.g. 5 in 5w).
+  // An empty range (minPrefixCount > maxPrefixCount) explicitly disables
+  // count-prefixed exploration while leaving unprefixed exploration intact.
   int minPrefixCount = 4;
-  // Upper bound for emitting counted motions/edits.
-  // withMaxCountRepeat enforces this to be <= MAX_PREFIX_COUNT.
-  int maxPrefixCount = MAX_PREFIX_COUNT;
+  int maxPrefixCount = 16;
 
   void setMinCountRepeat(int v) {
-    minPrefixCount = std::max(0, v);
-    if (minPrefixCount > maxPrefixCount) {
-      minPrefixCount = maxPrefixCount;
-    }
+    assert(v >= CountPrefixLimits::MIN_PREFIX_COUNT);
+    minPrefixCount = v;
   }
-
   void setMaxCountRepeat(int v) {
-    assert(v >= 0 && v <= MAX_PREFIX_COUNT);
+    assert(v >= 0 && v <= CountPrefixLimits::MAX_PREFIX_COUNT);
     maxPrefixCount = v;
-    if (minPrefixCount > maxPrefixCount) {
-      minPrefixCount = maxPrefixCount;
-    }
   }
 
-  void normalizeCountRepeatBounds() {
-    if (minPrefixCount < 0) {
-      minPrefixCount = 0;
-    }
-    if (minPrefixCount > maxPrefixCount) {
-      minPrefixCount = maxPrefixCount;
-    }
+  // Currently unused, but possible to toggle
+  bool countPrefixesEnabled() const { return minPrefixCount <= maxPrefixCount; }
+  void disableCountPrefixes() {
+    minPrefixCount = CountPrefixLimits::MIN_PREFIX_COUNT;
+    maxPrefixCount = 0;
   }
 
   // Debug: collect explored states in SearchStats (expensive, for debugging only)

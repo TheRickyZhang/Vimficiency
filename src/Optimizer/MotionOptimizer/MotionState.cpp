@@ -1,6 +1,7 @@
 #include "MotionState.h"
 #include "Interpreter/MotionInterpreter.h"
 #include "Keyboard/ToKeys/CountToKeys.h"
+#include "Types/CountPrefixLimits.h"
 
 using namespace std;
 
@@ -73,7 +74,7 @@ void MotionState::applyMotionImpl(const KeyedSequence& ks, const RunningEffort& 
 void MotionState::applyCountedMotionImpl(const KeyedSequence& baseMotion, int cnt,
                                          CursorPos endpoint, const Config& config,
                                          double extraPenalty) {
-  assert(abs(cnt) <= MAX_PREFIX_COUNT);
+  assert(abs(cnt) <= CountPrefixLimits::MAX_PREFIX_COUNT);
   pos = endpoint;
   if (cnt > 0) {
     motionSequence.append(to_string(cnt));

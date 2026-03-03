@@ -22,8 +22,6 @@ MotionResult MotionOptimizer::optimize(
     string_view userSequence,
     const MotionBoundary& boundary,
     const NavContext& navContext) {
-  params.normalizeCountRepeatBounds();
-
   if (initialPos < goalPos) {
     return optimizeImpl<true>(lines, initialPos, goalPos,
                               userSequence, navContext, boundary, params);
@@ -160,8 +158,6 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
     const NavContext& navContext,
     const BufferIndex& bufferIndex,
     int lineOffset) {
-  params.normalizeCountRepeatBounds();
-
   assert(!(startPos >= rangeBegin && startPos < rangeEnd) &&
          "startPos must not be in [rangeBegin, rangeEnd)");
 

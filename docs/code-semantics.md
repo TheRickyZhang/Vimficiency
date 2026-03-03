@@ -267,6 +267,8 @@ Rules:
 - Do not treat parsed `count == 0` as an actual zero repetition
 - Generated count-prefixed motions/edits should generally only emit when count is meaningfully greater than the unprefixed form
 - `minPrefixCount` / `maxPrefixCount` constrain emitted count-prefixed search candidates, not all command semantics globally
+- `minPrefixCount` should normally be at least `2`, so emitted prefixes avoid the redundant count-1 form
+- `minPrefixCount > maxPrefixCount` explicitly disables count-prefixed exploration
 
 ## Validity and Failure Terms
 

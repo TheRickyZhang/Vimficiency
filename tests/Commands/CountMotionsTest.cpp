@@ -60,7 +60,7 @@ protected:
     MotionOptimizer opt(config);
     MotionBoundary boundary;
     return opt.optimize(lines, start, end,
-                        MotionOptimizerParams{}.withMaxResults(30).withMaxTotalPops(20000),
+                        MotionOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
                         userSeq, boundary, navContext).getResults();
   }
 };

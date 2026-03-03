@@ -14,8 +14,6 @@ Local-only RunningEffort context in MotionOptimizer
 
 Verify usage of maxMultiplePerPosition
 
-Fix names to use first/last as prefix, not suffix
-Verify use of CursorPos everywhere when Pos would suffice? I would hope so?
 Improve clarity of handling characterwise vs linewise deletions currently distinguished by exclusive endpoint (line, line.size()) vs (line+1, 0)
 Improve onLinewiseGoal semantics - currently very lengthy
 

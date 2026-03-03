@@ -63,7 +63,7 @@ struct KeyedSequence {
   }
 
   void appendCounted(int count, const KeyedSequence& base) {
-    assert(count >= 2 && count <= MAX_PREFIX_COUNT);
+    assert(count >= CountPrefixLimits::MAX_PREFIX_COUNT && count <= CountPrefixLimits::MAX_PREFIX_COUNT);
     seq.append(CountToKeys::textForCount(count));
     seq.append(base.seq.view());
     keys.append(CountToKeys::keysForCount(count));

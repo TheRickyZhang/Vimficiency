@@ -201,12 +201,12 @@ bool EditSearchContext::shouldContinue() const {
   if (pq.empty()) return false;
   if (terminalStarts >= totalPositions) return false;
   if (resultsFound >= params.maxResults) return false;
-  if (totalPops >= params.maxTotalPops) return false;
+  if (totalPops >= params.maxNodesPopped) return false;
   return true;
 }
 
 optional<EditState> EditSearchContext::getNextValidState() {
-  while (!pq.empty() && totalPops < params.maxTotalPops) {
+  while (!pq.empty() && totalPops < params.maxNodesPopped) {
     EditState s = pq.top();
     pq.pop();
     totalPops++;
@@ -265,7 +265,7 @@ EditSearchStats EditSearchContext::getStats() const {
     stats.stopReason = SearchStopReason::AllResultsFound;
   } else if (resultsFound >= params.maxResults) {
     stats.stopReason = SearchStopReason::MaxResultsFound;
-  } else if (totalPops >= params.maxTotalPops) {
+  } else if (totalPops >= params.maxNodesPopped) {
     stats.stopReason = SearchStopReason::MaxPopsReached;
   }
 

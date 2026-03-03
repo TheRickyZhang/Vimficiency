@@ -27,6 +27,10 @@ jobs:
           fi
 
           SAFE_BRANCH=$(echo "$BRANCH" | sed 's|/|--|g; s|[^a-zA-Z0-9._-]||g')
+          if [ -z "$SAFE_BRANCH" ]; then
+            echo "Refusing to clean up with empty sanitized branch name"
+            exit 1
+          fi
           DEPLOY_DIR="branch/$SAFE_BRANCH"
 
           if [ ! -d "$DEPLOY_DIR" ]; then

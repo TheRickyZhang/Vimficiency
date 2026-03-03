@@ -9,6 +9,12 @@
 struct RepeatMotionResult {
   Pos pos{};
   int count{}; // Only use count == 0 -> invalid
+
+  RepeatMotionResult() = default;
+  RepeatMotionResult(Pos pos, int count) : pos(pos), count(count) {
+    // Generally no point in in having count <= 1
+    assert(count > 1);
+  }
   bool valid() const { return count > 0; }
 };
 

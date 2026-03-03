@@ -55,7 +55,7 @@ protected:
     // Pass CursorPos and fresh RunningEffort (no prior typing context in tests)
     // Try to explore more (30 results), lower search depth for speed (2e4)
     return opt.optimize(lines, start, end,
-                        MotionOptimizerParams{}.withMaxResults(30).withMaxTotalPops(20000),
+                        MotionOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
                         userSeq, boundary, navContext).getResults();
   }
 
@@ -71,7 +71,7 @@ protected:
     return opt.optimizeToRange(lines, start, rangeBegin, rangeEnd,
                                MotionOptimizerRangeParams{}
                                    .withMaxResults(maxResults)
-                                   .withMaxTotalPops(20000)
+                                   .withMaxNodesPopped(20000)
                                    .withAllowMultiplePerPosition(true),
                                userSeq, boundary, navContext).getResults();
   }
@@ -181,7 +181,7 @@ protected:
                   Config config = Config::uniform()) {
     MotionOptimizer opt(config);
     return opt.optimize(lines, start, end,
-                        MotionOptimizerParams{}.withMaxResults(30).withMaxTotalPops(20000),
+                        MotionOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
                         userSeq, boundary, navContext).getResults();
   }
 
@@ -355,7 +355,7 @@ TEST_F(MotionOptimizer_ManualTest, MinCountRepeat_BlocksSmallCounts) {
 
   // With default minCountRepeat=4, count=3 should NOT appear as "3w"
   auto results = opt.optimize(lines, start, end,
-      MotionOptimizerParams{}.withMaxResults(30).withMaxTotalPops(20000),
+      MotionOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
       "", boundary, navContext).getResults();
 
   EXPECT_FALSE(hasSequence(results, "3w")) << "3w should be blocked by minCountRepeat=4";
@@ -372,7 +372,7 @@ TEST_F(MotionOptimizer_ManualTest, MinCountRepeat_LowThresholdAllowsSmallCounts)
 
   // With minCountRepeat=2, count=3 SHOULD appear
   auto results = opt.optimize(lines, start, end,
-      MotionOptimizerParams{}.withMaxResults(30).withMaxTotalPops(20000)
+      MotionOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000)
           .withMinCountRepeat(2),
       "", boundary, navContext).getResults();
 

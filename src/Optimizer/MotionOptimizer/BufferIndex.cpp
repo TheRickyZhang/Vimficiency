@@ -122,7 +122,7 @@ BufferIndex::getClosestInRange(LandingType type, Pos currPos,
 
   std::vector<RepeatMotionResult> results;
 
-  // [frontIt, pastBackIt) = landings in inclusive [rangeFront, rangeBack]
+  // [frontIt, pastBackIt) = landings in inclusive [rangeFirst, rangeLast]
   auto frontIt    = std::lower_bound(positions.begin(), positions.end(), rangeFirst);
   auto pastBackIt = std::upper_bound(positions.begin(), positions.end(), rangeLast);
 
@@ -130,49 +130,49 @@ BufferIndex::getClosestInRange(LandingType type, Pos currPos,
   bool hasLandingAtBack  = (frontIt != pastBackIt && *std::prev(pastBackIt) == rangeLast);
 
   if constexpr (Forward) {
-    assert(currPos < rangeFront);
+    assert(currPos < rangeFirst);
     auto onePastCurrIt = std::upper_bound(positions.begin(), positions.end(), currPos);
 
-    // Near-miss before rangeFront: only if no landing at exactly rangeFront
+    // Near-miss before rangeFirst: only if no landing at exactly rangeFirst
     if (!hasLandingAtFront && frontIt != positions.begin()) {
       auto nearMissIt = std::prev(frontIt);
       int cnt = static_cast<int>(std::distance(onePastCurrIt, nearMissIt)) + 1;
-      if (cnt >= 1) results.push_back({*nearMissIt, cnt});
+      if (cnt >= 1) results.push_back(RepeatMotionResult(*nearMissIt, cnt));
     }
 
     // All in-range landings
     for (auto it = frontIt; it != pastBackIt; ++it) {
       int cnt = static_cast<int>(std::distance(onePastCurrIt, it)) + 1;
-      if (cnt >= 1) results.push_back({*it, cnt});
+      if (cnt >= 1) results.push_back(RepeatMotionResult(*it, cnt));
     }
 
-    // Near-miss after rangeBack: only if no landing at exactly rangeBack
+    // Near-miss after rangeLast: only if no landing at exactly rangeLast
     if (!hasLandingAtBack && pastBackIt != positions.end()) {
       int cnt = static_cast<int>(std::distance(onePastCurrIt, pastBackIt)) + 1;
-      if (cnt >= 1) results.push_back({*pastBackIt, cnt});
+      if (cnt >= 1) results.push_back(RepeatMotionResult(*pastBackIt, cnt));
     }
   } else {
-    assert(currPos > rangeBack);
+    assert(currPos > rangeLast);
     auto currLowerIt = std::lower_bound(positions.begin(), positions.end(), currPos);
 
-    // Near-miss after rangeBack: only if no landing at exactly rangeBack
+    // Near-miss after rangeLast: only if no landing at exactly rangeLast
     if (!hasLandingAtBack && pastBackIt != positions.end()) {
       int cnt = static_cast<int>(std::distance(pastBackIt, currLowerIt));
-      if (cnt >= 1) results.push_back({*pastBackIt, cnt});
+      if (cnt >= 1) results.push_back(RepeatMotionResult(*pastBackIt, cnt));
     }
 
     // All in-range landings (reverse order for natural backward ordering)
     for (auto it = pastBackIt; it != frontIt; ) {
       --it;
       int cnt = static_cast<int>(std::distance(it, currLowerIt));
-      if (cnt >= 1) results.push_back({*it, cnt});
+      if (cnt >= 1) results.push_back(RepeatMotionResult(*it, cnt));
     }
 
-    // Near-miss before rangeFront: only if no landing at exactly rangeFront
+    // Near-miss before rangeFirst: only if no landing at exactly rangeFirst
     if (!hasLandingAtFront && frontIt != positions.begin()) {
       auto nearMissIt = std::prev(frontIt);
       int cnt = static_cast<int>(std::distance(nearMissIt, currLowerIt));
-      if (cnt >= 1) results.push_back({*nearMissIt, cnt});
+      if (cnt >= 1) results.push_back(RepeatMotionResult(*nearMissIt, cnt));
     }
   }
 
@@ -181,5 +181,6 @@ BufferIndex::getClosestInRange(LandingType type, Pos currPos,
 
 template std::vector<RepeatMotionResult>
 BufferIndex::getClosestInRange<true>(LandingType, Pos, Pos, Pos) const;
+
 template std::vector<RepeatMotionResult>
 BufferIndex::getClosestInRange<false>(LandingType, Pos, Pos, Pos) const;

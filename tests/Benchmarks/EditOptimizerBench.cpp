@@ -99,7 +99,7 @@ static optional<BenchmarkSetup> findMixedTerminalSetup(int perStartCap) {
     BenchmarkSetup setup(lines);
     EditOptimizerParams params = EditOptimizerParams{}
         .withMaxResults(5000)
-        .withMaxTotalPops(200000)
+        .withMaxNodesPopped(200000)
         .withMaxMultiplePerStartPosition(perStartCap);
     EditResult result = opt.optimizePureDeletion(setup.initialLines, setup.boundary, params);
     if (result.getStats().stopReason != SearchStopReason::AllResultsFound) continue;
@@ -171,7 +171,7 @@ static void BM_EditSearchDepth(benchmark::State& state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
     auto setup = BenchmarkSetup(generateBuffer(15, 30));
     EditOptimizerParams params;
-    params.maxTotalPops = maxPops;
+    params.maxNodesPopped = maxPops;
     runBenchmark(setup, withCap(params, setup), totalStats);
     iter++;
   }
@@ -364,7 +364,7 @@ static void BM_EditMaxResultsTerminal(benchmark::State& state) {
     EditOptimizer opt(benchConfig);
     EditOptimizerParams params = EditOptimizerParams{}
         .withMaxResults(maxResults)
-        .withMaxTotalPops(maxPops)
+        .withMaxNodesPopped(maxPops)
         .withMaxMultiplePerStartPosition(perStartCap);
     EditResult result = opt.optimizePureDeletion(
         mixedSetup->initialLines, mixedSetup->boundary, params);
@@ -410,7 +410,7 @@ static void BM_EditPerStartCap(benchmark::State& state) {
     EditOptimizer opt(benchConfig);
     EditOptimizerParams params = EditOptimizerParams{}
         .withMaxResults(maxResults)
-        .withMaxTotalPops(maxPops)
+        .withMaxNodesPopped(maxPops)
         .withMaxMultiplePerStartPosition(perStartCap);
     EditResult result = opt.optimizePureDeletion(
         setup.initialLines, setup.boundary, params);

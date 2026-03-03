@@ -7,7 +7,7 @@
 enum class SearchStopReason {
   Unknown,
   FullyExplored,    // Search space fully explored
-  MaxPopsReached,  // Hit maxTotalPops
+  MaxPopsReached,  // Hit maxNodesPopped
   AllResultsFound,   // Found results for all positions (EditOptimizer)
   MaxResultsFound, // Found maxResults (for single-goal search)
 };

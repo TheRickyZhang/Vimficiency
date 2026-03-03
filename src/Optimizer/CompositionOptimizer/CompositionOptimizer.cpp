@@ -57,7 +57,6 @@ CompositionResult CompositionOptimizer::optimize(
     const CursorPos goalPos, CompositionOptimizerParams params,
     string_view userSequence, const MotionBoundary& boundary,
     const NavContext& navigationContext) {
-  params.normalizeCountRepeatBounds();
   if(goalPos < initialPos) {
     debug("only support forward motion in CompositionOptimizer");
   }
