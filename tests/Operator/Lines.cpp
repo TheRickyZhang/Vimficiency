@@ -170,7 +170,7 @@ TEST_F(LinesTest, ResolveExclusiveDeleteRange_LinewiseAtColZero) {
   Lines lines = {"alpha", "beta"};
 
   auto resolved = VimCore::resolveExclusiveDeleteRange(
-      CharRange(CursorPos(0, 0), CursorPos(1, 0)), lines, true);
+      CharLineRange(CursorPos(0, 0), 1), lines, true);
 
   EXPECT_EQ(resolved.kind, VimCore::ResolvedDeleteRangeKind::Linewise);
   EXPECT_EQ(resolved.lineRange.beginLine, 0);
@@ -181,7 +181,7 @@ TEST_F(LinesTest, ResolveExclusiveDeleteRange_ChangeKeepsCharacterwiseShape) {
   Lines lines = {"alpha", "beta"};
 
   auto resolved = VimCore::resolveExclusiveDeleteRange(
-      CharRange(CursorPos(0, 0), CursorPos(1, 0)), lines, false);
+      CharLineRange(CursorPos(0, 0), 1), lines, false);
 
   EXPECT_EQ(resolved.kind, VimCore::ResolvedDeleteRangeKind::CharLine);
   EXPECT_EQ(resolved.charLineRange.begin, CursorPos(0, 0));
@@ -192,7 +192,7 @@ TEST_F(LinesTest, ResolveExclusiveDeleteRange_BacksUpMidLineCrossing) {
   Lines lines = {"abcdef", "beta"};
 
   auto resolved = VimCore::resolveExclusiveDeleteRange(
-      CharRange(CursorPos(0, 2), CursorPos(1, 0)), lines, true);
+      CharLineRange(CursorPos(0, 2), 1), lines, true);
 
   EXPECT_EQ(resolved.kind, VimCore::ResolvedDeleteRangeKind::Characterwise);
   EXPECT_EQ(resolved.charRange.begin, CursorPos(0, 2));

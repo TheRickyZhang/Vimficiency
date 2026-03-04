@@ -743,13 +743,14 @@ struct ModePolicy<false> {
   void onLinewiseGoal(EditState& afterDel, const EditState& base, LineRange range,
                       const SequenceBinding& sourceCmd) {
     int line = range.beginLine;
+    int lineCount = range.endLine - range.beginLine;
+    int ccLineCount = static_cast<int>(base.getLines().size()) - lineCount + 1;
     KeyedSequence changeCmd = deleteToChangeLine(sourceCmd, base.getLines()[line]);
     bool applyAutoindent = false;
     if constexpr (VimOptions::autoindent()) {
       applyAutoindent = (changeCmd.seq.view() != "0C");
     }
-    emitLinewiseChangeGoal(afterDel, base, sourceCmd, line,
-                           static_cast<int>(base.getLines().size()),
+    emitLinewiseChangeGoal(afterDel, base, sourceCmd, line, ccLineCount,
                            changeCmd, applyAutoindent);
   }
 
@@ -1158,6 +1159,7 @@ EditOptimizer::optimizeEdit(
     int bufferBeginLine, int bufferBeginCol, CursorPos goalPos) {
   assert(initialLines != goalLines);
   assert(!initialLines.empty());
+  params.assertValidCountRepeatBounds();
   bool pureDeletionGoal = goalLines.empty() ||
                           (goalLines.size() == 1 && goalLines[0].empty());
   assert(!pureDeletionGoal &&
@@ -1174,6 +1176,7 @@ EditResult EditOptimizer::optimizePureDeletion(
   int bufferBeginCol,
   CursorPos goalPos) {
   assert(!initialLines.empty());
+  params.assertValidCountRepeatBounds();
   return optimizeImpl<true>(
       initialLines, Lines{}, editBoundary, params,
       bufferBeginLine, bufferBeginCol, goalPos);

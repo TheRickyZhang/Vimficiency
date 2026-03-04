@@ -15,67 +15,10 @@ using namespace std;
 
 namespace {
 
-CursorPos rangeFirstPos(const CharRange& range) {
-  return range.begin;
-}
-
-CursorPos rangeFirstPos(const CharLineRange& range) {
-  return range.begin;
-}
-
-CursorPos rangeFirstPos(const LineCharRange& range) {
-  return CursorPos(range.beginLine, 0);
-}
-
-CursorPos rangeLastPos(const Lines& lines, const CharRange& range) {
-  CursorPos last = lines.getPrevPos(range.end);
-  return last.isValid() ? last : range.begin;
-}
-
-CursorPos rangeLastPos(const Lines& lines, const CharLineRange& range) {
-  CursorPos last = lines.getPrevPos(CursorPos(range.endLine, 0));
-  return last.isValid() ? last : range.begin;
-}
-
-CursorPos rangeLastPos(const Lines& lines, const LineCharRange& range) {
-  CursorPos last = lines.getPrevPos(range.end);
-  CursorPos first(range.beginLine, 0);
-  return last.isValid() ? last : first;
-}
-
-bool isInRange(const CursorPos& pos, const CharRange& range) {
-  return pos >= range.begin && pos < range.end;
-}
-
-bool isInRange(const CursorPos& pos, const CharLineRange& range) {
-  return pos >= range.begin && pos.line < range.endLine;
-}
-
-bool isInRange(const CursorPos& pos, const LineCharRange& range) {
-  return pos >= CursorPos(range.beginLine, 0) && pos < range.end;
-}
-
-bool lineIntersectsTarget(int line, const CharRange& range) {
-  if (line < range.begin.line || line > range.end.line) return false;
-  if (range.begin.line == range.end.line) {
-    return line == range.begin.line && range.end.col > range.begin.col;
-  }
-  if (line == range.end.line) {
-    return range.end.col > 0;
-  }
-  return true;
-}
-
-bool lineIntersectsTarget(int line, const CharLineRange& range) {
-  return line >= range.begin.line && line < range.endLine;
-}
-
-bool lineIntersectsTarget(int line, const LineCharRange& range) {
-  if (line < range.beginLine || line > range.end.line) return false;
-  if (line == range.end.line) {
-    return range.end.col > 0 || line < range.end.line;
-  }
-  return true;
+int targetSize(const Lines& lines, const InclusiveCharRange& targetRange) {
+  CursorPos targetFirst(targetRange.firstPos.line, targetRange.firstPos.col);
+  CursorPos targetLast(targetRange.lastPos.line, targetRange.lastPos.col);
+  return lines.spanSize(targetFirst, lines.getNextPosUnbounded(targetLast));
 }
 
 }  // namespace
@@ -89,6 +32,7 @@ MotionResult MotionOptimizer::optimize(
     string_view userSequence,
     const MotionBoundary& boundary,
     const NavContext& navContext) {
+  params.assertValidCountRepeatBounds();
   if (initialPos < goalPos) {
     return optimizeImpl<true>(lines, initialPos, goalPos,
                               userSequence, navContext, boundary, params);
@@ -119,8 +63,8 @@ MotionResult MotionOptimizer::optimizeImpl(
 
   MotionSearchContext ctx(lines, navContext, boundary, params, config, userEffort);
 
-  // Set range to just be goalPos
-  MotionExplorer explorer(ctx, CharRange(goalPos, lines.getNextPos(goalPos)), bufferIndex, 0);
+  InclusiveCharRange targetRange(goalPos, goalPos);
+  MotionExplorer explorer(ctx, targetRange, bufferIndex, 0);
 
   Pos goalKey(goalPos.line, goalPos.col);
 
@@ -198,39 +142,13 @@ template MotionResult MotionOptimizer::optimizeImpl<false>(
 RangeMotionResult MotionOptimizer::optimizeToRange(
     const Lines& lines,
     const CursorPos& startPos,
-    const CharRange& range,
+    const InclusiveCharRange& targetRange,
     MotionOptimizerRangeParams params,
     string_view userSequence,
     const MotionBoundary& boundary,
     const NavContext& navContext) {
   BufferIndex localIndex(lines);
-  return optimizeToRange(lines, startPos, range, params, userSequence,
-                         boundary, navContext, localIndex, 0);
-}
-
-RangeMotionResult MotionOptimizer::optimizeToRange(
-    const Lines& lines,
-    const CursorPos& startPos,
-    const CharLineRange& range,
-    MotionOptimizerRangeParams params,
-    string_view userSequence,
-    const MotionBoundary& boundary,
-    const NavContext& navContext) {
-  BufferIndex localIndex(lines);
-  return optimizeToRange(lines, startPos, range, params, userSequence,
-                         boundary, navContext, localIndex, 0);
-}
-
-RangeMotionResult MotionOptimizer::optimizeToRange(
-    const Lines& lines,
-    const CursorPos& startPos,
-    const LineCharRange& range,
-    MotionOptimizerRangeParams params,
-    string_view userSequence,
-    const MotionBoundary& boundary,
-    const NavContext& navContext) {
-  BufferIndex localIndex(lines);
-  return optimizeToRange(lines, startPos, range, params, userSequence,
+  return optimizeToRange(lines, startPos, targetRange, params, userSequence,
                          boundary, navContext, localIndex, 0);
 }
 
@@ -238,87 +156,45 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
 RangeMotionResult MotionOptimizer::optimizeToRange(
     const Lines& lines,
     const CursorPos& startPos,
-    const CharRange& range,
+    const InclusiveCharRange& targetRange,
     MotionOptimizerRangeParams params,
     string_view userSequence,
     const MotionBoundary& boundary,
     const NavContext& navContext,
     const BufferIndex& bufferIndex,
     int lineOffset) {
-  assert(!isInRange(startPos, range) && "startPos must not be in target range");
-  if (startPos < rangeFirstPos(range)) {
-    return optimizeToRangeImpl<true>(lines, startPos, range, userSequence,
+  assert(!targetRange.contains(startPos) && "startPos must not be in target range");
+  if (startPos < targetRange.firstPos) {
+    return optimizeToRangeImpl<true>(lines, startPos, targetRange, userSequence,
                                      navContext, boundary, params,
                                      bufferIndex, lineOffset);
   }
-  return optimizeToRangeImpl<false>(lines, startPos, range, userSequence,
-                                    navContext, boundary, params,
-                                    bufferIndex, lineOffset);
-}
-
-RangeMotionResult MotionOptimizer::optimizeToRange(
-    const Lines& lines,
-    const CursorPos& startPos,
-    const CharLineRange& range,
-    MotionOptimizerRangeParams params,
-    string_view userSequence,
-    const MotionBoundary& boundary,
-    const NavContext& navContext,
-    const BufferIndex& bufferIndex,
-    int lineOffset) {
-  assert(!isInRange(startPos, range) && "startPos must not be in target range");
-  if (startPos < rangeFirstPos(range)) {
-    return optimizeToRangeImpl<true>(lines, startPos, range, userSequence,
-                                     navContext, boundary, params,
-                                     bufferIndex, lineOffset);
-  }
-  return optimizeToRangeImpl<false>(lines, startPos, range, userSequence,
-                                    navContext, boundary, params,
-                                    bufferIndex, lineOffset);
-}
-
-RangeMotionResult MotionOptimizer::optimizeToRange(
-    const Lines& lines,
-    const CursorPos& startPos,
-    const LineCharRange& range,
-    MotionOptimizerRangeParams params,
-    string_view userSequence,
-    const MotionBoundary& boundary,
-    const NavContext& navContext,
-    const BufferIndex& bufferIndex,
-    int lineOffset) {
-  assert(!isInRange(startPos, range) && "startPos must not be in target range");
-  if (startPos < rangeFirstPos(range)) {
-    return optimizeToRangeImpl<true>(lines, startPos, range, userSequence,
-                                     navContext, boundary, params,
-                                     bufferIndex, lineOffset);
-  }
-  return optimizeToRangeImpl<false>(lines, startPos, range, userSequence,
+  return optimizeToRangeImpl<false>(lines, startPos, targetRange, userSequence,
                                     navContext, boundary, params,
                                     bufferIndex, lineOffset);
 }
 
 // Templated implementation - Forward is compile-time constant
 // Precondition: bufferIndex/lineOffset are always valid (resolved by public optimizeToRange)
-template<bool Forward, class RangeT>
+template<bool Forward>
 RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     const Lines& lines,
     const CursorPos& startPos,
-    const RangeT& range,
+    const InclusiveCharRange& targetRange,
     string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,
     MotionOptimizerRangeParams params,
     const BufferIndex& bufferIndex,
     int lineOffset) {
+  params.assertValidCountRepeatBounds();
 
   double userEffort = userSequence.empty()
       ? numeric_limits<double>::max()
       : getEffort(userSequence, config);
 
   MotionSearchContext ctx(lines, navContext, boundary, params, config, userEffort);
-
-  MotionExplorer explorer(ctx, range, bufferIndex, lineOffset);
+  MotionExplorer explorer(ctx, targetRange, bufferIndex, lineOffset);
 
   MotionState initialState(startPos, RunningEffort(), 0.0, 0.0);
 
@@ -327,12 +203,10 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
   int uniquePositionsFound = 0;
 
   // Cap effective maxResults at range size (can't find more positions than exist)
-  int rangeSize = lines.spanSize(range);
+  int rangeSize = targetSize(lines, targetRange);
   int effectiveMaxResults = std::min(params.maxResults, rangeSize);
-  CursorPos rangeFirst = rangeFirstPos(range);
-  CursorPos rangeLast = rangeLastPos(lines, range);
 
-  initialState.setCost(ctx.computePriorityToRange(initialState, rangeFirst, rangeLast));
+  initialState.setCost(ctx.computePriorityToRange(initialState, targetRange));
   ctx.pq.push(initialState);
   ctx.costMap[initialState.getKey()] = initialState.getCost();
 
@@ -341,7 +215,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
     CursorPos pos = s.getPos();
 
     Pos stateKey = s.getKey();
-    bool isGoal = isInRange(pos, range);
+    bool isGoal = targetRange.contains(stateKey);
 
     if (isGoal) {
       ctx.markProcessed();
@@ -384,7 +258,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
       explorer.exploreAllStandardMotions(s);
     }
 
-    bool lineIntersectsGoal = lineIntersectsTarget(pos.line, range);
+    bool lineIntersectsGoal = targetRange.lineIntersects(pos.line);
     explorer.exploreDirectionalMotions<Forward>(s, lineIntersectsGoal);
   }
 

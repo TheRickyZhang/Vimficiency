@@ -68,7 +68,8 @@ protected:
     MotionOptimizer opt(config);
     MotionBoundary boundary;
     // allowMultiplePerPosition=true for tests to see all paths
-    return opt.optimizeToRange(lines, start, CharRange(rangeBegin, rangeEnd),
+    return opt.optimizeToRange(lines, start,
+                               InclusiveCharRange(rangeBegin, lines.getPrevPos(rangeEnd)),
                                MotionOptimizerRangeParams{}
                                    .withMaxResults(maxResults)
                                    .withMaxNodesPopped(20000)

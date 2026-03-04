@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cassert>
+
 #include "Types/CursorPos.h"
 
 // A character-wise region in the buffer with a concrete exclusive end.
@@ -9,17 +11,16 @@ struct CharRange {
   CursorPos end;
 
   CharRange() = default;
-  constexpr CharRange(CursorPos beginPos, CursorPos endPos) : begin(beginPos), end(endPos) {}
-
-  // Ensure begin <= end (lexicographic on line/col).
-  void normalize() {
-    if (begin > end) {
-      begin.swap(end);
-    }
+  constexpr CharRange(CursorPos beginPos, CursorPos endPos)
+      : begin(beginPos), end(endPos) {
+    assert((!begin.isValid() && !end.isValid())
+        || (begin.isValid() && end.isValid() && begin <= end));
   }
 
   bool isValid() const {
-    return begin.isValid() && end.isValid() && end >= begin;
+    assert(begin.isValid() == end.isValid());
+    assert(!begin.isValid() || begin <= end);
+    return begin.isValid();
   }
 
   bool spansMultiple() const {
@@ -27,14 +28,24 @@ struct CharRange {
   }
 
   bool isEmpty() const {
+    assert(isValid());
     return begin.line == end.line && begin.col == end.col;
   }
 
   int size() const {
-    if (!isValid() || isEmpty()) return 0;
+    assert(isValid());
+    if (isEmpty()) return 0;
     return end.line - begin.line + 1;
   }
 };
+
+[[nodiscard]] inline CharRange orderedCharRange(const CursorPos& a, const CursorPos& b) {
+  return (a <= b) ? CharRange(a, b) : CharRange(b, a);
+}
+
+[[nodiscard]] inline CharRange orderedCharRange(const CharRange& range) {
+  return orderedCharRange(range.begin, range.end);
+}
 
 constexpr CharRange CHAR_RANGE_OUTSIDE_BOUNDARY{
     POSITION_OUTSIDE_BOUNDARY, POSITION_OUTSIDE_BOUNDARY};

@@ -9,9 +9,7 @@
 #include "Boundary/MotionBoundary.h"
 #include "Effort/EffortBank.h"
 #include "Types/NavContext.h"
-#include "Types/CharLineRange.h"
-#include "Types/LineCharRange.h"
-#include "Types/CharRange.h"
+#include "Types/InclusiveCharRange.h"
 #include "Types/CursorPos.h"
 #include "Optimizer/MotionOptimizer/MotionState.h"
 #include "Types/Pos.h"
@@ -64,13 +62,13 @@ struct MotionSearchContext {
     return std::abs(goal.line - pos.line) + std::abs(goal.targetCol - pos.targetCol);
   }
 
-  // Distance to closest point in range [rangeFirst, rangeLast] (both inclusive).
-  // CharRange endpoints are geometric (Pos); cursor pos needs targetCol for heuristic.
-  double distanceToRange(CursorPos pos, Pos rangeFirst, Pos rangeLast) const {
-    if (pos >= rangeFirst && pos <= rangeLast) {
+  // Distance to closest point in the inclusive target set [firstPos, lastPos].
+  // Goal membership is defined over valid landing positions, not half-open text geometry.
+  double distanceToRange(CursorPos pos, const InclusiveCharRange& range) const {
+    if (range.contains(pos)) {
       return 0.0;  // Inside range
     }
-    Pos closest = (pos < rangeFirst) ? rangeFirst : rangeLast;
+    Pos closest = (pos < range.firstPos) ? range.firstPos : range.lastPos;
     return std::abs(closest.line - pos.line) + std::abs(closest.col - pos.targetCol);
   }
 
@@ -84,12 +82,12 @@ struct MotionSearchContext {
     return computePriority(s.getEffort(), distanceToGoal(s.getPos(), goal));
   }
 
-  // Convenience: compute priority for range goal [rangeFirst, rangeLast] (both inclusive)
-  double computePriorityToRange(const MotionState& s, Pos rangeFirst,
-                                Pos rangeLast) const {
+  // Convenience: compute priority for inclusive target set [firstPos, lastPos].
+  double computePriorityToRange(const MotionState& s,
+                                const InclusiveCharRange& range) const {
     return computePriority(
         s.getEffort(),
-        distanceToRange(s.getPos(), rangeFirst, rangeLast));
+        distanceToRange(s.getPos(), range));
   }
 
   // ==========================================================================
@@ -100,10 +98,8 @@ struct MotionSearchContext {
   // goalKey: the goal position key (not cached to allow multiple results)
   void exploreNewState(MotionState&& state, const Pos& goalKey);
 
-  // Variants for range goals: positions in range are not cached.
-  void exploreNewStateToRange(MotionState&& state, const CharRange& range);
-  void exploreNewStateToRange(MotionState&& state, const CharLineRange& range);
-  void exploreNewStateToRange(MotionState&& state, const LineCharRange& range);
+  // Variant for inclusive target ranges: positions in the target set are not cached.
+  void exploreNewStateToRange(MotionState&& state, const InclusiveCharRange& range);
 
   // Check if search should continue
   bool shouldContinue() const {

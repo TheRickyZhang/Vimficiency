@@ -140,18 +140,17 @@ public:
   // Create new state with db/dB deletion semantics applied, including the
   // special post-delete cursor adjustment after removing the begin line.
   [[nodiscard]] EditState afterBackwardWordDeletion(const CharRange& range) const {
+    assert(range.isValid());
     EditState newState = *this;
-    CharRange normalized = range;
-    normalized.normalize();
     int oldLineCount = static_cast<int>(newState.lines.size());
     CursorPos originalPos = newState.pos;
 
-    VimCore::deleteRangeAndUpdatePos(newState.lines, normalized, newState.pos, Mode::Normal);
+    VimCore::deleteRangeAndUpdatePos(newState.lines, range, newState.pos, Mode::Normal);
 
     if (originalPos.col == 0
-        && originalPos.line > normalized.begin.line
+        && originalPos.line > range.begin.line
         && VimCore::didDeleteRangeRemoveBeginLine(
-               normalized, oldLineCount, static_cast<int>(newState.lines.size()))
+               range, oldLineCount, static_cast<int>(newState.lines.size()))
         && !newState.lines[newState.pos.line].empty()) {
       newState.pos.setCol(VimCore::firstNonBlankColInLineStr(newState.lines[newState.pos.line]));
     }

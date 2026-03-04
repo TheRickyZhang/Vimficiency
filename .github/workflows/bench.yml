@@ -338,6 +338,7 @@ jobs:
           # Save artifacts before switching branches
           cp -r bench-dashboard/dist /tmp/dashboard-dist
           cp scripts/bench-data.ts /tmp/bench-data.ts
+          cp scripts/update-branches.ts /tmp/update-branches.ts
           cp edit_result.json /tmp/edit_result.json
           cp motion_result.json /tmp/motion_result.json
           cp composition_result.json /tmp/composition_result.json
@@ -376,7 +377,14 @@ jobs:
           mkdir -p "$DEPLOY_DIR/assets"
           cp -r /tmp/dashboard-dist/assets/* "$DEPLOY_DIR/assets/" 2>/dev/null || true
 
-          git add -f "$DEPLOY_DIR/"
+          # Update branches.json to track active branch dashboards
+          bun /tmp/update-branches.ts \
+            "${{ steps.meta.outputs.branch }}" \
+            "${{ steps.meta.outputs.safe-branch }}" \
+            "${{ github.repository_owner }}" \
+            "$COMMIT_TS"
+
+          git add -f "$DEPLOY_DIR/" branches.json
           git -c user.name=github-actions -c user.email=github-actions@github.com \
             commit -m "Update branch dashboard: ${{ steps.meta.outputs.branch }}" || true
           git push origin gh-pages
@@ -388,27 +396,16 @@ jobs:
         run: |
           BRANCH="${{ steps.meta.outputs.branch }}"
           DASHBOARD_URL="https://${{ github.repository_owner }}.github.io${{ steps.meta.outputs.base-path }}"
-          MARKER="<!-- bench-dashboard-link -->"
 
           # Find open PR for this branch
           PR_NUMBER=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
           if [ -z "$PR_NUMBER" ]; then
-            echo "No open PR found for branch $BRANCH, skipping comment"
+            echo "No open PR found for branch $BRANCH, skipping"
             exit 0
           fi
 
-          BODY="${MARKER}
-          **Benchmark Dashboard:** ${DASHBOARD_URL}
-
-          _Updated at $(date -u +"%Y-%m-%d %H:%M:%S UTC") for commit ${{ github.sha }}_"
-
-          # Check for existing comment with marker
-          EXISTING_COMMENT=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
-            --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -1)
-
-          if [ -n "$EXISTING_COMMENT" ]; then
-            gh api "repos/${{ github.repository }}/issues/comments/${EXISTING_COMMENT}" \
-              -X PATCH -f body="$BODY"
-          else
-            gh pr comment "$PR_NUMBER" --body "$BODY"
-          fi
+          bun scripts/update-pr-body.ts \
+            "$PR_NUMBER" \
+            "$DASHBOARD_URL" \
+            "${{ github.sha }}" \
+            "${{ github.repository }}"

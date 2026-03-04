@@ -17,7 +17,6 @@
 
 #include <gtest/gtest.h>
 
-#include <iostream>
 #include <vector>
 
 #include "Keyboard/Config.h"
@@ -90,7 +89,7 @@ TEST_F(StartingEffortTradeoffTest, SmokeTest) {
 
     auto result = opt.optimizeToRange(
       scenario.lines, scenario.initialPos,
-      CharRange(scenario.rangeBegin, scenario.rangeEnd),
+      InclusiveCharRange(scenario.rangeBegin, scenario.lines.getPrevPos(scenario.rangeEnd)),
       params
     );
 
@@ -100,9 +99,9 @@ TEST_F(StartingEffortTradeoffTest, SmokeTest) {
     }
   }
 
-  cerr << "StartingEffortTradeoffTest smoke: " << validScenarios << "/"
-       << NUM_ITERATIONS << " scenarios produced results, "
-       << totalResults << " total results" << endl;
+  // cerr << "StartingEffortTradeoffTest smoke: " << validScenarios << "/"
+  //      << NUM_ITERATIONS << " scenarios produced results, "
+  //      << totalResults << " total results" << endl;
 
   EXPECT_GT(validScenarios, NUM_ITERATIONS / 2)
       << "Expected most scenarios to produce results";

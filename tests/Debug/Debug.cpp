@@ -1247,7 +1247,8 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
     cerr << "Finding path from " << initialPos << " to range [" << rangeBegin << ", " << rangeEnd << ")" << endl;
 
     auto rangeResult = movOpt.optimizeToRange(
-        initial, initialPos, CharRange(rangeBegin, rangeEnd),
+        initial, initialPos,
+        InclusiveCharRange(rangeBegin, initial.getPrevPos(rangeEnd)),
         MotionOptimizerRangeParams{}.withMaxResults(10));
 
     cerr << "MotionOptimizer returned " << rangeResult.getResults().size() << " results" << endl;
@@ -1484,7 +1485,8 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     NavContext navCtx;
 
     auto rangeResult = motionOpt.optimizeToRange(
-        initial, initialPos, CharRange(rangeBegin, rangeEnd),
+        initial, initialPos,
+        InclusiveCharRange(rangeBegin, initial.getPrevPos(rangeEnd)),
         MotionOptimizerRangeParams{}.withMaxResults(10), "",
         boundary, navCtx);
 
@@ -1595,7 +1597,8 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
             endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
         auto movementResults = motionOpt.optimizeToRange(
-            subset, localPos, CharRange(localRangeBegin, localRangeEnd),
+            subset, localPos,
+            InclusiveCharRange(localRangeBegin, subset.getPrevPos(localRangeEnd)),
             MotionOptimizerRangeParams{}.withMaxResults(
                 clamp(nextEdit.origCharCount(), 1, 10)), "",
             subsetBoundary, navCtx).getResults();
@@ -1767,7 +1770,8 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
           beginLine > 0, endLine <= currentLines.lastLine());
 
       auto rangeResults = motionOpt.optimizeToRange(
-          subset, localPos, CharRange(localRangeBegin, localRangeEnd),
+          subset, localPos,
+          InclusiveCharRange(localRangeBegin, subset.getPrevPos(localRangeEnd)),
           MotionOptimizerRangeParams{}.withMaxResults(
               clamp(nextEdit.origCharCount(), 1, 10)), "",
           subsetBoundary, navCtx).getResults();
@@ -1881,7 +1885,8 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
     MotionOptimizer motionOpt(config);
     NavContext navCtx;
     auto rangeResult = motionOpt.optimizeToRange(
-        buffer, pos, CharRange(rangeBegin, rangeEnd),
+        buffer, pos,
+        InclusiveCharRange(rangeBegin, buffer.getPrevPos(rangeEnd)),
         MotionOptimizerRangeParams{}.withMaxResults(5), "",
         boundary, navCtx);
 

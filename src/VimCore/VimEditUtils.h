@@ -136,29 +136,40 @@ struct ResolvedDeleteRange {
   }
 };
 
-// Resolve a raw exclusive [begin, end) range into an explicit characterwise
-// CharRange or linewise LineRange. `allowLinewise` should be false for change-like
-// operators, which keep the raw characterwise range even in the col-0 case.
+// Resolve an already-typed raw exclusive span into an explicit characterwise
+// or linewise delete shape. `allowLinewise` should be false for change-like
+// operators, which keep boundary-ending spans characterwise.
 inline ResolvedDeleteRange resolveExclusiveDeleteRange(
-    CharRange range, const Lines& lines, bool allowLinewise) {
-  range.normalize();
-  if (range.end.col != 0 || range.end.line <= range.begin.line) {
-    if (range.begin.col == 0 && range.begin.line < range.end.line) {
-      return ResolvedDeleteRange::lineChar(LineCharRange(range.begin.line, range.end));
-    }
-    return ResolvedDeleteRange::characterwise(range);
+    CharRange range, bool allowLinewise) {
+  assert(range.isValid());
+  (void)allowLinewise;
+  if (range.begin.col == 0 && range.begin.line < range.end.line) {
+    return ResolvedDeleteRange::lineChar(LineCharRange(range.begin.line, range.end));
   }
+  return ResolvedDeleteRange::characterwise(range);
+}
+
+inline ResolvedDeleteRange resolveExclusiveDeleteRange(
+    CharLineRange range, const Lines& lines, bool allowLinewise) {
+  assert(range.isValid());
 
   if (range.begin.col == 0) {
     if (allowLinewise) {
-      return ResolvedDeleteRange::linewise(LineRange(range.begin.line, range.end.line));
+      return ResolvedDeleteRange::linewise(LineRange(range.begin.line, range.endLine));
     }
-    return ResolvedDeleteRange::charLine(CharLineRange(range.begin, range.end.line));
+    return ResolvedDeleteRange::charLine(range);
   }
 
-  range.end = CursorPos(range.end.line - 1,
-                        static_cast<int>(lines[range.end.line - 1].size()));
-  return ResolvedDeleteRange::characterwise(range);
+  return ResolvedDeleteRange::characterwise(CharRange(
+      range.begin,
+      CursorPos(range.endLine - 1, static_cast<int>(lines[range.endLine - 1].size()))));
+}
+
+inline ResolvedDeleteRange resolveExclusiveDeleteRange(
+    LineCharRange range, bool allowLinewise) {
+  assert(range.isValid());
+  (void)allowLinewise;
+  return ResolvedDeleteRange::lineChar(range);
 }
 
 // =============================================================================
@@ -185,13 +196,13 @@ inline CharRange buildBackwardExclusiveCharRange(
   return CharRange(endpoint, cursor);
 }
 
-// Given a normalized or unnormalized character delete range plus the line-count
-// before/after deletion, report whether the line containing range.begin was
-// removed in addition to the range's baseline line collapse.
+// Given an ordered character delete range plus the line-count before/after
+// deletion, report whether the line containing range.begin was removed in
+// addition to the range's baseline line collapse.
 inline bool didDeleteRangeRemoveBeginLine(CharRange range,
                                           int oldLineCount,
                                           int newLineCount) {
-  range.normalize();
+  assert(range.isValid());
   int baselineRemoved = range.end.line - range.begin.line;
   return oldLineCount - newLineCount > baselineRemoved;
 }

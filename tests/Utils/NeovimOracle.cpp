@@ -115,7 +115,46 @@ struct NeovimOracle::Impl {
 
   ~Impl() { shutdown(); }
 
+  bool request_quit() {
+    if (stdin_fd < 0) return false;
+
+    send_buf.clear();
+    msgpack::packer<msgpack::sbuffer> pk(&send_buf);
+    pk.pack_array(4);
+    pk.pack(RPC_REQUEST);
+    pk.pack(msg_id++);
+    pk.pack("nvim_command");
+    pk.pack_array(1);
+    pk.pack("qa!");
+
+    ssize_t written = write(stdin_fd, send_buf.data(), send_buf.size());
+    return written == static_cast<ssize_t>(send_buf.size());
+  }
+
+  bool wait_for_exit(int timeout_ms) {
+    if (nvim_pid <= 0) return true;
+
+    int waited_ms = 0;
+    while (waited_ms <= timeout_ms) {
+      int status = 0;
+      pid_t result = waitpid(nvim_pid, &status, WNOHANG);
+      if (result == nvim_pid) {
+        nvim_pid = -1;
+        return true;
+      }
+      if (result < 0) {
+        nvim_pid = -1;
+        return true;
+      }
+      usleep(10'000);
+      waited_ms += 10;
+    }
+    return false;
+  }
+
   void shutdown() {
+    request_quit();
+
     if (stdin_fd >= 0) {
       close(stdin_fd);
       stdin_fd = -1;
@@ -125,9 +164,14 @@ struct NeovimOracle::Impl {
       stdout_fd = -1;
     }
     if (nvim_pid > 0) {
+      if (wait_for_exit(250)) {
+        return;
+      }
+
       kill(nvim_pid, SIGTERM);
       waitpid(nvim_pid, nullptr, 0);
       nvim_pid = -1;
+      assert(false && "NeovimOracle had to force-terminate Neovim");
     }
   }
 

@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router';
-import { homeRoute, type OptimizerSlug } from '../router';
+import { homeRoute, type OptimizerSlug, type BranchEntry } from '../router';
 import { parseName, toNanoseconds, timeSeries, loadBenchmarkData } from '../utils/data';
 import { bestUnit } from '../utils/format';
 import { BenchmarkChart } from '../components/BenchmarkChart';
@@ -23,7 +23,7 @@ const OPTIMIZER_LABELS: Partial<Record<OptimizerSlug, string>> = {
 };
 
 export function HomePage() {
-  const { optimizers } = homeRoute.useLoaderData();
+  const { optimizers, branches } = homeRoute.useLoaderData();
 
   const changes: Change[] = [];
   for (const { slug, data } of optimizers) {
@@ -126,7 +126,35 @@ export function HomePage() {
           </div>
         </div>
       )}
+
+      {branches.length > 0 && <BranchList branches={branches} />}
     </>
+  );
+}
+
+function BranchList({ branches }: { branches: BranchEntry[] }) {
+  return (
+    <div className="mt-10">
+      <h2>Branch Dashboards</h2>
+      <div className="flex flex-col gap-2">
+        {branches.map((b) => (
+          <a
+            key={b.name}
+            href={b.url}
+            className="card card-hover p-4 no-underline text-inherit flex items-center justify-between"
+          >
+            <span className="font-mono text-sm">{b.name}</span>
+            <span className="text-xs text-muted">
+              {new Date(b.updatedAt).toLocaleDateString(undefined, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+              })}
+            </span>
+          </a>
+        ))}
+      </div>
+    </div>
   );
 }
 

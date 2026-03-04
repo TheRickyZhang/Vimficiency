@@ -4,22 +4,13 @@ using namespace std;
 
 namespace {
 
-bool isInRange(const CursorPos& pos, const CharRange& range) {
-  return pos >= range.begin && pos < range.end;
+bool isInRange(const Pos& pos, const InclusiveCharRange& range) {
+  return range.contains(pos);
 }
 
-bool isInRange(const CursorPos& pos, const CharLineRange& range) {
-  return pos >= range.begin && pos.line < range.endLine;
-}
-
-bool isInRange(const CursorPos& pos, const LineCharRange& range) {
-  return pos >= CursorPos(range.beginLine, 0) && pos < range.end;
-}
-
-template<class RangeT>
-void exploreNewStateToTypedRange(MotionSearchContext& ctx,
-                                 MotionState&& newState,
-                                 const RangeT& range) {
+void exploreNewStateToInclusiveRange(MotionSearchContext& ctx,
+                                     MotionState&& newState,
+                                     const InclusiveCharRange& range) {
   ctx.motionsEmitted++;
 
   if (newState.getEffort() > ctx.maxEffort) {
@@ -28,9 +19,8 @@ void exploreNewStateToTypedRange(MotionSearchContext& ctx,
 
   double newCost = newState.getCost();
   const Pos newKey = newState.getKey();
-  CursorPos pos = newState.getPos();
   auto it = ctx.costMap.find(newKey);
-  bool stateInRange = isInRange(pos, range);
+  bool stateInRange = isInRange(newKey, range);
 
   if (it == ctx.costMap.end()) {
     if (!stateInRange) {
@@ -87,14 +77,7 @@ void MotionSearchContext::exploreNewState(MotionState&& newState, const Pos& goa
   }
 }
 
-void MotionSearchContext::exploreNewStateToRange(MotionState&& state, const CharRange& range) {
-  exploreNewStateToTypedRange(*this, std::move(state), range);
-}
-
-void MotionSearchContext::exploreNewStateToRange(MotionState&& state, const CharLineRange& range) {
-  exploreNewStateToTypedRange(*this, std::move(state), range);
-}
-
-void MotionSearchContext::exploreNewStateToRange(MotionState&& state, const LineCharRange& range) {
-  exploreNewStateToTypedRange(*this, std::move(state), range);
+void MotionSearchContext::exploreNewStateToRange(MotionState&& state,
+                                                 const InclusiveCharRange& range) {
+  exploreNewStateToInclusiveRange(*this, std::move(state), range);
 }

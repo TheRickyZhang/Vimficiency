@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cassert>
+
 #include "Types/CursorPos.h"
 
 // A character-wise region that ends at the boundary before endLine.
@@ -9,14 +11,19 @@ struct CharLineRange {
   int endLine;
 
   constexpr CharLineRange(CursorPos beginPos, int endLine)
-      : begin(beginPos), endLine(endLine) {}
+      : begin(beginPos), endLine(endLine) {
+    assert((!begin.isValid() && endLine == -1)
+        || (begin.isValid() && endLine > begin.line));
+  }
 
   bool isValid() const {
-    return begin.isValid() && endLine > begin.line;
+    assert((!begin.isValid() && endLine == -1)
+        || (begin.isValid() && endLine > begin.line));
+    return begin.isValid();
   }
 
   int lineCountTouched() const {
-    if (!isValid()) return 0;
+    assert(isValid());
     return endLine - begin.line;
   }
 };

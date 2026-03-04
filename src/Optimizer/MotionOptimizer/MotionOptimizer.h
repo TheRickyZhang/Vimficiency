@@ -13,9 +13,7 @@
 
 #include "Boundary/MotionBoundary.h"
 #include "Keyboard/Config.h"
-#include "Types/CharLineRange.h"
-#include "Types/LineCharRange.h"
-#include "Types/CharRange.h"
+#include "Types/InclusiveCharRange.h"
 #include "Types/NavContext.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
@@ -49,7 +47,7 @@ struct MotionOptimizer {
 
   // Returns results and search statistics
   // ~ O(n^2)
-  // firstPos/lastPos are inclusive endpoints; direction is inferred internally.
+  // goalPos is the inclusive landing target; direction is inferred internally.
   MotionResult optimize(
     // Core information
     const Lines& lines,
@@ -68,35 +66,15 @@ struct MotionOptimizer {
   );
 
 
-  // Multi-sink movement optimization: find paths to any position in the target half-open range.
+  // Multi-sink movement optimization: find paths to any position in the inclusive target set.
   // Returns up to params.maxResults unique end positions (or total paths if allowMultiplePerPosition).
-  // Precondition: initialPos must NOT be in the target range (nothing to optimize)
+  // Precondition: initialPos must NOT be in targetRange (nothing to optimize)
 
   // Convenience overload that builds a local BufferIndex for this call.
   RangeMotionResult optimizeToRange(
     const Lines& lines,
     const CursorPos& initialPos,
-    const CharRange& range,
-    MotionOptimizerRangeParams params = {},
-    std::string_view userSequence = "",
-    const MotionBoundary& boundary = MotionBoundary(),
-    const NavContext& navigationContext = NavContext()
-  );
-
-  RangeMotionResult optimizeToRange(
-    const Lines& lines,
-    const CursorPos& initialPos,
-    const CharLineRange& range,
-    MotionOptimizerRangeParams params = {},
-    std::string_view userSequence = "",
-    const MotionBoundary& boundary = MotionBoundary(),
-    const NavContext& navigationContext = NavContext()
-  );
-
-  RangeMotionResult optimizeToRange(
-    const Lines& lines,
-    const CursorPos& initialPos,
-    const LineCharRange& range,
+    const InclusiveCharRange& targetRange,
     MotionOptimizerRangeParams params = {},
     std::string_view userSequence = "",
     const MotionBoundary& boundary = MotionBoundary(),
@@ -107,31 +85,7 @@ struct MotionOptimizer {
   RangeMotionResult optimizeToRange(
     const Lines& lines,
     const CursorPos& initialPos,
-    const CharRange& range,
-    MotionOptimizerRangeParams params,
-    std::string_view userSequence,
-    const MotionBoundary& boundary,
-    const NavContext& navigationContext,
-    const BufferIndex& bufferIndex,
-    int lineOffset
-  );
-
-  RangeMotionResult optimizeToRange(
-    const Lines& lines,
-    const CursorPos& initialPos,
-    const CharLineRange& range,
-    MotionOptimizerRangeParams params,
-    std::string_view userSequence,
-    const MotionBoundary& boundary,
-    const NavContext& navigationContext,
-    const BufferIndex& bufferIndex,
-    int lineOffset
-  );
-
-  RangeMotionResult optimizeToRange(
-    const Lines& lines,
-    const CursorPos& initialPos,
-    const LineCharRange& range,
+    const InclusiveCharRange& targetRange,
     MotionOptimizerRangeParams params,
     std::string_view userSequence,
     const MotionBoundary& boundary,
@@ -143,7 +97,7 @@ struct MotionOptimizer {
 private:
   // Templated implementation: single-goal search
   // initialPos is the cursor origin, goalPos is the inclusive landing target.
-  // Internally converts goalPos to half-open range for MotionExplorer.
+  // Internally treats this as the singleton target set [goalPos, goalPos].
   template<bool Forward>
   MotionResult optimizeImpl(
     const Lines& lines,
@@ -155,11 +109,11 @@ private:
     MotionOptimizerParams params
   );
 
-  template<bool Forward, class RangeT>
+  template<bool Forward>
   RangeMotionResult optimizeToRangeImpl(
     const Lines& lines,
     const CursorPos& initialPos,
-    const RangeT& range,
+    const InclusiveCharRange& targetRange,
     std::string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,

@@ -251,14 +251,23 @@ void EditExplorer::exploreSentenceEdits(
     if constexpr (Forward) {
       // d): forward — exclusive end = endpoint (motion destination).
       if (endpoint <= cursor) continue;
-      CharRange rawRange(cursor, endpoint);
-      auto resolved = VimCore::resolveExclusiveDeleteRange(rawRange, lines, true);
+      auto resolved =
+          endpoint.line > cursor.line && endpoint.col == 0
+              ? VimCore::resolveExclusiveDeleteRange(
+                    CharLineRange(cursor, endpoint.line), lines, true)
+              : VimCore::resolveExclusiveDeleteRange(CharRange(cursor, endpoint), true);
       emitResolvedDeletion(resolved, cmd, onDeletion, onCharLine, onLineChar, onLinewise);
     } else {
       // d(: backward — exclusive end = cursor (the higher end of the range).
       if (endpoint >= cursor) continue;
-      CharRange rawRange(endpoint, cursor);
-      auto resolved = VimCore::resolveExclusiveDeleteRange(rawRange, lines, true);
+      auto resolved =
+          cursor.line > endpoint.line && cursor.col == 0
+              ? VimCore::resolveExclusiveDeleteRange(
+                    CharLineRange(endpoint, cursor.line), lines, true)
+              : endpoint.line < cursor.line && endpoint.col == 0
+                  ? VimCore::resolveExclusiveDeleteRange(
+                        LineCharRange(endpoint.line, cursor), true)
+                  : VimCore::resolveExclusiveDeleteRange(CharRange(endpoint, cursor), true);
       emitResolvedDeletion(resolved, cmd, onDeletion, onCharLine, onLineChar, onLinewise);
     }
   }

@@ -54,6 +54,11 @@ struct OptimizerParamsBase {
     maxPrefixCount = 0;
   }
 
+  void assertValidCountRepeatBounds() const {
+    assert(minPrefixCount >= CountPrefixLimits::MIN_PREFIX_COUNT);
+    assert(maxPrefixCount >= 0 && maxPrefixCount <= CountPrefixLimits::MAX_PREFIX_COUNT);
+  }
+
   // Debug: collect explored states in SearchStats (expensive, for debugging only)
   bool trackExploredStates = false;
 };

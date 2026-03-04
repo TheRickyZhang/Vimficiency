@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cassert>
+
 #include "Types/CursorPos.h"
 
 // A character-wise region that begins at the boundary before beginLine.
@@ -9,14 +11,19 @@ struct LineCharRange {
   CursorPos end;
 
   constexpr LineCharRange(int beginLine, CursorPos endPos)
-      : beginLine(beginLine), end(endPos) {}
+      : beginLine(beginLine), end(endPos) {
+    assert((beginLine == -1 && !end.isValid())
+        || (beginLine >= 0 && end.isValid() && end.line >= beginLine));
+  }
 
   bool isValid() const {
-    return beginLine >= 0 && end.isValid() && end.line >= beginLine;
+    assert((beginLine == -1 && !end.isValid())
+        || (beginLine >= 0 && end.isValid() && end.line >= beginLine));
+    return beginLine >= 0;
   }
 
   int lineCountTouched() const {
-    if (!isValid()) return 0;
+    assert(isValid());
     return end.line == beginLine ? 1 : (end.line - beginLine + 1);
   }
 };

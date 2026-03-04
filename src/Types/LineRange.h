@@ -1,25 +1,25 @@
 #pragma once
 
-#include <algorithm>
+#include <cassert>
 
 // A line-wise region. Half-open: [beginLine, endLine).
 struct LineRange {
   int beginLine;
   int endLine;
 
-  constexpr LineRange(int begin, int end) : beginLine(begin), endLine(end) {}
-
-  void normalize() {
-    if (endLine < beginLine) {
-      std::swap(beginLine, endLine);
-    }
+  constexpr LineRange(int begin, int end) : beginLine(begin), endLine(end) {
+    assert((beginLine == -1 && endLine == -1)
+        || (beginLine >= 0 && endLine >= beginLine));
   }
 
   bool isValid() const {
-    return beginLine >= 0 && endLine >= beginLine;
+    assert((beginLine == -1 && endLine == -1)
+        || (beginLine >= 0 && endLine >= beginLine));
+    return beginLine >= 0;
   }
 
   int lineCount() const {
+    assert(isValid());
     return endLine - beginLine;
   }
 };

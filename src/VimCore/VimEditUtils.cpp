@@ -104,12 +104,11 @@ void placeCursorAfterCharDeletion(const Lines& lines, int anchorLine, int anchor
 // =============================================================================
 
 void deleteRangeAndUpdatePos(Lines& lines, const CharRange& range, CursorPos& pos, Mode mode) {
-  CharRange r = range;
-  r.normalize();
-  if (r.isEmpty()) return;
+  assert(range.isValid());
+  if (range.isEmpty()) return;
   CursorPos originalPos = pos;
-  applyCharDeletionToBuffer(lines, r, originalPos, mode);
-  placeCursorAfterCharDeletion(lines, r.begin.line, r.begin.col, pos, mode);
+  applyCharDeletionToBuffer(lines, range, originalPos, mode);
+  placeCursorAfterCharDeletion(lines, range.begin.line, range.begin.col, pos, mode);
 }
 
 void deleteCharLineRangeAndUpdatePos(Lines& lines, const CharLineRange& range,
@@ -129,13 +128,12 @@ void deleteLineCharRangeAndUpdatePos(Lines& lines, const LineCharRange& range,
 
 void deleteLineRangeAndUpdatePos(Lines& lines, const LineRange& range, CursorPos& pos,
                                  bool hasLinesBelow) {
-  LineRange r = range;
-  r.normalize();
+  assert(range.isValid());
 
-  assert(r.beginLine >= 0 && r.beginLine < static_cast<int>(lines.size()));
-  assert(r.endLine > r.beginLine && r.endLine <= static_cast<int>(lines.size()));
+  assert(range.beginLine >= 0 && range.beginLine < static_cast<int>(lines.size()));
+  assert(range.endLine > range.beginLine && range.endLine <= static_cast<int>(lines.size()));
 
-  lines.erase(lines.begin() + r.beginLine, lines.begin() + r.endLine);
+  lines.erase(lines.begin() + range.beginLine, lines.begin() + range.endLine);
 
   // Maintain invariant: buffer always has at least one line
   if (lines.empty()) {
@@ -147,12 +145,12 @@ void deleteLineRangeAndUpdatePos(Lines& lines, const LineRange& range, CursorPos
   // If deletion removed the last lines and there are lines below in the real
   // buffer, cursor goes to the line below (past the end of effective lines).
   // Column is left unset — caller must apply 'k' to bring it back in range.
-  if (hasLinesBelow && r.beginLine >= newSize) {
-    pos.line = r.beginLine;  // Past end of effective lines
+  if (hasLinesBelow && range.beginLine >= newSize) {
+    pos.line = range.beginLine;  // Past end of effective lines
     return;
   }
 
-  pos.line = min(r.beginLine, newSize - 1);
+  pos.line = min(range.beginLine, newSize - 1);
   if constexpr (VimOptions::startOfLine()) {
     // Legacy Vim: dd goes to first non-blank of the new current line
     pos.setCol(firstNonBlankColInLineStr(lines[pos.line]));
