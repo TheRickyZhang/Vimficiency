@@ -29,6 +29,61 @@ TEST(BufferIndexTest, EmptyBuffer) {
   // Should not crash - just have empty position lists
 }
 
+TEST(BufferIndexTest, ClosestInRange_ForwardIncludesNearMissBeforeFront) {
+  Lines lines = {"one two three four five"};
+  BufferIndex idx(lines);
+
+  auto results = idx.getClosestInRange<true>(
+      LandingType::WordBegin, Pos(0, 0), Pos(0, 13), Pos(0, 15));
+
+  ASSERT_EQ(results.size(), 2u);
+  EXPECT_EQ(results[0].pos, Pos(0, 8));
+  EXPECT_EQ(results[0].count, 2);
+  EXPECT_EQ(results[1].pos, Pos(0, 14));
+  EXPECT_EQ(results[1].count, 3);
+}
+
+TEST(BufferIndexTest, ClosestInRange_ForwardSkipsNearMissWhenFrontIsExactLanding) {
+  Lines lines = {"one two three four five"};
+  BufferIndex idx(lines);
+
+  auto results = idx.getClosestInRange<true>(
+      LandingType::WordBegin, Pos(0, 0), Pos(0, 14), Pos(0, 15));
+
+  ASSERT_EQ(results.size(), 1u);
+  EXPECT_EQ(results[0].pos, Pos(0, 14));
+  EXPECT_EQ(results[0].count, 3);
+}
+
+TEST(BufferIndexTest, ClosestInRange_BackwardIncludesNearMissAfterBack) {
+  Lines lines = {"one two three four five"};
+  BufferIndex idx(lines);
+
+  auto results = idx.getClosestInRange<false>(
+      LandingType::WordBegin, Pos(0, 22), Pos(0, 4), Pos(0, 9));
+
+  ASSERT_EQ(results.size(), 3u);
+  EXPECT_EQ(results[0].pos, Pos(0, 14));
+  EXPECT_EQ(results[0].count, 2);
+  EXPECT_EQ(results[1].pos, Pos(0, 8));
+  EXPECT_EQ(results[1].count, 3);
+  EXPECT_EQ(results[2].pos, Pos(0, 4));
+  EXPECT_EQ(results[2].count, 4);
+}
+
+TEST(BufferIndexTest, ClosestInRange_ReturnsEmptyWhenCurrPosIsNotStrictlyOutside) {
+  Lines lines = {"one two three four five"};
+  BufferIndex idx(lines);
+
+  auto forwardResults = idx.getClosestInRange<true>(
+      LandingType::WordBegin, Pos(0, 14), Pos(0, 13), Pos(0, 15));
+  auto backwardResults = idx.getClosestInRange<false>(
+      LandingType::WordBegin, Pos(0, 8), Pos(0, 4), Pos(0, 9));
+
+  EXPECT_TRUE(forwardResults.empty());
+  EXPECT_TRUE(backwardResults.empty());
+}
+
 // =============================================================================
 // Optimizer Integration Tests for Count Motions
 // =============================================================================

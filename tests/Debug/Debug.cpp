@@ -1248,7 +1248,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
 
     auto rangeResult = movOpt.optimizeToRange(
         initial, initialPos,
-        InclusiveCharRange(rangeBegin, initial.getPrevPos(rangeEnd)),
+        initial.inclusiveRangeFromHalfOpen(rangeBegin, rangeEnd),
         MotionOptimizerRangeParams{}.withMaxResults(10));
 
     cerr << "MotionOptimizer returned " << rangeResult.getResults().size() << " results" << endl;
@@ -1486,7 +1486,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
 
     auto rangeResult = motionOpt.optimizeToRange(
         initial, initialPos,
-        InclusiveCharRange(rangeBegin, initial.getPrevPos(rangeEnd)),
+        initial.inclusiveRangeFromHalfOpen(rangeBegin, rangeEnd),
         MotionOptimizerRangeParams{}.withMaxResults(10), "",
         boundary, navCtx);
 
@@ -1598,7 +1598,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
 
         auto movementResults = motionOpt.optimizeToRange(
             subset, localPos,
-            InclusiveCharRange(localRangeBegin, subset.getPrevPos(localRangeEnd)),
+            subset.inclusiveRangeFromHalfOpen(localRangeBegin, localRangeEnd),
             MotionOptimizerRangeParams{}.withMaxResults(
                 clamp(nextEdit.origCharCount(), 1, 10)), "",
             subsetBoundary, navCtx).getResults();
@@ -1771,7 +1771,7 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
 
       auto rangeResults = motionOpt.optimizeToRange(
           subset, localPos,
-          InclusiveCharRange(localRangeBegin, subset.getPrevPos(localRangeEnd)),
+          subset.inclusiveRangeFromHalfOpen(localRangeBegin, localRangeEnd),
           MotionOptimizerRangeParams{}.withMaxResults(
               clamp(nextEdit.origCharCount(), 1, 10)), "",
           subsetBoundary, navCtx).getResults();
@@ -1886,7 +1886,7 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
     NavContext navCtx;
     auto rangeResult = motionOpt.optimizeToRange(
         buffer, pos,
-        InclusiveCharRange(rangeBegin, buffer.getPrevPos(rangeEnd)),
+        buffer.inclusiveRangeFromHalfOpen(rangeBegin, rangeEnd),
         MotionOptimizerRangeParams{}.withMaxResults(5), "",
         boundary, navCtx);
 

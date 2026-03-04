@@ -69,6 +69,9 @@ struct MotionOptimizer {
   // Multi-sink movement optimization: find paths to any position in the inclusive target set.
   // Returns up to params.maxResults unique end positions (or total paths if allowMultiplePerPosition).
   // Precondition: initialPos must NOT be in targetRange (nothing to optimize)
+  // Callers converting from a half-open text span should use
+  // Lines::inclusiveRangeFromHalfOpen(...) so empty ranges fail before reaching
+  // motion search.
 
   // Convenience overload that builds a local BufferIndex for this call.
   RangeMotionResult optimizeToRange(

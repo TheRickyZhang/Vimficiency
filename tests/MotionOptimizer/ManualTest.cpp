@@ -69,7 +69,7 @@ protected:
     MotionBoundary boundary;
     // allowMultiplePerPosition=true for tests to see all paths
     return opt.optimizeToRange(lines, start,
-                               InclusiveCharRange(rangeBegin, lines.getPrevPos(rangeEnd)),
+                               lines.inclusiveRangeFromHalfOpen(rangeBegin, rangeEnd),
                                MotionOptimizerRangeParams{}
                                    .withMaxResults(maxResults)
                                    .withMaxNodesPopped(20000)

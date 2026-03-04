@@ -6,6 +6,9 @@
 
 // A character-wise region in the buffer with a concrete exclusive end.
 // Half-open: [begin, end).
+// At public API boundaries, mixed char/line-boundary shapes should be modeled
+// with CharLineRange / LineCharRange instead of smuggling that meaning through
+// a special end column.
 struct CharRange {
   CursorPos begin;
   CursorPos end;

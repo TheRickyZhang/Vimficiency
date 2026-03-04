@@ -118,7 +118,7 @@ static void runRangeWithParams(const RangeBenchmarkSetup& cfg,
   MotionOptimizer opt(benchConfig);
   auto result = opt.optimizeToRange(
       cfg.lines, cfg.initialPos,
-      InclusiveCharRange(cfg.rangeBegin, cfg.lines.getPrevPos(cfg.rangeEnd)),
+      cfg.lines.inclusiveRangeFromHalfOpen(cfg.rangeBegin, cfg.rangeEnd),
       params, "", cfg.boundary);
   accumulateStats(outStats, result.getStats());
 }

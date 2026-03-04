@@ -89,7 +89,8 @@ TEST_F(StartingEffortTradeoffTest, SmokeTest) {
 
     auto result = opt.optimizeToRange(
       scenario.lines, scenario.initialPos,
-      InclusiveCharRange(scenario.rangeBegin, scenario.lines.getPrevPos(scenario.rangeEnd)),
+      scenario.lines.inclusiveRangeFromHalfOpen(
+          scenario.rangeBegin, scenario.rangeEnd),
       params
     );
 

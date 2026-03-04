@@ -2,6 +2,7 @@
 
 #include <cassert>
 
+#include "Types/Pos.h"
 #include "Types/CursorPos.h"
 
 // An inclusive range of valid character positions: [firstPos, lastPos].

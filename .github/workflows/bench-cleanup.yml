@@ -51,6 +51,8 @@ fs.writeFileSync('branches.json', JSON.stringify(data, null, 2));
             git add branches.json
           fi
 
+          # Reaching this point means git rm already staged at least one tracked
+          # deletion from DEPLOY_DIR, so the commit is not a no-op.
           git -c user.name=github-actions -c user.email=github-actions@github.com \
             commit -m "Remove branch dashboard: $BRANCH"
           git push origin gh-pages

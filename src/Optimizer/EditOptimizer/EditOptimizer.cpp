@@ -558,6 +558,9 @@ struct ModePolicy<false> {
   KeyedSequence buildChangePrefix(const SequenceBinding& sourceCmd,
                                   const Lines& postDelLines, const CursorPos& postDelPos,
                                   const Lines& preDelLines, const CharRange& range) const {
+    assert(!range.spansMultiple() || range.end.col > 0);
+    // Cross-line char ranges that end exactly at a line boundary should already
+    // have been kept as CharLineRange / LineCharRange by the typed range split.
     int totalLines = static_cast<int>(postDelLines.size());
     int cursorLine = postDelPos.line;
 

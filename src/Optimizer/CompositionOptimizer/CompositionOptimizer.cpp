@@ -175,15 +175,15 @@ CompositionResult CompositionOptimizer::optimize(
           int lineOffset = 0;
           bool hasBufferIndex = ctx.tryGetBufferIndex(
               editsCompleted, beginLine, endLine, bufferIndex, lineOffset);
-          CursorPos localFirstPos = localRangeBegin;
-          CursorPos localLastPos = subset.getPrevPos(localRangeEnd);
+          InclusiveCharRange targetRange =
+              subset.inclusiveRangeFromHalfOpen(localRangeBegin, localRangeEnd);
           auto motionResult = hasBufferIndex
               ? motionOptimizer.optimizeToRange(
-                    subset, localPos, InclusiveCharRange(localFirstPos, localLastPos),
+                    subset, localPos, targetRange,
                     rangeParams, "", subsetBoundary,
                     navigationContext, *bufferIndex, lineOffset)
               : motionOptimizer.optimizeToRange(
-                    subset, localPos, InclusiveCharRange(localFirstPos, localLastPos),
+                    subset, localPos, targetRange,
                     rangeParams, "", subsetBoundary,
                     navigationContext);
           ctx.motionNodesExplored += motionResult.getStats().nodesExplored;
@@ -392,14 +392,14 @@ CompositionResult CompositionOptimizer::optimize(
           && !endsAtLineBoundary
           && nextEdit.beginPos.col == 0
           && nextEdit.endPos.line > nextEdit.beginPos.line;
-      CursorPos localFirstPos = startsAtLineBoundary
-          ? CursorPos(localRangeBegin.line, 0)
-          : localRangeBegin;
-      CursorPos localLastPos = endsAtLineBoundary
-          ? subset.getPrevPos(CursorPos(localRangeEnd.line, 0))
-          : subset.getPrevPos(localRangeEnd);
-      RangeMotionResult motionResult =
-          runMotionToRange(InclusiveCharRange(localFirstPos, localLastPos));
+      InclusiveCharRange targetRange = endsAtLineBoundary
+          ? subset.inclusiveRangeFromHalfOpen(localRangeBegin,
+                                              CursorPos(localRangeEnd.line, 0))
+          : startsAtLineBoundary
+              ? subset.inclusiveRangeFromHalfOpen(CursorPos(localRangeBegin.line, 0),
+                                                  localRangeEnd)
+              : subset.inclusiveRangeFromHalfOpen(localRangeBegin, localRangeEnd);
+      RangeMotionResult motionResult = runMotionToRange(targetRange);
       ctx.motionNodesExplored += motionResult.getStats().nodesExplored;
 
       debug("  motion results:", static_cast<int>(motionResult.getResults().size()));
@@ -446,14 +446,15 @@ CompositionResult CompositionOptimizer::optimize(
         int jLineOffset = 0;
         bool hasJBufferIndex = ctx.tryGetBufferIndex(
             editsCompleted, jBeginLine, jEndLine, jBufferIndex, jLineOffset);
-        CursorPos jLocalLast = jSubset.getPrevPos(jLocalEnd);
+        InclusiveCharRange jTargetRange =
+            jSubset.inclusiveRangeFromHalfOpen(jLocalFirst, jLocalEnd);
         auto jMotionResult = hasJBufferIndex
             ? motionOptimizer.optimizeToRange(
-                  jSubset, jLocalPos, InclusiveCharRange(jLocalFirst, jLocalLast),
+                  jSubset, jLocalPos, jTargetRange,
                   jRangeParams, "", jSubsetBoundary,
                   navigationContext, *jBufferIndex, jLineOffset)
             : motionOptimizer.optimizeToRange(
-                  jSubset, jLocalPos, InclusiveCharRange(jLocalFirst, jLocalLast),
+                  jSubset, jLocalPos, jTargetRange,
                   jRangeParams, "", jSubsetBoundary,
                   navigationContext);
         ctx.motionNodesExplored += jMotionResult.getStats().nodesExplored;

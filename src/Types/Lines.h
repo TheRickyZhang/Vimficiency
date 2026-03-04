@@ -166,6 +166,26 @@ struct Lines final : std::vector<Line> {
     return spanSize(CursorPos(range.beginLine, 0), range.end);
   }
 
+  // Convert a non-empty half-open text span [firstPos, endPos) into the
+  // inclusive motion-target set [firstPos, lastPos]. This is the only helper
+  // that should perform the half-open -> inclusive conversion for motion
+  // search, so empty half-open ranges fail fast instead of collapsing into a
+  // singleton target.
+  InclusiveCharRange inclusiveRangeFromHalfOpen(const CursorPos& firstPos,
+                                                const CursorPos& endPos) const {
+    assert(firstPos.line >= 0 && firstPos.line < static_cast<int>(size()));
+    assert(firstPos.col >= 0 && firstPos.col < (*this)[firstPos.line].effectiveSize());
+    assert(endPos.line >= 0 && endPos.line <= static_cast<int>(size()));
+    if (endPos.line == static_cast<int>(size())) {
+      assert(endPos.col == 0);
+    } else {
+      assert(endPos.col >= 0 && endPos.col <= (*this)[endPos.line].effectiveSize());
+    }
+    assert(firstPos < endPos &&
+           "half-open range must be non-empty before converting to [firstPos, lastPos]");
+    return InclusiveCharRange(firstPos, getPrevPos(endPos));
+  }
+
   int spanSize(const InclusiveCharRange& range) const {
     CursorPos first(range.firstPos.line, range.firstPos.col);
     CursorPos last(range.lastPos.line, range.lastPos.col);

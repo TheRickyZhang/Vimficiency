@@ -339,6 +339,7 @@ jobs:
           cp -r bench-dashboard/dist /tmp/dashboard-dist
           cp scripts/bench-data.ts /tmp/bench-data.ts
           cp scripts/update-branches.ts /tmp/update-branches.ts
+          cp scripts/update-pr-body.ts /tmp/update-pr-body.ts
           cp edit_result.json /tmp/edit_result.json
           cp motion_result.json /tmp/motion_result.json
           cp composition_result.json /tmp/composition_result.json
@@ -404,7 +405,7 @@ jobs:
             exit 0
           fi
 
-          bun scripts/update-pr-body.ts \
+          bun /tmp/update-pr-body.ts \
             "$PR_NUMBER" \
             "$DASHBOARD_URL" \
             "${{ github.sha }}" \

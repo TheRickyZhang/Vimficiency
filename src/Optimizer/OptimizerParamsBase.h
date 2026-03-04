@@ -54,6 +54,10 @@ struct OptimizerParamsBase {
     maxPrefixCount = 0;
   }
 
+  // This checks only the domain of each knob. We intentionally do NOT assert
+  // minPrefixCount <= maxPrefixCount here, because the empty range
+  // (minPrefixCount > maxPrefixCount) is the supported "disable count prefixes"
+  // state.
   void assertValidCountRepeatBounds() const {
     assert(minPrefixCount >= CountPrefixLimits::MIN_PREFIX_COUNT);
     assert(maxPrefixCount >= 0 && maxPrefixCount <= CountPrefixLimits::MAX_PREFIX_COUNT);

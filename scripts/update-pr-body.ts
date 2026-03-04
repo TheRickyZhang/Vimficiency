@@ -4,10 +4,12 @@
 // Usage:
 //   bun scripts/update-pr-body.ts <pr-number> <dashboard-url> <commit-sha> <repo>
 
+import { spawnSync } from "child_process";
+
 const MARKER_START = "<!-- bench-dashboard-link-start -->";
 const MARKER_END = "<!-- bench-dashboard-link-end -->";
 
-function usage(): never {
+function usage(): void {
   console.error(
     "Usage: bun scripts/update-pr-body.ts <pr-number> <dashboard-url> <commit-sha> <repo>"
   );
@@ -27,16 +29,15 @@ const block = [
 ].join("\n");
 
 // Fetch current PR body
-const prProc = Bun.spawnSync(["gh", "api", `repos/${repo}/pulls/${prNumber}`], {
-  stdout: "pipe",
-  stderr: "inherit",
+const prProc = spawnSync("gh", ["api", `repos/${repo}/pulls/${prNumber}`], {
+  encoding: "utf8",
 });
-if (prProc.exitCode !== 0) {
-  console.error("Failed to fetch PR data");
+if (prProc.status !== 0) {
+  console.error("Failed to fetch PR data:", prProc.stderr);
   process.exit(1);
 }
 
-const prData = JSON.parse(prProc.stdout.toString());
+const prData = JSON.parse(prProc.stdout);
 const currentBody: string = prData.body ?? "";
 
 let newBody: string;
@@ -49,11 +50,11 @@ if (currentBody.includes(MARKER_START)) {
   newBody = currentBody ? block + "\n\n" + currentBody : block;
 }
 
-const editProc = Bun.spawnSync(["gh", "pr", "edit", prNumber, "--body", newBody], {
-  stdout: "inherit",
-  stderr: "inherit",
+const editProc = spawnSync("gh", ["pr", "edit", prNumber, "--body", newBody], {
+  encoding: "utf8",
+  stdio: "inherit",
 });
-process.exit(editProc.exitCode ?? 0);
+process.exit(editProc.status ?? 0);
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
