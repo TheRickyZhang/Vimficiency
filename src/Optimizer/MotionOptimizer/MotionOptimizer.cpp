@@ -13,16 +13,6 @@
 
 using namespace std;
 
-namespace {
-
-int targetSize(const Lines& lines, const InclusiveCharRange& targetRange) {
-  CursorPos targetFirst(targetRange.firstPos.line, targetRange.firstPos.col);
-  CursorPos targetLast(targetRange.lastPos.line, targetRange.lastPos.col);
-  return lines.spanSize(targetFirst, lines.getNextPosUnbounded(targetLast));
-}
-
-}  // namespace
-
 // Public entry point - dispatches to templated implementation based on direction
 MotionResult MotionOptimizer::optimize(
     const Lines& lines,
@@ -203,7 +193,7 @@ RangeMotionResult MotionOptimizer::optimizeToRangeImpl(
   int uniquePositionsFound = 0;
 
   // Cap effective maxResults at range size (can't find more positions than exist)
-  int rangeSize = targetSize(lines, targetRange);
+  int rangeSize = lines.spanSize(targetRange);
   int effectiveMaxResults = std::min(params.maxResults, rangeSize);
 
   initialState.setCost(ctx.computePriorityToRange(initialState, targetRange));

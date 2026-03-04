@@ -10,6 +10,7 @@
 
 #include "Types/CharRange.h"
 #include "Types/CharLineRange.h"
+#include "Types/InclusiveCharRange.h"
 #include "Types/LineCharRange.h"
 #include "Types/CursorPos.h"
 
@@ -163,6 +164,12 @@ struct Lines final : std::vector<Line> {
   int spanSize(const LineCharRange& range) const {
     assert(range.isValid());
     return spanSize(CursorPos(range.beginLine, 0), range.end);
+  }
+
+  int spanSize(const InclusiveCharRange& range) const {
+    CursorPos first(range.firstPos.line, range.firstPos.col);
+    CursorPos last(range.lastPos.line, range.lastPos.col);
+    return spanSize(first, getNextPosUnbounded(last));
   }
 
   int totalPositions() const {

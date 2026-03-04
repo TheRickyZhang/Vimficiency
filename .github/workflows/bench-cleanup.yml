@@ -42,7 +42,7 @@ jobs:
 
           # Remove branch from branches.json index
           if [ -f "branches.json" ]; then
-            node -e "
+            BRANCH="$BRANCH" node -e "
 const fs = require('fs');
 const data = JSON.parse(fs.readFileSync('branches.json', 'utf8'));
 data.branches = data.branches.filter(b => b.name !== process.env.BRANCH);
