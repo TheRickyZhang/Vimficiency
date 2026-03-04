@@ -8,6 +8,9 @@
 #include <string_view>
 #include <vector>
 
+#include "Types/CharRange.h"
+#include "Types/CharLineRange.h"
+#include "Types/LineCharRange.h"
 #include "Types/CursorPos.h"
 
 struct Line final : std::string {
@@ -139,6 +142,27 @@ struct Lines final : std::vector<Line> {
     }
     count += end.col;
     return count;
+  }
+
+  int spanSize(const CharRange& range) const {
+    return spanSize(range.begin, range.end);
+  }
+
+  int spanSize(const CharLineRange& range) const {
+    assert(range.isValid());
+    if (range.begin.line + 1 == range.endLine) {
+      return std::max(1, static_cast<int>(data()[range.begin.line].size()) - range.begin.col);
+    }
+    int count = std::max(1, static_cast<int>(data()[range.begin.line].size()) - range.begin.col);
+    for (int i = range.begin.line + 1; i < range.endLine; i++) {
+      count += std::max(1, static_cast<int>(data()[i].size()));
+    }
+    return count;
+  }
+
+  int spanSize(const LineCharRange& range) const {
+    assert(range.isValid());
+    return spanSize(CursorPos(range.beginLine, 0), range.end);
   }
 
   int totalPositions() const {

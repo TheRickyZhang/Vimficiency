@@ -13,6 +13,9 @@
 
 #include "Boundary/MotionBoundary.h"
 #include "Keyboard/Config.h"
+#include "Types/CharLineRange.h"
+#include "Types/LineCharRange.h"
+#include "Types/CharRange.h"
 #include "Types/NavContext.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
@@ -42,9 +45,6 @@ private:
 struct MotionOptimizer {
   Config config;
 
-  // startingEffort was removed: benchmark (StartingEffortTradeoffTest.cpp) showed
-  // Jaccard similarity >=0.988 and 100% best-result overlap with vs without prior
-  // effort context, so the A* exploration order is not meaningfully affected.
   MotionOptimizer(const Config& config) : config(config) {}
 
   // Returns results and search statistics
@@ -68,16 +68,35 @@ struct MotionOptimizer {
   );
 
 
-  // Multi-sink movement optimization: find paths to any position in [rangeBegin, rangeEnd)
+  // Multi-sink movement optimization: find paths to any position in the target half-open range.
   // Returns up to params.maxResults unique end positions (or total paths if allowMultiplePerPosition).
-  // Precondition: initialPos must NOT be in [rangeBegin, rangeEnd) (nothing to optimize)
+  // Precondition: initialPos must NOT be in the target range (nothing to optimize)
 
   // Convenience overload that builds a local BufferIndex for this call.
   RangeMotionResult optimizeToRange(
     const Lines& lines,
     const CursorPos& initialPos,
-    const CursorPos& rangeBegin,
-    const CursorPos& rangeEnd,
+    const CharRange& range,
+    MotionOptimizerRangeParams params = {},
+    std::string_view userSequence = "",
+    const MotionBoundary& boundary = MotionBoundary(),
+    const NavContext& navigationContext = NavContext()
+  );
+
+  RangeMotionResult optimizeToRange(
+    const Lines& lines,
+    const CursorPos& initialPos,
+    const CharLineRange& range,
+    MotionOptimizerRangeParams params = {},
+    std::string_view userSequence = "",
+    const MotionBoundary& boundary = MotionBoundary(),
+    const NavContext& navigationContext = NavContext()
+  );
+
+  RangeMotionResult optimizeToRange(
+    const Lines& lines,
+    const CursorPos& initialPos,
+    const LineCharRange& range,
     MotionOptimizerRangeParams params = {},
     std::string_view userSequence = "",
     const MotionBoundary& boundary = MotionBoundary(),
@@ -88,8 +107,31 @@ struct MotionOptimizer {
   RangeMotionResult optimizeToRange(
     const Lines& lines,
     const CursorPos& initialPos,
-    const CursorPos& rangeBegin,
-    const CursorPos& rangeEnd,
+    const CharRange& range,
+    MotionOptimizerRangeParams params,
+    std::string_view userSequence,
+    const MotionBoundary& boundary,
+    const NavContext& navigationContext,
+    const BufferIndex& bufferIndex,
+    int lineOffset
+  );
+
+  RangeMotionResult optimizeToRange(
+    const Lines& lines,
+    const CursorPos& initialPos,
+    const CharLineRange& range,
+    MotionOptimizerRangeParams params,
+    std::string_view userSequence,
+    const MotionBoundary& boundary,
+    const NavContext& navigationContext,
+    const BufferIndex& bufferIndex,
+    int lineOffset
+  );
+
+  RangeMotionResult optimizeToRange(
+    const Lines& lines,
+    const CursorPos& initialPos,
+    const LineCharRange& range,
     MotionOptimizerRangeParams params,
     std::string_view userSequence,
     const MotionBoundary& boundary,
@@ -113,12 +155,11 @@ private:
     MotionOptimizerParams params
   );
 
-  template<bool Forward>
+  template<bool Forward, class RangeT>
   RangeMotionResult optimizeToRangeImpl(
     const Lines& lines,
     const CursorPos& initialPos,
-    const CursorPos& rangeBegin,
-    const CursorPos& rangeEnd,
+    const RangeT& range,
     std::string_view userSequence,
     const NavContext& navContext,
     const MotionBoundary& boundary,

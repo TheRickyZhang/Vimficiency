@@ -5,8 +5,10 @@
 #include <string_view>
 
 #include "Types/Mode.h"
+#include "Types/CharLineRange.h"
+#include "Types/LineCharRange.h"
 #include "Types/CursorPos.h"
-#include "Types/Range.h"
+#include "Types/CharRange.h"
 #include "Types/LineRange.h"
 #include "Types/Lines.h"
 
@@ -40,7 +42,7 @@ inline CursorPos onePastOnSameLine(const Lines& lines, const CursorPos& inclusiv
 }
 
 // =============================================================================
-// Exclusive Motion Range Resolution  (see :help exclusive-linewise)
+// Exclusive Motion CharRange Resolution  (see :help exclusive-linewise)
 // =============================================================================
 //
 // Vim's exclusive motions (), (), {, }) produce half-open ranges [begin, end)
@@ -98,30 +100,52 @@ inline CursorPos onePastOnSameLine(const Lines& lines, const CursorPos& inclusiv
 
 enum class ResolvedDeleteRangeKind {
   Characterwise,
+  CharLine,
+  LineChar,
   Linewise,
 };
 
 struct ResolvedDeleteRange {
   ResolvedDeleteRangeKind kind;
-  Range charRange;
+  CharRange charRange;
+  CharLineRange charLineRange;
+  LineCharRange lineCharRange;
   LineRange lineRange;
 
-  static ResolvedDeleteRange characterwise(Range range) {
-    return {ResolvedDeleteRangeKind::Characterwise, range, LineRange(0, 0)};
+  static ResolvedDeleteRange characterwise(CharRange range) {
+    return {ResolvedDeleteRangeKind::Characterwise, range,
+            CHAR_LINE_RANGE_OUTSIDE_BOUNDARY,
+            LINE_CHAR_RANGE_OUTSIDE_BOUNDARY,
+            LineRange(0, 0)};
+  }
+
+  static ResolvedDeleteRange charLine(CharLineRange range) {
+    return {ResolvedDeleteRangeKind::CharLine, CharRange(),
+            range, LINE_CHAR_RANGE_OUTSIDE_BOUNDARY, LineRange(0, 0)};
+  }
+
+  static ResolvedDeleteRange lineChar(LineCharRange range) {
+    return {ResolvedDeleteRangeKind::LineChar, CharRange(),
+            CHAR_LINE_RANGE_OUTSIDE_BOUNDARY, range, LineRange(0, 0)};
   }
 
   static ResolvedDeleteRange linewise(LineRange range) {
-    return {ResolvedDeleteRangeKind::Linewise, Range(), range};
+    return {ResolvedDeleteRangeKind::Linewise, CharRange(),
+            CHAR_LINE_RANGE_OUTSIDE_BOUNDARY,
+            LINE_CHAR_RANGE_OUTSIDE_BOUNDARY, range};
   }
 };
 
 // Resolve a raw exclusive [begin, end) range into an explicit characterwise
-// Range or linewise LineRange. `allowLinewise` should be false for change-like
+// CharRange or linewise LineRange. `allowLinewise` should be false for change-like
 // operators, which keep the raw characterwise range even in the col-0 case.
 inline ResolvedDeleteRange resolveExclusiveDeleteRange(
-    Range range, const Lines& lines, bool allowLinewise) {
+    CharRange range, const Lines& lines, bool allowLinewise) {
   range.normalize();
   if (range.end.col != 0 || range.end.line <= range.begin.line) {
+    if (range.begin.col == 0 && range.begin.line < range.end.line) {
+      return ResolvedDeleteRange::lineChar(LineCharRange(range.begin.line, range.end));
+    }
     return ResolvedDeleteRange::characterwise(range);
   }
 
@@ -129,7 +153,7 @@ inline ResolvedDeleteRange resolveExclusiveDeleteRange(
     if (allowLinewise) {
       return ResolvedDeleteRange::linewise(LineRange(range.begin.line, range.end.line));
     }
-    return ResolvedDeleteRange::characterwise(range);
+    return ResolvedDeleteRange::charLine(CharLineRange(range.begin, range.end.line));
   }
 
   range.end = CursorPos(range.end.line - 1,
@@ -138,7 +162,7 @@ inline ResolvedDeleteRange resolveExclusiveDeleteRange(
 }
 
 // =============================================================================
-// Backward Exclusive Range Construction
+// Backward Exclusive CharRange Construction
 // =============================================================================
 //
 // Backward exclusive motions (db, dB) produce ranges where the exclusive end
@@ -151,20 +175,20 @@ inline ResolvedDeleteRange resolveExclusiveDeleteRange(
 // contentStartCol: offset for effective-line coordinate systems (e.g.,
 // leftColOffset on line 0 in EditExplorer). Defaults to 0 for real buffers.
 
-inline Range buildBackwardExclusiveCharRange(
+inline CharRange buildBackwardExclusiveCharRange(
     const CursorPos& endpoint, const CursorPos& cursor, const Lines& lines,
     int contentStartCol = 0) {
   if (cursor.col == contentStartCol && endpoint.line < cursor.line) {
     int prevLine = cursor.line - 1;
-    return Range(endpoint, CursorPos(prevLine, static_cast<int>(lines[prevLine].size())));
+    return CharRange(endpoint, CursorPos(prevLine, static_cast<int>(lines[prevLine].size())));
   }
-  return Range(endpoint, cursor);
+  return CharRange(endpoint, cursor);
 }
 
 // Given a normalized or unnormalized character delete range plus the line-count
 // before/after deletion, report whether the line containing range.begin was
 // removed in addition to the range's baseline line collapse.
-inline bool didDeleteRangeRemoveBeginLine(Range range,
+inline bool didDeleteRangeRemoveBeginLine(CharRange range,
                                           int oldLineCount,
                                           int newLineCount) {
   range.normalize();
@@ -177,12 +201,16 @@ inline bool didDeleteRangeRemoveBeginLine(Range range,
 // =============================================================================
 
 // Delete text in character range. Modifies lines and updates pos.
-// Range is half-open [begin, end).
+// CharRange is half-open [begin, end).
 // Mode determines position clamping: Normal clamps to last char, Insert allows after last char
 // Empty line removal may depend on whether the original cursor was already on
 // the range's anchor line, since this API combines deletion with cursor updates.
 void deleteRangeAndUpdatePos(
-    Lines& lines, const Range& range, CursorPos& pos, Mode mode = Mode::Normal);
+    Lines& lines, const CharRange& range, CursorPos& pos, Mode mode = Mode::Normal);
+void deleteCharLineRangeAndUpdatePos(
+    Lines& lines, const CharLineRange& range, CursorPos& pos, Mode mode = Mode::Normal);
+void deleteLineCharRangeAndUpdatePos(
+    Lines& lines, const LineCharRange& range, CursorPos& pos, Mode mode = Mode::Normal);
 
 // Delete entire lines in [beginLine, endLine). Modifies lines and updates pos.
 // Pos goes to first non-blank of the line following the deleted range.

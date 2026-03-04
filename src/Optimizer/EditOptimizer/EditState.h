@@ -6,10 +6,12 @@
 #include <string_view>
 
 #include "Keyboard/Config.h"
+#include "Types/CharLineRange.h"
+#include "Types/LineCharRange.h"
 #include "Types/LineRange.h"
 #include "Types/Mode.h"
 #include "Types/CursorPos.h"
-#include "Types/Range.h"
+#include "Types/CharRange.h"
 #include "Effort/RunningEffort.h"
 #include "Types/Lines.h"
 #include "Keyboard/PhysicalKeys.h"
@@ -68,6 +70,26 @@ class EditState {
   double effort_ = 0.0;           // Cached effort value
   double cost_ = 0.0;             // Priority = effort + heuristic
 
+  static void applyDeletion(Lines& lines, const CharRange& range, CursorPos& pos) {
+    VimCore::deleteRangeAndUpdatePos(lines, range, pos, Mode::Normal);
+  }
+
+  static void applyDeletion(Lines& lines, const CharLineRange& range, CursorPos& pos) {
+    VimCore::deleteCharLineRangeAndUpdatePos(lines, range, pos, Mode::Normal);
+  }
+
+  static void applyDeletion(Lines& lines, const LineCharRange& range, CursorPos& pos) {
+    VimCore::deleteLineCharRangeAndUpdatePos(lines, range, pos, Mode::Normal);
+  }
+
+  template<class RangeT>
+  [[nodiscard]] EditState afterDeletionImpl(const RangeT& range) const {
+    EditState newState = *this;
+    applyDeletion(newState.lines, range, newState.pos);
+    newState.linesHash_ = hashLines(newState.lines);
+    return newState;
+  }
+
 public:
   EditState(Lines lines, CursorPos pos, int startIndex, double initialCost)
     : lines(std::move(lines)), pos(pos), startIndex(startIndex),
@@ -103,18 +125,23 @@ public:
   // -----------------------------------------------------------------------------
 
   // Create new state with deletion applied
-  [[nodiscard]] EditState afterDeletion(const Range& range) const {
-    EditState newState = *this;
-    VimCore::deleteRangeAndUpdatePos(newState.lines, range, newState.pos, Mode::Normal);
-    newState.linesHash_ = hashLines(newState.lines);
-    return newState;
+  [[nodiscard]] EditState afterDeletion(const CharRange& range) const {
+    return afterDeletionImpl(range);
+  }
+
+  [[nodiscard]] EditState afterCharLineDeletion(const CharLineRange& range) const {
+    return afterDeletionImpl(range);
+  }
+
+  [[nodiscard]] EditState afterLineCharDeletion(const LineCharRange& range) const {
+    return afterDeletionImpl(range);
   }
 
   // Create new state with db/dB deletion semantics applied, including the
   // special post-delete cursor adjustment after removing the begin line.
-  [[nodiscard]] EditState afterBackwardWordDeletion(const Range& range) const {
+  [[nodiscard]] EditState afterBackwardWordDeletion(const CharRange& range) const {
     EditState newState = *this;
-    Range normalized = range;
+    CharRange normalized = range;
     normalized.normalize();
     int oldLineCount = static_cast<int>(newState.lines.size());
     CursorPos originalPos = newState.pos;

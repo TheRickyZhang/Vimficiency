@@ -9,6 +9,9 @@
 #include "Boundary/MotionBoundary.h"
 #include "Effort/EffortBank.h"
 #include "Types/NavContext.h"
+#include "Types/CharLineRange.h"
+#include "Types/LineCharRange.h"
+#include "Types/CharRange.h"
 #include "Types/CursorPos.h"
 #include "Optimizer/MotionOptimizer/MotionState.h"
 #include "Types/Pos.h"
@@ -62,7 +65,7 @@ struct MotionSearchContext {
   }
 
   // Distance to closest point in range [rangeFirst, rangeLast] (both inclusive).
-  // Range endpoints are geometric (Pos); cursor pos needs targetCol for heuristic.
+  // CharRange endpoints are geometric (Pos); cursor pos needs targetCol for heuristic.
   double distanceToRange(CursorPos pos, Pos rangeFirst, Pos rangeLast) const {
     if (pos >= rangeFirst && pos <= rangeLast) {
       return 0.0;  // Inside range
@@ -97,9 +100,10 @@ struct MotionSearchContext {
   // goalKey: the goal position key (not cached to allow multiple results)
   void exploreNewState(MotionState&& state, const Pos& goalKey);
 
-  // Variant for range goals: positions in range are not cached.
-  // Takes half-open [rangeBegin, rangeEnd) as Pos (geometric only).
-  void exploreNewStateToRange(MotionState&& state, Pos rangeBegin, Pos rangeEnd);
+  // Variants for range goals: positions in range are not cached.
+  void exploreNewStateToRange(MotionState&& state, const CharRange& range);
+  void exploreNewStateToRange(MotionState&& state, const CharLineRange& range);
+  void exploreNewStateToRange(MotionState&& state, const LineCharRange& range);
 
   // Check if search should continue
   bool shouldContinue() const {

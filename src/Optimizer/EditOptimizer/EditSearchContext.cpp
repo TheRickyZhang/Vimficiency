@@ -284,10 +284,13 @@ void EditSearchContext::exploreJoinCommands(
 
 void EditSearchContext::exploreAllDeletions(const EditState& state,
                                             DeletionCallback onDeletion,
+                                            CharLineDeletionCallback onCharLine,
+                                            LineCharDeletionCallback onLineChar,
                                             LinewiseCallback onLinewise,
                                             JoinCallback onJoin) {
   EditExplorer explorer(*this);
-  explorer.exploreAllDeletions(state, onDeletion, onLinewise, onJoin);
+  explorer.exploreAllDeletions(state, onDeletion, onCharLine, onLineChar,
+                               onLinewise, onJoin);
 }
 
 void EditSearchContext::exploreCountedLineEdits(const EditState& state,

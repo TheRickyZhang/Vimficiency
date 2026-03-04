@@ -9,6 +9,9 @@
 #include "Keyboard/KeyedSequence.h"
 #include "Keyboard/ToKeys/MotionToKeys.h"
 #include "Types/CountPrefixLimits.h"
+#include "Types/CharLineRange.h"
+#include "Types/LineCharRange.h"
+#include "Types/CharRange.h"
 #include "VimCore/VimCore.h"
 #include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimEndpointUtils.h"
@@ -18,30 +21,84 @@
 // Always operates in range mode: single-goal is a degenerate point range.
 //
 // Two usage modes:
-// 1. Range-goal (optimize / optimizeToRange): Uses rangeBegin/rangeEnd for range-aware exploration
+// 1. CharRange-goal (optimize / optimizeToRange): Uses rangeBegin/rangeEnd for range-aware exploration
 // 2. Lightweight: Uses exploreAllStandardMotions only, no directional methods
 class MotionExplorer {
+  enum class GoalRangeKind {
+    Char,
+    CharLine,
+    LineChar,
+  };
+
   MotionSearchContext& ctx;
   const BufferIndex& bufferIndex_;
   int bufferLineOffset_;
+  GoalRangeKind goalKind_;
 
-  // Range state — rangeFirst_/rangeLast_ are inclusive valid positions,
-  // rangeEnd_ is the half-open end (needed for exploreNewStateToRange).
+  // Goal range state — rangeFirst_/rangeLast_ are inclusive valid positions.
   Pos rangeFirst_;
   Pos rangeLast_;
-  Pos rangeEnd_;
+  CharRange charRange_;
+  CharLineRange charLineRange_;
+  LineCharRange lineCharRange_;
 
 public:
-  // Range mode constructor for directional exploration.
-  // Accepts half-open [rangeBegin, rangeEnd) and converts to inclusive first/last internally.
+  void enqueueToGoalRange(MotionState&& newState) {
+    switch (goalKind_) {
+      case GoalRangeKind::Char:
+        ctx.exploreNewStateToRange(std::move(newState), charRange_);
+        return;
+      case GoalRangeKind::CharLine:
+        ctx.exploreNewStateToRange(std::move(newState), charLineRange_);
+        return;
+      case GoalRangeKind::LineChar:
+        ctx.exploreNewStateToRange(std::move(newState), lineCharRange_);
+        return;
+    }
+  }
+
   MotionExplorer(MotionSearchContext& ctx,
-                 Pos rangeBegin,
-                 Pos rangeEnd,
+                 const CharRange& range,
                  const BufferIndex& bufferIndex,
                  int lineOffset)
       : ctx(ctx), bufferIndex_(bufferIndex), bufferLineOffset_(lineOffset),
-        rangeFirst_(rangeBegin), rangeEnd_(rangeEnd) {
-    rangeLast_ = ctx.lines.getPrevPos(CursorPos(rangeEnd_.line, rangeEnd_.col));
+        goalKind_(GoalRangeKind::Char),
+        rangeFirst_(range.begin), charRange_(range),
+        charLineRange_(CHAR_LINE_RANGE_OUTSIDE_BOUNDARY),
+        lineCharRange_(LINE_CHAR_RANGE_OUTSIDE_BOUNDARY) {
+    rangeLast_ = ctx.lines.getPrevPos(range.end);
+    if (!rangeLast_.isValid()) {
+      rangeLast_ = rangeFirst_;
+    }
+  }
+
+  MotionExplorer(MotionSearchContext& ctx,
+                 const CharLineRange& range,
+                 const BufferIndex& bufferIndex,
+                 int lineOffset)
+      : ctx(ctx), bufferIndex_(bufferIndex), bufferLineOffset_(lineOffset),
+        goalKind_(GoalRangeKind::CharLine),
+        rangeFirst_(range.begin),
+        charRange_(CHAR_RANGE_OUTSIDE_BOUNDARY),
+        charLineRange_(range),
+        lineCharRange_(LINE_CHAR_RANGE_OUTSIDE_BOUNDARY) {
+    rangeLast_ = ctx.lines.getPrevPos(CursorPos(range.endLine, 0));
+    if (!rangeLast_.isValid()) {
+      rangeLast_ = rangeFirst_;
+    }
+  }
+
+  MotionExplorer(MotionSearchContext& ctx,
+                 const LineCharRange& range,
+                 const BufferIndex& bufferIndex,
+                 int lineOffset)
+      : ctx(ctx), bufferIndex_(bufferIndex), bufferLineOffset_(lineOffset),
+        goalKind_(GoalRangeKind::LineChar),
+        rangeFirst_(range.beginLine, 0),
+        charRange_(CHAR_RANGE_OUTSIDE_BOUNDARY),
+        charLineRange_(CHAR_LINE_RANGE_OUTSIDE_BOUNDARY),
+        lineCharRange_(range) {
+    rangeLast_ = ctx.lines.getPrevPos(range.end);
     if (!rangeLast_.isValid()) {
       rangeLast_ = rangeFirst_;
     }
@@ -54,7 +111,7 @@ public:
     MotionState newState = base.afterMotion(ks, ctx.bank[id], endpoint, ctx.config);
 
     newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeLast_));
-    ctx.exploreNewStateToRange(std::move(newState), rangeFirst_, rangeEnd_);
+    enqueueToGoalRange(std::move(newState));
   }
 
   // Simple line motions: h, l, 0, ^, $
@@ -226,14 +283,14 @@ public:
 
     MotionState newState = base.afterCountedMotion(baseMotion, cnt, newPos, ctx.config, penalty);
     newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeLast_));
-    ctx.exploreNewStateToRange(std::move(newState), rangeFirst_, rangeEnd_);
+    enqueueToGoalRange(std::move(newState));
   }
 
   // F-motions with known column (internal helper)
   void exploreFMotion(const MotionState& base, const KeyedSequence& fMotion, int newcol) {
     MotionState newState = base.afterFMotion(fMotion, newcol, ctx.config);
     newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeLast_));
-    ctx.exploreNewStateToRange(std::move(newState), rangeFirst_, rangeEnd_);
+    enqueueToGoalRange(std::move(newState));
   }
 
   // ==========================================================================
@@ -266,7 +323,7 @@ public:
   }
 
   // ==========================================================================
-  // Range-aware counted spec exploration (uses BufferIndex with coordinate conversion)
+  // CharRange-aware counted spec exploration (uses BufferIndex with coordinate conversion)
   // ==========================================================================
 
   template<bool Forward, LandingType LT, CountClass C, KSId ForwardKS, KSId BackwardKS>
@@ -538,7 +595,7 @@ public:
     exploreSentenceMotions<false>(Motion::BACKWARD_SENTENCE_MOTIONS, base);
   }
 
-  // Range accessors
+  // Goal range accessors
   const Pos& getRangeFirst() const { return rangeFirst_; }
-  const Pos& getRangeEnd() const { return rangeEnd_; }
+  const Pos& getRangeLast() const { return rangeLast_; }
 };

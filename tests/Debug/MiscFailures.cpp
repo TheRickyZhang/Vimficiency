@@ -28,8 +28,8 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateRemainingFailures) {
 
     // Simulate daw - first check what textObjectRange returns
     cerr << endl << "textObjectRange for daw at (" << pos.line << "," << pos.col << "):" << endl;
-    Range dawRange = VimCore::textObjectRange(pos, testLines, false, false, 0, 0, false, false);
-    cerr << "  Range: [" << dawRange.begin.line << "," << dawRange.begin.col << "] to ["
+    CharRange dawRange = VimCore::textObjectRange(pos, testLines, false, false, 0, 0, false, false);
+    cerr << "  CharRange: [" << dawRange.begin.line << "," << dawRange.begin.col << "] to ["
          << dawRange.end.line << "," << dawRange.end.col << "]" << endl;
 
     // Apply the deletion

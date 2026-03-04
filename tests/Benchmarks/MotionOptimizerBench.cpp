@@ -117,7 +117,7 @@ static void runRangeWithParams(const RangeBenchmarkSetup& cfg,
                                MotionSearchStats& outStats) {
   MotionOptimizer opt(benchConfig);
   auto result = opt.optimizeToRange(
-      cfg.lines, cfg.initialPos, cfg.rangeBegin, cfg.rangeEnd,
+      cfg.lines, cfg.initialPos, CharRange(cfg.rangeBegin, cfg.rangeEnd),
       params, "", cfg.boundary);
   accumulateStats(outStats, result.getStats());
 }

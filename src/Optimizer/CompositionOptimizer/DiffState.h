@@ -18,6 +18,7 @@
 // - beginPos: First character that differs (inclusive)
 // - endPos: One past last character that differs (exclusive, may be virtual column)
 // Benefits: Empty ranges are natural (beginPos == endPos), no -1 adjustments needed.
+
 struct DiffState {
   // Character-precise edit region bounds (in original buffer coordinates)
   // Half-open: [beginPos, endPos) defines exactly which characters need to change
@@ -57,6 +58,14 @@ struct DiffState {
   bool isPureDeletion() const { return beginPos != endPos && insertedText.empty(); }
   bool isReplacement() const { return beginPos != endPos && !insertedText.empty(); }
   bool hasDeletedContent() const { return beginPos != endPos; }
+
+  bool contains(const CursorPos& pos) const {
+    return pos >= beginPos && pos < endPos;
+  }
+
+  int editEndLine() const {
+    return endPos.line + (endPos.col > 0 ? 1 : 0);
+  }
 
   // Does insertedText end with a newline? (for o/A+<CR> insertion strategies)
   bool isNewLineInsertion() const { return !insertedText.empty() && insertedText.back() == '\n'; }

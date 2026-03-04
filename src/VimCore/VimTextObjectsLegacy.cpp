@@ -12,14 +12,14 @@ namespace VimTextObjectsLegacy {
 // Quote text objects (i", a", i', a')
 // -----------------------------------------------------------------------------
 
-Range innerQuote(const Lines& lines, CursorPos pos, char quote) {
+CharRange innerQuote(const Lines& lines, CursorPos pos, char quote) {
   int n = static_cast<int>(lines.size());
-  if (n == 0) return Range(pos, pos);
+  if (n == 0) return CharRange(pos, pos);
 
   int line = clamp(pos.line, 0, n - 1);
   const string& ln = lines[line];
   int len = static_cast<int>(ln.size());
-  if (len == 0) return Range(pos, pos);
+  if (len == 0) return CharRange(pos, pos);
 
   int col = clamp(pos.col, 0, len - 1);
 
@@ -61,20 +61,20 @@ Range innerQuote(const Lines& lines, CursorPos pos, char quote) {
   }
 
   if (openQuote == -1 || closeQuote == -1 || openQuote >= closeQuote) {
-    return Range(pos, pos);  // No valid quote pair found
+    return CharRange(pos, pos);  // No valid quote pair found
   }
 
   // Inner: exclude the quotes themselves
   if (closeQuote - openQuote <= 1) {
     // Empty quotes like "" - return invalid/empty range
-    return RANGE_OUTSIDE_BOUNDARY;
+    return CHAR_RANGE_OUTSIDE_BOUNDARY;
   }
 
-  return Range(CursorPos(line, openQuote + 1), CursorPos(line, closeQuote));
+  return CharRange(CursorPos(line, openQuote + 1), CursorPos(line, closeQuote));
 }
 
-Range aroundQuote(const Lines& lines, CursorPos pos, char quote) {
-  Range inner = innerQuote(lines, pos, quote);
+CharRange aroundQuote(const Lines& lines, CursorPos pos, char quote) {
+  CharRange inner = innerQuote(lines, pos, quote);
 
   // If inner is empty/invalid, return it
   if (!inner.isValid() || inner.isEmpty()) return inner;
@@ -89,7 +89,7 @@ Range aroundQuote(const Lines& lines, CursorPos pos, char quote) {
                    ? inner.end.col + 1
                    : inner.end.col;
 
-  return Range(CursorPos(line, startCol), CursorPos(line, endCol));
+  return CharRange(CursorPos(line, startCol), CursorPos(line, endCol));
 }
 
 // -----------------------------------------------------------------------------
@@ -171,11 +171,11 @@ foundOpen:
   return {CursorPos(-1, -1), CursorPos(-1, -1)};
 }
 
-Range innerBracket(const Lines& lines, CursorPos pos, char open, char close) {
+CharRange innerBracket(const Lines& lines, CursorPos pos, char open, char close) {
   auto [openPos, closePos] = findMatchingBrackets(lines, pos, open, close);
 
   if (openPos.line < 0 || closePos.line < 0) {
-    return Range(pos, pos);  // No matching brackets found
+    return CharRange(pos, pos);  // No matching brackets found
   }
 
   // Inner: exclude the brackets
@@ -192,20 +192,20 @@ Range innerBracket(const Lines& lines, CursorPos pos, char open, char close) {
 
   // Handle empty brackets like ()
   if (start >= end) {
-    return RANGE_OUTSIDE_BOUNDARY;  // Empty
+    return CHAR_RANGE_OUTSIDE_BOUNDARY;  // Empty
   }
 
-  return Range(start, end);
+  return CharRange(start, end);
 }
 
-Range aroundBracket(const Lines& lines, CursorPos pos, char open, char close) {
+CharRange aroundBracket(const Lines& lines, CursorPos pos, char open, char close) {
   auto [openPos, closePos] = findMatchingBrackets(lines, pos, open, close);
 
   if (openPos.line < 0 || closePos.line < 0) {
-    return Range(pos, pos);
+    return CharRange(pos, pos);
   }
 
-  return Range(openPos, VimCore::onePastOnSameLine(lines, closePos));
+  return CharRange(openPos, VimCore::onePastOnSameLine(lines, closePos));
 }
 
 } // namespace VimTextObjectsLegacy

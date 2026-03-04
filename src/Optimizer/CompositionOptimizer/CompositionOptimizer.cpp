@@ -174,13 +174,14 @@ CompositionResult CompositionOptimizer::optimize(
           int lineOffset = 0;
           bool hasBufferIndex = ctx.tryGetBufferIndex(
               editsCompleted, beginLine, endLine, bufferIndex, lineOffset);
+          CharRange motionRange(localRangeBegin, localRangeEnd);
           auto motionResult = hasBufferIndex
               ? motionOptimizer.optimizeToRange(
-                    subset, localPos, localRangeBegin, localRangeEnd,
+                    subset, localPos, motionRange,
                     rangeParams, "", subsetBoundary,
                     navigationContext, *bufferIndex, lineOffset)
               : motionOptimizer.optimizeToRange(
-                    subset, localPos, localRangeBegin, localRangeEnd,
+                    subset, localPos, motionRange,
                     rangeParams, "", subsetBoundary,
                     navigationContext);
           ctx.motionNodesExplored += motionResult.getStats().nodesExplored;
@@ -330,13 +331,13 @@ CompositionResult CompositionOptimizer::optimize(
 
       // If cursor is already inside the edit range but no edit result was found
       // (e.g. maxResults budget exhausted), skip motion search — we're already there.
-      if (pos >= nextEdit.beginPos && pos < nextEdit.endPos) {
+      if (nextEdit.contains(pos)) {
         debug("  inside edit range but no result at", pos, "- skipping");
         continue;
       }
 
       // Slice a padded subset around [pos, edit region] for MotionOptimizer
-      int editEndLine = nextEdit.endPos.line + (nextEdit.endPos.col > 0 ? 1 : 0);
+      int editEndLine = nextEdit.editEndLine();
       auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
           min(pos.line, nextEdit.beginPos.line),
           max(pos.line + 1, editEndLine),
@@ -371,15 +372,29 @@ CompositionResult CompositionOptimizer::optimize(
       int lineOffset = 0;
       bool hasBufferIndex = ctx.tryGetBufferIndex(
           editsCompleted, beginLine, endLine, bufferIndex, lineOffset);
-      auto motionResult = hasBufferIndex
-          ? motionOptimizer.optimizeToRange(
-                subset, localPos, localRangeBegin, localRangeEnd,
-                rangeParams2, "", subsetBoundary,
-                navigationContext, *bufferIndex, lineOffset)
-          : motionOptimizer.optimizeToRange(
-                subset, localPos, localRangeBegin, localRangeEnd,
-                rangeParams2, "", subsetBoundary,
-                navigationContext);
+      auto runMotionToRange = [&](const auto& range) -> RangeMotionResult {
+        if (hasBufferIndex) {
+          return motionOptimizer.optimizeToRange(
+              subset, localPos, range, rangeParams2, "", subsetBoundary,
+              navigationContext, *bufferIndex, lineOffset);
+        }
+        return motionOptimizer.optimizeToRange(
+            subset, localPos, range, rangeParams2, "", subsetBoundary, navigationContext);
+      };
+      bool endsAtLineBoundary =
+          nextEdit.hasDeletedContent()
+          && nextEdit.endPos.line > nextEdit.beginPos.line
+          && nextEdit.endPos.col == 0;
+      bool startsAtLineBoundary =
+          nextEdit.hasDeletedContent()
+          && !endsAtLineBoundary
+          && nextEdit.beginPos.col == 0
+          && nextEdit.endPos.line > nextEdit.beginPos.line;
+      RangeMotionResult motionResult = endsAtLineBoundary
+          ? runMotionToRange(CharLineRange(localRangeBegin, localRangeEnd.line))
+          : startsAtLineBoundary
+              ? runMotionToRange(LineCharRange(localRangeBegin.line, localRangeEnd))
+              : runMotionToRange(CharRange(localRangeBegin, localRangeEnd));
       ctx.motionNodesExplored += motionResult.getStats().nodesExplored;
 
       debug("  motion results:", static_cast<int>(motionResult.getResults().size()));
@@ -426,13 +441,14 @@ CompositionResult CompositionOptimizer::optimize(
         int jLineOffset = 0;
         bool hasJBufferIndex = ctx.tryGetBufferIndex(
             editsCompleted, jBeginLine, jEndLine, jBufferIndex, jLineOffset);
+        CharRange jMotionRange(jLocalFirst, jLocalEnd);
         auto jMotionResult = hasJBufferIndex
             ? motionOptimizer.optimizeToRange(
-                  jSubset, jLocalPos, jLocalFirst, jLocalEnd,
+                  jSubset, jLocalPos, jMotionRange,
                   jRangeParams, "", jSubsetBoundary,
                   navigationContext, *jBufferIndex, jLineOffset)
             : motionOptimizer.optimizeToRange(
-                  jSubset, jLocalPos, jLocalFirst, jLocalEnd,
+                  jSubset, jLocalPos, jMotionRange,
                   jRangeParams, "", jSubsetBoundary,
                   navigationContext);
         ctx.motionNodesExplored += jMotionResult.getStats().nodesExplored;

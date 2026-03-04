@@ -102,7 +102,7 @@ CursorPos wordEndpointToRangeEnd(CursorPos endpoint,
 
 // Helper to compute whitespace run range. Always returns valid position.
 // Used for iw/iW when cursor on whitespace
-static Range computeWhitespaceRun(CursorPos cursor, const Lines& lines) {
+static CharRange computeWhitespaceRun(CursorPos cursor, const Lines& lines) {
   CursorPos start = cursor;
   CursorPos next = lines.getPrevPos(start);
   while (next != start && isBlank(lines.get(next))) {
@@ -116,10 +116,10 @@ static Range computeWhitespaceRun(CursorPos cursor, const Lines& lines) {
     end = next;
     next = lines.getNextPos(end);
   }
-  return Range(start, VimCore::onePastOnSameLine(lines, end));
+  return CharRange(start, VimCore::onePastOnSameLine(lines, end));
 }
 
-Range textObjectCore(CursorPos cursor, const Lines& lines, bool isInner,
+CharRange textObjectCore(CursorPos cursor, const Lines& lines, bool isInner,
                      bool isBigWord) {
 
   unsigned char c = lines.get(cursor);
@@ -188,15 +188,15 @@ Range textObjectCore(CursorPos cursor, const Lines& lines, bool isInner,
 
   // Return half-open [begin, end), where invalid endpoints propagate as sentinels.
   if (!start.isValid() || !end.isValid()) {
-    return Range(start, end);
+    return CharRange(start, end);
   }
-  return Range(start, end);
+  return CharRange(start, end);
 }
 
-Range textObject(CursorPos cursor, const Lines& lines, bool isInner,
+CharRange textObject(CursorPos cursor, const Lines& lines, bool isInner,
                  bool isBigWord) {
 
-  Range range = textObjectCore(cursor, lines, isInner, isBigWord);
+  CharRange range = textObjectCore(cursor, lines, isInner, isBigWord);
 
   // Clamp POSITION_OUTSIDE_BOUNDARY to buffer edges
   if (range.begin == POSITION_OUTSIDE_BOUNDARY) {
@@ -210,7 +210,7 @@ Range textObject(CursorPos cursor, const Lines& lines, bool isInner,
 }
 
 // daw has exceptions to normal boundary rules, as only places where we call motionWordEndpoint with lineBounded = true
-Range textObjectRange(CursorPos cursor, const Lines& lines, bool isInner,
+CharRange textObjectRange(CursorPos cursor, const Lines& lines, bool isInner,
                       bool isBigWord, int leftColOffset, int rightColOffset,
                       bool hasLinesAbove, bool hasLinesBelow) {
 
@@ -224,7 +224,7 @@ Range textObjectRange(CursorPos cursor, const Lines& lines, bool isInner,
     if (cursorOnWhitespace) {
       // Whitespace run doesn't use motionWordEndpoint, so no line crossing
       // possible But we still need to check column boundaries on the result
-      Range wsRange = computeWhitespaceRun(cursor, lines);
+      CharRange wsRange = computeWhitespaceRun(cursor, lines);
       start = wsRange.begin;
       end = wsRange.end;
 
@@ -249,7 +249,7 @@ Range textObjectRange(CursorPos cursor, const Lines& lines, bool isInner,
       }
 
       // Whitespace-run path is already half-open.
-      return Range(start, end);
+      return CharRange(start, end);
     } else {
       // Cursor on word/symbol - use WordEdge motions WITH boundary checking
       start = motionWordEndpoint<false, EdgeType::WordEdge>(
@@ -335,9 +335,9 @@ Range textObjectRange(CursorPos cursor, const Lines& lines, bool isInner,
 
   // Return half-open [begin, end), where invalid endpoints propagate as sentinels.
   if (!start.isValid() || !end.isValid()) {
-    return Range(start, end);
+    return CharRange(start, end);
   }
-  return Range(start, end);
+  return CharRange(start, end);
 }
 
 // =============================================================================
@@ -854,11 +854,11 @@ CursorPos sentenceEndpointToRangeEnd(CursorPos endpoint,
   }
 }
 
-Range sentenceTextObjectRange(CursorPos cursor, const Lines& lines, bool isInner,
+CharRange sentenceTextObjectRange(CursorPos cursor, const Lines& lines, bool isInner,
                               CursorPos leftBoundary, CursorPos rightBoundary) {
   int n = static_cast<int>(lines.size());
   if (n == 0)
-    return RANGE_OUTSIDE_BOUNDARY;
+    return CHAR_RANGE_OUTSIDE_BOUNDARY;
 
   // Find sentence start (beginning of current sentence)
   auto [startLine, startCol] =
@@ -913,13 +913,13 @@ Range sentenceTextObjectRange(CursorPos cursor, const Lines& lines, bool isInner
 
   // Check if result crosses boundaries using half-open semantics.
   if (leftBoundary.isValid() && resultStart <= leftBoundary) {
-    return RANGE_OUTSIDE_BOUNDARY;
+    return CHAR_RANGE_OUTSIDE_BOUNDARY;
   }
   if (rightBoundary.isValid() && resultEnd > rightBoundary) {
-    return RANGE_OUTSIDE_BOUNDARY;
+    return CHAR_RANGE_OUTSIDE_BOUNDARY;
   }
 
-  return Range(resultStart, resultEnd);
+  return CharRange(resultStart, resultEnd);
 }
 
 // =============================================================================

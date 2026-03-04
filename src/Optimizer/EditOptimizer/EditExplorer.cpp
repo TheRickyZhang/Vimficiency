@@ -34,6 +34,28 @@ RunningEffort buildCountedEffort(const Config& config, int count,
   }
   return effort;
 }
+
+void emitResolvedDeletion(const VimCore::ResolvedDeleteRange& resolved,
+                         const SequenceBinding& cmd,
+                         DeletionCallback onDeletion,
+                         CharLineDeletionCallback onCharLine,
+                         LineCharDeletionCallback onLineChar,
+                         LinewiseCallback onLinewise) {
+  switch (resolved.kind) {
+    case VimCore::ResolvedDeleteRangeKind::Characterwise:
+      onDeletion(resolved.charRange, cmd);
+      return;
+    case VimCore::ResolvedDeleteRangeKind::CharLine:
+      if (onCharLine) onCharLine(resolved.charLineRange, cmd);
+      return;
+    case VimCore::ResolvedDeleteRangeKind::LineChar:
+      if (onLineChar) onLineChar(resolved.lineCharRange, cmd);
+      return;
+    case VimCore::ResolvedDeleteRangeKind::Linewise:
+      if (onLinewise) onLinewise(resolved.lineRange, cmd);
+      return;
+  }
+}
 }  // namespace
 
 EditExplorer::EditExplorer(EditSearchContext& ctx) : ctx_(ctx) {}
@@ -54,7 +76,7 @@ void EditExplorer::exploreTextObjectEdits(
     const vector<Edit::TextObjectEditSpec>& specs,
     const CursorPos& cursor, const Lines& lines, DeletionCallback onDeletion) {
   for (const auto& spec : specs) {
-    Range range = VimCore::textObjectRange(
+    CharRange range = VimCore::textObjectRange(
         cursor, lines, spec.isInner, spec.isBig,
         ctx_.leftColOffset, ctx_.rightColOffset,
         ctx_.editBoundary.hasLinesAbove(), ctx_.editBoundary.hasLinesBelow());
@@ -85,14 +107,14 @@ void EditExplorer::exploreHalfLineEdits(
 
       int endCol = lineContentEnd - 1;
       if (endCol < cursor.col) continue;
-      Range range(cursor, CursorPos(cursor.line, endCol + 1));
+      CharRange range(cursor, CursorPos(cursor.line, endCol + 1));
       onDeletion(range, SequenceBinding(KeyedSequence::byId(spec.ksId), ctx_.effortFor(spec.ksId)));
     } else if (spec.ksId == KSId::d0) {
       if (cursor.line == 0 && ctx_.editBoundary.hasPrefix()) continue;
 
       int lineContentStart = (cursor.line == 0) ? ctx_.leftColOffset : 0;
       if (cursor.col <= lineContentStart) continue;
-      Range range(CursorPos(cursor.line, lineContentStart),
+      CharRange range(CursorPos(cursor.line, lineContentStart),
                   CursorPos(cursor.line, cursor.col));
       onDeletion(range, SequenceBinding(KeyedSequence::byId(spec.ksId), ctx_.effortFor(spec.ksId)));
     } else {
@@ -120,14 +142,14 @@ void EditExplorer::exploreCharEdits(
     int editContentLen, DeletionCallback onDeletion) {
   // x: delete char at cursor (must be in content region)
   if (contentStart <= cursor.col && cursor.col < contentEnd) {
-    onDeletion(Range(cursor, CursorPos(cursor.line, cursor.col + 1)),
+    onDeletion(CharRange(cursor, CursorPos(cursor.line, cursor.col + 1)),
                SequenceBinding(KeyedSequence::x, ctx_.effortFor(KSId::x)));
   }
 
   // X: delete char before cursor
   if (cursor.col > contentStart && cursor.col <= contentEnd) {
     CursorPos before(cursor.line, cursor.col - 1);
-    onDeletion(Range(before, CursorPos(before.line, before.col + 1)),
+    onDeletion(CharRange(before, CursorPos(before.line, before.col + 1)),
                SequenceBinding(KeyedSequence::X, ctx_.effortFor(KSId::X)));
   }
 }
@@ -137,7 +159,10 @@ template<bool Forward>
 void EditExplorer::exploreParagraphEdits(
     const std::vector<Edit::ParagraphEditSpecNoDir>& specs,
     const CursorPos& cursor, const Lines& lines,
-    DeletionCallback onDeletion, LinewiseCallback onLinewise) {
+    DeletionCallback onDeletion,
+    CharLineDeletionCallback onCharLine,
+    LineCharDeletionCallback onLineChar,
+    LinewiseCallback onLinewise) {
   int lastLine = lines.lastLine();
 
   bool hasLinesOutside = Forward ? ctx_.editBoundary.hasLinesBelow() : ctx_.editBoundary.hasLinesAbove();
@@ -168,8 +193,20 @@ void EditExplorer::exploreParagraphEdits(
         }
         continue;
       }
+      if (endpointIsBlank) {
+        if (onCharLine) {
+          onCharLine(CharLineRange(cursor, endpointLine), cmd);
+        }
+        continue;
+      }
       int endColExclusive = static_cast<int>(lines[endLine].size());
-      onDeletion(Range(cursor, CursorPos(endLine, endColExclusive)), cmd);
+      if (cursor.col == 0 && cursor.line < endLine) {
+        if (onLineChar) {
+          onLineChar(LineCharRange(cursor.line, CursorPos(endLine, endColExclusive)), cmd);
+        }
+      } else {
+        onDeletion(CharRange(cursor, CursorPos(endLine, endColExclusive)), cmd);
+      }
     } else {
       // d{: when endpointLine == cursor.line, { stays on the same line and
       // d{ is characterwise exclusive (not linewise), so skip.
@@ -180,14 +217,17 @@ void EditExplorer::exploreParagraphEdits(
 }
 
 // Templated helper for sentence edit exploration.
-// Both ) and ( are exclusive motions — resolve them to characterwise Range or
+// Both ) and ( are exclusive motions — resolve them to characterwise CharRange or
 // linewise LineRange before emitting.
 // See VimEditUtils.h for the full rule description and examples.
 template<bool Forward>
 void EditExplorer::exploreSentenceEdits(
     const std::vector<Edit::SentenceEditSpecNoDir>& specs,
     const CursorPos& cursor, const Lines& lines,
-    DeletionCallback onDeletion, LinewiseCallback onLinewise) {
+    DeletionCallback onDeletion,
+    CharLineDeletionCallback onCharLine,
+    LineCharDeletionCallback onLineChar,
+    LinewiseCallback onLinewise) {
   int lastLine = lines.lastLine();
 
   int boundaryOffset = Forward ? ctx_.rightColOffset : ctx_.leftColOffset;
@@ -211,27 +251,15 @@ void EditExplorer::exploreSentenceEdits(
     if constexpr (Forward) {
       // d): forward — exclusive end = endpoint (motion destination).
       if (endpoint <= cursor) continue;
-      Range rawRange(cursor, endpoint);
+      CharRange rawRange(cursor, endpoint);
       auto resolved = VimCore::resolveExclusiveDeleteRange(rawRange, lines, true);
-      if (resolved.kind == VimCore::ResolvedDeleteRangeKind::Linewise) {
-        if (onLinewise) {
-          onLinewise(resolved.lineRange, cmd);
-        }
-        continue;
-      }
-      onDeletion(resolved.charRange, cmd);
+      emitResolvedDeletion(resolved, cmd, onDeletion, onCharLine, onLineChar, onLinewise);
     } else {
       // d(: backward — exclusive end = cursor (the higher end of the range).
       if (endpoint >= cursor) continue;
-      Range rawRange(endpoint, cursor);
+      CharRange rawRange(endpoint, cursor);
       auto resolved = VimCore::resolveExclusiveDeleteRange(rawRange, lines, true);
-      if (resolved.kind == VimCore::ResolvedDeleteRangeKind::Linewise) {
-        if (onLinewise) {
-          onLinewise(resolved.lineRange, cmd);
-        }
-        continue;
-      }
-      onDeletion(resolved.charRange, cmd);
+      emitResolvedDeletion(resolved, cmd, onDeletion, onCharLine, onLineChar, onLinewise);
     }
   }
 }
@@ -264,7 +292,7 @@ void EditExplorer::exploreForwardWordEdits(
       }
     }
 
-    onDeletion(Range(cursor, VimCore::onePastOnSameLine(lines, endpoint)),
+    onDeletion(CharRange(cursor, VimCore::onePastOnSameLine(lines, endpoint)),
                SequenceBinding(KeyedSequence::byId(spec.ksId), ctx_.effortFor(spec.ksId)));
   }
 }
@@ -285,14 +313,14 @@ void EditExplorer::exploreBackwardWordEdits(
     if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor)
       continue;
 
-    Range range;
+    CharRange range;
     if (spec.isExclusiveAtCursor) {
       int contentStartCol = cursor.line == 0 ? ctx_.leftColOffset : 0;
       if (cursor.col == contentStartCol && endpoint.line == cursor.line)
         continue;
       range = VimCore::buildBackwardExclusiveCharRange(endpoint, cursor, lines, contentStartCol);
     } else {
-      range = Range(endpoint, VimCore::onePastOnSameLine(lines, cursor));
+      range = CharRange(endpoint, VimCore::onePastOnSameLine(lines, cursor));
     }
 
     onDeletion(range, SequenceBinding(KeyedSequence::byId(spec.ksId), ctx_.effortFor(spec.ksId)));
@@ -309,13 +337,17 @@ template void EditExplorer::exploreBackwardWordEdits<EdgeType::WordEdge>(
 template void EditExplorer::exploreBackwardWordEdits<EdgeType::NextEdge>(
     const vector<Edit::BackwardWordEditSpecNoEdge>&, const CursorPos&, const Lines&, DeletionCallback);
 template void EditExplorer::exploreParagraphEdits<true>(
-    const vector<Edit::ParagraphEditSpecNoDir>&, const CursorPos&, const Lines&, DeletionCallback, LinewiseCallback);
+    const vector<Edit::ParagraphEditSpecNoDir>&, const CursorPos&, const Lines&,
+    DeletionCallback, CharLineDeletionCallback, LineCharDeletionCallback, LinewiseCallback);
 template void EditExplorer::exploreParagraphEdits<false>(
-    const vector<Edit::ParagraphEditSpecNoDir>&, const CursorPos&, const Lines&, DeletionCallback, LinewiseCallback);
+    const vector<Edit::ParagraphEditSpecNoDir>&, const CursorPos&, const Lines&,
+    DeletionCallback, CharLineDeletionCallback, LineCharDeletionCallback, LinewiseCallback);
 template void EditExplorer::exploreSentenceEdits<true>(
-    const vector<Edit::SentenceEditSpecNoDir>&, const CursorPos&, const Lines&, DeletionCallback, LinewiseCallback);
+    const vector<Edit::SentenceEditSpecNoDir>&, const CursorPos&, const Lines&,
+    DeletionCallback, CharLineDeletionCallback, LineCharDeletionCallback, LinewiseCallback);
 template void EditExplorer::exploreSentenceEdits<false>(
-    const vector<Edit::SentenceEditSpecNoDir>&, const CursorPos&, const Lines&, DeletionCallback, LinewiseCallback);
+    const vector<Edit::SentenceEditSpecNoDir>&, const CursorPos&, const Lines&,
+    DeletionCallback, CharLineDeletionCallback, LineCharDeletionCallback, LinewiseCallback);
 
 // =============================================================================
 // Counted Exploration Methods
@@ -456,7 +488,7 @@ void EditExplorer::exploreCountedWordEdits(
       RunningEffort countedEffort = spec.isBig
           ? buildCountedEffort<CountClass::EditWORD>(ctx_.config, lastCount, spec.ksId, lastCount)
           : buildCountedEffort<CountClass::EditWord>(ctx_.config, lastCount, spec.ksId, lastCount);
-      onDeletion(Range(cursor, VimCore::onePastOnSameLine(lines, lastEndpoint)),
+      onDeletion(CharRange(cursor, VimCore::onePastOnSameLine(lines, lastEndpoint)),
                  SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount));
     }
   }
@@ -495,7 +527,7 @@ void EditExplorer::exploreCountedWordEdits(
       RunningEffort countedEffort = spec.isBig
           ? buildCountedEffort<CountClass::EditWORD>(ctx_.config, lastCount, spec.ksId, lastCount)
           : buildCountedEffort<CountClass::EditWord>(ctx_.config, lastCount, spec.ksId, lastCount);
-      onDeletion(Range(cursor, lastEnd),
+      onDeletion(CharRange(cursor, lastEnd),
                  SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount));
     }
   }
@@ -521,7 +553,7 @@ void EditExplorer::exploreCountedWordEdits(
     if (lastCount >= minCountRepeat) {
       int contentStartCol = cursor.line == 0 ? ctx_.leftColOffset : 0;
       if (cursor.col > contentStartCol) {
-        Range range = VimCore::buildBackwardExclusiveCharRange(lastEndpoint, cursor, lines, contentStartCol);
+        CharRange range = VimCore::buildBackwardExclusiveCharRange(lastEndpoint, cursor, lines, contentStartCol);
         RunningEffort countedEffort = spec.isBig
             ? buildCountedEffort<CountClass::EditWORD>(ctx_.config, lastCount, spec.ksId, lastCount)
             : buildCountedEffort<CountClass::EditWord>(ctx_.config, lastCount, spec.ksId, lastCount);
@@ -555,7 +587,7 @@ void EditExplorer::exploreCountedWordEdits(
       RunningEffort countedEffort = spec.isBig
           ? buildCountedEffort<CountClass::EditWORD>(ctx_.config, lastCount, spec.ksId, lastCount)
           : buildCountedEffort<CountClass::EditWord>(ctx_.config, lastCount, spec.ksId, lastCount);
-      onDeletion(Range(lastEndpoint, VimCore::onePastOnSameLine(lines, cursor)),
+      onDeletion(CharRange(lastEndpoint, VimCore::onePastOnSameLine(lines, cursor)),
                  SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount));
     }
   }
@@ -579,7 +611,7 @@ void EditExplorer::exploreCountedCharEdits(
   int count = min(contentEnd - cursor.col, min(MAX_COUNT_DIGIT, maxCountRepeat));
   if (count < minCountRepeat) return;
 
-  Range range(cursor, CursorPos(cursor.line, cursor.col + count));
+  CharRange range(cursor, CursorPos(cursor.line, cursor.col + count));
   RunningEffort effort =
       buildCountedEffort<CountClass::EditChar>(ctx_.config, count, KSId::x, count);
   onDeletion(range, SequenceBinding(KeyedSequence::x, effort, count));
@@ -608,6 +640,8 @@ void EditExplorer::exploreJoinCommands(
 
 void EditExplorer::exploreAllDeletions(const EditState& state,
                                        DeletionCallback onDeletion,
+                                       CharLineDeletionCallback onCharLine,
+                                       LineCharDeletionCallback onLineChar,
                                        LinewiseCallback onLinewise,
                                        JoinCallback onJoin) {
   const Lines& lines = state.getLines();
@@ -637,9 +671,13 @@ void EditExplorer::exploreAllDeletions(const EditState& state,
   exploreHalfLineEdits(Edit::HALF_LINE_EDITS, cursor, lines, contentBegin, contentEnd, onDeletion);
   exploreFullLineEdits(Edit::FULL_LINE_EDITS, cursor, lines, onLinewise);
   exploreCharEdits(cursor, lines, contentBegin, contentEnd, editContentLen, onDeletion);
-  exploreParagraphEdits<true>(Edit::FORWARD_PARAGRAPH_EDITS, cursor, lines, onDeletion, onLinewise);
-  exploreParagraphEdits<false>(Edit::BACKWARD_PARAGRAPH_EDITS, cursor, lines, onDeletion, onLinewise);
-  exploreSentenceEdits<true>(Edit::FORWARD_SENTENCE_EDITS, cursor, lines, onDeletion, onLinewise);
-  exploreSentenceEdits<false>(Edit::BACKWARD_SENTENCE_EDITS, cursor, lines, onDeletion, onLinewise);
+  exploreParagraphEdits<true>(
+      Edit::FORWARD_PARAGRAPH_EDITS, cursor, lines, onDeletion, onCharLine, onLineChar, onLinewise);
+  exploreParagraphEdits<false>(
+      Edit::BACKWARD_PARAGRAPH_EDITS, cursor, lines, onDeletion, onCharLine, onLineChar, onLinewise);
+  exploreSentenceEdits<true>(
+      Edit::FORWARD_SENTENCE_EDITS, cursor, lines, onDeletion, onCharLine, onLineChar, onLinewise);
+  exploreSentenceEdits<false>(
+      Edit::BACKWARD_SENTENCE_EDITS, cursor, lines, onDeletion, onCharLine, onLineChar, onLinewise);
   exploreJoinCommands(cursor, lines, onJoin);
 }

@@ -11,7 +11,7 @@ namespace VimCore {
 
 namespace {
 
-void applyCharDeletionToBuffer(Lines& lines, const Range& r,
+void applyCharDeletionToBuffer(Lines& lines, const CharRange& r,
                                const CursorPos& originalPos, Mode mode) {
   // Whether the original cursor was already on the anchor line affects Vim's
   // empty-line retention rules when a deletion clears that line.
@@ -51,14 +51,42 @@ void applyCharDeletionToBuffer(Lines& lines, const Range& r,
   assert(!lines.empty());
 }
 
-void placeCursorAfterCharDeletion(const Lines& lines, const Range& r,
+void applyCharLineDeletionToBuffer(Lines& lines, const CharLineRange& r, Mode mode) {
+  assert(r.begin.line >= 0 && r.begin.line < static_cast<int>(lines.size()));
+  assert(r.endLine > r.begin.line && r.endLine < static_cast<int>(lines.size()));
+  assert(r.begin.col >= 0 && r.begin.col <= static_cast<int>(lines[r.begin.line].size()));
+
+  string& firstLn = lines[r.begin.line];
+  const string& boundaryLn = lines[r.endLine];
+  int beginCol = std::clamp(r.begin.col, 0, static_cast<int>(firstLn.size()));
+
+  firstLn = firstLn.substr(0, beginCol) + boundaryLn;
+  lines.erase(lines.begin() + r.begin.line + 1, lines.begin() + r.endLine + 1);
+
+  if (firstLn.empty() && lines.size() > 1 && mode != Mode::Insert) {
+    lines.erase(lines.begin() + r.begin.line);
+  }
+
+  assert(!lines.empty());
+}
+
+void applyLineCharDeletionToBuffer(Lines& lines, const LineCharRange& r,
+                                   const CursorPos& originalPos, Mode mode) {
+  assert(r.beginLine >= 0 && r.beginLine < static_cast<int>(lines.size()));
+  assert(r.end.line >= r.beginLine && r.end.line < static_cast<int>(lines.size()));
+  assert(r.end.col >= 0 && r.end.col <= static_cast<int>(lines[r.end.line].size()));
+
+  applyCharDeletionToBuffer(lines, CharRange(CursorPos(r.beginLine, 0), r.end), originalPos, mode);
+}
+
+void placeCursorAfterCharDeletion(const Lines& lines, int anchorLine, int anchorCol,
                                   CursorPos& pos, Mode mode) {
-  pos.line = r.begin.line;
+  pos.line = anchorLine;
   if (pos.line >= static_cast<int>(lines.size())) {
     pos.line = static_cast<int>(lines.size()) - 1;
   }
 
-  int newCol = r.begin.col;
+  int newCol = anchorCol;
   if (mode == Mode::Insert) {
     newCol = min(newCol, static_cast<int>(lines[pos.line].size()));
   } else {
@@ -75,13 +103,28 @@ void placeCursorAfterCharDeletion(const Lines& lines, const Range& r,
 // Multi-Line Buffer Operations
 // =============================================================================
 
-void deleteRangeAndUpdatePos(Lines& lines, const Range& range, CursorPos& pos, Mode mode) {
-  Range r = range;
+void deleteRangeAndUpdatePos(Lines& lines, const CharRange& range, CursorPos& pos, Mode mode) {
+  CharRange r = range;
   r.normalize();
   if (r.isEmpty()) return;
   CursorPos originalPos = pos;
   applyCharDeletionToBuffer(lines, r, originalPos, mode);
-  placeCursorAfterCharDeletion(lines, r, pos, mode);
+  placeCursorAfterCharDeletion(lines, r.begin.line, r.begin.col, pos, mode);
+}
+
+void deleteCharLineRangeAndUpdatePos(Lines& lines, const CharLineRange& range,
+                                     CursorPos& pos, Mode mode) {
+  assert(range.isValid());
+  applyCharLineDeletionToBuffer(lines, range, mode);
+  placeCursorAfterCharDeletion(lines, range.begin.line, range.begin.col, pos, mode);
+}
+
+void deleteLineCharRangeAndUpdatePos(Lines& lines, const LineCharRange& range,
+                                     CursorPos& pos, Mode mode) {
+  assert(range.isValid());
+  CursorPos originalPos = pos;
+  applyLineCharDeletionToBuffer(lines, range, originalPos, mode);
+  placeCursorAfterCharDeletion(lines, range.beginLine, 0, pos, mode);
 }
 
 void deleteLineRangeAndUpdatePos(Lines& lines, const LineRange& range, CursorPos& pos,

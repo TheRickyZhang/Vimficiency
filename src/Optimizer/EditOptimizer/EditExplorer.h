@@ -3,9 +3,11 @@
 #include <functional>
 
 #include "EditToSpec.h"
+#include "Types/CharLineRange.h"
+#include "Types/LineCharRange.h"
 #include "Types/LineRange.h"
 #include "Types/CursorPos.h"
-#include "Types/Range.h"
+#include "Types/CharRange.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Optimizer/EditOptimizer/EditState.h"
 #include "Optimizer/SequenceBinding.h"
@@ -19,7 +21,9 @@ struct EditBoundary;
 
 // Forward declare callback types (defined in EditSearchContext.h)
 // Each callback receives a fully bound command payload.
-using DeletionCallback = std::function<void(const Range&, const SequenceBinding&)>;
+using DeletionCallback = std::function<void(const CharRange&, const SequenceBinding&)>;
+using CharLineDeletionCallback = std::function<void(const CharLineRange&, const SequenceBinding&)>;
+using LineCharDeletionCallback = std::function<void(const LineCharRange&, const SequenceBinding&)>;
 using LinewiseCallback = std::function<void(LineRange, const SequenceBinding&)>;
 using JoinCallback = std::function<void(bool addSpace, const SequenceBinding&)>;
 
@@ -43,6 +47,8 @@ public:
   // Caller must check boundary region before calling (via exploreBoundaryEscape).
   void exploreAllDeletions(const EditState& state,
                            DeletionCallback onDeletion,
+                           CharLineDeletionCallback onCharLine = nullptr,
+                           LineCharDeletionCallback onLineChar = nullptr,
                            LinewiseCallback onLinewise = nullptr,
                            JoinCallback onJoin = nullptr);
 
@@ -87,13 +93,19 @@ public:
   void exploreParagraphEdits(
       const std::vector<Edit::ParagraphEditSpecNoDir>& specs,
       const CursorPos& cursor, const Lines& lines,
-      DeletionCallback onDeletion, LinewiseCallback onLinewise);
+      DeletionCallback onDeletion,
+      CharLineDeletionCallback onCharLine,
+      LineCharDeletionCallback onLineChar,
+      LinewiseCallback onLinewise);
 
   template<bool Forward>
   void exploreSentenceEdits(
       const std::vector<Edit::SentenceEditSpecNoDir>& specs,
       const CursorPos& cursor, const Lines& lines,
-      DeletionCallback onDeletion, LinewiseCallback onLinewise);
+      DeletionCallback onDeletion,
+      CharLineDeletionCallback onCharLine,
+      LineCharDeletionCallback onLineChar,
+      LinewiseCallback onLinewise);
 
   // ================== Non-templated Exploration Methods ==================
   void exploreTextObjectEdits(

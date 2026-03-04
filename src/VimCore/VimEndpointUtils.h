@@ -3,7 +3,7 @@
 #include "Types/EdgeType.h"
 #include "Types/LineEdgeType.h"
 #include "Types/SentenceEdgeType.h"
-#include "Types/Range.h"
+#include "Types/CharRange.h"
 #include "Types/LineRange.h"
 #include "Types/Lines.h"
 
@@ -13,7 +13,7 @@ struct EditBoundary;
 namespace VimCore {
 
 // =============================================================================
-// Endpoint and Range Computation for Boundary Checking
+// Endpoint and CharRange Computation for Boundary Checking
 // =============================================================================
 //
 // These functions return positions/ranges without modifying state.
@@ -22,7 +22,7 @@ namespace VimCore {
 // See boundary-logic.md for the crossing table model.
 
 // =============================================================================
-// Word Endpoint/Range Computation
+// Word Endpoint/CharRange Computation
 // =============================================================================
 
 // Returns the endpoint position of a word motion.
@@ -73,29 +73,29 @@ CursorPos wordEndpointToRangeEnd(CursorPos endpoint,
                                          EdgeType edgeType);
 
 // Computes the raw range that a word text object would select.
-// Returns Range where start/end could be POSITION_OUTSIDE_BOUNDARY on overflow.
+// Returns CharRange where start/end could be POSITION_OUTSIDE_BOUNDARY on overflow.
 // Used internally - prefer textObject() for execution.
 //
 // From boundary-logic.md:
 //   diw/diW: (Backward, WordEdge) + (Forward, WordEdge)
 //   daw/daW: depends on cursor position and trailing whitespace
-Range textObjectCore(
+CharRange textObjectCore(
     CursorPos cursor,
     const Lines& lines,
     bool isInner,       // true for iw/iW, false for aw/aW
     bool isBigWord);    // true for W variants
 
 // Computes the range that a word text object would select.
-// Clamps POSITION_OUTSIDE_BOUNDARY to buffer edges - always returns valid Range.
+// Clamps POSITION_OUTSIDE_BOUNDARY to buffer edges - always returns valid CharRange.
 // Used for executing text objects (no boundary checking).
-Range textObject(
+CharRange textObject(
     CursorPos cursor,
     const Lines& lines,
     bool isInner,       // true for iw/iW, false for aw/aW
     bool isBigWord);    // true for W variants
 
 // Returns the range that a word text object would select, with boundary checking.
-// Returns half-open Range [begin, end), where either endpoint can be
+// Returns half-open CharRange [begin, end), where either endpoint can be
 // POSITION_OUTSIDE_BOUNDARY if crossing occurs.
 //
 // Boundary checking (same model as motionWordEndpoint):
@@ -105,7 +105,7 @@ Range textObject(
 //                       (last rightColOffset cols of last line)
 //   hasLinesAbove:      crosses if backward motion goes past line 0
 //   hasLinesBelow:      crosses if forward motion goes past last line
-Range textObjectRange(
+CharRange textObjectRange(
     CursorPos cursor,
     const Lines& lines,
     bool isInner,        // true for iw/iW, false for aw/aW
@@ -116,7 +116,7 @@ Range textObjectRange(
     bool hasLinesBelow); // are there lines below the edit region?
 
 // =============================================================================
-// Paragraph Endpoint/Range Computation
+// Paragraph Endpoint/CharRange Computation
 // =============================================================================
 
 // Returns the line number where a paragraph motion lands.
@@ -158,7 +158,7 @@ LineRange paragraphTextObjectRange(int cursorLine,
                                    int bottomBoundary = -1);
 
 // =============================================================================
-// Sentence Endpoint/Range Computation
+// Sentence Endpoint/CharRange Computation
 // =============================================================================
 
 // Returns the position where a sentence motion lands.
@@ -204,12 +204,12 @@ CursorPos sentenceEndpointToRangeEnd(CursorPos endpoint,
 
 // Returns the range for a sentence text object.
 // If boundaries are valid and result would cross:
-//   returns RANGE_OUTSIDE_BOUNDARY if range.begin <= leftBoundary or range.end > rightBoundary
+//   returns CHAR_RANGE_OUTSIDE_BOUNDARY if range.begin <= leftBoundary or range.end > rightBoundary
 //
 // From boundary-logic.md:
 //   dis: (Backward, SentenceEdge) + (Forward, SentenceEdge)
 //   das: depends on cursor position and trailing whitespace
-Range sentenceTextObjectRange(CursorPos cursor,
+CharRange sentenceTextObjectRange(CursorPos cursor,
                               const Lines& lines,
                               bool isInner,
                               CursorPos leftBoundary = POSITION_OUTSIDE_BOUNDARY,
@@ -237,7 +237,7 @@ int scrollEndpoint(int cursorLine,
                    bool hasLinesBelow);
 
 // =============================================================================
-// Line Endpoint/Range Computation
+// Line Endpoint/CharRange Computation
 // =============================================================================
 
 // Sentinel for column outside boundary

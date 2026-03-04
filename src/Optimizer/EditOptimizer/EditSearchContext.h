@@ -9,9 +9,11 @@
 #include "EditOptimizerParams.h"
 #include "Optimizer/SearchStats.h"
 #include "Boundary/EditBoundary.h"
+#include "Types/CharLineRange.h"
 #include "Types/LineRange.h"
+#include "Types/LineCharRange.h"
 #include "Types/CursorPos.h"
-#include "Types/Range.h"
+#include "Types/CharRange.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Effort/EffortBank.h"
 #include "Optimizer/EditOptimizer/EditState.h"
@@ -24,7 +26,9 @@ class EditExplorer;
 // Callback types (also defined in EditExplorer.h for standalone use)
 // Each callback receives a fully bound command payload:
 // (count, base command, associated effort).
-using DeletionCallback = std::function<void(const Range&, const SequenceBinding&)>;
+using DeletionCallback = std::function<void(const CharRange&, const SequenceBinding&)>;
+using CharLineDeletionCallback = std::function<void(const CharLineRange&, const SequenceBinding&)>;
+using LineCharDeletionCallback = std::function<void(const LineCharRange&, const SequenceBinding&)>;
 using LinewiseCallback = std::function<void(LineRange, const SequenceBinding&)>;
 using MotionCallback = std::function<void(const CursorPos&, const SequenceBinding&)>;
 using JoinCallback = std::function<void(bool addSpace, const SequenceBinding&)>;
@@ -159,6 +163,8 @@ struct EditSearchContext {
   // Caller must check boundary region before calling (via exploreBoundaryEscape).
   void exploreAllDeletions(const EditState& state,
                            DeletionCallback onDeletion,
+                           CharLineDeletionCallback onCharLine = nullptr,
+                           LineCharDeletionCallback onLineChar = nullptr,
                            LinewiseCallback onLinewise = nullptr,
                            JoinCallback onJoin = nullptr);
 

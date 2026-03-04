@@ -753,9 +753,9 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
         cerr << " (no move)" << endl;
       } else {
         // Compute range like the explorer does (isExclusiveAtCursor)
-        Range range;
+        CharRange range;
         if (col > 0) {
-          range = Range(simEndpoint, CursorPos(0, col - 1));
+          range = CharRange(simEndpoint, CursorPos(0, col - 1));
         } else {
           cerr << " (col=0, exclusive skip)" << endl;
           continue;
@@ -1247,7 +1247,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
     cerr << "Finding path from " << initialPos << " to range [" << rangeBegin << ", " << rangeEnd << ")" << endl;
 
     auto rangeResult = movOpt.optimizeToRange(
-        initial, initialPos, rangeBegin, rangeEnd,
+        initial, initialPos, CharRange(rangeBegin, rangeEnd),
         MotionOptimizerRangeParams{}.withMaxResults(10));
 
     cerr << "MotionOptimizer returned " << rangeResult.getResults().size() << " results" << endl;
@@ -1335,7 +1335,7 @@ TEST_F(NeovimOracleDebug, InvestigateCiwMismatch) {
     cerr << "  Char at cursor: '" << ourLines[pos.line][pos.col] << "'" << endl;
 
     // Simulate ciw: compute text object range
-    Range iwRange = VimCore::textObject(pos, ourLines, /*isInner=*/true, /*isBigWord=*/false);
+    CharRange iwRange = VimCore::textObject(pos, ourLines, /*isInner=*/true, /*isBigWord=*/false);
     cerr << "  textObject(iw) range: [(" << iwRange.begin.line << "," << iwRange.begin.col
          << "), (" << iwRange.end.line << "," << iwRange.end.col << ")]" << endl;
     cerr << "  Deleted text: '";
@@ -1471,7 +1471,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     CursorPos rangeBegin = d.beginPos;
     CursorPos rangeEnd = d.endPos;
 
-    cerr << "  Range: [(" << rangeBegin.line << "," << rangeBegin.col << "), ("
+    cerr << "  CharRange: [(" << rangeBegin.line << "," << rangeBegin.col << "), ("
          << rangeEnd.line << "," << rangeEnd.col << "))" << endl;
     cerr << "  StartPos: (" << initialPos.line << "," << initialPos.col << ")" << endl;
 
@@ -1484,11 +1484,11 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     NavContext navCtx;
 
     auto rangeResult = motionOpt.optimizeToRange(
-        initial, initialPos, rangeBegin, rangeEnd,
+        initial, initialPos, CharRange(rangeBegin, rangeEnd),
         MotionOptimizerRangeParams{}.withMaxResults(10), "",
         boundary, navCtx);
 
-    cerr << "  Range results: " << rangeResult.getResults().size() << endl;
+    cerr << "  CharRange results: " << rangeResult.getResults().size() << endl;
     for (size_t i = 0; i < rangeResult.getResults().size(); i++) {
       const auto& r = rangeResult.getResults()[i];
       if (r.isValid()) {
@@ -1595,7 +1595,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
             endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
         auto movementResults = motionOpt.optimizeToRange(
-            subset, localPos, localRangeBegin, localRangeEnd,
+            subset, localPos, CharRange(localRangeBegin, localRangeEnd),
             MotionOptimizerRangeParams{}.withMaxResults(
                 clamp(nextEdit.origCharCount(), 1, 10)), "",
             subsetBoundary, navCtx).getResults();
@@ -1767,7 +1767,7 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
           beginLine > 0, endLine <= currentLines.lastLine());
 
       auto rangeResults = motionOpt.optimizeToRange(
-          subset, localPos, localRangeBegin, localRangeEnd,
+          subset, localPos, CharRange(localRangeBegin, localRangeEnd),
           MotionOptimizerRangeParams{}.withMaxResults(
               clamp(nextEdit.origCharCount(), 1, 10)), "",
           subsetBoundary, navCtx).getResults();
@@ -1881,7 +1881,7 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
     MotionOptimizer motionOpt(config);
     NavContext navCtx;
     auto rangeResult = motionOpt.optimizeToRange(
-        buffer, pos, rangeBegin, rangeEnd,
+        buffer, pos, CharRange(rangeBegin, rangeEnd),
         MotionOptimizerRangeParams{}.withMaxResults(5), "",
         boundary, navCtx);
 
@@ -2440,7 +2440,7 @@ TEST_F(DebugTest, ReplayVerification_Charwise) {
   // x from (0,5): delete single char (space)
   {
     CursorPos start(0, 5);
-    Range range(start, start);
+    CharRange range(start, start);
     auto [editLines, editPos] = applyViaEdit(buf, start, "x");
 
     Lines coreLines = buf;
@@ -2454,7 +2454,7 @@ TEST_F(DebugTest, ReplayVerification_Charwise) {
   // D from (0,5): delete to end of line
   {
     CursorPos start(0, 5);
-    Range range(start, CursorPos(0, static_cast<int>(buf[0].size()) - 1));
+    CharRange range(start, CursorPos(0, static_cast<int>(buf[0].size()) - 1));
     auto [editLines, editPos] = applyViaEdit(buf, start, "D");
 
     Lines coreLines = buf;
@@ -2685,12 +2685,12 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceJoinLinesResidualEditOpt) {
   {
     Lines buf = {"aaa", "xxx", "ccc"};
     // No boundary (full buffer)
-    Range r = VimCore::textObjectRange(CursorPos(1,0), buf, false, false, 0, 0, false, false);
+    CharRange r = VimCore::textObjectRange(CursorPos(1,0), buf, false, false, 0, 0, false, false);
     cerr << "  aw range: (" << r.begin.line << "," << r.begin.col
          << ")-(" << r.end.line << "," << r.end.col << ")" << endl;
 
     // With hasLinesAbove=true (as the edit boundary would have)
-    Range r2 = VimCore::textObjectRange(CursorPos(1,0), buf, false, false, 0, 0, true, false);
+    CharRange r2 = VimCore::textObjectRange(CursorPos(1,0), buf, false, false, 0, 0, true, false);
     cerr << "  aw range (hasAbove): (" << r2.begin.line << "," << r2.begin.col
          << ")-(" << r2.end.line << "," << r2.end.col << ")" << endl;
   }
@@ -2942,7 +2942,7 @@ TEST_F(DebugTest, DISABLED_ReproduceSmallEmbeddedSentenceCrash) {
     Lines explorerBuf = editRegion;
     CursorPos explorerPos = cursor;
     VimCore::deleteRangeAndUpdatePos(
-        explorerBuf, Range(cursor, endpoint), explorerPos, Mode::Normal);
+        explorerBuf, CharRange(cursor, endpoint), explorerPos, Mode::Normal);
     cerr << "Explorer d) result: " << explorerBuf << " pos=(" << explorerPos.line << "," << explorerPos.col << ")" << endl;
   }
 }
