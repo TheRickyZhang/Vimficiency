@@ -25,6 +25,9 @@ namespace {
 // Neovim RPC message types
 constexpr int RPC_REQUEST = 0;
 constexpr int RPC_RESPONSE = 1;
+constexpr int NVIM_POLL_INTERVAL_MS = 10;
+constexpr int NVIM_GRACEFUL_SHUTDOWN_MS = 1500;
+constexpr int NVIM_TERM_SHUTDOWN_MS = 250;
 
 // Convert special key notation for nvim_input().
 //
@@ -146,13 +149,16 @@ struct NeovimOracle::Impl {
         nvim_pid = -1;
         return true;
       }
-      usleep(10'000);
-      waited_ms += 10;
+      usleep(NVIM_POLL_INTERVAL_MS * 1000);
+      waited_ms += NVIM_POLL_INTERVAL_MS;
     }
     return false;
   }
 
   void shutdown() {
+    // Try the clean RPC shutdown path first. This is the common case, but on a
+    // busy machine embedded Neovim can take noticeably longer than a few
+    // scheduler slices to tear down after :qa!.
     request_quit();
 
     if (stdin_fd >= 0) {
@@ -164,14 +170,23 @@ struct NeovimOracle::Impl {
       stdout_fd = -1;
     }
     if (nvim_pid > 0) {
-      if (wait_for_exit(250)) {
+      if (wait_for_exit(NVIM_GRACEFUL_SHUTDOWN_MS)) {
         return;
       }
 
+      // Teardown must stay best-effort. A forced kill here is worth noting, but
+      // it should not fail otherwise-correct tests just because the host was
+      // under load. We still reap the child deterministically to avoid zombies.
       kill(nvim_pid, SIGTERM);
+      if (wait_for_exit(NVIM_TERM_SHUTDOWN_MS)) {
+        return;
+      }
+
+      // If SIGTERM is ignored or delayed unusually, finish cleanup with
+      // SIGKILL rather than leaving a stray embedded editor process behind.
+      kill(nvim_pid, SIGKILL);
       waitpid(nvim_pid, nullptr, 0);
       nvim_pid = -1;
-      assert(false && "NeovimOracle had to force-terminate Neovim");
     }
   }
 

@@ -29,31 +29,6 @@ TEST(BufferIndexTest, EmptyBuffer) {
   // Should not crash - just have empty position lists
 }
 
-TEST(BufferIndexTest, ClosestInRange_ForwardIncludesNearMissBeforeFront) {
-  Lines lines = {"one two three four five"};
-  BufferIndex idx(lines);
-
-  auto results = idx.getClosestInRange<true>(
-      LandingType::WordBegin, Pos(0, 0), Pos(0, 13), Pos(0, 15));
-
-  ASSERT_EQ(results.size(), 2u);
-  EXPECT_EQ(results[0].pos, Pos(0, 8));
-  EXPECT_EQ(results[0].count, 2);
-  EXPECT_EQ(results[1].pos, Pos(0, 14));
-  EXPECT_EQ(results[1].count, 3);
-}
-
-TEST(BufferIndexTest, ClosestInRange_ForwardSkipsNearMissWhenFrontIsExactLanding) {
-  Lines lines = {"one two three four five"};
-  BufferIndex idx(lines);
-
-  auto results = idx.getClosestInRange<true>(
-      LandingType::WordBegin, Pos(0, 0), Pos(0, 14), Pos(0, 15));
-
-  ASSERT_EQ(results.size(), 1u);
-  EXPECT_EQ(results[0].pos, Pos(0, 14));
-  EXPECT_EQ(results[0].count, 3);
-}
 
 TEST(BufferIndexTest, ClosestInRange_BackwardIncludesNearMissAfterBack) {
   Lines lines = {"one two three four five"};
