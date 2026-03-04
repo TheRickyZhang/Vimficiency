@@ -25,6 +25,9 @@ namespace {
 // Neovim RPC message types
 constexpr int RPC_REQUEST = 0;
 constexpr int RPC_RESPONSE = 1;
+constexpr int NVIM_POLL_INTERVAL_MS = 10;
+constexpr int NVIM_GRACEFUL_SHUTDOWN_MS = 1500;
+constexpr int NVIM_TERM_SHUTDOWN_MS = 250;
 
 // Convert special key notation for nvim_input().
 //
@@ -115,7 +118,49 @@ struct NeovimOracle::Impl {
 
   ~Impl() { shutdown(); }
 
+  bool request_quit() {
+    if (stdin_fd < 0) return false;
+
+    send_buf.clear();
+    msgpack::packer<msgpack::sbuffer> pk(&send_buf);
+    pk.pack_array(4);
+    pk.pack(RPC_REQUEST);
+    pk.pack(msg_id++);
+    pk.pack("nvim_command");
+    pk.pack_array(1);
+    pk.pack("qa!");
+
+    ssize_t written = write(stdin_fd, send_buf.data(), send_buf.size());
+    return written == static_cast<ssize_t>(send_buf.size());
+  }
+
+  bool wait_for_exit(int timeout_ms) {
+    if (nvim_pid <= 0) return true;
+
+    int waited_ms = 0;
+    while (waited_ms <= timeout_ms) {
+      int status = 0;
+      pid_t result = waitpid(nvim_pid, &status, WNOHANG);
+      if (result == nvim_pid) {
+        nvim_pid = -1;
+        return true;
+      }
+      if (result < 0) {
+        nvim_pid = -1;
+        return true;
+      }
+      usleep(NVIM_POLL_INTERVAL_MS * 1000);
+      waited_ms += NVIM_POLL_INTERVAL_MS;
+    }
+    return false;
+  }
+
   void shutdown() {
+    // Try the clean RPC shutdown path first. This is the common case, but on a
+    // busy machine embedded Neovim can take noticeably longer than a few
+    // scheduler slices to tear down after :qa!.
+    request_quit();
+
     if (stdin_fd >= 0) {
       close(stdin_fd);
       stdin_fd = -1;
@@ -125,7 +170,21 @@ struct NeovimOracle::Impl {
       stdout_fd = -1;
     }
     if (nvim_pid > 0) {
+      if (wait_for_exit(NVIM_GRACEFUL_SHUTDOWN_MS)) {
+        return;
+      }
+
+      // Teardown must stay best-effort. A forced kill here is worth noting, but
+      // it should not fail otherwise-correct tests just because the host was
+      // under load. We still reap the child deterministically to avoid zombies.
       kill(nvim_pid, SIGTERM);
+      if (wait_for_exit(NVIM_TERM_SHUTDOWN_MS)) {
+        return;
+      }
+
+      // If SIGTERM is ignored or delayed unusually, finish cleanup with
+      // SIGKILL rather than leaving a stray embedded editor process behind.
+      kill(nvim_pid, SIGKILL);
       waitpid(nvim_pid, nullptr, 0);
       nvim_pid = -1;
     }

@@ -23,6 +23,8 @@ build*/
 
 # Bench dashboard
 bench-dashboard/node_modules/
+node_modules/
+bun.lock
 bench-dashboard/dist/
 bench-dashboard/public/*/data.json
 bench-dashboard/public/*/explore.json

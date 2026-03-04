@@ -1,5 +1,7 @@
 # Code Style Guide
 
+# C++
+
 Baseline: **Google C++ Style Guide**, with deviations noted below.
 
 ## Where We Differ from Google
@@ -76,4 +78,3 @@ inline constexpr bool DEBUG_ENABLED = true;
 - Test fixtures: `PascalCase` inheriting `::testing::Test`
 - Test cases: `TEST_F(FixtureName, PascalCase_Description)`
 - Tests live in `tests/` mirroring `src/` directory structure
-

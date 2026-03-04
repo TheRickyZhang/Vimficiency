@@ -27,7 +27,7 @@ struct MotionOptimizerParams : OptimizerParamsBase {
 
   // Chainable setters for fluent configuration
   MotionOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
-  MotionOptimizerParams& withMaxNodesExplored(int v) { maxNodesExplored = v; return *this; }
+  MotionOptimizerParams& withMaxNodesPopped(int v) { maxNodesPopped = v; return *this; }
   MotionOptimizerParams& withExploreFactor(double v) { exploreFactor = v; return *this; }
   MotionOptimizerParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
   MotionOptimizerParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
@@ -39,10 +39,10 @@ struct MotionOptimizerParams : OptimizerParamsBase {
   MotionOptimizerParams& withMaxCountRepeat(int v) { setMaxCountRepeat(v); return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
-  static MotionOptimizerParams dijkstra(int maxResults = 10, int maxNodesExplored = 50000) {
+  static MotionOptimizerParams dijkstra(int maxResults = 10, int maxNodesPopped = 50000) {
     MotionOptimizerParams p;
     p.maxResults = maxResults;
-    p.maxNodesExplored = maxNodesExplored;
+    p.maxNodesPopped = maxNodesPopped;
     p.distanceWeight = 0.0;
     return p;
   }
@@ -61,7 +61,7 @@ struct MotionOptimizerRangeParams : MotionOptimizerParams {
 
   // Chainable setters (return derived type for chaining)
   MotionOptimizerRangeParams& withMaxResults(int v) { maxResults = v; return *this; }
-  MotionOptimizerRangeParams& withMaxNodesExplored(int v) { maxNodesExplored = v; return *this; }
+  MotionOptimizerRangeParams& withMaxNodesPopped(int v) { maxNodesPopped = v; return *this; }
   MotionOptimizerRangeParams& withExploreFactor(double v) { exploreFactor = v; return *this; }
   MotionOptimizerRangeParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
   MotionOptimizerRangeParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }

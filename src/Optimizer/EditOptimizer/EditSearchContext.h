@@ -9,9 +9,11 @@
 #include "EditOptimizerParams.h"
 #include "Optimizer/SearchStats.h"
 #include "Boundary/EditBoundary.h"
+#include "Types/CharLineRange.h"
 #include "Types/LineRange.h"
+#include "Types/LineCharRange.h"
 #include "Types/CursorPos.h"
-#include "Types/Range.h"
+#include "Types/CharRange.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Effort/EffortBank.h"
 #include "Optimizer/EditOptimizer/EditState.h"
@@ -24,8 +26,10 @@ class EditExplorer;
 // Callback types (also defined in EditExplorer.h for standalone use)
 // Each callback receives a fully bound command payload:
 // (count, base command, associated effort).
-using DeletionCallback = std::function<void(const Range&, const SequenceBinding&)>;
-using LinewiseCallback = std::function<void(int line, const SequenceBinding&)>;
+using DeletionCallback = std::function<void(const CharRange&, const SequenceBinding&)>;
+using CharLineDeletionCallback = std::function<void(const CharLineRange&, const SequenceBinding&)>;
+using LineCharDeletionCallback = std::function<void(const LineCharRange&, const SequenceBinding&)>;
+using LinewiseCallback = std::function<void(LineRange, const SequenceBinding&)>;
 using MotionCallback = std::function<void(const CursorPos&, const SequenceBinding&)>;
 using JoinCallback = std::function<void(bool addSpace, const SequenceBinding&)>;
 
@@ -89,11 +93,7 @@ struct EditSearchContext {
   // Stats tracking
   int motionsEmitted = 0;
   int statesSkipped = 0;
-  int totalPops = 0;  // Internal safety: counts all pops including stale
-
-  // Internal safety: hard cap on total pops to prevent runaway loops
-  // If >90% of pops are stale, something is pathologically wrong
-  static constexpr int SAFETY_MULTIPLIER = 10;
+  int totalPops = 0;  // Hard budget: counts all pops including stale
 
   // Debug: optionally track explored states
   std::vector<ExploredState> exploredStates;
@@ -157,12 +157,14 @@ struct EditSearchContext {
   }
 
   // Explore all valid deletions from current state
-  // Calls onDeletion for characterwise deletions, onLinewise for full-line (dd)
+  // Calls onDeletion for characterwise deletions, onLinewise for linewise deletions
   // Pass nullptr for onLinewise to skip linewise exploration
   // Pass onJoin to explore J/gJ commands when valid
   // Caller must check boundary region before calling (via exploreBoundaryEscape).
   void exploreAllDeletions(const EditState& state,
                            DeletionCallback onDeletion,
+                           CharLineDeletionCallback onCharLine = nullptr,
+                           LineCharDeletionCallback onLineChar = nullptr,
                            LinewiseCallback onLinewise = nullptr,
                            JoinCallback onJoin = nullptr);
 

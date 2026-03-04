@@ -8,9 +8,6 @@ using namespace VimCore;
 BufferIndex::BufferIndex(const Lines& buffer) {
   if (buffer.empty()) return;
 
-  CursorPos firstNonBlank{-1, -1};
-  CursorPos lastNonBlank{-1, -1};
-
   bool prevWasSentenceEnd = false;
   bool prevLineWasEmpty = true;  // Treat sentinel as empty for paragraph detection
 
@@ -36,14 +33,6 @@ BufferIndex::BufferIndex(const Lines& buffer) {
       char curr = ln[col];
       char prev = (col > 0) ? ln[col - 1] : '\0';
       char next = (col + 1 < static_cast<int>(ln.size())) ? ln[col + 1] : '\0';
-
-      // Track first/last non-blank for boundary sentinels
-      if (!isBlank(curr)) {
-        if (firstNonBlank.line == -1) {
-          firstNonBlank = {line, col};
-        }
-        lastNonBlank = {line, col};
-      }
 
       bool currIsWord = isSmallWordChar(curr);
       bool prevIsWord = isSmallWordChar(prev);
@@ -87,27 +76,15 @@ BufferIndex::BufferIndex(const Lines& buffer) {
     }
   }
 
-  // Add boundary sentinels to ensure getTwoClosest always has valid brackets
-  if (firstNonBlank.line != -1) {
-    for (size_t i = 0; i < static_cast<size_t>(LandingType::COUNT); ++i) {
-      auto& vec = positions_[i];
-      if (vec.empty() || vec.front() != firstNonBlank) {
-        vec.insert(vec.begin(), firstNonBlank);
-      }
-      if (vec.back() != lastNonBlank) {
-        vec.push_back(lastNonBlank);
-      }
-    }
-  }
 }
 
-CursorPos BufferIndex::apply(LandingType type, CursorPos current, int count) const {
+Pos BufferIndex::apply(LandingType type, Pos current, int count) const {
   if (count == 0) return current;
 
   const auto& positions = get(type);
   if (positions.empty()) return current;
 
-  CursorPos result = current;
+  Pos result = current;
 
   if (count > 0) {
     // Forward: find positions > current
@@ -129,122 +106,85 @@ CursorPos BufferIndex::apply(LandingType type, CursorPos current, int count) con
 }
 
 
-// Returns [undershoot, overshoot] positions closest to goalPos, with counts from currPos.
-// Returns invalid results (count=0) when no valid positions exist in the search range.
-std::array<RepeatMotionResult, 2>
-BufferIndex::getTwoClosest(LandingType type, CursorPos currPos, CursorPos goalPos) const {
-  const auto& positions = get(type);
-
-  // Empty positions vector - return invalid results
-  if (positions.empty()) {
-    return {RepeatMotionResult{}, RepeatMotionResult{}};
-  }
-
-  auto calc2 = [&](auto begin, auto end, auto comp) -> std::array<RepeatMotionResult, 2> {
-    // onePastCurrIt: first position strictly past currPos (in search direction)
-    auto onePastCurrIt = std::upper_bound(begin, end, currPos, comp);
-    // overshootIt: first position >= goalPos (in search direction)
-    auto overshootIt   = std::lower_bound(begin, end, goalPos,  comp);
-
-    // Handle edge cases where the target is outside the valid range:
-    // - overshootIt == end: goalPos is beyond all positions (no overshoot exists)
-    // - overshootIt == begin: goalPos is at/before first position (no undershoot exists)
-
-    RepeatMotionResult undershoot{};
-    RepeatMotionResult overshoot{};
-
-    if (overshootIt != end) {
-      // Valid overshoot exists
-      int dist = static_cast<int>(std::distance(onePastCurrIt, overshootIt)) + 1;
-      if (dist >= 1) {
-        overshoot = RepeatMotionResult{*overshootIt, dist};
-      }
-    }
-
-    if (overshootIt != begin) {
-      // Valid undershoot exists (one before overshoot)
-      auto undershootIt = std::prev(overshootIt);
-      int dist = static_cast<int>(std::distance(onePastCurrIt, undershootIt)) + 1;
-      if (dist >= 1) {
-        undershoot = RepeatMotionResult{*undershootIt, dist};
-      }
-    }
-
-    return {undershoot, overshoot};
-  };
-
-  if (goalPos > currPos) {
-    return calc2(positions.begin(), positions.end(),
-                 [](const CursorPos& a, const CursorPos& b) { return a < b; });
-  } else {
-    // reverse view is descending, so comparator must flip
-    return calc2(positions.rbegin(), positions.rend(),
-                 [](const CursorPos& a, const CursorPos& b) { return b < a; });
-  }
-}
-
-
+/*
+* Preconditions: currPos not in [rangeFirst, rangeLast], direction matches Forward
+* Returns: list of valid sorted RepeatMotionResults by position containing:
+*   pre-first if no matches at first and ahead of start 
+*   all matches inside range
+*   post-last if no matches at last
+*/
+template<bool Forward>
 std::vector<RepeatMotionResult>
-BufferIndex::getClosestInRange(LandingType type, CursorPos currPos,
-                               CursorPos rangeBegin, CursorPos rangeEnd) const {
+BufferIndex::getClosestInRange(LandingType type, Pos currPos,
+                               Pos rangeFirst, Pos rangeLast) const {
   const auto& positions = get(type);
   if (positions.empty()) return {};
 
+  if constexpr (Forward) {
+    if (!(currPos < rangeFirst)) return {};
+  } else {
+    if (!(currPos > rangeLast)) return {};
+  }
+
   std::vector<RepeatMotionResult> results;
 
-  // Always use forward iterators; range boundaries [rangeBegin, rangeEnd) are well-defined
-  auto rangeBeginIt = std::lower_bound(positions.begin(), positions.end(), rangeBegin);
-  auto rangeEndIt   = std::lower_bound(positions.begin(), positions.end(), rangeEnd);
+  // [frontIt, pastBackIt) = landings in inclusive [rangeFirst, rangeLast]
+  auto frontIt    = std::lower_bound(positions.begin(), positions.end(), rangeFirst);
+  auto pastBackIt = std::upper_bound(positions.begin(), positions.end(), rangeLast);
 
-  if (currPos < rangeBegin) {
-    // Forward: count = hops from currPos forward to reach target
-    // upper_bound(currPos) is the first position past cursor; count = distance + 1
+  bool hasLandingAtFront = (frontIt != pastBackIt && *frontIt == rangeFirst);
+  bool hasLandingAtBack  = (frontIt != pastBackIt && *std::prev(pastBackIt) == rangeLast);
+
+  if constexpr (Forward) {
     auto onePastCurrIt = std::upper_bound(positions.begin(), positions.end(), currPos);
 
-    // Undershoot: last position before range
-    if (rangeBeginIt != positions.begin()) {
-      auto undershootIt = std::prev(rangeBeginIt);
-      int cnt = static_cast<int>(std::distance(onePastCurrIt, undershootIt)) + 1;
-      if (cnt >= 1) results.push_back({*undershootIt, cnt});
+    // Near-miss before rangeFirst: only if no landing at exactly rangeFirst
+    if (!hasLandingAtFront && frontIt != positions.begin()) {
+      auto nearMissIt = std::prev(frontIt);
+      int cnt = static_cast<int>(std::distance(onePastCurrIt, nearMissIt)) + 1;
+      if (cnt > 1) results.push_back(RepeatMotionResult(*nearMissIt, cnt));
     }
 
-    // All in-range positions
-    for (auto it = rangeBeginIt; it != rangeEndIt; ++it) {
+    // All in-range landings
+    for (auto it = frontIt; it != pastBackIt; ++it) {
       int cnt = static_cast<int>(std::distance(onePastCurrIt, it)) + 1;
-      if (cnt >= 1) results.push_back({*it, cnt});
+      if (cnt > 1) results.push_back(RepeatMotionResult(*it, cnt));
     }
 
-    // Overshoot: first position past range
-    if (rangeEndIt != positions.end()) {
-      int cnt = static_cast<int>(std::distance(onePastCurrIt, rangeEndIt)) + 1;
-      if (cnt >= 1) results.push_back({*rangeEndIt, cnt});
+    // Near-miss after rangeLast: only if no landing at exactly rangeLast
+    if (!hasLandingAtBack && pastBackIt != positions.end()) {
+      int cnt = static_cast<int>(std::distance(onePastCurrIt, pastBackIt)) + 1;
+      if (cnt > 1) results.push_back(RepeatMotionResult(*pastBackIt, cnt));
     }
   } else {
-    // Backward: count = hops from currPos backward to reach target
-    // lower_bound(currPos) is first position >= currPos; backward count to target =
-    // distance(target_it, lower_bound(currPos))
     auto currLowerIt = std::lower_bound(positions.begin(), positions.end(), currPos);
 
-    // Undershoot (from backward perspective): first position >= rangeEnd (between cursor and range)
-    if (rangeEndIt != positions.end()) {
-      int cnt = static_cast<int>(std::distance(rangeEndIt, currLowerIt));
-      if (cnt >= 1) results.push_back({*rangeEndIt, cnt});
+    // Near-miss after rangeLast: only if no landing at exactly rangeLast
+    if (!hasLandingAtBack && pastBackIt != positions.end()) {
+      int cnt = static_cast<int>(std::distance(pastBackIt, currLowerIt));
+      if (cnt > 1) results.push_back(RepeatMotionResult(*pastBackIt, cnt));
     }
 
-    // All in-range positions (iterate in reverse for natural backward ordering)
-    for (auto it = rangeEndIt; it != rangeBeginIt; ) {
+    // All in-range landings (reverse order for natural backward ordering)
+    for (auto it = pastBackIt; it != frontIt; ) {
       --it;
       int cnt = static_cast<int>(std::distance(it, currLowerIt));
-      if (cnt >= 1) results.push_back({*it, cnt});
+      if (cnt > 1) results.push_back(RepeatMotionResult(*it, cnt));
     }
 
-    // Overshoot (from backward perspective): last position before rangeBegin
-    if (rangeBeginIt != positions.begin()) {
-      auto overshootIt = std::prev(rangeBeginIt);
-      int cnt = static_cast<int>(std::distance(overshootIt, currLowerIt));
-      if (cnt >= 1) results.push_back({*overshootIt, cnt});
+    // Near-miss before rangeFirst: only if no landing at exactly rangeFirst
+    if (!hasLandingAtFront && frontIt != positions.begin()) {
+      auto nearMissIt = std::prev(frontIt);
+      int cnt = static_cast<int>(std::distance(nearMissIt, currLowerIt));
+      if (cnt > 1) results.push_back(RepeatMotionResult(*nearMissIt, cnt));
     }
   }
 
   return results;
 }
+
+template std::vector<RepeatMotionResult>
+BufferIndex::getClosestInRange<true>(LandingType, Pos, Pos, Pos) const;
+
+template std::vector<RepeatMotionResult>
+BufferIndex::getClosestInRange<false>(LandingType, Pos, Pos, Pos) const;

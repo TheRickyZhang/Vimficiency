@@ -27,7 +27,7 @@ struct EditOptimizerParams : OptimizerParamsBase {
 
   // Chainable setters for fluent configuration
   EditOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
-  EditOptimizerParams& withMaxNodesExplored(int v) { maxNodesExplored = v; return *this; }
+  EditOptimizerParams& withMaxNodesPopped(int v) { maxNodesPopped = v; return *this; }
   EditOptimizerParams& withMotionLinePaddingAbove(int v) { motionLinePaddingAbove = v; return *this; }
   EditOptimizerParams& withMotionLinePaddingBelow(int v) { motionLinePaddingBelow = v; return *this; }
   EditOptimizerParams& withMotionLinePadding(int v) { motionLinePaddingAbove = motionLinePaddingBelow = v; return *this; }
@@ -37,10 +37,10 @@ struct EditOptimizerParams : OptimizerParamsBase {
   EditOptimizerParams& withTrackExploredStates(bool v) { trackExploredStates = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
-  static EditOptimizerParams dijkstra(int maxResults = 10, int maxNodesExplored = 50000) {
+  static EditOptimizerParams dijkstra(int maxResults = 10, int maxNodesPopped = 50000) {
     EditOptimizerParams p;
     p.maxResults = maxResults;
-    p.maxNodesExplored = maxNodesExplored;
+    p.maxNodesPopped = maxNodesPopped;
     p.distanceWeight = 0.0;
     return p;
   }

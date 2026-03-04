@@ -12,6 +12,7 @@
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
+#include "VimCore/VimEditUtils.h"
 #include "VimCore/VimEndpointUtils.h"
 
 using namespace std;
@@ -163,6 +164,64 @@ TEST_F(LinesTest, LineDeleteRange_MultiLine_LastLine_HasBoundary) {
   LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
   EXPECT_FALSE(range.isValid()) << "dd on last line without atLineEnd should cross";
+}
+
+TEST_F(LinesTest, ResolveExclusiveDeleteRange_LinewiseAtColZero) {
+  Lines lines = {"alpha", "beta"};
+
+  auto resolved = VimCore::resolveExclusiveDeleteRange(
+      CharLineRange(CursorPos(0, 0), 1), lines, true);
+
+  EXPECT_EQ(resolved.kind, VimCore::ResolvedDeleteRangeKind::Linewise);
+  EXPECT_EQ(resolved.lineRange.beginLine, 0);
+  EXPECT_EQ(resolved.lineRange.endLine, 1);
+}
+
+TEST_F(LinesTest, ResolveExclusiveDeleteRange_ChangeKeepsCharacterwiseShape) {
+  Lines lines = {"alpha", "beta"};
+
+  auto resolved = VimCore::resolveExclusiveDeleteRange(
+      CharLineRange(CursorPos(0, 0), 1), lines, false);
+
+  EXPECT_EQ(resolved.kind, VimCore::ResolvedDeleteRangeKind::CharLine);
+  EXPECT_EQ(resolved.charLineRange.begin, CursorPos(0, 0));
+  EXPECT_EQ(resolved.charLineRange.endLine, 1);
+}
+
+TEST_F(LinesTest, ResolveExclusiveDeleteRange_BacksUpMidLineCrossing) {
+  Lines lines = {"abcdef", "beta"};
+
+  auto resolved = VimCore::resolveExclusiveDeleteRange(
+      CharLineRange(CursorPos(0, 2), 1), lines, true);
+
+  EXPECT_EQ(resolved.kind, VimCore::ResolvedDeleteRangeKind::Characterwise);
+  EXPECT_EQ(resolved.charRange.begin, CursorPos(0, 2));
+  EXPECT_EQ(resolved.charRange.end, CursorPos(0, 6));
+}
+
+TEST_F(LinesTest, DeleteRange_WholeBufferLeavesSingleEmptyLine) {
+  Lines lines = {"aa", "bb"};
+  CursorPos cursor(0, 0);
+  int lastLine = lines.lastLine();
+  int endCol = static_cast<int>(lines[lastLine].size());
+
+  VimCore::deleteRangeAndUpdatePos(
+      lines, CharRange(CursorPos(0, 0), CursorPos(lastLine, endCol)), cursor);
+
+  ASSERT_EQ(lines.size(), 1u);
+  EXPECT_TRUE(lines[0].empty());
+  EXPECT_EQ(cursor, CursorPos(0, 0));
+}
+
+TEST_F(LinesTest, DeleteCharLineRange_MergesBoundaryLine) {
+  Lines lines = {"abc", "def"};
+  CursorPos cursor(0, 2);
+
+  VimCore::deleteCharLineRangeAndUpdatePos(lines, CharLineRange(CursorPos(0, 2), 1), cursor);
+
+  ASSERT_EQ(lines.size(), 1u);
+  EXPECT_EQ(lines[0], "abdef");
+  EXPECT_EQ(cursor, CursorPos(0, 2));
 }
 
 // =============================================================================

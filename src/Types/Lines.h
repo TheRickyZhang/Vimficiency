@@ -8,6 +8,10 @@
 #include <string_view>
 #include <vector>
 
+#include "Types/CharRange.h"
+#include "Types/CharLineRange.h"
+#include "Types/InclusiveCharRange.h"
+#include "Types/LineCharRange.h"
 #include "Types/CursorPos.h"
 
 struct Line final : std::string {
@@ -88,6 +92,13 @@ struct Lines final : std::vector<Line> {
     return pos;
   }
 
+  CursorPos getNextPosUnbounded(CursorPos pos) const {
+    if (pos.col + 1 < static_cast<int>((*this)[pos.line].size())) {
+      return CursorPos(pos.line, pos.col + 1);
+    }
+    return CursorPos(pos.line + 1, 0);
+  }
+
   CursorPos getPrevPos(CursorPos pos) const {
     if (pos.col > 0) {
       return CursorPos(pos.line, pos.col - 1);
@@ -132,6 +143,53 @@ struct Lines final : std::vector<Line> {
     }
     count += end.col;
     return count;
+  }
+
+  int spanSize(const CharRange& range) const {
+    return spanSize(range.begin, range.end);
+  }
+
+  int spanSize(const CharLineRange& range) const {
+    assert(range.isValid());
+    if (range.begin.line + 1 == range.endLine) {
+      return std::max(1, static_cast<int>(data()[range.begin.line].size()) - range.begin.col);
+    }
+    int count = std::max(1, static_cast<int>(data()[range.begin.line].size()) - range.begin.col);
+    for (int i = range.begin.line + 1; i < range.endLine; i++) {
+      count += std::max(1, static_cast<int>(data()[i].size()));
+    }
+    return count;
+  }
+
+  int spanSize(const LineCharRange& range) const {
+    assert(range.isValid());
+    return spanSize(CursorPos(range.beginLine, 0), range.end);
+  }
+
+  // Convert a non-empty half-open text span [firstPos, endPos) into the
+  // inclusive motion-target set [firstPos, lastPos]. This is the only helper
+  // that should perform the half-open -> inclusive conversion for motion
+  // search, so empty half-open ranges fail fast instead of collapsing into a
+  // singleton target.
+  InclusiveCharRange inclusiveRangeFromHalfOpen(const CursorPos& firstPos,
+                                                const CursorPos& endPos) const {
+    assert(firstPos.line >= 0 && firstPos.line < static_cast<int>(size()));
+    assert(firstPos.col >= 0 && firstPos.col < (*this)[firstPos.line].effectiveSize());
+    assert(endPos.line >= 0 && endPos.line <= static_cast<int>(size()));
+    if (endPos.line == static_cast<int>(size())) {
+      assert(endPos.col == 0);
+    } else {
+      assert(endPos.col >= 0 && endPos.col <= (*this)[endPos.line].effectiveSize());
+    }
+    assert(firstPos < endPos &&
+           "half-open range must be non-empty before converting to [firstPos, lastPos]");
+    return InclusiveCharRange(firstPos, getPrevPos(endPos));
+  }
+
+  int spanSize(const InclusiveCharRange& range) const {
+    CursorPos first(range.firstPos.line, range.firstPos.col);
+    CursorPos last(range.lastPos.line, range.lastPos.col);
+    return spanSize(first, getNextPosUnbounded(last));
   }
 
   int totalPositions() const {

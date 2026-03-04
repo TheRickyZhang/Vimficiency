@@ -1,11 +1,14 @@
 #pragma once
 
+#include <algorithm>
 #include <string>
 #include <string_view>
 
 #include "Types/Mode.h"
+#include "Types/CharLineRange.h"
+#include "Types/LineCharRange.h"
 #include "Types/CursorPos.h"
-#include "Types/Range.h"
+#include "Types/CharRange.h"
 #include "Types/LineRange.h"
 #include "Types/Lines.h"
 
@@ -32,8 +35,14 @@ inline void clampInsertCol(const std::string& line, int& col) {
   col = std::min(col, static_cast<int>(line.size()));
 }
 
+// Convert an inclusive character position into a same-line half-open endpoint.
+inline CursorPos onePastOnSameLine(const Lines& lines, const CursorPos& inclusivePos) {
+  int lineLen = static_cast<int>(lines[inclusivePos.line].size());
+  return CursorPos(inclusivePos.line, std::min(inclusivePos.col + 1, lineLen));
+}
+
 // =============================================================================
-// Exclusive Motion Range Adjustment  (see :help exclusive-linewise)
+// Exclusive Motion CharRange Resolution  (see :help exclusive-linewise)
 // =============================================================================
 //
 // Vim's exclusive motions (), (), {, }) produce half-open ranges [begin, end)
@@ -77,35 +86,125 @@ inline void clampInsertCol(const std::string& line, int& col) {
 //   - EditExplorer.cpp:     exploreSentenceEdits (both directions)
 //
 // Operator-specific notes:
-//   - d with Linewise: use deleteRangeLinewise() for proper cursor placement.
-//   - c with Linewise: Vim forces characterwise — use deleteRange() instead.
+//   - d with Linewise: use deleteLineRangeAndUpdatePos() for proper cursor placement.
+//   - c with Linewise: Vim forces characterwise — use deleteRangeAndUpdatePos() instead.
 //     (see :help exclusive-linewise — "For the 'c' command the operator is
 //     not strung out but instead is made characterwise.")
 //   - d} has a paragraph-specific EOF exception: when } reaches the last
 //     non-blank line, the motion becomes inclusive (position is ON the last
-//     char, not past it).  This is handled before calling adjustExclusiveRange.
+//     char, not past it).  This is handled before calling
+//     resolveExclusiveDeleteRange().
 //
 // Oracle-verified tests: ExclusiveLineAdjust_* in ManualTest.cpp.
 //
 
-enum class ExclusiveAdjust {
-  None,      // end was not at col 0, or same line — range unchanged
-  Linewise,  // both begin and end at col 0 — caller should use linewise delete
-  BackedUp,  // end backed up to end of previous line — range modified in place
+enum class ResolvedDeleteRangeKind {
+  Characterwise,
+  CharLine,
+  LineChar,
+  Linewise,
 };
 
-// Adjust a half-open [begin, end) range per Vim's exclusive-linewise rule.
-// Modifies `range.end` in place for BackedUp; leaves it unchanged for
-// Linewise and None.  Returns the adjustment type so callers can dispatch
-// (e.g., deleteRangeLinewise for Linewise, deleteRange for BackedUp/None).
-inline ExclusiveAdjust adjustExclusiveRange(Range& range, const Lines& lines) {
-  if (range.end.col == 0 && range.end.line > range.begin.line) {
-    if (range.begin.col == 0) return ExclusiveAdjust::Linewise;
-    range.end = CursorPos(range.end.line - 1,
-                         static_cast<int>(lines[range.end.line - 1].size()));
-    return ExclusiveAdjust::BackedUp;
+struct ResolvedDeleteRange {
+  ResolvedDeleteRangeKind kind;
+  CharRange charRange;
+  CharLineRange charLineRange;
+  LineCharRange lineCharRange;
+  LineRange lineRange;
+
+  static ResolvedDeleteRange characterwise(CharRange range) {
+    return {ResolvedDeleteRangeKind::Characterwise, range,
+            CHAR_LINE_RANGE_OUTSIDE_BOUNDARY,
+            LINE_CHAR_RANGE_OUTSIDE_BOUNDARY,
+            LineRange(0, 0)};
   }
-  return ExclusiveAdjust::None;
+
+  static ResolvedDeleteRange charLine(CharLineRange range) {
+    return {ResolvedDeleteRangeKind::CharLine, CharRange(),
+            range, LINE_CHAR_RANGE_OUTSIDE_BOUNDARY, LineRange(0, 0)};
+  }
+
+  static ResolvedDeleteRange lineChar(LineCharRange range) {
+    return {ResolvedDeleteRangeKind::LineChar, CharRange(),
+            CHAR_LINE_RANGE_OUTSIDE_BOUNDARY, range, LineRange(0, 0)};
+  }
+
+  static ResolvedDeleteRange linewise(LineRange range) {
+    return {ResolvedDeleteRangeKind::Linewise, CharRange(),
+            CHAR_LINE_RANGE_OUTSIDE_BOUNDARY,
+            LINE_CHAR_RANGE_OUTSIDE_BOUNDARY, range};
+  }
+};
+
+// Resolve an already-typed raw exclusive span into an explicit characterwise
+// or linewise delete shape. `allowLinewise` should be false for change-like
+// operators, which keep boundary-ending spans characterwise.
+inline ResolvedDeleteRange resolveExclusiveDeleteRange(
+    CharRange range, bool allowLinewise) {
+  assert(range.isValid());
+  (void)allowLinewise;
+  if (range.begin.col == 0 && range.begin.line < range.end.line) {
+    return ResolvedDeleteRange::lineChar(LineCharRange(range.begin.line, range.end));
+  }
+  return ResolvedDeleteRange::characterwise(range);
+}
+
+inline ResolvedDeleteRange resolveExclusiveDeleteRange(
+    CharLineRange range, const Lines& lines, bool allowLinewise) {
+  assert(range.isValid());
+
+  if (range.begin.col == 0) {
+    if (allowLinewise) {
+      return ResolvedDeleteRange::linewise(LineRange(range.begin.line, range.endLine));
+    }
+    return ResolvedDeleteRange::charLine(range);
+  }
+
+  return ResolvedDeleteRange::characterwise(CharRange(
+      range.begin,
+      CursorPos(range.endLine - 1, static_cast<int>(lines[range.endLine - 1].size()))));
+}
+
+inline ResolvedDeleteRange resolveExclusiveDeleteRange(
+    LineCharRange range, bool allowLinewise) {
+  assert(range.isValid());
+  (void)allowLinewise;
+  return ResolvedDeleteRange::lineChar(range);
+}
+
+// =============================================================================
+// Backward Exclusive CharRange Construction
+// =============================================================================
+//
+// Backward exclusive motions (db, dB) produce ranges where the exclusive end
+// is the cursor position.  When cursor is at col 0 (or contentStartCol on
+// effective-line 0) AND the endpoint is on a previous line, the exclusive end
+// can't express "delete up to but not including col 0" — so the range is
+// rewritten to [endpoint, (prevLine, prevLineLen)) instead, deleting up to
+// (and including) the end of the previous line while preserving the current line.
+//
+// contentStartCol: offset for effective-line coordinate systems (e.g.,
+// leftColOffset on line 0 in EditExplorer). Defaults to 0 for real buffers.
+
+inline CharRange buildBackwardExclusiveCharRange(
+    const CursorPos& endpoint, const CursorPos& cursor, const Lines& lines,
+    int contentStartCol = 0) {
+  if (cursor.col == contentStartCol && endpoint.line < cursor.line) {
+    int prevLine = cursor.line - 1;
+    return CharRange(endpoint, CursorPos(prevLine, static_cast<int>(lines[prevLine].size())));
+  }
+  return CharRange(endpoint, cursor);
+}
+
+// Given an ordered character delete range plus the line-count before/after
+// deletion, report whether the line containing range.begin was removed in
+// addition to the range's baseline line collapse.
+inline bool didDeleteRangeRemoveBeginLine(CharRange range,
+                                          int oldLineCount,
+                                          int newLineCount) {
+  assert(range.isValid());
+  int baselineRemoved = range.end.line - range.begin.line;
+  return oldLineCount - newLineCount > baselineRemoved;
 }
 
 // =============================================================================
@@ -113,19 +212,23 @@ inline ExclusiveAdjust adjustExclusiveRange(Range& range, const Lines& lines) {
 // =============================================================================
 
 // Delete text in character range. Modifies lines and updates pos.
-// Range is half-open [begin, end).
+// CharRange is half-open [begin, end).
 // Mode determines position clamping: Normal clamps to last char, Insert allows after last char
-// Empty line removal follows Vim behavior:
-//   - Cursor on same line as deletion (e.g., D at col 0): keep empty line
-//   - Cursor on different line (e.g., db from col 0): remove empty line
-void deleteRange(Lines& lines, const Range& range, CursorPos& pos, Mode mode = Mode::Normal);
+// Empty line removal may depend on whether the original cursor was already on
+// the range's anchor line, since this API combines deletion with cursor updates.
+void deleteRangeAndUpdatePos(
+    Lines& lines, const CharRange& range, CursorPos& pos, Mode mode = Mode::Normal);
+void deleteCharLineRangeAndUpdatePos(
+    Lines& lines, const CharLineRange& range, CursorPos& pos, Mode mode = Mode::Normal);
+void deleteLineCharRangeAndUpdatePos(
+    Lines& lines, const LineCharRange& range, CursorPos& pos, Mode mode = Mode::Normal);
 
 // Delete entire lines in [beginLine, endLine). Modifies lines and updates pos.
 // Pos goes to first non-blank of the line following the deleted range.
 // hasLinesBelow: if true, cursor is not clamped when deletion includes the last line,
 // because the real buffer has lines below that the cursor would land on.
-void deleteRangeLinewise(Lines& lines, const LineRange& range, CursorPos& pos,
-                         bool hasLinesBelow = false);
+void deleteLineRangeAndUpdatePos(Lines& lines, const LineRange& range, CursorPos& pos,
+                                 bool hasLinesBelow = false);
 
 // Insert text at position. Handles newlines (splits into multiple lines).
 // After insert, pos is at end of inserted text.

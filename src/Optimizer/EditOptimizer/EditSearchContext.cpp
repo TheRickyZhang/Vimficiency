@@ -201,17 +201,15 @@ bool EditSearchContext::shouldContinue() const {
   if (pq.empty()) return false;
   if (terminalStarts >= totalPositions) return false;
   if (resultsFound >= params.maxResults) return false;
-  if (iterations >= params.maxNodesExplored) return false;
-  // Safety cap: prevent runaway loops if too many stale nodes
-  if (totalPops >= params.maxNodesExplored * SAFETY_MULTIPLIER) return false;
+  if (totalPops >= params.maxNodesPopped) return false;
   return true;
 }
 
 optional<EditState> EditSearchContext::getNextValidState() {
-  while (!pq.empty()) {
+  while (!pq.empty() && totalPops < params.maxNodesPopped) {
     EditState s = pq.top();
     pq.pop();
-    totalPops++;  // Track all pops for safety cap
+    totalPops++;
     int startIndex = s.getStartIndex();
     int& pending = pendingByStart[static_cast<size_t>(startIndex)];
     assert(pending > 0 && "pendingByStart underflow");
@@ -253,6 +251,7 @@ void EditSearchContext::maybeMarkStartExhausted(int startIndex) {
 EditSearchStats EditSearchContext::getStats() const {
   EditSearchStats stats;
   stats.nodesExplored = iterations;
+  stats.totalPops = totalPops;
   stats.resultsFound = resultsFound;
   stats.queueSizeAtStop = static_cast<int>(pq.size());
   stats.motionsEmitted = motionsEmitted;
@@ -266,8 +265,8 @@ EditSearchStats EditSearchContext::getStats() const {
     stats.stopReason = SearchStopReason::AllResultsFound;
   } else if (resultsFound >= params.maxResults) {
     stats.stopReason = SearchStopReason::MaxResultsFound;
-  } else if (iterations >= params.maxNodesExplored) {
-    stats.stopReason = SearchStopReason::MaxNodesReached;
+  } else if (totalPops >= params.maxNodesPopped) {
+    stats.stopReason = SearchStopReason::MaxPopsReached;
   }
 
   return stats;
@@ -285,10 +284,13 @@ void EditSearchContext::exploreJoinCommands(
 
 void EditSearchContext::exploreAllDeletions(const EditState& state,
                                             DeletionCallback onDeletion,
+                                            CharLineDeletionCallback onCharLine,
+                                            LineCharDeletionCallback onLineChar,
                                             LinewiseCallback onLinewise,
                                             JoinCallback onJoin) {
   EditExplorer explorer(*this);
-  explorer.exploreAllDeletions(state, onDeletion, onLinewise, onJoin);
+  explorer.exploreAllDeletions(state, onDeletion, onCharLine, onLineChar,
+                               onLinewise, onJoin);
 }
 
 void EditSearchContext::exploreCountedLineEdits(const EditState& state,

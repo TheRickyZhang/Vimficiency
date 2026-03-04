@@ -12,7 +12,11 @@ Overall, just verify for any missed ideas in CompositionOptimizer exploration
 
 Local-only RunningEffort context in MotionOptimizer
 
-Convert allowMultiplePerPosition -> maxMultiplePerPosition for more fine-grained in motion, and have composition pass down this param correctly!
+Verify usage of maxMultipleP
+
+Improve clarity of handling characterwise vs linewise deletions currently distinguished by exclusive endpoint (line, line.size()) vs (line+1, 0)
+Improve onLinewiseGoal semantics - currently very lengthy
+
 
 == Later:
 Migrate to modules when greater scope

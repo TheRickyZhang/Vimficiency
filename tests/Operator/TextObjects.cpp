@@ -41,7 +41,7 @@ struct TextObjectSpec {
   bool wouldCross(CursorPos cursor, const Lines& lines,
                   int leftColOffset, int rightColOffset,
                   bool hasLinesAbove, bool hasLinesBelow) const {
-    Range range = VimCore::textObjectRange(
+    CharRange range = VimCore::textObjectRange(
         cursor, lines, isInner, isBigWord, leftColOffset, rightColOffset,
         hasLinesAbove, hasLinesBelow);
     // Check if either endpoint crossed boundary
@@ -308,7 +308,7 @@ TEST_F(TextObjectsTest, TextObjectRange_InnerWord) {
   int leftColOffset = 4;   // protect cols 0-3 (space before "def")
   int rightColOffset = 4;  // protect cols 7-10 (space after "def" and beyond)
 
-  Range result = VimCore::textObjectRange(cursor, lines, true, false,
+  CharRange result = VimCore::textObjectRange(cursor, lines, true, false,
                                           leftColOffset, rightColOffset,
                                           false, false);  // single line, no lines above/below
 
@@ -325,7 +325,7 @@ TEST_F(TextObjectsTest, TextObjectRange_AroundWord) {
   int leftColOffset = 3;   // protect cols 0-2 ('c' in "abc" and before)
   int rightColOffset = 3;  // protect cols 8-10 ('g' in "ghi" and beyond)
 
-  Range result = VimCore::textObjectRange(cursor, lines, false, false,
+  CharRange result = VimCore::textObjectRange(cursor, lines, false, false,
                                           leftColOffset, rightColOffset,
                                           false, false);  // single line, no lines above/below
 
@@ -342,7 +342,7 @@ TEST_F(TextObjectsTest, TextObjectRange_CrossesBoundary) {
   int leftColOffset = 1;   // protect col 0 ('a' - adjacent to word)
   int rightColOffset = 1;  // protect col 2 ('c' - adjacent to word)
 
-  Range result = VimCore::textObjectRange(cursor, lines, true, false,
+  CharRange result = VimCore::textObjectRange(cursor, lines, true, false,
                                           leftColOffset, rightColOffset,
                                           false, false);  // single line, no lines above/below
 
@@ -356,7 +356,7 @@ TEST_F(TextObjectsTest, TextObjectRange_NoBoundary) {
   CursorPos cursor(0, 0);
 
   // Use 0 to indicate no boundary check, no lines above/below
-  Range result = VimCore::textObjectRange(cursor, lines, true, false, 0, 0, false, false);
+  CharRange result = VimCore::textObjectRange(cursor, lines, true, false, 0, 0, false, false);
 
   EXPECT_NE(result.begin, POSITION_OUTSIDE_BOUNDARY);
   EXPECT_EQ(result.begin.col, 0);

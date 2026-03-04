@@ -123,7 +123,7 @@ private:
 class DebugTest : public ::testing::Test {
 protected:
   Config config = Config::uniform();
-  EditOptimizerParams params = EditOptimizerParams{}.withMaxNodesExplored(100000);
+  EditOptimizerParams params = EditOptimizerParams{}.withMaxNodesPopped(100000);
 
   EditOptimizer makeOptimizer() {
     return EditOptimizer(config);
@@ -753,16 +753,16 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
         cerr << " (no move)" << endl;
       } else {
         // Compute range like the explorer does (isExclusiveAtCursor)
-        Range range;
+        CharRange range;
         if (col > 0) {
-          range = Range(simEndpoint, CursorPos(0, col - 1));
+          range = CharRange(simEndpoint, CursorPos(0, col - 1));
         } else {
           cerr << " (col=0, exclusive skip)" << endl;
           continue;
         }
         Lines afterBuf = buf;
         CursorPos afterPos = pos;
-        VimCore::deleteRange(afterBuf, range, afterPos);
+        VimCore::deleteRangeAndUpdatePos(afterBuf, range, afterPos);
         cerr << " range=(" << range.begin.col << "," << range.end.col << ")"
              << " after='" << afterBuf[0] << "' pos=" << afterPos.col << endl;
       }
@@ -1247,7 +1247,8 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
     cerr << "Finding path from " << initialPos << " to range [" << rangeBegin << ", " << rangeEnd << ")" << endl;
 
     auto rangeResult = movOpt.optimizeToRange(
-        initial, initialPos, rangeBegin, rangeEnd,
+        initial, initialPos,
+        initial.inclusiveRangeFromHalfOpen(rangeBegin, rangeEnd),
         MotionOptimizerRangeParams{}.withMaxResults(10));
 
     cerr << "MotionOptimizer returned " << rangeResult.getResults().size() << " results" << endl;
@@ -1335,7 +1336,7 @@ TEST_F(NeovimOracleDebug, InvestigateCiwMismatch) {
     cerr << "  Char at cursor: '" << ourLines[pos.line][pos.col] << "'" << endl;
 
     // Simulate ciw: compute text object range
-    Range iwRange = VimCore::textObject(pos, ourLines, /*isInner=*/true, /*isBigWord=*/false);
+    CharRange iwRange = VimCore::textObject(pos, ourLines, /*isInner=*/true, /*isBigWord=*/false);
     cerr << "  textObject(iw) range: [(" << iwRange.begin.line << "," << iwRange.begin.col
          << "), (" << iwRange.end.line << "," << iwRange.end.col << ")]" << endl;
     cerr << "  Deleted text: '";
@@ -1345,7 +1346,7 @@ TEST_F(NeovimOracleDebug, InvestigateCiwMismatch) {
     cerr << "'" << endl;
 
     // Apply deletion (change mode)
-    VimCore::deleteRange(ourLines, iwRange, pos, Mode::Insert);
+    VimCore::deleteRangeAndUpdatePos(ourLines, iwRange, pos, Mode::Insert);
     cerr << "  After ciw deletion: buffer=" << ourLines << endl;
     cerr << "  Cursor: (" << pos.line << "," << pos.col << ")" << endl;
     cerr << "  Line content: '" << ourLines[pos.line] << "'" << endl;
@@ -1471,7 +1472,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     CursorPos rangeBegin = d.beginPos;
     CursorPos rangeEnd = d.endPos;
 
-    cerr << "  Range: [(" << rangeBegin.line << "," << rangeBegin.col << "), ("
+    cerr << "  CharRange: [(" << rangeBegin.line << "," << rangeBegin.col << "), ("
          << rangeEnd.line << "," << rangeEnd.col << "))" << endl;
     cerr << "  StartPos: (" << initialPos.line << "," << initialPos.col << ")" << endl;
 
@@ -1484,11 +1485,12 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     NavContext navCtx;
 
     auto rangeResult = motionOpt.optimizeToRange(
-        initial, initialPos, rangeBegin, rangeEnd,
+        initial, initialPos,
+        initial.inclusiveRangeFromHalfOpen(rangeBegin, rangeEnd),
         MotionOptimizerRangeParams{}.withMaxResults(10), "",
         boundary, navCtx);
 
-    cerr << "  Range results: " << rangeResult.getResults().size() << endl;
+    cerr << "  CharRange results: " << rangeResult.getResults().size() << endl;
     for (size_t i = 0; i < rangeResult.getResults().size(); i++) {
       const auto& r = rangeResult.getResults()[i];
       if (r.isValid()) {
@@ -1595,7 +1597,8 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
             endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
         auto movementResults = motionOpt.optimizeToRange(
-            subset, localPos, localRangeBegin, localRangeEnd,
+            subset, localPos,
+            subset.inclusiveRangeFromHalfOpen(localRangeBegin, localRangeEnd),
             MotionOptimizerRangeParams{}.withMaxResults(
                 clamp(nextEdit.origCharCount(), 1, 10)), "",
             subsetBoundary, navCtx).getResults();
@@ -1767,7 +1770,8 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
           beginLine > 0, endLine <= currentLines.lastLine());
 
       auto rangeResults = motionOpt.optimizeToRange(
-          subset, localPos, localRangeBegin, localRangeEnd,
+          subset, localPos,
+          subset.inclusiveRangeFromHalfOpen(localRangeBegin, localRangeEnd),
           MotionOptimizerRangeParams{}.withMaxResults(
               clamp(nextEdit.origCharCount(), 1, 10)), "",
           subsetBoundary, navCtx).getResults();
@@ -1881,7 +1885,8 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
     MotionOptimizer motionOpt(config);
     NavContext navCtx;
     auto rangeResult = motionOpt.optimizeToRange(
-        buffer, pos, rangeBegin, rangeEnd,
+        buffer, pos,
+        buffer.inclusiveRangeFromHalfOpen(rangeBegin, rangeEnd),
         MotionOptimizerRangeParams{}.withMaxResults(5), "",
         boundary, navCtx);
 
@@ -2235,7 +2240,7 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
   cerr << "\n=== EditOptimizer (default params) ===" << endl;
   EditOptimizer editOpt(config);
   EditOptimizerParams defaultParams;
-  cerr << "  maxNodesExplored=" << defaultParams.maxNodesExplored
+  cerr << "  maxNodesPopped=" << defaultParams.maxNodesPopped
        << " maxResults=" << defaultParams.maxResults << endl;
 
   EditResult result = editOpt.optimizeEdit(
@@ -2260,9 +2265,9 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
   cerr << "  valid: " << validCount << " / " << result.resultCount() << endl;
 
   // Run with much higher budget
-  cerr << "\n=== EditOptimizer (500k nodes) ===" << endl;
+  cerr << "\n=== EditOptimizer (500k pops) ===" << endl;
   EditOptimizerParams bigParams = EditOptimizerParams{}
-      .withMaxNodesExplored(500000);
+      .withMaxNodesPopped(500000);
 
   EditResult bigResult = editOpt.optimizeEdit(
       deletedLines, insertedLines, boundary, bigParams,
@@ -2440,12 +2445,12 @@ TEST_F(DebugTest, ReplayVerification_Charwise) {
   // x from (0,5): delete single char (space)
   {
     CursorPos start(0, 5);
-    Range range(start, start);
+    CharRange range(start, start);
     auto [editLines, editPos] = applyViaEdit(buf, start, "x");
 
     Lines coreLines = buf;
     CursorPos corePos = start;
-    VimCore::deleteRange(coreLines, range, corePos, Mode::Normal);
+    VimCore::deleteRangeAndUpdatePos(coreLines, range, corePos, Mode::Normal);
     EXPECT_EQ(editLines, coreLines) << "x lines mismatch";
     EXPECT_EQ(editPos.line, corePos.line) << "x line mismatch";
     EXPECT_EQ(editPos.col, corePos.col) << "x col mismatch";
@@ -2454,12 +2459,12 @@ TEST_F(DebugTest, ReplayVerification_Charwise) {
   // D from (0,5): delete to end of line
   {
     CursorPos start(0, 5);
-    Range range(start, CursorPos(0, static_cast<int>(buf[0].size()) - 1));
+    CharRange range(start, CursorPos(0, static_cast<int>(buf[0].size()) - 1));
     auto [editLines, editPos] = applyViaEdit(buf, start, "D");
 
     Lines coreLines = buf;
     CursorPos corePos = start;
-    VimCore::deleteRange(coreLines, range, corePos, Mode::Normal);
+    VimCore::deleteRangeAndUpdatePos(coreLines, range, corePos, Mode::Normal);
     EXPECT_EQ(editLines, coreLines) << "D lines mismatch";
     EXPECT_EQ(editPos.line, corePos.line) << "D line mismatch";
     EXPECT_EQ(editPos.col, corePos.col) << "D col mismatch";
@@ -2685,12 +2690,12 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceJoinLinesResidualEditOpt) {
   {
     Lines buf = {"aaa", "xxx", "ccc"};
     // No boundary (full buffer)
-    Range r = VimCore::textObjectRange(CursorPos(1,0), buf, false, false, 0, 0, false, false);
+    CharRange r = VimCore::textObjectRange(CursorPos(1,0), buf, false, false, 0, 0, false, false);
     cerr << "  aw range: (" << r.begin.line << "," << r.begin.col
          << ")-(" << r.end.line << "," << r.end.col << ")" << endl;
 
     // With hasLinesAbove=true (as the edit boundary would have)
-    Range r2 = VimCore::textObjectRange(CursorPos(1,0), buf, false, false, 0, 0, true, false);
+    CharRange r2 = VimCore::textObjectRange(CursorPos(1,0), buf, false, false, 0, 0, true, false);
     cerr << "  aw range (hasAbove): (" << r2.begin.line << "," << r2.begin.col
          << ")-(" << r2.end.line << "," << r2.end.col << ")" << endl;
   }
@@ -2941,148 +2946,8 @@ TEST_F(DebugTest, DISABLED_ReproduceSmallEmbeddedSentenceCrash) {
     // Apply the deletion to see what the explorer computes
     Lines explorerBuf = editRegion;
     CursorPos explorerPos = cursor;
-    VimCore::deleteRange(explorerBuf, Range(cursor, endpoint), explorerPos, Mode::Normal);
+    VimCore::deleteRangeAndUpdatePos(
+        explorerBuf, CharRange(cursor, endpoint), explorerPos, Mode::Normal);
     cerr << "Explorer d) result: " << explorerBuf << " pos=(" << explorerPos.line << "," << explorerPos.col << ")" << endl;
-  }
-
-  // === Oracle: verify d) behavior in multiple scenarios ===
-  cerr << "\n=== Oracle d) behavior ===" << endl;
-  auto oracle = std::make_unique<NeovimOracle>();
-
-  // Case 1: d) from (0,2) on fullBuffer (the failing case)
-  cerr << "Case 1: d) from (0,2) on fullBuffer" << endl;
-  auto r1 = oracle->simulate(fullBuffer, 0, 2, "d)");
-  cerr << "  Result: " << r1.lines << " pos=(" << r1.row << "," << r1.col << ")" << endl;
-
-  // Case 2: d) from (0,0) on ["End.", "Start"] (cross-line test)
-  cerr << "Case 2: d) from (0,0) on [\"End.\", \"Start\"]" << endl;
-  auto r2 = oracle->simulate({"End.", "Start"}, 0, 0, "d)");
-  cerr << "  Result: " << r2.lines << " pos=(" << r2.row << "," << r2.col << ")" << endl;
-
-  // Case 3: d) from (0,0) on [".df.", ".ee  "] (editRegion, no prefix)
-  cerr << "Case 3: d) from (0,0) on editRegion ['.df.', '.ee  ']" << endl;
-  auto r3 = oracle->simulate({".df.", ".ee  "}, 0, 0, "d)");
-  cerr << "  Result: " << r3.lines << " pos=(" << r3.row << "," << r3.col << ")" << endl;
-
-  // Case 4: d) from (0,0) on single line ["Hello. World"]
-  cerr << "Case 4: d) from (0,0) on single line ['Hello. World']" << endl;
-  auto r4 = oracle->simulate({"Hello. World"}, 0, 0, "d)");
-  cerr << "  Result: " << r4.lines << " pos=(" << r4.row << "," << r4.col << ")" << endl;
-
-  // Case 5: d) from (0,0) on ["Hello.", "World"]
-  cerr << "Case 5: d) from (0,0) on ['Hello.', 'World']" << endl;
-  auto r5 = oracle->simulate({"Hello.", "World"}, 0, 0, "d)");
-  cerr << "  Result: " << r5.lines << " pos=(" << r5.row << "," << r5.col << ")" << endl;
-
-  // Case 6: d) from (0,0) on ["a.", "b"]
-  cerr << "Case 6: d) from (0,0) on ['a.', 'b']" << endl;
-  auto r6 = oracle->simulate({"a.", "b"}, 0, 0, "d)");
-  cerr << "  Result: " << r6.lines << " pos=(" << r6.row << "," << r6.col << ")" << endl;
-
-  // Case 7: d) from (0,0) on [".", "b"]
-  cerr << "Case 7: d) from (0,0) on ['.', 'b']" << endl;
-  auto r7 = oracle->simulate({".", "b"}, 0, 0, "d)");
-  cerr << "  Result: " << r7.lines << " pos=(" << r7.row << "," << r7.col << ")" << endl;
-
-  // Now check interpreter for these same cases (no boundary context)
-  cerr << "\n=== Interpreter d) behavior (no boundary) ===" << endl;
-  auto interpTest = [](const string& cmd, const Lines& lines, int row, int col) {
-    Lines buf = lines;
-    CursorPos pos(row, col);
-    Mode mode = Mode::Normal;
-    string lastEdit;
-    for (const ParsedEdit& op : Edit::parseEdits(cmd)) {
-      Edit::applyEdit(buf, pos, mode, op, &lastEdit, false, 0, 0, false);
-    }
-    cerr << "  Result: " << buf << " pos=(" << pos.line << "," << pos.col << ")" << endl;
-  };
-
-  cerr << "Case 1 interp: d) from (0,2) on fullBuffer" << endl;
-  interpTest("d)", fullBuffer, 0, 2);
-  cerr << "Case 2 interp: d) from (0,0) on ['End.', 'Start']" << endl;
-  interpTest("d)", {"End.", "Start"}, 0, 0);
-  cerr << "Case 3 interp: d) from (0,0) on ['.df.', '.ee  ']" << endl;
-  interpTest("d)", {".df.", ".ee  "}, 0, 0);
-  cerr << "Case 5 interp: d) from (0,0) on ['Hello.', 'World']" << endl;
-  interpTest("d)", {"Hello.", "World"}, 0, 0);
-  cerr << "Case 6 interp: d) from (0,0) on ['a.', 'b']" << endl;
-  interpTest("d)", {"a.", "b"}, 0, 0);
-  cerr << "Case 7 interp: d) from (0,0) on ['.', 'b']" << endl;
-  interpTest("d)", {".", "b"}, 0, 0);
-
-  // d( oracle tests — check exclusive-linewise adjustment for backward motions
-  // The exclusive end for d( is the cursor position (the higher end).
-  // When cursor.col == 0, the same adjustment should apply.
-  cerr << "\n=== Oracle d( behavior ===" << endl;
-
-  auto oracleAndInterp = [&](const string& cmd, const Lines& lines, int row, int col) {
-    auto nv = oracle->simulate(lines, row, col, cmd);
-    cerr << "  Oracle:  " << nv.lines << " pos=(" << nv.row << "," << nv.col << ")" << endl;
-    interpTest(cmd, lines, row, col);
-  };
-
-  // Both at col 0 → linewise (both should merge)
-  cerr << "d( from (1,0) on ['End.', 'Start'] (both col 0 → linewise)" << endl;
-  oracleAndInterp("d(", {"End.", "Start"}, 1, 0);
-
-  // Cursor not at col 0 → standard (same line, no crossing)
-  cerr << "d( from (1,3) on ['End.', 'Start'] (same line motion)" << endl;
-  oracleAndInterp("d(", {"End.", "Start"}, 1, 3);
-
-  // Both at col 0 → linewise
-  cerr << "d( from (1,0) on ['Hello.', 'World'] (both col 0)" << endl;
-  oracleAndInterp("d(", {"Hello.", "World"}, 1, 0);
-
-  // KEY TEST: cursor at col 0, endpoint at non-zero col
-  // ( from (1,0) on ["End. xyz", "abc"] goes to (0,5) — start of "xyz" sentence
-  // exclusive end = cursor = (1,0) at col 0, begin = (0,5) NOT at col 0
-  // Should Vim's exclusive-linewise adjustment apply?
-  cerr << "d( from (1,0) on ['End. xyz', 'abc'] (cursor col 0, endpoint col 5)" << endl;
-  oracleAndInterp("d(", {"End. xyz", "abc"}, 1, 0);
-
-  // Another test: cursor at col 0, but endpoint also at col 0
-  cerr << "d( from (2,0) on ['End.', '', 'Start'] (blank line paragraph)" << endl;
-  oracleAndInterp("d(", {"End.", "", "Start"}, 2, 0);
-
-  // d} tests for completeness — verify d} still matches oracle
-  cerr << "\n=== d} behavior ===" << endl;
-  cerr << "d} from (0,0) on ['abc', '', 'def']" << endl;
-  oracleAndInterp("d}", {"abc", "", "def"}, 0, 0);
-  cerr << "d} from (0,2) on ['abc', '', 'def']" << endl;
-  oracleAndInterp("d}", {"abc", "", "def"}, 0, 2);
-
-  // d{ tests
-  cerr << "\n=== d{ behavior ===" << endl;
-  cerr << "d{ from (2,0) on ['abc', '', 'def']" << endl;
-  oracleAndInterp("d{", {"abc", "", "def"}, 2, 0);
-  cerr << "d{ from (2,2) on ['abc', '', 'def']" << endl;
-  oracleAndInterp("d{", {"abc", "", "def"}, 2, 2);
-}
-
-TEST_F(DebugTest, DISABLED_DiagnoseCompBenchFound0) {
-  // Test all 5 seeds that benchmarks use (42..46) to see which find 0 results
-  constexpr int DEFAULT_LINES = 15;
-  constexpr int DEFAULT_AVG_LEN = 20;
-  constexpr int DEFAULT_EDIT_COUNT = 5;
-
-  for (int seed = 42; seed <= 46; seed++) {
-    RandomGen::seed(seed);
-    Lines initial = randomCodeBuffer(DEFAULT_LINES, DEFAULT_AVG_LEN);
-    Lines goal = initial;
-    for (int e = 0; e < DEFAULT_EDIT_COUNT; e++) {
-      int line = e * (DEFAULT_LINES - 1) / max(1, DEFAULT_EDIT_COUNT - 1);
-      int len = max(1, static_cast<int>(initial[line].size()));
-      goal[line] = randomWord(len);
-      if (goal[line] == initial[line]) goal[line] = "changed";
-    }
-
-    CompositionOptimizerParams params;
-    CompositionOptimizer opt(config);
-    auto result = opt.optimize(initial, {0,0}, goal, {0,0}, params);
-    cerr << "seed=" << seed
-         << " results=" << result.getResults().size()
-         << " stats.resultsFound=" << result.getStats().resultsFound
-         << " nodes=" << result.getStats().nodesExplored
-         << " stop=" << static_cast<int>(result.getStats().stopReason) << endl;
   }
 }

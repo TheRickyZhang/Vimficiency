@@ -7,7 +7,7 @@
 enum class SearchStopReason {
   Unknown,
   FullyExplored,    // Search space fully explored
-  MaxNodesReached,  // Hit maxNodesExplored
+  MaxPopsReached,  // Hit maxNodesPopped
   AllResultsFound,   // Found results for all positions (EditOptimizer)
   MaxResultsFound, // Found maxResults (for single-goal search)
 };
@@ -15,7 +15,7 @@ enum class SearchStopReason {
 inline std::string to_string(SearchStopReason reason) {
   switch (reason) {
     case SearchStopReason::FullyExplored: return "QueueExhausted";
-    case SearchStopReason::MaxNodesReached: return "NodeLimitReached";
+    case SearchStopReason::MaxPopsReached: return "PopLimitReached";
     case SearchStopReason::AllResultsFound: return "AllResultsFound";
     case SearchStopReason::MaxResultsFound: return "MaxResultsReached";
     default: return "Unknown";
@@ -26,7 +26,7 @@ inline std::string to_string(SearchStopReason reason) {
 inline std::string toShortString(SearchStopReason reason) {
   switch (reason) {
     case SearchStopReason::FullyExplored: return "Queue";
-    case SearchStopReason::MaxNodesReached: return "Limit";
+    case SearchStopReason::MaxPopsReached: return "Limit";
     case SearchStopReason::AllResultsFound: return "All";
     case SearchStopReason::MaxResultsFound: return "Max";
     default: return "?";
@@ -44,6 +44,7 @@ struct ExploredState {
 struct BaseSearchStats {
   SearchStopReason stopReason = SearchStopReason::Unknown;
   int nodesExplored = 0;
+  int totalPops = 0;
   int resultsFound = 0;
   int queueSizeAtStop = 0;
 
@@ -58,6 +59,7 @@ struct BaseSearchStats {
 
   friend std::ostream& operator<<(std::ostream& os, const BaseSearchStats& s) {
     os << "nodes=" << s.nodesExplored
+       << " pops=" << s.totalPops
        << " results=" << s.resultsFound
        << " queue=" << s.queueSizeAtStop
        << " stop=" << to_string(s.stopReason);
@@ -82,6 +84,7 @@ struct EditSearchStats : BaseSearchStats {
   int uniquePositionsFound = -1;
   int cacheHits = 0;
   int cacheEntries = 0;
+
   int cachePopulations = 0;
   bool isRangeSearch() const { return uniquePositionsFound >= 0; }
 

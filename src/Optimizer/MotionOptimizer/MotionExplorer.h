@@ -14,36 +14,25 @@
 #include "VimCore/VimOptions.h"
 
 // MotionExplorer encapsulates motion exploration logic for the optimizer.
-// Always operates in range mode: single-goal is a degenerate point range.
-//
-// Two usage modes:
-// 1. Range-goal (optimize / optimizeToRange): Uses rangeBegin/rangeEnd for range-aware exploration
-// 2. Lightweight: Uses exploreAllStandardMotions only, no directional methods
+// It always targets an inclusive set of valid landing positions [firstPos_, lastPos_].
+// Single-goal search is just the degenerate case where firstPos_ == lastPos_.
 class MotionExplorer {
   MotionSearchContext& ctx;
-  BufferIndexRef bufferRef_;
-
-  // Range state — rangeFirst_/rangeLast_ are inclusive valid positions (Pos),
-  // rangeEnd_ is the half-open end (CursorPos, needed for exploreNewStateToRange).
-  Pos rangeFirst_;
-  Pos rangeLast_;
-  CursorPos rangeEnd_;
+  const BufferIndex& bufferIndex_;
+  int bufferLineOffset_;
+  InclusiveCharRange targetRange_;
 
 public:
-  // Range mode constructor for directional exploration.
-  // Accepts half-open [rangeBegin, rangeEnd) and converts to inclusive first/last internally.
+  void enqueueToGoalRange(MotionState&& newState) {
+    ctx.exploreNewStateToRange(std::move(newState), targetRange_);
+  }
+
   MotionExplorer(MotionSearchContext& ctx,
-                 const CursorPos& rangeBegin,
-                 const CursorPos& rangeEnd,
+                 const InclusiveCharRange& targetRange,
                  const BufferIndex& bufferIndex,
                  int lineOffset)
-      : ctx(ctx), bufferRef_(bufferIndex, lineOffset),
-        rangeFirst_(rangeBegin), rangeEnd_(rangeEnd) {
-    rangeLast_ = ctx.lines.getPrevPos(rangeEnd_);
-    if (!rangeLast_.isValid()) {
-      rangeLast_ = rangeFirst_;
-    }
-  }
+      : ctx(ctx), bufferIndex_(bufferIndex), bufferLineOffset_(lineOffset),
+        targetRange_(targetRange) {}
 
   // Core emit helper - creates new state, applies motion, and queues for exploration.
   // Uses pre-computed effort from EffortBank via KSId.
@@ -51,8 +40,8 @@ public:
     const KeyedSequence& ks = KeyedSequence::byId(id);
     MotionState newState = base.afterMotion(ks, ctx.bank[id], endpoint, ctx.config);
 
-    newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeLast_));
-    ctx.exploreNewStateToRange(std::move(newState), rangeFirst_, rangeEnd_);
+    newState.setCost(ctx.computePriorityToRange(newState, targetRange_));
+    enqueueToGoalRange(std::move(newState));
   }
 
   // Simple line motions: h, l, 0, ^, $
@@ -216,22 +205,22 @@ public:
   template<CountClass C>
   void exploreCountMotion(const MotionState& base, const KeyedSequence& baseMotion,
                           int cnt, const CursorPos& newPos) {
-    assert(cnt >= 0 && cnt <= MAX_PREFIX_COUNT);
+    assert(cnt >= 0 && cnt <= CountPrefixLimits::MAX_PREFIX_COUNT);
     CountPenaltyInput in;
     in.count = cnt;
     in.span = cnt;
     double penalty = runtimeCountPenalty<C>(in);
 
     MotionState newState = base.afterCountedMotion(baseMotion, cnt, newPos, ctx.config, penalty);
-    newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeLast_));
-    ctx.exploreNewStateToRange(std::move(newState), rangeFirst_, rangeEnd_);
+    newState.setCost(ctx.computePriorityToRange(newState, targetRange_));
+    enqueueToGoalRange(std::move(newState));
   }
 
   // F-motions with known column (internal helper)
   void exploreFMotion(const MotionState& base, const KeyedSequence& fMotion, int newcol) {
     MotionState newState = base.afterFMotion(fMotion, newcol, ctx.config);
-    newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeLast_));
-    ctx.exploreNewStateToRange(std::move(newState), rangeFirst_, rangeEnd_);
+    newState.setCost(ctx.computePriorityToRange(newState, targetRange_));
+    enqueueToGoalRange(std::move(newState));
   }
 
   // ==========================================================================
@@ -241,12 +230,13 @@ public:
   template<bool Forward>
   void exploreFMotions(const MotionState& base) {
     CursorPos pos = base.getPos();
-    if (rangeFirst_.line != rangeLast_.line || pos.line != rangeFirst_.line) return;
+    if (targetRange_.firstPos.line != targetRange_.lastPos.line
+        || pos.line != targetRange_.firstPos.line) return;
 
     constexpr char firstMotion = Forward ? 'f' : 'F';
     constexpr char repeatMotion = ';';
 
-    int goalCol = Forward ? rangeLast_.col : rangeFirst_.col;
+    int goalCol = Forward ? targetRange_.lastPos.col : targetRange_.firstPos.col;
     auto infos = VimCore::generateFMotions<Forward>(
         pos.col, goalCol, ctx.lines[pos.line], ctx.params.fMotionThreshold);
 
@@ -264,7 +254,7 @@ public:
   }
 
   // ==========================================================================
-  // Range-aware counted spec exploration (uses BufferIndex with coordinate conversion)
+  // CharRange-aware counted spec exploration (uses BufferIndex with coordinate conversion)
   // ==========================================================================
 
   template<bool Forward, LandingType LT, CountClass C, KSId ForwardKS, KSId BackwardKS>
@@ -275,14 +265,14 @@ public:
       else return KeyedSequence::byId(BackwardKS);
     }();
 
-    int off = bufferRef_.lineOffset;
+    int off = bufferLineOffset_;
 
     // Convert local → global coordinates for BufferIndex query
-    CursorPos globalPos(pos.line + off, pos.col, pos.targetCol);
-    CursorPos globalRangeFirst(rangeFirst_.line + off, rangeFirst_.col);
-    CursorPos globalRangeEnd(rangeEnd_.line + off, rangeEnd_.col);
+    Pos globalPos(pos.line + off, pos.col);
+    Pos globalFirstPos(targetRange_.firstPos.line + off, targetRange_.firstPos.col);
+    Pos globalLastPos(targetRange_.lastPos.line + off, targetRange_.lastPos.col);
 
-    auto results = bufferRef_.index.getClosestInRange(LT, globalPos, globalRangeFirst, globalRangeEnd);
+    auto results = bufferIndex_.getClosestInRange<Forward>(LT, globalPos, globalFirstPos, globalLastPos);
     for (const auto& r : results) {
       if (!r.valid()) continue;
       if (r.count < ctx.params.minPrefixCount) continue;
@@ -433,7 +423,7 @@ public:
   // Directional standard motion exploration using range
   void exploreDirectionalStandardMotions(const MotionState& base) {
     CursorPos pos = base.getPos();
-    MotionClassMask m = classesForRange(pos, rangeFirst_, rangeLast_);
+    MotionClassMask m = classesForRange(pos, targetRange_.firstPos, targetRange_.lastPos);
     exploreClasses(base, m);
   }
 
@@ -536,7 +526,6 @@ public:
     exploreSentenceMotions<false>(Motion::BACKWARD_SENTENCE_MOTIONS, base);
   }
 
-  // Range accessors
-  const Pos& getRangeFirst() const { return rangeFirst_; }
-  const CursorPos& getRangeEnd() const { return rangeEnd_; }
+  // Goal range accessors
+  const InclusiveCharRange& getTargetRange() const { return targetRange_; }
 };

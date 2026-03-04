@@ -2,6 +2,39 @@
 
 using namespace std;
 
+namespace {
+
+bool isInRange(const Pos& pos, const InclusiveCharRange& range) {
+  return range.contains(pos);
+}
+
+void exploreNewStateToInclusiveRange(MotionSearchContext& ctx,
+                                     MotionState&& newState,
+                                     const InclusiveCharRange& range) {
+  ctx.motionsEmitted++;
+
+  if (newState.getEffort() > ctx.maxEffort) {
+    return;
+  }
+
+  double newCost = newState.getCost();
+  const Pos newKey = newState.getKey();
+  auto it = ctx.costMap.find(newKey);
+  bool stateInRange = isInRange(newKey, range);
+
+  if (it == ctx.costMap.end()) {
+    if (!stateInRange) {
+      ctx.costMap.emplace(newKey, newCost);
+    }
+    ctx.pq.push(std::move(newState));
+  } else if (newCost <= it->second) {
+    it->second = newCost;
+    ctx.pq.push(std::move(newState));
+  }
+}
+
+}  // namespace
+
 MotionSearchContext::MotionSearchContext(const Lines& lines,
                                          const NavContext& navContext,
                                          const MotionBoundary& boundary,
@@ -44,34 +77,7 @@ void MotionSearchContext::exploreNewState(MotionState&& newState, const Pos& goa
   }
 }
 
-void MotionSearchContext::exploreNewStateToRange(MotionState&& newState,
-                                                  Pos rangeBegin,
-                                                  Pos rangeEnd) {
-  motionsEmitted++;
-
-  // Prune if effort exceeds threshold
-  if (newState.getEffort() > maxEffort) {
-    return;
-  }
-
-  double newCost = newState.getCost();
-  const Pos newKey = newState.getKey();
-  CursorPos pos = newState.getPos();
-  auto it = costMap.find(newKey);
-
-  // Check if position is in goal range [rangeBegin, rangeEnd)
-  bool isInRange = pos >= rangeBegin && pos < rangeEnd;
-
-  if (it == costMap.end()) {
-    // New state - don't cache positions in range (allow multiple results)
-    if (!isInRange) {
-      costMap.emplace(newKey, newCost);
-    }
-    pq.push(std::move(newState));
-  }
-  // Allow equal costs for more exploration - finds all optimal paths
-  else if (newCost <= it->second) {
-    it->second = newCost;
-    pq.push(std::move(newState));
-  }
+void MotionSearchContext::exploreNewStateToRange(MotionState&& state,
+                                                 const InclusiveCharRange& range) {
+  exploreNewStateToInclusiveRange(*this, std::move(state), range);
 }

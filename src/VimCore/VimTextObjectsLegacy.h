@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Types/Range.h"
+#include "Types/CharRange.h"
 #include "Types/Lines.h"
 
 // =============================================================================
@@ -16,11 +16,11 @@
 namespace VimTextObjectsLegacy {
 
 // Quote text objects (i", a", i', a', i`, a`)
-Range innerQuote(const Lines& lines, CursorPos pos, char quote);
-Range aroundQuote(const Lines& lines, CursorPos pos, char quote);
+CharRange innerQuote(const Lines& lines, CursorPos pos, char quote);
+CharRange aroundQuote(const Lines& lines, CursorPos pos, char quote);
 
 // Bracket/paren text objects (i(, a(, i{, a{, i[, a[, i<, a<)
-Range innerBracket(const Lines& lines, CursorPos pos, char open, char close);
-Range aroundBracket(const Lines& lines, CursorPos pos, char open, char close);
+CharRange innerBracket(const Lines& lines, CursorPos pos, char open, char close);
+CharRange aroundBracket(const Lines& lines, CursorPos pos, char open, char close);
 
 } // namespace VimTextObjectsLegacy

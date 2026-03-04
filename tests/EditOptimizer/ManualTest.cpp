@@ -185,6 +185,10 @@ TEST_F(EditOptimizer_ManualTest, Boundary_LinewiseCursorContainment) {
   });
 }
 
+TEST_F(EditOptimizer_ManualTest, BackwardWordDeleteFromCol0_ReanchorsToFirstNonBlank) {
+  verifySequenceWithOracle(oracle.get(), {"abc", "  def"}, CursorPos(1, 0), "db");
+}
+
 
 // =============================================================================
 // Autoindent-Aware Linewise Change Tests
@@ -379,7 +383,7 @@ TEST_F(EditOptimizer_ManualTest, SentenceDeleteCrossLine_OracleVerified) {
 //   BackedUp:  begin.col > 0  AND end.col == 0  → end backs up to end of
 //              previous line; newline is preserved
 //
-// Shared utility: VimCore::adjustExclusiveRange() in VimEditUtils.h
+// Shared utility: VimCore::resolveExclusiveDeleteRange() in VimEditUtils.h
 // These tests verify that applyEdit matches Neovim for each case.
 
 TEST_F(EditOptimizer_ManualTest, ExclusiveLineAdjust_ForwardSentence_Linewise) {

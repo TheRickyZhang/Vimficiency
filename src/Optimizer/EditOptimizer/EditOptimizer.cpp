@@ -80,7 +80,7 @@ KeyedSequence buildCollapseSequence(int totalLines, int cursorLine) {
 }
 
 void appendOptionalCount(KeyedSequence& out, int count, const KeyedSequence& base) {
-  assert(count >= 0 && count <= MAX_PREFIX_COUNT);
+  assert(count >= 0 && count <= CountPrefixLimits::MAX_PREFIX_COUNT);
   if (count <= 1) {
     out += base;
   } else {
@@ -89,11 +89,29 @@ void appendOptionalCount(KeyedSequence& out, int count, const KeyedSequence& bas
 }
 
 KeyedSequence withOptionalCount(int count, const KeyedSequence& base) {
-  assert(count >= 0 && count <= MAX_PREFIX_COUNT);
+  assert(count >= 0 && count <= CountPrefixLimits::MAX_PREFIX_COUNT);
   if (count <= 1) {
     return base;
   }
   return KeyedSequence(count, base);
+}
+
+EditState applyDeletionTransition(const EditState& base, const CharRange& range,
+                                  string_view baseCmd) {
+  bool isBackwardWordDelete = (baseCmd == "db" || baseCmd == "dB");
+  return isBackwardWordDelete
+      ? base.afterBackwardWordDeletion(range)
+      : base.afterDeletion(range);
+}
+
+EditState applyDeletionTransition(const EditState& base, const CharLineRange& range,
+                                  string_view) {
+  return base.afterCharLineDeletion(range);
+}
+
+EditState applyDeletionTransition(const EditState& base, const LineCharRange& range,
+                                  string_view) {
+  return base.afterLineCharDeletion(range);
 }
 
 // Convert a delete command payload to its change-equivalent command.
@@ -248,12 +266,13 @@ struct ModePolicy<true> {
   bool tryUseSuffixCache(const EditState&,
                          vector<vector<Result>>&, int) { return false; }
 
-  void onDeletionGoal(EditState& afterDel, const EditState& base, const Range&,
+  template<class RangeT>
+  void onDeletionGoal(EditState& afterDel, const EditState& base, const RangeT&,
                       const SequenceBinding& sourceCmd) {
     ctx.exploreWithDot(std::move(afterDel), base, sourceCmd, 0.0);
   }
 
-  void onLinewiseGoal(EditState& afterDel, const EditState& base, int,
+  void onLinewiseGoal(EditState& afterDel, const EditState& base, LineRange,
                       const SequenceBinding& sourceCmd) {
     ctx.exploreWithDot(std::move(afterDel), base, sourceCmd, 0.0);
   }
@@ -538,21 +557,16 @@ struct ModePolicy<false> {
 
   KeyedSequence buildChangePrefix(const SequenceBinding& sourceCmd,
                                   const Lines& postDelLines, const CursorPos& postDelPos,
-                                  const Lines& preDelLines, const Range& range) const {
+                                  const Lines& preDelLines, const CharRange& range) const {
+    assert(!range.spansMultiple() || range.end.col > 0);
+    // Cross-line char ranges that end exactly at a line boundary should already
+    // have been kept as CharLineRange / LineCharRange by the typed range split.
     int totalLines = static_cast<int>(postDelLines.size());
     int cursorLine = postDelPos.line;
 
-    bool rangeEndsAtLineEnd = false;
-    if (range.isValid() && !range.isEmpty()) {
-      if (range.end.col > 0) {
-        rangeEndsAtLineEnd =
-            range.end.col >= static_cast<int>(preDelLines[range.end.line].size());
-      } else if (range.end.line > 0) {
-        // Half-open end at col 0 means range already consumed the previous line
-        // through its end.
-        rangeEndsAtLineEnd = true;
-      }
-    }
+    bool rangeEndsAtLineEnd = range.isValid()
+        && !range.isEmpty()
+        && range.end.col >= static_cast<int>(preDelLines[range.end.line].size());
 
     if (range.spansMultiple() &&
         range.begin.col == 0 &&
@@ -561,6 +575,45 @@ struct ModePolicy<false> {
         totalLines++;
         cursorLine++;
       }
+    }
+
+    KeyedSequence prefix = deleteToChangeChar(sourceCmd);
+    prefix += buildCollapseSequence(totalLines, cursorLine);
+    return prefix;
+  }
+
+  KeyedSequence buildChangePrefix(const SequenceBinding& sourceCmd,
+                                  const Lines& postDelLines, const CursorPos& postDelPos,
+                                  const Lines& preDelLines, const CharLineRange& range) const {
+    int totalLines = static_cast<int>(postDelLines.size());
+    int cursorLine = postDelPos.line;
+
+    if (range.begin.col == 0) {
+      int removedLines = range.lineCountTouched();
+      if (static_cast<int>(preDelLines.size()) - removedLines > 0) {
+        totalLines++;
+        cursorLine++;
+      }
+    }
+
+    KeyedSequence prefix = deleteToChangeChar(sourceCmd);
+    prefix += buildCollapseSequence(totalLines, cursorLine);
+    return prefix;
+  }
+
+  KeyedSequence buildChangePrefix(const SequenceBinding& sourceCmd,
+                                  const Lines& postDelLines, const CursorPos& postDelPos,
+                                  const Lines& preDelLines, const LineCharRange& range) const {
+    int totalLines = static_cast<int>(postDelLines.size());
+    int cursorLine = postDelPos.line;
+
+    bool rangeEndsAtLineEnd =
+        range.end.col >= static_cast<int>(preDelLines[range.end.line].size());
+    if (range.end.line > range.beginLine &&
+        rangeEndsAtLineEnd &&
+        static_cast<int>(preDelLines.size()) - range.lineCountTouched() > 0) {
+      totalLines++;
+      cursorLine++;
     }
 
     KeyedSequence prefix = deleteToChangeChar(sourceCmd);
@@ -642,7 +695,8 @@ struct ModePolicy<false> {
     }
   }
 
-  void onDeletionGoal(EditState& afterDel, const EditState& base, const Range& range,
+  template<class RangeT>
+  void onDeletionGoal(EditState& afterDel, const EditState& base, const RangeT& range,
                       const SequenceBinding& sourceCmd) {
     bool isDot = isDotRepeat(base, sourceCmd);
     KeyedSequence goalCompletionCmd = buildChangePrefix(sourceCmd,
@@ -652,42 +706,55 @@ struct ModePolicy<false> {
     emitEditGoal(afterDel, base, sourceCmd, goalCompletionCmd, typedVariants, isDot);
   }
 
-  void onLinewiseGoal(EditState& afterDel, const EditState& base, int line,
-                      const SequenceBinding& sourceCmd) {
+  void emitLinewiseChangeGoal(EditState& afterDel, const EditState& base,
+                              const SequenceBinding& sourceCmd, int line,
+                              int ccLineCount, const KeyedSequence& changeCmd,
+                              bool applyAutoindent) {
     bool isDot = isDotRepeat(base, sourceCmd);
-    int ccLineCount = static_cast<int>(base.getLines().size());
-    KeyedSequence changeCmd = deleteToChangeLine(sourceCmd, base.getLines()[line]);
-    bool isLinewise = false;
+    int autoindentLen = 0;
     if constexpr (VimOptions::autoindent()) {
-      isLinewise = (changeCmd.seq.view() != "0C");
+      if (applyAutoindent) {
+        autoindentLen = leadingSpaceCount(base.getLines()[line]);
+      }
     }
-    int autoindentLen = isLinewise ? leadingSpaceCount(base.getLines()[line]) : 0;
-    bool needsCollapse = ccLineCount > 1;
 
     KeyedSequence changePrefix = changeCmd;
     bool useAfterIndent = false;
-    // Collapse BS×cursorLine + Del×rest. Only BS interacts with autoindent.
-    bool bsInCollapse = needsCollapse && line > 0;
-    if (isLinewise && !bsInCollapse) {
-      // Safe: no BS in collapse. Adjust autoindent to goal indent.
-      changePrefix += computeIndentAdjustment(autoindentLen, goalFirstIndentLen);
-      changePrefix += buildCollapseSequence(ccLineCount, line);
-      useAfterIndent = goalFirstIndentLen > 0;
-    } else if (isLinewise && bsInCollapse) {
-      // BS in collapse: account for autoindent in BS count.
-      // bsCountForIndent(x, 0, sw) always succeeds (0 is always a sw boundary).
-      int bsClear = autoindentLen > 0 ? bsCountForIndent(autoindentLen, 0) : 0;
-      changePrefix.append(KeyedSequence::BS, bsClear + line);
-      changePrefix.append(KeyedSequence::Del, ccLineCount - 1 - line);
+    bool bsInCollapse = (ccLineCount > 1 && line > 0);
+    if constexpr (VimOptions::autoindent()) {
+      if (applyAutoindent && !bsInCollapse) {
+        changePrefix += computeIndentAdjustment(autoindentLen, goalFirstIndentLen);
+        changePrefix += buildCollapseSequence(ccLineCount, line);
+        useAfterIndent = goalFirstIndentLen > 0;
+      } else if (applyAutoindent && bsInCollapse) {
+        int bsClear = autoindentLen > 0 ? bsCountForIndent(autoindentLen, 0) : 0;
+        changePrefix.append(KeyedSequence::BS, bsClear + line);
+        changePrefix.append(KeyedSequence::Del, ccLineCount - 1 - line);
+      } else {
+        changePrefix += buildCollapseSequence(ccLineCount, line);
+      }
     } else {
       changePrefix += buildCollapseSequence(ccLineCount, line);
     }
 
     const auto& suffixTyped = useAfterIndent ? typedAfterIndent : typed;
     const auto& suffixEffort = useAfterIndent ? afterIndentEffort : typedEffort;
-    // Dot path always uses full typed content because ".i" does not autoindent.
     TypedGoalVariants typedVariants{{suffixTyped, suffixEffort}, {typed, typedEffort}};
     emitEditGoal(afterDel, base, sourceCmd, changePrefix, typedVariants, isDot);
+  }
+
+  void onLinewiseGoal(EditState& afterDel, const EditState& base, LineRange range,
+                      const SequenceBinding& sourceCmd) {
+    int line = range.beginLine;
+    int lineCount = range.endLine - range.beginLine;
+    int ccLineCount = static_cast<int>(base.getLines().size()) - lineCount + 1;
+    KeyedSequence changeCmd = deleteToChangeLine(sourceCmd, base.getLines()[line]);
+    bool applyAutoindent = false;
+    if constexpr (VimOptions::autoindent()) {
+      applyAutoindent = (changeCmd.seq.view() != "0C");
+    }
+    emitLinewiseChangeGoal(afterDel, base, sourceCmd, line, ccLineCount,
+                           changeCmd, applyAutoindent);
   }
 
   void onJoinGoal(EditState& afterJn, const EditState& base,
@@ -705,42 +772,11 @@ struct ModePolicy<false> {
 
   void onCountedLinewiseGoal(EditState& afterDel, const EditState& base,
                              LineRange range, const SequenceBinding& sourceCmd) {
-    bool isDot = isDotRepeat(base, sourceCmd);
+    int line = range.beginLine;
     int lineCount = range.endLine - range.beginLine;
     int ccLineCount = static_cast<int>(base.getLines().size()) - lineCount + 1;
-    KeyedSequence changeCmd = deleteToChangeLine(sourceCmd, base.getLines()[range.beginLine]);
-    // Counted linewise changes ({n}cc, cj, ck) are always linewise — autoindent applies
-    int autoindentLen = 0;
-    if constexpr (VimOptions::autoindent()) {
-      autoindentLen = leadingSpaceCount(base.getLines()[range.beginLine]);
-    }
-    bool needsCollapse = ccLineCount > 1;
-
-    KeyedSequence changePrefix = changeCmd;
-    bool useAfterIndent = false;
-    // Collapse BS×cursorLine + Del×rest. Only BS interacts with autoindent.
-    bool bsInCollapse = needsCollapse && range.beginLine > 0;
-    if constexpr (VimOptions::autoindent()) {
-      if (!bsInCollapse) {
-        // Safe: no BS in collapse. Adjust autoindent to goal indent.
-        changePrefix += computeIndentAdjustment(autoindentLen, goalFirstIndentLen);
-        changePrefix += buildCollapseSequence(ccLineCount, range.beginLine);
-        useAfterIndent = goalFirstIndentLen > 0;
-      } else {
-        // BS in collapse: account for autoindent in BS count.
-        int bsClear = autoindentLen > 0 ? bsCountForIndent(autoindentLen, 0) : 0;
-        changePrefix.append(KeyedSequence::BS, bsClear + range.beginLine);
-        changePrefix.append(KeyedSequence::Del, ccLineCount - 1 - range.beginLine);
-      }
-    } else {
-      changePrefix += buildCollapseSequence(ccLineCount, range.beginLine);
-    }
-
-    const auto& suffixTyped = useAfterIndent ? typedAfterIndent : typed;
-    const auto& suffixEffort = useAfterIndent ? afterIndentEffort : typedEffort;
-    // Dot path always uses full typed content because ".i" does not autoindent.
-    TypedGoalVariants typedVariants{{suffixTyped, suffixEffort}, {typed, typedEffort}};
-    emitEditGoal(afterDel, base, sourceCmd, changePrefix, typedVariants, isDot);
+    KeyedSequence changeCmd = deleteToChangeLine(sourceCmd, base.getLines()[line]);
+    emitLinewiseChangeGoal(afterDel, base, sourceCmd, line, ccLineCount, changeCmd, true);
   }
 
   void onCountedJoinGoal(EditState& afterJn, const EditState& base,
@@ -919,9 +955,9 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
   // ---- Handlers ----
 
   // Deletion handler
-  auto exploreDeletion = [&](const EditState &base, const Range &range,
-                             const SequenceBinding& sourceCmd) {
-    EditState afterDel = base.afterDeletion(range);
+  auto exploreTypedDeletion = [&](const EditState& base, const auto& range,
+                                  const SequenceBinding& sourceCmd) {
+    EditState afterDel = applyDeletionTransition(base, range, sourceCmd.base.seq.view());
     const Lines &lines = afterDel.getLines();
 
     if (isGoalReached(lines)) {
@@ -934,10 +970,10 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
   };
 
   // Linewise handler
-  auto exploreLinewise = [&](const EditState &base, int line,
+  auto exploreLinewise = [&](const EditState &base, LineRange range,
                              const SequenceBinding& sourceCmd) {
     bool hasLinesBelow = editBoundary.hasLinesBelow();
-    EditState afterDel = base.afterLinewiseDeletion(line, hasLinesBelow);
+    EditState afterDel = base.afterMultiLinewiseDeletion(range, hasLinesBelow);
     const Lines &lines = afterDel.getLines();
 
     // Linewise delete can land one line below effective lines when hasLinesBelow=true.
@@ -953,7 +989,7 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
           return;
         }
       }
-      mode.onLinewiseGoal(afterDel, base, line, sourceCmd);
+      mode.onLinewiseGoal(afterDel, base, range, sourceCmd);
       return;
     }
 
@@ -1051,8 +1087,14 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
 
     // Boundary region: cursor is in prefix/suffix — only escape motions
     // and safe backward word edits from first suffix col.
-    auto deletionCb = [&](const Range& range, const SequenceBinding& sourceCmd) {
-      exploreDeletion(s, range, sourceCmd);
+    auto deletionCb = [&](const CharRange& range, const SequenceBinding& sourceCmd) {
+      exploreTypedDeletion(s, range, sourceCmd);
+    };
+    auto charLineDeletionCb = [&](const CharLineRange& range, const SequenceBinding& sourceCmd) {
+      exploreTypedDeletion(s, range, sourceCmd);
+    };
+    auto lineCharDeletionCb = [&](const LineCharRange& range, const SequenceBinding& sourceCmd) {
+      exploreTypedDeletion(s, range, sourceCmd);
     };
     auto motionCb = [&](const CursorPos& newPos, const SequenceBinding& motionCmd) {
       assert(motionCmd.count == 0 && "Boundary motions should not carry counts");
@@ -1072,8 +1114,10 @@ EditResult EditOptimizer::optimizeImpl(const Lines &initialLines, const Lines &g
     ctx.exploreAllDeletions(
       s,
       deletionCb,
-      [&](int line, const SequenceBinding& sourceCmd) {
-        exploreLinewise(s, line, sourceCmd);
+      charLineDeletionCb,
+      lineCharDeletionCb,
+      [&](LineRange range, const SequenceBinding& sourceCmd) {
+        exploreLinewise(s, range, sourceCmd);
       },
       [&](bool addSpace, const SequenceBinding& sourceCmd) {
         exploreJoin(s, addSpace, sourceCmd);
@@ -1118,12 +1162,11 @@ EditOptimizer::optimizeEdit(
     int bufferBeginLine, int bufferBeginCol, CursorPos goalPos) {
   assert(initialLines != goalLines);
   assert(!initialLines.empty());
+  params.assertValidCountRepeatBounds();
   bool pureDeletionGoal = goalLines.empty() ||
                           (goalLines.size() == 1 && goalLines[0].empty());
   assert(!pureDeletionGoal &&
          "optimizeEdit does not accept empty goalLines; use optimizePureDeletion for pure deletions");
-  params.normalizeCountRepeatBounds();
-
   return optimizeImpl<false>(initialLines, goalLines, editBoundary, params,
                              bufferBeginLine, bufferBeginCol, goalPos);
 }
@@ -1131,12 +1174,12 @@ EditOptimizer::optimizeEdit(
 EditResult EditOptimizer::optimizePureDeletion(
     const Lines& initialLines,
     EditBoundary editBoundary,
-    EditOptimizerParams params,
-    int bufferBeginLine,
-    int bufferBeginCol,
-    CursorPos goalPos) {
+  EditOptimizerParams params,
+  int bufferBeginLine,
+  int bufferBeginCol,
+  CursorPos goalPos) {
   assert(!initialLines.empty());
-  params.normalizeCountRepeatBounds();
+  params.assertValidCountRepeatBounds();
   return optimizeImpl<true>(
       initialLines, Lines{}, editBoundary, params,
       bufferBeginLine, bufferBeginCol, goalPos);

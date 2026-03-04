@@ -17,30 +17,50 @@ export const rootRoute = createRootRoute({
   component: RootLayout,
 });
 
+export interface BranchEntry {
+  name: string;
+  safeName: string;
+  url: string;
+  updatedAt: string;
+}
+
 export interface HomeLoaderData {
   optimizers: {
     slug: OptimizerSlug;
     data: BenchmarkData;
   }[];
+  branches: BranchEntry[];
 }
 
 export const homeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   loader: async (): Promise<HomeLoaderData> => {
-    const results = await Promise.all(
-      VALID_OPTIMIZERS.map(async (slug) => {
+    const [results, branches] = await Promise.all([
+      Promise.all(
+        VALID_OPTIMIZERS.map(async (slug) => {
+          try {
+            const res = await fetch(`${base}${slug}/data.json?_=${Date.now()}`);
+            if (!res.ok) return null;
+            const data: BenchmarkData = await res.json();
+            return { slug, data };
+          } catch {
+            return null;
+          }
+        }),
+      ),
+      (async (): Promise<BranchEntry[]> => {
         try {
-          const res = await fetch(`${base}${slug}/data.json?_=${Date.now()}`);
-          if (!res.ok) return null;
-          const data: BenchmarkData = await res.json();
-          return { slug, data };
+          const res = await fetch(`${base}branches.json?_=${Date.now()}`);
+          if (!res.ok) return [];
+          const json = await res.json();
+          return json.branches ?? [];
         } catch {
-          return null;
+          return [];
         }
-      }),
-    );
-    return { optimizers: results.filter((r) => r !== null) };
+      })(),
+    ]);
+    return { optimizers: results.filter((r) => r !== null), branches };
   },
   component: HomePage,
 });

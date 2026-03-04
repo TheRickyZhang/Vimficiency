@@ -5,9 +5,11 @@
 #include <vector>
 
 #include "Types/NavContext.h"
+#include "Types/CharLineRange.h"
+#include "Types/LineCharRange.h"
 #include "Types/Mode.h"
 #include "Types/CursorPos.h"
-#include "Types/Range.h"
+#include "Types/CharRange.h"
 #include "Types/Lines.h"
 
 // Parsed edit (operator + motion/text-object, or single-key command)
@@ -30,18 +32,24 @@ public:
 namespace Edit {
 
 // -----------------------------------------------------------------------------
-// Operator + Range operations (d{range}, c{range}, y{range})
-// Called directly with a pre-computed Range from motion or text object.
+// Operator + CharRange operations (d{range}, c{range}, y{range})
+// Called directly with a pre-computed CharRange from motion or text object.
 // -----------------------------------------------------------------------------
 
 // d{range} - delete range (Normal mode only)
-void deleteRange(Lines& lines, CursorPos& pos, Mode mode, const Range& range);
+void deleteRange(Lines& lines, CursorPos& pos, Mode mode, const CharRange& range);
+void deleteRange(Lines& lines, CursorPos& pos, Mode mode, const CharLineRange& range);
+void deleteRange(Lines& lines, CursorPos& pos, Mode mode, const LineCharRange& range);
 
 // c{range} - change range (Normal -> Insert)
-void changeRange(Lines& lines, CursorPos& pos, Mode& mode, const Range& range);
+void changeRange(Lines& lines, CursorPos& pos, Mode& mode, const CharRange& range);
+void changeRange(Lines& lines, CursorPos& pos, Mode& mode, const CharLineRange& range);
+void changeRange(Lines& lines, CursorPos& pos, Mode& mode, const LineCharRange& range);
 
 // y{range} - yank range (Normal mode only, no buffer change)
-void yankRange(Lines& lines, CursorPos& pos, Mode mode, const Range& range);
+void yankRange(Lines& lines, CursorPos& pos, Mode mode, const CharRange& range);
+void yankRange(Lines& lines, CursorPos& pos, Mode mode, const CharLineRange& range);
+void yankRange(Lines& lines, CursorPos& pos, Mode mode, const LineCharRange& range);
 
 // Edit dispatcher
 // Routes parsed edit commands to appropriate operations.
