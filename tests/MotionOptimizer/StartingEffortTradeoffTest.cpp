@@ -22,6 +22,7 @@
 
 #include "Keyboard/Config.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
+#include "Optimizer/MotionOptimizer/MotionRangeConversion.h"
 #include "Types/Lines.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
@@ -90,7 +91,7 @@ TEST_F(StartingEffortTradeoffTest, SmokeTest) {
 
     auto result = opt.optimizeToRange(
       scenario.lines, scenario.initialPos,
-      CharRange(scenario.rangeBegin, scenario.rangeEnd),
+      toMotionInterval(scenario.lines, CharRange(scenario.rangeBegin, scenario.rangeEnd)),
       params
     );
 

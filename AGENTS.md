@@ -57,6 +57,7 @@ Always use tests/Debug to investigate complex issues through direct, side-by-sid
 ## Design Principles
 - **Correctness first, then speed.** The EditOptimizer uses correct A* goal recording: goal states go through the priority queue and are recorded at pop time, guaranteeing lowest-cost results. This costs ~2x vs the old "record first-found" approach but eliminates suboptimal results from inadmissible heuristic ordering. The heuristic is inadmissible (overestimates), so pop-time recording is necessary for correctness. Accept this cost; do not regress to eager first-found recording.
 - We use [begin, end) for half-open intervals, and \[first, last\] for inclusive intervals, such as beginPos/goalPos, firstPos/lastPos
+- Motion targets are inclusive (`CharInterval`), while edit/diff ranges remain half-open (`CharRange`). Convert at boundaries only; do not mix semantics inside MotionOptimizer internals.
 - Command parsing functions are only use for arbitrarily parsing commands. For all searches, we should know the exact actions to do for minimal wasted work.
 - Always use TypeScript over JavaScript for website actions. We generally prefer more modern technologies and libraries where possible.
 

@@ -2,8 +2,7 @@
 
 #include "Types/CursorPos.h"
 
-// A character-wise region in the buffer with a concrete exclusive end.
-// Half-open: [begin, end).
+// Character-wise half-open: [begin, end).
 struct CharRange {
   CursorPos begin;
   CursorPos end;
@@ -28,6 +27,10 @@ struct CharRange {
 
   bool isEmpty() const {
     return begin.line == end.line && begin.col == end.col;
+  }
+
+  bool containsPos(const CursorPos& p) const {
+    return begin <= p && p < end;
   }
 
   int size() const {

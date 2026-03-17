@@ -3,6 +3,13 @@
 - Can prune explored motions based on direction
 - Builds an index over text objects for efficiency, as we guarantee the buffer contents stay the same. Thus, we can easily search what {cnt}w will be closest to goal.
 
+## Range Semantics Contract
+
+- Motion search targets are inclusive intervals: `[first, last]` (`CharInterval`).
+- Edit/diff code uses half-open ranges: `[begin, end)` (`CharRange`).
+- Conversion from half-open to inclusive happens only at the boundary before invoking `MotionOptimizer` (via `toMotionInterval`).
+- `MotionOptimizer` internals do not operate on half-open target ranges.
+
 
 ### Direction-Based Motion Exploration (6-Class Model)
 
@@ -42,4 +49,3 @@ emitMotion(base, "$", {pos.line, dollarCol, TARGETCOL_EOL}, ...);
 - We first process the entire buffer once with crossing motions (as they aren't easily predictable) to determine where the "anchor" points are.
 - Then, simulating {n}{motion} becomes finding the nth anchor from this position.
 - We use this to find the precise counts that will land us before/after our goal.
-

@@ -2,8 +2,7 @@
 
 #include "Types/CursorPos.h"
 
-// A character-wise region that ends at the boundary before endLine.
-// Half-open: [begin, line(endLine)).
+// Half-open: [begin, line(end)).
 struct CharLineRange {
   CursorPos begin;
   int endLine;

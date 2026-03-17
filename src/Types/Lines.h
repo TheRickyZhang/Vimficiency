@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "Types/CharRange.h"
+#include "Types/CharInterval.h"
 #include "Types/CharLineRange.h"
 #include "Types/LineCharRange.h"
 #include "Types/CursorPos.h"
@@ -146,6 +147,19 @@ struct Lines final : std::vector<Line> {
 
   int spanSize(const CharRange& range) const {
     return spanSize(range.begin, range.end);
+  }
+
+  int spanSize(const CharInterval& interval) const {
+    assert(interval.isValid());
+    if (interval.first.line == interval.last.line) {
+      return interval.last.col - interval.first.col + 1;
+    }
+    int count = std::max(1, static_cast<int>(data()[interval.first.line].size()) - interval.first.col);
+    for (int i = interval.first.line + 1; i < interval.last.line; i++) {
+      count += std::max(1, static_cast<int>(data()[i].size()));
+    }
+    count += interval.last.col + 1;
+    return count;
   }
 
   int spanSize(const CharLineRange& range) const {

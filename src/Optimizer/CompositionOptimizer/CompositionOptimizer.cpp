@@ -7,6 +7,7 @@
 #include "CompositionSearchContext.h"
 #include "Optimizer/BuildTypedCommands.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
+#include "Optimizer/MotionOptimizer/MotionRangeConversion.h"
 
 #include "Interpreter/SequenceParser.h"
 #include "Keyboard/KeyedSequence.h"
@@ -174,7 +175,8 @@ CompositionResult CompositionOptimizer::optimize(
           int lineOffset = 0;
           bool hasBufferIndex = ctx.tryGetBufferIndex(
               editsCompleted, beginLine, endLine, bufferIndex, lineOffset);
-          CharRange motionRange(localRangeBegin, localRangeEnd);
+          CharInterval motionRange = toMotionInterval(
+              subset, CharRange(localRangeBegin, localRangeEnd));
           auto motionResult = hasBufferIndex
               ? motionOptimizer.optimizeToRange(
                     subset, localPos, motionRange,
@@ -372,29 +374,16 @@ CompositionResult CompositionOptimizer::optimize(
       int lineOffset = 0;
       bool hasBufferIndex = ctx.tryGetBufferIndex(
           editsCompleted, beginLine, endLine, bufferIndex, lineOffset);
-      auto runMotionToRange = [&](const auto& range) -> RangeMotionResult {
-        if (hasBufferIndex) {
-          return motionOptimizer.optimizeToRange(
-              subset, localPos, range, rangeParams2, "", subsetBoundary,
-              navigationContext, *bufferIndex, lineOffset);
-        }
-        return motionOptimizer.optimizeToRange(
-            subset, localPos, range, rangeParams2, "", subsetBoundary, navigationContext);
-      };
-      bool endsAtLineBoundary =
-          nextEdit.hasDeletedContent()
-          && nextEdit.endPos.line > nextEdit.beginPos.line
-          && nextEdit.endPos.col == 0;
-      bool startsAtLineBoundary =
-          nextEdit.hasDeletedContent()
-          && !endsAtLineBoundary
-          && nextEdit.beginPos.col == 0
-          && nextEdit.endPos.line > nextEdit.beginPos.line;
-      RangeMotionResult motionResult = endsAtLineBoundary
-          ? runMotionToRange(CharLineRange(localRangeBegin, localRangeEnd.line))
-          : startsAtLineBoundary
-              ? runMotionToRange(LineCharRange(localRangeBegin.line, localRangeEnd))
-              : runMotionToRange(CharRange(localRangeBegin, localRangeEnd));
+      CharInterval motionRange2 = toMotionInterval(
+          subset, CharRange(localRangeBegin, localRangeEnd));
+      RangeMotionResult motionResult = hasBufferIndex
+          ? motionOptimizer.optimizeToRange(
+                subset, localPos, motionRange2,
+                rangeParams2, "", subsetBoundary,
+                navigationContext, *bufferIndex, lineOffset)
+          : motionOptimizer.optimizeToRange(
+                subset, localPos, motionRange2,
+                rangeParams2, "", subsetBoundary, navigationContext);
       ctx.motionNodesExplored += motionResult.getStats().nodesExplored;
 
       debug("  motion results:", static_cast<int>(motionResult.getResults().size()));
@@ -441,7 +430,8 @@ CompositionResult CompositionOptimizer::optimize(
         int jLineOffset = 0;
         bool hasJBufferIndex = ctx.tryGetBufferIndex(
             editsCompleted, jBeginLine, jEndLine, jBufferIndex, jLineOffset);
-        CharRange jMotionRange(jLocalFirst, jLocalEnd);
+        CharInterval jMotionRange = toMotionInterval(
+            jSubset, CharRange(jLocalFirst, jLocalEnd));
         auto jMotionResult = hasJBufferIndex
             ? motionOptimizer.optimizeToRange(
                   jSubset, jLocalPos, jMotionRange,

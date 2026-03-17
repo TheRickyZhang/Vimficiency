@@ -37,22 +37,23 @@ These should be suffixes
 
 ### Practical rule
 
-- Use `Begin` / `End` at API boundaries and storage boundaries
-- Use `First` / `Last` only when an algorithm genuinely needs inclusive endpoints
+- Use `Begin` / `End` for half-open ranges in edit/diff and text-slicing semantics
+- Use `First` / `Last` for inclusive motion geometry and landing semantics
 
 Common pattern:
 
-- accept `[rangeBegin, rangeEnd)` from callers
-- convert internally to `rangeFirst` / `rangeLast` for distance or classification logic
+- edit/diff modules produce half-open `[rangeBegin, rangeEnd)`
+- motion modules consume inclusive `[rangeFirst, rangeLast]`
+- convert once at the module boundary (half-open -> inclusive), not inside motion internals
 
 ### Point ranges
 
-A single concrete position is often represented as a degenerate half-open range:
+A single concrete motion target is represented as a degenerate inclusive interval:
 
 - point target at `goalPos`
-- converted to `[goalPos, nextPos)`
+- represented as `[goalPos, goalPos]`
 
-This lets one range-aware implementation handle both single-goal and range-goal search.
+This keeps motion semantics uniform for single-goal and range-goal search.
 
 ## Position and Coordinate Spaces
 
@@ -138,6 +139,11 @@ These terms are intentionally different and should not be collapsed.
 - It is the acceptable sink region for a motion search
 
 The target range is a success condition, not a movement clamp.
+
+For `MotionOptimizer` specifically:
+
+- public target type is inclusive (`CharInterval`, `[first, last]`)
+- half-open edit ranges (`CharRange`) must be converted at the composition/edit boundary
 
 ### Boundary
 

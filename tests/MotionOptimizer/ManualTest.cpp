@@ -15,6 +15,7 @@
 #include "Keyboard/Config.h"
 #include "Boundary/MotionBoundary.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
+#include "Optimizer/MotionOptimizer/MotionRangeConversion.h"
 #include "Effort/RunningEffort.h"
 #include "Session/Snapshot.h"
 #include "Interpreter/MotionInterpreter.h"
@@ -68,7 +69,8 @@ protected:
     MotionOptimizer opt(config);
     MotionBoundary boundary;
     // allowMultiplePerPosition=true for tests to see all paths
-    return opt.optimizeToRange(lines, start, CharRange(rangeBegin, rangeEnd),
+    return opt.optimizeToRange(lines, start,
+                               toMotionInterval(lines, CharRange(rangeBegin, rangeEnd)),
                                MotionOptimizerRangeParams{}
                                    .withMaxResults(maxResults)
                                    .withMaxNodesPopped(20000)
@@ -98,6 +100,40 @@ TEST_F(MotionOptimizer_ManualTest, HorizontalMotions) {
   // f motions may not be explored within result limit depending on search order
   EXPECT_TRUE(contains_all(results, {user_seq, "wE"}))
       << "Missing expected sequences";
+}
+
+TEST_F(MotionOptimizer_ManualTest, ForwardStart_CanUseBackwardCountedVerticalAfterOvershoot) {
+  Lines lines = {"a", "b", "c", "d", "e", "f", "g"};
+  CursorPos start(0, 0);
+  CursorPos end(2, 0);
+
+  vector<KeyAdjustment> adjustments = {
+      {Key::Key_J, 12.0},
+      {Key::Key_K, 1.0},
+      {Key::Key_G, 0.1},
+      {Key::Key_Shift, 0.1},
+  };
+
+  // Expensive direct "jj", cheap overshoot + return "G4k"
+  vector<Result> results = runOptimizer(lines, start, end, "jjjjjjjjjj", adjustments);
+  EXPECT_TRUE(contains_all(results, {"G4k"})) << "Expected backward counted vertical after overshoot";
+}
+
+TEST_F(MotionOptimizer_ManualTest, BackwardStart_CanUseForwardCountedVerticalAfterOvershoot) {
+  Lines lines = {"a", "b", "c", "d", "e", "f", "g"};
+  CursorPos start(6, 0);
+  CursorPos end(4, 0);
+
+  vector<KeyAdjustment> adjustments = {
+      {Key::Key_K, 12.0},
+      {Key::Key_J, 1.0},
+      {Key::Key_G, 0.1},
+      {Key::Key_Shift, 0.1},
+  };
+
+  // Expensive direct "kk", cheap overshoot + return "gg4j"
+  vector<Result> results = runOptimizer(lines, start, end, "kkkkkkkkkk", adjustments);
+  EXPECT_TRUE(contains_all(results, {"gg4j"})) << "Expected forward counted vertical after overshoot";
 }
 
 

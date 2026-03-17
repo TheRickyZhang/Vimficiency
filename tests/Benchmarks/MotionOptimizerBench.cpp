@@ -15,6 +15,7 @@
 #include "Keyboard/Config.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizerParams.h"
+#include "Optimizer/MotionOptimizer/MotionRangeConversion.h"
 #include "Utils/RandomGeneration.h"
 
 using namespace std;
@@ -117,7 +118,8 @@ static void runRangeWithParams(const RangeBenchmarkSetup& cfg,
                                MotionSearchStats& outStats) {
   MotionOptimizer opt(benchConfig);
   auto result = opt.optimizeToRange(
-      cfg.lines, cfg.initialPos, CharRange(cfg.rangeBegin, cfg.rangeEnd),
+      cfg.lines, cfg.initialPos,
+      toMotionInterval(cfg.lines, CharRange(cfg.rangeBegin, cfg.rangeEnd)),
       params, "", cfg.boundary);
   accumulateStats(outStats, result.getStats());
 }

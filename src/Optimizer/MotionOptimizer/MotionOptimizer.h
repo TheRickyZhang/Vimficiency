@@ -13,9 +13,7 @@
 
 #include "Boundary/MotionBoundary.h"
 #include "Keyboard/Config.h"
-#include "Types/CharLineRange.h"
-#include "Types/LineCharRange.h"
-#include "Types/CharRange.h"
+#include "Types/CharInterval.h"
 #include "Types/NavContext.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
@@ -47,124 +45,36 @@ struct MotionOptimizer {
 
   MotionOptimizer(const Config& config) : config(config) {}
 
-  // Returns results and search statistics
-  // ~ O(n^2)
-  // firstPos/lastPos are inclusive endpoints; direction is inferred internally.
+  // For single position goal
   MotionResult optimize(
     // Core information
-    const Lines& lines,
-    const CursorPos& initialPos,
-    const CursorPos& goalPos,
-
+    const Lines& lines, const CursorPos& initialPos, const CursorPos& goalPos,
     // Search tuning (can adjust with designated initializers)
-    MotionOptimizerParams params = {},
-    std::string_view userSequence = "", // What the user typed, which informs stopping point.
-
+    MotionOptimizerParams params = {}, std::string_view userSequence = "",
     // Continuation from broader context
     const MotionBoundary& parentBoundary = MotionBoundary(),
-
     // Niche settings
     const NavContext& navigationContext = NavContext()
   );
 
-
-  // Multi-sink movement optimization: find paths to any position in the target half-open range.
-  // Returns up to params.maxResults unique end positions (or total paths if allowMultiplePerPosition).
-  // Precondition: initialPos must NOT be in the target range (nothing to optimize)
-
-  // Convenience overload that builds a local BufferIndex for this call.
+  // Multi-sink movement optimization: find paths to any position in the target interval.
+  // Interval is character-wise [first, last] (inclusive).
+  // If caller data is half-open [begin, end), convert at call boundary
+  // before invoking this API.
+  // Precondition: initialPos must NOT be in the target interval.
   RangeMotionResult optimizeToRange(
-    const Lines& lines,
-    const CursorPos& initialPos,
-    const CharRange& range,
-    MotionOptimizerRangeParams params = {},
-    std::string_view userSequence = "",
+    const Lines& lines, const CursorPos& initialPos, const CharInterval& range,
+    MotionOptimizerRangeParams params = {}, std::string_view userSequence = "",
     const MotionBoundary& boundary = MotionBoundary(),
     const NavContext& navigationContext = NavContext()
   );
 
   RangeMotionResult optimizeToRange(
-    const Lines& lines,
-    const CursorPos& initialPos,
-    const CharLineRange& range,
-    MotionOptimizerRangeParams params = {},
-    std::string_view userSequence = "",
-    const MotionBoundary& boundary = MotionBoundary(),
-    const NavContext& navigationContext = NavContext()
-  );
-
-  RangeMotionResult optimizeToRange(
-    const Lines& lines,
-    const CursorPos& initialPos,
-    const LineCharRange& range,
-    MotionOptimizerRangeParams params = {},
-    std::string_view userSequence = "",
-    const MotionBoundary& boundary = MotionBoundary(),
-    const NavContext& navigationContext = NavContext()
-  );
-
-  // Overload with caller-provided BufferIndex and coordinate offset.
-  RangeMotionResult optimizeToRange(
-    const Lines& lines,
-    const CursorPos& initialPos,
-    const CharRange& range,
-    MotionOptimizerRangeParams params,
-    std::string_view userSequence,
+    const Lines& lines, const CursorPos& initialPos, const CharInterval& range,
+    MotionOptimizerRangeParams params, std::string_view userSequence,
     const MotionBoundary& boundary,
     const NavContext& navigationContext,
-    const BufferIndex& bufferIndex,
-    int lineOffset
+    const BufferIndex& bufferIndex, int lineOffset
   );
 
-  RangeMotionResult optimizeToRange(
-    const Lines& lines,
-    const CursorPos& initialPos,
-    const CharLineRange& range,
-    MotionOptimizerRangeParams params,
-    std::string_view userSequence,
-    const MotionBoundary& boundary,
-    const NavContext& navigationContext,
-    const BufferIndex& bufferIndex,
-    int lineOffset
-  );
-
-  RangeMotionResult optimizeToRange(
-    const Lines& lines,
-    const CursorPos& initialPos,
-    const LineCharRange& range,
-    MotionOptimizerRangeParams params,
-    std::string_view userSequence,
-    const MotionBoundary& boundary,
-    const NavContext& navigationContext,
-    const BufferIndex& bufferIndex,
-    int lineOffset
-  );
-
-private:
-  // Templated implementation: single-goal search
-  // initialPos is the cursor origin, goalPos is the inclusive landing target.
-  // Internally converts goalPos to half-open range for MotionExplorer.
-  template<bool Forward>
-  MotionResult optimizeImpl(
-    const Lines& lines,
-    const CursorPos& initialPos,
-    const CursorPos& goalPos,
-    std::string_view userSequence,
-    const NavContext& navContext,
-    const MotionBoundary& boundary,
-    MotionOptimizerParams params
-  );
-
-  template<bool Forward, class RangeT>
-  RangeMotionResult optimizeToRangeImpl(
-    const Lines& lines,
-    const CursorPos& initialPos,
-    const RangeT& range,
-    std::string_view userSequence,
-    const NavContext& navContext,
-    const MotionBoundary& boundary,
-    MotionOptimizerRangeParams params,
-    const BufferIndex& bufferIndex,
-    int lineOffset
-  );
 };

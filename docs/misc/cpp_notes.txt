@@ -51,3 +51,4 @@ Interesting (maybe?) things that have come up:
 - std::to_chars really fast at transcription: unusaully locale-independent, non-owning and non-throwing
 - Restrictions on constexpr constructor usage
 - 16 byte rule for threshold on const& vs pass by value; remember that only long, pointer, and size_t went from 4 -> 8 bytes from 32 -> 64 bit architecture
+- begin(T) superset of T.begin() - method semantics with concepts

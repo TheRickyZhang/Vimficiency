@@ -8,10 +8,6 @@
 #include "Optimizer/GlobalRuntimeOptions.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Keyboard/ToKeys/MotionToKeys.h"
-#include "Types/CountPrefixLimits.h"
-#include "Types/CharLineRange.h"
-#include "Types/LineCharRange.h"
-#include "Types/CharRange.h"
 #include "VimCore/VimCore.h"
 #include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimEndpointUtils.h"
@@ -19,90 +15,21 @@
 
 // MotionExplorer encapsulates motion exploration logic for the optimizer.
 // Always operates in range mode: single-goal is a degenerate point range.
-//
-// Two usage modes:
-// 1. CharRange-goal (optimize / optimizeToRange): Uses rangeBegin/rangeEnd for range-aware exploration
-// 2. Lightweight: Uses exploreAllStandardMotions only, no directional methods
+// Range is always character-wise — cursor positions are char-level.
 class MotionExplorer {
-  enum class GoalRangeKind {
-    Char,
-    CharLine,
-    LineChar,
-  };
-
   MotionSearchContext& ctx;
   const BufferIndex& bufferIndex_;
   int bufferLineOffset_;
-  GoalRangeKind goalKind_;
-
-  // Goal range state — rangeFirst_/rangeLast_ are inclusive valid positions.
-  Pos rangeFirst_;
-  Pos rangeLast_;
-  CharRange charRange_;
-  CharLineRange charLineRange_;
-  LineCharRange lineCharRange_;
 
 public:
   void enqueueToGoalRange(MotionState&& newState) {
-    switch (goalKind_) {
-      case GoalRangeKind::Char:
-        ctx.exploreNewStateToRange(std::move(newState), charRange_);
-        return;
-      case GoalRangeKind::CharLine:
-        ctx.exploreNewStateToRange(std::move(newState), charLineRange_);
-        return;
-      case GoalRangeKind::LineChar:
-        ctx.exploreNewStateToRange(std::move(newState), lineCharRange_);
-        return;
-    }
+    ctx.exploreNewStateToRange(std::move(newState));
   }
 
   MotionExplorer(MotionSearchContext& ctx,
-                 const CharRange& range,
                  const BufferIndex& bufferIndex,
                  int lineOffset)
-      : ctx(ctx), bufferIndex_(bufferIndex), bufferLineOffset_(lineOffset),
-        goalKind_(GoalRangeKind::Char),
-        rangeFirst_(range.begin), charRange_(range),
-        charLineRange_(CHAR_LINE_RANGE_OUTSIDE_BOUNDARY),
-        lineCharRange_(LINE_CHAR_RANGE_OUTSIDE_BOUNDARY) {
-    rangeLast_ = ctx.lines.getPrevPos(range.end);
-    if (!rangeLast_.isValid()) {
-      rangeLast_ = rangeFirst_;
-    }
-  }
-
-  MotionExplorer(MotionSearchContext& ctx,
-                 const CharLineRange& range,
-                 const BufferIndex& bufferIndex,
-                 int lineOffset)
-      : ctx(ctx), bufferIndex_(bufferIndex), bufferLineOffset_(lineOffset),
-        goalKind_(GoalRangeKind::CharLine),
-        rangeFirst_(range.begin),
-        charRange_(CHAR_RANGE_OUTSIDE_BOUNDARY),
-        charLineRange_(range),
-        lineCharRange_(LINE_CHAR_RANGE_OUTSIDE_BOUNDARY) {
-    rangeLast_ = ctx.lines.getPrevPos(CursorPos(range.endLine, 0));
-    if (!rangeLast_.isValid()) {
-      rangeLast_ = rangeFirst_;
-    }
-  }
-
-  MotionExplorer(MotionSearchContext& ctx,
-                 const LineCharRange& range,
-                 const BufferIndex& bufferIndex,
-                 int lineOffset)
-      : ctx(ctx), bufferIndex_(bufferIndex), bufferLineOffset_(lineOffset),
-        goalKind_(GoalRangeKind::LineChar),
-        rangeFirst_(range.beginLine, 0),
-        charRange_(CHAR_RANGE_OUTSIDE_BOUNDARY),
-        charLineRange_(CHAR_LINE_RANGE_OUTSIDE_BOUNDARY),
-        lineCharRange_(range) {
-    rangeLast_ = ctx.lines.getPrevPos(range.end);
-    if (!rangeLast_.isValid()) {
-      rangeLast_ = rangeFirst_;
-    }
-  }
+      : ctx(ctx), bufferIndex_(bufferIndex), bufferLineOffset_(lineOffset) {}
 
   // Core emit helper - creates new state, applies motion, and queues for exploration.
   // Uses pre-computed effort from EffortBank via KSId.
@@ -110,7 +37,7 @@ public:
     const KeyedSequence& ks = KeyedSequence::byId(id);
     MotionState newState = base.afterMotion(ks, ctx.bank[id], endpoint, ctx.config);
 
-    newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeLast_));
+    newState.setCost(ctx.computePriorityToRange(newState));
     enqueueToGoalRange(std::move(newState));
   }
 
@@ -282,14 +209,14 @@ public:
     double penalty = runtimeCountPenalty<C>(in);
 
     MotionState newState = base.afterCountedMotion(baseMotion, cnt, newPos, ctx.config, penalty);
-    newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeLast_));
+    newState.setCost(ctx.computePriorityToRange(newState));
     enqueueToGoalRange(std::move(newState));
   }
 
   // F-motions with known column (internal helper)
   void exploreFMotion(const MotionState& base, const KeyedSequence& fMotion, int newcol) {
     MotionState newState = base.afterFMotion(fMotion, newcol, ctx.config);
-    newState.setCost(ctx.computePriorityToRange(newState, rangeFirst_, rangeLast_));
+    newState.setCost(ctx.computePriorityToRange(newState));
     enqueueToGoalRange(std::move(newState));
   }
 
@@ -300,12 +227,12 @@ public:
   template<bool Forward>
   void exploreFMotions(const MotionState& base) {
     CursorPos pos = base.getPos();
-    if (rangeFirst_.line != rangeLast_.line || pos.line != rangeFirst_.line) return;
+    if (ctx.rangeFirst.line != ctx.rangeLast.line || pos.line != ctx.rangeFirst.line) return;
 
     constexpr char firstMotion = Forward ? 'f' : 'F';
     constexpr char repeatMotion = ';';
 
-    int goalCol = Forward ? rangeLast_.col : rangeFirst_.col;
+    int goalCol = Forward ? ctx.rangeLast.col : ctx.rangeFirst.col;
     auto infos = VimCore::generateFMotions<Forward>(
         pos.col, goalCol, ctx.lines[pos.line], ctx.params.fMotionThreshold);
 
@@ -323,7 +250,7 @@ public:
   }
 
   // ==========================================================================
-  // CharRange-aware counted spec exploration (uses BufferIndex with coordinate conversion)
+  // Inclusive-target counted spec exploration (uses BufferIndex with coordinate conversion)
   // ==========================================================================
 
   template<bool Forward, LandingType LT, CountClass C, KSId ForwardKS, KSId BackwardKS>
@@ -338,8 +265,16 @@ public:
 
     // Convert local → global coordinates for BufferIndex query
     Pos globalPos(pos.line + off, pos.col);
-    Pos globalRangeFirst(rangeFirst_.line + off, rangeFirst_.col);
-    Pos globalRangeLast(rangeLast_.line + off, rangeLast_.col);
+    Pos globalRangeFirst(ctx.rangeFirst.line + off, ctx.rangeFirst.col);
+    Pos globalRangeLast(ctx.rangeLast.line + off, ctx.rangeLast.col);
+
+    // BufferIndex directional query requires state to be strictly outside range
+    // on the matching side.
+    if constexpr (Forward) {
+      if (!(globalPos < globalRangeFirst)) return;
+    } else {
+      if (!(globalPos > globalRangeLast)) return;
+    }
 
     auto results = bufferIndex_.getClosestInRange<Forward>(LT, globalPos, globalRangeFirst, globalRangeLast);
     for (const auto& r : results) {
@@ -429,16 +364,47 @@ public:
     }
   }
 
-  // Unified directional dispatch - call from the main optimization loop
+  // Counted/indexed motions (2w, 5j, fa;, etc.) - direction chosen per-state via goalSide()
   template<bool Forward>
-  void exploreDirectionalMotions(const MotionState& base, bool isSameLine) {
-    if (isSameLine) {
+  void exploreCountedMotionsImpl(const MotionState& base, bool canUseLineLocalMotions) {
+    if (canUseLineLocalMotions) {
       exploreFMotions<Forward>(base);
       exploreLineCountMotions<Forward>(base);
       exploreCountedHorizontalMotions<Forward>(base);
     }
     exploreGlobalCountMotions<Forward>(base);
     exploreCountedVerticalMotions<Forward>(base);
+  }
+
+  enum class GoalSide {
+    Before,
+    InRange,
+    After,
+  };
+
+  GoalSide goalSide(const CursorPos& pos) const {
+    if (pos < ctx.rangeFirst) return GoalSide::Before;
+    if (pos > ctx.rangeLast) return GoalSide::After;
+    return GoalSide::InRange;
+  }
+
+  bool canUseLineLocalMotions(const CursorPos& pos) const {
+    return pos.line == ctx.rangeFirst.line || pos.line == ctx.rangeLast.line;
+  }
+
+  void exploreCountedMotions(const MotionState& base) {
+    CursorPos pos = base.getPos();
+    GoalSide side = goalSide(pos);
+
+    // Goal states are handled by caller before exploration.
+    if (side == GoalSide::InRange) return;
+
+    bool lineLocal = canUseLineLocalMotions(pos);
+    if (side == GoalSide::Before) {
+      exploreCountedMotionsImpl<true>(base, lineLocal);
+    } else {
+      exploreCountedMotionsImpl<false>(base, lineLocal);
+    }
   }
 
   // ==========================================================================
@@ -492,7 +458,7 @@ public:
   // Directional standard motion exploration using range
   void exploreDirectionalStandardMotions(const MotionState& base) {
     CursorPos pos = base.getPos();
-    MotionClassMask m = classesForRange(pos, rangeFirst_, rangeLast_);
+    MotionClassMask m = classesForRange(pos, ctx.rangeFirst, ctx.rangeLast);
     exploreClasses(base, m);
   }
 
@@ -596,6 +562,4 @@ public:
   }
 
   // Goal range accessors
-  const Pos& getRangeFirst() const { return rangeFirst_; }
-  const Pos& getRangeLast() const { return rangeLast_; }
 };

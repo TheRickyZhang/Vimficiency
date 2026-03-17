@@ -9,9 +9,7 @@
 #include "Boundary/MotionBoundary.h"
 #include "Effort/EffortBank.h"
 #include "Types/NavContext.h"
-#include "Types/CharLineRange.h"
-#include "Types/LineCharRange.h"
-#include "Types/CharRange.h"
+#include "Types/CharInterval.h"
 #include "Types/CursorPos.h"
 #include "Optimizer/MotionOptimizer/MotionState.h"
 #include "Types/Pos.h"
@@ -34,6 +32,10 @@ struct MotionSearchContext {
   double effortWeight;
   double distanceWeight;
 
+  // Inclusive goal bounds.
+  Pos rangeFirst;
+  Pos rangeLast;
+
   // Search state
   using PriorityQueue = std::priority_queue<MotionState, std::vector<MotionState>, std::greater<MotionState>>;
   PriorityQueue pq;
@@ -47,13 +49,14 @@ struct MotionSearchContext {
   // Debug: optionally track explored states
   std::vector<ExploredState> exploredStates;
 
-  // Constructor
+  // Constructor - range is the inclusive target interval.
   MotionSearchContext(const Lines& lines,
                       const NavContext& navContext,
                       const MotionBoundary& boundary,
                       const MotionOptimizerParams& params,
                       const Config& config,
-                      double userEffort);
+                      double userEffort,
+                      const CharInterval& range);
 
   // ==========================================================================
   // Distance and priority computation
@@ -65,7 +68,6 @@ struct MotionSearchContext {
   }
 
   // Distance to closest point in range [rangeFirst, rangeLast] (both inclusive).
-  // CharRange endpoints are geometric (Pos); cursor pos needs targetCol for heuristic.
   double distanceToRange(CursorPos pos, Pos rangeFirst, Pos rangeLast) const {
     if (pos >= rangeFirst && pos <= rangeLast) {
       return 0.0;  // Inside range
@@ -84,9 +86,8 @@ struct MotionSearchContext {
     return computePriority(s.getEffort(), distanceToGoal(s.getPos(), goal));
   }
 
-  // Convenience: compute priority for range goal [rangeFirst, rangeLast] (both inclusive)
-  double computePriorityToRange(const MotionState& s, Pos rangeFirst,
-                                Pos rangeLast) const {
+  // Convenience: compute priority for range goal using precomputed bounds
+  double computePriorityToRange(const MotionState& s) const {
     return computePriority(
         s.getEffort(),
         distanceToRange(s.getPos(), rangeFirst, rangeLast));
@@ -100,10 +101,27 @@ struct MotionSearchContext {
   // goalKey: the goal position key (not cached to allow multiple results)
   void exploreNewState(MotionState&& state, const Pos& goalKey);
 
-  // Variants for range goals: positions in range are not cached.
-  void exploreNewStateToRange(MotionState&& state, const CharRange& range);
-  void exploreNewStateToRange(MotionState&& state, const CharLineRange& range);
-  void exploreNewStateToRange(MotionState&& state, const LineCharRange& range);
+  // Range goal variant: positions in range are not cached.
+  void exploreNewStateToRange(MotionState&& state) {
+    motionsEmitted++;
+    if (state.getEffort() > maxEffort) return;
+
+    double newCost = state.getCost();
+    const Pos newKey = state.getKey();
+    CursorPos pos = state.getPos();
+    auto it = costMap.find(newKey);
+    bool stateInRange = pos >= rangeFirst && pos <= rangeLast;
+
+    if (it == costMap.end()) {
+      if (!stateInRange) {
+        costMap.emplace(newKey, newCost);
+      }
+      pq.push(std::move(state));
+    } else if (newCost <= it->second) {
+      it->second = newCost;
+      pq.push(std::move(state));
+    }
+  }
 
   // Check if search should continue
   bool shouldContinue() const {
@@ -154,6 +172,19 @@ struct MotionSearchContext {
       stats.stopReason = SearchStopReason::MaxPopsReached;
     } else if (pq.empty()) {
       stats.stopReason = SearchStopReason::FullyExplored;
+    }
+    return stats;
+  }
+
+  // Range variant: also sets uniquePositionsFound and range-specific stop reasons
+  MotionSearchStats getRangeStats(int resultsFound, int uniqueCount, int rangeSize) const {
+    MotionSearchStats stats = getStats(resultsFound);
+    stats.uniquePositionsFound = uniqueCount;
+
+    if (uniqueCount >= rangeSize) {
+      stats.stopReason = SearchStopReason::AllResultsFound;
+    } else if (resultsFound >= params.maxResults) {
+      stats.stopReason = SearchStopReason::MaxResultsFound;
     }
     return stats;
   }

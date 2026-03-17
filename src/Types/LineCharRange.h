@@ -2,7 +2,6 @@
 
 #include "Types/CursorPos.h"
 
-// A character-wise region that begins at the boundary before beginLine.
 // Half-open: [line(beginLine), end).
 struct LineCharRange {
   int beginLine;
