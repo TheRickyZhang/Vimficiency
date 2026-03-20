@@ -27,10 +27,13 @@ jobs:
           fi
 
           SAFE_BRANCH=$(echo "$BRANCH" | sed 's|/|--|g; s|[^a-zA-Z0-9._-]||g')
+<<<<<<< HEAD
           if [ -z "$SAFE_BRANCH" ]; then
             echo "Refusing to clean up with empty sanitized branch name"
             exit 1
           fi
+=======
+>>>>>>> 92fc2ac (add site push on non-main branches)
           DEPLOY_DIR="branch/$SAFE_BRANCH"
 
           if [ ! -d "$DEPLOY_DIR" ]; then
@@ -39,6 +42,7 @@ jobs:
           fi
 
           git rm -rf "$DEPLOY_DIR"
+<<<<<<< HEAD
 
           # Remove branch from branches.json index
           if [ -f "branches.json" ]; then
@@ -53,6 +57,8 @@ fs.writeFileSync('branches.json', JSON.stringify(data, null, 2));
 
           # Reaching this point means git rm already staged at least one tracked
           # deletion from DEPLOY_DIR, so the commit is not a no-op.
+=======
+>>>>>>> 92fc2ac (add site push on non-main branches)
           git -c user.name=github-actions -c user.email=github-actions@github.com \
             commit -m "Remove branch dashboard: $BRANCH"
           git push origin gh-pages
