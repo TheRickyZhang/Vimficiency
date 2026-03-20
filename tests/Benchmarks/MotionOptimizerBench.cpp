@@ -143,13 +143,13 @@ struct DispatchExploreCase {
   EffortBank bank;
 
   DispatchExploreCase(const Lines& sourceLines,
-                      MotionOptimizerRangeParams params = {},
-                      CursorPos initialPos = CursorPos(0, 0),
+                      MotionOptimizerRangeParams paramsIn = {},
+                      CursorPos initialPosIn = CursorPos(0, 0),
                       int rangeChars = DEFAULT_RANGE_SIZE)
       : lines(sourceLines),
         navContext(),
-        params(params),
-        initialPos(initialPos),
+        params(paramsIn),
+        initialPos(initialPosIn),
         rangeBegin(computeRangeBegin(lines, rangeChars)),
         rangeEnd(computeRangeEnd(lines)),
         goalRange(toMotionInterval(lines, CharRange(rangeBegin, rangeEnd))),
