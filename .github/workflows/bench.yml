@@ -255,6 +255,11 @@ jobs:
 
           # Save artifacts before switching branches
           cp -r bench-dashboard/dist /tmp/dashboard-dist
+          test -f /tmp/dashboard-dist/index.html
+          if ! find /tmp/dashboard-dist/assets -type f -print -quit | grep -q .; then
+            echo "Copied dashboard artifact has no assets"
+            exit 1
+          fi
           cp scripts/bench-data.ts /tmp/bench-data.ts
           cp scripts/explore-data.ts /tmp/explore-data.ts
           cp test_timing_bench.json /tmp/test_timing_bench.json
@@ -272,7 +277,7 @@ jobs:
           REPO_URL="https://github.com/${{ github.repository }}"
 
           git fetch origin gh-pages
-          git checkout gh-pages
+          git checkout -B gh-pages origin/gh-pages
 
           # One-time migration: move data from old bench/ layout to flat layout
           for optimizer in edit motion composition; do
@@ -354,6 +359,11 @@ jobs:
         run: |
           # Save artifacts before switching branches
           cp -r bench-dashboard/dist /tmp/dashboard-dist
+          test -f /tmp/dashboard-dist/index.html
+          if ! find /tmp/dashboard-dist/assets -type f -print -quit | grep -q .; then
+            echo "Copied dashboard artifact has no assets"
+            exit 1
+          fi
           cp scripts/bench-data.ts /tmp/bench-data.ts
           cp scripts/update-branches.ts /tmp/update-branches.ts
           cp scripts/update-pr-body.ts /tmp/update-pr-body.ts
@@ -368,7 +378,7 @@ jobs:
           REPO_URL="https://github.com/${{ github.repository }}"
 
           git fetch origin gh-pages
-          git checkout gh-pages
+          git checkout -B gh-pages origin/gh-pages
 
           # Seed branch data from main's data.json if not already present
           for optimizer in edit motion composition; do
@@ -406,6 +416,7 @@ jobs:
             "${{ steps.meta.outputs.branch }}" \
             "${{ steps.meta.outputs.safe-branch }}" \
             "${{ github.repository_owner }}" \
+            "${{ github.repository }}" \
             "$COMMIT_TS"
           test -f branches.json
 

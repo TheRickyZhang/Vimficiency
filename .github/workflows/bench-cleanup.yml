@@ -30,7 +30,7 @@ jobs:
           fi
 
           git fetch origin gh-pages
-          git checkout gh-pages
+          git checkout -B gh-pages origin/gh-pages
 
           SAFE_BRANCH=$(echo "$BRANCH" | sed 's|/|--|g; s|[^a-zA-Z0-9._-]||g')
           if [ -z "$SAFE_BRANCH" ] || [ "$SAFE_BRANCH" = "." ] || [ "$SAFE_BRANCH" = ".." ]; then
@@ -45,7 +45,13 @@ jobs:
             git rm -rf "$DEPLOY_DIR"
           fi
 
-          bun /tmp/update-branches.ts remove "$BRANCH"
+          if [ "${{ github.event_name }}" = "delete" ]; then
+            BRANCH_REPO="${{ github.repository }}"
+          else
+            BRANCH_REPO="${{ github.event.pull_request.head.repo.full_name }}"
+          fi
+
+          bun /tmp/update-branches.ts remove "$BRANCH" "$BRANCH_REPO"
           if [ -f branches.json ]; then
             git add branches.json
           fi
