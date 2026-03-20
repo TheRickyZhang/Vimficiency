@@ -35,16 +35,17 @@ Shared dependency setup is centralized in `.github/actions/setup-ci-deps/action.
 7. Builds and runs baseline benchmarks against `HEAD~1` for comparison
 8. Uploads all JSON files as a `benchmark-results` artifact
 
-### Job 3: `benchmark-store` (main branch only, after `benchmark-run`)
+### Job 3: `benchmark-store` (after `benchmark-run`)
 
 1. Downloads benchmark artifact
 2. Compares current vs baseline results (`scripts/bench-compare.ts`)
-3. Builds the dashboard site (`bench-dashboard/`) with Bun + Vite
-4. Deploys to `gh-pages`:
-   - Ingests benchmark results into `data.json` using `scripts/bench-data.ts ingest`
-   - Merges exploration data into `explore.json` (keeps last 5 entries)
-   - Prunes benchmark data to last 100 entries per suite
-   - Copies dashboard HTML/JS/CSS assets
+3. Verifies dashboard build output (checks `index.html` and `assets/` exist)
+4. Builds the dashboard site (`bench-dashboard/`) with Bun + Vite, using a dynamic base path (`/$REPO_NAME/` for main, `/$REPO_NAME/branch/$SAFE_BRANCH/` for branches)
+5. Deploys to `gh-pages`:
+   - **Main branch:** Ingests benchmark results into `data.json` using `scripts/bench-data.ts ingest`, merges exploration data into `explore.json` (keeps last 5 entries), prunes benchmark data to last 100 entries per suite, copies dashboard HTML/JS/CSS assets
+   - **Feature branches:** Deploys a separate dashboard under `branch/$SAFE_BRANCH/`, seeds branch data from main's `data.json` if not already present, updates `branches.json` index via `scripts/update-branches.ts`
+   - Skips the gh-pages commit if there are no actual changes (`git diff --cached --quiet`)
+6. For feature branches, updates the open PR body with a dashboard link via `scripts/update-pr-body.ts`
 
 ### CI cache and performance notes
 
@@ -102,7 +103,7 @@ A single-page React + TypeScript + Vite app using TanStack Router for client-sid
 bench-dashboard/
 ├── package.json
 ├── bun.lock
-├── vite.config.ts          # base: '/Vimficiency/', single entry
+├── vite.config.ts          # base: dynamic (/$REPO_NAME/), single entry
 ├── tsconfig.json
 ├── index.html              # SPA shell (single Vite entry point)
 ├── public/
@@ -161,6 +162,7 @@ This mirrors exactly what CI runs. If this succeeds, the CI dashboard step will 
 gh-pages/
 ├── index.html              # SPA entry (same file at all paths)
 ├── .nojekyll               # Disables Jekyll processing
+├── branches.json           # Index of active branch dashboards (written by update-branches.ts)
 ├── assets/                 # Vite-built JS/CSS bundles
 ├── edit/
 │   ├── index.html          # SPA entry (copy of root index.html)
@@ -174,13 +176,37 @@ gh-pages/
 │   ├── explore.json
 │   └── explore/
 │       └── index.html
-└── composition/
-    ├── index.html
-    ├── data.json
-    ├── explore.json
-        └── explore/
-            └── index.html
+├── composition/
+│   ├── index.html
+│   ├── data.json
+│   ├── explore.json
+│   └── explore/
+│       └── index.html
+└── branch/                 # Per-branch dashboards (feature branches only)
+    └── <safe-branch-name>/
+        ├── index.html
+        ├── assets/
+        ├── edit/
+        │   └── data.json
+        ├── motion/
+        │   └── data.json
+        └── composition/
+            └── data.json
 ```
+
+## Branch Dashboard Lifecycle
+
+### Cleanup (`.github/workflows/bench-cleanup.yml`)
+
+Triggered on branch deletion and PR close/merge events:
+1. Removes the `branch/<safe-branch-name>/` directory from gh-pages
+2. Removes the branch entry from `branches.json` via `scripts/update-branches.ts remove`
+3. Skips the commit if no changes were needed
+
+### Helper Scripts
+
+- **`scripts/update-branches.ts`** — Maintains the `branches.json` index on gh-pages. Supports `upsert` (add/update a branch entry) and `remove` (delete a branch entry). Entries are keyed by branch name + repository full name to avoid cross-repo collisions. Self-heals malformed JSON.
+- **`scripts/update-pr-body.ts`** — Prepends/updates a benchmark dashboard link in the PR body (not a comment). Uses HTML comment markers to find and replace the link block on subsequent updates.
 
 ## Gitignore
 

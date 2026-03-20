@@ -8,6 +8,7 @@
 #include <unordered_map>
 
 #include "Effort/EffortBank.h"
+#include "MotionHeuristic.h"
 #include "MotionExplorer.h"
 #include "Optimizer/SearchFrontier.h"
 #include "Optimizer/SearchStats.h"
@@ -48,13 +49,7 @@ MotionResult MotionOptimizer::optimize(
     return goalRange.containsPos(pos);
   };
   auto scoreState = [&](CursorPos pos, double effort) {
-    double distance = 0.0;
-    if (!goalRange.containsPos(pos)) {
-      Pos closest = (pos < goalRange.first) ? goalRange.first : goalRange.last;
-      distance = static_cast<double>(
-          abs(closest.line - pos.line) +
-          abs(closest.col - pos.targetCol));
-    }
+    double distance = MotionHeuristic::distanceToRange(goalRange, pos);
     return params.effortWeight * effort + params.distanceWeight * distance;
   };
 
@@ -180,13 +175,7 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
   const double maxEffort = userEffort * params.exploreFactor;
   
   auto scoreState = [&](CursorPos pos, double effort) {
-    double distance = 0.0;
-    if (!range.containsPos(pos)) {
-      Pos closest = (pos < range.first) ? range.first : range.last;
-      distance = static_cast<double>(
-          abs(closest.line - pos.line) +
-          abs(closest.col - pos.targetCol));
-    }
+    double distance = MotionHeuristic::distanceToRange(range, pos);
     return params.effortWeight * effort + params.distanceWeight * distance;
   };
 
