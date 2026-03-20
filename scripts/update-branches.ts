@@ -26,6 +26,12 @@ interface BranchesFile {
   branches: BranchEntry[];
 }
 
+function inferRepoFullNameFromUrl(url: string): string | undefined {
+  const match = url.match(/^https:\/\/([^/]+)\.github\.io\/([^/]+)\//);
+  if (!match) return undefined;
+  return `${match[1]}/${match[2]}`;
+}
+
 function usage(): never {
   console.error(
     [
@@ -49,7 +55,37 @@ function readBranchesFile(): { data: BranchesFile; needsRewrite: boolean } {
       console.warn(`Self-healing ${FILE}: missing branches array`);
       return { data: { branches: [] }, needsRewrite: true };
     }
-    return { data: { branches: parsed.branches }, needsRewrite: false };
+
+    let needsRewrite = false;
+    const branches: BranchEntry[] = [];
+    for (const raw of parsed.branches) {
+      if (!raw ||
+          typeof raw.name !== "string" ||
+          typeof raw.safeName !== "string" ||
+          typeof raw.url !== "string" ||
+          typeof raw.updatedAt !== "string") {
+        console.warn(`Self-healing ${FILE}: dropping malformed branch entry`);
+        needsRewrite = true;
+        continue;
+      }
+
+      const inferredRepoFullName = typeof raw.repoFullName === "string" && raw.repoFullName
+        ? raw.repoFullName
+        : inferRepoFullNameFromUrl(raw.url);
+      if (inferredRepoFullName !== raw.repoFullName) {
+        needsRewrite = true;
+      }
+
+      branches.push({
+        name: raw.name,
+        safeName: raw.safeName,
+        url: raw.url,
+        updatedAt: raw.updatedAt,
+        repoFullName: inferredRepoFullName,
+      });
+    }
+
+    return { data: { branches }, needsRewrite };
   } catch (error) {
     console.warn(`Self-healing ${FILE}: invalid JSON (${String(error)})`);
     return { data: { branches: [] }, needsRewrite: true };
@@ -64,24 +100,43 @@ function sortBranches(data: BranchesFile): void {
   data.branches.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-function branchKey(branchName: string, repoFullName?: string): string {
-  return `${repoFullName ?? ""}\n${branchName}`;
+function matchesBranch(entry: BranchEntry, branchName: string, repoFullName?: string): boolean {
+  if (entry.name !== branchName) return false;
+
+  // Backward compatibility: older workflow versions did not persist repoFullName.
+  // Treat those legacy entries as branch-name keyed so they can be upgraded or removed
+  // instead of accumulating forever after the repo-aware migration.
+  if (!entry.repoFullName || !repoFullName) return true;
+  return entry.repoFullName === repoFullName;
+}
+
+function resolveLegacyRepoFullName(): string | undefined {
+  const repoFullName = process.env.GITHUB_REPOSITORY;
+  if (repoFullName) return repoFullName;
+
+  // Deprecated compatibility path for manual/older callers. Without repo identity we fall
+  // back to branch-name matching so the new repo-aware index remains upgradeable instead of
+  // encoding an incorrect owner-only key.
+  console.warn(
+    "Legacy 4-arg mode is deprecated without GITHUB_REPOSITORY; falling back to branch-name matching"
+  );
+  return undefined;
 }
 
 function upsertBranch(
   branchName: string,
   safeName: string,
   repoOwner: string,
-  repoFullName: string,
+  repoFullName: string | undefined,
   updatedAt: string
 ): void {
-  if (!branchName || !safeName || !repoOwner || !repoFullName || !updatedAt) usage();
+  if (!branchName || !safeName || !repoOwner || !updatedAt) usage();
   const { data, needsRewrite } = readBranchesFile();
   const conflict = data.branches.find(
     (b) =>
       b.safeName === safeName &&
-      (b.repoFullName ?? "") === repoFullName &&
-      b.name !== branchName
+      !matchesBranch(b, branchName, repoFullName) &&
+      (!b.repoFullName || !repoFullName || b.repoFullName === repoFullName)
   );
   if (conflict) {
     throw new Error(
@@ -89,21 +144,18 @@ function upsertBranch(
     );
   }
 
-  const key = branchKey(branchName, repoFullName);
   data.branches = data.branches.filter(
-    (b) => branchKey(b.name, b.repoFullName) !== key
+    (b) => !matchesBranch(b, branchName, repoFullName)
   );
   data.branches.push({
     name: branchName,
     safeName,
     url: `https://${repoOwner}.github.io/Vimficiency/branch/${safeName}/`,
     updatedAt,
-    repoFullName,
+    ...(repoFullName ? { repoFullName } : {}),
   });
   sortBranches(data);
-  if (needsRewrite || data.branches.length > 0) {
-    writeBranchesFile(data);
-  }
+  writeBranchesFile(data);
   console.log(`Updated ${FILE}: ${data.branches.length} branch(es)`);
 }
 
@@ -116,9 +168,8 @@ function removeBranch(branchName: string, repoFullName: string): void {
 
   const { data, needsRewrite } = readBranchesFile();
   const before = data.branches.length;
-  const key = branchKey(branchName, repoFullName);
   data.branches = data.branches.filter(
-    (b) => branchKey(b.name, b.repoFullName) !== key
+    (b) => !matchesBranch(b, branchName, repoFullName)
   );
 
   if (!needsRewrite && data.branches.length === before) {
@@ -139,7 +190,7 @@ function removeBranch(branchName: string, repoFullName: string): void {
 const args = process.argv.slice(2);
 
 if (args.length == 4) {
-  upsertBranch(args[0], args[1], args[2], args[2], args[3]);
+  upsertBranch(args[0], args[1], args[2], resolveLegacyRepoFullName(), args[3]);
   process.exit(0);
 }
 

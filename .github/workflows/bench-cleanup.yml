@@ -25,8 +25,14 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "delete" ]; then
             BRANCH="${{ github.event.ref }}"
+            BRANCH_REPO="${{ github.repository }}"
           else
             BRANCH="${{ github.event.pull_request.head.ref }}"
+            # Branch dashboards are only deployed on push in the repository that owns the branch.
+            # A merged fork PR normally has no corresponding branch dashboard in this repo's
+            # gh-pages tree; using the head repo key here only keeps repo-aware index cleanup
+            # aligned when cleanup does apply to entries created by the same repository.
+            BRANCH_REPO="${{ github.event.pull_request.head.repo.full_name }}"
           fi
 
           git fetch origin gh-pages
@@ -43,12 +49,6 @@ jobs:
             echo "No dashboard found at $DEPLOY_DIR, cleaning index only"
           else
             git rm -rf "$DEPLOY_DIR"
-          fi
-
-          if [ "${{ github.event_name }}" = "delete" ]; then
-            BRANCH_REPO="${{ github.repository }}"
-          else
-            BRANCH_REPO="${{ github.event.pull_request.head.repo.full_name }}"
           fi
 
           bun /tmp/update-branches.ts remove "$BRANCH" "$BRANCH_REPO"
