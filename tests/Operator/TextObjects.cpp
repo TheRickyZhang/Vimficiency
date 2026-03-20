@@ -135,7 +135,7 @@ bool runTextObjectTest(NeovimOracle& oracle, const TextObjectSpec& spec,
   // === IMPORTANT: effectiveLines Model ===
   // VimCore boundary functions expect effectiveLines, NOT the full buffer.
   // effectiveLines contains only the lines in the edit region, with offsets
-  // protecting the prefix/suffix columns. This mirrors EditSearchContext behavior.
+  // protecting the prefix/suffix columns. This mirrors the EditOptimizer model.
   //
   // Example: Full buffer has 3 lines, edit region is on line 0 cols 5-10.
   //   - effectiveLines = [line 0 only]

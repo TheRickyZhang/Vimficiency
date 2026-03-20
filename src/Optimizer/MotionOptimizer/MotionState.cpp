@@ -21,39 +21,6 @@ void MotionState::applySingleMotionWithEffort(string_view motion, const NavConte
 }
 
 // =============================================================================
-// Public factory methods - return new state with motion applied
-// =============================================================================
-
-MotionState MotionState::afterMotion(const KeyedSequence& ks, CursorPos endpoint,
-                                     const Config& config) const {
-  MotionState newState = *this;
-  newState.applyMotionImpl(ks, endpoint, config);
-  return newState;
-}
-
-MotionState MotionState::afterMotion(const KeyedSequence& ks, const RunningEffort& precomputed,
-                                     CursorPos endpoint, const Config& config) const {
-  MotionState newState = *this;
-  newState.applyMotionImpl(ks, precomputed, endpoint, config);
-  return newState;
-}
-
-MotionState MotionState::afterCountedMotion(const KeyedSequence& baseMotion, int cnt,
-                                            CursorPos endpoint, const Config& config,
-                                            double extraPenalty) const {
-  MotionState newState = *this;
-  newState.applyCountedMotionImpl(baseMotion, cnt, endpoint, config, extraPenalty);
-  return newState;
-}
-
-MotionState MotionState::afterFMotion(const KeyedSequence& fMotion, int newCol,
-                                      const Config& config) const {
-  MotionState newState = *this;
-  newState.applyFMotionImpl(fMotion, newCol, config);
-  return newState;
-}
-
-// =============================================================================
 // Private implementation - mutating methods
 // =============================================================================
 

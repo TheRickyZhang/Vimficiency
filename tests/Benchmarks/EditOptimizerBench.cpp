@@ -102,7 +102,7 @@ static optional<BenchmarkSetup> findMixedTerminalSetup(int perStartCap) {
         .withMaxNodesPopped(200000)
         .withMaxMultiplePerStartPosition(perStartCap);
     EditResult result = opt.optimizePureDeletion(setup.initialLines, setup.boundary, params);
-    if (result.getStats().stopReason != SearchStopReason::AllResultsFound) continue;
+    if (result.getStats().stopReason() != SearchStopReason::AllResultsFound) continue;
 
     bool hasCapped = false;
     bool hasUncapped = false;
@@ -369,7 +369,7 @@ static void BM_EditMaxResultsTerminal(benchmark::State& state) {
     EditResult result = opt.optimizePureDeletion(
         mixedSetup->initialLines, mixedSetup->boundary, params);
     accumulateStats(totalStats, result.getStats());
-    if (result.getStats().stopReason == SearchStopReason::AllResultsFound) {
+    if (result.getStats().stopReason() == SearchStopReason::AllResultsFound) {
       allResultsFoundCount++;
     }
   }
@@ -415,11 +415,11 @@ static void BM_EditPerStartCap(benchmark::State& state) {
     EditResult result = opt.optimizePureDeletion(
         setup.initialLines, setup.boundary, params);
     accumulateStats(totalStats, result.getStats());
-    if (result.getStats().stopReason == SearchStopReason::AllResultsFound) {
+    if (result.getStats().stopReason() == SearchStopReason::AllResultsFound) {
       allResultsFoundCount++;
-    } else if (result.getStats().stopReason == SearchStopReason::MaxResultsFound) {
+    } else if (result.getStats().stopReason() == SearchStopReason::MaxResultsFound) {
       maxResultsFoundCount++;
-    } else if (result.getStats().stopReason == SearchStopReason::MaxPopsReached) {
+    } else if (result.getStats().stopReason() == SearchStopReason::MaxPopsReached) {
       maxPopsStopCount++;
     }
     iter++;

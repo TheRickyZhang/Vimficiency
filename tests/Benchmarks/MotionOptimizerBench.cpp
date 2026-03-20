@@ -5,17 +5,24 @@
 // Run: ./build/tests/vimficiency_benchmarks --benchmark_filter="MotionOptimizer.*"
 
 #include <algorithm>
+#include <array>
+#include <limits>
+#include <queue>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <benchmark/benchmark.h>
 
 #include "Benchmarks/BenchUtils.h"
 #include "Boundary/MotionBoundary.h"
+#include "Effort/EffortBank.h"
 #include "Keyboard/Config.h"
+#include "Optimizer/MotionOptimizer/MotionExplorer.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizerParams.h"
 #include "Optimizer/MotionOptimizer/MotionRangeConversion.h"
+#include "Optimizer/SearchFrontier.h"
 #include "Utils/RandomGeneration.h"
 
 using namespace std;
@@ -49,6 +56,8 @@ static MotionOptimizerRangeParams rangeParamsB() {
 // =============================================================================
 
 static Config benchConfig = Config::uniform();
+using MotionPriorityQueue =
+    priority_queue<MotionState, vector<MotionState>, greater<MotionState>>;
 
 struct BenchmarkSetup {
   Lines lines;
@@ -103,6 +112,109 @@ struct RangeBenchmarkSetup {
     boundary = MotionBoundary(lines, rangeBegin, rangeEnd, true, true);
   }
 };
+
+struct DispatchExploreCase {
+  static CursorPos computeRangeBegin(const Lines& lines, int rangeChars) {
+    int lastLine = lines.lastLine();
+    int lastLineLen = max(1, static_cast<int>(lines[lastLine].size()));
+    int actualChars = min(rangeChars, lastLineLen);
+    int startCol = max(0, lastLineLen - actualChars);
+    return {lastLine, startCol};
+  }
+
+  static CursorPos computeRangeEnd(const Lines& lines) {
+    int lastLine = lines.lastLine();
+    int lastLineLen = max(1, static_cast<int>(lines[lastLine].size()));
+    return {lastLine, lastLineLen};
+  }
+
+  Lines lines;
+  NavContext navContext;
+  MotionOptimizerRangeParams params;
+  CursorPos initialPos;
+  CursorPos rangeBegin;
+  CursorPos rangeEnd;
+  CharInterval goalRange;
+  MotionBoundary boundary;
+  BufferIndex bufferIndex;
+  MotionExplorer explorer;
+  MotionState state;
+  EffortBank bank;
+
+  DispatchExploreCase(const Lines& sourceLines,
+                      MotionOptimizerRangeParams params = {},
+                      CursorPos initialPos = CursorPos(0, 0),
+                      int rangeChars = DEFAULT_RANGE_SIZE)
+      : lines(sourceLines),
+        navContext(),
+        params(params),
+        initialPos(initialPos),
+        rangeBegin(computeRangeBegin(lines, rangeChars)),
+        rangeEnd(computeRangeEnd(lines)),
+        goalRange(toMotionInterval(lines, CharRange(rangeBegin, rangeEnd))),
+        boundary(lines, rangeBegin, rangeEnd, true, true),
+        bufferIndex(lines),
+        explorer(lines, navContext, boundary, params, goalRange, bufferIndex, 0),
+        state(initialPos, RunningEffort(), 0.0, 0.0),
+        bank(benchConfig) {}
+};
+
+struct StaticTransition {
+  KSId motionId;
+  const KeyedSequence* ks = nullptr;
+  CursorPos endpoint;
+};
+
+struct CountedTransition {
+  KSId motionId;
+  const KeyedSequence* ks = nullptr;
+  int count = 0;
+  CursorPos endpoint;
+  double extraPenalty = 0.0;
+};
+
+struct FMotionTransition {
+  KeyedSequence motion;
+  int newCol = 0;
+};
+
+enum class DispatchScenario {
+  CodeLikeTailRange,
+  ProseTailRange,
+};
+
+static vector<DispatchExploreCase> makeDispatchExploreCases(BufferShape shape,
+                                                            bool useDirectionalPruning) {
+  auto& seedMgr = SeedManager::instance();
+  vector<DispatchExploreCase> cases;
+  cases.reserve(DEFAULT_SEED_COUNT);
+  auto params = MotionOptimizerRangeParams{}.withDirectionalPruning(useDirectionalPruning);
+  for (int i = 0; i < DEFAULT_SEED_COUNT; ++i) {
+    RandomGen::seed(seedMgr.getSeed(i));
+    cases.emplace_back(generateBuffer(20, 30, shape), params);
+  }
+  return cases;
+}
+
+static vector<DispatchExploreCase>& getDispatchExploreCases(DispatchScenario scenario,
+                                                            bool useDirectionalPruning) {
+  static vector<DispatchExploreCase> codeLikePruned =
+      makeDispatchExploreCases(BufferShape::CodeLike, true);
+  static vector<DispatchExploreCase> codeLikeNoPruning =
+      makeDispatchExploreCases(BufferShape::CodeLike, false);
+  static vector<DispatchExploreCase> prosePruned =
+      makeDispatchExploreCases(BufferShape::Prose, true);
+  static vector<DispatchExploreCase> proseNoPruning =
+      makeDispatchExploreCases(BufferShape::Prose, false);
+
+  switch (scenario) {
+    case DispatchScenario::CodeLikeTailRange:
+      return useDirectionalPruning ? codeLikePruned : codeLikeNoPruning;
+    case DispatchScenario::ProseTailRange:
+      return useDirectionalPruning ? prosePruned : proseNoPruning;
+  }
+  return codeLikePruned;
+}
 
 static void runWithParams(const BenchmarkSetup& cfg,
                           const MotionOptimizerParams& params,
@@ -202,6 +314,156 @@ static void BM_MotionRangeResultSize(benchmark::State& state, bool useB,
   setSearchCounters(state, totalStats);
 }
 
+template<bool UseFixedBuffer>
+static void BM_MotionExploreDispatch(benchmark::State& state,
+                                     DispatchScenario scenario,
+                                     bool useDirectionalPruning) {
+  auto& cases = getDispatchExploreCases(scenario, useDirectionalPruning);
+  constexpr size_t MAX_STATIC_TRANSITIONS = 128;
+  constexpr size_t MAX_COUNTED_TRANSITIONS = 128;
+  constexpr size_t MAX_FMOTION_TRANSITIONS = 32;
+
+  size_t totalTransitions = 0;
+  size_t maxStaticSeen = 0;
+  size_t maxCountedSeen = 0;
+  size_t maxFMotionSeen = 0;
+  int caseIndex = 0;
+
+  for (auto _ : state) {
+    auto& c = cases[caseIndex % static_cast<int>(cases.size())];
+    caseIndex++;
+
+    MotionPriorityQueue pq;
+    unordered_map<Pos, double> costMap;
+    const double maxEffort = numeric_limits<double>::max();
+
+    auto isInGoalRange = [&](CursorPos pos) {
+      return c.goalRange.containsPos(pos);
+    };
+    auto scoreState = [&](CursorPos pos, double effort) {
+      double distance = 0.0;
+      if (!c.goalRange.containsPos(pos)) {
+        Pos closest = (pos < c.goalRange.first) ? c.goalRange.first : c.goalRange.last;
+        distance = static_cast<double>(
+            abs(closest.line - pos.line) +
+            abs(closest.col - pos.targetCol));
+      }
+      return c.params.effortWeight * effort + c.params.distanceWeight * distance;
+    };
+
+    size_t emitted = 0;
+    if constexpr (!UseFixedBuffer) {
+      auto onStatic = [&](KSId motionId, const KeyedSequence& ks, CursorPos endpoint) {
+        MotionState next = c.state.afterMotion(ks, c.bank[motionId], endpoint, benchConfig, scoreState);
+        emitted++;
+        Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
+      };
+      auto onCounted = [&](KSId motionId, const KeyedSequence& ks, int count,
+                           CursorPos endpoint, double extraPenalty) {
+        MotionState next = c.state.afterCountedMotion(
+            ks, count, endpoint, benchConfig, extraPenalty, scoreState);
+        emitted++;
+        Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
+      };
+      auto onFMotion = [&](const KeyedSequence& motion, int newCol) {
+        MotionState next = c.state.afterFMotion(motion, newCol, benchConfig, scoreState);
+        emitted++;
+        Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
+      };
+
+      if (c.params.useDirectionalPruning) {
+        c.explorer.exploreDirectionalStandardMotions(c.state, onStatic);
+      } else {
+        c.explorer.exploreAllStandardMotions(c.state, onStatic);
+      }
+      c.explorer.exploreCountedMotions(c.state, onCounted, onFMotion);
+    } else {
+      array<StaticTransition, MAX_STATIC_TRANSITIONS> staticTransitions;
+      array<CountedTransition, MAX_COUNTED_TRANSITIONS> countedTransitions;
+      array<FMotionTransition, MAX_FMOTION_TRANSITIONS> fMotionTransitions;
+      size_t staticCount = 0;
+      size_t countedCount = 0;
+      size_t fMotionCount = 0;
+      bool overflow = false;
+
+      auto collectStatic = [&](KSId motionId, const KeyedSequence& ks, CursorPos endpoint) {
+        if (staticCount >= staticTransitions.size()) {
+          overflow = true;
+          return;
+        }
+        staticTransitions[staticCount++] = {motionId, &ks, endpoint};
+      };
+      auto collectCounted = [&](KSId motionId, const KeyedSequence& ks, int count,
+                                CursorPos endpoint, double extraPenalty) {
+        if (countedCount >= countedTransitions.size()) {
+          overflow = true;
+          return;
+        }
+        countedTransitions[countedCount++] = {motionId, &ks, count, endpoint, extraPenalty};
+      };
+      auto collectFMotion = [&](const KeyedSequence& motion, int newCol) {
+        if (fMotionCount >= fMotionTransitions.size()) {
+          overflow = true;
+          return;
+        }
+        fMotionTransitions[fMotionCount++] = {motion, newCol};
+      };
+
+      if (c.params.useDirectionalPruning) {
+        c.explorer.exploreDirectionalStandardMotions(c.state, collectStatic);
+      } else {
+        c.explorer.exploreAllStandardMotions(c.state, collectStatic);
+      }
+      c.explorer.exploreCountedMotions(c.state, collectCounted, collectFMotion);
+
+      if (overflow) {
+        state.SkipWithError("fixed transition buffer overflow");
+        break;
+      }
+
+      maxStaticSeen = max(maxStaticSeen, staticCount);
+      maxCountedSeen = max(maxCountedSeen, countedCount);
+      maxFMotionSeen = max(maxFMotionSeen, fMotionCount);
+
+      for (size_t i = 0; i < staticCount; ++i) {
+        const auto& transition = staticTransitions[i];
+        MotionState next = c.state.afterMotion(
+            *transition.ks, c.bank[transition.motionId], transition.endpoint, benchConfig, scoreState);
+        emitted++;
+        Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
+      }
+      for (size_t i = 0; i < countedCount; ++i) {
+        const auto& transition = countedTransitions[i];
+        MotionState next = c.state.afterCountedMotion(
+            *transition.ks, transition.count, transition.endpoint, benchConfig,
+            transition.extraPenalty, scoreState);
+        emitted++;
+        Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
+      }
+      for (size_t i = 0; i < fMotionCount; ++i) {
+        const auto& transition = fMotionTransitions[i];
+        MotionState next = c.state.afterFMotion(
+            transition.motion, transition.newCol, benchConfig, scoreState);
+        emitted++;
+        Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
+      }
+    }
+
+    totalTransitions += emitted;
+    benchmark::DoNotOptimize(pq.size());
+    benchmark::DoNotOptimize(costMap.size());
+    benchmark::ClobberMemory();
+  }
+
+  state.counters["Transitions"] = benchmark::Counter(
+      static_cast<double>(totalTransitions), benchmark::Counter::kAvgIterations);
+  if constexpr (UseFixedBuffer) {
+    state.counters["MaxStatic"] = static_cast<double>(maxStaticSeen);
+    state.counters["MaxCounted"] = static_cast<double>(maxCountedSeen);
+    state.counters["MaxFMotion"] = static_cast<double>(maxFMotionSeen);
+  }
+}
+
 // =============================================================================
 // Registration
 // =============================================================================
@@ -268,6 +530,24 @@ static int registerMotionBenchmarks = []() {
       b->Iterations(DEFAULT_SEED_COUNT);
     }
   }
+
+  auto registerDispatchPair = [](const string& name,
+                                 DispatchScenario scenario,
+                                 bool useDirectionalPruning) {
+    benchmark::RegisterBenchmark(
+        name + "/Direct", BM_MotionExploreDispatch<false>, scenario, useDirectionalPruning);
+    benchmark::RegisterBenchmark(
+        name + "/FixedBuffer", BM_MotionExploreDispatch<true>, scenario, useDirectionalPruning);
+  };
+
+  registerDispatchPair("MotionOpt/ExploreDispatch/CodeLike/Pruned",
+                       DispatchScenario::CodeLikeTailRange, true);
+  registerDispatchPair("MotionOpt/ExploreDispatch/CodeLike/NoPruning",
+                       DispatchScenario::CodeLikeTailRange, false);
+  registerDispatchPair("MotionOpt/ExploreDispatch/Prose/Pruned",
+                       DispatchScenario::ProseTailRange, true);
+  registerDispatchPair("MotionOpt/ExploreDispatch/Prose/NoPruning",
+                       DispatchScenario::ProseTailRange, false);
 
   return 0;
 }();

@@ -241,73 +241,25 @@ bool CompositionSearchContext::tryGetBufferIndex(
   return true;
 }
 
-void CompositionSearchContext::exploreEditTransition(
-    const CompositionState& current,
-    const Sequence& editSequence,
-    const CursorPos& goalPos,
-    int editsAfter) {
-  CompositionState newState = current.afterEditTransition(
-      editSequence, goalPos, Mode::Normal, config);
-  newState.setCost(heuristic(newState, editsAfter));
-  exploreNewState(std::move(newState));
-}
-
-void CompositionSearchContext::exploreMotionTransition(
-    const CompositionState& current,
-    const Sequence& moveSequence,
-    const CursorPos& goalPos,
-    int editsCompleted) {
-  CompositionState newState = current.afterMotionResult(
-      moveSequence, goalPos, config);
-  newState.setCost(heuristic(newState, editsCompleted));
-  exploreNewState(std::move(newState));
-}
-
-void CompositionSearchContext::exploreNewState(CompositionState&& newState) {
-  if (newState.getEffort() > maxEffort) {
-    debug("  pruned (effort", newState.getEffort(), ">", maxEffort, "):",
-          "\"" + newState.getSequence().str() + "\"");
-    return;
-  }
-
-  double newCost = newState.getCost();
-  const CompositionStateKey newKey = newState.getKey();
-  auto it = costMap.find(newKey);
-
-  if (it == costMap.end()) {
-    // Don't cache goal states (we want multiple results)
-    if (newState.getEditsCompleted() != totalEdits()) {
-      costMap.emplace(newKey, newCost);
-    }
-    pq.push(std::move(newState));
-  } else if (newCost <= it->second) {
-    it->second = newCost;
-    pq.push(std::move(newState));
-  } else {
-    debug("  not enqueued (cost", newCost, ">=", it->second, "):",
-          "\"" + newState.getSequence().str() + "\"");
-  }
-}
-
 CompositionSearchStats CompositionSearchContext::getStats(int resultsFound) const {
   CompositionSearchStats stats;
-  stats.nodesExplored = nodesProcessed;
-  stats.totalPops = totalPops;
-  stats.resultsFound = resultsFound;
-  stats.queueSizeAtStop = static_cast<int>(pq.size());
-  stats.statesSkipped = statesSkipped;
-  stats.motionNodesExplored = motionNodesExplored;
-  stats.editNodesExplored = editNodesExplored;
-  // exploredStates not copied — composition uses CompositionExploredState,
-  // accessed directly via ctx.exploredStates in ExplorationCollector
+  SearchStopReason stopReason = SearchStopReason::Unknown;
 
   if (resultsFound >= params.maxResults) {
-    stats.stopReason = SearchStopReason::MaxResultsFound;
+    stopReason = SearchStopReason::MaxResultsFound;
   } else if (totalPops >= params.maxNodesPopped) {
-    stats.stopReason = SearchStopReason::MaxPopsReached;
+    stopReason = SearchStopReason::MaxPopsReached;
   } else if (pq.empty()) {
-    stats.stopReason = SearchStopReason::FullyExplored;
+    stopReason = SearchStopReason::FullyExplored;
   }
+
+  stats.finalize(nodesProcessed,
+                        totalPops,
+                        resultsFound,
+                        static_cast<int>(pq.size()),
+                        stopReason);
+  stats.setDebugSummary(0, statesSkipped);
+  stats.setNodeBreakdown(motionNodesExplored, editNodesExplored);
 
   return stats;
 }
@@ -397,10 +349,9 @@ void CompositionSearchContext::calculateEditResults() {
           EditOptimizerParams{}
               .withMinCountRepeat(params.minPrefixCount)
               .withMaxCountRepeat(params.maxPrefixCount)
-              .withMaxMultiplePerStartPosition(params.maxEditResultsPerPosition)
-              .withTrackExploredStates(params.trackExploredStates),
+              .withMaxMultiplePerStartPosition(params.maxEditResultsPerPosition),
           diff.beginPos.line, diff.beginPos.col, diff.beginPos);
-      editNodesExplored += edits[i].editResult.getStats().nodesExplored;
+      editNodesExplored += edits[i].editResult.getStats().nodesExplored();
       continue;
     }
 
@@ -427,10 +378,9 @@ void CompositionSearchContext::calculateEditResults() {
         EditOptimizerParams{}
             .withMinCountRepeat(params.minPrefixCount)
             .withMaxCountRepeat(params.maxPrefixCount)
-            .withMaxMultiplePerStartPosition(params.maxEditResultsPerPosition)
-            .withTrackExploredStates(params.trackExploredStates),
+            .withMaxMultiplePerStartPosition(params.maxEditResultsPerPosition),
         diff.beginPos.line, diff.beginPos.col, goalPos);
-    editNodesExplored += optResult.getStats().nodesExplored;
+    editNodesExplored += optResult.getStats().nodesExplored();
     edits[i].editResult = std::move(optResult);
   }
 }
@@ -928,7 +878,7 @@ void CompositionSearchContext::computeJoinPlans() {
               residualInitial, residualGoal, groupBoundary, residualParams,
               0, 0, residualGoalPos);
         }();
-        editNodesExplored += residualResult.getStats().nodesExplored;
+        editNodesExplored += residualResult.getStats().nodesExplored();
 
         // Look up result at cursor position after J
         const Result* res = residualResult.resultAt(0, cursorCol);

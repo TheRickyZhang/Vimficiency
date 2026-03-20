@@ -31,7 +31,6 @@ struct MotionOptimizerParams : OptimizerParamsBase {
   MotionOptimizerParams& withExploreFactor(double v) { exploreFactor = v; return *this; }
   MotionOptimizerParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
   MotionOptimizerParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
-  MotionOptimizerParams& withTrackExploredStates(bool v) { trackExploredStates = v; return *this; }
   MotionOptimizerParams& withLinePaddingAbove(int v) { linePaddingAbove = v; return *this; }
   MotionOptimizerParams& withLinePaddingBelow(int v) { linePaddingBelow = v; return *this; }
   MotionOptimizerParams& withLinePadding(int v) { linePaddingAbove = linePaddingBelow = v; return *this; }
@@ -65,7 +64,6 @@ struct MotionOptimizerRangeParams : MotionOptimizerParams {
   MotionOptimizerRangeParams& withExploreFactor(double v) { exploreFactor = v; return *this; }
   MotionOptimizerRangeParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
   MotionOptimizerRangeParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
-  MotionOptimizerRangeParams& withTrackExploredStates(bool v) { trackExploredStates = v; return *this; }
   MotionOptimizerRangeParams& withAllowMultiplePerPosition(bool v) { allowMultiplePerPosition = v; return *this; }
   MotionOptimizerRangeParams& withLinePaddingAbove(int v) { linePaddingAbove = v; return *this; }
   MotionOptimizerRangeParams& withLinePaddingBelow(int v) { linePaddingBelow = v; return *this; }

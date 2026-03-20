@@ -57,45 +57,31 @@ inline std::string getSeedModeDescription() {
 // Accumulate stats across iterations. Call once per iteration inside the loop.
 template<typename S>
 void accumulateStats(S& accumulated, const S& iteration) {
-  accumulated.nodesExplored += iteration.nodesExplored;
-  accumulated.totalPops += iteration.totalPops;
-  accumulated.resultsFound += iteration.resultsFound;
-  accumulated.queueSizeAtStop += iteration.queueSizeAtStop;
-  accumulated.statesSkipped += iteration.statesSkipped;
-  if constexpr (requires { accumulated.uniquePositionsFound; }) {
-    if (iteration.isRangeSearch()) {
-      if (!accumulated.isRangeSearch()) accumulated.uniquePositionsFound = 0;
-      accumulated.uniquePositionsFound += iteration.uniquePositionsFound;
-    }
-  }
-  if constexpr (requires { accumulated.motionNodesExplored; }) {
-    accumulated.motionNodesExplored += iteration.motionNodesExplored;
-    accumulated.editNodesExplored += iteration.editNodesExplored;
-  }
+  accumulated.accumulateFrom(iteration);
 }
 
 template<typename S>
 void setSearchCounters(benchmark::State& state, const S& stats) {
   state.counters["Searched"] = benchmark::Counter(
-      stats.nodesExplored, benchmark::Counter::kAvgIterations);
+      stats.nodesExplored(), benchmark::Counter::kAvgIterations);
   state.counters["Pops"] = benchmark::Counter(
-      stats.totalPops, benchmark::Counter::kAvgIterations);
+      stats.totalPops(), benchmark::Counter::kAvgIterations);
   state.counters["Found"] = benchmark::Counter(
-      stats.resultsFound, benchmark::Counter::kAvgIterations);
+      stats.resultsFound(), benchmark::Counter::kAvgIterations);
   state.counters["Remain"] = benchmark::Counter(
-      stats.queueSizeAtStop, benchmark::Counter::kAvgIterations);
-  if constexpr (requires { stats.uniquePositionsFound; }) {
+      stats.queueSizeAtStop(), benchmark::Counter::kAvgIterations);
+  if constexpr (requires { stats.uniquePositionsFound(); }) {
     if (stats.isRangeSearch()) {
       state.counters["Unique"] = benchmark::Counter(
-          stats.uniquePositionsFound, benchmark::Counter::kAvgIterations);
+          stats.uniquePositionsFound(), benchmark::Counter::kAvgIterations);
     }
   }
-  if constexpr (requires { stats.motionNodesExplored; }) {
-    if (stats.motionNodesExplored > 0 || stats.editNodesExplored > 0) {
+  if constexpr (requires { stats.motionNodesExplored(); }) {
+    if (stats.motionNodesExplored() > 0 || stats.editNodesExplored() > 0) {
       state.counters["MotionNodes"] = benchmark::Counter(
-          stats.motionNodesExplored, benchmark::Counter::kAvgIterations);
+          stats.motionNodesExplored(), benchmark::Counter::kAvgIterations);
       state.counters["EditNodes"] = benchmark::Counter(
-          stats.editNodesExplored, benchmark::Counter::kAvgIterations);
+          stats.editNodesExplored(), benchmark::Counter::kAvgIterations);
     }
   }
 }

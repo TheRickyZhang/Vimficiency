@@ -1,240 +1,381 @@
 #pragma once
 
-#include "MotionClassMask.h"
-#include "MotionSearchContext.h"
-#include "MotionToSpec.h"
+#include <algorithm>
+#include <cassert>
+#include <optional>
+#include <utility>
+
+#include "Boundary/MotionBoundary.h"
 #include "BufferIndex.h"
+#include "MotionClassMask.h"
+#include "MotionOptimizerParams.h"
+#include "MotionToSpec.h"
 #include "Optimizer/CountPenalty.h"
 #include "Optimizer/GlobalRuntimeOptions.h"
+#include "Optimizer/MotionOptimizer/MotionState.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Keyboard/ToKeys/MotionToKeys.h"
+#include "Types/CharInterval.h"
+#include "Types/NavContext.h"
 #include "VimCore/VimCore.h"
-#include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimEndpointUtils.h"
+#include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimOptions.h"
 
-// MotionExplorer encapsulates motion exploration logic for the optimizer.
-// Always operates in range mode: single-goal is a degenerate point range.
-// Range is always character-wise — cursor positions are char-level.
+// MotionExplorer encapsulates motion candidate generation for A* search.
+// It owns only read-only optimization inputs and streams transition intents
+// to caller-provided callbacks.
 class MotionExplorer {
-  MotionSearchContext& ctx;
-  const BufferIndex& bufferIndex_;
-  int bufferLineOffset_;
+  enum class GoalSide {
+    Before,
+    InRange,
+    After,
+  };
+
+  struct HorizontalBounds {
+    int lastCol;
+    int left;
+    int right;
+  };
+
+  struct DirectionalBoundary {
+    int edgeOffset;
+    bool hasLinesOutside;
+  };
+
+  struct PrefixRange {
+    int min;
+    int max;
+  };
 
 public:
-  void enqueueToGoalRange(MotionState&& newState) {
-    ctx.exploreNewStateToRange(std::move(newState));
-  }
-
-  MotionExplorer(MotionSearchContext& ctx,
+  MotionExplorer(const Lines& lines,
+                 const NavContext& navContext,
+                 const MotionBoundary& boundary,
+                 const MotionOptimizerParams& params,
+                 const CharInterval& goalRange,
                  const BufferIndex& bufferIndex,
                  int lineOffset)
-      : ctx(ctx), bufferIndex_(bufferIndex), bufferLineOffset_(lineOffset) {}
+      : lines_(lines),
+        navContext_(navContext),
+        boundary_(boundary),
+        params_(params),
+        goalRange_(goalRange),
+        bufferIndex_(bufferIndex),
+        bufferLineOffset_(lineOffset) {}
 
-  // Core emit helper - creates new state, applies motion, and queues for exploration.
-  // Uses pre-computed effort from EffortBank via KSId.
-  void emitMotion(const MotionState& base, KSId id, CursorPos endpoint) {
-    const KeyedSequence& ks = KeyedSequence::byId(id);
-    MotionState newState = base.afterMotion(ks, ctx.bank[id], endpoint, ctx.config);
-
-    newState.setCost(ctx.computePriorityToRange(newState));
-    enqueueToGoalRange(std::move(newState));
+  template<class OnStatic>
+  void exploreAllStandardMotions(const MotionState& base, OnStatic&& onStatic) {
+    exploreHorizontalMotions(base, onStatic);
+    exploreVerticalMotions(base, onStatic);
+    exploreWordMotions<true, EdgeType::NextEdge>(Motion::FORWARD_NEXTEDGE_MOTIONS, base, onStatic);
+    exploreWordMotions<true, EdgeType::WordEdge>(Motion::FORWARD_WORDEDGE_MOTIONS, base, onStatic);
+    exploreWordMotions<false, EdgeType::WordEdge>(Motion::BACKWARD_WORDEDGE_MOTIONS, base, onStatic);
+    exploreWordMotions<false, EdgeType::NextEdge>(Motion::BACKWARD_NEXTEDGE_MOTIONS, base, onStatic);
+    exploreParagraphMotions<true>(Motion::FORWARD_PARAGRAPH_MOTIONS, base, onStatic);
+    exploreParagraphMotions<false>(Motion::BACKWARD_PARAGRAPH_MOTIONS, base, onStatic);
+    exploreSentenceMotions<true>(Motion::FORWARD_SENTENCE_MOTIONS, base, onStatic);
+    exploreSentenceMotions<false>(Motion::BACKWARD_SENTENCE_MOTIONS, base, onStatic);
+    exploreScrollMotions(base, onStatic);
+    exploreJumpMotions(base, onStatic);
   }
 
-  // Simple line motions: h, l, 0, ^, $
-  void exploreHorizontalMotions(const MotionState& base) {
+  template<class OnStatic>
+  void exploreDirectionalStandardMotions(const MotionState& base, OnStatic&& onStatic) {
     CursorPos pos = base.getPos();
-    int lineLen = ctx.lines[pos.line].size();
-    int lastCol = lineLen > 0 ? lineLen - 1 : 0;
-
-    int leftBound = (pos.line == 0) ? ctx.boundary.leftColOffset() : 0;
-    int rightBound = (pos.line == ctx.lines.lastLine()) ? ctx.boundary.rightColOffset() : 0;
-
-    if (pos.col > leftBound)
-      emitMotion(base, KSId::h, {pos.line, pos.col - 1});
-
-    if (pos.col < lastCol - rightBound)
-      emitMotion(base, KSId::l, {pos.line, pos.col + 1});
-
-    if (pos.col > leftBound)
-      emitMotion(base, KSId::Zero, {pos.line, leftBound});
-
-    int fnb = VimCore::firstNonBlankColInLineStr(ctx.lines[pos.line]);
-    if (fnb >= leftBound && fnb <= lastCol - rightBound && fnb != pos.col)
-      emitMotion(base, KSId::Caret, {pos.line, fnb});
-
-    int dollarCol = lastCol - rightBound;
-    if (dollarCol > pos.col && dollarCol >= leftBound)
-      emitMotion(base, KSId::Dollar, {pos.line, dollarCol, TARGETCOL_EOL});
+    MotionClassMask m = classesForRange(pos, goalRange_.first, goalRange_.last);
+    exploreClasses(base, m, onStatic);
   }
 
-  // Vertical motions: j, k
-  void exploreVerticalMotions(const MotionState& base) {
+  template<class OnCounted, class OnFMotion>
+  void exploreCountedMotions(const MotionState& base,
+                             OnCounted&& onCounted,
+                             OnFMotion&& onFMotion) {
     CursorPos pos = base.getPos();
-    int lastLine = ctx.lines.lastLine();
+    GoalSide side = goalSide(pos);
 
-    if (pos.line < lastLine) {
-      int newLine = pos.line + 1;
-      int newCol = VimCore::clampCol(ctx.lines, pos.targetCol, newLine);
-      emitMotion(base, KSId::j, {newLine, newCol, pos.targetCol});
-    }
+    if (side == GoalSide::InRange) return;
 
-    if (pos.line > 0) {
-      int newLine = pos.line - 1;
-      int newCol = VimCore::clampCol(ctx.lines, pos.targetCol, newLine);
-      emitMotion(base, KSId::k, {newLine, newCol, pos.targetCol});
+    bool lineLocal = isOnGoalEdgeLine(pos.line);
+    if (side == GoalSide::Before) {
+      exploreCountedMotionsForDirection<true>(base, lineLocal, onCounted, onFMotion);
+    } else {
+      exploreCountedMotionsForDirection<false>(base, lineLocal, onCounted, onFMotion);
     }
   }
 
-  // Word motions - templated on direction and edge type
-  template<bool Forward, EdgeType Edge>
-  void exploreWordMotions(const std::vector<Motion::WordMotionSpecNoEdge>& specs,
-                          const MotionState& base) {
-    CursorPos pos = base.getPos();
-    int boundaryOffset = Forward ? ctx.boundary.rightColOffset() : ctx.boundary.leftColOffset();
-    bool hasLinesOutside = Forward ? ctx.boundary.hasLinesBelow() : ctx.boundary.hasLinesAbove();
+private:
 
-    for (const auto& spec : specs) {
-      CursorPos endpoint = VimCore::motionWordEndpoint<Forward, Edge>(
-          pos, ctx.lines, spec.big, spec.skipCurrent,
-          boundaryOffset, hasLinesOutside, false);
+  const Lines& lines_;
+  const NavContext& navContext_;
+  const MotionBoundary& boundary_;
+  const MotionOptimizerParams& params_;
+  const CharInterval& goalRange_;
+  const BufferIndex& bufferIndex_;
+  int bufferLineOffset_ = 0;
 
-      if (endpoint != POSITION_OUTSIDE_BOUNDARY) {
-        emitMotion(base, spec.ksId, endpoint);
-      }
-    }
+  HorizontalBounds horizontalBoundsForLine(int line) const {
+    return {
+        lines_[line].lastCol(),
+        (line == 0) ? boundary_.leftColOffset() : 0,
+        (line == lines_.lastLine()) ? boundary_.rightColOffset() : 0,
+    };
   }
 
-  // Paragraph motions - templated on direction
-  template<bool Forward>
-  void exploreParagraphMotions(const std::vector<Motion::ParagraphMotionSpecNoDir>& specs,
-                               const MotionState& base) {
-    CursorPos pos = base.getPos();
-
-    bool hasLinesOutside = Forward ? ctx.boundary.hasLinesBelow() : ctx.boundary.hasLinesAbove();
-    int endpointLine = VimCore::motionParagraphEndpoint<Forward, LineEdgeType::NextEdge>(
-        pos.line, ctx.lines, hasLinesOutside);
-
-    if (endpointLine == VimCore::LINE_OUTSIDE_BOUNDARY) return;
-
-    int endpointCol = 0;
-    if constexpr (Forward) {
-      int lastLine = ctx.lines.lastLine();
-      if (endpointLine == lastLine && !VimCore::isBlankLineStr(ctx.lines[endpointLine])) {
-        endpointCol = std::max(0, static_cast<int>(ctx.lines[endpointLine].size()) - 1);
-      }
-    }
-    CursorPos endpoint(endpointLine, endpointCol);
-
-    for (const auto& spec : specs) {
-      emitMotion(base, spec.ksId, endpoint);
-    }
+  DirectionalBoundary boundaryForDirection(bool forward) const {
+    return {
+        forward ? boundary_.rightColOffset() : boundary_.leftColOffset(),
+        forward ? boundary_.hasLinesBelow() : boundary_.hasLinesAbove(),
+    };
   }
 
-  // Sentence motions - templated on direction
-  template<bool Forward>
-  void exploreSentenceMotions(const std::vector<Motion::SentenceMotionSpecNoDir>& specs,
-                              const MotionState& base) {
-    CursorPos pos = base.getPos();
-
-    int boundaryOffset = Forward ? ctx.boundary.rightColOffset() : ctx.boundary.leftColOffset();
-    bool hasLinesOutside = Forward ? ctx.boundary.hasLinesBelow() : ctx.boundary.hasLinesAbove();
-    CursorPos endpoint = VimCore::motionSentenceEndpoint<Forward, SentenceEdgeType::NextEdge>(
-        pos, ctx.lines, boundaryOffset, hasLinesOutside);
-
-    if (endpoint == POSITION_OUTSIDE_BOUNDARY) return;
-
-    for (const auto& spec : specs) {
-      emitMotion(base, spec.ksId, endpoint);
-    }
+  int firstNonBlankCol(int line) const {
+    return VimCore::firstNonBlankColInLineStr(lines_[line]);
   }
 
-  // Scroll motions - templated on direction
-  template<bool Forward>
-  void exploreScrollMotions(const MotionState& base) {
-    CursorPos pos = base.getPos();
-
-    const auto& specs = Forward ? Motion::FORWARD_SCROLL_MOTIONS : Motion::BACKWARD_SCROLL_MOTIONS;
-    constexpr int shiftMultiplier = Forward ? +1 : -1;
-
-    for (const auto& spec : specs) {
-      int shift = spec.isHalf
-          ? shiftMultiplier * ctx.navContext.scrollAmount
-          : shiftMultiplier * std::max(0, ctx.navContext.windowHeight - 2);
-
-      int targetLine = VimCore::scrollEndpoint(
-          pos.line, static_cast<int>(ctx.lines.size()), shift,
-          ctx.boundary.hasLinesAbove(), ctx.boundary.hasLinesBelow());
-
-      if (targetLine != VimCore::LINE_OUTSIDE_BOUNDARY) {
-        int endpointCol = VimOptions::startOfLine()
-            ? VimCore::firstNonBlankColInLineStr(ctx.lines[targetLine])
-            : VimCore::clampCol(ctx.lines, pos.targetCol, targetLine);
-        CursorPos endpoint(targetLine, endpointCol, pos.targetCol);
-        emitMotion(base, spec.ksId, endpoint);
-      }
-    }
+  int clampTargetColToLine(int targetCol, int line) const {
+    return VimCore::clampCol(lines_, targetCol, line);
   }
 
-  // Non-templated wrapper for exploreAllStandardMotions
-  void exploreScrollMotions(const MotionState& base) {
-    exploreScrollMotions<true>(base);
-    exploreScrollMotions<false>(base);
+  int maxLineIndex() const {
+    return lines_.lastLine();
   }
 
-  void exploreJumpMotions(const MotionState& base) {
-    CursorPos pos = base.getPos();
-    if (!ctx.boundary.hasLinesAbove()) {
-      int endpointCol = VimOptions::startOfLine()
-          ? VimCore::firstNonBlankColInLineStr(ctx.lines[0])
-          : VimCore::clampCol(ctx.lines, pos.targetCol, 0);
-      emitMotion(base, KSId::gg, {0, endpointCol, pos.targetCol});
-    }
-    if (!ctx.boundary.hasLinesBelow()) {
-      int lastLine = ctx.lines.lastLine();
-      int endpointCol = VimOptions::startOfLine()
-          ? VimCore::firstNonBlankColInLineStr(ctx.lines[lastLine])
-          : VimCore::clampCol(ctx.lines, pos.targetCol, lastLine);
-      emitMotion(base, KSId::G, {lastLine, endpointCol, pos.targetCol});
-    }
+  bool hasLinesAboveBoundary() const {
+    return boundary_.hasLinesAbove();
   }
 
-  template<CountClass C>
-  void exploreCountMotion(const MotionState& base, const KeyedSequence& baseMotion,
-                          int cnt, const CursorPos& newPos) {
+  bool hasLinesBelowBoundary() const {
+    return boundary_.hasLinesBelow();
+  }
+
+  bool canLandOnLine(int line) const {
+    if (boundary_.hasLinesAbove() && line == 0) return false;
+    if (boundary_.hasLinesBelow() && line == lines_.lastLine()) return false;
+    return true;
+  }
+
+  bool isValidLocalLandingLine(int line) const {
+    return line >= 0 && line <= lines_.lastLine() && canLandOnLine(line);
+  }
+
+  int scrollShift(bool isHalfMotion, bool forward) const {
+    int baseShift = isHalfMotion
+        ? navContext_.scrollAmount
+        : std::max(0, navContext_.windowHeight - 2);
+    return forward ? baseShift : -baseShift;
+  }
+
+  std::optional<PrefixRange> boundedPrefixRange(int cappedMax) const {
+    int maxBound = std::min(cappedMax, params_.maxPrefixCount);
+    if (maxBound < params_.minPrefixCount) return std::nullopt;
+    return PrefixRange{params_.minPrefixCount, maxBound};
+  }
+
+  bool isValidPrefixCount(int count) const {
+    return count >= params_.minPrefixCount && count <= params_.maxPrefixCount;
+  }
+
+  GoalSide goalSide(const CursorPos& pos) const {
+    if (pos < goalRange_.first) return GoalSide::Before;
+    if (pos > goalRange_.last) return GoalSide::After;
+    return GoalSide::InRange;
+  }
+
+  bool isOnGoalEdgeLine(int line) const {
+    return line == goalRange_.first.line || line == goalRange_.last.line;
+  }
+
+  bool canExploreFMotionsFrom(const CursorPos& pos) const {
+    bool singleGoalLine = (goalRange_.first.line == goalRange_.last.line);
+    return singleGoalLine && pos.line == goalRange_.first.line;
+  }
+
+  int goalColForDirection(bool forward) const {
+    return forward ? goalRange_.last.col : goalRange_.first.col;
+  }
+
+  int fMotionThreshold() const {
+    return params_.fMotionThreshold;
+  }
+
+  template<class OnStatic>
+  void emitMotion(KSId id, CursorPos endpoint, OnStatic& onStatic) const {
+    onStatic(id, KeyedSequence::byId(id), endpoint);
+  }
+
+  template<CountClass C, class OnCounted>
+  void exploreCountMotion(KSId baseMotion,
+                          int cnt,
+                          const CursorPos& newPos,
+                          OnCounted& onCounted) const {
     assert(cnt >= 0 && cnt <= CountPrefixLimits::MAX_PREFIX_COUNT);
     CountPenaltyInput in;
     in.count = cnt;
     in.span = cnt;
     double penalty = runtimeCountPenalty<C>(in);
-
-    MotionState newState = base.afterCountedMotion(baseMotion, cnt, newPos, ctx.config, penalty);
-    newState.setCost(ctx.computePriorityToRange(newState));
-    enqueueToGoalRange(std::move(newState));
+    onCounted(baseMotion, KeyedSequence::byId(baseMotion), cnt, newPos, penalty);
   }
 
-  // F-motions with known column (internal helper)
-  void exploreFMotion(const MotionState& base, const KeyedSequence& fMotion, int newcol) {
-    MotionState newState = base.afterFMotion(fMotion, newcol, ctx.config);
-    newState.setCost(ctx.computePriorityToRange(newState));
-    enqueueToGoalRange(std::move(newState));
-  }
-
-  // ==========================================================================
-  // F-motions templated on direction - generates f{c};... or F{c};... sequences
-  // Only useful when the range is on a single line and the cursor is on that line.
-  // ==========================================================================
-  template<bool Forward>
-  void exploreFMotions(const MotionState& base) {
+  template<class OnStatic>
+  void exploreHorizontalMotions(const MotionState& base, OnStatic& onStatic) {
     CursorPos pos = base.getPos();
-    if (ctx.rangeFirst.line != ctx.rangeLast.line || pos.line != ctx.rangeFirst.line) return;
+    auto bounds = horizontalBoundsForLine(pos.line);
+
+    if (pos.col > bounds.left)
+      emitMotion(KSId::h, {pos.line, pos.col - 1}, onStatic);
+
+    if (pos.col < bounds.lastCol - bounds.right)
+      emitMotion(KSId::l, {pos.line, pos.col + 1}, onStatic);
+
+    if (pos.col > bounds.left)
+      emitMotion(KSId::Zero, {pos.line, bounds.left}, onStatic);
+
+    int fnb = firstNonBlankCol(pos.line);
+    if (fnb >= bounds.left && fnb <= bounds.lastCol - bounds.right && fnb != pos.col)
+      emitMotion(KSId::Caret, {pos.line, fnb}, onStatic);
+
+    int dollarCol = bounds.lastCol - bounds.right;
+    if (dollarCol > pos.col && dollarCol >= bounds.left)
+      emitMotion(KSId::Dollar, {pos.line, dollarCol, TARGETCOL_EOL}, onStatic);
+  }
+
+  template<class OnStatic>
+  void exploreVerticalMotions(const MotionState& base, OnStatic& onStatic) {
+    CursorPos pos = base.getPos();
+    int lastLine = maxLineIndex();
+
+    if (pos.line < lastLine) {
+      int newLine = pos.line + 1;
+      int newCol = clampTargetColToLine(pos.targetCol, newLine);
+      emitMotion(KSId::j, {newLine, newCol, pos.targetCol}, onStatic);
+    }
+
+    if (pos.line > 0) {
+      int newLine = pos.line - 1;
+      int newCol = clampTargetColToLine(pos.targetCol, newLine);
+      emitMotion(KSId::k, {newLine, newCol, pos.targetCol}, onStatic);
+    }
+  }
+
+  template<bool Forward, EdgeType Edge, class OnStatic>
+  void exploreWordMotions(const std::vector<Motion::WordMotionSpecNoEdge>& specs,
+                          const MotionState& base,
+                          OnStatic& onStatic) {
+    CursorPos pos = base.getPos();
+    auto dirBoundary = boundaryForDirection(Forward);
+
+    for (const auto& spec : specs) {
+      CursorPos endpoint = VimCore::motionWordEndpoint<Forward, Edge>(
+        pos, lines_, spec.big, spec.skipCurrent,
+        dirBoundary.edgeOffset, dirBoundary.hasLinesOutside, false);
+
+      if (endpoint != POSITION_OUTSIDE_BOUNDARY) {
+        emitMotion(spec.ksId, endpoint, onStatic);
+      }
+    }
+  }
+
+  template<bool Forward, class OnStatic>
+  void exploreParagraphMotions(const std::vector<Motion::ParagraphMotionSpecNoDir>& specs,
+                               const MotionState& base,
+                               OnStatic& onStatic) {
+    CursorPos pos = base.getPos();
+
+    auto dirBoundary = boundaryForDirection(Forward);
+    int endpointLine = VimCore::motionParagraphEndpoint<Forward, LineEdgeType::NextEdge>(
+        pos.line, lines_, dirBoundary.hasLinesOutside);
+
+    if (endpointLine == VimCore::LINE_OUTSIDE_BOUNDARY) return;
+
+    int endpointCol = 0;
+    if constexpr (Forward) {
+      int lastLine = maxLineIndex();
+      if (endpointLine == lastLine && !VimCore::isBlankLineStr(lines_[endpointLine])) {
+        endpointCol = horizontalBoundsForLine(endpointLine).lastCol;
+      }
+    }
+
+    CursorPos endpoint(endpointLine, endpointCol);
+    for (const auto& spec : specs) {
+      emitMotion(spec.ksId, endpoint, onStatic);
+    }
+  }
+
+  template<bool Forward, class OnStatic>
+  void exploreSentenceMotions(const std::vector<Motion::SentenceMotionSpecNoDir>& specs,
+                              const MotionState& base,
+                              OnStatic& onStatic) {
+    CursorPos pos = base.getPos();
+
+    auto dirBoundary = boundaryForDirection(Forward);
+    CursorPos endpoint = VimCore::motionSentenceEndpoint<Forward, SentenceEdgeType::NextEdge>(
+        pos, lines_, dirBoundary.edgeOffset, dirBoundary.hasLinesOutside);
+
+    if (endpoint == POSITION_OUTSIDE_BOUNDARY) return;
+
+    for (const auto& spec : specs) {
+      emitMotion(spec.ksId, endpoint, onStatic);
+    }
+  }
+
+  template<bool Forward, class OnStatic>
+  void exploreScrollMotions(const MotionState& base, OnStatic& onStatic) {
+    CursorPos pos = base.getPos();
+
+    const auto& specs = Forward ? Motion::FORWARD_SCROLL_MOTIONS : Motion::BACKWARD_SCROLL_MOTIONS;
+    for (const auto& spec : specs) {
+      int shift = scrollShift(spec.isHalf, Forward);
+
+      int targetLine = VimCore::scrollEndpoint(
+          pos.line, maxLineIndex() + 1, shift,
+          hasLinesAboveBoundary(), hasLinesBelowBoundary());
+
+      if (targetLine != VimCore::LINE_OUTSIDE_BOUNDARY) {
+        int endpointCol = VimOptions::startOfLine()
+            ? firstNonBlankCol(targetLine)
+            : clampTargetColToLine(pos.targetCol, targetLine);
+        CursorPos endpoint(targetLine, endpointCol, pos.targetCol);
+        emitMotion(spec.ksId, endpoint, onStatic);
+      }
+    }
+  }
+
+  template<class OnStatic>
+  void exploreScrollMotions(const MotionState& base, OnStatic& onStatic) {
+    exploreScrollMotions<true>(base, onStatic);
+    exploreScrollMotions<false>(base, onStatic);
+  }
+
+  template<class OnStatic>
+  void exploreJumpMotions(const MotionState& base, OnStatic& onStatic) {
+    CursorPos pos = base.getPos();
+    if (!hasLinesAboveBoundary()) {
+      int endpointCol = VimOptions::startOfLine()
+          ? firstNonBlankCol(0)
+          : clampTargetColToLine(pos.targetCol, 0);
+      emitMotion(KSId::gg, {0, endpointCol, pos.targetCol}, onStatic);
+    }
+    if (!hasLinesBelowBoundary()) {
+      int lastLine = maxLineIndex();
+      int endpointCol = VimOptions::startOfLine()
+          ? firstNonBlankCol(lastLine)
+          : clampTargetColToLine(pos.targetCol, lastLine);
+      emitMotion(KSId::G, {lastLine, endpointCol, pos.targetCol}, onStatic);
+    }
+  }
+
+  template<bool Forward, class OnFMotion>
+  void exploreFMotions(const MotionState& base, OnFMotion& onFMotion) {
+    CursorPos pos = base.getPos();
+    if (!canExploreFMotionsFrom(pos)) return;
 
     constexpr char firstMotion = Forward ? 'f' : 'F';
     constexpr char repeatMotion = ';';
 
-    int goalCol = Forward ? ctx.rangeLast.col : ctx.rangeFirst.col;
+    int goalCol = goalColForDirection(Forward);
     auto infos = VimCore::generateFMotions<Forward>(
-        pos.col, goalCol, ctx.lines[pos.line], ctx.params.fMotionThreshold);
+        pos.col, goalCol, lines_[pos.line], fMotionThreshold());
 
     for (const auto& [c, col, cnt] : infos) {
       auto charIt = CHAR_TO_KEYS.find(c);
@@ -245,321 +386,213 @@ public:
       fMotion.append(c);
       fMotion.append(repeatMotion, cnt);
 
-      exploreFMotion(base, fMotion, col);
+      onFMotion(fMotion, col);
     }
   }
 
-  // ==========================================================================
-  // Inclusive-target counted spec exploration (uses BufferIndex with coordinate conversion)
-  // ==========================================================================
-
-  template<bool Forward, LandingType LT, CountClass C, KSId ForwardKS, KSId BackwardKS>
-  void exploreCountedSpec(const MotionState& base) {
+  template<bool Forward, LandingType LT, CountClass C, KSId ForwardKS, KSId BackwardKS,
+           class OnCounted>
+  void exploreCountedSpec(const MotionState& base, OnCounted& onCounted) {
     CursorPos pos = base.getPos();
-    const KeyedSequence& motion = []() -> const KeyedSequence& {
-      if constexpr (Forward) return KeyedSequence::byId(ForwardKS);
-      else return KeyedSequence::byId(BackwardKS);
-    }();
+    constexpr KSId motionId = Forward ? ForwardKS : BackwardKS;
 
     int off = bufferLineOffset_;
 
-    // Convert local → global coordinates for BufferIndex query
     Pos globalPos(pos.line + off, pos.col);
-    Pos globalRangeFirst(ctx.rangeFirst.line + off, ctx.rangeFirst.col);
-    Pos globalRangeLast(ctx.rangeLast.line + off, ctx.rangeLast.col);
+    Pos globalRangeFirst(goalRange_.first.line + off, goalRange_.first.col);
+    Pos globalRangeLast(goalRange_.last.line + off, goalRange_.last.col);
 
-    // BufferIndex directional query requires state to be strictly outside range
-    // on the matching side.
     if constexpr (Forward) {
       if (!(globalPos < globalRangeFirst)) return;
     } else {
       if (!(globalPos > globalRangeLast)) return;
     }
 
-    auto results = bufferIndex_.getClosestInRange<Forward>(LT, globalPos, globalRangeFirst, globalRangeLast);
+    auto results = bufferIndex_.getClosestInRange<Forward>(
+        LT, globalPos, globalRangeFirst, globalRangeLast);
     for (const auto& r : results) {
       if (!r.valid()) continue;
-      if (r.count < ctx.params.minPrefixCount) continue;
-      if (r.count > ctx.params.maxPrefixCount) continue;
-      // Convert global → local coordinates
+      if (!isValidPrefixCount(r.count)) continue;
+
       CursorPos localPos(r.pos.line - off, r.pos.col);
-      // Bounds + boundary guards: BufferIndex covers the full buffer,
-      // so results can map outside the local subset.
-      if (localPos.line < 0 || localPos.line > ctx.lines.lastLine()) continue;
-      if (ctx.boundary.hasLinesAbove() && localPos.line == 0) continue;
-      if (ctx.boundary.hasLinesBelow() && localPos.line == ctx.lines.lastLine()) continue;
-      exploreCountMotion<C>(base, motion, r.count, localPos);
+      if (!isValidLocalLandingLine(localPos.line)) continue;
+      exploreCountMotion<C>(motionId, r.count, localPos, onCounted);
     }
   }
 
-  // Line-local count motions (word motions - used when on same line as range)
-  template<bool Forward>
-  void exploreLineCountMotions(const MotionState& base) {
+  template<bool Forward, class OnCounted>
+  void exploreLineCountMotions(const MotionState& base, OnCounted& onCounted) {
     exploreCountedSpec<Forward, LandingType::WordBegin, CountClass::MotionWord,
-                       KSId::w, KSId::b>(base);
+                       KSId::w, KSId::b>(base, onCounted);
     exploreCountedSpec<Forward, LandingType::WordEnd, CountClass::MotionWord,
-                       KSId::e, KSId::ge>(base);
+                       KSId::e, KSId::ge>(base, onCounted);
     exploreCountedSpec<Forward, LandingType::WORDBegin, CountClass::MotionWORD,
-                       KSId::W, KSId::B>(base);
+                       KSId::W, KSId::B>(base, onCounted);
     exploreCountedSpec<Forward, LandingType::WORDEnd, CountClass::MotionWORD,
-                       KSId::E, KSId::gE>(base);
+                       KSId::E, KSId::gE>(base, onCounted);
   }
 
-  // Global count motions (paragraph/sentence motions)
-  template<bool Forward>
-  void exploreGlobalCountMotions(const MotionState& base) {
+  template<bool Forward, class OnCounted>
+  void exploreGlobalCountMotions(const MotionState& base, OnCounted& onCounted) {
     exploreCountedSpec<Forward, LandingType::Paragraph, CountClass::MotionParagraph,
-                       KSId::RBrace, KSId::LBrace>(base);
+                       KSId::RBrace, KSId::LBrace>(base, onCounted);
     exploreCountedSpec<Forward, LandingType::Sentence, CountClass::MotionSentence,
-                       KSId::RParen, KSId::LParen>(base);
+                       KSId::RParen, KSId::LParen>(base, onCounted);
   }
 
-  // Counted vertical motions: {count}j or {count}k
-  template<bool Forward>
-  void exploreCountedVerticalMotions(const MotionState& base) {
+  template<bool Forward, class OnCounted>
+  void exploreCountedVerticalMotions(const MotionState& base, OnCounted& onCounted) {
     CursorPos pos = base.getPos();
-    int lastLine = ctx.lines.lastLine();
+    int lastLine = maxLineIndex();
 
-    // Cap at 20 lines; future: could be viewport-based
     constexpr int MAX_LINE_JUMP = 20;
-
     int linesAvailable = Forward ? (lastLine - pos.line) : pos.line;
     int maxCount = std::min(MAX_LINE_JUMP, linesAvailable);
-    maxCount = std::min(maxCount, ctx.params.maxPrefixCount);
+    auto countRange = boundedPrefixRange(maxCount);
+    if (!countRange) return;
 
-    const KeyedSequence& motion = Forward ? KeyedSequence::j : KeyedSequence::k;
-
-    for (int cnt = ctx.params.minPrefixCount; cnt <= maxCount; cnt++) {
+    const KSId motion = Forward ? KSId::j : KSId::k;
+    for (int cnt = countRange->min; cnt <= countRange->max; cnt++) {
       int newLine = Forward ? (pos.line + cnt) : (pos.line - cnt);
+      if (!canLandOnLine(newLine)) continue;
 
-      // Boundary guard: don't land on boundary lines
-      if (ctx.boundary.hasLinesAbove() && newLine == 0) continue;
-      if (ctx.boundary.hasLinesBelow() && newLine == lastLine) continue;
-
-      int newCol = VimCore::clampCol(ctx.lines, pos.targetCol, newLine);
-      exploreCountMotion<CountClass::MotionLine>(base, motion, cnt, {newLine, newCol, pos.targetCol});
+      int newCol = clampTargetColToLine(pos.targetCol, newLine);
+      exploreCountMotion<CountClass::MotionLine>(motion, cnt,
+                                                 {newLine, newCol, pos.targetCol}, onCounted);
     }
   }
 
-  // Counted horizontal motions: {count}l or {count}h
-  template<bool Forward>
-  void exploreCountedHorizontalMotions(const MotionState& base) {
+  template<bool Forward, class OnCounted>
+  void exploreCountedHorizontalMotions(const MotionState& base, OnCounted& onCounted) {
     CursorPos pos = base.getPos();
-    int lastCol = ctx.lines[pos.line].lastCol();
-    int lastLine = ctx.lines.lastLine();
-
-    int leftBound = (pos.line == 0) ? ctx.boundary.leftColOffset() : 0;
-    int rightBound = (pos.line == lastLine) ? ctx.boundary.rightColOffset() : 0;
+    auto bounds = horizontalBoundsForLine(pos.line);
 
     int maxCount = Forward
-        ? (lastCol - rightBound - pos.col)
-        : (pos.col - leftBound);
-    maxCount = std::min(maxCount, ctx.params.maxPrefixCount);
+        ? (bounds.lastCol - bounds.right - pos.col)
+        : (pos.col - bounds.left);
+    auto countRange = boundedPrefixRange(maxCount);
+    if (!countRange) return;
 
-    const KeyedSequence& motion = Forward ? KeyedSequence::l : KeyedSequence::h;
-
-    for (int cnt = ctx.params.minPrefixCount; cnt <= maxCount; cnt++) {
+    const KSId motion = Forward ? KSId::l : KSId::h;
+    for (int cnt = countRange->min; cnt <= countRange->max; cnt++) {
       int newCol = Forward ? (pos.col + cnt) : (pos.col - cnt);
-      exploreCountMotion<CountClass::MotionChar>(base, motion, cnt, {pos.line, newCol});
+      exploreCountMotion<CountClass::MotionChar>(motion, cnt,
+                                                 {pos.line, newCol}, onCounted);
     }
   }
 
-  // Counted/indexed motions (2w, 5j, fa;, etc.) - direction chosen per-state via goalSide()
-  template<bool Forward>
-  void exploreCountedMotionsImpl(const MotionState& base, bool canUseLineLocalMotions) {
+  template<bool Forward, class OnCounted, class OnFMotion>
+  void exploreCountedMotionsForDirection(const MotionState& base,
+                                         bool canUseLineLocalMotions,
+                                         OnCounted& onCounted,
+                                         OnFMotion& onFMotion) {
     if (canUseLineLocalMotions) {
-      exploreFMotions<Forward>(base);
-      exploreLineCountMotions<Forward>(base);
-      exploreCountedHorizontalMotions<Forward>(base);
+      exploreFMotions<Forward>(base, onFMotion);
+      exploreLineCountMotions<Forward>(base, onCounted);
+      exploreCountedHorizontalMotions<Forward>(base, onCounted);
     }
-    exploreGlobalCountMotions<Forward>(base);
-    exploreCountedVerticalMotions<Forward>(base);
+    exploreGlobalCountMotions<Forward>(base, onCounted);
+    exploreCountedVerticalMotions<Forward>(base, onCounted);
   }
 
-  enum class GoalSide {
-    Before,
-    InRange,
-    After,
-  };
-
-  GoalSide goalSide(const CursorPos& pos) const {
-    if (pos < ctx.rangeFirst) return GoalSide::Before;
-    if (pos > ctx.rangeLast) return GoalSide::After;
-    return GoalSide::InRange;
-  }
-
-  bool canUseLineLocalMotions(const CursorPos& pos) const {
-    return pos.line == ctx.rangeFirst.line || pos.line == ctx.rangeLast.line;
-  }
-
-  void exploreCountedMotions(const MotionState& base) {
-    CursorPos pos = base.getPos();
-    GoalSide side = goalSide(pos);
-
-    // Goal states are handled by caller before exploration.
-    if (side == GoalSide::InRange) return;
-
-    bool lineLocal = canUseLineLocalMotions(pos);
-    if (side == GoalSide::Before) {
-      exploreCountedMotionsImpl<true>(base, lineLocal);
-    } else {
-      exploreCountedMotionsImpl<false>(base, lineLocal);
-    }
-  }
-
-  // ==========================================================================
-  // Non-directional exploration
-  // ==========================================================================
-
-  void exploreAllStandardMotions(const MotionState& base) {
-    exploreHorizontalMotions(base);
-    exploreVerticalMotions(base);
-    exploreWordMotions<true, EdgeType::NextEdge>(Motion::FORWARD_NEXTEDGE_MOTIONS, base);
-    exploreWordMotions<true, EdgeType::WordEdge>(Motion::FORWARD_WORDEDGE_MOTIONS, base);
-    exploreWordMotions<false, EdgeType::WordEdge>(Motion::BACKWARD_WORDEDGE_MOTIONS, base);
-    exploreWordMotions<false, EdgeType::NextEdge>(Motion::BACKWARD_NEXTEDGE_MOTIONS, base);
-    exploreParagraphMotions<true>(Motion::FORWARD_PARAGRAPH_MOTIONS, base);
-    exploreParagraphMotions<false>(Motion::BACKWARD_PARAGRAPH_MOTIONS, base);
-    exploreSentenceMotions<true>(Motion::FORWARD_SENTENCE_MOTIONS, base);
-    exploreSentenceMotions<false>(Motion::BACKWARD_SENTENCE_MOTIONS, base);
-    exploreScrollMotions(base);
-    exploreJumpMotions(base);
-  }
-
-  // ==========================================================================
-  // 6-Class Direction-based exploration
-  // ==========================================================================
-  // Classes:
-  //   Left:             h, 0, ^
-  //   Right:            l, $
-  //   Up:               k, <C-u>, gg
-  //   Down:             j, <C-d>, G
-  //   Forward-crossing: w, W, e, E, }, )  (unpredictable horizontal when crossing lines)
-  //   Backward-crossing: b, B, ge, gE, {, (
-  //
-  // Selection logic:
-  //   Same line: Left+Backward OR Right+Forward (2/6)
-  //   Different lines:
-  //     - Vertical: Down+Forward OR Up+Backward based on goal.line vs pos.line
-  //     - Horizontal: Left+Backward OR Right+Forward based on goal.col vs pos.col
-  //   Result: 2-4 classes explored per state
-
-  // Explore motion classes based on bitmask
-  void exploreClasses(const MotionState& base, MotionClassMask m) {
+  template<class OnStatic>
+  void exploreClasses(const MotionState& base, MotionClassMask m, OnStatic& onStatic) {
     using M = MotionClassMask;
-    if (has(m, M::Left))          exploreLeftMotions(base);
-    if (has(m, M::Right))         exploreRightMotions(base);
-    if (has(m, M::Up))            exploreUpMotions(base);
-    if (has(m, M::Down))          exploreDownMotions(base);
-    if (has(m, M::ForwardCross))  exploreForwardCrossingMotions(base);
-    if (has(m, M::BackwardCross)) exploreBackwardCrossingMotions(base);
+    if (has(m, M::Left))          exploreLeftMotions(base, onStatic);
+    if (has(m, M::Right))         exploreRightMotions(base, onStatic);
+    if (has(m, M::Up))            exploreUpMotions(base, onStatic);
+    if (has(m, M::Down))          exploreDownMotions(base, onStatic);
+    if (has(m, M::ForwardCross))  exploreForwardCrossingMotions(base, onStatic);
+    if (has(m, M::BackwardCross)) exploreBackwardCrossingMotions(base, onStatic);
   }
 
-  // Directional standard motion exploration using range
-  void exploreDirectionalStandardMotions(const MotionState& base) {
+  template<class OnStatic>
+  void exploreLeftMotions(const MotionState& base, OnStatic& onStatic) {
     CursorPos pos = base.getPos();
-    MotionClassMask m = classesForRange(pos, ctx.rangeFirst, ctx.rangeLast);
-    exploreClasses(base, m);
+    auto bounds = horizontalBoundsForLine(pos.line);
+
+    if (pos.col > bounds.left)
+      emitMotion(KSId::h, {pos.line, pos.col - 1}, onStatic);
+
+    if (pos.col > bounds.left)
+      emitMotion(KSId::Zero, {pos.line, bounds.left}, onStatic);
+
+    int fnb = firstNonBlankCol(pos.line);
+    if (fnb >= bounds.left && fnb <= bounds.lastCol - bounds.right && fnb < pos.col)
+      emitMotion(KSId::Caret, {pos.line, fnb}, onStatic);
   }
 
-  // --- Left: h, 0, ^ (when fnb < pos.col) ---
-  void exploreLeftMotions(const MotionState& base) {
+  template<class OnStatic>
+  void exploreRightMotions(const MotionState& base, OnStatic& onStatic) {
     CursorPos pos = base.getPos();
-    int lastCol = ctx.lines[pos.line].lastCol();
-    int lastLine = ctx.lines.lastLine();
+    auto bounds = horizontalBoundsForLine(pos.line);
 
-    int leftBound = (pos.line == 0) ? ctx.boundary.leftColOffset() : 0;
-    int rightBound = (pos.line == lastLine) ? ctx.boundary.rightColOffset() : 0;
+    if (pos.col < bounds.lastCol - bounds.right)
+      emitMotion(KSId::l, {pos.line, pos.col + 1}, onStatic);
 
-    if (pos.col > leftBound)
-      emitMotion(base, KSId::h, {pos.line, pos.col - 1});
+    int dollarCol = bounds.lastCol - bounds.right;
+    if (dollarCol > pos.col && dollarCol >= bounds.left)
+      emitMotion(KSId::Dollar, {pos.line, dollarCol, TARGETCOL_EOL}, onStatic);
 
-    if (pos.col > leftBound)
-      emitMotion(base, KSId::Zero, {pos.line, leftBound});
-
-    int fnb = VimCore::firstNonBlankColInLineStr(ctx.lines[pos.line]);
-    if (fnb >= leftBound && fnb <= lastCol - rightBound && fnb < pos.col)
-      emitMotion(base, KSId::Caret, {pos.line, fnb});
+    int fnb = firstNonBlankCol(pos.line);
+    if (fnb >= bounds.left && fnb <= bounds.lastCol - bounds.right && fnb > pos.col)
+      emitMotion(KSId::Caret, {pos.line, fnb}, onStatic);
   }
 
-  // --- Right: l, $, ^ (when fnb > pos.col) ---
-  void exploreRightMotions(const MotionState& base) {
-    CursorPos pos = base.getPos();
-    int lastCol = ctx.lines[pos.line].lastCol();
-    int lastLine = ctx.lines.lastLine();
-
-    int leftBound = (pos.line == 0) ? ctx.boundary.leftColOffset() : 0;
-    int rightBound = (pos.line == lastLine) ? ctx.boundary.rightColOffset() : 0;
-
-    if (pos.col < lastCol - rightBound)
-      emitMotion(base, KSId::l, {pos.line, pos.col + 1});
-
-    int dollarCol = lastCol - rightBound;
-    if (dollarCol > pos.col && dollarCol >= leftBound)
-      emitMotion(base, KSId::Dollar, {pos.line, dollarCol, TARGETCOL_EOL});
-
-    // ^ can move right if cursor is before first non-blank
-    int fnb = VimCore::firstNonBlankColInLineStr(ctx.lines[pos.line]);
-    if (fnb >= leftBound && fnb <= lastCol - rightBound && fnb > pos.col)
-      emitMotion(base, KSId::Caret, {pos.line, fnb});
-  }
-
-  // --- Up: k, <C-u>, gg ---
-  void exploreUpMotions(const MotionState& base) {
+  template<class OnStatic>
+  void exploreUpMotions(const MotionState& base, OnStatic& onStatic) {
     CursorPos pos = base.getPos();
 
     if (pos.line > 0) {
       int newLine = pos.line - 1;
-      int newCol = VimCore::clampCol(ctx.lines, pos.targetCol, newLine);
-      emitMotion(base, KSId::k, {newLine, newCol, pos.targetCol});
+      int newCol = clampTargetColToLine(pos.targetCol, newLine);
+      emitMotion(KSId::k, {newLine, newCol, pos.targetCol}, onStatic);
     }
 
-    exploreScrollMotions<false>(base);
+    exploreScrollMotions<false>(base, onStatic);
 
-    if (!ctx.boundary.hasLinesAbove()) {
+    if (!hasLinesAboveBoundary()) {
       int endpointCol = VimOptions::startOfLine()
-          ? VimCore::firstNonBlankColInLineStr(ctx.lines[0])
-          : VimCore::clampCol(ctx.lines, pos.targetCol, 0);
-      emitMotion(base, KSId::gg, {0, endpointCol, pos.targetCol});
+          ? firstNonBlankCol(0)
+          : clampTargetColToLine(pos.targetCol, 0);
+      emitMotion(KSId::gg, {0, endpointCol, pos.targetCol}, onStatic);
     }
   }
 
-  // --- Down: j, <C-d>, G ---
-  void exploreDownMotions(const MotionState& base) {
+  template<class OnStatic>
+  void exploreDownMotions(const MotionState& base, OnStatic& onStatic) {
     CursorPos pos = base.getPos();
-    int lastLine = ctx.lines.lastLine();
+    int lastLine = maxLineIndex();
 
     if (pos.line < lastLine) {
       int newLine = pos.line + 1;
-      int newCol = VimCore::clampCol(ctx.lines, pos.targetCol, newLine);
-      emitMotion(base, KSId::j, {newLine, newCol, pos.targetCol});
+      int newCol = clampTargetColToLine(pos.targetCol, newLine);
+      emitMotion(KSId::j, {newLine, newCol, pos.targetCol}, onStatic);
     }
 
-    exploreScrollMotions<true>(base);
+    exploreScrollMotions<true>(base, onStatic);
 
-    if (!ctx.boundary.hasLinesBelow()) {
+    if (!hasLinesBelowBoundary()) {
       int endpointCol = VimOptions::startOfLine()
-          ? VimCore::firstNonBlankColInLineStr(ctx.lines[lastLine])
-          : VimCore::clampCol(ctx.lines, pos.targetCol, lastLine);
-      emitMotion(base, KSId::G, {lastLine, endpointCol, pos.targetCol});
+          ? firstNonBlankCol(lastLine)
+          : clampTargetColToLine(pos.targetCol, lastLine);
+      emitMotion(KSId::G, {lastLine, endpointCol, pos.targetCol}, onStatic);
     }
   }
 
-  // --- Forward-crossing: w, W, e, E, }, ) ---
-  void exploreForwardCrossingMotions(const MotionState& base) {
-    exploreWordMotions<true, EdgeType::NextEdge>(Motion::FORWARD_NEXTEDGE_MOTIONS, base);
-    exploreWordMotions<true, EdgeType::WordEdge>(Motion::FORWARD_WORDEDGE_MOTIONS, base);
-    exploreParagraphMotions<true>(Motion::FORWARD_PARAGRAPH_MOTIONS, base);
-    exploreSentenceMotions<true>(Motion::FORWARD_SENTENCE_MOTIONS, base);
+  template<class OnStatic>
+  void exploreForwardCrossingMotions(const MotionState& base, OnStatic& onStatic) {
+    exploreWordMotions<true, EdgeType::NextEdge>(Motion::FORWARD_NEXTEDGE_MOTIONS, base, onStatic);
+    exploreWordMotions<true, EdgeType::WordEdge>(Motion::FORWARD_WORDEDGE_MOTIONS, base, onStatic);
+    exploreParagraphMotions<true>(Motion::FORWARD_PARAGRAPH_MOTIONS, base, onStatic);
+    exploreSentenceMotions<true>(Motion::FORWARD_SENTENCE_MOTIONS, base, onStatic);
   }
 
-  // --- Backward-crossing: b, B, ge, gE, {, ( ---
-  void exploreBackwardCrossingMotions(const MotionState& base) {
-    exploreWordMotions<false, EdgeType::WordEdge>(Motion::BACKWARD_WORDEDGE_MOTIONS, base);
-    exploreWordMotions<false, EdgeType::NextEdge>(Motion::BACKWARD_NEXTEDGE_MOTIONS, base);
-    exploreParagraphMotions<false>(Motion::BACKWARD_PARAGRAPH_MOTIONS, base);
-    exploreSentenceMotions<false>(Motion::BACKWARD_SENTENCE_MOTIONS, base);
+  template<class OnStatic>
+  void exploreBackwardCrossingMotions(const MotionState& base, OnStatic& onStatic) {
+    exploreWordMotions<false, EdgeType::WordEdge>(Motion::BACKWARD_WORDEDGE_MOTIONS, base, onStatic);
+    exploreWordMotions<false, EdgeType::NextEdge>(Motion::BACKWARD_NEXTEDGE_MOTIONS, base, onStatic);
+    exploreParagraphMotions<false>(Motion::BACKWARD_PARAGRAPH_MOTIONS, base, onStatic);
+    exploreSentenceMotions<false>(Motion::BACKWARD_SENTENCE_MOTIONS, base, onStatic);
   }
-
-  // Goal range accessors
 };

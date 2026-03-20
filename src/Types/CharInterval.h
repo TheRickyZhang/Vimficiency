@@ -1,28 +1,16 @@
 #pragma once
 
-#include "Types/CursorPos.h"
+#include "Types/Pos.h"
 
 // Character-wise inclusive interval: [first, last].
-// Intended for motion targets where both endpoints are real cursor landings.
 struct CharInterval {
-  CursorPos first;
-  CursorPos last;
+  Pos first;
+  Pos last;
 
-  CharInterval() = default;
-  constexpr CharInterval(CursorPos firstPos, CursorPos lastPos) : first(firstPos), last(lastPos) {}
+  constexpr CharInterval(Pos firstPos, Pos lastPos) : first(firstPos), last(lastPos) {}
+  constexpr explicit CharInterval(Pos pos) : first(pos), last(pos) {}
 
-  bool isValid() const {
-    return first.isValid() && last.isValid() && first <= last;
-  }
-
-  bool spansMultiple() const {
-    return first.line != last.line;
-  }
-
-  bool containsPos(const CursorPos& p) const {
+  bool containsPos(const Pos& p) const {
     return first <= p && p <= last;
   }
 };
-
-constexpr CharInterval CHAR_INTERVAL_OUTSIDE_BOUNDARY{
-    POSITION_OUTSIDE_BOUNDARY, POSITION_OUTSIDE_BOUNDARY};

@@ -44,6 +44,10 @@ struct CursorPos : Pos {
     col = clampedCol;
   }
 
+  // Explicit conversion to Pos (drops targetCol).
+  // Prefer this over implicit slicing when the intent is to discard targetCol.
+  constexpr Pos pos() const { return {line, col}; }
+
   void swap(CursorPos& other) noexcept {
     std::swap(line, other.line);
     std::swap(col, other.col);

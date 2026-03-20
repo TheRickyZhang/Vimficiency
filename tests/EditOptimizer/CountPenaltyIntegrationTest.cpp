@@ -5,7 +5,7 @@
 #include "Optimizer/CountPenalty.h"
 #include "Optimizer/EditOptimizer/EditExplorer.h"
 #include "Optimizer/EditOptimizer/EditOptimizerParams.h"
-#include "Optimizer/EditOptimizer/EditSearchContext.h"
+#include "Effort/EffortBank.h"
 #include "Optimizer/GlobalRuntimeOptions.h"
 #include "Types/Lines.h"
 
@@ -24,8 +24,9 @@ TEST(EditCountPenaltyIntegrationTest, CountedLineEditsIncludeRuntimePenalty) {
   Lines lines = {"a", "b", "c", "d"};
   EditBoundary boundary(lines, CursorPos(0, 0), lines.endPos());
   EditOptimizerParams params = EditOptimizerParams{}.withMinCountRepeat(2);
-  EditSearchContext ctx(lines, boundary, params, config);
-  EditExplorer explorer(ctx);
+  EffortBank bank(config);
+  EditExplorer explorer(boundary, params, config, bank, boundary.leftColOffset(),
+                        boundary.rightColOffset());
   CursorPos cursor(0, 0);
 
   double baseline = -1.0;
@@ -66,8 +67,9 @@ TEST(EditCountPenaltyIntegrationTest, CountedJoinEditsIncludeRuntimePenalty) {
   Lines lines = {"a", "b", "c", "d"};
   EditBoundary boundary(lines, CursorPos(0, 0), lines.endPos());
   EditOptimizerParams params = EditOptimizerParams{}.withMinCountRepeat(2);
-  EditSearchContext ctx(lines, boundary, params, config);
-  EditExplorer explorer(ctx);
+  EffortBank bank(config);
+  EditExplorer explorer(boundary, params, config, bank, boundary.leftColOffset(),
+                        boundary.rightColOffset());
   CursorPos cursor(0, 0);
 
   double baseline = -1.0;

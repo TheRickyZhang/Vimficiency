@@ -99,7 +99,7 @@ TEST_F(EditOptimizerMultipleResultsTest, GlobalMaxResultsStillCapsTotalEmittedRe
           .withMaxMultiplePerStartPosition(3));
 
   EXPECT_LE(result.resultsAt(0, 0).size(), 2u);
-  EXPECT_LE(result.getStats().resultsFound, 2);
+  EXPECT_LE(result.getStats().resultsFound(), 2);
 }
 
 TEST_F(EditOptimizerMultipleResultsTest, HighMaxResultsValuesDoNotIncreaseWorkAfterTerminalStarts) {
@@ -148,15 +148,15 @@ TEST_F(EditOptimizerMultipleResultsTest, HighMaxResultsValuesDoNotIncreaseWorkAf
 
     const auto& statsA = runA.getStats();
     const auto& statsB = runB.getStats();
-    if (statsA.stopReason != SearchStopReason::AllResultsFound ||
-        statsB.stopReason != SearchStopReason::AllResultsFound) {
+    if (statsA.stopReason() != SearchStopReason::AllResultsFound ||
+        statsB.stopReason() != SearchStopReason::AllResultsFound) {
       continue;
     }
 
     SCOPED_TRACE("line_count=" + to_string(lines.size()));
     EXPECT_EQ(countsA, countsB);
-    EXPECT_EQ(statsA.resultsFound, statsB.resultsFound);
-    EXPECT_EQ(statsA.nodesExplored, statsB.nodesExplored);
+    EXPECT_EQ(statsA.resultsFound(), statsB.resultsFound());
+    EXPECT_EQ(statsA.nodesExplored(), statsB.nodesExplored());
     validated = true;
     break;
   }

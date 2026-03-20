@@ -40,7 +40,6 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   CompositionOptimizerParams& withExploreFactor(double v) { exploreFactor = v; return *this; }
   CompositionOptimizerParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
   CompositionOptimizerParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
-  CompositionOptimizerParams& withTrackExploredStates(bool v) { trackExploredStates = v; return *this; }
   CompositionOptimizerParams& withMotionLinePaddingAbove(int v) { motionPaddingAbove = v; return *this; }
   CompositionOptimizerParams& withMotionLinePaddingBelow(int v) { motionPaddingBelow = v; return *this; }
   CompositionOptimizerParams& withMotionLinePadding(int v) { motionPaddingAbove = motionPaddingBelow = v; return *this; }
@@ -75,7 +74,6 @@ struct CompositionOptimizerRangeParams : CompositionOptimizerParams {
   CompositionOptimizerRangeParams& withExploreFactor(double v) { exploreFactor = v; return *this; }
   CompositionOptimizerRangeParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
   CompositionOptimizerRangeParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
-  CompositionOptimizerRangeParams& withTrackExploredStates(bool v) { trackExploredStates = v; return *this; }
   CompositionOptimizerRangeParams& withAllowMultiplePerPosition(bool v) { allowMultiplePerPosition = v; return *this; }
   CompositionOptimizerRangeParams& withMotionLinePaddingAbove(int v) { motionPaddingAbove = v; return *this; }
   CompositionOptimizerRangeParams& withMotionLinePaddingBelow(int v) { motionPaddingBelow = v; return *this; }

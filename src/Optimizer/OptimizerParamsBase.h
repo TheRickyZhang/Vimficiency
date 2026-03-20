@@ -53,7 +53,4 @@ struct OptimizerParamsBase {
     minPrefixCount = CountPrefixLimits::MIN_PREFIX_COUNT;
     maxPrefixCount = 0;
   }
-
-  // Debug: collect explored states in SearchStats (expensive, for debugging only)
-  bool trackExploredStates = false;
 };

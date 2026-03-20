@@ -56,22 +56,46 @@ public:
   // ==========================================================================
 
   // Create new state with motion applied
-  // Note: caller must set cost via setCost() after computing heuristic
+  template<class CostFn>
   [[nodiscard]] MotionState afterMotion(const KeyedSequence& ks, CursorPos endpoint,
-                                        const Config& config) const;
+                                        const Config& config, CostFn&& computeCost) const {
+    MotionState newState = *this;
+    newState.applyMotionImpl(ks, endpoint, config);
+    newState.cost = computeCost(newState.getPos(), newState.getEffort());
+    return newState;
+  }
 
   // Overload using pre-computed effort (from EffortBank) — avoids recomputing from keys
+  template<class CostFn>
   [[nodiscard]] MotionState afterMotion(const KeyedSequence& ks, const RunningEffort& precomputed,
-                                        CursorPos endpoint, const Config& config) const;
+                                        CursorPos endpoint, const Config& config,
+                                        CostFn&& computeCost) const {
+    MotionState newState = *this;
+    newState.applyMotionImpl(ks, precomputed, endpoint, config);
+    newState.cost = computeCost(newState.getPos(), newState.getEffort());
+    return newState;
+  }
 
   // Create new state with counted motion applied (e.g., "3w")
+  template<class CostFn>
   [[nodiscard]] MotionState afterCountedMotion(const KeyedSequence& baseMotion, int cnt,
                                                CursorPos endpoint, const Config& config,
-                                               double extraPenalty) const;
+                                               double extraPenalty, CostFn&& computeCost) const {
+    MotionState newState = *this;
+    newState.applyCountedMotionImpl(baseMotion, cnt, endpoint, config, extraPenalty);
+    newState.cost = computeCost(newState.getPos(), newState.getEffort());
+    return newState;
+  }
 
   // Create new state with f-motion applied (e.g., "fx;;")
+  template<class CostFn>
   [[nodiscard]] MotionState afterFMotion(const KeyedSequence& fMotion, int newCol,
-                                         const Config& config) const;
+                                         const Config& config, CostFn&& computeCost) const {
+    MotionState newState = *this;
+    newState.applyFMotionImpl(fMotion, newCol, config);
+    newState.cost = computeCost(newState.getPos(), newState.getEffort());
+    return newState;
+  }
 
   void setCost(double newCost) { cost = newCost; }
 

@@ -36,6 +36,21 @@ EditResult pureDeletionResult(
     EditOptimizerParams params = {}) {
   return opt.optimizePureDeletion(initialLines, boundary, params);
 }
+
+template<bool TrackExploredStates>
+[[gnu::noinline]] int searchStatsHotLoop(int iterations) {
+  MotionSearchStats stats;
+  for (int i = 0; i < iterations; i++) {
+    stats.incrementNodesExplored();
+    stats.incrementMotionsEmitted();
+    stats.incrementStatesSkipped();
+    if constexpr (TrackExploredStates) {
+      stats.maybeRecordExploredState(i, i, static_cast<double>(i), "x");
+    }
+  }
+  return stats.nodesExplored() + stats.motionsEmitted()
+      + stats.statesSkipped() + static_cast<int>(stats.exploredStates().size());
+}
 } // namespace
 
 // ============================================================================
@@ -135,6 +150,11 @@ protected:
     return EditBoundary(source, CursorPos(0, 0), source.endPos());
   }
 };
+
+TEST_F(DebugTest, DISABLED_SearchStatsCodegen) {
+  cerr << "NoTrace=" << searchStatsHotLoop<false>(1000) << endl;
+  cerr << "WithTrace=" << searchStatsHotLoop<true>(1000) << endl;
+}
 
 TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
   // Reproduce 5L+bnd benchmark crash: "j requires 1 lines below"
@@ -597,7 +617,7 @@ TEST_F(DebugTest, DISABLED_Placeholder) {
           if (!result.getResults()[j].empty()) validCount++;
         }
         cerr << "    Edit valid: " << validCount << "/" << result.resultCount()
-             << " nodes=" << result.getStats().nodesExplored << endl;
+             << " nodes=" << result.getStats().nodesExplored() << endl;
         for (size_t j = 0; j < result.resultCount(); j++) {
           const auto& bucket = result.getResults()[j];
           if (!bucket.empty()) {
@@ -1253,8 +1273,8 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
         MotionOptimizerRangeParams{}.withMaxResults(10));
 
     cerr << "MotionOptimizer returned " << rangeResult.getResults().size() << " results" << endl;
-    cerr << "Stats: nodes=" << rangeResult.getStats().nodesExplored
-         << " stopReason=" << static_cast<int>(rangeResult.getStats().stopReason) << endl;
+    cerr << "Stats: nodes=" << rangeResult.getStats().nodesExplored()
+         << " stopReason=" << static_cast<int>(rangeResult.getStats().stopReason()) << endl;
 
     for (size_t i = 0; i < rangeResult.getResults().size() && i < 5; i++) {
       const auto& r = rangeResult.getResults()[i];
@@ -1524,22 +1544,60 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
            << er.getGoalPos().line << "," << er.getGoalPos().col << ")" << endl;
     }
 
-    // Push initial state (same as CompositionOptimizer::optimize does)
+    // Seed initial state (same as CompositionOptimizer::optimize does)
     CompositionState startingState(initialPos, Mode::Normal, 0);
     startingState.setCost(ctx.heuristic(startingState, 0));
     ctx.pq.push(startingState);
     ctx.costMap[startingState.getKey()] = startingState.getCost();
 
+    auto enqueueState = [&](CompositionState&& newState) {
+      if (newState.getEffort() > ctx.maxEffort) return;
+
+      double newCost = newState.getCost();
+      const CompositionStateKey newKey = newState.getKey();
+      auto it = ctx.costMap.find(newKey);
+
+      if (it == ctx.costMap.end()) {
+        if (newState.getEditsCompleted() != ctx.totalEdits()) {
+          ctx.costMap.emplace(newKey, newCost);
+        }
+        ctx.pq.push(std::move(newState));
+      } else if (newCost <= it->second) {
+        it->second = newCost;
+        ctx.pq.push(std::move(newState));
+      }
+    };
+    auto enqueueEditTransition = [&](const CompositionState& current,
+                                     const Sequence& editSequence,
+                                     const CursorPos& goalPos,
+                                     int editsAfter) {
+      CompositionState newState = current.afterEditTransition(
+          editSequence, goalPos, Mode::Normal, config);
+      newState.setCost(ctx.heuristic(newState, editsAfter));
+      enqueueState(std::move(newState));
+    };
+    auto enqueueMotionTransition = [&](const CompositionState& current,
+                                       const Sequence& moveSequence,
+                                       const CursorPos& goalPos,
+                                       int editsCompleted) {
+      CompositionState newState = current.afterMotionResult(
+          moveSequence, goalPos, config);
+      newState.setCost(ctx.heuristic(newState, editsCompleted));
+      enqueueState(std::move(newState));
+    };
+
     // Manual A* trace — pop states and print what happens
     int popCount = 0;
     vector<Result> results;
-    while (ctx.shouldContinue() && popCount < 50) {
-      CompositionState s = ctx.popNext();
+    while (!ctx.pq.empty() && ctx.totalPops < params.maxNodesPopped && popCount < 50) {
+      CompositionState s = ctx.pq.top();
+      ctx.pq.pop();
+      ctx.totalPops++;
       CursorPos pos = s.getPos();
       int editsCompleted = s.getEditsCompleted();
       popCount++;
 
-      if (ctx.isGoal(s)) {
+      if (editsCompleted == ctx.totalEdits()) {
         cerr << "  POP " << popCount << ": GOAL pos=(" << pos.line << "," << pos.col
              << ") edits=" << editsCompleted
              << " seq='" << s.getSequence() << "' effort=" << s.getEffort()
@@ -1549,12 +1607,13 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
         continue;
       }
 
-      if (ctx.isStale(s)) {
+      auto it = ctx.costMap.find(s.getKey());
+      if (it != ctx.costMap.end() && it->second < s.getCost()) {
         cerr << "  POP " << popCount << ": STALE pos=(" << pos.line << "," << pos.col
              << ") edits=" << editsCompleted << " seq='" << s.getSequence() << "'" << endl;
         continue;
       }
-      ctx.markProcessed();
+      ctx.nodesProcessed++;
 
       const Lines& currentLines = ctx.getLinesAfter(editsCompleted);
       const DiffState& nextEdit = ctx.getDiffState(editsCompleted);
@@ -1576,8 +1635,8 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
       if (editRes) {
         // Edit transition
         cerr << "    -> EDIT: seq='" << editRes->getSequence() << "'" << endl;
-        ctx.exploreEditTransition(s, editRes->getSequence(),
-                                  editResult.getGoalPos(), editsCompleted + 1);
+        enqueueEditTransition(s, editRes->getSequence(),
+                              editResult.getGoalPos(), editsCompleted + 1);
       } else {
         // Motion search
         int editEndLine = nextEdit.endPos.line + (nextEdit.endPos.col > 0 ? 1 : 0);
@@ -1609,7 +1668,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
           CursorPos goalPos(movResult.getGoalPos().line + beginLine, movResult.getGoalPos().col);
           cerr << "    -> MOTION: seq='" << movResult.getSequence() << "' goalPos=("
                << goalPos.line << "," << goalPos.col << ")" << endl;
-          ctx.exploreMotionTransition(s, movResult.getSequence(), goalPos, editsCompleted);
+          enqueueMotionTransition(s, movResult.getSequence(), goalPos, editsCompleted);
         }
       }
     }
@@ -1700,15 +1759,53 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
   ctx.pq.push(startingState);
   ctx.costMap[startingState.getKey()] = startingState.getCost();
 
+  auto enqueueState = [&](CompositionState&& newState) {
+    if (newState.getEffort() > ctx.maxEffort) return;
+
+    double newCost = newState.getCost();
+    const CompositionStateKey newKey = newState.getKey();
+    auto it = ctx.costMap.find(newKey);
+
+    if (it == ctx.costMap.end()) {
+      if (newState.getEditsCompleted() != ctx.totalEdits()) {
+        ctx.costMap.emplace(newKey, newCost);
+      }
+      ctx.pq.push(std::move(newState));
+    } else if (newCost <= it->second) {
+      it->second = newCost;
+      ctx.pq.push(std::move(newState));
+    }
+  };
+  auto enqueueEditTransition = [&](const CompositionState& current,
+                                   const Sequence& editSequence,
+                                   const CursorPos& goalPos,
+                                   int editsAfter) {
+    CompositionState newState = current.afterEditTransition(
+        editSequence, goalPos, Mode::Normal, config);
+    newState.setCost(ctx.heuristic(newState, editsAfter));
+    enqueueState(std::move(newState));
+  };
+  auto enqueueMotionTransition = [&](const CompositionState& current,
+                                     const Sequence& moveSequence,
+                                     const CursorPos& goalPos,
+                                     int editsCompleted) {
+    CompositionState newState = current.afterMotionResult(
+        moveSequence, goalPos, config);
+    newState.setCost(ctx.heuristic(newState, editsCompleted));
+    enqueueState(std::move(newState));
+  };
+
   int popCount = 0;
   vector<Result> results;
-  while (ctx.shouldContinue() && popCount < 100) {
-    CompositionState s = ctx.popNext();
+  while (!ctx.pq.empty() && ctx.totalPops < compParams.maxNodesPopped && popCount < 100) {
+    CompositionState s = ctx.pq.top();
+    ctx.pq.pop();
+    ctx.totalPops++;
     CursorPos pos = s.getPos();
     int editsCompleted = s.getEditsCompleted();
     popCount++;
 
-    if (ctx.isGoal(s)) {
+    if (editsCompleted == ctx.totalEdits()) {
       cerr << "  POP " << popCount << ": GOAL seq='" << s.getSequence()
            << "' effort=" << s.getEffort() << " cost=" << s.getCost() << endl;
       results.emplace_back(s.getSequence().str(), s.getRunningEffort().getEffort(config));
@@ -1716,12 +1813,13 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
       continue;
     }
 
-    if (ctx.isStale(s)) {
+    auto it = ctx.costMap.find(s.getKey());
+    if (it != ctx.costMap.end() && it->second < s.getCost()) {
       cerr << "  POP " << popCount << ": STALE pos=(" << pos.line << "," << pos.col
            << ") edits=" << editsCompleted << " seq='" << s.getSequence() << "'" << endl;
       continue;
     }
-    ctx.markProcessed();
+    ctx.nodesProcessed++;
 
     const Lines& currentLines = ctx.getLinesAfter(editsCompleted);
     const DiffState& nextEdit = ctx.getDiffState(editsCompleted);
@@ -1744,7 +1842,7 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
     if (res) {
       cerr << "    -> EDIT: '" << res->getSequence() << "' cost=" << res->getCost()
            << " -> goalPos=(" << editResult.getGoalPos().line << "," << editResult.getGoalPos().col << ")" << endl;
-      ctx.exploreEditTransition(s, res->getSequence(), editResult.getGoalPos(), editsCompleted + 1);
+      enqueueEditTransition(s, res->getSequence(), editResult.getGoalPos(), editsCompleted + 1);
     } else {
       cerr << "    -> NO EDIT at pos, searching motions..." << endl;
 
@@ -1783,13 +1881,13 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
         CursorPos goalPos(movResult.getGoalPos().line + beginLine, movResult.getGoalPos().col);
         cerr << "      motion '" << movResult.getSequence() << "' -> ("
              << goalPos.line << "," << goalPos.col << ")" << endl;
-        ctx.exploreMotionTransition(s, movResult.getSequence(), goalPos, editsCompleted);
+        enqueueMotionTransition(s, movResult.getSequence(), goalPos, editsCompleted);
       }
     }
   }
 
   cerr << "\nSearch exhausted after " << popCount << " pops, " << results.size() << " results" << endl;
-  cerr << "Queue remaining: " << ctx.pq.size() << endl;
+  cerr << "Queue remaining: " << static_cast<int>(ctx.pq.size()) << endl;
 
   // Verify results
   if (!results.empty()) {
@@ -1965,8 +2063,8 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
         d.deletedLines(), d.insertedLines(), d.boundary, {},
         d.beginPos.line, d.beginPos.col, d.beginPos);
 
-    cerr << "    -> results: " << result.getStats().resultsFound
-         << " nodes: " << result.getStats().nodesExplored << endl;
+    cerr << "    -> results: " << result.getStats().resultsFound()
+         << " nodes: " << result.getStats().nodesExplored() << endl;
     for (size_t j = 0; j < result.resultCount(); j++) {
       const auto& bucket = result.getResults()[j];
       if (!bucket.empty()) {
@@ -2076,10 +2174,10 @@ TEST_F(DebugTest, SuffixCacheComparison) {
   for (size_t i = 0; i < stdResult.resultCount(); i++) {
     if (!stdResult.getResults()[i].empty()) stdValid++;
   }
-  cerr << "  nodes=" << stdResult.getStats().nodesExplored
-       << " results=" << stdResult.getStats().resultsFound
+  cerr << "  nodes=" << stdResult.getStats().nodesExplored()
+       << " results=" << stdResult.getStats().resultsFound()
        << " valid=" << stdValid << "/" << stdResult.resultCount()
-       << " stop=" << to_string(stdResult.getStats().stopReason) << endl;
+       << " stop=" << to_string(stdResult.getStats().stopReason()) << endl;
   for (size_t i = 0; i < stdResult.resultCount(); i++) {
     const auto& bucket = stdResult.getResults()[i];
     if (!bucket.empty()) {
@@ -2098,13 +2196,13 @@ TEST_F(DebugTest, SuffixCacheComparison) {
   for (size_t i = 0; i < cacheResult.resultCount(); i++) {
     if (!cacheResult.getResults()[i].empty()) cacheValid++;
   }
-  cerr << "  nodes=" << cacheResult.getStats().nodesExplored
-       << " results=" << cacheResult.getStats().resultsFound
+  cerr << "  nodes=" << cacheResult.getStats().nodesExplored()
+       << " results=" << cacheResult.getStats().resultsFound()
        << " valid=" << cacheValid << "/" << cacheResult.resultCount()
-       << " stop=" << to_string(cacheResult.getStats().stopReason)
-       << " cacheHits=" << cacheResult.getStats().cacheHits
-       << " cacheEntries=" << cacheResult.getStats().cacheEntries
-       << " populations=" << cacheResult.getStats().cachePopulations << endl;
+       << " stop=" << to_string(cacheResult.getStats().stopReason())
+       << " cacheHits=" << cacheResult.getStats().cacheHits()
+       << " cacheEntries=" << cacheResult.getStats().cacheEntries()
+       << " populations=" << cacheResult.getStats().cachePopulations() << endl;
   for (size_t i = 0; i < cacheResult.resultCount(); i++) {
     const auto& bucket = cacheResult.getResults()[i];
     if (!bucket.empty()) {
@@ -2116,10 +2214,10 @@ TEST_F(DebugTest, SuffixCacheComparison) {
   // Summary
   cerr << "\n=== Summary ===" << endl;
   cerr << "Standard: " << stdValid << " valid results, "
-       << stdResult.getStats().nodesExplored << " nodes" << endl;
+       << stdResult.getStats().nodesExplored() << " nodes" << endl;
   cerr << "SuffixCache: " << cacheValid << " valid results, "
-       << cacheResult.getStats().nodesExplored << " nodes, "
-       << cacheResult.getStats().cacheHits << " cache hits" << endl;
+       << cacheResult.getStats().nodesExplored() << " nodes, "
+       << cacheResult.getStats().cacheHits() << " cache hits" << endl;
   if (cacheValid > stdValid) {
     cerr << "SuffixCache found " << (cacheValid - stdValid) << " MORE results!" << endl;
   }
@@ -2248,11 +2346,11 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
       deletedLines, insertedLines, boundary, defaultParams,
       editBeginPos.line, editBeginPos.col, CursorPos(0, 29));
 
-  cerr << "  stats: nodes=" << result.getStats().nodesExplored
-       << " results=" << result.getStats().resultsFound
-       << " queueSize=" << result.getStats().queueSizeAtStop
-       << " stopReason=" << static_cast<int>(result.getStats().stopReason)
-       << " skipped=" << result.getStats().statesSkipped << endl;
+  cerr << "  stats: nodes=" << result.getStats().nodesExplored()
+       << " results=" << result.getStats().resultsFound()
+       << " queueSize=" << result.getStats().queueSizeAtStop()
+       << " stopReason=" << static_cast<int>(result.getStats().stopReason())
+       << " skipped=" << result.getStats().statesSkipped() << endl;
 
   int validCount = 0;
   for (size_t i = 0; i < result.resultCount(); i++) {
@@ -2274,11 +2372,11 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
       deletedLines, insertedLines, boundary, bigParams,
       editBeginPos.line, editBeginPos.col, CursorPos(0, 29));
 
-  cerr << "  stats: nodes=" << bigResult.getStats().nodesExplored
-       << " results=" << bigResult.getStats().resultsFound
-       << " queueSize=" << bigResult.getStats().queueSizeAtStop
-       << " stopReason=" << static_cast<int>(bigResult.getStats().stopReason)
-       << " skipped=" << bigResult.getStats().statesSkipped << endl;
+  cerr << "  stats: nodes=" << bigResult.getStats().nodesExplored()
+       << " results=" << bigResult.getStats().resultsFound()
+       << " queueSize=" << bigResult.getStats().queueSizeAtStop()
+       << " stopReason=" << static_cast<int>(bigResult.getStats().stopReason())
+       << " skipped=" << bigResult.getStats().statesSkipped() << endl;
 
   int bigValidCount = 0;
   for (size_t i = 0; i < bigResult.resultCount(); i++) {
@@ -2299,11 +2397,11 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
       deletedLines, insertedLines, boundary, dijkstraParams,
       editBeginPos.line, editBeginPos.col, CursorPos(0, 29));
 
-  cerr << "  stats: nodes=" << dijResult.getStats().nodesExplored
-       << " results=" << dijResult.getStats().resultsFound
-       << " queueSize=" << dijResult.getStats().queueSizeAtStop
-       << " stopReason=" << static_cast<int>(dijResult.getStats().stopReason)
-       << " skipped=" << dijResult.getStats().statesSkipped << endl;
+  cerr << "  stats: nodes=" << dijResult.getStats().nodesExplored()
+       << " results=" << dijResult.getStats().resultsFound()
+       << " queueSize=" << dijResult.getStats().queueSizeAtStop()
+       << " stopReason=" << static_cast<int>(dijResult.getStats().stopReason())
+       << " skipped=" << dijResult.getStats().statesSkipped() << endl;
 
   int dijValidCount = 0;
   for (size_t i = 0; i < dijResult.resultCount(); i++) {
@@ -2883,7 +2981,7 @@ TEST_F(DebugTest, DISABLED_CompositionEditSizeSmallCrash) {
   Config config = Config::uniform();
   CompositionOptimizer opt(config);
   auto result = opt.optimize(initial, {0, 0}, goal, {0, 0});
-  cerr << "OK - nodes=" << result.getStats().nodesExplored << endl;
+  cerr << "OK - nodes=" << result.getStats().nodesExplored() << endl;
 }
 
 // =============================================================================

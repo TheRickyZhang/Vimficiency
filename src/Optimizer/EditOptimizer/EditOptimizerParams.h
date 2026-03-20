@@ -34,8 +34,6 @@ struct EditOptimizerParams : OptimizerParamsBase {
   EditOptimizerParams& withMaxMultiplePerStartPosition(int v) { maxMultiplePerStartPosition = v; return *this; }
   EditOptimizerParams& withMinCountRepeat(int v) { setMinCountRepeat(v); return *this; }
   EditOptimizerParams& withMaxCountRepeat(int v) { setMaxCountRepeat(v); return *this; }
-  EditOptimizerParams& withTrackExploredStates(bool v) { trackExploredStates = v; return *this; }
-
   // Factory for Dijkstra mode (no heuristic)
   static EditOptimizerParams dijkstra(int maxResults = 10, int maxNodesPopped = 50000) {
     EditOptimizerParams p;

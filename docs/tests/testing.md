@@ -35,6 +35,27 @@ Three separate test binaries for different purposes:
 ./build/tests/vimficiency_debug
 ```
 
+### Using `vimficiency_debug` For Codegen Checks
+
+`vimficiency_debug` is also the right place for scratch code used to inspect optimizer code generation in a Release build.
+
+For search stats, the important distinction is:
+
+- compile-time-disabled helpers can compile away completely
+- runtime-disabled helpers still leave a branch in the hot path
+
+The `DebugTest.DISABLED_SearchStatsCodegen` scratch test keeps dedicated stats hot-loop symbols in the binary so you can inspect them with:
+
+```bash
+cmake --build build -j --target vimficiency_debug
+nm -C build/tests/vimficiency_debug | rg 'searchStatsHotLoop'
+llvm-objdump -d -C build/tests/vimficiency_debug | rg -A40 'searchStatsHotLoop<false>|searchStatsHotLoop<true>'
+```
+
+That workflow is better than reasoning abstractly about whether Clang removed a stats call, because it checks the actual optimized binary we ship locally.
+
+One important caveat: a `debug(...)`-style helper does not prevent argument evaluation. If the call site eagerly builds a `std::string`, that work still happens before the helper is entered. For expensive trace payloads, keep the construction lazy so the compile-time-disabled path removes both the helper body and the payload construction.
+
 ## Directory Structure
 
 ```

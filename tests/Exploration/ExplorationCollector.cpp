@@ -244,7 +244,7 @@ static void writeExplorationJson(const string& filename,
     const auto& ec = cases[i];
     out << "    {\n";
     out << "      \"name\": \"" << jsonEscape(ec.name) << "\",\n";
-    out << "      \"nodesExplored\": " << ec.stats.nodesExplored << ",\n";
+    out << "      \"nodesExplored\": " << ec.stats.nodesExplored() << ",\n";
     writeContextJson(out, ec.context);
 
     // Found results (optimal sequences)
@@ -263,8 +263,8 @@ static void writeExplorationJson(const string& filename,
 
     // Explored states
     out << "      \"states\": [";
-    for (size_t j = 0; j < ec.stats.exploredStates.size(); j++) {
-      const auto& s = ec.stats.exploredStates[j];
+    for (size_t j = 0; j < ec.stats.exploredStates().size(); j++) {
+      const auto& s = ec.stats.exploredStates()[j];
       if (j > 0) out << ",";
       auto tokens = tokenizeSequence(s.sequence);
       out << "\n        {\"effort\": " << s.effort << ", \"tokens\": [";
@@ -489,8 +489,6 @@ static vector<ExploreCase> collectMotionCases() {
   };
 
   MotionOptimizerParams params;
-  params.trackExploredStates = true;
-
   for (const auto& mc : motionCases) {
     RandomGen::seed(seedMgr.getSeed(0));
     Lines lines = randomCodeBuffer(mc.numLines, mc.avgLen);
@@ -534,8 +532,6 @@ static vector<ExploreCase> collectEditCases() {
   auto& seedMgr = SeedManager::instance();
 
   EditOptimizerParams params;
-  params.trackExploredStates = true;
-
   struct EditCase {
     string name;
     int numLines;
@@ -643,8 +639,6 @@ static vector<CompositionExploreCase> collectCompositionCases() {
   auto& seedMgr = SeedManager::instance();
 
   CompositionOptimizerParams params;
-  params.trackExploredStates = true;
-
   auto makeDefaultSetup = [](int numLines, int avgLen, int editCount) {
     Lines initial = generateBuffer(numLines, avgLen);
     Lines goal = initial;
@@ -701,7 +695,7 @@ static vector<CompositionExploreCase> collectCompositionCases() {
     vector<PerDiffEditExploration> editDetails;
     for (auto& editResult : result.getEditResults()) {
       PerDiffEditExploration detail;
-      detail.states = std::move(editResult.getStats().exploredStates);
+      detail.states = editResult.getStats().exploredStates();
 
       // Collect unique best results from all starting positions
       map<string, double> bestBySeq;
@@ -723,7 +717,7 @@ static vector<CompositionExploreCase> collectCompositionCases() {
       editDetails.push_back(std::move(detail));
     }
 
-    cases.push_back({cc.name, result.getStats().nodesExplored,
+    cases.push_back({cc.name, result.getStats().nodesExplored(),
                      std::move(found),
                      std::move(result.getExploredStates()),
                      std::move(ctx),

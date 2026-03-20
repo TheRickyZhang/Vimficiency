@@ -5,6 +5,7 @@
 #include <optional>
 #include <queue>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "CompositionOptimizerParams.h"
@@ -179,52 +180,6 @@ struct CompositionSearchContext {
   // Uses suffix sum of median edit costs + asymmetric distance to next edit region
   double heuristic(const CompositionState& s, int editsCompleted) const;
 
-  // ==========================================================================
-  // State exploration - single entry points for state transitions
-  // ==========================================================================
-
-  // Explore an edit transition: create state, compute cost, add to queue
-  // editsAfter = editsCompleted after this edit (editsCompleted + 1)
-  void exploreEditTransition(const CompositionState& current,
-                             const Sequence& editSequence,
-                             const CursorPos& goalPos,
-                             int editsAfter);
-
-  // Explore a motion transition: create state, compute cost, add to queue
-  void exploreMotionTransition(const CompositionState& current,
-                               const Sequence& moveSequence,
-                               const CursorPos& goalPos,
-                               int editsCompleted);
-
-  // Check if search should continue
-  bool shouldContinue() const {
-    if (pq.empty()) return false;
-    if (totalPops >= params.maxNodesPopped) return false;
-    return true;
-  }
-
-  // Pop next state from queue
-  CompositionState popNext() {
-    CompositionState s = pq.top();
-    pq.pop();
-    totalPops++;
-    return s;
-  }
-
-  // Call after processing a non-stale state
-  void markProcessed() { nodesProcessed++; }
-
-  // Check if state is stale (superseded by better path)
-  bool isStale(const CompositionState& s) const {
-    auto it = costMap.find(s.getKey());
-    return it != costMap.end() && it->second < s.getCost();
-  }
-
-  // Check if this is a goal state
-  bool isGoal(const CompositionState& s) const {
-    return s.getEditsCompleted() == totalEdits();
-  }
-
   // Get buffer state for a given number of completed edits (0..totalEdits())
   const Lines& getLinesAfter(int editsCompleted) const {
     return linesAfterNEdits_[editsCompleted];
@@ -246,13 +201,17 @@ struct CompositionSearchContext {
   // Stats
   // ==========================================================================
 
-  // Track an explored state (call from main loop when trackExploredStates is true)
+  // Track an explored state when search-trace collection is compiled in.
   void trackState(const CompositionState& s) {
-    if (params.trackExploredStates) {
+    if constexpr (SEARCH_TRACE_STATS_ENABLED) {
       CursorPos pos = s.getPos();
       exploredStates.push_back({{pos.line, pos.col, s.getEffort(), s.getSequence().str()},
                                 s.getEditsCompleted()});
     }
+  }
+
+  std::vector<CompositionExploredState> takeExploredStates() {
+    return std::move(exploredStates);
   }
 
   // Build CompositionSearchStats from current context state
@@ -262,9 +221,6 @@ private:
   // Fencepost vectors (size = totalEdits() + 1): represent states *between* edits
   std::vector<Lines> linesAfterNEdits_;
   std::vector<double> suffixEditCosts_;
-
-  // Internal: add state to priority queue if it improves on existing cost
-  void exploreNewState(CompositionState&& newState);
 
   // Helper: compute suffix sums of median edit costs
   std::vector<double> computeSuffixEditCosts() const;

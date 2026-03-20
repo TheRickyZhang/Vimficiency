@@ -100,3 +100,55 @@ Our distance heuristics are generally **inadmissible** (overestimates true cost)
 However, if we use pure effort, with no distance heuristic, then we can have a guaranteed correct Dijkstra exploration.
 
 We expose distanceWeight and effortWeight in baseOptimzerParams to get a balance between these two.
+
+## Search Stats Policy
+
+Search stats are split into two categories:
+
+- Core counters: cheap aggregate values such as `nodesExplored`, `totalPops`, `resultsFound`, and `queueSizeAtStop`
+- Trace payloads: heavier debug data such as `exploredStates`
+
+Core counters are part of normal optimizer outputs and benchmark workflows, so they should stay cheap and always available. Trace payloads should be gated carefully because they allocate memory and often construct strings.
+
+`SearchStats` now centralizes mutation so callers do not write arbitrary fields directly. This gives us a single place to control expensive collection paths and to add aggregate helpers used by benchmark/reporting workflows.
+
+### Compile-Time vs Runtime Gating
+
+Clang can completely remove a stats helper only when the disabled mode is known at compile time. We use a centralized compile-time switch:
+
+```cpp
+constexpr bool SEARCH_TRACE_STATS_ENABLED = ...;
+
+template<typename SequenceFn>
+void maybeRecordExploredState(bool enabled, ..., SequenceFn&& makeSequence) {
+  if constexpr (SEARCH_TRACE_STATS_ENABLED) {
+    if (enabled) {
+      exploredStates.push_back(... makeSequence());
+    }
+  }
+}
+```
+
+When `SEARCH_TRACE_STATS_ENABLED` is false, the trace path becomes a true no-op after optimization.
+
+By contrast, a runtime branch such as:
+
+```cpp
+if (params.trackExploredStates) {
+  stats.recordExploredState(...);
+}
+```
+
+still leaves a branch in the hot path when compiled, even if the branch is usually false at runtime.
+
+Also note that a `debug(...)`-style helper only removes the helper body. Function arguments are still evaluated before the call. That means expensive payload construction such as `s.getSequence().str()` must be delayed inside the helper, not computed eagerly at the call site.
+
+### Workflow Guidance
+
+- `vimficiency_tests`: should rely on core counters being present; avoid enabling heavy trace collection unless the test is explicitly about exploration details
+- `vimficiency_benchmarks`: should consume aggregate counters only; do not enable `exploredStates`
+- `vimficiency_debug` and exploration export tooling: may enable trace payloads when investigating behavior, but should do so explicitly because they are not cheap
+
+By default, detailed trace stats follow `DEBUG_ENABLED`. If a non-debug workflow needs trace payloads, build with `VIMFICIENCY_TRACE_SEARCH_STATS` to enable them explicitly without tying that decision to the general debug stream.
+
+If we later add more expensive stats, they should follow the same rule: keep aggregate reporting cheap and move payload-style diagnostics behind an explicit gate.

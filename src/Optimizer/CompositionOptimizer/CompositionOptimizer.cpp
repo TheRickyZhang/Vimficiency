@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cctype>
+#include <optional>
 
 #include "CompositionSearchContext.h"
 #include "Optimizer/BuildTypedCommands.h"
@@ -88,16 +89,60 @@ CompositionResult CompositionOptimizer::optimize(
   ctx.pq.push(startingState);
   ctx.costMap[startingState.getKey()] = startingState.getCost();
 
+  auto enqueueState = [&](CompositionState&& newState) {
+    if (newState.getEffort() > ctx.maxEffort) {
+      debug("  pruned (effort", newState.getEffort(), ">", ctx.maxEffort, "):",
+            "\"" + newState.getSequence().str() + "\"");
+      return;
+    }
+
+    double newCost = newState.getCost();
+    const CompositionStateKey newKey = newState.getKey();
+    auto it = ctx.costMap.find(newKey);
+
+    if (it == ctx.costMap.end()) {
+      if (newState.getEditsCompleted() != ctx.totalEdits()) {
+        ctx.costMap.emplace(newKey, newCost);
+      }
+      ctx.pq.push(std::move(newState));
+    } else if (newCost <= it->second) {
+      it->second = newCost;
+      ctx.pq.push(std::move(newState));
+    } else {
+      debug("  not enqueued (cost", newCost, ">=", it->second, "):",
+            "\"" + newState.getSequence().str() + "\"");
+    }
+  };
+  auto enqueueEditTransition = [&](const CompositionState& current,
+                                   const Sequence& editSequence,
+                                   const CursorPos& goalPos,
+                                   int editsAfter) {
+    CompositionState newState = current.afterEditTransition(
+        editSequence, goalPos, Mode::Normal, config);
+    newState.setCost(ctx.heuristic(newState, editsAfter));
+    enqueueState(std::move(newState));
+  };
+  auto enqueueMotionTransition = [&](const CompositionState& current,
+                                     const Sequence& moveSequence,
+                                     const CursorPos& goalPos,
+                                     int editsCompleted) {
+    CompositionState newState = current.afterMotionResult(
+        moveSequence, goalPos, config);
+    newState.setCost(ctx.heuristic(newState, editsCompleted));
+    enqueueState(std::move(newState));
+  };
+
   debug("=== CompositionOptimizer A* search ===");
 
-  while (ctx.shouldContinue()) {
-    CompositionState s = ctx.popNext();
+  while (!ctx.pq.empty() && ctx.totalPops < params.maxNodesPopped) {
+    CompositionState s = ctx.pq.top();
+    ctx.pq.pop();
+    ctx.totalPops++;
     CursorPos pos = s.getPos();
     int editsCompleted = s.getEditsCompleted();
 
-    ctx.markProcessed();
-
-    if (ctx.isGoal(s)) {
+    if (editsCompleted == ctx.totalEdits()) {
+      ctx.nodesProcessed++;
       double effort = s.getRunningEffort().getEffort(config);
       debug("GOAL #" + to_string(results.size()) + ":",
             "\"" + s.getSequence().str() + "\"", "effort:", effort);
@@ -109,11 +154,13 @@ CompositionResult CompositionOptimizer::optimize(
       continue;
     }
 
-    if (ctx.isStale(s)) {
+    auto costIt = ctx.costMap.find(s.getKey());
+    if (costIt != ctx.costMap.end() && costIt->second < s.getCost()) {
       ctx.statesSkipped++;
       continue;
     }
 
+    ctx.nodesProcessed++;
     ctx.trackState(s);
 
     debug("pop:", "\"" + s.getSequence().str() + "\"",
@@ -142,8 +189,8 @@ CompositionResult CompositionOptimizer::optimize(
                         pos.col >= beginCol && pos.col < endCol);
 
         if (inRange) {
-          ctx.exploreEditTransition(s, Sequence(insertCmd), editResult.getGoalPos(),
-                                    editsCompleted + 1);
+          enqueueEditTransition(s, Sequence(insertCmd), editResult.getGoalPos(),
+                                editsCompleted + 1);
         } else {
           // Slice a padded subset around [pos, target] for MotionOptimizer
           auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
@@ -186,7 +233,7 @@ CompositionResult CompositionOptimizer::optimize(
                     subset, localPos, motionRange,
                     rangeParams, "", subsetBoundary,
                     navigationContext);
-          ctx.motionNodesExplored += motionResult.getStats().nodesExplored;
+          ctx.motionNodesExplored += motionResult.getStats().nodesExplored();
 
           for (const RangeResult& movResult : motionResult.getResults()) {
             if (!movResult.isValid()) continue;
@@ -199,8 +246,8 @@ CompositionResult CompositionOptimizer::optimize(
             // editResult.getGoalPos(), so intermediate motion endpoint isn't consumed.
             Sequence fullSeq = movResult.getSequence();
             fullSeq.append(insertCmd);
-            ctx.exploreEditTransition(s, fullSeq, editResult.getGoalPos(),
-                                      editsCompleted + 1);
+            enqueueEditTransition(s, fullSeq, editResult.getGoalPos(),
+                                  editsCompleted + 1);
           }
         }
       };
@@ -271,8 +318,8 @@ CompositionResult CompositionOptimizer::optimize(
       }
       debug("  edit found at", pos, "seq:", "\"" + res.getSequence().str() + "\"",
             "cost:", res.getCost(), "goalPos:", editGoalPos);
-      ctx.exploreEditTransition(s, res.getSequence(),
-                                editGoalPos, editsCompleted + 1);
+      enqueueEditTransition(s, res.getSequence(),
+                            editGoalPos, editsCompleted + 1);
     }
 
     // J plan: offered from any column on the entry line
@@ -280,8 +327,8 @@ CompositionResult CompositionOptimizer::optimize(
     if (joinPlan && pos.line == joinPlan->entryLine) {
       debug("  J plan at line", pos.line, "seq:", "\"" + joinPlan->sequence.str() + "\"",
             "effort:", joinPlan->effort);
-      ctx.exploreEditTransition(s, joinPlan->sequence, joinPlan->goalPos,
-                                editsCompleted + 1);
+      enqueueEditTransition(s, joinPlan->sequence, joinPlan->goalPos,
+                            editsCompleted + 1);
     }
 
     if (editAlternatives.empty()) {
@@ -307,8 +354,8 @@ CompositionResult CompositionOptimizer::optimize(
                 seq += "<Esc>";
               }
               debug("    quote textobj:", string(1, bqContext.quoteModifier(q)) + q);
-              ctx.exploreEditTransition(s, Sequence(seq), editResult.getGoalPos(),
-                                        editsCompleted + 1);
+              enqueueEditTransition(s, Sequence(seq), editResult.getGoalPos(),
+                                    editsCompleted + 1);
             }
           }
         }
@@ -324,8 +371,8 @@ CompositionResult CompositionOptimizer::optimize(
                 seq += "<Esc>";
               }
               debug("    bracket textobj:", string(1, bqContext.bracketModifier(b)) + b);
-              ctx.exploreEditTransition(s, Sequence(seq), editResult.getGoalPos(),
-                                        editsCompleted + 1);
+              enqueueEditTransition(s, Sequence(seq), editResult.getGoalPos(),
+                                    editsCompleted + 1);
             }
           }
         }
@@ -384,7 +431,7 @@ CompositionResult CompositionOptimizer::optimize(
           : motionOptimizer.optimizeToRange(
                 subset, localPos, motionRange2,
                 rangeParams2, "", subsetBoundary, navigationContext);
-      ctx.motionNodesExplored += motionResult.getStats().nodesExplored;
+      ctx.motionNodesExplored += motionResult.getStats().nodesExplored();
 
       debug("  motion results:", static_cast<int>(motionResult.getResults().size()));
       for (const RangeResult& movResult : motionResult.getResults()) {
@@ -395,8 +442,8 @@ CompositionResult CompositionOptimizer::optimize(
         goalPos.line += beginLine;
         debug("    motion:", "\"" + movResult.getSequence().str() + "\"",
               "->", goalPos);
-        ctx.exploreMotionTransition(s, movResult.getSequence(), goalPos,
-                                    editsCompleted);
+        enqueueMotionTransition(s, movResult.getSequence(), goalPos,
+                                editsCompleted);
       }
 
       // If a J plan exists for this edit and cursor isn't on the entry line,
@@ -441,7 +488,7 @@ CompositionResult CompositionOptimizer::optimize(
                   jSubset, jLocalPos, jMotionRange,
                   jRangeParams, "", jSubsetBoundary,
                   navigationContext);
-        ctx.motionNodesExplored += jMotionResult.getStats().nodesExplored;
+        ctx.motionNodesExplored += jMotionResult.getStats().nodesExplored();
 
         for (const RangeResult& movResult : jMotionResult.getResults()) {
           if (!movResult.isValid()) continue;
@@ -449,8 +496,8 @@ CompositionResult CompositionOptimizer::optimize(
           goalPos.line += jBeginLine;
           debug("    J-motion:", "\"" + movResult.getSequence().str() + "\"",
                 "->", goalPos);
-          ctx.exploreMotionTransition(s, movResult.getSequence(), goalPos,
-                                      editsCompleted);
+          enqueueMotionTransition(s, movResult.getSequence(), goalPos,
+                                  editsCompleted);
         }
       }
     }
@@ -476,7 +523,7 @@ CompositionResult CompositionOptimizer::optimize(
   int numResults = static_cast<int>(results.size());
   return {std::move(results), ctx.getStats(numResults),
           resultGoalPos, std::move(diffs),
-          std::move(ctx.exploredStates),
+          ctx.takeExploredStates(),
           std::move(editResults)};
 }
 
