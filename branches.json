@@ -1,13 +1,6 @@
 {
   "branches": [
     {
-      "name": "fix-more-semantics",
-      "safeName": "fix-more-semantics",
-      "url": "https://TheRickyZhang.github.io/Vimficiency/branch/fix-more-semantics/",
-      "updatedAt": "2026-03-20T05:42:57Z",
-      "repoFullName": "TheRickyZhang/Vimficiency"
-    },
-    {
       "name": "improve-code-semantics",
       "safeName": "improve-code-semantics",
       "url": "https://TheRickyZhang.github.io/Vimficiency/branch/improve-code-semantics/",
