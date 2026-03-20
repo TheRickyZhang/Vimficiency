@@ -7,19 +7,21 @@
 
 #include "EditState.h"
 #include "GoalHandlerTypes.h"
-#include "Effort/EffortBank.h"
-#include "Keyboard/Config.h"
-#include "Keyboard/KeyedSequence.h"
+
+#include "Optimizer/Result.h"
 #include "Optimizer/SearchFrontier.h"
 #include "Optimizer/SearchStats.h"
 #include "Optimizer/SequenceBinding.h"
+
+#include "Effort/EffortBank.h"
+#include "Keyboard/Config.h"
+#include "Keyboard/KeyedSequence.h"
 #include "Types/CharLineRange.h"
 #include "Types/CharRange.h"
 #include "Types/LineCharRange.h"
 #include "Types/LineRange.h"
 #include "Types/Lines.h"
 #include "Boundary/EditBoundary.h"
-#include "Optimizer/Result.h"
 
 struct EditStateComparator {
   bool operator()(const EditState& a, const EditState& b) const {
