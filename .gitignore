@@ -18,8 +18,9 @@ tests/.last_seeds.txt
 build-asan/
 build*/
 
-# Exploration collector output
-*_explore.json
+# Any root-level data
+*.json
+*.json
 
 # Bench dashboard
 bench-dashboard/node_modules/
