@@ -8,14 +8,14 @@
 
 struct RepeatMotionResult {
   Pos pos{};
-  int count{}; // Only use count == 0 -> invalid
+  int count{}; // Only use count <= 1 -> invalid
 
   RepeatMotionResult() = default;
   RepeatMotionResult(Pos pos, int count) : pos(pos), count(count) {
     // Generally no point in in having count <= 1
     assert(count > 1);
   }
-  bool valid() const { return count > 0; }
+  bool valid() const { return count > 1; }
 };
 
 class BufferIndex {
@@ -44,7 +44,7 @@ public:
   // Returns all landings in inclusive [rangeFront, rangeBack], plus conditional near-misses.
   // Near-miss before rangeFront: only if no landing at exactly rangeFront.
   // Near-miss after rangeBack: only if no landing at exactly rangeBack.
-  // Precondition: Forward → currPos < rangeFront; !Forward → currPos > rangeBack.
+  // If currPos is not strictly on the requested side of the range, returns {}.
   template<bool Forward>
   std::vector<RepeatMotionResult> getClosestInRange(
       LandingType type, Pos currPos,

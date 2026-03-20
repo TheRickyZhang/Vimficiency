@@ -15,30 +15,52 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: gh-pages
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Save branch index helper
+        run: cp scripts/update-branches.ts /tmp/update-branches.ts
 
       - name: Remove branch dashboard
         run: |
           if [ "${{ github.event_name }}" = "delete" ]; then
             BRANCH="${{ github.event.ref }}"
+            BRANCH_REPO="${{ github.repository }}"
           else
             BRANCH="${{ github.event.pull_request.head.ref }}"
+            # Branch dashboards are only deployed on push in the repository that owns the branch.
+            # A merged fork PR normally has no corresponding branch dashboard in this repo's
+            # gh-pages tree; using the head repo key here only keeps repo-aware index cleanup
+            # aligned when cleanup does apply to entries created by the same repository.
+            BRANCH_REPO="${{ github.event.pull_request.head.repo.full_name }}"
           fi
 
+          git fetch origin gh-pages
+          git checkout -B gh-pages origin/gh-pages
+
           SAFE_BRANCH=$(echo "$BRANCH" | sed 's|/|--|g; s|[^a-zA-Z0-9._-]||g')
-          if [ -z "$SAFE_BRANCH" ]; then
+          if [ -z "$SAFE_BRANCH" ] || [ "$SAFE_BRANCH" = "." ] || [ "$SAFE_BRANCH" = ".." ]; then
             echo "Refusing to clean up with empty sanitized branch name"
             exit 1
           fi
           DEPLOY_DIR="branch/$SAFE_BRANCH"
 
           if [ ! -d "$DEPLOY_DIR" ]; then
-            echo "No dashboard found at $DEPLOY_DIR, nothing to clean up"
+            echo "No dashboard found at $DEPLOY_DIR, cleaning index only"
+          else
+            git rm -rf "$DEPLOY_DIR"
+          fi
+
+          bun /tmp/update-branches.ts remove "$BRANCH" "$BRANCH_REPO"
+          if [ -f branches.json ]; then
+            git add branches.json
+          fi
+
+          if git diff --cached --quiet; then
+            echo "No gh-pages cleanup changes to commit"
             exit 0
           fi
 
-          git rm -rf "$DEPLOY_DIR"
           git -c user.name=github-actions -c user.email=github-actions@github.com \
             commit -m "Remove branch dashboard: $BRANCH"
           git push origin gh-pages
