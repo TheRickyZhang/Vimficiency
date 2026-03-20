@@ -32,6 +32,17 @@ function inferRepoFullNameFromUrl(url: string): string | undefined {
   return `${match[1]}/${match[2]}`;
 }
 
+function buildDashboardUrl(
+  repoOwner: string,
+  repoFullName: string | undefined,
+  safeName: string
+): string {
+  // Current workflows always pass repoFullName. The default only exists for the
+  // deprecated repo-less compatibility path, which still needs a stable URL shape.
+  const repoName = repoFullName?.split("/")[1] ?? "Vimficiency";
+  return `https://${repoOwner}.github.io/${repoName}/branch/${safeName}/`;
+}
+
 function usage(): never {
   console.error(
     [
@@ -104,9 +115,12 @@ function matchesBranch(entry: BranchEntry, branchName: string, repoFullName?: st
   if (entry.name !== branchName) return false;
 
   // Backward compatibility: older workflow versions did not persist repoFullName.
-  // Treat those legacy entries as branch-name keyed so they can be upgraded or removed
-  // instead of accumulating forever after the repo-aware migration.
-  if (!entry.repoFullName || !repoFullName) return true;
+  // readBranchesFile() upgrades most legacy entries by inferring from their URL. If repo
+  // identity is still missing after that, only the deprecated repo-less caller is allowed
+  // to fall back to branch-name matching; repo-aware calls must not clobber another repo's
+  // entry just because branch names happen to match.
+  if (!entry.repoFullName) return repoFullName === undefined;
+  if (!repoFullName) return false;
   return entry.repoFullName === repoFullName;
 }
 
@@ -131,16 +145,16 @@ function upsertBranch(
   updatedAt: string
 ): void {
   if (!branchName || !safeName || !repoOwner || !updatedAt) usage();
-  const { data, needsRewrite } = readBranchesFile();
+  const { data } = readBranchesFile();
+  const url = buildDashboardUrl(repoOwner, repoFullName, safeName);
   const conflict = data.branches.find(
     (b) =>
-      b.safeName === safeName &&
-      !matchesBranch(b, branchName, repoFullName) &&
-      (!b.repoFullName || !repoFullName || b.repoFullName === repoFullName)
+      b.url === url &&
+      !matchesBranch(b, branchName, repoFullName)
   );
   if (conflict) {
     throw new Error(
-      `Safe branch collision: ${branchName} and ${conflict.name} both map to ${safeName}`
+      `Dashboard URL collision: ${branchName} and ${conflict.name} both map to ${url}`
     );
   }
 
@@ -150,11 +164,13 @@ function upsertBranch(
   data.branches.push({
     name: branchName,
     safeName,
-    url: `https://${repoOwner}.github.io/Vimficiency/branch/${safeName}/`,
+    url,
     updatedAt,
     ...(repoFullName ? { repoFullName } : {}),
   });
   sortBranches(data);
+  // Upsert always rewrites the file, so any repoFullName inferred during the
+  // read-side self-healing path is persisted even when replacing the same entry.
   writeBranchesFile(data);
   console.log(`Updated ${FILE}: ${data.branches.length} branch(es)`);
 }

@@ -189,6 +189,7 @@ jobs:
         id: meta
         run: |
           BRANCH="${GITHUB_REF#refs/heads/}"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
           SAFE_BRANCH=$(echo "$BRANCH" | sed 's|/|--|g; s|[^a-zA-Z0-9._-]||g')
           if [ "$BRANCH" != "main" ] && { [ -z "$SAFE_BRANCH" ] || [ "$SAFE_BRANCH" = "." ] || [ "$SAFE_BRANCH" = ".." ]; }; then
             echo "Refusing to deploy with empty sanitized branch name"
@@ -196,11 +197,11 @@ jobs:
           fi
           if [ "$BRANCH" = "main" ]; then
             echo "is-main=true" >> "$GITHUB_OUTPUT"
-            echo "base-path=/Vimficiency/" >> "$GITHUB_OUTPUT"
+            echo "base-path=/$REPO_NAME/" >> "$GITHUB_OUTPUT"
             echo "deploy-dir=." >> "$GITHUB_OUTPUT"
           else
             echo "is-main=false" >> "$GITHUB_OUTPUT"
-            echo "base-path=/Vimficiency/branch/$SAFE_BRANCH/" >> "$GITHUB_OUTPUT"
+            echo "base-path=/$REPO_NAME/branch/$SAFE_BRANCH/" >> "$GITHUB_OUTPUT"
             echo "deploy-dir=branch/$SAFE_BRANCH" >> "$GITHUB_OUTPUT"
           fi
           echo "safe-branch=$SAFE_BRANCH" >> "$GITHUB_OUTPUT"
@@ -260,6 +261,9 @@ jobs:
             echo "Copied dashboard artifact has no assets"
             exit 1
           fi
+          # Copy helper scripts from the source checkout before switching to gh-pages so
+          # deploy behavior tracks the commit being built rather than helper versions on the
+          # publishing branch.
           cp scripts/bench-data.ts /tmp/bench-data.ts
           cp scripts/explore-data.ts /tmp/explore-data.ts
           cp test_timing_bench.json /tmp/test_timing_bench.json
@@ -364,6 +368,9 @@ jobs:
             echo "Copied dashboard artifact has no assets"
             exit 1
           fi
+          # Copy helper scripts from the source checkout before switching to gh-pages so
+          # deploy behavior tracks the commit being built rather than helper versions on the
+          # publishing branch.
           cp scripts/bench-data.ts /tmp/bench-data.ts
           cp scripts/update-branches.ts /tmp/update-branches.ts
           cp scripts/update-pr-body.ts /tmp/update-pr-body.ts
