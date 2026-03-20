@@ -19,7 +19,6 @@
 #include "Keyboard/ToKeys/MotionToKeys.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 
-
 using namespace std;
 
 // =============================================================================
