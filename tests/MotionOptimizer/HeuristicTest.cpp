@@ -28,13 +28,13 @@ TEST(MotionOptimizerHeuristicTest, UsesCurrentColumnWhenClosestGoalIsOnSameLine)
 }
 
 // targetCol larger than goal col (sticky col from a longer line).
-// Heuristic uses targetCol directly — may underestimate because Vim clamps,
-// but underestimation is safe for A* admissibility.
+// Heuristic uses targetCol directly — Vim would clamp to the actual line
+// length, so the score may diverge from true distance.
 TEST(MotionOptimizerHeuristicTest, StickyTargetColExceedsGoalCol) {
   // pos on line 0 col 2, sticky targetCol 40 (from a long line).
   // Goal at (2, 5). Cross-line: dy=2, dx=|5-40|=35 → 37.
-  // Actual Vim distance is likely smaller (clamp to shorter line), so this
-  // is an overestimate — still safe since A* just explores more.
+  // Actual Vim distance would differ (clamp to shorter line), so the
+  // heuristic overestimates here, which can bias search ordering.
   CharInterval range(CursorPos(2, 5), CursorPos(2, 5));
   CursorPos pos(0, 2, 40);
 
