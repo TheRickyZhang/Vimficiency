@@ -103,6 +103,7 @@ add_executable(vimficiency_tests
   MotionOptimizer/OutputCorrectnessTest.cpp
   MotionOptimizer/CostConsistencyTest.cpp
   MotionOptimizer/DeterminismTest.cpp
+  MotionOptimizer/HeuristicTest.cpp
   MotionOptimizer/HumanApprovalTest.cpp
   MotionOptimizer/StartingEffortTradeoffTest.cpp
 

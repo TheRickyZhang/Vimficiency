@@ -19,6 +19,7 @@
 #include "Effort/EffortBank.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/MotionOptimizer/MotionExplorer.h"
+#include "Optimizer/MotionOptimizer/MotionHeuristic.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizer.h"
 #include "Optimizer/MotionOptimizer/MotionOptimizerParams.h"
 #include "Optimizer/MotionOptimizer/MotionRangeConversion.h"
@@ -341,13 +342,7 @@ static void BM_MotionExploreDispatch(benchmark::State& state,
       return c.goalRange.containsPos(pos);
     };
     auto scoreState = [&](CursorPos pos, double effort) {
-      double distance = 0.0;
-      if (!c.goalRange.containsPos(pos)) {
-        Pos closest = (pos < c.goalRange.first) ? c.goalRange.first : c.goalRange.last;
-        distance = static_cast<double>(
-            abs(closest.line - pos.line) +
-            abs(closest.col - pos.targetCol));
-      }
+      double distance = MotionHeuristic::distanceToRange(c.goalRange, pos);
       return c.params.effortWeight * effort + c.params.distanceWeight * distance;
     };
 
