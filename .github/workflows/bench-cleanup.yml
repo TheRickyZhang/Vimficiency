@@ -15,8 +15,11 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: gh-pages
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Save branch index helper
+        run: cp scripts/update-branches.ts /tmp/update-branches.ts
 
       - name: Remove branch dashboard
         run: |
@@ -26,39 +29,32 @@ jobs:
             BRANCH="${{ github.event.pull_request.head.ref }}"
           fi
 
+          git fetch origin gh-pages
+          git checkout gh-pages
+
           SAFE_BRANCH=$(echo "$BRANCH" | sed 's|/|--|g; s|[^a-zA-Z0-9._-]||g')
-<<<<<<< HEAD
-          if [ -z "$SAFE_BRANCH" ]; then
+          if [ -z "$SAFE_BRANCH" ] || [ "$SAFE_BRANCH" = "." ] || [ "$SAFE_BRANCH" = ".." ]; then
             echo "Refusing to clean up with empty sanitized branch name"
             exit 1
           fi
-=======
->>>>>>> 92fc2ac (add site push on non-main branches)
           DEPLOY_DIR="branch/$SAFE_BRANCH"
 
           if [ ! -d "$DEPLOY_DIR" ]; then
-            echo "No dashboard found at $DEPLOY_DIR, nothing to clean up"
-            exit 0
+            echo "No dashboard found at $DEPLOY_DIR, cleaning index only"
+          else
+            git rm -rf "$DEPLOY_DIR"
           fi
 
-          git rm -rf "$DEPLOY_DIR"
-<<<<<<< HEAD
-
-          # Remove branch from branches.json index
-          if [ -f "branches.json" ]; then
-            BRANCH="$BRANCH" node -e "
-const fs = require('fs');
-const data = JSON.parse(fs.readFileSync('branches.json', 'utf8'));
-data.branches = data.branches.filter(b => b.name !== process.env.BRANCH);
-fs.writeFileSync('branches.json', JSON.stringify(data, null, 2));
-"
+          bun /tmp/update-branches.ts remove "$BRANCH"
+          if [ -f branches.json ]; then
             git add branches.json
           fi
 
-          # Reaching this point means git rm already staged at least one tracked
-          # deletion from DEPLOY_DIR, so the commit is not a no-op.
-=======
->>>>>>> 92fc2ac (add site push on non-main branches)
+          if git diff --cached --quiet; then
+            echo "No gh-pages cleanup changes to commit"
+            exit 0
+          fi
+
           git -c user.name=github-actions -c user.email=github-actions@github.com \
             commit -m "Remove branch dashboard: $BRANCH"
           git push origin gh-pages

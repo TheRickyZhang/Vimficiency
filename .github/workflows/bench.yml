@@ -190,13 +190,10 @@ jobs:
         run: |
           BRANCH="${GITHUB_REF#refs/heads/}"
           SAFE_BRANCH=$(echo "$BRANCH" | sed 's|/|--|g; s|[^a-zA-Z0-9._-]||g')
-<<<<<<< HEAD
-          if [ "$BRANCH" != "main" ] && [ -z "$SAFE_BRANCH" ]; then
+          if [ "$BRANCH" != "main" ] && { [ -z "$SAFE_BRANCH" ] || [ "$SAFE_BRANCH" = "." ] || [ "$SAFE_BRANCH" = ".." ]; }; then
             echo "Refusing to deploy with empty sanitized branch name"
             exit 1
           fi
-=======
->>>>>>> 92fc2ac (add site push on non-main branches)
           if [ "$BRANCH" = "main" ]; then
             echo "is-main=true" >> "$GITHUB_OUTPUT"
             echo "base-path=/Vimficiency/" >> "$GITHUB_OUTPUT"
@@ -241,6 +238,14 @@ jobs:
         run: |
           bun install --frozen-lockfile
           bun run build -- --base=${{ steps.meta.outputs.base-path }}
+
+      - name: Verify dashboard build output
+        run: |
+          test -f bench-dashboard/dist/index.html
+          if ! find bench-dashboard/dist/assets -type f -print -quit | grep -q .; then
+            echo "Dashboard build produced no assets"
+            exit 1
+          fi
 
       - name: Deploy to gh-pages (main)
         if: steps.meta.outputs.is-main == 'true'
@@ -327,8 +332,17 @@ jobs:
           # Shared assets
           mkdir -p assets
           cp -r /tmp/dashboard-dist/assets/* assets/ 2>/dev/null || true
+          test -f ./index.html
+          if ! find assets -type f -print -quit | grep -q .; then
+            echo "Failed to copy dashboard assets to gh-pages root"
+            exit 1
+          fi
 
           git add -f index.html 404.html .nojekyll assets/ edit/ motion/ composition/ tests/
+          if git diff --cached --quiet; then
+            echo "No main dashboard changes to commit"
+            exit 0
+          fi
           git -c user.name=github-actions -c user.email=github-actions@github.com \
             commit -m "Update benchmark dashboard" || true
           git push origin gh-pages
@@ -341,11 +355,8 @@ jobs:
           # Save artifacts before switching branches
           cp -r bench-dashboard/dist /tmp/dashboard-dist
           cp scripts/bench-data.ts /tmp/bench-data.ts
-<<<<<<< HEAD
           cp scripts/update-branches.ts /tmp/update-branches.ts
           cp scripts/update-pr-body.ts /tmp/update-pr-body.ts
-=======
->>>>>>> 92fc2ac (add site push on non-main branches)
           cp edit_result.json /tmp/edit_result.json
           cp motion_result.json /tmp/motion_result.json
           cp composition_result.json /tmp/composition_result.json
@@ -383,19 +394,26 @@ jobs:
           cp /tmp/dashboard-dist/index.html "$DEPLOY_DIR/index.html"
           mkdir -p "$DEPLOY_DIR/assets"
           cp -r /tmp/dashboard-dist/assets/* "$DEPLOY_DIR/assets/" 2>/dev/null || true
+          test -f "$DEPLOY_DIR/index.html"
+          if ! find "$DEPLOY_DIR/assets" -type f -print -quit | grep -q .; then
+            echo "Failed to copy dashboard assets to $DEPLOY_DIR"
+            exit 1
+          fi
 
-<<<<<<< HEAD
           # Update branches.json to track active branch dashboards
           bun /tmp/update-branches.ts \
+            upsert \
             "${{ steps.meta.outputs.branch }}" \
             "${{ steps.meta.outputs.safe-branch }}" \
             "${{ github.repository_owner }}" \
             "$COMMIT_TS"
+          test -f branches.json
 
           git add -f "$DEPLOY_DIR/" branches.json
-=======
-          git add -f "$DEPLOY_DIR/"
->>>>>>> 92fc2ac (add site push on non-main branches)
+          if git diff --cached --quiet; then
+            echo "No branch dashboard changes to commit"
+            exit 0
+          fi
           git -c user.name=github-actions -c user.email=github-actions@github.com \
             commit -m "Update branch dashboard: ${{ steps.meta.outputs.branch }}" || true
           git push origin gh-pages
@@ -407,15 +425,10 @@ jobs:
         run: |
           BRANCH="${{ steps.meta.outputs.branch }}"
           DASHBOARD_URL="https://${{ github.repository_owner }}.github.io${{ steps.meta.outputs.base-path }}"
-<<<<<<< HEAD
-=======
-          MARKER="<!-- bench-dashboard-link -->"
->>>>>>> 92fc2ac (add site push on non-main branches)
 
           # Find open PR for this branch
           PR_NUMBER=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
           if [ -z "$PR_NUMBER" ]; then
-<<<<<<< HEAD
             echo "No open PR found for branch $BRANCH, skipping"
             exit 0
           fi
@@ -425,24 +438,3 @@ jobs:
             "$DASHBOARD_URL" \
             "${{ github.sha }}" \
             "${{ github.repository }}"
-=======
-            echo "No open PR found for branch $BRANCH, skipping comment"
-            exit 0
-          fi
-
-          BODY="${MARKER}
-          **Benchmark Dashboard:** ${DASHBOARD_URL}
-
-          _Updated at $(date -u +"%Y-%m-%d %H:%M:%S UTC") for commit ${{ github.sha }}_"
-
-          # Check for existing comment with marker
-          EXISTING_COMMENT=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
-            --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -1)
-
-          if [ -n "$EXISTING_COMMENT" ]; then
-            gh api "repos/${{ github.repository }}/issues/comments/${EXISTING_COMMENT}" \
-              -X PATCH -f body="$BODY"
-          else
-            gh pr comment "$PR_NUMBER" --body "$BODY"
-          fi
->>>>>>> 92fc2ac (add site push on non-main branches)
