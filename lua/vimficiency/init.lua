@@ -378,19 +378,82 @@ function M.wrap(fn)
 	end
 end
 
+--- Build a pre-wrapped callback for a subcommand invocation. Shared by
+--- `<Plug>` registration and the public `vimfy.map()` helper: both need
+--- "resolve this subcommand by name, forward these args, announce admin
+--- activity while it runs" wrapped in one function.
+---@param subcmd string         Key in `subcommands`
+---@param subcmd_args string[]  Args forwarded to the subcommand's fn
+---@param source string         Human-readable source for error messages
+---@return fun()
+local function build_subcmd_callback(subcmd, subcmd_args, source)
+	return M.wrap(function()
+		local cmd = subcommands[subcmd]
+		if not cmd then
+			vim.notify(
+				"Vimficiency: unknown subcommand '" .. tostring(subcmd) .. "' from " .. source,
+				vim.log.levels.ERROR
+			)
+			return
+		end
+		cmd.fn(subcmd_args)
+	end)
+end
+
 --- Register a <Plug> map that invokes a subcommand with fixed arguments.
 ---@param name string           Suffix appended to "<Plug>Vimfy"
 ---@param subcmd string         Key in `subcommands`
 ---@param subcmd_args string[]  Args forwarded to the subcommand's fn
 local function register_plug(name, subcmd, subcmd_args)
-	vim.keymap.set("n", "<Plug>Vimfy" .. name, M.wrap(function()
-		local cmd = subcommands[subcmd]
-		if not cmd then
-			vim.notify("Vimficiency: unknown subcommand in <Plug>Vimfy" .. name, vim.log.levels.ERROR)
-			return
+	vim.keymap.set("n", "<Plug>Vimfy" .. name,
+		build_subcmd_callback(subcmd, subcmd_args, "<Plug>Vimfy" .. name),
+		{ silent = true, desc = "Vimficiency " .. subcmd .. " " .. table.concat(subcmd_args, " ") })
+end
+
+--- Bind a key to a Vimfy action, with the LHS keystroke announced as admin
+--- activity (so it isn't counted toward motion cost). The blessed way to
+--- attach Vimfy to your own keys.
+---
+--- `spec` can be:
+---   * A string like `"start a"` or `"save @ as quick"`. Parsed the same
+---     way as a `:Vimfy` argument list; first word is the subcommand.
+---   * A function (anything you'd pass to `vim.keymap.set`). Wrapped with
+---     `M.wrap` so it announces admin intent around its body.
+---
+--- Examples:
+---   vimfy.map('n', '<leader>vs', 'start a')
+---   vimfy.map('n', '<leader>vq', 'save @ as quick')
+---   vimfy.map('n', 'Z', function() vim.cmd('Vimfy start a') end)
+---
+--- Prefer this over `nnoremap X :Vimfy ...<CR>`: the latter counts the
+--- LHS keystroke as motion (see docs/user/07-keymaps.md).
+---@param mode string|string[]       Passthrough to vim.keymap.set
+---@param lhs string                 Key sequence
+---@param spec string|fun(): any     Subcommand string or Lua callback
+---@param opts table|nil             Passthrough to vim.keymap.set (desc/silent/buffer/...)
+function M.map(mode, lhs, spec, opts)
+	opts = opts or {}
+	if opts.silent == nil then opts.silent = true end
+
+	local callback
+	if type(spec) == "string" then
+		local parts = vim.split(spec, "%s+", { trimempty = true })
+		if #parts == 0 then
+			error("vimficiency.map: empty spec string")
 		end
-		cmd.fn(subcmd_args)
-	end), { silent = true, desc = "Vimficiency " .. subcmd .. " " .. table.concat(subcmd_args, " ") })
+		local subcmd = parts[1]
+		local subcmd_args = {}
+		for i = 2, #parts do subcmd_args[#subcmd_args + 1] = parts[i] end
+		callback = build_subcmd_callback(subcmd, subcmd_args, "vimfy.map(" .. lhs .. ")")
+		if not opts.desc then opts.desc = "Vimficiency " .. spec end
+	elseif type(spec) == "function" then
+		callback = M.wrap(spec)
+		if not opts.desc then opts.desc = "Vimficiency <fn>" end
+	else
+		error("vimficiency.map: spec must be a string or function, got " .. type(spec))
+	end
+
+	vim.keymap.set(mode, lhs, callback, opts)
 end
 
 local function complete_vf(arg_lead, cmd_line, cursor_pos)
@@ -455,6 +518,56 @@ local function complete_vf(arg_lead, cmd_line, cursor_pos)
 	end
 
 	return {}
+end
+
+-- Detect user mappings whose RHS invokes :Vimfy as a raw Ex command.
+-- Those cause the LHS keystroke to count as motion (on_key fires before
+-- the mapping resolves). We can't fix them automatically — `vim.on_key`
+-- doesn't tell us the mapping is about to fire — but we can warn at
+-- setup so the user knows to migrate to `<Plug>` or `vimfy.map()`.
+--
+-- Scope is best-effort by design:
+--   * Only mappings defined *before* setup are visible. Post-setup
+--     mappings (very common) won't be caught.
+--   * Lua-callback RHS is opaque; we can only inspect string RHS.
+--   * Buffer-local and filetype mappings defined later also slip by.
+--
+-- That's fine. This is a safety net, not a guarantee. The primary
+-- contract is vimfy.map() / <Plug> + docs.
+local MODES_TO_SCAN = { "n", "v", "x", "s", "o", "i", "t" }
+
+local function scan_rhs_for_vimfy(rhs)
+	if type(rhs) ~= "string" or rhs == "" then return false end
+	-- Match `:Vim` (with optional leading space) and `<Cmd>Vim` forms.
+	-- Case-insensitive because Vim command-name matching is.
+	local lower = rhs:lower()
+	if lower:match("^%s*:vim[fy]") then return true end
+	if lower:match("<cmd>%s*vim[fy]") then return true end
+	return false
+end
+
+local function warn_about_bad_mappings()
+	local bad = {}
+	for _, mode in ipairs(MODES_TO_SCAN) do
+		local ok, maps = pcall(vim.api.nvim_get_keymap, mode)
+		if ok and type(maps) == "table" then
+			for _, m in ipairs(maps) do
+				if scan_rhs_for_vimfy(m.rhs) then
+					table.insert(bad, string.format("  %s %-20s %s", mode, m.lhs or "?", m.rhs))
+				end
+			end
+		end
+	end
+	if #bad == 0 then return end
+	table.sort(bad)
+	vim.notify(
+		"vimficiency: detected " .. #bad ..
+		" mapping(s) whose RHS invokes :Vimfy as an Ex command.\n" ..
+		"These will count the LHS keystroke as motion. Migrate to\n" ..
+		"`require('vimficiency').map()` or a `<Plug>Vimfy*` map:\n" ..
+		table.concat(bad, "\n"),
+		vim.log.levels.WARN
+	)
 end
 
 --------------------------------------------------------------------------------
@@ -533,6 +646,10 @@ function M.setup(user_config)
 		session.enable_recall({ quiet = true })
 		auto_suggest.enable()
 	end
+
+	-- Safety net: warn about any pre-existing user mappings that invoke
+	-- :Vimfy via raw Ex command — see `scan_rhs_for_vimfy` for scope.
+	warn_about_bad_mappings()
 end
 
 return M

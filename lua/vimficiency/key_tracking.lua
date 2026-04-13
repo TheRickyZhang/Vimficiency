@@ -34,6 +34,18 @@ local uv = vim.uv
 -- synthetic keys) are suppressed.
 --
 -- Save/restore via the returned `prev` keeps nested invocations correct.
+--
+-- Admin-intent is *announced*, not detected. We deliberately do NOT probe
+-- maparg() or scan mapping RHS strings at on_key time — that earlier path
+-- accumulated three heuristics and still missed Lua-callback RHS. The
+-- blessed bindings are `require('vimficiency').map()` (primary),
+-- `<Plug>Vimfy*` maps, and `require('vimficiency').wrap(fn)`; all three
+-- set `ignoring` around their bodies.
+--
+-- Fallback: init.lua's setup() scans existing mappings once and warns
+-- about any string RHS matching `:Vimfy` / `<Cmd>Vimfy`. Pre-setup
+-- mappings only; post-setup or Lua-callback RHS is invisible to the
+-- scan by design. See docs/user/07-keymaps.md.
 --------------------------------------------------------------------------------
 
 local ignoring = false

@@ -198,9 +198,13 @@ local function try_assign(cdata, key, value)
 end
 
 --- Apply scalar user overrides to a cdata struct. Returns a set of keys that
---- were actually claimed; raises on type mismatches; silently skips unknown
---- fields so the caller can flag them globally.
-local function apply_scalars(src, dst, key_prefix)
+--- were actually claimed; raises on type mismatches.
+---
+--- When `strict` is true, unknown fields also raise (so nested typos like
+--- `weights = { downwrad = 5 }` fail loudly instead of silently no-op'ing).
+--- Top-level calls pass `strict = false` because setup() does its own
+--- post-check against the union of lua+cpp consumed keys.
+local function apply_scalars(src, dst, key_prefix, strict)
 	local consumed = {}
 	for k, v in pairs(src) do
 		if type(v) ~= "table" then
@@ -210,11 +214,18 @@ local function apply_scalars(src, dst, key_prefix)
 			elseif status == "type_error" then
 				error(string.format("vimficiency: invalid value for '%s%s': %s",
 					key_prefix or "", tostring(k), tostring(err)))
+			elseif strict and status == "unknown" then
+				error(string.format("vimficiency: unknown config key '%s%s'",
+					key_prefix or "", tostring(k)))
 			end
 		end
 	end
 	return consumed
 end
+
+-- Allowed keys on a single count_penalty_overrides[class] entry. Mirrors
+-- OVERRIDE_FIELDS; a set form lets us validate keys in O(1).
+local OVERRIDE_FIELD_SET = { base = true, count_slope = true, span_slope = true }
 
 -- ---@param user_config VimficiencyConfigFFI
 ---@return table<string, true> consumed  Top-level user_config keys claimed by C++ side
@@ -226,7 +237,7 @@ function M.configure(user_config)
 
 	if user_config.weights then
 		consumed.weights = true
-		apply_scalars(user_config.weights, config.weights, "weights.")
+		apply_scalars(user_config.weights, config.weights, "weights.", true)
 	end
 
 	if user_config.keys then
@@ -265,6 +276,14 @@ function M.configure(user_config)
 			end
 			if class_index < 0 or class_index >= lib.VIMFICIENCY_COUNT_CLASS_COUNT then
 				error("Count penalty class out of range: " .. tostring(class_key))
+			end
+
+			for field in pairs(override) do
+				if not OVERRIDE_FIELD_SET[field] then
+					error(string.format(
+						"vimficiency: unknown count_penalty_overrides[%s] key '%s' (allowed: base, count_slope, span_slope)",
+						tostring(class_key), tostring(field)))
+				end
 			end
 
 			local dst = config.count_penalty_overrides[class_index]

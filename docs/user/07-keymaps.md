@@ -4,86 +4,124 @@
 
 # 7. Binding keys to Vimfy actions
 
-If you bind a key to a Vimfy command, you don't want the key itself counted
-as a motion. Vimficiency provides two ways to declare that a keypress is
-admin activity rather than editing activity.
+Vimficiency measures the keys you type. So a key that *invokes* Vimfy
+should not itself be counted as a motion. Three ways to bind keys do
+that correctly; one ergonomic way does not.
 
-## 1. `<Plug>` maps
+## 1. `vimfy.map()` (recommended)
 
-The plugin exports one `<Plug>` per common action. Bind your preferred key
-with `remap = true` (or `nmap`):
+The simplest path — one line per binding, handles all subcommands:
+
+```lua
+local vimfy = require('vimficiency')
+
+vimfy.map('n', '<leader>vs', 'start a')
+vimfy.map('n', '<leader>ve', 'end a')
+vimfy.map('n', '<leader>vr', 'recall toggle')
+vimfy.map('n', '<leader>vq', 'save @ as quick')
+```
+
+The string argument is parsed like `:Vimfy <args>`: first word is the
+subcommand, the rest are forwarded verbatim. Any `:Vimfy ...` command
+line works as a `vimfy.map` spec.
+
+The fourth argument is the `opts` table passed through to
+`vim.keymap.set` (`buffer`, `desc`, `silent`, ...). `silent` defaults
+to `true`; `desc` defaults to `"Vimficiency <spec>"`.
+
+### Binding arbitrary Lua
+
+Pass a function instead of a string when you need to branch or compose:
+
+```lua
+vimfy.map('n', 'Z', function()
+  if vim.bo.buftype == "" then
+    vim.cmd('Vimfy start a')
+  end
+end)
+```
+
+The callback is wrapped with `M.wrap` internally, so any `:Vimfy` or
+plugin-level calls you make from it are announced as admin activity.
+
+## 2. `<Plug>` maps
+
+For users who prefer the Vim convention, each common action has a
+`<Plug>` name. Bind with `remap = true` (or `nmap` in vimscript):
 
 ```vim
 nmap <leader>vs <Plug>VimfyStartA
 nmap <leader>ve <Plug>VimfyEndA
-nmap <leader>vc <Plug>VimfyCloseA
-nmap <leader>vv <Plug>VimfySimA
-nmap <leader>vs <Plug>VimfySuggestToggle
-nmap <leader>vr <Plug>VimfyRecallToggle
-nmap <leader>vl <Plug>VimfyList
 ```
 
-Or in Lua:
 ```lua
 vim.keymap.set('n', '<leader>vs', '<Plug>VimfyStartA', { remap = true })
 ```
 
 **Available `<Plug>` names:**
 
-| Name                                            | Action                               |
-|-------------------------------------------------|--------------------------------------|
-| `<Plug>VimfyStart{A,B,C,D,E}`                   | `:Vimfy start <alias>`               |
-| `<Plug>VimfyEnd{A,B,C,D,E}`                     | `:Vimfy end <alias>`                 |
-| `<Plug>VimfyClose{A,B,C,D,E}`                   | `:Vimfy close <alias>`               |
-| `<Plug>VimfySim{A,B,C,D,E}`                     | `:Vimfy sim <alias>`                 |
-| `<Plug>VimfyRecall{On,Off,Toggle}`              | `:Vimfy recall <on\|off\|toggle>`    |
-| `<Plug>VimfySuggest{On,Off,Toggle}`             | `:Vimfy suggest <on\|off\|toggle>`   |
-| `<Plug>VimfyList`                               | `:Vimfy list`                        |
-| `<Plug>VimfyConfig`                             | `:Vimfy config`                      |
-| `<Plug>VimfyHelp`                               | `:Vimfy help`                        |
+| Name                                 | Action                               |
+|--------------------------------------|--------------------------------------|
+| `<Plug>VimfyStart{A,B,C,D,E}`        | `:Vimfy start <alias>`               |
+| `<Plug>VimfyEnd{A,B,C,D,E}`          | `:Vimfy end <alias>`                 |
+| `<Plug>VimfyClose{A,B,C,D,E}`        | `:Vimfy close <alias>`               |
+| `<Plug>VimfySim{A,B,C,D,E}`          | `:Vimfy sim <alias>`                 |
+| `<Plug>VimfyRecall{On,Off,Toggle}`   | `:Vimfy recall <on\|off\|toggle>`    |
+| `<Plug>VimfySuggest{On,Off,Toggle}`  | `:Vimfy suggest <on\|off\|toggle>`   |
+| `<Plug>VimfyList`                    | `:Vimfy list`                        |
+| `<Plug>VimfyConfig`                  | `:Vimfy config`                      |
+| `<Plug>VimfyHelp`                    | `:Vimfy help`                        |
 
-## 2. `require('vimficiency').wrap(fn)` for Lua callbacks
+`<Plug>` covers the common cases; `vimfy.map()` covers everything
+(including arbitrary args, e.g. `save @ as quick`, which no `<Plug>`
+name exposes directly).
 
-If your binding needs to do more than fire a single subcommand (e.g., prompt
-for input, branch on state), wrap the callback:
+## 3. `require('vimficiency').wrap(fn)` (low-level)
+
+`vimfy.map(mode, lhs, fn, opts)` is shorthand for
+`vim.keymap.set(mode, lhs, wrap(fn), opts)`. If you need to attach
+your Lua callback somewhere other than a keymap — an autocommand, a
+command, a UI callback — call `wrap` directly:
 
 ```lua
-vim.keymap.set('n', '<leader>vs', require('vimficiency').wrap(function()
-  vim.cmd('Vimfy start a')
-  -- ...or any other Vimfy-related Lua
-end))
+local vimfy = require('vimficiency')
+vim.api.nvim_create_autocmd('User', {
+  pattern = 'MyEvent',
+  callback = vimfy.wrap(function() vim.cmd('Vimfy end a') end),
+})
 ```
-
-`wrap` declares to Vimfy's key tracker that everything inside this function
-is admin activity and should not be recorded as motion.
 
 ## Direct `:Vimfy ...` typing
 
-Works as-is. Cmdline input is never counted as motion, so no wrapping needed.
+Works as-is. Cmdline input is never counted as motion, so nothing to wrap.
 
 ## What doesn't work
 
-An unwrapped mapping whose RHS calls Vimfy, for example:
+A `nnoremap`/`nmap` whose RHS is a literal Ex command:
 
 ```vim
 nnoremap X :Vimfy start a<CR>
+nmap     Y <Cmd>Vimfy start a<CR>
 ```
 
-Here the `X` keystroke itself will be recorded as a motion — Vimfy can't
-tell it triggered the command. To fix: route the mapping through `<Plug>`
-or `wrap()` instead:
+The `X` or `Y` keystroke is delivered to Vimfy's tracker *before* the
+mapping resolves — we can't retroactively uncount it. To fix: move the
+binding into `vimfy.map()` or a `<Plug>` map.
 
-```vim
-nmap X <Plug>VimfyStartA
-```
+At setup, Vimficiency scans pre-existing mappings for this pattern and
+emits a one-shot warning listing each offender. The scan can't see
+mappings defined *after* setup (or Lua-callback RHS, or buffer-local
+mappings added later) — if you keep seeing the LHS counted as motion,
+check that the binding is routed through `vimfy.map()` / `<Plug>` /
+`wrap()`.
 
 ## Why the contract
 
-Neovim's key event API (`vim.on_key`) cannot introspect what a mapping or
-Lua callback will do — by the time Vimfy learns a mapping fired, its
-keystrokes have already been delivered as if they were edits. The
-`<Plug>` + `wrap()` contract lets the caller *announce* intent, which is
-robust. See the codebase `docs/` for the design rationale.
+`vim.on_key` fires for the LHS keystroke *before* Neovim resolves the
+mapping. By the time the RHS runs (whether it's `:Vimfy ...`, a
+`<Plug>` map, or a Lua callback), the LHS has already been delivered.
+We can't auto-suppress; the caller has to announce. `vimfy.map()`,
+`<Plug>Vimfy*`, and `wrap()` are three ways to spell that announcement.
 
 ---
 

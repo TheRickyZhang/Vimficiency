@@ -98,20 +98,26 @@ end
 ---@return ResultSession|nil result
 ---@return string|nil err
 local function compute_result_for_active(active)
-  if not v.nvim_buf_is_valid(active.buf) or not v.nvim_win_is_valid(active.win) then
-    return nil, "buffer or window no longer valid"
+  if not v.nvim_buf_is_valid(active.buf) then
+    return nil, "buffer no longer valid"
   end
 
   local curr_buf = v.nvim_get_current_buf()
   if curr_buf ~= active.buf then
     return nil, "not in original buffer"
   end
-  if v.nvim_win_get_buf(active.win) ~= active.buf then
-    return nil, "original window no longer shows original buffer"
+
+  -- Recall is retrospective; the original window may have been closed
+  -- or switched to a different buffer between session start and `end`.
+  -- Fall back to the current window, which we've just confirmed
+  -- displays the original buffer.
+  local win = active.win
+  if not v.nvim_win_is_valid(win) or v.nvim_win_get_buf(win) ~= active.buf then
+    win = v.nvim_get_current_win()
   end
 
   local start_state = active.start_state
-  local end_state = util.capture_state(active.buf, active.win)
+  local end_state = util.capture_state(active.buf, win)
 
   util.check_state_inconsistencies(start_state, end_state)
 

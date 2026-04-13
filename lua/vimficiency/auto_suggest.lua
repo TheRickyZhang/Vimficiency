@@ -90,7 +90,14 @@ local function fire_idle()
   -- session, and finish a different one than we analyzed.
   local id = active.id
   local result, _err = session.compute_result_for_active(active)
-  if not result then return end
+  if not result then
+    -- The optimizer actually ran (or rejected the slice). Throttle
+    -- repeated failures on the same window — otherwise every idle tick
+    -- re-pays the analysis cost for a boundary that isn't going to
+    -- improve on the next 200 ms.
+    last_fire_hrtime = now_ns
+    return
+  end
 
   local fp = fingerprint_result(result)
   if fp == last_fingerprint then
@@ -103,7 +110,10 @@ local function fire_idle()
     return
   end
 
-  if not session_store.finish_session(id, result) then return end
+  if not session_store.finish_session(id, result) then
+    last_fire_hrtime = now_ns
+    return
+  end
 
   last_fire_hrtime = now_ns
   last_fingerprint = fp
@@ -167,5 +177,19 @@ function M.is_configured()
   local cfg = config.auto_suggest
   return cfg and cfg.idle ~= nil or false
 end
+
+-- Test-only exports of module-local state. Not part of the public API;
+-- used by tests/lua/test_auto_suggest.lua to drive fire_idle under
+-- monkey-patched dependencies and inspect cooldown state.
+M._for_test = {
+  fire_idle = fire_idle,
+  get_last_fire_hrtime = function() return last_fire_hrtime end,
+  set_last_fire_hrtime = function(v) last_fire_hrtime = v end,
+  get_last_fingerprint = function() return last_fingerprint end,
+  reset = function()
+    last_fire_hrtime = 0
+    last_fingerprint = nil
+  end,
+}
 
 return M

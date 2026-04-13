@@ -187,11 +187,15 @@ end
 --- Does the recall record at this index start at a clean normal-mode
 --- command boundary? Reads first_mode from the record so the check
 --- works regardless of the session's status (active or finished).
+--- Pure — takes explicit `records` and `order` tables so tests can
+--- feed synthetic state without touching module-level storage.
+---@param records table<string, SessionRecord>
+---@param order string[]
 ---@param index integer
 ---@return boolean
-local function is_clean_boundary(index)
-  local id = recall_id_order[index]
-  local rec = session_records[id]
+local function is_clean_boundary_pure(records, order, index)
+  local id = order[index]
+  local rec = records[id]
   if not rec or not rec.first_mode then return false end
   local m = rec.first_mode
   if m:sub(1, 2) == "no" then return false end  -- operator-pending
@@ -199,21 +203,30 @@ local function is_clean_boundary(index)
 end
 
 --- Snap a recall_time cutoff index backward to the nearest clean command
---- boundary, bounded by SNAP_LOOKBACK_KEYS.
+--- boundary, bounded by `budget`. Pure — see `is_clean_boundary_pure`.
+---@param records table<string, SessionRecord>
+---@param order string[]
 ---@param cutoff_index integer
+---@param budget integer
 ---@return integer|nil index
-local function snap_backward_to_boundary(cutoff_index)
-  local budget = config.SNAP_LOOKBACK_KEYS or 20
+local function snap_backward_to_boundary_pure(records, order, cutoff_index, budget)
   local i = cutoff_index
   local steps = 0
   while i >= 1 and steps <= budget do
-    if is_clean_boundary(i) then
+    if is_clean_boundary_pure(records, order, i) then
       return i
     end
     i = i - 1
     steps = steps + 1
   end
   return nil
+end
+
+local function snap_backward_to_boundary(cutoff_index)
+  return snap_backward_to_boundary_pure(
+    session_records, recall_id_order, cutoff_index,
+    config.SNAP_LOOKBACK_KEYS or 20
+  )
 end
 
 --- Convert alias to session ID.
@@ -563,6 +576,14 @@ function M.enable_recall()
   local function on_key_event(event)
     -- 1. Append key event to all still-active recall records. Finished
     --    records are skipped (their key_seq is nil and they're frozen).
+    --
+    -- This fanout is O(n) per keystroke in the number of live recall
+    -- records. n is bounded by KEY_SESSION_CAPACITY (= 200) and each
+    -- append is a table_insert of a small event table, so real cost is
+    -- well under 1 ms per key at typing speeds. If capacity ever grows
+    -- (or we retain more aggressively), switch to a shared ring + per-
+    -- record {start_idx, end_idx} slice view: each record holds two
+    -- offsets into a single shared event buffer and append becomes O(1).
     for _, id in ipairs(recall_id_order) do
       local rec = session_records[id]
       if rec and rec.status == "active" then
@@ -620,5 +641,13 @@ function M.disable_recall()
   end
   recall_id_order = {}
 end
+
+-- Test-only exports of pure helpers. Not part of the public API; the
+-- underscore prefix is intentional. Used by tests/lua/test_recall_snap.lua
+-- to feed synthetic ring state through the snap algorithm without
+-- touching module-level storage.
+M._pure = {
+  snap_backward_to_boundary = snap_backward_to_boundary_pure,
+}
 
 return M
