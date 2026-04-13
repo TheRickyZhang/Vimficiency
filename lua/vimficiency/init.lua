@@ -1,7 +1,11 @@
 -- lua/vimficiency/init.lua
 local ffi_lib = require("vimficiency.ffi")
 local config = require("vimficiency.config")
+local alias_mod = require("vimficiency.alias")
 local session = require("vimficiency.session")
+local session_store = require("vimficiency.session_store")
+local key_tracking = require("vimficiency.key_tracking")
+local auto_suggest = require("vimficiency.auto_suggest")
 local M = {}
 
 -- Re-export config for backwards compatibility
@@ -13,19 +17,96 @@ local function set_cmd(name, fn, opts)
 	vim.api.nvim_create_user_command(name, fn, opts)
 end
 
+-- `config.lua` is the schema: any key with a default there is a Lua-side knob.
+-- C++-only keys aren't in `config` and are handled by `ffi_lib.configure`.
+-- Returns the set of keys claimed so setup() can warn on leftovers.
+---@return table<string, true>
 local function import_lua_config(user_config)
-	if user_config.SLICE_PADDING then
-		config.SLICE_PADDING = user_config.SLICE_PADDING
+	local consumed = {}
+	for k, v in pairs(user_config) do
+		if config[k] ~= nil then
+			config[k] = v
+			consumed[k] = true
+		end
 	end
-	if user_config.SLICE_EXPAND_TO_PARAGRAPH then
-		config.SLICE_EXPAND_TO_PARAGRAPH = user_config.SLICE_EXPAND_TO_PARAGRAPH
+	return consumed
+end
+
+-- Recall alias validation delegates to the central grammar module so the
+-- auto_suggest window validator can't drift from `:Vimfy end 3s` parsing.
+
+-- Validate and normalize `user_config.auto_suggest`, writing the result to
+-- `config.auto_suggest`. Errors loudly on unknown keys or malformed values
+-- so typos can't silently no-op.
+--
+-- Accepted shapes:
+--   auto_suggest = false                          -- explicit disable
+--   auto_suggest = nil                            -- implicit disable
+--   auto_suggest = { idle = {...},                -- at least one trigger
+--                    cooldown_ms = 5000 }
+--
+-- Reserved trigger names (`keys`, `cost`) error out: their behavior isn't
+-- implemented yet and we don't want typos to silently no-op when they ship.
+local function validate_auto_suggest(raw)
+	if raw == nil or raw == false then
+		config.auto_suggest = false
+		return
 	end
-	if user_config.MAX_SEARCH_LINES then
-		config.MAX_SEARCH_LINES = user_config.MAX_SEARCH_LINES
+	if type(raw) ~= "table" then
+		error("auto_suggest must be false or a table, got " .. type(raw))
 	end
-	if user_config.KEY_SESSION_CAPACITY then
-		config.KEY_SESSION_CAPACITY = user_config.KEY_SESSION_CAPACITY
+
+	local reserved = {
+		keys = "auto_suggest.keys trigger is not yet implemented",
+		cost = "auto_suggest.cost trigger is not yet implemented",
+	}
+	local top_allowed = { idle = true, keys = true, cost = true, cooldown_ms = true }
+	for k in pairs(raw) do
+		if reserved[k] then error(reserved[k]) end
+		if not top_allowed[k] then
+			error("auto_suggest: unknown key '" .. tostring(k) ..
+				"' (allowed: idle, cooldown_ms)")
+		end
 	end
+
+	local normalized = { cooldown_ms = 5000 }
+
+	if raw.idle ~= nil then
+		if type(raw.idle) ~= "table" then
+			error("auto_suggest.idle must be a table")
+		end
+		local idle_allowed = { ms = true, window = true }
+		for k in pairs(raw.idle) do
+			if not idle_allowed[k] then
+				error("auto_suggest.idle: unknown key '" .. tostring(k) ..
+					"' (allowed: ms, window)")
+			end
+		end
+		if type(raw.idle.ms) ~= "number" or raw.idle.ms <= 0 then
+			error("auto_suggest.idle.ms must be a positive number")
+		end
+		if not alias_mod.is_recall(raw.idle.window) then
+			error("auto_suggest.idle.window must be a recall alias " ..
+				"(digits, e.g. '50', or digits+s, e.g. '3s')")
+		end
+		normalized.idle = { ms = raw.idle.ms, window = raw.idle.window }
+	end
+
+	if raw.cooldown_ms ~= nil then
+		if type(raw.cooldown_ms) ~= "number" or raw.cooldown_ms < 0 then
+			error("auto_suggest.cooldown_ms must be a non-negative number")
+		end
+		normalized.cooldown_ms = raw.cooldown_ms
+	end
+
+	-- No triggers present → effectively disabled. Treat as false so
+	-- downstream code has one "is it on" check.
+	if normalized.idle == nil then
+		config.auto_suggest = false
+		return
+	end
+
+	config.auto_suggest = normalized
 end
 
 --------------------------------------------------------------------------------
@@ -49,15 +130,14 @@ subcommands.start = {
 
 subcommands["end"] = {
 	desc = "Finish a session and show results",
-	usage = "end <alias> [save_name]",
+	usage = "end <alias>",
 	fn = function(args)
 		local alias = args[1]
-		local save_name = args[2]
 		if not alias or alias == "" then
-			vim.notify("Usage: Vimfy end <alias> [save_name]", vim.log.levels.ERROR)
+			vim.notify("Usage: Vimfy end <alias>", vim.log.levels.ERROR)
 			return
 		end
-		session.finish(alias, save_name)
+		session.finish(alias)
 	end,
 }
 
@@ -86,6 +166,28 @@ subcommands.sim = {
 			return
 		end
 		session.simulate(alias, count, delay_ms)
+	end,
+}
+
+subcommands.save = {
+	desc = "Save a finished session result to disk",
+	usage = "save <selector>|@ [as] <name>",
+	fn = function(args)
+		local selector = args[1]
+		-- Tolerate an optional "as" keyword between selector and name.
+		-- `save foo bar` and `save foo as bar` both mean the same thing —
+		-- the keyword exists for readability, not for parsing correctness.
+		local name
+		if args[2] == "as" then
+			name = args[3]
+		else
+			name = args[2]
+		end
+		if not selector or selector == "" or not name or name == "" then
+			vim.notify("Usage: Vimfy save <selector>|@ [as] <name>", vim.log.levels.ERROR)
+			return
+		end
+		session.save(selector, name)
 	end,
 }
 
@@ -118,23 +220,66 @@ subcommands.list = {
 	end,
 }
 
-subcommands.key = {
-	desc = "Control key session tracking",
-	usage = "key <on|off|toggle>",
+subcommands.suggest = {
+	desc = "Control auto-suggest (idle trigger)",
+	usage = "suggest <on|off|toggle>",
+	fn = function(args)
+		local action = args[1]
+		local function enable_or_warn()
+			if not auto_suggest.is_configured() then
+				vim.notify(
+					"auto_suggest has no triggers configured. Add `auto_suggest = { idle = { ms, window } }` to setup{}.",
+					vim.log.levels.ERROR
+				)
+				return
+			end
+			-- Auto-suggest needs recall recording to have anything to analyze.
+			-- Silently turn it on; matches the setup-time coupling.
+			if not session.is_recall_enabled() then
+				session.enable_recall({ quiet = true })
+			end
+			if auto_suggest.enable() then
+				vim.notify("vimficiency auto-suggest enabled", vim.log.levels.INFO)
+			else
+				vim.notify("vimficiency auto-suggest already enabled", vim.log.levels.WARN)
+			end
+		end
+
+		if action == "on" then
+			enable_or_warn()
+		elseif action == "off" then
+			auto_suggest.disable()
+			vim.notify("vimficiency auto-suggest disabled", vim.log.levels.INFO)
+		elseif action == "toggle" then
+			if auto_suggest.is_enabled() then
+				auto_suggest.disable()
+				vim.notify("vimficiency auto-suggest disabled", vim.log.levels.INFO)
+			else
+				enable_or_warn()
+			end
+		else
+			vim.notify("Usage: Vimfy suggest <on|off|toggle>", vim.log.levels.ERROR)
+		end
+	end,
+}
+
+subcommands.recall = {
+	desc = "Control the rolling recall ring",
+	usage = "recall <on|off|toggle>",
 	fn = function(args)
 		local action = args[1]
 		if action == "on" then
-			session.enable_key_sessions()
+			session.enable_recall()
 		elseif action == "off" then
-			session.disable_key_sessions()
+			session.disable_recall()
 		elseif action == "toggle" then
-			if session.is_key_sessions_enabled() then
-				session.disable_key_sessions()
+			if session.is_recall_enabled() then
+				session.disable_recall()
 			else
-				session.enable_key_sessions()
+				session.enable_recall()
 			end
 		else
-			vim.notify("Usage: Vimfy key <on|off|toggle>", vim.log.levels.ERROR)
+			vim.notify("Usage: Vimfy recall <on|off|toggle>", vim.log.levels.ERROR)
 		end
 	end,
 }
@@ -185,23 +330,67 @@ subcommands.help = {
 --------------------------------------------------------------------------------
 
 local function handle_vf_command(opts)
-	local args = vim.split(opts.args, "%s+")
-	local subcmd = args[1] or ""
+	local prev = key_tracking.begin_ignore()
+	local ok, err = pcall(function()
+		local args = vim.split(opts.args, "%s+")
+		local subcmd = args[1] or ""
 
-	if subcmd == "" then
-		subcommands.help.fn()
-		return
+		if subcmd == "" then
+			subcommands.help.fn()
+			return
+		end
+
+		local cmd = subcommands[subcmd]
+		if not cmd then
+			vim.notify("Unknown subcommand: " .. subcmd .. "\nRun :Vimfy help for usage", vim.log.levels.ERROR)
+			return
+		end
+
+		-- Remove subcommand from args and call handler
+		table.remove(args, 1)
+		cmd.fn(args)
+	end)
+	key_tracking.end_ignore(prev)
+	if not ok then
+		vim.notify(tostring(err), vim.log.levels.ERROR)
 	end
+end
 
-	local cmd = subcommands[subcmd]
-	if not cmd then
-		vim.notify("Unknown subcommand: " .. subcmd .. "\nRun :Vimfy help for usage", vim.log.levels.ERROR)
-		return
+--- Wrap a function so that any key events it fires are suppressed from Vimfy's
+--- session tracking. Use this when binding a Lua callback that invokes Vimfy:
+---
+---   vim.keymap.set('n', '<leader>vs', require('vimficiency').wrap(function()
+---     vim.cmd('Vimfy start a')
+---   end))
+---
+--- For simple bindings, the exported `<Plug>VimfyX` maps already announce
+--- themselves; reach for `wrap` only when the bound action needs custom Lua.
+---@param fn fun(...): any
+---@return fun(...): any
+function M.wrap(fn)
+	return function(...)
+		local prev = key_tracking.begin_ignore()
+		local ok, err = pcall(fn, ...)
+		key_tracking.end_ignore(prev)
+		if not ok then
+			error(err)
+		end
 	end
+end
 
-	-- Remove subcommand from args and call handler
-	table.remove(args, 1)
-	cmd.fn(args)
+--- Register a <Plug> map that invokes a subcommand with fixed arguments.
+---@param name string           Suffix appended to "<Plug>Vimfy"
+---@param subcmd string         Key in `subcommands`
+---@param subcmd_args string[]  Args forwarded to the subcommand's fn
+local function register_plug(name, subcmd, subcmd_args)
+	vim.keymap.set("n", "<Plug>Vimfy" .. name, M.wrap(function()
+		local cmd = subcommands[subcmd]
+		if not cmd then
+			vim.notify("Vimficiency: unknown subcommand in <Plug>Vimfy" .. name, vim.log.levels.ERROR)
+			return
+		end
+		cmd.fn(subcmd_args)
+	end), { silent = true, desc = "Vimficiency " .. subcmd .. " " .. table.concat(subcmd_args, " ") })
 end
 
 local function complete_vf(arg_lead, cmd_line, cursor_pos)
@@ -224,7 +413,7 @@ local function complete_vf(arg_lead, cmd_line, cursor_pos)
 	local subcmd = args[1]
 
 	-- Subcommand-specific completions
-	if subcmd == "key" then
+	if subcmd == "recall" or subcmd == "suggest" then
 		return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, {"on", "off", "toggle"})
 	end
 
@@ -233,9 +422,36 @@ local function complete_vf(arg_lead, cmd_line, cursor_pos)
 		return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, saved)
 	end
 
-	if subcmd == "start" or subcmd == "end" or subcmd == "close" or subcmd == "sim" then
-		local aliases = session.list()
+	if subcmd == "start" then
+		-- Manual-only — recall sessions can't be started explicitly.
+		-- Offer known manual handles so the user can re-open / overwrite.
+		local aliases = vim.tbl_filter(alias_mod.is_valid_manual, session.list())
 		return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, aliases)
+	end
+
+	if subcmd == "end" or subcmd == "close" or subcmd == "sim" then
+		local aliases = session.list()
+		for _, t in ipairs(alias_mod.TIME_HINTS) do
+			table.insert(aliases, t)
+		end
+		return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, aliases)
+	end
+
+	if subcmd == "save" then
+		-- Position 2 is the selector; position 3 is either "as" or the name.
+		if #args == 2 then
+			local selectors = session.list()
+			table.insert(selectors, "@")
+			for _, t in ipairs(alias_mod.TIME_HINTS) do
+				table.insert(selectors, t)
+			end
+			return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, selectors)
+		end
+		if #args == 3 then
+			-- Suggest the "as" keyword for readability; user can ignore it.
+			return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, { "as" })
+		end
+		return {}
 	end
 
 	return {}
@@ -253,10 +469,29 @@ function M.setup(user_config)
 		user_config.shiftwidth = vim.o.shiftwidth
 	end
 
-	-- Take lua parts
-	import_lua_config(user_config)
-	-- Push to C++
-	ffi_lib.configure(user_config)
+	local lua_consumed = import_lua_config(user_config)
+
+	-- auto_suggest goes through its own validator: the nested shape needs
+	-- strict key-checking and normalization. Runs after the scalar importer
+	-- so it can overwrite the raw table the importer just copied in.
+	validate_auto_suggest(user_config.auto_suggest)
+
+	local cpp_consumed = ffi_lib.configure(user_config)
+
+	-- Fail-loud on keys that neither side claimed (typos, stale keys, etc.)
+	local unknown = {}
+	for k in pairs(user_config) do
+		if not lua_consumed[k] and not cpp_consumed[k] then
+			table.insert(unknown, tostring(k))
+		end
+	end
+	if #unknown > 0 then
+		table.sort(unknown)
+		vim.notify(
+			"vimficiency: unknown config keys ignored: " .. table.concat(unknown, ", "),
+			vim.log.levels.WARN
+		)
+	end
 
 	-- Main unified commands (both prefixes work)
 	set_cmd("Vimfy", handle_vf_command, {
@@ -270,6 +505,34 @@ function M.setup(user_config)
 		complete = complete_vf,
 		desc = "Vimficiency motion optimizer",
 	})
+
+	-- <Plug> entry points. Binding a user key to any of these announces the
+	-- keypress as admin activity: the key itself is not counted as motion.
+	for _, alias in ipairs({ "a", "b", "c", "d", "e" }) do
+		local upper = alias:upper()
+		register_plug("Start" .. upper, "start", { alias })
+		register_plug("End"   .. upper, "end",   { alias })
+		register_plug("Close" .. upper, "close", { alias })
+		register_plug("Sim"   .. upper, "sim",   { alias })
+	end
+	register_plug("RecallOn",      "recall",  { "on" })
+	register_plug("RecallOff",     "recall",  { "off" })
+	register_plug("RecallToggle",  "recall",  { "toggle" })
+	register_plug("SuggestOn",     "suggest", { "on" })
+	register_plug("SuggestOff",    "suggest", { "off" })
+	register_plug("SuggestToggle", "suggest", { "toggle" })
+	register_plug("List",          "list",    {})
+	register_plug("Config",        "config",  {})
+	register_plug("Help",          "help",    {})
+
+	-- auto_suggest implies the recall ring — turn both on so the user
+	-- doesn't have to opt in twice. Explicit `:Vimfy recall off` /
+	-- `:Vimfy suggest off` at runtime still wins. Quiet because setup()
+	-- shouldn't spam notifications.
+	if config.auto_suggest then
+		session.enable_recall({ quiet = true })
+		auto_suggest.enable()
+	end
 end
 
 return M

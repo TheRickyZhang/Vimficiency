@@ -177,39 +177,60 @@ M.Finger = build_enum(lib.VIMFICIENCY_FINGER_COUNT, lib.vimficiency_finger_name)
 M.Hand = build_enum(lib.VIMFICIENCY_HAND_COUNT, lib.vimficiency_hand_name)
 M.CountClass = build_enum(lib.VIMFICIENCY_COUNT_CLASS_COUNT, lib.vimficiency_count_class_name)
 
+-- The (has_<name>, <name>) flag pairs on C_CountPenaltyOverride. Genuine
+-- structure (not mere field duplication), so still a named schema.
+local OVERRIDE_FIELDS = { "base", "count_slope", "span_slope" }
+
+--- Try to assign a value to a cdata field, distinguishing unknown fields
+--- from type errors. LuaJIT raises on both reads and writes of absent
+--- struct members, so a read-probe tells us whether the field exists.
+---@return "ok"|"unknown"|"type_error" status
+---@return string|nil err  Raw LuaJIT error when status == "type_error"
+local function try_assign(cdata, key, value)
+	if not pcall(function() local _ = cdata[key] end) then
+		return "unknown"
+	end
+	local ok, err = pcall(function() cdata[key] = value end)
+	if not ok then
+		return "type_error", err
+	end
+	return "ok"
+end
+
+--- Apply scalar user overrides to a cdata struct. Returns a set of keys that
+--- were actually claimed; raises on type mismatches; silently skips unknown
+--- fields so the caller can flag them globally.
+local function apply_scalars(src, dst, key_prefix)
+	local consumed = {}
+	for k, v in pairs(src) do
+		if type(v) ~= "table" then
+			local status, err = try_assign(dst, k, v)
+			if status == "ok" then
+				consumed[k] = true
+			elseif status == "type_error" then
+				error(string.format("vimficiency: invalid value for '%s%s': %s",
+					key_prefix or "", tostring(k), tostring(err)))
+			end
+		end
+	end
+	return consumed
+end
+
 -- ---@param user_config VimficiencyConfigFFI
+---@return table<string, true> consumed  Top-level user_config keys claimed by C++ side
 function M.configure(user_config)
 	---@type VimficiencyConfigFFI
 	local config = lib.vimficiency_get_config()
 
-  if user_config.default_keyboard then
-    config.default_keyboard = user_config.default_keyboard
-  end
+	local consumed = apply_scalars(user_config, config)
 
 	if user_config.weights then
-		local w = user_config.weights
-		local cw = config.weights
-		if w.keyWeight then
-			cw.keyWeight = w.keyWeight
-		end
-		if w.sameFingerWeight then
-			cw.sameFingerWeight = w.sameFingerWeight
-		end
-		if w.sameKeyWeight then
-			cw.sameKeyWeight = w.sameKeyWeight
-		end
-		if w.altHandWeight then
-			cw.altHandWeight = w.altHandWeight
-		end
-		if w.goodRollWeight then
-			cw.goodRollWeight = w.goodRollWeight
-		end
-		if w.badRollWeight then
-			cw.badRollWeight = w.badRollWeight
-		end
+		consumed.weights = true
+		apply_scalars(user_config.weights, config.weights, "weights.")
 	end
 
 	if user_config.keys then
+		consumed.keys = true
 		for key_index, info in pairs(user_config.keys) do
 			config.keys[key_index].hand = info.hand
 			config.keys[key_index].finger = info.finger
@@ -217,62 +238,47 @@ function M.configure(user_config)
 		end
 	end
 
-  if user_config.slice_buffer_amount then
-    config.slice_buffer_amount = user_config.slice_buffer_amount
-  end
+	if user_config.count_penalty_overrides then
+		consumed.count_penalty_overrides = true
+		if user_config.use_count_penalty_overrides == nil then
+			config.use_count_penalty_overrides = true
+		end
 
-  if user_config.shiftwidth then
-    config.shiftwidth = user_config.shiftwidth
-  end
+		-- Reset all has_* flags before applying user's subset.
+		for i = 0, lib.VIMFICIENCY_COUNT_CLASS_COUNT - 1 do
+			local dst = config.count_penalty_overrides[i]
+			for _, f in ipairs(OVERRIDE_FIELDS) do
+				dst["has_" .. f] = false
+			end
+		end
 
-  if user_config.use_count_penalty_overrides ~= nil then
-    config.use_count_penalty_overrides = user_config.use_count_penalty_overrides
-  end
+		for class_key, override in pairs(user_config.count_penalty_overrides) do
+			local class_index
+			if type(class_key) == "number" then
+				class_index = class_key
+			else
+				class_index = M.CountClass[class_key]
+			end
 
-  if user_config.count_penalty_overrides then
-    if user_config.use_count_penalty_overrides == nil then
-      config.use_count_penalty_overrides = true
-    end
+			if class_index == nil then
+				error("Unknown count penalty class: " .. tostring(class_key))
+			end
+			if class_index < 0 or class_index >= lib.VIMFICIENCY_COUNT_CLASS_COUNT then
+				error("Count penalty class out of range: " .. tostring(class_key))
+			end
 
-    for i = 0, lib.VIMFICIENCY_COUNT_CLASS_COUNT - 1 do
-      local dst = config.count_penalty_overrides[i]
-      dst.has_base = false
-      dst.has_count_slope = false
-      dst.has_span_slope = false
-    end
-
-    for class_key, override in pairs(user_config.count_penalty_overrides) do
-      local class_index = nil
-      if type(class_key) == "number" then
-        class_index = class_key
-      else
-        class_index = M.CountClass[class_key]
-      end
-
-      if class_index == nil then
-        error("Unknown count penalty class: " .. tostring(class_key))
-      end
-      if class_index < 0 or class_index >= lib.VIMFICIENCY_COUNT_CLASS_COUNT then
-        error("Count penalty class out of range: " .. tostring(class_key))
-      end
-
-      local dst = config.count_penalty_overrides[class_index]
-      if override.base ~= nil then
-        dst.has_base = true
-        dst.base = override.base
-      end
-      if override.count_slope ~= nil then
-        dst.has_count_slope = true
-        dst.count_slope = override.count_slope
-      end
-      if override.span_slope ~= nil then
-        dst.has_span_slope = true
-        dst.span_slope = override.span_slope
-      end
-    end
-  end
+			local dst = config.count_penalty_overrides[class_index]
+			for _, f in ipairs(OVERRIDE_FIELDS) do
+				if override[f] ~= nil then
+					dst["has_" .. f] = true
+					dst[f] = override[f]
+				end
+			end
+		end
+	end
 
 	lib.vimficiency_apply_config()
+	return consumed
 end
 
 ---@param initial_lines string[] Buffer lines at session start

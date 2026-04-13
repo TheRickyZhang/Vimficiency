@@ -1,10 +1,12 @@
 local v = vim.api
+local alias_mod = require("vimficiency.alias")
 local config = require("vimficiency.config")
 local util = require("vimficiency.util")
 local simulate = require("vimficiency.simulate")
 local key_tracking = require("vimficiency.key_tracking")
 local ffi_lib = require("vimficiency.ffi")
 local session_store = require("vimficiency.session_store")
+local result_view = require("vimficiency.result_view")
 
 local M = {}
 
@@ -51,26 +53,6 @@ local function get_save_dir()
   return vim.fn.stdpath("data") .. "/vimficiency/saved"
 end
 
---- Format results for display
----@param results VimficiencyResult[]
----@param user_seq string|nil
----@param user_cost number|nil
----@return string
-local function format_results_display(results, user_seq, user_cost)
-  local lines = {}
-  if user_seq and user_seq ~= "" then
-    local formatted_seq = ffi_lib.format_sequence(user_seq)
-    local cost_str = user_cost and string.format(" (%.2f)", user_cost) or ""
-    table.insert(lines, string.format("  user: %s%s", formatted_seq, cost_str))
-  end
-  for i, r in ipairs(results) do
-    -- Format sequence for human-readable display
-    local formatted_seq = ffi_lib.format_sequence(r.seq)
-    table.insert(lines, string.format("  %d. %s (%.2f)", i, formatted_seq, r.cost))
-  end
-  return table.concat(lines, "\n")
-end
-
 --- Save results to JSON file (pretty-printed for readability)
 ---@param name string
 ---@param data table
@@ -109,6 +91,127 @@ local function load_results(name)
   return data, nil
 end
 
+--- Build a ResultSession from an active session by capturing current state
+--- and running the optimizer. Returns nil + error string on failure.
+--- Does NOT touch session_store; caller decides where to route the result.
+---@param active ActiveSession
+---@return ResultSession|nil result
+---@return string|nil err
+local function compute_result_for_active(active)
+  if not v.nvim_buf_is_valid(active.buf) or not v.nvim_win_is_valid(active.win) then
+    return nil, "buffer or window no longer valid"
+  end
+
+  local curr_buf = v.nvim_get_current_buf()
+  if curr_buf ~= active.buf then
+    return nil, "not in original buffer"
+  end
+  if v.nvim_win_get_buf(active.win) ~= active.buf then
+    return nil, "original window no longer shows original buffer"
+  end
+
+  local start_state = active.start_state
+  local end_state = util.capture_state(active.buf, active.win)
+
+  util.check_state_inconsistencies(start_state, end_state)
+
+  local initial_lines = start_state.lines
+  local goal_lines = end_state.lines
+
+  local start_search, end_search = util.compute_search_region(
+    start_state.row, end_state.row,
+    initial_lines, goal_lines,
+    config.SLICE_PADDING
+  )
+
+  if end_search - start_search > config.MAX_SEARCH_LINES then
+    return nil, "search range exceeds MAX_SEARCH_LINES"
+  end
+
+  local function slice_lines(lines, region_start, region_end)
+    local sliced = {}
+    for i = region_start + 1, math.min(region_end + 1, #lines) do
+      table.insert(sliced, lines[i])
+    end
+    return sliced
+  end
+
+  local initial_slice = slice_lines(initial_lines, start_search, end_search)
+  local goal_slice = slice_lines(goal_lines, start_search, end_search)
+
+  local keyseq_raw = key_tracking.build_sequence(active.key_seq)
+  local keyseq_str = apply_motion_conversions(keyseq_raw)
+
+  local rel_start_row = start_state.row - start_search
+  local rel_start_col = start_state.col
+  local rel_end_row = end_state.row - start_search
+  local rel_end_col = end_state.col
+
+  local boundary_first_col = 0
+  local boundary_last_col = #initial_slice[#initial_slice] - 1
+  if boundary_last_col < 0 then boundary_last_col = 0 end
+  local has_lines_above = start_search > 0
+  local has_lines_below = end_search < math.max(#initial_lines, #goal_lines) - 1
+
+  local ok, results, user_cost, dbg = pcall(
+    ffi_lib.analyze,
+    initial_slice, goal_slice,
+    boundary_first_col, boundary_last_col,
+    has_lines_above, has_lines_below,
+    rel_start_row,
+    rel_start_col,
+    rel_end_row,
+    rel_end_col,
+    keyseq_str,
+    start_state.window_height,
+    start_state.scroll_amount,
+    config.RESULTS_CALCULATED
+  )
+
+  if not ok then
+    return nil, "FFI error: " .. tostring(results)
+  end
+
+  if dbg and dbg ~= "" then
+    local debug_dir = vim.fn.stdpath("data") .. "/vimficiency/debug"
+    vim.fn.mkdir(debug_dir, "p")
+    local debug_path = debug_dir .. "/" .. active.id .. ".txt"
+    vim.fn.writefile(vim.split(dbg, "\n"), debug_path)
+  end
+
+  ---@type VimficiencyResult[]
+  local optimal_results = {}
+  for i = 1, math.min(#results, config.RESULTS_SAVED) do
+    table.insert(optimal_results, results[i])
+  end
+
+  ---@type ResultSession
+  local result = {
+    lines = initial_slice,
+    start_row = rel_start_row,
+    start_col = rel_start_col,
+    end_row = rel_end_row,
+    end_col = rel_end_col,
+    user_seq = keyseq_str,
+    user_cost = user_cost,
+    optimal_results = optimal_results,
+    start_time = active.time_started,
+    key_count = #active.key_seq,
+    timestamp = vim.uv.hrtime(),
+  }
+  return result, nil
+end
+
+--- Public alias over the local compute_result_for_active, for modules that
+--- share the "take an active session, run the optimizer, hand back a result"
+--- path (currently auto_suggest). Keeps the notification/policy layer (who
+--- displays what, when to stay quiet) in the caller.
+---@param active ActiveSession
+---@return ResultSession|nil, string|nil
+function M.compute_result_for_active(active)
+  return compute_result_for_active(active)
+end
+
 -------- Local functions END --------
 
 ---@param alias string  The alias for the session (required, must be manual type)
@@ -118,12 +221,12 @@ function M.start(alias)
     return
   end
 
-  -- Only manual sessions can be started explicitly
-  local session_type = session_store.get_alias_type(alias)
-  if session_type ~= "manual" then
+  -- Only manual (alphabetic) aliases can be started explicitly.
+  -- Anything else — recall syntax, hyphens, digits, empty — is rejected.
+  if not alias_mod.is_valid_manual(alias) then
     vim.notify(
-      "Cannot manually start " .. session_type .. " sessions. " ..
-      "Use a letter alias (a-e) for manual sessions.",
+      "Invalid session alias '" .. alias .. "'. " ..
+      "Manual aliases are alphabetic only (e.g. 'a', 'refactor').",
       vim.log.levels.ERROR
     )
     return
@@ -163,8 +266,7 @@ end
 
 
 ---@param alias string  The alias of the session to finish
----@param save_name string|nil  Optional name to save results to disk
-function M.finish(alias, save_name)
+function M.finish(alias)
   if not alias or alias == "" then
     vim.notify("finish() requires a session alias", vim.log.levels.ERROR)
     return
@@ -172,138 +274,30 @@ function M.finish(alias, save_name)
 
   local active = session_store.get_active(alias)
   if not active then
-    local session_type = session_store.get_alias_type(alias)
-    if session_type == "key" then
-      if not session_store.is_key_sessions_enabled() then
-        vim.notify("Key sessions not enabled. Run ':Vimfy key on' first.", vim.log.levels.ERROR)
+    local session_type = alias_mod.parse(alias)
+    if session_type == "recall_key" or session_type == "recall_time" then
+      if not session_store.is_recall_enabled() then
+        vim.notify("Recall not enabled. Run ':Vimfy recall on' first.", vim.log.levels.ERROR)
+      elseif session_type == "recall_key" then
+        vim.notify("No recall session found for '" .. alias .. "' keys ago.", vim.log.levels.ERROR)
       else
-        vim.notify("No key session found for '" .. alias .. "' keys ago.", vim.log.levels.ERROR)
+        vim.notify("No recall session found within '" .. alias .. "'. Try a larger window or 'end N' by key count.", vim.log.levels.ERROR)
       end
-    elseif session_type == "time" then
-      vim.notify("Time-based sessions not yet implemented.", vim.log.levels.ERROR)
-    else
+    elseif session_type == "manual" then
       vim.notify("Session '" .. alias .. "' not found or already finished.", vim.log.levels.ERROR)
+    else
+      vim.notify("Unrecognized alias '" .. alias .. "'. " ..
+        "Expected alphabetic (manual), digits (recall keys), or digits+s (recall time).",
+        vim.log.levels.ERROR)
     end
     return
   end
 
-  local buf = v.nvim_get_current_buf()
-  local win = v.nvim_get_current_win()
-
-  if buf ~= active.buf then
-    total_failure(alias, "finish()", "not in same buffer (not currently implemented)")
+  local result, err = compute_result_for_active(active)
+  if not result then
+    total_failure(alias, "finish()", err or "unknown error")
     return
   end
-
-  local start_state = active.start_state
-  local end_state = util.capture_state(buf, win)
-
-  util.check_state_inconsistencies(start_state, end_state)
-
-  -- Get initial lines (captured at session start) and goal lines (current buffer)
-  local initial_lines = start_state.lines
-  local goal_lines = end_state.lines
-
-  -- Compute search region covering cursor positions + changed lines + padding
-  local start_search, end_search = util.compute_search_region(
-    start_state.row, end_state.row,
-    initial_lines, goal_lines,
-    config.SLICE_PADDING
-  )
-
-  if end_search - start_search > config.MAX_SEARCH_LINES then
-    total_failure(alias, "finish()", "search range is larger than MAX_SEARCH_LINES")
-    return
-  end
-
-  -- Slice both initial and goal lines to the search region
-  local function slice_lines(lines, region_start, region_end)
-    local sliced = {}
-    for i = region_start + 1, math.min(region_end + 1, #lines) do
-      table.insert(sliced, lines[i])
-    end
-    return sliced
-  end
-
-  local initial_slice = slice_lines(initial_lines, start_search, end_search)
-  local goal_slice = slice_lines(goal_lines, start_search, end_search)
-
-  -- Build key sequence from recorded events with deduplication
-  local keyseq_raw = key_tracking.build_sequence(active.key_seq)
-
-  -- DEBUG: See what raw keys were recorded
-  print("DEBUG keyseq_raw:", vim.inspect(keyseq_raw))
-  print("DEBUG key_seq entries:", #active.key_seq)
-  for i, e in ipairs(active.key_seq) do
-    print(string.format("  [%d] mode='%s' typed='%s' sent='%s'", i, e.mode, e.key_typed, e.key_sent))
-  end
-
-  -- Apply approximate motion conversions (gj->j, gk->k, etc.)
-  local keyseq_str = apply_motion_conversions(keyseq_raw)
-
-  -- Calculate positions (relative to search slice, 0-indexed)
-  local rel_start_row = start_state.row - start_search
-  local rel_start_col = start_state.col
-  local rel_end_row = end_state.row - start_search
-  local rel_end_col = end_state.col
-
-  -- For linewise slicing: boundary covers full lines
-  -- Use initial slice for boundary since that's where motions start
-  local boundary_first_col = 0
-  local boundary_last_col = #initial_slice[#initial_slice] - 1  -- last char of last line (0-indexed)
-  if boundary_last_col < 0 then boundary_last_col = 0 end
-  local has_lines_above = start_search > 0
-  local has_lines_below = end_search < math.max(#initial_lines, #goal_lines) - 1
-
-  local ok, results, user_cost, dbg = pcall(
-    ffi_lib.analyze,
-    initial_slice, goal_slice,
-    boundary_first_col, boundary_last_col,
-    has_lines_above, has_lines_below,
-    rel_start_row,
-    rel_start_col,
-    rel_end_row,
-    rel_end_col,
-    keyseq_str,
-    start_state.window_height,
-    start_state.scroll_amount,
-    config.RESULTS_CALCULATED
-  )
-
-  if not ok then
-    total_failure(alias, "finish() error", "FFI error: " .. tostring(results))
-    return
-  end
-
-  -- Persist debug by writing to file
-  if dbg and dbg ~= "" then
-    local debug_dir = vim.fn.stdpath("data") .. "/vimficiency/debug"
-    vim.fn.mkdir(debug_dir, "p")
-    local debug_path = debug_dir .. "/" .. active.id .. ".txt"
-    vim.fn.writefile(vim.split(dbg, "\n"), debug_path)
-  end
-
-  -- Limit stored results to RESULTS_SAVED
-  ---@type VimficiencyResult[]
-  local optimal_results = {}
-  for i = 1, math.min(#results, config.RESULTS_SAVED) do
-    table.insert(optimal_results, results[i])
-  end
-
-  -- Create result and transition from active to result storage
-  -- Store initial_slice for simulation (motion simulation starts from initial state)
-  ---@type ResultSession
-  local result = {
-    lines = initial_slice,
-    start_row = rel_start_row,  -- 0-indexed, relative to lines
-    start_col = rel_start_col,
-    end_row = rel_end_row,      -- 0-indexed, relative to lines
-    end_col = rel_end_col,
-    user_seq = keyseq_str,
-    user_cost = user_cost,
-    optimal_results = optimal_results,
-    timestamp = vim.uv.hrtime(),
-  }
 
   -- This detaches key tracking and moves from active to result storage
   if not session_store.finish_session(alias, result) then
@@ -311,25 +305,39 @@ function M.finish(alias, save_name)
     return
   end
 
-  -- Optionally save to disk
-  local save_msg = ""
-  if save_name and save_name ~= "" then
-    local save_ok, save_err = save_results(save_name, result)
-    if save_ok then
-      save_msg = "\nsaved to: " .. save_name
-    else
-      save_msg = "\nsave failed: " .. (save_err or "unknown error")
+  local header = "vimficiency finished [" .. alias .. "] " .. result_view.format_position(result)
+  local body = result_view.format_body(result)
+  vim.notify(header .. "\n" .. table.concat(body, "\n"), vim.log.levels.INFO)
+end
+
+--- Save a finished session result to disk under `name`.
+--- Selector can be any alias that resolves to a finished result, or `@`
+--- for the most recently finished session. Saved results live in a
+--- separate namespace from live session handles — see `:Vimfy view`.
+---@param selector string
+---@param name string
+function M.save(selector, name)
+  local result
+  if selector == "@" then
+    result = session_store.get_last_finished_result()
+    if not result then
+      vim.notify("No recently finished session to save. Run ':Vimfy end <alias>' first.", vim.log.levels.ERROR)
+      return
+    end
+  else
+    result = session_store.get_result(selector)
+    if not result then
+      vim.notify("No finished result for '" .. selector .. "'. Is the session still active?", vim.log.levels.ERROR)
+      return
     end
   end
 
-  -- Format result summary with position and all results
-  local pos_str = string.format("(%d,%d) -> (%d,%d)",
-    rel_start_row, rel_start_col, rel_end_row, rel_end_col)
-  local result_display = format_results_display(optimal_results, keyseq_str, user_cost)
-  vim.notify(
-    "vimficiency finished [" .. alias .. "] " .. pos_str .. save_msg .. "\n" .. result_display,
-    vim.log.levels.INFO
-  )
+  local ok, err = save_results(name, result)
+  if ok then
+    vim.notify("vimficiency saved [" .. name .. "]", vim.log.levels.INFO)
+  else
+    vim.notify("vimficiency save failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+  end
 end
 
 --- Close a session without finishing (no optimization, no result stored).
@@ -351,30 +359,32 @@ function M.close(alias)
   vim.notify("vimficiency closed [" .. alias .. "]", vim.log.levels.INFO)
 end
 
---- Enable automatic key-count session tracking.
---- Creates a new session on each keypress, maintaining a rolling window.
+--- Enable the rolling recall ring. Every keystroke creates a retained
+--- session, queryable as `N` (keys ago) or `Ns` (seconds ago).
+---@param opts? { quiet?: boolean }  Pass { quiet = true } to suppress the user notification (e.g., when another command — :Vimfy suggest on — is turning recall on as a side effect).
 ---@return boolean success
-function M.enable_key_sessions()
-  local success = session_store.enable_key_sessions()
-  if success then
-    vim.notify("vimficiency key sessions enabled", vim.log.levels.INFO)
-  else
-    vim.notify("vimficiency key sessions already enabled", vim.log.levels.WARN)
+function M.enable_recall(opts)
+  opts = opts or {}
+  local success = session_store.enable_recall()
+  if not opts.quiet then
+    if success then
+      vim.notify("vimficiency recall enabled", vim.log.levels.INFO)
+    else
+      vim.notify("vimficiency recall already enabled", vim.log.levels.WARN)
+    end
   end
   return success
 end
 
---- Disable automatic key-count session tracking.
---- Closes all active key sessions without finishing.
-function M.disable_key_sessions()
-  session_store.disable_key_sessions()
-  vim.notify("vimficiency key sessions disabled", vim.log.levels.INFO)
+--- Disable the recall ring. Discards all retained sessions.
+function M.disable_recall()
+  session_store.disable_recall()
+  vim.notify("vimficiency recall disabled", vim.log.levels.INFO)
 end
 
---- Check if key sessions are enabled.
 ---@return boolean
-function M.is_key_sessions_enabled()
-  return session_store.is_key_sessions_enabled()
+function M.is_recall_enabled()
+  return session_store.is_recall_enabled()
 end
 
 

@@ -1,9 +1,21 @@
+
+
 == Current priority stack:
 Insert Mode handling (just a lot more stuff)     ********* (very very difficult)
 
 Review implementation of BufferIndex in optimizeToRange() (is it exploring correctly on lines / columns? Correct passed in from composition?)
 
 == TODO Stack
+- Mostly work on getting MVP for now
+- Different modes of invoking sessions
+- Improving the lua/C++ interaction semantics
+
+- Add testing suite for Lua
+
+- Later: implement debounced async for how to properly continuously perform optimize() calls to check among previous things automatically. Also need details for concurrency in implementing subprocesses?
+
+
+
 Verify universal half-open semantics
 9dedexC explored when C would suffice?
 Overall, not enough other early branches explored; heuristic model locks in one branch pretty early

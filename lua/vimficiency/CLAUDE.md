@@ -10,7 +10,9 @@ The Lua layer is a Neovim plugin that captures user editing sessions and calls t
 | `config.lua` | Shared configuration constants (Lua-side only). |
 | `ffi.lua` | LuaJIT FFI bindings to `libvimficiency.so`. |
 | `session.lua` | Session lifecycle: start, finish, simulate, view. |
-| `session_store.lua` | Storage management for active/result sessions across three types. |
+| `session_store.lua` | Canonical session records + manual/recall indexing. |
+| `result_view.lua` | Pure formatting helpers (position string, body lines) shared by `finish` and auto-suggest. |
+| `auto_suggest.lua` | Idle-trigger auto-suggest (runs optimizer on a recall window). |
 | `key_tracking.lua` | Captures keypresses via `vim.on_key()` with filtering. |
 | `simulate.lua` | Side-by-side animation of motion sequences. |
 | `util.lua` | State capture, ID generation, UI helpers. |
@@ -19,22 +21,33 @@ The Lua layer is a Neovim plugin that captures user editing sessions and calls t
 
 ### Session Types (session_store.lua)
 
-1. **Manual** (aliases: `a`-`e`, capacity: 5)
-   User-controlled: `:Vimfy start a` / `:Vimfy end a`
+1. **Manual** (aliases: arbitrary alphabetic strings — e.g. `a`, `refactor`, `bugfix`;
+   capacity: 5 concurrent active sessions)
+   User-controlled: `:Vimfy start <name>` / `:Vimfy end <name>`. Grammar is
+   anything that doesn't match the recall forms (`^%d+$`, `^%d+s$`).
 
-2. **Time-based** (aliases: `.`, `..`, capacity: 5)
-   TODO: Not implemented. Auto-end after idle time.
-
-3. **Key-count** (aliases: `1`, `2`, ..., capacity: configurable)
-   Rolling FIFO: creates session per keystroke, enabling retroactive analysis.
-   Enable: `:Vimfy key on`. Query: `:Vimfy end 4` (4 keys ago).
+2. **Recall** (rolling ring; queried via `:Vimfy end N` or `:Vimfy end Ns`)
+   Creates a retained session on every keystroke. Both indexing modes share
+   one ring — `N` means "N keys ago", `Ns` means "as far back as N seconds
+   ago, snapped backward to a clean normal-mode command boundary".
+   Enable: `:Vimfy recall on` (on by default). Retention is bounded under
+   **union** semantics: evict the oldest session only when BOTH
+   `KEY_SESSION_CAPACITY` and `MAX_RETENTION_SECONDS` say drop.
 
 ### Data Structures
 
-- **ActiveSession**: In-progress session with key event buffer.
-- **ResultSession**: Completed session with optimal sequences.
+- **SessionRecord**: Canonical per-session entry with `status` ("active" | "finished"),
+  key event buffer (while active), `first_mode` (captured on recall creation for
+  command-boundary snapping), and `result` (after finish).
+- **ResultSession**: Optimizer output + position + captured `start_time`/`key_count`,
+  attached to the record at finish.
+- **SessionSummary**: Normalized view-model for `:Vimfy list` / auto-suggest output.
 
-Sessions transition from active to result on `finish()`. Storage uses separate tables: `active_sessions[id]` and `result_sessions[id]`.
+One `session_records[id]` table holds everything; `manual_alias_to_id` and
+`recall_id_order` are the two indexes into it. Finish flips `status` in place
+and drops `key_seq` — it does NOT unindex. This removes tombstones from
+`recall_id_order` entirely: a finished session stays reachable via its recall
+alias (for `:Vimfy sim Ns`) until the ring slot rotates out.
 
 ## Key Tracking (key_tracking.lua)
 
@@ -49,9 +62,19 @@ motion key twice. `build_sequence()` removes these duplicates by detecting:
 - Second occurrence in different mode (normal/insert)
 
 ### Filtering logic
-- Command-line mode (`:` prefix, `<Cmd>`) is excluded
-- Multi-key mappings with filtered RHS (Vimfy commands) trigger removal of accumulated LHS keys
-- Single-key remaps and lua-function RHS cannot be reliably detected
+Announce-only: Vimfy entry points (the `:Vimfy` user command, `<Plug>Vimfy*`
+maps, `M.wrap(fn)`) bracket their bodies with `key_tracking.begin_ignore` /
+`end_ignore`. Both `on_key` handlers short-circuit when the flag is set,
+so admin-triggered key events are never recorded. Save/restore via the
+returned `prev` keeps nested invocations safe.
+
+Cmdline activity (`m == "c"`, `:` in normal mode) is dropped unconditionally
+as meta-activity, independent of the flag.
+
+No retroactive cleanup, no RHS/maparg heuristics. User mappings that invoke
+Vimfy without routing through `<Plug>` or `wrap()` (e.g. `nnoremap X
+:Vimfy start a<CR>`) will have the LHS keypress counted as motion — this
+is documented and the user fix is to migrate the mapping.
 
 ### Known limitations
 - Text object final character missing (`ciw` → `c, i, ?`) - Neovim consumes internally before `vim.on_key` fires
@@ -102,7 +125,8 @@ Lua-side constants (not pushed to C++):
 :Vimfy sim <alias>      -- Animate results
 :Vimfy view [name]      -- View saved results
 :Vimfy list             -- Show active/saved sessions
-:Vimfy key <on|off>     -- Toggle key-count sessions
+:Vimfy recall <on|off|toggle>  -- Toggle the rolling recall ring
+:Vimfy suggest <on|off|toggle> -- Toggle auto-suggest (needs `auto_suggest = {...}` in setup)
 :Vimfy config           -- Show C++ config state
 :Vimfy reload           -- Rebuild C++ library
 ```
