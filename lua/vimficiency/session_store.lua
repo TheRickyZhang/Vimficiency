@@ -75,16 +75,25 @@ local config = require("vimficiency.config")
 --- SessionSummary: normalized view-model used by `:Vimfy list`, auto-suggest
 --- notifications, and the future session menu. One shape regardless of
 --- whether the underlying session is still active or has a result.
+---
+--- `id` is the stable handle. Use it as the key for any follow-up
+--- action on the session (finish, remove, resubscribe).
+---
+--- `display_alias` is for presentation only and, for recall sessions,
+--- is **time-varying**: as the ring rotates, the same record's
+--- "N keys ago" index slides. A summary captured now may print "5" and
+--- be rendered a moment later when that slot is "7" or has rotated out
+--- entirely. Never feed it back into a store call — use `id`.
 ---@class SessionSummary
----@field id         string
----@field kind       "manual" | "recall"
----@field alias      string|nil        # Current alias if any (e.g. "a", "5")
----@field status     "active" | "finished"
----@field start_time integer           # hrtime
----@field end_time   integer|nil       # hrtime at finish; nil if still active
----@field key_count  integer           # Keystrokes captured so far
----@field preview    string            # First ~20 chars of user_seq for display
----@field result     ResultSession|nil
+---@field id            string
+---@field kind          "manual" | "recall"
+---@field display_alias string|nil     # For display. Time-varying for recall; do not re-feed.
+---@field status        "active" | "finished"
+---@field start_time    integer        # hrtime
+---@field end_time      integer|nil    # hrtime at finish; nil if still active
+---@field key_count     integer        # Keystrokes captured so far
+---@field preview       string         # First ~20 chars of user_seq for display
+---@field result        ResultSession|nil
 
 --------------------------------------------------------------------------------
 -- Constructor
@@ -121,7 +130,7 @@ end
 -- Constants
 --------------------------------------------------------------------------------
 
-local MANUAL_CAPACITY = 5      -- concurrent active sessions; alias grammar is "not recall"
+local MANUAL_CAPACITY = 5      -- concurrent active sessions; alias grammar is strict alphabetic (see alias.lua)
 
 --------------------------------------------------------------------------------
 -- Storage
@@ -368,37 +377,47 @@ function M.has_result(alias)
   return M.get_result(alias) ~= nil
 end
 
---- Remove a session entirely (record + indices) by alias.
----@param alias string
-function M.remove(alias)
-  local session_type = alias_mod.parse(alias)
+--- Remove a session entirely (record + indices) by stable id.
+---
+--- Takes an id rather than an alias on purpose: time-varying aliases
+--- (`3s`, recall key `N`) resolve to different records as the ring
+--- rotates. Callers must resolve alias → record via `get_active` at
+--- the entry point and pass `record.id` here. Resolving twice risks
+--- removing the wrong record if the ring slides between calls.
+---@param id string
+function M.remove(id)
+  local rec = session_records[id]
+  if not rec then return end
 
-  if session_type == "manual" then
-    local id = manual_alias_to_id[alias]
-    if not id then return end
-    destroy_record(id)
-    manual_alias_to_id[alias] = nil
+  -- Un-index from whichever side holds this id.
+  local manual_alias = nil
+  for a, mid in pairs(manual_alias_to_id) do
+    if mid == id then manual_alias = a; break end
+  end
+  if manual_alias then
+    manual_alias_to_id[manual_alias] = nil
     manual_count = manual_count - 1
-    return
+  else
+    unindex_recall(id)
   end
 
-  -- Recall alias: resolve to a concrete id and remove fully.
-  local id = convert_alias_to_id(alias)
-  if not id then return end
-  unindex_recall(id)
   destroy_record(id)
 end
 
 --- Transition an in-progress session to finished. Detaches per-session
 --- key tracking (manual macro recording). Does NOT remove the record
 --- from any index — finished records remain reachable for replay.
----@param alias string
+---
+--- Takes an id rather than an alias on purpose: time-varying aliases
+--- (`3s`, recall key `N`) resolve to different records as the ring
+--- rotates. Callers must resolve alias → record via `get_active` at
+--- the entry point and pass `record.id` here. Resolving twice risks
+--- finishing the wrong record — and attaching the result to a record
+--- that wasn't even the one the result was computed from.
+---@param id string
 ---@param result ResultSession
 ---@return boolean success
-function M.finish_session(alias, result)
-  local id = convert_alias_to_id(alias)
-  if not id then return false end
-
+function M.finish_session(id, result)
   local rec = session_records[id]
   if not rec or rec.status ~= "active" then return false end
 
@@ -474,14 +493,17 @@ function M.summarize(id)
   local manual_alias = find_manual_alias(id)
   local recall_index = find_recall_index(id)
 
-  local kind, alias
+  local kind, display_alias
   if manual_alias then
     kind = "manual"
-    alias = manual_alias
+    display_alias = manual_alias
   elseif recall_index then
     kind = "recall"
-    -- Recall aliases are "N keys from newest"; drift as the ring rotates.
-    alias = tostring(#recall_id_order - recall_index + 1)
+    -- Recall aliases are "N keys from newest"; drift as the ring
+    -- rotates. This is presentation-only — see the SessionSummary
+    -- docstring. Any follow-up action must key on `id`, not this
+    -- string.
+    display_alias = tostring(#recall_id_order - recall_index + 1)
   else
     -- Defensive fallback. Under the current wiring (every record is
     -- indexed via manual_alias_to_id OR recall_id_order for its whole
@@ -495,15 +517,15 @@ function M.summarize(id)
   if #user_seq > 20 then preview = preview .. "…" end
 
   return {
-    id         = id,
-    kind       = kind,
-    alias      = alias,
-    status     = rec.status,
-    start_time = rec.time_started,
-    end_time   = result and result.timestamp or nil,
-    key_count  = (rec.status == "active") and #(rec.key_seq or {}) or rec.key_count,
-    preview    = preview,
-    result     = result,
+    id            = id,
+    kind          = kind,
+    display_alias = display_alias,
+    status        = rec.status,
+    start_time    = rec.time_started,
+    end_time      = result and result.timestamp or nil,
+    key_count     = (rec.status == "active") and #(rec.key_seq or {}) or rec.key_count,
+    preview       = preview,
+    result        = result,
   }
 end
 

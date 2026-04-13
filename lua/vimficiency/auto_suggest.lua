@@ -83,22 +83,27 @@ local function fire_idle()
   local active = session_store.get_active(window)
   if not active then return end  -- ring too young or no clean boundary
 
+  -- Pin the resolved id. Every store mutation below must key on this
+  -- id, never re-resolve `window`: the recall alias is time-varying and
+  -- may slide to a different record between get_active and finish.
+  -- Otherwise we'd attach the result we just computed to the wrong
+  -- session, and finish a different one than we analyzed.
   local id = active.id
   local result, _err = session.compute_result_for_active(active)
   if not result then return end
 
   local fp = fingerprint_result(result)
   if fp == last_fingerprint then
-    -- Silently consume the recall window so we stop re-analyzing it,
+    -- Silently consume this exact record so we stop re-analyzing it,
     -- refresh the cooldown, and skip the notification. Finishing here
     -- is safe: the session's result is preserved on the record.
-    if session_store.finish_session(window, result) then
+    if session_store.finish_session(id, result) then
       last_fire_hrtime = now_ns
     end
     return
   end
 
-  if not session_store.finish_session(window, result) then return end
+  if not session_store.finish_session(id, result) then return end
 
   last_fire_hrtime = now_ns
   last_fingerprint = fp

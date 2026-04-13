@@ -31,15 +31,15 @@ local function apply_motion_conversions(keyseq)
   return result
 end
 
----@param alias string
+---@param id string   Stable session id (resolved once by caller).
 ---@param title string
 ---@param text string
 ---@param notify_message string|nil
 ---@param level integer|nil
-local function total_failure(alias, title, text, notify_message, level)
+local function total_failure(id, title, text, notify_message, level)
   util.show_output(title, text)
   -- remove() handles detaching key tracking (which stops macro recording)
-  session_store.remove(alias)
+  session_store.remove(id)
   if notify_message or title then
     vim.schedule(function()
       vim.notify(notify_message or title, level or vim.log.levels.ERROR)
@@ -243,10 +243,13 @@ function M.start(alias)
   local id = util.new_id(buf)
   local start_state = util.capture_state(buf, win)
 
+  -- `id` is allocated above and captured in both closures below. That
+  -- keeps the detach/removal path keyed on the stable id even if the
+  -- manual alias is later overwritten to point at a different session.
   local key_nsid = key_tracking.attach(function()
     return session_store.get_active(alias)
   end, function(reason, level) ---@param reason string @param level integer
-    session_store.remove(alias)
+    session_store.remove(id)
     if reason then
       vim.schedule(function()
         vim.notify(reason, level or vim.log.levels.INFO)
@@ -293,15 +296,21 @@ function M.finish(alias)
     return
   end
 
+  -- Pin the resolved id here. Everything that mutates the store below
+  -- must use this id, not `alias` — recall aliases (`3s`, `5`) drift as
+  -- the ring rotates, so re-resolving could touch a different record
+  -- than the one we just computed a result for.
+  local id = active.id
+
   local result, err = compute_result_for_active(active)
   if not result then
-    total_failure(alias, "finish()", err or "unknown error")
+    total_failure(id, "finish()", err or "unknown error")
     return
   end
 
   -- This detaches key tracking and moves from active to result storage
-  if not session_store.finish_session(alias, result) then
-    total_failure(alias, "finish()", "failed to store result")
+  if not session_store.finish_session(id, result) then
+    total_failure(id, "finish()", "failed to store result")
     return
   end
 
@@ -317,6 +326,18 @@ end
 ---@param selector string
 ---@param name string
 function M.save(selector, name)
+  -- Saved names are filesystem fragments (see alias.is_valid_saved_name).
+  -- Refuse anything that could escape the saved/ directory before we
+  -- concat it into a path.
+  if not alias_mod.is_valid_saved_name(name) then
+    vim.notify(
+      "Invalid saved name '" .. tostring(name) .. "'. " ..
+      "Allowed: alphanumeric, '.', '_', '-'; must start with a letter, digit, or underscore.",
+      vim.log.levels.ERROR
+    )
+    return
+  end
+
   local result
   if selector == "@" then
     result = session_store.get_last_finished_result()
@@ -354,8 +375,9 @@ function M.close(alias)
     return
   end
 
+  -- Pin id at entry; see `finish()` for the same reasoning.
   -- remove() handles detaching key tracking (which stops macro recording)
-  session_store.remove(alias)
+  session_store.remove(active.id)
   vim.notify("vimficiency closed [" .. alias .. "]", vim.log.levels.INFO)
 end
 
@@ -377,7 +399,19 @@ function M.enable_recall(opts)
 end
 
 --- Disable the recall ring. Discards all retained sessions.
+---
+--- Auto-suggest depends on the recall ring — without it there's
+--- nothing for the idle trigger to analyze. If auto-suggest is on when
+--- recall is turned off, cascade the disable: leaving the idle timer
+--- armed and the key subscriber attached with no ring to act on is
+--- "surprising background work" (reviewer's phrasing). Uses a lazy
+--- require to sidestep the session ↔ auto_suggest import cycle.
 function M.disable_recall()
+  local auto_suggest = require("vimficiency.auto_suggest")
+  if auto_suggest.is_enabled() then
+    auto_suggest.disable()
+    vim.notify("vimficiency auto-suggest disabled (depends on recall)", vim.log.levels.INFO)
+  end
   session_store.disable_recall()
   vim.notify("vimficiency recall disabled", vim.log.levels.INFO)
 end

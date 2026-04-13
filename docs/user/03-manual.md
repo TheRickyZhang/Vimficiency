@@ -13,11 +13,14 @@ analyzing, or when you want clean start/end boundaries.
 :Vimfy end a         " Mark the end, show suggestions
 ```
 
-Aliases are alphabetic names. The recommended convention is single letters
-`a` through `e` — short to type at session boundaries, and there's a
-capacity of 5 concurrent manual sessions. Longer names (`refactor`,
-`wip`) also work but aren't the typical ergonomic path. Digit-only names
-and names ending in `s` are reserved for [recall](04-recall.md).
+Aliases are **letters only** — `a`, `refactor`, `WIP`, mixed case all
+fine. No digits, hyphens, underscores, or other punctuation. The
+recommended convention is single letters `a` through `e`: short to
+type at session boundaries, and there's a capacity of 5 concurrent
+manual sessions. Longer names (`refactor`, `wip`) work too but aren't
+the typical ergonomic path. Digit-only names (`42`) and names ending
+in `s` (`3s`) are reserved for [recall](04-recall.md); any other shape
+(e.g. `my-refactor`, `v2`, `_tmp`) is rejected.
 
 Starting a session at an already-used alias overwrites it.
 

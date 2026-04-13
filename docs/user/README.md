@@ -16,7 +16,7 @@ internals and implementation notes, see the rest of `docs/`.
 2. [The core idea: a session](02-sessions.md)
 3. [Manual sessions](03-manual.md) — precise control, aliases `a`–`e`
 4. [Recall](04-recall.md) — retrospective: `end 6` (keys) or `end 3s` (seconds)
-5. [Auto-suggest](05-auto-suggest.md) — configurable, idle / keys / cost triggers
+5. [Auto-suggest](05-auto-suggest.md) — idle trigger today; keys/cost planned
 6. [Inspecting results](06-results.md) — notifications, simulate, list, view
 7. [Binding keys to Vimfy](07-keymaps.md) — `<Plug>` maps and `wrap()`
 8. [Configuration](08-configuration.md) — setup knobs

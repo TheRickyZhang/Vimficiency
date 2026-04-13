@@ -66,4 +66,24 @@ function M.is_recall(s)
   return t == "recall_key" or t == "recall_time"
 end
 
+--- True iff `s` is a safe saved-result name.
+---
+--- Saved names are concatenated directly into
+--- `stdpath('data')/vimficiency/saved/<name>.json`, so the grammar has
+--- to reject anything that could escape the directory or trip up a
+--- filesystem: path separators (`/`, `\`), `..`, leading `.` (hidden
+--- files), leading `-` (shell-flag confusion), whitespace, and control
+--- characters. The `[%w._-]` class covers separators and control chars
+--- implicitly; requiring the first char to be alphanumeric or
+--- underscore blocks the rest.
+---
+--- Grammar: `^[%w_][%w._-]*$` — e.g. `refactor-2026-03-15`,
+--- `my_edit.v2`, `bugfix`. Rejects: `.`, `..`, `../foo`, `/etc/passwd`,
+--- `-rf`, `name with spaces`, empty string.
+---@param s any
+---@return boolean
+function M.is_valid_saved_name(s)
+  return type(s) == "string" and s:match("^[%w_][%w._-]*$") ~= nil
+end
+
 return M
