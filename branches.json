@@ -1,6 +1,13 @@
 {
   "branches": [
     {
+      "name": "expand-user-features",
+      "safeName": "expand-user-features",
+      "url": "https://TheRickyZhang.github.io/Vimficiency/branch/expand-user-features/",
+      "updatedAt": "2026-04-13T07:37:29Z",
+      "repoFullName": "TheRickyZhang/Vimficiency"
+    },
+    {
       "name": "improve-code-semantics",
       "safeName": "improve-code-semantics",
       "url": "https://TheRickyZhang.github.io/Vimficiency/branch/improve-code-semantics/",
