@@ -52,8 +52,11 @@ Shows currently active sessions and saved-to-disk results.
 
 ## Saving a result
 
-`:Vimfy end <alias>` finishes and displays but doesn't write to disk. To
-keep a result around, use `save`:
+`save` is a cross-cutting command: it works on every session type —
+Mark, Watch, Recall, Suggest — because all four terminate by handing a
+result to the same store. `:Vimfy end <alias>` (or an auto-end) finishes
+and displays but doesn't touch disk. To keep a result around, run
+`save` next:
 
 ```vim
 :Vimfy save <selector> [<name>]
@@ -69,7 +72,23 @@ used.
 :Vimfy end a
 :Vimfy save @                   " writes saved/a.json
 :Vimfy save @ my-refactor       " explicit name overrides the default
+:Vimfy save 3s                  " recall too: writes saved/3s.json
 ```
+
+Saved files live under `stdpath('data')/vimficiency/saved/`.
+
+### Session handles vs. saved names
+
+These are **separate namespaces**. A session handle (`a`, `3s`, `5`)
+lives in memory — for Mark it lasts until you overwrite or close it,
+for Recall it rotates out of the ring. A saved name is a file on disk,
+persisting across Neovim restarts. The same text is allowed in both —
+`:Vimfy save a` (reusing `a` as the filename) is the common path.
+
+This matters most for Recall/Suggest: results are transient by design,
+so if a suggestion is worth keeping, `:Vimfy save @ <name>` it
+immediately — a few more keystrokes and the slice has rotated out of
+the queue.
 
 ## Viewing a saved result
 
@@ -77,8 +96,8 @@ used.
 :Vimfy view my-refactor
 ```
 
-Reads back a result previously saved via `:Vimfy save`. Tab-complete
-lists what's available.
+Reads back a result previously saved via `:Vimfy save`. Tab-complete on
+`:Vimfy view` lists what's available.
 
 ---
 

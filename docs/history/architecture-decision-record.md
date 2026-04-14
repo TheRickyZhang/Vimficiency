@@ -128,10 +128,21 @@ bounded ring; cost negligible next to the optimizer run that follows.
 
 `vim.on_key` captures every keystroke, not commands. A raw time window
 may start mid-command (e.g., between `d` and `aw`), which would produce
-noisy input to the optimizer. The C++ parser already identifies command
-boundaries when it runs; we reuse that parse to snap the *start* of the
-time window forward to the nearest command boundary. The end boundary
-is "now" — presumed clean because the user just typed `:Vimfy end`.
+noisy input to the optimizer. Every recall record captures the Vim
+mode at creation time (`first_mode`) so we can cheaply tell whether a
+given record starts on a clean normal-mode command boundary. We
+resolve `:Vimfy end Ns` by first finding the youngest record whose
+timestamp is at-or-before the cutoff, then snapping that index
+*backward* (toward older records) to the nearest clean boundary. The
+end of the window is "now" — presumed clean because the user just
+typed `:Vimfy end`.
+
+Backward, not forward: if the user started a multi-key command just
+before the cutoff (e.g., the `d` of a `d{` that straddles the
+boundary), including the opening of that command is what "the last N
+seconds" charitably means. Forward-snapping would silently chop the
+head off such commands. `SNAP_LOOKBACK_KEYS` caps how far the window
+may stretch when every intervening record is mid-command.
 
 This matters more for time recall than key recall: a user saying "last
 6 keys" knows exactly which keys they mean; a user saying "last 3

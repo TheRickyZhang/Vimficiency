@@ -32,15 +32,23 @@ local function apply_motion_conversions(keyseq)
   return result
 end
 
----@param id string   Stable session id (resolved once by caller).
+---@param record SessionRecord   Session being finished (must have id + start_kind).
 ---@param title string
 ---@param text string
 ---@param notify_message string|nil
 ---@param level integer|nil
-local function total_failure(id, title, text, notify_message, level)
+local function total_failure(record, title, text, notify_message, level)
   util.show_output(title, text)
-  -- remove() handles detaching key tracking (which stops macro recording)
-  session_store.remove(id)
+  -- Manual sessions (Mark/Watch) end here — remove the record so the
+  -- alias is free and per-session key tracking is detached. Recall and
+  -- Suggest records live in the rolling ring and represent a slice of
+  -- history; a failed finish (wrong buffer, search range too large,
+  -- optimizer error) must NOT destroy that slice, or a later retry over
+  -- the same window would silently find nothing. Ring capacity/age caps
+  -- own their lifetime.
+  if record.start_kind == "manual" then
+    session_store.remove(record.id)
+  end
   if notify_message or title then
     vim.schedule(function()
       vim.notify(notify_message or title, level or vim.log.levels.ERROR)
@@ -464,7 +472,7 @@ function M.finish(alias)
 
   local result, err = compute_result_for_active(active)
   if not result then
-    total_failure(id, "finish()", err or "unknown error")
+    total_failure(active, "finish()", err or "unknown error")
     return
   end
 
@@ -472,7 +480,7 @@ function M.finish(alias)
   -- Pass the literal `alias` so `:Vimfy save @` can default the filename
   -- to what the user typed at end-time (otherwise recall positions drift).
   if not session_store.finish_session(id, result, alias) then
-    total_failure(id, "finish()", "failed to store result")
+    total_failure(active, "finish()", "failed to store result")
     return
   end
 
