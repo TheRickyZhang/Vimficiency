@@ -114,21 +114,59 @@ end)
 
 test("fire_idle: promotes end_kind from manual to auto on takeover", function()
   setup_enabled()
-  local captured
-  session_store.get_active = function()
-    captured = { id = "fake-id", start_kind = "auto", end_kind = "manual" }
-    return captured
-  end
+  local captured = { id = "fake-id", start_kind = "auto", end_kind = "manual" }
+  session_store.get_active = function() return captured end
   session.compute_result_for_active = function()
     return {
       start_row = 0, start_col = 0, end_row = 0, end_col = 0,
       user_seq = "x", optimal_results = { { seq = "y", cost = 1.0 } },
     }
   end
+  -- Mirror finish_session's real contract: the end_kind override is
+  -- applied atomically with the status transition. A failing finish
+  -- leaves end_kind untouched.
+  session_store.finish_session = function(_id, _result, _alias, override)
+    if override then captured.end_kind = override end
+    return true
+  end
   fire_idle()
   assert_eq(captured.end_kind, "auto",
     "Recall -> Suggest promotion must flip end_kind at finish time")
   assert_eq(captured.start_kind, "auto",
     "start_kind must stay 'auto' (Suggest is still auto-start)")
+  restore()
+end)
+
+test("fire_idle: compute failure leaves end_kind = 'manual' (no speculative flip)", function()
+  setup_enabled()
+  local captured = { id = "fake-id", start_kind = "auto", end_kind = "manual" }
+  session_store.get_active = function() return captured end
+  session.compute_result_for_active = function() return nil, "rejected" end
+  -- Atomic contract: finish is never reached, so end_kind must not
+  -- mutate. A regression that speculatively flipped end_kind before
+  -- compute would leave a Recall record mislabeled as Suggest here.
+  fire_idle()
+  assert_eq(captured.end_kind, "manual",
+    "compute failure must not mutate end_kind")
+  restore()
+end)
+
+test("fire_idle: finish failure leaves end_kind = 'manual' (atomic override)", function()
+  setup_enabled()
+  local captured = { id = "fake-id", start_kind = "auto", end_kind = "manual" }
+  session_store.get_active = function() return captured end
+  session.compute_result_for_active = function()
+    return {
+      start_row = 0, start_col = 0, end_row = 0, end_col = 0,
+      user_seq = "x", optimal_results = { { seq = "y", cost = 1.0 } },
+    }
+  end
+  -- Failing finish_session must NOT apply the override. This is the
+  -- atomicity contract: end_kind mutation and status transition share
+  -- the same guard in finish_session.
+  session_store.finish_session = function() return false end
+  fire_idle()
+  assert_eq(captured.end_kind, "manual",
+    "finish failure must not mutate end_kind — atomic with status transition")
   restore()
 end)

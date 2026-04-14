@@ -288,12 +288,13 @@ local function convert_alias_to_id(alias)
   -- recall_time: `Ns`
   local target = vim.uv.hrtime() - value * 1e9
 
+  -- Honest failure: if no retained record is at-or-before the target,
+  -- the queue doesn't cover N seconds. Return nil so the caller can
+  -- surface "No recall session found within 'Ns'…" (see docs/user/05-
+  -- recall.md). A silent fallback to the oldest record would hand back
+  -- a window much shorter than N and make N meaningless.
   local cutoff_index = find_session_at_or_before(target)
-  if not cutoff_index then
-    -- The entire ring is younger than the target window — use the oldest.
-    cutoff_index = 1
-  end
-  if cutoff_index > #recall_id_order then return nil end
+  if not cutoff_index then return nil end
 
   local snapped = snap_backward_to_boundary(cutoff_index)
   if not snapped then return nil end
@@ -440,6 +441,16 @@ end
 --- removing the wrong record if the ring slides between calls.
 ---@param id string
 function M.remove(id)
+  -- Guard against the historical mistake of passing an alias. Aliases
+  -- are time-varying (a recall `3s` resolves to a different record as
+  -- the ring rotates) — removing by alias risks destroying the wrong
+  -- session. IDs from `util.new_id` always contain the `__` separator;
+  -- no valid manual alias (`^[a-z]+$`) or recall alias (`^%d+s?$`)
+  -- does. Callers must `get_active(alias).id` first.
+  assert(type(id) == "string" and id:find("__", 1, true),
+    "session_store.remove requires a session id (from util.new_id), not an alias: "
+    .. tostring(id))
+
   local rec = session_records[id]
   if not rec then return end
 
@@ -470,11 +481,15 @@ end
 --- that wasn't even the one the result was computed from.
 ---@param id string
 ---@param result ResultSession
----@param finish_alias string|nil  Literal alias the caller used for this finish (`a`, `3s`, etc.); stored for `:Vimfy save @` default naming
+---@param finish_alias string|nil       Literal alias the caller used for this finish (`a`, `3s`, etc.); stored for `:Vimfy save @` default naming
+---@param end_kind_override "manual"|"auto"|nil  When non-nil, atomically update rec.end_kind as part of the same status transition. Used by auto_suggest to promote a Recall record (`auto, manual`) to Suggest (`auto, auto`) only on confirmed finish — a speculative mutation before finish would leave a failed compute/finish path with a mislabeled record.
 ---@return boolean success
-function M.finish_session(id, result, finish_alias)
+function M.finish_session(id, result, finish_alias, end_kind_override)
   local rec = session_records[id]
   if not rec or rec.status ~= "active" then return false end
+
+  assert(end_kind_override == nil or end_kind_override == "manual" or end_kind_override == "auto",
+    "end_kind_override must be 'manual', 'auto', or nil; got: " .. tostring(end_kind_override))
 
   if rec.watch_disarm then
     rec.watch_disarm()
@@ -485,6 +500,9 @@ function M.finish_session(id, result, finish_alias)
     key_tracking.detach(rec.key_nsid)
   end
 
+  if end_kind_override then
+    rec.end_kind = end_kind_override
+  end
   rec.status = "finished"
   rec.result = result
   rec.key_count = #(rec.key_seq or {})

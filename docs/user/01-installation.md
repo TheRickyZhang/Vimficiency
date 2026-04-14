@@ -25,10 +25,9 @@ export VIMFICIENCY_LIB_PATH=/path/to/build/libvimficiency.so
 ```
 
 
-Any key you bind to a Vimfy action must announce itself as admin
-activity; otherwise the invoking keystroke is counted as motion. Route
-bindings through `vimfy.map()`, a `<Plug>Vimfy*` map, or `wrap()` — see
-[8. Keymaps](08-keymaps.md).
+Bindings must route through `vimfy.map()`, `<Plug>Vimfy*`, or `wrap()`;
+see the keymap contract in the [Index](./README.md) and the full writeup
+in [8. Keymaps](08-keymaps.md).
 
 You can pass config overrides to `setup{}` — see
 [9. Configuration](09-configuration.md).

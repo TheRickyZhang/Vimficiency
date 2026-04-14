@@ -99,25 +99,26 @@ local function fire_idle()
     -- The optimizer actually ran (or rejected the slice). Throttle
     -- repeated failures on the same window — otherwise every idle tick
     -- re-pays the analysis cost for a boundary that isn't going to
-    -- improve on the next 200 ms.
+    -- improve on the next 200 ms. NOTE: end_kind is NOT mutated here —
+    -- a failed compute leaves the record a Recall (auto, manual).
     return true
   end
 
-  -- Promote Recall -> Suggest: the record was born as (auto, manual)
-  -- when the recall queue created it; now that an auto end-trigger is
-  -- finishing it, flip end_kind so the taxonomy reads truthfully.
-  active.end_kind = "auto"
-
+  -- Promote Recall -> Suggest by passing the end_kind override to
+  -- finish_session. The mutation happens atomically with the status
+  -- transition inside finish_session, so a finish that returns false
+  -- leaves end_kind untouched (still "manual") — never a mislabeled
+  -- Suggest on a record that didn't actually finish.
   local fp = fingerprint_result(result)
   if fp == last_fingerprint then
     -- Silently consume this exact record so we stop re-analyzing it,
     -- refresh the cooldown, and skip the notification. Finishing here
     -- is safe: the session's result is preserved on the record.
-    session_store.finish_session(id, result, window)
+    session_store.finish_session(id, result, window, "auto")
     return true
   end
 
-  if not session_store.finish_session(id, result, window) then
+  if not session_store.finish_session(id, result, window, "auto") then
     return true
   end
 

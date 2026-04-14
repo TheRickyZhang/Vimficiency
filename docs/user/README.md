@@ -45,3 +45,22 @@ require('vimficiency').setup()
 ```
 
 For anything else, start at [1. Installation](01-installation.md).
+
+---
+
+## One rule that runs through every page: the keymap contract
+
+Vimficiency counts the keys you type. Any key you bind to invoke a
+Vimfy action must therefore announce itself as admin activity —
+otherwise the invoking keystroke is counted as motion and skews your
+own results. Routing options, in order of ergonomics:
+
+- `vimfy.map('n', '<leader>vs', 'start a')` — recommended
+- `<Plug>VimfyStartA` — for users who prefer the Vim convention
+- `require('vimficiency').wrap(fn)` — for autocommands / UI callbacks
+
+A raw `nnoremap X :Vimfy start a<CR>` does **not** route correctly; the
+`X` keypress is delivered before the mapping resolves. Full detail:
+[8. Keymaps](08-keymaps.md). Later pages use these mappings freely
+without re-explaining the rule — come back here if a binding surprises
+you.

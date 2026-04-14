@@ -149,7 +149,13 @@ test("Suggest: fire_idle flips a Recall record to (auto, auto)", function()
   session_store.is_recall_enabled = function() return true end
   local record = { id = "x", start_kind = "auto", end_kind = "manual" }
   session_store.get_active    = function() return record end
-  session_store.finish_session = function() return true end
+  -- Honor the end_kind override to mirror the real store's atomic
+  -- contract: the flip happens inside finish_session on success. A
+  -- return-true-and-ignore mock would silently skip the assertion here.
+  session_store.finish_session = function(_id, _result, _alias, override)
+    if override then record.end_kind = override end
+    return true
+  end
   session_store.summarize      = function()
     return { id = "x", type = "suggest", start_kind = "auto", end_kind = "auto" }
   end
