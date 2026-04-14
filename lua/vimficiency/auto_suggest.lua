@@ -1,8 +1,14 @@
 -- lua/vimficiency/auto_suggest.lua
 -- Surfaces optimizer results without the user calling `:Vimfy end`.
 --
--- Reads `config.auto_suggest` (validated at setup) and registers the
--- configured triggers. Currently one trigger is implemented:
+-- Suggest sessions are auto-start (from the recall queue) + auto-end
+-- (idle trigger), the (auto, auto) cell of the 2×2 session taxonomy. At
+-- takeover time the underlying recall record has its `end_kind` flipped
+-- from "manual" to "auto" so the finished record reads as a true
+-- Suggest, not a Recall that happened to have a result attached.
+--
+-- Reads `config.auto_suggest` (validated at setup). Currently one
+-- trigger is implemented:
 --
 --   idle = { ms = N, window = "Ns" | "N" }
 --     Fire after `ms` milliseconds of no keystroke activity. Analyzes
@@ -11,7 +17,8 @@
 -- Reserved (not yet implemented): `keys`, `cost`.
 --
 -- Dedup/cooldown: two orthogonal suppressions.
---   * cooldown_ms — minimum time between *any* two fires.
+--   * cooldown_ms — minimum time between *any* two fires. Enforced by
+--     end_trigger.arm_idle.
 --   * fingerprint — if the computed result matches the last one shown
 --     (same edit region + same user keystroke sequence), silently
 --     consume the recall window and skip the notification. The user
@@ -21,17 +28,15 @@
 local M = {}
 
 local config        = require("vimficiency.config")
-local key_tracking  = require("vimficiency.key_tracking")
+local end_trigger   = require("vimficiency.end_trigger")
 local result_view   = require("vimficiency.result_view")
 local session       = require("vimficiency.session")
 local session_store = require("vimficiency.session_store")
 
 local SUBSCRIBER_NAME = "auto_suggest_idle"
 
-local enabled = false
----@type userdata|nil  vim.uv timer handle
-local idle_timer = nil
-local last_fire_hrtime = 0
+---@type fun()|nil  Disarm handle from end_trigger.arm_idle.
+local disarm = nil
 ---@type string|nil  Fingerprint of the most recent *shown* suggestion.
 ---                   Reset on disable(); not on cooldown-only skips.
 local last_fingerprint = nil
@@ -65,23 +70,23 @@ end
 
 --- Run the optimizer on the configured idle window and surface the result.
 --- Silent on every failure path: idle-fires are speculative, and errors
---- ("ring too young to cover 3s yet", "couldn't snap to a boundary",
+--- ("queue too young to cover 3s yet", "couldn't snap to a boundary",
 --- "optimizer rejected the slice") are expected during normal use.
+---
+--- Return value is the cooldown signal for end_trigger: true → the fire
+--- "counted" (refresh cooldown so we don't re-pay analysis cost on the
+--- next idle tick for the same boundary); false → no-op, don't lock out
+--- subsequent fires.
+---@return boolean counted
 local function fire_idle()
   local cfg = config.auto_suggest
-  if not cfg or not cfg.idle then return end
+  if not cfg or not cfg.idle then return false end
 
-  if not session_store.is_recall_enabled() then return end
-
-  local now_ns = vim.uv.hrtime()
-  local cooldown_ns = (cfg.cooldown_ms or 0) * 1e6
-  if last_fire_hrtime > 0 and (now_ns - last_fire_hrtime) < cooldown_ns then
-    return
-  end
+  if not session_store.is_recall_enabled() then return false end
 
   local window = cfg.idle.window
   local active = session_store.get_active(window)
-  if not active then return end  -- ring too young or no clean boundary
+  if not active then return false end  -- queue too young or no clean boundary
 
   -- Pin the resolved id. Every store mutation below must key on this
   -- id, never re-resolve `window`: the recall alias is time-varying and
@@ -95,45 +100,32 @@ local function fire_idle()
     -- repeated failures on the same window — otherwise every idle tick
     -- re-pays the analysis cost for a boundary that isn't going to
     -- improve on the next 200 ms.
-    last_fire_hrtime = now_ns
-    return
+    return true
   end
+
+  -- Promote Recall -> Suggest: the record was born as (auto, manual)
+  -- when the recall queue created it; now that an auto end-trigger is
+  -- finishing it, flip end_kind so the taxonomy reads truthfully.
+  active.end_kind = "auto"
 
   local fp = fingerprint_result(result)
   if fp == last_fingerprint then
     -- Silently consume this exact record so we stop re-analyzing it,
     -- refresh the cooldown, and skip the notification. Finishing here
     -- is safe: the session's result is preserved on the record.
-    if session_store.finish_session(id, result) then
-      last_fire_hrtime = now_ns
-    end
-    return
+    session_store.finish_session(id, result, window)
+    return true
   end
 
-  if not session_store.finish_session(id, result) then
-    last_fire_hrtime = now_ns
-    return
+  if not session_store.finish_session(id, result, window) then
+    return true
   end
 
-  last_fire_hrtime = now_ns
   last_fingerprint = fp
 
   local summary = session_store.summarize(id)
   if summary then render_suggestion(summary) end
-end
-
---- Reset the idle timer. Called on every real (non-admin) keystroke via
---- key_tracking's global subscriber, which already skips events while the
---- `ignoring` flag is set.
-local function reset_idle_timer()
-  local cfg = config.auto_suggest
-  if not cfg or not cfg.idle then return end
-  if not idle_timer then
-    idle_timer = vim.uv.new_timer()
-    if not idle_timer then return end
-  end
-  idle_timer:stop()
-  idle_timer:start(cfg.idle.ms, 0, vim.schedule_wrap(fire_idle))
+  return true
 end
 
 --- Turn on auto-suggest. Fails silently if `config.auto_suggest` has no
@@ -141,33 +133,29 @@ end
 --- the :Vimfy layer surfaces that as an error to the user.
 ---@return boolean success
 function M.enable()
-  if enabled then return false end
+  if disarm then return false end
   local cfg = config.auto_suggest
   if not cfg or not cfg.idle then return false end
 
-  local ok = key_tracking.attach_global(function(_event)
-    reset_idle_timer()
-  end, SUBSCRIBER_NAME)
-  if not ok then return false end
-
-  enabled = true
-  return true
+  disarm = end_trigger.arm_idle({
+    name        = SUBSCRIBER_NAME,
+    idle_ms     = cfg.idle.ms,
+    cooldown_ms = cfg.cooldown_ms or 0,
+    on_fire     = fire_idle,
+  })
+  return disarm ~= nil
 end
 
 function M.disable()
-  if not enabled then return end
-  key_tracking.detach_global(SUBSCRIBER_NAME)
-  if idle_timer then
-    idle_timer:stop()
-  end
-  last_fire_hrtime = 0
+  if not disarm then return end
+  disarm()
+  disarm = nil
   last_fingerprint = nil
-  enabled = false
 end
 
 ---@return boolean
 function M.is_enabled()
-  return enabled
+  return disarm ~= nil
 end
 
 --- True iff there's a trigger configured. Lets the :Vimfy layer give a
@@ -180,14 +168,11 @@ end
 
 -- Test-only exports of module-local state. Not part of the public API;
 -- used by tests/lua/test_auto_suggest.lua to drive fire_idle under
--- monkey-patched dependencies and inspect cooldown state.
+-- monkey-patched dependencies and inspect state.
 M._for_test = {
   fire_idle = fire_idle,
-  get_last_fire_hrtime = function() return last_fire_hrtime end,
-  set_last_fire_hrtime = function(v) last_fire_hrtime = v end,
   get_last_fingerprint = function() return last_fingerprint end,
   reset = function()
-    last_fire_hrtime = 0
     last_fingerprint = nil
   end,
 }

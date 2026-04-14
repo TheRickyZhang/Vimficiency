@@ -1,19 +1,20 @@
-**[← Effort model](09-effort-model.md)** | **[Index](./README.md)** | **[Next: Workflows →](11-workflows.md)**
+**[← Effort model](10-effort-model.md)** | **[Index](./README.md)** | **[Next: Workflows →](12-workflows.md)**
 
 ---
 
-# 10. Commands reference
+# 11. Commands reference
 
 | Command                                    | Purpose                                              |
 |--------------------------------------------|------------------------------------------------------|
-| `:Vimfy start <name>`                      | Start a manual session (alphabetic, e.g. `a`).       |
+| `:Vimfy start <name>`                      | Mark a session start (alphabetic alias, e.g. `a`).   |
+| `:Vimfy watch <name>`                      | Start a Watch session (auto-end on idle).            |
 | `:Vimfy end <alias>`                       | Finish and optimize.                                 |
 | `:Vimfy close <alias>`                     | Discard a session without optimizing.                |
-| `:Vimfy save <selector>\|@ [as] <name>`    | Save a finished result to disk. `@` = last finished. |
+| `:Vimfy save <selector>\|@ [<name>]`       | Save a finished result to disk. Name defaults to selector. `@` = last finished. |
 | `:Vimfy sim <alias> [count] [ms]`          | Animate results side-by-side.                        |
 | `:Vimfy view [name]`                       | View a saved result (or list saved names).           |
 | `:Vimfy list`                              | List active sessions and saved files.                |
-| `:Vimfy recall <on\|off\|toggle>`          | Control rolling ring (enables `end N` / `end Ns`).   |
+| `:Vimfy recall <on\|off\|toggle>`          | Control bounded queue (enables `end N` / `end Ns`).   |
 | `:Vimfy suggest <on\|off\|toggle>`         | Runtime toggle for auto-suggest (config-driven).     |
 | `:Vimfy config`                            | Show the current configuration.                      |
 | `:Vimfy reload`                            | Rebuild the C++ library (needs restart).             |
@@ -27,7 +28,7 @@ The `<alias>` argument to `end` / `close` / `sim` is one of:
 |------------|----------------------------------------------------------------------|
 | `a`, `foo` | Alphabetic → a manual session name.                                  |
 | `6`        | Digits → recall N keys ago.                                          |
-| `3s`       | Digits + `s` → recall N seconds ago (see [4. Recall](04-recall.md)). |
+| `3s`       | Digits + `s` → recall N seconds ago (see [5. Recall](05-recall.md)). |
 
 `save` accepts the same grammar plus `@`, which resolves to the most
 recently finished session — handy when the session you want to keep is a
@@ -35,7 +36,7 @@ recall window whose alias (`3s`) is moving out from under you:
 
 ```
 :Vimfy end 3s
-:Vimfy save @ as nested-refactor
+:Vimfy save @ nested-refactor
 ```
 
 `:Vimficiency` is accepted as a full-name alias for `:Vimfy`.
@@ -53,10 +54,10 @@ disambiguates which one you mean.
 Works on:
 
 - Subcommands (`:Vimfy s<Tab>` → `save`, `sim`, `start`, `suggest`).
-- Manual handles for `start`.
+- Manual (alphabetic) handles for `start` and `watch`.
 - All active/recall aliases plus `3s`/`5s`/`10s`/`30s` hints for `end` /
   `close` / `sim`.
-- Selectors (plus `@`) for `save`; the `as` keyword after a selector.
+- Selectors (plus `@`) for `save`.
 - Saved names for `view`.
 - `on` / `off` / `toggle` for `recall` and `suggest`.
 
@@ -64,9 +65,9 @@ Works on:
 
 For each subcommand above, a `<Plug>VimfyX...` map is also registered so
 you can bind keys without having to type `:Vimfy ...` (which would count
-as admin activity anyway). See [7. Keymaps](07-keymaps.md) for the full
+as admin activity anyway). See [8. Keymaps](08-keymaps.md) for the full
 list and the binding contract.
 
 ---
 
-**[← Effort model](09-effort-model.md)** | **[Index](./README.md)** | **[Next: Workflows →](11-workflows.md)**
+**[← Effort model](10-effort-model.md)** | **[Index](./README.md)** | **[Next: Workflows →](12-workflows.md)**

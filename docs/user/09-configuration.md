@@ -1,23 +1,30 @@
-**[← Keymaps](07-keymaps.md)** | **[Index](./README.md)** | **[Next: Effort model →](09-effort-model.md)**
+**[← Keymaps](08-keymaps.md)** | **[Index](./README.md)** | **[Next: Effort model →](10-effort-model.md)**
 
 ---
 
-# 8. Configuration
+# 9. Configuration
 
 All settings are optional. Pass a table to `setup`:
 
 ```lua
 require('vimficiency').setup({
-  -- Rolling recall ring. Union-semantic retention: a session is kept
+  -- Recall queue (bounded). Union-semantic retention: a session is kept
   -- as long as EITHER cap still holds it, and evicted only when BOTH
   -- say drop. So raise either cap to keep more — lower both to trim.
   KEY_SESSION_CAPACITY = 200,  -- count floor (sessions). Default 200.
   MAX_RETENTION_SECONDS = 120, -- age floor (seconds). Default 120.
 
-  -- Auto-suggest (see page 5 for full semantics)
+  -- Suggest (see page 6 for full semantics)
   auto_suggest = {
     idle = { ms = 3000, window = "3s" },
     -- keys and cost triggers: reserved, not yet implemented
+  },
+
+  -- Watch (see page 4). Independent from `auto_suggest`; share the same
+  -- idle engine but with their own thresholds.
+  watch = {
+    idle_ms = 3000,     -- auto-end after N ms of real keystroke idleness
+    cooldown_ms = 5000, -- minimum time between two auto-fires
   },
 
   -- Search region around the edit
@@ -60,8 +67,8 @@ The optimizer scores sequences by a keyboard-effort model with several
 tunable knobs: per-key base costs, same-finger / same-key / alt-hand /
 good-roll / bad-roll weights, and count-penalty overrides. These are
 accepted in `setup{}` but documented separately — see
-[9. The effort model](09-effort-model.md).
+[10. The effort model](10-effort-model.md).
 
 ---
 
-**[← Keymaps](07-keymaps.md)** | **[Index](./README.md)** | **[Next: Effort model →](09-effort-model.md)**
+**[← Keymaps](08-keymaps.md)** | **[Index](./README.md)** | **[Next: Effort model →](10-effort-model.md)**

@@ -13,16 +13,29 @@ local M = {
   KEY_SESSION_CAPACITY = 200,   -- count floor for retention
   MAX_RETENTION_SECONDS = 120,  -- age floor for retention
 
+  -- In-progress manual sessions are dropped when EITHER this idle timeout
+  -- elapses since the last captured key, OR the cursor drifts more than
+  -- MAX_SEARCH_LINES rows from the session's start row (the optimizer
+  -- rejects such a session at `end` time anyway). Not user-configurable:
+  -- the policy is a safety net for forgotten `:Vimfy start`, not a knob.
+  MANUAL_IDLE_TIMEOUT_SECONDS = 300,
+
   -- Backward snap budget: when resolving `end Ns`, how many sessions back
   -- we'll walk looking for a clean normal-mode command boundary before
   -- giving up.
   SNAP_LOOKBACK_KEYS = 20,
 
-  -- Auto-suggest: populated by init.lua's validator from the user's
-  -- `auto_suggest` setup key. `false` means disabled. When enabled, the
-  -- value is a table of parsed triggers + cooldown_ms. See
-  -- docs/user/05-auto-suggest.md for shape.
+  -- Auto-suggest (Suggest type — auto start, auto end): populated by
+  -- init.lua's validator from the user's `auto_suggest` setup key.
+  -- `false` means disabled. When enabled, the value is a table of parsed
+  -- triggers + cooldown_ms. See docs/user/06-suggest.md for shape.
   auto_suggest = false,
+
+  -- Watch type — manual start, auto end. Populated from the `watch` setup
+  -- key. `false` means disabled. When enabled, the value is a table
+  -- { idle_ms, cooldown_ms }. Independent from `auto_suggest`; both can
+  -- run at once with different thresholds. See docs/user/04-watch.md.
+  watch = false,
 }
 
 return M

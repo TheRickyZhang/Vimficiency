@@ -62,8 +62,9 @@ end
 
 ---@param get_session fun(): ActiveSession|nil
 ---@param reset_session fun(reason: string, level: integer)
+---@param should_evict fun(session: ActiveSession): string|nil  Optional: return a reason string to drop the session; nil to keep. Runs after the window-change check and before the key is appended, so eviction fires on the first key past a trigger threshold.
 ---@return integer nsid
-function M.attach(get_session, reset_session)
+function M.attach(get_session, reset_session, should_evict)
 	local nsid = nil
 
 	local function on_key(key, typed)
@@ -78,6 +79,14 @@ function M.attach(get_session, reset_session)
 		if curr_win ~= session.win then
 			reset_session("Vimficiency: session aborted since window changed", vim.log.levels.ERROR)
 			return
+		end
+
+		if should_evict then
+			local reason = should_evict(session)
+			if reason then
+				reset_session(reason, vim.log.levels.WARN)
+				return
+			end
 		end
 
 		typed = typed or ""

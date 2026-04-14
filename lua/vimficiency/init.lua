@@ -109,6 +109,46 @@ local function validate_auto_suggest(raw)
 	config.auto_suggest = normalized
 end
 
+-- Validate and normalize `user_config.watch`. Independent from auto_suggest —
+-- a user can run Watch with a different idle threshold than Suggest, or
+-- either without the other.
+--
+-- Accepted shapes:
+--   watch = false                                     -- explicit disable
+--   watch = nil                                       -- implicit disable
+--   watch = { idle_ms = 3000, cooldown_ms = 5000 }    -- armed
+local function validate_watch(raw)
+	if raw == nil or raw == false then
+		config.watch = false
+		return
+	end
+	if type(raw) ~= "table" then
+		error("watch must be false or a table, got " .. type(raw))
+	end
+
+	local allowed = { idle_ms = true, cooldown_ms = true }
+	for k in pairs(raw) do
+		if not allowed[k] then
+			error("watch: unknown key '" .. tostring(k) ..
+				"' (allowed: idle_ms, cooldown_ms)")
+		end
+	end
+
+	if type(raw.idle_ms) ~= "number" or raw.idle_ms <= 0 then
+		error("watch.idle_ms must be a positive number")
+	end
+
+	local cooldown_ms = 5000
+	if raw.cooldown_ms ~= nil then
+		if type(raw.cooldown_ms) ~= "number" or raw.cooldown_ms < 0 then
+			error("watch.cooldown_ms must be a non-negative number")
+		end
+		cooldown_ms = raw.cooldown_ms
+	end
+
+	config.watch = { idle_ms = raw.idle_ms, cooldown_ms = cooldown_ms }
+end
+
 --------------------------------------------------------------------------------
 -- Subcommand definitions
 --------------------------------------------------------------------------------
@@ -125,6 +165,19 @@ subcommands.start = {
 			return
 		end
 		session.start(alias)
+	end,
+}
+
+subcommands.watch = {
+	desc = "Start a watch session (manual start, auto end on idle)",
+	usage = "watch <alias>",
+	fn = function(args)
+		local alias = args[1]
+		if not alias or alias == "" then
+			vim.notify("Usage: Vimfy watch <alias>", vim.log.levels.ERROR)
+			return
+		end
+		session.watch(alias)
 	end,
 }
 
@@ -171,21 +224,23 @@ subcommands.sim = {
 
 subcommands.save = {
 	desc = "Save a finished session result to disk",
-	usage = "save <selector>|@ [as] <name>",
+	usage = "save <selector>|@ [<name>]",
 	fn = function(args)
 		local selector = args[1]
-		-- Tolerate an optional "as" keyword between selector and name.
-		-- `save foo bar` and `save foo as bar` both mean the same thing —
-		-- the keyword exists for readability, not for parsing correctness.
-		local name
-		if args[2] == "as" then
-			name = args[3]
-		else
-			name = args[2]
-		end
-		if not selector or selector == "" or not name or name == "" then
-			vim.notify("Usage: Vimfy save <selector>|@ [as] <name>", vim.log.levels.ERROR)
+		if not selector or selector == "" then
+			vim.notify("Usage: Vimfy save <selector>|@ [<name>]", vim.log.levels.ERROR)
 			return
+		end
+		local name = args[2]
+		if not name or name == "" then
+			name = session.default_save_name(selector)
+			if not name then
+				vim.notify(
+					"Vimfy save: cannot derive a default name from '" .. selector ..
+					"'. Supply one explicitly (e.g. `:Vimfy save " .. selector .. " my-name`).",
+					vim.log.levels.ERROR)
+				return
+			end
 		end
 		session.save(selector, name)
 	end,
@@ -415,14 +470,14 @@ end
 --- attach Vimfy to your own keys.
 ---
 --- `spec` can be:
----   * A string like `"start a"` or `"save @ as quick"`. Parsed the same
+---   * A string like `"start a"` or `"save @ quick"`. Parsed the same
 ---     way as a `:Vimfy` argument list; first word is the subcommand.
 ---   * A function (anything you'd pass to `vim.keymap.set`). Wrapped with
 ---     `M.wrap` so it announces admin intent around its body.
 ---
 --- Examples:
 ---   vimfy.map('n', '<leader>vs', 'start a')
----   vimfy.map('n', '<leader>vq', 'save @ as quick')
+---   vimfy.map('n', '<leader>vq', 'save @ quick')
 ---   vimfy.map('n', 'Z', function() vim.cmd('Vimfy start a') end)
 ---
 --- Prefer this over `nnoremap X :Vimfy ...<CR>`: the latter counts the
@@ -485,7 +540,7 @@ local function complete_vf(arg_lead, cmd_line, cursor_pos)
 		return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, saved)
 	end
 
-	if subcmd == "start" then
+	if subcmd == "start" or subcmd == "watch" then
 		-- Manual-only — recall sessions can't be started explicitly.
 		-- Offer known manual handles so the user can re-open / overwrite.
 		local aliases = vim.tbl_filter(alias_mod.is_valid_manual, session.list())
@@ -501,7 +556,8 @@ local function complete_vf(arg_lead, cmd_line, cursor_pos)
 	end
 
 	if subcmd == "save" then
-		-- Position 2 is the selector; position 3 is either "as" or the name.
+		-- Position 2 is the selector; position 3 is the (optional) name.
+		-- The name is a freeform filename with no natural completion set.
 		if #args == 2 then
 			local selectors = session.list()
 			table.insert(selectors, "@")
@@ -509,10 +565,6 @@ local function complete_vf(arg_lead, cmd_line, cursor_pos)
 				table.insert(selectors, t)
 			end
 			return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, selectors)
-		end
-		if #args == 3 then
-			-- Suggest the "as" keyword for readability; user can ignore it.
-			return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, { "as" })
 		end
 		return {}
 	end
@@ -588,6 +640,7 @@ function M.setup(user_config)
 	-- strict key-checking and normalization. Runs after the scalar importer
 	-- so it can overwrite the raw table the importer just copied in.
 	validate_auto_suggest(user_config.auto_suggest)
+	validate_watch(user_config.watch)
 
 	local cpp_consumed = ffi_lib.configure(user_config)
 
@@ -624,6 +677,7 @@ function M.setup(user_config)
 	for _, alias in ipairs({ "a", "b", "c", "d", "e" }) do
 		local upper = alias:upper()
 		register_plug("Start" .. upper, "start", { alias })
+		register_plug("Watch" .. upper, "watch", { alias })
 		register_plug("End"   .. upper, "end",   { alias })
 		register_plug("Close" .. upper, "close", { alias })
 		register_plug("Sim"   .. upper, "sim",   { alias })

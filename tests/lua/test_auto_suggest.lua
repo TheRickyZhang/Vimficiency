@@ -1,17 +1,19 @@
 -- tests/lua/test_auto_suggest.lua
--- Unit tests for fire_idle's dedup/cooldown/failure-throttle behavior.
+-- Unit tests for fire_idle's dedup/failure-throttle behavior. The actual
+-- cooldown timer is owned by end_trigger.arm_idle; fire_idle communicates
+-- with it by returning a boolean (true = "this fire counted, refresh
+-- cooldown"; false = "no-op, don't lock out the next tick").
 -- Monkey-patches session_store and session with stubs so we can drive
--- outcomes without a live ring or the C++ optimizer.
+-- outcomes without a live queue or the C++ optimizer.
 
 local config        = require("vimficiency.config")
 local auto_suggest  = require("vimficiency.auto_suggest")
 local session       = require("vimficiency.session")
 local session_store = require("vimficiency.session_store")
 
-local fire_idle      = auto_suggest._for_test.fire_idle
-local get_last_fire  = auto_suggest._for_test.get_last_fire_hrtime
-local set_last_fire  = auto_suggest._for_test.set_last_fire_hrtime
-local reset          = auto_suggest._for_test.reset
+local fire_idle          = auto_suggest._for_test.fire_idle
+local get_last_fp        = auto_suggest._for_test.get_last_fingerprint
+local reset              = auto_suggest._for_test.reset
 
 -- Save originals so each test starts from a clean slate.
 local orig = {
@@ -39,11 +41,14 @@ local function setup_enabled()
     cooldown_ms = 5000,
   }
   session_store.is_recall_enabled = function() return true end
-  session_store.get_active = function() return { id = "fake-id" } end
+  session_store.get_active = function()
+    return { id = "fake-id", start_kind = "auto", end_kind = "manual" }
+  end
   session_store.finish_session = function() return true end
   session_store.summarize = function()
     return {
-      id = "fake-id", kind = "recall",
+      id = "fake-id",
+      type = "suggest", start_kind = "auto", end_kind = "auto",
       result = {
         start_row = 0, start_col = 0, end_row = 0, end_col = 0,
         user_seq = "x", user_cost = 0.0,
@@ -56,29 +61,29 @@ end
 test("fire_idle: no-op when recall disabled", function()
   setup_enabled()
   session_store.is_recall_enabled = function() return false end
-  fire_idle()
-  assert_eq(get_last_fire(), 0, "recall-disabled should not advance cooldown")
+  local counted = fire_idle()
+  assert_eq(counted, false, "recall-disabled should not count (no cooldown refresh)")
   restore()
 end)
 
-test("fire_idle: no-op when window unresolved (ring too young)", function()
+test("fire_idle: no-op when window unresolved (queue too young)", function()
   setup_enabled()
   session_store.get_active = function() return nil end
-  fire_idle()
-  assert_eq(get_last_fire(), 0, "unresolved window should not advance cooldown")
+  local counted = fire_idle()
+  assert_eq(counted, false, "unresolved window should not count")
   restore()
 end)
 
-test("fire_idle: compute failure advances cooldown (throttle)", function()
+test("fire_idle: compute failure still counts (throttle)", function()
   setup_enabled()
   session.compute_result_for_active = function() return nil, "rejected" end
-  fire_idle()
-  assert_true(get_last_fire() > 0,
-    "compute failure must set last_fire_hrtime so retries respect cooldown")
+  local counted = fire_idle()
+  assert_eq(counted, true,
+    "compute failure must count as a fire so retries respect cooldown")
   restore()
 end)
 
-test("fire_idle: finish failure also advances cooldown", function()
+test("fire_idle: finish failure also counts", function()
   setup_enabled()
   session.compute_result_for_active = function()
     return {
@@ -87,13 +92,13 @@ test("fire_idle: finish failure also advances cooldown", function()
     }
   end
   session_store.finish_session = function() return false end
-  fire_idle()
-  assert_true(get_last_fire() > 0,
-    "store failure must set last_fire_hrtime so retries respect cooldown")
+  local counted = fire_idle()
+  assert_eq(counted, true,
+    "store failure must count as a fire so retries respect cooldown")
   restore()
 end)
 
-test("fire_idle: success advances cooldown", function()
+test("fire_idle: success counts and records fingerprint", function()
   setup_enabled()
   session.compute_result_for_active = function()
     return {
@@ -101,21 +106,29 @@ test("fire_idle: success advances cooldown", function()
       user_seq = "x", optimal_results = { { seq = "y", cost = 1.0 } },
     }
   end
-  fire_idle()
-  assert_true(get_last_fire() > 0, "success should advance cooldown")
+  local counted = fire_idle()
+  assert_eq(counted, true, "success should count")
+  assert_true(get_last_fp() ~= nil, "success should record a fingerprint")
   restore()
 end)
 
-test("fire_idle: cooldown short-circuits re-entry", function()
+test("fire_idle: promotes end_kind from manual to auto on takeover", function()
   setup_enabled()
-  local compute_calls = 0
-  session.compute_result_for_active = function()
-    compute_calls = compute_calls + 1
-    return nil, "rejected"
+  local captured
+  session_store.get_active = function()
+    captured = { id = "fake-id", start_kind = "auto", end_kind = "manual" }
+    return captured
   end
-  -- Prime cooldown: say we fired 1 ms ago (well inside the 5000 ms window).
-  set_last_fire(vim.uv.hrtime() - 1000000)
+  session.compute_result_for_active = function()
+    return {
+      start_row = 0, start_col = 0, end_row = 0, end_col = 0,
+      user_seq = "x", optimal_results = { { seq = "y", cost = 1.0 } },
+    }
+  end
   fire_idle()
-  assert_eq(compute_calls, 0, "cooldown should prevent compute call")
+  assert_eq(captured.end_kind, "auto",
+    "Recall -> Suggest promotion must flip end_kind at finish time")
+  assert_eq(captured.start_kind, "auto",
+    "start_kind must stay 'auto' (Suggest is still auto-start)")
   restore()
 end)

@@ -13,19 +13,20 @@ internals and implementation notes, see the rest of `docs/`.
 ## Table of contents
 
 1. [Installation](01-installation.md)
-2. [The core idea: a session](02-sessions.md)
-3. [Manual sessions](03-manual.md) — precise control, aliases `a`–`e`
-4. [Recall](04-recall.md) — retrospective: `end 6` (keys) or `end 3s` (seconds)
-5. [Auto-suggest](05-auto-suggest.md) — idle trigger today; keys/cost planned
-6. [Inspecting results](06-results.md) — notifications, simulate, list, view
-7. [Binding keys to Vimfy](07-keymaps.md) — `<Plug>` maps and `wrap()`
-8. [Configuration](08-configuration.md) — setup knobs
-9. [The effort model](09-effort-model.md) — how "cost" is computed
-10. [Commands reference](10-commands.md) — cheat sheet
-11. [Recommended workflows](11-workflows.md)
-12. [Known limitations](12-limitations.md)
-13. [Troubleshooting](13-troubleshooting.md)
-14. [FAQ](14-faq.md)
+2. [The core idea: a session](02-sessions.md) — the 2×2 of session types
+3. [Mark](03-mark.md) — manual start, manual end (alphabetical aliases)
+4. [Watch](04-watch.md) — manual start, auto end (idle-fires `end`)
+5. [Recall](05-recall.md) — auto start, manual end (`end N` / `end Ns`)
+6. [Suggest](06-suggest.md) — auto start, auto end (idle-surfaces result)
+7. [Inspecting results](07-results.md) — notifications, simulate, list, view
+8. [Binding keys to Vimfy](08-keymaps.md) — `<Plug>` maps and `wrap()`
+9. [Configuration](09-configuration.md) — setup knobs
+10. [The effort model](10-effort-model.md) — how "cost" is computed
+11. [Commands reference](11-commands.md) — cheat sheet
+12. [Recommended workflows](12-workflows.md)
+13. [Known limitations](13-limitations.md)
+14. [Troubleshooting](14-troubleshooting.md)
+15. [FAQ](15-faq.md)
 
 ---
 

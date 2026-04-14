@@ -1,22 +1,31 @@
-**[← Limitations](12-limitations.md)** | **[Index](./README.md)** | **[Next: FAQ →](14-faq.md)**
+**[← Limitations](13-limitations.md)** | **[Index](./README.md)** | **[Next: FAQ →](15-faq.md)**
 
 ---
 
-# 13. Troubleshooting
+# 14. Troubleshooting
 
 ## `:Vimfy` command isn't defined
 
 You forgot `require('vimficiency').setup()` in your config, or `setup`
 errored (likely couldn't load the library — check `VIMFICIENCY_LIB_PATH`).
 
-## Auto-suggest never fires
+## Suggest never fires
 
 - Is it configured? `auto_suggest = { idle = { ms = N, window = "..." } }`
   in `setup{}`.
 - Is it enabled at runtime? `:Vimfy suggest on`.
-- Is the ring recording? Auto-suggest analyzes the recall ring — it
+- Is the queue recording? Suggest analyzes the recall queue — it
   needs `:Vimfy recall on` (or the default, which enables recall when
-  auto-suggest is configured).
+  `auto_suggest` is configured).
+
+## Watch never fires
+
+- Is it configured? `watch = { idle_ms = N, cooldown_ms = N }` in
+  `setup{}`. Without this, `:Vimfy watch <alias>` errors out at call
+  time.
+- Does the session still exist? Check `:Vimfy list`. Window-change
+  aborts, `:Vimfy close`, and the 5-minute idle / 500-line drift
+  guards all tear down Watch sessions silently.
 
 ## Suggestions look wrong or worse than what I did
 
@@ -24,21 +33,21 @@ errored (likely couldn't load the library — check `VIMFICIENCY_LIB_PATH`).
   motions, certain plugin-provided mappings).
 - Check `:Vimfy config` — a mismatched `shiftwidth` or keyboard-effort
   setting can skew the cost.
-- See [12. Limitations](12-limitations.md) for the full list.
+- See [13. Limitations](13-limitations.md) for the full list.
 
 ## A key I bound to Vimfy is showing up as motion
 
 Your mapping isn't announcing itself as admin activity. Route it through
-`<Plug>` or `wrap()` — see [7. Keymaps](07-keymaps.md).
+`<Plug>` or `wrap()` — see [8. Keymaps](08-keymaps.md).
 
 ## "unknown config keys ignored" warning
 
 Typo in a `setup{}` key. The warning names them. Cross-check against
-[8. Configuration](08-configuration.md) or `:Vimfy config`.
+[9. Configuration](09-configuration.md) or `:Vimfy config`.
 
 ## I want to start over cleanly
 
-- `:Vimfy recall off` then `:Vimfy recall on` discards the ring.
+- `:Vimfy recall off` then `:Vimfy recall on` discards the queue.
 - `:Vimfy close <alias>` throws away any active session.
 - Restarting Neovim clears all in-memory state; saved-to-disk results
   survive.
@@ -50,4 +59,4 @@ typed — most triage starts there.
 
 ---
 
-**[← Limitations](12-limitations.md)** | **[Index](./README.md)** | **[Next: FAQ →](14-faq.md)**
+**[← Limitations](13-limitations.md)** | **[Index](./README.md)** | **[Next: FAQ →](15-faq.md)**

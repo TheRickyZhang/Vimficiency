@@ -1,8 +1,8 @@
-**[← Workflows](11-workflows.md)** | **[Index](./README.md)** | **[Next: Troubleshooting →](13-troubleshooting.md)**
+**[← Workflows](12-workflows.md)** | **[Index](./README.md)** | **[Next: Troubleshooting →](14-troubleshooting.md)**
 
 ---
 
-# 12. Known limitations
+# 13. Known limitations
 
 - **Text-object final character** is sometimes missing from the recorded
   sequence (e.g., `ciw` may record as `c`+`i`). The optimizer still analyzes
@@ -13,7 +13,7 @@
   unwrapped lines; off by a little when wrapping is in play.
 
 - **Multi-buffer edits** aren't supported within a single session. Switching
-  buffers during a manual or time-based session discards or aborts it.
+  buffers during a Mark / Watch / Recall session discards or aborts it.
 
 - **Large regions** (more than `MAX_SEARCH_LINES`) are refused with an error;
   split the edit up or increase the limit if you really want this.
@@ -22,7 +22,7 @@
   suggestion quality beyond roughly a dozen lines of edits.
 
 - **Unwrapped mappings that invoke Vimfy** have their trigger keypress
-  counted as motion. See [7. Keymaps](07-keymaps.md) for the fix.
+  counted as motion. See [8. Keymaps](08-keymaps.md) for the fix.
 
 - **Recall may include the final char of a `<Plug>`-mapped LHS** on
   occasion, because `vim.on_key` fires for that char before Neovim
@@ -32,4 +32,4 @@
 
 ---
 
-**[← Workflows](11-workflows.md)** | **[Index](./README.md)** | **[Next: Troubleshooting →](13-troubleshooting.md)**
+**[← Workflows](12-workflows.md)** | **[Index](./README.md)** | **[Next: Troubleshooting →](14-troubleshooting.md)**

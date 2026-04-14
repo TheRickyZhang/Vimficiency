@@ -1,13 +1,17 @@
-**[← Recall](04-recall.md)** | **[Index](./README.md)** | **[Next: Results →](06-results.md)**
+**[← Recall](05-recall.md)** | **[Index](./README.md)** | **[Next: Results →](07-results.md)**
 
 ---
 
-# 5. Auto-suggest
+# 6. Suggest (auto start, auto end)
 
-Auto-suggest runs the optimizer on its own and surfaces a result without
-you calling `:Vimfy end`. It's orthogonal to the session kinds in
-[2. Sessions](02-sessions.md) — it reuses the recall ring but decides
-*when* to analyze it based on triggers you configure.
+Suggest runs the optimizer on its own and surfaces a result without
+you calling `:Vimfy end`. It fills the (auto, auto) cell of the 2×2 in
+[2. Sessions](02-sessions.md): it reuses the recall queue for the
+start and triggers its own analysis based on triggers you configure.
+
+> Command verb: `:Vimfy suggest on|off|toggle`. The historical name
+> "auto-suggest" still appears in a few places; the **type** is simply
+> called **Suggest**.
 
 ## Shape
 
@@ -22,7 +26,7 @@ require('vimficiency').setup({
 })
 ```
 
-- Setting `auto_suggest = false` (or omitting it) disables auto-suggest
+- Setting `auto_suggest = false` (or omitting it) disables Suggest
   entirely.
 - Each trigger is its own sub-table. **Presence of the sub-table means
   that trigger is enabled.** No `enabled = true`, no sentinel values.
@@ -38,7 +42,7 @@ no-op.
 ### `idle` — fire after a pause *(shipping)*
 
 Fires when you've been idle for `ms` milliseconds. Analyzes the last
-`window` of the ring (a recall alias: `"3s"` or `"50"` for 50 keys).
+`window` of the queue (a recall alias: `"3s"` or `"50"` for 50 keys).
 
 ```lua
 auto_suggest = { idle = { ms = 3000, window = "3s" } },
@@ -49,8 +53,8 @@ Works well as a "tell me when I pause" notification.
 
 ### `keys` — fire every N keys *(future)*
 
-Will fire every `every` user keystrokes since the previous auto-suggest.
-Useful if you want constant feedback and don't mind the optimizer
+Will fire every `every` user keystrokes since the previous Suggest
+fire. Useful if you want constant feedback and don't mind the optimizer
 running often.
 
 ### `cost` — fire only when you were wasteful *(future)*
@@ -67,7 +71,7 @@ architecture-decision-record for details.
 
 ## Dedup and cooldown
 
-Auto-suggest suppresses a fire if either:
+Suggest suppresses a fire if either:
 
 - The result is *identical* to the last one surfaced (same user
   sequence, same starting buffer, same top suggestions), or
@@ -90,13 +94,22 @@ You can override the config at runtime:
 `suggest off` does not remove the config; it just suppresses firing.
 Next `suggest on` restores the configured behavior.
 
-## How it relates to the recall ring
+## How it relates to the recall queue
 
-Auto-suggest queries the same ring as [4. Recall](04-recall.md). The
-ring must be recording for auto-suggest to have anything to analyze.
+Suggest queries the same queue as [5. Recall](05-recall.md). The
+queue must be recording for Suggest to have anything to analyze.
 By default, enabling `auto_suggest` in `setup{}` also turns on recall
 automatically.
 
+## Suggest vs. Watch
+
+[Watch](04-watch.md) and Suggest share the same idle-detection
+engine but sit in different cells of the 2×2: Watch's start is user-
+marked (`:Vimfy watch <alias>`), Suggest's start is the recall queue.
+They're **independently configurable** — you can run both at once with
+different `idle_ms` thresholds, each owning its own timer and
+cooldown.
+
 ---
 
-**[← Recall](04-recall.md)** | **[Index](./README.md)** | **[Next: Results →](06-results.md)**
+**[← Recall](05-recall.md)** | **[Index](./README.md)** | **[Next: Results →](07-results.md)**

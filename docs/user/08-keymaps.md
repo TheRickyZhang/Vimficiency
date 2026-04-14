@@ -1,8 +1,8 @@
-**[← Results](06-results.md)** | **[Index](./README.md)** | **[Next: Configuration →](08-configuration.md)**
+**[← Results](07-results.md)** | **[Index](./README.md)** | **[Next: Configuration →](09-configuration.md)**
 
 ---
 
-# 7. Binding keys to Vimfy actions
+# 8. Binding keys to Vimfy actions
 
 Vimficiency measures the keys you type. So a key that *invokes* Vimfy
 should not itself be counted as a motion. Three ways to bind keys do
@@ -18,7 +18,7 @@ local vimfy = require('vimficiency')
 vimfy.map('n', '<leader>vs', 'start a')
 vimfy.map('n', '<leader>ve', 'end a')
 vimfy.map('n', '<leader>vr', 'recall toggle')
-vimfy.map('n', '<leader>vq', 'save @ as quick')
+vimfy.map('n', '<leader>vq', 'save @ quick')
 ```
 
 The string argument is parsed like `:Vimfy <args>`: first word is the
@@ -63,6 +63,7 @@ vim.keymap.set('n', '<leader>vs', '<Plug>VimfyStartA', { remap = true })
 | Name                                 | Action                               |
 |--------------------------------------|--------------------------------------|
 | `<Plug>VimfyStart{A,B,C,D,E}`        | `:Vimfy start <alias>`               |
+| `<Plug>VimfyWatch{A,B,C,D,E}`        | `:Vimfy watch <alias>`               |
 | `<Plug>VimfyEnd{A,B,C,D,E}`          | `:Vimfy end <alias>`                 |
 | `<Plug>VimfyClose{A,B,C,D,E}`        | `:Vimfy close <alias>`               |
 | `<Plug>VimfySim{A,B,C,D,E}`          | `:Vimfy sim <alias>`                 |
@@ -73,7 +74,7 @@ vim.keymap.set('n', '<leader>vs', '<Plug>VimfyStartA', { remap = true })
 | `<Plug>VimfyHelp`                    | `:Vimfy help`                        |
 
 `<Plug>` covers the common cases; `vimfy.map()` covers everything
-(including arbitrary args, e.g. `save @ as quick`, which no `<Plug>`
+(including arbitrary args, e.g. `save @ quick`, which no `<Plug>`
 name exposes directly).
 
 ## 3. `require('vimficiency').wrap(fn)` (low-level)
@@ -125,4 +126,4 @@ We can't auto-suppress; the caller has to announce. `vimfy.map()`,
 
 ---
 
-**[← Results](06-results.md)** | **[Index](./README.md)** | **[Next: Configuration →](08-configuration.md)**
+**[← Results](07-results.md)** | **[Index](./README.md)** | **[Next: Configuration →](09-configuration.md)**

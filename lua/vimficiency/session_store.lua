@@ -19,7 +19,7 @@
 -- say drop. Recall records are ephemeral: when a record falls out of
 -- the ring (or when recall is disabled), it's destroyed entirely —
 -- active or finished. Recall results are transient queries by design;
--- if the user wants to keep one, they `:Vimfy save <selector> as <name>`
+-- if the user wants to keep one, they `:Vimfy save <selector> [<name>]`
 -- it to disk before it rotates out.
 
 local M = {}
@@ -55,6 +55,10 @@ local config = require("vimficiency.config")
 ---@field key_count   integer                   # Live count while active; frozen at finish
 ---@field first_mode  string|nil                # Vim mode of the first captured key (recall only); used for command-boundary snapping
 ---@field result      ResultSession|nil         # Set at finish
+---@field finish_alias string|nil               # Literal alias passed to finish (`a`, `3s`, ...); used as the default filename for `:Vimfy save`
+---@field start_kind  "manual"|"auto"           # Who picked the start. Manual = user called :Vimfy start|watch. Auto = created from the recall queue.
+---@field end_kind    "manual"|"auto"           # Who triggers the end. Manual = user calls :Vimfy end. Auto = an end-trigger (idle, etc.) fires finish. Combined with start_kind, yields one of Mark/Watch/Recall/Suggest.
+---@field watch_disarm fun()|nil                # Watch sessions only: disarm for the idle end-trigger armed at :Vimfy watch. Called on finish/destroy so the timer and global subscriber are released.
 
 ---@alias ActiveSession SessionRecord
 
@@ -84,9 +88,17 @@ local config = require("vimficiency.config")
 --- "N keys ago" index slides. A summary captured now may print "5" and
 --- be rendered a moment later when that slot is "7" or has rotated out
 --- entirely. Never feed it back into a store call — use `id`.
+---
+--- `type` is the canonical 2×2 discriminator derived from
+--- (`start_kind`, `end_kind`) via `session_type_from_kinds`. Callers
+--- that branch on session semantics should switch on `type` so that
+--- adding a fifth cell is a compile-time error (exhaustive check),
+--- rather than reading the axes directly and silently missing a case.
 ---@class SessionSummary
 ---@field id            string
----@field kind          "manual" | "recall"
+---@field type          SessionType    # Derived from (start_kind, end_kind). Switch on this for exhaustive dispatch.
+---@field start_kind    "manual"|"auto"
+---@field end_kind      "manual"|"auto"
 ---@field display_alias string|nil     # For display. Time-varying for recall; do not re-feed.
 ---@field status        "active" | "finished"
 ---@field start_time    integer        # hrtime
@@ -94,6 +106,23 @@ local config = require("vimficiency.config")
 ---@field key_count     integer        # Keystrokes captured so far
 ---@field preview       string         # First ~20 chars of user_seq for display
 ---@field result        ResultSession|nil
+
+---@alias SessionType "mark" | "watch" | "recall" | "suggest"
+
+--- Derive the canonical SessionType from the (start_kind, end_kind) axes.
+--- This is the one place that encodes the 2×2 mapping; UI, tests, and
+--- anything else that needs a single discriminator MUST route through
+--- here rather than duplicate the table.
+---@param start_kind "manual"|"auto"
+---@param end_kind   "manual"|"auto"
+---@return SessionType
+function M.session_type_from_kinds(start_kind, end_kind)
+  if start_kind == "manual" and end_kind == "manual" then return "mark" end
+  if start_kind == "manual" and end_kind == "auto"   then return "watch" end
+  if start_kind == "auto"   and end_kind == "manual" then return "recall" end
+  if start_kind == "auto"   and end_kind == "auto"   then return "suggest" end
+  error("invalid session kinds: (" .. tostring(start_kind) .. ", " .. tostring(end_kind) .. ")")
+end
 
 --------------------------------------------------------------------------------
 -- Constructor
@@ -104,12 +133,18 @@ local config = require("vimficiency.config")
 ---@param win integer
 ---@param buf integer
 ---@param start_state VimficiencyState
+---@param start_kind "manual"|"auto"
+---@param end_kind "manual"|"auto"
 ---@return SessionRecord
-function M.new_active_session(id, key_nsid, win, buf, start_state)
+function M.new_active_session(id, key_nsid, win, buf, start_state, start_kind, end_kind)
   assert(type(id) == "string" and id ~= "", "session.id must be nonempty string")
   assert(type(key_nsid) == "number", "key_nsid must be a number")
   assert(vim.api.nvim_win_is_valid(win), "win must be a valid window id")
   assert(vim.api.nvim_buf_is_valid(buf), "buf is not valid: " .. buf)
+  assert(start_kind == "manual" or start_kind == "auto",
+    "start_kind must be 'manual' or 'auto', got: " .. tostring(start_kind))
+  assert(end_kind == "manual" or end_kind == "auto",
+    "end_kind must be 'manual' or 'auto', got: " .. tostring(end_kind))
 
   return {
     id = id,
@@ -123,6 +158,8 @@ function M.new_active_session(id, key_nsid, win, buf, start_state)
     key_count = 0,
     first_mode = nil,
     result = nil,
+    start_kind = start_kind,
+    end_kind = end_kind,
   }
 end
 
@@ -274,6 +311,10 @@ end
 local function destroy_record(id)
   local rec = session_records[id]
   if not rec then return false end
+  if rec.watch_disarm then
+    rec.watch_disarm()
+    rec.watch_disarm = nil
+  end
   if rec.key_nsid and rec.key_nsid >= 0 then
     key_tracking.detach(rec.key_nsid)
   end
@@ -429,10 +470,16 @@ end
 --- that wasn't even the one the result was computed from.
 ---@param id string
 ---@param result ResultSession
+---@param finish_alias string|nil  Literal alias the caller used for this finish (`a`, `3s`, etc.); stored for `:Vimfy save @` default naming
 ---@return boolean success
-function M.finish_session(id, result)
+function M.finish_session(id, result, finish_alias)
   local rec = session_records[id]
   if not rec or rec.status ~= "active" then return false end
+
+  if rec.watch_disarm then
+    rec.watch_disarm()
+    rec.watch_disarm = nil
+  end
 
   if rec.key_nsid and rec.key_nsid >= 0 then
     key_tracking.detach(rec.key_nsid)
@@ -442,6 +489,7 @@ function M.finish_session(id, result)
   rec.result = result
   rec.key_count = #(rec.key_seq or {})
   rec.key_seq = nil  -- compiled into result.user_seq; free the events
+  rec.finish_alias = finish_alias
   last_finished_id = id
 
   return true
@@ -455,6 +503,18 @@ function M.get_last_finished_result()
   if not last_finished_id then return nil end
   local rec = session_records[last_finished_id]
   return rec and rec.result or nil
+end
+
+--- Literal alias the user passed when the most recent session was
+--- finished (`a`, `3s`, `5`). Used by `:Vimfy save @` to derive a
+--- default filename. Returns nil when nothing has finished yet, when
+--- the record has been destroyed, or when the caller didn't pass an
+--- alias to `finish_session`.
+---@return string|nil
+function M.get_last_finished_alias()
+  if not last_finished_id then return nil end
+  local rec = session_records[last_finished_id]
+  return rec and rec.finish_alias or nil
 end
 
 --- List all valid aliases for debugging / tab-completion.
@@ -506,23 +566,18 @@ function M.summarize(id)
   local manual_alias = find_manual_alias(id)
   local recall_index = find_recall_index(id)
 
-  local kind, display_alias
+  local display_alias
   if manual_alias then
-    kind = "manual"
     display_alias = manual_alias
   elseif recall_index then
-    kind = "recall"
     -- Recall aliases are "N keys from newest"; drift as the ring
     -- rotates. This is presentation-only — see the SessionSummary
     -- docstring. Any follow-up action must key on `id`, not this
     -- string.
     display_alias = tostring(#recall_id_order - recall_index + 1)
-  else
-    -- Defensive fallback. Under the current wiring (every record is
-    -- indexed via manual_alias_to_id OR recall_id_order for its whole
-    -- lifetime), this branch is unreachable.
-    kind = "manual"
   end
+  -- Defensive: if neither index knows this id, display_alias stays
+  -- nil. Under current wiring this branch is unreachable.
 
   local result = rec.result
   local user_seq = (result and result.user_seq) or ""
@@ -531,7 +586,9 @@ function M.summarize(id)
 
   return {
     id            = id,
-    kind          = kind,
+    type          = M.session_type_from_kinds(rec.start_kind, rec.end_kind),
+    start_kind    = rec.start_kind,
+    end_kind      = rec.end_kind,
     display_alias = display_alias,
     status        = rec.status,
     start_time    = rec.time_started,
@@ -605,7 +662,9 @@ function M.enable_recall()
     local id = util.new_id(buf)
     local start_state = util.capture_state(buf, win)
 
-    local rec = M.new_active_session(id, -1, win, buf, start_state)
+    -- Recall: auto start, manual end. Suggest is created by flipping
+    -- end_kind to "auto" inside auto_suggest.lua at takeover time.
+    local rec = M.new_active_session(id, -1, win, buf, start_state, "auto", "manual")
 
     -- Include current key in new record since state is captured BEFORE key
     -- is processed. The first event's mode drives command-boundary snapping
@@ -626,7 +685,7 @@ end
 
 --- Disable the recall ring. Drops all recall records (active and
 --- finished) — recall results are transient by design. The user can
---- promote a finished result into disk via `:Vimfy save <alias> as <name>`
+--- promote a finished result into disk via `:Vimfy save <alias> [<name>]`
 --- before disabling if they want to keep it.
 function M.disable_recall()
   if not recall_enabled then

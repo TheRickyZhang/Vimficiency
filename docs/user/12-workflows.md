@@ -1,12 +1,12 @@
-**[← Commands](10-commands.md)** | **[Index](./README.md)** | **[Next: Limitations →](12-limitations.md)**
+**[← Commands](11-commands.md)** | **[Index](./README.md)** | **[Next: Limitations →](13-limitations.md)**
 
 ---
 
-# 11. Recommended workflows
+# 12. Recommended workflows
 
 ## "I'm actively trying to learn better motions"
 
-Enable auto-suggest and the recall ring in your config:
+Enable Suggest and the recall queue in your config:
 
 ```lua
 require('vimficiency').setup({
@@ -18,7 +18,7 @@ Edit naturally. Every pause surfaces suggestions. When something catches
 your eye, `:Vimfy sim 3s` (or whatever window the suggestion targeted)
 to see it animated.
 
-Pair with [7. Keymaps](07-keymaps.md):
+Pair with [8. Keymaps](08-keymaps.md):
 ```vim
 nmap <leader>vv <Plug>VimfySimA  " or ...bind to SimA / SimB / etc.
 ```
@@ -26,13 +26,27 @@ nmap <leader>vv <Plug>VimfySimA  " or ...bind to SimA / SimB / etc.
 
 ## "I want to audit a specific edit I'm about to do"
 
-Manual sessions give the cleanest boundaries:
+Mark sessions give the cleanest boundaries:
 
 ```vim
 :Vimfy start a
 " ... the edit ...
 :Vimfy end a
 :Vimfy sim a
+```
+
+## "I know the start but not when I'll stop"
+
+Watch it — same precise start, but let Vimfy auto-finish when you pause:
+
+```lua
+require('vimficiency').setup({ watch = { idle_ms = 3000, cooldown_ms = 5000 } })
+```
+
+```vim
+:Vimfy watch a
+" ... edit normally, and stop when done ...
+" ... after idle_ms of idleness, the optimizer runs and the result notifies ...
 ```
 
 ## "I just did something clumsy — was there a better way?"
@@ -52,7 +66,7 @@ Save to disk after ending — `@` resolves to the session you just finished:
 
 ```vim
 :Vimfy end a
-:Vimfy save @ as nested-dict-refactor
+:Vimfy save @ nested-dict-refactor
 " ... days later ...
 :Vimfy view nested-dict-refactor
 ```
@@ -63,4 +77,4 @@ you want to show a colleague.
 
 ---
 
-**[← Commands](10-commands.md)** | **[Index](./README.md)** | **[Next: Limitations →](12-limitations.md)**
+**[← Commands](11-commands.md)** | **[Index](./README.md)** | **[Next: Limitations →](13-limitations.md)**

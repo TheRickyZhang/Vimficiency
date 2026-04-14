@@ -150,6 +150,61 @@ test("e2e: wrap() suppresses keys fired inside its body", function()
     "keys fed inside wrap() body must be suppressed; got: " .. vim.inspect(captured))
 end)
 
+--------------------------------------------------------------------------------
+-- Multi-key LHS: does the announce-only filter hold when the user binds
+-- a mapping whose LHS is more than one keystroke? The legacy docs
+-- (04-recall.md, 12-limitations.md) claim the final key of a multi-key
+-- `<Plug>`-mapped LHS "may be captured before the mapping resolves."
+-- Nail down the actual behavior under each binding style so we can
+-- update the docs to reflect reality rather than hedge.
+--
+-- If any of these fail with a captured key, the docs were right and the
+-- expected string names the leaked char; if they all pass with "", the
+-- filter is tighter than the docs suggest and we can delete the hedge.
+--------------------------------------------------------------------------------
+
+test("e2e: multi-key LHS (string spec) — no key leaks on resolve", function()
+  pcall(vim.keymap.del, "n", "jk")
+  vimfy.map("n", "jk", "list")
+  local captured = feed_and_capture("jk")
+  assert_eq(captured, "",
+    "multi-key LHS 'jk' (string spec) leaked: " .. vim.inspect(captured))
+  pcall(vim.keymap.del, "n", "jk")
+end)
+
+test("e2e: multi-key LHS (function spec) — no key leaks on resolve", function()
+  pcall(vim.keymap.del, "n", "qw")
+  vimfy.map("n", "qw", function() end)
+  local captured = feed_and_capture("qw")
+  assert_eq(captured, "",
+    "multi-key LHS 'qw' (fn spec) leaked: " .. vim.inspect(captured))
+  pcall(vim.keymap.del, "n", "qw")
+end)
+
+test("e2e: three-key LHS (string spec) — no key leaks on resolve", function()
+  pcall(vim.keymap.del, "n", "xyz")
+  vimfy.map("n", "xyz", "list")
+  local captured = feed_and_capture("xyz")
+  assert_eq(captured, "",
+    "multi-key LHS 'xyz' (string spec) leaked: " .. vim.inspect(captured))
+  pcall(vim.keymap.del, "n", "xyz")
+end)
+
+test("e2e: user-remap → <Plug> → wrap() chain — no key leaks", function()
+  -- The exact path 07-keymaps.md describes: define a <Plug> map whose RHS
+  -- is a wrap()'d callback, then a user-facing remap that routes through
+  -- it. This is what the "known behavior" note in 04-recall.md is about.
+  pcall(vim.keymap.del, "n", "<Plug>VimfyProbeRecall")
+  pcall(vim.keymap.del, "n", "zx")
+  vimfy.map("n", "<Plug>VimfyProbeRecall", "list")
+  vim.keymap.set("n", "zx", "<Plug>VimfyProbeRecall", { remap = true })
+  local captured = feed_and_capture("zx")
+  assert_eq(captured, "",
+    "user-remap → <Plug> chain leaked: " .. vim.inspect(captured))
+  pcall(vim.keymap.del, "n", "zx")
+  pcall(vim.keymap.del, "n", "<Plug>VimfyProbeRecall")
+end)
+
 test("e2e: listener sees keys AFTER wrap() returns (ignore flag restored)", function()
   -- Regression guard: end_ignore must restore the flag so post-wrap
   -- keypresses are captured normally.

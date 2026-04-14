@@ -1,8 +1,8 @@
-**[← Troubleshooting](13-troubleshooting.md)** | **[Index](./README.md)**
+**[← Troubleshooting](14-troubleshooting.md)** | **[Index](./README.md)**
 
 ---
 
-# 14. FAQ
+# 15. FAQ
 
 > **Status: placeholder.** This page will accumulate common questions as
 > they come up. Below are a few anticipated ones with short answers — full
@@ -20,13 +20,13 @@ all day.
 
 The effort model's `keys[]` and `weights` knobs are designed for this,
 but there isn't yet a "drop-in layout" file. Override the relevant entries
-manually in `setup{}` — see [9. Effort model](09-effort-model.md).
+manually in `setup{}` — see [10. Effort model](10-effort-model.md).
 
 ## Does it work in visual or operator-pending mode?
 
 Sessions span whatever modes you're in. The optimizer reasons about the
 start-to-end delta, not mode transitions. Some mode-sensitive motions may
-get simplified (see [12. Limitations](12-limitations.md)).
+get simplified (see [13. Limitations](13-limitations.md)).
 
 ## Why didn't the "better" sequence actually get suggested?
 
@@ -37,11 +37,11 @@ A few common reasons:
 - Your `shiftwidth` is different from the one the optimizer is configured
   with, so indent-aware motions score differently.
 
-See [13. Troubleshooting](13-troubleshooting.md).
+See [14. Troubleshooting](14-troubleshooting.md).
 
 ## Can I export a result as something other than JSON?
 
-Not today. `:Vimfy save @ as my-name` writes JSON under
+Not today. `:Vimfy save @ my-name` writes JSON under
 `stdpath('data')/vimficiency/saved/`; third-party tools can consume that
 directly.
 
@@ -58,4 +58,4 @@ Delete the file from `stdpath('data')/vimficiency/saved/`. No built-in
 
 ---
 
-**[← Troubleshooting](13-troubleshooting.md)** | **[Index](./README.md)**
+**[← Troubleshooting](14-troubleshooting.md)** | **[Index](./README.md)**

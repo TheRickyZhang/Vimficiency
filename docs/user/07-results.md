@@ -1,8 +1,8 @@
-**[← Auto-suggest](05-auto-suggest.md)** | **[Index](./README.md)** | **[Next: Keymaps →](07-keymaps.md)**
+**[← Suggest](06-suggest.md)** | **[Index](./README.md)** | **[Next: Keymaps →](08-keymaps.md)**
 
 ---
 
-# 6. Inspecting results
+# 7. Inspecting results
 
 ## Reading the notification
 
@@ -21,7 +21,7 @@ vimficiency finished [a] (0,0) -> (2,2)
 - Numbered lines — the top optimal sequences, sorted by cost ascending.
 
 Cost is a keyboard-effort score (lower is better), not a keystroke count.
-See [9. The effort model](09-effort-model.md) for how it's computed and
+See [10. The effort model](10-effort-model.md) for how it's computed and
 how to tune it to your layout.
 
 ## Simulating
@@ -56,16 +56,19 @@ Shows currently active sessions and saved-to-disk results.
 keep a result around, use `save`:
 
 ```vim
-:Vimfy save <selector> [as] <name>
+:Vimfy save <selector> [<name>]
 ```
 
 The selector is a session alias (`a`, `3s`, `5`) or `@` for the most
 recently finished session — the latter is the usual choice right after
-`end`. The `as` keyword is optional but recommended for readability:
+`end`. The name is optional; omit it to reuse the selector as the
+filename. For `@`, the default is the alias the last `:Vimfy end`
+used.
 
 ```vim
 :Vimfy end a
-:Vimfy save @ as my-refactor
+:Vimfy save @                   " writes saved/a.json
+:Vimfy save @ my-refactor       " explicit name overrides the default
 ```
 
 ## Viewing a saved result
@@ -79,4 +82,4 @@ lists what's available.
 
 ---
 
-**[← Auto-suggest](05-auto-suggest.md)** | **[Index](./README.md)** | **[Next: Keymaps →](07-keymaps.md)**
+**[← Suggest](06-suggest.md)** | **[Index](./README.md)** | **[Next: Keymaps →](08-keymaps.md)**

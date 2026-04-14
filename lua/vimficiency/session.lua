@@ -1,6 +1,7 @@
 local v = vim.api
 local alias_mod = require("vimficiency.alias")
 local config = require("vimficiency.config")
+local end_trigger = require("vimficiency.end_trigger")
 local util = require("vimficiency.util")
 local simulate = require("vimficiency.simulate")
 local key_tracking = require("vimficiency.key_tracking")
@@ -179,10 +180,13 @@ local function compute_result_for_active(active)
   end
 
   if dbg and dbg ~= "" then
-    local debug_dir = vim.fn.stdpath("data") .. "/vimficiency/debug"
-    vim.fn.mkdir(debug_dir, "p")
-    local debug_path = debug_dir .. "/" .. active.id .. ".txt"
-    vim.fn.writefile(vim.split(dbg, "\n"), debug_path)
+    -- Best-effort: a read-only stdpath("data") must not break finish.
+    pcall(function()
+      local debug_dir = vim.fn.stdpath("data") .. "/vimficiency/debug"
+      vim.fn.mkdir(debug_dir, "p")
+      local debug_path = debug_dir .. "/" .. active.id .. ".txt"
+      vim.fn.writefile(vim.split(dbg, "\n"), debug_path)
+    end)
   end
 
   ---@type VimficiencyResult[]
@@ -218,6 +222,34 @@ function M.compute_result_for_active(active)
   return compute_result_for_active(active)
 end
 
+--- Decide whether an in-progress manual session should be auto-evicted.
+--- Pure: reads only the passed arguments, no module state, no side effects.
+---
+--- Drift wins over idle when both trigger: a session that's both stale
+--- AND drifted is more interesting to diagnose as drift (the cursor is
+--- the direct reason the optimizer would fail).
+---
+---@param session ActiveSession  Must have start_state.row and (optionally) key_seq
+---@param cursor_row integer     0-indexed current cursor row
+---@param now_ns integer         vim.uv.hrtime() snapshot
+---@return string|nil reason     Human-readable reason if evict, else nil
+function M.manual_should_evict(session, cursor_row, now_ns)
+  local start_row = session.start_state.row
+  if math.abs(cursor_row - start_row) + 1 > config.MAX_SEARCH_LINES then
+    return "cursor drifted beyond MAX_SEARCH_LINES (" ..
+      config.MAX_SEARCH_LINES .. ")"
+  end
+  local seq = session.key_seq
+  if seq and #seq > 0 then
+    local idle_ns = now_ns - seq[#seq].t
+    if idle_ns > config.MANUAL_IDLE_TIMEOUT_SECONDS * 1e9 then
+      return "idle for more than " ..
+        config.MANUAL_IDLE_TIMEOUT_SECONDS .. "s"
+    end
+  end
+  return nil
+end
+
 -------- Local functions END --------
 
 ---@param alias string  The alias for the session (required, must be manual type)
@@ -249,27 +281,149 @@ function M.start(alias)
   local id = util.new_id(buf)
   local start_state = util.capture_state(buf, win)
 
-  -- `id` is allocated above and captured in both closures below. That
+  -- `id` is allocated above and captured in the closures below. That
   -- keeps the detach/removal path keyed on the stable id even if the
   -- manual alias is later overwritten to point at a different session.
-  local key_nsid = key_tracking.attach(function()
-    return session_store.get_active(alias)
-  end, function(reason, level) ---@param reason string @param level integer
-    session_store.remove(id)
-    if reason then
-      vim.schedule(function()
-        vim.notify(reason, level or vim.log.levels.INFO)
-      end)
+  local key_nsid = key_tracking.attach(
+    function()
+      return session_store.get_active(alias)
+    end,
+    function(reason, level) ---@param reason string @param level integer
+      session_store.remove(id)
+      if reason then
+        vim.schedule(function()
+          vim.notify(reason, level or vim.log.levels.INFO)
+        end)
+      end
+    end,
+    function(session)
+      -- Cursor is [row1, col0]; start_state.row is 0-indexed.
+      local cursor = v.nvim_win_get_cursor(session.win)
+      local reason = M.manual_should_evict(
+        session, cursor[1] - 1, vim.uv.hrtime()
+      )
+      if reason then
+        return "Vimficiency: session [" .. alias .. "] dropped — " .. reason
+      end
+      return nil
     end
-  end)
+  )
 
-  local active = session_store.new_active_session(id, key_nsid, win, buf, start_state)
+  -- Mark: manual start, manual end.
+  local active = session_store.new_active_session(
+    id, key_nsid, win, buf, start_state, "manual", "manual")
   local overwrote = session_store.store_manual(alias, active)
 
   if overwrote then
     vim.notify("vimficiency started [" .. alias .. "] (overwrote existing)", vim.log.levels.INFO)
   else
     vim.notify("vimficiency started [" .. alias .. "]", vim.log.levels.INFO)
+  end
+end
+
+
+--- Watch: manual start, auto end. Like M.start but arms an idle end
+--- trigger instead of waiting for `:Vimfy end <alias>`. After
+--- `config.watch.idle_ms` of real keystroke idleness (global, not
+--- per-session), the trigger fires M.finish on this alias. Cooldown
+--- between fires is enforced by end_trigger so a post-fire pause
+--- doesn't immediately re-finish.
+---@param alias string  The alias for the session (required, must be manual type)
+function M.watch(alias)
+  if not alias or alias == "" then
+    vim.notify("watch() requires a session alias", vim.log.levels.ERROR)
+    return
+  end
+
+  if not alias_mod.is_valid_manual(alias) then
+    vim.notify(
+      "Invalid session alias '" .. alias .. "'. " ..
+      "Manual aliases are alphabetic only (e.g. 'a', 'refactor').",
+      vim.log.levels.ERROR
+    )
+    return
+  end
+
+  local cfg = config.watch
+  if not cfg then
+    vim.notify(
+      "Watch is not configured. Add `watch = { idle_ms = N, cooldown_ms = N }` to setup{}.",
+      vim.log.levels.ERROR
+    )
+    return
+  end
+
+  if not session_store.can_store_manual(alias) then
+    vim.notify("Manual session capacity reached", vim.log.levels.ERROR)
+    return
+  end
+
+  local buf = v.nvim_get_current_buf()
+  local win = v.nvim_get_current_win()
+  local id = util.new_id(buf)
+  local start_state = util.capture_state(buf, win)
+
+  local key_nsid = key_tracking.attach(
+    function()
+      return session_store.get_active(alias)
+    end,
+    function(reason, level) ---@param reason string @param level integer
+      session_store.remove(id)
+      if reason then
+        vim.schedule(function()
+          vim.notify(reason, level or vim.log.levels.INFO)
+        end)
+      end
+    end,
+    function(session)
+      local cursor = v.nvim_win_get_cursor(session.win)
+      local reason = M.manual_should_evict(
+        session, cursor[1] - 1, vim.uv.hrtime()
+      )
+      if reason then
+        return "Vimficiency: watch [" .. alias .. "] dropped — " .. reason
+      end
+      return nil
+    end
+  )
+
+  -- Watch: manual start, auto end.
+  local active = session_store.new_active_session(
+    id, key_nsid, win, buf, start_state, "manual", "auto")
+
+  -- Arm the idle end-trigger. Name-scoped to this session's id so
+  -- concurrent watches coexist (each owns its own global subscriber
+  -- and timer).
+  local disarm = end_trigger.arm_idle({
+    name        = "watch_" .. id,
+    idle_ms     = cfg.idle_ms,
+    cooldown_ms = cfg.cooldown_ms,
+    on_fire     = function()
+      -- Re-resolve through the store so we notice if the alias has
+      -- been rebound (overwrite by another watch/start) or the record
+      -- has been destroyed. Bail without finishing in those cases —
+      -- the replacement has its own trigger and cleanup runs through
+      -- destroy_record's disarm.
+      local rec = session_store.get_active(alias)
+      if not rec or rec.id ~= id then return false end
+      M.finish(alias)
+      return true
+    end,
+  })
+
+  if not disarm then
+    key_tracking.detach(key_nsid)
+    vim.notify("vimficiency watch [" .. alias .. "] failed to arm idle trigger", vim.log.levels.ERROR)
+    return
+  end
+
+  active.watch_disarm = disarm
+  local overwrote = session_store.store_manual(alias, active)
+
+  if overwrote then
+    vim.notify("vimficiency watching [" .. alias .. "] (overwrote existing)", vim.log.levels.INFO)
+  else
+    vim.notify("vimficiency watching [" .. alias .. "]", vim.log.levels.INFO)
   end
 end
 
@@ -314,8 +468,10 @@ function M.finish(alias)
     return
   end
 
-  -- This detaches key tracking and moves from active to result storage
-  if not session_store.finish_session(id, result) then
+  -- This detaches key tracking and moves from active to result storage.
+  -- Pass the literal `alias` so `:Vimfy save @` can default the filename
+  -- to what the user typed at end-time (otherwise recall positions drift).
+  if not session_store.finish_session(id, result, alias) then
     total_failure(id, "finish()", "failed to store result")
     return
   end
@@ -323,6 +479,24 @@ function M.finish(alias)
   local header = "vimficiency finished [" .. alias .. "] " .. result_view.format_position(result)
   local body = result_view.format_body(result)
   vim.notify(header .. "\n" .. table.concat(body, "\n"), vim.log.levels.INFO)
+end
+
+--- Default filename for `:Vimfy save <selector>` when the caller omits
+--- a name. Every legal selector (`a`, `refactor`, `5`, `3s`) is also a
+--- valid saved-file name, so we return it verbatim. For `@`, resolve to
+--- the alias that was used at `:Vimfy end` time — stored on the record
+--- because recall positions drift and can't be reconstructed later.
+---
+--- Returns nil only when `@` has no finished session to resolve to;
+--- invalid selectors pass through and fail downstream in `M.save` with
+--- the existing "no finished result" diagnostic.
+---@param selector string
+---@return string|nil
+function M.default_save_name(selector)
+  if selector == "@" then
+    return session_store.get_last_finished_alias()
+  end
+  return selector
 end
 
 --- Save a finished session result to disk under `name`.
