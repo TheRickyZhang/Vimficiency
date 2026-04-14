@@ -444,10 +444,11 @@ function M.remove(id)
   -- Guard against the historical mistake of passing an alias. Aliases
   -- are time-varying (a recall `3s` resolves to a different record as
   -- the ring rotates) — removing by alias risks destroying the wrong
-  -- session. IDs from `util.new_id` always contain the `__` separator;
-  -- no valid manual alias (`^[a-z]+$`) or recall alias (`^%d+s?$`)
-  -- does. Callers must `get_active(alias).id` first.
-  assert(type(id) == "string" and id:find("__", 1, true),
+  -- session. `util.is_session_id` owns the id-vs-alias discrimination
+  -- and sits next to `util.new_id`, so if the id format ever changes
+  -- the detector changes in the same edit. Callers must resolve
+  -- `get_active(alias).id` first.
+  assert(util.is_session_id(id),
     "session_store.remove requires a session id (from util.new_id), not an alias: "
     .. tostring(id))
 

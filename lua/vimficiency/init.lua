@@ -588,15 +588,35 @@ end
 -- contract is vimfy.map() / <Plug> + docs.
 local MODES_TO_SCAN = { "n", "v", "x", "s", "o", "i", "t" }
 
+-- Patterns anchored to the real command names (`Vimfy`, `Vimficiency`),
+-- each followed by a word boundary (`%f[%W]` — frontier pattern matching
+-- the empty position before a non-word char, including end-of-string).
+-- This avoids the `[fy]`-character-class trap: `:vimfoo` or `:vimyak`
+-- are not Vimfy invocations and must not false-match.
+--
+-- `%f[...]` is a Lua-pattern frontier; `%W` matches any non-word char.
+-- Together `%f[%W]` succeeds right after the last word char of the
+-- command name, which is exactly the boundary we want.
+local VIMFY_RHS_PATTERNS = {
+	"^%s*:vimfy%f[%W]",          -- :Vimfy <args>
+	"^%s*:vimficiency%f[%W]",    -- :Vimficiency <args>
+	"<cmd>%s*:?vimfy%f[%W]",      -- <Cmd>Vimfy<CR> / <Cmd>:Vimfy<CR>
+	"<cmd>%s*:?vimficiency%f[%W]",
+}
+
 local function scan_rhs_for_vimfy(rhs)
 	if type(rhs) ~= "string" or rhs == "" then return false end
-	-- Match `:Vim` (with optional leading space) and `<Cmd>Vim` forms.
-	-- Case-insensitive because Vim command-name matching is.
 	local lower = rhs:lower()
-	if lower:match("^%s*:vim[fy]") then return true end
-	if lower:match("<cmd>%s*vim[fy]") then return true end
+	for _, p in ipairs(VIMFY_RHS_PATTERNS) do
+		if lower:match(p) then return true end
+	end
 	return false
 end
+
+-- Test-only export so the mapping-scan tests don't have to round-trip
+-- synthetic mappings through `nvim_get_keymap`.
+M._for_test = M._for_test or {}
+M._for_test.scan_rhs_for_vimfy = scan_rhs_for_vimfy
 
 local function warn_about_bad_mappings()
 	local bad = {}

@@ -173,6 +173,19 @@ function M.new_id(buf)
   -- Example: foo_cpp__20251222-153045-123__1734888645123__0001__b3
   return string.format("%s__%s__%d__%04d__b%d", base, wall, ms, seq, buf)
 end
+
+--- Return true if `s` looks like a session id produced by `new_id`.
+--- The other strings typically passed to id-consuming APIs are aliases
+--- (manual = `^[a-z]+$`, recall = `^%d+s?$`) — none contain `__`. The
+--- `__` separators above are stable across the current format; if
+--- `new_id` is ever restructured, update this helper in the same edit.
+--- Colocated here on purpose so the format and its detector move as a
+--- pair.
+---@param s any
+---@return boolean
+function M.is_session_id(s)
+  return type(s) == "string" and s:find("__", 1, true) ~= nil
+end
 ----------- BEGIN FILE ------------
 
 
