@@ -1,13 +1,6 @@
 {
   "branches": [
     {
-      "name": "expand-user-features",
-      "safeName": "expand-user-features",
-      "url": "https://TheRickyZhang.github.io/Vimficiency/branch/expand-user-features/",
-      "updatedAt": "2026-04-15T04:04:41Z",
-      "repoFullName": "TheRickyZhang/Vimficiency"
-    },
-    {
       "name": "main1",
       "safeName": "main1",
       "url": "https://TheRickyZhang.github.io/Vimficiency/branch/main1/",
