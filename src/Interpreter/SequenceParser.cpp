@@ -3,10 +3,22 @@
 #include "SequenceParser.h"
 #include "Keyboard/ToKeys/MotionToKeys.h"
 
+#include <cassert>
 #include <limits>
 #include <unordered_set>
 
 using namespace std;
+
+string formatSequenceParseError(const SequenceParseError& error) {
+  switch (error.kind) {
+  case SequenceParseErrorKind::UnknownCharacter:
+    return "unknown character at offset " + to_string(error.offset);
+  case SequenceParseErrorKind::MalformedSpecialKey:
+    return "malformed special key at offset " + to_string(error.offset);
+  }
+  assert(false && "Unhandled SequenceParseErrorKind");
+  return "unknown parse error";
+}
 
 namespace {
 
@@ -212,20 +224,25 @@ pair<string, size_t> tryParseChange(string_view sv, size_t i) {
 
 // Parse typed text until <Esc> is found
 // Returns (typed text, length consumed including <Esc>)
-// If no <Esc> found, returns all remaining text
+// If no <Esc> found, returns all remaining text. Malformed `<...>` (no
+// closing `>`) is treated as a literal `<` character so the loop always
+// advances — no sentinel/error channel.
 pair<string, size_t> parseTypedText(string_view sv, size_t i) {
   string typed;
   size_t start = i;
 
   while (i < sv.size()) {
-    // Check for <Esc>
     if (sv[i] == '<') {
       string special = tryParseSpecialKey(sv, i);
+      if (special.empty()) {
+        typed += sv[i];
+        i++;
+        continue;
+      }
       if (special == "<Esc>") {
         // Don't include <Esc> in typed text
         return {typed, i - start};
       }
-      // Other special keys become part of typed text
       typed += special;
       i += special.size();
     } else {
@@ -234,13 +251,13 @@ pair<string, size_t> parseTypedText(string_view sv, size_t i) {
     }
   }
 
-  // No <Esc> found - return all remaining text
   return {typed, i - start};
 }
 
 }  // namespace
 
-vector<SequenceToken> parseSequence(string_view seq) {
+expected<vector<SequenceToken>, SequenceParseError>
+parseSequence(string_view seq) {
   vector<SequenceToken> tokens;
   string_view sv(seq);
   size_t i = 0;
@@ -265,7 +282,6 @@ vector<SequenceToken> parseSequence(string_view seq) {
         }
       }
 
-      // Capture typed text until <Esc>
       auto [typed, len] = parseTypedText(sv, i);
       if (!typed.empty()) {
         tokens.push_back(SequenceToken(typed, TokenType::TypedText));
@@ -299,20 +315,30 @@ vector<SequenceToken> parseSequence(string_view seq) {
       continue;
     }
 
-    // Unknown character - include it as typed text (fallback)
-    tokens.push_back(SequenceToken(countStr + string(1, sv[i]), TokenType::Motion));
-    i++;
+    if (sv[i] == '<') {
+      return unexpected(SequenceParseError{
+          .kind = SequenceParseErrorKind::MalformedSpecialKey,
+          .offset = i,
+      });
+    }
+    return unexpected(SequenceParseError{
+        .kind = SequenceParseErrorKind::UnknownCharacter,
+        .offset = i,
+    });
   }
 
   return tokens;
 }
 
-vector<string> parseSequenceStrings(string_view seq) {
-  auto tokens = parseSequence(seq);
-  vector<string> result;
-  result.reserve(tokens.size());
-  for (const auto& token : tokens) {
-    result.push_back(token.text);
-  }
-  return result;
+expected<vector<string>, SequenceParseError>
+parseSequenceStrings(string_view seq) {
+  return parseSequence(seq).transform(
+      [](const vector<SequenceToken>& tokens) {
+        vector<string> out;
+        out.reserve(tokens.size());
+        for (const auto& token : tokens) {
+          out.push_back(token.text);
+        }
+        return out;
+      });
 }

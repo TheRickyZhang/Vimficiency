@@ -56,6 +56,10 @@ local M = {}
 ---@field vimficiency_debug_config fun(): string
 ---@field vimficiency_tokenize_motions fun(seq: string): string
 ---@field vimficiency_tokenize_sequence fun(seq: string): string
+---@field vimficiency_build_sequence fun(encoded_events: string): string
+---@field vimficiency_compute_search_region fun(encoded_start_lines: string, encoded_end_lines: string, start_row: integer, end_row: integer, padding: integer): string
+---@field vimficiency_resolve_recall_cutoff fun(encoded_records: string, target_hrtime: integer, budget: integer): integer
+---@field vimficiency_manual_evict_reason fun(start_row: integer, cursor_row: integer, last_key_time_ns: integer, has_last_key: boolean, now_ns: integer, max_search_lines: integer, manual_idle_timeout_seconds: integer): integer
 
 ffi.cdef([[
     extern const int VIMFICIENCY_KEY_COUNT;
@@ -124,6 +128,32 @@ ffi.cdef([[
 
     const char* vimficiency_tokenize_sequence(const char* seq);
 
+    const char* vimficiency_build_sequence(const char* encoded_events);
+
+    const char* vimficiency_compute_search_region(
+        const char* encoded_start_lines,
+        const char* encoded_end_lines,
+        int start_row,
+        int end_row,
+        int padding
+    );
+
+    int vimficiency_resolve_recall_cutoff(
+        const char* encoded_records,
+        int64_t target_hrtime,
+        int budget
+    );
+
+    int vimficiency_manual_evict_reason(
+        int start_row,
+        int cursor_row,
+        int64_t last_key_time_ns,
+        bool has_last_key,
+        int64_t now_ns,
+        int max_search_lines,
+        int manual_idle_timeout_seconds
+    );
+
     const char* vimficiency_format_sequence(const char* seq);
 ]])
 
@@ -177,39 +207,193 @@ M.Finger = build_enum(lib.VIMFICIENCY_FINGER_COUNT, lib.vimficiency_finger_name)
 M.Hand = build_enum(lib.VIMFICIENCY_HAND_COUNT, lib.vimficiency_hand_name)
 M.CountClass = build_enum(lib.VIMFICIENCY_COUNT_CLASS_COUNT, lib.vimficiency_count_class_name)
 
+local EVENT_FIELD_SEP = string.char(0x1f)
+local EVENT_RECORD_SEP = string.char(0x1e)
+
+---@param items string[]
+---@return string
+local function encode_string_list(items)
+	local out = {}
+	for i = 1, #items do
+		local item = items[i]
+		out[#out + 1] = tostring(#item)
+		out[#out + 1] = ":"
+		out[#out + 1] = item
+	end
+	return table.concat(out)
+end
+
+---@param key_seq VimficiencyKeyEvent[]
+---@return string
+function M.build_sequence(key_seq)
+	local parts = {}
+	for i = 1, #key_seq do
+		local ev = key_seq[i]
+		-- `key_typed` is always `keytrans()` output (printable `<...>` form,
+		-- e.g. `<C-_>`, never raw 0x1f/0x1e). An invariant violation here
+		-- means a caller bypassed keytrans, not a runtime condition we
+		-- should handle — assert rather than escape/length-prefix.
+		assert(not ev.key_typed:find("[\x1e\x1f]"),
+			"build_sequence: key_typed contains a record/field separator; " ..
+			"callers must pass keytrans'd strings")
+		parts[#parts + 1] = ev.mode
+		parts[#parts + 1] = EVENT_FIELD_SEP
+		parts[#parts + 1] = ev.key_typed
+		parts[#parts + 1] = EVENT_RECORD_SEP
+	end
+	local result = ffi.string(lib.vimficiency_build_sequence(table.concat(parts)))
+	if result:sub(1, 7) == "ERROR: " then
+		error("vimficiency_build_sequence failed: " .. result, 0)
+	end
+	return result
+end
+
+---@param start_lines string[]
+---@param end_lines string[]
+---@param start_row integer
+---@param end_row integer
+---@param padding integer
+---@return integer
+---@return integer
+function M.compute_search_region(start_lines, end_lines, start_row, end_row, padding)
+	local result = ffi.string(lib.vimficiency_compute_search_region(
+		encode_string_list(start_lines),
+		encode_string_list(end_lines),
+		start_row,
+		end_row,
+		padding
+	))
+	if result:sub(1, 7) == "ERROR: " then
+		error("vimficiency_compute_search_region failed: " .. result, 0)
+	end
+	local parts = vim.split(result, EVENT_FIELD_SEP, { plain = true, trimempty = true })
+	assert(#parts == 2, "vimficiency_compute_search_region returned malformed payload")
+	return tonumber(parts[1]), tonumber(parts[2])
+end
+
+---@param records table<string, { time_started: integer, first_mode: string|nil }>
+---@param order string[]
+---@param target_hrtime integer
+---@param budget integer
+---@return integer|nil
+function M.resolve_recall_cutoff(records, order, target_hrtime, budget)
+	local parts = {}
+	for i = 1, #order do
+		local rec = records[order[i]]
+		assert(rec, "resolve_recall_cutoff: missing record for order index " .. i)
+		parts[#parts + 1] = tostring(rec.time_started)
+		parts[#parts + 1] = rec.first_mode or ""
+	end
+	local index = lib.vimficiency_resolve_recall_cutoff(
+		encode_string_list(parts),
+		target_hrtime,
+		budget
+	)
+	if index == 0 then
+		return nil
+	end
+	return index
+end
+
+---@param start_row integer
+---@param cursor_row integer
+---@param last_key_time_ns integer|nil
+---@param now_ns integer
+---@param max_search_lines integer
+---@param manual_idle_timeout_seconds integer
+---@return string|nil
+function M.manual_evict_reason(
+	start_row,
+	cursor_row,
+	last_key_time_ns,
+	now_ns,
+	max_search_lines,
+	manual_idle_timeout_seconds
+)
+	local has_last_key = last_key_time_ns ~= nil
+	local code = lib.vimficiency_manual_evict_reason(
+		start_row,
+		cursor_row,
+		last_key_time_ns or 0,
+		has_last_key,
+		now_ns,
+		max_search_lines,
+		manual_idle_timeout_seconds
+	)
+	if code == 1 then
+		return "cursor drifted beyond MAX_SEARCH_LINES (" .. max_search_lines .. ")"
+	end
+	if code == 2 then
+		return "idle for more than " .. manual_idle_timeout_seconds .. "s"
+	end
+	return nil
+end
+
+-- The (has_<name>, <name>) flag pairs on C_CountPenaltyOverride. Genuine
+-- structure (not mere field duplication), so still a named schema.
+local OVERRIDE_FIELDS = { "base", "count_slope", "span_slope" }
+
+--- Try to assign a value to a cdata field, distinguishing unknown fields
+--- from type errors. LuaJIT raises on both reads and writes of absent
+--- struct members, so a read-probe tells us whether the field exists.
+---@return "ok"|"unknown"|"type_error" status
+---@return string|nil err  Raw LuaJIT error when status == "type_error"
+local function try_assign(cdata, key, value)
+	if not pcall(function() local _ = cdata[key] end) then
+		return "unknown"
+	end
+	local ok, err = pcall(function() cdata[key] = value end)
+	if not ok then
+		return "type_error", err
+	end
+	return "ok"
+end
+
+--- Apply scalar user overrides to a cdata struct. Returns a set of keys that
+--- were actually claimed; raises on type mismatches.
+---
+--- When `strict` is true, unknown fields also raise (so nested typos like
+--- `weights = { downwrad = 5 }` fail loudly instead of silently no-op'ing).
+--- Top-level calls pass `strict = false` because setup() does its own
+--- post-check against the union of lua+cpp consumed keys.
+local function apply_scalars(src, dst, key_prefix, strict)
+	local consumed = {}
+	for k, v in pairs(src) do
+		if type(v) ~= "table" then
+			local status, err = try_assign(dst, k, v)
+			if status == "ok" then
+				consumed[k] = true
+			elseif status == "type_error" then
+				error(string.format("vimficiency: invalid value for '%s%s': %s",
+					key_prefix or "", tostring(k), tostring(err)))
+			elseif strict and status == "unknown" then
+				error(string.format("vimficiency: unknown config key '%s%s'",
+					key_prefix or "", tostring(k)))
+			end
+		end
+	end
+	return consumed
+end
+
+-- Allowed keys on a single count_penalty_overrides[class] entry. Mirrors
+-- OVERRIDE_FIELDS; a set form lets us validate keys in O(1).
+local OVERRIDE_FIELD_SET = { base = true, count_slope = true, span_slope = true }
+
 -- ---@param user_config VimficiencyConfigFFI
+---@return table<string, true> consumed  Top-level user_config keys claimed by C++ side
 function M.configure(user_config)
 	---@type VimficiencyConfigFFI
 	local config = lib.vimficiency_get_config()
 
-  if user_config.default_keyboard then
-    config.default_keyboard = user_config.default_keyboard
-  end
+	local consumed = apply_scalars(user_config, config)
 
 	if user_config.weights then
-		local w = user_config.weights
-		local cw = config.weights
-		if w.keyWeight then
-			cw.keyWeight = w.keyWeight
-		end
-		if w.sameFingerWeight then
-			cw.sameFingerWeight = w.sameFingerWeight
-		end
-		if w.sameKeyWeight then
-			cw.sameKeyWeight = w.sameKeyWeight
-		end
-		if w.altHandWeight then
-			cw.altHandWeight = w.altHandWeight
-		end
-		if w.goodRollWeight then
-			cw.goodRollWeight = w.goodRollWeight
-		end
-		if w.badRollWeight then
-			cw.badRollWeight = w.badRollWeight
-		end
+		consumed.weights = true
+		apply_scalars(user_config.weights, config.weights, "weights.", true)
 	end
 
 	if user_config.keys then
+		consumed.keys = true
 		for key_index, info in pairs(user_config.keys) do
 			config.keys[key_index].hand = info.hand
 			config.keys[key_index].finger = info.finger
@@ -217,62 +401,55 @@ function M.configure(user_config)
 		end
 	end
 
-  if user_config.slice_buffer_amount then
-    config.slice_buffer_amount = user_config.slice_buffer_amount
-  end
+	if user_config.count_penalty_overrides then
+		consumed.count_penalty_overrides = true
+		if user_config.use_count_penalty_overrides == nil then
+			config.use_count_penalty_overrides = true
+		end
 
-  if user_config.shiftwidth then
-    config.shiftwidth = user_config.shiftwidth
-  end
+		-- Reset all has_* flags before applying user's subset.
+		for i = 0, lib.VIMFICIENCY_COUNT_CLASS_COUNT - 1 do
+			local dst = config.count_penalty_overrides[i]
+			for _, f in ipairs(OVERRIDE_FIELDS) do
+				dst["has_" .. f] = false
+			end
+		end
 
-  if user_config.use_count_penalty_overrides ~= nil then
-    config.use_count_penalty_overrides = user_config.use_count_penalty_overrides
-  end
+		for class_key, override in pairs(user_config.count_penalty_overrides) do
+			local class_index
+			if type(class_key) == "number" then
+				class_index = class_key
+			else
+				class_index = M.CountClass[class_key]
+			end
 
-  if user_config.count_penalty_overrides then
-    if user_config.use_count_penalty_overrides == nil then
-      config.use_count_penalty_overrides = true
-    end
+			if class_index == nil then
+				error("Unknown count penalty class: " .. tostring(class_key))
+			end
+			if class_index < 0 or class_index >= lib.VIMFICIENCY_COUNT_CLASS_COUNT then
+				error("Count penalty class out of range: " .. tostring(class_key))
+			end
 
-    for i = 0, lib.VIMFICIENCY_COUNT_CLASS_COUNT - 1 do
-      local dst = config.count_penalty_overrides[i]
-      dst.has_base = false
-      dst.has_count_slope = false
-      dst.has_span_slope = false
-    end
+			for field in pairs(override) do
+				if not OVERRIDE_FIELD_SET[field] then
+					error(string.format(
+						"vimficiency: unknown count_penalty_overrides[%s] key '%s' (allowed: base, count_slope, span_slope)",
+						tostring(class_key), tostring(field)))
+				end
+			end
 
-    for class_key, override in pairs(user_config.count_penalty_overrides) do
-      local class_index = nil
-      if type(class_key) == "number" then
-        class_index = class_key
-      else
-        class_index = M.CountClass[class_key]
-      end
-
-      if class_index == nil then
-        error("Unknown count penalty class: " .. tostring(class_key))
-      end
-      if class_index < 0 or class_index >= lib.VIMFICIENCY_COUNT_CLASS_COUNT then
-        error("Count penalty class out of range: " .. tostring(class_key))
-      end
-
-      local dst = config.count_penalty_overrides[class_index]
-      if override.base ~= nil then
-        dst.has_base = true
-        dst.base = override.base
-      end
-      if override.count_slope ~= nil then
-        dst.has_count_slope = true
-        dst.count_slope = override.count_slope
-      end
-      if override.span_slope ~= nil then
-        dst.has_span_slope = true
-        dst.span_slope = override.span_slope
-      end
-    end
-  end
+			local dst = config.count_penalty_overrides[class_index]
+			for _, f in ipairs(OVERRIDE_FIELDS) do
+				if override[f] ~= nil then
+					dst["has_" .. f] = true
+					dst[f] = override[f]
+				end
+			end
+		end
+	end
 
 	lib.vimficiency_apply_config()
+	return consumed
 end
 
 ---@param initial_lines string[] Buffer lines at session start

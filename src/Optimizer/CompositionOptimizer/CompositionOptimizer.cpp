@@ -556,7 +556,25 @@ ostream& operator<<(ostream& os, const CompositionResult& cr) {
   for (size_t i = 0; i < results.size(); i++) {
     os << "  [" << i << "] ";
 
-    vector<SequenceToken> tokens = parseSequence(results[i].getSequence().view());
+    auto parsed = parseSequence(results[i].getSequence().view());
+    if (!parsed) {
+      // The optimizer can emit sequences whose grammar `parseSequence` does
+      // not model. Today the only such case is the visual-selection strategy
+      // `v{motion}d` emitted from EditOptimizer.cpp (see the `Sequence
+      // visualSeq("v")` site): `parseSequence` is a two-state machine
+      // (normal <-> insert) and has no visual-mode state, no `v/V/<C-v>`
+      // entry rule, and no selection-consuming operator rule.
+      //
+      // This is a scope choice, not a bug. If the parser grows a visual-mode
+      // grammar in the future (or the optimizer stops emitting visual-mode
+      // strategies), this fallback becomes dead code and should be replaced
+      // with `.value()` to restore assert-fast behavior. Until then, print
+      // the raw sequence so human-approval output stays readable instead of
+      // aborting mid-report.
+      os << results[i].getSequence().view() << "\n";
+      continue;
+    }
+    vector<SequenceToken> tokens = *parsed;
     int diffIdx = 0;
     int numDiffs = static_cast<int>(diffs.size());
     for (size_t j = 0; j < tokens.size(); j++) {

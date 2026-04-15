@@ -5,6 +5,7 @@ local uv = vim.uv
 local fs = vim.fs
 
 local config = require("vimficiency.config")
+local ffi_lib = require("vimficiency.ffi")
 
 --------------------------------------------------------------------------------
 -- Types
@@ -173,6 +174,19 @@ function M.new_id(buf)
   -- Example: foo_cpp__20251222-153045-123__1734888645123__0001__b3
   return string.format("%s__%s__%d__%04d__b%d", base, wall, ms, seq, buf)
 end
+
+--- Return true if `s` looks like a session id produced by `new_id`.
+--- The other strings typically passed to id-consuming APIs are aliases
+--- (manual = `^[a-z]+$`, recall = `^%d+s?$`) — none contain `__`. The
+--- `__` separators above are stable across the current format; if
+--- `new_id` is ever restructured, update this helper in the same edit.
+--- Colocated here on purpose so the format and its detector move as a
+--- pair.
+---@param s any
+---@return boolean
+function M.is_session_id(s)
+  return type(s) == "string" and s:find("__", 1, true) ~= nil
+end
 ----------- BEGIN FILE ------------
 
 
@@ -244,23 +258,6 @@ function M.check_state_inconsistencies(start_state, end_state)
   end
 end
 
---- Find the first and last differing lines between two line arrays
----@param a string[] First line array
----@param b string[] Second line array
----@return integer|nil first_diff 0-indexed first differing line, or nil if equal
----@return integer|nil last_diff 0-indexed last differing line, or nil if equal
-function M.find_diff_range(a, b)
-  local first_diff, last_diff = nil, nil
-  local max_len = math.max(#a, #b)
-  for i = 1, max_len do
-    if a[i] ~= b[i] then
-      if not first_diff then first_diff = i - 1 end
-      last_diff = i - 1
-    end
-  end
-  return first_diff, last_diff
-end
-
 --- Compute the search region that covers cursor positions and changed lines
 --- Returns (region_start, region_end) as 0-indexed line numbers
 ---@param start_row integer 0-indexed start cursor row
@@ -271,23 +268,13 @@ end
 ---@return integer region_start 0-indexed first line of region
 ---@return integer region_end 0-indexed last line of region
 function M.compute_search_region(start_row, end_row, start_lines, end_lines, padding)
-  local min_row = math.min(start_row, end_row)
-  local max_row = math.max(start_row, end_row)
-
-  -- Find changed line range (first/last differing line)
-  local first_diff, last_diff = M.find_diff_range(start_lines, end_lines)
-  if first_diff then
-    min_row = math.min(min_row, first_diff)
-    max_row = math.max(max_row, last_diff)
-  end
-
-  -- Apply padding, clamp to buffer bounds
-  -- Use max of both buffer lengths since edits may add/remove lines
-  local buffer_len = math.max(#start_lines, #end_lines)
-  local region_start = math.max(0, min_row - padding)
-  local region_end = math.min(buffer_len - 1, max_row + padding)
-
-  return region_start, region_end
+  return ffi_lib.compute_search_region(
+    start_lines,
+    end_lines,
+    start_row,
+    end_row,
+    padding
+  )
 end
 
 return M

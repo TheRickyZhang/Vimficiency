@@ -49,7 +49,11 @@ target_compile_definitions(vimficiency_core PUBLIC
 )
 
 # SHARED library for Neovim/Lua direct usage
-add_library(vimficiency SHARED src/lua_exports.cpp)
+add_library(vimficiency SHARED
+    src/lua_exports.cpp
+    src/LuaExports/AnalyzeExports.cpp
+    src/LuaExports/UtilityExports.cpp
+)
 target_link_libraries(vimficiency PRIVATE vimficiency_core)
 
 # CLI for independent testing

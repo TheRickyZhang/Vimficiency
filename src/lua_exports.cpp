@@ -1,27 +1,10 @@
-// src/lua_exports.cpp
+#include "LuaExports/Shared.h"
 
-#include "Interpreter/MotionInterpreter.h"
-#include "Interpreter/SequenceParser.h"
-#include "Interpreter/SequenceFormatting.h"
-#include "Keyboard/Finger.h"
-#include "Keyboard/Hand.h"
-#include "Keyboard/Key.h"
-#include "Effort/RunningEffort.h"
-#include "Optimizer/CountPenalty.h"
 #include "Optimizer/GlobalRuntimeOptions.h"
-#include "Boundary/MotionBoundary.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
-#include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
-#include "Utils/CoutCapture.h"
 #include "Utils/Debug.h"
-#include "Types/Lines.h"
 #include "VimCore/VimOptions.h"
-#include <algorithm>
-#include <iomanip>
-#include <sstream>
-#include <string>
-#include <vector>
 
+namespace vimficiency::lua_exports {
 
 static const char* g_key_names[] = {
 #define X(name, str) str,
@@ -57,68 +40,14 @@ static const char* g_count_class_names[] = {
   "EditSentence",
   "Join",
 };
+
 static_assert(sizeof(g_count_class_names) / sizeof(g_count_class_names[0]) == CountClassCOUNT,
               "Count class name table must match CountClass enum");
 
-enum DEFAULT_KEYBOARD {
-  NONE,
-  UNIFORM,
-  QWERTY,
-  COLEMAK_DH,
-};
+VimficiencyConfigFFI g_config_ffi;
+Config g_config_internal = Config::uniform();
 
-struct C_ScoreWeights {
-  double w_key = 1.0;
-  double w_same_finger{};
-  double w_same_key{};
-  double w_alt_bonus{};
-  double w_roll_good{};
-  double w_roll_bad{};
-};
-
-struct C_KeyInfo {
-  int8_t hand = static_cast<int8_t>(Hand::None);
-  int8_t finger = static_cast<int8_t>(Finger::None);
-  double base_cost = 0.0;
-};
-
-struct C_CountPenaltyOverride {
-  bool has_base = false;
-  double base = 0.0;
-  bool has_count_slope = false;
-  double count_slope = 0.0;
-  bool has_span_slope = false;
-  double span_slope = 0.0;
-};
-
-struct VimficiencyConfigFFI {
-  DEFAULT_KEYBOARD default_keyboard = UNIFORM;
-  C_ScoreWeights weights{};
-  C_KeyInfo keys[KEY_COUNT]{};
-  int slice_buffer_amount{};
-  int32_t shiftwidth = -1; // -1 = use default (8)
-  bool use_count_penalty_overrides = false;
-  C_CountPenaltyOverride count_penalty_overrides[CountClassCOUNT]{};
-};
-
-// Helper to split string by newlines
-static Lines split_lines(const char *text) {
-  Lines lines;
-  std::istringstream stream(text);
-  std::string line;
-  while (std::getline(stream, line)) {
-    lines.push_back(line);
-  }
-  return lines;
-}
-
-// Global storage
-static VimficiencyConfigFFI g_config_ffi; // Default to uniform
-static Config g_config_internal = Config::uniform();
-
-static void sync_config() {
-  // We don't break, because additional key config should override on top of
-  // defaults.
+void sync_config() {
   switch (g_config_ffi.default_keyboard) {
   case QWERTY:
     g_config_internal = Config::qwerty();
@@ -140,12 +69,9 @@ static void sync_config() {
   g_config_internal.weights.w_roll_good = g_config_ffi.weights.w_roll_good;
   g_config_internal.weights.w_roll_bad = g_config_ffi.weights.w_roll_bad;
 
-  // g_config_internal.weights = g_config_ffi.c_scoreWeights; // TODO: good idea
-  // to overload this operator= ?
   for (size_t i = 0; i < KEY_COUNT; i++) {
     auto &src = g_config_ffi.keys[i];
     auto &dst = g_config_internal.keyInfo[i];
-
     if (src.hand != static_cast<int8_t>(Hand::None)) {
       dst.hand = static_cast<Hand>(src.hand);
       dst.finger = static_cast<Finger>(src.finger);
@@ -153,7 +79,6 @@ static void sync_config() {
     }
   }
 
-  // Apply runtime shiftwidth override (sentinel -1 = keep default of 8)
   if (g_config_ffi.shiftwidth >= 0) {
     VimOptions::shiftwidthRef() = g_config_ffi.shiftwidth;
   }
@@ -164,24 +89,21 @@ static void sync_config() {
   for (size_t i = 0; i < CountClassCOUNT; i++) {
     const auto& src = g_config_ffi.count_penalty_overrides[i];
     PartialCountPenaltyParams dst;
-    if (src.has_base) {
-      dst.base = src.base;
-    }
-    if (src.has_count_slope) {
-      dst.countSlope = src.count_slope;
-    }
-    if (src.has_span_slope) {
-      dst.spanSlope = src.span_slope;
-    }
+    if (src.has_base) dst.base = src.base;
+    if (src.has_count_slope) dst.countSlope = src.count_slope;
+    if (src.has_span_slope) dst.spanSlope = src.span_slope;
     if (dst.base || dst.countSlope || dst.spanSlope) {
       runtimeOptions.countPenaltyOverrides[i] = dst;
     }
   }
 }
 
+}  // namespace vimficiency::lua_exports
+
+using namespace vimficiency::lua_exports;
+
 extern "C" {
-// Note we need to "redefine" (export) these since original declarations are
-// constexpr, and so may be inlined / name mangled
+
 extern const int VIMFICIENCY_KEY_COUNT = KEY_COUNT;
 extern const int VIMFICIENCY_FINGER_COUNT = FINGER_COUNT;
 extern const int VIMFICIENCY_HAND_COUNT = HAND_COUNT;
@@ -191,195 +113,31 @@ VimficiencyConfigFFI *vimficiency_get_config() { return &g_config_ffi; }
 void vimficiency_apply_config() { sync_config(); }
 
 const char *vimficiency_key_name(int index) {
-  if (index < 0 || index >= VIMFICIENCY_KEY_COUNT)
-    return nullptr;
+  if (index < 0 || index >= VIMFICIENCY_KEY_COUNT) return nullptr;
   return g_key_names[index];
 }
+
 const char *vimficiency_hand_name(int index) {
-  if (index < 0 || index >= VIMFICIENCY_HAND_COUNT)
-    return nullptr;
+  if (index < 0 || index >= VIMFICIENCY_HAND_COUNT) return nullptr;
   return g_hand_names[index];
 }
+
 const char *vimficiency_finger_name(int index) {
-  if (index < 0 || index >= VIMFICIENCY_FINGER_COUNT)
-    return nullptr;
+  if (index < 0 || index >= VIMFICIENCY_FINGER_COUNT) return nullptr;
   return g_finger_names[index];
 }
+
 const char *vimficiency_count_class_name(int index) {
-  if (index < 0 || index >= VIMFICIENCY_COUNT_CLASS_COUNT)
-    return nullptr;
+  if (index < 0 || index >= VIMFICIENCY_COUNT_CLASS_COUNT) return nullptr;
   return g_count_class_names[index];
 }
 
-// Supports both motion-only (initialLines == goalLines) and composition (buffer changed) cases.
-// Routing to MotionOptimizer vs CompositionOptimizer is handled internally.
-const char *vimficiency_analyze(
-  const char *initial_text,      // buffer at session start
-  const char *goal_text,         // buffer at session end (can equal initial_text for motion-only)
-  int boundaryFirstCol, int boundaryLastCol,
-  bool hasLinesAbove, bool hasLinesBelow,
-  int start_row, int start_col,
-  int end_row, int end_col,
-  const char *keyseq,
-  // Viewport state
-  int window_height, int scroll_amount,
-  // How many results to calculate/return
-  int RESULTS_CALCULATED
-) {
-  static std::string result_storage;
-
-  try {
-    Lines initialLines = split_lines(initial_text);
-    Lines goalLines = split_lines(goal_text);
-
-    assert(!initialLines.empty() && "FFI contract: buffer must have at least one line");
-    assert(!goalLines.empty() && "FFI contract: goal buffer must have at least one line");
-
-    CursorPos initialPos(start_row, start_col);
-    CursorPos goalPos(end_row, end_col);
-
-    NavContext navigation_context(window_height, scroll_amount);
-
-    std::vector<Result> res;
-
-    if (initialLines == goalLines) {
-      // Motion only - use MotionOptimizer (existing logic)
-      MotionBoundary boundary(initialLines,
-          CursorPos(0, boundaryFirstCol),
-          CursorPos(static_cast<int>(initialLines.size()) - 1, boundaryLastCol + 1),
-          hasLinesAbove, hasLinesBelow);
-
-      MotionOptimizer opt(g_config_internal);
-      res = opt.optimize(initialLines, initialPos, goalPos,
-          MotionOptimizerParams{}.withMaxResults(RESULTS_CALCULATED), keyseq,
-          boundary, navigation_context).getResults();
-    } else {
-      // Buffer changed - use CompositionOptimizer
-      MotionBoundary boundary(initialLines,
-          CursorPos(0, boundaryFirstCol),
-          CursorPos(static_cast<int>(initialLines.size()) - 1, boundaryLastCol + 1),
-          hasLinesAbove, hasLinesBelow);
-
-      CompositionOptimizer opt(g_config_internal);
-      res = opt.optimize(initialLines, initialPos, goalLines, goalPos,
-          CompositionOptimizerParams{}.withMaxResults(RESULTS_CALCULATED), keyseq,
-          boundary, navigation_context).getResults();
-    }
-
-    // Calculate user's effort for the sequence they typed
-    double userCost = getEffort(keyseq, g_config_internal);
-
-    // Filter out invalid results
-    std::vector<const Result*> validResults;
-    for (const Result &r : res) {
-      if (!r.isValid()) continue;
-      if (r.getSequence().empty()) continue;
-      validResults.push_back(&r);
-    }
-
-    // Sort by cost (ascending)
-    std::sort(validResults.begin(), validResults.end(),
-              [](const Result* a, const Result* b) { return a->getCost() < b->getCost(); });
-
-    // Format results - output raw sequences (Lua handles display formatting)
-    std::ostringstream oss;
-    if (validResults.empty()) {
-      oss << "no results";
-    } else {
-      oss << "size: " << validResults.size() << " user_cost: " << std::fixed << std::setprecision(3) << userCost << "\n";
-      for (const Result* r : validResults) {
-        oss << r->getSequence() << " "
-            << std::fixed << std::setprecision(3) << r->getCost() << "\n";
-      }
-    }
-
-    if constexpr (DEBUG_ENABLED) {
-      oss << "\n ----------------DEBUG---------------- \n" << consume_debug_output();
-    }
-
-    result_storage = oss.str();
-  } catch (const std::exception& e) {
-    result_storage = std::string("ERROR: ") + e.what();
-  }
-  return result_storage.c_str();
-}
-
 const char* vimficiency_get_debug() {
-    static std::string debug_storage;
-    debug_storage = consume_debug_output();
-    return debug_storage.c_str();
+  static std::string debug_storage;
+  debug_storage = consume_debug_output();
+  return debug_storage.c_str();
 }
 
-// Tokenize a motion sequence into individual motion tokens
-// Returns newline-separated tokens (e.g., "3w\nfx;\nj" for "3wfx;j")
-const char *vimficiency_tokenize_motions(const char *seq) {
-  static std::string result_storage;
-
-  if (!seq || !*seq) {
-    result_storage = "";
-    return result_storage.c_str();
-  }
-
-  try {
-    std::vector<ParsedMotion> motions = parseMotions(seq);
-
-    std::ostringstream oss;
-    for (const auto& m : motions) {
-      oss << m << "\n";
-    }
-    result_storage = oss.str();
-  } catch (const std::exception& e) {
-    result_storage = std::string("ERROR: ") + e.what();
-  }
-  return result_storage.c_str();
-}
-
-// Tokenize a full Vim sequence (motions, edits, insert-mode text) into tokens
-// Returns newline-separated tokens (e.g., "ciw\nhello\n<Esc>\n2j" for "ciwhello<Esc>2j")
-// Supports:
-//   - Motions: w, j, fa;, etc.
-//   - Delete commands: dd, dw, x, X, D, etc.
-//   - Change commands: ciw, s, A, cc, C, etc.
-//   - Typed text: captured after insert-entering commands until <Esc>
-//   - <Esc>: emitted as its own token
-const char *vimficiency_tokenize_sequence(const char *seq) {
-  static std::string result_storage;
-
-  if (!seq || !*seq) {
-    result_storage = "";
-    return result_storage.c_str();
-  }
-
-  try {
-    std::vector<std::string> tokens = parseSequenceStrings(seq);
-
-    std::ostringstream oss;
-    for (const auto& t : tokens) {
-      oss << t << "\n";
-    }
-    result_storage = oss.str();
-  } catch (const std::exception& e) {
-    result_storage = std::string("ERROR: ") + e.what();
-  }
-  return result_storage.c_str();
-}
-
-// Format a sequence string for human-readable display
-// Tokenizes into logical units and joins with spaces
-// e.g., "3rx<C-d>ciwfoo<Esc>" -> "3rx <C-d> ciw foo <Esc>"
-const char *vimficiency_format_sequence(const char *seq) {
-  static std::string result_storage;
-
-  if (!seq || !*seq) {
-    result_storage = "";
-    return result_storage.c_str();
-  }
-
-  result_storage = formatSequenceForDisplay(seq);
-  return result_storage.c_str();
-}
-
-// Unimportant debug stuff
 const char *vimficiency_debug_config() {
   static std::string debug_storage;
   std::ostringstream oss;
@@ -399,7 +157,6 @@ const char *vimficiency_debug_config() {
   oss << "use_count_penalty_overrides: " << g_config_ffi.use_count_penalty_overrides << "\n";
 
   oss << "\n--- Sample Keys (Internal) ---\n";
-  // Show a few keys to verify
   auto show_key = [&](Key k, const char *name) {
     auto &info = g_config_internal.keyInfo[static_cast<size_t>(k)];
     oss << name << ": hand=" << static_cast<int>(info.hand)

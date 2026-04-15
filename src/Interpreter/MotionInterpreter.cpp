@@ -20,11 +20,22 @@ std::ostream& operator<<(std::ostream& os, const ParsedMotion& motion) {
   os << motion.motion;
   return os;
 }
+
+std::string formatMotionParseError(const MotionParseError& error) {
+  switch (error.kind) {
+  case MotionParseErrorKind::UnknownMotion:
+    return "unknown motion at offset " + std::to_string(error.offset);
+  case MotionParseErrorKind::MalformedSpecialKey:
+    return "malformed special key at offset " + std::to_string(error.offset);
+  }
+  assert(false && "Unhandled MotionParseErrorKind");
+  return "unknown parse error";
+}
 // Does string motion parsing. See SequenceToKeys for the physical key parsing.
 // IMPORTANT: Returned ParsedMotions contain string_views into seq - caller must ensure seq outlives usage.
 
   // TODO: Once the motions we support are stable, and if it makes sense in how we implement vim's object model, consider representing motions as an enum instead of string. Then it would be no return, as harder to read/debug, but more efficient.
-std::vector<ParsedMotion> parseMotions(std::string_view seq) {
+std::expected<std::vector<ParsedMotion>, MotionParseError> parseMotions(std::string_view seq) {
   std::string_view sv(seq);  // Create view to avoid allocations
   std::vector<ParsedMotion> result;
   size_t i = 0;
@@ -73,7 +84,10 @@ std::vector<ParsedMotion> parseMotions(std::string_view seq) {
         }
         // If not a known motion, fall through to error
       }
-      assert(false && "Unknown or malformed special key");
+      return std::unexpected(MotionParseError{
+          .kind = MotionParseErrorKind::MalformedSpecialKey,
+          .offset = i,
+      });
     }
 
     // Standard longest-match for other motions
@@ -88,7 +102,10 @@ std::vector<ParsedMotion> parseMotions(std::string_view seq) {
       }
     }
     if (!matched) {
-      assert(false && "Unknown motion");
+      return std::unexpected(MotionParseError{
+          .kind = MotionParseErrorKind::UnknownMotion,
+          .offset = i,
+      });
     }
   }
   return result;
@@ -290,7 +307,11 @@ CursorPos simulateMotions(CursorPos pos, std::string_view motionSeq, const Lines
                          const NavContext& navContext) {
   assert(!lines.empty() && "Lines can't be empty");
   Mode mode = Mode::Normal;  // Motions don't change mode, so use dummy
-  auto motions = parseMotions(motionSeq);
+  // Test-only helper: inputs are hand-authored valid motion strings, so
+  // `.value()` is the right precondition check. In debug it's an assert;
+  // in release it throws `std::bad_expected_access` rather than UB on a
+  // bare `*motions` dereference.
+  auto motions = parseMotions(motionSeq).value();
   for (const auto& motion : motions) {
     applyParsedMotion(pos, mode, motion, lines, navContext);
   }

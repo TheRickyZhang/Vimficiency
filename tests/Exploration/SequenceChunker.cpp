@@ -6,7 +6,8 @@
 using namespace std;
 
 ChunkedSequence chunkCompositionSequence(string_view seq) {
-  auto tokens = parseSequence(seq);
+  // Hand-authored valid sequences in test scaffolding: assert on malformed.
+  auto tokens = parseSequence(seq).value();
 
   ChunkedSequence result;
   unordered_map<string, int> contentIndex; // dedup typed content
