@@ -229,6 +229,13 @@ function M.build_sequence(key_seq)
 	local parts = {}
 	for i = 1, #key_seq do
 		local ev = key_seq[i]
+		-- `key_typed` is always `keytrans()` output (printable `<...>` form,
+		-- e.g. `<C-_>`, never raw 0x1f/0x1e). An invariant violation here
+		-- means a caller bypassed keytrans, not a runtime condition we
+		-- should handle — assert rather than escape/length-prefix.
+		assert(not ev.key_typed:find("[\x1e\x1f]"),
+			"build_sequence: key_typed contains a record/field separator; " ..
+			"callers must pass keytrans'd strings")
 		parts[#parts + 1] = ev.mode
 		parts[#parts + 1] = EVENT_FIELD_SEP
 		parts[#parts + 1] = ev.key_typed

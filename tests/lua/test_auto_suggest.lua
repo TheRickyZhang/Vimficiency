@@ -287,6 +287,71 @@ test("fire_cost: empty optimal_results suppresses notify", function()
   restore()
 end)
 
+--------------------------------------------------------------------------------
+-- Reason plumbing: each trigger must pass its literal reason through to
+-- finish_session so the header can print it.
+--------------------------------------------------------------------------------
+
+test("fire_idle: passes 'suggest_idle' as the reason", function()
+  setup_enabled()
+  session.compute_result_for_active = function()
+    return {
+      start_row = 0, start_col = 0, end_row = 0, end_col = 0,
+      user_seq = "x", optimal_results = { { seq = "y", cost = 1.0 } },
+    }
+  end
+  local captured_reason = nil
+  session_store.finish_session = function(_id, _result, _alias, _override, reason)
+    captured_reason = reason
+    return true
+  end
+  fire_idle()
+  assert_eq(captured_reason, "suggest_idle")
+  restore()
+end)
+
+test("fire_keys: passes 'suggest_keys' as the reason", function()
+  setup_enabled()
+  config.auto_suggest = { keys = { every = 30 }, cooldown_ms = 5000 }
+  session.compute_result_for_active = function()
+    return {
+      start_row = 0, start_col = 0, end_row = 0, end_col = 0,
+      user_seq = "x", optimal_results = { { seq = "y", cost = 1.0 } },
+    }
+  end
+  local captured_reason = nil
+  session_store.finish_session = function(_id, _result, _alias, _override, reason)
+    captured_reason = reason
+    return true
+  end
+  fire_keys()
+  assert_eq(captured_reason, "suggest_keys")
+  restore()
+end)
+
+test("fire_cost: passes 'suggest_cost' as the reason", function()
+  setup_enabled()
+  config.auto_suggest = {
+    cost = { m = 1.0, b = 0.0, ms = 300, window = "100" },
+    cooldown_ms = 5000,
+  }
+  session.compute_result_for_active = function()
+    return {
+      start_row = 0, start_col = 0, end_row = 0, end_col = 0,
+      user_seq = "x", user_cost = 20,
+      optimal_results = { { seq = "y", cost = 10.0 } },
+    }
+  end
+  local captured_reason = nil
+  session_store.finish_session = function(_id, _result, _alias, _override, reason)
+    captured_reason = reason
+    return true
+  end
+  fire_cost()
+  assert_eq(captured_reason, "suggest_cost")
+  restore()
+end)
+
 test("fire_cost: gate fail finishes the record (consume, not leak)", function()
   setup_enabled()
   local captured = { id = "fake-id", start_kind = "auto", end_kind = "manual" }

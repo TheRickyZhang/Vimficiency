@@ -24,7 +24,7 @@ local function seed_and_finish_manual(alias, finish_alias)
     key_seq = {},
   })
   -- A dummy result table is fine; default_save_name never inspects it.
-  session_store.finish_session(id, { user_seq = "" }, finish_alias)
+  session_store.finish_session(id, { user_seq = "" }, finish_alias, nil, "manual")
   return id
 end
 
@@ -65,6 +65,11 @@ end)
 test("default_save_name: @ resolves to manual finish alias", function()
   seed_and_finish_manual("savedefault", "savedefault")
   assert_eq(session.default_save_name("@"), "savedefault")
+  -- Also verifies the reason stamping: the seed helper passes
+  -- `"manual"` through finish_session, so the stored result must carry
+  -- the reason — the header formatter depends on this field.
+  local last_result = session_store.get_last_finished_result()
+  assert_eq(last_result and last_result.finish_reason, "manual")
 end)
 
 test("default_save_name: @ resolves to recall finish alias", function()

@@ -136,6 +136,23 @@ test("finish failure on a recall record preserves the ring slice", function()
   pcall(vim.api.nvim_buf_delete, buf_b, { force = true })
 end)
 
+test("can_store_manual: finished records do not consume capacity slots", function()
+  -- Regression guard for a prior bug where `manual_count` tracked indexed
+  -- aliases (active + finished) instead of only actives. After 5 finishes,
+  -- new aliases were wrongly blocked even though nothing was active.
+  fresh_buf()
+  for _, alias in ipairs({ "capa", "capb", "capc", "capd", "cape" }) do
+    session.start(alias)
+    local rec = session_store.get_active(alias)
+    assert_true(rec ~= nil, "start failed for " .. alias)
+    -- Finish directly via the store (side-steps compute_result_for_active).
+    session_store.finish_session(rec.id, { user_seq = "" }, alias, nil, "manual")
+  end
+  -- Five finished records hold their alias slots but none are active.
+  assert_eq(session_store.can_store_manual("capf"), true,
+    "a new alias must be allowed when all existing records are finished")
+end)
+
 test("finish failure on a manual record removes it (regression guard)", function()
   -- Symmetric to the recall test: a Mark/Watch session genuinely ends
   -- on finish failure. If we ever "fix" the recall branch by skipping

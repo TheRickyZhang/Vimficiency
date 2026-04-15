@@ -75,7 +75,9 @@ local function render_suggestion(summary)
   local result = summary.result
   if not result then return end
 
-  local header = "vimficiency suggest " .. result_view.format_position(result)
+  local header = "vimficiency suggest "
+    .. result_view.format_position(result)
+    .. result_view.format_reason_suffix(result)
   local body = result_view.format_body(result)
   vim.notify(header .. "\n" .. table.concat(body, "\n"), vim.log.levels.INFO)
 end
@@ -97,8 +99,9 @@ end
 ---
 ---@param window string                              Recall alias to analyze.
 ---@param gate fun(result: ResultSession): boolean|nil  Optional veto. Return false to suppress notification; the record is still consumed.
+---@param reason FinishReason                         Which trigger fired; stored on the result for the header annotation.
 ---@return boolean counted
-local function fire_with_window(window, gate)
+local function fire_with_window(window, gate, reason)
   if not session_store.is_recall_enabled() then return false end
 
   local active = session_store.get_active(window)
@@ -120,14 +123,14 @@ local function fire_with_window(window, gate)
   -- window, don't notify. Still consume the record so subsequent
   -- ticks don't re-pay the analysis cost on the same boundary.
   if gate and not gate(result) then
-    session_store.finish_session(id, result, window, "auto")
+    session_store.finish_session(id, result, window, "auto", reason)
     return true
   end
 
   local fp = fingerprint_result(result)
   if fp == last_fingerprint then
     -- Silently consume this exact record so we stop re-analyzing it.
-    session_store.finish_session(id, result, window, "auto")
+    session_store.finish_session(id, result, window, "auto", reason)
     return true
   end
 
@@ -136,7 +139,7 @@ local function fire_with_window(window, gate)
   -- finish_session, so a finish that returns false leaves end_kind
   -- untouched — never a mislabeled Suggest on a record that didn't
   -- actually finish.
-  if not session_store.finish_session(id, result, window, "auto") then
+  if not session_store.finish_session(id, result, window, "auto", reason) then
     return true
   end
 
@@ -151,7 +154,7 @@ end
 local function fire_idle()
   local cfg = config.auto_suggest
   if not cfg or not cfg.idle then return false end
-  return fire_with_window(cfg.idle.window, nil)
+  return fire_with_window(cfg.idle.window, nil, "suggest_idle")
 end
 
 ---@return boolean counted
@@ -161,7 +164,7 @@ local function fire_keys()
   -- `every` is the analysis slice: "surface suggestions based on the
   -- last N keystrokes, every N keystrokes." A separate window knob
   -- would just collapse to this same value.
-  return fire_with_window(tostring(cfg.keys.every), nil)
+  return fire_with_window(tostring(cfg.keys.every), nil, "suggest_keys")
 end
 
 ---@return boolean counted
@@ -174,7 +177,7 @@ local function fire_cost()
     if not optimal then return false end
     local user_cost = result.user_cost or 0
     return user_cost > m * optimal.cost + b
-  end)
+  end, "suggest_cost")
 end
 
 --- Turn on auto-suggest. Fails silently if `config.auto_suggest` has no

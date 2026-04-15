@@ -63,6 +63,13 @@ local config = require("vimficiency.config")
 
 ---@alias ActiveSession SessionRecord
 
+---@alias FinishReason
+---| "manual"        # `:Vimfy end` (mark or recall)
+---| "watch_idle"    # watch session's idle trigger fired
+---| "suggest_idle"  # auto_suggest.idle fired
+---| "suggest_keys"  # auto_suggest.keys fired
+---| "suggest_cost"  # auto_suggest.cost fired
+
 --- ResultSession: data for a completed session, ready for simulate().
 ---@class ResultSession
 ---@field lines string[]               # Trimmed buffer lines used for optimization
@@ -76,6 +83,7 @@ local config = require("vimficiency.config")
 ---@field start_time integer           # hrtime when the session started
 ---@field key_count integer            # Captured key events at finish (authoritative; user_seq is bytes, not keys)
 ---@field timestamp integer            # hrtime when the result was computed (finish time)
+---@field finish_reason FinishReason   # Why the session ended (absent on pre-reason saved files)
 
 --- SessionSummary: normalized view-model used by `:Vimfy list`, auto-suggest
 --- notifications, and the future session menu. One shape regardless of
@@ -168,7 +176,7 @@ end
 -- Constants
 --------------------------------------------------------------------------------
 
-local MANUAL_CAPACITY = 5      -- concurrent active sessions; alias grammar is strict alphabetic (see alias.lua)
+local MANUAL_CAPACITY = 5      -- concurrent active sessions. Finished records retain their alias slot (for `save @` / `view <alias>`) but do not count against this cap. Alias grammar is strict alphabetic (see alias.lua).
 
 --------------------------------------------------------------------------------
 -- Storage
@@ -179,7 +187,6 @@ local session_records = {}
 
 ---@type table<string, string>  -- alias -> id
 local manual_alias_to_id = {}
-local manual_count = 0
 
 ---@type string[]  -- ordered deque of recall ids (oldest first, newest last)
 local recall_id_order = {}
@@ -331,11 +338,21 @@ end
 
 --- Check if we can store a manual session.
 --- Call this BEFORE allocating resources (key_nsid) to avoid cleanup on failure.
+--- The cap is on concurrent *active* sessions — finished records still
+--- hold their alias slot (so `:Vimfy save @` / `:Vimfy view <alias>`
+--- keep working) but don't block a new start. At N≤5 we just scan.
 ---@param alias string
 ---@return boolean can_store
 function M.can_store_manual(alias)
-  if manual_alias_to_id[alias] then return true end  -- overwrite always allowed
-  return manual_count < MANUAL_CAPACITY
+  if manual_alias_to_id[alias] then return true end  -- overwrite/replace always allowed
+  local active_count = 0
+  for _, id in pairs(manual_alias_to_id) do
+    local rec = session_records[id]
+    if rec and rec.status == "active" then
+      active_count = active_count + 1
+    end
+  end
+  return active_count < MANUAL_CAPACITY
 end
 
 --- Store a manual session.
@@ -348,8 +365,6 @@ function M.store_manual(alias, record)
 
   if existing_id then
     destroy_record(existing_id)
-  else
-    manual_count = manual_count + 1
   end
 
   manual_alias_to_id[alias] = record.id
@@ -426,7 +441,6 @@ function M.remove(id)
   end
   if manual_alias then
     manual_alias_to_id[manual_alias] = nil
-    manual_count = manual_count - 1
   else
     unindex_recall(id)
   end
@@ -448,13 +462,17 @@ end
 ---@param result ResultSession
 ---@param finish_alias string|nil       Literal alias the caller used for this finish (`a`, `3s`, etc.); stored for `:Vimfy save @` default naming
 ---@param end_kind_override "manual"|"auto"|nil  When non-nil, atomically update rec.end_kind as part of the same status transition. Used by auto_suggest to promote a Recall record (`auto, manual`) to Suggest (`auto, auto`) only on confirmed finish — a speculative mutation before finish would leave a failed compute/finish path with a mislabeled record.
+---@param reason FinishReason           Why the session ended; stored on the result for display and debugging.
 ---@return boolean success
-function M.finish_session(id, result, finish_alias, end_kind_override)
+function M.finish_session(id, result, finish_alias, end_kind_override, reason)
   local rec = session_records[id]
   if not rec or rec.status ~= "active" then return false end
 
   assert(end_kind_override == nil or end_kind_override == "manual" or end_kind_override == "auto",
     "end_kind_override must be 'manual', 'auto', or nil; got: " .. tostring(end_kind_override))
+  assert(reason == "manual" or reason == "watch_idle"
+      or reason == "suggest_idle" or reason == "suggest_keys" or reason == "suggest_cost",
+    "reason must be a FinishReason; got: " .. tostring(reason))
 
   if rec.watch_disarm then
     rec.watch_disarm()
@@ -468,6 +486,7 @@ function M.finish_session(id, result, finish_alias, end_kind_override)
   if end_kind_override then
     rec.end_kind = end_kind_override
   end
+  result.finish_reason = reason
   rec.status = "finished"
   rec.result = result
   rec.key_count = #(rec.key_seq or {})

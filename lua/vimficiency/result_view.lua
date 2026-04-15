@@ -15,6 +15,13 @@ function M.format_position(result)
     result.start_row, result.start_col, result.end_row, result.end_col)
 end
 
+---@param result ResultSession
+---@return string  e.g. " [manual]", or "" if absent (legacy saved files)
+function M.format_reason_suffix(result)
+  if not result.finish_reason then return "" end
+  return " [" .. result.finish_reason .. "]"
+end
+
 --- Format the body of a result as a list of display lines:
 ---   `  user: <seq> (<cost>)`
 ---   `  1. <seq> (<cost>)`

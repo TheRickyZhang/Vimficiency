@@ -301,6 +301,11 @@ function M.start(alias)
       end
     end,
     function(session)
+      -- Window gone → session context is dead; evict. Without this guard
+      -- nvim_win_get_cursor throws and breaks key tracking.
+      if not v.nvim_win_is_valid(session.win) then
+        return "Vimficiency: session [" .. alias .. "] dropped — window closed"
+      end
       -- Cursor is [row1, col0]; start_state.row is 0-indexed.
       local cursor = v.nvim_win_get_cursor(session.win)
       local reason = M.manual_should_evict(
@@ -380,6 +385,9 @@ function M.watch(alias)
       end
     end,
     function(session)
+      if not v.nvim_win_is_valid(session.win) then
+        return "Vimficiency: watch [" .. alias .. "] dropped — window closed"
+      end
       local cursor = v.nvim_win_get_cursor(session.win)
       local reason = M.manual_should_evict(
         session, cursor[1] - 1, vim.uv.hrtime()
@@ -410,7 +418,7 @@ function M.watch(alias)
       -- destroy_record's disarm.
       local rec = session_store.get_active(alias)
       if not rec or rec.id ~= id then return false end
-      M.finish(alias)
+      M.finish(alias, "watch_idle")
       return true
     end,
   })
@@ -433,7 +441,9 @@ end
 
 
 ---@param alias string  The alias of the session to finish
-function M.finish(alias)
+---@param reason FinishReason|nil  Why the finish was triggered. Defaults to "manual" (the `:Vimfy end` path). Watch's idle callback passes "watch_idle".
+function M.finish(alias, reason)
+  reason = reason or "manual"
   if not alias or alias == "" then
     vim.notify("finish() requires a session alias", vim.log.levels.ERROR)
     return
@@ -475,12 +485,14 @@ function M.finish(alias)
   -- This detaches key tracking and moves from active to result storage.
   -- Pass the literal `alias` so `:Vimfy save @` can default the filename
   -- to what the user typed at end-time (otherwise recall positions drift).
-  if not session_store.finish_session(id, result, alias) then
+  if not session_store.finish_session(id, result, alias, nil, reason) then
     total_failure(active, "finish()", "failed to store result")
     return
   end
 
-  local header = "vimficiency finished [" .. alias .. "] " .. result_view.format_position(result)
+  local header = "vimficiency finished [" .. alias .. "] "
+    .. result_view.format_position(result)
+    .. result_view.format_reason_suffix(result)
   local body = result_view.format_body(result)
   vim.notify(header .. "\n" .. table.concat(body, "\n"), vim.log.levels.INFO)
 end

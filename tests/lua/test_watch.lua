@@ -107,11 +107,13 @@ test("watch: finish (manual :Vimfy end) disarms the trigger", function()
     local name = "watch_" .. rec.id
 
     local fake_result = { user_seq = "" }
-    assert_eq(session_store.finish_session(rec.id, fake_result, "wfinish"), true)
+    assert_eq(session_store.finish_session(rec.id, fake_result, "wfinish", nil, "watch_idle"), true)
 
     local kt = require("vimficiency.key_tracking")
     assert_eq(kt.is_global_attached(name), false,
       "finish_session must disarm the watch trigger")
+    assert_eq(fake_result.finish_reason, "watch_idle",
+      "finish_session must stamp the reason onto the result")
   end)
 end)
 
