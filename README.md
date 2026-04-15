@@ -29,17 +29,16 @@ Ensure `build/libvimficiency.so` is in your library path or set `VIMFICIENCY_LIB
 
 ## Usage
 
-### Manual triggerss
+### Manual triggers
 ```vim
 :Vimfy start a      " Start recording session 'a'
 " ... edit normally ...
 :Vimfy end a        " Finish and show optimization suggestions
 
+" Or, retrospectively, without starting anything:
 " ... edit normally ...
-:Vimfy end @        " Finish from past session
-
-" ... edit normally ...
-:Vimfy end @        " Finish from past session
+:Vimfy recall 6     " Analyze the last 6 keystrokes
+:Vimfy recall 3s    " Analyze the last 3 seconds
 ```
 
 ## License

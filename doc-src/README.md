@@ -6,7 +6,7 @@ already do — it just surfaces better motions in the background and lets you
 replay them side-by-side to learn.
 
 This guide covers everything you need to use the plugin day-to-day. For
-internals and implementation notes, see the rest of `docs/`.
+internals and implementation notes, see `dev/`.
 
 ---
 
@@ -16,7 +16,7 @@ internals and implementation notes, see the rest of `docs/`.
 2. [The core idea: a session](02-sessions.md) — the 2×2 of session types
 3. [Mark](03-mark.md) — manual start, manual end (alphabetical aliases)
 4. [Watch](04-watch.md) — manual start, auto end (idle-fires `end`)
-5. [Recall](05-recall.md) — auto start, manual end (`end N` / `end Ns`)
+5. [Recall](05-recall.md) — auto start, manual end (`recall N` / `recall Ns`)
 6. [Suggest](06-suggest.md) — auto start, auto end (idle-surfaces result)
 7. [Inspecting results](07-results.md) — notifications, simulate, list, view
 8. [Binding keys to Vimfy](08-keymaps.md) — `<Plug>` maps and `wrap()`
@@ -38,9 +38,9 @@ require('vimficiency').setup()
 ```
 
 ```vim
-:Vimfy recall on         " turn on rolling capture
+" Recall is always on — just start editing.
 " ... edit something ...
-:Vimfy end 6             " analyze the last 6 keys (or 'end 3s' for time)
+:Vimfy recall 6          " analyze the last 6 keys (or 'recall 3s' for time)
 :Vimfy sim 6             " animate the suggestion
 ```
 

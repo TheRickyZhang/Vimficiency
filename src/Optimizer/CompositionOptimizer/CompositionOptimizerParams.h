@@ -21,7 +21,7 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   // Line padding for MotionOptimizer calls.
   // Controls how many lines above/below the search region to include.
   // Allows overshoot-and-return paths while bounding search space.
-  // See docs/optimizer/buffer-slicing.md for details.
+  // See dev/optimizer/buffer-slicing.md for details.
   int motionPaddingAbove = 1;
   int motionPaddingBelow = 1;
 

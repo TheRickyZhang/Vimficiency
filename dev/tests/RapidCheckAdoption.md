@@ -71,7 +71,7 @@ The minimal case often reveals the bug instantly.
 Your highest-value tests use NeovimOracle for ground truth. Problem:
 
 ```cpp
-// Oracle has stability limits (from docs/testing.md)
+// Oracle has stability limits (from dev/tests/testing.md)
 // "After ~800 buffer operations, call oracle->restart() to reset"
 ```
 

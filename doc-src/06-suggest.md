@@ -5,8 +5,8 @@
 # 6. Suggest (auto start, auto end)
 
 Suggest runs the optimizer on its own and surfaces a result without
-you calling `:Vimfy end`. It reuses the recall queue for the start and
-fires on triggers you configure.
+you calling `:Vimfy end` or `:Vimfy recall`. It reuses the recall queue
+for the start and fires on triggers you configure.
 
 ```lua
 require('vimficiency').setup({
@@ -85,8 +85,8 @@ Suggest share that policy.
 
 ## Relationship to the recall queue
 
-Suggest queries the same queue as [Recall](05-recall.md) — enabling
-`auto_suggest` turns recall on automatically.
+Suggest queries the same queue as [Recall](05-recall.md). Recall is
+always on, so there's nothing to configure for it separately.
 
 ---
 

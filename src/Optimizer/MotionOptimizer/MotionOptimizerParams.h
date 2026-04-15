@@ -21,7 +21,7 @@ struct MotionOptimizerParams : OptimizerParamsBase {
   // Line padding for sub-buffer slicing.
   // Controls how many lines above/below the search region to include.
   // Allows overshoot-and-return paths while bounding search space.
-  // See docs/optimizer/buffer-slicing.md for details.
+  // See dev/optimizer/buffer-slicing.md for details.
   int linePaddingAbove = 2;
   int linePaddingBelow = 2;
 

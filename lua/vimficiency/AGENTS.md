@@ -24,15 +24,17 @@ The Lua layer is a Neovim plugin that captures user editing sessions and calls t
 1. **Manual** (aliases: arbitrary alphabetic strings — e.g. `a`, `refactor`, `bugfix`;
    capacity: 5 concurrent active sessions)
    User-controlled: `:Vimfy start <name>` / `:Vimfy end <name>`. Grammar is
-   anything that doesn't match the recall forms (`^%d+$`, `^%d+s$`).
+   strictly alphabetic (`^%a+$`); recall forms are rejected at the `end`
+   entry point with a redirect to `:Vimfy recall`.
 
-2. **Recall** (rolling ring; queried via `:Vimfy end N` or `:Vimfy end Ns`)
+2. **Recall** (rolling ring; queried via `:Vimfy recall N` or `:Vimfy recall Ns`)
    Creates a retained session on every keystroke. Both indexing modes share
    one ring — `N` means "N keys ago", `Ns` means "as far back as N seconds
    ago, snapped backward to a clean normal-mode command boundary".
-   Enable: `:Vimfy recall on` (on by default). Retention is bounded under
-   **union** semantics: evict the oldest session only when BOTH
-   `KEY_SESSION_CAPACITY` and `MAX_RETENTION_SECONDS` say drop.
+   Permanently on (installed by `session_store.install_recall()` at
+   setup). Retention is bounded under **union** semantics: evict the
+   oldest session only when BOTH `KEY_SESSION_CAPACITY` and
+   `MAX_RETENTION_SECONDS` say drop.
 
 ### Data Structures
 
@@ -78,7 +80,7 @@ is documented and the user fix is to migrate the mapping.
 
 ### Known limitations
 - Text object final character missing (`ciw` → `c, i, ?`) - Neovim consumes internally before `vim.on_key` fires
-- See `docs/neovim_on_key_issues.md` for detailed analysis and potential workarounds
+- See `dev/lua/neovim_on_key_issues.md` for detailed analysis and potential workarounds
 - See neovim/neovim#19426 for `v:motion` feature request that would help
 
 **Approximate motion conversions** (in session.lua):
@@ -120,12 +122,12 @@ Lua-side constants (not pushed to C++):
 
 ```
 :Vimfy start <alias>    -- Start manual session
-:Vimfy end <alias>      -- Finish and optimize
+:Vimfy end <alias>      -- Finish a manual session (Mark/Watch)
+:Vimfy recall <N|Ns>    -- Finish a retrospective recall window
 :Vimfy close <alias>    -- Discard session
 :Vimfy sim <alias>      -- Animate results
 :Vimfy view [name]      -- View saved results
 :Vimfy list             -- Show active/saved sessions
-:Vimfy recall <on|off|toggle>  -- Toggle the rolling recall ring
 :Vimfy suggest <on|off|toggle> -- Toggle auto-suggest (needs `auto_suggest = {...}` in setup)
 :Vimfy config           -- Show C++ config state
 :Vimfy reload           -- Rebuild C++ library

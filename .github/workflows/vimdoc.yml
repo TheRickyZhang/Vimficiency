@@ -1,0 +1,41 @@
+name: vimdoc
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'doc-src/**'
+      - 'scripts/build-vimdoc-source.sh'
+      - 'scripts/postprocess-vimdoc.sh'
+      - '.github/workflows/vimdoc.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build vimdoc source markdown
+        run: bash scripts/build-vimdoc-source.sh
+
+      - name: Convert to vimdoc via panvimdoc
+        uses: kdheepak/panvimdoc@main
+        with:
+          vimdoc: vimficiency
+          pandoc: build/vimficiency.md
+          treesitter: 'true'
+          ignore-rawblocks: 'true'
+          dedup-subheadings: 'true'
+
+      - name: Post-process vimdoc
+        run: bash scripts/postprocess-vimdoc.sh
+
+      - name: Commit regenerated vimdoc
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'docs: regenerate vimdoc'
+          file_pattern: doc/vimficiency.txt

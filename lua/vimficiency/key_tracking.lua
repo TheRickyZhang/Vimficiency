@@ -46,7 +46,7 @@ local ffi_lib = require("vimficiency.ffi")
 -- Fallback: init.lua's setup() scans existing mappings once and warns
 -- about any string RHS matching `:Vimfy` / `<Cmd>Vimfy`. Pre-setup
 -- mappings only; post-setup or Lua-callback RHS is invisible to the
--- scan by design. See docs/user/07-keymaps.md.
+-- scan by design. See doc-src/08-keymaps.md.
 --------------------------------------------------------------------------------
 
 local ignoring = false

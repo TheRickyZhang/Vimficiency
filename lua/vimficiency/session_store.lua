@@ -191,9 +191,6 @@ local manual_alias_to_id = {}
 ---@type string[]  -- ordered deque of recall ids (oldest first, newest last)
 local recall_id_order = {}
 
----@type boolean
-local recall_enabled = false
-
 ---@type string|nil  The id of the most recently finished session. Drives
 ---                   the `@` selector for `:Vimfy save`. Cleared when the
 ---                   record is destroyed (manual overwrite, recall
@@ -264,7 +261,7 @@ local function convert_alias_to_id(alias)
 
   -- Honest failure: if no retained record is at-or-before the target,
   -- the queue doesn't cover N seconds. Return nil so the caller can
-  -- surface "No recall session found within 'Ns'…" (see docs/user/05-
+  -- surface "No recall session found within 'Ns'…" (see doc-src/05-
   -- recall.md). A silent fallback to the oldest record would hand back
   -- a window much shorter than N and make N meaningless.
   local snapped = resolve_recall_cutoff(target)
@@ -614,24 +611,22 @@ function M.summarize_all()
 end
 
 --------------------------------------------------------------------------------
--- Recall enable/disable
+-- Recall install
 --------------------------------------------------------------------------------
 
----@return boolean
-function M.is_recall_enabled()
-  return recall_enabled
-end
-
---- Enable the rolling recall ring. Every keystroke creates a new retained
+--- Install the rolling recall ring. Every keystroke creates a new retained
 --- record (bounded by KEY_SESSION_CAPACITY and MAX_RETENTION_SECONDS under
 --- union semantics) and appends the key to all still-active retained
 --- records.
----@return boolean success
-function M.enable_recall()
-  if recall_enabled then
-    return false
-  end
-
+---
+--- Called once at setup time. Recall is permanently on for the lifetime
+--- of the session — there is no disable path. The bounded ring (RAM-only,
+--- never persisted) makes the off switch not worth its complexity, and
+--- recall is foundational to `end Ns` / auto_suggest.
+---
+--- `key_tracking.attach_global` is idempotent by name, so double-install
+--- (e.g. setup() called twice) is harmless — the second call no-ops.
+function M.install_recall()
   local function on_key_event(event)
     -- 1. Append key event to all still-active recall records. Finished
     --    records are skipped (their key_seq is nil and they're frozen).
@@ -678,29 +673,7 @@ function M.enable_recall()
     M.store_recall(rec)
   end
 
-  local success = key_tracking.attach_global(on_key_event)
-  if success then
-    recall_enabled = true
-  end
-  return success
-end
-
---- Disable the recall ring. Drops all recall records (active and
---- finished) — recall results are transient by design. The user can
---- promote a finished result into disk via `:Vimfy save <alias> [<name>]`
---- before disabling if they want to keep it.
-function M.disable_recall()
-  if not recall_enabled then
-    return
-  end
-
-  key_tracking.detach_global()
-  recall_enabled = false
-
-  for i = #recall_id_order, 1, -1 do
-    destroy_record(recall_id_order[i])
-  end
-  recall_id_order = {}
+  key_tracking.attach_global(on_key_event)
 end
 
 -- Test-only exports of pure helpers. Not part of the public API; the

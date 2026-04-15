@@ -20,7 +20,6 @@ local vimfy = require('vimficiency')
 
 vimfy.map('n', '<leader>vs', 'start a')
 vimfy.map('n', '<leader>ve', 'end a')
-vimfy.map('n', '<leader>vr', 'recall toggle')
 vimfy.map('n', '<leader>vq', 'save @ quick')
 ```
 
@@ -70,7 +69,6 @@ vim.keymap.set('n', '<leader>vs', '<Plug>VimfyStartA', { remap = true })
 | `<Plug>VimfyEnd{A,B,C,D,E}`          | `:Vimfy end <alias>`                 |
 | `<Plug>VimfyClose{A,B,C,D,E}`        | `:Vimfy close <alias>`               |
 | `<Plug>VimfySim{A,B,C,D,E}`          | `:Vimfy sim <alias>`                 |
-| `<Plug>VimfyRecall{On,Off,Toggle}`   | `:Vimfy recall <on\|off\|toggle>`    |
 | `<Plug>VimfySuggest{On,Off,Toggle}`  | `:Vimfy suggest <on\|off\|toggle>`   |
 | `<Plug>VimfyList`                    | `:Vimfy list`                        |
 | `<Plug>VimfyConfig`                  | `:Vimfy config`                      |

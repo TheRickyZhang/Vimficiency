@@ -54,9 +54,9 @@ require('vimficiency').setup({ watch = { idle = { ms = 3000 }, cooldown_ms = 500
 Recall is built for this:
 
 ```vim
-:Vimfy recall on    " do this once, leave on
+" Recall is always recording — just query it.
 " ... clumsy edit, say 5 keys ...
-:Vimfy end 5        " or `end 3s` if time is the easier estimate
+:Vimfy recall 5     " or `recall 3s` if time is the easier estimate
 :Vimfy sim 5
 ```
 

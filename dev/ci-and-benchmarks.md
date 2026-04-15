@@ -1,5 +1,10 @@
 # CI/CD and Benchmark Dashboard
 
+This page covers the benchmark pipeline. The separate
+`.github/workflows/vimdoc.yml` workflow regenerates
+`doc/vimficiency.txt` from `doc-src/**` on pushes to `main`; see
+[script-usage.md](./script-usage.md) for that pipeline.
+
 ## CI Workflow (`.github/workflows/bench.yml`)
 
 The single workflow file defines three jobs, all running on `ubuntu-latest`.
