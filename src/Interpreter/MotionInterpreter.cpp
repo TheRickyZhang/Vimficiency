@@ -307,9 +307,12 @@ CursorPos simulateMotions(CursorPos pos, std::string_view motionSeq, const Lines
                          const NavContext& navContext) {
   assert(!lines.empty() && "Lines can't be empty");
   Mode mode = Mode::Normal;  // Motions don't change mode, so use dummy
-  auto motions = parseMotions(motionSeq);
-  assert(motions && "simulateMotions requires a valid motion sequence");
-  for (const auto& motion : *motions) {
+  // Test-only helper: inputs are hand-authored valid motion strings, so
+  // `.value()` is the right precondition check. In debug it's an assert;
+  // in release it throws `std::bad_expected_access` rather than UB on a
+  // bare `*motions` dereference.
+  auto motions = parseMotions(motionSeq).value();
+  for (const auto& motion : motions) {
     applyParsedMotion(pos, mode, motion, lines, navContext);
   }
   return pos;

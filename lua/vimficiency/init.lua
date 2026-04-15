@@ -589,7 +589,12 @@ function M.setup(user_config)
 	-- doesn't have to opt in twice. Explicit `:Vimfy recall off` /
 	-- `:Vimfy suggest off` at runtime still wins. Quiet because setup()
 	-- shouldn't spam notifications.
-	if config.auto_suggest then
+	--
+	-- Gate on is_configured() (not just truthiness): the default
+	-- auto_suggest table carries `cooldown_ms` but no triggers, and the
+	-- user can explicitly disable with `auto_suggest = false`. Either way,
+	-- without a real trigger there's nothing to enable.
+	if config.auto_suggest and auto_suggest.is_configured() then
 		session.enable_recall({ quiet = true })
 		auto_suggest.enable()
 	end

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Keyboard/Config.h"
 #include "Keyboard/Finger.h"
 #include "Keyboard/Hand.h"
 #include "Keyboard/Key.h"

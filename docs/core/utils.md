@@ -32,6 +32,23 @@ std::string formatSequenceForDisplay(std::string_view seq);
 - Typed text: Characters typed in insert mode (between change command and `<Esc>`)
 - Special keys: `<Esc>`
 
+`parseSequence` / `parseSequenceStrings` return
+`std::expected<..., SequenceParseError>` with two error kinds:
+`UnknownCharacter` (byte not recognized in command-mode slot) and
+`MalformedSpecialKey` (`<` without a valid closing `>` in a
+command-mode slot). Insert-mode typed text stays *tolerant*: a bare
+`<` with no closing `>` is treated as a literal character, matching
+Vim's own behavior for typed text.
+
+The error channel is consumed only at the FFI boundary
+(`vimficiency_tokenize_sequence`); internal callers receive
+optimizer-produced sequences and call `.value()`. See the ADR
+section "Error-handling boundary" for the rationale.
+
+`formatSequenceForDisplay` is an exception to the assert-fast rule:
+it's fed captured user keystrokes via Lua and falls back to the raw
+string on parse failure.
+
 **Usage**: FFI output and debug display. Raw sequences are used internally for execution and cost calculation.
 
 ## Debug (`Debug.h`)

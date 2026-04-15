@@ -63,6 +63,60 @@ We completed a structural cleanup to enforce explicit module boundaries in `src/
   `src/Interpreter/SequenceFormatting.*` as interpreter-level parsing/formatting
   functionality.
 
+## Error-handling boundary: `std::expected` at the FFI, asserts inside
+
+Both `parseMotions` and `parseSequence` return
+`std::expected<..., SequenceParseError>` / `MotionParseError`, but the
+error channel is only *consumed* at one place: the FFI boundary in
+`src/LuaExports/UtilityExports.cpp` (`vimficiency_tokenize_motions`,
+`vimficiency_tokenize_sequence`). Every internal caller — the
+optimizer's human-approval printer, `operator<<(Sequence)`, test
+scaffolding — calls `.value()` and asserts on failure.
+
+The shape comes from balancing two observations that looked
+contradictory:
+
+- The performance layer (C++) shouldn't be burdened with error
+  ceremony for inputs it fully controls. Propagating
+  `std::expected` through every internal caller is pure overhead
+  when the producer is the optimizer itself.
+- The Lua layer legitimately does hand arbitrary keystroke strings
+  to the parser — `vimficiency_tokenize_sequence` can be called on
+  captured `user_seq` (raw `vim.on_key` output), which can contain
+  anything. Without an error channel, the FFI's only options were
+  either silent-downgrade (emit a garbage `Motion` token for an
+  unknown byte) or a hard crash.
+
+Resolution: keep `std::expected` as the API shape so the FFI has a
+typed channel to report back to Lua, but don't propagate it inward.
+Internal callers receive optimizer-produced sequences and are
+entitled to assert — a failure there is a real bug, not a user
+error.
+
+Two callers are explicitly *tolerant* rather than `.value()` because
+their inputs are not optimizer-produced:
+
+- `formatSequenceForDisplay` (consumer: Lua's `format_sequence` on
+  captured `user_seq`). Falls back to printing the raw string on
+  parse failure so the user still sees their keystrokes.
+- `CompositionOptimizer`'s human-approval printer. The optimizer
+  emits visual-selection strategies (`v{motion}d`, see
+  `EditOptimizer.cpp`'s `Sequence visualSeq("v")` site) that
+  `parseSequence` doesn't currently model — it's a two-state
+  grammar (normal ↔ insert) with no visual-mode state, no
+  `v/V/<C-v>` entry rule, and no selection-consuming operator rule.
+  The printer prints the raw sequence rather than aborting. If the
+  parser ever grows a visual-mode grammar (or the optimizer drops
+  that strategy), this fallback should revert to `.value()`.
+
+Explicit non-goals, kept this way deliberately:
+
+- `parseEdits` (`EditInterpreter.cpp`) still `assert(false)`s on
+  malformed special keys. Same pattern applies, separate follow-up.
+- `Snapshot.cpp`'s assert cluster on malformed session files is a
+  different semantic class (on-disk corruption, not user input) and
+  probably wants its own `SnapshotLoadError` type.
+
 
 # EditResult
 

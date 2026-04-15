@@ -48,6 +48,16 @@ Sequences are tokenized into logical units using `SequenceParser`:
 
 Raw sequence: `3rx<C-d>ciwfoo<Esc>` → Formatted: `3rx <C-d> ciw foo <Esc>`
 
+`parseSequence` is fallible (returns
+`std::expected<..., SequenceParseError>`). For the `user_seq` path —
+where Lua hands raw captured keystrokes to the FFI —
+`format_sequence` falls back to the raw string rather than surfacing
+an error, so the user always sees their keystrokes even if the
+grammar rejects them. The FFI's tokenizer exports
+(`vimficiency_tokenize_motions`, `vimficiency_tokenize_sequence`)
+return `ERROR: ...` strings on parse failure so Lua callers can
+distinguish a real error from an empty result.
+
 ### Cost Calculation
 
 User cost is calculated using `getEffort(keyseq, config)` from `RunningEffort.h`, which:

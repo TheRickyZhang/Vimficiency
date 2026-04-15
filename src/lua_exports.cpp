@@ -1,5 +1,9 @@
 #include "LuaExports/Shared.h"
 
+#include "Optimizer/GlobalRuntimeOptions.h"
+#include "Utils/Debug.h"
+#include "VimCore/VimOptions.h"
+
 namespace vimficiency::lua_exports {
 
 static const char* g_key_names[] = {

@@ -120,6 +120,11 @@ function M.normalize_auto_suggest(raw, defaults)
   if raw == nil then
     return vim.deepcopy(defaults)
   end
+  -- Master off switch — documented in the ADR as the way to disable
+  -- auto_suggest entirely without removing the (future) defaults.
+  if raw == false then
+    return false
+  end
 
   expect_table("auto_suggest", raw)
   expect_exact_keys("auto_suggest", raw, {
