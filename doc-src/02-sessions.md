@@ -18,10 +18,10 @@ Every session is bounded by a **start** and an **end**. Each of those
 can be picked manually (by you) or automatically (by triggers from your configuration). The four types have distinct names, and manual invoking is outlined here:
 
 
-|                      | **Manual end** (`:Vimfy end`)         | **Auto end** (idle trigger)                      |
-|----------------------|----------------------------------------|---------------------------------------------------|
-| **Manual start**     | **Mark** — `:Vimfy start <alias>`, `Vimfy end <alias>`     | **Watch** — `:Vimfy watch <alias>`                |
-| **Auto start**       | **Recall** — `:Vimfy end N` / `end Ns`| **Suggest** — fires on its own while you edit     |
+|                      | **Manual end**                                         | **Auto end** (idle trigger)                      |
+|----------------------|--------------------------------------------------------|---------------------------------------------------|
+| **Manual start**     | **Mark** — `:Vimfy start <alias>`, `:Vimfy end <alias>` | **Watch** — `:Vimfy watch <alias>`                |
+| **Auto start**       | **Recall** — `:Vimfy recall N` / `recall Ns`           | **Suggest** — fires on its own while you edit     |
 
 
 

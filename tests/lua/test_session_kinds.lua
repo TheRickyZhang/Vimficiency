@@ -5,7 +5,7 @@
 --
 --   Mark    = (manual, manual)   via session.start
 --   Watch   = (manual, auto)     via session.watch
---   Recall  = (auto,   manual)   via session_store.enable_recall
+--   Recall  = (auto,   manual)   via session_store.install_recall
 --   Suggest = (auto,   auto)     Recall record flipped at Suggest takeover
 
 local config       = require("vimficiency.config")
@@ -117,7 +117,7 @@ test("Watch: session.watch yields (manual, auto)", function()
 end)
 
 test("Recall: records created through the queue are (auto, manual)", function()
-  -- Directly construct what enable_recall's on_key_event constructs —
+  -- Directly construct what install_recall's on_key_event constructs —
   -- the contract is structural, and a headless test can't easily
   -- fire real keystrokes into the global subscriber.
   local rec = session_store.new_active_session(
@@ -136,7 +136,6 @@ test("Suggest: fire_idle flips a Recall record to (auto, auto)", function()
   -- via `active.end_kind = "auto"` inside fire_idle before finish.
   local orig = {
     auto_suggest          = config.auto_suggest,
-    is_recall_enabled     = session_store.is_recall_enabled,
     get_active            = session_store.get_active,
     finish_session        = session_store.finish_session,
     summarize             = session_store.summarize,
@@ -146,7 +145,6 @@ test("Suggest: fire_idle flips a Recall record to (auto, auto)", function()
     idle = { ms = 200, window = "3s" },
     cooldown_ms = 5000,
   }
-  session_store.is_recall_enabled = function() return true end
   local record = { id = "x", start_kind = "auto", end_kind = "manual" }
   session_store.get_active    = function() return record end
   -- Honor the end_kind override to mirror the real store's atomic
@@ -174,7 +172,6 @@ test("Suggest: fire_idle flips a Recall record to (auto, auto)", function()
     "end_kind must flip to 'auto' on Suggest takeover")
 
   config.auto_suggest              = orig.auto_suggest
-  session_store.is_recall_enabled  = orig.is_recall_enabled
   session_store.get_active         = orig.get_active
   session_store.finish_session     = orig.finish_session
   session_store.summarize          = orig.summarize

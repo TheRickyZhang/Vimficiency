@@ -17,7 +17,7 @@ struct EditOptimizerParams : OptimizerParamsBase {
   // Line padding for internal MotionOptimizer calls (visual delete path).
   // Lower default than CompositionOptimizer since effectiveLines already
   // includes prefix/suffix context. Adjustable to 0 for no padding.
-  // See docs/optimizer/buffer-slicing.md for details.
+  // See dev/optimizer/buffer-slicing.md for details.
   int motionLinePaddingAbove = 1;
   int motionLinePaddingBelow = 1;
 

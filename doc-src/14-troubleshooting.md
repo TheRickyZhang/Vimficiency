@@ -14,9 +14,6 @@ errored (likely couldn't load the library — check `VIMFICIENCY_LIB_PATH`).
 - Is it configured? `auto_suggest = { idle = { ms = N, window = "..." } }`
   in `setup{}`.
 - Is it enabled at runtime? `:Vimfy suggest on`.
-- Is the queue recording? Suggest analyzes the recall queue — it
-  needs `:Vimfy recall on` (or the default, which enables recall when
-  `auto_suggest` is configured).
 
 ## Watch never fires
 
@@ -47,10 +44,9 @@ Typo in a `setup{}` key. The warning names them. Cross-check against
 
 ## I want to start over cleanly
 
-- `:Vimfy recall off` then `:Vimfy recall on` discards the queue.
 - `:Vimfy close <alias>` throws away any active session.
-- Restarting Neovim clears all in-memory state; saved-to-disk results
-  survive.
+- Restarting Neovim clears all in-memory state (including the recall
+  ring); saved-to-disk results survive.
 
 ## Still stuck?
 

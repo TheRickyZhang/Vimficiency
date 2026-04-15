@@ -6,6 +6,7 @@ local session = require("vimficiency.session")
 local session_store = require("vimficiency.session_store")
 local key_tracking = require("vimficiency.key_tracking")
 local auto_suggest = require("vimficiency.auto_suggest")
+local alias_mod = require("vimficiency.alias")
 local M = {}
 
 -- Re-export config for backwards compatibility
@@ -58,7 +59,7 @@ subcommands.watch = {
 }
 
 subcommands["end"] = {
-	desc = "Finish a session and show results",
+	desc = "Finish a manual session and show results",
 	usage = "end <alias>",
 	fn = function(args)
 		local alias = args[1]
@@ -67,6 +68,19 @@ subcommands["end"] = {
 			return
 		end
 		session.finish(alias)
+	end,
+}
+
+subcommands.recall = {
+	desc = "Finish a retrospective recall window (N keys ago or Ns)",
+	usage = "recall <N|Ns>",
+	fn = function(args)
+		local alias = args[1]
+		if not alias or alias == "" then
+			vim.notify("Usage: Vimfy recall <N|Ns> (e.g. 5 or 3s)", vim.log.levels.ERROR)
+			return
+		end
+		session.recall(alias)
 	end,
 }
 
@@ -164,11 +178,6 @@ subcommands.suggest = {
 				)
 				return
 			end
-			-- Auto-suggest needs recall recording to have anything to analyze.
-			-- Silently turn it on; matches the setup-time coupling.
-			if not session.is_recall_enabled() then
-				session.enable_recall({ quiet = true })
-			end
 			if auto_suggest.enable() then
 				vim.notify("vimficiency auto-suggest enabled", vim.log.levels.INFO)
 			else
@@ -190,27 +199,6 @@ subcommands.suggest = {
 			end
 		else
 			vim.notify("Usage: Vimfy suggest <on|off|toggle>", vim.log.levels.ERROR)
-		end
-	end,
-}
-
-subcommands.recall = {
-	desc = "Control the rolling recall ring",
-	usage = "recall <on|off|toggle>",
-	fn = function(args)
-		local action = args[1]
-		if action == "on" then
-			session.enable_recall()
-		elseif action == "off" then
-			session.disable_recall()
-		elseif action == "toggle" then
-			if session.is_recall_enabled() then
-				session.disable_recall()
-			else
-				session.enable_recall()
-			end
-		else
-			vim.notify("Usage: Vimfy recall <on|off|toggle>", vim.log.levels.ERROR)
 		end
 	end,
 }
@@ -247,12 +235,7 @@ subcommands.help = {
 	desc = "Show help",
 	usage = "help",
 	fn = function()
-		local lines = { "Vimficiency commands:", "" }
-		for name, cmd in pairs(subcommands) do
-			table.insert(lines, string.format("  Vimfy %-20s %s", cmd.usage, cmd.desc))
-		end
-		table.sort(lines)
-		vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO)
+		vim.cmd("help vimficiency")
 	end,
 }
 
@@ -357,7 +340,7 @@ end
 ---   vimfy.map('n', 'Z', function() vim.cmd('Vimfy start a') end)
 ---
 --- Prefer this over `nnoremap X :Vimfy ...<CR>`: the latter counts the
---- LHS keystroke as motion (see docs/user/07-keymaps.md).
+--- LHS keystroke as motion (see doc-src/08-keymaps.md).
 ---@param mode string|string[]       Passthrough to vim.keymap.set
 ---@param lhs string                 Key sequence
 ---@param spec string|fun(): any     Subcommand string or Lua callback
@@ -407,7 +390,7 @@ local function complete_vf(arg_lead, cmd_line, cursor_pos)
 	local subcmd = args[1]
 
 	-- Subcommand-specific completions
-	if subcmd == "recall" or subcmd == "suggest" then
+	if subcmd == "suggest" then
 		return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, {"on", "off", "toggle"})
 	end
 
@@ -423,7 +406,17 @@ local function complete_vf(arg_lead, cmd_line, cursor_pos)
 		return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, aliases)
 	end
 
-	if subcmd == "end" or subcmd == "close" or subcmd == "sim" then
+	if subcmd == "end" then
+		-- Manual-only — recall windows go through `:Vimfy recall`.
+		local aliases = vim.tbl_filter(alias_mod.is_valid_manual, session.list())
+		return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, aliases)
+	end
+
+	if subcmd == "recall" then
+		return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, alias_mod.TIME_HINTS)
+	end
+
+	if subcmd == "close" or subcmd == "sim" then
 		local aliases = session.list()
 		for _, t in ipairs(alias_mod.TIME_HINTS) do
 			table.insert(aliases, t)
@@ -575,9 +568,6 @@ function M.setup(user_config)
 		register_plug("Close" .. upper, "close", { alias })
 		register_plug("Sim"   .. upper, "sim",   { alias })
 	end
-	register_plug("RecallOn",      "recall",  { "on" })
-	register_plug("RecallOff",     "recall",  { "off" })
-	register_plug("RecallToggle",  "recall",  { "toggle" })
 	register_plug("SuggestOn",     "suggest", { "on" })
 	register_plug("SuggestOff",    "suggest", { "off" })
 	register_plug("SuggestToggle", "suggest", { "toggle" })
@@ -585,17 +575,17 @@ function M.setup(user_config)
 	register_plug("Config",        "config",  {})
 	register_plug("Help",          "help",    {})
 
-	-- auto_suggest implies the recall ring — turn both on so the user
-	-- doesn't have to opt in twice. Explicit `:Vimfy recall off` /
-	-- `:Vimfy suggest off` at runtime still wins. Quiet because setup()
-	-- shouldn't spam notifications.
-	--
-	-- Gate on is_configured() (not just truthiness): the default
-	-- auto_suggest table carries `cooldown_ms` but no triggers, and the
-	-- user can explicitly disable with `auto_suggest = false`. Either way,
-	-- without a real trigger there's nothing to enable.
+	-- Recall is permanently on — it's foundational to `end Ns` and
+	-- auto_suggest, the ring is bounded (KEY_SESSION_CAPACITY /
+	-- MAX_RETENTION_SECONDS) and lives in RAM only. No user toggle.
+	session_store.install_recall()
+
+	-- auto_suggest requires a configured trigger. Gate on is_configured()
+	-- (not just truthiness): the default auto_suggest table carries
+	-- `cooldown_ms` but no triggers, and the user can explicitly disable
+	-- with `auto_suggest = false`. Either way, without a real trigger
+	-- there's nothing to enable.
 	if config.auto_suggest and auto_suggest.is_configured() then
-		session.enable_recall({ quiet = true })
 		auto_suggest.enable()
 	end
 

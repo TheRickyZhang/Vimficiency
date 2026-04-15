@@ -102,8 +102,6 @@ end
 ---@param reason FinishReason                         Which trigger fired; stored on the result for the header annotation.
 ---@return boolean counted
 local function fire_with_window(window, gate, reason)
-  if not session_store.is_recall_enabled() then return false end
-
   local active = session_store.get_active(window)
   if not active then return false end  -- queue too young or no clean boundary
 

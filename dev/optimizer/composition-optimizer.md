@@ -109,11 +109,11 @@ J plan efforts are included in `computeSuffixEditCosts()` alongside regular edit
   - `A`: any column on the target line (appends at end-of-line)
   - `i`: exact insertion column only (fallback)
 - The mode-entry command determines the actual insert position independent of where in the range we land, so the final cursor position after typing + Esc is always `editResult.goalPos`.
-- When navigating to the valid range, the `MotionBoundary` must use the full subset extent, not the target range (see `docs/optimizer/buffer-slicing.md` § Boundary vs Target Range).
+- When navigating to the valid range, the `MotionBoundary` must use the full subset extent, not the target range (see `dev/optimizer/buffer-slicing.md` § Boundary vs Target Range).
 
 ### Autoindent in Pure Insertions
 
-For `o`/`A`/`I`/`i` with multi-line insertions, `buildTypedCommands` (from `src/Optimizer/BuildTypedCommands.h`) applies autoindent strip/backspace/clear logic (see `docs/optimizer/edit-optimizer.md` § Autoindent Handling):
+For `o`/`A`/`I`/`i` with multi-line insertions, `buildTypedCommands` (from `src/Optimizer/BuildTypedCommands.h`) applies autoindent strip/backspace/clear logic (see `dev/optimizer/edit-optimizer.md` § Autoindent Handling):
 
 | Command | Source indent | Line prefix |
 |---------|--------------|-------------|

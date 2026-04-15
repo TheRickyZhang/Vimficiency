@@ -26,9 +26,9 @@
 
 - **Recall may include the final char of a `<Plug>`-mapped LHS** on
   occasion, because `vim.on_key` fires for that char before Neovim
-  resolves the mapping. If you target `:Vimfy end N` precisely, count
-  `N` accordingly — or use time recall (`Ns`), which rolls past the
-  extra key without noticing.
+  resolves the mapping. If you target `:Vimfy recall N` precisely,
+  count `N` accordingly — or use time recall (`Ns`), which rolls past
+  the extra key without noticing.
 
 ---
 

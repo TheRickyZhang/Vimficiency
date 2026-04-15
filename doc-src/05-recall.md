@@ -4,19 +4,16 @@
 
 # 5. Recall (auto start, manual end)
 
-Recall lets you look backward without any previous marking setup by querying a continuously maintained queue. It is on by default.
-
-```vim
-:Vimfy recall on        " Start recording
-:Vimfy recall off       " Stop, discard queue
-:Vimfy recall toggle
-```
+Recall lets you look backward without any previous marking setup by querying a continuously maintained queue. It is always on — the bounded, RAM-only ring is foundational enough that there's no toggle.
 
 ```vim
 " ... edit normally ...
-:Vimfy end 6          " Analyze the last 6 keystrokes
-:Vimfy end 3s         " Analyze the last 3 seconds
+:Vimfy recall 6       " Analyze the last 6 keystrokes
+:Vimfy recall 3s      " Analyze the last 3 seconds
 ```
+
+`:Vimfy end <alias>` stays reserved for manual handles (Mark / Watch);
+retrospective windows go through `:Vimfy recall`.
 
 ## Window aliases: two ways to index the queue
 
@@ -34,8 +31,8 @@ queue, `N` and `Ns` are how you name it.
 
 ## Implementation Details
 
-Each keystroke is tagged with a timestamp. `:Vimfy end Ns` resolves to
-the `K` most recent keys typed within the last `N` seconds, with the
+Each keystroke is tagged with a timestamp. `:Vimfy recall Ns` resolves
+to the `K` most recent keys typed within the last `N` seconds, with the
 window start snapped backward to the nearest normal-mode command
 boundary.
 
@@ -63,9 +60,12 @@ require('vimficiency').setup({
 })
 ```
 
-If `end Ns` asks for a window older than the queue retains, the alias
-fails to resolve and you get "No recall session found within 'Ns'…" —
-raise either cap.
+If `recall Ns` asks for a window older than the queue retains, the
+alias fails to resolve and you get "No recall session found within
+'Ns'…" — raise either cap.
+
+Recall records are discarded when Neovim exits; promote with `:Vimfy save`
+if you want them on disk.
 
 ## Recall results are transient
 
@@ -74,7 +74,7 @@ Recall windows rotate out of the queue as you type, so save promptly.
 (`3s`) is moving out from under you:
 
 ```vim
-:Vimfy end 3s
+:Vimfy recall 3s
 :Vimfy save @ nested-refactor
 ```
 

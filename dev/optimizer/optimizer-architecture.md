@@ -3,7 +3,7 @@
 We have three different Optimizers. Here is a short description:
 - MotionOptimizer: Pure movements from start -> (finish or finishRange) over a constant buffer
 - EditOptimizer: Changing start buffer state -> end buffer state, assuming that we delete all old text first, then type new text out
-- CompositionOptimizer: Orchestrates logic combining MotionOptimizer and EditOptimizer for any transition. Determines how to break up edit regions and chain movement and edit search to satisfy regions in order. Also pre-computes J (join lines) plans for diffs where source has more lines than target, offering them as alternative edit transitions in the A* search (see `docs/optimizer/composition-optimizer.md` § J Plans).
+- CompositionOptimizer: Orchestrates logic combining MotionOptimizer and EditOptimizer for any transition. Determines how to break up edit regions and chain movement and edit search to satisfy regions in order. Also pre-computes J (join lines) plans for diffs where source has more lines than target, offering them as alternative edit transitions in the A* search (see `dev/optimizer/composition-optimizer.md` § J Plans).
 
 ## Dependence
 MotionOptimizer: independent
@@ -15,7 +15,7 @@ They all share:
 - Effort for typing the sequence
 - Boundary of the subbuffer received. Motions can have padding to allow for the possibility of overshoot + revert, while Edits must be exact.
 - Usage of Endpoint/Range functions for checking if a motion would cross outside the boundary.
-- Counted-command cognitive penalties (see `docs/optimizer/count-penalty.md`)
+- Counted-command cognitive penalties (see `dev/optimizer/count-penalty.md`)
 - Return some container of Results:
 ``` cpp
 struct Result {
@@ -28,7 +28,7 @@ struct Result {
 
 ```
 
-For more details about how boundaries are handled, see `docs/boundary-logic.md`.
+For more details about how boundaries are handled, see `dev/core/boundary-logic.md`.
 
 ### Exploring Valid Commands
 

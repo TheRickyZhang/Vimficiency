@@ -34,7 +34,7 @@ Each diff changes the flat text by `insertedText.size() - deletedText.size()` ch
 
 This works because Myers diffs are non-overlapping and in document order--a flat character offset exactly captures how much prior diffs shifted subsequent content.
 
-**Important:** Adjustment must run for all diffs after the first (`i > 0`), not only when `cumulativeOffset != 0`. A diff like `\n` -> ` ` has offset 0 but changes line structure, so flat-to-position conversion produces different `(line, col)` coordinates in the intermediate buffer. See `docs/history/previous_errors.md` § calculateLinesAfterDiffs for the full bug description.
+**Important:** Adjustment must run for all diffs after the first (`i > 0`), not only when `cumulativeOffset != 0`. A diff like `\n` -> ` ` has offset 0 but changes line structure, so flat-to-position conversion produces different `(line, col)` coordinates in the intermediate buffer. See `dev/history/previous_errors.md` § calculateLinesAfterDiffs for the full bug description.
 
 The adjustment is done inline in `calculateLinesAfterDiffs`, which already builds each intermediate `Lines` state. This avoids needing a separate adjustment pass or passing extra parameters.
 
@@ -66,4 +66,4 @@ After adjustment, `diffStates[i].beginPos`/`endPos` are in intermediate-buffer c
 
 - Adjustment logic: `CompositionSearchContext::calculateLinesAfterDiffs()` in `CompositionSearchContext.cpp`
 - Helpers: `posToFlat()`, `flatToPos()` (file-static in same file)
-- Diff separation heuristics: see `docs/diff-separation-rules.md`
+- Diff separation heuristics: see `dev/diff-separation-rules.md`

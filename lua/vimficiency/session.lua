@@ -65,7 +65,7 @@ end
 --- Save results to JSON file (pretty-printed for readability)
 ---@param name string
 ---@param data table
----@return boolean success
+---@return string|nil path   Absolute path on success; nil on failure.
 ---@return string|nil error
 local function save_results(name, data)
   local save_dir = get_save_dir()
@@ -77,9 +77,9 @@ local function save_results(name, data)
   local lines = vim.split(json, "\n")
   local ok, err = pcall(vim.fn.writefile, lines, path)
   if not ok then
-    return false, err
+    return nil, err
   end
-  return true, nil
+  return path, nil
 end
 
 --- Load results from JSON file
@@ -440,40 +440,14 @@ function M.watch(alias)
 end
 
 
----@param alias string  The alias of the session to finish
----@param reason FinishReason|nil  Why the finish was triggered. Defaults to "manual" (the `:Vimfy end` path). Watch's idle callback passes "watch_idle".
-function M.finish(alias, reason)
-  reason = reason or "manual"
-  if not alias or alias == "" then
-    vim.notify("finish() requires a session alias", vim.log.levels.ERROR)
-    return
-  end
-
-  local active = session_store.get_active(alias)
-  if not active then
-    local session_type = alias_mod.parse(alias)
-    if session_type == "recall_key" or session_type == "recall_time" then
-      if not session_store.is_recall_enabled() then
-        vim.notify("Recall not enabled. Run ':Vimfy recall on' first.", vim.log.levels.ERROR)
-      elseif session_type == "recall_key" then
-        vim.notify("No recall session found for '" .. alias .. "' keys ago.", vim.log.levels.ERROR)
-      else
-        vim.notify("No recall session found within '" .. alias .. "'. Try a larger window or 'end N' by key count.", vim.log.levels.ERROR)
-      end
-    elseif session_type == "manual" then
-      vim.notify("Session '" .. alias .. "' not found or already finished.", vim.log.levels.ERROR)
-    else
-      vim.notify("Unrecognized alias '" .. alias .. "'. " ..
-        "Expected alphabetic (manual), digits (recall keys), or digits+s (recall time).",
-        vim.log.levels.ERROR)
-    end
-    return
-  end
-
-  -- Pin the resolved id here. Everything that mutates the store below
-  -- must use this id, not `alias` — recall aliases (`3s`, `5`) drift as
-  -- the ring rotates, so re-resolving could touch a different record
-  -- than the one we just computed a result for.
+--- Shared body: given a resolved active session, run the optimizer and
+--- publish the result. Pins `active.id` up front so a ring rotation
+--- between compute and finish can't attach the result to a different
+--- record than the one we computed from.
+---@param active ActiveSession
+---@param alias string               Literal alias the caller used, stored with the record for `:Vimfy save @` default naming.
+---@param reason FinishReason
+local function do_finish(active, alias, reason)
   local id = active.id
 
   local result, err = compute_result_for_active(active)
@@ -482,9 +456,6 @@ function M.finish(alias, reason)
     return
   end
 
-  -- This detaches key tracking and moves from active to result storage.
-  -- Pass the literal `alias` so `:Vimfy save @` can default the filename
-  -- to what the user typed at end-time (otherwise recall positions drift).
   if not session_store.finish_session(id, result, alias, nil, reason) then
     total_failure(active, "finish()", "failed to store result")
     return
@@ -495,6 +466,86 @@ function M.finish(alias, reason)
     .. result_view.format_reason_suffix(result)
   local body = result_view.format_body(result)
   vim.notify(header .. "\n" .. table.concat(body, "\n"), vim.log.levels.INFO)
+end
+
+--- Finish a manual (Mark/Watch) session. Recall windows go through
+--- `M.recall` — see the docs for the `end`/`recall` split.
+---@param alias string  The manual alias of the session to finish.
+---@param reason FinishReason|nil  Why the finish was triggered. Defaults to "manual" (the `:Vimfy end` path). Watch's idle callback passes "watch_idle".
+function M.finish(alias, reason)
+  reason = reason or "manual"
+  if not alias or alias == "" then
+    vim.notify("finish() requires a session alias", vim.log.levels.ERROR)
+    return
+  end
+
+  local session_type = alias_mod.parse(alias)
+  if session_type == "recall_key" or session_type == "recall_time" then
+    vim.notify(
+      "`:Vimfy end " .. alias .. "` is not a manual handle. " ..
+      "Use `:Vimfy recall " .. alias .. "` for retrospective windows.",
+      vim.log.levels.ERROR)
+    return
+  end
+  if session_type ~= "manual" then
+    vim.notify(
+      "Invalid session alias '" .. alias .. "'. " ..
+      "Manual aliases are alphabetic only (e.g. 'a', 'refactor').",
+      vim.log.levels.ERROR)
+    return
+  end
+
+  local active = session_store.get_active(alias)
+  if not active then
+    vim.notify("Session '" .. alias .. "' not found or already finished.", vim.log.levels.ERROR)
+    return
+  end
+
+  do_finish(active, alias, reason)
+end
+
+--- Resolve a retrospective recall window and publish a result.
+--- Accepts only `recall_key` (`N`) and `recall_time` (`Ns`) aliases —
+--- manual handles are redirected to `M.finish` with a hint.
+---@param alias string  A recall alias: `N` (keys ago) or `Ns` (seconds ago).
+function M.recall(alias)
+  if not alias or alias == "" then
+    vim.notify(
+      "recall() requires a window alias (e.g. '5' for keys ago, '3s' for seconds)",
+      vim.log.levels.ERROR)
+    return
+  end
+
+  local session_type = alias_mod.parse(alias)
+  if session_type == "manual" then
+    vim.notify(
+      "`:Vimfy recall " .. alias .. "` expects a recall window (N or Ns). " ..
+      "Use `:Vimfy end " .. alias .. "` to finish a manual session.",
+      vim.log.levels.ERROR)
+    return
+  end
+  if session_type ~= "recall_key" and session_type ~= "recall_time" then
+    vim.notify(
+      "Invalid recall alias '" .. alias .. "'. " ..
+      "Expected N (keys ago) or Ns (seconds ago).",
+      vim.log.levels.ERROR)
+    return
+  end
+
+  local active = session_store.get_active(alias)
+  if not active then
+    if session_type == "recall_key" then
+      vim.notify("No recall session found for '" .. alias .. "' keys ago.", vim.log.levels.ERROR)
+    else
+      vim.notify(
+        "No recall session found within '" .. alias .. "'. " ..
+        "Try a larger window or indexing by key count (e.g. 'recall 20').",
+        vim.log.levels.ERROR)
+    end
+    return
+  end
+
+  do_finish(active, alias, "manual")
 end
 
 --- Default filename for `:Vimfy save <selector>` when the caller omits
@@ -549,9 +600,9 @@ function M.save(selector, name)
     end
   end
 
-  local ok, err = save_results(name, result)
-  if ok then
-    vim.notify("vimficiency saved [" .. name .. "]", vim.log.levels.INFO)
+  local path, err = save_results(name, result)
+  if path then
+    vim.notify("vimficiency saved [" .. name .. "] → " .. path, vim.log.levels.INFO)
   else
     vim.notify("vimficiency save failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
   end
@@ -576,47 +627,6 @@ function M.close(alias)
   session_store.remove(active.id)
   vim.notify("vimficiency closed [" .. alias .. "]", vim.log.levels.INFO)
 end
-
---- Enable the rolling recall ring. Every keystroke creates a retained
---- session, queryable as `N` (keys ago) or `Ns` (seconds ago).
----@param opts? { quiet?: boolean }  Pass { quiet = true } to suppress the user notification (e.g., when another command — :Vimfy suggest on — is turning recall on as a side effect).
----@return boolean success
-function M.enable_recall(opts)
-  opts = opts or {}
-  local success = session_store.enable_recall()
-  if not opts.quiet then
-    if success then
-      vim.notify("vimficiency recall enabled", vim.log.levels.INFO)
-    else
-      vim.notify("vimficiency recall already enabled", vim.log.levels.WARN)
-    end
-  end
-  return success
-end
-
---- Disable the recall ring. Discards all retained sessions.
----
---- Auto-suggest depends on the recall ring — without it there's
---- nothing for the idle trigger to analyze. If auto-suggest is on when
---- recall is turned off, cascade the disable: leaving the idle timer
---- armed and the key subscriber attached with no ring to act on is
---- "surprising background work" (reviewer's phrasing). Uses a lazy
---- require to sidestep the session ↔ auto_suggest import cycle.
-function M.disable_recall()
-  local auto_suggest = require("vimficiency.auto_suggest")
-  if auto_suggest.is_enabled() then
-    auto_suggest.disable()
-    vim.notify("vimficiency auto-suggest disabled (depends on recall)", vim.log.levels.INFO)
-  end
-  session_store.disable_recall()
-  vim.notify("vimficiency recall disabled", vim.log.levels.INFO)
-end
-
----@return boolean
-function M.is_recall_enabled()
-  return session_store.is_recall_enabled()
-end
-
 
 ---@param alias string  The alias of the session to simulate
 ---@param count integer|nil  How many optimal results to show (default: all saved)

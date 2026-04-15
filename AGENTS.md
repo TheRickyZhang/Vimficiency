@@ -96,17 +96,17 @@ Exposes C ABI for LuaJIT in `lua_exports.cpp`. **Position indexing:** Internal c
 For Lua context, see `lua/CLAUDE.md`.
 
 ## Deep Dive References
-- @docs/ci-and-benchmarks.md - CI workflow (test/benchmark/deploy), benchmark dashboard (`bench-dashboard/`), gh-pages layout
-- @docs/boundary-logic.md - Word motion and boundary crossing logic, EditBoundary API
-- @docs/edit-region-strategy.md - Replace vs change strategy (includes tryReplacement implementation)
-- @docs/neovim_on_key_issues.md - vim.on_key limitations, operator-pending duplication, missing text object keys
-- @docs/optimizer-architecture.md - A* heuristics, MotionOptimizer (6-class motion exploration, templated specs), EditOptimizer, CompositionOptimizer
-- @docs/session-invocation.txt - How vimficiency optimizer sessions are called and stored
-- @docs/testing.md - NeovimOracle, test file conventions, debug printing
-- @docs/utils.md - General utilities (QuoteFlags, BracketFlags, Lines, StringUtils)
-- @docs/vim-utils-principles.md - State validation, empty handling, MotionUtils vs EndpointUtils, **targetCol handling**
-- @docs/core/keyboard.md - Keyboard module, key definitions (X macros), sequence-to-keys conversion, effort model
-- @docs/core/counted-edit-semantics.md - Why `{n}{edit}` ≠ `{edit}` repeated n times, safe counted edit generation strategy
+- @dev/ci-and-benchmarks.md - CI workflow (test/benchmark/deploy), benchmark dashboard (`bench-dashboard/`), gh-pages layout
+- @dev/boundary-logic.md - Word motion and boundary crossing logic, EditBoundary API
+- @dev/edit-region-strategy.md - Replace vs change strategy (includes tryReplacement implementation)
+- @dev/neovim_on_key_issues.md - vim.on_key limitations, operator-pending duplication, missing text object keys
+- @dev/optimizer-architecture.md - A* heuristics, MotionOptimizer (6-class motion exploration, templated specs), EditOptimizer, CompositionOptimizer
+- @dev/session-invocation.txt - How vimficiency optimizer sessions are called and stored
+- @dev/testing.md - NeovimOracle, test file conventions, debug printing
+- @dev/utils.md - General utilities (QuoteFlags, BracketFlags, Lines, StringUtils)
+- @dev/vim-utils-principles.md - State validation, empty handling, MotionUtils vs EndpointUtils, **targetCol handling**
+- @dev/core/keyboard.md - Keyboard module, key definitions (X macros), sequence-to-keys conversion, effort model
+- @dev/core/counted-edit-semantics.md - Why `{n}{edit}` ≠ `{edit}` repeated n times, safe counted edit generation strategy
 
 ## PR review focus
 Prioritize:

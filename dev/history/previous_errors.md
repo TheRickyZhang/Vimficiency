@@ -77,7 +77,7 @@ After db: "abc" / "   ghi"  cursor at [1,3] (the 'g', first non-blank)
 
 This worked by accident when diffs didn't insert/delete lines before subsequent diffs, since column-only changes within a single line don't shift positions of diffs on later lines. It would break when earlier diffs add or remove lines (or characters on the same line) before later diffs.
 
-**Fix:** Removed `adjustForSequential` entirely. Inlined the adjustment into `calculateLinesAfterDiffs`, which already has the intermediate `Lines` at each step. The adjustment converts positions to flat character indices against the original buffer, applies a cumulative offset (sum of `insertedText.size() - deletedText.size()` from prior diffs), then converts back to `(line, col)` against the current intermediate buffer. See `docs/optimizer/diff-generation.md`.
+**Fix:** Removed `adjustForSequential` entirely. Inlined the adjustment into `calculateLinesAfterDiffs`, which already has the intermediate `Lines` at each step. The adjustment converts positions to flat character indices against the original buffer, applies a cumulative offset (sum of `insertedText.size() - deletedText.size()` from prior diffs), then converts back to `(line, col)` against the current intermediate buffer. See `dev/optimizer/diff-generation.md`.
 
 ## Subset boundary used target range instead of full subset extent
 
@@ -170,7 +170,7 @@ After diff 0, buffer is `["aaa bbb", "ccc", "ddd"]`. Diff 1's original position 
 
 Vim treats `cw`/`cW` like `ce`/`cE` — they don't include trailing whitespace, unlike `dw`/`dW`. The `deleteToChange` function in EditOptimizer previously converted `dw` → `cw`, which would produce incorrect results when `dw` deleted trailing whitespace to reach the goal.
 
-**Fix:** Convert `dw`/`dW` to `dwi`/`dWi` (delete then enter insert mode) instead of `cw`/`cW`. No per-call equivalence check is needed because `de`/`dE` (WordEdge) is explored before `dw`/`dW` (GapEdge) — when the ranges are identical, `de` stores its result first and `dw` is skipped. So `dw` only reaches the goal when trailing whitespace made the difference, meaning `cw` is always wrong. See `docs/optimizer/edit-optimizer.md` § dw/dW → dwi/dWi.
+**Fix:** Convert `dw`/`dW` to `dwi`/`dWi` (delete then enter insert mode) instead of `cw`/`cW`. No per-call equivalence check is needed because `de`/`dE` (WordEdge) is explored before `dw`/`dW` (GapEdge) — when the ranges are identical, `de` stores its result first and `dw` is skipped. So `dw` only reaches the goal when trailing whitespace made the difference, meaning `cw` is always wrong. See `dev/optimizer/edit-optimizer.md` § dw/dW → dwi/dWi.
 
 ## exploreDeletion collapse sequence used d{motion} line count instead of c{motion}
 

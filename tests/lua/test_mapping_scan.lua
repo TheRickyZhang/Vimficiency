@@ -15,7 +15,7 @@ assert_true(type(scan) == "function",
 test("scan: matches :Vimfy at RHS start", function()
   assert_eq(scan(":Vimfy start a<CR>"), true)
   assert_eq(scan(":Vimfy end a"),       true)
-  assert_eq(scan("  :Vimfy recall on"), true, "leading whitespace tolerated")
+  assert_eq(scan("  :Vimfy suggest on"), true, "leading whitespace tolerated")
 end)
 
 test("scan: matches :Vimficiency at RHS start", function()

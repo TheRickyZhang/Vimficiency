@@ -20,7 +20,6 @@ local reset              = auto_suggest._for_test.reset
 -- Save originals so each test starts from a clean slate.
 local orig = {
   config_auto_suggest          = config.auto_suggest,
-  is_recall_enabled            = session_store.is_recall_enabled,
   get_active                   = session_store.get_active,
   finish_session               = session_store.finish_session,
   summarize                    = session_store.summarize,
@@ -29,7 +28,6 @@ local orig = {
 
 local function restore()
   config.auto_suggest              = orig.config_auto_suggest
-  session_store.is_recall_enabled  = orig.is_recall_enabled
   session_store.get_active         = orig.get_active
   session_store.finish_session     = orig.finish_session
   session_store.summarize          = orig.summarize
@@ -42,7 +40,6 @@ local function setup_enabled()
     idle = { ms = 200, window = "3s" },
     cooldown_ms = 5000,
   }
-  session_store.is_recall_enabled = function() return true end
   session_store.get_active = function()
     return { id = "fake-id", start_kind = "auto", end_kind = "manual" }
   end
@@ -59,14 +56,6 @@ local function setup_enabled()
     }
   end
 end
-
-test("fire_idle: no-op when recall disabled", function()
-  setup_enabled()
-  session_store.is_recall_enabled = function() return false end
-  local counted = fire_idle()
-  assert_eq(counted, false, "recall-disabled should not count (no cooldown refresh)")
-  restore()
-end)
 
 test("fire_idle: no-op when window unresolved (queue too young)", function()
   setup_enabled()

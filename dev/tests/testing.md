@@ -278,9 +278,9 @@ TEST_F(WordMotionTest, Random_wMotion) {
 ## Vim Documentation Reference
 
 For implementing or verifying VimCore behavior:
-- `docs/vim/motion.txt` - Motion commands
-- `docs/vim/change.txt` - Change operators
-- `docs/vim/index.txt` - Command index
+- `dev/vim/motion.txt` - Motion commands
+- `dev/vim/change.txt` - Change operators
+- `dev/vim/index.txt` - Command index
 
 ## Test Data Files
 

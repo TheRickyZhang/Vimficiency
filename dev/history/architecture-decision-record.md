@@ -211,6 +211,83 @@ the charitable reading.
   a fast burst (3s covering 200 keys). Documented, not prevented —
   users choose time-recall precisely when they can't estimate key count.
 
+## Recall is permanently on — no user toggle
+
+Briefly had `enable_recall`/`disable_recall` with an `is_recall_enabled`
+gate threaded through `auto_suggest`, `:Vimfy end`, and a `:Vimfy recall
+<on|off|toggle>` subcommand. The off switch carried its weight in
+error paths ("Recall not enabled"), cascading disables (turning recall
+off had to also disable auto-suggest), and a coupling where configuring
+`auto_suggest` silently turned recall on as a side effect.
+
+**Decision:** recall is installed unconditionally at `setup()` and has
+no user-visible toggle. The ring is bounded
+(`KEY_SESSION_CAPACITY = 200`, `MAX_RETENTION_SECONDS = 120`), lives in
+RAM only, and never persists. Per-keystroke cost is a small Lua append.
+Recall is foundational to `end Ns` and auto-suggest; a plugin without
+recall is a plugin with only named marks, which is a fraction of the
+product.
+
+Removed surface: `session_store.{enable,disable,is_recall_enabled}`,
+`session.{enable,disable,is_recall_enabled}`, the `:Vimfy recall`
+subcommand, and the `<Plug>VimfyRecall{On,Off,Toggle}` entries. The
+install path is now `session_store.install_recall()`, called once from
+`setup()`.
+
+### Trade-offs accepted
+
+- Users lose the escape hatch. Given RAM-only, bounded, and
+  never-persisted storage, the privacy concern is weak and the perf
+  concern doesn't bite at realistic typing rates.
+- `setup()` must run before the ring starts recording. Same constraint
+  as before — `attach_global` was always gated on a live Neovim runtime.
+
+## Splitting `:Vimfy end` from `:Vimfy recall`
+
+`:Vimfy end <alias>` originally dispatched on alias grammar: alphabetic
+→ manual finish, digits/`Ns` → recall query. One subcommand, three
+shapes. The payoff was surface compactness; the cost was that "end" had
+to mean two distinct things depending on the first character of its
+argument.
+
+**Decision:** split into two subcommands along the start-kind axis.
+
+- `:Vimfy end <alias>` accepts manual handles only (Mark/Watch finish).
+- `:Vimfy recall <N|Ns>` accepts only retrospective windows.
+
+Each side rejects the other's grammar with a redirect ("use
+`:Vimfy recall 3s` instead").
+
+### Why split
+
+- **Completion.** `end` can now complete over live manual handles only;
+  `recall` completes over time hints (`3s`, `5s`, `10s`, `30s`). The
+  unified command had to jam both into one list, which is noisy when you
+  typically want one or the other.
+- **Semantic clarity.** "End a session I started" and "look backward
+  over recent activity" are different operations. They happen to share
+  the compute-and-finish body, but the user-facing action is distinct.
+  A top-level split tracks that distinction without leaking ring
+  mechanics into `end`.
+- **Error diagnostics.** When `end 3s` failed, the old message had to
+  branch on whether the alias was recall-shaped (ring empty?) or manual
+  (typo?) or garbage. With the split, each entry point knows the
+  grammar it expects and can diagnose precisely.
+
+### Trade-offs accepted
+
+- **One more subcommand.** Worth it — the split matches the 2×2 session
+  matrix (`end` = manual-started, `recall` = auto-started) and pushes
+  the dispatch decision from argument parsing to subcommand choice.
+- **Hard cutover, no shim.** `:Vimfy end 3s` now errors with a redirect
+  rather than silently dispatching to recall. Migration cost is a
+  one-line find-replace; ambient deprecation warnings carry ongoing
+  documentation weight.
+- **Shared implementation.** Both entry points feed a common
+  `do_finish(active, alias, reason)` helper in `session.lua`. Grammar
+  and error messaging live at the entry points; compute/store/notify is
+  shared.
+
 
 # Auto-suggest triggers
 

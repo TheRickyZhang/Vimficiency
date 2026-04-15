@@ -52,7 +52,7 @@ Shows currently active sessions and saved-to-disk results.
 ```
 
 - Selectors: a session alias (`a`, `3s`, `5`) or `@` for the most recent finish.
-- Name is optional — defaults to the selector; for `@` it reuses the alias the last `:Vimfy end` used.
+- Name is optional — defaults to the selector; for `@` it reuses the alias the last `:Vimfy end` / `:Vimfy recall` used.
 
 ```vim
 :Vimfy end a
