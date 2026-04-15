@@ -9,7 +9,8 @@
 std::ostream& operator<<(std::ostream& os, const Sequence& seq) {
   if (seq.empty()) return os;
 
-  std::vector<SequenceToken> tokens = parseSequence(seq.view());
+  // Optimizer-produced input: asserts on malformed sequences.
+  std::vector<SequenceToken> tokens = parseSequence(seq.view()).value();
 
   for (size_t i = 0; i < tokens.size(); i++) {
     os << makePrintable(tokens[i].text);
@@ -32,17 +33,20 @@ std::string formatSequenceForDisplay(std::string_view seq) {
     return "";
   }
 
-  std::vector<std::string> tokens = parseSequenceStrings(seq);
-  if (tokens.empty()) {
+  // Best-effort display: Lua's format_sequence passes captured user_seq
+  // here, so unparseable input is expected. Fall back to the raw string
+  // rather than erroring — the user still sees their keystrokes.
+  auto parsed = parseSequenceStrings(seq);
+  if (!parsed || parsed->empty()) {
     return std::string(seq);
   }
 
   std::string result;
-  for (size_t i = 0; i < tokens.size(); i++) {
+  for (size_t i = 0; i < parsed->size(); i++) {
     if (i > 0) {
       result += ' ';
     }
-    result += tokens[i];
+    result += (*parsed)[i];
   }
   return result;
 }

@@ -18,24 +18,29 @@ Recall lets you look backward without any previous marking setup by querying a c
 :Vimfy end 3s         " Analyze the last 3 seconds
 ```
 
-## Two ways to index the queue
+## Window aliases: two ways to index the queue
 
-| Syntax           | Meaning                             | Use when                                        |
-|------------------|-------------------------------------|-------------------------------------------------|
-| `:Vimfy end 6`   | Last 6 keystrokes                   | You can estimate how many keys the edit took    |
-| `:Vimfy end 3s`  | Last 3 seconds of activity          | You can estimate time better than key count     |
-
+| Syntax   | Meaning                    | Use when                                     |
+|----------|----------------------------|----------------------------------------------|
+| `N`      | Last N keystrokes          | You can estimate how many keys the edit took |
+| `Ns`     | Last N seconds of activity | You can estimate time better than key count  |
 
 Mixing forms (`3m`, `3ms`, `2h`, etc.) is not supported. Seconds is the
 only time unit; if you want 90 seconds, use `90s`.
 
+The same grammar is reused by [Suggest](06-suggest.md) triggers (e.g.
+`window = "3s"` / `"50"`) — anywhere Vimficiency wants a slice of the
+queue, `N` and `Ns` are how you name it.
+
 ## Implementation Details
 
-Each keystroke is tagged with a timestamp when captured. `:Vimfy end Ns`
-resolves to `:Vimfy end K`, where the `K` most recent key
-was typed within the last `N` seconds", where the window start is also snapped backward to the start of normal mode commands.
+Each keystroke is tagged with a timestamp. `:Vimfy end Ns` resolves to
+the `K` most recent keys typed within the last `N` seconds, with the
+window start snapped backward to the nearest normal-mode command
+boundary.
 
-The optimizer does not run until you invoke a recall command, so recall processing and memory is typically O(1) per key.
+The optimizer runs only when you invoke a recall command, so per-key
+overhead is O(1).
 
 
 ## Capacity
@@ -63,7 +68,10 @@ fails to resolve and you get "No recall session found within 'Ns'…" —
 raise either cap.
 
 ## Recall results are transient
-To preserve a recall results, make sure to save it. Because the state continuously shifts, you can use `@` to refer to the recently ended recall session.
+
+Recall windows rotate out of the queue as you type, so save promptly.
+`@` refers to the most recently ended session — handy when the alias
+(`3s`) is moving out from under you:
 
 ```vim
 :Vimfy end 3s

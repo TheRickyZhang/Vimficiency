@@ -175,7 +175,7 @@ disabled. No explicit `enabled = true/false` flags, no sentinel values
 
 ```lua
 auto_suggest = {
-    idle = { ms = 3000, window = "3s" },
+    idle = { ms = 3000 },                      -- window defaults to "3s"
     -- keys = { every = 50, window = "50" },   -- omit = off
     -- cost = { m = 1.5, b = 2.0 },            -- omit = off
 },
@@ -184,7 +184,7 @@ auto_suggest = {
 
 ### Why presence-not-sentinels
 
-Considered using sentinel values (e.g., `idle_ms = math.huge` = off).
+Considered using sentinel values (e.g., `idle.ms = math.huge` = off).
 Rejected:
 - `cost` has two params (`m`, `b`). Setting `m = math.huge` leaves `b`
   semantically orphaned. Presence-semantics generalizes.
@@ -268,16 +268,33 @@ again"; cooldown catches rapid re-triggers from adjacent pauses.
 
 Applies to all triggers uniformly; not a per-trigger option.
 
-## Staging: ship `idle` first
+## Staging: all three triggers shipped (v1 naive)
 
-For the first implementation pass:
-- `idle` trigger only. Sync on fire (we're already idle, blocking is
-  fine).
-- Config validator rejects `keys` and `cost` with an explicit "not yet
-  implemented" message. Reserves the names loudly so they can't be
-  confused with typos or silently ignored.
-- `cost` async infrastructure (subprocess harness, pre-filter) lands
-  when the feature lands. Not worth building ahead of need.
+Initial plan was to ship `idle` only with the other two names reserved
+by the validator. That left an ambiguity in the docs ("reserved for
+what? when does this land?"); resolved by implementing all three in a
+deliberately naive form:
+
+- `idle` — fires after `idle.ms` of keystroke idleness.
+- `keys` — fires every `keys.every` real user keystrokes.
+  Implementation piggybacks on the same global key subscriber engine
+  as idle; new `end_trigger.arm_keys` shape.
+- `cost` — fires after `cost.ms` of idleness (default 300ms) iff
+  `user_cost > cost.m * optimal + cost.b` for `cost.window`
+  (default "100" keys).
+
+v1 runs cost synchronously on the idle tick. With `idle.ms = 3000`
+and `cost.ms = 300` armed together a 3s pause can re-run the optimizer
+~10 times before cooldown settles. Acceptable because the cost gate
+rejects the common case (user was near-optimal), and fingerprint
+dedup suppresses duplicate notifications. The debounced-subprocess
+plan stays in the parking lot; implement if it shows up as a measured
+bottleneck.
+
+Feature-level `cooldown_ms` is enforced per-subscriber in v1: a fire
+from one trigger does not cool down the others. Fingerprint dedup
+catches most cross-trigger duplicates. Cross-trigger mutual cooldown
+is a v2 refinement.
 
 
 # Session menu (future)

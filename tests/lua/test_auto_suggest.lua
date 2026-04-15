@@ -12,6 +12,8 @@ local session       = require("vimficiency.session")
 local session_store = require("vimficiency.session_store")
 
 local fire_idle          = auto_suggest._for_test.fire_idle
+local fire_keys          = auto_suggest._for_test.fire_keys
+local fire_cost          = auto_suggest._for_test.fire_cost
 local get_last_fp        = auto_suggest._for_test.get_last_fingerprint
 local reset              = auto_suggest._for_test.reset
 
@@ -168,5 +170,142 @@ test("fire_idle: finish failure leaves end_kind = 'manual' (atomic override)", f
   fire_idle()
   assert_eq(captured.end_kind, "manual",
     "finish failure must not mutate end_kind — atomic with status transition")
+  restore()
+end)
+
+--------------------------------------------------------------------------------
+-- fire_keys: derives window from cfg.keys.every
+--------------------------------------------------------------------------------
+
+test("fire_keys: passes tostring(every) as the recall window", function()
+  setup_enabled()
+  config.auto_suggest = { keys = { every = 30 }, cooldown_ms = 5000 }
+  local captured_alias = nil
+  session_store.get_active = function(alias)
+    captured_alias = alias
+    return { id = "fake-id", start_kind = "auto", end_kind = "manual" }
+  end
+  session.compute_result_for_active = function()
+    return {
+      start_row = 0, start_col = 0, end_row = 0, end_col = 0,
+      user_seq = "x", optimal_results = { { seq = "y", cost = 1.0 } },
+    }
+  end
+  fire_keys()
+  assert_eq(captured_alias, "30",
+    "fire_keys resolves its window from cfg.keys.every (no separate knob)")
+  restore()
+end)
+
+test("fire_keys: no-op when cfg.keys is absent", function()
+  setup_enabled()
+  config.auto_suggest = { idle = { ms = 200, window = "3s" }, cooldown_ms = 5000 }
+  local counted = fire_keys()
+  assert_eq(counted, false, "unconfigured trigger must not count")
+  restore()
+end)
+
+test("fire_keys: success path records fingerprint (shared state with fire_idle)", function()
+  setup_enabled()
+  config.auto_suggest = { keys = { every = 50 }, cooldown_ms = 5000 }
+  session.compute_result_for_active = function()
+    return {
+      start_row = 0, start_col = 0, end_row = 0, end_col = 0,
+      user_seq = "x", optimal_results = { { seq = "y", cost = 1.0 } },
+    }
+  end
+  local counted = fire_keys()
+  assert_eq(counted, true)
+  assert_true(get_last_fp() ~= nil,
+    "keys trigger must write to the same last_fingerprint as idle")
+  restore()
+end)
+
+--------------------------------------------------------------------------------
+-- fire_cost: gate on user_cost vs m*optimal+b
+--------------------------------------------------------------------------------
+
+test("fire_cost: gate failure counts but does not fingerprint (user was efficient)", function()
+  setup_enabled()
+  config.auto_suggest = {
+    cost = { m = 2.0, b = 0.0, ms = 300, window = "100" },
+    cooldown_ms = 5000,
+  }
+  -- 5 > 2*10+0 == 20 → false → gate fails → suppress notify, still count.
+  session.compute_result_for_active = function()
+    return {
+      start_row = 0, start_col = 0, end_row = 0, end_col = 0,
+      user_seq = "x", user_cost = 5,
+      optimal_results = { { seq = "y", cost = 10.0 } },
+    }
+  end
+  local counted = fire_cost()
+  assert_eq(counted, true, "gate failure must still count (optimizer ran)")
+  assert_eq(get_last_fp(), nil,
+    "gate failure must not record fingerprint — nothing was surfaced")
+  restore()
+end)
+
+test("fire_cost: gate pass records fingerprint", function()
+  setup_enabled()
+  config.auto_suggest = {
+    cost = { m = 1.0, b = 0.0, ms = 300, window = "100" },
+    cooldown_ms = 5000,
+  }
+  -- 20 > 1*10+0 == 10 → true → gate passes.
+  session.compute_result_for_active = function()
+    return {
+      start_row = 0, start_col = 0, end_row = 0, end_col = 0,
+      user_seq = "x", user_cost = 20,
+      optimal_results = { { seq = "y", cost = 10.0 } },
+    }
+  end
+  local counted = fire_cost()
+  assert_eq(counted, true)
+  assert_true(get_last_fp() ~= nil,
+    "gate pass must fingerprint (the shown suggestion)")
+  restore()
+end)
+
+test("fire_cost: empty optimal_results suppresses notify", function()
+  setup_enabled()
+  config.auto_suggest = {
+    cost = { m = 1.0, b = 0.0, ms = 300, window = "100" },
+    cooldown_ms = 5000,
+  }
+  session.compute_result_for_active = function()
+    return {
+      start_row = 0, start_col = 0, end_row = 0, end_col = 0,
+      user_seq = "x", user_cost = 20,
+      optimal_results = {},
+    }
+  end
+  local counted = fire_cost()
+  assert_eq(counted, true, "optimizer ran, still count")
+  assert_eq(get_last_fp(), nil,
+    "no optimal result to compare against → suppress")
+  restore()
+end)
+
+test("fire_cost: gate fail finishes the record (consume, not leak)", function()
+  setup_enabled()
+  local captured = { id = "fake-id", start_kind = "auto", end_kind = "manual" }
+  session_store.get_active = function() return captured end
+  config.auto_suggest = {
+    cost = { m = 2.0, b = 0.0, ms = 300, window = "100" },
+    cooldown_ms = 5000,
+  }
+  session.compute_result_for_active = function()
+    return {
+      start_row = 0, start_col = 0, end_row = 0, end_col = 0,
+      user_seq = "x", user_cost = 5,
+      optimal_results = { { seq = "y", cost = 10.0 } },
+    }
+  end
+  local finish_called = false
+  session_store.finish_session = function() finish_called = true; return true end
+  fire_cost()
+  assert_eq(finish_called, true,
+    "gate failure must still finish the record so next tick doesn't re-analyze it")
   restore()
 end)

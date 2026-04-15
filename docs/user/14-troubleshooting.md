@@ -20,7 +20,7 @@ errored (likely couldn't load the library — check `VIMFICIENCY_LIB_PATH`).
 
 ## Watch never fires
 
-- Is it configured? `watch = { idle_ms = N, cooldown_ms = N }` in
+- Is it configured? `watch = { idle = { ms = N }, cooldown_ms = N }` in
   `setup{}`. Without this, `:Vimfy watch <alias>` errors out at call
   time.
 - Does the session still exist? Check `:Vimfy list`. Window-change

@@ -14,17 +14,22 @@ require('vimficiency').setup({
   KEY_SESSION_CAPACITY = 200,  -- count floor (sessions). Default 200.
   MAX_RETENTION_SECONDS = 120, -- age floor (seconds). Default 120.
 
-  -- Suggest (see page 6 for full semantics)
+  -- Suggest (see page 6 for full semantics). Three triggers; enable any
+  -- subset. If a trigger is present, specify the full trigger object.
   auto_suggest = {
-    idle = { ms = 3000, window = "3s" },
-    -- keys and cost triggers: reserved, not yet implemented
+    idle = { ms = 3000, window = "3s" }, -- fire after 3s idle
+    keys = { every = 50 },               -- fire every 50 keystrokes
+    cost = { m = 1.5, b = 2.0, ms = 300, window = "100" },
+    cooldown_ms = 5000,                  -- feature-level, applies to all triggers
   },
 
-  -- Watch (see page 4). Independent from `auto_suggest`; share the same
-  -- idle engine but with their own thresholds.
+  -- Watch (see page 4). Shape parallels `auto_suggest` — same `idle`
+  -- nesting with `ms`. `idle.window` is rejected because Watch starts
+  -- manually. Independent config; both can run at once with different
+  -- thresholds.
   watch = {
-    idle_ms = 3000,     -- auto-end after N ms of real keystroke idleness
-    cooldown_ms = 5000, -- minimum time between two auto-fires
+    idle = { ms = 3000 },
+    cooldown_ms = 5000,
   },
 
   -- Search region around the edit
@@ -41,6 +46,28 @@ require('vimficiency').setup({
 ```
 
 Unknown keys produce a loud warning at setup — typos don't silently no-op.
+
+## Idle end-detection
+
+Two features auto-fire on keystroke idleness: [Watch](04-watch.md)
+(ends a manual session once you pause) and [Suggest](06-suggest.md)'s
+`idle` / `cost` triggers (run the optimizer on a window of the recall
+queue). Both use the same engine but run independently — each owns
+its own timer and cooldown, configured under its own key.
+
+| Parameter                                        | Meaning                                                                |
+|--------------------------------------------------|------------------------------------------------------------------------|
+| `watch.idle.ms` / `auto_suggest.idle.ms`         | Real keystroke idleness, in ms, before the trigger fires.              |
+| `auto_suggest.cost.ms`                           | Same semantic as `idle.ms` but dedicated to the cost trigger.          |
+| `watch.cooldown_ms` / `auto_suggest.cooldown_ms` | Minimum time between consecutive fires. Safety rail for low `idle.ms`. |
+
+"Real keystroke" excludes cmdline input and Vimficiency admin
+keystrokes, so `:Vimfy` commands and `vimfy.map`-routed bindings don't
+reset the idle timer.
+
+A bare `ms` inside any trigger object universally means "idle
+threshold" — fire only after N ms of no activity. `keys.every` is the
+one exception: it counts keystrokes, not time, so it has no `ms`.
 
 ## Inspect what the C++ layer is using
 

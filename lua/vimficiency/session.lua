@@ -242,20 +242,16 @@ end
 ---@param now_ns integer         vim.uv.hrtime() snapshot
 ---@return string|nil reason     Human-readable reason if evict, else nil
 function M.manual_should_evict(session, cursor_row, now_ns)
-  local start_row = session.start_state.row
-  if math.abs(cursor_row - start_row) + 1 > config.MAX_SEARCH_LINES then
-    return "cursor drifted beyond MAX_SEARCH_LINES (" ..
-      config.MAX_SEARCH_LINES .. ")"
-  end
   local seq = session.key_seq
-  if seq and #seq > 0 then
-    local idle_ns = now_ns - seq[#seq].t
-    if idle_ns > config.MANUAL_IDLE_TIMEOUT_SECONDS * 1e9 then
-      return "idle for more than " ..
-        config.MANUAL_IDLE_TIMEOUT_SECONDS .. "s"
-    end
-  end
-  return nil
+  local last_key_time_ns = (seq and #seq > 0) and seq[#seq].t or nil
+  return ffi_lib.manual_evict_reason(
+    session.start_state.row,
+    cursor_row,
+    last_key_time_ns,
+    now_ns,
+    config.MAX_SEARCH_LINES,
+    config.MANUAL_IDLE_TIMEOUT_SECONDS
+  )
 end
 
 -------- Local functions END --------
@@ -332,7 +328,7 @@ end
 
 --- Watch: manual start, auto end. Like M.start but arms an idle end
 --- trigger instead of waiting for `:Vimfy end <alias>`. After
---- `config.watch.idle_ms` of real keystroke idleness (global, not
+--- `config.watch.idle.ms` of real keystroke idleness (global, not
 --- per-session), the trigger fires M.finish on this alias. Cooldown
 --- between fires is enforced by end_trigger so a post-fire pause
 --- doesn't immediately re-finish.
@@ -355,7 +351,7 @@ function M.watch(alias)
   local cfg = config.watch
   if not cfg then
     vim.notify(
-      "Watch is not configured. Add `watch = { idle_ms = N, cooldown_ms = N }` to setup{}.",
+      "Watch is not configured. Add `watch = { idle = { ms = N }, cooldown_ms = N }` to setup{}.",
       vim.log.levels.ERROR
     )
     return
@@ -404,7 +400,7 @@ function M.watch(alias)
   -- and timer).
   local disarm = end_trigger.arm_idle({
     name        = "watch_" .. id,
-    idle_ms     = cfg.idle_ms,
+    idle_ms     = cfg.idle.ms,
     cooldown_ms = cfg.cooldown_ms,
     on_fire     = function()
       -- Re-resolve through the store so we notice if the alias has

@@ -56,6 +56,10 @@ local M = {}
 ---@field vimficiency_debug_config fun(): string
 ---@field vimficiency_tokenize_motions fun(seq: string): string
 ---@field vimficiency_tokenize_sequence fun(seq: string): string
+---@field vimficiency_build_sequence fun(encoded_events: string): string
+---@field vimficiency_compute_search_region fun(encoded_start_lines: string, encoded_end_lines: string, start_row: integer, end_row: integer, padding: integer): string
+---@field vimficiency_resolve_recall_cutoff fun(encoded_records: string, target_hrtime: integer, budget: integer): integer
+---@field vimficiency_manual_evict_reason fun(start_row: integer, cursor_row: integer, last_key_time_ns: integer, has_last_key: boolean, now_ns: integer, max_search_lines: integer, manual_idle_timeout_seconds: integer): integer
 
 ffi.cdef([[
     extern const int VIMFICIENCY_KEY_COUNT;
@@ -124,6 +128,32 @@ ffi.cdef([[
 
     const char* vimficiency_tokenize_sequence(const char* seq);
 
+    const char* vimficiency_build_sequence(const char* encoded_events);
+
+    const char* vimficiency_compute_search_region(
+        const char* encoded_start_lines,
+        const char* encoded_end_lines,
+        int start_row,
+        int end_row,
+        int padding
+    );
+
+    int vimficiency_resolve_recall_cutoff(
+        const char* encoded_records,
+        int64_t target_hrtime,
+        int budget
+    );
+
+    int vimficiency_manual_evict_reason(
+        int start_row,
+        int cursor_row,
+        int64_t last_key_time_ns,
+        bool has_last_key,
+        int64_t now_ns,
+        int max_search_lines,
+        int manual_idle_timeout_seconds
+    );
+
     const char* vimficiency_format_sequence(const char* seq);
 ]])
 
@@ -176,6 +206,121 @@ M.Key = build_enum(lib.VIMFICIENCY_KEY_COUNT, lib.vimficiency_key_name)
 M.Finger = build_enum(lib.VIMFICIENCY_FINGER_COUNT, lib.vimficiency_finger_name)
 M.Hand = build_enum(lib.VIMFICIENCY_HAND_COUNT, lib.vimficiency_hand_name)
 M.CountClass = build_enum(lib.VIMFICIENCY_COUNT_CLASS_COUNT, lib.vimficiency_count_class_name)
+
+local EVENT_FIELD_SEP = string.char(0x1f)
+local EVENT_RECORD_SEP = string.char(0x1e)
+
+---@param items string[]
+---@return string
+local function encode_string_list(items)
+	local out = {}
+	for i = 1, #items do
+		local item = items[i]
+		out[#out + 1] = tostring(#item)
+		out[#out + 1] = ":"
+		out[#out + 1] = item
+	end
+	return table.concat(out)
+end
+
+---@param key_seq VimficiencyKeyEvent[]
+---@return string
+function M.build_sequence(key_seq)
+	local parts = {}
+	for i = 1, #key_seq do
+		local ev = key_seq[i]
+		parts[#parts + 1] = ev.mode
+		parts[#parts + 1] = EVENT_FIELD_SEP
+		parts[#parts + 1] = ev.key_typed
+		parts[#parts + 1] = EVENT_RECORD_SEP
+	end
+	local result = ffi.string(lib.vimficiency_build_sequence(table.concat(parts)))
+	if result:sub(1, 7) == "ERROR: " then
+		error("vimficiency_build_sequence failed: " .. result, 0)
+	end
+	return result
+end
+
+---@param start_lines string[]
+---@param end_lines string[]
+---@param start_row integer
+---@param end_row integer
+---@param padding integer
+---@return integer
+---@return integer
+function M.compute_search_region(start_lines, end_lines, start_row, end_row, padding)
+	local result = ffi.string(lib.vimficiency_compute_search_region(
+		encode_string_list(start_lines),
+		encode_string_list(end_lines),
+		start_row,
+		end_row,
+		padding
+	))
+	if result:sub(1, 7) == "ERROR: " then
+		error("vimficiency_compute_search_region failed: " .. result, 0)
+	end
+	local parts = vim.split(result, EVENT_FIELD_SEP, { plain = true, trimempty = true })
+	assert(#parts == 2, "vimficiency_compute_search_region returned malformed payload")
+	return tonumber(parts[1]), tonumber(parts[2])
+end
+
+---@param records table<string, { time_started: integer, first_mode: string|nil }>
+---@param order string[]
+---@param target_hrtime integer
+---@param budget integer
+---@return integer|nil
+function M.resolve_recall_cutoff(records, order, target_hrtime, budget)
+	local parts = {}
+	for i = 1, #order do
+		local rec = records[order[i]]
+		assert(rec, "resolve_recall_cutoff: missing record for order index " .. i)
+		parts[#parts + 1] = tostring(rec.time_started)
+		parts[#parts + 1] = rec.first_mode or ""
+	end
+	local index = lib.vimficiency_resolve_recall_cutoff(
+		encode_string_list(parts),
+		target_hrtime,
+		budget
+	)
+	if index == 0 then
+		return nil
+	end
+	return index
+end
+
+---@param start_row integer
+---@param cursor_row integer
+---@param last_key_time_ns integer|nil
+---@param now_ns integer
+---@param max_search_lines integer
+---@param manual_idle_timeout_seconds integer
+---@return string|nil
+function M.manual_evict_reason(
+	start_row,
+	cursor_row,
+	last_key_time_ns,
+	now_ns,
+	max_search_lines,
+	manual_idle_timeout_seconds
+)
+	local has_last_key = last_key_time_ns ~= nil
+	local code = lib.vimficiency_manual_evict_reason(
+		start_row,
+		cursor_row,
+		last_key_time_ns or 0,
+		has_last_key,
+		now_ns,
+		max_search_lines,
+		manual_idle_timeout_seconds
+	)
+	if code == 1 then
+		return "cursor drifted beyond MAX_SEARCH_LINES (" .. max_search_lines .. ")"
+	end
+	if code == 2 then
+		return "idle for more than " .. manual_idle_timeout_seconds .. "s"
+	end
+	return nil
+end
 
 -- The (has_<name>, <name>) flag pairs on C_CountPenaltyOverride. Genuine
 -- structure (not mere field duplication), so still a named schema.

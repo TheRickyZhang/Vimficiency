@@ -3,6 +3,7 @@
 // buffer content.
 #pragma once
 
+#include <expected>
 #include <iosfwd>
 #include <string>
 #include <string_view>
@@ -35,8 +36,21 @@ public:
 
 std::ostream& operator<<(std::ostream& os, const ParsedMotion& motion);
 
+enum class MotionParseErrorKind {
+  UnknownMotion,
+  MalformedSpecialKey,
+};
+
+struct MotionParseError {
+  MotionParseErrorKind kind;
+  size_t offset;
+};
+
+std::string formatMotionParseError(const MotionParseError& error);
+
 // Parse a motion sequence into individual ParsedMotion tokens
-std::vector<ParsedMotion> parseMotions(std::string_view seq);
+std::expected<std::vector<ParsedMotion>, MotionParseError>
+parseMotions(std::string_view seq);
 
 void applyParsedMotion(CursorPos& pos, Mode& mode, 
                        const ParsedMotion& motion, const Lines& lines,

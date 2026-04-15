@@ -1,41 +1,77 @@
 -- lua/vimficiency/config.lua
--- Unified place to modify configuration, which is used by lua and C/C++ parsing
+-- Central config surface. Add or change accepted top-level config keys here.
 
-local M = {
-  RESULTS_CALCULATED = 20, -- Should be >= RESULTS_SAVED, at most 20.
-  RESULTS_SAVED = 5,       -- should be in [1, 8], otherwise too much overhead
-  SLICE_PADDING = 5,       -- For our specific sections, how many extra lines should we consider? (TODO: check whether this for both motions and composition?)
-  SLICE_EXPAND_TO_PARAGRAPH = false, -- Do we also want to include the current paragraph? (If we use {} or p a lot)
-  MAX_SEARCH_LINES = 500,    -- maximum number of contiguous lines to search
+local fields = {
+  -- Optimizer/search knobs
+  RESULTS_CALCULATED = 20,
+  RESULTS_SAVED = 5,
+  SLICE_PADDING = 5,
+  SLICE_EXPAND_TO_PARAGRAPH = false,
+  MAX_SEARCH_LINES = 500,
 
-  -- Recall ring: a session is retained if EITHER cap still holds it
-  -- (union semantics). Evicted only when both caps say drop.
-  KEY_SESSION_CAPACITY = 200,   -- count floor for retention
-  MAX_RETENTION_SECONDS = 120,  -- age floor for retention
-
-  -- In-progress manual sessions are dropped when EITHER this idle timeout
-  -- elapses since the last captured key, OR the cursor drifts more than
-  -- MAX_SEARCH_LINES rows from the session's start row (the optimizer
-  -- rejects such a session at `end` time anyway). Not user-configurable:
-  -- the policy is a safety net for forgotten `:Vimfy start`, not a knob.
+  -- Recall ring / session safety
+  KEY_SESSION_CAPACITY = 200,
+  MAX_RETENTION_SECONDS = 120,
   MANUAL_IDLE_TIMEOUT_SECONDS = 300,
-
-  -- Backward snap budget: when resolving `end Ns`, how many sessions back
-  -- we'll walk looking for a clean normal-mode command boundary before
-  -- giving up.
   SNAP_LOOKBACK_KEYS = 20,
 
-  -- Auto-suggest (Suggest type — auto start, auto end): populated by
-  -- init.lua's validator from the user's `auto_suggest` setup key.
-  -- `false` means disabled. When enabled, the value is a table of parsed
-  -- triggers + cooldown_ms. See docs/user/06-suggest.md for shape.
-  auto_suggest = false,
+  -- Session features
+  auto_suggest = {
+    cooldown_ms = 5000,
+  },
+  watch = {
+    cooldown_ms = 5000,
+  },
 
-  -- Watch type — manual start, auto end. Populated from the `watch` setup
-  -- key. `false` means disabled. When enabled, the value is a table
-  -- { idle_ms, cooldown_ms }. Independent from `auto_suggest`; both can
-  -- run at once with different thresholds. See docs/user/04-watch.md.
-  watch = false,
+  -- C++-owned config surface
+  default_keyboard = require("vimficiency.config_detail").cpp(),
+  weights = require("vimficiency.config_detail").cpp(),
+  keys = require("vimficiency.config_detail").cpp(),
+  slice_buffer_amount = require("vimficiency.config_detail").cpp(),
+  shiftwidth = require("vimficiency.config_detail").cpp(),
+  use_count_penalty_overrides = require("vimficiency.config_detail").cpp(),
+  count_penalty_overrides = require("vimficiency.config_detail").cpp(),
 }
 
-return M
+function fields.is_lua_key(name)
+  return fields._defaults[name] ~= nil
+end
+
+function fields.reset()
+  for name, value in pairs(fields._defaults) do
+    fields[name] = vim.deepcopy(value)
+  end
+end
+
+function fields.apply(user_config)
+  local detail = require("vimficiency.config_detail")
+
+  user_config = user_config or {}
+  fields.reset()
+
+  local merged = vim.tbl_deep_extend("force", vim.deepcopy(fields._defaults), user_config)
+  merged.watch = detail.normalize_watch(user_config.watch, fields._defaults.watch)
+  merged.auto_suggest = detail.normalize_auto_suggest(user_config.auto_suggest, fields._defaults.auto_suggest)
+
+  for name, value in pairs(merged) do
+    if fields._defaults[name] ~= nil then
+      fields[name] = value
+    end
+  end
+
+  local consumed = {}
+  for name in pairs(user_config) do
+    if fields.is_lua_key(name) then
+      consumed[name] = true
+    end
+  end
+  return consumed
+end
+
+fields._defaults = require("vimficiency.config_detail").capture_defaults(fields)
+fields._for_test = fields._for_test or {}
+fields._for_test.fields = fields
+
+fields.reset()
+
+return fields

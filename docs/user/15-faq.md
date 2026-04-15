@@ -10,11 +10,9 @@
 
 ## Does Vimficiency slow down Neovim?
 
-Key capture via `vim.on_key` is cheap (a small Lua table append per
-keystroke). The optimizer only runs when a session ends; it does heavy
-work in C++ on a snapshot of the buffer. Open sessions that you never
-end are essentially free — feel free to leave time-based or key-count on
-all day.
+No. Key capture is a small Lua append per keystroke. The optimizer only
+runs on `end` (or an auto-trigger), in C++, over a snapshot. Leaving
+recall on all day is free.
 
 ## Can I use it with Colemak / Dvorak / custom layouts?
 
@@ -24,9 +22,9 @@ manually in `setup{}` — see [10. Effort model](10-effort-model.md).
 
 ## Does it work in visual or operator-pending mode?
 
-Sessions span whatever modes you're in. The optimizer reasons about the
-start-to-end delta, not mode transitions. Some mode-sensitive motions may
-get simplified (see [13. Limitations](13-limitations.md)).
+Sessions span whatever modes you're in — the optimizer reasons about the
+start-to-end delta, not mode transitions. Some mode-sensitive motions
+are simplified; see [13. Limitations](13-limitations.md).
 
 ## Why didn't the "better" sequence actually get suggested?
 

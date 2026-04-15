@@ -25,6 +25,7 @@
 local M = {}
 
 local alias_mod = require("vimficiency.alias")
+local ffi_lib = require("vimficiency.ffi")
 local key_tracking = require("vimficiency.key_tracking")
 local util = require("vimficiency.util")
 local config = require("vimficiency.config")
@@ -197,71 +198,37 @@ local last_finished_id = nil
 --------------------------------------------------------------------------------
 
 --- Find the youngest recall record index `i` whose time_started <= target.
---- Reads time_started from records (not from active state), so finished
---- records in the ring are first-class — no tombstone misbehavior.
----@param target_hrtime integer  # in hrtime units (nanoseconds)
----@return integer|nil index  # 1-based index into recall_id_order, or nil if none
-local function find_session_at_or_before(target_hrtime)
-  local lo, hi = 1, #recall_id_order
-  local best = nil
-  while lo <= hi do
-    local mid = math.floor((lo + hi) / 2)
-    local id = recall_id_order[mid]
-    local rec = session_records[id]
-    if not rec then
-      -- Genuinely missing record (defensive only — shouldn't happen).
-      lo = mid + 1
-    elseif rec.time_started <= target_hrtime then
-      best = mid
-      lo = mid + 1
-    else
-      hi = mid - 1
-    end
-  end
-  return best
-end
-
---- Does the recall record at this index start at a clean normal-mode
---- command boundary? Reads first_mode from the record so the check
---- works regardless of the session's status (active or finished).
---- Pure — takes explicit `records` and `order` tables so tests can
---- feed synthetic state without touching module-level storage.
 ---@param records table<string, SessionRecord>
 ---@param order string[]
----@param index integer
----@return boolean
-local function is_clean_boundary_pure(records, order, index)
-  local id = order[index]
-  local rec = records[id]
-  if not rec or not rec.first_mode then return false end
-  local m = rec.first_mode
-  if m:sub(1, 2) == "no" then return false end  -- operator-pending
-  return m:sub(1, 1) == "n"
-end
-
---- Snap a recall_time cutoff index backward to the nearest clean command
---- boundary, bounded by `budget`. Pure — see `is_clean_boundary_pure`.
----@param records table<string, SessionRecord>
----@param order string[]
----@param cutoff_index integer
+---@param target_hrtime integer
 ---@param budget integer
----@return integer|nil index
-local function snap_backward_to_boundary_pure(records, order, cutoff_index, budget)
-  local i = cutoff_index
-  local steps = 0
-  while i >= 1 and steps <= budget do
-    if is_clean_boundary_pure(records, order, i) then
-      return i
-    end
-    i = i - 1
-    steps = steps + 1
-  end
-  return nil
+---@return integer|nil
+local function resolve_recall_cutoff_pure(records, order, target_hrtime, budget)
+  return ffi_lib.resolve_recall_cutoff(records, order, target_hrtime, budget)
 end
 
-local function snap_backward_to_boundary(cutoff_index)
-  return snap_backward_to_boundary_pure(
-    session_records, recall_id_order, cutoff_index,
+---@param cutoff_index integer
+---@return integer|nil
+local function snap_backward_to_boundary_pure(records, order, cutoff_index, budget)
+  local synthetic = {}
+  for i = 1, #order do
+    local id = order[i]
+    local rec = records[id] or {}
+    synthetic[id] = {
+      time_started = rec.time_started or i,
+      first_mode = rec.first_mode,
+    }
+  end
+  return resolve_recall_cutoff_pure(synthetic, order, cutoff_index, budget)
+end
+
+---@param target_hrtime integer
+---@return integer|nil
+local function resolve_recall_cutoff(target_hrtime)
+  return resolve_recall_cutoff_pure(
+    session_records,
+    recall_id_order,
+    target_hrtime,
     config.SNAP_LOOKBACK_KEYS or 20
   )
 end
@@ -293,10 +260,7 @@ local function convert_alias_to_id(alias)
   -- surface "No recall session found within 'Ns'…" (see docs/user/05-
   -- recall.md). A silent fallback to the oldest record would hand back
   -- a window much shorter than N and make N meaningless.
-  local cutoff_index = find_session_at_or_before(target)
-  if not cutoff_index then return nil end
-
-  local snapped = snap_backward_to_boundary(cutoff_index)
+  local snapped = resolve_recall_cutoff(target)
   if not snapped then return nil end
   return recall_id_order[snapped]
 end
@@ -725,6 +689,7 @@ end
 -- to feed synthetic ring state through the snap algorithm without
 -- touching module-level storage.
 M._pure = {
+  resolve_recall_cutoff = resolve_recall_cutoff_pure,
   snap_backward_to_boundary = snap_backward_to_boundary_pure,
 }
 

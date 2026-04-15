@@ -16,9 +16,10 @@ vimficiency finished [a] (0,0) -> (2,2)
   3. 3rx Wlj ciw yyy <Esc> (13.00)
 ```
 
-- `(0,0) -> (2,2)` — cursor moved from row 0 col 0 to row 2 col 2.
-- `user:` — what you typed, with its effort cost in parentheses.
-- Numbered lines — the top optimal sequences, sorted by cost ascending.
+- `(0,0) -> (2,2)` — cursor moved from row 0 col 0 to row 2 col 2 (0-indexed)
+- `user:` — what you typed for reference
+- Numbered lines — the top optimal sequences in order of cost.
+- The decimal value in parentheses is the calculated effort for the corresponding sequence
 
 Cost is a keyboard-effort score (lower is better), not a keystroke count.
 See [10. The effort model](10-effort-model.md) for how it's computed and
@@ -27,20 +28,11 @@ how to tune it to your layout.
 ## Simulating
 
 `:Vimfy sim <alias> [count] [delay_ms]` opens a new tab with side-by-side
-windows and animates:
-
-- Your sequence (leftmost)
-- The top suggestions (one per additional window)
-
-**Keys inside the simulation tab:**
-- `q` closes the simulation.
-
-**Arguments:**
+windows and animates your sequence (leftmost) and the top suggestions (one per additional window)
 - `count` — how many optimal sequences to show (default: all saved)
 - `delay_ms` — step delay in ms (default: 1000)
 
-Example: `:Vimfy sim 6 2 300` shows your sequence + top 2 suggestions at 300ms
-per step.
+You can close the simulation window with `q`
 
 ## Listing what's around
 
@@ -52,43 +44,34 @@ Shows currently active sessions and saved-to-disk results.
 
 ## Saving a result
 
-`save` is a cross-cutting command: it works on every session type —
-Mark, Watch, Recall, Suggest — because all four terminate by handing a
-result to the same store. `:Vimfy end <alias>` (or an auto-end) finishes
-and displays but doesn't touch disk. To keep a result around, run
-`save` next:
+`save` works for any finished session (Mark, Watch, Recall, Suggest).
+`end` displays a result but doesn't touch disk:
 
 ```vim
 :Vimfy save <selector> [<name>]
 ```
 
-The selector is a session alias (`a`, `3s`, `5`) or `@` for the most
-recently finished session — the latter is the usual choice right after
-`end`. The name is optional; omit it to reuse the selector as the
-filename. For `@`, the default is the alias the last `:Vimfy end`
-used.
+- Selectors: a session alias (`a`, `3s`, `5`) or `@` for the most recent finish.
+- Name is optional — defaults to the selector; for `@` it reuses the alias the last `:Vimfy end` used.
 
 ```vim
 :Vimfy end a
 :Vimfy save @                   " writes saved/a.json
-:Vimfy save @ my-refactor       " explicit name overrides the default
-:Vimfy save 3s                  " recall too: writes saved/3s.json
+:Vimfy save @ my-refactor       " explicit name
+:Vimfy save 3s                  " recall works the same way
 ```
 
 Saved files live under `stdpath('data')/vimficiency/saved/`.
 
 ### Session handles vs. saved names
 
-These are **separate namespaces**. A session handle (`a`, `3s`, `5`)
-lives in memory — for Mark it lasts until you overwrite or close it,
-for Recall it rotates out of the ring. A saved name is a file on disk,
-persisting across Neovim restarts. The same text is allowed in both —
-`:Vimfy save a` (reusing `a` as the filename) is the common path.
+Separate namespaces. A session handle (`a`, `3s`, `5`) is in memory —
+Marks last until overwritten/closed, Recall rotates out of the ring. A
+saved name is a file on disk, durable across restarts. The same text
+is allowed in both.
 
-This matters most for Recall/Suggest: results are transient by design,
-so if a suggestion is worth keeping, `:Vimfy save @ <name>` it
-immediately — a few more keystrokes and the slice has rotated out of
-the queue.
+For Recall/Suggest, save promptly: `:Vimfy save @ <name>` right after
+`end`, before the slice rotates out.
 
 ## Viewing a saved result
 
@@ -96,8 +79,7 @@ the queue.
 :Vimfy view my-refactor
 ```
 
-Reads back a result previously saved via `:Vimfy save`. Tab-complete on
-`:Vimfy view` lists what's available.
+Reads back a saved result. Tab-complete on `:Vimfy view` lists what's available.
 
 ---
 

@@ -40,13 +40,13 @@ Mark sessions give the cleanest boundaries:
 Watch it — same precise start, but let Vimfy auto-finish when you pause:
 
 ```lua
-require('vimficiency').setup({ watch = { idle_ms = 3000, cooldown_ms = 5000 } })
+require('vimficiency').setup({ watch = { idle = { ms = 3000 }, cooldown_ms = 5000 } })
 ```
 
 ```vim
 :Vimfy watch a
 " ... edit normally, and stop when done ...
-" ... after idle_ms of idleness, the optimizer runs and the result notifies ...
+" ... after idle.ms of idleness, the optimizer runs and the result notifies ...
 ```
 
 ## "I just did something clumsy — was there a better way?"

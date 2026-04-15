@@ -80,7 +80,7 @@ end)
 test("summarize: surfaces type=watch for a Watch session", function()
   fresh_buf()
   local prev_watch = config.watch
-  config.watch = { idle_ms = 60000, cooldown_ms = 0 }
+  config.watch = { idle = { ms = 60000 }, cooldown_ms = 0 }
   session.watch("kindssumw")
   local rec = session_store.get_active("kindssumw")
   local summary = session_store.summarize(rec.id)
@@ -105,7 +105,7 @@ end)
 test("Watch: session.watch yields (manual, auto)", function()
   fresh_buf()
   local prev_watch = config.watch
-  config.watch = { idle_ms = 60000, cooldown_ms = 0 }
+  config.watch = { idle = { ms = 60000 }, cooldown_ms = 0 }
   session.watch("kindswatch")
   local rec = session_store.get_active("kindswatch")
   assert_true(rec ~= nil, "Watch session should be active after watch")

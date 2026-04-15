@@ -1,7 +1,7 @@
 -- lua/vimficiency/init.lua
 local ffi_lib = require("vimficiency.ffi")
 local config = require("vimficiency.config")
-local alias_mod = require("vimficiency.alias")
+local config_detail = require("vimficiency.config_detail")
 local session = require("vimficiency.session")
 local session_store = require("vimficiency.session_store")
 local key_tracking = require("vimficiency.key_tracking")
@@ -17,136 +17,12 @@ local function set_cmd(name, fn, opts)
 	vim.api.nvim_create_user_command(name, fn, opts)
 end
 
--- `config.lua` is the schema: any key with a default there is a Lua-side knob.
--- C++-only keys aren't in `config` and are handled by `ffi_lib.configure`.
--- Returns the set of keys claimed so setup() can warn on leftovers.
----@return table<string, true>
-local function import_lua_config(user_config)
-	local consumed = {}
-	for k, v in pairs(user_config) do
-		if config[k] ~= nil then
-			config[k] = v
-			consumed[k] = true
-		end
-	end
-	return consumed
-end
-
--- Recall alias validation delegates to the central grammar module so the
--- auto_suggest window validator can't drift from `:Vimfy end 3s` parsing.
-
--- Validate and normalize `user_config.auto_suggest`, writing the result to
--- `config.auto_suggest`. Errors loudly on unknown keys or malformed values
--- so typos can't silently no-op.
---
--- Accepted shapes:
---   auto_suggest = false                          -- explicit disable
---   auto_suggest = nil                            -- implicit disable
---   auto_suggest = { idle = {...},                -- at least one trigger
---                    cooldown_ms = 5000 }
---
--- Reserved trigger names (`keys`, `cost`) error out: their behavior isn't
--- implemented yet and we don't want typos to silently no-op when they ship.
 local function validate_auto_suggest(raw)
-	if raw == nil or raw == false then
-		config.auto_suggest = false
-		return
-	end
-	if type(raw) ~= "table" then
-		error("auto_suggest must be false or a table, got " .. type(raw))
-	end
-
-	local reserved = {
-		keys = "auto_suggest.keys trigger is not yet implemented",
-		cost = "auto_suggest.cost trigger is not yet implemented",
-	}
-	local top_allowed = { idle = true, keys = true, cost = true, cooldown_ms = true }
-	for k in pairs(raw) do
-		if reserved[k] then error(reserved[k]) end
-		if not top_allowed[k] then
-			error("auto_suggest: unknown key '" .. tostring(k) ..
-				"' (allowed: idle, cooldown_ms)")
-		end
-	end
-
-	local normalized = { cooldown_ms = 5000 }
-
-	if raw.idle ~= nil then
-		if type(raw.idle) ~= "table" then
-			error("auto_suggest.idle must be a table")
-		end
-		local idle_allowed = { ms = true, window = true }
-		for k in pairs(raw.idle) do
-			if not idle_allowed[k] then
-				error("auto_suggest.idle: unknown key '" .. tostring(k) ..
-					"' (allowed: ms, window)")
-			end
-		end
-		if type(raw.idle.ms) ~= "number" or raw.idle.ms <= 0 then
-			error("auto_suggest.idle.ms must be a positive number")
-		end
-		if not alias_mod.is_recall(raw.idle.window) then
-			error("auto_suggest.idle.window must be a recall alias " ..
-				"(digits, e.g. '50', or digits+s, e.g. '3s')")
-		end
-		normalized.idle = { ms = raw.idle.ms, window = raw.idle.window }
-	end
-
-	if raw.cooldown_ms ~= nil then
-		if type(raw.cooldown_ms) ~= "number" or raw.cooldown_ms < 0 then
-			error("auto_suggest.cooldown_ms must be a non-negative number")
-		end
-		normalized.cooldown_ms = raw.cooldown_ms
-	end
-
-	-- No triggers present → effectively disabled. Treat as false so
-	-- downstream code has one "is it on" check.
-	if normalized.idle == nil then
-		config.auto_suggest = false
-		return
-	end
-
-	config.auto_suggest = normalized
+	config.auto_suggest = config_detail.normalize_auto_suggest(raw, config._defaults.auto_suggest)
 end
 
--- Validate and normalize `user_config.watch`. Independent from auto_suggest —
--- a user can run Watch with a different idle threshold than Suggest, or
--- either without the other.
---
--- Accepted shapes:
---   watch = false                                     -- explicit disable
---   watch = nil                                       -- implicit disable
---   watch = { idle_ms = 3000, cooldown_ms = 5000 }    -- armed
 local function validate_watch(raw)
-	if raw == nil or raw == false then
-		config.watch = false
-		return
-	end
-	if type(raw) ~= "table" then
-		error("watch must be false or a table, got " .. type(raw))
-	end
-
-	local allowed = { idle_ms = true, cooldown_ms = true }
-	for k in pairs(raw) do
-		if not allowed[k] then
-			error("watch: unknown key '" .. tostring(k) ..
-				"' (allowed: idle_ms, cooldown_ms)")
-		end
-	end
-
-	if type(raw.idle_ms) ~= "number" or raw.idle_ms <= 0 then
-		error("watch.idle_ms must be a positive number")
-	end
-
-	local cooldown_ms = 5000
-	if raw.cooldown_ms ~= nil then
-		if type(raw.cooldown_ms) ~= "number" or raw.cooldown_ms < 0 then
-			error("watch.cooldown_ms must be a non-negative number")
-		end
-		cooldown_ms = raw.cooldown_ms
-	end
-
-	config.watch = { idle_ms = raw.idle_ms, cooldown_ms = cooldown_ms }
+	config.watch = config_detail.normalize_watch(raw, config._defaults.watch)
 end
 
 --------------------------------------------------------------------------------
@@ -283,7 +159,7 @@ subcommands.suggest = {
 		local function enable_or_warn()
 			if not auto_suggest.is_configured() then
 				vim.notify(
-					"auto_suggest has no triggers configured. Add `auto_suggest = { idle = { ms, window } }` to setup{}.",
+					"auto_suggest has no triggers configured. Add `auto_suggest = { idle = { ms = N, window = 'Ns' } }` or another full trigger to setup{}.",
 					vim.log.levels.ERROR
 				)
 				return
@@ -613,10 +489,12 @@ local function scan_rhs_for_vimfy(rhs)
 	return false
 end
 
--- Test-only export so the mapping-scan tests don't have to round-trip
--- synthetic mappings through `nvim_get_keymap`.
+-- Test-only exports. Kept out of the public surface — tests need to poke
+-- validators/helpers without the user being able to stumble into them.
 M._for_test = M._for_test or {}
 M._for_test.scan_rhs_for_vimfy = scan_rhs_for_vimfy
+M._for_test.validate_watch = validate_watch
+M._for_test.validate_auto_suggest = validate_auto_suggest
 
 local function warn_about_bad_mappings()
 	local bad = {}
@@ -648,19 +526,14 @@ end
 
 function M.setup(user_config)
 	user_config = user_config or {}
+	config.reset()
 
-	-- Auto-detect shiftwidth from Neovim (user config overrides)
+	-- Auto-detect shiftwidth from Neovim (user config overrides).
 	if not user_config.shiftwidth then
 		user_config.shiftwidth = vim.o.shiftwidth
 	end
 
-	local lua_consumed = import_lua_config(user_config)
-
-	-- auto_suggest goes through its own validator: the nested shape needs
-	-- strict key-checking and normalization. Runs after the scalar importer
-	-- so it can overwrite the raw table the importer just copied in.
-	validate_auto_suggest(user_config.auto_suggest)
-	validate_watch(user_config.watch)
+	local lua_consumed = config.apply(user_config)
 
 	local cpp_consumed = ffi_lib.configure(user_config)
 

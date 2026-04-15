@@ -4,9 +4,12 @@
 
 # 8. Binding keys to Vimfy actions
 
-Vimficiency measures the keys you type. So a key that *invokes* Vimfy
-should not itself be counted as a motion. Three ways to bind keys do
-that correctly; one ergonomic way does not.
+Vimficiency measures the keys you type, so a key that *invokes* Vimfy
+must announce itself as admin activity — otherwise the invoking
+keystroke counts as motion. `vim.on_key` fires for the LHS before
+Neovim resolves the mapping, and we can't retroactively uncount; the
+caller has to announce. Three ways to bind correctly, one ergonomic
+way that doesn't:
 
 ## 1. `vimfy.map()` (recommended)
 
@@ -112,17 +115,8 @@ binding into `vimfy.map()` or a `<Plug>` map.
 At setup, Vimficiency scans pre-existing mappings for this pattern and
 emits a one-shot warning listing each offender. The scan can't see
 mappings defined *after* setup (or Lua-callback RHS, or buffer-local
-mappings added later) — if you keep seeing the LHS counted as motion,
-check that the binding is routed through `vimfy.map()` / `<Plug>` /
-`wrap()`.
-
-## Why the contract
-
-`vim.on_key` fires for the LHS keystroke *before* Neovim resolves the
-mapping. By the time the RHS runs (whether it's `:Vimfy ...`, a
-`<Plug>` map, or a Lua callback), the LHS has already been delivered.
-We can't auto-suppress; the caller has to announce. `vimfy.map()`,
-`<Plug>Vimfy*`, and `wrap()` are three ways to spell that announcement.
+mappings added later) — if an LHS keeps showing up as motion, check
+that the binding is routed through `vimfy.map()` / `<Plug>` / `wrap()`.
 
 ---
 
