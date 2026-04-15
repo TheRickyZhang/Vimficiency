@@ -1,4 +1,4 @@
--- tests/lua/test_config_validation.lua
+-- tests/lua/config_validation.lua
 -- Guards the "loud on typo" contract for nested config keys.
 -- Requires libvimficiency.so to be built — if load fails the whole
 -- suite fails loudly, which is the correct signal in CI.
@@ -8,34 +8,43 @@ if not ok_ffi then
   error("vimficiency.ffi failed to load (is the C++ library built?): " .. tostring(ffi_lib))
 end
 
-local function expects_error(fn, pattern, msg)
-  local ok, err = pcall(fn)
-  if ok then
-    error((msg or "expected error") .. ": call succeeded", 2)
-  end
-  if pattern and not tostring(err):find(pattern, 1, true) then
-    error(string.format("%s: error message %q did not contain %q",
-      msg or "expected error", tostring(err), pattern), 2)
-  end
+local config        = require("vimficiency.config")
+local config_detail = require("vimficiency.config_detail")
+local h             = require("_helpers")
+
+-- Thin wrappers around the normalizers that also assign the result onto
+-- `config`. Matches what the plugin's setup path does on real user input.
+local function validate_watch(raw)
+  config.watch = config_detail.normalize_watch(raw, config._defaults.watch)
 end
 
+local function validate_auto_suggest(raw)
+  config.auto_suggest = config_detail.normalize_auto_suggest(raw, config._defaults.auto_suggest)
+end
+
+local function with_saved_watch(fn)
+  h.with_patch({ { config, "watch", config.watch } }, fn)
+end
+
+local function with_saved_auto_suggest(fn)
+  h.with_patch({ { config, "auto_suggest", config.auto_suggest } }, fn)
+end
+
+--------------------------------------------------------------------------------
+-- ffi_lib.configure: weights + count_penalty_overrides
+--------------------------------------------------------------------------------
+
 test("configure: unknown key in weights raises", function()
-  expects_error(
+  assert_error(
     function() ffi_lib.configure({ weights = { downwrad = 5 } }) end,
-    "weights.downwrad",
-    "typo in weights must error"
+    "weights.downwrad", "typo in weights must error"
   )
 end)
 
 test("configure: known keys in weights succeed", function()
   -- keyWeight exists on C_ScoreWeights. If the binding changes, this
   -- test's positive assertion needs adjusting alongside.
-  local ok, err = pcall(function()
-    ffi_lib.configure({ weights = { keyWeight = 1.0 } })
-  end)
-  if not ok then
-    error("valid weights key rejected: " .. tostring(err))
-  end
+  ffi_lib.configure({ weights = { keyWeight = 1.0 } })
 end)
 
 test("configure: unknown key in count_penalty_overrides[class] raises", function()
@@ -46,39 +55,30 @@ test("configure: unknown key in count_penalty_overrides[class] raises", function
   for name, _ in pairs(ffi_lib.CountClass) do class_name = name; break end
   assert_true(class_name, "CountClass enum must expose at least one name")
 
-  expects_error(
+  assert_error(
     function()
       ffi_lib.configure({
         count_penalty_overrides = { [class_name] = { base_slope = 1.0 } },
       })
     end,
-    "base_slope",
-    "typo in count_penalty_overrides must error"
+    "base_slope", "typo in count_penalty_overrides must error"
   )
 end)
 
 test("configure: valid count_penalty_overrides accepted", function()
   local class_name
   for name, _ in pairs(ffi_lib.CountClass) do class_name = name; break end
-  local ok, err = pcall(function()
-    ffi_lib.configure({
-      count_penalty_overrides = { [class_name] = { base = 1.0, count_slope = 0.5 } },
-    })
-  end)
-  if not ok then
-    error("valid count_penalty_overrides key rejected: " .. tostring(err))
-  end
+  ffi_lib.configure({
+    count_penalty_overrides = { [class_name] = { base = 1.0, count_slope = 0.5 } },
+  })
 end)
 
 test("configure: unknown count penalty class raises (existing behavior)", function()
-  expects_error(
+  assert_error(
     function()
-      ffi_lib.configure({
-        count_penalty_overrides = { FakeClass = { base = 1.0 } },
-      })
+      ffi_lib.configure({ count_penalty_overrides = { FakeClass = { base = 1.0 } } })
     end,
-    "Unknown count penalty class",
-    "bogus class name must error"
+    "Unknown count penalty class", "bogus class name must error"
   )
 end)
 
@@ -86,41 +86,20 @@ end)
 -- Lua-side validator shape: watch and auto_suggest (parallel nested `idle`)
 --------------------------------------------------------------------------------
 
-local config         = require("vimficiency.config")
-local init           = require("vimficiency.init")
-local validate_watch = init._for_test.validate_watch
-local validate_auto_suggest = init._for_test.validate_auto_suggest
-
-local function with_saved_watch(fn)
-  local prev = config.watch
-  local ok, err = pcall(fn)
-  config.watch = prev
-  if not ok then error(err, 2) end
-end
-
-local function with_saved_auto_suggest(fn)
-  local prev = config.auto_suggest
-  local ok, err = pcall(fn)
-  config.auto_suggest = prev
-  if not ok then error(err, 2) end
-end
-
 test("validate_watch: flat idle_ms (legacy shape) errors loudly", function()
   with_saved_watch(function()
-    expects_error(
+    assert_error(
       function() validate_watch({ idle_ms = 3000, cooldown_ms = 5000 }) end,
-      "idle_ms",
-      "flat idle_ms must be rejected"
+      "idle_ms", "flat idle_ms must be rejected"
     )
   end)
 end)
 
 test("validate_watch: idle.window is rejected with explanatory message", function()
   with_saved_watch(function()
-    expects_error(
+    assert_error(
       function() validate_watch({ idle = { ms = 3000, window = "3s" } }) end,
-      "window is not allowed",
-      "watch.idle.window must be rejected"
+      "window is not allowed", "watch.idle.window must be rejected"
     )
   end)
 end)
@@ -135,20 +114,18 @@ end)
 
 test("validate_watch: non-table idle errors", function()
   with_saved_watch(function()
-    expects_error(
+    assert_error(
       function() validate_watch({ idle = 3000 }) end,
-      "watch.idle must be a table",
-      "scalar idle must be rejected"
+      "watch.idle must be a table", "scalar idle must be rejected"
     )
   end)
 end)
 
 test("validate_auto_suggest: idle requires an explicit window", function()
   with_saved_auto_suggest(function()
-    expects_error(
+    assert_error(
       function() validate_auto_suggest({ idle = { ms = 3000 }, cooldown_ms = 5000 }) end,
-      "auto_suggest.idle.window",
-      "present idle trigger must be fully specified"
+      "auto_suggest.idle.window", "present idle trigger must be fully specified"
     )
   end)
 end)
@@ -164,10 +141,9 @@ end)
 
 test("validate_auto_suggest: invalid window still errors", function()
   with_saved_auto_suggest(function()
-    expects_error(
+    assert_error(
       function() validate_auto_suggest({ idle = { ms = 3000, window = "3m" } }) end,
-      "recall alias",
-      "non-recall-alias window must error"
+      "recall alias", "non-recall-alias window must error"
     )
   end)
 end)
@@ -183,10 +159,9 @@ end)
 
 test("validate_auto_suggest: cost requires every field", function()
   with_saved_auto_suggest(function()
-    expects_error(
+    assert_error(
       function() validate_auto_suggest({ cost = { m = 1.5, b = 2.0 } }) end,
-      "auto_suggest.cost.ms",
-      "present cost trigger must be fully specified"
+      "auto_suggest.cost.ms", "present cost trigger must be fully specified"
     )
   end)
 end)
@@ -197,25 +172,22 @@ end)
 
 test("validate_auto_suggest: keys.every must be a positive integer", function()
   with_saved_auto_suggest(function()
-    expects_error(
+    assert_error(
       function() validate_auto_suggest({ keys = { every = 0 } }) end,
-      "positive integer",
-      "every=0 must be rejected"
+      "positive integer", "every=0 must be rejected"
     )
-    expects_error(
+    assert_error(
       function() validate_auto_suggest({ keys = { every = 1.5 } }) end,
-      "positive integer",
-      "non-integer every must be rejected"
+      "positive integer", "non-integer every must be rejected"
     )
   end)
 end)
 
 test("validate_auto_suggest: keys with unknown sub-key errors", function()
   with_saved_auto_suggest(function()
-    expects_error(
+    assert_error(
       function() validate_auto_suggest({ keys = { every = 50, window = "50" } }) end,
-      "unknown key",
-      "window inside keys has no meaning (collapses to every)"
+      "unknown key", "window inside keys has no meaning (collapses to every)"
     )
   end)
 end)
@@ -226,9 +198,7 @@ end)
 
 test("validate_auto_suggest: cost with explicit ms and window", function()
   with_saved_auto_suggest(function()
-    validate_auto_suggest({
-      cost = { m = 1.5, b = 2.0, ms = 500, window = "30s" },
-    })
+    validate_auto_suggest({ cost = { m = 1.5, b = 2.0, ms = 500, window = "30s" } })
     assert_eq(config.auto_suggest.cost.ms, 500)
     assert_eq(config.auto_suggest.cost.window, "30s")
   end)
@@ -236,54 +206,49 @@ end)
 
 test("validate_auto_suggest: cost.m must be positive", function()
   with_saved_auto_suggest(function()
-    expects_error(
+    assert_error(
       function() validate_auto_suggest({ cost = { m = 0, b = 2.0, ms = 500, window = "30s" } }) end,
-      "positive",
-      "m=0 must be rejected"
+      "positive", "m=0 must be rejected"
     )
   end)
 end)
 
 test("validate_auto_suggest: cost.b must be non-negative", function()
   with_saved_auto_suggest(function()
-    expects_error(
+    assert_error(
       function() validate_auto_suggest({ cost = { m = 1.5, b = -1, ms = 500, window = "30s" } }) end,
-      "non-negative",
-      "b<0 must be rejected"
+      "non-negative", "b<0 must be rejected"
     )
   end)
 end)
 
 test("validate_auto_suggest: cost.window must be a recall alias", function()
   with_saved_auto_suggest(function()
-    expects_error(
-      function()
-        validate_auto_suggest({ cost = { m = 1.5, b = 2.0, ms = 500, window = "3m" } })
-      end,
-      "recall alias",
-      "bogus window must be rejected"
+    assert_error(
+      function() validate_auto_suggest({ cost = { m = 1.5, b = 2.0, ms = 500, window = "3m" } }) end,
+      "recall alias", "bogus window must be rejected"
     )
   end)
 end)
 
 test("validate_auto_suggest: cost with unknown sub-key errors", function()
   with_saved_auto_suggest(function()
-    expects_error(
+    assert_error(
       function()
         validate_auto_suggest({ cost = { m = 1.5, b = 2.0, ms = 500, window = "30s", slope = 0.1 } })
       end,
-      "unknown key",
-      "cost must reject unknown sub-keys"
+      "unknown key", "cost must reject unknown sub-keys"
     )
   end)
 end)
 
+--------------------------------------------------------------------------------
 -- validate_auto_suggest: trigger presence is required
 --------------------------------------------------------------------------------
 
 test("validate_auto_suggest: empty table (no triggers) errors loudly", function()
   with_saved_auto_suggest(function()
-    expects_error(
+    assert_error(
       function() validate_auto_suggest({ cooldown_ms = 5000 }) end,
       "must configure at least one trigger",
       "cooldown_ms alone is not a valid feature config"

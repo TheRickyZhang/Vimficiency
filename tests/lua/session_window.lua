@@ -1,10 +1,11 @@
--- tests/lua/test_session_window.lua
+-- tests/lua/session_window.lua
 -- Covers compute_result_for_active's window-fallback (#1): when the
 -- original session window is closed but the buffer is still current via
 -- a different window, we should proceed instead of hard-rejecting.
 
 local session = require("vimficiency.session")
-local util = require("vimficiency.util")
+local util    = require("vimficiency.util")
+local h       = require("_helpers")
 
 local function fake_active(buf, win)
   return {
@@ -23,9 +24,7 @@ local function fake_active(buf, win)
 end
 
 test("compute_result_for_active: window-closed fallback to current window", function()
-  local buf = vim.api.nvim_create_buf(true, false)
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "hello world", "second line" })
-  vim.api.nvim_set_current_buf(buf)
+  local buf = h.new_buf({ "hello world", "second line" })
 
   -- Two windows, both showing buf. We'll treat the current one as
   -- "original", then close it and land in the split.
@@ -57,14 +56,11 @@ test("compute_result_for_active: window-closed fallback to current window", func
       "failure must not mention original window, got: " .. msg)
   end
 
-  -- Cleanup: close scratch buffer
   pcall(vim.api.nvim_buf_delete, buf, { force = true })
 end)
 
 test("compute_result_for_active: buffer-gone still hard-rejects", function()
-  local buf = vim.api.nvim_create_buf(true, false)
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "x" })
-  vim.api.nvim_set_current_buf(buf)
+  local buf = h.new_buf({ "x" })
   local active = fake_active(buf, vim.api.nvim_get_current_win())
 
   vim.cmd("enew")
@@ -72,24 +68,18 @@ test("compute_result_for_active: buffer-gone still hard-rejects", function()
 
   local result, err = session.compute_result_for_active(active)
   assert_eq(result, nil, "should fail when buffer gone")
-  assert_true(tostring(err or ""):find("buffer", 1, true),
-    "error must mention buffer: " .. tostring(err))
+  assert_match(err, "buffer", "error must mention buffer")
 end)
 
 test("compute_result_for_active: different-buffer still hard-rejects", function()
-  local buf_a = vim.api.nvim_create_buf(true, false)
-  vim.api.nvim_buf_set_lines(buf_a, 0, -1, false, { "a" })
-  vim.api.nvim_set_current_buf(buf_a)
+  local buf_a = h.new_buf({ "a" })
   local active = fake_active(buf_a, vim.api.nvim_get_current_win())
-
-  local buf_b = vim.api.nvim_create_buf(true, false)
-  vim.api.nvim_buf_set_lines(buf_b, 0, -1, false, { "b" })
-  vim.api.nvim_set_current_buf(buf_b)
+  local buf_b = h.new_buf({ "b" })
 
   local result, err = session.compute_result_for_active(active)
   assert_eq(result, nil, "should fail when current buf differs")
-  assert_true(tostring(err or ""):find("not in original buffer", 1, true),
-    "error must identify buffer mismatch: " .. tostring(err))
+  assert_match(err, "buf " .. buf_a, "error must name captured buffer")
+  assert_match(err, "buf " .. buf_b, "error must name current buffer")
 
   pcall(vim.api.nvim_buf_delete, buf_a, { force = true })
   pcall(vim.api.nvim_buf_delete, buf_b, { force = true })

@@ -1,4 +1,4 @@
--- tests/lua/test_save_default.lua
+-- tests/lua/save_default.lua
 -- Covers `session.default_save_name` — the helper behind
 -- `:Vimfy save <selector>` when the user omits the filename.
 --
@@ -42,24 +42,6 @@ end)
 test("default_save_name: recall_time returns `Ns` verbatim", function()
   assert_eq(session.default_save_name("3s"), "3s")
   assert_eq(session.default_save_name("30s"), "30s")
-end)
-
-test("default_save_name: @ with no finished session returns nil", function()
-  -- Fresh-enough state: no prior test in this file has called
-  -- finish_session as of this suite's first `@` test, but other suites
-  -- might have. Either way, if a previous finish did run, its record
-  -- would have been clobbered by subsequent overwrites. We rely on the
-  -- @-over-nothing case coming before the seeding tests below.
-  --
-  -- Guard: if something earlier populated last_finished, we can't
-  -- unset it cleanly without a test-only poke. Accept either nil or
-  -- a valid string; the assertion below only cares about the no-prior
-  -- case when the test runs in isolation.
-  local name = session.default_save_name("@")
-  -- Best-effort: passes when run fresh; if another suite seeded state,
-  -- at minimum the result must be a string (never an error).
-  assert_true(name == nil or type(name) == "string",
-    "expected nil or string, got " .. type(name))
 end)
 
 test("default_save_name: @ resolves to manual finish alias", function()

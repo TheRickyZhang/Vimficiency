@@ -19,9 +19,7 @@ local fields = {
   auto_suggest = {
     cooldown_ms = 5000,
   },
-  watch = {
-    cooldown_ms = 5000,
-  },
+  watch = false,
 
   -- C++-owned config surface
   default_keyboard = require("vimficiency.config_detail").cpp(),

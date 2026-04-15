@@ -1,4 +1,4 @@
--- tests/lua/test_mapping_scan.lua
+-- tests/lua/mapping_scan.lua
 -- Covers scan_rhs_for_vimfy. Its job is a startup safety net: detect
 -- user mappings whose RHS invokes :Vimfy / :Vimficiency as a raw Ex
 -- command so we can warn about the LHS keystroke being double-counted.
@@ -6,11 +6,7 @@
 -- commands (`:vimfoo`, `:vimyak`); this test pins both the intended
 -- matches and the rejections.
 
-local init = require("vimficiency")
-local scan = init._for_test.scan_rhs_for_vimfy
-
-assert_true(type(scan) == "function",
-  "init._for_test.scan_rhs_for_vimfy must be exposed for this test")
+local scan = require("vimficiency.mapping_scan").scan_rhs_for_vimfy
 
 test("scan: matches :Vimfy at RHS start", function()
   assert_eq(scan(":Vimfy start a<CR>"), true)

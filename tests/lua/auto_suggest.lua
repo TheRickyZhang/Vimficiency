@@ -1,0 +1,260 @@
+-- tests/lua/auto_suggest.lua
+-- Unit tests for fire_idle's dedup/failure-throttle behavior. The actual
+-- cooldown timer is owned by end_trigger.arm_idle; fire_idle communicates
+-- with it by returning a boolean (true = "this fire counted, refresh
+-- cooldown"; false = "no-op, don't lock out the next tick").
+-- Monkey-patches session_store and session with stubs so we can drive
+-- outcomes without a live queue or the C++ optimizer.
+
+local config        = require("vimficiency.config")
+local auto_suggest  = require("vimficiency.auto_suggest")
+local session       = require("vimficiency.session")
+local session_store = require("vimficiency.session_store")
+local h             = require("_helpers")
+
+local fire_idle   = auto_suggest._for_test.fire_idle
+local fire_keys   = auto_suggest._for_test.fire_keys
+local fire_cost   = auto_suggest._for_test.fire_cost
+local get_last_fp = auto_suggest._for_test.get_last_fingerprint
+local reset       = auto_suggest._for_test.reset
+
+local IDLE_CFG = { idle = { ms = 200, window = "3s" }, cooldown_ms = 5000 }
+local KEYS_CFG = { keys = { every = 30 }, cooldown_ms = 5000 }
+local COST_M2  = { cost = { m = 2.0, b = 0.0, ms = 300, window = "100" }, cooldown_ms = 5000 }
+local COST_M1  = { cost = { m = 1.0, b = 0.0, ms = 300, window = "100" }, cooldown_ms = 5000 }
+
+local ACTIVE = { id = "fake-id", start_kind = "auto", end_kind = "manual" }
+
+local SUMMARY = {
+  id = "fake-id",
+  type = "suggest", start_kind = "auto", end_kind = "auto",
+  result = h.fake_result({ user_cost = 0.0, optimal_results = {} }),
+}
+
+--- Run `fn` with auto_suggest stubs installed. `spec` keys:
+---   cfg     — config.auto_suggest value (default IDLE_CFG)
+---   compute — session.compute_result_for_active stub (default returns fake_result())
+---   finish  — session_store.finish_session stub (default no-op true)
+---   active  — session_store.get_active stub (default returns ACTIVE)
+local function harness(spec, fn)
+  spec = spec or {}
+  reset()
+  local patches = {
+    { config, "auto_suggest", spec.cfg or IDLE_CFG },
+    { session_store, "get_active",     spec.active  or function() return ACTIVE end },
+    { session_store, "finish_session", spec.finish  or function() return true end },
+    { session_store, "summarize",      function() return SUMMARY end },
+    { session,       "compute_result_for_active",
+        spec.compute or function() return h.fake_result() end },
+  }
+  h.with_patch(patches, fn)
+end
+
+--- Helper for reason-capture tests.
+local function capture_reason(cfg, compute, trigger)
+  local captured
+  harness({
+    cfg = cfg,
+    compute = compute,
+    finish = function(_id, _r, _alias, _override, reason)
+      captured = reason
+      return true
+    end,
+  }, trigger)
+  return captured
+end
+
+--------------------------------------------------------------------------------
+-- fire_idle
+--------------------------------------------------------------------------------
+
+test("fire_idle: no-op when window unresolved (queue too young)", function()
+  harness({ active = function() return nil end }, function()
+    assert_eq(fire_idle(), false, "unresolved window should not count")
+  end)
+end)
+
+test("fire_idle: compute failure still counts (throttle)", function()
+  harness({ compute = function() return nil, "rejected" end }, function()
+    assert_eq(fire_idle(), true,
+      "compute failure must count as a fire so retries respect cooldown")
+  end)
+end)
+
+test("fire_idle: finish failure also counts", function()
+  harness({ finish = function() return false end }, function()
+    assert_eq(fire_idle(), true,
+      "store failure must count as a fire so retries respect cooldown")
+  end)
+end)
+
+test("fire_idle: success counts and records fingerprint", function()
+  harness({}, function()
+    assert_eq(fire_idle(), true, "success should count")
+    assert_true(get_last_fp() ~= nil, "success should record a fingerprint")
+  end)
+end)
+
+test("fire_idle: promotes end_kind from manual to auto on takeover", function()
+  local captured = { id = "fake-id", start_kind = "auto", end_kind = "manual" }
+  harness({
+    active = function() return captured end,
+    -- Mirror finish_session's real contract: the end_kind override is
+    -- applied atomically with the status transition. A failing finish
+    -- leaves end_kind untouched.
+    finish = function(_id, _r, _alias, override)
+      if override then captured.end_kind = override end
+      return true
+    end,
+  }, function()
+    fire_idle()
+    assert_eq(captured.end_kind, "auto",
+      "Recall -> Suggest promotion must flip end_kind at finish time")
+    assert_eq(captured.start_kind, "auto",
+      "start_kind must stay 'auto' (Suggest is still auto-start)")
+  end)
+end)
+
+test("fire_idle: compute failure leaves end_kind = 'manual' (no speculative flip)", function()
+  local captured = { id = "fake-id", start_kind = "auto", end_kind = "manual" }
+  harness({
+    active = function() return captured end,
+    compute = function() return nil, "rejected" end,
+  }, function()
+    -- Atomic contract: finish is never reached, so end_kind must not
+    -- mutate. A regression that speculatively flipped end_kind before
+    -- compute would leave a Recall record mislabeled as Suggest here.
+    fire_idle()
+    assert_eq(captured.end_kind, "manual",
+      "compute failure must not mutate end_kind")
+  end)
+end)
+
+test("fire_idle: finish failure leaves end_kind = 'manual' (atomic override)", function()
+  local captured = { id = "fake-id", start_kind = "auto", end_kind = "manual" }
+  harness({
+    active = function() return captured end,
+    -- Failing finish_session must NOT apply the override. This is the
+    -- atomicity contract: end_kind mutation and status transition share
+    -- the same guard in finish_session.
+    finish = function() return false end,
+  }, function()
+    fire_idle()
+    assert_eq(captured.end_kind, "manual",
+      "finish failure must not mutate end_kind — atomic with status transition")
+  end)
+end)
+
+--------------------------------------------------------------------------------
+-- fire_keys: derives window from cfg.keys.every
+--------------------------------------------------------------------------------
+
+test("fire_keys: passes tostring(every) as the recall window", function()
+  local captured_alias
+  harness({
+    cfg = KEYS_CFG,
+    active = function(alias) captured_alias = alias; return ACTIVE end,
+  }, function()
+    fire_keys()
+    assert_eq(captured_alias, "30",
+      "fire_keys resolves its window from cfg.keys.every (no separate knob)")
+  end)
+end)
+
+test("fire_keys: no-op when cfg.keys is absent", function()
+  harness({}, function()
+    assert_eq(fire_keys(), false, "unconfigured trigger must not count")
+  end)
+end)
+
+test("fire_keys: success path records fingerprint (shared state with fire_idle)", function()
+  harness({ cfg = { keys = { every = 50 }, cooldown_ms = 5000 } }, function()
+    assert_eq(fire_keys(), true)
+    assert_true(get_last_fp() ~= nil,
+      "keys trigger must write to the same last_fingerprint as idle")
+  end)
+end)
+
+--------------------------------------------------------------------------------
+-- fire_cost: gate on user_cost vs m*optimal+b
+--------------------------------------------------------------------------------
+
+test("fire_cost: gate failure counts but does not fingerprint (user was efficient)", function()
+  -- 5 > 2*10+0 == 20 → false → gate fails → suppress notify, still count.
+  harness({
+    cfg = COST_M2,
+    compute = function() return h.fake_result({
+      user_cost = 5,
+      optimal_results = { { seq = "y", cost = 10.0 } },
+    }) end,
+  }, function()
+    assert_eq(fire_cost(), true, "gate failure must still count (optimizer ran)")
+    assert_eq(get_last_fp(), nil,
+      "gate failure must not record fingerprint — nothing was surfaced")
+  end)
+end)
+
+test("fire_cost: gate pass records fingerprint", function()
+  -- 20 > 1*10+0 == 10 → true → gate passes.
+  harness({
+    cfg = COST_M1,
+    compute = function() return h.fake_result({
+      user_cost = 20,
+      optimal_results = { { seq = "y", cost = 10.0 } },
+    }) end,
+  }, function()
+    assert_eq(fire_cost(), true)
+    assert_true(get_last_fp() ~= nil,
+      "gate pass must fingerprint (the shown suggestion)")
+  end)
+end)
+
+test("fire_cost: empty optimal_results suppresses notify", function()
+  harness({
+    cfg = COST_M1,
+    compute = function() return h.fake_result({ user_cost = 20, optimal_results = {} }) end,
+  }, function()
+    assert_eq(fire_cost(), true, "optimizer ran, still count")
+    assert_eq(get_last_fp(), nil,
+      "no optimal result to compare against → suppress")
+  end)
+end)
+
+--------------------------------------------------------------------------------
+-- Reason plumbing: each trigger must pass its literal reason through to
+-- finish_session so the header can print it.
+--------------------------------------------------------------------------------
+
+test("fire_idle: passes 'suggest_idle' as the reason", function()
+  assert_eq(capture_reason(IDLE_CFG, nil, fire_idle), "suggest_idle")
+end)
+
+test("fire_keys: passes 'suggest_keys' as the reason", function()
+  assert_eq(capture_reason(KEYS_CFG, nil, fire_keys), "suggest_keys")
+end)
+
+test("fire_cost: passes 'suggest_cost' as the reason", function()
+  local compute = function() return h.fake_result({
+    user_cost = 20,
+    optimal_results = { { seq = "y", cost = 10.0 } },
+  }) end
+  assert_eq(capture_reason(COST_M1, compute, fire_cost), "suggest_cost")
+end)
+
+test("fire_cost: gate fail finishes the record (consume, not leak)", function()
+  local finish_called = false
+  local captured = { id = "fake-id", start_kind = "auto", end_kind = "manual" }
+  harness({
+    cfg = COST_M2,
+    active = function() return captured end,
+    compute = function() return h.fake_result({
+      user_cost = 5,
+      optimal_results = { { seq = "y", cost = 10.0 } },
+    }) end,
+    finish = function() finish_called = true; return true end,
+  }, function()
+    fire_cost()
+    assert_eq(finish_called, true,
+      "gate failure must still finish the record so next tick doesn't re-analyze it")
+  end)
+end)

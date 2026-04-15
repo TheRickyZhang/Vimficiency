@@ -1,4 +1,4 @@
--- tests/lua/test_manual_autodrop.lua
+-- tests/lua/manual_autodrop.lua
 -- Covers `session.manual_should_evict` — the pure predicate that decides
 -- when an in-progress manual session should be auto-dropped.
 --
