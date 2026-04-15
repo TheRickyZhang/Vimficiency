@@ -1,46 +1,97 @@
 *vimficiency.txt*  *vimficiency*
-                                For Neovim 0.11+    Last change: 2026 April 15
+                               For Neovim >= 0.9    Last change: 2026 April 15
 
 ==============================================================================
 Table of Contents                              *vimficiency-table-of-contents*
 
-1. vimficiency                                       |vimficiency-vimficiency|
-  - 1. Installation                  |vimficiency-vimficiency-1.-installation|
-  - 2. The core idea: a session|vimficiency-vimficiency-2.-the-core-idea:-a-session|
-  - 3. Mark (manual start, manual end)|vimficiency-vimficiency-3.-mark-(manual-start,-manual-end)|
-  - 4. Watch (manual start, auto end)|vimficiency-vimficiency-4.-watch-(manual-start,-auto-end)|
-  - 5. Recall (auto start, manual end)|vimficiency-vimficiency-5.-recall-(auto-start,-manual-end)|
-  - 6. Suggest (auto start, auto end)|vimficiency-vimficiency-6.-suggest-(auto-start,-auto-end)|
-  - 7. Inspecting results      |vimficiency-vimficiency-7.-inspecting-results|
-  - 8. Binding keys to Vimfy actions|vimficiency-vimficiency-8.-binding-keys-to-vimfy-actions|
-  - 9. Configuration                |vimficiency-vimficiency-9.-configuration|
-  - 10. The effort model        |vimficiency-vimficiency-10.-the-effort-model|
-  - 11. Commands reference    |vimficiency-vimficiency-11.-commands-reference|
-  - 12. Recommended workflows|vimficiency-vimficiency-12.-recommended-workflows|
-  - 13. Known limitations      |vimficiency-vimficiency-13.-known-limitations|
-  - 14. Troubleshooting          |vimficiency-vimficiency-14.-troubleshooting|
-  - 15. FAQ                                  |vimficiency-vimficiency-15.-faq|
-
-==============================================================================
-1. vimficiency                                       *vimficiency-vimficiency*
-
+1. Installation                                     |vimficiency-installation|
+  - Requirements                       |vimficiency-installation-requirements|
+  - Setup                                     |vimficiency-installation-setup|
+  - Verifying installation   |vimficiency-installation-verifying-installation|
+2. The core idea: a session             |vimficiency-the-core-idea:-a-session|
+  - The 2×2 matrix of session types|vimficiency-the-core-idea:-a-session-the-2×2-matrix-of-session-types|
+3. Mark (manual start, manual end)|vimficiency-mark-(manual-start,-manual-end)|
+  - See also            |vimficiency-mark-(manual-start,-manual-end)-see-also|
+4. Watch (manual start, auto end) |vimficiency-watch-(manual-start,-auto-end)|
+  - See also             |vimficiency-watch-(manual-start,-auto-end)-see-also|
+5. Recall (auto start, manual end)|vimficiency-recall-(auto-start,-manual-end)|
+  - Window aliases: two ways to index the queue|vimficiency-recall-(auto-start,-manual-end)-window-aliases:-two-ways-to-index-the-queue|
+  - Implementation Details|vimficiency-recall-(auto-start,-manual-end)-implementation-details|
+  - Capacity            |vimficiency-recall-(auto-start,-manual-end)-capacity|
+  - Recall results are transient|vimficiency-recall-(auto-start,-manual-end)-recall-results-are-transient|
+  - See also            |vimficiency-recall-(auto-start,-manual-end)-see-also|
+6. Suggest (auto start, auto end) |vimficiency-suggest-(auto-start,-auto-end)|
+  - Triggers             |vimficiency-suggest-(auto-start,-auto-end)-triggers|
+  - Dedup                   |vimficiency-suggest-(auto-start,-auto-end)-dedup|
+  - Runtime on/off |vimficiency-suggest-(auto-start,-auto-end)-runtime-on/off|
+  - Relationship to the recall queue|vimficiency-suggest-(auto-start,-auto-end)-relationship-to-the-recall-queue|
+7. Inspecting results                         |vimficiency-inspecting-results|
+  - Reading the notification|vimficiency-inspecting-results-reading-the-notification|
+  - Simulating                     |vimficiency-inspecting-results-simulating|
+  - Listing what’s around|vimficiency-inspecting-results-listing-what’s-around|
+  - Saving a result           |vimficiency-inspecting-results-saving-a-result|
+  - Viewing a saved result|vimficiency-inspecting-results-viewing-a-saved-result|
+8. Binding keys to Vimfy actions   |vimficiency-binding-keys-to-vimfy-actions|
+  - 1. vimfy.map() (recommended)|vimficiency-binding-keys-to-vimfy-actions-1.-vimfy.map()-(recommended)|
+  - 2. <Plug> maps  |vimficiency-binding-keys-to-vimfy-actions-2.-<plug>-maps|
+  - 3. require('vimficiency').wrap(fn) (low-level)|vimficiency-binding-keys-to-vimfy-actions-3.-require('vimficiency').wrap(fn)-(low-level)|
+  - Direct :Vimfy ... typing|vimficiency-binding-keys-to-vimfy-actions-direct-:vimfy-...-typing|
+  - What doesn’t work|vimficiency-binding-keys-to-vimfy-actions-what-doesn’t-work|
+9. Configuration                                   |vimficiency-configuration|
+  - Idle end-detection          |vimficiency-configuration-idle-end-detection|
+  - Inspect what the C++ layer is using|vimficiency-configuration-inspect-what-the-c++-layer-is-using|
+  - Shiftwidth                          |vimficiency-configuration-shiftwidth|
+  - Effort model tuning        |vimficiency-configuration-effort-model-tuning|
+10. The effort model                            |vimficiency-the-effort-model|
+  - What’s tunable           |vimficiency-the-effort-model-what’s-tunable|
+  - Planned topics for this page|vimficiency-the-effort-model-planned-topics-for-this-page|
+11. Commands reference                        |vimficiency-commands-reference|
+  - Alias grammar               |vimficiency-commands-reference-alias-grammar|
+  - Manual handles vs. saved names|vimficiency-commands-reference-manual-handles-vs. saved-names|
+  - Tab completion             |vimficiency-commands-reference-tab-completion|
+  - <Plug> mappings           |vimficiency-commands-reference-<plug>-mappings|
+12. Recommended workflows                  |vimficiency-recommended-workflows|
+  - “I’m actively trying to learn better motions”|vimficiency-recommended-workflows-“i’m-actively-trying-to-learn-better-motions”|
+  - “I want to audit a specific edit I’m about to do”|vimficiency-recommended-workflows-“i-want-to-audit-a-specific-edit-i’m-about-to-do”|
+  - “I know the start but not when I’ll stop”|vimficiency-recommended-workflows-“i-know-the-start-but-not-when-i’ll-stop”|
+  - “I just did something clumsy — was there a better way?”|vimficiency-recommended-workflows-“i-just-did-something-clumsy-—-was-there-a-better-way?”|
+  - “I want to revisit this later / share it”|vimficiency-recommended-workflows-“i-want-to-revisit-this-later-/-share-it”|
+13. Known limitations                          |vimficiency-known-limitations|
+14. Troubleshooting                              |vimficiency-troubleshooting|
+  - :Vimfy command isn’t defined|vimficiency-troubleshooting-:vimfy-command-isn’t-defined|
+  - Suggest never fires      |vimficiency-troubleshooting-suggest-never-fires|
+  - Watch never fires          |vimficiency-troubleshooting-watch-never-fires|
+  - Suggestions look wrong or worse than what I did|vimficiency-troubleshooting-suggestions-look-wrong-or-worse-than-what-i-did|
+  - A key I bound to Vimfy is showing up as motion|vimficiency-troubleshooting-a-key-i-bound-to-vimfy-is-showing-up-as-motion|
+  - “unknown config keys ignored” warning|vimficiency-troubleshooting-“unknown-config-keys-ignored”-warning|
+  - I want to start over cleanly|vimficiency-troubleshooting-i-want-to-start-over-cleanly|
+  - Still stuck?                    |vimficiency-troubleshooting-still-stuck?|
+15. FAQ                                                      |vimficiency-faq|
+  - Does Vimficiency slow down Neovim?|vimficiency-faq-does-vimficiency-slow-down-neovim?|
+  - Can I use it with Colemak / Dvorak / custom layouts?|vimficiency-faq-can-i-use-it-with-colemak-/-dvorak-/-custom-layouts?|
+  - Does it work in visual or operator-pending mode?|vimficiency-faq-does-it-work-in-visual-or-operator-pending-mode?|
+  - Why didn’t the “better” sequence actually get suggested?|vimficiency-faq-why-didn’t-the-“better”-sequence-actually-get-suggested?|
+  - Can I export a result as something other than JSON?|vimficiency-faq-can-i-export-a-result-as-something-other-than-json?|
+  - How do I remove a saved result?|vimficiency-faq-how-do-i-remove-a-saved-result?|
+  - Planned additions to this FAQ|vimficiency-faq-planned-additions-to-this-faq|
 Vimficiency watches how you edit and surfaces shorter keystroke sequences that
 produce the same result. You keep editing Vim the way you already do — it
 surfaces better motions in the background and lets you replay them side-by-side
 to learn.
 
 
-1. INSTALLATION                      *vimficiency-vimficiency-1.-installation*
+==============================================================================
+1. Installation                                     *vimficiency-installation*
 
 
-REQUIREMENTS ~
+REQUIREMENTS                           *vimficiency-installation-requirements*
 
 - Neovim 0.11+
 - A built `libvimficiency.so` on disk (see the top-level `README.md` for
     build instructions).
 
 
-SETUP ~
+SETUP                                         *vimficiency-installation-setup*
 
 Add to your Neovim config:
 
@@ -60,7 +111,7 @@ keymap contract in the Index and the full writeup in 8. Keymaps.
 You can pass config overrides to `setup{}` — see 9. Configuration.
 
 
-VERIFYING INSTALLATION ~
+VERIFYING INSTALLATION       *vimficiency-installation-verifying-installation*
 
 >vim
     :Vimfy help
@@ -72,7 +123,8 @@ If instead you see "command not defined", `setup()` didn’t run — check your
 config for syntax errors or a load-order issue, or see 14. Troubleshooting.
 
 
-2. THE CORE IDEA: A SESSION*vimficiency-vimficiency-2.-the-core-idea:-a-session*
+==============================================================================
+2. The core idea: a session             *vimficiency-the-core-idea:-a-session*
 
 Everything in Vimficiency is organized around **sessions**. A session captures:
 
@@ -84,7 +136,7 @@ Vimficiency then runs an optimizer and compares your effort with the efforts of
 the best sequences it found.
 
 
-THE 2×2 MATRIX OF SESSION TYPES ~
+THE 2×2 MATRIX OF SESSION TYPES*vimficiency-the-core-idea:-a-session-the-2×2-matrix-of-session-types*
 
 Every session is bounded by a **start** and an **end**. Each of those can be
 picked manually (by you) or automatically (by triggers from your
@@ -108,7 +160,8 @@ See the per-type pages for details:
 - 1. Suggest — auto start, auto end.
 
 
-3. MARK (MANUAL START, MANUAL END)*vimficiency-vimficiency-3.-mark-(manual-start,-manual-end)*
+==============================================================================
+3. Mark (manual start, manual end)*vimficiency-mark-(manual-start,-manual-end)*
 
 Use these when you want precision analyzing a specific sequence or know _in
 advance_ the entire sequence you want optimized.
@@ -128,7 +181,7 @@ otherwise result in an invalid optimize query, are dropped automatically. -
 Alternatively, you can call `vim :Vimfy close a` to drop the session manually.
 
 
-SEE ALSO ~
+SEE ALSO                *vimficiency-mark-(manual-start,-manual-end)-see-also*
 
 - 1. Inspecting results — how to read the output and replay
     the suggestions.
@@ -136,7 +189,8 @@ SEE ALSO ~
     `<Plug>VimfyEndA` so your session markers don’t need typing `:Vimfy ...`.
 
 
-4. WATCH (MANUAL START, AUTO END)*vimficiency-vimficiency-4.-watch-(manual-start,-auto-end)*
+==============================================================================
+4. Watch (manual start, auto end) *vimficiency-watch-(manual-start,-auto-end)*
 
 Use this when you know the starting point but don’t want to remember to call
 `:Vimfy end` — the end fires on its own after an idle pause.
@@ -169,13 +223,14 @@ Suggest’s auto-start side does. Ask if you’d use them and we can extend.
 - The Mark auto-drop guards (idle / drift) apply here too; see Mark.
 
 
-SEE ALSO ~
+SEE ALSO                 *vimficiency-watch-(manual-start,-auto-end)-see-also*
 
 - 1. Binding keys — `<Plug>VimfyWatchA` / `<Plug>VimfyWatchB`.
 - 1. Configuration — full shape of the `watch` key in `setup{}`.
 
 
-5. RECALL (AUTO START, MANUAL END)*vimficiency-vimficiency-5.-recall-(auto-start,-manual-end)*
+==============================================================================
+5. Recall (auto start, manual end)*vimficiency-recall-(auto-start,-manual-end)*
 
 Recall lets you look backward without any previous marking setup by querying a
 continuously maintained queue. It is always on — the bounded, RAM-only ring
@@ -191,7 +246,7 @@ is foundational enough that there’s no toggle.
 retrospective windows go through `:Vimfy recall`.
 
 
-WINDOW ALIASES: TWO WAYS TO INDEX THE QUEUE ~
+WINDOW ALIASES: TWO WAYS TO INDEX THE QUEUE*vimficiency-recall-(auto-start,-manual-end)-window-aliases:-two-ways-to-index-the-queue*
 
   -----------------------------------------------------------------------
   Syntax   Meaning                 Use when
@@ -210,7 +265,7 @@ The same grammar is reused by Suggest triggers (e.g. `window = "3s"` / `"50"`)
 name it.
 
 
-IMPLEMENTATION DETAILS ~
+IMPLEMENTATION DETAILS*vimficiency-recall-(auto-start,-manual-end)-implementation-details*
 
 Each keystroke is tagged with a timestamp. `:Vimfy recall Ns` resolves to the
 `K` most recent keys typed within the last `N` seconds, with the window start
@@ -220,7 +275,7 @@ The optimizer runs only when you invoke a recall command, so per-key overhead
 is O(1).
 
 
-CAPACITY ~
+CAPACITY                *vimficiency-recall-(auto-start,-manual-end)-capacity*
 
 The queue is bounded by two caps, applied with **union semantics** — a
 session is kept as long as EITHER cap still holds it, and only evicted when
@@ -253,7 +308,7 @@ Recall records are discarded when Neovim exits; promote with `:Vimfy save` if
 you want them on disk.
 
 
-RECALL RESULTS ARE TRANSIENT ~
+RECALL RESULTS ARE TRANSIENT*vimficiency-recall-(auto-start,-manual-end)-recall-results-are-transient*
 
 Recall windows rotate out of the queue as you type, so save promptly. `@`
 refers to the most recently ended session — handy when the alias (`3s`) is
@@ -265,7 +320,7 @@ moving out from under you:
 <
 
 
-SEE ALSO ~
+SEE ALSO                *vimficiency-recall-(auto-start,-manual-end)-see-also*
 
 - 1. Suggest — surface results automatically
     without calling `end`.
@@ -273,7 +328,8 @@ SEE ALSO ~
     and how to replay it.
 
 
-6. SUGGEST (AUTO START, AUTO END)*vimficiency-vimficiency-6.-suggest-(auto-start,-auto-end)*
+==============================================================================
+6. Suggest (auto start, auto end) *vimficiency-suggest-(auto-start,-auto-end)*
 
 Suggest runs the optimizer on its own and surfaces a result without you calling
 `:Vimfy end` or `:Vimfy recall`. It reuses the recall queue for the start and
@@ -304,7 +360,7 @@ Because Suggest is (auto, auto), both halves have a config pointer:
     end-detection <09-configuration.md#idle-end-detection>.
 
 
-TRIGGERS ~
+TRIGGERS                 *vimficiency-suggest-(auto-start,-auto-end)-triggers*
 
   --------------------------------------------------------------------------
   Trigger   Fires when
@@ -316,20 +372,20 @@ TRIGGERS ~
   cost      After cost.ms idle, iff user_cost > cost.m * optimal + cost.b.
   --------------------------------------------------------------------------
 
-IDLE = { MS, WINDOW }
+IDLE = { MS, WINDOW } ~
 
 Fires on a pure pause. `window` is the analysis slice; specify the full trigger
 object when `idle` is present.
 
 
-KEYS = { EVERY }
+KEYS = { EVERY } ~
 
 Fires every `every` real user keystrokes. The analysis slice is always the last
 `every` keystrokes — a separate `window` would collapse to the same value, so
 it’s not a knob.
 
 
-COST = { M, B, MS, WINDOW }
+COST = { M, B, MS, WINDOW } ~
 
 The most selective trigger: only surfaces a result when your typed cost exceeds
 the optimal by a configurable margin. Because it runs the optimizer, it’s
@@ -342,7 +398,7 @@ commands, not on every keystroke.
   analyzer every 300ms until the cooldown elapses. Acceptable for v1; the ADR
   describes a debounced-subprocess plan if this shows up as a measured cost.
 
-DEDUP ~
+DEDUP                       *vimficiency-suggest-(auto-start,-auto-end)-dedup*
 
 Beyond `cooldown_ms`, Suggest also fingerprints the computed result (edit
 region + user sequence + top suggestion) and suppresses a fire whose result
@@ -354,7 +410,7 @@ For `cooldown_ms` and the `idle.ms` threshold itself, see Idle end-detection
 policy.
 
 
-RUNTIME ON/OFF ~
+RUNTIME ON/OFF     *vimficiency-suggest-(auto-start,-auto-end)-runtime-on/off*
 
 >vim
     :Vimfy suggest on        " enable if config has triggers
@@ -363,16 +419,17 @@ RUNTIME ON/OFF ~
 <
 
 
-RELATIONSHIP TO THE RECALL QUEUE ~
+RELATIONSHIP TO THE RECALL QUEUE*vimficiency-suggest-(auto-start,-auto-end)-relationship-to-the-recall-queue*
 
 Suggest queries the same queue as Recall. Recall is always on, so there’s
 nothing to configure for it separately.
 
 
-7. INSPECTING RESULTS          *vimficiency-vimficiency-7.-inspecting-results*
+==============================================================================
+7. Inspecting results                         *vimficiency-inspecting-results*
 
 
-READING THE NOTIFICATION ~
+READING THE NOTIFICATION*vimficiency-inspecting-results-reading-the-notification*
 
 When a session completes, you get something like:
 
@@ -393,7 +450,7 @@ Cost is a keyboard-effort score (lower is better), not a keystroke count. See
 10. The effort model for how it’s computed and how to tune it to your layout.
 
 
-SIMULATING ~
+SIMULATING                         *vimficiency-inspecting-results-simulating*
 
 `:Vimfy sim <alias> [count] [delay_ms]` opens a new tab with side-by-side
 windows and animates your sequence (leftmost) and the top suggestions (one per
@@ -403,7 +460,7 @@ all saved) - `delay_ms` — step delay in ms (default: 1000)
 You can close the simulation window with `q`
 
 
-LISTING WHAT’S AROUND ~
+LISTING WHAT’S AROUND*vimficiency-inspecting-results-listing-what’s-around*
 
 >vim
     :Vimfy list
@@ -412,7 +469,7 @@ LISTING WHAT’S AROUND ~
 Shows currently active sessions and saved-to-disk results.
 
 
-SAVING A RESULT ~
+SAVING A RESULT               *vimficiency-inspecting-results-saving-a-result*
 
 `save` works for any finished session (Mark, Watch, Recall, Suggest). `end`
 displays a result but doesn’t touch disk:
@@ -434,7 +491,7 @@ displays a result but doesn’t touch disk:
 Saved files live under `stdpath('data')/vimficiency/saved/`.
 
 
-SESSION HANDLES VS. SAVED NAMES
+SESSION HANDLES VS. SAVED NAMES ~
 
 Separate namespaces. A session handle (`a`, `3s`, `5`) is in memory — Marks
 last until overwritten/closed, Recall rotates out of the ring. A saved name is
@@ -444,7 +501,7 @@ For Recall/Suggest, save promptly: `:Vimfy save @ <name>` right after `end`,
 before the slice rotates out.
 
 
-VIEWING A SAVED RESULT ~
+VIEWING A SAVED RESULT *vimficiency-inspecting-results-viewing-a-saved-result*
 
 >vim
     :Vimfy view my-refactor
@@ -454,7 +511,8 @@ Reads back a saved result. Tab-complete on `:Vimfy view` lists what’s
 available.
 
 
-8. BINDING KEYS TO VIMFY ACTIONS*vimficiency-vimficiency-8.-binding-keys-to-vimfy-actions*
+==============================================================================
+8. Binding keys to Vimfy actions   *vimficiency-binding-keys-to-vimfy-actions*
 
 Vimficiency measures the keys you type, so a key that _invokes_ Vimfy must
 announce itself as admin activity — otherwise the invoking keystroke counts
@@ -463,7 +521,7 @@ and we can’t retroactively uncount; the caller has to announce. Three ways to
 bind correctly, one ergonomic way that doesn’t:
 
 
-1. VIMFY.MAP() (RECOMMENDED) ~
+1. VIMFY.MAP() (RECOMMENDED)*vimficiency-binding-keys-to-vimfy-actions-1.-vimfy.map()-(recommended)*
 
 The simplest path — one line per binding, handles all subcommands:
 
@@ -484,7 +542,7 @@ The fourth argument is the `opts` table passed through to `vim.keymap.set`
 to `"Vimficiency <spec>"`.
 
 
-BINDING ARBITRARY LUA
+BINDING ARBITRARY LUA ~
 
 Pass a function instead of a string when you need to branch or compose:
 
@@ -500,7 +558,7 @@ The callback is wrapped with `M.wrap` internally, so any `:Vimfy` or
 plugin-level calls you make from it are announced as admin activity.
 
 
-2. <PLUG> MAPS ~
+2. <PLUG> MAPS      *vimficiency-binding-keys-to-vimfy-actions-2.-<plug>-maps*
 
 For users who prefer the Vim convention, each common action has a `<Plug>`
 name. Bind with `remap = true` (or `nmap` in vimscript):
@@ -541,7 +599,7 @@ name. Bind with `remap = true` (or `nmap` in vimscript):
 arbitrary args, e.g. `save @ quick`, which no `<Plug>` name exposes directly).
 
 
-3. REQUIRE('VIMFICIENCY').WRAP(FN) (LOW-LEVEL) ~
+3. REQUIRE('VIMFICIENCY').WRAP(FN) (LOW-LEVEL)*vimficiency-binding-keys-to-vimfy-actions-3.-require('vimficiency').wrap(fn)-(low-level)*
 
 `vimfy.map(mode, lhs, fn, opts)` is shorthand for `vim.keymap.set(mode, lhs,
 wrap(fn), opts)`. If you need to attach your Lua callback somewhere other than
@@ -556,12 +614,12 @@ a keymap — an autocommand, a command, a UI callback — call `wrap` directly:
 <
 
 
-DIRECT :VIMFY ... TYPING ~
+DIRECT :VIMFY ... TYPING*vimficiency-binding-keys-to-vimfy-actions-direct-:vimfy-...-typing*
 
 Works as-is. Cmdline input is never counted as motion, so nothing to wrap.
 
 
-WHAT DOESN’T WORK ~
+WHAT DOESN’T WORK*vimficiency-binding-keys-to-vimfy-actions-what-doesn’t-work*
 
 A `nnoremap`/`nmap` whose RHS is a literal Ex command:
 
@@ -581,7 +639,8 @@ if an LHS keeps showing up as motion, check that the binding is routed through
 `vimfy.map()` / `<Plug>` / `wrap()`.
 
 
-9. CONFIGURATION                    *vimficiency-vimficiency-9.-configuration*
+==============================================================================
+9. Configuration                                   *vimficiency-configuration*
 
 All settings are optional. Pass a table to `setup`:
 
@@ -627,7 +686,7 @@ All settings are optional. Pass a table to `setup`:
 Unknown keys produce a loud warning at setup — typos don’t silently no-op.
 
 
-IDLE END-DETECTION ~
+IDLE END-DETECTION              *vimficiency-configuration-idle-end-detection*
 
 Two features auto-fire on keystroke idleness: Watch (ends a manual session once
 you pause) and Suggest’s `idle` / `cost` triggers (run the optimizer on a
@@ -654,7 +713,7 @@ fire only after N ms of no activity. `keys.every` is the one exception: it
 counts keystrokes, not time, so it has no `ms`.
 
 
-INSPECT WHAT THE C++ LAYER IS USING ~
+INSPECT WHAT THE C++ LAYER IS USING*vimficiency-configuration-inspect-what-the-c++-layer-is-using*
 
 >vim
     :Vimfy config
@@ -664,7 +723,7 @@ Opens a scratch buffer with the full current configuration, including the
 effort-model values that aren’t listed above.
 
 
-SHIFTWIDTH ~
+SHIFTWIDTH                              *vimficiency-configuration-shiftwidth*
 
 Your Neovim `shiftwidth` is auto-detected at setup time and passed to the
 optimizer so suggested sequences match your indentation. To override
@@ -675,7 +734,7 @@ explicitly:
 <
 
 
-EFFORT MODEL TUNING ~
+EFFORT MODEL TUNING            *vimficiency-configuration-effort-model-tuning*
 
 The optimizer scores sequences by a keyboard-effort model with several tunable
 knobs: per-key base costs, same-finger / same-key / alt-hand / good-roll /
@@ -683,7 +742,8 @@ bad-roll weights, and count-penalty overrides. These are accepted in `setup{}`
 but documented separately — see 10. The effort model.
 
 
-10. THE EFFORT MODEL            *vimficiency-vimficiency-10.-the-effort-model*
+==============================================================================
+10. The effort model                            *vimficiency-the-effort-model*
 
 
   **Status: placeholder.** The effort model is a substantial topic — this page
@@ -696,13 +756,13 @@ using good rolls on the home row can be "cheaper" than a 3-key sequence that
 repeats the pinky.
 
 
-WHAT’S TUNABLE ~
+WHAT’S TUNABLE               *vimficiency-the-effort-model-what’s-tunable*
 
 The following knobs are accepted by `setup{}`; see their live values with
 `:Vimfy config`.
 
 
-GLOBAL WEIGHTS (WEIGHTS)
+GLOBAL WEIGHTS (WEIGHTS) ~
 
 >lua
     require('vimficiency').setup({
@@ -718,7 +778,7 @@ GLOBAL WEIGHTS (WEIGHTS)
 <
 
 
-PER-KEY BASE COST AND FINGER/HAND ASSIGNMENT (KEYS)
+PER-KEY BASE COST AND FINGER/HAND ASSIGNMENT (KEYS) ~
 
 Each of the 61 keys on the modeled layout has `{hand, finger, base_cost}`.
 Default is QWERTY; override specific keys to retune for your own layout. (A
@@ -726,14 +786,14 @@ fuller "layout file" API is planned — for now, override the key table entries
 directly by index.)
 
 
-COUNT-PENALTY OVERRIDES (COUNT_PENALTY_OVERRIDES)
+COUNT-PENALTY OVERRIDES (COUNT_PENALTY_OVERRIDES) ~
 
 A count prefix like `8j` is cheaper than eight `j`s but not free. The penalty
 grows with count and motion span. Per count-class overrides let you reshape
 this curve.
 
 
-PLANNED TOPICS FOR THIS PAGE ~
+PLANNED TOPICS FOR THIS PAGE*vimficiency-the-effort-model-planned-topics-for-this-page*
 
 - Full field-by-field reference with defaults and sensible ranges
 - Walking through a scoring example end-to-end
@@ -745,7 +805,8 @@ Until these are written, `:Vimfy config` is the authoritative surface, and the
 C++ source (`cpp/effort_model.*`) is the spec.
 
 
-11. COMMANDS REFERENCE        *vimficiency-vimficiency-11.-commands-reference*
+==============================================================================
+11. Commands reference                        *vimficiency-commands-reference*
 
   ----------------------------------------------------------------------------
   Command                              Purpose
@@ -772,6 +833,8 @@ C++ source (`cpp/effort_model.*`) is the spec.
   :Vimfy view [name]                   View a saved result (or list saved
                                        names).
 
+  :Vimfy rm <name>                     Delete a saved result from disk.
+
   :Vimfy list                          List active sessions and saved files.
 
   :Vimfy suggest <on\|off\|toggle>     Runtime toggle for auto-suggest
@@ -785,7 +848,7 @@ C++ source (`cpp/effort_model.*`) is the spec.
   :Vimfy help                          Show the command list.
   ----------------------------------------------------------------------------
 
-ALIAS GRAMMAR ~
+ALIAS GRAMMAR                   *vimficiency-commands-reference-alias-grammar*
 
 The `<alias>` argument splits by subcommand:
 
@@ -816,7 +879,7 @@ whose alias (`3s`) is moving out from under you:
 `:Vimficiency` is accepted as a full-name alias for `:Vimfy`.
 
 
-MANUAL HANDLES VS. SAVED NAMES ~
+MANUAL HANDLES VS. SAVED NAMES*vimficiency-commands-reference-manual-handles-vs. saved-names*
 
 These are separate namespaces. A manual handle (e.g. `refactor`) points to an
 in-memory session you can `end` / `close` / `sim`. A saved name (e.g.
@@ -825,7 +888,7 @@ same text is allowed in both — the command grammar disambiguates which one
 you mean.
 
 
-TAB COMPLETION ~
+TAB COMPLETION                 *vimficiency-commands-reference-tab-completion*
 
 Works on:
 
@@ -834,21 +897,22 @@ Works on:
 - `3s`/`5s`/`10s`/`30s` hints for `recall`.
 - All active/recall aliases plus time hints for `close` / `sim`.
 - Selectors (plus `@`) for `save`.
-- Saved names for `view`.
+- Saved names for `view` and `rm`.
 - `on` / `off` / `toggle` for `suggest`.
 
 
-<PLUG> MAPPINGS ~
+<PLUG> MAPPINGS               *vimficiency-commands-reference-<plug>-mappings*
 
 For each subcommand above, a `<Plug>VimfyX...` map is also registered so you
 can bind keys without having to type `:Vimfy ...` (which would count as admin
 activity anyway). See 8. Keymaps for the full list and the binding contract.
 
 
-12. RECOMMENDED WORKFLOWS  *vimficiency-vimficiency-12.-recommended-workflows*
+==============================================================================
+12. Recommended workflows                  *vimficiency-recommended-workflows*
 
 
-“I’M ACTIVELY TRYING TO LEARN BETTER MOTIONS” ~
+“I’M ACTIVELY TRYING TO LEARN BETTER MOTIONS”*vimficiency-recommended-workflows-“i’m-actively-trying-to-learn-better-motions”*
 
 Enable Suggest and the recall queue in your config:
 
@@ -871,7 +935,7 @@ Pair with 8. Keymaps:
 …so replaying a suggestion is a single keystroke.
 
 
-“I WANT TO AUDIT A SPECIFIC EDIT I’M ABOUT TO DO” ~
+“I WANT TO AUDIT A SPECIFIC EDIT I’M ABOUT TO DO”*vimficiency-recommended-workflows-“i-want-to-audit-a-specific-edit-i’m-about-to-do”*
 
 Mark sessions give the cleanest boundaries:
 
@@ -883,7 +947,7 @@ Mark sessions give the cleanest boundaries:
 <
 
 
-“I KNOW THE START BUT NOT WHEN I’LL STOP” ~
+“I KNOW THE START BUT NOT WHEN I’LL STOP”*vimficiency-recommended-workflows-“i-know-the-start-but-not-when-i’ll-stop”*
 
 Watch it — same precise start, but let Vimfy auto-finish when you pause:
 
@@ -898,7 +962,7 @@ Watch it — same precise start, but let Vimfy auto-finish when you pause:
 <
 
 
-“I JUST DID SOMETHING CLUMSY — WAS THERE A BETTER WAY?” ~
+“I JUST DID SOMETHING CLUMSY — WAS THERE A BETTER WAY?”*vimficiency-recommended-workflows-“i-just-did-something-clumsy-—-was-there-a-better-way?”*
 
 Recall is built for this:
 
@@ -910,7 +974,7 @@ Recall is built for this:
 <
 
 
-“I WANT TO REVISIT THIS LATER / SHARE IT” ~
+“I WANT TO REVISIT THIS LATER / SHARE IT”*vimficiency-recommended-workflows-“i-want-to-revisit-this-later-/-share-it”*
 
 Save to disk after ending — `@` resolves to the session you just finished:
 
@@ -926,7 +990,8 @@ Saved results are durable across Neovim restarts and survive in
 want to show a colleague.
 
 
-13. KNOWN LIMITATIONS          *vimficiency-vimficiency-13.-known-limitations*
+==============================================================================
+13. Known limitations                          *vimficiency-known-limitations*
 
 - **Text-object final character** is sometimes missing from the recorded sequence
     (e.g., `ciw` may record as `c`+`i`). The optimizer still analyzes the resulting
@@ -945,25 +1010,33 @@ want to show a colleague.
     because `vim.on_key` fires for that char before Neovim resolves the mapping. If
     you target `:Vimfy recall N` precisely, count `N` accordingly — or use time
     recall (`Ns`), which rolls past the extra key without noticing.
+- **Recall only records keystrokes typed in normal file buffers** (`&buftype ==
+    ""`). Keys typed in help, quickfix, terminal, prompt, or scratch buffers are
+    skipped — they aren’t meaningful for motion optimization, and recording
+    them would cause recall queries to fail with buffer-mismatch when you return to
+    your file. If you bind a Vimfy action that opens an async floating-input prompt
+    (e.g. `vim.ui.input` overridden by dressing.nvim), the `2` / `<CR>` you type
+    into that prompt are filtered automatically.
 
 
-14. TROUBLESHOOTING              *vimficiency-vimficiency-14.-troubleshooting*
+==============================================================================
+14. Troubleshooting                              *vimficiency-troubleshooting*
 
 
-:VIMFY COMMAND ISN’T DEFINED ~
+:VIMFY COMMAND ISN’T DEFINED*vimficiency-troubleshooting-:vimfy-command-isn’t-defined*
 
 You forgot `require('vimficiency').setup()` in your config, or `setup` errored
 (likely couldn’t load the library — check `VIMFICIENCY_LIB_PATH`).
 
 
-SUGGEST NEVER FIRES ~
+SUGGEST NEVER FIRES          *vimficiency-troubleshooting-suggest-never-fires*
 
 - Is it configured? `auto_suggest = { idle = { ms = N, window = "..." } }`
     in `setup{}`.
 - Is it enabled at runtime? `:Vimfy suggest on`.
 
 
-WATCH NEVER FIRES ~
+WATCH NEVER FIRES              *vimficiency-troubleshooting-watch-never-fires*
 
 - Is it configured? `watch = { idle = { ms = N }, cooldown_ms = N }` in
     `setup{}`. Without this, `:Vimfy watch <alias>` errors out at call
@@ -973,7 +1046,7 @@ WATCH NEVER FIRES ~
     guards all tear down Watch sessions silently.
 
 
-SUGGESTIONS LOOK WRONG OR WORSE THAN WHAT I DID ~
+SUGGESTIONS LOOK WRONG OR WORSE THAN WHAT I DID*vimficiency-troubleshooting-suggestions-look-wrong-or-worse-than-what-i-did*
 
 - Some motions we can’t see (text-object last character, screen-line
     motions, certain plugin-provided mappings).
@@ -982,60 +1055,61 @@ SUGGESTIONS LOOK WRONG OR WORSE THAN WHAT I DID ~
 - See 13. Limitations for the full list.
 
 
-A KEY I BOUND TO VIMFY IS SHOWING UP AS MOTION ~
+A KEY I BOUND TO VIMFY IS SHOWING UP AS MOTION*vimficiency-troubleshooting-a-key-i-bound-to-vimfy-is-showing-up-as-motion*
 
 Your mapping isn’t announcing itself as admin activity. Route it through
 `<Plug>` or `wrap()` — see 8. Keymaps.
 
 
-“UNKNOWN CONFIG KEYS IGNORED” WARNING ~
+“UNKNOWN CONFIG KEYS IGNORED” WARNING*vimficiency-troubleshooting-“unknown-config-keys-ignored”-warning*
 
 Typo in a `setup{}` key. The warning names them. Cross-check against 9.
 Configuration or `:Vimfy config`.
 
 
-I WANT TO START OVER CLEANLY ~
+I WANT TO START OVER CLEANLY*vimficiency-troubleshooting-i-want-to-start-over-cleanly*
 
 - `:Vimfy close <alias>` throws away any active session.
 - Restarting Neovim clears all in-memory state (including the recall
     ring); saved-to-disk results survive.
 
 
-STILL STUCK? ~
+STILL STUCK?                        *vimficiency-troubleshooting-still-stuck?*
 
 Run `:Vimfy config` and capture the output along with the sequence you typed
 — most triage starts there.
 
 
-15. FAQ                                      *vimficiency-vimficiency-15.-faq*
+==============================================================================
+15. FAQ                                                      *vimficiency-faq*
 
 
   **Status: placeholder.** This page will accumulate common questions as they
   come up. Below are a few anticipated ones with short answers — full versions
   will be fleshed out over time.
 
-DOES VIMFICIENCY SLOW DOWN NEOVIM? ~
+DOES VIMFICIENCY SLOW DOWN NEOVIM?*vimficiency-faq-does-vimficiency-slow-down-neovim?*
 
 No. Key capture is a small Lua append per keystroke. The optimizer only runs on
 `end` (or an auto-trigger), in C++, over a snapshot. Recall is always on and
 the per-key overhead stays flat.
 
 
-CAN I USE IT WITH COLEMAK / DVORAK / CUSTOM LAYOUTS? ~
+CAN I USE IT WITH COLEMAK / DVORAK / CUSTOM LAYOUTS?*vimficiency-faq-can-i-use-it-with-colemak-/-dvorak-/-custom-layouts?*
 
 The effort model’s `keys[]` and `weights` knobs are designed for this, but
 there isn’t yet a "drop-in layout" file. Override the relevant entries
 manually in `setup{}` — see 10. Effort model.
 
 
-DOES IT WORK IN VISUAL OR OPERATOR-PENDING MODE? ~
+DOES IT WORK IN VISUAL OR OPERATOR-PENDING MODE?*vimficiency-faq-does-it-work-in-visual-or-operator-pending-mode?*
 
 Sessions span whatever modes you’re in — the optimizer reasons about the
 start-to-end delta, not mode transitions. Some mode-sensitive motions are
 simplified; see 13. Limitations.
 
 
-WHY DIDN’T THE “BETTER” SEQUENCE ACTUALLY GET SUGGESTED? ~
+WHY DIDN’T THE “BETTER” SEQUENCE ACTUALLY GET SUGGESTED?*vimficiency-faq-why-didn’t-the-“better”-sequence-actually-get-suggested?*
 
 A few common reasons: - The optimizer’s search budget truncated before
 reaching it. - A motion it would have used isn’t modeled (text-object final
@@ -1046,20 +1120,24 @@ differently.
 See 14. Troubleshooting.
 
 
-CAN I EXPORT A RESULT AS SOMETHING OTHER THAN JSON? ~
+CAN I EXPORT A RESULT AS SOMETHING OTHER THAN JSON?*vimficiency-faq-can-i-export-a-result-as-something-other-than-json?*
 
 Not today. `:Vimfy save @ my-name` writes JSON under
 `stdpath('data')/vimficiency/saved/`; third-party tools can consume that
 directly.
 
 
-HOW DO I REMOVE A SAVED RESULT? ~
+HOW DO I REMOVE A SAVED RESULT?*vimficiency-faq-how-do-i-remove-a-saved-result?*
 
-Delete the file from `stdpath('data')/vimficiency/saved/`. No built-in `:Vimfy
-rm` yet.
+>vim
+    :Vimfy rm <name>
+<
+
+Tab-completes over saved names. Or delete the file directly from
+`stdpath('data')/vimficiency/saved/`.
 
 
-PLANNED ADDITIONS TO THIS FAQ ~
+PLANNED ADDITIONS TO THIS FAQ  *vimficiency-faq-planned-additions-to-this-faq*
 
 - Comparison to alternatives (vim-golf scoring, key-logger-based tools)
 - Known integration notes with `which-key`, `legendary`, `lazy.nvim`

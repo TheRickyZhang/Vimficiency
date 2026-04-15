@@ -13,23 +13,22 @@ cd "$repo_root"
 strip_chapter() {
   # - drop navigation lines (contain **[Index]...**)
   # - drop horizontal-rule separators that frame nav
-  # - demote every heading by one level so the combined doc has a single
-  #   h1 (plugin name) with chapters at h2 and their subsections at h3+.
-  #   Ordered deepest-first so a demoted line never re-matches a later rule.
+  # - strip the "N. " numbering from chapter h1 headings (`# 3. Mark` →
+  #   `# Mark`) so panvimdoc's tag slugs don't carry `-3.-` cruft
   # - strip links pointing at *.md targets, keep display text
+  # Chapters stay at h1 in the combined doc (no demotion); with no
+  # enclosing `# vimficiency` heading, panvimdoc prefixes tags with just
+  # the project name (e.g. `vimficiency-mark`) instead of double-wrapping
+  # (`vimficiency-vimficiency-3.-mark`).
   sed -E \
     -e '/\*\*\[Index\]/d' \
     -e '/^---$/d' \
-    -e 's/^#### /##### /' \
-    -e 's/^### /#### /' \
-    -e 's/^## /### /' \
-    -e 's/^# /## /' \
+    -e 's/^# [0-9]+\. /# /' \
     -e 's/\[([^][]+)\]\(([^)]*\.md[^)]*)\)/\1/g' \
     "$1"
 }
 
 {
-  printf '# vimficiency\n\n'
   printf 'Vimficiency watches how you edit and surfaces shorter keystroke '
   printf 'sequences that produce the same result. You keep editing Vim the '
   printf 'way you already do — it surfaces better motions in the background '

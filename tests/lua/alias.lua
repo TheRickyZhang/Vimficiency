@@ -1,4 +1,4 @@
--- tests/lua/test_alias.lua
+-- tests/lua/alias.lua
 -- Grammar tests for lua/vimficiency/alias.lua. Pure-function tests:
 -- no buffers, no vim.uv, no state.
 

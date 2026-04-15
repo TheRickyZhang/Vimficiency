@@ -106,14 +106,43 @@ end
 ---@param active ActiveSession
 ---@return ResultSession|nil result
 ---@return string|nil err
+--- Human-readable `'name' (buf N)` for an error message. Falls back to
+--- `[No Name]` for unnamed buffers and surfaces buftype for scratch /
+--- quickfix / help / terminal buffers so a recall captured in one is
+--- instantly recognizable in the error.
+---@param buf integer
+---@return string
+local function buf_display_name(buf)
+  if not v.nvim_buf_is_valid(buf) then
+    return "<invalid buffer " .. tostring(buf) .. ">"
+  end
+  local name = v.nvim_buf_get_name(buf)
+  if name == "" then name = "[No Name]" end
+  local buftype = vim.bo[buf].buftype
+  local suffix = ""
+  if buftype ~= "" then
+    suffix = " [" .. buftype .. "]"
+  end
+  return string.format("'%s' (buf %d)%s", name, buf, suffix)
+end
+
 local function compute_result_for_active(active)
   if not v.nvim_buf_is_valid(active.buf) then
-    return nil, "buffer no longer valid"
+    return nil, string.format(
+      "original buffer %s is no longer valid",
+      buf_display_name(active.buf))
   end
 
   local curr_buf = v.nvim_get_current_buf()
   if curr_buf ~= active.buf then
-    return nil, "not in original buffer"
+    return nil, string.format(
+      "session captured in %s, but you're now in %s. " ..
+      "For recall, this usually means one of the recent keystrokes fired " ..
+      "while a different buffer was focused (scratch/result window from a " ..
+      "prior :Vimfy command, help buffer, popup, or a <C-^>/<C-w>w switch). " ..
+      "Focus the captured buffer and re-run, or use a smaller window.",
+      buf_display_name(active.buf),
+      buf_display_name(curr_buf))
   end
 
   -- Recall is retrospective; the original window may have been closed
@@ -354,7 +383,7 @@ function M.watch(alias)
   end
 
   local cfg = config.watch
-  if not cfg then
+  if not cfg or not cfg.idle then
     vim.notify(
       "Watch is not configured. Add `watch = { idle = { ms = N }, cooldown_ms = N }` to setup{}.",
       vim.log.levels.ERROR
@@ -606,6 +635,34 @@ function M.save(selector, name)
   else
     vim.notify("vimficiency save failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
   end
+end
+
+--- Delete a saved result from disk. Only touches
+--- `stdpath('data')/vimficiency/saved/<name>.json`; rejects names that
+--- could escape the directory (same grammar as `:Vimfy save`).
+---@param name string  Name of the saved result (without .json extension)
+function M.rm(name)
+  if not alias_mod.is_valid_saved_name(name) then
+    vim.notify(
+      "Invalid saved name '" .. tostring(name) .. "'. " ..
+      "Allowed: alphanumeric, '.', '_', '-'; must start with a letter, digit, or underscore.",
+      vim.log.levels.ERROR
+    )
+    return
+  end
+
+  local path = get_save_dir() .. "/" .. name .. ".json"
+  if vim.fn.filereadable(path) == 0 then
+    vim.notify("No saved result '" .. name .. "' at " .. path, vim.log.levels.ERROR)
+    return
+  end
+
+  if vim.fn.delete(path) ~= 0 then
+    vim.notify("vimficiency rm failed for " .. path, vim.log.levels.ERROR)
+    return
+  end
+
+  vim.notify("vimficiency removed [" .. name .. "] ← " .. path, vim.log.levels.INFO)
 end
 
 --- Close a session without finishing (no optimization, no result stored).

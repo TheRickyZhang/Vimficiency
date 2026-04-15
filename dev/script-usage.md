@@ -65,26 +65,34 @@ Prerequisites on the host: `pandoc` (Arch: `sudo pacman -S pandoc`).
 Then from the repo root:
 
 ```bash
-./scripts/build-vimdoc-source.sh
-/tmp/panvimdoc/panvimdoc.sh \
-  --project-name vimficiency \
-  --input-file build/vimficiency.md \
-  --vim-version "Neovim 0.11+" \
-  --description "" \
-  --toc true \
-  --dedup-subheadings true \
-  --treesitter true \
-  --ignore-rawblocks true \
-  --doc-mapping false \
-  --doc-mapping-project-name true \
-  --shift-heading-level-by 0 \
-  --increment-heading-level-by 0 \
-  --demojify false
-./scripts/postprocess-vimdoc.sh
+./scripts/build-vimdoc.sh
 ```
 
-Flags must match the workflow so local output matches CI output —
+This wraps all three steps (source concat → panvimdoc → postprocess).
+Override the panvimdoc clone location with `PANVIMDOC_DIR=...` if
+you've put it somewhere other than `/tmp/panvimdoc`. Flags inside the
+script must match the workflow so local output matches CI output —
 update both sides together if you tune them.
+
+### Why a single output file?
+
+Neovim supports multiple help files per plugin (tag lookup is global
+across `doc/` on `runtimepath`), so we could split into e.g.
+`doc/vimficiency-config.txt`, `doc/vimficiency-commands.txt`, etc.
+Today we don't — the generated file is ~1150 lines, which is well
+within single-file territory (fugitive ~1500, plenary ~800). The
+build pipeline assumes one output.
+
+Revisit if either of these becomes true:
+- Total vimdoc size passes ~2000 lines and single-file navigation
+  gets awkward.
+- One topic (e.g. effort-model internals) grows large enough to
+  stand alone as `doc/vimficiency-<topic>.txt`.
+
+Splitting would mean: grouping `doc-src/` chapters into buckets in
+`scripts/build-vimdoc-source.sh`, running panvimdoc per bucket in
+`scripts/build-vimdoc.sh`, and applying the `*vimficiency*` tag only
+to the primary file in `scripts/postprocess-vimdoc.sh`.
 
 ### Editing the user docs
 

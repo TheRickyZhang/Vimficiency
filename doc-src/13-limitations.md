@@ -30,6 +30,15 @@
   count `N` accordingly — or use time recall (`Ns`), which rolls past
   the extra key without noticing.
 
+- **Recall only records keystrokes typed in normal file buffers**
+  (`&buftype == ""`). Keys typed in help, quickfix, terminal, prompt,
+  or scratch buffers are skipped — they aren't meaningful for motion
+  optimization, and recording them would cause recall queries to fail
+  with buffer-mismatch when you return to your file. If you bind a
+  Vimfy action that opens an async floating-input prompt (e.g.
+  `vim.ui.input` overridden by dressing.nvim), the `2` / `<CR>` you
+  type into that prompt are filtered automatically.
+
 ---
 
 **[← Workflows](12-workflows.md)** | **[Index](./README.md)** | **[Next: Troubleshooting →](14-troubleshooting.md)**

@@ -7,6 +7,9 @@ local alias_mod = require("vimficiency.alias")
 local M = {}
 
 local CPP = {}
+local WATCH_DEFAULTS = {
+  cooldown_ms = 5000,
+}
 
 function M.cpp()
   return CPP
@@ -90,14 +93,14 @@ local function normalize_cost_trigger(path, value)
 end
 
 function M.normalize_watch(raw, defaults)
-  if raw == nil then
-    return vim.deepcopy(defaults)
+  if raw == nil or raw == false then
+    return false
   end
 
   expect_table("watch", raw)
   expect_exact_keys("watch", raw, { idle = true, cooldown_ms = true })
 
-  local merged = vim.tbl_deep_extend("force", vim.deepcopy(defaults), raw)
+  local merged = vim.tbl_deep_extend("force", vim.deepcopy(WATCH_DEFAULTS), raw)
   if raw.idle == nil then
     error("watch.idle must be provided when watch is configured", 0)
   end

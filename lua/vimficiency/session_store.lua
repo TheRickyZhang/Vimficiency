@@ -614,70 +614,55 @@ end
 -- Recall install
 --------------------------------------------------------------------------------
 
---- Install the rolling recall ring. Every keystroke creates a new retained
---- record (bounded by KEY_SESSION_CAPACITY and MAX_RETENTION_SECONDS under
---- union semantics) and appends the key to all still-active retained
---- records.
+--- Ingest one tracked keystroke into the rolling recall ring. Appends the
+--- event to all still-active recall records, then opens a new auto-start /
+--- manual-end record rooted at the pre-key state.
 ---
---- Called once at setup time. Recall is permanently on for the lifetime
---- of the session — there is no disable path. The bounded ring (RAM-only,
---- never persisted) makes the off switch not worth its complexity, and
---- recall is foundational to `end Ns` / auto_suggest.
----
---- `key_tracking.attach_global` is idempotent by name, so double-install
---- (e.g. setup() called twice) is harmless — the second call no-ops.
-function M.install_recall()
-  local function on_key_event(event)
-    -- 1. Append key event to all still-active recall records. Finished
-    --    records are skipped (their key_seq is nil and they're frozen).
-    --
-    -- This fanout is O(n) per keystroke in the number of live recall
-    -- records. n is bounded by KEY_SESSION_CAPACITY (= 200) and each
-    -- append is a table_insert of a small event table, so real cost is
-    -- well under 1 ms per key at typing speeds. If capacity ever grows
-    -- (or we retain more aggressively), switch to a shared ring + per-
-    -- record {start_idx, end_idx} slice view: each record holds two
-    -- offsets into a single shared event buffer and append becomes O(1).
-    for _, id in ipairs(recall_id_order) do
-      local rec = session_records[id]
-      if rec and rec.status == "active" then
-        table.insert(rec.key_seq, event)
-        rec.key_count = rec.key_count + 1
-      end
+--- Callers are responsible for event-source filtering and window validity.
+---@param event VimficiencyKeyEvent
+function M.ingest_recall_event(event)
+  -- 1. Append key event to all still-active recall records. Finished
+  --    records are skipped (their key_seq is nil and they're frozen).
+  --
+  -- This fanout is O(n) per keystroke in the number of live recall
+  -- records. n is bounded by KEY_SESSION_CAPACITY (= 200) and each
+  -- append is a table_insert of a small event table, so real cost is
+  -- well under 1 ms per key at typing speeds. If capacity ever grows
+  -- (or we retain more aggressively), switch to a shared ring + per-
+  -- record {start_idx, end_idx} slice view: each record holds two
+  -- offsets into a single shared event buffer and append becomes O(1).
+  for _, id in ipairs(recall_id_order) do
+    local rec = session_records[id]
+    if rec and rec.status == "active" then
+      table.insert(rec.key_seq, event)
+      rec.key_count = rec.key_count + 1
     end
-
-    -- 2. Create new record with current state (BEFORE the key is processed).
-    -- vim.on_key fires before the key is processed, so capture_state returns
-    -- the position before this key takes effect.
-    local buf = event.buf
-    local win = event.win
-
-    if not vim.api.nvim_buf_is_valid(buf) or not vim.api.nvim_win_is_valid(win) then
-      return
-    end
-
-    local id = util.new_id(buf)
-    local start_state = util.capture_state(buf, win)
-
-    -- Recall: auto start, manual end. Suggest is created by flipping
-    -- end_kind to "auto" inside auto_suggest.lua at takeover time.
-    local rec = M.new_active_session(id, -1, win, buf, start_state, "auto", "manual")
-
-    -- Include current key in new record since state is captured BEFORE key
-    -- is processed. The first event's mode drives command-boundary snapping
-    -- for `end Ns` queries — capture it so the check survives finish().
-    table.insert(rec.key_seq, event)
-    rec.key_count = 1
-    rec.first_mode = event.mode
-
-    M.store_recall(rec)
   end
 
-  key_tracking.attach_global(on_key_event)
+  -- 2. Create new record with current state (BEFORE the key is processed).
+  -- vim.on_key fires before the key is processed, so capture_state returns
+  -- the position before this key takes effect.
+  local buf = event.buf
+  local win = event.win
+  local id = util.new_id(buf)
+  local start_state = util.capture_state(buf, win)
+
+  -- Recall: auto start, manual end. Suggest is created by flipping
+  -- end_kind to "auto" inside auto_suggest.lua at takeover time.
+  local rec = M.new_active_session(id, -1, win, buf, start_state, "auto", "manual")
+
+  -- Include current key in new record since state is captured BEFORE key
+  -- is processed. The first event's mode drives command-boundary snapping
+  -- for `end Ns` queries — capture it so the check survives finish().
+  table.insert(rec.key_seq, event)
+  rec.key_count = 1
+  rec.first_mode = event.mode
+
+  M.store_recall(rec)
 end
 
 -- Test-only exports of pure helpers. Not part of the public API; the
--- underscore prefix is intentional. Used by tests/lua/test_recall_snap.lua
+-- underscore prefix is intentional. Used by tests/lua/recall_snap.lua
 -- to feed synthetic ring state through the snap algorithm without
 -- touching module-level storage.
 M._pure = {

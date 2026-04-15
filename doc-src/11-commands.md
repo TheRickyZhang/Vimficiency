@@ -14,6 +14,7 @@
 | `:Vimfy save <selector>\|@ [<name>]`       | Save a finished result to disk. Name defaults to selector. `@` = last finished. |
 | `:Vimfy sim <alias> [count] [ms]`          | Animate results side-by-side.                        |
 | `:Vimfy view [name]`                       | View a saved result (or list saved names).           |
+| `:Vimfy rm <name>`                         | Delete a saved result from disk.                     |
 | `:Vimfy list`                              | List active sessions and saved files.                |
 | `:Vimfy suggest <on\|off\|toggle>`         | Runtime toggle for auto-suggest (config-driven).     |
 | `:Vimfy config`                            | Show the current configuration.                      |
@@ -65,7 +66,7 @@ Works on:
 - `3s`/`5s`/`10s`/`30s` hints for `recall`.
 - All active/recall aliases plus time hints for `close` / `sim`.
 - Selectors (plus `@`) for `save`.
-- Saved names for `view`.
+- Saved names for `view` and `rm`.
 - `on` / `off` / `toggle` for `suggest`.
 
 ## `<Plug>` mappings
