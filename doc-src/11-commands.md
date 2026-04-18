@@ -11,8 +11,12 @@
 | `:Vimfy end <alias>`                       | Finish a manual session (Mark or Watch) and optimize.|
 | `:Vimfy recall <N\|Ns>`                    | Finish a retrospective recall window.                |
 | `:Vimfy close <alias>`                     | Discard a session without optimizing.                |
-| `:Vimfy save <selector>\|@ [<name>]`       | Save a finished result to disk. Name defaults to selector. `@` = last finished. |
-| `:Vimfy sim <alias> [count] [ms]`          | Animate results side-by-side.                        |
+| `:Vimfy save <selector>\|@ [<name>]`       | Copy a finished result to disk (keeps the workspace copy). Name defaults to selector. `@` = last finished. |
+| `:Vimfy store <alias> [<name>]`            | Move a finished result to disk (removes from workspace). |
+| `:Vimfy fetch <name> [<alias>]`            | Copy a saved result from disk into the current workspace. |
+| `:Vimfy sim <alias> [count]`               | Animate results side-by-side (memory first, disk fallback). |
+| `:Vimfy focus <N>`                         | Focus the active replay on the Nth buffer (full-screen).|
+| `:Vimfy escape`                            | Restore the side-by-side replay layout.              |
 | `:Vimfy view [name]`                       | View a saved result (or list saved names).           |
 | `:Vimfy rm <name>`                         | Delete a saved result from disk.                     |
 | `:Vimfy list`                              | List active sessions and saved files.                |
@@ -30,7 +34,8 @@ The `<alias>` argument splits by subcommand:
 | `start` / `watch`  | Alphabetic only (`a`, `refactor`).          |
 | `end`              | Alphabetic only — manual handles.           |
 | `recall`           | `N` (digits) or `Ns` (digits + `s`).        |
-| `close` / `sim`    | Any of the three: alphabetic, `N`, or `Ns`. |
+| `close` / `sim`    | Any of the three: alphabetic, `N`, or `Ns`. `sim` also accepts a saved name. |
+| `store` / `fetch`  | Workspace alias / saved name respectively. `fetch`'s target alias must be alphabetic. |
 
 | Form       | Means                                                                |
 |------------|----------------------------------------------------------------------|
@@ -49,13 +54,15 @@ recall window whose alias (`3s`) is moving out from under you:
 
 `:Vimficiency` is accepted as a full-name alias for `:Vimfy`.
 
-## Manual handles vs. saved names
+## Workspace vs. storage
 
-These are separate namespaces. A manual handle (e.g. `refactor`) points
-to an in-memory session you can `end` / `close` / `sim`. A saved name
-(e.g. `refactor`) points to a finished result on disk, viewed with
-`:Vimfy view`. The same text is allowed in both — the command grammar
-disambiguates which one you mean.
+Finished sessions live in two places: **workspace** (in-memory,
+indexed by alias) and **storage** (on disk, indexed by filename). The
+namespaces are separate; the same text can name both. Move results
+between them with `save` / `store` / `fetch`; see
+[7a. Session storage](07a-session-storage.md) for the full model and
+collision rules. Omitting the second argument on `save` / `store` /
+`fetch` repeats the first argument verbatim.
 
 ## Tab completion
 
@@ -65,8 +72,8 @@ Works on:
 - Manual (alphabetic) handles for `start`, `watch`, and `end`.
 - `3s`/`5s`/`10s`/`30s` hints for `recall`.
 - All active/recall aliases plus time hints for `close` / `sim`.
-- Selectors (plus `@`) for `save`.
-- Saved names for `view` and `rm`.
+- Selectors (plus `@`) for `save` and `store`.
+- Saved names for `view`, `rm`, and `fetch`.
 - `on` / `off` / `toggle` for `suggest`.
 
 ## `<Plug>` mappings

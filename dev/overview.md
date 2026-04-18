@@ -24,6 +24,8 @@ composing multiple edit to be consistent and reasonable in producing an answer.
 
 Lua uses an FFI bridge to call the C++ library for efficiency. 
 
+Finished session results live in two tiers. The **workspace** is an in-memory ring in `session/store.lua`, indexed by alias; Mark slots cap at 5 and the Recall ring evicts by the union of `KEY_SESSION_CAPACITY` and `MAX_RETENTION_SECONDS`. The **archive** is a durable on-disk JSON store under `stdpath('data')/vimficiency/saved/`, indexed by filename. `save` copies workspace→archive, `store` moves workspace→archive, `fetch` copies archive→workspace, and `:Vimfy sim` falls back to archive when a name isn't in memory. See `dev/lua/session-storage.md` for the Lua APIs and on-disk JSON schema.
+
 Tests are very crucial to respecting the edge cases of vim. We primarily use Neovim itself with the Neovim oracle as the source of truth for how actions should execute, and any deviation is a correctness issue.
 
 

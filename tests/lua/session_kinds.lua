@@ -10,8 +10,8 @@
 
 local config        = require("vimficiency.config")
 local session       = require("vimficiency.session")
-local session_store = require("vimficiency.session_store")
-local auto_suggest  = require("vimficiency.auto_suggest")
+local session_store = require("vimficiency.session.store")
+local auto_suggest  = require("vimficiency.capture.auto_suggest")
 local h             = require("_helpers")
 
 local WATCH_CFG = { idle = { ms = 60000 }, cooldown_ms = 0 }

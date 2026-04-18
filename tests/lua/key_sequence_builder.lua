@@ -1,7 +1,7 @@
 -- tests/lua/key_sequence_builder.lua
 -- Pure behavior tests for the native key-sequence reducer used by key_tracking.
 
-local key_tracking = require("vimficiency.key_tracking")
+local key_tracking = require("vimficiency.capture.key_tracking")
 
 local function ev(mode, key_typed)
   return {

@@ -27,12 +27,27 @@ how to tune it to your layout.
 
 ## Simulating
 
-`:Vimfy sim <alias> [count] [delay_ms]` opens a new tab with side-by-side
-windows and animates your sequence (leftmost) and the top suggestions (one per additional window)
+`:Vimfy sim <alias> [count]` opens a new tab with side-by-side windows and
+animates your sequence (leftmost) and the top suggestions (one per additional
+window)
 - `count` — how many optimal sequences to show (default: all saved)
-- `delay_ms` — step delay in ms (default: 1000)
 
-You can close the simulation window with `q`
+Replay opens paused after a brief precompute phase. Step forward with
+`<Right>`, back with `<Left>`, and toggle auto-play with `<CR>`.
+Manual stepping stops auto-play.
+
+Each replay window shows a three-line virtual header above the buffer:
+
+- progress through the global and local step counts
+- current simulated mode (`NORMAL`, `INSERT`, `VISUAL`)
+- the replay sequence itself, wrapped to the window width, with the current token highlighted
+
+The cursor highlight also changes with the simulated mode, so insert and
+visual segments are visible even in unfocused windows.
+
+For a closer look at one buffer, `:Vimfy focus <N>` collapses the tab to just
+the Nth window; `:Vimfy escape` restores the side-by-side layout. Close the
+replay with `q`.
 
 ## Listing what's around
 
@@ -42,36 +57,16 @@ You can close the simulation window with `q`
 
 Shows currently active sessions and saved-to-disk results.
 
-## Saving a result
+## Saving, storing, fetching
 
-`save` works for any finished session (Mark, Watch, Recall, Suggest).
-`end` displays a result but doesn't touch disk:
+Every finished session starts in **session memory** (workspace) and
+stays there until it rotates out. Copy it to disk with
+`:Vimfy save`, move it with `:Vimfy store`, bring it back later with
+`:Vimfy fetch`. `:Vimfy sim <name>` works against both — it replays
+from memory first, falling back to disk.
 
-```vim
-:Vimfy save <selector> [<name>]
-```
-
-- Selectors: a session alias (`a`, `3s`, `5`) or `@` for the most recent finish.
-- Name is optional — defaults to the selector; for `@` it reuses the alias the last `:Vimfy end` / `:Vimfy recall` used.
-
-```vim
-:Vimfy end a
-:Vimfy save @                   " writes saved/a.json
-:Vimfy save @ my-refactor       " explicit name
-:Vimfy save 3s                  " recall works the same way
-```
-
-Saved files live under `stdpath('data')/vimficiency/saved/`.
-
-### Session handles vs. saved names
-
-Separate namespaces. A session handle (`a`, `3s`, `5`) is in memory —
-Marks last until overwritten/closed, Recall rotates out of the ring. A
-saved name is a file on disk, durable across restarts. The same text
-is allowed in both.
-
-For Recall/Suggest, save promptly: `:Vimfy save @ <name>` right after
-`end`, before the slice rotates out.
+See [7a. Session storage](07a-session-storage.md) for the full model,
+collision rules, and worked examples.
 
 ## Viewing a saved result
 
@@ -79,7 +74,8 @@ For Recall/Suggest, save promptly: `:Vimfy save @ <name>` right after
 :Vimfy view my-refactor
 ```
 
-Reads back a saved result. Tab-complete on `:Vimfy view` lists what's available.
+Reads back a saved result textually (without replaying). Tab-complete
+on `:Vimfy view` lists what's available on disk.
 
 ---
 

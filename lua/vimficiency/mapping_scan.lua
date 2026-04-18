@@ -1,3 +1,5 @@
+-- Scans for any "bad mappings", ie external Vimficiency mappings that don't use our built-in mappings, which risks not hiding keypresses from our detection
+
 local M = {}
 
 local MODES_TO_SCAN = { "n", "v", "x", "s", "o", "i", "t" }

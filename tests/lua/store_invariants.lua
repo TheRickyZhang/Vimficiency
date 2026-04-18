@@ -7,7 +7,7 @@
 --     time-varying recall alias.
 
 local session       = require("vimficiency.session")
-local session_store = require("vimficiency.session_store")
+local session_store = require("vimficiency.session.store")
 local h             = require("_helpers")
 
 test("get_active('Ns'): returns nil when ring is younger than N seconds", function()

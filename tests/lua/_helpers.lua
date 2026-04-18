@@ -81,7 +81,7 @@ end
 ---@return table rec, integer buf, string id
 function M.seed_recall(opts)
   opts = opts or {}
-  local session_store = require("vimficiency.session_store")
+  local session_store = require("vimficiency.session.store")
   local util = require("vimficiency.util")
   local lines = opts.lines or { "x" }
   local buf = opts.buf or M.new_buf(lines)

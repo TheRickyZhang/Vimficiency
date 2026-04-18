@@ -10,7 +10,9 @@ Review implementation of BufferIndex in optimizeToRange() (is it exploring corre
 - Different modes of invoking sessions
 - Improving the lua/C++ interaction semantics
 
-- Add testing suite for Lua
+- Review testing suite for Lua
+Replay:
+- verify that users can independently move each buffer
 
 - Later: implement debounced async for how to properly continuously perform optimize() calls to check among previous things automatically. Also need details for concurrency in implementing subprocesses?
 

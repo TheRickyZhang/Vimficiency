@@ -1,13 +1,13 @@
 local v = vim.api
-local alias_mod = require("vimficiency.alias")
+local alias_mod = require("vimficiency.session.alias")
 local config = require("vimficiency.config")
-local end_trigger = require("vimficiency.end_trigger")
+local end_trigger = require("vimficiency.capture.end_trigger")
 local util = require("vimficiency.util")
 local simulate = require("vimficiency.simulate")
-local key_tracking = require("vimficiency.key_tracking")
+local key_tracking = require("vimficiency.capture.key_tracking")
 local ffi_lib = require("vimficiency.ffi")
-local session_store = require("vimficiency.session_store")
-local result_view = require("vimficiency.result_view")
+local session_store = require("vimficiency.session.store")
+local result_view = require("vimficiency.session.result_view")
 
 local M = {}
 
@@ -595,16 +595,55 @@ function M.default_save_name(selector)
   return selector
 end
 
---- Save a finished session result to disk under `name`.
+--- Resolve a save/store selector to a ResultSession.
+--- `@` → last finished. Anything else → alias lookup in the ring.
+---@param selector string
+---@return ResultSession|nil result
+---@return string|nil err
+local function resolve_result_for_selector(selector)
+  if selector == "@" then
+    local result = session_store.get_last_finished_result()
+    if not result then
+      return nil, "No recently finished session. Run ':Vimfy end <alias>' first."
+    end
+    return result, nil
+  end
+  local result = session_store.get_result(selector)
+  if not result then
+    return nil, "No finished result for '" .. selector .. "'. Is the session still active?"
+  end
+  return result, nil
+end
+
+--- Write `result` to disk under `name`. On overwrite, warns (doesn't refuse).
+--- Returns (path, err) — path non-nil on success, err non-nil on failure.
+---@param name string
+---@param result ResultSession
+---@return string|nil path
+---@return string|nil err
+local function write_to_disk_with_overwrite_warn(name, result)
+  local dest_path = get_save_dir() .. "/" .. name .. ".json"
+  local existed = vim.fn.filereadable(dest_path) == 1
+  local path, err = save_results(name, result)
+  if not path then return nil, err end
+  if existed then
+    vim.notify("vimficiency: overwrote existing saved result [" .. name .. "]",
+      vim.log.levels.WARN)
+  end
+  return path, nil
+end
+
+--- Save a finished session result to disk under `name`. Does NOT remove the
+--- session from memory — the workspace copy remains available by its alias.
+--- For the "move to storage" semantics, use `:Vimfy store` instead.
+---
 --- Selector can be any alias that resolves to a finished result, or `@`
---- for the most recently finished session. Saved results live in a
---- separate namespace from live session handles — see `:Vimfy view`.
+--- for the most recently finished session. `name` must satisfy
+--- `alias.is_valid_saved_name`. If `<name>.json` already exists, the file
+--- is overwritten with a warning (never silently, never refused).
 ---@param selector string
 ---@param name string
 function M.save(selector, name)
-  -- Saved names are filesystem fragments (see alias.is_valid_saved_name).
-  -- Refuse anything that could escape the saved/ directory before we
-  -- concat it into a path.
   if not alias_mod.is_valid_saved_name(name) then
     vim.notify(
       "Invalid saved name '" .. tostring(name) .. "'. " ..
@@ -614,27 +653,116 @@ function M.save(selector, name)
     return
   end
 
-  local result
-  if selector == "@" then
-    result = session_store.get_last_finished_result()
-    if not result then
-      vim.notify("No recently finished session to save. Run ':Vimfy end <alias>' first.", vim.log.levels.ERROR)
-      return
-    end
-  else
-    result = session_store.get_result(selector)
-    if not result then
-      vim.notify("No finished result for '" .. selector .. "'. Is the session still active?", vim.log.levels.ERROR)
-      return
-    end
+  local result, err = resolve_result_for_selector(selector)
+  if not result then
+    vim.notify(err or "unknown error", vim.log.levels.ERROR)
+    return
   end
 
-  local path, err = save_results(name, result)
+  local path, write_err = write_to_disk_with_overwrite_warn(name, result)
   if path then
-    vim.notify("vimficiency saved [" .. name .. "] → " .. path, vim.log.levels.INFO)
+    local display_path = vim.fn.fnamemodify(path, ":~")
+    vim.notify("vimficiency saved [" .. name .. "] → " .. display_path, vim.log.levels.INFO)
   else
-    vim.notify("vimficiency save failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+    vim.notify("vimficiency save failed: " .. (write_err or "unknown error"), vim.log.levels.ERROR)
   end
+end
+
+--- Move a finished session from memory to disk: save, then remove the
+--- in-memory alias. Recall sessions (`@`, `N`, `Ns`) are rejected because
+--- they don't have a stable manual alias to remove — save them with
+--- `:Vimfy save` instead.
+---
+---@param selector string  Manual alias of the session to store.
+---@param name string      Disk filename.
+function M.store(selector, name)
+  if not alias_mod.is_valid_saved_name(name) then
+    vim.notify(
+      "Invalid saved name '" .. tostring(name) .. "'. " ..
+      "Allowed: alphanumeric, '.', '_', '-'; must start with a letter, digit, or underscore.",
+      vim.log.levels.ERROR
+    )
+    return
+  end
+
+  local active = session_store.get_active(selector)
+  if active then
+    vim.notify("Session '" .. selector .. "' is still active. Finish it with ':Vimfy end " ..
+      selector .. "' first.", vim.log.levels.ERROR)
+    return
+  end
+  local result, err = resolve_result_for_selector(selector)
+  if not result then
+    vim.notify(err or "unknown error", vim.log.levels.ERROR)
+    return
+  end
+
+  -- Resolve selector to id so we can remove after saving. `@` is a
+  -- shorthand, not an alias in the index — handle separately.
+  local id
+  if selector == "@" then
+    id = session_store.get_last_finished_id()
+  else
+    id = session_store.get_id(selector)
+  end
+  if not id then
+    vim.notify("store: could not locate session id for '" .. selector .. "'",
+      vim.log.levels.ERROR)
+    return
+  end
+
+  local path, write_err = write_to_disk_with_overwrite_warn(name, result)
+  if not path then
+    vim.notify("vimficiency store failed: " .. (write_err or "unknown error"),
+      vim.log.levels.ERROR)
+    return
+  end
+
+  session_store.remove(id)
+  local display_path = vim.fn.fnamemodify(path, ":~")
+  vim.notify("vimficiency stored [" .. selector .. "] → [" .. name .. "] at " ..
+    display_path .. " (removed from session)", vim.log.levels.INFO)
+end
+
+--- Load a saved result from disk into the current session under `alias`.
+--- Disk copy is preserved (use `:Vimfy rm` to delete it separately). Refuses
+--- if `alias` is already in use in the current session.
+---
+---@param name string   Disk filename to fetch from.
+---@param alias string  Target manual alias in the session.
+function M.fetch(name, alias)
+  if not alias_mod.is_valid_saved_name(name) then
+    vim.notify(
+      "Invalid saved name '" .. tostring(name) .. "'.",
+      vim.log.levels.ERROR
+    )
+    return
+  end
+  if not alias_mod.is_valid_manual(alias) then
+    vim.notify(
+      "Invalid alias '" .. tostring(alias) ..
+      "'. Manual aliases must be alphabetic only (e.g. `foo`).",
+      vim.log.levels.ERROR
+    )
+    return
+  end
+
+  local data, err = load_results(name)
+  if not data then
+    vim.notify("vimficiency fetch failed: " .. (err or "unknown error"),
+      vim.log.levels.ERROR)
+    return
+  end
+
+  local id, reg_err = session_store.register_fetched_result(alias, data)
+  if not id then
+    vim.notify("vimficiency fetch failed: " .. (reg_err or "unknown error"),
+      vim.log.levels.ERROR)
+    return
+  end
+
+  vim.notify("vimficiency fetched [" .. name .. "] → [" .. alias .. "]",
+    vim.log.levels.INFO)
 end
 
 --- Delete a saved result from disk. Only touches
@@ -685,20 +813,56 @@ function M.close(alias)
   vim.notify("vimficiency closed [" .. alias .. "]", vim.log.levels.INFO)
 end
 
----@param alias string  The alias of the session to simulate
+---@param alias string  Session alias or saved filename to simulate.
 ---@param count integer|nil  How many optimal results to show (default: all saved)
----@param delay_ms integer|nil  Delay between steps in ms (default 1000)
-function M.simulate(alias, count, delay_ms)
-  delay_ms = delay_ms or 1000
-
+function M.simulate(alias, count)
   if not alias or alias == "" then
-    vim.notify("simulate() requires a session alias", vim.log.levels.ERROR)
+    vim.notify("simulate() requires a session alias or saved name", vim.log.levels.ERROR)
     return
   end
 
-  local result = session_store.get_result(alias)
-  if not result then
-    vim.notify("No results for session '" .. alias .. "'. Run finish() first.", vim.log.levels.ERROR)
+  local in_memory = session_store.get_result(alias)
+  local on_disk = nil
+  if alias_mod.is_valid_saved_name(alias) then
+    on_disk = load_results(alias)
+  end
+
+  local result
+  if in_memory and on_disk then
+    -- Both exist. User's model: in-memory wins, surface a warning so they
+    -- know the disk copy is also there and not being used.
+    vim.notify(
+      "'" .. alias .. "' exists in both session memory and on disk — " ..
+      "replaying the in-memory copy. (The disk copy is untouched; fetch it " ..
+      "under a different alias or `:Vimfy close " .. alias .. "` first to force a refetch.)",
+      vim.log.levels.WARN)
+    result = in_memory
+  elseif in_memory then
+    result = in_memory
+  elseif on_disk then
+    -- Disk-only. Implicitly fetch into the workspace so the user's mental
+    -- model of "what's in my session" stays intact. Only works if `alias`
+    -- is a valid manual alias — otherwise surface the ambiguity.
+    if not alias_mod.is_valid_manual(alias) then
+      vim.notify(
+        "'" .. alias .. "' is on disk but isn't a valid manual alias " ..
+        "(needs to be alphabetic). Fetch it explicitly with " ..
+        "':Vimfy fetch " .. alias .. " <alpha-alias>'.",
+        vim.log.levels.ERROR)
+      return
+    end
+    local id, reg_err = session_store.register_fetched_result(alias, on_disk)
+    if not id then
+      vim.notify("simulate: implicit fetch failed: " .. (reg_err or "unknown error"),
+        vim.log.levels.ERROR)
+      return
+    end
+    vim.notify("vimficiency: fetched [" .. alias .. "] into session",
+      vim.log.levels.INFO)
+    result = on_disk
+  else
+    vim.notify("No results for '" .. alias .. "' in session or on disk.",
+      vim.log.levels.ERROR)
     return
   end
 
@@ -729,8 +893,7 @@ function M.simulate(alias, count, delay_ms)
     result.lines,
     result.start_row,
     result.start_col,
-    sequences,
-    delay_ms
+    sequences
   )
 end
 

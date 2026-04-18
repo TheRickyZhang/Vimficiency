@@ -19,6 +19,7 @@ internals and implementation notes, see `dev/`.
 5. [Recall](05-recall.md) — auto start, manual end (`recall N` / `recall Ns`)
 6. [Suggest](06-suggest.md) — auto start, auto end (idle-surfaces result)
 7. [Inspecting results](07-results.md) — notifications, simulate, list, view
+   - [7a. Session storage](07a-session-storage.md) — workspace (memory) vs. archive (disk)
 8. [Binding keys to Vimfy](08-keymaps.md) — `<Plug>` maps and `wrap()`
 9. [Configuration](09-configuration.md) — setup knobs
 10. [The effort model](10-effort-model.md) — how "cost" is computed

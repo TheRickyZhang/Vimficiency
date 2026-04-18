@@ -452,12 +452,27 @@ Cost is a keyboard-effort score (lower is better), not a keystroke count. See
 
 SIMULATING                         *vimficiency-inspecting-results-simulating*
 
-`:Vimfy sim <alias> [count] [delay_ms]` opens a new tab with side-by-side
-windows and animates your sequence (leftmost) and the top suggestions (one per
-additional window) - `count` — how many optimal sequences to show (default:
-all saved) - `delay_ms` — step delay in ms (default: 1000)
+`:Vimfy sim <alias> [count]` opens a new tab with side-by-side windows and
+animates your sequence (leftmost) and the top suggestions (one per additional
+window) - `count` — how many optimal sequences to show (default: all saved)
 
-You can close the simulation window with `q`
+Replay opens paused after a brief precompute phase. Step forward with
+`<Right>`, back with `<Left>`, and toggle auto-play with `<CR>`. Manual
+stepping stops auto-play.
+
+Each replay window shows a three-line virtual header above the buffer:
+
+- progress through the global and local step counts
+- current simulated mode (`NORMAL`, `INSERT`, `VISUAL`)
+- the replay sequence itself, wrapped to the window width, with the current
+  token highlighted
+
+The cursor highlight also changes with the simulated mode, so insert and
+visual segments are visible even in unfocused windows.
+
+For a closer look at one buffer, `:Vimfy focus <N>` collapses the tab to just
+the Nth window; `:Vimfy escape` restores the side-by-side layout. Close the
+replay with `q`.
 
 
 LISTING WHAT’S AROUND*vimficiency-inspecting-results-listing-what’s-around*
@@ -828,7 +843,12 @@ C++ source (`cpp/effort_model.*`) is the spec.
                                        defaults to selector. @ = last
                                        finished.
 
-  :Vimfy sim <alias> [count] [ms]      Animate results side-by-side.
+  :Vimfy sim <alias> [count]           Animate results side-by-side.
+
+  :Vimfy focus <N>                     Focus the active replay on the Nth
+                                       buffer (full-screen).
+
+  :Vimfy escape                        Restore the side-by-side replay layout.
 
   :Vimfy view [name]                   View a saved result (or list saved
                                        names).
