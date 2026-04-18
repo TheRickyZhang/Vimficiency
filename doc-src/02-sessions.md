@@ -32,6 +32,15 @@ See the per-type pages for details:
 - [5. Recall](05-recall.md) — auto start, manual end.
 - [6. Suggest](06-suggest.md) — auto start, auto end.
 
+## Where a session lives
+
+Once finished, a session lives in **session memory** (the workspace),
+keyed by its alias. Memory rotates: Mark slots cap at 5, Recall entries
+age out of the rolling ring. For anything durable, **save** a session
+to disk — or **store** it (save + remove from workspace), **fetch** it
+back later, and **sim** it whether it's in memory or on disk. See
+[7a. Session storage](07a-session-storage.md) for the full model.
+
 ---
 
 **[← Installation](01-installation.md)** | **[Index](./README.md)** | **[Next: Mark →](03-mark.md)**

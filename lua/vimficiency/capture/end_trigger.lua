@@ -28,7 +28,7 @@
 
 local M = {}
 
-local key_tracking = require("vimficiency.key_tracking")
+local key_tracking = require("vimficiency.capture.key_tracking")
 
 ---@class EndTriggerOpts
 ---@field name         string                       # Unique subscriber name.

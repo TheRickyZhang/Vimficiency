@@ -1,5 +1,5 @@
-local key_tracking = require("vimficiency.key_tracking")
-local session_store = require("vimficiency.session_store")
+local key_tracking = require("vimficiency.capture.key_tracking")
+local session_store = require("vimficiency.session.store")
 
 local M = {}
 

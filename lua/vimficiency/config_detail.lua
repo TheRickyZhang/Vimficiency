@@ -2,7 +2,7 @@
 -- Small helpers for config.lua. Keep the public config shape in config.lua;
 -- only the imperative merge/validation details live here.
 
-local alias_mod = require("vimficiency.alias")
+local alias_mod = require("vimficiency.session.alias")
 
 local M = {}
 

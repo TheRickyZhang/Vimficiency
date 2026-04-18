@@ -9,9 +9,9 @@
 
 local config        = require("vimficiency.config")
 local session       = require("vimficiency.session")
-local session_store = require("vimficiency.session_store")
-local end_trigger   = require("vimficiency.end_trigger")
-local key_tracking  = require("vimficiency.key_tracking")
+local session_store = require("vimficiency.session.store")
+local end_trigger   = require("vimficiency.capture.end_trigger")
+local key_tracking  = require("vimficiency.capture.key_tracking")
 local h             = require("_helpers")
 
 local WATCH_CFG = { idle = { ms = 60000 }, cooldown_ms = 0 }

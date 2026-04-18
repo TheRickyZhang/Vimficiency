@@ -31,7 +31,7 @@ end
 
 ---@diagnostic disable-next-line: lowercase-global
 function assert_eq(actual, expected, msg)
-  if actual ~= expected then
+  if not vim.deep_equal(actual, expected) then
     error(string.format("%s: expected %s, got %s",
       msg or "assert_eq",
       vim.inspect(expected), vim.inspect(actual)), 2)
@@ -81,17 +81,21 @@ local plugin_root = tests_dir .. "../.."
 vim.opt.rtp:prepend(plugin_root)
 package.path = tests_dir .. "?.lua;" .. package.path
 
--- Discover test files. Skip `runner.lua` (this file) and anything
--- underscore-prefixed (helpers, fixtures).
-local candidates = vim.fn.glob(tests_dir .. "*.lua", false, true)
 local test_files = {}
-for _, path in ipairs(candidates) do
-  local name = vim.fn.fnamemodify(path, ":t")
-  if name ~= "runner.lua" and name:sub(1, 1) ~= "_" then
-    test_files[#test_files + 1] = path
+if vim.env.VF_TEST_FILE and vim.env.VF_TEST_FILE ~= "" then
+  test_files[1] = vim.fn.fnamemodify(vim.env.VF_TEST_FILE, ":p")
+else
+  -- Discover test files. Skip `runner.lua` (this file) and anything
+  -- underscore-prefixed (helpers, fixtures).
+  local candidates = vim.fn.glob(tests_dir .. "*.lua", false, true)
+  for _, path in ipairs(candidates) do
+    local name = vim.fn.fnamemodify(path, ":t")
+    if name ~= "runner.lua" and name:sub(1, 1) ~= "_" then
+      test_files[#test_files + 1] = path
+    end
   end
+  table.sort(test_files)
 end
-table.sort(test_files)
 
 for _, path in ipairs(test_files) do
   io.stdout:write("---- " .. vim.fn.fnamemodify(path, ":t") .. " ----\n")

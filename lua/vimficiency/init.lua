@@ -1,9 +1,9 @@
 local config = require("vimficiency.config")
-local key_tracking = require("vimficiency.key_tracking")
-local auto_suggest = require("vimficiency.auto_suggest")
+local key_tracking = require("vimficiency.capture.key_tracking")
+local auto_suggest = require("vimficiency.capture.auto_suggest")
 local commands = require("vimficiency.commands")
 local mapping_scan = require("vimficiency.mapping_scan")
-local recall_capture = require("vimficiency.recall_capture")
+local recall_capture = require("vimficiency.capture.recall")
 local ffi_lib = require("vimficiency.ffi")
 
 local M = {}

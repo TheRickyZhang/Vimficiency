@@ -24,9 +24,9 @@
 
 local M = {}
 
-local alias_mod = require("vimficiency.alias")
+local alias_mod = require("vimficiency.session.alias")
 local ffi_lib = require("vimficiency.ffi")
-local key_tracking = require("vimficiency.key_tracking")
+local key_tracking = require("vimficiency.capture.key_tracking")
 local util = require("vimficiency.util")
 local config = require("vimficiency.config")
 
@@ -514,6 +514,79 @@ function M.get_last_finished_alias()
   if not last_finished_id then return nil end
   local rec = session_records[last_finished_id]
   return rec and rec.finish_alias or nil
+end
+
+--- Resolve an alias to its session id. Useful for callers that need to
+--- cross-reference the two id-bearing APIs (`remove`, `finish_session`)
+--- from an alias they received externally.
+---
+--- Returns nil for unknown aliases and for the `@` shorthand (callers
+--- that want the last-finished id should use `get_last_finished_id`).
+---@param alias string
+---@return string|nil id
+function M.get_id(alias)
+  return convert_alias_to_id(alias)
+end
+
+--- Id of the most recently finished session (whatever alias it was
+--- attached to). Returns nil if nothing has finished or the record has
+--- since been destroyed.
+---@return string|nil id
+function M.get_last_finished_id()
+  if not last_finished_id then return nil end
+  if not session_records[last_finished_id] then return nil end
+  return last_finished_id
+end
+
+--- Insert a result loaded from disk as a finished session under `alias`.
+---
+--- Backs `:Vimfy fetch` and the implicit fetch-on-`sim` for disk-only names.
+--- The resulting record looks like any other finished session — subsequent
+--- `get_result(alias)`, `:Vimfy sim alias`, `:Vimfy save alias as ...`, etc.
+--- all work.
+---
+--- Refuses (returns nil + reason) if the alias is already in use, because
+--- the workspace-vs-storage model says fetching into an occupied alias is
+--- an error, not a silent overwrite.
+---
+---@param alias string  Must satisfy `alias.is_valid_manual`.
+---@param result ResultSession
+---@return string|nil id
+---@return string|nil err
+function M.register_fetched_result(alias, result)
+  if not alias_mod.is_valid_manual(alias) then
+    return nil, "alias '" .. tostring(alias) .. "' is not a valid manual alias (alphabetic only)"
+  end
+  if manual_alias_to_id[alias] then
+    return nil, "alias '" .. alias .. "' is already in use in the current session"
+  end
+  assert(type(result) == "table", "result must be a table")
+
+  -- We need a valid buf for `util.new_id` (it uses the buffer name to
+  -- derive the id prefix). Current buffer works — the id is opaque and
+  -- doesn't imply the record is attached to that buffer.
+  local cur_buf = vim.api.nvim_get_current_buf()
+  local id = util.new_id(cur_buf)
+
+  session_records[id] = {
+    id            = id,
+    key_nsid      = -1,   -- no key tracking for fetched records
+    win           = vim.api.nvim_get_current_win(),
+    buf           = cur_buf,
+    start_state   = nil,  -- not used for already-finished records
+    time_started  = vim.uv.hrtime(),
+    status        = "finished",
+    key_seq       = nil,
+    key_count     = (result.key_count or 0),
+    first_mode    = nil,
+    result        = result,
+    start_kind    = "manual",
+    end_kind      = "manual",
+    finish_alias  = alias,
+  }
+  manual_alias_to_id[alias] = id
+  last_finished_id = id
+  return id, nil
 end
 
 --- List all valid aliases for debugging / tab-completion.

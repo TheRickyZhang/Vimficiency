@@ -1,8 +1,8 @@
 -- tests/lua/alias.lua
--- Grammar tests for lua/vimficiency/alias.lua. Pure-function tests:
+-- Grammar tests for lua/vimficiency/session/alias.lua. Pure-function tests:
 -- no buffers, no vim.uv, no state.
 
-local alias = require("vimficiency.alias")
+local alias = require("vimficiency.session.alias")
 
 test("parse: single-letter manual", function()
   local t, v = alias.parse("a")

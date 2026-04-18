@@ -38,10 +38,10 @@
 local M = {}
 
 local config        = require("vimficiency.config")
-local end_trigger   = require("vimficiency.end_trigger")
-local result_view   = require("vimficiency.result_view")
+local end_trigger   = require("vimficiency.capture.end_trigger")
+local result_view   = require("vimficiency.session.result_view")
 local session       = require("vimficiency.session")
-local session_store = require("vimficiency.session_store")
+local session_store = require("vimficiency.session.store")
 
 local SUBSCRIBER_IDLE = "auto_suggest_idle"
 local SUBSCRIBER_KEYS = "auto_suggest_keys"

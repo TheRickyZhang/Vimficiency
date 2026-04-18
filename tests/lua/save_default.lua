@@ -9,7 +9,7 @@
 -- finish time.
 
 local session       = require("vimficiency.session")
-local session_store = require("vimficiency.session_store")
+local session_store = require("vimficiency.session.store")
 
 --- Seed the store with a manual session under `alias`, then finish it
 --- with `finish_alias` so `@` has something to resolve to. Returns the

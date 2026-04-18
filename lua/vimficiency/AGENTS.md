@@ -2,20 +2,45 @@
 
 The Lua layer is a Neovim plugin that captures user editing sessions and calls the C++ optimizer for analysis.
 
-## File Overview
+## Layout
+
+Top-level modules are the plugin entry and cross-cutting infrastructure:
 
 | File | Purpose |
 |------|---------|
 | `init.lua` | Plugin entry point. Registers `:Vimfy` command with subcommands. |
+| `commands.lua` | `:Vimfy` subcommand dispatch + tab completion. |
 | `config.lua` | Shared configuration constants (Lua-side only). |
+| `config_detail.lua` | Config introspection / validation helpers. |
 | `ffi.lua` | LuaJIT FFI bindings to `libvimficiency.so`. |
-| `session.lua` | Session lifecycle: start, finish, simulate, view. |
-| `session_store.lua` | Canonical session records + manual/recall indexing. |
-| `result_view.lua` | Pure formatting helpers (position string, body lines) shared by `finish` and auto-suggest. |
-| `auto_suggest.lua` | Idle-trigger auto-suggest (runs optimizer on a recall window). |
-| `key_tracking.lua` | Captures keypresses via `vim.on_key()` with filtering. |
-| `simulate.lua` | Side-by-side animation of motion sequences. |
 | `util.lua` | State capture, ID generation, UI helpers. |
+| `mapping_scan.lua` | Scans user mappings for `<Plug>Vimfy*` routing. |
+
+Three subdirectories group the domain logic:
+
+### `session/` — records and lifecycle
+
+| File | Purpose |
+|------|---------|
+| `session/init.lua` | Session lifecycle: start, finish, simulate, view. Required as `vimficiency.session`. |
+| `session/store.lua` | Canonical session records + manual/recall indexing. |
+| `session/alias.lua` | Alias grammar validation for Mark / Watch / Recall handles. |
+| `session/result_view.lua` | Pure formatting helpers (position string, body lines) shared by `finish` and auto-suggest. |
+
+### `capture/` — observation and triggers
+
+| File | Purpose |
+|------|---------|
+| `capture/key_tracking.lua` | Captures keypresses via `vim.on_key()` with filtering. |
+| `capture/recall.lua` | Rolling recall-ring capture driven by key events. |
+| `capture/end_trigger.lua` | Idle-based auto-end triggers (Watch / Suggest). |
+| `capture/auto_suggest.lua` | Idle-trigger auto-suggest (runs optimizer on a recall window). |
+
+### `simulate/` — replay view
+
+| File | Purpose |
+|------|---------|
+| `simulate/init.lua` | Side-by-side animation of motion sequences. Required as `vimficiency.simulate`. |
 
 ## Session Architecture
 
@@ -112,11 +137,21 @@ Lua-side constants (not pushed to C++):
 
 ## Simulation (simulate.lua)
 
-`simulate_compare(lines, row, col, sequences, delay_ms)`:
-- Opens new tab with side-by-side windows
-- Animates each sequence step-by-step
-- Uses C++ tokenizer with character fallback for unsupported motions
-- Press `q` to close simulation
+`simulate_compare(lines, row, col, sequences)`:
+- Precomputes replay snapshots asynchronously by driving Neovim itself as the
+  oracle (`nvim_feedkeys` into a hidden probe window), then opens a new tab
+  with side-by-side windows
+- Replay opens paused; `<Left>`/`<Right>` step, `<CR>` toggles auto-play, `q`
+  closes the whole replay tab
+- `:Vimfy focus <N>` / `:Vimfy escape` toggle the single-buffer view
+- Uses virtual header lines above each replay buffer for progress, mode, and a
+  wrapped/highlighted sequence display
+- Uses C++ tokenizer with character fallback for unsupported motions, then
+  merges feedable pairs like `f;` / `rX` before precompute
+
+Replay verification now lives in repo-native Lua tests:
+- `tests/lua/simulate.lua` covers tokenization / feedable-token merging
+- `tests/lua/simulate_integration.lua` covers the async replay oracle and UI rendering
 
 ## Commands
 
@@ -126,6 +161,8 @@ Lua-side constants (not pushed to C++):
 :Vimfy recall <N|Ns>    -- Finish a retrospective recall window
 :Vimfy close <alias>    -- Discard session
 :Vimfy sim <alias>      -- Animate results
+:Vimfy focus <N>        -- Focus replay on Nth buffer (full-screen)
+:Vimfy escape           -- Restore side-by-side replay layout
 :Vimfy view [name]      -- View saved results
 :Vimfy list             -- Show active/saved sessions
 :Vimfy suggest <on|off|toggle> -- Toggle auto-suggest (needs `auto_suggest = {...}` in setup)

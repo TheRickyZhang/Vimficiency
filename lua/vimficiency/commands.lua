@@ -1,7 +1,7 @@
 local ffi_lib = require("vimficiency.ffi")
 local session = require("vimficiency.session")
-local auto_suggest = require("vimficiency.auto_suggest")
-local alias_mod = require("vimficiency.alias")
+local auto_suggest = require("vimficiency.capture.auto_suggest")
+local alias_mod = require("vimficiency.session.alias")
 local util = require("vimficiency.util")
 
 local M = {}
@@ -75,21 +75,41 @@ subcommands.close = {
 
 subcommands.sim = {
   desc = "Simulate motion sequences",
-  usage = "sim <alias> [count] [delay_ms]",
+  usage = "sim <alias> [count]",
   fn = function(args)
     local alias = args[1]
     local count = args[2] and tonumber(args[2]) or nil
-    local delay_ms = args[3] and tonumber(args[3]) or nil
     if not alias or alias == "" then
-      vim.notify("Usage: Vimfy sim <alias> [count] [delay_ms]", vim.log.levels.ERROR)
+      vim.notify("Usage: Vimfy sim <alias> [count]", vim.log.levels.ERROR)
       return
     end
-    session.simulate(alias, count, delay_ms)
+    session.simulate(alias, count)
+  end,
+}
+
+subcommands.focus = {
+  desc = "Focus replay on the Nth buffer",
+  usage = "focus <N>",
+  fn = function(args)
+    local n = args[1] and tonumber(args[1])
+    if not n or n < 1 or n ~= math.floor(n) then
+      vim.notify("Usage: Vimfy focus <N>  (1-indexed integer)", vim.log.levels.ERROR)
+      return
+    end
+    require("vimficiency.simulate").focus(n)
+  end,
+}
+
+subcommands.escape = {
+  desc = "Restore the side-by-side replay layout",
+  usage = "escape",
+  fn = function()
+    require("vimficiency.simulate").escape()
   end,
 }
 
 subcommands.save = {
-  desc = "Save a finished session result to disk",
+  desc = "Copy a finished session result to disk (keeps the session copy)",
   usage = "save <selector>|@ [<name>]",
   fn = function(args)
     local selector = args[1]
@@ -97,18 +117,40 @@ subcommands.save = {
       vim.notify("Usage: Vimfy save <selector>|@ [<name>]", vim.log.levels.ERROR)
       return
     end
-    local name = args[2]
-    if not name or name == "" then
-      name = session.default_save_name(selector)
-      if not name then
-        vim.notify(
-          "Vimfy save: cannot derive a default name from '" .. selector ..
-          "'. Supply one explicitly (e.g. `:Vimfy save " .. selector .. " my-name`).",
-          vim.log.levels.ERROR)
-        return
-      end
-    end
+    -- Omitting the second arg means "repeat the first" — so `save foo` is
+    -- equivalent to `save foo as foo`. For shorthand selectors like `@`
+    -- that aren't valid saved names, the user must pass the name
+    -- explicitly and the downstream validator will say so.
+    local name = (args[2] and args[2] ~= "") and args[2] or selector
     session.save(selector, name)
+  end,
+}
+
+subcommands.store = {
+  desc = "Move a finished session from memory to disk (removes the session copy)",
+  usage = "store <alias> [<name>]",
+  fn = function(args)
+    local selector = args[1]
+    if not selector or selector == "" then
+      vim.notify("Usage: Vimfy store <alias> [<name>]", vim.log.levels.ERROR)
+      return
+    end
+    local name = (args[2] and args[2] ~= "") and args[2] or selector
+    session.store(selector, name)
+  end,
+}
+
+subcommands.fetch = {
+  desc = "Copy a saved result from disk into the current session",
+  usage = "fetch <name> [<alias>]",
+  fn = function(args)
+    local name = args[1]
+    if not name or name == "" then
+      vim.notify("Usage: Vimfy fetch <name> [<alias>]", vim.log.levels.ERROR)
+      return
+    end
+    local alias = (args[2] and args[2] ~= "") and args[2] or name
+    session.fetch(name, alias)
   end,
 }
 
@@ -218,43 +260,11 @@ subcommands.reload = {
     end
 
     reload_in_progress = true
-    vim.notify("Rebuilding Vimficiency...", vim.log.levels.INFO)
+    vim.notify("Rebuilding Vimficiency...", vim.log.levels.INFO,
+      { title = "Vimficiency" })
 
-    local tail_cap = 40
-    local tail = {}
-    local last_echo_ns = 0
-    local echo_interval_ns = 150 * 1e6
+    local output = {}
     local pending_line = ""
-
-    local function push_tail(line)
-      tail[#tail + 1] = line
-      if #tail > tail_cap then
-        table.remove(tail, 1)
-      end
-    end
-
-    local function echo_progress(msg)
-      vim.schedule(function()
-        vim.api.nvim_echo(
-          { { "vimficiency rebuild: ", "MoreMsg" }, { msg, "Normal" } },
-          false,
-          {}
-        )
-      end)
-    end
-
-    local function handle_line(line)
-      if line == "" then return end
-      push_tail(line)
-      local progress = parse_build_progress(line)
-      if progress then
-        local now = vim.uv.hrtime()
-        if now - last_echo_ns >= echo_interval_ns then
-          last_echo_ns = now
-          echo_progress(line)
-        end
-      end
-    end
 
     local function on_stream(_, data)
       if not data or data == "" then return end
@@ -263,7 +273,8 @@ subcommands.reload = {
       while true do
         local nl = chunk:find("\n", start, true)
         if not nl then break end
-        handle_line(chunk:sub(start, nl - 1))
+        local line = chunk:sub(start, nl - 1)
+        if line ~= "" then output[#output + 1] = line end
         start = nl + 1
       end
       pending_line = chunk:sub(start)
@@ -272,22 +283,30 @@ subcommands.reload = {
     local function on_exit(obj)
       reload_in_progress = false
       if pending_line ~= "" then
-        handle_line(pending_line)
+        output[#output + 1] = pending_line
         pending_line = ""
       end
       vim.schedule(function()
-        vim.api.nvim_echo({ { "", "Normal" } }, false, {})
         if obj.code == 0 then
-          vim.notify(
-            "Rebuild complete. Restart Neovim to load new library.",
-            vim.log.levels.WARN
-          )
+          local progress_lines = {}
+          for _, l in ipairs(output) do
+            if parse_build_progress(l) then
+              progress_lines[#progress_lines + 1] = l
+            end
+          end
+          local msg = "Rebuild complete. Restart Neovim to load new library."
+          if #progress_lines > 0 then
+            msg = table.concat(progress_lines, "\n") .. "\n\n" .. msg
+          end
+          vim.notify(msg, vim.log.levels.WARN, { title = "Vimficiency" })
         else
           local lines = { "vimficiency rebuild failed (exit " .. tostring(obj.code) .. "):" }
-          for _, l in ipairs(tail) do
-            lines[#lines + 1] = "  " .. l
+          local start_idx = math.max(1, #output - 39)  -- last 40 lines
+          for i = start_idx, #output do
+            lines[#lines + 1] = "  " .. output[i]
           end
-          vim.notify(table.concat(lines, "\n"), vim.log.levels.ERROR)
+          vim.notify(table.concat(lines, "\n"), vim.log.levels.ERROR,
+            { title = "Vimficiency" })
         end
       end)
     end

@@ -12,8 +12,11 @@
 - **Screen-line motions** `gj`/`gk` are approximated as `j`/`k`. Exact on
   unwrapped lines; off by a little when wrapping is in play.
 
-- **Multi-buffer edits** aren't supported within a single session. Switching
-  buffers during a Mark / Watch / Recall session discards or aborts it.
+- **Multi-buffer edits** aren't supported within a single session. If you
+  finish a session while a different buffer is focused, it is rejected.
+  Transient window changes (floating pickers, temporary splits) are fine —
+  the session stays alive and keys typed outside the session window are
+  silently ignored.
 
 - **Large regions** (more than `MAX_SEARCH_LINES`) are refused with an error;
   split the edit up or increase the limit if you really want this.

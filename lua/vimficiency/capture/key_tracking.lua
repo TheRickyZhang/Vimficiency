@@ -63,7 +63,7 @@ end
 
 ---@param get_session fun(): ActiveSession|nil
 ---@param reset_session fun(reason: string, level: integer)
----@param should_evict fun(session: ActiveSession): string|nil  Optional: return a reason string to drop the session; nil to keep. Runs after the window-change check and before the key is appended, so eviction fires on the first key past a trigger threshold.
+---@param should_evict fun(session: ActiveSession): string|nil  Optional: return a reason string to drop the session; nil to keep. Runs before the window-sameness check and before the key is appended, so eviction fires on every keystroke regardless of which window is focused.
 ---@return integer nsid
 function M.attach(get_session, reset_session, should_evict)
 	local nsid = nil
@@ -76,18 +76,24 @@ function M.attach(get_session, reset_session, should_evict)
 			return
 		end
 
-		local curr_win = vim.api.nvim_get_current_win()
-		if curr_win ~= session.win then
-			reset_session("Vimficiency: session aborted since window changed", vim.log.levels.ERROR)
-			return
-		end
-
+		-- Eviction checks (drift, idle, window-closed) run on every
+		-- keystroke regardless of which window is focused.  The callback
+		-- inspects session.win, not the current window.
 		if should_evict then
 			local reason = should_evict(session)
 			if reason then
 				reset_session(reason, vim.log.levels.WARN)
 				return
 			end
+		end
+
+		-- Keys typed in a different window (floating picker, temporary
+		-- split, etc.) are not motions in the session's buffer — skip
+		-- recording without aborting.  Finish-time validation is the
+		-- authoritative buffer guard.
+		local curr_win = vim.api.nvim_get_current_win()
+		if curr_win ~= session.win then
+			return
 		end
 
 		typed = typed or ""

@@ -37,7 +37,7 @@ The re-evaluation in step 3 causes the duplicate.
 
 ### Our Workaround
 
-In `key_tracking.lua`, the `build_sequence()` function removes duplicates by detecting:
+In `capture/key_tracking.lua`, the `build_sequence()` function removes duplicates by detecting:
 - Same key appearing consecutively
 - First occurrence in operator-pending mode (`no`)
 - Second occurrence in a different mode (normal `n` or insert `i`)

@@ -3,7 +3,7 @@
 -- tests over session_store._pure.snap_backward_to_boundary, so we can feed
 -- synthetic ring state and assert precisely.
 
-local store = require("vimficiency.session_store")
+local store = require("vimficiency.session.store")
 local snap = store._pure.snap_backward_to_boundary
 
 -- Build a synthetic ring. Each entry is (id, first_mode).

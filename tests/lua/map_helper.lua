@@ -4,7 +4,7 @@
 -- driven by nvim_feedkeys('xt', ...) against a real global listener.
 
 local vimfy        = require("vimficiency")
-local key_tracking = require("vimficiency.key_tracking")
+local key_tracking = require("vimficiency.capture.key_tracking")
 local h            = require("_helpers")
 
 -- Don't call setup() here — it registers user commands and may run the

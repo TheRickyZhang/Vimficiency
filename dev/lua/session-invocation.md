@@ -64,3 +64,11 @@ User cost is calculated using `getEffort(keyseq, config)` from `RunningEffort.h`
 - Converts the sequence to physical key presses
 - Applies keyboard effort model (finger travel, hand alternation, etc.)
 - Returns total effort score
+
+## After a session finishes
+
+Finished sessions live in an in-memory workspace (indexed by alias) and/or
+an on-disk archive (indexed by filename). Moving between the two is handled
+by `:Vimfy save` / `store` / `fetch`; `:Vimfy sim` covers both transparently.
+See [`session-storage.md`](session-storage.md) for the full Lua-layer model,
+APIs, and JSON schema.
