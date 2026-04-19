@@ -168,14 +168,19 @@ local function find_plugin_root()
 	return vim.fn.fnamemodify(source, ":h:h:h")
 end
 
--- Find and load the shared library
+-- Find and load the shared library. `_G.__vimficiency_reload_lib_path` is an
+-- escape hatch used by the `:Vimfy reload` Lua-reload path: dlopen caches
+-- handles per-path, so to pick up freshly built C++ we copy the new .so to
+-- a unique path and point at it here. Normal startup leaves the global nil.
 ---@return VimficiencyLib
 local function load_lib()
 	local root = find_plugin_root()
-	local paths = {
-		root .. "/build/libvimficiency.so", -- local build
-		"vimficiency", -- system path
-	}
+	local paths = {}
+	if type(_G.__vimficiency_reload_lib_path) == "string" then
+		table.insert(paths, _G.__vimficiency_reload_lib_path)
+	end
+	table.insert(paths, root .. "/build/libvimficiency.so") -- local build
+	table.insert(paths, "vimficiency") -- system path
 
 	for _, path in ipairs(paths) do
 		local ok, lib = pcall(ffi.load, path)

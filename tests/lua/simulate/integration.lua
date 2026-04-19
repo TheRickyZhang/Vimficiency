@@ -1,8 +1,11 @@
+-- This file lives at tests/lua/simulate/integration.lua, so the plugin
+-- root is three levels up and `_helpers` lives in tests/lua/.
 local script = debug.getinfo(1, "S").source:sub(2)
-local tests_dir = script:match("(.*/)")
-local plugin_root = tests_dir .. "../.."
+local this_dir = script:match("(.*/)")
+local tests_root = this_dir .. "../"
+local plugin_root = this_dir .. "../../.."
 vim.opt.rtp:prepend(plugin_root)
-package.path = tests_dir .. "?.lua;" .. package.path
+package.path = tests_root .. "?.lua;" .. package.path
 
 local helpers = require("_helpers")
 local sim = require("vimficiency.simulate")
@@ -95,7 +98,11 @@ local function with_replay(sequences, lines, fn, next)
   vim.api.nvim_feedkeys(
     vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "xt", false)
 
-  sim.simulate_compare(lines, 0, 0, sequences)
+  local items = {}
+  for _, seq in ipairs(sequences) do
+    items[#items + 1] = { seq = seq }
+  end
+  sim.simulate_compare(lines, 0, 0, items)
 
   local tries = 0
   local function finish(ok, err)
@@ -152,7 +159,8 @@ local cases = {
         assert_eq(get_snapshot(1, 3).mode, "i", "snapshot mode after entering insert")
 
         sim._debug_seek_to(3)
-        assert_eq(header_lines(seq1.buf)[2], "Mode INSERT", "insert header")
+        assert_true(header_lines(seq1.buf)[1]:find("Mode INSERT") ~= nil,
+          "insert header on info row")
 
         assert_eq(get_snapshot(1, 4).lines,
           { "one two", "ab;def ghi", "last line" }, "snapshot lines after <BS>")
@@ -168,7 +176,8 @@ local cases = {
 
         assert_eq(get_snapshot(1, 8).mode, "v", "snapshot mode after visual enter")
         sim._debug_seek_to(8)
-        assert_eq(header_lines(seq1.buf)[2], "Mode VISUAL", "visual header")
+        assert_true(header_lines(seq1.buf)[1]:find("Mode VISUAL") ~= nil,
+          "visual header on info row")
         assert_eq(get_snapshot(1, 9).cursor, { 2, 6 }, "snapshot cursor after visual e")
       end, next)
     end,
@@ -198,10 +207,79 @@ local cases = {
       }, function()
         local seq1 = get_window(1)
         local lines = header_lines(seq1.buf)
-        assert_true(#lines > 3, "expected wrapped sequence lines")
-        assert_eq(lines[1], "[1] Progress 0/120  Local 0/120", "progress line")
-        assert_eq(lines[2], "Mode NORMAL", "mode line")
-        assert_true(lines[3]:sub(1, 8) == "Sequence", "sequence line prefix")
+        assert_true(#lines > 2, "expected wrapped sequence lines")
+        assert_eq(lines[1], "[1] Mode NORMAL  Local 0/120", "info row")
+        assert_true(lines[2]:sub(1, 8) == "Sequence", "sequence line prefix")
+      end, next)
+    end,
+  },
+  {
+    name = "simulate <CR> focuses the window under cursor and toggles back",
+    run = function(next)
+      with_replay({ "j", "w", "b" }, {
+        "alpha beta gamma",
+      }, function()
+        -- Pre-condition: three side-by-side windows, same tab.
+        local before = sim._debug_get_windows()
+        assert_eq(#before, 3, "three replay windows before focus")
+
+        -- Move cursor into window #2, then invoke the toggle handler.
+        vim.api.nvim_set_current_win(before[2].win)
+        sim._debug_toggle_focus()
+
+        -- Post-condition: a single window remains in the tab; the focused
+        -- index is 2 per focus_state.
+        local focused = sim._debug_get_windows()
+        assert_eq(#focused, 1, "one window after focus")
+        assert_eq(focused[1].seq_idx, 2, "focused entry carries seq_idx = 2")
+        local state = sim._debug_get_focus_state()
+        assert_true(state ~= nil, "focus_state set after focus")
+        assert_eq(state.focused_idx, 2, "focused_idx matches the window we were on")
+
+        -- Second `<CR>` from within focus escapes back to the split.
+        sim._debug_toggle_focus()
+        assert_eq(#sim._debug_get_windows(), 3, "split restored after escape")
+        assert_true(sim._debug_get_focus_state() == nil, "focus_state cleared after escape")
+
+        -- seq_idx is populated on every entry post-restore.
+        for i, entry in ipairs(sim._debug_get_windows()) do
+          assert_eq(entry.seq_idx, i, "restored windows carry seq_idx = " .. i)
+        end
+      end, next)
+    end,
+  },
+  {
+    name = "simulate ]b cycles sim windows (split) and swaps buffer (focus)",
+    run = function(next)
+      with_replay({ "j", "w", "b" }, {
+        "alpha beta gamma",
+      }, function()
+        local wins = sim._debug_get_windows()
+        assert_eq(#wins, 3, "three replay windows before cycling")
+
+        -- Split mode: ]b from window 1 → window 2, ]b → window 3,
+        -- ]b wraps back to window 1.
+        vim.api.nvim_set_current_win(wins[1].win)
+        sim._debug_cycle_next()
+        assert_eq(vim.api.nvim_get_current_win(), wins[2].win, "cycle from 1 → 2")
+        sim._debug_cycle_next()
+        assert_eq(vim.api.nvim_get_current_win(), wins[3].win, "cycle from 2 → 3")
+        sim._debug_cycle_next()
+        assert_eq(vim.api.nvim_get_current_win(), wins[1].win, "cycle from 3 → 1 (wrap)")
+
+        -- [b wraps the other direction.
+        sim._debug_cycle_prev()
+        assert_eq(vim.api.nvim_get_current_win(), wins[3].win, "cycle prev 1 → 3 (wrap)")
+
+        -- Enter focus on window 3, then ]b swaps to sequence 1 in place.
+        vim.api.nvim_set_current_win(wins[3].win)
+        sim._debug_toggle_focus()
+        assert_eq(sim._debug_get_focus_state().focused_idx, 3, "focused on 3")
+        sim._debug_cycle_next()
+        assert_eq(sim._debug_get_focus_state().focused_idx, 1, "focus wraps 3 → 1")
+        local focused = sim._debug_get_windows()
+        assert_eq(#focused, 1, "still one window after cycle-in-focus")
+        assert_eq(focused[1].seq_idx, 1, "entry's seq_idx follows focused_idx")
       end, next)
     end,
   },

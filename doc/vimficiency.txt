@@ -475,6 +475,19 @@ the Nth window; `:Vimfy escape` restores the side-by-side layout. Close the
 replay with `q`.
 
 
+REPLAY BUFFER KEYS        *vimficiency-inspecting-results-replay-buffer-keys*
+
+Press |g?| in a replay buffer to open this section directly.
+
+- `<Left>` — step backward
+- `<Right>` — step forward
+- `<CR>` — focus or unfocus the current replay buffer
+- `[b` / `]b` — cycle to the previous or next replay sequence
+- `?` — show the short keymap summary popup
+- `g?` — open the full help section for replay buffers
+- `q` — close the replay tab
+
+
 LISTING WHAT’S AROUND*vimficiency-inspecting-results-listing-what’s-around*
 
 >vim
@@ -524,6 +537,15 @@ VIEWING A SAVED RESULT *vimficiency-inspecting-results-viewing-a-saved-result*
 
 Reads back a saved result. Tab-complete on `:Vimfy view` lists what’s
 available.
+
+
+SAVED RESULT BUFFER KEYS *vimficiency-inspecting-results-saved-result-buffer-keys*
+
+Press |g?| in a saved-result buffer to open this section directly.
+
+- `q` — close the current saved-result view
+- `?` — show the short keymap summary popup
+- `g?` — open the full help section for saved-result buffers
 
 
 ==============================================================================
@@ -839,9 +861,15 @@ C++ source (`cpp/effort_model.*`) is the spec.
 
   :Vimfy close <alias>                 Discard a session without optimizing.
 
-  :Vimfy save <selector>\|@ [<name>]   Save a finished result to disk. Name
-                                       defaults to selector. @ = last
-                                       finished.
+  :Vimfy save <selector>\|@ [<name>]   Copy a finished result to disk (keeps
+                                       the workspace copy). Name defaults to
+                                       selector. @ = last finished.
+
+  :Vimfy store <selector>\|@ [<name>]  Move a finished result to disk (removes
+                                       from workspace).
+
+  :Vimfy fetch <name> [<alias>]        Copy a saved result from disk into the
+                                       current workspace.
 
   :Vimfy sim <alias> [count]           Animate results side-by-side.
 
@@ -878,6 +906,8 @@ The `<alias>` argument splits by subcommand:
   end             Alphabetic only — manual handles.
   recall          N (digits) or Ns (digits + s).
   close / sim     Any of the three: alphabetic, N, or Ns.
+  save / store    Any of the three, plus @ for last finished.
+  fetch           Saved name → new workspace alias (alphabetic).
   -----------------------------------------------------------------------
   Form       Means
   ---------- ------------------------------------------------------------
@@ -915,9 +945,11 @@ Works on:
 - Subcommands (`:Vimfy s<Tab>` → `save`, `sim`, `start`, `suggest`).
 - Manual (alphabetic) handles for `start`, `watch`, and `end`.
 - `3s`/`5s`/`10s`/`30s` hints for `recall`.
-- All active/recall aliases plus time hints for `close` / `sim`.
-- Selectors (plus `@`) for `save`.
-- Saved names for `view` and `rm`.
+- All active/recall aliases plus time hints for `close`.
+- Active/recall aliases, time hints, and saved names for `sim` (matches its
+  disk fallback).
+- Selectors (plus `@`) for `save` and `store`.
+- Saved names for `view`, `rm`, and `fetch`.
 - `on` / `off` / `toggle` for `suggest`.
 
 
@@ -926,6 +958,17 @@ Works on:
 For each subcommand above, a `<Plug>VimfyX...` map is also registered so you
 can bind keys without having to type `:Vimfy ...` (which would count as admin
 activity anyway). See 8. Keymaps for the full list and the binding contract.
+
+
+SCRATCH OUTPUT BUFFER KEYS *vimficiency-commands-reference-scratch-output-buffer-keys*
+
+Press |g?| in a Vimficiency scratch output buffer to open this section
+directly. This applies to buffers opened by `:Vimfy help` and other detail
+panes that show Vimficiency text output in a split.
+
+- `q` — close the current Vimficiency output buffer
+- `?` — show the short keymap summary popup
+- `g?` — open the full help section for scratch output buffers
 
 
 ==============================================================================

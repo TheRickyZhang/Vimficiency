@@ -10,6 +10,11 @@ local M = {}
 
 M.config = config
 
+--- Named augroup for every autocmd the plugin installs. Cleared-on-create
+--- makes setup() idempotent: re-running it (via `:Vimfy reload`) wipes any
+--- autocmds the previous load registered under this group.
+M.AUGROUP = "Vimficiency"
+
 local function set_cmd(name, fn, opts)
   opts = opts or {}
   pcall(vim.api.nvim_del_user_command, name)
@@ -92,6 +97,15 @@ function M.setup(user_config)
   user_config = user_config or {}
   config.reset()
 
+  -- Stashed on a global so the reload path can re-invoke `setup()` with the
+  -- same configuration after niling `package.loaded[...]`. Survives the
+  -- module wipe by virtue of living on `_G`.
+  _G.__vimficiency_last_user_config = user_config
+
+  -- Idempotent autocmd ownership: clearing the group on every setup means a
+  -- reload doesn't accumulate ghost autocmds.
+  vim.api.nvim_create_augroup(M.AUGROUP, { clear = true })
+
   local plugin_dir = debug.getinfo(1, "S").source:sub(2):match("(.*)/lua/")
   vim.cmd.helptags(plugin_dir .. "/doc")
 
@@ -150,6 +164,96 @@ function M.setup(user_config)
   end
 
   mapping_scan.warn_about_bad_mappings()
+end
+
+--- Tear down every piece of runtime state this plugin installs that would
+--- otherwise outlive a `package.loaded[...]` wipe (autocmds, vim.on_key
+--- callbacks, sim-tab windows, active capture sessions, etc.). Leaves
+--- finished session records in place so the reloader can carry them over.
+---
+--- Returns a small status table the reloader surfaces to the user.
+---@return { dropped_active: integer, sim_closed: boolean }
+function M.shutdown()
+  local simulate = require("vimficiency.simulate")
+  local session_store = require("vimficiency.session.store")
+
+  -- Close any open replay tab (buffer-local keymaps / extmarks reference
+  -- closures from this module and would otherwise linger as a ghost UI).
+  local sim_closed = false
+  local ok = pcall(simulate.cleanup_compare)
+  if ok then sim_closed = true end
+
+  -- Disable auto-suggest (disarms every armed end_trigger, which in turn
+  -- detaches their `attach_global` subscribers and closes their timers).
+  pcall(auto_suggest.disable)
+
+  -- Drop active captures: detaches per-session `vim.on_key` callbacks and
+  -- disarms watch triggers. Finished records (with results) stay.
+  local dropped_active = 0
+  local ok_drop, n = pcall(session_store.teardown_active)
+  if ok_drop then dropped_active = n or 0 end
+
+  -- Detach the shared global `vim.on_key` namespace. Must come AFTER
+  -- session/auto_suggest teardown, since those call `detach_global` and
+  -- we want a clean `global_subs` afterwards.
+  pcall(key_tracking.shutdown)
+
+  -- Clear our augroup. Setup() will recreate it; this makes shutdown
+  -- correct even when called outside the reload flow.
+  pcall(vim.api.nvim_create_augroup, M.AUGROUP, { clear = true })
+
+  return { dropped_active = dropped_active, sim_closed = sim_closed }
+end
+
+--- Reload every Lua module under `vimficiency.*`, then re-run setup with
+--- the last-known user config. Optionally accepts a path to a freshly
+--- built `libvimficiency.so` — if provided, the new ffi module will load
+--- from that path, bypassing dlopen's per-path caching so C++ changes
+--- take effect without restarting Neovim.
+---
+--- Finished session records (the ones reachable via `:Vimfy sim`, `:Vimfy
+--- list`, etc.) survive the reload; active captures do not.
+---
+---@param new_lib_path string|nil  Path to a freshly built .so; nil = keep
+---                                the currently cached library.
+---@return { dropped_active: integer, preserved_records: integer }
+function M.reload_lua(new_lib_path)
+  local session_store = require("vimficiency.session.store")
+
+  -- Phase 1: snapshot what we want to carry across the reload. Must come
+  -- before teardown so the active-session destruction in `shutdown()`
+  -- doesn't race with the dump.
+  local status = M.shutdown()
+  local dump = session_store.dump_for_reload()
+  local preserved_records = 0
+  for _ in pairs(dump.records) do preserved_records = preserved_records + 1 end
+
+  -- Phase 2: point the next ffi.load at the new .so (if any), then wipe
+  -- every `vimficiency.*` module from package.loaded. The next require()
+  -- will pull fresh source from disk.
+  if new_lib_path and new_lib_path ~= "" then
+    _G.__vimficiency_reload_lib_path = new_lib_path
+  end
+  for name in pairs(package.loaded) do
+    if name == "vimficiency" or name:sub(1, 12) == "vimficiency." then
+      package.loaded[name] = nil
+    end
+  end
+
+  -- Phase 3: re-require the top-level module and re-run setup with the
+  -- user's original config. This re-registers user commands, <Plug>
+  -- mappings, recall_capture, auto_suggest (if configured), and clears
+  -- the augroup back to empty.
+  local fresh = require("vimficiency")
+  fresh.setup(_G.__vimficiency_last_user_config or {})
+
+  -- Phase 4: rehydrate finished session records into the fresh store.
+  require("vimficiency.session.store").restore_from_dump(dump)
+
+  return {
+    dropped_active    = status.dropped_active,
+    preserved_records = preserved_records,
+  }
 end
 
 return M

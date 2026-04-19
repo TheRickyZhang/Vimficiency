@@ -87,6 +87,7 @@ cmake --build build -j
 **Important:**
 - Never use `rm -rf build` unless something appears corrupted. The build directory contains downloaded libraries (googletest, etc.) that take time to re-fetch.
 - Do not use python or write to tmp for debugging! Always debug print in tests/debug.
+- Avoid compound shell commands (`&&`, `||`, pipes, `;`) unless they are genuinely necessary. Prefer one command per invocation so command allowlists and approvals stay predictable.
 
 Generally, only run the regular (correctness) test suite after making a change to ensure compatibility. You should only run benchmarks when making a significant optimizer algorithmic change.
 

@@ -12,7 +12,7 @@
 | `:Vimfy recall <N\|Ns>`                    | Finish a retrospective recall window.                |
 | `:Vimfy close <alias>`                     | Discard a session without optimizing.                |
 | `:Vimfy save <selector>\|@ [<name>]`       | Copy a finished result to disk (keeps the workspace copy). Name defaults to selector. `@` = last finished. |
-| `:Vimfy store <alias> [<name>]`            | Move a finished result to disk (removes from workspace). |
+| `:Vimfy store <selector>\|@ [<name>]`      | Move a finished result to disk (removes from workspace). |
 | `:Vimfy fetch <name> [<alias>]`            | Copy a saved result from disk into the current workspace. |
 | `:Vimfy sim <alias> [count]`               | Animate results side-by-side (memory first, disk fallback). |
 | `:Vimfy focus <N>`                         | Focus the active replay on the Nth buffer (full-screen).|
@@ -35,7 +35,8 @@ The `<alias>` argument splits by subcommand:
 | `end`              | Alphabetic only — manual handles.           |
 | `recall`           | `N` (digits) or `Ns` (digits + `s`).        |
 | `close` / `sim`    | Any of the three: alphabetic, `N`, or `Ns`. `sim` also accepts a saved name. |
-| `store` / `fetch`  | Workspace alias / saved name respectively. `fetch`'s target alias must be alphabetic. |
+| `save` / `store`   | Any of the three, plus `@` for last finished. Same grammar. |
+| `fetch`            | Saved name → new workspace alias (alphabetic). |
 
 | Form       | Means                                                                |
 |------------|----------------------------------------------------------------------|
@@ -71,7 +72,8 @@ Works on:
 - Subcommands (`:Vimfy s<Tab>` → `save`, `sim`, `start`, `suggest`).
 - Manual (alphabetic) handles for `start`, `watch`, and `end`.
 - `3s`/`5s`/`10s`/`30s` hints for `recall`.
-- All active/recall aliases plus time hints for `close` / `sim`.
+- All active/recall aliases plus time hints for `close`.
+- Active/recall aliases, time hints, and saved names for `sim` (matches its disk fallback).
 - Selectors (plus `@`) for `save` and `store`.
 - Saved names for `view`, `rm`, and `fetch`.
 - `on` / `off` / `toggle` for `suggest`.
@@ -82,6 +84,16 @@ For each subcommand above, a `<Plug>VimfyX...` map is also registered so
 you can bind keys without having to type `:Vimfy ...` (which would count
 as admin activity anyway). See [8. Keymaps](08-keymaps.md) for the full
 list and the binding contract.
+
+## Scratch output buffer keys
+
+Press `:h g?` in a Vimficiency scratch output buffer to open this section
+directly. This applies to buffers opened by `:Vimfy help` and other
+detail panes that show Vimficiency text output in a split.
+
+- `q` — close the current Vimficiency output buffer
+- `?` — show the short keymap summary popup
+- `g?` — open the full help section for scratch output buffers
 
 ---
 

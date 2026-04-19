@@ -55,6 +55,16 @@ local function new_state(bufname, filetype, row, col, top_row, bottom_row, windo
   }
 end
 
+---@class VimficiencyBufferKeymap
+---@field lhs string
+---@field handler string|function
+---@field desc string
+---@field mode string|string[]?
+---@field nowait boolean?
+---@field silent boolean?
+---@field expr boolean?
+---@field remap boolean?
+
 --------------------------------------------------------------------------------
 -- Utility Functions
 --------------------------------------------------------------------------------
@@ -80,11 +90,125 @@ function M.find_plugin_root()
     return vim.fn.fnamemodify(source, ":h:h:h")
 end
 
+---@param tag string
+function M.open_help(tag)
+  vim.cmd("help " .. tag)
+end
+
+---@param buf integer
+---@param keymaps VimficiencyBufferKeymap[]
+function M.set_buffer_keymaps(buf, keymaps)
+  for _, m in ipairs(keymaps) do
+    assert(type(m.desc) == "string" and m.desc ~= "",
+      "vimficiency buffer keymaps require a desc")
+    vim.keymap.set(m.mode or "n", m.lhs, m.handler, {
+      buffer = buf,
+      desc = m.desc,
+      nowait = m.nowait ~= false,
+      silent = m.silent ~= false,
+      expr = m.expr,
+      remap = m.remap,
+    })
+  end
+end
+
+---@param title string
+---@param keymaps VimficiencyBufferKeymap[]
+---@param help_tag string?
+function M.show_keymap_help(title, keymaps, help_tag)
+  local lines = { title, "" }
+  local width = vim.fn.strdisplaywidth(title)
+
+  for _, m in ipairs(keymaps) do
+    local line = string.format("  %-8s %s", m.lhs, m.desc)
+    lines[#lines + 1] = line
+    width = math.max(width, vim.fn.strdisplaywidth(line))
+  end
+
+  if help_tag then
+    lines[#lines + 1] = ""
+    local footer = "Press g? for full docs."
+    lines[#lines + 1] = footer
+    width = math.max(width, vim.fn.strdisplaywidth(footer))
+  end
+
+  local buf = v.nvim_create_buf(false, true)
+  v.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].buftype = "nofile"
+  vim.bo[buf].bufhidden = "wipe"
+  vim.bo[buf].swapfile = false
+  vim.bo[buf].modifiable = false
+  vim.bo[buf].filetype = "vimficiency"
+
+  local ui = v.nvim_list_uis()[1]
+  local win_width = math.min(width + 4, math.max(24, ui.width - 4))
+  local win_height = math.min(#lines, math.max(4, ui.height - 4))
+  local row = math.max(0, math.floor((ui.height - win_height) / 2) - 1)
+  local col = math.max(0, math.floor((ui.width - win_width) / 2))
+
+  local win = v.nvim_open_win(buf, true, {
+    relative = "editor",
+    row = row,
+    col = col,
+    width = win_width,
+    height = win_height,
+    style = "minimal",
+    border = "rounded",
+    title = " Vimficiency Keys ",
+    title_pos = "center",
+    noautocmd = true,
+  })
+
+  vim.wo[win].wrap = false
+  vim.wo[win].cursorline = false
+  vim.wo[win].number = false
+  vim.wo[win].relativenumber = false
+  vim.wo[win].signcolumn = "no"
+
+  local function close_popup()
+    if v.nvim_win_is_valid(win) then
+      v.nvim_win_close(win, true)
+    end
+  end
+
+  M.set_buffer_keymaps(buf, {
+    { lhs = "q", handler = close_popup, desc = "Close keymap summary", nowait = true },
+    { lhs = "<Esc>", handler = close_popup, desc = "Close keymap summary", nowait = true },
+    { lhs = "<CR>", handler = close_popup, desc = "Close keymap summary", nowait = true },
+  })
+end
+
+---@param keymaps VimficiencyBufferKeymap[]
+---@param title string
+---@param help_tag string
+---@return VimficiencyBufferKeymap[]
+function M.with_help_keymaps(keymaps, title, help_tag)
+  local merged = vim.deepcopy(keymaps)
+  local function show_help()
+    M.show_keymap_help(title, merged, help_tag)
+  end
+  merged[#merged + 1] = {
+    lhs = "?",
+    handler = show_help,
+    desc = "Show keymap summary",
+    nowait = true,
+  }
+  merged[#merged + 1] = {
+    lhs = "g?",
+    handler = function() M.open_help(help_tag) end,
+    desc = "Open full help",
+    nowait = true,
+  }
+  return merged
+end
+
 ---@param title string
 ---@param text? string
+---@param opts? { help_tag?: string, help_title?: string }
 ---@return integer buf
 ---@return integer win
-function M.show_output(title, text)
+function M.show_output(title, text, opts)
+  opts = opts or {}
   local lines = { title }
   if text and text ~= "" then
     lines[#lines + 1] = ""
@@ -105,11 +229,23 @@ function M.show_output(title, text)
   vim.bo[buf].bufhidden = "wipe"
   vim.bo[buf].swapfile = false
   vim.bo[buf].modifiable = false
+  vim.bo[buf].filetype = "vimficiency"
 
   vim.wo[win].number = false
   vim.wo[win].relativenumber = false
   vim.wo[win].wrap = false
   vim.wo[win].signcolumn = "no"
+
+  local keymaps = {
+    { lhs = "q", handler = "<cmd>close<cr>", desc = "Close vimficiency view", nowait = true },
+  }
+  if opts.help_tag then
+    keymaps = M.with_help_keymaps(
+      keymaps,
+      opts.help_title or (title .. " Keys"),
+      opts.help_tag)
+  end
+  M.set_buffer_keymaps(buf, keymaps)
 
   return buf, win
 end
