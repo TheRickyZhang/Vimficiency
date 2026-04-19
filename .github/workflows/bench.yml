@@ -46,6 +46,15 @@ jobs:
       - name: Unit tests
         run: ./build/tests/vimficiency_tests --gtest_brief=1 --gtest_output=json:test_timing.json
 
+      - name: Lua tests
+        # Exercises the FFI boundary end-to-end via Neovim headless. Without
+        # this, encoding bugs at the Lua↔C++ seam (e.g. the `tostring` →
+        # scientific-notation regression in `resolve_recall_cutoff`) go
+        # undetected by the C++ gtest suite because the offender lives in
+        # Lua. The runner script uses `-u NONE -U NONE` per test so developer
+        # init.{vim,lua} can't leak into the CI environment.
+        run: bash tests/lua/run.sh
+
       - name: Build tracking-enabled exploration target
         run: |
           cmake -B build_track -DCMAKE_BUILD_TYPE=Release -DVIMFICIENCY_DEBUG=OFF \

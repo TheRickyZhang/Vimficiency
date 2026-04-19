@@ -246,18 +246,40 @@ int manualEvictReason(
 
 extern "C" {
 
+// Wire format for tokenize_* FFI: one token per line, `<kind>\t<text>\n`.
+// `<kind>` is a single ASCII char encoding the `TokenType` — see switch
+// below. `<text>` is the raw token as emitted by the parser. Token text
+// never contains `\t` or `\n` (special keys are stored as literal
+// `<Key>` strings), so these separators are unambiguous.
+//
+// The kind payload is the whole point of this format: without it, the
+// Lua side would keep parallel classifier tables to re-derive what the
+// parser already knows, and they'd drift. See `dev/lua/replay-precompute.md`.
+static char tokenKindChar(TokenType type) {
+  switch (type) {
+    case TokenType::Motion:    return 'M';
+    case TokenType::Delete:    return 'D';
+    case TokenType::Change:    return 'C';
+    case TokenType::Visual:    return 'V';
+    case TokenType::TypedText: return 'T';
+    case TokenType::Escape:    return 'E';
+  }
+  return '?';  // Unreachable — compiler should warn if a case is missed.
+}
+
 const char *vimficiency_tokenize_motions(const char *seq) {
   static string result_storage;
   return vimficiency::lua_exports::export_helpers::storeOptionalString(result_storage, seq, [](string_view input) {
     string owned(input);
     return parseMotions(owned)
         .transform([](const vector<ParsedMotion>& motions) {
+          // All motion-parser output is TokenType::Motion by construction.
           vector<string> rows;
           rows.reserve(motions.size());
           for (const auto& motion : motions) {
             ostringstream oss;
             oss << motion;
-            rows.push_back(oss.str());
+            rows.push_back(string{tokenKindChar(TokenType::Motion)} + "\t" + oss.str());
           }
           return vimficiency::lua_exports::export_helpers::joinWithTrailingNewline(rows);
         })
@@ -273,9 +295,14 @@ const char *vimficiency_tokenize_motions(const char *seq) {
 const char *vimficiency_tokenize_sequence(const char *seq) {
   static string result_storage;
   return vimficiency::lua_exports::export_helpers::storeOptionalString(result_storage, seq, [](string_view input) {
-    return parseSequenceStrings(input)
-        .transform([](const vector<string>& tokens) {
-          return vimficiency::lua_exports::export_helpers::joinWithTrailingNewline(tokens);
+    return parseSequence(input)
+        .transform([](const vector<SequenceToken>& tokens) {
+          vector<string> rows;
+          rows.reserve(tokens.size());
+          for (const auto& tok : tokens) {
+            rows.push_back(string{tokenKindChar(tok.type)} + "\t" + tok.text);
+          }
+          return vimficiency::lua_exports::export_helpers::joinWithTrailingNewline(rows);
         })
         .transform_error([](const SequenceParseError& error) {
           return vimficiency::lua_exports::ExportError{
