@@ -827,22 +827,27 @@ function M.simulate(alias, count)
   elseif in_memory then
     result = in_memory
   elseif on_disk then
-    if not alias_mod.is_valid_manual(alias) then
-      vim.notify(
-        "'" .. alias .. "' is on disk but isn't a valid manual alias " ..
-        "(needs to be alphabetic). Fetch it explicitly with " ..
-        "':Vimfy fetch " .. alias .. " <alpha-alias>'.",
-        vim.log.levels.ERROR)
-      return
+    -- If the alias is a valid manual handle, opportunistically register
+    -- the on-disk result into the workspace so the user can refer to it
+    -- again by the same alias later (e.g. `:Vimfy store`, subsequent
+    -- sims). For non-alphabetic saved names (e.g. `my-name`) we skip the
+    -- implicit fetch and simulate directly from the loaded data —
+    -- replaying doesn't need a workspace entry, and the previous
+    -- behavior here was to error out and ask the user to re-run via
+    -- `:Vimfy fetch <name> <alpha-alias>`, which was user-hostile for
+    -- what is fundamentally a read-only operation.
+    if alias_mod.is_valid_manual(alias) then
+      local id, reg_err = session_store.register_fetched_result(alias, on_disk)
+      if id then
+        vim.notify("vimficiency: fetched [" .. alias .. "] into session",
+          vim.log.levels.INFO)
+      else
+        vim.notify("vimficiency: replaying '" .. alias .. "' directly from disk " ..
+          "(implicit fetch failed: " .. (reg_err or "unknown error") ..
+          "). Use `:Vimfy fetch " .. alias .. " <alias>` to keep it in the workspace.",
+          vim.log.levels.WARN)
+      end
     end
-    local id, reg_err = session_store.register_fetched_result(alias, on_disk)
-    if not id then
-      vim.notify("simulate: implicit fetch failed: " .. (reg_err or "unknown error"),
-        vim.log.levels.ERROR)
-      return
-    end
-    vim.notify("vimficiency: fetched [" .. alias .. "] into session",
-      vim.log.levels.INFO)
     result = on_disk
   else
     vim.notify("No results for '" .. alias .. "' in session or on disk.",

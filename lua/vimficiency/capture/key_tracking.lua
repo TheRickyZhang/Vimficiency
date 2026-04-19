@@ -64,9 +64,19 @@ function M.attach(get_session, reset_session, should_evict)
 		local mode_full = vim.api.nvim_get_mode().mode
 		local m = mode_full:sub(1, 1)
 
-		-- Multi-key mapping resolution: strip the already-recorded LHS bytes.
+		-- Multi-key mapping resolution: strip the already-recorded LHS
+		-- bytes, and keep `session.key_count` in sync with `#key_seq`.
+		-- The global on_key's recall fan-out (session_store.strip_recall_pre_resolution)
+		-- already maintains the `key_count == #key_seq` invariant for
+		-- recall records; mirroring it here makes the invariant hold for
+		-- manual/watch sessions too, so anything that reads `key_count`
+		-- during capture (metrics, summarize_all, future live counters)
+		-- stays consistent.
 		if #typed > 1 and typed ~= key then
-			M.strip_matching_tail(session.key_seq, typed)
+			local popped = M.strip_matching_tail(session.key_seq, typed)
+			if popped > 0 then
+				session.key_count = math.max(0, (session.key_count or 0) - popped)
+			end
 			typed = ""
 		end
 
@@ -86,6 +96,7 @@ function M.attach(get_session, reset_session, should_evict)
 			key_typed_raw = typed,
 			key_typed = vim.fn.keytrans(typed),
 		}
+		session.key_count = (session.key_count or 0) + 1
 	end
 
 	nsid = vim.on_key(on_key, nsid)

@@ -652,6 +652,12 @@ end
 --------------------------------------------------------------------------------
 
 --- Tear down every active session and return the number dropped.
+--- Routes through `M.remove` rather than calling `destroy_record` directly,
+--- so `manual_alias_to_id` and `recall_id_order` get un-indexed alongside
+--- the record deletion. Calling `destroy_record` alone leaves dangling
+--- alias/ring entries that would survive `dump_for_reload` → `restore_from_dump`
+--- and resurrect phantom sessions (get_id returns ids with no backing record,
+--- list() shows aliases that resolve to nothing).
 ---@return integer dropped
 function M.teardown_active()
   local dropped = 0
@@ -662,7 +668,10 @@ function M.teardown_active()
     end
   end
   for _, id in ipairs(to_destroy) do
-    if destroy_record(id) then dropped = dropped + 1 end
+    if session_records[id] ~= nil then
+      M.remove(id)
+      dropped = dropped + 1
+    end
   end
   return dropped
 end
@@ -691,12 +700,34 @@ function M.dump_for_reload()
 end
 
 --- Rehydrate a previous `dump_for_reload()` into this fresh module.
+--- Filters the manual and recall indexes against `records` as it goes —
+--- any id that doesn't have a backing record gets dropped. With the
+--- current `teardown_active` routing through `M.remove`, dumps should
+--- already be clean, but this guard keeps the invariant explicit: after
+--- restore, every entry in `manual_alias_to_id` and `recall_id_order`
+--- resolves to a real record.
 ---@param dump { records: table, manual: table, order: string[], last_finished: string|nil }
 function M.restore_from_dump(dump)
-  session_records     = dump.records or {}
-  manual_alias_to_id  = dump.manual or {}
-  recall_id_order     = dump.order or {}
-  last_finished_id    = dump.last_finished
+  session_records = dump.records or {}
+
+  manual_alias_to_id = {}
+  for alias, id in pairs(dump.manual or {}) do
+    if session_records[id] then
+      manual_alias_to_id[alias] = id
+    end
+  end
+
+  recall_id_order = {}
+  for _, id in ipairs(dump.order or {}) do
+    if session_records[id] then
+      recall_id_order[#recall_id_order + 1] = id
+    end
+  end
+
+  last_finished_id =
+    (dump.last_finished and session_records[dump.last_finished])
+      and dump.last_finished
+      or nil
 end
 
 return M
