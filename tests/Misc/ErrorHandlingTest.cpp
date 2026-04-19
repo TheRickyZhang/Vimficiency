@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include "Interpreter/MotionInterpreter.h"
+#include "Interpreter/SequenceFormatting.h"
 #include "Interpreter/SequenceParser.h"
 #include "Keyboard/ToKeys/SequenceToKeys.h"
 #include "Keyboard/ToKeys/MotionToKeys.h"
@@ -48,6 +49,35 @@ TEST(ErrorHandlingTest, ParseSequenceTolerantOfLiteralAngleInInsertMode) {
   // the parser must not error — it's how vim itself treats a bare '<'.
   auto result = parseSequence("i<hello<Esc>");
   ASSERT_TRUE(result.has_value());
+}
+
+TEST(ErrorHandlingTest, ParseSequenceKeepsDigitLeadingTypedTextAfterChange) {
+  auto result = parseSequence("s3<Esc>");
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result->size(), 3u);
+  EXPECT_EQ((*result)[0].text, "s");
+  EXPECT_EQ((*result)[0].type, TokenType::Change);
+  EXPECT_EQ((*result)[1].text, "3");
+  EXPECT_EQ((*result)[1].type, TokenType::TypedText);
+  EXPECT_EQ((*result)[2].text, "<Esc>");
+  EXPECT_EQ((*result)[2].type, TokenType::Escape);
+}
+
+TEST(ErrorHandlingTest, ParseSequenceKeepsDigitLeadingTypedTextInInsertMode) {
+  auto result = parseSequence("i123<Esc>");
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result->size(), 3u);
+  EXPECT_EQ((*result)[0].text, "i");
+  EXPECT_EQ((*result)[0].type, TokenType::Change);
+  EXPECT_EQ((*result)[1].text, "123");
+  EXPECT_EQ((*result)[1].type, TokenType::TypedText);
+  EXPECT_EQ((*result)[2].text, "<Esc>");
+  EXPECT_EQ((*result)[2].type, TokenType::Escape);
+}
+
+TEST(ErrorHandlingTest, FormatSequenceDisplaysDigitLeadingTypedText) {
+  EXPECT_EQ(formatSequenceForDisplay("s3<Esc>"), "s 3 <Esc>");
+  EXPECT_EQ(formatSequenceForDisplay("i123<Esc>"), "i 123 <Esc>");
 }
 
 

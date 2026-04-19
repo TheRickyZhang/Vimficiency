@@ -163,8 +163,8 @@ local cases = {
         assert_eq(get_snapshot(1, 3).mode, "i", "snapshot mode after entering insert")
 
         sim._debug_seek_to(3)
-        assert_true(header_lines(seq1.buf)[1]:find("Mode INSERT") ~= nil,
-          "insert header on info row")
+        assert_true(header_lines(seq1.buf)[3]:find("Mode INSERT") ~= nil,
+          "insert header on mode row")
 
         assert_eq(get_snapshot(1, 4).lines,
           { "one two", "ab;def ghi", "last line" }, "snapshot lines after <BS>")
@@ -180,8 +180,8 @@ local cases = {
 
         assert_eq(get_snapshot(1, 8).mode, "v", "snapshot mode after visual enter")
         sim._debug_seek_to(8)
-        assert_true(header_lines(seq1.buf)[1]:find("Mode VISUAL") ~= nil,
-          "visual header on info row")
+        assert_true(header_lines(seq1.buf)[3]:find("Mode VISUAL") ~= nil,
+          "visual header on mode row")
         assert_eq(get_snapshot(1, 9).cursor, { 2, 6 }, "snapshot cursor after visual e")
       end, next)
     end,
@@ -211,9 +211,11 @@ local cases = {
       }, function()
         local seq1 = get_window(1)
         local lines = header_lines(seq1.buf)
-        assert_true(#lines > 2, "expected wrapped sequence lines")
-        assert_eq(lines[1], "[1] Mode NORMAL  Local 0/120", "info row")
-        assert_true(lines[2]:sub(1, 8) == "Sequence", "sequence line prefix")
+        assert_true(#lines > 4, "expected wrapped sequence lines")
+        assert_eq(lines[1], "", "top padding row")
+        assert_eq(lines[2], "[1] Local 0/120", "info row (label + local step)")
+        assert_eq(lines[3], "Mode NORMAL", "mode row")
+        assert_true(lines[4]:sub(1, 8) == "Sequence", "sequence line prefix")
       end, next)
     end,
   },

@@ -468,3 +468,68 @@ copy of the same scaffolding.
 
 Not built yet. Mentioned here to prevent the session menu from landing
 as a fourth copy.
+
+
+# Replay precompute: oracle sync strategy
+
+Full technical reference lives at `dev/lua/replay-precompute.md`. The
+short version of the decision is here because it reshapes how the
+simulate UI talks to Neovim.
+
+## The mechanism
+
+The replay UI precomputes every intermediate step (`{ lines, cursor,
+mode }`) of a captured sequence by driving a hidden probe window with
+`nvim_feedkeys` and sampling after each token. Pre-computation lets
+the UI do `O(1)` scrubbing via `<Left>`/`<Right>`/`[b`/`]b`/`<CR>`;
+using a real Neovim window as the oracle is the only way to get
+mode-faithful snapshots (`:normal` flattens insert/visual).
+
+## The drain problem
+
+`nvim_feedkeys(..., "n", false)` queues keys; the drain happens on a
+later tick. The precompute needs a reliable "keys have been processed"
+signal before sampling. The original design used
+`coroutine.yield() + vim.defer_fn(step, 0)` twice per token, on the
+assumption that one libuv 0ms timer tick = one typeahead-drain pass.
+
+That assumption is probabilistic, not deterministic. Neovim's
+input-loop drain is a separate pass from libuv timer callbacks, and
+there's no guarantee an input-drain pass interleaves between two
+timer callbacks. Under live-Neovim load (user autocmds, UI redraws),
+the first token of a precompute would occasionally produce a
+snapshot where the token hadn't taken effect.
+
+## The fix
+
+Use `nvim_feedkeys(keys, "nx", false)` for tokens that start and
+stay in Normal mode. The `x` flag is documented as "execute commands
+until typeahead is empty" — a synchronous drain. For modal-entering
+tokens (`i`, `I`, `a`, `A`, `o`, `O`, `s`, `S`, `R`, `C`, `cc`,
+`c{motion}`, `v`, `V`, `<C-v>`, `gh`, `gH`) we keep the old yield
+path: `x` would drain past the state we need to sample.
+
+The narrow carve-out is the design's load-bearing piece. A blanket
+`x` flag was tried first and stalled the precompute on
+insert/visual-entering tokens (what the original comment warned
+about). Conditioning on the current mode (`curr_mode:sub(1,1) == "n"`)
+plus a `enters_modal_state(token)` check on the next token covers
+pure-Normal motions — exactly the class the bug was dropping —
+without disturbing modal sampling.
+
+## Why not polling?
+
+A bounded `vim.wait(N, pred)` with `pred = cursor has moved or mode
+has changed` would also work, but it's fundamentally a race-tuned
+timeout: if the token is a no-op (e.g., `0` on col 0, or `j` on the
+last line) the pred never succeeds and we pay the full timeout per
+no-op token. `x` is `O(drain work)`, which is the right shape.
+
+## Per-token telemetry
+
+Every snapshot carries a four-point trace (`before_feed`,
+`after_feedkeys`, `after_yield_1`, `after_yield_2`) with cursor,
+mode, and current window. This was added during the diagnosis and
+kept: the `D` keybind in the replay surfaces it live, and test
+failure messages include it so a regression reports the exact
+transition where the oracle diverged.

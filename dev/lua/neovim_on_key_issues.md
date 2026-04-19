@@ -176,6 +176,73 @@ For sequences with text objects (`ciw`, `daw`, `yi"`, etc.):
 - Cost comparison may be inaccurate
 - Optimizer suggestions are still valid (generated independently)
 
+## Binding-shape characterization (2026-04)
+
+Recorded behavior of `vim.on_key` when the user types the LHS of a
+multi-key Normal-mode mapping. Pinned down by
+`tests/lua/capture/on_key_mapping_probe.lua`. **Two distinct paths
+depending on how the LHS is delivered:**
+
+### Path A — LHS delivered as one burst (no delay between keys)
+
+What happens when `nvim_feedkeys("<Space>ve", ...)` is called — all
+three bytes land in the typeahead queue together, and nvim resolves
+the mapping in a single input pass with no pending-state excursion.
+
+| Binding shape                 | Events | `typed`         | `key`                   | Dedup rule drops it? |
+|-------------------------------|--------|-----------------|-------------------------|----------------------|
+| Lua callback (`vimfy.map`)    | 1      | full LHS        | Lua-callback sentinel   | Yes                  |
+| String RHS (`"<Nop>"`, Ex)    | 1      | full LHS        | first expansion key     | Yes                  |
+| `<Plug>`-remapped             | 1      | full LHS        | Lua-callback sentinel   | Yes                  |
+| Unbound (literal keystrokes)  | N      | key per event   | equal to `typed`        | No — recorded        |
+
+### Path B — LHS delivered key-by-key in real time (>0ms between keys)
+
+What actually happens at human typing speed — each keystroke is a
+separate input event, so nvim processes them one at a time and has to
+wait for the next key before knowing whether the mapping resolves.
+During that wait, nvim fires on_key for each pending key **in
+addition to** the eventual resolution event. Observed via the
+`:Vimfy debug` dump on a live `<Space>ve` mapping:
+
+```
+typed="<Space>"   key="<t_...>"     ← pending event 1 (single byte, typed ~= key)
+typed="v"         key="v"           ← pending event 2 (typed == key)
+typed="e"         key="e"           ← pending event 3 (typed == key)
+typed="<Space>ve" key="<t_...>"     ← resolution event (#typed > 1, typed ~= key)
+```
+
+**Four events fire, not one.** The resolution event is still caught by
+`#typed > 1 and typed ~= key`, but the three pending events have
+`#typed == 1` and slip through — they get recorded into
+`session.key_seq`, leaking the mapping's LHS into the captured motion
+stream.
+
+### Fix: retroactive strip on resolution
+
+The per-session on_key handler and the global on_key handler both
+implement retroactive strip when the resolution event fires. Walk
+back over `session.key_seq` (or every active recall record's
+`key_seq` for the global path via `session_store.strip_recall_pre_resolution`),
+concatenate `key_typed_raw` bytes, and pop the tail if it matches
+the resolution's `typed`. Mismatch (e.g., the record's tail has been
+rotated out, or the pending events went to a different window and
+weren't recorded) is silently skipped — strip is best-effort.
+
+### Residual cases where LHS bytes can still appear in captured motion
+
+- **Partial LHS, no resolution** — user types `<Space>v` then presses
+  `<Esc>` or waits past `timeoutlen`. No resolution event fires; the
+  pending events stay in `key_seq`. Matches what the user actually
+  typed; not a bug.
+- **Binding not loaded yet** — `<Space>ve` bound after the session
+  started capturing. No mapping, path A's "unbound" row applies.
+- **Buffer-local binding in the wrong buffer** — mapping doesn't
+  match, same as unbound.
+- **Prefix-only binding** — only `<Space>` is bound; `<Space>ve`
+  isn't. nvim resolves `<Space>` and releases `v`, `e` as
+  independent motions.
+
 ## References
 
 - [neovim/neovim#15527](https://github.com/neovim/neovim/issues/15527) - vim.on_key behavior discussion

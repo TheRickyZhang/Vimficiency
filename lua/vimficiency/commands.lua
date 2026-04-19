@@ -252,9 +252,15 @@ subcommands.reload = {
       vim.notify("vimficiency reload already running", vim.log.levels.WARN)
       return
     end
-    local build_dir = vim.fn.expand("~/Projects/vimficiency/build")
+    -- Resolve relative to the installed plugin's own root (`lua/vimficiency/`'s
+    -- grandparent), not a hardcoded `~/Projects/...` path — the old path only
+    -- worked on one developer's machine. `build/` living as a sibling of
+    -- `lua/` is a dev-only convention, so the dir-missing branch below is the
+    -- correct signal for end-user installs (pre-built `.so`, no build tree).
+    local build_dir = util.find_plugin_root() .. "/build"
     if vim.fn.isdirectory(build_dir) == 0 then
-      vim.notify("vimficiency reload: build dir missing: " .. build_dir,
+      vim.notify("vimficiency reload: build dir missing: " .. build_dir ..
+        "\n(this command is dev-only; install via a plugin manager bundles a pre-built .so)",
         vim.log.levels.ERROR)
       return
     end
@@ -383,6 +389,57 @@ subcommands.help = {
   usage = "help",
   fn = function()
     vim.cmd("help vimficiency")
+  end,
+}
+
+subcommands.debug = {
+  desc = "Dump the recent on_key decisions (capture pipeline debug log)",
+  usage = "debug [clear]",
+  fn = function(args)
+    local key_tracking = require("vimficiency.capture.key_tracking")
+    local session_store = require("vimficiency.session.store")
+
+    if args[1] == "clear" then
+      key_tracking.clear_debug_log()
+      vim.notify("vimficiency: debug log cleared", vim.log.levels.INFO)
+      return
+    end
+
+    local entries = key_tracking.get_debug_log()
+    local lines = {
+      "=== vimficiency capture debug log ===",
+      string.format("entries: %d (oldest first)", #entries),
+      "",
+      "src       t_ms   action  reason                              ignoring  mode        typed            key",
+      "------    -----  ------  ----------------------------------  --------  ----------  ---------------  ---------------",
+    }
+    local t0 = entries[1] and entries[1].t_ns or 0
+    for _, e in ipairs(entries) do
+      local dt_ms = (e.t_ns - t0) / 1e6
+      lines[#lines + 1] = string.format(
+        "%-6s  %6.1f  %-6s  %-34s  %-8s  %-10s  %-15s  %-15s",
+        e.src,
+        dt_ms,
+        e.action,
+        e.reason or "",
+        tostring(e.ignoring),
+        e.mode or "",
+        string.format("%q", vim.fn.keytrans(e.typed or "")),
+        string.format("%q", vim.fn.keytrans(e.key or ""))
+      )
+    end
+
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = "=== active / recent sessions ==="
+    for _, summary in ipairs(session_store.summarize_all()) do
+      lines[#lines + 1] = string.format(
+        "  [%s] kind=%s status=%s alias=%s key_count=%d preview=%q",
+        summary.id:sub(1, 8), summary.kind, summary.status,
+        summary.alias or "-", summary.key_count or 0,
+        summary.preview or "")
+    end
+
+    util.show_output("Vimficiency Debug", table.concat(lines, "\n"), {})
   end,
 }
 

@@ -264,12 +264,6 @@ parseSequence(string_view seq) {
   bool inInsertMode = false;
 
   while (i < sv.size()) {
-    // Parse optional count prefix
-    int count = parseCount(sv, i);
-    string countStr = count > 0 ? to_string(count) : "";
-
-    if (i >= sv.size()) break;
-
     if (inInsertMode) {
       // In insert mode, look for <Esc> or capture typed text
       if (sv[i] == '<') {
@@ -289,6 +283,14 @@ parseSequence(string_view seq) {
       i += len;
       continue;
     }
+
+    // Parse optional count prefix only in command mode. Once a change
+    // command has entered insert mode, digits are literal typed text and
+    // must not be consumed as counts.
+    int count = parseCount(sv, i);
+    string countStr = count > 0 ? to_string(count) : "";
+
+    if (i >= sv.size()) break;
 
     // Try to parse change command (enters insert mode)
     auto [changeCmd, changeLen] = tryParseChange(sv, i);

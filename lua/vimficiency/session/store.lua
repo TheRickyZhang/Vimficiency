@@ -396,6 +396,21 @@ function M.get_result(alias)
   return rec and rec.result or nil
 end
 
+--- id-keyed variant of `get_result`. Use this when the caller already has
+--- a resolved id and needs to look up the record WITHOUT re-resolving an
+--- alias — critical for `:Vimfy store`, where the selector (possibly a
+--- time-varying `Ns`) is resolved once at entry and then used for both
+--- the result lookup and the subsequent `remove`, eliminating the risk
+--- that a ring-boundary crossing during the blocking disk write causes
+--- the alias to drift to a neighboring record.
+---@param id string
+---@return ResultSession|nil
+function M.get_result_by_id(id)
+  if not util.is_session_id(id) then return nil end
+  local rec = session_records[id]
+  return rec and rec.result or nil
+end
+
 ---@param alias string
 ---@return boolean
 function M.has_active(alias)
@@ -734,6 +749,27 @@ function M.ingest_recall_event(event)
   M.store_recall(rec)
 end
 
+--- Strip pre-resolution pending events from every active recall record.
+--- Called by the global on_key listener when it sees a multi-key mapping
+--- resolution event — the individual LHS keys already reached
+--- `ingest_recall_event` and must be retroactively removed so recall
+--- sessions don't record the mapping's LHS as motion. Walks back over
+--- each record's `key_seq` and pops entries whose `key_typed_raw`
+--- concatenates to `typed_raw`. A mismatch (e.g., the record's tail has
+--- already been rotated out) is silently skipped per-record.
+---@param typed_raw string   The resolution event's raw `typed` (full LHS bytes).
+function M.strip_recall_pre_resolution(typed_raw)
+  for _, id in ipairs(recall_id_order) do
+    local rec = session_records[id]
+    if rec and rec.status == "active" and rec.key_seq then
+      local popped = key_tracking.strip_matching_tail(rec.key_seq, typed_raw)
+      if popped > 0 then
+        rec.key_count = math.max(0, (rec.key_count or 0) - popped)
+      end
+    end
+  end
+end
+
 -- Test-only exports of pure helpers. Not part of the public API; the
 -- underscore prefix is intentional. Used by tests/lua/recall_snap.lua
 -- to feed synthetic ring state through the snap algorithm without
@@ -742,6 +778,15 @@ M._pure = {
   resolve_recall_cutoff = resolve_recall_cutoff_pure,
   snap_backward_to_boundary = snap_backward_to_boundary_pure,
 }
+
+--- Test-only: fetch an active record by id. Public callers go through
+--- `get_active(alias)` which looks up by alias; tests need by-id access
+--- to inspect internal state (key_seq, key_count) after seeding.
+---@param id string
+---@return SessionRecord|nil
+function M._for_test_get_active(id)
+  return session_records[id]
+end
 
 --------------------------------------------------------------------------------
 -- Reload support

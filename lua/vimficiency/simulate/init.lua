@@ -14,6 +14,10 @@ local cursor_ns = v.nvim_create_namespace("vimficiency_cursor")
 -- Highlight groups. `default = true` lets users override without us clobbering
 -- their config.
 v.nvim_set_hl(0, "VimficiencyReplayCurrent",      { link = "IncSearch", default = true })
+-- Normal-mode replay cursor — distinct from `Cursor` so the simulated cursor
+-- is visually different from the user's own cursor (which uses `Cursor`).
+-- `Search` is typically a bright block, unused elsewhere in replay UI.
+v.nvim_set_hl(0, "VimficiencyReplayCursor",       { link = "Search",    default = true })
 v.nvim_set_hl(0, "VimficiencyReplayCursorInsert", { link = "DiffAdd",   default = true })
 v.nvim_set_hl(0, "VimficiencyReplayCursorVisual", { link = "Visual",    default = true })
 -- Label color for the currently-focused sim window's `[N]` marker. Linked to
@@ -53,6 +57,13 @@ v.nvim_set_hl(0, "VimficiencyReplayActive",       { link = "Title",     default 
 ---@field saved_win integer?
 ---@field saved_tab integer?
 ---@field sim_tab integer?
+---@field replay_label string?         -- display label for the replay statusline (typically the session alias)
+---@field start_row integer?           -- 0-indexed start row (from `simulate_compare`)
+---@field start_col integer?           -- 0-indexed start col
+---@field end_row integer?             -- 0-indexed end row (from `opts.end_row`; nil = unknown)
+---@field end_col integer?             -- 0-indexed end col
+---@field status_win integer?          -- bottom 1-line split showing the replay statusline
+---@field status_buf integer?
 ---@field precompute_gen integer       -- increments per simulate_compare call to invalidate stale callbacks
 
 ---@type VimficiencyReplayState
@@ -65,6 +76,7 @@ local multi_sim = {
   saved_win = nil,
   saved_tab = nil,
   sim_tab = nil,
+  replay_label = nil,
   precompute_gen = 0,
 }
 
@@ -227,7 +239,7 @@ local function mode_hl(mode)
   if mode == "v" or mode == "V" or mode == "\22" then
     return "VimficiencyReplayCursorVisual"
   end
-  return "Cursor"
+  return "VimficiencyReplayCursor"
 end
 
 --- Human-readable replay mode label for the virtual header.
@@ -354,17 +366,30 @@ local function render_header(seq_idx, entry)
 
   ---@type table[]
   local virt_lines = {
+    -- Leading blank row for symmetry with the trailing padding below —
+    -- gives the header breathing room on both sides of the info row.
+    { { "", "Normal" } },
+    -- Row 1: `[N]` label + local step counter. The focused window's `[N]`
+    -- picks up `VimficiencyReplayActive` via `label_hl`, so this row is
+    -- also the "which buffer has my cursor" indicator.
     {
       { string.format("[%d] ", seq_idx), label_hl },
+      { string.format("Local %d/%d", local_step, #tokens), "Comment" },
+    },
+    -- Row 2: Mode on its own line — label is plain (not `mode_hl`) since
+    -- the buffer cursor is already mode-colored.
+    {
       { "Mode ", "Comment" },
-      { mode_label(snap.mode), mode_hl(snap.mode) },
-      { string.format("  Local %d/%d", local_step, #tokens), "Comment" },
+      { mode_label(snap.mode), "Normal" },
     },
   }
   if multi_sim.costs[seq_idx] then
     virt_lines[#virt_lines + 1] = {
       { "Cost ", "Comment" },
-      { multi_sim.costs[seq_idx], "Title" },
+      -- Plain Normal (not Title/blue) — blue is reserved for the focused
+      -- `[N]` label marker, and reusing it here would muddle "which buffer
+      -- has my cursor" with "here's a cost value".
+      { multi_sim.costs[seq_idx], "Normal" },
     }
   end
   vim.list_extend(virt_lines, wrapped_sequence)
@@ -400,7 +425,7 @@ local function update_cursor_highlights()
       render_header(entry.seq_idx, entry)
 
       local snap = current_snap(entry.seq_idx)
-      local hl   = snap and mode_hl(snap.mode) or "Cursor"
+      local hl   = snap and mode_hl(snap.mode) or "VimficiencyReplayCursor"
 
       local cursor = v.nvim_win_get_cursor(entry.win)
       local row = cursor[1] - 1   -- 0-indexed for extmark
@@ -424,11 +449,20 @@ local function update_cursor_highlights()
   end
 end
 
+-- Forward-declared so `cleanup_multi_sim` (defined below, called from
+-- `q` and from `:Vimfy reload`'s shutdown path) can reference the
+-- status-bar teardown. The concrete assignment lives further down
+-- alongside the `create_status_bar` / `update_status_bar` trio.
+---@type fun()
+local destroy_status_bar
+
 --- Tear down the replay tab, clear state, return focus to the saved window.
 local function cleanup_multi_sim()
   -- Bump the generation so any in-flight precompute callback short-circuits
   -- before touching torn-down state.
   multi_sim.precompute_gen = multi_sim.precompute_gen + 1
+
+  destroy_status_bar()
 
   -- In focus mode the non-focused buffers have bufhidden = "hide" and aren't
   -- attached to any window, so `:tabclose` alone would leak them. Delete
@@ -465,6 +499,11 @@ local function cleanup_multi_sim()
   multi_sim.saved_win = nil
   multi_sim.saved_tab = nil
   multi_sim.sim_tab = nil
+  multi_sim.replay_label = nil
+  multi_sim.start_row = nil
+  multi_sim.start_col = nil
+  multi_sim.end_row = nil
+  multi_sim.end_col = nil
   focus_state = nil
 end
 
@@ -482,9 +521,87 @@ max_total_steps = function()
   return m
 end
 
---- Full visual refresh: cursor highlights, virtual headers, screen redraw.
+--- Build the per-window statusline text for a replay buffer. Shows global
+--- info that doesn't need to repeat per-buffer (session label, global
+--- step, start → end cursor positions). Positions render as `row:col`
+--- and are 1-indexed for display. The per-buffer virt-lines header still
+--- carries local info.
+---@return string
+local function build_statusline()
+  local label = multi_sim.replay_label
+  local label_part = (label and label ~= "") and ("  " .. label) or ""
+  local pos_part = ""
+  if multi_sim.start_row and multi_sim.end_row then
+    pos_part = string.format("  (%d:%d → %d:%d)",
+      multi_sim.start_row + 1, multi_sim.start_col + 1,
+      multi_sim.end_row + 1, multi_sim.end_col + 1)
+  end
+  local text = string.format(" vimficiency%s  step %d/%d%s ",
+    label_part, multi_sim.global_step, max_total_steps(), pos_part)
+  -- Escape `%` so no chunk is interpreted as a statusline directive —
+  -- matters if the session label itself contains one.
+  return (text:gsub("%%", "%%%%"))
+end
+
+--- Create a 1-line horizontal split at the bottom of the sim tab for the
+--- global replay info (session label, step, start → end positions). A
+--- real window beats overriding `vim.o.statusline` because statusline
+--- plugins (lualine, heirline, etc.) re-set `vim.o.statusline` on many
+--- events and would stomp any `%!` expression we install. The split
+--- also sits exactly where "above the global statusline" means visually.
+---
+--- Styling: `winhighlight=Normal:StatusLine` makes the bar look like a
+--- native statusline band; `statusline=" "` + `StatusLineNC:Normal`
+--- hides the border separator above it so it reads as one unbroken line.
+local function create_status_bar()
+  cmd("botright 1split")
+  local win = v.nvim_get_current_win()
+  local buf = v.nvim_create_buf(false, true)
+  v.nvim_set_option_value("buftype",   "nofile", { buf = buf })
+  v.nvim_set_option_value("bufhidden", "wipe",   { buf = buf })
+  v.nvim_win_set_buf(win, buf)
+
+  v.nvim_set_option_value("winfixheight",   true,  { win = win })
+  v.nvim_set_option_value("number",         false, { win = win })
+  v.nvim_set_option_value("relativenumber", false, { win = win })
+  v.nvim_set_option_value("signcolumn",     "no",  { win = win })
+  v.nvim_set_option_value("cursorline",     false, { win = win })
+  v.nvim_set_option_value("cursorcolumn",   false, { win = win })
+  v.nvim_set_option_value("statusline",     " ",   { win = win })
+  v.nvim_set_option_value("winhighlight",
+    "Normal:StatusLine,StatusLine:Normal,StatusLineNC:Normal", { win = win })
+
+  multi_sim.status_win = win
+  multi_sim.status_buf = buf
+end
+
+local function update_status_bar()
+  if not multi_sim.status_win or not v.nvim_win_is_valid(multi_sim.status_win) then
+    return
+  end
+  v.nvim_buf_set_lines(multi_sim.status_buf, 0, -1, true,
+    { build_statusline() })
+end
+
+-- Assigned to the forward-declared `destroy_status_bar` above so
+-- `cleanup_multi_sim` resolves it as the same local upvalue.
+---@diagnostic disable-next-line: redefined-local
+destroy_status_bar = function()
+  if multi_sim.status_win and v.nvim_win_is_valid(multi_sim.status_win) then
+    v.nvim_win_close(multi_sim.status_win, true)
+  end
+  if multi_sim.status_buf and v.nvim_buf_is_valid(multi_sim.status_buf) then
+    v.nvim_buf_delete(multi_sim.status_buf, { force = true })
+  end
+  multi_sim.status_win = nil
+  multi_sim.status_buf = nil
+end
+
+--- Full visual refresh: cursor highlights, virtual headers, statuslines,
+--- screen redraw.
 local function refresh()
   update_cursor_highlights()
+  update_status_bar()
   cmd("redraw")
 end
 
@@ -613,6 +730,27 @@ end
 local function user_cycle_next() user_cycle(1) end
 local function user_cycle_prev() user_cycle(-1) end
 
+--- `<leader>y`: copy the current window's sequence string into the unnamed
+--- and `+` (clipboard) registers. Derives the string by concatenating the
+--- tokenized form, which round-trips the original — the tokenizer preserves
+--- token boundaries but not extra formatting, and we don't need more than
+--- "paste this into a new buffer to rerun it".
+local function user_yank_sequence()
+  local cur_win = v.nvim_get_current_win()
+  for _, entry in ipairs(multi_sim.windows) do
+    if entry.win == cur_win then
+      local tokens = multi_sim.sequences[entry.seq_idx]
+      if not tokens then return end
+      local seq = table.concat(tokens, "")
+      vim.fn.setreg('"', seq)
+      vim.fn.setreg('+', seq)
+      vim.notify("vimficiency: yanked [" .. entry.seq_idx .. "] " .. seq,
+        vim.log.levels.INFO)
+      return
+    end
+  end
+end
+
 --- Dump replay diagnostic state to `:messages`. Intended as a debug hook the
 --- user can fire from inside a replay buffer (`D`) when something looks off
 --- — captures global_step, each window's seq_idx/precomputed snapshot, the
@@ -738,9 +876,10 @@ local REPLAY_KEYMAPS = util.with_help_keymaps({
   { lhs = "<Tab>",   handler = user_cycle_next,   desc = "Cycle to next sim sequence",     group = "cycle" },
   { lhs = "<S-Tab>", handler = user_cycle_prev,   desc = "Cycle to prev sim sequence",     group = "cycle" },
   { lhs = "<CR>",    handler = user_toggle_focus, desc = "Focus / unfocus current buffer", group = "focus" },
-  { lhs = "<Right>", handler = user_step_right,   desc = "Step forward",  group = "step" },
-  { lhs = "D",       handler = user_debug_dump,   desc = "Dump replay state to :messages" },
-  { lhs = "q",       handler = cleanup_multi_sim, desc = "Close replay",  group = "quit" },
+  { lhs = "<Right>",   handler = user_step_right,    desc = "Step forward",                    group = "step"  },
+  { lhs = "<leader>y", handler = user_yank_sequence, desc = "Yank this window's sequence",     group = "yank"  },
+  { lhs = "D",         handler = user_debug_dump,    desc = "Dump replay state to :messages" },
+  { lhs = "q",         handler = cleanup_multi_sim,  desc = "Close replay",                    group = "quit"  },
 }, "Vimficiency Replay Keys", "vimficiency-inspecting-results-replay-buffer-keys")
 
 --- Attach every entry in `REPLAY_KEYMAPS` to a sim buffer. `nowait = true`
@@ -749,36 +888,6 @@ local REPLAY_KEYMAPS = util.with_help_keymaps({
 ---@param buf integer
 local function attach_replay_keymaps(buf)
   util.set_buffer_keymaps(buf, REPLAY_KEYMAPS)
-end
-
---- Build the `nvim_echo` chunk list for the startup hint by merging entries in
---- `REPLAY_KEYMAPS` that share a `group` (e.g. the two arrow keys both sit in
---- group `"step"` and render as one `<Left>/<Right> step` chunk pair).
----@return table[] chunks
-local function build_replay_echo()
-  ---@type string[]                  -- group labels in first-seen order
-  local order = {}
-  ---@type table<string, string[]>   -- group label → ordered lhs values
-  local by_group = {}
-  for _, m in ipairs(REPLAY_KEYMAPS) do
-    if m.group then
-      if not by_group[m.group] then
-        by_group[m.group] = {}
-        table.insert(order, m.group)
-      end
-      table.insert(by_group[m.group], m.lhs)
-    end
-  end
-
-  local chunks = { { "vimficiency replay: ", "Title" } }
-  for _, group in ipairs(order) do
-    table.insert(chunks, { table.concat(by_group[group], "/"), "Special" })
-    table.insert(chunks, { " " .. group .. "  ", "Normal" })
-  end
-  table.insert(chunks, { ":Vimfy focus <N>", "Special" })
-  table.insert(chunks, { " / ", "Normal" })
-  table.insert(chunks, { ":Vimfy escape", "Special" })
-  return chunks
 end
 
 -- =============================================================================
@@ -1069,6 +1178,15 @@ local function build_sim_ui(lines, row, col, items)
     v.nvim_set_current_win(multi_sim.windows[1].win)
   end
 
+  -- Create the replay statusline band at the bottom of the tab, then
+  -- return focus to the first sim window so stepping keymaps fire in
+  -- the right place on first keypress.
+  local primary = v.nvim_get_current_win()
+  create_status_bar()
+  if v.nvim_win_is_valid(primary) then
+    v.nvim_set_current_win(primary)
+  end
+
   -- Render the initial step-0 state in each window, then refresh highlights/winbars.
   for _, entry in ipairs(multi_sim.windows) do
     local states = multi_sim.states[entry.seq_idx]
@@ -1077,10 +1195,6 @@ local function build_sim_ui(lines, row, col, items)
     end
   end
   refresh()
-
-  vim.schedule(function()
-    v.nvim_echo(build_replay_echo(), false, {})
-  end)
 end
 
 -- =============================================================================
@@ -1189,12 +1303,23 @@ end
 --- `nvim_feedkeys` into a hidden buffer). Per-mode cursor styling and the
 --- `-- INSERT --` / `-- VISUAL --` winbar tag come from those snapshots.
 ---
+---@class VimficiencyReplayOpts
+---@field label   string?   Display label shown in the replay statusline
+---                         (typically the session alias). Nil falls back
+---                         to just "vimficiency".
+---@field end_row integer?  0-indexed end row of the captured session.
+---@field end_col integer?  0-indexed end col. Rendered as `row:col → row:col`
+---                         in the statusline when both end_row and end_col
+---                         are set; hidden otherwise.
+
 ---@param lines string[] Buffer content to simulate on
 ---@param row integer 0-indexed starting row
 ---@param col integer 0-indexed starting column
 ---@param items VimficiencyReplayItem[] Each `{ seq, cost? }`; cost is an
 ---   optional pre-formatted string rendered in the per-buffer header.
-function M.simulate_compare(lines, row, col, items)
+---@param opts VimficiencyReplayOpts? Optional display extras (session
+---   label, end position). Nil treats everything as absent.
+function M.simulate_compare(lines, row, col, items, opts)
   if #multi_sim.windows > 0 then
     cleanup_multi_sim()
   end
@@ -1207,7 +1332,13 @@ function M.simulate_compare(lines, row, col, items)
     return
   end
 
+  opts = opts or {}
   multi_sim.global_step = 0
+  multi_sim.replay_label = opts.label
+  multi_sim.start_row = row
+  multi_sim.start_col = col
+  multi_sim.end_row = opts.end_row
+  multi_sim.end_col = opts.end_col
   multi_sim.saved_win = v.nvim_get_current_win()
   multi_sim.saved_tab = v.nvim_get_current_tabpage()
   multi_sim.windows = {}
@@ -1257,6 +1388,7 @@ M.escape          = user_escape
 
 -- Debug-only accessors (not part of the public API). Let tests peek at
 -- internal state without parsing winbars or tabs.
+
 M._debug_get_states = function() return multi_sim.states end
 M._debug_get_sequences = function() return multi_sim.sequences end
 M._debug_get_windows = function() return multi_sim.windows end
