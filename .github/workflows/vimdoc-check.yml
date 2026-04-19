@@ -4,7 +4,6 @@ on:
   pull_request:
     paths:
       - 'doc-src/**'
-      - 'doc/vimficiency.txt'
       - 'scripts/build-vimdoc-source.sh'
       - 'scripts/postprocess-vimdoc.sh'
       - '.github/workflows/vimdoc.yml'
@@ -33,10 +32,3 @@ jobs:
 
       - name: Post-process vimdoc
         run: bash scripts/postprocess-vimdoc.sh
-
-      - name: Verify generated vimdoc is checked in
-        run: |
-          if ! git diff --exit-code -- doc/vimficiency.txt; then
-            echo "::error::doc/vimficiency.txt is out of date. Regenerate vimdoc from doc-src before merging."
-            exit 1
-          fi

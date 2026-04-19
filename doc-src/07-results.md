@@ -48,9 +48,9 @@ cursor is in. The cursor highlight also changes with the simulated
 mode, so insert and visual segments are visible even in unfocused
 windows.
 
-`]b` / `[b` cycle between the sim sequences: in the split layout they
-move the cursor to the next/previous sim window (wrapping); in focus
-mode they swap the displayed buffer in place. `<CR>` toggles focus on
+`<Tab>` / `<S-Tab>` cycle between the sim sequences: in the split
+layout they move the cursor to the next/previous sim window (wrapping);
+in focus mode they swap the displayed buffer in place. `<CR>` toggles focus on
 the window under the cursor — it collapses the tab to just that window
 full-screen, and `<CR>` again from inside restores the side-by-side
 layout. The same toggles are also available as `:Vimfy focus <N>` /
@@ -63,7 +63,7 @@ Press `:h g?` in a replay buffer to open this section directly.
 - `<Left>` — step backward
 - `<Right>` — step forward
 - `<CR>` — focus or unfocus the current replay buffer
-- `[b` / `]b` — cycle to the previous or next replay sequence
+- `<Tab>` / `<S-Tab>` — cycle to the next or previous replay sequence
 - `?` — show the short keymap summary popup
 - `g?` — open the full help section for replay buffers
 - `q` — close the replay tab

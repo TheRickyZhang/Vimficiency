@@ -482,7 +482,7 @@ Press |g?| in a replay buffer to open this section directly.
 - `<Left>` — step backward
 - `<Right>` — step forward
 - `<CR>` — focus or unfocus the current replay buffer
-- `[b` / `]b` — cycle to the previous or next replay sequence
+- `<Tab>` / `<S-Tab>` — cycle to the next or previous replay sequence
 - `?` — show the short keymap summary popup
 - `g?` — open the full help section for replay buffers
 - `q` — close the replay tab

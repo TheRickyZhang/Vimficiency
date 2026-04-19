@@ -87,11 +87,15 @@ end
 ---@param lines string[]
 ---@param fn fun()
 ---@param next fun(ok: boolean, err: any)
-local function with_replay(sequences, lines, fn, next)
+---@param opts { start_row: integer?, start_col: integer? }?   0-indexed; default (0, 0)
+local function with_replay(sequences, lines, fn, next, opts)
   local prev_notify = vim.notify
   local prev_echo = vim.api.nvim_echo
   vim.notify = function() end
   vim.api.nvim_echo = function() end
+
+  local start_row = (opts and opts.start_row) or 0
+  local start_col = (opts and opts.start_col) or 0
 
   helpers.new_buf({ "simulate source" })
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
@@ -102,7 +106,7 @@ local function with_replay(sequences, lines, fn, next)
   for _, seq in ipairs(sequences) do
     items[#items + 1] = { seq = seq }
   end
-  sim.simulate_compare(lines, 0, 0, items)
+  sim.simulate_compare(lines, start_row, start_col, items)
 
   local tries = 0
   local function finish(ok, err)
@@ -249,7 +253,67 @@ local cases = {
     end,
   },
   {
-    name = "simulate ]b cycles sim windows (split) and swaps buffer (focus)",
+    name = "simulate precompute drains first normal-mode token before snapshot",
+    run = function(next)
+      local repeats = 20
+      local lines = {
+        "int main() {",
+        "  int m;",
+        "  return 0;",
+        "}",
+      }
+      local start_row, start_col = 1, 2  -- 0-indexed: row 2, col 2
+
+      local iter = 1
+      local function run_one()
+        if iter > repeats then
+          next(true)
+          return
+        end
+
+        with_replay({
+          "jf;i<BS>2<Esc><Space>ve",
+          "$Ef3r2",
+          "$Ef3s<Esc>",
+        }, lines, function()
+
+          local states = sim._debug_get_states()
+          local function dump_trace(seq_idx)
+            local s = states[seq_idx][2]
+            local parts = { string.format(
+              "      seq%d token=%q final=(%d,%d) mode=%s",
+              seq_idx, s.token or "?", s.cursor[1], s.cursor[2], s.mode) }
+            for _, p in ipairs(s.trace or {}) do
+              parts[#parts + 1] = string.format(
+                "      %-18s cursor=(%d,%d) mode=%s",
+                p.label, p.cursor[1], p.cursor[2], p.mode)
+            end
+            return table.concat(parts, "\n")
+          end
+          assert_true(states[1][2].cursor[1] == 3,
+            "iter " .. iter .. ": seq1 first token `j` should advance to row 3\n" ..
+            dump_trace(1))
+          assert_eq(states[2][2].cursor, { 2, 7 },
+            "iter " .. iter .. ": seq2 first token `$` should land at EOL\n" ..
+            dump_trace(2))
+          assert_eq(states[3][2].cursor, { 2, 7 },
+            "iter " .. iter .. ": seq3 first token `$` should land at EOL\n" ..
+            dump_trace(3))
+        end, function(ok, err)
+          if not ok then
+            next(false, err)
+            return
+          end
+          iter = iter + 1
+          vim.schedule(run_one)
+        end, { start_row = start_row, start_col = start_col })
+      end
+
+      run_one()
+    end,
+  },
+  {
+    name = "simulate <Tab> cycles sim windows (split) and swaps buffer (focus)",
     run = function(next)
       with_replay({ "j", "w", "b" }, {
         "alpha beta gamma",
@@ -257,8 +321,8 @@ local cases = {
         local wins = sim._debug_get_windows()
         assert_eq(#wins, 3, "three replay windows before cycling")
 
-        -- Split mode: ]b from window 1 → window 2, ]b → window 3,
-        -- ]b wraps back to window 1.
+        -- Split mode: <Tab> from window 1 → window 2, <Tab> → window 3,
+        -- <Tab> wraps back to window 1.
         vim.api.nvim_set_current_win(wins[1].win)
         sim._debug_cycle_next()
         assert_eq(vim.api.nvim_get_current_win(), wins[2].win, "cycle from 1 → 2")
@@ -267,11 +331,11 @@ local cases = {
         sim._debug_cycle_next()
         assert_eq(vim.api.nvim_get_current_win(), wins[1].win, "cycle from 3 → 1 (wrap)")
 
-        -- [b wraps the other direction.
+        -- <S-Tab> wraps the other direction.
         sim._debug_cycle_prev()
         assert_eq(vim.api.nvim_get_current_win(), wins[3].win, "cycle prev 1 → 3 (wrap)")
 
-        -- Enter focus on window 3, then ]b swaps to sequence 1 in place.
+        -- Enter focus on window 3, then <Tab> swaps to sequence 1 in place.
         vim.api.nvim_set_current_win(wins[3].win)
         sim._debug_toggle_focus()
         assert_eq(sim._debug_get_focus_state().focused_idx, 3, "focused on 3")
