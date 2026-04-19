@@ -1,24 +1,32 @@
 #!/usr/bin/env bash
-# Post-process doc/vimficiency.txt after panvimdoc runs. Fixes three
-# upstream limitations (panvimdoc v4.0.1):
+# Post-process doc/vimficiency.txt after panvimdoc runs. Fixes four
+# upstream limitations / design choices (panvimdoc v4.0.1):
 #
-#   1. `*vimficiency.txt*` header has no `*vimficiency*` alias, so
-#      `:help vimficiency` doesn't resolve to this file without one.
-#   2. panvimdoc's slug generator lowercases the heading and turns
-#      whitespace into dashes, but keeps all other characters — so
-#      question marks, slashes, parens, colons, quotes (including
-#      pandoc's smart-quote substitution), `<Plug>`, `C++`, etc. all
-#      leak into both TOC `|tag|` references and `*tag*` anchors. Vim
-#      help tags should be `[A-Za-z0-9_-]` only.
-#   3. panvimdoc pads TOC lines with `string.rep(" ", 74 - #text - #tag)`
-#      (see `scripts/panvimdoc.lua` upstream). Lua's `string.rep` with
-#      a non-positive count returns empty, so long entries get no space
-#      before `|tag|` and render as a single run of punctuation.
+#   (1) `*vimficiency.txt*` header has no `*vimficiency*` alias, so
+#       `:help vimficiency` doesn't resolve to this file without one.
 #
-# Both sanitization (2) and padding (3) must run on this side: we pin
-# panvimdoc at v4.0.1 in CI so the local and remote builds agree, which
-# means we don't patch upstream. Sanitization rewrites `|...|` and
-# `*...*` forms with the same function so cross-references stay in sync.
+#   (2) panvimdoc's slug generator lowercases the heading and turns
+#       whitespace into dashes but keeps all other characters, so `?`,
+#       `/`, `(`, `)`, `:`, `.`, pandoc's smart-quote substitution,
+#       `<Plug>`, `C++`, etc. all leak into both `|tag|` references and
+#       `*tag*` anchors. Vim help tags should be `[A-Za-z0-9_-]` only.
+#
+#   (3) panvimdoc pads heading-and-tag pairs with
+#       `string.rep(" ", 78 - used)` in `scripts/panvimdoc.lua`
+#       upstream. Lua's `string.rep` with a non-positive count returns
+#       empty, so long entries render with text jammed against the tag.
+#
+#   (4) Every H2 section anchor becomes a top-level `:help` tag. This
+#       clutters `<Tab>` completion with ~60 deep tags for a 15-chapter
+#       file. We drop H2 anchors from the body (keeping the heading
+#       text as a visual separator) and drop their matching TOC
+#       level-2 entries. Users can still `:help vimficiency-<chapter>`
+#       and scroll/search within.
+#
+# panvimdoc is pinned at v4.0.1 in CI so local and remote builds agree,
+# which means we don't patch upstream — corrections live here. (2) and
+# (4) rewrite both `|...|` and `*...*` forms with identical logic so
+# cross-references stay in sync.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -29,20 +37,28 @@ if [[ ! -f "$target" ]]; then
   exit 1
 fi
 
-# (1) Header alias. Idempotent — only inserts if not already there.
+# (1) Header alias. Idempotent — guard checks for the post-condition
+# before inserting. Pattern matches the line *start* only (no `$`
+# anchor): panvimdoc's actual header is `*vimficiency.txt* <padding>
+# For Neovim >= 0.9  Last change: ...`, which the previous
+# `^\*vimficiency\.txt\*$` pattern silently failed to match.
 if ! grep -q '^\*vimficiency\.txt\*  \*vimficiency\*' "$target"; then
-  sed -i '1s|^\*vimficiency\.txt\*$|*vimficiency.txt*  *vimficiency*|' "$target"
+  sed -i '1s|^\*vimficiency\.txt\*|*vimficiency.txt*  *vimficiency*|' "$target"
 fi
 
-# (2) + (3) in a single perl pass. Order matters: sanitize tags first so
-# the padding pass measures post-sanitization lengths.
-perl -CSD -i -pe '
-  # --- (2) Sanitize tag slugs -------------------------------------------
+# (2) + (3) + (4) in a single perl pass with state. Line-by-line with
+# `-ne` (no auto-print) so we can skip dropped lines cleanly; `BEGIN`
+# initializes a one-line lookback ($prev_rule) and a TOC-region flag
+# ($in_toc) needed to distinguish H1 chapter anchors from H2 section
+# anchors.
+perl -CSD -i -ne '
+  BEGIN { $prev_rule = 0; $in_toc = 0; }
+  my $line = $_;
+  my $cur_is_rule = ($line =~ /^=+$/);
+
+  # --- (2) Sanitize tag slugs ------------------------------------------
   # Match only `vimficiency-...` forms (with a hyphen). This deliberately
   # skips the bare `*vimficiency*` / `*vimficiency.txt*` header tags.
-  # Interior: anything except the delimiter itself — `[^|]+` / `[^*]+` —
-  # because the pre-sanitization slug can contain punctuation, smart
-  # quotes, etc.
   sub sanitize {
     my ($s) = @_;
     $s =~ s/[^A-Za-z0-9_-]+/-/g;
@@ -50,45 +66,66 @@ perl -CSD -i -pe '
     $s =~ s/-+$//;
     return $s;
   }
-  s{\|(vimficiency-[^|]+)\|}{ "|" . sanitize($1) . "|" }ge;
-  s{\*(vimficiency-[^*]+)\*}{ "*" . sanitize($1) . "*" }ge;
+  $line =~ s{\|(vimficiency-[^|]+)\|}{ "|" . sanitize($1) . "|" }ge;
+  $line =~ s{\*(vimficiency-[^*]+)\*}{ "*" . sanitize($1) . "*" }ge;
 
-  # --- (3) Padding around trailing tags --------------------------------
-  # panvimdoc pads heading-and-tag pairs with `string.rep(" ", 78 - used)`
-  # in three places: level-1 TOC entries, level-2 TOC entries, and H2
-  # section anchors in the body. All three collapse to zero padding when
-  # `used >= 78`, jamming text against the tag. The three arms below
-  # rebuild each line with at least one space.
-  if (/^( {2,}- )([^|]+?)(\|vimficiency-[^|]+\|)\s*$/) {
-    # Level-2 TOC entry: `  - <text><tag>`.
-    my ($indent, $text, $tag) = ($1, $2, $3);
-    $text =~ s/\s+$//;
-    my $used = length($indent) + length($text) + length($tag);
-    my $pad  = $used >= 78 ? " " : " " x (78 - $used);
-    $_ = "$indent$text$pad$tag\n";
-  } elsif (/^(\S[^|]*?)(\|vimficiency-[^|]+\|)\s*$/) {
-    # Level-1 TOC entry: `<chapter-title><tag>` (no leading `  - `).
+  # --- TOC region boundaries ------------------------------------------
+  # TOC starts at the "Table of Contents" line and ends at the next
+  # `===` rule. Needed for (4) to distinguish level-2 TOC entries from
+  # (nonexistent) body refs.
+  if ($line =~ /^Table of Contents\b/) { $in_toc = 1; }
+  elsif ($cur_is_rule && $in_toc)      { $in_toc = 0; }
+
+  # --- (4a) Drop level-2 TOC entries ----------------------------------
+  if ($in_toc && $line =~ /^  - .*\|vimficiency-[^|]+\|/) {
+    $prev_rule = $cur_is_rule;
+    next;  # no print
+  }
+
+  # --- (4b) Strip H2 body anchors -------------------------------------
+  # H1 chapter anchors are immediately preceded by a `===` rule line.
+  # H2 section anchors are preceded by a blank line or body text. So
+  # `$prev_rule` as a one-line lookback is the whole discriminator.
+  # When we strip, we keep the heading text (it still serves as a
+  # visual section separator in the file).
+  #
+  # `\s*` (not `\s+`) between heading and anchor: panvimdoc jams long
+  # headings directly against the tag (the same `string.rep(" ", 78 -
+  # used)` bug as the TOC padding one, at another callsite). The
+  # re-pad block below would happily insert whitespace — but that runs
+  # AFTER this one, so we need to tolerate zero-whitespace here too,
+  # otherwise strip misses every jammed anchor.
+  if (!$in_toc && !$prev_rule
+      && $line =~ /^([^=\n].*?)\s*(\*vimficiency-[A-Za-z0-9_-]+\*)\s*$/) {
+    $line = "$1\n";
+  }
+
+  # --- (3) Re-pad whatever heading-and-tag pairs survived -------------
+  # Runs after the strip so H2 anchors that were dropped do not get
+  # re-padded (the pattern no longer matches). H1 chapter anchors +
+  # level-1 TOC entries go through here and get column-78 alignment.
+  if ($line =~ /^(\S[^|]*?)(\|vimficiency-[^|]+\|)\s*$/) {
     my ($text, $tag) = ($1, $2);
     $text =~ s/\s+$//;
     my $used = length($text) + length($tag);
     my $pad  = $used >= 78 ? " " : " " x (78 - $used);
-    $_ = "$text$pad$tag\n";
-  } elsif (/^(\S[^*]*?)(\*vimficiency-[^*]+\*)\s*$/) {
-    # H2 section anchor in the body: `HEADING<anchor>` (uppercase text).
-    # Skip the level-1 chapter anchor line, which is `\d+. ...` and uses
-    # a different padding convention already handled by panvimdoc.
+    $line = "$text$pad$tag\n";
+  } elsif ($line =~ /^(\S[^*]*?)(\*vimficiency-[^*]+\*)\s*$/) {
     my ($text, $anchor) = ($1, $2);
     $text =~ s/\s+$//;
     my $used = length($text) + length($anchor);
     my $pad  = $used >= 78 ? " " : " " x (78 - $used);
-    $_ = "$text$pad$anchor\n";
+    $line = "$text$pad$anchor\n";
   }
+
+  print $line;
+  $prev_rule = $cur_is_rule;
 ' "$target"
 
 # Sanity check: every `|vimficiency-xxx|` reference should have a
-# matching `*vimficiency-xxx*` anchor. Mismatches indicate the
-# sanitization diverged between the two forms (should not happen with
-# `sub sanitize` applied identically, but cheap to guard).
+# matching `*vimficiency-xxx*` anchor. Mismatches indicate the drop-H2
+# pass removed an anchor that was still referenced by a TOC entry,
+# which means (4a) and (4b) fell out of sync.
 missing=$(
   awk '
     match($0, /\|vimficiency-[A-Za-z0-9_-]+\|/) {

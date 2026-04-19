@@ -69,6 +69,15 @@ void* openVimficiencyLib() {
   return nullptr;
 }
 
+// Analyze's machine-readable body line is `<raw_seq>\x1f<cost>\n`, using
+// `kEventFieldSep` (0x1F) — not whitespace — so that insert-mode text
+// and other unusual bytes survive round-tripping. See
+// `dev/lua/ffi-separators.md` and `AnalyzeExports.cpp`. The previous
+// version of this parser used `iss >> seq >> cost`, which silently
+// failed after the separator was switched from space to 0x1F because
+// `operator>>` stops on whitespace only.
+constexpr char kFieldSep = '\x1f';
+
 std::unordered_map<std::string, double> parseBySequence(const std::string& analyzeOut) {
   std::unordered_map<std::string, double> bySeq;
   std::istringstream iss(analyzeOut);
@@ -80,11 +89,16 @@ std::unordered_map<std::string, double> parseBySequence(const std::string& analy
       headerSeen = true;
       continue;
     }
-    std::istringstream row(line);
-    std::string seq;
-    double cost = 0.0;
-    if (row >> seq >> cost) {
+    const auto sepPos = line.find(kFieldSep);
+    if (sepPos == std::string::npos) continue;
+    const std::string seq = line.substr(0, sepPos);
+    const std::string costStr = line.substr(sepPos + 1);
+    try {
+      const double cost = std::stod(costStr);
       bySeq.emplace(seq, cost);
+    } catch (...) {
+      // Malformed cost — skip. A stray DEBUG trailer in a tracking-enabled
+      // build could land here; the test only cares about body rows.
     }
   }
   return bySeq;
@@ -100,9 +114,9 @@ std::string firstSequence(const std::string& analyzeOut) {
       headerSeen = true;
       continue;
     }
-    std::istringstream row(line);
-    std::string seq;
-    if (row >> seq) return seq;
+    const auto sepPos = line.find(kFieldSep);
+    if (sepPos == std::string::npos) continue;
+    return line.substr(0, sepPos);
   }
   return "";
 }

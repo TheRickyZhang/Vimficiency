@@ -1,6 +1,15 @@
 -- Characterization test for `vim.on_key()` under a few mapping shapes.
 -- See `dev/lua/neovim_on_key_issues.md` for the human-typing caveat.
 
+-- Trace prints are documentation of *what Neovim did*, not assertion
+-- evidence. On a passing run they're pure noise; on a failing run
+-- they're diagnostic. Gate behind `VF_TEST_VERBOSE=1` to match the
+-- runner's discipline — set it when debugging, leave it off otherwise.
+local verbose = vim.env.VF_TEST_VERBOSE == "1"
+local function trace(...)
+  if verbose then io.stdout:write(...) end
+end
+
 ---@param lhs string   keytrans-form LHS (e.g. " ve" for <Space>ve)
 ---@return table[]     ordered { key, typed } event log
 local function record_events_for(lhs)
@@ -33,7 +42,7 @@ test("on_key: Lua-callback mapping (vimfy.map shape) emits ONE resolution event"
   vim.keymap.set("n", "<Space>ve", function() end)
   local events = record_events_for(" ve")
   vim.keymap.del("n", "<Space>ve")
-  io.stdout:write("Lua-callback trace:\n" .. format_events(events) .. "\n")
+  trace("Lua-callback trace:\n" .. format_events(events) .. "\n")
 
   assert_eq(#events, 1, "expected exactly one event, got " .. #events)
   assert_eq(events[1].typed, "<Space>ve", "typed should carry the full LHS")
@@ -45,7 +54,7 @@ test("on_key: string-RHS mapping emits individual pre-resolution keys", function
   vim.keymap.set("n", "<Space>ve", "<Nop>")
   local events = record_events_for(" ve")
   vim.keymap.del("n", "<Space>ve")
-  io.stdout:write("string-RHS trace:\n" .. format_events(events) .. "\n")
+  trace("string-RHS trace:\n" .. format_events(events) .. "\n")
 
   -- No exact-count assertion; the dumped trace is the deliverable.
 end)
@@ -56,7 +65,7 @@ test("on_key: <Plug>-remapped mapping behavior", function()
   local events = record_events_for(" ve")
   vim.keymap.del("n", "<Space>ve")
   vim.keymap.del("n", "<Plug>TestProbe")
-  io.stdout:write("<Plug>-remap trace:\n" .. format_events(events) .. "\n")
+  trace("<Plug>-remap trace:\n" .. format_events(events) .. "\n")
 end)
 
 test("on_key: vimfy.map-style wrap actually suppresses the event when it fires", function()
@@ -85,9 +94,9 @@ test("on_key: vimfy.map-style wrap actually suppresses the event when it fires",
   vim.on_key(nil, nsid)
   vim.keymap.del("n", "<Space>ve")
 
-  io.stdout:write("wrap-suppressed trace (ignoring column shows state AT event time):\n")
+  trace("wrap-suppressed trace (ignoring column shows state AT event time):\n")
   for i, e in ipairs(events) do
-    io.stdout:write(string.format("  %d: key=%q typed=%q ignoring=%s\n",
+    trace(string.format("  %d: key=%q typed=%q ignoring=%s\n",
       i, e.key, e.typed, tostring(e.ignoring)))
   end
 
@@ -98,13 +107,13 @@ test("on_key: vimfy.map-style wrap actually suppresses the event when it fires",
     if e.ignoring then any_ignoring = true break end
   end
 
-  io.stdout:write(string.format(
+  trace(string.format(
     "  → any event fired with ignoring=true? %s\n", tostring(any_ignoring)))
 end)
 
 test("on_key: unbound LHS records every key as user input", function()
   local events = record_events_for(" ve")
-  io.stdout:write("unbound trace:\n" .. format_events(events) .. "\n")
+  trace("unbound trace:\n" .. format_events(events) .. "\n")
 
   assert_true(#events >= 3,
     "expected at least 3 events (one per key), got " .. #events)
