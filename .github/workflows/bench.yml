@@ -26,6 +26,9 @@ jobs:
 
       - name: Setup CI deps
         uses: ./.github/actions/setup-ci-deps
+        with:
+          install-neovim: "true"
+          neovim-version: ${{ env.NEOVIM_VERSION }}
 
       - uses: hendrikmuhs/ccache-action@v1
         with:
