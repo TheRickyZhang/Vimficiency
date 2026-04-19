@@ -36,16 +36,16 @@ test("scan: case-insensitive on command name", function()
   assert_eq(scan("<CMD>VIMFY END A<CR>"), true)
 end)
 
-test("scan: does NOT match :vimfoo / :vimfrobnicate (old false positives)", function()
+test("scan: does NOT match :vimfoo / :vimfrobnicate", function()
   assert_eq(scan(":vimfoo<CR>"),          false,
-    "'vimfoo' must not match — old [fy] class false-positived")
+    "'vimfoo' must not match")
   assert_eq(scan(":vimfrobnicate<CR>"),   false)
   assert_eq(scan(":Vimfoobar arg"),       false)
 end)
 
-test("scan: does NOT match :vimy... (old false positive on 'y')", function()
+test("scan: does NOT match :vimy...", function()
   assert_eq(scan(":vimyak<CR>"),   false,
-    "'vimyak' must not match — old [fy] class false-positived")
+    "'vimyak' must not match")
   assert_eq(scan(":Vimyard arg"),  false)
 end)
 

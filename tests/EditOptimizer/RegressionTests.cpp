@@ -1,6 +1,6 @@
 // tests/EditOptimizer/RegressionTests.cpp
 //
-// Regression tests for previously failing EditOptimizer paths.
+// Regression tests for EditOptimizer edge cases.
 // Run: ./build/tests/vimficiency_tests --gtest_filter="EditOptimizerRegression.*"
 
 #include <climits>
@@ -32,8 +32,7 @@ struct EmbeddedCase {
 };
 
 EmbeddedCase buildSmallEmbeddedCaseSeed465950() {
-  // Reproduces benchmark shape used by EditOpt/SmallEmbeddedChange/3.
-  // The historical failure was triggered with this seed.
+  // Reproduces the benchmark shape from EditOpt/SmallEmbeddedChange/3.
   RandomGen::seed(465950);
 
   int numLines = 3;
@@ -75,8 +74,7 @@ TEST_F(EditOptimizerRegression, SmallEmbeddedSeed465950_ReplayBoundaryPathMatche
   }
   ASSERT_EQ(results.size(), static_cast<size_t>(expectedPositions));
 
-  // Historical benchmark failure was an internal replay assert; this ensures
-  // the optimizer completes and still yields a result for that start index.
+  // Ensure the optimizer completes and yields a result for that start index.
   ASSERT_GT(results.size(), 2u);
   EXPECT_FALSE(results[1].empty());
 }
@@ -97,9 +95,8 @@ TEST_F(EditOptimizerRegression, BoundaryAwareReplayPrefixKeepsXApplicable) {
   Mode mode = Mode::Normal;
   string lastEditCmd;
 
-  // Sequence "Dd)jdaW" was valid under old (buggy) d) that didn't consume the
-  // newline. With the fix, d) collapses lines so j would fail. Use "DdaW"
-  // which still exercises boundary-aware prefix replay.
+  // Use a sequence that exercises boundary-aware prefix replay and leaves
+  // `X` applicable afterward.
   for (const ParsedEdit& op : Edit::parseEdits("DdaW")) {
     Edit::applyEdit(replayLines, pos, mode, op, &lastEditCmd,
                     test.boundary.hasLinesBelow(),

@@ -1,19 +1,13 @@
--- tests/lua/map_helper.lua
--- Covers `require('vimficiency').map()`: registration shape plus the
--- end-to-end "LHS keystroke is not recorded as motion" contract,
--- driven by nvim_feedkeys('xt', ...) against a real global listener.
+-- Coverage for `require('vimficiency').map()`.
+-- Includes the end-to-end "LHS keystroke is not recorded as motion" contract.
 
 local vimfy        = require("vimficiency")
 local key_tracking = require("vimficiency.capture.key_tracking")
 local h            = require("_helpers")
 
--- Don't call setup() here — it registers user commands and may run the
--- scan. We only need the module exports: map, wrap.
+-- Skip `setup()` here; these tests only need the exported helpers.
 
---- Attach a capture listener, feed `keys` as if typed by a user, and
---- return the keytrans'd sequence recorded by on_key. Uses 'xt' so
---- nvim_feedkeys flushes synchronously with a non-empty `typed` field
---- (plain 'x' fires with typed="" and we'd see nothing).
+--- Feed `keys` as user input and return the captured `key_typed` string.
 ---@param keys string  Literal keys (e.g. "j", "Y", or "<F4>" after termcodes)
 ---@return string captured  Concatenated `key_typed` of every event received
 local function feed_and_capture(keys)
@@ -37,9 +31,6 @@ local function find_map(lhs)
 end
 
 test("map: string spec with args attaches a callback", function()
-  -- Spec doesn't need to match a real subcommand for the registration
-  -- check — failures surface only when the mapping fires. We use a
-  -- known subcommand (`list`) so it doesn't warn on invocation.
   h.with_temp_map("n", "<Plug>TestVimfyMapA", "list", function()
     local found = find_map("<Plug>TestVimfyMapA")
     assert_true(found, "map should register the keymap")
@@ -80,14 +71,7 @@ test("map: default silent is true, user can override", function()
 end)
 
 --------------------------------------------------------------------------------
--- End-to-end: LHS keystroke recording contract
---
--- These tests drive the full filter stack. They confirm that:
---   (1) an ordinary keypress IS captured (baseline — the listener works),
---   (2) a key bound through `vimfy.map()` with a STRING spec is NOT captured
---       (the wrap()'d callback sets the ignore flag around its body),
---   (3) same for a FUNCTION spec.
--- If the announce-only filter ever regresses, these will fail loudly.
+-- End-to-end LHS recording contract.
 --------------------------------------------------------------------------------
 
 test("e2e: literal 'j' is captured (baseline)", function()
@@ -113,10 +97,7 @@ test("e2e: vimfy.map function spec — LHS not recorded as motion", function()
 end)
 
 test("e2e: wrap() suppresses keys fired inside its body", function()
-  -- `wrap` is the low-level primitive vimfy.map is built on. Verify it in
-  -- isolation: calling a wrapped function should suppress any key events
-  -- that fire during its body (whether from nested API calls or keymaps
-  -- its callees set up).
+  -- Verify the low-level primitive that `vimfy.map()` is built on.
   local captured = {}
   local ok = key_tracking.attach_global(function(event)
     captured[#captured + 1] = event.key_typed
@@ -124,7 +105,6 @@ test("e2e: wrap() suppresses keys fired inside its body", function()
   assert_true(ok, "probe listener should attach cleanly")
 
   local wrapped = vimfy.wrap(function()
-    -- Feed a key from inside the wrapped body; it should be suppressed.
     vim.api.nvim_feedkeys(
       vim.api.nvim_replace_termcodes("j", true, false, true), "xt", false)
   end)
@@ -136,8 +116,7 @@ test("e2e: wrap() suppresses keys fired inside its body", function()
 end)
 
 --------------------------------------------------------------------------------
--- Multi-key LHS: does the announce-only filter hold when the user binds
--- a mapping whose LHS is more than one keystroke?
+-- Multi-key LHS coverage.
 --------------------------------------------------------------------------------
 
 test("e2e: multi-key LHS (string spec) — no key leaks on resolve", function()
@@ -162,9 +141,6 @@ test("e2e: three-key LHS (string spec) — no key leaks on resolve", function()
 end)
 
 test("e2e: user-remap → <Plug> → wrap() chain — no key leaks", function()
-  -- The exact path 07-keymaps.md describes: define a <Plug> map whose RHS
-  -- is a wrap()'d callback, then a user-facing remap that routes through
-  -- it. This is what the "known behavior" note in 04-recall.md is about.
   h.with_temp_map("n", "<Plug>VimfyProbeRecall", "list", function()
     pcall(vim.keymap.del, "n", "zx")
     vim.keymap.set("n", "zx", "<Plug>VimfyProbeRecall", { remap = true })

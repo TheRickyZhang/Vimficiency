@@ -1,29 +1,15 @@
--- lua/vimficiency/alias.lua
 -- Single source of truth for Vimfy alias grammar.
---
--- Three valid kinds of alias:
---   manual       ^%a+$       live session handle (alphabetic only)
---   recall_key   ^%d+$       "N keystrokes ago" (recall ring)
---   recall_time  ^%d+s$      "N seconds ago" (recall ring, boundary-snapped)
---
--- Anything else is invalid. Callers that used to accept "not recall → manual"
--- (pre-refactor) should now reject unknown forms explicitly; see
--- `session.start`.
---
--- This module is pure Lua (no `vim.*`) so its tests can run under plain
--- LuaJIT and the grammar stays the only thing under test.
+-- Valid forms: manual (`^%a+$`), recall_key (`^%d+$`), recall_time (`^%d+s$`).
 
 local M = {}
 
 ---@alias AliasType "manual" | "recall_key" | "recall_time"
 
---- Common `Ns` windows surfaced by tab completion. Any `Ns` is valid at
---- runtime; these are here so the feature is discoverable.
+--- Common `Ns` windows surfaced by tab completion.
 M.TIME_HINTS = { "3s", "5s", "10s", "30s" }
 
---- Parse an alias. Returns (type, value) for valid aliases, or (nil, nil)
---- for anything that doesn't match the three forms. `value` is the numeric
---- payload for recall aliases (keys or seconds); nil for manual.
+--- Parse an alias.
+--- Returns `(type, value)` for valid aliases, else `(nil, nil)`.
 ---@param s any
 ---@return AliasType|nil type
 ---@return integer|nil value
@@ -67,19 +53,7 @@ function M.is_recall(s)
 end
 
 --- True iff `s` is a safe saved-result name.
----
---- Saved names are concatenated directly into
---- `stdpath('data')/vimficiency/saved/<name>.json`, so the grammar has
---- to reject anything that could escape the directory or trip up a
---- filesystem: path separators (`/`, `\`), `..`, leading `.` (hidden
---- files), leading `-` (shell-flag confusion), whitespace, and control
---- characters. The `[%w._-]` class covers separators and control chars
---- implicitly; requiring the first char to be alphanumeric or
---- underscore blocks the rest.
----
---- Grammar: `^[%w_][%w._-]*$` — e.g. `refactor-2026-03-15`,
---- `my_edit.v2`, `bugfix`. Rejects: `.`, `..`, `../foo`, `/etc/passwd`,
---- `-rf`, `name with spaces`, empty string.
+--- Grammar: `^[%w_][%w._-]*$`.
 ---@param s any
 ---@return boolean
 function M.is_valid_saved_name(s)

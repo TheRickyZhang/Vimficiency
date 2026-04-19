@@ -227,7 +227,7 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
     }
   }
 
-  // Detailed step-by-step trace of the crashing sequence
+  // Detailed trace of the crashing sequence
   cerr << "\n--- Step-by-step trace of D4gJ7dbDjd0dw.x ---" << endl;
   {
     Lines test = eff;
@@ -401,7 +401,7 @@ TEST_F(DebugTest, DISABLED_InvestigateCountedWordEdit) {
   string expected = "abd";
   int bufRow = 0, bufCol = 5;
 
-  // Step 1: Trace the sequence step-by-step in Neovim
+  // Trace the sequence in Neovim.
   cerr << "\n--- Step-by-step trace in Neovim ---" << endl;
   {
     SequenceTracer tracer(oracle.get(), fullBuffer, bufRow, bufCol);
@@ -617,7 +617,7 @@ TEST_F(DebugTest, DISABLED_Placeholder) {
     }
   }
 
-  // Also trace step by step what the edit optimizer produces for each diff
+  // Also trace what the edit optimizer produces for each diff.
   cerr << "\n=== Diff regions ===" << endl;
   {
     Lines initial = {"ffb decd bdf"};
@@ -770,7 +770,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
   Lines goal = {"fbadbeafcbfabbdc"};
   CursorPos initialPos(0, 2);
 
-  // Step 1: Trace the winning sequence step by step with oracle
+  // Trace the winning sequence with the oracle.
   cerr << "=== Oracle trace of db..s fba<Esc> ===" << endl;
   {
     auto tracer = makeTracer(initial, 0, 2);
@@ -3081,7 +3081,7 @@ TEST_F(DebugTest, DISABLED_ReproduceSmallEmbeddedSentenceCrash) {
        << " hasLinesAbove=" << boundary.hasLinesAbove()
        << " hasLinesBelow=" << boundary.hasLinesBelow() << endl;
 
-  // Step-by-step replay of the failing sequence
+  // Replay the failing sequence.
   Lines buf = editRegion;
   CursorPos pos(0, 0);
   Mode mode = Mode::Normal;

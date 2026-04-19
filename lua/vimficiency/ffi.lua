@@ -4,10 +4,7 @@ local ffi = require("ffi")
 
 local M = {}
 
---------------------------------------------------------------------------------
--- FFI Type Annotations (for LuaLS)
--- These mirror the C structs defined in ffi.cdef below.
---------------------------------------------------------------------------------
+-- FFI type annotations for LuaLS. These mirror the structs in `ffi.cdef`.
 
 ---@class C_ScoreWeights
 ---@field keyWeight number
@@ -157,10 +154,7 @@ ffi.cdef([[
     const char* vimficiency_format_sequence(const char* seq);
 ]])
 
--------- Local Helper Functions --------
-
 local function find_plugin_root()
-	-- This file is at: <plugin_root>/lua/vimficiency/ffi.lua,
 	local source = debug.getinfo(1, "S").source
 	if source:sub(1, 1) == "@" then
 		source = source:sub(2) -- remove leading @
@@ -168,10 +162,8 @@ local function find_plugin_root()
 	return vim.fn.fnamemodify(source, ":h:h:h")
 end
 
--- Find and load the shared library. `_G.__vimficiency_reload_lib_path` is an
--- escape hatch used by the `:Vimfy reload` Lua-reload path: dlopen caches
--- handles per-path, so to pick up freshly built C++ we copy the new .so to
--- a unique path and point at it here. Normal startup leaves the global nil.
+--- Find and load the shared library.
+--- `_G.__vimficiency_reload_lib_path` lets `:Vimfy reload` bypass dlopen caching.
 ---@return VimficiencyLib
 local function load_lib()
 	local root = find_plugin_root()
@@ -201,8 +193,6 @@ local function build_enum(count, name_fn)
 	end
 	return t
 end
-
--------- END Local Helper Functions --------
 
 ---@type VimficiencyLib
 local lib = load_lib()

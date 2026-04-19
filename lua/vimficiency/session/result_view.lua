@@ -1,8 +1,4 @@
--- lua/vimficiency/result_view.lua
--- Pure formatting helpers for ResultSession display. No window, buffer,
--- or notify concerns — those belong to the caller. Shared by
--- session.finish's notification and auto_suggest's idle-fire output so
--- the two don't drift apart.
+-- Pure formatting helpers for ResultSession display.
 
 local ffi_lib = require("vimficiency.ffi")
 
@@ -16,18 +12,13 @@ function M.format_position(result)
 end
 
 ---@param result ResultSession
----@return string  e.g. " [manual]", or "" if absent (legacy saved files)
+---@return string  e.g. " [manual]", or ""
 function M.format_reason_suffix(result)
   if not result.finish_reason then return "" end
   return " [" .. result.finish_reason .. "]"
 end
 
---- Format the body of a result as a list of display lines:
----   `  user: <seq> (<cost>)`
----   `  1. <seq> (<cost>)`
----   `  2. ...`
---- The header (notification title, save suffix, etc.) is the caller's
---- responsibility — different callers want different headers.
+--- Format the result body as display lines.
 ---@param result ResultSession
 ---@return string[]
 function M.format_body(result)

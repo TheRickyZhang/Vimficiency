@@ -259,8 +259,6 @@ struct NeovimOracle::Impl {
   }
 
   // Configure nvim options to match compile-time VimOptions.
-  // Neovim's compiled-in defaults match our non-legacy settings, but when
-  // VIMFICIENCY_LEGACY_VIM is defined we need to explicitly set them.
   void configureVimOptions() {
     auto setOption = [&](const char* option) {
       call("nvim_command", std::string(option));

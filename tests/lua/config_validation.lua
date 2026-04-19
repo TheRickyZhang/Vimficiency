@@ -86,7 +86,7 @@ end)
 -- Lua-side validator shape: watch and auto_suggest (parallel nested `idle`)
 --------------------------------------------------------------------------------
 
-test("validate_watch: flat idle_ms (legacy shape) errors loudly", function()
+test("validate_watch: flat idle_ms errors loudly", function()
   with_saved_watch(function()
     assert_error(
       function() validate_watch({ idle_ms = 3000, cooldown_ms = 5000 }) end,

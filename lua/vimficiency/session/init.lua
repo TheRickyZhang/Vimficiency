@@ -13,9 +13,7 @@ local M = {}
 
 -------- Local functions BEGIN --------
 
--- Approximate motion conversions: screen-line motions -> buffer-line equivalents
--- These are NOT exact (gj/gk work on display lines, j/k on buffer lines) but
--- are close enough for optimization comparison purposes.
+-- Approximate screen-line motions with buffer-line motions.
 local APPROXIMATE_MOTION_CONVERSIONS = {
   ["gj"] = "j",
   ["gk"] = "k",
@@ -42,13 +40,7 @@ local function total_failure(record, title, text, notify_message, level)
     help_tag = "vimficiency-inspecting-results-scratch-output-buffer-keys",
     help_title = "Vimficiency Scratch Output Keys",
   })
-  -- Manual sessions (Mark/Watch) end here — remove the record so the
-  -- alias is free and per-session key tracking is detached. Recall and
-  -- Suggest records live in the rolling ring and represent a slice of
-  -- history; a failed finish (wrong buffer, search range too large,
-  -- optimizer error) must NOT destroy that slice, or a later retry over
-  -- the same window would silently find nothing. Ring capacity/age caps
-  -- own their lifetime.
+  -- Manual sessions are removed on failure; recall/suggest windows are not.
   if record.start_kind == "manual" then
     session_store.remove(record.id)
   end
@@ -85,10 +77,8 @@ local function save_results(name, data)
   return path, nil
 end
 
---- Validate a decoded saved-result table. Checks only the fields that
---- `simulate_compare` actually dereferences — anything absent from older
---- files but newer-in-schema (e.g. `finish_reason`) is intentionally
---- *not* required, so existing saved files keep loading.
+--- Validate a decoded saved-result table.
+--- Only require the fields `simulate_compare()` actually reads.
 ---@param data any
 ---@return string|nil err  nil = valid; non-nil = human-readable reason
 local function validate_disk_result(data)
@@ -122,11 +112,7 @@ local function validate_disk_result(data)
 end
 
 --- Load results from JSON file and validate the schema.
---- Returns `(data, nil, false)` on success. On failure, the third return
---- value distinguishes "no file" (`is_missing = true`) from "file exists
---- but is broken" (`is_missing = false`) so callers can fall through
---- silently for the former and surface loudly for the latter without
---- string-matching the error.
+--- The third return value distinguishes missing files from broken ones.
 ---@param name string
 ---@return table|nil data
 ---@return string|nil error
@@ -149,16 +135,12 @@ local function load_results(name)
   return data, nil, false
 end
 
---- Build a ResultSession from an active session by capturing current state
---- and running the optimizer. Returns nil + error string on failure.
---- Does NOT touch session_store; caller decides where to route the result.
+--- Build a ResultSession from an active session.
+--- Returns nil plus an error string on failure.
 ---@param active ActiveSession
 ---@return ResultSession|nil result
 ---@return string|nil err
---- Human-readable `'name' (buf N)` for an error message. Falls back to
---- `[No Name]` for unnamed buffers and surfaces buftype for scratch /
---- quickfix / help / terminal buffers so a recall captured in one is
---- instantly recognizable in the error.
+--- Human-readable `'name' (buf N)` for error messages.
 ---@param buf integer
 ---@return string
 local function buf_display_name(buf)
@@ -194,10 +176,7 @@ local function compute_result_for_active(active)
       buf_display_name(curr_buf))
   end
 
-  -- Recall is retrospective; the original window may have been closed
-  -- or switched to a different buffer between session start and `end`.
-  -- Fall back to the current window, which we've just confirmed
-  -- displays the original buffer.
+  -- Recall may outlive its original window; fall back to the current one.
   local win = active.win
   if not v.nvim_win_is_valid(win) or v.nvim_win_get_buf(win) ~= active.buf then
     win = v.nvim_get_current_win()
@@ -298,10 +277,7 @@ local function compute_result_for_active(active)
   return result, nil
 end
 
---- Public alias over the local compute_result_for_active, for modules that
---- share the "take an active session, run the optimizer, hand back a result"
---- path (currently auto_suggest). Keeps the notification/policy layer (who
---- displays what, when to stay quiet) in the caller.
+--- Public alias for the shared "active session -> result" path.
 ---@param active ActiveSession
 ---@return ResultSession|nil, string|nil
 function M.compute_result_for_active(active)
@@ -341,8 +317,7 @@ function M.start(alias)
     return
   end
 
-  -- Only manual (alphabetic) aliases can be started explicitly.
-  -- Anything else — recall syntax, hyphens, digits, empty — is rejected.
+  -- Only manual aliases can be started explicitly.
   if not alias_mod.is_valid_manual(alias) then
     vim.notify(
       "Invalid session alias '" .. alias .. "'. " ..
@@ -352,7 +327,6 @@ function M.start(alias)
     return
   end
 
-  -- Check capacity before allocating resources
   if not session_store.can_store_manual(alias) then
     vim.notify("Manual session capacity reached", vim.log.levels.ERROR)
     return
@@ -363,9 +337,7 @@ function M.start(alias)
   local id = util.new_id(buf)
   local start_state = util.capture_state(buf, win)
 
-  -- `id` is allocated above and captured in the closures below. That
-  -- keeps the detach/removal path keyed on the stable id even if the
-  -- manual alias is later overwritten to point at a different session.
+  -- Capture the stable id in the closures below.
   local key_nsid = key_tracking.attach(
     function()
       return session_store.get_active(alias)
@@ -379,12 +351,9 @@ function M.start(alias)
       end
     end,
     function(session)
-      -- Window gone → session context is dead; evict. Without this guard
-      -- nvim_win_get_cursor throws and breaks key tracking.
       if not v.nvim_win_is_valid(session.win) then
         return "Vimficiency: session [" .. alias .. "] dropped — window closed"
       end
-      -- Cursor is [row1, col0]; start_state.row is 0-indexed.
       local cursor = v.nvim_win_get_cursor(session.win)
       local reason = M.manual_should_evict(
         session, cursor[1] - 1, vim.uv.hrtime()
@@ -396,7 +365,6 @@ function M.start(alias)
     end
   )
 
-  -- Mark: manual start, manual end.
   local active = session_store.new_active_session(
     id, key_nsid, win, buf, start_state, "manual", "manual")
   local overwrote = session_store.store_manual(alias, active)
@@ -409,12 +377,7 @@ function M.start(alias)
 end
 
 
---- Watch: manual start, auto end. Like M.start but arms an idle end
---- trigger instead of waiting for `:Vimfy end <alias>`. After
---- `config.watch.idle.ms` of real keystroke idleness (global, not
---- per-session), the trigger fires M.finish on this alias. Cooldown
---- between fires is enforced by end_trigger so a post-fire pause
---- doesn't immediately re-finish.
+--- Watch: manual start, auto end through the idle trigger.
 ---@param alias string  The alias for the session (required, must be manual type)
 function M.watch(alias)
   if not alias or alias == "" then
@@ -477,23 +440,16 @@ function M.watch(alias)
     end
   )
 
-  -- Watch: manual start, auto end.
   local active = session_store.new_active_session(
     id, key_nsid, win, buf, start_state, "manual", "auto")
 
-  -- Arm the idle end-trigger. Name-scoped to this session's id so
-  -- concurrent watches coexist (each owns its own global subscriber
-  -- and timer).
+  -- Scope the trigger name to this session id so watches can coexist.
   local disarm = end_trigger.arm_idle({
     name        = "watch_" .. id,
     idle_ms     = cfg.idle.ms,
     cooldown_ms = cfg.cooldown_ms,
     on_fire     = function()
-      -- Re-resolve through the store so we notice if the alias has
-      -- been rebound (overwrite by another watch/start) or the record
-      -- has been destroyed. Bail without finishing in those cases —
-      -- the replacement has its own trigger and cleanup runs through
-      -- destroy_record's disarm.
+      -- Re-resolve through the store in case the alias was rebound.
       local rec = session_store.get_active(alias)
       if not rec or rec.id ~= id then return false end
       M.finish(alias, "watch_idle")
@@ -518,10 +474,7 @@ function M.watch(alias)
 end
 
 
---- Shared body: given a resolved active session, run the optimizer and
---- publish the result. Pins `active.id` up front so a ring rotation
---- between compute and finish can't attach the result to a different
---- record than the one we computed from.
+--- Shared finish path for a resolved active session.
 ---@param active ActiveSession
 ---@param alias string               Literal alias the caller used, stored with the record for `:Vimfy save @` default naming.
 ---@param reason FinishReason
@@ -546,8 +499,7 @@ local function do_finish(active, alias, reason)
   vim.notify(header .. "\n" .. table.concat(body, "\n"), vim.log.levels.INFO)
 end
 
---- Finish a manual (Mark/Watch) session. Recall windows go through
---- `M.recall` — see the docs for the `end`/`recall` split.
+--- Finish a manual Mark/Watch session.
 ---@param alias string  The manual alias of the session to finish.
 ---@param reason FinishReason|nil  Why the finish was triggered. Defaults to "manual" (the `:Vimfy end` path). Watch's idle callback passes "watch_idle".
 function M.finish(alias, reason)
@@ -582,9 +534,7 @@ function M.finish(alias, reason)
   do_finish(active, alias, reason)
 end
 
---- Resolve a retrospective recall window and publish a result.
---- Accepts only `recall_key` (`N`) and `recall_time` (`Ns`) aliases —
---- manual handles are redirected to `M.finish` with a hint.
+--- Resolve a recall window and publish a result.
 ---@param alias string  A recall alias: `N` (keys ago) or `Ns` (seconds ago).
 function M.recall(alias)
   if not alias or alias == "" then
@@ -626,15 +576,7 @@ function M.recall(alias)
   do_finish(active, alias, "manual")
 end
 
---- Default filename for `:Vimfy save <selector>` when the caller omits
---- a name. Every legal selector (`a`, `refactor`, `5`, `3s`) is also a
---- valid saved-file name, so we return it verbatim. For `@`, resolve to
---- the alias that was used at `:Vimfy end` time — stored on the record
---- because recall positions drift and can't be reconstructed later.
----
---- Returns nil only when `@` has no finished session to resolve to;
---- invalid selectors pass through and fail downstream in `M.save` with
---- the existing "no finished result" diagnostic.
+--- Default filename for `:Vimfy save <selector>` when the name is omitted.
 ---@param selector string
 ---@return string|nil
 function M.default_save_name(selector)
@@ -682,14 +624,7 @@ local function write_to_disk_with_overwrite_warn(name, result)
   return path, nil
 end
 
---- Save a finished session result to disk under `name`. Does NOT remove the
---- session from memory — the workspace copy remains available by its alias.
---- For the "move to storage" semantics, use `:Vimfy store` instead.
----
---- Selector can be any alias that resolves to a finished result, or `@`
---- for the most recently finished session. `name` must satisfy
---- `alias.is_valid_saved_name`. If `<name>.json` already exists, the file
---- is overwritten with a warning (never silently, never refused).
+--- Save a finished session result to disk under `name`.
 ---@param selector string
 ---@param name string
 function M.save(selector, name)
@@ -717,12 +652,7 @@ function M.save(selector, name)
   end
 end
 
---- Move a finished session from memory to disk: save, then remove the
---- in-memory record. Accepts the same selector grammar as `:Vimfy save`
---- (manual alias, recall `N` or `Ns`, or `@` for last finished); recall
---- ids unindex cleanly from the rolling ring via `session_store.remove`'s
---- `unindex_recall` fallback, so a stored recall just frees its ring slot.
----
+--- Move a finished session from memory to disk.
 ---@param selector string  Any selector resolvable to a finished result.
 ---@param name string      Disk filename.
 function M.store(selector, name)
@@ -735,22 +665,21 @@ function M.store(selector, name)
     return
   end
 
-  -- UX-only active check via alias. If the selector currently resolves
-  -- to an active (unfinished) session, surface the specific remediation.
-  -- Any rare `Ns` drift here only affects which error message the user
-  -- sees, not which record gets deleted — that's pinned by `id` below.
+  -- Active sessions must be finished before they can be stored.
   if session_store.get_active(selector) then
-    vim.notify("Session '" .. selector .. "' is still active. Finish it with ':Vimfy end " ..
-      selector .. "' first.", vim.log.levels.ERROR)
+    -- Recall ring records are also `status = "active"` until `:Vimfy recall`
+    -- reifies them, so route the user to the correct command for their
+    -- alias kind — `:Vimfy end` rejects recall aliases outright.
+    local kind = alias_mod.parse(selector)
+    local resolve_cmd = (kind == "recall_key" or kind == "recall_time")
+      and (":Vimfy recall " .. selector)
+      or  (":Vimfy end " .. selector)
+    vim.notify("Session '" .. selector .. "' is still active. Finish it with '" ..
+      resolve_cmd .. "' first.", vim.log.levels.ERROR)
     return
   end
 
-  -- Resolve the selector to an id ONCE. Time-varying recall aliases
-  -- (`N`, `Ns`) re-resolve against the rolling ring each call, so if we
-  -- looked up result-by-alias first and then remove-by-alias later, a
-  -- ring-boundary crossing during the blocking disk write below could
-  -- drift to a neighboring record and delete the wrong session. Pinning
-  -- an id up front and using it for both operations eliminates the race.
+  -- Resolve the selector once so recall alias drift cannot race the write.
   local id
   if selector == "@" then
     id = session_store.get_last_finished_id()
@@ -783,9 +712,6 @@ function M.store(selector, name)
 end
 
 --- Load a saved result from disk into the current session under `alias`.
---- Disk copy is preserved (use `:Vimfy rm` to delete it separately). Refuses
---- if `alias` is already in use in the current session.
----
 ---@param name string   Disk filename to fetch from.
 ---@param alias string  Target manual alias in the session.
 function M.fetch(name, alias)
@@ -823,9 +749,7 @@ function M.fetch(name, alias)
     vim.log.levels.INFO)
 end
 
---- Delete a saved result from disk. Only touches
---- `stdpath('data')/vimficiency/saved/<name>.json`; rejects names that
---- could escape the directory (same grammar as `:Vimfy save`).
+--- Delete a saved result from disk.
 ---@param name string  Name of the saved result (without .json extension)
 function M.rm(name)
   if not alias_mod.is_valid_saved_name(name) then
@@ -865,8 +789,7 @@ function M.close(alias)
     return
   end
 
-  -- Pin id at entry; see `finish()` for the same reasoning.
-  -- remove() handles detaching key tracking (which stops macro recording)
+  -- `remove()` handles key-tracking teardown.
   session_store.remove(active.id)
   vim.notify("vimficiency closed [" .. alias .. "]", vim.log.levels.INFO)
 end
@@ -886,30 +809,24 @@ function M.simulate(alias, count)
     if data then
       on_disk = data
     elseif not is_missing then
-      -- File existed but failed to parse or validate — surface the reason
-      -- instead of falling through to the generic "no results" message.
       vim.notify("simulate: " .. (err or "unknown error"), vim.log.levels.ERROR)
       return
     end
-    -- is_missing: on_disk stays nil, fall through to the in-memory / nothing branches
   end
 
   local result
   if in_memory and on_disk then
-    -- Both exist. User's model: in-memory wins, surface a warning so they
-    -- know the disk copy is also there and not being used.
     vim.notify(
       "'" .. alias .. "' exists in both session memory and on disk — " ..
-      "replaying the in-memory copy. (The disk copy is untouched; fetch it " ..
-      "under a different alias or `:Vimfy close " .. alias .. "` first to force a refetch.)",
+      "replaying the in-memory copy. (The disk copy is untouched; " ..
+      "`:Vimfy fetch " .. alias .. " <other-alias>` to inspect it " ..
+      "separately, or `:Vimfy store " .. alias .. " <new-name>` to move " ..
+      "the in-memory copy aside so future sims see the disk copy.)",
       vim.log.levels.WARN)
     result = in_memory
   elseif in_memory then
     result = in_memory
   elseif on_disk then
-    -- Disk-only. Implicitly fetch into the workspace so the user's mental
-    -- model of "what's in my session" stays intact. Only works if `alias`
-    -- is a valid manual alias — otherwise surface the ambiguity.
     if not alias_mod.is_valid_manual(alias) then
       vim.notify(
         "'" .. alias .. "' is on disk but isn't a valid manual alias " ..
