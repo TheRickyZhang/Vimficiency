@@ -35,6 +35,40 @@ Three separate test binaries for different purposes:
 ./build/tests/vimficiency_debug
 ```
 
+### Lua Tests
+
+The Lua layer has its own harness separate from gtest, driven by a
+hand-rolled runner at `tests/lua/runner.lua`.
+
+```bash
+# Run the whole Lua suite (single headless Neovim for the main batch;
+# two escape-hatch files in their own processes — see run.sh).
+bash tests/lua/run.sh
+
+# Run a single Lua test file for focused iteration.
+VF_TEST_FILE=tests/lua/session/store_invariants.lua \
+  nvim --headless -u NONE -U NONE -l tests/lua/runner.lua
+
+# Run C++ and Lua suites together.
+bash scripts/test.sh
+```
+
+The single-process design amortizes Neovim's ~150ms startup cost over
+all test files. Between files, `reset_state()` in `runner.lua` tears
+down the state our plugin mutates (on_key subscribers, augroup,
+`:Vimfy` command, scratch buffers, plugin `package.loaded` entries,
+`XDG_DATA_HOME`). If a new stateful module lands and tests start
+flaking, look there first — prefer extending the reset over reverting
+to per-file processes.
+
+Two files are deliberately isolated:
+
+- `simulate/integration.lua` — async coroutines + tab/window state.
+- `capture/on_key_mapping_probe.lua` — Neovim characterization test
+  that primes internal key-encoding state in ways downstream tests
+  depend on NOT having happened (the `typed ~= key` heuristic in
+  `key_tracking`). Documented in `run.sh`.
+
 ### Using `vimficiency_debug` For Codegen Checks
 
 `vimficiency_debug` is also the right place for scratch code used to inspect optimizer code generation in a Release build.

@@ -1,6 +1,23 @@
 cmake_minimum_required(VERSION 3.20)
 project(vimficiency LANGUAGES CXX)
 
+# Default CMAKE_BUILD_TYPE to Debug for local iteration when none is specified.
+# Single-config generators (Make, Ninja) leave `CMAKE_BUILD_TYPE` empty by
+# default, which gives an undefined flag set — no `-O`, no `-DNDEBUG`. That's
+# a footgun: it hides bugs where `assert(x)` bodies reference nonexistent
+# symbols (NDEBUG would discard `x` before type-checking), and it makes local
+# behavior depend on whatever build type happened to be cached last.
+#
+# Skipping for multi-config generators (Visual Studio, Xcode), where
+# CMAKE_CONFIGURATION_TYPES drives the choice per-build instead.
+#
+# CI overrides this with `-DCMAKE_BUILD_TYPE=Release` explicitly, so this
+# only affects bare `cmake -B build` invocations by developers.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    message(STATUS "CMAKE_BUILD_TYPE not set, defaulting to Debug")
+    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
+endif()
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 

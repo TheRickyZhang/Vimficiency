@@ -10,8 +10,20 @@ package.path = tests_root .. "?.lua;" .. package.path
 local helpers = require("_helpers")
 local sim = require("vimficiency.simulate")
 
+-- Quiet the environment — mirrors `runner.lua`'s treatment so this test
+-- fits the same output shape as the main batch. See the runner for
+-- rationale.
+local verbose = vim.env.VF_TEST_VERBOSE == "1"
+if not verbose then
+  ---@diagnostic disable-next-line: duplicate-set-field
+  vim.notify = function() end
+end
+vim.o.showmode = false
+
 local passed = 0
 local failed = 0
+---@type { name: string, err: string }[]
+local failed_list = {}
 
 ---@param actual any
 ---@param expected any
@@ -32,14 +44,19 @@ end
 ---@param name string
 local function pass(name)
   passed = passed + 1
-  io.stdout:write("PASS  " .. name .. "\n")
+  if verbose then
+    io.stdout:write("[       OK ] integration :: " .. name .. "\n")
+  end
 end
 
 ---@param name string
 ---@param err any
 local function fail(name, err)
   failed = failed + 1
-  io.stderr:write("FAIL  " .. name .. "\n  " .. tostring(err) .. "\n")
+  failed_list[#failed_list + 1] = { name = name, err = tostring(err) }
+  io.stderr:write(string.format(
+    "[  FAILED  ] integration :: %s\n    %s\n",
+    name, tostring(err):gsub("\n", "\n    ")))
 end
 
 ---@param idx integer
@@ -364,7 +381,27 @@ local cases = {
 local idx = 1
 
 local function finish_all()
-  io.stdout:write(string.format("\n%d passed, %d failed\n", passed, failed))
+  local total = passed + failed
+  io.stdout:write(string.format(
+    "\n[==========] %d tests from 1 files ran (integration)\n", total))
+  io.stdout:write(string.format("[  PASSED  ] %d/%d tests\n", passed, total))
+  if failed > 0 then
+    io.stderr:write(string.format("[  FAILED  ] %d/%d tests, listed below:\n",
+      failed, total))
+    for _, ft in ipairs(failed_list) do
+      io.stderr:write(string.format("[  FAILED  ] integration :: %s\n", ft.name))
+    end
+    io.stderr:write(string.format("\n%d FAILED TESTS\n", failed))
+  end
+  -- Same machine-readable summary `run.sh` looks for on the runner side.
+  -- Writes to the env-var'd summary file if present; no-op otherwise.
+  if vim.env.VF_TEST_SUMMARY_FILE and vim.env.VF_TEST_SUMMARY_FILE ~= "" then
+    local fh = io.open(vim.env.VF_TEST_SUMMARY_FILE, "a")
+    if fh then
+      fh:write(string.format("passed=%d failed=%d tests=%d\n", passed, failed, total))
+      fh:close()
+    end
+  end
   vim.cmd((failed == 0) and "cquit 0" or "cquit 1")
 end
 

@@ -163,11 +163,16 @@ local function find_plugin_root()
 end
 
 --- Find and load the shared library.
+--- `VIMFICIENCY_LIB_PATH` overrides the default build path for tests.
 --- `_G.__vimficiency_reload_lib_path` lets `:Vimfy reload` bypass dlopen caching.
 ---@return VimficiencyLib
 local function load_lib()
 	local root = find_plugin_root()
 	local paths = {}
+	if type(vim.env.VIMFICIENCY_LIB_PATH) == "string"
+			and vim.env.VIMFICIENCY_LIB_PATH ~= "" then
+		table.insert(paths, vim.env.VIMFICIENCY_LIB_PATH)
+	end
 	if type(_G.__vimficiency_reload_lib_path) == "string" then
 		table.insert(paths, _G.__vimficiency_reload_lib_path)
 	end

@@ -314,12 +314,26 @@ subcommands.reload = {
             end
           end
 
-          -- Copy the freshly built .so to a unique path. LuaJIT's ffi.load
-          -- caches the library handle per-path, so to pick up new C++ we
-          -- must present a path that dlopen has not seen this session.
+          -- To pick up the freshly built C++, we need dlopen to return a
+          -- new handle. Glibc's dlopen dedups by (dev, inode) — so
+          -- overwriting libvimficiency.so in place, or hardlinking it,
+          -- both yield cache hits. The only reliable way to defeat
+          -- dedup is to present a file with a distinct inode, which
+          -- means copying.
+          --
+          -- But the file only has to exist at the moment `ffi.load`
+          -- runs: once dlopen has mmap'd the image, the code lives in
+          -- memory independently of the directory entry. Unlinking
+          -- immediately after a successful load keeps build/ clean and
+          -- avoids accumulating `libvimficiency-reload-*.so` artifacts
+          -- across sessions.
           local src = build_dir .. "/libvimficiency.so"
+          -- `%.0f` avoids scientific-notation filenames: `tostring` on a
+          -- Lua number >= ~2^53 (hrtime ns reaches that after ~104 days
+          -- of uptime) formats as `1.0742e+14`, an ugly filename. `%.0f`
+          -- always emits decimal form.
           local unique = build_dir .. "/libvimficiency-reload-"
-            .. tostring(vim.uv.hrtime()) .. ".so"
+            .. string.format("%.0f", vim.uv.hrtime()) .. ".so"
           local copied = false
           local copy_ok, copy_err = pcall(function()
             copied = vim.uv.fs_copyfile(src, unique)
@@ -336,6 +350,14 @@ subcommands.reload = {
           local reload_ok, reload_err = pcall(function()
             return require("vimficiency").reload_lua(unique)
           end)
+
+          -- Drop the on-disk copy regardless of outcome. On success the
+          -- mmap'd image survives via its inode; on failure the file is
+          -- useless anyway. Done here (not inside reload_lua) so the
+          -- reload API stays agnostic about how its path argument was
+          -- produced.
+          pcall(vim.uv.fs_unlink, unique)
+
           if not reload_ok then
             vim.notify(
               "vimficiency reload: Lua reload crashed: " ..

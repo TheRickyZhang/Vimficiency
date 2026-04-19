@@ -12,6 +12,42 @@ jobs:
       - name: Lint module dependencies
         run: ./scripts/lint-module-deps.sh
 
+  # Debug build runs the C++ test binary with assertions active. The `test`
+  # job below builds with `-DCMAKE_BUILD_TYPE=Release` (NDEBUG defined), so
+  # `assert(x)` is a macro that discards `x` before compilation — any broken
+  # expression inside an assertion body (missing method, typo, wrong type)
+  # is invisible. A dedicated Debug build catches that class of bug on every
+  # push. One matrix entry, ~2 min extra with ccache; cheap insurance.
+  debug-build:
+    runs-on: ubuntu-latest
+    needs: dependency-lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup CI deps
+        uses: ./.github/actions/setup-ci-deps
+
+      - uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: debug-build
+
+      - name: Cache build deps
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: deps-v2-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+          restore-keys: deps-v2-
+
+      - name: Build (Debug)
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build -j$(nproc)
+
+      - name: Unit tests (Debug)
+        run: ./build/tests/vimficiency_tests --gtest_brief=1
+
   test:
     runs-on: ubuntu-latest
     needs: dependency-lint
