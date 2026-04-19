@@ -51,6 +51,56 @@ local ffi_lib = require("vimficiency.ffi")
 
 local ignoring = false
 
+--------------------------------------------------------------------------------
+-- Debug log (circular buffer of every on_key decision)
+--
+-- Per-session and global on_key callbacks each record one entry per event
+-- they see, tagging *why* the event was kept or dropped. This lets
+-- `:Vimfy debug` answer questions like "was my <Space>ve recorded despite
+-- being a bound Lua-callback mapping?" without guessing.
+--
+-- Cheap by design: bounded ring (DEBUG_LOG_CAP), tiny per-entry table,
+-- no string formatting on the hot path (keytrans happens at dump time).
+--------------------------------------------------------------------------------
+
+local DEBUG_LOG_CAP = 500
+---@type { src: string, key: string, typed: string, ignoring: boolean,
+---        mode: string, curr_win: integer, session_win: integer|nil,
+---        action: string, reason: string|nil, t_ns: integer }[]
+local debug_log = {}
+local debug_log_head = 1   -- 1-based index of the next slot to write
+local debug_log_full = false
+
+---@param entry table
+local function push_debug(entry)
+	entry.t_ns = uv.hrtime()
+	debug_log[debug_log_head] = entry
+	debug_log_head = debug_log_head + 1
+	if debug_log_head > DEBUG_LOG_CAP then
+		debug_log_head = 1
+		debug_log_full = true
+	end
+end
+
+--- Return the debug log in chronological order (oldest first).
+---@return table[]
+function M.get_debug_log()
+	---@type table[]
+	local out = {}
+	if debug_log_full then
+		for i = debug_log_head, DEBUG_LOG_CAP do out[#out + 1] = debug_log[i] end
+	end
+	for i = 1, debug_log_head - 1 do out[#out + 1] = debug_log[i] end
+	return out
+end
+
+--- Clear the debug log.
+function M.clear_debug_log()
+	debug_log = {}
+	debug_log_head = 1
+	debug_log_full = false
+end
+
 function M.begin_ignore()
 	local prev = ignoring
 	ignoring = true
@@ -69,10 +119,32 @@ function M.attach(get_session, reset_session, should_evict)
 	local nsid = nil
 
 	local function on_key(key, typed)
-		if ignoring then return end
+		local raw_typed = typed or ""
+		local raw_key   = key or ""
+		local mode_full = vim.api.nvim_get_mode().mode
+		local curr_win  = vim.api.nvim_get_current_win()
+
+		---@param action string
+		---@param reason string|nil
+		local function log(action, reason)
+			push_debug({
+				src = "session",
+				key = raw_key,
+				typed = raw_typed,
+				ignoring = ignoring,
+				mode = mode_full,
+				curr_win = curr_win,
+				session_win = nil,
+				action = action,
+				reason = reason,
+			})
+		end
+
+		if ignoring then log("drop", "ignoring flag") return end
 
 		local session = get_session()
 		if not session then
+			log("drop", "no active session")
 			return
 		end
 
@@ -82,6 +154,7 @@ function M.attach(get_session, reset_session, should_evict)
 		if should_evict then
 			local reason = should_evict(session)
 			if reason then
+				log("drop", "evicted: " .. reason)
 				reset_session(reason, vim.log.levels.WARN)
 				return
 			end
@@ -91,20 +164,39 @@ function M.attach(get_session, reset_session, should_evict)
 		-- split, etc.) are not motions in the session's buffer — skip
 		-- recording without aborting.  Finish-time validation is the
 		-- authoritative buffer guard.
-		local curr_win = vim.api.nvim_get_current_win()
 		if curr_win ~= session.win then
+			push_debug({
+				src = "session",
+				key = raw_key, typed = raw_typed,
+				ignoring = ignoring, mode = mode_full,
+				curr_win = curr_win, session_win = session.win,
+				action = "drop", reason = "wrong window",
+			})
 			return
 		end
 
-		typed = typed or ""
+		typed = raw_typed
 
-		local mode = vim.api.nvim_get_mode().mode
-		local m = mode:sub(1, 1)
+		local m = mode_full:sub(1, 1)
 
-		-- Drop the duplicate events emitted while a multi-key mapping resolves.
-		-- The individual LHS keys have already fired separately; the combined
-		-- event carries the full LHS in `typed` and we don't want to record it.
+		-- Multi-key mapping resolution event: `typed` carries the full LHS,
+		-- `key` carries the first expansion byte (often a Lua-callback
+		-- sentinel). When the user types the LHS slowly enough for
+		-- `on_key` to fire for each pending byte, those pre-resolution
+		-- events are already in `key_seq`; we need to strip them here
+		-- before dropping the resolution event itself. Walking back over
+		-- `key_typed_raw` and concatenating rebuilds the user-typed byte
+		-- stream — if the tail of `key_seq` matches `typed`, the
+		-- preceding events were the mapping's LHS and belong to the
+		-- `ignoring` window we never got to take.
 		if #typed > 1 and typed ~= key then
+			local stripped = M.strip_matching_tail(session.key_seq, typed)
+			if stripped > 0 then
+				log("drop", "dedup + stripped " .. stripped ..
+					" pre-resolution event(s)")
+			else
+				log("drop", "dedup (no matching tail to strip)")
+			end
 			typed = ""
 		end
 
@@ -114,15 +206,17 @@ function M.attach(get_session, reset_session, should_evict)
 
 		-- Cmdline activity is meta, not motion — drop unconditionally.
 		if m == "c" then
+			log("drop", "cmdline mode")
 			return
 		end
 		if m == "n" and key == ":" then
+			log("drop", "pre-cmdline :")
 			return
 		end
 
 		session.key_seq[#session.key_seq + 1] = {
 			t = uv.hrtime(),
-			mode = mode,
+			mode = mode_full,
 			win = curr_win,
 			buf = vim.api.nvim_get_current_buf(),
 			key_sent_raw = key,
@@ -130,6 +224,13 @@ function M.attach(get_session, reset_session, should_evict)
 			key_typed_raw = typed,
 			key_typed = vim.fn.keytrans(typed),
 		}
+		push_debug({
+			src = "session",
+			key = raw_key, typed = raw_typed,
+			ignoring = ignoring, mode = mode_full,
+			curr_win = curr_win, session_win = session.win,
+			action = "record", reason = nil,
+		})
 	end
 
 	nsid = vim.on_key(on_key, nsid)
@@ -150,6 +251,36 @@ function M.build_sequence(key_seq)
 	return ffi_lib.build_sequence(key_seq)
 end
 
+--- Pop the trailing events from `key_seq` whose `key_typed_raw` bytes
+--- concatenate to `typed_raw`. Returns the number of entries popped
+--- (0 on mismatch or empty queue). Used when a multi-key mapping
+--- resolution event fires — the pre-resolution individual-byte events
+--- are already in the queue and must be retroactively removed.
+---
+--- Pure function: does not touch module state. Shared between the
+--- per-session on_key handler and `session_store.strip_recall_pre_resolution`
+--- so the behaviour stays identical in both paths, and the helper is
+--- directly unit-testable without going through `vim.on_key`.
+---@param key_seq VimficiencyKeyEvent[]
+---@param typed_raw string
+---@return integer popped
+function M.strip_matching_tail(key_seq, typed_raw)
+	if #typed_raw == 0 or #key_seq == 0 then return 0 end
+	local acc = ""
+	local i = #key_seq
+	while i > 0 and #acc < #typed_raw do
+		local ev = key_seq[i]
+		acc = (ev.key_typed_raw or "") .. acc
+		i = i - 1
+	end
+	if acc ~= typed_raw then return 0 end
+	local popped = #key_seq - i
+	for j = #key_seq, i + 1, -1 do
+		key_seq[j] = nil
+	end
+	return popped
+end
+
 --------------------------------------------------------------------------------
 -- Global key listener (for key-count and time-based sessions)
 --------------------------------------------------------------------------------
@@ -164,26 +295,53 @@ local function ensure_global_listener()
 	if global_nsid then return end
 
 	local function on_key(key, typed)
-		if ignoring then return end
-
-		typed = typed or ""
-
+		local raw_typed = typed or ""
+		local raw_key = key or ""
 		local mode = vim.api.nvim_get_mode().mode
-		local m = mode:sub(1, 1)
+		local curr_win = vim.api.nvim_get_current_win()
 
-		if #typed > 1 and typed ~= key then
-			typed = ""
+		---@param action string
+		---@param reason string|nil
+		local function log(action, reason)
+			push_debug({
+				src = "global",
+				key = raw_key, typed = raw_typed,
+				ignoring = ignoring, mode = mode,
+				curr_win = curr_win, session_win = nil,
+				action = action, reason = reason,
+			})
 		end
 
-		if typed == "" then return end
-		if m == "c" then return end
-		if m == "n" and key == ":" then return end
+		if ignoring then log("drop", "ignoring flag") return end
+
+		typed = raw_typed
+		local m = mode:sub(1, 1)
+
+		-- Multi-key mapping resolution (same logic as session on_key):
+		-- tell every subscriber to strip the pre-resolution pending
+		-- events that already reached it, then drop this event. A
+		-- subscriber may ignore the signal by not implementing
+		-- `on_resolution`; strip is per-subscriber because each one
+		-- owns its own backing store (e.g. recall_capture writes into
+		-- `session_store`'s recall ring).
+		if #typed > 1 and typed ~= key then
+			for _, sub in pairs(global_subs) do
+				if sub.on_resolution then sub.on_resolution(typed) end
+			end
+			log("drop", "dedup + signaled subscribers to strip " ..
+				tostring(#typed) .. " bytes")
+			return
+		end
+
+		if typed == "" then log("drop", "dedup") return end
+		if m == "c" then log("drop", "cmdline") return end
+		if m == "n" and key == ":" then log("drop", "pre-cmdline :") return end
 
 		---@type VimficiencyKeyEvent
 		local event = {
 			t = uv.hrtime(),
 			mode = mode,
-			win = vim.api.nvim_get_current_win(),
+			win = curr_win,
 			buf = vim.api.nvim_get_current_buf(),
 			key_sent_raw = key,
 			key_sent = vim.fn.keytrans(key),
@@ -191,6 +349,7 @@ local function ensure_global_listener()
 			key_typed = vim.fn.keytrans(typed),
 		}
 
+		log("record", nil)
 		for _, sub in pairs(global_subs) do
 			sub.on_event(event)
 		end
@@ -201,15 +360,22 @@ end
 
 --- Attach a named global key listener. Multiple listeners can coexist under
 --- distinct names. Passing the same name twice fails (returns false).
+---
+--- `on_resolution(typed_raw)` is an optional hook: called when a multi-key
+--- mapping resolution event fires (nvim's "combined LHS" event). The
+--- subscriber should remove the trailing events from its backing store
+--- whose `key_typed_raw` concatenates to `typed_raw`. See
+--- `capture/recall.lua` for the reference implementation.
 ---@param on_key_event fun(event: VimficiencyKeyEvent)
----@param name string|nil  Subscriber name; defaults to "default"
+---@param name string|nil             Subscriber name; defaults to "default"
+---@param on_resolution (fun(typed_raw: string))|nil  Optional strip hook
 ---@return boolean success
-function M.attach_global(on_key_event, name)
+function M.attach_global(on_key_event, name, on_resolution)
 	name = name or "default"
 	if global_subs[name] then
 		return false
 	end
-	global_subs[name] = { on_event = on_key_event }
+	global_subs[name] = { on_event = on_key_event, on_resolution = on_resolution }
 	global_subs_count = global_subs_count + 1
 	ensure_global_listener()
 	return true

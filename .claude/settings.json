@@ -1,26 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(./build/tests/vimficiency_tests:*)",
-      "Bash(./build/tests/vimficiency_benchmarks:*)",
-
-      "Bash(git status*)",
-      "Bash(git log*)",
-      "Bash(git diff*)",
-      "Bash(git show*)",
-      "Bash(git branch*)",
-      "Bash(git tag*)",
-      "Bash(git stash list*)",
-      "Bash(git remote -v*)",
-      "Bash(git fetch*)",
-      "Bash(git blame*)",
-      "Bash(git ls-files*)",
-      "Bash(git ls-tree*)",
-      "Bash(git rev-parse*)",
-      "Bash(git shortlog*)",
-      "Bash(git reflog*)",
-      "Bash(git mv*)",
-
+      "Bash(./build/tests/*)",
+      "Bash(git *)",
       "Bash(ls*)",
       "Bash(cat*)",
       "Bash(find*)",
@@ -35,33 +17,32 @@
       "Bash(nm*)",
       "Bash(pkg-config*)",
       "Bash(bash*)",
-      "Bash(lua scripts/*)",
+      "Bash(lua*)",
+      "Bash(luac*)",
       "Bash(dot *)",
-
       "Bash(node*)",
+      "Bash(npm*)",
       "Bash(npx*)",
-      "Bash(npm list*)",
-      "Bash(npm info*)",
-      "Bash(npm outdated*)",
-      "Bash(npm audit*)",
-      "Bash(npm view*)",
-      "Bash(npm ls*)",
-
       "Bash(cmake*)",
       "Bash(ninja*)",
       "Bash(ctest*)",
       "Bash(g++*)",
       "Bash(clang++*)",
       "Bash(ar *)",
-
-      "WebSearch",
-      "WebFetch(domain:vimhelp.org)",
-      "WebFetch(domain:neovim.io)",
-      "WebFetch(domain:github.com)"
+      "WebSearch*",
+      "WebFetch*",
     ],
     "deny": [
       "Bash(rm -rf *)",
-      "Bash(sudo *)"
+      "Bash(sudo *)",
+      "Bash(git reset --hard*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git clean -f*)",
+      "Bash(git clean -d*)",
+      "Bash(git branch -D *)",
+      "Bash(git checkout -- *)",
+      "Bash(git restore --source*)"
     ]
   }
 }

@@ -400,10 +400,21 @@ GoalStates ChangeGoalHandler::emitEditGoal(
     bool allowDotGoalPath) {
   double completionPenalty = sourceCmd.effort.getPenalty();
 
+  debug("emitEditGoal:",
+        "sourceBase='" + string(sourceCmd.base.seq.view()) + "'",
+        "sourceCount=" + to_string(sourceCmd.count),
+        "goalCompletion='" + goalCompletionCmd.seq.str() + "'",
+        "typed='" + typedVariants.normalTyped.sequence.seq.str() + "'",
+        "baseSeq='" + base.getSeq() + "'",
+        "postPos=(" + to_string(postCompletionState.getPos().line) + "," +
+            to_string(postCompletionState.getPos().col) + ")");
+
   RunningEffort normalEffort = mergeGoalSuffixEffort(
       goalCompletionCmd, typedVariants.normalTyped.effort, completionPenalty, config);
   KeyedSequence normalSeq = goalCompletionCmd;
   normalSeq += typedVariants.normalTyped.sequence;
+
+  debug("emitEditGoal: fullNormalSeq='" + normalSeq.seq.str() + "'");
 
   replayAndCacheSuffix(base.getStartIndex(), base.getSeq(),
                        goalCompletionCmd, completionPenalty,
@@ -536,6 +547,12 @@ SuffixCacheResult ChangeGoalHandler::tryUseSuffixCache(
   const RunningEffort& suffixEffort = sv.suffixEffort(useDot);
 
   string seqStr = s.getSeq() + suffix.seq.str();
+  debug("suffixCache hit:",
+        "prefixSeq='" + s.getSeq() + "'",
+        "suffix='" + suffix.seq.str() + "'",
+        "fullSeq='" + seqStr + "'",
+        "pos=(" + to_string(s.getPos().line) + "," + to_string(s.getPos().col) + ")",
+        "useDot=" + string(useDot ? "true" : "false"));
   RunningEffort mergedEffort = RunningEffort::merge(s.getRunningEffort(), suffixEffort);
   double totalEffort = mergedEffort.getEffort(config);
 

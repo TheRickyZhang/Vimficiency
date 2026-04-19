@@ -312,6 +312,80 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
   }
 }
 
+TEST_F(DebugTest, DISABLED_InvestigateMissingTypedCharAfterSubstitute) {
+  Lines initial = {
+      "int main() {",
+      "  int m;",
+      "  for(int i = 2; i < n; i++) {",
+      "",
+      "  }",
+      "}",
+  };
+  Lines goal = {
+      "int main() {",
+      "  int m;",
+      "  for(int i = 3; i < n; i++) {",
+      "",
+      "  }",
+      "}",
+  };
+
+  CursorPos initialPos(1, 2);  // 'i' in "  int m;"
+  CursorPos goalPos(2, 14);    // '3' in "  for(int i = 3; ..."
+  string userSeq = string("jf;i") + "\x08" + "3" + "\x1b";
+
+  cerr << "\n=== InvestigateMissingTypedCharAfterSubstitute ===" << endl;
+  cerr << "Initial: " << initial << endl;
+  cerr << "Goal:    " << goal << endl;
+  cerr << "Initial pos: " << initialPos << " goalPos: " << goalPos << endl;
+  SequenceTracer::printSequenceBytes(userSeq);
+
+  vector<DiffState> diffs = Myers::calculate(initial, goal);
+  cerr << "\n=== Diffs ===" << endl;
+  for (size_t i = 0; i < diffs.size(); i++) {
+    const auto& d = diffs[i];
+    cerr << "diff[" << i << "] begin=" << d.beginPos
+         << " end=" << d.endPos
+         << " del='" << makePrintable(d.deletedText) << "'"
+         << " ins='" << makePrintable(d.insertedText) << "'"
+         << " prefix='" << makePrintable(d.boundary.prefix()) << "'"
+         << " suffix='" << makePrintable(d.boundary.suffix()) << "'"
+         << endl;
+  }
+
+  ASSERT_EQ(diffs.size(), 1u);
+  const auto& diff = diffs[0];
+
+  EditOptimizer editOpt(config);
+  EditOptimizerParams editParams{};
+  editParams.withMaxResults(20).withMaxNodesPopped(10000).withMaxMultiplePerStartPosition(5);
+  auto editResult = editOpt.optimizeEdit(
+      diff.deletedLines(), diff.insertedLines(), diff.boundary, editParams,
+      diff.beginPos.line, diff.beginPos.col, goalPos);
+
+  cerr << "\n=== EditResult At Diff Begin ===" << endl;
+  cerr << "edit goalPos=" << editResult.getGoalPos() << endl;
+  auto localResults = editResult.resultsAt(diff.beginPos.line, diff.beginPos.col);
+  auto oracle = make_unique<NeovimOracle>();
+  for (size_t i = 0; i < localResults.size(); i++) {
+    const string& rawSeq = localResults[i].getSequence().str();
+    cerr << "  [" << i << "] seq='" << localResults[i].getSequence()
+         << "' raw='" << makePrintable(rawSeq) << "'"
+         << " cost=" << localResults[i].getCost()
+         << " bytes=";
+    for (char c : rawSeq) {
+      cerr << static_cast<int>(static_cast<unsigned char>(c)) << " ";
+    }
+    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col,
+                                 string("$Ef2") + rawSeq);
+    bool ok = (nvim.lines == goal && nvim.row == goalPos.line && nvim.col == goalPos.col);
+    cerr << " oracleFrom'$Ef2'=" << (ok ? "OK" : "WRONG")
+         << " finalLines=" << nvim.lines
+         << " finalPos=(" << nvim.row << "," << nvim.col << ")"
+         << endl;
+  }
+}
+
 TEST_F(DebugTest, DISABLED_InvestigateCountedWordEdit) {
   auto oracle = make_unique<NeovimOracle>();
 

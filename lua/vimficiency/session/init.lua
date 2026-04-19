@@ -735,20 +735,22 @@ function M.store(selector, name)
     return
   end
 
-  local active = session_store.get_active(selector)
-  if active then
+  -- UX-only active check via alias. If the selector currently resolves
+  -- to an active (unfinished) session, surface the specific remediation.
+  -- Any rare `Ns` drift here only affects which error message the user
+  -- sees, not which record gets deleted — that's pinned by `id` below.
+  if session_store.get_active(selector) then
     vim.notify("Session '" .. selector .. "' is still active. Finish it with ':Vimfy end " ..
       selector .. "' first.", vim.log.levels.ERROR)
     return
   end
-  local result, err = resolve_result_for_selector(selector)
-  if not result then
-    vim.notify(err or "unknown error", vim.log.levels.ERROR)
-    return
-  end
 
-  -- Resolve selector to id so we can remove after saving. `@` is a
-  -- shorthand, not an alias in the index — handle separately.
+  -- Resolve the selector to an id ONCE. Time-varying recall aliases
+  -- (`N`, `Ns`) re-resolve against the rolling ring each call, so if we
+  -- looked up result-by-alias first and then remove-by-alias later, a
+  -- ring-boundary crossing during the blocking disk write below could
+  -- drift to a neighboring record and delete the wrong session. Pinning
+  -- an id up front and using it for both operations eliminates the race.
   local id
   if selector == "@" then
     id = session_store.get_last_finished_id()
@@ -756,8 +758,14 @@ function M.store(selector, name)
     id = session_store.get_id(selector)
   end
   if not id then
-    vim.notify("store: could not locate session id for '" .. selector .. "'",
-      vim.log.levels.ERROR)
+    vim.notify("No finished result for '" .. selector ..
+      "'. Is the session still active?", vim.log.levels.ERROR)
+    return
+  end
+
+  local result = session_store.get_result_by_id(id)
+  if not result then
+    vim.notify("No finished result for '" .. selector .. "'.", vim.log.levels.ERROR)
     return
   end
 
@@ -955,7 +963,12 @@ function M.simulate(alias, count)
     result.lines,
     result.start_row,
     result.start_col,
-    items
+    items,
+    {
+      label   = alias,
+      end_row = result.end_row,
+      end_col = result.end_col,
+    }
   )
 end
 

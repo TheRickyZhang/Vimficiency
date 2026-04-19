@@ -102,7 +102,10 @@ vimficiency::lua_exports::Result<string> analyzeImpl(
     oss << "size: " << validResults.size() << " user_cost: "
         << fixed << setprecision(3) << userCost << "\n";
     for (const ::Result* result : validResults) {
-      oss << result->getSequence() << " "
+      // Machine-readable export for the Lua bridge: use the raw sequence
+      // bytes, not Sequence's human formatter, so insert-mode text and
+      // <Esc> survive round-tripping through ffi.lua's line parser.
+      oss << result->getSequence().view() << " "
           << fixed << setprecision(3) << result->getCost() << "\n";
     }
   }

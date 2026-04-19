@@ -35,6 +35,14 @@ window)
 Replay opens after a brief precompute phase. Step forward with
 `<Right>`, back with `<Left>`. Close the replay with `q`.
 
+The precompute phase runs each sequence through a hidden Neovim probe
+window — a real oracle — so every intermediate state (cursor, lines,
+mode) reflects exactly what your keystrokes would do in a live buffer.
+Scrubbing is `O(1)` after that: seeking back and forth through the
+sequence is an index lookup, not a re-simulation. The drain strategy
+that keeps the oracle accurate is documented for contributors in
+`dev/lua/replay-precompute.md`.
+
 Each replay window shows a virtual header above the buffer:
 
 - progress through the global and local step counts, plus the current
@@ -64,6 +72,7 @@ Press `:h g?` in a replay buffer to open this section directly.
 - `<Right>` — step forward
 - `<CR>` — focus or unfocus the current replay buffer
 - `<Tab>` / `<S-Tab>` — cycle to the next or previous replay sequence
+- `<leader>y` — yank the current window's sequence into the unnamed and `+` registers
 - `?` — show the short keymap summary popup
 - `g?` — open the full help section for replay buffers
 - `q` — close the replay tab
