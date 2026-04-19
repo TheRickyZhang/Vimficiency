@@ -38,7 +38,10 @@ end
 ---@param notify_message string|nil
 ---@param level integer|nil
 local function total_failure(record, title, text, notify_message, level)
-  util.show_output(title, text)
+  util.show_output(title, text, {
+    help_tag = "vimficiency-inspecting-results-scratch-output-buffer-keys",
+    help_title = "Vimficiency Scratch Output Keys",
+  })
   -- Manual sessions (Mark/Watch) end here — remove the record so the
   -- alias is free and per-session key tracking is detached. Recall and
   -- Suggest records live in the rolling ring and represent a slice of
@@ -82,22 +85,68 @@ local function save_results(name, data)
   return path, nil
 end
 
---- Load results from JSON file
+--- Validate a decoded saved-result table. Checks only the fields that
+--- `simulate_compare` actually dereferences — anything absent from older
+--- files but newer-in-schema (e.g. `finish_reason`) is intentionally
+--- *not* required, so existing saved files keep loading.
+---@param data any
+---@return string|nil err  nil = valid; non-nil = human-readable reason
+local function validate_disk_result(data)
+  if type(data) ~= "table" then
+    return "top-level must be a JSON object"
+  end
+  if type(data.lines) ~= "table" or #data.lines == 0 then
+    return "missing or empty 'lines' field"
+  end
+  if type(data.start_row) ~= "number" then
+    return "missing or non-numeric 'start_row' field"
+  end
+  if type(data.start_col) ~= "number" then
+    return "missing or non-numeric 'start_col' field"
+  end
+  if type(data.optimal_results) ~= "table" then
+    return "missing or non-array 'optimal_results' field"
+  end
+  for i, r in ipairs(data.optimal_results) do
+    if type(r) ~= "table" then
+      return string.format("optimal_results[%d] is not an object", i)
+    end
+    if type(r.seq) ~= "string" then
+      return string.format("optimal_results[%d] missing or non-string 'seq'", i)
+    end
+    if type(r.cost) ~= "number" then
+      return string.format("optimal_results[%d] missing or non-numeric 'cost'", i)
+    end
+  end
+  return nil
+end
+
+--- Load results from JSON file and validate the schema.
+--- Returns `(data, nil, false)` on success. On failure, the third return
+--- value distinguishes "no file" (`is_missing = true`) from "file exists
+--- but is broken" (`is_missing = false`) so callers can fall through
+--- silently for the former and surface loudly for the latter without
+--- string-matching the error.
 ---@param name string
 ---@return table|nil data
 ---@return string|nil error
+---@return boolean   is_missing
 local function load_results(name)
   local path = get_save_dir() .. "/" .. name .. ".json"
   if vim.fn.filereadable(path) == 0 then
-    return nil, "File not found: " .. path
+    return nil, "File not found: " .. path, true
   end
   local lines = vim.fn.readfile(path)
   local json_str = table.concat(lines, "\n")
   local ok, data = pcall(vim.json.decode, json_str)
   if not ok then
-    return nil, "Failed to parse JSON: " .. tostring(data)
+    return nil, "Failed to parse JSON: " .. tostring(data), false
   end
-  return data, nil
+  local schema_err = validate_disk_result(data)
+  if schema_err then
+    return nil, "Malformed result file: " .. schema_err, false
+  end
+  return data, nil, false
 end
 
 --- Build a ResultSession from an active session by capturing current state
@@ -669,11 +718,12 @@ function M.save(selector, name)
 end
 
 --- Move a finished session from memory to disk: save, then remove the
---- in-memory alias. Recall sessions (`@`, `N`, `Ns`) are rejected because
---- they don't have a stable manual alias to remove — save them with
---- `:Vimfy save` instead.
+--- in-memory record. Accepts the same selector grammar as `:Vimfy save`
+--- (manual alias, recall `N` or `Ns`, or `@` for last finished); recall
+--- ids unindex cleanly from the rolling ring via `session_store.remove`'s
+--- `unindex_recall` fallback, so a stored recall just frees its ring slot.
 ---
----@param selector string  Manual alias of the session to store.
+---@param selector string  Any selector resolvable to a finished result.
 ---@param name string      Disk filename.
 function M.store(selector, name)
   if not alias_mod.is_valid_saved_name(name) then
@@ -824,7 +874,16 @@ function M.simulate(alias, count)
   local in_memory = session_store.get_result(alias)
   local on_disk = nil
   if alias_mod.is_valid_saved_name(alias) then
-    on_disk = load_results(alias)
+    local data, err, is_missing = load_results(alias)
+    if data then
+      on_disk = data
+    elseif not is_missing then
+      -- File existed but failed to parse or validate — surface the reason
+      -- instead of falling through to the generic "no results" message.
+      vim.notify("simulate: " .. (err or "unknown error"), vim.log.levels.ERROR)
+      return
+    end
+    -- is_missing: on_disk stays nil, fall through to the in-memory / nothing branches
   end
 
   local result
@@ -866,25 +925,28 @@ function M.simulate(alias, count)
     return
   end
 
-  -- Build sequences: user sequence + top N optimal results
-  local sequences = {}
+  -- Build items: user sequence + top N optimal results, each with cost.
+  local items = {}
 
-  -- Always include user sequence first (if different from best optimal)
+  local function fmt_cost(c)
+    return c and string.format("%.2f", c) or nil
+  end
+
   local user_seq = result.user_seq or ""
   local optimal_results = result.optimal_results or {}
   local first_optimal = optimal_results[1] and optimal_results[1].seq or ""
 
   if user_seq ~= "" and user_seq ~= first_optimal then
-    table.insert(sequences, user_seq)
+    table.insert(items, { seq = user_seq, cost = fmt_cost(result.user_cost) })
   end
 
-  -- Add optimal sequences (limited by count if provided)
   local num_to_show = count or #optimal_results
   for i = 1, math.min(num_to_show, #optimal_results) do
-    table.insert(sequences, optimal_results[i].seq)
+    local r = optimal_results[i]
+    table.insert(items, { seq = r.seq, cost = fmt_cost(r.cost) })
   end
 
-  if #sequences == 0 then
+  if #items == 0 then
     vim.notify("No sequences to simulate", vim.log.levels.WARN)
     return
   end
@@ -893,7 +955,7 @@ function M.simulate(alias, count)
     result.lines,
     result.start_row,
     result.start_col,
-    sequences
+    items
   )
 end
 
@@ -989,12 +1051,9 @@ function M.view(name)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, output_lines)
   vim.bo[buf].modifiable = false
 
-  -- Add 'q' to close buffer (common pattern for temporary/preview buffers)
-  vim.keymap.set("n", "q", "<cmd>close<cr>", {
-    buffer = buf,
-    nowait = true,
-    desc = "Close vimficiency view",
-  })
+  util.set_buffer_keymaps(buf, util.with_help_keymaps({
+    { lhs = "q", handler = "<cmd>close<cr>", desc = "Close vimficiency view", nowait = true },
+  }, "Vimficiency Saved Result Keys", "vimficiency-inspecting-results-saved-result-buffer-keys"))
 end
 
 return M

@@ -128,11 +128,11 @@ subcommands.save = {
 
 subcommands.store = {
   desc = "Move a finished session from memory to disk (removes the session copy)",
-  usage = "store <alias> [<name>]",
+  usage = "store <selector>|@ [<name>]",
   fn = function(args)
     local selector = args[1]
     if not selector or selector == "" then
-      vim.notify("Usage: Vimfy store <alias> [<name>]", vim.log.levels.ERROR)
+      vim.notify("Usage: Vimfy store <selector>|@ [<name>]", vim.log.levels.ERROR)
       return
     end
     local name = (args[2] and args[2] ~= "") and args[2] or selector
@@ -294,11 +294,49 @@ subcommands.reload = {
               progress_lines[#progress_lines + 1] = l
             end
           end
-          local msg = "Rebuild complete. Restart Neovim to load new library."
-          if #progress_lines > 0 then
-            msg = table.concat(progress_lines, "\n") .. "\n\n" .. msg
+
+          -- Copy the freshly built .so to a unique path. LuaJIT's ffi.load
+          -- caches the library handle per-path, so to pick up new C++ we
+          -- must present a path that dlopen has not seen this session.
+          local src = build_dir .. "/libvimficiency.so"
+          local unique = build_dir .. "/libvimficiency-reload-"
+            .. tostring(vim.uv.hrtime()) .. ".so"
+          local copied = false
+          local copy_ok, copy_err = pcall(function()
+            copied = vim.uv.fs_copyfile(src, unique)
+          end)
+          if not copy_ok or not copied then
+            vim.notify(
+              "vimficiency reload: rebuild succeeded but copying " ..
+              "libvimficiency.so for reload failed: " .. tostring(copy_err or "?")
+              .. " — restart Neovim to load new library.",
+              vim.log.levels.WARN, { title = "Vimficiency" })
+            return
           end
-          vim.notify(msg, vim.log.levels.WARN, { title = "Vimficiency" })
+
+          local reload_ok, reload_err = pcall(function()
+            return require("vimficiency").reload_lua(unique)
+          end)
+          if not reload_ok then
+            vim.notify(
+              "vimficiency reload: Lua reload crashed: " ..
+              tostring(reload_err) .. " — restart Neovim.",
+              vim.log.levels.ERROR, { title = "Vimficiency" })
+            return
+          end
+
+          local r = reload_err  -- pcall's second return on success
+          local summary = string.format(
+            "Rebuild + Lua reload complete.\n" ..
+            "  preserved finished records: %d\n" ..
+            "  dropped active captures: %d",
+            (r and r.preserved_records) or 0,
+            (r and r.dropped_active) or 0)
+          local msg = summary
+          if #progress_lines > 0 then
+            msg = table.concat(progress_lines, "\n") .. "\n\n" .. summary
+          end
+          vim.notify(msg, vim.log.levels.INFO, { title = "Vimficiency" })
         else
           local lines = { "vimficiency rebuild failed (exit " .. tostring(obj.code) .. "):" }
           local start_idx = math.max(1, #output - 39)  -- last 40 lines
@@ -374,7 +412,10 @@ function M.handle(arg_string)
       table.insert(cmd_lines, string.format("  Vimfy %-20s %s", cmd.usage, cmd.desc))
     end
     table.sort(cmd_lines)
-    util.show_output("Vimficiency Commands", table.concat(cmd_lines, "\n"))
+    util.show_output("Vimficiency Commands", table.concat(cmd_lines, "\n"), {
+      help_tag = "vimficiency-commands-reference-scratch-output-buffer-keys",
+      help_title = "Vimficiency Scratch Output Keys",
+    })
     return
   end
 
@@ -422,7 +463,7 @@ function M.complete(arg_lead, cmd_line, cursor_pos)
     return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, alias_mod.TIME_HINTS)
   end
 
-  if subcmd == "close" or subcmd == "sim" then
+  if subcmd == "close" then
     local aliases = session.list()
     for _, t in ipairs(alias_mod.TIME_HINTS) do
       table.insert(aliases, t)
@@ -430,7 +471,18 @@ function M.complete(arg_lead, cmd_line, cursor_pos)
     return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, aliases)
   end
 
-  if subcmd == "save" then
+  if subcmd == "sim" then
+    local candidates = session.list()
+    for _, t in ipairs(alias_mod.TIME_HINTS) do
+      table.insert(candidates, t)
+    end
+    for _, name in ipairs(session.list_saved()) do
+      table.insert(candidates, name)
+    end
+    return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, candidates)
+  end
+
+  if subcmd == "save" or subcmd == "store" then
     if #args == 2 then
       local selectors = session.list()
       table.insert(selectors, "@")
@@ -438,6 +490,14 @@ function M.complete(arg_lead, cmd_line, cursor_pos)
         table.insert(selectors, t)
       end
       return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, selectors)
+    end
+    return {}
+  end
+
+  if subcmd == "fetch" then
+    if #args == 2 then
+      local saved = session.list_saved()
+      return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, saved)
     end
     return {}
   end

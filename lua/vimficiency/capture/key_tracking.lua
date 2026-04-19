@@ -237,4 +237,18 @@ function M.is_global_attached(name)
 	return global_subs[name] ~= nil
 end
 
+--- Tear down the shared global `vim.on_key` namespace. Intended for the
+--- plugin reload path (`:Vimfy reload`), where we must detach this module's
+--- on_key callback before niling `package.loaded[...]`; otherwise the old
+--- callback keeps firing against the orphaned module's `global_subs` table.
+--- Per-subscriber names are also forgotten so the new module starts clean.
+function M.shutdown()
+	if global_nsid then
+		vim.on_key(nil, global_nsid)
+		global_nsid = nil
+	end
+	global_subs = {}
+	global_subs_count = 0
+end
+
 return M

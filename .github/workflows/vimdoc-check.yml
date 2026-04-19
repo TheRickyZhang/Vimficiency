@@ -1,20 +1,20 @@
-name: vimdoc
+name: vimdoc-check
 
 on:
-  push:
-    branches: [main]
+  pull_request:
     paths:
       - 'doc-src/**'
+      - 'doc/vimficiency.txt'
       - 'scripts/build-vimdoc-source.sh'
       - 'scripts/postprocess-vimdoc.sh'
       - '.github/workflows/vimdoc.yml'
-  workflow_dispatch:
+      - '.github/workflows/vimdoc-check.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  generate:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -34,8 +34,9 @@ jobs:
       - name: Post-process vimdoc
         run: bash scripts/postprocess-vimdoc.sh
 
-      - name: Commit regenerated vimdoc
-        uses: stefanzweifel/git-auto-commit-action@v5.2.0
-        with:
-          commit_message: 'docs: regenerate vimdoc'
-          file_pattern: doc/vimficiency.txt
+      - name: Verify generated vimdoc is checked in
+        run: |
+          if ! git diff --exit-code -- doc/vimficiency.txt; then
+            echo "::error::doc/vimficiency.txt is out of date. Regenerate vimdoc from doc-src before merging."
+            exit 1
+          fi

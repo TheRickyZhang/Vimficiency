@@ -4,11 +4,12 @@
 -- Invocation: nvim --headless -l tests/lua/runner.lua
 --   or equivalently: ./tests/lua/run.sh
 --
--- Each *.lua file in this directory (other than `runner.lua` itself and
--- files whose name begins with `_`) is loaded in sequence. Test files
--- register cases via the globally-exposed `test(name, fn)` and use
--- `assert_eq` / `assert_true` / `assert_match` / `assert_error` (all
--- globals) for checks. Exit code is zero only if every test passed.
+-- Every *.lua under this directory (recursing into subdirs — the layout
+-- mirrors lua/vimficiency/) is loaded in sequence, except `runner.lua`
+-- itself and files whose name begins with `_`. Test files register cases
+-- via the globally-exposed `test(name, fn)` and use `assert_eq` /
+-- `assert_true` / `assert_match` / `assert_error` (all globals) for
+-- checks. Exit code is zero only if every test passed.
 --
 -- Intentionally tiny. When the scope grows past "pure-Lua module tests,"
 -- reach for plenary.nvim + busted. Until then, this keeps the repo
@@ -85,9 +86,10 @@ local test_files = {}
 if vim.env.VF_TEST_FILE and vim.env.VF_TEST_FILE ~= "" then
   test_files[1] = vim.fn.fnamemodify(vim.env.VF_TEST_FILE, ":p")
 else
-  -- Discover test files. Skip `runner.lua` (this file) and anything
-  -- underscore-prefixed (helpers, fixtures).
-  local candidates = vim.fn.glob(tests_dir .. "*.lua", false, true)
+  -- Discover test files recursively so `tests/lua/session/*.lua`,
+  -- `tests/lua/capture/*.lua`, etc. are picked up. Skip `runner.lua`
+  -- (this file) and anything underscore-prefixed (helpers, fixtures).
+  local candidates = vim.fn.glob(tests_dir .. "**/*.lua", false, true)
   for _, path in ipairs(candidates) do
     local name = vim.fn.fnamemodify(path, ":t")
     if name ~= "runner.lua" and name:sub(1, 1) ~= "_" then

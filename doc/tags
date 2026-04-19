@@ -4,6 +4,7 @@ vimficiency-binding-keys-to-vimfy-actions-2.-<plug>-maps	vimficiency.txt	/*vimfi
 vimficiency-commands-reference	vimficiency.txt	/*vimficiency-commands-reference*
 vimficiency-commands-reference-<plug>-mappings	vimficiency.txt	/*vimficiency-commands-reference-<plug>-mappings*
 vimficiency-commands-reference-alias-grammar	vimficiency.txt	/*vimficiency-commands-reference-alias-grammar*
+vimficiency-commands-reference-scratch-output-buffer-keys	vimficiency.txt	/*vimficiency-commands-reference-scratch-output-buffer-keys*
 vimficiency-commands-reference-tab-completion	vimficiency.txt	/*vimficiency-commands-reference-tab-completion*
 vimficiency-configuration	vimficiency.txt	/*vimficiency-configuration*
 vimficiency-configuration-effort-model-tuning	vimficiency.txt	/*vimficiency-configuration-effort-model-tuning*
@@ -12,6 +13,8 @@ vimficiency-configuration-shiftwidth	vimficiency.txt	/*vimficiency-configuration
 vimficiency-faq	vimficiency.txt	/*vimficiency-faq*
 vimficiency-faq-planned-additions-to-this-faq	vimficiency.txt	/*vimficiency-faq-planned-additions-to-this-faq*
 vimficiency-inspecting-results	vimficiency.txt	/*vimficiency-inspecting-results*
+vimficiency-inspecting-results-replay-buffer-keys	vimficiency.txt	/*vimficiency-inspecting-results-replay-buffer-keys*
+vimficiency-inspecting-results-saved-result-buffer-keys	vimficiency.txt	/*vimficiency-inspecting-results-saved-result-buffer-keys*
 vimficiency-inspecting-results-saving-a-result	vimficiency.txt	/*vimficiency-inspecting-results-saving-a-result*
 vimficiency-inspecting-results-simulating	vimficiency.txt	/*vimficiency-inspecting-results-simulating*
 vimficiency-inspecting-results-viewing-a-saved-result	vimficiency.txt	/*vimficiency-inspecting-results-viewing-a-saved-result*

@@ -743,4 +743,65 @@ M._pure = {
   snap_backward_to_boundary = snap_backward_to_boundary_pure,
 }
 
+--------------------------------------------------------------------------------
+-- Reload support
+--------------------------------------------------------------------------------
+
+--- Tear down every *active* (currently-capturing) session: detach its
+--- per-session key-tracking callback, disarm any watch trigger, and drop
+--- the record. Finished records are untouched. Returns the number of
+--- active records destroyed — the reloader uses this to tell the user how
+--- many in-flight captures got dropped.
+---@return integer dropped
+function M.teardown_active()
+  local dropped = 0
+  local to_destroy = {}
+  for id, rec in pairs(session_records) do
+    if rec.status == "active" then
+      to_destroy[#to_destroy + 1] = id
+    end
+  end
+  for _, id in ipairs(to_destroy) do
+    if destroy_record(id) then dropped = dropped + 1 end
+  end
+  return dropped
+end
+
+--- Snapshot the persistent state (finished records + alias/recall indexes)
+--- for carry-over across a plugin reload. After `teardown_active` has run,
+--- everything left in `session_records` is a finished record with no live
+--- nsid/timer references, so a plain shallow copy is safe.
+---@return { records: table, manual: table, order: string[], last_finished: string|nil }
+function M.dump_for_reload()
+  local records_copy = {}
+  for id, rec in pairs(session_records) do
+    records_copy[id] = rec
+  end
+  local manual_copy = {}
+  for alias, id in pairs(manual_alias_to_id) do
+    manual_copy[alias] = id
+  end
+  local order_copy = {}
+  for i, id in ipairs(recall_id_order) do
+    order_copy[i] = id
+  end
+  return {
+    records       = records_copy,
+    manual        = manual_copy,
+    order         = order_copy,
+    last_finished = last_finished_id,
+  }
+end
+
+--- Rehydrate a previous `dump_for_reload()` into this (fresh) module.
+--- Called after `package.loaded[...]` has been nil'd and the module has
+--- been re-required, so module-level tables start empty.
+---@param dump { records: table, manual: table, order: string[], last_finished: string|nil }
+function M.restore_from_dump(dump)
+  session_records     = dump.records or {}
+  manual_alias_to_id  = dump.manual or {}
+  recall_id_order     = dump.order or {}
+  last_finished_id    = dump.last_finished
+end
+
 return M
