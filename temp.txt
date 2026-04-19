@@ -1,5 +1,5 @@
 int main() {
-  int m;
+  int n = 10;
   for(int i = 2; i < n; i++) {
 
   }

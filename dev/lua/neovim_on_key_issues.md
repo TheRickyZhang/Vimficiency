@@ -202,8 +202,8 @@ What actually happens at human typing speed — each keystroke is a
 separate input event, so nvim processes them one at a time and has to
 wait for the next key before knowing whether the mapping resolves.
 During that wait, nvim fires on_key for each pending key **in
-addition to** the eventual resolution event. Observed via the
-`:Vimfy debug` dump on a live `<Space>ve` mapping:
+addition to** the eventual resolution event. Observed via ad-hoc
+`vim.on_key` instrumentation on a live `<Space>ve` mapping:
 
 ```
 typed="<Space>"   key="<t_...>"     ← pending event 1 (single byte, typed ~= key)

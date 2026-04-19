@@ -716,19 +716,6 @@ local function user_debug_dump()
         snap_idx, snap.cursor[1], snap.cursor[2], snap.mode))
       pr(string.format("    snapshot line[%d] = %s",
         snap.cursor[1], vim.inspect(snap.lines[snap.cursor[1]] or "")))
-      if snap.trace then
-        pr(string.format("  trace for token %s:",
-          snap.token and string.format("%q", snap.token) or "<initial>"))
-        local prev_t = nil
-        for _, p in ipairs(snap.trace) do
-          local dt = prev_t and string.format("  +%.2fms",
-            (p.t_ns - prev_t) / 1e6) or ""
-          prev_t = p.t_ns
-          pr(string.format(
-            "    %-18s cursor=(%d,%d) mode=%s current_win=%d%s",
-            p.label, p.cursor[1], p.cursor[2], p.mode, p.current_win, dt))
-        end
-      end
     else
       pr(string.format("  snapshot[%d]          = MISSING", snap_idx))
     end
@@ -849,32 +836,12 @@ local function precompute_states(tokens, lines, row, col, should_cancel, on_done
     end
   end
 
-  -- Attach per-token telemetry to the snapshots for `D`.
-  ---@param label string
-  ---@return table
-  local function probe_debug(label)
-    local cur = { -1, -1 }
-    if v.nvim_win_is_valid(probe_win) then
-      local ok, c = pcall(v.nvim_win_get_cursor, probe_win)
-      if ok then cur = c end
-    end
-    return {
-      label       = label,
-      cursor      = cur,
-      mode        = v.nvim_get_mode().mode,
-      current_win = v.nvim_get_current_win(),
-      t_ns        = vim.uv.hrtime(),
-    }
-  end
-
   local co = coroutine.create(function()
     -- Yield twice so `nvim_get_mode()` catches up after modal transitions.
     ---@param keys string
     ---@param token string
-    ---@return table[]|nil trace  four-point trace, or nil if probe died
     local function feed_and_yield(keys, token)
-      if not v.nvim_win_is_valid(probe_win) then return nil end
-      local trace = { probe_debug("before_feed") }
+      if not v.nvim_win_is_valid(probe_win) then return end
       v.nvim_set_current_win(probe_win)
       local mode_flags = "n"
       local curr_mode = v.nvim_get_mode().mode
@@ -882,25 +849,16 @@ local function precompute_states(tokens, lines, row, col, should_cancel, on_done
         mode_flags = "nx"
       end
       v.nvim_feedkeys(keys, mode_flags, false)
-      trace[#trace + 1] = probe_debug("after_feedkeys")
       coroutine.yield()
-      trace[#trace + 1] = probe_debug("after_yield_1")
       coroutine.yield()
-      trace[#trace + 1] = probe_debug("after_yield_2")
-      return trace
     end
 
-    local initial = snap()
-    initial.trace = { probe_debug("initial") }
-    table.insert(states, initial)
+    table.insert(states, snap())
 
     for _, token in ipairs(tokens) do
       if not v.nvim_win_is_valid(probe_win) then return end
-      local trace = feed_and_yield(v.nvim_replace_termcodes(token, true, false, true), token)
-      local s = snap()
-      s.trace = trace
-      s.token = token
-      table.insert(states, s)
+      feed_and_yield(v.nvim_replace_termcodes(token, true, false, true), token)
+      table.insert(states, snap())
     end
 
     -- Flush any remaining modal state before teardown.

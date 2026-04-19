@@ -24,46 +24,6 @@ local ffi_lib = require("vimficiency.ffi")
 
 local ignoring = false
 
--- Circular debug log of `vim.on_key()` decisions.
-
-local DEBUG_LOG_CAP = 500
----@type { src: string, key: string, typed: string, ignoring: boolean,
----        mode: string, curr_win: integer, session_win: integer|nil,
----        action: string, reason: string|nil, t_ns: integer }[]
-local debug_log = {}
-local debug_log_head = 1   -- 1-based index of the next slot to write
-local debug_log_full = false
-
----@param entry table
-local function push_debug(entry)
-	entry.t_ns = uv.hrtime()
-	debug_log[debug_log_head] = entry
-	debug_log_head = debug_log_head + 1
-	if debug_log_head > DEBUG_LOG_CAP then
-		debug_log_head = 1
-		debug_log_full = true
-	end
-end
-
---- Return the debug log in chronological order (oldest first).
----@return table[]
-function M.get_debug_log()
-	---@type table[]
-	local out = {}
-	if debug_log_full then
-		for i = debug_log_head, DEBUG_LOG_CAP do out[#out + 1] = debug_log[i] end
-	end
-	for i = 1, debug_log_head - 1 do out[#out + 1] = debug_log[i] end
-	return out
-end
-
---- Clear the debug log.
-function M.clear_debug_log()
-	debug_log = {}
-	debug_log_head = 1
-	debug_log_full = false
-end
-
 function M.begin_ignore()
 	local prev = ignoring
 	ignoring = true
@@ -82,86 +42,39 @@ function M.attach(get_session, reset_session, should_evict)
 	local nsid = nil
 
 	local function on_key(key, typed)
-		local raw_typed = typed or ""
-		local raw_key   = key or ""
-		local mode_full = vim.api.nvim_get_mode().mode
-		local curr_win  = vim.api.nvim_get_current_win()
-
-		---@param action string
-		---@param reason string|nil
-		local function log(action, reason)
-			push_debug({
-				src = "session",
-				key = raw_key,
-				typed = raw_typed,
-				ignoring = ignoring,
-				mode = mode_full,
-				curr_win = curr_win,
-				session_win = nil,
-				action = action,
-				reason = reason,
-			})
-		end
-
-		if ignoring then log("drop", "ignoring flag") return end
+		if ignoring then return end
 
 		local session = get_session()
-		if not session then
-			log("drop", "no active session")
-			return
-		end
+		if not session then return end
 
 		-- Eviction checks inspect `session.win`, not the current window.
 		if should_evict then
 			local reason = should_evict(session)
 			if reason then
-				log("drop", "evicted: " .. reason)
 				reset_session(reason, vim.log.levels.WARN)
 				return
 			end
 		end
 
+		local curr_win = vim.api.nvim_get_current_win()
 		-- Keys from other windows are ignored without aborting the session.
-		if curr_win ~= session.win then
-			push_debug({
-				src = "session",
-				key = raw_key, typed = raw_typed,
-				ignoring = ignoring, mode = mode_full,
-				curr_win = curr_win, session_win = session.win,
-				action = "drop", reason = "wrong window",
-			})
-			return
-		end
+		if curr_win ~= session.win then return end
 
-		typed = raw_typed
-
+		typed = typed or ""
+		local mode_full = vim.api.nvim_get_mode().mode
 		local m = mode_full:sub(1, 1)
 
 		-- Multi-key mapping resolution: strip the already-recorded LHS bytes.
 		if #typed > 1 and typed ~= key then
-			local stripped = M.strip_matching_tail(session.key_seq, typed)
-			if stripped > 0 then
-				log("drop", "dedup + stripped " .. stripped ..
-					" pre-resolution event(s)")
-			else
-				log("drop", "dedup (no matching tail to strip)")
-			end
+			M.strip_matching_tail(session.key_seq, typed)
 			typed = ""
 		end
 
-		if typed == "" then
-			return
-		end
+		if typed == "" then return end
 
 		-- Cmdline activity is meta, not motion — drop unconditionally.
-		if m == "c" then
-			log("drop", "cmdline mode")
-			return
-		end
-		if m == "n" and key == ":" then
-			log("drop", "pre-cmdline :")
-			return
-		end
+		if m == "c" then return end
+		if m == "n" and key == ":" then return end
 
 		session.key_seq[#session.key_seq + 1] = {
 			t = uv.hrtime(),
@@ -173,13 +86,6 @@ function M.attach(get_session, reset_session, should_evict)
 			key_typed_raw = typed,
 			key_typed = vim.fn.keytrans(typed),
 		}
-		push_debug({
-			src = "session",
-			key = raw_key, typed = raw_typed,
-			ignoring = ignoring, mode = mode_full,
-			curr_win = curr_win, session_win = session.win,
-			action = "record", reason = nil,
-		})
 	end
 
 	nsid = vim.on_key(on_key, nsid)
@@ -231,26 +137,10 @@ local function ensure_global_listener()
 	if global_nsid then return end
 
 	local function on_key(key, typed)
-		local raw_typed = typed or ""
-		local raw_key = key or ""
+		if ignoring then return end
+
+		typed = typed or ""
 		local mode = vim.api.nvim_get_mode().mode
-		local curr_win = vim.api.nvim_get_current_win()
-
-		---@param action string
-		---@param reason string|nil
-		local function log(action, reason)
-			push_debug({
-				src = "global",
-				key = raw_key, typed = raw_typed,
-				ignoring = ignoring, mode = mode,
-				curr_win = curr_win, session_win = nil,
-				action = action, reason = reason,
-			})
-		end
-
-		if ignoring then log("drop", "ignoring flag") return end
-
-		typed = raw_typed
 		local m = mode:sub(1, 1)
 
 		-- Multi-key mapping resolution: tell subscribers to strip the LHS.
@@ -258,20 +148,18 @@ local function ensure_global_listener()
 			for _, sub in pairs(global_subs) do
 				if sub.on_resolution then sub.on_resolution(typed) end
 			end
-			log("drop", "dedup + signaled subscribers to strip " ..
-				tostring(#typed) .. " bytes")
 			return
 		end
 
-		if typed == "" then log("drop", "dedup") return end
-		if m == "c" then log("drop", "cmdline") return end
-		if m == "n" and key == ":" then log("drop", "pre-cmdline :") return end
+		if typed == "" then return end
+		if m == "c" then return end
+		if m == "n" and key == ":" then return end
 
 		---@type VimficiencyKeyEvent
 		local event = {
 			t = uv.hrtime(),
 			mode = mode,
-			win = curr_win,
+			win = vim.api.nvim_get_current_win(),
 			buf = vim.api.nvim_get_current_buf(),
 			key_sent_raw = key,
 			key_sent = vim.fn.keytrans(key),
@@ -279,7 +167,6 @@ local function ensure_global_listener()
 			key_typed = vim.fn.keytrans(typed),
 		}
 
-		log("record", nil)
 		for _, sub in pairs(global_subs) do
 			sub.on_event(event)
 		end

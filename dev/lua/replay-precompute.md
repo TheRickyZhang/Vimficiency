@@ -154,21 +154,16 @@ timer callbacks fire back-to-back with no input-drain pass in between
 The bug surfaced as a **first-token dropout** under live load: running
 the capture under a live Neovim with autocmds, UI, and other event-loop
 competitors, the first `$` of a precompute would occasionally produce
-a snapshot where the cursor hadn't moved. Per-token trace (`D` in the
-replay UI) confirmed:
+a snapshot where the cursor hadn't moved. Ad-hoc probes around each
+`feed_and_yield` (sampled at `before_feed` / `after_feedkeys` /
+`after_yield_1` / `after_yield_2`) showed:
 
 ```
 window[2] token "$":
-  before_feed      cursor=(2,2) mode=n
-  after_feedkeys   cursor=(2,2) mode=n   +0.00ms
-  after_yield_1    cursor=(2,2) mode=n   +0.08ms
-  after_yield_2    cursor=(2,2) mode=n   +0.58ms   ← NEVER drained
+  after_yield_2    cursor=(2,2) mode=n   ← NEVER drained
 
 window[3] token "$" (same starting state, next sequence):
-  before_feed      cursor=(2,2) mode=n
-  after_feedkeys   cursor=(2,2) mode=n   +0.00ms
-  after_yield_1    cursor=(2,2) mode=n   +0.01ms
-  after_yield_2    cursor=(2,7) mode=n   +0.59ms   ← drained
+  after_yield_2    cursor=(2,7) mode=n   ← drained
 ```
 
 Identical inputs, identical time budgets (~0.5ms between yields),
@@ -223,24 +218,6 @@ In practice this means pure-Normal motions (`j`, `w`, `$`, `f;`, `de`)
 are deterministically drained, which is exactly the class of tokens
 the bug was dropping.
 
-## Per-token telemetry
-
-`probe_debug(label)` samples `{ cursor, mode, current_win, t_ns }`
-around each `feed_and_yield` at four points: `before_feed`,
-`after_feedkeys`, `after_yield_1`, `after_yield_2`. The trace is
-attached to the post-token snapshot alongside `lines`/`cursor`/`mode`.
-
-Two consumers:
-
-- **Live debug (`D` keybind in replay)** surfaces the trace for the
-  snapshot at the current step. Lets us isolate *which transition*
-  dropped a token without having to reproduce the race synthetically.
-- **Test failure messages** include the trace, so a regression reports
-  exactly where the precompute diverged from expectation.
-
-The cost is trivial — four `nvim_win_get_cursor` / `nvim_get_mode`
-calls per token, all cheap. No runtime flag gates it; it's always on.
-
 ## Tail `<Esc>`
 
 After the last user token, the coroutine feeds one final `<Esc>` to
@@ -264,8 +241,9 @@ Once precompute finishes, the replay UI in `M.simulate_compare` /
 Because the UI is decoupled from the oracle, a precompute bug
 manifests as a **wrong snapshot stored**, not a wrong *rendering*. The
 `D` dump's juxtaposition of `rendered cursor` vs. `snapshot[k]` cursor
-vs. `trace` makes this decomposition explicit, which is how the
-drain-race diagnosis was nailed down.
+makes this decomposition explicit, which is how the drain-race
+diagnosis was nailed down (with temporary per-token probes added
+during the investigation and removed after the fix landed).
 
 ## Tests that guard this
 

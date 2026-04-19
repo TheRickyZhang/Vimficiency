@@ -525,11 +525,3 @@ timeout: if the token is a no-op (e.g., `0` on col 0, or `j` on the
 last line) the pred never succeeds and we pay the full timeout per
 no-op token. `x` is `O(drain work)`, which is the right shape.
 
-## Per-token telemetry
-
-Every snapshot carries a four-point trace (`before_feed`,
-`after_feedkeys`, `after_yield_1`, `after_yield_2`) with cursor,
-mode, and current window. This was added during the diagnosis and
-kept: the `D` keybind in the replay surfaces it live, and test
-failure messages include it so a regression reports the exact
-transition where the oracle diverged.
