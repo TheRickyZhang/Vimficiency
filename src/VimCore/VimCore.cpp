@@ -367,19 +367,19 @@ skipToSentenceStart(const Lines& lines, int line, int col) {
 
   int l = line, k = col;
 
-  // Step 1: Move past the punctuation mark
+  // Move past the punctuation mark.
   if (!stepFwd(lines, l, k)) {
     return {l, k};  // EOF after punctuation
   }
 
-  // Step 2: Skip closers (can cross line boundaries)
+  // Skip closers; this may cross line boundaries.
   while (true) {
     unsigned char c = getChar(lines, l, k);
     if (!isSentenceCloser(c)) break;
     if (!stepFwd(lines, l, k)) return {l, k};  // EOF after closers
   }
 
-  // Step 3: Skip whitespace; blank lines are sentence boundaries (stop there)
+  // Skip whitespace, stopping on blank-line sentence boundaries.
   while (true) {
     if (l >= n) return {n - 1, 0};
 

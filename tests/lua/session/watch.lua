@@ -69,7 +69,7 @@ test("watch: overwrite disarms the prior trigger", function()
     local rec_b = session_store.get_active("wover")
     assert_true(rec_b ~= nil)
     assert_true(rec_a.id ~= rec_b.id,
-      "overwrite must allocate a new id (not reuse the old one)")
+      "overwrite must allocate a new id")
 
     assert_eq(key_tracking.is_global_attached(name_a), false,
       "previous watch's global subscriber must be detached on overwrite")
@@ -80,9 +80,8 @@ test("watch: overwrite disarms the prior trigger", function()
 end)
 
 test("watch: finish (manual :Vimfy end) disarms the trigger", function()
-  -- End-to-end finish needs the C++ optimizer; side-step by calling the
-  -- store's finish_session directly. This still exercises the disarm
-  -- hook in finish_session, which is what matters here.
+  -- Call the store directly so the test stays Lua-only while still exercising
+  -- the finish-session disarm hook.
   h.new_buf({ "hello", "world" })
   with_watch_cfg(WATCH_CFG, function()
     session.watch("wfinish")

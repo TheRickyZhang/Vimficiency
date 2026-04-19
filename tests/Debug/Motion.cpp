@@ -231,7 +231,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateParagraph) {
 
   auto tracer = makeTracer(source, 1, 7);  // pos [1,7]
 
-  // Trace step by step
+  // Trace each command.
   tracer.trace("d{");
   tracer.trace("dE");
   tracer.trace("D");
@@ -259,7 +259,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDAW) {
 
   auto tracer = makeTracer(source, 1, 0);  // pos [1,0]
 
-  // Trace step by step
+  // Trace each command.
   tracer.trace("daw");
   tracer.trace("dd");
 

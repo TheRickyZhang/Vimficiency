@@ -22,10 +22,6 @@ local ffi_lib = require("vimficiency.ffi")
 ---@field scroll_amount integer # Ctrl-D, U distance (may differ from window_height/2)
 ---@field lines string[]       # buffer lines at capture time
 
---------------------------------------------------------------------------------
--- State Constructor
---------------------------------------------------------------------------------
-
 ---@param bufname string
 ---@param filetype string
 ---@param row integer
@@ -65,9 +61,6 @@ end
 ---@field expr boolean?
 ---@field remap boolean?
 
---------------------------------------------------------------------------------
--- Utility Functions
---------------------------------------------------------------------------------
 M.basename = fs.basename or function(p)
   return p:match("([^/\\]+)$") or p
 end
@@ -76,13 +69,12 @@ function M.ensure_dir(p)
   vim.fn.mkdir(p, "p")
 end
 
--- ID Generation for file names (Snowflake method)
 local function sanitize_name(s)
   return (s:gsub("[^%w%._%-]", "_"))
 end
 
 function M.find_plugin_root()
-    -- This file is at: <plugin_root>/lua/vimficiency/util.lua, so go up 3 levels.
+    -- This file lives at `<plugin_root>/lua/vimficiency/util.lua`.
     local source = debug.getinfo(1, "S").source
     if source:sub(1, 1) == "@" then
         source = source:sub(2)  -- remove leading @
@@ -218,13 +210,12 @@ function M.show_output(title, text, opts)
   vim.cmd("botright new") -- create split + window
   local win = v.nvim_get_current_win()
 
-  local buf = v.nvim_create_buf(false, true) -- listed=false, scratch=true
+  local buf = v.nvim_create_buf(false, true)
   v.nvim_win_set_buf(win, buf)
 
   v.nvim_buf_set_name(buf, ("vimficiency://%s"):format(title:gsub("%s+", "_")))
   v.nvim_buf_set_lines(buf, 0, -1, false, lines)
 
-  -- Modern option APIs
   vim.bo[buf].buftype = "nofile"
   vim.bo[buf].bufhidden = "wipe"
   vim.bo[buf].swapfile = false
@@ -250,8 +241,7 @@ function M.show_output(title, text, opts)
   return buf, win
 end
 
-
--- Snowflake-like: wall-clock milliseconds + per-ms sequence
+-- Wall-clock milliseconds plus a per-ms sequence number.
 local last_ms = -1
 local seq = 0
 local SEQ_BITS = 12
@@ -282,24 +272,21 @@ function M.new_id(buf)
 
   local ms, sec = now_ms()
 
-  -- Clamp if clock goes backwards
+  -- Clamp if the clock goes backwards.
   if ms < last_ms then
     ms = last_ms
     sec = math.floor(ms / 1000)
   end
 
   if ms == last_ms then
-    -- Same millisecond as previous id
     if seq < SEQ_MAX then
       seq = seq + 1
     else
-      -- Overflow: wait for next millisecond
       ms, sec = wait_next_ms(last_ms)
       last_ms = ms
       seq = 0
     end
   else
-    -- New millisecond
     last_ms = ms
     seq = 0
   end
@@ -307,36 +294,24 @@ function M.new_id(buf)
   local wall = os.date("%Y%m%d-%H%M%S", sec)
     .. string.format("-%03d", ms % 1000)
 
-  -- Example: foo_cpp__20251222-153045-123__1734888645123__0001__b3
   return string.format("%s__%s__%d__%04d__b%d", base, wall, ms, seq, buf)
 end
 
 --- Return true if `s` looks like a session id produced by `new_id`.
---- The other strings typically passed to id-consuming APIs are aliases
---- (manual = `^[a-z]+$`, recall = `^%d+s?$`) — none contain `__`. The
---- `__` separators above are stable across the current format; if
---- `new_id` is ever restructured, update this helper in the same edit.
---- Colocated here on purpose so the format and its detector move as a
---- pair.
 ---@param s any
 ---@return boolean
 function M.is_session_id(s)
   return type(s) == "string" and s:find("__", 1, true) ~= nil
 end
------------ BEGIN FILE ------------
-
-
----------- State / IO helpers ----------
 ---@return VimficiencyState
 function M.capture_state(buf, win)
-  -- Precondition: must pass in valid buffer and window
   assert(buf and win, "capture_state: buf and win required")
   assert(v.nvim_buf_is_valid(buf), "capture state: invalid buffer")
   assert(v.nvim_win_is_valid(win), "capture state: invalid window")
   assert(v.nvim_win_get_buf(win) == buf, "capture state: buffer not in window")
 
   local lines = v.nvim_buf_get_lines(buf, 0, -1, false)
-  local cursor = v.nvim_win_get_cursor(win) -- {row(1-based), col(0-based)}
+  local cursor = v.nvim_win_get_cursor(win)
   local top_row = vim.fn.line('w0')
   local bottom_row = vim.fn.line('w$')
   local window_height = vim.api.nvim_win_get_height(win)
@@ -345,7 +320,7 @@ function M.capture_state(buf, win)
   return new_state(
     v.nvim_buf_get_name(buf),
     vim.bo[buf].filetype,
-    cursor[1] - 1, -- Convert to 0-indexed
+    cursor[1] - 1,
     cursor[2],
     top_row,
     bottom_row,

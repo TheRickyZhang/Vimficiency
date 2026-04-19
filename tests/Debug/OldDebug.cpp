@@ -586,7 +586,7 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceIndexFailure) {
   CursorPos simResult = simulateMotions(CursorPos(3, 6), "2(b", subBuffer);
   cerr << "simulateMotions((3,6), \"2(b\", subBuffer) = (" << simResult.line << ", " << simResult.col << ")" << endl;
 
-  // Step by step with simulateMotions
+  // Trace the sequence with simulateMotions.
   CursorPos step1 = simulateMotions(CursorPos(3, 6), "(", subBuffer);
   cerr << "simulateMotions((3,6), \"(\", subBuffer) = (" << step1.line << ", " << step1.col << ")" << endl;
 

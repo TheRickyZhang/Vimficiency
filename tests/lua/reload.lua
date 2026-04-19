@@ -1,15 +1,4 @@
--- tests/lua/reload.lua
--- Smoke-test the `:Vimfy reload` Lua path (no cmake build involved). We
--- verify that:
---   * setup() is idempotent when called twice.
---   * shutdown() detaches the global `vim.on_key` namespace (observed
---     indirectly via `key_tracking.is_global_attached`).
---   * reload_lua() re-requires every `vimficiency.*` module (observed via
---     table identity) and re-runs setup with the stashed user config.
---   * finished session records survive reload_lua().
---   * the FFI reload hook (`_G.__vimficiency_reload_lib_path`) is honored
---     by `load_lib()` when set (skipping it here when nil is valid, so
---     this test exercises the nil path only).
+-- Smoke tests for the `:Vimfy reload` Lua path.
 
 local vimficiency = require("vimficiency")
 
@@ -32,7 +21,6 @@ end)
 test("reload: reload_lua swaps module identities and preserves finished records", function()
   vimficiency.setup({})
 
-  -- Seed a finished record so we can assert it survives the reload.
   local store = require("vimficiency.session.store")
   local id = "reload-test-id"
   local stash = store.dump_for_reload()
@@ -67,8 +55,7 @@ test("reload: reload_lua swaps module identities and preserves finished records"
 end)
 
 test("reload: FFI load path respects __vimficiency_reload_lib_path if set", function()
-  -- Non-existent path: ffi.load will skip and fall through to the real
-  -- build path. Confirms the hook is wired without needing a real copy.
+  -- A bogus path should fall through to the normal load path.
   _G.__vimficiency_reload_lib_path = "/nonexistent/path/libvimficiency.so"
   package.loaded["vimficiency.ffi"] = nil
   local ok, ffi_mod = pcall(require, "vimficiency.ffi")

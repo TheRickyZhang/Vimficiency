@@ -1,19 +1,5 @@
--- tests/lua/runner.lua
--- Minimal test runner for vimficiency Lua modules.
---
--- Invocation: nvim --headless -l tests/lua/runner.lua
---   or equivalently: ./tests/lua/run.sh
---
--- Every *.lua under this directory (recursing into subdirs — the layout
--- mirrors lua/vimficiency/) is loaded in sequence, except `runner.lua`
--- itself and files whose name begins with `_`. Test files register cases
--- via the globally-exposed `test(name, fn)` and use `assert_eq` /
--- `assert_true` / `assert_match` / `assert_error` (all globals) for
--- checks. Exit code is zero only if every test passed.
---
--- Intentionally tiny. When the scope grows past "pure-Lua module tests,"
--- reach for plenary.nvim + busted. Until then, this keeps the repo
--- self-contained.
+-- Minimal Lua test runner.
+-- Run with `nvim --headless -l tests/lua/runner.lua` or `./tests/lua/run.sh`.
 
 local passed = 0
 local failed = 0
@@ -46,9 +32,7 @@ function assert_true(cond, msg)
   end
 end
 
---- Assert that `tostring(actual)` contains `substr` as a plain (non-regex)
---- substring. Intended for error-message inspection:
----   assert_match(err, "not a table")
+--- Assert that `tostring(actual)` contains `substr` as a plain substring.
 ---@diagnostic disable-next-line: lowercase-global
 function assert_match(actual, substr, msg)
   local s = tostring(actual)
@@ -59,8 +43,7 @@ function assert_match(actual, substr, msg)
   end
 end
 
---- Assert that `fn` errors. If `pattern` is given, the error string must
---- contain it as a plain substring.
+--- Assert that `fn` errors.
 ---@diagnostic disable-next-line: lowercase-global
 function assert_error(fn, pattern, msg)
   local ok, err = pcall(fn)
@@ -73,9 +56,7 @@ function assert_error(fn, pattern, msg)
   end
 end
 
--- Locate this file, point runtimepath at the plugin root so `require`
--- finds lua/vimficiency/*, and put tests/lua/ on package.path so test
--- files can `require("_helpers")`.
+-- Point runtimepath at the plugin root and expose `tests/lua` on `package.path`.
 local this_file = debug.getinfo(1, "S").source:sub(2)
 local tests_dir = this_file:match("(.*/)")
 local plugin_root = tests_dir .. "../.."
@@ -86,9 +67,7 @@ local test_files = {}
 if vim.env.VF_TEST_FILE and vim.env.VF_TEST_FILE ~= "" then
   test_files[1] = vim.fn.fnamemodify(vim.env.VF_TEST_FILE, ":p")
 else
-  -- Discover test files recursively so `tests/lua/session/*.lua`,
-  -- `tests/lua/capture/*.lua`, etc. are picked up. Skip `runner.lua`
-  -- (this file) and anything underscore-prefixed (helpers, fixtures).
+  -- Discover test files recursively, skipping this runner and `_` helpers.
   local candidates = vim.fn.glob(tests_dir .. "**/*.lua", false, true)
   for _, path in ipairs(candidates) do
     local name = vim.fn.fnamemodify(path, ":t")

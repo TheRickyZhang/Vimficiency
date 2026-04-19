@@ -1,11 +1,6 @@
---- NeoVim is a bit unusual in that there is NO way to directly access the RAW keys that a user presses
---- Instead, all keys are passed through layers like a key mapping to give the actual executed sequence
---- on_key(key, typed) exposes a callback for when an executed key is called. However, if that key was part of a longer original typed sequence, typed could be that original sequence per each of the resulting characters with no guarantee for consistency. For example, if I had map ABC -> DEF, then for any key D, E, F, onkey(D, _) -> _ could be "" or "ABC" for each, we can't know.
---- I am not entirely sure of the inner workings, but it seems that all keys anticipating a mapping match still get caught before the total match, so if we simply ignore all callbacks where key != typed, and key.size() > 1, then we will ignore duplicates exactly.
---- For more background, see: https://github.com/neovim/neovim/issues/15527
-
-
 -- lua/vimficiency/key_tracking.lua
+-- `vim.on_key()` exposes executed keys, not raw physical input.
+-- See `dev/lua/neovim_on_key_issues.md` for the mapping-resolution details.
 local M = {}
 local uv = vim.uv
 local ffi_lib = require("vimficiency.ffi")
@@ -24,44 +19,12 @@ local ffi_lib = require("vimficiency.ffi")
 ---@field key_typed_raw string   # raw typed key (before mappings)
 ---@field key_typed string       # keytrans'd typed key
 
---------------------------------------------------------------------------------
--- Ignore flag: announced admin activity
---
--- Any entry point that invokes Vimfy code (the :Vimfy user command, a <Plug>
--- mapping callback, or a function built by `require('vimficiency').wrap(fn)`)
--- must bracket its body with begin_ignore/end_ignore. While the flag is set,
--- both on_key handlers below return immediately, so any key events fired by
--- the admin code itself (including nested API calls and redraw-triggered
--- synthetic keys) are suppressed.
---
--- Save/restore via the returned `prev` keeps nested invocations correct.
---
--- Admin-intent is *announced*, not detected. We deliberately do NOT probe
--- maparg() or scan mapping RHS strings at on_key time — that earlier path
--- accumulated three heuristics and still missed Lua-callback RHS. The
--- blessed bindings are `require('vimficiency').map()` (primary),
--- `<Plug>Vimfy*` maps, and `require('vimficiency').wrap(fn)`; all three
--- set `ignoring` around their bodies.
---
--- Fallback: init.lua's setup() scans existing mappings once and warns
--- about any string RHS matching `:Vimfy` / `<Cmd>Vimfy`. Pre-setup
--- mappings only; post-setup or Lua-callback RHS is invisible to the
--- scan by design. See doc-src/08-keymaps.md.
---------------------------------------------------------------------------------
+-- Announced admin activity: Vimfy entry points bracket themselves with
+-- `begin_ignore()` / `end_ignore()` so internal keys are suppressed.
 
 local ignoring = false
 
---------------------------------------------------------------------------------
--- Debug log (circular buffer of every on_key decision)
---
--- Per-session and global on_key callbacks each record one entry per event
--- they see, tagging *why* the event was kept or dropped. This lets
--- `:Vimfy debug` answer questions like "was my <Space>ve recorded despite
--- being a bound Lua-callback mapping?" without guessing.
---
--- Cheap by design: bounded ring (DEBUG_LOG_CAP), tiny per-entry table,
--- no string formatting on the hot path (keytrans happens at dump time).
---------------------------------------------------------------------------------
+-- Circular debug log of `vim.on_key()` decisions.
 
 local DEBUG_LOG_CAP = 500
 ---@type { src: string, key: string, typed: string, ignoring: boolean,
@@ -148,9 +111,7 @@ function M.attach(get_session, reset_session, should_evict)
 			return
 		end
 
-		-- Eviction checks (drift, idle, window-closed) run on every
-		-- keystroke regardless of which window is focused.  The callback
-		-- inspects session.win, not the current window.
+		-- Eviction checks inspect `session.win`, not the current window.
 		if should_evict then
 			local reason = should_evict(session)
 			if reason then
@@ -160,10 +121,7 @@ function M.attach(get_session, reset_session, should_evict)
 			end
 		end
 
-		-- Keys typed in a different window (floating picker, temporary
-		-- split, etc.) are not motions in the session's buffer — skip
-		-- recording without aborting.  Finish-time validation is the
-		-- authoritative buffer guard.
+		-- Keys from other windows are ignored without aborting the session.
 		if curr_win ~= session.win then
 			push_debug({
 				src = "session",
@@ -179,16 +137,7 @@ function M.attach(get_session, reset_session, should_evict)
 
 		local m = mode_full:sub(1, 1)
 
-		-- Multi-key mapping resolution event: `typed` carries the full LHS,
-		-- `key` carries the first expansion byte (often a Lua-callback
-		-- sentinel). When the user types the LHS slowly enough for
-		-- `on_key` to fire for each pending byte, those pre-resolution
-		-- events are already in `key_seq`; we need to strip them here
-		-- before dropping the resolution event itself. Walking back over
-		-- `key_typed_raw` and concatenating rebuilds the user-typed byte
-		-- stream — if the tail of `key_seq` matches `typed`, the
-		-- preceding events were the mapping's LHS and belong to the
-		-- `ignoring` window we never got to take.
+		-- Multi-key mapping resolution: strip the already-recorded LHS bytes.
 		if #typed > 1 and typed ~= key then
 			local stripped = M.strip_matching_tail(session.key_seq, typed)
 			if stripped > 0 then
@@ -243,24 +192,14 @@ function M.detach(nsid)
 	end
 end
 
---- Build key sequence string from key events, with deduplication.
---- Removes duplicate keys caused by operator-pending mode re-evaluation.
+--- Build a key sequence string from key events, with deduplication.
 ---@param key_seq VimficiencyKeyEvent[]
 ---@return string
 function M.build_sequence(key_seq)
 	return ffi_lib.build_sequence(key_seq)
 end
 
---- Pop the trailing events from `key_seq` whose `key_typed_raw` bytes
---- concatenate to `typed_raw`. Returns the number of entries popped
---- (0 on mismatch or empty queue). Used when a multi-key mapping
---- resolution event fires — the pre-resolution individual-byte events
---- are already in the queue and must be retroactively removed.
----
---- Pure function: does not touch module state. Shared between the
---- per-session on_key handler and `session_store.strip_recall_pre_resolution`
---- so the behaviour stays identical in both paths, and the helper is
---- directly unit-testable without going through `vim.on_key`.
+--- Remove the trailing events whose `key_typed_raw` bytes match `typed_raw`.
 ---@param key_seq VimficiencyKeyEvent[]
 ---@param typed_raw string
 ---@return integer popped
@@ -281,10 +220,7 @@ function M.strip_matching_tail(key_seq, typed_raw)
 	return popped
 end
 
---------------------------------------------------------------------------------
--- Global key listener (for key-count and time-based sessions)
---------------------------------------------------------------------------------
--- One real vim.on_key namespace is shared; subscribers are addressed by name.
+-- Shared global `vim.on_key()` namespace for key-count and time-based sessions.
 
 local global_nsid = nil
 ---@type table<string, {on_event: fun(event: VimficiencyKeyEvent)}>
@@ -317,13 +253,7 @@ local function ensure_global_listener()
 		typed = raw_typed
 		local m = mode:sub(1, 1)
 
-		-- Multi-key mapping resolution (same logic as session on_key):
-		-- tell every subscriber to strip the pre-resolution pending
-		-- events that already reached it, then drop this event. A
-		-- subscriber may ignore the signal by not implementing
-		-- `on_resolution`; strip is per-subscriber because each one
-		-- owns its own backing store (e.g. recall_capture writes into
-		-- `session_store`'s recall ring).
+		-- Multi-key mapping resolution: tell subscribers to strip the LHS.
 		if #typed > 1 and typed ~= key then
 			for _, sub in pairs(global_subs) do
 				if sub.on_resolution then sub.on_resolution(typed) end
@@ -358,14 +288,8 @@ local function ensure_global_listener()
 	global_nsid = vim.on_key(on_key, global_nsid)
 end
 
---- Attach a named global key listener. Multiple listeners can coexist under
---- distinct names. Passing the same name twice fails (returns false).
----
---- `on_resolution(typed_raw)` is an optional hook: called when a multi-key
---- mapping resolution event fires (nvim's "combined LHS" event). The
---- subscriber should remove the trailing events from its backing store
---- whose `key_typed_raw` concatenates to `typed_raw`. See
---- `capture/recall.lua` for the reference implementation.
+--- Attach a named global key listener.
+--- `on_resolution` is called on multi-key mapping resolution events.
 ---@param on_key_event fun(event: VimficiencyKeyEvent)
 ---@param name string|nil             Subscriber name; defaults to "default"
 ---@param on_resolution (fun(typed_raw: string))|nil  Optional strip hook
@@ -403,11 +327,7 @@ function M.is_global_attached(name)
 	return global_subs[name] ~= nil
 end
 
---- Tear down the shared global `vim.on_key` namespace. Intended for the
---- plugin reload path (`:Vimfy reload`), where we must detach this module's
---- on_key callback before niling `package.loaded[...]`; otherwise the old
---- callback keeps firing against the orphaned module's `global_subs` table.
---- Per-subscriber names are also forgotten so the new module starts clean.
+--- Tear down the shared global `vim.on_key` namespace.
 function M.shutdown()
 	if global_nsid then
 		vim.on_key(nil, global_nsid)

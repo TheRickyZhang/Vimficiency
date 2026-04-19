@@ -22,7 +22,6 @@ struct EditOptimizerParams : OptimizerParamsBase {
   int motionLinePaddingBelow = 1;
 
   // Maximum number of results to keep per starting cursor position.
-  // Default 1 preserves legacy behavior (single best result per start).
   int maxMultiplePerStartPosition = 1;
 
   // Chainable setters for fluent configuration

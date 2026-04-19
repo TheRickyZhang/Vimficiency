@@ -1,7 +1,7 @@
 // tests/Misc/VimOptionsTest.cpp
 //
-// Oracle-verified tests for behaviors that differ between Neovim and legacy Vim.
-// Tests adapt expectations at compile time via VimOptions, so they pass in both
+// Oracle-verified tests for VimOptions-dependent behavior.
+// Expectations adapt at compile time, so the suite passes in both
 // VIMFICIENCY_LEGACY_VIM=ON and OFF configurations.
 //
 // Run: ./build/tests/vimficiency_tests --gtest_filter="VimOptionsTest.*"

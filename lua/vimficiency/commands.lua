@@ -108,6 +108,16 @@ subcommands.escape = {
   end,
 }
 
+--- Resolve the optional `[<name>]` arg for save/store.
+--- Explicit arg wins; otherwise defer to `session.default_save_name()`.
+---@param selector string
+---@param explicit string|nil
+---@return string|nil
+local function resolve_save_name(selector, explicit)
+  if explicit and explicit ~= "" then return explicit end
+  return session.default_save_name(selector)
+end
+
 subcommands.save = {
   desc = "Copy a finished session result to disk (keeps the session copy)",
   usage = "save <selector>|@ [<name>]",
@@ -117,11 +127,12 @@ subcommands.save = {
       vim.notify("Usage: Vimfy save <selector>|@ [<name>]", vim.log.levels.ERROR)
       return
     end
-    -- Omitting the second arg means "repeat the first" — so `save foo` is
-    -- equivalent to `save foo as foo`. For shorthand selectors like `@`
-    -- that aren't valid saved names, the user must pass the name
-    -- explicitly and the downstream validator will say so.
-    local name = (args[2] and args[2] ~= "") and args[2] or selector
+    local name = resolve_save_name(selector, args[2])
+    if not name then
+      vim.notify("save @: no recently finished session. Run ':Vimfy end <alias>' first.",
+        vim.log.levels.ERROR)
+      return
+    end
     session.save(selector, name)
   end,
 }
@@ -135,7 +146,12 @@ subcommands.store = {
       vim.notify("Usage: Vimfy store <selector>|@ [<name>]", vim.log.levels.ERROR)
       return
     end
-    local name = (args[2] and args[2] ~= "") and args[2] or selector
+    local name = resolve_save_name(selector, args[2])
+    if not name then
+      vim.notify("store @: no recently finished session. Run ':Vimfy end <alias>' first.",
+        vim.log.levels.ERROR)
+      return
+    end
     session.store(selector, name)
   end,
 }
@@ -252,11 +268,8 @@ subcommands.reload = {
       vim.notify("vimficiency reload already running", vim.log.levels.WARN)
       return
     end
-    -- Resolve relative to the installed plugin's own root (`lua/vimficiency/`'s
-    -- grandparent), not a hardcoded `~/Projects/...` path — the old path only
-    -- worked on one developer's machine. `build/` living as a sibling of
-    -- `lua/` is a dev-only convention, so the dir-missing branch below is the
-    -- correct signal for end-user installs (pre-built `.so`, no build tree).
+    -- Resolve relative to the plugin root. A sibling `build/` is only expected
+    -- in dev installs; packaged installs ship the pre-built `.so`.
     local build_dir = util.find_plugin_root() .. "/build"
     if vim.fn.isdirectory(build_dir) == 0 then
       vim.notify("vimficiency reload: build dir missing: " .. build_dir ..
