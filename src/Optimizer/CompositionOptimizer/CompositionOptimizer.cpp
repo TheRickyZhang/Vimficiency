@@ -421,29 +421,32 @@ CompositionResult CompositionOptimizer::optimize(
       int lineOffset = 0;
       bool hasBufferIndex = ctx.tryGetBufferIndex(
           editsCompleted, beginLine, endLine, bufferIndex, lineOffset);
-      CharInterval motionRange2 = toMotionInterval(
-          subset, CharRange(localRangeBegin, localRangeEnd));
-      RangeMotionResult motionResult = hasBufferIndex
-          ? motionOptimizer.optimizeToRange(
-                subset, localPos, motionRange2,
-                rangeParams2, "", subsetBoundary,
-                navigationContext, *bufferIndex, lineOffset)
-          : motionOptimizer.optimizeToRange(
-                subset, localPos, motionRange2,
-                rangeParams2, "", subsetBoundary, navigationContext);
-      ctx.motionNodesExplored += motionResult.getStats().nodesExplored();
+      if (auto motionRange2 = tryToMotionInterval(
+              subset, CharRange(localRangeBegin, localRangeEnd))) {
+        RangeMotionResult motionResult = hasBufferIndex
+            ? motionOptimizer.optimizeToRange(
+                  subset, localPos, *motionRange2,
+                  rangeParams2, "", subsetBoundary,
+                  navigationContext, *bufferIndex, lineOffset)
+            : motionOptimizer.optimizeToRange(
+                  subset, localPos, *motionRange2,
+                  rangeParams2, "", subsetBoundary, navigationContext);
+        ctx.motionNodesExplored += motionResult.getStats().nodesExplored();
 
-      debug("  motion results:", static_cast<int>(motionResult.getResults().size()));
-      for (const RangeResult& movResult : motionResult.getResults()) {
-        if (!movResult.isValid()) continue;
+        debug("  motion results:", static_cast<int>(motionResult.getResults().size()));
+        for (const RangeResult& movResult : motionResult.getResults()) {
+          if (!movResult.isValid()) continue;
 
-        // Remap results back to full-buffer coordinates (preserving targetCol)
-        CursorPos goalPos = movResult.getGoalPos();
-        goalPos.line += beginLine;
-        debug("    motion:", "\"" + movResult.getSequence().str() + "\"",
-              "->", goalPos);
-        enqueueMotionTransition(s, movResult.getSequence(), goalPos,
-                                editsCompleted);
+          // Remap results back to full-buffer coordinates (preserving targetCol)
+          CursorPos goalPos = movResult.getGoalPos();
+          goalPos.line += beginLine;
+          debug("    motion:", "\"" + movResult.getSequence().str() + "\"",
+                "->", goalPos);
+          enqueueMotionTransition(s, movResult.getSequence(), goalPos,
+                                  editsCompleted);
+        }
+      } else {
+        debug("  skipping direct motion search for range with no cursor positions");
       }
 
       // If a J plan exists for this edit and cursor isn't on the entry line,
@@ -477,8 +480,8 @@ CompositionResult CompositionOptimizer::optimize(
         int jLineOffset = 0;
         bool hasJBufferIndex = ctx.tryGetBufferIndex(
             editsCompleted, jBeginLine, jEndLine, jBufferIndex, jLineOffset);
-        CharInterval jMotionRange = toMotionInterval(
-            jSubset, CharRange(jLocalFirst, jLocalEnd));
+        CharInterval jMotionRange = wholeLineMotionInterval(
+            jSubset, jLine - jBeginLine);
         auto jMotionResult = hasJBufferIndex
             ? motionOptimizer.optimizeToRange(
                   jSubset, jLocalPos, jMotionRange,
