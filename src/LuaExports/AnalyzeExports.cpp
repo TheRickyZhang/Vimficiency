@@ -105,7 +105,11 @@ vimficiency::lua_exports::Result<string> analyzeImpl(
       // Machine-readable export for the Lua bridge: use the raw sequence
       // bytes, not Sequence's human formatter, so insert-mode text and
       // <Esc> survive round-tripping through ffi.lua's line parser.
-      oss << result->getSequence().view() << " "
+      // Field separator is the shared `kEventFieldSep` (0x1F Unit Sep);
+      // rationale and the project-wide convention live in
+      // `dev/lua/ffi-separators.md`.
+      oss << result->getSequence().view()
+          << vimficiency::lua_exports::kEventFieldSep
           << fixed << setprecision(3) << result->getCost() << "\n";
     }
   }

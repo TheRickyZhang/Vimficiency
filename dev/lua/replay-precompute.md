@@ -197,12 +197,25 @@ coroutine.yield()
 coroutine.yield()
 ```
 
-`enters_modal_state(token)` returns true for insert-entering commands
-(`is_change_command`) and visual-entering commands (`v`, `V`, `<C-v>`,
-`gh`, `gH`). The check `curr_mode == "n"` filters out tokens fed *while*
-the oracle is in insert/visual/operator-pending — those are either
-typed characters or intra-mode motions that still benefit from the
-yield path for reasons the original comment describes.
+`enters_modal_state(token)` is now a trivial view over token metadata:
+it returns `true` iff `token.kind == "change"` or `token.kind ==
+"visual"`. Those kinds are tagged by the C++ `SequenceParser` (see
+`src/Interpreter/SequenceParser.{h,cpp}`) and preserved across the FFI
+as `<kind>\t<text>\n` per token — so the classifier and the tokenizer
+can't drift. A parallel Lua table used to exist; it was deleted when
+kinds became first-class on the wire.
+
+The check `curr_mode == "n"` filters out tokens fed *while* the oracle
+is in insert/visual/operator-pending — those are either typed
+characters or intra-mode motions that still benefit from the yield
+path for reasons the original comment describes.
+
+A minimal Lua classifier persists for one narrow case: the char-by-char
+fallback path in `tokenize_for_animation`, taken when both C++
+tokenizers fail on truly malformed input. `classify_fallback` there
+covers the same insert/visual bare tokens as best-effort, defaulting
+to `"motion"` (fast-path-eligible, safe). This residual coupling is
+scoped to one block and documented in-line.
 
 The two yields still run for every token, including the `nx` path, for
 three reasons:
@@ -264,12 +277,18 @@ during the investigation and removed after the fix landed).
 
 ## When to revisit
 
-If the first-token regression test ever goes intermittent again, the
-`nx` path is no longer sufficient — likely because a future Neovim
-version changes feedkeys-`x` semantics or the token set grew a new
-mode-entering command we didn't tag in `enters_modal_state`. Extend
-`VISUAL_ENTER_COMMANDS` / `INSERT_COMMANDS` to cover it, or widen the
-fast-path guard.
+If a new mode-entering command needs to be recognized, extend the C++
+`SequenceParser`'s `tryParseChange` / `tryParseVisual` (whichever
+applies). The Lua side picks it up automatically via the kind wire.
+Only touch `FALLBACK_*_BARE` tables in `simulate/init.lua` if the new
+command also needs to work through the char-by-char fallback (rare —
+the fallback now only fires on sequences the grammar genuinely can't
+parse).
+
+If the first-token regression test goes intermittent again, the `nx`
+path is no longer sufficient — likely because a future Neovim version
+changes feedkeys-`x` semantics. Widen the fast-path guard or add a
+third yield.
 
 If modal snapshots start drifting (insert/visual sampling captures the
 wrong mode or cursor), the culprit is the yield path, not `nx`. Either

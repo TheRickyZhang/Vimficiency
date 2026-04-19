@@ -27,6 +27,12 @@ const unordered_set<string> INSERT_STANDALONE = {
     "i", "I", "a", "A", "o", "O", "s", "S", "R"
 };
 
+// Commands that enter visual mode. `<C-v>` is handled as a special key
+// in `tryParseVisual` — this set is for the simple one/two-char forms.
+const unordered_set<string> VISUAL_BARE = {
+    "v", "V", "gh", "gH"
+};
+
 // Special change commands that don't need a motion
 const unordered_set<string> CHANGE_SPECIAL = {
     "C",   // change to end of line
@@ -82,6 +88,17 @@ string tryParseSpecialKey(string_view sv, size_t i) {
   return string(sv.substr(i, close - i + 1));
 }
 
+// Whitespace/edit specials that act as motions in Normal mode but aren't
+// in `ALL_MOTIONS` (the optimizer-explorable set). Recognized for
+// tokenization only — the optimizer doesn't emit these, but user
+// sequences and replays routinely contain them (`<Space>` as right-arrow,
+// `<BS>` as left-arrow, `<CR>` as "move to first non-blank on next
+// line"). Without this set, sequences containing them fell through to
+// Lua's char-by-char fallback, which has no insert-mode awareness.
+const unordered_set<string> REPLAY_MOTION_SPECIALS = {
+  "<Space>", "<BS>", "<CR>", "<Enter>", "<Return>", "<Tab>", "<Del>",
+};
+
 // Try to parse a motion at position i
 // Returns the motion string (with any f/F/t/T target and ;, repeats) or empty string
 string tryParseMotion(string_view sv, size_t i) {
@@ -92,7 +109,8 @@ string tryParseMotion(string_view sv, size_t i) {
   // Handle <C-...> style motions
   if (c == '<') {
     string special = tryParseSpecialKey(sv, i);
-    if (!special.empty() && ALL_MOTIONS.contains(special)) {
+    if (!special.empty() &&
+        (ALL_MOTIONS.contains(special) || REPLAY_MOTION_SPECIALS.count(special))) {
       return special;
     }
     return "";
@@ -176,6 +194,40 @@ pair<string, size_t> tryParseDelete(string_view sv, size_t i) {
       return {"d" + motion, 1 + motion.size()};
     }
   }
+
+  return {"", 0};
+}
+
+// Try to parse a visual-mode-entering token at position i.
+// Returns (token string, length consumed) or ("", 0).
+// Recognizes `v`, `V`, `gh`, `gH`, `<C-v>`. Intentionally stateless — the
+// parser doesn't track visual mode, it just emits the entering token. The
+// replay layer feeds tokens to nvim one-by-one, which handles actual mode
+// transitions; subsequent tokens inside the selection (motions, operators,
+// text objects after `v`) can be semantically misclassified here, but they
+// still feed correctly because feedkeys is tag-agnostic and the fast-path
+// gate consults live `nvim_get_mode()`.
+pair<string, size_t> tryParseVisual(string_view sv, size_t i) {
+  if (i >= sv.size()) return {"", 0};
+
+  char c = sv[i];
+
+  // `<C-v>` — visual block.
+  if (c == '<') {
+    string special = tryParseSpecialKey(sv, i);
+    if (special == "<C-v>") return {special, special.size()};
+    return {"", 0};
+  }
+
+  // Two-char forms: `gh`, `gH`.
+  if (c == 'g' && i + 1 < sv.size()) {
+    string two(sv.substr(i, 2));
+    if (VISUAL_BARE.count(two)) return {two, 2};
+  }
+
+  // Single-char forms: `v`, `V`.
+  string one(1, c);
+  if (VISUAL_BARE.count(one)) return {one, 1};
 
   return {"", 0};
 }
@@ -301,6 +353,14 @@ parseSequence(string_view seq) {
       continue;
     }
 
+    // Try to parse visual-entering command. Stateless — see `tryParseVisual`.
+    auto [visualCmd, visualLen] = tryParseVisual(sv, i);
+    if (!visualCmd.empty()) {
+      tokens.push_back(SequenceToken(countStr + visualCmd, TokenType::Visual));
+      i += visualLen;
+      continue;
+    }
+
     // Try to parse delete command
     auto [deleteCmd, deleteLen] = tryParseDelete(sv, i);
     if (!deleteCmd.empty()) {
@@ -317,7 +377,17 @@ parseSequence(string_view seq) {
       continue;
     }
 
+    // Standalone `<Esc>` in Normal context — legitimate after visual
+    // selection or as a no-op. Previously this path errored; recognizing
+    // it keeps sequences like `vape<Esc>` tokenizing cleanly instead of
+    // falling through to Lua's char-by-char fallback.
     if (sv[i] == '<') {
+      string special = tryParseSpecialKey(sv, i);
+      if (special == "<Esc>") {
+        tokens.push_back(SequenceToken("<Esc>", TokenType::Escape));
+        i += special.size();
+        continue;
+      }
       return unexpected(SequenceParseError{
           .kind = SequenceParseErrorKind::MalformedSpecialKey,
           .offset = i,

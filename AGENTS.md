@@ -34,6 +34,13 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 - CursorPos: adds `targetCol` and `setCol(c)` vs `clampColPreservingTarget` when Vim's richer curswant is needed.
 - Line/Lines: richer strings representing buffers with helpful methods like effectiveSize(), flatten/unflatten
 
+**Important:**
+- Never use `rm -rf build` unless something appears corrupted. The build directory contains downloaded libraries (googletest, etc.) that take time to re-fetch.
+- Do not use python or write to tmp for debugging! Always debug print in tests/debug.
+- Avoid compound shell commands (`&&`, `||`, pipes, `;`) unless they are genuinely necessary. Prefer one command per invocation so command allowlists and approvals stay predictable.
+
+Generally, only run the regular (correctness) test suite after making a change to ensure compatibility. You should only run benchmarks when making a significant optimizer algorithmic change.
+
 ## Design Constraints
 
 **Cannot support** (minimal state representation):
@@ -84,12 +91,6 @@ cmake --build build -j
 
 **Other artifacts:** `build/libvimficiency_core.a`, `build/libvimficiency.so`, `build/vimficiency_cli`
 
-**Important:**
-- Never use `rm -rf build` unless something appears corrupted. The build directory contains downloaded libraries (googletest, etc.) that take time to re-fetch.
-- Do not use python or write to tmp for debugging! Always debug print in tests/debug.
-- Avoid compound shell commands (`&&`, `||`, pipes, `;`) unless they are genuinely necessary. Prefer one command per invocation so command allowlists and approvals stay predictable.
-
-Generally, only run the regular (correctness) test suite after making a change to ensure compatibility. You should only run benchmarks when making a significant optimizer algorithmic change.
 
 ## FFI Bridge
 Exposes C ABI for LuaJIT in `lua_exports.cpp`. **Position indexing:** Internal code is 0-indexed; Neovim is 1-indexed. Conversion happens at FFI boundary.

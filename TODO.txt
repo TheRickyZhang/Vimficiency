@@ -12,7 +12,15 @@ Review implementation of BufferIndex in optimizeToRange() (is it exploring corre
 
 - Review testing suite for Lua
 Replay:
-- verify that users can independently move each buffer
+
+Address this what was hastily patched in latest tests:
+  3. Architectural note — dev/lua/ffi-separators.md:
+  - New "Numeric field encoding across the FFI" section documenting the tostring → scientific-notation trap, the
+  encode_int64 rule, and the distinction vs. direct int64_t cdef args (LuaJIT auto-coerces those correctly).
+  - Subsection "A better architecture (when it's worth it)" spells out the structural alternative: LuaJIT
+  ffi.new("int64_t", n) cdata + binary wire format. Explicitly flagged as "default to the helper; revisit if int64-identity
+   preservation ever becomes necessary."
+  - New anti-pattern entry added to the existing catalog.
 
 - Later: implement debounced async for how to properly continuously perform optimize() calls to check among previous things automatically. Also need details for concurrency in implementing subprocesses?
 

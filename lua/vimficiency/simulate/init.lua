@@ -38,7 +38,7 @@ v.nvim_set_hl(0, "VimficiencyReplayActive",       { link = "Title",     default 
 ---@class VimficiencyReplayState
 ---@field global_step integer
 ---@field windows VimficiencyReplayWin[]
----@field sequences string[][]
+---@field sequences VimficiencyToken[][]
 ---@field costs (string?)[]            -- parallel to sequences; nil = no cost row
 ---@field states ReplaySnapshot[][]    -- states[window_i][1] is the initial snapshot
 ---@field saved_win integer?
@@ -77,92 +77,68 @@ local focus_state = nil
 -- =============================================================================
 -- Tokenization (sequence string → animation steps)
 -- =============================================================================
+--
+-- Tokens carry a `kind` tagged by the C++ parser — see `VimficiencyToken` in
+-- `ffi.lua`. The historical Lua-side classifier tables (INSERT_COMMANDS,
+-- VISUAL_ENTER_COMMANDS, NEEDS_FOLLOWING_KEY) are gone: they were a parallel
+-- source of truth to the parser's grammar and drifted silently. See
+-- `dev/lua/replay-precompute.md` for the gating semantics.
 
----@type table<string, boolean>
-local INSERT_COMMANDS = {
-  ["i"] = true, ["I"] = true, ["a"] = true, ["A"] = true,
-  ["o"] = true, ["O"] = true, ["s"] = true, ["S"] = true,
-  ["R"] = true, ["C"] = true, ["cc"] = true,
-}
-
----@type table<string, boolean>
-local NEEDS_FOLLOWING_KEY = {
-  ["f"] = true,
-  ["F"] = true,
-  ["t"] = true,
-  ["T"] = true,
-  ["r"] = true,
-  ["m"] = true,
-  ["'"] = true,
-  ["`"] = true,
-  ["@"] = true,
-}
-
---- Whether a token enters insert mode. Handles standalone insert commands,
---- `c{motion}`, and `c{textobj}` patterns.
----@param token string
----@return boolean
-local function is_change_command(token)
-  local bare = token:gsub("^%d+", "")  -- strip leading count
-  if INSERT_COMMANDS[bare] then return true end
-  return bare:sub(1, 1) == "c" and #bare > 1
-end
-
----@type table<string, boolean>
-local VISUAL_ENTER_COMMANDS = {
-  ["v"] = true,
-  ["V"] = true,
-  ["<C-v>"] = true,
-  ["gh"] = true,
-  ["gH"] = true,
-}
-
---- Whether a token enters Insert/Visual and must stay on the async path.
---- See `dev/lua/replay-precompute.md`.
----@param token string
+--- Whether a token enters Insert/Visual from Normal. Consulted by the
+--- precompute coroutine to decide between the synchronous-drain (`nx`) and
+--- yield fast paths — modal transitions must stay on the yield path so the
+--- oracle can sample the intermediate modal state.
+---@param token VimficiencyToken
 ---@return boolean
 local function enters_modal_state(token)
-  local bare = token:gsub("^%d+", "")
-  return is_change_command(token) or VISUAL_ENTER_COMMANDS[bare] == true
+  return token.kind == "change" or token.kind == "visual"
 end
 
---- Whether a token consumes the following key.
----@param token string
----@return boolean
-local function needs_following_key(token)
-  local bare = token:gsub("^%d+", "")
-  return #bare == 1 and NEEDS_FOLLOWING_KEY[bare] == true
+-- Fallback-only classifier for the char-by-char split path, which runs
+-- when both C++ tokenizers fail (e.g., truly malformed sequences the
+-- grammar can't parse). Much smaller than the old classifier set because
+-- C++ now handles visual-mode entry; this covers the residual cases and
+-- defaults non-matches to "motion" (fast-path-eligible, safe).
+local FALLBACK_FOLLOW_BARE = {
+  f = true, F = true, t = true, T = true, r = true,
+  m = true, ["'"] = true, ["`"] = true, ["@"] = true,
+}
+local FALLBACK_INSERT_BARE = {
+  i = true, I = true, a = true, A = true, o = true, O = true,
+  s = true, S = true, R = true, C = true, cc = true,
+}
+local FALLBACK_VISUAL_BARE = {
+  v = true, V = true, ["<C-v>"] = true, gh = true, gH = true,
+}
+
+---@param text string
+---@return "motion"|"change"|"visual"
+local function classify_fallback(text)
+  local bare = text:gsub("^%d+", "")
+  if FALLBACK_INSERT_BARE[bare] then return "change" end
+  if FALLBACK_VISUAL_BARE[bare] then return "visual" end
+  -- `c{motion}` / `c{textobj}` — any `c`-prefixed token of length >1 that
+  -- isn't in the bare insert table. (`cc` matched above.)
+  if bare:sub(1, 1) == "c" and #bare > 1 then return "change" end
+  return "motion"
 end
 
---- Merge tokens that only become executable once they consume the next key.
----@param tokens string[]
----@return string[]
-local function merge_feedable_tokens(tokens)
-  ---@type string[]
-  local merged = {}
-  local i = 1
-  while i <= #tokens do
-    local token = tokens[i]
-    if needs_following_key(token) and i < #tokens then
-      merged[#merged + 1] = token .. tokens[i + 1]
-      i = i + 2
-    else
-      merged[#merged + 1] = token
-      i = i + 1
-    end
-  end
-  return merged
-end
-
---- Tokenize a sequence for animation.
+--- Tokenize a sequence for animation. Returns kinded tokens — consumers
+--- (the precompute coroutine, header rendering, debug dump) should use
+--- `.text` when feeding nvim and `.kind` when gating modal behavior.
 ---@param seq string
----@return string[] tokens
+---@return VimficiencyToken[] tokens
 local function tokenize_for_animation(seq)
   local tokens, err = ffi_lib.tokenize_sequence(seq)
   if err or not tokens or #tokens == 0 then
     tokens, err = ffi_lib.tokenize_motions(seq)
     if err or not tokens or #tokens == 0 then
       -- Final fallback: individual chars, keeping `<Key>` groups intact.
+      -- We split the raw sequence char-by-char, then merge tokens that
+      -- consume the next key (fx, rY, etc.), then tag each with a kind
+      -- via the minimal `classify_fallback`. C++ grammar failures only
+      -- reach this branch for truly malformed input now that visual is
+      -- handled upstream.
       ---@type string[]
       local chars = {}
       local i = 1
@@ -170,42 +146,57 @@ local function tokenize_for_animation(seq)
         if seq:sub(i, i) == "<" then
           local close = seq:find(">", i, true)
           if close then
-            table.insert(chars, seq:sub(i, close))
+            chars[#chars + 1] = seq:sub(i, close)
             i = close + 1
           else
-            table.insert(chars, seq:sub(i, i))
+            chars[#chars + 1] = seq:sub(i, i)
             i = i + 1
           end
         else
-          table.insert(chars, seq:sub(i, i))
+          chars[#chars + 1] = seq:sub(i, i)
           i = i + 1
         end
       end
-      return merge_feedable_tokens(chars)
+      ---@type VimficiencyToken[]
+      local fallback = {}
+      local k = 1
+      while k <= #chars do
+        local text = chars[k]
+        local bare = text:gsub("^%d+", "")
+        if #bare == 1 and FALLBACK_FOLLOW_BARE[bare] and k < #chars then
+          text = text .. chars[k + 1]
+          k = k + 2
+        else
+          k = k + 1
+        end
+        fallback[#fallback + 1] = { text = text, kind = classify_fallback(text) }
+      end
+      return fallback
     end
   end
 
-  ---@type string[]
+  -- Happy path: tokens already carry `.kind` from the C++ parser. Chunk
+  -- any `typed` tokens into small pieces so the animation shows typed
+  -- text materializing gradually, not as one jump.
+  ---@type VimficiencyToken[]
   local expanded = {}
-  local in_insert_mode = false
   local CHUNK_SIZE = 4
-  for _, token in ipairs(tokens) do
-    if token == "<Esc>" then
-      table.insert(expanded, token)
-      in_insert_mode = false
-    elseif in_insert_mode then
+  for _, tok in ipairs(tokens) do
+    if tok.kind == "typed" then
       local i = 1
-      while i <= #token do
-        local chunk_end = min(i + CHUNK_SIZE - 1, #token)
-        table.insert(expanded, token:sub(i, chunk_end))
+      while i <= #tok.text do
+        local chunk_end = min(i + CHUNK_SIZE - 1, #tok.text)
+        expanded[#expanded + 1] = {
+          text = tok.text:sub(i, chunk_end),
+          kind = "typed",
+        }
         i = chunk_end + 1
       end
     else
-      if is_change_command(token) then in_insert_mode = true end
-      table.insert(expanded, token)
+      expanded[#expanded + 1] = tok
     end
   end
-  return merge_feedable_tokens(expanded)
+  return expanded
 end
 
 -- =============================================================================
@@ -323,9 +314,9 @@ local function render_header(seq_idx, entry)
 
   ---@type table[]
   local sequence_chunks = {}
-  for j, token in ipairs(tokens) do
+  for j, tok in ipairs(tokens) do
     sequence_chunks[#sequence_chunks + 1] = {
-      token,
+      tok.text,
       j == multi_sim.global_step and "VimficiencyReplayCurrent" or "Normal",
     }
   end
@@ -655,7 +646,10 @@ local function user_yank_sequence()
     if entry.win == cur_win then
       local tokens = multi_sim.sequences[entry.seq_idx]
       if not tokens then return end
-      local seq = table.concat(tokens, "")
+      ---@type string[]
+      local parts = {}
+      for _, tok in ipairs(tokens) do parts[#parts + 1] = tok.text end
+      local seq = table.concat(parts, "")
       vim.fn.setreg('"', seq)
       vim.fn.setreg('+', seq)
       vim.notify("vimficiency: yanked [" .. entry.seq_idx .. "] " .. seq,
@@ -696,8 +690,9 @@ local function user_debug_dump()
     pr(string.format(
       "window[%d]: win=%d buf=%d seq_idx=%d #tokens=%d #states=%d",
       i, entry.win, entry.buf, entry.seq_idx, #tokens, #states))
-    pr(string.format("  active token = %s  (global_step = %d)",
-      active_token and string.format("%q", active_token) or "nil",
+    pr(string.format("  active token = %s (%s)  (global_step = %d)",
+      active_token and string.format("%q", active_token.text) or "nil",
+      active_token and active_token.kind or "-",
       multi_sim.global_step))
     pr(string.format("  rendered cursor = (%d,%d)", rendered[1], rendered[2]))
     if initial then
@@ -781,7 +776,7 @@ end
 
 --- Precompute replay snapshots by feeding tokens through a hidden probe window.
 --- See `dev/lua/replay-precompute.md` for the event-loop and mode details.
----@param tokens string[]
+---@param tokens VimficiencyToken[]
 ---@param lines string[]
 ---@param row integer  -- 0-indexed
 ---@param col integer  -- 0-indexed
@@ -839,7 +834,7 @@ local function precompute_states(tokens, lines, row, col, should_cancel, on_done
   local co = coroutine.create(function()
     -- Yield twice so `nvim_get_mode()` catches up after modal transitions.
     ---@param keys string
-    ---@param token string
+    ---@param token VimficiencyToken
     local function feed_and_yield(keys, token)
       if not v.nvim_win_is_valid(probe_win) then return end
       v.nvim_set_current_win(probe_win)
@@ -855,14 +850,16 @@ local function precompute_states(tokens, lines, row, col, should_cancel, on_done
 
     table.insert(states, snap())
 
-    for _, token in ipairs(tokens) do
+    for _, tok in ipairs(tokens) do
       if not v.nvim_win_is_valid(probe_win) then return end
-      feed_and_yield(v.nvim_replace_termcodes(token, true, false, true), token)
+      feed_and_yield(v.nvim_replace_termcodes(tok.text, true, false, true), tok)
       table.insert(states, snap())
     end
 
-    -- Flush any remaining modal state before teardown.
-    feed_and_yield(esc, "<Esc>")
+    -- Flush any remaining modal state before teardown. Synthesize an
+    -- escape-kinded token so `feed_and_yield` routes it correctly (kind
+    -- is not modal-entering → fast path from Normal, yield path otherwise).
+    feed_and_yield(esc, { text = "<Esc>", kind = "escape" })
   end)
 
   local function step()
@@ -1122,7 +1119,7 @@ function M.simulate_compare(lines, row, col, items, opts)
   multi_sim.precompute_gen = multi_sim.precompute_gen + 1
   local my_gen = multi_sim.precompute_gen
 
-  ---@type string[][]
+  ---@type VimficiencyToken[][]
   local tokenized = {}
   for i, item in ipairs(items) do
     tokenized[i] = tokenize_for_animation(item.seq)

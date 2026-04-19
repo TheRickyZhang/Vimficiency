@@ -218,6 +218,25 @@ local function encode_string_list(items)
 	return table.concat(out)
 end
 
+--- Encode a Lua number as a decimal integer string with NO scientific
+--- notation, for int64 payloads crossing the FFI boundary. `tostring(n)`
+--- for large hrtime-scale values produces `"1.07e+14"`, which the C++
+--- `from_chars<int64_t>` parser rejects, silently reducing to a zero
+--- return (see the `resolve_recall_cutoff` bug fix). Use this helper at
+--- every FFI encode site carrying an hrtime/time_ns-style value.
+---
+--- Known limitation: Lua's double-precision floats lose bit-level
+--- accuracy above 2^53 (~104 days of ns uptime). For the comparisons
+--- this helper serves, relative drift is fine; for anything that needs
+--- true int64 identity, prefer LuaJIT `ffi.new("int64_t", n)` and pass
+--- cdata directly (not implemented here yet — see architectural note
+--- in the bug-fix commit).
+---@param n number
+---@return string
+local function encode_int64(n)
+	return string.format("%.0f", n)
+end
+
 ---@param key_seq VimficiencyKeyEvent[]
 ---@return string
 function M.build_sequence(key_seq)
@@ -276,7 +295,7 @@ function M.resolve_recall_cutoff(records, order, target_hrtime, budget)
 	for i = 1, #order do
 		local rec = records[order[i]]
 		assert(rec, "resolve_recall_cutoff: missing record for order index " .. i)
-		parts[#parts + 1] = tostring(rec.time_started)
+		parts[#parts + 1] = encode_int64(rec.time_started)
 		parts[#parts + 1] = rec.first_mode or ""
 	end
 	local index = lib.vimficiency_resolve_recall_cutoff(
@@ -462,6 +481,51 @@ end
 ---@param scroll_amount integer
 ---@param RESULTS_CALCULATED integer
 ---@return VimficiencyResult[] results, number user_cost, string debug
+--- Parse the C++ analyze-export payload into {results, user_cost}.
+--- Extracted so the parser can be unit-tested directly. Format produced by
+--- `src/LuaExports/AnalyzeExports.cpp`:
+---
+---   size: N user_cost: X.XXX
+---   <raw_seq_bytes>\x1F<cost>\n
+---   ...
+---   ----------------DEBUG---------------- (optional trailer)
+---
+--- Convention 3 in `dev/lua/ffi-separators.md`: newline-separated records,
+--- each body record framed with `kEventFieldSep` (0x1F) between the raw
+--- sequence bytes and the numeric cost. Do not change the separator here
+--- without also updating the constant in `src/LuaExports/Shared.h`.
+---@param result_str string
+---@return VimficiencyResult[] results, number user_cost
+local function parse_analyze_results(result_str)
+  ---@type VimficiencyResult[]
+  local results = {}
+  local user_cost = 0
+  local line_num = 0
+  for line in result_str:gmatch("[^\n]+") do
+    if line:find("----------------DEBUG----------------", 1, true) then
+      break
+    end
+    line_num = line_num + 1
+    if line_num == 1 then
+      local cost_str = line:match("user_cost:%s*(%S+)")
+      if cost_str then
+        user_cost = tonumber(cost_str) or 0
+      end
+    else
+      local seq, cost_str = line:match("^(.*)\x1F(%S+)$")
+      if seq then
+        table.insert(results, {
+          seq = seq,
+          cost = tonumber(cost_str) or 0,
+        })
+      end
+    end
+  end
+  return results, user_cost
+end
+
+M._parse_analyze_results = parse_analyze_results
+
 function M.analyze(
   initial_lines, goal_lines,
   boundary_first_col, boundary_last_col,
@@ -486,43 +550,15 @@ function M.analyze(
   local dbg = ffi.string(lib.vimficiency_get_debug())
   local result_str = ffi.string(result)
 
-  -- Check for error from C++
   if result_str:sub(1, 6) == "ERROR:" then
     error(result_str)
   end
 
-  -- Parse results: format is "size: N user_cost: X.XXX\nseq1 cost1\nseq2 cost2\n..."
   ---@class VimficiencyResult
   ---@field seq string Motion sequence
   ---@field cost number Effort cost
 
-  ---@type VimficiencyResult[]
-  local results = {}
-  local user_cost = 0
-  local line_num = 0
-  for line in result_str:gmatch("[^\n]+") do
-    -- Stop parsing at debug separator
-    if line:find("----------------DEBUG----------------", 1, true) then
-      break
-    end
-    line_num = line_num + 1
-    if line_num == 1 then
-      -- Parse header: "size: N user_cost: X.XXX"
-      local cost_str = line:match("user_cost:%s*(%S+)")
-      if cost_str then
-        user_cost = tonumber(cost_str) or 0
-      end
-    else
-      local seq, cost_str = line:match("^(%S+)%s+(%S+)")
-      if seq then
-        table.insert(results, {
-          seq = seq,
-          cost = tonumber(cost_str) or 0
-        })
-      end
-    end
-  end
-
+  local results, user_cost = parse_analyze_results(result_str)
   return results, user_cost, dbg
 end
 
@@ -534,45 +570,64 @@ function M.debug_config()
 	return ffi.string(lib.vimficiency_debug_config())
 end
 
---- Tokenize a motion sequence into individual tokens
----@param seq string Motion sequence (e.g., "3wfx;j")
----@return string[] Array of motion tokens (e.g., {"3w", "fx;", "j"})
----@return string|nil error Error message if tokenization failed
-function M.tokenize_motions(seq)
-  if not seq or seq == "" then
-    return {}, nil
+---@class VimficiencyToken
+---@field text string
+---@field kind "motion"|"delete"|"change"|"visual"|"typed"|"escape"
+
+-- Wire kind → Lua kind. Matches `tokenKindChar` in UtilityExports.cpp.
+-- Keep in sync: if the C++ enum grows a case, add its char here.
+local KIND_CHAR_TO_NAME = {
+  M = "motion",
+  D = "delete",
+  C = "change",
+  V = "visual",
+  T = "typed",
+  E = "escape",
+}
+
+--- Parse the `<kind>\t<text>\n` wire format from the C++ tokenizer.
+---@param result_str string
+---@return VimficiencyToken[]
+local function parse_kinded_tokens(result_str)
+  ---@type VimficiencyToken[]
+  local out = {}
+  -- Each line is `<kind_char>\t<text>`; blank lines (trailing `\n` from
+  -- C++) are skipped by the pattern.
+  for line in result_str:gmatch("([^\n]+)") do
+    local kind = KIND_CHAR_TO_NAME[line:sub(1, 1)]
+    -- Skip the separator byte (`\t`); token text starts at byte 3.
+    local text = line:sub(3)
+    out[#out + 1] = { text = text, kind = kind or "motion" }
   end
-  local result_str = ffi.string(lib.vimficiency_tokenize_motions(seq))
-  if result_str == "" then
-    return {}, nil
-  end
-  -- Check for error from C++
-  if result_str:sub(1, 6) == "ERROR:" then
-    return {}, result_str
-  end
-  -- Handle trailing newline from C++ (trimws removes empty strings from split)
-  return vim.split(result_str, "\n", { plain = true, trimempty = true }), nil
+  return out
 end
 
---- Tokenize a full Vim sequence (motions, edits, insert-mode text) into tokens
---- Supports change commands, typed text, and <Esc>
----@param seq string Vim sequence (e.g., "ciwhello<Esc>2j")
----@return string[] Array of tokens (e.g., {"ciw", "hello", "<Esc>", "2j"})
----@return string|nil error Error message if tokenization failed
+--- Tokenize a motion sequence into kinded tokens. Handles counts, f/F/t/T
+--- + target char, and special keys like `<C-d>`. All returned tokens have
+--- `kind = "motion"` (the motion parser doesn't emit other kinds).
+---@param seq string  Motion sequence (e.g., "3wfx;j")
+---@return VimficiencyToken[] tokens
+---@return string|nil error
+function M.tokenize_motions(seq)
+  if not seq or seq == "" then return {}, nil end
+  local result_str = ffi.string(lib.vimficiency_tokenize_motions(seq))
+  if result_str == "" then return {}, nil end
+  if result_str:sub(1, 6) == "ERROR:" then return {}, result_str end
+  return parse_kinded_tokens(result_str), nil
+end
+
+--- Tokenize a full Vim sequence (motions, edits, visual, insert-mode text)
+--- into kinded tokens. Tokens carry modal-transition metadata so the Lua
+--- animation layer doesn't maintain a parallel classifier.
+---@param seq string  Vim sequence (e.g., "ciwhello<Esc>2j")
+---@return VimficiencyToken[] tokens
+---@return string|nil error
 function M.tokenize_sequence(seq)
-  if not seq or seq == "" then
-    return {}, nil
-  end
+  if not seq or seq == "" then return {}, nil end
   local result_str = ffi.string(lib.vimficiency_tokenize_sequence(seq))
-  if result_str == "" then
-    return {}, nil
-  end
-  -- Check for error from C++
-  if result_str:sub(1, 6) == "ERROR:" then
-    return {}, result_str
-  end
-  -- Handle trailing newline from C++ (trimws removes empty strings from split)
-  return vim.split(result_str, "\n", { plain = true, trimempty = true }), nil
+  if result_str == "" then return {}, nil end
+  if result_str:sub(1, 6) == "ERROR:" then return {}, result_str end
+  return parse_kinded_tokens(result_str), nil
 end
 
 --- Format a sequence string for human-readable display

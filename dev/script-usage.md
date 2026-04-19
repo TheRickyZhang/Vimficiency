@@ -47,17 +47,22 @@ doc/vimficiency.txt            (committed, final)
 
 `.github/workflows/vimdoc.yml` runs on pushes to `main` that touch
 `doc-src/**` or the two scripts. It invokes the
-`kdheepak/panvimdoc@main` action between the two shell scripts and
+`kdheepak/panvimdoc@v4.0.1` action between the two shell scripts and
 auto-commits `doc/vimficiency.txt` back via
-`stefanzweifel/git-auto-commit-action`.
+`stefanzweifel/git-auto-commit-action`. The pinned tag must stay in
+sync with `.github/workflows/vimdoc-check.yml` (same tag, same output)
+— bumping one without the other produces divergent vimdoc and a flaky
+CI diff.
 
 ### Running it locally
 
 panvimdoc is not packaged — it is a repo of pandoc Lua filters plus a
-wrapper script. Clone it once:
+wrapper script. Clone it once at the same tag CI pins to (`v4.0.1`) so
+local runs produce byte-identical output and the `vimdoc-check` job
+doesn't fail on a drift-only diff:
 
 ```bash
-git clone --depth 1 https://github.com/kdheepak/panvimdoc.git /tmp/panvimdoc
+git clone --depth 1 --branch v4.0.1 https://github.com/kdheepak/panvimdoc.git /tmp/panvimdoc
 ```
 
 Prerequisites on the host: `pandoc` (Arch: `sudo pacman -S pandoc`).
