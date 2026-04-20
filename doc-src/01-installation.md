@@ -1,8 +1,8 @@
-**[Index](./README.md)** | **[Next: Sessions →](02-sessions.md)**
-
+---
+title: "Installation"
 ---
 
-# 1. Installation
+# Installation
 
 ## Requirements
 
@@ -44,7 +44,3 @@ If this prints the command list, you're ready.
 If instead you see "command not defined", `setup()` didn't run — check your
 config for syntax errors or a load-order issue, or see
 [14. Troubleshooting](14-troubleshooting.md).
-
----
-
-**[Index](./README.md)** | **[Next: Sessions →](02-sessions.md)**

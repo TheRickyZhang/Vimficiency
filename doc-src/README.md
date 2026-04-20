@@ -1,3 +1,7 @@
+---
+title: "Vimficiency User Guide"
+---
+
 # Vimficiency User Guide
 
 Vimficiency watches how you edit and tells you shorter keystroke sequences

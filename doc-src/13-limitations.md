@@ -1,8 +1,8 @@
-**[← Workflows](12-workflows.md)** | **[Index](./README.md)** | **[Next: Troubleshooting →](14-troubleshooting.md)**
-
+---
+title: "Known limitations"
 ---
 
-# 13. Known limitations
+# Known limitations
 
 - **Text-object final character** is sometimes missing from the recorded
   sequence (e.g., `ciw` may record as `c`+`i`). The optimizer still analyzes
@@ -41,7 +41,3 @@
   Vimfy action that opens an async floating-input prompt (e.g.
   `vim.ui.input` overridden by dressing.nvim), the `2` / `<CR>` you
   type into that prompt are filtered automatically.
-
----
-
-**[← Workflows](12-workflows.md)** | **[Index](./README.md)** | **[Next: Troubleshooting →](14-troubleshooting.md)**

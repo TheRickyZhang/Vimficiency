@@ -1,8 +1,8 @@
-**[← Configuration](09-configuration.md)** | **[Index](./README.md)** | **[Next: Commands →](11-commands.md)**
-
+---
+title: "The effort model"
 ---
 
-# 10. The effort model
+# The effort model
 
 > **Status: placeholder.** The effort model is a substantial topic — this
 > page will grow. For now, use `:Vimfy config` to inspect the live values
@@ -57,7 +57,3 @@ you reshape this curve.
 
 Until these are written, `:Vimfy config` is the authoritative surface, and
 the C++ source (`cpp/effort_model.*`) is the spec.
-
----
-
-**[← Configuration](09-configuration.md)** | **[Index](./README.md)** | **[Next: Commands →](11-commands.md)**

@@ -1,8 +1,8 @@
-**[← Recall](05-recall.md)** | **[Index](./README.md)** | **[Next: Results →](07-results.md)**
-
+---
+title: "Suggest (auto start, auto end)"
 ---
 
-# 6. Suggest (auto start, auto end)
+# Suggest (auto start, auto end)
 
 Suggest runs the optimizer on its own and surfaces a result without
 you calling `:Vimfy end` or `:Vimfy recall`. It reuses the recall queue
@@ -87,7 +87,3 @@ Suggest share that policy.
 
 Suggest queries the same queue as [Recall](05-recall.md). Recall is
 always on, so there's nothing to configure for it separately.
-
----
-
-**[← Recall](05-recall.md)** | **[Index](./README.md)** | **[Next: Results →](07-results.md)**

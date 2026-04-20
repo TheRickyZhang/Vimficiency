@@ -10,29 +10,6 @@ Review implementation of BufferIndex in optimizeToRange() (is it exploring corre
 - Different modes of invoking sessions
 - Improving the lua/C++ interaction semantics
 
-- Review testing suite for Lua
-Replay:
-
-Address this what was hastily patched in latest tests:
-  3. Architectural note — dev/lua/ffi-separators.md:
-  - New "Numeric field encoding across the FFI" section documenting the tostring → scientific-notation trap, the
-  encode_int64 rule, and the distinction vs. direct int64_t cdef args (LuaJIT auto-coerces those correctly).
-  - Subsection "A better architecture (when it's worth it)" spells out the structural alternative: LuaJIT
-  ffi.new("int64_t", n) cdata + binary wire format. Explicitly flagged as "default to the helper; revisit if int64-identity
-   preservation ever becomes necessary."
-  - New anti-pattern entry added to the existing catalog.
-
-This as well:
-Surfaced pre-existing test fragility (worth a separate follow-up): map_helper.lua's "mapped LHS doesn't leak to on_key"
-  assertion depends on a typed ~= key heuristic in key_tracking.lua's global on_key handler. Neovim doesn't guarantee typed
-   ~= key — after on_key_mapping_probe.lua characterizes the behavior for multi-key resolutions, single-key function keys
-  start reporting typed == key. The plugin should gate its "this is a resolution event" check on something more robust
-  (tracking which keymaps it owns, or length-only with a different threshold), but that's a behavior change worth its own
-  discussion — I left a pointer in run.sh rather than modifying key_tracking without your sign-off.
-  Tradeoff to flag honestly: the reset protocol is now a small ongoing tax. Every new stateful module needs a line in
-  reset_state(). First time someone adds one without updating it, we'll see a silent flake. The comment in runner.lua
-  explicitly says "look here first" when tests start flaking, which is the best mitigation I can build in short of
-  framework tooling.
 
 - Later: implement debounced async for how to properly continuously perform optimize() calls to check among previous things automatically. Also need details for concurrency in implementing subprocesses?
 

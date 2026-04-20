@@ -1,8 +1,8 @@
-**[← Inspecting results](07-results.md)** | **[Index](./README.md)** | **[Next: Keymaps →](08-keymaps.md)**
-
+---
+title: "Session storage"
 ---
 
-# 7a. Session storage
+# Session storage
 
 A finished session has two places it can live:
 
@@ -113,7 +113,3 @@ explicit `:Vimfy fetch <name> <alias>` first.
 Shows both sides: active sessions in memory and saved files on disk.
 Tab completion for `sim` / `view` / `rm` / `fetch` uses whichever side
 is relevant for that command.
-
----
-
-**[← Inspecting results](07-results.md)** | **[Index](./README.md)** | **[Next: Keymaps →](08-keymaps.md)**

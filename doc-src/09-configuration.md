@@ -1,8 +1,8 @@
-**[← Keymaps](08-keymaps.md)** | **[Index](./README.md)** | **[Next: Effort model →](10-effort-model.md)**
-
+---
+title: "Configuration"
 ---
 
-# 9. Configuration
+# Configuration
 
 All settings are optional. Pass a table to `setup`:
 
@@ -95,7 +95,3 @@ tunable knobs: per-key base costs, same-finger / same-key / alt-hand /
 good-roll / bad-roll weights, and count-penalty overrides. These are
 accepted in `setup{}` but documented separately — see
 [10. The effort model](10-effort-model.md).
-
----
-
-**[← Keymaps](08-keymaps.md)** | **[Index](./README.md)** | **[Next: Effort model →](10-effort-model.md)**

@@ -1,8 +1,8 @@
-**[← Sessions](02-sessions.md)** | **[Index](./README.md)** | **[Next: Watch →](04-watch.md)**
-
+---
+title: "Mark (manual start, manual end)"
 ---
 
-# 3. Mark (manual start, manual end)
+# Mark (manual start, manual end)
 
 Use these when you want precision analyzing a specific sequence or know *in advance* the entire sequence you want optimized.
 
@@ -24,7 +24,3 @@ Marks are similar semantics to marks in vim, where start/end is similar to creat
   the suggestions.
 - [8. Binding keys](08-keymaps.md) — use `<Plug>VimfyStartA` /
   `<Plug>VimfyEndA` so your session markers don't need typing `:Vimfy ...`.
-
----
-
-**[← Sessions](02-sessions.md)** | **[Index](./README.md)** | **[Next: Watch →](04-watch.md)**

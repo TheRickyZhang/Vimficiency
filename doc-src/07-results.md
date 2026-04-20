@@ -1,8 +1,8 @@
-**[← Suggest](06-suggest.md)** | **[Index](./README.md)** | **[Next: Keymaps →](08-keymaps.md)**
-
+---
+title: "Inspecting results"
 ---
 
-# 7. Inspecting results
+# Inspecting results
 
 ## Reading the notification
 
@@ -112,7 +112,3 @@ Press `:h g?` in a saved-result buffer to open this section directly.
 - `q` — close the current saved-result view
 - `?` — show the short keymap summary popup
 - `g?` — open the full help section for saved-result buffers
-
----
-
-**[← Suggest](06-suggest.md)** | **[Index](./README.md)** | **[Next: Keymaps →](08-keymaps.md)**

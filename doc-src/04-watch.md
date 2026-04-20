@@ -1,8 +1,8 @@
-**[← Mark](03-mark.md)** | **[Index](./README.md)** | **[Next: Recall →](05-recall.md)**
-
+---
+title: "Watch (manual start, auto end)"
 ---
 
-# 4. Watch (manual start, auto end)
+# Watch (manual start, auto end)
 
 Use this when you know the starting point but don't want to remember to
 call `:Vimfy end` — the end fires on its own after an idle pause.
@@ -39,7 +39,3 @@ does. Ask if you'd use them and we can extend.
 
 - [8. Binding keys](08-keymaps.md) — `<Plug>VimfyWatchA` / `<Plug>VimfyWatchB`.
 - [9. Configuration](09-configuration.md) — full shape of the `watch` key in `setup{}`.
-
----
-
-**[← Mark](03-mark.md)** | **[Index](./README.md)** | **[Next: Recall →](05-recall.md)**
