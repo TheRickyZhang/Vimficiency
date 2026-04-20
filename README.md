@@ -1,10 +1,10 @@
 # Vimficiency
 
-One of the biggest challenges people face with learning Vim motions is the high learning curve. It is often very difficult to know which of the many ways to perform the same action is the most efficient, or even what all the applicable actions are.
+One of the biggest challenges with Vim is knowing which of the many ways to perform an edit is the most efficient — or what all the applicable motions even are.
 
-Vimficiency bridges this gap by analyzing your editing actions and suggesting more efficient key sequences, with best effort awareness of possible actions and customizability. It is genuinely a difficult algorithmic and heuristical problem!
+Vimficiency watches how you edit and surfaces shorter keystroke sequences that would have produced the same result, with awareness of customizable per-key effort and the algorithmically-tractable subset of Vim's grammar. You keep editing the way you already do; the plugin runs in the background and lets you replay suggestions side-by-side to learn.
 
-The benchmark site providing more details about the search process is available here:
+The benchmark dashboard with details on the search process is here:
 https://therickyzhang.github.io/Vimficiency/
 
 ## Requirements
@@ -15,35 +15,41 @@ https://therickyzhang.github.io/Vimficiency/
 ## Build
 ```bash
 cmake -B build
-cmake --build build -j
+cmake --build build
 ```
 
 ## Installation
-Add to your Neovim config:
-
 ```lua
 require('vimficiency').setup()
 ```
 
-Ensure `build/libvimficiency.so` is in your library path or set `VIMFICIENCY_LIB_PATH`.
+Ensure `build/libvimficiency.so` is on your library path or set `VIMFICIENCY_LIB_PATH`.
 
 ## Usage
 
-### Manual triggers
-```vim
-:Vimfy start a      " Start recording session 'a'
-" ... edit normally ...
-:Vimfy end a        " Finish and show optimization suggestions
+Vimficiency organizes work around **sessions** — captures of (start state, keys typed, end state) that the optimizer scores. Sessions form a 2×2 over how they start and end:
 
-" Or, retrospectively, without starting anything:
-" ... edit normally ...
-:Vimfy recall 6     " Analyze the last 6 keystrokes
-:Vimfy recall 3s    " Analyze the last 3 seconds
+|                   | **Manual end**                | **Auto end** (idle)         |
+|-------------------|-------------------------------|-----------------------------|
+| **Manual start**  | **Mark** — `:Vimfy start a` … `:Vimfy end a` | **Watch** — `:Vimfy watch a`            |
+| **Auto start**    | **Recall** — `:Vimfy recall 6` / `recall 3s` | **Suggest** — fires while you edit      |
+
+Recall is always on, so the lowest-friction entry point is:
+
+```vim
+" ... edit something ...
+:Vimfy recall 6     " analyze the last 6 keystrokes (or 'recall 3s' for time)
+:Vimfy sim 6        " animate the suggested sequence
 ```
+
+For the full set of commands, save/store/fetch flow, configuration, and the effort model, see the user guide.
+
+## Documentation
+
+- **User guide:** [`doc-src/README.md`](doc-src/README.md) — installation, the four session types, keymap contract, configuration, effort model, troubleshooting.
+- **In-editor:** `:help vimficiency` (generated from `doc-src/`).
+- **Internals:** `dev/` — implementation notes on the optimizer, FFI conventions, replay precompute, etc.
 
 ## License
 
 MIT
-
-## Docs
-For more specific information, see /docs.

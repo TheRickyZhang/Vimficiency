@@ -1,8 +1,8 @@
-**[← Results](07-results.md)** | **[Index](./README.md)** | **[Next: Configuration →](09-configuration.md)**
-
+---
+title: "Binding keys to Vimfy actions"
 ---
 
-# 8. Binding keys to Vimfy actions
+# Binding keys to Vimfy actions
 
 Vimficiency measures the keys you type, so a key that *invokes* Vimfy
 must announce itself as admin activity — otherwise the invoking
@@ -115,7 +115,3 @@ emits a one-shot warning listing each offender. The scan can't see
 mappings defined *after* setup (or Lua-callback RHS, or buffer-local
 mappings added later) — if an LHS keeps showing up as motion, check
 that the binding is routed through `vimfy.map()` / `<Plug>` / `wrap()`.
-
----
-
-**[← Results](07-results.md)** | **[Index](./README.md)** | **[Next: Configuration →](09-configuration.md)**

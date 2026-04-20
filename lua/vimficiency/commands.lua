@@ -192,23 +192,10 @@ subcommands.rm = {
 }
 
 subcommands.list = {
-  desc = "List active sessions and saved files",
+  desc = "Open the interactive session picker",
   usage = "list",
   fn = function()
-    local aliases = session.list()
-    local saved = session.list_saved()
-    local lines = {}
-    if #aliases > 0 then
-      table.insert(lines, "Active sessions: " .. table.concat(aliases, ", "))
-    else
-      table.insert(lines, "Active sessions: (none)")
-    end
-    if #saved > 0 then
-      table.insert(lines, "Saved results: " .. table.concat(saved, ", "))
-    else
-      table.insert(lines, "Saved results: (none)")
-    end
-    vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO)
+    require("vimficiency.session.picker").open()
   end,
 }
 

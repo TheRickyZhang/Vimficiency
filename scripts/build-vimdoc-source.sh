@@ -11,21 +11,20 @@ out="$repo_root/build/vimficiency.md"
 cd "$repo_root"
 
 strip_chapter() {
-  # - drop navigation lines (contain **[Index]...**)
-  # - drop horizontal-rule separators that frame nav
-  # - strip the "N. " numbering from chapter h1 headings (`# 3. Mark` →
-  #   `# Mark`) so panvimdoc's tag slugs don't carry `-3.-` cruft
-  # - strip links pointing at *.md targets, keep display text
-  # Chapters stay at h1 in the combined doc (no demotion); with no
-  # enclosing `# vimficiency` heading, panvimdoc prefixes tags with just
-  # the project name (e.g. `vimficiency-mark`) instead of double-wrapping
-  # (`vimficiency-vimficiency-3.-mark`).
-  sed -E \
-    -e '/\*\*\[Index\]/d' \
-    -e '/^---$/d' \
-    -e 's/^# [0-9]+\. /# /' \
-    -e 's/\[([^][]+)\]\(([^)]*\.md[^)]*)\)/\1/g' \
-    "$1"
+  # Drop YAML frontmatter (delimited by --- ... --- at file start). The
+  # frontmatter exists for the Astro Starlight site (`docs-site/`) and
+  # is noise to panvimdoc — leaking `title:`, etc. into the body would
+  # render as plain text in `:help`. The awk block below strips lines
+  # from the first `^---$` to the matching second `^---$` only when
+  # the first one is line 1, so legitimate `---` thematic breaks in
+  # the body survive.
+  awk '
+    NR == 1 && /^---$/ { in_fm = 1; next }
+    in_fm && /^---$/   { in_fm = 0; next }
+    in_fm              { next }
+    { print }
+  ' "$1" | sed -E \
+    -e 's/\[([^][]+)\]\(([^)]*\.md[^)]*)\)/\1/g'
 }
 
 {

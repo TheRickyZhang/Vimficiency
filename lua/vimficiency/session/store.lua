@@ -498,6 +498,35 @@ function M.register_fetched_result(alias, result)
   return id, nil
 end
 
+--- Move a manual alias to a new name in-place. Refuses if the source is
+--- missing or the target is already taken. Only the `manual_alias_to_id`
+--- index is touched; the underlying SessionRecord is untouched.
+---@param old_alias string
+---@param new_alias string
+---@return boolean ok
+---@return string|nil err
+function M.rename_manual_alias(old_alias, new_alias)
+  if old_alias == new_alias then
+    return false, "source and target aliases are identical"
+  end
+  if not alias_mod.is_valid_manual(new_alias) then
+    return false, "invalid target alias '" .. tostring(new_alias) ..
+      "' (manual aliases must be alphabetic)"
+  end
+  local id = manual_alias_to_id[old_alias]
+  if not id then
+    return false, "no manual alias '" .. tostring(old_alias) .. "' in the workspace"
+  end
+  if manual_alias_to_id[new_alias] then
+    return false, "alias '" .. new_alias .. "' is already in use"
+  end
+  manual_alias_to_id[old_alias] = nil
+  manual_alias_to_id[new_alias] = id
+  local rec = session_records[id]
+  if rec then rec.finish_alias = new_alias end
+  return true, nil
+end
+
 --- List all valid aliases for debugging / tab-completion.
 ---@return string[]
 function M.list_aliases()

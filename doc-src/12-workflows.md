@@ -1,8 +1,8 @@
-**[← Commands](11-commands.md)** | **[Index](./README.md)** | **[Next: Limitations →](13-limitations.md)**
-
+---
+title: "Recommended workflows"
 ---
 
-# 12. Recommended workflows
+# Recommended workflows
 
 ## "I'm actively trying to learn better motions"
 
@@ -74,7 +74,3 @@ Save to disk after ending — `@` resolves to the session you just finished:
 Saved results are durable across Neovim restarts and survive in
 `stdpath('data')/vimficiency/saved/` — you can share the file directly if
 you want to show a colleague.
-
----
-
-**[← Commands](11-commands.md)** | **[Index](./README.md)** | **[Next: Limitations →](13-limitations.md)**

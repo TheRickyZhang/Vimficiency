@@ -1,8 +1,8 @@
-**[← Effort model](10-effort-model.md)** | **[Index](./README.md)** | **[Next: Workflows →](12-workflows.md)**
-
+---
+title: "Commands reference"
 ---
 
-# 11. Commands reference
+# Commands reference
 
 | Command                                    | Purpose                                              |
 |--------------------------------------------|------------------------------------------------------|
@@ -19,7 +19,7 @@
 | `:Vimfy escape`                            | Restore the side-by-side replay layout.              |
 | `:Vimfy view [name]`                       | View a saved result (or list saved names).           |
 | `:Vimfy rm <name>`                         | Delete a saved result from disk.                     |
-| `:Vimfy list`                              | List active sessions and saved files.                |
+| `:Vimfy list`                              | Open the interactive session picker (see below).     |
 | `:Vimfy suggest <on\|off\|toggle>`         | Runtime toggle for auto-suggest (config-driven).     |
 | `:Vimfy config`                            | Show the current configuration.                      |
 | `:Vimfy reload`                            | Rebuild the C++ library (needs restart).             |
@@ -65,6 +65,54 @@ between them with `save` / `store` / `fetch`; see
 collision rules. Omitting the second argument on `save` / `store` /
 `fetch` repeats the first argument verbatim.
 
+## Session picker (`:Vimfy list`)
+
+Opens a centered float with two panes — **Active** (in-memory workspace
+sessions) and **Saved** (files under `stdpath("data")/vimficiency/saved`)
+— and a live-filter prompt at the bottom. `<Tab>` toggles between panes.
+
+Ongoing sessions always sit in a pinned **Ongoing** section at the top,
+regardless of sort mode. Auto-generated recall ring entries (one per
+keystroke) are folded into a single `recall ring (N)` summary row — the
+per-entry aliases drift, so they're not individually actionable from the
+picker; resolve a specific window with `:Vimfy recall N` or `:Vimfy
+recall Ns` instead.
+
+| Key        | Action                                                |
+|------------|-------------------------------------------------------|
+| `/`        | Fuzzy-filter by alias (prompt at bottom, live)        |
+| `<CR>`     | Open (default action, see below)                      |
+| `<Tab>`    | Switch Active ↔ Saved pane                            |
+| `s`        | Cycle sort (category / alpha / created)               |
+| `d`        | Delete the current entry                              |
+| `m`        | Toggle mark on the current entry                      |
+| `D`        | Delete all marked entries                             |
+| `r`        | Rename (see below)                                    |
+| `y`        | Duplicate (see below)                                 |
+| `?`        | Show the keymap popup                                 |
+| `q`, `<Esc>` | Close                                               |
+
+Inside the search prompt, `<C-n>` / `<C-p>` (and `<Down>` / `<Up>`) move
+the list cursor without leaving insert mode; `<CR>` opens the current
+entry; `<Esc>` returns to the list.
+
+**Per-pane action semantics:**
+
+- `<CR>` — on the Active pane, opens a `:Vimfy sim`-style replay of a
+  finished session; on the Saved pane, fetches the file into the
+  workspace and switches focus to Active.
+- `d` — on Active, discards the session (equivalent to `:Vimfy close`);
+  on Saved, deletes the file on disk.
+- `r` / `y` — on Saved, renames/duplicates the file. On Active, renames
+  the manual alias / registers a duplicate finished record under a new
+  alias. Only entries with a stable manual alias are renameable this
+  way; for recall and auto-suggest results, save to disk first (`:Vimfy
+  save <alias> <name>`) and then rename from the Saved pane.
+
+**Blocked on in-progress sessions:** `<CR>`, `r`, `y` all refuse to run
+on a still-accumulating session. Finish it with `:Vimfy end` (or let
+Watch's idle trigger fire) and try again.
+
 ## Tab completion
 
 Works on:
@@ -94,7 +142,3 @@ detail panes that show Vimficiency text output in a split.
 - `q` — close the current Vimficiency output buffer
 - `?` — show the short keymap summary popup
 - `g?` — open the full help section for scratch output buffers
-
----
-
-**[← Effort model](10-effort-model.md)** | **[Index](./README.md)** | **[Next: Workflows →](12-workflows.md)**

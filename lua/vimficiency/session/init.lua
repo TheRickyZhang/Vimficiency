@@ -775,6 +775,97 @@ function M.rm(name)
   vim.notify("vimficiency removed [" .. name .. "] ← " .. path, vim.log.levels.INFO)
 end
 
+--- Rename the manual alias of a finished active session. Leaves the
+--- underlying record untouched; only the lookup name changes.
+---@param old_alias string
+---@param new_alias string
+---@return boolean ok
+---@return string|nil err
+function M.rename_active(old_alias, new_alias)
+  if not alias_mod.is_valid_manual(old_alias) then
+    return false, "source alias must be a manual (alphabetic) alias"
+  end
+  return session_store.rename_manual_alias(old_alias, new_alias)
+end
+
+--- Duplicate a finished active session's result under a new manual alias.
+---@param src_alias string
+---@param dst_alias string
+---@return boolean ok
+---@return string|nil err
+function M.duplicate_active(src_alias, dst_alias)
+  if not alias_mod.is_valid_manual(dst_alias) then
+    return false, "target alias must be a manual (alphabetic) alias"
+  end
+  local result = session_store.get_result(src_alias)
+  if not result then
+    return false, "no finished result for '" .. tostring(src_alias) .. "'"
+  end
+  local _, reg_err = session_store.register_fetched_result(dst_alias, result)
+  if reg_err then return false, reg_err end
+  return true, nil
+end
+
+--- Rename a saved result file on disk. Refuses to overwrite an existing target.
+---@param old_name string
+---@param new_name string
+---@return boolean ok
+---@return string|nil err
+function M.rename_saved(old_name, new_name)
+  if not alias_mod.is_valid_saved_name(old_name) then
+    return false, "Invalid source name '" .. tostring(old_name) .. "'."
+  end
+  if not alias_mod.is_valid_saved_name(new_name) then
+    return false, "Invalid target name '" .. tostring(new_name) .. "'."
+  end
+  if old_name == new_name then
+    return false, "Source and target names are identical."
+  end
+  local src = get_save_dir() .. "/" .. old_name .. ".json"
+  local dst = get_save_dir() .. "/" .. new_name .. ".json"
+  if vim.fn.filereadable(src) == 0 then
+    return false, "No saved result '" .. old_name .. "' at " .. src
+  end
+  if vim.fn.filereadable(dst) == 1 then
+    return false, "Target '" .. new_name .. "' already exists."
+  end
+  local ok, err = vim.uv.fs_rename(src, dst)
+  if not ok then
+    return false, "rename failed: " .. tostring(err)
+  end
+  return true, nil
+end
+
+--- Duplicate a saved result file on disk. Refuses to overwrite an existing target.
+---@param src_name string
+---@param dst_name string
+---@return boolean ok
+---@return string|nil err
+function M.duplicate_saved(src_name, dst_name)
+  if not alias_mod.is_valid_saved_name(src_name) then
+    return false, "Invalid source name '" .. tostring(src_name) .. "'."
+  end
+  if not alias_mod.is_valid_saved_name(dst_name) then
+    return false, "Invalid target name '" .. tostring(dst_name) .. "'."
+  end
+  if src_name == dst_name then
+    return false, "Source and target names are identical."
+  end
+  local src = get_save_dir() .. "/" .. src_name .. ".json"
+  local dst = get_save_dir() .. "/" .. dst_name .. ".json"
+  if vim.fn.filereadable(src) == 0 then
+    return false, "No saved result '" .. src_name .. "' at " .. src
+  end
+  if vim.fn.filereadable(dst) == 1 then
+    return false, "Target '" .. dst_name .. "' already exists."
+  end
+  local ok, err = vim.uv.fs_copyfile(src, dst, nil)
+  if not ok then
+    return false, "copy failed: " .. tostring(err)
+  end
+  return true, nil
+end
+
 --- Close a session without finishing (no optimization, no result stored).
 ---@param alias string  The alias of the session to close
 function M.close(alias)

@@ -1,8 +1,8 @@
-**[← Watch](04-watch.md)** | **[Index](./README.md)** | **[Next: Suggest →](06-suggest.md)**
-
+---
+title: "Recall (auto start, manual end)"
 ---
 
-# 5. Recall (auto start, manual end)
+# Recall (auto start, manual end)
 
 Recall lets you look backward without any previous marking setup by querying a continuously maintained queue. It is always on — the bounded, RAM-only ring is foundational enough that there's no toggle.
 
@@ -85,7 +85,3 @@ Recall windows rotate out of the queue as you type, so save promptly.
   without calling `end`.
 - [7. Inspecting results](07-results.md) — what the output looks like
   and how to replay it.
-
----
-
-**[← Watch](04-watch.md)** | **[Index](./README.md)** | **[Next: Suggest →](06-suggest.md)**

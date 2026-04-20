@@ -1,8 +1,8 @@
-**[← Troubleshooting](14-troubleshooting.md)** | **[Index](./README.md)**
-
+---
+title: "FAQ"
 ---
 
-# 15. FAQ
+# FAQ
 
 > **Status: placeholder.** This page will accumulate common questions as
 > they come up. Below are a few anticipated ones with short answers — full
@@ -57,7 +57,3 @@ Tab-completes over saved names. Or delete the file directly from
 - Comparison to alternatives (vim-golf scoring, key-logger-based tools)
 - Known integration notes with `which-key`, `legendary`, `lazy.nvim`
 - How to share a result with a colleague or team
-
----
-
-**[← Troubleshooting](14-troubleshooting.md)** | **[Index](./README.md)**

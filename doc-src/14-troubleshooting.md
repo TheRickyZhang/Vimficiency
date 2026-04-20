@@ -1,8 +1,8 @@
-**[← Limitations](13-limitations.md)** | **[Index](./README.md)** | **[Next: FAQ →](15-faq.md)**
-
+---
+title: "Troubleshooting"
 ---
 
-# 14. Troubleshooting
+# Troubleshooting
 
 ## `:Vimfy` command isn't defined
 
@@ -52,7 +52,3 @@ Typo in a `setup{}` key. The warning names them. Cross-check against
 
 Run `:Vimfy config` and capture the output along with the sequence you
 typed — most triage starts there.
-
----
-
-**[← Limitations](13-limitations.md)** | **[Index](./README.md)** | **[Next: FAQ →](15-faq.md)**

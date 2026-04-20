@@ -1,9 +1,13 @@
 name: vimdoc-check
 
+# Validates both consumers of `doc-src/*.md` on PR: panvimdoc generation
+# and the Astro Starlight build. A change to either source surface or
+# either pipeline triggers a build.
 on:
   pull_request:
     paths:
       - 'doc-src/**'
+      - 'docs-site/**'
       - 'scripts/build-vimdoc-source.sh'
       - 'scripts/postprocess-vimdoc.sh'
       - '.github/workflows/vimdoc.yml'
@@ -13,7 +17,7 @@ permissions:
   contents: read
 
 jobs:
-  check:
+  vimdoc:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -32,3 +36,18 @@ jobs:
 
       - name: Post-process vimdoc
         run: bash scripts/postprocess-vimdoc.sh
+
+  docs-site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+      - name: Build docs site
+        working-directory: docs-site
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+      - name: Verify docs site build output
+        run: |
+          test -f docs-site/dist/index.html
+          test -f docs-site/dist/01-installation/index.html

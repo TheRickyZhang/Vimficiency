@@ -1,8 +1,8 @@
-**[← Installation](01-installation.md)** | **[Index](./README.md)** | **[Next: Mark →](03-mark.md)**
-
+---
+title: "The core idea: a session"
 ---
 
-# 2. The core idea: a session
+# The core idea: a session
 
 Everything in Vimficiency is organized around **sessions**. A session captures:
 
@@ -40,7 +40,3 @@ age out of the rolling ring. For anything durable, **save** a session
 to disk — or **store** it (save + remove from workspace), **fetch** it
 back later, and **sim** it whether it's in memory or on disk. See
 [7a. Session storage](07a-session-storage.md) for the full model.
-
----
-
-**[← Installation](01-installation.md)** | **[Index](./README.md)** | **[Next: Mark →](03-mark.md)**
