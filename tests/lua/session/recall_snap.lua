@@ -1,5 +1,5 @@
 -- tests/lua/recall_snap.lua
--- Covers the backward-snap algorithm used by `:Vimfy end Ns`. Pure-function
+-- Covers the backward-snap algorithm used by `:Vimfy recall Ns`. Pure-function
 -- tests over session_store._pure.snap_backward_to_boundary, so we can feed
 -- synthetic ring state and assert precisely.
 

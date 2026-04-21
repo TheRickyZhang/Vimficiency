@@ -20,7 +20,7 @@ can be picked manually (by you) or automatically (by triggers from your configur
 
 |                      | **Manual end**                                         | **Auto end** (idle trigger)                      |
 |----------------------|--------------------------------------------------------|---------------------------------------------------|
-| **Manual start**     | **Mark** — `:Vimfy start <alias>`, `:Vimfy end <alias>` | **Watch** — `:Vimfy watch <alias>`                |
+| **Manual start**     | **Mark** — `:Vimfy start <alias>`, `:Vimfy finish <alias>` | **Watch** — `:Vimfy watch <alias>`                |
 | **Auto start**       | **Recall** — `:Vimfy recall N` / `recall Ns`           | **Suggest** — fires on its own while you edit     |
 
 

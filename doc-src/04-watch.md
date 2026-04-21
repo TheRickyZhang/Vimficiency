@@ -5,7 +5,7 @@ title: "Watch (manual start, auto end)"
 # Watch (manual start, auto end)
 
 Use this when you know the starting point but don't want to remember to
-call `:Vimfy end` — the end fires on its own after an idle pause.
+call `:Vimfy finish` — the end fires on its own after an idle pause.
 
 ```vim
 :Vimfy watch a       " Mark the start

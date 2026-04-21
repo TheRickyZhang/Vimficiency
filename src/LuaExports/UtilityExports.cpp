@@ -385,4 +385,24 @@ const char *vimficiency_format_sequence(const char *seq) {
   });
 }
 
+const char *vimficiency_simulate_motions(
+    const char *encoded_lines,
+    int start_row,
+    int start_col,
+    const char *seq) {
+  static string result_storage;
+  return vimficiency::lua_exports::export_helpers::storeString(result_storage, [&] {
+    return vimficiency::lua_exports::export_helpers::requiredText(encoded_lines, "encoded_lines")
+        .and_then(vimficiency::lua_exports::payload::decodeLineArray)
+        .and_then([&](const Lines& lines) {
+          return vimficiency::lua_exports::export_helpers::requiredText(seq, "seq")
+              .transform([&](string_view motionSeq) {
+                CursorPos pos(start_row, start_col);
+                const CursorPos landed = simulateMotions(pos, motionSeq, lines, NavContext());
+                return vimficiency::lua_exports::export_helpers::packInts(landed.line, landed.col);
+              });
+        });
+  });
+}
+
 }

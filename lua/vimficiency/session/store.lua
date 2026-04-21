@@ -31,13 +31,13 @@ local config = require("vimficiency.config")
 ---@field result      ResultSession|nil         # Set at finish
 ---@field finish_alias string|nil               # Literal alias passed to finish (`a`, `3s`, ...); used as the default filename for `:Vimfy save`
 ---@field start_kind  "manual"|"auto"           # Who picked the start. Manual = user called :Vimfy start|watch. Auto = created from the recall queue.
----@field end_kind    "manual"|"auto"           # Who triggers the end. Manual = user calls :Vimfy end. Auto = an end-trigger (idle, etc.) fires finish. Combined with start_kind, yields one of Mark/Watch/Recall/Suggest.
+---@field end_kind    "manual"|"auto"           # Who triggers the end. Manual = user calls :Vimfy finish. Auto = an end-trigger (idle, etc.) fires finish. Combined with start_kind, yields one of Mark/Watch/Recall/Suggest.
 ---@field watch_disarm fun()|nil                # Watch sessions only: disarm for the idle end-trigger armed at :Vimfy watch. Called on finish/destroy so the timer and global subscriber are released.
 
 ---@alias ActiveSession SessionRecord
 
 ---@alias FinishReason
----| "manual"        # `:Vimfy end` (mark or recall)
+---| "manual"        # `:Vimfy finish` (mark or recall)
 ---| "watch_idle"    # watch session's idle trigger fired
 ---| "suggest_idle"  # auto_suggest.idle fired
 ---| "suggest_keys"  # auto_suggest.keys fired
@@ -46,10 +46,15 @@ local config = require("vimficiency.config")
 --- ResultSession: data for a completed session, ready for simulate().
 ---@class ResultSession
 ---@field lines string[]               # Trimmed buffer lines used for optimization
+---@field goal_lines string[]|nil      # Goal buffer slice for recomputing explore recommendations
 ---@field start_row integer            # 0-indexed, relative to lines
 ---@field start_col integer            # 0-indexed
 ---@field end_row integer              # 0-indexed, relative to lines
 ---@field end_col integer              # 0-indexed
+---@field has_lines_above boolean|nil  # Whether the optimization slice omitted lines above
+---@field has_lines_below boolean|nil  # Whether the optimization slice omitted lines below
+---@field window_height integer|nil    # Captured window height for page/scroll semantics
+---@field scroll_amount integer|nil    # Captured 'scroll' option for Ctrl-D/U semantics
 ---@field user_seq string              # What the user typed (keytrans string)
 ---@field user_cost number             # Effort cost of user's sequence
 ---@field optimal_results VimficiencyResult[] # Top N results from optimizer (seq + cost)
@@ -424,6 +429,25 @@ function M.finish_session(id, result, finish_alias, end_kind_override, reason)
   rec.key_seq = nil  -- compiled into result.user_seq; free the events
   rec.finish_alias = finish_alias
   last_finished_id = id
+
+  -- Append to the persistent stats log. Best-effort — the log module
+  -- swallows I/O errors, so this call must not raise and must not block
+  -- the finish transition. Required deferred require (log → … → store
+  -- would cycle if loaded eagerly at the top of this file).
+  --
+  -- Partial records seeded via `store_manual` with a hand-rolled table
+  -- (tests do this to exercise specific finish paths in isolation) may
+  -- lack start_kind/end_kind. Skip the log for those rather than raising
+  -- on `session_type_from_kinds(nil, nil)`. Real sessions always go
+  -- through `new_active_session`, which asserts both kinds are set.
+  if rec.start_kind and rec.end_kind then
+    local ok, stats_log = pcall(require, "vimficiency.stats.log")
+    if ok and stats_log then
+      local session_type = M.session_type_from_kinds(rec.start_kind, rec.end_kind)
+      local record = stats_log.build_record(session_type, result)
+      if record then stats_log.append(record) end
+    end
+  end
 
   return true
 end

@@ -951,6 +951,11 @@ local function build_sim_ui(lines, row, col, items)
   multi_sim.sim_tab = v.nvim_get_current_tabpage()
   local tabnew_buf = v.nvim_get_current_buf()
 
+  -- Layout: up to 4 windows across per row, wrapping to a second row at
+  -- item 5. `botright split` creates a full-width bottom row regardless
+  -- of where the current window sits, so vsplits within it stay
+  -- confined to that row.
+  local ROW_CAPACITY = 4
   for i, item in ipairs(items) do
     local label = string.format("[%d] %s", i, item.seq)
     local buf = create_sim_buffer(lines, label)
@@ -958,6 +963,9 @@ local function build_sim_ui(lines, row, col, items)
     ---@type integer
     local win
     if i == 1 then
+      win = v.nvim_get_current_win()
+    elseif i == ROW_CAPACITY + 1 then
+      cmd("botright split")
       win = v.nvim_get_current_win()
     else
       cmd("vsplit")
@@ -1050,8 +1058,13 @@ user_escape = function()
 
   ---@type VimficiencyReplayWin[]
   local new_windows = { { win = current_win, buf = saved_bufs[1], seq_idx = 1 } }
+  local ROW_CAPACITY = 4
   for i = 2, #saved_bufs do
-    cmd("vsplit")
+    if i == ROW_CAPACITY + 1 then
+      cmd("botright split")
+    else
+      cmd("vsplit")
+    end
     local new_win = v.nvim_get_current_win()
     v.nvim_win_set_buf(new_win, saved_bufs[i])
     decorate_sim_window(new_win)

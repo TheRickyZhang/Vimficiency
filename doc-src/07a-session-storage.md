@@ -7,7 +7,7 @@ title: "Session storage"
 A finished session has two places it can live:
 
 - **Session memory** (the "workspace") — indexed by its alias. This is
-  where a session lands the moment `:Vimfy end`, `:Vimfy recall`, or an
+  where a session lands the moment `:Vimfy finish`, `:Vimfy recall`, or an
   auto trigger finishes it. Cheap, immediate, ephemeral.
 - **Disk** (the "archive") — a file under
   `stdpath('data')/vimficiency/saved/<name>.json`. Durable across
@@ -72,9 +72,9 @@ explicitly:
 - **`fetch` into an occupied workspace alias** → refuses. Close the
   alias first (`:Vimfy close <alias>`) or fetch under a different name.
 
-## Replay: `sim` covers both
+## Replay: `play` covers both
 
-`:Vimfy sim <name>` looks up `<name>` in this order:
+`:Vimfy play <name>` looks up `<name>` in this order:
 
 - **Workspace only** → replays.
 - **Disk only** → implicitly `fetch <name> as <name>` into the
@@ -83,7 +83,7 @@ explicitly:
   model "what I just replayed is in my current session."
 - **Both** → WARN that the disk copy is being shadowed; replays the
   workspace copy. To force a refetch, `:Vimfy close <name>` first, then
-  `:Vimfy sim <name>`.
+  `:Vimfy play <name>`.
 
 The implicit fetch only works when `<name>` is a valid manual alias
 (alphabetic). For names with digits/dots/hyphens on disk, use an
@@ -94,14 +94,14 @@ explicit `:Vimfy fetch <name> <alias>` first.
 ```vim
 :Vimfy start a               " mark a session start
 " ... edit ...
-:Vimfy end a                 " finishes session; workspace has alias `a`
+:Vimfy finish a              " finishes session; workspace has alias `a`
 
 :Vimfy save a                " disk now has saved/a.json; workspace still has `a`
 :Vimfy store a fix           " workspace drops `a`; disk updated to saved/fix.json
 
 " ... later, even after a restart ...
 :Vimfy fetch fix a           " workspace has alias `a` again, populated from saved/fix.json
-:Vimfy sim a                 " replay as usual
+:Vimfy play a                 " replay as usual
 ```
 
 ## Listing

@@ -57,6 +57,22 @@ local M = {}
 ---@field vimficiency_compute_search_region fun(encoded_start_lines: string, encoded_end_lines: string, start_row: integer, end_row: integer, padding: integer): string
 ---@field vimficiency_resolve_recall_cutoff fun(encoded_records: string, target_hrtime: integer, budget: integer): integer
 ---@field vimficiency_manual_evict_reason fun(start_row: integer, cursor_row: integer, last_key_time_ns: integer, has_last_key: boolean, now_ns: integer, max_search_lines: integer, manual_idle_timeout_seconds: integer): integer
+---@field vimficiency_format_sequence fun(seq: string): string
+---@field vimficiency_simulate_motions fun(encoded_lines: string, start_row: integer, start_col: integer, seq: string): string
+---@field vimficiency_explore_start fun(encoded_initial_lines: string, start_row: integer, start_col: integer, encoded_goal_lines: string, end_row: integer, end_col: integer, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, window_height: integer, scroll_amount: integer, user_seq: string): string
+---@field vimficiency_explore_destroy fun(generation: integer): integer
+---@field vimficiency_explore_state fun(generation: integer): string
+---@field vimficiency_explore_recommendations fun(generation: integer, max_count: integer): string
+---@field vimficiency_explore_apply_motion fun(generation: integer, motion_text: string): string
+---@field vimficiency_explore_accept_cursor_move fun(generation: integer, new_row: integer, new_col: integer, raw_keys: string): string
+---@field vimficiency_explore_apply_edit fun(generation: integer, text: string): string
+---@field vimficiency_explore_accept_buffer_state fun(generation: integer, encoded_lines: string, new_row: integer, new_col: integer, raw_keys: string): string
+---@field vimficiency_explore_current_lines fun(generation: integer): string
+---@field vimficiency_explore_begin_edit fun(generation: integer, enters_insert_mode: boolean, required_typed_text: string): string
+---@field vimficiency_explore_insert_text fun(generation: integer, typed_chunk: string): string
+---@field vimficiency_explore_exit_insert fun(generation: integer): string
+---@field vimficiency_explore_undo fun(generation: integer): string
+---@field vimficiency_explore_redo fun(generation: integer): string
 
 ffi.cdef([[
     extern const int VIMFICIENCY_KEY_COUNT;
@@ -152,6 +168,50 @@ ffi.cdef([[
     );
 
     const char* vimficiency_format_sequence(const char* seq);
+    const char* vimficiency_simulate_motions(
+        const char* encoded_lines,
+        int start_row,
+        int start_col,
+        const char* seq
+    );
+
+    const char* vimficiency_explore_start(
+        const char* encoded_initial_lines,
+        int start_row,
+        int start_col,
+        const char* encoded_goal_lines,
+        int end_row,
+        int end_col,
+        int boundary_first_col,
+        int boundary_last_col,
+        bool has_lines_above,
+        bool has_lines_below,
+        int window_height,
+        int scroll_amount,
+        const char* user_seq
+    );
+    int vimficiency_explore_destroy(int generation);
+    const char* vimficiency_explore_state(int generation);
+    const char* vimficiency_explore_recommendations(int generation, int max_count);
+    const char* vimficiency_explore_apply_motion(int generation, const char* motion_text);
+    const char* vimficiency_explore_accept_cursor_move(int generation, int new_row, int new_col, const char* raw_keys);
+    const char* vimficiency_explore_apply_edit(int generation, const char* text);
+    const char* vimficiency_explore_accept_buffer_state(
+        int generation,
+        const char* encoded_lines,
+        int new_row,
+        int new_col,
+        const char* raw_keys);
+    const char* vimficiency_explore_current_lines(int generation);
+    const char* vimficiency_explore_begin_edit(
+        int generation,
+        bool enters_insert_mode,
+        const char* required_typed_text
+    );
+    const char* vimficiency_explore_insert_text(int generation, const char* typed_chunk);
+    const char* vimficiency_explore_exit_insert(int generation);
+    const char* vimficiency_explore_undo(int generation);
+    const char* vimficiency_explore_redo(int generation);
 ]])
 
 local function find_plugin_root()
@@ -240,6 +300,24 @@ end
 ---@return string
 local function encode_int64(n)
 	return string.format("%.0f", n)
+end
+
+---@param encoded string
+---@return string[]
+local function decode_string_list(encoded)
+	local out = {}
+	local i = 1
+	while i <= #encoded do
+		local colon = encoded:find(":", i, true)
+		assert(colon, "decode_string_list: missing colon")
+		local len = tonumber(encoded:sub(i, colon - 1))
+		assert(len and len >= 0, "decode_string_list: invalid length")
+		local start = colon + 1
+		local stop = start + len - 1
+		out[#out + 1] = encoded:sub(start, stop)
+		i = stop + 1
+	end
+	return out
 end
 
 ---@param key_seq VimficiencyKeyEvent[]
@@ -644,6 +722,296 @@ function M.format_sequence(seq)
     return ""
   end
   return ffi.string(lib.vimficiency_format_sequence(seq))
+end
+
+---@param lines string[]
+---@param start_row integer
+---@param start_col integer
+---@param seq string
+---@return integer|nil row
+---@return integer|nil col
+---@return string|nil err
+function M.simulate_motions(lines, start_row, start_col, seq)
+  if not seq or seq == "" then
+    return start_row, start_col, nil
+  end
+  local result_str = ffi.string(lib.vimficiency_simulate_motions(
+    encode_string_list(lines),
+    start_row,
+    start_col,
+    seq
+  ))
+  if result_str:sub(1, 6) == "ERROR:" then
+    return nil, nil, result_str
+  end
+  local parts = vim.split(result_str, EVENT_FIELD_SEP, { plain = true, trimempty = true })
+  assert(#parts == 2, "vimficiency_simulate_motions returned malformed payload")
+  return tonumber(parts[1]), tonumber(parts[2]), nil
+end
+
+---@class VimficiencyExplorePhase
+---@field kind string
+---@field edit_index integer
+---@field remaining_typed_text string
+
+---@class VimficiencyExploreState
+---@field phase VimficiencyExplorePhase
+---@field cursor_row integer
+---@field cursor_col integer
+---@field total_edits integer
+---@field accepted_cost number
+---@field accepted_seq string
+---@field accepted_revision integer
+---@field can_undo boolean
+---@field can_redo boolean
+---@field target_begin_row integer  # half-open range start, -1 = no target
+---@field target_begin_col integer
+---@field target_end_row integer
+---@field target_end_col integer
+
+---@class VimficiencyExploreApplyResult
+---@field status string  # "Applied" | "Rejected"
+---@field phase VimficiencyExplorePhase
+---@field cursor_row integer
+---@field cursor_col integer
+---@field accepted_seq string
+---@field accepted_cost number
+---@field reason string
+---@field crossed_edit_boundary boolean  # true if this action advanced past an edit
+
+---@class VimficiencyExploreRecommendation
+---@field text string
+---@field kind string
+---@field cost number
+---@field total_path_cost number
+---@field landing_row integer
+---@field landing_col integer
+
+---@param payload string
+---@return string
+local function require_non_error(payload)
+  if payload:sub(1, 7) == "ERROR: " then
+    error(payload, 0)
+  end
+  return payload
+end
+
+---@param payload string
+---@return VimficiencyExploreState
+local function parse_explore_state(payload)
+  local parts = decode_string_list(payload)
+  assert(#parts == 15, "explore state payload must have 15 fields")
+  return {
+    phase = {
+      kind = parts[1],
+      edit_index = tonumber(parts[2]) or -1,
+      remaining_typed_text = parts[3],
+    },
+    cursor_row = tonumber(parts[4]) or 0,
+    cursor_col = tonumber(parts[5]) or 0,
+    total_edits = tonumber(parts[6]) or 0,
+    accepted_cost = tonumber(parts[7]) or 0,
+    accepted_seq = parts[8],
+    accepted_revision = tonumber(parts[9]) or 0,
+    can_undo = parts[10] == "1",
+    can_redo = parts[11] == "1",
+    target_begin_row = tonumber(parts[12]) or -1,
+    target_begin_col = tonumber(parts[13]) or -1,
+    target_end_row = tonumber(parts[14]) or -1,
+    target_end_col = tonumber(parts[15]) or -1,
+  }
+end
+
+---@param payload string
+---@return VimficiencyExploreApplyResult
+local function parse_explore_apply_result(payload)
+  local parts = decode_string_list(payload)
+  assert(#parts == 10, "explore apply payload must have 10 fields")
+  return {
+    status = parts[1],
+    phase = {
+      kind = parts[2],
+      edit_index = tonumber(parts[3]) or -1,
+      remaining_typed_text = parts[4],
+    },
+    cursor_row = tonumber(parts[5]) or 0,
+    cursor_col = tonumber(parts[6]) or 0,
+    accepted_seq = parts[7],
+    accepted_cost = tonumber(parts[8]) or 0,
+    reason = parts[9],
+    crossed_edit_boundary = parts[10] == "1",
+  }
+end
+
+---@param payload string
+---@return VimficiencyExploreRecommendation[]
+local function parse_explore_recommendations(payload)
+  local parts = decode_string_list(payload)
+  assert(#parts >= 1, "explore recommendations payload must have count prefix")
+  local count = tonumber(parts[1]) or 0
+  local expected = 1 + count * 6
+  assert(#parts == expected,
+    "explore recommendations payload has " .. #parts ..
+    " fields, expected " .. expected .. " for count=" .. count)
+  local recs = {}
+  for i = 1, count do
+    local base = 1 + (i - 1) * 6
+    recs[i] = {
+      text = parts[base + 1],
+      kind = parts[base + 2],
+      cost = tonumber(parts[base + 3]) or 0,
+      total_path_cost = tonumber(parts[base + 4]) or 0,
+      landing_row = tonumber(parts[base + 5]) or 0,
+      landing_col = tonumber(parts[base + 6]) or 0,
+    }
+  end
+  return recs
+end
+
+---@param initial_lines string[]
+---@param start_row integer
+---@param start_col integer
+---@param goal_lines string[]
+---@param end_row integer
+---@param end_col integer
+---@param boundary_first_col integer
+---@param boundary_last_col integer
+---@param has_lines_above boolean
+---@param has_lines_below boolean
+---@param window_height integer
+---@param scroll_amount integer
+---@param user_seq string|nil
+---@return integer
+function M.explore_start(initial_lines, start_row, start_col,
+                         goal_lines, end_row, end_col,
+                         boundary_first_col, boundary_last_col,
+                         has_lines_above, has_lines_below,
+                         window_height, scroll_amount,
+                         user_seq)
+  local payload = require_non_error(ffi.string(lib.vimficiency_explore_start(
+    encode_string_list(initial_lines),
+    start_row, start_col,
+    encode_string_list(goal_lines),
+    end_row, end_col,
+    boundary_first_col, boundary_last_col,
+    has_lines_above, has_lines_below,
+    window_height, scroll_amount,
+    user_seq or ""
+  )))
+  return tonumber(payload) or error("explore_start returned non-numeric generation: " .. payload)
+end
+
+---@param generation integer
+---@return boolean
+function M.explore_destroy(generation)
+  return lib.vimficiency_explore_destroy(generation) == 1
+end
+
+---@param generation integer
+---@return VimficiencyExploreState
+function M.explore_state(generation)
+  local payload = require_non_error(ffi.string(lib.vimficiency_explore_state(generation)))
+  return parse_explore_state(payload)
+end
+
+---@param generation integer
+---@param max_count integer
+---@return VimficiencyExploreRecommendation[]
+function M.explore_recommendations(generation, max_count)
+  local payload = require_non_error(ffi.string(
+    lib.vimficiency_explore_recommendations(generation, max_count)))
+  return parse_explore_recommendations(payload)
+end
+
+---@param generation integer
+---@param motion_text string
+---@return VimficiencyExploreApplyResult
+function M.explore_apply_motion(generation, motion_text)
+  local payload = require_non_error(ffi.string(
+    lib.vimficiency_explore_apply_motion(generation, motion_text)))
+  return parse_explore_apply_result(payload)
+end
+
+---@param generation integer
+---@param new_row integer
+---@param new_col integer
+---@param raw_keys string|nil
+---@return VimficiencyExploreApplyResult
+function M.explore_accept_cursor_move(generation, new_row, new_col, raw_keys)
+  local payload = require_non_error(ffi.string(lib.vimficiency_explore_accept_cursor_move(
+    generation, new_row, new_col, raw_keys or "")))
+  return parse_explore_apply_result(payload)
+end
+
+---@param generation integer
+---@param lines string[]
+---@param new_row integer
+---@param new_col integer
+---@param raw_keys string|nil
+---@return VimficiencyExploreApplyResult
+function M.explore_accept_buffer_state(generation, lines, new_row, new_col, raw_keys)
+  local payload = require_non_error(ffi.string(lib.vimficiency_explore_accept_buffer_state(
+    generation, encode_string_list(lines), new_row, new_col, raw_keys or "")))
+  return parse_explore_apply_result(payload)
+end
+
+---@param generation integer
+---@param text string
+---@return VimficiencyExploreApplyResult
+function M.explore_apply_edit(generation, text)
+  local payload = require_non_error(ffi.string(
+    lib.vimficiency_explore_apply_edit(generation, text)))
+  return parse_explore_apply_result(payload)
+end
+
+---@param generation integer
+---@return string[]
+function M.explore_current_lines(generation)
+  local payload = require_non_error(ffi.string(lib.vimficiency_explore_current_lines(generation)))
+  return decode_string_list(payload)
+end
+
+---@param generation integer
+---@param enters_insert_mode boolean
+---@param required_typed_text string|nil
+---@return VimficiencyExploreApplyResult
+function M.explore_begin_edit(generation, enters_insert_mode, required_typed_text)
+  local payload = require_non_error(ffi.string(lib.vimficiency_explore_begin_edit(
+    generation,
+    enters_insert_mode,
+    required_typed_text or ""
+  )))
+  return parse_explore_apply_result(payload)
+end
+
+---@param generation integer
+---@param typed_chunk string
+---@return VimficiencyExploreApplyResult
+function M.explore_insert_text(generation, typed_chunk)
+  local payload = require_non_error(ffi.string(
+    lib.vimficiency_explore_insert_text(generation, typed_chunk)))
+  return parse_explore_apply_result(payload)
+end
+
+---@param generation integer
+---@return VimficiencyExploreApplyResult
+function M.explore_exit_insert(generation)
+  local payload = require_non_error(ffi.string(lib.vimficiency_explore_exit_insert(generation)))
+  return parse_explore_apply_result(payload)
+end
+
+---@param generation integer
+---@return VimficiencyExploreApplyResult
+function M.explore_undo(generation)
+  local payload = require_non_error(ffi.string(lib.vimficiency_explore_undo(generation)))
+  return parse_explore_apply_result(payload)
+end
+
+---@param generation integer
+---@return VimficiencyExploreApplyResult
+function M.explore_redo(generation)
+  local payload = require_non_error(ffi.string(lib.vimficiency_explore_redo(generation)))
+  return parse_explore_apply_result(payload)
 end
 
 return M

@@ -9,7 +9,7 @@ Use these when you want precision analyzing a specific sequence or know *in adva
 ```vim
 :Vimfy start a       " Mark the start
 " ... edit normally, any number of keystrokes ...
-:Vimfy end a         " Mark the end, show suggestions
+:Vimfy finish a      " Mark the finish, show suggestions
 ```
 
 Marks are similar semantics to marks in vim, where start/end is similar to creating a mark and jumping back to it. However, our aliases can be any combination of letters, ex:  `a`, `refactor`, `WIP`.
@@ -23,4 +23,4 @@ Marks are similar semantics to marks in vim, where start/end is similar to creat
 - [7. Inspecting results](07-results.md) — how to read the output and replay
   the suggestions.
 - [8. Binding keys](08-keymaps.md) — use `<Plug>VimfyStartA` /
-  `<Plug>VimfyEndA` so your session markers don't need typing `:Vimfy ...`.
+  `<Plug>VimfyFinishA` so your session markers don't need typing `:Vimfy ...`.

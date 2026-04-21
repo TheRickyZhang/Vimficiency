@@ -88,11 +88,26 @@ local function validate_disk_result(data)
   if type(data.lines) ~= "table" or #data.lines == 0 then
     return "missing or empty 'lines' field"
   end
+  if data.goal_lines ~= nil and type(data.goal_lines) ~= "table" then
+    return "non-array 'goal_lines' field"
+  end
   if type(data.start_row) ~= "number" then
     return "missing or non-numeric 'start_row' field"
   end
   if type(data.start_col) ~= "number" then
     return "missing or non-numeric 'start_col' field"
+  end
+  if data.has_lines_above ~= nil and type(data.has_lines_above) ~= "boolean" then
+    return "non-boolean 'has_lines_above' field"
+  end
+  if data.has_lines_below ~= nil and type(data.has_lines_below) ~= "boolean" then
+    return "non-boolean 'has_lines_below' field"
+  end
+  if data.window_height ~= nil and type(data.window_height) ~= "number" then
+    return "non-numeric 'window_height' field"
+  end
+  if data.scroll_amount ~= nil and type(data.scroll_amount) ~= "number" then
+    return "non-numeric 'scroll_amount' field"
   end
   if type(data.optimal_results) ~= "table" then
     return "missing or non-array 'optimal_results' field"
@@ -263,10 +278,15 @@ local function compute_result_for_active(active)
   ---@type ResultSession
   local result = {
     lines = initial_slice,
+    goal_lines = goal_slice,
     start_row = rel_start_row,
     start_col = rel_start_col,
     end_row = rel_end_row,
     end_col = rel_end_col,
+    has_lines_above = has_lines_above,
+    has_lines_below = has_lines_below,
+    window_height = start_state.window_height,
+    scroll_amount = start_state.scroll_amount,
     user_seq = keyseq_str,
     user_cost = user_cost,
     optimal_results = optimal_results,
@@ -501,7 +521,7 @@ end
 
 --- Finish a manual Mark/Watch session.
 ---@param alias string  The manual alias of the session to finish.
----@param reason FinishReason|nil  Why the finish was triggered. Defaults to "manual" (the `:Vimfy end` path). Watch's idle callback passes "watch_idle".
+---@param reason FinishReason|nil  Why the finish was triggered. Defaults to "manual" (the `:Vimfy finish` path). Watch's idle callback passes "watch_idle".
 function M.finish(alias, reason)
   reason = reason or "manual"
   if not alias or alias == "" then
@@ -512,7 +532,7 @@ function M.finish(alias, reason)
   local session_type = alias_mod.parse(alias)
   if session_type == "recall_key" or session_type == "recall_time" then
     vim.notify(
-      "`:Vimfy end " .. alias .. "` is not a manual handle. " ..
+      "`:Vimfy finish " .. alias .. "` is not a manual handle. " ..
       "Use `:Vimfy recall " .. alias .. "` for retrospective windows.",
       vim.log.levels.ERROR)
     return
@@ -548,7 +568,7 @@ function M.recall(alias)
   if session_type == "manual" then
     vim.notify(
       "`:Vimfy recall " .. alias .. "` expects a recall window (N or Ns). " ..
-      "Use `:Vimfy end " .. alias .. "` to finish a manual session.",
+      "Use `:Vimfy finish " .. alias .. "` to finish a manual session.",
       vim.log.levels.ERROR)
     return
   end
@@ -595,7 +615,7 @@ local function resolve_result_for_selector(selector)
   if selector == "@" then
     local result = session_store.get_last_finished_result()
     if not result then
-      return nil, "No recently finished session. Run ':Vimfy end <alias>' first."
+      return nil, "No recently finished session. Run ':Vimfy finish <alias>' first."
     end
     return result, nil
   end
@@ -604,6 +624,29 @@ local function resolve_result_for_selector(selector)
     return nil, "No finished result for '" .. selector .. "'. Is the session still active?"
   end
   return result, nil
+end
+
+--- Public resolver for any finished-result selector used by save/store/explore.
+--- First checks in-memory session results. If missing and the selector is a
+--- valid saved name, falls back to the on-disk JSON result.
+---@param selector string
+---@return ResultSession|nil result
+---@return string|nil err
+function M.resolve_result(selector)
+  local result, err = resolve_result_for_selector(selector)
+  if result then return result, nil end
+
+  if selector ~= "@" and alias_mod.is_valid_saved_name(selector) then
+    local data, load_err, is_missing = load_results(selector)
+    if data then
+      return data, nil
+    end
+    if not is_missing then
+      return nil, load_err or "unknown error"
+    end
+  end
+
+  return nil, err
 end
 
 --- Write `result` to disk under `name`. On overwrite, warns (doesn't refuse).
@@ -669,11 +712,11 @@ function M.store(selector, name)
   if session_store.get_active(selector) then
     -- Recall ring records are also `status = "active"` until `:Vimfy recall`
     -- reifies them, so route the user to the correct command for their
-    -- alias kind — `:Vimfy end` rejects recall aliases outright.
+    -- alias kind — `:Vimfy finish` rejects recall aliases outright.
     local kind = alias_mod.parse(selector)
     local resolve_cmd = (kind == "recall_key" or kind == "recall_time")
       and (":Vimfy recall " .. selector)
-      or  (":Vimfy end " .. selector)
+      or  (":Vimfy finish " .. selector)
     vim.notify("Session '" .. selector .. "' is still active. Finish it with '" ..
       resolve_cmd .. "' first.", vim.log.levels.ERROR)
     return
@@ -886,7 +929,10 @@ function M.close(alias)
 end
 
 ---@param alias string  Session alias or saved filename to simulate.
----@param count integer|nil  How many optimal results to show (default: all saved)
+---@param count integer|nil  How many optimal results to show (default: 1 —
+--- paired with the user's sequence, this gives a clean side-by-side
+--- "yours vs. best" pane. Pass an explicit count to see more optimal
+--- alternatives; the sim layout caps at 8 windows total.
 function M.simulate(alias, count)
   if not alias or alias == "" then
     vim.notify("simulate() requires a session alias or saved name", vim.log.levels.ERROR)
@@ -961,7 +1007,10 @@ function M.simulate(alias, count)
     table.insert(items, { seq = user_seq, cost = fmt_cost(result.user_cost) })
   end
 
-  local num_to_show = count or #optimal_results
+  -- Default: show just the single best optimal, paired with the user's
+  -- sequence for a 2-window comparison. Users who want to browse more
+  -- alternatives can pass an explicit count.
+  local num_to_show = count or 1
   for i = 1, math.min(num_to_show, #optimal_results) do
     local r = optimal_results[i]
     table.insert(items, { seq = r.seq, cost = fmt_cost(r.cost) })
@@ -970,6 +1019,19 @@ function M.simulate(alias, count)
   if #items == 0 then
     vim.notify("No sequences to simulate", vim.log.levels.WARN)
     return
+  end
+
+  -- Cap at the grid's window budget (4×2 layout). Trim from the tail so
+  -- the user's sequence (always first, if present) and the highest-ranked
+  -- optimal results survive.
+  local MAX_SIM_WINDOWS = 8
+  if #items > MAX_SIM_WINDOWS then
+    local dropped = #items - MAX_SIM_WINDOWS
+    for _ = 1, dropped do table.remove(items) end
+    vim.notify(string.format(
+      "vimficiency sim: showing %d of %d requested sequences (layout caps at %d).",
+      MAX_SIM_WINDOWS, MAX_SIM_WINDOWS + dropped, MAX_SIM_WINDOWS),
+      vim.log.levels.WARN)
   end
 
   simulate.simulate_compare(

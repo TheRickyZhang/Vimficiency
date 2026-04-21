@@ -1,4 +1,4 @@
--- Auto-suggest surfaces optimizer results without an explicit `:Vimfy end`.
+-- Auto-suggest surfaces optimizer results without an explicit `:Vimfy finish`.
 -- It reads `config.auto_suggest` and arms any configured idle/keys/cost triggers.
 
 local M = {}

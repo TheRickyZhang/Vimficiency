@@ -40,6 +40,12 @@ end
 function M.fake_result(overrides)
   local r = {
     start_row = 0, start_col = 0, end_row = 0, end_col = 0,
+    lines = { "x" },
+    goal_lines = { "x" },
+    has_lines_above = false,
+    has_lines_below = false,
+    window_height = 20,
+    scroll_amount = 10,
     user_seq = "x",
     optimal_results = { { seq = "y", cost = 1.0 } },
   }

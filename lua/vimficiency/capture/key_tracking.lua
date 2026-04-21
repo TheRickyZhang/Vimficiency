@@ -4,6 +4,7 @@
 local M = {}
 local uv = vim.uv
 local ffi_lib = require("vimficiency.ffi")
+local keynorm = require("vimficiency.capture.keynorm")
 
 --------------------------------------------------------------------------------
 -- Types
@@ -92,9 +93,9 @@ function M.attach(get_session, reset_session, should_evict)
 			win = curr_win,
 			buf = vim.api.nvim_get_current_buf(),
 			key_sent_raw = key,
-			key_sent = vim.fn.keytrans(key),
+			key_sent = keynorm.normalize(key),
 			key_typed_raw = typed,
-			key_typed = vim.fn.keytrans(typed),
+			key_typed = keynorm.normalize(typed),
 		}
 		session.key_count = (session.key_count or 0) + 1
 	end
@@ -173,9 +174,9 @@ local function ensure_global_listener()
 			win = vim.api.nvim_get_current_win(),
 			buf = vim.api.nvim_get_current_buf(),
 			key_sent_raw = key,
-			key_sent = vim.fn.keytrans(key),
+			key_sent = keynorm.normalize(key),
 			key_typed_raw = typed,
-			key_typed = vim.fn.keytrans(typed),
+			key_typed = keynorm.normalize(typed),
 		}
 
 		for _, sub in pairs(global_subs) do

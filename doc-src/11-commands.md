@@ -8,18 +8,19 @@ title: "Commands reference"
 |--------------------------------------------|------------------------------------------------------|
 | `:Vimfy start <name>`                      | Mark a session start (alphabetic alias, e.g. `a`).   |
 | `:Vimfy watch <name>`                      | Start a Watch session (auto-end on idle).            |
-| `:Vimfy end <alias>`                       | Finish a manual session (Mark or Watch) and optimize.|
+| `:Vimfy finish <alias>`                    | Finish a manual session (Mark or Watch) and optimize.|
 | `:Vimfy recall <N\|Ns>`                    | Finish a retrospective recall window.                |
 | `:Vimfy close <alias>`                     | Discard a session without optimizing.                |
 | `:Vimfy save <selector>\|@ [<name>]`       | Copy a finished result to disk (keeps the workspace copy). Name defaults to selector. `@` = last finished. |
 | `:Vimfy store <selector>\|@ [<name>]`      | Move a finished result to disk (removes from workspace). |
 | `:Vimfy fetch <name> [<alias>]`            | Copy a saved result from disk into the current workspace. |
-| `:Vimfy sim <alias> [count]`               | Animate results side-by-side (memory first, disk fallback). |
+| `:Vimfy play <alias> [count]`              | Animate results side-by-side (memory first, disk fallback). |
 | `:Vimfy focus <N>`                         | Focus the active replay on the Nth buffer (full-screen).|
 | `:Vimfy escape`                            | Restore the side-by-side replay layout.              |
 | `:Vimfy view [name]`                       | View a saved result (or list saved names).           |
 | `:Vimfy rm <name>`                         | Delete a saved result from disk.                     |
 | `:Vimfy list`                              | Open the interactive session picker (see below).     |
+| `:Vimfy stats`                             | Show lifetime session stats (see below).             |
 | `:Vimfy suggest <on\|off\|toggle>`         | Runtime toggle for auto-suggest (config-driven).     |
 | `:Vimfy config`                            | Show the current configuration.                      |
 | `:Vimfy reload`                            | Rebuild the C++ library (needs restart).             |
@@ -32,9 +33,9 @@ The `<alias>` argument splits by subcommand:
 | Subcommand         | Accepts                                     |
 |--------------------|---------------------------------------------|
 | `start` / `watch`  | Alphabetic only (`a`, `refactor`).          |
-| `end`              | Alphabetic only — manual handles.           |
+| `finish`           | Alphabetic only — manual handles.           |
 | `recall`           | `N` (digits) or `Ns` (digits + `s`).        |
-| `close` / `sim`    | Any of the three: alphabetic, `N`, or `Ns`. `sim` also accepts a saved name. |
+| `close` / `play`   | Any of the three: alphabetic, `N`, or `Ns`. `play` also accepts a saved name. |
 | `save` / `store`   | Any of the three, plus `@` for last finished. Same grammar. |
 | `fetch`            | Saved name → new workspace alias (alphabetic). |
 
@@ -83,7 +84,10 @@ recall Ns` instead.
 | `/`        | Fuzzy-filter by alias (prompt at bottom, live)        |
 | `<CR>`     | Open (default action, see below)                      |
 | `<Tab>`    | Switch Active ↔ Saved pane                            |
-| `s`        | Cycle sort (category / alpha / created)               |
+| `sn`/`sN`  | Sort by name (A→Z / Z→A)                              |
+| `sc`/`sC`  | Sort by category (A→Z / Z→A)                          |
+| `st`/`sT`  | Sort by time (newest / oldest)                        |
+| `s`        | Sort hint popup (also on `s?`)                        |
 | `d`        | Delete the current entry                              |
 | `m`        | Toggle mark on the current entry                      |
 | `D`        | Delete all marked entries                             |
@@ -98,7 +102,7 @@ entry; `<Esc>` returns to the list.
 
 **Per-pane action semantics:**
 
-- `<CR>` — on the Active pane, opens a `:Vimfy sim`-style replay of a
+- `<CR>` — on the Active pane, opens a `:Vimfy play`-style view of a
   finished session; on the Saved pane, fetches the file into the
   workspace and switches focus to Active.
 - `d` — on Active, discards the session (equivalent to `:Vimfy close`);
@@ -110,18 +114,61 @@ entry; `<Esc>` returns to the list.
   save <alias> <name>`) and then rename from the Saved pane.
 
 **Blocked on in-progress sessions:** `<CR>`, `r`, `y` all refuse to run
-on a still-accumulating session. Finish it with `:Vimfy end` (or let
+on a still-accumulating session. Finish it with `:Vimfy finish` (or let
 Watch's idle trigger fire) and try again.
+
+## Session stats (`:Vimfy stats`)
+
+Opens a read-only float summarizing your lifetime activity. Close with
+`q` or `<Esc>`.
+
+Sections:
+
+- **Lifetime** — total finished sessions, broken down by type (mark /
+  watch / recall / suggest), and total captured keystrokes.
+- **Efficiency** — a score out of 100, defined per session as
+  `min(best_optimizer_cost / user_cost, 1) × 100` (capped at 100 so a
+  beat doesn't inflate the average). Aggregated as a geometric mean.
+  The 30-day block below the score is a sparkline of the daily
+  geometric mean (▁ = 0, █ = 100; blanks = no sessions that day).
+- **Motions** — for every motion molecule that appears at least ten
+  times combined across your sequences and the optimizer's best
+  suggestions, the ratio `your_proportion / optimizer_proportion`. Two
+  lists: what you use *more* than the optimizer (potential inefficient
+  habits) and what you use *less* (candidates to practice). Only the
+  trailing character of `f`/`F`/`t`/`T`/`r`/`R` is collapsed to `_` —
+  everything else is reported as-is, since further grouping hides
+  signal.
+- **Dev — Optimizer beats queued** — count of finished sessions where
+  your sequence came in cheaper than the optimizer's best result.
+  These are flagged (`beats: true`) on their log lines. **Beats are
+  interesting-to-study, not ground truth**: many are cost-model
+  artifacts or unexplored regions, so they are *not* fed back into
+  training without manual review.
+
+### Where the data lives
+
+Every finished session (mark, watch, recall, suggest) appends one JSON
+object to `stdpath("data")/vimficiency/sessions.jsonl`. The file is
+append-only, one record per line. Stats read the whole log on demand —
+no aggregate cache in v1, so changing the efficiency formula or adding
+new buckets only requires re-reducing, not a migration. A trailing
+malformed line (e.g. a crash mid-write) is silently skipped on read.
+
+Per-record schema (version `v: 1`): `finish_epoch`, `type`,
+`finish_reason`, `key_count`, `user_cost`, `best_opt_cost`, `user_seq`,
+`best_opt_seq`, `beats`. Only the single lowest-cost optimal result is
+stored; Top-N alternatives are not retained at log-write time.
 
 ## Tab completion
 
 Works on:
 
-- Subcommands (`:Vimfy s<Tab>` → `save`, `sim`, `start`, `suggest`).
-- Manual (alphabetic) handles for `start`, `watch`, and `end`.
+- Subcommands (`:Vimfy s<Tab>` → `save`, `start`, `stats`, `store`, `suggest`).
+- Manual (alphabetic) handles for `start`, `watch`, and `finish`.
 - `3s`/`5s`/`10s`/`30s` hints for `recall`.
 - All active/recall aliases plus time hints for `close`.
-- Active/recall aliases, time hints, and saved names for `sim` (matches its disk fallback).
+- Active/recall aliases, time hints, and saved names for `play` (matches its disk fallback).
 - Selectors (plus `@`) for `save` and `store`.
 - Saved names for `view`, `rm`, and `fetch`.
 - `on` / `off` / `toggle` for `suggest`.

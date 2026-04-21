@@ -48,8 +48,8 @@ Three subdirectories group the domain logic:
 
 1. **Manual** (aliases: arbitrary alphabetic strings — e.g. `a`, `refactor`, `bugfix`;
    capacity: 5 concurrent active sessions)
-   User-controlled: `:Vimfy start <name>` / `:Vimfy end <name>`. Grammar is
-   strictly alphabetic (`^%a+$`); recall forms are rejected at the `end`
+   User-controlled: `:Vimfy start <name>` / `:Vimfy finish <name>`. Grammar is
+   strictly alphabetic (`^%a+$`); recall forms are rejected at the `finish`
    entry point with a redirect to `:Vimfy recall`.
 
 2. **Recall** (rolling ring; queried via `:Vimfy recall N` or `:Vimfy recall Ns`)
@@ -74,7 +74,7 @@ One `session_records[id]` table holds everything; `manual_alias_to_id` and
 `recall_id_order` are the two indexes into it. Finish flips `status` in place
 and drops `key_seq` — it does NOT unindex. This removes tombstones from
 `recall_id_order` entirely: a finished session stays reachable via its recall
-alias (for `:Vimfy sim Ns`) until the ring slot rotates out.
+alias (for `:Vimfy play Ns`) until the ring slot rotates out.
 
 ## Key Tracking (key_tracking.lua)
 
@@ -158,10 +158,10 @@ Replay verification now lives in repo-native Lua tests:
 
 ```
 :Vimfy start <alias>    -- Start manual session
-:Vimfy end <alias>      -- Finish a manual session (Mark/Watch)
+:Vimfy finish <alias>   -- Finish a manual session (Mark/Watch)
 :Vimfy recall <N|Ns>    -- Finish a retrospective recall window
 :Vimfy close <alias>    -- Discard session
-:Vimfy sim <alias>      -- Animate results
+:Vimfy play <alias>     -- Animate results
 :Vimfy focus <N>        -- Focus replay on Nth buffer (full-screen)
 :Vimfy escape           -- Restore side-by-side replay layout
 :Vimfy view [name]      -- View saved results

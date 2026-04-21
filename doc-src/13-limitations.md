@@ -27,6 +27,14 @@ title: "Known limitations"
 - **Unwrapped mappings that invoke Vimfy** have their trigger keypress
   counted as motion. See [8. Keymaps](08-keymaps.md) for the fix.
 
+- **Keys produced by a mapping's RHS are invisible.** If `<leader>V` is
+  mapped to `V$%`, the `V$%` bytes never reach the capture — `vim.on_key`
+  delivers only a single resolution event that the plugin strips to
+  avoid leaking the LHS. The session records whatever you type *after*
+  the mapping from a stale starting mode, which often tokenizes into
+  something that looks nothing like what you did. Type the underlying
+  keys directly when you want a motion audited.
+
 - **Recall may include the final char of a `<Plug>`-mapped LHS** on
   occasion, because `vim.on_key` fires for that char before Neovim
   resolves the mapping. If you target `:Vimfy recall N` precisely,

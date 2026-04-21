@@ -27,10 +27,14 @@ how to tune it to your layout.
 
 ## Simulating
 
-`:Vimfy sim <alias> [count]` opens a new tab with side-by-side windows and
+`:Vimfy play <alias> [count]` opens a new tab with side-by-side windows and
 animates your sequence (leftmost) and the top suggestions (one per additional
-window)
-- `count` — how many optimal sequences to show (default: all saved)
+window).
+- `count` — how many optimal sequences to show. **Default: 1**, paired
+  with your sequence for a clean side-by-side "yours vs. best" pane.
+- The layout is a 4-wide grid that wraps to a second row once more than
+  four windows are needed. **Max: 8 windows total**; a higher count is
+  silently trimmed (with a notice) so the grid stays readable.
 
 Replay opens after a brief precompute phase. Step forward with
 `<Right>`, back with `<Left>`. Close the replay with `q`.
@@ -90,7 +94,7 @@ Shows currently active sessions and saved-to-disk results.
 Every finished session starts in **session memory** (workspace) and
 stays there until it rotates out. Copy it to disk with
 `:Vimfy save`, move it with `:Vimfy store`, bring it back later with
-`:Vimfy fetch`. `:Vimfy sim <name>` works against both — it replays
+`:Vimfy fetch`. `:Vimfy play <name>` works against both — it replays
 from memory first, falling back to disk.
 
 See [7a. Session storage](07a-session-storage.md) for the full model,

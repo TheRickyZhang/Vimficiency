@@ -18,9 +18,10 @@ tests/.last_seeds.txt
 build-asan/
 build*/
 
-# Any root-level data
-*.json
-*.json
+# Any root-level data (e.g. composition_explore.json from local benchmark
+# runs). Anchored to repo root with leading `/` so subdirectory package
+# manifests (bench-dashboard, docs-site) aren't silently swallowed.
+/*.json
 
 # Bench dashboard
 bench-dashboard/node_modules/

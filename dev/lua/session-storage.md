@@ -59,7 +59,7 @@ concatenating into a filesystem path.
   shared helper in `session/init.lua` is `write_to_disk_with_overwrite_warn`.
 - `fetch` into an occupied workspace alias: **refuses**
   (`register_fetched_result` returns `nil, err`; caller surfaces the error).
-- `:Vimfy sim <x>` branches by where `<x>` exists:
+- `:Vimfy play <x>` branches by where `<x>` exists:
   - Both: WARN, workspace wins.
   - Workspace only: normal path.
   - Disk only: implicit `fetch x as x` (only for alpha-alias names);
