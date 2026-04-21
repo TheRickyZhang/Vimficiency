@@ -11,7 +11,7 @@ title: "FAQ"
 ## Does Vimficiency slow down Neovim?
 
 No. Key capture is a small Lua append per keystroke. The optimizer only
-runs on `end` (or an auto-trigger), in C++, over a snapshot. Recall is
+runs on `finish` (or an auto-trigger), in C++, over a snapshot. Recall is
 always on and the per-key overhead stays flat.
 
 ## Can I use it with Colemak / Dvorak / custom layouts?

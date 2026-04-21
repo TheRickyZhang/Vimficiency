@@ -19,7 +19,7 @@ The simplest path — one line per binding, handles all subcommands:
 local vimfy = require('vimficiency')
 
 vimfy.map('n', '<leader>vs', 'start a')
-vimfy.map('n', '<leader>ve', 'end a')
+vimfy.map('n', '<leader>vf', 'finish a')
 vimfy.map('n', '<leader>vq', 'save @ quick')
 ```
 
@@ -53,7 +53,7 @@ For users who prefer the Vim convention, each common action has a
 
 ```vim
 nmap <leader>vs <Plug>VimfyStartA
-nmap <leader>ve <Plug>VimfyEndA
+nmap <leader>vf <Plug>VimfyFinishA
 ```
 
 ```lua
@@ -66,9 +66,9 @@ vim.keymap.set('n', '<leader>vs', '<Plug>VimfyStartA', { remap = true })
 |--------------------------------------|--------------------------------------|
 | `<Plug>VimfyStart{A,B,C,D,E}`        | `:Vimfy start <alias>`               |
 | `<Plug>VimfyWatch{A,B,C,D,E}`        | `:Vimfy watch <alias>`               |
-| `<Plug>VimfyEnd{A,B,C,D,E}`          | `:Vimfy end <alias>`                 |
+| `<Plug>VimfyFinish{A,B,C,D,E}`       | `:Vimfy finish <alias>`              |
 | `<Plug>VimfyClose{A,B,C,D,E}`        | `:Vimfy close <alias>`               |
-| `<Plug>VimfySim{A,B,C,D,E}`          | `:Vimfy sim <alias>`                 |
+| `<Plug>VimfyPlay{A,B,C,D,E}`         | `:Vimfy play <alias>`                |
 | `<Plug>VimfySuggest{On,Off,Toggle}`  | `:Vimfy suggest <on\|off\|toggle>`   |
 | `<Plug>VimfyList`                    | `:Vimfy list`                        |
 | `<Plug>VimfyConfig`                  | `:Vimfy config`                      |
@@ -89,7 +89,7 @@ command, a UI callback — call `wrap` directly:
 local vimfy = require('vimficiency')
 vim.api.nvim_create_autocmd('User', {
   pattern = 'MyEvent',
-  callback = vimfy.wrap(function() vim.cmd('Vimfy end a') end),
+  callback = vimfy.wrap(function() vim.cmd('Vimfy finish a') end),
 })
 ```
 

@@ -3,6 +3,7 @@ local session = require("vimficiency.session")
 local auto_suggest = require("vimficiency.capture.auto_suggest")
 local alias_mod = require("vimficiency.session.alias")
 local util = require("vimficiency.util")
+local explore = require("vimficiency.explore")
 
 local M = {}
 
@@ -34,13 +35,13 @@ subcommands.watch = {
   end,
 }
 
-subcommands["end"] = {
+subcommands.finish = {
   desc = "Finish a manual session and show results",
-  usage = "end <alias>",
+  usage = "finish <alias>",
   fn = function(args)
     local alias = args[1]
     if not alias or alias == "" then
-      vim.notify("Usage: Vimfy end <alias>", vim.log.levels.ERROR)
+      vim.notify("Usage: Vimfy finish <alias>", vim.log.levels.ERROR)
       return
     end
     session.finish(alias)
@@ -73,14 +74,14 @@ subcommands.close = {
   end,
 }
 
-subcommands.sim = {
-  desc = "Simulate motion sequences",
-  usage = "sim <alias> [count]",
+subcommands.play = {
+  desc = "Play your sequence side-by-side with the optimizer's suggestions",
+  usage = "play <alias> [count]",
   fn = function(args)
     local alias = args[1]
     local count = args[2] and tonumber(args[2]) or nil
     if not alias or alias == "" then
-      vim.notify("Usage: Vimfy sim <alias> [count]", vim.log.levels.ERROR)
+      vim.notify("Usage: Vimfy play <alias> [count]", vim.log.levels.ERROR)
       return
     end
     session.simulate(alias, count)
@@ -129,7 +130,7 @@ subcommands.save = {
     end
     local name = resolve_save_name(selector, args[2])
     if not name then
-      vim.notify("save @: no recently finished session. Run ':Vimfy end <alias>' first.",
+      vim.notify("save @: no recently finished session. Run ':Vimfy finish <alias>' first.",
         vim.log.levels.ERROR)
       return
     end
@@ -148,7 +149,7 @@ subcommands.store = {
     end
     local name = resolve_save_name(selector, args[2])
     if not name then
-      vim.notify("store @: no recently finished session. Run ':Vimfy end <alias>' first.",
+      vim.notify("store @: no recently finished session. Run ':Vimfy finish <alias>' first.",
         vim.log.levels.ERROR)
       return
     end
@@ -196,6 +197,14 @@ subcommands.list = {
   usage = "list",
   fn = function()
     require("vimficiency.session.picker").open()
+  end,
+}
+
+subcommands.stats = {
+  desc = "Show lifetime session stats (efficiency, motions, beats)",
+  usage = "stats",
+  fn = function()
+    require("vimficiency.stats").open()
   end,
 }
 
@@ -414,6 +423,37 @@ subcommands.help = {
   end,
 }
 
+subcommands.explore = {
+  desc = "Open the interactive explore scratch view for a finished result",
+  usage = "explore <selector>|@",
+  fn = function(args)
+    local selector = args[1]
+    if not selector or selector == "" then
+      vim.notify("Usage: Vimfy explore <selector>|@", vim.log.levels.ERROR)
+      return
+    end
+    local result, err = session.resolve_result(selector)
+    if not result then
+      vim.notify("vimficiency explore failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+      return
+    end
+    explore.open(selector, result)
+  end,
+}
+
+subcommands.explore_mode = {
+  desc = "Set/cycle how explore recommendation tags render in the scratch buffer",
+  usage = "explore_mode [off|inplace|above|below]",
+  fn = function(args)
+    local mode = args[1]
+    if not mode or mode == "" then
+      explore.cycle_display_mode()
+      return
+    end
+    explore.set_display_mode(mode)
+  end,
+}
+
 function M.run(subcmd, args, source)
   local cmd = subcommands[subcmd]
   if not cmd then
@@ -472,6 +512,10 @@ function M.complete(arg_lead, cmd_line, cursor_pos)
     return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, { "on", "off", "toggle" })
   end
 
+  if subcmd == "explore_mode" then
+    return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, explore.list_display_modes())
+  end
+
   if subcmd == "view" or subcmd == "rm" then
     local saved = session.list_saved()
     return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, saved)
@@ -482,7 +526,7 @@ function M.complete(arg_lead, cmd_line, cursor_pos)
     return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, aliases)
   end
 
-  if subcmd == "end" then
+  if subcmd == "finish" then
     local aliases = vim.tbl_filter(alias_mod.is_valid_manual, session.list())
     return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, aliases)
   end
@@ -499,8 +543,20 @@ function M.complete(arg_lead, cmd_line, cursor_pos)
     return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, aliases)
   end
 
-  if subcmd == "sim" then
+  if subcmd == "play" then
     local candidates = session.list()
+    for _, t in ipairs(alias_mod.TIME_HINTS) do
+      table.insert(candidates, t)
+    end
+    for _, name in ipairs(session.list_saved()) do
+      table.insert(candidates, name)
+    end
+    return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, candidates)
+  end
+
+  if subcmd == "explore" then
+    local candidates = session.list()
+    table.insert(candidates, "@")
     for _, t in ipairs(alias_mod.TIME_HINTS) do
       table.insert(candidates, t)
     end

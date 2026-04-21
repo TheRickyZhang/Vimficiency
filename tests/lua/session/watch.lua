@@ -79,7 +79,7 @@ test("watch: overwrite disarms the prior trigger", function()
   end)
 end)
 
-test("watch: finish (manual :Vimfy end) disarms the trigger", function()
+test("watch: finish (manual :Vimfy finish) disarms the trigger", function()
   -- Call the store directly so the test stays Lua-only while still exercising
   -- the finish-session disarm hook.
   h.new_buf({ "hello", "world" })

@@ -69,6 +69,6 @@ User cost is calculated using `getEffort(keyseq, config)` from `RunningEffort.h`
 
 Finished sessions live in an in-memory workspace (indexed by alias) and/or
 an on-disk archive (indexed by filename). Moving between the two is handled
-by `:Vimfy save` / `store` / `fetch`; `:Vimfy sim` covers both transparently.
+by `:Vimfy save` / `store` / `fetch`; `:Vimfy play` covers both transparently.
 See [`session-storage.md`](session-storage.md) for the full Lua-layer model,
 APIs, and JSON schema.

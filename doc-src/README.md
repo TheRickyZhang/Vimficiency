@@ -19,7 +19,7 @@ internals and implementation notes, see `dev/`.
 1. [Installation](01-installation.md)
 2. [The core idea: a session](02-sessions.md) — the 2×2 of session types
 3. [Mark](03-mark.md) — manual start, manual end (alphabetical aliases)
-4. [Watch](04-watch.md) — manual start, auto end (idle-fires `end`)
+4. [Watch](04-watch.md) — manual start, auto end (idle-fires `finish`)
 5. [Recall](05-recall.md) — auto start, manual end (`recall N` / `recall Ns`)
 6. [Suggest](06-suggest.md) — auto start, auto end (idle-surfaces result)
 7. [Inspecting results](07-results.md) — notifications, simulate, list, view
@@ -46,7 +46,7 @@ require('vimficiency').setup()
 " Recall is always on — just start editing.
 " ... edit something ...
 :Vimfy recall 6          " analyze the last 6 keys (or 'recall 3s' for time)
-:Vimfy sim 6             " animate the suggestion
+:Vimfy play 6            " animate the suggestion
 ```
 
 For anything else, start at [1. Installation](01-installation.md).

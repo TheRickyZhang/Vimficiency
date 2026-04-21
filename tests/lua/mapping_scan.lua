@@ -10,7 +10,7 @@ local scan = require("vimficiency.mapping_scan").scan_rhs_for_vimfy
 
 test("scan: matches :Vimfy at RHS start", function()
   assert_eq(scan(":Vimfy start a<CR>"), true)
-  assert_eq(scan(":Vimfy end a"),       true)
+  assert_eq(scan(":Vimfy finish a"),    true)
   assert_eq(scan("  :Vimfy suggest on"), true, "leading whitespace tolerated")
 end)
 
@@ -20,9 +20,9 @@ test("scan: matches :Vimficiency at RHS start", function()
 end)
 
 test("scan: matches <Cmd>Vimfy inline (with and without colon)", function()
-  assert_eq(scan("<Cmd>Vimfy end a<CR>"),  true)
-  assert_eq(scan("<Cmd>:Vimfy end a<CR>"), true)
-  assert_eq(scan("<cmd>vimfy end<CR>"),    true, "case-insensitive")
+  assert_eq(scan("<Cmd>Vimfy finish a<CR>"),  true)
+  assert_eq(scan("<Cmd>:Vimfy finish a<CR>"), true)
+  assert_eq(scan("<cmd>vimfy finish<CR>"),    true, "case-insensitive")
 end)
 
 test("scan: matches <Cmd>Vimficiency inline", function()
@@ -33,7 +33,7 @@ end)
 test("scan: case-insensitive on command name", function()
   assert_eq(scan(":VIMFY start a"),       true)
   assert_eq(scan(":VIMFICIENCY help"),    true)
-  assert_eq(scan("<CMD>VIMFY END A<CR>"), true)
+  assert_eq(scan("<CMD>VIMFY FINISH A<CR>"), true)
 end)
 
 test("scan: does NOT match :vimfoo / :vimfrobnicate", function()

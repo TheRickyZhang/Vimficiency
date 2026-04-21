@@ -91,7 +91,7 @@ outlined here:
                Manual end                     Auto end (idle trigger)
   ------------ ------------------------------ ----------------------------
   Manual start Mark — :Vimfy start <alias>,   Watch — :Vimfy watch <alias>
-               :Vimfy end <alias>             
+               :Vimfy finish <alias>          
 
   Auto start   Recall — :Vimfy recall N /     Suggest — fires on its own
                recall Ns                      while you edit
@@ -123,7 +123,7 @@ advance_ the entire sequence you want optimized.
 >vim
     :Vimfy start a       " Mark the start
     " ... edit normally, any number of keystrokes ...
-    :Vimfy end a         " Mark the end, show suggestions
+    :Vimfy finish a      " Mark the finish, show suggestions
 <
 
 Marks are similar semantics to marks in vim, where start/end is similar to
@@ -140,14 +140,14 @@ SEE ALSO
 - 1. Inspecting results — how to read the output and replay
     the suggestions.
 - 1. Binding keys — use `<Plug>VimfyStartA` /
-    `<Plug>VimfyEndA` so your session markers don’t need typing `:Vimfy ...`.
+    `<Plug>VimfyFinishA` so your session markers don’t need typing `:Vimfy ...`.
 
 
 ==============================================================================
 4. Watch (manual start, auto end)    *vimficiency-watch-manual-start-auto-end*
 
 Use this when you know the starting point but don’t want to remember to call
-`:Vimfy end` — the end fires on its own after an idle pause.
+`:Vimfy finish` — the end fires on its own after an idle pause.
 
 >vim
     :Vimfy watch a       " Mark the start
@@ -196,7 +196,7 @@ is foundational enough that there’s no toggle.
     :Vimfy recall 3s      " Analyze the last 3 seconds
 <
 
-`:Vimfy end <alias>` stays reserved for manual handles (Mark / Watch);
+`:Vimfy finish <alias>` stays reserved for manual handles (Mark / Watch);
 retrospective windows go through `:Vimfy recall`.
 
 
@@ -277,7 +277,7 @@ moving out from under you:
 SEE ALSO
 
 - 1. Suggest — surface results automatically
-    without calling `end`.
+    without calling `finish`.
 - 1. Inspecting results — what the output looks like
     and how to replay it.
 
@@ -286,7 +286,7 @@ SEE ALSO
 6. Suggest (auto start, auto end)    *vimficiency-suggest-auto-start-auto-end*
 
 Suggest runs the optimizer on its own and surfaces a result without you calling
-`:Vimfy end` or `:Vimfy recall`. It reuses the recall queue for the start and
+`:Vimfy finish` or `:Vimfy recall`. It reuses the recall queue for the start and
 fires on triggers you configure.
 
 >lua
@@ -406,7 +406,7 @@ Cost is a keyboard-effort score (lower is better), not a keystroke count. See
 
 SIMULATING
 
-`:Vimfy sim <alias> [count]` opens a new tab with side-by-side windows and
+`:Vimfy play <alias> [count]` opens a new tab with side-by-side windows and
 animates your sequence (leftmost) and the top suggestions (one per additional
 window) - `count` — how many optimal sequences to show (default: all saved)
 
@@ -467,7 +467,7 @@ SAVING, STORING, FETCHING
 
 Every finished session starts in **session memory** (workspace) and stays there
 until it rotates out. Copy it to disk with `:Vimfy save`, move it with `:Vimfy
-store`, bring it back later with `:Vimfy fetch`. `:Vimfy sim <name>` works
+store`, bring it back later with `:Vimfy fetch`. `:Vimfy play <name>` works
 against both — it replays from memory first, falling back to disk.
 
 See 7a. Session storage for the full model, collision rules, and worked
@@ -511,7 +511,7 @@ The simplest path — one line per binding, handles all subcommands:
     local vimfy = require('vimficiency')
     
     vimfy.map('n', '<leader>vs', 'start a')
-    vimfy.map('n', '<leader>ve', 'end a')
+    vimfy.map('n', '<leader>vf', 'finish a')
     vimfy.map('n', '<leader>vq', 'save @ quick')
 <
 
@@ -547,7 +547,7 @@ name. Bind with `remap = true` (or `nmap` in vimscript):
 
 >vim
     nmap <leader>vs <Plug>VimfyStartA
-    nmap <leader>ve <Plug>VimfyEndA
+    nmap <leader>vf <Plug>VimfyFinishA
 <
 
 >lua
@@ -563,11 +563,11 @@ name. Bind with `remap = true` (or `nmap` in vimscript):
 
   <Plug>VimfyWatch{A,B,C,D,E}         :Vimfy watch <alias>
 
-  <Plug>VimfyEnd{A,B,C,D,E}           :Vimfy end <alias>
+  <Plug>VimfyFinish{A,B,C,D,E}        :Vimfy finish <alias>
 
   <Plug>VimfyClose{A,B,C,D,E}         :Vimfy close <alias>
 
-  <Plug>VimfySim{A,B,C,D,E}           :Vimfy sim <alias>
+  <Plug>VimfyPlay{A,B,C,D,E}          :Vimfy play <alias>
 
   <Plug>VimfySuggest{On,Off,Toggle}   :Vimfy suggest <on\|off\|toggle>
 
@@ -591,7 +591,7 @@ a keymap — an autocommand, a command, a UI callback — call `wrap` directly:
     local vimfy = require('vimficiency')
     vim.api.nvim_create_autocmd('User', {
       pattern = 'MyEvent',
-      callback = vimfy.wrap(function() vim.cmd('Vimfy end a') end),
+      callback = vimfy.wrap(function() vim.cmd('Vimfy finish a') end),
     })
 <
 
@@ -799,7 +799,7 @@ C++ source (`cpp/effort_model.*`) is the spec.
   :Vimfy watch <name>                   Start a Watch session (auto-end on
                                         idle).
 
-  :Vimfy end <alias>                    Finish a manual session (Mark or Watch)
+  :Vimfy finish <alias>                 Finish a manual session (Mark or Watch)
                                         and optimize.
 
   :Vimfy recall <N\|Ns>                 Finish a retrospective recall window.
@@ -816,7 +816,7 @@ C++ source (`cpp/effort_model.*`) is the spec.
   :Vimfy fetch <name> [<alias>]         Copy a saved result from disk into the
                                         current workspace.
 
-  :Vimfy sim <alias> [count]            Animate results side-by-side (memory
+  :Vimfy play <alias> [count]            Animate results side-by-side (memory
                                         first, disk fallback).
 
   :Vimfy focus <N>                      Focus the active replay on the Nth
@@ -851,7 +851,7 @@ The `<alias>` argument splits by subcommand:
   --------------------- -------------------------------------------------
   start / watch         Alphabetic only (a, refactor).
 
-  end                   Alphabetic only — manual handles.
+  finish                Alphabetic only — manual handles.
 
   recall                N (digits) or Ns (digits + s).
 
@@ -899,7 +899,7 @@ TAB COMPLETION
 Works on:
 
 - Subcommands (`:Vimfy s<Tab>` → `save`, `sim`, `start`, `suggest`).
-- Manual (alphabetic) handles for `start`, `watch`, and `end`.
+- Manual (alphabetic) handles for `start`, `watch`, and `finish`.
 - `3s`/`5s`/`10s`/`30s` hints for `recall`.
 - All active/recall aliases plus time hints for `close`.
 - Active/recall aliases, time hints, and saved names for `sim` (matches its disk fallback).
@@ -941,13 +941,13 @@ Enable Suggest and the recall queue in your config:
 <
 
 Edit naturally. Every pause surfaces suggestions. When something catches your
-eye, `:Vimfy sim 3s` (or whatever window the suggestion targeted) to see it
+eye, `:Vimfy play 3s` (or whatever window the suggestion targeted) to see it
 animated.
 
 Pair with 8. Keymaps:
 
 >vim
-    nmap <leader>vv <Plug>VimfySimA  " or ...bind to SimA / SimB / etc.
+    nmap <leader>vv <Plug>VimfyPlayA  " or ...bind to PlayA / PlayB / etc.
 <
 
 …so replaying a suggestion is a single keystroke.
@@ -960,8 +960,8 @@ Mark sessions give the cleanest boundaries:
 >vim
     :Vimfy start a
     " ... the edit ...
-    :Vimfy end a
-    :Vimfy sim a
+    :Vimfy finish a
+    :Vimfy play a
 <
 
 
@@ -988,7 +988,7 @@ Recall is built for this:
     " Recall is always recording — just query it.
     " ... clumsy edit, say 5 keys ...
     :Vimfy recall 5     " or `recall 3s` if time is the easier estimate
-    :Vimfy sim 5
+    :Vimfy play 5
 <
 
 
@@ -997,7 +997,7 @@ Recall is built for this:
 Save to disk after ending — `@` resolves to the session you just finished:
 
 >vim
-    :Vimfy end a
+    :Vimfy finish a
     :Vimfy save @ nested-dict-refactor
     " ... days later ...
     :Vimfy view nested-dict-refactor
@@ -1111,7 +1111,7 @@ Run `:Vimfy config` and capture the output along with the sequence you typed
 DOES VIMFICIENCY SLOW DOWN NEOVIM?
 
 No. Key capture is a small Lua append per keystroke. The optimizer only runs
-on `end` (or an auto-trigger), in C++, over a snapshot. Recall is always on and
+on `finish` (or an auto-trigger), in C++, over a snapshot. Recall is always on and
 the per-key overhead stays flat.
 
 

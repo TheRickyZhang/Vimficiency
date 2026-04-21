@@ -5,7 +5,7 @@ title: "Suggest (auto start, auto end)"
 # Suggest (auto start, auto end)
 
 Suggest runs the optimizer on its own and surfaces a result without
-you calling `:Vimfy end` or `:Vimfy recall`. It reuses the recall queue
+you calling `:Vimfy finish` or `:Vimfy recall`. It reuses the recall queue
 for the start and fires on triggers you configure.
 
 ```lua

@@ -15,8 +15,19 @@ local ffi_lib = require("vimficiency.ffi")
 
 local M = {}
 
-local SORTS = { "category", "alpha", "created" }
+local SORT_MODES = { "alpha", "category", "created" }
+
+--- Natural direction for each sort mode: alpha/category ascend (A→Z);
+--- created descends (newest first). Capital suffix flips these defaults.
+local DEFAULT_DIRECTIONS = {
+  alpha    = "asc",
+  category = "asc",
+  created  = "desc",
+}
+
 local STATUS_SYMBOLS = { ongoing = "●", saved = "✓", blank = " " }
+
+local SORT_POPUP_DELAY_MS = 250
 
 -- Singleton state: nil when closed.
 ---@class PickerState
@@ -24,9 +35,10 @@ local STATUS_SYMBOLS = { ongoing = "●", saved = "✓", blank = " " }
 ---@field buf      integer       # List buffer id
 ---@field prev_win integer       # Preview (vsplit) window id
 ---@field prev_buf integer       # Preview buffer id
----@field pane     "active"|"saved"
----@field sort     string        # One of SORTS
----@field query    string
+---@field pane      "active"|"saved"
+---@field sort_mode string        # One of SORT_MODES
+---@field direction "asc"|"desc"
+---@field query     string
 ---@field marked   table<string, boolean>  -- keyed by item.key (scoped per pane via prefix)
 ---@field rows     table[]       # row index -> { item = ..., is_header = bool }
 ---@field cursor   integer       # 1-indexed row in the list buffer
@@ -150,14 +162,16 @@ end
 -- Grouping + rendering
 --------------------------------------------------------------------------------
 
-local function sort_items(items, sort)
-  local function cmp(a, b)
-    if sort == "alpha" then
+--- Sort `items` ascending by `mode`, then reverse in place if direction == "desc".
+local function sort_items(items, mode, direction)
+  local function cmp_asc(a, b)
+    if mode == "alpha" then
       return a.name < b.name
-    elseif sort == "created" then
+    elseif mode == "created" then
+      -- Ascending = oldest first.
       local at = a.start_time_ns or (a.mtime_sec or 0) * 1e9
       local bt = b.start_time_ns or (b.mtime_sec or 0) * 1e9
-      return at > bt
+      return at < bt
     else -- category
       if (a.category or "") ~= (b.category or "") then
         return (a.category or "") < (b.category or "")
@@ -165,12 +179,18 @@ local function sort_items(items, sort)
       return a.name < b.name
     end
   end
-  table.sort(items, cmp)
+  table.sort(items, cmp_asc)
+  if direction == "desc" then
+    local n = #items
+    for i = 1, math.floor(n / 2) do
+      items[i], items[n - i + 1] = items[n - i + 1], items[i]
+    end
+  end
 end
 
 --- Split items into sections: Ongoing (pinned top) + either categories or a
 --- single "All" section depending on sort.
-local function group_into_sections(items, sort)
+local function group_into_sections(items, mode, direction)
   local ongoing, rest = {}, {}
   for _, it in ipairs(items) do
     if it.pane == "active" and it.status == "active" then
@@ -179,14 +199,14 @@ local function group_into_sections(items, sort)
       table.insert(rest, it)
     end
   end
-  sort_items(ongoing, sort)
-  sort_items(rest, sort)
+  sort_items(ongoing, mode, direction)
+  sort_items(rest, mode, direction)
 
   local sections = {}
   if #ongoing > 0 then
     table.insert(sections, { title = "Ongoing", items = ongoing })
   end
-  if sort == "category" then
+  if mode == "category" then
     local by_cat = {}
     local order = {}
     for _, it in ipairs(rest) do
@@ -244,14 +264,14 @@ local function render()
     end
   end
 
-  local sections = group_into_sections(filtered, state.sort)
+  local sections = group_into_sections(filtered, state.sort_mode, state.direction)
 
-  -- Header lines: title + pane indicator + sort + query.
+  local arrow = state.direction == "asc" and "↑" or "↓"
   local header_lines = {
-    string.format(" vimficiency | pane: %s%s  sort: %s",
+    string.format(" vimficiency | pane: %s%s  sort: %s %s",
       state.pane == "active" and "[Active]" or " Active ",
       state.pane == "saved"  and "[Saved]"  or " Saved ",
-      state.sort),
+      arrow, state.sort_mode),
     string.rep("─", math.max(10, v.nvim_win_get_width(state.win) / 2 - 2)),
   }
 
@@ -434,15 +454,56 @@ local function act_toggle_pane()
   render()
 end
 
-local function act_cycle_sort()
-  for i, s in ipairs(SORTS) do
-    if s == state.sort then
-      state.sort = SORTS[(i % #SORTS) + 1]
-      break
-    end
+--- Apply a sort mode. `reverse` flips away from the mode's natural direction.
+local function act_sort_apply(mode, reverse)
+  state.sort_mode = mode
+  local natural = DEFAULT_DIRECTIONS[mode] or "asc"
+  if reverse then
+    state.direction = (natural == "asc") and "desc" or "asc"
+  else
+    state.direction = natural
   end
   render()
 end
+
+local SORT_HINT_LINES = {
+  "  Sort by…",
+  "",
+  "  n / N   name       (A→Z / Z→A)",
+  "  c / C   category   (A→Z / Z→A)",
+  "  t / T   time       (newest / oldest)",
+  "",
+  "  <Esc>   cancel",
+}
+
+local function show_sort_popup()
+  local buf = v.nvim_create_buf(false, true)
+  vim.bo[buf].buftype = "nofile"
+  vim.bo[buf].bufhidden = "wipe"
+  v.nvim_buf_set_lines(buf, 0, -1, false, SORT_HINT_LINES)
+  vim.bo[buf].modifiable = false
+  local width = 44
+  local height = #SORT_HINT_LINES
+  local row = math.floor((vim.o.lines - height) / 2)
+  local col = math.floor((vim.o.columns - width) / 2)
+  local win = v.nvim_open_win(buf, false, {
+    relative = "editor", row = row, col = col,
+    width = width, height = height, border = "rounded", style = "minimal",
+    title = " Sort ", title_pos = "center", focusable = false,
+  })
+  vim.cmd("redraw")
+  local ok, ch = pcall(vim.fn.getcharstr)
+  pcall(v.nvim_win_close, win, true)
+  if not ok or ch == "" or ch == "\27" then return end
+  local mode_of = { n = "alpha", c = "category", t = "created" }
+  local m = mode_of[ch:lower()]
+  if not m then return end
+  act_sort_apply(m, ch:match("%u") ~= nil)
+end
+
+-- Plain `s` falls through to the hint popup once the mapping engine resolves
+-- the ambiguous prefix (after 'timeoutlen'). Fast typers never see it.
+local act_sort_popup = show_sort_popup
 
 local function act_search()
   if not state or not v.nvim_win_is_valid(state.prompt_win) then return end
@@ -528,7 +589,7 @@ local function act_open()
   end
   -- Active pane.
   if it.status == "active" then
-    vim.notify("Session [" .. it.name .. "] is still running. Finish it with ':Vimfy end " ..
+    vim.notify("Session [" .. it.name .. "] is still running. Finish it with ':Vimfy finish " ..
       it.name .. "' first.", vim.log.levels.INFO)
     return
   end
@@ -671,17 +732,20 @@ end
 local HELP_LINES = {
   "  Vimficiency session picker",
   "",
-  "  /        fuzzy search",
-  "  <Tab>    switch Active ↔ Saved pane",
-  "  s        cycle sort",
-  "  <CR>     open",
-  "  d        delete",
-  "  m        toggle mark",
-  "  D        delete marked",
-  "  r        rename",
-  "  y        duplicate",
-  "  ?        this help",
-  "  q / <Esc> close",
+  "  /          fuzzy search",
+  "  <Tab>      switch Active ↔ Saved pane",
+  "  sn / sN    sort by name      (A→Z / Z→A)",
+  "  sc / sC    sort by category  (A→Z / Z→A)",
+  "  st / sT    sort by time      (newest / oldest)",
+  "  s          sort menu (s? shows the hint popup)",
+  "  <CR>       open",
+  "  d          delete",
+  "  m          toggle mark",
+  "  D          delete marked",
+  "  r          rename",
+  "  y          duplicate",
+  "  ?          this help",
+  "  q / <Esc>  close",
 }
 
 local function act_help()
@@ -714,7 +778,14 @@ local function install_keymaps(buf)
   map("q",       close)
   map("<Esc>",   close)
   map("<Tab>",   act_toggle_pane)
-  map("s",       act_cycle_sort)
+  map("sn",      function() act_sort_apply("alpha",    false) end)
+  map("sN",      function() act_sort_apply("alpha",    true)  end)
+  map("sc",      function() act_sort_apply("category", false) end)
+  map("sC",      function() act_sort_apply("category", true)  end)
+  map("st",      function() act_sort_apply("created",  false) end)
+  map("sT",      function() act_sort_apply("created",  true)  end)
+  map("s?",      act_sort_popup)
+  map("s",       act_sort_popup)
   map("/",       act_search)
   map("<CR>",    act_open)
   map("d",       act_delete)
@@ -791,7 +862,8 @@ function M.open()
     prev_win = prev_win, prev_buf = prev_buf,
     prompt_win = prompt_win, prompt_buf = prompt_buf,
     pane = "active",
-    sort = "category",
+    sort_mode = "category",
+    direction = DEFAULT_DIRECTIONS.category,
     query = "",
     marked = {},
     rows = {},

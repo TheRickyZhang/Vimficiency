@@ -110,6 +110,16 @@ local plugin_root = tests_dir .. "../.."
 vim.opt.rtp:prepend(plugin_root)
 package.path = tests_dir .. "?.lua;" .. package.path
 
+-- Isolate `stdpath("data")` to a shared tempdir for the whole run so
+-- features that write there (the stats JSONL log, saved results, etc.)
+-- don't touch the user's real `~/.local/share/nvim` during tests. Tests
+-- that need per-test isolation (workspace_storage) still override
+-- XDG_DATA_HOME themselves; between-file reset below restores *this*
+-- tempdir so those overrides don't leak.
+local test_data_home = vim.fn.tempname()
+vim.fn.mkdir(test_data_home, "p")
+vim.env.XDG_DATA_HOME = test_data_home
+
 local test_files = {}
 if vim.env.VF_TEST_FILE and vim.env.VF_TEST_FILE ~= "" then
   test_files[1] = vim.fn.fnamemodify(vim.env.VF_TEST_FILE, ":p")
@@ -170,8 +180,10 @@ local function reset_state()
   end
 
   -- 5. Env vars tests override (workspace_storage.lua sets XDG_DATA_HOME
-  --    to a tempdir). Clear so the next test inherits pristine defaults.
-  vim.env.XDG_DATA_HOME = nil
+  --    per-test). Restore the runner-wide tempdir so the next file
+  --    inherits a pristine, isolated data home rather than the user's
+  --    real one.
+  vim.env.XDG_DATA_HOME = test_data_home
 
   -- 6. Unload plugin modules so the next file's top-level `require()`
   --    calls re-execute and see a fresh module-local state (session

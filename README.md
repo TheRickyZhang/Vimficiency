@@ -31,7 +31,7 @@ Vimficiency organizes work around **sessions** — captures of (start state, key
 
 |                   | **Manual end**                | **Auto end** (idle)         |
 |-------------------|-------------------------------|-----------------------------|
-| **Manual start**  | **Mark** — `:Vimfy start a` … `:Vimfy end a` | **Watch** — `:Vimfy watch a`            |
+| **Manual start**  | **Mark** — `:Vimfy start a` … `:Vimfy finish a` | **Watch** — `:Vimfy watch a`            |
 | **Auto start**    | **Recall** — `:Vimfy recall 6` / `recall 3s` | **Suggest** — fires while you edit      |
 
 Recall is always on, so the lowest-friction entry point is:
@@ -39,7 +39,7 @@ Recall is always on, so the lowest-friction entry point is:
 ```vim
 " ... edit something ...
 :Vimfy recall 6     " analyze the last 6 keystrokes (or 'recall 3s' for time)
-:Vimfy sim 6        " animate the suggested sequence
+:Vimfy play 6       " animate the suggested sequence
 ```
 
 For the full set of commands, save/store/fetch flow, configuration, and the effort model, see the user guide.

@@ -12,7 +12,7 @@ Recall lets you look backward without any previous marking setup by querying a c
 :Vimfy recall 3s      " Analyze the last 3 seconds
 ```
 
-`:Vimfy end <alias>` stays reserved for manual handles (Mark / Watch);
+`:Vimfy finish <alias>` stays reserved for manual handles (Mark / Watch);
 retrospective windows go through `:Vimfy recall`.
 
 ## Window aliases: two ways to index the queue
@@ -82,6 +82,6 @@ Recall windows rotate out of the queue as you type, so save promptly.
 ## See also
 
 - [6. Suggest](06-suggest.md) — surface results automatically
-  without calling `end`.
+  without calling `finish`.
 - [7. Inspecting results](07-results.md) — what the output looks like
   and how to replay it.
