@@ -5,17 +5,11 @@ local max     = math.max
 local min     = math.min
 local ffi_lib = require("vimficiency.ffi")
 local util    = require("vimficiency.util")
+local highlights = require("vimficiency.highlights")
 
 local M = {}
 
 local cursor_ns = v.nvim_create_namespace("vimficiency_cursor")
-
--- `default = true` lets users override these groups.
-v.nvim_set_hl(0, "VimficiencyReplayCurrent",      { link = "IncSearch", default = true })
-v.nvim_set_hl(0, "VimficiencyReplayCursor",       { link = "Search",    default = true })
-v.nvim_set_hl(0, "VimficiencyReplayCursorInsert", { link = "DiffAdd",   default = true })
-v.nvim_set_hl(0, "VimficiencyReplayCursorVisual", { link = "Visual",    default = true })
-v.nvim_set_hl(0, "VimficiencyReplayActive",       { link = "Title",     default = true })
 
 -- =============================================================================
 -- Multi-sequence replay state
@@ -207,11 +201,11 @@ end
 ---@param mode string   -- nvim_get_mode().mode code
 ---@return string
 local function mode_hl(mode)
-  if mode:sub(1, 1) == "i" then return "VimficiencyReplayCursorInsert" end
+  if mode:sub(1, 1) == "i" then return highlights.REPLAY_CURSOR_INSERT end
   if mode == "v" or mode == "V" or mode == "\22" then
-    return "VimficiencyReplayCursorVisual"
+    return highlights.REPLAY_CURSOR_VISUAL
   end
-  return "VimficiencyReplayCursor"
+  return highlights.REPLAY_CURSOR
 end
 
 --- Human-readable replay mode label for the virtual header.
@@ -317,7 +311,7 @@ local function render_header(seq_idx, entry)
   for j, tok in ipairs(tokens) do
     sequence_chunks[#sequence_chunks + 1] = {
       tok.text,
-      j == multi_sim.global_step and "VimficiencyReplayCurrent" or "Normal",
+      j == multi_sim.global_step and highlights.REPLAY_CURRENT or "Normal",
     }
   end
 
@@ -327,7 +321,7 @@ local function render_header(seq_idx, entry)
   }, wrapped_sequence[1])
 
   local is_active = entry.win == v.nvim_get_current_win()
-  local label_hl = is_active and "VimficiencyReplayActive" or "Comment"
+  local label_hl = is_active and highlights.REPLAY_ACTIVE or "Comment"
 
   ---@type table[]
   local virt_lines = {
@@ -375,7 +369,7 @@ local function update_cursor_highlights()
       render_header(entry.seq_idx, entry)
 
       local snap = current_snap(entry.seq_idx)
-      local hl   = snap and mode_hl(snap.mode) or "VimficiencyReplayCursor"
+      local hl   = snap and mode_hl(snap.mode) or highlights.REPLAY_CURSOR
 
       local cursor = v.nvim_win_get_cursor(entry.win)
       local row = cursor[1] - 1   -- 0-indexed for extmark

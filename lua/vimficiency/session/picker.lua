@@ -12,6 +12,11 @@ local session = require("vimficiency.session")
 local session_store = require("vimficiency.session.store")
 local alias_mod = require("vimficiency.session.alias")
 local ffi_lib = require("vimficiency.ffi")
+local highlights = require("vimficiency.highlights")
+
+-- Namespace for picker-owned extmarks (header pane indicator, section
+-- dividers). Cleared and re-populated on every render().
+local picker_ns = v.nvim_create_namespace("vimficiency.session.picker")
 
 local M = {}
 
@@ -266,12 +271,32 @@ local function render()
 
   local sections = group_into_sections(filtered, state.sort_mode, state.direction)
 
+  -- Float's window title already says "Vimficiency Sessions"; header here
+  -- just shows the two orthogonal controls (pane + sort). Highlight spans
+  -- are computed alongside the line so the selected pane label stands out.
   local arrow = state.direction == "asc" and "↑" or "↓"
+  local pane_active_label = "Active"
+  local pane_saved_label = "Saved"
+  local header_prefix = " pane: "
+  local header_sep = "  "
+  local sort_label = string.format("  sort: %s %s", arrow, state.sort_mode)
+  local header_line = header_prefix
+      .. pane_active_label
+      .. header_sep
+      .. pane_saved_label
+      .. sort_label
+
+  -- Byte offsets of each stylable span on the header line. Lua 1-indexed
+  -- string ops; nvim_buf_set_extmark wants 0-indexed byte offsets.
+  local active_start = #header_prefix
+  local active_end = active_start + #pane_active_label
+  local saved_start = active_end + #header_sep
+  local saved_end = saved_start + #pane_saved_label
+  local sort_start = saved_end
+  local sort_end = #header_line
+
   local header_lines = {
-    string.format(" vimficiency | pane: %s%s  sort: %s %s",
-      state.pane == "active" and "[Active]" or " Active ",
-      state.pane == "saved"  and "[Saved]"  or " Saved ",
-      arrow, state.sort_mode),
+    header_line,
     string.rep("─", math.max(10, v.nvim_win_get_width(state.win) / 2 - 2)),
   }
 
@@ -281,13 +306,32 @@ local function render()
   local rows = {}   -- parallel to `lines`; nil for non-item rows
   for _, _ in ipairs(header_lines) do table.insert(rows, { is_header = true }) end
 
+  -- Track extmark ranges we'll apply after set_lines. Each entry is
+  -- `{line_idx, col_start, col_end, hl_group}` using 0-indexed coordinates.
+  local hl_spans = {
+    { 0, 0, active_start, highlights.PICKER_HEADER_DIM },  -- "pane: "
+    { 0, active_start, active_end,
+      state.pane == "active"
+        and highlights.PICKER_PANE_ACTIVE
+        or  highlights.PICKER_PANE_INACTIVE },
+    { 0, active_end, saved_start, highlights.PICKER_HEADER_DIM },
+    { 0, saved_start, saved_end,
+      state.pane == "saved"
+        and highlights.PICKER_PANE_ACTIVE
+        or  highlights.PICKER_PANE_INACTIVE },
+    { 0, sort_start, sort_end, highlights.PICKER_HEADER_DIM },
+  }
+
   for si, section in ipairs(sections) do
     if si > 1 then
       table.insert(lines, "")
       table.insert(rows, { is_header = true })
     end
-    table.insert(lines, "── " .. section.title .. " ──")
+    local section_line = "── " .. section.title .. " ──"
+    table.insert(lines, section_line)
     table.insert(rows, { is_header = true })
+    table.insert(hl_spans,
+      { #lines - 1, 0, #section_line, highlights.PICKER_SECTION })
     for _, it in ipairs(section.items) do
       table.insert(lines, row_for_item(it))
       table.insert(rows, { item = it })
@@ -304,6 +348,19 @@ local function render()
   vim.bo[state.buf].modifiable = true
   v.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
   vim.bo[state.buf].modifiable = false
+
+  -- Re-apply header + section highlights. Clearing the namespace first is
+  -- necessary because nvim_buf_set_lines doesn't clear extmarks owned by
+  -- our ns (they'd stack across renders and drift as rows shift).
+  v.nvim_buf_clear_namespace(state.buf, picker_ns, 0, -1)
+  for _, span in ipairs(hl_spans) do
+    local line_idx, col_start, col_end, hl_group = span[1], span[2], span[3], span[4]
+    v.nvim_buf_set_extmark(state.buf, picker_ns, line_idx, col_start, {
+      end_row = line_idx,
+      end_col = col_end,
+      hl_group = hl_group,
+    })
+  end
 
   state.rows = rows
 

@@ -22,21 +22,39 @@
 // composition plan. Drives the `:Vimfy explore` scratch buffer.
 //
 // Responsibilities — the Session owns:
-//   - The composition plan (CompositionResult) + derived fenceposts
-//     (linesAfterEdit_). Computed once at construction.
+//   - The persistent composition plan. Computed once at construction via
+//     `CompositionOptimizer::optimize` and stored in `plan_`. The plan is a
+//     sequence of diffs / fenceposts describing how to transform initial →
+//     goal; the Session never re-plans, only advances through it.
 //   - The phase machine (Step).
 //   - Undo/redo history (vectors of State snapshots).
 //   - Mutable live State (lines, cursor, accepted sequence/cost).
 //
-// Content-level decisions are delegated to stateless handler namespaces in
-// sibling headers:
-//   - Explore::MotionHandler — what motions exist? does this motion parse?
-//   - Explore::EditHandler   — what edit atoms exist here? does this buffer
-//                              state match the planned fencepost?
+// Session as frontier forwarder:
+//   `recommendations(...)` is a composition of optimizer-level frontier
+//   modules, queried live from the current (cursor, fencepost, diff) on
+//   every call. The Session does NOT hold a warm optimizer — each call
+//   rebuilds the relevant candidate set from scratch. Sources:
 //
-// Handlers wrap optimizer artifacts (EditResult, simulateMotions, getEffort)
-// and are the single place to keep in sync when optimizer semantics change.
-// Session logic is independent of optimizer internals.
+//     - `rankEditFrontier`  (src/Optimizer/EditOptimizer/EditFrontier.h)
+//         Edit atoms valid at the cursor position for the current diff.
+//
+//     - `backfillEditStartMotions` (file-local; only when cursor is inside
+//         the diff range and the edit frontier underfills)
+//         Ranks motions toward OTHER viable edit starts inside the same
+//         diff, so the user still gets next-step guidance after landing on
+//         a non-optimal cell.
+//
+//     - `rankMotionFrontier` (src/Optimizer/MotionOptimizer/MotionFrontier.h)
+//         A depth-1 live A* peek from the cursor — ONE expansion level of
+//         the motion optimizer's own search graph, scored the same way the
+//         full optimizer would score them, then the top K. Immediate next
+//         molecules, not full paths.
+//
+//     - `rankMotionFrontierToLine`  (join-line hint, multiline diffs only)
+//
+//   Session-local handlers (`EditHandler`, `MotionHandler`) are only for
+//   action parsing/validation and strict buffer acceptance rules.
 //
 // There is no Invalid phase. "Session is in a bad state" is either:
 //   - A recoverable user mistake → the action returns Rejected, state unchanged.
@@ -77,6 +95,10 @@ struct Recommendation {
   double totalPathCost = 0.0;
   int landingRow = 0;
   int landingCol = 0;
+  // Insert-mode text the user must type after `text` to complete the edit
+  // (e.g. `"m"` for atom `"s"` when the planned sequence is `"sm<Esc>"`).
+  // Empty for motion recs and for normal-mode-only edits like `x` / `rm`.
+  std::string typedText;
 };
 
 // Mutable state snapshot. The Session owns one live State and a history of
@@ -132,8 +154,34 @@ public:
   // buffer coordinates, when in ApproachEdit and a plan exists. Empty otherwise.
   std::optional<std::pair<CursorPos, CursorPos>> currentTargetRange() const;
 
-  // Top-K ranked next-step candidates. Empty in PendingInsert / Completed.
-  std::vector<Recommendation> recommendations(int maxCount) const;
+  // Top-K ranked IMMEDIATE NEXT MOLECULES for the current phase. Empty in
+  // PendingInsert / Completed.
+  //
+  // Each recommendation is one atomic action the user could take right now
+  // (`w`, `f;`, `$`, `s`, `cl`, ...), NOT a full sequence to the target.
+  // The user picks one, the session advances by exactly that molecule, and
+  // the next call to `recommendations(...)` computes a fresh frontier from
+  // the new cursor state.
+  //
+  // Composition (in rank order of how items are appended before the trim):
+  //   1. Edit frontier at the cursor (via rankEditFrontier).
+  //   2. Motion backfill toward sibling edit starts (only when cursor is
+  //      already inside the diff and the edit frontier underfills).
+  //   3. Motion frontier toward the diff target (only when cursor is
+  //      outside the diff) — depth-1 live A* peek.
+  //   4. Optional join-line motion hint for multiline diffs.
+  // Final step trims to `maxCount`.
+  //
+  // Two independent dedup knobs — motions (`w`/`W`/`e` landing on the same
+  // cell) and edits (`s`/`cl`/`cw` reaching the same fencepost) can be
+  // toggled separately because their pedagogical value differs. Both
+  // default to `false` (dedup on); the flag is forwarded to the underlying
+  // frontier modules so generation respects it end-to-end and the display
+  // layer never throws anything away post-hoc.
+  std::vector<Recommendation> recommendations(
+      int maxCount,
+      bool allowMultipleMotionsPerPosition = false,
+      bool allowMultipleEditsPerPosition = false) const;
 
   // --- Actions ---
   // Each action produces a new state (on Applied) or a Rejected reason
@@ -147,6 +195,16 @@ public:
   Outcome beginEdit(bool entersInsertMode, std::string_view requiredTypedText = "");
   Outcome consumeInsertText(std::string_view typedChunk);
   Outcome exitInsertMode();
+  // Buffer-state completion for PendingInsert. Accept iff `newLines` matches
+  // the planned fencepost after the in-flight edit; on accept advances past
+  // PendingInsert regardless of any residual `remainingText` (the buffer is
+  // the source of truth). On mismatch, state is unchanged.
+  Outcome acceptInsertExit(const Lines& newLines, CursorPos newCursor,
+                           std::string_view rawKeys);
+  // Abort a PendingInsert without polluting redo. Pops the matching undo
+  // entry (the beginEdit commit) in-place — intended for rejected or
+  // abandoned insert-mode entries.
+  Outcome cancelPendingInsert();
   Outcome undo();
   Outcome redo();
 
@@ -159,9 +217,8 @@ private:
   Config config_;
   int totalEdits_ = 0;
 
-  // Composition plan + fencepost cache (size == totalEdits_ + 1)
+  // Persistent composition plan + step-scoped frontier artifacts.
   std::optional<CompositionResult> plan_;
-  std::vector<Lines> linesAfterEdit_;
 
   // Live state + undo/redo history
   State state_;

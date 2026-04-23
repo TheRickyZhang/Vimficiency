@@ -111,8 +111,15 @@ function M.show_keymap_help(title, keymaps, help_tag)
   local lines = { title, "" }
   local width = vim.fn.strdisplaywidth(title)
 
+  -- Left-column width = widest lhs, min 4 so very short lists don't look cramped.
+  local lhs_w = 4
   for _, m in ipairs(keymaps) do
-    local line = string.format("  %-8s %s", m.lhs, m.desc)
+    lhs_w = math.max(lhs_w, vim.fn.strdisplaywidth(m.lhs))
+  end
+
+  for _, m in ipairs(keymaps) do
+    local pad = lhs_w - vim.fn.strdisplaywidth(m.lhs)
+    local line = "  " .. m.lhs .. string.rep(" ", pad) .. "  " .. m.desc
     lines[#lines + 1] = line
     width = math.max(width, vim.fn.strdisplaywidth(line))
   end
