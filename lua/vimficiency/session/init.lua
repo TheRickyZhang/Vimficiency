@@ -37,8 +37,10 @@ end
 ---@param level integer|nil
 local function total_failure(record, title, text, notify_message, level)
   util.show_output(title, text, {
-    help_tag = "vimficiency-inspecting-results-scratch-output-buffer-keys",
-    help_title = "Vimficiency Scratch Output Keys",
+    ui_keys = {
+      title = "Vimficiency Scratch Output Keys",
+      docs = true,
+    },
   })
   -- Manual sessions are removed on failure; recall/suggest windows are not.
   if record.start_kind == "manual" then
@@ -57,6 +59,16 @@ local function get_save_dir()
   return vim.fn.stdpath("data") .. "/vimficiency/saved"
 end
 
+--- Sentinel for "intentionally-empty array". Pairs with `vim.empty_dict()`
+--- for objects. Lua can't distinguish `{}`-as-array from `{}`-as-object,
+--- so `encode_pretty` rejects bare empty tables — the save path forces
+--- callers to disambiguate, eliminating silent shape drift.
+local EMPTY_ARRAY_MT = { __jsontype = "array" }
+local function empty_array()
+  return setmetatable({}, EMPTY_ARRAY_MT)
+end
+M.empty_array = empty_array
+
 --- Encode `value` as JSON with 2-space indentation.
 --- `vim.json.encode` has no indent option, so we walk the structure
 --- ourselves and delegate leaf encoding to it. Object keys are sorted
@@ -71,7 +83,18 @@ local function encode_pretty(value, level)
   level = level or 0
   local pad = string.rep("  ", level)
   local inner = string.rep("  ", level + 1)
-  if next(value) == nil then return "[]" end
+  if next(value) == nil then
+    local mt = getmetatable(value)
+    if mt and mt.__jsontype == "array" then return "[]" end
+    -- `vim.empty_dict()` is detected via `vim.islist` (which returns
+    -- false for the dict marker) without depending on Neovim's internal
+    -- metatable shape.
+    if not vim.islist(value) then return "{}" end
+    error(
+      "encode_pretty: bare empty table is shape-ambiguous; " ..
+      "use vim.empty_dict() for objects or session.empty_array() for arrays"
+    )
+  end
   if vim.islist(value) then
     local parts = {}
     for _, v in ipairs(value) do
@@ -305,6 +328,9 @@ local function compute_result_for_active(active)
   local optimal_results = {}
   for i = 1, math.min(#results, config.RESULTS_SAVED) do
     table.insert(optimal_results, results[i])
+  end
+  if #optimal_results == 0 then
+    optimal_results = empty_array()
   end
 
   ---@type ResultSession
@@ -1024,46 +1050,57 @@ function M.simulate(alias, count)
     return
   end
 
-  -- Build items: user sequence + top N optimal results, each with cost.
-  local items = {}
-
   local function fmt_cost(c)
     return c and string.format("%.2f", c) or nil
   end
 
-  local user_seq = result.user_seq or ""
-  local optimal_results = result.optimal_results or {}
-  local first_optimal = optimal_results[1] and optimal_results[1].seq or ""
+  -- Item builder, closed over `result` + the initial explicit `count`
+  -- override. Play settings are read on every call (not captured) so
+  -- toggles from the `gs` modal take effect on the next
+  -- `simulate.refresh_current_items()`. The one-shot `count` arg is
+  -- dropped on refresh — the settings store wins when the user has
+  -- started fiddling with preferences.
+  ---@param use_initial_count boolean
+  ---@return VimficiencyReplayItem[]
+  local function build_items(use_initial_count)
+    local play_settings = require("vimficiency.play").get_settings()
+    local items = {}
+    local user_seq = result.user_seq or ""
+    local optimal_results = result.optimal_results or {}
+    local first_optimal = optimal_results[1] and optimal_results[1].seq or ""
 
-  if user_seq ~= "" and user_seq ~= first_optimal then
-    table.insert(items, { seq = user_seq, cost = fmt_cost(result.user_cost) })
+    if play_settings.include_user_sequence
+       and user_seq ~= "" and user_seq ~= first_optimal then
+      table.insert(items, { seq = user_seq, cost = fmt_cost(result.user_cost) })
+    end
+
+    local num_to_show = (use_initial_count and count)
+      or play_settings.default_result_count
+      or 1
+    for i = 1, math.min(num_to_show, #optimal_results) do
+      local r = optimal_results[i]
+      table.insert(items, { seq = r.seq, cost = fmt_cost(r.cost) })
+    end
+
+    -- Cap at the grid's window budget (4×2 layout). Trim from the tail
+    -- so the user's sequence (always first, if present) and the
+    -- highest-ranked optimal results survive.
+    local MAX_SIM_WINDOWS = 8
+    if #items > MAX_SIM_WINDOWS then
+      local dropped = #items - MAX_SIM_WINDOWS
+      for _ = 1, dropped do table.remove(items) end
+      vim.notify(string.format(
+        "vimficiency sim: showing %d of %d requested sequences (layout caps at %d).",
+        MAX_SIM_WINDOWS, MAX_SIM_WINDOWS + dropped, MAX_SIM_WINDOWS),
+        vim.log.levels.WARN)
+    end
+    return items
   end
 
-  -- Default: show just the single best optimal, paired with the user's
-  -- sequence for a 2-window comparison. Users who want to browse more
-  -- alternatives can pass an explicit count.
-  local num_to_show = count or 1
-  for i = 1, math.min(num_to_show, #optimal_results) do
-    local r = optimal_results[i]
-    table.insert(items, { seq = r.seq, cost = fmt_cost(r.cost) })
-  end
-
+  local items = build_items(true)
   if #items == 0 then
     vim.notify("No sequences to simulate", vim.log.levels.WARN)
     return
-  end
-
-  -- Cap at the grid's window budget (4×2 layout). Trim from the tail so
-  -- the user's sequence (always first, if present) and the highest-ranked
-  -- optimal results survive.
-  local MAX_SIM_WINDOWS = 8
-  if #items > MAX_SIM_WINDOWS then
-    local dropped = #items - MAX_SIM_WINDOWS
-    for _ = 1, dropped do table.remove(items) end
-    vim.notify(string.format(
-      "vimficiency sim: showing %d of %d requested sequences (layout caps at %d).",
-      MAX_SIM_WINDOWS, MAX_SIM_WINDOWS + dropped, MAX_SIM_WINDOWS),
-      vim.log.levels.WARN)
   end
 
   simulate.simulate_compare(
@@ -1075,6 +1112,10 @@ function M.simulate(alias, count)
       label   = alias,
       end_row = result.end_row,
       end_col = result.end_col,
+      -- Hook simulate's live-refresh path. When the user toggles play
+      -- settings from the replay grid, simulate_compare will be re-run
+      -- with the items this returns, respecting current settings.
+      refresh_items = function() return build_items(false) end,
     }
   )
 end
@@ -1171,9 +1212,12 @@ function M.view(name)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, output_lines)
   vim.bo[buf].modifiable = false
 
-  util.set_buffer_keymaps(buf, util.with_help_keymaps({
+  util.set_buffer_keymaps(buf, util.with_standard_ui_keymaps({
     { lhs = "q", handler = "<cmd>close<cr>", desc = "Close vimficiency view", nowait = true },
-  }, "Vimficiency Saved Result Keys", "vimficiency-inspecting-results-saved-result-buffer-keys"))
+  }, {
+    title = "Vimficiency Saved Result Keys",
+    docs = true,
+  }))
 end
 
 return M

@@ -693,7 +693,9 @@ static vector<CompositionExploreCase> collectCompositionCases() {
 
     // Extract per-diff edit exploration data
     vector<PerDiffEditExploration> editDetails;
-    for (auto& editResult : result.getEditResults()) {
+    for (int editIndex = 0; editIndex < result.totalEdits(); editIndex++) {
+      const auto step = result.stepAt(editIndex);
+      const auto& editResult = step.editResult;
       PerDiffEditExploration detail;
       detail.states = editResult.getStats().exploredStates();
 

@@ -94,6 +94,21 @@ For each session:
    - if the chosen edit enters insert mode, enforce the required typed suffix
 4. Once the session reaches the final fencepost state, mark it `Completed`.
 
+### Composition compatibility boundary
+
+Explore does not consume an arbitrary optimizer result. Its compatibility
+boundary is one planned edit at a time:
+
+- current diff
+- pre-edit fencepost
+- valid edit-start set / post-edit cursor data
+- post-edit fencepost
+
+In code this boundary is `CompositionResult::stepAt(i)`. Optimizer refactors
+may change internal storage, search strategy, or debug surfaces freely, but
+must preserve the semantics of that bundled per-edit view if Explore is to
+remain compatible.
+
 ## Phase machine
 
 `Completed`

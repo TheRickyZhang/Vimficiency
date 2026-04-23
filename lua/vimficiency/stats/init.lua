@@ -21,6 +21,18 @@ local MOTION_TOP_N = 8
 
 local SPARK_LEVELS = { "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█" }
 
+-- 30-day efficiency chart dimensions. 4 rows × 8 SPARK_LEVELS = 32 levels
+-- of granularity across 0..100, vs. the old single-row sparkline's 8.
+local CHART_DAYS = 30
+local CHART_ROWS = 4
+-- Right-aligned y-axis tick labels (top row to row above baseline).
+local CHART_Y_LABELS = { "100", " 75", " 50", " 25" }
+
+-- One visible prefix before chart columns. Keeps the content indent
+-- (4 spaces) consistent with sibling sections ("Score:", "Sessions:"),
+-- then adds "NNN ┤" for the axis tick. Baseline uses "  0 └"+"─"×N.
+local CHART_PREFIX_WIDTH = 4 + 3 + 2  -- "    " + "100" + " ┤"
+
 --------------------------------------------------------------------------------
 -- Molecule normalization
 --------------------------------------------------------------------------------
@@ -167,12 +179,39 @@ local function format_score(score)
   return string.format("%.1f / 100", score)
 end
 
-local function spark_char(score)
+---Cell character for day `score` at a given row when stacking CHART_ROWS
+---rows. `row_from_bottom` is 0 for the baseline row, CHART_ROWS-1 for top.
+---Total eighths of height = round(score * CHART_ROWS * 8 / 100); this row
+---fills up to 8 of those, spillover goes to the row above.
+local function chart_cell(score, row_from_bottom)
   if not score then return " " end
-  local idx = math.floor((score / 100) * (#SPARK_LEVELS - 1)) + 1
-  if idx < 1 then idx = 1 end
-  if idx > #SPARK_LEVELS then idx = #SPARK_LEVELS end
-  return SPARK_LEVELS[idx]
+  local total_eighths = math.floor((score * CHART_ROWS * 8 / 100) + 0.5)
+  local row_eighths = total_eighths - row_from_bottom * 8
+  if row_eighths <= 0 then return " " end
+  if row_eighths >= 8 then return "█" end
+  return SPARK_LEVELS[row_eighths]
+end
+
+---@param summary table
+---@return string[]  lines — CHART_ROWS data lines + baseline + x-axis label
+local function render_30day_chart(summary)
+  local today = math.floor(os.time() / 86400)
+  local out = {}
+  for i = 1, CHART_ROWS do
+    local row_from_bottom = CHART_ROWS - i
+    local cells = {}
+    for d = CHART_DAYS - 1, 0, -1 do
+      cells[#cells + 1] = chart_cell(summary.efficiency_by_day[today - d], row_from_bottom)
+    end
+    out[#out + 1] = "    " .. CHART_Y_LABELS[i] .. " ┤" .. table.concat(cells, "")
+  end
+  out[#out + 1] = "      0 └" .. string.rep("─", CHART_DAYS)
+  local left, right = "30 days ago", "today"
+  local pad = CHART_DAYS - #left - #right
+  if pad < 1 then pad = 1 end
+  out[#out + 1] = string.rep(" ", CHART_PREFIX_WIDTH) .. left ..
+    string.rep(" ", pad) .. right
+  return out
 end
 
 local function format_duration(total_keys)
@@ -215,18 +254,21 @@ local function format_ratio(r)
 end
 
 ---@param summary table
----@return string[]
+---@return string[] lines
+---@return integer[] title_rows  0-indexed rows that should render as section titles
 function M.build_lines(summary)
   local L = {}
+  local title_rows = {}
   local function push(s) L[#L + 1] = s end
+  local function push_title(s)
+    push(s)
+    title_rows[#title_rows + 1] = #L - 1
+  end
 
-  push("")
-  push("  Vimficiency Stats")
-  push("  " .. string.rep("─", 50))
   push("")
 
   -- Lifetime
-  push("  Lifetime")
+  push_title("  Lifetime")
   local bt = summary.by_type
   push(string.format("    Sessions: %d  (mark %d · watch %d · recall %d · suggest %d)",
     summary.total_sessions, bt.mark, bt.watch, bt.recall, bt.suggest))
@@ -234,57 +276,61 @@ function M.build_lines(summary)
   push("")
 
   -- Efficiency
-  push("  Efficiency")
+  push_title("  Efficiency")
   push(string.format("    Score:    %s", format_score(summary.efficiency_score)))
-  local today = math.floor(os.time() / 86400)
-  local bits = {}
-  for i = 29, 0, -1 do
-    local day = today - i
-    bits[#bits + 1] = spark_char(summary.efficiency_by_day[day])
+  push("    30-day efficiency:")
+  for _, line in ipairs(render_30day_chart(summary)) do
+    push(line)
   end
-  push("    30-day:   " .. table.concat(bits, "") ..
-    "   (" .. SPARK_LEVELS[1] .. "=0  " .. SPARK_LEVELS[#SPARK_LEVELS] .. "=100)")
   push("")
 
   -- Motions
   local over, under = split_motion_lists(summary)
-  push("  Motions — you use MORE than the optimizer")
+  push_title("  Motions — you use MORE than the optimizer")
   if #over == 0 then
     push("    (nothing meets the ≥" .. MIN_MOLECULE_OCCURRENCES ..
       "-occurrence threshold yet)")
   else
     for i = 1, math.min(#over, MOTION_TOP_N) do
       local e = over[i]
-      push(string.format("    %-10s %s   (you %d  opt %d)",
+      push(string.format("    %-10s %s   (%d vs %d)",
         e.text, format_ratio(e.ratio), e.uc, e.oc))
     end
   end
   push("")
-  push("  Motions — you use LESS than the optimizer")
+  push_title("  Motions — you use LESS than the optimizer")
   if #under == 0 then
     push("    (nothing meets the threshold yet)")
   else
     for i = 1, math.min(#under, MOTION_TOP_N) do
       local e = under[i]
-      push(string.format("    %-10s %s   (you %d  opt %d)",
+      push(string.format("    %-10s %s   (%d vs %d)",
         e.text, format_ratio(e.ratio), e.uc, e.oc))
     end
   end
   push("")
 
   -- Dev
-  push("  Dev")
+  push_title("  Dev")
   push(string.format("    Optimizer beats queued: %d", summary.beats_count))
+  push(string.format("    Log: %s", vim.fn.fnamemodify(log._log_path(), ":~")))
   push("")
   push("  Press q / <Esc> to close.")
   push("")
-  return L
+  return L, title_rows
 end
+
+-- Bold+colored section titles. Links to Title so it picks up the active
+-- colorscheme's heading style; users can override by defining the group
+-- after our `default = true` install.
+v.nvim_set_hl(0, "VimficiencyStatsSectionTitle",
+  { link = "Title", default = true })
+local stats_ns = v.nvim_create_namespace("vimficiency_stats")
 
 function M.open()
   local records = log.read_all()
   local summary = M.aggregate(records)
-  local lines = M.build_lines(summary)
+  local lines, title_rows = M.build_lines(summary)
 
   local buf = v.nvim_create_buf(false, true)
   vim.bo[buf].buftype = "nofile"
@@ -292,6 +338,13 @@ function M.open()
   vim.bo[buf].swapfile = false
   vim.bo[buf].filetype = "vimficiency_stats"
   v.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  for _, row in ipairs(title_rows) do
+    v.nvim_buf_set_extmark(buf, stats_ns, row, 0, {
+      end_row = row + 1, end_col = 0,
+      hl_group = "VimficiencyStatsSectionTitle",
+      hl_eol = true,
+    })
+  end
   vim.bo[buf].modifiable = false
 
   local width = 72

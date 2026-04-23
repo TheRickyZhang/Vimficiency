@@ -9,32 +9,37 @@ one) must convert raw key bytes into the tokenizer's canonical printable form
 The shared helper is `lua/vimficiency/capture/keynorm.lua` — route every
 conversion through `keynorm.normalize(input)`.
 
-## Why two transformations, not one
+## Why three transformations, not one
 
-`vim.on_key` delivers keys in two shapes that both need fixing:
+`vim.on_key` delivers keys in two shapes, and the tokenizer has an
+additional case convention — so `normalize` does three things in order:
 
-1. **Raw bytes.** `typed` comes in as the underlying byte sequence — e.g.
-   `"\x15"` for `<C-u>`. The C++ tokenizer keys on the Vim printable form
-   (`"<C-u>"`), not raw control bytes. `vim.fn.keytrans(typed)` handles this
-   half.
+1. **Parse to raw bytes.** `vim.api.nvim_replace_termcodes(input, true,
+   true, true)` interprets `input` as a Vim key-notation string and emits
+   raw bytes. Given `"<C-u>"` it produces `"\x15"`; given already-raw
+   `"\x15"` it leaves it alone (no `<…>` pattern to parse); given `"<lt>"`
+   it produces `"<"`. This step makes the rest of the pipeline oblivious
+   to whether the caller handed us raw or printable text.
 
-2. **Modifier-letter case.** `vim.fn.keytrans("\x15")` returns `"<C-U>"`
-   (uppercase U). The registered tokens in
+2. **Print to canonical notation.** `vim.fn.keytrans(raw)` converts raw
+   bytes back to the Vim printable form — e.g. `"\x15"` → `"<C-U>"`. The
+   C++ tokenizer keys on this printable form, not raw control bytes.
+
+3. **Lowercase modifier-letter.** `vim.fn.keytrans("\x15")` returns
+   `"<C-U>"` (uppercase U), but the registered tokens in
    `src/Keyboard/ToKeys/MotionToKeysPrimitives.h` and
-   `src/Keyboard/ToKeys/EditToKeys.cpp` are **lowercase** (`"<C-u>"`). This
-   is an unconditional project convention — see the token tables for the
-   full list (`<C-a>` … `<C-z>` plus `<C-Space>`, `<C-BS>`, etc.). Without
-   lowercasing the modifier letter, keytrans output misses the table.
+   `src/Keyboard/ToKeys/EditToKeys.cpp` are **lowercase** (`"<C-u>"`).
+   This is an unconditional project convention — see the token tables for
+   the full list (`<C-a>` … `<C-z>` plus `<C-Space>`, `<C-BS>`, etc.).
+   Without lowercasing the modifier letter, keytrans output misses the
+   table.
 
-`keynorm.normalize` does both in order: `keytrans`, then
-`gsub("<C%-([A-Z])>", ...)` to lowercase the modifier-letter half.
-
-`normalize` is **not** idempotent on already-printable input:
-`vim.fn.keytrans("<C-u>")` escapes the literal `<` as `<lt>`, producing
-`"<lt>C-u>"`. Only pass raw bytes from `vim.on_key` into `normalize`. If a
-code path needs to tolerate either shape, gate on `input:byte(1) < 0x20` or
-`input:sub(1,1) == "<"` at the call site — don't build that conditional
-into the helper.
+Because step 1 always parses first, `normalize` is **idempotent**:
+`normalize(normalize(x)) == normalize(x)` for every input shape. Any
+pre-existing `<lt>` in printable input collapses back to `<` during the
+parse, then `keytrans` re-escapes it exactly once — no `<` → `<lt>C-u>`
+corruption. Call sites can forward `vim.on_key` bytes unconditionally
+without format-detection heuristics.
 
 ## Call sites
 

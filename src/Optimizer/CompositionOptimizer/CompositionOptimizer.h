@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <string_view>
 #include <vector>
 
@@ -17,18 +18,47 @@
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 
+// Non-owning view into one planned edit inside CompositionResult.
+// Lifetime: references remain valid only while the parent CompositionResult
+// remains alive and unmoved. Consumers should treat this as an ephemeral
+// per-edit read view, not something to store long-term.
+struct CompositionEditStepView {
+  int editIndex;
+  const DiffState& diff;
+  const Lines& preFencepost;
+  const Lines& postFencepost;
+  const EditResult& editResult;
+};
+
 struct CompositionResult : BaseOptimizerResult<> {
   CompositionResult() = default;
 
   const CompositionSearchStats& getStats() const { return stats_; }
 
+  // Low-level/raw plan access for optimizer internals, diagnostics, and tests.
+  // Explore-style consumers should prefer `stepAt(...)` so the per-edit
+  // compatibility boundary is explicit.
   const CompositionPlan& getPlan() const { return plan_; }
   const CursorPos& getGoalPos() const { return plan_.finalGoalPos; }
+  // Raw diff list for diagnostics and tests. Consumers that need a specific
+  // edit should prefer `stepAt(...)`.
   const std::vector<DiffState>& getDiffs() const { return plan_.diffs; }
+  int totalEdits() const { return plan_.totalEdits(); }
+  // Explicit compatibility boundary for consumers like Explore: one typed
+  // per-edit view instead of reassembling aligned data from parallel vectors.
+  [[nodiscard]] CompositionEditStepView stepAt(int editIndex) const {
+    assert(editIndex >= 0 && editIndex < totalEdits() &&
+           "CompositionResult::stepAt index out of range");
+    return CompositionEditStepView{
+        .editIndex = editIndex,
+        .diff = plan_.diffAt(editIndex),
+        .preFencepost = plan_.fencepostAt(editIndex),
+        .postFencepost = plan_.fencepostAt(editIndex + 1),
+        .editResult = editResults_[static_cast<size_t>(editIndex)],
+    };
+  }
   const std::vector<CompositionExploredState>& getExploredStates() const { return exploredStates_; }
   std::vector<CompositionExploredState>& getExploredStates() { return exploredStates_; }
-  const std::vector<EditResult>& getEditResults() const { return editResults_; }
-  std::vector<EditResult>& getEditResults() { return editResults_; }
 
   // Prints diff legend with {n} placeholders, then results with typed text substituted.
   friend std::ostream& operator<<(std::ostream& os, const CompositionResult& cr);
@@ -48,7 +78,12 @@ private:
       stats_(std::move(stats)),
       plan_(std::move(plan)),
       exploredStates_(std::move(exploredStates)),
-      editResults_(std::move(editResults)) {}
+      editResults_(std::move(editResults)) {
+    assert(plan_.fenceposts.size() == plan_.diffs.size() + 1 &&
+           "CompositionResult requires one more fencepost than diffs");
+    assert(editResults_.size() == plan_.diffs.size() &&
+           "CompositionResult requires one EditResult per diff");
+  }
 };
 
 struct CompositionOptimizer {

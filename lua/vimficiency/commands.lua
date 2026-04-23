@@ -468,8 +468,10 @@ function M.handle(arg_string)
     end
     table.sort(cmd_lines)
     util.show_output("Vimficiency Commands", table.concat(cmd_lines, "\n"), {
-      help_tag = "vimficiency-commands-reference-scratch-output-buffer-keys",
-      help_title = "Vimficiency Scratch Output Keys",
+      ui_keys = {
+        title = "Vimficiency Scratch Output Keys",
+        docs = true,
+      },
     })
     return
   end

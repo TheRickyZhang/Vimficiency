@@ -38,6 +38,9 @@ M.REPLAY_CURSOR_INSERT = "VimficiencyReplayCursorInsert"  -- cursor cell in inse
 M.REPLAY_CURSOR_VISUAL = "VimficiencyReplayCursorVisual"  -- cursor / visual selection
 M.REPLAY_ACTIVE        = "VimficiencyReplayActive"        -- active window's label
 
+-- Shared settings modal
+M.SETTINGS_ACTION_ACTIVE = "VimficiencySettingsActionActive" -- selected action row
+
 -- =============================================================================
 -- Install
 -- =============================================================================
@@ -56,6 +59,8 @@ function M.refresh()
   v.nvim_set_hl(0, M.REPLAY_CURSOR_INSERT, { link = "DiffAdd",    default = true })
   v.nvim_set_hl(0, M.REPLAY_CURSOR_VISUAL, { link = "Visual",     default = true })
   v.nvim_set_hl(0, M.REPLAY_ACTIVE,        { link = "Title",      default = true })
+
+  v.nvim_set_hl(0, M.SETTINGS_ACTION_ACTIVE, { bold = true, default = true })
 end
 
 M.refresh()

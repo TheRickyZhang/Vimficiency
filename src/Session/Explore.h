@@ -25,7 +25,10 @@
 //   - The persistent composition plan. Computed once at construction via
 //     `CompositionOptimizer::optimize` and stored in `plan_`. The plan is a
 //     sequence of diffs / fenceposts describing how to transform initial →
-//     goal; the Session never re-plans, only advances through it.
+//     goal; the Session never re-plans, only advances through it. Explore
+//     consumes this through CompositionResult's per-edit step view
+//     (diff + pre/post fenceposts + editResult), not by re-aligning parallel
+//     vectors itself.
 //   - The phase machine (Step).
 //   - Undo/redo history (vectors of State snapshots).
 //   - Mutable live State (lines, cursor, accepted sequence/cost).
@@ -172,12 +175,18 @@ public:
   //   4. Optional join-line motion hint for multiline diffs.
   // Final step trims to `maxCount`.
   //
-  // Two independent dedup knobs — motions (`w`/`W`/`e` landing on the same
-  // cell) and edits (`s`/`cl`/`cw` reaching the same fencepost) can be
-  // toggled separately because their pedagogical value differs. Both
-  // default to `false` (dedup on); the flag is forwarded to the underlying
-  // frontier modules so generation respects it end-to-end and the display
-  // layer never throws anything away post-hoc.
+  // Two independent dedup knobs — motions and edits use DIFFERENT dedup
+  // keys because their pedagogical axes differ:
+  //   - motions dedup by LANDING CELL: `w`/`W`/`e` all landing on the
+  //     same cell is redundant (the cell is the outcome).
+  //   - edits dedup by SEQUENCE TEXT: `rm`, `sm<Esc>`, `cl m<Esc>` all
+  //     landing at the same post-edit cursor are DISTINCT commands and
+  //     all surface; the command shape is the outcome.
+  // See MotionFrontier.h and EditFrontier.h for the per-module details.
+  //
+  // Both default to `false` (dedup on). The flag is forwarded to the
+  // underlying frontier modules so generation respects it end-to-end and
+  // the display layer never throws anything away post-hoc.
   std::vector<Recommendation> recommendations(
       int maxCount,
       bool allowMultipleMotionsPerPosition = false,

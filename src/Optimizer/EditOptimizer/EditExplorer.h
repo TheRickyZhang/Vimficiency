@@ -24,6 +24,19 @@
 #include "VimCore/VimEndpointUtils.h"
 #include "VimCore/VimMotionUtils.h"
 
+// TODO: enumerate insert-mode-with-correction replacement strategies.
+//   For a 1-char replacement diff like `n`→`m`, today we emit `rm`,
+//   `sm<Esc>`, `cl m<Esc>`, `Cm<Esc>`, etc. — all commands that enter
+//   insert mode (or replace mode) at the target and produce the new
+//   content directly. We DON'T enumerate strategies that enter insert
+//   mode adjacent to the target and use `<BS>`/`<Del>` to reshape
+//   existing content:
+//     - `a<BS>m<Esc>`   (append, backspace over `n`, type `m`)
+//     - `i<Del>m<Esc>`  (insert, delete `n`, type `m`)
+//   These are valid Vim idioms the explore UI should teach. Adding them
+//   requires a new spec category in EditToSpec + corresponding emission
+//   hooks in EditExplorer; effort is bounded to the 1-to-N-char
+//   replacement family. Scoped separately from the dedup-by-sequence fix.
 class EditExplorer {
 public:
   EditExplorer(const EditBoundary& boundary,

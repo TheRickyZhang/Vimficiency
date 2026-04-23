@@ -61,8 +61,13 @@ jobs:
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           model: gpt-5.2-codex
+          # gpt-5.2-codex only accepts `text.verbosity = "medium"` on the
+          # OpenAI Responses API. The action defaults to "low", which the
+          # model rejects. Override via the Codex CLI's `-c` config flag
+          # (maps to the API's text.verbosity param).
           codex-args: >-
             --output-schema .github/codex/schemas/pr_review.schema.json
+            -c model_verbosity="medium"
           prompt-file: /tmp/codex_prompt.txt
 
       - name: Post GitHub Review (validate + fallback)
