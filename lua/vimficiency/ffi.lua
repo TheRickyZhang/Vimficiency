@@ -62,7 +62,7 @@ local M = {}
 ---@field vimficiency_explore_start fun(encoded_initial_lines: string, start_row: integer, start_col: integer, encoded_goal_lines: string, end_row: integer, end_col: integer, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, window_height: integer, scroll_amount: integer, user_seq: string): string
 ---@field vimficiency_explore_destroy fun(generation: integer): integer
 ---@field vimficiency_explore_state fun(generation: integer): string
----@field vimficiency_explore_recommendations fun(generation: integer, max_count: integer): string
+---@field vimficiency_explore_recommendations fun(generation: integer, max_count: integer, allow_multiple_motions_per_position: boolean, allow_multiple_edits_per_position: boolean): string
 ---@field vimficiency_explore_apply_motion fun(generation: integer, motion_text: string): string
 ---@field vimficiency_explore_accept_cursor_move fun(generation: integer, new_row: integer, new_col: integer, raw_keys: string): string
 ---@field vimficiency_explore_apply_edit fun(generation: integer, text: string): string
@@ -71,6 +71,8 @@ local M = {}
 ---@field vimficiency_explore_begin_edit fun(generation: integer, enters_insert_mode: boolean, required_typed_text: string): string
 ---@field vimficiency_explore_insert_text fun(generation: integer, typed_chunk: string): string
 ---@field vimficiency_explore_exit_insert fun(generation: integer): string
+---@field vimficiency_explore_accept_insert_exit fun(generation: integer, encoded_lines: string, new_row: integer, new_col: integer, raw_keys: string): string
+---@field vimficiency_explore_cancel_pending_insert fun(generation: integer): string
 ---@field vimficiency_explore_undo fun(generation: integer): string
 ---@field vimficiency_explore_redo fun(generation: integer): string
 
@@ -192,7 +194,11 @@ ffi.cdef([[
     );
     int vimficiency_explore_destroy(int generation);
     const char* vimficiency_explore_state(int generation);
-    const char* vimficiency_explore_recommendations(int generation, int max_count);
+    const char* vimficiency_explore_recommendations(
+        int generation,
+        int max_count,
+        bool allow_multiple_motions_per_position,
+        bool allow_multiple_edits_per_position);
     const char* vimficiency_explore_apply_motion(int generation, const char* motion_text);
     const char* vimficiency_explore_accept_cursor_move(int generation, int new_row, int new_col, const char* raw_keys);
     const char* vimficiency_explore_apply_edit(int generation, const char* text);
@@ -210,6 +216,13 @@ ffi.cdef([[
     );
     const char* vimficiency_explore_insert_text(int generation, const char* typed_chunk);
     const char* vimficiency_explore_exit_insert(int generation);
+    const char* vimficiency_explore_accept_insert_exit(
+        int generation,
+        const char* encoded_lines,
+        int new_row,
+        int new_col,
+        const char* raw_keys);
+    const char* vimficiency_explore_cancel_pending_insert(int generation);
     const char* vimficiency_explore_undo(int generation);
     const char* vimficiency_explore_redo(int generation);
 ]])
@@ -849,13 +862,13 @@ local function parse_explore_recommendations(payload)
   local parts = decode_string_list(payload)
   assert(#parts >= 1, "explore recommendations payload must have count prefix")
   local count = tonumber(parts[1]) or 0
-  local expected = 1 + count * 6
+  local expected = 1 + count * 7
   assert(#parts == expected,
     "explore recommendations payload has " .. #parts ..
     " fields, expected " .. expected .. " for count=" .. count)
   local recs = {}
   for i = 1, count do
-    local base = 1 + (i - 1) * 6
+    local base = 1 + (i - 1) * 7
     recs[i] = {
       text = parts[base + 1],
       kind = parts[base + 2],
@@ -863,6 +876,7 @@ local function parse_explore_recommendations(payload)
       total_path_cost = tonumber(parts[base + 4]) or 0,
       landing_row = tonumber(parts[base + 5]) or 0,
       landing_col = tonumber(parts[base + 6]) or 0,
+      typed_text = parts[base + 7],
     }
   end
   return recs
@@ -916,10 +930,18 @@ end
 
 ---@param generation integer
 ---@param max_count integer
+---@param allow_multiple_motions_per_position boolean|nil
+---@param allow_multiple_edits_per_position boolean|nil
 ---@return VimficiencyExploreRecommendation[]
-function M.explore_recommendations(generation, max_count)
+function M.explore_recommendations(
+    generation, max_count,
+    allow_multiple_motions_per_position,
+    allow_multiple_edits_per_position)
   local payload = require_non_error(ffi.string(
-    lib.vimficiency_explore_recommendations(generation, max_count)))
+    lib.vimficiency_explore_recommendations(
+      generation, max_count,
+      allow_multiple_motions_per_position and true or false,
+      allow_multiple_edits_per_position and true or false)))
   return parse_explore_recommendations(payload)
 end
 
@@ -997,6 +1019,26 @@ end
 ---@return VimficiencyExploreApplyResult
 function M.explore_exit_insert(generation)
   local payload = require_non_error(ffi.string(lib.vimficiency_explore_exit_insert(generation)))
+  return parse_explore_apply_result(payload)
+end
+
+---@param generation integer
+---@param lines string[]
+---@param new_row integer
+---@param new_col integer
+---@param raw_keys string|nil
+---@return VimficiencyExploreApplyResult
+function M.explore_accept_insert_exit(generation, lines, new_row, new_col, raw_keys)
+  local payload = require_non_error(ffi.string(lib.vimficiency_explore_accept_insert_exit(
+    generation, encode_string_list(lines), new_row, new_col, raw_keys or "")))
+  return parse_explore_apply_result(payload)
+end
+
+---@param generation integer
+---@return VimficiencyExploreApplyResult
+function M.explore_cancel_pending_insert(generation)
+  local payload = require_non_error(ffi.string(
+    lib.vimficiency_explore_cancel_pending_insert(generation)))
   return parse_explore_apply_result(payload)
 end
 

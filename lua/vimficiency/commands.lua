@@ -441,19 +441,6 @@ subcommands.explore = {
   end,
 }
 
-subcommands.explore_mode = {
-  desc = "Set/cycle how explore recommendation tags render in the scratch buffer",
-  usage = "explore_mode [off|inplace|above|below]",
-  fn = function(args)
-    local mode = args[1]
-    if not mode or mode == "" then
-      explore.cycle_display_mode()
-      return
-    end
-    explore.set_display_mode(mode)
-  end,
-}
-
 function M.run(subcmd, args, source)
   local cmd = subcommands[subcmd]
   if not cmd then
@@ -510,10 +497,6 @@ function M.complete(arg_lead, cmd_line, cursor_pos)
 
   if subcmd == "suggest" then
     return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, { "on", "off", "toggle" })
-  end
-
-  if subcmd == "explore_mode" then
-    return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, explore.list_display_modes())
   end
 
   if subcmd == "view" or subcmd == "rm" then

@@ -108,6 +108,9 @@ string encodeOutcome(const Session& s, const Outcome& outcome) {
       string_view(intField(crossed)));
 }
 
+// 7 fields — `typedText` is the insert-mode tail the user must type after
+// `text`, empty for motions and normal-mode-only edits. Lua's
+// parse_explore_recommendations must match the field count.
 string encodeRecommendation(const Recommendation& rec) {
   return encodeFields(
       string_view(rec.text),
@@ -115,7 +118,8 @@ string encodeRecommendation(const Recommendation& rec) {
       string_view(doubleField(rec.cost)),
       string_view(doubleField(rec.totalPathCost)),
       string_view(intField(rec.landingRow)),
-      string_view(intField(rec.landingCol)));
+      string_view(intField(rec.landingCol)),
+      string_view(rec.typedText));
 }
 
 string encodeRecommendations(const vector<Recommendation>& recs) {
@@ -228,11 +232,20 @@ const char* vimficiency_explore_state(int generation) {
   });
 }
 
-const char* vimficiency_explore_recommendations(int generation, int max_count) {
+const char* vimficiency_explore_recommendations(
+    int generation,
+    int max_count,
+    bool allow_multiple_motions_per_position,
+    bool allow_multiple_edits_per_position) {
   static string storage;
   return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
     return requireSession(generation).transform(
-        [&](Session* s) { return encodeRecommendations(s->recommendations(max_count)); });
+        [&](Session* s) {
+          return encodeRecommendations(s->recommendations(
+              max_count,
+              allow_multiple_motions_per_position,
+              allow_multiple_edits_per_position));
+        });
   });
 }
 
@@ -343,6 +356,38 @@ const char* vimficiency_explore_exit_insert(int generation) {
     return requireSession(generation).transform(
         [](Session* s) {
           auto outcome = s->exitInsertMode();
+          return encodeOutcome(*s, outcome);
+        });
+  });
+}
+
+const char* vimficiency_explore_accept_insert_exit(
+    int generation,
+    const char* encoded_lines,
+    int new_row,
+    int new_col,
+    const char* raw_keys) {
+  static string storage;
+  return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
+    return requireSession(generation).and_then(
+        [&](Session* s) -> vimficiency::lua_exports::Result<string> {
+          return requiredText(encoded_lines, "encoded_lines")
+              .and_then(decodeLineArray)
+              .transform([&](const Lines& newLines) {
+                auto outcome = s->acceptInsertExit(
+                    newLines, CursorPos(new_row, new_col), optionalText(raw_keys));
+                return encodeOutcome(*s, outcome);
+              });
+        });
+  });
+}
+
+const char* vimficiency_explore_cancel_pending_insert(int generation) {
+  static string storage;
+  return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
+    return requireSession(generation).transform(
+        [](Session* s) {
+          auto outcome = s->cancelPendingInsert();
           return encodeOutcome(*s, outcome);
         });
   });

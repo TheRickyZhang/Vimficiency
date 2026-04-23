@@ -18,6 +18,12 @@ FetchContent_Declare(
   GIT_TAG        v1.9.1
 )
 
+FetchContent_Declare(
+  nlohmann_json
+  GIT_REPOSITORY https://github.com/nlohmann/json.git
+  GIT_TAG        v3.11.3
+)
+
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 set(MSGPACK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(MSGPACK_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -25,8 +31,9 @@ set(MSGPACK_USE_BOOST OFF CACHE BOOL "" FORCE)
 set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
 set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(googletest msgpack-c googlebenchmark)
+FetchContent_MakeAvailable(googletest msgpack-c googlebenchmark nlohmann_json)
 
 # =============================================================================
 # Shared test utilities library
@@ -117,12 +124,15 @@ add_executable(vimficiency_tests
   Misc/MotionClassMaskTest.cpp
   Misc/VimOptionsTest.cpp
   Session/ExploreTest.cpp
+  Session/FixtureLoader.cpp
+  Session/FixtureIntegrationTest.cpp
 )
 
 target_link_libraries(vimficiency_tests
   PRIVATE
     test_utils
     GTest::gtest
+    nlohmann_json::nlohmann_json
 )
 
 include(GoogleTest)

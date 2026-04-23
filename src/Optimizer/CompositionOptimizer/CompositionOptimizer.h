@@ -3,9 +3,9 @@
 #include <string_view>
 #include <vector>
 
+#include "CompositionPlan.h"
 #include "CompositionOptimizerParams.h"
 #include "CompositionSearchContext.h"
-#include "DiffState.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Optimizer/OptimizerResult.h"
@@ -22,8 +22,9 @@ struct CompositionResult : BaseOptimizerResult<> {
 
   const CompositionSearchStats& getStats() const { return stats_; }
 
-  const CursorPos& getGoalPos() const { return goalPos_; }
-  const std::vector<DiffState>& getDiffs() const { return diffs_; }
+  const CompositionPlan& getPlan() const { return plan_; }
+  const CursorPos& getGoalPos() const { return plan_.finalGoalPos; }
+  const std::vector<DiffState>& getDiffs() const { return plan_.diffs; }
   const std::vector<CompositionExploredState>& getExploredStates() const { return exploredStates_; }
   std::vector<CompositionExploredState>& getExploredStates() { return exploredStates_; }
   const std::vector<EditResult>& getEditResults() const { return editResults_; }
@@ -34,19 +35,18 @@ struct CompositionResult : BaseOptimizerResult<> {
 
 private:
   CompositionSearchStats stats_;
-  CursorPos goalPos_;
-  std::vector<DiffState> diffs_;
+  CompositionPlan plan_;
   std::vector<CompositionExploredState> exploredStates_;
   std::vector<EditResult> editResults_;
 
   friend struct CompositionOptimizer;
   CompositionResult(std::vector<Result> results, CompositionSearchStats stats,
-                    CursorPos goalPos, std::vector<DiffState> diffs,
+                    CompositionPlan plan,
                     std::vector<CompositionExploredState> exploredStates,
                     std::vector<EditResult> editResults)
     : BaseOptimizerResult(std::move(results)),
       stats_(std::move(stats)),
-      goalPos_(goalPos), diffs_(std::move(diffs)),
+      plan_(std::move(plan)),
       exploredStates_(std::move(exploredStates)),
       editResults_(std::move(editResults)) {}
 };

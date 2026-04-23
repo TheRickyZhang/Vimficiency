@@ -513,19 +513,28 @@ CompositionResult CompositionOptimizer::optimize(
         "skipped:", ctx.statesSkipped,
         "queueRemaining:", static_cast<int>(ctx.pq.size()));
 
-  // Extract diffStates and editResults from bundled edits for CompositionResult
+  // Extract the persistent step breakdown and step-scoped frontier artifacts.
+  std::vector<Lines> fenceposts;
   std::vector<DiffState> diffs;
   std::vector<EditResult> editResults;
+  fenceposts.reserve(ctx.edits.size() + 1);
   diffs.reserve(ctx.edits.size());
   editResults.reserve(ctx.edits.size());
+  fenceposts.push_back(initialLines);
   for (auto& e : ctx.edits) {
+    fenceposts.push_back(Myers::applyDiffState(e.diffState, fenceposts.back()));
     diffs.push_back(std::move(e.diffState));
     editResults.push_back(std::move(e.editResult));
   }
 
   int numResults = static_cast<int>(results.size());
+  CompositionPlan plan{
+      .finalGoalPos = resultGoalPos,
+      .diffs = std::move(diffs),
+      .fenceposts = std::move(fenceposts),
+  };
   return {std::move(results), ctx.getStats(numResults),
-          resultGoalPos, std::move(diffs),
+          std::move(plan),
           ctx.takeExploredStates(),
           std::move(editResults)};
 }

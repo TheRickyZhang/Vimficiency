@@ -1,0 +1,44 @@
+{
+  "end_col": 14,
+  "end_row": 6,
+  "finish_reason": "manual",
+  "goal_lines": [
+    "#include <bits/stdc++.h>",
+    "using namespace std;",
+    "",
+    "int main() {",
+    "  int m = 10;",
+    "  for(int i = 0; i < m; i++) {",
+    "    cout << i+1 << endl;",
+    "  }",
+    "}"
+  ],
+  "has_lines_above": false,
+  "has_lines_below": false,
+  "key_count": 9,
+  "lines": [
+    "#include <bits/stdc++.h>",
+    "using namespace std;",
+    "",
+    "int main() {",
+    "  int m = 10;",
+    "  for(int i = 0; i < m; i++) {",
+    "    cout << i << endl;",
+    "  }",
+    "}"
+  ],
+  "optimal_results": [
+    {
+      "cost": 10,
+      "seq": "$Ewelji+1<Esc>"
+    }
+  ],
+  "scroll_amount": 20,
+  "start_col": 2,
+  "start_row": 4,
+  "start_time": 7457895714926,
+  "timestamp": 7464458033491,
+  "user_cost": 9,
+  "user_seq": "jjwwwa+1<Esc>",
+  "window_height": 40
+}

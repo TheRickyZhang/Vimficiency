@@ -1,5 +1,6 @@
 #include "Explore.h"
 
+#include <algorithm>
 #include <cassert>
 #include <utility>
 
@@ -7,11 +8,130 @@
 #include "MotionHandler.h"
 #include "Effort/RunningEffort.h"
 #include "Interpreter/SequenceParser.h"
-#include "Optimizer/CompositionOptimizer/DiffState.h"
+#include "Optimizer/CompositionOptimizer/CompositionStepArtifacts.h"
+#include "Optimizer/EditOptimizer/EditFrontier.h"
+#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
+#include "Optimizer/MotionOptimizer/MotionFrontier.h"
 
 using namespace std;
 
 namespace Explore {
+
+namespace {
+
+Recommendation toRecommendation(const MotionFrontierItem& item) {
+  Recommendation rec;
+  rec.text = item.molecule;
+  rec.kind = "motion";
+  rec.cost = item.cost;
+  rec.totalPathCost = item.cost;
+  rec.landingRow = item.landingPos.line;
+  rec.landingCol = item.landingPos.col;
+  return rec;
+}
+
+Recommendation toRecommendation(const EditFrontierItem& item) {
+  Recommendation rec;
+  rec.text = item.molecule;
+  rec.kind = "edit";
+  rec.cost = item.cost;
+  rec.totalPathCost = item.cost;
+  rec.landingRow = item.goalPos.line;
+  rec.landingCol = item.goalPos.col;
+  rec.typedText = item.typedText;
+  return rec;
+}
+
+MotionOptimizerParams makeSingleGoalMotionParams(int maxResults) {
+  CompositionOptimizerParams compParams;
+  return MotionOptimizerParams{}
+      .withMaxResults(maxResults)
+      .withFMotionThreshold(compParams.fMotionThreshold)
+      .withDirectionalPruning(compParams.useDirectionalPruning)
+      .withLinePaddingAbove(compParams.motionPaddingAbove)
+      .withLinePaddingBelow(compParams.motionPaddingBelow)
+      .withMinCountRepeat(compParams.minPrefixCount)
+      .withMaxCountRepeat(compParams.maxPrefixCount);
+}
+
+vector<Recommendation> backfillEditStartMotions(
+    const Lines& lines,
+    CursorPos cursor,
+    const DiffState& diff,
+    const MotionBoundary& boundary,
+    const NavContext& navContext,
+    const Config& config,
+    int maxCount,
+    bool allowMultiplePerPosition) {
+  if (maxCount <= 0 || diff.isPureInsertion()) return {};
+
+  CompositionOptimizerParams editParams;
+  const int totalStarts = max(1, diff.deletedLines().totalPositions());
+  editParams.withMaxResults(totalStarts * maxCount)
+            .withMaxEditResultsPerPosition(maxCount);
+  EditResult editResult = computeEditResultForDiff(diff, editParams, config);
+
+  struct StartCandidate {
+    CursorPos pos{0, 0};
+    double editCost = 0.0;
+  };
+
+  vector<StartCandidate> candidates;
+  Lines deletedLines = diff.deletedLines();
+  candidates.reserve(static_cast<size_t>(deletedLines.totalPositions()));
+  for (int lineOffset = 0; lineOffset < static_cast<int>(deletedLines.size()); lineOffset++) {
+    const int bufferLine = diff.beginPos.line + lineOffset;
+    const int colBase = lineOffset == 0 ? diff.beginPos.col : 0;
+    for (int colOffset = 0; colOffset < deletedLines[lineOffset].effectiveSize(); colOffset++) {
+      const int bufferCol = colBase + colOffset;
+      const CursorPos startPos(bufferLine, bufferCol);
+      if (startPos == cursor) continue;
+      auto starts = editResult.resultsAt(bufferLine, bufferCol);
+      if (starts.empty()) continue;
+      candidates.push_back(StartCandidate{startPos, starts[0].getCost()});
+    }
+  }
+
+  sort(candidates.begin(), candidates.end(), [](const StartCandidate& a, const StartCandidate& b) {
+    if (a.editCost != b.editCost) return a.editCost < b.editCost;
+    if (a.pos.line != b.pos.line) return a.pos.line < b.pos.line;
+    return a.pos.col < b.pos.col;
+  });
+
+  MotionOptimizer motionOptimizer(config);
+
+  vector<Recommendation> recs;
+  recs.reserve(static_cast<size_t>(maxCount));
+  for (const StartCandidate& candidate : candidates) {
+    MotionOptimizerParams motionParams =
+        makeSingleGoalMotionParams(maxCount - static_cast<int>(recs.size()));
+    auto result = motionOptimizer.optimize(
+        lines, cursor, candidate.pos, motionParams, "", boundary, navContext);
+    for (const Result& motion : result.getResults()) {
+      if (!motion.isValid()) continue;
+
+      Recommendation rec;
+      rec.text = motion.getSequence().str();
+      rec.kind = "motion";
+      rec.cost = motion.getCost();
+      rec.totalPathCost = motion.getCost() + candidate.editCost;
+      rec.landingRow = candidate.pos.line;
+      rec.landingCol = candidate.pos.col;
+      recs.push_back(std::move(rec));
+      if (static_cast<int>(recs.size()) >= maxCount) break;
+      // Under the default "dedup-by-landing" contract, each candidate
+      // gets at most one motion — all motions from the optimizer for
+      // this single goal land on the same `candidate.pos`, so subsequent
+      // iterations would be duplicates by landing.
+      if (!allowMultiplePerPosition) break;
+    }
+    if (static_cast<int>(recs.size()) >= maxCount) break;
+  }
+
+  return recs;
+}
+
+}
 
 // =============================================================================
 // Step factories
@@ -55,7 +175,6 @@ Session::Session(
   if (initialLines == goalLines_) {
     // Pure motion goals aren't the explore use case; treat as already done.
     totalEdits_ = 0;
-    linesAfterEdit_.push_back(std::move(initialLines));
     return;
   }
 
@@ -69,15 +188,7 @@ Session::Session(
       boundary_,
       navContext_));
 
-  totalEdits_ = static_cast<int>(plan_->getDiffs().size());
-
-  // MIRROR: composition stores diffs in intermediate-buffer coordinates, so
-  // sequential Myers::applyDiffState walks the fencepost chain correctly.
-  linesAfterEdit_.reserve(static_cast<size_t>(totalEdits_) + 1);
-  linesAfterEdit_.push_back(state_.lines);
-  for (const DiffState& diff : plan_->getDiffs()) {
-    linesAfterEdit_.push_back(Myers::applyDiffState(diff, linesAfterEdit_.back()));
-  }
+  totalEdits_ = plan_->getPlan().totalEdits();
 
   if (totalEdits_ > 0) {
     state_.step = Step::approachEdit(0);
@@ -93,11 +204,14 @@ optional<pair<CursorPos, CursorPos>> Session::currentTargetRange() const {
   if (!plan_) return nullopt;
   const int i = state_.step.editIndex;
   assert(i >= 0 && i < totalEdits_ && "ApproachEdit editIndex out of plan range");
-  const DiffState& diff = plan_->getDiffs()[i];
+  const DiffState& diff = plan_->getPlan().diffAt(i);
   return make_pair(diff.beginPos, diff.endPos);
 }
 
-vector<Recommendation> Session::recommendations(int maxCount) const {
+vector<Recommendation> Session::recommendations(
+    int maxCount,
+    bool allowMultipleMotionsPerPosition,
+    bool allowMultipleEditsPerPosition) const {
   if (maxCount <= 0) return {};
   if (state_.step.kind != Phase::ApproachEdit) return {};
   if (!plan_) return {};
@@ -105,28 +219,73 @@ vector<Recommendation> Session::recommendations(int maxCount) const {
   const int editIndex = state_.step.editIndex;
   assert(editIndex >= 0 && editIndex < totalEdits_ && "ApproachEdit editIndex out of range");
 
-  const DiffState& diff = plan_->getDiffs()[editIndex];
-  const CursorPos target = diff.beginPos;
-
+  const CompositionPlan& plan = plan_->getPlan();
+  const DiffState& diff = plan.diffAt(editIndex);
+  CompositionOptimizerParams stepParams;
+  optional<JoinPlan> joinPlan = computeJoinPlanForDiff(diff, state_.lines, stepParams, config_);
   vector<Recommendation> recs;
-
-  // Edit atoms at the cursor — normal-mode prefix of each planned edit sequence.
-  const EditResult& editResult = plan_->getEditResults()[editIndex];
-  auto editRecs = EditHandler::recommendations(editResult, state_.cursor, maxCount);
-  for (auto& r : editRecs) recs.push_back(std::move(r));
-
-  // Motion candidates toward the fixed diff-begin.
-  if (target != state_.cursor) {
-    auto motionRecs = MotionHandler::recommendations(
-        state_.lines, state_.cursor, target, boundary_, navContext_, config_, maxCount);
-    for (auto& r : motionRecs) recs.push_back(std::move(r));
+  auto editItems = rankEditFrontier(
+      EditFrontierQuery{
+          .lines = state_.lines,
+          .cursor = state_.cursor,
+          .diff = diff,
+          .maxCount = maxCount,
+          .allowMultiplePerPosition = allowMultipleEditsPerPosition,
+      },
+      config_);
+  for (const EditFrontierItem& item : editItems) {
+    recs.push_back(toRecommendation(item));
   }
 
-  std::sort(recs.begin(), recs.end(),
-      [](const Recommendation& a, const Recommendation& b) {
-        if (a.totalPathCost != b.totalPathCost) return a.totalPathCost < b.totalPathCost;
-        return a.text < b.text;
-      });
+  if (!diff.isPureInsertion() && diff.contains(state_.cursor) &&
+      static_cast<int>(recs.size()) < maxCount) {
+    auto backfill = backfillEditStartMotions(
+        state_.lines,
+        state_.cursor,
+        diff,
+        boundary_,
+        navContext_,
+        config_,
+        maxCount - static_cast<int>(recs.size()),
+        allowMultipleMotionsPerPosition);
+    for (auto& rec : backfill) recs.push_back(std::move(rec));
+  }
+
+  if (!diff.contains(state_.cursor)) {
+    auto motionItems = rankMotionFrontier(
+        MotionFrontierQuery{
+            .lines = state_.lines,
+            .cursor = state_.cursor,
+            .targetRange = CharRange(diff.beginPos, diff.endPos),
+            .boundary = boundary_,
+            .navContext = navContext_,
+            .maxCount = maxCount,
+            .allowMultiplePerPosition = allowMultipleMotionsPerPosition,
+        },
+        config_);
+    for (const MotionFrontierItem& item : motionItems) {
+      recs.push_back(toRecommendation(item));
+    }
+
+    if (!diff.isPureInsertion() && joinPlan &&
+        state_.cursor.line != joinPlan->entryLine) {
+      auto jMotionItems = rankMotionFrontierToLine(
+          state_.lines,
+          state_.cursor,
+          joinPlan->entryLine,
+          boundary_,
+          navContext_,
+          config_,
+          1);
+      for (const MotionFrontierItem& item : jMotionItems) {
+        recs.push_back(toRecommendation(item));
+      }
+    }
+  }
+
+  // Trust the optimizer's output. Each source respects
+  // `allowMultiplePerPosition`, so no post-hoc filter is needed —
+  // recommendations are surfaced as-generated.
   if (static_cast<int>(recs.size()) > maxCount) recs.resize(maxCount);
   return recs;
 }
@@ -164,9 +323,7 @@ Applied Session::afterEditCompleted(State next) {
     next.step = Step::completed();
   } else {
     next.step = Step::approachEdit(nextEdit);
-    assert(nextEdit >= 0 && nextEdit < static_cast<int>(linesAfterEdit_.size()) &&
-           "fencepost cache missing entry for advanced edit");
-    next.lines = linesAfterEdit_[nextEdit];
+    next.lines = plan_->getPlan().fencepostAt(nextEdit);
   }
   next.acceptedRevision++;
   return commit(std::move(next), /*crossedEditBoundary=*/true);
@@ -219,11 +376,9 @@ Outcome Session::applyEdit(string_view text) {
   if (!eff.accepted) return unexpected(Rejected{std::move(eff.rejectReason)});
 
   const int nextFencepost = editIndex + 1;
-  assert(nextFencepost < static_cast<int>(linesAfterEdit_.size()) &&
-         "fencepost cache missing entry for completed edit");
 
   State next = state_;
-  next.lines = linesAfterEdit_[nextFencepost];
+  next.lines = plan_->getPlan().fencepostAt(nextFencepost);
   next.cursor = eff.postCursor;
   next.acceptedSeq.append(text);
   next.acceptedCost = getEffort(next.acceptedSeq, config_);
@@ -238,11 +393,11 @@ Outcome Session::acceptBufferState(
 
   assert(plan_ && "acceptBufferState after construction without a plan");
   const int nextFencepost = editIndex + 1;
-  assert(nextFencepost < static_cast<int>(linesAfterEdit_.size()) &&
-         "fencepost cache missing entry for completed edit");
 
   auto eff = EditHandler::validateBufferState(
-      newLines, linesAfterEdit_[editIndex], linesAfterEdit_[nextFencepost]);
+      newLines,
+      plan_->getPlan().fencepostAt(editIndex),
+      plan_->getPlan().fencepostAt(nextFencepost));
   if (!eff.accepted) return unexpected(Rejected{std::move(eff.rejectReason)});
 
   State next = state_;
@@ -255,7 +410,7 @@ Outcome Session::acceptBufferState(
     next.acceptedCost = getEffort(next.acceptedSeq, config_);
   }
   if (eff.advance) {
-    next.lines = linesAfterEdit_[nextFencepost];
+    next.lines = plan_->getPlan().fencepostAt(nextFencepost);
     return afterEditCompleted(std::move(next));
   }
   // No-op: buffer already matches current fencepost (e.g. native undo or
@@ -307,6 +462,45 @@ Outcome Session::exitInsertMode() {
 
   State next = state_;
   return afterEditCompleted(std::move(next));
+}
+
+Outcome Session::acceptInsertExit(
+    const Lines& newLines, CursorPos newCursor, string_view rawKeys) {
+  auto gated = requirePendingInsert("insert-mode exit with buffer state");
+  if (!gated) return unexpected(std::move(gated.error()));
+  const int editIndex = *gated;
+
+  const int nextFencepost = editIndex + 1;
+
+  if (newLines != plan_->getPlan().fencepostAt(nextFencepost)) {
+    return unexpected(Rejected{
+        "buffer state after insert doesn't match planned fencepost"});
+  }
+
+  State next = state_;
+  // Advance lines explicitly — afterEditCompleted only sets lines for the
+  // *next* edit, so the current edit's post-state must be applied here.
+  // MIRROR applyEdit's shape: set lines + cursor + seq/cost, then hand off.
+  next.lines = plan_->getPlan().fencepostAt(nextFencepost);
+  next.cursor = newCursor;
+  if (!rawKeys.empty() && parseSequence(rawKeys)) {
+    next.acceptedSeq.append(rawKeys);
+    next.acceptedCost = getEffort(next.acceptedSeq, config_);
+  }
+  return afterEditCompleted(std::move(next));
+}
+
+Outcome Session::cancelPendingInsert() {
+  auto gated = requirePendingInsert("pending-insert cancel");
+  if (!gated) return unexpected(std::move(gated.error()));
+
+  // By construction, the topmost undo entry is the beginEdit snapshot
+  // (ApproachEdit for this editIndex). Pop it back into live state without
+  // touching redo — a rejected/abandoned insert shouldn't be user-redoable.
+  assert(!undo_.empty() && "PendingInsert without a beginEdit undo snapshot");
+  state_ = undo_.back();
+  undo_.pop_back();
+  return Applied{};
 }
 
 Outcome Session::undo() {

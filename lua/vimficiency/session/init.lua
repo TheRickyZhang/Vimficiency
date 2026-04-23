@@ -57,6 +57,41 @@ local function get_save_dir()
   return vim.fn.stdpath("data") .. "/vimficiency/saved"
 end
 
+--- Encode `value` as JSON with 2-space indentation.
+--- `vim.json.encode` has no indent option, so we walk the structure
+--- ourselves and delegate leaf encoding to it. Object keys are sorted
+--- for deterministic output.
+---@param value any
+---@param level integer|nil
+---@return string
+local function encode_pretty(value, level)
+  if type(value) ~= "table" then
+    return vim.json.encode(value)
+  end
+  level = level or 0
+  local pad = string.rep("  ", level)
+  local inner = string.rep("  ", level + 1)
+  if next(value) == nil then return "[]" end
+  if vim.islist(value) then
+    local parts = {}
+    for _, v in ipairs(value) do
+      parts[#parts + 1] = inner .. encode_pretty(v, level + 1)
+    end
+    return "[\n" .. table.concat(parts, ",\n") .. "\n" .. pad .. "]"
+  end
+  local keys = {}
+  for k in pairs(value) do keys[#keys + 1] = k end
+  table.sort(keys)
+  local parts = {}
+  for _, k in ipairs(keys) do
+    parts[#parts + 1] = inner
+      .. vim.json.encode(tostring(k))
+      .. ": "
+      .. encode_pretty(value[k], level + 1)
+  end
+  return "{\n" .. table.concat(parts, ",\n") .. "\n" .. pad .. "}"
+end
+
 --- Save results to JSON file (pretty-printed for readability)
 ---@param name string
 ---@param data table
@@ -66,10 +101,7 @@ local function save_results(name, data)
   local save_dir = get_save_dir()
   vim.fn.mkdir(save_dir, "p")
   local path = save_dir .. "/" .. name .. ".json"
-  -- Pretty print with 2-space indent
-  local json = vim.json.encode(data, { indent = true })
-  -- vim.json.encode with indent returns a single string with newlines
-  local lines = vim.split(json, "\n")
+  local lines = vim.split(encode_pretty(data), "\n")
   local ok, err = pcall(vim.fn.writefile, lines, path)
   if not ok then
     return nil, err
