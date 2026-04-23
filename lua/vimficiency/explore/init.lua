@@ -1,14 +1,69 @@
 local config = require("vimficiency.config")
 local ffi_lib = require("vimficiency.ffi")
 local keynorm = require("vimficiency.capture.keynorm")
-local util = require("vimficiency.util")
 local highlights = require("vimficiency.explore.highlights")
-local sections = require("vimficiency.explore.sections")
 local tags_render = require("vimficiency.explore.render.tags")
 local header_render = require("vimficiency.explore.render.header")
 local list_render = require("vimficiency.explore.render.list")
 local keymaps = require("vimficiency.explore.keymaps")
-local settings = require("vimficiency.explore.settings")
+local settings = require("vimficiency.settings_modal")
+local settings_profile = require("vimficiency.settings_profile")
+
+-- Forward-declared locals. Hoisted to the top of the file so every
+-- closure below closes over the right upvalue, regardless of the order
+-- definitions appear in. Without these, closures defined above the
+-- real `local active = ...` line would capture `active` as a global
+-- (i.e. nil forever).
+---@type VimficiencyExploreActive|nil
+local active
+local toggle_staged_mode
+local open_settings_modal
+
+-- Layered settings store. On first access we build the layer stack:
+--
+--   hardcoded defaults  (in config.lua's `fields.explore`)
+--        ↓ overlaid by
+--   user's init.lua declarations  (already merged into `config.explore`
+--        by `config.apply`)
+--        ↓ overlaid by
+--   sidecar file (`~/.local/share/nvim/vimficiency/explore_settings.json`)
+--
+-- Every runtime change (`gs` modal, `<Tab>`) mutates this table AND
+-- writes to the sidecar so the next nvim run starts with the user's
+-- latest preferences. To reset, delete the sidecar or use the settings
+-- modal's reset action.
+---@type table|nil
+local current_settings
+
+---Lazy-init the layered settings store. `vim.deepcopy(config.explore)`
+---so mutations don't leak into the config module's shared table.
+---@return table
+local function settings_store()
+  if current_settings == nil then
+    current_settings = vim.deepcopy(config.explore or {})
+    local saved = settings_profile.load("explore")
+    for k, v in pairs(saved) do
+      -- Only overlay keys we know about; ignore stale fields from
+      -- old schema versions, typos, etc.
+      if current_settings[k] ~= nil or config.explore[k] == nil then
+        current_settings[k] = v
+      end
+    end
+  end
+  return current_settings
+end
+
+---Update the live session + module store + sidecar file in one shot.
+---Auto-save means the user doesn't think about persistence — it just
+---happens on every toggle.
+---@param key string
+---@param value any
+local function update_setting(key, value)
+  active[key] = value
+  local store = settings_store()
+  store[key] = value
+  settings_profile.save("explore", store)
+end
 
 local M = {}
 
@@ -51,42 +106,22 @@ local WINDOW_OPTIONS = {
 local DISPLAY_MODES = { "off", "highlight", "inplace", "above", "below" }
 local DISPLAY_MODE_SET = {}
 for _, m in ipairs(DISPLAY_MODES) do DISPLAY_MODE_SET[m] = true end
-local default_display_mode = "above"
-
--- Forward-declare the active-session handle so helpers defined earlier in
--- the file can close over it. The real initialization (and the type class
--- annotation) lives near the top of the session-open path below. `active`
--- is the singleton state container for the current session: set in
--- `M.open`, read by callbacks/renderers/handlers, cleared in
--- `destroy_active_and_tab`. It is NOT a "is-a-session-open" flag — it
--- carries all session state (buffers, state, pending, settings).
----@type VimficiencyExploreActive|nil
-local active
-
--- Forward declarations for functions whose definitions appear later in
--- the file but are referenced from closures created earlier (e.g. keymap
--- handlers installed inside `M.open`). Lua captures upvalues by name at
--- function-definition time; without these predeclarations the references
--- would resolve as nil globals.
-local toggle_staged_mode
-local open_settings_modal
 
 -- Number of recommendations surfaced in the side list + tag overlay.
--- Defaults to `config.EXPLORE_RECOMMENDATIONS`; the active session can
--- override via `:Vimfy explore_count <1..10>` — the override is
--- session-scoped (lives on `active`) so it resets when the session closes.
+-- Source of truth is `active.recommendation_count`, seeded from
+-- `config.explore.recommendation_count` on first session open. Mutated
+-- by the settings modal; stays in-memory across open/close within one
+-- nvim run.
 local RECOMMENDATION_COUNT_MIN = 1
 local RECOMMENDATION_COUNT_MAX = 10
 
 local function current_recommendation_count()
-  if active and active.recommendation_count then return active.recommendation_count end
-  return config.EXPLORE_RECOMMENDATIONS
+  return active.recommendation_count
 end
 
--- Staged-mode toggle. When on, the header renders a sectioned side-by-
--- side view: `Explored` vs `User typed`, aligned by phase stage, with
--- diff-highlighted cells. Toggled via Tab inside the scratch buffer.
-local default_staged_mode = false
+---@class VimficiencyExploreWindow
+---@field buf integer
+---@field win integer
 
 ---@class VimficiencyExploreScratch
 ---@field buf integer
@@ -102,7 +137,8 @@ local default_staged_mode = false
 ---@field label string                                 # caller-supplied, shown in the header
 ---@field result ResultSession                         # the captured session we're exploring
 ---@field generation integer                           # FFI handle
----@field scratch VimficiencyExploreScratch            # the two-window layout we drive
+---@field header VimficiencyExploreWindow              # fixed pane above the scratch editor
+---@field scratch VimficiencyExploreScratch            # scrollable editor pane in the right column
 ---@field list_buf integer                             # recommendation list buffer (left pane)
 ---@field state VimficiencyExploreState                # session-reported phase + cursor + seq
 ---@field recommendations VimficiencyExploreRecommendation[]
@@ -505,6 +541,7 @@ function M.open(label, result, opts)
   local list_buf = v.nvim_create_buf(false, true)
   v.nvim_win_set_buf(list_win, list_buf)
   v.nvim_win_set_width(list_win, 44)
+  v.nvim_buf_set_name(list_buf, "vimficiency://explore/" .. label .. "/recommendations")
   vim.bo[list_buf].buftype = "nofile"
   vim.bo[list_buf].bufhidden = "wipe"
   vim.bo[list_buf].swapfile = false
@@ -514,6 +551,40 @@ function M.open(label, result, opts)
   vim.wo[list_win].relativenumber = false
   vim.wo[list_win].cursorline = false
   vim.wo[list_win].wrap = false
+  vim.wo[list_win].signcolumn = "no"
+  local wins_before_header = v.nvim_tabpage_list_wins(scratch_tab)
+  v.nvim_set_current_win(scratch_win)
+  vim.cmd("aboveleft split")
+  local header_win
+  for _, win in ipairs(v.nvim_tabpage_list_wins(scratch_tab)) do
+    local is_existing = false
+    for _, prev in ipairs(wins_before_header) do
+      if win == prev then
+        is_existing = true
+        break
+      end
+    end
+    if not is_existing then
+      header_win = win
+      break
+    end
+  end
+  assert(header_win, "vimficiency explore: failed to create header window")
+  local header_buf = v.nvim_create_buf(false, true)
+  v.nvim_win_set_buf(header_win, header_buf)
+  v.nvim_buf_set_name(header_buf, "vimficiency://explore/" .. label .. "/header")
+  vim.bo[header_buf].buftype = "nofile"
+  vim.bo[header_buf].bufhidden = "wipe"
+  vim.bo[header_buf].swapfile = false
+  vim.bo[header_buf].modifiable = false
+  vim.bo[header_buf].filetype = "vimficiency"
+  vim.wo[header_win].number = false
+  vim.wo[header_win].relativenumber = false
+  vim.wo[header_win].cursorline = false
+  vim.wo[header_win].wrap = false
+  vim.wo[header_win].signcolumn = "no"
+  v.nvim_set_option_value("winfixheight", true, { win = header_win })
+  pcall(v.nvim_win_set_height, header_win, 1)
   v.nvim_set_current_win(scratch_win)
 
   active = {
@@ -522,7 +593,8 @@ function M.open(label, result, opts)
     result = result,
     generation = generation,
 
-    -- the two-window layout we drive
+    -- the three-pane layout we drive
+    header = { buf = header_buf, win = header_win },
     scratch = { buf = scratch_buf, win = scratch_win, tab = scratch_tab },
     list_buf = list_buf,
 
@@ -546,15 +618,18 @@ function M.open(label, result, opts)
     -- insertion-origin snapshot (set on InsertEnter, cleared on InsertLeave)
     pending = nil,
 
-    -- per-session settings (changed via <LocalLeader>s modal or <Tab>)
-    display_mode = default_display_mode,
-    staged_mode = default_staged_mode,
-    recommendation_count = nil,
-    allow_multiple_motions_per_position = false,
-    allow_multiple_edits_per_position = false,
-    show_user_typed = true,
-    show_result_count = 1,
+    -- per-session settings — seeded from the module-level store so
+    -- toggles from previous sessions (within this nvim run) carry over.
+    -- `update_setting` writes back into the store on changes.
   }
+  local s = settings_store()
+  active.display_mode                        = s.display_mode
+  active.staged_mode                         = s.staged_mode
+  active.recommendation_count                = s.recommendation_count
+  active.allow_multiple_motions_per_position = s.allow_multiple_motions_per_position
+  active.allow_multiple_edits_per_position   = s.allow_multiple_edits_per_position
+  active.show_user_typed                     = s.show_user_typed
+  active.show_result_count                   = s.show_result_count
 
   -- Capture raw key bytes only while this session is open. We can't prevent
   -- Vim from handling the key — we only observe it so that CursorMoved can
@@ -569,8 +644,8 @@ function M.open(label, result, opts)
   -- Keymap spec is minimal by design — only session-flow keys are
   -- reachable in real time. Everything else (display mode, dedup,
   -- recommendation count, show-user-typed, result-count) lives behind
-  -- `<LocalLeader>s` which opens the settings modal.
-  keymaps.install(scratch_buf, list_buf, {
+  -- `gs` which opens the settings modal.
+  keymaps.install(header_buf, scratch_buf, list_buf, {
     cancel             = function() M.cancel() end,
     undo               = undo,
     redo               = redo,
@@ -653,6 +728,12 @@ function M.open(label, result, opts)
     destroy_active_and_tab()
   end
   v.nvim_create_autocmd("WinClosed", {
+    pattern = tostring(header_win),
+    once = true,
+    callback = on_window_close,
+    desc = "vimficiency explore: close when header window closes",
+  })
+  v.nvim_create_autocmd("WinClosed", {
     pattern = tostring(scratch_win),
     once = true,
     callback = on_window_close,
@@ -695,13 +776,12 @@ end
 -- access, no public M.* export".
 
 ---Toggle flat / staged header layout. Only reachable via the `<Tab>`
----keymap (which guarantees `active`), so no nil-check needed. Updates
----the module default so the user's preference persists into the next
----session.
+---keymap (which guarantees `active`). Writes through `update_setting`
+---so the next explore session within this nvim run picks up the
+---preference.
 ---@return boolean  new staged_mode value
 function toggle_staged_mode()
-  active.staged_mode = not active.staged_mode
-  default_staged_mode = active.staged_mode
+  update_setting("staged_mode", not active.staged_mode)
   header_render.render(active, current_remaining(active))
   vim.notify("vimficiency explore staged-mode: " ..
     (active.staged_mode and "on" or "off"), vim.log.levels.INFO)
@@ -709,52 +789,68 @@ function toggle_staged_mode()
 end
 
 ---Build the settings schema for the active session and hand it to the
----settings modal. `get` / `set` closures read/write `active` directly;
----`on_change` re-renders everything so the UI reflects the change
----immediately.
+---settings modal. Every set-closure routes through `update_setting` so
+---`active` AND the module-level store stay in sync (store seeds the
+---next session).
 function open_settings_modal()
   local a = assert_active()
-  -- Dedup semantics: flag is `allow_multiple_*`, but the user-facing
-  -- label is "dedup" — invert the getter/setter.
-  local invert = function(get, set) return
-    function() return not get() end,
-    function(on) set(not on) end
+  -- Dedup semantics: the stored field is `allow_multiple_*` (false →
+  -- dedup on), but the user-facing label is "dedup". Invert get/set
+  -- so the modal shows a natural "on/off" for dedup.
+  local function dedup_toggle(flag_key)
+    return
+      function() return not a[flag_key] end,
+      function(on) update_setting(flag_key, not on) end
   end
-  local motion_get, motion_set = invert(
-    function() return a.allow_multiple_motions_per_position end,
-    function(v) a.allow_multiple_motions_per_position = v end)
-  local edit_get, edit_set = invert(
-    function() return a.allow_multiple_edits_per_position end,
-    function(v) a.allow_multiple_edits_per_position = v end)
+  local motion_get, motion_set = dedup_toggle("allow_multiple_motions_per_position")
+  local edit_get, edit_set = dedup_toggle("allow_multiple_edits_per_position")
 
   local optimal_results = (a.result and a.result.optimal_results) or {}
 
   local schema = {
-    { label = "Display mode",
-      type = "enum", values = DISPLAY_MODES,
+    { kind = "setting",
+      label = "Display mode",
+      value_kind = "enum", values = DISPLAY_MODES,
       get = function() return a.display_mode end,
-      set = function(v)
-        a.display_mode = v
-        default_display_mode = v
-      end },
-    { label = "Recommendation count",
-      type = "int", min = RECOMMENDATION_COUNT_MIN, max = RECOMMENDATION_COUNT_MAX,
+      set = function(v) update_setting("display_mode", v) end },
+    { kind = "setting",
+      label = "Recommendation count",
+      value_kind = "int", min = RECOMMENDATION_COUNT_MIN, max = RECOMMENDATION_COUNT_MAX,
       get = function() return current_recommendation_count() end,
-      set = function(v) a.recommendation_count = v end },
-    { label = "Motion dedup",
-      type = "bool", get = motion_get, set = motion_set },
-    { label = "Edit dedup",
-      type = "bool", get = edit_get, set = edit_set },
-    { label = "Show user typed",
-      type = "bool",
+      set = function(v) update_setting("recommendation_count", v) end },
+    { kind = "setting",
+      label = "Motion dedup",
+      value_kind = "bool", get = motion_get, set = motion_set },
+    { kind = "setting",
+      label = "Edit dedup",
+      value_kind = "bool", get = edit_get, set = edit_set },
+    { kind = "setting",
+      label = "Show user typed",
+      value_kind = "bool",
       get = function() return a.show_user_typed end,
-      set = function(v) a.show_user_typed = v end },
-    { label = "Optimal results shown",
-      type = "int", min = 0, max = #optimal_results,
+      set = function(v) update_setting("show_user_typed", v) end },
+    { kind = "setting",
+      label = "Optimal results shown",
+      value_kind = "int", min = 0, max = #optimal_results,
       get = function() return a.show_result_count end,
-      set = function(v) a.show_result_count = v end },
+      set = function(v) update_setting("show_result_count", v) end },
+    { kind = "separator" },
+    { kind = "action",
+      label = "reset to default settings",
+      run = function()
+        -- Blow away the sidecar and the in-memory store so the next
+        -- `settings_store()` call rebuilds from `config.explore`
+        -- (which itself = hardcoded + init.lua declarations).
+        settings_profile.clear("explore")
+        current_settings = nil
+        local s = settings_store()
+        for key in pairs(s) do a[key] = s[key] end
+        refresh_ui()
+        vim.notify("vimficiency explore: settings reset to defaults",
+          vim.log.levels.INFO)
+      end },
   }
-  settings.open(schema, refresh_ui)
+  settings.open(schema, refresh_ui, { title = "Explore Settings" })
 end
 
 function M.status()

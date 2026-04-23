@@ -1,6 +1,7 @@
 -- lua/vimficiency/capture/keynorm.lua
 --
--- Shared "raw key bytes → C++ tokenizer-safe printable form" conversion.
+-- Shared "any key representation → C++ tokenizer-safe printable form"
+-- conversion.
 --
 -- `vim.on_key` delivers keys as raw bytes (e.g. 0x15 for <C-u>). The C++
 -- sequence tokenizer (SequenceToKeys / MotionToKeysPrimitives) keys on the
@@ -22,18 +23,21 @@
 
 local M = {}
 
---- Convert raw on_key bytes to the tokenizer's canonical printable form.
+--- Convert any key representation to the tokenizer's canonical printable
+--- form. Idempotent: `normalize(normalize(x)) == normalize(x)` for every
+--- input shape (raw bytes, printable notation, or a mix).
 ---
---- Expects `input` to be RAW bytes from `vim.on_key` (e.g. "\x15"), never an
---- already-keytrans'd string — `vim.fn.keytrans("<C-u>")` escapes the literal
---- `<` as `<lt>`, so passing printable text back through this function
---- corrupts it. If you need to pass through a string that may already be
---- printable, do that check at the call site, not here.
+--- Implementation: parse through `nvim_replace_termcodes` first so the
+--- input is always in raw-byte form before `keytrans()` runs. That kills
+--- the `<` → `<lt>` escape trap of calling `keytrans` on already-printable
+--- text — pre-existing `<lt>` collapses back to `<`, then `keytrans`
+--- re-escapes it exactly once.
 ---@param input string|nil
 ---@return string
 function M.normalize(input)
   if not input or input == "" then return "" end
-  local printable = vim.fn.keytrans(input)
+  local raw = vim.api.nvim_replace_termcodes(input, true, true, true)
+  local printable = vim.fn.keytrans(raw)
   return (printable:gsub("<C%-([A-Z])>", function(c)
     return "<C-" .. c:lower() .. ">"
   end))

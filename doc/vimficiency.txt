@@ -442,7 +442,7 @@ available as `:Vimfy focus <N>` / `:Vimfy escape` for typed invocation.
 
 REPLAY BUFFER KEYS
 
-Press |g?| in a replay buffer to open this section directly.
+Press |g?| in a replay buffer to open the full Vimficiency help.
 
 - `<Left>` — step backward
 - `<Right>` — step forward
@@ -450,7 +450,7 @@ Press |g?| in a replay buffer to open this section directly.
 - `<Tab>` / `<S-Tab>` — cycle to the next or previous replay sequence
 - `<leader>y` — yank the current window’s sequence into the unnamed and `+` registers
 - `?` — show the short keymap summary popup
-- `g?` — open the full help section for replay buffers
+- `g?` — open the full Vimficiency help
 - `q` — close the replay tab
 
 
@@ -486,11 +486,11 @@ Reads back a saved result textually (without replaying). Tab-complete on
 
 SAVED RESULT BUFFER KEYS
 
-Press |g?| in a saved-result buffer to open this section directly.
+Press |g?| in a saved-result buffer to open the full Vimficiency help.
 
 - `q` — close the current saved-result view
 - `?` — show the short keymap summary popup
-- `g?` — open the full help section for saved-result buffers
+- `g?` — open the full Vimficiency help
 
 
 ==============================================================================
@@ -917,13 +917,13 @@ activity anyway). See 8. Keymaps for the full list and the binding contract.
 
 SCRATCH OUTPUT BUFFER KEYS
 
-Press |g?| in a Vimficiency scratch output buffer to open this section
-directly. This applies to buffers opened by `:Vimfy help` and other detail
+Press |g?| in a Vimficiency scratch output buffer to open the full
+Vimficiency help. This applies to buffers opened by `:Vimfy help` and other detail
 panes that show Vimficiency text output in a split.
 
 - `q` — close the current Vimficiency output buffer
 - `?` — show the short keymap summary popup
-- `g?` — open the full help section for scratch output buffers
+- `g?` — open the full Vimficiency help
 
 
 ==============================================================================

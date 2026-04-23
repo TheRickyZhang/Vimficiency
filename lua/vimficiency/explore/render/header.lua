@@ -1,4 +1,4 @@
--- Header overlay for the explore scratch buffer.
+-- Fixed header pane for the explore scratch buffer.
 --
 -- Layout:
 --   (blank)
@@ -201,11 +201,58 @@ local function staged_rows(cols)
   return rows
 end
 
----Render the header extmark on the scratch buffer. Re-pins `topline` so
----the virt_lines stay "above" the actual buffer content visually.
+---@param chunks table[]
+---@return string
+local function chunk_text(chunks)
+  local parts = {}
+  for _, chunk in ipairs(chunks) do
+    parts[#parts + 1] = chunk[1]
+  end
+  return table.concat(parts)
+end
+
+---@param buf integer
+---@param rows table[][]
+local function write_rows(buf, rows)
+  local lines = {}
+  for i, row in ipairs(rows) do
+    lines[i] = chunk_text(row)
+  end
+
+  vim.bo[buf].modifiable = true
+  v.nvim_buf_clear_namespace(buf, header_ns, 0, -1)
+  v.nvim_buf_set_lines(buf, 0, -1, false, lines)
+
+  for row_idx, row in ipairs(rows) do
+    local col = 0
+    for _, chunk in ipairs(row) do
+      local text = chunk[1]
+      local hl = chunk[2]
+      local next_col = col + #text
+      if text ~= "" and hl and hl ~= "Normal" then
+        v.nvim_buf_set_extmark(buf, header_ns, row_idx - 1, col, {
+          end_row = row_idx - 1,
+          end_col = next_col,
+          hl_group = hl,
+          priority = 2200,
+        })
+      end
+      col = next_col
+    end
+  end
+  vim.bo[buf].modifiable = false
+end
+
+---Render the header into its dedicated fixed-height pane.
 ---@param active VimficiencyExploreActive
 ---@param remaining string  live-computed pending-insert tail
 function M.render(active, remaining)
+  if not (active.header
+      and v.nvim_buf_is_valid(active.header.buf)
+      and v.nvim_win_is_valid(active.header.win)) then
+    return
+  end
+
   local header = {}
 
   header[#header + 1] = { { "", "Normal" } }
@@ -227,20 +274,8 @@ function M.render(active, remaining)
 
   header[#header + 1] = { { "", "Normal" } }
 
-  v.nvim_buf_clear_namespace(active.scratch.buf, header_ns, 0, -1)
-  v.nvim_buf_set_extmark(active.scratch.buf, header_ns, 0, 0, {
-    virt_lines = header,
-    virt_lines_above = true,
-    virt_lines_leftcol = true,
-    priority = 2200,
-  })
-
-  v.nvim_win_call(active.scratch.win, function()
-    local view = vim.fn.winsaveview()
-    view.topline = 1
-    view.topfill = #header
-    vim.fn.winrestview(view)
-  end)
+  write_rows(active.header.buf, header)
+  pcall(v.nvim_win_set_height, active.header.win, #header)
 end
 
 return M

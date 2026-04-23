@@ -46,6 +46,11 @@ local cursor_ns = v.nvim_create_namespace("vimficiency_cursor")
 ---@field status_win integer?          -- bottom 1-line split showing the replay statusline
 ---@field status_buf integer?
 ---@field precompute_gen integer       -- increments per simulate_compare call to invalidate stale callbacks
+---@field source_lines string[]?
+---@field source_row integer?
+---@field source_col integer?
+---@field source_opts table?
+---@field refresh_items fun(): VimficiencyReplayItem[]?
 
 ---@type VimficiencyReplayState
 local multi_sim = {
@@ -59,6 +64,11 @@ local multi_sim = {
   sim_tab = nil,
   replay_label = nil,
   precompute_gen = 0,
+  source_lines = nil,
+  source_row = nil,
+  source_col = nil,
+  source_opts = nil,
+  refresh_items = nil,
 }
 
 ---@class VimficiencyFocusState
@@ -441,6 +451,11 @@ local function cleanup_multi_sim()
   multi_sim.start_col = nil
   multi_sim.end_row = nil
   multi_sim.end_col = nil
+  multi_sim.source_lines = nil
+  multi_sim.source_row = nil
+  multi_sim.source_col = nil
+  multi_sim.source_opts = nil
+  multi_sim.refresh_items = nil
   focus_state = nil
 end
 
@@ -736,6 +751,30 @@ local function user_toggle_focus()
     vim.log.levels.WARN)
 end
 
+local function current_window_is_replay_window()
+  local cur_win = v.nvim_get_current_win()
+  for _, entry in ipairs(multi_sim.windows) do
+    if entry.win == cur_win then
+      return true
+    end
+  end
+  return false
+end
+
+local function user_open_settings()
+  if #multi_sim.windows == 0 or not current_window_is_replay_window() then
+    vim.notify("vimficiency: play settings are only available from a replay window",
+      vim.log.levels.WARN)
+    return
+  end
+  -- Refresh the grid when the modal closes. The settings are already
+  -- persisted to in-memory store + sidecar on each toggle; we just
+  -- need to rebuild items + respawn windows off the new values.
+  require("vimficiency.play").open_settings({
+    on_close = function() M.refresh_current_items() end,
+  })
+end
+
 -- =============================================================================
 -- Buffer-local keymaps (declarative table + echo-hint derivation)
 -- =============================================================================
@@ -744,19 +783,32 @@ end
 ---@field lhs string
 ---@field handler fun()
 ---@field desc string       -- shown in `:map` listings
----@field group string?     -- Startup-echo label; nil means "do not advertise".
+---@field summary_group string?  -- Adjacent matching groups collapse onto one help row.
+---@field summary_desc string?   -- Optional help-row description for the collapsed group.
 
 ---@type VimficiencyReplayKeymap[]
-local REPLAY_KEYMAPS = util.with_help_keymaps({
-  { lhs = "<Left>",  handler = user_step_left,    desc = "Step backward",                  group = "step"  },
-  { lhs = "<Tab>",   handler = user_cycle_next,   desc = "Cycle to next sim sequence",     group = "cycle" },
-  { lhs = "<S-Tab>", handler = user_cycle_prev,   desc = "Cycle to prev sim sequence",     group = "cycle" },
-  { lhs = "<CR>",    handler = user_toggle_focus, desc = "Focus / unfocus current buffer", group = "focus" },
-  { lhs = "<Right>",   handler = user_step_right,    desc = "Step forward",                    group = "step"  },
-  { lhs = "<leader>y", handler = user_yank_sequence, desc = "Yank this window's sequence",     group = "yank"  },
+local REPLAY_KEYMAPS = util.with_standard_ui_keymaps({
+  { lhs = "<Left>",  handler = user_step_left,  desc = "Step backward",
+    summary_group = "step", summary_desc = "Step backward / forward" },
+  { lhs = "<Right>", handler = user_step_right, desc = "Step forward",
+    summary_group = "step", summary_desc = "Step backward / forward" },
+  { lhs = "<Tab>",   handler = user_cycle_next, desc = "Cycle to next sim sequence",
+    summary_group = "cycle", summary_desc = "Cycle to next / prev sim sequence" },
+  { lhs = "<S-Tab>", handler = user_cycle_prev, desc = "Cycle to prev sim sequence",
+    summary_group = "cycle", summary_desc = "Cycle to next / prev sim sequence" },
+  { lhs = "<CR>",    handler = user_toggle_focus, desc = "Focus / unfocus current buffer" },
+  { lhs = "<leader>y", handler = user_yank_sequence, desc = "Yank this window's sequence" },
   { lhs = "D",         handler = user_debug_dump,    desc = "Dump replay state to :messages" },
-  { lhs = "q",         handler = cleanup_multi_sim,  desc = "Close replay",                    group = "quit"  },
-}, "Vimficiency Replay Keys", "vimficiency-inspecting-results-replay-buffer-keys")
+  { lhs = "q",         handler = cleanup_multi_sim,  desc = "Close replay" },
+}, {
+  title = "Vimficiency Replay Keys",
+  docs = true,
+  settings = {
+    lhs = "gs",
+    handler = user_open_settings,
+    desc = "Open play settings",
+  },
+})
 
 --- Attach replay keymaps to a buffer.
 ---@param buf integer
@@ -1091,6 +1143,8 @@ end
 ---@field label   string?   Display label shown in the replay statusline.
 ---@field end_row integer?  0-indexed end row of the captured session.
 ---@field end_col integer?  0-indexed end col.
+---@field resume_step integer?  Internal: replay step to restore after rebuild.
+---@field refresh_items fun(): VimficiencyReplayItem[]?  Optional live-refresh hook.
 
 ---@param lines string[] Buffer content to simulate on
 ---@param row integer 0-indexed starting row
@@ -1117,6 +1171,15 @@ function M.simulate_compare(lines, row, col, items, opts)
   multi_sim.start_col = col
   multi_sim.end_row = opts.end_row
   multi_sim.end_col = opts.end_col
+  multi_sim.source_lines = vim.deepcopy(lines)
+  multi_sim.source_row = row
+  multi_sim.source_col = col
+  multi_sim.source_opts = {
+    label = opts.label,
+    end_row = opts.end_row,
+    end_col = opts.end_col,
+  }
+  multi_sim.refresh_items = opts.refresh_items
   multi_sim.saved_win = v.nvim_get_current_win()
   multi_sim.saved_tab = v.nvim_get_current_tabpage()
   multi_sim.windows = {}
@@ -1142,6 +1205,9 @@ function M.simulate_compare(lines, row, col, items, opts)
     end
     if idx > #items then
       build_sim_ui(lines, row, col, items)
+      if opts.resume_step and opts.resume_step > 0 then
+        seek_to(opts.resume_step)
+      end
       return
     end
     precompute_states(tokenized[idx], lines, row, col, function()
@@ -1156,9 +1222,35 @@ function M.simulate_compare(lines, row, col, items, opts)
   precompute_next(1)
 end
 
+---@return boolean refreshed
+function M.refresh_current_items()
+  if type(multi_sim.refresh_items) ~= "function" then
+    return false
+  end
+  local items = multi_sim.refresh_items()
+  if not items or #items == 0 then
+    return false
+  end
+  local source_opts = multi_sim.source_opts or {}
+  M.simulate_compare(
+    multi_sim.source_lines or {},
+    multi_sim.source_row or 0,
+    multi_sim.source_col or 0,
+    items,
+    {
+      label = source_opts.label,
+      end_row = source_opts.end_row,
+      end_col = source_opts.end_col,
+      resume_step = multi_sim.global_step,
+      refresh_items = multi_sim.refresh_items,
+    })
+  return true
+end
+
 M.cleanup_compare = cleanup_multi_sim
 M.focus           = user_focus
 M.escape          = user_escape
+M.open_settings   = user_open_settings
 
 -- Debug-only accessors (not part of the public API). Let tests peek at
 -- internal state without parsing winbars or tabs.

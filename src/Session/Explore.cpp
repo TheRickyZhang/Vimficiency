@@ -188,7 +188,7 @@ Session::Session(
       boundary_,
       navContext_));
 
-  totalEdits_ = plan_->getPlan().totalEdits();
+  totalEdits_ = plan_->totalEdits();
 
   if (totalEdits_ > 0) {
     state_.step = Step::approachEdit(0);
@@ -204,8 +204,8 @@ optional<pair<CursorPos, CursorPos>> Session::currentTargetRange() const {
   if (!plan_) return nullopt;
   const int i = state_.step.editIndex;
   assert(i >= 0 && i < totalEdits_ && "ApproachEdit editIndex out of plan range");
-  const DiffState& diff = plan_->getPlan().diffAt(i);
-  return make_pair(diff.beginPos, diff.endPos);
+  const auto step = plan_->stepAt(i);
+  return make_pair(step.diff.beginPos, step.diff.endPos);
 }
 
 vector<Recommendation> Session::recommendations(
@@ -219,10 +219,11 @@ vector<Recommendation> Session::recommendations(
   const int editIndex = state_.step.editIndex;
   assert(editIndex >= 0 && editIndex < totalEdits_ && "ApproachEdit editIndex out of range");
 
-  const CompositionPlan& plan = plan_->getPlan();
-  const DiffState& diff = plan.diffAt(editIndex);
+  const auto step = plan_->stepAt(editIndex);
+  const DiffState& diff = step.diff;
   CompositionOptimizerParams stepParams;
-  optional<JoinPlan> joinPlan = computeJoinPlanForDiff(diff, state_.lines, stepParams, config_);
+  optional<JoinPlan> joinPlan = computeJoinPlanForDiff(
+      diff, step.preFencepost, stepParams, config_);
   vector<Recommendation> recs;
   auto editItems = rankEditFrontier(
       EditFrontierQuery{
@@ -323,7 +324,7 @@ Applied Session::afterEditCompleted(State next) {
     next.step = Step::completed();
   } else {
     next.step = Step::approachEdit(nextEdit);
-    next.lines = plan_->getPlan().fencepostAt(nextEdit);
+    next.lines = plan_->stepAt(nextEdit).preFencepost;
   }
   next.acceptedRevision++;
   return commit(std::move(next), /*crossedEditBoundary=*/true);
@@ -371,14 +372,12 @@ Outcome Session::applyEdit(string_view text) {
   const int editIndex = *gated;
 
   assert(plan_ && "applyEdit after construction without a plan");
-  const EditResult& editResult = plan_->getEditResults()[editIndex];
-  auto eff = EditHandler::applyEdit(editResult, state_.cursor, text);
+  const auto step = plan_->stepAt(editIndex);
+  auto eff = EditHandler::applyEdit(step.editResult, state_.cursor, text);
   if (!eff.accepted) return unexpected(Rejected{std::move(eff.rejectReason)});
 
-  const int nextFencepost = editIndex + 1;
-
   State next = state_;
-  next.lines = plan_->getPlan().fencepostAt(nextFencepost);
+  next.lines = step.postFencepost;
   next.cursor = eff.postCursor;
   next.acceptedSeq.append(text);
   next.acceptedCost = getEffort(next.acceptedSeq, config_);
@@ -392,12 +391,12 @@ Outcome Session::acceptBufferState(
   const int editIndex = *gated;
 
   assert(plan_ && "acceptBufferState after construction without a plan");
-  const int nextFencepost = editIndex + 1;
+  const auto step = plan_->stepAt(editIndex);
 
   auto eff = EditHandler::validateBufferState(
       newLines,
-      plan_->getPlan().fencepostAt(editIndex),
-      plan_->getPlan().fencepostAt(nextFencepost));
+      step.preFencepost,
+      step.postFencepost);
   if (!eff.accepted) return unexpected(Rejected{std::move(eff.rejectReason)});
 
   State next = state_;
@@ -410,7 +409,7 @@ Outcome Session::acceptBufferState(
     next.acceptedCost = getEffort(next.acceptedSeq, config_);
   }
   if (eff.advance) {
-    next.lines = plan_->getPlan().fencepostAt(nextFencepost);
+    next.lines = step.postFencepost;
     return afterEditCompleted(std::move(next));
   }
   // No-op: buffer already matches current fencepost (e.g. native undo or
@@ -469,10 +468,9 @@ Outcome Session::acceptInsertExit(
   auto gated = requirePendingInsert("insert-mode exit with buffer state");
   if (!gated) return unexpected(std::move(gated.error()));
   const int editIndex = *gated;
+  const auto step = plan_->stepAt(editIndex);
 
-  const int nextFencepost = editIndex + 1;
-
-  if (newLines != plan_->getPlan().fencepostAt(nextFencepost)) {
+  if (newLines != step.postFencepost) {
     return unexpected(Rejected{
         "buffer state after insert doesn't match planned fencepost"});
   }
@@ -481,7 +479,7 @@ Outcome Session::acceptInsertExit(
   // Advance lines explicitly — afterEditCompleted only sets lines for the
   // *next* edit, so the current edit's post-state must be applied here.
   // MIRROR applyEdit's shape: set lines + cursor + seq/cost, then hand off.
-  next.lines = plan_->getPlan().fencepostAt(nextFencepost);
+  next.lines = step.postFencepost;
   next.cursor = newCursor;
   if (!rawKeys.empty() && parseSequence(rawKeys)) {
     next.acceptedSeq.append(rawKeys);

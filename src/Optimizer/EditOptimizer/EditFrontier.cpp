@@ -1,7 +1,7 @@
 #include "EditFrontier.h"
 
 #include <algorithm>
-#include <cstdint>
+#include <string>
 #include <string_view>
 #include <unordered_set>
 
@@ -39,15 +39,20 @@ bool cursorInInsertionRange(
   return cursor.line == targetLine && cursor.col >= beginCol && cursor.col < endCol;
 }
 
-int64_t landingKey(CursorPos p) {
-  return (static_cast<int64_t>(p.line) << 32) | static_cast<uint32_t>(p.col);
-}
-
 // Emission context — shared by every push site in rankEditFrontier so dedup
 // lives at the generation boundary (not a post-hoc filter).
+//
+// Dedup key for edits is the full sequence text, NOT the landing position.
+// Rationale: for a narrow diff (e.g. 1-char rename `n`→`m`), every valid
+// strategy — `rm`, `sm<Esc>`, `cl m<Esc>`, ... — lands at the same
+// post-edit cursor cell. Landing-based dedup would collapse them all to
+// the cheapest and hide the pedagogical alternatives, which are the whole
+// point of the explore frontier. Motions use landing-based dedup because
+// there the cell IS the outcome; edits dedup by command shape because
+// the command shape IS the outcome we're teaching.
 struct EditEmitter {
   vector<EditFrontierItem>& items;
-  unordered_set<int64_t> seenLanding;
+  unordered_set<string> seenSequence;
   int maxCount;
   bool allowMultiplePerPosition;
 
@@ -55,7 +60,7 @@ struct EditEmitter {
   // items; returns false when we've hit maxCount (caller should return).
   bool emit(EditFrontierItem item) {
     if (!allowMultiplePerPosition) {
-      if (!seenLanding.insert(landingKey(item.goalPos)).second) {
+      if (!seenSequence.insert(item.fullSequence).second) {
         return static_cast<int>(items.size()) < maxCount;
       }
     }

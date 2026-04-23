@@ -5,7 +5,6 @@ local fields = {
   -- Optimizer/search knobs
   RESULTS_CALCULATED = 20,
   RESULTS_SAVED = 5,
-  EXPLORE_RECOMMENDATIONS = 5,
   SLICE_PADDING = 5,
   SLICE_EXPAND_TO_PARAGRAPH = false,
   MAX_SEARCH_LINES = 500,
@@ -21,6 +20,26 @@ local fields = {
     cooldown_ms = 5000,
   },
   watch = false,
+
+  -- Per-feature UI-level preferences (not optimizer tuning — those live
+  -- elsewhere in this table). Changed at runtime via the `gs` settings
+  -- modal inside the explore scratch buffer; changes persist in memory
+  -- for the lifetime of the nvim run and reset here on restart. To make
+  -- an override permanent, declare it in your init.lua's `setup()`.
+  explore = {
+    display_mode = "above",                        -- "off" | "highlight" | "inplace" | "above" | "below"
+    staged_mode = false,                           -- false → flat header; true → sectioned-by-stage
+    recommendation_count = 5,                      -- how many recs to surface; 1..10
+    allow_multiple_motions_per_position = false,   -- false → motion recs dedup by landing cell
+    allow_multiple_edits_per_position = false,     -- false → edit recs dedup by command shape
+    show_user_typed = true,                        -- include the user's captured typed sequence
+    show_result_count = 1,                         -- how many `optimal_results` to display alongside Explored
+  },
+
+  play = {
+    include_user_sequence = true,                  -- show the user's typed sequence alongside the optimal(s)
+    default_result_count = 1,                      -- how many optimal_results to show by default; 1..8
+  },
 
   -- C++-owned config surface
   default_keyboard = require("vimficiency.config_detail").cpp(),

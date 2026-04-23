@@ -16,6 +16,21 @@
   - Inter-edit: move from edit end to a next edit start (MotionOptimizer::optimizeToRange)
 - By storing the previous edit command, we can also quickly check if . will work. (TODO)
 
+### Explore boundary
+
+`Explore::Session` is intentionally coupled to a narrow per-edit contract from
+composition, not to the composition optimizer's full internal shape. The
+supported boundary is `CompositionResult::stepAt(i)`, which bundles:
+
+- the diff for edit `i`
+- the pre-edit fencepost
+- the post-edit fencepost
+- the `EditResult` for that same edit
+
+Raw `CompositionPlan` / diff vectors still exist for diagnostics and tests, but
+they are lower-level surfaces. Refactors that preserve final optimizer results
+while changing this per-edit bundle can still break Explore.
+
 ## J (Join Lines) Plans
 
 When a diff has more source lines than target lines, the `J` command can collapse lines more cheaply than retyping content. The composition optimizer pre-computes `JoinPlan`s for eligible diffs and offers them as alternative edit transitions in the A* search.
@@ -123,4 +138,3 @@ For `o`/`A`/`I`/`i` with multi-line insertions, `buildTypedCommands` (from `src/
 | `i` | (empty) | text before cursor |
 
 The source indent is provided by autoindent on the first typed line after mode entry. The line prefix is used to compute continuation autoindent for subsequent lines after `<CR>`.
-

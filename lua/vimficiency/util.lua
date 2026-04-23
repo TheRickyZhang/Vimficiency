@@ -55,15 +55,30 @@ end
 ---@field lhs string
 ---@field handler string|function
 ---@field desc string
+---@field summary_group string?
+---@field summary_desc string?
 ---@field mode string|string[]?
 ---@field nowait boolean?
 ---@field silent boolean?
 ---@field expr boolean?
 ---@field remap boolean?
 
+---@class VimficiencyHelpKeymapOpts
+---@field title string
+---@field docs boolean?
+---@field settings { lhs?: string, handler: string|function, desc: string }?
+
+---@class VimficiencyStandardUiKeyOpts
+---@field title string
+---@field summary { lhs?: string, desc?: string }|boolean|nil
+---@field docs { lhs?: string, tag?: string, desc?: string }|boolean|nil
+---@field settings { lhs?: string, handler: string|function, desc?: string }?
+
 M.basename = fs.basename or function(p)
   return p:match("([^/\\]+)$") or p
 end
+
+M.DEFAULT_HELP_TAG = "vimficiency"
 
 function M.ensure_dir(p)
   vim.fn.mkdir(p, "p")
@@ -84,7 +99,18 @@ end
 
 ---@param tag string
 function M.open_help(tag)
-  vim.cmd("help " .. tag)
+  local plugin_root = M.find_plugin_root()
+  pcall(vim.cmd.helptags, plugin_root .. "/doc")
+
+  local target = tag or M.DEFAULT_HELP_TAG
+  local ok = pcall(vim.cmd, "help " .. target)
+  if ok then return end
+
+  if target ~= M.DEFAULT_HELP_TAG then
+    vim.cmd("help " .. M.DEFAULT_HELP_TAG)
+    return
+  end
+  error("vimficiency: failed to open help tag '" .. tostring(target) .. "'")
 end
 
 ---@param buf integer
@@ -104,31 +130,74 @@ function M.set_buffer_keymaps(buf, keymaps)
   end
 end
 
+---@param content_width integer
+---@param content_height integer
+---@param opts? { min_width?: integer, min_height?: integer }
+---@return integer win_width
+---@return integer win_height
+---@return integer row
+---@return integer col
+function M.centered_popup_geometry(content_width, content_height, opts)
+  opts = opts or {}
+  local min_width = opts.min_width or 56
+  local min_height = opts.min_height or 12
+  local ui = v.nvim_list_uis()[1] or {
+    width = vim.o.columns,
+    height = vim.o.lines,
+  }
+  local win_width = math.min(
+    math.max(content_width, min_width),
+    math.max(min_width, ui.width - 4))
+  local win_height = math.min(
+    math.max(content_height, min_height),
+    math.max(min_height, ui.height - 4))
+  local row = math.max(0, math.floor((ui.height - win_height) / 2) - 1)
+  local col = math.max(0, math.floor((ui.width - win_width) / 2))
+  return win_width, win_height, row, col
+end
+
 ---@param title string
 ---@param keymaps VimficiencyBufferKeymap[]
----@param help_tag string?
-function M.show_keymap_help(title, keymaps, help_tag)
-  local lines = { title, "" }
+function M.show_keymap_help(title, keymaps)
+  local lines = {}
   local width = vim.fn.strdisplaywidth(title)
+  local rows = {}
+
+  local i = 1
+  while i <= #keymaps do
+    local cur = keymaps[i]
+    local row = {
+      lhs = cur.lhs,
+      desc = cur.summary_desc or cur.desc,
+    }
+    if cur.summary_group then
+      local lhses = { cur.lhs }
+      local j = i + 1
+      while j <= #keymaps and keymaps[j].summary_group == cur.summary_group do
+        lhses[#lhses + 1] = keymaps[j].lhs
+        j = j + 1
+      end
+      if #lhses > 1 then
+        row.lhs = table.concat(lhses, "/")
+        row.desc = cur.summary_desc or row.desc
+        i = j - 1
+      end
+    end
+    rows[#rows + 1] = row
+    i = i + 1
+  end
 
   -- Left-column width = widest lhs, min 4 so very short lists don't look cramped.
   local lhs_w = 4
-  for _, m in ipairs(keymaps) do
-    lhs_w = math.max(lhs_w, vim.fn.strdisplaywidth(m.lhs))
+  for _, row in ipairs(rows) do
+    lhs_w = math.max(lhs_w, vim.fn.strdisplaywidth(row.lhs))
   end
 
-  for _, m in ipairs(keymaps) do
-    local pad = lhs_w - vim.fn.strdisplaywidth(m.lhs)
-    local line = "  " .. m.lhs .. string.rep(" ", pad) .. "  " .. m.desc
+  for _, row in ipairs(rows) do
+    local pad = lhs_w - vim.fn.strdisplaywidth(row.lhs)
+    local line = "  " .. row.lhs .. string.rep(" ", pad) .. "  " .. row.desc
     lines[#lines + 1] = line
     width = math.max(width, vim.fn.strdisplaywidth(line))
-  end
-
-  if help_tag then
-    lines[#lines + 1] = ""
-    local footer = "Press g? for full docs."
-    lines[#lines + 1] = footer
-    width = math.max(width, vim.fn.strdisplaywidth(footer))
   end
 
   local buf = v.nvim_create_buf(false, true)
@@ -139,11 +208,8 @@ function M.show_keymap_help(title, keymaps, help_tag)
   vim.bo[buf].modifiable = false
   vim.bo[buf].filetype = "vimficiency"
 
-  local ui = v.nvim_list_uis()[1]
-  local win_width = math.min(width + 4, math.max(24, ui.width - 4))
-  local win_height = math.min(#lines, math.max(4, ui.height - 4))
-  local row = math.max(0, math.floor((ui.height - win_height) / 2) - 1)
-  local col = math.max(0, math.floor((ui.width - win_width) / 2))
+  local win_width, win_height, row, col =
+    M.centered_popup_geometry(width + 4, #lines)
 
   local win = v.nvim_open_win(buf, true, {
     relative = "editor",
@@ -153,7 +219,7 @@ function M.show_keymap_help(title, keymaps, help_tag)
     height = win_height,
     style = "minimal",
     border = "rounded",
-    title = " Vimficiency Keys ",
+    title = " " .. title .. " ",
     title_pos = "center",
     noautocmd = true,
   })
@@ -178,32 +244,64 @@ function M.show_keymap_help(title, keymaps, help_tag)
 end
 
 ---@param keymaps VimficiencyBufferKeymap[]
----@param title string
----@param help_tag string
+---@param opts VimficiencyStandardUiKeyOpts
 ---@return VimficiencyBufferKeymap[]
-function M.with_help_keymaps(keymaps, title, help_tag)
+function M.with_standard_ui_keymaps(keymaps, opts)
   local merged = vim.deepcopy(keymaps)
-  local function show_help()
-    M.show_keymap_help(title, merged, help_tag)
+  local summary = opts.summary
+  if summary == nil then summary = true end
+  if summary then
+    local summary_opts = type(summary) == "table" and summary or {}
+    merged[#merged + 1] = {
+      lhs = summary_opts.lhs or "?",
+      handler = function() M.show_keymap_help(opts.title, merged) end,
+      desc = summary_opts.desc or "Show keymap summary",
+      nowait = true,
+    }
   end
-  merged[#merged + 1] = {
-    lhs = "?",
-    handler = show_help,
-    desc = "Show keymap summary",
-    nowait = true,
-  }
-  merged[#merged + 1] = {
-    lhs = "g?",
-    handler = function() M.open_help(help_tag) end,
-    desc = "Open full help",
-    nowait = true,
-  }
+  if opts.settings then
+    merged[#merged + 1] = {
+      lhs = opts.settings.lhs or "gs",
+      handler = opts.settings.handler,
+      desc = opts.settings.desc or "Open settings",
+      nowait = true,
+    }
+  end
+  local docs = opts.docs
+  if docs then
+    local docs_opts = type(docs) == "table" and docs or {}
+    merged[#merged + 1] = {
+      lhs = docs_opts.lhs or "g?",
+      handler = function() M.open_help(docs_opts.tag or M.DEFAULT_HELP_TAG) end,
+      desc = docs_opts.desc or "Full docs",
+      nowait = true,
+    }
+  end
   return merged
+end
+
+-- Legacy compatibility wrapper around `with_standard_ui_keymaps`.
+---@param keymaps VimficiencyBufferKeymap[]
+---@param opts VimficiencyHelpKeymapOpts|string
+---@param help_tag string?
+---@return VimficiencyBufferKeymap[]
+function M.with_help_keymaps(keymaps, opts, help_tag)
+  if type(opts) ~= "table" then
+    opts = { title = opts, docs = help_tag ~= nil }
+  else
+    opts = {
+      title = opts.title,
+      summary = true,
+      docs = opts.docs == true,
+      settings = opts.settings,
+    }
+  end
+  return M.with_standard_ui_keymaps(keymaps, opts)
 end
 
 ---@param title string
 ---@param text? string
----@param opts? { help_tag?: string, help_title?: string }
+---@param opts? { ui_keys?: VimficiencyStandardUiKeyOpts, help_tag?: string, help_title?: string }
 ---@return integer buf
 ---@return integer win
 function M.show_output(title, text, opts)
@@ -237,11 +335,15 @@ function M.show_output(title, text, opts)
   local keymaps = {
     { lhs = "q", handler = "<cmd>close<cr>", desc = "Close vimficiency view", nowait = true },
   }
-  if opts.help_tag then
-    keymaps = M.with_help_keymaps(
-      keymaps,
-      opts.help_title or (title .. " Keys"),
-      opts.help_tag)
+  local ui_keys = opts.ui_keys
+  if not ui_keys and opts.help_tag then
+    ui_keys = {
+      title = opts.help_title or (title .. " Keys"),
+      docs = true,
+    }
+  end
+  if ui_keys then
+    keymaps = M.with_standard_ui_keymaps(keymaps, ui_keys)
   end
   M.set_buffer_keymaps(buf, keymaps)
 
