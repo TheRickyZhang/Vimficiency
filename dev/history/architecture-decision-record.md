@@ -19,10 +19,10 @@ We completed a structural cleanup to enforce explicit module boundaries in `src/
 - Kept sequence ownership split:
   `Sequence` type stays in `Types`, while stream formatting implementation
   lives in `Interpreter` because it depends on higher-level sequence parsing helpers.
-- Moved `RepeatMotionResult` to `src/Optimizer/MotionOptimizer/BufferIndex.h` because it is
+- Moved `RepeatMotionResult` to `src/Optimizer/NavOptimizer/BufferIndex.h` because it is
   an optimizer/index query result type rather than a shared core primitive.
-- Moved count-search motion pair ownership to MotionOptimizer via
-  `src/Optimizer/MotionOptimizer/CountableMotionPair.h`, removing semantic
+- Moved count-search motion pair ownership to NavOptimizer via
+  `src/Optimizer/NavOptimizer/CountableMotionPair.h`, removing semantic
   count-landing coupling from `Keyboard`.
 - Moved config type ownership to Keyboard (`src/Keyboard/Config.h`), with
   `src/Keyboard/Config.h` kept as a thin forwarding include for compatibility.
@@ -51,7 +51,7 @@ We completed a structural cleanup to enforce explicit module boundaries in `src/
   `KeyboardUtils.h` so finger/hand relationship helpers live with the finger
   type definitions.
 - Dissolved `src/State/` and moved state ownership into optimizer modules:
-  `MotionState` under `src/Optimizer/MotionOptimizer/`, `EditState` under
+  `NavState` under `src/Optimizer/NavOptimizer/`, `EditState` under
   `src/Optimizer/EditOptimizer/`, and `CompositionState` under
   `src/Optimizer/CompositionOptimizer/`.
 - Moved `EffortBank` to effort scope (`src/Effort/EffortBank.h`)
@@ -121,7 +121,7 @@ Explicit non-goals, kept this way deliberately:
 # EditResult
 
 ## Recording EditResult Answer
-Ideally, like in MotionOptimizer, we simply record answer when a goal state is popped from the stack (guaranteed lowest cost). But we have a wrinkle with delete -> change conversions, as we would need to adjust in advance.
+Ideally, like in NavOptimizer, we simply record answer when a goal state is popped from the stack (guaranteed lowest cost). But we have a wrinkle with delete -> change conversions, as we would need to adjust in advance.
 
 Several methods keeping an inverted order were tried, but in the end, guaranteed correctness is worth checking for a goal state twice. It may be possible to add a bool isGoal to trade memory in state for a faster branch check.
 

@@ -6,16 +6,16 @@ A bug was discovered where `inline` functions returning structs with default mem
 
 ## Observed Behavior
 
-In `tests/Benchmarks/MotionOptimizerBench.cpp`:
+In `tests/Benchmarks/NavOptimizerBench.cpp`:
 
 ```cpp
 // BUG: inline functions produce garbage values
-inline MotionOptimizerParams paramsA() {
-  return MotionOptimizerParams{};
+inline NavOptimizerParams paramsA() {
+  return NavOptimizerParams{};
 }
 
-inline MotionOptimizerParams paramsB() {
-  return MotionOptimizerParams{}.withDirectionalPruning(false);
+inline NavOptimizerParams paramsB() {
+  return NavOptimizerParams{}.withDirectionalPruning(false);
 }
 
 // When called:
@@ -31,8 +31,8 @@ runUnifiedBenchmark<ENABLE_COMPARISON>(label, setup, paramsA(), paramsB(), ...);
 **Fix:**
 ```cpp
 // WORKS: static functions behave correctly
-static MotionOptimizerParams paramsA() { ... }
-static MotionOptimizerParams paramsB() { ... }
+static NavOptimizerParams paramsA() { ... }
+static NavOptimizerParams paramsB() { ... }
 ```
 
 ## Environment

@@ -1,18 +1,18 @@
-// tests/MotionOptimizer/HumanApprovalTest.cpp
+// tests/NavOptimizer/HumanApprovalTest.cpp
 //
-// Human-verified examples for MotionOptimizer output quality.
+// Human-verified examples for NavOptimizer output quality.
 // Since no ground truth optimizer exists, we manually verify that outputs
 // are sensible and contain expected efficient sequences.
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="MotionOptimizerHumanApprovalTests.*"
+// Run: ./build/tests/vimficiency_tests --gtest_filter="NavOptimizerHumanApprovalTests.*"
 // 4. Remove DISABLED_ prefix
 
 #include <gtest/gtest.h>
 
 #include "Types/NavContext.h"
 #include "Keyboard/Config.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
-#include "Boundary/MotionBoundary.h"
+#include "Optimizer/NavOptimizer/NavOptimizer.h"
+#include "Boundary/NavBoundary.h"
 #include "Effort/RunningEffort.h"
 #include "Types/Lines.h"
 #include "Utils/TestUtils.h"  // hasSequence, hasSequenceStartingWith, printResultsDebug
@@ -23,7 +23,7 @@ using namespace std;
 // Test Infrastructure
 // =============================================================================
 
-class MotionOptimizerHumanApprovalTests : public ::testing::Test {
+class NavOptimizerHumanApprovalTests : public ::testing::Test {
 protected:
   Config config = Config::uniform();
   static NavContext navContext;
@@ -33,18 +33,18 @@ protected:
   }
 };
 
-NavContext MotionOptimizerHumanApprovalTests::navContext;
+NavContext NavOptimizerHumanApprovalTests::navContext;
 
 // =============================================================================
-// MotionOptimizer Examples
+// NavOptimizer Examples
 // =============================================================================
 
-TEST_F(MotionOptimizerHumanApprovalTests, Motion_SimpleHorizontal) {
+TEST_F(NavOptimizerHumanApprovalTests, Motion_SimpleHorizontal) {
   Lines lines = {"hello world test"};
   CursorPos start(0, 0);
   CursorPos end(0, 5);  // At space before "world"
 
-  MotionOptimizer opt(config);
+  NavOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, end, {}, "lllll"
   ).getResults();
@@ -55,13 +55,13 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_SimpleHorizontal) {
   // TODO: Add assertions after reviewing output
 }
 
-TEST_F(MotionOptimizerHumanApprovalTests, Motion_VerticalJump) {
+TEST_F(NavOptimizerHumanApprovalTests, Motion_VerticalJump) {
   // Moving down 3 lines
   Lines lines = {"line one", "line two", "line three", "line four"};
   CursorPos start(0, 0);
   CursorPos end(3, 0);
 
-  MotionOptimizer opt(config);
+  NavOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, end, {}, "jjj"
   ).getResults();
@@ -79,13 +79,13 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_VerticalJump) {
       << "Should find count-based or repeated j";
 }
 
-TEST_F(MotionOptimizerHumanApprovalTests, Motion_WordMotions) {
+TEST_F(NavOptimizerHumanApprovalTests, Motion_WordMotions) {
   // Navigate using word motions
   Lines lines = {"one two three four five"};
   CursorPos start(0, 0);
   CursorPos end(0, 14);  // Start of "four"
 
-  MotionOptimizer opt(config);
+  NavOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, end, {}, "www"
   ).getResults();
@@ -99,15 +99,15 @@ TEST_F(MotionOptimizerHumanApprovalTests, Motion_WordMotions) {
       << "Should find word-based navigation";
 }
 
-TEST_F(MotionOptimizerHumanApprovalTests, Motion_MixedMotions) {
+TEST_F(NavOptimizerHumanApprovalTests, Motion_MixedMotions) {
   // Complex movement requiring mixed motions
   Lines lines = {"first line here", "second line", "third line end"};
   CursorPos start(0, 0);
   CursorPos end(2, 11);  // At "end"
 
-  MotionOptimizer opt(config);
+  NavOptimizer opt(config);
   auto results = opt.optimize(
-    lines, start, end, MotionOptimizerParams{}.withMaxResults(15), "jjllllllllll"
+    lines, start, end, NavOptimizerParams{}.withMaxResults(15), "jjllllllllll"
   ).getResults();
 
   // printResults(results, "Mixed motions to line 2, col 11");

@@ -76,10 +76,10 @@ void setSearchCounters(benchmark::State& state, const S& stats) {
           stats.uniquePositionsFound(), benchmark::Counter::kAvgIterations);
     }
   }
-  if constexpr (requires { stats.motionNodesExplored(); }) {
-    if (stats.motionNodesExplored() > 0 || stats.editNodesExplored() > 0) {
-      state.counters["MotionNodes"] = benchmark::Counter(
-          stats.motionNodesExplored(), benchmark::Counter::kAvgIterations);
+  if constexpr (requires { stats.navNodesExplored(); }) {
+    if (stats.navNodesExplored() > 0 || stats.editNodesExplored() > 0) {
+      state.counters["NavNodes"] = benchmark::Counter(
+          stats.navNodesExplored(), benchmark::Counter::kAvgIterations);
       state.counters["EditNodes"] = benchmark::Counter(
           stats.editNodesExplored(), benchmark::Counter::kAvgIterations);
     }

@@ -3,7 +3,7 @@
 
 #include <gtest/gtest.h>
 
-#include "Boundary/MotionBoundary.h"
+#include "Boundary/NavBoundary.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Optimizer/CompositionOptimizer/DiffState.h"
@@ -28,7 +28,7 @@ TEST(CompositionResultStepView, AlignsDiffFencepostsAndEditResultPerEdit) {
   };
   CursorPos initialPos(0, 0);
   CursorPos goalPos(1, 11);
-  MotionBoundary boundary(initial, initialPos, initial.endPos());
+  NavBoundary boundary(initial, initialPos, initial.endPos());
 
   CompositionResult result = opt.optimize(
       initial, initialPos, goal, goalPos, CompositionOptimizerParams{}, "", boundary);

@@ -2,7 +2,7 @@
 using namespace std;
 
 // =============================================================================
-// Motion Operation Specs - tables for MotionOptimizer
+// Motion Operation Specs - tables for NavOptimizer
 // =============================================================================
 // KSId references for bank lookup during A* search
 

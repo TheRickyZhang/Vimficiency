@@ -8,56 +8,56 @@
 // motions they could take right now toward the target, not the top-K full
 // paths to it.
 //
-// How it relates to MotionOptimizer:
-//   - Same `MotionExplorer` and candidate-emission callbacks as
-//     `MotionOptimizer::optimizeToRange`. Same scoring function
+// How it relates to NavOptimizer:
+//   - Same `NavExplorer` and candidate-emission callbacks as
+//     `NavOptimizer::optimizeToRange`. Same scoring function
 //     (`effortWeight * effort + distanceWeight * distanceToRange`).
-//   - But only ONE expansion level: we build a single `MotionState` at the
+//   - But only ONE expansion level: we build a single `NavState` at the
 //     cursor, emit all depth-1 successors, sort by A* cost, and return the
 //     top K. No priority queue, no iterative popping, no path stitching.
 //   - The full optimizer's cost-map filters no-progress states on re-entry
 //     (you can't re-visit the cursor cell at higher cost). Depth-1 has no
 //     prior entry to compare against, so no-op motions (landing == cursor)
 //     must be filtered explicitly at emission time — see the `isNoOp`
-//     guard in rankMotionFrontier.
+//     guard in rankNavFrontier.
 //
 // Each returned item's `cost` / `landingPos` describe that single molecule
-// in isolation — NOT a full path. The caller (Explore::Session) uses these
+// in isolation — NOT a full path. The caller (Explore::View) uses these
 // to drive a step-by-step UI; after the user picks a molecule, they call
-// `rankMotionFrontier` again from the new cursor for the next step.
+// `rankNavFrontier` again from the new cursor for the next step.
 //
 // No state is cached between calls. Each invocation rebuilds the
-// `BufferIndex` + `MotionExplorer` from the live inputs; this is cheap for
+// `BufferIndex` + `NavExplorer` from the live inputs; this is cheap for
 // depth 1 and sidesteps the undo/redo complexity of a persistent
 // optimizer.
 
 #include <string>
 #include <vector>
 
-#include "Boundary/MotionBoundary.h"
+#include "Boundary/NavBoundary.h"
 #include "Keyboard/Config.h"
 #include "Types/CharRange.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 #include "Types/NavContext.h"
 
-struct MotionFrontierItem {
+struct NavFrontierItem {
   std::string molecule;
   CursorPos landingPos{0, 0};
   // Raw effort of this single molecule (not a cumulative path cost).
   double cost = 0.0;
 };
 
-struct MotionFrontierQuery {
+struct NavFrontierQuery {
   const Lines& lines;
   CursorPos cursor;
   CharRange targetRange;
-  const MotionBoundary& boundary;
+  const NavBoundary& boundary;
   const NavContext& navContext;
   int maxCount = 0;
   // When false (default): at most one result per unique landing position —
   // the cheapest-cost molecule wins, matching the semantic of
-  // `MotionOptimizerRangeParams::allowMultiplePerPosition`.
+  // `NavOptimizerRangeParams::allowMultiplePerPosition`.
   // When true: multiple molecules reaching the same cell are kept (e.g. `w`
   // and `W` both landing on the next word start); dedup keys on sequence
   // text so only literal-string duplicates collapse.
@@ -68,19 +68,19 @@ struct MotionFrontierQuery {
 // Returns up to `query.maxCount` distinct single-molecule candidates,
 // sorted by A* priority (lowest cost first). Empty if the cursor is
 // already on-target or no motion makes progress.
-std::vector<MotionFrontierItem> rankMotionFrontier(
-    const MotionFrontierQuery& query,
+std::vector<NavFrontierItem> rankNavFrontier(
+    const NavFrontierQuery& query,
     const Config& config);
 
 // Convenience wrapper: target any cell on `targetLine`. Used by the
 // join-plan hint path in Explore for multiline diffs that will collapse
-// via `J`. Internally funnels through `rankMotionFrontier` with a line-
+// via `J`. Internally funnels through `rankNavFrontier` with a line-
 // wide target range.
-std::vector<MotionFrontierItem> rankMotionFrontierToLine(
+std::vector<NavFrontierItem> rankNavFrontierToLine(
     const Lines& lines,
     CursorPos cursor,
     int targetLine,
-    const MotionBoundary& boundary,
+    const NavBoundary& boundary,
     const NavContext& navContext,
     const Config& config,
     int maxCount);

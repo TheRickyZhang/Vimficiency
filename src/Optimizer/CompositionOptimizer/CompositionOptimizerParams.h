@@ -18,12 +18,12 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   // Trade-off: faster exploration but may miss some edge-case optimal paths.
   bool useDirectionalPruning = true;
 
-  // Line padding for MotionOptimizer calls.
+  // Line padding for NavOptimizer calls.
   // Controls how many lines above/below the search region to include.
   // Allows overshoot-and-return paths while bounding search space.
   // See dev/optimizer/buffer-slicing.md for details.
-  int motionPaddingAbove = 1;
-  int motionPaddingBelow = 1;
+  int navPaddingAbove = 1;
+  int navPaddingBelow = 1;
 
   // Heuristic penalty for overshooting (going past the next edit region).
   // Overshooting is penalized more than undershooting since it requires backtracking.
@@ -40,9 +40,9 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   CompositionOptimizerParams& withExploreFactor(double v) { exploreFactor = v; return *this; }
   CompositionOptimizerParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
   CompositionOptimizerParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
-  CompositionOptimizerParams& withMotionLinePaddingAbove(int v) { motionPaddingAbove = v; return *this; }
-  CompositionOptimizerParams& withMotionLinePaddingBelow(int v) { motionPaddingBelow = v; return *this; }
-  CompositionOptimizerParams& withMotionLinePadding(int v) { motionPaddingAbove = motionPaddingBelow = v; return *this; }
+  CompositionOptimizerParams& withNavLinePaddingAbove(int v) { navPaddingAbove = v; return *this; }
+  CompositionOptimizerParams& withNavLinePaddingBelow(int v) { navPaddingBelow = v; return *this; }
+  CompositionOptimizerParams& withNavLinePadding(int v) { navPaddingAbove = navPaddingBelow = v; return *this; }
   CompositionOptimizerParams& withMinCountRepeat(int v) { setMinCountRepeat(v); return *this; }
   CompositionOptimizerParams& withMaxCountRepeat(int v) { setMaxCountRepeat(v); return *this; }
   CompositionOptimizerParams& withMaxEditResultsPerPosition(int v) { maxEditResultsPerPosition = v; return *this; }
@@ -75,9 +75,9 @@ struct CompositionOptimizerRangeParams : CompositionOptimizerParams {
   CompositionOptimizerRangeParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
   CompositionOptimizerRangeParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
   CompositionOptimizerRangeParams& withAllowMultiplePerPosition(bool v) { allowMultiplePerPosition = v; return *this; }
-  CompositionOptimizerRangeParams& withMotionLinePaddingAbove(int v) { motionPaddingAbove = v; return *this; }
-  CompositionOptimizerRangeParams& withMotionLinePaddingBelow(int v) { motionPaddingBelow = v; return *this; }
-  CompositionOptimizerRangeParams& withMotionLinePadding(int v) { motionPaddingAbove = motionPaddingBelow = v; return *this; }
+  CompositionOptimizerRangeParams& withNavLinePaddingAbove(int v) { navPaddingAbove = v; return *this; }
+  CompositionOptimizerRangeParams& withNavLinePaddingBelow(int v) { navPaddingBelow = v; return *this; }
+  CompositionOptimizerRangeParams& withNavLinePadding(int v) { navPaddingAbove = navPaddingBelow = v; return *this; }
   CompositionOptimizerRangeParams& withMinCountRepeat(int v) { setMinCountRepeat(v); return *this; }
   CompositionOptimizerRangeParams& withMaxCountRepeat(int v) { setMaxCountRepeat(v); return *this; }
 };

@@ -10,8 +10,8 @@
 #include "Interpreter/SequenceParser.h"
 #include "Optimizer/CompositionOptimizer/CompositionStepArtifacts.h"
 #include "Optimizer/EditOptimizer/EditFrontier.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
-#include "Optimizer/MotionOptimizer/MotionFrontier.h"
+#include "Optimizer/NavOptimizer/NavOptimizer.h"
+#include "Optimizer/NavOptimizer/NavFrontier.h"
 
 using namespace std;
 
@@ -19,7 +19,7 @@ namespace Explore {
 
 namespace {
 
-Recommendation toRecommendation(const MotionFrontierItem& item) {
+Recommendation toRecommendation(const NavFrontierItem& item) {
   Recommendation rec;
   rec.text = item.molecule;
   rec.kind = "motion";
@@ -42,14 +42,14 @@ Recommendation toRecommendation(const EditFrontierItem& item) {
   return rec;
 }
 
-MotionOptimizerParams makeSingleGoalMotionParams(int maxResults) {
+NavOptimizerParams makeSingleGoalMotionParams(int maxResults) {
   CompositionOptimizerParams compParams;
-  return MotionOptimizerParams{}
+  return NavOptimizerParams{}
       .withMaxResults(maxResults)
       .withFMotionThreshold(compParams.fMotionThreshold)
       .withDirectionalPruning(compParams.useDirectionalPruning)
-      .withLinePaddingAbove(compParams.motionPaddingAbove)
-      .withLinePaddingBelow(compParams.motionPaddingBelow)
+      .withLinePaddingAbove(compParams.navPaddingAbove)
+      .withLinePaddingBelow(compParams.navPaddingBelow)
       .withMinCountRepeat(compParams.minPrefixCount)
       .withMaxCountRepeat(compParams.maxPrefixCount);
 }
@@ -58,7 +58,7 @@ vector<Recommendation> backfillEditStartMotions(
     const Lines& lines,
     CursorPos cursor,
     const DiffState& diff,
-    const MotionBoundary& boundary,
+    const NavBoundary& boundary,
     const NavContext& navContext,
     const Config& config,
     int maxCount,
@@ -98,15 +98,15 @@ vector<Recommendation> backfillEditStartMotions(
     return a.pos.col < b.pos.col;
   });
 
-  MotionOptimizer motionOptimizer(config);
+  NavOptimizer navOptimizer(config);
 
   vector<Recommendation> recs;
   recs.reserve(static_cast<size_t>(maxCount));
   for (const StartCandidate& candidate : candidates) {
-    MotionOptimizerParams motionParams =
+    NavOptimizerParams navParams =
         makeSingleGoalMotionParams(maxCount - static_cast<int>(recs.size()));
-    auto result = motionOptimizer.optimize(
-        lines, cursor, candidate.pos, motionParams, "", boundary, navContext);
+    auto result = navOptimizer.optimize(
+        lines, cursor, candidate.pos, navParams, "", boundary, navContext);
     for (const Result& motion : result.getResults()) {
       if (!motion.isValid()) continue;
 
@@ -150,15 +150,15 @@ Step Step::completed() {
 }
 
 // =============================================================================
-// Session construction
+// View construction
 // =============================================================================
 
-Session::Session(
+View::View(
     Lines initialLines,
     CursorPos initialPos,
     Lines goalLines,
     CursorPos goalPos,
-    MotionBoundary boundary,
+    NavBoundary boundary,
     NavContext navContext,
     Config config,
     string_view userSequence)
@@ -199,7 +199,7 @@ Session::Session(
 // Query
 // =============================================================================
 
-optional<pair<CursorPos, CursorPos>> Session::currentTargetRange() const {
+optional<pair<CursorPos, CursorPos>> View::currentTargetRange() const {
   if (state_.step.kind != Phase::ApproachEdit) return nullopt;
   if (!plan_) return nullopt;
   const int i = state_.step.editIndex;
@@ -208,7 +208,7 @@ optional<pair<CursorPos, CursorPos>> Session::currentTargetRange() const {
   return make_pair(step.diff.beginPos, step.diff.endPos);
 }
 
-vector<Recommendation> Session::recommendations(
+vector<Recommendation> View::recommendations(
     int maxCount,
     bool allowMultipleMotionsPerPosition,
     bool allowMultipleEditsPerPosition) const {
@@ -253,8 +253,8 @@ vector<Recommendation> Session::recommendations(
   }
 
   if (!diff.contains(state_.cursor)) {
-    auto motionItems = rankMotionFrontier(
-        MotionFrontierQuery{
+    auto navItems = rankNavFrontier(
+        NavFrontierQuery{
             .lines = state_.lines,
             .cursor = state_.cursor,
             .targetRange = CharRange(diff.beginPos, diff.endPos),
@@ -264,13 +264,13 @@ vector<Recommendation> Session::recommendations(
             .allowMultiplePerPosition = allowMultipleMotionsPerPosition,
         },
         config_);
-    for (const MotionFrontierItem& item : motionItems) {
+    for (const NavFrontierItem& item : navItems) {
       recs.push_back(toRecommendation(item));
     }
 
     if (!diff.isPureInsertion() && joinPlan &&
         state_.cursor.line != joinPlan->entryLine) {
-      auto jMotionItems = rankMotionFrontierToLine(
+      auto jMotionItems = rankNavFrontierToLine(
           state_.lines,
           state_.cursor,
           joinPlan->entryLine,
@@ -278,7 +278,7 @@ vector<Recommendation> Session::recommendations(
           navContext_,
           config_,
           1);
-      for (const MotionFrontierItem& item : jMotionItems) {
+      for (const NavFrontierItem& item : jMotionItems) {
         recs.push_back(toRecommendation(item));
       }
     }
@@ -295,14 +295,14 @@ vector<Recommendation> Session::recommendations(
 // Internal helpers
 // =============================================================================
 
-Applied Session::commit(State next, bool crossedEditBoundary) {
+Applied View::commit(State next, bool crossedEditBoundary) {
   undo_.push_back(state_);
   redo_.clear();
   state_ = std::move(next);
   return Applied{crossedEditBoundary};
 }
 
-expected<int, Rejected> Session::requireApproachEdit(string_view action) const {
+expected<int, Rejected> View::requireApproachEdit(string_view action) const {
   if (state_.step.kind != Phase::ApproachEdit) {
     return unexpected(Rejected{
         string(action) + " only accepted while approaching the current edit"});
@@ -310,7 +310,7 @@ expected<int, Rejected> Session::requireApproachEdit(string_view action) const {
   return state_.step.editIndex;
 }
 
-expected<int, Rejected> Session::requirePendingInsert(string_view action) const {
+expected<int, Rejected> View::requirePendingInsert(string_view action) const {
   if (state_.step.kind != Phase::PendingInsert) {
     return unexpected(Rejected{
         string(action) + " only accepted during pending insert"});
@@ -318,7 +318,7 @@ expected<int, Rejected> Session::requirePendingInsert(string_view action) const 
   return state_.step.editIndex;
 }
 
-Applied Session::afterEditCompleted(State next) {
+Applied View::afterEditCompleted(State next) {
   const int nextEdit = next.step.editIndex + 1;
   if (nextEdit >= totalEdits_) {
     next.step = Step::completed();
@@ -334,7 +334,7 @@ Applied Session::afterEditCompleted(State next) {
 // Actions
 // =============================================================================
 
-Outcome Session::applyMotion(string_view motionText) {
+Outcome View::applyMotion(string_view motionText) {
   auto gated = requireApproachEdit("motions");
   if (!gated) return unexpected(std::move(gated.error()));
 
@@ -350,7 +350,7 @@ Outcome Session::applyMotion(string_view motionText) {
   return commit(std::move(next));
 }
 
-Outcome Session::acceptCursorMove(CursorPos newCursor, string_view rawKeys) {
+Outcome View::acceptCursorMove(CursorPos newCursor, string_view rawKeys) {
   auto gated = requireApproachEdit("cursor moves");
   if (!gated) return unexpected(std::move(gated.error()));
 
@@ -366,7 +366,7 @@ Outcome Session::acceptCursorMove(CursorPos newCursor, string_view rawKeys) {
   return commit(std::move(next));
 }
 
-Outcome Session::applyEdit(string_view text) {
+Outcome View::applyEdit(string_view text) {
   auto gated = requireApproachEdit("edits");
   if (!gated) return unexpected(std::move(gated.error()));
   const int editIndex = *gated;
@@ -384,7 +384,7 @@ Outcome Session::applyEdit(string_view text) {
   return afterEditCompleted(std::move(next));
 }
 
-Outcome Session::acceptBufferState(
+Outcome View::acceptBufferState(
     const Lines& newLines, CursorPos newCursor, string_view rawKeys) {
   auto gated = requireApproachEdit("buffer state changes");
   if (!gated) return unexpected(std::move(gated.error()));
@@ -418,7 +418,7 @@ Outcome Session::acceptBufferState(
   return commit(std::move(next));
 }
 
-Outcome Session::beginEdit(bool entersInsertMode, string_view requiredTypedText) {
+Outcome View::beginEdit(bool entersInsertMode, string_view requiredTypedText) {
   auto gated = requireApproachEdit("edits");
   if (!gated) return unexpected(std::move(gated.error()));
   const int editIndex = *gated;
@@ -432,7 +432,7 @@ Outcome Session::beginEdit(bool entersInsertMode, string_view requiredTypedText)
   return afterEditCompleted(std::move(next));
 }
 
-Outcome Session::consumeInsertText(string_view typedChunk) {
+Outcome View::consumeInsertText(string_view typedChunk) {
   auto gated = requirePendingInsert("typed insert text");
   if (!gated) return unexpected(std::move(gated.error()));
 
@@ -451,7 +451,7 @@ Outcome Session::consumeInsertText(string_view typedChunk) {
   return commit(std::move(next));
 }
 
-Outcome Session::exitInsertMode() {
+Outcome View::exitInsertMode() {
   auto gated = requirePendingInsert("insert-mode exit");
   if (!gated) return unexpected(std::move(gated.error()));
 
@@ -463,7 +463,7 @@ Outcome Session::exitInsertMode() {
   return afterEditCompleted(std::move(next));
 }
 
-Outcome Session::acceptInsertExit(
+Outcome View::acceptInsertExit(
     const Lines& newLines, CursorPos newCursor, string_view rawKeys) {
   auto gated = requirePendingInsert("insert-mode exit with buffer state");
   if (!gated) return unexpected(std::move(gated.error()));
@@ -488,7 +488,7 @@ Outcome Session::acceptInsertExit(
   return afterEditCompleted(std::move(next));
 }
 
-Outcome Session::cancelPendingInsert() {
+Outcome View::cancelPendingInsert() {
   auto gated = requirePendingInsert("pending-insert cancel");
   if (!gated) return unexpected(std::move(gated.error()));
 
@@ -501,7 +501,7 @@ Outcome Session::cancelPendingInsert() {
   return Applied{};
 }
 
-Outcome Session::undo() {
+Outcome View::undo() {
   if (undo_.empty()) return unexpected(Rejected{"nothing to undo"});
   redo_.push_back(state_);
   state_ = undo_.back();
@@ -509,7 +509,7 @@ Outcome Session::undo() {
   return Applied{};
 }
 
-Outcome Session::redo() {
+Outcome View::redo() {
   if (redo_.empty()) return unexpected(Rejected{"nothing to redo"});
   undo_.push_back(state_);
   state_ = redo_.back();

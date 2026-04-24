@@ -86,12 +86,12 @@ struct BoundaryContext {
 };
 ```
 
-### MotionBoundary
+### NavBoundary
 
 Wraps BoundaryContext for motion constraint checking (no string content needed):
 
 ```cpp
-class MotionBoundary {
+class NavBoundary {
   BoundaryContext ctx_;  // Delegates to shared context
 
   // Accessors delegate to ctx_
@@ -101,7 +101,7 @@ class MotionBoundary {
   int rightColOffset() const { return ctx_.rightColOffset; }
 
   // Conversion from EditBoundary
-  explicit MotionBoundary(const EditBoundary& eb);
+  explicit NavBoundary(const EditBoundary& eb);
 
   bool isPositionInBounds(pos, lastLine, lastLineLength) const;
 };
@@ -121,7 +121,7 @@ struct EditBoundary {
   int leftColOffset() const { return prefix_.size(); }
   int rightColOffset() const { return suffix_.size(); }
 
-  // Convert to BoundaryContext for interop with MotionBoundary
+  // Convert to BoundaryContext for interop with NavBoundary
   BoundaryContext context() const;
 
   char leftChar() const;   // prefix_.back() or '\n'/NO_CHAR
@@ -135,11 +135,11 @@ struct EditBoundary {
 
 - **EditBoundary needs strings**: Building `effectiveLines` requires prepending/appending
   actual content. Goal state comparison checks if lines match prefix+suffix.
-- **MotionBoundary needs only offsets**: Position bounds checking just needs column counts,
-  not the actual characters. This keeps MotionOptimizer lightweight.
+- **NavBoundary needs only offsets**: Position bounds checking just needs column counts,
+  not the actual characters. This keeps NavOptimizer lightweight.
 
 The `BoundaryContext` struct extracts the shared logic (hasLinesAbove/Below computation,
-offset storage) so both types compute boundaries consistently. Use `MotionBoundary(eb)`
+offset storage) so both types compute boundaries consistently. Use `NavBoundary(eb)`
 or `eb.context()` to convert when switching between optimizer types.
 
 ## Endpoint Functions (VimEndpointUtils.h)

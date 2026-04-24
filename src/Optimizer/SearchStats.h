@@ -142,7 +142,7 @@ private:
   std::vector<ExploredState> exploredStates_;
 };
 
-class MotionSearchStats : public BaseSearchStats {
+class NavSearchStats : public BaseSearchStats {
 public:
   int uniquePositionsFound() const { return uniquePositionsFound_; }
   bool isRangeSearch() const { return uniquePositionsFound_ >= 0; }
@@ -188,7 +188,7 @@ public:
     }
   }
 
-  void accumulateFrom(const MotionSearchStats& other) {
+  void accumulateFrom(const NavSearchStats& other) {
     BaseSearchStats::accumulateFrom(other);
     if (other.isRangeSearch()) {
       if (!isRangeSearch()) uniquePositionsFound_ = 0;
@@ -196,7 +196,7 @@ public:
     }
   }
 
-  friend std::ostream& operator<<(std::ostream& os, const MotionSearchStats& s) {
+  friend std::ostream& operator<<(std::ostream& os, const NavSearchStats& s) {
     os << static_cast<const BaseSearchStats&>(s);
     if (s.isRangeSearch()) {
       os << " unique=" << s.uniquePositionsFound_;
@@ -284,30 +284,30 @@ private:
 
 class CompositionSearchStats : public BaseSearchStats {
 public:
-  int motionNodesExplored() const { return motionNodesExplored_; }
+  int navNodesExplored() const { return navNodesExplored_; }
   int editNodesExplored() const { return editNodesExplored_; }
 
-  void setNodeBreakdown(int motionNodesExploredValue, int editNodesExploredValue) {
-    motionNodesExplored_ = motionNodesExploredValue;
+  void setNodeBreakdown(int navNodesExploredValue, int editNodesExploredValue) {
+    navNodesExplored_ = navNodesExploredValue;
     editNodesExplored_ = editNodesExploredValue;
   }
 
   void accumulateFrom(const CompositionSearchStats& other) {
     BaseSearchStats::accumulateFrom(other);
-    motionNodesExplored_ += other.motionNodesExplored_;
+    navNodesExplored_ += other.navNodesExplored_;
     editNodesExplored_ += other.editNodesExplored_;
   }
 
   friend std::ostream& operator<<(std::ostream& os, const CompositionSearchStats& s) {
     os << static_cast<const BaseSearchStats&>(s);
-    if (s.motionNodesExplored_ > 0 || s.editNodesExplored_ > 0) {
-      os << " motionNodes=" << s.motionNodesExplored_
+    if (s.navNodesExplored_ > 0 || s.editNodesExplored_ > 0) {
+      os << " navNodes=" << s.navNodesExplored_
          << " editNodes=" << s.editNodesExplored_;
     }
     return os;
   }
 
 private:
-  int motionNodesExplored_ = 0;
+  int navNodesExplored_ = 0;
   int editNodesExplored_ = 0;
 };

@@ -13,8 +13,8 @@
 #include "Keyboard/Config.h"
 #include "Optimizer/CountPenalty.h"
 #include "Optimizer/GlobalRuntimeOptions.h"
-#include "Boundary/MotionBoundary.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
+#include "Boundary/NavBoundary.h"
+#include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Effort/RunningEffort.h"
 
 using namespace std;
@@ -48,10 +48,10 @@ protected:
   runOptimizer(const Lines &lines, CursorPos start,
                CursorPos end, const string &userSeq,
                Config config) {
-    MotionOptimizer opt(config);
-    MotionBoundary boundary;
+    NavOptimizer opt(config);
+    NavBoundary boundary;
     return opt.optimize(lines, start, end,
-                        MotionOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
+                        NavOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
                         userSeq, boundary, navContext).getResults();
   }
 
@@ -249,9 +249,9 @@ TEST_F(ConfigurationTest, CountPenaltyOverrideAffectsMotionRanking) {
   CursorPos start(0, 0);
   CursorPos end(0, 19);  // reachable via 4w
 
-  MotionOptimizer opt(Config::uniform());
-  MotionBoundary boundary;
-  MotionOptimizerParams params = MotionOptimizerParams{}
+  NavOptimizer opt(Config::uniform());
+  NavBoundary boundary;
+  NavOptimizerParams params = NavOptimizerParams{}
       .withMaxResults(30)
       .withMaxNodesPopped(20000)
       .withMinCountRepeat(4);

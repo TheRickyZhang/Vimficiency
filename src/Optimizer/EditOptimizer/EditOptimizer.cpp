@@ -17,7 +17,7 @@
 #include "Keyboard/PhysicalKeys.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Keyboard/ToKeys/MotionToKeys.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
+#include "Optimizer/NavOptimizer/NavOptimizer.h"
 
 using namespace std;
 
@@ -109,29 +109,29 @@ struct DeletionGoalHandler {
       CursorPos lastPos(lastLine, max(0, lastCol));
 
       if (lastPos > beginPos || (lastPos.line == beginPos.line && lastPos.col > beginPos.col)) {
-        MotionOptimizer motionOpt(config);
+        NavOptimizer navOpt(config);
 
-        auto motionResult = motionOpt.optimize(
+        auto navResult = navOpt.optimize(
             effectiveLines,
             beginPos,
             lastPos,
-            MotionOptimizerParams{}
-                .withLinePaddingAbove(params.motionLinePaddingAbove)
-                .withLinePaddingBelow(params.motionLinePaddingBelow)
+            NavOptimizerParams{}
+                .withLinePaddingAbove(params.navLinePaddingAbove)
+                .withLinePaddingBelow(params.navLinePaddingBelow)
                 .withMinCountRepeat(params.minPrefixCount)
                 .withMaxCountRepeat(params.maxPrefixCount)
         );
 
-        const auto& motionResults = motionResult.getResults();
-        if (!motionResults.empty() && motionResults[0].isValid()) {
+        const auto& navResults = navResult.getResults();
+        if (!navResults.empty() && navResults[0].isValid()) {
           Sequence visualSeq("v");
-          visualSeq.append(motionResults[0].getSequence().view());
+          visualSeq.append(navResults[0].getSequence().view());
           visualSeq.append("d");
 
           static const PhysicalKeys vKey = {Key::Key_V};
           static const PhysicalKeys dKey = {Key::Key_D};
           RunningEffort effort(vKey, config);
-          effort.append(globalSequenceToKeys().tokenize(motionResults[0].getSequence().view()), config);
+          effort.append(globalSequenceToKeys().tokenize(navResults[0].getSequence().view()), config);
           double totalEffort = effort.append(dKey, config);
 
           auto& bucket = resultsByStart[0];

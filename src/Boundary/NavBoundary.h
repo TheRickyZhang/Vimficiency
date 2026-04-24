@@ -7,7 +7,7 @@
 // Forward declaration
 struct EditBoundary;
 
-// MotionBoundary constrains the search space for MotionOptimizer.
+// NavBoundary constrains the search space for NavOptimizer.
 //
 // Like EditBoundary, stores information about what's outside the region:
 // - hasLinesAbove/Below: for gg/G exclusion and edge-line checks
@@ -16,28 +16,28 @@ struct EditBoundary;
 //
 // Uses BoundaryContext internally for shared offset/line logic.
 
-class MotionBoundary {
+class NavBoundary {
   BoundaryContext ctx_;
 
 public:
-  MotionBoundary() = default;
-  static const MotionBoundary& noParent();
+  NavBoundary() = default;
+  static const NavBoundary& noParent();
 
   // Construct from buffer context, optionally inheriting from parent
   // endPos is exclusive: one past the last valid cursor position on the end line
-  MotionBoundary(const Lines& lines, CursorPos beginPos, CursorPos endPos,
-                 const MotionBoundary& parent = noParent());
+  NavBoundary(const Lines& lines, CursorPos beginPos, CursorPos endPos,
+                 const NavBoundary& parent = noParent());
 
   // The default constructor has NO PARENT, so basically any motions are possible
   // To specify restricted motions for lines, call with hasLinesBelow = false, hasLinesAbove = false
 
   // Construct with explicit external context flags (for FFI)
   // endPos is exclusive: one past the last valid cursor position on the end line
-  MotionBoundary(const Lines& lines, CursorPos beginPos, CursorPos endPos,
+  NavBoundary(const Lines& lines, CursorPos beginPos, CursorPos endPos,
                  bool hasLinesAbove, bool hasLinesBelow);
 
   // Construct from EditBoundary (for conversion when switching optimizer types)
-  explicit MotionBoundary(const EditBoundary& eb);
+  explicit NavBoundary(const EditBoundary& eb);
 
   // Accessors delegate to ctx_
   bool hasLinesAbove() const { return ctx_.hasLinesAbove; }

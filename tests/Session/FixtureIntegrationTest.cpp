@@ -1,6 +1,6 @@
 // tests/Session/FixtureIntegrationTest.cpp
 //
-// Integration tests for Explore::Session driven by canonical saved-session
+// Integration tests for Explore::View driven by canonical saved-session
 // JSON fixtures. Each fixture mirrors the real on-disk schema written by
 // the Lua layer, so these tests exercise the same typed inputs that a live
 // plugin session hands to the optimizer — no hand-rolled Lines/cursors.
@@ -10,7 +10,7 @@
 #include <set>
 #include <string>
 
-#include "Boundary/MotionBoundary.h"
+#include "Boundary/NavBoundary.h"
 #include "Keyboard/Config.h"
 #include "Session/Explore.h"
 #include "Types/CursorPos.h"
@@ -23,20 +23,20 @@ using namespace std;
 
 namespace {
 
-Explore::Session sessionFromFixture(const ExploreFixtures::Fixture& f,
-                                    NavContext navContext, Config config) {
+Explore::View viewFromFixture(const ExploreFixtures::Fixture& f,
+                              NavContext navContext, Config config) {
   const int lastLine = max(0, static_cast<int>(f.lines.size()) - 1);
   const int lastLineSize = f.lines.empty()
       ? 0
       : static_cast<int>(f.lines[lastLine].size()) + 1;
-  MotionBoundary boundary(f.lines,
+  NavBoundary boundary(f.lines,
                           CursorPos(0, 0),
                           CursorPos(lastLine, lastLineSize),
                           f.hasLinesAbove,
                           f.hasLinesBelow);
-  return Explore::Session(f.lines, f.startPos, f.goalLines, f.endPos,
-                          std::move(boundary), navContext, config,
-                          /*userSequence=*/"");
+  return Explore::View(f.lines, f.startPos, f.goalLines, f.endPos,
+                       std::move(boundary), navContext, config,
+                       /*userSequence=*/"");
 }
 
 class ExploreFixtureTest : public ::testing::Test {
@@ -45,17 +45,17 @@ class ExploreFixtureTest : public ::testing::Test {
   NavContext navContext{24, 12};
 };
 
-// Baseline: canonical fixture loads, session enters ApproachEdit, and the
+// Baseline: canonical fixture loads, view enters ApproachEdit, and the
 // frontier produces at least one distinct recommendation.
 TEST_F(ExploreFixtureTest, RenameFixtureStartsInApproachEdit) {
   auto f = ExploreFixtures::loadFixture("rename_int_n_to_m");
-  auto session = sessionFromFixture(f, navContext, config);
+  auto view = viewFromFixture(f, navContext, config);
 
-  ASSERT_EQ(session.step().kind, Explore::Phase::ApproachEdit);
-  EXPECT_GT(session.totalEdits(), 0);
-  EXPECT_EQ(session.state().cursor, f.startPos);
+  ASSERT_EQ(view.step().kind, Explore::Phase::ApproachEdit);
+  EXPECT_GT(view.totalEdits(), 0);
+  EXPECT_EQ(view.state().cursor, f.startPos);
 
-  auto recs = session.recommendations(5);
+  auto recs = view.recommendations(5);
   EXPECT_FALSE(recs.empty());
 
   set<string> texts;
@@ -65,12 +65,12 @@ TEST_F(ExploreFixtureTest, RenameFixtureStartsInApproachEdit) {
 
 // Saturation contract: for reasonable fixtures, the frontier should reach
 // maxCount at the start position. If this fails, the immediate-frontier
-// ranker is under-filling on real sessions.
+// ranker is under-filling on real captured sessions.
 TEST_F(ExploreFixtureTest, RenameFixtureSaturatesFrontierAtStart) {
   auto f = ExploreFixtures::loadFixture("rename_int_n_to_m");
-  auto session = sessionFromFixture(f, navContext, config);
+  auto view = viewFromFixture(f, navContext, config);
 
-  auto recs = session.recommendations(5);
+  auto recs = view.recommendations(5);
   EXPECT_EQ(recs.size(), 5u)
       << "reasonable fixture should fill 5/5; got only "
       << recs.size()
@@ -81,22 +81,22 @@ TEST_F(ExploreFixtureTest, RenameFixtureSaturatesFrontierAtStart) {
 // frontier should continue to provide candidates until the plan completes.
 TEST_F(ExploreFixtureTest, InsertFixtureDrivesForwardUntilCompletion) {
   auto f = ExploreFixtures::loadFixture("insert_plus_one");
-  auto session = sessionFromFixture(f, navContext, config);
+  auto view = viewFromFixture(f, navContext, config);
 
-  ASSERT_EQ(session.step().kind, Explore::Phase::ApproachEdit);
+  ASSERT_EQ(view.step().kind, Explore::Phase::ApproachEdit);
 
   int steps = 0;
   const int maxSteps = 60;  // per-molecule walk; bounded generously above
                             // the Manhattan distance between start and target
-  while (session.step().kind == Explore::Phase::ApproachEdit &&
+  while (view.step().kind == Explore::Phase::ApproachEdit &&
          steps < maxSteps) {
-    auto recs = session.recommendations(5);
+    auto recs = view.recommendations(5);
     if (recs.empty()) {
       ADD_FAILURE()
           << "empty frontier at step " << steps
-          << " cursor=(" << session.state().cursor.line << ","
-          << session.state().cursor.col << ")"
-          << " editIndex=" << session.step().editIndex;
+          << " cursor=(" << view.state().cursor.line << ","
+          << view.state().cursor.col << ")"
+          << " editIndex=" << view.step().editIndex;
       break;
     }
 
@@ -108,7 +108,7 @@ TEST_F(ExploreFixtureTest, InsertFixtureDrivesForwardUntilCompletion) {
       }
     }
     if (!pick) break;  // no motion available -> need edit path, not tested here
-    ASSERT_TRUE(session.applyMotion(pick->text).has_value());
+    ASSERT_TRUE(view.applyMotion(pick->text).has_value());
     steps++;
   }
 

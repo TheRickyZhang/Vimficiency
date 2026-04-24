@@ -1,16 +1,16 @@
-// tests/MotionOptimizer/DeterminismTest.cpp
+// tests/NavOptimizer/DeterminismTest.cpp
 //
 // Property: same input always produces same output.
 // Verifies that optimizers are deterministic (no unordered_map iteration issues, etc.)
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="MotionOptimizerDeterminismTests.*"
+// Run: ./build/tests/vimficiency_tests --gtest_filter="NavOptimizerDeterminismTests.*"
 
 #include <gtest/gtest.h>
 
-#include "Boundary/MotionBoundary.h"
+#include "Boundary/NavBoundary.h"
 #include "Types/NavContext.h"
 #include "Keyboard/Config.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
+#include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Effort/RunningEffort.h"
 #include "Types/Lines.h"
 #include "Utils/RandomBufferHelpers.h"
@@ -22,7 +22,7 @@ using namespace std;
 // Test Infrastructure
 // =============================================================================
 
-class MotionOptimizerDeterminismTests : public ::testing::Test {
+class NavOptimizerDeterminismTests : public ::testing::Test {
 protected:
   Config config = Config::uniform();
   static NavContext navContext;
@@ -32,13 +32,13 @@ protected:
   }
 };
 
-NavContext MotionOptimizerDeterminismTests::navContext;
+NavContext NavOptimizerDeterminismTests::navContext;
 
 // =============================================================================
-// MotionOptimizer Determinism
+// NavOptimizer Determinism
 // =============================================================================
 
-TEST_F(MotionOptimizerDeterminismTests, SameInputProducesSameOutput) {
+TEST_F(NavOptimizerDeterminismTests, SameInputProducesSameOutput) {
   const int NUM_ITERATIONS = 30;
   RandomGen::seed(44);
 
@@ -49,8 +49,8 @@ TEST_F(MotionOptimizerDeterminismTests, SameInputProducesSameOutput) {
     CursorPos start = randomPosition(lines);
     CursorPos end = randomPosition(lines);
 
-    MotionOptimizer opt1(config);
-    MotionOptimizer opt2(config);
+    NavOptimizer opt1(config);
+    NavOptimizer opt2(config);
 
     auto res1 = opt1.optimize(
       lines, start, end, {}, "jjjjj"

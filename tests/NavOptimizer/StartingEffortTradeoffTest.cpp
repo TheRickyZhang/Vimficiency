@@ -1,7 +1,7 @@
-// tests/MotionOptimizer/StartingEffortTradeoffTest.cpp
+// tests/NavOptimizer/StartingEffortTradeoffTest.cpp
 //
 // Documents the benchmark that justified removing startingEffort from the
-// MotionOptimizer A* search. The original test compared top-N sequences found
+// NavOptimizer A* search. The original test compared top-N sequences found
 // with vs without prior effort context and measured:
 //
 //   allowMultiple=false: Jaccard=1.000, perfect overlap=100%, best-in-top-N=100%
@@ -21,8 +21,8 @@
 #include <vector>
 
 #include "Keyboard/Config.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
-#include "Optimizer/MotionOptimizer/MotionRangeConversion.h"
+#include "Optimizer/NavOptimizer/NavOptimizer.h"
+#include "Optimizer/NavOptimizer/NavRangeConversion.h"
 #include "Types/Lines.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
@@ -79,7 +79,7 @@ protected:
 TEST_F(StartingEffortTradeoffTest, SmokeTest) {
   const int NUM_ITERATIONS = 200;
   RandomGen::seed(42);
-  MotionOptimizer opt(config);
+  NavOptimizer opt(config);
 
   int totalResults = 0;
   int validScenarios = 0;
@@ -87,7 +87,7 @@ TEST_F(StartingEffortTradeoffTest, SmokeTest) {
   for (int i = 0; i < NUM_ITERATIONS; i++) {
     auto scenario = generateScenario();
 
-    auto params = MotionOptimizerRangeParams{}.withMaxResults(5);
+    auto params = NavOptimizerRangeParams{}.withMaxResults(5);
 
     auto result = opt.optimizeToRange(
       scenario.lines, scenario.initialPos,

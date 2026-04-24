@@ -8,18 +8,19 @@
 #include "Types/QuoteFlags.h"
 
 // =============================================================================
-// EditBoundary: Pre-computed boundary info for constrained edit operations
+// EditBoundary: Pre-computed boundary info for constrained transform operations
 // =============================================================================
-// Stores the characters immediately outside the edit region, plus context
+// Historical name retained. Stores the characters immediately outside the
+// transform region, plus context
 // flags for quote/bracket text objects and line-level operations.
 //
 // Workflow:
-// 1. Compute EditBoundary from original text (once per edit region)
+// 1. Compute EditBoundary from original text (once per transform region)
 // 2. Pass to VimEndpointUtils which uses raw chars for boundary decisions
 //
-// Related: MotionBoundary stores only offsets (no strings) for lighter-weight
+// Related: NavBoundary stores only offsets (no strings) for lighter-weight
 // motion constraint checking. Use context() to convert EditBoundary to
-// BoundaryContext for interop with MotionBoundary.
+// BoundaryContext for interop with NavBoundary.
 // =============================================================================
 
 struct EditBoundary {
@@ -44,7 +45,7 @@ struct EditBoundary {
   int leftColOffset() const { return static_cast<int>(prefix_.size()); }
   int rightColOffset() const { return static_cast<int>(suffix_.size()); }
 
-  // Convert to BoundaryContext for interop with MotionBoundary
+  // Convert to BoundaryContext for interop with NavBoundary
   BoundaryContext context() const {
     BoundaryContext ctx;
     ctx.hasLinesAbove = hasLinesAbove_;
@@ -68,14 +69,14 @@ struct EditBoundary {
   bool hasSuffix() const { return !suffix_.empty(); }
 
 private:
-  // Full content before/after the edit region on the same line.
-  // - prefix_: characters before edit region on begin line (empty if at line start)
-  // - suffix_: characters after edit region on end line (empty if at line end)
+  // Full content before/after the transform region on the same line.
+  // - prefix_: characters before transform region on begin line (empty if at line start)
+  // - suffix_: characters after transform region on end line (empty if at line end)
   // These enable correct cursor behavior after multi-line deletions merge lines.
   std::string prefix_;
   std::string suffix_;
 
-  // Whether there are lines above/below the edit region in the buffer.
+  // Whether there are lines above/below the transform region in the buffer.
   // Used for vertical boundary detection (gg, G, k, j escaping).
   bool hasLinesAbove_ = false;
   bool hasLinesBelow_ = false;

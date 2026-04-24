@@ -1,22 +1,22 @@
-// tests/Misc/MotionClassMaskTest.cpp
+// tests/Misc/NavClassMaskTest.cpp
 //
-// Unit tests for MotionClassMask directional pruning masks.
+// Unit tests for NavClassMask directional pruning masks.
 
 #include <gtest/gtest.h>
-#include "Optimizer/MotionOptimizer/MotionClassMask.h"
+#include "Optimizer/NavOptimizer/NavClassMask.h"
 #include <vector>
 
-using M = MotionClassMask;
+using M = NavClassMask;
 
 // =============================================================================
 // classesForSingleGoal tests
 // =============================================================================
 
-TEST(MotionClassMaskTest, AtGoalReturnsNone) {
+TEST(NavClassMaskTest, AtGoalReturnsNone) {
   EXPECT_EQ(classesForSingleGoal({5, 3}, {5, 3}), M::None);
 }
 
-TEST(MotionClassMaskTest, GoalRight) {
+TEST(NavClassMaskTest, GoalRight) {
   M m = classesForSingleGoal({5, 3}, {5, 10});
   EXPECT_TRUE(has(m, M::Right));
   EXPECT_TRUE(has(m, M::ForwardCross));
@@ -25,14 +25,14 @@ TEST(MotionClassMaskTest, GoalRight) {
   EXPECT_FALSE(has(m, M::Down));
 }
 
-TEST(MotionClassMaskTest, GoalLeft) {
+TEST(NavClassMaskTest, GoalLeft) {
   M m = classesForSingleGoal({5, 10}, {5, 3});
   EXPECT_TRUE(has(m, M::Left));
   EXPECT_TRUE(has(m, M::BackwardCross));
   EXPECT_FALSE(has(m, M::Right));
 }
 
-TEST(MotionClassMaskTest, GoalBelow) {
+TEST(NavClassMaskTest, GoalBelow) {
   M m = classesForSingleGoal({3, 5}, {8, 5});
   EXPECT_TRUE(has(m, M::Down));
   EXPECT_TRUE(has(m, M::ForwardCross));
@@ -41,14 +41,14 @@ TEST(MotionClassMaskTest, GoalBelow) {
   EXPECT_FALSE(has(m, M::Right));
 }
 
-TEST(MotionClassMaskTest, GoalAbove) {
+TEST(NavClassMaskTest, GoalAbove) {
   M m = classesForSingleGoal({8, 5}, {3, 5});
   EXPECT_TRUE(has(m, M::Up));
   EXPECT_TRUE(has(m, M::BackwardCross));
   EXPECT_FALSE(has(m, M::Down));
 }
 
-TEST(MotionClassMaskTest, GoalBelowRight) {
+TEST(NavClassMaskTest, GoalBelowRight) {
   M m = classesForSingleGoal({3, 2}, {8, 10});
   EXPECT_TRUE(has(m, M::Down));
   EXPECT_TRUE(has(m, M::Right));
@@ -57,7 +57,7 @@ TEST(MotionClassMaskTest, GoalBelowRight) {
   EXPECT_FALSE(has(m, M::Left));
 }
 
-TEST(MotionClassMaskTest, GoalAboveLeft) {
+TEST(NavClassMaskTest, GoalAboveLeft) {
   M m = classesForSingleGoal({8, 10}, {3, 2});
   EXPECT_TRUE(has(m, M::Up));
   EXPECT_TRUE(has(m, M::Left));
@@ -66,7 +66,7 @@ TEST(MotionClassMaskTest, GoalAboveLeft) {
   EXPECT_FALSE(has(m, M::Right));
 }
 
-TEST(MotionClassMaskTest, GoalBelowLeft) {
+TEST(NavClassMaskTest, GoalBelowLeft) {
   M m = classesForSingleGoal({3, 10}, {8, 2});
   EXPECT_TRUE(has(m, M::Down));
   EXPECT_TRUE(has(m, M::ForwardCross));
@@ -74,7 +74,7 @@ TEST(MotionClassMaskTest, GoalBelowLeft) {
   EXPECT_TRUE(has(m, M::BackwardCross));
 }
 
-TEST(MotionClassMaskTest, GoalAboveRight) {
+TEST(NavClassMaskTest, GoalAboveRight) {
   M m = classesForSingleGoal({8, 2}, {3, 10});
   EXPECT_TRUE(has(m, M::Up));
   EXPECT_TRUE(has(m, M::BackwardCross));
@@ -86,17 +86,17 @@ TEST(MotionClassMaskTest, GoalAboveRight) {
 // Edge cases
 // =============================================================================
 
-TEST(MotionClassMaskTest, SameLineSameCol) {
+TEST(NavClassMaskTest, SameLineSameCol) {
   EXPECT_EQ(classesForSingleGoal({0, 0}, {0, 0}), M::None);
 }
 
-TEST(MotionClassMaskTest, AllBitsAreDistinct) {
+TEST(NavClassMaskTest, AllBitsAreDistinct) {
   EXPECT_NE(M::Left, M::Right);
   EXPECT_NE(M::Up, M::Down);
   EXPECT_NE(M::ForwardCross, M::BackwardCross);
 }
 
-TEST(MotionClassMaskTest, BitwiseOperations) {
+TEST(NavClassMaskTest, BitwiseOperations) {
   M m = M::Left | M::Up;
   EXPECT_TRUE(has(m, M::Left));
   EXPECT_TRUE(has(m, M::Up));
@@ -108,7 +108,7 @@ TEST(MotionClassMaskTest, BitwiseOperations) {
 // classesForRange tests (inclusive first/last semantics)
 // =============================================================================
 
-TEST(MotionClassMaskTest, InRangeReturnsNone) {
+TEST(NavClassMaskTest, InRangeReturnsNone) {
   // Inside range [first, last] should return None.
   // range: first=(5,3) last=(5,10) — single line
   EXPECT_EQ(classesForRange({5, 5}, {5, 3}, {5, 10}), M::None);  // Same line, between
@@ -118,7 +118,7 @@ TEST(MotionClassMaskTest, InRangeReturnsNone) {
   EXPECT_EQ(classesForRange({8, 10}, {5, 3}, {8, 10}), M::None); // At rangeLast
 }
 
-TEST(MotionClassMaskTest, BeforeRangeOnSameLine) {
+TEST(NavClassMaskTest, BeforeRangeOnSameLine) {
   // Same line as rangeFirst, but col < rangeFirst.col
   // Should include Right + ForwardCross (to reach rangeFirst)
   // And since range spans lines, Down is also valid
@@ -127,7 +127,7 @@ TEST(MotionClassMaskTest, BeforeRangeOnSameLine) {
   EXPECT_TRUE(has(actual, M::ForwardCross));
 }
 
-TEST(MotionClassMaskTest, AfterRangeOnSameLine) {
+TEST(NavClassMaskTest, AfterRangeOnSameLine) {
   // Same line as rangeLast, but col > rangeLast.col
   // Should include Left + BackwardCross (to reach rangeLast)
   // And since range spans lines, Up is also valid
@@ -136,7 +136,7 @@ TEST(MotionClassMaskTest, AfterRangeOnSameLine) {
   EXPECT_TRUE(has(actual, M::BackwardCross));
 }
 
-TEST(MotionClassMaskTest, AboveRange) {
+TEST(NavClassMaskTest, AboveRange) {
   // Above range => Down + Forward
   M actual = classesForRange({2, 5}, {5, 3}, {8, 10});
   EXPECT_TRUE(has(actual, M::Down));
@@ -144,7 +144,7 @@ TEST(MotionClassMaskTest, AboveRange) {
   EXPECT_FALSE(has(actual, M::Up));
 }
 
-TEST(MotionClassMaskTest, BelowRange) {
+TEST(NavClassMaskTest, BelowRange) {
   // Below range => Up + Backward
   M actual = classesForRange({12, 5}, {5, 3}, {8, 10});
   EXPECT_TRUE(has(actual, M::Up));
@@ -152,7 +152,7 @@ TEST(MotionClassMaskTest, BelowRange) {
   EXPECT_FALSE(has(actual, M::Down));
 }
 
-TEST(MotionClassMaskTest, RangeClassesContainEndpointUnion) {
+TEST(NavClassMaskTest, RangeClassesContainEndpointUnion) {
   // Verify classesForRange returns at least the union of classes for
   // rangeFirst and rangeLast.
   Pos rangeFirst{5, 3};
@@ -178,14 +178,14 @@ TEST(MotionClassMaskTest, RangeClassesContainEndpointUnion) {
   }
 }
 
-TEST(MotionClassMaskTest, LastAtLineStartUsesPreviousLine) {
+TEST(NavClassMaskTest, LastAtLineStartUsesPreviousLine) {
   // range first=(5,3), last=(7,0) — last is at start of line 7
   M actual = classesForRange({9, 0}, {5, 3}, {7, 0});
   EXPECT_TRUE(has(actual, M::Up));
   EXPECT_TRUE(has(actual, M::BackwardCross));
 }
 
-TEST(MotionClassMaskTest, BoundaryLineEdgeCases) {
+TEST(NavClassMaskTest, BoundaryLineEdgeCases) {
   // On first line of range, before first col, multi-line range => Down added
   M actual1 = classesForRange({5, 0}, {5, 5}, {8, 10});
   EXPECT_TRUE(has(actual1, M::Down)) << "Should add Down when on first line but before range start";

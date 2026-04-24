@@ -19,7 +19,7 @@ struct EditFrontierQuery {
   // are preserved; for edits the command shape is the pedagogical point,
   // not the landing position.
   //
-  // NOTE: this differs from `MotionFrontier::allowMultiplePerPosition`,
+  // NOTE: this differs from `NavFrontier::allowMultiplePerPosition`,
   // which dedups by landing cell. Edits and motions deliberately diverge
   // here — see EditFrontier.cpp:EditEmitter for the rationale.
   //

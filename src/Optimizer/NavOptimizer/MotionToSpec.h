@@ -5,7 +5,7 @@
 #include "Keyboard/KeyedSequence.h"
 
 // =============================================================================
-// Motion Operation Specs - tables for MotionOptimizer
+// Motion Operation Specs - tables for NavOptimizer
 // =============================================================================
 // Structured specs with operation parameters alongside pre-computed keys.
 // Eliminates runtime map lookups during A* search.

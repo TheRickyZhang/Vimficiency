@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-#include "Boundary/MotionBoundary.h"
+#include "Boundary/NavBoundary.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Rejected.h"
@@ -17,16 +17,16 @@
 #include "Types/NavContext.h"
 
 // =============================================================================
-// Explore session
+// Explore view
 // =============================================================================
 // The user-facing, step-through state machine on top of a pre-computed
 // composition plan. Drives the `:Vimfy explore` scratch buffer.
 //
-// Responsibilities — the Session owns:
+// Responsibilities — the View owns:
 //   - The persistent composition plan. Computed once at construction via
 //     `CompositionOptimizer::optimize` and stored in `plan_`. The plan is a
 //     sequence of diffs / fenceposts describing how to transform initial →
-//     goal; the Session never re-plans, only advances through it. Explore
+//     goal; the View never re-plans, only advances through it. Explore
 //     consumes this through CompositionResult's per-edit step view
 //     (diff + pre/post fenceposts + editResult), not by re-aligning parallel
 //     vectors itself.
@@ -34,10 +34,10 @@
 //   - Undo/redo history (vectors of State snapshots).
 //   - Mutable live State (lines, cursor, accepted sequence/cost).
 //
-// Session as frontier forwarder:
+// View as frontier forwarder:
 //   `recommendations(...)` is a composition of optimizer-level frontier
 //   modules, queried live from the current (cursor, fencepost, diff) on
-//   every call. The Session does NOT hold a warm optimizer — each call
+//   every call. The View does NOT hold a warm optimizer — each call
 //   rebuilds the relevant candidate set from scratch. Sources:
 //
 //     - `rankEditFrontier`  (src/Optimizer/EditOptimizer/EditFrontier.h)
@@ -49,22 +49,26 @@
 //         diff, so the user still gets next-step guidance after landing on
 //         a non-optimal cell.
 //
-//     - `rankMotionFrontier` (src/Optimizer/MotionOptimizer/MotionFrontier.h)
+//     - `rankNavFrontier` (src/Optimizer/NavOptimizer/NavFrontier.h)
 //         A depth-1 live A* peek from the cursor — ONE expansion level of
 //         the motion optimizer's own search graph, scored the same way the
 //         full optimizer would score them, then the top K. Immediate next
 //         molecules, not full paths.
 //
-//     - `rankMotionFrontierToLine`  (join-line hint, multiline diffs only)
+//     - `rankNavFrontierToLine`  (join-line hint, multiline diffs only)
 //
-//   Session-local handlers (`EditHandler`, `MotionHandler`) are only for
+//   View-local handlers (`EditHandler`, `MotionHandler`) are only for
 //   action parsing/validation and strict buffer acceptance rules.
 //
-// There is no Invalid phase. "Session is in a bad state" is either:
+// There is no Invalid phase. "View is in a bad state" is either:
 //   - A recoverable user mistake → the action returns Rejected, state unchanged.
 //   - A programming-invariant failure → `assert` and crash.
-// Lua tears down sessions via explore_destroy when the scratch buffer goes
+// Lua tears down views via explore_destroy when the scratch buffer goes
 // away; there's no need to keep a corpse alive.
+//
+// Future: the View is the natural home for per-view attempt history
+// (reset-to-start, compare runs, bookmark best-so-far). Not implemented yet —
+// current state machine is single-attempt.
 
 namespace Explore {
 
@@ -91,7 +95,7 @@ struct Step {
   bool operator==(const Step&) const = default;
 };
 
-// One ranked suggestion returned by Session::recommendations.
+// One ranked suggestion returned by View::recommendations.
 struct Recommendation {
   std::string text;
   std::string kind;              // "motion" | "edit"
@@ -105,7 +109,7 @@ struct Recommendation {
   std::string typedText;
 };
 
-// Mutable state snapshot. The Session owns one live State and a history of
+// Mutable state snapshot. The View owns one live State and a history of
 // prior snapshots in its undo/redo stacks.
 struct State {
   Step step;
@@ -123,19 +127,19 @@ struct State {
 // Successful transitions return Applied; Applied carries just a flag about
 // whether an edit boundary was crossed (useful for Lua to decide whether to
 // rewrite the scratch buffer). The new live state itself is read back via
-// Session::state() — no copy bundled into the result.
+// View::state() — no copy bundled into the result.
 struct Applied {
   bool crossedEditBoundary = false;
 };
 
 using Outcome = std::expected<Applied, Rejected>;
 
-class Session {
+class View {
 public:
-  Session(Lines initialLines, CursorPos initialPos,
-          Lines goalLines, CursorPos goalPos,
-          MotionBoundary boundary, NavContext navContext, Config config,
-          std::string_view userSequence = "");
+  View(Lines initialLines, CursorPos initialPos,
+       Lines goalLines, CursorPos goalPos,
+       NavBoundary boundary, NavContext navContext, Config config,
+       std::string_view userSequence = "");
 
   // --- Query ---
   const Step& step() const { return state_.step; }
@@ -177,7 +181,7 @@ public:
   //   - edits dedup by SEQUENCE TEXT: `rm`, `sm<Esc>`, `cl m<Esc>` all
   //     landing at the same post-edit cursor are DISTINCT commands and
   //     all surface; the command shape is the outcome.
-  // See MotionFrontier.h and EditFrontier.h for the per-module details.
+  // See NavFrontier.h and EditFrontier.h for the per-module details.
   //
   // Both default to `false` (dedup on). The flag is forwarded to the
   // underlying frontier modules so generation respects it end-to-end and
@@ -189,7 +193,7 @@ public:
 
   // --- Actions ---
   // Each action produces a new state (on Applied) or a Rejected reason
-  // (state unchanged). No action can invalidate the session — programming-
+  // (state unchanged). No action can invalidate the view — programming-
   // invariant failures assert instead.
   Outcome applyMotion(std::string_view motionText);
   Outcome acceptCursorMove(CursorPos newCursor, std::string_view rawKeys);
@@ -213,10 +217,10 @@ public:
   Outcome redo();
 
 private:
-  // Immutable session context
+  // Immutable view context
   Lines goalLines_;
   CursorPos goalPos_;
-  MotionBoundary boundary_;
+  NavBoundary boundary_;
   NavContext navContext_;
   Config config_;
   int totalEdits_ = 0;

@@ -108,16 +108,16 @@ tests/
 │   ├── Paragraphs.cpp
 │   ├── TextObjects.cpp
 │   └── TestHelpers.cpp  # Shared helpers (in test_utils lib)
-├── MotionOptimizer/   # Optimizer output quality and correctness
+├── NavOptimizer/   # Optimizer output quality and correctness
 │   ├── OutputCorrectnessTest.cpp
 │   ├── CostConsistencyTest.cpp
 │   ├── DeterminismTest.cpp
 │   └── HumanApprovalTest.cpp
-├── EditOptimizer/     # Same structure as MotionOptimizer
+├── EditOptimizer/     # Same structure as NavOptimizer
 ├── CompositionOptimizer/
 ├── Benchmarks/        # Performance benchmarks (separate binary)
 │   ├── BenchUtils.h   # Shared timing/output utilities
-│   └── MotionOptimizerBench.cpp
+│   └── NavOptimizerBench.cpp
 ├── Misc/              # Catch-all for other tests
 ├── Utils/             # Shared test infrastructure (built as static library)
 │   ├── NeovimOracle.cpp    # Neovim ground truth

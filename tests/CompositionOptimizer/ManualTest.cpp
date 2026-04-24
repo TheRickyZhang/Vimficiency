@@ -12,7 +12,7 @@
 #include "Types/CursorPos.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
-#include "Boundary/MotionBoundary.h"
+#include "Boundary/NavBoundary.h"
 #include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
 
@@ -676,7 +676,7 @@ TEST_F(CompositionOptimizer_ManualTest, JoinLinesPartialJoin) {
   Lines goal = {"aaa bbb", "ccc ddd"};
   CursorPos initialPos(0, 0);
   CursorPos goalPos = goal.lastPos();
-  MotionBoundary boundary(initial, initialPos, initial.endPos());
+  NavBoundary boundary(initial, initialPos, initial.endPos());
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos,
       params, "", boundary);

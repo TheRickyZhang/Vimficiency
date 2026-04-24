@@ -9,7 +9,7 @@
 #include <gtest/gtest.h>
 #include <memory>
 
-#include "Boundary/MotionBoundary.h"
+#include "Boundary/NavBoundary.h"
 #include "Types/NavContext.h"
 #include "Optimizer/CompositionOptimizer/CompositionSearchContext.h"
 #include "Keyboard/Config.h"
@@ -46,7 +46,7 @@ protected:
   CompositionSearchContext makeContext(const Lines& initial, const Lines& goal) {
     return CompositionSearchContext(
         initial, CursorPos(0, 0), goal, "",
-        NavContext(), MotionBoundary(), params, config);
+        NavContext(), NavBoundary(), params, config);
   }
 
   // Validate mask for any delimiter type (quote or bracket) against oracle.

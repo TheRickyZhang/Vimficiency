@@ -23,12 +23,12 @@ CompositionState CompositionState::afterEditTransition(
   return newState;
 }
 
-CompositionState CompositionState::afterMotionResult(
+CompositionState CompositionState::afterNavResult(
     const Sequence& moveSequence,
     const CursorPos& newPos,
     const Config& config) const {
   CompositionState newState = *this;
-  newState.applyMotionResultImpl(moveSequence, newPos, config);
+  newState.applyNavResultImpl(moveSequence, newPos, config);
   return newState;
 }
 
@@ -47,7 +47,7 @@ void CompositionState::applyEditTransitionImpl(
   mode = newMode;
 }
 
-void CompositionState::applyMotionResultImpl(
+void CompositionState::applyNavResultImpl(
     const Sequence& moveSequence,
     const CursorPos& newPos, const Config& config) {
   pos = newPos;

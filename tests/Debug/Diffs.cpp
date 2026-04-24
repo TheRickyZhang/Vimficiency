@@ -74,7 +74,7 @@ TEST_F(DebugTest, CompositionDiffMerging) {
 
     // Create context to trigger merge
     CompositionSearchContext ctx(initial, CursorPos(0, 0), goal, "",
-        NavContext(), MotionBoundary(), params, config);
+        NavContext(), NavBoundary(), params, config);
 
     cerr << "  Merged diffs: " << ctx.totalEdits() << endl;
     for (int i = 0; i < ctx.totalEdits(); i++) {

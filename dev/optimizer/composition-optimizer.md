@@ -1,6 +1,6 @@
 # CompositionOptimizer
-- Finds best way to perform changes to a buffer by breaking it down into a series of edit regions to be completed in order.
-- Heuristic: Estimated suffix cost of edits not completed + distance to next edit (+ effort)
+- Finds the best way to perform a buffer transformation by breaking it down into a series of transform regions to be completed in order.
+- Heuristic: Estimated suffix cost of transforms not completed + distance to next transform (+ effort)
 
 ## Diff Generation
 - Our first step is to perform a character-level Myers diff analysis (similar algorithm to git). We separate into individual diffs by some heuristics, which currently are:
@@ -8,32 +8,32 @@
   - Don't count matches across new lines as much (likely share much tab whitespace)
   - Don't include boundary at end, cut off exactly since no more content
   - Have exceptions for well-formed short content inside "", (), etc. (To be expanded upon)
-- Using that, we track intermediate buffer states, compute suffix cost sums, and calculate a diff for each edit region
+- Using that, we track intermediate buffer states, compute suffix cost sums, and calculate a diff for each transform region
 
 ## Composition Logic
-- By abstracting away individual edits to movements over a one-step diff change, our search alternates between call types:
-  - Intra-edit: refer to EditResult to apply an edit
-  - Inter-edit: move from edit end to a next edit start (MotionOptimizer::optimizeToRange)
+- By abstracting away direct edit commands into one-step transform changes over diffs, our search alternates between call types:
+  - Intra-transform: refer to EditResult to apply a transform step
+  - Inter-transform: move from one transform end to the next transform start (NavOptimizer::optimizeToRange)
 - By storing the previous edit command, we can also quickly check if . will work. (TODO)
 
 ### Explore boundary
 
-`Explore::Session` is intentionally coupled to a narrow per-edit contract from
+`Explore::Session` is intentionally coupled to a narrow per-step contract from
 composition, not to the composition optimizer's full internal shape. The
 supported boundary is `CompositionResult::stepAt(i)`, which bundles:
 
-- the diff for edit `i`
-- the pre-edit fencepost
-- the post-edit fencepost
-- the `EditResult` for that same edit
+- the diff for transform step `i`
+- the pre-transform fencepost
+- the post-transform fencepost
+- the `EditResult` for that same step
 
 Raw `CompositionPlan` / diff vectors still exist for diagnostics and tests, but
 they are lower-level surfaces. Refactors that preserve final optimizer results
-while changing this per-edit bundle can still break Explore.
+while changing this per-step bundle can still break Explore.
 
 ## J (Join Lines) Plans
 
-When a diff has more source lines than target lines, the `J` command can collapse lines more cheaply than retyping content. The composition optimizer pre-computes `JoinPlan`s for eligible diffs and offers them as alternative edit transitions in the A* search.
+When a diff has more source lines than target lines, the `J` command can collapse lines more cheaply than retyping content. The composition optimizer pre-computes `JoinPlan`s for eligible diffs and offers them as alternative transform transitions in the A* search.
 
 ### Why J lives at the composition level
 
@@ -69,10 +69,10 @@ struct JoinPlan {
 
 ### Integration into A* search
 
-J plans are explored as **additional** edit transitions, independent of the regular EditResult path:
+J plans are explored as **additional** transform transitions, independent of the regular EditResult path:
 
 ```cpp
-// Regular edit path
+// Regular transform path
 if (res) {
     ctx.exploreEditTransition(s, res->sequence, ...);
 }
@@ -83,9 +83,9 @@ if (joinPlan && pos.line == joinPlan->entryLine) {
 }
 ```
 
-When the cursor is not on the J plan's entry line, a dedicated motion search finds paths to the entry line (full line range, not just the edit region). This handles cases where the edit region has virtual positions that regular motion search can't reach (e.g., `endPos` past end-of-line for `\n` -> ` ` diffs).
+When the cursor is not on the J plan's entry line, a dedicated motion search finds paths to the entry line (full line range, not just the transform region). This handles cases where the transform region has virtual positions that regular motion search can't reach (e.g., `endPos` past end-of-line for `\n` -> ` ` diffs).
 
-A* naturally picks whichever path (regular edit, J plan, or text object) produces the lowest cost.
+A* naturally picks whichever path (regular transform, J plan, or text object) produces the lowest cost.
 
 ### J simulation fidelity
 
@@ -97,7 +97,7 @@ J plan computation uses `VimCore::joinLines` which matches Neovim's semantics:
 
 ### Suffix cost integration
 
-J plan efforts are included in `computeSuffixEditCosts()` alongside regular edit costs, improving the A* heuristic by reflecting cheaper J alternatives.
+J plan efforts are included in `computeSuffixEditCosts()` alongside regular transform costs, improving the A* heuristic by reflecting cheaper J alternatives.
 
 ### Files
 
@@ -108,12 +108,12 @@ J plan efforts are included in `computeSuffixEditCosts()` alongside regular edit
 | `CompositionOptimizer.cpp` | A* integration (J plan exploration + entry line motion search) |
 
 ## Quote/Bracket Motions
-- Motions like ci"/cab allow us to combine an Inter-edit with the next Intra-edit.
-- Since we are moving in order, quotes are only valid if the first quote on this line, and the quote after that are within the next edit region.
+- Motions like ci"/cab allow us to combine an Inter-transform with the next Intra-transform.
+- Since we are moving in order, quotes are only valid if the first quote on this line, and the quote after that are within the next transform region.
 (Note "within" could be one outside region, as doing iw -> still only affect what is inside. Greedily picking inside if matches is optimal)
 - Brackets are a bit more complex because they must form a MATCHING pair, but we can simply track bracket depth with a stack (balance of 0 = will search right), and we can leverage the fact that actions will match with the outermost bracket in region
 - Thus, we can use a bitmask prefix for quotes, matching with FIRST pair in region, and count prefix for brackets, matching with OUTERMOST pair in region.
-- Since each edit can introduce new destructive content, we must calculate for each edit.
+- Since each transform step can introduce new destructive content, we must calculate for each step.
 
 ## Pure Insertions
 - Because a pure insertion has no starting point, we must handle it from the higher composition level.
@@ -124,7 +124,7 @@ J plan efforts are included in `computeSuffixEditCosts()` alongside regular edit
   - `A`: any column on the target line (appends at end-of-line)
   - `i`: exact insertion column only (fallback)
 - The mode-entry command determines the actual insert position independent of where in the range we land, so the final cursor position after typing + Esc is always `editResult.goalPos`.
-- When navigating to the valid range, the `MotionBoundary` must use the full subset extent, not the target range (see `dev/optimizer/buffer-slicing.md` § Boundary vs Target Range).
+- When navigating to the valid range, the `NavBoundary` must use the full subset extent, not the target range (see `dev/optimizer/buffer-slicing.md` § Boundary vs Target Range).
 
 ### Autoindent in Pure Insertions
 

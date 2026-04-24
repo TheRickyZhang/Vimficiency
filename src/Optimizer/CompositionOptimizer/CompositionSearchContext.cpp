@@ -16,7 +16,7 @@ CompositionSearchContext::CompositionSearchContext(
     const Lines& goalLines,
     string_view userSequence,
     const NavContext& navContext,
-    const MotionBoundary& boundary,
+    const NavBoundary& boundary,
     const CompositionOptimizerParams& params,
     const Config& config)
     : config(config),
@@ -100,8 +100,8 @@ CompositionSearchContext::CompositionSearchContext(
     int currMinLine = edits[i].diffState.beginPos.line;
     int currMaxLine = edits[i].diffState.endPos.line;
 
-    int idxStart = std::max(0, std::min(prevMinLine, currMinLine) - params.motionPaddingAbove);
-    int idxEnd = std::min(bufSize, std::max(prevMaxLine, currMaxLine) + 1 + params.motionPaddingBelow);
+    int idxStart = std::max(0, std::min(prevMinLine, currMinLine) - params.navPaddingAbove);
+    int idxEnd = std::min(bufSize, std::max(prevMaxLine, currMaxLine) + 1 + params.navPaddingBelow);
 
     edits[i].bufferIndexStart = idxStart;
     edits[i].bufferIndexEnd = idxEnd;
@@ -254,7 +254,7 @@ CompositionSearchStats CompositionSearchContext::getStats(int resultsFound) cons
                         static_cast<int>(pq.size()),
                         stopReason);
   stats.setDebugSummary(0, statesSkipped);
-  stats.setNodeBreakdown(motionNodesExplored, editNodesExplored);
+  stats.setNodeBreakdown(navNodesExplored, editNodesExplored);
 
   return stats;
 }

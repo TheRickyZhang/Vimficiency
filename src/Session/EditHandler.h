@@ -8,10 +8,11 @@
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 
-// Edit-side logic for Explore::Session. Stateless.
+// Transform-side logic for Explore::View. Historical Edit naming retained
+// because this layer consumes EditResult from the current codebase.
 //
 // MIRROR boundary: everything that reads EditResult::resultsAt / goalPosAt is
-// semantic-coupled to the composition/edit optimizer and must be reviewed
+// semantic-coupled to the composition/transform optimizer and must be reviewed
 // together when those outputs change shape.
 // validateBufferState encodes the explore-specific strict-revert policy:
 // accept iff the buffer matches either the current or next fencepost.

@@ -1,9 +1,9 @@
 // tests/Session/ExploreTest.cpp
 //
-// Tests for Explore::Session: phase machine + recommendations + applyMotion
+// Tests for Explore::View: phase machine + recommendations + applyMotion
 // + strict-revert buffer-state flow. Invalid phase is not a reachable state
 // — programming-invariant failures assert, external teardown destroys the
-// session — so there's no corresponding test here.
+// view — so there's no corresponding test here.
 
 #include <gtest/gtest.h>
 
@@ -11,14 +11,14 @@
 #include <set>
 #include <string>
 
-#include "Boundary/MotionBoundary.h"
+#include "Boundary/NavBoundary.h"
 #include "Interpreter/SequenceParser.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizerParams.h"
 #include "Optimizer/EditOptimizer/EditFrontier.h"
 #include "Optimizer/EditOptimizer/EditSequenceDecomposition.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
-#include "Optimizer/MotionOptimizer/MotionRangeConversion.h"
+#include "Optimizer/NavOptimizer/NavOptimizer.h"
+#include "Optimizer/NavOptimizer/NavRangeConversion.h"
 #include "Optimizer/Result.h"
 #include "Session/Explore.h"
 #include "Types/CursorPos.h"
@@ -29,53 +29,53 @@ using namespace std;
 
 namespace {
 
-class ExploreSessionTest : public ::testing::Test {
+class ExploreViewTest : public ::testing::Test {
 protected:
   Config config = Config::uniform();
   NavContext navContext{24, 12};
 
-  Explore::Session makeSession(Lines initial, CursorPos initialPos, Lines goal,
-                               CursorPos goalPos) {
-    MotionBoundary boundary(
+  Explore::View makeView(Lines initial, CursorPos initialPos, Lines goal,
+                         CursorPos goalPos) {
+    NavBoundary boundary(
         initial, CursorPos(0, 0),
         CursorPos(static_cast<int>(initial.size()) - 1,
                   static_cast<int>(initial.back().size()) + 1),
         /*hasLinesAbove=*/false,
         /*hasLinesBelow=*/false);
-    return Explore::Session(std::move(initial), initialPos, std::move(goal),
-                            goalPos, std::move(boundary), navContext, config);
+    return Explore::View(std::move(initial), initialPos, std::move(goal),
+                         goalPos, std::move(boundary), navContext, config);
   }
 };
 
-TEST_F(ExploreSessionTest, CompletedWhenInitialEqualsGoal) {
+TEST_F(ExploreViewTest, CompletedWhenInitialEqualsGoal) {
   Lines lines{Line("hello world")};
-  auto session = makeSession(lines, {0, 0}, lines, {0, 0});
+  auto view = makeView(lines, {0, 0}, lines, {0, 0});
 
-  EXPECT_EQ(session.step().kind, Explore::Phase::Completed);
-  EXPECT_EQ(session.totalEdits(), 0);
-  EXPECT_TRUE(session.recommendations(5).empty());
+  EXPECT_EQ(view.step().kind, Explore::Phase::Completed);
+  EXPECT_EQ(view.totalEdits(), 0);
+  EXPECT_TRUE(view.recommendations(5).empty());
 }
 
-TEST_F(ExploreSessionTest, ApproachesEditWhenLinesDiffer) {
+TEST_F(ExploreViewTest, ApproachesEditWhenLinesDiffer) {
   Lines initial{Line("foo bar baz")};
   Lines goal{Line("foo QUX baz")};
-  auto session = makeSession(initial, {0, 0}, goal, {0, 10});
+  auto view = makeView(initial, {0, 0}, goal, {0, 10});
 
-  EXPECT_EQ(session.step().kind, Explore::Phase::ApproachEdit);
-  EXPECT_EQ(session.step().editIndex, 0);
-  EXPECT_GT(session.totalEdits(), 0);
-  EXPECT_EQ(session.state().cursor.line, 0);
-  EXPECT_EQ(session.state().cursor.col, 0);
-  EXPECT_TRUE(session.state().acceptedSeq.empty());
+  EXPECT_EQ(view.step().kind, Explore::Phase::ApproachEdit);
+  EXPECT_EQ(view.step().editIndex, 0);
+  EXPECT_GT(view.totalEdits(), 0);
+  EXPECT_EQ(view.state().cursor.line, 0);
+  EXPECT_EQ(view.state().cursor.col, 0);
+  EXPECT_TRUE(view.state().acceptedSeq.empty());
 }
 
-TEST_F(ExploreSessionTest, RecommendationsAreDiverse) {
+TEST_F(ExploreViewTest, RecommendationsAreDiverse) {
   Lines initial{Line("foo bar baz qux zed")};
   Lines goal{Line("foo bar baz qux ZED")};
-  auto session = makeSession(initial, {0, 0}, goal, {0, 18});
+  auto view = makeView(initial, {0, 0}, goal, {0, 18});
 
-  ASSERT_EQ(session.step().kind, Explore::Phase::ApproachEdit);
-  auto recs = session.recommendations(5);
+  ASSERT_EQ(view.step().kind, Explore::Phase::ApproachEdit);
+  auto recs = view.recommendations(5);
   ASSERT_FALSE(recs.empty()) << "expected at least one motion recommendation";
 
   // Distinct recommendation texts — grouping/dedup works.
@@ -93,91 +93,91 @@ TEST_F(ExploreSessionTest, RecommendationsAreDiverse) {
   }
 }
 
-TEST_F(ExploreSessionTest, ApplyMotionAdvancesCursorAndSequence) {
+TEST_F(ExploreViewTest, ApplyMotionAdvancesCursorAndSequence) {
   Lines initial{Line("foo bar baz qux")};
   Lines goal{Line("foo bar baz QUX")};
-  auto session = makeSession(initial, {0, 0}, goal, {0, 14});
+  auto view = makeView(initial, {0, 0}, goal, {0, 14});
 
-  auto outcome = session.applyMotion("w");
+  auto outcome = view.applyMotion("w");
   ASSERT_TRUE(outcome.has_value());
-  EXPECT_EQ(session.step().kind, Explore::Phase::ApproachEdit);
-  EXPECT_EQ(session.state().cursor.col, 4);
-  EXPECT_EQ(session.state().acceptedSeq, "w");
-  EXPECT_GT(session.state().acceptedCost, 0.0);
-  EXPECT_TRUE(session.canUndo());
+  EXPECT_EQ(view.step().kind, Explore::Phase::ApproachEdit);
+  EXPECT_EQ(view.state().cursor.col, 4);
+  EXPECT_EQ(view.state().acceptedSeq, "w");
+  EXPECT_GT(view.state().acceptedCost, 0.0);
+  EXPECT_TRUE(view.canUndo());
 }
 
-TEST_F(ExploreSessionTest, ApplyMotionRejectsMalformedInput) {
+TEST_F(ExploreViewTest, ApplyMotionRejectsMalformedInput) {
   Lines initial{Line("abcd")};
   Lines goal{Line("abCd")};
-  auto session = makeSession(initial, {0, 0}, goal, {0, 3});
+  auto view = makeView(initial, {0, 0}, goal, {0, 3});
 
-  auto outcome = session.applyMotion("<"); // incomplete special key
+  auto outcome = view.applyMotion("<"); // incomplete special key
   ASSERT_FALSE(outcome.has_value());
   EXPECT_FALSE(outcome.error().reason.empty());
-  EXPECT_TRUE(session.state().acceptedSeq.empty());
-  EXPECT_EQ(session.state().cursor.col, 0);
-  EXPECT_FALSE(session.canUndo());
+  EXPECT_TRUE(view.state().acceptedSeq.empty());
+  EXPECT_EQ(view.state().cursor.col, 0);
+  EXPECT_FALSE(view.canUndo());
 }
 
-TEST_F(ExploreSessionTest, UndoRestoresPriorCursorAndSequence) {
+TEST_F(ExploreViewTest, UndoRestoresPriorCursorAndSequence) {
   Lines initial{Line("foo bar baz qux")};
   Lines goal{Line("foo bar baz QUX")};
-  auto session = makeSession(initial, {0, 0}, goal, {0, 14});
+  auto view = makeView(initial, {0, 0}, goal, {0, 14});
 
-  ASSERT_TRUE(session.applyMotion("w").has_value());
-  const int cursorAfter = session.state().cursor.col;
+  ASSERT_TRUE(view.applyMotion("w").has_value());
+  const int cursorAfter = view.state().cursor.col;
   ASSERT_GT(cursorAfter, 0);
 
-  auto undone = session.undo();
+  auto undone = view.undo();
   ASSERT_TRUE(undone.has_value());
-  EXPECT_EQ(session.state().cursor.col, 0);
-  EXPECT_TRUE(session.state().acceptedSeq.empty());
-  EXPECT_TRUE(session.canRedo());
+  EXPECT_EQ(view.state().cursor.col, 0);
+  EXPECT_TRUE(view.state().acceptedSeq.empty());
+  EXPECT_TRUE(view.canRedo());
 
-  auto redone = session.redo();
+  auto redone = view.redo();
   ASSERT_TRUE(redone.has_value());
-  EXPECT_EQ(session.state().cursor.col, cursorAfter);
-  EXPECT_EQ(session.state().acceptedSeq, "w");
+  EXPECT_EQ(view.state().cursor.col, cursorAfter);
+  EXPECT_EQ(view.state().acceptedSeq, "w");
 }
 
-TEST_F(ExploreSessionTest, UndoFromCleanStateIsRejected) {
+TEST_F(ExploreViewTest, UndoFromCleanStateIsRejected) {
   Lines initial{Line("abc")};
   Lines goal{Line("aBc")};
-  auto session = makeSession(initial, {0, 0}, goal, {0, 1});
+  auto view = makeView(initial, {0, 0}, goal, {0, 1});
 
-  auto outcome = session.undo();
+  auto outcome = view.undo();
   ASSERT_FALSE(outcome.has_value());
   EXPECT_EQ(outcome.error().reason, "nothing to undo");
 }
 
-TEST_F(ExploreSessionTest, BeginEditTransitionsIntoPendingInsert) {
+TEST_F(ExploreViewTest, BeginEditTransitionsIntoPendingInsert) {
   Lines initial{Line("abc")};
   Lines goal{Line("aBc")};
-  auto session = makeSession(initial, {0, 0}, goal, {0, 1});
+  auto view = makeView(initial, {0, 0}, goal, {0, 1});
 
-  auto outcome = session.beginEdit(true, "BX");
+  auto outcome = view.beginEdit(true, "BX");
   ASSERT_TRUE(outcome.has_value());
-  EXPECT_EQ(session.step().kind, Explore::Phase::PendingInsert);
-  EXPECT_EQ(session.step().remainingText, "BX");
+  EXPECT_EQ(view.step().kind, Explore::Phase::PendingInsert);
+  EXPECT_EQ(view.step().remainingText, "BX");
 
   // Recommendations are empty outside ApproachEdit.
-  EXPECT_TRUE(session.recommendations(5).empty());
+  EXPECT_TRUE(view.recommendations(5).empty());
 }
 
-TEST_F(ExploreSessionTest, OutOfScopeEditRejectedWithoutStateChange) {
+TEST_F(ExploreViewTest, OutOfScopeEditRejectedWithoutStateChange) {
   Lines initial{Line("int n = 10;")};
   Lines goal{Line("int m = 10;")};
-  auto session = makeSession(initial, {0, 0}, goal, {0, 4});
+  auto view = makeView(initial, {0, 0}, goal, {0, 4});
 
-  ASSERT_TRUE(session.applyMotion("w").has_value());
+  ASSERT_TRUE(view.applyMotion("w").has_value());
   // Cursor is now on `n`. An edit command not in editResult.resultsAt gets
   // rejected without mutating state.
-  const auto priorRevision = session.acceptedRevision();
-  auto outcome = session.applyEdit("totally-not-a-real-edit");
+  const auto priorRevision = view.acceptedRevision();
+  auto outcome = view.applyEdit("totally-not-a-real-edit");
   ASSERT_FALSE(outcome.has_value());
-  EXPECT_EQ(session.acceptedRevision(), priorRevision);
-  EXPECT_EQ(session.step().kind, Explore::Phase::ApproachEdit);
+  EXPECT_EQ(view.acceptedRevision(), priorRevision);
+  EXPECT_EQ(view.step().kind, Explore::Phase::ApproachEdit);
 }
 
 TEST(EditSequenceDecomposition, SplitsImmediateMoleculeAndInsertTail) {
@@ -225,13 +225,13 @@ TEST(EditFrontier, FillsRequestedCountWhenManyLocalAlternativesExist) {
   ASSERT_GE(recs.size(), 1u);
 }
 
-TEST_F(ExploreSessionTest, AcceptInsertExitAdvancesPhaseOnMatchingBuffer) {
+TEST_F(ExploreViewTest, AcceptInsertExitAdvancesPhaseOnMatchingBuffer) {
   Lines initial{Line("abc")};
   Lines goal{Line("aBc")};
-  auto session = makeSession(initial, {0, 0}, goal, {0, 1});
+  auto view = makeView(initial, {0, 0}, goal, {0, 1});
 
   // Get the cursor to the edit target via the cheapest motion.
-  auto recs = session.recommendations(5);
+  auto recs = view.recommendations(5);
   ASSERT_FALSE(recs.empty());
   const Explore::Recommendation* motion = nullptr;
   for (const auto& rec : recs) {
@@ -241,73 +241,73 @@ TEST_F(ExploreSessionTest, AcceptInsertExitAdvancesPhaseOnMatchingBuffer) {
     }
   }
   if (motion)
-    ASSERT_TRUE(session.applyMotion(motion->text).has_value());
+    ASSERT_TRUE(view.applyMotion(motion->text).has_value());
 
   // Simulate the Lua layer: beginEdit(true, typedText) parks us in
   // PendingInsert; the post-insert buffer then validates via acceptInsertExit.
-  ASSERT_TRUE(session.beginEdit(true, "B").has_value());
-  ASSERT_EQ(session.step().kind, Explore::Phase::PendingInsert);
+  ASSERT_TRUE(view.beginEdit(true, "B").has_value());
+  ASSERT_EQ(view.step().kind, Explore::Phase::PendingInsert);
 
-  auto outcome = session.acceptInsertExit(goal, {0, 2}, "");
+  auto outcome = view.acceptInsertExit(goal, {0, 2}, "");
   ASSERT_TRUE(outcome.has_value());
-  EXPECT_EQ(session.state().lines, goal);
+  EXPECT_EQ(view.state().lines, goal);
   // Single-edit plan → advancing past it lands in Completed.
-  EXPECT_EQ(session.step().kind, Explore::Phase::Completed);
+  EXPECT_EQ(view.step().kind, Explore::Phase::Completed);
 }
 
-TEST_F(ExploreSessionTest, AcceptInsertExitRejectsMismatchedBuffer) {
+TEST_F(ExploreViewTest, AcceptInsertExitRejectsMismatchedBuffer) {
   Lines initial{Line("abc")};
   Lines goal{Line("aBc")};
-  auto session = makeSession(initial, {0, 0}, goal, {0, 1});
+  auto view = makeView(initial, {0, 0}, goal, {0, 1});
 
-  auto recs = session.recommendations(5);
+  auto recs = view.recommendations(5);
   ASSERT_FALSE(recs.empty());
   for (const auto& rec : recs) {
     if (rec.kind == "motion") {
-      ASSERT_TRUE(session.applyMotion(rec.text).has_value());
+      ASSERT_TRUE(view.applyMotion(rec.text).has_value());
       break;
     }
   }
-  ASSERT_TRUE(session.beginEdit(true, "B").has_value());
-  const auto priorRevision = session.acceptedRevision();
+  ASSERT_TRUE(view.beginEdit(true, "B").has_value());
+  const auto priorRevision = view.acceptedRevision();
 
   Lines wrong{Line("aXc")};
-  auto outcome = session.acceptInsertExit(wrong, {0, 2}, "");
+  auto outcome = view.acceptInsertExit(wrong, {0, 2}, "");
   ASSERT_FALSE(outcome.has_value());
-  EXPECT_EQ(session.step().kind, Explore::Phase::PendingInsert);
-  EXPECT_EQ(session.acceptedRevision(), priorRevision);
+  EXPECT_EQ(view.step().kind, Explore::Phase::PendingInsert);
+  EXPECT_EQ(view.acceptedRevision(), priorRevision);
 }
 
-TEST_F(ExploreSessionTest, CancelPendingInsertRestoresApproachEditWithoutRedo) {
+TEST_F(ExploreViewTest, CancelPendingInsertRestoresApproachEditWithoutRedo) {
   Lines initial{Line("abc")};
   Lines goal{Line("aBc")};
-  auto session = makeSession(initial, {0, 0}, goal, {0, 1});
+  auto view = makeView(initial, {0, 0}, goal, {0, 1});
 
-  ASSERT_TRUE(session.beginEdit(true, "B").has_value());
-  ASSERT_EQ(session.step().kind, Explore::Phase::PendingInsert);
-  EXPECT_FALSE(session.canRedo());
+  ASSERT_TRUE(view.beginEdit(true, "B").has_value());
+  ASSERT_EQ(view.step().kind, Explore::Phase::PendingInsert);
+  EXPECT_FALSE(view.canRedo());
 
-  auto outcome = session.cancelPendingInsert();
+  auto outcome = view.cancelPendingInsert();
   ASSERT_TRUE(outcome.has_value());
-  EXPECT_EQ(session.step().kind, Explore::Phase::ApproachEdit);
+  EXPECT_EQ(view.step().kind, Explore::Phase::ApproachEdit);
   // Crucially: redo stack NOT polluted with the rejected/abandoned insert.
-  EXPECT_FALSE(session.canRedo());
+  EXPECT_FALSE(view.canRedo());
 }
 
-TEST_F(ExploreSessionTest, RecommendationsCarryTypedText) {
+TEST_F(ExploreViewTest, RecommendationsCarryTypedText) {
   Lines initial{Line("abc")};
   Lines goal{Line("aBc")};
-  auto session = makeSession(initial, {0, 0}, goal, {0, 1});
+  auto view = makeView(initial, {0, 0}, goal, {0, 1});
 
   // Move cursor onto the edit target so edit recs populate.
-  auto recs = session.recommendations(5);
+  auto recs = view.recommendations(5);
   for (const auto& rec : recs) {
     if (rec.kind == "motion") {
-      ASSERT_TRUE(session.applyMotion(rec.text).has_value());
+      ASSERT_TRUE(view.applyMotion(rec.text).has_value());
       break;
     }
   }
-  recs = session.recommendations(10);
+  recs = view.recommendations(10);
   bool sawInsertAtom = false;
   for (const auto& rec : recs) {
     if (rec.kind == "edit" && !rec.typedText.empty())
@@ -317,38 +317,38 @@ TEST_F(ExploreSessionTest, RecommendationsCarryTypedText) {
       << "expected at least one edit recommendation with a non-empty typedText";
 }
 
-TEST_F(ExploreSessionTest, FillsRequestedCountAfterMovingOntoTarget) {
+TEST_F(ExploreViewTest, FillsRequestedCountAfterMovingOntoTarget) {
   Lines initial{Line("abc defghij klm")};
   Lines goal{Line("abc xyz klm")};
-  auto session = makeSession(initial, {0, 0}, goal, {0, 6});
+  auto view = makeView(initial, {0, 0}, goal, {0, 6});
 
-  auto recs = session.recommendations(5);
+  auto recs = view.recommendations(5);
   ASSERT_FALSE(recs.empty());
   for (const auto& rec : recs) {
     if (rec.kind == "motion") {
-      ASSERT_TRUE(session.applyMotion(rec.text).has_value());
+      ASSERT_TRUE(view.applyMotion(rec.text).has_value());
       break;
     }
   }
 
-  recs = session.recommendations(5);
+  recs = view.recommendations(5);
   EXPECT_EQ(recs.size(), 5u);
 }
 
-TEST_F(ExploreSessionTest, MotionRecommendationsAreFirstMoleculesOfOptimizerPaths) {
+TEST_F(ExploreViewTest, MotionRecommendationsAreFirstMoleculesOfOptimizerPaths) {
   // Explore shows immediate next molecules, not full paths to the target.
   // Each motion recommendation must be the FIRST molecule of some full A*
   // path that reaches the current edit's range, and they must be distinct.
   Lines initial{Line("one two three four five six seven")};
   Lines goal{Line("one two three four FIVE six seven")};
-  auto session = makeSession(initial, {0, 0}, goal, {0, 22});
+  auto view = makeView(initial, {0, 0}, goal, {0, 22});
 
-  auto range = session.currentTargetRange();
+  auto range = view.currentTargetRange();
   ASSERT_TRUE(range.has_value());
 
   // Match the ground-truth's `allowMultiplePerPosition=true` below so both
   // sides enumerate the same universe of molecules for the subset check.
-  auto recs = session.recommendations(10, /*allowMultiplePerPosition=*/true);
+  auto recs = view.recommendations(10, /*allowMultiplePerPosition=*/true);
   vector<string> exploreMotionTexts;
   for (const auto& rec : recs) {
     if (rec.kind == "motion")
@@ -364,24 +364,24 @@ TEST_F(ExploreSessionTest, MotionRecommendationsAreFirstMoleculesOfOptimizerPath
   // full paths, and derive their first molecules. Explore's set must be a
   // subset of that — anything else would be an invalid next step.
   CompositionOptimizerParams compParams;
-  MotionOptimizerRangeParams params;
+  NavOptimizerRangeParams params;
   params
       .withMaxResults(40)
       .withFMotionThreshold(compParams.fMotionThreshold)
       .withDirectionalPruning(compParams.useDirectionalPruning)
-      .withLinePaddingAbove(compParams.motionPaddingAbove)
-      .withLinePaddingBelow(compParams.motionPaddingBelow)
+      .withLinePaddingAbove(compParams.navPaddingAbove)
+      .withLinePaddingBelow(compParams.navPaddingBelow)
       .withMinCountRepeat(compParams.minPrefixCount)
       .withMaxCountRepeat(compParams.maxPrefixCount)
       .withAllowMultiplePerPosition(true);
 
-  MotionOptimizer opt(config);
+  NavOptimizer opt(config);
   auto motionRange =
       tryToMotionInterval(initial, CharRange(range->first, range->second));
   ASSERT_TRUE(motionRange.has_value());
   auto result = opt.optimizeToRange(
       initial, {0, 0}, *motionRange, params, "",
-      MotionBoundary(initial, CursorPos(0, 0),
+      NavBoundary(initial, CursorPos(0, 0),
                      CursorPos(static_cast<int>(initial.size()) - 1,
                                static_cast<int>(initial.back().size()) + 1),
                      false, false),

@@ -14,10 +14,10 @@
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Optimizer/CompositionOptimizer/CompositionSearchContext.h"
 #include "Optimizer/CompositionOptimizer/DiffState.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
-#include "Optimizer/MotionOptimizer/MotionRangeConversion.h"
+#include "Optimizer/NavOptimizer/NavOptimizer.h"
+#include "Optimizer/NavOptimizer/NavRangeConversion.h"
 #include "Boundary/EditBoundary.h"
-#include "Boundary/MotionBoundary.h"
+#include "Boundary/NavBoundary.h"
 #include "Utils/EditTestGenerators.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomBufferHelpers.h"
@@ -39,7 +39,7 @@ EditResult pureDeletionResult(
 
 template<bool TrackExploredStates>
 [[gnu::noinline]] int searchStatsHotLoop(int iterations) {
-  MotionSearchStats stats;
+  NavSearchStats stats;
   for (int i = 0; i < iterations; i++) {
     stats.incrementNodesExplored();
     stats.incrementMotionsEmitted();
@@ -1227,7 +1227,7 @@ TEST_F(NeovimOracleDebug, InvestigateMaskBugs) {
   auto makeCtx = [&](const Lines& initial, const Lines& goal) {
     return CompositionSearchContext(
         initial, CursorPos(0, 0), goal, "",
-        NavContext(), MotionBoundary(), params, config);
+        NavContext(), NavBoundary(), params, config);
   };
 
   // Bug 1: Bracket mask doesn't mark positions INSIDE the brackets
@@ -1331,11 +1331,11 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
     cerr << "    beginPos: " << diffs[i].beginPos << ", endPos: " << diffs[i].endPos << endl;
   }
 
-  // Test MotionOptimizer.optimizeToRange directly
-  cerr << endl << "=== Testing MotionOptimizer.optimizeToRange ===" << endl;
+  // Test NavOptimizer.optimizeToRange directly
+  cerr << endl << "=== Testing NavOptimizer.optimizeToRange ===" << endl;
   {
     Config cfg = Config::uniform();
-    MotionOptimizer movOpt(cfg);
+    NavOptimizer movOpt(cfg);
     CursorPos rangeBegin(0, 6);
     CursorPos rangeEnd(0, 11);
 
@@ -1344,9 +1344,9 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
     auto rangeResult = movOpt.optimizeToRange(
         initial, initialPos,
         toMotionInterval(initial, CharRange(rangeBegin, rangeEnd)),
-        MotionOptimizerRangeParams{}.withMaxResults(10));
+        NavOptimizerRangeParams{}.withMaxResults(10));
 
-    cerr << "MotionOptimizer returned " << rangeResult.getResults().size() << " results" << endl;
+    cerr << "NavOptimizer returned " << rangeResult.getResults().size() << " results" << endl;
     cerr << "Stats: nodes=" << rangeResult.getStats().nodesExplored()
          << " stopReason=" << static_cast<int>(rangeResult.getStats().stopReason()) << endl;
 
@@ -1560,7 +1560,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     }
   }
 
-  cerr << "\n========== STEP 3: MotionOptimizer optimizeToRange ==========" << endl;
+  cerr << "\n========== STEP 3: NavOptimizer optimizeToRange ==========" << endl;
   {
     assert(!diffs.empty());
     const auto& d = diffs[0];
@@ -1571,18 +1571,18 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
          << rangeEnd.line << "," << rangeEnd.col << "))" << endl;
     cerr << "  StartPos: (" << initialPos.line << "," << initialPos.col << ")" << endl;
 
-    MotionBoundary boundary(initial,
+    NavBoundary boundary(initial,
         CursorPos(0, 0),
         CursorPos(0, static_cast<int>(initial[0].size())),
         false, false);
 
-    MotionOptimizer motionOpt(config);
+    NavOptimizer navOpt(config);
     NavContext navCtx;
 
-    auto rangeResult = motionOpt.optimizeToRange(
+    auto rangeResult = navOpt.optimizeToRange(
         initial, initialPos,
         toMotionInterval(initial, CharRange(rangeBegin, rangeEnd)),
-        MotionOptimizerRangeParams{}.withMaxResults(10), "",
+        NavOptimizerRangeParams{}.withMaxResults(10), "",
         boundary, navCtx);
 
     cerr << "  CharRange results: " << rangeResult.getResults().size() << endl;
@@ -1598,9 +1598,9 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
   cerr << "\n========== STEP 4: Trace A* Search ==========" << endl;
   {
     CompositionOptimizerParams params{};
-    MotionOptimizer motionOpt(config);
+    NavOptimizer navOpt(config);
     NavContext navCtx;
-    MotionBoundary boundary(initial,
+    NavBoundary boundary(initial,
         CursorPos(0, 0),
         CursorPos(0, static_cast<int>(initial[0].size()) - 1),
         false, false);
@@ -1654,7 +1654,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
                                        const Sequence& moveSequence,
                                        const CursorPos& goalPos,
                                        int editsCompleted) {
-      CompositionState newState = current.afterMotionResult(
+      CompositionState newState = current.afterNavResult(
           moveSequence, goalPos, config);
       newState.setCost(ctx.heuristic(newState, editsCompleted));
       enqueueState(std::move(newState));
@@ -1717,7 +1717,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
         auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
             min(pos.line, nextEdit.beginPos.line),
             max(pos.line + 1, editEndLine),
-            params.motionPaddingAbove, params.motionPaddingBelow);
+            params.navPaddingAbove, params.navPaddingBelow);
 
         Lines subset = currentLines.getLineRange(beginLine, endLine);
         CursorPos localPos(pos.line - beginLine, pos.col, pos.targetCol);
@@ -1726,14 +1726,14 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
 
         CursorPos subsetEnd(static_cast<int>(subset.size()) - 1,
             subset.back().effectiveSize());
-        MotionBoundary subsetBoundary(subset, localRangeBegin, subsetEnd,
+        NavBoundary subsetBoundary(subset, localRangeBegin, subsetEnd,
             beginLine > 0 || boundary.hasLinesAbove(),
             endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
-        auto movementResults = motionOpt.optimizeToRange(
+        auto movementResults = navOpt.optimizeToRange(
             subset, localPos,
             toMotionInterval(subset, CharRange(localRangeBegin, localRangeEnd)),
-            MotionOptimizerRangeParams{}.withMaxResults(
+            NavOptimizerRangeParams{}.withMaxResults(
                 clamp(nextEdit.origCharCount(), 1, 10)), "",
             subsetBoundary, navCtx).getResults();
 
@@ -1772,7 +1772,7 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
   // Step 1: Diffs and intermediate buffers
   cerr << "\n=== Step 1: Diffs ===" << endl;
   CompositionSearchContext ctx(initial, initialPos, goal, "",
-      NavContext(), MotionBoundary(), compParams, config);
+      NavContext(), NavBoundary(), compParams, config);
   cerr << "totalEdits=" << ctx.totalEdits() << endl;
   for (int i = 0; i < ctx.totalEdits(); i++) {
     const auto& d = ctx.edits[i].diffState;
@@ -1824,9 +1824,9 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
 
   // Step 3: A* search trace
   cerr << "\n=== Step 3: A* Search Trace ===" << endl;
-  MotionOptimizer motionOpt(config);
+  NavOptimizer navOpt(config);
   NavContext navCtx;
-  MotionBoundary boundary;
+  NavBoundary boundary;
 
   CompositionState startingState(initialPos, Mode::Normal, 0);
   startingState.setCost(ctx.heuristic(startingState, 0));
@@ -1863,7 +1863,7 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
                                      const Sequence& moveSequence,
                                      const CursorPos& goalPos,
                                      int editsCompleted) {
-    CompositionState newState = current.afterMotionResult(
+    CompositionState newState = current.afterNavResult(
         moveSequence, goalPos, config);
     newState.setCost(ctx.heuristic(newState, editsCompleted));
     enqueueState(std::move(newState));
@@ -1929,7 +1929,7 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
       auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
           min(pos.line, nextEdit.beginPos.line),
           max(pos.line + 1, editEndLine),
-          compParams.motionPaddingAbove, compParams.motionPaddingBelow);
+          compParams.navPaddingAbove, compParams.navPaddingBelow);
 
       Lines subset = currentLines.getLineRange(beginLine, endLine);
       CursorPos localPos(pos.line - beginLine, pos.col, pos.targetCol);
@@ -1939,13 +1939,13 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
       CursorPos subsetFirst(0, 0);
       CursorPos subsetEnd(static_cast<int>(subset.size()) - 1,
           subset.back().effectiveSize());
-      MotionBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
+      NavBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
           beginLine > 0, endLine <= currentLines.lastLine());
 
-      auto rangeResults = motionOpt.optimizeToRange(
+      auto rangeResults = navOpt.optimizeToRange(
           subset, localPos,
           toMotionInterval(subset, CharRange(localRangeBegin, localRangeEnd)),
-          MotionOptimizerRangeParams{}.withMaxResults(
+          NavOptimizerRangeParams{}.withMaxResults(
               clamp(nextEdit.origCharCount(), 1, 10)), "",
           subsetBoundary, navCtx).getResults();
 
@@ -2002,7 +2002,7 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
     // Step 2: CompositionSearchContext (triggers computeJoinPlans)
     CompositionOptimizerParams compParams{};
     CompositionSearchContext ctx(initial, initialPos, goal, "",
-        NavContext(), MotionBoundary(), compParams, config);
+        NavContext(), NavBoundary(), compParams, config);
     cerr << "totalEdits=" << ctx.totalEdits() << endl;
 
     for (int i = 0; i < ctx.totalEdits(); i++) {
@@ -2046,21 +2046,21 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
   dumpJoinPlan("JoinLinesPartialJoin",
       {"aaa", "bbb", "ccc", "ddd"}, {"aaa bbb", "ccc ddd"}, CursorPos(0, 0));
 
-  // Case 3b: Debug motionOptimizer for PartialJoin
-  cerr << "\n--- PartialJoin MotionOptimizer debug ---" << endl;
+  // Case 3b: Debug navOptimizer for PartialJoin
+  cerr << "\n--- PartialJoin NavOptimizer debug ---" << endl;
   {
     Lines buffer = {"aaa bbb", "ccc", "ddd"};
     CursorPos pos(0, 3);
     CursorPos rangeBegin(1, 3);
     CursorPos rangeEnd(2, 0);
-    MotionBoundary boundary(buffer, CursorPos(0, 0), buffer.endPos());
+    NavBoundary boundary(buffer, CursorPos(0, 0), buffer.endPos());
 
-    MotionOptimizer motionOpt(config);
+    NavOptimizer navOpt(config);
     NavContext navCtx;
-    auto rangeResult = motionOpt.optimizeToRange(
+    auto rangeResult = navOpt.optimizeToRange(
         buffer, pos,
         toMotionInterval(buffer, CharRange(rangeBegin, rangeEnd)),
-        MotionOptimizerRangeParams{}.withMaxResults(5), "",
+        NavOptimizerRangeParams{}.withMaxResults(5), "",
         boundary, navCtx);
 
     cerr << "Motion results: " << rangeResult.getResults().size() << endl;
@@ -2101,7 +2101,7 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
   cerr << "\n=== CompositionSearchContext ===" << endl;
   CompositionOptimizerParams compParams{};
   CompositionSearchContext ctx(initial, initialPos, goal, "",
-      NavContext(), MotionBoundary(), compParams, config);
+      NavContext(), NavBoundary(), compParams, config);
   cerr << "totalEdits=" << ctx.totalEdits() << endl;
   for (int i = 0; i < ctx.totalEdits(); i++) {
     const auto& d = ctx.edits[i].diffState;
@@ -2194,7 +2194,7 @@ TEST_F(DebugTest, InvestigateHumanApproval1) {
   cerr << "\n=== CompositionSearchContext ===" << endl;
   CompositionOptimizerParams compParams{};
   CompositionSearchContext ctx(initial, CursorPos(0,0), goal, "",
-      NavContext(), MotionBoundary(), compParams, config);
+      NavContext(), NavBoundary(), compParams, config);
   cerr << "totalEdits=" << ctx.totalEdits() << endl;
   for (int i = 0; i < ctx.totalEdits(); i++) {
     const auto& d = ctx.edits[i].diffState;

@@ -5,8 +5,8 @@
 #include <vector>
 
 #include "Keyboard/Config.h"
-#include "Boundary/MotionBoundary.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
+#include "Boundary/NavBoundary.h"
+#include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Session/Snapshot.h"
 #include "Types/NavContext.h"
 #include "Utils/Debug.h"
@@ -35,15 +35,15 @@ int main(int argc, char* argv[]) {
   debug("ending position:", end_snapshot.row, end_snapshot.col);
 
   Config model = Config::uniform();
-  MotionOptimizer o(model);
+  NavOptimizer o(model);
 
   NavContext navContext(
     start_snapshot.windowHeight,
     start_snapshot.scrollAmount
   );
 
-  // CLI uses full file snapshots, so don't exclude G/gg (default MotionBoundary)
-  MotionBoundary boundary;
+  // CLI uses full file snapshots, so don't exclude G/gg (default NavBoundary)
+  NavBoundary boundary;
 
   // Pass CursorPos and fresh RunningEffort (no prior typing context from CLI)
   vector<Result> res = o.optimize(

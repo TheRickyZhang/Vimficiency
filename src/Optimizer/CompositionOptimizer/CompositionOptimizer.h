@@ -13,7 +13,7 @@
 #include "Optimizer/Result.h"
 #include "Optimizer/SearchStats.h"
 
-#include "Boundary/MotionBoundary.h"
+#include "Boundary/NavBoundary.h"
 #include "Types/NavContext.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
@@ -104,8 +104,8 @@ struct CompositionOptimizer {
     CompositionOptimizerParams params = {},
     std::string_view userSequence = "",
 
-    // Continuation from broader context. Note MotionBoundary suffices as full lines are passed in.
-    const MotionBoundary& boundary = MotionBoundary(),
+    // Continuation from broader context. Note NavBoundary suffices as full lines are passed in.
+    const NavBoundary& boundary = NavBoundary(),
 
     // Niche settings
     const NavContext& navigationContext = NavContext()

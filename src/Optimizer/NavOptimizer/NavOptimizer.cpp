@@ -1,4 +1,4 @@
-#include "MotionOptimizer.h"
+#include "NavOptimizer.h"
 
 #include <cassert>
 #include <limits>
@@ -8,8 +8,8 @@
 #include <unordered_map>
 
 #include "Effort/EffortBank.h"
-#include "MotionHeuristic.h"
-#include "MotionExplorer.h"
+#include "NavHeuristic.h"
+#include "NavExplorer.h"
 #include "Optimizer/SearchFrontier.h"
 #include "Optimizer/SearchStats.h"
 
@@ -20,16 +20,16 @@
 
 using namespace std;
 
-using MotionPriorityQueue =
-    priority_queue<MotionState, vector<MotionState>, greater<MotionState>>;
+using NavPriorityQueue =
+    priority_queue<NavState, vector<NavState>, greater<NavState>>;
 
-MotionResult MotionOptimizer::optimize(
+NavResult NavOptimizer::optimize(
     const Lines& lines,
     const CursorPos& initialPos,
     const CursorPos& goalPos,
-    MotionOptimizerParams params,
+    NavOptimizerParams params,
     string_view userSequence,
-    const MotionBoundary& boundary,
+    const NavBoundary& boundary,
     const NavContext& navContext) {
   BufferIndex bufferIndex(lines);
   double userEffort = userSequence.empty()
@@ -37,31 +37,31 @@ MotionResult MotionOptimizer::optimize(
       : getEffort(userSequence, config);
 
   CharInterval goalRange(goalPos, goalPos);
-  MotionExplorer explorer(lines, navContext, boundary, params, goalRange, bufferIndex, 0);
+  NavExplorer explorer(lines, navContext, boundary, params, goalRange, bufferIndex, 0);
   EffortBank bank(config);
 
-  MotionPriorityQueue pq;
+  NavPriorityQueue pq;
   unordered_map<Pos, double> costMap;
-  MotionSearchStats stats;
+  NavSearchStats stats;
   int totalPops = 0;
   const double maxEffort = userEffort * params.exploreFactor;
   auto isInGoalRange = [&](CursorPos pos) {
     return goalRange.containsPos(pos);
   };
   auto scoreState = [&](CursorPos pos, double effort) {
-    double distance = MotionHeuristic::distanceToRange(goalRange, pos);
+    double distance = NavHeuristic::distanceToRange(goalRange, pos);
     return params.effortWeight * effort + params.distanceWeight * distance;
   };
 
   vector<Result> res;
   Pos goalKey(goalPos.line, goalPos.col);
-  MotionState initialState(initialPos, RunningEffort(), 0.0, 0.0);
+  NavState initialState(initialPos, RunningEffort(), 0.0, 0.0);
   initialState.setCost(scoreState(initialState.getPos(), initialState.getEffort()));
   pq.push(initialState);
   costMap[initialState.getKey()] = initialState.getCost();
 
   while (!pq.empty() && totalPops < params.maxNodesPopped) {
-    MotionState s = pq.top();
+    NavState s = pq.top();
     pq.pop();
     totalPops++;
 
@@ -90,19 +90,19 @@ MotionResult MotionOptimizer::optimize(
     stats.maybeRecordExploredState(pos.line, pos.col, s.getEffort(), s.getSequence());
 
     auto onStatic = [&](KSId motionId, const KeyedSequence& ks, CursorPos endpoint) {
-          MotionState next = s.afterMotion(ks, bank[motionId], endpoint, config, scoreState);
+          NavState next = s.afterMotion(ks, bank[motionId], endpoint, config, scoreState);
           stats.incrementMotionsEmitted();
           Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
         };
     auto onCounted = [&](KSId motionId, const KeyedSequence& ks, int count,
                          CursorPos endpoint, double extraPenalty) {
-          MotionState next = s.afterCountedMotion(
+          NavState next = s.afterCountedMotion(
               ks, count, endpoint, config, extraPenalty, scoreState);
           stats.incrementMotionsEmitted();
           Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
         };
     auto onFMotion = [&](const KeyedSequence& motion, int newCol) {
-          MotionState next = s.afterFMotion(motion, newCol, config, scoreState);
+          NavState next = s.afterFMotion(motion, newCol, config, scoreState);
           stats.incrementMotionsEmitted();
           Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
         };
@@ -129,29 +129,29 @@ MotionResult MotionOptimizer::optimize(
       totalPops,
       pq.empty());
 
-  return MotionResult(std::move(res), stats);
+  return NavResult(std::move(res), stats);
 }
 
-RangeMotionResult MotionOptimizer::optimizeToRange(
+RangeNavResult NavOptimizer::optimizeToRange(
     const Lines& lines,
     const CursorPos& startPos,
     const CharInterval& range,
-    MotionOptimizerRangeParams params,
+    NavOptimizerRangeParams params,
     string_view userSequence,
-    const MotionBoundary& boundary,
+    const NavBoundary& boundary,
     const NavContext& navContext) {
   BufferIndex localIndex(lines);
   return optimizeToRange(lines, startPos, range, params, userSequence,
                          boundary, navContext, localIndex, 0);
 }
 
-RangeMotionResult MotionOptimizer::optimizeToRange(
+RangeNavResult NavOptimizer::optimizeToRange(
     const Lines& lines,
     const CursorPos& startPos,
     const CharInterval& range,
-    MotionOptimizerRangeParams params,
+    NavOptimizerRangeParams params,
     string_view userSequence,
-    const MotionBoundary& boundary,
+    const NavBoundary& boundary,
     const NavContext& navContext,
     const BufferIndex& bufferIndex,
     int lineOffset) {
@@ -165,17 +165,17 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
   int rangeSize = lines.spanSize(range);
   int maxResults = min(params.maxResults, rangeSize);
 
-  MotionExplorer explorer(lines, navContext, boundary, params, range, bufferIndex, lineOffset);
+  NavExplorer explorer(lines, navContext, boundary, params, range, bufferIndex, lineOffset);
   EffortBank bank(config);
 
-  MotionPriorityQueue pq;
+  NavPriorityQueue pq;
   unordered_map<Pos, double> costMap;
-  MotionSearchStats stats;
+  NavSearchStats stats;
   int totalPops = 0;
   const double maxEffort = userEffort * params.exploreFactor;
   
   auto scoreState = [&](CursorPos pos, double effort) {
-    double distance = MotionHeuristic::distanceToRange(range, pos);
+    double distance = NavHeuristic::distanceToRange(range, pos);
     return params.effortWeight * effort + params.distanceWeight * distance;
   };
 
@@ -183,7 +183,7 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
     return range.containsPos(pos);
   };
 
-  MotionState initialState(startPos, RunningEffort(), 0.0, 0.0);
+  NavState initialState(startPos, RunningEffort(), 0.0, 0.0);
   initialState.setCost(scoreState(initialState.getPos(), initialState.getEffort()));
   pq.push(initialState);
   costMap[initialState.getKey()] = initialState.getCost();
@@ -193,7 +193,7 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
   [[maybe_unused]] set<Pos> uniquePositionsSeen;
 
   while (!pq.empty() && totalPops < params.maxNodesPopped) {
-    MotionState s = pq.top(); pq.pop();
+    NavState s = pq.top(); pq.pop();
     totalPops++;
 
     CursorPos pos = s.getPos();
@@ -237,19 +237,19 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
     stats.maybeRecordExploredState(pos.line, pos.col, s.getEffort(), s.getSequence());
 
     auto onStatic = [&](KSId motionId, const KeyedSequence& ks, CursorPos endpoint) {
-          MotionState next = s.afterMotion(ks, bank[motionId], endpoint, config, scoreState);
+          NavState next = s.afterMotion(ks, bank[motionId], endpoint, config, scoreState);
           stats.incrementMotionsEmitted();
           Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
         };
     auto onCounted = [&](KSId motionId, const KeyedSequence& ks, int count,
                          CursorPos endpoint, double extraPenalty) {
-          MotionState next = s.afterCountedMotion(
+          NavState next = s.afterCountedMotion(
               ks, count, endpoint, config, extraPenalty, scoreState);
           stats.incrementMotionsEmitted();
           Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
         };
     auto onFMotion = [&](const KeyedSequence& motion, int newCol) {
-          MotionState next = s.afterFMotion(motion, newCol, config, scoreState);
+          NavState next = s.afterFMotion(motion, newCol, config, scoreState);
           stats.incrementMotionsEmitted();
           Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
         };
@@ -291,5 +291,5 @@ RangeMotionResult MotionOptimizer::optimizeToRange(
       totalPops,
       pq.empty());
 
-  return RangeMotionResult(std::move(results), stats);
+  return RangeNavResult(std::move(results), stats);
 }

@@ -1,10 +1,10 @@
-// tests/MotionOptimizer/ManualTest.cpp
+// tests/NavOptimizer/ManualTest.cpp
 //
-// Manual tests for MotionOptimizer with hardcoded setups.
+// Manual tests for NavOptimizer with hardcoded setups.
 // Tests horizontal/vertical motions, range optimization, and boundary constraints.
 // For random/stress tests, see OutputCorrectnessTest.cpp.
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="MotionOptimizer_ManualTest.*"
+// Run: ./build/tests/vimficiency_tests --gtest_filter="NavOptimizer_ManualTest.*"
 
 #include <gtest/gtest.h>
 
@@ -13,9 +13,9 @@
 
 #include "Keyboard/ToKeys/MotionToKeys.h"
 #include "Keyboard/Config.h"
-#include "Boundary/MotionBoundary.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
-#include "Optimizer/MotionOptimizer/MotionRangeConversion.h"
+#include "Boundary/NavBoundary.h"
+#include "Optimizer/NavOptimizer/NavOptimizer.h"
+#include "Optimizer/NavOptimizer/NavRangeConversion.h"
 #include "Effort/RunningEffort.h"
 #include "Session/Snapshot.h"
 #include "Interpreter/MotionInterpreter.h"
@@ -23,7 +23,7 @@
 
 using namespace std;
 
-class MotionOptimizer_ManualTest : public ::testing::Test {
+class NavOptimizer_ManualTest : public ::testing::Test {
 protected:
   static Lines a1_long_line;
   static Lines a2_block_lines;
@@ -49,14 +49,14 @@ protected:
       config.keyInfo[static_cast<size_t>(ka.k)].base_cost = ka.cost;
     }
 
-    MotionOptimizer opt(config);
+    NavOptimizer opt(config);
 
-    // Tests use full test files, so don't exclude G/gg (default MotionBoundary)
-    MotionBoundary boundary;
+    // Tests use full test files, so don't exclude G/gg (default NavBoundary)
+    NavBoundary boundary;
     // Pass CursorPos and fresh RunningEffort (no prior typing context in tests)
     // Try to explore more (30 results), lower search depth for speed (2e4)
     return opt.optimize(lines, start, end,
-                        MotionOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
+                        NavOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
                         userSeq, boundary, navContext).getResults();
   }
 
@@ -66,12 +66,12 @@ protected:
                       const string &userSeq,
                       int maxResults = 10,
                       Config config = Config::uniform()) {
-    MotionOptimizer opt(config);
-    MotionBoundary boundary;
+    NavOptimizer opt(config);
+    NavBoundary boundary;
     // allowMultiplePerPosition=true for tests to see all paths
     return opt.optimizeToRange(lines, start,
                                toMotionInterval(lines, CharRange(rangeBegin, rangeEnd)),
-                               MotionOptimizerRangeParams{}
+                               NavOptimizerRangeParams{}
                                    .withMaxResults(maxResults)
                                    .withMaxNodesPopped(20000)
                                    .withAllowMultiplePerPosition(true),
@@ -80,13 +80,13 @@ protected:
 };
 
 // Static member definitions
-Lines MotionOptimizer_ManualTest::a1_long_line;
-Lines MotionOptimizer_ManualTest::a2_block_lines;
-Lines MotionOptimizer_ManualTest::a3_spaced_lines;
-Lines MotionOptimizer_ManualTest::m1_main_basic;
-NavContext MotionOptimizer_ManualTest::navContext;
+Lines NavOptimizer_ManualTest::a1_long_line;
+Lines NavOptimizer_ManualTest::a2_block_lines;
+Lines NavOptimizer_ManualTest::a3_spaced_lines;
+Lines NavOptimizer_ManualTest::m1_main_basic;
+NavContext NavOptimizer_ManualTest::navContext;
 
-TEST_F(MotionOptimizer_ManualTest, HorizontalMotions) {
+TEST_F(NavOptimizer_ManualTest, HorizontalMotions) {
   const string user_seq = "we";
   CursorPos start(0, 0);
   CursorPos end = simulateMotions(start, user_seq, a1_long_line);
@@ -102,7 +102,7 @@ TEST_F(MotionOptimizer_ManualTest, HorizontalMotions) {
       << "Missing expected sequences";
 }
 
-TEST_F(MotionOptimizer_ManualTest, ForwardStart_CanUseBackwardCountedVerticalAfterOvershoot) {
+TEST_F(NavOptimizer_ManualTest, ForwardStart_CanUseBackwardCountedVerticalAfterOvershoot) {
   Lines lines = {"a", "b", "c", "d", "e", "f", "g"};
   CursorPos start(0, 0);
   CursorPos end(2, 0);
@@ -119,7 +119,7 @@ TEST_F(MotionOptimizer_ManualTest, ForwardStart_CanUseBackwardCountedVerticalAft
   EXPECT_TRUE(contains_all(results, {"G4k"})) << "Expected backward counted vertical after overshoot";
 }
 
-TEST_F(MotionOptimizer_ManualTest, BackwardStart_CanUseForwardCountedVerticalAfterOvershoot) {
+TEST_F(NavOptimizer_ManualTest, BackwardStart_CanUseForwardCountedVerticalAfterOvershoot) {
   Lines lines = {"a", "b", "c", "d", "e", "f", "g"};
   CursorPos start(6, 0);
   CursorPos end(4, 0);
@@ -141,7 +141,7 @@ TEST_F(MotionOptimizer_ManualTest, BackwardStart_CanUseForwardCountedVerticalAft
 // optimizeToRange tests
 // =============================================================================
 
-TEST_F(MotionOptimizer_ManualTest, RangeBasic_SameLine) {
+TEST_F(NavOptimizer_ManualTest, RangeBasic_SameLine) {
   // Target range is columns 5-10 on line 0
   Lines lines = {"hello world this is a test line"};
   CursorPos start(0, 0);
@@ -157,7 +157,7 @@ TEST_F(MotionOptimizer_ManualTest, RangeBasic_SameLine) {
   }
 }
 
-TEST_F(MotionOptimizer_ManualTest, RangeBasic_MultiLine) {
+TEST_F(NavOptimizer_ManualTest, RangeBasic_MultiLine) {
   // Target range spans multiple lines
   Lines lines = {"line one", "line two", "line three", "line four"};
   CursorPos start(0, 0);
@@ -174,7 +174,7 @@ TEST_F(MotionOptimizer_ManualTest, RangeBasic_MultiLine) {
   }
 }
 
-TEST_F(MotionOptimizer_ManualTest, RangeFromMiddle) {
+TEST_F(NavOptimizer_ManualTest, RangeFromMiddle) {
   // Start from middle of file, target range at end
   Lines lines = {"aaa", "bbb", "ccc", "ddd", "eee"};
   CursorPos start(2, 1);
@@ -186,7 +186,7 @@ TEST_F(MotionOptimizer_ManualTest, RangeFromMiddle) {
   EXPECT_FALSE(results.empty()) << "Should find at least one path to range";
 }
 
-TEST_F(MotionOptimizer_ManualTest, RangeWithWordMotions) {
+TEST_F(NavOptimizer_ManualTest, RangeWithWordMotions) {
   // Test that word motions can land in range
   Lines lines = {"one two three four five six"};
   CursorPos start(0, 0);
@@ -199,10 +199,10 @@ TEST_F(MotionOptimizer_ManualTest, RangeWithWordMotions) {
 }
 
 // =============================================================================
-// MotionBoundary tests
+// NavBoundary tests
 // =============================================================================
 
-class MotionBoundaryTest : public ::testing::Test {
+class NavBoundaryTest : public ::testing::Test {
 protected:
   static NavContext navContext;
 
@@ -213,11 +213,11 @@ protected:
   // Helper to run optimizer with specific boundary
   static vector<Result>
   runWithBoundary(const Lines& lines, CursorPos start, CursorPos end,
-                  const string& userSeq, const MotionBoundary& boundary,
+                  const string& userSeq, const NavBoundary& boundary,
                   Config config = Config::uniform()) {
-    MotionOptimizer opt(config);
+    NavOptimizer opt(config);
     return opt.optimize(lines, start, end,
-                        MotionOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
+                        NavOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
                         userSeq, boundary, navContext).getResults();
   }
 
@@ -228,21 +228,21 @@ protected:
   }
 };
 
-NavContext MotionBoundaryTest::navContext(0, 0);
+NavContext NavBoundaryTest::navContext(0, 0);
 
-TEST_F(MotionBoundaryTest, DefaultBoundary_AllowsGG) {
+TEST_F(NavBoundaryTest, DefaultBoundary_AllowsGG) {
   Lines lines = {"line0", "line1", "line2", "line3"};
   CursorPos start(2, 0);
   CursorPos end(0, 0);  // gg should reach this
 
-  MotionBoundary boundary;  // default: no exclusions
+  NavBoundary boundary;  // default: no exclusions
 
   auto results = runWithBoundary(lines, start, end, "kk", boundary);
 
   EXPECT_TRUE(hasSequence(results, "gg")) << "Default boundary should allow gg";
 }
 
-TEST_F(MotionBoundaryTest, ExcludeGG_RemovesGG) {
+TEST_F(NavBoundaryTest, ExcludeGG_RemovesGG) {
   // Full buffer has lines above the sub-region we're working with
   Lines fullBuffer = {"above0", "above1", "line0", "line1", "line2", "line3"};
   // Sub-buffer is lines 2-5 (line0 through line3)
@@ -252,7 +252,7 @@ TEST_F(MotionBoundaryTest, ExcludeGG_RemovesGG) {
 
   // Boundary computed from sub-region within full buffer
   // firstPos=(2,0) means hasLinesAbove=true, endPos=(5,6) means hasLinesBelow=false
-  MotionBoundary boundary(fullBuffer, CursorPos(2, 0), CursorPos(5, 6));
+  NavBoundary boundary(fullBuffer, CursorPos(2, 0), CursorPos(5, 6));
 
   auto results = runWithBoundary(subBuffer, start, end, "kk", boundary);
 
@@ -260,19 +260,19 @@ TEST_F(MotionBoundaryTest, ExcludeGG_RemovesGG) {
   EXPECT_TRUE(hasSequence(results, "kk")) << "Should still find alternative path";
 }
 
-TEST_F(MotionBoundaryTest, DefaultBoundary_AllowsG) {
+TEST_F(NavBoundaryTest, DefaultBoundary_AllowsG) {
   Lines lines = {"line0", "line1", "line2", "line3"};
   CursorPos start(1, 0);
   CursorPos end(3, 0);  // G should reach last line
 
-  MotionBoundary boundary;  // default: no exclusions
+  NavBoundary boundary;  // default: no exclusions
 
   auto results = runWithBoundary(lines, start, end, "jj", boundary);
 
   EXPECT_TRUE(hasSequence(results, "G")) << "Default boundary should allow G";
 }
 
-TEST_F(MotionBoundaryTest, ExcludeG_RemovesG) {
+TEST_F(NavBoundaryTest, ExcludeG_RemovesG) {
   // Full buffer has lines below the sub-region we're working with
   Lines fullBuffer = {"line0", "line1", "line2", "line3", "below0", "below1"};
   // Sub-buffer is lines 0-3
@@ -281,7 +281,7 @@ TEST_F(MotionBoundaryTest, ExcludeG_RemovesG) {
   CursorPos end(3, 0);
 
   // Boundary computed from sub-region: firstPos=(0,0) hasLinesAbove=false, endPos=(3,5) hasLinesBelow=true
-  MotionBoundary boundary(fullBuffer, CursorPos(0, 0), CursorPos(3, 5));
+  NavBoundary boundary(fullBuffer, CursorPos(0, 0), CursorPos(3, 5));
 
   auto results = runWithBoundary(subBuffer, start, end, "jj", boundary);
 
@@ -289,7 +289,7 @@ TEST_F(MotionBoundaryTest, ExcludeG_RemovesG) {
   EXPECT_TRUE(hasSequence(results, "jj")) << "Should still find alternative path";
 }
 
-TEST_F(MotionBoundaryTest, LeftColOffset_FiltersPrefixPositions) {
+TEST_F(NavBoundaryTest, LeftColOffset_FiltersPrefixPositions) {
   // NOTE: CursorPos-based column filtering was removed because it was ineffective
   // for motions that clamp to buffer edges (paragraph, sentence jumps).
   // Single-line column filtering is a known limitation - the optimizer will
@@ -302,7 +302,7 @@ TEST_F(MotionBoundaryTest, LeftColOffset_FiltersPrefixPositions) {
 
   // leftColOffset = 7 (prefix "prefix_" length)
   // Boundary from position (0,7) to (0,13) gives leftColOffset=7
-  MotionBoundary boundary(lines, CursorPos(0, 7), CursorPos(0, 13));
+  NavBoundary boundary(lines, CursorPos(0, 7), CursorPos(0, 13));
 
   auto results = runWithBoundary(lines, start, end, "hhhhh", boundary);
 
@@ -316,7 +316,7 @@ TEST_F(MotionBoundaryTest, LeftColOffset_FiltersPrefixPositions) {
   EXPECT_FALSE(results2.empty()) << "Should find path to valid positions";
 }
 
-TEST_F(MotionBoundaryTest, RightColOffset_FiltersSuffixPositions) {
+TEST_F(NavBoundaryTest, RightColOffset_FiltersSuffixPositions) {
   // NOTE: CursorPos-based column filtering was removed because it was ineffective
   // for motions that clamp to buffer edges (paragraph, sentence jumps).
   // Single-line column filtering is a known limitation - the optimizer will
@@ -329,7 +329,7 @@ TEST_F(MotionBoundaryTest, RightColOffset_FiltersSuffixPositions) {
 
   // rightColOffset = 6 (suffix "_suffix" without the 's' at col 7)
   // Boundary from position (0,0) to (0,7) gives rightColOffset = 13-7 = 6
-  MotionBoundary boundary(lines, CursorPos(0, 0), CursorPos(0, 7));
+  NavBoundary boundary(lines, CursorPos(0, 0), CursorPos(0, 7));
 
   auto results = runWithBoundary(lines, start, end, "lllllll", boundary);
 
@@ -343,7 +343,7 @@ TEST_F(MotionBoundaryTest, RightColOffset_FiltersSuffixPositions) {
   EXPECT_FALSE(results2.empty()) << "Should find path to valid positions";
 }
 
-TEST_F(MotionBoundaryTest, IsPositionInBounds_WithColConstraints) {
+TEST_F(NavBoundaryTest, IsPositionInBounds_WithColConstraints) {
   // Test isPositionInBounds with column constraints
   // leftColOffset=3 (prefix length on first line)
   // rightColOffset=5 (suffix length on last line)
@@ -354,7 +354,7 @@ TEST_F(MotionBoundaryTest, IsPositionInBounds_WithColConstraints) {
   // - line 2 has length 15, suffix of 5 chars, so endPos=(2,10) (exclusive past col 9)
   Lines lines = {"pppxxxxxx", "middle_content", "xxxxxxxxxxxxxxx"};  // line 2 has 15 chars
   // Boundary from (0,3) to (2,10): leftColOffset=3, rightColOffset=15-10=5
-  MotionBoundary boundary(lines, CursorPos(0, 3), CursorPos(2, 10));
+  NavBoundary boundary(lines, CursorPos(0, 3), CursorPos(2, 10));
 
   int lastLine = 2;
   int lastLineLength = 15;
@@ -380,35 +380,35 @@ TEST_F(MotionBoundaryTest, IsPositionInBounds_WithColConstraints) {
 // minCountRepeat threshold tests
 // =============================================================================
 
-TEST_F(MotionOptimizer_ManualTest, MinCountRepeat_BlocksSmallCounts) {
+TEST_F(NavOptimizer_ManualTest, MinCountRepeat_BlocksSmallCounts) {
   // "one two three four five six" — 4w reaches "five" (col 20)
   Lines lines = {"one two three four five six"};
   CursorPos start(0, 0);
   CursorPos end(0, 14); // "four" — reachable by 3w
 
-  MotionOptimizer opt(Config::uniform());
-  MotionBoundary boundary;
+  NavOptimizer opt(Config::uniform());
+  NavBoundary boundary;
 
   // With default minCountRepeat=4, count=3 should NOT appear as "3w"
   auto results = opt.optimize(lines, start, end,
-      MotionOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
+      NavOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
       "", boundary, navContext).getResults();
 
   EXPECT_FALSE(hasSequence(results, "3w")) << "3w should be blocked by minCountRepeat=4";
   EXPECT_FALSE(hasSequence(results, "3W")) << "3W should be blocked by minCountRepeat=4";
 }
 
-TEST_F(MotionOptimizer_ManualTest, MinCountRepeat_LowThresholdAllowsSmallCounts) {
+TEST_F(NavOptimizer_ManualTest, MinCountRepeat_LowThresholdAllowsSmallCounts) {
   Lines lines = {"one two three four five six"};
   CursorPos start(0, 0);
   CursorPos end(0, 14); // "four" — reachable by 3w
 
-  MotionOptimizer opt(Config::uniform());
-  MotionBoundary boundary;
+  NavOptimizer opt(Config::uniform());
+  NavBoundary boundary;
 
   // With minCountRepeat=2, count=3 SHOULD appear
   auto results = opt.optimize(lines, start, end,
-      MotionOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000)
+      NavOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000)
           .withMinCountRepeat(2),
       "", boundary, navContext).getResults();
 

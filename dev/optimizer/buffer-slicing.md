@@ -10,7 +10,7 @@ Buffer slicing limits the search region to only the relevant portion of the buff
 
 | Target | Padding | Rationale |
 |--------|---------|-----------|
-| MotionOptimizer | Yes (linewise) | Potential for overshoot, like $b or }k |
+| NavOptimizer | Yes (linewise) | Potential for overshoot, like $b or }k |
 | EditOptimizer | No | Need exact edit regions (overshoot never optimal )  |
 
 
@@ -31,7 +31,7 @@ result.goalPos.line += lineOffset;
 When creating sub-buffers, boundary flags are inherited from the parent OR set based on subset position:
 
 ```cpp
-MotionBoundary subsetBoundary(subset, subsetFirst, subsetLast,
+NavBoundary subsetBoundary(subset, subsetFirst, subsetLast,
     subsetStart > 0 || parentBoundary.hasLinesAbove(),   // lines above
     subsetEnd < fullBuffer.lastLine() || parentBoundary.hasLinesBelow());  // lines below
 ```
@@ -53,44 +53,44 @@ local end_search = math.min(nlines-1, end_row + padding)
 - Positions converted to slice-relative coordinates before FFI call
 - Boundary flags (`has_lines_above`, `has_lines_below`) passed to C++
 
-### 2. MotionOptimizer
+### 2. NavOptimizer
 
-**File**: `src/Optimizer/MotionOptimizer/MotionOptimizerParams.h`
+**File**: `src/Optimizer/NavOptimizer/NavOptimizerParams.h`
 
 ```cpp
 int linePaddingAbove = 2;  // Default for motion searches
 int linePaddingBelow = 2;
 ```
 
-MotionOptimizer itself does NOT do internal slicing - it operates on whatever buffer is passed to it. The padding params are available for callers to use when creating sub-buffers.
+NavOptimizer itself does NOT do internal slicing - it operates on whatever buffer is passed to it. The padding params are available for callers to use when creating sub-buffers.
 
 ### 3. EditOptimizer
 
 **File**: `src/Optimizer/EditOptimizer/EditOptimizerParams.h`
 
 ```cpp
-int motionLinePaddingAbove = 1;  // For internal MotionOptimizer calls
-int motionLinePaddingBelow = 1;
+int navLinePaddingAbove = 1;  // For internal NavOptimizer calls
+int navLinePaddingBelow = 1;
 ```
 
-EditOptimizer operates on exact edit regions (no padding). However, it internally calls MotionOptimizer for the visual delete path (`v + motion + d`), and uses the `motionLinePadding*` params for that call.
+EditOptimizer operates on exact edit regions (no padding). However, it internally calls NavOptimizer for the visual delete path (`v + motion + d`), and uses the `navLinePadding*` params for that call.
 
 Lower default (1) because `effectiveLines` already includes prefix/suffix context and we only need a single result.
 
-### 4. CompositionOptimizer → MotionOptimizer
+### 4. CompositionOptimizer → NavOptimizer
 
 **File**: `src/Optimizer/CompositionOptimizer/CompositionOptimizerParams.h`
 
 ```cpp
-int motionLinePaddingAbove = 2;  // For MotionOptimizer calls
-int motionLinePaddingBelow = 2;
+int navLinePaddingAbove = 2;  // For NavOptimizer calls
+int navLinePaddingBelow = 2;
 ```
 
-CompositionOptimizer creates sub-buffers when calling MotionOptimizer:
+CompositionOptimizer creates sub-buffers when calling NavOptimizer:
 
 ```cpp
-int subsetStart = max(0, regionStart - params.motionLinePaddingAbove);
-int subsetEnd = min(currentLines.lastLine(), regionEnd + params.motionLinePaddingBelow);
+int subsetStart = max(0, regionStart - params.navLinePaddingAbove);
+int subsetEnd = min(currentLines.lastLine(), regionEnd + params.navLinePaddingBelow);
 
 Lines subset = currentLines.getLineRange(subsetStart, subsetEnd + 1);
 int lineOffset = subsetStart;
@@ -98,8 +98,8 @@ int lineOffset = subsetStart;
 // Remap positions to subset coordinates
 Position subsetPos(pos.line - lineOffset, pos.col, pos.targetCol);
 
-// Call MotionOptimizer on subset
-auto results = motionOptimizer.optimizeToRange(subset, subsetPos, ...);
+// Call NavOptimizer on subset
+auto results = navOptimizer.optimizeToRange(subset, subsetPos, ...);
 
 // Remap results back to original coordinates
 for (auto& r : results) {
@@ -129,7 +129,7 @@ Note: Only the line is offset; column stays the same.
 When calling `optimizeToRange`, the **boundary** and the **target range** serve different purposes:
 
 - **Target range** (`rangeFirst`, `rangeLast`): Defines which positions count as "in range" for the optimizer's goal check. This is the edit region or insertion point.
-- **Boundary** (`MotionBoundary`): Defines the navigable extent that clamps motion endpoints like `$`, `0`, `^`. This should be the full subset extent, not the target range.
+- **Boundary** (`NavBoundary`): Defines the navigable extent that clamps motion endpoints like `$`, `0`, `^`. This should be the full subset extent, not the target range.
 
 Using the target range as the boundary is incorrect — it causes `BoundaryContext` to compute `leftColOffset`/`rightColOffset` that clamp motions to the target range edges. For example, `$` would land at the edit region's last column instead of the actual end-of-line.
 
@@ -138,10 +138,10 @@ Using the target range as the boundary is incorrect — it causes `BoundaryConte
 Position subsetFirst(0, 0);
 Position subsetLast(static_cast<int>(subset.size()) - 1,
     std::max(0, static_cast<int>(subset.back().size()) - 1));
-MotionBoundary subsetBoundary(subset, subsetFirst, subsetLast, ...);
+NavBoundary subsetBoundary(subset, subsetFirst, subsetLast, ...);
 
 // WRONG: boundary = target range (would clamp $ to range edge)
-// MotionBoundary subsetBoundary(subset, localRangeFirst, localRangeLast, ...);
+// NavBoundary subsetBoundary(subset, localRangeFirst, localRangeLast, ...);
 ```
 
 This applies to both code paths in CompositionOptimizer: the edit/motion transition path and the pure insertion path.
@@ -151,8 +151,8 @@ This applies to both code paths in CompositionOptimizer: the edit/motion transit
 | Layer | Slicing | Padding | Params Location |
 |-------|---------|---------|-----------------|
 | Lua → C++ | Yes | `SLICE_PADDING` = 5 | `lua/vimficiency/config.lua` |
-| MotionOptimizer | No | N/A | (caller responsibility) |
+| NavOptimizer | No | N/A | (caller responsibility) |
 | EditOptimizer | No | N/A | (exact regions) |
-| EditOptimizer → MotionOptimizer | Yes | `motionLinePadding*` = 1 | `EditOptimizerParams.h` |
-| CompositionOptimizer → MotionOptimizer | Yes | `motionLinePadding*` = 2 | `CompositionOptimizerParams.h` |
+| EditOptimizer → NavOptimizer | Yes | `navLinePadding*` = 1 | `EditOptimizerParams.h` |
+| CompositionOptimizer → NavOptimizer | Yes | `navLinePadding*` = 2 | `CompositionOptimizerParams.h` |
 | CompositionOptimizer → EditOptimizer | No | N/A | (exact character-wise) |

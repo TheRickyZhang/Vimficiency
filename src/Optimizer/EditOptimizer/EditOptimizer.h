@@ -26,7 +26,7 @@ struct EditResult : BaseOptimizerResult<std::vector<Result>> {
   const EditSearchStats& getStats() const { return stats_; }
 
   // Look up the best result for a buffer position. Returns nullptr if the position
-  // is outside the edit region or has no result.
+  // is outside the transform region or has no result.
   // Return a nullable, const & view.
   // TODO (C++ 26): use optional<const T&>
   const Result* resultAt(int bufferLine, int bufferCol) const {
@@ -95,7 +95,8 @@ struct EditOptimizer {
 
   EditOptimizer(const Config& config) : config(std::move(config)) {}
 
-  // find optimal sequences to transform initialLines to goalLines
+  // Historical name retained: this is the transform-layer optimizer.
+  // Finds optimal sequences to transform initialLines to goalLines.
   // Uses suffix caching for cross-position sharing: when one starting position
   // finds a path through an intermediate state, the remaining commands are
   // cached so other positions reaching the same state get an instant result.

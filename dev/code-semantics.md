@@ -12,8 +12,13 @@ centralize the "hidden baggage" behind common identifiers.
 - **Sequence binding**: `KeyedSequence` plus precomputed running effort
 - **Effort**: typing difficulty only; independent of search distance
 
-- **Motion**: changes cursor position only
-- **Edit**: changes buffer contents, mode, or both
+- **Motion**: direct command that changes cursor position only
+- **Edit**: direct editing command, such as operator + motion/text-object or mode-entry
+- **Navigation / Nav**: cursor-only state transition over a fixed buffer
+- **Transform**: buffer/mode-changing state transition
+- Motion/Edit are command categories; Navigation/Transform are optimizer/result categories
+- Driving distinction: marks/search jumps are navigation without being motions, while replace/paste/join can be transforms without being direct edits
+- Current code still uses historical `Edit*` names for much of the transform layer (`EditOptimizer`, `EditBoundary`, `EditState`, `EditResult`)
 - **`ParsedMotion` / `ParsedEdit`**: parsed command with count semantics, where `count == 0` means "implicit default count of 1"
 
 - **Pos**: geometric position only (`line`, `col`)
@@ -37,12 +42,12 @@ These should be suffixes
 
 ### Practical rule
 
-- Use `Begin` / `End` for half-open ranges in edit/diff and text-slicing semantics
+- Use `Begin` / `End` for half-open ranges in transform/diff and text-slicing semantics
 - Use `First` / `Last` for inclusive motion geometry and landing semantics
 
 Common pattern:
 
-- edit/diff modules produce half-open `[rangeBegin, rangeEnd)`
+- transform/diff modules produce half-open `[rangeBegin, rangeEnd)`
 - motion modules consume inclusive `[rangeFirst, rangeLast]`
 - convert once at the module boundary (half-open -> inclusive), not inside motion internals
 
@@ -71,7 +76,7 @@ Use `Pos` for:
 
 `CursorPos` is needed only when:
 
-- the position feeds into a `MotionState` or `CompositionState` (search nodes preserve curswant)
+- the position feeds into a `NavState` or `CompositionState` (search nodes preserve curswant)
 - the position is a motion endpoint that may involve `$`, j/k, or scroll commands
 - `distanceToGoal` / `distanceToRange` uses `targetCol` for the A* heuristic
 
@@ -136,18 +141,18 @@ These terms are intentionally different and should not be collapsed.
 ### Target range
 
 - **`rangeBegin` / `rangeEnd`** defines which positions count as success
-- It is the acceptable sink region for a motion search
+- It is the acceptable sink region for a navigation search
 
 The target range is a success condition, not a movement clamp.
 
-For `MotionOptimizer` specifically:
+For `NavOptimizer` specifically:
 
 - public target type is inclusive (`CharInterval`, `[first, last]`)
-- half-open edit ranges (`CharRange`) must be converted at the composition/edit boundary
+- half-open transform ranges (`CharRange`) must be converted at the composition/transform boundary
 
 ### Boundary
 
-- **`MotionBoundary`** defines what the cursor is allowed to traverse within
+- **`NavBoundary`** defines what the cursor is allowed to traverse within
 - Boundary affects motion semantics like `$`, `0`, `^`, paragraph movement, and line availability
 
 Boundary is the navigable envelope. It is often strictly larger than the target range.
@@ -208,6 +213,8 @@ Examples:
 
 - **`editsCompleted`** means completed transitions, not "index of current edit"
 - `linesAfterNEdits_[n]` means the buffer state after exactly `n` edits
+
+These are historical code names for transform-step progress counters.
 
 Fencepost rule:
 

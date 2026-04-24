@@ -6,7 +6,7 @@
 // =============================================================================
 // BoundaryContext: Shared boundary offset/line info for constrained operations
 // =============================================================================
-// Stores the computed boundary information that both MotionBoundary and
+// Stores the computed boundary information that both NavBoundary and
 // EditBoundary need:
 // - hasLinesAbove/Below: for vertical boundary detection (gg/G, k/j escaping)
 // - leftColOffset/rightColOffset: protected column ranges at line boundaries

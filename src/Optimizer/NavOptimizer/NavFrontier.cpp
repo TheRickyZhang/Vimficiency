@@ -1,4 +1,4 @@
-#include "MotionFrontier.h"
+#include "NavFrontier.h"
 
 #include <algorithm>
 #include <optional>
@@ -10,24 +10,24 @@
 #include "Effort/RunningEffort.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizerParams.h"
-#include "Optimizer/MotionOptimizer/BufferIndex.h"
-#include "Optimizer/MotionOptimizer/MotionExplorer.h"
-#include "Optimizer/MotionOptimizer/MotionHeuristic.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizerParams.h"
-#include "Optimizer/MotionOptimizer/MotionRangeConversion.h"
-#include "Optimizer/MotionOptimizer/MotionState.h"
+#include "Optimizer/NavOptimizer/BufferIndex.h"
+#include "Optimizer/NavOptimizer/NavExplorer.h"
+#include "Optimizer/NavOptimizer/NavHeuristic.h"
+#include "Optimizer/NavOptimizer/NavOptimizerParams.h"
+#include "Optimizer/NavOptimizer/NavRangeConversion.h"
+#include "Optimizer/NavOptimizer/NavState.h"
 
 using namespace std;
 
 namespace {
 
-MotionOptimizerParams makeSingleStepParams() {
+NavOptimizerParams makeSingleStepParams() {
   CompositionOptimizerParams comp;
-  MotionOptimizerParams p;
+  NavOptimizerParams p;
   p.withFMotionThreshold(comp.fMotionThreshold)
    .withDirectionalPruning(comp.useDirectionalPruning)
-   .withLinePaddingAbove(comp.motionPaddingAbove)
-   .withLinePaddingBelow(comp.motionPaddingBelow)
+   .withLinePaddingAbove(comp.navPaddingAbove)
+   .withLinePaddingBelow(comp.navPaddingBelow)
    .withMinCountRepeat(comp.minPrefixCount)
    .withMaxCountRepeat(comp.maxPrefixCount);
   return p;
@@ -35,8 +35,8 @@ MotionOptimizerParams makeSingleStepParams() {
 
 }  // namespace
 
-vector<MotionFrontierItem> rankMotionFrontier(
-    const MotionFrontierQuery& query,
+vector<NavFrontierItem> rankNavFrontier(
+    const NavFrontierQuery& query,
     const Config& config) {
   if (query.maxCount <= 0) return {};
   if (query.targetRange.containsPos(query.cursor)) return {};
@@ -59,18 +59,18 @@ vector<MotionFrontierItem> rankMotionFrontier(
   // transitions, score each by `effort + heuristic(target)` using the
   // same scoring the full optimizer would, sort, and take top K. No full
   // search to the goal.
-  MotionOptimizerParams params = makeSingleStepParams();
+  NavOptimizerParams params = makeSingleStepParams();
   BufferIndex bufferIndex(query.lines);
-  MotionExplorer explorer(query.lines, query.navContext, query.boundary,
+  NavExplorer explorer(query.lines, query.navContext, query.boundary,
                           params, *motionRange, bufferIndex, 0);
   EffortBank bank(config);
 
   auto scoreState = [&](CursorPos pos, double effort) {
-    const double distance = MotionHeuristic::distanceToRange(*motionRange, pos);
+    const double distance = NavHeuristic::distanceToRange(*motionRange, pos);
     return params.effortWeight * effort + params.distanceWeight * distance;
   };
 
-  MotionState base(query.cursor, RunningEffort(), 0.0, 0.0);
+  NavState base(query.cursor, RunningEffort(), 0.0, 0.0);
   base.setCost(scoreState(base.getPos(), base.getEffort()));
 
   // No-op successors (landing == cursor) make no progress; filter at
@@ -91,10 +91,10 @@ vector<MotionFrontierItem> rankMotionFrontier(
   // Opt-in (`allowMultiplePerPosition == true`): accumulate every molecule
   // and dedup only by literal sequence text — surfaces `w` / `W` / `e` all
   // landing on the same cell as distinct recommendations.
-  vector<MotionState> successors;
-  unordered_map<int64_t, MotionState> bestByLanding;
+  vector<NavState> successors;
+  unordered_map<int64_t, NavState> bestByLanding;
 
-  auto emit = [&](MotionState s) {
+  auto emit = [&](NavState s) {
     if (query.allowMultiplePerPosition) {
       successors.push_back(std::move(s));
       return;
@@ -135,16 +135,16 @@ vector<MotionFrontierItem> rankMotionFrontier(
   }
   sort(successors.begin(), successors.end());
 
-  vector<MotionFrontierItem> items;
+  vector<NavFrontierItem> items;
   items.reserve(static_cast<size_t>(query.maxCount));
   unordered_set<string> seenSeq;  // only used in allow-multiple mode
-  for (const MotionState& s : successors) {
+  for (const NavState& s : successors) {
     string seq = s.getSequence().str();
     if (seq.empty()) continue;
     if (query.allowMultiplePerPosition) {
       if (!seenSeq.insert(seq).second) continue;
     }
-    items.push_back(MotionFrontierItem{
+    items.push_back(NavFrontierItem{
         .molecule = std::move(seq),
         .landingPos = s.getPos(),
         .cost = s.getEffort(),
@@ -154,17 +154,17 @@ vector<MotionFrontierItem> rankMotionFrontier(
   return items;
 }
 
-vector<MotionFrontierItem> rankMotionFrontierToLine(
+vector<NavFrontierItem> rankNavFrontierToLine(
     const Lines& lines,
     CursorPos cursor,
     int targetLine,
-    const MotionBoundary& boundary,
+    const NavBoundary& boundary,
     const NavContext& navContext,
     const Config& config,
     int maxCount) {
   if (targetLine < 0 || targetLine >= static_cast<int>(lines.size())) return {};
-  return rankMotionFrontier(
-      MotionFrontierQuery{
+  return rankNavFrontier(
+      NavFrontierQuery{
           .lines = lines,
           .cursor = cursor,
           .targetRange = CharRange(

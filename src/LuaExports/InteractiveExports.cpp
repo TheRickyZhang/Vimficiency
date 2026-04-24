@@ -1,20 +1,18 @@
 #include "LuaExports/Shared.h"
 #include "Session/Explore.h"
 
-#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 using namespace std;
 
 namespace {
 
-using Explore::Session;
-using Explore::Phase;
+using Explore::View;
 using Explore::Recommendation;
 using Explore::State;
-using Explore::Rejected;
 using Explore::Outcome;
 using vimficiency::lua_exports::ExportError;
 using vimficiency::lua_exports::ExportErrorKind;
@@ -23,17 +21,21 @@ using vimficiency::lua_exports::export_helpers::optionalText;
 using vimficiency::lua_exports::export_helpers::requiredText;
 using vimficiency::lua_exports::payload::decodeLineArray;
 
-optional<Session> g_session;
-int g_generation = 0;
+// Explore views keyed by opaque ID. Lua owns the policy deciding whether
+// a given captured session's Explore view is reused or respawned; C++ only
+// requires that IDs are unique per live view.
+unordered_map<int, View> g_views;
+int g_next_id = 0;
 
-Result<Session*> requireSession(int generation) {
-  if (!g_session || generation != g_generation) {
+Result<View*> requireView(int view_id) {
+  auto it = g_views.find(view_id);
+  if (it == g_views.end()) {
     return unexpected(ExportError{
         .kind = ExportErrorKind::InvalidValue,
-        .message = "interactive explore session not found",
+        .message = "interactive explore view not found",
     });
   }
-  return &*g_session;
+  return &it->second;
 }
 
 string encodeField(string_view field) {
@@ -59,42 +61,42 @@ string doubleField(double v) {
 // State payload. Length-prefixed fields so raw bytes in acceptedSeq survive
 // round-tripping. The trailing four ints carry the current target range
 // (-1 sentinels when not in ApproachEdit or no plan).
-string encodeState(const Session& s) {
+string encodeState(const View& v) {
   int tbRow = -1, tbCol = -1, teRow = -1, teCol = -1;
-  if (auto range = s.currentTargetRange()) {
+  if (auto range = v.currentTargetRange()) {
     tbRow = range->first.line;
     tbCol = range->first.col;
     teRow = range->second.line;
     teCol = range->second.col;
   }
-  const Explore::State& st = s.state();
+  const Explore::State& st = v.state();
   return encodeFields(
       string_view(to_string(st.step.kind)),
       string_view(intField(st.step.editIndex)),
       string_view(st.step.remainingText),
       string_view(intField(st.cursor.line)),
       string_view(intField(st.cursor.col)),
-      string_view(intField(s.totalEdits())),
+      string_view(intField(v.totalEdits())),
       string_view(doubleField(st.acceptedCost)),
       string_view(st.acceptedSeq),
       string_view(intField(st.acceptedRevision)),
-      string_view(intField(s.canUndo() ? 1 : 0)),
-      string_view(intField(s.canRedo() ? 1 : 0)),
+      string_view(intField(v.canUndo() ? 1 : 0)),
+      string_view(intField(v.canRedo() ? 1 : 0)),
       string_view(intField(tbRow)),
       string_view(intField(tbCol)),
       string_view(intField(teRow)),
       string_view(intField(teCol)));
 }
 
-// Apply-result payload. Two statuses only — "Applied" and "Rejected". Session
+// Apply-result payload. Two statuses only — "Applied" and "Rejected". View
 // state (phase, cursor, seq, cost) is echoed inline so Lua can treat the
 // apply response as a state refresh in one call. `crossed` = crossed an edit
 // boundary (useful for Lua's decide-to-rewrite-scratch decision).
-string encodeOutcome(const Session& s, const Outcome& outcome) {
+string encodeOutcome(const View& v, const Outcome& outcome) {
   const char* status = outcome.has_value() ? "Applied" : "Rejected";
   const int crossed = (outcome.has_value() && outcome.value().crossedEditBoundary) ? 1 : 0;
   const string& reason = outcome.has_value() ? string() : outcome.error().reason;
-  const Explore::State& st = s.state();
+  const Explore::State& st = v.state();
   return encodeFields(
       string_view(status),
       string_view(to_string(st.step.kind)),
@@ -160,7 +162,7 @@ Result<string> startImpl(
   const CursorPos initialPos(start_row, start_col);
   const CursorPos goalPos(end_row, end_col);
 
-  MotionBoundary boundary(
+  NavBoundary boundary(
       initialLines,
       CursorPos(0, boundary_first_col),
       CursorPos(static_cast<int>(initialLines.size()) - 1, boundary_last_col + 1),
@@ -170,7 +172,9 @@ Result<string> startImpl(
   NavContext navContext(window_height, scroll_amount);
   const string_view userSeq = optionalText(user_seq);
 
-  g_session.emplace(
+  const int view_id = ++g_next_id;
+  g_views.try_emplace(
+      view_id,
       std::move(initialLines),
       initialPos,
       std::move(goalLines),
@@ -179,8 +183,7 @@ Result<string> startImpl(
       navContext,
       vimficiency::lua_exports::g_config_internal,
       userSeq);
-  ++g_generation;
-  return to_string(g_generation);
+  return to_string(view_id);
 }
 
 }  // namespace
@@ -218,30 +221,28 @@ const char* vimficiency_explore_start(
   });
 }
 
-int vimficiency_explore_destroy(int generation) {
-  if (!g_session || generation != g_generation) return 0;
-  g_session.reset();
-  return 1;
+int vimficiency_explore_destroy(int view_id) {
+  return static_cast<int>(g_views.erase(view_id));
 }
 
-const char* vimficiency_explore_state(int generation) {
+const char* vimficiency_explore_state(int view_id) {
   static string storage;
   return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
-    return requireSession(generation).transform(
-        [](Session* s) { return encodeState(*s); });
+    return requireView(view_id).transform(
+        [](View* v) { return encodeState(*v); });
   });
 }
 
 const char* vimficiency_explore_recommendations(
-    int generation,
+    int view_id,
     int max_count,
     bool allow_multiple_motions_per_position,
     bool allow_multiple_edits_per_position) {
   static string storage;
   return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
-    return requireSession(generation).transform(
-        [&](Session* s) {
-          return encodeRecommendations(s->recommendations(
+    return requireView(view_id).transform(
+        [&](View* v) {
+          return encodeRecommendations(v->recommendations(
               max_count,
               allow_multiple_motions_per_position,
               allow_multiple_edits_per_position));
@@ -249,74 +250,74 @@ const char* vimficiency_explore_recommendations(
   });
 }
 
-const char* vimficiency_explore_apply_motion(int generation, const char* motion_text) {
+const char* vimficiency_explore_apply_motion(int view_id, const char* motion_text) {
   static string storage;
   return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
-    return requireSession(generation).and_then(
-        [&](Session* s) -> vimficiency::lua_exports::Result<string> {
+    return requireView(view_id).and_then(
+        [&](View* v) -> vimficiency::lua_exports::Result<string> {
           return requiredText(motion_text, "motion_text").transform(
               [&](string_view text) {
-                auto outcome = s->applyMotion(text);
-                return encodeOutcome(*s, outcome);
+                auto outcome = v->applyMotion(text);
+                return encodeOutcome(*v, outcome);
               });
         });
   });
 }
 
 const char* vimficiency_explore_accept_cursor_move(
-    int generation, int new_row, int new_col, const char* raw_keys) {
+    int view_id, int new_row, int new_col, const char* raw_keys) {
   static string storage;
   return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
-    return requireSession(generation).transform(
-        [&](Session* s) {
-          auto outcome = s->acceptCursorMove(CursorPos(new_row, new_col), optionalText(raw_keys));
-          return encodeOutcome(*s, outcome);
+    return requireView(view_id).transform(
+        [&](View* v) {
+          auto outcome = v->acceptCursorMove(CursorPos(new_row, new_col), optionalText(raw_keys));
+          return encodeOutcome(*v, outcome);
         });
   });
 }
 
 const char* vimficiency_explore_accept_buffer_state(
-    int generation,
+    int view_id,
     const char* encoded_lines,
     int new_row,
     int new_col,
     const char* raw_keys) {
   static string storage;
   return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
-    return requireSession(generation).and_then(
-        [&](Session* s) -> vimficiency::lua_exports::Result<string> {
+    return requireView(view_id).and_then(
+        [&](View* v) -> vimficiency::lua_exports::Result<string> {
           return requiredText(encoded_lines, "encoded_lines")
               .and_then(decodeLineArray)
               .transform([&](const Lines& newLines) {
-                auto outcome = s->acceptBufferState(
+                auto outcome = v->acceptBufferState(
                     newLines, CursorPos(new_row, new_col), optionalText(raw_keys));
-                return encodeOutcome(*s, outcome);
+                return encodeOutcome(*v, outcome);
               });
         });
   });
 }
 
-const char* vimficiency_explore_apply_edit(int generation, const char* text) {
+const char* vimficiency_explore_apply_edit(int view_id, const char* text) {
   static string storage;
   return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
-    return requireSession(generation).and_then(
-        [&](Session* s) -> vimficiency::lua_exports::Result<string> {
+    return requireView(view_id).and_then(
+        [&](View* v) -> vimficiency::lua_exports::Result<string> {
           return requiredText(text, "text").transform(
               [&](string_view edit_text) {
-                auto outcome = s->applyEdit(edit_text);
-                return encodeOutcome(*s, outcome);
+                auto outcome = v->applyEdit(edit_text);
+                return encodeOutcome(*v, outcome);
               });
         });
   });
 }
 
-const char* vimficiency_explore_current_lines(int generation) {
+const char* vimficiency_explore_current_lines(int view_id) {
   static string storage;
   return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
-    return requireSession(generation).transform(
-        [](Session* s) {
+    return requireView(view_id).transform(
+        [](View* v) {
           string out;
-          for (const auto& line : s->state().lines) {
+          for (const auto& line : v->state().lines) {
             out += to_string(line.size()) + ":" + string(line);
           }
           return out;
@@ -324,93 +325,93 @@ const char* vimficiency_explore_current_lines(int generation) {
   });
 }
 
-const char* vimficiency_explore_begin_edit(int generation, bool enters_insert_mode,
+const char* vimficiency_explore_begin_edit(int view_id, bool enters_insert_mode,
                                            const char* required_typed_text) {
   static string storage;
   return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
-    return requireSession(generation).transform(
-        [&](Session* s) {
-          auto outcome = s->beginEdit(enters_insert_mode, optionalText(required_typed_text));
-          return encodeOutcome(*s, outcome);
+    return requireView(view_id).transform(
+        [&](View* v) {
+          auto outcome = v->beginEdit(enters_insert_mode, optionalText(required_typed_text));
+          return encodeOutcome(*v, outcome);
         });
   });
 }
 
-const char* vimficiency_explore_insert_text(int generation, const char* typed_chunk) {
+const char* vimficiency_explore_insert_text(int view_id, const char* typed_chunk) {
   static string storage;
   return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
-    return requireSession(generation).and_then(
-        [&](Session* s) -> vimficiency::lua_exports::Result<string> {
+    return requireView(view_id).and_then(
+        [&](View* v) -> vimficiency::lua_exports::Result<string> {
           return requiredText(typed_chunk, "typed_chunk").transform(
               [&](string_view chunk) {
-                auto outcome = s->consumeInsertText(chunk);
-                return encodeOutcome(*s, outcome);
+                auto outcome = v->consumeInsertText(chunk);
+                return encodeOutcome(*v, outcome);
               });
         });
   });
 }
 
-const char* vimficiency_explore_exit_insert(int generation) {
+const char* vimficiency_explore_exit_insert(int view_id) {
   static string storage;
   return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
-    return requireSession(generation).transform(
-        [](Session* s) {
-          auto outcome = s->exitInsertMode();
-          return encodeOutcome(*s, outcome);
+    return requireView(view_id).transform(
+        [](View* v) {
+          auto outcome = v->exitInsertMode();
+          return encodeOutcome(*v, outcome);
         });
   });
 }
 
 const char* vimficiency_explore_accept_insert_exit(
-    int generation,
+    int view_id,
     const char* encoded_lines,
     int new_row,
     int new_col,
     const char* raw_keys) {
   static string storage;
   return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
-    return requireSession(generation).and_then(
-        [&](Session* s) -> vimficiency::lua_exports::Result<string> {
+    return requireView(view_id).and_then(
+        [&](View* v) -> vimficiency::lua_exports::Result<string> {
           return requiredText(encoded_lines, "encoded_lines")
               .and_then(decodeLineArray)
               .transform([&](const Lines& newLines) {
-                auto outcome = s->acceptInsertExit(
+                auto outcome = v->acceptInsertExit(
                     newLines, CursorPos(new_row, new_col), optionalText(raw_keys));
-                return encodeOutcome(*s, outcome);
+                return encodeOutcome(*v, outcome);
               });
         });
   });
 }
 
-const char* vimficiency_explore_cancel_pending_insert(int generation) {
+const char* vimficiency_explore_cancel_pending_insert(int view_id) {
   static string storage;
   return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
-    return requireSession(generation).transform(
-        [](Session* s) {
-          auto outcome = s->cancelPendingInsert();
-          return encodeOutcome(*s, outcome);
+    return requireView(view_id).transform(
+        [](View* v) {
+          auto outcome = v->cancelPendingInsert();
+          return encodeOutcome(*v, outcome);
         });
   });
 }
 
-const char* vimficiency_explore_undo(int generation) {
+const char* vimficiency_explore_undo(int view_id) {
   static string storage;
   return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
-    return requireSession(generation).transform(
-        [](Session* s) {
-          auto outcome = s->undo();
-          return encodeOutcome(*s, outcome);
+    return requireView(view_id).transform(
+        [](View* v) {
+          auto outcome = v->undo();
+          return encodeOutcome(*v, outcome);
         });
   });
 }
 
-const char* vimficiency_explore_redo(int generation) {
+const char* vimficiency_explore_redo(int view_id) {
   static string storage;
   return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
-    return requireSession(generation).transform(
-        [](Session* s) {
-          auto outcome = s->redo();
-          return encodeOutcome(*s, outcome);
+    return requireView(view_id).transform(
+        [](View* v) {
+          auto outcome = v->redo();
+          return encodeOutcome(*v, outcome);
         });
   });
 }
