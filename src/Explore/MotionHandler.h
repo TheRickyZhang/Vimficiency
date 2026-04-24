@@ -4,6 +4,7 @@
 #include <string>
 #include <string_view>
 
+#include "Boundary/NavBoundary.h"
 #include "Rejected.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
@@ -25,11 +26,17 @@ std::expected<MotionSuccess, Rejected> applyMotion(
     const Lines& lines,
     CursorPos cursor,
     std::string_view text,
+    const NavBoundary& boundary,
     const NavContext& navContext);
 
 // Trust-me cursor sync. `rawKeys` is appended only if it parses as a motion
 // sequence (keeps unknown bytes out of the view's seq/cost tokenizer).
-// Cannot fail.
-MotionSuccess acceptCursorMove(CursorPos newCursor, std::string_view rawKeys);
+std::expected<MotionSuccess, Rejected> acceptCursorMove(
+    const Lines& lines,
+    CursorPos oldCursor,
+    CursorPos newCursor,
+    std::string_view rawKeys,
+    const NavBoundary& boundary,
+    const NavContext& navContext);
 
 }  // namespace Explore::MotionHandler

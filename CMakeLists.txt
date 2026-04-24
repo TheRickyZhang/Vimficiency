@@ -60,6 +60,7 @@ file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
     src/Keyboard/*.cpp
     src/Optimizer/*.cpp
     src/Session/*.cpp
+    src/Explore/*.cpp
     src/Utils/*.cpp
     src/VimCore/*.cpp
     src/Types/*.cpp

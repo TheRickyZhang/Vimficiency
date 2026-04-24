@@ -1,4 +1,4 @@
-// tests/Session/ExploreTest.cpp
+// tests/Explore/ExploreTest.cpp
 //
 // Tests for Explore::View: phase machine + recommendations + applyMotion
 // + strict-revert buffer-state flow. Invalid phase is not a reachable state
@@ -20,7 +20,7 @@
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Optimizer/NavOptimizer/NavRangeConversion.h"
 #include "Optimizer/Result.h"
-#include "Session/Explore.h"
+#include "Explore/Explore.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 #include "Types/NavContext.h"
@@ -45,6 +45,16 @@ protected:
     return Explore::View(std::move(initial), initialPos, std::move(goal),
                          goalPos, std::move(boundary), navContext, config);
   }
+
+  Explore::View makeViewWithBoundary(Lines initial, CursorPos initialPos, Lines goal,
+                                     CursorPos goalPos, CursorPos boundaryBegin,
+                                     CursorPos boundaryEnd) {
+    NavBoundary boundary(initial, boundaryBegin, boundaryEnd,
+                         /*hasLinesAbove=*/false,
+                         /*hasLinesBelow=*/false);
+    return Explore::View(std::move(initial), initialPos, std::move(goal),
+                         goalPos, std::move(boundary), navContext, config);
+  }
 };
 
 TEST_F(ExploreViewTest, CompletedWhenInitialEqualsGoal) {
@@ -53,6 +63,36 @@ TEST_F(ExploreViewTest, CompletedWhenInitialEqualsGoal) {
 
   EXPECT_EQ(view.step().kind, Explore::Phase::Completed);
   EXPECT_EQ(view.totalEdits(), 0);
+  EXPECT_TRUE(view.recommendations(5).empty());
+}
+
+TEST_F(ExploreViewTest, PureMotionGoalStartsInApproachEdit) {
+  Lines lines{Line("foo bar baz")};
+  auto view = makeView(lines, {0, 0}, lines, {0, 4});
+
+  EXPECT_EQ(view.step().kind, Explore::Phase::ApproachEdit);
+  EXPECT_EQ(view.totalEdits(), 0);
+
+  auto range = view.currentTargetRange();
+  ASSERT_TRUE(range.has_value());
+  EXPECT_EQ(range->first, CursorPos(0, 4));
+  EXPECT_EQ(range->second, CursorPos(0, 4));
+
+  auto recs = view.recommendations(5);
+  ASSERT_FALSE(recs.empty());
+  EXPECT_TRUE(any_of(recs.begin(), recs.end(), [](const auto& rec) {
+    return rec.kind == "motion" && rec.landingRow == 0 && rec.landingCol == 4;
+  }));
+}
+
+TEST_F(ExploreViewTest, PureMotionGoalCompletesWhenCursorReachesGoal) {
+  Lines lines{Line("foo bar baz")};
+  auto view = makeView(lines, {0, 0}, lines, {0, 4});
+
+  ASSERT_TRUE(view.applyMotion("w").has_value());
+  EXPECT_EQ(view.step().kind, Explore::Phase::Completed);
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 4));
+  EXPECT_EQ(view.state().acceptedSeq, "w");
   EXPECT_TRUE(view.recommendations(5).empty());
 }
 
@@ -120,6 +160,46 @@ TEST_F(ExploreViewTest, ApplyMotionRejectsMalformedInput) {
   EXPECT_FALSE(view.canUndo());
 }
 
+TEST_F(ExploreViewTest, ApplyMotionRejectsBoundaryEscape) {
+  Lines lines{Line("prefix body suffix")};
+  auto view = makeViewWithBoundary(lines, {0, 7}, lines, {0, 10},
+                                   CursorPos(0, 7), CursorPos(0, 11));
+
+  auto outcome = view.applyMotion("$");
+  ASSERT_FALSE(outcome.has_value());
+  EXPECT_EQ(outcome.error().reason, "motion landed outside the allowed boundary");
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 7));
+  EXPECT_TRUE(view.state().acceptedSeq.empty());
+  EXPECT_FALSE(view.canUndo());
+}
+
+TEST_F(ExploreViewTest, AcceptCursorMoveRejectsBoundaryEscape) {
+  Lines lines{Line("prefix body suffix")};
+  auto view = makeViewWithBoundary(lines, {0, 7}, lines, {0, 10},
+                                   CursorPos(0, 7), CursorPos(0, 11));
+
+  auto outcome = view.acceptCursorMove(CursorPos(0, 16), "");
+  ASSERT_FALSE(outcome.has_value());
+  EXPECT_EQ(outcome.error().reason, "motion landed outside the allowed boundary");
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 7));
+  EXPECT_TRUE(view.state().acceptedSeq.empty());
+  EXPECT_FALSE(view.canUndo());
+}
+
+TEST_F(ExploreViewTest, AcceptCursorMoveRejectsMismatchedRawKeys) {
+  Lines initial{Line("foo bar baz qux")};
+  Lines goal{Line("foo bar baz QUX")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 14});
+
+  auto outcome = view.acceptCursorMove(CursorPos(0, 4), "l");
+  ASSERT_FALSE(outcome.has_value());
+  EXPECT_EQ(outcome.error().reason,
+            "raw motion keys did not produce the observed cursor move");
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 0));
+  EXPECT_TRUE(view.state().acceptedSeq.empty());
+  EXPECT_FALSE(view.canUndo());
+}
+
 TEST_F(ExploreViewTest, UndoRestoresPriorCursorAndSequence) {
   Lines initial{Line("foo bar baz qux")};
   Lines goal{Line("foo bar baz QUX")};
@@ -178,6 +258,20 @@ TEST_F(ExploreViewTest, OutOfScopeEditRejectedWithoutStateChange) {
   ASSERT_FALSE(outcome.has_value());
   EXPECT_EQ(view.acceptedRevision(), priorRevision);
   EXPECT_EQ(view.step().kind, Explore::Phase::ApproachEdit);
+}
+
+TEST_F(ExploreViewTest, AcceptBufferStateRejectsInvalidCursor) {
+  Lines initial{Line("abc")};
+  Lines goal{Line("aBc")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 1});
+
+  auto outcome = view.acceptBufferState(goal, CursorPos(0, 99), "rB");
+  ASSERT_FALSE(outcome.has_value());
+  EXPECT_EQ(outcome.error().reason,
+            "buffer state reported an invalid cursor position");
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 0));
+  EXPECT_EQ(view.state().lines, initial);
+  EXPECT_TRUE(view.state().acceptedSeq.empty());
 }
 
 TEST(EditSequenceDecomposition, SplitsImmediateMoleculeAndInsertTail) {

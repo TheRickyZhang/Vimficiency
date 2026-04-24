@@ -131,6 +131,14 @@ vector<Recommendation> backfillEditStartMotions(
   return recs;
 }
 
+bool isCursorOnConcreteBufferCell(const Lines& lines, const CursorPos& pos) {
+  if (pos.line < 0 || pos.line >= static_cast<int>(lines.size())) return false;
+  const int maxCol = lines[pos.line].empty()
+      ? 0
+      : static_cast<int>(lines[pos.line].size()) - 1;
+  return pos.col >= 0 && pos.col <= maxCol;
+}
+
 }
 
 // =============================================================================
@@ -173,7 +181,9 @@ View::View(
   state_.cursor = initialPos;
 
   if (initialLines == goalLines_) {
-    // Pure motion goals aren't the explore use case; treat as already done.
+    if (initialPos != goalPos_) {
+      state_.step = Step::approachEdit(0);
+    }
     totalEdits_ = 0;
     return;
   }
@@ -201,6 +211,9 @@ View::View(
 
 optional<pair<CursorPos, CursorPos>> View::currentTargetRange() const {
   if (state_.step.kind != Phase::ApproachEdit) return nullopt;
+  if (isPureMotionApproach()) {
+    return make_pair(goalPos_, goalPos_);
+  }
   if (!plan_) return nullopt;
   const int i = state_.step.editIndex;
   assert(i >= 0 && i < totalEdits_ && "ApproachEdit editIndex out of plan range");
@@ -214,6 +227,25 @@ vector<Recommendation> View::recommendations(
     bool allowMultipleEditsPerPosition) const {
   if (maxCount <= 0) return {};
   if (state_.step.kind != Phase::ApproachEdit) return {};
+  if (isPureMotionApproach()) {
+    auto navItems = rankNavFrontier(
+        NavFrontierQuery{
+            .lines = state_.lines,
+            .cursor = state_.cursor,
+            .targetRange = CharRange(goalPos_, goalPos_),
+            .boundary = boundary_,
+            .navContext = navContext_,
+            .maxCount = maxCount,
+            .allowMultiplePerPosition = allowMultipleMotionsPerPosition,
+        },
+        config_);
+    vector<Recommendation> recs;
+    recs.reserve(navItems.size());
+    for (const NavFrontierItem& item : navItems) {
+      recs.push_back(toRecommendation(item));
+    }
+    return recs;
+  }
   if (!plan_) return {};
 
   const int editIndex = state_.step.editIndex;
@@ -318,6 +350,14 @@ expected<int, Rejected> View::requirePendingInsert(string_view action) const {
   return state_.step.editIndex;
 }
 
+bool View::isPureMotionApproach() const {
+  return state_.step.kind == Phase::ApproachEdit &&
+         totalEdits_ == 0 &&
+         !plan_ &&
+         state_.lines == goalLines_ &&
+         state_.cursor != goalPos_;
+}
+
 Applied View::afterEditCompleted(State next) {
   const int nextEdit = next.step.editIndex + 1;
   if (nextEdit >= totalEdits_) {
@@ -339,13 +379,16 @@ Outcome View::applyMotion(string_view motionText) {
   if (!gated) return unexpected(std::move(gated.error()));
 
   auto eff = MotionHandler::applyMotion(
-      state_.lines, state_.cursor, motionText, navContext_);
+      state_.lines, state_.cursor, motionText, boundary_, navContext_);
   if (!eff) return unexpected(std::move(eff.error()));
 
   State next = state_;
   next.cursor = eff->newCursor;
   next.acceptedSeq.append(std::move(eff->appendedSeq));
   next.acceptedCost = getEffort(next.acceptedSeq, config_);
+  if (isPureMotionApproach() && next.cursor == goalPos_) {
+    next.step = Step::completed();
+  }
   next.acceptedRevision++;
   return commit(std::move(next));
 }
@@ -354,13 +397,18 @@ Outcome View::acceptCursorMove(CursorPos newCursor, string_view rawKeys) {
   auto gated = requireApproachEdit("cursor moves");
   if (!gated) return unexpected(std::move(gated.error()));
 
-  auto eff = MotionHandler::acceptCursorMove(newCursor, rawKeys);
+  auto eff = MotionHandler::acceptCursorMove(
+      state_.lines, state_.cursor, newCursor, rawKeys, boundary_, navContext_);
+  if (!eff) return unexpected(std::move(eff.error()));
 
   State next = state_;
-  next.cursor = eff.newCursor;
-  if (!eff.appendedSeq.empty()) {
-    next.acceptedSeq.append(std::move(eff.appendedSeq));
+  next.cursor = eff->newCursor;
+  if (!eff->appendedSeq.empty()) {
+    next.acceptedSeq.append(std::move(eff->appendedSeq));
     next.acceptedCost = getEffort(next.acceptedSeq, config_);
+  }
+  if (isPureMotionApproach() && next.cursor == goalPos_) {
+    next.step = Step::completed();
   }
   next.acceptedRevision++;
   return commit(std::move(next));
@@ -369,9 +417,11 @@ Outcome View::acceptCursorMove(CursorPos newCursor, string_view rawKeys) {
 Outcome View::applyEdit(string_view text) {
   auto gated = requireApproachEdit("edits");
   if (!gated) return unexpected(std::move(gated.error()));
+  if (!plan_) {
+    return unexpected(Rejected{"edits are not accepted for motion-only goals"});
+  }
   const int editIndex = *gated;
 
-  assert(plan_ && "applyEdit after construction without a plan");
   const auto step = plan_->stepAt(editIndex);
   auto eff = EditHandler::applyEdit(step.editResult, state_.cursor, text);
   if (!eff) return unexpected(std::move(eff.error()));
@@ -388,9 +438,11 @@ Outcome View::acceptBufferState(
     const Lines& newLines, CursorPos newCursor, string_view rawKeys) {
   auto gated = requireApproachEdit("buffer state changes");
   if (!gated) return unexpected(std::move(gated.error()));
+  if (!plan_) {
+    return unexpected(Rejected{"buffer state changes are not accepted for motion-only goals"});
+  }
   const int editIndex = *gated;
 
-  assert(plan_ && "acceptBufferState after construction without a plan");
   const auto step = plan_->stepAt(editIndex);
 
   auto eff = EditHandler::validateBufferState(
@@ -398,6 +450,9 @@ Outcome View::acceptBufferState(
       step.preFencepost,
       step.postFencepost);
   if (!eff) return unexpected(std::move(eff.error()));
+  if (!isCursorOnConcreteBufferCell(newLines, newCursor)) {
+    return unexpected(Rejected{"buffer state reported an invalid cursor position"});
+  }
 
   State next = state_;
   next.cursor = newCursor;
@@ -421,6 +476,9 @@ Outcome View::acceptBufferState(
 Outcome View::beginEdit(bool entersInsertMode, string_view requiredTypedText) {
   auto gated = requireApproachEdit("edits");
   if (!gated) return unexpected(std::move(gated.error()));
+  if (!plan_) {
+    return unexpected(Rejected{"edits are not accepted for motion-only goals"});
+  }
   const int editIndex = *gated;
 
   State next = state_;

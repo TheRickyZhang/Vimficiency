@@ -1,4 +1,4 @@
-// tests/Session/FixtureIntegrationTest.cpp
+// tests/Explore/FixtureIntegrationTest.cpp
 //
 // Integration tests for Explore::View driven by canonical saved-session
 // JSON fixtures. Each fixture mirrors the real on-disk schema written by
@@ -12,12 +12,12 @@
 
 #include "Boundary/NavBoundary.h"
 #include "Keyboard/Config.h"
-#include "Session/Explore.h"
+#include "Explore/Explore.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 #include "Types/NavContext.h"
 
-#include "Session/FixtureLoader.h"
+#include "Explore/FixtureLoader.h"
 
 using namespace std;
 

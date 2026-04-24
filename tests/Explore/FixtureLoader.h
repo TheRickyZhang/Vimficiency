@@ -33,7 +33,7 @@ struct Fixture {
 };
 
 // Load a fixture JSON by bare name (no extension). The file is resolved
-// relative to tests/Session/fixtures/.
+// relative to tests/Explore/fixtures/.
 Fixture loadFixture(std::string_view name);
 
 }  // namespace ExploreFixtures

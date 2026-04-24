@@ -246,6 +246,10 @@ private:
   // Gate helper: succeed iff step is PendingInsert, returning the edit index.
   std::expected<int, Rejected> requirePendingInsert(std::string_view action) const;
 
+  // True when Explore is guiding only cursor motion because the buffer
+  // already matches the goal text and there is no edit plan to execute.
+  bool isPureMotionApproach() const;
+
   // Advance phase after an edit completes: ApproachEdit(i) → ApproachEdit(i+1)
   // (snapping lines to the next fencepost) or Completed at end of plan.
   Applied afterEditCompleted(State next);
