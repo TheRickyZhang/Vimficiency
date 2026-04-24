@@ -76,15 +76,15 @@ subcommands.close = {
 
 subcommands.play = {
   desc = "Play your sequence side-by-side with the optimizer's suggestions",
-  usage = "play <alias> [count]",
+  usage = "play <alias> [windows]",
   fn = function(args)
     local alias = args[1]
-    local count = args[2] and tonumber(args[2]) or nil
+    local window_count = args[2] and tonumber(args[2]) or nil
     if not alias or alias == "" then
-      vim.notify("Usage: Vimfy play <alias> [count]", vim.log.levels.ERROR)
+      vim.notify("Usage: Vimfy play <alias> [windows]  (1..4)", vim.log.levels.ERROR)
       return
     end
-    session.simulate(alias, count)
+    session.simulate(alias, window_count)
   end,
 }
 

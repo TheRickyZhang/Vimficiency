@@ -734,6 +734,16 @@ static vector<CompositionExploreCase> collectCompositionCases() {
 // Main
 // =============================================================================
 
+// Build-time guard: this binary exists to produce dashboard-facing state
+// traces, so building it without state tracking would silently generate
+// empty `states: []` JSON that the dashboard can't visualize. The assert
+// fires at build time of this translation unit — a mistyped flag in
+// CMake/CI cannot sneak an instrumentation-less explore binary through.
+static_assert(SEARCH_TRACE_STATS_ENABLED,
+              "vimficiency_explore must be built with -DVIMF_TRACK_STATES=ON; "
+              "without it, exploredStates_ stays empty and the dashboard "
+              "exploration tree/charts cannot render.");
+
 int main() {
   auto& seedMgr = SeedManager::instance();
   cout << "Exploration collector\n";

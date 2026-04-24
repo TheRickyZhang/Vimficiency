@@ -287,11 +287,7 @@ function M.open(rows, on_change, opts)
     title_pos = "center",
     noautocmd = true,
   })
-  vim.wo[win].wrap = false
-  vim.wo[win].cursorline = true
-  vim.wo[win].number = false
-  vim.wo[win].relativenumber = false
-  vim.wo[win].signcolumn = "no"
+  util.configure_scratch_window(win, { cursorline = true })
   place_cursor(win)
 
   local function close_popup()

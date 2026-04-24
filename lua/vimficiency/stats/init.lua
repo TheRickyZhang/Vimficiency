@@ -8,6 +8,7 @@ local v = vim.api
 local log = require("vimficiency.stats.log")
 local ffi_lib = require("vimficiency.ffi")
 local session_store = require("vimficiency.session.store")
+local util = require("vimficiency.util")
 
 local M = {}
 
@@ -357,8 +358,7 @@ function M.open()
     border = "rounded", style = "minimal",
     title = " Vimficiency Stats ", title_pos = "center",
   })
-  vim.wo[win].wrap = false
-  vim.wo[win].cursorline = false
+  util.configure_scratch_window(win)
 
   local function close()
     pcall(v.nvim_win_close, win, true)

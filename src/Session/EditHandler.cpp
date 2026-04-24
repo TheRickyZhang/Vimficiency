@@ -6,45 +6,38 @@ using namespace std;
 
 namespace Explore::EditHandler {
 
-BufferStateEffect validateBufferState(
+std::expected<BufferStateSuccess, Rejected> validateBufferState(
     const Lines& newLines,
     const Lines& currentFencepost,
     const Lines& nextFencepost) {
-  BufferStateEffect eff;
   if (newLines == nextFencepost) {
-    eff.accepted = true;
-    eff.advance = true;
-    return eff;
+    return BufferStateSuccess{.advance = true};
   }
   if (newLines == currentFencepost) {
-    eff.accepted = true;
-    eff.advance = false;
-    return eff;
+    return BufferStateSuccess{.advance = false};
   }
-  eff.rejectReason = "buffer state drifted outside the planned edit scope";
-  return eff;
+  return std::unexpected(
+      Rejected{"buffer state drifted outside the planned edit scope"});
 }
 
-ApplyEditEffect applyEdit(
+std::expected<EditSuccess, Rejected> applyEdit(
     const EditResult& editResult,
     CursorPos cursor,
     std::string_view text) {
-  ApplyEditEffect eff;
   if (text.empty()) {
-    eff.rejectReason = "edit text must be non-empty";
-    return eff;
+    return std::unexpected(Rejected{"edit text must be non-empty"});
   }
   // MIRROR: match against EditResult::resultsAt — the planned edit-start set.
   std::span<const ::Result> starts = editResult.resultsAt(cursor.line, cursor.col);
   for (const ::Result& r : starts) {
     if (r.isValid() && r.getSequence().view() == text) {
-      eff.accepted = true;
-      eff.postCursor = editResult.goalPosAt(cursor.line, cursor.col);
-      return eff;
+      return EditSuccess{
+          .postCursor = editResult.goalPosAt(cursor.line, cursor.col),
+      };
     }
   }
-  eff.rejectReason = "edit command is not part of the planned edit scope at this cursor";
-  return eff;
+  return std::unexpected(Rejected{
+      "edit command is not part of the planned edit scope at this cursor"});
 }
 
 }  // namespace Explore::EditHandler

@@ -11,6 +11,7 @@
 #include "Boundary/MotionBoundary.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
+#include "Rejected.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 #include "Types/NavContext.h"
@@ -125,12 +126,6 @@ struct State {
 // Session::state() — no copy bundled into the result.
 struct Applied {
   bool crossedEditBoundary = false;
-};
-
-// Rejections return the reason. State is guaranteed unchanged when the
-// session returns a Rejected outcome.
-struct Rejected {
-  std::string reason;
 };
 
 using Outcome = std::expected<Applied, Rejected>;

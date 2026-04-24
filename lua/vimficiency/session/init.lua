@@ -8,6 +8,7 @@ local key_tracking = require("vimficiency.capture.key_tracking")
 local ffi_lib = require("vimficiency.ffi")
 local session_store = require("vimficiency.session.store")
 local result_view = require("vimficiency.session.result_view")
+local sequence_display = require("vimficiency.sequence_display")
 
 local M = {}
 
@@ -987,10 +988,10 @@ function M.close(alias)
 end
 
 ---@param alias string  Session alias or saved filename to simulate.
----@param count integer|nil  How many optimal results to show (default: 1 —
---- paired with the user's sequence, this gives a clean side-by-side
---- "yours vs. best" pane. Pass an explicit count to see more optimal
---- alternatives; the sim layout caps at 8 windows total.
+---@param count integer|nil  One-shot override for the total number of
+--- side-by-side panes (1..4). When omitted, the settings-store
+--- `window_count` is used (defaults to 2). The user pane — when
+--- `include_user_sequence` is on — consumes one of the slots.
 function M.simulate(alias, count)
   if not alias or alias == "" then
     vim.notify("simulate() requires a session alias or saved name", vim.log.levels.ERROR)
@@ -1054,51 +1055,26 @@ function M.simulate(alias, count)
     return c and string.format("%.2f", c) or nil
   end
 
-  -- Item builder, closed over `result` + the initial explicit `count`
-  -- override. Play settings are read on every call (not captured) so
-  -- toggles from the `gs` modal take effect on the next
-  -- `simulate.refresh_current_items()`. The one-shot `count` arg is
-  -- dropped on refresh — the settings store wins when the user has
-  -- started fiddling with preferences.
-  ---@param use_initial_count boolean
-  ---@return VimficiencyReplayItem[]
-  local function build_items(use_initial_count)
-    local play_settings = require("vimficiency.play").get_settings()
-    local items = {}
-    local user_seq = result.user_seq or ""
-    local optimal_results = result.optimal_results or {}
-    local first_optimal = optimal_results[1] and optimal_results[1].seq or ""
+  -- Build the full sequence pool once. simulate owns the display policy
+  -- (which pane shows what, how many panes are visible) and reads play
+  -- settings internally, so session does not need a refresh hook.
+  local optimal_results = result.optimal_results or {}
+  local user_seq = result.user_seq or ""
+  local first_optimal = optimal_results[1] and optimal_results[1].seq or ""
 
-    if play_settings.include_user_sequence
-       and user_seq ~= "" and user_seq ~= first_optimal then
-      table.insert(items, { seq = user_seq, cost = fmt_cost(result.user_cost) })
-    end
-
-    local num_to_show = (use_initial_count and count)
-      or play_settings.default_result_count
-      or 1
-    for i = 1, math.min(num_to_show, #optimal_results) do
-      local r = optimal_results[i]
-      table.insert(items, { seq = r.seq, cost = fmt_cost(r.cost) })
-    end
-
-    -- Cap at the grid's window budget (4×2 layout). Trim from the tail
-    -- so the user's sequence (always first, if present) and the
-    -- highest-ranked optimal results survive.
-    local MAX_SIM_WINDOWS = 8
-    if #items > MAX_SIM_WINDOWS then
-      local dropped = #items - MAX_SIM_WINDOWS
-      for _ = 1, dropped do table.remove(items) end
-      vim.notify(string.format(
-        "vimficiency sim: showing %d of %d requested sequences (layout caps at %d).",
-        MAX_SIM_WINDOWS, MAX_SIM_WINDOWS + dropped, MAX_SIM_WINDOWS),
-        vim.log.levels.WARN)
-    end
-    return items
+  ---@type { seq: string, cost: string? } | nil
+  local user_item = nil
+  if user_seq ~= "" and user_seq ~= first_optimal then
+    user_item = { seq = user_seq, cost = fmt_cost(result.user_cost) }
   end
 
-  local items = build_items(true)
-  if #items == 0 then
+  ---@type { seq: string, cost: string? }[]
+  local suggestions = {}
+  for _, r in ipairs(optimal_results) do
+    table.insert(suggestions, { seq = r.seq, cost = fmt_cost(r.cost) })
+  end
+
+  if user_item == nil and #suggestions == 0 then
     vim.notify("No sequences to simulate", vim.log.levels.WARN)
     return
   end
@@ -1107,15 +1083,18 @@ function M.simulate(alias, count)
     result.lines,
     result.start_row,
     result.start_col,
-    items,
+    {
+      user = user_item,
+      suggestions = suggestions,
+    },
     {
       label   = alias,
       end_row = result.end_row,
       end_col = result.end_col,
-      -- Hook simulate's live-refresh path. When the user toggles play
-      -- settings from the replay grid, simulate_compare will be re-run
-      -- with the items this returns, respecting current settings.
-      refresh_items = function() return build_items(false) end,
+      -- One-shot window_count override from `:Vimfy play <alias> <N>`.
+      -- Applied only on first open; subsequent relayouts follow the
+      -- settings store.
+      initial_window_count = count,
     }
   )
 end
@@ -1164,7 +1143,6 @@ function M.view(name)
 
   -- Format and display results
   local user_cost_str = data.user_cost and string.format(" (cost: %.2f)", data.user_cost) or ""
-  local formatted_user_seq = data.user_seq and ffi_lib.format_sequence(data.user_seq) or "(none)"
   local output_lines = {
     "=== " .. name .. " ===",
     "",
@@ -1172,15 +1150,21 @@ function M.view(name)
       data.start_row, data.start_col,
       data.end_row, data.end_col),
     "",
-    "User sequence: " .. formatted_user_seq .. user_cost_str,
-    "",
-    "Optimal motions:",
   }
+  if data.user_seq and data.user_seq ~= "" then
+    vim.list_extend(output_lines,
+      sequence_display.prefixed_lines("User sequence: ", data.user_seq, nil, user_cost_str))
+  else
+    table.insert(output_lines, "User sequence: (none)" .. user_cost_str)
+  end
+  table.insert(output_lines, "")
+  table.insert(output_lines, "Optimal motions:")
 
   local optimal = data.optimal_results or {}
   for i, r in ipairs(optimal) do
-    local formatted_seq = ffi_lib.format_sequence(r.seq)
-    table.insert(output_lines, string.format("  %d. %s (cost: %.2f)", i, formatted_seq, r.cost or 0))
+    vim.list_extend(output_lines,
+      sequence_display.prefixed_lines(string.format("  %d. ", i), r.seq, nil,
+        string.format(" (cost: %.2f)", r.cost or 0)))
   end
 
   if #optimal == 0 then

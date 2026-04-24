@@ -1,5 +1,6 @@
 local config = require("vimficiency.config")
 local ffi_lib = require("vimficiency.ffi")
+local util = require("vimficiency.util")
 local keynorm = require("vimficiency.capture.keynorm")
 local highlights = require("vimficiency.explore.highlights")
 local tags_render = require("vimficiency.explore.render.tags")
@@ -16,7 +17,6 @@ local settings_profile = require("vimficiency.settings_profile")
 -- (i.e. nil forever).
 ---@type VimficiencyExploreActive|nil
 local active
-local toggle_staged_mode
 local open_settings_modal
 
 -- Layered settings store. On first access we build the layer stack:
@@ -28,7 +28,7 @@ local open_settings_modal
 --        ↓ overlaid by
 --   sidecar file (`~/.local/share/nvim/vimficiency/explore_settings.json`)
 --
--- Every runtime change (`gs` modal, `<Tab>`) mutates this table AND
+-- Every runtime change (`gs` modal) mutates this table AND
 -- writes to the sidecar so the next nvim run starts with the user's
 -- latest preferences. To reset, delete the sidecar or use the settings
 -- modal's reset action.
@@ -123,6 +123,11 @@ end
 ---@field buf integer
 ---@field win integer
 
+---@class VimficiencyExploreHeader
+---@field summary VimficiencyExploreWindow
+---@field windows VimficiencyExploreWindow[]
+---@field rebuilding boolean
+
 ---@class VimficiencyExploreScratch
 ---@field buf integer
 ---@field win integer
@@ -137,7 +142,7 @@ end
 ---@field label string                                 # caller-supplied, shown in the header
 ---@field result ResultSession                         # the captured session we're exploring
 ---@field generation integer                           # FFI handle
----@field header VimficiencyExploreWindow              # fixed pane above the scratch editor
+---@field header VimficiencyExploreHeader              # fixed panes above the scratch editor
 ---@field scratch VimficiencyExploreScratch            # scrollable editor pane in the right column
 ---@field list_buf integer                             # recommendation list buffer (left pane)
 ---@field state VimficiencyExploreState                # session-reported phase + cursor + seq
@@ -145,12 +150,12 @@ end
 ---@field on_key_buffer string                         # raw keys captured since last reconcile
 ---@field pending VimficiencyExplorePending|nil        # insertion-origin snapshot while PendingInsert
 ---@field display_mode string                          # "off" | "highlight" | "inplace" | "above" | "below"
----@field staged_mode boolean                          # <Tab> toggles flat vs staged header layout
 ---@field recommendation_count integer|nil             # settings override, or nil → config default
 ---@field allow_multiple_motions_per_position boolean  # settings toggle; false → motion recs dedup by landing
 ---@field allow_multiple_edits_per_position boolean    # settings toggle; false → edit recs dedup by landing
----@field show_user_typed boolean                      # include user's original typed sequence in staged/flat views
+---@field show_user_typed boolean                      # include user's original typed sequence in the header
 ---@field show_result_count integer                    # how many captured `optimal_results` to include (0 → none)
+---@field header_handlers table<string, function>      # keymaps attached to every header pane
 
 local function assert_active()
   assert(active, "vimficiency explore session is not active")
@@ -547,15 +552,11 @@ function M.open(label, result, opts)
   vim.bo[list_buf].swapfile = false
   vim.bo[list_buf].modifiable = false
   vim.bo[list_buf].filetype = "vimficiency"
-  vim.wo[list_win].number = false
-  vim.wo[list_win].relativenumber = false
-  vim.wo[list_win].cursorline = false
-  vim.wo[list_win].wrap = false
-  vim.wo[list_win].signcolumn = "no"
+  util.configure_scratch_window(list_win)
   local wins_before_header = v.nvim_tabpage_list_wins(scratch_tab)
   v.nvim_set_current_win(scratch_win)
   vim.cmd("aboveleft split")
-  local header_win
+  local columns_win
   for _, win in ipairs(v.nvim_tabpage_list_wins(scratch_tab)) do
     local is_existing = false
     for _, prev in ipairs(wins_before_header) do
@@ -565,26 +566,33 @@ function M.open(label, result, opts)
       end
     end
     if not is_existing then
-      header_win = win
+      columns_win = win
       break
     end
   end
-  assert(header_win, "vimficiency explore: failed to create header window")
-  local header_buf = v.nvim_create_buf(false, true)
-  v.nvim_win_set_buf(header_win, header_buf)
-  v.nvim_buf_set_name(header_buf, "vimficiency://explore/" .. label .. "/header")
-  vim.bo[header_buf].buftype = "nofile"
-  vim.bo[header_buf].bufhidden = "wipe"
-  vim.bo[header_buf].swapfile = false
-  vim.bo[header_buf].modifiable = false
-  vim.bo[header_buf].filetype = "vimficiency"
-  vim.wo[header_win].number = false
-  vim.wo[header_win].relativenumber = false
-  vim.wo[header_win].cursorline = false
-  vim.wo[header_win].wrap = false
-  vim.wo[header_win].signcolumn = "no"
-  v.nvim_set_option_value("winfixheight", true, { win = header_win })
-  pcall(v.nvim_win_set_height, header_win, 1)
+  assert(columns_win, "vimficiency explore: failed to create header row")
+  local columns_buf = v.nvim_create_buf(false, true)
+  v.nvim_win_set_buf(columns_win, columns_buf)
+  local wins_before_summary = v.nvim_tabpage_list_wins(scratch_tab)
+  v.nvim_set_current_win(columns_win)
+  vim.cmd("aboveleft split")
+  local summary_win
+  for _, win in ipairs(v.nvim_tabpage_list_wins(scratch_tab)) do
+    local is_existing = false
+    for _, prev in ipairs(wins_before_summary) do
+      if win == prev then
+        is_existing = true
+        break
+      end
+    end
+    if not is_existing then
+      summary_win = win
+      break
+    end
+  end
+  assert(summary_win, "vimficiency explore: failed to create summary header")
+  local summary_buf = v.nvim_create_buf(false, true)
+  v.nvim_win_set_buf(summary_win, summary_buf)
   v.nvim_set_current_win(scratch_win)
 
   active = {
@@ -594,7 +602,11 @@ function M.open(label, result, opts)
     generation = generation,
 
     -- the three-pane layout we drive
-    header = { buf = header_buf, win = header_win },
+    header = {
+      summary = { buf = summary_buf, win = summary_win },
+      windows = { { buf = columns_buf, win = columns_win } },
+      rebuilding = false,
+    },
     scratch = { buf = scratch_buf, win = scratch_win, tab = scratch_tab },
     list_buf = list_buf,
 
@@ -624,7 +636,6 @@ function M.open(label, result, opts)
   }
   local s = settings_store()
   active.display_mode                        = s.display_mode
-  active.staged_mode                         = s.staged_mode
   active.recommendation_count                = s.recommendation_count
   active.allow_multiple_motions_per_position = s.allow_multiple_motions_per_position
   active.allow_multiple_edits_per_position   = s.allow_multiple_edits_per_position
@@ -645,11 +656,10 @@ function M.open(label, result, opts)
   -- reachable in real time. Everything else (display mode, dedup,
   -- recommendation count, show-user-typed, result-count) lives behind
   -- `gs` which opens the settings modal.
-  keymaps.install(header_buf, scratch_buf, list_buf, {
+  active.header_handlers = {
     cancel             = function() M.cancel() end,
     undo               = undo,
     redo               = redo,
-    toggle_staged_mode = function() clear_on_key_buffer(); toggle_staged_mode() end,
     open_settings      = function() clear_on_key_buffer(); open_settings_modal() end,
     debug_dump         = function()
       local a = assert_active()
@@ -668,7 +678,6 @@ function M.open(label, result, opts)
         recs = a.recommendations,
         settings = {
           display_mode = a.display_mode,
-          staged_mode = a.staged_mode,
           recommendation_count = a.recommendation_count,
           effective_count = current_recommendation_count(),
           allow_multiple_motions_per_position = a.allow_multiple_motions_per_position,
@@ -684,7 +693,9 @@ function M.open(label, result, opts)
         },
       }), vim.log.levels.INFO)
     end,
-  })
+  }
+  keymaps.install(columns_buf, scratch_buf, list_buf, active.header_handlers)
+  keymaps.install_header(summary_buf, active.header_handlers)
 
   -- CursorMoved forwards any natural motion to the session.
   v.nvim_create_autocmd("CursorMoved", {
@@ -722,28 +733,30 @@ function M.open(label, result, opts)
     desc = "vimficiency explore: live-refresh pending-insert remaining",
   })
 
-  -- Either window closing tears down the whole session.
-  local function on_window_close()
+  -- Either primary pane closing tears down the whole session. Header panes
+  -- are rebuilt dynamically, so we watch `WinClosed` broadly and ignore
+  -- internal header-rebuild churn.
+  local function on_window_close(args)
     if not active then return end
+    if active.header.rebuilding then return end
+    local match = tonumber(args.match)
+    if not match then return end
+    if match ~= active.scratch.win and match ~= list_win and match ~= active.header.summary.win then
+      local is_header = false
+      for _, pane in ipairs(active.header.windows) do
+        if pane.win == match then
+          is_header = true
+          break
+        end
+      end
+      if not is_header then return end
+    end
     destroy_active_and_tab()
   end
   v.nvim_create_autocmd("WinClosed", {
-    pattern = tostring(header_win),
-    once = true,
+    pattern = "*",
     callback = on_window_close,
-    desc = "vimficiency explore: close when header window closes",
-  })
-  v.nvim_create_autocmd("WinClosed", {
-    pattern = tostring(scratch_win),
-    once = true,
-    callback = on_window_close,
-    desc = "vimficiency explore: close when scratch window closes",
-  })
-  v.nvim_create_autocmd("WinClosed", {
-    pattern = tostring(list_win),
-    once = true,
-    callback = on_window_close,
-    desc = "vimficiency explore: close when list window closes",
+    desc = "vimficiency explore: close when a pane closes",
   })
 
   refresh_ui()
@@ -774,19 +787,6 @@ end
 -- so there is no window in which `active` could be nil. No defensive check
 -- is needed; the invariant is enforced structurally by "keymap-only
 -- access, no public M.* export".
-
----Toggle flat / staged header layout. Only reachable via the `<Tab>`
----keymap (which guarantees `active`). Writes through `update_setting`
----so the next explore session within this nvim run picks up the
----preference.
----@return boolean  new staged_mode value
-function toggle_staged_mode()
-  update_setting("staged_mode", not active.staged_mode)
-  header_render.render(active, current_remaining(active))
-  vim.notify("vimficiency explore staged-mode: " ..
-    (active.staged_mode and "on" or "off"), vim.log.levels.INFO)
-  return active.staged_mode
-end
 
 ---Build the settings schema for the active session and hand it to the
 ---settings modal. Every set-closure routes through `update_setting` so

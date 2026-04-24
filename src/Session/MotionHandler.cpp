@@ -6,35 +6,31 @@ using namespace std;
 
 namespace Explore::MotionHandler {
 
-MotionEffect applyMotion(
-    const Lines& lines,
-    CursorPos cursor,
-    std::string_view text,
+std::expected<MotionSuccess, Rejected> applyMotion(
+    const Lines& lines, CursorPos cursor, std::string_view text,
     const NavContext& navContext) {
-  MotionEffect eff;
   if (text.empty()) {
-    eff.rejectReason = "motion text must be non-empty";
-    return eff;
+    return std::unexpected(Rejected{"motion text must be non-empty"});
   }
   auto parsed = parseMotions(text);
   if (!parsed) {
-    eff.rejectReason = "motion text failed to parse: " + formatMotionParseError(parsed.error());
-    return eff;
+    return std::unexpected(Rejected{
+        "motion text failed to parse: " +
+        formatMotionParseError(parsed.error())});
   }
-  eff.accepted = true;
-  eff.newCursor = simulateMotions(cursor, text, lines, navContext);
-  eff.appendedSeq = string(text);
-  return eff;
+  return MotionSuccess{
+      .newCursor = simulateMotions(cursor, text, lines, navContext),
+      .appendedSeq = string(text),
+  };
 }
 
-MotionEffect acceptCursorMove(CursorPos newCursor, std::string_view rawKeys) {
-  MotionEffect eff;
-  eff.accepted = true;
-  eff.newCursor = newCursor;
+MotionSuccess acceptCursorMove(CursorPos newCursor, std::string_view rawKeys) {
+  MotionSuccess out;
+  out.newCursor = newCursor;
   if (!rawKeys.empty() && parseMotions(rawKeys)) {
-    eff.appendedSeq = string(rawKeys);
+    out.appendedSeq = string(rawKeys);
   }
-  return eff;
+  return out;
 }
 
-}  // namespace Explore::MotionHandler
+} // namespace Explore::MotionHandler

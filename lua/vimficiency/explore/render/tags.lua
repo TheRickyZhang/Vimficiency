@@ -13,8 +13,8 @@
 -- symmetrical). Every call to `render` starts by clearing the scratch
 -- buffer's tags_ns extmarks.
 local v = vim.api
-local ffi_lib = require("vimficiency.ffi")
 local highlights = require("vimficiency.explore.highlights")
+local sequence_display = require("vimficiency.sequence_display")
 
 local M = {}
 
@@ -179,7 +179,7 @@ local function render_tags_inplace(active)
     local col = item.landing_col
     if not is_claimed(claims, row, col) then
       claim_with_gap(claims, row, col, 1)
-      local first_char = ffi_lib.format_sequence(item.text):sub(1, 1)
+      local first_char = sequence_display.inline(item.text):sub(1, 1)
       local on_target = target_set[row .. ":" .. col] == true
       local hl = on_target and highlights.TARGET_HL or rank_hl(item.rank or 0)
       v.nvim_buf_set_extmark(active.scratch.buf, tags_ns, row, col, {
@@ -209,7 +209,7 @@ local function build_row_tag_line(items, placed_out)
   local claimed = {}
   local placed = {}
   for _, item in ipairs(items) do
-    local tag_text = ffi_lib.format_sequence(item.text)
+    local tag_text = sequence_display.inline(item.text)
     local start_col = item.landing_col
     local width = display_width(tag_text)
 

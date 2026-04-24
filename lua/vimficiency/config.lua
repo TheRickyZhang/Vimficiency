@@ -21,6 +21,11 @@ local fields = {
   },
   watch = false,
 
+  sequence_display = {
+    tokenize = true,   -- true: add spaces between parsed tokens (`ciw foo <Esc>`); false: keep raw adjacency (`ciwfoo<Esc>`)
+    sectionize = true, -- true: split motion/edit phases onto separate display lines; false: keep one flat display line
+  },
+
   -- Per-feature UI-level preferences (not optimizer tuning — those live
   -- elsewhere in this table). Changed at runtime via the `gs` settings
   -- modal inside the explore scratch buffer; changes persist in memory
@@ -28,7 +33,6 @@ local fields = {
   -- an override permanent, declare it in your init.lua's `setup()`.
   explore = {
     display_mode = "above",                        -- "off" | "highlight" | "inplace" | "above" | "below"
-    staged_mode = false,                           -- false → flat header; true → sectioned-by-stage
     recommendation_count = 5,                      -- how many recs to surface; 1..10
     allow_multiple_motions_per_position = false,   -- false → motion recs dedup by landing cell
     allow_multiple_edits_per_position = false,     -- false → edit recs dedup by command shape
@@ -37,8 +41,8 @@ local fields = {
   },
 
   play = {
-    include_user_sequence = true,                  -- show the user's typed sequence alongside the optimal(s)
-    default_result_count = 1,                      -- how many optimal_results to show by default; 1..8
+    include_user_sequence = true,                  -- show the user's typed sequence as the leftmost pane
+    window_count = 2,                              -- total panes shown side-by-side; 1..4 (user pane consumes one slot if included)
   },
 
   -- C++-owned config surface

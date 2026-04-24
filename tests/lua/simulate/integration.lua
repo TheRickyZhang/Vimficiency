@@ -119,11 +119,17 @@ local function with_replay(sequences, lines, fn, next, opts)
   vim.api.nvim_feedkeys(
     vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "xt", false)
 
-  local items = {}
+  local suggestions = {}
   for _, seq in ipairs(sequences) do
-    items[#items + 1] = { seq = seq }
+    suggestions[#suggestions + 1] = { seq = seq }
   end
-  sim.simulate_compare(lines, start_row, start_col, items)
+  -- Seed play settings so every pane in the test set is visible. Without
+  -- this the tests would be clamped to the default window_count (2).
+  local play = require("vimficiency.play")
+  play.set_setting("window_count", math.min(4, math.max(1, #suggestions)))
+  play.set_setting("include_user_sequence", false)
+  sim.simulate_compare(lines, start_row, start_col,
+    { user = nil, suggestions = suggestions })
 
   local tries = 0
   local function finish(ok, err)
@@ -243,6 +249,21 @@ local cases = {
         assert_eq(lines[2], "[1] Local 0/120", "info row (label + local step)")
         assert_eq(lines[3], "Mode NORMAL", "mode row")
         assert_true(lines[4]:sub(1, 8) == "Sequence", "sequence line prefix")
+      end, next)
+    end,
+  },
+  {
+    name = "simulate header uses shared sectionized display",
+    run = function(next)
+      with_replay({ "3wciwfoo<Esc>2j", "j" }, {
+        "alpha beta gamma",
+      }, function()
+        local seq1 = get_window(1)
+        local lines = header_lines(seq1.buf)
+        assert_true(lines[4]:find("Sequence 3w", 1, true) ~= nil,
+          "first sequence row should show the first section")
+        assert_eq(lines[5], "ciw foo <Esc>", "edit section should render on its own line")
+        assert_eq(lines[6], "2j", "final motion section should render on its own line")
       end, next)
     end,
   },

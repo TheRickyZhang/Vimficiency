@@ -20,19 +20,28 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 **Dependency order** (most to least dependent): Optimizer → Interpreter/VimCore/Keyboard/Boundary/Effort/Utils/Types, Interpreter → VimCore/Keyboard/Utils/Types, Effort → Keyboard, Session → Types, VimCore → Boundary/Utils/Types, Keyboard → Utils/Types, Boundary → Utils/Types, Utils → Types
 
 ## Terminology (Brief)
+General:
 - **Key**: Physical key (61 supported, defined in `src/Keyboard/Key.h`)
-- **Sequence**: String of commands in Neovim semantics
+- **Token**: atomic commands allowed by Vim, ie cnt?|operator?|cnt?|{motion/text-object}
+- **Sequence**: Some ordered run of tokens
 - **Effort**: Estimated difficulty of typing a key sequence
-- KeyedSequence: Key + Sequence
-- Sequence Binding: KeyedSequence + RunningEffort
 
 - **Motion**: Commands that only move cursor (includes jumps)
 - **Edit**: Commands that change buffer (operator + motion/text object, replacement, mode change, insert typing)
+
+C++ (Internal representation):
+- KeyedSequence: Key + Sequence
+- Sequence Binding: KeyedSequence + RunningEffort
+
 - **ParsedMotion/ParsedEdit**: Command structure with count (0 = default single, positive = prefixed)
 
 - Pos: Only contains `line` and `col`.
 - CursorPos: adds `targetCol` and `setCol(c)` vs `clampColPreservingTarget` when Vim's richer curswant is needed.
 - Line/Lines: richer strings representing buffers with helpful methods like effectiveSize(), flatten/unflatten
+
+Lua (User concepts):
+- View: anything that lets you interactively engage with a finished session. Currently includes play and explore.
+- Scoped Settings: Settings that only apply for a certain view
 
 **Important:**
 - Never use `rm -rf build` unless something appears corrupted. The build directory contains downloaded libraries (googletest, etc.) that take time to re-fetch.
