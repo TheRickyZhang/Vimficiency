@@ -1,17 +1,17 @@
-// tests/MotionOptimizer/OutputCorrectnessTest.cpp
+// tests/NavOptimizer/OutputCorrectnessTest.cpp
 //
-// Random/stress tests for MotionOptimizer output correctness.
+// Random/stress tests for NavOptimizer output correctness.
 // These tests use randomly generated buffers and verify results against Neovim.
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="MotionOptimizerOutputCorrectness.*"
+// Run: ./build/tests/vimficiency_tests --gtest_filter="NavOptimizerOutputCorrectness.*"
 
 #include <gtest/gtest.h>
 
 #include "Interpreter/MotionInterpreter.h"
 #include "Types/NavContext.h"
 #include "Keyboard/Config.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
-#include "Boundary/MotionBoundary.h"
+#include "Optimizer/NavOptimizer/NavOptimizer.h"
+#include "Boundary/NavBoundary.h"
 #include "Effort/RunningEffort.h"
 #include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
@@ -33,10 +33,10 @@ struct EmbeddedMotionTest {
   CursorPos subStart;      // Start position in sub-buffer coords
   CursorPos fullStart;     // Same position in full-buffer coords
   int subBufferStartLine; // Line offset of sub-buffer within full buffer
-  MotionBoundary boundary;
+  NavBoundary boundary;
 };
 
-class MotionOptimizerOutputCorrectness : public ::testing::Test {
+class NavOptimizerOutputCorrectness : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle;
   static NavContext navContext;
@@ -87,7 +87,7 @@ protected:
     // Set up boundary from full buffer positions
     CursorPos firstPos(test.subBufferStartLine, 0);
     CursorPos endPos(endLine, test.fullBuffer[endLine].effectiveSize());
-    test.boundary = MotionBoundary(test.fullBuffer, firstPos, endPos);
+    test.boundary = NavBoundary(test.fullBuffer, firstPos, endPos);
 
     return test;
   }
@@ -108,18 +108,18 @@ protected:
 
   // Run optimizer on sub-buffer
   static vector<Result> runOnSubBuffer(const Lines& subBuffer, CursorPos start, CursorPos end,
-                                       const MotionBoundary& boundary) {
-    MotionOptimizer opt(Config::uniform());
+                                       const NavBoundary& boundary) {
+    NavOptimizer opt(Config::uniform());
     return opt.optimize(subBuffer, start, end, {},
                         "jjjjjjjjjj", boundary, navContext).getResults();
   }
 };
 
-unique_ptr<NeovimOracle> MotionOptimizerOutputCorrectness::oracle;
-NavContext MotionOptimizerOutputCorrectness::navContext;
+unique_ptr<NeovimOracle> NavOptimizerOutputCorrectness::oracle;
+NavContext NavOptimizerOutputCorrectness::navContext;
 
 // Track failures by motion type for analysis
-struct MotionFailureStats {
+struct NavFailureStats {
   map<string, int> failures;
   map<string, int> totals;
 
@@ -162,14 +162,14 @@ struct MotionFailureStats {
 // Sub-buffer stress tests - verify optimizer correctness on embedded regions
 // =============================================================================
 
-TEST_F(MotionOptimizerOutputCorrectness, SubBufferMotionCorrectness) {
+TEST_F(NavOptimizerOutputCorrectness, SubBufferMotionCorrectness) {
   // Test that optimizer predictions match Neovim behavior when operating on sub-buffers
   RandomGen::seed(42);
   const int iterations = 50;
   int totalSequences = 0;
   int failedSequences = 0;
   int escapedBounds = 0;
-  MotionFailureStats stats;
+  NavFailureStats stats;
 
   for (int i = 0; i < iterations; i++) {
     // Generate embedded test case with sub-buffer smaller than full buffer

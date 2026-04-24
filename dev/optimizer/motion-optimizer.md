@@ -1,4 +1,4 @@
-# MotionOptimizer
+# NavOptimizer
 - Heuristic: In addition to effort, uses Manhattan distance to goal (|dx| + |dy|)
 - Can prune explored motions based on direction
 - Builds an index over text objects for efficiency, as we guarantee the buffer contents stay the same. Thus, we can easily search what {cnt}w will be closest to goal.
@@ -7,8 +7,8 @@
 
 - Motion search targets are inclusive intervals: `[first, last]` (`CharInterval`).
 - Edit/diff code uses half-open ranges: `[begin, end)` (`CharRange`).
-- Conversion from half-open to inclusive happens only at the boundary before invoking `MotionOptimizer` (via `toMotionInterval`).
-- `MotionOptimizer` internals do not operate on half-open target ranges.
+- Conversion from half-open to inclusive happens only at the boundary before invoking `NavOptimizer` (via `toMotionInterval`).
+- `NavOptimizer` internals do not operate on half-open target ranges.
 
 
 ### Direction-Based Motion Exploration (6-Class Model)
@@ -32,7 +32,7 @@ There are 6 natural movement classes:
   - Horizontal: Left+Backward OR Right+Forward based on goal.col vs pos.col
   - Result: 3-4 classes per state
 
-**Toggle**: `MotionOptimizerParams::useDirectionalPruning` (default: `true`)
+**Toggle**: `NavOptimizerParams::useDirectionalPruning` (default: `true`)
 - When `true`: Uses 6-class pruning (~50% fewer motions explored per state)
 - When `false`: Uses `exploreAllStandardMotions` (explores all directions)
 

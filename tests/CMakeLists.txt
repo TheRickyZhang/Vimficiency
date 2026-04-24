@@ -106,14 +106,14 @@ add_executable(vimficiency_tests
   EditOptimizer/HumanApprovalTest.cpp
   EditOptimizer/RegressionTests.cpp
 
-  # MotionOptimizer
-  MotionOptimizer/ManualTest.cpp
-  MotionOptimizer/OutputCorrectnessTest.cpp
-  MotionOptimizer/CostConsistencyTest.cpp
-  MotionOptimizer/DeterminismTest.cpp
-  MotionOptimizer/HeuristicTest.cpp
-  MotionOptimizer/HumanApprovalTest.cpp
-  MotionOptimizer/StartingEffortTradeoffTest.cpp
+  # NavOptimizer
+  NavOptimizer/ManualTest.cpp
+  NavOptimizer/OutputCorrectnessTest.cpp
+  NavOptimizer/CostConsistencyTest.cpp
+  NavOptimizer/DeterminismTest.cpp
+  NavOptimizer/HeuristicTest.cpp
+  NavOptimizer/HumanApprovalTest.cpp
+  NavOptimizer/StartingEffortTradeoffTest.cpp
 
   # Misc
   Misc/ConfigurationTest.cpp
@@ -122,7 +122,7 @@ add_executable(vimficiency_tests
   Misc/EffortCompositionTest.cpp
   Misc/ErrorHandlingTest.cpp
   Misc/HashCollisionTest.cpp
-  Misc/MotionClassMaskTest.cpp
+  Misc/NavClassMaskTest.cpp
   Misc/VimOptionsTest.cpp
   Session/ExploreTest.cpp
   Session/FixtureLoader.cpp
@@ -148,7 +148,7 @@ gtest_discover_tests(vimficiency_tests)
 add_executable(vimficiency_benchmarks
   Benchmarks/BenchmarkMain.cpp
   Benchmarks/EditOptimizerBench.cpp
-  Benchmarks/MotionOptimizerBench.cpp
+  Benchmarks/NavOptimizerBench.cpp
   Benchmarks/CompositionOptimizerBench.cpp
 )
 
@@ -163,16 +163,22 @@ target_link_libraries(vimficiency_benchmarks
 # =============================================================================
 # Collects A* explored states for dashboard visualization.
 # Run with: VIMFICIENCY_SEED_MODE=fixed ./vimficiency_explore
+#
+# Only configured when VIMF_TRACK_STATES=ON: the binary's whole job is to
+# emit explored-state traces, and without tracking it trips a static_assert
+# in ExplorationCollector.cpp. Gating the target here (rather than letting
+# the assert fire) keeps the default `cmake --build build` clean.
+if(VIMF_TRACK_STATES)
+  add_executable(vimficiency_explore
+    Exploration/SequenceChunker.cpp
+    Exploration/ExplorationCollector.cpp
+  )
 
-add_executable(vimficiency_explore
-  Exploration/SequenceChunker.cpp
-  Exploration/ExplorationCollector.cpp
-)
-
-target_link_libraries(vimficiency_explore
-  PRIVATE
-    test_utils
-)
+  target_link_libraries(vimficiency_explore
+    PRIVATE
+      test_utils
+  )
+endif()
 
 # =============================================================================
 # Debug binary

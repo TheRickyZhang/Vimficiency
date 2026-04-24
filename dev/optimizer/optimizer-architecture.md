@@ -1,19 +1,24 @@
 # Optimizer Architecture and Logic
 
 We have three different Optimizers. Here is a short description:
-- MotionOptimizer: Pure movements from start -> (finish or finishRange) over a constant buffer
-- EditOptimizer: Changing start buffer state -> end buffer state, assuming that we delete all old text first, then type new text out
-- CompositionOptimizer: Orchestrates logic combining MotionOptimizer and EditOptimizer for any transition. Determines how to break up edit regions and chain movement and edit search to satisfy regions in order. Also pre-computes J (join lines) plans for diffs where source has more lines than target, offering them as alternative edit transitions in the A* search (see `dev/optimizer/composition-optimizer.md` § J Plans).
+- NavOptimizer: navigation optimizer. Solves cursor-only state transitions from start -> (finish or finishRange) over a constant buffer
+- EditOptimizer: historical code name for the transform optimizer. Solves buffer/mode-changing state transitions; the current implementation mostly models them as delete old text + type goal text
+- CompositionOptimizer: orchestrates NavOptimizer and EditOptimizer to solve full transitions. Determines how to break up transform regions and chain navigation and transform search to satisfy them in order. Also pre-computes J (join lines) plans for diffs where source has more lines than target, offering them as alternative transform transitions in the A* search (see `dev/optimizer/composition-optimizer.md` § J Plans).
+
+Terminology note:
+- Motion/Edit are direct command families
+- Navigation/Transform are search/state-transition families
+- `NavOptimizer` already matches the broader navigation concept; `EditOptimizer` keeps its historical name even though it is really the transform layer
 
 ## Dependence
-MotionOptimizer: independent
-EditOptimizer: calls MotionOptimizer very briefly for specific visual delete.
-CompositionOptimizer: calls EditOptimizer and MotionOptimizer
+NavOptimizer: independent
+EditOptimizer: calls NavOptimizer very briefly for specific visual delete.
+CompositionOptimizer: calls EditOptimizer and NavOptimizer
 
 They all share:
 - Configuration settings
 - Effort for typing the sequence
-- Boundary of the subbuffer received. Motions can have padding to allow for the possibility of overshoot + revert, while Edits must be exact.
+- Boundary of the subbuffer received. Navigation can have padding to allow for the possibility of overshoot + revert, while transforms must be exact.
 - Usage of Endpoint/Range functions for checking if a motion would cross outside the boundary.
 - Counted-command cognitive penalties (see `dev/optimizer/count-penalty.md`)
 - Return some container of Results:
@@ -32,7 +37,7 @@ For more details about how boundaries are handled, see `dev/core/boundary-logic.
 
 ### Exploring Valid Commands
 
-All commands use the endpoint/range methodology. First, we search the span effect that a commands will have, breaking early (not searching at all) if it would cross our boundary. Then, for a motion we move the cursor to that endpoint, and for an edit we change the buffer to that endpoint. This ensures we do not duplicate work.
+All commands use the endpoint/range methodology. First, we search the span effect that a command will have, breaking early (not searching at all) if it would cross our boundary. Then, for a motion we move the cursor to that endpoint, and for a transform candidate we apply the buffer/mode effect associated with that endpoint or range. This ensures we do not duplicate work.
 
 
 ```cpp

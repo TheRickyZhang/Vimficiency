@@ -5,14 +5,14 @@
 #include <optional>
 #include <utility>
 
-#include "Boundary/MotionBoundary.h"
+#include "Boundary/NavBoundary.h"
 #include "BufferIndex.h"
-#include "MotionClassMask.h"
-#include "MotionOptimizerParams.h"
+#include "NavClassMask.h"
+#include "NavOptimizerParams.h"
 #include "MotionToSpec.h"
 #include "Optimizer/CountPenalty.h"
 #include "Optimizer/GlobalRuntimeOptions.h"
-#include "Optimizer/MotionOptimizer/MotionState.h"
+#include "Optimizer/NavOptimizer/NavState.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Keyboard/ToKeys/MotionToKeys.h"
 #include "Types/CharInterval.h"
@@ -22,10 +22,10 @@
 #include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimOptions.h"
 
-// MotionExplorer encapsulates motion candidate generation for A* search.
+// NavExplorer encapsulates motion candidate generation for A* search.
 // It owns only read-only optimization inputs and streams transition intents
 // to caller-provided callbacks.
-class MotionExplorer {
+class NavExplorer {
   enum class GoalSide {
     Before,
     InRange,
@@ -49,10 +49,10 @@ class MotionExplorer {
   };
 
 public:
-  MotionExplorer(const Lines& lines,
+  NavExplorer(const Lines& lines,
                  const NavContext& navContext,
-                 const MotionBoundary& boundary,
-                 const MotionOptimizerParams& params,
+                 const NavBoundary& boundary,
+                 const NavOptimizerParams& params,
                  const CharInterval& goalRange,
                  const BufferIndex& bufferIndex,
                  int lineOffset)
@@ -65,7 +65,7 @@ public:
         bufferLineOffset_(lineOffset) {}
 
   template<class OnStatic>
-  void exploreAllStandardMotions(const MotionState& base, OnStatic&& onStatic) {
+  void exploreAllStandardMotions(const NavState& base, OnStatic&& onStatic) {
     exploreHorizontalMotions(base, onStatic);
     exploreVerticalMotions(base, onStatic);
     exploreWordMotions<true, EdgeType::NextEdge>(Motion::FORWARD_NEXTEDGE_MOTIONS, base, onStatic);
@@ -81,14 +81,14 @@ public:
   }
 
   template<class OnStatic>
-  void exploreDirectionalStandardMotions(const MotionState& base, OnStatic&& onStatic) {
+  void exploreDirectionalStandardMotions(const NavState& base, OnStatic&& onStatic) {
     CursorPos pos = base.getPos();
-    MotionClassMask m = classesForRange(pos, goalRange_.first, goalRange_.last);
+    NavClassMask m = classesForRange(pos, goalRange_.first, goalRange_.last);
     exploreClasses(base, m, onStatic);
   }
 
   template<class OnCounted, class OnFMotion>
-  void exploreCountedMotions(const MotionState& base,
+  void exploreCountedMotions(const NavState& base,
                              OnCounted&& onCounted,
                              OnFMotion&& onFMotion) {
     CursorPos pos = base.getPos();
@@ -108,8 +108,8 @@ private:
 
   const Lines& lines_;
   const NavContext& navContext_;
-  const MotionBoundary& boundary_;
-  const MotionOptimizerParams& params_;
+  const NavBoundary& boundary_;
+  const NavOptimizerParams& params_;
   const CharInterval& goalRange_;
   const BufferIndex& bufferIndex_;
   int bufferLineOffset_ = 0;
@@ -218,7 +218,7 @@ private:
   }
 
   template<class OnStatic>
-  void exploreHorizontalMotions(const MotionState& base, OnStatic& onStatic) {
+  void exploreHorizontalMotions(const NavState& base, OnStatic& onStatic) {
     CursorPos pos = base.getPos();
     auto bounds = horizontalBoundsForLine(pos.line);
 
@@ -241,7 +241,7 @@ private:
   }
 
   template<class OnStatic>
-  void exploreVerticalMotions(const MotionState& base, OnStatic& onStatic) {
+  void exploreVerticalMotions(const NavState& base, OnStatic& onStatic) {
     CursorPos pos = base.getPos();
     int lastLine = maxLineIndex();
 
@@ -260,7 +260,7 @@ private:
 
   template<bool Forward, EdgeType Edge, class OnStatic>
   void exploreWordMotions(const std::vector<Motion::WordMotionSpecNoEdge>& specs,
-                          const MotionState& base,
+                          const NavState& base,
                           OnStatic& onStatic) {
     CursorPos pos = base.getPos();
     auto dirBoundary = boundaryForDirection(Forward);
@@ -278,7 +278,7 @@ private:
 
   template<bool Forward, class OnStatic>
   void exploreParagraphMotions(const std::vector<Motion::ParagraphMotionSpecNoDir>& specs,
-                               const MotionState& base,
+                               const NavState& base,
                                OnStatic& onStatic) {
     CursorPos pos = base.getPos();
 
@@ -304,7 +304,7 @@ private:
 
   template<bool Forward, class OnStatic>
   void exploreSentenceMotions(const std::vector<Motion::SentenceMotionSpecNoDir>& specs,
-                              const MotionState& base,
+                              const NavState& base,
                               OnStatic& onStatic) {
     CursorPos pos = base.getPos();
 
@@ -320,7 +320,7 @@ private:
   }
 
   template<bool Forward, class OnStatic>
-  void exploreScrollMotions(const MotionState& base, OnStatic& onStatic) {
+  void exploreScrollMotions(const NavState& base, OnStatic& onStatic) {
     CursorPos pos = base.getPos();
 
     const auto& specs = Forward ? Motion::FORWARD_SCROLL_MOTIONS : Motion::BACKWARD_SCROLL_MOTIONS;
@@ -342,13 +342,13 @@ private:
   }
 
   template<class OnStatic>
-  void exploreScrollMotions(const MotionState& base, OnStatic& onStatic) {
+  void exploreScrollMotions(const NavState& base, OnStatic& onStatic) {
     exploreScrollMotions<true>(base, onStatic);
     exploreScrollMotions<false>(base, onStatic);
   }
 
   template<class OnStatic>
-  void exploreJumpMotions(const MotionState& base, OnStatic& onStatic) {
+  void exploreJumpMotions(const NavState& base, OnStatic& onStatic) {
     CursorPos pos = base.getPos();
     if (!hasLinesAboveBoundary()) {
       int endpointCol = VimOptions::startOfLine()
@@ -366,7 +366,7 @@ private:
   }
 
   template<bool Forward, class OnFMotion>
-  void exploreFMotions(const MotionState& base, OnFMotion& onFMotion) {
+  void exploreFMotions(const NavState& base, OnFMotion& onFMotion) {
     CursorPos pos = base.getPos();
     if (!canExploreFMotionsFrom(pos)) return;
 
@@ -392,7 +392,7 @@ private:
 
   template<bool Forward, LandingType LT, CountClass C, KSId ForwardKS, KSId BackwardKS,
            class OnCounted>
-  void exploreCountedSpec(const MotionState& base, OnCounted& onCounted) {
+  void exploreCountedSpec(const NavState& base, OnCounted& onCounted) {
     CursorPos pos = base.getPos();
     constexpr KSId motionId = Forward ? ForwardKS : BackwardKS;
 
@@ -421,7 +421,7 @@ private:
   }
 
   template<bool Forward, class OnCounted>
-  void exploreLineCountMotions(const MotionState& base, OnCounted& onCounted) {
+  void exploreLineCountMotions(const NavState& base, OnCounted& onCounted) {
     exploreCountedSpec<Forward, LandingType::WordBegin, CountClass::MotionWord,
                        KSId::w, KSId::b>(base, onCounted);
     exploreCountedSpec<Forward, LandingType::WordEnd, CountClass::MotionWord,
@@ -433,7 +433,7 @@ private:
   }
 
   template<bool Forward, class OnCounted>
-  void exploreGlobalCountMotions(const MotionState& base, OnCounted& onCounted) {
+  void exploreGlobalCountMotions(const NavState& base, OnCounted& onCounted) {
     exploreCountedSpec<Forward, LandingType::Paragraph, CountClass::MotionParagraph,
                        KSId::RBrace, KSId::LBrace>(base, onCounted);
     exploreCountedSpec<Forward, LandingType::Sentence, CountClass::MotionSentence,
@@ -441,7 +441,7 @@ private:
   }
 
   template<bool Forward, class OnCounted>
-  void exploreCountedVerticalMotions(const MotionState& base, OnCounted& onCounted) {
+  void exploreCountedVerticalMotions(const NavState& base, OnCounted& onCounted) {
     CursorPos pos = base.getPos();
     int lastLine = maxLineIndex();
 
@@ -463,7 +463,7 @@ private:
   }
 
   template<bool Forward, class OnCounted>
-  void exploreCountedHorizontalMotions(const MotionState& base, OnCounted& onCounted) {
+  void exploreCountedHorizontalMotions(const NavState& base, OnCounted& onCounted) {
     CursorPos pos = base.getPos();
     auto bounds = horizontalBoundsForLine(pos.line);
 
@@ -482,7 +482,7 @@ private:
   }
 
   template<bool Forward, class OnCounted, class OnFMotion>
-  void exploreCountedMotionsForDirection(const MotionState& base,
+  void exploreCountedMotionsForDirection(const NavState& base,
                                          bool canUseLineLocalMotions,
                                          OnCounted& onCounted,
                                          OnFMotion& onFMotion) {
@@ -496,8 +496,8 @@ private:
   }
 
   template<class OnStatic>
-  void exploreClasses(const MotionState& base, MotionClassMask m, OnStatic& onStatic) {
-    using M = MotionClassMask;
+  void exploreClasses(const NavState& base, NavClassMask m, OnStatic& onStatic) {
+    using M = NavClassMask;
     if (has(m, M::Left))          exploreLeftMotions(base, onStatic);
     if (has(m, M::Right))         exploreRightMotions(base, onStatic);
     if (has(m, M::Up))            exploreUpMotions(base, onStatic);
@@ -507,7 +507,7 @@ private:
   }
 
   template<class OnStatic>
-  void exploreLeftMotions(const MotionState& base, OnStatic& onStatic) {
+  void exploreLeftMotions(const NavState& base, OnStatic& onStatic) {
     CursorPos pos = base.getPos();
     auto bounds = horizontalBoundsForLine(pos.line);
 
@@ -523,7 +523,7 @@ private:
   }
 
   template<class OnStatic>
-  void exploreRightMotions(const MotionState& base, OnStatic& onStatic) {
+  void exploreRightMotions(const NavState& base, OnStatic& onStatic) {
     CursorPos pos = base.getPos();
     auto bounds = horizontalBoundsForLine(pos.line);
 
@@ -540,7 +540,7 @@ private:
   }
 
   template<class OnStatic>
-  void exploreUpMotions(const MotionState& base, OnStatic& onStatic) {
+  void exploreUpMotions(const NavState& base, OnStatic& onStatic) {
     CursorPos pos = base.getPos();
 
     if (pos.line > 0) {
@@ -560,7 +560,7 @@ private:
   }
 
   template<class OnStatic>
-  void exploreDownMotions(const MotionState& base, OnStatic& onStatic) {
+  void exploreDownMotions(const NavState& base, OnStatic& onStatic) {
     CursorPos pos = base.getPos();
     int lastLine = maxLineIndex();
 
@@ -581,7 +581,7 @@ private:
   }
 
   template<class OnStatic>
-  void exploreForwardCrossingMotions(const MotionState& base, OnStatic& onStatic) {
+  void exploreForwardCrossingMotions(const NavState& base, OnStatic& onStatic) {
     exploreWordMotions<true, EdgeType::NextEdge>(Motion::FORWARD_NEXTEDGE_MOTIONS, base, onStatic);
     exploreWordMotions<true, EdgeType::WordEdge>(Motion::FORWARD_WORDEDGE_MOTIONS, base, onStatic);
     exploreParagraphMotions<true>(Motion::FORWARD_PARAGRAPH_MOTIONS, base, onStatic);
@@ -589,7 +589,7 @@ private:
   }
 
   template<class OnStatic>
-  void exploreBackwardCrossingMotions(const MotionState& base, OnStatic& onStatic) {
+  void exploreBackwardCrossingMotions(const NavState& base, OnStatic& onStatic) {
     exploreWordMotions<false, EdgeType::WordEdge>(Motion::BACKWARD_WORDEDGE_MOTIONS, base, onStatic);
     exploreWordMotions<false, EdgeType::NextEdge>(Motion::BACKWARD_NEXTEDGE_MOTIONS, base, onStatic);
     exploreParagraphMotions<false>(Motion::BACKWARD_PARAGRAPH_MOTIONS, base, onStatic);

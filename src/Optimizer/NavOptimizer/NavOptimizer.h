@@ -3,7 +3,7 @@
 #include <string_view>
 #include <vector>
 
-#include "MotionOptimizerParams.h"
+#include "NavOptimizerParams.h"
 #include "BufferIndex.h"
 
 #include "Optimizer/OptimizerResult.h"
@@ -11,7 +11,7 @@
 #include "Optimizer/Result.h"
 #include "Optimizer/SearchStats.h"
 
-#include "Boundary/MotionBoundary.h"
+#include "Boundary/NavBoundary.h"
 #include "Keyboard/Config.h"
 #include "Types/CharInterval.h"
 #include "Types/NavContext.h"
@@ -19,40 +19,40 @@
 #include "Types/Lines.h"
 
 
-// Generally MotionResult / RangeMotinoResult are coupled with MotionOptimizer return results, but if there are cases where they aren't, consider isolating these declarations
-struct MotionResult : BaseOptimizerResult<> {
-  const MotionSearchStats& getStats() const { return stats_; }
+// Generally NavResult / RangeMotinoResult are coupled with NavOptimizer return results, but if there are cases where they aren't, consider isolating these declarations
+struct NavResult : BaseOptimizerResult<> {
+  const NavSearchStats& getStats() const { return stats_; }
 
 private:
-  MotionSearchStats stats_;
-  friend struct MotionOptimizer;
-  MotionResult(std::vector<Result> results, MotionSearchStats stats)
+  NavSearchStats stats_;
+  friend struct NavOptimizer;
+  NavResult(std::vector<Result> results, NavSearchStats stats)
     : BaseOptimizerResult(std::move(results)), stats_(std::move(stats)) {}
 };
 
-struct RangeMotionResult : BaseOptimizerResult<RangeResult> {
-  const MotionSearchStats& getStats() const { return stats_; }
+struct RangeNavResult : BaseOptimizerResult<RangeResult> {
+  const NavSearchStats& getStats() const { return stats_; }
 
 private:
-  MotionSearchStats stats_;
-  friend struct MotionOptimizer;
-  RangeMotionResult(std::vector<RangeResult> results, MotionSearchStats stats)
+  NavSearchStats stats_;
+  friend struct NavOptimizer;
+  RangeNavResult(std::vector<RangeResult> results, NavSearchStats stats)
     : BaseOptimizerResult(std::move(results)), stats_(std::move(stats)) {}
 };
 
-struct MotionOptimizer {
+struct NavOptimizer {
   Config config;
 
-  MotionOptimizer(const Config& config) : config(config) {}
+  NavOptimizer(const Config& config) : config(config) {}
 
   // For single position goal
-  MotionResult optimize(
+  NavResult optimize(
     // Core information
     const Lines& lines, const CursorPos& initialPos, const CursorPos& goalPos,
     // Search tuning (can adjust with designated initializers)
-    MotionOptimizerParams params = {}, std::string_view userSequence = "",
+    NavOptimizerParams params = {}, std::string_view userSequence = "",
     // Continuation from broader context
-    const MotionBoundary& parentBoundary = MotionBoundary(),
+    const NavBoundary& parentBoundary = NavBoundary(),
     // Niche settings
     const NavContext& navigationContext = NavContext()
   );
@@ -62,17 +62,17 @@ struct MotionOptimizer {
   // If caller data is half-open [begin, end), convert at call boundary
   // before invoking this API.
   // Precondition: initialPos must NOT be in the target interval.
-  RangeMotionResult optimizeToRange(
+  RangeNavResult optimizeToRange(
     const Lines& lines, const CursorPos& initialPos, const CharInterval& range,
-    MotionOptimizerRangeParams params = {}, std::string_view userSequence = "",
-    const MotionBoundary& boundary = MotionBoundary(),
+    NavOptimizerRangeParams params = {}, std::string_view userSequence = "",
+    const NavBoundary& boundary = NavBoundary(),
     const NavContext& navigationContext = NavContext()
   );
 
-  RangeMotionResult optimizeToRange(
+  RangeNavResult optimizeToRange(
     const Lines& lines, const CursorPos& initialPos, const CharInterval& range,
-    MotionOptimizerRangeParams params, std::string_view userSequence,
-    const MotionBoundary& boundary,
+    NavOptimizerRangeParams params, std::string_view userSequence,
+    const NavBoundary& boundary,
     const NavContext& navigationContext,
     const BufferIndex& bufferIndex, int lineOffset
   );

@@ -105,7 +105,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, Example1) {
   };
   CursorPos initialPos(0, 0);
   CursorPos afterPos(initialLines.endPos());
-  MotionBoundary boundary(initialLines, initialPos, afterPos);
+  NavBoundary boundary(initialLines, initialPos, afterPos);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos);
   // cout << res << endl;
@@ -123,7 +123,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, TelescopingChanges) {
   };
   CursorPos initialPos(0, 0);
   CursorPos afterPos(initialLines.endPos());
-  MotionBoundary boundary(initialLines, initialPos, afterPos);
+  NavBoundary boundary(initialLines, initialPos, afterPos);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos);
   // cout << res << endl;
@@ -142,7 +142,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLines) {
   };
   CursorPos initialPos(0, 2);
   CursorPos afterPos(initialLines.endPos());
-  MotionBoundary boundary(initialLines, initialPos, afterPos, true, true);
+  NavBoundary boundary(initialLines, initialPos, afterPos, true, true);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos, CompositionOptimizerParams{}, "", boundary);
   // cout << res << endl;
@@ -196,7 +196,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLinesPartialJoin) {
   Lines goal = {"aaa bbb", "ccc ddd"};
   CursorPos initialPos(0, 0);
   CursorPos goalPos = goal.lastPos();
-  MotionBoundary boundary(initial, initialPos, initial.endPos());
+  NavBoundary boundary(initial, initialPos, initial.endPos());
 
   CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos,
       params, "", boundary);
@@ -253,7 +253,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, ModifyInParentheses) {
   };
   CursorPos initialPos(0, 0);
   CursorPos afterPos(initialLines.endPos());
-  MotionBoundary boundary(initialLines, initialPos, afterPos, true, true);
+  NavBoundary boundary(initialLines, initialPos, afterPos, true, true);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos, {}, "", boundary);
   cout << res << endl;
@@ -281,7 +281,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, ModifyInParenthesesMultiple) {
   CursorPos initialPos(0, 0);
   CursorPos initialEndPos = initialLines.endPos();
   CursorPos goalPos = goalLines.endPos();
-  MotionBoundary boundary(initialLines, initialPos, initialEndPos, true, true);
+  NavBoundary boundary(initialLines, initialPos, initialEndPos, true, true);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, goalLines, goalPos, {}, "", boundary);
   cout << res << endl;

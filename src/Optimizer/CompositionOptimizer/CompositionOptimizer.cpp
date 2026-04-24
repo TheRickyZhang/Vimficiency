@@ -7,8 +7,8 @@
 
 #include "CompositionSearchContext.h"
 #include "Optimizer/BuildTypedCommands.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
-#include "Optimizer/MotionOptimizer/MotionRangeConversion.h"
+#include "Optimizer/NavOptimizer/NavOptimizer.h"
+#include "Optimizer/NavOptimizer/NavRangeConversion.h"
 
 #include "Interpreter/SequenceParser.h"
 #include "Keyboard/KeyedSequence.h"
@@ -57,13 +57,13 @@ CursorPos clampGoalPosToLines(const CursorPos& pos, const Lines& lines) {
 CompositionResult CompositionOptimizer::optimize(
     const Lines& initialLines, const CursorPos initialPos, const Lines& goalLines,
     const CursorPos goalPos, CompositionOptimizerParams params,
-    string_view userSequence, const MotionBoundary& boundary,
+    string_view userSequence, const NavBoundary& boundary,
     const NavContext& navigationContext) {
   if(goalPos < initialPos) {
     debug("only support forward motion in CompositionOptimizer");
   }
 
-  MotionOptimizer motionOptimizer(config);
+  NavOptimizer navOptimizer(config);
 
   // Create search context - handles all pre-computation
   CompositionSearchContext ctx(initialLines, initialPos, goalLines, userSequence,
@@ -126,7 +126,7 @@ CompositionResult CompositionOptimizer::optimize(
                                      const Sequence& moveSequence,
                                      const CursorPos& goalPos,
                                      int editsCompleted) {
-    CompositionState newState = current.afterMotionResult(
+    CompositionState newState = current.afterNavResult(
         moveSequence, goalPos, config);
     newState.setCost(ctx.heuristic(newState, editsCompleted));
     enqueueState(std::move(newState));
@@ -192,10 +192,10 @@ CompositionResult CompositionOptimizer::optimize(
           enqueueEditTransition(s, Sequence(insertCmd), editResult.getGoalPos(),
                                 editsCompleted + 1);
         } else {
-          // Slice a padded subset around [pos, target] for MotionOptimizer
+          // Slice a padded subset around [pos, target] for NavOptimizer
           auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
               min(pos.line, targetLine), max(pos.line, targetLine) + 1,
-              params.motionPaddingAbove, params.motionPaddingBelow);
+              params.navPaddingAbove, params.navPaddingBelow);
 
           Lines subset = currentLines.getLineRange(beginLine, endLine);
 
@@ -210,11 +210,11 @@ CompositionResult CompositionOptimizer::optimize(
           CursorPos subsetFirst(0, 0);
           CursorPos subsetEnd(static_cast<int>(subset.size()) - 1,
               subset.back().effectiveSize());
-          MotionBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
+          NavBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
               beginLine > 0 || boundary.hasLinesAbove(),
               endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
-          auto rangeParams = MotionOptimizerRangeParams{}
+          auto rangeParams = NavOptimizerRangeParams{}
               .withMaxResults(1)
               .withMinCountRepeat(params.minPrefixCount)
               .withMaxCountRepeat(params.maxPrefixCount);
@@ -224,18 +224,18 @@ CompositionResult CompositionOptimizer::optimize(
               editsCompleted, beginLine, endLine, bufferIndex, lineOffset);
           CharInterval motionRange = toMotionInterval(
               subset, CharRange(localRangeBegin, localRangeEnd));
-          auto motionResult = hasBufferIndex
-              ? motionOptimizer.optimizeToRange(
+          auto navResult = hasBufferIndex
+              ? navOptimizer.optimizeToRange(
                     subset, localPos, motionRange,
                     rangeParams, "", subsetBoundary,
                     navigationContext, *bufferIndex, lineOffset)
-              : motionOptimizer.optimizeToRange(
+              : navOptimizer.optimizeToRange(
                     subset, localPos, motionRange,
                     rangeParams, "", subsetBoundary,
                     navigationContext);
-          ctx.motionNodesExplored += motionResult.getStats().nodesExplored();
+          ctx.navNodesExplored += navResult.getStats().nodesExplored();
 
-          for (const RangeResult& movResult : motionResult.getResults()) {
+          for (const RangeResult& movResult : navResult.getResults()) {
             if (!movResult.isValid()) continue;
 
             const CursorPos& localGoal = movResult.getGoalPos();
@@ -385,12 +385,12 @@ CompositionResult CompositionOptimizer::optimize(
         continue;
       }
 
-      // Slice a padded subset around [pos, edit region] for MotionOptimizer
+      // Slice a padded subset around [pos, edit region] for NavOptimizer
       int editEndLine = nextEdit.editEndLine();
       auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
           min(pos.line, nextEdit.beginPos.line),
           max(pos.line + 1, editEndLine),
-          params.motionPaddingAbove, params.motionPaddingBelow);
+          params.navPaddingAbove, params.navPaddingBelow);
 
       Lines subset = currentLines.getLineRange(beginLine, endLine);
 
@@ -404,7 +404,7 @@ CompositionResult CompositionOptimizer::optimize(
       CursorPos subsetFirst(0, 0);
       CursorPos subsetEnd(static_cast<int>(subset.size()) - 1,
           subset.back().effectiveSize());
-      MotionBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
+      NavBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
           beginLine > 0 || boundary.hasLinesAbove(),
           endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
@@ -413,7 +413,7 @@ CompositionResult CompositionOptimizer::optimize(
             + ")-[" + to_string(nextEdit.endPos.line) + "," +
             to_string(nextEdit.endPos.col) + ")");
 
-      auto rangeParams2 = MotionOptimizerRangeParams{}
+      auto rangeParams2 = NavOptimizerRangeParams{}
           .withMaxResults(clamp(nextEdit.origCharCount(), 1, 10))
           .withMinCountRepeat(params.minPrefixCount)
           .withMaxCountRepeat(params.maxPrefixCount);
@@ -423,18 +423,18 @@ CompositionResult CompositionOptimizer::optimize(
           editsCompleted, beginLine, endLine, bufferIndex, lineOffset);
       if (auto motionRange2 = tryToMotionInterval(
               subset, CharRange(localRangeBegin, localRangeEnd))) {
-        RangeMotionResult motionResult = hasBufferIndex
-            ? motionOptimizer.optimizeToRange(
+        RangeNavResult navResult = hasBufferIndex
+            ? navOptimizer.optimizeToRange(
                   subset, localPos, *motionRange2,
                   rangeParams2, "", subsetBoundary,
                   navigationContext, *bufferIndex, lineOffset)
-            : motionOptimizer.optimizeToRange(
+            : navOptimizer.optimizeToRange(
                   subset, localPos, *motionRange2,
                   rangeParams2, "", subsetBoundary, navigationContext);
-        ctx.motionNodesExplored += motionResult.getStats().nodesExplored();
+        ctx.navNodesExplored += navResult.getStats().nodesExplored();
 
-        debug("  motion results:", static_cast<int>(motionResult.getResults().size()));
-        for (const RangeResult& movResult : motionResult.getResults()) {
+        debug("  motion results:", static_cast<int>(navResult.getResults().size()));
+        for (const RangeResult& movResult : navResult.getResults()) {
           if (!movResult.isValid()) continue;
 
           // Remap results back to full-buffer coordinates (preserving targetCol)
@@ -458,7 +458,7 @@ CompositionResult CompositionOptimizer::optimize(
         int jLineLen = currentLines[jLine].effectiveSize();
         auto [jBeginLine, jEndLine] = currentLines.minmaxBoundWithPadding(
             min(pos.line, jLine), max(pos.line, jLine) + 1,
-            params.motionPaddingAbove, params.motionPaddingBelow);
+            params.navPaddingAbove, params.navPaddingBelow);
 
         Lines jSubset = currentLines.getLineRange(jBeginLine, jEndLine);
         CursorPos jLocalPos(pos.line - jBeginLine, pos.col, pos.targetCol);
@@ -468,11 +468,11 @@ CompositionResult CompositionOptimizer::optimize(
         CursorPos jSubsetFirst(0, 0);
         CursorPos jSubsetEnd(static_cast<int>(jSubset.size()) - 1,
             jSubset.back().effectiveSize());
-        MotionBoundary jSubsetBoundary(jSubset, jSubsetFirst, jSubsetEnd,
+        NavBoundary jSubsetBoundary(jSubset, jSubsetFirst, jSubsetEnd,
             jBeginLine > 0 || boundary.hasLinesAbove(),
             jEndLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
-        auto jRangeParams = MotionOptimizerRangeParams{}
+        auto jRangeParams = NavOptimizerRangeParams{}
             .withMaxResults(1)
             .withMinCountRepeat(params.minPrefixCount)
             .withMaxCountRepeat(params.maxPrefixCount);
@@ -482,18 +482,18 @@ CompositionResult CompositionOptimizer::optimize(
             editsCompleted, jBeginLine, jEndLine, jBufferIndex, jLineOffset);
         CharInterval jMotionRange = wholeLineMotionInterval(
             jSubset, jLine - jBeginLine);
-        auto jMotionResult = hasJBufferIndex
-            ? motionOptimizer.optimizeToRange(
+        auto jNavResult = hasJBufferIndex
+            ? navOptimizer.optimizeToRange(
                   jSubset, jLocalPos, jMotionRange,
                   jRangeParams, "", jSubsetBoundary,
                   navigationContext, *jBufferIndex, jLineOffset)
-            : motionOptimizer.optimizeToRange(
+            : navOptimizer.optimizeToRange(
                   jSubset, jLocalPos, jMotionRange,
                   jRangeParams, "", jSubsetBoundary,
                   navigationContext);
-        ctx.motionNodesExplored += jMotionResult.getStats().nodesExplored();
+        ctx.navNodesExplored += jNavResult.getStats().nodesExplored();
 
-        for (const RangeResult& movResult : jMotionResult.getResults()) {
+        for (const RangeResult& movResult : jNavResult.getResults()) {
           if (!movResult.isValid()) continue;
           CursorPos goalPos = movResult.getGoalPos();
           goalPos.line += jBeginLine;

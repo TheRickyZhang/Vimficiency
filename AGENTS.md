@@ -2,12 +2,12 @@
 
 ## Project Overview
 
-Vimficiency is a Vim bindings optimizer that analyzes user's actions and recommends more efficient sequences. The general algorithm is a heuristical A* search with keyboard-aware cost modeling, powered by a high-level, efficient vim command simulator.
+Vimficiency is a Vim bindings optimizer that analyzes a user's actions and recommends more efficient sequences. The general algorithm is a heuristical A* search with keyboard-aware cost modeling, powered by a high-level, efficient vim command simulator.
 
 **Folder structure:**
-- `src/Types`: Shared vim-facing value types and enums (positions/ranges/modes/sequences/lines/flags/landing and edge categories)
+- `src/Types`: Shared vim-facing value types and enums
 - `lua/vimficiency/`: Neovim-level code (buffer management, session storage)
-- `src/Interpreter`: Arbitrary command parsing/interpreting adapters (`parse*`, `apply*`, `simulate*`)
+- `src/Interpreter`: Arbitrary command parsing/interpreting
 - `src/Session`: Snapshot/session file I/O
 - `src/Keyboard`: Keyboard primitives and sequence-to-key conversion
 - `src/Effort`: Effort accumulation/cache built on keyboard primitives
@@ -17,38 +17,45 @@ Vimficiency is a Vim bindings optimizer that analyzes user's actions and recomme
 - `src/lua_exports.cpp`: C++ to Lua FFI interface
 - `tests/`: GoogleTest suite
 
-**Dependency order** (most to least dependent): Optimizer → Interpreter/VimCore/Keyboard/Boundary/Effort/Utils/Types, Interpreter → VimCore/Keyboard/Utils/Types, Effort → Keyboard, Session → Types, VimCore → Boundary/Utils/Types, Keyboard → Utils/Types, Boundary → Utils/Types, Utils → Types
-
 ## Terminology (Brief)
 General:
-- **Key**: Physical key (61 supported, defined in `src/Keyboard/Key.h`)
-- **Token**: atomic commands allowed by Vim, ie cnt?|operator?|cnt?|{motion/text-object}
-- **Sequence**: Some ordered run of tokens
-- **Effort**: Estimated difficulty of typing a key sequence
+- **Key**: Physical key
+- **Token**: Atomic parsed unit of a Vim sequence
+- **Sequence**: Neovim command string
+- **Effort**: Estimated typing difficulty of a key sequence only, independent of search distance
 
-- **Motion**: Commands that only move cursor (includes jumps)
-- **Edit**: Commands that change buffer (operator + motion/text object, replacement, mode change, insert typing)
+- **Motion**: Commands that change cursor position without changing text
+- **Nav**: Movement-oriented actions/results whose practical outcome is navigation without changing text
+- **Edit**: Commands that change buffer contents, mode, or both, such as operator + motion/text object, replacement, mode change, insert typing
+- Note these are distinct from Vim's narrower grammatical categories, focusing on practical outcomes during optimization
+
+- **Begin/End**: Half-open range, `[begin, end)`
+- **First/Last**: Inclusive range, `[first, last]`
 
 C++ (Internal representation):
-- KeyedSequence: Key + Sequence
-- Sequence Binding: KeyedSequence + RunningEffort
+- **KeyedSequence**: Sequence + physical keys used to type it
+- **Sequence Binding**: KeyedSequence + precomputed RunningEffort
+- **ParsedMotion/ParsedEdit**: Command structure with count semantics, where count `0` means the default implicit count of 1
 
-- **ParsedMotion/ParsedEdit**: Command structure with count (0 = default single, positive = prefixed)
+- **Pos**: Only contains `line` and `col`
+- **CursorPos**: Adds `targetCol`; use `setCol(c)` vs `clampColPreservingTarget` when Vim's richer curswant is needed
+- **Line/Lines**: Richer buffer-text containers with helpers like `effectiveSize()`, `flatten()`, and `unflatten()`
+- **Mode**: Vim editing mode tracked by simulation/search state
 
-- Pos: Only contains `line` and `col`.
-- CursorPos: adds `targetCol` and `setCol(c)` vs `clampColPreservingTarget` when Vim's richer curswant is needed.
-- Line/Lines: richer strings representing buffers with helpful methods like effectiveSize(), flatten/unflatten
+- **Goal**: Exact desired post-action state, especially `goalPos`
+- **Boundary**: Allowed traversal region during search
+- **Local/Global coordinates**: Relative to the current slice vs the larger source buffer
+- **Heuristic**: Estimated remaining search work = distance (closeness to target) + cost - penalty
 
 Lua (User concepts):
-- View: anything that lets you interactively engage with a finished session. Currently includes play and explore.
-- Scoped Settings: Settings that only apply for a certain view
+- **Session**: Captured editing instance and stored optimization result
+- **View**: Anything that lets you interactively engage with a finished session. Currently includes play and explore.
+- **Scoped Settings**: Settings that only apply for a certain view
 
 **Important:**
 - Never use `rm -rf build` unless something appears corrupted. The build directory contains downloaded libraries (googletest, etc.) that take time to re-fetch.
 - Do not use python or write to tmp for debugging! Always debug print in tests/debug.
-- Avoid compound shell commands (`&&`, `||`, pipes, `;`) unless they are genuinely necessary. Prefer one command per invocation so command allowlists and approvals stay predictable.
-
-Generally, only run the regular (correctness) test suite after making a change to ensure compatibility. You should only run benchmarks when making a significant optimizer algorithmic change.
+- Generally, only run the corresponding test suite after making a logic change to ensure compatibility. Lua for lua, C++ for C++.
 
 ## Design Constraints
 
@@ -57,25 +64,18 @@ Generally, only run the regular (correctness) test suite after making a change t
 - Cross-buffer jumps
 - Custom user mappings
 
-**Current limitations**: No `*`, `#`, `%` motions; no search (`/`, `n`, `N`); no visual mode
-
 ## Important Debug Principles
 Always use tests/Debug to investigate complex issues through direct, side-by-side comparison using NeovimOracle, finding the exact point our state differs from expectation.
 
-## Specific Principles
-- All positions are 0-indexed
-- Always use our Lines type to represent buffer content, which provides additional helpful methods
-- We allow an empty line, which has size() == 0, but still an index 0 as a valid cursor position
-- But, we do not allow no lines in the buffer, since the cursor must always be in a valid position.
-- Ensure CAREFUL handling of targetCol (Vim's curswant) within Position.h by calling the correct column method
-- For pre/post state, we use initial, goal, such as initialLines, goalLines.
-
-## Design Principles
-- **Correctness first, then speed.** The EditOptimizer uses correct A* goal recording: goal states go through the priority queue and are recorded at pop time, guaranteeing lowest-cost results. This costs ~2x vs the old "record first-found" approach but eliminates suboptimal results from inadmissible heuristic ordering. The heuristic is inadmissible (overestimates), so pop-time recording is necessary for correctness. Accept this cost; do not regress to eager first-found recording.
+## Invariants
+- All positions in C++ are 0-indexed
 - We use [begin, end) for half-open intervals, and \[first, last\] for inclusive intervals, such as beginPos/goalPos, firstPos/lastPos
 - Motion targets are inclusive (`CharInterval`), while edit/diff ranges remain half-open (`CharRange`). Convert at boundaries only; do not mix semantics inside MotionOptimizer internals.
-- Command parsing functions are only use for arbitrarily parsing commands. For all searches, we should know the exact actions to do for minimal wasted work.
-- Always use TypeScript over JavaScript for website actions. We generally prefer more modern technologies and libraries where possible.
+- Always use our Lines type to represent buffer content, which provides additional helpful methods
+- Lines and Line can be empty, but have the cursor be at index 0 (Matches Vim handling)
+- Ensure CAREFUL handling of targetCol (Vim's curswant) within Position.h by calling the correct column method
+- The heuristic is inadmissible (overestimates), so pop-time recording is necessary for correctness.
+- Always use TypeScript over JavaScript, Bun over NPM for website actions. We generally prefer more modern technologies and libraries where possible.
 
 ## Build Commands
 

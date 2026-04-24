@@ -9,7 +9,7 @@
 #include "Types/Lines.h"
 
 // Entire simulated editor state (for now, only position+mode+effort).
-class MotionState {
+class NavState {
   // Visible, core editor state
   CursorPos pos;
   Mode mode;
@@ -25,7 +25,7 @@ class MotionState {
   RunningEffort runningEffort;
 
 public:
-  MotionState(CursorPos pos, RunningEffort runningEffort, double effort, double cost)
+  NavState(CursorPos pos, RunningEffort runningEffort, double effort, double cost)
     : pos(pos), runningEffort(runningEffort), effort(effort), cost(cost), mode(Mode::Normal) {
   }
 
@@ -34,10 +34,10 @@ public:
     mode = Mode::Normal;
     runningEffort.reset();
   }
-  bool operator<(const MotionState& other) const {
+  bool operator<(const NavState& other) const {
     return cost < other.cost;
   }
-  bool operator>(const MotionState& other) const {
+  bool operator>(const NavState& other) const {
     return cost > other.cost;
   }
 
@@ -57,9 +57,9 @@ public:
 
   // Create new state with motion applied
   template<class CostFn>
-  [[nodiscard]] MotionState afterMotion(const KeyedSequence& ks, CursorPos endpoint,
+  [[nodiscard]] NavState afterMotion(const KeyedSequence& ks, CursorPos endpoint,
                                         const Config& config, CostFn&& computeCost) const {
-    MotionState newState = *this;
+    NavState newState = *this;
     newState.applyMotionImpl(ks, endpoint, config);
     newState.cost = computeCost(newState.getPos(), newState.getEffort());
     return newState;
@@ -67,10 +67,10 @@ public:
 
   // Overload using pre-computed effort (from EffortBank) — avoids recomputing from keys
   template<class CostFn>
-  [[nodiscard]] MotionState afterMotion(const KeyedSequence& ks, const RunningEffort& precomputed,
+  [[nodiscard]] NavState afterMotion(const KeyedSequence& ks, const RunningEffort& precomputed,
                                         CursorPos endpoint, const Config& config,
                                         CostFn&& computeCost) const {
-    MotionState newState = *this;
+    NavState newState = *this;
     newState.applyMotionImpl(ks, precomputed, endpoint, config);
     newState.cost = computeCost(newState.getPos(), newState.getEffort());
     return newState;
@@ -78,10 +78,10 @@ public:
 
   // Create new state with counted motion applied (e.g., "3w")
   template<class CostFn>
-  [[nodiscard]] MotionState afterCountedMotion(const KeyedSequence& baseMotion, int cnt,
+  [[nodiscard]] NavState afterCountedMotion(const KeyedSequence& baseMotion, int cnt,
                                                CursorPos endpoint, const Config& config,
                                                double extraPenalty, CostFn&& computeCost) const {
-    MotionState newState = *this;
+    NavState newState = *this;
     newState.applyCountedMotionImpl(baseMotion, cnt, endpoint, config, extraPenalty);
     newState.cost = computeCost(newState.getPos(), newState.getEffort());
     return newState;
@@ -89,9 +89,9 @@ public:
 
   // Create new state with f-motion applied (e.g., "fx;;")
   template<class CostFn>
-  [[nodiscard]] MotionState afterFMotion(const KeyedSequence& fMotion, int newCol,
+  [[nodiscard]] NavState afterFMotion(const KeyedSequence& fMotion, int newCol,
                                          const Config& config, CostFn&& computeCost) const {
-    MotionState newState = *this;
+    NavState newState = *this;
     newState.applyFMotionImpl(fMotion, newCol, config);
     newState.cost = computeCost(newState.getPos(), newState.getEffort());
     return newState;

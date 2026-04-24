@@ -22,23 +22,33 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Generate PR diff
-        id: prdiff
+      - name: Generate PR context
+        id: prctx
         shell: bash
         run: |
           set -euo pipefail
           BASE="${{ github.event.pull_request.base.sha }}"
           HEAD="${{ github.event.pull_request.head.sha }}"
           git fetch --no-tags --prune origin "$BASE"
-          git diff --no-color --minimal "$BASE...$HEAD" > /tmp/pr.diff
-          echo "diff_lines=$(wc -l </tmp/pr.diff | tr -d ' ')" >> "$GITHUB_OUTPUT"
+          git diff --stat=120 --summary "$BASE...$HEAD" > /tmp/pr.stat
+          git diff --name-only "$BASE...$HEAD" > /tmp/pr.files
+          echo "file_count=$(wc -l </tmp/pr.files | tr -d ' ')" >> "$GITHUB_OUTPUT"
+          echo "stat_bytes=$(wc -c </tmp/pr.stat | tr -d ' ')" >> "$GITHUB_OUTPUT"
 
-      - name: Build Codex prompt with diff
+      - name: Build Codex prompt
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         shell: bash
         run: |
           set -euo pipefail
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
           printf '%s\n' \
             'Return JSON that matches the provided schema exactly.' \
+            '' \
+            "Review only the pull request changes between ${BASE} and ${HEAD}." \
+            'Do not review untouched code except as needed for surrounding context.' \
             '' \
             'Write a concise PR review focused on:' \
             '- logical/correctness bugs (including UB/lifetime)' \
@@ -51,9 +61,24 @@ jobs:
             '- For each inline comment: use the repo-relative file path, and a line number in the NEW file (RIGHT side).' \
             '- Do not output any extra text outside the JSON.' \
             '' \
-            'PR DIFF (base...head):' \
+            'Use local git commands instead of relying on an inlined full diff.' \
+            "Recommended commands:" \
+            "- git diff --stat=120 --summary ${BASE}...${HEAD}" \
+            "- git diff --name-only ${BASE}...${HEAD}" \
+            "- git diff --unified=80 ${BASE}...${HEAD} -- <path>" \
+            "- git show ${HEAD}:<path>" \
+            '' \
+            "PR metadata:" \
+            "- title: ${PR_TITLE}" \
+            "- body: ${PR_BODY}" \
+            "- changed files: ${{ steps.prctx.outputs.file_count }}" \
+            "- diff summary bytes: ${{ steps.prctx.outputs.stat_bytes }}" \
+            '' \
+            'Changed files and diff summary:' \
             > /tmp/codex_prompt.txt
-          cat /tmp/pr.diff >> /tmp/codex_prompt.txt
+          cat /tmp/pr.files >> /tmp/codex_prompt.txt
+          printf '%s\n' '' 'Diff stat:' >> /tmp/codex_prompt.txt
+          cat /tmp/pr.stat >> /tmp/codex_prompt.txt
 
       - name: Run Codex using the generated prompt
         id: codex_run

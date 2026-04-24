@@ -112,7 +112,7 @@ public:
   // - moveSequence: the sequence for this movement
   // - newPos: position after movement completes
   // Note: caller must set cost via setCost() after computing heuristic
-  [[nodiscard]] CompositionState afterMotionResult(
+  [[nodiscard]] CompositionState afterNavResult(
       const Sequence& moveSequence,
       const CursorPos& newPos,
       const Config& config) const;
@@ -126,6 +126,6 @@ private:
                                const Config& config);
 
   // Internal: apply motion result to this state (mutates)
-  void applyMotionResultImpl(const Sequence& moveSequence,
+  void applyNavResultImpl(const Sequence& moveSequence,
                              const CursorPos& newPos, const Config& config);
 };

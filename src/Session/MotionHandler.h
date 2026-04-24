@@ -9,7 +9,7 @@
 #include "Types/Lines.h"
 #include "Types/NavContext.h"
 
-// Motion-side logic for Explore::Session. Currently stateless: simply takes in state, returns data.
+// Motion-side logic for Explore::View. Currently stateless: simply takes in state, returns data.
 
 // MIRROR boundary: anywhere we call simulateMotions, parseMotions, or getEffort
 // is semantic-coupled to the interpreter/effort models and must be reviewed together when changed
@@ -28,7 +28,7 @@ std::expected<MotionSuccess, Rejected> applyMotion(
     const NavContext& navContext);
 
 // Trust-me cursor sync. `rawKeys` is appended only if it parses as a motion
-// sequence (keeps unknown bytes out of the session's seq/cost tokenizer).
+// sequence (keeps unknown bytes out of the view's seq/cost tokenizer).
 // Cannot fail.
 MotionSuccess acceptCursorMove(CursorPos newCursor, std::string_view rawKeys);
 

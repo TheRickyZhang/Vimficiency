@@ -1,26 +1,26 @@
-#include "MotionBoundary.h"
+#include "NavBoundary.h"
 #include "EditBoundary.h"
 
-const MotionBoundary& MotionBoundary::noParent() {
-  static const MotionBoundary instance{};
+const NavBoundary& NavBoundary::noParent() {
+  static const NavBoundary instance{};
   return instance;
 }
 
 // Construct from buffer context, optionally inheriting from parent
-MotionBoundary::MotionBoundary(const Lines& lines, CursorPos beginPos, CursorPos endPos,
-                               const MotionBoundary& parent)
+NavBoundary::NavBoundary(const Lines& lines, CursorPos beginPos, CursorPos endPos,
+                               const NavBoundary& parent)
     : ctx_(lines, beginPos, endPos, parent.ctx_) {}
 
 // Construct with explicit external context flags (for FFI)
-MotionBoundary::MotionBoundary(const Lines& lines, CursorPos beginPos, CursorPos endPos,
+NavBoundary::NavBoundary(const Lines& lines, CursorPos beginPos, CursorPos endPos,
                                bool hasLinesAbove, bool hasLinesBelow)
     : ctx_(lines, beginPos, endPos, hasLinesAbove, hasLinesBelow) {}
 
 // Construct from EditBoundary
-MotionBoundary::MotionBoundary(const EditBoundary& eb)
+NavBoundary::NavBoundary(const EditBoundary& eb)
     : ctx_(eb.context()) {}
 
-bool MotionBoundary::isPositionInBounds(const CursorPos& pos, int lastLine, int lastLineLength) const {
+bool NavBoundary::isPositionInBounds(const CursorPos& pos, int lastLine, int lastLineLength) const {
   if (ctx_.leftColOffset > 0 && pos.line == 0 && pos.col < ctx_.leftColOffset) {
     return false;
   }

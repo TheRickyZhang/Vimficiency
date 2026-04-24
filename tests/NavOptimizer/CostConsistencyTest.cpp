@@ -1,15 +1,15 @@
-// tests/MotionOptimizer/CostConsistencyTest.cpp
+// tests/NavOptimizer/CostConsistencyTest.cpp
 //
 // Verifies that reported costs match independently computed costs.
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="MotionOptimizerCostConsistencyTests.*"
+// Run: ./build/tests/vimficiency_tests --gtest_filter="NavOptimizerCostConsistencyTests.*"
 
 #include <gtest/gtest.h>
 
-#include "Boundary/MotionBoundary.h"
+#include "Boundary/NavBoundary.h"
 #include "Types/NavContext.h"
 #include "Keyboard/Config.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
+#include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Effort/RunningEffort.h"
 #include "Types/Lines.h"
 #include "Utils/RandomBufferHelpers.h"
@@ -21,7 +21,7 @@ using namespace std;
 // Test Infrastructure
 // =============================================================================
 
-class MotionOptimizerCostConsistencyTests : public ::testing::Test {
+class NavOptimizerCostConsistencyTests : public ::testing::Test {
 protected:
   Config config = Config::uniform();
   static NavContext navContext;
@@ -31,16 +31,16 @@ protected:
   }
 };
 
-NavContext MotionOptimizerCostConsistencyTests::navContext;
+NavContext NavOptimizerCostConsistencyTests::navContext;
 
 // =============================================================================
-// MotionOptimizer Cost Consistency
+// NavOptimizer Cost Consistency
 // =============================================================================
 
-TEST_F(MotionOptimizerCostConsistencyTests, CostMatchesComputed) {
+TEST_F(NavOptimizerCostConsistencyTests, CostMatchesComputed) {
   const int NUM_ITERATIONS = 50;
   RandomGen::seed(42);
-  MotionOptimizer opt(config);
+  NavOptimizer opt(config);
 
   int totalResults = 0;
   int failures = 0;
@@ -51,7 +51,7 @@ TEST_F(MotionOptimizerCostConsistencyTests, CostMatchesComputed) {
     CursorPos end = randomPosition(lines);
 
     auto results = opt.optimize(
-      lines, start, end, MotionOptimizerParams{}.withMaxResults(5), "jjjjj"
+      lines, start, end, NavOptimizerParams{}.withMaxResults(5), "jjjjj"
     ).getResults();
 
     for (const auto& result : results) {

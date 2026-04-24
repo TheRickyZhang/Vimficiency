@@ -1,8 +1,8 @@
-// tests/Benchmarks/MotionOptimizerBench.cpp
+// tests/Benchmarks/NavOptimizerBench.cpp
 //
-// Performance benchmarks for MotionOptimizer using Google Benchmark.
+// Performance benchmarks for NavOptimizer using Google Benchmark.
 //
-// Run: ./build/tests/vimficiency_benchmarks --benchmark_filter="MotionOptimizer.*"
+// Run: ./build/tests/vimficiency_benchmarks --benchmark_filter="NavOptimizer.*"
 
 #include <algorithm>
 #include <array>
@@ -15,14 +15,14 @@
 #include <benchmark/benchmark.h>
 
 #include "Benchmarks/BenchUtils.h"
-#include "Boundary/MotionBoundary.h"
+#include "Boundary/NavBoundary.h"
 #include "Effort/EffortBank.h"
 #include "Keyboard/Config.h"
-#include "Optimizer/MotionOptimizer/MotionExplorer.h"
-#include "Optimizer/MotionOptimizer/MotionHeuristic.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizerParams.h"
-#include "Optimizer/MotionOptimizer/MotionRangeConversion.h"
+#include "Optimizer/NavOptimizer/NavExplorer.h"
+#include "Optimizer/NavOptimizer/NavHeuristic.h"
+#include "Optimizer/NavOptimizer/NavOptimizer.h"
+#include "Optimizer/NavOptimizer/NavOptimizerParams.h"
+#include "Optimizer/NavOptimizer/NavRangeConversion.h"
 #include "Optimizer/SearchFrontier.h"
 #include "Utils/RandomGeneration.h"
 
@@ -36,20 +36,20 @@ namespace {
 
 constexpr bool ENABLE_COMPARISON = false;
 
-static MotionOptimizerParams motionParamsA() {
-  return MotionOptimizerParams{};
+static NavOptimizerParams navParamsA() {
+  return NavOptimizerParams{};
 }
 
-static MotionOptimizerParams motionParamsB() {
-  return MotionOptimizerParams{}.withDirectionalPruning(false);
+static NavOptimizerParams navParamsB() {
+  return NavOptimizerParams{}.withDirectionalPruning(false);
 }
 
-static MotionOptimizerRangeParams rangeParamsA() {
-  return MotionOptimizerRangeParams{};
+static NavOptimizerRangeParams rangeParamsA() {
+  return NavOptimizerRangeParams{};
 }
 
-static MotionOptimizerRangeParams rangeParamsB() {
-  return MotionOptimizerRangeParams{}.withDirectionalPruning(false);
+static NavOptimizerRangeParams rangeParamsB() {
+  return NavOptimizerRangeParams{}.withDirectionalPruning(false);
 }
 
 // =============================================================================
@@ -57,12 +57,12 @@ static MotionOptimizerRangeParams rangeParamsB() {
 // =============================================================================
 
 static Config benchConfig = Config::uniform();
-using MotionPriorityQueue =
-    priority_queue<MotionState, vector<MotionState>, greater<MotionState>>;
+using NavPriorityQueue =
+    priority_queue<NavState, vector<NavState>, greater<NavState>>;
 
 struct BenchmarkSetup {
   Lines lines;
-  MotionBoundary boundary{};
+  NavBoundary boundary{};
   CursorPos firstPos;
   CursorPos lastPos;
 
@@ -70,13 +70,13 @@ struct BenchmarkSetup {
     firstPos = randomFirstPos(this->lines);
     lastPos = randomLastPos(this->lines);
     CursorPos boundaryEnd(lastPos.line, lastPos.col + 1);
-    boundary = MotionBoundary(this->lines, firstPos, boundaryEnd, true, true);
+    boundary = NavBoundary(this->lines, firstPos, boundaryEnd, true, true);
   }
 };
 
 struct RangeBenchmarkSetup {
   Lines lines;
-  MotionBoundary boundary{};
+  NavBoundary boundary{};
   CursorPos initialPos;
   CursorPos rangeBegin;
   CursorPos rangeEnd;
@@ -89,7 +89,7 @@ struct RangeBenchmarkSetup {
     int startCol = max(0, lastLineLen - rangeSize);
     rangeBegin = {lastLine, startCol};
     rangeEnd = {lastLine, lastLineLen};
-    boundary = MotionBoundary(lines, rangeBegin, rangeEnd, true, true);
+    boundary = NavBoundary(lines, rangeBegin, rangeEnd, true, true);
   }
 
   RangeBenchmarkSetup(const Lines& lines, int rangeChars, int rangeLines = 1) : lines(lines) {
@@ -110,7 +110,7 @@ struct RangeBenchmarkSetup {
       rangeBegin = {beginLine, startCol};
       rangeEnd = {lastLine, lastLineLen};
     }
-    boundary = MotionBoundary(lines, rangeBegin, rangeEnd, true, true);
+    boundary = NavBoundary(lines, rangeBegin, rangeEnd, true, true);
   }
 };
 
@@ -131,19 +131,19 @@ struct DispatchExploreCase {
 
   Lines lines;
   NavContext navContext;
-  MotionOptimizerRangeParams params;
+  NavOptimizerRangeParams params;
   CursorPos initialPos;
   CursorPos rangeBegin;
   CursorPos rangeEnd;
   CharInterval goalRange;
-  MotionBoundary boundary;
+  NavBoundary boundary;
   BufferIndex bufferIndex;
-  MotionExplorer explorer;
-  MotionState state;
+  NavExplorer explorer;
+  NavState state;
   EffortBank bank;
 
   DispatchExploreCase(const Lines& sourceLines,
-                      MotionOptimizerRangeParams paramsIn = {},
+                      NavOptimizerRangeParams paramsIn = {},
                       CursorPos initialPosIn = CursorPos(0, 0),
                       int rangeChars = DEFAULT_RANGE_SIZE)
       : lines(sourceLines),
@@ -189,7 +189,7 @@ static vector<DispatchExploreCase> makeDispatchExploreCases(BufferShape shape,
   auto& seedMgr = SeedManager::instance();
   vector<DispatchExploreCase> cases;
   cases.reserve(DEFAULT_SEED_COUNT);
-  auto params = MotionOptimizerRangeParams{}.withDirectionalPruning(useDirectionalPruning);
+  auto params = NavOptimizerRangeParams{}.withDirectionalPruning(useDirectionalPruning);
   for (int i = 0; i < DEFAULT_SEED_COUNT; ++i) {
     RandomGen::seed(seedMgr.getSeed(i));
     cases.emplace_back(generateBuffer(20, 30, shape), params);
@@ -218,18 +218,18 @@ static vector<DispatchExploreCase>& getDispatchExploreCases(DispatchScenario sce
 }
 
 static void runWithParams(const BenchmarkSetup& cfg,
-                          const MotionOptimizerParams& params,
-                          MotionSearchStats& outStats) {
-  MotionOptimizer opt(benchConfig);
+                          const NavOptimizerParams& params,
+                          NavSearchStats& outStats) {
+  NavOptimizer opt(benchConfig);
   auto result = opt.optimize(cfg.lines, cfg.firstPos, cfg.lastPos,
                              params, "", cfg.boundary);
   accumulateStats(outStats, result.getStats());
 }
 
 static void runRangeWithParams(const RangeBenchmarkSetup& cfg,
-                               const MotionOptimizerRangeParams& params,
-                               MotionSearchStats& outStats) {
-  MotionOptimizer opt(benchConfig);
+                               const NavOptimizerRangeParams& params,
+                               NavSearchStats& outStats) {
+  NavOptimizer opt(benchConfig);
   auto result = opt.optimizeToRange(
       cfg.lines, cfg.initialPos,
       toMotionInterval(cfg.lines, CharRange(cfg.rangeBegin, cfg.rangeEnd)),
@@ -244,12 +244,12 @@ static void runRangeWithParams(const RangeBenchmarkSetup& cfg,
 static void BM_MotionBufferSize(benchmark::State& state, bool useB) {
   int numLines = static_cast<int>(state.range(0));
   auto& seedMgr = SeedManager::instance();
-  MotionSearchStats totalStats;
+  NavSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
     auto setup = BenchmarkSetup(generateBuffer(numLines, 30));
-    auto params = useB ? motionParamsB() : motionParamsA();
+    auto params = useB ? navParamsB() : navParamsA();
     runWithParams(setup, params, totalStats);
     iter++;
   }
@@ -259,12 +259,12 @@ static void BM_MotionBufferSize(benchmark::State& state, bool useB) {
 static void BM_MotionLineLength(benchmark::State& state, bool useB) {
   int avgLen = static_cast<int>(state.range(0));
   auto& seedMgr = SeedManager::instance();
-  MotionSearchStats totalStats;
+  NavSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
     auto setup = BenchmarkSetup(generateBuffer(20, avgLen));
-    auto params = useB ? motionParamsB() : motionParamsA();
+    auto params = useB ? navParamsB() : navParamsA();
     runWithParams(setup, params, totalStats);
     iter++;
   }
@@ -273,12 +273,12 @@ static void BM_MotionLineLength(benchmark::State& state, bool useB) {
 
 static void BM_MotionBufferShape(benchmark::State& state, bool useB, BufferShape shape) {
   auto& seedMgr = SeedManager::instance();
-  MotionSearchStats totalStats;
+  NavSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
     auto setup = BenchmarkSetup(generateBuffer(20, 30, shape));
-    auto params = useB ? motionParamsB() : motionParamsA();
+    auto params = useB ? navParamsB() : navParamsA();
     runWithParams(setup, params, totalStats);
     iter++;
   }
@@ -288,7 +288,7 @@ static void BM_MotionBufferShape(benchmark::State& state, bool useB, BufferShape
 static void BM_MotionRangeBufferLines(benchmark::State& state, bool useB) {
   int numLines = static_cast<int>(state.range(0));
   auto& seedMgr = SeedManager::instance();
-  MotionSearchStats totalStats;
+  NavSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
@@ -303,7 +303,7 @@ static void BM_MotionRangeBufferLines(benchmark::State& state, bool useB) {
 static void BM_MotionRangeResultSize(benchmark::State& state, bool useB,
                                       int rangeChars, int rangeLines) {
   auto& seedMgr = SeedManager::instance();
-  MotionSearchStats totalStats;
+  NavSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
     RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
@@ -334,7 +334,7 @@ static void BM_MotionExploreDispatch(benchmark::State& state,
     auto& c = cases[caseIndex % static_cast<int>(cases.size())];
     caseIndex++;
 
-    MotionPriorityQueue pq;
+    NavPriorityQueue pq;
     unordered_map<Pos, double> costMap;
     const double maxEffort = numeric_limits<double>::max();
 
@@ -342,26 +342,26 @@ static void BM_MotionExploreDispatch(benchmark::State& state,
       return c.goalRange.containsPos(pos);
     };
     auto scoreState = [&](CursorPos pos, double effort) {
-      double distance = MotionHeuristic::distanceToRange(c.goalRange, pos);
+      double distance = NavHeuristic::distanceToRange(c.goalRange, pos);
       return c.params.effortWeight * effort + c.params.distanceWeight * distance;
     };
 
     size_t emitted = 0;
     if constexpr (!UseFixedBuffer) {
       auto onStatic = [&](KSId motionId, const KeyedSequence& ks, CursorPos endpoint) {
-        MotionState next = c.state.afterMotion(ks, c.bank[motionId], endpoint, benchConfig, scoreState);
+        NavState next = c.state.afterMotion(ks, c.bank[motionId], endpoint, benchConfig, scoreState);
         emitted++;
         Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
       };
       auto onCounted = [&](KSId motionId, const KeyedSequence& ks, int count,
                            CursorPos endpoint, double extraPenalty) {
-        MotionState next = c.state.afterCountedMotion(
+        NavState next = c.state.afterCountedMotion(
             ks, count, endpoint, benchConfig, extraPenalty, scoreState);
         emitted++;
         Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
       };
       auto onFMotion = [&](const KeyedSequence& motion, int newCol) {
-        MotionState next = c.state.afterFMotion(motion, newCol, benchConfig, scoreState);
+        NavState next = c.state.afterFMotion(motion, newCol, benchConfig, scoreState);
         emitted++;
         Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
       };
@@ -422,14 +422,14 @@ static void BM_MotionExploreDispatch(benchmark::State& state,
 
       for (size_t i = 0; i < staticCount; ++i) {
         const auto& transition = staticTransitions[i];
-        MotionState next = c.state.afterMotion(
+        NavState next = c.state.afterMotion(
             *transition.ks, c.bank[transition.motionId], transition.endpoint, benchConfig, scoreState);
         emitted++;
         Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
       }
       for (size_t i = 0; i < countedCount; ++i) {
         const auto& transition = countedTransitions[i];
-        MotionState next = c.state.afterCountedMotion(
+        NavState next = c.state.afterCountedMotion(
             *transition.ks, transition.count, transition.endpoint, benchConfig,
             transition.extraPenalty, scoreState);
         emitted++;
@@ -437,7 +437,7 @@ static void BM_MotionExploreDispatch(benchmark::State& state,
       }
       for (size_t i = 0; i < fMotionCount; ++i) {
         const auto& transition = fMotionTransitions[i];
-        MotionState next = c.state.afterFMotion(
+        NavState next = c.state.afterFMotion(
             transition.motion, transition.newCol, benchConfig, scoreState);
         emitted++;
         Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);

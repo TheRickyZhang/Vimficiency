@@ -16,7 +16,7 @@ Rules:
 
 ## Where It Is Applied
 
-### MotionOptimizer
+### NavOptimizer
 
 Counted motion emitters apply penalty at creation time:
 - `w/e/b/ge` -> `CountClass::MotionWord`

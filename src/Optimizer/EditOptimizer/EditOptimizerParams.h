@@ -14,12 +14,12 @@
 
 struct EditOptimizerParams : OptimizerParamsBase {
   EditOptimizerParams() { maxResults = 20; }
-  // Line padding for internal MotionOptimizer calls (visual delete path).
+  // Line padding for internal NavOptimizer calls (visual delete path).
   // Lower default than CompositionOptimizer since effectiveLines already
   // includes prefix/suffix context. Adjustable to 0 for no padding.
   // See dev/optimizer/buffer-slicing.md for details.
-  int motionLinePaddingAbove = 1;
-  int motionLinePaddingBelow = 1;
+  int navLinePaddingAbove = 1;
+  int navLinePaddingBelow = 1;
 
   // Maximum number of results to keep per starting cursor position.
   int maxMultiplePerStartPosition = 1;
@@ -27,9 +27,9 @@ struct EditOptimizerParams : OptimizerParamsBase {
   // Chainable setters for fluent configuration
   EditOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
   EditOptimizerParams& withMaxNodesPopped(int v) { maxNodesPopped = v; return *this; }
-  EditOptimizerParams& withMotionLinePaddingAbove(int v) { motionLinePaddingAbove = v; return *this; }
-  EditOptimizerParams& withMotionLinePaddingBelow(int v) { motionLinePaddingBelow = v; return *this; }
-  EditOptimizerParams& withMotionLinePadding(int v) { motionLinePaddingAbove = motionLinePaddingBelow = v; return *this; }
+  EditOptimizerParams& withNavLinePaddingAbove(int v) { navLinePaddingAbove = v; return *this; }
+  EditOptimizerParams& withNavLinePaddingBelow(int v) { navLinePaddingBelow = v; return *this; }
+  EditOptimizerParams& withNavLinePadding(int v) { navLinePaddingAbove = navLinePaddingBelow = v; return *this; }
   EditOptimizerParams& withMaxMultiplePerStartPosition(int v) { maxMultiplePerStartPosition = v; return *this; }
   EditOptimizerParams& withMinCountRepeat(int v) { setMinCountRepeat(v); return *this; }
   EditOptimizerParams& withMaxCountRepeat(int v) { setMaxCountRepeat(v); return *this; }

@@ -81,7 +81,7 @@ This worked by accident when diffs didn't insert/delete lines before subsequent 
 
 ## Subset boundary used target range instead of full subset extent
 
-In `CompositionOptimizer.cpp`, when creating sub-buffers for `MotionOptimizer::optimizeToRange`, the `MotionBoundary` was constructed using the **target edit range** (`localRangeFirst`, `localRangeLast`) as the boundary positions. This caused `BoundaryContext` to compute `leftColOffset`/`rightColOffset` that clamped motions like `$` and `0` to the edit range edges instead of the full subset extent.
+In `CompositionOptimizer.cpp`, when creating sub-buffers for `NavOptimizer::optimizeToRange`, the `NavBoundary` was constructed using the **target edit range** (`localRangeFirst`, `localRangeLast`) as the boundary positions. This caused `BoundaryContext` to compute `leftColOffset`/`rightColOffset` that clamped motions like `$` and `0` to the edit range edges instead of the full subset extent.
 
 The bug existed in both code paths: the edit/motion transition path and the pure insertion path (`exploreInsertionStrategy` lambda). Both construct subsets and call `optimizeToRange`.
 
@@ -94,12 +94,12 @@ The bug existed in both code paths: the edit/motion transition path and the pure
 Position subsetFirst(0, 0);
 Position subsetLast(static_cast<int>(subset.size()) - 1,
     std::max(0, static_cast<int>(subset.back().size()) - 1));
-MotionBoundary subsetBoundary(subset, subsetFirst, subsetLast, ...);
+NavBoundary subsetBoundary(subset, subsetFirst, subsetLast, ...);
 ```
 
 ## $ motion missing TARGETCOL_EOL
 
-In `MotionExplorer.h`, the `$` motion emitted its goal position using the 2-param Position constructor `{pos.line, dollarCol}`, which sets `targetCol = dollarCol`. The correct behavior is `targetCol = TARGETCOL_EOL` (INT_MAX), which makes subsequent vertical motions (`j`, `k`, `<C-d>`, etc.) stick to end-of-line.
+In `NavExplorer.h`, the `$` motion emitted its goal position using the 2-param Position constructor `{pos.line, dollarCol}`, which sets `targetCol = dollarCol`. The correct behavior is `targetCol = TARGETCOL_EOL` (INT_MAX), which makes subsequent vertical motions (`j`, `k`, `<C-d>`, etc.) stick to end-of-line.
 
 **Symptom:** Sequences like `$<C-d>` would land at the wrong column on the target line. After `$` on a line of length 10 (dollarCol=9), a subsequent `j` to a line of length 20 would go to col 9 instead of col 19.
 
@@ -289,7 +289,7 @@ return {std::move(results), ctx.getStats(numResults),
 
 ## Benchmark stats accumulation: overwrite instead of sum
 
-All three benchmark files (`EditOptimizerBench.cpp`, `MotionOptimizerBench.cpp`, `CompositionOptimizerBench.cpp`) used assignment instead of accumulation for per-iteration stats:
+All three benchmark files (`EditOptimizerBench.cpp`, `NavOptimizerBench.cpp`, `CompositionOptimizerBench.cpp`) used assignment instead of accumulation for per-iteration stats:
 ```cpp
 lastStats = result.stats;  // Only captures the LAST iteration
 ```

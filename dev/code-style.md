@@ -16,7 +16,7 @@ Baseline: **Google C++ Style Guide**, with deviations noted below.
 
 ## Common Styles following Google
 
-- **Classes/structs/template parameters**: `PascalCase` — `MotionState`, `CursorPos`, `template<typename T>`
+- **Classes/structs/template parameters**: `PascalCase` — `NavState`, `CursorPos`, `template<typename T>`
 - **Macros**: `UPPER_SNAKE_CASE`
 - **Private members**: trailing underscore — `cost_`, `seq_`, `linesHash_`
 - **Public struct fields**: plain `camelCase` — `line`, `col`, `targetCol`

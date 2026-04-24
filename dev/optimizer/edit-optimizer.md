@@ -1,12 +1,14 @@
-# EditOptimizer
-- Supports edit search from any positions in initial state to a goal state under the convention of deleting all initial text, and typing all goal text (with minor exceptions).
+# EditOptimizer (Transform Layer)
+- Historical name retained. Conceptually this is the transform optimizer: it searches for buffer/mode-changing transitions from any valid start position to a goal state.
+- It is broader than direct "edit commands" in the glossary. Replace, paste, and join-style changes still belong to the transform layer even when they are not direct edits.
+- The current implementation mostly models transforms as deleting all initial text and typing all goal text (with minor exceptions).
 - Heuristic: How much left to delete, sum(effective columns) + 2 * sum(additional lines) (+ effort)
 
 ## Result Structure
-There are special types of edits we note:
+There are special transform shapes we note:
 - *Pure Deletions*: when goalLines == {""}
 - *Pure Insertions*: when initialLines = {""}
-Otherwise it is a *Regular Edit*. The following describes regular edits:
+Otherwise it is a *Regular Transform*. The following describes regular transform search:
 
 ```cpp
 struct EditResult {
@@ -16,7 +18,7 @@ struct EditResult {
 
 ## Goal Check Timing
 - Because we are dedicated to typing our result text, it is optimal to only go into insert mode at the very end. The best way to have this is to convert the last delete to a change, but since it is messy to do retrospectively, we have slightly different timing to anticipate.
-- In Motion/Composition, we pop state -> check if goal position -> explore commands.
+- In Navigation/Composition, we pop state -> check if goal position -> explore commands.
 But here, we pop state -> explore deletions -> check if goal, so that we can convert to change before it is committed.
 - This is a bit more costly but not significant.
 - Note we handle a pure deletion case in separate call, as we no longer need to worry about going into insert mode.
@@ -60,7 +62,7 @@ At lookup: if `lastEdit == expandedDotCmd`, use the dot variant; otherwise use t
 Subsequent dots (after the first explicit command) are unambiguous.
 
 ## Boundary Shift Handling
-- Since Edits are naturally the only exact-position constrained region, we have particular method of resolving among flat indices.
+- Since transforms are naturally the only exact-position constrained region, we have particular method of resolving among flat indices.
 - Consider an original buffer with:
 Line 5: abchello
 Line 6: world

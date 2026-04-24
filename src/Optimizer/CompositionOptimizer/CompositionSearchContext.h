@@ -13,9 +13,9 @@
 #include "JoinPlan.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
-#include "Optimizer/MotionOptimizer/BufferIndex.h"
+#include "Optimizer/NavOptimizer/BufferIndex.h"
 #include "Optimizer/SearchStats.h"
-#include "Boundary/MotionBoundary.h"
+#include "Boundary/NavBoundary.h"
 #include "Types/NavContext.h"
 #include "Types/CursorPos.h"
 #include "Optimizer/CompositionOptimizer/CompositionState.h"
@@ -95,7 +95,7 @@ struct CompositionSearchContext {
   const Config& config;
   const CompositionOptimizerParams& params;
   const NavContext& navContext;
-  const MotionBoundary& boundary;
+  const NavBoundary& boundary;
 
   // Per-edit bundled data (one entry per diff, indexed 0..totalEdits()-1)
   struct PerEditData {
@@ -139,7 +139,7 @@ struct CompositionSearchContext {
   int statesSkipped = 0;
 
   // Sub-optimizer aggregate stats
-  int motionNodesExplored = 0;
+  int navNodesExplored = 0;
   int editNodesExplored = 0;
 
   // Debug: optionally track explored states (composition-specific)
@@ -156,7 +156,7 @@ struct CompositionSearchContext {
       const Lines& goalLines,
       std::string_view userSequence,
       const NavContext& navContext,
-      const MotionBoundary& boundary,
+      const NavBoundary& boundary,
       const CompositionOptimizerParams& params,
       const Config& config);
 

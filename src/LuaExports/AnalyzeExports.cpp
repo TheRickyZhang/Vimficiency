@@ -1,7 +1,7 @@
 #include "LuaExports/Shared.h"
-#include "Boundary/MotionBoundary.h"
+#include "Boundary/NavBoundary.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
+#include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Utils/Debug.h"
 #include <algorithm>
 #include <iomanip>
@@ -54,7 +54,7 @@ vimficiency::lua_exports::Result<string> analyzeImpl(
   const NavContext navigationContext(window_height, scroll_amount);
 
   vector<::Result> results;
-  MotionBoundary boundary(
+  NavBoundary boundary(
       initialLines,
       CursorPos(0, boundaryFirstCol),
       CursorPos(static_cast<int>(initialLines.size()) - 1, boundaryLastCol + 1),
@@ -62,12 +62,12 @@ vimficiency::lua_exports::Result<string> analyzeImpl(
       hasLinesBelow);
 
   if (initialLines == goalLines) {
-    MotionOptimizer opt(vimficiency::lua_exports::g_config_internal);
+    NavOptimizer opt(vimficiency::lua_exports::g_config_internal);
     results = opt.optimize(
         initialLines,
         initialPos,
         goalPos,
-        MotionOptimizerParams{}.withMaxResults(results_calculated),
+        NavOptimizerParams{}.withMaxResults(results_calculated),
         keyseqText,
         boundary,
         navigationContext).getResults();

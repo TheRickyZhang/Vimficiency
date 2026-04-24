@@ -6,11 +6,11 @@
 
 #include <gtest/gtest.h>
 
-#include "Optimizer/MotionOptimizer/BufferIndex.h"
-#include "Optimizer/MotionOptimizer/CountableMotionPair.h"
+#include "Optimizer/NavOptimizer/BufferIndex.h"
+#include "Optimizer/NavOptimizer/CountableMotionPair.h"
 #include "Types/NavContext.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
-#include "Boundary/MotionBoundary.h"
+#include "Optimizer/NavOptimizer/NavOptimizer.h"
+#include "Boundary/NavBoundary.h"
 #include "Utils/TestUtils.h"
 
 using namespace std;
@@ -57,10 +57,10 @@ protected:
       CursorPos end,
       const string& userSeq,
       Config config = Config::uniform()) {
-    MotionOptimizer opt(config);
-    MotionBoundary boundary;
+    NavOptimizer opt(config);
+    NavBoundary boundary;
     return opt.optimize(lines, start, end,
-                        MotionOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
+                        NavOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
                         userSeq, boundary, navContext).getResults();
   }
 };

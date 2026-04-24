@@ -5,7 +5,7 @@
 #include "Types/CharInterval.h"
 #include "Types/CursorPos.h"
 
-namespace MotionHeuristic {
+namespace NavHeuristic {
 
 inline int heuristicTargetCol(const CursorPos& pos) {
   return pos.targetCol == TARGETCOL_EOL ? pos.col : pos.targetCol;
@@ -25,4 +25,4 @@ inline double distanceToRange(const CharInterval& range, const CursorPos& pos) {
       std::abs(closest.col - heuristicColToClosest(pos, closest)));
 }
 
-} // namespace MotionHeuristic
+} // namespace NavHeuristic

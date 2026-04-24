@@ -557,7 +557,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJWithSuffix) {
 }
 
 TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceIndexFailure) {
-  // From MotionOptimizerBoundaryStress failure:
+  // From NavOptimizerBoundaryStress failure:
   // Sequence: "2(b"
   // Start: sub(3,6) = full(7,6)
   // Our prediction (sub-buffer): (1, 22)

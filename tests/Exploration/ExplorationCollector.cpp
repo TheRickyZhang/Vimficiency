@@ -17,15 +17,15 @@
 #include <vector>
 
 #include "Boundary/EditBoundary.h"
-#include "Boundary/MotionBoundary.h"
+#include "Boundary/NavBoundary.h"
 #include "Exploration/SequenceChunker.h"
 #include "Optimizer/CompositionOptimizer/DiffState.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Optimizer/EditOptimizer/EditOptimizer.h"
 #include "Optimizer/EditOptimizer/EditOptimizerParams.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizer.h"
-#include "Optimizer/MotionOptimizer/MotionOptimizerParams.h"
+#include "Optimizer/NavOptimizer/NavOptimizer.h"
+#include "Optimizer/NavOptimizer/NavOptimizerParams.h"
 #include "Optimizer/SearchStats.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
@@ -488,16 +488,16 @@ static vector<ExploreCase> collectMotionCases() {
     {"LineLength/80", 20, 80},
   };
 
-  MotionOptimizerParams params;
+  NavOptimizerParams params;
   for (const auto& mc : motionCases) {
     RandomGen::seed(seedMgr.getSeed(0));
     Lines lines = randomCodeBuffer(mc.numLines, mc.avgLen);
     CursorPos firstPos = randomFirstPos(lines);
     CursorPos lastPos = randomLastPos(lines);
     CursorPos boundaryEnd(lastPos.line, lastPos.col + 1);
-    MotionBoundary boundary(lines, firstPos, boundaryEnd, true, true);
+    NavBoundary boundary(lines, firstPos, boundaryEnd, true, true);
 
-    MotionOptimizer opt(config);
+    NavOptimizer opt(config);
     auto result = opt.optimize(lines, firstPos, lastPos, params, "", boundary);
 
     vector<FoundResult> found;
