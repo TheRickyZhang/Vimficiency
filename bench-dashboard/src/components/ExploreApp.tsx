@@ -38,6 +38,7 @@ export function ExploreApp({ data, initialCase }: Props) {
 
   const chunked = activeCase ? isChunkedCase(activeCase) : false;
   const hasStates = activeCase ? activeCase.states.length > 0 : false;
+  const isLatestCommit = commitIdx === data.entries.length - 1;
 
   // Parse cases into categories and params
   const { categories, paramsByCategory } = useMemo(() => {
@@ -379,7 +380,11 @@ export function ExploreApp({ data, initialCase }: Props) {
           ) : (
             <div className="card p-5 mb-6 text-center">
               <p className="text-sm text-muted">
-                Exploration tree and charts are only available for the latest commit.
+                {activeCase.nodesExplored === 0
+                  ? 'This case was not run for this commit.'
+                  : !isLatestCommit
+                    ? 'Exploration tree and charts are only available for the latest commit (older commits are stored in summary-only form).'
+                    : 'Exploration tree and charts are unavailable: this build did not record per-state traces. Check that VIMF_TRACK_STATES was set when the explore binary was built.'}
               </p>
               <p className="text-xs text-muted mt-1">
                 {activeCase.nodesExplored.toLocaleString()} nodes were explored.

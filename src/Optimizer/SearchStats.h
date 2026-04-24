@@ -5,14 +5,14 @@
 #include <utility>
 #include <vector>
 
+#include "BuildConfig.h"
 #include "Types/Sequence.h"
 #include "Utils/Debug.h"
 
-#ifdef VIMFICIENCY_TRACE_SEARCH_STATS
-constexpr bool SEARCH_TRACE_STATS_ENABLED = true;
-#else
-constexpr bool SEARCH_TRACE_STATS_ENABLED = DEBUG_ENABLED;
-#endif
+// VIMF_TRACK_STATES is emitted by CMake as 0 or 1 via BuildConfig.h. Using
+// `#if` (not `#ifdef`) means a misspelled flag resolves to 0 and triggers
+// -Wundef, rather than silently skipping the "enabled" branch.
+constexpr bool SEARCH_TRACE_STATS_ENABLED = VIMF_TRACK_STATES;
 
 enum class SearchStopReason {
   Unknown,

@@ -7,9 +7,10 @@
 --
 -- The only things local to a play session are:
 --   1. include_user_sequence: whether the user's typed sequence is
---      shown alongside the optimal(s).
---   2. default_result_count: how many optimal_results to surface when
---      the user runs `:Vimfy play <alias>` without an explicit count.
+--      shown as the leftmost pane.
+--   2. window_count: total side-by-side panes (1..4). If
+--      include_user_sequence is true, the user pane consumes one slot
+--      and the remaining slots surface the top-ranked optimal_results.
 --
 -- Settings modal opened via `gs` from
 -- the replay grid. Unlike explore, play itself has no persistent
@@ -53,15 +54,23 @@ function M.get_settings()
   return vim.deepcopy(settings_store())
 end
 
+---Public mutator so the replay grid's direct keymaps (+/-, u) can
+---toggle settings without routing through the modal. Writes through
+---to the same sidecar the modal uses.
+---@param key string
+---@param value any
+function M.set_setting(key, value)
+  update_setting(key, value)
+end
+
 ---Build the settings schema and open the generic modal.
 ---@param opts? { on_change?: fun(), on_close?: fun() }
 function M.open_settings(opts)
   opts = opts or {}
-  -- Max result count clamped to the grid's window budget (4×2 = 8).
-  -- Include-user costs one window, so the functional cap is 7 when
-  -- user is included; we let the user set up to 8 and rely on
-  -- simulate's own tail-trim to handle overflow.
-  local RESULT_MIN, RESULT_MAX = 1, 8
+  -- Grid is a single row of up to 4 panes. When the user pane is
+  -- included it consumes one of the slots — with window_count = 1 and
+  -- include_user_sequence = true, only the user pane is displayed.
+  local WINDOW_MIN, WINDOW_MAX = 1, 4
 
   local schema = {
     { kind = "setting",
@@ -70,10 +79,10 @@ function M.open_settings(opts)
       get = function() return settings_store().include_user_sequence end,
       set = function(v) update_setting("include_user_sequence", v) end },
     { kind = "setting",
-      label = "Default result count",
-      value_kind = "int", min = RESULT_MIN, max = RESULT_MAX,
-      get = function() return settings_store().default_result_count end,
-      set = function(v) update_setting("default_result_count", v) end },
+      label = "Window count",
+      value_kind = "int", min = WINDOW_MIN, max = WINDOW_MAX,
+      get = function() return settings_store().window_count end,
+      set = function(v) update_setting("window_count", v) end },
     { kind = "separator" },
     { kind = "action",
       label = "reset to default settings",

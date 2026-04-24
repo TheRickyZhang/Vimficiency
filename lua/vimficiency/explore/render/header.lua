@@ -1,46 +1,16 @@
--- Fixed header pane for the explore scratch buffer.
---
--- Layout:
---   (blank)
---   Explore <label>
---   Cost X.XX   Cursor (R,C)   Phase ...
---   (blank)
---   <body>
---   (blank)
---
--- Body toggles on `active.staged_mode`:
---   off: one line per column — `<title>  <full seq>` — a flat summary.
---   on:  table with one row per composition stage (Move 1, Edit 1, …);
---        every visible column sections its sequence the same way and
---        shows its stage text in that row.
---
--- Staged columns (all conform to the plan's stage structure):
---   - always: `Explored` (the session's accepted_seq)
---   - `show_result_count` optimal results, in rank order
---
--- The user's typed sequence is rendered as a SEPARATE flat line below
--- the column body (in both flat and staged modes). It does not get
--- sectioned into the plan's Move/Edit rows — the user's input doesn't
--- need to match the composition's stage structure, and forcing it into
--- those columns would be misleading.
---
--- Callers precompute `remaining` (the live-shrinking pending-insert
--- tail) so header/list stay in lockstep within one frame.
+-- Fixed header panes above the explore scratch buffer.
 local v = vim.api
-local ffi_lib = require("vimficiency.ffi")
-local sections = require("vimficiency.explore.sections")
+local sequence_display = require("vimficiency.sequence_display")
+local util = require("vimficiency.util")
 
 local M = {}
 
 local header_ns = v.nvim_create_namespace("vimficiency_explore_header")
 M.header_ns = header_ns
 
-local COLUMN_SEP = "   │ "
-local LABEL_WIDTH = 10  -- "Move 1" / "Edit 1" / blank — padded to this
-
 ---@param active VimficiencyExploreActive
 ---@param remaining string
----@return table  virt-line chunks
+---@return table
 local function summary_chunks(active, remaining)
   local phase = active.state.phase
   local phase_label = phase.kind
@@ -48,7 +18,8 @@ local function summary_chunks(active, remaining)
     phase_label = string.format("ApproachEdit %d/%d",
       phase.edit_index + 1, math.max(active.state.total_edits, 1))
   elseif phase.kind == "PendingInsert" then
-    phase_label = string.format("PendingInsert '%s'", remaining)
+    phase_label = string.format("PendingInsert '%s'",
+      sequence_display.inline(remaining, { sectionize = false }))
   end
   return {
     { "Cost ", "Comment" },
@@ -60,150 +31,208 @@ local function summary_chunks(active, remaining)
   }
 end
 
----Gather the plan-conforming columns we show (Explored + optional
----Optimal[1..N]). User-typed is handled separately — it doesn't belong
----in a stage-structured column.
 ---@param active VimficiencyExploreActive
----@return { title: string, seq: string }[]
+---@return { title: string, seq: string, empty_text: string }[]
 local function gather_columns(active)
-  local cols = {}
-  cols[#cols + 1] = { title = "Explored", seq = active.state.accepted_seq or "" }
+  local cols = {
+    { title = "Explored", seq = active.state.accepted_seq or "", empty_text = "(start)" },
+  }
   local optimal = (active.result and active.result.optimal_results) or {}
   local want = math.min(active.show_result_count or 0, #optimal)
   for i = 1, want do
     cols[#cols + 1] = {
       title = string.format("Optimal %d", i),
       seq = optimal[i].seq or "",
+      empty_text = "(none)",
+    }
+  end
+  if active.show_user_typed then
+    cols[#cols + 1] = {
+      title = "User typed",
+      seq = (active.result and active.result.user_seq) or "",
+      empty_text = "(none)",
     }
   end
   return cols
 end
 
----User-typed flat line. Rendered as a single row below the main body
----regardless of flat/staged mode. Shown only when `show_user_typed` is
----on. If the user's sequence is empty (shouldn't really happen; a
----captured session always has input), render nothing.
 ---@param active VimficiencyExploreActive
----@return table[]|nil  virt-line chunks or nil to suppress
-local function user_typed_row(active)
-  if not active.show_user_typed then return nil end
-  local seq = active.result and active.result.user_seq or ""
-  if seq == "" then return nil end
-  return {
-    { "User typed  ", "Comment" },
-    { ffi_lib.format_sequence(seq), "Normal" },
-  }
-end
-
----Append padding chunk so the row's column reaches `target_width`. Only
----pads when more columns follow — trailing column's right pad is wasted.
----@param row table[]
----@param col_idx integer
----@param col_count integer
----@param target_width integer
----@param current_text string  text just written for this column
-local function pad_column(row, col_idx, col_count, target_width, current_text)
-  if col_idx < col_count then
-    local pad = target_width - #current_text
-    if pad > 0 then row[#row + 1] = { string.rep(" ", pad), "Normal" } end
+---@param pane VimficiencyExploreWindow
+---@param name string
+local function configure_window(active, pane, name)
+  v.nvim_buf_set_name(pane.buf, name)
+  vim.bo[pane.buf].buftype = "nofile"
+  vim.bo[pane.buf].bufhidden = "wipe"
+  vim.bo[pane.buf].swapfile = false
+  vim.bo[pane.buf].modifiable = false
+  vim.bo[pane.buf].filetype = "vimficiency"
+  util.configure_scratch_window(pane.win, { winfixheight = true })
+  if active.header_handlers then
+    require("vimficiency.explore.keymaps").install_header(pane.buf, active.header_handlers)
   end
 end
 
----Flat body: one line per column, `<title>  <formatted full seq>`.
----Empty `Explored` is rendered as `(start)` so the session-just-opened
----case reads naturally.
----@param cols { title: string, seq: string }[]
----@return table[][]  virt_lines
-local function flat_rows(cols)
-  local rows = {}
-  local title_w = 0
-  for _, col in ipairs(cols) do title_w = math.max(title_w, #col.title) end
-  for _, col in ipairs(cols) do
-    local display = col.seq ~= ""
-        and ffi_lib.format_sequence(col.seq)
-        or (col.title == "Explored" and "(start)" or "(none)")
-    rows[#rows + 1] = {
-      { string.format("%-" .. title_w .. "s  ", col.title), "Comment" },
-      { display, "Normal" },
-    }
-  end
-  return rows
+local function sort_windows_left_to_right(windows)
+  table.sort(windows, function(a, b)
+    local pa = v.nvim_win_get_position(a.win)
+    local pb = v.nvim_win_get_position(b.win)
+    if pa[1] ~= pb[1] then return pa[1] < pb[1] end
+    return pa[2] < pb[2]
+  end)
 end
 
----Staged body: one row per composition stage. Stage count = max across
----all columns; shorter columns render `(none)` for missing stages. The
----left column is a stage label (`Move N` / `Edit N`) derived from the
----stage's kind on the first column that has it.
----@param cols { title: string, seq: string }[]
----@return table[][]  virt_lines
-local function staged_rows(cols)
-  -- Section every column once up-front.
-  local sectioned = {}
-  local max_stages = 0
-  for i, col in ipairs(cols) do
-    sectioned[i] = sections.section_sequence(col.seq)
-    max_stages = math.max(max_stages, #sectioned[i])
-  end
+local chunk_text
 
-  -- Per-column byte-width: longest stage text (or title if wider).
-  local col_widths = {}
-  for i, col in ipairs(cols) do
-    local w = #col.title
-    for _, s in ipairs(sectioned[i]) do w = math.max(w, #s.text) end
-    col_widths[i] = math.max(w, 6)
-  end
+---@param active VimficiencyExploreActive
+---@param pane VimficiencyExploreWindow
+---@param idx integer
+local function configure_pane(active, pane, idx)
+  configure_window(active, pane, string.format("vimficiency://explore/%s/header/%d", active.label, idx))
+end
 
-  local rows = {}
-
-  -- Column-header row: blank label slot + each column's title.
-  local header_row = { { string.rep(" ", LABEL_WIDTH), "Normal" } }
-  for i, col in ipairs(cols) do
-    if i > 1 then header_row[#header_row + 1] = { COLUMN_SEP, "Comment" } end
-    header_row[#header_row + 1] = { col.title, "Title" }
-    pad_column(header_row, i, #cols, col_widths[i], col.title)
-  end
-  rows[#rows + 1] = header_row
-
-  if max_stages == 0 then
-    rows[#rows + 1] = { { "(no stages yet)", "Comment" } }
-    return rows
-  end
-
-  -- Per-stage rows. Stage kind comes from the first column that has
-  -- that stage, falling back to "motion".
-  local move_idx, edit_idx = 0, 0
-  for stage = 1, max_stages do
-    local kind
-    for _, col_sections in ipairs(sectioned) do
-      if col_sections[stage] then kind = col_sections[stage].kind; break end
+---@param active VimficiencyExploreActive
+---@param source_win integer
+---@return VimficiencyExploreWindow
+local function split_new_pane(active, source_win)
+  local before = v.nvim_tabpage_list_wins(active.scratch.tab)
+  v.nvim_set_current_win(source_win)
+  vim.cmd("rightbelow vsplit")
+  local new_win
+  for _, win in ipairs(v.nvim_tabpage_list_wins(active.scratch.tab)) do
+    local seen = false
+    for _, prev in ipairs(before) do
+      if prev == win then
+        seen = true
+        break
+      end
     end
-    kind = kind or "motion"
-    local label
-    if kind == "motion" then
-      move_idx = move_idx + 1
-      label = string.format("Move %d", move_idx)
-    else
-      edit_idx = edit_idx + 1
-      label = string.format("Edit %d", edit_idx)
+    if not seen then
+      new_win = win
+      break
     end
-
-    local row = { { string.format("%-" .. LABEL_WIDTH .. "s", label), "Comment" } }
-    for i = 1, #cols do
-      if i > 1 then row[#row + 1] = { COLUMN_SEP, "Comment" } end
-      local section = sectioned[i][stage]
-      local text = section and section.text or "(none)"
-      local hl = section and "Normal" or "Comment"
-      row[#row + 1] = { text, hl }
-      pad_column(row, i, #cols, col_widths[i], text)
-    end
-    rows[#rows + 1] = row
   end
-  return rows
+  assert(new_win, "vimficiency explore: failed to create header pane")
+  local buf = v.nvim_create_buf(false, true)
+  v.nvim_win_set_buf(new_win, buf)
+  return { buf = buf, win = new_win }
+end
+
+---@param active VimficiencyExploreActive
+---@param count integer
+local function ensure_panes(active, count)
+  local current_win = v.nvim_get_current_win()
+  local valid = {}
+  for _, pane in ipairs(active.header.windows or {}) do
+    if v.nvim_win_is_valid(pane.win) and v.nvim_buf_is_valid(pane.buf) then
+      valid[#valid + 1] = pane
+    end
+  end
+  active.header.windows = valid
+  if #active.header.windows == 0 then return end
+
+  active.header.rebuilding = true
+  if active.header.summary and v.nvim_win_is_valid(active.header.summary.win)
+      and v.nvim_buf_is_valid(active.header.summary.buf) then
+    configure_window(active, active.header.summary,
+      string.format("vimficiency://explore/%s/header/summary", active.label))
+  end
+
+  while #active.header.windows < count do
+    local pane = split_new_pane(active, active.header.windows[#active.header.windows].win)
+    active.header.windows[#active.header.windows + 1] = pane
+  end
+
+  while #active.header.windows > count do
+    local pane = table.remove(active.header.windows)
+    if v.nvim_win_is_valid(pane.win) then
+      v.nvim_win_close(pane.win, true)
+    end
+    if v.nvim_buf_is_valid(pane.buf) then
+      pcall(v.nvim_buf_delete, pane.buf, { force = true })
+    end
+  end
+
+  sort_windows_left_to_right(active.header.windows)
+  for i, pane in ipairs(active.header.windows) do
+    configure_pane(active, pane, i)
+  end
+
+  active.header.rebuilding = false
+  if v.nvim_win_is_valid(current_win) then
+    v.nvim_set_current_win(current_win)
+  elseif v.nvim_win_is_valid(active.scratch.win) then
+    v.nvim_set_current_win(active.scratch.win)
+  end
+end
+
+---@param rows table[][]
+---@return integer
+local function rows_display_width(rows)
+  local width = 0
+  for _, row in ipairs(rows) do
+    width = math.max(width, vim.fn.strdisplaywidth(chunk_text(row)))
+  end
+  return width
+end
+
+---@param active VimficiencyExploreActive
+---@param pane_rows table[][]
+local function set_compact_widths(active, pane_rows)
+  local count = #active.header.windows
+  if count == 0 then return end
+
+  local total_width = 0
+  for _, pane in ipairs(active.header.windows) do
+    total_width = total_width + v.nvim_win_get_width(pane.win)
+  end
+
+  local min_width = 12
+  local desired = {}
+  local desired_total = 0
+  for i = 1, count do
+    desired[i] = math.max(min_width, rows_display_width(pane_rows[i]) + 1)
+    desired_total = desired_total + desired[i]
+  end
+
+  if desired_total <= total_width then
+    local remaining = total_width
+    for i, pane in ipairs(active.header.windows) do
+      local target = (i == count) and remaining or desired[i]
+      remaining = remaining - target
+      pcall(v.nvim_win_set_width, pane.win, math.max(min_width, target))
+    end
+    return
+  end
+
+  local scaled = {}
+  local scaled_total = 0
+  for i = 1, count do
+    scaled[i] = math.max(min_width,
+      math.floor(desired[i] * total_width / math.max(desired_total, 1)))
+    scaled_total = scaled_total + scaled[i]
+  end
+
+  if scaled_total > total_width then
+    local overflow = scaled_total - total_width
+    for i = count, 1, -1 do
+      local shrink = math.min(overflow, scaled[i] - min_width)
+      scaled[i] = scaled[i] - shrink
+      overflow = overflow - shrink
+      if overflow == 0 then break end
+    end
+  end
+
+  local remaining = total_width
+  for i, pane in ipairs(active.header.windows) do
+    local target = (i == count) and remaining or scaled[i]
+    remaining = remaining - target
+    pcall(v.nvim_win_set_width, pane.win, math.max(min_width, target))
+  end
 end
 
 ---@param chunks table[]
 ---@return string
-local function chunk_text(chunks)
+chunk_text = function(chunks)
   local parts = {}
   for _, chunk in ipairs(chunks) do
     parts[#parts + 1] = chunk[1]
@@ -243,39 +272,86 @@ local function write_rows(buf, rows)
   vim.bo[buf].modifiable = false
 end
 
----Render the header into its dedicated fixed-height pane.
 ---@param active VimficiencyExploreActive
----@param remaining string  live-computed pending-insert tail
+---@param column { title: string, seq: string, empty_text: string }
+---@param remaining string
+---@return table[][]
+local function build_rows(active, column, remaining)
+  local lines
+  if column.seq ~= "" then
+    lines = sequence_display.lines(column.seq)
+  else
+    lines = { column.empty_text }
+  end
+
+  local rows = {
+    { { column.title, "Title" } },
+    { { "", "Normal" } },
+  }
+  for _, line in ipairs(lines) do
+    rows[#rows + 1] = { { line, "Normal" } }
+  end
+  rows[#rows + 1] = { { "", "Normal" } }
+  return rows
+end
+
+---@param active VimficiencyExploreActive
+---@param remaining string
+---@return table[][]
+local function build_summary_rows(active, remaining)
+  return {
+    { { "", "Normal" } },
+    { { "Explore", "Title" }, { " " .. active.label, "Comment" } },
+    summary_chunks(active, remaining),
+    { { "", "Normal" } },
+  }
+end
+
+---@param rows table[][]
+---@param target integer
+local function pad_rows(rows, target)
+  while #rows < target do
+    rows[#rows + 1] = { { "", "Normal" } }
+  end
+end
+
+---@param active VimficiencyExploreActive
+---@param remaining string
+---@return nil
 function M.render(active, remaining)
-  if not (active.header
-      and v.nvim_buf_is_valid(active.header.buf)
-      and v.nvim_win_is_valid(active.header.win)) then
+  if not (active.header and active.header.summary and active.header.windows and #active.header.windows > 0) then
     return
   end
 
-  local header = {}
-
-  header[#header + 1] = { { "", "Normal" } }
-  header[#header + 1] = { { "Explore", "Title" }, { " " .. active.label, "Comment" } }
-  header[#header + 1] = summary_chunks(active, remaining)
-  header[#header + 1] = { { "", "Normal" } }
-
-  local cols = gather_columns(active)
-  local body = active.staged_mode and staged_rows(cols) or flat_rows(cols)
-  for _, row in ipairs(body) do header[#header + 1] = row end
-
-  local user_row = user_typed_row(active)
-  if user_row then
-    -- Blank separator so the user-typed line reads as a distinct band,
-    -- not another column body row.
-    header[#header + 1] = { { "", "Normal" } }
-    header[#header + 1] = user_row
+  local columns = gather_columns(active)
+  ensure_panes(active, #columns)
+  if #active.header.windows ~= #columns then
+    return
   end
 
-  header[#header + 1] = { { "", "Normal" } }
+  local pane_rows = {}
+  local max_height = 0
+  local summary_rows = build_summary_rows(active, remaining)
+  for i, column in ipairs(columns) do
+    pane_rows[i] = build_rows(active, column, remaining)
+    max_height = math.max(max_height, #pane_rows[i])
+  end
+  set_compact_widths(active, pane_rows)
 
-  write_rows(active.header.buf, header)
-  pcall(v.nvim_win_set_height, active.header.win, #header)
+  if not (v.nvim_win_is_valid(active.header.summary.win) and v.nvim_buf_is_valid(active.header.summary.buf)) then
+    return
+  end
+  write_rows(active.header.summary.buf, summary_rows)
+  pcall(v.nvim_win_set_height, active.header.summary.win, #summary_rows)
+
+  for i, pane in ipairs(active.header.windows) do
+    if not (v.nvim_win_is_valid(pane.win) and v.nvim_buf_is_valid(pane.buf)) then
+      return
+    end
+    pad_rows(pane_rows[i], max_height)
+    write_rows(pane.buf, pane_rows[i])
+    pcall(v.nvim_win_set_height, pane.win, max_height)
+  end
 end
 
 return M

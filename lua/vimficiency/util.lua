@@ -8,6 +8,45 @@ local config = require("vimficiency.config")
 local ffi_lib = require("vimficiency.ffi")
 
 --------------------------------------------------------------------------------
+-- Shared scratch-window chrome
+--------------------------------------------------------------------------------
+-- Every vimficiency-owned window is a scratch UI pane, not a real buffer the
+-- user edits. Row numbers, sign columns, fold columns, color columns, list
+-- chars, spell underlines, and an inherited winbar all turn it into noise.
+-- Without an explicit reset, each window inherits from the user's defaults
+-- (`:set number relativenumber signcolumn=yes`, colorscheme winbar, etc.),
+-- which is why panes used to look different depending on who opened them.
+--
+-- `configure_scratch_window` is the single source of truth. Call sites that
+-- need exceptions (cursorline on a selectable list, winfixheight on a status
+-- bar, a custom statusline/winhighlight, etc.) pass them as overrides — those
+-- merge on top and also cover keys not in the default set.
+---@type table<string, any>
+local SCRATCH_WINDOW_DEFAULTS = {
+  number         = false,
+  relativenumber = false,
+  cursorline     = false,
+  cursorcolumn   = false,
+  wrap           = false,
+  signcolumn     = "no",
+  foldcolumn     = "0",
+  colorcolumn    = "",
+  list           = false,
+  spell          = false,
+  winbar         = "",
+}
+
+---Apply the shared scratch-window chrome, then any per-site overrides.
+---@param win integer
+---@param overrides table<string, any>?
+function M.configure_scratch_window(win, overrides)
+  local merged = vim.tbl_extend("force", SCRATCH_WINDOW_DEFAULTS, overrides or {})
+  for name, value in pairs(merged) do
+    v.nvim_set_option_value(name, value, { win = win })
+  end
+end
+
+--------------------------------------------------------------------------------
 -- Types
 --------------------------------------------------------------------------------
 
@@ -224,11 +263,7 @@ function M.show_keymap_help(title, keymaps)
     noautocmd = true,
   })
 
-  vim.wo[win].wrap = false
-  vim.wo[win].cursorline = false
-  vim.wo[win].number = false
-  vim.wo[win].relativenumber = false
-  vim.wo[win].signcolumn = "no"
+  M.configure_scratch_window(win)
 
   local function close_popup()
     if v.nvim_win_is_valid(win) then
@@ -327,10 +362,7 @@ function M.show_output(title, text, opts)
   vim.bo[buf].modifiable = false
   vim.bo[buf].filetype = "vimficiency"
 
-  vim.wo[win].number = false
-  vim.wo[win].relativenumber = false
-  vim.wo[win].wrap = false
-  vim.wo[win].signcolumn = "no"
+  M.configure_scratch_window(win)
 
   local keymaps = {
     { lhs = "q", handler = "<cmd>close<cr>", desc = "Close vimficiency view", nowait = true },

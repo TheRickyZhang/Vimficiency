@@ -11,8 +11,9 @@ local uv = vim.uv
 local session = require("vimficiency.session")
 local session_store = require("vimficiency.session.store")
 local alias_mod = require("vimficiency.session.alias")
-local ffi_lib = require("vimficiency.ffi")
 local highlights = require("vimficiency.highlights")
+local sequence_display = require("vimficiency.sequence_display")
+local util = require("vimficiency.util")
 
 -- Namespace for picker-owned extmarks (header pane indicator, section
 -- dividers). Cleared and re-populated on every render().
@@ -420,13 +421,15 @@ local function preview_lines_for_active(item)
   if result then
     table.insert(lines, "")
     local user_cost = result.user_cost and string.format(" (cost: %.2f)", result.user_cost) or ""
-    table.insert(lines, "User full: " .. (ffi_lib.format_sequence(result.user_seq or "") or "") .. user_cost)
+    vim.list_extend(lines,
+      sequence_display.prefixed_lines("User full: ", result.user_seq or "", nil, user_cost))
     table.insert(lines, "")
     table.insert(lines, "Optimal:")
     for i, r in ipairs(result.optimal_results or {}) do
       if i > 5 then break end
-      table.insert(lines, string.format("  %d. %s  (cost: %.2f)",
-        i, ffi_lib.format_sequence(r.seq or "") or "", r.cost or 0))
+      vim.list_extend(lines,
+        sequence_display.prefixed_lines(string.format("  %d. ", i), r.seq or "", nil,
+          string.format("  (cost: %.2f)", r.cost or 0)))
     end
   end
   return lines
@@ -448,14 +451,19 @@ local function preview_lines_for_saved(item)
   table.insert(lines, string.format("Position: (%d,%d) -> (%d,%d)",
     data.start_row or 0, data.start_col or 0, data.end_row or 0, data.end_col or 0))
   local user_cost = data.user_cost and string.format(" (cost: %.2f)", data.user_cost) or ""
-  local user_seq_fmt = data.user_seq and ffi_lib.format_sequence(data.user_seq) or "(none)"
-  table.insert(lines, "User seq: " .. user_seq_fmt .. user_cost)
+  if data.user_seq and data.user_seq ~= "" then
+    vim.list_extend(lines,
+      sequence_display.prefixed_lines("User seq: ", data.user_seq, nil, user_cost))
+  else
+    table.insert(lines, "User seq: (none)" .. user_cost)
+  end
   table.insert(lines, "")
   table.insert(lines, "Optimal:")
   for i, r in ipairs(data.optimal_results or {}) do
     if i > 5 then break end
-    table.insert(lines, string.format("  %d. %s  (cost: %.2f)",
-      i, ffi_lib.format_sequence(r.seq or "") or "", r.cost or 0))
+    vim.list_extend(lines,
+      sequence_display.prefixed_lines(string.format("  %d. ", i), r.seq or "", nil,
+        string.format("  (cost: %.2f)", r.cost or 0)))
   end
   return lines
 end
@@ -880,8 +888,7 @@ function M.open()
     border = "rounded", style = "minimal",
     title = " Vimficiency Sessions ", title_pos = "center",
   })
-  vim.wo[win].wrap = false
-  vim.wo[win].cursorline = true
+  util.configure_scratch_window(win, { cursorline = true })
 
   -- Prompt split (bottom, 1 line, full float width).
   vim.cmd("belowright split")
@@ -893,10 +900,10 @@ function M.open()
   vim.bo[prompt_buf].filetype = "vimficiency_picker_prompt"
   v.nvim_win_set_buf(prompt_win, prompt_buf)
   v.nvim_win_set_height(prompt_win, 1)
-  vim.wo[prompt_win].wrap = false
-  vim.wo[prompt_win].cursorline = false
-  vim.wo[prompt_win].winfixheight = true
-  vim.wo[prompt_win].statusline = "/"
+  util.configure_scratch_window(prompt_win, {
+    winfixheight = true,
+    statusline   = "/",
+  })
 
   -- Back to list (top) and split off the preview pane.
   v.nvim_set_current_win(win)
@@ -908,7 +915,7 @@ function M.open()
   vim.bo[prev_buf].swapfile = false
   vim.bo[prev_buf].filetype = "vimficiency_picker_preview"
   v.nvim_win_set_buf(prev_win, prev_buf)
-  vim.wo[prev_win].wrap = false
+  util.configure_scratch_window(prev_win)
   local prev_width = math.floor(width * 0.4)
   pcall(v.nvim_win_set_width, prev_win, prev_width)
 

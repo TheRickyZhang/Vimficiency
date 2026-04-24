@@ -340,11 +340,11 @@ Outcome Session::applyMotion(string_view motionText) {
 
   auto eff = MotionHandler::applyMotion(
       state_.lines, state_.cursor, motionText, navContext_);
-  if (!eff.accepted) return unexpected(Rejected{std::move(eff.rejectReason)});
+  if (!eff) return unexpected(std::move(eff.error()));
 
   State next = state_;
-  next.cursor = eff.newCursor;
-  next.acceptedSeq.append(eff.appendedSeq);
+  next.cursor = eff->newCursor;
+  next.acceptedSeq.append(std::move(eff->appendedSeq));
   next.acceptedCost = getEffort(next.acceptedSeq, config_);
   next.acceptedRevision++;
   return commit(std::move(next));
@@ -359,7 +359,7 @@ Outcome Session::acceptCursorMove(CursorPos newCursor, string_view rawKeys) {
   State next = state_;
   next.cursor = eff.newCursor;
   if (!eff.appendedSeq.empty()) {
-    next.acceptedSeq.append(eff.appendedSeq);
+    next.acceptedSeq.append(std::move(eff.appendedSeq));
     next.acceptedCost = getEffort(next.acceptedSeq, config_);
   }
   next.acceptedRevision++;
@@ -374,11 +374,11 @@ Outcome Session::applyEdit(string_view text) {
   assert(plan_ && "applyEdit after construction without a plan");
   const auto step = plan_->stepAt(editIndex);
   auto eff = EditHandler::applyEdit(step.editResult, state_.cursor, text);
-  if (!eff.accepted) return unexpected(Rejected{std::move(eff.rejectReason)});
+  if (!eff) return unexpected(std::move(eff.error()));
 
   State next = state_;
   next.lines = step.postFencepost;
-  next.cursor = eff.postCursor;
+  next.cursor = eff->postCursor;
   next.acceptedSeq.append(text);
   next.acceptedCost = getEffort(next.acceptedSeq, config_);
   return afterEditCompleted(std::move(next));
@@ -397,7 +397,7 @@ Outcome Session::acceptBufferState(
       newLines,
       step.preFencepost,
       step.postFencepost);
-  if (!eff.accepted) return unexpected(Rejected{std::move(eff.rejectReason)});
+  if (!eff) return unexpected(std::move(eff.error()));
 
   State next = state_;
   next.cursor = newCursor;
@@ -408,7 +408,7 @@ Outcome Session::acceptBufferState(
     next.acceptedSeq.append(rawKeys);
     next.acceptedCost = getEffort(next.acceptedSeq, config_);
   }
-  if (eff.advance) {
+  if (eff->advance) {
     next.lines = step.postFencepost;
     return afterEditCompleted(std::move(next));
   }

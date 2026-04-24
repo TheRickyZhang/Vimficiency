@@ -4,6 +4,7 @@ local cmd     = vim.cmd
 local max     = math.max
 local min     = math.min
 local ffi_lib = require("vimficiency.ffi")
+local sequence_display = require("vimficiency.sequence_display")
 local util    = require("vimficiency.util")
 local highlights = require("vimficiency.highlights")
 
@@ -18,23 +19,29 @@ local cursor_ns = v.nvim_create_namespace("vimficiency_cursor")
 ---@class VimficiencyReplayWin
 ---@field win integer
 ---@field buf integer
----@field seq_idx integer   -- Index into `multi_sim.sequences` / `.states` / `.costs`.
+---@field is_user boolean              -- true for the leftmost user-sequence pane
+---@field seq_idx integer              -- suggestion rank (1..#suggestions) when is_user=false; 0 for user pane
+---@field default_rank integer         -- original suggestion rank assigned at build_sim_ui time
+                                       --   (used only for the index indicator; unused for user panes)
 
 ---@class ReplaySnapshot
 ---@field lines string[]
 ---@field cursor [integer, integer]   -- 1-indexed row, 0-indexed col (as nvim returns)
 ---@field mode string                  -- nvim_get_mode().mode code ("n", "i", "v", "V", "\22", etc.)
 
----@class VimficiencyReplayItem
----@field seq string                   -- motion sequence to simulate
----@field cost string?                 -- optional pre-formatted cost for the per-buffer header
+---@class VimficiencyReplayPoolEntry
+---@field tokens VimficiencyToken[]
+---@field cost string?                 -- pre-formatted cost string; nil = no cost row
+---@field states ReplaySnapshot[]?     -- nil until precompute completes for this entry
+
+---@class VimficiencyReplayPool
+---@field user VimficiencyReplayPoolEntry?        -- the user's typed sequence (if any); displayed by is_user panes
+---@field suggestions VimficiencyReplayPoolEntry[]  -- rank-indexed (1..N) optimal_results
 
 ---@class VimficiencyReplayState
 ---@field global_step integer
 ---@field windows VimficiencyReplayWin[]
----@field sequences VimficiencyToken[][]
----@field costs (string?)[]            -- parallel to sequences; nil = no cost row
----@field states ReplaySnapshot[][]    -- states[window_i][1] is the initial snapshot
+---@field pool VimficiencyReplayPool
 ---@field saved_win integer?
 ---@field saved_tab integer?
 ---@field sim_tab integer?
@@ -50,15 +57,12 @@ local cursor_ns = v.nvim_create_namespace("vimficiency_cursor")
 ---@field source_row integer?
 ---@field source_col integer?
 ---@field source_opts table?
----@field refresh_items fun(): VimficiencyReplayItem[]?
 
 ---@type VimficiencyReplayState
 local multi_sim = {
   global_step = 0,
   windows = {},
-  sequences = {},
-  costs = {},
-  states = {},
+  pool = { user = nil, suggestions = {} },
   saved_win = nil,
   saved_tab = nil,
   sim_tab = nil,
@@ -68,11 +72,25 @@ local multi_sim = {
   source_row = nil,
   source_col = nil,
   source_opts = nil,
-  refresh_items = nil,
 }
 
+--- Look up the pool entry a window is currently displaying. Returns nil
+--- if the entry is missing (e.g. user pane but pool.user is nil).
+---@param entry VimficiencyReplayWin
+---@return VimficiencyReplayPoolEntry?
+local function pool_entry_for(entry)
+  if entry.is_user then return multi_sim.pool.user end
+  return multi_sim.pool.suggestions[entry.seq_idx]
+end
+
+---@class VimficiencyFocusSavedEntry
+---@field buf integer
+---@field is_user boolean
+---@field seq_idx integer
+---@field default_rank integer
+
 ---@class VimficiencyFocusState
----@field saved_bufs integer[]
+---@field saved_entries VimficiencyFocusSavedEntry[]
 ---@field focused_idx integer
 
 ---@type VimficiencyFocusState?
@@ -231,12 +249,15 @@ end
 -- Cursor highlight + cleanup
 -- =============================================================================
 
---- Current snapshot for window `i`, clamped to the end of that sequence.
----@param i integer
+--- Current snapshot for a window, clamped to the end of its sequence.
+---@param entry VimficiencyReplayWin
 ---@return ReplaySnapshot?
-local function current_snap(i)
-  local states = multi_sim.states[i]
-  if not states or #states == 0 then return nil end
+local function current_snap(entry)
+  local pool_entry = pool_entry_for(entry)
+  if not pool_entry or not pool_entry.states or #pool_entry.states == 0 then
+    return nil
+  end
+  local states = pool_entry.states
   return states[min(multi_sim.global_step + 1, #states)]
 end
 
@@ -304,54 +325,76 @@ local function wrap_chunks(chunks, width)
   return lines
 end
 
+--- Label shown as the pane's header tag.
+---@param entry VimficiencyReplayWin
+---@return string
+local function header_label(entry)
+  if entry.is_user then return "[you] " end
+  return string.format("[%d] ", entry.seq_idx)
+end
+
 --- Render the virtual header above a replay buffer.
----@param seq_idx integer
 ---@param entry VimficiencyReplayWin
 ---@return nil
-local function render_header(seq_idx, entry)
-  local snap = current_snap(seq_idx)
+local function render_header(entry)
+  local snap = current_snap(entry)
   if not snap then return end
 
-  local tokens = multi_sim.sequences[seq_idx]
+  local pool_entry = pool_entry_for(entry)
+  if not pool_entry then return end
+
+  local tokens = pool_entry.tokens
   local local_step = min(multi_sim.global_step, #tokens)
   local width = max(8, v.nvim_win_get_width(entry.win))
-
-  ---@type table[]
-  local sequence_chunks = {}
-  for j, tok in ipairs(tokens) do
-    sequence_chunks[#sequence_chunks + 1] = {
-      tok.text,
-      j == multi_sim.global_step and highlights.REPLAY_CURRENT or "Normal",
-    }
+  local raw_parts = {}
+  for _, tok in ipairs(tokens) do
+    raw_parts[#raw_parts + 1] = tok.text
   end
-
-  local wrapped_sequence = wrap_chunks(sequence_chunks, width)
-  wrapped_sequence[1] = vim.list_extend({
-    { "Sequence ", "Comment" },
-  }, wrapped_sequence[1])
+  local display_lines = sequence_display.lines(table.concat(raw_parts, ""))
 
   local is_active = entry.win == v.nvim_get_current_win()
   local label_hl = is_active and highlights.REPLAY_ACTIVE or "Comment"
 
   ---@type table[]
+  local info_row = {
+    { header_label(entry), label_hl },
+    { string.format("Local %d/%d", local_step, #tokens), "Comment" },
+  }
+  -- Rank indicator: only on the focused, non-user pane, and only when
+  -- it has been cycled away from its default suggestion rank. Hidden
+  -- otherwise so the display stays quiet at rest.
+  if is_active and not entry.is_user
+     and entry.default_rank and entry.seq_idx ~= entry.default_rank then
+    info_row[#info_row + 1] = {
+      string.format("  rank %d/%d", entry.seq_idx, #multi_sim.pool.suggestions),
+      highlights.REPLAY_ACTIVE,
+    }
+  end
+
+  ---@type table[]
   local virt_lines = {
     { { "", "Normal" } },
-    {
-      { string.format("[%d] ", seq_idx), label_hl },
-      { string.format("Local %d/%d", local_step, #tokens), "Comment" },
-    },
+    info_row,
     {
       { "Mode ", "Comment" },
       { mode_label(snap.mode), "Normal" },
     },
   }
-  if multi_sim.costs[seq_idx] then
+  if pool_entry.cost then
     virt_lines[#virt_lines + 1] = {
       { "Cost ", "Comment" },
-      { multi_sim.costs[seq_idx], "Normal" },
+      { pool_entry.cost, "Normal" },
     }
   end
-  vim.list_extend(virt_lines, wrapped_sequence)
+  for i, line in ipairs(display_lines) do
+    local wrapped = wrap_chunks({ { line, "Normal" } }, width)
+    if i == 1 and wrapped[1] then
+      wrapped[1] = vim.list_extend({
+        { "Sequence ", "Comment" },
+      }, wrapped[1])
+    end
+    vim.list_extend(virt_lines, wrapped)
+  end
   virt_lines[#virt_lines + 1] = { { "", "Normal" } }
 
   v.nvim_buf_set_extmark(entry.buf, cursor_ns, 0, 0, {
@@ -376,9 +419,9 @@ local function update_cursor_highlights()
   for _, entry in ipairs(multi_sim.windows) do
     if v.nvim_win_is_valid(entry.win) and v.nvim_buf_is_valid(entry.buf) then
       v.nvim_buf_clear_namespace(entry.buf, cursor_ns, 0, -1)
-      render_header(entry.seq_idx, entry)
+      render_header(entry)
 
-      local snap = current_snap(entry.seq_idx)
+      local snap = current_snap(entry)
       local hl   = snap and mode_hl(snap.mode) or highlights.REPLAY_CURSOR
 
       local cursor = v.nvim_win_get_cursor(entry.win)
@@ -416,9 +459,9 @@ local function cleanup_multi_sim()
 
   -- Focus mode leaves hidden buffers behind; delete them explicitly.
   if focus_state then
-    for _, buf in ipairs(focus_state.saved_bufs) do
-      if v.nvim_buf_is_valid(buf) then
-        v.nvim_buf_delete(buf, { force = true })
+    for _, saved in ipairs(focus_state.saved_entries) do
+      if v.nvim_buf_is_valid(saved.buf) then
+        v.nvim_buf_delete(saved.buf, { force = true })
       end
     end
   end
@@ -440,9 +483,7 @@ local function cleanup_multi_sim()
 
   multi_sim.global_step = 0
   multi_sim.windows = {}
-  multi_sim.sequences = {}
-  multi_sim.costs = {}
-  multi_sim.states = {}
+  multi_sim.pool = { user = nil, suggestions = {} }
   multi_sim.saved_win = nil
   multi_sim.saved_tab = nil
   multi_sim.sim_tab = nil
@@ -455,7 +496,6 @@ local function cleanup_multi_sim()
   multi_sim.source_row = nil
   multi_sim.source_col = nil
   multi_sim.source_opts = nil
-  multi_sim.refresh_items = nil
   focus_state = nil
 end
 
@@ -463,12 +503,15 @@ end
 -- Step advancement & winbar rendering
 -- =============================================================================
 
---- Longest sequence length across all buffers.
+--- Longest sequence length across every pane currently displayed.
 ---@return integer
 max_total_steps = function()
   local m = 0
-  for _, tokens in ipairs(multi_sim.sequences) do
-    if #tokens > m then m = #tokens end
+  for _, entry in ipairs(multi_sim.windows) do
+    local pool_entry = pool_entry_for(entry)
+    if pool_entry and #pool_entry.tokens > m then
+      m = #pool_entry.tokens
+    end
   end
   return m
 end
@@ -499,15 +542,11 @@ local function create_status_bar()
   v.nvim_set_option_value("bufhidden", "wipe",   { buf = buf })
   v.nvim_win_set_buf(win, buf)
 
-  v.nvim_set_option_value("winfixheight",   true,  { win = win })
-  v.nvim_set_option_value("number",         false, { win = win })
-  v.nvim_set_option_value("relativenumber", false, { win = win })
-  v.nvim_set_option_value("signcolumn",     "no",  { win = win })
-  v.nvim_set_option_value("cursorline",     false, { win = win })
-  v.nvim_set_option_value("cursorcolumn",   false, { win = win })
-  v.nvim_set_option_value("statusline",     " ",   { win = win })
-  v.nvim_set_option_value("winhighlight",
-    "Normal:StatusLine,StatusLine:Normal,StatusLineNC:Normal", { win = win })
+  util.configure_scratch_window(win, {
+    winfixheight = true,
+    statusline   = " ",
+    winhighlight = "Normal:StatusLine,StatusLine:Normal,StatusLineNC:Normal",
+  })
 
   multi_sim.status_win = win
   multi_sim.status_buf = buf
@@ -564,8 +603,9 @@ local function seek_to(target)
   target = max(0, min(target, max_total_steps()))
   multi_sim.global_step = target
   for _, entry in ipairs(multi_sim.windows) do
-    local states = multi_sim.states[entry.seq_idx]
-    if states and #states > 0 then
+    local pool_entry = pool_entry_for(entry)
+    if pool_entry and pool_entry.states and #pool_entry.states > 0 then
+      local states = pool_entry.states
       apply_state(entry, states[min(target + 1, #states)])
     end
   end
@@ -576,8 +616,11 @@ end
 ---@return integer
 local function step_cap()
   if focus_state then
-    local focused_tokens = multi_sim.sequences[focus_state.focused_idx]
-    if focused_tokens then return #focused_tokens end
+    local entry = multi_sim.windows[1]
+    if entry then
+      local pool_entry = pool_entry_for(entry)
+      if pool_entry then return #pool_entry.tokens end
+    end
   end
   return max_total_steps()
 end
@@ -613,19 +656,31 @@ end
 local user_focus
 ---@type fun()
 local user_escape
+-- Forward-declared because the +/-/u/Up/Down key handlers need these
+-- but the real definitions live further down with the pool helpers.
+---@type fun()
+local build_layout_plan
+---@type fun(ranks: VimficiencyPoolRankKey[], cb: fun())
+local ensure_states_for_ranks
 
---- Cycle to the next or previous replay sequence.
+--- Cycle to the next or previous replay pane.
+--- In focus mode: swap the single visible buffer to the next/prev saved
+--- pane (so <Tab>/<S-Tab> walks through the full set of panes that were
+--- visible before focusing).
+--- In split mode: move window focus to the next/prev pane.
 ---@param step integer   -- `+1` for next, `-1` for prev
 local function user_cycle(step)
   if focus_state then
-    local n = #focus_state.saved_bufs
+    local n = #focus_state.saved_entries
     if n < 2 then return end
     local new_idx = ((focus_state.focused_idx - 1 + step) % n + n) % n + 1
     local entry = multi_sim.windows[1]
-    local new_buf = focus_state.saved_bufs[new_idx]
-    v.nvim_win_set_buf(entry.win, new_buf)
-    entry.buf = new_buf
-    entry.seq_idx = new_idx
+    local saved = focus_state.saved_entries[new_idx]
+    v.nvim_win_set_buf(entry.win, saved.buf)
+    entry.buf          = saved.buf
+    entry.is_user      = saved.is_user
+    entry.seq_idx      = saved.seq_idx
+    entry.default_rank = saved.default_rank
     focus_state.focused_idx = new_idx
     seek_to(multi_sim.global_step)
     return
@@ -653,15 +708,16 @@ local function user_yank_sequence()
   local cur_win = v.nvim_get_current_win()
   for _, entry in ipairs(multi_sim.windows) do
     if entry.win == cur_win then
-      local tokens = multi_sim.sequences[entry.seq_idx]
-      if not tokens then return end
+      local pool_entry = pool_entry_for(entry)
+      if not pool_entry then return end
       ---@type string[]
       local parts = {}
-      for _, tok in ipairs(tokens) do parts[#parts + 1] = tok.text end
+      for _, tok in ipairs(pool_entry.tokens) do parts[#parts + 1] = tok.text end
       local seq = table.concat(parts, "")
       vim.fn.setreg('"', seq)
       vim.fn.setreg('+', seq)
-      vim.notify("vimficiency: yanked [" .. entry.seq_idx .. "] " .. seq,
+      local tag = entry.is_user and "you" or tostring(entry.seq_idx)
+      vim.notify("vimficiency: yanked [" .. tag .. "] " .. seq,
         vim.log.levels.INFO)
       return
     end
@@ -683,8 +739,9 @@ local function user_debug_dump()
   pr(string.format("current_win = %d", v.nvim_get_current_win()))
 
   for i, entry in ipairs(multi_sim.windows) do
-    local states = multi_sim.states[entry.seq_idx] or {}
-    local tokens = multi_sim.sequences[entry.seq_idx] or {}
+    local pool_entry = pool_entry_for(entry) or { tokens = {}, states = {} }
+    local states = pool_entry.states or {}
+    local tokens = pool_entry.tokens or {}
     local snap_idx = min(multi_sim.global_step + 1, #states)
     local snap = states[snap_idx]
     local initial = states[1]
@@ -697,8 +754,9 @@ local function user_debug_dump()
     local active_token = tokens[multi_sim.global_step]
 
     pr(string.format(
-      "window[%d]: win=%d buf=%d seq_idx=%d #tokens=%d #states=%d",
-      i, entry.win, entry.buf, entry.seq_idx, #tokens, #states))
+      "window[%d]: win=%d buf=%d is_user=%s seq_idx=%d default_rank=%d #tokens=%d #states=%d",
+      i, entry.win, entry.buf, tostring(entry.is_user), entry.seq_idx,
+      entry.default_rank or 0, #tokens, #states))
     pr(string.format("  active token = %s (%s)  (global_step = %d)",
       active_token and string.format("%q", active_token.text) or "nil",
       active_token and active_token.kind or "-",
@@ -767,12 +825,69 @@ local function user_open_settings()
       vim.log.levels.WARN)
     return
   end
-  -- Refresh the grid when the modal closes. The settings are already
-  -- persisted to in-memory store + sidecar on each toggle; we just
-  -- need to rebuild items + respawn windows off the new values.
+  -- Rebuild the grid after the modal closes. Settings are persisted by
+  -- the modal itself; relayout_grid reuses any cached precompute state
+  -- so only brand-new ranks trigger fresh probes.
   require("vimficiency.play").open_settings({
-    on_close = function() M.refresh_current_items() end,
+    on_close = function() M.relayout_grid() end,
   })
+end
+
+--- `+` / `-`: adjust window_count in [1, 4] and relayout.
+---@param step integer
+local function user_adjust_window_count(step)
+  local play = require("vimficiency.play")
+  local settings = play.get_settings()
+  local current = settings.window_count or 2
+  local new_count = max(1, min(4, current + step))
+  if new_count == current then return end
+  play.set_setting("window_count", new_count)
+  M.relayout_grid()
+end
+
+--- `u`: toggle whether the user pane is shown and relayout.
+local function user_toggle_include_user()
+  local play = require("vimficiency.play")
+  local settings = play.get_settings()
+  play.set_setting("include_user_sequence", not settings.include_user_sequence)
+  M.relayout_grid()
+end
+
+--- `<Up>` / `<Down>`: cycle the suggestion displayed by the current pane.
+--- No-op on user panes; no-op when only one suggestion exists. Up moves
+--- to a better rank (smaller index); wraps. Changes are session-local
+--- and never persisted.
+---@param step integer   -- `-1` for Up (better rank), `+1` for Down
+local function user_cycle_rank(step)
+  if #multi_sim.windows == 0 then return end
+  local cur_win = v.nvim_get_current_win()
+  ---@type VimficiencyReplayWin?
+  local entry
+  for _, e in ipairs(multi_sim.windows) do
+    if e.win == cur_win then entry = e; break end
+  end
+  if not entry or entry.is_user then return end
+
+  local n = #multi_sim.pool.suggestions
+  if n < 2 then return end
+  local new_rank = ((entry.seq_idx - 1 + step) % n + n) % n + 1
+  if new_rank == entry.seq_idx then return end
+  entry.seq_idx = new_rank
+
+  -- If the new rank's states aren't precomputed yet, we hit the lazy path.
+  -- Render the header immediately (shows the new sequence + rank marker)
+  -- and apply the new state when precompute finishes.
+  update_cursor_highlights()
+  update_status_bar()
+
+  ensure_states_for_ranks({ new_rank }, function()
+    local pool_entry = pool_entry_for(entry)
+    if not pool_entry or not pool_entry.states then return end
+    if not v.nvim_win_is_valid(entry.win) then return end
+    local states = pool_entry.states
+    apply_state(entry, states[min(multi_sim.global_step + 1, #states)])
+    refresh()
+  end)
 end
 
 -- =============================================================================
@@ -792,10 +907,24 @@ local REPLAY_KEYMAPS = util.with_standard_ui_keymaps({
     summary_group = "step", summary_desc = "Step backward / forward" },
   { lhs = "<Right>", handler = user_step_right, desc = "Step forward",
     summary_group = "step", summary_desc = "Step backward / forward" },
-  { lhs = "<Tab>",   handler = user_cycle_next, desc = "Cycle to next sim sequence",
-    summary_group = "cycle", summary_desc = "Cycle to next / prev sim sequence" },
-  { lhs = "<S-Tab>", handler = user_cycle_prev, desc = "Cycle to prev sim sequence",
-    summary_group = "cycle", summary_desc = "Cycle to next / prev sim sequence" },
+  { lhs = "<Tab>",   handler = user_cycle_next, desc = "Cycle pane focus (next)",
+    summary_group = "cycle_pane", summary_desc = "Cycle pane focus (Tab / S-Tab)" },
+  { lhs = "<S-Tab>", handler = user_cycle_prev, desc = "Cycle pane focus (prev)",
+    summary_group = "cycle_pane", summary_desc = "Cycle pane focus (Tab / S-Tab)" },
+  { lhs = "<Up>",    handler = function() user_cycle_rank(-1) end,
+    desc = "Cycle this pane to a better-ranked suggestion",
+    summary_group = "cycle_rank", summary_desc = "Cycle pane's suggestion rank (Up/Down)" },
+  { lhs = "<Down>",  handler = function() user_cycle_rank(1) end,
+    desc = "Cycle this pane to a worse-ranked suggestion",
+    summary_group = "cycle_rank", summary_desc = "Cycle pane's suggestion rank (Up/Down)" },
+  { lhs = "+",       handler = function() user_adjust_window_count(1) end,
+    desc = "Add a pane (up to 4)",
+    summary_group = "pane_count", summary_desc = "Add / remove a pane (+ / -)" },
+  { lhs = "-",       handler = function() user_adjust_window_count(-1) end,
+    desc = "Remove a pane (down to 1)",
+    summary_group = "pane_count", summary_desc = "Add / remove a pane (+ / -)" },
+  { lhs = "u",       handler = user_toggle_include_user,
+    desc = "Toggle user-sequence pane" },
   { lhs = "<CR>",    handler = user_toggle_focus, desc = "Focus / unfocus current buffer" },
   { lhs = "<leader>y", handler = user_yank_sequence, desc = "Yank this window's sequence" },
   { lhs = "D",         handler = user_debug_dump,    desc = "Dump replay state to :messages" },
@@ -960,12 +1089,16 @@ local function create_sim_buffer(lines, label)
   return buf
 end
 
---- Apply replay window-local options.
+--- Apply replay window-local options. Replay panes are read-only views of
+--- precomputed snapshots — they should never inherit user chrome (line
+--- numbers, sign column, fold column, color column) that makes them look
+--- like editable buffers.
 ---@param win integer
 local function decorate_sim_window(win)
-  v.nvim_set_option_value("cursorline", true, { win = win })
-  v.nvim_set_option_value("cursorcolumn", true, { win = win })
-  v.nvim_set_option_value("winbar", "", { win = win })
+  util.configure_scratch_window(win, {
+    cursorline   = true,
+    cursorcolumn = true,
+  })
 end
 
 --- Attach a buffer to a window, clamp the cursor, enable focus indicators.
@@ -987,31 +1120,131 @@ local function setup_sim_window(win, buf, lines, row, col, label)
   decorate_sim_window(win)
 end
 
+---@class VimficiencyLayoutSlot
+---@field is_user boolean
+---@field default_rank integer  -- suggestion rank for non-user panes; 0 for user pane
+
+--- Compute the effective layout (number of panes, whether to include user)
+--- from play settings, trimmed to what the pool actually contains.
+---@return integer window_count
+---@return boolean include_user
+local function effective_layout()
+  local settings = require("vimficiency.play").get_settings()
+  local include_user = (settings.include_user_sequence == true)
+                       and multi_sim.pool.user ~= nil
+  local window_count = max(1, min(4, settings.window_count or 2))
+  local suggestion_slots = window_count - (include_user and 1 or 0)
+  local total_suggestions = #multi_sim.pool.suggestions
+  if suggestion_slots > total_suggestions then
+    suggestion_slots = total_suggestions
+    window_count = suggestion_slots + (include_user and 1 or 0)
+  end
+  if window_count < 1 then window_count = 1 end
+  return window_count, include_user
+end
+
+--- Slots for the current effective layout, leftmost first. User pane (if
+--- any) is always index 1.
+---@return VimficiencyLayoutSlot[]
+---@diagnostic disable-next-line: redefined-local
+build_layout_plan = function()
+  local window_count, include_user = effective_layout()
+  ---@type VimficiencyLayoutSlot[]
+  local plan = {}
+  if include_user then
+    plan[#plan + 1] = { is_user = true, default_rank = 0 }
+  end
+  local suggestion_slots = window_count - (include_user and 1 or 0)
+  for rank = 1, suggestion_slots do
+    plan[#plan + 1] = { is_user = false, default_rank = rank }
+  end
+  return plan
+end
+
+--- Tokenize the pool from the raw items passed into simulate_compare.
+--- Stores results under `multi_sim.pool`; states are left nil until
+--- `ensure_states_for_ranks()` fills them.
+---@param pool_arg { user: { seq: string, cost: string? }?, suggestions: { seq: string, cost: string? }[] }
+local function build_pool(pool_arg)
+  multi_sim.pool = { user = nil, suggestions = {} }
+  if pool_arg.user then
+    multi_sim.pool.user = {
+      tokens = tokenize_for_animation(pool_arg.user.seq),
+      cost = pool_arg.user.cost,
+      states = nil,
+    }
+  end
+  for i, sug in ipairs(pool_arg.suggestions or {}) do
+    multi_sim.pool.suggestions[i] = {
+      tokens = tokenize_for_animation(sug.seq),
+      cost = sug.cost,
+      states = nil,
+    }
+  end
+end
+
+--- Rank key used when asking `ensure_states_for_ranks` to cache entries.
+--- Either the string `"user"` or a 1-indexed suggestion rank.
+---@alias VimficiencyPoolRankKey "user" | integer
+
+--- Resolve a rank key to a pool entry.
+---@param key VimficiencyPoolRankKey
+---@return VimficiencyReplayPoolEntry?
+local function pool_entry_by_rank(key)
+  if key == "user" then return multi_sim.pool.user end
+  return multi_sim.pool.suggestions[key]
+end
+
+--- Ensure states are precomputed for every referenced rank, then invoke
+--- cb. Runs serially, reuses cached states, and bails if the precompute
+--- generation rolls over mid-flight.
+---@param ranks VimficiencyPoolRankKey[]
+---@param cb fun()
+---@diagnostic disable-next-line: redefined-local
+ensure_states_for_ranks = function(ranks, cb)
+  local my_gen = multi_sim.precompute_gen
+  local function step(i)
+    if multi_sim.precompute_gen ~= my_gen then return end
+    if i > #ranks then cb(); return end
+    local pool_entry = pool_entry_by_rank(ranks[i])
+    if not pool_entry or pool_entry.states then
+      step(i + 1)
+      return
+    end
+    precompute_states(
+      pool_entry.tokens,
+      multi_sim.source_lines or {},
+      multi_sim.source_row or 0,
+      multi_sim.source_col or 0,
+      function() return multi_sim.precompute_gen ~= my_gen end,
+      function(states)
+        if multi_sim.precompute_gen ~= my_gen then return end
+        pool_entry.states = states
+        step(i + 1)
+      end)
+  end
+  step(1)
+end
+
 --- Build the replay tab after precompute completes.
 ---@param lines string[]
 ---@param row integer
 ---@param col integer
----@param items VimficiencyReplayItem[]
-local function build_sim_ui(lines, row, col, items)
+---@param plan VimficiencyLayoutSlot[]
+local function build_sim_ui(lines, row, col, plan)
   cmd("tabnew")
   multi_sim.sim_tab = v.nvim_get_current_tabpage()
   local tabnew_buf = v.nvim_get_current_buf()
 
-  -- Layout: up to 4 windows across per row, wrapping to a second row at
-  -- item 5. `botright split` creates a full-width bottom row regardless
-  -- of where the current window sits, so vsplits within it stay
-  -- confined to that row.
-  local ROW_CAPACITY = 4
-  for i, item in ipairs(items) do
-    local label = string.format("[%d] %s", i, item.seq)
+  -- Up to 4 panes in a single row. `vsplit` consistently splits the
+  -- current window horizontally; wincmd = equalizes at the end.
+  for i, slot in ipairs(plan) do
+    local label = slot.is_user and "you" or tostring(slot.default_rank)
     local buf = create_sim_buffer(lines, label)
 
     ---@type integer
     local win
     if i == 1 then
-      win = v.nvim_get_current_win()
-    elseif i == ROW_CAPACITY + 1 then
-      cmd("botright split")
       win = v.nvim_get_current_win()
     else
       cmd("vsplit")
@@ -1020,7 +1253,13 @@ local function build_sim_ui(lines, row, col, items)
 
     setup_sim_window(win, buf, lines, row, col, label)
     ---@type VimficiencyReplayWin
-    local replay_win = { win = win, buf = buf, seq_idx = i }
+    local replay_win = {
+      win          = win,
+      buf          = buf,
+      is_user      = slot.is_user,
+      seq_idx      = slot.is_user and 0 or slot.default_rank,
+      default_rank = slot.default_rank,
+    }
     table.insert(multi_sim.windows, replay_win)
   end
 
@@ -1042,9 +1281,9 @@ local function build_sim_ui(lines, row, col, items)
 
   -- Render the initial snapshot in each window.
   for _, entry in ipairs(multi_sim.windows) do
-    local states = multi_sim.states[entry.seq_idx]
-    if states and #states > 0 then
-      apply_state(entry, states[1])
+    local pool_entry = pool_entry_for(entry)
+    if pool_entry and pool_entry.states and #pool_entry.states > 0 then
+      apply_state(entry, pool_entry.states[1])
     end
   end
   refresh()
@@ -1073,19 +1312,31 @@ user_focus = function(idx)
     return
   end
 
-  ---@type integer[]
-  local saved_bufs = {}
+  ---@type VimficiencyFocusSavedEntry[]
+  local saved_entries = {}
   for i, entry in ipairs(multi_sim.windows) do
-    saved_bufs[i] = entry.buf
+    saved_entries[i] = {
+      buf          = entry.buf,
+      is_user      = entry.is_user,
+      seq_idx      = entry.seq_idx,
+      default_rank = entry.default_rank,
+    }
     v.nvim_set_option_value("bufhidden", "hide", { buf = entry.buf })
   end
 
-  local focus_win = multi_sim.windows[idx].win
+  local focused = multi_sim.windows[idx]
+  local focus_win = focused.win
   v.nvim_set_current_win(focus_win)
   cmd("only")
 
-  multi_sim.windows = { { win = focus_win, buf = saved_bufs[idx], seq_idx = idx } }
-  focus_state = { saved_bufs = saved_bufs, focused_idx = idx }
+  multi_sim.windows = { {
+    win          = focus_win,
+    buf          = focused.buf,
+    is_user      = focused.is_user,
+    seq_idx      = focused.seq_idx,
+    default_rank = focused.default_rank,
+  } }
+  focus_state = { saved_entries = saved_entries, focused_idx = idx }
   refresh()
 end
 
@@ -1095,32 +1346,41 @@ user_escape = function()
     vim.notify("vimficiency: not currently focused", vim.log.levels.INFO)
     return
   end
-  local saved_bufs = focus_state.saved_bufs
+  local saved_entries = focus_state.saved_entries
   local focused_idx = focus_state.focused_idx
 
   local current_win = v.nvim_get_current_win()
-  v.nvim_win_set_buf(current_win, saved_bufs[1])
+  local first = saved_entries[1]
+  v.nvim_win_set_buf(current_win, first.buf)
   decorate_sim_window(current_win)
 
   ---@type VimficiencyReplayWin[]
-  local new_windows = { { win = current_win, buf = saved_bufs[1], seq_idx = 1 } }
-  local ROW_CAPACITY = 4
-  for i = 2, #saved_bufs do
-    if i == ROW_CAPACITY + 1 then
-      cmd("botright split")
-    else
-      cmd("vsplit")
-    end
+  local new_windows = { {
+    win          = current_win,
+    buf          = first.buf,
+    is_user      = first.is_user,
+    seq_idx      = first.seq_idx,
+    default_rank = first.default_rank,
+  } }
+  for i = 2, #saved_entries do
+    cmd("vsplit")
     local new_win = v.nvim_get_current_win()
-    v.nvim_win_set_buf(new_win, saved_bufs[i])
+    local saved = saved_entries[i]
+    v.nvim_win_set_buf(new_win, saved.buf)
     decorate_sim_window(new_win)
-    new_windows[i] = { win = new_win, buf = saved_bufs[i], seq_idx = i }
+    new_windows[i] = {
+      win          = new_win,
+      buf          = saved.buf,
+      is_user      = saved.is_user,
+      seq_idx      = saved.seq_idx,
+      default_rank = saved.default_rank,
+    }
   end
 
   -- Restore normal replay teardown behavior.
-  for _, buf in ipairs(saved_bufs) do
-    if v.nvim_buf_is_valid(buf) then
-      v.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
+  for _, saved in ipairs(saved_entries) do
+    if v.nvim_buf_is_valid(saved.buf) then
+      v.nvim_set_option_value("bufhidden", "wipe", { buf = saved.buf })
     end
   end
 
@@ -1137,25 +1397,31 @@ end
 -- Public API
 -- =============================================================================
 
---- Simulate multiple sequences side-by-side in a new tab.
+--- Simulate sequences side-by-side in a new tab.
 --- Replay snapshots are precomputed through the hidden Neovim probe window.
 ---@class VimficiencyReplayOpts
 ---@field label   string?   Display label shown in the replay statusline.
 ---@field end_row integer?  0-indexed end row of the captured session.
 ---@field end_col integer?  0-indexed end col.
----@field resume_step integer?  Internal: replay step to restore after rebuild.
----@field refresh_items fun(): VimficiencyReplayItem[]?  Optional live-refresh hook.
+---@field initial_window_count integer?  One-shot override from `:Vimfy play <alias> <N>`.
+                                      -- Persisted to the settings store so later
+                                      -- relayouts inherit it.
+
+---@class VimficiencyReplayPoolArg
+---@field user { seq: string, cost: string? }?       The user's typed sequence; leftmost pane when shown.
+---@field suggestions { seq: string, cost: string? }[]  Optimal-result sequences, best-first.
 
 ---@param lines string[] Buffer content to simulate on
 ---@param row integer 0-indexed starting row
 ---@param col integer 0-indexed starting column
----@param items VimficiencyReplayItem[] Each item is `{ seq, cost? }`.
+---@param pool_arg VimficiencyReplayPoolArg Sequence pool (user + all suggestions).
 ---@param opts VimficiencyReplayOpts? Optional display extras.
-function M.simulate_compare(lines, row, col, items, opts)
+function M.simulate_compare(lines, row, col, pool_arg, opts)
   if #multi_sim.windows > 0 then
     cleanup_multi_sim()
   end
-  if not items or #items == 0 then
+  if not pool_arg
+     or (not pool_arg.user and #(pool_arg.suggestions or {}) == 0) then
     vim.notify("simulate_compare: no sequences provided", vim.log.levels.ERROR)
     return
   end
@@ -1179,71 +1445,96 @@ function M.simulate_compare(lines, row, col, items, opts)
     end_row = opts.end_row,
     end_col = opts.end_col,
   }
-  multi_sim.refresh_items = opts.refresh_items
   multi_sim.saved_win = v.nvim_get_current_win()
   multi_sim.saved_tab = v.nvim_get_current_tabpage()
   multi_sim.windows = {}
-  multi_sim.sequences = {}
-  multi_sim.costs = {}
-  multi_sim.states = {}
   multi_sim.precompute_gen = multi_sim.precompute_gen + 1
   local my_gen = multi_sim.precompute_gen
 
-  ---@type VimficiencyToken[][]
-  local tokenized = {}
-  for i, item in ipairs(items) do
-    tokenized[i] = tokenize_for_animation(item.seq)
-    multi_sim.sequences[i] = tokenized[i]
-    multi_sim.costs[i] = item.cost
+  -- One-shot CLI override (`:Vimfy play <alias> <N>`). Persist it so the
+  -- next relayout inherits the same count — matches the user's mental
+  -- model that +/-/modal toggles and CLI args go through the same store.
+  if opts.initial_window_count then
+    require("vimficiency.play").set_setting(
+      "window_count", max(1, min(4, opts.initial_window_count)))
+  end
+
+  build_pool(pool_arg)
+
+  local plan = build_layout_plan()
+  local ranks = {}
+  for _, slot in ipairs(plan) do
+    ranks[#ranks + 1] = slot.is_user and "user" or slot.default_rank
   end
 
   vim.notify("vimficiency: precomputing replay…", vim.log.levels.INFO)
 
-  local function precompute_next(idx)
-    if multi_sim.precompute_gen ~= my_gen then
-      return
-    end
-    if idx > #items then
-      build_sim_ui(lines, row, col, items)
-      if opts.resume_step and opts.resume_step > 0 then
-        seek_to(opts.resume_step)
-      end
-      return
-    end
-    precompute_states(tokenized[idx], lines, row, col, function()
-      return multi_sim.precompute_gen ~= my_gen
-    end, function(states)
-      if multi_sim.precompute_gen ~= my_gen then return end
-      multi_sim.states[idx] = states
-      precompute_next(idx + 1)
-    end)
-  end
-
-  precompute_next(1)
+  ensure_states_for_ranks(ranks, function()
+    if multi_sim.precompute_gen ~= my_gen then return end
+    build_sim_ui(lines, row, col, plan)
+  end)
 end
 
----@return boolean refreshed
-function M.refresh_current_items()
-  if type(multi_sim.refresh_items) ~= "function" then
-    return false
+--- Teardown windows + sim tab, keeping `multi_sim.pool` and source
+--- coordinates intact. Used by `relayout_grid()` when the user toggles
+--- window_count / include_user — rebuilding the grid shouldn't drop the
+--- precomputed states we already have.
+local function teardown_ui_keep_pool()
+  multi_sim.precompute_gen = multi_sim.precompute_gen + 1
+  destroy_status_bar()
+
+  if focus_state then
+    for _, saved in ipairs(focus_state.saved_entries) do
+      if v.nvim_buf_is_valid(saved.buf) then
+        v.nvim_buf_delete(saved.buf, { force = true })
+      end
+    end
+    focus_state = nil
   end
-  local items = multi_sim.refresh_items()
-  if not items or #items == 0 then
-    return false
+
+  for _, entry in ipairs(multi_sim.windows) do
+    if v.nvim_buf_is_valid(entry.buf) then
+      v.nvim_buf_delete(entry.buf, { force = true })
+    end
   end
-  local source_opts = multi_sim.source_opts or {}
-  M.simulate_compare(
-    multi_sim.source_lines or {},
-    multi_sim.source_row or 0,
-    multi_sim.source_col or 0,
-    items,
-    {
-      label = source_opts.label,
-      end_row = source_opts.end_row,
-      end_col = source_opts.end_col,
-      resume_step = multi_sim.global_step,
-      refresh_items = multi_sim.refresh_items,
-    })
+  multi_sim.windows = {}
+
+  if multi_sim.sim_tab and v.nvim_tabpage_is_valid(multi_sim.sim_tab) then
+    if multi_sim.saved_tab and v.nvim_tabpage_is_valid(multi_sim.saved_tab) then
+      v.nvim_set_current_tabpage(multi_sim.saved_tab)
+    end
+    local sim_tab_nr = v.nvim_tabpage_get_number(multi_sim.sim_tab)
+    pcall(function() cmd("tabclose " .. sim_tab_nr) end)
+  end
+  multi_sim.sim_tab = nil
+end
+
+--- Rebuild the grid using current play settings. Reuses cached states in
+--- `multi_sim.pool`; only newly-visible ranks trigger fresh precompute.
+---@return boolean rebuilt  false when there's no active session to relayout
+function M.relayout_grid()
+  if not multi_sim.source_lines then return false end
+  local resume_step = multi_sim.global_step
+
+  teardown_ui_keep_pool()
+
+  local plan = build_layout_plan()
+  local ranks = {}
+  for _, slot in ipairs(plan) do
+    ranks[#ranks + 1] = slot.is_user and "user" or slot.default_rank
+  end
+
+  multi_sim.precompute_gen = multi_sim.precompute_gen + 1
+  local my_gen = multi_sim.precompute_gen
+
+  ensure_states_for_ranks(ranks, function()
+    if multi_sim.precompute_gen ~= my_gen then return end
+    build_sim_ui(multi_sim.source_lines, multi_sim.source_row or 0,
+                 multi_sim.source_col or 0, plan)
+    if resume_step > 0 then
+      seek_to(resume_step)
+    end
+  end)
   return true
 end
 
@@ -1253,16 +1544,36 @@ M.escape          = user_escape
 M.open_settings   = user_open_settings
 
 -- Debug-only accessors (not part of the public API). Let tests peek at
--- internal state without parsing winbars or tabs.
+-- internal state without parsing winbars or tabs. The states/sequences
+-- arrays are synthesized pane-indexed views over `multi_sim.pool` so
+-- existing tests (pane-indexed lookups) keep working after the pool
+-- refactor.
 
-M._debug_get_states = function() return multi_sim.states end
-M._debug_get_sequences = function() return multi_sim.sequences end
+M._debug_get_states = function()
+  local out = {}
+  for i, entry in ipairs(multi_sim.windows) do
+    local pe = pool_entry_for(entry)
+    out[i] = pe and pe.states or nil
+  end
+  return out
+end
+M._debug_get_sequences = function()
+  local out = {}
+  for i, entry in ipairs(multi_sim.windows) do
+    local pe = pool_entry_for(entry)
+    out[i] = pe and pe.tokens or nil
+  end
+  return out
+end
 M._debug_get_windows = function() return multi_sim.windows end
+M._debug_get_pool = function() return multi_sim.pool end
 M._debug_get_focus_state = function() return focus_state end
 M._debug_seek_to = seek_to
 M._debug_toggle_focus = user_toggle_focus
 M._debug_cycle_next = user_cycle_next
 M._debug_cycle_prev = user_cycle_prev
+M._debug_cycle_rank_next = function() user_cycle_rank(1) end
+M._debug_cycle_rank_prev = function() user_cycle_rank(-1) end
 M._debug_tokenize_for_animation = tokenize_for_animation
 
 return M

@@ -2,11 +2,9 @@
 
 #include <utility>
 
-#if defined(VIMF_DETAILED_DEBUG_TRACKING)
-inline constexpr bool kDebugTrackingEnabled = true;
-#else
-inline constexpr bool kDebugTrackingEnabled = false;
-#endif
+#include "BuildConfig.h"
+
+inline constexpr bool kDebugTrackingEnabled = VIMF_TRACK_STATES;
 
 template<typename T, bool Enabled = kDebugTrackingEnabled>
 struct Maybe;

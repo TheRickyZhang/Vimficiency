@@ -28,8 +28,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Have debug enabled by default for development
 option(VIMF_DEBUG "Enable debug output" ON)
 
-# Compile in explored-state tracking and payloads (for exploration tooling)
-option(VIMF_DETAILED_DEBUG_TRACKING "Enable explored-state tracking instrumentation" OFF)
+# Compile in explored-state tracking for the A* exploration tooling (off by
+# default — enabling this adds per-state allocations on every popped node).
+option(VIMF_TRACK_STATES "Enable explored-state recording for vimficiency_explore" OFF)
 
 # Legacy Vim compatibility mode (uses Vim defaults instead of Neovim defaults)
 # Key differences when enabled:
@@ -40,6 +41,16 @@ option(VIMF_LEGACY_VIM "Use legacy Vim defaults instead of Neovim defaults" OFF)
 
 # Produces STATIC libvimficiency_core.a.
 # Note to self: Static library just produces bundled code for purposes of easier inclsusion into others
+
+# Generate a single header carrying every build-time flag. Source code reads
+# these via `#if` against a name that CMake *actually* emits, eliminating the
+# class of bug where `-DFOO=ON` on the command line silently fails to drive a
+# `#ifdef FOO` in source (CMake accepts unknown `-D` cache variables).
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/BuildConfig.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/BuildConfig.h
+    @ONLY
+)
 
 # NOTE Remove configure_depends when convenience no longer needed in development
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
@@ -55,13 +66,19 @@ file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
 )
 add_library(vimficiency_core STATIC ${CORE_SOURCES})
 
-# We can reference everything under src/ absolutely
-target_include_directories(vimficiency_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+# We can reference everything under src/ absolutely. The generated/ directory
+# carries BuildConfig.h; source includes it as `#include "BuildConfig.h"`.
+target_include_directories(vimficiency_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_BINARY_DIR}/generated
+)
 
-# Compile-definition mapping from CMake options to preprocessor symbols.
+# VIMF_TRACK_STATES is consumed via the generated BuildConfig.h (see above).
+# VIMF_DEBUG and VIMF_LEGACY_VIM are still surfaced as raw macros here because
+# their source-side readers currently use mismatched names (tracked as
+# cleanup items in dev/architecture/todo.md).
 target_compile_definitions(vimficiency_core PUBLIC
     $<$<BOOL:${VIMF_DEBUG}>:VIMF_DEBUG>
-    $<$<BOOL:${VIMF_DETAILED_DEBUG_TRACKING}>:VIMF_DETAILED_DEBUG_TRACKING>
     $<$<BOOL:${VIMF_LEGACY_VIM}>:VIMF_LEGACY_VIM>
 )
 

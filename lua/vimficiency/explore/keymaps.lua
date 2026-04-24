@@ -16,7 +16,7 @@ local M = {}
 ---@field nowait? boolean
 
 -- Scratch buffer is deliberately minimal: only session-flow keys stay
--- reachable in real-time (close / undo / redo / layout toggle). Rarer,
+-- reachable in real-time (close / undo / redo). Rarer,
 -- more impactful settings (display mode, dedup, recommendation count,
 -- show-user-typed, result-count) live in the settings modal opened via
 -- `gs`.
@@ -27,7 +27,6 @@ local SCRATCH_SPEC = {
     summary_group = "history", summary_desc = "Undo / redo explore step" },
   { lhs = "<C-r>",           handler = "redo",               desc = "Redo explore step",          nowait = true,
     summary_group = "history", summary_desc = "Undo / redo explore step" },
-  { lhs = "<Tab>",           handler = "toggle_staged_mode", desc = "Toggle flat / staged header layout", mode = "n", nowait = true },
   { lhs = "<Leader>d",       handler = "debug_dump",         desc = "Dump explore state to :messages (debug)", mode = "n", nowait = true },
 }
 
@@ -41,7 +40,23 @@ local HEADER_SPEC = {
   { lhs = "q", handler = "cancel", desc = "Close explore session", nowait = true },
 }
 
-local function resolve(spec, handlers)
+local resolve
+
+local function header_keymaps(handlers)
+  return util.with_standard_ui_keymaps(
+    resolve(HEADER_SPEC, handlers),
+    {
+      title = "Explore — Header Keys",
+      docs = true,
+      settings = {
+        lhs = "gs",
+        handler = handlers.open_settings,
+        desc = "Open explore settings",
+      },
+    })
+end
+
+resolve = function(spec, handlers)
   local out = {}
   for _, entry in ipairs(spec) do
     local fn = handlers[entry.handler]
@@ -81,20 +96,16 @@ function M.install(header_buf, scratch_buf, list_buf, handlers)
         desc = "Open explore settings",
       },
     })
-  local header_resolved = util.with_standard_ui_keymaps(
-    resolve(HEADER_SPEC, handlers),
-    {
-      title = "Explore — Header Keys",
-      docs = true,
-      settings = {
-        lhs = "gs",
-        handler = handlers.open_settings,
-        desc = "Open explore settings",
-      },
-    })
+  local header_resolved = header_keymaps(handlers)
   util.set_buffer_keymaps(scratch_buf, scratch_resolved)
   util.set_buffer_keymaps(header_buf, header_resolved)
   util.set_buffer_keymaps(list_buf, resolve(LIST_SPEC, handlers))
+end
+
+---@param header_buf integer
+---@param handlers table<string, function>
+function M.install_header(header_buf, handlers)
+  util.set_buffer_keymaps(header_buf, header_keymaps(handlers))
 end
 
 return M

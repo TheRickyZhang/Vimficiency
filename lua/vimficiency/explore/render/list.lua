@@ -8,8 +8,8 @@
 -- Callers precompute `remaining` (the pending-insert tail) so the panel
 -- stays in lockstep with the header within one frame.
 local v = vim.api
-local ffi_lib = require("vimficiency.ffi")
 local highlights = require("vimficiency.explore.highlights")
+local sequence_display = require("vimficiency.sequence_display")
 
 local M = {}
 
@@ -59,14 +59,14 @@ function M.render(active, remaining)
     -- Parallel to the motion format: rank, text, kind. When the insert is
     -- complete the text slot shows `<Esc>` so there's still a concrete
     -- action to perform before phase advancement.
-    local text = remaining == "" and "<Esc>" or ffi_lib.format_sequence(remaining)
+    local text = remaining == "" and "<Esc>" or sequence_display.inline(remaining)
     add_row(1, 1, { text, "type" }, highlights.rank_hl(1))
   elseif #active.recommendations == 0 then
     lines[#lines + 1] = "(none)"
   else
     local total = #active.recommendations
     for i, item in ipairs(active.recommendations) do
-      local text = ffi_lib.format_sequence(item.text)
+      local text = sequence_display.inline(item.text)
       local cost = string.format("%.2f", item.total_path_cost)
       local kind = item.kind == "motion" and "move" or item.kind
       local chunks = { text, cost, kind }

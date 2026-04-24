@@ -1,6 +1,6 @@
 -- Pure formatting helpers for ResultSession display.
 
-local ffi_lib = require("vimficiency.ffi")
+local sequence_display = require("vimficiency.sequence_display")
 
 local M = {}
 
@@ -26,12 +26,13 @@ function M.format_body(result)
   if result.user_seq and result.user_seq ~= "" then
     local cost_str = result.user_cost
       and string.format(" (%.2f)", result.user_cost) or ""
-    table.insert(lines, string.format("  user: %s%s",
-      ffi_lib.format_sequence(result.user_seq), cost_str))
+    vim.list_extend(lines,
+      sequence_display.prefixed_lines("  user: ", result.user_seq, nil, cost_str))
   end
   for i, r in ipairs(result.optimal_results or {}) do
-    table.insert(lines, string.format("  %d. %s (%.2f)",
-      i, ffi_lib.format_sequence(r.seq), r.cost))
+    vim.list_extend(lines,
+      sequence_display.prefixed_lines(string.format("  %d. ", i), r.seq, nil,
+        string.format(" (%.2f)", r.cost)))
   end
   return lines
 end
