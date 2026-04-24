@@ -124,9 +124,9 @@ add_executable(vimficiency_tests
   Misc/HashCollisionTest.cpp
   Misc/NavClassMaskTest.cpp
   Misc/VimOptionsTest.cpp
-  Session/ExploreTest.cpp
-  Session/FixtureLoader.cpp
-  Session/FixtureIntegrationTest.cpp
+  Explore/ExploreTest.cpp
+  Explore/FixtureLoader.cpp
+  Explore/FixtureIntegrationTest.cpp
 )
 
 target_link_libraries(vimficiency_tests

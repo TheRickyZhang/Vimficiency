@@ -1,5 +1,5 @@
 #include "LuaExports/Shared.h"
-#include "Session/Explore.h"
+#include "Explore/Explore.h"
 
 #include <sstream>
 #include <string>
