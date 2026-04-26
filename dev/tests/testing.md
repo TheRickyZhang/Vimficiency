@@ -113,7 +113,7 @@ tests/
 │   ├── CostConsistencyTest.cpp
 │   ├── DeterminismTest.cpp
 │   └── HumanApprovalTest.cpp
-├── EditOptimizer/     # Same structure as NavOptimizer
+├── TransformOptimizer/     # Same structure as NavOptimizer
 ├── CompositionOptimizer/
 ├── Benchmarks/        # Performance benchmarks (separate binary)
 │   ├── BenchUtils.h   # Shared timing/output utilities
@@ -290,7 +290,7 @@ TEST_F(WordMotionTest, Random_wMotion) {
   for (int i = 0; i < 100; i++) {
     auto buffer = generateRandomBuffer(5);
     Position start = randomPosition(buffer);
-    Position ours = applyMotion(start, "w", buffer);
+    Position ours = applyMovement(start, "w", buffer);
     auto expected = oracle->simulate(buffer, start.line, start.col, "w");
     EXPECT_EQ(ours.line, expected.row) << "Iteration " << i;
     EXPECT_EQ(ours.col, expected.col) << "Iteration " << i;

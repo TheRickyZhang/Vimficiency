@@ -1,6 +1,6 @@
 #include "EditToKeys.h"
 #include "EditToKeysPrimitives.h"
-#include "MotionToKeysPrimitives.h"
+#include "MovementToKeysPrimitives.h"
 
 using namespace std;
 
@@ -65,7 +65,7 @@ const EditToKeys LINE_DOWN = {
     {"o",  {Key::Key_O}},                        // open line below
 };
 
-// --- Navigation motions (for EditOptimizer) ---
+// --- Navigation motions (for TransformOptimizer) ---
 
 const EditToKeys NAV_VERTICAL = {
     {"j",  {Key::Key_J}},                        // move down
@@ -205,7 +205,7 @@ const EditToKeys ALL_EDITS_TO_KEYS = combineAll({
 
 
 // =============================================================================
-// Pure Deletion Operations (for EditOptimizer deletion model)
+// Pure Deletion Operations (for TransformOptimizer deletion model)
 // =============================================================================
 
 namespace Deletion {

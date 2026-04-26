@@ -95,7 +95,7 @@ Maps multi-character command tokens (like `<C-d>`, `<Esc>`, `gJ`) to key sequenc
 
 ## Motion and Edit Mappings
 
-### MotionToKeys (`ToKeys/MotionToKeys.h`)
+### MovementToKeys (`ToKeys/MovementToKeys.h`)
 
 Several maps for different purposes:
 
@@ -105,11 +105,11 @@ Several maps for different purposes:
 | `ALL_MOTIONS` | All supported vim motions for parsing/validation |
 | `EXPLORABLE_MOTIONS` | Motions directly usable in optimizer search (excludes f/F/t/T which need target char) |
 
-Count-search motion pair specs (`w/b`, `e/ge`, paragraph/sentence categories) are owned by NavOptimizer (`Optimizer/NavOptimizer/CountableMotionPair.h`), not Keyboard.
+Count-search motion pair specs (`w/b`, `e/ge`, paragraph/sentence categories) are owned by NavOptimizer (`Optimizer/NavOptimizer/CountableMovementPair.h`), not Keyboard.
 
 ### EditToKeys (`ToKeys/EditToKeys.h`)
 
-Similar structure for edit commands. Organized by `EditBoundary` level (see `boundary-logic.md`).
+Similar structure for edit commands. Organized by `TransformBoundary` level (see `boundary-logic.md`).
 
 ## Sequence Tokenization
 
@@ -142,7 +142,7 @@ The weighted sum of these metrics produces the final effort score used by the op
 
 1. **New physical key**: Add to `XMacroKey.inc`, update any related key metadata in `Config`
 2. **New character mapping**: Add to appropriate `CharMappings` category
-3. **New motion**: Add to `ToKeys/MotionToKeysPrimitives.h` and relevant motion maps
+3. **New motion**: Add to `ToKeys/MovementToKeysPrimitives.h` and relevant motion maps
 4. **New edit**: Add to `ToKeys/EditToKeysPrimitives.cpp` and relevant edit maps
 
 ## Semantics

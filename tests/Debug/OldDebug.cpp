@@ -8,15 +8,15 @@
 #include <gtest/gtest.h>
 
 // #include "Optimizer/Keyboard/Config.h"
-// #include "Optimizer/EditOptimizer/EditOptimizer.h"
+// #include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 // #include "Optimizer/BufferIndex.h"
-// #include "Boundary/EditBoundary.h"
+// #include "Boundary/TransformBoundary.h"
 // #include "Utils/NeovimOracle.h"
 // #include "VimCore/VimCore.h"
 // #include "VimCore/VimEndpointUtils.h"
 // #include "VimCore/VimMotionUtils.h"
 // #include "Types/SentenceEdgeType.h"
-// #include "Interpreter/MotionInterpreter.h"
+// #include "Interpreter/MovementInterpreter.h"
 // #include "Interpreter/EditInterpreter.h"
 
 using namespace std;
@@ -98,15 +98,15 @@ private:
 class DebugTest : public ::testing::Test {
 protected:
   Config config = Config::uniform();
-  EditOptimizerParams params{.maxResults = 30, .maxNodesPopped = 100000};
+  TransformOptimizerParams params{.maxResults = 30, .maxNodesPopped = 100000};
 
-  EditOptimizer makeOptimizer() {
-    return EditOptimizer(config);
+  TransformOptimizer makeOptimizer() {
+    return TransformOptimizer(config);
   }
 
   // Create boundary for full buffer deletion (no constraints)
-  EditBoundary makeFullBufferBoundary(const Lines& source) {
-    return EditBoundary(source, CursorPos(0, 0), source.endPos());
+  TransformBoundary makeFullBufferBoundary(const Lines& source) {
+    return TransformBoundary(source, CursorPos(0, 0), source.endPos());
   }
 };
 
@@ -295,16 +295,16 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentence2ParenFailure) {
   auto subResult2paren = oracle_->simulate(subBuffer, 3, 21, "2(");
   cerr << "Sub buffer:  2( from (3,21) -> (" << subResult2paren.row << ", " << subResult2paren.col << ")" << endl;
 
-  // Our simulateMotions
-  cerr << "\n=== Our simulateMotions ===" << endl;
-  CursorPos sim1 = simulateMotions(CursorPos(3, 21), "(", subBuffer);
-  cerr << "simulateMotions((3,21), \"(\") = (" << sim1.line << ", " << sim1.col << ")" << endl;
+  // Our simulateMovements
+  cerr << "\n=== Our simulateMovements ===" << endl;
+  CursorPos sim1 = simulateMovements(CursorPos(3, 21), "(", subBuffer);
+  cerr << "simulateMovements((3,21), \"(\") = (" << sim1.line << ", " << sim1.col << ")" << endl;
 
-  CursorPos sim2 = simulateMotions(sim1, "(", subBuffer);
-  cerr << "simulateMotions((" << sim1.line << "," << sim1.col << "), \"(\") = (" << sim2.line << ", " << sim2.col << ")" << endl;
+  CursorPos sim2 = simulateMovements(sim1, "(", subBuffer);
+  cerr << "simulateMovements((" << sim1.line << "," << sim1.col << "), \"(\") = (" << sim2.line << ", " << sim2.col << ")" << endl;
 
-  CursorPos sim2paren = simulateMotions(CursorPos(3, 21), "2(", subBuffer);
-  cerr << "simulateMotions((3,21), \"2(\") = (" << sim2paren.line << ", " << sim2paren.col << ")" << endl;
+  CursorPos sim2paren = simulateMovements(CursorPos(3, 21), "2(", subBuffer);
+  cerr << "simulateMovements((3,21), \"2(\") = (" << sim2paren.line << ", " << sim2paren.col << ")" << endl;
 
   // BufferIndex sentence positions
   cerr << "\n=== BufferIndex sentence positions ===" << endl;
@@ -377,7 +377,7 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceMixedContentFailure) {
   auto r1 = oracle_->simulate(subBuffer, 3, 20, "(");
   cerr << "Neovim: ( from (3,20) -> (" << r1.row << ", " << r1.col << ")" << endl;
 
-  CursorPos sim1 = simulateMotions(CursorPos(3, 20), "(", subBuffer);
+  CursorPos sim1 = simulateMovements(CursorPos(3, 20), "(", subBuffer);
   cerr << "Ours:   ( from (3,20) -> (" << sim1.line << ", " << sim1.col << ")" << endl;
 
   // Step through multiple ( motions
@@ -386,7 +386,7 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceMixedContentFailure) {
   int row = 3, col = 20;
   for (int i = 1; i <= 6; i++) {
     auto nvim = oracle_->simulate(subBuffer, row, col, "(");
-    CursorPos ours = simulateMotions(pos, "(", subBuffer);
+    CursorPos ours = simulateMovements(pos, "(", subBuffer);
 
     bool match = (nvim.row == ours.line && nvim.col == ours.col);
     cerr << i << "(: neovim=(" << nvim.row << "," << nvim.col << ") "
@@ -430,7 +430,7 @@ TEST_F(DebugTest, DISABLED_InvestigateSingleLineSurrounded) {
   Lines fullBuffer = {"xx", "hello", "xx"};
   CursorPos initialPos(1, 0), endPos(1, 5);
   Lines editRegion = fullBuffer.getSpan(initialPos, endPos);
-  EditBoundary boundary(fullBuffer, initialPos, endPos);
+  TransformBoundary boundary(fullBuffer, initialPos, endPos);
 
   cerr << "\n=== SingleLineSurrounded Investigation ===" << endl;
   cerr << "fullBuffer: " << fullBuffer << endl;
@@ -440,10 +440,10 @@ TEST_F(DebugTest, DISABLED_InvestigateSingleLineSurrounded) {
   cerr << "prefix: '" << boundary.prefix() << "'" << endl;
   cerr << "suffix: '" << boundary.suffix() << "'" << endl;
 
-  EditOptimizer opt(config);
-  EditResult res = opt.optimizePureDeletion(
+  TransformOptimizer opt(config);
+  TransformResult res = opt.optimizePureDeletion(
       editRegion, boundary,
-      EditOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(100000));
+      TransformOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(100000));
 
   cerr << "\nResults (typeAllResults):" << endl;
   for (int i = 0; i < static_cast<int>(res.typeAllResults.size()); i++) {
@@ -461,7 +461,7 @@ TEST_F(DebugTest, DISABLED_InvestigatePosition11) {
   // With 1M iterations, finds d{D (cost 3) - actually better!
   // Conclusion: The fix works, but search budget affects results
   Lines initialLines = {"aa bb", "arst neio"};
-  EditBoundary boundary(initialLines, {0, 0}, initialLines.endPos());
+  TransformBoundary boundary(initialLines, {0, 0}, initialLines.endPos());
 
   // CursorPos 11 is line 1, col 6 ('e' in "arst neio")
   cerr << "\n=== CursorPos 11 Investigation ===" << endl;
@@ -484,17 +484,17 @@ TEST_F(DebugTest, DISABLED_InvestigatePosition11) {
   // Compare 10K vs 1M iterations
   cerr << "\n=== Comparing iteration limits ===" << endl;
 
-  EditOptimizer opt10k(config);
-  EditResult res10k = opt10k.optimizePureDeletion(
+  TransformOptimizer opt10k(config);
+  TransformResult res10k = opt10k.optimizePureDeletion(
       initialLines, boundary,
-      EditOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(10000));
+      TransformOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(10000));
   cerr << "10K iterations: " << res10k.typeAllResults[11].getSequence()
        << " (cost=" << res10k.typeAllResults[11].getCost() << ")" << endl;
 
-  EditOptimizer opt1m(config);
-  EditResult res1m = opt1m.optimizePureDeletion(
+  TransformOptimizer opt1m(config);
+  TransformResult res1m = opt1m.optimizePureDeletion(
       initialLines, boundary,
-      EditOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(1000000));
+      TransformOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(1000000));
   cerr << "1M iterations:  " << res1m.typeAllResults[11].getSequence()
        << " (cost=" << res1m.typeAllResults[11].getCost() << ")" << endl;
 }
@@ -581,20 +581,20 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceIndexFailure) {
     "aa .a b d.d. "
   };
 
-  // Test simulateMotions directly
-  cerr << "\n=== Direct simulateMotions Test ===" << endl;
-  CursorPos simResult = simulateMotions(CursorPos(3, 6), "2(b", subBuffer);
-  cerr << "simulateMotions((3,6), \"2(b\", subBuffer) = (" << simResult.line << ", " << simResult.col << ")" << endl;
+  // Test simulateMovements directly
+  cerr << "\n=== Direct simulateMovements Test ===" << endl;
+  CursorPos simResult = simulateMovements(CursorPos(3, 6), "2(b", subBuffer);
+  cerr << "simulateMovements((3,6), \"2(b\", subBuffer) = (" << simResult.line << ", " << simResult.col << ")" << endl;
 
-  // Trace the sequence with simulateMotions.
-  CursorPos step1 = simulateMotions(CursorPos(3, 6), "(", subBuffer);
-  cerr << "simulateMotions((3,6), \"(\", subBuffer) = (" << step1.line << ", " << step1.col << ")" << endl;
+  // Trace the sequence with simulateMovements.
+  CursorPos step1 = simulateMovements(CursorPos(3, 6), "(", subBuffer);
+  cerr << "simulateMovements((3,6), \"(\", subBuffer) = (" << step1.line << ", " << step1.col << ")" << endl;
 
-  CursorPos step2 = simulateMotions(step1, "(", subBuffer);
-  cerr << "simulateMotions((" << step1.line << "," << step1.col << "), \"(\", subBuffer) = (" << step2.line << ", " << step2.col << ")" << endl;
+  CursorPos step2 = simulateMovements(step1, "(", subBuffer);
+  cerr << "simulateMovements((" << step1.line << "," << step1.col << "), \"(\", subBuffer) = (" << step2.line << ", " << step2.col << ")" << endl;
 
-  CursorPos step3 = simulateMotions(step2, "b", subBuffer);
-  cerr << "simulateMotions((" << step2.line << "," << step2.col << "), \"b\", subBuffer) = (" << step3.line << ", " << step3.col << ")" << endl;
+  CursorPos step3 = simulateMovements(step2, "b", subBuffer);
+  cerr << "simulateMovements((" << step2.line << "," << step2.col << "), \"b\", subBuffer) = (" << step3.line << ", " << step3.col << ")" << endl;
 
   cerr << "\n=== BufferIndex Sentence Positions ===" << endl;
 

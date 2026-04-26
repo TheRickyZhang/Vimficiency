@@ -1,7 +1,7 @@
 #include "Effort/RunningEffort.h"
 
 #include "Keyboard/Finger.h"
-#include "Keyboard/ToKeys/MotionToKeys.h"
+#include "Keyboard/ToKeys/MovementToKeys.h"
 
 RunningEffort::RunningEffort(const PhysicalKeys& keys, const Config& model) {
   append(keys, model);

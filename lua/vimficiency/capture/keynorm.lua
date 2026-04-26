@@ -4,7 +4,7 @@
 -- conversion.
 --
 -- `vim.on_key` delivers keys as raw bytes (e.g. 0x15 for <C-u>). The C++
--- sequence tokenizer (SequenceToKeys / MotionToKeysPrimitives) keys on the
+-- sequence tokenizer (SequenceToKeys / MovementToKeysPrimitives) keys on the
 -- printable `<C-x>` form, and `vim.fn.keytrans()` emits `<C-U>` (uppercase
 -- modifier-letter), while the registered tokens are `<C-u>` (lowercase).
 -- Without this normalization the tokenizer hits

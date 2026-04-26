@@ -24,10 +24,12 @@ General:
 - **Sequence**: Neovim command string
 - **Effort**: Estimated typing difficulty of a key sequence only, independent of search distance
 
-- **Motion**: Commands that change cursor position without changing text
-- **Nav**: Movement-oriented actions/results whose practical outcome is navigation without changing text
+- **Movement**: Commands that change cursor position without changing text
 - **Edit**: Commands that change buffer contents, mode, or both, such as operator + motion/text object, replacement, mode change, insert typing
-- Note these are distinct from Vim's narrower grammatical categories, focusing on practical outcomes during optimization
+- **Nav**: Movement-oriented actions/results whose to navigate without changing text
+- **Mutate**: Modify-oriented actions/results to change text
+- Note that these intentionally distinct from Vim's narrower categories, such as motion, to avoid name collision.
+- Note NavOptimizer may use movements in its search, but it also uses jumps and find commands, hence the distinction. Similarly, MutateOptimizer may primarily search edits, but it may also search substitute commands as well.
 
 - **Begin/End**: Half-open range, `[begin, end)`
 - **First/Last**: Inclusive range, `[first, last]`
@@ -35,7 +37,7 @@ General:
 C++ (Internal representation):
 - **KeyedSequence**: Sequence + physical keys used to type it
 - **Sequence Binding**: KeyedSequence + precomputed RunningEffort
-- **ParsedMotion/ParsedEdit**: Command structure with count semantics, where count `0` means the default implicit count of 1
+- **ParsedMovement/ParsedEdit**: Command structure with count semantics, where count `0` means the default implicit count of 1
 
 - **Pos**: Only contains `line` and `col`
 - **CursorPos**: Adds `targetCol`; use `setCol(c)` vs `clampColPreservingTarget` when Vim's richer curswant is needed
@@ -108,10 +110,10 @@ For Lua context, see `lua/CLAUDE.md`.
 
 ## Deep Dive References
 - @dev/ci-and-benchmarks.md - CI workflow (test/benchmark/deploy), benchmark dashboard (`bench-dashboard/`), gh-pages layout
-- @dev/boundary-logic.md - Word motion and boundary crossing logic, EditBoundary API
+- @dev/boundary-logic.md - Word motion and boundary crossing logic, TransformBoundary API
 - @dev/edit-region-strategy.md - Replace vs change strategy (includes tryReplacement implementation)
 - @dev/neovim_on_key_issues.md - vim.on_key limitations, operator-pending duplication, missing text object keys
-- @dev/optimizer-architecture.md - A* heuristics, MotionOptimizer (6-class motion exploration, templated specs), EditOptimizer, CompositionOptimizer
+- @dev/optimizer-architecture.md - A* heuristics, MotionOptimizer (6-class motion exploration, templated specs), TransformOptimizer, CompositionOptimizer
 - @dev/session-invocation.txt - How vimficiency optimizer sessions are called and stored
 - @dev/testing.md - NeovimOracle, test file conventions, debug printing
 - @dev/utils.md - General utilities (QuoteFlags, BracketFlags, Lines, StringUtils)

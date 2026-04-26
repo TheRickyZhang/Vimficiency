@@ -1,7 +1,7 @@
 // SequenceParser.cpp - Implementation of sequence parsing for animation
 
 #include "SequenceParser.h"
-#include "Keyboard/ToKeys/MotionToKeys.h"
+#include "Keyboard/ToKeys/MovementToKeys.h"
 
 #include <cassert>
 #include <limits>
@@ -372,7 +372,7 @@ parseSequence(string_view seq) {
     // Try to parse motion
     string motion = tryParseMotion(sv, i);
     if (!motion.empty()) {
-      tokens.push_back(SequenceToken(countStr + motion, TokenType::Motion));
+      tokens.push_back(SequenceToken(countStr + motion, TokenType::Movement));
       i += motion.size();
       continue;
     }

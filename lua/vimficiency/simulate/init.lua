@@ -120,7 +120,7 @@ end
 -- when both C++ tokenizers fail (e.g., truly malformed sequences the
 -- grammar can't parse). Much smaller than the old classifier set because
 -- C++ now handles visual-mode entry; this covers the residual cases and
--- defaults non-matches to "motion" (fast-path-eligible, safe).
+-- defaults non-matches to "movement" (fast-path-eligible, safe).
 local FALLBACK_FOLLOW_BARE = {
   f = true, F = true, t = true, T = true, r = true,
   m = true, ["'"] = true, ["`"] = true, ["@"] = true,
@@ -134,7 +134,7 @@ local FALLBACK_VISUAL_BARE = {
 }
 
 ---@param text string
----@return "motion"|"change"|"visual"
+---@return "movement"|"change"|"visual"
 local function classify_fallback(text)
   local bare = text:gsub("^%d+", "")
   if FALLBACK_INSERT_BARE[bare] then return "change" end
@@ -142,7 +142,7 @@ local function classify_fallback(text)
   -- `c{motion}` / `c{textobj}` — any `c`-prefixed token of length >1 that
   -- isn't in the bare insert table. (`cc` matched above.)
   if bare:sub(1, 1) == "c" and #bare > 1 then return "change" end
-  return "motion"
+  return "movement"
 end
 
 --- Tokenize a sequence for animation. Returns kinded tokens — consumers
@@ -153,7 +153,7 @@ end
 local function tokenize_for_animation(seq)
   local tokens, err = ffi_lib.tokenize_sequence(seq)
   if err or not tokens or #tokens == 0 then
-    tokens, err = ffi_lib.tokenize_motions(seq)
+    tokens, err = ffi_lib.tokenize_movements(seq)
     if err or not tokens or #tokens == 0 then
       -- Final fallback: individual chars, keeping `<Key>` groups intact.
       -- We split the raw sequence char-by-char, then merge tokens that

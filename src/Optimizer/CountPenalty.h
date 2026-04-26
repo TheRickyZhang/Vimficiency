@@ -6,13 +6,13 @@
 #include <optional>
 
 enum class CountClass {
-  MotionChar,
-  MotionWord,
-  MotionWORD,
-  MotionLine,
-  MotionParagraph,
-  MotionSentence,
-  MotionJump,
+  MovementChar,
+  MovementWord,
+  MovementWORD,
+  MovementLine,
+  MovementParagraph,
+  MovementSentence,
+  MovementJump,
   EditChar,
   EditWord,
   EditWORD,
@@ -44,19 +44,19 @@ template<CountClass C>
 inline constexpr CountPenaltyParams CountPenaltySpec{0.0, 0.0, 0.0};
 
 template<>
-inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MotionChar>{0.0, 0.5, 0.0};
+inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MovementChar>{0.0, 0.5, 0.0};
 template<>
-inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MotionWord>{1.0, 0.5, 0.1};
+inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MovementWord>{1.0, 0.5, 0.1};
 template<>
-inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MotionWORD>{1.0, 0.5, 0.1};
+inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MovementWORD>{1.0, 0.5, 0.1};
 template<>
-inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MotionLine>{0.0, 0.5, 0.0};
+inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MovementLine>{0.0, 0.5, 0.0};
 template<>
-inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MotionParagraph>{1.0, 0.5, 0.1};
+inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MovementParagraph>{1.0, 0.5, 0.1};
 template<>
-inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MotionSentence>{1.0, 0.5, 0.1};
+inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MovementSentence>{1.0, 0.5, 0.1};
 template<>
-inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MotionJump>{1.0, 3.0, 0.1};
+inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MovementJump>{1.0, 3.0, 0.1};
 template<>
 inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::EditChar>{0.0, 0.5, 0.0};
 template<>

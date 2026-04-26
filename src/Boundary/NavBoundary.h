@@ -5,11 +5,11 @@
 #include "Types/Lines.h"
 
 // Forward declaration
-struct EditBoundary;
+struct TransformBoundary;
 
 // NavBoundary constrains the search space for NavOptimizer.
 //
-// Like EditBoundary, stores information about what's outside the region:
+// Like TransformBoundary, stores information about what's outside the region:
 // - hasLinesAbove/Below: for gg/G exclusion and edge-line checks
 // - leftColOffset: prefix length on begin line (0 = no prefix)
 // - rightColOffset: suffix length on end line (0 = no suffix)
@@ -36,8 +36,13 @@ public:
   NavBoundary(const Lines& lines, CursorPos beginPos, CursorPos endPos,
                  bool hasLinesAbove, bool hasLinesBelow);
 
-  // Construct from EditBoundary (for conversion when switching optimizer types)
-  explicit NavBoundary(const EditBoundary& eb);
+  // No TransformBoundary→NavBoundary conversion. The two carry the same
+  // line-level flags, but TransformBoundary's leftColOffset/rightColOffset
+  // describe the prefix/suffix being protected during a transform, which is
+  // wrong context for visual-replay nav: the col clip would let motions
+  // like `$` appear to land at the slice end while really landing inside
+  // the protected suffix on replay. Construct NavBoundary explicitly with
+  // only the flags you actually want.
 
   // Accessors delegate to ctx_
   bool hasLinesAbove() const { return ctx_.hasLinesAbove; }
@@ -45,7 +50,7 @@ public:
   int leftColOffset() const { return ctx_.leftColOffset; }
   int rightColOffset() const { return ctx_.rightColOffset; }
 
-  // Access underlying context (for EditBoundary construction)
+  // Access underlying context (for TransformBoundary construction)
   const BoundaryContext& context() const { return ctx_; }
 
   bool isPositionInBounds(const CursorPos& pos, int lastLine, int lastLineLength) const;

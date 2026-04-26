@@ -26,8 +26,8 @@ ChunkedSequence chunkCompositionSequence(string_view seq) {
 
   for (const auto& tok : tokens) {
     switch (tok.type) {
-      case TokenType::Motion: {
-        auto& chunk = ensureChunk(SequenceChunk::Motion);
+      case TokenType::Movement: {
+        auto& chunk = ensureChunk(SequenceChunk::Movement);
         chunk.tokens.push_back(tok.text);
         chunk.text += tok.text;
         break;

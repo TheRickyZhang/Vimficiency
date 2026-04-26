@@ -410,11 +410,11 @@ vector<DiffState> calculate(const Lines& initialLines, const Lines& goalLines) {
         posEnd = CursorPos(line, col);  // col may be 0 on next line if deleted ends with \n
       }
 
-      // Construct DiffState with EditBoundary computed from buffer context
-      // EditBoundary now takes exclusive endPos directly
+      // Construct DiffState with TransformBoundary computed from buffer context
+      // TransformBoundary now takes exclusive endPos directly
       result.emplace_back(
           posBegin, posEnd, std::move(deleted), std::move(inserted),
-          EditBoundary(initialLines, posBegin, posEnd));
+          TransformBoundary(initialLines, posBegin, posEnd));
     }
 
     // Skip the long KEEP run we found (or remaining KEEPs at end)

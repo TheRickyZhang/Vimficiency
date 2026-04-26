@@ -11,7 +11,7 @@ Buffer slicing limits the search region to only the relevant portion of the buff
 | Target | Padding | Rationale |
 |--------|---------|-----------|
 | NavOptimizer | Yes (linewise) | Potential for overshoot, like $b or }k |
-| EditOptimizer | No | Need exact edit regions (overshoot never optimal )  |
+| TransformOptimizer | No | Need exact edit regions (overshoot never optimal )  |
 
 
 When creating sub-buffers, positions must be remapped:
@@ -64,16 +64,16 @@ int linePaddingBelow = 2;
 
 NavOptimizer itself does NOT do internal slicing - it operates on whatever buffer is passed to it. The padding params are available for callers to use when creating sub-buffers.
 
-### 3. EditOptimizer
+### 3. TransformOptimizer
 
-**File**: `src/Optimizer/EditOptimizer/EditOptimizerParams.h`
+**File**: `src/Optimizer/TransformOptimizer/TransformOptimizerParams.h`
 
 ```cpp
 int navLinePaddingAbove = 1;  // For internal NavOptimizer calls
 int navLinePaddingBelow = 1;
 ```
 
-EditOptimizer operates on exact edit regions (no padding). However, it internally calls NavOptimizer for the visual delete path (`v + motion + d`), and uses the `navLinePadding*` params for that call.
+TransformOptimizer operates on exact edit regions (no padding). However, it internally calls NavOptimizer for the visual delete path (`v + motion + d`), and uses the `navLinePadding*` params for that call.
 
 Lower default (1) because `effectiveLines` already includes prefix/suffix context and we only need a single result.
 
@@ -107,19 +107,19 @@ for (auto& r : results) {
 }
 ```
 
-### 5. CompositionOptimizer → EditOptimizer
+### 5. CompositionOptimizer → TransformOptimizer
 
 **File**: `src/Optimizer/CompositionOptimizer/CompositionSearchContext.cpp`
 
 ```cpp
 // No padding - exact regions from DiffState
-EditResult result = editOptimizer.optimizeEdit(
+TransformResult result = transformOptimizer.optimizeTransform(
     diff.deletedLines(),   // Exact lines being deleted
     diff.insertedLines(),  // Exact lines being inserted
     diff.boundary);
 ```
 
-EditOptimizer receives exact character-wise regions from the Myers diff, with no additional padding.
+TransformOptimizer receives exact character-wise regions from the Myers diff, with no additional padding.
 
 
 Note: Only the line is offset; column stays the same.
@@ -152,7 +152,7 @@ This applies to both code paths in CompositionOptimizer: the edit/motion transit
 |-------|---------|---------|-----------------|
 | Lua → C++ | Yes | `SLICE_PADDING` = 5 | `lua/vimficiency/config.lua` |
 | NavOptimizer | No | N/A | (caller responsibility) |
-| EditOptimizer | No | N/A | (exact regions) |
-| EditOptimizer → NavOptimizer | Yes | `navLinePadding*` = 1 | `EditOptimizerParams.h` |
+| TransformOptimizer | No | N/A | (exact regions) |
+| TransformOptimizer → NavOptimizer | Yes | `navLinePadding*` = 1 | `TransformOptimizerParams.h` |
 | CompositionOptimizer → NavOptimizer | Yes | `navLinePadding*` = 2 | `CompositionOptimizerParams.h` |
-| CompositionOptimizer → EditOptimizer | No | N/A | (exact character-wise) |
+| CompositionOptimizer → TransformOptimizer | No | N/A | (exact character-wise) |

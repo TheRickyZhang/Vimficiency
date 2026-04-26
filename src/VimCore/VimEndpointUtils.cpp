@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cassert>
 
-#include "Boundary/EditBoundary.h"
+#include "Boundary/TransformBoundary.h"
 #include "Types/CursorPos.h"
 
 using namespace std;
@@ -960,7 +960,7 @@ int scrollEndpoint(int cursorLine, int numLines, int shift, bool hasLinesAbove,
 // =============================================================================
 
 int motionLineEndpoint(CursorPos cursor, const Lines& lines, bool forward,
-                       const EditBoundary& boundary) {
+                       const TransformBoundary& boundary) {
   int n = static_cast<int>(lines.size());
   if (n == 0)
     return COL_OUTSIDE_BOUNDARY;
@@ -982,7 +982,7 @@ int motionLineEndpoint(CursorPos cursor, const Lines& lines, bool forward,
 }
 
 LineRange lineDeleteRange(CursorPos cursor, const Lines& lines,
-                          const EditBoundary& boundary) {
+                          const TransformBoundary& boundary) {
   int n = static_cast<int>(lines.size());
   if (n == 0)
     return LINE_RANGE_OUTSIDE_BOUNDARY;

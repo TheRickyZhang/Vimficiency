@@ -32,7 +32,7 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   // Maximum number of edit alternatives per starting position to store and explore.
   // Higher values let CompositionOptimizer consider suboptimal edits that may compose
   // better with surrounding motion context.
-  int maxEditResultsPerPosition = 1;
+  int maxTransformResultsPerPosition = 1;
 
   // Chainable setters for fluent configuration
   CompositionOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
@@ -45,7 +45,7 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   CompositionOptimizerParams& withNavLinePadding(int v) { navPaddingAbove = navPaddingBelow = v; return *this; }
   CompositionOptimizerParams& withMinCountRepeat(int v) { setMinCountRepeat(v); return *this; }
   CompositionOptimizerParams& withMaxCountRepeat(int v) { setMaxCountRepeat(v); return *this; }
-  CompositionOptimizerParams& withMaxEditResultsPerPosition(int v) { maxEditResultsPerPosition = v; return *this; }
+  CompositionOptimizerParams& withMaxTransformResultsPerPosition(int v) { maxTransformResultsPerPosition = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
   static CompositionOptimizerParams dijkstra(int maxResults = 10, int maxNodesPopped = 50000) {

@@ -29,7 +29,7 @@ local rank_hl = highlights.rank_hl
 local function group_motions_by_row(recs)
   local by_row = {}
   for _, item in ipairs(recs) do
-    if item.kind == "motion" then
+    if item.kind == "movement" then
       local list = by_row[item.landing_row]
       if not list then
         list = {}
@@ -133,7 +133,7 @@ local function render_landing_highlights(active, filter)
   local claims = make_claims()
   local motions = {}
   for _, item in ipairs(active.recommendations) do
-    if item.kind == "motion" and (not filter or filter[item]) then
+    if item.kind == "movement" and (not filter or filter[item]) then
       motions[#motions + 1] = item
     end
   end
@@ -170,7 +170,7 @@ local function render_tags_inplace(active)
 
   local motions = {}
   for _, item in ipairs(active.recommendations) do
-    if item.kind == "motion" and item.text ~= "" then motions[#motions + 1] = item end
+    if item.kind == "movement" and item.text ~= "" then motions[#motions + 1] = item end
   end
   table.sort(motions, function(x, y) return (x.rank or 0) < (y.rank or 0) end)
 

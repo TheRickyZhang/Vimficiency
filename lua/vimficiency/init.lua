@@ -128,13 +128,13 @@ function M.setup(user_config)
   set_cmd("Vimfy", handle_vf_command, {
     nargs = "*",
     complete = commands.complete,
-    desc = "Vimficiency motion optimizer",
+    desc = "Vimficiency movement optimizer",
   })
 
   set_cmd("Vimficiency", handle_vf_command, {
     nargs = "*",
     complete = commands.complete,
-    desc = "Vimficiency motion optimizer",
+    desc = "Vimficiency movement optimizer",
   })
 
   for _, alias in ipairs({ "a", "b", "c", "d", "e" }) do

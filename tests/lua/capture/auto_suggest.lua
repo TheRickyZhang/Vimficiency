@@ -74,14 +74,11 @@ test("fire_idle: no-op when window unresolved (queue too young)", function()
   end)
 end)
 
-test("fire_idle: compute failure still counts (throttle)", function()
+test("fire_idle: compute and finish failures still count", function()
   harness({ compute = function() return nil, "rejected" end }, function()
     assert_eq(fire_idle(), true,
       "compute failure must count as a fire so retries respect cooldown")
   end)
-end)
-
-test("fire_idle: finish failure also counts", function()
   harness({ finish = function() return false end }, function()
     assert_eq(fire_idle(), true,
       "store failure must count as a fire so retries respect cooldown")
@@ -115,34 +112,25 @@ test("fire_idle: promotes end_kind from manual to auto on takeover", function()
   end)
 end)
 
-test("fire_idle: compute failure leaves end_kind = 'manual' (no speculative flip)", function()
-  local captured = { id = "fake-id", start_kind = "auto", end_kind = "manual" }
-  harness({
-    active = function() return captured end,
-    compute = function() return nil, "rejected" end,
-  }, function()
-    -- Atomic contract: finish is never reached, so end_kind must not
-    -- mutate. A regression that speculatively flipped end_kind before
-    -- compute would leave a Recall record mislabeled as Suggest here.
-    fire_idle()
-    assert_eq(captured.end_kind, "manual",
-      "compute failure must not mutate end_kind")
-  end)
-end)
-
-test("fire_idle: finish failure leaves end_kind = 'manual' (atomic override)", function()
-  local captured = { id = "fake-id", start_kind = "auto", end_kind = "manual" }
-  harness({
-    active = function() return captured end,
-    -- Failing finish_session must NOT apply the override. This is the
-    -- atomicity contract: end_kind mutation and status transition share
-    -- the same guard in finish_session.
-    finish = function() return false end,
-  }, function()
-    fire_idle()
-    assert_eq(captured.end_kind, "manual",
-      "finish failure must not mutate end_kind — atomic with status transition")
-  end)
+test("fire_idle: failures leave end_kind = 'manual'", function()
+  for _, spec in ipairs({
+    {
+      label = "compute failure",
+      patch = { compute = function() return nil, "rejected" end },
+    },
+    {
+      label = "finish failure",
+      patch = { finish = function() return false end },
+    },
+  }) do
+    local captured = { id = "fake-id", start_kind = "auto", end_kind = "manual" }
+    spec.patch.active = function() return captured end
+    harness(spec.patch, function()
+      fire_idle()
+      assert_eq(captured.end_kind, "manual",
+        spec.label .. " must not mutate end_kind")
+    end)
+  end
 end)
 
 --------------------------------------------------------------------------------
@@ -225,15 +213,9 @@ end)
 -- finish_session so the header can print it.
 --------------------------------------------------------------------------------
 
-test("fire_idle: passes 'suggest_idle' as the reason", function()
+test("auto_suggest triggers pass literal finish reasons", function()
   assert_eq(capture_reason(IDLE_CFG, nil, fire_idle), "suggest_idle")
-end)
-
-test("fire_keys: passes 'suggest_keys' as the reason", function()
   assert_eq(capture_reason(KEYS_CFG, nil, fire_keys), "suggest_keys")
-end)
-
-test("fire_cost: passes 'suggest_cost' as the reason", function()
   local compute = function() return h.fake_result({
     user_cost = 20,
     optimal_results = { { seq = "y", cost = 10.0 } },

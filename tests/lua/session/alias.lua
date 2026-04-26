@@ -4,123 +4,56 @@
 
 local alias = require("vimficiency.session.alias")
 
-test("parse: single-letter manual", function()
-  local t, v = alias.parse("a")
-  assert_eq(t, "manual")
-  assert_eq(v, nil)
+test("parse: manual aliases are alphabetic", function()
+  for _, input in ipairs({ "a", "refactor", "REFACTOR", "FooBar" }) do
+    local t, v = alias.parse(input)
+    assert_eq(t, "manual", input)
+    assert_eq(v, nil, input)
+  end
 end)
 
-test("parse: multi-letter manual", function()
-  local t, v = alias.parse("refactor")
-  assert_eq(t, "manual")
-  assert_eq(v, nil)
+test("parse: recall aliases carry numeric values", function()
+  for _, case in ipairs({
+    { input = "5", kind = "recall_key", value = 5 },
+    { input = "123", kind = "recall_key", value = 123 },
+    { input = "3s", kind = "recall_time", value = 3 },
+    { input = "90s", kind = "recall_time", value = 90 },
+  }) do
+    local t, v = alias.parse(case.input)
+    assert_eq(t, case.kind, case.input)
+    assert_eq(v, case.value, case.input)
+  end
 end)
 
-test("parse: uppercase manual", function()
-  local t, v = alias.parse("REFACTOR")
-  assert_eq(t, "manual")
-  assert_eq(v, nil)
-end)
-
-test("parse: mixed-case manual", function()
-  local t = alias.parse("FooBar")
-  assert_eq(t, "manual")
-end)
-
-test("parse: recall_key single digit", function()
-  local t, v = alias.parse("5")
-  assert_eq(t, "recall_key")
-  assert_eq(v, 5)
-end)
-
-test("parse: recall_key multi-digit", function()
-  local t, v = alias.parse("123")
-  assert_eq(t, "recall_key")
-  assert_eq(v, 123)
-end)
-
-test("parse: recall_time single digit", function()
-  local t, v = alias.parse("3s")
-  assert_eq(t, "recall_time")
-  assert_eq(v, 3)
-end)
-
-test("parse: recall_time multi-digit", function()
-  local t, v = alias.parse("90s")
-  assert_eq(t, "recall_time")
-  assert_eq(v, 90)
-end)
-
-test("parse: rejects zero recall_key", function()
-  assert_eq(alias.parse("0"), nil)
-end)
-
-test("parse: rejects zero recall_time", function()
-  assert_eq(alias.parse("0s"), nil)
-end)
-
-test("parse: rejects hyphenated", function()
-  assert_eq(alias.parse("my-refactor"), nil)
-end)
-
-test("parse: rejects leading underscore", function()
-  assert_eq(alias.parse("_tmp"), nil)
-end)
-
-test("parse: rejects alphanumeric mix", function()
-  assert_eq(alias.parse("tmp1"), nil)
-  assert_eq(alias.parse("v2"), nil)
-  assert_eq(alias.parse("1a"), nil)
-end)
-
-test("parse: rejects 3m / 3ms (wrong time unit)", function()
-  assert_eq(alias.parse("3m"), nil)
-  assert_eq(alias.parse("3ms"), nil)
-  assert_eq(alias.parse("2h"), nil)
-end)
-
-test("parse: rejects empty", function()
-  assert_eq(alias.parse(""), nil)
-end)
-
-test("parse: rejects whitespace", function()
-  assert_eq(alias.parse(" "), nil)
-  assert_eq(alias.parse("a b"), nil)
-  assert_eq(alias.parse(" a"), nil)
-end)
-
-test("parse: rejects non-string", function()
+test("parse: rejects invalid alias shapes", function()
+  for _, input in ipairs({
+    "0", "0s", "my-refactor", "_tmp",
+    "tmp1", "v2", "1a", "3m", "3ms", "2h",
+    "", " ", "a b", " a",
+  }) do
+    assert_eq(alias.parse(input), nil, input)
+  end
   assert_eq(alias.parse(nil), nil)
   assert_eq(alias.parse(42), nil)
   assert_eq(alias.parse({}), nil)
   assert_eq(alias.parse(true), nil)
 end)
 
-test("is_valid_manual: positive cases", function()
-  assert_eq(alias.is_valid_manual("a"), true)
-  assert_eq(alias.is_valid_manual("refactor"), true)
-  assert_eq(alias.is_valid_manual("FOO"), true)
-end)
-
-test("is_valid_manual: negative cases", function()
-  assert_eq(alias.is_valid_manual("my-ref"), false)
-  assert_eq(alias.is_valid_manual("3"), false)
-  assert_eq(alias.is_valid_manual("3s"), false)
-  assert_eq(alias.is_valid_manual(""), false)
-  assert_eq(alias.is_valid_manual("tmp1"), false)
+test("classification helpers distinguish manual and recall aliases", function()
+  for _, input in ipairs({ "a", "refactor", "FOO" }) do
+    assert_eq(alias.is_valid_manual(input), true, input)
+  end
+  for _, input in ipairs({ "my-ref", "3", "3s", "", "tmp1" }) do
+    assert_eq(alias.is_valid_manual(input), false, input)
+  end
   assert_eq(alias.is_valid_manual(nil), false)
-end)
 
-test("is_recall: key and time forms", function()
-  assert_eq(alias.is_recall("3"), true)
-  assert_eq(alias.is_recall("3s"), true)
-  assert_eq(alias.is_recall("120"), true)
-end)
-
-test("is_recall: non-recall rejected", function()
-  assert_eq(alias.is_recall("a"), false)
-  assert_eq(alias.is_recall("3m"), false)
-  assert_eq(alias.is_recall(""), false)
+  for _, input in ipairs({ "3", "3s", "120" }) do
+    assert_eq(alias.is_recall(input), true, input)
+  end
+  for _, input in ipairs({ "a", "3m", "" }) do
+    assert_eq(alias.is_recall(input), false, input)
+  end
   assert_eq(alias.is_recall(nil), false)
 end)
 
@@ -132,56 +65,27 @@ test("TIME_HINTS all parse as recall_time", function()
   end
 end)
 
-test("is_valid_saved_name: positive cases", function()
-  assert_eq(alias.is_valid_saved_name("refactor"), true)
-  assert_eq(alias.is_valid_saved_name("bugfix_v2"), true)
-  assert_eq(alias.is_valid_saved_name("refactor-2026-04-13"), true)
-  assert_eq(alias.is_valid_saved_name("my.edit.v2"), true)
-  assert_eq(alias.is_valid_saved_name("a"), true)
-  assert_eq(alias.is_valid_saved_name("_internal"), true)
-  assert_eq(alias.is_valid_saved_name("session42"), true)
-  assert_eq(alias.is_valid_saved_name("42session"), true)
+test("is_valid_saved_name: accepts safe filename-like names", function()
+  for _, input in ipairs({
+    "refactor", "bugfix_v2", "refactor-2026-04-13", "my.edit.v2",
+    "a", "_internal", "session42", "42session",
+  }) do
+    assert_eq(alias.is_valid_saved_name(input), true, input)
+  end
 end)
 
-test("is_valid_saved_name: rejects path traversal", function()
-  assert_eq(alias.is_valid_saved_name(".."), false)
-  assert_eq(alias.is_valid_saved_name("."), false)
-  assert_eq(alias.is_valid_saved_name("../foo"), false)
-  assert_eq(alias.is_valid_saved_name("../../etc/passwd"), false)
-  assert_eq(alias.is_valid_saved_name("foo/bar"), false)
-  assert_eq(alias.is_valid_saved_name("foo\\bar"), false)
-  assert_eq(alias.is_valid_saved_name("/etc/passwd"), false)
-  assert_eq(alias.is_valid_saved_name("/absolute"), false)
-end)
-
-test("is_valid_saved_name: rejects leading dot/hyphen", function()
-  assert_eq(alias.is_valid_saved_name(".hidden"), false)
-  assert_eq(alias.is_valid_saved_name(".bashrc"), false)
-  assert_eq(alias.is_valid_saved_name("-rf"), false)
-  assert_eq(alias.is_valid_saved_name("-name"), false)
-end)
-
-test("is_valid_saved_name: rejects whitespace and control chars", function()
-  assert_eq(alias.is_valid_saved_name("name with space"), false)
-  assert_eq(alias.is_valid_saved_name("tab\there"), false)
-  assert_eq(alias.is_valid_saved_name("new\nline"), false)
-  assert_eq(alias.is_valid_saved_name("null\0byte"), false)
-  assert_eq(alias.is_valid_saved_name(" leading"), false)
-  assert_eq(alias.is_valid_saved_name("trailing "), false)
-end)
-
-test("is_valid_saved_name: rejects empty and non-string", function()
-  assert_eq(alias.is_valid_saved_name(""), false)
+test("is_valid_saved_name: rejects unsafe names", function()
+  for _, input in ipairs({
+    "..", ".", "../foo", "../../etc/passwd", "foo/bar", "foo\\bar",
+    "/etc/passwd", "/absolute", ".hidden", ".bashrc", "-rf", "-name",
+    "name with space", "tab\there", "new\nline", "null\0byte",
+    " leading", "trailing ", "", "name;rm -rf", "name$VAR",
+    "name|pipe", "name*glob", "name:colon",
+  }) do
+    assert_eq(alias.is_valid_saved_name(input), false, input)
+  end
   assert_eq(alias.is_valid_saved_name(nil), false)
   assert_eq(alias.is_valid_saved_name(42), false)
   assert_eq(alias.is_valid_saved_name({}), false)
   assert_eq(alias.is_valid_saved_name(true), false)
-end)
-
-test("is_valid_saved_name: rejects weird punctuation", function()
-  assert_eq(alias.is_valid_saved_name("name;rm -rf"), false)
-  assert_eq(alias.is_valid_saved_name("name$VAR"), false)
-  assert_eq(alias.is_valid_saved_name("name|pipe"), false)
-  assert_eq(alias.is_valid_saved_name("name*glob"), false)
-  assert_eq(alias.is_valid_saved_name("name:colon"), false)
 end)

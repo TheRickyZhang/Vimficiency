@@ -12,7 +12,7 @@ Baseline: **Google C++ Style Guide**, with deviations noted below.
 | Constants | `kPascalCase` | **`UPPER_SNAKE_CASE`** | `POSITION_OUTSIDE_BOUNDARY`, `MAX_PREFIX_COUNT` | We sparingly use macros (all prefixed with VIMF), so low collision risk |
 | Enum values | `kPascalCase` | **`PascalCase`** | `Mode::Normal`, `EdgeType::WordEdge` | `k` prefix is redundant with scoped enums (`enum class`) providing the namespace |
 | Namespaces | `snake_case` | **`PascalCase`** | `VimCore`, `EditCategory` | We don't need visual disambiguation; combining snake_case and camelCase function names looks bad.
-| File names | `snake_case.cc` | **`PascalCase.cpp`** | `EditOptimizer.cpp`, `CursorPos.h` | .cpp/.h is overwhelmingly used, and we will only transition to snake_case when developing windows support.
+| File names | `snake_case.cc` | **`PascalCase.cpp`** | `TransformOptimizer.cpp`, `CursorPos.h` | .cpp/.h is overwhelmingly used, and we will only transition to snake_case when developing windows support.
 
 ## Common Styles following Google
 
@@ -58,7 +58,7 @@ inline constexpr bool DEBUG_ENABLED = true;
 - **`struct`**: Data-oriented types, even if they have methods. Public by default.
   `Range`, `CursorPos`, `KeyInfo`, `EditSearchContext`, `CountPenaltyParams`
 - **`class`**: Types with meaningful encapsulation or invariants, where access control matters.
-  `BracketFlags`, `EditState`, `ParsedEdit`
+  `BracketFlags`, `TransformState`, `ParsedEdit`
 - Both may have `private:` sections; the distinction is about intent, not strict rules.
 
 ### Headers & Linkage

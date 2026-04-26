@@ -1,5 +1,5 @@
 #include "NavBoundary.h"
-#include "EditBoundary.h"
+#include "TransformBoundary.h"
 
 const NavBoundary& NavBoundary::noParent() {
   static const NavBoundary instance{};
@@ -15,10 +15,6 @@ NavBoundary::NavBoundary(const Lines& lines, CursorPos beginPos, CursorPos endPo
 NavBoundary::NavBoundary(const Lines& lines, CursorPos beginPos, CursorPos endPos,
                                bool hasLinesAbove, bool hasLinesBelow)
     : ctx_(lines, beginPos, endPos, hasLinesAbove, hasLinesBelow) {}
-
-// Construct from EditBoundary
-NavBoundary::NavBoundary(const EditBoundary& eb)
-    : ctx_(eb.context()) {}
 
 bool NavBoundary::isPositionInBounds(const CursorPos& pos, int lastLine, int lastLineLength) const {
   if (ctx_.leftColOffset > 0 && pos.line == 0 && pos.col < ctx_.leftColOffset) {

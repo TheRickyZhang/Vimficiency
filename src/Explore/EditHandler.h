@@ -3,15 +3,15 @@
 #include <expected>
 #include <string_view>
 
-#include "Optimizer/EditOptimizer/EditOptimizer.h"
+#include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 #include "Rejected.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 
 // Transform-side logic for Explore::View. Historical Edit naming retained
-// because this layer consumes EditResult from the current codebase.
+// because this layer consumes TransformResult from the current codebase.
 //
-// MIRROR boundary: everything that reads EditResult::resultsAt / goalPosAt is
+// MIRROR boundary: everything that reads TransformResult::resultsAt / goalPosAt is
 // semantic-coupled to the composition/transform optimizer and must be reviewed
 // together when those outputs change shape.
 // validateBufferState encodes the explore-specific strict-revert policy:
@@ -40,7 +40,7 @@ struct EditSuccess {
 };
 
 std::expected<EditSuccess, Rejected> applyEdit(
-    const EditResult& editResult,
+    const TransformResult& transformResult,
     CursorPos cursor,
     std::string_view text);
 

@@ -3,7 +3,7 @@
 #include "Keyboard/KeyedSequence.h"
 #include "Effort/RunningEffort.h"
 
-// Command payload used across EditOptimizer exploration callbacks.
+// Command payload used across TransformOptimizer exploration callbacks.
 // - count=0 means uncounted.
 // - base is the canonical command token (without count prefix).
 // - effort is the precomputed effort for typing count+base (or base when count=0),

@@ -75,7 +75,7 @@ step we first tokenize it. Three tiers:
 1. **C++ `tokenize_sequence`** — the canonical tokenizer the optimizer
    already uses. Understands counts, operators, text objects, named-key
    forms (`<BS>`, `<Esc>`, etc.), and motion combinators.
-2. **C++ `tokenize_motions`** — fallback for sequences the sequence
+2. **C++ `tokenize_movements`** — fallback for sequences the sequence
    tokenizer rejects (e.g., when the buffer context doesn't match).
 3. **Per-character Lua fallback** — last resort; keeps `<Key>` forms
    intact.

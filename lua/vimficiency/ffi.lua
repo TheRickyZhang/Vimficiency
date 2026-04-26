@@ -51,19 +51,19 @@ local M = {}
 ---@field vimficiency_get_debug fun(): string
 ---@field vimficiency_version fun(): integer
 ---@field vimficiency_debug_config fun(): string
----@field vimficiency_tokenize_motions fun(seq: string): string
+---@field vimficiency_tokenize_movements fun(seq: string): string
 ---@field vimficiency_tokenize_sequence fun(seq: string): string
 ---@field vimficiency_build_sequence fun(encoded_events: string): string
 ---@field vimficiency_compute_search_region fun(encoded_start_lines: string, encoded_end_lines: string, start_row: integer, end_row: integer, padding: integer): string
 ---@field vimficiency_resolve_recall_cutoff fun(encoded_records: string, target_hrtime: integer, budget: integer): integer
 ---@field vimficiency_manual_evict_reason fun(start_row: integer, cursor_row: integer, last_key_time_ns: integer, has_last_key: boolean, now_ns: integer, max_search_lines: integer, manual_idle_timeout_seconds: integer): integer
 ---@field vimficiency_format_sequence fun(seq: string): string
----@field vimficiency_simulate_motions fun(encoded_lines: string, start_row: integer, start_col: integer, seq: string): string
+---@field vimficiency_simulate_movements fun(encoded_lines: string, start_row: integer, start_col: integer, seq: string): string
 ---@field vimficiency_explore_start fun(encoded_initial_lines: string, start_row: integer, start_col: integer, encoded_goal_lines: string, end_row: integer, end_col: integer, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, window_height: integer, scroll_amount: integer, user_seq: string): string
 ---@field vimficiency_explore_destroy fun(view_id: integer): integer
 ---@field vimficiency_explore_state fun(view_id: integer): string
----@field vimficiency_explore_recommendations fun(view_id: integer, max_count: integer, allow_multiple_motions_per_position: boolean, allow_multiple_edits_per_position: boolean): string
----@field vimficiency_explore_apply_motion fun(view_id: integer, motion_text: string): string
+---@field vimficiency_explore_recommendations fun(view_id: integer, max_count: integer, allow_multiple_movements_per_position: boolean, allow_multiple_edits_per_position: boolean): string
+---@field vimficiency_explore_apply_movement fun(view_id: integer, movement_text: string): string
 ---@field vimficiency_explore_accept_cursor_move fun(view_id: integer, new_row: integer, new_col: integer, raw_keys: string): string
 ---@field vimficiency_explore_apply_edit fun(view_id: integer, text: string): string
 ---@field vimficiency_explore_accept_buffer_state fun(view_id: integer, encoded_lines: string, new_row: integer, new_col: integer, raw_keys: string): string
@@ -139,7 +139,7 @@ ffi.cdef([[
 
     const char* vimficiency_debug_config();
 
-    const char* vimficiency_tokenize_motions(const char* seq);
+    const char* vimficiency_tokenize_movements(const char* seq);
 
     const char* vimficiency_tokenize_sequence(const char* seq);
 
@@ -170,7 +170,7 @@ ffi.cdef([[
     );
 
     const char* vimficiency_format_sequence(const char* seq);
-    const char* vimficiency_simulate_motions(
+    const char* vimficiency_simulate_movements(
         const char* encoded_lines,
         int start_row,
         int start_col,
@@ -197,9 +197,9 @@ ffi.cdef([[
     const char* vimficiency_explore_recommendations(
         int view_id,
         int max_count,
-        bool allow_multiple_motions_per_position,
+        bool allow_multiple_movements_per_position,
         bool allow_multiple_edits_per_position);
-    const char* vimficiency_explore_apply_motion(int view_id, const char* motion_text);
+    const char* vimficiency_explore_apply_movement(int view_id, const char* movement_text);
     const char* vimficiency_explore_accept_cursor_move(int view_id, int new_row, int new_col, const char* raw_keys);
     const char* vimficiency_explore_apply_edit(int view_id, const char* text);
     const char* vimficiency_explore_accept_buffer_state(
@@ -668,12 +668,12 @@ end
 
 ---@class VimficiencyToken
 ---@field text string
----@field kind "motion"|"delete"|"change"|"visual"|"typed"|"escape"
+---@field kind "movement"|"delete"|"change"|"visual"|"typed"|"escape"
 
 -- Wire kind → Lua kind. Matches `tokenKindChar` in UtilityExports.cpp.
 -- Keep in sync: if the C++ enum grows a case, add its char here.
 local KIND_CHAR_TO_NAME = {
-  M = "motion",
+  M = "movement",
   D = "delete",
   C = "change",
   V = "visual",
@@ -693,20 +693,20 @@ local function parse_kinded_tokens(result_str)
     local kind = KIND_CHAR_TO_NAME[line:sub(1, 1)]
     -- Skip the separator byte (`\t`); token text starts at byte 3.
     local text = line:sub(3)
-    out[#out + 1] = { text = text, kind = kind or "motion" }
+    out[#out + 1] = { text = text, kind = kind or "movement" }
   end
   return out
 end
 
---- Tokenize a motion sequence into kinded tokens. Handles counts, f/F/t/T
+--- Tokenize a movement sequence into kinded tokens. Handles counts, f/F/t/T
 --- + target char, and special keys like `<C-d>`. All returned tokens have
---- `kind = "motion"` (the motion parser doesn't emit other kinds).
----@param seq string  Motion sequence (e.g., "3wfx;j")
+--- `kind = "movement"` (the movement parser doesn't emit other kinds).
+---@param seq string  Movement sequence (e.g., "3wfx;j")
 ---@return VimficiencyToken[] tokens
 ---@return string|nil error
-function M.tokenize_motions(seq)
+function M.tokenize_movements(seq)
   if not seq or seq == "" then return {}, nil end
-  local result_str = ffi.string(lib.vimficiency_tokenize_motions(seq))
+  local result_str = ffi.string(lib.vimficiency_tokenize_movements(seq))
   if result_str == "" then return {}, nil end
   if result_str:sub(1, 6) == "ERROR:" then return {}, result_str end
   return parse_kinded_tokens(result_str), nil
@@ -744,11 +744,11 @@ end
 ---@return integer|nil row
 ---@return integer|nil col
 ---@return string|nil err
-function M.simulate_motions(lines, start_row, start_col, seq)
+function M.simulate_movements(lines, start_row, start_col, seq)
   if not seq or seq == "" then
     return start_row, start_col, nil
   end
-  local result_str = ffi.string(lib.vimficiency_simulate_motions(
+  local result_str = ffi.string(lib.vimficiency_simulate_movements(
     encode_string_list(lines),
     start_row,
     start_col,
@@ -758,7 +758,7 @@ function M.simulate_motions(lines, start_row, start_col, seq)
     return nil, nil, result_str
   end
   local parts = vim.split(result_str, EVENT_FIELD_SEP, { plain = true, trimempty = true })
-  assert(#parts == 2, "vimficiency_simulate_motions returned malformed payload")
+  assert(#parts == 2, "vimficiency_simulate_movements returned malformed payload")
   return tonumber(parts[1]), tonumber(parts[2]), nil
 end
 
@@ -930,27 +930,27 @@ end
 
 ---@param view_id integer
 ---@param max_count integer
----@param allow_multiple_motions_per_position boolean|nil
+---@param allow_multiple_movements_per_position boolean|nil
 ---@param allow_multiple_edits_per_position boolean|nil
 ---@return VimficiencyExploreRecommendation[]
 function M.explore_recommendations(
     view_id, max_count,
-    allow_multiple_motions_per_position,
+    allow_multiple_movements_per_position,
     allow_multiple_edits_per_position)
   local payload = require_non_error(ffi.string(
     lib.vimficiency_explore_recommendations(
       view_id, max_count,
-      allow_multiple_motions_per_position and true or false,
+      allow_multiple_movements_per_position and true or false,
       allow_multiple_edits_per_position and true or false)))
   return parse_explore_recommendations(payload)
 end
 
 ---@param view_id integer
----@param motion_text string
+---@param movement_text string
 ---@return VimficiencyExploreApplyResult
-function M.explore_apply_motion(view_id, motion_text)
+function M.explore_apply_movement(view_id, movement_text)
   local payload = require_non_error(ffi.string(
-    lib.vimficiency_explore_apply_motion(view_id, motion_text)))
+    lib.vimficiency_explore_apply_movement(view_id, movement_text)))
   return parse_explore_apply_result(payload)
 end
 

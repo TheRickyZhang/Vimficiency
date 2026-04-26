@@ -6,25 +6,25 @@
 
 #include <gtest/gtest.h>
 
-#include "Interpreter/MotionInterpreter.h"
+#include "Interpreter/MovementInterpreter.h"
 #include "Interpreter/SequenceFormatting.h"
 #include "Interpreter/SequenceParser.h"
 #include "Keyboard/ToKeys/SequenceToKeys.h"
-#include "Keyboard/ToKeys/MotionToKeys.h"
+#include "Keyboard/ToKeys/MovementToKeys.h"
 
 using namespace std;
 
 TEST(ErrorHandlingTest, ParseMotionsRejectsUnknownMotion) {
-  auto result = parseMotions("q");
+  auto result = parseMovements("q");
   ASSERT_FALSE(result.has_value());
-  EXPECT_EQ(result.error().kind, MotionParseErrorKind::UnknownMotion);
+  EXPECT_EQ(result.error().kind, MovementParseErrorKind::UnknownMotion);
   EXPECT_EQ(result.error().offset, 0u);
 }
 
 TEST(ErrorHandlingTest, ParseMotionsRejectsMalformedSpecialKey) {
-  auto result = parseMotions("<C-x");
+  auto result = parseMovements("<C-x");
   ASSERT_FALSE(result.has_value());
-  EXPECT_EQ(result.error().kind, MotionParseErrorKind::MalformedSpecialKey);
+  EXPECT_EQ(result.error().kind, MovementParseErrorKind::MalformedSpecialKey);
   EXPECT_EQ(result.error().offset, 0u);
 }
 

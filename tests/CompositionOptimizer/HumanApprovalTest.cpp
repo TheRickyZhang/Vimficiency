@@ -256,7 +256,6 @@ TEST_F(CompositionOptimizerHumanApprovalTests, ModifyInParentheses) {
   NavBoundary boundary(initialLines, initialPos, afterPos, true, true);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos, {}, "", boundary);
-  cout << res << endl;
   verifyDiParenShortcutPolicy(res);
   verifyCompResult(res, initialLines, initialPos, afterLines, "ModifyInParentheses");
 }
@@ -284,7 +283,6 @@ TEST_F(CompositionOptimizerHumanApprovalTests, ModifyInParenthesesMultiple) {
   NavBoundary boundary(initialLines, initialPos, initialEndPos, true, true);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, goalLines, goalPos, {}, "", boundary);
-  cout << res << endl;
   verifyDiParenShortcutPolicy(res);
   verifyCompResult(res, initialLines, initialPos, goalLines, "ModifyInParenthesesMultiple");
 }

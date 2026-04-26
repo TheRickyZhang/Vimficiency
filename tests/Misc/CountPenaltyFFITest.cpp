@@ -178,8 +178,8 @@ TEST(CountPenaltyFFITest, FFIOverridesAffectMotionCountedCost) {
   C_CountPenaltyOverride o{};
   o.has_base = true;
   o.base = 60.0;
-  cfg->count_penalty_overrides[toIndex(CountClass::MotionWord)] = o;
-  cfg->count_penalty_overrides[toIndex(CountClass::MotionWORD)] = o;
+  cfg->count_penalty_overrides[toIndex(CountClass::MovementWord)] = o;
+  cfg->count_penalty_overrides[toIndex(CountClass::MovementWORD)] = o;
   applyConfig();
 
   std::string overriddenOut = analyze(

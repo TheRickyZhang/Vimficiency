@@ -27,7 +27,7 @@ additional case convention — so `normalize` does three things in order:
 
 3. **Lowercase modifier-letter.** `vim.fn.keytrans("\x15")` returns
    `"<C-U>"` (uppercase U), but the registered tokens in
-   `src/Keyboard/ToKeys/MotionToKeysPrimitives.h` and
+   `src/Keyboard/ToKeys/MovementToKeysPrimitives.h` and
    `src/Keyboard/ToKeys/EditToKeys.cpp` are **lowercase** (`"<C-u>"`).
    This is an unconditional project convention — see the token tables for
    the full list (`<C-a>` … `<C-z>` plus `<C-Space>`, `<C-BS>`, etc.).
@@ -65,7 +65,7 @@ Any new consumer — a future stats pipeline, a debug logger, an export path
 ## Defensive backstop in C++
 
 `InteractiveExploreSession::acceptCursorMove` pre-validates `rawKeys` through
-`parseMotions` before appending to `acceptedSeq`. If the keys don't parse as
+`parseMovements` before appending to `acceptedSeq`. If the keys don't parse as
 a motion sequence, the cursor is still updated but the sequence/cost are left
 alone. This catches bytes that slip through Lua normalization (rare forms
 like `<C-S-A>`, chord notations, or anything else the tokenizer doesn't

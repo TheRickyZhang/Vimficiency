@@ -19,14 +19,14 @@ Rules:
 ### NavOptimizer
 
 Counted motion emitters apply penalty at creation time:
-- `w/e/b/ge` -> `CountClass::MotionWord`
-- `W/E/B/gE` -> `CountClass::MotionWORD`
-- `{/}` -> `CountClass::MotionParagraph`
-- `(/)` -> `CountClass::MotionSentence`
+- `w/e/b/ge` -> `CountClass::MovementWord`
+- `W/E/B/gE` -> `CountClass::MovementWORD`
+- `{/}` -> `CountClass::MovementParagraph`
+- `(/)` -> `CountClass::MovementSentence`
 
-### EditOptimizer
+### TransformOptimizer
 
-`EditExplorer` counted emitters apply penalty into the emitted `RunningEffort`:
+`TransformExplorer` counted emitters apply penalty into the emitted `RunningEffort`:
 - `{n}dd` -> `CountClass::EditLine`
 - `{n}J`, `{n}gJ` -> `CountClass::Join`
 - `{n}de/{n}dw/{n}db/{n}dge` -> `CountClass::EditWord`

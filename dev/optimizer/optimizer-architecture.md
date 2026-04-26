@@ -2,18 +2,18 @@
 
 We have three different Optimizers. Here is a short description:
 - NavOptimizer: navigation optimizer. Solves cursor-only state transitions from start -> (finish or finishRange) over a constant buffer
-- EditOptimizer: historical code name for the transform optimizer. Solves buffer/mode-changing state transitions; the current implementation mostly models them as delete old text + type goal text
-- CompositionOptimizer: orchestrates NavOptimizer and EditOptimizer to solve full transitions. Determines how to break up transform regions and chain navigation and transform search to satisfy them in order. Also pre-computes J (join lines) plans for diffs where source has more lines than target, offering them as alternative transform transitions in the A* search (see `dev/optimizer/composition-optimizer.md` § J Plans).
+- TransformOptimizer: historical code name for the transform optimizer. Solves buffer/mode-changing state transitions; the current implementation mostly models them as delete old text + type goal text
+- CompositionOptimizer: orchestrates NavOptimizer and TransformOptimizer to solve full transitions. Determines how to break up transform regions and chain navigation and transform search to satisfy them in order. Also pre-computes J (join lines) plans for diffs where source has more lines than target, offering them as alternative transform transitions in the A* search (see `dev/optimizer/composition-optimizer.md` § J Plans).
 
 Terminology note:
 - Motion/Edit are direct command families
 - Navigation/Transform are search/state-transition families
-- `NavOptimizer` already matches the broader navigation concept; `EditOptimizer` keeps its historical name even though it is really the transform layer
+- `NavOptimizer` already matches the broader navigation concept; `TransformOptimizer` keeps its historical name even though it is really the transform layer
 
 ## Dependence
 NavOptimizer: independent
-EditOptimizer: calls NavOptimizer very briefly for specific visual delete.
-CompositionOptimizer: calls EditOptimizer and NavOptimizer
+TransformOptimizer: calls NavOptimizer very briefly for specific visual delete.
+CompositionOptimizer: calls TransformOptimizer and NavOptimizer
 
 They all share:
 - Configuration settings
@@ -78,21 +78,21 @@ Motion exploration uses templated functions with direction-split spec vectors fo
 
 ```cpp
 // Word motions - templated on Forward and EdgeType
-exploreWordMotions<true, EdgeType::NextEdge>(Motion::FORWARD_NEXTEDGE_MOTIONS, base);  // w, W
-exploreWordMotions<true, EdgeType::WordEdge>(Motion::FORWARD_WORDEDGE_MOTIONS, base);  // e, E
-exploreWordMotions<false, EdgeType::WordEdge>(Motion::BACKWARD_WORDEDGE_MOTIONS, base); // b, B
-exploreWordMotions<false, EdgeType::NextEdge>(Motion::BACKWARD_NEXTEDGE_MOTIONS, base); // ge, gE
+exploreWordMovements<true, EdgeType::NextEdge>(Movement::FORWARD_NEXTEDGE_MOVEMENTS, base);  // w, W
+exploreWordMovements<true, EdgeType::WordEdge>(Movement::FORWARD_WORDEDGE_MOVEMENTS, base);  // e, E
+exploreWordMovements<false, EdgeType::WordEdge>(Movement::BACKWARD_WORDEDGE_MOVEMENTS, base); // b, B
+exploreWordMovements<false, EdgeType::NextEdge>(Movement::BACKWARD_NEXTEDGE_MOVEMENTS, base); // ge, gE
 
 // Paragraph/Sentence - templated on Forward
-exploreParagraphMotions<true>(Motion::FORWARD_PARAGRAPH_MOTIONS, base);   // }
-exploreParagraphMotions<false>(Motion::BACKWARD_PARAGRAPH_MOTIONS, base); // {
+exploreParagraphMovements<true>(Movement::FORWARD_PARAGRAPH_MOVEMENTS, base);   // }
+exploreParagraphMovements<false>(Movement::BACKWARD_PARAGRAPH_MOVEMENTS, base); // {
 
 // Scroll - templated on Forward
-exploreScrollMotions<true>(base);   // <C-d>
-exploreScrollMotions<false>(base);  // <C-u>
+exploreScrollMovements<true>(base);   // <C-d>
+exploreScrollMovements<false>(base);  // <C-u>
 ```
 
-See `MotionToSpec.h` for the spec definitions.
+See `MovementToSpec.h` for the spec definitions.
 
 
 ### A* vs Dijkstra Trade-off

@@ -8,7 +8,7 @@
 #include "CompositionOptimizerParams.h"
 #include "CompositionSearchContext.h"
 #include "Keyboard/Config.h"
-#include "Optimizer/EditOptimizer/EditOptimizer.h"
+#include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 #include "Optimizer/OptimizerResult.h"
 #include "Optimizer/Result.h"
 #include "Optimizer/SearchStats.h"
@@ -27,7 +27,7 @@ struct CompositionEditStepView {
   const DiffState& diff;
   const Lines& preFencepost;
   const Lines& postFencepost;
-  const EditResult& editResult;
+  const TransformResult& transformResult;
 };
 
 struct CompositionResult : BaseOptimizerResult<> {
@@ -54,7 +54,7 @@ struct CompositionResult : BaseOptimizerResult<> {
         .diff = plan_.diffAt(editIndex),
         .preFencepost = plan_.fencepostAt(editIndex),
         .postFencepost = plan_.fencepostAt(editIndex + 1),
-        .editResult = editResults_[static_cast<size_t>(editIndex)],
+        .transformResult = editResults_[static_cast<size_t>(editIndex)],
     };
   }
   const std::vector<CompositionExploredState>& getExploredStates() const { return exploredStates_; }
@@ -67,22 +67,22 @@ private:
   CompositionSearchStats stats_;
   CompositionPlan plan_;
   std::vector<CompositionExploredState> exploredStates_;
-  std::vector<EditResult> editResults_;
+  std::vector<TransformResult> editResults_;
 
   friend struct CompositionOptimizer;
   CompositionResult(std::vector<Result> results, CompositionSearchStats stats,
                     CompositionPlan plan,
                     std::vector<CompositionExploredState> exploredStates,
-                    std::vector<EditResult> editResults)
+                    std::vector<TransformResult> transformResults)
     : BaseOptimizerResult(std::move(results)),
       stats_(std::move(stats)),
       plan_(std::move(plan)),
       exploredStates_(std::move(exploredStates)),
-      editResults_(std::move(editResults)) {
+      editResults_(std::move(transformResults)) {
     assert(plan_.fenceposts.size() == plan_.diffs.size() + 1 &&
            "CompositionResult requires one more fencepost than diffs");
     assert(editResults_.size() == plan_.diffs.size() &&
-           "CompositionResult requires one EditResult per diff");
+           "CompositionResult requires one TransformResult per diff");
   }
 };
 

@@ -12,14 +12,14 @@ centralize the "hidden baggage" behind common identifiers.
 - **Sequence binding**: `KeyedSequence` plus precomputed running effort
 - **Effort**: typing difficulty only; independent of search distance
 
-- **Motion**: direct command that changes cursor position only
-- **Edit**: direct editing command, such as operator + motion/text-object or mode-entry
-- **Navigation / Nav**: cursor-only state transition over a fixed buffer
-- **Transform**: buffer/mode-changing state transition
-- Motion/Edit are command categories; Navigation/Transform are optimizer/result categories
-- Driving distinction: marks/search jumps are navigation without being motions, while replace/paste/join can be transforms without being direct edits
-- Current code still uses historical `Edit*` names for much of the transform layer (`EditOptimizer`, `EditBoundary`, `EditState`, `EditResult`)
-- **`ParsedMotion` / `ParsedEdit`**: parsed command with count semantics, where `count == 0` means "implicit default count of 1"
+- **Movement**: command that changes cursor position without changing text
+- **Edit**: command that changes buffer contents, mode, or both — operator + motion/text-object, replacement, mode-entry, insert typing
+- **Nav**: movement-oriented action/result; navigates without changing text
+- **Transform**: modify-oriented action/result; changes text
+- Movement/Edit are command-level categories; Nav/Transform are result-level (optimizer) categories — they are intentionally distinct from Vim's narrower vocabulary (e.g. "motion") to avoid name collision
+- `NavOptimizer` primarily explores movements but also reaches goals via jumps and find commands — hence the broader Nav name. Symmetrically, `TransformOptimizer` primarily explores edits but may also use substitute commands.
+- Vim's own vocabulary is preserved at the Vim-domain layer (`VimMotionUtils`, `motionE`, `motionW`, …) and in tests of individual Vim commands (`tests/Commands/*Motions.cpp`); our broader categories live above it.
+- **`ParsedMovement` / `ParsedEdit`**: parsed command with count semantics, where `count == 0` means "implicit default count of 1"
 
 - **Pos**: geometric position only (`line`, `col`)
 - **CursorPos**: `Pos` plus `targetCol` (Vim curswant state)

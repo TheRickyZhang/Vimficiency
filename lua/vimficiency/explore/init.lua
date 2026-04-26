@@ -133,7 +133,7 @@ local RECOMMENDATION_COUNT_MAX = 10
 ---@field pending VimficiencyExplorePending|nil        # insertion-origin snapshot while PendingInsert
 ---@field display_mode string                          # "off" | "highlight" | "inplace" | "above" | "below"
 ---@field recommendation_count integer|nil             # settings override, or nil → config default
----@field allow_multiple_motions_per_position boolean  # settings toggle; false → motion recs dedup by landing
+---@field allow_multiple_movements_per_position boolean  # settings toggle; false → movement recs dedup by landing
 ---@field allow_multiple_edits_per_position boolean    # settings toggle; false → edit recs dedup by landing
 ---@field show_user_typed boolean                      # include user's original typed sequence in the header
 ---@field show_result_count integer                    # how many captured `optimal_results` to include (0 → none)
@@ -220,7 +220,7 @@ local function refresh_state_and_recommendations()
   a.state = ffi_lib.explore_state(a.view_id)
   a.recommendations = ffi_lib.explore_recommendations(a.view_id,
     a.recommendation_count,
-    a.allow_multiple_motions_per_position,
+    a.allow_multiple_movements_per_position,
     a.allow_multiple_edits_per_position)
 end
 
@@ -305,7 +305,7 @@ end
 local function on_cursor_moved()
   local a = assert_current_view()
   -- Loop-avoidance: if nvim cursor already matches view cursor, we just set it
-  -- ourselves (e.g. after apply_motion / undo / redo) — nothing to forward.
+  -- ourselves (e.g. after apply_movement / undo / redo) — nothing to forward.
   local pos = v.nvim_win_get_cursor(a.scratch.win)
   local new_row, new_col = pos[1] - 1, pos[2]
   if new_row == a.state.cursor_row and new_col == a.state.cursor_col then
@@ -651,7 +651,7 @@ function M.open(label, result, opts)
   local s = settings_store()
   view.display_mode                        = s.display_mode
   view.recommendation_count                = s.recommendation_count
-  view.allow_multiple_motions_per_position = s.allow_multiple_motions_per_position
+  view.allow_multiple_movements_per_position = s.allow_multiple_movements_per_position
   view.allow_multiple_edits_per_position   = s.allow_multiple_edits_per_position
   view.show_user_typed                     = s.show_user_typed
   view.show_result_count                   = s.show_result_count
@@ -688,7 +688,7 @@ function M.open(label, result, opts)
           display_mode = a.display_mode,
           recommendation_count = a.recommendation_count,
           effective_count = a.recommendation_count,
-          allow_multiple_motions_per_position = a.allow_multiple_motions_per_position,
+          allow_multiple_movements_per_position = a.allow_multiple_movements_per_position,
           allow_multiple_edits_per_position = a.allow_multiple_edits_per_position,
           show_user_typed = a.show_user_typed,
           show_result_count = a.show_result_count,
@@ -811,7 +811,7 @@ function open_settings_modal()
       function() return not a[flag_key] end,
       function(on) update_setting(a, flag_key, not on) end
   end
-  local motion_get, motion_set = dedup_toggle("allow_multiple_motions_per_position")
+  local motion_get, motion_set = dedup_toggle("allow_multiple_movements_per_position")
   local edit_get, edit_set = dedup_toggle("allow_multiple_edits_per_position")
 
   local optimal_results = (a.result and a.result.optimal_results) or {}
@@ -865,10 +865,25 @@ end
 function M.status()
   local a = current_view()
   if not a then return nil end
+  local live_cursor = v.nvim_win_get_cursor(a.scratch.win)
   return {
     phase = vim.deepcopy(a.state.phase),
+    cursor_row = a.state.cursor_row,
+    cursor_col = a.state.cursor_col,
+    scratch_cursor_row = live_cursor[1] - 1,
+    scratch_cursor_col = live_cursor[2],
+    target_begin_row = a.state.target_begin_row,
+    target_begin_col = a.state.target_begin_col,
+    target_end_row = a.state.target_end_row,
+    target_end_col = a.state.target_end_col,
     accepted_seq = a.state.accepted_seq,
     accepted_cost = a.state.accepted_cost,
+    accepted_revision = a.state.accepted_revision,
+    can_undo = a.state.can_undo,
+    can_redo = a.state.can_redo,
+    pending = vim.deepcopy(a.pending),
+    session_lines = ffi_lib.explore_current_lines(a.view_id),
+    scratch_lines = v.nvim_buf_get_lines(a.scratch.buf, 0, -1, false),
     recommendations = vim.deepcopy(a.recommendations),
   }
 end

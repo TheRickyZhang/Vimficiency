@@ -8,7 +8,7 @@
 #include "Types/Lines.h"
 
 // Forward declaration
-struct EditBoundary;
+struct TransformBoundary;
 
 namespace VimCore {
 
@@ -253,7 +253,7 @@ constexpr int COL_OUTSIDE_BOUNDARY = -1;
 int motionLineEndpoint(CursorPos cursor,
                        const Lines& lines,
                        bool forward,
-                       const EditBoundary& boundary);
+                       const TransformBoundary& boundary);
 
 // Returns the line range for a full-line delete (dd).
 // Returns LINE_RANGE_OUTSIDE_BOUNDARY if would cross boundary.
@@ -264,6 +264,6 @@ int motionLineEndpoint(CursorPos cursor,
 //   - cursor is on last line AND boundary.atLineEnd()
 LineRange lineDeleteRange(CursorPos cursor,
                           const Lines& lines,
-                          const EditBoundary& boundary);
+                          const TransformBoundary& boundary);
 
 } // namespace VimCore

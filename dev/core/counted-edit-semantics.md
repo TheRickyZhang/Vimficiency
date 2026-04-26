@@ -78,11 +78,11 @@ de.: de deletes from col 1 to col 3 ('d'), → "aef gh ij", cursor at 1
 
 They happen to match here too because `de` from a word-internal position deletes to word-end, then the next `de` starts fresh. But consider cross-line cases where `d{n}e` stays characterwise while `de` repeated can trigger different boundary behaviors.
 
-## Implications for the EditOptimizer
+## Implications for the TransformOptimizer
 
 ### Current approach: Dot repeat (safe)
 
-The EditOptimizer currently emits `{edit}.` sequences (e.g., `dd..`). This is always correct because dot repeat literally re-executes the command from the current cursor position.
+The TransformOptimizer currently emits `{edit}.` sequences (e.g., `dd..`). This is always correct because dot repeat literally re-executes the command from the current cursor position.
 
 ### Post-hoc collapse: Unsafe
 
@@ -90,7 +90,7 @@ Collapsing `dd...` → `4dd` is unsafe for all commands listed above. The only h
 
 ### Proper counted edit generation
 
-To emit counted edits correctly, the EditOptimizer must generate them **directly during search**, computing the actual result of `{n}{edit}` rather than assuming it equals `{edit}` repeated n times. This means:
+To emit counted edits correctly, the TransformOptimizer must generate them **directly during search**, computing the actual result of `{n}{edit}` rather than assuming it equals `{edit}` repeated n times. This means:
 
 1. **Line deletions** (`dd`): Given current buffer, compute `min(n, lines_remaining_below + 1)` lines deleted. The result of `{n}dd` is always deleting contiguous lines `[cursor, cursor+n-1]` (clamped to buffer end).
 

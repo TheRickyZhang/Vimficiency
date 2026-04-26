@@ -17,52 +17,33 @@ local function ev(raw)
   }
 end
 
-test("strip_matching_tail: pops exactly the matching suffix", function()
+test("strip_matching_tail: pops exactly the matching suffix and preserves prefix", function()
   local seq = { ev("j"), ev("w"), ev(" "), ev("v"), ev("e") }
   local popped = key_tracking.strip_matching_tail(seq, " ve")
   assert_eq(popped, 3, "3 entries popped")
   assert_eq(#seq, 2, "2 entries remain")
   assert_eq(seq[1].key_typed_raw, "j", "first survivor")
   assert_eq(seq[2].key_typed_raw, "w", "second survivor")
-end)
 
-test("strip_matching_tail: returns 0 on mismatch, leaves seq untouched", function()
-  local seq = { ev("j"), ev("w") }
-  local popped = key_tracking.strip_matching_tail(seq, " ve")
-  assert_eq(popped, 0, "no match")
-  assert_eq(#seq, 2, "seq unchanged")
-end)
-
-test("strip_matching_tail: empty typed_raw is a no-op", function()
-  local seq = { ev("j"), ev("w") }
-  local popped = key_tracking.strip_matching_tail(seq, "")
-  assert_eq(popped, 0, "empty target → no pop")
-  assert_eq(#seq, 2, "seq unchanged")
-end)
-
-test("strip_matching_tail: empty key_seq is a no-op", function()
-  local seq = {}
-  local popped = key_tracking.strip_matching_tail(seq, " ve")
-  assert_eq(popped, 0, "empty seq → no pop")
-end)
-
-test("strip_matching_tail: matches even when every entry is a single byte", function()
   -- The path-B scenario from the live debug dump: " ", "v", "e" each a
   -- separate entry, resolution typed = " ve".
-  local seq = { ev(" "), ev("v"), ev("e") }
-  local popped = key_tracking.strip_matching_tail(seq, " ve")
+  seq = { ev(" "), ev("v"), ev("e") }
+  popped = key_tracking.strip_matching_tail(seq, " ve")
   assert_eq(popped, 3, "all three popped")
   assert_eq(#seq, 0, "seq empty")
 end)
 
-test("strip_matching_tail: only pops bytes that are actually the tail", function()
-  -- User typed "dj" earlier, then <Space>ve as a mapping. The " ve"
-  -- target must only eat " ", "v", "e" — not touch "d", "j".
-  local seq = { ev("d"), ev("j"), ev(" "), ev("v"), ev("e") }
-  local popped = key_tracking.strip_matching_tail(seq, " ve")
-  assert_eq(popped, 3, "3 entries popped")
-  assert_eq(seq[1].key_typed_raw, "d", "`d` preserved")
-  assert_eq(seq[2].key_typed_raw, "j", "`j` preserved")
+test("strip_matching_tail: no-op cases leave sequence intact", function()
+  for _, case in ipairs({
+    { seq = { ev("j"), ev("w") }, target = " ve", msg = "mismatch" },
+    { seq = { ev("j"), ev("w") }, target = "", msg = "empty target" },
+    { seq = {}, target = " ve", msg = "empty seq" },
+  }) do
+    local original_len = #case.seq
+    local popped = key_tracking.strip_matching_tail(case.seq, case.target)
+    assert_eq(popped, 0, case.msg)
+    assert_eq(#case.seq, original_len, case.msg .. " should not mutate seq")
+  end
 end)
 
 test("strip_matching_tail: handles multi-byte key_typed_raw at the boundary", function()

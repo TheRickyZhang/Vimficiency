@@ -16,7 +16,7 @@ SentenceEdgeType:          SentenceEdge | GapEdge | NextEdge
 - **GapEdge**: Edge of whitespace/blank gap after unit
 - **NextEdge**: Start of next unit
 
-These are direction-independent. See `MotionToSpec.h` and `EditToSpec.h` for full specs.
+These are direction-independent. See `MovementToSpec.h` and `EditToSpec.h` for full specs.
 
 ## Command → Edge Type Mappings
 
@@ -100,19 +100,19 @@ class NavBoundary {
   int leftColOffset() const { return ctx_.leftColOffset; }
   int rightColOffset() const { return ctx_.rightColOffset; }
 
-  // Conversion from EditBoundary
-  explicit NavBoundary(const EditBoundary& eb);
+  // Conversion from TransformBoundary
+  explicit NavBoundary(const TransformBoundary& eb);
 
   bool isPositionInBounds(pos, lastLine, lastLineLength) const;
 };
 ```
 
-### EditBoundary
+### TransformBoundary
 
 Full prefix/suffix strings for correct cursor clamping after line-merging deletions:
 
 ```cpp
-struct EditBoundary {
+struct TransformBoundary {
   std::string prefix_, suffix_;  // Content before/after edit region
   bool hasLinesAbove_, hasLinesBelow_;
   // + QuoteFlags/BracketFlags for text objects
@@ -133,7 +133,7 @@ struct EditBoundary {
 
 ### Why Two Boundary Types?
 
-- **EditBoundary needs strings**: Building `effectiveLines` requires prepending/appending
+- **TransformBoundary needs strings**: Building `effectiveLines` requires prepending/appending
   actual content. Goal state comparison checks if lines match prefix+suffix.
 - **NavBoundary needs only offsets**: Position bounds checking just needs column counts,
   not the actual characters. This keeps NavOptimizer lightweight.
@@ -200,7 +200,7 @@ From `EditToSpec.h`, `BackwardWordEditSpec` has `isExclusiveAtCursor`:
 **Critical**: Inclusive backward deletions must verify cursor position isn't in
 boundary region, not just the motion endpoint.
 
-## EditOptimizer: effectiveLines Model
+## TransformOptimizer: effectiveLines Model
 
 Prepends prefix, appends suffix to create `effectiveLines`:
 

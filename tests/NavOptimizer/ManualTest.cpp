@@ -11,14 +11,14 @@
 #include "Types/NavContext.h"
 #include "Utils/TestUtils.h"
 
-#include "Keyboard/ToKeys/MotionToKeys.h"
+#include "Keyboard/ToKeys/MovementToKeys.h"
 #include "Keyboard/Config.h"
 #include "Boundary/NavBoundary.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Optimizer/NavOptimizer/NavRangeConversion.h"
 #include "Effort/RunningEffort.h"
 #include "Session/Snapshot.h"
-#include "Interpreter/MotionInterpreter.h"
+#include "Interpreter/MovementInterpreter.h"
 #include "Types/Lines.h"
 
 using namespace std;
@@ -89,7 +89,7 @@ NavContext NavOptimizer_ManualTest::navContext;
 TEST_F(NavOptimizer_ManualTest, HorizontalMotions) {
   const string user_seq = "we";
   CursorPos start(0, 0);
-  CursorPos end = simulateMotions(start, user_seq, a1_long_line);
+  CursorPos end = simulateMovements(start, user_seq, a1_long_line);
 
   vector<Result> results = runOptimizer(
   a1_long_line,

@@ -25,17 +25,17 @@ test("simulate tokenization merges feedable commands", function()
   assert_tokenization(
     "jf;i<BS>3<Esc><Space>ve",
     "j|f;|i|<BS>|3|<Esc>|<Space>|v|e",
-    "motion|motion|change|typed|typed|escape|motion|visual|motion")
+    "movement|movement|change|typed|typed|escape|movement|visual|movement")
 
   assert_tokenization(
     "3wfa;ww",
     "3w|fa;|w|w",
-    "motion|motion|motion|motion")
+    "movement|movement|movement|movement")
 
   assert_tokenization(
     "<Space>ww",
     "<Space>|w|w",
-    "motion|motion|motion")
+    "movement|movement|movement")
 
   -- `A` enters insert; chunks are typed; `<Esc>` exits insert.
   assert_tokenization(

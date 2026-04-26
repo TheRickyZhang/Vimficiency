@@ -12,7 +12,7 @@
 
 ## Composition Logic
 - By abstracting away direct edit commands into one-step transform changes over diffs, our search alternates between call types:
-  - Intra-transform: refer to EditResult to apply a transform step
+  - Intra-transform: refer to TransformResult to apply a transform step
   - Inter-transform: move from one transform end to the next transform start (NavOptimizer::optimizeToRange)
 - By storing the previous edit command, we can also quickly check if . will work. (TODO)
 
@@ -25,7 +25,7 @@ supported boundary is `CompositionResult::stepAt(i)`, which bundles:
 - the diff for transform step `i`
 - the pre-transform fencepost
 - the post-transform fencepost
-- the `EditResult` for that same step
+- the `TransformResult` for that same step
 
 Raw `CompositionPlan` / diff vectors still exist for diagnostics and tests, but
 they are lower-level surfaces. Refactors that preserve final optimizer results
@@ -37,19 +37,19 @@ When a diff has more source lines than target lines, the `J` command can collaps
 
 ### Why J lives at the composition level
 
-The EditOptimizer cannot find J sequences for two structural reasons:
+The TransformOptimizer cannot find J sequences for two structural reasons:
 1. **Boundary constraints**: In a diff like `\n` -> ` ` with prefix "aaa" and suffix "bbb", boundary positions prevent J from firing -- it operates on full lines, not bounded regions.
-2. **Goal mismatch**: J transforms content (strips leading whitespace, adds space), but EditOptimizer's "delete then type" paradigm expects pure deletions followed by insertions.
+2. **Goal mismatch**: J transforms content (strips leading whitespace, adds space), but TransformOptimizer's "delete then type" paradigm expects pure deletions followed by insertions.
 
 At the composition level, J works naturally: the cursor operates on the full intermediate buffer without boundary constraints.
 
-### Algorithm: Partition -> J per Group -> EditOptimizer Residual
+### Algorithm: Partition -> J per Group -> TransformOptimizer Residual
 
 For a diff with N source lines -> M target lines (N > M):
 
 1. **Partition** N source lines into M contiguous groups, where group k maps to target line k
 2. **Match quality check** -- if joined group content is too different from target (common prefix+suffix ratio < 0.3), skip J for this diff
-3. **Per group**: simulate J joins using `VimCore::joinLines` semantics, then run EditOptimizer on the single-line residual (joined line vs target line)
+3. **Per group**: simulate J joins using `VimCore::joinLines` semantics, then run TransformOptimizer on the single-line residual (joined line vs target line)
 4. **Assemble**: concatenate all groups' sequences (J's + residual + `j` between groups) into one `JoinPlan`
 
 **Partition finding:**
@@ -69,7 +69,7 @@ struct JoinPlan {
 
 ### Integration into A* search
 
-J plans are explored as **additional** transform transitions, independent of the regular EditResult path:
+J plans are explored as **additional** transform transitions, independent of the regular TransformResult path:
 
 ```cpp
 // Regular transform path
@@ -123,7 +123,7 @@ J plan efforts are included in `computeSuffixEditCosts()` alongside regular tran
   - `I`: any column on the target line (inserts at first non-blank)
   - `A`: any column on the target line (appends at end-of-line)
   - `i`: exact insertion column only (fallback)
-- The mode-entry command determines the actual insert position independent of where in the range we land, so the final cursor position after typing + Esc is always `editResult.goalPos`.
+- The mode-entry command determines the actual insert position independent of where in the range we land, so the final cursor position after typing + Esc is always `transformResult.goalPos`.
 - When navigating to the valid range, the `NavBoundary` must use the full subset extent, not the target range (see `dev/optimizer/buffer-slicing.md` § Boundary vs Target Range).
 
 ### Autoindent in Pure Insertions

@@ -9,12 +9,12 @@
 #include "BufferIndex.h"
 #include "NavClassMask.h"
 #include "NavOptimizerParams.h"
-#include "MotionToSpec.h"
+#include "MovementToSpec.h"
 #include "Optimizer/CountPenalty.h"
 #include "Optimizer/GlobalRuntimeOptions.h"
 #include "Optimizer/NavOptimizer/NavState.h"
 #include "Keyboard/KeyedSequence.h"
-#include "Keyboard/ToKeys/MotionToKeys.h"
+#include "Keyboard/ToKeys/MovementToKeys.h"
 #include "Types/CharInterval.h"
 #include "Types/NavContext.h"
 #include "VimCore/VimCore.h"
@@ -67,16 +67,16 @@ public:
   template<class OnStatic>
   void exploreAllStandardMotions(const NavState& base, OnStatic&& onStatic) {
     exploreHorizontalMotions(base, onStatic);
-    exploreVerticalMotions(base, onStatic);
-    exploreWordMotions<true, EdgeType::NextEdge>(Motion::FORWARD_NEXTEDGE_MOTIONS, base, onStatic);
-    exploreWordMotions<true, EdgeType::WordEdge>(Motion::FORWARD_WORDEDGE_MOTIONS, base, onStatic);
-    exploreWordMotions<false, EdgeType::WordEdge>(Motion::BACKWARD_WORDEDGE_MOTIONS, base, onStatic);
-    exploreWordMotions<false, EdgeType::NextEdge>(Motion::BACKWARD_NEXTEDGE_MOTIONS, base, onStatic);
-    exploreParagraphMotions<true>(Motion::FORWARD_PARAGRAPH_MOTIONS, base, onStatic);
-    exploreParagraphMotions<false>(Motion::BACKWARD_PARAGRAPH_MOTIONS, base, onStatic);
-    exploreSentenceMotions<true>(Motion::FORWARD_SENTENCE_MOTIONS, base, onStatic);
-    exploreSentenceMotions<false>(Motion::BACKWARD_SENTENCE_MOTIONS, base, onStatic);
-    exploreScrollMotions(base, onStatic);
+    exploreVerticalMovements(base, onStatic);
+    exploreWordMovements<true, EdgeType::NextEdge>(Movement::FORWARD_NEXTEDGE_MOVEMENTS, base, onStatic);
+    exploreWordMovements<true, EdgeType::WordEdge>(Movement::FORWARD_WORDEDGE_MOVEMENTS, base, onStatic);
+    exploreWordMovements<false, EdgeType::WordEdge>(Movement::BACKWARD_WORDEDGE_MOVEMENTS, base, onStatic);
+    exploreWordMovements<false, EdgeType::NextEdge>(Movement::BACKWARD_NEXTEDGE_MOVEMENTS, base, onStatic);
+    exploreParagraphMovements<true>(Movement::FORWARD_PARAGRAPH_MOVEMENTS, base, onStatic);
+    exploreParagraphMovements<false>(Movement::BACKWARD_PARAGRAPH_MOVEMENTS, base, onStatic);
+    exploreSentenceMovements<true>(Movement::FORWARD_SENTENCE_MOVEMENTS, base, onStatic);
+    exploreSentenceMovements<false>(Movement::BACKWARD_SENTENCE_MOVEMENTS, base, onStatic);
+    exploreScrollMovements(base, onStatic);
     exploreJumpMotions(base, onStatic);
   }
 
@@ -241,7 +241,7 @@ private:
   }
 
   template<class OnStatic>
-  void exploreVerticalMotions(const NavState& base, OnStatic& onStatic) {
+  void exploreVerticalMovements(const NavState& base, OnStatic& onStatic) {
     CursorPos pos = base.getPos();
     int lastLine = maxLineIndex();
 
@@ -259,7 +259,7 @@ private:
   }
 
   template<bool Forward, EdgeType Edge, class OnStatic>
-  void exploreWordMotions(const std::vector<Motion::WordMotionSpecNoEdge>& specs,
+  void exploreWordMovements(const std::vector<Movement::WordMovementSpecNoEdge>& specs,
                           const NavState& base,
                           OnStatic& onStatic) {
     CursorPos pos = base.getPos();
@@ -277,7 +277,7 @@ private:
   }
 
   template<bool Forward, class OnStatic>
-  void exploreParagraphMotions(const std::vector<Motion::ParagraphMotionSpecNoDir>& specs,
+  void exploreParagraphMovements(const std::vector<Movement::ParagraphMovementSpecNoDir>& specs,
                                const NavState& base,
                                OnStatic& onStatic) {
     CursorPos pos = base.getPos();
@@ -303,7 +303,7 @@ private:
   }
 
   template<bool Forward, class OnStatic>
-  void exploreSentenceMotions(const std::vector<Motion::SentenceMotionSpecNoDir>& specs,
+  void exploreSentenceMovements(const std::vector<Movement::SentenceMovementSpecNoDir>& specs,
                               const NavState& base,
                               OnStatic& onStatic) {
     CursorPos pos = base.getPos();
@@ -320,10 +320,10 @@ private:
   }
 
   template<bool Forward, class OnStatic>
-  void exploreScrollMotions(const NavState& base, OnStatic& onStatic) {
+  void exploreScrollMovements(const NavState& base, OnStatic& onStatic) {
     CursorPos pos = base.getPos();
 
-    const auto& specs = Forward ? Motion::FORWARD_SCROLL_MOTIONS : Motion::BACKWARD_SCROLL_MOTIONS;
+    const auto& specs = Forward ? Movement::FORWARD_SCROLL_MOVEMENTS : Movement::BACKWARD_SCROLL_MOVEMENTS;
     for (const auto& spec : specs) {
       int shift = scrollShift(spec.isHalf, Forward);
 
@@ -342,9 +342,9 @@ private:
   }
 
   template<class OnStatic>
-  void exploreScrollMotions(const NavState& base, OnStatic& onStatic) {
-    exploreScrollMotions<true>(base, onStatic);
-    exploreScrollMotions<false>(base, onStatic);
+  void exploreScrollMovements(const NavState& base, OnStatic& onStatic) {
+    exploreScrollMovements<true>(base, onStatic);
+    exploreScrollMovements<false>(base, onStatic);
   }
 
   template<class OnStatic>
@@ -422,21 +422,21 @@ private:
 
   template<bool Forward, class OnCounted>
   void exploreLineCountMotions(const NavState& base, OnCounted& onCounted) {
-    exploreCountedSpec<Forward, LandingType::WordBegin, CountClass::MotionWord,
+    exploreCountedSpec<Forward, LandingType::WordBegin, CountClass::MovementWord,
                        KSId::w, KSId::b>(base, onCounted);
-    exploreCountedSpec<Forward, LandingType::WordEnd, CountClass::MotionWord,
+    exploreCountedSpec<Forward, LandingType::WordEnd, CountClass::MovementWord,
                        KSId::e, KSId::ge>(base, onCounted);
-    exploreCountedSpec<Forward, LandingType::WORDBegin, CountClass::MotionWORD,
+    exploreCountedSpec<Forward, LandingType::WORDBegin, CountClass::MovementWORD,
                        KSId::W, KSId::B>(base, onCounted);
-    exploreCountedSpec<Forward, LandingType::WORDEnd, CountClass::MotionWORD,
+    exploreCountedSpec<Forward, LandingType::WORDEnd, CountClass::MovementWORD,
                        KSId::E, KSId::gE>(base, onCounted);
   }
 
   template<bool Forward, class OnCounted>
   void exploreGlobalCountMotions(const NavState& base, OnCounted& onCounted) {
-    exploreCountedSpec<Forward, LandingType::Paragraph, CountClass::MotionParagraph,
+    exploreCountedSpec<Forward, LandingType::Paragraph, CountClass::MovementParagraph,
                        KSId::RBrace, KSId::LBrace>(base, onCounted);
-    exploreCountedSpec<Forward, LandingType::Sentence, CountClass::MotionSentence,
+    exploreCountedSpec<Forward, LandingType::Sentence, CountClass::MovementSentence,
                        KSId::RParen, KSId::LParen>(base, onCounted);
   }
 
@@ -457,7 +457,7 @@ private:
       if (!canLandOnLine(newLine)) continue;
 
       int newCol = clampTargetColToLine(pos.targetCol, newLine);
-      exploreCountMotion<CountClass::MotionLine>(motion, cnt,
+      exploreCountMotion<CountClass::MovementLine>(motion, cnt,
                                                  {newLine, newCol, pos.targetCol}, onCounted);
     }
   }
@@ -476,7 +476,7 @@ private:
     const KSId motion = Forward ? KSId::l : KSId::h;
     for (int cnt = countRange->min; cnt <= countRange->max; cnt++) {
       int newCol = Forward ? (pos.col + cnt) : (pos.col - cnt);
-      exploreCountMotion<CountClass::MotionChar>(motion, cnt,
+      exploreCountMotion<CountClass::MovementChar>(motion, cnt,
                                                  {pos.line, newCol}, onCounted);
     }
   }
@@ -549,7 +549,7 @@ private:
       emitMotion(KSId::k, {newLine, newCol, pos.targetCol}, onStatic);
     }
 
-    exploreScrollMotions<false>(base, onStatic);
+    exploreScrollMovements<false>(base, onStatic);
 
     if (!hasLinesAboveBoundary()) {
       int endpointCol = VimOptions::startOfLine()
@@ -570,7 +570,7 @@ private:
       emitMotion(KSId::j, {newLine, newCol, pos.targetCol}, onStatic);
     }
 
-    exploreScrollMotions<true>(base, onStatic);
+    exploreScrollMovements<true>(base, onStatic);
 
     if (!hasLinesBelowBoundary()) {
       int endpointCol = VimOptions::startOfLine()
@@ -582,17 +582,17 @@ private:
 
   template<class OnStatic>
   void exploreForwardCrossingMotions(const NavState& base, OnStatic& onStatic) {
-    exploreWordMotions<true, EdgeType::NextEdge>(Motion::FORWARD_NEXTEDGE_MOTIONS, base, onStatic);
-    exploreWordMotions<true, EdgeType::WordEdge>(Motion::FORWARD_WORDEDGE_MOTIONS, base, onStatic);
-    exploreParagraphMotions<true>(Motion::FORWARD_PARAGRAPH_MOTIONS, base, onStatic);
-    exploreSentenceMotions<true>(Motion::FORWARD_SENTENCE_MOTIONS, base, onStatic);
+    exploreWordMovements<true, EdgeType::NextEdge>(Movement::FORWARD_NEXTEDGE_MOVEMENTS, base, onStatic);
+    exploreWordMovements<true, EdgeType::WordEdge>(Movement::FORWARD_WORDEDGE_MOVEMENTS, base, onStatic);
+    exploreParagraphMovements<true>(Movement::FORWARD_PARAGRAPH_MOVEMENTS, base, onStatic);
+    exploreSentenceMovements<true>(Movement::FORWARD_SENTENCE_MOVEMENTS, base, onStatic);
   }
 
   template<class OnStatic>
   void exploreBackwardCrossingMotions(const NavState& base, OnStatic& onStatic) {
-    exploreWordMotions<false, EdgeType::WordEdge>(Motion::BACKWARD_WORDEDGE_MOTIONS, base, onStatic);
-    exploreWordMotions<false, EdgeType::NextEdge>(Motion::BACKWARD_NEXTEDGE_MOTIONS, base, onStatic);
-    exploreParagraphMotions<false>(Motion::BACKWARD_PARAGRAPH_MOTIONS, base, onStatic);
-    exploreSentenceMotions<false>(Motion::BACKWARD_SENTENCE_MOTIONS, base, onStatic);
+    exploreWordMovements<false, EdgeType::WordEdge>(Movement::BACKWARD_WORDEDGE_MOVEMENTS, base, onStatic);
+    exploreWordMovements<false, EdgeType::NextEdge>(Movement::BACKWARD_NEXTEDGE_MOVEMENTS, base, onStatic);
+    exploreParagraphMovements<false>(Movement::BACKWARD_PARAGRAPH_MOVEMENTS, base, onStatic);
+    exploreSentenceMovements<false>(Movement::BACKWARD_SENTENCE_MOVEMENTS, base, onStatic);
   }
 };

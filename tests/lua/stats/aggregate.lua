@@ -96,33 +96,22 @@ test("aggregate: efficiency_by_day buckets by epoch day", function()
   assert_true(math.abs(s.efficiency_by_day[day_b_idx] - 25) < 1e-6)
 end)
 
-test("normalize_molecule: collapses f/F/t/T/r/R trailing char", function()
-  assert_eq(stats.normalize_molecule("fa"),  "f_")
-  assert_eq(stats.normalize_molecule("Fb"),  "F_")
-  assert_eq(stats.normalize_molecule("tc"),  "t_")
-  assert_eq(stats.normalize_molecule("Td"),  "T_")
-  assert_eq(stats.normalize_molecule("re"),  "r_")
-  assert_eq(stats.normalize_molecule("Rf"),  "R_")
-end)
-
-test("normalize_molecule: preserves leading count on the collapsed form", function()
-  assert_eq(stats.normalize_molecule("2fa"),  "2f_")
-  assert_eq(stats.normalize_molecule("10Fa"), "10F_")
-end)
-
-test("normalize_molecule: leaves operator+motion pairs, counts, etc. alone", function()
-  assert_eq(stats.normalize_molecule("dw"),   "dw")
-  assert_eq(stats.normalize_molecule("d$"),   "d$")
-  assert_eq(stats.normalize_molecule("ciw"),  "ciw")
-  assert_eq(stats.normalize_molecule("3w"),   "3w")
-  assert_eq(stats.normalize_molecule("x"),    "x")
-  assert_eq(stats.normalize_molecule("dd"),   "dd")
+test("normalize_molecule: normalizes char-target commands only", function()
+  for _, case in ipairs({
+    { "fa", "f_" }, { "Fb", "F_" }, { "tc", "t_" },
+    { "Td", "T_" }, { "re", "r_" }, { "Rf", "R_" },
+    { "2fa", "2f_" }, { "10Fa", "10F_" },
+    { "dw", "dw" }, { "d$", "d$" }, { "ciw", "ciw" },
+    { "3w", "3w" }, { "x", "x" }, { "dd", "dd" },
+  }) do
+    assert_eq(stats.normalize_molecule(case[1]), case[2], case[1])
+  end
 end)
 
 --- The FFI tokenizer is available during tests (it's loaded as part of
 --- vimficiency.ffi). We use it indirectly by feeding simple sequences
 --- that tokenize into predictable single-atom results.
-test("aggregate: motion_ratios respects the 10-occurrence threshold", function()
+test("aggregate: motion_ratios threshold and zero-denominator cases", function()
   -- Ten sessions each with a single 'w' in user_seq and a single 'e' in
   -- best_opt_seq → 'w' appears 10 user-side (meets threshold), 'e'
   -- appears 10 opt-side (meets threshold).
@@ -133,25 +122,21 @@ test("aggregate: motion_ratios respects the 10-occurrence threshold", function()
   local s = stats.aggregate(records)
   assert_true(s.motion_ratios["w"] ~= nil, "'w' should clear threshold")
   assert_true(s.motion_ratios["e"] ~= nil, "'e' should clear threshold")
-end)
 
-test("aggregate: motion below threshold is dropped", function()
   -- Only 9 combined occurrences of 'w' → below 10-threshold.
-  local records = {}
+  records = {}
   for _ = 1, 9 do
     records[#records + 1] = rec({ user_seq = "w", best_opt_seq = "" })
   end
-  local s = stats.aggregate(records)
+  s = stats.aggregate(records)
   assert_eq(s.motion_ratios["w"], nil, "'w' must be filtered below threshold")
-end)
 
-test("aggregate: user-only molecule gets ratio = math.huge", function()
   -- 10 user-side 'w', 0 opt-side → denominator zero.
-  local records = {}
+  records = {}
   for _ = 1, 10 do
     records[#records + 1] = rec({ user_seq = "w", best_opt_seq = "" })
   end
-  local s = stats.aggregate(records)
+  s = stats.aggregate(records)
   assert_true(s.motion_ratios["w"] ~= nil, "'w' should exist")
   assert_eq(s.motion_ratios["w"].ratio, math.huge,
     "optimizer never suggests → ratio must be math.huge")

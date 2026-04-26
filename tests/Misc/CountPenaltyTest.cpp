@@ -7,7 +7,7 @@ TEST(CountPenaltyTest, CountOneOrLessHasNoPenalty) {
   in.span = 5;
 
   in.count = 0;
-  EXPECT_DOUBLE_EQ(countPenalty<CountClass::MotionWord>(in), 0.0);
+  EXPECT_DOUBLE_EQ(countPenalty<CountClass::MovementWord>(in), 0.0);
 
   in.count = 1;
   EXPECT_DOUBLE_EQ(countPenalty<CountClass::EditLine>(in), 0.0);
@@ -18,9 +18,9 @@ TEST(CountPenaltyTest, DefaultSpecUsesBaseCountAndSpan) {
   in.count = 4;
   in.span = 4;
 
-  // MotionWord default: base=1.0, countSlope=0.5, spanSlope=0.1
+  // MovementWord default: base=1.0, countSlope=0.5, spanSlope=0.1
   // penalty = 1.0 + 0.5*(4-1) + 0.1*4 = 2.9
-  EXPECT_NEAR(countPenalty<CountClass::MotionWord>(in), 2.9, 1e-12);
+  EXPECT_NEAR(countPenalty<CountClass::MovementWord>(in), 2.9, 1e-12);
 }
 
 TEST(CountPenaltyTest, NegativeSpanIsClampedToZero) {
@@ -28,9 +28,9 @@ TEST(CountPenaltyTest, NegativeSpanIsClampedToZero) {
   in.count = 3;
   in.span = -20;
 
-  // MotionWord default with span clamped to 0:
+  // MovementWord default with span clamped to 0:
   // 1.0 + 0.5*(3-1) + 0.1*0 = 2.0
-  EXPECT_NEAR(countPenalty<CountClass::MotionWord>(in), 2.0, 1e-12);
+  EXPECT_NEAR(countPenalty<CountClass::MovementWord>(in), 2.0, 1e-12);
 }
 
 TEST(CountPenaltyTest, OverridesAffectOnlySelectedClass) {
@@ -40,17 +40,17 @@ TEST(CountPenaltyTest, OverridesAffectOnlySelectedClass) {
   wordOverride.base = 3.0;
   wordOverride.countSlope = 2.0;
   wordOverride.spanSlope = 0.0;
-  overrides[toIndex(CountClass::MotionWord)] = wordOverride;
+  overrides[toIndex(CountClass::MovementWord)] = wordOverride;
 
   CountPenaltyInput in;
   in.count = 3;
   in.span = 10;
 
-  // Overridden MotionWord: 3.0 + 2.0*(3-1) + 0*10 = 7.0
-  EXPECT_NEAR(countPenalty<CountClass::MotionWord>(in, overrides), 7.0, 1e-12);
+  // Overridden MovementWord: 3.0 + 2.0*(3-1) + 0*10 = 7.0
+  EXPECT_NEAR(countPenalty<CountClass::MovementWord>(in, overrides), 7.0, 1e-12);
 
-  // MotionSentence remains default: 1.0 + 0.5*(3-1) + 0.1*10 = 3.0
-  EXPECT_NEAR(countPenalty<CountClass::MotionSentence>(in, overrides), 3.0, 1e-12);
+  // MovementSentence remains default: 1.0 + 0.5*(3-1) + 0.1*10 = 3.0
+  EXPECT_NEAR(countPenalty<CountClass::MovementSentence>(in, overrides), 3.0, 1e-12);
 }
 
 TEST(CountPenaltyTest, PartialOverrideKeepsUnspecifiedFields) {

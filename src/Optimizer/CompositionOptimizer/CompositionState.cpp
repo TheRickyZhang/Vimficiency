@@ -1,6 +1,6 @@
 #include "CompositionState.h"
 
-#include "Keyboard/ToKeys/MotionToKeys.h"
+#include "Keyboard/ToKeys/MovementToKeys.h"
 
 using namespace std;
 

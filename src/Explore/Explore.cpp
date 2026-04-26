@@ -5,11 +5,11 @@
 #include <utility>
 
 #include "EditHandler.h"
-#include "MotionHandler.h"
+#include "MovementHandler.h"
 #include "Effort/RunningEffort.h"
 #include "Interpreter/SequenceParser.h"
 #include "Optimizer/CompositionOptimizer/CompositionStepArtifacts.h"
-#include "Optimizer/EditOptimizer/EditFrontier.h"
+#include "Optimizer/TransformOptimizer/TransformFrontier.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Optimizer/NavOptimizer/NavFrontier.h"
 
@@ -22,7 +22,7 @@ namespace {
 Recommendation toRecommendation(const NavFrontierItem& item) {
   Recommendation rec;
   rec.text = item.molecule;
-  rec.kind = "motion";
+  rec.kind = "movement";
   rec.cost = item.cost;
   rec.totalPathCost = item.cost;
   rec.landingRow = item.landingPos.line;
@@ -30,7 +30,7 @@ Recommendation toRecommendation(const NavFrontierItem& item) {
   return rec;
 }
 
-Recommendation toRecommendation(const EditFrontierItem& item) {
+Recommendation toRecommendation(const TransformFrontierItem& item) {
   Recommendation rec;
   rec.text = item.molecule;
   rec.kind = "edit";
@@ -54,7 +54,7 @@ NavOptimizerParams makeSingleGoalMotionParams(int maxResults) {
       .withMaxCountRepeat(compParams.maxPrefixCount);
 }
 
-vector<Recommendation> backfillEditStartMotions(
+vector<Recommendation> backfillEditStartMovements(
     const Lines& lines,
     CursorPos cursor,
     const DiffState& diff,
@@ -68,8 +68,8 @@ vector<Recommendation> backfillEditStartMotions(
   CompositionOptimizerParams editParams;
   const int totalStarts = max(1, diff.deletedLines().totalPositions());
   editParams.withMaxResults(totalStarts * maxCount)
-            .withMaxEditResultsPerPosition(maxCount);
-  EditResult editResult = computeEditResultForDiff(diff, editParams, config);
+            .withMaxTransformResultsPerPosition(maxCount);
+  TransformResult transformResult = computeTransformResultForDiff(diff, editParams, config);
 
   struct StartCandidate {
     CursorPos pos{0, 0};
@@ -86,7 +86,7 @@ vector<Recommendation> backfillEditStartMotions(
       const int bufferCol = colBase + colOffset;
       const CursorPos startPos(bufferLine, bufferCol);
       if (startPos == cursor) continue;
-      auto starts = editResult.resultsAt(bufferLine, bufferCol);
+      auto starts = transformResult.resultsAt(bufferLine, bufferCol);
       if (starts.empty()) continue;
       candidates.push_back(StartCandidate{startPos, starts[0].getCost()});
     }
@@ -112,7 +112,7 @@ vector<Recommendation> backfillEditStartMotions(
 
       Recommendation rec;
       rec.text = motion.getSequence().str();
-      rec.kind = "motion";
+      rec.kind = "movement";
       rec.cost = motion.getCost();
       rec.totalPathCost = motion.getCost() + candidate.editCost;
       rec.landingRow = candidate.pos.line;
@@ -137,6 +137,22 @@ bool isCursorOnConcreteBufferCell(const Lines& lines, const CursorPos& pos) {
       ? 0
       : static_cast<int>(lines[pos.line].size()) - 1;
   return pos.col >= 0 && pos.col <= maxCol;
+}
+
+// Shared rawKeys handling for accept*/apply* actions that fold reported
+// keys into acceptedSeq. parseSequence accepts edits (unlike parseMotions),
+// so rawKeys like "rm" or "sm<Esc>" pass; the gate keeps unknown bytes out
+// of getEffort's downstream tokenizer. Unparseable non-empty keys reject
+// (silently dropping them undercounts effort).
+std::expected<void, Rejected> appendRawKeysOrReject(
+    State& next, std::string_view rawKeys, const Config& config) {
+  if (rawKeys.empty()) return {};
+  if (!parseSequence(rawKeys)) {
+    return std::unexpected(Rejected{"raw keys failed to parse"});
+  }
+  next.acceptedSeq.append(rawKeys);
+  next.acceptedCost = getEffort(next.acceptedSeq, config);
+  return {};
 }
 
 }
@@ -193,7 +209,7 @@ View::View(
   CompositionOptimizer opt(config_);
   plan_.emplace(opt.optimize(
       state_.lines, initialPos, goalLines_, goalPos_,
-      CompositionOptimizerParams{},
+      compositionParams_,
       userSequence,
       boundary_,
       navContext_));
@@ -223,7 +239,7 @@ optional<pair<CursorPos, CursorPos>> View::currentTargetRange() const {
 
 vector<Recommendation> View::recommendations(
     int maxCount,
-    bool allowMultipleMotionsPerPosition,
+    bool allowMultipleMovementsPerPosition,
     bool allowMultipleEditsPerPosition) const {
   if (maxCount <= 0) return {};
   if (state_.step.kind != Phase::ApproachEdit) return {};
@@ -236,7 +252,7 @@ vector<Recommendation> View::recommendations(
             .boundary = boundary_,
             .navContext = navContext_,
             .maxCount = maxCount,
-            .allowMultiplePerPosition = allowMultipleMotionsPerPosition,
+            .allowMultiplePerPosition = allowMultipleMovementsPerPosition,
         },
         config_);
     vector<Recommendation> recs;
@@ -253,12 +269,11 @@ vector<Recommendation> View::recommendations(
 
   const auto step = plan_->stepAt(editIndex);
   const DiffState& diff = step.diff;
-  CompositionOptimizerParams stepParams;
   optional<JoinPlan> joinPlan = computeJoinPlanForDiff(
-      diff, step.preFencepost, stepParams, config_);
+      diff, step.preFencepost, compositionParams_, config_);
   vector<Recommendation> recs;
-  auto editItems = rankEditFrontier(
-      EditFrontierQuery{
+  auto transformItems = rankTransformFrontier(
+      TransformFrontierQuery{
           .lines = state_.lines,
           .cursor = state_.cursor,
           .diff = diff,
@@ -266,13 +281,13 @@ vector<Recommendation> View::recommendations(
           .allowMultiplePerPosition = allowMultipleEditsPerPosition,
       },
       config_);
-  for (const EditFrontierItem& item : editItems) {
+  for (const TransformFrontierItem& item : transformItems) {
     recs.push_back(toRecommendation(item));
   }
 
   if (!diff.isPureInsertion() && diff.contains(state_.cursor) &&
       static_cast<int>(recs.size()) < maxCount) {
-    auto backfill = backfillEditStartMotions(
+    auto backfill = backfillEditStartMovements(
         state_.lines,
         state_.cursor,
         diff,
@@ -280,7 +295,7 @@ vector<Recommendation> View::recommendations(
         navContext_,
         config_,
         maxCount - static_cast<int>(recs.size()),
-        allowMultipleMotionsPerPosition);
+        allowMultipleMovementsPerPosition);
     for (auto& rec : backfill) recs.push_back(std::move(rec));
   }
 
@@ -293,7 +308,7 @@ vector<Recommendation> View::recommendations(
             .boundary = boundary_,
             .navContext = navContext_,
             .maxCount = maxCount,
-            .allowMultiplePerPosition = allowMultipleMotionsPerPosition,
+            .allowMultiplePerPosition = allowMultipleMovementsPerPosition,
         },
         config_);
     for (const NavFrontierItem& item : navItems) {
@@ -342,6 +357,16 @@ expected<int, Rejected> View::requireApproachEdit(string_view action) const {
   return state_.step.editIndex;
 }
 
+expected<int, Rejected> View::requireApproachEditWithPlan(string_view action) const {
+  auto gated = requireApproachEdit(action);
+  if (!gated) return gated;
+  if (!plan_) {
+    return unexpected(Rejected{
+        string(action) + " not accepted for motion-only goals"});
+  }
+  return *gated;
+}
+
 expected<int, Rejected> View::requirePendingInsert(string_view action) const {
   if (state_.step.kind != Phase::PendingInsert) {
     return unexpected(Rejected{
@@ -374,12 +399,12 @@ Applied View::afterEditCompleted(State next) {
 // Actions
 // =============================================================================
 
-Outcome View::applyMotion(string_view motionText) {
+Outcome View::applyMovement(string_view movementText) {
   auto gated = requireApproachEdit("motions");
   if (!gated) return unexpected(std::move(gated.error()));
 
-  auto eff = MotionHandler::applyMotion(
-      state_.lines, state_.cursor, motionText, boundary_, navContext_);
+  auto eff = MovementHandler::applyMovement(
+      state_.lines, state_.cursor, movementText, boundary_, navContext_);
   if (!eff) return unexpected(std::move(eff.error()));
 
   State next = state_;
@@ -397,7 +422,7 @@ Outcome View::acceptCursorMove(CursorPos newCursor, string_view rawKeys) {
   auto gated = requireApproachEdit("cursor moves");
   if (!gated) return unexpected(std::move(gated.error()));
 
-  auto eff = MotionHandler::acceptCursorMove(
+  auto eff = MovementHandler::acceptCursorMove(
       state_.lines, state_.cursor, newCursor, rawKeys, boundary_, navContext_);
   if (!eff) return unexpected(std::move(eff.error()));
 
@@ -415,15 +440,12 @@ Outcome View::acceptCursorMove(CursorPos newCursor, string_view rawKeys) {
 }
 
 Outcome View::applyEdit(string_view text) {
-  auto gated = requireApproachEdit("edits");
+  auto gated = requireApproachEditWithPlan("edits");
   if (!gated) return unexpected(std::move(gated.error()));
-  if (!plan_) {
-    return unexpected(Rejected{"edits are not accepted for motion-only goals"});
-  }
   const int editIndex = *gated;
 
   const auto step = plan_->stepAt(editIndex);
-  auto eff = EditHandler::applyEdit(step.editResult, state_.cursor, text);
+  auto eff = EditHandler::applyEdit(step.transformResult, state_.cursor, text);
   if (!eff) return unexpected(std::move(eff.error()));
 
   State next = state_;
@@ -436,11 +458,8 @@ Outcome View::applyEdit(string_view text) {
 
 Outcome View::acceptBufferState(
     const Lines& newLines, CursorPos newCursor, string_view rawKeys) {
-  auto gated = requireApproachEdit("buffer state changes");
+  auto gated = requireApproachEditWithPlan("buffer state changes");
   if (!gated) return unexpected(std::move(gated.error()));
-  if (!plan_) {
-    return unexpected(Rejected{"buffer state changes are not accepted for motion-only goals"});
-  }
   const int editIndex = *gated;
 
   const auto step = plan_->stepAt(editIndex);
@@ -456,12 +475,8 @@ Outcome View::acceptBufferState(
 
   State next = state_;
   next.cursor = newCursor;
-  // parseSequence accepts edits (unlike parseMotions), so rawKeys like "rm" or
-  // "sm<Esc>" pass the gate. The gate keeps unknown bytes out of getEffort's
-  // downstream tokenizer.
-  if (!rawKeys.empty() && parseSequence(rawKeys)) {
-    next.acceptedSeq.append(rawKeys);
-    next.acceptedCost = getEffort(next.acceptedSeq, config_);
+  if (auto e = appendRawKeysOrReject(next, rawKeys, config_); !e) {
+    return unexpected(std::move(e.error()));
   }
   if (eff->advance) {
     next.lines = step.postFencepost;
@@ -474,11 +489,8 @@ Outcome View::acceptBufferState(
 }
 
 Outcome View::beginEdit(bool entersInsertMode, string_view requiredTypedText) {
-  auto gated = requireApproachEdit("edits");
+  auto gated = requireApproachEditWithPlan("edits");
   if (!gated) return unexpected(std::move(gated.error()));
-  if (!plan_) {
-    return unexpected(Rejected{"edits are not accepted for motion-only goals"});
-  }
   const int editIndex = *gated;
 
   State next = state_;
@@ -532,6 +544,9 @@ Outcome View::acceptInsertExit(
     return unexpected(Rejected{
         "buffer state after insert doesn't match planned fencepost"});
   }
+  if (!isCursorOnConcreteBufferCell(newLines, newCursor)) {
+    return unexpected(Rejected{"buffer state reported an invalid cursor position"});
+  }
 
   State next = state_;
   // Advance lines explicitly — afterEditCompleted only sets lines for the
@@ -539,9 +554,8 @@ Outcome View::acceptInsertExit(
   // MIRROR applyEdit's shape: set lines + cursor + seq/cost, then hand off.
   next.lines = step.postFencepost;
   next.cursor = newCursor;
-  if (!rawKeys.empty() && parseSequence(rawKeys)) {
-    next.acceptedSeq.append(rawKeys);
-    next.acceptedCost = getEffort(next.acceptedSeq, config_);
+  if (auto e = appendRawKeysOrReject(next, rawKeys, config_); !e) {
+    return unexpected(std::move(e.error()));
   }
   return afterEditCompleted(std::move(next));
 }

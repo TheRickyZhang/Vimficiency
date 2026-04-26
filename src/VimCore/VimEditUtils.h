@@ -83,7 +83,7 @@ inline CursorPos onePastOnSameLine(const Lines& lines, const CursorPos& inclusiv
 //
 // Callers:
 //   - EditInterpreter.cpp:  d)/c), d(/c(, d}/c}, d{/c{
-//   - EditExplorer.cpp:     exploreSentenceEdits (both directions)
+//   - TransformExplorer.cpp:     exploreSentenceEdits (both directions)
 //
 // Operator-specific notes:
 //   - d with Linewise: use deleteLineRangeAndUpdatePos() for proper cursor placement.
@@ -173,7 +173,7 @@ inline ResolvedDeleteRange resolveExclusiveDeleteRange(
 // (and including) the end of the previous line while preserving the current line.
 //
 // contentStartCol: offset for effective-line coordinate systems (e.g.,
-// leftColOffset on line 0 in EditExplorer). Defaults to 0 for real buffers.
+// leftColOffset on line 0 in TransformExplorer). Defaults to 0 for real buffers.
 
 inline CharRange buildBackwardExclusiveCharRange(
     const CursorPos& endpoint, const CursorPos& cursor, const Lines& lines,

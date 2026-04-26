@@ -9,8 +9,12 @@
 std::ostream& operator<<(std::ostream& os, const Sequence& seq) {
   if (seq.empty()) return os;
 
-  // Optimizer-produced input: asserts on malformed sequences.
-  std::vector<SequenceToken> tokens = parseSequence(seq.view()).value();
+  auto parsed = parseSequence(seq.view());
+  if (!parsed) {
+    os << makePrintable(seq.str());
+    return os;
+  }
+  std::vector<SequenceToken> tokens = *parsed;
 
   for (size_t i = 0; i < tokens.size(); i++) {
     os << makePrintable(tokens[i].text);

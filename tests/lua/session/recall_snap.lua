@@ -18,17 +18,15 @@ local function build(entries)
   return records, order
 end
 
-test("snap: cutoff already on a clean boundary returns itself", function()
+test("snap: returns clean normal-mode boundary", function()
   local records, order = build({
     { id = "a", first_mode = "n" },
     { id = "b", first_mode = "n" },
     { id = "c", first_mode = "n" },
   })
   assert_eq(snap(records, order, 3, 20), 3)
-end)
 
-test("snap: walks back over insert-mode records to reach normal", function()
-  local records, order = build({
+  records, order = build({
     { id = "a", first_mode = "n" },
     { id = "b", first_mode = "i" },
     { id = "c", first_mode = "i" },
@@ -37,16 +35,22 @@ test("snap: walks back over insert-mode records to reach normal", function()
   assert_eq(snap(records, order, 4, 20), 1)
 end)
 
-test("snap: walks back over operator-pending (no) records", function()
+test("snap: skips non-normal starting modes", function()
   local records, order = build({
     { id = "a", first_mode = "n"  },
     { id = "b", first_mode = "no" },
     { id = "c", first_mode = "no" },
   })
   assert_eq(snap(records, order, 3, 20), 1)
+
+  records, order = build({
+    { id = "a", first_mode = "n" },
+    { id = "b", first_mode = "v" },
+  })
+  assert_eq(snap(records, order, 2, 20), 1)
 end)
 
-test("snap: exhausts budget without finding boundary, returns nil", function()
+test("snap: returns nil when budget cannot reach a boundary", function()
   local records, order = build({
     { id = "a", first_mode = "n" },
     { id = "b", first_mode = "i" },
@@ -55,10 +59,8 @@ test("snap: exhausts budget without finding boundary, returns nil", function()
     { id = "e", first_mode = "i" },
   })
   assert_eq(snap(records, order, 5, 2), nil)
-end)
 
-test("snap: budget of 0 requires cutoff itself to be a boundary", function()
-  local records, order = build({
+  records, order = build({
     { id = "a", first_mode = "n" },
     { id = "b", first_mode = "i" },
   })
@@ -70,12 +72,4 @@ test("snap: record with no first_mode is not a boundary", function()
   local records, order = { a = {}, b = { first_mode = "n" } }, { "a", "b" }
   assert_eq(snap(records, order, 1, 20), nil)
   assert_eq(snap(records, order, 2, 20), 2)
-end)
-
-test("snap: visual mode (v) is not a clean boundary", function()
-  local records, order = build({
-    { id = "a", first_mode = "n" },
-    { id = "b", first_mode = "v" },
-  })
-  assert_eq(snap(records, order, 2, 20), 1)
 end)

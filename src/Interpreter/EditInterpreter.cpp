@@ -380,13 +380,13 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
     }
 
     // Extract motion part (between 'v' and operator)
-    string motionSeq(e.substr(1, e.size() - 2));
+    string movementSeq(e.substr(1, e.size() - 2));
 
     // Record anchor position
     CursorPos anchor = pos;
 
     // Apply motions to get end position
-    for (const auto& motion : parseEdits(motionSeq)) {
+    for (const auto& motion : parseEdits(movementSeq)) {
       applyEdit(lines, pos, mode, motion);
     }
 
@@ -425,7 +425,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
       case hash("ce"): case hash("cE"): case hash("cge"): case hash("cgE"):
       case hash("c}"): case hash("c{"): case hash("c)"): case hash("c("):
       case hash("0"): case hash("^"): case hash("$"):
-      // Navigation (for EditOptimizer line traversal)
+      // Navigation (for TransformOptimizer line traversal)
       case hash("j"): case hash("k"): case hash("h"): case hash("l"):
       // Paragraph/sentence motions
       case hash("}"): case hash("{"): case hash(")"): case hash("("):
@@ -582,7 +582,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == pos) {
             assert(false && "dw/dW has no effect or crosses boundary");
           }
-          // Match EditExplorer semantics: dw/dW do not cross lines.
+          // Match TransformExplorer semantics: dw/dW do not cross lines.
           if (endpoint.line > pos.line) {
             endpoint = VimCore::motionWordEndpoint<true, EdgeType::WordEdge>(
                 pos, lines, big, false,
@@ -1030,7 +1030,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
         }
         return;
 
-      // --- Navigation motions (for EditOptimizer) ---
+      // --- Navigation motions (for TransformOptimizer) ---
       case hash("j"):
         if (pos.line + count >= n) {
           assert(false && "j requires more lines below");

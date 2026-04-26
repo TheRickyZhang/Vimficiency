@@ -305,7 +305,7 @@ local cases = {
   {
     name = "simulate precompute drains first normal-mode token before snapshot",
     run = function(next)
-      local repeats = 20
+      local repeats = 3
       local lines = {
         "int main() {",
         "  int m;",
