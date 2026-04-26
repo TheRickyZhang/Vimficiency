@@ -1,0 +1,387 @@
+<!DOCTYPE html><html lang="en" dir="ltr" data-theme="dark" data-has-toc data-has-sidebar class="astro-bguv2lll"> <head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Commands reference | Vimficiency</title><link rel="canonical" href="https://therickyzhang.github.io/Vimficiency/docs/11-commands/"/><link rel="sitemap" href="/Vimficiency/docs/sitemap-index.xml"/><link rel="shortcut icon" href="/Vimficiency/docs/favicon.svg" type="image/svg+xml"/><meta name="generator" content="Astro v5.18.1"/><meta name="generator" content="Starlight v0.30.6"/><meta property="og:title" content="Commands reference"/><meta property="og:type" content="article"/><meta property="og:url" content="https://therickyzhang.github.io/Vimficiency/docs/11-commands/"/><meta property="og:locale" content="en"/><meta property="og:description" content="Watches how you edit Vim and surfaces shorter keystroke sequences."/><meta property="og:site_name" content="Vimficiency"/><meta name="twitter:card" content="summary_large_image"/><meta name="description" content="Watches how you edit Vim and surfaces shorter keystroke sequences."/><script>
+	window.StarlightThemeProvider = (() => {
+		const storedTheme =
+			typeof localStorage !== 'undefined' && localStorage.getItem('starlight-theme');
+		const theme =
+			storedTheme ||
+			(window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+		document.documentElement.dataset.theme = theme === 'light' ? 'light' : 'dark';
+		return {
+			updatePickers(theme = storedTheme || 'auto') {
+				document.querySelectorAll('starlight-theme-select').forEach((picker) => {
+					const select = picker.querySelector('select');
+					if (select) select.value = theme;
+					/** @type {HTMLTemplateElement | null} */
+					const tmpl = document.querySelector(`#theme-icons`);
+					const newIcon = tmpl && tmpl.content.querySelector('.' + theme);
+					if (newIcon) {
+						const oldIcon = picker.querySelector('svg.label-icon');
+						if (oldIcon) {
+							oldIcon.replaceChildren(...newIcon.cloneNode(true).childNodes);
+						}
+					}
+				});
+			},
+		};
+	})();
+</script><template id="theme-icons"><svg aria-hidden="true" class="light astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M5 12a1 1 0 0 0-1-1H3a1 1 0 0 0 0 2h1a1 1 0 0 0 1-1Zm.64 5-.71.71a1 1 0 0 0 0 1.41 1 1 0 0 0 1.41 0l.71-.71A1 1 0 0 0 5.64 17ZM12 5a1 1 0 0 0 1-1V3a1 1 0 0 0-2 0v1a1 1 0 0 0 1 1Zm5.66 2.34a1 1 0 0 0 .7-.29l.71-.71a1 1 0 1 0-1.41-1.41l-.66.71a1 1 0 0 0 0 1.41 1 1 0 0 0 .66.29Zm-12-.29a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.71-.71a1.004 1.004 0 1 0-1.43 1.41l.73.71ZM21 11h-1a1 1 0 0 0 0 2h1a1 1 0 0 0 0-2Zm-2.64 6A1 1 0 0 0 17 18.36l.71.71a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.76-.66ZM12 6.5a5.5 5.5 0 1 0 5.5 5.5A5.51 5.51 0 0 0 12 6.5Zm0 9a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Zm0 3.5a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1Z"/></svg> <svg aria-hidden="true" class="dark astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.64 13a1 1 0 0 0-1.05-.14 8.049 8.049 0 0 1-3.37.73 8.15 8.15 0 0 1-8.14-8.1 8.59 8.59 0 0 1 .25-2A1 1 0 0 0 8 2.36a10.14 10.14 0 1 0 14 11.69 1 1 0 0 0-.36-1.05Zm-9.5 6.69A8.14 8.14 0 0 1 7.08 5.22v.27a10.15 10.15 0 0 0 10.14 10.14 9.784 9.784 0 0 0 2.1-.22 8.11 8.11 0 0 1-7.18 4.32v-.04Z"/></svg> <svg aria-hidden="true" class="auto astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg> </template><link rel="stylesheet" href="/Vimficiency/docs/_astro/index.C8-Ur-VV.css"><script type="module" src="/Vimficiency/docs/_astro/page.B1D-nYk3.js"></script></head> <body class="astro-bguv2lll"> <a href="#_top" class="astro-7q3lir66">Skip to content</a>  <div class="page sl-flex astro-vrdttmbt"> <header class="header astro-vrdttmbt"><div class="header sl-flex astro-kmkmnagf"> <div class="title-wrapper sl-flex astro-kmkmnagf"> <a href="/Vimficiency/docs/" class="site-title sl-flex astro-m46x6ez3">  <span class="astro-m46x6ez3" translate="no"> Vimficiency </span> </a>  </div> <div class="sl-flex astro-kmkmnagf"> <site-search class="astro-kmkmnagf astro-v37mnknz" data-translations="{&#34;placeholder&#34;:&#34;Search&#34;}"> <button data-open-modal disabled aria-label="Search" aria-keyshortcuts="Control+K" class="astro-v37mnknz"> <svg aria-hidden="true" class="astro-v37mnknz astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.71 20.29 18 16.61A9 9 0 1 0 16.61 18l3.68 3.68a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.39ZM11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z"/></svg>  <span class="sl-hidden md:sl-block astro-v37mnknz" aria-hidden="true">Search</span> <kbd class="sl-hidden md:sl-flex astro-v37mnknz" style="display: none;"> <kbd class="astro-v37mnknz">Ctrl</kbd><kbd class="astro-v37mnknz">K</kbd> </kbd> </button> <dialog style="padding:0" aria-label="Search" class="astro-v37mnknz"> <div class="dialog-frame sl-flex astro-v37mnknz">  <button data-close-modal class="sl-flex md:sl-hidden astro-v37mnknz"> Cancel </button> <div class="search-container astro-v37mnknz"> <div id="starlight__search" class="astro-v37mnknz"></div> </div> </div> </dialog> </site-search>  <script>
+	(() => {
+		const openBtn = document.querySelector('button[data-open-modal]');
+		const shortcut = openBtn?.querySelector('kbd');
+		if (!openBtn || !(shortcut instanceof HTMLElement)) return;
+		const platformKey = shortcut.querySelector('kbd');
+		if (platformKey && /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform)) {
+			platformKey.textContent = '⌘';
+			openBtn.setAttribute('aria-keyshortcuts', 'Meta+K');
+		}
+		shortcut.style.display = '';
+	})();
+</script> <script type="module" src="/Vimficiency/docs/_astro/Search.astro_astro_type_script_index_0_lang.CaLZcPfq.js"></script>   </div> <div class="sl-hidden md:sl-flex right-group astro-kmkmnagf"> <div class="sl-flex social-icons astro-kmkmnagf"> <a href="https://github.com/therickyzhang/vimficiency" rel="me" class="sl-flex astro-wy4te6ga"><span class="sr-only astro-wy4te6ga">GitHub</span><svg aria-hidden="true" class="astro-wy4te6ga astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg> </a> </div> <starlight-theme-select>  <label style="--sl-select-width: 6.25em" class="astro-4yphtoen"> <span class="sr-only astro-4yphtoen">Select theme</span> <svg aria-hidden="true" class="icon label-icon astro-4yphtoen astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg>  <select value="auto" autocomplete="off" class="astro-4yphtoen"> <option value="dark" class="astro-4yphtoen">Dark</option><option value="light" class="astro-4yphtoen">Light</option><option value="auto" selected class="astro-4yphtoen">Auto</option> </select> <svg aria-hidden="true" class="icon caret astro-4yphtoen astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg>  </label>  </starlight-theme-select>  <script>
+	StarlightThemeProvider.updatePickers();
+</script> <script type="module">const r="starlight-theme",o=e=>e==="auto"||e==="dark"||e==="light"?e:"auto",c=()=>o(typeof localStorage<"u"&&localStorage.getItem(r));function n(e){typeof localStorage<"u"&&localStorage.setItem(r,e==="light"||e==="dark"?e:"")}const l=()=>matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";function t(e){StarlightThemeProvider.updatePickers(e),document.documentElement.dataset.theme=e==="auto"?l():e,n(e)}matchMedia("(prefers-color-scheme: light)").addEventListener("change",()=>{c()==="auto"&&t("auto")});class s extends HTMLElement{constructor(){super(),t(c()),this.querySelector("select")?.addEventListener("change",a=>{a.currentTarget instanceof HTMLSelectElement&&t(o(a.currentTarget.value))})}}customElements.define("starlight-theme-select",s);</script> <script type="module">class s extends HTMLElement{constructor(){super();const e=this.querySelector("select");e&&(e.addEventListener("change",t=>{t.currentTarget instanceof HTMLSelectElement&&(window.location.pathname=t.currentTarget.value)}),window.addEventListener("pageshow",t=>{if(!t.persisted)return;const n=e.querySelector("option[selected]")?.index;n!==e.selectedIndex&&(e.selectedIndex=n??0)}))}}customElements.define("starlight-lang-select",s);</script> </div> </div> </header> <nav class="sidebar astro-vrdttmbt" aria-label="Main"> <starlight-menu-button class="astro-jif73yzw"> <button aria-expanded="false" aria-label="Menu" aria-controls="starlight__sidebar" class="sl-flex md:sl-hidden astro-jif73yzw"> <svg aria-hidden="true" class="astro-jif73yzw astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M3 8h18a1 1 0 1 0 0-2H3a1 1 0 0 0 0 2Zm18 8H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Zm0-5H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Z"/></svg>  </button> </starlight-menu-button> <script type="module">class s extends HTMLElement{constructor(){super(),this.btn=this.querySelector("button"),this.btn.addEventListener("click",()=>this.toggleExpanded());const t=this.closest("nav");t&&t.addEventListener("keyup",e=>this.closeOnEscape(e))}setExpanded(t){this.setAttribute("aria-expanded",String(t)),document.body.toggleAttribute("data-mobile-menu-expanded",t)}toggleExpanded(){this.setExpanded(this.getAttribute("aria-expanded")!=="true")}closeOnEscape(t){t.code==="Escape"&&(this.setExpanded(!1),this.btn.focus())}}customElements.define("starlight-menu-button",s);</script>   <div id="starlight__sidebar" class="sidebar-pane astro-vrdttmbt"> <div class="sidebar-content sl-flex astro-vrdttmbt"> <sl-sidebar-state-persist data-hash="0156bx8" class="astro-kku4brbg"> <script aria-hidden="true">
+		(() => {
+			try {
+				if (!matchMedia('(min-width: 50em)').matches) return;
+				/** @type {HTMLElement | null} */
+				const target = document.querySelector('sl-sidebar-state-persist');
+				const state = JSON.parse(sessionStorage.getItem('sl-sidebar-state') || '0');
+				if (!target || !state || target.dataset.hash !== state.hash) return;
+				window._starlightScrollRestore = state.scroll;
+				customElements.define(
+					'sl-sidebar-restore',
+					class SidebarRestore extends HTMLElement {
+						connectedCallback() {
+							try {
+								const idx = parseInt(this.dataset.index || '');
+								const details = this.closest('details');
+								if (details && typeof state.open[idx] === 'boolean') details.open = state.open[idx];
+							} catch {}
+						}
+					}
+				);
+			} catch {}
+		})();
+	</script>  <ul class="top-level astro-3ii7xxms"> <li class="astro-3ii7xxms"> <details open class="astro-3ii7xxms"> <sl-sidebar-restore data-index="0"></sl-sidebar-restore> <summary class="astro-3ii7xxms"> <div class="group-label astro-3ii7xxms"> <span class="large astro-3ii7xxms">Guide</span>  </div> <svg aria-hidden="true" class="caret astro-3ii7xxms astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg>  </summary> <ul class="astro-3ii7xxms">  </ul>  </details> </li> </ul>   <script aria-hidden="true">
+		(() => {
+			const scroller = document.getElementById('starlight__sidebar');
+			if (!window._starlightScrollRestore || !scroller) return;
+			scroller.scrollTop = window._starlightScrollRestore;
+			delete window._starlightScrollRestore;
+		})();
+	</script> </sl-sidebar-state-persist>  <div class="md:sl-hidden"> <div class="mobile-preferences sl-flex astro-wu23bvmt"> <div class="sl-flex social-icons astro-wu23bvmt"> <a href="https://github.com/therickyzhang/vimficiency" rel="me" class="sl-flex astro-wy4te6ga"><span class="sr-only astro-wy4te6ga">GitHub</span><svg aria-hidden="true" class="astro-wy4te6ga astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg> </a> </div> <starlight-theme-select>  <label style="--sl-select-width: 6.25em" class="astro-4yphtoen"> <span class="sr-only astro-4yphtoen">Select theme</span> <svg aria-hidden="true" class="icon label-icon astro-4yphtoen astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg>  <select value="auto" autocomplete="off" class="astro-4yphtoen"> <option value="dark" class="astro-4yphtoen">Dark</option><option value="light" class="astro-4yphtoen">Light</option><option value="auto" selected class="astro-4yphtoen">Auto</option> </select> <svg aria-hidden="true" class="icon caret astro-4yphtoen astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg>  </label>  </starlight-theme-select>  <script>
+	StarlightThemeProvider.updatePickers();
+</script>   </div>  </div> </div> </div> </nav> <div class="main-frame astro-vrdttmbt">  <script type="module">const a=document.getElementById("starlight__sidebar"),n=a?.querySelector("sl-sidebar-state-persist"),o="sl-sidebar-state",i=()=>{let t=[];const e=n?.dataset.hash||"";try{const s=sessionStorage.getItem(o),r=JSON.parse(s||"{}");Array.isArray(r.open)&&r.hash===e&&(t=r.open)}catch{}return{hash:e,open:t,scroll:a?.scrollTop||0}},c=t=>{try{sessionStorage.setItem(o,JSON.stringify(t))}catch{}},d=()=>c(i()),l=(t,e)=>{const s=i();s.open[e]=t,c(s)};n?.addEventListener("click",t=>{if(!(t.target instanceof Element))return;const e=t.target.closest("summary")?.closest("details");if(!e)return;const s=e.querySelector("sl-sidebar-restore"),r=parseInt(s?.dataset.index||"");isNaN(r)||l(!e.open,r)});addEventListener("visibilitychange",()=>{document.visibilityState==="hidden"&&d()});addEventListener("pageHide",d);</script> <div class="lg:sl-flex astro-67yu43on"> <aside class="right-sidebar-container astro-67yu43on"> <div class="right-sidebar astro-67yu43on"> <script type="module" src="/Vimficiency/docs/_astro/MobileTableOfContents.astro_astro_type_script_index_0_lang.C181hMzK.js"></script><script type="module" src="/Vimficiency/docs/_astro/TableOfContents.astro_astro_type_script_index_0_lang.CKWWgpjV.js"></script><div class="lg:sl-hidden astro-pb3aqygn"><mobile-starlight-toc data-min-h="2" data-max-h="3" class="astro-doynk5tl"><nav aria-labelledby="starlight__on-this-page--mobile" class="astro-doynk5tl"><details id="starlight__mobile-toc" class="astro-doynk5tl"><summary id="starlight__on-this-page--mobile" class="sl-flex astro-doynk5tl"><div class="toggle sl-flex astro-doynk5tl">On this page<svg aria-hidden="true" class="caret astro-doynk5tl astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg> </div><span class="display-current astro-doynk5tl"></span></summary><div class="dropdown astro-doynk5tl"><ul class="isMobile astro-g2bywc46" style="--depth: 0;"> <li class="astro-g2bywc46" style="--depth: 0;"> <a href="#_top" class="astro-g2bywc46" style="--depth: 0;"> <span class="astro-g2bywc46" style="--depth: 0;">Overview</span> </a>  </li><li class="astro-g2bywc46" style="--depth: 0;"> <a href="#alias-grammar" class="astro-g2bywc46" style="--depth: 0;"> <span class="astro-g2bywc46" style="--depth: 0;">Alias grammar</span> </a>  </li><li class="astro-g2bywc46" style="--depth: 0;"> <a href="#workspace-vs-storage" class="astro-g2bywc46" style="--depth: 0;"> <span class="astro-g2bywc46" style="--depth: 0;">Workspace vs. storage</span> </a>  </li><li class="astro-g2bywc46" style="--depth: 0;"> <a href="#session-picker-vimfy-list" class="astro-g2bywc46" style="--depth: 0;"> <span class="astro-g2bywc46" style="--depth: 0;">Session picker (:Vimfy list)</span> </a>  </li><li class="astro-g2bywc46" style="--depth: 0;"> <a href="#session-stats-vimfy-stats" class="astro-g2bywc46" style="--depth: 0;"> <span class="astro-g2bywc46" style="--depth: 0;">Session stats (:Vimfy stats)</span> </a> <ul class="isMobile astro-g2bywc46" style="--depth: 1;"> <li class="astro-g2bywc46" style="--depth: 1;"> <a href="#where-the-data-lives" class="astro-g2bywc46" style="--depth: 1;"> <span class="astro-g2bywc46" style="--depth: 1;">Where the data lives</span> </a>  </li> </ul>  </li><li class="astro-g2bywc46" style="--depth: 0;"> <a href="#tab-completion" class="astro-g2bywc46" style="--depth: 0;"> <span class="astro-g2bywc46" style="--depth: 0;">Tab completion</span> </a>  </li><li class="astro-g2bywc46" style="--depth: 0;"> <a href="#plug-mappings" class="astro-g2bywc46" style="--depth: 0;"> <span class="astro-g2bywc46" style="--depth: 0;">&lt;Plug&gt; mappings</span> </a>  </li><li class="astro-g2bywc46" style="--depth: 0;"> <a href="#scratch-output-buffer-keys" class="astro-g2bywc46" style="--depth: 0;"> <span class="astro-g2bywc46" style="--depth: 0;">Scratch output buffer keys</span> </a>  </li> </ul> </div></details></nav></mobile-starlight-toc></div><div class="right-sidebar-panel sl-hidden lg:sl-block astro-pb3aqygn"><div class="sl-container astro-pb3aqygn"><starlight-toc data-min-h="2" data-max-h="3"><nav aria-labelledby="starlight__on-this-page"><h2 id="starlight__on-this-page">On this page</h2><ul class="astro-g2bywc46" style="--depth: 0;"> <li class="astro-g2bywc46" style="--depth: 0;"> <a href="#_top" class="astro-g2bywc46" style="--depth: 0;"> <span class="astro-g2bywc46" style="--depth: 0;">Overview</span> </a>  </li><li class="astro-g2bywc46" style="--depth: 0;"> <a href="#alias-grammar" class="astro-g2bywc46" style="--depth: 0;"> <span class="astro-g2bywc46" style="--depth: 0;">Alias grammar</span> </a>  </li><li class="astro-g2bywc46" style="--depth: 0;"> <a href="#workspace-vs-storage" class="astro-g2bywc46" style="--depth: 0;"> <span class="astro-g2bywc46" style="--depth: 0;">Workspace vs. storage</span> </a>  </li><li class="astro-g2bywc46" style="--depth: 0;"> <a href="#session-picker-vimfy-list" class="astro-g2bywc46" style="--depth: 0;"> <span class="astro-g2bywc46" style="--depth: 0;">Session picker (:Vimfy list)</span> </a>  </li><li class="astro-g2bywc46" style="--depth: 0;"> <a href="#session-stats-vimfy-stats" class="astro-g2bywc46" style="--depth: 0;"> <span class="astro-g2bywc46" style="--depth: 0;">Session stats (:Vimfy stats)</span> </a> <ul class="astro-g2bywc46" style="--depth: 1;"> <li class="astro-g2bywc46" style="--depth: 1;"> <a href="#where-the-data-lives" class="astro-g2bywc46" style="--depth: 1;"> <span class="astro-g2bywc46" style="--depth: 1;">Where the data lives</span> </a>  </li> </ul>  </li><li class="astro-g2bywc46" style="--depth: 0;"> <a href="#tab-completion" class="astro-g2bywc46" style="--depth: 0;"> <span class="astro-g2bywc46" style="--depth: 0;">Tab completion</span> </a>  </li><li class="astro-g2bywc46" style="--depth: 0;"> <a href="#plug-mappings" class="astro-g2bywc46" style="--depth: 0;"> <span class="astro-g2bywc46" style="--depth: 0;">&lt;Plug&gt; mappings</span> </a>  </li><li class="astro-g2bywc46" style="--depth: 0;"> <a href="#scratch-output-buffer-keys" class="astro-g2bywc46" style="--depth: 0;"> <span class="astro-g2bywc46" style="--depth: 0;">Scratch output buffer keys</span> </a>  </li> </ul> </nav></starlight-toc></div></div> </div> </aside> <div class="main-pane astro-67yu43on">  <main data-pagefind-body class="astro-bguv2lll" lang="en" dir="ltr">    <div class="content-panel astro-7nkwcw3z"> <div class="sl-container astro-7nkwcw3z"> <h1 id="_top" class="astro-j6tvhyss">Commands reference</h1>  </div> </div>  <div class="content-panel astro-7nkwcw3z"> <div class="sl-container astro-7nkwcw3z"> <div class="sl-markdown-content"> <h1 id="commands-reference">Commands reference</h1>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Command</th><th>Purpose</th></tr></thead><tbody><tr><td><code dir="auto">:Vimfy start &#x3C;name></code></td><td>Mark a session start (alphabetic alias, e.g. <code dir="auto">a</code>).</td></tr><tr><td><code dir="auto">:Vimfy watch &#x3C;name></code></td><td>Start a Watch session (auto-end on idle).</td></tr><tr><td><code dir="auto">:Vimfy finish &#x3C;alias></code></td><td>Finish a manual session (Mark or Watch) and optimize.</td></tr><tr><td><code dir="auto">:Vimfy recall &#x3C;N|Ns></code></td><td>Finish a retrospective recall window.</td></tr><tr><td><code dir="auto">:Vimfy close &#x3C;alias></code></td><td>Discard a session without optimizing.</td></tr><tr><td><code dir="auto">:Vimfy save &#x3C;selector>|@ [&#x3C;name>]</code></td><td>Copy a finished result to disk (keeps the workspace copy). Name defaults to selector. <code dir="auto">@</code> = last finished.</td></tr><tr><td><code dir="auto">:Vimfy store &#x3C;selector>|@ [&#x3C;name>]</code></td><td>Move a finished result to disk (removes from workspace).</td></tr><tr><td><code dir="auto">:Vimfy fetch &#x3C;name> [&#x3C;alias>]</code></td><td>Copy a saved result from disk into the current workspace.</td></tr><tr><td><code dir="auto">:Vimfy play &#x3C;alias> [count]</code></td><td>Animate results side-by-side (memory first, disk fallback).</td></tr><tr><td><code dir="auto">:Vimfy focus &#x3C;N></code></td><td>Focus the active replay on the Nth buffer (full-screen).</td></tr><tr><td><code dir="auto">:Vimfy escape</code></td><td>Restore the side-by-side replay layout.</td></tr><tr><td><code dir="auto">:Vimfy view [name]</code></td><td>View a saved result (or list saved names).</td></tr><tr><td><code dir="auto">:Vimfy rm &#x3C;name></code></td><td>Delete a saved result from disk.</td></tr><tr><td><code dir="auto">:Vimfy list</code></td><td>Open the interactive session picker (see below).</td></tr><tr><td><code dir="auto">:Vimfy stats</code></td><td>Show lifetime session stats (see below).</td></tr><tr><td><code dir="auto">:Vimfy suggest &#x3C;on|off|toggle></code></td><td>Runtime toggle for auto-suggest (config-driven).</td></tr><tr><td><code dir="auto">:Vimfy config</code></td><td>Show the current configuration.</td></tr><tr><td><code dir="auto">:Vimfy reload</code></td><td>Rebuild the C++ library (needs restart).</td></tr><tr><td><code dir="auto">:Vimfy help</code></td><td>Show the command list.</td></tr></tbody></table>
+<h2 id="alias-grammar">Alias grammar</h2>
+<p>The <code dir="auto">&#x3C;alias></code> argument splits by subcommand:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Subcommand</th><th>Accepts</th></tr></thead><tbody><tr><td><code dir="auto">start</code> / <code dir="auto">watch</code></td><td>Alphabetic only (<code dir="auto">a</code>, <code dir="auto">refactor</code>).</td></tr><tr><td><code dir="auto">finish</code></td><td>Alphabetic only — manual handles.</td></tr><tr><td><code dir="auto">recall</code></td><td><code dir="auto">N</code> (digits) or <code dir="auto">Ns</code> (digits + <code dir="auto">s</code>).</td></tr><tr><td><code dir="auto">close</code> / <code dir="auto">play</code></td><td>Any of the three: alphabetic, <code dir="auto">N</code>, or <code dir="auto">Ns</code>. <code dir="auto">play</code> also accepts a saved name.</td></tr><tr><td><code dir="auto">save</code> / <code dir="auto">store</code></td><td>Any of the three, plus <code dir="auto">@</code> for last finished. Same grammar.</td></tr><tr><td><code dir="auto">fetch</code></td><td>Saved name → new workspace alias (alphabetic).</td></tr></tbody></table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Form</th><th>Means</th></tr></thead><tbody><tr><td><code dir="auto">a</code>, <code dir="auto">foo</code></td><td>Alphabetic → a manual session name.</td></tr><tr><td><code dir="auto">6</code></td><td>Digits → recall N keys ago.</td></tr><tr><td><code dir="auto">3s</code></td><td>Digits + <code dir="auto">s</code> → recall N seconds ago (see <a href="/Vimficiency/docs/05-recall/">5. Recall</a>).</td></tr></tbody></table>
+<p><code dir="auto">save</code> accepts the full grammar plus <code dir="auto">@</code>, which resolves to the most
+recently finished session — handy when the session you want to keep is a
+recall window whose alias (<code dir="auto">3s</code>) is moving out from under you:</p>
+<div class="expressive-code"><link rel="stylesheet" href="/Vimficiency/docs/_astro/ec.j8ofn.css"><script type="module" src="/Vimficiency/docs/_astro/ec.8zarh.js"></script><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="plaintext"><code><div class="ec-line"><div class="code"><span style="--0:#d6deeb;--1:#403f53">:Vimfy recall 3s</span></div></div><div class="ec-line"><div class="code"><span style="--0:#d6deeb;--1:#403f53">:Vimfy save @ nested-refactor</span></div></div></code></pre><div class="copy"><button title="Copy to clipboard" data-copied="Copied!" data-code=":Vimfy recall 3s:Vimfy save @ nested-refactor"><div></div></button></div></figure></div>
+<p><code dir="auto">:Vimficiency</code> is accepted as a full-name alias for <code dir="auto">:Vimfy</code>.</p>
+<h2 id="workspace-vs-storage">Workspace vs. storage</h2>
+<p>Finished sessions live in two places: <strong>workspace</strong> (in-memory,
+indexed by alias) and <strong>storage</strong> (on disk, indexed by filename). The
+namespaces are separate; the same text can name both. Move results
+between them with <code dir="auto">save</code> / <code dir="auto">store</code> / <code dir="auto">fetch</code>; see
+<a href="/Vimficiency/docs/07a-session-storage/">7a. Session storage</a> for the full model and
+collision rules. Omitting the second argument on <code dir="auto">save</code> / <code dir="auto">store</code> /
+<code dir="auto">fetch</code> repeats the first argument verbatim.</p>
+<h2 id="session-picker-vimfy-list">Session picker (<code dir="auto">:Vimfy list</code>)</h2>
+<p>Opens a centered float with two panes — <strong>Active</strong> (in-memory workspace
+sessions) and <strong>Saved</strong> (files under <code dir="auto">stdpath("data")/vimficiency/saved</code>)
+— and a live-filter prompt at the bottom. <code dir="auto">&#x3C;Tab></code> toggles between panes.</p>
+<p>Ongoing sessions always sit in a pinned <strong>Ongoing</strong> section at the top,
+regardless of sort mode. Auto-generated recall ring entries (one per
+keystroke) are folded into a single <code dir="auto">recall ring (N)</code> summary row — the
+per-entry aliases drift, so they’re not individually actionable from the
+picker; resolve a specific window with <code dir="auto">:Vimfy recall N</code> or <code dir="auto">:Vimfy recall Ns</code> instead.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Action</th></tr></thead><tbody><tr><td><code dir="auto">/</code></td><td>Fuzzy-filter by alias (prompt at bottom, live)</td></tr><tr><td><code dir="auto">&#x3C;CR></code></td><td>Open (default action, see below)</td></tr><tr><td><code dir="auto">&#x3C;Tab></code></td><td>Switch Active ↔ Saved pane</td></tr><tr><td><code dir="auto">sn</code>/<code dir="auto">sN</code></td><td>Sort by name (A→Z / Z→A)</td></tr><tr><td><code dir="auto">sc</code>/<code dir="auto">sC</code></td><td>Sort by category (A→Z / Z→A)</td></tr><tr><td><code dir="auto">st</code>/<code dir="auto">sT</code></td><td>Sort by time (newest / oldest)</td></tr><tr><td><code dir="auto">s</code></td><td>Sort hint popup (also on <code dir="auto">s?</code>)</td></tr><tr><td><code dir="auto">d</code></td><td>Delete the current entry</td></tr><tr><td><code dir="auto">m</code></td><td>Toggle mark on the current entry</td></tr><tr><td><code dir="auto">D</code></td><td>Delete all marked entries</td></tr><tr><td><code dir="auto">r</code></td><td>Rename (see below)</td></tr><tr><td><code dir="auto">y</code></td><td>Duplicate (see below)</td></tr><tr><td><code dir="auto">?</code></td><td>Show the keymap popup</td></tr><tr><td><code dir="auto">q</code>, <code dir="auto">&#x3C;Esc></code></td><td>Close</td></tr></tbody></table>
+<p>Inside the search prompt, <code dir="auto">&#x3C;C-n></code> / <code dir="auto">&#x3C;C-p></code> (and <code dir="auto">&#x3C;Down></code> / <code dir="auto">&#x3C;Up></code>) move
+the list cursor without leaving insert mode; <code dir="auto">&#x3C;CR></code> opens the current
+entry; <code dir="auto">&#x3C;Esc></code> returns to the list.</p>
+<p><strong>Per-pane action semantics:</strong></p>
+<ul>
+<li><code dir="auto">&#x3C;CR></code> — on the Active pane, opens a <code dir="auto">:Vimfy play</code>-style view of a
+finished session; on the Saved pane, fetches the file into the
+workspace and switches focus to Active.</li>
+<li><code dir="auto">d</code> — on Active, discards the session (equivalent to <code dir="auto">:Vimfy close</code>);
+on Saved, deletes the file on disk.</li>
+<li><code dir="auto">r</code> / <code dir="auto">y</code> — on Saved, renames/duplicates the file. On Active, renames
+the manual alias / registers a duplicate finished record under a new
+alias. Only entries with a stable manual alias are renameable this
+way; for recall and auto-suggest results, save to disk first (<code dir="auto">:Vimfy save &#x3C;alias> &#x3C;name></code>) and then rename from the Saved pane.</li>
+</ul>
+<p><strong>Blocked on in-progress sessions:</strong> <code dir="auto">&#x3C;CR></code>, <code dir="auto">r</code>, <code dir="auto">y</code> all refuse to run
+on a still-accumulating session. Finish it with <code dir="auto">:Vimfy finish</code> (or let
+Watch’s idle trigger fire) and try again.</p>
+<h2 id="session-stats-vimfy-stats">Session stats (<code dir="auto">:Vimfy stats</code>)</h2>
+<p>Opens a read-only float summarizing your lifetime activity. Close with
+<code dir="auto">q</code> or <code dir="auto">&#x3C;Esc></code>.</p>
+<p>Sections:</p>
+<ul>
+<li><strong>Lifetime</strong> — total finished sessions, broken down by type (mark /
+watch / recall / suggest), and total captured keystrokes.</li>
+<li><strong>Efficiency</strong> — a score out of 100, defined per session as
+<code dir="auto">min(best_optimizer_cost / user_cost, 1) × 100</code> (capped at 100 so a
+beat doesn’t inflate the average). Aggregated as a geometric mean.
+The 30-day block below the score is a sparkline of the daily
+geometric mean (▁ = 0, █ = 100; blanks = no sessions that day).</li>
+<li><strong>Motions</strong> — for every motion molecule that appears at least ten
+times combined across your sequences and the optimizer’s best
+suggestions, the ratio <code dir="auto">your_proportion / optimizer_proportion</code>. Two
+lists: what you use <em>more</em> than the optimizer (potential inefficient
+habits) and what you use <em>less</em> (candidates to practice). Only the
+trailing character of <code dir="auto">f</code>/<code dir="auto">F</code>/<code dir="auto">t</code>/<code dir="auto">T</code>/<code dir="auto">r</code>/<code dir="auto">R</code> is collapsed to <code dir="auto">_</code> —
+everything else is reported as-is, since further grouping hides
+signal.</li>
+<li><strong>Dev — Optimizer beats queued</strong> — count of finished sessions where
+your sequence came in cheaper than the optimizer’s best result.
+These are flagged (<code dir="auto">beats: true</code>) on their log lines. <strong>Beats are
+interesting-to-study, not ground truth</strong>: many are cost-model
+artifacts or unexplored regions, so they are <em>not</em> fed back into
+training without manual review.</li>
+</ul>
+<h3 id="where-the-data-lives">Where the data lives</h3>
+<p>Every finished session (mark, watch, recall, suggest) appends one JSON
+object to <code dir="auto">stdpath("data")/vimficiency/sessions.jsonl</code>. The file is
+append-only, one record per line. Stats read the whole log on demand —
+no aggregate cache in v1, so changing the efficiency formula or adding
+new buckets only requires re-reducing, not a migration. A trailing
+malformed line (e.g. a crash mid-write) is silently skipped on read.</p>
+<p>Per-record schema (version <code dir="auto">v: 1</code>): <code dir="auto">finish_epoch</code>, <code dir="auto">type</code>,
+<code dir="auto">finish_reason</code>, <code dir="auto">key_count</code>, <code dir="auto">user_cost</code>, <code dir="auto">best_opt_cost</code>, <code dir="auto">user_seq</code>,
+<code dir="auto">best_opt_seq</code>, <code dir="auto">beats</code>. Only the single lowest-cost optimal result is
+stored; Top-N alternatives are not retained at log-write time.</p>
+<h2 id="tab-completion">Tab completion</h2>
+<p>Works on:</p>
+<ul>
+<li>Subcommands (<code dir="auto">:Vimfy s&#x3C;Tab></code> → <code dir="auto">save</code>, <code dir="auto">start</code>, <code dir="auto">stats</code>, <code dir="auto">store</code>, <code dir="auto">suggest</code>).</li>
+<li>Manual (alphabetic) handles for <code dir="auto">start</code>, <code dir="auto">watch</code>, and <code dir="auto">finish</code>.</li>
+<li><code dir="auto">3s</code>/<code dir="auto">5s</code>/<code dir="auto">10s</code>/<code dir="auto">30s</code> hints for <code dir="auto">recall</code>.</li>
+<li>All active/recall aliases plus time hints for <code dir="auto">close</code>.</li>
+<li>Active/recall aliases, time hints, and saved names for <code dir="auto">play</code> (matches its disk fallback).</li>
+<li>Selectors (plus <code dir="auto">@</code>) for <code dir="auto">save</code> and <code dir="auto">store</code>.</li>
+<li>Saved names for <code dir="auto">view</code>, <code dir="auto">rm</code>, and <code dir="auto">fetch</code>.</li>
+<li><code dir="auto">on</code> / <code dir="auto">off</code> / <code dir="auto">toggle</code> for <code dir="auto">suggest</code>.</li>
+</ul>
+<h2 id="plug-mappings"><code dir="auto">&#x3C;Plug></code> mappings</h2>
+<p>For each subcommand above, a <code dir="auto">&#x3C;Plug>VimfyX...</code> map is also registered so
+you can bind keys without having to type <code dir="auto">:Vimfy ...</code> (which would count
+as admin activity anyway). See <a href="/Vimficiency/docs/08-keymaps/">8. Keymaps</a> for the full
+list and the binding contract.</p>
+<h2 id="scratch-output-buffer-keys">Scratch output buffer keys</h2>
+<p>Press <code dir="auto">:h g?</code> in a Vimficiency scratch output buffer to open this section
+directly. This applies to buffers opened by <code dir="auto">:Vimfy help</code> and other
+detail panes that show Vimficiency text output in a split.</p>
+<ul>
+<li><code dir="auto">q</code> — close the current Vimficiency output buffer</li>
+<li><code dir="auto">?</code> — show the short keymap summary popup</li>
+<li><code dir="auto">g?</code> — open the full help section for scratch output buffers</li>
+</ul> </div> <footer class="sl-flex astro-3yyafb3n"> <div class="meta sl-flex astro-3yyafb3n">   </div> <div class="pagination-links astro-u2l5gyhi" dir="ltr">   </div>   </footer>  </div> </div>   </main> </div> </div>  </div> </div>  </body></html>
