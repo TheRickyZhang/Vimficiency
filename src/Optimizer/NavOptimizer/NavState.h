@@ -15,7 +15,7 @@ class NavState {
   Mode mode;
 
   // Progress so far
-  Sequence motionSequence;
+  Sequence movementSequence;
 
   // Necessary for ranking states
   double effort;
@@ -46,7 +46,7 @@ public:
   }
   CursorPos getPos()                       const { return pos; }
   Mode getMode()                          const { return mode; }
-  const Sequence& getSequence()            const { return motionSequence; }
+  const Sequence& getSequence()            const { return movementSequence; }
   double getEffort()                      const { return effort; }
   double getCost()                        const { return cost; }
   const RunningEffort& getRunningEffort() const { return runningEffort; }
@@ -100,11 +100,11 @@ public:
   void setCost(double newCost) { cost = newCost; }
 
   // For simulated motion without pre-computed endpoint (used by optimizeToRange)
-  void applySingleMotionWithEffort(std::string_view motion, const NavContext& navContext,
+  void applySingleMovementWithEffort(std::string_view motion, const NavContext& navContext,
                                    const Lines& lines, const PhysicalKeys& keys, const Config& config);
 
   // Keep for parsing arbitrary strings (tests, etc.)
-  void applySingleMotion(std::string_view motion, const NavContext& navContext, const Lines& lines);
+  void applySingleMovement(std::string_view motion, const NavContext& navContext, const Lines& lines);
 
 private:
   void updateEffort(const PhysicalKeys& keys, const Config& config);

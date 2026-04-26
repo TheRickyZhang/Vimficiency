@@ -208,7 +208,7 @@ private:
   int uniquePositionsFound_ = -1;
 };
 
-class EditSearchStats : public BaseSearchStats {
+class TransformSearchStats : public BaseSearchStats {
 public:
   int uniquePositionsFound() const { return uniquePositionsFound_; }
   int cacheHits() const { return cacheHits_; }
@@ -253,7 +253,7 @@ public:
     cachePopulations_ = cachePopulationsValue;
   }
 
-  void accumulateFrom(const EditSearchStats& other) {
+  void accumulateFrom(const TransformSearchStats& other) {
     BaseSearchStats::accumulateFrom(other);
     if (other.isRangeSearch()) {
       if (!isRangeSearch()) uniquePositionsFound_ = 0;
@@ -264,7 +264,7 @@ public:
     cachePopulations_ += other.cachePopulations_;
   }
 
-  friend std::ostream& operator<<(std::ostream& os, const EditSearchStats& s) {
+  friend std::ostream& operator<<(std::ostream& os, const TransformSearchStats& s) {
     os << static_cast<const BaseSearchStats&>(s);
     if (s.isRangeSearch()) {
       os << " unique=" << s.uniquePositionsFound_;

@@ -1,6 +1,6 @@
 # Vim Operator Edge Cases: Delete vs Change
 
-Vim's `d` (delete) and `c` (change) operators share motions but diverge in subtle, critical ways. These differences propagate through the simulator (`Edit.cpp`), the deletion utility (`VimEditUtils.cpp`), and the optimizer (`EditOptimizer.cpp`). This document catalogs every known divergence and why it matters.
+Vim's `d` (delete) and `c` (change) operators share motions but diverge in subtle, critical ways. These differences propagate through the simulator (`Edit.cpp`), the deletion utility (`VimEditUtils.cpp`), and the optimizer (`TransformOptimizer.cpp`). This document catalogs every known divergence and why it matters.
 
 ## 1. Exclusive-to-Linewise Conversion (`:help exclusive-linewise`)
 
@@ -47,9 +47,9 @@ c}: deletes "bc\ndef" → merged line "" → KEPT    → ["a", ""]  cursor (1,0)
 
 ### Impact on the Optimizer
 
-The EditOptimizer explores deletions in Normal mode (`afterDeletion` calls `deleteRange` with default `Mode::Normal`). When converting a deletion to a change command for the goal suffix, the optimizer must compute the collapse sequence (`<BS>`/`<Del>` to join lines) based on **Insert mode** line counts, not Normal mode.
+The TransformOptimizer explores deletions in Normal mode (`afterDeletion` calls `deleteRange` with default `Mode::Normal`). When converting a deletion to a change command for the goal suffix, the optimizer must compute the collapse sequence (`<BS>`/`<Del>` to join lines) based on **Insert mode** line counts, not Normal mode.
 
-`buildGoalSuffix` in `EditOptimizer.cpp` re-simulates the deletion with `Mode::Insert` to get the correct line count. Without this, `c}` sequences would be missing the `<BS>` needed to join the extra empty line that Insert mode preserves.
+`buildGoalSuffix` in `TransformOptimizer.cpp` re-simulates the deletion with `Mode::Insert` to get the correct line count. Without this, `c}` sequences would be missing the `<BS>` needed to join the extra empty line that Insert mode preserves.
 
 ### Position Clamping Also Differs
 
@@ -68,7 +68,7 @@ After deletion, cursor column is clamped differently:
 When converting `dd` to `cc` in the optimizer:
 - If the line had leading whitespace and `autoindent` is on, `cc` will auto-insert that whitespace
 - The optimizer must emit `<C-u>` (or `0C`) to clear the autoindent before typing the replacement
-- `deleteToChangeLine` in `EditOptimizer.cpp` checks for this:
+- `deleteToChangeLine` in `TransformOptimizer.cpp` checks for this:
   ```
   dd on indented line + autoindent → "0C" instead of "cc"
   dd on non-indented line          → "cc"

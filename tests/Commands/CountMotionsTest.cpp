@@ -7,7 +7,7 @@
 #include <gtest/gtest.h>
 
 #include "Optimizer/NavOptimizer/BufferIndex.h"
-#include "Optimizer/NavOptimizer/CountableMotionPair.h"
+#include "Optimizer/NavOptimizer/CountableMovementPair.h"
 #include "Types/NavContext.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Boundary/NavBoundary.h"
@@ -173,10 +173,10 @@ TEST_F(CountMotionsOptimizerTest, SmallCount_NotEmitted) {
 }
 
 // =============================================================================
-// CountableMotionPair Structure Tests
+// CountableMovementPair Structure Tests
 // =============================================================================
 
-TEST(CountableMotionPairTest, LineMotionsContainExpectedPairs) {
+TEST(CountableMovementPairTest, LineMotionsContainExpectedPairs) {
   // Verify COUNT_SEARCHABLE_MOTIONS_LINE has correct structure
   bool hasWordBegin = false;
   bool hasWordEnd = false;
@@ -204,7 +204,7 @@ TEST(CountableMotionPairTest, LineMotionsContainExpectedPairs) {
   EXPECT_TRUE(hasWORDEnd) << "Missing E/gE WORDEnd pair";
 }
 
-TEST(CountableMotionPairTest, GlobalMotionsContainParagraphAndSentence) {
+TEST(CountableMovementPairTest, GlobalMotionsContainParagraphAndSentence) {
   bool hasParagraph = false;
   bool hasSentence = false;
 

@@ -8,7 +8,7 @@
 #include "Keyboard/PhysicalKeys.h"
 
 // Used for physical key presses (calculating effort) only!
-// For semantic tokenization, see parseMotions() in Motion.h
+// For semantic tokenization, see parseMovements() in Motion.h
 
 class SequenceToKeys {
 public:

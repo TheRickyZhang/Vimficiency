@@ -236,7 +236,7 @@ const char* vimficiency_explore_state(int view_id) {
 const char* vimficiency_explore_recommendations(
     int view_id,
     int max_count,
-    bool allow_multiple_motions_per_position,
+    bool allow_multiple_movements_per_position,
     bool allow_multiple_edits_per_position) {
   static string storage;
   return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
@@ -244,20 +244,20 @@ const char* vimficiency_explore_recommendations(
         [&](View* v) {
           return encodeRecommendations(v->recommendations(
               max_count,
-              allow_multiple_motions_per_position,
+              allow_multiple_movements_per_position,
               allow_multiple_edits_per_position));
         });
   });
 }
 
-const char* vimficiency_explore_apply_motion(int view_id, const char* motion_text) {
+const char* vimficiency_explore_apply_movement(int view_id, const char* movement_text) {
   static string storage;
   return vimficiency::lua_exports::export_helpers::storeString(storage, [&] {
     return requireView(view_id).and_then(
         [&](View* v) -> vimficiency::lua_exports::Result<string> {
-          return requiredText(motion_text, "motion_text").transform(
+          return requiredText(movement_text, "movement_text").transform(
               [&](string_view text) {
-                auto outcome = v->applyMotion(text);
+                auto outcome = v->applyMovement(text);
                 return encodeOutcome(*v, outcome);
               });
         });

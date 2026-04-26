@@ -109,11 +109,11 @@ CompositionSearchContext::CompositionSearchContext(
   }
 
   // Solve each edit region
-  calculateEditResults();
+  calculateTransformResults();
 
   debug("--- edit results ---");
   for (int i = 0; i < totalEdits(); i++) {
-    const auto& er = edits[i].editResult;
+    const auto& er = edits[i].transformResult;
     int validCount = 0;
     double bestCost = numeric_limits<double>::max();
     for (const auto& bucket : er.getResults()) {
@@ -266,8 +266,8 @@ vector<double> CompositionSearchContext::computeSuffixEditCosts() const {
   for (int i = n - 1; i >= 0; i--) {
     double medianCost;
 
-    // All edits now have EditResult (including pure insertions)
-    const auto& editRes = edits[i].editResult;
+    // All edits now have TransformResult (including pure insertions)
+    const auto& editRes = edits[i].transformResult;
     vector<double> costs;
     for (const auto& bucket : editRes.getResults()) {
       if (!bucket.empty()) {
@@ -294,11 +294,11 @@ vector<double> CompositionSearchContext::computeSuffixEditCosts() const {
   return suffixCosts;
 }
 
-void CompositionSearchContext::calculateEditResults() {
+void CompositionSearchContext::calculateTransformResults() {
   for (size_t i = 0; i < edits.size(); i++) {
     const DiffState& diff = edits[i].diffState;
     int nodesExplored = 0;
-    edits[i].editResult = computeEditResultForDiff(diff, params, config, &nodesExplored);
+    edits[i].transformResult = computeTransformResultForDiff(diff, params, config, &nodesExplored);
     editNodesExplored += nodesExplored;
   }
 }

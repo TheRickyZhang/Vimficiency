@@ -28,23 +28,13 @@ local function seed_and_finish_manual(alias, finish_alias)
   return id
 end
 
-test("default_save_name: manual alphabetic returns selector verbatim", function()
-  assert_eq(session.default_save_name("a"), "a")
-  assert_eq(session.default_save_name("refactor"), "refactor")
-  assert_eq(session.default_save_name("WIP"), "WIP")
+test("default_save_name: literal selectors are returned verbatim", function()
+  for _, selector in ipairs({ "a", "refactor", "WIP", "5", "123", "3s", "30s" }) do
+    assert_eq(session.default_save_name(selector), selector, selector)
+  end
 end)
 
-test("default_save_name: recall_key returns digits verbatim", function()
-  assert_eq(session.default_save_name("5"), "5")
-  assert_eq(session.default_save_name("123"), "123")
-end)
-
-test("default_save_name: recall_time returns `Ns` verbatim", function()
-  assert_eq(session.default_save_name("3s"), "3s")
-  assert_eq(session.default_save_name("30s"), "30s")
-end)
-
-test("default_save_name: @ resolves to manual finish alias", function()
+test("default_save_name: @ resolves to the last finish alias", function()
   seed_and_finish_manual("savedefault", "savedefault")
   assert_eq(session.default_save_name("@"), "savedefault")
   -- Also verifies the reason stamping: the seed helper passes
@@ -52,18 +42,14 @@ test("default_save_name: @ resolves to manual finish alias", function()
   -- the reason — the header formatter depends on this field.
   local last_result = session_store.get_last_finished_result()
   assert_eq(last_result and last_result.finish_reason, "manual")
-end)
 
-test("default_save_name: @ resolves to recall finish alias", function()
   -- Manual session, but finished under a recall-form alias — exercises
   -- the "caller's literal alias is what we store" path. The store
   -- doesn't care that the record is manual; `@` resolution is governed
   -- entirely by whatever the finish caller passed.
   seed_and_finish_manual("anothername", "3s")
   assert_eq(session.default_save_name("@"), "3s")
-end)
 
-test("default_save_name: @ picks the most-recent finish", function()
   seed_and_finish_manual("firstalias", "firstalias")
   seed_and_finish_manual("secondalias", "secondalias")
   assert_eq(session.default_save_name("@"), "secondalias")

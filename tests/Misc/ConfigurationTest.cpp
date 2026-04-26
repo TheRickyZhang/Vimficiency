@@ -9,7 +9,7 @@
 #include "Types/NavContext.h"
 #include "Utils/TestUtils.h"
 
-#include "Keyboard/ToKeys/MotionToKeys.h"
+#include "Keyboard/ToKeys/MovementToKeys.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/CountPenalty.h"
 #include "Optimizer/GlobalRuntimeOptions.h"
@@ -270,7 +270,7 @@ TEST_F(ConfigurationTest, CountPenaltyOverrideAffectsMotionRanking) {
   motionWordOverride.base = 50.0;
   motionWordOverride.countSlope = 0.0;
   motionWordOverride.spanSlope = 0.0;
-  opts.countPenaltyOverrides[toIndex(CountClass::MotionWord)] = motionWordOverride;
+  opts.countPenaltyOverrides[toIndex(CountClass::MovementWord)] = motionWordOverride;
 
   auto overrideResults = opt.optimize(lines, start, end, params, "",
                                       boundary, navContext).getResults();

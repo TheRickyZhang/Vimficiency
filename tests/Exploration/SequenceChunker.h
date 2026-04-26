@@ -5,9 +5,9 @@
 #include <vector>
 
 // Represents a semantic chunk of a composition sequence:
-// either a motion phase (cursor movement) or an edit phase (buffer modification).
+// either a movement phase (cursor movement) or an edit phase (buffer modification).
 struct SequenceChunk {
-  enum Type { Motion, Edit };
+  enum Type { Movement, Edit };
   Type type;
   std::string text;                // Command text (edits: without typed content/Esc)
   std::vector<std::string> tokens; // Individual tokens for detail view

@@ -32,16 +32,14 @@ test("build_sequence: removes operator-pending re-evaluation duplicate", functio
   assert_eq(seq, "dw")
 end)
 
-test("build_sequence: keeps same-key repetition when first event is not operator-pending", function()
+test("build_sequence: preserves intentional same-key repetitions", function()
   local seq = key_tracking.build_sequence({
     ev("n", "j"),
     ev("n", "j"),
   })
   assert_eq(seq, "jj")
-end)
 
-test("build_sequence: keeps same-key repetition when both events are operator-pending", function()
-  local seq = key_tracking.build_sequence({
+  seq = key_tracking.build_sequence({
     ev("no", "w"),
     ev("no", "w"),
   })

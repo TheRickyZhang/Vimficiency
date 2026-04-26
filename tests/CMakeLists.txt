@@ -96,15 +96,15 @@ add_executable(vimficiency_tests
   CompositionOptimizer/HumanApprovalTest.cpp
   CompositionOptimizer/StepViewTest.cpp
 
-  # EditOptimizer
-  EditOptimizer/CountPenaltyIntegrationTest.cpp
-  EditOptimizer/ManualTest.cpp
-  EditOptimizer/MultipleResultsPerStartTest.cpp
-  EditOptimizer/OutputCorrectnessTest.cpp
-  EditOptimizer/CostConsistencyTest.cpp
-  EditOptimizer/DeterminismTest.cpp
-  EditOptimizer/HumanApprovalTest.cpp
-  EditOptimizer/RegressionTests.cpp
+  # TransformOptimizer
+  TransformOptimizer/CountPenaltyIntegrationTest.cpp
+  TransformOptimizer/ManualTest.cpp
+  TransformOptimizer/MultipleResultsPerStartTest.cpp
+  TransformOptimizer/OutputCorrectnessTest.cpp
+  TransformOptimizer/CostConsistencyTest.cpp
+  TransformOptimizer/DeterminismTest.cpp
+  TransformOptimizer/HumanApprovalTest.cpp
+  TransformOptimizer/RegressionTests.cpp
 
   # NavOptimizer
   NavOptimizer/ManualTest.cpp
@@ -113,7 +113,6 @@ add_executable(vimficiency_tests
   NavOptimizer/DeterminismTest.cpp
   NavOptimizer/HeuristicTest.cpp
   NavOptimizer/HumanApprovalTest.cpp
-  NavOptimizer/StartingEffortTradeoffTest.cpp
 
   # Misc
   Misc/ConfigurationTest.cpp
@@ -147,7 +146,7 @@ gtest_discover_tests(vimficiency_tests)
 
 add_executable(vimficiency_benchmarks
   Benchmarks/BenchmarkMain.cpp
-  Benchmarks/EditOptimizerBench.cpp
+  Benchmarks/TransformOptimizerBench.cpp
   Benchmarks/NavOptimizerBench.cpp
   Benchmarks/CompositionOptimizerBench.cpp
 )

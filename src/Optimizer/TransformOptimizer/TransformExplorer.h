@@ -1,0 +1,693 @@
+#pragma once
+
+#include <algorithm>
+
+#include "Boundary/TransformBoundary.h"
+#include "Effort/EffortBank.h"
+#include "TransformOptimizerParams.h"
+#include "EditToSpec.h"
+#include "Keyboard/Config.h"
+#include "Keyboard/KeyedSequence.h"
+#include "Optimizer/CountPenalty.h"
+#include "Optimizer/TransformOptimizer/TransformState.h"
+#include "Optimizer/GlobalRuntimeOptions.h"
+#include "Optimizer/SequenceBinding.h"
+#include "Types/CharLineRange.h"
+#include "Types/CharRange.h"
+#include "Types/CursorPos.h"
+#include "Types/EdgeType.h"
+#include "Types/LineCharRange.h"
+#include "Types/LineRange.h"
+#include "Types/Lines.h"
+#include "VimCore/VimCore.h"
+#include "VimCore/VimEditUtils.h"
+#include "VimCore/VimEndpointUtils.h"
+#include "VimCore/VimMotionUtils.h"
+
+// TODO: enumerate insert-mode-with-correction replacement strategies.
+//   For a 1-char replacement diff like `n`→`m`, today we emit `rm`,
+//   `sm<Esc>`, `cl m<Esc>`, `Cm<Esc>`, etc. — all commands that enter
+//   insert mode (or replace mode) at the target and produce the new
+//   content directly. We DON'T enumerate strategies that enter insert
+//   mode adjacent to the target and use `<BS>`/`<Del>` to reshape
+//   existing content:
+//     - `a<BS>m<Esc>`   (append, backspace over `n`, type `m`)
+//     - `i<Del>m<Esc>`  (insert, delete `n`, type `m`)
+//   These are valid Vim idioms the explore UI should teach. Adding them
+//   requires a new spec category in EditToSpec + corresponding emission
+//   hooks in TransformExplorer; effort is bounded to the 1-to-N-char
+//   replacement family. Scoped separately from the dedup-by-sequence fix.
+class TransformExplorer {
+public:
+  TransformExplorer(const TransformBoundary& boundary,
+               const TransformOptimizerParams& params,
+               const Config& config,
+               const EffortBank& bank,
+               int leftColOffset,
+               int rightColOffset)
+      : boundary_(boundary),
+        params_(params),
+        config_(config),
+        bank_(bank),
+        leftColOffset_(leftColOffset),
+        rightColOffset_(rightColOffset) {}
+
+  template<class OnAnyDeletion, class OnLinewise, class OnJoin>
+  void exploreAllDeletions(const TransformState& state,
+                           OnAnyDeletion&& onAnyDeletion,
+                           OnLinewise&& onLinewise,
+                           OnJoin&& onJoin);
+
+  template<class OnJoin>
+  void exploreJoinCommands(const CursorPos& cursor, const Lines& lines, OnJoin&& onJoin);
+
+  template<class OnCountedLinewise>
+  void exploreCountedLineEdits(const CursorPos& cursor, const Lines& lines,
+                               int minCountRepeat,
+                               OnCountedLinewise&& onCountedLinewise);
+
+  template<class OnCountedJoin>
+  void exploreCountedJoinCommands(const CursorPos& cursor, const Lines& lines,
+                                  int minCountRepeat,
+                                  OnCountedJoin&& onCountedJoin);
+
+  template<class OnDeletion>
+  void exploreCountedWordEdits(const CursorPos& cursor, const Lines& lines,
+                               int minCountRepeat,
+                               OnDeletion&& onDeletion);
+
+  template<class OnDeletion>
+  void exploreCountedCharEdits(const CursorPos& cursor, const Lines& lines,
+                               int contentStart, int contentEnd,
+                               int minCountRepeat,
+                               OnDeletion&& onDeletion);
+
+  template<EdgeType Edge, class OnDeletion>
+  void exploreForwardWordEdits(
+      const std::vector<Edit::ForwardWordEditSpecNoEdge>& specs,
+      const CursorPos& cursor, const Lines& lines, OnDeletion&& onDeletion);
+
+  template<EdgeType Edge, class OnDeletion>
+  void exploreBackwardWordEdits(
+      const std::vector<Edit::BackwardWordEditSpecNoEdge>& specs,
+      const CursorPos& cursor, const Lines& lines, OnDeletion&& onDeletion);
+
+  template<bool Forward, class OnAnyDeletion, class OnLinewise>
+  void exploreParagraphEdits(
+      const std::vector<Edit::ParagraphEditSpecNoDir>& specs,
+      const CursorPos& cursor, const Lines& lines,
+      OnAnyDeletion&& onAnyDeletion,
+      OnLinewise&& onLinewise);
+
+  template<bool Forward, class OnAnyDeletion, class OnLinewise>
+  void exploreSentenceEdits(
+      const std::vector<Edit::SentenceEditSpecNoDir>& specs,
+      const CursorPos& cursor, const Lines& lines,
+      OnAnyDeletion&& onAnyDeletion,
+      OnLinewise&& onLinewise);
+
+  template<class OnDeletion>
+  void exploreTextObjectEdits(
+      const std::vector<Edit::TextObjectEditSpec>& specs,
+      const CursorPos& cursor, const Lines& lines, OnDeletion&& onDeletion);
+
+  template<class OnDeletion>
+  void exploreHalfLineEdits(
+      const std::vector<Edit::LineEditSpec>& specs,
+      const CursorPos& cursor, const Lines& lines,
+      int contentStart, int contentEnd, OnDeletion&& onDeletion);
+
+  template<class OnLinewise>
+  void exploreFullLineEdits(
+      const std::vector<Edit::FullLineEditSpec>& specs,
+      const CursorPos& cursor, const Lines& lines, OnLinewise&& onLinewise);
+
+  template<class OnDeletion>
+  void exploreCharEdits(
+      const CursorPos& cursor, const Lines& lines,
+      int contentStart, int contentEnd, int editContentLen,
+      OnDeletion&& onDeletion);
+
+private:
+  const RunningEffort& effortFor(KSId id) const { return bank_[id]; }
+  bool inBoundaryRegion(const CursorPos& pos, const Lines& lines) const;
+  std::pair<int, int> computeTransformBounds(const Lines& lines, const CursorPos& cursor) const;
+
+  const TransformBoundary& boundary_;
+  const TransformOptimizerParams& params_;
+  const Config& config_;
+  const EffortBank& bank_;
+  int leftColOffset_ = 0;
+  int rightColOffset_ = 0;
+};
+
+namespace TransformExplorerDetail {
+
+template<CountClass C>
+double resolveCountPenalty(const CountPenaltyInput& in) {
+  return runtimeCountPenalty<C>(in);
+}
+
+template<CountClass C>
+RunningEffort buildCountedEffort(const Config& config, int count,
+                                 KSId baseId, int span) {
+  const KeyedSequence& baseKS = KeyedSequence::byId(baseId);
+  PhysicalKeys keys;
+  keys.append(CountToKeys::keysForCount(count));
+  keys.append(baseKS.keys);
+  RunningEffort effort(keys, config);
+  CountPenaltyInput input{count, span};
+  double penalty = resolveCountPenalty<C>(input);
+  if (penalty > 0.0) {
+    effort.addPenalty(penalty);
+  }
+  return effort;
+}
+
+template<class OnAnyDeletion, class OnLinewise>
+void emitResolvedDeletion(const VimCore::ResolvedDeleteRange& resolved,
+                          const SequenceBinding& cmd,
+                          OnAnyDeletion&& onAnyDeletion,
+                          OnLinewise&& onLinewise) {
+  switch (resolved.kind) {
+    case VimCore::ResolvedDeleteRangeKind::Characterwise:
+      onAnyDeletion(resolved.charRange, cmd);
+      return;
+    case VimCore::ResolvedDeleteRangeKind::CharLine:
+      onAnyDeletion(resolved.charLineRange, cmd);
+      return;
+    case VimCore::ResolvedDeleteRangeKind::LineChar:
+      onAnyDeletion(resolved.lineCharRange, cmd);
+      return;
+    case VimCore::ResolvedDeleteRangeKind::Linewise:
+      onLinewise(resolved.lineRange, cmd);
+      return;
+  }
+}
+
+}  // namespace TransformExplorerDetail
+
+template<class OnDeletion>
+void TransformExplorer::exploreTextObjectEdits(
+    const std::vector<Edit::TextObjectEditSpec>& specs,
+    const CursorPos& cursor, const Lines& lines, OnDeletion&& onDeletion) {
+  for (const auto& spec : specs) {
+    CharRange range = VimCore::textObjectRange(
+        cursor, lines, spec.isInner, spec.isBig,
+        leftColOffset_, rightColOffset_,
+        boundary_.hasLinesAbove(), boundary_.hasLinesBelow());
+
+    if (range.begin == POSITION_OUTSIDE_BOUNDARY || range.end == POSITION_OUTSIDE_BOUNDARY) {
+      continue;
+    }
+
+    onDeletion(range, SequenceBinding(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId)));
+  }
+}
+
+template<class OnDeletion>
+void TransformExplorer::exploreHalfLineEdits(
+    const std::vector<Edit::LineEditSpec>& specs,
+    const CursorPos& cursor, const Lines& lines, int, int,
+    OnDeletion&& onDeletion) {
+  int lastEditLine = lines.lastLine();
+
+  for (const Edit::LineEditSpec& spec : specs) {
+    if (spec.ksId == KSId::D) {
+      if (cursor.line == lastEditLine && boundary_.hasSuffix()) continue;
+
+      int lineLen = static_cast<int>(lines[cursor.line].size());
+      int lineContentEnd = lineLen;
+      if (cursor.line == lastEditLine && rightColOffset_ > 0) {
+        lineContentEnd -= rightColOffset_;
+      }
+      if (lineContentEnd <= 0) continue;
+
+      int endCol = lineContentEnd - 1;
+      if (endCol < cursor.col) continue;
+      CharRange range(cursor, CursorPos(cursor.line, endCol + 1));
+      onDeletion(range, SequenceBinding(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId)));
+    } else if (spec.ksId == KSId::d0) {
+      if (cursor.line == 0 && boundary_.hasPrefix()) continue;
+
+      int lineContentStart = (cursor.line == 0) ? leftColOffset_ : 0;
+      if (cursor.col <= lineContentStart) continue;
+      CharRange range(CursorPos(cursor.line, lineContentStart),
+                      CursorPos(cursor.line, cursor.col));
+      onDeletion(range, SequenceBinding(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId)));
+    } else {
+      assert(false && "Unexpected half-line edit command");
+    }
+  }
+}
+
+template<class OnLinewise>
+void TransformExplorer::exploreFullLineEdits(
+    const std::vector<Edit::FullLineEditSpec>& specs,
+    const CursorPos& cursor, const Lines& lines, OnLinewise&& onLinewise) {
+  if ((cursor.line == 0 && boundary_.hasPrefix()) ||
+      (cursor.line == lines.lastLine() && boundary_.hasSuffix())) {
+    return;
+  }
+  for (const auto& spec : specs) {
+    onLinewise(LineRange(cursor.line, cursor.line + 1),
+               SequenceBinding(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId)));
+  }
+}
+
+template<class OnDeletion>
+void TransformExplorer::exploreCharEdits(
+    const CursorPos& cursor, const Lines& lines, int contentStart, int contentEnd,
+    int, OnDeletion&& onDeletion) {
+  if (contentStart <= cursor.col && cursor.col < contentEnd) {
+    onDeletion(CharRange(cursor, CursorPos(cursor.line, cursor.col + 1)),
+               SequenceBinding(KeyedSequence::x, effortFor(KSId::x)));
+  }
+
+  if (cursor.col > contentStart && cursor.col <= contentEnd) {
+    CursorPos before(cursor.line, cursor.col - 1);
+    onDeletion(CharRange(before, CursorPos(before.line, before.col + 1)),
+               SequenceBinding(KeyedSequence::X, effortFor(KSId::X)));
+  }
+}
+
+template<bool Forward, class OnAnyDeletion, class OnLinewise>
+void TransformExplorer::exploreParagraphEdits(
+    const std::vector<Edit::ParagraphEditSpecNoDir>& specs,
+    const CursorPos& cursor, const Lines& lines,
+    OnAnyDeletion&& onAnyDeletion,
+    OnLinewise&& onLinewise) {
+  int lastLine = lines.lastLine();
+  bool hasLinesOutside = Forward ? boundary_.hasLinesBelow() : boundary_.hasLinesAbove();
+  int endpointLine = VimCore::motionParagraphEndpoint<Forward, LineEdgeType::NextEdge>(
+      cursor.line, lines, hasLinesOutside);
+
+  if (endpointLine == VimCore::LINE_OUTSIDE_BOUNDARY) return;
+
+  if constexpr (Forward) {
+    if (boundary_.hasSuffix() && endpointLine == lastLine) return;
+  } else {
+    if (boundary_.hasPrefix() && endpointLine == 0) return;
+  }
+
+  for (const auto& spec : specs) {
+    if constexpr (Forward) {
+      bool endpointIsBlank = VimCore::isBlankLineStr(lines[endpointLine]);
+      int endLine = endpointIsBlank ? endpointLine - 1 : endpointLine;
+      if (endLine < cursor.line) continue;
+
+      SequenceBinding cmd(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId));
+      if (endpointIsBlank && cursor.col == 0) {
+        onLinewise(LineRange(cursor.line, endpointLine), cmd);
+        continue;
+      }
+      if (endpointIsBlank) {
+        onAnyDeletion(CharLineRange(cursor, endpointLine), cmd);
+        continue;
+      }
+
+      int endColExclusive = static_cast<int>(lines[endLine].size());
+      if (cursor.col == 0 && cursor.line < endLine) {
+        onAnyDeletion(LineCharRange(cursor.line, CursorPos(endLine, endColExclusive)), cmd);
+      } else {
+        onAnyDeletion(CharRange(cursor, CursorPos(endLine, endColExclusive)), cmd);
+      }
+    } else {
+      if (endpointLine >= cursor.line) continue;
+    }
+  }
+}
+
+template<bool Forward, class OnAnyDeletion, class OnLinewise>
+void TransformExplorer::exploreSentenceEdits(
+    const std::vector<Edit::SentenceEditSpecNoDir>& specs,
+    const CursorPos& cursor, const Lines& lines,
+    OnAnyDeletion&& onAnyDeletion,
+    OnLinewise&& onLinewise) {
+  int lastLine = lines.lastLine();
+  int boundaryOffset = Forward ? rightColOffset_ : leftColOffset_;
+  bool hasLinesOutside = Forward ? boundary_.hasLinesBelow() : boundary_.hasLinesAbove();
+  CursorPos endpoint = VimCore::motionSentenceEndpoint<Forward, SentenceEdgeType::NextEdge>(
+      cursor, lines, boundaryOffset, hasLinesOutside);
+
+  if (endpoint == POSITION_OUTSIDE_BOUNDARY) return;
+
+  if constexpr (Forward) {
+    if (boundary_.hasSuffix() && endpoint.line == lastLine &&
+        endpoint.col >= static_cast<int>(lines[lastLine].size()) - rightColOffset_) {
+      return;
+    }
+  } else {
+    if (boundary_.hasPrefix() && endpoint.line == 0 && endpoint.col < leftColOffset_) {
+      return;
+    }
+  }
+
+  for (const auto& spec : specs) {
+    SequenceBinding cmd(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId));
+    if constexpr (Forward) {
+      if (endpoint <= cursor) continue;
+      CharRange rawRange(cursor, endpoint);
+      auto resolved = VimCore::resolveExclusiveDeleteRange(rawRange, lines, true);
+      TransformExplorerDetail::emitResolvedDeletion(
+          resolved, cmd, onAnyDeletion, onLinewise);
+    } else {
+      if (endpoint >= cursor) continue;
+      CharRange rawRange(endpoint, cursor);
+      auto resolved = VimCore::resolveExclusiveDeleteRange(rawRange, lines, true);
+      TransformExplorerDetail::emitResolvedDeletion(
+          resolved, cmd, onAnyDeletion, onLinewise);
+    }
+  }
+}
+
+template<EdgeType Edge, class OnDeletion>
+void TransformExplorer::exploreForwardWordEdits(
+    const std::vector<Edit::ForwardWordEditSpecNoEdge>& specs,
+    const CursorPos& cursor, const Lines& lines, OnDeletion&& onDeletion) {
+  for (const auto& spec : specs) {
+    CursorPos endpoint = VimCore::motionWordEndpoint<true, Edge>(
+        cursor, lines, spec.isBig, spec.skipCurrent,
+        rightColOffset_, boundary_.hasLinesBelow(), false);
+
+    if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor) continue;
+
+    if constexpr (Edge == EdgeType::GapEdge) {
+      if (endpoint.line > cursor.line) {
+        CursorPos wordEnd = VimCore::motionWordEndpoint<true, EdgeType::WordEdge>(
+            cursor, lines, spec.isBig, spec.skipCurrent,
+            rightColOffset_, boundary_.hasLinesBelow(), false);
+        if (wordEnd == POSITION_OUTSIDE_BOUNDARY || wordEnd == cursor) continue;
+        endpoint = wordEnd;
+      }
+    }
+
+    onDeletion(CharRange(cursor, VimCore::onePastOnSameLine(lines, endpoint)),
+               SequenceBinding(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId)));
+  }
+}
+
+template<EdgeType Edge, class OnDeletion>
+void TransformExplorer::exploreBackwardWordEdits(
+    const std::vector<Edit::BackwardWordEditSpecNoEdge>& specs,
+    const CursorPos& cursor, const Lines& lines, OnDeletion&& onDeletion) {
+  for (const auto& spec : specs) {
+    if (!spec.isExclusiveAtCursor && inBoundaryRegion(cursor, lines)) continue;
+
+    CursorPos endpoint = VimCore::motionWordEndpoint<false, Edge>(
+        cursor, lines, spec.isBig, spec.skipCurrent,
+        leftColOffset_, boundary_.hasLinesAbove(), false);
+
+    if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor) continue;
+
+    CharRange range;
+    if (spec.isExclusiveAtCursor) {
+      int contentStartCol = cursor.line == 0 ? leftColOffset_ : 0;
+      if (cursor.col == contentStartCol && endpoint.line == cursor.line) continue;
+      range = VimCore::buildBackwardExclusiveCharRange(endpoint, cursor, lines, contentStartCol);
+    } else {
+      range = CharRange(endpoint, VimCore::onePastOnSameLine(lines, cursor));
+    }
+
+    onDeletion(range, SequenceBinding(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId)));
+  }
+}
+
+template<class OnCountedLinewise>
+void TransformExplorer::exploreCountedLineEdits(
+    const CursorPos& cursor, const Lines& lines, int minCountRepeat,
+    OnCountedLinewise&& onCountedLinewise) {
+  const int maxCountRepeat = params_.maxPrefixCount;
+  int lastLine = lines.lastLine();
+  bool hasPrefix = boundary_.hasPrefix();
+  bool hasSuffix = boundary_.hasSuffix();
+
+  if (cursor.line + 1 <= lastLine) {
+    bool skipDj = (cursor.line == 0 && hasPrefix) ||
+                  (cursor.line + 1 == lastLine && hasSuffix);
+    if (!skipDj) {
+      onCountedLinewise(LineRange(cursor.line, cursor.line + 2),
+                        SequenceBinding(KeyedSequence::dj, effortFor(KSId::dj)));
+    }
+  }
+
+  if (cursor.line - 1 >= 0) {
+    bool skipDk = (cursor.line - 1 == 0 && hasPrefix) ||
+                  (cursor.line == lastLine && hasSuffix);
+    if (!skipDk) {
+      onCountedLinewise(LineRange(cursor.line - 1, cursor.line + 1),
+                        SequenceBinding(KeyedSequence::dk, effortFor(KSId::dk)));
+    }
+  }
+
+  if (cursor.line == 0 && hasPrefix) return;
+
+  int lastDeletable = lastLine;
+  if (hasSuffix) lastDeletable = lastLine - 1;
+  if (lastDeletable < cursor.line) return;
+
+  int maxCount = std::min(lastDeletable - cursor.line + 1, maxCountRepeat);
+  for (int n = std::max(2, minCountRepeat); n <= maxCount; n++) {
+    RunningEffort countedEffort =
+        TransformExplorerDetail::buildCountedEffort<CountClass::EditLine>(
+            config_, n, KSId::dd, n);
+    onCountedLinewise(LineRange(cursor.line, cursor.line + n),
+                      SequenceBinding(KeyedSequence::dd, countedEffort, n));
+  }
+}
+
+template<class OnCountedJoin>
+void TransformExplorer::exploreCountedJoinCommands(
+    const CursorPos& cursor, const Lines& lines, int minCountRepeat,
+    OnCountedJoin&& onCountedJoin) {
+  const int maxCountRepeat = params_.maxPrefixCount;
+  int lastLine = lines.lastLine();
+  if (cursor.line >= lastLine) return;
+
+  int maxLinesBelow = lastLine - cursor.line;
+  if (boundary_.hasLinesBelow() && cursor.line + maxLinesBelow == lastLine) {
+    maxLinesBelow--;
+  }
+  if (boundary_.hasSuffix() && cursor.line + maxLinesBelow == lastLine) {
+    maxLinesBelow--;
+  }
+  if (maxLinesBelow < 1) return;
+
+  int maxCount = std::min(maxLinesBelow + 1, maxCountRepeat);
+  for (int count = std::max(2, minCountRepeat); count <= maxCount; count++) {
+    RunningEffort jEffort =
+        TransformExplorerDetail::buildCountedEffort<CountClass::Join>(
+            config_, count, KSId::J, count);
+    onCountedJoin(true, SequenceBinding(KeyedSequence::J, jEffort, count));
+
+    RunningEffort gjEffort =
+        TransformExplorerDetail::buildCountedEffort<CountClass::Join>(
+            config_, count, KSId::gJ, count);
+    onCountedJoin(false, SequenceBinding(KeyedSequence::gJ, gjEffort, count));
+  }
+}
+
+template<class OnDeletion>
+void TransformExplorer::exploreCountedWordEdits(
+    const CursorPos& cursor, const Lines& lines, int minCountRepeat,
+    OnDeletion&& onDeletion) {
+  const int maxCountRepeat = params_.maxPrefixCount;
+  if (minCountRepeat > maxCountRepeat || maxCountRepeat < 2) return;
+
+  static constexpr int MAX_COUNT_ITERATIONS = 9;
+  const int maxIterations = std::min(MAX_COUNT_ITERATIONS, maxCountRepeat);
+
+  for (const auto& spec : Edit::FORWARD_WORDEDGE_EDITS) {
+    CursorPos prev = cursor;
+    CursorPos lastEndpoint;
+    int lastCount = 0;
+    for (int count = 1; count <= maxIterations; count++) {
+      CursorPos endpoint = prev;
+      VimCore::motionE(endpoint, lines, spec.isBig);
+      if (endpoint == prev || endpoint.line != cursor.line) break;
+
+      int lineLen = static_cast<int>(lines[endpoint.line].size());
+      if (endpoint.col >= lineLen) endpoint.setCol(lineLen - 1);
+      if (inBoundaryRegion(endpoint, lines)) break;
+
+      lastEndpoint = endpoint;
+      lastCount = count;
+      prev = endpoint;
+    }
+    if (lastCount >= minCountRepeat) {
+      RunningEffort countedEffort = spec.isBig
+          ? TransformExplorerDetail::buildCountedEffort<CountClass::EditWORD>(
+                config_, lastCount, spec.ksId, lastCount)
+          : TransformExplorerDetail::buildCountedEffort<CountClass::EditWord>(
+                config_, lastCount, spec.ksId, lastCount);
+      onDeletion(CharRange(cursor, VimCore::onePastOnSameLine(lines, lastEndpoint)),
+                 SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount));
+    }
+  }
+
+  for (const auto& spec : Edit::FORWARD_GAPEDGE_EDITS) {
+    CursorPos prev = cursor;
+    CursorPos lastEnd;
+    int lastCount = 0;
+    for (int count = 1; count <= maxIterations; count++) {
+      CursorPos endpoint = prev;
+      VimCore::motionW(endpoint, lines, spec.isBig);
+      if (endpoint == prev || endpoint.line != cursor.line) break;
+
+      int lineLen = static_cast<int>(lines[endpoint.line].size());
+      CursorPos end = (endpoint.col >= lineLen) ? CursorPos(endpoint.line, lineLen) : endpoint;
+      CursorPos boundaryCheckPos(endpoint.line, lineLen == 0 ? 0 : std::max(0, end.col - 1));
+      if (inBoundaryRegion(boundaryCheckPos, lines)) break;
+
+      lastEnd = end;
+      lastCount = count;
+      prev = endpoint;
+    }
+    if (lastCount >= minCountRepeat) {
+      RunningEffort countedEffort = spec.isBig
+          ? TransformExplorerDetail::buildCountedEffort<CountClass::EditWORD>(
+                config_, lastCount, spec.ksId, lastCount)
+          : TransformExplorerDetail::buildCountedEffort<CountClass::EditWord>(
+                config_, lastCount, spec.ksId, lastCount);
+      onDeletion(CharRange(cursor, lastEnd),
+                 SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount));
+    }
+  }
+
+  for (const auto& spec : Edit::BACKWARD_WORDEDGE_EDITS) {
+    CursorPos prev = cursor;
+    CursorPos lastEndpoint;
+    int lastCount = 0;
+    for (int count = 1; count <= maxIterations; count++) {
+      CursorPos endpoint = prev;
+      VimCore::motionB(endpoint, lines, spec.isBig);
+      if (endpoint == prev || endpoint.line != cursor.line) break;
+      if (inBoundaryRegion(endpoint, lines)) break;
+
+      lastEndpoint = endpoint;
+      lastCount = count;
+      prev = endpoint;
+    }
+    if (lastCount >= minCountRepeat) {
+      int contentStartCol = cursor.line == 0 ? leftColOffset_ : 0;
+      if (cursor.col > contentStartCol) {
+        CharRange range = VimCore::buildBackwardExclusiveCharRange(
+            lastEndpoint, cursor, lines, contentStartCol);
+        RunningEffort countedEffort = spec.isBig
+            ? TransformExplorerDetail::buildCountedEffort<CountClass::EditWORD>(
+                  config_, lastCount, spec.ksId, lastCount)
+            : TransformExplorerDetail::buildCountedEffort<CountClass::EditWord>(
+                  config_, lastCount, spec.ksId, lastCount);
+        onDeletion(range,
+                   SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount));
+      }
+    }
+  }
+
+  for (const auto& spec : Edit::BACKWARD_NEXTEDGE_EDITS) {
+    if (!spec.isExclusiveAtCursor && inBoundaryRegion(cursor, lines)) continue;
+
+    CursorPos prev = cursor;
+    CursorPos lastEndpoint;
+    int lastCount = 0;
+    for (int count = 1; count <= maxIterations; count++) {
+      CursorPos endpoint = prev;
+      VimCore::motionGe(endpoint, lines, spec.isBig);
+      if (endpoint == prev || endpoint.line != cursor.line) break;
+      if (inBoundaryRegion(endpoint, lines)) break;
+
+      lastEndpoint = endpoint;
+      lastCount = count;
+      prev = endpoint;
+    }
+    if (lastCount >= minCountRepeat) {
+      RunningEffort countedEffort = spec.isBig
+          ? TransformExplorerDetail::buildCountedEffort<CountClass::EditWORD>(
+                config_, lastCount, spec.ksId, lastCount)
+          : TransformExplorerDetail::buildCountedEffort<CountClass::EditWord>(
+                config_, lastCount, spec.ksId, lastCount);
+      onDeletion(CharRange(lastEndpoint, VimCore::onePastOnSameLine(lines, cursor)),
+                 SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount));
+    }
+  }
+}
+
+template<class OnDeletion>
+void TransformExplorer::exploreCountedCharEdits(
+    const CursorPos& cursor, const Lines& lines, int contentStart, int contentEnd,
+    int minCountRepeat, OnDeletion&& onDeletion) {
+  const int maxCountRepeat = params_.maxPrefixCount;
+  if (minCountRepeat > maxCountRepeat || maxCountRepeat < 2) return;
+  if (contentStart > cursor.col || cursor.col >= contentEnd) return;
+
+  static constexpr int MAX_COUNT_DIGIT = 9;
+  int count = std::min(contentEnd - cursor.col, std::min(MAX_COUNT_DIGIT, maxCountRepeat));
+  if (count < minCountRepeat) return;
+
+  CharRange range(cursor, CursorPos(cursor.line, cursor.col + count));
+  RunningEffort effort =
+      TransformExplorerDetail::buildCountedEffort<CountClass::EditChar>(
+          config_, count, KSId::x, count);
+  onDeletion(range, SequenceBinding(KeyedSequence::x, effort, count));
+}
+
+template<class OnJoin>
+void TransformExplorer::exploreJoinCommands(
+    const CursorPos& cursor, const Lines& lines, OnJoin&& onJoin) {
+  if (cursor.line >= lines.lastLine()) return;
+
+  int nextLine = cursor.line + 1;
+  if (nextLine == lines.lastLine() && boundary_.hasLinesBelow()) return;
+
+  onJoin(true, SequenceBinding(KeyedSequence::J, effortFor(KSId::J)));
+  onJoin(false, SequenceBinding(KeyedSequence::gJ, effortFor(KSId::gJ)));
+}
+
+template<class OnAnyDeletion, class OnLinewise, class OnJoin>
+void TransformExplorer::exploreAllDeletions(
+    const TransformState& state,
+    OnAnyDeletion&& onAnyDeletion,
+    OnLinewise&& onLinewise,
+    OnJoin&& onJoin) {
+  const Lines& lines = state.getLines();
+  CursorPos cursor = state.getPos();
+
+  auto [contentBegin, contentEnd] = computeTransformBounds(lines, cursor);
+  int editContentLen = contentEnd - contentBegin;
+
+  if (editContentLen <= 0) {
+    assert(lines[cursor.line].empty());
+
+    exploreFullLineEdits(Edit::EMPTYLINE_FULL_LINE_EDITS, cursor, lines, onLinewise);
+    exploreForwardWordEdits<EdgeType::WordEdge>(
+        Edit::FORWARD_WORDEDGE_EDITS, cursor, lines, onAnyDeletion);
+    exploreBackwardWordEdits<EdgeType::WordEdge>(
+        Edit::BACKWARD_WORDEDGE_EDITS, cursor, lines, onAnyDeletion);
+    exploreBackwardWordEdits<EdgeType::NextEdge>(
+        Edit::BACKWARD_NEXTEDGE_EDITS, cursor, lines, onAnyDeletion);
+    exploreJoinCommands(cursor, lines, onJoin);
+    return;
+  }
+
+  exploreForwardWordEdits<EdgeType::WordEdge>(
+      Edit::FORWARD_WORDEDGE_EDITS, cursor, lines, onAnyDeletion);
+  exploreForwardWordEdits<EdgeType::GapEdge>(
+      Edit::FORWARD_GAPEDGE_EDITS, cursor, lines, onAnyDeletion);
+  exploreBackwardWordEdits<EdgeType::WordEdge>(
+      Edit::BACKWARD_WORDEDGE_EDITS, cursor, lines, onAnyDeletion);
+  exploreBackwardWordEdits<EdgeType::NextEdge>(
+      Edit::BACKWARD_NEXTEDGE_EDITS, cursor, lines, onAnyDeletion);
+  exploreTextObjectEdits(Edit::TEXT_OBJECT_EDITS, cursor, lines, onAnyDeletion);
+  exploreHalfLineEdits(Edit::HALF_LINE_EDITS, cursor, lines, contentBegin, contentEnd, onAnyDeletion);
+  exploreFullLineEdits(Edit::FULL_LINE_EDITS, cursor, lines, onLinewise);
+  exploreCharEdits(cursor, lines, contentBegin, contentEnd, editContentLen, onAnyDeletion);
+  exploreParagraphEdits<true>(
+      Edit::FORWARD_PARAGRAPH_EDITS, cursor, lines, onAnyDeletion, onLinewise);
+  exploreParagraphEdits<false>(
+      Edit::BACKWARD_PARAGRAPH_EDITS, cursor, lines, onAnyDeletion, onLinewise);
+  exploreSentenceEdits<true>(
+      Edit::FORWARD_SENTENCE_EDITS, cursor, lines, onAnyDeletion, onLinewise);
+  exploreSentenceEdits<false>(
+      Edit::BACKWARD_SENTENCE_EDITS, cursor, lines, onAnyDeletion, onLinewise);
+  exploreJoinCommands(cursor, lines, onJoin);
+}

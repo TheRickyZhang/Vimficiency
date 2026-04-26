@@ -9,7 +9,7 @@
 
 // Token types for parsed sequences
 enum class TokenType {
-  Motion,      // Cursor movement (w, j, fa;, etc.)
+  Movement,    // Cursor movement (w, j, fa;, etc.)
   Delete,      // Pure deletion (dd, dw, x, X, D, etc.)
   Change,      // Edit that enters insert mode (ciw, s, A, etc.)
   Visual,      // Enters visual mode (v, V, <C-v>, gh, gH)

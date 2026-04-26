@@ -6,7 +6,7 @@
 
 #include <gtest/gtest.h>
 
-#include "Boundary/EditBoundary.h"
+#include "Boundary/TransformBoundary.h"
 #include "Types/LineRange.h"
 #include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
@@ -27,11 +27,11 @@ protected:
   static void TearDownTestSuite() { oracle_.reset(); }
   static unique_ptr<NeovimOracle> oracle_;
 
-  // Helper to create EditBoundary with specific boundary context
+  // Helper to create TransformBoundary with specific boundary context
   // left/right chars indicate what's outside the edit region:
   // - '\n' means at line start/end with lines above/below
   // - other char means that char is adjacent (single-char prefix/suffix for testing)
-  static EditBoundary makeBoundary(const Lines& lines, char left, char right) {
+  static TransformBoundary makeBoundary(const Lines& lines, char left, char right) {
     bool hasLinesAbove = (left == '\n');
     bool hasLinesBelow = (right == '\n');
 
@@ -70,7 +70,7 @@ protected:
         static_cast<int>(testLines[lastLine].size()) - ((right != '\n' && right != NO_CHAR) ? 1 : 0);
     if (endCol < 1) endCol = 1;
 
-    return EditBoundary(testLines, CursorPos(beginLine, firstCol), CursorPos(lastLine, endCol));
+    return TransformBoundary(testLines, CursorPos(beginLine, firstCol), CursorPos(lastLine, endCol));
   }
 };
 
@@ -85,7 +85,7 @@ TEST_F(LinesTest, LineDeleteRange_SingleLine_FullBoundary) {
   Lines lines = {"hello world"};
   CursorPos cursor(0, 5);
 
-  EditBoundary boundary = makeBoundary(lines, '\n', '\n');
+  TransformBoundary boundary = makeBoundary(lines, '\n', '\n');
 
   LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
@@ -99,7 +99,7 @@ TEST_F(LinesTest, LineDeleteRange_SingleLine_PartialBoundary) {
   Lines lines = {"hello world"};
   CursorPos cursor(0, 5);
 
-  EditBoundary boundary = makeBoundary(lines, 'h', '\n');  // Not at line start
+  TransformBoundary boundary = makeBoundary(lines, 'h', '\n');  // Not at line start
 
   LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
@@ -111,7 +111,7 @@ TEST_F(LinesTest, LineDeleteRange_MultiLine_MiddleLine) {
   Lines lines = {"line one", "line two", "line three"};
   CursorPos cursor(1, 3);  // Middle line
 
-  EditBoundary boundary = makeBoundary(lines, 'o', 't');  // Partial boundaries
+  TransformBoundary boundary = makeBoundary(lines, 'o', 't');  // Partial boundaries
 
   LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
@@ -123,7 +123,7 @@ TEST_F(LinesTest, LineDeleteRange_MultiLine_FirstLine_NoBoundary) {
   Lines lines = {"line one", "line two", "line three"};
   CursorPos cursor(0, 3);
 
-  EditBoundary boundary = makeBoundary(lines, '\n', 't');  // At line start
+  TransformBoundary boundary = makeBoundary(lines, '\n', 't');  // At line start
 
   LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
@@ -135,7 +135,7 @@ TEST_F(LinesTest, LineDeleteRange_MultiLine_FirstLine_HasBoundary) {
   Lines lines = {"line one", "line two", "line three"};
   CursorPos cursor(0, 3);
 
-  EditBoundary boundary = makeBoundary(lines, 'l', 't');  // Not at line start
+  TransformBoundary boundary = makeBoundary(lines, 'l', 't');  // Not at line start
 
   LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
@@ -147,7 +147,7 @@ TEST_F(LinesTest, LineDeleteRange_MultiLine_LastLine_NoBoundary) {
   Lines lines = {"line one", "line two", "line three"};
   CursorPos cursor(2, 3);
 
-  EditBoundary boundary = makeBoundary(lines, 'o', '\n');  // At line end
+  TransformBoundary boundary = makeBoundary(lines, 'o', '\n');  // At line end
 
   LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
@@ -159,7 +159,7 @@ TEST_F(LinesTest, LineDeleteRange_MultiLine_LastLine_HasBoundary) {
   Lines lines = {"line one", "line two", "line three"};
   CursorPos cursor(2, 3);
 
-  EditBoundary boundary = makeBoundary(lines, 'o', 'e');  // Not at line end
+  TransformBoundary boundary = makeBoundary(lines, 'o', 'e');  // Not at line end
 
   LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
@@ -233,7 +233,7 @@ TEST_F(LinesTest, MotionLineEndpoint_D_SingleLine_NoBoundary) {
   Lines lines = {"hello world"};
   CursorPos cursor(0, 5);
 
-  EditBoundary boundary = makeBoundary(lines, '\n', '\n');  // At line end
+  TransformBoundary boundary = makeBoundary(lines, '\n', '\n');  // At line end
 
   int endCol = VimCore::motionLineEndpoint(cursor, lines, true, boundary);
 
@@ -246,7 +246,7 @@ TEST_F(LinesTest, MotionLineEndpoint_D_SingleLine_HasBoundary) {
   Lines lines = {"hello world"};
   CursorPos cursor(0, 5);
 
-  EditBoundary boundary = makeBoundary(lines, '\n', 'd');  // Not at line end
+  TransformBoundary boundary = makeBoundary(lines, '\n', 'd');  // Not at line end
 
   int endCol = VimCore::motionLineEndpoint(cursor, lines, true, boundary);
 
@@ -258,7 +258,7 @@ TEST_F(LinesTest, MotionLineEndpoint_D_MultiLine_NotLastLine) {
   Lines lines = {"line one", "line two", "line three"};
   CursorPos cursor(1, 3);  // Middle line
 
-  EditBoundary boundary = makeBoundary(lines, '\n', 'e');  // Not at line end (but we're not on last line)
+  TransformBoundary boundary = makeBoundary(lines, '\n', 'e');  // Not at line end (but we're not on last line)
 
   int endCol = VimCore::motionLineEndpoint(cursor, lines, true, boundary);
 
@@ -270,7 +270,7 @@ TEST_F(LinesTest, MotionLineEndpoint_D_EmptyLine) {
   Lines lines = {"content", "", "more"};
   CursorPos cursor(1, 0);  // Empty line
 
-  EditBoundary boundary = makeBoundary(lines, '\n', '\n');
+  TransformBoundary boundary = makeBoundary(lines, '\n', '\n');
 
   int endCol = VimCore::motionLineEndpoint(cursor, lines, true, boundary);
 
@@ -287,7 +287,7 @@ TEST_F(LinesTest, MotionLineEndpoint_D0_SingleLine_NoBoundary) {
   Lines lines = {"hello world"};
   CursorPos cursor(0, 5);
 
-  EditBoundary boundary = makeBoundary(lines, '\n', '\n');  // At line start
+  TransformBoundary boundary = makeBoundary(lines, '\n', '\n');  // At line start
 
   int endCol = VimCore::motionLineEndpoint(cursor, lines, false, boundary);
 
@@ -300,7 +300,7 @@ TEST_F(LinesTest, MotionLineEndpoint_D0_SingleLine_HasBoundary) {
   Lines lines = {"hello world"};
   CursorPos cursor(0, 5);
 
-  EditBoundary boundary = makeBoundary(lines, 'h', '\n');  // Not at line start
+  TransformBoundary boundary = makeBoundary(lines, 'h', '\n');  // Not at line start
 
   int endCol = VimCore::motionLineEndpoint(cursor, lines, false, boundary);
 
@@ -312,7 +312,7 @@ TEST_F(LinesTest, MotionLineEndpoint_D0_MultiLine_NotFirstLine) {
   Lines lines = {"line one", "line two", "line three"};
   CursorPos cursor(1, 3);  // Middle line
 
-  EditBoundary boundary = makeBoundary(lines, 'l', '\n');  // Not at line start (but we're not on first line)
+  TransformBoundary boundary = makeBoundary(lines, 'l', '\n');  // Not at line start (but we're not on first line)
 
   int endCol = VimCore::motionLineEndpoint(cursor, lines, false, boundary);
 
@@ -351,7 +351,7 @@ TEST_F(LinesTest, RandomStress_LineDeleteRange) {
       rightChar = lastLineLen > 0 ? lines[lastLine][lastLineLen - 1] : '\n';
     }
 
-    EditBoundary boundary = makeBoundary(lines, leftChar, rightChar);
+    TransformBoundary boundary = makeBoundary(lines, leftChar, rightChar);
     CursorPos cursor(cursorLine, cursorCol);
     LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 

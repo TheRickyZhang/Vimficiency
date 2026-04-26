@@ -12,10 +12,6 @@ Review implementation of BufferIndex in optimizeToRange() (is it exploring corre
 
 ASK BLAKE: how to distinguish between the user's config, and stored settings data (how the user uses)?
 
-Figure out terminology once and for all:
-- What are play / explore? Should they be quick q-able?
-- What are the key / settings windows for these specific sections?
-- What to call commands / molecules?
 
 - Later: implement debounced async for how to properly continuously perform optimize() calls to check among previous things automatically. Also need details for concurrency in implementing subprocesses?
 

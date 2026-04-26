@@ -8,63 +8,50 @@
 
 local scan = require("vimficiency.mapping_scan").scan_rhs_for_vimfy
 
-test("scan: matches :Vimfy at RHS start", function()
-  assert_eq(scan(":Vimfy start a<CR>"), true)
-  assert_eq(scan(":Vimfy finish a"),    true)
-  assert_eq(scan("  :Vimfy suggest on"), true, "leading whitespace tolerated")
+test("scan: matches raw Ex and <Cmd> Vimfy commands", function()
+  for _, rhs in ipairs({
+    ":Vimfy start a<CR>",
+    ":Vimfy finish a",
+    "  :Vimfy suggest on",
+    ":Vimficiency start a<CR>",
+    ":Vimficiency save @ quick",
+    "<Cmd>Vimfy finish a<CR>",
+    "<Cmd>:Vimfy finish a<CR>",
+    "<cmd>vimfy finish<CR>",
+    "<Cmd>Vimficiency start a<CR>",
+    "<Cmd>:Vimficiency list<CR>",
+    ":VIMFICIENCY help",
+    "<CMD>VIMFY FINISH A<CR>",
+  }) do
+    assert_eq(scan(rhs), true, rhs)
+  end
 end)
 
-test("scan: matches :Vimficiency at RHS start", function()
-  assert_eq(scan(":Vimficiency start a<CR>"), true)
-  assert_eq(scan(":Vimficiency save @ quick"), true)
+test("scan: rejects Vim-like command prefixes", function()
+  for _, rhs in ipairs({
+    ":vimfoo<CR>",
+    ":vimfrobnicate<CR>",
+    ":Vimfoobar arg",
+    ":vimyak<CR>",
+    ":Vimyard arg",
+    "<Cmd>Vimfoo arg<CR>",
+    "<Cmd>:Vimyak<CR>",
+  }) do
+    assert_eq(scan(rhs), false, rhs)
+  end
 end)
 
-test("scan: matches <Cmd>Vimfy inline (with and without colon)", function()
-  assert_eq(scan("<Cmd>Vimfy finish a<CR>"),  true)
-  assert_eq(scan("<Cmd>:Vimfy finish a<CR>"), true)
-  assert_eq(scan("<cmd>vimfy finish<CR>"),    true, "case-insensitive")
-end)
-
-test("scan: matches <Cmd>Vimficiency inline", function()
-  assert_eq(scan("<Cmd>Vimficiency start a<CR>"),  true)
-  assert_eq(scan("<Cmd>:Vimficiency list<CR>"),    true)
-end)
-
-test("scan: case-insensitive on command name", function()
-  assert_eq(scan(":VIMFY start a"),       true)
-  assert_eq(scan(":VIMFICIENCY help"),    true)
-  assert_eq(scan("<CMD>VIMFY FINISH A<CR>"), true)
-end)
-
-test("scan: does NOT match :vimfoo / :vimfrobnicate", function()
-  assert_eq(scan(":vimfoo<CR>"),          false,
-    "'vimfoo' must not match")
-  assert_eq(scan(":vimfrobnicate<CR>"),   false)
-  assert_eq(scan(":Vimfoobar arg"),       false)
-end)
-
-test("scan: does NOT match :vimy...", function()
-  assert_eq(scan(":vimyak<CR>"),   false,
-    "'vimyak' must not match")
-  assert_eq(scan(":Vimyard arg"),  false)
-end)
-
-test("scan: does NOT match unrelated commands", function()
-  assert_eq(scan(":set number"),                  false)
-  assert_eq(scan(":Vim"),                         false, "plain :Vim is not :Vimfy")
-  assert_eq(scan("<Cmd>set cursorline<CR>"),      false)
-  assert_eq(scan("gq"),                           false, "no colon, no <Cmd>")
-end)
-
-test("scan: rejects non-string and empty input", function()
-  assert_eq(scan(""),          false)
-  assert_eq(scan(nil),         false)
-  assert_eq(scan(42),          false)
-  assert_eq(scan({ "x" }),     false)
-end)
-
-test("scan: <Cmd>Vimfoo must not match", function()
-  -- The <Cmd> form was the second regex; regression-pin it too.
-  assert_eq(scan("<Cmd>Vimfoo arg<CR>"), false)
-  assert_eq(scan("<Cmd>:Vimyak<CR>"),    false)
+test("scan: rejects unrelated or malformed input", function()
+  for _, rhs in ipairs({
+    ":set number",
+    ":Vim",
+    "<Cmd>set cursorline<CR>",
+    "gq",
+    "",
+  }) do
+    assert_eq(scan(rhs), false, rhs)
+  end
+  assert_eq(scan(nil), false)
+  assert_eq(scan(42), false)
+  assert_eq(scan({ "x" }), false)
 end)

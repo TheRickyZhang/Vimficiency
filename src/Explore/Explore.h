@@ -19,56 +19,37 @@
 // =============================================================================
 // Explore view
 // =============================================================================
-// The user-facing, step-through state machine on top of a pre-computed
-// composition plan. Drives the `:Vimfy explore` scratch buffer.
+// Middle layer between Lua (InteractiveExports.cpp) and the optimizer lib (`src/Optimizer/`).
+// Lua calls in via the FFI exports in
+// `LuaExports/InteractiveExports.cpp`.
 //
-// Responsibilities — the View owns:
-//   - The persistent composition plan. Computed once at construction via
-//     `CompositionOptimizer::optimize` and stored in `plan_`. The plan is a
-//     sequence of diffs / fenceposts describing how to transform initial →
-//     goal; the View never re-plans, only advances through it. Explore
-//     consumes this through CompositionResult's per-edit step view
-//     (diff + pre/post fenceposts + editResult), not by re-aligning parallel
-//     vectors itself.
-//   - The phase machine (Step).
-//   - Undo/redo history (vectors of State snapshots).
-//   - Mutable live State (lines, cursor, accepted sequence/cost).
+// Conventions:
+//   - Plan is computed once at construction and never re-planned. Each
+//     `recommendations(...)` call rebuilds frontiers live from
+//     `Optimizer/*Frontier.h` modules — no warm optimizer is cached here.
+//   - User mistakes return `Rejected` with state unchanged; programming
+//     invariants `assert`. There is no Invalid phase.
+//   - Lifecycle is Lua's job: `explore_destroy` tears down on scratch close.
+//   - Action parsing/validation lives in `EditHandler`/`MovementHandler`,
+//     not inline in View methods.
 //
-// View as frontier forwarder:
-//   `recommendations(...)` is a composition of optimizer-level frontier
-//   modules, queried live from the current (cursor, fencepost, diff) on
-//   every call. The View does NOT hold a warm optimizer — each call
-//   rebuilds the relevant candidate set from scratch. Sources:
-//
-//     - `rankEditFrontier`  (src/Optimizer/EditOptimizer/EditFrontier.h)
-//         Edit atoms valid at the cursor position for the current diff.
-//
-//     - `backfillEditStartMotions` (file-local; only when cursor is inside
-//         the diff range and the edit frontier underfills)
-//         Ranks motions toward OTHER viable edit starts inside the same
-//         diff, so the user still gets next-step guidance after landing on
-//         a non-optimal cell.
-//
-//     - `rankNavFrontier` (src/Optimizer/NavOptimizer/NavFrontier.h)
-//         A depth-1 live A* peek from the cursor — ONE expansion level of
-//         the motion optimizer's own search graph, scored the same way the
-//         full optimizer would score them, then the top K. Immediate next
-//         molecules, not full paths.
-//
-//     - `rankNavFrontierToLine`  (join-line hint, multiline diffs only)
-//
-//   View-local handlers (`EditHandler`, `MotionHandler`) are only for
-//   action parsing/validation and strict buffer acceptance rules.
-//
-// There is no Invalid phase. "View is in a bad state" is either:
-//   - A recoverable user mistake → the action returns Rejected, state unchanged.
-//   - A programming-invariant failure → `assert` and crash.
-// Lua tears down views via explore_destroy when the scratch buffer goes
-// away; there's no need to keep a corpse alive.
-//
-// Future: the View is the natural home for per-view attempt history
-// (reset-to-start, compare runs, bookmark best-so-far). Not implemented yet —
-// current state machine is single-attempt.
+// Action contract — every accept*/apply* satisfies these or returns Rejected
+// with state unchanged. New actions: walk this list explicitly.
+//   1. Phase gate. Use `requireApproachEdit` / `requirePendingInsert`, or
+//      `requireApproachEditWithPlan` if the action references `plan_`.
+//   2. Reported cursor (when the action takes one from outside): must pass
+//      `isCursorOnConcreteBufferCell` against the lines being committed,
+//      and the boundary check via `MovementHandler::finishMove` if motion-y.
+//   3. Reported lines (when the action takes them from outside): must match
+//      the expected fencepost (current and/or next) — go through
+//      `EditHandler::validateBufferState`.
+//   4. Non-empty raw keys: must parse via `parseSequence` (edit-bearing) or
+//      `parseMotions` (motion-only) — use `appendRawKeysOrReject`. Silently
+//      dropping unparseable keys undercounts cost and hides bugs.
+//   5. State unchanged on any Reject — never partially mutate `state_`. The
+//      "build a `next` snapshot, commit at the end" pattern enforces this.
+//   6. Successful return must `commit(...)` (or call a helper that does) so
+//      `acceptedRevision` increments and undo history is updated.
 
 namespace Explore {
 
@@ -98,7 +79,7 @@ struct Step {
 // One ranked suggestion returned by View::recommendations.
 struct Recommendation {
   std::string text;
-  std::string kind;              // "motion" | "edit"
+  std::string kind;              // "movement" | "edit"
   double cost = 0.0;
   double totalPathCost = 0.0;
   int landingRow = 0;
@@ -166,7 +147,7 @@ public:
   // the new cursor state.
   //
   // Composition (in rank order of how items are appended before the trim):
-  //   1. Edit frontier at the cursor (via rankEditFrontier).
+  //   1. Edit frontier at the cursor (via rankTransformFrontier).
   //   2. Motion backfill toward sibling edit starts (only when cursor is
   //      already inside the diff and the edit frontier underfills).
   //   3. Motion frontier toward the diff target (only when cursor is
@@ -181,21 +162,21 @@ public:
   //   - edits dedup by SEQUENCE TEXT: `rm`, `sm<Esc>`, `cl m<Esc>` all
   //     landing at the same post-edit cursor are DISTINCT commands and
   //     all surface; the command shape is the outcome.
-  // See NavFrontier.h and EditFrontier.h for the per-module details.
+  // See NavFrontier.h and TransformFrontier.h for the per-module details.
   //
   // Both default to `false` (dedup on). The flag is forwarded to the
   // underlying frontier modules so generation respects it end-to-end and
   // the display layer never throws anything away post-hoc.
   std::vector<Recommendation> recommendations(
       int maxCount,
-      bool allowMultipleMotionsPerPosition = false,
+      bool allowMultipleMovementsPerPosition = false,
       bool allowMultipleEditsPerPosition = false) const;
 
   // --- Actions ---
   // Each action produces a new state (on Applied) or a Rejected reason
   // (state unchanged). No action can invalidate the view — programming-
   // invariant failures assert instead.
-  Outcome applyMotion(std::string_view motionText);
+  Outcome applyMovement(std::string_view movementText);
   Outcome acceptCursorMove(CursorPos newCursor, std::string_view rawKeys);
   Outcome applyEdit(std::string_view text);
   Outcome acceptBufferState(const Lines& newLines, CursorPos newCursor,
@@ -223,6 +204,10 @@ private:
   NavBoundary boundary_;
   NavContext navContext_;
   Config config_;
+  // Single source of truth for composition params: shared between the
+  // initial plan computation and any per-step recomputation
+  // (e.g. join plans during recommendations()), so the two paths cannot drift.
+  CompositionOptimizerParams compositionParams_;
   int totalEdits_ = 0;
 
   // Persistent composition plan + step-scoped frontier artifacts.
@@ -242,6 +227,12 @@ private:
   // Gate helper: succeed iff step is ApproachEdit, returning the edit index.
   // The `action` label is woven into the rejection reason for diagnostics.
   std::expected<int, Rejected> requireApproachEdit(std::string_view action) const;
+
+  // ApproachEdit gate + plan presence in one call. Use for actions that
+  // dereference `plan_->stepAt(...)` (applyEdit, acceptBufferState,
+  // beginEdit). Pure-motion approaches (no plan) are rejected here.
+  std::expected<int, Rejected> requireApproachEditWithPlan(
+      std::string_view action) const;
 
   // Gate helper: succeed iff step is PendingInsert, returning the edit index.
   std::expected<int, Rejected> requirePendingInsert(std::string_view action) const;

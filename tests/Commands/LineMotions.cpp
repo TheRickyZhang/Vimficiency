@@ -7,7 +7,7 @@
 
 #include <gtest/gtest.h>
 
-#include "Interpreter/MotionInterpreter.h"
+#include "Interpreter/MovementInterpreter.h"
 #include "Types/NavContext.h"
 #include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
@@ -124,7 +124,7 @@ void testLineMotionRandom(NeovimOracle& oracle, const NavContext& navContext,
 
     // Our implementation
     CursorPos start(test.cursorLine, test.cursorCol);
-    CursorPos ours = simulateMotions(start, motion, test.lines);
+    CursorPos ours = simulateMovements(start, motion, test.lines);
 
     // Neovim ground truth
     auto result = oracle.simulate(test.lines, test.cursorLine, test.cursorCol, motion);
@@ -181,7 +181,7 @@ TEST_F(LineMotionsTest, Caret_RandomMultiLine) {
 
 TEST_F(LineMotionsTest, Dollar_NormalLine) {
   Lines lines = {"hello world"};
-  CursorPos result = simulateMotions({0, 0}, "$", lines);
+  CursorPos result = simulateMovements({0, 0}, "$", lines);
   CursorPos expected = neovimMotion(lines, 0, 0, "$");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
@@ -189,7 +189,7 @@ TEST_F(LineMotionsTest, Dollar_NormalLine) {
 
 TEST_F(LineMotionsTest, Dollar_EmptyLine) {
   Lines lines = {"", "content"};
-  CursorPos result = simulateMotions({0, 0}, "$", lines);
+  CursorPos result = simulateMovements({0, 0}, "$", lines);
   CursorPos expected = neovimMotion(lines, 0, 0, "$");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
@@ -197,7 +197,7 @@ TEST_F(LineMotionsTest, Dollar_EmptyLine) {
 
 TEST_F(LineMotionsTest, Dollar_AlreadyAtEnd) {
   Lines lines = {"hello"};
-  CursorPos result = simulateMotions({0, 4}, "$", lines);
+  CursorPos result = simulateMovements({0, 4}, "$", lines);
   CursorPos expected = neovimMotion(lines, 0, 4, "$");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
@@ -205,7 +205,7 @@ TEST_F(LineMotionsTest, Dollar_AlreadyAtEnd) {
 
 TEST_F(LineMotionsTest, Zero_FromMiddle) {
   Lines lines = {"hello world"};
-  CursorPos result = simulateMotions({0, 6}, "0", lines);
+  CursorPos result = simulateMovements({0, 6}, "0", lines);
   CursorPos expected = neovimMotion(lines, 0, 6, "0");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
@@ -213,7 +213,7 @@ TEST_F(LineMotionsTest, Zero_FromMiddle) {
 
 TEST_F(LineMotionsTest, Zero_AlreadyAtStart) {
   Lines lines = {"hello"};
-  CursorPos result = simulateMotions({0, 0}, "0", lines);
+  CursorPos result = simulateMovements({0, 0}, "0", lines);
   CursorPos expected = neovimMotion(lines, 0, 0, "0");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
@@ -221,7 +221,7 @@ TEST_F(LineMotionsTest, Zero_AlreadyAtStart) {
 
 TEST_F(LineMotionsTest, Caret_WithLeadingSpaces) {
   Lines lines = {"   hello world"};
-  CursorPos result = simulateMotions({0, 0}, "^", lines);
+  CursorPos result = simulateMovements({0, 0}, "^", lines);
   CursorPos expected = neovimMotion(lines, 0, 0, "^");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
@@ -229,7 +229,7 @@ TEST_F(LineMotionsTest, Caret_WithLeadingSpaces) {
 
 TEST_F(LineMotionsTest, Caret_NoLeadingSpaces) {
   Lines lines = {"hello world"};
-  CursorPos result = simulateMotions({0, 5}, "^", lines);
+  CursorPos result = simulateMovements({0, 5}, "^", lines);
   CursorPos expected = neovimMotion(lines, 0, 5, "^");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
@@ -237,7 +237,7 @@ TEST_F(LineMotionsTest, Caret_NoLeadingSpaces) {
 
 TEST_F(LineMotionsTest, Caret_AllSpaces) {
   Lines lines = {"     "};
-  CursorPos result = simulateMotions({0, 2}, "^", lines);
+  CursorPos result = simulateMovements({0, 2}, "^", lines);
   CursorPos expected = neovimMotion(lines, 0, 2, "^");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);
@@ -245,7 +245,7 @@ TEST_F(LineMotionsTest, Caret_AllSpaces) {
 
 TEST_F(LineMotionsTest, Caret_EmptyLine) {
   Lines lines = {"", "content"};
-  CursorPos result = simulateMotions({0, 0}, "^", lines);
+  CursorPos result = simulateMovements({0, 0}, "^", lines);
   CursorPos expected = neovimMotion(lines, 0, 0, "^");
   EXPECT_EQ(result.line, expected.line);
   EXPECT_EQ(result.col, expected.col);

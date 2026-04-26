@@ -34,15 +34,12 @@ local function fake_session(start_row, last_key_t, key_seq_nil)
   }
 end
 
-test("manual_should_evict: fresh session, cursor at start row, empty seq → nil", function()
+test("manual_should_evict: active nearby sessions are retained", function()
   local s = fake_session(0, nil)
   assert_eq(session.manual_should_evict(s, 0, 1e15), nil)
-end)
-
-test("manual_should_evict: recent key + nearby cursor → nil", function()
   local now = 1e15
-  local s = fake_session(100, now - 10 * NS_PER_SEC)
-  assert_eq(session.manual_should_evict(s, 105, now), nil)
+  local recent = fake_session(100, now - 10 * NS_PER_SEC)
+  assert_eq(session.manual_should_evict(recent, 105, now), nil)
 end)
 
 test("manual_should_evict: last key older than timeout → idle reason", function()
@@ -55,38 +52,26 @@ test("manual_should_evict: last key older than timeout → idle reason", functio
     "expected idle reason, got: " .. tostring(reason))
 end)
 
-test("manual_should_evict: cursor drifted far below start → drift reason", function()
+test("manual_should_evict: cursor drift beyond search window evicts", function()
   local now = 1e15
-  local s = fake_session(0, now - 1 * NS_PER_SEC)
-  local drift_row = config.MAX_SEARCH_LINES + 1
-  local reason = session.manual_should_evict(s, drift_row, now)
+  local below = fake_session(0, now - 1 * NS_PER_SEC)
+  local reason = session.manual_should_evict(below, config.MAX_SEARCH_LINES + 1, now)
   assert_true(reason ~= nil, "expected eviction")
   assert_true(reason:find("drifted", 1, true) ~= nil,
     "expected drift reason, got: " .. tostring(reason))
-end)
 
-test("manual_should_evict: cursor drifted far above start → drift reason (abs)", function()
-  -- Start at row 1000, cursor at row 499 → drift = 501 > 500.
-  local now = 1e15
-  local s = fake_session(1000, now - 1 * NS_PER_SEC)
-  local reason = session.manual_should_evict(s, 499, now)
+  -- Start at row 1000, cursor at row 499: upward drift exceeds the window.
+  local above = fake_session(1000, now - 1 * NS_PER_SEC)
+  reason = session.manual_should_evict(above, 499, now)
   assert_true(reason ~= nil, "expected eviction (upward drift)")
   assert_true(reason:find("drifted", 1, true) ~= nil,
     "expected drift reason, got: " .. tostring(reason))
+
+  local boundary = fake_session(0, now - 1 * NS_PER_SEC)
+  assert_eq(session.manual_should_evict(boundary, config.MAX_SEARCH_LINES - 1, now), nil)
 end)
 
-test("manual_should_evict: cursor at exact MAX_SEARCH_LINES distance → nil", function()
-  -- Boundary: drift = MAX_SEARCH_LINES (inclusive: 500 away, span is 501
-  -- rows which equals the ceiling; trigger only fires on strict > ).
-  local now = 1e15
-  local s = fake_session(0, now - 1 * NS_PER_SEC)
-  local reason = session.manual_should_evict(
-    s, config.MAX_SEARCH_LINES - 1, now
-  )
-  assert_eq(reason, nil)
-end)
-
-test("manual_should_evict: drift and idle both true → drift wins", function()
+test("manual_should_evict: drift wins over idle and nil key_seq is safe", function()
   local now = 1e15
   local stale = now - (config.MANUAL_IDLE_TIMEOUT_SECONDS + 10) * NS_PER_SEC
   local s = fake_session(0, stale)
@@ -96,16 +81,11 @@ test("manual_should_evict: drift and idle both true → drift wins", function()
   assert_true(reason ~= nil, "expected eviction")
   assert_true(reason:find("drifted", 1, true) ~= nil,
     "expected drift reason (drift checked before idle), got: " .. tostring(reason))
-end)
 
-test("manual_should_evict: key_seq=nil → idle branch no-ops, only drift applies", function()
-  -- Defensive: finished records drop key_seq to nil. The predicate
-  -- should still be safe against that shape (even though in practice
-  -- we only call it on active records).
-  local s = fake_session(0, nil, true)
-  assert_eq(session.manual_should_evict(s, 0, 1e15), nil)
-  local reason = session.manual_should_evict(
-    s, config.MAX_SEARCH_LINES + 1, 1e15
+  local finished_shape = fake_session(0, nil, true)
+  assert_eq(session.manual_should_evict(finished_shape, 0, now), nil)
+  reason = session.manual_should_evict(
+    finished_shape, config.MAX_SEARCH_LINES + 1, now
   )
   assert_true(reason ~= nil)
   assert_true(reason:find("drifted", 1, true) ~= nil)

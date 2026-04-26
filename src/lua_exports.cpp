@@ -25,13 +25,13 @@ static const char* g_finger_names[] = {
 };
 
 static const char* g_count_class_names[] = {
-  "MotionChar",
-  "MotionWord",
-  "MotionWORD",
-  "MotionLine",
-  "MotionParagraph",
-  "MotionSentence",
-  "MotionJump",
+  "MovementChar",
+  "MovementWord",
+  "MovementWORD",
+  "MovementLine",
+  "MovementParagraph",
+  "MovementSentence",
+  "MovementJump",
   "EditChar",
   "EditWord",
   "EditWORD",

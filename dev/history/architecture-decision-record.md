@@ -19,10 +19,10 @@ We completed a structural cleanup to enforce explicit module boundaries in `src/
 - Kept sequence ownership split:
   `Sequence` type stays in `Types`, while stream formatting implementation
   lives in `Interpreter` because it depends on higher-level sequence parsing helpers.
-- Moved `RepeatMotionResult` to `src/Optimizer/NavOptimizer/BufferIndex.h` because it is
+- Moved `RepeatMovementResult` to `src/Optimizer/NavOptimizer/BufferIndex.h` because it is
   an optimizer/index query result type rather than a shared core primitive.
 - Moved count-search motion pair ownership to NavOptimizer via
-  `src/Optimizer/NavOptimizer/CountableMotionPair.h`, removing semantic
+  `src/Optimizer/NavOptimizer/CountableMovementPair.h`, removing semantic
   count-landing coupling from `Keyboard`.
 - Moved config type ownership to Keyboard (`src/Keyboard/Config.h`), with
   `src/Keyboard/Config.h` kept as a thin forwarding include for compatibility.
@@ -36,13 +36,13 @@ We completed a structural cleanup to enforce explicit module boundaries in `src/
   base module and disallow new upward dependencies from `Types`.
 - Replaced the mixed `Editor` layer with clearer module ownership:
   `src/Interpreter/` for arbitrary command parsing/interpreting adapters
-  (`EditInterpreter`, `MotionInterpreter`, `SequenceParser`) and
+  (`EditInterpreter`, `MovementInterpreter`, `SequenceParser`) and
   `src/Session/` for snapshot I/O (`Snapshot`).
 - Moved `SequenceChunker` out of `src` into `tests/Exploration/` because it is
   currently exploration/test tooling only.
 - Grouped keyboard command-to-key mapping declarations under
   `src/Keyboard/ToKeys/` (`CharToKeys`, `CommandToKeys`, `CountToKeys`,
-  `MotionToKeys`, `EditToKeys`, and primitives) to separate mapping catalogs
+  `MovementToKeys`, `EditToKeys`, and primitives) to separate mapping catalogs
   from keyboard value types.
 - Renamed `SequenceTokenizer` to `SequenceToKeys` and moved it to
   `src/Keyboard/ToKeys/` to clarify that this layer maps command strings to
@@ -51,8 +51,8 @@ We completed a structural cleanup to enforce explicit module boundaries in `src/
   `KeyboardUtils.h` so finger/hand relationship helpers live with the finger
   type definitions.
 - Dissolved `src/State/` and moved state ownership into optimizer modules:
-  `NavState` under `src/Optimizer/NavOptimizer/`, `EditState` under
-  `src/Optimizer/EditOptimizer/`, and `CompositionState` under
+  `NavState` under `src/Optimizer/NavOptimizer/`, `TransformState` under
+  `src/Optimizer/TransformOptimizer/`, and `CompositionState` under
   `src/Optimizer/CompositionOptimizer/`.
 - Moved `EffortBank` to effort scope (`src/Effort/EffortBank.h`)
   since it is a config-scoped typed-effort cache shared across optimizers.
@@ -65,10 +65,10 @@ We completed a structural cleanup to enforce explicit module boundaries in `src/
 
 ## Error-handling boundary: `std::expected` at the FFI, asserts inside
 
-Both `parseMotions` and `parseSequence` return
-`std::expected<..., SequenceParseError>` / `MotionParseError`, but the
+Both `parseMovements` and `parseSequence` return
+`std::expected<..., SequenceParseError>` / `MovementParseError`, but the
 error channel is only *consumed* at one place: the FFI boundary in
-`src/LuaExports/UtilityExports.cpp` (`vimficiency_tokenize_motions`,
+`src/LuaExports/UtilityExports.cpp` (`vimficiency_tokenize_movements`,
 `vimficiency_tokenize_sequence`). Every internal caller — the
 optimizer's human-approval printer, `operator<<(Sequence)`, test
 scaffolding — calls `.value()` and asserts on failure.
@@ -101,7 +101,7 @@ their inputs are not optimizer-produced:
   parse failure so the user still sees their keystrokes.
 - `CompositionOptimizer`'s human-approval printer. The optimizer
   emits visual-selection strategies (`v{motion}d`, see
-  `EditOptimizer.cpp`'s `Sequence visualSeq("v")` site) that
+  `TransformOptimizer.cpp`'s `Sequence visualSeq("v")` site) that
   `parseSequence` doesn't currently model — it's a two-state
   grammar (normal ↔ insert) with no visual-mode state, no
   `v/V/<C-v>` entry rule, and no selection-consuming operator rule.
@@ -118,14 +118,14 @@ Explicit non-goals, kept this way deliberately:
   probably wants its own `SnapshotLoadError` type.
 
 
-# EditResult
+# TransformResult
 
-## Recording EditResult Answer
+## Recording TransformResult Answer
 Ideally, like in NavOptimizer, we simply record answer when a goal state is popped from the stack (guaranteed lowest cost). But we have a wrinkle with delete -> change conversions, as we would need to adjust in advance.
 
 Several methods keeping an inverted order were tried, but in the end, guaranteed correctness is worth checking for a goal state twice. It may be possible to add a bool isGoal to trade memory in state for a faster branch check.
 
-### Maintaining EditBoundary
+### Maintaining TransformBoundary
 
 ### Some searches get starved (Not adequately explored)
 Because of inadmissible heuristic, may not ever consider some branches

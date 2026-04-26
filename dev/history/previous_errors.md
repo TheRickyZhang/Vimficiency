@@ -112,7 +112,7 @@ emitMotion(base, "$", {pos.line, dollarCol, TARGETCOL_EOL}, {Key::Key_Shift, Key
 
 ## cc collapse sequence overcounting on single-line buffers
 
-In `EditOptimizer.cpp`, the dd→cc conversion computes how many `<BS>`/`<Del>` keystrokes are needed to collapse a multi-line cc result to a single line. The original code used `lines.size() + 1` as the total line count, where `lines` is the post-dd buffer. The `+1` accounts for the line that `cc` preserves but `dd` removes.
+In `TransformOptimizer.cpp`, the dd→cc conversion computes how many `<BS>`/`<Del>` keystrokes are needed to collapse a multi-line cc result to a single line. The original code used `lines.size() + 1` as the total line count, where `lines` is the post-dd buffer. The `+1` accounts for the line that `cc` preserves but `dd` removes.
 
 However, when `dd` operates on the **last line** of a single-line buffer, the buffer invariant (`lines.empty() → lines.push_back("")`) creates an artificial empty line. So `lines.size()` is already 1, and `+1` gives 2 — but `cc` on a 1-line buffer has only 1 line (no collapse needed). This produced a spurious `<Del>` keystroke.
 
@@ -168,21 +168,21 @@ After diff 0, buffer is `["aaa bbb", "ccc", "ddd"]`. Diff 1's original position 
 
 ## cw trailing space (delete→change conversion)
 
-Vim treats `cw`/`cW` like `ce`/`cE` — they don't include trailing whitespace, unlike `dw`/`dW`. The `deleteToChange` function in EditOptimizer previously converted `dw` → `cw`, which would produce incorrect results when `dw` deleted trailing whitespace to reach the goal.
+Vim treats `cw`/`cW` like `ce`/`cE` — they don't include trailing whitespace, unlike `dw`/`dW`. The `deleteToChange` function in TransformOptimizer previously converted `dw` → `cw`, which would produce incorrect results when `dw` deleted trailing whitespace to reach the goal.
 
 **Fix:** Convert `dw`/`dW` to `dwi`/`dWi` (delete then enter insert mode) instead of `cw`/`cW`. No per-call equivalence check is needed because `de`/`dE` (WordEdge) is explored before `dw`/`dW` (GapEdge) — when the ranges are identical, `de` stores its result first and `dw` is skipped. So `dw` only reaches the goal when trailing whitespace made the difference, meaning `cw` is always wrong. See `dev/optimizer/edit-optimizer.md` § dw/dW → dwi/dWi.
 
 ## exploreDeletion collapse sequence used d{motion} line count instead of c{motion}
 
-In `EditOptimizer.cpp`, `exploreDeletion` converts `d{motion}` results to `c{motion}` equivalents and computes how many `<BS>`/`<Del>` keystrokes are needed to collapse multi-line `cc` results to a single line. For multi-line `d{motion}` (e.g., `dj`), the code used the post-delete buffer's line count (`lines.size()`), but `c{motion}` doesn't remove lines the way `d{motion}` does — it replaces the range with an empty insert-mode line. The effective line count for the collapse should reflect the pre-delete buffer minus the lines *merged* by the motion, not the lines *removed*.
+In `TransformOptimizer.cpp`, `exploreDeletion` converts `d{motion}` results to `c{motion}` equivalents and computes how many `<BS>`/`<Del>` keystrokes are needed to collapse multi-line `cc` results to a single line. For multi-line `d{motion}` (e.g., `dj`), the code used the post-delete buffer's line count (`lines.size()`), but `c{motion}` doesn't remove lines the way `d{motion}` does — it replaces the range with an empty insert-mode line. The effective line count for the collapse should reflect the pre-delete buffer minus the lines *merged* by the motion, not the lines *removed*.
 
 **Example:** `dj` on a 3-line buffer removes 2 lines, leaving 1 line. `cj` on the same buffer replaces lines 0-1 with an empty line, leaving 2 lines (the empty line + the original line 2). Using post-`dj` line count (1) undercounts the collapse.
 
 **Fix:** Use `base.getLines().size() - (lastLine - firstLine)` where `firstLine`/`lastLine` come from the deletion range. This computes what `c{motion}` would produce: original lines minus the merged span (but keeping one line for the insertion point). The `dw`/`dW` case still uses the post-delete line count since those convert to `dwi`/`dWi` (delete-then-insert), not change.
 
-## lineBaseIndex computation for empty lines in EditResult
+## lineBaseIndex computation for empty lines in TransformResult
 
-In `EditResult::EditResult`, the constructor builds a `lineBaseIndex_` for O(1) flat-index lookup from buffer coordinates. The cumulative sum added `initialLines[i].size()` per line, but empty lines have 0 `size()` despite having 1 valid cursor position (col 0). This caused flat-index underflow for positions on or after empty lines.
+In `TransformResult::TransformResult`, the constructor builds a `lineBaseIndex_` for O(1) flat-index lookup from buffer coordinates. The cumulative sum added `initialLines[i].size()` per line, but empty lines have 0 `size()` despite having 1 valid cursor position (col 0). This caused flat-index underflow for positions on or after empty lines.
 
 **Fix:** Use `max(1, size)` for the per-line position count:
 ```cpp
@@ -195,7 +195,7 @@ This matches `initStartingPositions` in the search, which also counts 1 position
 
 In `VimEndpointUtils.cpp`, `textObjectRange` handles `daw` on a word with no trailing whitespace by including leading whitespace instead. The backward `GapEdge` search finds the start of leading whitespace. If it returns col 0 (indicating only indentation before the word), the range falls back to `WordEdge` (word-only, no whitespace).
 
-However, when used in the EditOptimizer with a prefix boundary (`leftColOffset > 0`), the backward `GapEdge` search can return the boundary start instead of the true whitespace start. This could land at col > 0, making the code think there's a prior word — producing a range that disagrees with Vim's actual `daw` behavior (which would include whitespace all the way to line start).
+However, when used in the TransformOptimizer with a prefix boundary (`leftColOffset > 0`), the backward `GapEdge` search can return the boundary start instead of the true whitespace start. This could land at col > 0, making the code think there's a prior word — producing a range that disagrees with Vim's actual `daw` behavior (which would include whitespace all the way to line start).
 
 **Fix:** After the `GapEdge` search returns `POSITION_OUTSIDE_BOUNDARY` or col 0, check whether whitespace actually exists before the word but falls within the boundary. If the `WordEdge` start is at col > 0 and the character before it is blank, the boundary is clipping leading whitespace — reject the range by setting `start = POSITION_OUTSIDE_BOUNDARY`:
 ```cpp
@@ -208,7 +208,7 @@ if (wordStart != POSITION_OUTSIDE_BOUNDARY &&
 
 ## tryReplacement cursor position mismatch with goalPos
 
-In `EditOptimizer.cpp`, `tryReplacement` builds a sequence of `r{char}` commands to transform same-length text. After executing the replacements, the cursor lands on the last *differing* position (`diff.back()`). But the `CompositionOptimizer` sets `goalPos` to the last character of the inserted text (`beginPos.col + inserted.size() - 1`), matching where `c{motion} + typed + <Esc>` would leave the cursor.
+In `TransformOptimizer.cpp`, `tryReplacement` builds a sequence of `r{char}` commands to transform same-length text. After executing the replacements, the cursor lands on the last *differing* position (`diff.back()`). But the `CompositionOptimizer` sets `goalPos` to the last character of the inserted text (`beginPos.col + inserted.size() - 1`), matching where `c{motion} + typed + <Esc>` would leave the cursor.
 
 When Myers diff merges a short common suffix into the edit region (e.g., `"ffb"→"cbb"` includes the common `'b'`), the last differing position is before the end of inserted text. The `CompositionOptimizer` uses `goalPos` to plan subsequent motions, so the mismatch causes wrong motion targets.
 
@@ -224,7 +224,7 @@ if (lastDiff < endPos) {
   else ks.appendCounted(dist, lCmd);
 }
 ```
-This ensures all result paths in an `EditResult` leave the cursor at the same `goalPos`.
+This ensures all result paths in an `TransformResult` leave the cursor at the same `goalPos`.
 
 ## Boundary region edits: centralized escape
 
@@ -234,9 +234,9 @@ Cursor positions in the prefix/suffix boundary region cannot perform regular edi
 
 ## Linewise deletion cursor past-end with hasLinesBelow
 
-When `dd` operates on the last line of effective lines and `editBoundary.hasLinesBelow()` is true, the real buffer has a line below that the cursor lands on. Previously, `deleteRangeLinewise` always clamped cursor to `min(firstLine, size-1)`, hiding this.
+When `dd` operates on the last line of effective lines and `transformBoundary.hasLinesBelow()` is true, the real buffer has a line below that the cursor lands on. Previously, `deleteRangeLinewise` always clamped cursor to `min(firstLine, size-1)`, hiding this.
 
-**Fix:** Added `hasLinesBelow` parameter to `deleteRangeLinewise` (and `EditState::afterLinewiseDeletion`/`afterMultiLinewiseDeletion`). When `hasLinesBelow && firstLine >= newSize`, cursor stays past-end (at `firstLine`) instead of clamping. The A* search detects `needsKEscape = pos.line >= lines.size()`, clamps cursor to `size()-1`, then:
+**Fix:** Added `hasLinesBelow` parameter to `deleteRangeLinewise` (and `TransformState::afterLinewiseDeletion`/`afterMultiLinewiseDeletion`). When `hasLinesBelow && firstLine >= newSize`, cursor stays past-end (at `firstLine`) instead of clamping. The A* search detects `needsKEscape = pos.line >= lines.size()`, clamps cursor to `size()-1`, then:
 - **Goal path:** cursor is valid for `emitEditGoal`/`buildCollapseSequence`
 - **Non-goal path:** `k` is appended to the command sequence; `applyEdit` handles past-end `k` during replay
 
@@ -257,10 +257,10 @@ In `CompositionOptimizer.cpp`, when the cursor is inside the edit range but no e
 if (pos >= nextEdit.beginPos && pos < nextEdit.endPos) {
   for (int col = rangeBeginCol; col < rangeEndCol; ++col) {
     if (col == pos.col) continue;
-    const Result* nearby = editResult.resultAt(pos.line, col);
+    const Result* nearby = transformResult.resultAt(pos.line, col);
     if (!nearby) continue;
     // Generate counted h/l motion to reach col
-    ctx.exploreMotionTransition(s, motionSeq, Position(pos.line, col), editsCompleted);
+    ctx.exploreMotionTransition(s, movementSeq, Position(pos.line, col), editsCompleted);
   }
   continue;
 }
@@ -289,7 +289,7 @@ return {std::move(results), ctx.getStats(numResults),
 
 ## Benchmark stats accumulation: overwrite instead of sum
 
-All three benchmark files (`EditOptimizerBench.cpp`, `NavOptimizerBench.cpp`, `CompositionOptimizerBench.cpp`) used assignment instead of accumulation for per-iteration stats:
+All three benchmark files (`TransformOptimizerBench.cpp`, `NavOptimizerBench.cpp`, `CompositionOptimizerBench.cpp`) used assignment instead of accumulation for per-iteration stats:
 ```cpp
 lastStats = result.stats;  // Only captures the LAST iteration
 ```
@@ -305,15 +305,15 @@ accumulateStats(totalStats, result.stats);
 
 ### Problem: Buffer Copying
 
-Naively, `EditStateKey` stored a full `Lines` copy. With `getKey()` called 2+ times per explored state (once in `exploreNewState`, once in `getNextValidState`), and buffers of ~300 bytes on a 10-line edit, this produced megabytes of unnecessary copying per search. The hash function also only hashed `lines[0]` + `lines.size()`, producing many collisions and triggering expensive `operator==` comparisons over full buffer content.
+Naively, `TransformStateKey` stored a full `Lines` copy. With `getKey()` called 2+ times per explored state (once in `exploreNewState`, once in `getNextValidState`), and buffers of ~300 bytes on a 10-line edit, this produced megabytes of unnecessary copying per search. The hash function also only hashed `lines[0]` + `lines.size()`, producing many collisions and triggering expensive `operator==` comparisons over full buffer content.
 
 ### Solution: Precomputed Content Hash
 
-`EditState` carries a precomputed 64-bit FNV-1a hash (`linesHash_`) over all buffer content. This hash is:
-- Computed once in the `EditState` constructor
+`TransformState` carries a precomputed 64-bit FNV-1a hash (`linesHash_`) over all buffer content. This hash is:
+- Computed once in the `TransformState` constructor
 - Recomputed after each buffer mutation (`afterDeletion`, `afterLinewiseDeletion`, `afterJoin`)
 
-`EditStateKey` stores `(linesHash, lineCount, line, col, mode, startIndex)` instead of the full `Lines` object. Both the hash function and equality operator use only these scalar fields — no buffer copying or content comparison.
+`TransformStateKey` stores `(linesHash, lineCount, line, col, mode, startIndex)` instead of the full `Lines` object. Both the hash function and equality operator use only these scalar fields — no buffer copying or content comparison.
 
 The same pattern applies to `SuffixKey` in the suffix cache (see below).
 

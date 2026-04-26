@@ -16,7 +16,7 @@ protected:
     : results_(std::move(results)) {}
 
   // Only available when ElementType is streamable (e.g. Result, RangeResult).
-  // Subtypes with non-streamable elements (e.g. EditResult) provide their own operator<<.
+  // Subtypes with non-streamable elements (e.g. TransformResult) provide their own operator<<.
   friend std::ostream& operator<<(std::ostream& os, const BaseOptimizerResult& res)
     requires requires(std::ostream& o, const ElementType& e) { o << e; }
   {

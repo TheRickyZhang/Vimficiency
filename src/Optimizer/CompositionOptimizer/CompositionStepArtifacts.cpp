@@ -1,6 +1,7 @@
 #include "CompositionStepArtifacts.h"
 
 #include <algorithm>
+#include <cassert>
 #include <tuple>
 #include <vector>
 
@@ -197,14 +198,14 @@ int commonSuffixLen(string_view a, string_view b, int prefixLen) {
 
 }
 
-EditResult computeEditResultForDiff(
+TransformResult computeTransformResultForDiff(
     const DiffState& diff,
     const CompositionOptimizerParams& params,
     const Config& config,
     int* nodesExplored) {
   if (nodesExplored) *nodesExplored = 0;
 
-  EditOptimizer editOptimizer(config);
+  TransformOptimizer transformOptimizer(config);
 
   if (diff.isPureInsertion()) {
     Lines insertLines = Lines::unflatten(diff.insertedText);
@@ -218,18 +219,18 @@ EditResult computeEditResultForDiff(
 
     CursorPos goalPos = computeInsertEndPos(diff.beginPos, diff.insertedText);
     Lines singlePoint = {""};
-    return EditResult(std::move(insertResultsByStart), {}, singlePoint,
+    return TransformResult(std::move(insertResultsByStart), {}, singlePoint,
                       diff.beginPos.line, diff.beginPos.col, goalPos);
   }
 
-  EditOptimizerParams editParams =
-      EditOptimizerParams{}
+  TransformOptimizerParams editParams =
+      TransformOptimizerParams{}
           .withMinCountRepeat(params.minPrefixCount)
           .withMaxCountRepeat(params.maxPrefixCount)
-          .withMaxMultiplePerStartPosition(params.maxEditResultsPerPosition);
+          .withMaxMultiplePerStartPosition(params.maxTransformResultsPerPosition);
 
   if (diff.isPureDeletion()) {
-    EditResult result = editOptimizer.optimizePureDeletion(
+    TransformResult result = transformOptimizer.optimizePureDeletion(
         diff.deletedLines(), diff.boundary, editParams,
         diff.beginPos.line, diff.beginPos.col, diff.beginPos);
     if (nodesExplored) *nodesExplored = result.getStats().nodesExplored();
@@ -250,7 +251,7 @@ EditResult computeEditResultForDiff(
     goalPos = CursorPos(lastLine, lastCol);
   }
 
-  EditResult result = editOptimizer.optimizeEdit(
+  TransformResult result = transformOptimizer.optimizeTransform(
       diff.deletedLines(), diff.insertedLines(), diff.boundary, editParams,
       diff.beginPos.line, diff.beginPos.col, goalPos);
   if (nodesExplored) *nodesExplored = result.getStats().nodesExplored();
@@ -280,9 +281,9 @@ optional<JoinPlan> computeJoinPlanForDiff(
     const Config& config,
     int* nodesExplored) {
   if (nodesExplored) *nodesExplored = 0;
-  if (diff.isPureInsertion()) return nullopt;
+  if (diff.isPureInsertion() || diff.isPureDeletion()) return nullopt;
 
-  EditOptimizer editOptimizer(config);
+  TransformOptimizer transformOptimizer(config);
 
   int srcFirstLine = diff.beginPos.line;
   Lines delLines = diff.deletedLines();
@@ -345,6 +346,7 @@ optional<JoinPlan> computeJoinPlanForDiff(
     int s = 0;
     for (int t = 0; t < targetLineCount; t++) {
       int k = choice[s][t];
+      assert(k != -1 && "DP partition reconstruction visited an unreachable state");
       partition[t] = {s, k + 1};
       s = k + 1;
     }
@@ -379,21 +381,21 @@ optional<JoinPlan> computeJoinPlanForDiff(
 
     if (sim.joinedLine != fullTargetLines[g]) {
       Lines residualInitial = {sim.joinedLine};
-      EditBoundary groupBoundary;
+      TransformBoundary groupBoundary;
       CursorPos residualGoalPos(
           0, fullTargetLines[g].empty() ? 0 : static_cast<int>(fullTargetLines[g].size()) - 1);
-      EditOptimizerParams residualParams =
-          EditOptimizerParams{}
+      TransformOptimizerParams residualParams =
+          TransformOptimizerParams{}
               .withMinCountRepeat(params.minPrefixCount)
               .withMaxCountRepeat(params.maxPrefixCount);
 
-      EditResult residualResult = [&]() -> EditResult {
+      TransformResult residualResult = [&]() -> TransformResult {
         if (fullTargetLines[g].empty()) {
-          return editOptimizer.optimizePureDeletion(
+          return transformOptimizer.optimizePureDeletion(
               residualInitial, groupBoundary, residualParams, 0, 0, residualGoalPos);
         }
         Lines residualGoal = {fullTargetLines[g]};
-        return editOptimizer.optimizeEdit(
+        return transformOptimizer.optimizeTransform(
             residualInitial, residualGoal, groupBoundary, residualParams, 0, 0, residualGoalPos);
       }();
 

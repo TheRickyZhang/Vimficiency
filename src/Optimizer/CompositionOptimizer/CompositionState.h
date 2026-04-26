@@ -12,7 +12,7 @@
 // CompositionStateKey: Unique identifier for deduplication in A* search
 // =============================================================================
 //
-// Unlike EditState (which keys on lines pointer), CompositionState derives
+// Unlike TransformState (which keys on lines pointer), CompositionState derives
 // lines from editsCompleted index, so key is just (pos, mode, editsCompleted).
 
 struct CompositionStateKey {
@@ -99,7 +99,7 @@ public:
   // ==========================================================================
 
   // Create new state with edit transition applied
-  // - editSequence: the sequence for this edit (from EditResult)
+  // - editSequence: the sequence for this edit (from TransformResult)
   // - newPos: position after edit completes (end position in edit region)
   // - newMode: mode after edit completes
   // Note: caller must set cost via setCost() after computing heuristic

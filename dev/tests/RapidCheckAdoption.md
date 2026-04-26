@@ -7,7 +7,7 @@ Instead of writing specific test cases:
 // Example-based: "does w work for this specific buffer?"
 TEST(Motion, w_specific) {
   Lines lines = {"hello world"};
-  Position result = applyMotion({0, 0}, "w", lines);
+  Position result = applyMovement({0, 0}, "w", lines);
   EXPECT_EQ(result.col, 6);
 }
 ```
@@ -16,7 +16,7 @@ You declare properties that should hold for *all* inputs:
 ```cpp
 // Property-based: "w always matches Neovim for any buffer"
 RC_GTEST_PROP(Motion, w_matches_neovim, (Lines lines, Position start)) {
-  Position ours = applyMotion(start, "w", lines);
+  Position ours = applyMovement(start, "w", lines);
   auto expected = oracle.simulate(lines, start, "w");
   RC_ASSERT(ours == expected);
 }
@@ -36,7 +36,7 @@ void testMotionRandom(const string& motion, int iterations) {
   RandomGen::seed(42);
   for (int i = 0; i < iterations; i++) {
     auto test = generateRandomMotionBuffer(3);
-    Position ours = simulateMotions(test.start, motion, test.lines);
+    Position ours = simulateMovements(test.start, motion, test.lines);
     auto expected = oracle->simulate(...);
     EXPECT_EQ(ours, expected);
   }

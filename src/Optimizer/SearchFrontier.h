@@ -40,7 +40,7 @@ namespace Search {
 
 template<class State, class PriorityQueue, class CostMap, class PendingByStart,
          class StartActive>
-inline bool enqueueImprovedEditState(State&& state,
+inline bool enqueueImprovedTransformState(State&& state,
                                      PriorityQueue& pq,
                                      CostMap& costMap,
                                      PendingByStart& pendingByStart,

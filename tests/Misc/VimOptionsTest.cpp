@@ -8,7 +8,7 @@
 
 #include <gtest/gtest.h>
 
-#include "Interpreter/MotionInterpreter.h"
+#include "Interpreter/MovementInterpreter.h"
 #include "Types/NavContext.h"
 #include "Optimizer/BuildTypedCommands.h"
 #include "Optimizer/Indentation.h"
@@ -56,7 +56,7 @@ TEST_F(VimOptionsTest, GG_StartOfLine) {
   Lines lines = {"    hello", "world", "  foo"};
   // Cursor starts at col 5 on "world", then gg goes to first line
   auto result = oracleMotion(lines, 1, 4, "gg");
-  CursorPos ours = simulateMotions({1, 4}, "gg", lines, navContext);
+  CursorPos ours = simulateMovements({1, 4}, "gg", lines, navContext);
 
   EXPECT_EQ(ours.line, result.line);
   EXPECT_EQ(ours.col, result.col);
@@ -74,7 +74,7 @@ TEST_F(VimOptionsTest, G_StartOfLine) {
   Lines lines = {"    hello", "world", "  foo"};
   // Cursor at col 0 on first line, G goes to last line
   auto result = oracleMotion(lines, 0, 0, "G");
-  CursorPos ours = simulateMotions({0, 0}, "G", lines, navContext);
+  CursorPos ours = simulateMovements({0, 0}, "G", lines, navContext);
 
   EXPECT_EQ(ours.line, result.line);
   EXPECT_EQ(ours.col, result.col);
@@ -92,7 +92,7 @@ TEST_F(VimOptionsTest, GG_CursorBeyondLineLength) {
   Lines lines = {"ab", "          long line", "cd"};
   // Start at col 15 on long line, gg to short first line
   auto result = oracleMotion(lines, 1, 15, "gg");
-  CursorPos ours = simulateMotions({1, 15}, "gg", lines, navContext);
+  CursorPos ours = simulateMovements({1, 15}, "gg", lines, navContext);
 
   EXPECT_EQ(ours.line, result.line);
   EXPECT_EQ(ours.col, result.col);

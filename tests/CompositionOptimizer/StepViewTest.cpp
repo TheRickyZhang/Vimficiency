@@ -50,7 +50,7 @@ TEST(CompositionResultStepView, AlignsDiffFencepostsAndEditResultPerEdit) {
     // bundled pre-fencepost; this is the fencepost contract Explore relies on.
     EXPECT_EQ(Myers::applyDiffState(step.diff, step.preFencepost), step.postFencepost);
 
-    const auto starts = step.editResult.resultsAt(
+    const auto starts = step.transformResult.resultsAt(
         step.diff.beginPos.line,
         step.diff.beginPos.col);
     EXPECT_FALSE(starts.empty())

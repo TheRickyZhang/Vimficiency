@@ -25,16 +25,10 @@ test("get_active('1s'): resolves when a record is older than the window", functi
   pcall(vim.api.nvim_buf_delete, buf, { force = true })
 end)
 
-test("remove: rejects a manual alias-shaped string", function()
+test("remove: rejects alias-shaped strings", function()
   assert_error(function() session_store.remove("a") end,
     "not an alias", "remove must reject alias 'a'")
-end)
-
-test("remove: rejects a recall-key alias-shaped string", function()
   assert_error(function() session_store.remove("3") end)
-end)
-
-test("remove: rejects a recall-time alias-shaped string", function()
   assert_error(function() session_store.remove("3s") end)
 end)
 

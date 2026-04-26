@@ -12,7 +12,7 @@
 #include "DiffState.h"
 #include "JoinPlan.h"
 #include "Keyboard/Config.h"
-#include "Optimizer/EditOptimizer/EditOptimizer.h"
+#include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 #include "Optimizer/NavOptimizer/BufferIndex.h"
 #include "Optimizer/SearchStats.h"
 #include "Boundary/NavBoundary.h"
@@ -101,7 +101,7 @@ struct CompositionSearchContext {
   struct PerEditData {
     DiffState diffState;
 
-    EditResult editResult;
+    TransformResult transformResult;
 
     std::optional<JoinPlan> joinPlan;
     BracketQuoteContext bracketQuoteContext;
@@ -225,8 +225,8 @@ private:
   // Helper: compute suffix sums of median edit costs
   std::vector<double> computeSuffixEditCosts() const;
 
-  // Helper: solve each edit region independently, populates edits[i].editResult
-  void calculateEditResults();
+  // Helper: solve each edit region independently, populates edits[i].transformResult
+  void calculateTransformResults();
 
   // Helper: build intermediate buffer states after each diff
   // Non-const: adjusts edits[i].diffState positions from original-buffer to intermediate-buffer coordinates

@@ -26,14 +26,11 @@ local function call_new_active(start_kind, end_kind)
   )
 end
 
-test("new_active_session: rejects invalid start_kind", function()
+test("new_active_session: rejects invalid kinds", function()
   assert_error(
     function() call_new_active("bogus", "manual") end,
     "start_kind", "invalid start_kind must error"
   )
-end)
-
-test("new_active_session: rejects invalid end_kind", function()
   assert_error(
     function() call_new_active("manual", "bogus") end,
     "end_kind", "invalid end_kind must error"
@@ -52,7 +49,7 @@ test("session_type_from_kinds: rejects invalid pairs", function()
   assert_error(function() session_store.session_type_from_kinds("manual", "bogus") end)
 end)
 
-test("summarize: surfaces type + start_kind + end_kind for a Mark", function()
+test("summarize: surfaces type + start_kind + end_kind for active sessions", function()
   local buf = h.new_buf({ "line one", "line two" })
   session.start("kindssum")
   local rec = session_store.get_active("kindssum")
@@ -63,9 +60,7 @@ test("summarize: surfaces type + start_kind + end_kind for a Mark", function()
   assert_eq(summary.end_kind,   "manual")
   session.close("kindssum")
   pcall(vim.api.nvim_buf_delete, buf, { force = true })
-end)
 
-test("summarize: surfaces type=watch for a Watch session", function()
   h.new_buf({ "line one", "line two" })
   h.with_patch({ { config, "watch", WATCH_CFG } }, function()
     session.watch("kindssumw")

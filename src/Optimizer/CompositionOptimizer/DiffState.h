@@ -4,7 +4,7 @@
 #include <string_view>
 #include <vector>
 
-#include "Boundary/EditBoundary.h"
+#include "Boundary/TransformBoundary.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 
@@ -29,17 +29,17 @@ struct DiffState {
   std::string deletedText;   // Characters being removed (may contain \n)
   std::string insertedText;  // Characters being added (may contain \n)
 
-  // Pre-computed boundary info for EditOptimizer
+  // Pre-computed boundary info for TransformOptimizer
   // Computed once per DiffState, used for per-position safety checking
-  EditBoundary boundary;
+  TransformBoundary boundary;
 
   // Constructor with all fields
   DiffState(CursorPos begin, CursorPos end, std::string deleted,
-            std::string inserted, EditBoundary bnd)
+            std::string inserted, TransformBoundary bnd)
       : beginPos(begin), endPos(end), deletedText(std::move(deleted)),
         insertedText(std::move(inserted)), boundary(std::move(bnd)) {}
 
-  // Convert to Lines format for EditOptimizer compatibility
+  // Convert to Lines format for TransformOptimizer compatibility
   Lines deletedLines() const { return Lines::unflatten(deletedText); }
   Lines insertedLines() const { return Lines::unflatten(insertedText); }
 

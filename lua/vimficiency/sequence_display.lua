@@ -33,22 +33,22 @@ end
 
 local function section_tokens(tokens)
   local sections = {}
-  local current_motion = {}
+  local current_movement = {}
 
-  local function flush_motion()
-    if #current_motion == 0 then return end
+  local function flush_movement()
+    if #current_movement == 0 then return end
     sections[#sections + 1] = {
-      kind = "motion",
-      tokens = current_motion,
+      kind = "movement",
+      tokens = current_movement,
     }
-    current_motion = {}
+    current_movement = {}
   end
 
   local i = 1
   while i <= #tokens do
     local token = tokens[i]
     if token.kind == "change" or token.kind == "delete" then
-      flush_motion()
+      flush_movement()
       local edit_tokens = { token }
       i = i + 1
       while i <= #tokens
@@ -61,12 +61,12 @@ local function section_tokens(tokens)
         tokens = edit_tokens,
       }
     else
-      current_motion[#current_motion + 1] = token
+      current_movement[#current_movement + 1] = token
       i = i + 1
     end
   end
 
-  flush_motion()
+  flush_movement()
   return sections
 end
 

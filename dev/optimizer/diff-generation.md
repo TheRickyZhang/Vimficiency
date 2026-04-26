@@ -50,7 +50,7 @@ The adjustment loop is O(num_diffs x num_lines) -- two linear scans per position
 
 | Operation | Complexity | Relative Cost |
 |-----------|------------|---------------|
-| `calculateEditResults` (A* per edit) | O(diffs x A* nodes x ops) | ~95% |
+| `calculateTransformResults` (A* per edit) | O(diffs x A* nodes x ops) | ~95% |
 | `Myers::calculate` | O((N+M) x D) | ~3% |
 | `computeTextObjectContexts` | O(diffs x line_len^2) | ~1% |
 | **Position adjustment** | **O(diffs x num_lines)** | **<1%** |

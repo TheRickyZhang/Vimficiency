@@ -79,7 +79,7 @@ CompositionResult CompositionOptimizer::optimize(
   }
 
   // Cursor position after last edit completes
-  CursorPos resultGoalPos = ctx.edits.back().editResult.getGoalPos();
+  CursorPos resultGoalPos = ctx.edits.back().transformResult.getGoalPos();
 
   vector<Result> results;
 
@@ -177,7 +177,7 @@ CompositionResult CompositionOptimizer::optimize(
     if (nextEdit.isPureInsertion()) {
       debug("  pure insertion at", nextEdit.beginPos,
             "text='" + makePrintable(nextEdit.insertedText) + "'");
-      const EditResult& editResult = ctx.edits[editsCompleted].editResult;
+      const TransformResult& transformResult = ctx.edits[editsCompleted].transformResult;
       CursorPos insertPos = nextEdit.beginPos;
       bool isNewLineInsertion = nextEdit.isNewLineInsertion();
 
@@ -189,7 +189,7 @@ CompositionResult CompositionOptimizer::optimize(
                         pos.col >= beginCol && pos.col < endCol);
 
         if (inRange) {
-          enqueueEditTransition(s, Sequence(insertCmd), editResult.getGoalPos(),
+          enqueueEditTransition(s, Sequence(insertCmd), transformResult.getGoalPos(),
                                 editsCompleted + 1);
         } else {
           // Slice a padded subset around [pos, target] for NavOptimizer
@@ -243,10 +243,10 @@ CompositionResult CompositionOptimizer::optimize(
                    "pure insertion motion goal must be subset-local and inside target range");
             // Intentionally do not remap localGoal to full-buffer coordinates here:
             // this branch immediately appends the insertion and transitions using
-            // editResult.getGoalPos(), so intermediate motion endpoint isn't consumed.
+            // transformResult.getGoalPos(), so intermediate motion endpoint isn't consumed.
             Sequence fullSeq = movResult.getSequence();
             fullSeq.append(insertCmd);
-            enqueueEditTransition(s, fullSeq, editResult.getGoalPos(),
+            enqueueEditTransition(s, fullSeq, transformResult.getGoalPos(),
                                   editsCompleted + 1);
           }
         }
@@ -308,12 +308,12 @@ CompositionResult CompositionOptimizer::optimize(
     }
 
     // ========== EDIT vs MOVEMENT TRANSITIONS ==========
-    const EditResult& editResult = ctx.edits[editsCompleted].editResult;
-    auto editAlternatives = editResult.resultsAt(pos.line, pos.col);
+    const TransformResult& transformResult = ctx.edits[editsCompleted].transformResult;
+    auto editAlternatives = transformResult.resultsAt(pos.line, pos.col);
 
     for (const Result& res : editAlternatives) {
-      CursorPos editGoalPos = editResult.goalPosAt(pos.line, pos.col);
-      if (editResult.hasPerStartGoals()) {
+      CursorPos editGoalPos = transformResult.goalPosAt(pos.line, pos.col);
+      if (transformResult.hasPerStartGoals()) {
         editGoalPos = clampGoalPosToLines(editGoalPos, ctx.getLinesAfter(editsCompleted + 1));
       }
       debug("  edit found at", pos, "seq:", "\"" + res.getSequence().str() + "\"",
@@ -337,7 +337,7 @@ CompositionResult CompositionOptimizer::optimize(
       const BracketQuoteContext& bqContext = ctx.edits[editsCompleted].bracketQuoteContext;
       if (bqContext.line == pos.line) {
         debug("  checking text objects at col", pos.col, "on line", pos.line);
-        const EditResult& editResult = ctx.edits[editsCompleted].editResult;
+        const TransformResult& transformResult = ctx.edits[editsCompleted].transformResult;
         const string& insertedText = nextEdit.insertedText;
         bool pureDeletion = nextEdit.isPureDeletion();
         char textObjOp = pureDeletion ? 'd' : 'c';
@@ -354,7 +354,7 @@ CompositionResult CompositionOptimizer::optimize(
                 seq += "<Esc>";
               }
               debug("    quote textobj:", string(1, bqContext.quoteModifier(q)) + q);
-              enqueueEditTransition(s, Sequence(seq), editResult.getGoalPos(),
+              enqueueEditTransition(s, Sequence(seq), transformResult.getGoalPos(),
                                     editsCompleted + 1);
             }
           }
@@ -371,7 +371,7 @@ CompositionResult CompositionOptimizer::optimize(
                 seq += "<Esc>";
               }
               debug("    bracket textobj:", string(1, bqContext.bracketModifier(b)) + b);
-              enqueueEditTransition(s, Sequence(seq), editResult.getGoalPos(),
+              enqueueEditTransition(s, Sequence(seq), transformResult.getGoalPos(),
                                     editsCompleted + 1);
             }
           }
@@ -516,15 +516,15 @@ CompositionResult CompositionOptimizer::optimize(
   // Extract the persistent step breakdown and step-scoped frontier artifacts.
   std::vector<Lines> fenceposts;
   std::vector<DiffState> diffs;
-  std::vector<EditResult> editResults;
+  std::vector<TransformResult> transformResults;
   fenceposts.reserve(ctx.edits.size() + 1);
   diffs.reserve(ctx.edits.size());
-  editResults.reserve(ctx.edits.size());
+  transformResults.reserve(ctx.edits.size());
   fenceposts.push_back(initialLines);
   for (auto& e : ctx.edits) {
     fenceposts.push_back(Myers::applyDiffState(e.diffState, fenceposts.back()));
     diffs.push_back(std::move(e.diffState));
-    editResults.push_back(std::move(e.editResult));
+    transformResults.push_back(std::move(e.transformResult));
   }
 
   int numResults = static_cast<int>(results.size());
@@ -536,7 +536,7 @@ CompositionResult CompositionOptimizer::optimize(
   return {std::move(results), ctx.getStats(numResults),
           std::move(plan),
           ctx.takeExploredStates(),
-          std::move(editResults)};
+          std::move(transformResults)};
 }
 
 ostream& operator<<(ostream& os, const CompositionResult& cr) {
@@ -572,7 +572,7 @@ ostream& operator<<(ostream& os, const CompositionResult& cr) {
     if (!parsed) {
       // The optimizer can emit sequences whose grammar `parseSequence` does
       // not model. Today the only such case is the visual-selection strategy
-      // `v{motion}d` emitted from EditOptimizer.cpp (see the `Sequence
+      // `v{motion}d` emitted from TransformOptimizer.cpp (see the `Sequence
       // visualSeq("v")` site): `parseSequence` is a two-state machine
       // (normal <-> insert) and has no visual-mode state, no `v/V/<C-v>`
       // entry rule, and no selection-consuming operator rule.

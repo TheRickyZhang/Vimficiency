@@ -54,7 +54,7 @@ where Lua hands raw captured keystrokes to the FFI —
 `format_sequence` falls back to the raw string rather than surfacing
 an error, so the user always sees their keystrokes even if the
 grammar rejects them. The FFI's tokenizer exports
-(`vimficiency_tokenize_motions`, `vimficiency_tokenize_sequence`)
+(`vimficiency_tokenize_movements`, `vimficiency_tokenize_sequence`)
 return `ERROR: ...` strings on parse failure so Lua callers can
 distinguish a real error from an empty result.
 

@@ -1,5 +1,5 @@
 #include "LuaExports/Shared.h"
-#include "Interpreter/MotionInterpreter.h"
+#include "Interpreter/MovementInterpreter.h"
 #include "Interpreter/SequenceFormatting.h"
 #include "Interpreter/SequenceParser.h"
 #include <algorithm>
@@ -257,7 +257,7 @@ extern "C" {
 // parser already knows, and they'd drift. See `dev/lua/replay-precompute.md`.
 static char tokenKindChar(TokenType type) {
   switch (type) {
-    case TokenType::Motion:    return 'M';
+    case TokenType::Movement:    return 'M';
     case TokenType::Delete:    return 'D';
     case TokenType::Change:    return 'C';
     case TokenType::Visual:    return 'V';
@@ -267,26 +267,26 @@ static char tokenKindChar(TokenType type) {
   return '?';  // Unreachable — compiler should warn if a case is missed.
 }
 
-const char *vimficiency_tokenize_motions(const char *seq) {
+const char *vimficiency_tokenize_movements(const char *seq) {
   static string result_storage;
   return vimficiency::lua_exports::export_helpers::storeOptionalString(result_storage, seq, [](string_view input) {
     string owned(input);
-    return parseMotions(owned)
-        .transform([](const vector<ParsedMotion>& motions) {
-          // All motion-parser output is TokenType::Motion by construction.
+    return parseMovements(owned)
+        .transform([](const vector<ParsedMovement>& motions) {
+          // All motion-parser output is TokenType::Movement by construction.
           vector<string> rows;
           rows.reserve(motions.size());
           for (const auto& motion : motions) {
             ostringstream oss;
             oss << motion;
-            rows.push_back(string{tokenKindChar(TokenType::Motion)} + "\t" + oss.str());
+            rows.push_back(string{tokenKindChar(TokenType::Movement)} + "\t" + oss.str());
           }
           return vimficiency::lua_exports::export_helpers::joinWithTrailingNewline(rows);
         })
-        .transform_error([](const MotionParseError& error) {
+        .transform_error([](const MovementParseError& error) {
           return vimficiency::lua_exports::ExportError{
               .kind = vimficiency::lua_exports::ExportErrorKind::InvalidValue,
-              .message = formatMotionParseError(error),
+              .message = formatMovementParseError(error),
           };
         });
   });
@@ -385,7 +385,7 @@ const char *vimficiency_format_sequence(const char *seq) {
   });
 }
 
-const char *vimficiency_simulate_motions(
+const char *vimficiency_simulate_movements(
     const char *encoded_lines,
     int start_row,
     int start_col,
@@ -396,9 +396,9 @@ const char *vimficiency_simulate_motions(
         .and_then(vimficiency::lua_exports::payload::decodeLineArray)
         .and_then([&](const Lines& lines) {
           return vimficiency::lua_exports::export_helpers::requiredText(seq, "seq")
-              .transform([&](string_view motionSeq) {
+              .transform([&](string_view movementSeq) {
                 CursorPos pos(start_row, start_col);
-                const CursorPos landed = simulateMotions(pos, motionSeq, lines, NavContext());
+                const CursorPos landed = simulateMovements(pos, movementSeq, lines, NavContext());
                 return vimficiency::lua_exports::export_helpers::packInts(landed.line, landed.col);
               });
         });

@@ -7,10 +7,10 @@
 #include "DiffState.h"
 #include "JoinPlan.h"
 #include "Keyboard/Config.h"
-#include "Optimizer/EditOptimizer/EditOptimizer.h"
+#include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 #include "Types/Lines.h"
 
-EditResult computeEditResultForDiff(
+TransformResult computeTransformResultForDiff(
     const DiffState& diff,
     const CompositionOptimizerParams& params,
     const Config& config,

@@ -10,30 +10,30 @@
 
 #include "Interpreter/EditInterpreter.h"
 #include "Keyboard/Config.h"
-#include "Optimizer/EditOptimizer/EditOptimizer.h"
+#include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Optimizer/CompositionOptimizer/CompositionSearchContext.h"
 #include "Optimizer/CompositionOptimizer/DiffState.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Optimizer/NavOptimizer/NavRangeConversion.h"
-#include "Boundary/EditBoundary.h"
+#include "Boundary/TransformBoundary.h"
 #include "Boundary/NavBoundary.h"
 #include "Utils/EditTestGenerators.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/StringUtils.h"
-#include "Optimizer/EditOptimizer/EditState.h"
+#include "Optimizer/TransformOptimizer/TransformState.h"
 #include "VimCore/VimEditUtils.h"
 #include "VimCore/VimEndpointUtils.h"
 
 using namespace std;
 
 namespace {
-EditResult pureDeletionResult(
-    EditOptimizer& opt,
+TransformResult pureDeletionResult(
+    TransformOptimizer& opt,
     const Lines& initialLines,
-    EditBoundary boundary,
-    EditOptimizerParams params = {}) {
+    TransformBoundary boundary,
+    TransformOptimizerParams params = {}) {
   return opt.optimizePureDeletion(initialLines, boundary, params);
 }
 
@@ -139,15 +139,15 @@ private:
 class DebugTest : public ::testing::Test {
 protected:
   Config config = Config::uniform();
-  EditOptimizerParams params = EditOptimizerParams{}.withMaxNodesPopped(100000);
+  TransformOptimizerParams params = TransformOptimizerParams{}.withMaxNodesPopped(100000);
 
-  EditOptimizer makeOptimizer() {
-    return EditOptimizer(config);
+  TransformOptimizer makeOptimizer() {
+    return TransformOptimizer(config);
   }
 
   // Create boundary for full buffer deletion (no constraints)
-  EditBoundary makeFullBufferBoundary(const Lines& source) {
-    return EditBoundary(source, CursorPos(0, 0), source.endPos());
+  TransformBoundary makeFullBufferBoundary(const Lines& source) {
+    return TransformBoundary(source, CursorPos(0, 0), source.endPos());
   }
 };
 
@@ -168,7 +168,7 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
   CursorPos editEnd(4, 22);
 
   Lines editRegion = buffer.getSpan(editBegin, editEnd);
-  EditBoundary boundary(buffer, editBegin, editEnd);
+  TransformBoundary boundary(buffer, editBegin, editEnd);
 
   // Reconstruct effective lines
   Lines eff = editRegion;
@@ -183,9 +183,9 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
   }
 
   // Run optimizer and get results, then replay each result to find the crashing one
-  EditOptimizer opt(config);
+  TransformOptimizer opt(config);
   int mr = max(10, editRegion.totalPositions() / 4);
-  EditOptimizerParams p = EditOptimizerParams{}.withMaxResults(mr);
+  TransformOptimizerParams p = TransformOptimizerParams{}.withMaxResults(mr);
 
   // The crash is in suffix cache replay (replayAndCacheSuffix).
   // Let's try to find which sequence fails by replaying results manually.
@@ -260,7 +260,7 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
   // First, run a pure-deletion variant (no suffix cache) to check if it crashes.
   cerr << "\n--- Running pure deletion ---" << endl;
   {
-    EditOptimizer opt2(config);
+    TransformOptimizer opt2(config);
     auto result = pureDeletionResult(opt2, editRegion, boundary, p);
     cerr << "Pure deletion OK, results=" << result.resultCount() << endl;
 
@@ -294,7 +294,7 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
 
   cerr << "\n--- Running full optimizer (edit with goal) ---" << endl;
   try {
-    auto result = opt.optimizeEdit(editRegion, goal, boundary, p);
+    auto result = opt.optimizeTransform(editRegion, goal, boundary, p);
     cerr << "Full optimizer OK, results=" << result.resultCount() << endl;
   } catch (const exception& ex) {
     cerr << "OPTIMIZER CRASH: " << ex.what() << endl;
@@ -303,9 +303,9 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
   // Test without counted edits: use minCountRepeat=999 to disable
   cerr << "\n--- Without counted edits (minCountRepeat=999) ---" << endl;
   try {
-    EditOptimizer opt3(config);
-    EditOptimizerParams p3 = EditOptimizerParams{}.withMaxResults(mr).withMinCountRepeat(999);
-    auto result = opt3.optimizeEdit(editRegion, goal, boundary, p3);
+    TransformOptimizer opt3(config);
+    TransformOptimizerParams p3 = TransformOptimizerParams{}.withMaxResults(mr).withMinCountRepeat(999);
+    auto result = opt3.optimizeTransform(editRegion, goal, boundary, p3);
     cerr << "No-counted OK, results=" << result.resultCount() << endl;
   } catch (const exception& ex) {
     cerr << "No-counted CRASH: " << ex.what() << endl;
@@ -356,16 +356,16 @@ TEST_F(DebugTest, DISABLED_InvestigateMissingTypedCharAfterSubstitute) {
   ASSERT_EQ(diffs.size(), 1u);
   const auto& diff = diffs[0];
 
-  EditOptimizer editOpt(config);
-  EditOptimizerParams editParams{};
+  TransformOptimizer editOpt(config);
+  TransformOptimizerParams editParams{};
   editParams.withMaxResults(20).withMaxNodesPopped(10000).withMaxMultiplePerStartPosition(5);
-  auto editResult = editOpt.optimizeEdit(
+  auto transformResult = editOpt.optimizeTransform(
       diff.deletedLines(), diff.insertedLines(), diff.boundary, editParams,
       diff.beginPos.line, diff.beginPos.col, goalPos);
 
-  cerr << "\n=== EditResult At Diff Begin ===" << endl;
-  cerr << "edit goalPos=" << editResult.getGoalPos() << endl;
-  auto localResults = editResult.resultsAt(diff.beginPos.line, diff.beginPos.col);
+  cerr << "\n=== TransformResult At Diff Begin ===" << endl;
+  cerr << "edit goalPos=" << transformResult.getGoalPos() << endl;
+  auto localResults = transformResult.resultsAt(diff.beginPos.line, diff.beginPos.col);
   auto oracle = make_unique<NeovimOracle>();
   for (size_t i = 0; i < localResults.size(); i++) {
     const string& rawSeq = localResults[i].getSequence().str();
@@ -485,9 +485,9 @@ TEST_F(DebugTest, DISABLED_InvestigateCountedWordEdit) {
   // Step 6: Now run optimizer and see what it produces
   cerr << "\n--- Optimizer output ---" << endl;
   {
-    EditOptimizer opt(config);
-    EditBoundary boundary(fullBuffer, CursorPos(0, 1), CursorPos(3, 3));  // prefix="a", suffix="bd"
-    EditResult res = pureDeletionResult(opt, editRegion, boundary, params);
+    TransformOptimizer opt(config);
+    TransformBoundary boundary(fullBuffer, CursorPos(0, 1), CursorPos(3, 3));  // prefix="a", suffix="bd"
+    TransformResult res = pureDeletionResult(opt, editRegion, boundary, params);
     int idx = 0;
     for (int line = 0; line < static_cast<int>(editRegion.size()); line++) {
       int cols = editRegion[line].empty() ? 1 : static_cast<int>(editRegion[line].size());
@@ -542,7 +542,7 @@ TEST_F(DebugTest, DISABLED_DiffRegionInvestigation) {
   printDiffs({"aaa", "bbb", "ccc"}, {"xxx", "yyy", "ccc"},
              "Matching suffix lines only");
 
-  // Case 4: Sub-line prefix match (interesting for EditOptimizer trimming)
+  // Case 4: Sub-line prefix match (interesting for TransformOptimizer trimming)
   printDiffs({"hello world"}, {"hello earth"},
              "Sub-line prefix match");
 
@@ -635,11 +635,11 @@ TEST_F(DebugTest, DISABLED_Placeholder) {
 
     // Edit optimizer for each diff
     Config config = Config::uniform();
-    EditOptimizer editOpt(config);
+    TransformOptimizer editOpt(config);
     for (size_t i = 0; i < diffs.size(); i++) {
       const auto& d = diffs[i];
       if (d.isPureInsertion()) continue;
-      EditResult result = editOpt.optimizeEdit(
+      TransformResult result = editOpt.optimizeTransform(
           d.deletedLines(), d.insertedLines(), d.boundary, {},
           d.beginPos.line, d.beginPos.col, d.beginPos);
       cerr << "  Edit[" << i << "] goalPos=(" << result.getGoalPos().line << "," << result.getGoalPos().col
@@ -682,8 +682,8 @@ TEST_F(DebugTest, DISABLED_Placeholder) {
            << endl;
 
       if (!d.isPureInsertion()) {
-        EditOptimizer editOpt(config);
-        EditResult result = editOpt.optimizeEdit(
+        TransformOptimizer editOpt(config);
+        TransformResult result = editOpt.optimizeTransform(
             d.deletedLines(), d.insertedLines(), d.boundary, {},
             d.beginPos.line, d.beginPos.col, d.beginPos);
         int validCount = 0;
@@ -810,9 +810,9 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
            << endl;
 
       if (!d.isPureInsertion()) {
-        EditOptimizer editOpt(config);
-        EditOptimizerParams params = EditOptimizerParams{}.withMaxResults(INT_MAX);
-        EditResult result = editOpt.optimizeEdit(
+        TransformOptimizer editOpt(config);
+        TransformOptimizerParams params = TransformOptimizerParams{}.withMaxResults(INT_MAX);
+        TransformResult result = editOpt.optimizeTransform(
             d.deletedLines(), d.insertedLines(), d.boundary, params,
             d.beginPos.line, d.beginPos.col, d.beginPos);
         for (size_t j = 0; j < result.resultCount(); j++) {
@@ -884,15 +884,15 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJoinLinesResidual) {
 
   CursorPos initialPos(0, 3);  // start of edit region in full buffer
   CursorPos endPos = fullBuffer.endPos();  // end of buffer
-  EditBoundary boundary(fullBuffer, initialPos, endPos);
+  TransformBoundary boundary(fullBuffer, initialPos, endPos);
 
   cerr << "  prefix='" << boundary.prefix() << "' suffix='" << boundary.suffix() << "'" << endl;
   cerr << "  editRegion=" << editRegion << " goalLines=" << goalLines << endl;
 
   Config config = Config::uniform();
-  EditOptimizer opt(config);
-  EditOptimizerParams params = EditOptimizerParams{}.withMaxResults(INT_MAX);
-  EditResult res = opt.optimizeEdit(editRegion, goalLines, boundary, params);
+  TransformOptimizer opt(config);
+  TransformOptimizerParams params = TransformOptimizerParams{}.withMaxResults(INT_MAX);
+  TransformResult res = opt.optimizeTransform(editRegion, goalLines, boundary, params);
 
   int idx = 0;
   for (int r = 0; r < static_cast<int>(editRegion.size()); r++) {
@@ -1526,22 +1526,22 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
          << endl;
   }
 
-  cerr << "\n========== STEP 2: EditOptimizer for each diff ==========" << endl;
-  EditOptimizer editOpt(config);
+  cerr << "\n========== STEP 2: TransformOptimizer for each diff ==========" << endl;
+  TransformOptimizer editOpt(config);
   for (size_t i = 0; i < diffs.size(); i++) {
     const auto& d = diffs[i];
     if (d.isPureInsertion()) {
-      cerr << "  Diff " << i << ": pure insertion, skipping EditOptimizer" << endl;
+      cerr << "  Diff " << i << ": pure insertion, skipping TransformOptimizer" << endl;
       continue;
     }
-    EditResult editResult = editOpt.optimizeEdit(
+    TransformResult transformResult = editOpt.optimizeTransform(
         d.deletedLines(), d.insertedLines(), d.boundary, {},
         d.beginPos.line, d.beginPos.col, d.beginPos);
 
-    cerr << "  Diff " << i << ": EditResult has " << editResult.resultCount() << " positions" << endl;
+    cerr << "  Diff " << i << ": TransformResult has " << transformResult.resultCount() << " positions" << endl;
 
-    for (size_t j = 0; j < editResult.resultCount(); j++) {
-      const auto& bucket = editResult.getResults()[j];
+    for (size_t j = 0; j < transformResult.resultCount(); j++) {
+      const auto& bucket = transformResult.getResults()[j];
       if (!bucket.empty()) {
         const auto& r = bucket[0];
         cerr << "    pos " << j << ": seq='" << r.getSequence() << "' cost=" << r.getCost() << endl;
@@ -1553,7 +1553,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     // Test resultAt for various cursor positions
     cerr << "  resultAt tests:" << endl;
     for (int col = 0; col < static_cast<int>(initial[0].size()); col++) {
-      const Result* r = editResult.resultAt(0, col);
+      const Result* r = transformResult.resultAt(0, col);
       if (r) {
         cerr << "    col=" << col << " -> valid result" << endl;
       }
@@ -1613,8 +1613,8 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
       const auto& d = ctx.edits[i].diffState;
       cerr << "  diff[" << i << "]: begin=(" << d.beginPos.line << "," << d.beginPos.col
            << ") end=(" << d.endPos.line << "," << d.endPos.col << ")" << endl;
-      const auto& er = ctx.edits[i].editResult;
-      cerr << "    editResult: " << er.resultCount() << " positions, goalPos=("
+      const auto& er = ctx.edits[i].transformResult;
+      cerr << "    transformResult: " << er.resultCount() << " positions, goalPos=("
            << er.getGoalPos().line << "," << er.getGoalPos().col << ")" << endl;
     }
 
@@ -1698,8 +1698,8 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
         continue; // skip insertion handling for this trace
       }
 
-      const EditResult& editResult = ctx.edits[editsCompleted].editResult;
-      const Result* editRes = editResult.resultAt(pos.line, pos.col);
+      const TransformResult& transformResult = ctx.edits[editsCompleted].transformResult;
+      const Result* editRes = transformResult.resultAt(pos.line, pos.col);
 
       cerr << "  POP " << popCount << ": pos=(" << pos.line << "," << pos.col
            << ") edits=" << editsCompleted << " seq='" << s.getSequence()
@@ -1710,7 +1710,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
         // Edit transition
         cerr << "    -> EDIT: seq='" << editRes->getSequence() << "'" << endl;
         enqueueEditTransition(s, editRes->getSequence(),
-                              editResult.getGoalPos(), editsCompleted + 1);
+                              transformResult.getGoalPos(), editsCompleted + 1);
       } else {
         // Motion search
         int editEndLine = nextEdit.endPos.line + (nextEdit.endPos.col > 0 ? 1 : 0);
@@ -1788,7 +1788,7 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
   // Step 2: Edit results for each diff
   cerr << "\n=== Step 2: EditResults per diff ===" << endl;
   for (int i = 0; i < ctx.totalEdits(); i++) {
-    const auto& er = ctx.edits[i].editResult;
+    const auto& er = ctx.edits[i].transformResult;
     const auto& d = ctx.edits[i].diffState;
     cerr << "  edit[" << i << "] goalPos=(" << er.getGoalPos().line << "," << er.getGoalPos().col
          << ") resultCount=" << er.resultCount() << endl;
@@ -1910,13 +1910,13 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
     }
 
     // Edit transition
-    const EditResult& editResult = ctx.edits[editsCompleted].editResult;
-    const Result* res = editResult.resultAt(pos.line, pos.col);
+    const TransformResult& transformResult = ctx.edits[editsCompleted].transformResult;
+    const Result* res = transformResult.resultAt(pos.line, pos.col);
 
     if (res) {
       cerr << "    -> EDIT: '" << res->getSequence() << "' cost=" << res->getCost()
-           << " -> goalPos=(" << editResult.getGoalPos().line << "," << editResult.getGoalPos().col << ")" << endl;
-      enqueueEditTransition(s, res->getSequence(), editResult.getGoalPos(), editsCompleted + 1);
+           << " -> goalPos=(" << transformResult.getGoalPos().line << "," << transformResult.getGoalPos().col << ")" << endl;
+      enqueueEditTransition(s, res->getSequence(), transformResult.getGoalPos(), editsCompleted + 1);
     } else {
       cerr << "    -> NO EDIT at pos, searching motions..." << endl;
 
@@ -2097,7 +2097,7 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
     cerr << "    insertedLines: " << d.insertedLines() << endl;
   }
 
-  // Step 2: CompositionSearchContext (tests calculateLinesAfterDiffs + calculateEditResults)
+  // Step 2: CompositionSearchContext (tests calculateLinesAfterDiffs + calculateTransformResults)
   cerr << "\n=== CompositionSearchContext ===" << endl;
   CompositionOptimizerParams compParams{};
   CompositionSearchContext ctx(initial, initialPos, goal, "",
@@ -2118,22 +2118,22 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
   }
   cerr << "  goalBuffer: " << ctx.getLinesAfter(ctx.totalEdits()) << endl;
 
-  // Step 3: Try each edit independently through EditOptimizer
-  cerr << "\n=== EditOptimizer per diff ===" << endl;
-  EditOptimizer editOpt(config);
+  // Step 3: Try each edit independently through TransformOptimizer
+  cerr << "\n=== TransformOptimizer per diff ===" << endl;
+  TransformOptimizer editOpt(config);
   for (int i = 0; i < ctx.totalEdits(); i++) {
     const auto& d = ctx.edits[i].diffState;
     if (d.isPureInsertion()) {
       cerr << "  diff[" << i << "]: pure insertion, skip" << endl;
       continue;
     }
-    cerr << "  diff[" << i << "]: calling optimizeEdit..." << endl;
+    cerr << "  diff[" << i << "]: calling optimizeTransform..." << endl;
     cerr << "    deletedLines: " << d.deletedLines() << endl;
     cerr << "    insertedLines: " << d.insertedLines() << endl;
     cerr << "    boundary prefix='" << d.boundary.prefix() << "' suffix='" << d.boundary.suffix() << "'" << endl;
     cerr << "    lineBase=" << d.beginPos.line << " colBase=" << d.beginPos.col << endl;
 
-    EditResult result = editOpt.optimizeEdit(
+    TransformResult result = editOpt.optimizeTransform(
         d.deletedLines(), d.insertedLines(), d.boundary, {},
         d.beginPos.line, d.beginPos.col, d.beginPos);
 
@@ -2162,7 +2162,7 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
       cerr << "  Edit region now starts at (1,0), no prefix" << endl;
       cerr << "  Buffer before edit: " << ctx.getLinesAfter(0) << endl;
 
-      // If EditOptimizer transforms ["bbb","ccc"] → [" bbb ccc?"],
+      // If TransformOptimizer transforms ["bbb","ccc"] → [" bbb ccc?"],
       // what does the buffer look like?
       Lines beforeEdit = ctx.getLinesAfter(0);
       // The edit replaces lines 1-2 content with the single line " bbb ccc?"
@@ -2223,24 +2223,24 @@ TEST_F(DebugTest, InvestigateHumanApproval1) {
 }
 
 // =============================================================================
-// EditOptimizer for multi-line diff: why only 1 starting position finds a result
+// TransformOptimizer for multi-line diff: why only 1 starting position finds a result
 // =============================================================================
 
 TEST_F(DebugTest, SuffixCacheComparison) {
-  // Compare standard vs suffix-cached EditOptimizer on the Switzerland -> Florida case
+  // Compare standard vs suffix-cached TransformOptimizer on the Switzerland -> Florida case
   Lines deletedLines = {"Switzerland", "Inconspicuous, even"};
   Lines insertedLines = {"Florida"};
 
   Lines bufferAtEdit = {"I saw a pig in barn in Switzerland", "Inconspicuous, even"};
   CursorPos editBeginPos(0, 23);
   CursorPos editEndPos(1, 19);
-  EditBoundary boundary(bufferAtEdit, editBeginPos, editEndPos);
+  TransformBoundary boundary(bufferAtEdit, editBeginPos, editEndPos);
 
-  EditOptimizer editOpt(config);
+  TransformOptimizer editOpt(config);
 
   // Standard search
-  cerr << "\n=== Standard optimizeEdit ===" << endl;
-  EditResult stdResult = editOpt.optimizeEdit(
+  cerr << "\n=== Standard optimizeTransform ===" << endl;
+  TransformResult stdResult = editOpt.optimizeTransform(
       deletedLines, insertedLines, boundary, params,
       editBeginPos.line, editBeginPos.col, CursorPos(0, 29));
 
@@ -2261,8 +2261,8 @@ TEST_F(DebugTest, SuffixCacheComparison) {
   }
 
   // Suffix-cached search
-  cerr << "\n=== optimizeEdit (suffix cached) ===" << endl;
-  EditResult cacheResult = editOpt.optimizeEdit(
+  cerr << "\n=== optimizeTransform (suffix cached) ===" << endl;
+  TransformResult cacheResult = editOpt.optimizeTransform(
       deletedLines, insertedLines, boundary, params,
       editBeginPos.line, editBeginPos.col, CursorPos(0, 29));
 
@@ -2316,9 +2316,9 @@ TEST_F(DebugTest, CcAutoindentCollapse) {
   Lines initial = {"    indented"};
   Lines goal = {"replaced"};
 
-  EditBoundary boundary(initial, CursorPos(0, 0), initial.endPos());
+  TransformBoundary boundary(initial, CursorPos(0, 0), initial.endPos());
 
-  EditResult result = makeOptimizer().optimizeEdit(
+  TransformResult result = makeOptimizer().optimizeTransform(
       initial, goal, boundary, params,
       0, 0, CursorPos(0, 0));
 
@@ -2359,9 +2359,9 @@ TEST_F(DebugTest, CcAutoindentCollapse) {
   cerr << "\n=== Multi-line indented test ===" << endl;
   Lines initial2 = {"    hello", "        world"};
   Lines goal2 = {"replaced"};
-  EditBoundary boundary2(initial2, CursorPos(0, 0), initial2.endPos());
+  TransformBoundary boundary2(initial2, CursorPos(0, 0), initial2.endPos());
 
-  EditResult result2 = makeOptimizer().optimizeEdit(
+  TransformResult result2 = makeOptimizer().optimizeTransform(
       initial2, goal2, boundary2, params,
       0, 0, CursorPos(0, 0));
 
@@ -2384,7 +2384,7 @@ TEST_F(DebugTest, CcAutoindentCollapse) {
   EXPECT_EQ(passed2, total2) << "Multi-line: " << passed2 << "/" << total2 << " passed";
 }
 
-TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
+TEST_F(DebugTest, InvestigateTransformOptimizerMultiLineDiff) {
   // Diff 3 from TelescopingChanges:
   //   deleted: "Switzerland\nInconspicuous, even" (2 lines)
   //   inserted: "Florida" (1 line)
@@ -2402,21 +2402,21 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
   CursorPos editBeginPos(0, 23);  // 'S' of Switzerland
   CursorPos editEndPos(1, 19);    // one past 'n' of even (half-open, end of buffer content)
 
-  EditBoundary boundary(bufferAtEdit3, editBeginPos, editEndPos);
-  cerr << "\n=== EditBoundary ===" << endl;
+  TransformBoundary boundary(bufferAtEdit3, editBeginPos, editEndPos);
+  cerr << "\n=== TransformBoundary ===" << endl;
   cerr << "  prefix: '" << boundary.prefix() << "' (" << boundary.prefix().size() << " chars)" << endl;
   cerr << "  suffix: '" << boundary.suffix() << "' (" << boundary.suffix().size() << " chars)" << endl;
   cerr << "  hasLinesAbove: " << boundary.hasLinesAbove() << endl;
   cerr << "  hasLinesBelow: " << boundary.hasLinesBelow() << endl;
 
-  // Run EditOptimizer with default params
-  cerr << "\n=== EditOptimizer (default params) ===" << endl;
-  EditOptimizer editOpt(config);
-  EditOptimizerParams defaultParams;
+  // Run TransformOptimizer with default params
+  cerr << "\n=== TransformOptimizer (default params) ===" << endl;
+  TransformOptimizer editOpt(config);
+  TransformOptimizerParams defaultParams;
   cerr << "  maxNodesPopped=" << defaultParams.maxNodesPopped
        << " maxResults=" << defaultParams.maxResults << endl;
 
-  EditResult result = editOpt.optimizeEdit(
+  TransformResult result = editOpt.optimizeTransform(
       deletedLines, insertedLines, boundary, defaultParams,
       editBeginPos.line, editBeginPos.col, CursorPos(0, 29));
 
@@ -2438,11 +2438,11 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
   cerr << "  valid: " << validCount << " / " << result.resultCount() << endl;
 
   // Run with much higher budget
-  cerr << "\n=== EditOptimizer (500k pops) ===" << endl;
-  EditOptimizerParams bigParams = EditOptimizerParams{}
+  cerr << "\n=== TransformOptimizer (500k pops) ===" << endl;
+  TransformOptimizerParams bigParams = TransformOptimizerParams{}
       .withMaxNodesPopped(500000);
 
-  EditResult bigResult = editOpt.optimizeEdit(
+  TransformResult bigResult = editOpt.optimizeTransform(
       deletedLines, insertedLines, boundary, bigParams,
       editBeginPos.line, editBeginPos.col, CursorPos(0, 29));
 
@@ -2464,10 +2464,10 @@ TEST_F(DebugTest, InvestigateEditOptimizerMultiLineDiff) {
   cerr << "  valid: " << bigValidCount << " / " << bigResult.resultCount() << endl;
 
   // Run with Dijkstra mode (no heuristic bias)
-  cerr << "\n=== EditOptimizer (Dijkstra) ===" << endl;
-  EditOptimizerParams dijkstraParams = EditOptimizerParams::dijkstra(30, 500000);
+  cerr << "\n=== TransformOptimizer (Dijkstra) ===" << endl;
+  TransformOptimizerParams dijkstraParams = TransformOptimizerParams::dijkstra(30, 500000);
 
-  EditResult dijResult = editOpt.optimizeEdit(
+  TransformResult dijResult = editOpt.optimizeTransform(
       deletedLines, insertedLines, boundary, dijkstraParams,
       editBeginPos.line, editBeginPos.col, CursorPos(0, 29));
 
@@ -2597,7 +2597,7 @@ TEST_F(NeovimOracleDebug, InvestigateLazyFailures) {
 // =============================================================================
 // This validates the replay-based suffix cache: when we replay a search
 // sequence via Edit::applyEdit, the intermediate (lines, pos) must match
-// what the optimizer's EditState transitions produce.
+// what the optimizer's TransformState transitions produce.
 
 // Helper: apply a single command via Edit::applyEdit
 static pair<Lines, CursorPos> applyViaEdit(const Lines& lines, CursorPos pos, string_view cmd) {
@@ -2612,7 +2612,7 @@ static pair<Lines, CursorPos> applyViaEdit(const Lines& lines, CursorPos pos, st
 
 TEST_F(DebugTest, ReplayVerification_Charwise) {
   // Test charwise deletions: Edit::applyEdit vs VimCore::deleteRange
-  // (EditState::afterDeletion delegates to VimCore::deleteRange)
+  // (TransformState::afterDeletion delegates to VimCore::deleteRange)
   Lines buf = {"hello world", "foo bar"};
 
   // x from (0,5): delete single char (space)
@@ -2645,7 +2645,7 @@ TEST_F(DebugTest, ReplayVerification_Charwise) {
 }
 
 TEST_F(DebugTest, ReplayVerification_Linewise) {
-  // Test dd: Edit::applyEdit vs EditState::afterLinewiseDeletion
+  // Test dd: Edit::applyEdit vs TransformState::afterLinewiseDeletion
   Lines buf = {"first line", "second line", "third line"};
 
   // dd from line 0
@@ -2653,8 +2653,8 @@ TEST_F(DebugTest, ReplayVerification_Linewise) {
     CursorPos start(0, 3);
     auto [editLines, editPos] = applyViaEdit(buf, start, "dd");
 
-    EditState state(buf, start, 0, 0.0);
-    EditState after = state.afterLinewiseDeletion(0);
+    TransformState state(buf, start, 0, 0.0);
+    TransformState after = state.afterLinewiseDeletion(0);
     EXPECT_EQ(editLines, after.getLines()) << "dd line 0 lines mismatch";
     EXPECT_EQ(editPos.line, after.getPos().line) << "dd line 0 pos.line mismatch";
     EXPECT_EQ(editPos.col, after.getPos().col) << "dd line 0 pos.col mismatch";
@@ -2666,8 +2666,8 @@ TEST_F(DebugTest, ReplayVerification_Linewise) {
     CursorPos start(1, 5);
     auto [editLines, editPos] = applyViaEdit(buf, start, "dd");
 
-    EditState state(buf, start, 0, 0.0);
-    EditState after = state.afterLinewiseDeletion(1);
+    TransformState state(buf, start, 0, 0.0);
+    TransformState after = state.afterLinewiseDeletion(1);
     EXPECT_EQ(editLines, after.getLines()) << "dd line 1 lines mismatch";
     EXPECT_EQ(editPos.line, after.getPos().line) << "dd line 1 pos.line mismatch";
     EXPECT_EQ(editPos.col, after.getPos().col) << "dd line 1 pos.col mismatch";
@@ -2679,8 +2679,8 @@ TEST_F(DebugTest, ReplayVerification_Linewise) {
     CursorPos start(2, 0);
     auto [editLines, editPos] = applyViaEdit(buf, start, "dd");
 
-    EditState state(buf, start, 0, 0.0);
-    EditState after = state.afterLinewiseDeletion(2);
+    TransformState state(buf, start, 0, 0.0);
+    TransformState after = state.afterLinewiseDeletion(2);
     EXPECT_EQ(editLines, after.getLines()) << "dd last line lines mismatch";
     EXPECT_EQ(editPos.line, after.getPos().line) << "dd last line pos.line mismatch";
     EXPECT_EQ(editPos.col, after.getPos().col) << "dd last line pos.col mismatch";
@@ -2693,15 +2693,15 @@ TEST_F(DebugTest, ReplayVerification_Linewise) {
     CursorPos start(1, 1, 10);  // col=1 but targetCol=10
     auto [editLines, editPos] = applyViaEdit(buf2, start, "dd");
 
-    EditState state(buf2, start, 0, 0.0);
-    EditState after = state.afterLinewiseDeletion(1);
+    TransformState state(buf2, start, 0, 0.0);
+    TransformState after = state.afterLinewiseDeletion(1);
     EXPECT_EQ(editLines, after.getLines()) << "dd targetCol lines mismatch";
     EXPECT_EQ(editPos, after.getPos()) << "dd targetCol pos mismatch";
   }
 }
 
 TEST_F(DebugTest, ReplayVerification_Join) {
-  // Test J/gJ: Edit::applyEdit vs EditState::afterJoin
+  // Test J/gJ: Edit::applyEdit vs TransformState::afterJoin
   Lines buf = {"hello  ", "  world", "end"};
 
   // J (add space)
@@ -2709,8 +2709,8 @@ TEST_F(DebugTest, ReplayVerification_Join) {
     CursorPos start(0, 2);
     auto [editLines, editPos] = applyViaEdit(buf, start, "J");
 
-    EditState state(buf, start, 0, 0.0);
-    EditState after = state.afterJoin(true);
+    TransformState state(buf, start, 0, 0.0);
+    TransformState after = state.afterJoin(true);
     EXPECT_EQ(editLines, after.getLines()) << "J lines mismatch";
     EXPECT_EQ(editPos, after.getPos()) << "J pos mismatch";
   }
@@ -2720,8 +2720,8 @@ TEST_F(DebugTest, ReplayVerification_Join) {
     CursorPos start(0, 2);
     auto [editLines, editPos] = applyViaEdit(buf, start, "gJ");
 
-    EditState state(buf, start, 0, 0.0);
-    EditState after = state.afterJoin(false);
+    TransformState state(buf, start, 0, 0.0);
+    TransformState after = state.afterJoin(false);
     EXPECT_EQ(editLines, after.getLines()) << "gJ lines mismatch";
     EXPECT_EQ(editPos, after.getPos()) << "gJ pos mismatch";
   }
@@ -2732,8 +2732,8 @@ TEST_F(DebugTest, ReplayVerification_Join) {
     CursorPos start(0, 2);
     auto [editLines, editPos] = applyViaEdit(buf2, start, "J");
 
-    EditState state(buf2, start, 0, 0.0);
-    EditState after = state.afterJoin(true);
+    TransformState state(buf2, start, 0, 0.0);
+    TransformState after = state.afterJoin(true);
     EXPECT_EQ(editLines, after.getLines()) << "J empty lines mismatch";
     EXPECT_EQ(editPos, after.getPos()) << "J empty pos mismatch";
   }
@@ -2797,13 +2797,13 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceDeleteEntireLineIter20) {
          << endl;
 
     if (!d.isPureInsertion()) {
-      EditOptimizer editOpt(config);
-      EditOptimizerParams eparams;
+      TransformOptimizer editOpt(config);
+      TransformOptimizerParams eparams;
 
       // Check if pure deletion
       if (d.insertedText.empty()) {
         cerr << "    Pure deletion" << endl;
-        EditResult eres = editOpt.optimizeEdit(
+        TransformResult eres = editOpt.optimizeTransform(
             d.deletedLines(), {}, d.boundary, eparams);
         for (size_t j = 0; j < eres.resultCount(); j++) {
           const auto& bucket = eres.getResults()[j];
@@ -2882,7 +2882,7 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceJoinLinesResidualEditOpt) {
     // Build boundary from full buffer perspective
     CursorPos beginPos(0, 3);  // After "aaa"
     CursorPos endPos = initial.endPos();
-    EditBoundary boundary(initial, beginPos, endPos);
+    TransformBoundary boundary(initial, beginPos, endPos);
     cerr << "  prefix='" << boundary.prefix() << "' suffix='" << boundary.suffix() << "'" << endl;
     cerr << "  hasLinesAbove=" << boundary.hasLinesAbove()
          << " hasLinesBelow=" << boundary.hasLinesBelow()
@@ -2895,8 +2895,8 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceJoinLinesResidualEditOpt) {
     Lines insertedLines = {" bbb ccc"};
 
     Config config = Config::uniform();
-    EditOptimizer opt(config);
-    EditResult res = opt.optimizeEdit(deletedLines, insertedLines, boundary, {});
+    TransformOptimizer opt(config);
+    TransformResult res = opt.optimizeTransform(deletedLines, insertedLines, boundary, {});
 
     cerr << "  results: " << res.resultCount() << " total" << endl;
     int idx = 0;
@@ -2938,7 +2938,7 @@ protected:
 unique_ptr<NeovimOracle> NeovimOracleDebugSentence::oracle;
 
 TEST_F(NeovimOracleDebugSentence, DISABLED_SentenceDeleteDivergence) {
-  // Failing case from EditOptimizerOutputCorrectness.SingleLine_Change iter=8
+  // Failing case from TransformOptimizerOutputCorrectness.SingleLine_Change iter=8
   // Source: "c bedf.", pos [0,1], full sequence "d)cge ddfecdb<Esc>"
   Lines source = {"c bedf."};
 
@@ -3071,7 +3071,7 @@ TEST_F(DebugTest, DISABLED_ReproduceSmallEmbeddedSentenceCrash) {
 
   Lines editRegion = {".df.", ".ee  "};
   Lines fullBuffer = {"be.df.", ".ee  cb"};
-  EditBoundary boundary(fullBuffer, CursorPos(0, 2), CursorPos(1, 5));
+  TransformBoundary boundary(fullBuffer, CursorPos(0, 2), CursorPos(1, 5));
 
   cerr << "editRegion=" << editRegion << endl;
   cerr << "boundary: hasPrefix=" << boundary.hasPrefix()

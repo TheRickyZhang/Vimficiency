@@ -23,7 +23,7 @@ local fields = {
 
   sequence_display = {
     tokenize = true,   -- true: add spaces between parsed tokens (`ciw foo <Esc>`); false: keep raw adjacency (`ciwfoo<Esc>`)
-    sectionize = true, -- true: split motion/edit phases onto separate display lines; false: keep one flat display line
+    sectionize = true, -- true: split movement/edit phases onto separate display lines; false: keep one flat display line
   },
 
   -- Per-feature UI-level preferences (not optimizer tuning — those live
@@ -34,7 +34,7 @@ local fields = {
   explore = {
     display_mode = "above",                        -- "off" | "highlight" | "inplace" | "above" | "below"
     recommendation_count = 5,                      -- how many recs to surface; 1..10
-    allow_multiple_motions_per_position = false,   -- false → motion recs dedup by landing cell
+    allow_multiple_movements_per_position = false,   -- false → movement recs dedup by landing cell
     allow_multiple_edits_per_position = false,     -- false → edit recs dedup by command shape
     show_user_typed = true,                        -- include the user's captured typed sequence
     show_result_count = 1,                         -- how many `optimal_results` to display alongside Explored

@@ -8,7 +8,7 @@
 #include <gtest/gtest.h>
 
 #include "Keyboard/PhysicalKeys.h"
-#include "Keyboard/ToKeys/MotionToKeys.h"
+#include "Keyboard/ToKeys/MovementToKeys.h"
 #include "Keyboard/Config.h"
 #include "Effort/RunningEffort.h"
 

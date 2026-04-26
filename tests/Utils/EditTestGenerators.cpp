@@ -37,8 +37,8 @@ CursorPos fromFlatIndex(int flatIdx, const Lines& lines) {
 // EmbeddedEditRegion Methods
 // =============================================================================
 
-EditBoundary EmbeddedEditRegion::makeBoundary() const {
-  return EditBoundary(fullBuffer, {startLine, startCol}, {endLine, endCol});
+TransformBoundary EmbeddedEditRegion::makeBoundary() const {
+  return TransformBoundary(fullBuffer, {startLine, startCol}, {endLine, endCol});
 }
 
 CursorPos EmbeddedEditRegion::toFullBufferPos(const CursorPos& editPos) const {

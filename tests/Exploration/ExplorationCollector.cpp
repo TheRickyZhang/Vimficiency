@@ -16,14 +16,14 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Boundary/EditBoundary.h"
+#include "Boundary/TransformBoundary.h"
 #include "Boundary/NavBoundary.h"
 #include "Exploration/SequenceChunker.h"
 #include "Optimizer/CompositionOptimizer/DiffState.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
-#include "Optimizer/EditOptimizer/EditOptimizer.h"
-#include "Optimizer/EditOptimizer/EditOptimizerParams.h"
+#include "Optimizer/TransformOptimizer/TransformOptimizer.h"
+#include "Optimizer/TransformOptimizer/TransformOptimizerParams.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Optimizer/NavOptimizer/NavOptimizerParams.h"
 #include "Optimizer/SearchStats.h"
@@ -35,11 +35,11 @@ using namespace std;
 
 static Config config = Config::uniform();
 
-static EditResult pureDeletionResult(
-    EditOptimizer& opt,
+static TransformResult pureDeletionResult(
+    TransformOptimizer& opt,
     const Lines& initialLines,
-    EditBoundary boundary,
-    EditOptimizerParams params = {}) {
+    TransformBoundary boundary,
+    TransformOptimizerParams params = {}) {
   return opt.optimizePureDeletion(initialLines, boundary, params);
 }
 
@@ -307,7 +307,7 @@ static void writeChunksJson(ofstream& out, const vector<SequenceChunk>& chunks) 
   for (size_t c = 0; c < chunks.size(); c++) {
     if (c > 0) out << ", ";
     const auto& ch = chunks[c];
-    out << "{\"type\": \"" << (ch.type == SequenceChunk::Motion ? "motion" : "edit")
+    out << "{\"type\": \"" << (ch.type == SequenceChunk::Movement ? "movement" : "edit")
         << "\", \"text\": \"" << jsonEscape(ch.text) << "\", \"tokens\": [";
     for (size_t t = 0; t < ch.tokens.size(); t++) {
       if (t > 0) out << ", ";
@@ -363,7 +363,7 @@ static void writeCompositionExplorationJson(const string& filename,
         }
         out << "]";
 
-        out << ", \"editResults\": [";
+        out << ", \"transformResults\": [";
         for (size_t r = 0; r < detail.results.size(); r++) {
           if (r > 0) out << ",";
           auto tokens = tokenizeSequence(detail.results[r].sequence);
@@ -531,7 +531,7 @@ static vector<ExploreCase> collectEditCases() {
   vector<ExploreCase> cases;
   auto& seedMgr = SeedManager::instance();
 
-  EditOptimizerParams params;
+  TransformOptimizerParams params;
   struct EditCase {
     string name;
     int numLines;
@@ -548,9 +548,9 @@ static vector<ExploreCase> collectEditCases() {
     {"LineLength/60", 5, 60},
   };
 
-  auto collectEditResults = [](const EditResult& result) {
+  auto collectEditResults = [](const TransformResult& result) {
     vector<FoundResult> found;
-    // Deduplicate: EditResult has results per starting position,
+    // Deduplicate: TransformResult has results per starting position,
     // collect unique valid sequences sorted by effort
     map<string, double> bestBySeq;
     for (const auto& bucket : result.getResults()) {
@@ -575,11 +575,11 @@ static vector<ExploreCase> collectEditCases() {
   for (const auto& ec : pureDeletionCases) {
     RandomGen::seed(seedMgr.getSeed(0));
     Lines lines = randomCodeBuffer(ec.numLines, ec.avgLen);
-    EditBoundary boundary(lines, CursorPos(0, 0), lines.endPos());
+    TransformBoundary boundary(lines, CursorPos(0, 0), lines.endPos());
     auto p = params;
     p.maxResults = max(10, lines.totalPositions() / 4);
 
-    EditOptimizer opt(config);
+    TransformOptimizer opt(config);
     auto result = pureDeletionResult(opt, lines, boundary, p);
 
     ContextData ctx;
@@ -600,13 +600,13 @@ static vector<ExploreCase> collectEditCases() {
     RandomGen::seed(seedMgr.getSeed(0));
     Lines buffer = {"I saw a pig in barn in Switzerland", "Inconspicuous, even"};
     Lines goal = {"Florida"};
-    EditBoundary boundary(buffer, CursorPos(0, 23), CursorPos(1, 19));
+    TransformBoundary boundary(buffer, CursorPos(0, 23), CursorPos(1, 19));
     Lines editRegion = buffer.getSpan(CursorPos(0, 23), CursorPos(1, 19));
     auto p = params;
     p.maxResults = max(10, editRegion.totalPositions() / 4);
 
-    EditOptimizer opt(config);
-    auto result = opt.optimizeEdit(editRegion, goal, boundary, p);
+    TransformOptimizer opt(config);
+    auto result = opt.optimizeTransform(editRegion, goal, boundary, p);
 
     ContextData ctx;
     for (const auto& l : editRegion) ctx.initialLines.push_back(l);
@@ -695,13 +695,13 @@ static vector<CompositionExploreCase> collectCompositionCases() {
     vector<PerDiffEditExploration> editDetails;
     for (int editIndex = 0; editIndex < result.totalEdits(); editIndex++) {
       const auto step = result.stepAt(editIndex);
-      const auto& editResult = step.editResult;
+      const auto& transformResult = step.transformResult;
       PerDiffEditExploration detail;
-      detail.states = editResult.getStats().exploredStates();
+      detail.states = transformResult.getStats().exploredStates();
 
       // Collect unique best results from all starting positions
       map<string, double> bestBySeq;
-      for (const auto& bucket : editResult.getResults()) {
+      for (const auto& bucket : transformResult.getResults()) {
         for (const auto& r : bucket) {
           auto it = bestBySeq.find(r.getSequence().str());
           if (it == bestBySeq.end() || r.getCost() < it->second) {

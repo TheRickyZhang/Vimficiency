@@ -2,7 +2,7 @@
 
 #include "CommandToKeys.h"
 
-// Edit string to PhysicalKeys mapping (parallel to MotionToKeys)
+// Edit string to PhysicalKeys mapping (parallel to MovementToKeys)
 using EditToKeys = CommandToKeys;
 
 // =============================================================================
@@ -71,7 +71,7 @@ extern const EditToKeys LINE_UP; // O
 // requires pos.line < n-1
 extern const EditToKeys LINE_DOWN; // o
 
-// --- Navigation motions (for EditOptimizer) ---
+// --- Navigation motions (for TransformOptimizer) ---
 extern const EditToKeys NAV_VERTICAL;     // j, k
 extern const EditToKeys NAV_HORIZONTAL;   // h, l
 extern const EditToKeys NAV_WORD_FWD;     // w, W, e, E (forward word motions)
@@ -120,7 +120,7 @@ extern const EditToKeys OPERATORS;  // d, c, y
 extern const EditToKeys ALL_EDITS_TO_KEYS;
 
 // =============================================================================
-// Pure Deletion Operations (for EditOptimizer deletion model)
+// Pure Deletion Operations (for TransformOptimizer deletion model)
 // =============================================================================
 // These contain ONLY deletion commands - no mode changes, no navigation.
 

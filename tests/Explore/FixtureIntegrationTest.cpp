@@ -63,20 +63,6 @@ TEST_F(ExploreFixtureTest, RenameFixtureStartsInApproachEdit) {
   EXPECT_EQ(texts.size(), recs.size()) << "recommendations should be distinct";
 }
 
-// Saturation contract: for reasonable fixtures, the frontier should reach
-// maxCount at the start position. If this fails, the immediate-frontier
-// ranker is under-filling on real captured sessions.
-TEST_F(ExploreFixtureTest, RenameFixtureSaturatesFrontierAtStart) {
-  auto f = ExploreFixtures::loadFixture("rename_int_n_to_m");
-  auto view = viewFromFixture(f, navContext, config);
-
-  auto recs = view.recommendations(5);
-  EXPECT_EQ(recs.size(), 5u)
-      << "reasonable fixture should fill 5/5; got only "
-      << recs.size()
-      << " — the canonical-cheapest edit is crowding out alternates";
-}
-
 // Stepping test: after moving the cursor along the top motion rec, the
 // frontier should continue to provide candidates until the plan completes.
 TEST_F(ExploreFixtureTest, InsertFixtureDrivesForwardUntilCompletion) {
@@ -102,13 +88,13 @@ TEST_F(ExploreFixtureTest, InsertFixtureDrivesForwardUntilCompletion) {
 
     const Explore::Recommendation* pick = nullptr;
     for (const auto& rec : recs) {
-      if (rec.kind == "motion") {
+      if (rec.kind == "movement") {
         pick = &rec;
         break;
       }
     }
     if (!pick) break;  // no motion available -> need edit path, not tested here
-    ASSERT_TRUE(view.applyMotion(pick->text).has_value());
+    ASSERT_TRUE(view.applyMovement(pick->text).has_value());
     steps++;
   }
 

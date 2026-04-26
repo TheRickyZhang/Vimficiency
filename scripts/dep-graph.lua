@@ -21,7 +21,7 @@ local function normalize(path)
 end
 
 -- Collect all .h and .cpp files under src/
-local files = {} -- list of paths relative to root (e.g. "Optimizer/MotionOptimizer/MotionOptimizer.cpp")
+local files = {} -- list of paths relative to root (e.g. "Optimizer/NavOptimizer/NavOptimizer.cpp")
 local function walk(dir, prefix)
   for entry in lfs.dir(dir) do
     if entry ~= "." and entry ~= ".." then
@@ -107,7 +107,7 @@ end
 local clusters = {
   { name = "optimizer", label = "Optimizer", color = "#fff3e0", edge = "#d84315",
     members = {"Optimizer", "Optimizer/CompositionOptimizer",
-               "Optimizer/EditOptimizer", "Optimizer/MotionOptimizer"} },
+               "Optimizer/TransformOptimizer", "Optimizer/NavOptimizer"} },
   { name = "keyboard",  label = "Input",     color = "#e8f5e9", edge = "#2e7d32",
     members = {"Keyboard", "Keyboard/ToKeys", "Effort"} },
   { name = "vim",       label = "Vim Model",  color = "#e3f2fd", edge = "#1565c0",
@@ -171,8 +171,8 @@ print()
 -- Layout hints
 print("  // Force Optimizer sub-modules side-by-side")
 print('  { rank=same; "Optimizer/CompositionOptimizer";')
-print('               "Optimizer/EditOptimizer";')
-print('               "Optimizer/MotionOptimizer"; }')
+print('               "Optimizer/TransformOptimizer";')
+print('               "Optimizer/NavOptimizer"; }')
 print("  // Middle layer")
 print('  { rank=same; "Interpreter"; "Effort"; "Keyboard";')
 print('               "Keyboard/ToKeys"; }')

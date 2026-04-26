@@ -1,12 +1,12 @@
 // tests/Utils/EditTestGenerators.h
 //
-// Edit-specific test utilities for EditOptimizer tests.
+// Edit-specific test utilities for TransformOptimizer tests.
 // Builds on RandomBufferHelpers for core random generation.
 // Provides embedded edit region creation and flat position indexing.
 
 #pragma once
 
-#include "Boundary/EditBoundary.h"
+#include "Boundary/TransformBoundary.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 #include "Utils/RandomBufferHelpers.h"  // Core random generation
@@ -18,7 +18,7 @@
 // =============================================================================
 
 // Convert (row, col) to flat index for typeAllResults access.
-// Note: This matches how EditOptimizer indexes results - by position count,
+// Note: This matches how TransformOptimizer indexes results - by position count,
 // NOT including newlines. Empty lines count as 1 position.
 int toFlatIndex(int row, int col, const Lines& lines);
 
@@ -30,7 +30,7 @@ CursorPos fromFlatIndex(int flatIdx, const Lines& lines);
 // =============================================================================
 
 // Represents an edit region embedded within a larger buffer.
-// Used to test that EditOptimizer sequences preserve content outside the edit region.
+// Used to test that TransformOptimizer sequences preserve content outside the edit region.
 //
 // Example:
 //   fullBuffer = ["prefix_content0", "content1", "content2_suffix"]
@@ -50,8 +50,8 @@ struct EmbeddedEditRegion {
   int endLine;           // Edit region end in fullBuffer coordinates
   int endCol;            // Edit region end column (exclusive)
 
-  // Construct EditBoundary for use with EditOptimizer
-  EditBoundary makeBoundary() const;
+  // Construct TransformBoundary for use with TransformOptimizer
+  TransformBoundary makeBoundary() const;
 
   // Convert edit region position to fullBuffer position
   CursorPos toFullBufferPos(const CursorPos& editPos) const;

@@ -62,7 +62,7 @@ void yankRange(Lines& lines, CursorPos& pos, Mode mode, const LineCharRange& ran
 // last lines leave pos.line past end instead of clamping. This models the
 // edit-region context where the real buffer has lines below.
 // leftColOffset/rightColOffset + hasLinesAbove/hasLinesBelow can be provided to
-// make word text objects boundary-aware (used by EditOptimizer replay).
+// make word text objects boundary-aware (used by TransformOptimizer replay).
 void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
                std::string* lastEditCmd = nullptr, bool hasLinesBelow = false,
                int leftColOffset = 0, int rightColOffset = 0,
@@ -75,6 +75,6 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
 std::vector<ParsedEdit> parseEdits(std::string_view seq);
 
 void simulateEdits(CursorPos& pos, Mode& mode, const NavContext& navContext,
-                          std::string_view motionSeq,
+                          std::string_view movementSeq,
                           const Lines& lines);
 } // namespace Edit

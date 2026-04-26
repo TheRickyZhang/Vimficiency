@@ -6,12 +6,12 @@
 #include "Types/Lines.h"
 #include "Types/LandingType.h"
 
-struct RepeatMotionResult {
+struct RepeatMovementResult {
   Pos pos{};
   int count{}; // Only use count <= 1 -> invalid
 
-  RepeatMotionResult() = default;
-  RepeatMotionResult(Pos pos, int count) : pos(pos), count(count) {
+  RepeatMovementResult() = default;
+  RepeatMovementResult(Pos pos, int count) : pos(pos), count(count) {
     // Generally no point in in having count <= 1
     assert(count > 1);
   }
@@ -46,7 +46,7 @@ public:
   // Near-miss after rangeBack: only if no landing at exactly rangeBack.
   // If currPos is not strictly on the requested side of the range, returns {}.
   template<bool Forward>
-  std::vector<RepeatMotionResult> getClosestInRange(
+  std::vector<RepeatMovementResult> getClosestInRange(
       LandingType type, Pos currPos,
       Pos rangeFront, Pos rangeBack) const;
 

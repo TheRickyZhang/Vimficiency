@@ -7,7 +7,7 @@
 
 #include <gtest/gtest.h>
 
-#include "Interpreter/MotionInterpreter.h"
+#include "Interpreter/MovementInterpreter.h"
 #include "Types/NavContext.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
@@ -201,7 +201,7 @@ TEST_F(NavOptimizerOutputCorrectness, SubBufferMotionCorrectness) {
       CursorPos neovimEnd(neovimResult.row, neovimResult.col);
 
       // Apply same sequence to sub-buffer using our simulation
-      CursorPos ourEnd = simulateMotions(test.subStart, seq.view(), test.subBuffer);
+      CursorPos ourEnd = simulateMovements(test.subStart, seq.view(), test.subBuffer);
 
       // Convert Neovim result to sub-buffer coords
       auto [inBounds, neovimSubPos] = toSubBufferPos(neovimEnd, test.subBufferStartLine,
