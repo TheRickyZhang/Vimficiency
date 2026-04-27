@@ -1,4 +1,4 @@
-*vimficiency.txt*  *vimficiency*          For NVIM v0.8.0          Last change: 2026 April 19
+*vimficiency.txt*  *vimficiency*          For NVIM v0.8.0          Last change: 2026 April 26
 
 ==============================================================================
 Table of Contents                              *vimficiency-table-of-contents*
@@ -286,8 +286,8 @@ SEE ALSO
 6. Suggest (auto start, auto end)    *vimficiency-suggest-auto-start-auto-end*
 
 Suggest runs the optimizer on its own and surfaces a result without you calling
-`:Vimfy finish` or `:Vimfy recall`. It reuses the recall queue for the start and
-fires on triggers you configure.
+`:Vimfy finish` or `:Vimfy recall`. It reuses the recall queue for the start
+and fires on triggers you configure.
 
 >lua
     require('vimficiency').setup({
@@ -408,7 +408,11 @@ SIMULATING
 
 `:Vimfy play <alias> [count]` opens a new tab with side-by-side windows and
 animates your sequence (leftmost) and the top suggestions (one per additional
-window) - `count` — how many optimal sequences to show (default: all saved)
+window). - `count` — how many optimal sequences to show. **Default: 1**,
+paired with your sequence for a clean side-by-side "yours vs. best" pane. -
+The layout is a 4-wide grid that wraps to a second row once more than four
+windows are needed. **Max: 8 windows total**; a higher count is silently
+trimmed (with a notice) so the grid stays readable.
 
 Replay opens after a brief precompute phase. Step forward with `<Right>`, back
 with `<Left>`. Close the replay with `q`.
@@ -442,7 +446,7 @@ available as `:Vimfy focus <N>` / `:Vimfy escape` for typed invocation.
 
 REPLAY BUFFER KEYS
 
-Press |g?| in a replay buffer to open the full Vimfy help.
+Press |g?| in a replay buffer to open this section directly.
 
 - `<Left>` — step backward
 - `<Right>` — step forward
@@ -450,7 +454,7 @@ Press |g?| in a replay buffer to open the full Vimfy help.
 - `<Tab>` / `<S-Tab>` — cycle to the next or previous replay sequence
 - `<leader>y` — yank the current window’s sequence into the unnamed and `+` registers
 - `?` — show the short keymap summary popup
-- `g?` — open the full Vimfy help
+- `g?` — open the full help section for replay buffers
 - `q` — close the replay tab
 
 
@@ -486,11 +490,11 @@ Reads back a saved result textually (without replaying). Tab-complete on
 
 SAVED RESULT BUFFER KEYS
 
-Press |g?| in a saved-result buffer to open the full Vimfy help.
+Press |g?| in a saved-result buffer to open this section directly.
 
 - `q` — close the current saved-result view
 - `?` — show the short keymap summary popup
-- `g?` — open the full Vimfy help
+- `g?` — open the full help section for saved-result buffers
 
 
 ==============================================================================
@@ -816,7 +820,7 @@ C++ source (`cpp/effort_model.*`) is the spec.
   :Vimfy fetch <name> [<alias>]         Copy a saved result from disk into the
                                         current workspace.
 
-  :Vimfy play <alias> [count]            Animate results side-by-side (memory
+  :Vimfy play <alias> [count]           Animate results side-by-side (memory
                                         first, disk fallback).
 
   :Vimfy focus <N>                      Focus the active replay on the Nth
@@ -829,7 +833,11 @@ C++ source (`cpp/effort_model.*`) is the spec.
 
   :Vimfy rm <name>                      Delete a saved result from disk.
 
-  :Vimfy list                           List active sessions and saved files.
+  :Vimfy list                           Open the interactive session picker
+                                        (see below).
+
+  :Vimfy stats                          Show lifetime session stats (see
+                                        below).
 
   :Vimfy suggest <on\|off\|toggle>      Runtime toggle for auto-suggest
                                         (config-driven).
@@ -855,7 +863,7 @@ The `<alias>` argument splits by subcommand:
 
   recall                N (digits) or Ns (digits + s).
 
-  close / sim           Any of the three: alphabetic, N, or Ns. sim also
+  close / play          Any of the three: alphabetic, N, or Ns. play also
                         accepts a saved name.
 
   save / store          Any of the three, plus @ for last finished. Same
@@ -894,15 +902,108 @@ rules. Omitting the second argument on `save` / `store` / `fetch` repeats the
 first argument verbatim.
 
 
+SESSION PICKER (:VIMFY LIST)
+
+Opens a centered float with two panes — **Active** (in-memory workspace
+sessions) and **Saved** (files under `stdpath("data")/vimficiency/saved`) —
+and a live-filter prompt at the bottom. `<Tab>` toggles between panes.
+
+Ongoing sessions always sit in a pinned **Ongoing** section at the top,
+regardless of sort mode. Auto-generated recall ring entries (one per keystroke)
+are folded into a single `recall ring (N)` summary row — the per-entry
+aliases drift, so they’re not individually actionable from the picker;
+resolve a specific window with `:Vimfy recall N` or `:Vimfy recall Ns` instead.
+
+  Key        Action
+  ---------- ------------------------------------------------
+  /          Fuzzy-filter by alias (prompt at bottom, live)
+  <CR>       Open (default action, see below)
+  <Tab>      Switch Active ↔ Saved pane
+  sn/sN      Sort by name (A→Z / Z→A)
+  sc/sC      Sort by category (A→Z / Z→A)
+  st/sT      Sort by time (newest / oldest)
+  s          Sort hint popup (also on s?)
+  d          Delete the current entry
+  m          Toggle mark on the current entry
+  D          Delete all marked entries
+  r          Rename (see below)
+  y          Duplicate (see below)
+  ?          Show the keymap popup
+  q, <Esc>   Close
+Inside the search prompt, `<C-n>` / `<C-p>` (and `<Down>` / `<Up>`) move the
+list cursor without leaving insert mode; `<CR>` opens the current entry;
+`<Esc>` returns to the list.
+
+**Per-pane action semantics:**
+
+- `<CR>` — on the Active pane, opens a `:Vimfy play`-style view of a
+    finished session; on the Saved pane, fetches the file into the
+    workspace and switches focus to Active.
+- `d` — on Active, discards the session (equivalent to `:Vimfy close`);
+    on Saved, deletes the file on disk.
+- `r` / `y` — on Saved, renames/duplicates the file. On Active, renames
+    the manual alias / registers a duplicate finished record under a new
+    alias. Only entries with a stable manual alias are renameable this
+    way; for recall and auto-suggest results, save to disk first (`:Vimfy   save <alias> <name>`) and then rename from the Saved pane.
+
+**Blocked on in-progress sessions:** `<CR>`, `r`, `y` all refuse to run on a
+still-accumulating session. Finish it with `:Vimfy finish` (or let Watch’s
+idle trigger fire) and try again.
+
+
+SESSION STATS (:VIMFY STATS)
+
+Opens a read-only float summarizing your lifetime activity. Close with `q` or
+`<Esc>`.
+
+Sections:
+
+- **Lifetime** — total finished sessions, broken down by type (mark /
+    watch / recall / suggest), and total captured keystrokes.
+- **Efficiency** — a score out of 100, defined per session as
+    `min(best_optimizer_cost / user_cost, 1) × 100` (capped at 100 so a
+    beat doesn’t inflate the average). Aggregated as a geometric mean.
+    The 30-day block below the score is a sparkline of the daily
+    geometric mean (▁ = 0, █ = 100; blanks = no sessions that day).
+- **Motions** — for every motion molecule that appears at least ten
+    times combined across your sequences and the optimizer’s best
+    suggestions, the ratio `your_proportion / optimizer_proportion`. Two
+    lists: what you use _more_ than the optimizer (potential inefficient
+    habits) and what you use _less_ (candidates to practice). Only the
+    trailing character of `f`/`F`/`t`/`T`/`r`/`R` is collapsed to `_` —
+    everything else is reported as-is, since further grouping hides
+    signal.
+- **Dev — Optimizer beats queued** — count of finished sessions where
+    your sequence came in cheaper than the optimizer’s best result.
+    These are flagged (`beats: true`) on their log lines. **Beats are interesting-to-study, not ground truth**: many are cost-model
+    artifacts or unexplored regions, so they are _not_ fed back into
+    training without manual review.
+
+
+WHERE THE DATA LIVES ~
+
+Every finished session (mark, watch, recall, suggest) appends one JSON object
+to `stdpath("data")/vimficiency/sessions.jsonl`. The file is append-only, one
+record per line. Stats read the whole log on demand — no aggregate cache in
+v1, so changing the efficiency formula or adding new buckets only requires
+re-reducing, not a migration. A trailing malformed line (e.g. a crash
+mid-write) is silently skipped on read.
+
+Per-record schema (version `v: 1`): `finish_epoch`, `type`, `finish_reason`,
+`key_count`, `user_cost`, `best_opt_cost`, `user_seq`, `best_opt_seq`, `beats`.
+Only the single lowest-cost optimal result is stored; Top-N alternatives are
+not retained at log-write time.
+
+
 TAB COMPLETION
 
 Works on:
 
-- Subcommands (`:Vimfy s<Tab>` → `save`, `sim`, `start`, `suggest`).
+- Subcommands (`:Vimfy s<Tab>` → `save`, `start`, `stats`, `store`, `suggest`).
 - Manual (alphabetic) handles for `start`, `watch`, and `finish`.
 - `3s`/`5s`/`10s`/`30s` hints for `recall`.
 - All active/recall aliases plus time hints for `close`.
-- Active/recall aliases, time hints, and saved names for `sim` (matches its disk fallback).
+- Active/recall aliases, time hints, and saved names for `play` (matches its disk fallback).
 - Selectors (plus `@`) for `save` and `store`.
 - Saved names for `view`, `rm`, and `fetch`.
 - `on` / `off` / `toggle` for `suggest`.
@@ -917,13 +1018,13 @@ activity anyway). See 8. Keymaps for the full list and the binding contract.
 
 SCRATCH OUTPUT BUFFER KEYS
 
-Press |g?| in a Vimfy scratch output buffer to open the full
-Vimfy help. This applies to buffers opened by `:Vimfy help` and other detail
-panes that show Vimfy text output in a split.
+Press |g?| in a Vimficiency scratch output buffer to open this section
+directly. This applies to buffers opened by `:Vimfy help` and other detail
+panes that show Vimficiency text output in a split.
 
 - `q` — close the current Vimfy output buffer
 - `?` — show the short keymap summary popup
-- `g?` — open the full Vimfy help
+- `g?` — open the full help section for scratch output buffers
 
 
 ==============================================================================
@@ -1026,6 +1127,12 @@ want to show a colleague.
     suggestion quality beyond roughly a dozen lines of edits.
 - **Unwrapped mappings that invoke Vimfy** have their trigger keypress counted as
     motion. See 8. Keymaps for the fix.
+- **Keys produced by a mapping’s RHS are invisible.** If `<leader>V` is mapped
+    to `V$%`, the `V$%` bytes never reach the capture — `vim.on_key` delivers
+    only a single resolution event that the plugin strips to avoid leaking the LHS.
+    The session records whatever you type _after_ the mapping from a stale starting
+    mode, which often tokenizes into something that looks nothing like what you
+    did. Type the underlying keys directly when you want a motion audited.
 - **Recall may include the final char of a <Plug>-mapped LHS** on occasion,
     because `vim.on_key` fires for that char before Neovim resolves the mapping. If
     you target `:Vimfy recall N` precisely, count `N` accordingly — or use time
@@ -1111,8 +1218,8 @@ Run `:Vimfy config` and capture the output along with the sequence you typed
 DOES VIMFY SLOW DOWN NEOVIM?
 
 No. Key capture is a small Lua append per keystroke. The optimizer only runs
-on `finish` (or an auto-trigger), in C++, over a snapshot. Recall is always on and
-the per-key overhead stays flat.
+on `finish` (or an auto-trigger), in C++, over a snapshot. Recall is always on
+and the per-key overhead stays flat.
 
 
 CAN I USE IT WITH COLEMAK / DVORAK / CUSTOM LAYOUTS?
