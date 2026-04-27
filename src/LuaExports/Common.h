@@ -1,5 +1,6 @@
 #pragma once
 
+#include "LuaExports/Api.h"
 #include "Keyboard/Config.h"
 #include "Keyboard/Finger.h"
 #include "Keyboard/Hand.h"
@@ -14,7 +15,10 @@
 #include <string_view>
 #include <vector>
 
-namespace vimficiency::lua_exports {
+// Cross-cutting declarations and inline helpers shared by every LuaExports/*.cpp.
+// Out-of-line definitions for `payload::*` live in Payload.cpp; for `logic::*`
+// in Logic.cpp. FFI export bodies live in *Exports.cpp.
+namespace VF::LuaExports {
 
 inline constexpr char kEventFieldSep = '\x1f';
 inline constexpr char kEventRecordSep = '\x1e';
@@ -45,44 +49,10 @@ enum DEFAULT_KEYBOARD {
   COLEMAK_DH,
 };
 
-struct C_ScoreWeights {
-  double w_key = 1.0;
-  double w_same_finger{};
-  double w_same_key{};
-  double w_alt_bonus{};
-  double w_roll_good{};
-  double w_roll_bad{};
-};
-
-struct C_KeyInfo {
-  int8_t hand = static_cast<int8_t>(Hand::None);
-  int8_t finger = static_cast<int8_t>(Finger::None);
-  double base_cost = 0.0;
-};
-
-struct C_CountPenaltyOverride {
-  bool has_base = false;
-  double base = 0.0;
-  bool has_count_slope = false;
-  double count_slope = 0.0;
-  bool has_span_slope = false;
-  double span_slope = 0.0;
-};
-
-struct VimficiencyConfigFFI {
-  DEFAULT_KEYBOARD default_keyboard = UNIFORM;
-  C_ScoreWeights weights{};
-  C_KeyInfo keys[KEY_COUNT]{};
-  int slice_buffer_amount{};
-  int32_t shiftwidth = -1;
-  bool use_count_penalty_overrides = false;
-  C_CountPenaltyOverride count_penalty_overrides[CountClassCOUNT]{};
-};
-
-extern VimficiencyConfigFFI g_config_ffi;
+extern VFConfig g_config_ffi;
 extern Config g_config_internal;
 
-namespace export_helpers {
+namespace helpers {
 
 inline std::string_view optionalText(const char* text) {
   return text ? std::string_view(text) : std::string_view{};
@@ -106,35 +76,19 @@ inline Result<std::string_view> requiredText(const char* text, std::string_view 
   return text;
 }
 
-template <typename Compute>
-const char* storeString(std::string& storage, Compute compute) {
-  // FFI exports currently assume single-threaded Neovim calls, so a
-  // per-export static backing string is sufficient for returned `const char*`.
-  auto result = compute();
+// FFI exports currently assume single-threaded Neovim calls, so a
+// per-export static backing string is sufficient for returned `const char*`.
+inline const char* storeString(std::string& storage, Result<std::string> result) {
   if (!result) {
-    storage = std::string("ERROR: ") + result.error().message;
+    storage = "ERROR: " + result.error().message;
     return storage.c_str();
   }
   storage = std::move(*result);
   return storage.c_str();
 }
 
-template <typename Compute>
-const char* storeOptionalString(std::string& storage, const char* text, Compute compute) {
-  const std::string_view input = optionalText(text);
-  if (input.empty()) {
-    storage.clear();
-    return storage.c_str();
-  }
-  return storeString(storage, [&] { return compute(input); });
-}
-
-template <typename Compute>
-int storeIntOr(int fallback, Compute compute) {
-  auto result = compute();
-  if (!result) {
-    return fallback;
-  }
+inline int storeIntOr(int fallback, Result<int> result) {
+  if (!result) return fallback;
   return *result;
 }
 
@@ -150,9 +104,33 @@ inline std::string joinWithTrailingNewline(const std::vector<std::string>& items
   return oss.str();
 }
 
-}  // namespace export_helpers
+}  // namespace helpers
 
 namespace payload {
+
+// Wire format: a sequence of "<len>:<bytes>" chunks. Encoders and decoders
+// are paired so adding a new field type requires touching one place.
+
+inline std::string encodeField(std::string_view field) {
+  return std::to_string(field.size()) + ":" + std::string(field);
+}
+
+template <typename... Fields>
+std::string encodeFields(const Fields&... fields) {
+  std::string out;
+  ((out += encodeField(fields)), ...);
+  return out;
+}
+
+inline std::string intField(int v) { return std::to_string(v); }
+
+inline std::string doubleField(double v) {
+  std::ostringstream oss;
+  oss.setf(std::ios::fixed);
+  oss.precision(6);
+  oss << v;
+  return oss.str();
+}
 
 struct KeyTrackingEvent {
   std::string mode;
@@ -171,7 +149,7 @@ Result<std::vector<KeyTrackingEvent>> decodeKeyTrackingEvents(std::string_view e
 
 }  // namespace payload
 
-namespace pure_logic {
+namespace logic {
 
 Result<std::string> buildKeySequence(std::string_view encoded);
 std::pair<int, int> computeSearchRegion(
@@ -193,8 +171,8 @@ int manualEvictReason(
     int maxSearchLines,
     int manualIdleTimeoutSeconds);
 
-}  // namespace pure_logic
+}  // namespace logic
 
 void sync_config();
 
-}  // namespace vimficiency::lua_exports
+}  // namespace VF::LuaExports

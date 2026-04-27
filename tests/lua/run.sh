@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run pure-Lua vimficiency tests in a single headless Neovim process
+# Run pure-Lua Vimfy tests in a single headless Neovim process
 # (with a few escape-hatch files run in their own processes; see below).
 #
 # Main batch: isolation between test files is maintained by

@@ -4,13 +4,13 @@ title: "The core idea: a session"
 
 # The core idea: a session
 
-Everything in Vimficiency is organized around **sessions**. A session captures:
+Everything in Vimfy is organized around **sessions**. A session captures:
 
 - The buffer content at a starting point
 - The keys you typed
 - The buffer content at an ending point
 
-Vimficiency then runs an optimizer and compares your effort with the efforts of the best sequences it found.
+Vimfy then runs an optimizer and compares your effort with the efforts of the best sequences it found.
 
 ## The 2×2 matrix of session types
 

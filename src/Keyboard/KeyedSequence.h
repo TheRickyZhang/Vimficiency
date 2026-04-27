@@ -14,7 +14,7 @@
 
 #define KS_ENUM_VALUE(name, seq, keys) name,
 enum class KSId : uint8_t {
-  VIMFICIENCY_KEYED_SEQUENCES(KS_ENUM_VALUE)
+  VF_KEYED_SEQUENCES(KS_ENUM_VALUE)
   COUNT
 };
 #undef KS_ENUM_VALUE
@@ -78,7 +78,7 @@ struct KeyedSequence {
 
   // Static constants — declared via X-macro
 #define KS_DECLARE(name, seq, keys) static const KeyedSequence name;
-  VIMFICIENCY_KEYED_SEQUENCES(KS_DECLARE)
+  VF_KEYED_SEQUENCES(KS_DECLARE)
 #undef KS_DECLARE
 
   // KeyedSequence::byId: KSId -> const predefined KeyedSequence&
@@ -86,7 +86,7 @@ struct KeyedSequence {
     // Flat array of pointers, initialized once via X-macro
 #define KS_PTR(name, seq, keys) &KeyedSequence::name,
     static const std::array<const KeyedSequence*, KS_COUNT> table = {{
-      VIMFICIENCY_KEYED_SEQUENCES(KS_PTR)
+      VF_KEYED_SEQUENCES(KS_PTR)
     }};
 #undef KS_PTR
     return *table[static_cast<uint8_t>(id)];
@@ -100,5 +100,5 @@ struct KeyedSequence {
 // Static constant definitions — generated via X-macro
 #define KS_DEFINE(name, seqStr, keyGroup) \
   inline const KeyedSequence KeyedSequence::name{seqStr, {STRIP_PARENS(keyGroup)}};
-VIMFICIENCY_KEYED_SEQUENCES(KS_DEFINE)
+VF_KEYED_SEQUENCES(KS_DEFINE)
 #undef KS_DEFINE

@@ -1,16 +1,18 @@
 #pragma once
 
-#include <cstdint>
 #include <expected>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "Boundary/NavBoundary.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
+#include "Optimizer/NavOptimizer/NavFrontier.h"
+#include "Optimizer/TransformOptimizer/TransformFrontier.h"
 #include "Rejected.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
@@ -20,8 +22,9 @@
 // Explore view
 // =============================================================================
 // Middle layer between Lua (InteractiveExports.cpp) and the optimizer lib (`src/Optimizer/`).
-// Lua calls in via the FFI exports in
-// `LuaExports/InteractiveExports.cpp`.
+// Lua calls in via the FFI exports in `LuaExports/InteractiveExports.cpp`.
+//
+// TLDR: review the lifecycle
 //
 // Conventions:
 //   - Plan is computed once at construction and never re-planned. Each
@@ -53,42 +56,45 @@
 
 namespace Explore {
 
-// Phase enum — one of three states. Paired with Step below for the
-// phase-specific payload.
-enum class Phase : uint8_t {
-  ApproachEdit,   // user is moving cursor toward the current edit's target
-  PendingInsert,  // an edit has entered insert mode; remainingText must be typed
-  Completed,      // all edits finished; commit or cancel
-};
+// Three phase alternatives. State::step is the variant Step below; each
+// alternative carries exactly the fields that phase needs — no shared
+// fields with empty-meaning sentinels.
+struct Approach      { int editIndex = 0; bool operator==(const Approach&) const = default; };
+struct PendingInsert { int editIndex = 0; std::string remainingText;
+                       bool operator==(const PendingInsert&) const = default; };
+struct Completed     { bool operator==(const Completed&) const = default; };
 
-// Tagged struct holding Phase + phase-specific fields. Constructed only via
-// factory functions to guarantee well-formed combos. Fields unused by some
-// kinds are left defaulted.
-struct Step {
-  Phase kind = Phase::Completed;
-  int editIndex = -1;            // ApproachEdit | PendingInsert
-  std::string remainingText;     // PendingInsert
+using Step = std::variant<Approach, PendingInsert, Completed>;
 
-  static Step approachEdit(int editIndex);
-  static Step pendingInsert(int editIndex, std::string remainingText);
-  static Step completed();
+// One ranked suggestion returned by View::recommendations. The variant
+// alternative IS the kind (Movement vs Edit), so there's no string tag —
+// each alternative carries exactly the fields its kind needs, sharing
+// `molecule` / `goalPos` / `cost` via FrontierItem.
+using Suggestion = std::variant<NavFrontierItem, TransformFrontierItem>;
 
-  bool operator==(const Step&) const = default;
-};
+// --- Helpers ---
+// Overload-set wire labels for each Step alternative. Adding a fourth
+// alternative = add one overload; no chain to thread through.
+inline std::string_view stepKindName(const Approach&)      { return "ApproachEdit"; }
+inline std::string_view stepKindName(const PendingInsert&) { return "PendingInsert"; }
+inline std::string_view stepKindName(const Completed&)     { return "Completed"; }
+inline std::string_view stepKindName(const Step& s) {
+  return std::visit([](const auto& a) { return stepKindName(a); }, s);
+}
 
-// One ranked suggestion returned by View::recommendations.
-struct Recommendation {
-  std::string text;
-  std::string kind;              // "movement" | "edit"
-  double cost = 0.0;
-  double totalPathCost = 0.0;
-  int landingRow = 0;
-  int landingCol = 0;
-  // Insert-mode text the user must type after `text` to complete the edit
-  // (e.g. `"m"` for atom `"s"` when the planned sequence is `"sm<Esc>"`).
-  // Empty for motion recs and for normal-mode-only edits like `x` / `rm`.
-  std::string typedText;
-};
+inline std::string_view suggestionKind(const NavFrontierItem&)       { return "movement"; }
+inline std::string_view suggestionKind(const TransformFrontierItem&) { return "edit"; }
+inline std::string_view suggestionKind(const Suggestion& s) {
+  return std::visit([](const auto& a) { return suggestionKind(a); }, s);
+}
+
+// Common base accessor — the FrontierItem shared subset (molecule, goalPos,
+// cost). Use when callers need only the shared fields and don't care which
+// alternative holds them.
+inline const FrontierItem& base(const Suggestion& s) {
+  return std::visit(
+      [](const FrontierItem& f) -> const FrontierItem& { return f; }, s);
+}
 
 // Mutable state snapshot. The View owns one live State and a history of
 // prior snapshots in its undo/redo stacks.
@@ -167,7 +173,7 @@ public:
   // Both default to `false` (dedup on). The flag is forwarded to the
   // underlying frontier modules so generation respects it end-to-end and
   // the display layer never throws anything away post-hoc.
-  std::vector<Recommendation> recommendations(
+  std::vector<Suggestion> recommendations(
       int maxCount,
       bool allowMultipleMovementsPerPosition = false,
       bool allowMultipleEditsPerPosition = false) const;
@@ -243,9 +249,8 @@ private:
 
   // Advance phase after an edit completes: ApproachEdit(i) → ApproachEdit(i+1)
   // (snapping lines to the next fencepost) or Completed at end of plan.
-  Applied afterEditCompleted(State next);
+  // `editIndex` is the index of the edit that just completed.
+  Applied afterEditCompleted(State next, int editIndex);
 };
-
-const char* to_string(Phase phase);
 
 }  // namespace Explore

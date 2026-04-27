@@ -10,7 +10,7 @@ local keynorm = require("vimficiency.capture.keynorm")
 -- Types
 --------------------------------------------------------------------------------
 
----@class VimficiencyKeyEvent
+---@class VF.KeyEvent
 ---@field t integer              # hrtime timestamp
 ---@field win integer            # window id (useful for multi-session matching)
 ---@field buf integer            # buffer id
@@ -35,9 +35,9 @@ function M.end_ignore(prev)
 	ignoring = prev
 end
 
----@param get_session fun(): ActiveSession|nil
+---@param get_session fun(): VF.Session.Active|nil
 ---@param reset_session fun(reason: string, level: integer)
----@param should_evict fun(session: ActiveSession): string|nil  Optional: return a reason string to drop the session; nil to keep. Runs before the window-sameness check and before the key is appended, so eviction fires on every keystroke regardless of which window is focused.
+---@param should_evict fun(session: VF.Session.Active): string|nil  Optional: return a reason string to drop the session; nil to keep. Runs before the window-sameness check and before the key is appended, so eviction fires on every keystroke regardless of which window is focused.
 ---@return integer nsid
 function M.attach(get_session, reset_session, should_evict)
 	local nsid = nil
@@ -111,14 +111,14 @@ function M.detach(nsid)
 end
 
 --- Build a key sequence string from key events, with deduplication.
----@param key_seq VimficiencyKeyEvent[]
+---@param key_seq VF.KeyEvent[]
 ---@return string
 function M.build_sequence(key_seq)
 	return ffi_lib.build_sequence(key_seq)
 end
 
 --- Remove the trailing events whose `key_typed_raw` bytes match `typed_raw`.
----@param key_seq VimficiencyKeyEvent[]
+---@param key_seq VF.KeyEvent[]
 ---@param typed_raw string
 ---@return integer popped
 function M.strip_matching_tail(key_seq, typed_raw)
@@ -141,7 +141,7 @@ end
 -- Shared global `vim.on_key()` namespace for key-count and time-based sessions.
 
 local global_nsid = nil
----@type table<string, {on_event: fun(event: VimficiencyKeyEvent)}>
+---@type table<string, {on_event: fun(event: VF.KeyEvent), on_resolution?: fun(typed: string)}>
 local global_subs = {}
 local global_subs_count = 0
 
@@ -167,7 +167,7 @@ local function ensure_global_listener()
 		if m == "c" then return end
 		if m == "n" and key == ":" then return end
 
-		---@type VimficiencyKeyEvent
+		---@type VF.KeyEvent
 		local event = {
 			t = uv.hrtime(),
 			mode = mode,
@@ -189,7 +189,7 @@ end
 
 --- Attach a named global key listener.
 --- `on_resolution` is called on multi-key mapping resolution events.
----@param on_key_event fun(event: VimficiencyKeyEvent)
+---@param on_key_event fun(event: VF.KeyEvent)
 ---@param name string|nil             Subscriber name; defaults to "default"
 ---@param on_resolution (fun(typed_raw: string))|nil  Optional strip hook
 ---@return boolean success

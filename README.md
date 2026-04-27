@@ -1,11 +1,11 @@
-# Vimficiency
+# Vimfy
 
 One of the biggest challenges with Vim is knowing which of the many ways to perform an edit is the most efficient — or what all the applicable motions even are.
 
-Vimficiency watches how you edit and surfaces shorter keystroke sequences that would have produced the same result, with awareness of customizable per-key effort and the algorithmically-tractable subset of Vim's grammar. You keep editing the way you already do; the plugin runs in the background and lets you replay suggestions side-by-side to learn.
+Vimfy watches how you edit and surfaces shorter keystroke sequences that would have produced the same result, with awareness of customizable per-key effort and the algorithmically-tractable subset of Vim's grammar. You keep editing the way you already do; the plugin runs in the background and lets you replay suggestions side-by-side to learn.
 
 The benchmark dashboard with details on the search process is here:
-https://therickyzhang.github.io/Vimficiency/
+https://therickyzhang.github.io/Vimfy/
 
 ## Requirements
 - Neovim 0.11+
@@ -27,7 +27,7 @@ Ensure `build/libvimficiency.so` is on your library path or set `VIMFICIENCY_LIB
 
 ## Usage
 
-Vimficiency organizes work around **sessions** — captures of (start state, keys typed, end state) that the optimizer scores. Sessions form a 2×2 over how they start and end:
+Vimfy organizes work around **sessions** — captures of (start state, keys typed, end state) that the optimizer scores. Sessions form a 2×2 over how they start and end:
 
 |                   | **Manual end**                | **Auto end** (idle)         |
 |-------------------|-------------------------------|-----------------------------|

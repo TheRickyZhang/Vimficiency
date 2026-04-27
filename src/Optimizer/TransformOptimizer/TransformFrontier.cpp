@@ -23,11 +23,13 @@ TransformFrontierItem frontierItemFromSequence(
     CursorPos goalPos) {
   TransformSequenceDecomposition decomposition = decomposeEditSequence(fullSequence);
   return TransformFrontierItem{
-      .fullSequence = string(fullSequence),
-      .molecule = std::move(decomposition.molecule),
-      .typedText = std::move(decomposition.typedText),
-      .goalPos = goalPos,
-      .cost = cost,
+      FrontierItem{
+          .molecule = std::move(decomposition.molecule),
+          .goalPos = goalPos,
+          .cost = cost,
+      },
+      string(fullSequence),                    // fullSequence
+      std::move(decomposition.typedText),      // typedText
   };
 }
 

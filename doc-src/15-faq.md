@@ -8,7 +8,7 @@ title: "FAQ"
 > they come up. Below are a few anticipated ones with short answers — full
 > versions will be fleshed out over time.
 
-## Does Vimficiency slow down Neovim?
+## Does Vimfy slow down Neovim?
 
 No. Key capture is a small Lua append per keystroke. The optimizer only
 runs on `finish` (or an auto-trigger), in C++, over a snapshot. Recall is

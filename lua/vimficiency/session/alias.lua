@@ -3,7 +3,7 @@
 
 local M = {}
 
----@alias AliasType "manual" | "recall_key" | "recall_time"
+---@alias VF.Session.AliasType "manual" | "recall_key" | "recall_time"
 
 --- Common `Ns` windows surfaced by tab completion.
 M.TIME_HINTS = { "3s", "5s", "10s", "30s" }
@@ -11,7 +11,7 @@ M.TIME_HINTS = { "3s", "5s", "10s", "30s" }
 --- Parse an alias.
 --- Returns `(type, value)` for valid aliases, else `(nil, nil)`.
 ---@param s any
----@return AliasType|nil type
+---@return VF.Session.AliasType|nil type
 ---@return integer|nil value
 function M.parse(s)
   if type(s) ~= "string" or s == "" then return nil, nil end

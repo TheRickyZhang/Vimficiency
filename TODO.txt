@@ -10,6 +10,8 @@ Review implementation of BufferIndex in optimizeToRange() (is it exploring corre
 - Different modes of invoking sessions
 - Improving the lua/C++ interaction semantics
 
+Review Exploration C++ code
+
 ASK BLAKE: how to distinguish between the user's config, and stored settings data (how the user uses)?
 
 

@@ -1,0 +1,28 @@
+{
+  "runtime": {
+    "version": "LuaJIT"
+  },
+  "diagnostics": {
+    "globals": ["vim", "describe", "it", "before_each", "after_each"],
+    "severity": {
+      "unused-local": "Warning",
+      "unused-function": "Warning",
+      "unused-label": "Warning",
+      "unused-vararg": "Warning",
+      "code-after-break": "Warning",
+      "unbalanced-assignments": "Warning",
+      "empty-block": "Warning",
+      "missing-fields": "Warning"
+    }
+  },
+  "workspace": {
+    "library": [
+      "$VIMRUNTIME/lua",
+      "${3rd}/luv/library"
+    ],
+    "checkThirdParty": false
+  },
+  "telemetry": {
+    "enable": false
+  }
+}

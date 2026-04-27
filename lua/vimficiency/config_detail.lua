@@ -92,7 +92,7 @@ local function normalize_cost_trigger(path, value)
   return value
 end
 
-function M.normalize_watch(raw, defaults)
+function M.normalize_watch(raw)
   if raw == nil or raw == false then
     return false
   end

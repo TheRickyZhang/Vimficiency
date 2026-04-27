@@ -46,7 +46,7 @@ without format-detection heuristics.
 Two places consume `on_key` output and feed it into a sequence string that
 eventually reaches the tokenizer:
 
-- **`lua/vimficiency/explore/init.lua`** — the explore session's on_key
+- **`lua/vimficiency/explore.lua`** — the explore session's on_key
   buffer. Bytes flow through `explore_accept_cursor_move` into
   `InteractiveExploreSession::acceptCursorMove`, which appends them to
   `acceptedSeq` and calls `getEffort(acceptedSeq, config_)`. `getEffort`

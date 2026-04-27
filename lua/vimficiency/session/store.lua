@@ -17,34 +17,34 @@ local config = require("vimficiency.config")
 --- Canonical session record.
 --- Active records accumulate `key_seq`; finished records hold `result`.
 ---
----@class SessionRecord
+---@class VF.Session.Record
 ---@field id          string                    # Unique identifier
 ---@field key_nsid    integer                   # >=0 for manual w/ macro recording, -1 for recall (uses global tracking)
 ---@field win         integer                   # Window where session started
 ---@field buf         integer                   # Buffer where session started
----@field start_state VimficiencyState          # Cursor/viewport at start
+---@field start_state? VF.BufferState          # Cursor/viewport at start; nil for fetched/imported records
 ---@field time_started integer                  # hrtime when started
 ---@field status      "active" | "finished"
----@field key_seq     VimficiencyKeyEvent[]|nil # Accumulated keys (active only); dropped at finish
+---@field key_seq     VF.KeyEvent[]|nil # Accumulated keys (active only); dropped at finish
 ---@field key_count   integer                   # Live count while active; frozen at finish
 ---@field first_mode  string|nil                # Vim mode of the first captured key (recall only); used for command-boundary snapping
----@field result      ResultSession|nil         # Set at finish
+---@field result      VF.Session.Result|nil         # Set at finish
 ---@field finish_alias string|nil               # Literal alias passed to finish (`a`, `3s`, ...); used as the default filename for `:Vimfy save`
 ---@field start_kind  "manual"|"auto"           # Who picked the start. Manual = user called :Vimfy start|watch. Auto = created from the recall queue.
 ---@field end_kind    "manual"|"auto"           # Who triggers the end. Manual = user calls :Vimfy finish. Auto = an end-trigger (idle, etc.) fires finish. Combined with start_kind, yields one of Mark/Watch/Recall/Suggest.
 ---@field watch_disarm fun()|nil                # Watch sessions only: disarm for the idle end-trigger armed at :Vimfy watch. Called on finish/destroy so the timer and global subscriber are released.
 
----@alias ActiveSession SessionRecord
+---@alias VF.Session.Active VF.Session.Record
 
----@alias FinishReason
+---@alias VF.Session.FinishReason
 ---| "manual"        # `:Vimfy finish` (mark or recall)
 ---| "watch_idle"    # watch session's idle trigger fired
 ---| "suggest_idle"  # auto_suggest.idle fired
 ---| "suggest_keys"  # auto_suggest.keys fired
 ---| "suggest_cost"  # auto_suggest.cost fired
 
---- ResultSession: data for a completed session, ready for simulate().
----@class ResultSession
+--- VF.Session.Result: data for a completed session, ready for simulate().
+---@class VF.Session.Result
 ---@field lines string[]               # Trimmed buffer lines used for optimization
 ---@field goal_lines string[]|nil      # Goal buffer slice for recomputing explore recommendations
 ---@field start_row integer            # 0-indexed, relative to lines
@@ -57,17 +57,17 @@ local config = require("vimficiency.config")
 ---@field scroll_amount integer|nil    # Captured 'scroll' option for Ctrl-D/U semantics
 ---@field user_seq string              # What the user typed (keytrans string)
 ---@field user_cost number             # Effort cost of user's sequence
----@field optimal_results VimficiencyResult[] # Top N results from optimizer (seq + cost)
+---@field optimal_results VF.Optimizer.Result[] # Top N results from optimizer (seq + cost)
 ---@field start_time integer           # hrtime when the session started
 ---@field key_count integer            # Captured key events at finish (authoritative; user_seq is bytes, not keys)
 ---@field timestamp integer            # hrtime when the result was computed (finish time)
----@field finish_reason FinishReason   # Why the session ended (absent on pre-reason saved files)
+---@field finish_reason? VF.Session.FinishReason  # Why the session ended; set by finish_session, absent on pre-reason saved files
 
 --- Normalized view-model for list/suggest UIs.
 --- `display_alias` is presentation-only; use `id` for follow-up actions.
----@class SessionSummary
+---@class VF.Session.Summary
 ---@field id            string
----@field type          SessionType    # Derived from (start_kind, end_kind). Switch on this for exhaustive dispatch.
+---@field type          VF.Session.Type    # Derived from (start_kind, end_kind). Switch on this for exhaustive dispatch.
 ---@field start_kind    "manual"|"auto"
 ---@field end_kind      "manual"|"auto"
 ---@field display_alias string|nil     # For display. Time-varying for recall; do not re-feed.
@@ -76,14 +76,14 @@ local config = require("vimficiency.config")
 ---@field end_time      integer|nil    # hrtime at finish; nil if still active
 ---@field key_count     integer        # Keystrokes captured so far
 ---@field preview       string         # First ~20 chars of user_seq for display
----@field result        ResultSession|nil
+---@field result        VF.Session.Result|nil
 
----@alias SessionType "mark" | "watch" | "recall" | "suggest"
+---@alias VF.Session.Type "mark" | "watch" | "recall" | "suggest"
 
---- Derive the canonical SessionType from the kind pair.
+--- Derive the canonical VF.Session.Type from the kind pair.
 ---@param start_kind "manual"|"auto"
 ---@param end_kind   "manual"|"auto"
----@return SessionType
+---@return VF.Session.Type
 function M.session_type_from_kinds(start_kind, end_kind)
   if start_kind == "manual" and end_kind == "manual" then return "mark" end
   if start_kind == "manual" and end_kind == "auto"   then return "watch" end
@@ -100,10 +100,10 @@ end
 ---@param key_nsid integer  >= 0 for manual sessions (with macro recording), -1 for recall sessions
 ---@param win integer
 ---@param buf integer
----@param start_state VimficiencyState
+---@param start_state VF.BufferState
 ---@param start_kind "manual"|"auto"
 ---@param end_kind "manual"|"auto"
----@return SessionRecord
+---@return VF.Session.Record
 function M.new_active_session(id, key_nsid, win, buf, start_state, start_kind, end_kind)
   assert(type(id) == "string" and id ~= "", "session.id must be nonempty string")
   assert(type(key_nsid) == "number", "key_nsid must be a number")
@@ -141,7 +141,7 @@ local MANUAL_CAPACITY = 5      -- concurrent active sessions. Finished records r
 -- Storage
 --------------------------------------------------------------------------------
 
----@type table<string, SessionRecord>
+---@type table<string, VF.Session.Record>
 local session_records = {}
 
 ---@type table<string, string>  -- alias -> id
@@ -161,7 +161,7 @@ local last_finished_id = nil
 --------------------------------------------------------------------------------
 
 --- Find the youngest recall record index `i` whose time_started <= target.
----@param records table<string, SessionRecord>
+---@param records table<string, VF.Session.Record>
 ---@param order string[]
 ---@param target_hrtime integer
 ---@param budget integer
@@ -305,7 +305,7 @@ end
 --- Store a manual session.
 --- Caller must ensure can_store_manual(alias) returned true.
 ---@param alias string
----@param record SessionRecord
+---@param record VF.Session.Record
 ---@return boolean overwrote  True if an existing session was replaced
 function M.store_manual(alias, record)
   local existing_id = manual_alias_to_id[alias]
@@ -320,7 +320,7 @@ function M.store_manual(alias, record)
 end
 
 --- Store a recall session at the newest position, evicting if caps demand.
----@param record SessionRecord
+---@param record VF.Session.Record
 function M.store_recall(record)
   session_records[record.id] = record
   table.insert(recall_id_order, record.id)
@@ -328,7 +328,7 @@ function M.store_recall(record)
 end
 
 ---@param alias string
----@return SessionRecord|nil
+---@return VF.Session.Record|nil
 function M.get_active(alias)
   local id = convert_alias_to_id(alias)
   if not id then return nil end
@@ -338,7 +338,7 @@ function M.get_active(alias)
 end
 
 ---@param alias string
----@return ResultSession|nil
+---@return VF.Session.Result|nil
 function M.get_result(alias)
   local id = convert_alias_to_id(alias)
   if not id then return nil end
@@ -349,7 +349,7 @@ end
 --- Id-keyed variant of `get_result`.
 --- Use this after pinning a time-varying alias to a stable id.
 ---@param id string
----@return ResultSession|nil
+---@return VF.Session.Result|nil
 function M.get_result_by_id(id)
   if not util.is_session_id(id) then return nil end
   local rec = session_records[id]
@@ -395,10 +395,10 @@ end
 
 --- Transition an active session to finished without removing its indexes.
 ---@param id string
----@param result ResultSession
+---@param result VF.Session.Result
 ---@param finish_alias string|nil       Literal alias the caller used for this finish (`a`, `3s`, etc.); stored for `:Vimfy save @` default naming
 ---@param end_kind_override "manual"|"auto"|nil  When non-nil, atomically update rec.end_kind as part of the same status transition. Used by auto_suggest to promote a Recall record (`auto, manual`) to Suggest (`auto, auto`) only on confirmed finish — a speculative mutation before finish would leave a failed compute/finish path with a mislabeled record.
----@param reason FinishReason           Why the session ended; stored on the result for display and debugging.
+---@param reason VF.Session.FinishReason           Why the session ended; stored on the result for display and debugging.
 ---@return boolean success
 function M.finish_session(id, result, finish_alias, end_kind_override, reason)
   local rec = session_records[id]
@@ -408,7 +408,7 @@ function M.finish_session(id, result, finish_alias, end_kind_override, reason)
     "end_kind_override must be 'manual', 'auto', or nil; got: " .. tostring(end_kind_override))
   assert(reason == "manual" or reason == "watch_idle"
       or reason == "suggest_idle" or reason == "suggest_keys" or reason == "suggest_cost",
-    "reason must be a FinishReason; got: " .. tostring(reason))
+    "reason must be a VF.Session.FinishReason; got: " .. tostring(reason))
 
   if rec.watch_disarm then
     rec.watch_disarm()
@@ -453,7 +453,7 @@ function M.finish_session(id, result, finish_alias, end_kind_override, reason)
 end
 
 --- Resolve the `@` selector to the most recently finished result.
----@return ResultSession|nil
+---@return VF.Session.Result|nil
 function M.get_last_finished_result()
   if not last_finished_id then return nil end
   local rec = session_records[last_finished_id]
@@ -485,7 +485,7 @@ end
 
 --- Insert a disk-loaded result as a finished session under `alias`.
 ---@param alias string  Must satisfy `alias.is_valid_manual`.
----@param result ResultSession
+---@param result VF.Session.Result
 ---@return string|nil id
 ---@return string|nil err
 function M.register_fetched_result(alias, result)
@@ -524,7 +524,7 @@ end
 
 --- Move a manual alias to a new name in-place. Refuses if the source is
 --- missing or the target is already taken. Only the `manual_alias_to_id`
---- index is touched; the underlying SessionRecord is untouched.
+--- index is touched; the underlying VF.Session.Record is untouched.
 ---@param old_alias string
 ---@param new_alias string
 ---@return boolean ok
@@ -589,9 +589,9 @@ local function find_manual_alias(id)
   return nil
 end
 
---- Build a SessionSummary for the session with this id.
+--- Build a VF.Session.Summary for the session with this id.
 ---@param id string
----@return SessionSummary|nil
+---@return VF.Session.Summary|nil
 function M.summarize(id)
   local rec = session_records[id]
   if not rec then return nil end
@@ -628,7 +628,7 @@ function M.summarize(id)
 end
 
 --- Summarize every known session. Order is unspecified.
----@return SessionSummary[]
+---@return VF.Session.Summary[]
 function M.summarize_all()
   local out = {}
   for id, _ in pairs(session_records) do
@@ -645,7 +645,7 @@ end
 --- Ingest one tracked keystroke into the rolling recall ring.
 ---
 --- Callers are responsible for event-source filtering and window validity.
----@param event VimficiencyKeyEvent
+---@param event VF.KeyEvent
 function M.ingest_recall_event(event)
   -- Append the event to every still-active recall record.
   for _, id in ipairs(recall_id_order) do
@@ -695,7 +695,7 @@ M._pure = {
 
 --- Test-only: fetch an active record by id.
 ---@param id string
----@return SessionRecord|nil
+---@return VF.Session.Record|nil
 function M._for_test_get_active(id)
   return session_records[id]
 end

@@ -1,0 +1,147 @@
+// Canonical C ABI for LuaJIT FFI.
+// Included by Api.h for C++ compile-time checks and read directly by
+// lua/vimficiency/ffi.lua for ffi.cdef().
+
+extern const int VF_KEY_COUNT;
+extern const int VF_FINGER_COUNT;
+extern const int VF_HAND_COUNT;
+extern const int VF_COUNT_CLASS_COUNT;
+
+typedef struct {
+  double keyWeight;
+  double sameFingerWeight;
+  double sameKeyWeight;
+  double altHandWeight;
+  double goodRollWeight;
+  double badRollWeight;
+} VFScoreWeights;
+
+typedef struct {
+  int8_t hand;
+  int8_t finger;
+  double base_cost;
+} VFKeyInfo;
+
+typedef struct {
+  bool has_base;
+  double base;
+  bool has_count_slope;
+  double count_slope;
+  bool has_span_slope;
+  double span_slope;
+} VFCountPenaltyOverride;
+
+typedef struct {
+  int default_keyboard;
+  VFScoreWeights weights;
+  VFKeyInfo keys[61];  // must match C++ KEY_COUNT
+  int slice_buffer_amount;
+  int32_t shiftwidth;
+  bool use_count_penalty_overrides;
+  VFCountPenaltyOverride count_penalty_overrides[14];  // must match C++ CountClassCOUNT
+} VFConfig;
+
+VFConfig* vf_get_config();
+void vf_apply_config();
+
+const char* vf_key_name(int index);
+const char* vf_finger_name(int index);
+const char* vf_hand_name(int index);
+const char* vf_count_class_name(int index);
+const char* vf_analyze(
+  const char* initial_text,
+  const char* goal_text,
+  int boundary_first_col,
+  int boundary_last_col,
+  bool has_lines_above,
+  bool has_lines_below,
+  int start_row,
+  int start_col,
+  int end_row,
+  int end_col,
+  const char* keyseq,
+  int window_height,
+  int scroll_amount,
+  int results_calculated);
+const char* vf_get_debug();
+int vf_version();
+const char* vf_debug_config();
+
+const char* vf_tokenize_movements(const char* seq);
+const char* vf_tokenize_sequence(const char* seq);
+const char* vf_build_sequence(const char* encoded_events);
+const char* vf_compute_search_region(
+  const char* encoded_start_lines,
+  const char* encoded_end_lines,
+  int start_row,
+  int end_row,
+  int padding);
+int vf_resolve_recall_cutoff(
+  const char* encoded_records,
+  int64_t target_hrtime,
+  int budget);
+int vf_manual_evict_reason(
+  int start_row,
+  int cursor_row,
+  int64_t last_key_time_ns,
+  bool has_last_key,
+  int64_t now_ns,
+  int max_search_lines,
+  int manual_idle_timeout_seconds);
+const char* vf_format_sequence(const char* seq);
+const char* vf_simulate_movements(
+  const char* encoded_lines,
+  int start_row,
+  int start_col,
+  const char* seq);
+
+const char* vf_explore_start(
+  const char* encoded_initial_lines,
+  int start_row,
+  int start_col,
+  const char* encoded_goal_lines,
+  int end_row,
+  int end_col,
+  int boundary_first_col,
+  int boundary_last_col,
+  bool has_lines_above,
+  bool has_lines_below,
+  int window_height,
+  int scroll_amount,
+  const char* user_seq);
+int vf_explore_destroy(int view_id);
+const char* vf_explore_state(int view_id);
+const char* vf_explore_recommendations(
+  int view_id,
+  int max_count,
+  bool allow_multiple_movements_per_position,
+  bool allow_multiple_edits_per_position);
+const char* vf_explore_apply_movement(int view_id, const char* movement_text);
+const char* vf_explore_accept_cursor_move(
+  int view_id,
+  int new_row,
+  int new_col,
+  const char* raw_keys);
+const char* vf_explore_apply_edit(int view_id, const char* text);
+const char* vf_explore_accept_buffer_state(
+  int view_id,
+  const char* encoded_lines,
+  int new_row,
+  int new_col,
+  const char* raw_keys);
+const char* vf_explore_current_lines(int view_id);
+const char* vf_explore_begin_edit(
+  int view_id,
+  bool enters_insert_mode,
+  const char* required_typed_text);
+const char* vf_explore_insert_text(int view_id, const char* typed_chunk);
+const char* vf_explore_exit_insert(int view_id);
+const char* vf_explore_accept_insert_exit(
+  int view_id,
+  const char* encoded_lines,
+  int new_row,
+  int new_col,
+  const char* raw_keys);
+const char* vf_explore_cancel_pending_insert(int view_id);
+const char* vf_explore_undo(int view_id);
+const char* vf_explore_redo(int view_id);

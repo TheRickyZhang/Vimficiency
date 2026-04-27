@@ -31,37 +31,32 @@
 // depth 1 and sidesteps the undo/redo complexity of a persistent
 // optimizer.
 
-#include <string>
+#include <optional>
 #include <vector>
 
 #include "Boundary/NavBoundary.h"
 #include "Keyboard/Config.h"
+#include "Optimizer/FrontierCommon.h"
 #include "Types/CharRange.h"
-#include "Types/CursorPos.h"
-#include "Types/Lines.h"
 #include "Types/NavContext.h"
 
-struct NavFrontierItem {
-  std::string molecule;
-  CursorPos landingPos{0, 0};
-  // Raw effort of this single molecule (not a cumulative path cost).
-  double cost = 0.0;
+// Default dedup (`allowMultiplePerPosition == false`): at most one result
+// per unique landing position — the cheapest-cost molecule wins, matching
+// `NavOptimizerRangeParams::allowMultiplePerPosition`. When true: multiple
+// molecules reaching the same cell are kept (e.g. `w` and `W` both landing
+// on the next word start); dedup keys on sequence text so only literal-
+// string duplicates collapse.
+struct NavFrontierItem : FrontierItem {
+  // Used only by Explore::backfillEditStartMovements: cost of the planned
+  // edit at `goalPos`. The wire's totalPathCost = cost + this.value_or(0).
+  // Empty for every other nav source.
+  std::optional<double> projectedEditCost;
 };
 
-struct NavFrontierQuery {
-  const Lines& lines;
-  CursorPos cursor;
+struct NavFrontierQuery : FrontierQuery {
   CharRange targetRange;
   const NavBoundary& boundary;
   const NavContext& navContext;
-  int maxCount = 0;
-  // When false (default): at most one result per unique landing position —
-  // the cheapest-cost molecule wins, matching the semantic of
-  // `NavOptimizerRangeParams::allowMultiplePerPosition`.
-  // When true: multiple molecules reaching the same cell are kept (e.g. `w`
-  // and `W` both landing on the next word start); dedup keys on sequence
-  // text so only literal-string duplicates collapse.
-  bool allowMultiplePerPosition = false;
 };
 
 // Depth-1 live expansion from `query.cursor` toward `query.targetRange`.

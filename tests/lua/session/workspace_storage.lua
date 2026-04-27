@@ -1,7 +1,7 @@
 -- tests/lua/workspace_storage.lua
 -- Covers the workspace/storage split: save / store / fetch and the
 -- implicit-fetch fallback in simulate(). These exercise the plumbing in
--- session/init.lua + session/store.lua that routes finished results between
+-- session.lua + session/store.lua that routes finished results between
 -- in-memory aliases and on-disk files.
 
 local h = require("_helpers")
@@ -19,7 +19,7 @@ local function use_temp_save_dir()
   return tmp
 end
 
---- Construct a minimal ResultSession for register_fetched_result.
+--- Construct a minimal VF.Session.Result for register_fetched_result.
 ---@param user_seq string
 ---@return table
 local function fake_result(user_seq)

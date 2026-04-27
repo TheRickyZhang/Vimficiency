@@ -18,22 +18,22 @@ local sequence_display = require("vimficiency.sequence_display")
 
 local M = {}
 
-local tags_ns = v.nvim_create_namespace("vimficiency_explore_tags")
+local tags_ns = v.nvim_create_namespace("vimfy_explore_tags")
 M.tags_ns = tags_ns
 M.TARGET_HL = highlights.TARGET_HL
 
 local rank_hl = highlights.rank_hl
 
----@param recs VimficiencyExploreRecommendation[]
----@return table<integer, VimficiencyExploreRecommendation[]>
+---@param recs VF.Explore.Recommendation[]
+---@return table<integer, VF.Explore.Recommendation[]>
 local function group_motions_by_row(recs)
   local by_row = {}
   for _, item in ipairs(recs) do
     if item.kind == "movement" then
-      local list = by_row[item.landing_row]
+      local list = by_row[item.landing.row]
       if not list then
         list = {}
-        by_row[item.landing_row] = list
+        by_row[item.landing.row] = list
       end
       list[#list + 1] = item
     end
@@ -45,9 +45,9 @@ end
 ---range: `[begin, end)`. Zero-width targets (pure insertion points) are
 ---represented by a single `{zero_width = true}` cell at begin.
 local function target_cells(state, scratch_buf)
-  local br, bc = state.target_begin_row, state.target_begin_col
-  local er, ec = state.target_end_row, state.target_end_col
-  if br < 0 then return {} end
+  if not state.target_range then return {} end
+  local br, bc = state.target_range.begin_pos.row, state.target_range.begin_pos.col
+  local er, ec = state.target_range.end_pos.row, state.target_range.end_pos.col
   local function line_len(row)
     local line = v.nvim_buf_get_lines(scratch_buf, row, row + 1, false)[1] or ""
     return #line
@@ -140,8 +140,8 @@ local function render_landing_highlights(active, filter)
   table.sort(motions, function(x, y) return (x.rank or 0) < (y.rank or 0) end)
 
   for _, item in ipairs(motions) do
-    local row = item.landing_row
-    local col = item.landing_col
+    local row = item.landing.row
+    local col = item.landing.col
     if not is_claimed(claims, row, col) then
       claim_with_gap(claims, row, col, 1)
       local line = v.nvim_buf_get_lines(active.scratch.buf, row, row + 1, false)[1] or ""
@@ -175,8 +175,8 @@ local function render_tags_inplace(active)
   table.sort(motions, function(x, y) return (x.rank or 0) < (y.rank or 0) end)
 
   for _, item in ipairs(motions) do
-    local row = item.landing_row
-    local col = item.landing_col
+    local row = item.landing.row
+    local col = item.landing.col
     if not is_claimed(claims, row, col) then
       claim_with_gap(claims, row, col, 1)
       local first_char = sequence_display.inline(item.text):sub(1, 1)
@@ -210,7 +210,7 @@ local function build_row_tag_line(items, placed_out)
   local placed = {}
   for _, item in ipairs(items) do
     local tag_text = sequence_display.inline(item.text)
-    local start_col = item.landing_col
+    local start_col = item.landing.col
     local width = display_width(tag_text)
 
     local overlap = false
@@ -262,7 +262,7 @@ end
 
 ---Dispatch to the mode-specific renderer. Target highlight always draws
 ---first (except in `off`), so it sits under the rank-colored landings.
----@param active VimficiencyExploreActive
+---@param active VF.Explore.Active
 function M.render(active)
   v.nvim_buf_clear_namespace(active.scratch.buf, tags_ns, 0, -1)
 

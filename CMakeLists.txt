@@ -88,6 +88,8 @@ add_library(vimficiency SHARED
     src/lua_exports.cpp
     src/LuaExports/AnalyzeExports.cpp
     src/LuaExports/InteractiveExports.cpp
+    src/LuaExports/Logic.cpp
+    src/LuaExports/Payload.cpp
     src/LuaExports/UtilityExports.cpp
 )
 target_link_libraries(vimficiency PRIVATE vimficiency_core)

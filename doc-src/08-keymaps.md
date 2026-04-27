@@ -4,7 +4,7 @@ title: "Binding keys to Vimfy actions"
 
 # Binding keys to Vimfy actions
 
-Vimficiency measures the keys you type, so a key that *invokes* Vimfy
+Vimfy measures the keys you type, so a key that *invokes* Vimfy
 must announce itself as admin activity — otherwise the invoking
 keystroke counts as motion. `vim.on_key` fires for the LHS before
 Neovim resolves the mapping, and we can't retroactively uncount; the
@@ -29,7 +29,7 @@ line works as a `vimfy.map` spec.
 
 The fourth argument is the `opts` table passed through to
 `vim.keymap.set` (`buffer`, `desc`, `silent`, ...). `silent` defaults
-to `true`; `desc` defaults to `"Vimficiency <spec>"`.
+to `true`; `desc` defaults to `"Vimfy <spec>"`.
 
 ### Binding arbitrary Lua
 
@@ -110,7 +110,7 @@ The `X` or `Y` keystroke is delivered to Vimfy's tracker *before* the
 mapping resolves — we can't retroactively uncount it. To fix: move the
 binding into `vimfy.map()` or a `<Plug>` map.
 
-At setup, Vimficiency scans pre-existing mappings for this pattern and
+At setup, Vimfy scans pre-existing mappings for this pattern and
 emits a one-shot warning listing each offender. The scan can't see
 mappings defined *after* setup (or Lua-callback RHS, or buffer-local
 mappings added later) — if an LHS keeps showing up as motion, check

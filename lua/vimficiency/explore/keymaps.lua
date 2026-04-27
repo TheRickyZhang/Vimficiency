@@ -6,7 +6,7 @@ local util = require("vimficiency.util")
 
 local M = {}
 
----@class VimficiencyExploreKeymapSpec
+---@class VF.Explore.KeymapSpec
 ---@field lhs string        # key sequence
 ---@field handler string    # handler name — resolved against the `handlers` table passed to `install`
 ---@field desc string       # human-readable description (shown by :map etc.)
@@ -20,7 +20,7 @@ local M = {}
 -- more impactful settings (display mode, dedup, recommendation count,
 -- show-user-typed, result-count) live in the settings modal opened via
 -- `gs`.
----@type VimficiencyExploreKeymapSpec[]
+---@type VF.Explore.KeymapSpec[]
 local SCRATCH_SPEC = {
   { lhs = "q",               handler = "cancel",             desc = "Close explore session",      nowait = true },
   { lhs = "u",               handler = "undo",               desc = "Undo explore step",          nowait = true,
@@ -30,12 +30,12 @@ local SCRATCH_SPEC = {
   { lhs = "<Leader>d",       handler = "debug_dump",         desc = "Dump explore state to :messages (debug)", mode = "n", nowait = true },
 }
 
----@type VimficiencyExploreKeymapSpec[]
+---@type VF.Explore.KeymapSpec[]
 local LIST_SPEC = {
   { lhs = "q", handler = "cancel", desc = "Close explore session", nowait = true },
 }
 
----@type VimficiencyExploreKeymapSpec[]
+---@type VF.Explore.KeymapSpec[]
 local HEADER_SPEC = {
   { lhs = "q", handler = "cancel", desc = "Close explore session", nowait = true },
 }
@@ -60,7 +60,7 @@ resolve = function(spec, handlers)
   local out = {}
   for _, entry in ipairs(spec) do
     local fn = handlers[entry.handler]
-    assert(fn, "vimficiency explore keymaps: missing handler '" .. entry.handler .. "'")
+    assert(fn, "vimfy explore keymaps: missing handler '" .. entry.handler .. "'")
     out[#out + 1] = {
       lhs = entry.lhs,
       handler = fn,

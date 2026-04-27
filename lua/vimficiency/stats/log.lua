@@ -40,7 +40,7 @@ end
 
 --- Build a log record from the finished-session result.
 ---@param session_type string  "mark" | "watch" | "recall" | "suggest"
----@param result ResultSession
+---@param result VF.Session.Result
 ---@return table|nil  nil if the result is too incomplete to log
 function M.build_record(session_type, result)
   if not result or not result.user_seq then return nil end
@@ -73,7 +73,7 @@ function M.append(record)
   local fh, open_err = io.open(path, "a")
   if not fh then
     vim.schedule(function()
-      vim.notify("vimficiency stats: could not open log: " ..
+      vim.notify("vimfy stats: could not open log: " ..
         tostring(open_err or "?"), vim.log.levels.WARN)
     end)
     return

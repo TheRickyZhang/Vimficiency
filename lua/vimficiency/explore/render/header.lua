@@ -5,10 +5,10 @@ local util = require("vimficiency.util")
 
 local M = {}
 
-local header_ns = v.nvim_create_namespace("vimficiency_explore_header")
+local header_ns = v.nvim_create_namespace("vimfy_explore_header")
 M.header_ns = header_ns
 
----@param active VimficiencyExploreActive
+---@param active VF.Explore.Active
 ---@param remaining string
 ---@return table
 local function summary_chunks(active, remaining)
@@ -25,13 +25,13 @@ local function summary_chunks(active, remaining)
     { "Cost ", "Comment" },
     { string.format("%.2f", active.state.accepted_cost), "Normal" },
     { "   Cursor ", "Comment" },
-    { string.format("(%d,%d)", active.state.cursor_row, active.state.cursor_col), "Normal" },
+    { string.format("(%d,%d)", active.state.cursor.row, active.state.cursor.col), "Normal" },
     { "   Phase ", "Comment" },
     { phase_label, "Normal" },
   }
 end
 
----@param active VimficiencyExploreActive
+---@param active VF.Explore.Active
 ---@return { title: string, seq: string, empty_text: string }[]
 local function gather_columns(active)
   local cols = {
@@ -56,8 +56,8 @@ local function gather_columns(active)
   return cols
 end
 
----@param active VimficiencyExploreActive
----@param pane VimficiencyExploreWindow
+---@param active VF.Explore.Active
+---@param pane VF.Explore.Window
 ---@param name string
 local function configure_window(active, pane, name)
   v.nvim_buf_set_name(pane.buf, name)
@@ -83,16 +83,16 @@ end
 
 local chunk_text
 
----@param active VimficiencyExploreActive
----@param pane VimficiencyExploreWindow
+---@param active VF.Explore.Active
+---@param pane VF.Explore.Window
 ---@param idx integer
 local function configure_pane(active, pane, idx)
   configure_window(active, pane, string.format("vimficiency://explore/%s/header/%d", active.label, idx))
 end
 
----@param active VimficiencyExploreActive
+---@param active VF.Explore.Active
 ---@param source_win integer
----@return VimficiencyExploreWindow
+---@return VF.Explore.Window
 local function split_new_pane(active, source_win)
   local before = v.nvim_tabpage_list_wins(active.scratch.tab)
   v.nvim_set_current_win(source_win)
@@ -111,13 +111,13 @@ local function split_new_pane(active, source_win)
       break
     end
   end
-  assert(new_win, "vimficiency explore: failed to create header pane")
+  assert(new_win, "vimfy explore: failed to create header pane")
   local buf = v.nvim_create_buf(false, true)
   v.nvim_win_set_buf(new_win, buf)
   return { buf = buf, win = new_win }
 end
 
----@param active VimficiencyExploreActive
+---@param active VF.Explore.Active
 ---@param count integer
 local function ensure_panes(active, count)
   local current_win = v.nvim_get_current_win()
@@ -175,7 +175,7 @@ local function rows_display_width(rows)
   return width
 end
 
----@param active VimficiencyExploreActive
+---@param active VF.Explore.Active
 ---@param pane_rows table[][]
 local function set_compact_widths(active, pane_rows)
   local count = #active.header.windows
@@ -272,11 +272,9 @@ local function write_rows(buf, rows)
   vim.bo[buf].modifiable = false
 end
 
----@param active VimficiencyExploreActive
 ---@param column { title: string, seq: string, empty_text: string }
----@param remaining string
 ---@return table[][]
-local function build_rows(active, column, remaining)
+local function build_rows(column)
   local lines
   if column.seq ~= "" then
     lines = sequence_display.lines(column.seq)
@@ -295,7 +293,7 @@ local function build_rows(active, column, remaining)
   return rows
 end
 
----@param active VimficiencyExploreActive
+---@param active VF.Explore.Active
 ---@param remaining string
 ---@return table[][]
 local function build_summary_rows(active, remaining)
@@ -315,7 +313,7 @@ local function pad_rows(rows, target)
   end
 end
 
----@param active VimficiencyExploreActive
+---@param active VF.Explore.Active
 ---@param remaining string
 ---@return nil
 function M.render(active, remaining)
@@ -333,7 +331,7 @@ function M.render(active, remaining)
   local max_height = 0
   local summary_rows = build_summary_rows(active, remaining)
   for i, column in ipairs(columns) do
-    pane_rows[i] = build_rows(active, column, remaining)
+    pane_rows[i] = build_rows(column)
     max_height = math.max(max_height, #pane_rows[i])
   end
   set_compact_widths(active, pane_rows)

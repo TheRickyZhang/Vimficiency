@@ -14,7 +14,7 @@ version is `doc-src/07a-session-storage.md`; this page covers the implementation
     and for records inserted via `register_fetched_result`.
   - `recall_id_order[]` — ordered deque of Recall/Suggest ids (oldest → newest).
   - `last_finished_id` — backs the `@` shorthand selector.
-- `session/init.lua` owns the disk side. Files live at
+- `session.lua` owns the disk side. Files live at
   `stdpath('data')/vimficiency/saved/<name>.json`, one result per file.
 
 Aliases and saved-filenames are **separate namespaces**. `alias.is_valid_manual`
@@ -37,7 +37,7 @@ aliases, `fetch`/`view`/`rm` work on filenames) disambiguates.
 | `register_fetched_result(alias, result) -> id?, err?` | Insert a disk-loaded result as a finished record. Refuses if alias is occupied. |
 | `remove(id)`                           | Drop the record and its index entries. `id`, not alias.       |
 
-### Archive side (in `session/init.lua`)
+### Archive side (in `session.lua`)
 
 | Function                      | Use                                                              |
 |-------------------------------|------------------------------------------------------------------|
@@ -56,7 +56,7 @@ concatenating into a filesystem path.
 
 - `save` / `store` onto an existing disk file: overwrites the file and
   emits a WARN (`vim.notify(..., vim.log.levels.WARN)`). No refusal. The
-  shared helper in `session/init.lua` is `write_to_disk_with_overwrite_warn`.
+  shared helper in `session.lua` is `write_to_disk_with_overwrite_warn`.
 - `fetch` into an occupied workspace alias: **refuses**
   (`register_fetched_result` returns `nil, err`; caller surfaces the error).
 - `:Vimfy play <x>` branches by where `<x>` exists:

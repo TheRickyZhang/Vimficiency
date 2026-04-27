@@ -4,229 +4,6 @@ local ffi = require("ffi")
 
 local M = {}
 
--- FFI type annotations for LuaLS. These mirror the structs in `ffi.cdef`.
-
----@class C_ScoreWeights
----@field keyWeight number
----@field sameFingerWeight number
----@field sameKeyWeight number
----@field altHandWeight number
----@field goodRollWeight number
----@field badRollWeight number
-
----@class C_KeyInfo
----@field hand integer
----@field finger integer
----@field base_cost number
-
----@class C_CountPenaltyOverride
----@field has_base boolean
----@field base number
----@field has_count_slope boolean
----@field count_slope number
----@field has_span_slope boolean
----@field span_slope number
-
----@class VimficiencyConfigFFI
----@field default_keyboard integer
----@field weights C_ScoreWeights
----@field keys C_KeyInfo[]
----@field slice_buffer_amount integer
----@field shiftwidth integer  -- -1 = use default (8)
----@field use_count_penalty_overrides boolean
----@field count_penalty_overrides C_CountPenaltyOverride[]
-
----@class VimficiencyLib
----@field VIMFICIENCY_KEY_COUNT integer
----@field VIMFICIENCY_FINGER_COUNT integer
----@field VIMFICIENCY_HAND_COUNT integer
----@field VIMFICIENCY_COUNT_CLASS_COUNT integer
----@field vimficiency_key_name fun(index: integer): ffi.cdata*
----@field vimficiency_finger_name fun(index: integer): ffi.cdata*
----@field vimficiency_hand_name fun(index: integer): ffi.cdata*
----@field vimficiency_count_class_name fun(index: integer): ffi.cdata*
----@field vimficiency_get_config fun(): VimficiencyConfigFFI
----@field vimficiency_apply_config fun(): nil
----@field vimficiency_analyze fun(initial_text: string, goal_text: string, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, start_row: integer, start_col: integer, end_row: integer, end_col: integer, keyseq: string, window_height: integer, scroll_amount: integer, results_calculated: integer): string
----@field vimficiency_get_debug fun(): string
----@field vimficiency_version fun(): integer
----@field vimficiency_debug_config fun(): string
----@field vimficiency_tokenize_movements fun(seq: string): string
----@field vimficiency_tokenize_sequence fun(seq: string): string
----@field vimficiency_build_sequence fun(encoded_events: string): string
----@field vimficiency_compute_search_region fun(encoded_start_lines: string, encoded_end_lines: string, start_row: integer, end_row: integer, padding: integer): string
----@field vimficiency_resolve_recall_cutoff fun(encoded_records: string, target_hrtime: integer, budget: integer): integer
----@field vimficiency_manual_evict_reason fun(start_row: integer, cursor_row: integer, last_key_time_ns: integer, has_last_key: boolean, now_ns: integer, max_search_lines: integer, manual_idle_timeout_seconds: integer): integer
----@field vimficiency_format_sequence fun(seq: string): string
----@field vimficiency_simulate_movements fun(encoded_lines: string, start_row: integer, start_col: integer, seq: string): string
----@field vimficiency_explore_start fun(encoded_initial_lines: string, start_row: integer, start_col: integer, encoded_goal_lines: string, end_row: integer, end_col: integer, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, window_height: integer, scroll_amount: integer, user_seq: string): string
----@field vimficiency_explore_destroy fun(view_id: integer): integer
----@field vimficiency_explore_state fun(view_id: integer): string
----@field vimficiency_explore_recommendations fun(view_id: integer, max_count: integer, allow_multiple_movements_per_position: boolean, allow_multiple_edits_per_position: boolean): string
----@field vimficiency_explore_apply_movement fun(view_id: integer, movement_text: string): string
----@field vimficiency_explore_accept_cursor_move fun(view_id: integer, new_row: integer, new_col: integer, raw_keys: string): string
----@field vimficiency_explore_apply_edit fun(view_id: integer, text: string): string
----@field vimficiency_explore_accept_buffer_state fun(view_id: integer, encoded_lines: string, new_row: integer, new_col: integer, raw_keys: string): string
----@field vimficiency_explore_current_lines fun(view_id: integer): string
----@field vimficiency_explore_begin_edit fun(view_id: integer, enters_insert_mode: boolean, required_typed_text: string): string
----@field vimficiency_explore_insert_text fun(view_id: integer, typed_chunk: string): string
----@field vimficiency_explore_exit_insert fun(view_id: integer): string
----@field vimficiency_explore_accept_insert_exit fun(view_id: integer, encoded_lines: string, new_row: integer, new_col: integer, raw_keys: string): string
----@field vimficiency_explore_cancel_pending_insert fun(view_id: integer): string
----@field vimficiency_explore_undo fun(view_id: integer): string
----@field vimficiency_explore_redo fun(view_id: integer): string
-
-ffi.cdef([[
-    extern const int VIMFICIENCY_KEY_COUNT;
-    extern const int VIMFICIENCY_FINGER_COUNT;
-    extern const int VIMFICIENCY_HAND_COUNT;
-    extern const int VIMFICIENCY_COUNT_CLASS_COUNT;
-
-    typedef struct {
-        double keyWeight;
-        double sameFingerWeight;
-        double sameKeyWeight;
-        double altHandWeight;
-        double goodRollWeight;
-        double badRollWeight;
-    } C_ScoreWeights;
-
-    typedef struct {
-        int8_t hand;
-        int8_t finger;
-        double base_cost;
-    } C_KeyInfo;
-
-    typedef struct {
-        bool has_base;
-        double base;
-        bool has_count_slope;
-        double count_slope;
-        bool has_span_slope;
-        double span_slope;
-    } C_CountPenaltyOverride;
-
-    typedef struct {
-        int default_keyboard;
-        C_ScoreWeights weights;
-        C_KeyInfo keys[61];  // must match C++ KEY_COUNT
-        int slice_buffer_amount;
-        int32_t shiftwidth;
-        bool use_count_penalty_overrides;
-        C_CountPenaltyOverride count_penalty_overrides[14];  // must match C++ CountClassCOUNT
-    } VimficiencyConfigFFI;
-
-    VimficiencyConfigFFI* vimficiency_get_config();
-    void vimficiency_apply_config();
-
-    const char* vimficiency_key_name(int index);
-    const char* vimficiency_finger_name(int index);
-    const char* vimficiency_hand_name(int index);
-    const char* vimficiency_count_class_name(int index);
-    const char* vimficiency_analyze(
-        const char* initial_text,
-        const char* goal_text,
-        int boundary_first_col, int boundary_last_col,
-        bool has_lines_above, bool has_lines_below,
-        int start_row, int start_col, int end_row, int end_col,
-        const char* keyseq,
-        int window_height, int scroll_amount,
-        int RESULTS_CALCULATED
-    );
-    const char* vimficiency_get_debug();
-
-    int vimficiency_version();
-
-    const char* vimficiency_debug_config();
-
-    const char* vimficiency_tokenize_movements(const char* seq);
-
-    const char* vimficiency_tokenize_sequence(const char* seq);
-
-    const char* vimficiency_build_sequence(const char* encoded_events);
-
-    const char* vimficiency_compute_search_region(
-        const char* encoded_start_lines,
-        const char* encoded_end_lines,
-        int start_row,
-        int end_row,
-        int padding
-    );
-
-    int vimficiency_resolve_recall_cutoff(
-        const char* encoded_records,
-        int64_t target_hrtime,
-        int budget
-    );
-
-    int vimficiency_manual_evict_reason(
-        int start_row,
-        int cursor_row,
-        int64_t last_key_time_ns,
-        bool has_last_key,
-        int64_t now_ns,
-        int max_search_lines,
-        int manual_idle_timeout_seconds
-    );
-
-    const char* vimficiency_format_sequence(const char* seq);
-    const char* vimficiency_simulate_movements(
-        const char* encoded_lines,
-        int start_row,
-        int start_col,
-        const char* seq
-    );
-
-    const char* vimficiency_explore_start(
-        const char* encoded_initial_lines,
-        int start_row,
-        int start_col,
-        const char* encoded_goal_lines,
-        int end_row,
-        int end_col,
-        int boundary_first_col,
-        int boundary_last_col,
-        bool has_lines_above,
-        bool has_lines_below,
-        int window_height,
-        int scroll_amount,
-        const char* user_seq
-    );
-    int vimficiency_explore_destroy(int view_id);
-    const char* vimficiency_explore_state(int view_id);
-    const char* vimficiency_explore_recommendations(
-        int view_id,
-        int max_count,
-        bool allow_multiple_movements_per_position,
-        bool allow_multiple_edits_per_position);
-    const char* vimficiency_explore_apply_movement(int view_id, const char* movement_text);
-    const char* vimficiency_explore_accept_cursor_move(int view_id, int new_row, int new_col, const char* raw_keys);
-    const char* vimficiency_explore_apply_edit(int view_id, const char* text);
-    const char* vimficiency_explore_accept_buffer_state(
-        int view_id,
-        const char* encoded_lines,
-        int new_row,
-        int new_col,
-        const char* raw_keys);
-    const char* vimficiency_explore_current_lines(int view_id);
-    const char* vimficiency_explore_begin_edit(
-        int view_id,
-        bool enters_insert_mode,
-        const char* required_typed_text
-    );
-    const char* vimficiency_explore_insert_text(int view_id, const char* typed_chunk);
-    const char* vimficiency_explore_exit_insert(int view_id);
-    const char* vimficiency_explore_accept_insert_exit(
-        int view_id,
-        const char* encoded_lines,
-        int new_row,
-        int new_col,
-        const char* raw_keys);
-    const char* vimficiency_explore_cancel_pending_insert(int view_id);
-    const char* vimficiency_explore_undo(int view_id);
-    const char* vimficiency_explore_redo(int view_id);
-]])
-
 local function find_plugin_root()
 	local source = debug.getinfo(1, "S").source
 	if source:sub(1, 1) == "@" then
@@ -235,10 +12,94 @@ local function find_plugin_root()
 	return vim.fn.fnamemodify(source, ":h:h:h")
 end
 
+local function read_ffi_api_def()
+	local path = find_plugin_root() .. "/src/LuaExports/Api.def"
+	local ok, lines = pcall(vim.fn.readfile, path)
+	if not ok then
+		error("vimfy: failed to read FFI API declarations at " .. path .. ": " .. tostring(lines), 0)
+	end
+	return table.concat(lines, "\n")
+end
+
+-- FFI type annotations for LuaLS. These mirror `src/LuaExports/Api.def`;
+-- Api.def is the canonical C ABI declaration consumed by both C++ and LuaJIT.
+
+---@class VF.C.ScoreWeights
+---@field keyWeight number
+---@field sameFingerWeight number
+---@field sameKeyWeight number
+---@field altHandWeight number
+---@field goodRollWeight number
+---@field badRollWeight number
+
+---@class VF.C.KeyInfo
+---@field hand integer
+---@field finger integer
+---@field base_cost number
+
+---@class VF.C.CountPenaltyOverride
+---@field has_base boolean
+---@field base number
+---@field has_count_slope boolean
+---@field count_slope number
+---@field has_span_slope boolean
+---@field span_slope number
+
+---@class VF.C.Config
+---@field default_keyboard integer
+---@field weights VF.C.ScoreWeights
+---@field keys VF.C.KeyInfo[]
+---@field slice_buffer_amount integer
+---@field shiftwidth integer  -- -1 = use default (8)
+---@field use_count_penalty_overrides boolean
+---@field count_penalty_overrides VF.C.CountPenaltyOverride[]
+
+---@class VF.C.Lib
+---@field VF_KEY_COUNT integer
+---@field VF_FINGER_COUNT integer
+---@field VF_HAND_COUNT integer
+---@field VF_COUNT_CLASS_COUNT integer
+---@field vf_key_name fun(index: integer): ffi.cdata*
+---@field vf_finger_name fun(index: integer): ffi.cdata*
+---@field vf_hand_name fun(index: integer): ffi.cdata*
+---@field vf_count_class_name fun(index: integer): ffi.cdata*
+---@field vf_get_config fun(): VF.C.Config
+---@field vf_apply_config fun(): nil
+---@field vf_analyze fun(initial_text: string, goal_text: string, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, start_row: integer, start_col: integer, end_row: integer, end_col: integer, keyseq: string, window_height: integer, scroll_amount: integer, results_calculated: integer): string
+---@field vf_get_debug fun(): string
+---@field vf_version fun(): integer
+---@field vf_debug_config fun(): string
+---@field vf_tokenize_movements fun(seq: string): string
+---@field vf_tokenize_sequence fun(seq: string): string
+---@field vf_build_sequence fun(encoded_events: string): string
+---@field vf_compute_search_region fun(encoded_start_lines: string, encoded_end_lines: string, start_row: integer, end_row: integer, padding: integer): string
+---@field vf_resolve_recall_cutoff fun(encoded_records: string, target_hrtime: integer, budget: integer): integer
+---@field vf_manual_evict_reason fun(start_row: integer, cursor_row: integer, last_key_time_ns: integer, has_last_key: boolean, now_ns: integer, max_search_lines: integer, manual_idle_timeout_seconds: integer): integer
+---@field vf_format_sequence fun(seq: string): string
+---@field vf_simulate_movements fun(encoded_lines: string, start_row: integer, start_col: integer, seq: string): string
+---@field vf_explore_start fun(encoded_initial_lines: string, start_row: integer, start_col: integer, encoded_goal_lines: string, end_row: integer, end_col: integer, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, window_height: integer, scroll_amount: integer, user_seq: string): string
+---@field vf_explore_destroy fun(view_id: integer): integer
+---@field vf_explore_state fun(view_id: integer): string
+---@field vf_explore_recommendations fun(view_id: integer, max_count: integer, allow_multiple_movements_per_position: boolean, allow_multiple_edits_per_position: boolean): string
+---@field vf_explore_apply_movement fun(view_id: integer, movement_text: string): string
+---@field vf_explore_accept_cursor_move fun(view_id: integer, new_row: integer, new_col: integer, raw_keys: string): string
+---@field vf_explore_apply_edit fun(view_id: integer, text: string): string
+---@field vf_explore_accept_buffer_state fun(view_id: integer, encoded_lines: string, new_row: integer, new_col: integer, raw_keys: string): string
+---@field vf_explore_current_lines fun(view_id: integer): string
+---@field vf_explore_begin_edit fun(view_id: integer, enters_insert_mode: boolean, required_typed_text: string): string
+---@field vf_explore_insert_text fun(view_id: integer, typed_chunk: string): string
+---@field vf_explore_exit_insert fun(view_id: integer): string
+---@field vf_explore_accept_insert_exit fun(view_id: integer, encoded_lines: string, new_row: integer, new_col: integer, raw_keys: string): string
+---@field vf_explore_cancel_pending_insert fun(view_id: integer): string
+---@field vf_explore_undo fun(view_id: integer): string
+---@field vf_explore_redo fun(view_id: integer): string
+
+ffi.cdef(read_ffi_api_def())
+
 --- Find and load the shared library.
 --- `VIMFICIENCY_LIB_PATH` overrides the default build path for tests.
 --- `_G.__vimficiency_reload_lib_path` lets `:Vimfy reload` bypass dlopen caching.
----@return VimficiencyLib
+---@return VF.C.Lib
 local function load_lib()
 	local root = find_plugin_root()
 	local paths = {}
@@ -272,13 +133,13 @@ local function build_enum(count, name_fn)
 	return t
 end
 
----@type VimficiencyLib
+---@type VF.C.Lib
 local lib = load_lib()
 
-M.Key = build_enum(lib.VIMFICIENCY_KEY_COUNT, lib.vimficiency_key_name)
-M.Finger = build_enum(lib.VIMFICIENCY_FINGER_COUNT, lib.vimficiency_finger_name)
-M.Hand = build_enum(lib.VIMFICIENCY_HAND_COUNT, lib.vimficiency_hand_name)
-M.CountClass = build_enum(lib.VIMFICIENCY_COUNT_CLASS_COUNT, lib.vimficiency_count_class_name)
+M.Key = build_enum(lib.VF_KEY_COUNT, lib.vf_key_name)
+M.Finger = build_enum(lib.VF_FINGER_COUNT, lib.vf_finger_name)
+M.Hand = build_enum(lib.VF_HAND_COUNT, lib.vf_hand_name)
+M.CountClass = build_enum(lib.VF_COUNT_CLASS_COUNT, lib.vf_count_class_name)
 
 local EVENT_FIELD_SEP = string.char(0x1f)
 local EVENT_RECORD_SEP = string.char(0x1e)
@@ -333,7 +194,7 @@ local function decode_string_list(encoded)
 	return out
 end
 
----@param key_seq VimficiencyKeyEvent[]
+---@param key_seq VF.KeyEvent[]
 ---@return string
 function M.build_sequence(key_seq)
 	local parts = {}
@@ -351,9 +212,9 @@ function M.build_sequence(key_seq)
 		parts[#parts + 1] = ev.key_typed
 		parts[#parts + 1] = EVENT_RECORD_SEP
 	end
-	local result = ffi.string(lib.vimficiency_build_sequence(table.concat(parts)))
+	local result = ffi.string(lib.vf_build_sequence(table.concat(parts)))
 	if result:sub(1, 7) == "ERROR: " then
-		error("vimficiency_build_sequence failed: " .. result, 0)
+		error("vf_build_sequence failed: " .. result, 0)
 	end
 	return result
 end
@@ -366,7 +227,7 @@ end
 ---@return integer
 ---@return integer
 function M.compute_search_region(start_lines, end_lines, start_row, end_row, padding)
-	local result = ffi.string(lib.vimficiency_compute_search_region(
+	local result = ffi.string(lib.vf_compute_search_region(
 		encode_string_list(start_lines),
 		encode_string_list(end_lines),
 		start_row,
@@ -374,11 +235,13 @@ function M.compute_search_region(start_lines, end_lines, start_row, end_row, pad
 		padding
 	))
 	if result:sub(1, 7) == "ERROR: " then
-		error("vimficiency_compute_search_region failed: " .. result, 0)
+		error("vf_compute_search_region failed: " .. result, 0)
 	end
 	local parts = vim.split(result, EVENT_FIELD_SEP, { plain = true, trimempty = true })
-	assert(#parts == 2, "vimficiency_compute_search_region returned malformed payload")
-	return tonumber(parts[1]), tonumber(parts[2])
+	assert(#parts == 2, "vf_compute_search_region returned malformed payload")
+	local a = assert(tonumber(parts[1]), "vf_compute_search_region: non-numeric region start")
+	local b = assert(tonumber(parts[2]), "vf_compute_search_region: non-numeric region end")
+	return a, b
 end
 
 ---@param records table<string, { time_started: integer, first_mode: string|nil }>
@@ -394,7 +257,7 @@ function M.resolve_recall_cutoff(records, order, target_hrtime, budget)
 		parts[#parts + 1] = encode_int64(rec.time_started)
 		parts[#parts + 1] = rec.first_mode or ""
 	end
-	local index = lib.vimficiency_resolve_recall_cutoff(
+	local index = lib.vf_resolve_recall_cutoff(
 		encode_string_list(parts),
 		target_hrtime,
 		budget
@@ -421,7 +284,7 @@ function M.manual_evict_reason(
 	manual_idle_timeout_seconds
 )
 	local has_last_key = last_key_time_ns ~= nil
-	local code = lib.vimficiency_manual_evict_reason(
+	local code = lib.vf_manual_evict_reason(
 		start_row,
 		cursor_row,
 		last_key_time_ns or 0,
@@ -439,7 +302,7 @@ function M.manual_evict_reason(
 	return nil
 end
 
--- The (has_<name>, <name>) flag pairs on C_CountPenaltyOverride. Genuine
+-- The (has_<name>, <name>) flag pairs on VF.C.CountPenaltyOverride. Genuine
 -- structure (not mere field duplication), so still a named schema.
 local OVERRIDE_FIELDS = { "base", "count_slope", "span_slope" }
 
@@ -474,10 +337,10 @@ local function apply_scalars(src, dst, key_prefix, strict)
 			if status == "ok" then
 				consumed[k] = true
 			elseif status == "type_error" then
-				error(string.format("vimficiency: invalid value for '%s%s': %s",
+				error(string.format("vimfy: invalid value for '%s%s': %s",
 					key_prefix or "", tostring(k), tostring(err)))
 			elseif strict and status == "unknown" then
-				error(string.format("vimficiency: unknown config key '%s%s'",
+				error(string.format("vimfy: unknown config key '%s%s'",
 					key_prefix or "", tostring(k)))
 			end
 		end
@@ -489,11 +352,11 @@ end
 -- OVERRIDE_FIELDS; a set form lets us validate keys in O(1).
 local OVERRIDE_FIELD_SET = { base = true, count_slope = true, span_slope = true }
 
--- ---@param user_config VimficiencyConfigFFI
+-- ---@param user_config VF.C.Config
 ---@return table<string, true> consumed  Top-level user_config keys claimed by C++ side
 function M.configure(user_config)
-	---@type VimficiencyConfigFFI
-	local config = lib.vimficiency_get_config()
+	---@type VF.C.Config
+	local config = lib.vf_get_config()
 
 	local consumed = apply_scalars(user_config, config)
 
@@ -518,7 +381,7 @@ function M.configure(user_config)
 		end
 
 		-- Reset all has_* flags before applying user's subset.
-		for i = 0, lib.VIMFICIENCY_COUNT_CLASS_COUNT - 1 do
+		for i = 0, lib.VF_COUNT_CLASS_COUNT - 1 do
 			local dst = config.count_penalty_overrides[i]
 			for _, f in ipairs(OVERRIDE_FIELDS) do
 				dst["has_" .. f] = false
@@ -536,14 +399,14 @@ function M.configure(user_config)
 			if class_index == nil then
 				error("Unknown count penalty class: " .. tostring(class_key))
 			end
-			if class_index < 0 or class_index >= lib.VIMFICIENCY_COUNT_CLASS_COUNT then
+			if class_index < 0 or class_index >= lib.VF_COUNT_CLASS_COUNT then
 				error("Count penalty class out of range: " .. tostring(class_key))
 			end
 
 			for field in pairs(override) do
 				if not OVERRIDE_FIELD_SET[field] then
 					error(string.format(
-						"vimficiency: unknown count_penalty_overrides[%s] key '%s' (allowed: base, count_slope, span_slope)",
+						"vimfy: unknown count_penalty_overrides[%s] key '%s' (allowed: base, count_slope, span_slope)",
 						tostring(class_key), tostring(field)))
 				end
 			end
@@ -558,25 +421,10 @@ function M.configure(user_config)
 		end
 	end
 
-	lib.vimficiency_apply_config()
+	lib.vf_apply_config()
 	return consumed
 end
 
----@param initial_lines string[] Buffer lines at session start
----@param goal_lines string[] Buffer lines at session end (can equal initial_lines for motion-only)
----@param boundary_first_col integer Column offset at start of boundary (0 for linewise)
----@param boundary_last_col integer Last valid column in boundary (lastLineLen-1 for linewise)
----@param has_lines_above boolean Whether there are lines above the slice in the full buffer
----@param has_lines_below boolean Whether there are lines below the slice in the full buffer
----@param start_row integer (0-indexed, relative to slice)
----@param start_col integer (0-indexed)
----@param end_row integer (0-indexed, relative to slice)
----@param end_col integer (0-indexed)
----@param key_seq string
----@param window_height integer
----@param scroll_amount integer
----@param RESULTS_CALCULATED integer
----@return VimficiencyResult[] results, number user_cost, string debug
 --- Parse the C++ analyze-export payload into {results, user_cost}.
 --- Extracted so the parser can be unit-tested directly. Format produced by
 --- `src/LuaExports/AnalyzeExports.cpp`:
@@ -591,9 +439,9 @@ end
 --- sequence bytes and the numeric cost. Do not change the separator here
 --- without also updating the constant in `src/LuaExports/Shared.h`.
 ---@param result_str string
----@return VimficiencyResult[] results, number user_cost
+---@return VF.Optimizer.Result[] results, number user_cost
 local function parse_analyze_results(result_str)
-  ---@type VimficiencyResult[]
+  ---@type VF.Optimizer.Result[]
   local results = {}
   local user_cost = 0
   local line_num = 0
@@ -622,6 +470,21 @@ end
 
 M._parse_analyze_results = parse_analyze_results
 
+---@param initial_lines string[] Buffer lines at session start
+---@param goal_lines string[] Buffer lines at session end (can equal initial_lines for motion-only)
+---@param boundary_first_col integer Column offset at start of boundary (0 for linewise)
+---@param boundary_last_col integer Last valid column in boundary (lastLineLen-1 for linewise)
+---@param has_lines_above boolean Whether there are lines above the slice in the full buffer
+---@param has_lines_below boolean Whether there are lines below the slice in the full buffer
+---@param start_row integer (0-indexed, relative to slice)
+---@param start_col integer (0-indexed)
+---@param end_row integer (0-indexed, relative to slice)
+---@param end_col integer (0-indexed)
+---@param key_seq string
+---@param window_height integer
+---@param scroll_amount integer
+---@param RESULTS_CALCULATED integer
+---@return VF.Optimizer.Result[] results, number user_cost, string debug
 function M.analyze(
   initial_lines, goal_lines,
   boundary_first_col, boundary_last_col,
@@ -634,7 +497,7 @@ function M.analyze(
 	local initial_text = table.concat(initial_lines, "\n")
 	local goal_text = table.concat(goal_lines, "\n")
 
-	local result = lib.vimficiency_analyze(
+	local result = lib.vf_analyze(
     initial_text, goal_text,
     boundary_first_col, boundary_last_col,
     has_lines_above, has_lines_below,
@@ -643,14 +506,14 @@ function M.analyze(
     window_height, scroll_amount,
     RESULTS_CALCULATED
   )
-  local dbg = ffi.string(lib.vimficiency_get_debug())
+  local dbg = ffi.string(lib.vf_get_debug())
   local result_str = ffi.string(result)
 
   if result_str:sub(1, 6) == "ERROR:" then
     error(result_str)
   end
 
-  ---@class VimficiencyResult
+  ---@class VF.Optimizer.Result
   ---@field seq string Motion sequence
   ---@field cost number Effort cost
 
@@ -659,14 +522,14 @@ function M.analyze(
 end
 
 function M.version()
-	return lib.vimficiency_version()
+	return lib.vf_version()
 end
 
 function M.debug_config()
-	return ffi.string(lib.vimficiency_debug_config())
+	return ffi.string(lib.vf_debug_config())
 end
 
----@class VimficiencyToken
+---@class VF.Sequence.Token
 ---@field text string
 ---@field kind "movement"|"delete"|"change"|"visual"|"typed"|"escape"
 
@@ -683,9 +546,9 @@ local KIND_CHAR_TO_NAME = {
 
 --- Parse the `<kind>\t<text>\n` wire format from the C++ tokenizer.
 ---@param result_str string
----@return VimficiencyToken[]
+---@return VF.Sequence.Token[]
 local function parse_kinded_tokens(result_str)
-  ---@type VimficiencyToken[]
+  ---@type VF.Sequence.Token[]
   local out = {}
   -- Each line is `<kind_char>\t<text>`; blank lines (trailing `\n` from
   -- C++) are skipped by the pattern.
@@ -702,11 +565,11 @@ end
 --- + target char, and special keys like `<C-d>`. All returned tokens have
 --- `kind = "movement"` (the movement parser doesn't emit other kinds).
 ---@param seq string  Movement sequence (e.g., "3wfx;j")
----@return VimficiencyToken[] tokens
+---@return VF.Sequence.Token[] tokens
 ---@return string|nil error
 function M.tokenize_movements(seq)
   if not seq or seq == "" then return {}, nil end
-  local result_str = ffi.string(lib.vimficiency_tokenize_movements(seq))
+  local result_str = ffi.string(lib.vf_tokenize_movements(seq))
   if result_str == "" then return {}, nil end
   if result_str:sub(1, 6) == "ERROR:" then return {}, result_str end
   return parse_kinded_tokens(result_str), nil
@@ -716,11 +579,11 @@ end
 --- into kinded tokens. Tokens carry modal-transition metadata so the Lua
 --- animation layer doesn't maintain a parallel classifier.
 ---@param seq string  Vim sequence (e.g., "ciwhello<Esc>2j")
----@return VimficiencyToken[] tokens
+---@return VF.Sequence.Token[] tokens
 ---@return string|nil error
 function M.tokenize_sequence(seq)
   if not seq or seq == "" then return {}, nil end
-  local result_str = ffi.string(lib.vimficiency_tokenize_sequence(seq))
+  local result_str = ffi.string(lib.vf_tokenize_sequence(seq))
   if result_str == "" then return {}, nil end
   if result_str:sub(1, 6) == "ERROR:" then return {}, result_str end
   return parse_kinded_tokens(result_str), nil
@@ -734,7 +597,7 @@ function M.format_sequence(seq)
   if not seq or seq == "" then
     return ""
   end
-  return ffi.string(lib.vimficiency_format_sequence(seq))
+  return ffi.string(lib.vf_format_sequence(seq))
 end
 
 ---@param lines string[]
@@ -748,7 +611,7 @@ function M.simulate_movements(lines, start_row, start_col, seq)
   if not seq or seq == "" then
     return start_row, start_col, nil
   end
-  local result_str = ffi.string(lib.vimficiency_simulate_movements(
+  local result_str = ffi.string(lib.vf_simulate_movements(
     encode_string_list(lines),
     start_row,
     start_col,
@@ -758,47 +621,85 @@ function M.simulate_movements(lines, start_row, start_col, seq)
     return nil, nil, result_str
   end
   local parts = vim.split(result_str, EVENT_FIELD_SEP, { plain = true, trimempty = true })
-  assert(#parts == 2, "vimficiency_simulate_movements returned malformed payload")
+  assert(#parts == 2, "vf_simulate_movements returned malformed payload")
   return tonumber(parts[1]), tonumber(parts[2]), nil
 end
 
----@class VimficiencyExplorePhase
----@field kind string
+---@class VF.Position
+---@field row integer  # 0-indexed
+---@field col integer  # 0-indexed
+
+---@class VF.Range
+---@field begin_pos VF.Position  # inclusive
+---@field end_pos VF.Position    # exclusive (half-open)
+
+--- Step variants. C++ side is `std::variant<Approach, PendingInsert, Completed>`;
+--- Lua mirrors that via discriminated union — narrow on `phase.kind`.
+---@class VF.Explore.StepApproachEdit
+---@field kind "ApproachEdit"
+---@field edit_index integer
+
+---@class VF.Explore.StepPendingInsert
+---@field kind "PendingInsert"
 ---@field edit_index integer
 ---@field remaining_typed_text string
 
----@class VimficiencyExploreState
----@field phase VimficiencyExplorePhase
----@field cursor_row integer
----@field cursor_col integer
+---@class VF.Explore.StepCompleted
+---@field kind "Completed"
+
+---@alias VF.Explore.Phase VF.Explore.StepApproachEdit | VF.Explore.StepPendingInsert | VF.Explore.StepCompleted
+
+---@class VF.Explore.State
+---@field phase VF.Explore.Phase
+---@field cursor VF.Position
 ---@field total_edits integer
 ---@field accepted_cost number
 ---@field accepted_seq string
 ---@field accepted_revision integer
 ---@field can_undo boolean
 ---@field can_redo boolean
----@field target_begin_row integer  # half-open range start, -1 = no target
----@field target_begin_col integer
----@field target_end_row integer
----@field target_end_col integer
+---@field target_range? VF.Range  # half-open diff range; nil when no current target
 
----@class VimficiencyExploreApplyResult
----@field status string  # "Applied" | "Rejected"
----@field phase VimficiencyExplorePhase
----@field cursor_row integer
----@field cursor_col integer
+--- Apply-result variants. C++ side is `std::expected<Applied, Rejected>`;
+--- Lua mirrors that via discriminated union — narrow on `result.status`.
+---@class VF.Explore.AppliedResult
+---@field status "Applied"
+---@field phase VF.Explore.Phase
+---@field cursor VF.Position
+---@field accepted_seq string
+---@field accepted_cost number
+---@field crossed_edit_boundary boolean  # true if this action advanced past an edit
+
+---@class VF.Explore.RejectedResult
+---@field status "Rejected"
+---@field phase VF.Explore.Phase  # unchanged state echoed back
+---@field cursor VF.Position
 ---@field accepted_seq string
 ---@field accepted_cost number
 ---@field reason string
----@field crossed_edit_boundary boolean  # true if this action advanced past an edit
 
----@class VimficiencyExploreRecommendation
+---@alias VF.Explore.ApplyResult VF.Explore.AppliedResult | VF.Explore.RejectedResult
+
+--- Recommendation variants. C++ side is `std::variant<NavFrontierItem, TransformFrontierItem>`;
+--- Lua mirrors that via discriminated union — narrow on `rec.kind`.
+---@class VF.Explore.NavRecommendation
+---@field kind "movement"
 ---@field text string
----@field kind string
 ---@field cost number
----@field total_path_cost number
----@field landing_row integer
----@field landing_col integer
+---@field total_path_cost number  # cost + projected post-motion edit cost
+---@field landing VF.Position
+---@field rank? integer  # attached on the consumer side after sorting (see explore.lua attach_ranks)
+
+---@class VF.Explore.TransformRecommendation
+---@field kind "edit"
+---@field text string
+---@field cost number
+---@field total_path_cost number  # equal to cost for edits
+---@field landing VF.Position
+---@field typed_text string
+---@field rank? integer
+
+---@alias VF.Explore.Recommendation VF.Explore.NavRecommendation | VF.Explore.TransformRecommendation
 
 ---@param payload string
 ---@return string
@@ -809,55 +710,90 @@ local function require_non_error(payload)
   return payload
 end
 
+--- Build the kind-discriminated phase from the wire's `(kind, edit_index, remaining_text)`
+--- triple. The wire format pads with sentinels (-1 / "") for fields not used by
+--- the variant; we drop them so consumers can't accidentally read garbage.
+---@param kind string
+---@param edit_index_str string
+---@param remaining_text string
+---@return VF.Explore.Phase
+local function build_phase(kind, edit_index_str, remaining_text)
+  if kind == "ApproachEdit" then
+    return { kind = "ApproachEdit", edit_index = tonumber(edit_index_str) or 0 }
+  elseif kind == "PendingInsert" then
+    return {
+      kind = "PendingInsert",
+      edit_index = tonumber(edit_index_str) or 0,
+      remaining_typed_text = remaining_text,
+    }
+  elseif kind == "Completed" then
+    return { kind = "Completed" }
+  end
+  error("unknown phase kind from FFI: " .. tostring(kind))
+end
+
 ---@param payload string
----@return VimficiencyExploreState
+---@return VF.Explore.State
 local function parse_explore_state(payload)
   local parts = decode_string_list(payload)
   assert(#parts == 15, "explore state payload must have 15 fields")
+  local tb_row = tonumber(parts[12]) or -1
+  ---@type VF.Range?
+  local target_range = nil
+  if tb_row >= 0 then
+    target_range = {
+      begin_pos = { row = tb_row, col = tonumber(parts[13]) or 0 },
+      end_pos = { row = tonumber(parts[14]) or 0, col = tonumber(parts[15]) or 0 },
+    }
+  end
   return {
-    phase = {
-      kind = parts[1],
-      edit_index = tonumber(parts[2]) or -1,
-      remaining_typed_text = parts[3],
-    },
-    cursor_row = tonumber(parts[4]) or 0,
-    cursor_col = tonumber(parts[5]) or 0,
+    phase = build_phase(parts[1], parts[2], parts[3]),
+    cursor = { row = tonumber(parts[4]) or 0, col = tonumber(parts[5]) or 0 },
     total_edits = tonumber(parts[6]) or 0,
     accepted_cost = tonumber(parts[7]) or 0,
     accepted_seq = parts[8],
     accepted_revision = tonumber(parts[9]) or 0,
     can_undo = parts[10] == "1",
     can_redo = parts[11] == "1",
-    target_begin_row = tonumber(parts[12]) or -1,
-    target_begin_col = tonumber(parts[13]) or -1,
-    target_end_row = tonumber(parts[14]) or -1,
-    target_end_col = tonumber(parts[15]) or -1,
+    target_range = target_range,
   }
 end
 
 ---@param payload string
----@return VimficiencyExploreApplyResult
+---@return VF.Explore.ApplyResult
 local function parse_explore_apply_result(payload)
   local parts = decode_string_list(payload)
   assert(#parts == 10, "explore apply payload must have 10 fields")
-  return {
-    status = parts[1],
-    phase = {
-      kind = parts[2],
-      edit_index = tonumber(parts[3]) or -1,
-      remaining_typed_text = parts[4],
-    },
-    cursor_row = tonumber(parts[5]) or 0,
-    cursor_col = tonumber(parts[6]) or 0,
-    accepted_seq = parts[7],
-    accepted_cost = tonumber(parts[8]) or 0,
-    reason = parts[9],
-    crossed_edit_boundary = parts[10] == "1",
-  }
+  local status = parts[1]
+  local phase = build_phase(parts[2], parts[3], parts[4])
+  ---@type VF.Position
+  local cursor = { row = tonumber(parts[5]) or 0, col = tonumber(parts[6]) or 0 }
+  local accepted_seq = parts[7]
+  local accepted_cost = tonumber(parts[8]) or 0
+  if status == "Applied" then
+    return {
+      status = "Applied",
+      phase = phase,
+      cursor = cursor,
+      accepted_seq = accepted_seq,
+      accepted_cost = accepted_cost,
+      crossed_edit_boundary = parts[10] == "1",
+    }
+  elseif status == "Rejected" then
+    return {
+      status = "Rejected",
+      phase = phase,
+      cursor = cursor,
+      accepted_seq = accepted_seq,
+      accepted_cost = accepted_cost,
+      reason = parts[9],
+    }
+  end
+  error("unknown apply-result status from FFI: " .. tostring(status))
 end
 
 ---@param payload string
----@return VimficiencyExploreRecommendation[]
+---@return VF.Explore.Recommendation[]
 local function parse_explore_recommendations(payload)
   local parts = decode_string_list(payload)
   assert(#parts >= 1, "explore recommendations payload must have count prefix")
@@ -866,18 +802,38 @@ local function parse_explore_recommendations(payload)
   assert(#parts == expected,
     "explore recommendations payload has " .. #parts ..
     " fields, expected " .. expected .. " for count=" .. count)
+  ---@type VF.Explore.Recommendation[]
   local recs = {}
   for i = 1, count do
     local base = 1 + (i - 1) * 7
-    recs[i] = {
-      text = parts[base + 1],
-      kind = parts[base + 2],
-      cost = tonumber(parts[base + 3]) or 0,
-      total_path_cost = tonumber(parts[base + 4]) or 0,
-      landing_row = tonumber(parts[base + 5]) or 0,
-      landing_col = tonumber(parts[base + 6]) or 0,
-      typed_text = parts[base + 7],
+    local kind = parts[base + 2]
+    ---@type VF.Position
+    local landing = {
+      row = tonumber(parts[base + 5]) or 0,
+      col = tonumber(parts[base + 6]) or 0,
     }
+    local cost = tonumber(parts[base + 3]) or 0
+    local total_path_cost = tonumber(parts[base + 4]) or 0
+    if kind == "movement" then
+      recs[i] = {
+        kind = "movement",
+        text = parts[base + 1],
+        cost = cost,
+        total_path_cost = total_path_cost,
+        landing = landing,
+      }
+    elseif kind == "edit" then
+      recs[i] = {
+        kind = "edit",
+        text = parts[base + 1],
+        cost = cost,
+        total_path_cost = total_path_cost,
+        landing = landing,
+        typed_text = parts[base + 7],
+      }
+    else
+      error("unknown recommendation kind from FFI: " .. tostring(kind))
+    end
   end
   return recs
 end
@@ -902,7 +858,7 @@ function M.explore_start(initial_lines, start_row, start_col,
                          has_lines_above, has_lines_below,
                          window_height, scroll_amount,
                          user_seq)
-  local payload = require_non_error(ffi.string(lib.vimficiency_explore_start(
+  local payload = require_non_error(ffi.string(lib.vf_explore_start(
     encode_string_list(initial_lines),
     start_row, start_col,
     encode_string_list(goal_lines),
@@ -918,13 +874,13 @@ end
 ---@param view_id integer
 ---@return boolean
 function M.explore_destroy(view_id)
-  return lib.vimficiency_explore_destroy(view_id) == 1
+  return lib.vf_explore_destroy(view_id) == 1
 end
 
 ---@param view_id integer
----@return VimficiencyExploreState
+---@return VF.Explore.State
 function M.explore_state(view_id)
-  local payload = require_non_error(ffi.string(lib.vimficiency_explore_state(view_id)))
+  local payload = require_non_error(ffi.string(lib.vf_explore_state(view_id)))
   return parse_explore_state(payload)
 end
 
@@ -932,13 +888,13 @@ end
 ---@param max_count integer
 ---@param allow_multiple_movements_per_position boolean|nil
 ---@param allow_multiple_edits_per_position boolean|nil
----@return VimficiencyExploreRecommendation[]
+---@return VF.Explore.Recommendation[]
 function M.explore_recommendations(
     view_id, max_count,
     allow_multiple_movements_per_position,
     allow_multiple_edits_per_position)
   local payload = require_non_error(ffi.string(
-    lib.vimficiency_explore_recommendations(
+    lib.vf_explore_recommendations(
       view_id, max_count,
       allow_multiple_movements_per_position and true or false,
       allow_multiple_edits_per_position and true or false)))
@@ -947,10 +903,10 @@ end
 
 ---@param view_id integer
 ---@param movement_text string
----@return VimficiencyExploreApplyResult
+---@return VF.Explore.ApplyResult
 function M.explore_apply_movement(view_id, movement_text)
   local payload = require_non_error(ffi.string(
-    lib.vimficiency_explore_apply_movement(view_id, movement_text)))
+    lib.vf_explore_apply_movement(view_id, movement_text)))
   return parse_explore_apply_result(payload)
 end
 
@@ -958,9 +914,9 @@ end
 ---@param new_row integer
 ---@param new_col integer
 ---@param raw_keys string|nil
----@return VimficiencyExploreApplyResult
+---@return VF.Explore.ApplyResult
 function M.explore_accept_cursor_move(view_id, new_row, new_col, raw_keys)
-  local payload = require_non_error(ffi.string(lib.vimficiency_explore_accept_cursor_move(
+  local payload = require_non_error(ffi.string(lib.vf_explore_accept_cursor_move(
     view_id, new_row, new_col, raw_keys or "")))
   return parse_explore_apply_result(payload)
 end
@@ -970,35 +926,35 @@ end
 ---@param new_row integer
 ---@param new_col integer
 ---@param raw_keys string|nil
----@return VimficiencyExploreApplyResult
+---@return VF.Explore.ApplyResult
 function M.explore_accept_buffer_state(view_id, lines, new_row, new_col, raw_keys)
-  local payload = require_non_error(ffi.string(lib.vimficiency_explore_accept_buffer_state(
+  local payload = require_non_error(ffi.string(lib.vf_explore_accept_buffer_state(
     view_id, encode_string_list(lines), new_row, new_col, raw_keys or "")))
   return parse_explore_apply_result(payload)
 end
 
 ---@param view_id integer
 ---@param text string
----@return VimficiencyExploreApplyResult
+---@return VF.Explore.ApplyResult
 function M.explore_apply_edit(view_id, text)
   local payload = require_non_error(ffi.string(
-    lib.vimficiency_explore_apply_edit(view_id, text)))
+    lib.vf_explore_apply_edit(view_id, text)))
   return parse_explore_apply_result(payload)
 end
 
 ---@param view_id integer
 ---@return string[]
 function M.explore_current_lines(view_id)
-  local payload = require_non_error(ffi.string(lib.vimficiency_explore_current_lines(view_id)))
+  local payload = require_non_error(ffi.string(lib.vf_explore_current_lines(view_id)))
   return decode_string_list(payload)
 end
 
 ---@param view_id integer
 ---@param enters_insert_mode boolean
 ---@param required_typed_text string|nil
----@return VimficiencyExploreApplyResult
+---@return VF.Explore.ApplyResult
 function M.explore_begin_edit(view_id, enters_insert_mode, required_typed_text)
-  local payload = require_non_error(ffi.string(lib.vimficiency_explore_begin_edit(
+  local payload = require_non_error(ffi.string(lib.vf_explore_begin_edit(
     view_id,
     enters_insert_mode,
     required_typed_text or ""
@@ -1008,17 +964,17 @@ end
 
 ---@param view_id integer
 ---@param typed_chunk string
----@return VimficiencyExploreApplyResult
+---@return VF.Explore.ApplyResult
 function M.explore_insert_text(view_id, typed_chunk)
   local payload = require_non_error(ffi.string(
-    lib.vimficiency_explore_insert_text(view_id, typed_chunk)))
+    lib.vf_explore_insert_text(view_id, typed_chunk)))
   return parse_explore_apply_result(payload)
 end
 
 ---@param view_id integer
----@return VimficiencyExploreApplyResult
+---@return VF.Explore.ApplyResult
 function M.explore_exit_insert(view_id)
-  local payload = require_non_error(ffi.string(lib.vimficiency_explore_exit_insert(view_id)))
+  local payload = require_non_error(ffi.string(lib.vf_explore_exit_insert(view_id)))
   return parse_explore_apply_result(payload)
 end
 
@@ -1027,32 +983,32 @@ end
 ---@param new_row integer
 ---@param new_col integer
 ---@param raw_keys string|nil
----@return VimficiencyExploreApplyResult
+---@return VF.Explore.ApplyResult
 function M.explore_accept_insert_exit(view_id, lines, new_row, new_col, raw_keys)
-  local payload = require_non_error(ffi.string(lib.vimficiency_explore_accept_insert_exit(
+  local payload = require_non_error(ffi.string(lib.vf_explore_accept_insert_exit(
     view_id, encode_string_list(lines), new_row, new_col, raw_keys or "")))
   return parse_explore_apply_result(payload)
 end
 
 ---@param view_id integer
----@return VimficiencyExploreApplyResult
+---@return VF.Explore.ApplyResult
 function M.explore_cancel_pending_insert(view_id)
   local payload = require_non_error(ffi.string(
-    lib.vimficiency_explore_cancel_pending_insert(view_id)))
+    lib.vf_explore_cancel_pending_insert(view_id)))
   return parse_explore_apply_result(payload)
 end
 
 ---@param view_id integer
----@return VimficiencyExploreApplyResult
+---@return VF.Explore.ApplyResult
 function M.explore_undo(view_id)
-  local payload = require_non_error(ffi.string(lib.vimficiency_explore_undo(view_id)))
+  local payload = require_non_error(ffi.string(lib.vf_explore_undo(view_id)))
   return parse_explore_apply_result(payload)
 end
 
 ---@param view_id integer
----@return VimficiencyExploreApplyResult
+---@return VF.Explore.ApplyResult
 function M.explore_redo(view_id)
-  local payload = require_non_error(ffi.string(lib.vimficiency_explore_redo(view_id)))
+  local payload = require_non_error(ffi.string(lib.vf_explore_redo(view_id)))
   return parse_explore_apply_result(payload)
 end
 

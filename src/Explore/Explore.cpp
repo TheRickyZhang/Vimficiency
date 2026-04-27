@@ -3,44 +3,20 @@
 #include <algorithm>
 #include <cassert>
 #include <utility>
+#include <variant>
 
 #include "EditHandler.h"
 #include "MovementHandler.h"
 #include "Effort/RunningEffort.h"
 #include "Interpreter/SequenceParser.h"
 #include "Optimizer/CompositionOptimizer/CompositionStepArtifacts.h"
-#include "Optimizer/TransformOptimizer/TransformFrontier.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
-#include "Optimizer/NavOptimizer/NavFrontier.h"
 
 using namespace std;
 
 namespace Explore {
 
 namespace {
-
-Recommendation toRecommendation(const NavFrontierItem& item) {
-  Recommendation rec;
-  rec.text = item.molecule;
-  rec.kind = "movement";
-  rec.cost = item.cost;
-  rec.totalPathCost = item.cost;
-  rec.landingRow = item.landingPos.line;
-  rec.landingCol = item.landingPos.col;
-  return rec;
-}
-
-Recommendation toRecommendation(const TransformFrontierItem& item) {
-  Recommendation rec;
-  rec.text = item.molecule;
-  rec.kind = "edit";
-  rec.cost = item.cost;
-  rec.totalPathCost = item.cost;
-  rec.landingRow = item.goalPos.line;
-  rec.landingCol = item.goalPos.col;
-  rec.typedText = item.typedText;
-  return rec;
-}
 
 NavOptimizerParams makeSingleGoalMotionParams(int maxResults) {
   CompositionOptimizerParams compParams;
@@ -54,7 +30,7 @@ NavOptimizerParams makeSingleGoalMotionParams(int maxResults) {
       .withMaxCountRepeat(compParams.maxPrefixCount);
 }
 
-vector<Recommendation> backfillEditStartMovements(
+vector<NavFrontierItem> backfillEditStartMovements(
     const Lines& lines,
     CursorPos cursor,
     const DiffState& diff,
@@ -100,35 +76,35 @@ vector<Recommendation> backfillEditStartMovements(
 
   NavOptimizer navOptimizer(config);
 
-  vector<Recommendation> recs;
-  recs.reserve(static_cast<size_t>(maxCount));
+  vector<NavFrontierItem> items;
+  items.reserve(static_cast<size_t>(maxCount));
   for (const StartCandidate& candidate : candidates) {
     NavOptimizerParams navParams =
-        makeSingleGoalMotionParams(maxCount - static_cast<int>(recs.size()));
+        makeSingleGoalMotionParams(maxCount - static_cast<int>(items.size()));
     auto result = navOptimizer.optimize(
         lines, cursor, candidate.pos, navParams, "", boundary, navContext);
-    for (const Result& motion : result.getResults()) {
+    for (const ::Result& motion : result.getResults()) {
       if (!motion.isValid()) continue;
 
-      Recommendation rec;
-      rec.text = motion.getSequence().str();
-      rec.kind = "movement";
-      rec.cost = motion.getCost();
-      rec.totalPathCost = motion.getCost() + candidate.editCost;
-      rec.landingRow = candidate.pos.line;
-      rec.landingCol = candidate.pos.col;
-      recs.push_back(std::move(rec));
-      if (static_cast<int>(recs.size()) >= maxCount) break;
+      items.push_back(NavFrontierItem{
+          FrontierItem{
+              .molecule = motion.getSequence().str(),
+              .goalPos = candidate.pos,
+              .cost = motion.getCost(),
+          },
+          candidate.editCost,  // projectedEditCost
+      });
+      if (static_cast<int>(items.size()) >= maxCount) break;
       // Under the default "dedup-by-landing" contract, each candidate
       // gets at most one motion — all motions from the optimizer for
       // this single goal land on the same `candidate.pos`, so subsequent
       // iterations would be duplicates by landing.
       if (!allowMultiplePerPosition) break;
     }
-    if (static_cast<int>(recs.size()) >= maxCount) break;
+    if (static_cast<int>(items.size()) >= maxCount) break;
   }
 
-  return recs;
+  return items;
 }
 
 bool isCursorOnConcreteBufferCell(const Lines& lines, const CursorPos& pos) {
@@ -158,22 +134,6 @@ std::expected<void, Rejected> appendRawKeysOrReject(
 }
 
 // =============================================================================
-// Step factories
-// =============================================================================
-
-Step Step::approachEdit(int editIndex) {
-  return {Phase::ApproachEdit, editIndex, ""};
-}
-
-Step Step::pendingInsert(int editIndex, string remainingText) {
-  return {Phase::PendingInsert, editIndex, std::move(remainingText)};
-}
-
-Step Step::completed() {
-  return {Phase::Completed, -1, ""};
-}
-
-// =============================================================================
 // View construction
 // =============================================================================
 
@@ -192,13 +152,13 @@ View::View(
       navContext_(navContext),
       config_(std::move(config)) {
 
-  state_.step = Step::completed();
+  state_.step = Completed{};
   state_.lines = initialLines;
   state_.cursor = initialPos;
 
   if (initialLines == goalLines_) {
     if (initialPos != goalPos_) {
-      state_.step = Step::approachEdit(0);
+      state_.step = Approach{0};
     }
     totalEdits_ = 0;
     return;
@@ -217,7 +177,7 @@ View::View(
   totalEdits_ = plan_->totalEdits();
 
   if (totalEdits_ > 0) {
-    state_.step = Step::approachEdit(0);
+    state_.step = Approach{0};
   }
 }
 
@@ -226,64 +186,66 @@ View::View(
 // =============================================================================
 
 optional<pair<CursorPos, CursorPos>> View::currentTargetRange() const {
-  if (state_.step.kind != Phase::ApproachEdit) return nullopt;
+  const auto* approach = std::get_if<Approach>(&state_.step);
+  if (!approach) return nullopt;
   if (isPureMotionApproach()) {
     return make_pair(goalPos_, goalPos_);
   }
   if (!plan_) return nullopt;
-  const int i = state_.step.editIndex;
+  const int i = approach->editIndex;
   assert(i >= 0 && i < totalEdits_ && "ApproachEdit editIndex out of plan range");
   const auto step = plan_->stepAt(i);
   return make_pair(step.diff.beginPos, step.diff.endPos);
 }
 
-vector<Recommendation> View::recommendations(
+vector<Suggestion> View::recommendations(
     int maxCount,
     bool allowMultipleMovementsPerPosition,
     bool allowMultipleEditsPerPosition) const {
   if (maxCount <= 0) return {};
-  if (state_.step.kind != Phase::ApproachEdit) return {};
+  const auto* approach = std::get_if<Approach>(&state_.step);
+  if (!approach) return {};
   if (isPureMotionApproach()) {
     auto navItems = rankNavFrontier(
         NavFrontierQuery{
-            .lines = state_.lines,
-            .cursor = state_.cursor,
-            .targetRange = CharRange(goalPos_, goalPos_),
-            .boundary = boundary_,
-            .navContext = navContext_,
-            .maxCount = maxCount,
-            .allowMultiplePerPosition = allowMultipleMovementsPerPosition,
+            FrontierQuery{
+                .lines = state_.lines,
+                .cursor = state_.cursor,
+                .maxCount = maxCount,
+                .allowMultiplePerPosition = allowMultipleMovementsPerPosition,
+            },
+            CharRange(goalPos_, goalPos_),  // targetRange
+            boundary_,                       // boundary
+            navContext_,                     // navContext
         },
         config_);
-    vector<Recommendation> recs;
+    vector<Suggestion> recs;
     recs.reserve(navItems.size());
-    for (const NavFrontierItem& item : navItems) {
-      recs.push_back(toRecommendation(item));
-    }
+    for (auto& item : navItems) recs.emplace_back(std::move(item));
     return recs;
   }
   if (!plan_) return {};
 
-  const int editIndex = state_.step.editIndex;
+  const int editIndex = approach->editIndex;
   assert(editIndex >= 0 && editIndex < totalEdits_ && "ApproachEdit editIndex out of range");
 
   const auto step = plan_->stepAt(editIndex);
   const DiffState& diff = step.diff;
   optional<JoinPlan> joinPlan = computeJoinPlanForDiff(
       diff, step.preFencepost, compositionParams_, config_);
-  vector<Recommendation> recs;
+  vector<Suggestion> recs;
   auto transformItems = rankTransformFrontier(
       TransformFrontierQuery{
-          .lines = state_.lines,
-          .cursor = state_.cursor,
-          .diff = diff,
-          .maxCount = maxCount,
-          .allowMultiplePerPosition = allowMultipleEditsPerPosition,
+          FrontierQuery{
+              .lines = state_.lines,
+              .cursor = state_.cursor,
+              .maxCount = maxCount,
+              .allowMultiplePerPosition = allowMultipleEditsPerPosition,
+          },
+          diff,  // diff
       },
       config_);
-  for (const TransformFrontierItem& item : transformItems) {
-    recs.push_back(toRecommendation(item));
-  }
+  for (auto& item : transformItems) recs.emplace_back(std::move(item));
 
   if (!diff.isPureInsertion() && diff.contains(state_.cursor) &&
       static_cast<int>(recs.size()) < maxCount) {
@@ -296,24 +258,24 @@ vector<Recommendation> View::recommendations(
         config_,
         maxCount - static_cast<int>(recs.size()),
         allowMultipleMovementsPerPosition);
-    for (auto& rec : backfill) recs.push_back(std::move(rec));
+    for (auto& item : backfill) recs.emplace_back(std::move(item));
   }
 
   if (!diff.contains(state_.cursor)) {
     auto navItems = rankNavFrontier(
         NavFrontierQuery{
-            .lines = state_.lines,
-            .cursor = state_.cursor,
-            .targetRange = CharRange(diff.beginPos, diff.endPos),
-            .boundary = boundary_,
-            .navContext = navContext_,
-            .maxCount = maxCount,
-            .allowMultiplePerPosition = allowMultipleMovementsPerPosition,
+            FrontierQuery{
+                .lines = state_.lines,
+                .cursor = state_.cursor,
+                .maxCount = maxCount,
+                .allowMultiplePerPosition = allowMultipleMovementsPerPosition,
+            },
+            CharRange(diff.beginPos, diff.endPos),  // targetRange
+            boundary_,                               // boundary
+            navContext_,                             // navContext
         },
         config_);
-    for (const NavFrontierItem& item : navItems) {
-      recs.push_back(toRecommendation(item));
-    }
+    for (auto& item : navItems) recs.emplace_back(std::move(item));
 
     if (!diff.isPureInsertion() && joinPlan &&
         state_.cursor.line != joinPlan->entryLine) {
@@ -325,9 +287,7 @@ vector<Recommendation> View::recommendations(
           navContext_,
           config_,
           1);
-      for (const NavFrontierItem& item : jMotionItems) {
-        recs.push_back(toRecommendation(item));
-      }
+      for (auto& item : jMotionItems) recs.emplace_back(std::move(item));
     }
   }
 
@@ -350,11 +310,12 @@ Applied View::commit(State next, bool crossedEditBoundary) {
 }
 
 expected<int, Rejected> View::requireApproachEdit(string_view action) const {
-  if (state_.step.kind != Phase::ApproachEdit) {
+  const auto* approach = std::get_if<Approach>(&state_.step);
+  if (!approach) {
     return unexpected(Rejected{
         string(action) + " only accepted while approaching the current edit"});
   }
-  return state_.step.editIndex;
+  return approach->editIndex;
 }
 
 expected<int, Rejected> View::requireApproachEditWithPlan(string_view action) const {
@@ -368,27 +329,28 @@ expected<int, Rejected> View::requireApproachEditWithPlan(string_view action) co
 }
 
 expected<int, Rejected> View::requirePendingInsert(string_view action) const {
-  if (state_.step.kind != Phase::PendingInsert) {
+  const auto* pending = std::get_if<PendingInsert>(&state_.step);
+  if (!pending) {
     return unexpected(Rejected{
         string(action) + " only accepted during pending insert"});
   }
-  return state_.step.editIndex;
+  return pending->editIndex;
 }
 
 bool View::isPureMotionApproach() const {
-  return state_.step.kind == Phase::ApproachEdit &&
+  return std::holds_alternative<Approach>(state_.step) &&
          totalEdits_ == 0 &&
          !plan_ &&
          state_.lines == goalLines_ &&
          state_.cursor != goalPos_;
 }
 
-Applied View::afterEditCompleted(State next) {
-  const int nextEdit = next.step.editIndex + 1;
+Applied View::afterEditCompleted(State next, int editIndex) {
+  const int nextEdit = editIndex + 1;
   if (nextEdit >= totalEdits_) {
-    next.step = Step::completed();
+    next.step = Completed{};
   } else {
-    next.step = Step::approachEdit(nextEdit);
+    next.step = Approach{nextEdit};
     next.lines = plan_->stepAt(nextEdit).preFencepost;
   }
   next.acceptedRevision++;
@@ -412,7 +374,7 @@ Outcome View::applyMovement(string_view movementText) {
   next.acceptedSeq.append(std::move(eff->appendedSeq));
   next.acceptedCost = getEffort(next.acceptedSeq, config_);
   if (isPureMotionApproach() && next.cursor == goalPos_) {
-    next.step = Step::completed();
+    next.step = Completed{};
   }
   next.acceptedRevision++;
   return commit(std::move(next));
@@ -433,7 +395,7 @@ Outcome View::acceptCursorMove(CursorPos newCursor, string_view rawKeys) {
     next.acceptedCost = getEffort(next.acceptedSeq, config_);
   }
   if (isPureMotionApproach() && next.cursor == goalPos_) {
-    next.step = Step::completed();
+    next.step = Completed{};
   }
   next.acceptedRevision++;
   return commit(std::move(next));
@@ -453,7 +415,7 @@ Outcome View::applyEdit(string_view text) {
   next.cursor = eff->postCursor;
   next.acceptedSeq.append(text);
   next.acceptedCost = getEffort(next.acceptedSeq, config_);
-  return afterEditCompleted(std::move(next));
+  return afterEditCompleted(std::move(next), editIndex);
 }
 
 Outcome View::acceptBufferState(
@@ -480,7 +442,7 @@ Outcome View::acceptBufferState(
   }
   if (eff->advance) {
     next.lines = step.postFencepost;
-    return afterEditCompleted(std::move(next));
+    return afterEditCompleted(std::move(next), editIndex);
   }
   // No-op: buffer already matches current fencepost (e.g. native undo or
   // programmatic re-sync). Sync cursor + revision only.
@@ -495,11 +457,11 @@ Outcome View::beginEdit(bool entersInsertMode, string_view requiredTypedText) {
 
   State next = state_;
   if (entersInsertMode) {
-    next.step = Step::pendingInsert(editIndex, string(requiredTypedText));
+    next.step = PendingInsert{editIndex, string(requiredTypedText)};
     next.acceptedRevision++;
     return commit(std::move(next));
   }
-  return afterEditCompleted(std::move(next));
+  return afterEditCompleted(std::move(next), editIndex);
 }
 
 Outcome View::consumeInsertText(string_view typedChunk) {
@@ -510,13 +472,14 @@ Outcome View::consumeInsertText(string_view typedChunk) {
     return unexpected(Rejected{"typed insert chunk must be non-empty"});
   }
 
-  string_view remaining(state_.step.remainingText);
+  const auto& pending = std::get<PendingInsert>(state_.step);
+  string_view remaining(pending.remainingText);
   if (!remaining.starts_with(typedChunk)) {
     return unexpected(Rejected{"typed insert text does not match the required prefix"});
   }
 
   State next = state_;
-  next.step.remainingText.erase(0, typedChunk.size());
+  std::get<PendingInsert>(next.step).remainingText.erase(0, typedChunk.size());
   next.acceptedRevision++;
   return commit(std::move(next));
 }
@@ -524,13 +487,14 @@ Outcome View::consumeInsertText(string_view typedChunk) {
 Outcome View::exitInsertMode() {
   auto gated = requirePendingInsert("insert-mode exit");
   if (!gated) return unexpected(std::move(gated.error()));
+  const int editIndex = *gated;
 
-  if (!state_.step.remainingText.empty()) {
+  if (!std::get<PendingInsert>(state_.step).remainingText.empty()) {
     return unexpected(Rejected{"cannot exit insert mode before the required text is complete"});
   }
 
   State next = state_;
-  return afterEditCompleted(std::move(next));
+  return afterEditCompleted(std::move(next), editIndex);
 }
 
 Outcome View::acceptInsertExit(
@@ -557,7 +521,7 @@ Outcome View::acceptInsertExit(
   if (auto e = appendRawKeysOrReject(next, rawKeys, config_); !e) {
     return unexpected(std::move(e.error()));
   }
-  return afterEditCompleted(std::move(next));
+  return afterEditCompleted(std::move(next), editIndex);
 }
 
 Outcome View::cancelPendingInsert() {
@@ -593,13 +557,6 @@ Outcome View::redo() {
 // Debug
 // =============================================================================
 
-const char* to_string(Phase phase) {
-  switch (phase) {
-    case Phase::ApproachEdit:  return "ApproachEdit";
-    case Phase::PendingInsert: return "PendingInsert";
-    case Phase::Completed:     return "Completed";
-  }
-  return "Unknown";
-}
+// stepKindName overloads live in Explore.h alongside the Step variant.
 
 }  // namespace Explore

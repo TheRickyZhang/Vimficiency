@@ -60,7 +60,7 @@ end
 local function register_plug(name, subcmd, subcmd_args)
   vim.keymap.set("n", "<Plug>Vimfy" .. name,
     build_subcmd_callback(subcmd, subcmd_args, "<Plug>Vimfy" .. name),
-    { silent = true, desc = "Vimficiency " .. subcmd .. " " .. table.concat(subcmd_args, " ") })
+    { silent = true, desc = "Vimfy " .. subcmd .. " " .. table.concat(subcmd_args, " ") })
 end
 
 ---@param mode string|string[]
@@ -75,18 +75,18 @@ function M.map(mode, lhs, spec, opts)
   if type(spec) == "string" then
     local parts = vim.split(spec, "%s+", { trimempty = true })
     if #parts == 0 then
-      error("vimficiency.map: empty spec string")
+      error("vimfy.map: empty spec string")
     end
     local subcmd = parts[1]
     local subcmd_args = {}
     for i = 2, #parts do subcmd_args[#subcmd_args + 1] = parts[i] end
     callback = build_subcmd_callback(subcmd, subcmd_args, "vimfy.map(" .. lhs .. ")")
-    if not opts.desc then opts.desc = "Vimficiency " .. spec end
+    if not opts.desc then opts.desc = "Vimfy " .. spec end
   elseif type(spec) == "function" then
     callback = M.wrap(spec)
-    if not opts.desc then opts.desc = "Vimficiency <fn>" end
+    if not opts.desc then opts.desc = "Vimfy <fn>" end
   else
-    error("vimficiency.map: spec must be a string or function, got " .. type(spec))
+    error("vimfy.map: spec must be a string or function, got " .. type(spec))
   end
 
   vim.keymap.set(mode, lhs, callback, opts)
@@ -120,7 +120,7 @@ function M.setup(user_config)
   if #unknown > 0 then
     table.sort(unknown)
     vim.notify(
-      "vimficiency: unknown config keys ignored: " .. table.concat(unknown, ", "),
+      "vimfy: unknown config keys ignored: " .. table.concat(unknown, ", "),
       vim.log.levels.WARN
     )
   end
@@ -128,13 +128,13 @@ function M.setup(user_config)
   set_cmd("Vimfy", handle_vf_command, {
     nargs = "*",
     complete = commands.complete,
-    desc = "Vimficiency movement optimizer",
+    desc = "Vimfy movement optimizer",
   })
 
   set_cmd("Vimficiency", handle_vf_command, {
     nargs = "*",
     complete = commands.complete,
-    desc = "Vimficiency movement optimizer",
+    desc = "Vimfy movement optimizer",
   })
 
   for _, alias in ipairs({ "a", "b", "c", "d", "e" }) do

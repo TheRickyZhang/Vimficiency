@@ -22,7 +22,7 @@ function M.install()
   end)
   if not ok then
     vim.notify(
-      "vimficiency: recall capture already installed (subscriber name " ..
+      "vimfy: recall capture already installed (subscriber name " ..
       "'recall_capture' in use). If you called setup() twice, this is " ..
       "harmless — recall is still active from the first call. Otherwise " ..
       "another plugin is colliding on the subscriber name.",

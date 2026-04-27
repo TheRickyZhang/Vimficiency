@@ -1,4 +1,4 @@
-#include "LuaExports/Shared.h"
+#include "LuaExports/Common.h"
 #include "Boundary/NavBoundary.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
@@ -7,6 +7,9 @@
 #include <iomanip>
 
 using namespace std;
+namespace helpers = VF::LuaExports::helpers;
+using VF::LuaExports::g_config_internal;
+using VF::LuaExports::kEventFieldSep;
 
 namespace {
 
@@ -20,7 +23,7 @@ Lines splitLines(string_view text) {
   return lines;
 }
 
-vimficiency::lua_exports::Result<string> analyzeImpl(
+VF::LuaExports::Result<string> analyzeImpl(
     const char *initial_text,
     const char *goal_text,
     int boundaryFirstCol,
@@ -35,11 +38,11 @@ vimficiency::lua_exports::Result<string> analyzeImpl(
     int window_height,
     int scroll_amount,
     int results_calculated) {
-  auto initialText = vimficiency::lua_exports::export_helpers::requiredText(initial_text, "initial_text");
+  auto initialText = helpers::requiredText(initial_text, "initial_text");
   if (!initialText) return unexpected(initialText.error());
-  auto goalText = vimficiency::lua_exports::export_helpers::requiredText(goal_text, "goal_text");
+  auto goalText = helpers::requiredText(goal_text, "goal_text");
   if (!goalText) return unexpected(goalText.error());
-  auto keyseqTextResult = vimficiency::lua_exports::export_helpers::requiredText(keyseq, "keyseq");
+  auto keyseqTextResult = helpers::requiredText(keyseq, "keyseq");
   if (!keyseqTextResult) return unexpected(keyseqTextResult.error());
 
   const Lines initialLines = splitLines(*initialText);
@@ -62,7 +65,7 @@ vimficiency::lua_exports::Result<string> analyzeImpl(
       hasLinesBelow);
 
   if (initialLines == goalLines) {
-    NavOptimizer opt(vimficiency::lua_exports::g_config_internal);
+    NavOptimizer opt(g_config_internal);
     results = opt.optimize(
         initialLines,
         initialPos,
@@ -72,7 +75,7 @@ vimficiency::lua_exports::Result<string> analyzeImpl(
         boundary,
         navigationContext).getResults();
   } else {
-    CompositionOptimizer opt(vimficiency::lua_exports::g_config_internal);
+    CompositionOptimizer opt(g_config_internal);
     results = opt.optimize(
         initialLines,
         initialPos,
@@ -84,7 +87,7 @@ vimficiency::lua_exports::Result<string> analyzeImpl(
         navigationContext).getResults();
   }
 
-  const double userCost = getEffort(keyseqText, vimficiency::lua_exports::g_config_internal);
+  const double userCost = getEffort(keyseqText, g_config_internal);
   vector<const ::Result*> validResults;
   for (const ::Result& result : results) {
     if (!result.isValid()) continue;
@@ -109,7 +112,7 @@ vimficiency::lua_exports::Result<string> analyzeImpl(
       // rationale and the project-wide convention live in
       // `dev/lua/ffi-separators.md`.
       oss << result->getSequence().view()
-          << vimficiency::lua_exports::kEventFieldSep
+          << kEventFieldSep
           << fixed << setprecision(3) << result->getCost() << "\n";
     }
   }
@@ -124,7 +127,7 @@ vimficiency::lua_exports::Result<string> analyzeImpl(
 
 extern "C" {
 
-const char *vimficiency_analyze(
+const char *vf_analyze(
     const char *initial_text,
     const char *goal_text,
     int boundaryFirstCol,
@@ -140,23 +143,23 @@ const char *vimficiency_analyze(
     int scroll_amount,
     int results_calculated) {
   static string result_storage;
-  return vimficiency::lua_exports::export_helpers::storeString(result_storage, [&] {
-    return analyzeImpl(
-        initial_text,
-        goal_text,
-        boundaryFirstCol,
-        boundaryLastCol,
-        hasLinesAbove,
-        hasLinesBelow,
-        start_row,
-        start_col,
-        end_row,
-        end_col,
-        keyseq,
-        window_height,
-        scroll_amount,
-        results_calculated);
-  });
+  return helpers::storeString(
+      result_storage,
+      analyzeImpl(
+          initial_text,
+          goal_text,
+          boundaryFirstCol,
+          boundaryLastCol,
+          hasLinesAbove,
+          hasLinesBelow,
+          start_row,
+          start_col,
+          end_row,
+          end_col,
+          keyseq,
+          window_height,
+          scroll_amount,
+          results_calculated));
 }
 
 }

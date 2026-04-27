@@ -1,17 +1,17 @@
--- Pure formatting helpers for ResultSession display.
+-- Pure formatting helpers for VF.Session.Result display.
 
 local sequence_display = require("vimficiency.sequence_display")
 
 local M = {}
 
----@param result ResultSession
+---@param result VF.Session.Result
 ---@return string  e.g. "(1,2) → (3,4)"
 function M.format_position(result)
   return string.format("(%d,%d) → (%d,%d)",
     result.start_row, result.start_col, result.end_row, result.end_col)
 end
 
----@param result ResultSession
+---@param result VF.Session.Result
 ---@return string  e.g. " [manual]", or ""
 function M.format_reason_suffix(result)
   if not result.finish_reason then return "" end
@@ -19,7 +19,7 @@ function M.format_reason_suffix(result)
 end
 
 --- Format the result body as display lines.
----@param result ResultSession
+---@param result VF.Session.Result
 ---@return string[]
 function M.format_body(result)
   local lines = {}
