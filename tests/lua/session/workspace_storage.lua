@@ -19,7 +19,7 @@ local function use_temp_save_dir()
   return tmp
 end
 
---- Construct a minimal ResultSession for register_fetched_result.
+--- Construct a minimal VF.Session.Result for register_fetched_result.
 ---@param user_seq string
 ---@return table
 local function fake_result(user_seq)

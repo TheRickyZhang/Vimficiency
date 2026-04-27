@@ -14,9 +14,9 @@ local sequence_display = require("vimficiency.sequence_display")
 local M = {}
 
 -- Shared with render/tags.lua — same namespace name resolves to the same ID.
-local tags_ns = v.nvim_create_namespace("vimficiency_explore_tags")
+local tags_ns = v.nvim_create_namespace("vimfy_explore_tags")
 
----@class VimficiencyRecRow
+---@class VF.Explore.RecRow
 ---@field rank string   # e.g. " 1."  — rank marker, already padded
 ---@field chunks string[]  # remaining columns in order, no padding applied yet
 ---@field widths integer[] # target width per `chunks` slot (bytes)
@@ -24,7 +24,7 @@ local tags_ns = v.nvim_create_namespace("vimficiency_explore_tags")
 
 ---Join one row into its final padded string. One space after the rank
 ---marker (matches existing density), two spaces between other columns.
----@param row VimficiencyRecRow
+---@param row VF.Explore.RecRow
 ---@return string
 local function format_rec_row(row)
   local parts = { row.rank }
@@ -38,7 +38,7 @@ local function format_rec_row(row)
 end
 
 ---Render the recommendation list buffer.
----@param active VimficiencyExploreActive
+---@param active VF.Explore.Active
 ---@param remaining string  live pending-insert tail (empty in other phases)
 function M.render(active, remaining)
   if not v.nvim_buf_is_valid(active.list_buf) then return end
@@ -46,7 +46,7 @@ function M.render(active, remaining)
   local lines = { "Recommendations", "" }
   local hl_entries = {}
 
-  ---@type VimficiencyRecRow[]
+  ---@type VF.Explore.RecRow[]
   local rows = {}
 
   local function add_row(rank_index, total_ranks, chunks, hl)

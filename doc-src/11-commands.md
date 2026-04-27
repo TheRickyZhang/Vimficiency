@@ -182,10 +182,10 @@ list and the binding contract.
 
 ## Scratch output buffer keys
 
-Press `:h g?` in a Vimficiency scratch output buffer to open this section
+Press `:h g?` in a Vimfy scratch output buffer to open this section
 directly. This applies to buffers opened by `:Vimfy help` and other
-detail panes that show Vimficiency text output in a split.
+detail panes that show Vimfy text output in a split.
 
-- `q` — close the current Vimficiency output buffer
+- `q` — close the current Vimfy output buffer
 - `?` — show the short keymap summary popup
 - `g?` — open the full help section for scratch output buffers

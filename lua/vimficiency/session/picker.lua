@@ -32,7 +32,7 @@ local DEFAULT_DIRECTIONS = {
 local STATUS_SYMBOLS = { ongoing = "●", saved = "✓", blank = " " }
 
 -- Singleton state: nil when closed.
----@class PickerState
+---@class VF.Session.PickerState
 ---@field win      integer       # Outer float window id
 ---@field buf      integer       # List buffer id
 ---@field prev_win integer       # Preview (vsplit) window id
@@ -46,7 +46,7 @@ local STATUS_SYMBOLS = { ongoing = "●", saved = "✓", blank = " " }
 ---@field rows     table[]       # row index -> { item = ..., is_header = bool }
 ---@field cursor   integer       # 1-indexed row in the list buffer
 
----@type PickerState?
+---@type VF.Session.PickerState?
 local state = nil
 
 --------------------------------------------------------------------------------
@@ -272,7 +272,7 @@ local function render()
 
   local sections = group_into_sections(filtered, state.sort_mode, state.direction)
 
-  -- Float's window title already says "Vimficiency Sessions"; header here
+  -- Float's window title already says "Vimfy Sessions"; header here
   -- just shows the two orthogonal controls (pane + sort). Highlight spans
   -- are computed alongside the line so the selected pane label stands out.
   local arrow = state.direction == "asc" and "↑" or "↓"
@@ -798,7 +798,7 @@ local function act_duplicate()
 end
 
 local HELP_LINES = {
-  "  Vimficiency session picker",
+  "  Vimfy session picker",
   "",
   "  /          fuzzy search",
   "  <Tab>      switch Active ↔ Saved pane",
@@ -889,7 +889,7 @@ function M.open()
     row = row, col = col,
     width = width, height = height,
     border = "rounded", style = "minimal",
-    title = " Vimficiency Sessions ", title_pos = "center",
+    title = " Vimfy Sessions ", title_pos = "center",
   })
   util.configure_scratch_window(win, { cursorline = true })
 

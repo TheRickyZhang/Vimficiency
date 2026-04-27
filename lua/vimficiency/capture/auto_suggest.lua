@@ -18,7 +18,7 @@ local disarms = {}
 ---@type string|nil  Fingerprint of the most recent shown suggestion.
 local last_fingerprint = nil
 
----@param result ResultSession
+---@param result VF.Session.Result
 ---@return string
 local function fingerprint_result(result)
   -- Include the top result so slice changes still count as new suggestions.
@@ -31,12 +31,12 @@ local function fingerprint_result(result)
     result.user_seq or "", opt_str)
 end
 
----@param summary SessionSummary
+---@param summary VF.Session.Summary
 local function render_suggestion(summary)
   local result = summary.result
   if not result then return end
 
-  local header = "vimficiency suggest "
+  local header = "vimfy suggest "
     .. result_view.format_position(result)
     .. result_view.format_reason_suffix(result)
   local body = result_view.format_body(result)
@@ -47,8 +47,8 @@ end
 --- Returns the cooldown signal for `end_trigger`.
 ---
 ---@param window string                              Recall alias to analyze.
----@param gate? fun(result: ResultSession): boolean|nil  Optional veto. Return false to suppress notification; the record is still consumed.
----@param reason FinishReason                         Which trigger fired; stored on the result for the header annotation.
+---@param gate? fun(result: VF.Session.Result): boolean|nil  Optional veto. Return false to suppress notification; the record is still consumed.
+---@param reason VF.Session.FinishReason                         Which trigger fired; stored on the result for the header annotation.
 ---@return boolean counted
 local function fire_with_window(window, gate, reason)
   local active = session_store.get_active(window)

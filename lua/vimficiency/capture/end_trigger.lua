@@ -5,14 +5,14 @@ local M = {}
 
 local key_tracking = require("vimficiency.capture.key_tracking")
 
----@class EndTriggerOpts
+---@class VF.Capture.EndTriggerOpts
 ---@field name         string                       # Unique subscriber name.
 ---@field idle_ms      integer                      # Idle threshold before fire.
 ---@field cooldown_ms  integer                      # Minimum time between fires.
 ---@field on_fire      fun(): boolean?              # Callback. Truthy → refresh cooldown.
 
 --- Arm an idle trigger.
----@param opts EndTriggerOpts
+---@param opts VF.Capture.EndTriggerOpts
 ---@return fun()|nil disarm
 function M.arm_idle(opts)
   assert(type(opts.name) == "string" and #opts.name > 0, "end_trigger: name required")
@@ -66,14 +66,14 @@ function M.arm_idle(opts)
   end
 end
 
----@class ArmKeysOpts
+---@class VF.Capture.ArmKeysOpts
 ---@field name         string                       # Unique subscriber name.
 ---@field every        integer                      # Fire every N real keystrokes.
 ---@field cooldown_ms  integer                      # Minimum time between fires.
 ---@field on_fire      fun(): boolean?              # Callback. Truthy → refresh cooldown.
 
 --- Arm a keystroke-count trigger.
----@param opts ArmKeysOpts
+---@param opts VF.Capture.ArmKeysOpts
 ---@return fun()|nil disarm
 function M.arm_keys(opts)
   assert(type(opts.name) == "string" and #opts.name > 0, "end_trigger: name required")

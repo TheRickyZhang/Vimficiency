@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <utility>
 
-namespace LuaExports {
+namespace VF::LuaExports {
 
 // Owns all live Explore views. Lua holds opaque integer handles handed out
 // by `create`; lookup misses are programmer bugs (stale handle, use-after-
@@ -33,4 +33,4 @@ class ViewRegistry {
   int next_id_ = 0;
 };
 
-}  // namespace LuaExports
+}  // namespace VF::LuaExports

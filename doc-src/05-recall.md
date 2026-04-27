@@ -26,7 +26,7 @@ Mixing forms (`3m`, `3ms`, `2h`, etc.) is not supported. Seconds is the
 only time unit; if you want 90 seconds, use `90s`.
 
 The same grammar is reused by [Suggest](06-suggest.md) triggers (e.g.
-`window = "3s"` / `"50"`) — anywhere Vimficiency wants a slice of the
+`window = "3s"` / `"50"`) — anywhere Vimfy wants a slice of the
 queue, `N` and `Ns` are how you name it.
 
 ## Implementation Details

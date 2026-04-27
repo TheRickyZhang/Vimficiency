@@ -1,25 +1,25 @@
 -- Smoke tests for the `:Vimfy reload` Lua path.
 
-local vimficiency = require("vimficiency")
+local vimfy = require("vimficiency")
 
 test("reload: setup is idempotent (two calls in a row don't crash)", function()
-  vimficiency.setup({})
-  vimficiency.setup({})
+  vimfy.setup({})
+  vimfy.setup({})
   assert_true(true, "survived two setups")
 end)
 
 test("reload: shutdown detaches global on_key subscribers", function()
-  vimficiency.setup({})
+  vimfy.setup({})
   local kt = require("vimficiency.capture.key_tracking")
   assert_true(kt.is_global_attached("recall_capture"),
     "recall_capture subscriber present after setup")
-  vimficiency.shutdown()
+  vimfy.shutdown()
   assert_true(not kt.is_global_attached("recall_capture"),
     "recall_capture subscriber gone after shutdown")
 end)
 
 test("reload: reload_lua swaps module identities and preserves finished records", function()
-  vimficiency.setup({})
+  vimfy.setup({})
 
   local store = require("vimficiency.session.store")
   local id = "reload-test-id"
@@ -42,7 +42,7 @@ test("reload: reload_lua swaps module identities and preserves finished records"
 
   local pre_store = store
 
-  local stats = vimficiency.reload_lua(nil)
+  local stats = vimfy.reload_lua(nil)
   assert_true(stats.preserved_records >= 1,
     "reload reports >=1 preserved record; got " .. tostring(stats.preserved_records))
 

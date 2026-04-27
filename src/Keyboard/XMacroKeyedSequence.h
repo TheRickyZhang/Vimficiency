@@ -10,7 +10,7 @@
 #define STRIP_PARENS_INNER(...) __VA_ARGS__
 #define STRIP_PARENS(x) STRIP_PARENS_INNER x
 
-#define VIMFICIENCY_KEYED_SEQUENCES(_KS) \
+#define VF_KEYED_SEQUENCES(_KS) \
     /* Special keys */ \
     _KS(BS,     "<BS>",   (Key::Key_Backspace)) \
     _KS(Del,    "<Del>",  (Key::Key_Delete)) \

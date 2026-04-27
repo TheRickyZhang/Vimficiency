@@ -325,7 +325,7 @@ end
 -- after our `default = true` install.
 v.nvim_set_hl(0, "VimficiencyStatsSectionTitle",
   { link = "Title", default = true })
-local stats_ns = v.nvim_create_namespace("vimficiency_stats")
+local stats_ns = v.nvim_create_namespace("vimfy_stats")
 
 function M.open()
   local records = log.read_all()
@@ -355,7 +355,7 @@ function M.open()
     relative = "editor", row = row, col = col,
     width = width, height = height,
     border = "rounded", style = "minimal",
-    title = " Vimficiency Stats ", title_pos = "center",
+    title = " Vimfy Stats ", title_pos = "center",
   })
   util.configure_scratch_window(win)
 

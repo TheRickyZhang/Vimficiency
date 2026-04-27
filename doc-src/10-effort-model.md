@@ -8,7 +8,7 @@ title: "The effort model"
 > page will grow. For now, use `:Vimfy config` to inspect the live values
 > and the pointers below to understand the shape.
 
-Vimficiency does not score sequences by keystroke count. It scores them by
+Vimfy does not score sequences by keystroke count. It scores them by
 **keyboard effort**: how hard each key is to reach, whether consecutive
 keys involve the same finger, whether they alternate hands, etc. A 4-key
 sequence using good rolls on the home row can be "cheaper" than a 3-key

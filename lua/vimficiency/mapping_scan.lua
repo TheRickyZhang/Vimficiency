@@ -1,10 +1,10 @@
--- Scans for any "bad mappings", ie external Vimficiency mappings that don't use our built-in mappings, which risks not hiding keypresses from our detection
+-- Scans for any "bad mappings", ie external Vimfy mappings that don't use our built-in mappings, which risks not hiding keypresses from our detection
 
 local M = {}
 
 local MODES_TO_SCAN = { "n", "v", "x", "s", "o", "i", "t" }
 
-local VIMFY_RHS_PATTERNS = {
+local RAW_COMMAND_RHS_PATTERNS = {
   "^%s*:vimfy%f[%W]",
   "^%s*:vimficiency%f[%W]",
   "<cmd>%s*:?vimfy%f[%W]",
@@ -14,7 +14,7 @@ local VIMFY_RHS_PATTERNS = {
 function M.scan_rhs_for_vimfy(rhs)
   if type(rhs) ~= "string" or rhs == "" then return false end
   local lower = rhs:lower()
-  for _, pattern in ipairs(VIMFY_RHS_PATTERNS) do
+  for _, pattern in ipairs(RAW_COMMAND_RHS_PATTERNS) do
     if lower:match(pattern) then return true end
   end
   return false
@@ -36,7 +36,7 @@ function M.warn_about_bad_mappings()
 
   table.sort(bad)
   vim.notify(
-    "vimficiency: detected " .. #bad ..
+    "vimfy: detected " .. #bad ..
     " mapping(s) whose RHS invokes :Vimfy as an Ex command.\n" ..
     "These will count the LHS keystroke as motion. Migrate to\n" ..
     "`require('vimficiency').map()` or a `<Plug>Vimfy*` map:\n" ..

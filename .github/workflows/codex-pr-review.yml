@@ -44,41 +44,27 @@ jobs:
           set -euo pipefail
           BASE="${{ github.event.pull_request.base.sha }}"
           HEAD="${{ github.event.pull_request.head.sha }}"
-          printf '%s\n' \
-            'Return JSON that matches the provided schema exactly.' \
-            '' \
-            "Review only the pull request changes between ${BASE} and ${HEAD}." \
-            'Do not review untouched code except as needed for surrounding context.' \
-            '' \
-            'Write a concise PR review focused on:' \
-            '- logical/correctness bugs (including UB/lifetime)' \
-            '- code smells/design limitations' \
-            '- long-term semantic concerns (invariants, API boundaries, coupling)' \
-            '' \
-            'Rules:' \
-            '- body: 5-15 bullets max.' \
-            '- comments: only actionable issues; prefer severity high/medium.' \
-            '- For each inline comment: use the repo-relative file path, and a line number in the NEW file (RIGHT side).' \
-            '- Do not output any extra text outside the JSON.' \
-            '' \
-            'Use local git commands instead of relying on an inlined full diff.' \
-            "Recommended commands:" \
-            "- git diff --stat=120 --summary ${BASE}...${HEAD}" \
-            "- git diff --name-only ${BASE}...${HEAD}" \
-            "- git diff --unified=80 ${BASE}...${HEAD} -- <path>" \
-            "- git show ${HEAD}:<path>" \
-            '' \
-            "PR metadata:" \
-            "- title: ${PR_TITLE}" \
-            "- body: ${PR_BODY}" \
-            "- changed files: ${{ steps.prctx.outputs.file_count }}" \
-            "- diff summary bytes: ${{ steps.prctx.outputs.stat_bytes }}" \
-            '' \
-            'Changed files and diff summary:' \
-            > /tmp/codex_prompt.txt
-          cat /tmp/pr.files >> /tmp/codex_prompt.txt
-          printf '%s\n' '' 'Diff stat:' >> /tmp/codex_prompt.txt
-          cat /tmp/pr.stat >> /tmp/codex_prompt.txt
+          {
+            cat .github/codex/prompts/review.md
+            printf '\n'
+            printf 'Review the changes between %s and %s.\n' "${BASE}" "${HEAD}"
+            printf 'Use local git commands to inspect the diff and verify context:\n'
+            printf '  - git diff --stat=120 --summary %s...%s\n' "${BASE}" "${HEAD}"
+            printf '  - git diff --name-only %s...%s\n' "${BASE}" "${HEAD}"
+            printf '  - git diff --unified=80 %s...%s -- <path>\n' "${BASE}" "${HEAD}"
+            printf '  - git show %s:<path>\n' "${HEAD}"
+            printf '\n'
+            printf 'PR metadata:\n'
+            printf '  - title: %s\n' "${PR_TITLE}"
+            printf '  - body: %s\n' "${PR_BODY}"
+            printf '  - changed files: %s\n' "${{ steps.prctx.outputs.file_count }}"
+            printf '  - diff summary bytes: %s\n' "${{ steps.prctx.outputs.stat_bytes }}"
+            printf '\n'
+            printf 'Changed files:\n'
+            cat /tmp/pr.files
+            printf '\nDiff stat:\n'
+            cat /tmp/pr.stat
+          } > /tmp/codex_prompt.txt
 
       - name: Run Codex using the generated prompt
         id: codex_run
@@ -95,11 +81,18 @@ jobs:
             -c model_verbosity="medium"
           prompt-file: /tmp/codex_prompt.txt
 
-      - name: Post GitHub Review (validate + fallback)
+      - name: Post review (inline comments) and refreshed summary
         uses: actions/github-script@v7
         with:
           script: |
             const raw = ${{ toJSON(steps.codex_run.outputs.final-message) }};
+
+            // Marker used to identify this bot's previous summary comments
+            // so we can collapse them when posting a fresh one. Each new
+            // summary lands at the bottom of the PR conversation; the prior
+            // summaries are minimized as OUTDATED so the latest one is the
+            // only visible "main" comment.
+            const SUMMARY_MARKER = "<!-- vimfy-review-summary -->";
 
             function safeJsonParse(s) { try { return JSON.parse(s); } catch { return null; } }
             function isString(x) { return typeof x === "string"; }
@@ -137,15 +130,10 @@ jobs:
 
             const parsed = safeJsonParse(raw);
 
+            // Fallback: model returned non-JSON. Post the raw text as a
+            // single summary comment so we don't silently drop the review.
             if (!parsed || !isString(parsed.body) || !Array.isArray(parsed.comments)) {
-              await github.rest.pulls.createReview({
-                owner,
-                repo,
-                pull_number,
-                commit_id,
-                event: "COMMENT",
-                body: typeof raw === "string" ? raw : String(raw),
-              });
+              await postSummary(typeof raw === "string" ? raw : String(raw));
               return;
             }
 
@@ -167,44 +155,121 @@ jobs:
               if (c.side !== "RIGHT") { dropped++; continue; }
               if (!isString(c.body) || !isString(c.severity)) { dropped++; continue; }
 
-              const severity = c.severity.toLowerCase();
-              if (severity === "low") { dropped++; continue; }
-
               const validLines = validLinesByPath.get(c.path);
               if (!validLines || !validLines.has(c.line)) { dropped++; continue; }
 
+              const severity = c.severity.toLowerCase();
               comments.push({ path: c.path, line: c.line, side: "RIGHT", body: `[${severity}] ${c.body}` });
               if (comments.length >= 20) break;
             }
 
-            const body = dropped > 0
-              ? `${parsed.body}\n\n(Filtered ${dropped} inline comment(s) that did not resolve to this PR diff.)`
-              : parsed.body;
+            // Hide prior bot inline review comments before posting fresh
+            // ones. Otherwise multiple pushes leave stacked, possibly
+            // contradictory comments on lines that didn't change. Done
+            // before `createReview` so the new comments aren't picked up
+            // by the cleanup pass.
+            await hidePreviousInlineComments();
 
-            const review = {
-              owner,
-              repo,
-              pull_number,
-              commit_id,
-              event: "COMMENT",
-              body,
-              comments,
-            };
-
-            try {
-              await github.rest.pulls.createReview(review);
-            } catch (err) {
-              if (err?.status === 422 && comments.length > 0) {
+            // Post the GitHub review for the inline comments only. The
+            // top-level summary is delivered as a separate PR comment so
+            // we can hide previous summaries individually.
+            //
+            // body=" " (single space) — GitHub historically required either
+            // a non-empty body or `comments`; empty-string body is accepted
+            // today but inconsistently across endpoints. The space is a
+            // belt-and-suspenders defense against a 422.
+            if (comments.length > 0) {
+              try {
                 await github.rest.pulls.createReview({
                   owner,
                   repo,
                   pull_number,
                   commit_id,
                   event: "COMMENT",
-                  body: `${body}\n\n(Inline comments omitted after GitHub could not resolve at least one target line.)`,
-                  comments: [],
+                  body: " ",
+                  comments,
                 });
-                return;
+              } catch (err) {
+                if (err?.status === 422) {
+                  // GitHub couldn't resolve at least one target line.
+                  // Surface the failure in the summary so reviewers know.
+                  parsed.body = (parsed.body || "") +
+                    "\n\n_(Inline comments omitted — GitHub could not resolve at least one target line.)_";
+                } else {
+                  throw err;
+                }
               }
-              throw err;
+            }
+
+            const droppedNote = dropped > 0
+              ? `\n\n_(Filtered ${dropped} inline comment(s) that did not resolve to this PR diff.)_`
+              : "";
+
+            await postSummary(parsed.body + droppedNote);
+
+            // ----------------------------------------------------------------
+            // Helpers
+            // ----------------------------------------------------------------
+
+            async function postSummary(summaryBody) {
+              await hidePreviousSummaries();
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pull_number,
+                body: `${SUMMARY_MARKER}\n\n## PR summary\n\n${summaryBody}`,
+              });
+            }
+
+            async function hidePreviousInlineComments() {
+              // Inline review comments live on a different endpoint from
+              // issue comments. Each new push posts fresh ones; without
+              // cleanup, stale comments from prior runs accumulate on
+              // unchanged lines (GitHub only auto-outdates when the line
+              // itself is modified).
+              const all = await github.paginate(github.rest.pulls.listReviewComments, {
+                owner,
+                repo,
+                pull_number,
+                per_page: 100,
+              });
+              const stale = all.filter(
+                (c) => c.user && c.user.login === "github-actions[bot]"
+              );
+              await minimizeAll(stale, "inline");
+            }
+
+            async function hidePreviousSummaries() {
+              const all = await github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number: pull_number,
+                per_page: 100,
+              });
+              const stale = all.filter(
+                (c) =>
+                  c.user &&
+                  c.user.login === "github-actions[bot]" &&
+                  isString(c.body) &&
+                  c.body.includes(SUMMARY_MARKER)
+              );
+              await minimizeAll(stale, "summary");
+            }
+
+            async function minimizeAll(comments, label) {
+              for (const c of comments) {
+                try {
+                  await github.graphql(
+                    `mutation($id: ID!) {
+                       minimizeComment(input: { subjectId: $id, classifier: OUTDATED }) {
+                         minimizedComment { isMinimized }
+                       }
+                     }`,
+                    { id: c.node_id }
+                  );
+                } catch (err) {
+                  // Already-minimized comments throw; skip and continue.
+                  core.warning(`Failed to minimize ${label} comment ${c.id}: ${err?.message || err}`);
+                }
+              }
             }

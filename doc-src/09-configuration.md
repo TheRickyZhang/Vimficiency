@@ -61,7 +61,7 @@ its own timer and cooldown, configured under its own key.
 | `auto_suggest.cost.ms`                           | Same semantic as `idle.ms` but dedicated to the cost trigger.          |
 | `watch.cooldown_ms` / `auto_suggest.cooldown_ms` | Minimum time between consecutive fires. Safety rail for low `idle.ms`. |
 
-"Real keystroke" excludes cmdline input and Vimficiency admin
+"Real keystroke" excludes cmdline input and Vimfy admin
 keystrokes, so `:Vimfy` commands and `vimfy.map`-routed bindings don't
 reset the idle timer.
 

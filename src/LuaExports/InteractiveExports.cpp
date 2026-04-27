@@ -8,8 +8,8 @@
 #include <variant>
 
 using namespace std;
-namespace helpers = LuaExports::helpers;
-namespace payload = LuaExports::payload;
+namespace helpers = VF::LuaExports::helpers;
+namespace payload = VF::LuaExports::payload;
 
 namespace {
 
@@ -17,7 +17,7 @@ using Explore::View;
 using Explore::Suggestion;
 using Explore::State;
 using Explore::Outcome;
-using LuaExports::ViewRegistry;
+using VF::LuaExports::ViewRegistry;
 
 ViewRegistry g_registry;
 
@@ -134,7 +134,7 @@ string encodeSuggestions(const vector<Suggestion>& recs) {
   return out;
 }
 
-LuaExports::Result<string> startImpl(
+VF::LuaExports::Result<string> startImpl(
     const char* encoded_initial_lines,
     int start_row,
     int start_col,
@@ -183,7 +183,7 @@ LuaExports::Result<string> startImpl(
       goalPos,
       std::move(boundary),
       navContext,
-      LuaExports::g_config_internal,
+      VF::LuaExports::g_config_internal,
       userSeq);
   return to_string(view_id);
 }
@@ -192,7 +192,7 @@ LuaExports::Result<string> startImpl(
 
 extern "C" {
 
-const char* vimficiency_explore_start(
+const char* vf_explore_start(
     const char* encoded_initial_lines,
     int start_row,
     int start_col,
@@ -216,17 +216,17 @@ const char* vimficiency_explore_start(
       user_seq));
 }
 
-int vimficiency_explore_destroy(int view_id) {
+int vf_explore_destroy(int view_id) {
   return g_registry.destroy(view_id) ? 1 : 0;
 }
 
-const char* vimficiency_explore_state(int view_id) {
+const char* vf_explore_state(int view_id) {
   static string storage;
   storage = encodeState(g_registry.get(view_id));
   return storage.c_str();
 }
 
-const char* vimficiency_explore_recommendations(
+const char* vf_explore_recommendations(
     int view_id,
     int max_count,
     bool allow_multiple_movements_per_position,
@@ -240,7 +240,7 @@ const char* vimficiency_explore_recommendations(
   return storage.c_str();
 }
 
-const char* vimficiency_explore_apply_movement(int view_id, const char* movement_text) {
+const char* vf_explore_apply_movement(int view_id, const char* movement_text) {
   static string storage;
   View& v = g_registry.get(view_id);
   return helpers::storeString(storage, helpers::requiredText(movement_text, "movement_text").transform(
@@ -249,7 +249,7 @@ const char* vimficiency_explore_apply_movement(int view_id, const char* movement
       }));
 }
 
-const char* vimficiency_explore_accept_cursor_move(
+const char* vf_explore_accept_cursor_move(
     int view_id, int new_row, int new_col, const char* raw_keys) {
   static string storage;
   View& v = g_registry.get(view_id);
@@ -258,7 +258,7 @@ const char* vimficiency_explore_accept_cursor_move(
   return storage.c_str();
 }
 
-const char* vimficiency_explore_accept_buffer_state(
+const char* vf_explore_accept_buffer_state(
     int view_id,
     const char* encoded_lines,
     int new_row,
@@ -274,7 +274,7 @@ const char* vimficiency_explore_accept_buffer_state(
       }));
 }
 
-const char* vimficiency_explore_apply_edit(int view_id, const char* text) {
+const char* vf_explore_apply_edit(int view_id, const char* text) {
   static string storage;
   View& v = g_registry.get(view_id);
   return helpers::storeString(storage, helpers::requiredText(text, "text").transform(
@@ -283,7 +283,7 @@ const char* vimficiency_explore_apply_edit(int view_id, const char* text) {
       }));
 }
 
-const char* vimficiency_explore_current_lines(int view_id) {
+const char* vf_explore_current_lines(int view_id) {
   static string storage;
   View& v = g_registry.get(view_id);
   storage.clear();
@@ -293,7 +293,7 @@ const char* vimficiency_explore_current_lines(int view_id) {
   return storage.c_str();
 }
 
-const char* vimficiency_explore_begin_edit(int view_id, bool enters_insert_mode,
+const char* vf_explore_begin_edit(int view_id, bool enters_insert_mode,
                                            const char* required_typed_text) {
   static string storage;
   View& v = g_registry.get(view_id);
@@ -302,7 +302,7 @@ const char* vimficiency_explore_begin_edit(int view_id, bool enters_insert_mode,
   return storage.c_str();
 }
 
-const char* vimficiency_explore_insert_text(int view_id, const char* typed_chunk) {
+const char* vf_explore_insert_text(int view_id, const char* typed_chunk) {
   static string storage;
   View& v = g_registry.get(view_id);
   return helpers::storeString(storage, helpers::requiredText(typed_chunk, "typed_chunk").transform(
@@ -311,14 +311,14 @@ const char* vimficiency_explore_insert_text(int view_id, const char* typed_chunk
       }));
 }
 
-const char* vimficiency_explore_exit_insert(int view_id) {
+const char* vf_explore_exit_insert(int view_id) {
   static string storage;
   View& v = g_registry.get(view_id);
   storage = encodeOutcome(v, v.exitInsertMode());
   return storage.c_str();
 }
 
-const char* vimficiency_explore_accept_insert_exit(
+const char* vf_explore_accept_insert_exit(
     int view_id,
     const char* encoded_lines,
     int new_row,
@@ -334,21 +334,21 @@ const char* vimficiency_explore_accept_insert_exit(
       }));
 }
 
-const char* vimficiency_explore_cancel_pending_insert(int view_id) {
+const char* vf_explore_cancel_pending_insert(int view_id) {
   static string storage;
   View& v = g_registry.get(view_id);
   storage = encodeOutcome(v, v.cancelPendingInsert());
   return storage.c_str();
 }
 
-const char* vimficiency_explore_undo(int view_id) {
+const char* vf_explore_undo(int view_id) {
   static string storage;
   View& v = g_registry.get(view_id);
   storage = encodeOutcome(v, v.undo());
   return storage.c_str();
 }
 
-const char* vimficiency_explore_redo(int view_id) {
+const char* vf_explore_redo(int view_id) {
   static string storage;
   View& v = g_registry.get(view_id);
   storage = encodeOutcome(v, v.redo());

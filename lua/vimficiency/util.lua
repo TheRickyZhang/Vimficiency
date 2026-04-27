@@ -10,7 +10,7 @@ local ffi_lib = require("vimficiency.ffi")
 --------------------------------------------------------------------------------
 -- Shared scratch-window chrome
 --------------------------------------------------------------------------------
--- Every vimficiency-owned window is a scratch UI pane, not a real buffer the
+-- Every vimfy-owned window is a scratch UI pane, not a real buffer the
 -- user edits. Row numbers, sign columns, fold columns, color columns, list
 -- chars, spell underlines, and an inherited winbar all turn it into noise.
 -- Without an explicit reset, each window inherits from the user's defaults
@@ -50,7 +50,7 @@ end
 -- Types
 --------------------------------------------------------------------------------
 
----@class VimficiencyState
+---@class VF.BufferState
 ---@field bufname string       # original buffer name (full path)
 ---@field filetype string      # buffer filetype
 ---@field row integer          # 0-indexed cursor row
@@ -70,7 +70,7 @@ end
 ---@param window_height integer
 ---@param scroll_amount integer
 ---@param lines string[]
----@return VimficiencyState
+---@return VF.BufferState
 local function new_state(bufname, filetype, row, col, top_row, bottom_row, window_height, scroll_amount, lines)
   assert(type(bufname) == "string", "state.bufname must be string")
   assert(type(filetype) == "string", "state.filetype must be string")
@@ -90,7 +90,7 @@ local function new_state(bufname, filetype, row, col, top_row, bottom_row, windo
   }
 end
 
----@class VimficiencyBufferKeymap
+---@class VF.Keymap
 ---@field lhs string
 ---@field handler string|function
 ---@field desc string
@@ -102,12 +102,12 @@ end
 ---@field expr boolean?
 ---@field remap boolean?
 
----@class VimficiencyHelpKeymapOpts
+---@class VF.HelpKeymapOpts
 ---@field title string
 ---@field docs boolean?
 ---@field settings { lhs?: string, handler: string|function, desc: string }?
 
----@class VimficiencyStandardUiKeyOpts
+---@class VF.StandardUiKeyOpts
 ---@field title string
 ---@field summary { lhs?: string, desc?: string }|boolean|nil
 ---@field docs { lhs?: string, tag?: string, desc?: string }|boolean|nil
@@ -149,15 +149,15 @@ function M.open_help(tag)
     vim.cmd("help " .. M.DEFAULT_HELP_TAG)
     return
   end
-  error("vimficiency: failed to open help tag '" .. tostring(target) .. "'")
+  error("vimfy: failed to open help tag '" .. tostring(target) .. "'")
 end
 
 ---@param buf integer
----@param keymaps VimficiencyBufferKeymap[]
+---@param keymaps VF.Keymap[]
 function M.set_buffer_keymaps(buf, keymaps)
   for _, m in ipairs(keymaps) do
     assert(type(m.desc) == "string" and m.desc ~= "",
-      "vimficiency buffer keymaps require a desc")
+      "vimfy buffer keymaps require a desc")
     vim.keymap.set(m.mode or "n", m.lhs, m.handler, {
       buffer = buf,
       desc = m.desc,
@@ -196,7 +196,7 @@ function M.centered_popup_geometry(content_width, content_height, opts)
 end
 
 ---@param title string
----@param keymaps VimficiencyBufferKeymap[]
+---@param keymaps VF.Keymap[]
 function M.show_keymap_help(title, keymaps)
   local lines = {}
   local width = vim.fn.strdisplaywidth(title)
@@ -278,9 +278,9 @@ function M.show_keymap_help(title, keymaps)
   })
 end
 
----@param keymaps VimficiencyBufferKeymap[]
----@param opts VimficiencyStandardUiKeyOpts
----@return VimficiencyBufferKeymap[]
+---@param keymaps VF.Keymap[]
+---@param opts VF.StandardUiKeyOpts
+---@return VF.Keymap[]
 function M.with_standard_ui_keymaps(keymaps, opts)
   local merged = vim.deepcopy(keymaps)
   local summary = opts.summary
@@ -316,12 +316,12 @@ function M.with_standard_ui_keymaps(keymaps, opts)
 end
 
 -- Legacy compatibility wrapper around `with_standard_ui_keymaps`.
----@param keymaps VimficiencyBufferKeymap[]
----@param opts VimficiencyHelpKeymapOpts|string
+---@param keymaps VF.Keymap[]
+---@param opts VF.HelpKeymapOpts|string
 ---@param help_tag string?
----@return VimficiencyBufferKeymap[]
+---@return VF.Keymap[]
 function M.with_help_keymaps(keymaps, opts, help_tag)
-  ---@type VimficiencyStandardUiKeyOpts
+  ---@type VF.StandardUiKeyOpts
   local standard
   if type(opts) ~= "table" then
     standard = { title = opts --[[@as string]], docs = help_tag ~= nil }
@@ -338,7 +338,7 @@ end
 
 ---@param title string
 ---@param text? string
----@param opts? { ui_keys?: VimficiencyStandardUiKeyOpts, help_tag?: string, help_title?: string }
+---@param opts? { ui_keys?: VF.StandardUiKeyOpts, help_tag?: string, help_title?: string }
 ---@return integer buf
 ---@return integer win
 function M.show_output(title, text, opts)
@@ -367,7 +367,7 @@ function M.show_output(title, text, opts)
   M.configure_scratch_window(win)
 
   local keymaps = {
-    { lhs = "q", handler = "<cmd>close<cr>", desc = "Close vimficiency view", nowait = true },
+    { lhs = "q", handler = "<cmd>close<cr>", desc = "Close vimfy view", nowait = true },
   }
   local ui_keys = opts.ui_keys
   if not ui_keys and opts.help_tag then
@@ -446,7 +446,7 @@ end
 function M.is_session_id(s)
   return type(s) == "string" and s:find("__", 1, true) ~= nil
 end
----@return VimficiencyState
+---@return VF.BufferState
 function M.capture_state(buf, win)
   assert(buf and win, "capture_state: buf and win required")
   assert(v.nvim_buf_is_valid(buf), "capture state: invalid buffer")

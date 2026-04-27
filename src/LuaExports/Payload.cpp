@@ -5,7 +5,7 @@
 
 using namespace std;
 
-namespace LuaExports::payload {
+namespace VF::LuaExports::payload {
 
 Result<vector<string>> decodeLengthPrefixedStrings(string_view encoded) {
   vector<string> parts;
@@ -114,4 +114,4 @@ Result<vector<KeyTrackingEvent>> decodeKeyTrackingEvents(string_view encoded) {
   return events;
 }
 
-}  // namespace LuaExports::payload
+}  // namespace VF::LuaExports::payload

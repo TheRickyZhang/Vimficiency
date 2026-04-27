@@ -167,6 +167,7 @@ local function reset_state()
 
   -- 3. User command `:Vimfy` may have been registered by init.setup().
   pcall(vim.api.nvim_del_user_command, "Vimfy")
+  pcall(vim.api.nvim_del_user_command, "Vimficiency")
 
   -- 4. Collapse to one tab, one window, one buffer. `simulate` tests
   --    spawn extra tabs; session tests spawn scratch buffers.

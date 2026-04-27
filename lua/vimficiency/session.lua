@@ -31,7 +31,7 @@ local function apply_motion_conversions(keyseq)
   return result
 end
 
----@param record SessionRecord   Session being finished (must have id + start_kind).
+---@param record VF.Session.Record   Session being finished (must have id + start_kind).
 ---@param title string
 ---@param text string
 ---@param notify_message string|nil
@@ -39,7 +39,7 @@ end
 local function total_failure(record, title, text, notify_message, level)
   util.show_output(title, text, {
     ui_keys = {
-      title = "Vimficiency Scratch Output Keys",
+      title = "Vimfy Scratch Output Keys",
       docs = true,
     },
   })
@@ -223,10 +223,10 @@ local function buf_display_name(buf)
   return string.format("'%s' (buf %d)%s", name, buf, suffix)
 end
 
---- Build a ResultSession from an active session.
+--- Build a VF.Session.Result from an active session.
 --- Returns nil plus an error string on failure.
----@param active ActiveSession
----@return ResultSession|nil result
+---@param active VF.Session.Active
+---@return VF.Session.Result|nil result
 ---@return string|nil err
 local function compute_result_for_active(active)
   if not v.nvim_buf_is_valid(active.buf) then
@@ -326,7 +326,7 @@ local function compute_result_for_active(active)
     end)
   end
 
-  ---@type VimficiencyResult[]
+  ---@type VF.Optimizer.Result[]
   local optimal_results = {}
   for i = 1, math.min(#results, config.RESULTS_SAVED) do
     table.insert(optimal_results, results[i])
@@ -335,7 +335,7 @@ local function compute_result_for_active(active)
     optimal_results = empty_array()
   end
 
-  ---@type ResultSession
+  ---@type VF.Session.Result
   local result = {
     lines = initial_slice,
     goal_lines = goal_slice,
@@ -358,8 +358,8 @@ local function compute_result_for_active(active)
 end
 
 --- Public alias for the shared "active session -> result" path.
----@param active ActiveSession
----@return ResultSession|nil, string|nil
+---@param active VF.Session.Active
+---@return VF.Session.Result|nil, string|nil
 function M.compute_result_for_active(active)
   return compute_result_for_active(active)
 end
@@ -371,7 +371,7 @@ end
 --- AND drifted is more interesting to diagnose as drift (the cursor is
 --- the direct reason the optimizer would fail).
 ---
----@param session ActiveSession  Must have start_state.row and (optionally) key_seq
+---@param session VF.Session.Active  Must have start_state.row and (optionally) key_seq
 ---@param cursor_row integer     0-indexed current cursor row
 ---@param now_ns integer         vim.uv.hrtime() snapshot
 ---@return string|nil reason     Human-readable reason if evict, else nil
@@ -432,14 +432,14 @@ function M.start(alias)
     end,
     function(session)
       if not v.nvim_win_is_valid(session.win) then
-        return "Vimficiency: session [" .. alias .. "] dropped — window closed"
+        return "Vimfy: session [" .. alias .. "] dropped — window closed"
       end
       local cursor = v.nvim_win_get_cursor(session.win)
       local reason = M.manual_should_evict(
         session, cursor[1] - 1, vim.uv.hrtime()
       )
       if reason then
-        return "Vimficiency: session [" .. alias .. "] dropped — " .. reason
+        return "Vimfy: session [" .. alias .. "] dropped — " .. reason
       end
       return nil
     end
@@ -450,9 +450,9 @@ function M.start(alias)
   local overwrote = session_store.store_manual(alias, active)
 
   if overwrote then
-    vim.notify("vimficiency started [" .. alias .. "] (overwrote existing)", vim.log.levels.INFO)
+    vim.notify("vimfy started [" .. alias .. "] (overwrote existing)", vim.log.levels.INFO)
   else
-    vim.notify("vimficiency started [" .. alias .. "]", vim.log.levels.INFO)
+    vim.notify("vimfy started [" .. alias .. "]", vim.log.levels.INFO)
   end
 end
 
@@ -507,14 +507,14 @@ function M.watch(alias)
     end,
     function(session)
       if not v.nvim_win_is_valid(session.win) then
-        return "Vimficiency: watch [" .. alias .. "] dropped — window closed"
+        return "Vimfy: watch [" .. alias .. "] dropped — window closed"
       end
       local cursor = v.nvim_win_get_cursor(session.win)
       local reason = M.manual_should_evict(
         session, cursor[1] - 1, vim.uv.hrtime()
       )
       if reason then
-        return "Vimficiency: watch [" .. alias .. "] dropped — " .. reason
+        return "Vimfy: watch [" .. alias .. "] dropped — " .. reason
       end
       return nil
     end
@@ -539,7 +539,7 @@ function M.watch(alias)
 
   if not disarm then
     key_tracking.detach(key_nsid)
-    vim.notify("vimficiency watch [" .. alias .. "] failed to arm idle trigger", vim.log.levels.ERROR)
+    vim.notify("vimfy watch [" .. alias .. "] failed to arm idle trigger", vim.log.levels.ERROR)
     return
   end
 
@@ -547,17 +547,17 @@ function M.watch(alias)
   local overwrote = session_store.store_manual(alias, active)
 
   if overwrote then
-    vim.notify("vimficiency watching [" .. alias .. "] (overwrote existing)", vim.log.levels.INFO)
+    vim.notify("vimfy watching [" .. alias .. "] (overwrote existing)", vim.log.levels.INFO)
   else
-    vim.notify("vimficiency watching [" .. alias .. "]", vim.log.levels.INFO)
+    vim.notify("vimfy watching [" .. alias .. "]", vim.log.levels.INFO)
   end
 end
 
 
 --- Shared finish path for a resolved active session.
----@param active ActiveSession
+---@param active VF.Session.Active
 ---@param alias string               Literal alias the caller used, stored with the record for `:Vimfy save @` default naming.
----@param reason FinishReason
+---@param reason VF.Session.FinishReason
 local function do_finish(active, alias, reason)
   local id = active.id
 
@@ -572,7 +572,7 @@ local function do_finish(active, alias, reason)
     return
   end
 
-  local header = "vimficiency finished [" .. alias .. "] "
+  local header = "vimfy finished [" .. alias .. "] "
     .. result_view.format_position(result)
     .. result_view.format_reason_suffix(result)
   local body = result_view.format_body(result)
@@ -581,7 +581,7 @@ end
 
 --- Finish a manual Mark/Watch session.
 ---@param alias string  The manual alias of the session to finish.
----@param reason FinishReason|nil  Why the finish was triggered. Defaults to "manual" (the `:Vimfy finish` path). Watch's idle callback passes "watch_idle".
+---@param reason VF.Session.FinishReason|nil  Why the finish was triggered. Defaults to "manual" (the `:Vimfy finish` path). Watch's idle callback passes "watch_idle".
 function M.finish(alias, reason)
   reason = reason or "manual"
   if not alias or alias == "" then
@@ -666,10 +666,10 @@ function M.default_save_name(selector)
   return selector
 end
 
---- Resolve a save/store selector to a ResultSession.
+--- Resolve a save/store selector to a VF.Session.Result.
 --- `@` → last finished. Anything else → alias lookup in the ring.
 ---@param selector string
----@return ResultSession|nil result
+---@return VF.Session.Result|nil result
 ---@return string|nil err
 local function resolve_result_for_selector(selector)
   if selector == "@" then
@@ -690,7 +690,7 @@ end
 --- First checks in-memory session results. If missing and the selector is a
 --- valid saved name, falls back to the on-disk JSON result.
 ---@param selector string
----@return ResultSession|nil result
+---@return VF.Session.Result|nil result
 ---@return string|nil err
 function M.resolve_result(selector)
   local result, err = resolve_result_for_selector(selector)
@@ -712,7 +712,7 @@ end
 --- Write `result` to disk under `name`. On overwrite, warns (doesn't refuse).
 --- Returns (path, err) — path non-nil on success, err non-nil on failure.
 ---@param name string
----@param result ResultSession
+---@param result VF.Session.Result
 ---@return string|nil path
 ---@return string|nil err
 local function write_to_disk_with_overwrite_warn(name, result)
@@ -721,7 +721,7 @@ local function write_to_disk_with_overwrite_warn(name, result)
   local path, err = save_results(name, result)
   if not path then return nil, err end
   if existed then
-    vim.notify("vimficiency: overwrote existing saved result [" .. name .. "]",
+    vim.notify("vimfy: overwrote existing saved result [" .. name .. "]",
       vim.log.levels.WARN)
   end
   return path, nil
@@ -749,9 +749,9 @@ function M.save(selector, name)
   local path, write_err = write_to_disk_with_overwrite_warn(name, result)
   if path then
     local display_path = vim.fn.fnamemodify(path, ":~")
-    vim.notify("vimficiency saved [" .. name .. "] → " .. display_path, vim.log.levels.INFO)
+    vim.notify("vimfy saved [" .. name .. "] → " .. display_path, vim.log.levels.INFO)
   else
-    vim.notify("vimficiency save failed: " .. (write_err or "unknown error"), vim.log.levels.ERROR)
+    vim.notify("vimfy save failed: " .. (write_err or "unknown error"), vim.log.levels.ERROR)
   end
 end
 
@@ -803,14 +803,14 @@ function M.store(selector, name)
 
   local path, write_err = write_to_disk_with_overwrite_warn(name, result)
   if not path then
-    vim.notify("vimficiency store failed: " .. (write_err or "unknown error"),
+    vim.notify("vimfy store failed: " .. (write_err or "unknown error"),
       vim.log.levels.ERROR)
     return
   end
 
   session_store.remove(id)
   local display_path = vim.fn.fnamemodify(path, ":~")
-  vim.notify("vimficiency stored [" .. selector .. "] → [" .. name .. "] at " ..
+  vim.notify("vimfy stored [" .. selector .. "] → [" .. name .. "] at " ..
     display_path .. " (removed from session)", vim.log.levels.INFO)
 end
 
@@ -836,19 +836,19 @@ function M.fetch(name, alias)
 
   local data, err = load_results(name)
   if not data then
-    vim.notify("vimficiency fetch failed: " .. (err or "unknown error"),
+    vim.notify("vimfy fetch failed: " .. (err or "unknown error"),
       vim.log.levels.ERROR)
     return
   end
 
   local id, reg_err = session_store.register_fetched_result(alias, data)
   if not id then
-    vim.notify("vimficiency fetch failed: " .. (reg_err or "unknown error"),
+    vim.notify("vimfy fetch failed: " .. (reg_err or "unknown error"),
       vim.log.levels.ERROR)
     return
   end
 
-  vim.notify("vimficiency fetched [" .. name .. "] → [" .. alias .. "]",
+  vim.notify("vimfy fetched [" .. name .. "] → [" .. alias .. "]",
     vim.log.levels.INFO)
 end
 
@@ -871,11 +871,11 @@ function M.rm(name)
   end
 
   if vim.fn.delete(path) ~= 0 then
-    vim.notify("vimficiency rm failed for " .. path, vim.log.levels.ERROR)
+    vim.notify("vimfy rm failed for " .. path, vim.log.levels.ERROR)
     return
   end
 
-  vim.notify("vimficiency removed [" .. name .. "] ← " .. path, vim.log.levels.INFO)
+  vim.notify("vimfy removed [" .. name .. "] ← " .. path, vim.log.levels.INFO)
 end
 
 --- Rename the manual alias of a finished active session. Leaves the
@@ -985,7 +985,7 @@ function M.close(alias)
 
   -- `remove()` handles key-tracking teardown.
   session_store.remove(active.id)
-  vim.notify("vimficiency closed [" .. alias .. "]", vim.log.levels.INFO)
+  vim.notify("vimfy closed [" .. alias .. "]", vim.log.levels.INFO)
 end
 
 ---@param alias string  Session alias or saved filename to simulate.
@@ -1036,10 +1036,10 @@ function M.simulate(alias, count)
     if alias_mod.is_valid_manual(alias) then
       local id, reg_err = session_store.register_fetched_result(alias, on_disk)
       if id then
-        vim.notify("vimficiency: fetched [" .. alias .. "] into session",
+        vim.notify("vimfy: fetched [" .. alias .. "] into session",
           vim.log.levels.INFO)
       else
-        vim.notify("vimficiency: replaying '" .. alias .. "' directly from disk " ..
+        vim.notify("vimfy: replaying '" .. alias .. "' directly from disk " ..
           "(implicit fetch failed: " .. (reg_err or "unknown error") ..
           "). Use `:Vimfy fetch " .. alias .. " <alias>` to keep it in the workspace.",
           vim.log.levels.WARN)
@@ -1198,9 +1198,9 @@ function M.view(name)
   vim.bo[buf].modifiable = false
 
   util.set_buffer_keymaps(buf, util.with_standard_ui_keymaps({
-    { lhs = "q", handler = "<cmd>close<cr>", desc = "Close vimficiency view", nowait = true },
+    { lhs = "q", handler = "<cmd>close<cr>", desc = "Close vimfy view", nowait = true },
   }, {
-    title = "Vimficiency Saved Result Keys",
+    title = "Vimfy Saved Result Keys",
     docs = true,
   }))
 end

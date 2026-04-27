@@ -10,7 +10,7 @@ local session_store = require("vimficiency.session.store")
 local h = require("_helpers")
 
 ---@param key_typed_raw string   Raw single-byte (or multi-byte) key.
----@return table   minimal VimficiencyKeyEvent
+---@return table   minimal VF.KeyEvent
 local function ev(key_typed_raw)
   return {
     t = 0, mode = "n", win = 0, buf = 0,

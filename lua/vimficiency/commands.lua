@@ -222,9 +222,9 @@ subcommands.suggest = {
         return
       end
       if auto_suggest.enable() then
-        vim.notify("vimficiency auto-suggest enabled", vim.log.levels.INFO)
+        vim.notify("vimfy auto-suggest enabled", vim.log.levels.INFO)
       else
-        vim.notify("vimficiency auto-suggest already enabled", vim.log.levels.WARN)
+        vim.notify("vimfy auto-suggest already enabled", vim.log.levels.WARN)
       end
     end
 
@@ -232,11 +232,11 @@ subcommands.suggest = {
       enable_or_warn()
     elseif action == "off" then
       auto_suggest.disable()
-      vim.notify("vimficiency auto-suggest disabled", vim.log.levels.INFO)
+      vim.notify("vimfy auto-suggest disabled", vim.log.levels.INFO)
     elseif action == "toggle" then
       if auto_suggest.is_enabled() then
         auto_suggest.disable()
-        vim.notify("vimficiency auto-suggest disabled", vim.log.levels.INFO)
+        vim.notify("vimfy auto-suggest disabled", vim.log.levels.INFO)
       else
         enable_or_warn()
       end
@@ -261,22 +261,22 @@ subcommands.reload = {
   usage = "reload",
   fn = function()
     if reload_in_progress then
-      vim.notify("vimficiency reload already running", vim.log.levels.WARN)
+      vim.notify("vimfy reload already running", vim.log.levels.WARN)
       return
     end
     -- Resolve relative to the plugin root. A sibling `build/` is only expected
     -- in dev installs; packaged installs ship the pre-built `.so`.
     local build_dir = util.find_plugin_root() .. "/build"
     if vim.fn.isdirectory(build_dir) == 0 then
-      vim.notify("vimficiency reload: build dir missing: " .. build_dir ..
+      vim.notify("vimfy reload: build dir missing: " .. build_dir ..
         "\n(this command is dev-only; install via a plugin manager bundles a pre-built .so)",
         vim.log.levels.ERROR)
       return
     end
 
     reload_in_progress = true
-    vim.notify("Rebuilding Vimficiency...", vim.log.levels.INFO,
-      { title = "Vimficiency" })
+    vim.notify("Rebuilding Vimfy...", vim.log.levels.INFO,
+      { title = "Vimfy" })
 
     local output = {}
     local pending_line = ""
@@ -336,10 +336,10 @@ subcommands.reload = {
           end)
           if not copy_ok or not copied then
             vim.notify(
-              "vimficiency reload: rebuild succeeded but copying " ..
+              "vimfy reload: rebuild succeeded but copying " ..
               "libvimficiency.so for reload failed: " .. tostring(copy_err or "?")
               .. " — restart Neovim to load new library.",
-              vim.log.levels.WARN, { title = "Vimficiency" })
+              vim.log.levels.WARN, { title = "Vimfy" })
             return
           end
 
@@ -356,9 +356,9 @@ subcommands.reload = {
 
           if not reload_ok then
             vim.notify(
-              "vimficiency reload: Lua reload crashed: " ..
+              "vimfy reload: Lua reload crashed: " ..
               tostring(reload_err) .. " — restart Neovim.",
-              vim.log.levels.ERROR, { title = "Vimficiency" })
+              vim.log.levels.ERROR, { title = "Vimfy" })
             return
           end
 
@@ -373,15 +373,15 @@ subcommands.reload = {
           if #progress_lines > 0 then
             msg = table.concat(progress_lines, "\n") .. "\n\n" .. summary
           end
-          vim.notify(msg, vim.log.levels.INFO, { title = "Vimficiency" })
+          vim.notify(msg, vim.log.levels.INFO, { title = "Vimfy" })
         else
-          local lines = { "vimficiency rebuild failed (exit " .. tostring(obj.code) .. "):" }
+          local lines = { "vimfy rebuild failed (exit " .. tostring(obj.code) .. "):" }
           local start_idx = math.max(1, #output - 39)  -- last 40 lines
           for i = start_idx, #output do
             lines[#lines + 1] = "  " .. output[i]
           end
           vim.notify(table.concat(lines, "\n"), vim.log.levels.ERROR,
-            { title = "Vimficiency" })
+            { title = "Vimfy" })
         end
       end)
     end
@@ -396,7 +396,7 @@ subcommands.reload = {
 
     if not ok then
       reload_in_progress = false
-      vim.notify("vimficiency reload: failed to spawn: " .. tostring(err),
+      vim.notify("vimfy reload: failed to spawn: " .. tostring(err),
         vim.log.levels.ERROR)
     end
   end,
@@ -434,7 +434,7 @@ subcommands.explore = {
     end
     local result, err = session.resolve_result(selector)
     if not result then
-      vim.notify("vimficiency explore failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+      vim.notify("vimfy explore failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
       return
     end
     explore.open(selector, result)
@@ -446,7 +446,7 @@ function M.run(subcmd, args, source)
   if not cmd then
     local message = "Unknown subcommand: " .. tostring(subcmd)
     if source then
-      message = "Vimficiency: unknown subcommand '" .. tostring(subcmd) .. "' from " .. source
+      message = "Vimfy: unknown subcommand '" .. tostring(subcmd) .. "' from " .. source
     else
       message = message .. "\nRun :Vimfy help for usage"
     end
@@ -467,9 +467,9 @@ function M.handle(arg_string)
       table.insert(cmd_lines, string.format("  Vimfy %-20s %s", cmd.usage, cmd.desc))
     end
     table.sort(cmd_lines)
-    util.show_output("Vimficiency Commands", table.concat(cmd_lines, "\n"), {
+    util.show_output("Vimfy Commands", table.concat(cmd_lines, "\n"), {
       ui_keys = {
-        title = "Vimficiency Scratch Output Keys",
+        title = "Vimfy Scratch Output Keys",
         docs = true,
       },
     })

@@ -89,7 +89,7 @@ function M.open_settings(opts)
       run = function()
         settings_profile.clear("play")
         current_settings = nil
-        vim.notify("vimficiency play: settings reset to defaults",
+        vim.notify("vimfy play: settings reset to defaults",
           vim.log.levels.INFO)
       end },
   }

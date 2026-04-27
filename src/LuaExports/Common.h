@@ -18,7 +18,7 @@
 // Cross-cutting declarations and inline helpers shared by every LuaExports/*.cpp.
 // Out-of-line definitions for `payload::*` live in Payload.cpp; for `logic::*`
 // in Logic.cpp. FFI export bodies live in *Exports.cpp.
-namespace LuaExports {
+namespace VF::LuaExports {
 
 inline constexpr char kEventFieldSep = '\x1f';
 inline constexpr char kEventRecordSep = '\x1e';
@@ -49,7 +49,7 @@ enum DEFAULT_KEYBOARD {
   COLEMAK_DH,
 };
 
-extern VimficiencyConfigFFI g_config_ffi;
+extern VFConfig g_config_ffi;
 extern Config g_config_internal;
 
 namespace helpers {
@@ -175,4 +175,4 @@ int manualEvictReason(
 
 void sync_config();
 
-}  // namespace LuaExports
+}  // namespace VF::LuaExports

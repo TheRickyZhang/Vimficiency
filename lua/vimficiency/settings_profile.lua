@@ -40,7 +40,7 @@ function M.load(feature)
   if not ok or type(decoded) ~= "table" then
     vim.schedule(function()
       vim.notify(
-        "vimficiency " .. feature .. ": settings JSON at " .. path(feature) ..
+        "vimfy " .. feature .. ": settings JSON at " .. path(feature) ..
         " is malformed; ignoring", vim.log.levels.WARN)
     end)
     return {}

@@ -20,6 +20,7 @@ test("scan: matches raw Ex and <Cmd> Vimfy commands", function()
     "<cmd>vimfy finish<CR>",
     "<Cmd>Vimficiency start a<CR>",
     "<Cmd>:Vimficiency list<CR>",
+    ":VIMFY help",
     ":VIMFICIENCY help",
     "<CMD>VIMFY FINISH A<CR>",
   }) do

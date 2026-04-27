@@ -41,17 +41,17 @@ inline std::string consume_debug_output() {
 // }
 
 // Format like this so headers are always recognized as needed.
-namespace vimficiency::detail {
+namespace VF::detail {
 [[noreturn]] inline void check_fail(const char* file, int line,
                                     const char* cond, const char* msg) {
   std::fprintf(stderr, "CHECK failed at %s:%d: (%s) %s\n", file, line, cond,
                msg);
   std::abort();
 }
-} // namespace vimficiency::detail
+} // namespace VF::detail
 
 #define CHECK(cond, msg)                                                       \
   do {                                                                         \
     if (!(cond))                                                               \
-      ::vimficiency::detail::check_fail(__FILE__, __LINE__, #cond, msg);       \
+      ::VF::detail::check_fail(__FILE__, __LINE__, #cond, msg);                \
   } while (0)

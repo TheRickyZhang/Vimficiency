@@ -114,10 +114,10 @@ is documented and the user fix is to migrate the mapping.
 Loads `libvimficiency.so` via LuaJIT FFI. Key exports:
 
 ```lua
-ffi_lib.analyze(lines, ...) → VimficiencyResult[], debug_str
+ffi_lib.analyze(lines, ...) → VF.Optimizer.Result[], debug_str
 ffi_lib.configure(user_config)  -- Push config to C++
-ffi_lib.tokenize_sequence(seq) → VimficiencyToken[]  -- {text, kind} tokens
-ffi_lib.tokenize_movements(seq) → VimficiencyToken[]   -- all kind="motion"
+ffi_lib.tokenize_sequence(seq) → VF.Sequence.Token[]  -- {text, kind} tokens
+ffi_lib.tokenize_movements(seq) → VF.Sequence.Token[]   -- all kind="motion"
 ```
 
 **Position indexing:** C++ uses 0-indexed rows/cols. Neovim uses 1-indexed rows. Conversion happens at FFI boundary in `session.lua`.

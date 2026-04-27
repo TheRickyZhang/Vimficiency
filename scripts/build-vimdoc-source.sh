@@ -28,7 +28,7 @@ strip_chapter() {
 }
 
 {
-  printf 'Vimficiency watches how you edit and surfaces shorter keystroke '
+  printf 'Vimfy watches how you edit and surfaces shorter keystroke '
   printf 'sequences that produce the same result. You keep editing Vim the '
   printf 'way you already do — it surfaces better motions in the background '
   printf 'and lets you replay them side-by-side to learn.\n\n'

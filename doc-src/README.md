@@ -1,10 +1,10 @@
 ---
-title: "Vimficiency User Guide"
+title: "Vimfy User Guide"
 ---
 
-# Vimficiency User Guide
+# Vimfy User Guide
 
-Vimficiency watches how you edit and tells you shorter keystroke sequences
+Vimfy watches how you edit and tells you shorter keystroke sequences
 that would have produced the same result. You keep editing Vim the way you
 already do — it just surfaces better motions in the background and lets you
 replay them side-by-side to learn.
@@ -55,7 +55,7 @@ For anything else, start at [1. Installation](01-installation.md).
 
 ## One rule that runs through every page: the keymap contract
 
-Vimficiency counts the keys you type. Any key you bind to invoke a
+Vimfy counts the keys you type. Any key you bind to invoke a
 Vimfy action must therefore announce itself as admin activity —
 otherwise the invoking keystroke is counted as motion and skews your
 own results. Routing options, in order of ergonomics:

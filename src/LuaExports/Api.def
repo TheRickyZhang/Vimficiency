@@ -2,10 +2,10 @@
 // Included by Api.h for C++ compile-time checks and read directly by
 // lua/vimficiency/ffi.lua for ffi.cdef().
 
-extern const int VIMFICIENCY_KEY_COUNT;
-extern const int VIMFICIENCY_FINGER_COUNT;
-extern const int VIMFICIENCY_HAND_COUNT;
-extern const int VIMFICIENCY_COUNT_CLASS_COUNT;
+extern const int VF_KEY_COUNT;
+extern const int VF_FINGER_COUNT;
+extern const int VF_HAND_COUNT;
+extern const int VF_COUNT_CLASS_COUNT;
 
 typedef struct {
   double keyWeight;
@@ -14,13 +14,13 @@ typedef struct {
   double altHandWeight;
   double goodRollWeight;
   double badRollWeight;
-} C_ScoreWeights;
+} VFScoreWeights;
 
 typedef struct {
   int8_t hand;
   int8_t finger;
   double base_cost;
-} C_KeyInfo;
+} VFKeyInfo;
 
 typedef struct {
   bool has_base;
@@ -29,26 +29,26 @@ typedef struct {
   double count_slope;
   bool has_span_slope;
   double span_slope;
-} C_CountPenaltyOverride;
+} VFCountPenaltyOverride;
 
 typedef struct {
   int default_keyboard;
-  C_ScoreWeights weights;
-  C_KeyInfo keys[61];  // must match C++ KEY_COUNT
+  VFScoreWeights weights;
+  VFKeyInfo keys[61];  // must match C++ KEY_COUNT
   int slice_buffer_amount;
   int32_t shiftwidth;
   bool use_count_penalty_overrides;
-  C_CountPenaltyOverride count_penalty_overrides[14];  // must match C++ CountClassCOUNT
-} VimficiencyConfigFFI;
+  VFCountPenaltyOverride count_penalty_overrides[14];  // must match C++ CountClassCOUNT
+} VFConfig;
 
-VimficiencyConfigFFI* vimficiency_get_config();
-void vimficiency_apply_config();
+VFConfig* vf_get_config();
+void vf_apply_config();
 
-const char* vimficiency_key_name(int index);
-const char* vimficiency_finger_name(int index);
-const char* vimficiency_hand_name(int index);
-const char* vimficiency_count_class_name(int index);
-const char* vimficiency_analyze(
+const char* vf_key_name(int index);
+const char* vf_finger_name(int index);
+const char* vf_hand_name(int index);
+const char* vf_count_class_name(int index);
+const char* vf_analyze(
   const char* initial_text,
   const char* goal_text,
   int boundary_first_col,
@@ -63,24 +63,24 @@ const char* vimficiency_analyze(
   int window_height,
   int scroll_amount,
   int results_calculated);
-const char* vimficiency_get_debug();
-int vimficiency_version();
-const char* vimficiency_debug_config();
+const char* vf_get_debug();
+int vf_version();
+const char* vf_debug_config();
 
-const char* vimficiency_tokenize_movements(const char* seq);
-const char* vimficiency_tokenize_sequence(const char* seq);
-const char* vimficiency_build_sequence(const char* encoded_events);
-const char* vimficiency_compute_search_region(
+const char* vf_tokenize_movements(const char* seq);
+const char* vf_tokenize_sequence(const char* seq);
+const char* vf_build_sequence(const char* encoded_events);
+const char* vf_compute_search_region(
   const char* encoded_start_lines,
   const char* encoded_end_lines,
   int start_row,
   int end_row,
   int padding);
-int vimficiency_resolve_recall_cutoff(
+int vf_resolve_recall_cutoff(
   const char* encoded_records,
   int64_t target_hrtime,
   int budget);
-int vimficiency_manual_evict_reason(
+int vf_manual_evict_reason(
   int start_row,
   int cursor_row,
   int64_t last_key_time_ns,
@@ -88,14 +88,14 @@ int vimficiency_manual_evict_reason(
   int64_t now_ns,
   int max_search_lines,
   int manual_idle_timeout_seconds);
-const char* vimficiency_format_sequence(const char* seq);
-const char* vimficiency_simulate_movements(
+const char* vf_format_sequence(const char* seq);
+const char* vf_simulate_movements(
   const char* encoded_lines,
   int start_row,
   int start_col,
   const char* seq);
 
-const char* vimficiency_explore_start(
+const char* vf_explore_start(
   const char* encoded_initial_lines,
   int start_row,
   int start_col,
@@ -109,39 +109,39 @@ const char* vimficiency_explore_start(
   int window_height,
   int scroll_amount,
   const char* user_seq);
-int vimficiency_explore_destroy(int view_id);
-const char* vimficiency_explore_state(int view_id);
-const char* vimficiency_explore_recommendations(
+int vf_explore_destroy(int view_id);
+const char* vf_explore_state(int view_id);
+const char* vf_explore_recommendations(
   int view_id,
   int max_count,
   bool allow_multiple_movements_per_position,
   bool allow_multiple_edits_per_position);
-const char* vimficiency_explore_apply_movement(int view_id, const char* movement_text);
-const char* vimficiency_explore_accept_cursor_move(
+const char* vf_explore_apply_movement(int view_id, const char* movement_text);
+const char* vf_explore_accept_cursor_move(
   int view_id,
   int new_row,
   int new_col,
   const char* raw_keys);
-const char* vimficiency_explore_apply_edit(int view_id, const char* text);
-const char* vimficiency_explore_accept_buffer_state(
+const char* vf_explore_apply_edit(int view_id, const char* text);
+const char* vf_explore_accept_buffer_state(
   int view_id,
   const char* encoded_lines,
   int new_row,
   int new_col,
   const char* raw_keys);
-const char* vimficiency_explore_current_lines(int view_id);
-const char* vimficiency_explore_begin_edit(
+const char* vf_explore_current_lines(int view_id);
+const char* vf_explore_begin_edit(
   int view_id,
   bool enters_insert_mode,
   const char* required_typed_text);
-const char* vimficiency_explore_insert_text(int view_id, const char* typed_chunk);
-const char* vimficiency_explore_exit_insert(int view_id);
-const char* vimficiency_explore_accept_insert_exit(
+const char* vf_explore_insert_text(int view_id, const char* typed_chunk);
+const char* vf_explore_exit_insert(int view_id);
+const char* vf_explore_accept_insert_exit(
   int view_id,
   const char* encoded_lines,
   int new_row,
   int new_col,
   const char* raw_keys);
-const char* vimficiency_explore_cancel_pending_insert(int view_id);
-const char* vimficiency_explore_undo(int view_id);
-const char* vimficiency_explore_redo(int view_id);
+const char* vf_explore_cancel_pending_insert(int view_id);
+const char* vf_explore_undo(int view_id);
+const char* vf_explore_redo(int view_id);

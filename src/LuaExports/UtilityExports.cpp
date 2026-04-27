@@ -4,12 +4,12 @@
 #include "Interpreter/SequenceParser.h"
 
 using namespace std;
-namespace helpers = LuaExports::helpers;
-namespace payload = LuaExports::payload;
-namespace logic = LuaExports::logic;
-using LuaExports::ExportError;
-using LuaExports::ExportErrorKind;
-using LuaExports::Result;
+namespace helpers = VF::LuaExports::helpers;
+namespace payload = VF::LuaExports::payload;
+namespace logic = VF::LuaExports::logic;
+using VF::LuaExports::ExportError;
+using VF::LuaExports::ExportErrorKind;
+using VF::LuaExports::Result;
 
 namespace {
 
@@ -38,7 +38,7 @@ char tokenKindChar(TokenType type) {
 
 extern "C" {
 
-const char *vimficiency_tokenize_movements(const char *seq) {
+const char *vf_tokenize_movements(const char *seq) {
   static string result_storage;
   const string owned(helpers::optionalText(seq));
   return helpers::storeString(result_storage,
@@ -62,7 +62,7 @@ const char *vimficiency_tokenize_movements(const char *seq) {
           }));
 }
 
-const char *vimficiency_tokenize_sequence(const char *seq) {
+const char *vf_tokenize_sequence(const char *seq) {
   static string result_storage;
   return helpers::storeString(result_storage,
       parseSequence(helpers::optionalText(seq))
@@ -82,13 +82,13 @@ const char *vimficiency_tokenize_sequence(const char *seq) {
           }));
 }
 
-const char *vimficiency_build_sequence(const char *encoded_events) {
+const char *vf_build_sequence(const char *encoded_events) {
   static string result_storage;
   return helpers::storeString(result_storage,
       logic::buildKeySequence(helpers::optionalText(encoded_events)));
 }
 
-const char *vimficiency_compute_search_region(
+const char *vf_compute_search_region(
     const char *encoded_start_lines,
     const char *encoded_end_lines,
     int start_row,
@@ -109,7 +109,7 @@ const char *vimficiency_compute_search_region(
           }));
 }
 
-int vimficiency_resolve_recall_cutoff(
+int vf_resolve_recall_cutoff(
     const char *encoded_records,
     int64_t target_hrtime,
     int budget) {
@@ -120,7 +120,7 @@ int vimficiency_resolve_recall_cutoff(
           }));
 }
 
-int vimficiency_manual_evict_reason(
+int vf_manual_evict_reason(
     int start_row,
     int cursor_row,
     int64_t last_key_time_ns,
@@ -138,13 +138,13 @@ int vimficiency_manual_evict_reason(
       manual_idle_timeout_seconds);
 }
 
-const char *vimficiency_format_sequence(const char *seq) {
+const char *vf_format_sequence(const char *seq) {
   static string result_storage;
   return helpers::storeString(result_storage,
       Result<string>(formatSequenceForDisplay(helpers::optionalText(seq))));
 }
 
-const char *vimficiency_simulate_movements(
+const char *vf_simulate_movements(
     const char *encoded_lines,
     int start_row,
     int start_col,

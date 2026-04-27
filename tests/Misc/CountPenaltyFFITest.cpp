@@ -15,7 +15,7 @@
 #include "Optimizer/CountPenalty.h"
 
 namespace {
-void* openVimficiencyLib() {
+void* openVimfyLib() {
   std::array<char, 4096> exePath{};
   ssize_t n = readlink("/proc/self/exe", exePath.data(), exePath.size() - 1);
   std::filesystem::path exe = (n > 0) ? std::filesystem::path(std::string(exePath.data(), n))
@@ -90,24 +90,24 @@ std::string firstSequence(const std::string& analyzeOut) {
 }  // namespace
 
 TEST(CountPenaltyFFITest, FFIOverridesAffectMotionCountedCost) {
-  void* lib = openVimficiencyLib();
+  void* lib = openVimfyLib();
   ASSERT_NE(lib, nullptr) << dlerror();
 
-  using GetConfigFn = VimficiencyConfigFFI* (*)();
+  using GetConfigFn = VFConfig* (*)();
   using ApplyConfigFn = void (*)();
   using AnalyzeFn = const char* (*)(const char*, const char*, int, int, bool, bool,
                                     int, int, int, int, const char*, int, int, int);
 
-  auto getConfig = reinterpret_cast<GetConfigFn>(dlsym(lib, "vimficiency_get_config"));
-  auto applyConfig = reinterpret_cast<ApplyConfigFn>(dlsym(lib, "vimficiency_apply_config"));
-  auto analyze = reinterpret_cast<AnalyzeFn>(dlsym(lib, "vimficiency_analyze"));
+  auto getConfig = reinterpret_cast<GetConfigFn>(dlsym(lib, "vf_get_config"));
+  auto applyConfig = reinterpret_cast<ApplyConfigFn>(dlsym(lib, "vf_apply_config"));
+  auto analyze = reinterpret_cast<AnalyzeFn>(dlsym(lib, "vf_analyze"));
   ASSERT_NE(getConfig, nullptr);
   ASSERT_NE(applyConfig, nullptr);
   ASSERT_NE(analyze, nullptr);
 
-  VimficiencyConfigFFI* cfg = getConfig();
+  VFConfig* cfg = getConfig();
   ASSERT_NE(cfg, nullptr);
-  VimficiencyConfigFFI saved = *cfg;
+  VFConfig saved = *cfg;
 
   auto resetConfig = [&]() {
     *cfg = saved;
@@ -142,7 +142,7 @@ TEST(CountPenaltyFFITest, FFIOverridesAffectMotionCountedCost) {
   for (size_t i = 0; i < CountClassCOUNT; i++) {
     cfg->count_penalty_overrides[i] = {};
   }
-  C_CountPenaltyOverride o{};
+  VFCountPenaltyOverride o{};
   o.has_base = true;
   o.base = 60.0;
   cfg->count_penalty_overrides[toIndex(CountClass::MovementWord)] = o;

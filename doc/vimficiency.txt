@@ -18,7 +18,7 @@ Table of Contents                              *vimficiency-table-of-contents*
 13. Known limitations                          |vimficiency-known-limitations|
 14. Troubleshooting                              |vimficiency-troubleshooting|
 15. FAQ                                                      |vimficiency-faq|
-Vimficiency watches how you edit and surfaces shorter keystroke sequences that
+Vimfy watches how you edit and surfaces shorter keystroke sequences that
 produce the same result. You keep editing Vim the way you already do — it
 surfaces better motions in the background and lets you replay them side-by-side
 to learn.
@@ -70,13 +70,13 @@ config for syntax errors or a load-order issue, or see 14. Troubleshooting.
 ==============================================================================
 2. The core idea: a session              *vimficiency-the-core-idea-a-session*
 
-Everything in Vimficiency is organized around **sessions**. A session captures:
+Everything in Vimfy is organized around **sessions**. A session captures:
 
 - The buffer content at a starting point
 - The keys you typed
 - The buffer content at an ending point
 
-Vimficiency then runs an optimizer and compares your effort with the efforts of
+Vimfy then runs an optimizer and compares your effort with the efforts of
 the best sequences it found.
 
 
@@ -215,7 +215,7 @@ Mixing forms (`3m`, `3ms`, `2h`, etc.) is not supported. Seconds is the only
 time unit; if you want 90 seconds, use `90s`.
 
 The same grammar is reused by Suggest triggers (e.g. `window = "3s"` / `"50"`)
-— anywhere Vimficiency wants a slice of the queue, `N` and `Ns` are how you
+— anywhere Vimfy wants a slice of the queue, `N` and `Ns` are how you
 name it.
 
 
@@ -388,7 +388,7 @@ READING THE NOTIFICATION
 When a session completes, you get something like:
 
 >
-    vimficiency finished [a] (0,0) -> (2,2)
+    vimfy finished [a] (0,0) -> (2,2)
       user: cw xxx <Esc> jj ci yyy <Esc> (15.00)
       1. 3rx <C-d> ciw yyy <Esc> (8.00)
       2. 3rx w <C-d> 3ry (11.00)
@@ -442,7 +442,7 @@ available as `:Vimfy focus <N>` / `:Vimfy escape` for typed invocation.
 
 REPLAY BUFFER KEYS
 
-Press |g?| in a replay buffer to open the full Vimficiency help.
+Press |g?| in a replay buffer to open the full Vimfy help.
 
 - `<Left>` — step backward
 - `<Right>` — step forward
@@ -450,7 +450,7 @@ Press |g?| in a replay buffer to open the full Vimficiency help.
 - `<Tab>` / `<S-Tab>` — cycle to the next or previous replay sequence
 - `<leader>y` — yank the current window’s sequence into the unnamed and `+` registers
 - `?` — show the short keymap summary popup
-- `g?` — open the full Vimficiency help
+- `g?` — open the full Vimfy help
 - `q` — close the replay tab
 
 
@@ -486,17 +486,17 @@ Reads back a saved result textually (without replaying). Tab-complete on
 
 SAVED RESULT BUFFER KEYS
 
-Press |g?| in a saved-result buffer to open the full Vimficiency help.
+Press |g?| in a saved-result buffer to open the full Vimfy help.
 
 - `q` — close the current saved-result view
 - `?` — show the short keymap summary popup
-- `g?` — open the full Vimficiency help
+- `g?` — open the full Vimfy help
 
 
 ==============================================================================
 8. Binding keys to Vimfy actions   *vimficiency-binding-keys-to-vimfy-actions*
 
-Vimficiency measures the keys you type, so a key that _invokes_ Vimfy must
+Vimfy measures the keys you type, so a key that _invokes_ Vimfy must
 announce itself as admin activity — otherwise the invoking keystroke counts
 as motion. `vim.on_key` fires for the LHS before Neovim resolves the mapping,
 and we can’t retroactively uncount; the caller has to announce. Three ways to
@@ -521,7 +521,7 @@ works as a `vimfy.map` spec.
 
 The fourth argument is the `opts` table passed through to `vim.keymap.set`
 (`buffer`, `desc`, `silent`, …). `silent` defaults to `true`; `desc` defaults
-to `"Vimficiency <spec>"`.
+to `"Vimfy <spec>"`.
 
 
 BINDING ARBITRARY LUA ~
@@ -581,7 +581,7 @@ name. Bind with `remap = true` (or `nmap` in vimscript):
 arbitrary args, e.g. `save @ quick`, which no `<Plug>` name exposes directly).
 
 
-3. REQUIRE('VIMFICIENCY').WRAP(FN) (LOW-LEVEL)
+3. REQUIRE('VIMFY').WRAP(FN) (LOW-LEVEL)
 
 `vimfy.map(mode, lhs, fn, opts)` is shorthand for `vim.keymap.set(mode, lhs,
 wrap(fn), opts)`. If you need to attach your Lua callback somewhere other than
@@ -614,7 +614,7 @@ The `X` or `Y` keystroke is delivered to Vimfy’s tracker _before_ the mapping
 resolves — we can’t retroactively uncount it. To fix: move the binding into
 `vimfy.map()` or a `<Plug>` map.
 
-At setup, Vimficiency scans pre-existing mappings for this pattern and emits a
+At setup, Vimfy scans pre-existing mappings for this pattern and emits a
 one-shot warning listing each offender. The scan can’t see mappings defined
 _after_ setup (or Lua-callback RHS, or buffer-local mappings added later) —
 if an LHS keeps showing up as motion, check that the binding is routed through
@@ -687,7 +687,7 @@ each owns its own timer and cooldown, configured under its own key.
   watch.cooldown_ms /           Minimum time between consecutive fires.
   auto_suggest.cooldown_ms      Safety rail for low idle.ms.
   -----------------------------------------------------------------------
-"Real keystroke" excludes cmdline input and Vimficiency admin keystrokes, so
+"Real keystroke" excludes cmdline input and Vimfy admin keystrokes, so
 `:Vimfy` commands and `vimfy.map`-routed bindings don’t reset the idle timer.
 
 A bare `ms` inside any trigger object universally means "idle threshold" —
@@ -731,7 +731,7 @@ but documented separately — see 10. The effort model.
   **Status: placeholder.** The effort model is a substantial topic — this page
   will grow. For now, use `:Vimfy config` to inspect the live values and the
   pointers below to understand the shape.
-Vimficiency does not score sequences by keystroke count. It scores them by
+Vimfy does not score sequences by keystroke count. It scores them by
 **keyboard effort**: how hard each key is to reach, whether consecutive keys
 involve the same finger, whether they alternate hands, etc. A 4-key sequence
 using good rolls on the home row can be "cheaper" than a 3-key sequence that
@@ -917,13 +917,13 @@ activity anyway). See 8. Keymaps for the full list and the binding contract.
 
 SCRATCH OUTPUT BUFFER KEYS
 
-Press |g?| in a Vimficiency scratch output buffer to open the full
-Vimficiency help. This applies to buffers opened by `:Vimfy help` and other detail
-panes that show Vimficiency text output in a split.
+Press |g?| in a Vimfy scratch output buffer to open the full
+Vimfy help. This applies to buffers opened by `:Vimfy help` and other detail
+panes that show Vimfy text output in a split.
 
-- `q` — close the current Vimficiency output buffer
+- `q` — close the current Vimfy output buffer
 - `?` — show the short keymap summary popup
-- `g?` — open the full Vimficiency help
+- `g?` — open the full Vimfy help
 
 
 ==============================================================================
@@ -1108,7 +1108,7 @@ Run `:Vimfy config` and capture the output along with the sequence you typed
   come up. Below are a few anticipated ones with short answers — full versions
   will be fleshed out over time.
 
-DOES VIMFICIENCY SLOW DOWN NEOVIM?
+DOES VIMFY SLOW DOWN NEOVIM?
 
 No. Key capture is a small Lua append per keystroke. The optimizer only runs
 on `finish` (or an auto-trigger), in C++, over a snapshot. Recall is always on and

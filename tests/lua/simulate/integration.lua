@@ -60,7 +60,7 @@ local function fail(name, err)
 end
 
 ---@param idx integer
----@return VimficiencyReplayWin
+---@return VF.Replay.Window
 local function get_window(idx)
   local entry = sim._debug_get_windows()[idx]
   assert_true(entry ~= nil, "missing replay window " .. idx)
@@ -69,7 +69,7 @@ end
 
 ---@param idx integer
 ---@param step integer
----@return ReplaySnapshot
+---@return VF.Replay.Snapshot
 local function get_snapshot(idx, step)
   local seq_states = sim._debug_get_states()[idx]
   assert_true(seq_states ~= nil, "missing replay states for window " .. idx)

@@ -5,7 +5,7 @@
 
 using namespace std;
 
-namespace LuaExports::logic {
+namespace VF::LuaExports::logic {
 
 namespace {
 
@@ -127,4 +127,4 @@ int manualEvictReason(
   return kManualEvictNone;
 }
 
-}  // namespace LuaExports::logic
+}  // namespace VF::LuaExports::logic

@@ -1,6 +1,6 @@
 local sim = require("vimficiency.simulate")
 
--- `_debug_tokenize_for_animation` returns VimficiencyToken[] after the
+-- `_debug_tokenize_for_animation` returns VF.Sequence.Token[] after the
 -- metadata-across-FFI refactor. Tests over kinded output: assert both
 -- the concatenated token texts (split shape) AND the per-token kinds
 -- (the classifier-via-metadata guarantee).

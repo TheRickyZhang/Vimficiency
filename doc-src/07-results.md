@@ -9,7 +9,7 @@ title: "Inspecting results"
 When a session completes, you get something like:
 
 ```
-vimficiency finished [a] (0,0) -> (2,2)
+vimfy finished [a] (0,0) -> (2,2)
   user: cw xxx <Esc> jj ci yyy <Esc> (15.00)
   1. 3rx <C-d> ciw yyy <Esc> (8.00)
   2. 3rx w <C-d> 3ry (11.00)

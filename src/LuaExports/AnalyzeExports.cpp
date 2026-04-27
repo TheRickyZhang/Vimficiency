@@ -7,9 +7,9 @@
 #include <iomanip>
 
 using namespace std;
-namespace helpers = LuaExports::helpers;
-using LuaExports::g_config_internal;
-using LuaExports::kEventFieldSep;
+namespace helpers = VF::LuaExports::helpers;
+using VF::LuaExports::g_config_internal;
+using VF::LuaExports::kEventFieldSep;
 
 namespace {
 
@@ -23,7 +23,7 @@ Lines splitLines(string_view text) {
   return lines;
 }
 
-LuaExports::Result<string> analyzeImpl(
+VF::LuaExports::Result<string> analyzeImpl(
     const char *initial_text,
     const char *goal_text,
     int boundaryFirstCol,
@@ -127,7 +127,7 @@ LuaExports::Result<string> analyzeImpl(
 
 extern "C" {
 
-const char *vimficiency_analyze(
+const char *vf_analyze(
     const char *initial_text,
     const char *goal_text,
     int boundaryFirstCol,

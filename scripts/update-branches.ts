@@ -39,7 +39,7 @@ function buildDashboardUrl(
 ): string {
   // Current workflows always pass repoFullName. The default only exists for the
   // deprecated repo-less compatibility path, which still needs a stable URL shape.
-  const repoName = repoFullName?.split("/")[1] ?? "Vimficiency";
+  const repoName = repoFullName?.split("/")[1] ?? "Vimfy";
   return `https://${repoOwner}.github.io/${repoName}/branch/${safeName}/`;
 }
 

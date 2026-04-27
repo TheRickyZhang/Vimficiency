@@ -13,7 +13,7 @@ local settings_profile = require("vimficiency.settings_profile")
 -- Forward-declared locals. Hoisted to the top of the file so every
 -- closure below closes over the right upvalue, regardless of the order
 -- definitions appear in.
----@type table<integer, VimficiencyExploreActive>  # keyed by tabpage id
+---@type table<integer, VF.Explore.Active>  # keyed by tabpage id
 local active_by_tab = {}
 local open_settings_modal
 
@@ -58,7 +58,7 @@ local v = vim.api
 -- their own namespaces via `nvim_create_namespace(name)`, which is
 -- idempotent by name so shared-with-renderer namespaces resolve to the
 -- same ID without cross-module wiring.
-local on_key_ns = v.nvim_create_namespace("vimficiency_explore_on_key")
+local on_key_ns = v.nvim_create_namespace("vimfy_explore_on_key")
 
 local BUFFER_OPTIONS = {
   "shiftwidth",
@@ -99,36 +99,36 @@ local DISPLAY_MODES = { "off", "highlight", "inplace", "above", "below" }
 local RECOMMENDATION_COUNT_MIN = 1
 local RECOMMENDATION_COUNT_MAX = 10
 
----@class VimficiencyExploreWindow
+---@class VF.Explore.Window
 ---@field buf integer
 ---@field win integer
 
----@class VimficiencyExploreHeader
----@field summary VimficiencyExploreWindow
----@field windows VimficiencyExploreWindow[]
+---@class VF.Explore.Header
+---@field summary VF.Explore.Window
+---@field windows VF.Explore.Window[]
 ---@field rebuilding boolean
 
----@class VimficiencyExploreScratch
+---@class VF.Explore.Scratch
 ---@field buf integer
 ---@field win integer
 ---@field tab integer   # the tab we opened for the view; used on teardown
 
----@class VimficiencyExplorePending
+---@class VF.Explore.Pending
 ---@field target string       # the planned typed text we match against
 ---@field row integer         # buffer row (0-indexed) where insert started
 ---@field col_start integer   # buffer col (0-indexed bytes) where insert started
 
----@class VimficiencyExploreActive
+---@class VF.Explore.Active
 ---@field label string                                 # caller-supplied, shown in the header
----@field result ResultSession                         # the captured session we're exploring
+---@field result VF.Session.Result                         # the captured session we're exploring
 ---@field view_id integer                              # FFI handle
----@field header VimficiencyExploreHeader              # fixed panes above the scratch editor
----@field scratch VimficiencyExploreScratch            # scrollable editor pane in the right column
+---@field header VF.Explore.Header              # fixed panes above the scratch editor
+---@field scratch VF.Explore.Scratch            # scrollable editor pane in the right column
 ---@field list_buf integer                             # recommendation list buffer (left pane)
----@field state VimficiencyExploreState                # view-reported phase + cursor + seq
----@field recommendations VimficiencyExploreRecommendation[]
+---@field state VF.Explore.State                # view-reported phase + cursor + seq
+---@field recommendations VF.Explore.Recommendation[]
 ---@field on_key_buffer string                         # raw keys captured since last reconcile
----@field pending VimficiencyExplorePending|nil        # insertion-origin snapshot while PendingInsert
+---@field pending VF.Explore.Pending|nil        # insertion-origin snapshot while PendingInsert
 ---@field display_mode string                          # "off" | "highlight" | "inplace" | "above" | "below"
 ---@field recommendation_count integer|nil             # settings override, or nil → config default
 ---@field allow_multiple_movements_per_position boolean  # settings toggle; false → movement recs dedup by landing
@@ -138,22 +138,22 @@ local RECOMMENDATION_COUNT_MAX = 10
 ---@field header_handlers table<string, function>      # keymaps attached to every header pane
 ---@field winclosed_autocmd integer|nil                # autocmd id for the view's WinClosed watcher
 
----@return VimficiencyExploreActive|nil
+---@return VF.Explore.Active|nil
 local function current_view()
   return active_by_tab[v.nvim_get_current_tabpage()]
 end
 
----@return VimficiencyExploreActive
+---@return VF.Explore.Active
 local function assert_current_view()
   local a = current_view()
-  assert(a, "vimficiency explore view not active in current tab")
+  assert(a, "vimfy explore view not active in current tab")
   return a
 end
 
 ---Update the live view + module store + sidecar file in one shot.
 ---Auto-save means the user doesn't think about persistence — it just
 ---happens on every toggle.
----@param a VimficiencyExploreActive
+---@param a VF.Explore.Active
 ---@param key string
 ---@param value any
 local function update_setting(a, key, value)
@@ -181,15 +181,15 @@ local function copy_window_options(src_win, scratch_win)
   end
 end
 
----@param result ResultSession
+---@param result VF.Session.Result
 ---@return boolean
 ---@return string|nil
 local function ensure_explore_metadata(result)
   if type(result.goal_lines) ~= "table" or #result.goal_lines == 0 then
-    return false, "result is missing goal_lines; re-run the session with a newer vimficiency build"
+    return false, "result is missing goal_lines; re-run the session with a newer vimfy build"
   end
   if type(result.has_lines_above) ~= "boolean" or type(result.has_lines_below) ~= "boolean" then
-    return false, "result is missing explore boundary metadata; re-run the session with a newer vimficiency build"
+    return false, "result is missing explore boundary metadata; re-run the session with a newer vimfy build"
   end
   return true, nil
 end
@@ -281,7 +281,7 @@ local function undo()
   local a = assert_current_view()
   local result = ffi_lib.explore_undo(a.view_id)
   if result.status == "Rejected" then
-    vim.notify("vimficiency explore: " .. result.reason, vim.log.levels.INFO)
+    vim.notify("vimfy explore: " .. result.reason, vim.log.levels.INFO)
     return false
   end
   sync_buffer_from_session()
@@ -294,7 +294,7 @@ local function redo()
   local a = assert_current_view()
   local result = ffi_lib.explore_redo(a.view_id)
   if result.status == "Rejected" then
-    vim.notify("vimficiency explore: " .. result.reason, vim.log.levels.INFO)
+    vim.notify("vimfy explore: " .. result.reason, vim.log.levels.INFO)
     return false
   end
   sync_buffer_from_session()
@@ -433,7 +433,7 @@ local function on_buffer_changed()
       return
     end
     -- Reject: cancel the pending phase, revert buffer to pre-edit fencepost.
-    vim.notify("vimficiency explore: " .. applied.reason, vim.log.levels.WARN)
+    vim.notify("vimfy explore: " .. applied.reason, vim.log.levels.WARN)
     ffi_lib.explore_cancel_pending_insert(a.view_id)
     sync_buffer_from_session()
     refresh_ui()
@@ -451,7 +451,7 @@ local function on_buffer_changed()
 
   if applied.status == "Rejected" then
     -- Strict (b): revert the scratch to the view's last known state + cursor.
-    vim.notify("vimficiency explore: " .. applied.reason, vim.log.levels.WARN)
+    vim.notify("vimfy explore: " .. applied.reason, vim.log.levels.WARN)
     sync_buffer_from_session()
     sync_cursor_to_state()
     return
@@ -463,7 +463,7 @@ end
 ---tab map, deletes any module-scoped autocmds owned by the view, and
 ---schedules the scratch tab to close. Safe to call with a view that's
 ---already been removed from the map.
----@param a VimficiencyExploreActive|nil
+---@param a VF.Explore.Active|nil
 local function destroy_view(a)
   if not a then return end
   local tab = a.scratch.tab
@@ -495,14 +495,14 @@ end, on_key_ns)
 
 function M.open(label, result, opts)
   assert(type(label) == "string" and label ~= "", "explore.open: label must be non-empty")
-  assert(type(result) == "table", "explore.open: result must be a ResultSession")
+  assert(type(result) == "table", "explore.open: result must be a VF.Session.Result")
 
   -- Re-blend against the current Normal group in case the colorscheme changed.
   highlights.refresh()
 
   local ok, err = ensure_explore_metadata(result)
   if not ok then
-    vim.notify("vimficiency explore failed: " .. err, vim.log.levels.ERROR)
+    vim.notify("vimfy explore failed: " .. err, vim.log.levels.ERROR)
     return false
   end
 
@@ -584,7 +584,7 @@ function M.open(label, result, opts)
       break
     end
   end
-  assert(columns_win, "vimficiency explore: failed to create header row")
+  assert(columns_win, "vimfy explore: failed to create header row")
   local columns_buf = v.nvim_create_buf(false, true)
   v.nvim_win_set_buf(columns_win, columns_buf)
   local wins_before_summary = v.nvim_tabpage_list_wins(scratch_tab)
@@ -604,7 +604,7 @@ function M.open(label, result, opts)
       break
     end
   end
-  assert(summary_win, "vimficiency explore: failed to create summary header")
+  assert(summary_win, "vimfy explore: failed to create summary header")
   local summary_buf = v.nvim_create_buf(false, true)
   v.nvim_win_set_buf(summary_win, summary_buf)
   v.nvim_set_current_win(scratch_win)
@@ -708,7 +708,7 @@ function M.open(label, result, opts)
   v.nvim_create_autocmd("CursorMoved", {
     buffer = scratch_buf,
     callback = on_cursor_moved,
-    desc = "vimficiency explore: forward cursor move to view",
+    desc = "vimfy explore: forward cursor move to view",
   })
 
   -- TextChanged fires after a normal-mode edit completes (e.g. `rm`, `x`).
@@ -718,7 +718,7 @@ function M.open(label, result, opts)
   v.nvim_create_autocmd({ "TextChanged", "InsertLeave" }, {
     buffer = scratch_buf,
     callback = on_buffer_changed,
-    desc = "vimficiency explore: validate buffer state vs. planned fencepost",
+    desc = "vimfy explore: validate buffer state vs. planned fencepost",
   })
 
   -- InsertEnter moves the view from ApproachEdit into PendingInsert so
@@ -728,7 +728,7 @@ function M.open(label, result, opts)
   v.nvim_create_autocmd("InsertEnter", {
     buffer = scratch_buf,
     callback = on_insert_enter,
-    desc = "vimficiency explore: begin pending-insert phase",
+    desc = "vimfy explore: begin pending-insert phase",
   })
 
   -- TextChangedI fires once per keystroke that modifies the buffer in
@@ -737,7 +737,7 @@ function M.open(label, result, opts)
   v.nvim_create_autocmd("TextChangedI", {
     buffer = scratch_buf,
     callback = on_insert_text_changed,
-    desc = "vimficiency explore: live-refresh pending-insert remaining",
+    desc = "vimfy explore: live-refresh pending-insert remaining",
   })
 
   -- Either primary pane closing tears down THIS view. Header panes
@@ -747,7 +747,7 @@ function M.open(label, result, opts)
   -- so destroy_view can delete it explicitly.
   view.winclosed_autocmd = v.nvim_create_autocmd("WinClosed", {
     pattern = "*",
-    desc = "vimficiency explore: close when a pane closes",
+    desc = "vimfy explore: close when a pane closes",
     callback = function(args)
       if view.header.rebuilding then return end
       local match = tonumber(args.match)
@@ -770,18 +770,18 @@ function M.open(label, result, opts)
   if opts.focus == false and v.nvim_tabpage_is_valid(source_tab) then
     v.nvim_set_current_tabpage(source_tab)
   end
-  vim.notify("vimficiency explore opened [" .. label .. "]", vim.log.levels.INFO)
+  vim.notify("vimfy explore opened [" .. label .. "]", vim.log.levels.INFO)
   return true
 end
 
 function M.cancel()
   local a = current_view()
   if not a then
-    vim.notify("vimficiency explore not active in current tab", vim.log.levels.WARN)
+    vim.notify("vimfy explore not active in current tab", vim.log.levels.WARN)
     return false
   end
   destroy_view(a)
-  vim.notify("vimficiency explore cancelled", vim.log.levels.INFO)
+  vim.notify("vimfy explore cancelled", vim.log.levels.INFO)
   return true
 end
 
@@ -854,7 +854,7 @@ function open_settings_modal()
         local s = settings_store()
         for key in pairs(s) do a[key] = s[key] end
         refresh_ui()
-        vim.notify("vimficiency explore: settings reset to defaults",
+        vim.notify("vimfy explore: settings reset to defaults",
           vim.log.levels.INFO)
       end },
   }

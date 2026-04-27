@@ -10,13 +10,13 @@ local highlights = require("vimficiency.highlights")
 
 local M = {}
 
-local cursor_ns = v.nvim_create_namespace("vimficiency_cursor")
+local cursor_ns = v.nvim_create_namespace("vimfy_cursor")
 
 -- =============================================================================
 -- Multi-sequence replay state
 -- =============================================================================
 
----@class VimficiencyReplayWin
+---@class VF.Replay.Window
 ---@field win integer
 ---@field buf integer
 ---@field is_user boolean              -- true for the leftmost user-sequence pane
@@ -24,24 +24,24 @@ local cursor_ns = v.nvim_create_namespace("vimficiency_cursor")
 ---@field default_rank integer         -- original suggestion rank assigned at build_sim_ui time
                                        --   (used only for the index indicator; unused for user panes)
 
----@class ReplaySnapshot
+---@class VF.Replay.Snapshot
 ---@field lines string[]
 ---@field cursor [integer, integer]   -- 1-indexed row, 0-indexed col (as nvim returns)
 ---@field mode string                  -- nvim_get_mode().mode code ("n", "i", "v", "V", "\22", etc.)
 
----@class VimficiencyReplayPoolEntry
----@field tokens VimficiencyToken[]
+---@class VF.Replay.PoolEntry
+---@field tokens VF.Sequence.Token[]
 ---@field cost string?                 -- pre-formatted cost string; nil = no cost row
----@field states ReplaySnapshot[]?     -- nil until precompute completes for this entry
+---@field states VF.Replay.Snapshot[]?     -- nil until precompute completes for this entry
 
----@class VimficiencyReplayPool
----@field user VimficiencyReplayPoolEntry?        -- the user's typed sequence (if any); displayed by is_user panes
----@field suggestions VimficiencyReplayPoolEntry[]  -- rank-indexed (1..N) optimal_results
+---@class VF.Replay.Pool
+---@field user VF.Replay.PoolEntry?        -- the user's typed sequence (if any); displayed by is_user panes
+---@field suggestions VF.Replay.PoolEntry[]  -- rank-indexed (1..N) optimal_results
 
----@class VimficiencyReplayState
+---@class VF.Replay.State
 ---@field global_step integer
----@field windows VimficiencyReplayWin[]
----@field pool VimficiencyReplayPool
+---@field windows VF.Replay.Window[]
+---@field pool VF.Replay.Pool
 ---@field saved_win integer?
 ---@field saved_tab integer?
 ---@field sim_tab integer?
@@ -58,7 +58,7 @@ local cursor_ns = v.nvim_create_namespace("vimficiency_cursor")
 ---@field source_col integer?
 ---@field source_opts table?
 
----@type VimficiencyReplayState
+---@type VF.Replay.State
 local multi_sim = {
   global_step = 0,
   windows = {},
@@ -76,31 +76,31 @@ local multi_sim = {
 
 --- Look up the pool entry a window is currently displaying. Returns nil
 --- if the entry is missing (e.g. user pane but pool.user is nil).
----@param entry VimficiencyReplayWin
----@return VimficiencyReplayPoolEntry?
+---@param entry VF.Replay.Window
+---@return VF.Replay.PoolEntry?
 local function pool_entry_for(entry)
   if entry.is_user then return multi_sim.pool.user end
   return multi_sim.pool.suggestions[entry.seq_idx]
 end
 
----@class VimficiencyFocusSavedEntry
+---@class VF.Replay.FocusSavedEntry
 ---@field buf integer
 ---@field is_user boolean
 ---@field seq_idx integer
 ---@field default_rank integer
 
----@class VimficiencyFocusState
----@field saved_entries VimficiencyFocusSavedEntry[]
+---@class VF.Replay.FocusState
+---@field saved_entries VF.Replay.FocusSavedEntry[]
 ---@field focused_idx integer
 
----@type VimficiencyFocusState?
+---@type VF.Replay.FocusState?
 local focus_state = nil
 
 -- =============================================================================
 -- Tokenization (sequence string → animation steps)
 -- =============================================================================
 --
--- Tokens carry a `kind` tagged by the C++ parser — see `VimficiencyToken` in
+-- Tokens carry a `kind` tagged by the C++ parser — see `VF.Sequence.Token` in
 -- `ffi.lua`. The historical Lua-side classifier tables (INSERT_COMMANDS,
 -- VISUAL_ENTER_COMMANDS, NEEDS_FOLLOWING_KEY) are gone: they were a parallel
 -- source of truth to the parser's grammar and drifted silently. See
@@ -110,7 +110,7 @@ local focus_state = nil
 --- precompute coroutine to decide between the synchronous-drain (`nx`) and
 --- yield fast paths — modal transitions must stay on the yield path so the
 --- oracle can sample the intermediate modal state.
----@param token VimficiencyToken
+---@param token VF.Sequence.Token
 ---@return boolean
 local function enters_modal_state(token)
   return token.kind == "change" or token.kind == "visual"
@@ -149,7 +149,7 @@ end
 --- (the precompute coroutine, header rendering, debug dump) should use
 --- `.text` when feeding nvim and `.kind` when gating modal behavior.
 ---@param seq string
----@return VimficiencyToken[] tokens
+---@return VF.Sequence.Token[] tokens
 local function tokenize_for_animation(seq)
   local tokens, err = ffi_lib.tokenize_sequence(seq)
   if err or not tokens or #tokens == 0 then
@@ -179,7 +179,7 @@ local function tokenize_for_animation(seq)
           i = i + 1
         end
       end
-      ---@type VimficiencyToken[]
+      ---@type VF.Sequence.Token[]
       local fallback = {}
       local k = 1
       while k <= #chars do
@@ -200,7 +200,7 @@ local function tokenize_for_animation(seq)
   -- Happy path: tokens already carry `.kind` from the C++ parser. Chunk
   -- any `typed` tokens into small pieces so the animation shows typed
   -- text materializing gradually, not as one jump.
-  ---@type VimficiencyToken[]
+  ---@type VF.Sequence.Token[]
   local expanded = {}
   local CHUNK_SIZE = 4
   for _, tok in ipairs(tokens) do
@@ -250,8 +250,8 @@ end
 -- =============================================================================
 
 --- Current snapshot for a window, clamped to the end of its sequence.
----@param entry VimficiencyReplayWin
----@return ReplaySnapshot?
+---@param entry VF.Replay.Window
+---@return VF.Replay.Snapshot?
 local function current_snap(entry)
   local pool_entry = pool_entry_for(entry)
   if not pool_entry or not pool_entry.states or #pool_entry.states == 0 then
@@ -326,7 +326,7 @@ local function wrap_chunks(chunks, width)
 end
 
 --- Label shown as the pane's header tag.
----@param entry VimficiencyReplayWin
+---@param entry VF.Replay.Window
 ---@return string
 local function header_label(entry)
   if entry.is_user then return "[you] " end
@@ -334,7 +334,7 @@ local function header_label(entry)
 end
 
 --- Render the virtual header above a replay buffer.
----@param entry VimficiencyReplayWin
+---@param entry VF.Replay.Window
 ---@return nil
 local function render_header(entry)
   local snap = current_snap(entry)
@@ -527,7 +527,7 @@ local function build_statusline()
       multi_sim.start_row + 1, multi_sim.start_col + 1,
       multi_sim.end_row + 1, multi_sim.end_col + 1)
   end
-  local text = string.format(" vimficiency%s  step %d/%d%s ",
+  local text = string.format(" vimfy%s  step %d/%d%s ",
     label_part, multi_sim.global_step, max_total_steps(), pos_part)
   -- Escape `%` so labels cannot be parsed as statusline directives.
   return (text:gsub("%%", "%%%%"))
@@ -581,8 +581,8 @@ local function refresh()
 end
 
 --- Render one precomputed snapshot into a sim window.
----@param entry VimficiencyReplayWin
----@param snap  ReplaySnapshot
+---@param entry VF.Replay.Window
+---@param snap  VF.Replay.Snapshot
 local function apply_state(entry, snap)
   if not (v.nvim_win_is_valid(entry.win) and v.nvim_buf_is_valid(entry.buf)) then
     return
@@ -658,9 +658,9 @@ local user_focus
 local user_escape
 -- Forward-declared because the +/-/u/Up/Down key handlers need these
 -- but the real definitions live further down with the pool helpers.
----@type fun(): VimficiencyLayoutSlot[]
+---@type fun(): VF.Replay.LayoutSlot[]
 local build_layout_plan
----@type fun(ranks: VimficiencyPoolRankKey[], cb: fun())
+---@type fun(ranks: VF.Replay.PoolRankKey[], cb: fun())
 local ensure_states_for_ranks
 
 --- Cycle to the next or previous replay pane.
@@ -717,7 +717,7 @@ local function user_yank_sequence()
       vim.fn.setreg('"', seq)
       vim.fn.setreg('+', seq)
       local tag = entry.is_user and "you" or tostring(entry.seq_idx)
-      vim.notify("vimficiency: yanked [" .. tag .. "] " .. seq,
+      vim.notify("vimfy: yanked [" .. tag .. "] " .. seq,
         vim.log.levels.INFO)
       return
     end
@@ -731,7 +731,7 @@ local function user_debug_dump()
   local out = {}
   local function pr(s) out[#out + 1] = s end
 
-  pr("=== vimficiency replay debug ===")
+  pr("=== vimfy replay debug ===")
   pr(string.format("global_step = %d (max = %d)",
     multi_sim.global_step, max_total_steps()))
   pr(string.format("focus_state = %s",
@@ -788,7 +788,7 @@ local function user_debug_dump()
   pr("=== end ===")
 
   local msg = table.concat(out, "\n")
-  vim.notify("vimficiency: debug dump written to :messages", vim.log.levels.INFO)
+  vim.notify("vimfy: debug dump written to :messages", vim.log.levels.INFO)
   v.nvim_echo({ { msg, "Normal" } }, true, {})
 end
 
@@ -805,7 +805,7 @@ local function user_toggle_focus()
       return
     end
   end
-  vim.notify("vimficiency: cursor is not in a replay window",
+  vim.notify("vimfy: cursor is not in a replay window",
     vim.log.levels.WARN)
 end
 
@@ -821,7 +821,7 @@ end
 
 local function user_open_settings()
   if #multi_sim.windows == 0 or not current_window_is_replay_window() then
-    vim.notify("vimficiency: play settings are only available from a replay window",
+    vim.notify("vimfy: play settings are only available from a replay window",
       vim.log.levels.WARN)
     return
   end
@@ -861,7 +861,7 @@ end
 local function user_cycle_rank(step)
   if #multi_sim.windows == 0 then return end
   local cur_win = v.nvim_get_current_win()
-  ---@type VimficiencyReplayWin?
+  ---@type VF.Replay.Window?
   local entry
   for _, e in ipairs(multi_sim.windows) do
     if e.win == cur_win then entry = e; break end
@@ -894,14 +894,14 @@ end
 -- Buffer-local keymaps (declarative table + echo-hint derivation)
 -- =============================================================================
 
----@class VimficiencyReplayKeymap
+---@class VF.Replay.Keymap
 ---@field lhs string
 ---@field handler fun()
 ---@field desc string       -- shown in `:map` listings
 ---@field summary_group string?  -- Adjacent matching groups collapse onto one help row.
 ---@field summary_desc string?   -- Optional help-row description for the collapsed group.
 
----@type VimficiencyReplayKeymap[]
+---@type VF.Replay.Keymap[]
 local REPLAY_KEYMAPS = util.with_standard_ui_keymaps({
   { lhs = "<Left>",  handler = user_step_left,  desc = "Step backward",
     summary_group = "step", summary_desc = "Step backward / forward" },
@@ -930,7 +930,7 @@ local REPLAY_KEYMAPS = util.with_standard_ui_keymaps({
   { lhs = "D",         handler = user_debug_dump,    desc = "Dump replay state to :messages" },
   { lhs = "q",         handler = cleanup_multi_sim,  desc = "Close replay" },
 }, {
-  title = "Vimficiency Replay Keys",
+  title = "Vimfy Replay Keys",
   docs = true,
   settings = {
     lhs = "gs",
@@ -951,12 +951,12 @@ end
 
 --- Precompute replay snapshots by feeding tokens through a hidden probe window.
 --- See `dev/lua/replay-precompute.md` for the event-loop and mode details.
----@param tokens VimficiencyToken[]
+---@param tokens VF.Sequence.Token[]
 ---@param lines string[]
 ---@param row integer  -- 0-indexed
 ---@param col integer  -- 0-indexed
 ---@param should_cancel fun(): boolean
----@param on_done fun(states: ReplaySnapshot[])
+---@param on_done fun(states: VF.Replay.Snapshot[])
 local function precompute_states(tokens, lines, row, col, should_cancel, on_done)
   local saved_win = v.nvim_get_current_win()
 
@@ -991,7 +991,7 @@ local function precompute_states(tokens, lines, row, col, should_cancel, on_done
     }
   end
 
-  ---@type ReplaySnapshot[]
+  ---@type VF.Replay.Snapshot[]
   local states = {}
 
   local function teardown()
@@ -1009,7 +1009,7 @@ local function precompute_states(tokens, lines, row, col, should_cancel, on_done
   local co = coroutine.create(function()
     -- Yield twice so `nvim_get_mode()` catches up after modal transitions.
     ---@param keys string
-    ---@param token VimficiencyToken
+    ---@param token VF.Sequence.Token
     local function feed_and_yield(keys, token)
       if not v.nvim_win_is_valid(probe_win) then return end
       v.nvim_set_current_win(probe_win)
@@ -1045,7 +1045,7 @@ local function precompute_states(tokens, lines, row, col, should_cancel, on_done
     local ok, err = coroutine.resume(co)
     if not ok then
       teardown()
-      vim.notify("vimficiency precompute failed: " .. tostring(err),
+      vim.notify("vimfy precompute failed: " .. tostring(err),
         vim.log.levels.ERROR)
       return
     end
@@ -1070,7 +1070,7 @@ end
 ---@return integer buf
 local function create_sim_buffer(lines, label)
   local buf = v.nvim_create_buf(false, true)
-  v.nvim_buf_set_name(buf, "vimficiency-sim-" .. label:gsub("%s+", "_"):sub(1, 20))
+  v.nvim_buf_set_name(buf, "vimfy-sim-" .. label:gsub("%s+", "_"):sub(1, 20))
   v.nvim_set_option_value("buftype", "nofile", { buf = buf })
   v.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
   v.nvim_set_option_value("swapfile", false, { buf = buf })
@@ -1083,7 +1083,7 @@ local function create_sim_buffer(lines, label)
   v.nvim_create_autocmd("WinEnter", {
     buffer = buf,
     callback = function() update_cursor_highlights() end,
-    desc = "vimficiency: refresh focus indicator on window enter",
+    desc = "vimfy: refresh focus indicator on window enter",
   })
 
   return buf
@@ -1119,7 +1119,7 @@ local function setup_sim_window(win, buf, lines, row, col)
   decorate_sim_window(win)
 end
 
----@class VimficiencyLayoutSlot
+---@class VF.Replay.LayoutSlot
 ---@field is_user boolean
 ---@field default_rank integer  -- suggestion rank for non-user panes; 0 for user pane
 
@@ -1144,11 +1144,11 @@ end
 
 --- Slots for the current effective layout, leftmost first. User pane (if
 --- any) is always index 1.
----@return VimficiencyLayoutSlot[]
+---@return VF.Replay.LayoutSlot[]
 ---@diagnostic disable-next-line: redefined-local
 build_layout_plan = function()
   local window_count, include_user = effective_layout()
-  ---@type VimficiencyLayoutSlot[]
+  ---@type VF.Replay.LayoutSlot[]
   local plan = {}
   if include_user then
     plan[#plan + 1] = { is_user = true, default_rank = 0 }
@@ -1184,11 +1184,11 @@ end
 
 --- Rank key used when asking `ensure_states_for_ranks` to cache entries.
 --- Either the string `"user"` or a 1-indexed suggestion rank.
----@alias VimficiencyPoolRankKey "user" | integer
+---@alias VF.Replay.PoolRankKey "user" | integer
 
 --- Resolve a rank key to a pool entry.
----@param key VimficiencyPoolRankKey
----@return VimficiencyReplayPoolEntry?
+---@param key VF.Replay.PoolRankKey
+---@return VF.Replay.PoolEntry?
 local function pool_entry_by_rank(key)
   if key == "user" then return multi_sim.pool.user end
   return multi_sim.pool.suggestions[key]
@@ -1197,7 +1197,7 @@ end
 --- Ensure states are precomputed for every referenced rank, then invoke
 --- cb. Runs serially, reuses cached states, and bails if the precompute
 --- generation rolls over mid-flight.
----@param ranks VimficiencyPoolRankKey[]
+---@param ranks VF.Replay.PoolRankKey[]
 ---@param cb fun()
 ---@diagnostic disable-next-line: redefined-local
 ensure_states_for_ranks = function(ranks, cb)
@@ -1229,7 +1229,7 @@ end
 ---@param lines string[]
 ---@param row integer
 ---@param col integer
----@param plan VimficiencyLayoutSlot[]
+---@param plan VF.Replay.LayoutSlot[]
 local function build_sim_ui(lines, row, col, plan)
   cmd("tabnew")
   multi_sim.sim_tab = v.nvim_get_current_tabpage()
@@ -1251,7 +1251,7 @@ local function build_sim_ui(lines, row, col, plan)
     end
 
     setup_sim_window(win, buf, lines, row, col)
-    ---@type VimficiencyReplayWin
+    ---@type VF.Replay.Window
     local replay_win = {
       win          = win,
       buf          = buf,
@@ -1296,22 +1296,22 @@ end
 ---@diagnostic disable-next-line: redefined-local
 user_focus = function(idx)
   if focus_state then
-    vim.notify("vimficiency: already focused; use :Vimfy escape first",
+    vim.notify("vimfy: already focused; use :Vimfy escape first",
       vim.log.levels.WARN)
     return
   end
   if #multi_sim.windows == 0 then
-    vim.notify("vimficiency: no replay in progress", vim.log.levels.WARN)
+    vim.notify("vimfy: no replay in progress", vim.log.levels.WARN)
     return
   end
   if not idx or idx < 1 or idx > #multi_sim.windows then
     vim.notify(
-      "vimficiency: focus index must be 1.." .. #multi_sim.windows,
+      "vimfy: focus index must be 1.." .. #multi_sim.windows,
       vim.log.levels.ERROR)
     return
   end
 
-  ---@type VimficiencyFocusSavedEntry[]
+  ---@type VF.Replay.FocusSavedEntry[]
   local saved_entries = {}
   for i, entry in ipairs(multi_sim.windows) do
     saved_entries[i] = {
@@ -1342,7 +1342,7 @@ end
 --- Restore the split replay layout.
 user_escape = function()
   if not focus_state then
-    vim.notify("vimficiency: not currently focused", vim.log.levels.INFO)
+    vim.notify("vimfy: not currently focused", vim.log.levels.INFO)
     return
   end
   local saved_entries = focus_state.saved_entries
@@ -1353,7 +1353,7 @@ user_escape = function()
   v.nvim_win_set_buf(current_win, first.buf)
   decorate_sim_window(current_win)
 
-  ---@type VimficiencyReplayWin[]
+  ---@type VF.Replay.Window[]
   local new_windows = { {
     win          = current_win,
     buf          = first.buf,
@@ -1398,7 +1398,7 @@ end
 
 --- Simulate sequences side-by-side in a new tab.
 --- Replay snapshots are precomputed through the hidden Neovim probe window.
----@class VimficiencyReplayOpts
+---@class VF.Replay.Opts
 ---@field label   string?   Display label shown in the replay statusline.
 ---@field end_row integer?  0-indexed end row of the captured session.
 ---@field end_col integer?  0-indexed end col.
@@ -1406,15 +1406,15 @@ end
                                       -- Persisted to the settings store so later
                                       -- relayouts inherit it.
 
----@class VimficiencyReplayPoolArg
+---@class VF.Replay.PoolArg
 ---@field user { seq: string, cost: string? }?       The user's typed sequence; leftmost pane when shown.
 ---@field suggestions { seq: string, cost: string? }[]  Optimal-result sequences, best-first.
 
 ---@param lines string[] Buffer content to simulate on
 ---@param row integer 0-indexed starting row
 ---@param col integer 0-indexed starting column
----@param pool_arg VimficiencyReplayPoolArg Sequence pool (user + all suggestions).
----@param opts VimficiencyReplayOpts? Optional display extras.
+---@param pool_arg VF.Replay.PoolArg Sequence pool (user + all suggestions).
+---@param opts VF.Replay.Opts? Optional display extras.
 function M.simulate_compare(lines, row, col, pool_arg, opts)
   if #multi_sim.windows > 0 then
     cleanup_multi_sim()
@@ -1466,7 +1466,7 @@ function M.simulate_compare(lines, row, col, pool_arg, opts)
     ranks[#ranks + 1] = slot.is_user and "user" or slot.default_rank
   end
 
-  vim.notify("vimficiency: precomputing replay…", vim.log.levels.INFO)
+  vim.notify("vimfy: precomputing replay…", vim.log.levels.INFO)
 
   ensure_states_for_ranks(ranks, function()
     if multi_sim.precompute_gen ~= my_gen then return end

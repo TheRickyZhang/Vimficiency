@@ -1,7 +1,7 @@
--- Shared Vimficiency highlight groups.
+-- Shared Vimfy highlight groups.
 --
 -- This module is the single canonical place for highlight names + styles
--- used across Vimficiency UIs. Keep it narrow: semantic groups only (what
+-- used across Vimfy UIs. Keep it narrow: semantic groups only (what
 -- the UI is trying to say), not literal colors. Actual colors either link
 -- to built-in groups (so they respect the user's colorscheme) or are
 -- computed in UI-local helpers that layer on top (see explore/highlights.lua
@@ -14,7 +14,7 @@
 -- Callers:
 --   - require this module at module scope to pick up the names.
 --   - call `M.refresh()` before first use if colorscheme may have changed
---     since Vimficiency loaded. (The module calls it once at require time
+--     since Vimfy loaded. (The module calls it once at require time
 --     as a convenience.)
 
 local v = vim.api
