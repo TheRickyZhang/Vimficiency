@@ -1,4 +1,4 @@
-*vimficiency.txt*  *vimficiency*          For NVIM v0.8.0          Last change: 2026 April 26
+*vimficiency.txt*  *vimficiency*          For NVIM v0.8.0          Last change: 2026 April 27
 
 ==============================================================================
 Table of Contents                              *vimficiency-table-of-contents*
@@ -76,8 +76,8 @@ Everything in Vimfy is organized around **sessions**. A session captures:
 - The keys you typed
 - The buffer content at an ending point
 
-Vimfy then runs an optimizer and compares your effort with the efforts of
-the best sequences it found.
+Vimfy then runs an optimizer and compares your effort with the efforts of the
+best sequences it found.
 
 
 THE 2×2 MATRIX OF SESSION TYPES
@@ -215,8 +215,8 @@ Mixing forms (`3m`, `3ms`, `2h`, etc.) is not supported. Seconds is the only
 time unit; if you want 90 seconds, use `90s`.
 
 The same grammar is reused by Suggest triggers (e.g. `window = "3s"` / `"50"`)
-— anywhere Vimfy wants a slice of the queue, `N` and `Ns` are how you
-name it.
+— anywhere Vimfy wants a slice of the queue, `N` and `Ns` are how you name
+it.
 
 
 IMPLEMENTATION DETAILS
@@ -500,11 +500,11 @@ Press |g?| in a saved-result buffer to open this section directly.
 ==============================================================================
 8. Binding keys to Vimfy actions   *vimficiency-binding-keys-to-vimfy-actions*
 
-Vimfy measures the keys you type, so a key that _invokes_ Vimfy must
-announce itself as admin activity — otherwise the invoking keystroke counts
-as motion. `vim.on_key` fires for the LHS before Neovim resolves the mapping,
-and we can’t retroactively uncount; the caller has to announce. Three ways to
-bind correctly, one ergonomic way that doesn’t:
+Vimfy measures the keys you type, so a key that _invokes_ Vimfy must announce
+itself as admin activity — otherwise the invoking keystroke counts as motion.
+`vim.on_key` fires for the LHS before Neovim resolves the mapping, and we
+can’t retroactively uncount; the caller has to announce. Three ways to bind
+correctly, one ergonomic way that doesn’t:
 
 
 1. VIMFY.MAP() (RECOMMENDED)
@@ -585,7 +585,7 @@ name. Bind with `remap = true` (or `nmap` in vimscript):
 arbitrary args, e.g. `save @ quick`, which no `<Plug>` name exposes directly).
 
 
-3. REQUIRE('VIMFY').WRAP(FN) (LOW-LEVEL)
+3. REQUIRE('VIMFICIENCY').WRAP(FN) (LOW-LEVEL)
 
 `vimfy.map(mode, lhs, fn, opts)` is shorthand for `vim.keymap.set(mode, lhs,
 wrap(fn), opts)`. If you need to attach your Lua callback somewhere other than
@@ -691,8 +691,8 @@ each owns its own timer and cooldown, configured under its own key.
   watch.cooldown_ms /           Minimum time between consecutive fires.
   auto_suggest.cooldown_ms      Safety rail for low idle.ms.
   -----------------------------------------------------------------------
-"Real keystroke" excludes cmdline input and Vimfy admin keystrokes, so
-`:Vimfy` commands and `vimfy.map`-routed bindings don’t reset the idle timer.
+"Real keystroke" excludes cmdline input and Vimfy admin keystrokes, so `:Vimfy`
+commands and `vimfy.map`-routed bindings don’t reset the idle timer.
 
 A bare `ms` inside any trigger object universally means "idle threshold" —
 fire only after N ms of no activity. `keys.every` is the one exception: it
@@ -735,11 +735,11 @@ but documented separately — see 10. The effort model.
   **Status: placeholder.** The effort model is a substantial topic — this page
   will grow. For now, use `:Vimfy config` to inspect the live values and the
   pointers below to understand the shape.
-Vimfy does not score sequences by keystroke count. It scores them by
-**keyboard effort**: how hard each key is to reach, whether consecutive keys
-involve the same finger, whether they alternate hands, etc. A 4-key sequence
-using good rolls on the home row can be "cheaper" than a 3-key sequence that
-repeats the pinky.
+Vimfy does not score sequences by keystroke count. It scores them by **keyboard
+effort**: how hard each key is to reach, whether consecutive keys involve the
+same finger, whether they alternate hands, etc. A 4-key sequence using good
+rolls on the home row can be "cheaper" than a 3-key sequence that repeats the
+pinky.
 
 
 WHAT’S TUNABLE
@@ -1018,9 +1018,9 @@ activity anyway). See 8. Keymaps for the full list and the binding contract.
 
 SCRATCH OUTPUT BUFFER KEYS
 
-Press |g?| in a Vimficiency scratch output buffer to open this section
-directly. This applies to buffers opened by `:Vimfy help` and other detail
-panes that show Vimficiency text output in a split.
+Press |g?| in a Vimfy scratch output buffer to open this section directly. This
+applies to buffers opened by `:Vimfy help` and other detail panes that show
+Vimfy text output in a split.
 
 - `q` — close the current Vimfy output buffer
 - `?` — show the short keymap summary popup
