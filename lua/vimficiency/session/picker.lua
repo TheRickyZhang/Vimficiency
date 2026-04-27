@@ -21,8 +21,6 @@ local picker_ns = v.nvim_create_namespace("vimficiency.session.picker")
 
 local M = {}
 
-local SORT_MODES = { "alpha", "category", "created" }
-
 --- Natural direction for each sort mode: alpha/category ascend (A→Z);
 --- created descends (newest first). Capital suffix flips these defaults.
 local DEFAULT_DIRECTIONS = {
@@ -33,14 +31,13 @@ local DEFAULT_DIRECTIONS = {
 
 local STATUS_SYMBOLS = { ongoing = "●", saved = "✓", blank = " " }
 
-local SORT_POPUP_DELAY_MS = 250
-
 -- Singleton state: nil when closed.
 ---@class PickerState
 ---@field win      integer       # Outer float window id
 ---@field buf      integer       # List buffer id
 ---@field prev_win integer       # Preview (vsplit) window id
 ---@field prev_buf integer       # Preview buffer id
+---@field prompt_win integer     # Floating prompt window id (search input)
 ---@field pane      "active"|"saved"
 ---@field sort_mode string        # One of SORT_MODES
 ---@field direction "asc"|"desc"
@@ -48,6 +45,8 @@ local SORT_POPUP_DELAY_MS = 250
 ---@field marked   table<string, boolean>  -- keyed by item.key (scoped per pane via prefix)
 ---@field rows     table[]       # row index -> { item = ..., is_header = bool }
 ---@field cursor   integer       # 1-indexed row in the list buffer
+
+---@type PickerState?
 local state = nil
 
 --------------------------------------------------------------------------------
@@ -234,6 +233,7 @@ local function group_into_sections(items, mode, direction)
 end
 
 local function row_for_item(item)
+  local s = assert(state, "row_for_item called outside picker session")
   local sym
   if item.pane == "active" and item.status == "active" then
     sym = STATUS_SYMBOLS.ongoing
@@ -242,7 +242,7 @@ local function row_for_item(item)
   else
     sym = STATUS_SYMBOLS.blank
   end
-  local marked = item.is_synthetic and " " or (state.marked[mark_key(item)] and "*" or " ")
+  local marked = item.is_synthetic and " " or (s.marked[mark_key(item)] and "*" or " ")
   local cat = item.category or ""
   if item.is_synthetic then
     local name = string.format("%s (%d)", item.name, item.ring_count)
@@ -604,18 +604,19 @@ local function exit_prompt_to_list()
 end
 
 local function act_mark()
+  local s = assert(state, "act_mark called outside picker session")
   local it = current_item()
   if not it then return end
   if it.is_synthetic then return end
   local k = mark_key(it)
-  state.marked[k] = not state.marked[k] or nil
+  s.marked[k] = not s.marked[k] or nil
   -- Advance one row for rapid marking.
-  local row = state.cursor + 1
-  local max = v.nvim_buf_line_count(state.buf)
-  while row <= max and state.rows[row] and state.rows[row].is_header do
+  local row = s.cursor + 1
+  local max = v.nvim_buf_line_count(s.buf)
+  while row <= max and s.rows[row] and s.rows[row].is_header do
     row = row + 1
   end
-  if row <= max then state.cursor = row end
+  if row <= max then s.cursor = row end
   render()
 end
 
@@ -666,6 +667,7 @@ local function act_open()
 end
 
 local function act_delete()
+  local s = assert(state, "act_delete called outside picker session")
   local it = current_item()
   if not it then return end
   if it.is_synthetic then
@@ -685,14 +687,15 @@ local function act_delete()
     else
       session.rm(it.name)
     end
-    state.marked[mark_key(it)] = nil
+    s.marked[mark_key(it)] = nil
     render()
   end)
 end
 
 local function act_delete_marked()
+  local s = assert(state, "act_delete_marked called outside picker session")
   local keys = {}
-  for k, _ in pairs(state.marked) do table.insert(keys, k) end
+  for k, _ in pairs(s.marked) do table.insert(keys, k) end
   if #keys == 0 then
     vim.notify("No marked entries.", vim.log.levels.INFO)
     return

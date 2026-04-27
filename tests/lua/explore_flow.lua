@@ -90,16 +90,17 @@ end
 local function move_to_first_edit_target(scratch_buf)
   local target = explore.status()
   local motion = first_recommendation("movement", function(rec)
-    return rec.landing_row == target.target_begin_row
-      and rec.landing_col == target.target_begin_col
+    return target.target_range
+      and rec.landing.row == target.target_range.begin_pos.row
+      and rec.landing.col == target.target_range.begin_pos.col
   end)
   feed(motion.text)
   trigger_cursor_moved(scratch_buf)
   wait_for("motion recommendation should update FFI cursor", function()
     local st = explore.status()
     return st
-      and st.cursor_row == motion.landing_row
-      and st.cursor_col == motion.landing_col
+      and st.cursor.row == motion.landing.row
+      and st.cursor.col == motion.landing.col
       and st.accepted_seq ~= ""
   end)
 end
@@ -121,8 +122,8 @@ test("explore flow: natural motion updates cursor and completes motion-only goal
         local st = explore.status()
         return st
           and st.phase.kind == "Completed"
-          and st.cursor_row == motion.landing_row
-          and st.cursor_col == motion.landing_col
+          and st.cursor.row == motion.landing.row
+          and st.cursor.col == motion.landing.col
           and st.accepted_seq ~= ""
       end)
       assert_eq(explore.status().scratch_lines, { "foo bar" })

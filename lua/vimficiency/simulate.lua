@@ -257,7 +257,7 @@ local function current_snap(entry)
   if not pool_entry or not pool_entry.states or #pool_entry.states == 0 then
     return nil
   end
-  local states = pool_entry.states
+  local states = assert(pool_entry.states)
   return states[min(multi_sim.global_step + 1, #states)]
 end
 
@@ -605,7 +605,7 @@ local function seek_to(target)
   for _, entry in ipairs(multi_sim.windows) do
     local pool_entry = pool_entry_for(entry)
     if pool_entry and pool_entry.states and #pool_entry.states > 0 then
-      local states = pool_entry.states
+      local states = assert(pool_entry.states)
       apply_state(entry, states[min(target + 1, #states)])
     end
   end
@@ -658,7 +658,7 @@ local user_focus
 local user_escape
 -- Forward-declared because the +/-/u/Up/Down key handlers need these
 -- but the real definitions live further down with the pool helpers.
----@type fun()
+---@type fun(): VimficiencyLayoutSlot[]
 local build_layout_plan
 ---@type fun(ranks: VimficiencyPoolRankKey[], cb: fun())
 local ensure_states_for_ranks
@@ -884,7 +884,7 @@ local function user_cycle_rank(step)
     local pool_entry = pool_entry_for(entry)
     if not pool_entry or not pool_entry.states then return end
     if not v.nvim_win_is_valid(entry.win) then return end
-    local states = pool_entry.states
+    local states = assert(pool_entry.states)
     apply_state(entry, states[min(multi_sim.global_step + 1, #states)])
     refresh()
   end)
@@ -1107,8 +1107,7 @@ end
 ---@param lines string[]
 ---@param row integer 0-indexed
 ---@param col integer 0-indexed
----@param label string
-local function setup_sim_window(win, buf, lines, row, col, label)
+local function setup_sim_window(win, buf, lines, row, col)
   v.nvim_win_set_buf(win, buf)
 
   local line_count = #lines
@@ -1251,7 +1250,7 @@ local function build_sim_ui(lines, row, col, plan)
       win = v.nvim_get_current_win()
     end
 
-    setup_sim_window(win, buf, lines, row, col, label)
+    setup_sim_window(win, buf, lines, row, col)
     ---@type VimficiencyReplayWin
     local replay_win = {
       win          = win,

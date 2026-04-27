@@ -47,7 +47,7 @@ end
 --- Returns the cooldown signal for `end_trigger`.
 ---
 ---@param window string                              Recall alias to analyze.
----@param gate fun(result: ResultSession): boolean|nil  Optional veto. Return false to suppress notification; the record is still consumed.
+---@param gate? fun(result: ResultSession): boolean|nil  Optional veto. Return false to suppress notification; the record is still consumed.
 ---@param reason FinishReason                         Which trigger fired; stored on the result for the header annotation.
 ---@return boolean counted
 local function fire_with_window(window, gate, reason)
@@ -56,7 +56,7 @@ local function fire_with_window(window, gate, reason)
 
   -- Pin the resolved id; recall aliases are time-varying.
   local id = active.id
-  local result, _err = session.compute_result_for_active(active)
+  local result = session.compute_result_for_active(active)
   if not result then
     return true
   end

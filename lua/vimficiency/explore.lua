@@ -1,13 +1,13 @@
-local config = require("vimficiency.config")
-local ffi_lib = require("vimficiency.ffi")
-local util = require("vimficiency.util")
-local keynorm = require("vimficiency.capture.keynorm")
-local highlights = require("vimficiency.explore.highlights")
-local tags_render = require("vimficiency.explore.render.tags")
-local header_render = require("vimficiency.explore.render.header")
-local list_render = require("vimficiency.explore.render.list")
-local keymaps = require("vimficiency.explore.keymaps")
-local settings = require("vimficiency.settings_modal")
+local config           = require("vimficiency.config")
+local ffi_lib          = require("vimficiency.ffi")
+local util             = require("vimficiency.util")
+local keynorm          = require("vimficiency.capture.keynorm")
+local highlights       = require("vimficiency.explore.highlights")
+local tags_render      = require("vimficiency.explore.render.tags")
+local header_render    = require("vimficiency.explore.render.header")
+local list_render      = require("vimficiency.explore.render.list")
+local keymaps          = require("vimficiency.explore.keymaps")
+local settings         = require("vimficiency.settings_modal")
 local settings_profile = require("vimficiency.settings_profile")
 
 -- Forward-declared locals. Hoisted to the top of the file so every
@@ -90,8 +90,6 @@ local WINDOW_OPTIONS = {
 --   above      landing cells highlighted, command labels on a virt_line above.
 --   below      landing cells highlighted, command labels on a virt_line below.
 local DISPLAY_MODES = { "off", "highlight", "inplace", "above", "below" }
-local DISPLAY_MODE_SET = {}
-for _, m in ipairs(DISPLAY_MODES) do DISPLAY_MODE_SET[m] = true end
 
 -- Number of recommendations surfaced in the side list + tag overlay.
 -- Per-view (`view.recommendation_count`), seeded from
@@ -115,10 +113,10 @@ local RECOMMENDATION_COUNT_MAX = 10
 ---@field win integer
 ---@field tab integer   # the tab we opened for the view; used on teardown
 
+---@class VimficiencyExplorePending
 ---@field target string       # the planned typed text we match against
 ---@field row integer         # buffer row (0-indexed) where insert started
 ---@field col_start integer   # buffer col (0-indexed bytes) where insert started
----@class VimficiencyExplorePending
 
 ---@class VimficiencyExploreActive
 ---@field label string                                 # caller-supplied, shown in the header
@@ -212,7 +210,7 @@ end
 
 local function sync_cursor_to_state()
   local a = assert_current_view()
-  v.nvim_win_set_cursor(a.scratch.win, { a.state.cursor_row + 1, a.state.cursor_col })
+  v.nvim_win_set_cursor(a.scratch.win, { a.state.cursor.row + 1, a.state.cursor.col })
 end
 
 local function refresh_state_and_recommendations()
@@ -233,7 +231,9 @@ end
 ---@return string
 local function current_remaining(a)
   local pending = a.pending
-  local target = (pending and pending.target) or a.state.phase.remaining_typed_text or ""
+  local phase = a.state.phase
+  local phase_target = phase.kind == "PendingInsert" and phase.remaining_typed_text or ""
+  local target = (pending and pending.target) or phase_target
   if not pending then return target end
   local cursor = v.nvim_win_get_cursor(a.scratch.win)
   local cur_row, cur_col = cursor[1] - 1, cursor[2]
@@ -308,7 +308,7 @@ local function on_cursor_moved()
   -- ourselves (e.g. after apply_movement / undo / redo) — nothing to forward.
   local pos = v.nvim_win_get_cursor(a.scratch.win)
   local new_row, new_col = pos[1] - 1, pos[2]
-  if new_row == a.state.cursor_row and new_col == a.state.cursor_col then
+  if new_row == a.state.cursor.row and new_col == a.state.cursor.col then
     return
   end
 
@@ -626,9 +626,8 @@ function M.open(label, result, opts)
 
     -- session-reported state + derived ranking
     state = {
-      phase = { kind = "ApproachEdit", edit_index = 0, remaining_typed_text = "" },
-      cursor_row = start_row,
-      cursor_col = start_col,
+      phase = { kind = "ApproachEdit", edit_index = 0 },
+      cursor = { row = start_row, col = start_col },
       total_edits = 0,
       accepted_cost = 0,
       accepted_seq = "",
@@ -674,7 +673,7 @@ function M.open(label, result, opts)
       local optimal = (a.result and a.result.optimal_results) or {}
       vim.notify(vim.inspect({
         phase = a.state.phase,
-        cursor = { row = a.state.cursor_row, col = a.state.cursor_col },
+        cursor = a.state.cursor,
         accepted_seq = a.state.accepted_seq,
         accepted_cost = a.state.accepted_cost,
         total_edits = a.state.total_edits,
@@ -821,12 +820,12 @@ function open_settings_modal()
       label = "Display mode",
       value_kind = "enum", values = DISPLAY_MODES,
       get = function() return a.display_mode end,
-      set = function(v) update_setting(a, "display_mode", v) end },
+      set = function(value) update_setting(a, "display_mode", value) end },
     { kind = "setting",
       label = "Recommendation count",
       value_kind = "int", min = RECOMMENDATION_COUNT_MIN, max = RECOMMENDATION_COUNT_MAX,
       get = function() return a.recommendation_count end,
-      set = function(v) update_setting(a, "recommendation_count", v) end },
+      set = function(value) update_setting(a, "recommendation_count", value) end },
     { kind = "setting",
       label = "Motion dedup",
       value_kind = "bool", get = motion_get, set = motion_set },
@@ -837,12 +836,12 @@ function open_settings_modal()
       label = "Show user typed",
       value_kind = "bool",
       get = function() return a.show_user_typed end,
-      set = function(v) update_setting(a, "show_user_typed", v) end },
+      set = function(value) update_setting(a, "show_user_typed", value) end },
     { kind = "setting",
       label = "Optimal results shown",
       value_kind = "int", min = 0, max = #optimal_results,
       get = function() return a.show_result_count end,
-      set = function(v) update_setting(a, "show_result_count", v) end },
+      set = function(value) update_setting(a, "show_result_count", value) end },
     { kind = "separator" },
     { kind = "action",
       label = "reset to default settings",
@@ -868,14 +867,9 @@ function M.status()
   local live_cursor = v.nvim_win_get_cursor(a.scratch.win)
   return {
     phase = vim.deepcopy(a.state.phase),
-    cursor_row = a.state.cursor_row,
-    cursor_col = a.state.cursor_col,
-    scratch_cursor_row = live_cursor[1] - 1,
-    scratch_cursor_col = live_cursor[2],
-    target_begin_row = a.state.target_begin_row,
-    target_begin_col = a.state.target_begin_col,
-    target_end_row = a.state.target_end_row,
-    target_end_col = a.state.target_end_col,
+    cursor = vim.deepcopy(a.state.cursor),
+    scratch_cursor = { row = live_cursor[1] - 1, col = live_cursor[2] },
+    target_range = vim.deepcopy(a.state.target_range),
     accepted_seq = a.state.accepted_seq,
     accepted_cost = a.state.accepted_cost,
     accepted_revision = a.state.accepted_revision,

@@ -25,7 +25,7 @@ local function summary_chunks(active, remaining)
     { "Cost ", "Comment" },
     { string.format("%.2f", active.state.accepted_cost), "Normal" },
     { "   Cursor ", "Comment" },
-    { string.format("(%d,%d)", active.state.cursor_row, active.state.cursor_col), "Normal" },
+    { string.format("(%d,%d)", active.state.cursor.row, active.state.cursor.col), "Normal" },
     { "   Phase ", "Comment" },
     { phase_label, "Normal" },
   }
@@ -272,11 +272,9 @@ local function write_rows(buf, rows)
   vim.bo[buf].modifiable = false
 end
 
----@param active VimficiencyExploreActive
 ---@param column { title: string, seq: string, empty_text: string }
----@param remaining string
 ---@return table[][]
-local function build_rows(active, column, remaining)
+local function build_rows(column)
   local lines
   if column.seq ~= "" then
     lines = sequence_display.lines(column.seq)
@@ -333,7 +331,7 @@ function M.render(active, remaining)
   local max_height = 0
   local summary_rows = build_summary_rows(active, remaining)
   for i, column in ipairs(columns) do
-    pane_rows[i] = build_rows(active, column, remaining)
+    pane_rows[i] = build_rows(column)
     max_height = math.max(max_height, #pane_rows[i])
   end
   set_compact_widths(active, pane_rows)

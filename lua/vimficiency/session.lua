@@ -98,8 +98,8 @@ local function encode_pretty(value, level)
   end
   if vim.islist(value) then
     local parts = {}
-    for _, v in ipairs(value) do
-      parts[#parts + 1] = inner .. encode_pretty(v, level + 1)
+    for _, item in ipairs(value) do
+      parts[#parts + 1] = inner .. encode_pretty(item, level + 1)
     end
     return "[\n" .. table.concat(parts, ",\n") .. "\n" .. pad .. "]"
   end
@@ -206,11 +206,6 @@ local function load_results(name)
   return data, nil, false
 end
 
---- Build a ResultSession from an active session.
---- Returns nil plus an error string on failure.
----@param active ActiveSession
----@return ResultSession|nil result
----@return string|nil err
 --- Human-readable `'name' (buf N)` for error messages.
 ---@param buf integer
 ---@return string
@@ -228,6 +223,11 @@ local function buf_display_name(buf)
   return string.format("'%s' (buf %d)%s", name, buf, suffix)
 end
 
+--- Build a ResultSession from an active session.
+--- Returns nil plus an error string on failure.
+---@param active ActiveSession
+---@return ResultSession|nil result
+---@return string|nil err
 local function compute_result_for_active(active)
   if not v.nvim_buf_is_valid(active.buf) then
     return nil, string.format(
@@ -253,7 +253,8 @@ local function compute_result_for_active(active)
     win = v.nvim_get_current_win()
   end
 
-  local start_state = active.start_state
+  local start_state = assert(active.start_state,
+    "compute_result_for_active: live session must carry a start_state (only fetched/imported records may have nil)")
   local end_state = util.capture_state(active.buf, win)
 
   util.check_state_inconsistencies(start_state, end_state)

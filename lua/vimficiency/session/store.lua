@@ -22,7 +22,7 @@ local config = require("vimficiency.config")
 ---@field key_nsid    integer                   # >=0 for manual w/ macro recording, -1 for recall (uses global tracking)
 ---@field win         integer                   # Window where session started
 ---@field buf         integer                   # Buffer where session started
----@field start_state VimficiencyState          # Cursor/viewport at start
+---@field start_state? VimficiencyState          # Cursor/viewport at start; nil for fetched/imported records
 ---@field time_started integer                  # hrtime when started
 ---@field status      "active" | "finished"
 ---@field key_seq     VimficiencyKeyEvent[]|nil # Accumulated keys (active only); dropped at finish
@@ -61,7 +61,7 @@ local config = require("vimficiency.config")
 ---@field start_time integer           # hrtime when the session started
 ---@field key_count integer            # Captured key events at finish (authoritative; user_seq is bytes, not keys)
 ---@field timestamp integer            # hrtime when the result was computed (finish time)
----@field finish_reason FinishReason   # Why the session ended (absent on pre-reason saved files)
+---@field finish_reason? FinishReason  # Why the session ended; set by finish_session, absent on pre-reason saved files
 
 --- Normalized view-model for list/suggest UIs.
 --- `display_alias` is presentation-only; use `id` for follow-up actions.

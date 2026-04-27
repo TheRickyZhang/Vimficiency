@@ -141,7 +141,7 @@ end
 -- Shared global `vim.on_key()` namespace for key-count and time-based sessions.
 
 local global_nsid = nil
----@type table<string, {on_event: fun(event: VimficiencyKeyEvent)}>
+---@type table<string, {on_event: fun(event: VimficiencyKeyEvent), on_resolution?: fun(typed: string)}>
 local global_subs = {}
 local global_subs_count = 0
 

@@ -7,7 +7,6 @@
 local v = vim.api
 local log = require("vimficiency.stats.log")
 local ffi_lib = require("vimficiency.ffi")
-local session_store = require("vimficiency.session.store")
 local util = require("vimficiency.util")
 
 local M = {}

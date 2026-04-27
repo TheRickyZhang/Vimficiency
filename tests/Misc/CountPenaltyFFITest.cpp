@@ -11,41 +11,8 @@
 #include <vector>
 
 #include "Keyboard/Key.h"
+#include "LuaExports/Api.h"
 #include "Optimizer/CountPenalty.h"
-
-struct C_ScoreWeights {
-  double w_key;
-  double w_same_finger;
-  double w_same_key;
-  double w_alt_bonus;
-  double w_roll_good;
-  double w_roll_bad;
-};
-
-struct C_KeyInfo {
-  int8_t hand;
-  int8_t finger;
-  double base_cost;
-};
-
-struct C_CountPenaltyOverride {
-  bool has_base;
-  double base;
-  bool has_count_slope;
-  double count_slope;
-  bool has_span_slope;
-  double span_slope;
-};
-
-struct VimficiencyConfigFFI {
-  int default_keyboard;
-  C_ScoreWeights weights;
-  C_KeyInfo keys[KEY_COUNT];
-  int slice_buffer_amount;
-  int32_t shiftwidth;
-  bool use_count_penalty_overrides;
-  C_CountPenaltyOverride count_penalty_overrides[CountClassCOUNT];
-};
 
 namespace {
 void* openVimficiencyLib() {

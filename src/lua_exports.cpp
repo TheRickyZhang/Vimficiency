@@ -43,8 +43,26 @@ static const char* g_count_class_names[] = {
 
 static_assert(sizeof(g_count_class_names) / sizeof(g_count_class_names[0]) == CountClassCOUNT,
               "Count class name table must match CountClass enum");
+static_assert(sizeof(VimficiencyConfigFFI{}.keys) / sizeof(C_KeyInfo) == KEY_COUNT,
+              "C ABI key array size must match Key enum");
+static_assert(
+    sizeof(VimficiencyConfigFFI{}.count_penalty_overrides) / sizeof(C_CountPenaltyOverride)
+        == CountClassCOUNT,
+    "C ABI count penalty override array size must match CountClass enum");
 
-VimficiencyConfigFFI g_config_ffi;
+VimficiencyConfigFFI defaultConfigFfi() {
+  VimficiencyConfigFFI config{};
+  config.default_keyboard = UNIFORM;
+  config.weights.keyWeight = 1.0;
+  config.shiftwidth = -1;
+  for (size_t i = 0; i < KEY_COUNT; i++) {
+    config.keys[i].hand = static_cast<int8_t>(Hand::None);
+    config.keys[i].finger = static_cast<int8_t>(Finger::None);
+  }
+  return config;
+}
+
+VimficiencyConfigFFI g_config_ffi = defaultConfigFfi();
 Config g_config_internal = Config::uniform();
 
 void sync_config() {
@@ -62,12 +80,12 @@ void sync_config() {
     break;
   }
 
-  g_config_internal.weights.w_key = g_config_ffi.weights.w_key;
-  g_config_internal.weights.w_same_finger = g_config_ffi.weights.w_same_finger;
-  g_config_internal.weights.w_same_key = g_config_ffi.weights.w_same_key;
-  g_config_internal.weights.w_alt_bonus = g_config_ffi.weights.w_alt_bonus;
-  g_config_internal.weights.w_roll_good = g_config_ffi.weights.w_roll_good;
-  g_config_internal.weights.w_roll_bad = g_config_ffi.weights.w_roll_bad;
+  g_config_internal.weights.w_key = g_config_ffi.weights.keyWeight;
+  g_config_internal.weights.w_same_finger = g_config_ffi.weights.sameFingerWeight;
+  g_config_internal.weights.w_same_key = g_config_ffi.weights.sameKeyWeight;
+  g_config_internal.weights.w_alt_bonus = g_config_ffi.weights.altHandWeight;
+  g_config_internal.weights.w_roll_good = g_config_ffi.weights.goodRollWeight;
+  g_config_internal.weights.w_roll_bad = g_config_ffi.weights.badRollWeight;
 
   for (size_t i = 0; i < KEY_COUNT; i++) {
     auto &src = g_config_ffi.keys[i];
@@ -138,6 +156,8 @@ const char* vimficiency_get_debug() {
   return debug_storage.c_str();
 }
 
+int vimficiency_version() { return 1; }
+
 const char *vimficiency_debug_config() {
   static std::string debug_storage;
   std::ostringstream oss;
@@ -145,10 +165,10 @@ const char *vimficiency_debug_config() {
   oss << "=== VimficiencyConfig Debug ===\n";
   oss << "default_keyboard: " << g_config_ffi.default_keyboard << "\n";
   oss << "\n--- Weights (FFI) ---\n";
-  oss << "w_key: " << g_config_ffi.weights.w_key << "\n";
-  oss << "w_same_finger: " << g_config_ffi.weights.w_same_finger << "\n";
-  oss << "w_same_key: " << g_config_ffi.weights.w_same_key << "\n";
-  oss << "w_alt_bonus: " << g_config_ffi.weights.w_alt_bonus << "\n";
+  oss << "keyWeight: " << g_config_ffi.weights.keyWeight << "\n";
+  oss << "sameFingerWeight: " << g_config_ffi.weights.sameFingerWeight << "\n";
+  oss << "sameKeyWeight: " << g_config_ffi.weights.sameKeyWeight << "\n";
+  oss << "altHandWeight: " << g_config_ffi.weights.altHandWeight << "\n";
 
   oss << "\n--- Weights (Internal) ---\n";
   oss << "w_key: " << g_config_internal.weights.w_key << "\n";

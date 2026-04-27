@@ -49,7 +49,7 @@ function M.arm_idle(opts)
     timer:start(idle_ms, 0, vim.schedule_wrap(fire))
   end
 
-  local ok = key_tracking.attach_global(function(_event)
+  local ok = key_tracking.attach_global(function()
     reset_timer()
   end, name)
   if not ok then
@@ -90,7 +90,7 @@ function M.arm_keys(opts)
   local count = 0
   local last_fire_hrtime = 0
 
-  local ok = key_tracking.attach_global(function(_event)
+  local ok = key_tracking.attach_global(function()
     if disarmed then return end
     count = count + 1
     if count < every then return end

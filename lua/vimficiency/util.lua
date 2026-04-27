@@ -321,17 +321,19 @@ end
 ---@param help_tag string?
 ---@return VimficiencyBufferKeymap[]
 function M.with_help_keymaps(keymaps, opts, help_tag)
+  ---@type VimficiencyStandardUiKeyOpts
+  local standard
   if type(opts) ~= "table" then
-    opts = { title = opts, docs = help_tag ~= nil }
+    standard = { title = opts --[[@as string]], docs = help_tag ~= nil }
   else
-    opts = {
+    standard = {
       title = opts.title,
       summary = true,
       docs = opts.docs == true,
       settings = opts.settings,
     }
   end
-  return M.with_standard_ui_keymaps(keymaps, opts)
+  return M.with_standard_ui_keymaps(keymaps, standard)
 end
 
 ---@param title string

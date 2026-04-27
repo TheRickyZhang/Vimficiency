@@ -72,7 +72,7 @@ function M.render(active, remaining)
       local chunks = { text, cost, kind }
       if item.kind == "movement" then
         chunks[#chunks + 1] = string.format("-> (%d,%d)",
-          item.landing_row, item.landing_col)
+          item.landing.row, item.landing.col)
       end
       add_row(i, total, chunks, highlights.rank_hl(i))
     end

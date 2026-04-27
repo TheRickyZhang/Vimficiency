@@ -72,7 +72,7 @@ function fields.apply(user_config)
   fields.reset()
 
   local merged = vim.tbl_deep_extend("force", vim.deepcopy(fields._defaults), user_config)
-  merged.watch = detail.normalize_watch(user_config.watch, fields._defaults.watch)
+  merged.watch = detail.normalize_watch(user_config.watch)
   merged.auto_suggest = detail.normalize_auto_suggest(user_config.auto_suggest, fields._defaults.auto_suggest)
 
   for name, value in pairs(merged) do

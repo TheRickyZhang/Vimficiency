@@ -1,5 +1,6 @@
 #pragma once
 
+#include "LuaExports/Api.h"
 #include "Keyboard/Config.h"
 #include "Keyboard/Finger.h"
 #include "Keyboard/Hand.h"
@@ -46,40 +47,6 @@ enum DEFAULT_KEYBOARD {
   UNIFORM,
   QWERTY,
   COLEMAK_DH,
-};
-
-struct C_ScoreWeights {
-  double w_key = 1.0;
-  double w_same_finger{};
-  double w_same_key{};
-  double w_alt_bonus{};
-  double w_roll_good{};
-  double w_roll_bad{};
-};
-
-struct C_KeyInfo {
-  int8_t hand = static_cast<int8_t>(Hand::None);
-  int8_t finger = static_cast<int8_t>(Finger::None);
-  double base_cost = 0.0;
-};
-
-struct C_CountPenaltyOverride {
-  bool has_base = false;
-  double base = 0.0;
-  bool has_count_slope = false;
-  double count_slope = 0.0;
-  bool has_span_slope = false;
-  double span_slope = 0.0;
-};
-
-struct VimficiencyConfigFFI {
-  DEFAULT_KEYBOARD default_keyboard = UNIFORM;
-  C_ScoreWeights weights{};
-  C_KeyInfo keys[KEY_COUNT]{};
-  int slice_buffer_amount{};
-  int32_t shiftwidth = -1;
-  bool use_count_penalty_overrides = false;
-  C_CountPenaltyOverride count_penalty_overrides[CountClassCOUNT]{};
 };
 
 extern VimficiencyConfigFFI g_config_ffi;
