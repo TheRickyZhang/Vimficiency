@@ -37,3 +37,13 @@ inline std::string consume_debug_output() {
 //     dout().str("");
 //     dout().clear();
 // }
+
+// invariant check that is always executed, even in debug mode
+#define CHECK(cond, msg) \
+  do { \
+    if (!(cond)) { \
+      std::fprintf(stderr, "CHECK failed at %s:%d: (%s) %s\n", \
+                   __FILE__, __LINE__, #cond, msg); \
+      std::abort(); \
+    } \
+  } while (0)

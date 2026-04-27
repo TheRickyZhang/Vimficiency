@@ -4,7 +4,7 @@ How the simulate/replay UI faithfully replays a user-captured key sequence
 on top of the original buffer content, and how that precompute stays
 correct under Neovim's async input loop.
 
-Code of record: `lua/vimficiency/simulate/init.lua`.
+Code of record: `lua/vimficiency/simulate.lua`.
 
 ---
 
@@ -280,7 +280,7 @@ during the investigation and removed after the fix landed).
 If a new mode-entering command needs to be recognized, extend the C++
 `SequenceParser`'s `tryParseChange` / `tryParseVisual` (whichever
 applies). The Lua side picks it up automatically via the kind wire.
-Only touch `FALLBACK_*_BARE` tables in `simulate/init.lua` if the new
+Only touch `FALLBACK_*_BARE` tables in `simulate.lua` if the new
 command also needs to work through the char-by-char fallback (rare —
 the fallback now only fires on sequences the grammar genuinely can't
 parse).

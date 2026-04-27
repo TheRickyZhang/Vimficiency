@@ -21,7 +21,7 @@ local open_settings_modal
 --
 --   hardcoded defaults  (in config.lua's `fields.explore`)
 --        ↓ overlaid by
---   user's init.lua declarations  (already merged into `config.explore`
+--   user's setup declarations  (already merged into `config.explore`
 --        by `config.apply`)
 --        ↓ overlaid by
 --   sidecar file (`~/.local/share/nvim/vimficiency/explore_settings.json`)
@@ -849,7 +849,7 @@ function open_settings_modal()
       run = function()
         -- Blow away the sidecar and the in-memory store so the next
         -- `settings_store()` call rebuilds from `config.explore`
-        -- (which itself = hardcoded + init.lua declarations).
+        -- (which itself = hardcoded + setup declarations).
         settings_profile.clear("explore")
         current_settings = nil
         local s = settings_store()

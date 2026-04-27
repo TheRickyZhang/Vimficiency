@@ -51,7 +51,7 @@ TEST_F(ExploreFixtureTest, RenameFixtureStartsInApproachEdit) {
   auto f = ExploreFixtures::loadFixture("rename_int_n_to_m");
   auto view = viewFromFixture(f, navContext, config);
 
-  ASSERT_EQ(view.step().kind, Explore::Phase::ApproachEdit);
+  ASSERT_TRUE(std::holds_alternative<Explore::Approach>(view.step()));
   EXPECT_GT(view.totalEdits(), 0);
   EXPECT_EQ(view.state().cursor, f.startPos);
 
@@ -59,7 +59,7 @@ TEST_F(ExploreFixtureTest, RenameFixtureStartsInApproachEdit) {
   EXPECT_FALSE(recs.empty());
 
   set<string> texts;
-  for (const auto& rec : recs) texts.insert(rec.text);
+  for (const auto& rec : recs) texts.insert(Explore::base(rec).molecule);
   EXPECT_EQ(texts.size(), recs.size()) << "recommendations should be distinct";
 }
 
@@ -69,12 +69,12 @@ TEST_F(ExploreFixtureTest, InsertFixtureDrivesForwardUntilCompletion) {
   auto f = ExploreFixtures::loadFixture("insert_plus_one");
   auto view = viewFromFixture(f, navContext, config);
 
-  ASSERT_EQ(view.step().kind, Explore::Phase::ApproachEdit);
+  ASSERT_TRUE(std::holds_alternative<Explore::Approach>(view.step()));
 
   int steps = 0;
   const int maxSteps = 60;  // per-molecule walk; bounded generously above
                             // the Manhattan distance between start and target
-  while (view.step().kind == Explore::Phase::ApproachEdit &&
+  while (std::holds_alternative<Explore::Approach>(view.step()) &&
          steps < maxSteps) {
     auto recs = view.recommendations(5);
     if (recs.empty()) {
@@ -82,19 +82,19 @@ TEST_F(ExploreFixtureTest, InsertFixtureDrivesForwardUntilCompletion) {
           << "empty frontier at step " << steps
           << " cursor=(" << view.state().cursor.line << ","
           << view.state().cursor.col << ")"
-          << " editIndex=" << view.step().editIndex;
+          << " editIndex=" << std::get<Explore::Approach>(view.step()).editIndex;
       break;
     }
 
-    const Explore::Recommendation* pick = nullptr;
+    const Explore::Suggestion* pick = nullptr;
     for (const auto& rec : recs) {
-      if (rec.kind == "movement") {
+      if (Explore::suggestionKind(rec) == "movement") {
         pick = &rec;
         break;
       }
     }
     if (!pick) break;  // no motion available -> need edit path, not tested here
-    ASSERT_TRUE(view.applyMovement(pick->text).has_value());
+    ASSERT_TRUE(view.applyMovement(Explore::base(*pick).molecule).has_value());
     steps++;
   }
 

@@ -145,10 +145,11 @@ vector<NavFrontierItem> rankNavFrontier(
       if (!seenSeq.insert(seq).second) continue;
     }
     items.push_back(NavFrontierItem{
-        .molecule = std::move(seq),
-        .landingPos = s.getPos(),
-        .cost = s.getEffort(),
-    });
+        FrontierItem{
+            .molecule = std::move(seq),
+            .goalPos = s.getPos(),
+            .cost = s.getEffort(),
+        }});
     if (static_cast<int>(items.size()) >= query.maxCount) break;
   }
   return items;
@@ -165,14 +166,16 @@ vector<NavFrontierItem> rankNavFrontierToLine(
   if (targetLine < 0 || targetLine >= static_cast<int>(lines.size())) return {};
   return rankNavFrontier(
       NavFrontierQuery{
-          .lines = lines,
-          .cursor = cursor,
-          .targetRange = CharRange(
+          FrontierQuery{
+              .lines = lines,
+              .cursor = cursor,
+              .maxCount = maxCount,
+          },
+          CharRange(                       // targetRange
               CursorPos(targetLine, 0),
               CursorPos(targetLine, lines[targetLine].effectiveSize())),
-          .boundary = boundary,
-          .navContext = navContext,
-          .maxCount = maxCount,
+          boundary,                        // boundary
+          navContext,                      // navContext
       },
       config);
 }

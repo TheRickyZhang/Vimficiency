@@ -9,6 +9,11 @@ Top-level modules are the plugin entry and cross-cutting infrastructure:
 | File | Purpose |
 |------|---------|
 | `init.lua` | Plugin entry point. Registers `:Vimfy` command with subcommands. |
+| `session.lua` | Session lifecycle: start, finish, simulate, view. Required as `vimficiency.session`. |
+| `simulate.lua` | Side-by-side animation of motion sequences. Required as `vimficiency.simulate`. |
+| `explore.lua` | Interactive result exploration view. Required as `vimficiency.explore`. |
+| `play.lua` | Play-screen settings and modal wiring. Required as `vimficiency.play`. |
+| `stats.lua` | Stats aggregation and display. Required as `vimficiency.stats`. |
 | `commands.lua` | `:Vimfy` subcommand dispatch + tab completion. |
 | `config.lua` | Shared configuration constants (Lua-side only). |
 | `config_detail.lua` | Config introspection / validation helpers. |
@@ -16,13 +21,12 @@ Top-level modules are the plugin entry and cross-cutting infrastructure:
 | `util.lua` | State capture, ID generation, UI helpers. |
 | `mapping_scan.lua` | Scans user mappings for `<Plug>Vimfy*` routing. |
 
-Three subdirectories group the domain logic:
+Subdirectories hold supporting modules for each domain:
 
 ### `session/` — records and lifecycle
 
 | File | Purpose |
 |------|---------|
-| `session/init.lua` | Session lifecycle: start, finish, simulate, view. Required as `vimficiency.session`. |
 | `session/store.lua` | Canonical session records + manual/recall indexing. |
 | `session/alias.lua` | Alias grammar validation for Mark / Watch / Recall handles. |
 | `session/result_view.lua` | Pure formatting helpers (position string, body lines) shared by `finish` and auto-suggest. |
@@ -35,12 +39,6 @@ Three subdirectories group the domain logic:
 | `capture/recall.lua` | Rolling recall-ring capture driven by key events. |
 | `capture/end_trigger.lua` | Idle-based auto-end triggers (Watch / Suggest). |
 | `capture/auto_suggest.lua` | Idle-trigger auto-suggest (runs optimizer on a recall window). |
-
-### `simulate/` — replay view
-
-| File | Purpose |
-|------|---------|
-| `simulate/init.lua` | Side-by-side animation of motion sequences. Required as `vimficiency.simulate`. |
 
 ## Session Architecture
 

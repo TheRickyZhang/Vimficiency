@@ -1,10 +1,10 @@
-#include "LuaExports/Shared.h"
+#include "LuaExports/Common.h"
 
 #include "Optimizer/GlobalRuntimeOptions.h"
 #include "Utils/Debug.h"
 #include "VimCore/VimOptions.h"
 
-namespace vimficiency::lua_exports {
+namespace LuaExports {
 
 static const char* g_key_names[] = {
 #define X(name, str) str,
@@ -98,9 +98,9 @@ void sync_config() {
   }
 }
 
-}  // namespace vimficiency::lua_exports
+}  // namespace LuaExports
 
-using namespace vimficiency::lua_exports;
+using namespace LuaExports;
 
 extern "C" {
 

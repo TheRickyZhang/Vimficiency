@@ -2,7 +2,7 @@
 --
 -- Mirror of the explore settings pattern:
 --   - hardcoded defaults in config.lua's `fields.play`
---   - init.lua declarations merged over by `config.apply`
+--   - user setup declarations merged over by `config.apply`
 --   - sidecar file auto-layered on top, mutated on every toggle
 --
 -- The only things local to a play session are:
@@ -46,7 +46,7 @@ local function update_setting(key, value)
   settings_profile.save("play", store)
 end
 
----Public accessor — session/init.lua's `simulate()` reads these on
+---Public accessor — session.lua's `simulate()` reads these on
 ---every invocation to decide whether to include the user sequence and
 ---how many optimal results to surface.
 ---@return table  copy of the current settings

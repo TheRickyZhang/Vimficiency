@@ -14,7 +14,7 @@
 -- See dev/lua/key-normalization.md for the full rationale and contract.
 --
 -- Callers:
---   - lua/vimficiency/explore/init.lua — on_key buffer for the explore session
+--   - lua/vimficiency/explore.lua — on_key buffer for the explore session
 --   - lua/vimficiency/capture/key_tracking.lua — mark/watch/recall capture
 --
 -- Any new callsite that forwards on_key output to the optimizer/FFI MUST

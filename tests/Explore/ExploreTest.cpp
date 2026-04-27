@@ -61,7 +61,7 @@ TEST_F(ExploreViewTest, CompletedWhenInitialEqualsGoal) {
   Lines lines{Line("hello world")};
   auto view = makeView(lines, {0, 0}, lines, {0, 0});
 
-  EXPECT_EQ(view.step().kind, Explore::Phase::Completed);
+  EXPECT_TRUE(std::holds_alternative<Explore::Completed>(view.step()));
   EXPECT_EQ(view.totalEdits(), 0);
   EXPECT_TRUE(view.recommendations(5).empty());
 }
@@ -70,7 +70,7 @@ TEST_F(ExploreViewTest, PureMotionGoalStartsInApproachEdit) {
   Lines lines{Line("foo bar baz")};
   auto view = makeView(lines, {0, 0}, lines, {0, 4});
 
-  EXPECT_EQ(view.step().kind, Explore::Phase::ApproachEdit);
+  EXPECT_TRUE(std::holds_alternative<Explore::Approach>(view.step()));
   EXPECT_EQ(view.totalEdits(), 0);
 
   auto range = view.currentTargetRange();
@@ -81,7 +81,7 @@ TEST_F(ExploreViewTest, PureMotionGoalStartsInApproachEdit) {
   auto recs = view.recommendations(5);
   ASSERT_FALSE(recs.empty());
   EXPECT_TRUE(any_of(recs.begin(), recs.end(), [](const auto& rec) {
-    return rec.kind == "movement" && rec.landingRow == 0 && rec.landingCol == 4;
+    return Explore::suggestionKind(rec) == "movement" && Explore::base(rec).goalPos.line == 0 && Explore::base(rec).goalPos.col == 4;
   }));
 }
 
@@ -90,7 +90,7 @@ TEST_F(ExploreViewTest, PureMotionGoalCompletesWhenCursorReachesGoal) {
   auto view = makeView(lines, {0, 0}, lines, {0, 4});
 
   ASSERT_TRUE(view.applyMovement("w").has_value());
-  EXPECT_EQ(view.step().kind, Explore::Phase::Completed);
+  EXPECT_TRUE(std::holds_alternative<Explore::Completed>(view.step()));
   EXPECT_EQ(view.state().cursor, CursorPos(0, 4));
   EXPECT_EQ(view.state().acceptedSeq, "w");
   EXPECT_TRUE(view.recommendations(5).empty());
@@ -101,8 +101,8 @@ TEST_F(ExploreViewTest, ApproachesEditWhenLinesDiffer) {
   Lines goal{Line("foo QUX baz")};
   auto view = makeView(initial, {0, 0}, goal, {0, 10});
 
-  EXPECT_EQ(view.step().kind, Explore::Phase::ApproachEdit);
-  EXPECT_EQ(view.step().editIndex, 0);
+  EXPECT_TRUE(std::holds_alternative<Explore::Approach>(view.step()));
+  EXPECT_EQ(std::get<Explore::Approach>(view.step()).editIndex, 0);
   EXPECT_GT(view.totalEdits(), 0);
   EXPECT_EQ(view.state().cursor.line, 0);
   EXPECT_EQ(view.state().cursor.col, 0);
@@ -114,21 +114,21 @@ TEST_F(ExploreViewTest, RecommendationsAreDiverse) {
   Lines goal{Line("foo bar baz qux ZED")};
   auto view = makeView(initial, {0, 0}, goal, {0, 18});
 
-  ASSERT_EQ(view.step().kind, Explore::Phase::ApproachEdit);
+  ASSERT_TRUE(std::holds_alternative<Explore::Approach>(view.step()));
   auto recs = view.recommendations(5);
   ASSERT_FALSE(recs.empty()) << "expected at least one motion recommendation";
 
   // Distinct recommendation texts — grouping/dedup works.
   set<string> texts;
   for (const auto& rec : recs)
-    texts.insert(rec.text);
+    texts.insert(Explore::base(rec).molecule);
   EXPECT_EQ(texts.size(), recs.size());
 
   // Motion recs (if any) changed the cursor from the origin.
   for (const auto& rec : recs) {
-    if (rec.kind == "movement") {
-      const bool moved = rec.landingRow != 0 || rec.landingCol != 0;
-      EXPECT_TRUE(moved) << "motion '" << rec.text << "' did not change cursor";
+    if (Explore::suggestionKind(rec) == "movement") {
+      const bool moved = Explore::base(rec).goalPos.line != 0 || Explore::base(rec).goalPos.col != 0;
+      EXPECT_TRUE(moved) << "motion '" << Explore::base(rec).molecule << "' did not change cursor";
     }
   }
 }
@@ -140,7 +140,7 @@ TEST_F(ExploreViewTest, ApplyMotionAdvancesCursorAndSequence) {
 
   auto outcome = view.applyMovement("w");
   ASSERT_TRUE(outcome.has_value());
-  EXPECT_EQ(view.step().kind, Explore::Phase::ApproachEdit);
+  EXPECT_TRUE(std::holds_alternative<Explore::Approach>(view.step()));
   EXPECT_EQ(view.state().cursor.col, 4);
   EXPECT_EQ(view.state().acceptedSeq, "w");
   EXPECT_GT(view.state().acceptedCost, 0.0);
@@ -238,8 +238,8 @@ TEST_F(ExploreViewTest, BeginEditTransitionsIntoPendingInsert) {
 
   auto outcome = view.beginEdit(true, "BX");
   ASSERT_TRUE(outcome.has_value());
-  EXPECT_EQ(view.step().kind, Explore::Phase::PendingInsert);
-  EXPECT_EQ(view.step().remainingText, "BX");
+  EXPECT_TRUE(std::holds_alternative<Explore::PendingInsert>(view.step()));
+  EXPECT_EQ(std::get<Explore::PendingInsert>(view.step()).remainingText, "BX");
 
   // Recommendations are empty outside ApproachEdit.
   EXPECT_TRUE(view.recommendations(5).empty());
@@ -257,7 +257,7 @@ TEST_F(ExploreViewTest, OutOfScopeEditRejectedWithoutStateChange) {
   auto outcome = view.applyEdit("totally-not-a-real-edit");
   ASSERT_FALSE(outcome.has_value());
   EXPECT_EQ(view.acceptedRevision(), priorRevision);
-  EXPECT_EQ(view.step().kind, Explore::Phase::ApproachEdit);
+  EXPECT_TRUE(std::holds_alternative<Explore::Approach>(view.step()));
 }
 
 TEST_F(ExploreViewTest, AcceptBufferStateRejectsInvalidCursor) {
@@ -290,13 +290,15 @@ TEST(TransformFrontier, PreservesDistinctResultsFromSameStart) {
   DiffState diff(CursorPos(0, 0), CursorPos(0, 1), "x", "foo", TransformBoundary{});
   auto recs = rankTransformFrontier(
       TransformFrontierQuery{
-          .lines = Lines{Line("x")},
-          .cursor = {0, 0},
-          .diff = diff,
-          .maxCount = 10,
-          // The test's intent is to verify that MULTIPLE molecules
-          // reaching the same goal state are preserved — so opt in.
-          .allowMultiplePerPosition = true,
+          FrontierQuery{
+              .lines = Lines{Line("x")},
+              .cursor = {0, 0},
+              .maxCount = 10,
+              // The test's intent is to verify that MULTIPLE molecules
+              // reaching the same goal state are preserved — so opt in.
+              .allowMultiplePerPosition = true,
+          },
+          diff,  // diff
       },
       Config::uniform());
   ASSERT_GE(recs.size(), 2u);
@@ -313,26 +315,26 @@ TEST_F(ExploreViewTest, AcceptInsertExitAdvancesPhaseOnMatchingBuffer) {
   // Get the cursor to the edit target via the cheapest motion.
   auto recs = view.recommendations(5);
   ASSERT_FALSE(recs.empty());
-  const Explore::Recommendation* motion = nullptr;
+  const Explore::Suggestion* motion = nullptr;
   for (const auto& rec : recs) {
-    if (rec.kind == "movement") {
+    if (Explore::suggestionKind(rec) == "movement") {
       motion = &rec;
       break;
     }
   }
   if (motion)
-    ASSERT_TRUE(view.applyMovement(motion->text).has_value());
+    ASSERT_TRUE(view.applyMovement(Explore::base(*motion).molecule).has_value());
 
   // Simulate the Lua layer: beginEdit(true, typedText) parks us in
   // PendingInsert; the post-insert buffer then validates via acceptInsertExit.
   ASSERT_TRUE(view.beginEdit(true, "B").has_value());
-  ASSERT_EQ(view.step().kind, Explore::Phase::PendingInsert);
+  ASSERT_TRUE(std::holds_alternative<Explore::PendingInsert>(view.step()));
 
   auto outcome = view.acceptInsertExit(goal, {0, 2}, "");
   ASSERT_TRUE(outcome.has_value());
   EXPECT_EQ(view.state().lines, goal);
   // Single-edit plan → advancing past it lands in Completed.
-  EXPECT_EQ(view.step().kind, Explore::Phase::Completed);
+  EXPECT_TRUE(std::holds_alternative<Explore::Completed>(view.step()));
 }
 
 TEST_F(ExploreViewTest, AcceptInsertExitRejectsMismatchedBuffer) {
@@ -343,8 +345,8 @@ TEST_F(ExploreViewTest, AcceptInsertExitRejectsMismatchedBuffer) {
   auto recs = view.recommendations(5);
   ASSERT_FALSE(recs.empty());
   for (const auto& rec : recs) {
-    if (rec.kind == "movement") {
-      ASSERT_TRUE(view.applyMovement(rec.text).has_value());
+    if (Explore::suggestionKind(rec) == "movement") {
+      ASSERT_TRUE(view.applyMovement(Explore::base(rec).molecule).has_value());
       break;
     }
   }
@@ -354,7 +356,7 @@ TEST_F(ExploreViewTest, AcceptInsertExitRejectsMismatchedBuffer) {
   Lines wrong{Line("aXc")};
   auto outcome = view.acceptInsertExit(wrong, {0, 2}, "");
   ASSERT_FALSE(outcome.has_value());
-  EXPECT_EQ(view.step().kind, Explore::Phase::PendingInsert);
+  EXPECT_TRUE(std::holds_alternative<Explore::PendingInsert>(view.step()));
   EXPECT_EQ(view.acceptedRevision(), priorRevision);
 }
 
@@ -369,8 +371,8 @@ TEST_F(ExploreViewTest, AcceptInsertExitRejectsInvalidCursor) {
   auto recs = view.recommendations(5);
   ASSERT_FALSE(recs.empty());
   for (const auto& rec : recs) {
-    if (rec.kind == "movement") {
-      ASSERT_TRUE(view.applyMovement(rec.text).has_value());
+    if (Explore::suggestionKind(rec) == "movement") {
+      ASSERT_TRUE(view.applyMovement(Explore::base(rec).molecule).has_value());
       break;
     }
   }
@@ -381,7 +383,7 @@ TEST_F(ExploreViewTest, AcceptInsertExitRejectsInvalidCursor) {
   ASSERT_FALSE(outcome.has_value());
   EXPECT_EQ(outcome.error().reason,
             "buffer state reported an invalid cursor position");
-  EXPECT_EQ(view.step().kind, Explore::Phase::PendingInsert);
+  EXPECT_TRUE(std::holds_alternative<Explore::PendingInsert>(view.step()));
   EXPECT_EQ(view.acceptedRevision(), priorRevision);
 }
 
@@ -424,8 +426,8 @@ TEST_F(ExploreViewTest, AcceptInsertExitRejectsUnparseableRawKeys) {
 
   auto recs = view.recommendations(5);
   for (const auto& rec : recs) {
-    if (rec.kind == "movement") {
-      ASSERT_TRUE(view.applyMovement(rec.text).has_value());
+    if (Explore::suggestionKind(rec) == "movement") {
+      ASSERT_TRUE(view.applyMovement(Explore::base(rec).molecule).has_value());
       break;
     }
   }
@@ -434,7 +436,7 @@ TEST_F(ExploreViewTest, AcceptInsertExitRejectsUnparseableRawKeys) {
   auto outcome = view.acceptInsertExit(goal, CursorPos(0, 1), "<");
   ASSERT_FALSE(outcome.has_value());
   EXPECT_EQ(outcome.error().reason, "raw keys failed to parse");
-  EXPECT_EQ(view.step().kind, Explore::Phase::PendingInsert);
+  EXPECT_TRUE(std::holds_alternative<Explore::PendingInsert>(view.step()));
 }
 
 TEST_F(ExploreViewTest, ApplyEditRejectedForMotionOnlyGoals) {
@@ -475,12 +477,12 @@ TEST_F(ExploreViewTest, CancelPendingInsertRestoresApproachEditWithoutRedo) {
   auto view = makeView(initial, {0, 0}, goal, {0, 1});
 
   ASSERT_TRUE(view.beginEdit(true, "B").has_value());
-  ASSERT_EQ(view.step().kind, Explore::Phase::PendingInsert);
+  ASSERT_TRUE(std::holds_alternative<Explore::PendingInsert>(view.step()));
   EXPECT_FALSE(view.canRedo());
 
   auto outcome = view.cancelPendingInsert();
   ASSERT_TRUE(outcome.has_value());
-  EXPECT_EQ(view.step().kind, Explore::Phase::ApproachEdit);
+  EXPECT_TRUE(std::holds_alternative<Explore::Approach>(view.step()));
   // Crucially: redo stack NOT polluted with the rejected/abandoned insert.
   EXPECT_FALSE(view.canRedo());
 }
@@ -493,16 +495,18 @@ TEST_F(ExploreViewTest, RecommendationsCarryTypedText) {
   // Move cursor onto the edit target so edit recs populate.
   auto recs = view.recommendations(5);
   for (const auto& rec : recs) {
-    if (rec.kind == "movement") {
-      ASSERT_TRUE(view.applyMovement(rec.text).has_value());
+    if (Explore::suggestionKind(rec) == "movement") {
+      ASSERT_TRUE(view.applyMovement(Explore::base(rec).molecule).has_value());
       break;
     }
   }
   recs = view.recommendations(10);
   bool sawInsertAtom = false;
   for (const auto& rec : recs) {
-    if (rec.kind == "edit" && !rec.typedText.empty())
+    if (auto* edit = std::get_if<TransformFrontierItem>(&rec);
+        edit && !edit->typedText.empty()) {
       sawInsertAtom = true;
+    }
   }
   EXPECT_TRUE(sawInsertAtom)
       << "expected at least one edit recommendation with a non-empty typedText";
@@ -524,8 +528,8 @@ TEST_F(ExploreViewTest, MotionRecommendationsAreFirstMoleculesOfOptimizerPaths) 
   auto recs = view.recommendations(10, /*allowMultiplePerPosition=*/true);
   vector<string> exploreMotionTexts;
   for (const auto& rec : recs) {
-    if (rec.kind == "movement")
-      exploreMotionTexts.push_back(rec.text);
+    if (Explore::suggestionKind(rec) == "movement")
+      exploreMotionTexts.push_back(Explore::base(rec).molecule);
   }
   ASSERT_FALSE(exploreMotionTexts.empty());
 
