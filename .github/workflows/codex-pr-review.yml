@@ -148,19 +148,45 @@ jobs:
             );
 
             const comments = [];
-            let dropped = 0;
+            const dropped = [];  // diagnostics for the run log only
 
             for (const c of parsed.comments) {
-              if (!c || !isString(c.path) || !isInt(c.line) || c.line < 1) { dropped++; continue; }
-              if (c.side !== "RIGHT") { dropped++; continue; }
-              if (!isString(c.body) || !isString(c.severity)) { dropped++; continue; }
+              if (!c || !isString(c.path) || !isInt(c.line) || c.line < 1) {
+                dropped.push({ reason: "bad shape", c });
+                continue;
+              }
+              if (c.side !== "RIGHT") {
+                dropped.push({ reason: "non-RIGHT side", c });
+                continue;
+              }
+              if (!isString(c.body) || !isString(c.severity)) {
+                dropped.push({ reason: "missing body or severity", c });
+                continue;
+              }
 
               const validLines = validLinesByPath.get(c.path);
-              if (!validLines || !validLines.has(c.line)) { dropped++; continue; }
+              if (!validLines) {
+                dropped.push({ reason: `path not in PR diff (${c.path})`, c });
+                continue;
+              }
+              if (!validLines.has(c.line)) {
+                dropped.push({ reason: `line ${c.line} not in diff for ${c.path}`, c });
+                continue;
+              }
 
               const severity = c.severity.toLowerCase();
               comments.push({ path: c.path, line: c.line, side: "RIGHT", body: `[${severity}] ${c.body}` });
               if (comments.length >= 20) break;
+            }
+
+            // Surface dropped comments in the run log so we can diagnose
+            // "no inline issues appeared" without polluting the PR.
+            for (const d of dropped) {
+              core.notice(
+                `Dropped inline comment: ${d.reason}\n` +
+                `  path=${d.c?.path} line=${d.c?.line} severity=${d.c?.severity}\n` +
+                `  body=${(d.c?.body || "").slice(0, 200)}`
+              );
             }
 
             // Hide prior bot inline review comments before posting fresh
@@ -192,20 +218,23 @@ jobs:
               } catch (err) {
                 if (err?.status === 422) {
                   // GitHub couldn't resolve at least one target line.
-                  // Surface the failure in the summary so reviewers know.
-                  parsed.body = (parsed.body || "") +
-                    "\n\n_(Inline comments omitted — GitHub could not resolve at least one target line.)_";
+                  // Inline post failed; the summary still goes out.
+                  // Logged to the action run, not the PR conversation.
+                  core.warning(`createReview failed with 422; inline comments not posted.`);
                 } else {
                   throw err;
                 }
               }
             }
 
-            const droppedNote = dropped > 0
-              ? `\n\n_(Filtered ${dropped} inline comment(s) that did not resolve to this PR diff.)_`
+            // When the model produced no inline comments at all, surface
+            // that to the reader so "summary only" reads as a deliberate
+            // outcome instead of a missing section.
+            const noInlineNote = comments.length === 0
+              ? "\n\n_No inline comments._"
               : "";
 
-            await postSummary(parsed.body + droppedNote);
+            await postSummary(parsed.body + noInlineNote);
 
             // ----------------------------------------------------------------
             // Helpers
