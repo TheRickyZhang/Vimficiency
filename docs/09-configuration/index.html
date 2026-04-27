@@ -107,7 +107,7 @@ its own timer and cooldown, configured under its own key.</p>
 
 
 <table><thead><tr><th>Parameter</th><th>Meaning</th></tr></thead><tbody><tr><td><code dir="auto">watch.idle.ms</code> / <code dir="auto">auto_suggest.idle.ms</code></td><td>Real keystroke idleness, in ms, before the trigger fires.</td></tr><tr><td><code dir="auto">auto_suggest.cost.ms</code></td><td>Same semantic as <code dir="auto">idle.ms</code> but dedicated to the cost trigger.</td></tr><tr><td><code dir="auto">watch.cooldown_ms</code> / <code dir="auto">auto_suggest.cooldown_ms</code></td><td>Minimum time between consecutive fires. Safety rail for low <code dir="auto">idle.ms</code>.</td></tr></tbody></table>
-<p>“Real keystroke” excludes cmdline input and Vimficiency admin
+<p>“Real keystroke” excludes cmdline input and Vimfy admin
 keystrokes, so <code dir="auto">:Vimfy</code> commands and <code dir="auto">vimfy.map</code>-routed bindings don’t
 reset the idle timer.</p>
 <p>A bare <code dir="auto">ms</code> inside any trigger object universally means “idle
