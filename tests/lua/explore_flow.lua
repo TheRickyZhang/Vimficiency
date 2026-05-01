@@ -121,7 +121,7 @@ test("explore flow: natural motion updates cursor and completes motion-only goal
       wait_for("motion-only goal should complete", function()
         local st = explore.status()
         return st
-          and st.phase.kind == "Completed"
+          and st.is_completed
           and st.cursor.row == motion.landing.row
           and st.cursor.col == motion.landing.col
           and st.accepted_seq ~= ""
@@ -139,10 +139,16 @@ test("explore flow: insert recommendation accepts matching scratch edit", functi
       local edit = first_recommendation("edit", enters_insert_mode)
       feed(edit.text .. edit.typed_text .. "<Esc>")
 
+      -- After Stage 2: completion requires the cursor to actually reach
+      -- goalPos, not merely "all edits applied". Insert exits at the
+      -- post-typed-text cursor (here col 2), so the session lands in
+      -- Navigate(totalEdits) — buffer matches goal, but cursor still has
+      -- to travel. Assert the buffer-shape advance, not is_completed.
       wait_for("matching insert should reach the goal buffer", function()
         local st = explore.status()
         return st
-          and st.phase.kind == "Completed"
+          and st.phase.kind == "Navigate"
+          and st.phase.edit_index == st.total_edits
           and vim.deep_equal(st.session_lines, { "aBc" })
           and vim.deep_equal(st.scratch_lines, { "aBc" })
           and st.pending == nil
@@ -163,7 +169,7 @@ test("explore flow: insert mismatch reverts scratch buffer", function()
       wait_for("mismatched insert should revert to the current fencepost", function()
         local st = explore.status()
         return st
-          and st.phase.kind == "ApproachEdit"
+          and (st.phase.kind == "Navigate" or st.phase.kind == "Transform")
           and vim.deep_equal(st.session_lines, { "abc" })
           and vim.deep_equal(st.scratch_lines, { "abc" })
           and st.pending == nil

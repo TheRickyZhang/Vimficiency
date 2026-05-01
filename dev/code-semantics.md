@@ -193,6 +193,20 @@ Use the narrowest directional term that matches the semantics.
 
 ## State Progress Naming
 
+### Step vs phase vs planned edit
+
+- **Step** is the small replay/execution unit: usually one parsed sequence token
+  or one immediate user action/molecule.
+- **Phase** is the larger Explore state-machine unit: `Navigate`,
+  `Transform`, `Insert`, or `Completed`.
+- **Planned edit** is one composition-plan edit boundary, from fencepost `i` to
+  fencepost `i + 1`; use `plannedEdit` / `plannedEditAt`, not "composition
+  step".
+
+Use "step" for token replay, step-by-step debug traces, cursor stepping, and
+generic numbered procedures. Use "phase" for Explore state transitions. Use
+"planned edit" for composition-plan boundaries.
+
 ### Temporal names
 
 - **initial**: starting user-visible state
@@ -214,11 +228,11 @@ Examples:
 - **`editsCompleted`** means completed transitions, not "index of current edit"
 - `linesAfterNEdits_[n]` means the buffer state after exactly `n` edits
 
-These are historical code names for transform-step progress counters.
+These are historical code names for planned-edit progress counters.
 
 Fencepost rule:
 
-- arrays keyed by "after N steps" should usually have size `total + 1`
+- arrays keyed by "after N edits" should usually have size `total + 1`
 
 ## Buffer Slices and Windows
 

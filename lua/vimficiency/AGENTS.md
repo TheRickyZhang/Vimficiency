@@ -136,6 +136,10 @@ Lua-side constants (not pushed to C++):
 
 ## Simulation (simulate.lua)
 
+Terminology: **step** means the small replay unit, usually one parsed token.
+Interactive Explore's larger state-machine units are **phases** (`Navigate`,
+`Transform`, `Insert`, `Completed`).
+
 `simulate_compare(lines, row, col, sequences)`:
 - Precomputes replay snapshots asynchronously by driving Neovim itself as the
   oracle (`nvim_feedkeys` into a hidden probe window), then opens a new tab

@@ -139,7 +139,7 @@ struct DeletionGoalHandler {
         );
 
         const auto& navResults = navResult.getResults();
-        if (!navResults.empty() && navResults[0].isValid()) {
+        if (!navResults.empty() && !navResults[0].getSequence().empty()) {
           Sequence visualSeq("v");
           visualSeq.append(navResults[0].getSequence().view());
           visualSeq.append("d");

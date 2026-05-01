@@ -95,7 +95,7 @@ TEST_F(NavOptimizerHumanApprovalTests, Motion_WordMotions) {
   EXPECT_FALSE(results.empty());
 
   // Should find some valid path to "four"
-  EXPECT_TRUE(results[0].isValid())
+  EXPECT_FALSE(results[0].getSequence().empty())
       << "Should find word-based navigation";
 }
 

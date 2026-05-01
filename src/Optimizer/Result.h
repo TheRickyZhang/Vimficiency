@@ -12,7 +12,6 @@ struct Result {
   Result(const std::string& s, double c) : sequence_(s), keyCost_(c) {}
   Result(std::string&& s, double c) : sequence_(std::move(s)), keyCost_(c) {}
 
-  bool isValid() const { return !sequence_.empty(); }
   const Sequence& getSequence() const { return sequence_; }
   double getCost() const { return keyCost_; }
 

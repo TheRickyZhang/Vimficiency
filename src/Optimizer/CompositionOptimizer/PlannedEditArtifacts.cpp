@@ -1,4 +1,4 @@
-#include "CompositionStepArtifacts.h"
+#include "PlannedEditArtifacts.h"
 
 #include <algorithm>
 #include <cassert>

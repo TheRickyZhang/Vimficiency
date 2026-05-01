@@ -20,7 +20,7 @@ Our implementation uses A* search to balance correctness with efficiency, with a
 Some paricularly challenging aspects to implement are:\
 abstraction over motion types, particularly word. We create different edge types.
 creating a boundary to not do actions outside a current subbuffer (pass only subset for efficiency)
-composing multiple transform steps to be consistent and reasonable in producing an answer.
+composing multiple planned edits to be consistent and reasonable in producing an answer.
 
 Lua uses an FFI bridge to call the C++ library for efficiency. Payload framing across that bridge follows three fixed conventions (length-prefixing, ASCII Unit/Record separators `\x1f`/`\x1e`, and newline-separated text) with shared constants on both sides; see `dev/lua/ffi-separators.md` for when to use each and the invariants each one depends on.
 
@@ -29,4 +29,3 @@ Finished session results live in two tiers. The **workspace** is an in-memory ri
 Replay / simulate (`:Vimfy play <alias>`) reconstructs the intermediate state at every step of a captured sequence by driving a hidden probe window through `nvim_feedkeys` and sampling after each token. The probe is our mode-faithful oracle — `:normal` flattens insert/visual, so it isn't usable. Getting the oracle synchronized with Neovim's async input loop is load-bearing; see `dev/lua/replay-precompute.md` for the drain strategy (synchronous `nx` for pure Normal-mode motions, coroutine-yield for modal-entering tokens) and the per-token telemetry that the `D` debug keybind surfaces.
 
 Tests are very crucial to respecting the edge cases of vim. We primarily use Neovim itself with the Neovim oracle as the source of truth for how actions should execute, and any deviation is a correctness issue.
-

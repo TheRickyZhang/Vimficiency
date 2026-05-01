@@ -15,7 +15,7 @@ protected:
   BaseOptimizerResult(std::vector<ElementType> results)
     : results_(std::move(results)) {}
 
-  // Only available when ElementType is streamable (e.g. Result, RangeResult).
+  // Only available when ElementType is streamable (e.g. Result, LandingResult).
   // Subtypes with non-streamable elements (e.g. TransformResult) provide their own operator<<.
   friend std::ostream& operator<<(std::ostream& os, const BaseOptimizerResult& res)
     requires requires(std::ostream& o, const ElementType& e) { o << e; }

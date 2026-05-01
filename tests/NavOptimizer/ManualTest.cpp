@@ -60,7 +60,7 @@ protected:
                         userSeq, boundary, navContext).getResults();
   }
 
-  static vector<RangeResult>
+  static vector<LandingResult>
   runOptimizerToRange(const Lines &lines, CursorPos start,
                       CursorPos rangeBegin, CursorPos rangeEnd,
                       const string &userSeq,
@@ -69,9 +69,9 @@ protected:
     NavOptimizer opt(config);
     NavBoundary boundary;
     // allowMultiplePerPosition=true for tests to see all paths
-    return opt.optimizeToRange(lines, start,
+    return opt.optimize(lines, start,
                                toMotionInterval(lines, CharRange(rangeBegin, rangeEnd)),
-                               NavOptimizerRangeParams{}
+                               NavOptimizerParams{}
                                    .withMaxResults(maxResults)
                                    .withMaxNodesPopped(20000)
                                    .withAllowMultiplePerPosition(true),
@@ -138,7 +138,7 @@ TEST_F(NavOptimizer_ManualTest, BackwardStart_CanUseForwardCountedVerticalAfterO
 
 
 // =============================================================================
-// optimizeToRange tests
+// optimize tests
 // =============================================================================
 
 TEST_F(NavOptimizer_ManualTest, RangeBasic_SameLine) {
@@ -148,7 +148,7 @@ TEST_F(NavOptimizer_ManualTest, RangeBasic_SameLine) {
   CursorPos rangeBegin(0, 5);
   CursorPos rangeEnd(0, 10);
 
-  vector<RangeResult> results = runOptimizerToRange(lines, start, rangeBegin, rangeEnd, "lllll");
+  vector<LandingResult> results = runOptimizerToRange(lines, start, rangeBegin, rangeEnd, "lllll");
 
   EXPECT_FALSE(results.empty()) << "Should find at least one path to range";
   for (const auto& r : results) {
@@ -164,7 +164,7 @@ TEST_F(NavOptimizer_ManualTest, RangeBasic_MultiLine) {
   CursorPos rangeBegin(1, 0);
   CursorPos rangeEnd(2, 5);
 
-  vector<RangeResult> results = runOptimizerToRange(lines, start, rangeBegin, rangeEnd, "jj");
+  vector<LandingResult> results = runOptimizerToRange(lines, start, rangeBegin, rangeEnd, "jj");
 
   EXPECT_FALSE(results.empty()) << "Should find at least one path to range";
   for (const auto& r : results) {
@@ -181,7 +181,7 @@ TEST_F(NavOptimizer_ManualTest, RangeFromMiddle) {
   CursorPos rangeBegin(4, 0);
   CursorPos rangeEnd(4, 2);
 
-  vector<RangeResult> results = runOptimizerToRange(lines, start, rangeBegin, rangeEnd, "jj");
+  vector<LandingResult> results = runOptimizerToRange(lines, start, rangeBegin, rangeEnd, "jj");
 
   EXPECT_FALSE(results.empty()) << "Should find at least one path to range";
 }
@@ -193,7 +193,7 @@ TEST_F(NavOptimizer_ManualTest, RangeWithWordMotions) {
   CursorPos rangeBegin(0, 8);   // "three" starts at 8
   CursorPos rangeEnd(0, 17);    // "four" ends at 17
 
-  vector<RangeResult> results = runOptimizerToRange(lines, start, rangeBegin, rangeEnd, "www");
+  vector<LandingResult> results = runOptimizerToRange(lines, start, rangeBegin, rangeEnd, "www");
 
   EXPECT_FALSE(results.empty()) << "Should find paths using word motions";
 }

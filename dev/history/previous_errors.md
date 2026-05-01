@@ -81,13 +81,13 @@ This worked by accident when diffs didn't insert/delete lines before subsequent 
 
 ## Subset boundary used target range instead of full subset extent
 
-In `CompositionOptimizer.cpp`, when creating sub-buffers for `NavOptimizer::optimizeToRange`, the `NavBoundary` was constructed using the **target edit range** (`localRangeFirst`, `localRangeLast`) as the boundary positions. This caused `BoundaryContext` to compute `leftColOffset`/`rightColOffset` that clamped motions like `$` and `0` to the edit range edges instead of the full subset extent.
+In `CompositionOptimizer.cpp`, when creating sub-buffers for `NavOptimizer::optimize` (the `CharInterval`-goal overload, formerly `optimizeToRange`), the `NavBoundary` was constructed using the **target edit range** (`localRangeFirst`, `localRangeLast`) as the boundary positions. This caused `BoundaryContext` to compute `leftColOffset`/`rightColOffset` that clamped motions like `$` and `0` to the edit range edges instead of the full subset extent.
 
-The bug existed in both code paths: the edit/motion transition path and the pure insertion path (`exploreInsertionStrategy` lambda). Both construct subsets and call `optimizeToRange`.
+The bug existed in both code paths: the edit/motion transition path and the pure insertion path (`exploreInsertionStrategy` lambda). Both construct subsets and call the range-goal `optimize`.
 
 **Symptom:** Motions like `$` would land at the edit range edge instead of end-of-line, producing incorrect sequences. Manifested as failures in `SingleLine_Substitution`, `PureInsertion`, and `PureDeletion` tests.
 
-**Fix:** Use `subsetFirst(0, 0)` and `subsetLast(subset.size()-1, subset.back().size()-1)` for the boundary, since the boundary should represent the full navigable extent of the subset, not the target range. The target range is only for `optimizeToRange`'s `isInRange` check.
+**Fix:** Use `subsetFirst(0, 0)` and `subsetLast(subset.size()-1, subset.back().size()-1)` for the boundary, since the boundary should represent the full navigable extent of the subset, not the target range. The target range is only for the optimizer's `isInRange` check.
 
 ```cpp
 // Boundary uses full subset extent, not the target range.
@@ -252,7 +252,7 @@ In `CompositionOptimizer.cpp`, when the cursor is inside the edit range but no e
 
 **Symptom:** "No result" failures in `SingleLine_Substitution` — the cursor starts inside the edit range at a position without a result, and no transition is explored.
 
-**Fix:** Instead of unconditionally skipping, scan the edit range for nearby positions with valid results and generate simple `h`/`l` motion transitions to reach them. `optimizeToRange` can't be used here because it asserts `startPos` is not inside the range. The intra-range motion search only fires for same-line positions:
+**Fix:** Instead of unconditionally skipping, scan the edit range for nearby positions with valid results and generate simple `h`/`l` motion transitions to reach them. The range-goal `NavOptimizer::optimize` can't be used here because it asserts `initialPos` is not inside the range. The intra-range motion search only fires for same-line positions:
 ```cpp
 if (pos >= nextEdit.beginPos && pos < nextEdit.endPos) {
   for (int col = rangeBeginCol; col < rangeEndCol; ++col) {

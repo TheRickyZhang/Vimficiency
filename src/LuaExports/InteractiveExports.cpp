@@ -26,29 +26,22 @@ using payload::encodeFields;
 using payload::intField;
 using payload::doubleField;
 
-// Per-Step-alternative wire-shape encoders. Adding a new alternative = add
-// one overload; the visit dispatcher below requires no edits.
-struct StepWireFields {
+struct PhaseWireFields {
   string_view kind;
   int editIndex;
-  string_view remainingText;
 };
-StepWireFields stepWireFields(const Explore::Approach& a) {
-  return {Explore::stepKindName(a), a.editIndex, ""};
-}
-StepWireFields stepWireFields(const Explore::PendingInsert& p) {
-  return {Explore::stepKindName(p), p.editIndex, p.remainingText};
-}
-StepWireFields stepWireFields(const Explore::Completed& c) {
-  return {Explore::stepKindName(c), -1, ""};
-}
-StepWireFields stepWireFields(const Explore::Step& s) {
-  return std::visit([](const auto& alt) { return stepWireFields(alt); }, s);
+PhaseWireFields phaseWireFields(const Explore::Phase& phase) {
+  return {
+      Explore::phaseKindName(phase),
+      Explore::phaseIndex(phase),
+  };
 }
 
 // State payload. Length-prefixed fields so raw bytes in acceptedSeq survive
-// round-tripping. The trailing four ints carry the current target range
-// (-1 sentinels when not in ApproachEdit or no plan).
+// round-tripping. `is_completed` is the C++-side derived predicate (cursor
+// has reached goalPos at the post-final-edit nav segment). The trailing
+// four ints carry the current target range (-1 sentinels in Insert phase,
+// where the UI doesn't render a range).
 string encodeState(const View& v) {
   int tbRow = -1, tbCol = -1, teRow = -1, teCol = -1;
   if (auto range = v.currentTargetRange()) {
@@ -58,11 +51,11 @@ string encodeState(const View& v) {
     teCol = range->second.col;
   }
   const Explore::State& st = v.state();
-  const StepWireFields step = stepWireFields(st.step);
+  const PhaseWireFields phase = phaseWireFields(st.phase);
   return encodeFields(
-      step.kind,
-      string_view(intField(step.editIndex)),
-      step.remainingText,
+      phase.kind,
+      string_view(intField(phase.editIndex)),
+      string_view(intField(v.isCompleted() ? 1 : 0)),
       string_view(intField(st.cursor.line)),
       string_view(intField(st.cursor.col)),
       string_view(intField(v.totalEdits())),
@@ -78,20 +71,21 @@ string encodeState(const View& v) {
 }
 
 // Apply-result payload. Two statuses only — "Applied" and "Rejected". View
-// state (phase, cursor, seq, cost) is echoed inline so Lua can treat the
-// apply response as a state refresh in one call. `crossed` = crossed an edit
-// boundary (useful for Lua's decide-to-rewrite-scratch decision).
+// state (phase, cursor, seq, cost, is_completed) is echoed inline so Lua
+// can treat the apply response as a state refresh in one call. `crossed` =
+// crossed an edit boundary (useful for Lua's decide-to-rewrite-scratch
+// decision).
 string encodeOutcome(const View& v, const Outcome& outcome) {
   const char* status = outcome.has_value() ? "Applied" : "Rejected";
   const int crossed = (outcome.has_value() && outcome.value().crossedEditBoundary) ? 1 : 0;
   const string& reason = outcome.has_value() ? string() : outcome.error().reason;
   const Explore::State& st = v.state();
-  const StepWireFields step = stepWireFields(st.step);
+  const PhaseWireFields phase = phaseWireFields(st.phase);
   return encodeFields(
       string_view(status),
-      step.kind,
-      string_view(intField(step.editIndex)),
-      step.remainingText,
+      phase.kind,
+      string_view(intField(phase.editIndex)),
+      string_view(intField(v.isCompleted() ? 1 : 0)),
       string_view(intField(st.cursor.line)),
       string_view(intField(st.cursor.col)),
       string_view(st.acceptedSeq),
@@ -231,6 +225,7 @@ const char* vf_explore_recommendations(
     int max_count,
     bool allow_multiple_movements_per_position,
     bool allow_multiple_edits_per_position) {
+  CHECK(max_count >= 0, "max_count must be non-negative");
   static string storage;
   View& v = g_registry.get(view_id);
   storage = encodeSuggestions(v.recommendations(
@@ -293,28 +288,10 @@ const char* vf_explore_current_lines(int view_id) {
   return storage.c_str();
 }
 
-const char* vf_explore_begin_edit(int view_id, bool enters_insert_mode,
-                                           const char* required_typed_text) {
+const char* vf_explore_begin_insert(int view_id) {
   static string storage;
   View& v = g_registry.get(view_id);
-  storage = encodeOutcome(
-      v, v.beginEdit(enters_insert_mode, helpers::optionalText(required_typed_text)));
-  return storage.c_str();
-}
-
-const char* vf_explore_insert_text(int view_id, const char* typed_chunk) {
-  static string storage;
-  View& v = g_registry.get(view_id);
-  return helpers::storeString(storage, helpers::requiredText(typed_chunk, "typed_chunk").transform(
-      [&](string_view chunk) {
-        return encodeOutcome(v, v.consumeInsertText(chunk));
-      }));
-}
-
-const char* vf_explore_exit_insert(int view_id) {
-  static string storage;
-  View& v = g_registry.get(view_id);
-  storage = encodeOutcome(v, v.exitInsertMode());
+  storage = encodeOutcome(v, v.beginInsert());
   return storage.c_str();
 }
 
@@ -334,10 +311,10 @@ const char* vf_explore_accept_insert_exit(
       }));
 }
 
-const char* vf_explore_cancel_pending_insert(int view_id) {
+const char* vf_explore_cancel_insert(int view_id) {
   static string storage;
   View& v = g_registry.get(view_id);
-  storage = encodeOutcome(v, v.cancelPendingInsert());
+  storage = encodeOutcome(v, v.cancelInsert());
   return storage.c_str();
 }
 

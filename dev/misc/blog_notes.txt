@@ -50,8 +50,8 @@ creates a buffer index every time at first even though the goal was to use a pre
 
 
 ❯   // Convert to range params
-    MotionOptimizerRangeParams rangeParams;
-    static_cast<MotionOptimizerParams&>(rangeParams) = params;
+    NavOptimizeRangeParams rangeParams;
+    static_cast<NavOptimizeParams&>(rangeParams) = params;
     rangeParams.allowMultiplePerPosition = true;
   \
   \

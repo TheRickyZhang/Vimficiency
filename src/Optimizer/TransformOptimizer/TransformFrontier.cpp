@@ -7,7 +7,7 @@
 
 #include "Effort/RunningEffort.h"
 #include "Optimizer/BuildTypedCommands.h"
-#include "Optimizer/CompositionOptimizer/CompositionStepArtifacts.h"
+#include "Optimizer/CompositionOptimizer/PlannedEditArtifacts.h"
 #include "Optimizer/TransformOptimizer/TransformSequenceDecomposition.h"
 #include "Types/BracketFlags.h"
 #include "Types/QuoteFlags.h"
@@ -112,7 +112,7 @@ vector<TransformFrontierItem> rankTransformFrontier(
   if (!starts.empty()) {
     const CursorPos goalPos = transformResult.goalPosAt(query.cursor.line, query.cursor.col);
     for (const Result& result : starts) {
-      if (!result.isValid() || result.getSequence().empty()) continue;
+      if (result.getSequence().empty()) continue;
       if (!emitter.emit(frontierItemFromSequence(
               result.getSequence().view(), result.getCost(), goalPos))) {
         return items;
@@ -120,7 +120,7 @@ vector<TransformFrontierItem> rankTransformFrontier(
     }
   }
 
-  const CursorPos stepGoalPos = transformResult.getGoalPos();
+  const CursorPos editGoalPos = transformResult.getGoalPos();
 
   if (query.diff.isPureInsertion()) {
     const CursorPos insertPos = query.diff.beginPos;
@@ -135,7 +135,7 @@ vector<TransformFrontierItem> rankTransformFrontier(
       Lines insertLines = Lines::unflatten(string(query.diff.insertedTextBody()));
       KeyedSequence typed = buildTypedCommands(insertLines, sourceIndent);
       if (!appendInsertionStrategy(emitter, query.cursor, targetLine, 0, lineEnd,
-                                   "o" + typed.seq.str(), stepGoalPos, config))
+                                   "o" + typed.seq.str(), editGoalPos, config))
         return items;
     } else {
       const int fnb = VimCore::firstNonBlankColInLineStr(query.lines[insertPos.line]);
@@ -148,28 +148,28 @@ vector<TransformFrontierItem> rankTransformFrontier(
         KeyedSequence escaped = buildTypedCommands(
             insertLines, "", query.lines[insertPos.line].substr(0, fnb));
         if (!appendInsertionStrategy(emitter, query.cursor, insertPos.line, 0, lineEnd,
-                                     "I" + escaped.seq.str(), stepGoalPos, config))
+                                     "I" + escaped.seq.str(), editGoalPos, config))
           return items;
         if (!appendInsertionStrategy(emitter, query.cursor, insertPos.line,
                                      insertPos.col, insertPos.col + 1,
-                                     "i" + escaped.seq.str(), stepGoalPos, config))
+                                     "i" + escaped.seq.str(), editGoalPos, config))
           return items;
       } else if (insertPos.col == lineLen) {
         KeyedSequence escaped = buildTypedCommands(
             insertLines, "", query.lines[insertPos.line]);
         if (!appendInsertionStrategy(emitter, query.cursor, insertPos.line, 0, lineEnd,
-                                     "A" + escaped.seq.str(), stepGoalPos, config))
+                                     "A" + escaped.seq.str(), editGoalPos, config))
           return items;
         if (!appendInsertionStrategy(emitter, query.cursor, insertPos.line,
                                      lastContentCol, lastContentCol + 1,
-                                     "a" + escaped.seq.str(), stepGoalPos, config))
+                                     "a" + escaped.seq.str(), editGoalPos, config))
           return items;
       } else {
         KeyedSequence escaped = buildTypedCommands(
             insertLines, "", query.lines[insertPos.line].substr(0, insertPos.col));
         if (!appendInsertionStrategy(emitter, query.cursor, insertPos.line,
                                      insertPos.col, insertPos.col + 1,
-                                     "i" + escaped.seq.str(), stepGoalPos, config))
+                                     "i" + escaped.seq.str(), editGoalPos, config))
           return items;
       }
     }
@@ -198,7 +198,7 @@ vector<TransformFrontierItem> rankTransformFrontier(
         seq += "<Esc>";
       }
       if (!emitter.emit(frontierItemFromSequence(
-              seq, getEffort(seq, config), stepGoalPos)))
+              seq, getEffort(seq, config), editGoalPos)))
         return items;
     }
   }
@@ -212,7 +212,7 @@ vector<TransformFrontierItem> rankTransformFrontier(
         seq += "<Esc>";
       }
       if (!emitter.emit(frontierItemFromSequence(
-              seq, getEffort(seq, config), stepGoalPos)))
+              seq, getEffort(seq, config), editGoalPos)))
         return items;
     }
   }

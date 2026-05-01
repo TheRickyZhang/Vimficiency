@@ -86,11 +86,9 @@ end
 ---@field vf_explore_apply_edit fun(view_id: integer, text: string): string
 ---@field vf_explore_accept_buffer_state fun(view_id: integer, encoded_lines: string, new_row: integer, new_col: integer, raw_keys: string): string
 ---@field vf_explore_current_lines fun(view_id: integer): string
----@field vf_explore_begin_edit fun(view_id: integer, enters_insert_mode: boolean, required_typed_text: string): string
----@field vf_explore_insert_text fun(view_id: integer, typed_chunk: string): string
----@field vf_explore_exit_insert fun(view_id: integer): string
+---@field vf_explore_begin_insert fun(view_id: integer): string
 ---@field vf_explore_accept_insert_exit fun(view_id: integer, encoded_lines: string, new_row: integer, new_col: integer, raw_keys: string): string
----@field vf_explore_cancel_pending_insert fun(view_id: integer): string
+---@field vf_explore_cancel_insert fun(view_id: integer): string
 ---@field vf_explore_undo fun(view_id: integer): string
 ---@field vf_explore_redo fun(view_id: integer): string
 
@@ -633,24 +631,32 @@ end
 ---@field begin_pos VF.Position  # inclusive
 ---@field end_pos VF.Position    # exclusive (half-open)
 
---- Step variants. C++ side is `std::variant<Approach, PendingInsert, Completed>`;
---- Lua mirrors that via discriminated union — narrow on `phase.kind`.
----@class VF.Explore.StepApproachEdit
----@field kind "ApproachEdit"
+--- Phase variants. C++ side is `std::variant<Navigate, Transform, Insert>`,
+--- each carrying an `int index`. Lua mirrors that via discriminated union —
+--- narrow on `phase.kind`.
+---  - Navigate(i): i ∈ [0, total_edits]; i == total_edits is the post-final-
+---    edit nav segment (target = goal cursor). Pure-motion sessions use
+---    Navigate(0) with total_edits == 0.
+---  - Transform(i), Insert(i): i ∈ [0, total_edits).
+--- Completion is the separate `is_completed` boolean on the state — not a
+--- distinct phase variant.
+---@class VF.Explore.PhaseNavigate
+---@field kind "Navigate"
 ---@field edit_index integer
 
----@class VF.Explore.StepPendingInsert
----@field kind "PendingInsert"
+---@class VF.Explore.PhaseTransform
+---@field kind "Transform"
 ---@field edit_index integer
----@field remaining_typed_text string
 
----@class VF.Explore.StepCompleted
----@field kind "Completed"
+---@class VF.Explore.PhaseInsert
+---@field kind "Insert"
+---@field edit_index integer
 
----@alias VF.Explore.Phase VF.Explore.StepApproachEdit | VF.Explore.StepPendingInsert | VF.Explore.StepCompleted
+---@alias VF.Explore.Phase VF.Explore.PhaseNavigate | VF.Explore.PhaseTransform | VF.Explore.PhaseInsert
 
 ---@class VF.Explore.State
 ---@field phase VF.Explore.Phase
+---@field is_completed boolean  # cursor at goalPos with all edits applied
 ---@field cursor VF.Position
 ---@field total_edits integer
 ---@field accepted_cost number
@@ -665,6 +671,7 @@ end
 ---@class VF.Explore.AppliedResult
 ---@field status "Applied"
 ---@field phase VF.Explore.Phase
+---@field is_completed boolean
 ---@field cursor VF.Position
 ---@field accepted_seq string
 ---@field accepted_cost number
@@ -673,6 +680,7 @@ end
 ---@class VF.Explore.RejectedResult
 ---@field status "Rejected"
 ---@field phase VF.Explore.Phase  # unchanged state echoed back
+---@field is_completed boolean
 ---@field cursor VF.Position
 ---@field accepted_seq string
 ---@field accepted_cost number
@@ -710,24 +718,18 @@ local function require_non_error(payload)
   return payload
 end
 
---- Build the kind-discriminated phase from the wire's `(kind, edit_index, remaining_text)`
---- triple. The wire format pads with sentinels (-1 / "") for fields not used by
---- the variant; we drop them so consumers can't accidentally read garbage.
+--- Build the kind-discriminated phase from the wire's `(kind, edit_index)`.
 ---@param kind string
 ---@param edit_index_str string
----@param remaining_text string
 ---@return VF.Explore.Phase
-local function build_phase(kind, edit_index_str, remaining_text)
-  if kind == "ApproachEdit" then
-    return { kind = "ApproachEdit", edit_index = tonumber(edit_index_str) or 0 }
-  elseif kind == "PendingInsert" then
-    return {
-      kind = "PendingInsert",
-      edit_index = tonumber(edit_index_str) or 0,
-      remaining_typed_text = remaining_text,
-    }
-  elseif kind == "Completed" then
-    return { kind = "Completed" }
+local function build_phase(kind, edit_index_str)
+  -- After Stage 2, edit_index is always a non-negative int. Navigate(i)
+  -- carries i ∈ [0, total_edits]; Transform/Insert carry i ∈ [0, total_edits).
+  -- Completion is the separate `is_completed` boolean on the state — no
+  -- Completed phase variant.
+  local edit_index = tonumber(edit_index_str) or 0
+  if kind == "Navigate" or kind == "Transform" or kind == "Insert" then
+    return { kind = kind, edit_index = edit_index }
   end
   error("unknown phase kind from FFI: " .. tostring(kind))
 end
@@ -747,7 +749,8 @@ local function parse_explore_state(payload)
     }
   end
   return {
-    phase = build_phase(parts[1], parts[2], parts[3]),
+    phase = build_phase(parts[1], parts[2]),
+    is_completed = parts[3] == "1",
     cursor = { row = tonumber(parts[4]) or 0, col = tonumber(parts[5]) or 0 },
     total_edits = tonumber(parts[6]) or 0,
     accepted_cost = tonumber(parts[7]) or 0,
@@ -765,7 +768,8 @@ local function parse_explore_apply_result(payload)
   local parts = decode_string_list(payload)
   assert(#parts == 10, "explore apply payload must have 10 fields")
   local status = parts[1]
-  local phase = build_phase(parts[2], parts[3], parts[4])
+  local phase = build_phase(parts[2], parts[3])
+  local is_completed = parts[4] == "1"
   ---@type VF.Position
   local cursor = { row = tonumber(parts[5]) or 0, col = tonumber(parts[6]) or 0 }
   local accepted_seq = parts[7]
@@ -774,6 +778,7 @@ local function parse_explore_apply_result(payload)
     return {
       status = "Applied",
       phase = phase,
+      is_completed = is_completed,
       cursor = cursor,
       accepted_seq = accepted_seq,
       accepted_cost = accepted_cost,
@@ -783,6 +788,7 @@ local function parse_explore_apply_result(payload)
     return {
       status = "Rejected",
       phase = phase,
+      is_completed = is_completed,
       cursor = cursor,
       accepted_seq = accepted_seq,
       accepted_cost = accepted_cost,
@@ -950,31 +956,10 @@ function M.explore_current_lines(view_id)
 end
 
 ---@param view_id integer
----@param enters_insert_mode boolean
----@param required_typed_text string|nil
 ---@return VF.Explore.ApplyResult
-function M.explore_begin_edit(view_id, enters_insert_mode, required_typed_text)
-  local payload = require_non_error(ffi.string(lib.vf_explore_begin_edit(
-    view_id,
-    enters_insert_mode,
-    required_typed_text or ""
-  )))
-  return parse_explore_apply_result(payload)
-end
-
----@param view_id integer
----@param typed_chunk string
----@return VF.Explore.ApplyResult
-function M.explore_insert_text(view_id, typed_chunk)
+function M.explore_begin_insert(view_id)
   local payload = require_non_error(ffi.string(
-    lib.vf_explore_insert_text(view_id, typed_chunk)))
-  return parse_explore_apply_result(payload)
-end
-
----@param view_id integer
----@return VF.Explore.ApplyResult
-function M.explore_exit_insert(view_id)
-  local payload = require_non_error(ffi.string(lib.vf_explore_exit_insert(view_id)))
+    lib.vf_explore_begin_insert(view_id)))
   return parse_explore_apply_result(payload)
 end
 
@@ -992,9 +977,9 @@ end
 
 ---@param view_id integer
 ---@return VF.Explore.ApplyResult
-function M.explore_cancel_pending_insert(view_id)
+function M.explore_cancel_insert(view_id)
   local payload = require_non_error(ffi.string(
-    lib.vf_explore_cancel_pending_insert(view_id)))
+    lib.vf_explore_cancel_insert(view_id)))
   return parse_explore_apply_result(payload)
 end
 

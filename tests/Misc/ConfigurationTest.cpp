@@ -26,7 +26,8 @@ struct RuntimeOptionsGuard {
   ~RuntimeOptionsGuard() { globalRuntimeOptions() = saved; }
 };
 
-const Result* findBySequence(const vector<Result>& results, string_view seq) {
+template <typename ResultT>
+const ResultT* findBySequence(const vector<ResultT>& results, string_view seq) {
   for (const auto& r : results) {
     if (r.getSequence().view() == seq) return &r;
   }

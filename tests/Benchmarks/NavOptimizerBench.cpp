@@ -44,12 +44,12 @@ static NavOptimizerParams navParamsB() {
   return NavOptimizerParams{}.withDirectionalPruning(false);
 }
 
-static NavOptimizerRangeParams rangeParamsA() {
-  return NavOptimizerRangeParams{};
+static NavOptimizerParams rangeParamsA() {
+  return NavOptimizerParams{};
 }
 
-static NavOptimizerRangeParams rangeParamsB() {
-  return NavOptimizerRangeParams{}.withDirectionalPruning(false);
+static NavOptimizerParams rangeParamsB() {
+  return NavOptimizerParams{}.withDirectionalPruning(false);
 }
 
 // =============================================================================
@@ -131,7 +131,7 @@ struct DispatchExploreCase {
 
   Lines lines;
   NavContext navContext;
-  NavOptimizerRangeParams params;
+  NavOptimizerParams params;
   CursorPos initialPos;
   CursorPos rangeBegin;
   CursorPos rangeEnd;
@@ -143,7 +143,7 @@ struct DispatchExploreCase {
   EffortBank bank;
 
   DispatchExploreCase(const Lines& sourceLines,
-                      NavOptimizerRangeParams paramsIn = {},
+                      NavOptimizerParams paramsIn = {},
                       CursorPos initialPosIn = CursorPos(0, 0),
                       int rangeChars = DEFAULT_RANGE_SIZE)
       : lines(sourceLines),
@@ -189,7 +189,7 @@ static vector<DispatchExploreCase> makeDispatchExploreCases(BufferShape shape,
   auto& seedMgr = SeedManager::instance();
   vector<DispatchExploreCase> cases;
   cases.reserve(DEFAULT_SEED_COUNT);
-  auto params = NavOptimizerRangeParams{}.withDirectionalPruning(useDirectionalPruning);
+  auto params = NavOptimizerParams{}.withDirectionalPruning(useDirectionalPruning);
   for (int i = 0; i < DEFAULT_SEED_COUNT; ++i) {
     RandomGen::seed(seedMgr.getSeed(i));
     cases.emplace_back(generateBuffer(20, 30, shape), params);
@@ -227,10 +227,10 @@ static void runWithParams(const BenchmarkSetup& cfg,
 }
 
 static void runRangeWithParams(const RangeBenchmarkSetup& cfg,
-                               const NavOptimizerRangeParams& params,
+                               const NavOptimizerParams& params,
                                NavSearchStats& outStats) {
   NavOptimizer opt(benchConfig);
-  auto result = opt.optimizeToRange(
+  auto result = opt.optimize(
       cfg.lines, cfg.initialPos,
       toMotionInterval(cfg.lines, CharRange(cfg.rangeBegin, cfg.rangeEnd)),
       params, "", cfg.boundary);

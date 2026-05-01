@@ -114,6 +114,17 @@ struct Lines final : std::vector<Line> {
   CursorPos lastPos() const { return CursorPos(lastLine(), back().lastCol()); }
   CursorPos endPos() const { return CursorPos(lastLine(), back().effectiveSize()); }
 
+  // True iff `pos` is a valid normal-mode cursor target — line is in range and
+  // col is on a real character. This is what most callers actually want when
+  // they ask "does this position exist?"; `endPos()`-style past-the-end values
+  // are NOT contained.
+  bool contains(const CursorPos& pos) const {
+    if (pos.line < 0 || pos.line >= static_cast<int>(size())) return false;
+    const auto& line = data()[pos.line];
+    const int maxCol = line.empty() ? 0 : static_cast<int>(line.size()) - 1;
+    return pos.col >= 0 && pos.col <= maxCol;
+  }
+
   char get(const CursorPos& pos) const {
     assert(pos.line < static_cast<int>(size()) && "Lines::get() position out of bounds");
     return data()[pos.line].get(pos.col);

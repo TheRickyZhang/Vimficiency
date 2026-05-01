@@ -22,7 +22,7 @@
 // Lifetime: references remain valid only while the parent CompositionResult
 // remains alive and unmoved. Consumers should treat this as an ephemeral
 // per-edit read view, not something to store long-term.
-struct CompositionEditStepView {
+struct PlannedEditView {
   int editIndex;
   const DiffState& diff;
   const Lines& preFencepost;
@@ -36,20 +36,22 @@ struct CompositionResult : BaseOptimizerResult<> {
   const CompositionSearchStats& getStats() const { return stats_; }
 
   // Low-level/raw plan access for optimizer internals, diagnostics, and tests.
-  // Explore-style consumers should prefer `stepAt(...)` so the per-edit
+  // Explore-style consumers should prefer `plannedEditAt(...)` so the per-edit
   // compatibility boundary is explicit.
   const CompositionPlan& getPlan() const { return plan_; }
+  // The user-supplied goal cursor position; the search treats this as the
+  // terminal target after all edits have been applied.
   const CursorPos& getGoalPos() const { return plan_.finalGoalPos; }
   // Raw diff list for diagnostics and tests. Consumers that need a specific
-  // edit should prefer `stepAt(...)`.
+  // edit should prefer `plannedEditAt(...)`.
   const std::vector<DiffState>& getDiffs() const { return plan_.diffs; }
   int totalEdits() const { return plan_.totalEdits(); }
   // Explicit compatibility boundary for consumers like Explore: one typed
   // per-edit view instead of reassembling aligned data from parallel vectors.
-  [[nodiscard]] CompositionEditStepView stepAt(int editIndex) const {
+  [[nodiscard]] PlannedEditView plannedEditAt(int editIndex) const {
     assert(editIndex >= 0 && editIndex < totalEdits() &&
-           "CompositionResult::stepAt index out of range");
-    return CompositionEditStepView{
+           "CompositionResult::plannedEditAt index out of range");
+    return PlannedEditView{
         .editIndex = editIndex,
         .diff = plan_.diffAt(editIndex),
         .preFencepost = plan_.fencepostAt(editIndex),

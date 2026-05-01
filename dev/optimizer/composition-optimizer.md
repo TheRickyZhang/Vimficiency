@@ -11,25 +11,25 @@
 - Using that, we track intermediate buffer states, compute suffix cost sums, and calculate a diff for each transform region
 
 ## Composition Logic
-- By abstracting away direct edit commands into one-step transform changes over diffs, our search alternates between call types:
-  - Intra-transform: refer to TransformResult to apply a transform step
-  - Inter-transform: move from one transform end to the next transform start (NavOptimizer::optimizeToRange)
+- By abstracting away direct edit commands into planned edit transitions over diffs, our search alternates between call types:
+  - Intra-transform: refer to TransformResult to apply the current planned edit
+  - Inter-transform: move from one transform end to the next transform start (`NavOptimizer::optimize` with a `CharInterval` goal)
 - By storing the previous edit command, we can also quickly check if . will work. (TODO)
 
 ### Explore boundary
 
-`Explore::Session` is intentionally coupled to a narrow per-step contract from
+`Explore::Session` is intentionally coupled to a narrow per-edit contract from
 composition, not to the composition optimizer's full internal shape. The
-supported boundary is `CompositionResult::stepAt(i)`, which bundles:
+supported boundary is `CompositionResult::plannedEditAt(i)`, which bundles:
 
-- the diff for transform step `i`
+- the diff for planned edit `i`
 - the pre-transform fencepost
 - the post-transform fencepost
-- the `TransformResult` for that same step
+- the `TransformResult` for that same planned edit
 
 Raw `CompositionPlan` / diff vectors still exist for diagnostics and tests, but
 they are lower-level surfaces. Refactors that preserve final optimizer results
-while changing this per-step bundle can still break Explore.
+while changing this per-edit bundle can still break Explore.
 
 ## J (Join Lines) Plans
 
@@ -113,7 +113,7 @@ J plan efforts are included in `computeSuffixEditCosts()` alongside regular tran
 (Note "within" could be one outside region, as doing iw -> still only affect what is inside. Greedily picking inside if matches is optimal)
 - Brackets are a bit more complex because they must form a MATCHING pair, but we can simply track bracket depth with a stack (balance of 0 = will search right), and we can leverage the fact that actions will match with the outermost bracket in region
 - Thus, we can use a bitmask prefix for quotes, matching with FIRST pair in region, and count prefix for brackets, matching with OUTERMOST pair in region.
-- Since each transform step can introduce new destructive content, we must calculate for each step.
+- Since each planned edit can introduce new destructive content, we must calculate this context per planned edit.
 
 ## Pure Insertions
 - Because a pure insertion has no starting point, we must handle it from the higher composition level.

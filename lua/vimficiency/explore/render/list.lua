@@ -1,11 +1,11 @@
 -- Recommendation list view for the left-hand explore panel.
 --
 -- Two modes, dispatched off `active.state.phase.kind`:
---   PendingInsert — one row: `1. <remaining-or-<Esc>>  type`, shrinks live.
---   Otherwise     — rank-ordered table of motion/edit recs with cost, kind,
---                   and landing coords, columns aligned.
+--   Insert    — one row: `1. <remaining-or-<Esc>>  type`, shrinks live.
+--   Otherwise — rank-ordered table of motion/edit recs with cost, kind,
+--               and landing coords, columns aligned.
 --
--- Callers precompute `remaining` (the pending-insert tail) so the panel
+-- Callers precompute `remaining` (the insert tail) so the panel
 -- stays in lockstep with the header within one frame.
 local v = vim.api
 local highlights = require("vimficiency.explore.highlights")
@@ -55,7 +55,7 @@ function M.render(active, remaining)
     rows[#rows + 1] = { rank = rank, chunks = chunks, widths = {}, hl = hl }
   end
 
-  if active.state.phase.kind == "PendingInsert" then
+  if active.state.phase.kind == "Insert" then
     -- Parallel to the motion format: rank, text, kind. When the insert is
     -- complete the text slot shows `<Esc>` so there's still a concrete
     -- action to perform before phase advancement.

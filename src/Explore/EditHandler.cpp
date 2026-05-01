@@ -30,7 +30,7 @@ std::expected<EditSuccess, Rejected> applyEdit(
   // MIRROR: match against TransformResult::resultsAt — the planned edit-start set.
   std::span<const ::Result> starts = transformResult.resultsAt(cursor.line, cursor.col);
   for (const ::Result& r : starts) {
-    if (r.isValid() && r.getSequence().view() == text) {
+    if (r.getSequence().view() == text) {
       return EditSuccess{
           .postCursor = transformResult.goalPosAt(cursor.line, cursor.col),
       };

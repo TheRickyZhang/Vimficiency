@@ -99,7 +99,7 @@ public:
 
   void setCost(double newCost) { cost = newCost; }
 
-  // For simulated motion without pre-computed endpoint (used by optimizeToRange)
+  // For simulated motion without pre-computed endpoint (used by range-goal optimize)
   void applySingleMovementWithEffort(std::string_view motion, const NavContext& navContext,
                                    const Lines& lines, const PhysicalKeys& keys, const Config& config);
 
