@@ -9,7 +9,6 @@
 #include "Effort/EffortBank.h"
 #include "Effort/RunningEffort.h"
 #include "Keyboard/KeyedSequence.h"
-#include "Optimizer/CompositionOptimizer/CompositionOptimizerParams.h"
 #include "Optimizer/NavOptimizer/BufferIndex.h"
 #include "Optimizer/NavOptimizer/NavExplorer.h"
 #include "Optimizer/NavOptimizer/NavHeuristic.h"
@@ -18,22 +17,6 @@
 #include "Optimizer/NavOptimizer/NavState.h"
 
 using namespace std;
-
-namespace {
-
-NavOptimizerParams makeSingleStepParams() {
-  CompositionOptimizerParams comp;
-  NavOptimizerParams p;
-  p.withFMotionThreshold(comp.fMotionThreshold)
-   .withDirectionalPruning(comp.useDirectionalPruning)
-   .withLinePaddingAbove(comp.navPaddingAbove)
-   .withLinePaddingBelow(comp.navPaddingBelow)
-   .withMinCountRepeat(comp.minPrefixCount)
-   .withMaxCountRepeat(comp.maxPrefixCount);
-  return p;
-}
-
-}  // namespace
 
 vector<NavFrontierItem> rankNavFrontier(
     const NavFrontierQuery& query,
@@ -59,7 +42,7 @@ vector<NavFrontierItem> rankNavFrontier(
   // transitions, score each by `effort + heuristic(target)` using the
   // same scoring the full optimizer would, sort, and take top K. No full
   // search to the goal.
-  NavOptimizerParams params = makeSingleStepParams();
+  NavOptimizerParams params;
   BufferIndex bufferIndex(query.lines);
   NavExplorer explorer(query.lines, query.navContext, query.boundary,
                           params, *motionRange, bufferIndex, 0);

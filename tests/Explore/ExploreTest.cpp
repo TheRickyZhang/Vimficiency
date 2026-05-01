@@ -99,6 +99,24 @@ TEST_F(ExploreViewTest, PureMotionGoalCompletesWhenCursorReachesGoal) {
   EXPECT_TRUE(view.recommendations(5).empty());
 }
 
+TEST_F(ExploreViewTest, CompletionIsDerivedAndNotSticky) {
+  Lines lines{Line("foo bar baz")};
+  auto view = makeView(lines, {0, 0}, lines, {0, 4});
+
+  ASSERT_TRUE(view.applyMovement("w").has_value());
+  ASSERT_TRUE(view.isCompleted());
+
+  ASSERT_TRUE(view.applyMovement("b").has_value());
+  EXPECT_FALSE(view.isCompleted());
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 0));
+  ASSERT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
+  EXPECT_EQ(Explore::phaseIndex(view.phase()), view.totalEdits());
+
+  ASSERT_TRUE(view.applyMovement("w").has_value());
+  EXPECT_TRUE(view.isCompleted());
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 4));
+}
+
 TEST_F(ExploreViewTest, ApproachesEditWhenLinesDiffer) {
   Lines initial{Line("foo bar baz")};
   Lines goal{Line("foo QUX baz")};

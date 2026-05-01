@@ -42,6 +42,9 @@ internals and implementation notes, see `dev/`.
 require('vimficiency').setup()
 ```
 
+For a full setup with configuration and keymaps, see
+[`examples/config.lua`](../examples/config.lua).
+
 ```vim
 " Recall is always on — just start editing.
 " ... edit something ...

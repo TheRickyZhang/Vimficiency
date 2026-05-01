@@ -162,12 +162,14 @@ public:
   const Lines& goalLines() const { return goalLines_; }
   CursorPos goalPos() const { return goalPos_; }
 
-  // Half-open [begin, end) range of the current edit's diff in intermediate-
-  // buffer coordinates, when the phase references a planned edit. Empty otherwise.
+  // Half-open [begin, end) target for the current phase: edit diff range for
+  // Navigate/Transform(i), final goal point for Navigate(totalEdits), empty
+  // during Insert.
   std::optional<std::pair<CursorPos, CursorPos>> currentTargetRange() const;
 
   // Top-K ranked IMMEDIATE NEXT MOLECULES for the current phase. Empty in
-  // Insert / Completed.
+  // Insert; a completed Navigate(totalEdits) naturally has no useful motion
+  // target left.
   //
   // Each recommendation is one atomic action the user could take right now
   // (`w`, `f;`, `$`, `s`, `cl`, ...), NOT a full sequence to the target.
@@ -252,15 +254,28 @@ private:
 
   Phase phaseForEditCursor(int editIndex, CursorPos cursor) const;
   bool movementStaysInTransformRange(CursorPos cursor) const;
+  std::vector<Suggestion> recommendNavigate(
+      int navIndex,
+      int maxCount,
+      bool allowMultipleMovementsPerPosition) const;
+  std::vector<Suggestion> recommendTransform(
+      int editIndex,
+      int maxCount,
+      bool allowMultipleMovementsPerPosition,
+      bool allowMultipleEditsPerPosition) const;
 
-  // Gate helper: succeed iff phase is Navigate/Transform, returning the
-  // edit index. Index is always present — for Navigate(totalEdits) it
-  // points at the post-final-edit nav segment. The `action` label is
-  // woven into the rejection reason for diagnostics.
+  // Motion gate: succeed iff phase is Navigate/Transform, returning the
+  // navigation/edit index. Navigate(totalEdits) is valid here because the
+  // post-final-edit nav segment still accepts cursor movement.
   std::expected<int, Rejected> requireNavigateOrTransform(
       std::string_view action) const;
 
   std::expected<int, Rejected> requireTransform(std::string_view action) const;
+
+  // Edit-bearing gate: succeed iff phase is Navigate/Transform and the index
+  // references a real planned edit. Use this before plannedEditAt(...).
+  std::expected<int, Rejected> requirePlannedEditTarget(
+      std::string_view action) const;
 
   // Gate helper: succeed iff phase is Insert, returning the edit index.
   std::expected<int, Rejected> requireInsert(std::string_view action) const;

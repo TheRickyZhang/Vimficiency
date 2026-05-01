@@ -12,38 +12,27 @@
 
 ## API Surface
 
-`NavOptimizer::optimize` is one overloaded entry point but returns one of
-two types depending on what the caller asked for. The per-result element
-shape mirrors the goal:
+All `NavOptimizer::optimize` overloads return `LandingNavResult` whose
+results are `LandingResult` (sequence + cost + landing `CursorPos` via
+`getGoalPos()`). There is one underlying impl — the range-goal A*
+search. Single-cursor is handled as a 1-cell interval.
 
-| Overload | Goal type | Returns | Per-result element |
-|----------|-----------|---------|--------------------|
-| `optimize(lines, initialPos, goalInterval, params, ...)` | `CharInterval` (inclusive `[first, last]`) | `LandingNavResult` | `LandingResult` (sequence + cost + landing `CursorPos`) |
-| `optimize(lines, initialPos, goalInterval, params, ..., bufferIndex, lineOffset)` | `CharInterval` | `LandingNavResult` | `LandingResult` (same as above; reuses a pre-built `BufferIndex`) |
-| `optimize(lines, initialPos, goalPos, params, ...)` | `CursorPos` (single point) | `NavResult` | `Result` (sequence + cost only) |
+| Overload | Goal type | Notes |
+|----------|-----------|-------|
+| `optimize(lines, initialPos, goalInterval, params, ...)` | `CharInterval` (inclusive `[first, last]`) | Multi-sink shortest path. |
+| `optimize(lines, initialPos, goalInterval, params, ..., bufferIndex, lineOffset)` | `CharInterval` | Same; reuses a pre-built `BufferIndex`. |
+| `optimize(lines, initialPos, goalPos, params, ...)` | `CursorPos` (single point) | Convenience wrapper that forwards to the range overload with `CharInterval(goalPos, goalPos)`. Every result lands at `goalPos`. |
 
-Why the asymmetry: for an interval goal, different motions land in
-different cells of the interval, so each result must carry its landing.
-For a single-cursor goal, the landing is always the input `goalPos` — a
-per-result `goalPos_` field would just echo it, so it's omitted. The
-type system enforces this: callers can't ask for the landing of a
-single-cursor result, because the question has no per-result answer.
-
-Both overloads share one A* implementation. The single-cursor overload
-runs the interval search with `CharInterval(goalPos, goalPos)` and
-`allowMultiplePerPosition = true` (so distinct sequences to the one
-point are enumerated), then strips the redundant landing before
-returning `NavResult`.
-
-`NavOptimizerParams::allowMultiplePerPosition` controls dedup for the
-interval overload:
+`NavOptimizerParams::allowMultiplePerPosition` controls result dedup:
 - `false` (default): at most one result per unique landing position —
-  the cheapest path wins.
+  the cheapest path wins. For single-point goals, this collapses to
+  "first goal hit wins" since there's only one landing cell.
 - `true`: every found path is emitted; dedup keys on sequence text only.
+  Use this for the single-point overload when you want distinct
+  sequences to the goal (e.g. `G` and `3j` to the same line).
 
 `LandingResult` lives in `src/Optimizer/LandingResult.h`. It is the
-landing-carrying variant of `Result` and is named for what it carries
-(a landing position), not for the query that produced it.
+landing-carrying variant of `Result`.
 
 
 ### Direction-Based Motion Exploration (6-Class Model)

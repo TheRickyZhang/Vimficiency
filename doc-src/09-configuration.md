@@ -4,45 +4,14 @@ title: "Configuration"
 
 # Configuration
 
-All settings are optional. Pass a table to `setup`:
+All settings are optional. For the canonical full setup, including the config
+shape and recommended keymaps, see
+[`examples/config.lua`](../examples/config.lua).
+
+Minimal setup:
 
 ```lua
-require('vimficiency').setup({
-  -- Recall queue (bounded). Union-semantic retention: a session is kept
-  -- as long as EITHER cap still holds it, and evicted only when BOTH
-  -- say drop. So raise either cap to keep more — lower both to trim.
-  KEY_SESSION_CAPACITY = 200,  -- count floor (sessions). Default 200.
-  MAX_RETENTION_SECONDS = 120, -- age floor (seconds). Default 120.
-
-  -- Suggest (see page 6 for full semantics). Three triggers; enable any
-  -- subset. If a trigger is present, specify the full trigger object.
-  auto_suggest = {
-    idle = { ms = 3000, window = "3s" }, -- fire after 3s idle
-    keys = { every = 50 },               -- fire every 50 keystrokes
-    cost = { m = 1.5, b = 2.0, ms = 300, window = "100" },
-    cooldown_ms = 5000,                  -- feature-level, applies to all triggers
-  },
-
-  -- Watch (see page 4). Shape parallels `auto_suggest` — same `idle`
-  -- nesting with `ms`. `idle.window` is rejected because Watch starts
-  -- manually. Independent config; both can run at once with different
-  -- thresholds.
-  watch = {
-    idle = { ms = 3000 },
-    cooldown_ms = 5000,
-  },
-
-  -- Search region around the edit
-  SLICE_PADDING = 5,                 -- lines of context above/below
-  MAX_SEARCH_LINES = 500,            -- refuse to optimize bigger regions
-  SLICE_EXPAND_TO_PARAGRAPH = false, -- extend slice to paragraph bounds
-
-  -- Result count
-  RESULTS_CALCULATED = 20, -- optimizer internal capacity
-  RESULTS_SAVED = 5,       -- how many suggestions kept per session
-
-  -- (effort-model knobs are also accepted; see below)
-})
+require('vimficiency').setup()
 ```
 
 Unknown keys produce a loud warning at setup — typos don't silently no-op.

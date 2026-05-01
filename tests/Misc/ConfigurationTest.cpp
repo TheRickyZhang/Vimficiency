@@ -45,14 +45,17 @@ protected:
     navContext = NavContext();
   }
 
-  static vector<Result>
+  static vector<LandingResult>
   runOptimizer(const Lines &lines, CursorPos start,
                CursorPos end, const string &userSeq,
                Config config) {
     NavOptimizer opt(config);
     NavBoundary boundary;
     return opt.optimize(lines, start, end,
-                        NavOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
+                        NavOptimizerParams{}
+                            .withMaxResults(30)
+                            .withMaxNodesPopped(20000)
+                            .withAllowMultiplePerPosition(true),
                         userSeq, boundary, navContext).getResults();
   }
 
@@ -255,13 +258,14 @@ TEST_F(ConfigurationTest, CountPenaltyOverrideAffectsMotionRanking) {
   NavOptimizerParams params = NavOptimizerParams{}
       .withMaxResults(30)
       .withMaxNodesPopped(20000)
-      .withMinCountRepeat(4);
+      .withMinCountRepeat(4)
+      .withAllowMultiplePerPosition(true);
 
   auto baseResults = opt.optimize(lines, start, end, params, "",
                                   boundary, navContext).getResults();
   ASSERT_FALSE(baseResults.empty());
 
-  const Result* baseCounted = findBySequence(baseResults, "4w");
+  const LandingResult* baseCounted = findBySequence(baseResults, "4w");
   ASSERT_NE(baseCounted, nullptr) << "Expected baseline to include 4w";
 
   auto& opts = globalRuntimeOptions();
@@ -277,7 +281,7 @@ TEST_F(ConfigurationTest, CountPenaltyOverrideAffectsMotionRanking) {
                                       boundary, navContext).getResults();
   ASSERT_FALSE(overrideResults.empty());
 
-  const Result* overrideCounted = findBySequence(overrideResults, "4w");
+  const LandingResult* overrideCounted = findBySequence(overrideResults, "4w");
   if (overrideCounted) {
     EXPECT_GT(overrideCounted->getCost(), baseCounted->getCost() + 40.0);
   } else {

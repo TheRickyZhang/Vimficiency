@@ -107,7 +107,7 @@ protected:
   }
 
   // Run optimizer on sub-buffer
-  static vector<Result> runOnSubBuffer(const Lines& subBuffer, CursorPos start, CursorPos end,
+  static vector<LandingResult> runOnSubBuffer(const Lines& subBuffer, CursorPos start, CursorPos end,
                                        const NavBoundary& boundary) {
     NavOptimizer opt(Config::uniform());
     return opt.optimize(subBuffer, start, end, {},

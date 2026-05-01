@@ -7,10 +7,10 @@
 #include "Types/CursorPos.h"
 
 // A Result that also carries the cursor position where the motion landed.
-// Returned by NavOptimizer's interval-goal search, where different motions
-// in the candidate set land at different positions and the caller needs the
-// landing per result. (Single-cursor searches return plain `Result` —
-// per-result landing would just echo the input.)
+// Returned by every NavOptimizer search (single-cursor and interval alike)
+// since they all share one impl. For interval goals the landing varies
+// across results; for the single-cursor convenience overload every result's
+// landing is the input `goalPos`.
 struct LandingResult : Result {
   LandingResult() = default;
   LandingResult(Sequence seq, double c, CursorPos p)
