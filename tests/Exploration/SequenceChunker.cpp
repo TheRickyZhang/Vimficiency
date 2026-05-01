@@ -25,48 +25,48 @@ ChunkedSequence chunkCompositionSequence(string_view seq) {
   };
 
   for (const auto& tok : tokens) {
-    switch (tok.type) {
-      case TokenType::Movement: {
+    switch (tok.kind) {
+      case TokenKind::Movement: {
         auto& chunk = ensureChunk(SequenceChunk::Movement);
-        chunk.tokens.push_back(tok.text);
-        chunk.text += tok.text;
+        chunk.tokens.push_back(tok.token);
+        chunk.text += tok.token;
         break;
       }
-      case TokenType::Delete: {
+      case TokenKind::Delete: {
         auto& chunk = ensureChunk(SequenceChunk::Edit);
-        chunk.tokens.push_back(tok.text);
-        chunk.text += tok.text;
+        chunk.tokens.push_back(tok.token);
+        chunk.text += tok.token;
         break;
       }
-      case TokenType::Change: {
+      case TokenKind::Change: {
         auto& chunk = ensureChunk(SequenceChunk::Edit);
-        chunk.tokens.push_back(tok.text);
-        chunk.text += tok.text;
+        chunk.tokens.push_back(tok.token);
+        chunk.text += tok.token;
         break;
       }
-      case TokenType::TypedText: {
+      case TokenKind::TypedText: {
         // Must be inside an Edit chunk (follows a Change token)
         auto& chunk = ensureChunk(SequenceChunk::Edit);
-        chunk.tokens.push_back(tok.text);
+        chunk.tokens.push_back(tok.token);
         // Don't add to text — extract into contents[]
-        auto it = contentIndex.find(tok.text);
+        auto it = contentIndex.find(tok.token);
         if (it != contentIndex.end()) {
           chunk.contentId = it->second;
         } else {
           int id = static_cast<int>(result.contents.size());
-          result.contents.push_back(tok.text);
-          contentIndex[tok.text] = id;
+          result.contents.push_back(tok.token);
+          contentIndex[tok.token] = id;
           chunk.contentId = id;
         }
         break;
       }
-      case TokenType::Escape: {
+      case TokenKind::Escape: {
         // Include in tokens but not in text
         if (current && current->type == SequenceChunk::Edit) {
-          current->tokens.push_back(tok.text);
+          current->tokens.push_back(tok.token);
         } else {
           auto& chunk = ensureChunk(SequenceChunk::Edit);
-          chunk.tokens.push_back(tok.text);
+          chunk.tokens.push_back(tok.token);
         }
         break;
       }

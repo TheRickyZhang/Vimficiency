@@ -23,7 +23,7 @@ General:
 - **Token**: Atomic parsed unit of a Vim sequence
 - **Sequence**: Neovim command string
 - **Effort**: Estimated typing difficulty of a key sequence only, independent of search distance
-- **Step**: Small replay/execution unit, usually one parsed token or one immediate user action/molecule
+- **Step**: Small replay/execution unit, usually one parsed token or one immediate user-action token
 - **Phase**: Larger Explore state-machine unit: `Navigate`, `Transform`, `Insert`, or `Completed`
 - **Planned Edit**: One composition-plan edit boundary, from fencepost `i` to `i + 1`; use `plannedEdit`/`plannedEditAt`, not "composition step"
 

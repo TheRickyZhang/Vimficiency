@@ -55,24 +55,24 @@ TEST(ErrorHandlingTest, ParseSequenceKeepsDigitLeadingTypedTextAfterChange) {
   auto result = parseSequence("s3<Esc>");
   ASSERT_TRUE(result.has_value());
   ASSERT_EQ(result->size(), 3u);
-  EXPECT_EQ((*result)[0].text, "s");
-  EXPECT_EQ((*result)[0].type, TokenType::Change);
-  EXPECT_EQ((*result)[1].text, "3");
-  EXPECT_EQ((*result)[1].type, TokenType::TypedText);
-  EXPECT_EQ((*result)[2].text, "<Esc>");
-  EXPECT_EQ((*result)[2].type, TokenType::Escape);
+  EXPECT_EQ((*result)[0].token, "s");
+  EXPECT_EQ((*result)[0].kind, TokenKind::Change);
+  EXPECT_EQ((*result)[1].token, "3");
+  EXPECT_EQ((*result)[1].kind, TokenKind::TypedText);
+  EXPECT_EQ((*result)[2].token, "<Esc>");
+  EXPECT_EQ((*result)[2].kind, TokenKind::Escape);
 }
 
 TEST(ErrorHandlingTest, ParseSequenceKeepsDigitLeadingTypedTextInInsertMode) {
   auto result = parseSequence("i123<Esc>");
   ASSERT_TRUE(result.has_value());
   ASSERT_EQ(result->size(), 3u);
-  EXPECT_EQ((*result)[0].text, "i");
-  EXPECT_EQ((*result)[0].type, TokenType::Change);
-  EXPECT_EQ((*result)[1].text, "123");
-  EXPECT_EQ((*result)[1].type, TokenType::TypedText);
-  EXPECT_EQ((*result)[2].text, "<Esc>");
-  EXPECT_EQ((*result)[2].type, TokenType::Escape);
+  EXPECT_EQ((*result)[0].token, "i");
+  EXPECT_EQ((*result)[0].kind, TokenKind::Change);
+  EXPECT_EQ((*result)[1].token, "123");
+  EXPECT_EQ((*result)[1].kind, TokenKind::TypedText);
+  EXPECT_EQ((*result)[2].token, "<Esc>");
+  EXPECT_EQ((*result)[2].kind, TokenKind::Escape);
 }
 
 TEST(ErrorHandlingTest, FormatSequenceDisplaysDigitLeadingTypedText) {

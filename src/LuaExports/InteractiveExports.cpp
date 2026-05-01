@@ -70,49 +70,31 @@ string encodeState(const View& v) {
       string_view(intField(teCol)));
 }
 
-// Apply-result payload. Two statuses only — "Applied" and "Rejected". View
-// state (phase, cursor, seq, cost, is_completed) is echoed inline so Lua
-// can treat the apply response as a state refresh in one call. `crossed` =
-// crossed an edit boundary (useful for Lua's decide-to-rewrite-scratch
-// decision).
-string encodeOutcome(const View& v, const Outcome& outcome) {
+// Apply-result payload. Two fields: status ("Applied" | "Rejected") and
+// reason (empty on Applied). The new view state is read separately via
+// vf_explore_state — Lua callers refresh state after every action anyway.
+string encodeOutcome(const Outcome& outcome) {
   const char* status = outcome.has_value() ? "Applied" : "Rejected";
-  const int crossed = (outcome.has_value() && outcome.value().crossedEditBoundary) ? 1 : 0;
   const string& reason = outcome.has_value() ? string() : outcome.error().reason;
-  const Explore::State& st = v.state();
-  const PhaseWireFields phase = phaseWireFields(st.phase);
-  return encodeFields(
-      string_view(status),
-      phase.kind,
-      string_view(intField(phase.editIndex)),
-      string_view(intField(v.isCompleted() ? 1 : 0)),
-      string_view(intField(st.cursor.line)),
-      string_view(intField(st.cursor.col)),
-      string_view(st.acceptedSeq),
-      string_view(doubleField(st.acceptedCost)),
-      string_view(reason),
-      string_view(intField(crossed)));
+  return encodeFields(string_view(status), string_view(reason));
 }
 
-// Per-alternative wire encoders. 7 fields — Lua's parse_explore_recommendations
+// Per-alternative wire encoders. 6 fields — Lua's parse_explore_recommendations
 // must match the field count. Adding a new Suggestion alternative = add one
 // overload; the visit dispatcher requires no edits.
-string encodeSuggestion(const NavFrontierItem& item) {
-  const double totalPathCost = item.cost + item.projectedEditCost.value_or(0.0);
+string encodeSuggestion(const FrontierItem& item) {
   return encodeFields(
-      string_view(item.molecule),
+      string_view(item.token),
       Explore::suggestionKind(item),
       string_view(doubleField(item.cost)),
-      string_view(doubleField(totalPathCost)),
       string_view(intField(item.goalPos.line)),
       string_view(intField(item.goalPos.col)),
       string_view(""));            // typedText: motions don't carry one
 }
 string encodeSuggestion(const TransformFrontierItem& item) {
   return encodeFields(
-      string_view(item.molecule),
+      string_view(item.token),
       Explore::suggestionKind(item),
-      string_view(doubleField(item.cost)),
       string_view(doubleField(item.cost)),
       string_view(intField(item.goalPos.line)),
       string_view(intField(item.goalPos.col)),
@@ -240,7 +222,7 @@ const char* vf_explore_apply_movement(int view_id, const char* movement_text) {
   View& v = g_registry.get(view_id);
   return helpers::storeString(storage, helpers::requiredText(movement_text, "movement_text").transform(
       [&](string_view text) {
-        return encodeOutcome(v, v.applyMovement(text));
+        return encodeOutcome(v.applyMovement(text));
       }));
 }
 
@@ -249,7 +231,7 @@ const char* vf_explore_accept_cursor_move(
   static string storage;
   View& v = g_registry.get(view_id);
   storage = encodeOutcome(
-      v, v.acceptCursorMove(CursorPos(new_row, new_col), helpers::optionalText(raw_keys)));
+      v.acceptCursorMove(CursorPos(new_row, new_col), helpers::optionalText(raw_keys)));
   return storage.c_str();
 }
 
@@ -265,7 +247,7 @@ const char* vf_explore_accept_buffer_state(
       .and_then(payload::decodeLineArray)
       .transform([&](const Lines& newLines) {
         return encodeOutcome(
-            v, v.acceptBufferState(newLines, CursorPos(new_row, new_col), helpers::optionalText(raw_keys)));
+            v.acceptBufferState(newLines, CursorPos(new_row, new_col), helpers::optionalText(raw_keys)));
       }));
 }
 
@@ -274,7 +256,7 @@ const char* vf_explore_apply_edit(int view_id, const char* text) {
   View& v = g_registry.get(view_id);
   return helpers::storeString(storage, helpers::requiredText(text, "text").transform(
       [&](string_view edit_text) {
-        return encodeOutcome(v, v.applyEdit(edit_text));
+        return encodeOutcome(v.applyEdit(edit_text));
       }));
 }
 
@@ -291,7 +273,7 @@ const char* vf_explore_current_lines(int view_id) {
 const char* vf_explore_begin_insert(int view_id) {
   static string storage;
   View& v = g_registry.get(view_id);
-  storage = encodeOutcome(v, v.beginInsert());
+  storage = encodeOutcome(v.beginInsert());
   return storage.c_str();
 }
 
@@ -307,28 +289,28 @@ const char* vf_explore_accept_insert_exit(
       .and_then(payload::decodeLineArray)
       .transform([&](const Lines& newLines) {
         return encodeOutcome(
-            v, v.acceptInsertExit(newLines, CursorPos(new_row, new_col), helpers::optionalText(raw_keys)));
+            v.acceptInsertExit(newLines, CursorPos(new_row, new_col), helpers::optionalText(raw_keys)));
       }));
 }
 
 const char* vf_explore_cancel_insert(int view_id) {
   static string storage;
   View& v = g_registry.get(view_id);
-  storage = encodeOutcome(v, v.cancelInsert());
+  storage = encodeOutcome(v.cancelInsert());
   return storage.c_str();
 }
 
 const char* vf_explore_undo(int view_id) {
   static string storage;
   View& v = g_registry.get(view_id);
-  storage = encodeOutcome(v, v.undo());
+  storage = encodeOutcome(v.undo());
   return storage.c_str();
 }
 
 const char* vf_explore_redo(int view_id) {
   static string storage;
   View& v = g_registry.get(view_id);
-  storage = encodeOutcome(v, v.redo());
+  storage = encodeOutcome(v.redo());
   return storage.c_str();
 }
 

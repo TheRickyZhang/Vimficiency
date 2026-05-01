@@ -6,21 +6,23 @@ using namespace std;
 
 TransformSequenceDecomposition decomposeEditSequence(string_view fullSequence) {
   TransformSequenceDecomposition decomposition{
-      .molecule = string(fullSequence),
+      .token = Token{fullSequence},
       .typedText = {},
   };
 
   auto tokens = parseSequence(fullSequence);
   if (!tokens || tokens->empty()) return decomposition;
 
-  const SequenceToken& first = tokens->front();
-  if (first.type != TokenType::TypedText && first.type != TokenType::Escape) {
-    decomposition.molecule = first.text;
+  const TaggedToken& first = tokens->front();
+  if (first.kind != TokenKind::TypedText && first.kind != TokenKind::Escape) {
+    decomposition.token = first.token;
   }
 
-  for (const SequenceToken& token : *tokens) {
-    if (token.type == TokenType::Escape) break;
-    if (token.type == TokenType::TypedText) decomposition.typedText += token.text;
+  for (const TaggedToken& tagged : *tokens) {
+    if (tagged.kind == TokenKind::Escape) break;
+    if (tagged.kind == TokenKind::TypedText) {
+      decomposition.typedText += tagged.token;
+    }
   }
 
   return decomposition;

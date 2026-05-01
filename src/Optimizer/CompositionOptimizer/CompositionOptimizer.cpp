@@ -592,41 +592,41 @@ ostream& operator<<(ostream& os, const CompositionResult& cr) {
       os << results[i].getSequence().view() << "\n";
       continue;
     }
-    vector<SequenceToken> tokens = *parsed;
+    vector<TaggedToken> tokens = *parsed;
     int diffIdx = 0;
     int numDiffs = static_cast<int>(diffs.size());
     for (size_t j = 0; j < tokens.size(); j++) {
-      auto type = tokens[j].type;
+      auto kind = tokens[j].kind;
 
       // Spacing before this token
       if (j > 0) {
-        auto prev = tokens[j - 1].type;
-        if (prev == TokenType::Escape || prev == TokenType::Delete ||
-            type == TokenType::Delete ||
-            (prev == TokenType::Change && type == TokenType::TypedText)) {
+        auto prev = tokens[j - 1].kind;
+        if (prev == TokenKind::Escape || prev == TokenKind::Delete ||
+            kind == TokenKind::Delete ||
+            (prev == TokenKind::Change && kind == TokenKind::TypedText)) {
           os << " ";
         }
       }
 
-      if (type == TokenType::Delete &&
+      if (kind == TokenKind::Delete &&
           diffIdx < numDiffs && diffs[diffIdx].isPureDeletion()) {
         // Pure deletion diff: show command as-is, advance diffIdx
-        os << makePrintable(tokens[j].text);
+        os << makePrintable(tokens[j].token);
         diffIdx++;
-      } else if (type == TokenType::Delete &&
+      } else if (kind == TokenKind::Delete &&
                  diffIdx < numDiffs &&
                  !diffs[diffIdx].isPureDeletion() &&
                  diffs[diffIdx].deletedText.size() == 1 &&
                  diffs[diffIdx].insertedText.size() == 1 &&
-                 isReplaceCharToken(tokens[j].text)) {
+                 isReplaceCharToken(tokens[j].token)) {
         // Single-char replacement using r{char} does not produce TypedText.
         // Show a placeholder after the token so diff labels stay aligned.
-        os << makePrintable(tokens[j].text);
+        os << makePrintable(tokens[j].token);
         os << " {" << diffIdx++ << "}";
-      } else if (type == TokenType::TypedText && diffIdx < numDiffs) {
+      } else if (kind == TokenKind::TypedText && diffIdx < numDiffs) {
         // Replacement/insertion: strip leading control chars (<BS>, <Del>)
         // and show them before the {n} placeholder.
-        string_view text = tokens[j].text;
+        string_view text = tokens[j].token;
         while (text.starts_with("<BS>") || text.starts_with("<Del>")) {
           if (text.starts_with("<BS>")) {
             os << "<BS>";
@@ -638,7 +638,7 @@ ostream& operator<<(ostream& os, const CompositionResult& cr) {
         }
         os << "{" << diffIdx++ << "}";
       } else {
-        os << makePrintable(tokens[j].text);
+        os << makePrintable(tokens[j].token);
       }
     }
 

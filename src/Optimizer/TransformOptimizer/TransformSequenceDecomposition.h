@@ -3,8 +3,10 @@
 #include <string>
 #include <string_view>
 
+#include "Types/Token.h"
+
 struct TransformSequenceDecomposition {
-  std::string molecule;
+  Token token;
   std::string typedText;
 };
 

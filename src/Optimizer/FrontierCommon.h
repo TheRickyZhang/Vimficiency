@@ -5,19 +5,18 @@
 // =============================================================================
 // Shared fields for the depth-1 frontier types in NavOptimizer/ and
 // TransformOptimizer/. Each frontier emits its own derived item / query;
-// what's common (`molecule` + `goalPos` + `cost` for items, and the input
+// what's common (`token` + `goalPos` + `cost` for items, and the input
 // `lines` / `cursor` / `maxCount` / `allowMultiplePerPosition` for queries)
 // lives here so the divergence is visible at the inheritance line.
 
-#include <string>
-
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
+#include "Types/Token.h"
 
 struct FrontierItem {
-  std::string molecule;
+  Token token;
   CursorPos goalPos{0, 0};
-  // Raw effort of this single molecule (not a cumulative path cost).
+  // Raw effort of this single token (not a cumulative path cost).
   double cost = 0.0;
 };
 

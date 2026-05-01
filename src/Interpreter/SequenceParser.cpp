@@ -308,9 +308,9 @@ pair<string, size_t> parseTypedText(string_view sv, size_t i) {
 
 }  // namespace
 
-expected<vector<SequenceToken>, SequenceParseError>
+expected<vector<TaggedToken>, SequenceParseError>
 parseSequence(string_view seq) {
-  vector<SequenceToken> tokens;
+  vector<TaggedToken> tokens;
   string_view sv(seq);
   size_t i = 0;
   bool inInsertMode = false;
@@ -321,7 +321,7 @@ parseSequence(string_view seq) {
       if (sv[i] == '<') {
         string special = tryParseSpecialKey(sv, i);
         if (special == "<Esc>") {
-          tokens.push_back(SequenceToken("<Esc>", TokenType::Escape));
+          tokens.push_back(TaggedToken("<Esc>", TokenKind::Escape));
           i += special.size();
           inInsertMode = false;
           continue;
@@ -330,7 +330,7 @@ parseSequence(string_view seq) {
 
       auto [typed, len] = parseTypedText(sv, i);
       if (!typed.empty()) {
-        tokens.push_back(SequenceToken(typed, TokenType::TypedText));
+        tokens.push_back(TaggedToken(typed, TokenKind::TypedText));
       }
       i += len;
       continue;
@@ -347,7 +347,7 @@ parseSequence(string_view seq) {
     // Try to parse change command (enters insert mode)
     auto [changeCmd, changeLen] = tryParseChange(sv, i);
     if (!changeCmd.empty()) {
-      tokens.push_back(SequenceToken(countStr + changeCmd, TokenType::Change));
+      tokens.push_back(TaggedToken(countStr + changeCmd, TokenKind::Change));
       i += changeLen;
       inInsertMode = true;
       continue;
@@ -356,7 +356,7 @@ parseSequence(string_view seq) {
     // Try to parse visual-entering command. Stateless — see `tryParseVisual`.
     auto [visualCmd, visualLen] = tryParseVisual(sv, i);
     if (!visualCmd.empty()) {
-      tokens.push_back(SequenceToken(countStr + visualCmd, TokenType::Visual));
+      tokens.push_back(TaggedToken(countStr + visualCmd, TokenKind::Visual));
       i += visualLen;
       continue;
     }
@@ -364,7 +364,7 @@ parseSequence(string_view seq) {
     // Try to parse delete command
     auto [deleteCmd, deleteLen] = tryParseDelete(sv, i);
     if (!deleteCmd.empty()) {
-      tokens.push_back(SequenceToken(countStr + deleteCmd, TokenType::Delete));
+      tokens.push_back(TaggedToken(countStr + deleteCmd, TokenKind::Delete));
       i += deleteLen;
       continue;
     }
@@ -372,7 +372,7 @@ parseSequence(string_view seq) {
     // Try to parse motion
     string motion = tryParseMotion(sv, i);
     if (!motion.empty()) {
-      tokens.push_back(SequenceToken(countStr + motion, TokenType::Movement));
+      tokens.push_back(TaggedToken(countStr + motion, TokenKind::Movement));
       i += motion.size();
       continue;
     }
@@ -384,7 +384,7 @@ parseSequence(string_view seq) {
     if (sv[i] == '<') {
       string special = tryParseSpecialKey(sv, i);
       if (special == "<Esc>") {
-        tokens.push_back(SequenceToken("<Esc>", TokenType::Escape));
+        tokens.push_back(TaggedToken("<Esc>", TokenKind::Escape));
         i += special.size();
         continue;
       }
@@ -405,11 +405,11 @@ parseSequence(string_view seq) {
 expected<vector<string>, SequenceParseError>
 parseSequenceStrings(string_view seq) {
   return parseSequence(seq).transform(
-      [](const vector<SequenceToken>& tokens) {
+      [](const vector<TaggedToken>& tokens) {
         vector<string> out;
         out.reserve(tokens.size());
-        for (const auto& token : tokens) {
-          out.push_back(token.text);
+        for (const auto& tagged : tokens) {
+          out.push_back(tagged.token);
         }
         return out;
       });

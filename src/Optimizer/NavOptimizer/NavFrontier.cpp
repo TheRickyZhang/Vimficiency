@@ -4,6 +4,7 @@
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "Effort/EffortBank.h"
@@ -18,7 +19,7 @@
 
 using namespace std;
 
-vector<NavFrontierItem> rankNavFrontier(
+vector<FrontierItem> rankNavFrontier(
     const NavFrontierQuery& query,
     const Config& config) {
   if (query.maxCount <= 0) return {};
@@ -37,7 +38,7 @@ vector<NavFrontierItem> rankNavFrontier(
   }
   if (!motionRange) return {};
 
-  // Explore shows IMMEDIATE NEXT MOLECULES. Peek the live A* frontier at
+  // Explore shows IMMEDIATE NEXT TOKENS. Peek the live A* frontier at
   // depth 1 from the cursor — i.e. enumerate all candidate single-step
   // transitions, score each by `effort + heuristic(target)` using the
   // same scoring the full optimizer would, sort, and take top K. No full
@@ -67,11 +68,11 @@ vector<NavFrontierItem> rankNavFrontier(
   // Two collection strategies.
   //
   // Default (`allowMultiplePerPosition == false`): compare-and-replace per
-  // landing during emission — keep only the cheapest molecule reaching each
+  // landing during emission — keep only the cheapest token reaching each
   // cell. Honest both on memory (one state per landing) and on compute (we
   // never build a `successors` vector we'll mostly discard).
   //
-  // Opt-in (`allowMultiplePerPosition == true`): accumulate every molecule
+  // Opt-in (`allowMultiplePerPosition == true`): accumulate every token
   // and dedup only by literal sequence text — surfaces `w` / `W` / `e` all
   // landing on the same cell as distinct recommendations.
   vector<NavState> successors;
@@ -118,7 +119,7 @@ vector<NavFrontierItem> rankNavFrontier(
   }
   sort(successors.begin(), successors.end());
 
-  vector<NavFrontierItem> items;
+  vector<FrontierItem> items;
   items.reserve(static_cast<size_t>(query.maxCount));
   unordered_set<string> seenSeq;  // only used in allow-multiple mode
   for (const NavState& s : successors) {
@@ -127,38 +128,12 @@ vector<NavFrontierItem> rankNavFrontier(
     if (query.allowMultiplePerPosition) {
       if (!seenSeq.insert(seq).second) continue;
     }
-    items.push_back(NavFrontierItem{
-        FrontierItem{
-            .molecule = std::move(seq),
-            .goalPos = s.getPos(),
-            .cost = s.getEffort(),
-        }});
+    items.push_back(FrontierItem{
+        .token = Token{std::move(seq)},
+        .goalPos = s.getPos(),
+        .cost = s.getEffort(),
+    });
     if (static_cast<int>(items.size()) >= query.maxCount) break;
   }
   return items;
-}
-
-vector<NavFrontierItem> rankNavFrontierToLine(
-    const Lines& lines,
-    CursorPos cursor,
-    int targetLine,
-    const NavBoundary& boundary,
-    const NavContext& navContext,
-    const Config& config,
-    int maxCount) {
-  if (targetLine < 0 || targetLine >= static_cast<int>(lines.size())) return {};
-  return rankNavFrontier(
-      NavFrontierQuery{
-          FrontierQuery{
-              .lines = lines,
-              .cursor = cursor,
-              .maxCount = maxCount,
-          },
-          CharRange(                       // targetRange
-              CursorPos(targetLine, 0),
-              CursorPos(targetLine, lines[targetLine].effectiveSize())),
-          boundary,                        // boundary
-          navContext,                      // navContext
-      },
-      config);
 }

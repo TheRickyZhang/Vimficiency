@@ -666,35 +666,27 @@ end
 ---@field can_redo boolean
 ---@field target_range? VF.Range  # half-open diff range; nil when no current target
 
---- Apply-result variants. C++ side is `std::expected<Applied, Rejected>`;
+--- Apply-result variants. C++ side is `std::expected<void, Rejected>`;
 --- Lua mirrors that via discriminated union — narrow on `result.status`.
+--- The new view state is fetched separately via `explore_state` after every
+--- action, so the apply result carries only success/failure + reason.
 ---@class VF.Explore.AppliedResult
 ---@field status "Applied"
----@field phase VF.Explore.Phase
----@field is_completed boolean
----@field cursor VF.Position
----@field accepted_seq string
----@field accepted_cost number
----@field crossed_edit_boundary boolean  # true if this action advanced past an edit
 
 ---@class VF.Explore.RejectedResult
 ---@field status "Rejected"
----@field phase VF.Explore.Phase  # unchanged state echoed back
----@field is_completed boolean
----@field cursor VF.Position
----@field accepted_seq string
----@field accepted_cost number
 ---@field reason string
 
 ---@alias VF.Explore.ApplyResult VF.Explore.AppliedResult | VF.Explore.RejectedResult
 
---- Recommendation variants. C++ side is `std::variant<NavFrontierItem, TransformFrontierItem>`;
+--- Recommendation variants. C++ side is `std::variant<FrontierItem, TransformFrontierItem>`;
 --- Lua mirrors that via discriminated union — narrow on `rec.kind`.
+---
+--- `cost` is the raw token effort of the recommended motion or edit.
 ---@class VF.Explore.NavRecommendation
 ---@field kind "movement"
 ---@field text string
 ---@field cost number
----@field total_path_cost number  # cost + projected post-motion edit cost
 ---@field landing VF.Position
 ---@field rank? integer  # attached on the consumer side after sorting (see explore.lua attach_ranks)
 
@@ -702,7 +694,6 @@ end
 ---@field kind "edit"
 ---@field text string
 ---@field cost number
----@field total_path_cost number  # equal to cost for edits
 ---@field landing VF.Position
 ---@field typed_text string
 ---@field rank? integer
@@ -766,34 +757,12 @@ end
 ---@return VF.Explore.ApplyResult
 local function parse_explore_apply_result(payload)
   local parts = decode_string_list(payload)
-  assert(#parts == 10, "explore apply payload must have 10 fields")
+  assert(#parts == 2, "explore apply payload must have 2 fields")
   local status = parts[1]
-  local phase = build_phase(parts[2], parts[3])
-  local is_completed = parts[4] == "1"
-  ---@type VF.Position
-  local cursor = { row = tonumber(parts[5]) or 0, col = tonumber(parts[6]) or 0 }
-  local accepted_seq = parts[7]
-  local accepted_cost = tonumber(parts[8]) or 0
   if status == "Applied" then
-    return {
-      status = "Applied",
-      phase = phase,
-      is_completed = is_completed,
-      cursor = cursor,
-      accepted_seq = accepted_seq,
-      accepted_cost = accepted_cost,
-      crossed_edit_boundary = parts[10] == "1",
-    }
+    return { status = "Applied" }
   elseif status == "Rejected" then
-    return {
-      status = "Rejected",
-      phase = phase,
-      is_completed = is_completed,
-      cursor = cursor,
-      accepted_seq = accepted_seq,
-      accepted_cost = accepted_cost,
-      reason = parts[9],
-    }
+    return { status = "Rejected", reason = parts[2] }
   end
   error("unknown apply-result status from FFI: " .. tostring(status))
 end
@@ -804,28 +773,26 @@ local function parse_explore_recommendations(payload)
   local parts = decode_string_list(payload)
   assert(#parts >= 1, "explore recommendations payload must have count prefix")
   local count = tonumber(parts[1]) or 0
-  local expected = 1 + count * 7
+  local expected = 1 + count * 6
   assert(#parts == expected,
     "explore recommendations payload has " .. #parts ..
     " fields, expected " .. expected .. " for count=" .. count)
   ---@type VF.Explore.Recommendation[]
   local recs = {}
   for i = 1, count do
-    local base = 1 + (i - 1) * 7
+    local base = 1 + (i - 1) * 6
     local kind = parts[base + 2]
     ---@type VF.Position
     local landing = {
-      row = tonumber(parts[base + 5]) or 0,
-      col = tonumber(parts[base + 6]) or 0,
+      row = tonumber(parts[base + 4]) or 0,
+      col = tonumber(parts[base + 5]) or 0,
     }
     local cost = tonumber(parts[base + 3]) or 0
-    local total_path_cost = tonumber(parts[base + 4]) or 0
     if kind == "movement" then
       recs[i] = {
         kind = "movement",
         text = parts[base + 1],
         cost = cost,
-        total_path_cost = total_path_cost,
         landing = landing,
       }
     elseif kind == "edit" then
@@ -833,9 +800,8 @@ local function parse_explore_recommendations(payload)
         kind = "edit",
         text = parts[base + 1],
         cost = cost,
-        total_path_cost = total_path_cost,
         landing = landing,
-        typed_text = parts[base + 7],
+        typed_text = parts[base + 6],
       }
     else
       error("unknown recommendation kind from FFI: " .. tostring(kind))

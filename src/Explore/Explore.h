@@ -12,7 +12,7 @@
 #include "Boundary/NavBoundary.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
-#include "Optimizer/NavOptimizer/NavFrontier.h"
+#include "Optimizer/FrontierCommon.h"
 #include "Optimizer/TransformOptimizer/TransformFrontier.h"
 #include "Rejected.h"
 #include "Types/CursorPos.h"
@@ -41,8 +41,8 @@
 // with state unchanged. New actions: walk this list explicitly.
 //   1. Phase gate. Use the require* helpers for the relevant phase/action.
 //   2. Reported cursor (when the action takes one from outside): must pass
-//      `isCursorOnConcreteBufferCell` against the lines being committed,
-//      and the boundary check via `MovementHandler::finishMove` if motion-y.
+//      `Lines::contains` against the lines being committed, and the boundary
+//      check via `MovementHandler::finishMove` if motion-y.
 //   3. Reported lines (when the action takes them from outside): must match
 //      the expected fencepost (current and/or next) — go through
 //      `EditHandler::validateBufferState`.
@@ -94,18 +94,19 @@ inline int phaseIndex(const Phase& p) {
 }
 
 // One ranked suggestion returned by View::recommendations. The variant
-// alternative IS the kind (Movement vs Edit), so there's no string tag —
-// each alternative carries exactly the fields its kind needs, sharing
-// `molecule` / `goalPos` / `cost` via FrontierItem.
-using Suggestion = std::variant<NavFrontierItem, TransformFrontierItem>;
+// alternative IS the kind (Nav vs Transform); the optimizer-produced
+// types ARE the wire types — Explore doesn't introduce a parallel
+// Suggestion hierarchy, since the optimizer outputs already carry the
+// minimum data the wire needs.
+using Suggestion = std::variant<FrontierItem, TransformFrontierItem>;
 
-inline std::string_view suggestionKind(const NavFrontierItem&)       { return "movement"; }
+inline std::string_view suggestionKind(const FrontierItem&)          { return "movement"; }
 inline std::string_view suggestionKind(const TransformFrontierItem&) { return "edit"; }
 inline std::string_view suggestionKind(const Suggestion& s) {
   return std::visit([](const auto& a) { return suggestionKind(a); }, s);
 }
 
-// Common base accessor — the FrontierItem shared subset (molecule, goalPos,
+// Common base accessor — the FrontierItem shared subset (token, goalPos,
 // cost). Use when callers need only the shared fields and don't care which
 // alternative holds them.
 inline const FrontierItem& base(const Suggestion& s) {
@@ -126,17 +127,9 @@ struct State {
   bool operator==(const State&) const = default;
 };
 
-// Action outcomes.
-//
-// Successful transitions return Applied; Applied carries just a flag about
-// whether an edit boundary was crossed (useful for Lua to decide whether to
-// rewrite the scratch buffer). The new live state itself is read back via
-// View::state() — no copy bundled into the result.
-struct Applied {
-  bool crossedEditBoundary = false;
-};
-
-using Outcome = std::expected<Applied, Rejected>;
+// Action outcomes. Successful transitions return void; the new live state
+// is read back via View::state(). Failures return Rejected with a reason.
+using Outcome = std::expected<void, Rejected>;
 
 class View {
 public:
@@ -173,17 +166,19 @@ public:
   //
   // Each recommendation is one atomic action the user could take right now
   // (`w`, `f;`, `$`, `s`, `cl`, ...), NOT a full sequence to the target.
-  // The user picks one, the session advances by exactly that molecule, and
+  // The user picks one, the session advances by exactly that token, and
   // the next call to `recommendations(...)` computes a fresh frontier from
   // the new cursor state.
   //
-  // Composition (in rank order of how items are appended before the trim):
-  //   1. Edit frontier at the cursor (via rankTransformFrontier).
-  //   2. Motion backfill toward sibling edit starts (only when cursor is
-  //      already inside the diff and the edit frontier underfills).
-  //   3. Motion frontier toward the diff target (only when cursor is
-  //      outside the diff) — depth-1 live A* peek.
-  //   4. Optional join-line motion hint for multiline diffs.
+  // Composition by phase:
+  //   - Navigate(i): motion frontier toward navTarget(i) — depth-1 live A*
+  //     peek (rankNavFrontier).
+  //   - Transform(i): edit frontier at the cursor (rankTransformFrontier).
+  //     Motion suggestions never appear in Transform — the phase invariant
+  //     keeps the cursor inside the diff, so the immediate next token is
+  //     always an edit. The user may still take a motion via
+  //     `applyMovement`; the Lua layer is responsible for that affordance.
+  //   - Insert(i): empty.
   // Final trim caps the list at `maxCount`.
   //
   // Two independent dedup knobs — motions and edits use DIFFERENT dedup
@@ -249,8 +244,8 @@ private:
   // --- Internal helpers ---
 
   // Push current state onto undo, clear redo, move `next` into live state.
-  // Returns Applied{crossedEditBoundary}.
-  Applied commit(State next, bool crossedEditBoundary = false);
+  // Always returns success.
+  Outcome commit(State next);
 
   Phase phaseForEditCursor(int editIndex, CursorPos cursor) const;
   bool movementStaysInTransformRange(CursorPos cursor) const;
@@ -261,7 +256,6 @@ private:
   std::vector<Suggestion> recommendTransform(
       int editIndex,
       int maxCount,
-      bool allowMultipleMovementsPerPosition,
       bool allowMultipleEditsPerPosition) const;
 
   // Motion gate: succeed iff phase is Navigate/Transform, returning the
@@ -285,7 +279,7 @@ private:
   // `editIndex == totalEdits_ - 1`, transitions to Navigate(totalEdits_) —
   // the post-final-edit nav segment. Completion is then a derived predicate
   // (see isCompleted) that triggers when the cursor reaches goalPos.
-  Applied afterEditCompleted(State next, int editIndex);
+  Outcome afterEditCompleted(State next, int editIndex);
 };
 
 }  // namespace Explore

@@ -21,7 +21,6 @@ struct TransformFrontierQuery : FrontierQuery {
 };
 
 struct TransformFrontierItem : FrontierItem {
-  std::string fullSequence;
   std::string typedText;
 };
 

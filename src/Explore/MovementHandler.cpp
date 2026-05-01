@@ -8,20 +8,12 @@ namespace Explore::MovementHandler {
 
 namespace {
 
-bool isCursorOnConcreteBufferCell(const Lines& lines, const CursorPos& pos) {
-  if (pos.line < 0 || pos.line >= static_cast<int>(lines.size())) return false;
-  const int maxCol = lines[pos.line].empty()
-      ? 0
-      : static_cast<int>(lines[pos.line].size()) - 1;
-  return pos.col >= 0 && pos.col <= maxCol;
-}
-
 expected<MotionSuccess, Rejected> finishMove(
     const Lines& lines,
     CursorPos newCursor,
     string appendedSeq,
     const NavBoundary& boundary) {
-  if (!isCursorOnConcreteBufferCell(lines, newCursor)) {
+  if (!lines.contains(newCursor)) {
     return unexpected(Rejected{"motion landed outside the current buffer"});
   }
   const int lastLine = static_cast<int>(lines.size()) - 1;

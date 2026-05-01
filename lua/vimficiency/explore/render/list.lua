@@ -67,7 +67,7 @@ function M.render(active, remaining)
     local total = #active.recommendations
     for i, item in ipairs(active.recommendations) do
       local text = sequence_display.inline(item.text)
-      local cost = string.format("%.2f", item.total_path_cost)
+      local cost = string.format("%.2f", item.cost)
       local kind = item.kind == "movement" and "move" or item.kind
       local chunks = { text, cost, kind }
       if item.kind == "movement" then
