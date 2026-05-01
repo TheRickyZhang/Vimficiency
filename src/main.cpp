@@ -46,7 +46,7 @@ int main(int argc, char* argv[]) {
   NavBoundary boundary;
 
   // Pass CursorPos and fresh RunningEffort (no prior typing context from CLI)
-  vector<Result> res = o.optimize(
+  vector<LandingResult> res = o.optimize(
     start_snapshot.lines,
     start_position,
     end_position,

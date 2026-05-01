@@ -46,7 +46,9 @@ TEST_F(NavOptimizerHumanApprovalTests, Motion_SimpleHorizontal) {
 
   NavOptimizer opt(config);
   auto results = opt.optimize(
-    lines, start, end, {}, "lllll"
+    lines, start, end,
+    NavOptimizerParams{}.withAllowMultiplePerPosition(true),
+    "lllll"
   ).getResults();
   // printResultsDebug(results, "Simple horizontal movement 0→5");
 
@@ -63,7 +65,9 @@ TEST_F(NavOptimizerHumanApprovalTests, Motion_VerticalJump) {
 
   NavOptimizer opt(config);
   auto results = opt.optimize(
-    lines, start, end, {}, "jjj"
+    lines, start, end,
+    NavOptimizerParams{}.withAllowMultiplePerPosition(true),
+    "jjj"
   ).getResults();
 
   // printResults(results, "Vertical jump 3 lines");
@@ -87,7 +91,9 @@ TEST_F(NavOptimizerHumanApprovalTests, Motion_WordMotions) {
 
   NavOptimizer opt(config);
   auto results = opt.optimize(
-    lines, start, end, {}, "www"
+    lines, start, end,
+    NavOptimizerParams{}.withAllowMultiplePerPosition(true),
+    "www"
   ).getResults();
 
   // printResults(results, "Word motions to 'four'");
@@ -107,7 +113,9 @@ TEST_F(NavOptimizerHumanApprovalTests, Motion_MixedMotions) {
 
   NavOptimizer opt(config);
   auto results = opt.optimize(
-    lines, start, end, NavOptimizerParams{}.withMaxResults(15), "jjllllllllll"
+    lines, start, end,
+    NavOptimizerParams{}.withMaxResults(15).withAllowMultiplePerPosition(true),
+    "jjllllllllll"
   ).getResults();
 
   // printResults(results, "Mixed motions to line 2, col 11");

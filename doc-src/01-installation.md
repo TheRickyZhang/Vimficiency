@@ -18,6 +18,9 @@ Add to your Neovim config:
 require('vimficiency').setup()
 ```
 
+For a complete lazy.nvim-style setup with configuration and keymaps, use
+[`examples/config.lua`](../examples/config.lua) as the canonical sample.
+
 If the library is not in a standard location, point at it with:
 
 ```bash

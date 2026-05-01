@@ -23,7 +23,7 @@ using namespace std;
 using NavPriorityQueue =
     priority_queue<NavState, vector<NavState>, greater<NavState>>;
 
-NavResult NavOptimizer::optimize(
+LandingNavResult NavOptimizer::optimize(
     const Lines& lines,
     const CursorPos& initialPos,
     const CursorPos& goalPos,
@@ -31,21 +31,8 @@ NavResult NavOptimizer::optimize(
     string_view userSequence,
     const NavBoundary& boundary,
     const NavContext& navContext) {
-  // Single-cursor goal: distinct paths to one point. The dedup-by-landing
-  // pass is meaningless on a 1-element interval, so always behave like
-  // allowMultiplePerPosition.
-  params.allowMultiplePerPosition = true;
-  LandingNavResult inner = optimize(
-      lines, initialPos, CharInterval(goalPos, goalPos),
-      params, userSequence, boundary, navContext);
-
-  // Drop per-result landing — caller already knows it (it's `goalPos`).
-  std::vector<Result> stripped;
-  stripped.reserve(inner.getResults().size());
-  for (const auto& r : inner.getResults()) {
-    stripped.emplace_back(r.getSequence(), r.getCost());
-  }
-  return NavResult(std::move(stripped), inner.getStats());
+  return optimize(lines, initialPos, CharInterval(goalPos, goalPos),
+                  params, userSequence, boundary, navContext);
 }
 
 LandingNavResult NavOptimizer::optimize(
@@ -74,8 +61,7 @@ LandingNavResult NavOptimizer::optimize(
   assert(range.isValid() && "target interval must be non-empty");
 
   // startPos already in the goal interval — nothing to do, the empty motion
-  // sequence is the answer. Old single-cursor `optimize` handled this case
-  // implicitly via the first-pop terminal check; preserve the same semantic.
+  // sequence is the answer.
   if (range.containsPos(startPos)) {
     NavSearchStats stats;
     std::vector<LandingResult> results;
@@ -107,7 +93,7 @@ LandingNavResult NavOptimizer::optimize(
   NavSearchStats stats;
   int totalPops = 0;
   const double maxEffort = userEffort * params.exploreFactor;
-  
+
   auto scoreState = [&](CursorPos pos, double effort) {
     double distance = NavHeuristic::distanceToRange(range, pos);
     return params.effortWeight * effort + params.distanceWeight * distance;

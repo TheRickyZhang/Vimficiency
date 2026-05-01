@@ -39,7 +39,7 @@ protected:
       navContext = NavContext();
   }
 
-  static vector<Result>
+  static vector<LandingResult>
   runOptimizer(const Lines &lines, CursorPos start,
                CursorPos end, const string &userSeq,
                vector<KeyAdjustment> adjustments = {},
@@ -55,8 +55,13 @@ protected:
     NavBoundary boundary;
     // Pass CursorPos and fresh RunningEffort (no prior typing context in tests)
     // Try to explore more (30 results), lower search depth for speed (2e4)
+    // allowMultiplePerPosition=true so tests see the full set of distinct
+    // sequences to the goal point (e.g. `G` vs `3j` vs `jjj`).
     return opt.optimize(lines, start, end,
-                        NavOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
+                        NavOptimizerParams{}
+                            .withMaxResults(30)
+                            .withMaxNodesPopped(20000)
+                            .withAllowMultiplePerPosition(true),
                         userSeq, boundary, navContext).getResults();
   }
 
@@ -91,7 +96,7 @@ TEST_F(NavOptimizer_ManualTest, HorizontalMotions) {
   CursorPos start(0, 0);
   CursorPos end = simulateMovements(start, user_seq, a1_long_line);
 
-  vector<Result> results = runOptimizer(
+  vector<LandingResult> results = runOptimizer(
   a1_long_line,
     start, end, user_seq
   );
@@ -115,7 +120,7 @@ TEST_F(NavOptimizer_ManualTest, ForwardStart_CanUseBackwardCountedVerticalAfterO
   };
 
   // Expensive direct "jj", cheap overshoot + return "G4k"
-  vector<Result> results = runOptimizer(lines, start, end, "jjjjjjjjjj", adjustments);
+  vector<LandingResult> results = runOptimizer(lines, start, end, "jjjjjjjjjj", adjustments);
   EXPECT_TRUE(contains_all(results, {"G4k"})) << "Expected backward counted vertical after overshoot";
 }
 
@@ -132,7 +137,7 @@ TEST_F(NavOptimizer_ManualTest, BackwardStart_CanUseForwardCountedVerticalAfterO
   };
 
   // Expensive direct "kk", cheap overshoot + return "gg4j"
-  vector<Result> results = runOptimizer(lines, start, end, "kkkkkkkkkk", adjustments);
+  vector<LandingResult> results = runOptimizer(lines, start, end, "kkkkkkkkkk", adjustments);
   EXPECT_TRUE(contains_all(results, {"gg4j"})) << "Expected forward counted vertical after overshoot";
 }
 
@@ -211,18 +216,21 @@ protected:
   }
 
   // Helper to run optimizer with specific boundary
-  static vector<Result>
+  static vector<LandingResult>
   runWithBoundary(const Lines& lines, CursorPos start, CursorPos end,
                   const string& userSeq, const NavBoundary& boundary,
                   Config config = Config::uniform()) {
     NavOptimizer opt(config);
     return opt.optimize(lines, start, end,
-                        NavOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
+                        NavOptimizerParams{}
+                            .withMaxResults(30)
+                            .withMaxNodesPopped(20000)
+                            .withAllowMultiplePerPosition(true),
                         userSeq, boundary, navContext).getResults();
   }
 
   // Helper to check if results contain a sequence
-  static bool hasSequence(const vector<Result>& results, const string& seq) {
+  static bool hasSequence(const vector<LandingResult>& results, const string& seq) {
     return std::any_of(results.begin(), results.end(),
         [&seq](const Result& r) { return r.getSequence() == seq; });
   }
@@ -391,7 +399,10 @@ TEST_F(NavOptimizer_ManualTest, MinCountRepeat_BlocksSmallCounts) {
 
   // With default minCountRepeat=4, count=3 should NOT appear as "3w"
   auto results = opt.optimize(lines, start, end,
-      NavOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
+      NavOptimizerParams{}
+          .withMaxResults(30)
+          .withMaxNodesPopped(20000)
+          .withAllowMultiplePerPosition(true),
       "", boundary, navContext).getResults();
 
   EXPECT_FALSE(hasSequence(results, "3w")) << "3w should be blocked by minCountRepeat=4";
@@ -409,11 +420,13 @@ TEST_F(NavOptimizer_ManualTest, MinCountRepeat_LowThresholdAllowsSmallCounts) {
   // With minCountRepeat=2, count=3 SHOULD appear
   auto results = opt.optimize(lines, start, end,
       NavOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000)
-          .withMinCountRepeat(2),
+          .withMinCountRepeat(2)
+          .withAllowMultiplePerPosition(true),
       "", boundary, navContext).getResults();
 
   EXPECT_TRUE(hasSequence(results, "3w")) << "3w should be allowed with minCountRepeat=2";
 }
+
 
 // =============================================================================
 // Note: Stress tests (random buffers) are in OutputCorrectnessTest.cpp

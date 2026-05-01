@@ -11,24 +11,13 @@
 #include "MovementHandler.h"
 #include "Optimizer/CompositionOptimizer/PlannedEditArtifacts.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
+#include "Optimizer/NavOptimizer/NavOptimizerParams.h"
 
 using namespace std;
 
 namespace Explore {
 
 namespace {
-
-NavOptimizerParams makeSingleGoalMotionParams(int maxResults) {
-  CompositionOptimizerParams compParams;
-  return NavOptimizerParams{}
-      .withMaxResults(maxResults)
-      .withFMotionThreshold(compParams.fMotionThreshold)
-      .withDirectionalPruning(compParams.useDirectionalPruning)
-      .withLinePaddingAbove(compParams.navPaddingAbove)
-      .withLinePaddingBelow(compParams.navPaddingBelow)
-      .withMinCountRepeat(compParams.minPrefixCount)
-      .withMaxCountRepeat(compParams.maxPrefixCount);
-}
 
 vector<NavFrontierItem>
 backfillEditStartMovements(const Lines& lines, CursorPos cursor,
@@ -84,14 +73,12 @@ backfillEditStartMovements(const Lines& lines, CursorPos cursor,
   vector<NavFrontierItem> items;
   items.reserve(static_cast<size_t>(maxCount));
   for (const StartCandidate& candidate : candidates) {
-    NavOptimizerParams navParams =
-        makeSingleGoalMotionParams(maxCount - static_cast<int>(items.size()));
+    NavOptimizerParams navParams = NavOptimizerParams{}
+        .withMaxResults(maxCount - static_cast<int>(items.size()))
+        .withAllowMultiplePerPosition(allowMultiplePerPosition);
     auto result = navOptimizer.optimize(lines, cursor, candidate.pos, navParams,
                                         "", boundary, navContext);
-    for (const ::Result& motion : result.getResults()) {
-      if (motion.getSequence().empty())
-        continue;
-
+    for (const Result& motion : result.getResults()) {
       items.push_back(NavFrontierItem{
           FrontierItem{
               .molecule = motion.getSequence().str(),
@@ -195,40 +182,70 @@ View::recommendations(int maxCount, bool allowMultipleMovementsPerPosition,
                       bool allowMultipleEditsPerPosition) const {
   if (maxCount <= 0)
     return {};
-  if (std::holds_alternative<Insert>(state_.phase))
-    return {};
 
-  const int phaseIdx = phaseIndex(state_.phase);
+  return std::visit(PhaseVisitor{
+      [&](const Navigate& nav) {
+        return recommendNavigate(
+            nav.index, maxCount, allowMultipleMovementsPerPosition);
+      },
+      [&](const Transform& transform) {
+        return recommendTransform(
+            transform.index, maxCount, allowMultipleMovementsPerPosition,
+            allowMultipleEditsPerPosition);
+      },
+      [](const Insert&) {
+        return vector<Suggestion>{};
+      },
+  }, state_.phase);
+}
 
+// =============================================================================
+// Internal helpers
+// =============================================================================
+
+Applied View::commit(State next, bool crossedEditBoundary) {
+  undo_.push_back(state_);
+  redo_.clear();
+  state_ = std::move(next);
+  return Applied{crossedEditBoundary};
+}
+
+vector<Suggestion> View::recommendNavigate(
+    int navIndex,
+    int maxCount,
+    bool allowMultipleMovementsPerPosition) const {
   // Navigate(i) — including the post-final-edit Navigate(totalEdits) —
   // surfaces only motion suggestions toward navTarget(i). The pure-motion
   // (E=0) and "final approach" (i==totalEdits) cases share this branch.
-  if (std::holds_alternative<Navigate>(state_.phase)) {
-    CharRange target = plan_.getPlan().navTarget(phaseIdx);
-    auto navItems = rankNavFrontier(
-        NavFrontierQuery{
-            FrontierQuery{
-                .lines = state_.lines,
-                .cursor = state_.cursor,
-                .maxCount = maxCount,
-                .allowMultiplePerPosition = allowMultipleMovementsPerPosition,
-            },
-            target,
-            boundary_,
-            navContext_,
-        },
-        config_);
-    vector<Suggestion> recs;
-    recs.reserve(navItems.size());
-    for (auto& item : navItems)
-      recs.emplace_back(std::move(item));
-    return recs;
-  }
+  CharRange target = plan_.getPlan().navTarget(navIndex);
+  auto navItems = rankNavFrontier(
+      NavFrontierQuery{
+          FrontierQuery{
+              .lines = state_.lines,
+              .cursor = state_.cursor,
+              .maxCount = maxCount,
+              .allowMultiplePerPosition = allowMultipleMovementsPerPosition,
+          },
+          target,
+          boundary_,
+          navContext_,
+      },
+      config_);
+  vector<Suggestion> recs;
+  recs.reserve(navItems.size());
+  for (auto& item : navItems)
+    recs.emplace_back(std::move(item));
+  return recs;
+}
 
+vector<Suggestion> View::recommendTransform(
+    int editIndex,
+    int maxCount,
+    bool allowMultipleMovementsPerPosition,
+    bool allowMultipleEditsPerPosition) const {
   // Transform(i): edit alternatives + (optional) backfill + nav-to-diff +
   // (optional) join-line hint. i is always in [0, totalEdits_) by variant
   // invariant, so the plan lookup is unconditional.
-  const int editIndex = phaseIdx;
   assert(editIndex >= 0 && editIndex < totalEdits_ &&
          "Transform editIndex out of range");
 
@@ -296,17 +313,6 @@ View::recommendations(int maxCount, bool allowMultipleMovementsPerPosition,
   return recs;
 }
 
-// =============================================================================
-// Internal helpers
-// =============================================================================
-
-Applied View::commit(State next, bool crossedEditBoundary) {
-  undo_.push_back(state_);
-  redo_.clear();
-  state_ = std::move(next);
-  return Applied{crossedEditBoundary};
-}
-
 Phase View::phaseForEditCursor(int editIndex, CursorPos cursor) const {
   assert(editIndex >= 0 && editIndex <= totalEdits_ &&
          "phaseForEditCursor index out of plan range");
@@ -352,6 +358,20 @@ View::requireTransform(string_view action) const {
   return t->index;
 }
 
+expected<int, Rejected>
+View::requirePlannedEditTarget(string_view action) const {
+  auto gated = requireNavigateOrTransform(action);
+  if (!gated)
+    return unexpected(std::move(gated.error()));
+
+  if (*gated == totalEdits_) {
+    return unexpected(
+        Rejected{string(action) + " not accepted post-final-edit"});
+  }
+
+  return *gated;
+}
+
 expected<int, Rejected> View::requireInsert(string_view action) const {
   auto* i = std::get_if<Insert>(&state_.phase);
   if (!i) {
@@ -367,9 +387,7 @@ Applied View::afterEditCompleted(State next, int editIndex) {
   // nextEdit == totalEdits_ that returns Navigate{totalEdits_} — the
   // post-final-edit nav segment. Completion is the derived predicate
   // `isCompleted()` (Navigate at totalEdits_ with cursor at goalPos).
-  if (nextEdit < totalEdits_) {
-    next.lines = plan_.plannedEditAt(nextEdit).preFencepost;
-  }
+  next.lines = plan_.getPlan().fencepostAt(nextEdit);
   next.phase = phaseForEditCursor(nextEdit, next.cursor);
   next.acceptedRevision++;
   return commit(std::move(next), /*crossedEditBoundary=*/true);
@@ -440,7 +458,6 @@ Outcome View::applyEdit(string_view text) {
     return unexpected(std::move(eff.error()));
 
   State next = state_;
-  next.lines = plannedEdit.postFencepost;
   next.cursor = eff->postCursor;
   next.acceptedSeq.append(text);
   next.acceptedCost = getEffort(next.acceptedSeq, config_);
@@ -449,15 +466,10 @@ Outcome View::applyEdit(string_view text) {
 
 Outcome View::acceptBufferState(const Lines& newLines, CursorPos newCursor,
                                 string_view rawKeys) {
-  auto gated = requireNavigateOrTransform("buffer state changes");
+  auto gated = requirePlannedEditTarget("buffer state changes");
   if (!gated)
     return unexpected(std::move(gated.error()));
   const int editIndex = *gated;
-  if (editIndex == totalEdits_) {
-    // Post-final-edit nav segment — no edit to apply or revert via buffer state.
-    return unexpected(
-        Rejected{"buffer state changes not accepted post-final-edit"});
-  }
 
   const auto plannedEdit = plan_.plannedEditAt(editIndex);
 
@@ -476,7 +488,6 @@ Outcome View::acceptBufferState(const Lines& newLines, CursorPos newCursor,
     return unexpected(std::move(e.error()));
   }
   if (eff->advance) {
-    next.lines = plannedEdit.postFencepost;
     return afterEditCompleted(std::move(next), editIndex);
   }
   // No-op: buffer already matches current fencepost (e.g. native undo or
@@ -487,14 +498,10 @@ Outcome View::acceptBufferState(const Lines& newLines, CursorPos newCursor,
 }
 
 Outcome View::beginInsert() {
-  auto gated = requireNavigateOrTransform("insert-mode edit");
+  auto gated = requirePlannedEditTarget("insert-mode edit");
   if (!gated)
     return unexpected(std::move(gated.error()));
   const int editIndex = *gated;
-  if (editIndex == totalEdits_) {
-    return unexpected(
-        Rejected{"insert-mode edit not accepted post-final-edit"});
-  }
 
   State next = state_;
   next.phase = Insert{editIndex};
@@ -520,10 +527,8 @@ Outcome View::acceptInsertExit(const Lines& newLines, CursorPos newCursor,
   }
 
   State next = state_;
-  // Advance lines explicitly — afterEditCompleted only sets lines for the
-  // *next* edit, so the current edit's post-state must be applied here.
-  // MIRROR applyEdit's shape: set lines + cursor + seq/cost, then hand off.
-  next.lines = plannedEdit.postFencepost;
+  // MIRROR applyEdit's shape: set cursor + seq/cost, then hand off to the
+  // uniform fencepost advancement path.
   next.cursor = newCursor;
   if (auto e = appendRawKeysOrReject(next, rawKeys, config_); !e) {
     return unexpected(std::move(e.error()));

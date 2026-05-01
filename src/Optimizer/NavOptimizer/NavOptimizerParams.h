@@ -25,11 +25,7 @@ struct NavOptimizerParams : OptimizerParamsBase {
   int linePaddingAbove = 2;
   int linePaddingBelow = 2;
 
-  // Multi-sink result-emission policy. When false (default): at most 1 result
-  // per unique landing position (the cheapest one). When true: every found
-  // path is emitted, including duplicates by landing. The single-cursor
-  // overload of `optimize` sets this to true so distinct sequences to the
-  // single goal point are enumerated.
+  // Do we include multiple results with the same position in our search?
   bool allowMultiplePerPosition = false;
 
   // Chainable setters for fluent configuration

@@ -51,7 +51,7 @@ protected:
     navContext = NavContext();
   }
 
-  static vector<Result> runOptimizer(
+  static vector<LandingResult> runOptimizer(
       const Lines& lines,
       CursorPos start,
       CursorPos end,
@@ -60,7 +60,10 @@ protected:
     NavOptimizer opt(config);
     NavBoundary boundary;
     return opt.optimize(lines, start, end,
-                        NavOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000),
+                        NavOptimizerParams{}
+                            .withMaxResults(30)
+                            .withMaxNodesPopped(20000)
+                            .withAllowMultiplePerPosition(true),
                         userSeq, boundary, navContext).getResults();
   }
 };
