@@ -17,22 +17,6 @@ using namespace std;
 
 namespace {
 
-TransformFrontierItem frontierItemFromSequence(
-    string_view fullSequence,
-    double cost,
-    CursorPos goalPos) {
-  TransformSequenceDecomposition decomposition = decomposeEditSequence(fullSequence);
-  return TransformFrontierItem{
-      FrontierItem{
-          .molecule = std::move(decomposition.molecule),
-          .goalPos = goalPos,
-          .cost = cost,
-      },
-      string(fullSequence),                    // fullSequence
-      std::move(decomposition.typedText),      // typedText
-  };
-}
-
 bool cursorInInsertionRange(
     CursorPos cursor,
     int targetLine,
@@ -58,15 +42,23 @@ struct EditEmitter {
   int maxCount;
   bool allowMultiplePerPosition;
 
-  // Try to emit. Returns true iff caller should continue emitting more
-  // items; returns false when we've hit maxCount (caller should return).
-  bool emit(TransformFrontierItem item) {
-    if (!allowMultiplePerPosition) {
-      if (!seenSequence.insert(item.fullSequence).second) {
-        return static_cast<int>(items.size()) < maxCount;
-      }
+  // Build a TransformFrontierItem from `fullSequence` and emit, deduping
+  // on sequence text in default mode. Returns true iff caller should
+  // continue emitting; false once `maxCount` is reached.
+  bool emit(string_view fullSequence, double cost, CursorPos goalPos) {
+    if (!allowMultiplePerPosition &&
+        !seenSequence.insert(string(fullSequence)).second) {
+      return static_cast<int>(items.size()) < maxCount;
     }
-    items.push_back(std::move(item));
+    TransformSequenceDecomposition decomposition = decomposeEditSequence(fullSequence);
+    items.push_back(TransformFrontierItem{
+        FrontierItem{
+            .token = std::move(decomposition.token),
+            .goalPos = goalPos,
+            .cost = cost,
+        },
+        std::move(decomposition.typedText),
+    });
     return static_cast<int>(items.size()) < maxCount;
   }
 };
@@ -83,8 +75,7 @@ bool appendInsertionStrategy(
   if (targetLine < 0) return true;
   if (beginCol < 0 || endCol <= beginCol) return true;
   if (!cursorInInsertionRange(cursor, targetLine, beginCol, endCol)) return true;
-  return emitter.emit(frontierItemFromSequence(
-      fullSequence, getEffort(fullSequence, config), goalPos));
+  return emitter.emit(fullSequence, getEffort(fullSequence, config), goalPos);
 }
 
 }
@@ -113,10 +104,8 @@ vector<TransformFrontierItem> rankTransformFrontier(
     const CursorPos goalPos = transformResult.goalPosAt(query.cursor.line, query.cursor.col);
     for (const Result& result : starts) {
       if (result.getSequence().empty()) continue;
-      if (!emitter.emit(frontierItemFromSequence(
-              result.getSequence().view(), result.getCost(), goalPos))) {
+      if (!emitter.emit(result.getSequence().view(), result.getCost(), goalPos))
         return items;
-      }
     }
   }
 
@@ -176,8 +165,7 @@ vector<TransformFrontierItem> rankTransformFrontier(
   }
 
   if (joinPlan && query.cursor.line == joinPlan->entryLine) {
-    if (!emitter.emit(frontierItemFromSequence(
-            joinPlan->sequence.view(), joinPlan->effort, joinPlan->goalPos)))
+    if (!emitter.emit(joinPlan->sequence.view(), joinPlan->effort, joinPlan->goalPos))
       return items;
   }
 
@@ -197,8 +185,7 @@ vector<TransformFrontierItem> rankTransformFrontier(
         seq += insertedText;
         seq += "<Esc>";
       }
-      if (!emitter.emit(frontierItemFromSequence(
-              seq, getEffort(seq, config), editGoalPos)))
+      if (!emitter.emit(seq, getEffort(seq, config), editGoalPos))
         return items;
     }
   }
@@ -211,8 +198,7 @@ vector<TransformFrontierItem> rankTransformFrontier(
         seq += insertedText;
         seq += "<Esc>";
       }
-      if (!emitter.emit(frontierItemFromSequence(
-              seq, getEffort(seq, config), editGoalPos)))
+      if (!emitter.emit(seq, getEffort(seq, config), editGoalPos))
         return items;
     }
   }

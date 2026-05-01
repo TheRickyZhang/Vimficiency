@@ -15,7 +15,7 @@ using VF::LuaExports::Result;
 namespace {
 
 // Wire format for tokenize_* FFI: one token per line, `<kind>\t<text>\n`.
-// `<kind>` is a single ASCII char encoding the `TokenType` — see switch
+// `<kind>` is a single ASCII char encoding the `TokenKind` — see switch
 // below. `<text>` is the raw token as emitted by the parser. Token text
 // never contains `\t` or `\n` (special keys are stored as literal
 // `<Key>` strings), so these separators are unambiguous.
@@ -23,14 +23,14 @@ namespace {
 // The kind payload is the whole point of this format: without it, the
 // Lua side would keep parallel classifier tables to re-derive what the
 // parser already knows, and they'd drift. See `dev/lua/replay-precompute.md`.
-char tokenKindChar(TokenType type) {
-  switch (type) {
-    case TokenType::Movement:    return 'M';
-    case TokenType::Delete:    return 'D';
-    case TokenType::Change:    return 'C';
-    case TokenType::Visual:    return 'V';
-    case TokenType::TypedText: return 'T';
-    case TokenType::Escape:    return 'E';
+char tokenKindChar(TokenKind kind) {
+  switch (kind) {
+    case TokenKind::Movement:    return 'M';
+    case TokenKind::Delete:    return 'D';
+    case TokenKind::Change:    return 'C';
+    case TokenKind::Visual:    return 'V';
+    case TokenKind::TypedText: return 'T';
+    case TokenKind::Escape:    return 'E';
   }
   return '?';  // Unreachable — compiler should warn if a case is missed.
 }
@@ -45,13 +45,13 @@ const char *vf_tokenize_movements(const char *seq) {
   return helpers::storeString(result_storage,
       parseMovements(owned)
           .transform([](const vector<ParsedMovement>& motions) {
-            // All motion-parser output is TokenType::Movement by construction.
+            // All motion-parser output is TokenKind::Movement by construction.
             vector<string> rows;
             rows.reserve(motions.size());
             for (const auto& motion : motions) {
               ostringstream oss;
               oss << motion;
-              rows.push_back(string{tokenKindChar(TokenType::Movement)} + "\t" + oss.str());
+              rows.push_back(string{tokenKindChar(TokenKind::Movement)} + "\t" + oss.str());
             }
             return helpers::joinWithTrailingNewline(rows);
           })
@@ -67,11 +67,11 @@ const char *vf_tokenize_sequence(const char *seq) {
   static string result_storage;
   return helpers::storeString(result_storage,
       parseSequence(helpers::optionalText(seq))
-          .transform([](const vector<SequenceToken>& tokens) {
+          .transform([](const vector<TaggedToken>& tokens) {
             vector<string> rows;
             rows.reserve(tokens.size());
             for (const auto& tok : tokens) {
-              rows.push_back(string{tokenKindChar(tok.type)} + "\t" + tok.text);
+              rows.push_back(string{tokenKindChar(tok.kind)} + "\t" + tok.token);
             }
             return helpers::joinWithTrailingNewline(rows);
           })

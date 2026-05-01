@@ -5,10 +5,13 @@
 #include <expected>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
-// Token types for parsed sequences
-enum class TokenType {
+#include "Types/Token.h"
+
+// Parser tags for sequence tokens.
+enum class TokenKind {
   Movement,    // Cursor movement (w, j, fa;, etc.)
   Delete,      // Pure deletion (dd, dw, x, X, D, etc.)
   Change,      // Edit that enters insert mode (ciw, s, A, etc.)
@@ -17,11 +20,11 @@ enum class TokenType {
   Escape,      // <Esc> to exit insert (or visual) mode
 };
 
-struct SequenceToken {
-  std::string text;
-  TokenType type;
+struct TaggedToken {
+  Token token;
+  TokenKind kind;
 
-  SequenceToken(std::string t, TokenType ty) : text(std::move(t)), type(ty) {}
+  TaggedToken(Token t, TokenKind k) : token(std::move(t)), kind(k) {}
 };
 
 enum class SequenceParseErrorKind {
@@ -36,7 +39,7 @@ struct SequenceParseError {
 
 std::string formatSequenceParseError(const SequenceParseError& error);
 
-// Parse a Vim command sequence into tokens suitable for step-by-step animation.
+// Parse a Vim command sequence into tagged tokens suitable for step-by-step animation.
 // Example: "ciwhello<Esc>2j" -> [("ciw", Change), ("hello", TypedText), ("<Esc>", Escape), ("2j", Motion)]
 //
 // Insert-entering commands (recognized as Change type):
@@ -52,7 +55,7 @@ std::string formatSequenceParseError(const SequenceParseError& error);
 // tolerant: a `<` without a closing `>` is treated as a literal char.
 // The error channel exists so the Lua animation-fallback chain in
 // simulate.lua can distinguish "parse failed" from "empty input".
-std::expected<std::vector<SequenceToken>, SequenceParseError>
+std::expected<std::vector<TaggedToken>, SequenceParseError>
 parseSequence(std::string_view seq);
 
 // Simplified version that returns just the token strings (for FFI)

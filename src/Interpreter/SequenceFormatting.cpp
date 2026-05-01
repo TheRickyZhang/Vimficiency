@@ -14,16 +14,16 @@ std::ostream& operator<<(std::ostream& os, const Sequence& seq) {
     os << makePrintable(seq.str());
     return os;
   }
-  std::vector<SequenceToken> tokens = *parsed;
+  std::vector<TaggedToken> tokens = *parsed;
 
   for (size_t i = 0; i < tokens.size(); i++) {
-    os << makePrintable(tokens[i].text);
+    os << makePrintable(tokens[i].token);
 
     if (i + 1 < tokens.size()) {
-      auto cur = tokens[i].type;
-      auto next = tokens[i + 1].type;
-      if (cur == TokenType::Escape ||
-          (cur == TokenType::Change && next == TokenType::TypedText)) {
+      auto cur = tokens[i].kind;
+      auto next = tokens[i + 1].kind;
+      if (cur == TokenKind::Escape ||
+          (cur == TokenKind::Change && next == TokenKind::TypedText)) {
         os << " ";
       }
     }

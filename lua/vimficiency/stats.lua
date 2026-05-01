@@ -11,11 +11,11 @@ local util = require("vimficiency.util")
 
 local M = {}
 
---- Minimum combined (user + optimizer) occurrences before a molecule
+--- Minimum combined (user + optimizer) occurrences before a token
 --- appears in the ratio table. Below this, the ratio is dominated by
 --- noise. Raised from the early draft's 3 after we saw how sparse the
 --- tail is in real logs.
-local MIN_MOLECULE_OCCURRENCES = 10
+local MIN_TOKEN_OCCURRENCES = 10
 
 local MOTION_TOP_N = 8
 
@@ -34,7 +34,7 @@ local CHART_Y_LABELS = { "100", " 75", " 50", " 25" }
 local CHART_PREFIX_WIDTH = 4 + 3 + 2  -- "    " + "100" + " ┤"
 
 --------------------------------------------------------------------------------
--- Molecule normalization
+-- Token normalization
 --------------------------------------------------------------------------------
 
 --- Collapse tokens where the trailing character is purely arbitrary (a
@@ -48,7 +48,7 @@ local CHART_PREFIX_WIDTH = 4 + 3 + 2  -- "    " + "100" + " ┤"
 --- operator+motion pairs (`dw` vs `d$`), counts on motions, etc. are all
 --- deliberately left distinct. Grouping hides signal; we want the opposite
 --- until we know which signals are noise.
-function M.normalize_molecule(text)
+function M.normalize_token(text)
   local count, op, tail = text:match("^(%d*)([fFtTrR])(.+)$")
   if op and tail and #tail == 1 then
     return count .. op .. "_"
@@ -121,12 +121,12 @@ function M.aggregate(records)
 
     -- Motion histograms (user & optimizer side-by-side).
     for _, tok in ipairs(safe_tokenize(rec.user_seq or "")) do
-      local key = M.normalize_molecule(tok.text)
+      local key = M.normalize_token(tok.text)
       user_hist[key] = (user_hist[key] or 0) + 1
       user_total = user_total + 1
     end
     for _, tok in ipairs(safe_tokenize(rec.best_opt_seq or "")) do
-      local key = M.normalize_molecule(tok.text)
+      local key = M.normalize_token(tok.text)
       opt_hist[key] = (opt_hist[key] or 0) + 1
       opt_total = opt_total + 1
     end
@@ -139,14 +139,14 @@ function M.aggregate(records)
     summary.efficiency_by_day[day] = math.exp(sum / day_count[day])
   end
 
-  -- Per-molecule ratio user_prop / opt_prop, filtered by MIN_OCCURRENCES.
+  -- Per-token ratio user_prop / opt_prop, filtered by MIN_OCCURRENCES.
   local seen = {}
   for k in pairs(user_hist) do seen[k] = true end
   for k in pairs(opt_hist)  do seen[k] = true end
   for k in pairs(seen) do
     local uc2 = user_hist[k] or 0
     local oc2 = opt_hist[k]  or 0
-    if uc2 + oc2 >= MIN_MOLECULE_OCCURRENCES then
+    if uc2 + oc2 >= MIN_TOKEN_OCCURRENCES then
       local up = user_total > 0 and (uc2 / user_total) or 0
       local op = opt_total  > 0 and (oc2 / opt_total)  or 0
       local ratio
@@ -288,7 +288,7 @@ function M.build_lines(summary)
   local over, under = split_motion_lists(summary)
   push_title("  Motions — you use MORE than the optimizer")
   if #over == 0 then
-    push("    (nothing meets the ≥" .. MIN_MOLECULE_OCCURRENCES ..
+    push("    (nothing meets the ≥" .. MIN_TOKEN_OCCURRENCES ..
       "-occurrence threshold yet)")
   else
     for i = 1, math.min(#over, MOTION_TOP_N) do

@@ -1,6 +1,6 @@
 -- tests/lua/stats/aggregate.lua
 -- Pins the reducer: lifetime counters, efficiency geomean + daily, motion
--- ratios with normalize_molecule + the 10-occurrence threshold, beats
+-- ratios with normalize_token + the 10-occurrence threshold, beats
 -- clamping at 100.
 
 local stats = require("vimficiency.stats")
@@ -96,7 +96,7 @@ test("aggregate: efficiency_by_day buckets by epoch day", function()
   assert_true(math.abs(s.efficiency_by_day[day_b_idx] - 25) < 1e-6)
 end)
 
-test("normalize_molecule: normalizes char-target commands only", function()
+test("normalize_token: normalizes char-target commands only", function()
   for _, case in ipairs({
     { "fa", "f_" }, { "Fb", "F_" }, { "tc", "t_" },
     { "Td", "T_" }, { "re", "r_" }, { "Rf", "R_" },
@@ -104,7 +104,7 @@ test("normalize_molecule: normalizes char-target commands only", function()
     { "dw", "dw" }, { "d$", "d$" }, { "ciw", "ciw" },
     { "3w", "3w" }, { "x", "x" }, { "dd", "dd" },
   }) do
-    assert_eq(stats.normalize_molecule(case[1]), case[2], case[1])
+    assert_eq(stats.normalize_token(case[1]), case[2], case[1])
   end
 end)
 

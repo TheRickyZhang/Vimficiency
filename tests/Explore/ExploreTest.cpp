@@ -142,14 +142,14 @@ TEST_F(ExploreViewTest, RecommendationsAreDiverse) {
   // Distinct recommendation texts — grouping/dedup works.
   set<string> texts;
   for (const auto& rec : recs)
-    texts.insert(Explore::base(rec).molecule);
+    texts.insert(Explore::base(rec).token);
   EXPECT_EQ(texts.size(), recs.size());
 
   // Motion recs (if any) changed the cursor from the origin.
   for (const auto& rec : recs) {
     if (Explore::suggestionKind(rec) == "movement") {
       const bool moved = Explore::base(rec).goalPos.line != 0 || Explore::base(rec).goalPos.col != 0;
-      EXPECT_TRUE(moved) << "motion '" << Explore::base(rec).molecule << "' did not change cursor";
+      EXPECT_TRUE(moved) << "motion '" << Explore::base(rec).token << "' did not change cursor";
     }
   }
 }
@@ -297,13 +297,13 @@ TEST_F(ExploreViewTest, AcceptBufferStateRejectsInvalidCursor) {
   EXPECT_TRUE(view.state().acceptedSeq.empty());
 }
 
-TEST(TransformSequenceDecomposition, SplitsImmediateMoleculeAndInsertTail) {
-  EXPECT_EQ(decomposeEditSequence("sm<Esc>").molecule, "s");
+TEST(TransformSequenceDecomposition, SplitsImmediateTokenAndInsertTail) {
+  EXPECT_EQ(decomposeEditSequence("sm<Esc>").token, "s");
   EXPECT_EQ(decomposeEditSequence("sm<Esc>").typedText, "m");
-  EXPECT_EQ(decomposeEditSequence("clm<Esc>").molecule, "cl");
+  EXPECT_EQ(decomposeEditSequence("clm<Esc>").token, "cl");
   EXPECT_EQ(decomposeEditSequence("clm<Esc>").typedText, "m");
   EXPECT_EQ(decomposeEditSequence("clfoo<Esc>").typedText, "foo");
-  EXPECT_EQ(decomposeEditSequence("Jj").molecule, "J");
+  EXPECT_EQ(decomposeEditSequence("Jj").token, "J");
   EXPECT_EQ(decomposeEditSequence("x").typedText, "");
   EXPECT_EQ(decomposeEditSequence("rm").typedText, "");
   EXPECT_EQ(decomposeEditSequence("").typedText, "");
@@ -317,7 +317,7 @@ TEST(TransformFrontier, PreservesDistinctResultsFromSameStart) {
               .lines = Lines{Line("x")},
               .cursor = {0, 0},
               .maxCount = 10,
-              // The test's intent is to verify that MULTIPLE molecules
+              // The test's intent is to verify that MULTIPLE tokens
               // reaching the same goal state are preserved — so opt in.
               .allowMultiplePerPosition = true,
           },
@@ -325,7 +325,7 @@ TEST(TransformFrontier, PreservesDistinctResultsFromSameStart) {
       },
       Config::uniform());
   ASSERT_GE(recs.size(), 2u);
-  EXPECT_NE(recs[0].molecule, recs[1].molecule);
+  EXPECT_NE(recs[0].token, recs[1].token);
   EXPECT_EQ(recs[0].typedText, "foo");
   EXPECT_EQ(recs[1].typedText, "foo");
 }
@@ -346,7 +346,7 @@ TEST_F(ExploreViewTest, AcceptInsertExitAdvancesPhaseOnMatchingBuffer) {
     }
   }
   if (motion)
-    ASSERT_TRUE(view.applyMovement(Explore::base(*motion).molecule).has_value());
+    ASSERT_TRUE(view.applyMovement(Explore::base(*motion).token).has_value());
 
   // Simulate the Lua layer: beginInsert parks us in Insert; the post-insert
   // buffer then validates via acceptInsertExit.
@@ -375,7 +375,7 @@ TEST_F(ExploreViewTest, AcceptInsertExitRejectsMismatchedBuffer) {
   ASSERT_FALSE(recs.empty());
   for (const auto& rec : recs) {
     if (Explore::suggestionKind(rec) == "movement") {
-      ASSERT_TRUE(view.applyMovement(Explore::base(rec).molecule).has_value());
+      ASSERT_TRUE(view.applyMovement(Explore::base(rec).token).has_value());
       break;
     }
   }
@@ -401,7 +401,7 @@ TEST_F(ExploreViewTest, AcceptInsertExitRejectsInvalidCursor) {
   ASSERT_FALSE(recs.empty());
   for (const auto& rec : recs) {
     if (Explore::suggestionKind(rec) == "movement") {
-      ASSERT_TRUE(view.applyMovement(Explore::base(rec).molecule).has_value());
+      ASSERT_TRUE(view.applyMovement(Explore::base(rec).token).has_value());
       break;
     }
   }
@@ -456,7 +456,7 @@ TEST_F(ExploreViewTest, AcceptInsertExitRejectsUnparseableRawKeys) {
   auto recs = view.recommendations(5);
   for (const auto& rec : recs) {
     if (Explore::suggestionKind(rec) == "movement") {
-      ASSERT_TRUE(view.applyMovement(Explore::base(rec).molecule).has_value());
+      ASSERT_TRUE(view.applyMovement(Explore::base(rec).token).has_value());
       break;
     }
   }
@@ -527,7 +527,7 @@ TEST_F(ExploreViewTest, RecommendationsCarryTypedText) {
   auto recs = view.recommendations(5);
   for (const auto& rec : recs) {
     if (Explore::suggestionKind(rec) == "movement") {
-      ASSERT_TRUE(view.applyMovement(Explore::base(rec).molecule).has_value());
+      ASSERT_TRUE(view.applyMovement(Explore::base(rec).token).has_value());
       break;
     }
   }
@@ -543,9 +543,9 @@ TEST_F(ExploreViewTest, RecommendationsCarryTypedText) {
       << "expected at least one edit recommendation with a non-empty typedText";
 }
 
-TEST_F(ExploreViewTest, MotionRecommendationsAreFirstMoleculesOfOptimizerPaths) {
-  // Explore shows immediate next molecules, not full paths to the target.
-  // Each motion recommendation must be the FIRST molecule of some full A*
+TEST_F(ExploreViewTest, MotionRecommendationsAreFirstTokensOfOptimizerPaths) {
+  // Explore shows immediate next tokens, not full paths to the target.
+  // Each motion recommendation must be the FIRST token of some full A*
   // path that reaches the current edit's range, and they must be distinct.
   Lines initial{Line("one two three four five six seven")};
   Lines goal{Line("one two three four FIVE six seven")};
@@ -555,21 +555,21 @@ TEST_F(ExploreViewTest, MotionRecommendationsAreFirstMoleculesOfOptimizerPaths) 
   ASSERT_TRUE(range.has_value());
 
   // Match the ground-truth's `allowMultiplePerPosition=true` below so both
-  // sides enumerate the same universe of molecules for the subset check.
+  // sides enumerate the same universe of tokens for the subset check.
   auto recs = view.recommendations(10, /*allowMultiplePerPosition=*/true);
   vector<string> exploreMotionTexts;
   for (const auto& rec : recs) {
     if (Explore::suggestionKind(rec) == "movement")
-      exploreMotionTexts.push_back(Explore::base(rec).molecule);
+      exploreMotionTexts.push_back(Explore::base(rec).token);
   }
   ASSERT_FALSE(exploreMotionTexts.empty());
 
   set<string> exploreSet(exploreMotionTexts.begin(), exploreMotionTexts.end());
   EXPECT_EQ(exploreSet.size(), exploreMotionTexts.size())
-      << "motion recommendations should be distinct first molecules";
+      << "motion recommendations should be distinct first tokens";
 
   // Ground truth: run the same nav optimizer the frontier uses, collect
-  // full paths, and derive their first molecules. Explore's set must be a
+  // full paths, and derive their first tokens. Explore's set must be a
   // subset of that — anything else would be an invalid next step.
   CompositionOptimizerParams compParams;
   NavOptimizerParams params;
@@ -595,18 +595,18 @@ TEST_F(ExploreViewTest, MotionRecommendationsAreFirstMoleculesOfOptimizerPaths) 
                      false, false),
       navContext);
 
-  set<string> validFirstMolecules;
+  set<string> validFirstTokens;
   for (const auto& motion : result.getResults()) {
     if (motion.getSequence().empty()) continue;
     auto tokens = parseSequenceStrings(motion.getSequence().view());
     if (!tokens || tokens->empty()) continue;
-    validFirstMolecules.insert(tokens->front());
+    validFirstTokens.insert(tokens->front());
   }
 
-  for (const auto& mol : exploreSet) {
-    EXPECT_TRUE(validFirstMolecules.contains(mol))
-        << "explore recommended '" << mol
-        << "' but it is not a first molecule of any optimal path";
+  for (const auto& token : exploreSet) {
+    EXPECT_TRUE(validFirstTokens.contains(token))
+        << "explore recommended '" << token
+        << "' but it is not a first token of any optimal path";
   }
 }
 

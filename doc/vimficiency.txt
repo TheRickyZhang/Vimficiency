@@ -936,7 +936,7 @@ Sections:
     beat doesn’t inflate the average). Aggregated as a geometric mean.
     The 30-day block below the score is a sparkline of the daily
     geometric mean (▁ = 0, █ = 100; blanks = no sessions that day).
-- **Motions** — for every motion molecule that appears at least ten
+- **Motions** — for every motion token that appears at least ten
     times combined across your sequences and the optimizer’s best
     suggestions, the ratio `your_proportion / optimizer_proportion`. Two
     lists: what you use _more_ than the optimizer (potential inefficient

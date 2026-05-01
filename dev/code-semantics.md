@@ -196,7 +196,7 @@ Use the narrowest directional term that matches the semantics.
 ### Step vs phase vs planned edit
 
 - **Step** is the small replay/execution unit: usually one parsed sequence token
-  or one immediate user action/molecule.
+  or one immediate user-action token.
 - **Phase** is the larger Explore state-machine unit: `Navigate`,
   `Transform`, `Insert`, or `Completed`.
 - **Planned edit** is one composition-plan edit boundary, from fencepost `i` to

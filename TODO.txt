@@ -11,6 +11,9 @@ Review implementation of BufferIndex in optimizeToRange() (is it exploring corre
 - Improving the lua/C++ interaction semantics
 
 Review Exploration C++ code
+toNavSuggestion - huh wtf are these conversions?
+
+And as always once done triaging and fixing, make sure to actually verify that the feature still works for the user
 
 ASK BLAKE: how to distinguish between the user's config, and stored settings data (how the user uses)?
 

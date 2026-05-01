@@ -1,6 +1,5 @@
 #include "Explore.h"
 
-#include <algorithm>
 #include <cassert>
 #include <utility>
 #include <variant>
@@ -9,108 +8,14 @@
 #include "Effort/RunningEffort.h"
 #include "Interpreter/SequenceParser.h"
 #include "MovementHandler.h"
-#include "Optimizer/CompositionOptimizer/PlannedEditArtifacts.h"
-#include "Optimizer/NavOptimizer/NavOptimizer.h"
-#include "Optimizer/NavOptimizer/NavOptimizerParams.h"
+#include "Optimizer/NavOptimizer/NavFrontier.h"
+#include "Optimizer/TransformOptimizer/TransformFrontier.h"
 
 using namespace std;
 
 namespace Explore {
 
 namespace {
-
-vector<NavFrontierItem>
-backfillEditStartMovements(const Lines& lines, CursorPos cursor,
-                           const DiffState& diff, const NavBoundary& boundary,
-                           const NavContext& navContext, const Config& config,
-                           int maxCount, bool allowMultiplePerPosition) {
-  if (maxCount <= 0 || diff.isPureInsertion())
-    return {};
-
-  CompositionOptimizerParams editParams;
-  const int totalStarts = max(1, diff.deletedLines().totalPositions());
-  editParams.withMaxResults(totalStarts * maxCount)
-      .withMaxTransformResultsPerPosition(maxCount);
-  TransformResult transformResult =
-      computeTransformResultForDiff(diff, editParams, config);
-
-  struct StartCandidate {
-    CursorPos pos{0, 0};
-    double editCost = 0.0;
-  };
-
-  vector<StartCandidate> candidates;
-  Lines deletedLines = diff.deletedLines();
-  candidates.reserve(static_cast<size_t>(deletedLines.totalPositions()));
-  for (int lineOffset = 0; lineOffset < static_cast<int>(deletedLines.size());
-       lineOffset++) {
-    const int bufferLine = diff.beginPos.line + lineOffset;
-    const int colBase = lineOffset == 0 ? diff.beginPos.col : 0;
-    for (int colOffset = 0;
-         colOffset < deletedLines[lineOffset].effectiveSize(); colOffset++) {
-      const int bufferCol = colBase + colOffset;
-      const CursorPos startPos(bufferLine, bufferCol);
-      if (startPos == cursor)
-        continue;
-      auto starts = transformResult.resultsAt(bufferLine, bufferCol);
-      if (starts.empty())
-        continue;
-      candidates.push_back(StartCandidate{startPos, starts[0].getCost()});
-    }
-  }
-
-  sort(candidates.begin(), candidates.end(),
-       [](const StartCandidate& a, const StartCandidate& b) {
-         if (a.editCost != b.editCost)
-           return a.editCost < b.editCost;
-         if (a.pos.line != b.pos.line)
-           return a.pos.line < b.pos.line;
-         return a.pos.col < b.pos.col;
-       });
-
-  NavOptimizer navOptimizer(config);
-
-  vector<NavFrontierItem> items;
-  items.reserve(static_cast<size_t>(maxCount));
-  for (const StartCandidate& candidate : candidates) {
-    NavOptimizerParams navParams = NavOptimizerParams{}
-        .withMaxResults(maxCount - static_cast<int>(items.size()))
-        .withAllowMultiplePerPosition(allowMultiplePerPosition);
-    auto result = navOptimizer.optimize(lines, cursor, candidate.pos, navParams,
-                                        "", boundary, navContext);
-    for (const Result& motion : result.getResults()) {
-      items.push_back(NavFrontierItem{
-          FrontierItem{
-              .molecule = motion.getSequence().str(),
-              .goalPos = candidate.pos,
-              .cost = motion.getCost(),
-          },
-          candidate.editCost, // projectedEditCost
-      });
-      if (static_cast<int>(items.size()) >= maxCount)
-        break;
-      // Under the default "dedup-by-landing" contract, each candidate
-      // gets at most one motion — all motions from the optimizer for
-      // this single goal land on the same `candidate.pos`, so subsequent
-      // iterations would be duplicates by landing.
-      if (!allowMultiplePerPosition)
-        break;
-    }
-    if (static_cast<int>(items.size()) >= maxCount)
-      break;
-  }
-
-  return items;
-}
-
-bool isCursorOnConcreteBufferCell(const Lines& lines, const CursorPos& pos) {
-  if (pos.line < 0 || pos.line >= static_cast<int>(lines.size()))
-    return false;
-  const int maxCol = lines[pos.line].empty()
-                         ? 0
-                         : static_cast<int>(lines[pos.line].size()) - 1;
-  return pos.col >= 0 && pos.col <= maxCol;
-}
 
 // Shared rawKeys handling for accept*/apply* actions that fold reported
 // keys into acceptedSeq. parseSequence accepts edits (unlike parseMotions),
@@ -190,8 +95,7 @@ View::recommendations(int maxCount, bool allowMultipleMovementsPerPosition,
       },
       [&](const Transform& transform) {
         return recommendTransform(
-            transform.index, maxCount, allowMultipleMovementsPerPosition,
-            allowMultipleEditsPerPosition);
+            transform.index, maxCount, allowMultipleEditsPerPosition);
       },
       [](const Insert&) {
         return vector<Suggestion>{};
@@ -203,22 +107,19 @@ View::recommendations(int maxCount, bool allowMultipleMovementsPerPosition,
 // Internal helpers
 // =============================================================================
 
-Applied View::commit(State next, bool crossedEditBoundary) {
+Outcome View::commit(State next) {
   undo_.push_back(state_);
   redo_.clear();
   state_ = std::move(next);
-  return Applied{crossedEditBoundary};
+  return {};
 }
 
 vector<Suggestion> View::recommendNavigate(
     int navIndex,
     int maxCount,
     bool allowMultipleMovementsPerPosition) const {
-  // Navigate(i) — including the post-final-edit Navigate(totalEdits) —
-  // surfaces only motion suggestions toward navTarget(i). The pure-motion
-  // (E=0) and "final approach" (i==totalEdits) cases share this branch.
   CharRange target = plan_.getPlan().navTarget(navIndex);
-  auto navItems = rankNavFrontier(
+  vector<FrontierItem> navItems = rankNavFrontier(
       NavFrontierQuery{
           FrontierQuery{
               .lines = state_.lines,
@@ -233,7 +134,7 @@ vector<Suggestion> View::recommendNavigate(
       config_);
   vector<Suggestion> recs;
   recs.reserve(navItems.size());
-  for (auto& item : navItems)
+  for (FrontierItem& item : navItems)
     recs.emplace_back(std::move(item));
   return recs;
 }
@@ -241,19 +142,18 @@ vector<Suggestion> View::recommendNavigate(
 vector<Suggestion> View::recommendTransform(
     int editIndex,
     int maxCount,
-    bool allowMultipleMovementsPerPosition,
     bool allowMultipleEditsPerPosition) const {
-  // Transform(i): edit alternatives + (optional) backfill + nav-to-diff +
-  // (optional) join-line hint. i is always in [0, totalEdits_) by variant
-  // invariant, so the plan lookup is unconditional.
+  // Transform(i) only emits edit alternatives launchable from the current
+  // cursor. The phase invariant (cursor inside diff, or at beginPos for
+  // pure insertions) is enforced by `phaseForEditCursor` +
+  // `movementStaysInTransformRange`; motion suggestions belong to the
+  // Navigate phase. If the user wants to reposition mid-diff, they take a
+  // motion under the existing applyMovement path; the Lua layer surfaces
+  // that affordance.
   assert(editIndex >= 0 && editIndex < totalEdits_ &&
          "Transform editIndex out of range");
 
-  const auto plannedEdit = plan_.plannedEditAt(editIndex);
-  const DiffState& diff = plannedEdit.diff;
-  optional<JoinPlan> joinPlan = computeJoinPlanForDiff(
-      diff, plannedEdit.preFencepost, compositionParams_, config_);
-  vector<Suggestion> recs;
+  const DiffState& diff = plan_.plannedEditAt(editIndex).diff;
   auto transformItems = rankTransformFrontier(
       TransformFrontierQuery{
           FrontierQuery{
@@ -265,51 +165,10 @@ vector<Suggestion> View::recommendTransform(
           diff, // diff
       },
       config_);
+  vector<Suggestion> recs;
+  recs.reserve(transformItems.size());
   for (auto& item : transformItems)
     recs.emplace_back(std::move(item));
-
-  if (!diff.isPureInsertion() && diff.contains(state_.cursor) &&
-      static_cast<int>(recs.size()) < maxCount) {
-    auto backfill = backfillEditStartMovements(
-        state_.lines, state_.cursor, diff, boundary_, navContext_, config_,
-        maxCount - static_cast<int>(recs.size()),
-        allowMultipleMovementsPerPosition);
-    for (auto& item : backfill)
-      recs.emplace_back(std::move(item));
-  }
-
-  if (!diff.contains(state_.cursor)) {
-    auto navItems = rankNavFrontier(
-        NavFrontierQuery{
-            FrontierQuery{
-                .lines = state_.lines,
-                .cursor = state_.cursor,
-                .maxCount = maxCount,
-                .allowMultiplePerPosition = allowMultipleMovementsPerPosition,
-            },
-            CharRange(diff.beginPos, diff.endPos), // targetRange
-            boundary_,                             // boundary
-            navContext_,                           // navContext
-        },
-        config_);
-    for (auto& item : navItems)
-      recs.emplace_back(std::move(item));
-
-    if (!diff.isPureInsertion() && joinPlan &&
-        state_.cursor.line != joinPlan->entryLine) {
-      auto jMotionItems = rankNavFrontierToLine(state_.lines, state_.cursor,
-                                                joinPlan->entryLine, boundary_,
-                                                navContext_, config_, 1);
-      for (auto& item : jMotionItems)
-        recs.emplace_back(std::move(item));
-    }
-  }
-
-  // Trust the optimizer's output. Each source respects
-  // `allowMultiplePerPosition`, so no post-hoc filter is needed —
-  // recommendations are surfaced as-generated.
-  if (static_cast<int>(recs.size()) > maxCount)
-    recs.resize(maxCount);
   return recs;
 }
 
@@ -381,7 +240,7 @@ expected<int, Rejected> View::requireInsert(string_view action) const {
   return i->index;
 }
 
-Applied View::afterEditCompleted(State next, int editIndex) {
+Outcome View::afterEditCompleted(State next, int editIndex) {
   const int nextEdit = editIndex + 1;
   // Always transition to phaseForEditCursor(nextEdit, ...). For
   // nextEdit == totalEdits_ that returns Navigate{totalEdits_} — the
@@ -390,7 +249,7 @@ Applied View::afterEditCompleted(State next, int editIndex) {
   next.lines = plan_.getPlan().fencepostAt(nextEdit);
   next.phase = phaseForEditCursor(nextEdit, next.cursor);
   next.acceptedRevision++;
-  return commit(std::move(next), /*crossedEditBoundary=*/true);
+  return commit(std::move(next));
 }
 
 // =============================================================================
@@ -477,7 +336,7 @@ Outcome View::acceptBufferState(const Lines& newLines, CursorPos newCursor,
                                               plannedEdit.postFencepost);
   if (!eff)
     return unexpected(std::move(eff.error()));
-  if (!isCursorOnConcreteBufferCell(newLines, newCursor)) {
+  if (!newLines.contains(newCursor)) {
     return unexpected(
         Rejected{"buffer state reported an invalid cursor position"});
   }
@@ -521,7 +380,7 @@ Outcome View::acceptInsertExit(const Lines& newLines, CursorPos newCursor,
     return unexpected(
         Rejected{"buffer state after insert doesn't match planned fencepost"});
   }
-  if (!isCursorOnConcreteBufferCell(newLines, newCursor)) {
+  if (!newLines.contains(newCursor)) {
     return unexpected(
         Rejected{"buffer state reported an invalid cursor position"});
   }
@@ -547,7 +406,7 @@ Outcome View::cancelInsert() {
   assert(!undo_.empty() && "Insert without a beginInsert undo snapshot");
   state_ = undo_.back();
   undo_.pop_back();
-  return Applied{};
+  return {};
 }
 
 Outcome View::undo() {
@@ -556,7 +415,7 @@ Outcome View::undo() {
   redo_.push_back(state_);
   state_ = undo_.back();
   undo_.pop_back();
-  return Applied{};
+  return {};
 }
 
 Outcome View::redo() {
@@ -565,7 +424,7 @@ Outcome View::redo() {
   undo_.push_back(state_);
   state_ = redo_.back();
   redo_.pop_back();
-  return Applied{};
+  return {};
 }
 
 // =============================================================================

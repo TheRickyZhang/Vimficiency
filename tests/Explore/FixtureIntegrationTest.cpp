@@ -60,7 +60,7 @@ TEST_F(ExploreFixtureTest, RenameFixtureStartsInActivePhase) {
   EXPECT_FALSE(recs.empty());
 
   set<string> texts;
-  for (const auto& rec : recs) texts.insert(Explore::base(rec).molecule);
+  for (const auto& rec : recs) texts.insert(Explore::base(rec).token);
   EXPECT_EQ(texts.size(), recs.size()) << "recommendations should be distinct";
 }
 
@@ -74,7 +74,7 @@ TEST_F(ExploreFixtureTest, InsertFixtureDrivesForwardUntilCompletion) {
               std::holds_alternative<Explore::Transform>(view.phase()));
 
   int steps = 0;
-  const int maxSteps = 60;  // per-molecule walk; bounded generously above
+  const int maxSteps = 60;  // per-token walk; bounded generously above
                             // the Manhattan distance between start and target
   while ((std::holds_alternative<Explore::Navigate>(view.phase()) ||
           std::holds_alternative<Explore::Transform>(view.phase())) &&
@@ -98,7 +98,7 @@ TEST_F(ExploreFixtureTest, InsertFixtureDrivesForwardUntilCompletion) {
       }
     }
     if (!pick) break;  // no motion available -> need edit path, not tested here
-    ASSERT_TRUE(view.applyMovement(Explore::base(*pick).molecule).has_value());
+    ASSERT_TRUE(view.applyMovement(Explore::base(*pick).token).has_value());
     steps++;
   }
 
