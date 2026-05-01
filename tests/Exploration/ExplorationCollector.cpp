@@ -502,7 +502,7 @@ static vector<ExploreCase> collectMotionCases() {
 
     vector<FoundResult> found;
     for (const auto& r : result.getResults()) {
-      if (r.isValid()) {
+      if (!r.getSequence().empty()) {
         found.push_back({r.getSequence().str(), r.getCost()});
       }
     }
@@ -678,7 +678,7 @@ static vector<CompositionExploreCase> collectCompositionCases() {
 
     vector<FoundResult> found;
     for (const auto& r : result.getResults()) {
-      if (r.isValid()) {
+      if (!r.getSequence().empty()) {
         found.push_back({r.getSequence().str(), r.getCost()});
       }
     }
@@ -691,11 +691,11 @@ static vector<CompositionExploreCase> collectCompositionCases() {
     ctx.goalCursorLine = 0;
     ctx.goalCursorCol = 0;
 
-    // Extract per-diff edit exploration data
+    // Extract per-diff edit exploration data.
     vector<PerDiffEditExploration> editDetails;
     for (int editIndex = 0; editIndex < result.totalEdits(); editIndex++) {
-      const auto step = result.stepAt(editIndex);
-      const auto& transformResult = step.transformResult;
+      const auto plannedEdit = result.plannedEditAt(editIndex);
+      const auto& transformResult = plannedEdit.transformResult;
       PerDiffEditExploration detail;
       detail.states = transformResult.getStats().exploredStates();
 

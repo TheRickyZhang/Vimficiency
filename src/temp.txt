@@ -25,7 +25,7 @@ c b,f
   Expected: 'cbd'
   Got: 'cbe
 c b,fd'
-/home/ricky/Projects/vimficiency/tests/EditOptimizer/OutputCorrectnessTest.cpp:195: Failure
+/home/ricky/Projects/vimficiency/tests/TransformOptimizer/OutputCorrectnessTest.cpp:195: Failure
 Expected equality of these values:
   passed
     Which is: 16

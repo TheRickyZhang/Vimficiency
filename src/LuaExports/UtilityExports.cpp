@@ -2,6 +2,7 @@
 #include "Interpreter/MovementInterpreter.h"
 #include "Interpreter/SequenceFormatting.h"
 #include "Interpreter/SequenceParser.h"
+#include "Utils/Debug.h"
 
 using namespace std;
 namespace helpers = VF::LuaExports::helpers;
@@ -113,6 +114,7 @@ int vf_resolve_recall_cutoff(
     const char *encoded_records,
     int64_t target_hrtime,
     int budget) {
+  CHECK(budget >= 0, "budget must be non-negative");
   return helpers::storeIntOr(0,
       payload::decodeRecallRecordMeta(helpers::optionalText(encoded_records))
           .transform([&](const vector<payload::RecallRecordMeta>& records) {
@@ -128,6 +130,8 @@ int vf_manual_evict_reason(
     int64_t now_ns,
     int max_search_lines,
     int manual_idle_timeout_seconds) {
+  CHECK(max_search_lines >= 0, "max_search_lines must be non-negative");
+  CHECK(manual_idle_timeout_seconds >= 0, "manual_idle_timeout_seconds must be non-negative");
   return logic::manualEvictReason(
       start_row,
       cursor_row,

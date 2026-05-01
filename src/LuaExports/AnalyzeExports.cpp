@@ -38,6 +38,7 @@ VF::LuaExports::Result<string> analyzeImpl(
     int window_height,
     int scroll_amount,
     int results_calculated) {
+  CHECK(results_calculated >= 0, "results_calculated must be non-negative");
   auto initialText = helpers::requiredText(initial_text, "initial_text");
   if (!initialText) return unexpected(initialText.error());
   auto goalText = helpers::requiredText(goal_text, "goal_text");
@@ -65,8 +66,10 @@ VF::LuaExports::Result<string> analyzeImpl(
       hasLinesBelow);
 
   if (initialLines == goalLines) {
+    // NavOptimizer returns LandingResult (with goalPos); for analyze we only
+    // surface (sequence, cost), so down-convert to Result for shared output.
     NavOptimizer opt(g_config_internal);
-    results = opt.optimize(
+    auto navResults = opt.optimize(
         initialLines,
         initialPos,
         goalPos,
@@ -74,6 +77,10 @@ VF::LuaExports::Result<string> analyzeImpl(
         keyseqText,
         boundary,
         navigationContext).getResults();
+    results.reserve(navResults.size());
+    for (const auto& r : navResults) {
+      results.emplace_back(r.getSequence().str(), r.getCost());
+    }
   } else {
     CompositionOptimizer opt(g_config_internal);
     results = opt.optimize(
@@ -90,7 +97,6 @@ VF::LuaExports::Result<string> analyzeImpl(
   const double userCost = getEffort(keyseqText, g_config_internal);
   vector<const ::Result*> validResults;
   for (const ::Result& result : results) {
-    if (!result.isValid()) continue;
     if (result.getSequence().empty()) continue;
     validResults.push_back(&result);
   }

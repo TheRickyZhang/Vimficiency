@@ -23,13 +23,16 @@ General:
 - **Token**: Atomic parsed unit of a Vim sequence
 - **Sequence**: Neovim command string
 - **Effort**: Estimated typing difficulty of a key sequence only, independent of search distance
+- **Step**: Small replay/execution unit, usually one parsed token or one immediate user action/molecule
+- **Phase**: Larger Explore state-machine unit: `Navigate`, `Transform`, `Insert`, or `Completed`
+- **Planned Edit**: One composition-plan edit boundary, from fencepost `i` to `i + 1`; use `plannedEdit`/`plannedEditAt`, not "composition step"
 
 - **Movement**: Commands that change cursor position without changing text
 - **Edit**: Commands that change buffer contents, mode, or both, such as operator + motion/text object, replacement, mode change, insert typing
 - **Nav**: Movement-oriented actions/results whose to navigate without changing text
-- **Mutate**: Modify-oriented actions/results to change text
+- **Transform**: Modify-oriented actions/results to change text
 - Note that these intentionally distinct from Vim's narrower categories, such as motion, to avoid name collision.
-- Note NavOptimizer may use movements in its search, but it also uses jumps and find commands, hence the distinction. Similarly, MutateOptimizer may primarily search edits, but it may also search substitute commands as well.
+- Note NavOptimizer may use movements in its search, but it also uses jumps and find commands, hence the distinction. Similarly, TransformOptimizer may primarily search edits, but it may also search substitute commands as well.
 
 - **Begin/End**: Half-open range, `[begin, end)`
 - **First/Last**: Inclusive range, `[first, last]`
@@ -72,7 +75,7 @@ Always use tests/Debug to investigate complex issues through direct, side-by-sid
 ## Invariants
 - All positions in C++ are 0-indexed
 - We use [begin, end) for half-open intervals, and \[first, last\] for inclusive intervals, such as beginPos/goalPos, firstPos/lastPos
-- Motion targets are inclusive (`CharInterval`), while edit/diff ranges remain half-open (`CharRange`). Convert at boundaries only; do not mix semantics inside MotionOptimizer internals.
+- Motion targets are inclusive (`CharInterval`), while edit/diff ranges remain half-open (`CharRange`). Convert at boundaries only; do not mix semantics inside NavOptimizer internals.
 - Always use our Lines type to represent buffer content, which provides additional helpful methods
 - Lines and Line can be empty, but have the cursor be at index 0 (Matches Vim handling)
 - Ensure CAREFUL handling of targetCol (Vim's curswant) within Position.h by calling the correct column method
@@ -113,7 +116,7 @@ For Lua context, see `lua/CLAUDE.md`.
 - @dev/boundary-logic.md - Word motion and boundary crossing logic, TransformBoundary API
 - @dev/edit-region-strategy.md - Replace vs change strategy (includes tryReplacement implementation)
 - @dev/neovim_on_key_issues.md - vim.on_key limitations, operator-pending duplication, missing text object keys
-- @dev/optimizer-architecture.md - A* heuristics, MotionOptimizer (6-class motion exploration, templated specs), TransformOptimizer, CompositionOptimizer
+- @dev/optimizer-architecture.md - A* heuristics, NavOptimizer (6-class motion exploration, templated specs), TransformOptimizer, CompositionOptimizer
 - @dev/session-invocation.txt - How vimficiency optimizer sessions are called and stored
 - @dev/testing.md - NeovimOracle, test file conventions, debug printing
 - @dev/utils.md - General utilities (QuoteFlags, BracketFlags, Lines, StringUtils)

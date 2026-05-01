@@ -128,7 +128,7 @@ local RECOMMENDATION_COUNT_MAX = 10
 ---@field state VF.Explore.State                # view-reported phase + cursor + seq
 ---@field recommendations VF.Explore.Recommendation[]
 ---@field on_key_buffer string                         # raw keys captured since last reconcile
----@field pending VF.Explore.Pending|nil        # insertion-origin snapshot while PendingInsert
+---@field pending VF.Explore.Pending|nil        # insertion-origin snapshot while Insert
 ---@field display_mode string                          # "off" | "highlight" | "inplace" | "above" | "below"
 ---@field recommendation_count integer|nil             # settings override, or nil → config default
 ---@field allow_multiple_movements_per_position boolean  # settings toggle; false → movement recs dedup by landing
@@ -223,17 +223,12 @@ local function refresh_state_and_recommendations()
 end
 
 ---Compute the suffix of the planned typed text still to be typed. Diffs the
----live scratch buffer against the recorded insertion origin — so the header
----and recommendation list shrink as the user types matching chars, and
----snap back to the full target if the user types a non-matching prefix.
----Falls back to the view's (static) remaining_typed_text when we don't
----have insertion-origin context (e.g. InsertEnter couldn't match an atom).
+---live scratch buffer against the recorded insertion origin so the header
+---and recommendation list shrink as the user types matching chars.
 ---@return string
 local function current_remaining(a)
   local pending = a.pending
-  local phase = a.state.phase
-  local phase_target = phase.kind == "PendingInsert" and phase.remaining_typed_text or ""
-  local target = (pending and pending.target) or phase_target
+  local target = (pending and pending.target) or ""
   if not pending then return target end
   local cursor = v.nvim_win_get_cursor(a.scratch.win)
   local cur_row, cur_col = cursor[1] - 1, cursor[2]
@@ -324,16 +319,16 @@ local function on_cursor_moved()
   refresh_ui()
 end
 
----InsertEnter handler — transition the view into PendingInsert when we
+---InsertEnter handler — transition the view into Insert when we
 ---recognize which edit atom the user just triggered. The atom is identified
 ---by tail-matching the raw-key buffer against known edit recommendations;
----the matched rec's `typed_text` becomes the `remainingText` the header
----displays to the user. On no match, we do nothing — InsertLeave's
+---the matched rec's `typed_text` becomes the target the header displays
+---to the user. On no match, we do nothing — InsertLeave's
 ---`accept_insert_exit` fallback still validates the final buffer.
 local function on_insert_enter()
   local a = assert_current_view()
-  -- Reentrancy: nested <C-o>-style inserts shouldn't re-call beginEdit.
-  if a.state.phase.kind ~= "ApproachEdit" then return end
+  -- Reentrancy: nested <C-o>-style inserts shouldn't re-call begin_insert.
+  if a.state.phase.kind ~= "Navigate" and a.state.phase.kind ~= "Transform" then return end
 
   local keys = a.on_key_buffer or ""
   if keys == "" then return end
@@ -356,8 +351,7 @@ local function on_insert_enter()
   -- Deliberately DO NOT clear on_key_buffer here — so the full command
   -- (`s` + typed content + `<Esc>`) survives to acceptedSeq when
   -- InsertLeave calls accept_insert_exit.
-  local applied = ffi_lib.explore_begin_edit(
-    a.view_id, true, matched.typed_text or "")
+  local applied = ffi_lib.explore_begin_insert(a.view_id)
   if applied.status == "Rejected" then return end
 
   -- Snapshot the insertion origin so the UI can shrink `remaining` live
@@ -381,16 +375,16 @@ end
 ---insert mode. Cheap: no FFI calls, just re-reads the buffer diff.
 local function on_insert_text_changed()
   local a = assert_current_view()
-  if a.state.phase.kind ~= "PendingInsert" then return end
+  if a.state.phase.kind ~= "Insert" then return end
   local remaining = current_remaining(a)
   header_render.render(a, remaining)
   list_render.render(a, remaining)
 end
 
 ---Strict-revert buffer-state handler. Called on TextChanged (normal mode) and
----InsertLeave. Branches on phase: in PendingInsert the buffer is checked
+---InsertLeave. Branches on phase: in Insert the buffer is checked
 ---against the planned post-edit fencepost via acceptInsertExit; in
----ApproachEdit the legacy acceptBufferState path still handles normal-mode
+---Navigate/Transform the legacy acceptBufferState path still handles normal-mode
 ---edits (r, x, dd, …). Rejections revert the scratch to the view's
 ---last-known lines + cursor.
 local function on_buffer_changed()
@@ -410,17 +404,17 @@ local function on_buffer_changed()
     end
   end
 
-  if a.state.phase.kind == "PendingInsert" then
-    -- Clear the insertion-origin snapshot — we're leaving PendingInsert on
+  if a.state.phase.kind == "Insert" then
+    -- Clear the insertion-origin snapshot — we're leaving Insert on
     -- either branch below, so the TextChangedI live-remaining computation
     -- should stop until the next InsertEnter sets it again.
     a.pending = nil
 
     -- Abandoned insert: user exited without net change. Roll phase back
-    -- without polluting redo so we're cleanly in ApproachEdit again.
+    -- without polluting redo so we're cleanly in the previous phase again.
     if buffer_matches_session then
       a.on_key_buffer = ""
-      ffi_lib.explore_cancel_pending_insert(a.view_id)
+      ffi_lib.explore_cancel_insert(a.view_id)
       refresh_ui()
       return
     end
@@ -434,13 +428,15 @@ local function on_buffer_changed()
     end
     -- Reject: cancel the pending phase, revert buffer to pre-edit fencepost.
     vim.notify("vimfy explore: " .. applied.reason, vim.log.levels.WARN)
-    ffi_lib.explore_cancel_pending_insert(a.view_id)
+    ffi_lib.explore_cancel_insert(a.view_id)
     sync_buffer_from_session()
     refresh_ui()
     return
   end
 
-  -- ApproachEdit / Completed — existing strict path.
+  -- Navigate / Transform — existing strict path. (Insert is handled above;
+  -- "Completed" is no longer a phase variant — completion is the
+  -- `is_completed` boolean derived from Navigate(total_edits) at goal.)
   if buffer_matches_session then return end
 
   local raw_keys = a.on_key_buffer or ""
@@ -626,7 +622,7 @@ function M.open(label, result, opts)
 
     -- session-reported state + derived ranking
     state = {
-      phase = { kind = "ApproachEdit", edit_index = 0 },
+      phase = { kind = "Navigate" },
       cursor = { row = start_row, col = start_col },
       total_edits = 0,
       accepted_cost = 0,
@@ -721,14 +717,14 @@ function M.open(label, result, opts)
     desc = "vimfy explore: validate buffer state vs. planned fencepost",
   })
 
-  -- InsertEnter moves the view from ApproachEdit into PendingInsert so
-  -- the header can show the required typed text while the user is in
-  -- insert mode. Match the edit atom from on_key_buffer against the
+  -- InsertEnter moves the view into Insert so the header can show the
+  -- required typed text while the user is in insert mode. Match the edit
+  -- atom from on_key_buffer against the
   -- current recommendation set; no-match just defers to InsertLeave.
   v.nvim_create_autocmd("InsertEnter", {
     buffer = scratch_buf,
     callback = on_insert_enter,
-    desc = "vimfy explore: begin pending-insert phase",
+    desc = "vimfy explore: begin insert phase",
   })
 
   -- TextChangedI fires once per keystroke that modifies the buffer in
@@ -737,7 +733,7 @@ function M.open(label, result, opts)
   v.nvim_create_autocmd("TextChangedI", {
     buffer = scratch_buf,
     callback = on_insert_text_changed,
-    desc = "vimfy explore: live-refresh pending-insert remaining",
+    desc = "vimfy explore: live-refresh insert remaining",
   })
 
   -- Either primary pane closing tears down THIS view. Header panes
@@ -867,6 +863,8 @@ function M.status()
   local live_cursor = v.nvim_win_get_cursor(a.scratch.win)
   return {
     phase = vim.deepcopy(a.state.phase),
+    is_completed = a.state.is_completed,
+    total_edits = a.state.total_edits,
     cursor = vim.deepcopy(a.state.cursor),
     scratch_cursor = { row = live_cursor[1] - 1, col = live_cursor[2] },
     target_range = vim.deepcopy(a.state.target_range),

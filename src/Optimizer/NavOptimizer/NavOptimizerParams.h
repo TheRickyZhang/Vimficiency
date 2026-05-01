@@ -25,6 +25,13 @@ struct NavOptimizerParams : OptimizerParamsBase {
   int linePaddingAbove = 2;
   int linePaddingBelow = 2;
 
+  // Multi-sink result-emission policy. When false (default): at most 1 result
+  // per unique landing position (the cheapest one). When true: every found
+  // path is emitted, including duplicates by landing. The single-cursor
+  // overload of `optimize` sets this to true so distinct sequences to the
+  // single goal point are enumerated.
+  bool allowMultiplePerPosition = false;
+
   // Chainable setters for fluent configuration
   NavOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
   NavOptimizerParams& withMaxNodesPopped(int v) { maxNodesPopped = v; return *this; }
@@ -36,6 +43,7 @@ struct NavOptimizerParams : OptimizerParamsBase {
   NavOptimizerParams& withLinePadding(int v) { linePaddingAbove = linePaddingBelow = v; return *this; }
   NavOptimizerParams& withMinCountRepeat(int v) { setMinCountRepeat(v); return *this; }
   NavOptimizerParams& withMaxCountRepeat(int v) { setMaxCountRepeat(v); return *this; }
+  NavOptimizerParams& withAllowMultiplePerPosition(bool v) { allowMultiplePerPosition = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
   static NavOptimizerParams dijkstra(int maxResults = 10, int maxNodesPopped = 50000) {
@@ -45,29 +53,4 @@ struct NavOptimizerParams : OptimizerParamsBase {
     p.distanceWeight = 0.0;
     return p;
   }
-};
-
-// =============================================================================
-// NavOptimizerRangeParams - Parameters for NavOptimizer::optimizeToRange()
-// =============================================================================
-// Extends NavOptimizerParams with range-specific options.
-
-struct NavOptimizerRangeParams : NavOptimizerParams {
-  // When false (default): at most 1 result per unique end position (best cost)
-  // When true: allows multiple results per position (all found paths)
-  // Note: maxResults limits total results, not unique positions
-  bool allowMultiplePerPosition = false;
-
-  // Chainable setters (return derived type for chaining)
-  NavOptimizerRangeParams& withMaxResults(int v) { maxResults = v; return *this; }
-  NavOptimizerRangeParams& withMaxNodesPopped(int v) { maxNodesPopped = v; return *this; }
-  NavOptimizerRangeParams& withExploreFactor(double v) { exploreFactor = v; return *this; }
-  NavOptimizerRangeParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
-  NavOptimizerRangeParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
-  NavOptimizerRangeParams& withAllowMultiplePerPosition(bool v) { allowMultiplePerPosition = v; return *this; }
-  NavOptimizerRangeParams& withLinePaddingAbove(int v) { linePaddingAbove = v; return *this; }
-  NavOptimizerRangeParams& withLinePaddingBelow(int v) { linePaddingBelow = v; return *this; }
-  NavOptimizerRangeParams& withLinePadding(int v) { linePaddingAbove = linePaddingBelow = v; return *this; }
-  NavOptimizerRangeParams& withMinCountRepeat(int v) { setMinCountRepeat(v); return *this; }
-  NavOptimizerRangeParams& withMaxCountRepeat(int v) { setMaxCountRepeat(v); return *this; }
 };

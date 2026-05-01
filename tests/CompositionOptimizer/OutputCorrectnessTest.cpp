@@ -38,7 +38,7 @@ protected:
       const string& testContext = "") {
 
     for (size_t i = 0; i < results.size(); i++) {
-      if (!results[i].isValid()) continue;
+      if (results[i].getSequence().empty()) continue;
 
       const auto& seq = results[i].getSequence();
       SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());

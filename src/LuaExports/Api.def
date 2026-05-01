@@ -130,18 +130,13 @@ const char* vf_explore_accept_buffer_state(
   int new_col,
   const char* raw_keys);
 const char* vf_explore_current_lines(int view_id);
-const char* vf_explore_begin_edit(
-  int view_id,
-  bool enters_insert_mode,
-  const char* required_typed_text);
-const char* vf_explore_insert_text(int view_id, const char* typed_chunk);
-const char* vf_explore_exit_insert(int view_id);
+const char* vf_explore_begin_insert(int view_id);
 const char* vf_explore_accept_insert_exit(
   int view_id,
   const char* encoded_lines,
   int new_row,
   int new_col,
   const char* raw_keys);
-const char* vf_explore_cancel_pending_insert(int view_id);
+const char* vf_explore_cancel_insert(int view_id);
 const char* vf_explore_undo(int view_id);
 const char* vf_explore_redo(int view_id);

@@ -1,4 +1,4 @@
-// Tests for CompositionResult::stepAt — the per-edit compatibility boundary
+// Tests for CompositionResult::plannedEditAt — the per-edit compatibility boundary
 // consumed by Explore.
 
 #include <gtest/gtest.h>
@@ -14,7 +14,7 @@ using namespace std;
 
 namespace {
 
-TEST(CompositionResultStepView, AlignsDiffFencepostsAndEditResultPerEdit) {
+TEST(CompositionResultPlannedEditView, AlignsDiffFencepostsAndEditResultPerEdit) {
   Config config = Config::uniform();
   CompositionOptimizer opt(config);
 
@@ -27,7 +27,7 @@ TEST(CompositionResultStepView, AlignsDiffFencepostsAndEditResultPerEdit) {
       "gamma DELTA",
   };
   CursorPos initialPos(0, 0);
-  CursorPos goalPos(1, 11);
+  CursorPos goalPos = goal.lastPos();
   NavBoundary boundary(initial, initialPos, initial.endPos());
 
   CompositionResult result = opt.optimize(
@@ -39,22 +39,23 @@ TEST(CompositionResultStepView, AlignsDiffFencepostsAndEditResultPerEdit) {
   EXPECT_EQ(plan.diffs.size(), static_cast<size_t>(result.totalEdits()));
 
   for (int editIndex = 0; editIndex < result.totalEdits(); editIndex++) {
-    const auto step = result.stepAt(editIndex);
+    const auto plannedEdit = result.plannedEditAt(editIndex);
 
-    EXPECT_EQ(step.editIndex, editIndex);
-    EXPECT_EQ(&step.diff, &plan.diffAt(editIndex));
-    EXPECT_EQ(step.preFencepost, plan.fencepostAt(editIndex));
-    EXPECT_EQ(step.postFencepost, plan.fencepostAt(editIndex + 1));
+    EXPECT_EQ(plannedEdit.editIndex, editIndex);
+    EXPECT_EQ(&plannedEdit.diff, &plan.diffAt(editIndex));
+    EXPECT_EQ(plannedEdit.preFencepost, plan.fencepostAt(editIndex));
+    EXPECT_EQ(plannedEdit.postFencepost, plan.fencepostAt(editIndex + 1));
 
     // The bundled post-fencepost must be exactly the diff applied to the
     // bundled pre-fencepost; this is the fencepost contract Explore relies on.
-    EXPECT_EQ(Myers::applyDiffState(step.diff, step.preFencepost), step.postFencepost);
+    EXPECT_EQ(Myers::applyDiffState(plannedEdit.diff, plannedEdit.preFencepost),
+              plannedEdit.postFencepost);
 
-    const auto starts = step.transformResult.resultsAt(
-        step.diff.beginPos.line,
-        step.diff.beginPos.col);
+    const auto starts = plannedEdit.transformResult.resultsAt(
+        plannedEdit.diff.beginPos.line,
+        plannedEdit.diff.beginPos.col);
     EXPECT_FALSE(starts.empty())
-        << "expected at least one planned edit start at diff begin for step "
+        << "expected at least one planned edit start at diff begin for edit "
         << editIndex;
   }
 }

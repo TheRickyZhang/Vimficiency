@@ -11,30 +11,35 @@
 #include <initializer_list>
 #include <iostream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 // =============================================================================
 // Result Inspection Helpers
 // =============================================================================
 
-// Check if any result contains the exact sequence
-inline bool hasSequence(const std::vector<Result>& results, const std::string& seq) {
+// Check if any result contains the exact sequence. Generic over any Result
+// subclass so it works with both `Result` and `LandingResult` lists.
+template <typename ResultT>
+inline bool hasSequence(const std::vector<ResultT>& results, const std::string& seq) {
   return std::any_of(results.begin(), results.end(),
-      [&seq](const Result& r) { return r.getSequence() == seq; });
+      [&seq](const ResultT& r) { return r.getSequence() == seq; });
 }
 
 // Check if any result contains a sequence starting with prefix
-inline bool hasSequenceStartingWith(const std::vector<Result>& results,
+template <typename ResultT>
+inline bool hasSequenceStartingWith(const std::vector<ResultT>& results,
                                     const std::string& prefix) {
   return std::any_of(results.begin(), results.end(),
-      [&prefix](const Result& r) {
+      [&prefix](const ResultT& r) {
         return r.getSequence().size() >= prefix.size() &&
                r.getSequence().view().substr(0, prefix.size()) == prefix;
       });
 }
 
 // Print results for manual inspection (limited to first N)
-inline void printResultsDebug(const std::vector<Result>& results,
+template <typename ResultT>
+inline void printResultsDebug(const std::vector<ResultT>& results,
                               const std::string& description) {
   std::cerr << "\n=== " << description << " ===" << std::endl;
   for (size_t i = 0; i < results.size(); i++) {
@@ -82,7 +87,20 @@ inline Lines load(const std::string& filename) {
 
 Lines readLines(std::istream& in);
 
-bool contains_all(const std::vector<Result>& v,
-                  std::initializer_list<std::string> need);
+template <typename ResultT>
+bool contains_all(const std::vector<ResultT>& v,
+                  std::initializer_list<std::string> need) {
+  std::unordered_set<std::string> s;
+  for (const auto& r : v) s.insert(r.getSequence().str());
+  for (const auto& x : need) if (s.find(x) == s.end()) return false;
+  return true;
+}
 
-void printResults(std::vector<Result>& results);
+template <typename ResultT>
+void printResults(std::vector<ResultT>& results) {
+  std::cout << "Results (" << results.size() << ") : " << std::endl;
+  for (const auto& r : results) {
+    std::cout << r << " ";
+  }
+  std::cout << std::endl;
+}

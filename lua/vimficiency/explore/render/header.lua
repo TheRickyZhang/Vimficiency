@@ -14,11 +14,14 @@ M.header_ns = header_ns
 local function summary_chunks(active, remaining)
   local phase = active.state.phase
   local phase_label = phase.kind
-  if phase.kind == "ApproachEdit" then
-    phase_label = string.format("ApproachEdit %d/%d",
+  if phase.kind == "Navigate" and phase.edit_index ~= nil then
+    phase_label = string.format("Navigate %d/%d",
       phase.edit_index + 1, math.max(active.state.total_edits, 1))
-  elseif phase.kind == "PendingInsert" then
-    phase_label = string.format("PendingInsert '%s'",
+  elseif phase.kind == "Transform" then
+    phase_label = string.format("Transform %d/%d",
+      phase.edit_index + 1, math.max(active.state.total_edits, 1))
+  elseif phase.kind == "Insert" then
+    phase_label = string.format("Insert '%s'",
       sequence_display.inline(remaining, { sectionize = false }))
   end
   return {

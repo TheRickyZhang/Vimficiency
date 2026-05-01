@@ -448,7 +448,7 @@ TEST_F(DebugTest, DISABLED_InvestigateSingleLineSurrounded) {
   cerr << "\nResults (typeAllResults):" << endl;
   for (int i = 0; i < static_cast<int>(res.typeAllResults.size()); i++) {
     const auto& r = res.typeAllResults[i];
-    if (r.isValid()) {
+    if (!r.getSequence().empty()) {
       cerr << "  " << i << ": " << r.getSequence() << " (cost=" << r.getCost() << ")" << endl;
     } else {
       cerr << "  " << i << ": INVALID" << endl;

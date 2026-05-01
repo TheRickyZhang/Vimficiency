@@ -45,13 +45,14 @@ class ExploreFixtureTest : public ::testing::Test {
   NavContext navContext{24, 12};
 };
 
-// Baseline: canonical fixture loads, view enters ApproachEdit, and the
+// Baseline: canonical fixture loads, view enters Navigate/Transform, and the
 // frontier produces at least one distinct recommendation.
-TEST_F(ExploreFixtureTest, RenameFixtureStartsInApproachEdit) {
+TEST_F(ExploreFixtureTest, RenameFixtureStartsInActivePhase) {
   auto f = ExploreFixtures::loadFixture("rename_int_n_to_m");
   auto view = viewFromFixture(f, navContext, config);
 
-  ASSERT_TRUE(std::holds_alternative<Explore::Approach>(view.step()));
+  ASSERT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()) ||
+              std::holds_alternative<Explore::Transform>(view.phase()));
   EXPECT_GT(view.totalEdits(), 0);
   EXPECT_EQ(view.state().cursor, f.startPos);
 
@@ -69,12 +70,14 @@ TEST_F(ExploreFixtureTest, InsertFixtureDrivesForwardUntilCompletion) {
   auto f = ExploreFixtures::loadFixture("insert_plus_one");
   auto view = viewFromFixture(f, navContext, config);
 
-  ASSERT_TRUE(std::holds_alternative<Explore::Approach>(view.step()));
+  ASSERT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()) ||
+              std::holds_alternative<Explore::Transform>(view.phase()));
 
   int steps = 0;
   const int maxSteps = 60;  // per-molecule walk; bounded generously above
                             // the Manhattan distance between start and target
-  while (std::holds_alternative<Explore::Approach>(view.step()) &&
+  while ((std::holds_alternative<Explore::Navigate>(view.phase()) ||
+          std::holds_alternative<Explore::Transform>(view.phase())) &&
          steps < maxSteps) {
     auto recs = view.recommendations(5);
     if (recs.empty()) {
@@ -82,7 +85,8 @@ TEST_F(ExploreFixtureTest, InsertFixtureDrivesForwardUntilCompletion) {
           << "empty frontier at step " << steps
           << " cursor=(" << view.state().cursor.line << ","
           << view.state().cursor.col << ")"
-          << " editIndex=" << std::get<Explore::Approach>(view.step()).editIndex;
+          << " editIndex="
+          << Explore::phaseIndex(view.phase());
       break;
     }
 

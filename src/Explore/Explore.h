@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <expected>
 #include <optional>
 #include <string>
@@ -38,8 +39,7 @@
 //
 // Action contract — every accept*/apply* satisfies these or returns Rejected
 // with state unchanged. New actions: walk this list explicitly.
-//   1. Phase gate. Use `requireApproachEdit` / `requirePendingInsert`, or
-//      `requireApproachEditWithPlan` if the action references `plan_`.
+//   1. Phase gate. Use the require* helpers for the relevant phase/action.
 //   2. Reported cursor (when the action takes one from outside): must pass
 //      `isCursorOnConcreteBufferCell` against the lines being committed,
 //      and the boundary check via `MovementHandler::finishMove` if motion-y.
@@ -56,31 +56,48 @@
 
 namespace Explore {
 
-// Three phase alternatives. State::step is the variant Step below; each
-// alternative carries exactly the fields that phase needs — no shared
-// fields with empty-meaning sentinels.
-struct Approach      { int editIndex = 0; bool operator==(const Approach&) const = default; };
-struct PendingInsert { int editIndex = 0; std::string remainingText;
-                       bool operator==(const PendingInsert&) const = default; };
-struct Completed     { bool operator==(const Completed&) const = default; };
+// Phase model: a session has E edits and E+1 navigation segments
+// alternating between them. Phase identifies what the user is currently
+// doing in that grid:
+//
+//   Navigate(i)  for i ∈ [0, totalEdits]   target = plan.navTarget(i)
+//                                           (= edit i's diff range for i<E,
+//                                            = goalPos for i==E)
+//   Transform(i) for i ∈ [0, totalEdits)   apply edit i
+//   Insert(i)    for i ∈ [0, totalEdits)   insert-mode continuation for edit i
+//
+// "Completion" is a derived predicate (see View::isCompleted), not a phase
+// alternative. Pure-motion sessions are the degenerate E == 0 case; the only
+// reachable phase is Navigate(0) with target = goalPos.
+struct Navigate  { int index = 0; bool operator==(const Navigate&) const = default; };
+struct Transform { int index = 0; bool operator==(const Transform&) const = default; };
+struct Insert    { int index = 0; bool operator==(const Insert&) const = default; };
+using Phase = std::variant<Navigate, Transform, Insert>;
 
-using Step = std::variant<Approach, PendingInsert, Completed>;
+template <class... Ts>
+struct PhaseVisitor : Ts... { using Ts::operator()...; };
+template <class... Ts>
+PhaseVisitor(Ts...) -> PhaseVisitor<Ts...>;
+
+inline std::string_view phaseKindName(const Phase& p) {
+  return std::visit(PhaseVisitor{
+      [](const Navigate&)  { return std::string_view{"Navigate"}; },
+      [](const Transform&) { return std::string_view{"Transform"}; },
+      [](const Insert&)    { return std::string_view{"Insert"}; },
+  }, p);
+}
+
+// Phase index always carries a value (no optional) — the variant alternative
+// encodes which subrange the index lives in.
+inline int phaseIndex(const Phase& p) {
+  return std::visit([](auto&& x) { return x.index; }, p);
+}
 
 // One ranked suggestion returned by View::recommendations. The variant
 // alternative IS the kind (Movement vs Edit), so there's no string tag —
 // each alternative carries exactly the fields its kind needs, sharing
 // `molecule` / `goalPos` / `cost` via FrontierItem.
 using Suggestion = std::variant<NavFrontierItem, TransformFrontierItem>;
-
-// --- Helpers ---
-// Overload-set wire labels for each Step alternative. Adding a fourth
-// alternative = add one overload; no chain to thread through.
-inline std::string_view stepKindName(const Approach&)      { return "ApproachEdit"; }
-inline std::string_view stepKindName(const PendingInsert&) { return "PendingInsert"; }
-inline std::string_view stepKindName(const Completed&)     { return "Completed"; }
-inline std::string_view stepKindName(const Step& s) {
-  return std::visit([](const auto& a) { return stepKindName(a); }, s);
-}
 
 inline std::string_view suggestionKind(const NavFrontierItem&)       { return "movement"; }
 inline std::string_view suggestionKind(const TransformFrontierItem&) { return "edit"; }
@@ -99,7 +116,7 @@ inline const FrontierItem& base(const Suggestion& s) {
 // Mutable state snapshot. The View owns one live State and a history of
 // prior snapshots in its undo/redo stacks.
 struct State {
-  Step step;
+  Phase phase = Navigate{0};
   int acceptedRevision = 0;
   Lines lines;
   CursorPos cursor{0, 0};
@@ -129,22 +146,28 @@ public:
        std::string_view userSequence = "");
 
   // --- Query ---
-  const Step& step() const { return state_.step; }
+  const Phase& phase() const { return state_.phase; }
   const State& state() const { return state_; }
   int totalEdits() const { return totalEdits_; }
   int acceptedRevision() const { return state_.acceptedRevision; }
   bool canUndo() const { return !undo_.empty(); }
   bool canRedo() const { return !redo_.empty(); }
 
+  // The session is complete iff the cursor has reached `goalPos` after all
+  // edits — i.e. phase is `Navigate{totalEdits()}` and the cursor matches
+  // the user's goalPos. Not sticky: moving the cursor away after reaching
+  // goal flips this back to false.
+  bool isCompleted() const;
+
   const Lines& goalLines() const { return goalLines_; }
   CursorPos goalPos() const { return goalPos_; }
 
   // Half-open [begin, end) range of the current edit's diff in intermediate-
-  // buffer coordinates, when in ApproachEdit and a plan exists. Empty otherwise.
+  // buffer coordinates, when the phase references a planned edit. Empty otherwise.
   std::optional<std::pair<CursorPos, CursorPos>> currentTargetRange() const;
 
   // Top-K ranked IMMEDIATE NEXT MOLECULES for the current phase. Empty in
-  // PendingInsert / Completed.
+  // Insert / Completed.
   //
   // Each recommendation is one atomic action the user could take right now
   // (`w`, `f;`, `$`, `s`, `cl`, ...), NOT a full sequence to the target.
@@ -159,7 +182,7 @@ public:
   //   3. Motion frontier toward the diff target (only when cursor is
   //      outside the diff) — depth-1 live A* peek.
   //   4. Optional join-line motion hint for multiline diffs.
-  // Final step trims to `maxCount`.
+  // Final trim caps the list at `maxCount`.
   //
   // Two independent dedup knobs — motions and edits use DIFFERENT dedup
   // keys because their pedagogical axes differ:
@@ -187,19 +210,14 @@ public:
   Outcome applyEdit(std::string_view text);
   Outcome acceptBufferState(const Lines& newLines, CursorPos newCursor,
                             std::string_view rawKeys);
-  Outcome beginEdit(bool entersInsertMode, std::string_view requiredTypedText = "");
-  Outcome consumeInsertText(std::string_view typedChunk);
-  Outcome exitInsertMode();
-  // Buffer-state completion for PendingInsert. Accept iff `newLines` matches
-  // the planned fencepost after the in-flight edit; on accept advances past
-  // PendingInsert regardless of any residual `remainingText` (the buffer is
-  // the source of truth). On mismatch, state is unchanged.
+  Outcome beginInsert();
+  // Buffer-state completion for Insert. Accept iff `newLines` matches the
+  // planned fencepost after the in-flight edit. On mismatch, state is unchanged.
   Outcome acceptInsertExit(const Lines& newLines, CursorPos newCursor,
                            std::string_view rawKeys);
-  // Abort a PendingInsert without polluting redo. Pops the matching undo
-  // entry (the beginEdit commit) in-place — intended for rejected or
-  // abandoned insert-mode entries.
-  Outcome cancelPendingInsert();
+  // Abort Insert without polluting redo. Pops the matching undo entry
+  // (the beginInsert commit) in-place.
+  Outcome cancelInsert();
   Outcome undo();
   Outcome redo();
 
@@ -211,13 +229,15 @@ private:
   NavContext navContext_;
   Config config_;
   // Single source of truth for composition params: shared between the
-  // initial plan computation and any per-step recomputation
+  // initial plan computation and any per-phase recomputation
   // (e.g. join plans during recommendations()), so the two paths cannot drift.
   CompositionOptimizerParams compositionParams_;
   int totalEdits_ = 0;
 
-  // Persistent composition plan + step-scoped frontier artifacts.
-  std::optional<CompositionResult> plan_;
+  // Persistent composition plan + phase-scoped frontier artifacts. Always
+  // populated — pure-motion sessions use a 0-edit plan whose only nav target
+  // is `goalPos`.
+  CompositionResult plan_;
 
   // Live state + undo/redo history
   State state_;
@@ -230,26 +250,26 @@ private:
   // Returns Applied{crossedEditBoundary}.
   Applied commit(State next, bool crossedEditBoundary = false);
 
-  // Gate helper: succeed iff step is ApproachEdit, returning the edit index.
-  // The `action` label is woven into the rejection reason for diagnostics.
-  std::expected<int, Rejected> requireApproachEdit(std::string_view action) const;
+  Phase phaseForEditCursor(int editIndex, CursorPos cursor) const;
+  bool movementStaysInTransformRange(CursorPos cursor) const;
 
-  // ApproachEdit gate + plan presence in one call. Use for actions that
-  // dereference `plan_->stepAt(...)` (applyEdit, acceptBufferState,
-  // beginEdit). Pure-motion approaches (no plan) are rejected here.
-  std::expected<int, Rejected> requireApproachEditWithPlan(
+  // Gate helper: succeed iff phase is Navigate/Transform, returning the
+  // edit index. Index is always present — for Navigate(totalEdits) it
+  // points at the post-final-edit nav segment. The `action` label is
+  // woven into the rejection reason for diagnostics.
+  std::expected<int, Rejected> requireNavigateOrTransform(
       std::string_view action) const;
 
-  // Gate helper: succeed iff step is PendingInsert, returning the edit index.
-  std::expected<int, Rejected> requirePendingInsert(std::string_view action) const;
+  std::expected<int, Rejected> requireTransform(std::string_view action) const;
 
-  // True when Explore is guiding only cursor motion because the buffer
-  // already matches the goal text and there is no edit plan to execute.
-  bool isPureMotionApproach() const;
+  // Gate helper: succeed iff phase is Insert, returning the edit index.
+  std::expected<int, Rejected> requireInsert(std::string_view action) const;
 
-  // Advance phase after an edit completes: ApproachEdit(i) → ApproachEdit(i+1)
-  // (snapping lines to the next fencepost) or Completed at end of plan.
-  // `editIndex` is the index of the edit that just completed.
+  // Advance phase after an edit completes: Transform/Insert(i) →
+  // Navigate/Transform(i+1) (snapping lines to the next fencepost). When
+  // `editIndex == totalEdits_ - 1`, transitions to Navigate(totalEdits_) —
+  // the post-final-edit nav segment. Completion is then a derived predicate
+  // (see isCompleted) that triggers when the cursor reaches goalPos.
   Applied afterEditCompleted(State next, int editIndex);
 };
 

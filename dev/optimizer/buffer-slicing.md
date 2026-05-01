@@ -98,12 +98,14 @@ int lineOffset = subsetStart;
 // Remap positions to subset coordinates
 Position subsetPos(pos.line - lineOffset, pos.col, pos.targetCol);
 
-// Call NavOptimizer on subset
-auto results = navOptimizer.optimizeToRange(subset, subsetPos, ...);
+// Call NavOptimizer on subset (CharInterval goal -> LandingNavResult)
+LandingNavResult navResult = navOptimizer.optimize(subset, subsetPos, interval, ...);
 
-// Remap results back to original coordinates
-for (auto& r : results) {
-  r.goalPos.line += lineOffset;
+// Remap each LandingResult's landing back to original coordinates
+for (const LandingResult& r : navResult.getResults()) {
+  CursorPos goalPos = r.getGoalPos();
+  goalPos.line += lineOffset;
+  // ... use goalPos in the original buffer's coordinate space
 }
 ```
 
@@ -126,9 +128,9 @@ Note: Only the line is offset; column stays the same.
 
 ## Boundary vs Target Range
 
-When calling `optimizeToRange`, the **boundary** and the **target range** serve different purposes:
+When calling `NavOptimizer::optimize` with a `CharInterval` goal, the **boundary** and the **target range** serve different purposes:
 
-- **Target range** (`rangeFirst`, `rangeLast`): Defines which positions count as "in range" for the optimizer's goal check. This is the edit region or insertion point.
+- **Target range** (`goalInterval.first`, `goalInterval.last`): Defines which positions count as "in range" for the optimizer's goal check. This is the edit region or insertion point.
 - **Boundary** (`NavBoundary`): Defines the navigable extent that clamps motion endpoints like `$`, `0`, `^`. This should be the full subset extent, not the target range.
 
 Using the target range as the boundary is incorrect — it causes `BoundaryContext` to compute `leftColOffset`/`rightColOffset` that clamp motions to the target range edges. For example, `$` would land at the edit region's last column instead of the actual end-of-line.

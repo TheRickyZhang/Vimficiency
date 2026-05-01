@@ -45,7 +45,7 @@ protected:
 
   CompositionSearchContext makeContext(const Lines& initial, const Lines& goal) {
     return CompositionSearchContext(
-        initial, CursorPos(0, 0), goal, "",
+        initial, CursorPos(0, 0), goal, CursorPos(0, 0), "",
         NavContext(), NavBoundary(), params, config);
   }
 

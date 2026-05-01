@@ -25,7 +25,7 @@ Overall, not enough other early branches explored; heuristic model locks in one 
 
 Overall, just verify for any missed ideas in CompositionOptimizer exploration
 
-Local-only RunningEffort context in MotionOptimizer
+Local-only RunningEffort context in NavOptimize
 
 Verify usage of maxMultipleP
 

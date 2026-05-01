@@ -22,6 +22,7 @@ cmake --build build
 ```lua
 require('vimficiency').setup()
 ```
+A comprehensive setup is provided in examples/config.lua
 
 Ensure `build/libvimficiency.so` is on your library path or set `VIMFICIENCY_LIB_PATH`.
 

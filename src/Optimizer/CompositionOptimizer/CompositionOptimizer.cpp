@@ -53,12 +53,16 @@ CursorPos clampGoalPosToLines(const CursorPos& pos, const Lines& lines) {
 
 } // anonymous namespace
 
-// Note that goalPos doesn't matter except for directionality; we want to explore anything that performs the same edits.
+// `goalPos` is a real terminal target: the search continues past the last edit
+// with motion-only transitions until pos == goalPos. For pure-motion sessions
+// (E == 0), the search starts directly in the post-final-edit nav phase.
 CompositionResult CompositionOptimizer::optimize(
     const Lines& initialLines, const CursorPos initialPos, const Lines& goalLines,
     const CursorPos goalPos, CompositionOptimizerParams params,
     string_view userSequence, const NavBoundary& boundary,
     const NavContext& navigationContext) {
+  CHECK(goalLines.contains(goalPos),
+        "goalPos must be a valid normal-mode cursor position in goalLines");
   if(goalPos < initialPos) {
     debug("only support forward motion in CompositionOptimizer");
   }
@@ -66,20 +70,14 @@ CompositionResult CompositionOptimizer::optimize(
   NavOptimizer navOptimizer(config);
 
   // Create search context - handles all pre-computation
-  CompositionSearchContext ctx(initialLines, initialPos, goalLines, userSequence,
-                               navigationContext, boundary,
+  CompositionSearchContext ctx(initialLines, initialPos, goalLines, goalPos,
+                               userSequence, navigationContext, boundary,
                                params, config);
 
-  if (ctx.totalEdits() == 0) {
-    return {};
-  }
   if (ctx.totalEdits() > 16) {
     debug("Cannot support more than 16 edits");
     return {};
   }
-
-  // Cursor position after last edit completes
-  CursorPos resultGoalPos = ctx.edits.back().transformResult.getGoalPos();
 
   vector<Result> results;
 
@@ -98,10 +96,16 @@ CompositionResult CompositionOptimizer::optimize(
 
     double newCost = newState.getCost();
     const CompositionStateKey newKey = newState.getKey();
+    // Terminal states (all edits done AND cursor at goalPos) are not cached so
+    // multiple distinct paths to goal can each emit a result. Post-final-edit
+    // nav states (all edits done but cursor still moving toward goalPos) ARE
+    // cached, same as inter-edit nav, to avoid redundant exploration.
+    const bool isTerminal = (newState.getEditsCompleted() == ctx.totalEdits() &&
+                             newState.getPos() == ctx.goalPos);
     auto it = ctx.costMap.find(newKey);
 
     if (it == ctx.costMap.end()) {
-      if (newState.getEditsCompleted() != ctx.totalEdits()) {
+      if (!isTerminal) {
         ctx.costMap.emplace(newKey, newCost);
       }
       ctx.pq.push(std::move(newState));
@@ -132,6 +136,78 @@ CompositionResult CompositionOptimizer::optimize(
     enqueueState(std::move(newState));
   };
 
+  // Slice a padded subset of `fromLines` covering the cursor and target lines,
+  // and build the boundary the inner NavOptimizer will see. Used by both the
+  // range-motion and point-motion exploration helpers below.
+  auto sliceMotionSubset = [&](CursorPos pos, int targetBeginLine, int targetEndLine,
+                               const Lines& fromLines) {
+    struct Slice {
+      Lines subset;
+      int beginLine;
+      int endLine;
+      CursorPos localPos;
+      NavBoundary subsetBoundary;
+    };
+    auto [beginLine, endLine] = fromLines.minmaxBoundWithPadding(
+        min(pos.line, targetBeginLine), max(pos.line + 1, targetEndLine + 1),
+        params.navPaddingAbove, params.navPaddingBelow);
+    Lines subset = fromLines.getLineRange(beginLine, endLine);
+    CursorPos localPos(pos.line - beginLine, pos.col, pos.targetCol);
+    CursorPos subsetFirst(0, 0);
+    CursorPos subsetEnd(static_cast<int>(subset.size()) - 1,
+        subset.back().effectiveSize());
+    NavBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
+        beginLine > 0 || boundary.hasLinesAbove(),
+        endLine <= fromLines.lastLine() || boundary.hasLinesBelow());
+    return Slice{std::move(subset), beginLine, endLine, localPos, std::move(subsetBoundary)};
+  };
+
+  // Enumerate motions from `pos` toward a CharInterval target.
+  // `makeLocalInterval(subset, beginLine)` translates the caller's full-buffer
+  // target intent into subset-local coords (returns nullopt to skip search).
+  // - Multi-sink range targets (inter-edit motion, J-plan motion) use the
+  //   default `allowMultiplePerPosition=false` so we get one cheapest path
+  //   per landing.
+  // - Single-cursor targets (post-final-edit nav) construct a 1-element
+  //   interval and pass `allowMultiplePerPosition=true` so multiple distinct
+  //   sequences to the single point are enumerated.
+  auto exploreMotionsToInterval = [&](
+      const CompositionState& s, CursorPos pos,
+      int targetBeginLine, int targetEndLine,
+      const Lines& fromLines, int editsCompleted,
+      int maxResults, bool allowMultiplePerPosition,
+      auto&& makeLocalInterval) {
+    auto slice = sliceMotionSubset(pos, targetBeginLine, targetEndLine, fromLines);
+    auto localInterval = makeLocalInterval(slice.subset, slice.beginLine);
+    if (!localInterval) return;
+
+    auto navParams = NavOptimizerParams{}
+        .withMaxResults(maxResults)
+        .withMinCountRepeat(params.minPrefixCount)
+        .withMaxCountRepeat(params.maxPrefixCount)
+        .withAllowMultiplePerPosition(allowMultiplePerPosition);
+    const BufferIndex* bufferIndex = nullptr;
+    int lineOffset = 0;
+    bool hasBufferIndex = ctx.tryGetBufferIndex(
+        editsCompleted, slice.beginLine, slice.endLine, bufferIndex, lineOffset);
+    auto navResult = hasBufferIndex
+        ? navOptimizer.optimize(
+              slice.subset, slice.localPos, *localInterval,
+              navParams, "", slice.subsetBoundary,
+              navigationContext, *bufferIndex, lineOffset)
+        : navOptimizer.optimize(
+              slice.subset, slice.localPos, *localInterval,
+              navParams, "", slice.subsetBoundary, navigationContext);
+    ctx.navNodesExplored += navResult.getStats().nodesExplored();
+
+    for (const LandingResult& movResult : navResult.getResults()) {
+      if (movResult.getSequence().empty()) continue;
+      CursorPos goalPos = movResult.getGoalPos();
+      goalPos.line += slice.beginLine;
+      enqueueMotionTransition(s, movResult.getSequence(), goalPos, editsCompleted);
+    }
+  };
+
   debug("=== CompositionOptimizer A* search ===");
 
   while (!ctx.pq.empty() && ctx.totalPops < params.maxNodesPopped) {
@@ -141,7 +217,7 @@ CompositionResult CompositionOptimizer::optimize(
     CursorPos pos = s.getPos();
     int editsCompleted = s.getEditsCompleted();
 
-    if (editsCompleted == ctx.totalEdits()) {
+    if (editsCompleted == ctx.totalEdits() && pos == goalPos) {
       ctx.nodesProcessed++;
       double effort = s.getRunningEffort().getEffort(config);
       debug("GOAL #" + to_string(results.size()) + ":",
@@ -166,6 +242,23 @@ CompositionResult CompositionOptimizer::optimize(
     debug("pop:", "\"" + s.getSequence().str() + "\"",
           "pos:", pos, "edits:", editsCompleted,
           "cost:", s.getCost(), "effort:", s.getEffort());
+
+    // ========== POST-FINAL-EDIT NAV PHASE ==========
+    // All edits applied but cursor isn't at goalPos yet. Enumerate motions
+    // from `pos` toward `goalPos` and enqueue, keeping editsCompleted fixed
+    // at totalEdits(). No edit transitions are explored here.
+    if (editsCompleted == ctx.totalEdits()) {
+      debug("  post-edit nav from", pos, "to goalPos", goalPos);
+      exploreMotionsToInterval(
+          s, pos, goalPos.line, goalPos.line,
+          ctx.getLinesAfter(editsCompleted), editsCompleted,
+          clamp(params.maxResults, 1, 10), /*allowMultiplePerPosition=*/true,
+          [&](const Lines& subset, int beginLine) -> std::optional<CharInterval> {
+            CursorPos localGoal(goalPos.line - beginLine, goalPos.col, goalPos.targetCol);
+            return CharInterval(localGoal, localGoal);
+          });
+      continue;
+    }
 
     // Get current buffer state
     const Lines& currentLines = ctx.getLinesAfter(editsCompleted);
@@ -205,8 +298,9 @@ CompositionResult CompositionOptimizer::optimize(
           CursorPos localRangeEnd(targetLine - beginLine, endCol);
 
           // Boundary uses full subset extent, not the target range.
-          // The target range is only for optimizeToRange's isInRange check.
-          // Using the target range as boundary would clamp motions like $ to the range edge.
+          // The target range is only for the range-goal `optimize` isInRange
+          // check. Using it as boundary would clamp motions like $ to the
+          // range edge.
           CursorPos subsetFirst(0, 0);
           CursorPos subsetEnd(static_cast<int>(subset.size()) - 1,
               subset.back().effectiveSize());
@@ -214,7 +308,7 @@ CompositionResult CompositionOptimizer::optimize(
               beginLine > 0 || boundary.hasLinesAbove(),
               endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
-          auto rangeParams = NavOptimizerRangeParams{}
+          auto rangeParams = NavOptimizerParams{}
               .withMaxResults(1)
               .withMinCountRepeat(params.minPrefixCount)
               .withMaxCountRepeat(params.maxPrefixCount);
@@ -225,18 +319,18 @@ CompositionResult CompositionOptimizer::optimize(
           CharInterval motionRange = toMotionInterval(
               subset, CharRange(localRangeBegin, localRangeEnd));
           auto navResult = hasBufferIndex
-              ? navOptimizer.optimizeToRange(
+              ? navOptimizer.optimize(
                     subset, localPos, motionRange,
                     rangeParams, "", subsetBoundary,
                     navigationContext, *bufferIndex, lineOffset)
-              : navOptimizer.optimizeToRange(
+              : navOptimizer.optimize(
                     subset, localPos, motionRange,
                     rangeParams, "", subsetBoundary,
                     navigationContext);
           ctx.navNodesExplored += navResult.getStats().nodesExplored();
 
-          for (const RangeResult& movResult : navResult.getResults()) {
-            if (!movResult.isValid()) continue;
+          for (const LandingResult& movResult : navResult.getResults()) {
+            if (movResult.getSequence().empty()) continue;
 
             const CursorPos& localGoal = movResult.getGoalPos();
             assert(localGoal >= localRangeBegin && localGoal < localRangeEnd &&
@@ -385,123 +479,35 @@ CompositionResult CompositionOptimizer::optimize(
         continue;
       }
 
-      // Slice a padded subset around [pos, edit region] for NavOptimizer
-      int editEndLine = nextEdit.editEndLine();
-      auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
-          min(pos.line, nextEdit.beginPos.line),
-          max(pos.line + 1, editEndLine),
-          params.navPaddingAbove, params.navPaddingBelow);
-
-      Lines subset = currentLines.getLineRange(beginLine, endLine);
-
-      CursorPos localPos(pos.line - beginLine, pos.col, pos.targetCol);
-      CursorPos localRangeBegin(nextEdit.beginPos.line - beginLine, nextEdit.beginPos.col);
-      CursorPos localRangeEnd(nextEdit.endPos.line - beginLine, nextEdit.endPos.col);
-
-      // Boundary uses full subset extent, not the edit range.
-      // The edit range is only the target for optimizeToRange's isInRange check.
-      // Using the edit range as boundary would clamp motions like $ to the range edge.
-      CursorPos subsetFirst(0, 0);
-      CursorPos subsetEnd(static_cast<int>(subset.size()) - 1,
-          subset.back().effectiveSize());
-      NavBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
-          beginLine > 0 || boundary.hasLinesAbove(),
-          endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
-
       debug("  motion search from", pos, "to edit region [" +
             to_string(nextEdit.beginPos.line) + "," + to_string(nextEdit.beginPos.col)
             + ")-[" + to_string(nextEdit.endPos.line) + "," +
             to_string(nextEdit.endPos.col) + ")");
 
-      auto rangeParams2 = NavOptimizerRangeParams{}
-          .withMaxResults(clamp(nextEdit.origCharCount(), 1, 10))
-          .withMinCountRepeat(params.minPrefixCount)
-          .withMaxCountRepeat(params.maxPrefixCount);
-      const BufferIndex* bufferIndex = nullptr;
-      int lineOffset = 0;
-      bool hasBufferIndex = ctx.tryGetBufferIndex(
-          editsCompleted, beginLine, endLine, bufferIndex, lineOffset);
-      if (auto motionRange2 = tryToMotionInterval(
-              subset, CharRange(localRangeBegin, localRangeEnd))) {
-        RangeNavResult navResult = hasBufferIndex
-            ? navOptimizer.optimizeToRange(
-                  subset, localPos, *motionRange2,
-                  rangeParams2, "", subsetBoundary,
-                  navigationContext, *bufferIndex, lineOffset)
-            : navOptimizer.optimizeToRange(
-                  subset, localPos, *motionRange2,
-                  rangeParams2, "", subsetBoundary, navigationContext);
-        ctx.navNodesExplored += navResult.getStats().nodesExplored();
+      // Motions to the next edit's diff range.
+      exploreMotionsToInterval(
+          s, pos, nextEdit.beginPos.line, nextEdit.editEndLine() - 1,
+          currentLines, editsCompleted,
+          clamp(nextEdit.origCharCount(), 1, 10),
+          /*allowMultiplePerPosition=*/false,
+          [&](const Lines& subset, int beginLine) -> std::optional<CharInterval> {
+            CursorPos localBegin(nextEdit.beginPos.line - beginLine, nextEdit.beginPos.col);
+            CursorPos localEnd(nextEdit.endPos.line - beginLine, nextEdit.endPos.col);
+            return tryToMotionInterval(subset, CharRange(localBegin, localEnd));
+          });
 
-        debug("  motion results:", static_cast<int>(navResult.getResults().size()));
-        for (const RangeResult& movResult : navResult.getResults()) {
-          if (!movResult.isValid()) continue;
-
-          // Remap results back to full-buffer coordinates (preserving targetCol)
-          CursorPos goalPos = movResult.getGoalPos();
-          goalPos.line += beginLine;
-          debug("    motion:", "\"" + movResult.getSequence().str() + "\"",
-                "->", goalPos);
-          enqueueMotionTransition(s, movResult.getSequence(), goalPos,
-                                  editsCompleted);
-        }
-      } else {
-        debug("  skipping direct motion search for range with no cursor positions");
-      }
-
-      // If a J plan exists for this edit and cursor isn't on the entry line,
-      // also search for motions to the J plan's entry line (full line range).
-      // This handles cases where the edit region is unreachable (e.g., \n → space)
-      // but J can fire from anywhere on the entry line.
+      // J plan: if cursor isn't on the entry line, also search for motions to
+      // the entry line (whole-line range). This handles cases where the edit
+      // region is unreachable (e.g., \n → space) but J can fire from anywhere
+      // on the entry line.
       if (joinPlan && pos.line != joinPlan->entryLine) {
-        int jLine = joinPlan->entryLine;
-        int jLineLen = currentLines[jLine].effectiveSize();
-        auto [jBeginLine, jEndLine] = currentLines.minmaxBoundWithPadding(
-            min(pos.line, jLine), max(pos.line, jLine) + 1,
-            params.navPaddingAbove, params.navPaddingBelow);
-
-        Lines jSubset = currentLines.getLineRange(jBeginLine, jEndLine);
-        CursorPos jLocalPos(pos.line - jBeginLine, pos.col, pos.targetCol);
-        CursorPos jLocalFirst(jLine - jBeginLine, 0);
-        CursorPos jLocalEnd(jLine - jBeginLine, jLineLen);
-
-        CursorPos jSubsetFirst(0, 0);
-        CursorPos jSubsetEnd(static_cast<int>(jSubset.size()) - 1,
-            jSubset.back().effectiveSize());
-        NavBoundary jSubsetBoundary(jSubset, jSubsetFirst, jSubsetEnd,
-            jBeginLine > 0 || boundary.hasLinesAbove(),
-            jEndLine <= currentLines.lastLine() || boundary.hasLinesBelow());
-
-        auto jRangeParams = NavOptimizerRangeParams{}
-            .withMaxResults(1)
-            .withMinCountRepeat(params.minPrefixCount)
-            .withMaxCountRepeat(params.maxPrefixCount);
-        const BufferIndex* jBufferIndex = nullptr;
-        int jLineOffset = 0;
-        bool hasJBufferIndex = ctx.tryGetBufferIndex(
-            editsCompleted, jBeginLine, jEndLine, jBufferIndex, jLineOffset);
-        CharInterval jMotionRange = wholeLineMotionInterval(
-            jSubset, jLine - jBeginLine);
-        auto jNavResult = hasJBufferIndex
-            ? navOptimizer.optimizeToRange(
-                  jSubset, jLocalPos, jMotionRange,
-                  jRangeParams, "", jSubsetBoundary,
-                  navigationContext, *jBufferIndex, jLineOffset)
-            : navOptimizer.optimizeToRange(
-                  jSubset, jLocalPos, jMotionRange,
-                  jRangeParams, "", jSubsetBoundary,
-                  navigationContext);
-        ctx.navNodesExplored += jNavResult.getStats().nodesExplored();
-
-        for (const RangeResult& movResult : jNavResult.getResults()) {
-          if (!movResult.isValid()) continue;
-          CursorPos goalPos = movResult.getGoalPos();
-          goalPos.line += jBeginLine;
-          debug("    J-motion:", "\"" + movResult.getSequence().str() + "\"",
-                "->", goalPos);
-          enqueueMotionTransition(s, movResult.getSequence(), goalPos,
-                                  editsCompleted);
-        }
+        const int jLine = joinPlan->entryLine;
+        exploreMotionsToInterval(
+            s, pos, jLine, jLine, currentLines, editsCompleted, /*maxResults=*/1,
+            /*allowMultiplePerPosition=*/false,
+            [&](const Lines& subset, int beginLine) -> std::optional<CharInterval> {
+              return wholeLineMotionInterval(subset, jLine - beginLine);
+            });
       }
     }
   }
@@ -513,7 +519,7 @@ CompositionResult CompositionOptimizer::optimize(
         "skipped:", ctx.statesSkipped,
         "queueRemaining:", static_cast<int>(ctx.pq.size()));
 
-  // Extract the persistent step breakdown and step-scoped frontier artifacts.
+  // Extract the persistent planned-edit breakdown and edit-scoped artifacts.
   std::vector<Lines> fenceposts;
   std::vector<DiffState> diffs;
   std::vector<TransformResult> transformResults;
@@ -529,7 +535,7 @@ CompositionResult CompositionOptimizer::optimize(
 
   int numResults = static_cast<int>(results.size());
   CompositionPlan plan{
-      .finalGoalPos = resultGoalPos,
+      .finalGoalPos = goalPos,
       .diffs = std::move(diffs),
       .fenceposts = std::move(fenceposts),
   };

@@ -17,8 +17,8 @@ const MAX_ITEMS = 5;
 const ALERT_RATIO = 1.5;
 
 const OPTIMIZER_LABELS: Partial<Record<OptimizerSlug, string>> = {
-  edit: 'EditOptimizer',
-  motion: 'MotionOptimizer',
+  edit: 'TransformOptimizer',
+  motion: 'NavOptimize',
   composition: 'CompositionOptimizer',
 };
 

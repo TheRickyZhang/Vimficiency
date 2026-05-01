@@ -34,7 +34,6 @@ protected:
       const Lines& initial, CursorPos initialPos,
       const Lines& goal,
       const string& context = "") {
-    ASSERT_TRUE(result.isValid()) << "Result invalid (" << context << ")";
     SimulationResult nvim = oracle->simulate(
         initial, initialPos.line, initialPos.col, result.getSequence().str());
     EXPECT_TRUE(nvim.lines == goal)
@@ -54,10 +53,6 @@ protected:
         << "No results returned" << (testContext.empty() ? "" : " (" + testContext + ")");
 
     for (size_t i = 0; i < results.size(); i++) {
-      EXPECT_TRUE(results[i].isValid())
-          << "Result " << i << " is invalid"
-          << (testContext.empty() ? "" : " (" + testContext + ")");
-
       const auto& seq = results[i].getSequence();
       SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
 
@@ -205,7 +200,8 @@ TEST_F(CompositionOptimizer_ManualTest, InsertNewLine) {
 // =============================================================================
 
 TEST_F(CompositionOptimizer_ManualTest, NoChange_IdenticalBuffers) {
-  // When initial == goal, should return empty result or no-op
+  // When initial == goal AND initialPos == goalPos, the optimizer emits a
+  // single trivially-satisfied vacuous result (empty sequence).
   Lines initial = {"hello world"};
   Lines goal = {"hello world"};
   CursorPos initialPos(0, 0);
@@ -215,11 +211,9 @@ TEST_F(CompositionOptimizer_ManualTest, NoChange_IdenticalBuffers) {
       initial, initialPos, goal, goalPos, params);
   const auto& results = compResult.getResults();
 
-  // Empty results is valid (no changes needed)
-  // If there are results, verify they don't break the buffer
-  if (!results.empty()) {
-    expectHasValidResults(results, initial, initialPos, goal, "no change");
-  }
+  ASSERT_EQ(results.size(), 1u);
+  EXPECT_TRUE(results[0].getSequence().empty());
+  EXPECT_EQ(compResult.totalEdits(), 0);
 }
 
 // =============================================================================

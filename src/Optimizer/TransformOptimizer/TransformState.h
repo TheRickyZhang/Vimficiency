@@ -53,7 +53,7 @@ struct TransformStateKeyHash {
 };
 
 // =============================================================================
-// TransformState - A* search state for edit optimization
+// TransformState - A* search state for transform optimization
 // =============================================================================
 
 class TransformState {

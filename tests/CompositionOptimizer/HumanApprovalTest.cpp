@@ -47,7 +47,6 @@ protected:
     const auto& results = compResult.getResults();
     ASSERT_FALSE(results.empty()) << "No results" << ctx(context);
     for (size_t i = 0; i < results.size(); i++) {
-      ASSERT_TRUE(results[i].isValid()) << "Result " << i << " invalid" << ctx(context);
       SimulationResult nvim = oracle->simulate(
           initial, initialPos.line, initialPos.col, results[i].getSequence().str());
       EXPECT_TRUE(nvim.lines == goal)
@@ -62,7 +61,6 @@ protected:
       const Lines& initial, CursorPos initialPos,
       const Lines& goal,
       const string& context = "") {
-    ASSERT_TRUE(result.isValid()) << "Result invalid" << ctx(context);
     SimulationResult nvim = oracle->simulate(
         initial, initialPos.line, initialPos.col, result.getSequence().str());
     EXPECT_TRUE(nvim.lines == goal)
@@ -75,7 +73,7 @@ protected:
       return d.isPureDeletion();
     });
     auto foundDiParen = ranges::any_of(compResult.getResults(), [](const Result& r) {
-      return r.isValid() && r.getSequence().view().find("di(") != string::npos;
+      return r.getSequence().view().find("di(") != string::npos;
     });
     if (hasPureDeletionDiff) {
       EXPECT_TRUE(foundDiParen) << "Expected pure-deletion text-object shortcut di( in results";
@@ -104,8 +102,8 @@ TEST_F(CompositionOptimizerHumanApprovalTests, Example1) {
     "don't you agree?"
   };
   CursorPos initialPos(0, 0);
-  CursorPos afterPos(initialLines.endPos());
-  NavBoundary boundary(initialLines, initialPos, afterPos);
+  CursorPos afterPos = afterLines.lastPos();
+  NavBoundary boundary(initialLines, initialPos, initialLines.endPos());
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos);
   // cout << res << endl;
@@ -122,8 +120,8 @@ TEST_F(CompositionOptimizerHumanApprovalTests, TelescopingChanges) {
     "I saw a pig in barn in Florida"
   };
   CursorPos initialPos(0, 0);
-  CursorPos afterPos(initialLines.endPos());
-  NavBoundary boundary(initialLines, initialPos, afterPos);
+  CursorPos afterPos(afterLines.lastPos());
+  NavBoundary boundary(initialLines, initialPos, initialLines.endPos());
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos);
   // cout << res << endl;
@@ -141,8 +139,8 @@ TEST_F(CompositionOptimizerHumanApprovalTests, JoinLines) {
     "aaa bbb ccc?"
   };
   CursorPos initialPos(0, 2);
-  CursorPos afterPos(initialLines.endPos());
-  NavBoundary boundary(initialLines, initialPos, afterPos, true, true);
+  CursorPos afterPos(afterLines.lastPos());
+  NavBoundary boundary(initialLines, initialPos, initialLines.endPos(), true, true);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos, CompositionOptimizerParams{}, "", boundary);
   // cout << res << endl;
@@ -252,8 +250,8 @@ TEST_F(CompositionOptimizerHumanApprovalTests, ModifyInParentheses) {
     "int main() { return 0; }"
   };
   CursorPos initialPos(0, 0);
-  CursorPos afterPos(initialLines.endPos());
-  NavBoundary boundary(initialLines, initialPos, afterPos, true, true);
+  CursorPos afterPos(afterLines.lastPos());
+  NavBoundary boundary(initialLines, initialPos, initialLines.endPos(), true, true);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, afterLines, afterPos, {}, "", boundary);
   verifyDiParenShortcutPolicy(res);
@@ -279,7 +277,7 @@ TEST_F(CompositionOptimizerHumanApprovalTests, ModifyInParenthesesMultiple) {
 })");
   CursorPos initialPos(0, 0);
   CursorPos initialEndPos = initialLines.endPos();
-  CursorPos goalPos = goalLines.endPos();
+  CursorPos goalPos = goalLines.lastPos();
   NavBoundary boundary(initialLines, initialPos, initialEndPos, true, true);
 
   CompositionResult res = opt.optimize(initialLines, initialPos, goalLines, goalPos, {}, "", boundary);

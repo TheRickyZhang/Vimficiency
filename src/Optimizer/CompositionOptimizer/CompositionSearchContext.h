@@ -97,6 +97,10 @@ struct CompositionSearchContext {
   const NavContext& navContext;
   const NavBoundary& boundary;
 
+  // Final cursor target. Search terminates when editsCompleted == totalEdits()
+  // AND pos == goalPos. Used by heuristic() to score post-final-edit nav cost.
+  CursorPos goalPos;
+
   // Per-edit bundled data (one entry per diff, indexed 0..totalEdits()-1)
   struct PerEditData {
     DiffState diffState;
@@ -154,6 +158,7 @@ struct CompositionSearchContext {
       const Lines& initialLines,
       const CursorPos& initialPos,
       const Lines& goalLines,
+      const CursorPos& goalPos,
       std::string_view userSequence,
       const NavContext& navContext,
       const NavBoundary& boundary,

@@ -55,7 +55,7 @@ TEST_F(NavOptimizerCostConsistencyTests, CostMatchesComputed) {
     ).getResults();
 
     for (const auto& result : results) {
-      if (!result.isValid()) continue;
+      if (result.getSequence().empty()) continue;
       totalResults++;
 
       const auto& seq = result.getSequence();

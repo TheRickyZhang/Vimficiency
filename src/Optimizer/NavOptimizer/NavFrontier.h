@@ -10,7 +10,7 @@
 //
 // How it relates to NavOptimizer:
 //   - Same `NavExplorer` and candidate-emission callbacks as
-//     `NavOptimizer::optimizeToRange`. Same scoring function
+//     `NavOptimizer::optimize`. Same scoring function
 //     (`effortWeight * effort + distanceWeight * distanceToRange`).
 //   - But only ONE expansion level: we build a single `NavState` at the
 //     cursor, emit all depth-1 successors, sort by A* cost, and return the
@@ -42,7 +42,7 @@
 
 // Default dedup (`allowMultiplePerPosition == false`): at most one result
 // per unique landing position — the cheapest-cost molecule wins, matching
-// `NavOptimizerRangeParams::allowMultiplePerPosition`. When true: multiple
+// `NavOptimizerParams::allowMultiplePerPosition`. When true: multiple
 // molecules reaching the same cell are kept (e.g. `w` and `W` both landing
 // on the next word start); dedup keys on sequence text so only literal-
 // string duplicates collapse.

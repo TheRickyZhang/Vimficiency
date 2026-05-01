@@ -617,7 +617,7 @@ TEST_F(DebugTest, DISABLED_Placeholder) {
     }
   }
 
-  // Also trace what the edit optimizer produces for each diff.
+  // Also trace what the transform optimizer produces for each diff.
   cerr << "\n=== Diff regions ===" << endl;
   {
     Lines initial = {"ffb decd bdf"};
@@ -633,7 +633,7 @@ TEST_F(DebugTest, DISABLED_Placeholder) {
            << endl;
     }
 
-    // Edit optimizer for each diff
+    // Transform optimizer for each diff
     Config config = Config::uniform();
     TransformOptimizer editOpt(config);
     for (size_t i = 0; i < diffs.size(); i++) {
@@ -796,8 +796,8 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
     }
   }
 
-  // Step 3: Run the edit optimizer directly on the diff
-  cerr << "\n=== Edit Optimizer for [0,5) ===" << endl;
+  // Step 3: Run the transform optimizer directly on the diff
+  cerr << "\n=== Transform Optimizer for [0,5) ===" << endl;
   {
     Config config = Config::uniform();
     auto diffs = Myers::calculate(initial, goal);
@@ -874,7 +874,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJoinLinesResidual) {
   // Initial: aaa\nxxx\nccc → Goal: aaa bbb ccc
   // Diff {0}='\nxxx\nccc' → ' bbb ccc'
   // Edit region: lines after "aaa" (prefix="aaa", suffix="")
-  cerr << "=== Edit optimizer for JoinLinesWithResidual ===" << endl;
+  cerr << "=== Transform optimizer for JoinLinesWithResidual ===" << endl;
 
   Lines fullBuffer = {"aaa", "xxx", "ccc"};
   // Edit region: the content to change is "\nxxx\nccc" starting at (0,3)
@@ -1226,7 +1226,7 @@ TEST_F(NeovimOracleDebug, InvestigateMaskBugs) {
 
   auto makeCtx = [&](const Lines& initial, const Lines& goal) {
     return CompositionSearchContext(
-        initial, CursorPos(0, 0), goal, "",
+        initial, CursorPos(0, 0), goal, CursorPos(0, 0), "",
         NavContext(), NavBoundary(), params, config);
   };
 
@@ -1331,8 +1331,8 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
     cerr << "    beginPos: " << diffs[i].beginPos << ", endPos: " << diffs[i].endPos << endl;
   }
 
-  // Test NavOptimizer.optimizeToRange directly
-  cerr << endl << "=== Testing NavOptimizer.optimizeToRange ===" << endl;
+  // Test NavOptimizer.optimize directly
+  cerr << endl << "=== Testing NavOptimizer.optimize ===" << endl;
   {
     Config cfg = Config::uniform();
     NavOptimizer movOpt(cfg);
@@ -1341,10 +1341,10 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
 
     cerr << "Finding path from " << initialPos << " to range [" << rangeBegin << ", " << rangeEnd << ")" << endl;
 
-    auto rangeResult = movOpt.optimizeToRange(
+    auto rangeResult = movOpt.optimize(
         initial, initialPos,
         toMotionInterval(initial, CharRange(rangeBegin, rangeEnd)),
-        NavOptimizerRangeParams{}.withMaxResults(10));
+        NavOptimizerParams{}.withMaxResults(10));
 
     cerr << "NavOptimizer returned " << rangeResult.getResults().size() << " results" << endl;
     cerr << "Stats: nodes=" << rangeResult.getStats().nodesExplored()
@@ -1560,7 +1560,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     }
   }
 
-  cerr << "\n========== STEP 3: NavOptimizer optimizeToRange ==========" << endl;
+  cerr << "\n========== STEP 3: NavOptimizer optimize ==========" << endl;
   {
     assert(!diffs.empty());
     const auto& d = diffs[0];
@@ -1579,16 +1579,16 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     NavOptimizer navOpt(config);
     NavContext navCtx;
 
-    auto rangeResult = navOpt.optimizeToRange(
+    auto rangeResult = navOpt.optimize(
         initial, initialPos,
         toMotionInterval(initial, CharRange(rangeBegin, rangeEnd)),
-        NavOptimizerRangeParams{}.withMaxResults(10), "",
+        NavOptimizerParams{}.withMaxResults(10), "",
         boundary, navCtx);
 
     cerr << "  CharRange results: " << rangeResult.getResults().size() << endl;
     for (size_t i = 0; i < rangeResult.getResults().size(); i++) {
       const auto& r = rangeResult.getResults()[i];
-      if (r.isValid()) {
+      if (!r.getSequence().empty()) {
         cerr << "    [" << i << "] seq='" << r.getSequence() << "' cost=" << r.getCost()
              << " goalPos=(" << r.getGoalPos().line << "," << r.getGoalPos().col << ")" << endl;
       }
@@ -1605,7 +1605,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
         CursorPos(0, static_cast<int>(initial[0].size()) - 1),
         false, false);
 
-    CompositionSearchContext ctx(initial, initialPos, goal, "",
+    CompositionSearchContext ctx(initial, initialPos, goal, CursorPos(0, 0), "",
         navCtx, boundary, params, config);
 
     cerr << "  totalEdits=" << ctx.totalEdits() << endl;
@@ -1730,15 +1730,15 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
             beginLine > 0 || boundary.hasLinesAbove(),
             endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
-        auto movementResults = navOpt.optimizeToRange(
+        auto movementResults = navOpt.optimize(
             subset, localPos,
             toMotionInterval(subset, CharRange(localRangeBegin, localRangeEnd)),
-            NavOptimizerRangeParams{}.withMaxResults(
+            NavOptimizerParams{}.withMaxResults(
                 clamp(nextEdit.origCharCount(), 1, 10)), "",
             subsetBoundary, navCtx).getResults();
 
         for (const auto& movResult : movementResults) {
-          if (!movResult.isValid()) continue;
+          if (movResult.getSequence().empty()) continue;
           CursorPos goalPos(movResult.getGoalPos().line + beginLine, movResult.getGoalPos().col);
           cerr << "    -> MOTION: seq='" << movResult.getSequence() << "' goalPos=("
                << goalPos.line << "," << goalPos.col << ")" << endl;
@@ -1771,7 +1771,7 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
 
   // Step 1: Diffs and intermediate buffers
   cerr << "\n=== Step 1: Diffs ===" << endl;
-  CompositionSearchContext ctx(initial, initialPos, goal, "",
+  CompositionSearchContext ctx(initial, initialPos, goal, CursorPos(0, 0), "",
       NavContext(), NavBoundary(), compParams, config);
   cerr << "totalEdits=" << ctx.totalEdits() << endl;
   for (int i = 0; i < ctx.totalEdits(); i++) {
@@ -1942,16 +1942,16 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
       NavBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
           beginLine > 0, endLine <= currentLines.lastLine());
 
-      auto rangeResults = navOpt.optimizeToRange(
+      auto rangeResults = navOpt.optimize(
           subset, localPos,
           toMotionInterval(subset, CharRange(localRangeBegin, localRangeEnd)),
-          NavOptimizerRangeParams{}.withMaxResults(
+          NavOptimizerParams{}.withMaxResults(
               clamp(nextEdit.origCharCount(), 1, 10)), "",
           subsetBoundary, navCtx).getResults();
 
       cerr << "    -> MOTIONS found: " << rangeResults.size() << endl;
       for (const auto& movResult : rangeResults) {
-        if (!movResult.isValid()) continue;
+        if (movResult.getSequence().empty()) continue;
         CursorPos goalPos(movResult.getGoalPos().line + beginLine, movResult.getGoalPos().col);
         cerr << "      motion '" << movResult.getSequence() << "' -> ("
              << goalPos.line << "," << goalPos.col << ")" << endl;
@@ -2001,7 +2001,7 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
 
     // Step 2: CompositionSearchContext (triggers computeJoinPlans)
     CompositionOptimizerParams compParams{};
-    CompositionSearchContext ctx(initial, initialPos, goal, "",
+    CompositionSearchContext ctx(initial, initialPos, goal, CursorPos(0, 0), "",
         NavContext(), NavBoundary(), compParams, config);
     cerr << "totalEdits=" << ctx.totalEdits() << endl;
 
@@ -2057,15 +2057,15 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
 
     NavOptimizer navOpt(config);
     NavContext navCtx;
-    auto rangeResult = navOpt.optimizeToRange(
+    auto rangeResult = navOpt.optimize(
         buffer, pos,
         toMotionInterval(buffer, CharRange(rangeBegin, rangeEnd)),
-        NavOptimizerRangeParams{}.withMaxResults(5), "",
+        NavOptimizerParams{}.withMaxResults(5), "",
         boundary, navCtx);
 
     cerr << "Motion results: " << rangeResult.getResults().size() << endl;
     for (size_t i = 0; i < rangeResult.getResults().size(); i++) {
-      if (rangeResult.getResults()[i].isValid()) {
+      if (!rangeResult.getResults()[i].getSequence().empty()) {
         cerr << "  [" << i << "] '" << rangeResult.getResults()[i].getSequence()
              << "' -> (" << rangeResult.getResults()[i].getGoalPos().line << ","
              << rangeResult.getResults()[i].getGoalPos().col << ")" << endl;
@@ -2100,7 +2100,7 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
   // Step 2: CompositionSearchContext (tests calculateLinesAfterDiffs + calculateTransformResults)
   cerr << "\n=== CompositionSearchContext ===" << endl;
   CompositionOptimizerParams compParams{};
-  CompositionSearchContext ctx(initial, initialPos, goal, "",
+  CompositionSearchContext ctx(initial, initialPos, goal, CursorPos(0, 0), "",
       NavContext(), NavBoundary(), compParams, config);
   cerr << "totalEdits=" << ctx.totalEdits() << endl;
   for (int i = 0; i < ctx.totalEdits(); i++) {
@@ -2193,7 +2193,7 @@ TEST_F(DebugTest, InvestigateHumanApproval1) {
   // Step 2: CompositionSearchContext (after position adjustments)
   cerr << "\n=== CompositionSearchContext ===" << endl;
   CompositionOptimizerParams compParams{};
-  CompositionSearchContext ctx(initial, CursorPos(0,0), goal, "",
+  CompositionSearchContext ctx(initial, CursorPos(0,0), goal, CursorPos(0, 0), "",
       NavContext(), NavBoundary(), compParams, config);
   cerr << "totalEdits=" << ctx.totalEdits() << endl;
   for (int i = 0; i < ctx.totalEdits(); i++) {
@@ -2822,7 +2822,7 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceJoinLinesResidualEditOpt) {
   // Initial: ["aaa", "xxx", "ccc"], goal: ["aaa bbb ccc"]
   // Diff: '\nxxx\nccc' -> ' bbb ccc', prefix="aaa", suffix=""
   // Edit region effective lines: ["aaa", "xxx", "ccc"]
-  cerr << "=== Trace JoinLinesResidual Edit Optimizer ===" << endl;
+  cerr << "=== Trace JoinLinesResidual Transform Optimizer ===" << endl;
 
   // Step 1: Verify what daw does at (1,0) on ["aaa", "xxx", "ccc"]
   cerr << "\n--- Step 1: daw at (1,0) ---" << endl;
@@ -2873,8 +2873,8 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceJoinLinesResidualEditOpt) {
          << ")-(" << r2.end.line << "," << r2.end.col << ")" << endl;
   }
 
-  // Step 4: Run the actual edit optimizer and check all results
-  cerr << "\n--- Step 4: Edit optimizer results ---" << endl;
+  // Step 4: Run the actual transform optimizer and check all results
+  cerr << "\n--- Step 4: Transform optimizer results ---" << endl;
   {
     Lines initial = {"aaa", "xxx", "ccc"};
     Lines goal = {"aaa bbb ccc"};

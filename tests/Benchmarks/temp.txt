@@ -1,11 +1,11 @@
 Running main() from /home/ricky/Projects/vimficiency/build/_deps/googletest-src/googletest/src/gtest_main.cc
 [==========] Running 5 tests from 1 test suite.
 [----------] Global test environment set-up.
-[----------] 5 tests from MotionOptimizerBench
-[ RUN      ] MotionOptimizerBench.BufferSize
+[----------] 5 tests from NavOptimizeBench
+[ RUN      ] NavOptimizeBench.BufferSize
 
 =================================================================
-                 MotionOptimizer Benchmark Suite
+                 NavOptimize Benchmark Suite
 =================================================================
 
 === Buffer Size Benchmark ===
@@ -17,8 +17,8 @@ Lines       |   Avg (ms) |   Min (ms) |   Max (ms) |     Median
 15          |       0.57 |       0.56 |       0.58 |       0.57
 20          |       0.39 |       0.33 |       0.48 |       0.39
 30          |       0.57 |       0.55 |       0.61 |       0.56
-[       OK ] MotionOptimizerBench.BufferSize (39 ms)
-[ RUN      ] MotionOptimizerBench.LineLength
+[       OK ] NavOptimizeBench.BufferSize (39 ms)
+[ RUN      ] NavOptimizeBench.LineLength
 
 === Line Length Benchmark ===
 Chars       |   Avg (ms) |   Min (ms) |   Max (ms) |     Median
@@ -28,16 +28,16 @@ Chars       |   Avg (ms) |   Min (ms) |   Max (ms) |     Median
 40          |       0.34 |       0.33 |       0.35 |       0.34
 60          |       0.20 |       0.20 |       0.21 |       0.20
 80          |       0.33 |       0.32 |       0.33 |       0.32
-[       OK ] MotionOptimizerBench.LineLength (18 ms)
-[ RUN      ] MotionOptimizerBench.BufferShape
+[       OK ] NavOptimizeBench.LineLength (18 ms)
+[ RUN      ] NavOptimizeBench.BufferShape
 
 === Buffer Shape Benchmark ===
 Shape       |   Avg (ms) |   Min (ms) |   Max (ms) |     Median
 ------------|------------|------------|------------|------------
 Uniform     |       0.26 |       0.26 |       0.27 |       0.26
 CodeLike    |       0.99 |       0.97 |       1.01 |       0.99
-[       OK ] MotionOptimizerBench.BufferShape (15 ms)
-[ RUN      ] MotionOptimizerBench.BoundarySettings
+[       OK ] NavOptimizeBench.BufferShape (15 ms)
+[ RUN      ] NavOptimizeBench.BoundarySettings
 
 === Boundary Settings Benchmark ===
 Boundary    |   Avg (ms) |   Min (ms) |   Max (ms) |     Median
@@ -46,8 +46,8 @@ None        |       0.29 |       0.28 |       0.30 |       0.28
 Above       |       0.27 |       0.26 |       0.27 |       0.27
 Below       |       3.14 |       3.08 |       3.20 |       3.14
 Both        |       3.26 |       3.22 |       3.35 |       3.26
-[       OK ] MotionOptimizerBench.BoundarySettings (83 ms)
-[ RUN      ] MotionOptimizerBench.SearchDepth
+[       OK ] NavOptimizeBench.BoundarySettings (83 ms)
+[ RUN      ] NavOptimizeBench.SearchDepth
 
 === Search Depth Benchmark ===
 Depth       |   Avg (ms) |   Min (ms) |   Max (ms) |     Median |   Nodes | StopReason
@@ -57,8 +57,8 @@ Depth       |   Avg (ms) |   Min (ms) |   Max (ms) |     Median |   Nodes | Stop
 10000       |       0.27 |       0.27 |       0.30 |       0.27 |      16 | MaxResultsReached
 50000       |       0.27 |       0.27 |       0.28 |       0.27 |      16 | MaxResultsReached
 100000      |       0.27 |       0.27 |       0.28 |       0.27 |      16 | MaxResultsReached
-[       OK ] MotionOptimizerBench.SearchDepth (16 ms)
-[----------] 5 tests from MotionOptimizerBench (173 ms total)
+[       OK ] NavOptimizeBench.SearchDepth (16 ms)
+[----------] 5 tests from NavOptimizeBench (173 ms total)
 
 [----------] Global test environment tear-down
 [==========] 5 tests from 1 test suite ran. (173 ms total)

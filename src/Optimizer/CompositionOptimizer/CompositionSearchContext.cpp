@@ -4,7 +4,7 @@
 #include <cassert>
 #include <limits>
 
-#include "CompositionStepArtifacts.h"
+#include "PlannedEditArtifacts.h"
 #include "Utils/Debug.h"
 #include "Utils/StringUtils.h"
 
@@ -14,6 +14,7 @@ CompositionSearchContext::CompositionSearchContext(
     const Lines& initialLines,
     const CursorPos& initialPos,
     const Lines& goalLines,
+    const CursorPos& goalPos,
     string_view userSequence,
     const NavContext& navContext,
     const NavBoundary& boundary,
@@ -23,6 +24,7 @@ CompositionSearchContext::CompositionSearchContext(
       params(params),
       navContext(navContext),
       boundary(boundary),
+      goalPos(goalPos),
       overshootPenalty(params.overshootPenalty),
       maxLineLength(1000),
       effortWeight(params.effortWeight),
@@ -189,14 +191,16 @@ CursorPos CompositionSearchContext::editIndexToBufferPos(
 
 double CompositionSearchContext::heuristic(
     const CompositionState& s, int editsCompleted) const {
-  // h(n) = distance to next edit region + suffix sum of edit costs
+  // h(n) = distance to next edit region (or goalPos, post-final-edit)
+  //      + suffix sum of edit costs
   // O(1) lookup for remaining edit costs
   double h = suffixEditCosts_[editsCompleted];
 
-  // Add distance to next edit region with asymmetric penalty
+  CursorPos pos = s.getPos();
+
   if (editsCompleted < totalEdits()) {
+    // Add distance to next edit region with asymmetric penalty
     const DiffState& nextEdit = edits[editsCompleted].diffState;
-    CursorPos pos = s.getPos();
 
     if (nextEdit.beginPos == nextEdit.endPos) {
       // Pure insertion: only beginPos is valid entry point
@@ -214,6 +218,9 @@ double CompositionSearchContext::heuristic(
       }
       // else: inside range [beginPos, endPos), distance = 0
     }
+  } else {
+    // Post-final-edit nav segment: distance to the user's goalPos.
+    if (pos != goalPos) h += costToGoal(pos, goalPos);
   }
 
   return effortWeight * s.getEffort() + distanceWeight * h;
