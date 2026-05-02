@@ -1,36 +1,82 @@
-# Vimfy
+# vimficiency
 
 One of the biggest challenges with Vim is knowing which of the many ways to perform an edit is the most efficient — or what all the applicable motions even are.
 
-Vimfy watches how you edit and surfaces shorter keystroke sequences that would have produced the same result, with awareness of customizable per-key effort and the algorithmically-tractable subset of Vim's grammar. You keep editing the way you already do; the plugin runs in the background and lets you replay suggestions side-by-side to learn.
+vimficiency watches how you edit and surfaces shorter keystroke sequences that would have produced the same result, with awareness of customizable per-key effort and the algorithmically-tractable subset of Vim's grammar. You keep editing the way you already do; the plugin runs in the background and lets you replay suggestions side-by-side to learn.
 
 The benchmark dashboard with details on the search process is here:
 https://therickyzhang.github.io/Vimfy/
 
 ## Requirements
-- Neovim 0.11+
-- CMake 4.1+
-- C++23
 
-## Build
+- Neovim 0.11+
+- A C++23 compiler (GCC 13+ or Clang 16+) and CMake 4.1+ to build the native
+  library. **Linux and macOS only** at the moment — Windows is not yet
+  supported. Prebuilt binaries are not yet shipped; the plugin is currently
+  built from source on install.
+
+## Installation
+
+vimficiency ships a native library (`libvimficiency.{so,dylib}`) that the
+Lua side loads via LuaJIT FFI. Plugin managers can compile it as part of the
+install step.
+
+### lazy.nvim
+
+```lua
+{
+  "therickyzhang/vimficiency",
+  build = "cmake -B build && cmake --build build",
+  config = function()
+    require("vimficiency").setup()
+  end,
+}
+```
+
+If you update the plugin and start seeing an "ABI mismatch" error on load,
+the prebuilt artifact is stale against the new FFI bindings — run
+`:Lazy build vimficiency` to recompile.
+
+### packer.nvim
+
+```lua
+use {
+  "therickyzhang/vimficiency",
+  run = "cmake -B build && cmake --build build",
+  config = function() require("vimficiency").setup() end,
+}
+```
+
+### vim-plug
+
+```vim
+Plug 'therickyzhang/vimficiency', { 'do': 'cmake -B build && cmake --build build' }
+```
+
+…then in your Lua config: `require("vimficiency").setup()`.
+
+### Manual build
+
 ```bash
+git clone https://github.com/therickyzhang/vimficiency
+cd vimficiency
 cmake -B build
 cmake --build build
 ```
 
-## Installation
-```lua
-require('vimficiency').setup()
+Then either place the plugin on your `runtimepath` or point at the library
+explicitly:
+
+```bash
+export VIMFICIENCY_LIB_PATH=/path/to/vimficiency/build/libvimficiency.so
 ```
 
-For a full lazy.nvim-style setup with configuration and keymaps, see
+For a full setup with configuration and keymaps, see
 [`examples/config.lua`](examples/config.lua).
-
-Ensure `build/libvimficiency.so` is on your library path or set `VIMFICIENCY_LIB_PATH`.
 
 ## Usage
 
-Vimfy organizes work around **sessions** — captures of (start state, keys typed, end state) that the optimizer scores. Sessions form a 2×2 over how they start and end:
+vimficiency organizes work around **sessions** — captures of (start state, keys typed, end state) that the optimizer scores. Sessions form a 2×2 over how they start and end:
 
 |                   | **Manual end**                | **Auto end** (idle)         |
 |-------------------|-------------------------------|-----------------------------|

@@ -12,13 +12,19 @@ local function find_plugin_root()
 	return vim.fn.fnamemodify(source, ":h:h:h")
 end
 
+-- Read Api.def as raw bytes (not via vim.fn.readfile, which loses trailing
+-- newline / line-ending nuance) so vim.fn.sha256() of the result matches
+-- CMake's file(SHA256 ...) of the same file byte-for-byte. The ABI check in
+-- load_lib() relies on this equivalence.
 local function read_ffi_api_def()
 	local path = find_plugin_root() .. "/src/LuaExports/Api.def"
-	local ok, lines = pcall(vim.fn.readfile, path)
-	if not ok then
-		error("vimfy: failed to read FFI API declarations at " .. path .. ": " .. tostring(lines), 0)
+	local f, err = io.open(path, "rb")
+	if not f then
+		error("vimfy: failed to read FFI API declarations at " .. path .. ": " .. tostring(err), 0)
 	end
-	return table.concat(lines, "\n")
+	local text = f:read("*all")
+	f:close()
+	return text
 end
 
 -- FFI type annotations for LuaLS. These mirror `src/LuaExports/Api.def`;
@@ -68,6 +74,7 @@ end
 ---@field vf_analyze fun(initial_text: string, goal_text: string, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, start_row: integer, start_col: integer, end_row: integer, end_col: integer, keyseq: string, window_height: integer, scroll_amount: integer, results_calculated: integer): string
 ---@field vf_get_debug fun(): string
 ---@field vf_version fun(): integer
+---@field vf_abi_hash fun(): ffi.cdata*
 ---@field vf_debug_config fun(): string
 ---@field vf_tokenize_movements fun(seq: string): string
 ---@field vf_tokenize_sequence fun(seq: string): string
@@ -92,7 +99,24 @@ end
 ---@field vf_explore_undo fun(view_id: integer): string
 ---@field vf_explore_redo fun(view_id: integer): string
 
-ffi.cdef(read_ffi_api_def())
+local api_def_text = read_ffi_api_def()
+ffi.cdef(api_def_text)
+
+--- Map jit.os to (filename, system-name) for the shared library. CMake's
+--- `add_library(... SHARED ...)` produces `libvimficiency.so` on Linux/BSD,
+--- `libvimficiency.dylib` on macOS, and `vimficiency.dll` on Windows.
+---@return string filename
+---@return string system_name
+local function lib_filenames()
+	local os_name = jit and jit.os or ""
+	if os_name == "OSX" then
+		return "libvimficiency.dylib", "vimficiency"
+	elseif os_name == "Windows" then
+		return "vimficiency.dll", "vimficiency"
+	else -- Linux, BSD, Other
+		return "libvimficiency.so", "vimficiency"
+	end
+end
 
 --- Find and load the shared library.
 --- `VIMFICIENCY_LIB_PATH` overrides the default build path for tests.
@@ -100,6 +124,7 @@ ffi.cdef(read_ffi_api_def())
 ---@return VF.C.Lib
 local function load_lib()
 	local root = find_plugin_root()
+	local lib_filename, system_name = lib_filenames()
 	local paths = {}
 	if type(vim.env.VIMFICIENCY_LIB_PATH) == "string"
 			and vim.env.VIMFICIENCY_LIB_PATH ~= "" then
@@ -108,17 +133,28 @@ local function load_lib()
 	if type(_G.__vimficiency_reload_lib_path) == "string" then
 		table.insert(paths, _G.__vimficiency_reload_lib_path)
 	end
-	table.insert(paths, root .. "/build/libvimficiency.so") -- local build
-	table.insert(paths, "vimficiency") -- system path
+	table.insert(paths, root .. "/build/" .. lib_filename) -- local build
+	table.insert(paths, system_name) -- system path
+
+	local expected_hash = vim.fn.sha256(api_def_text)
 
 	for _, path in ipairs(paths) do
 		local ok, lib = pcall(ffi.load, path)
 		if ok then
+			local got_hash = ffi.string(lib.vf_abi_hash())
+			if got_hash ~= expected_hash then
+				error(string.format(
+					"vimficiency: ABI mismatch — loaded %s reports Api.def hash %s, " ..
+					"but the Lua bindings were authored against %s. The shared library " ..
+					"is stale. Rebuild with `cmake --build %s/build` (or `:Lazy build " ..
+					"vimficiency` / your plugin manager's equivalent).",
+					path, got_hash, expected_hash, root), 0)
+			end
 			return lib
 		end
 	end
 
-	error("Could not load libvimficiency.so - tried: " .. table.concat(paths, ", "))
+	error("Could not load " .. lib_filename .. " - tried: " .. table.concat(paths, ", "))
 end
 
 --- Produces: t["Q"] = 0, t["W"] = 1, etc.
