@@ -11,10 +11,7 @@ local function find_window_by_name(expected_name)
   return nil, nil
 end
 
-local function feed(keys)
-  local termkeys = vim.api.nvim_replace_termcodes(keys, true, false, true)
-  vim.api.nvim_feedkeys(termkeys, "xt", false)
-end
+local feed = helpers.feed
 
 local function trigger_cursor_moved(buf)
   vim.api.nvim_exec_autocmds("CursorMoved", { buffer = buf, modeline = false })

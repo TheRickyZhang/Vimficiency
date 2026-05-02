@@ -14,6 +14,35 @@ function M.new_buf(lines)
   return buf
 end
 
+--- Synchronously feed keys as if typed by the user. Modes:
+---   t = "handle as typed" (not from a mapping).
+---   x = "execute typed-ahead synchronously" — flushes autocmds before
+---       returning.
+--- Termcodes (`<Esc>`, `<CR>`, `<Space>`) are translated.
+---
+--- KNOWN QUIRK: when the fed keys leave vim in insert mode mid-sequence
+--- (e.g. just the structural part of `c{motion}` without trailing
+--- content + `<Esc>`), `x` mode triggers an *implicit* InsertLeave on
+--- return. This doesn't happen in real interactive use, but headless
+--- tests that try to observe a "now-in-Insert" intermediate state will
+--- see it immediately leave again. Workaround: feed full sequences
+--- ending in normal mode (`structural + typed + <Esc>`) as one unit.
+---@param keys string
+function M.feed(keys)
+  local termkeys = vim.api.nvim_replace_termcodes(keys, true, false, true)
+  vim.api.nvim_feedkeys(termkeys, "xt", false)
+end
+
+--- Like `feed`, but with the `m` flag — vim's mapping resolution runs on
+--- the fed keys. Only use this when the test specifically exercises
+--- mapping behavior; otherwise `feed` is the right default to avoid
+--- ambient mappings affecting the test.
+---@param keys string
+function M.feed_with_remap(keys)
+  local termkeys = vim.api.nvim_replace_termcodes(keys, true, false, true)
+  vim.api.nvim_feedkeys(termkeys, "mxt", false)
+end
+
 --- Install one or more monkey-patches, run `fn`, then restore — even on
 --- error. Each patch is a `{table, key, value}` triple. Errors surface
 --- from `fn` after restore, with preserved traceback.

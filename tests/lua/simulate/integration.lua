@@ -116,8 +116,7 @@ local function with_replay(sequences, lines, fn, next, opts)
 
   helpers.new_buf({ "simulate source" })
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
-  vim.api.nvim_feedkeys(
-    vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "xt", false)
+  helpers.feed("<Esc>")
 
   local suggestions = {}
   for _, seq in ipairs(sequences) do

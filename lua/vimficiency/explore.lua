@@ -481,10 +481,6 @@ local function on_buffer_changed()
   if buffer_matches_session then return end
 
   local raw_keys = a.on_key_buffer or ""
-  print("DEBUG buffer_changed phase=" .. a.state.phase.kind ..
-    " raw=" .. vim.inspect(raw_keys) ..
-    " match=" .. vim.inspect((match_insert_recommendation(raw_keys) or {}).text) ..
-    " lines=" .. vim.inspect(new_lines))
   if match_insert_recommendation(raw_keys) then
     return
   end

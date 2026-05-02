@@ -65,6 +65,7 @@ const char* vf_analyze(
   int results_calculated);
 const char* vf_get_debug();
 int vf_version();
+const char* vf_abi_hash();
 const char* vf_debug_config();
 
 const char* vf_tokenize_movements(const char* seq);

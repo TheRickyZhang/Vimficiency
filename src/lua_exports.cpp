@@ -1,5 +1,6 @@
 #include "LuaExports/Common.h"
 
+#include "AbiHash.h"
 #include "Optimizer/GlobalRuntimeOptions.h"
 #include "Utils/Debug.h"
 #include "VimCore/VimOptions.h"
@@ -157,6 +158,8 @@ const char* vf_get_debug() {
 }
 
 int vf_version() { return 1; }
+
+const char *vf_abi_hash() { return VF_ABI_HASH; }
 
 const char *vf_debug_config() {
   static std::string debug_storage;

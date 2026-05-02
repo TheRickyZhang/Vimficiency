@@ -1,6 +1,8 @@
 -- Characterization test for `vim.on_key()` under a few mapping shapes.
 -- See `dev/lua/neovim_on_key_issues.md` for the human-typing caveat.
 
+local h = require("_helpers")
+
 -- Trace prints are documentation of *what Neovim did*, not assertion
 -- evidence. On a passing run they're pure noise; on a failing run
 -- they're diagnostic. Gate behind `VF_TEST_VERBOSE=1` to match the
@@ -20,9 +22,9 @@ local function record_events_for(lhs)
       typed = vim.fn.keytrans(typed or ""),
     }
   end)
-  vim.api.nvim_feedkeys(
-    vim.api.nvim_replace_termcodes(lhs, true, false, true),
-    "mxt", false)
+  -- Use the remap-aware helper because these tests deliberately exercise
+  -- mapping resolution (the LHS may have a binding installed).
+  h.feed_with_remap(lhs)
   vim.on_key(nil, nsid)
   return events
 end
@@ -88,9 +90,7 @@ test("on_key: vimfy.map-style wrap actually suppresses the event when it fires",
     ignoring = false
   end)
 
-  vim.api.nvim_feedkeys(
-    vim.api.nvim_replace_termcodes(" ve", true, false, true),
-    "mxt", false)
+  h.feed_with_remap(" ve")
   vim.on_key(nil, nsid)
   vim.keymap.del("n", "<Space>ve")
 

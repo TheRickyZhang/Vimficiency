@@ -52,6 +52,19 @@ configure_file(
     @ONLY
 )
 
+# Hash Api.def at configure time and embed it into the .so so the Lua loader
+# can detect a stale binary against newer FFI bindings. Editing Api.def must
+# trigger a reconfigure for the hash to refresh, hence CMAKE_CONFIGURE_DEPENDS.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    src/LuaExports/Api.def
+)
+file(SHA256 ${CMAKE_CURRENT_SOURCE_DIR}/src/LuaExports/Api.def VF_API_DEF_HASH)
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/AbiHash.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/AbiHash.h
+    @ONLY
+)
+
 # NOTE Remove configure_depends when convenience no longer needed in development
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
     src/Boundary/*.cpp

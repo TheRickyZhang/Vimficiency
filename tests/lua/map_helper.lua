@@ -16,8 +16,7 @@ local function feed_and_capture(keys)
     captured[#captured + 1] = event.key_typed
   end, "test_map_helper_probe")
   assert_true(ok, "probe listener should attach cleanly")
-  local termkeys = vim.api.nvim_replace_termcodes(keys, true, false, true)
-  vim.api.nvim_feedkeys(termkeys, "xt", false)
+  h.feed(keys)
   key_tracking.detach_global("test_map_helper_probe")
   return table.concat(captured, "")
 end
@@ -105,8 +104,7 @@ test("e2e: wrap() suppresses keys fired inside its body", function()
   assert_true(ok, "probe listener should attach cleanly")
 
   local wrapped = vimfy.wrap(function()
-    vim.api.nvim_feedkeys(
-      vim.api.nvim_replace_termcodes("j", true, false, true), "xt", false)
+    h.feed("j")
   end)
   wrapped()
 
