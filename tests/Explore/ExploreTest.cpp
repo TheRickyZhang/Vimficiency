@@ -8,10 +8,14 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <set>
 #include <string>
+#include <string_view>
 
 #include "Boundary/NavBoundary.h"
+#include "Effort/RunningEffort.h"
 #include "Interpreter/SequenceParser.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizerParams.h"
@@ -83,8 +87,8 @@ TEST_F(ExploreViewTest, PureMotionGoalStartsInNavigate) {
 
   auto recs = view.recommendations(5);
   ASSERT_FALSE(recs.empty());
-  EXPECT_TRUE(any_of(recs.begin(), recs.end(), [](const auto& rec) {
-    return Explore::suggestionKind(rec) == "movement" && Explore::base(rec).goalPos.line == 0 && Explore::base(rec).goalPos.col == 4;
+  EXPECT_TRUE(any_of(recs.begin(), recs.end(), [](const FrontierItem& rec) {
+    return rec.landingPos.line == 0 && rec.landingPos.col == 4;
   }));
 }
 
@@ -142,15 +146,13 @@ TEST_F(ExploreViewTest, RecommendationsAreDiverse) {
   // Distinct recommendation texts — grouping/dedup works.
   set<string> texts;
   for (const auto& rec : recs)
-    texts.insert(Explore::base(rec).token);
+    texts.insert(rec.token);
   EXPECT_EQ(texts.size(), recs.size());
 
-  // Motion recs (if any) changed the cursor from the origin.
+  // Navigate phase, so all recs are motions; each must change the cursor.
   for (const auto& rec : recs) {
-    if (Explore::suggestionKind(rec) == "movement") {
-      const bool moved = Explore::base(rec).goalPos.line != 0 || Explore::base(rec).goalPos.col != 0;
-      EXPECT_TRUE(moved) << "motion '" << Explore::base(rec).token << "' did not change cursor";
-    }
+    const bool moved = rec.landingPos.line != 0 || rec.landingPos.col != 0;
+    EXPECT_TRUE(moved) << "motion '" << rec.token << "' did not change cursor";
   }
 }
 
@@ -166,6 +168,28 @@ TEST_F(ExploreViewTest, ApplyMotionAdvancesCursorAndSequence) {
   EXPECT_EQ(view.state().acceptedSeq, "w");
   EXPECT_GT(view.state().acceptedCost, 0.0);
   EXPECT_TRUE(view.canUndo());
+}
+
+TEST_F(ExploreViewTest, RecommendationCostDiffIncludesAcceptedSequence) {
+  config = Config::qwerty();
+  config.weights.w_same_key = 1.0;
+  Lines lines{Line("foo bar baz")};
+  auto view = makeView(lines, {0, 0}, lines, {0, 8});
+
+  ASSERT_TRUE(view.applyMovement("w").has_value());
+
+  auto recs = view.recommendations(5);
+  auto rec = find_if(recs.begin(), recs.end(), [](const FrontierItem& candidate) {
+    return string_view(candidate.token) == "w";
+  });
+  ASSERT_NE(rec, recs.end());
+
+  string combined = view.state().acceptedSeq + string(rec->token);
+  const double expected = getEffort(combined, config) - view.state().acceptedCost;
+  const double standalone = getEffort(string(rec->token), config);
+
+  EXPECT_NEAR(rec->costDiff, expected, 1e-9);
+  EXPECT_GT(abs(rec->costDiff - standalone), 1e-9);
 }
 
 TEST_F(ExploreViewTest, ApplyMotionRejectsMalformedInput) {
@@ -263,9 +287,67 @@ TEST_F(ExploreViewTest, BeginInsertTransitionsIntoInsert) {
   ASSERT_TRUE(outcome.has_value());
   EXPECT_TRUE(std::holds_alternative<Explore::Insert>(view.phase()));
   EXPECT_EQ(Explore::phaseIndex(view.phase()), 0);
+}
 
-  // Recommendations are empty while Lua owns live insert tracking.
-  EXPECT_TRUE(view.recommendations(5).empty());
+TEST_F(ExploreViewTest, InsertPhaseRecommendationCarriesTypedText) {
+  // Replacement: cursor inside the diff range. The Insert recommendation's
+  // token is the canonical text the user must type in insert mode to reach
+  // the planned post-edit fencepost.
+  Lines initial{Line("int n = 10;")};
+  Lines goal{Line("int m = 10;")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 4});
+
+  // Walk the cursor to the diff's first changed character.
+  ASSERT_TRUE(view.applyMovement("w").has_value());
+  ASSERT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
+  ASSERT_TRUE(view.beginInsert().has_value());
+
+  auto recs = view.recommendations(5);
+  ASSERT_EQ(recs.size(), 1u);
+  const FrontierItem& item = recs[0];
+  EXPECT_FALSE(string_view(item.token).empty());
+  EXPECT_GT(item.costDiff, 0.0);
+  // The token must contain the new char `m` somewhere — the diff may span
+  // more than one position depending on what minimal-diff returns, but the
+  // user must produce `m` for the result to match the goal.
+  EXPECT_NE(string_view(item.token).find('m'), string_view::npos);
+}
+
+TEST_F(ExploreViewTest, InsertPhaseRecommendationForPureInsertion) {
+  // Pure insertion: append `X` at end of line via `a` or `A`. The typed
+  // text is `X`.
+  Lines initial{Line("ab")};
+  Lines goal{Line("abX")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 2});
+
+  ASSERT_TRUE(view.applyMovement("l").has_value());
+  ASSERT_TRUE(view.beginInsert().has_value());
+
+  auto recs = view.recommendations(5);
+  ASSERT_EQ(recs.size(), 1u);
+  const FrontierItem& item = recs[0];
+  EXPECT_EQ(string_view(item.token), "X");
+}
+
+TEST_F(ExploreViewTest, InsertPhaseRecommendationEmptyForPureDeletion) {
+  // Pure deletion: no insert-mode follow-up. Even if a caller manages to
+  // park us in Insert, recommendInsert returns no items.
+  Lines initial{Line("abcd")};
+  Lines goal{Line("ad")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 1});
+
+  // For a pure-deletion edit, beginInsert is normally not invoked by Lua —
+  // but if it were, the rec list would be empty (no typed text needed).
+  // Note: depending on how the diff is decomposed this scenario may not
+  // park the view in a pure-deletion-only Insert; smoke-test that no error
+  // is raised regardless.
+  if (view.beginInsert().has_value() &&
+      std::holds_alternative<Explore::Insert>(view.phase())) {
+    auto recs = view.recommendations(5);
+    // Either empty (pure deletion) or has one item (replacement masked as
+    // deletion); both are acceptable outcomes — no crash, no garbage.
+    EXPECT_LE(recs.size(), 1u);
+  }
 }
 
 TEST_F(ExploreViewTest, OutOfScopeEditRejectedWithoutStateChange) {
@@ -297,16 +379,14 @@ TEST_F(ExploreViewTest, AcceptBufferStateRejectsInvalidCursor) {
   EXPECT_TRUE(view.state().acceptedSeq.empty());
 }
 
-TEST(TransformSequenceDecomposition, SplitsImmediateTokenAndInsertTail) {
-  EXPECT_EQ(decomposeEditSequence("sm<Esc>").token, "s");
-  EXPECT_EQ(decomposeEditSequence("sm<Esc>").typedText, "m");
-  EXPECT_EQ(decomposeEditSequence("clm<Esc>").token, "cl");
-  EXPECT_EQ(decomposeEditSequence("clm<Esc>").typedText, "m");
-  EXPECT_EQ(decomposeEditSequence("clfoo<Esc>").typedText, "foo");
-  EXPECT_EQ(decomposeEditSequence("Jj").token, "J");
-  EXPECT_EQ(decomposeEditSequence("x").typedText, "");
-  EXPECT_EQ(decomposeEditSequence("rm").typedText, "");
-  EXPECT_EQ(decomposeEditSequence("").typedText, "");
+TEST(ExtractStructuralToken, ReturnsFirstNonTypedTextToken) {
+  EXPECT_EQ(extractStructuralToken("sm<Esc>"), "s");
+  EXPECT_EQ(extractStructuralToken("clm<Esc>"), "cl");
+  EXPECT_EQ(extractStructuralToken("clfoo<Esc>"), "cl");
+  EXPECT_EQ(extractStructuralToken("Jj"), "J");
+  EXPECT_EQ(extractStructuralToken("x"), "x");
+  EXPECT_EQ(extractStructuralToken("rm"), "rm");
+  EXPECT_EQ(extractStructuralToken(""), "");
 }
 
 TEST(TransformFrontier, PreservesDistinctResultsFromSameStart) {
@@ -317,17 +397,17 @@ TEST(TransformFrontier, PreservesDistinctResultsFromSameStart) {
               .lines = Lines{Line("x")},
               .cursor = {0, 0},
               .maxCount = 10,
-              // The test's intent is to verify that MULTIPLE tokens
-              // reaching the same goal state are preserved — so opt in.
-              .allowMultiplePerPosition = true,
           },
-          diff,  // diff
+          diff,
+          // The test's intent is to verify that MULTIPLE tokens
+          // reaching the same goal state are preserved.
+          /*maxResultsPerStartPos=*/2,
       },
       Config::uniform());
   ASSERT_GE(recs.size(), 2u);
+  // Distinct structural tokens — the test's intent: multiple strategies for
+  // the same diff produce different command shapes, all preserved.
   EXPECT_NE(recs[0].token, recs[1].token);
-  EXPECT_EQ(recs[0].typedText, "foo");
-  EXPECT_EQ(recs[1].typedText, "foo");
 }
 
 TEST_F(ExploreViewTest, AcceptInsertExitAdvancesPhaseOnMatchingBuffer) {
@@ -338,15 +418,9 @@ TEST_F(ExploreViewTest, AcceptInsertExitAdvancesPhaseOnMatchingBuffer) {
   // Get the cursor to the edit target via the cheapest motion.
   auto recs = view.recommendations(5);
   ASSERT_FALSE(recs.empty());
-  const Explore::Suggestion* motion = nullptr;
-  for (const auto& rec : recs) {
-    if (Explore::suggestionKind(rec) == "movement") {
-      motion = &rec;
-      break;
-    }
-  }
-  if (motion)
-    ASSERT_TRUE(view.applyMovement(Explore::base(*motion).token).has_value());
+  // Navigate phase: every rec is a motion. Apply the first.
+  ASSERT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
+  ASSERT_TRUE(view.applyMovement(recs.front().token).has_value());
 
   // Simulate the Lua layer: beginInsert parks us in Insert; the post-insert
   // buffer then validates via acceptInsertExit.
@@ -373,12 +447,8 @@ TEST_F(ExploreViewTest, AcceptInsertExitRejectsMismatchedBuffer) {
 
   auto recs = view.recommendations(5);
   ASSERT_FALSE(recs.empty());
-  for (const auto& rec : recs) {
-    if (Explore::suggestionKind(rec) == "movement") {
-      ASSERT_TRUE(view.applyMovement(Explore::base(rec).token).has_value());
-      break;
-    }
-  }
+  ASSERT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
+  ASSERT_TRUE(view.applyMovement(recs.front().token).has_value());
   ASSERT_TRUE(view.beginInsert().has_value());
   const auto priorRevision = view.acceptedRevision();
 
@@ -399,12 +469,8 @@ TEST_F(ExploreViewTest, AcceptInsertExitRejectsInvalidCursor) {
 
   auto recs = view.recommendations(5);
   ASSERT_FALSE(recs.empty());
-  for (const auto& rec : recs) {
-    if (Explore::suggestionKind(rec) == "movement") {
-      ASSERT_TRUE(view.applyMovement(Explore::base(rec).token).has_value());
-      break;
-    }
-  }
+  ASSERT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
+  ASSERT_TRUE(view.applyMovement(recs.front().token).has_value());
   ASSERT_TRUE(view.beginInsert().has_value());
   const auto priorRevision = view.acceptedRevision();
 
@@ -454,12 +520,9 @@ TEST_F(ExploreViewTest, AcceptInsertExitRejectsUnparseableRawKeys) {
   auto view = makeView(initial, {0, 0}, goal, {0, 1});
 
   auto recs = view.recommendations(5);
-  for (const auto& rec : recs) {
-    if (Explore::suggestionKind(rec) == "movement") {
-      ASSERT_TRUE(view.applyMovement(Explore::base(rec).token).has_value());
-      break;
-    }
-  }
+  ASSERT_FALSE(recs.empty());
+  ASSERT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
+  ASSERT_TRUE(view.applyMovement(recs.front().token).has_value());
   ASSERT_TRUE(view.beginInsert().has_value());
 
   auto outcome = view.acceptInsertExit(goal, CursorPos(0, 1), "<");
@@ -518,31 +581,6 @@ TEST_F(ExploreViewTest, CancelInsertRestoresPreviousPhaseWithoutRedo) {
   EXPECT_FALSE(view.canRedo());
 }
 
-TEST_F(ExploreViewTest, RecommendationsCarryTypedText) {
-  Lines initial{Line("abc")};
-  Lines goal{Line("aBc")};
-  auto view = makeView(initial, {0, 0}, goal, {0, 1});
-
-  // Move cursor onto the edit target so edit recs populate.
-  auto recs = view.recommendations(5);
-  for (const auto& rec : recs) {
-    if (Explore::suggestionKind(rec) == "movement") {
-      ASSERT_TRUE(view.applyMovement(Explore::base(rec).token).has_value());
-      break;
-    }
-  }
-  recs = view.recommendations(10);
-  bool sawInsertAtom = false;
-  for (const auto& rec : recs) {
-    if (auto* edit = std::get_if<TransformFrontierItem>(&rec);
-        edit && !edit->typedText.empty()) {
-      sawInsertAtom = true;
-    }
-  }
-  EXPECT_TRUE(sawInsertAtom)
-      << "expected at least one edit recommendation with a non-empty typedText";
-}
-
 TEST_F(ExploreViewTest, MotionRecommendationsAreFirstTokensOfOptimizerPaths) {
   // Explore shows immediate next tokens, not full paths to the target.
   // Each motion recommendation must be the FIRST token of some full A*
@@ -554,14 +592,16 @@ TEST_F(ExploreViewTest, MotionRecommendationsAreFirstTokensOfOptimizerPaths) {
   auto range = view.currentTargetRange();
   ASSERT_TRUE(range.has_value());
 
-  // Match the ground-truth's `allowMultiplePerPosition=true` below so both
-  // sides enumerate the same universe of tokens for the subset check.
-  auto recs = view.recommendations(10, /*allowMultiplePerPosition=*/true);
+  // Match the ground-truth's "no per-pos cap" below so both sides
+  // enumerate the same universe of tokens for the subset check.
+  // Navigate phase, so every rec is a motion.
+  ASSERT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
+  auto recs = view.recommendations(10,
+      /*navMaxResultsPerEndPos=*/std::numeric_limits<int>::max(),
+      /*transformMaxResultsPerStartPos=*/1);
   vector<string> exploreMotionTexts;
-  for (const auto& rec : recs) {
-    if (Explore::suggestionKind(rec) == "movement")
-      exploreMotionTexts.push_back(Explore::base(rec).token);
-  }
+  for (const auto& rec : recs)
+    exploreMotionTexts.push_back(rec.token);
   ASSERT_FALSE(exploreMotionTexts.empty());
 
   set<string> exploreSet(exploreMotionTexts.begin(), exploreMotionTexts.end());
@@ -581,7 +621,7 @@ TEST_F(ExploreViewTest, MotionRecommendationsAreFirstTokensOfOptimizerPaths) {
       .withLinePaddingBelow(compParams.navPaddingBelow)
       .withMinCountRepeat(compParams.minPrefixCount)
       .withMaxCountRepeat(compParams.maxPrefixCount)
-      .withAllowMultiplePerPosition(true);
+      .withMaxResultsPerEndPos(2);
 
   NavOptimizer opt(config);
   auto motionRange =

@@ -3,13 +3,13 @@
 #include <algorithm>
 #include <optional>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "Effort/EffortBank.h"
 #include "Effort/RunningEffort.h"
 #include "Keyboard/KeyedSequence.h"
+#include "Keyboard/ToKeys/MovementToKeys.h"
 #include "Optimizer/NavOptimizer/BufferIndex.h"
 #include "Optimizer/NavOptimizer/NavExplorer.h"
 #include "Optimizer/NavOptimizer/NavHeuristic.h"
@@ -44,17 +44,20 @@ vector<FrontierItem> rankNavFrontier(
   // same scoring the full optimizer would, sort, and take top K. No full
   // search to the goal.
   NavOptimizerParams params;
+  params.withMaxResultsPerEndPos(std::max(1, query.maxResultsPerEndPos));
   BufferIndex bufferIndex(query.lines);
   NavExplorer explorer(query.lines, query.navContext, query.boundary,
                           params, *motionRange, bufferIndex, 0);
   EffortBank bank(config);
+  RunningEffort acceptedEffort(globalSequenceToKeys().tokenize(query.acceptedSeq), config);
+  const double acceptedCost = acceptedEffort.getEffort(config);
 
   auto scoreState = [&](CursorPos pos, double effort) {
     const double distance = NavHeuristic::distanceToRange(*motionRange, pos);
     return params.effortWeight * effort + params.distanceWeight * distance;
   };
 
-  NavState base(query.cursor, RunningEffort(), 0.0, 0.0);
+  NavState base(query.cursor, acceptedEffort, acceptedCost, 0.0);
   base.setCost(scoreState(base.getPos(), base.getEffort()));
 
   // No-op successors (landing == cursor) make no progress; filter at
@@ -65,30 +68,24 @@ vector<FrontierItem> rankNavFrontier(
     return (static_cast<int64_t>(p.line) << 32) | static_cast<uint32_t>(p.col);
   };
 
-  // Two collection strategies.
-  //
-  // Default (`allowMultiplePerPosition == false`): compare-and-replace per
-  // landing during emission — keep only the cheapest token reaching each
-  // cell. Honest both on memory (one state per landing) and on compute (we
-  // never build a `successors` vector we'll mostly discard).
-  //
-  // Opt-in (`allowMultiplePerPosition == true`): accumulate every token
-  // and dedup only by literal sequence text — surfaces `w` / `W` / `e` all
-  // landing on the same cell as distinct recommendations.
-  vector<NavState> successors;
-  unordered_map<int64_t, NavState> bestByLanding;
+  // Cap up to `query.maxResultsPerEndPos` distinct tokens per landing
+  // cell. Default 1 keeps just the cheapest token per cell; values > 1
+  // surface multiple distinct paths to the same cell (e.g. `w` / `W` /
+  // `e` all reaching the same word start).
+  const int cap = std::max(1, query.maxResultsPerEndPos);
+  unordered_map<int64_t, vector<NavState>> resultsByLanding;
 
   auto emit = [&](NavState s) {
-    if (query.allowMultiplePerPosition) {
-      successors.push_back(std::move(s));
+    int64_t key = landingKey(s.getPos());
+    auto& bucket = resultsByLanding[key];
+    if (static_cast<int>(bucket.size()) < cap) {
+      bucket.push_back(std::move(s));
       return;
     }
-    int64_t key = landingKey(s.getPos());
-    auto it = bestByLanding.find(key);
-    if (it == bestByLanding.end()) {
-      bestByLanding.emplace(key, std::move(s));
-    } else if (s.getCost() < it->second.getCost()) {
-      it->second = std::move(s);
+    // Bucket is full — replace the worst entry if the new one is cheaper.
+    auto worst = std::max_element(bucket.begin(), bucket.end());
+    if (s.getCost() < worst->getCost()) {
+      *worst = std::move(s);
     }
   };
 
@@ -113,25 +110,22 @@ vector<FrontierItem> rankNavFrontier(
   }
   explorer.exploreCountedMotions(base, onCounted, onFMotion);
 
-  if (!query.allowMultiplePerPosition) {
-    successors.reserve(bestByLanding.size());
-    for (auto& [_, s] : bestByLanding) successors.push_back(std::move(s));
+  // Flatten cap-N buckets into a single sorted successor list.
+  vector<NavState> successors;
+  for (auto& [_, bucket] : resultsByLanding) {
+    for (auto& s : bucket) successors.push_back(std::move(s));
   }
   sort(successors.begin(), successors.end());
 
   vector<FrontierItem> items;
   items.reserve(static_cast<size_t>(query.maxCount));
-  unordered_set<string> seenSeq;  // only used in allow-multiple mode
   for (const NavState& s : successors) {
     string seq = s.getSequence().str();
     if (seq.empty()) continue;
-    if (query.allowMultiplePerPosition) {
-      if (!seenSeq.insert(seq).second) continue;
-    }
     items.push_back(FrontierItem{
         .token = Token{std::move(seq)},
-        .goalPos = s.getPos(),
-        .cost = s.getEffort(),
+        .landingPos = s.getPos(),
+        .costDiff = s.getEffort() - acceptedCost,
     });
     if (static_cast<int>(items.size()) >= query.maxCount) break;
   }

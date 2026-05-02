@@ -39,7 +39,7 @@ struct NavOptimizer {
   NavOptimizer(const Config& config) : config(config) {}
 
   // Find sequences from initialPos to some positions in goalInterval.
-  // You usually want to pass params.allowMultiplePerPosition = true
+  // You usually want to pass params.maxResultsPerEndPos > 1
   LandingNavResult optimize(
     const Lines& lines, const CursorPos& initialPos, const CharInterval& goalInterval,
     NavOptimizerParams params = {}, std::string_view userSequence = "",
@@ -57,7 +57,7 @@ struct NavOptimizer {
   );
 
   // single-cursor goal overload, underlying implementation is the same
-  // In most cases you want to pass params.allowMultiplePerPosition = true
+  // In most cases you want to pass params.maxResultsPerEndPos > 1
   LandingNavResult optimize(
     const Lines& lines, const CursorPos& initialPos, const CursorPos& goalPos,
     NavOptimizerParams params = {}, std::string_view userSequence = "",

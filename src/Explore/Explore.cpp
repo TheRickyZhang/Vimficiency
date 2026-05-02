@@ -7,9 +7,13 @@
 #include "EditHandler.h"
 #include "Effort/RunningEffort.h"
 #include "Interpreter/SequenceParser.h"
+#include "Keyboard/ToKeys/MovementToKeys.h"
 #include "MovementHandler.h"
+#include "Optimizer/BuildTypedCommands.h"
 #include "Optimizer/NavOptimizer/NavFrontier.h"
 #include "Optimizer/TransformOptimizer/TransformFrontier.h"
+#include "VimCore/VimCore.h"
+#include "VimCore/VimOptions.h"
 
 using namespace std;
 
@@ -33,6 +37,67 @@ std::expected<void, Rejected> appendRawKeysOrReject(State& next,
   next.acceptedSeq.append(rawKeys);
   next.acceptedCost = getEffort(next.acceptedSeq, config);
   return {};
+}
+
+// Derive the typed-text portion (no trailing <Esc>) for the canonical
+// insert-mode strategy implied by `diff`. Returns empty string if the diff
+// has no insert-mode component (pure deletion).
+//
+// MIRROR: matches the pure-insertion strategy construction in
+// `TransformFrontier.cpp::rankTransformFrontier`. Replacements use the
+// canonical inserted text with prefix-aware autoindent; the chosen
+// structural command (s/cl/cw/...) is irrelevant to the typed tail
+// because all consistent structural commands leave the cursor at
+// `diff.beginPos` ready to receive the inserted content.
+KeyedSequence buildInsertModeTypedSequence(const DiffState& diff,
+                                            const Lines& lines) {
+  if (diff.isPureInsertion() && diff.isNewLineInsertion() &&
+      diff.beginPos.col == 0 && diff.beginPos.line > 0) {
+    // o-style new-line insertion: source indent comes from the previous line.
+    const int targetLine = diff.beginPos.line - 1;
+    const std::string_view sourceIndent = VimOptions::autoindent()
+        ? leadingWhitespace(lines[targetLine])
+        : std::string_view{};
+    Lines insertLines = Lines::unflatten(std::string(diff.insertedTextBody()));
+    return buildTypedCommands(insertLines, sourceIndent);
+  }
+
+  const int line = diff.beginPos.line;
+  const int col = diff.beginPos.col;
+  Lines insertLines = Lines::unflatten(diff.insertedText);
+
+  if (diff.isPureInsertion()) {
+    const int fnb = VimCore::firstNonBlankColInLineStr(lines[line]);
+    const int lineLen = static_cast<int>(lines[line].size());
+    if (col == fnb)
+      return buildTypedCommands(insertLines, "", lines[line].substr(0, fnb));
+    if (col == lineLen)
+      return buildTypedCommands(insertLines, "", lines[line]);
+    return buildTypedCommands(insertLines, "", lines[line].substr(0, col));
+  }
+
+  // Replacement: structural command leaves cursor at diff.beginPos with
+  // everything before that column unchanged.
+  return buildTypedCommands(insertLines, "", lines[line].substr(0, col));
+}
+
+// Returns the typed text (no trailing <Esc>) for a diff with insert-mode
+// content. Empty string for pure deletions.
+std::string deriveInsertModeTypedText(const DiffState& diff,
+                                       const Lines& lines) {
+  if (diff.isPureDeletion()) return "";
+
+  KeyedSequence ks = buildInsertModeTypedSequence(diff, lines);
+
+  // Strip trailing <Esc> token — Lua handles Esc via InsertLeave, so the
+  // recommendation token represents only what the user types in insert mode.
+  std::string_view raw = ks.seq.view();
+  static constexpr std::string_view ESC_STR = "<Esc>";
+  if (raw.size() >= ESC_STR.size() &&
+      raw.substr(raw.size() - ESC_STR.size()) == ESC_STR) {
+    raw.remove_suffix(ESC_STR.size());
+  }
+  return std::string(raw);
 }
 
 } // namespace
@@ -82,23 +147,20 @@ bool View::isCompleted() const {
   return nav && nav->index == totalEdits_ && state_.cursor == goalPos_;
 }
 
-vector<Suggestion>
-View::recommendations(int maxCount, bool allowMultipleMovementsPerPosition,
-                      bool allowMultipleEditsPerPosition) const {
-  if (maxCount <= 0)
-    return {};
-
+vector<Suggestion> View::recommendations(int maxCount,
+                      int navMaxResultsPerEndPos,
+                      int transformMaxResultsPerStartPos) const {
   return std::visit(PhaseVisitor{
       [&](const Navigate& nav) {
         return recommendNavigate(
-            nav.index, maxCount, allowMultipleMovementsPerPosition);
+            nav.index, maxCount, navMaxResultsPerEndPos);
       },
       [&](const Transform& transform) {
         return recommendTransform(
-            transform.index, maxCount, allowMultipleEditsPerPosition);
+            transform.index, maxCount, transformMaxResultsPerStartPos);
       },
-      [](const Insert&) {
-        return vector<Suggestion>{};
+      [&](const Insert& insert) {
+        return recommendInsert(insert.index, maxCount);
       },
   }, state_.phase);
 }
@@ -117,59 +179,75 @@ Outcome View::commit(State next) {
 vector<Suggestion> View::recommendNavigate(
     int navIndex,
     int maxCount,
-    bool allowMultipleMovementsPerPosition) const {
+    int navMaxResultsPerEndPos) const {
   CharRange target = plan_.getPlan().navTarget(navIndex);
-  vector<FrontierItem> navItems = rankNavFrontier(
+  return rankNavFrontier(
       NavFrontierQuery{
           FrontierQuery{
               .lines = state_.lines,
               .cursor = state_.cursor,
+              .acceptedSeq = state_.acceptedSeq,
               .maxCount = maxCount,
-              .allowMultiplePerPosition = allowMultipleMovementsPerPosition,
           },
           target,
           boundary_,
           navContext_,
+          navMaxResultsPerEndPos,
       },
       config_);
-  vector<Suggestion> recs;
-  recs.reserve(navItems.size());
-  for (FrontierItem& item : navItems)
-    recs.emplace_back(std::move(item));
-  return recs;
 }
 
 vector<Suggestion> View::recommendTransform(
     int editIndex,
     int maxCount,
-    bool allowMultipleEditsPerPosition) const {
-  // Transform(i) only emits edit alternatives launchable from the current
-  // cursor. The phase invariant (cursor inside diff, or at beginPos for
-  // pure insertions) is enforced by `phaseForEditCursor` +
-  // `movementStaysInTransformRange`; motion suggestions belong to the
-  // Navigate phase. If the user wants to reposition mid-diff, they take a
-  // motion under the existing applyMovement path; the Lua layer surfaces
-  // that affordance.
-  assert(editIndex >= 0 && editIndex < totalEdits_ &&
-         "Transform editIndex out of range");
+    int transformMaxResultsPerStartPos) const {
+  assert(editIndex >= 0 && editIndex < totalEdits_ && "Transform editIndex out of range");
 
   const DiffState& diff = plan_.plannedEditAt(editIndex).diff;
-  auto transformItems = rankTransformFrontier(
+  return rankTransformFrontier(
       TransformFrontierQuery{
           FrontierQuery{
               .lines = state_.lines,
               .cursor = state_.cursor,
+              .acceptedSeq = state_.acceptedSeq,
               .maxCount = maxCount,
-              .allowMultiplePerPosition = allowMultipleEditsPerPosition,
           },
-          diff, // diff
+          diff,
+          transformMaxResultsPerStartPos,
       },
       config_);
-  vector<Suggestion> recs;
-  recs.reserve(transformItems.size());
-  for (auto& item : transformItems)
-    recs.emplace_back(std::move(item));
-  return recs;
+}
+
+vector<Suggestion> View::recommendInsert(int editIndex, int maxCount) const {
+  if (maxCount <= 0) return {};
+  assert(editIndex >= 0 && editIndex < totalEdits_ &&
+         "Insert editIndex out of range");
+
+  // state_.lines is the pre-edit fencepost during Insert (afterEditCompleted
+  // hasn't run yet), so it shares coordinate space with `diff.beginPos`.
+  const auto plannedEdit = plan_.plannedEditAt(editIndex);
+  std::string typedText =
+      deriveInsertModeTypedText(plannedEdit.diff, state_.lines);
+  if (typedText.empty()) return {};
+
+  // costDiff: same monoid composition the frontier modules use, so the
+  // displayed cost reflects the actual incremental effort of typing this
+  // sequence after `state_.acceptedSeq`'s last keystroke. (Boundary
+  // interactions like same-finger / roll across the structural→typed seam
+  // are already accumulated into acceptedSeq once `s`/`cl`/`cw` was
+  // committed.)
+  RunningEffort acceptedEffort(
+      globalSequenceToKeys().tokenize(state_.acceptedSeq), config_);
+  const double acceptedCost = acceptedEffort.getEffort(config_);
+  RunningEffort candidate(globalSequenceToKeys().tokenize(typedText), config_);
+  RunningEffort merged = RunningEffort::merge(acceptedEffort, candidate);
+  const double costDiff = merged.getEffort(config_) - acceptedCost;
+
+  return {FrontierItem{
+      .token = Token{typedText},
+      .landingPos = plannedEdit.transformResult.getGoalPos(),
+      .costDiff = costDiff,
+  }};
 }
 
 Phase View::phaseForEditCursor(int editIndex, CursorPos cursor) const {

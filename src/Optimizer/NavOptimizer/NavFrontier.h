@@ -21,10 +21,11 @@
 //     must be filtered explicitly at emission time — see the `isNoOp`
 //     guard in rankNavFrontier.
 //
-// Each returned item's `cost` / `landingPos` describe that single token
-// in isolation — NOT a full path. The caller (Explore::View) uses these
-// to drive a step-by-step UI; after the user picks a token, they call
-// `rankNavFrontier` again from the new cursor for the next step.
+// Each returned item's `costDiff` / `landingPos` describe the next accepted
+// token. `costDiff` includes keyboard-model boundary effects from
+// `query.acceptedSeq`. The caller (Explore::View) uses these to drive a
+// step-by-step UI; after the user picks a token, they call `rankNavFrontier`
+// again from the new cursor for the next step.
 //
 // No state is cached between calls. Each invocation rebuilds the
 // `BufferIndex` + `NavExplorer` from the live inputs; this is cheap for
@@ -44,6 +45,12 @@ struct NavFrontierQuery : FrontierQuery {
   CharRange targetRange;
   const NavBoundary& boundary;
   const NavContext& navContext;
+  // Cap on results retained per landing (end) cell. Default 1 keeps only
+  // the cheapest token per cell. Values > 1 surface multiple distinct
+  // tokens reaching the same cell (e.g., `w`/`W`/`e` all landing on the
+  // same word start). The frontier currently treats anything > 1 as "all"
+  // (no cap); true cap-at-N is a future refinement (Phase B.4).
+  int maxResultsPerEndPos = 1;
 };
 
 // Depth-1 live expansion from `query.cursor` toward `query.targetRange`.

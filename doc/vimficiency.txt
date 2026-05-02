@@ -1,4 +1,4 @@
-*vimficiency.txt*  *vimficiency*          For NVIM v0.8.0          Last change: 2026 April 27
+*vimficiency.txt*  *vimficiency*          For Neovim >= 0.11         Last change: 2026 May 02
 
 ==============================================================================
 Table of Contents                              *vimficiency-table-of-contents*
@@ -915,7 +915,7 @@ list cursor without leaving insert mode; `<CR>` opens the current entry;
 - `r` / `y` — on Saved, renames/duplicates the file. On Active, renames
     the manual alias / registers a duplicate finished record under a new
     alias. Only entries with a stable manual alias are renameable this
-    way; for recall and auto-suggest results, save to disk first (`:Vimfy   save <alias> <name>`) and then rename from the Saved pane.
+    way; for recall and auto-suggest results, save to disk first (`:Vimfy save <alias> <name>`) and then rename from the Saved pane.
 
 **Blocked on in-progress sessions:** `<CR>`, `r`, `y` all refuse to run on a
 still-accumulating session. Finish it with `:Vimfy finish` (or let Watch’s
@@ -936,7 +936,7 @@ Sections:
     beat doesn’t inflate the average). Aggregated as a geometric mean.
     The 30-day block below the score is a sparkline of the daily
     geometric mean (▁ = 0, █ = 100; blanks = no sessions that day).
-- **Motions** — for every motion token that appears at least ten
+- **Motions** — for every motion molecule that appears at least ten
     times combined across your sequences and the optimizer’s best
     suggestions, the ratio `your_proportion / optimizer_proportion`. Two
     lists: what you use _more_ than the optimizer (potential inefficient
@@ -1110,11 +1110,11 @@ want to show a colleague.
     recall (`Ns`), which rolls past the extra key without noticing.
 - **Recall only records keystrokes typed in normal file buffers** (`&buftype ==
     ""`). Keys typed in help, quickfix, terminal, prompt, or scratch buffers are
-    skipped — they aren’t meaningful for nav or transform optimization, and recording
-    them would cause recall queries to fail with buffer-mismatch when you return to
-    your file. If you bind a Vimfy action that opens an async floating-input prompt
-    (e.g. `vim.ui.input` overridden by dressing.nvim), the `2` / `<CR>` you type
-    into that prompt are filtered automatically.
+    skipped — they aren’t meaningful for nav or transform optimization, and
+    recording them would cause recall queries to fail with buffer-mismatch when you
+    return to your file. If you bind a Vimfy action that opens an async
+    floating-input prompt (e.g. `vim.ui.input` overridden by dressing.nvim), the
+    `2` / `<CR>` you type into that prompt are filtered automatically.
 
 
 ==============================================================================

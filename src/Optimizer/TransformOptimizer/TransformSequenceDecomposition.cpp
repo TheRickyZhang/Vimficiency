@@ -4,26 +4,15 @@
 
 using namespace std;
 
-TransformSequenceDecomposition decomposeEditSequence(string_view fullSequence) {
-  TransformSequenceDecomposition decomposition{
-      .token = Token{fullSequence},
-      .typedText = {},
-  };
+Token extractStructuralToken(string_view fullSequence) {
+  Token fallback{fullSequence};
 
   auto tokens = parseSequence(fullSequence);
-  if (!tokens || tokens->empty()) return decomposition;
+  if (!tokens || tokens->empty()) return fallback;
 
   const TaggedToken& first = tokens->front();
-  if (first.kind != TokenKind::TypedText && first.kind != TokenKind::Escape) {
-    decomposition.token = first.token;
-  }
+  if (first.kind == TokenKind::TypedText || first.kind == TokenKind::Escape)
+    return fallback;
 
-  for (const TaggedToken& tagged : *tokens) {
-    if (tagged.kind == TokenKind::Escape) break;
-    if (tagged.kind == TokenKind::TypedText) {
-      decomposition.typedText += tagged.token;
-    }
-  }
-
-  return decomposition;
+  return first.token;
 }

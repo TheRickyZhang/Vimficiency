@@ -27,16 +27,17 @@ local rank_hl = highlights.rank_hl
 ---@param recs VF.Explore.Recommendation[]
 ---@return table<integer, VF.Explore.Recommendation[]>
 local function group_motions_by_row(recs)
+  -- Caller must have already gated on Navigate phase: in Navigate phase
+  -- every rec is a motion atom whose landing cell is meaningful for the
+  -- tags overlay.
   local by_row = {}
   for _, item in ipairs(recs) do
-    if item.kind == "movement" then
-      local list = by_row[item.landing.row]
-      if not list then
-        list = {}
-        by_row[item.landing.row] = list
-      end
-      list[#list + 1] = item
+    local list = by_row[item.landing.row]
+    if not list then
+      list = {}
+      by_row[item.landing.row] = list
     end
+    list[#list + 1] = item
   end
   return by_row
 end
@@ -133,7 +134,7 @@ local function render_landing_highlights(active, filter)
   local claims = make_claims()
   local motions = {}
   for _, item in ipairs(active.recommendations) do
-    if item.kind == "movement" and (not filter or filter[item]) then
+    if not filter or filter[item] then
       motions[#motions + 1] = item
     end
   end
@@ -170,7 +171,7 @@ local function render_tags_inplace(active)
 
   local motions = {}
   for _, item in ipairs(active.recommendations) do
-    if item.kind == "movement" and item.text ~= "" then motions[#motions + 1] = item end
+    if item.text ~= "" then motions[#motions + 1] = item end
   end
   table.sort(motions, function(x, y) return (x.rank or 0) < (y.rank or 0) end)
 
@@ -262,6 +263,10 @@ end
 
 ---Dispatch to the mode-specific renderer. Target highlight always draws
 ---first (except in `off`), so it sits under the rank-colored landings.
+---
+---Motion-tag overlays only make sense in Navigate phase, where every rec
+---is a single-token motion with a meaningful landing cell. Transform/Insert
+---phases get the target-range highlight only — their recs aren't motions.
 ---@param active VF.Explore.Active
 function M.render(active)
   v.nvim_buf_clear_namespace(active.scratch.buf, tags_ns, 0, -1)
@@ -270,6 +275,8 @@ function M.render(active)
   if mode == "off" then return end
 
   render_target_highlight(active)
+  if active.state.phase.kind ~= "Navigate" then return end
+
   if mode == "highlight" then
     render_landing_highlights(active)
   elseif mode == "inplace" then

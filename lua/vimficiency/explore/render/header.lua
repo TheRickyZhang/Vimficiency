@@ -14,7 +14,11 @@ M.header_ns = header_ns
 local function summary_chunks(active, remaining)
   local phase = active.state.phase
   local phase_label = phase.kind
-  if phase.kind == "Navigate" and phase.edit_index ~= nil then
+  if active.state.is_completed then
+    -- Sticky "Done" supersedes phase display; the actual phase
+    -- (Navigate at totalEdits) leaks an off-by-one "N+1/N" otherwise.
+    phase_label = "Done — u to undo, q to close"
+  elseif phase.kind == "Navigate" and phase.edit_index ~= nil then
     phase_label = string.format("Navigate %d/%d",
       phase.edit_index + 1, math.max(active.state.total_edits, 1))
   elseif phase.kind == "Transform" then
@@ -24,13 +28,14 @@ local function summary_chunks(active, remaining)
     phase_label = string.format("Insert '%s'",
       sequence_display.inline(remaining, { sectionize = false }))
   end
+  local label_hl = active.state.is_completed and "DiagnosticOk" or "Normal"
   return {
     { "Cost ", "Comment" },
     { string.format("%.2f", active.state.accepted_cost), "Normal" },
     { "   Cursor ", "Comment" },
     { string.format("(%d,%d)", active.state.cursor.row, active.state.cursor.col), "Normal" },
     { "   Phase ", "Comment" },
-    { phase_label, "Normal" },
+    { phase_label, label_hl },
   }
 end
 

@@ -55,7 +55,14 @@ function M.render(active, remaining)
     rows[#rows + 1] = { rank = rank, chunks = chunks, widths = {}, hl = hl }
   end
 
-  if active.state.phase.kind == "Insert" then
+  local phase_kind = active.state.phase.kind
+  if active.state.is_completed then
+    -- Sticky "session complete" — recs are empty here by construction
+    -- (cursor on goal, no remaining target). Surface the state explicitly
+    -- instead of the generic "(none)".
+    lines[#lines + 1] = "Session complete."
+    lines[#lines + 1] = "u to undo  •  q to close"
+  elseif phase_kind == "Insert" then
     -- Parallel to the motion format: rank, text, kind. When the insert is
     -- complete the text slot shows `<Esc>` so there's still a concrete
     -- action to perform before phase advancement.
@@ -64,13 +71,16 @@ function M.render(active, remaining)
   elseif #active.recommendations == 0 then
     lines[#lines + 1] = "(none)"
   else
+    -- Phase determines the rec kind: Navigate → motion (show landing
+    -- coordinates), Transform → edit atom (no landing column).
+    local is_motion = phase_kind == "Navigate"
+    local kind_label = is_motion and "move" or "edit"
     local total = #active.recommendations
     for i, item in ipairs(active.recommendations) do
       local text = sequence_display.inline(item.text)
-      local cost = string.format("%.2f", item.cost)
-      local kind = item.kind == "movement" and "move" or item.kind
-      local chunks = { text, cost, kind }
-      if item.kind == "movement" then
+      local cost = string.format("%.2f", item.cost_diff)
+      local chunks = { text, cost, kind_label }
+      if is_motion then
         chunks[#chunks + 1] = string.format("-> (%d,%d)",
           item.landing.row, item.landing.col)
       end

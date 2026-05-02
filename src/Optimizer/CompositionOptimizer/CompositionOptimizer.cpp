@@ -166,16 +166,16 @@ CompositionResult CompositionOptimizer::optimize(
   // `makeLocalInterval(subset, beginLine)` translates the caller's full-buffer
   // target intent into subset-local coords (returns nullopt to skip search).
   // - Multi-sink range targets (inter-edit motion, J-plan motion) use the
-  //   default `allowMultiplePerPosition=false` so we get one cheapest path
+  //   default `keepMultiplePerLanding=false` so we get one cheapest path
   //   per landing.
   // - Single-cursor targets (post-final-edit nav) construct a 1-element
-  //   interval and pass `allowMultiplePerPosition=true` so multiple distinct
+  //   interval and pass `keepMultiplePerLanding=true` so multiple distinct
   //   sequences to the single point are enumerated.
   auto exploreMotionsToInterval = [&](
       const CompositionState& s, CursorPos pos,
       int targetBeginLine, int targetEndLine,
       const Lines& fromLines, int editsCompleted,
-      int maxResults, bool allowMultiplePerPosition,
+      int maxResults, bool keepMultiplePerLanding,
       auto&& makeLocalInterval) {
     auto slice = sliceMotionSubset(pos, targetBeginLine, targetEndLine, fromLines);
     auto localInterval = makeLocalInterval(slice.subset, slice.beginLine);
@@ -185,7 +185,7 @@ CompositionResult CompositionOptimizer::optimize(
         .withMaxResults(maxResults)
         .withMinCountRepeat(params.minPrefixCount)
         .withMaxCountRepeat(params.maxPrefixCount)
-        .withAllowMultiplePerPosition(allowMultiplePerPosition);
+        .withMaxResultsPerEndPos(keepMultiplePerLanding ? 2 : 1);
     const BufferIndex* bufferIndex = nullptr;
     int lineOffset = 0;
     bool hasBufferIndex = ctx.tryGetBufferIndex(
@@ -252,7 +252,7 @@ CompositionResult CompositionOptimizer::optimize(
       exploreMotionsToInterval(
           s, pos, goalPos.line, goalPos.line,
           ctx.getLinesAfter(editsCompleted), editsCompleted,
-          clamp(params.maxResults, 1, 10), /*allowMultiplePerPosition=*/true,
+          clamp(params.maxResults, 1, 10), /*keepMultiplePerLanding=*/true,
           [&](const Lines& subset, int beginLine) -> std::optional<CharInterval> {
             CursorPos localGoal(goalPos.line - beginLine, goalPos.col, goalPos.targetCol);
             return CharInterval(localGoal, localGoal);
@@ -489,7 +489,7 @@ CompositionResult CompositionOptimizer::optimize(
           s, pos, nextEdit.beginPos.line, nextEdit.editEndLine() - 1,
           currentLines, editsCompleted,
           clamp(nextEdit.origCharCount(), 1, 10),
-          /*allowMultiplePerPosition=*/false,
+          /*keepMultiplePerLanding=*/false,
           [&](const Lines& subset, int beginLine) -> std::optional<CharInterval> {
             CursorPos localBegin(nextEdit.beginPos.line - beginLine, nextEdit.beginPos.col);
             CursorPos localEnd(nextEdit.endPos.line - beginLine, nextEdit.endPos.col);
@@ -504,7 +504,7 @@ CompositionResult CompositionOptimizer::optimize(
         const int jLine = joinPlan->entryLine;
         exploreMotionsToInterval(
             s, pos, jLine, jLine, currentLines, editsCompleted, /*maxResults=*/1,
-            /*allowMultiplePerPosition=*/false,
+            /*keepMultiplePerLanding=*/false,
             [&](const Lines& subset, int beginLine) -> std::optional<CharInterval> {
               return wholeLineMotionInterval(subset, jLine - beginLine);
             });

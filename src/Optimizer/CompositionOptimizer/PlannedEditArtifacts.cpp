@@ -227,7 +227,7 @@ TransformResult computeTransformResultForDiff(
       TransformOptimizerParams{}
           .withMinCountRepeat(params.minPrefixCount)
           .withMaxCountRepeat(params.maxPrefixCount)
-          .withMaxMultiplePerStartPosition(params.maxTransformResultsPerPosition);
+          .withMaxResultsPerStartPos(params.transformMaxResultsPerStartPos);
 
   if (diff.isPureDeletion()) {
     TransformResult result = transformOptimizer.optimizePureDeletion(

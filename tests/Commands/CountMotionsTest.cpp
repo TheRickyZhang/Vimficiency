@@ -63,7 +63,7 @@ protected:
                         NavOptimizerParams{}
                             .withMaxResults(30)
                             .withMaxNodesPopped(20000)
-                            .withAllowMultiplePerPosition(true),
+                            .withMaxResultsPerEndPos(2),
                         userSeq, boundary, navContext).getResults();
   }
 };

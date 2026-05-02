@@ -29,10 +29,11 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   // Overshooting is penalized more than undershooting since it requires backtracking.
   double overshootPenalty = 3.0;
 
-  // Maximum number of edit alternatives per starting position to store and explore.
-  // Higher values let CompositionOptimizer consider suboptimal edits that may compose
-  // better with surrounding motion context.
-  int maxTransformResultsPerPosition = 1;
+  // Forwarded into TransformOptimizerParams::maxResultsPerStartPos when
+  // CompositionOptimizer / its planning helpers run the per-edit transform
+  // search. Higher values let composition consider suboptimal edits that
+  // may compose better with surrounding motion context.
+  int transformMaxResultsPerStartPos = 1;
 
   // Chainable setters for fluent configuration
   CompositionOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
@@ -45,7 +46,7 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   CompositionOptimizerParams& withNavLinePadding(int v) { navPaddingAbove = navPaddingBelow = v; return *this; }
   CompositionOptimizerParams& withMinCountRepeat(int v) { setMinCountRepeat(v); return *this; }
   CompositionOptimizerParams& withMaxCountRepeat(int v) { setMaxCountRepeat(v); return *this; }
-  CompositionOptimizerParams& withMaxTransformResultsPerPosition(int v) { maxTransformResultsPerPosition = v; return *this; }
+  CompositionOptimizerParams& withTransformMaxResultsPerStartPos(int v) { transformMaxResultsPerStartPos = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
   static CompositionOptimizerParams dijkstra(int maxResults = 10, int maxNodesPopped = 50000) {
@@ -63,18 +64,12 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
 // Extends CompositionOptimizerParams with range-specific options.
 
 struct CompositionOptimizerRangeParams : CompositionOptimizerParams {
-  // When false (default): at most 1 result per unique end position (best cost)
-  // When true: allows multiple results per position (all found paths)
-  // Note: maxResults limits total results, not unique positions
-  bool allowMultiplePerPosition = false;
-
   // Chainable setters (return derived type for chaining)
   CompositionOptimizerRangeParams& withMaxResults(int v) { maxResults = v; return *this; }
   CompositionOptimizerRangeParams& withMaxNodesPopped(int v) { maxNodesPopped = v; return *this; }
   CompositionOptimizerRangeParams& withExploreFactor(double v) { exploreFactor = v; return *this; }
   CompositionOptimizerRangeParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
   CompositionOptimizerRangeParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
-  CompositionOptimizerRangeParams& withAllowMultiplePerPosition(bool v) { allowMultiplePerPosition = v; return *this; }
   CompositionOptimizerRangeParams& withNavLinePaddingAbove(int v) { navPaddingAbove = v; return *this; }
   CompositionOptimizerRangeParams& withNavLinePaddingBelow(int v) { navPaddingBelow = v; return *this; }
   CompositionOptimizerRangeParams& withNavLinePadding(int v) { navPaddingAbove = navPaddingBelow = v; return *this; }

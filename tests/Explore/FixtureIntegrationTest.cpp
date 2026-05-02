@@ -60,7 +60,7 @@ TEST_F(ExploreFixtureTest, RenameFixtureStartsInActivePhase) {
   EXPECT_FALSE(recs.empty());
 
   set<string> texts;
-  for (const auto& rec : recs) texts.insert(Explore::base(rec).token);
+  for (const auto& rec : recs) texts.insert(rec.token);
   EXPECT_EQ(texts.size(), recs.size()) << "recommendations should be distinct";
 }
 
@@ -90,15 +90,10 @@ TEST_F(ExploreFixtureTest, InsertFixtureDrivesForwardUntilCompletion) {
       break;
     }
 
-    const Explore::Suggestion* pick = nullptr;
-    for (const auto& rec : recs) {
-      if (Explore::suggestionKind(rec) == "movement") {
-        pick = &rec;
-        break;
-      }
-    }
-    if (!pick) break;  // no motion available -> need edit path, not tested here
-    ASSERT_TRUE(view.applyMovement(Explore::base(*pick).token).has_value());
+    // Navigate phase emits motions; Transform phase emits edits. This test
+    // only walks the motion frontier, so break out once we hit Transform.
+    if (!std::holds_alternative<Explore::Navigate>(view.phase())) break;
+    ASSERT_TRUE(view.applyMovement(recs.front().token).has_value());
     steps++;
   }
 

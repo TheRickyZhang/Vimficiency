@@ -55,13 +55,13 @@ protected:
     NavBoundary boundary;
     // Pass CursorPos and fresh RunningEffort (no prior typing context in tests)
     // Try to explore more (30 results), lower search depth for speed (2e4)
-    // allowMultiplePerPosition=true so tests see the full set of distinct
+    // maxResultsPerEndPos>1 so tests see the full set of distinct
     // sequences to the goal point (e.g. `G` vs `3j` vs `jjj`).
     return opt.optimize(lines, start, end,
                         NavOptimizerParams{}
                             .withMaxResults(30)
                             .withMaxNodesPopped(20000)
-                            .withAllowMultiplePerPosition(true),
+                            .withMaxResultsPerEndPos(2),
                         userSeq, boundary, navContext).getResults();
   }
 
@@ -73,13 +73,13 @@ protected:
                       Config config = Config::uniform()) {
     NavOptimizer opt(config);
     NavBoundary boundary;
-    // allowMultiplePerPosition=true for tests to see all paths
+    // maxResultsPerEndPos>1 for tests to see all paths
     return opt.optimize(lines, start,
                                toMotionInterval(lines, CharRange(rangeBegin, rangeEnd)),
                                NavOptimizerParams{}
                                    .withMaxResults(maxResults)
                                    .withMaxNodesPopped(20000)
-                                   .withAllowMultiplePerPosition(true),
+                                   .withMaxResultsPerEndPos(2),
                                userSeq, boundary, navContext).getResults();
   }
 };
@@ -225,7 +225,7 @@ protected:
                         NavOptimizerParams{}
                             .withMaxResults(30)
                             .withMaxNodesPopped(20000)
-                            .withAllowMultiplePerPosition(true),
+                            .withMaxResultsPerEndPos(2),
                         userSeq, boundary, navContext).getResults();
   }
 
@@ -402,7 +402,7 @@ TEST_F(NavOptimizer_ManualTest, MinCountRepeat_BlocksSmallCounts) {
       NavOptimizerParams{}
           .withMaxResults(30)
           .withMaxNodesPopped(20000)
-          .withAllowMultiplePerPosition(true),
+          .withMaxResultsPerEndPos(2),
       "", boundary, navContext).getResults();
 
   EXPECT_FALSE(hasSequence(results, "3w")) << "3w should be blocked by minCountRepeat=4";
@@ -421,7 +421,7 @@ TEST_F(NavOptimizer_ManualTest, MinCountRepeat_LowThresholdAllowsSmallCounts) {
   auto results = opt.optimize(lines, start, end,
       NavOptimizerParams{}.withMaxResults(30).withMaxNodesPopped(20000)
           .withMinCountRepeat(2)
-          .withAllowMultiplePerPosition(true),
+          .withMaxResultsPerEndPos(2),
       "", boundary, navContext).getResults();
 
   EXPECT_TRUE(hasSequence(results, "3w")) << "3w should be allowed with minCountRepeat=2";

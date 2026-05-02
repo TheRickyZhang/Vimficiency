@@ -47,7 +47,7 @@ TEST_F(NavOptimizerHumanApprovalTests, Motion_SimpleHorizontal) {
   NavOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, end,
-    NavOptimizerParams{}.withAllowMultiplePerPosition(true),
+    NavOptimizerParams{}.withMaxResultsPerEndPos(2),
     "lllll"
   ).getResults();
   // printResultsDebug(results, "Simple horizontal movement 0→5");
@@ -66,7 +66,7 @@ TEST_F(NavOptimizerHumanApprovalTests, Motion_VerticalJump) {
   NavOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, end,
-    NavOptimizerParams{}.withAllowMultiplePerPosition(true),
+    NavOptimizerParams{}.withMaxResultsPerEndPos(2),
     "jjj"
   ).getResults();
 
@@ -92,7 +92,7 @@ TEST_F(NavOptimizerHumanApprovalTests, Motion_WordMotions) {
   NavOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, end,
-    NavOptimizerParams{}.withAllowMultiplePerPosition(true),
+    NavOptimizerParams{}.withMaxResultsPerEndPos(2),
     "www"
   ).getResults();
 
@@ -114,7 +114,7 @@ TEST_F(NavOptimizerHumanApprovalTests, Motion_MixedMotions) {
   NavOptimizer opt(config);
   auto results = opt.optimize(
     lines, start, end,
-    NavOptimizerParams{}.withMaxResults(15).withAllowMultiplePerPosition(true),
+    NavOptimizerParams{}.withMaxResults(15).withMaxResultsPerEndPos(2),
     "jjllllllllll"
   ).getResults();
 

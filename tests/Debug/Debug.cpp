@@ -358,7 +358,7 @@ TEST_F(DebugTest, DISABLED_InvestigateMissingTypedCharAfterSubstitute) {
 
   TransformOptimizer editOpt(config);
   TransformOptimizerParams editParams{};
-  editParams.withMaxResults(20).withMaxNodesPopped(10000).withMaxMultiplePerStartPosition(5);
+  editParams.withMaxResults(20).withMaxNodesPopped(10000).withMaxResultsPerStartPos(5);
   auto transformResult = editOpt.optimizeTransform(
       diff.deletedLines(), diff.insertedLines(), diff.boundary, editParams,
       diff.beginPos.line, diff.beginPos.col, goalPos);

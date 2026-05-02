@@ -80,7 +80,7 @@ end
 ---@field vf_explore_start fun(encoded_initial_lines: string, start_row: integer, start_col: integer, encoded_goal_lines: string, end_row: integer, end_col: integer, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, window_height: integer, scroll_amount: integer, user_seq: string): string
 ---@field vf_explore_destroy fun(view_id: integer): integer
 ---@field vf_explore_state fun(view_id: integer): string
----@field vf_explore_recommendations fun(view_id: integer, max_count: integer, allow_multiple_movements_per_position: boolean, allow_multiple_edits_per_position: boolean): string
+---@field vf_explore_recommendations fun(view_id: integer, max_count: integer, nav_max_results_per_end_pos: integer, transform_max_results_per_start_pos: integer): string
 ---@field vf_explore_apply_movement fun(view_id: integer, movement_text: string): string
 ---@field vf_explore_accept_cursor_move fun(view_id: integer, new_row: integer, new_col: integer, raw_keys: string): string
 ---@field vf_explore_apply_edit fun(view_id: integer, text: string): string
@@ -679,26 +679,18 @@ end
 
 ---@alias VF.Explore.ApplyResult VF.Explore.AppliedResult | VF.Explore.RejectedResult
 
---- Recommendation variants. C++ side is `std::variant<FrontierItem, TransformFrontierItem>`;
---- Lua mirrors that via discriminated union — narrow on `rec.kind`.
+--- Single uniform recommendation shape. The "kind" of a recommendation
+--- (motion / edit-structural / typed-text) is implicit in the view's
+--- current phase: Navigate emits motions, Transform emits edit atoms,
+--- Insert emits the canonical typed text. Consumers branch on
+--- `state.phase.kind` rather than a per-rec discriminator.
 ---
---- `cost` is the raw token effort of the recommended motion or edit.
----@class VF.Explore.NavRecommendation
----@field kind "movement"
+--- `cost_diff` is the incremental keyboard effort from the accepted sequence.
+---@class VF.Explore.Recommendation
 ---@field text string
----@field cost number
+---@field cost_diff number
 ---@field landing VF.Position
 ---@field rank? integer  # attached on the consumer side after sorting (see explore.lua attach_ranks)
-
----@class VF.Explore.TransformRecommendation
----@field kind "edit"
----@field text string
----@field cost number
----@field landing VF.Position
----@field typed_text string
----@field rank? integer
-
----@alias VF.Explore.Recommendation VF.Explore.NavRecommendation | VF.Explore.TransformRecommendation
 
 ---@param payload string
 ---@return string
@@ -773,39 +765,22 @@ local function parse_explore_recommendations(payload)
   local parts = decode_string_list(payload)
   assert(#parts >= 1, "explore recommendations payload must have count prefix")
   local count = tonumber(parts[1]) or 0
-  local expected = 1 + count * 6
+  local expected = 1 + count * 4
   assert(#parts == expected,
     "explore recommendations payload has " .. #parts ..
     " fields, expected " .. expected .. " for count=" .. count)
   ---@type VF.Explore.Recommendation[]
   local recs = {}
   for i = 1, count do
-    local base = 1 + (i - 1) * 6
-    local kind = parts[base + 2]
-    ---@type VF.Position
-    local landing = {
-      row = tonumber(parts[base + 4]) or 0,
-      col = tonumber(parts[base + 5]) or 0,
+    local base = 1 + (i - 1) * 4
+    recs[i] = {
+      text = parts[base + 1],
+      cost_diff = tonumber(parts[base + 2]) or 0,
+      landing = {
+        row = tonumber(parts[base + 3]) or 0,
+        col = tonumber(parts[base + 4]) or 0,
+      },
     }
-    local cost = tonumber(parts[base + 3]) or 0
-    if kind == "movement" then
-      recs[i] = {
-        kind = "movement",
-        text = parts[base + 1],
-        cost = cost,
-        landing = landing,
-      }
-    elseif kind == "edit" then
-      recs[i] = {
-        kind = "edit",
-        text = parts[base + 1],
-        cost = cost,
-        landing = landing,
-        typed_text = parts[base + 6],
-      }
-    else
-      error("unknown recommendation kind from FFI: " .. tostring(kind))
-    end
   end
   return recs
 end
@@ -858,18 +833,18 @@ end
 
 ---@param view_id integer
 ---@param max_count integer
----@param allow_multiple_movements_per_position boolean|nil
----@param allow_multiple_edits_per_position boolean|nil
+---@param nav_max_results_per_end_pos integer|nil  -- default 1 (cheapest per landing)
+---@param transform_max_results_per_start_pos integer|nil  -- default 1 (cheapest per start)
 ---@return VF.Explore.Recommendation[]
 function M.explore_recommendations(
     view_id, max_count,
-    allow_multiple_movements_per_position,
-    allow_multiple_edits_per_position)
+    nav_max_results_per_end_pos,
+    transform_max_results_per_start_pos)
   local payload = require_non_error(ffi.string(
     lib.vf_explore_recommendations(
       view_id, max_count,
-      allow_multiple_movements_per_position and true or false,
-      allow_multiple_edits_per_position and true or false)))
+      nav_max_results_per_end_pos or 1,
+      transform_max_results_per_start_pos or 1)))
   return parse_explore_recommendations(payload)
 end
 

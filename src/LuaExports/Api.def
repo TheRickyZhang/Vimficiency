@@ -114,8 +114,8 @@ const char* vf_explore_state(int view_id);
 const char* vf_explore_recommendations(
   int view_id,
   int max_count,
-  bool allow_multiple_movements_per_position,
-  bool allow_multiple_edits_per_position);
+  int nav_max_results_per_end_pos,
+  int transform_max_results_per_start_pos);
 const char* vf_explore_apply_movement(int view_id, const char* movement_text);
 const char* vf_explore_accept_cursor_move(
   int view_id,
