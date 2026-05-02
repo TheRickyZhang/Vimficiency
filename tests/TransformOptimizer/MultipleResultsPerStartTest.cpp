@@ -1,6 +1,6 @@
 // tests/TransformOptimizer/MultipleResultsPerStartTest.cpp
 //
-// Coverage for TransformOptimizerParams::maxMultiplePerStartPosition.
+// Coverage for TransformOptimizerParams::maxResultsPerStartPos.
 
 #include <gtest/gtest.h>
 
@@ -62,7 +62,7 @@ TEST_F(TransformOptimizerMultipleResultsTest, SupportsMultipleResultsPerStartWhe
       TransformOptimizerParams{}
           .withMaxResults(50)
           .withMaxNodesPopped(100000)
-          .withMaxMultiplePerStartPosition(3));
+          .withMaxResultsPerStartPos(3));
 
   auto all = result.resultsAt(0, 0);
   EXPECT_GE(all.size(), 2u);
@@ -83,7 +83,7 @@ TEST_F(TransformOptimizerMultipleResultsTest, MaxMultiplePerStartPositionLessTha
       TransformOptimizerParams{}
           .withMaxResults(50)
           .withMaxNodesPopped(100000)
-          .withMaxMultiplePerStartPosition(0));
+          .withMaxResultsPerStartPos(0));
 
   EXPECT_EQ(result.resultsAt(0, 0).size(), 1u);
 }
@@ -96,7 +96,7 @@ TEST_F(TransformOptimizerMultipleResultsTest, GlobalMaxResultsStillCapsTotalEmit
       TransformOptimizerParams{}
           .withMaxResults(2)
           .withMaxNodesPopped(100000)
-          .withMaxMultiplePerStartPosition(3));
+          .withMaxResultsPerStartPos(3));
 
   EXPECT_LE(result.resultsAt(0, 0).size(), 2u);
   EXPECT_LE(result.getStats().resultsFound(), 2);
@@ -128,7 +128,7 @@ TEST_F(TransformOptimizerMultipleResultsTest, HighMaxResultsValuesDoNotIncreaseW
         TransformOptimizerParams{}
             .withMaxResults(maxResults)
             .withMaxNodesPopped(maxPops)
-            .withMaxMultiplePerStartPosition(perStartCap));
+            .withMaxResultsPerStartPos(perStartCap));
   };
 
   for (const Lines& lines : candidates) {

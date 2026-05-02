@@ -100,7 +100,7 @@ static optional<BenchmarkSetup> findMixedTerminalSetup(int perStartCap) {
     TransformOptimizerParams params = TransformOptimizerParams{}
         .withMaxResults(5000)
         .withMaxNodesPopped(200000)
-        .withMaxMultiplePerStartPosition(perStartCap);
+        .withMaxResultsPerStartPos(perStartCap);
     TransformResult result = opt.optimizePureDeletion(setup.initialLines, setup.boundary, params);
     if (result.getStats().stopReason() != SearchStopReason::AllResultsFound) continue;
 
@@ -365,7 +365,7 @@ static void BM_EditMaxResultsTerminal(benchmark::State& state) {
     TransformOptimizerParams params = TransformOptimizerParams{}
         .withMaxResults(maxResults)
         .withMaxNodesPopped(maxPops)
-        .withMaxMultiplePerStartPosition(perStartCap);
+        .withMaxResultsPerStartPos(perStartCap);
     TransformResult result = opt.optimizePureDeletion(
         mixedSetup->initialLines, mixedSetup->boundary, params);
     accumulateStats(totalStats, result.getStats());
@@ -381,7 +381,7 @@ static void BM_EditMaxResultsTerminal(benchmark::State& state) {
   state.counters["PerStartCap"] = static_cast<double>(perStartCap);
 }
 
-// Sensitivity to maxMultiplePerStartPosition (per-start result cap).
+// Sensitivity to maxResultsPerStartPos (per-start result cap).
 // maxResults is kept high so per-start cap drives result collection.
 static void BM_EditPerStartCap(benchmark::State& state) {
   int perStartCap = static_cast<int>(state.range(0));
@@ -411,7 +411,7 @@ static void BM_EditPerStartCap(benchmark::State& state) {
     TransformOptimizerParams params = TransformOptimizerParams{}
         .withMaxResults(maxResults)
         .withMaxNodesPopped(maxPops)
-        .withMaxMultiplePerStartPosition(perStartCap);
+        .withMaxResultsPerStartPos(perStartCap);
     TransformResult result = opt.optimizePureDeletion(
         setup.initialLines, setup.boundary, params);
     accumulateStats(totalStats, result.getStats());

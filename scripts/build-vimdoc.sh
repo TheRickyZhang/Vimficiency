@@ -21,6 +21,9 @@ bash "$repo_root/scripts/build-vimdoc-source.sh"
 "$panvimdoc_dir/panvimdoc.sh" \
   --project-name vimficiency \
   --input-file "$repo_root/build/vimficiency.md" \
-  --vim-version "Neovim >= 0.9"
+  --vim-version "Neovim >= 0.11" \
+  --treesitter true \
+  --ignore-rawblocks true \
+  --dedup-subheadings true
 
 bash "$repo_root/scripts/postprocess-vimdoc.sh"

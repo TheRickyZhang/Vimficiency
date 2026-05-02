@@ -23,8 +23,14 @@ strip_chapter() {
     in_fm && /^---$/   { in_fm = 0; next }
     in_fm              { next }
     { print }
-  ' "$1" | sed -E \
-    -e 's/\[([^][]+)\]\(([^)]*\.md[^)]*)\)/\1/g'
+  ' "$1" | perl -pe '
+    # Strip relative-path markdown links to plain text — they would
+    # otherwise render in vimdoc as "text <../path>", which is noise
+    # for `:help` (the file path is not navigable from the help file).
+    # External URLs (containing "://") are left intact so pandoc emits
+    # the canonical "text <url>" form.
+    s{\[([^][]+)\]\(([^)]+)\)}{ $2 =~ m{://} ? "[$1]($2)" : $1 }ge;
+  '
 }
 
 {

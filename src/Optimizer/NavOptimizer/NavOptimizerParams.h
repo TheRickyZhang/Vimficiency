@@ -25,8 +25,14 @@ struct NavOptimizerParams : OptimizerParamsBase {
   int linePaddingAbove = 2;
   int linePaddingBelow = 2;
 
-  // Do we include multiple results with the same position in our search?
-  bool allowMultiplePerPosition = false;
+  // Cap on results retained per landing (end) position. Default 1 keeps
+  // only the cheapest path per landing cell. Values >1 keep multiple
+  // distinct paths reaching the same cell — useful for surfacing
+  // alternatives like `w` / `W` / `e` that all land on the same word
+  // start. Currently the search treats anything > 1 as "all" (no cap)
+  // because the data structure stores one-per-cell or all-per-cell;
+  // true cap-at-N may be added later.
+  int maxResultsPerEndPos = 1;
 
   // Chainable setters for fluent configuration
   NavOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
@@ -39,7 +45,7 @@ struct NavOptimizerParams : OptimizerParamsBase {
   NavOptimizerParams& withLinePadding(int v) { linePaddingAbove = linePaddingBelow = v; return *this; }
   NavOptimizerParams& withMinCountRepeat(int v) { setMinCountRepeat(v); return *this; }
   NavOptimizerParams& withMaxCountRepeat(int v) { setMaxCountRepeat(v); return *this; }
-  NavOptimizerParams& withAllowMultiplePerPosition(bool v) { allowMultiplePerPosition = v; return *this; }
+  NavOptimizerParams& withMaxResultsPerEndPos(int v) { maxResultsPerEndPos = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
   static NavOptimizerParams dijkstra(int maxResults = 10, int maxNodesPopped = 50000) {

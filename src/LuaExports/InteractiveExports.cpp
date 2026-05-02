@@ -2,10 +2,8 @@
 #include "LuaExports/ViewRegistry.h"
 #include "Explore/Explore.h"
 
-#include <sstream>
 #include <string>
 #include <string_view>
-#include <variant>
 
 using namespace std;
 namespace helpers = VF::LuaExports::helpers;
@@ -15,7 +13,6 @@ namespace {
 
 using Explore::View;
 using Explore::Suggestion;
-using Explore::State;
 using Explore::Outcome;
 using VF::LuaExports::ViewRegistry;
 
@@ -79,29 +76,16 @@ string encodeOutcome(const Outcome& outcome) {
   return encodeFields(string_view(status), string_view(reason));
 }
 
-// Per-alternative wire encoders. 6 fields — Lua's parse_explore_recommendations
-// must match the field count. Adding a new Suggestion alternative = add one
-// overload; the visit dispatcher requires no edits.
-string encodeSuggestion(const FrontierItem& item) {
+// Wire encoder for one recommendation. 4 fields — Lua's
+// parse_explore_recommendations must match the field count. The recommendation's
+// "kind" (motion vs edit-structural vs typed-text) is implicit in the view's
+// current phase, which Lua already reads off `state.phase.kind`.
+string encodeSuggestion(const Suggestion& item) {
   return encodeFields(
       string_view(item.token),
-      Explore::suggestionKind(item),
-      string_view(doubleField(item.cost)),
-      string_view(intField(item.goalPos.line)),
-      string_view(intField(item.goalPos.col)),
-      string_view(""));            // typedText: motions don't carry one
-}
-string encodeSuggestion(const TransformFrontierItem& item) {
-  return encodeFields(
-      string_view(item.token),
-      Explore::suggestionKind(item),
-      string_view(doubleField(item.cost)),
-      string_view(intField(item.goalPos.line)),
-      string_view(intField(item.goalPos.col)),
-      string_view(item.typedText));
-}
-string encodeSuggestion(const Suggestion& s) {
-  return std::visit([](const auto& alt) { return encodeSuggestion(alt); }, s);
+      string_view(doubleField(item.costDiff)),
+      string_view(intField(item.landingPos.line)),
+      string_view(intField(item.landingPos.col)));
 }
 
 string encodeSuggestions(const vector<Suggestion>& recs) {
@@ -205,15 +189,15 @@ const char* vf_explore_state(int view_id) {
 const char* vf_explore_recommendations(
     int view_id,
     int max_count,
-    bool allow_multiple_movements_per_position,
-    bool allow_multiple_edits_per_position) {
+    int nav_max_results_per_end_pos,
+    int transform_max_results_per_start_pos) {
   CHECK(max_count >= 0, "max_count must be non-negative");
   static string storage;
   View& v = g_registry.get(view_id);
   storage = encodeSuggestions(v.recommendations(
       max_count,
-      allow_multiple_movements_per_position,
-      allow_multiple_edits_per_position));
+      nav_max_results_per_end_pos,
+      transform_max_results_per_start_pos));
   return storage.c_str();
 }
 

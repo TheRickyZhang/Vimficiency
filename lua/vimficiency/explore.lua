@@ -131,8 +131,8 @@ local RECOMMENDATION_COUNT_MAX = 10
 ---@field pending VF.Explore.Pending|nil        # insertion-origin snapshot while Insert
 ---@field display_mode string                          # "off" | "highlight" | "inplace" | "above" | "below"
 ---@field recommendation_count integer|nil             # settings override, or nil → config default
----@field allow_multiple_movements_per_position boolean  # settings toggle; false → movement recs dedup by landing
----@field allow_multiple_edits_per_position boolean    # settings toggle; false → edit recs dedup by landing
+---@field nav_max_results_per_end_pos integer            # 1 = dedup motions by landing cell; large = keep multiple
+---@field transform_max_results_per_start_pos integer    # 1 = dedup edits by start position; large = keep multiple
 ---@field show_user_typed boolean                      # include user's original typed sequence in the header
 ---@field show_result_count integer                    # how many captured `optimal_results` to include (0 → none)
 ---@field header_handlers table<string, function>      # keymaps attached to every header pane
@@ -218,8 +218,8 @@ local function refresh_state_and_recommendations()
   a.state = ffi_lib.explore_state(a.view_id)
   a.recommendations = ffi_lib.explore_recommendations(a.view_id,
     a.recommendation_count,
-    a.allow_multiple_movements_per_position,
-    a.allow_multiple_edits_per_position)
+    a.nav_max_results_per_end_pos,
+    a.transform_max_results_per_start_pos)
 end
 
 ---Compute the suffix of the planned typed text still to be typed. Diffs the
@@ -248,6 +248,27 @@ local function attach_ranks()
   for i, rec in ipairs(a.recommendations) do
     rec.rank = i
   end
+end
+
+local function match_insert_recommendation(keys)
+  local a = assert_current_view()
+  if a.state.phase.kind ~= "Transform" or keys == "" then return nil end
+  -- If on_insert_enter fired we're already in insert mode, so the keys
+  -- tail must encode a structural that actually enters insert mode (`s`,
+  -- `cl`, `cw`, `i`, `I`, `a`, `A`, `o`, `O`, `C`, etc.). Any rec whose
+  -- text matches the tail is a candidate; the longest-suffix match wins
+  -- (so `cl` beats `c` when both are emitted).
+  local matched
+  for _, rec in ipairs(a.recommendations) do
+    if rec.text ~= "" and #keys >= #rec.text then
+      if keys:sub(#keys - #rec.text + 1) == rec.text then
+        if not matched or #rec.text > #matched.text then
+          matched = rec
+        end
+      end
+    end
+  end
+  return matched
 end
 
 local function refresh_ui()
@@ -307,6 +328,15 @@ local function on_cursor_moved()
     return
   end
 
+  -- Sticky completion: once is_completed, motions are intercepted here so
+  -- the cursor can't drift off the goal (which would flip is_completed
+  -- back to false on the C++ side). Undo is still reachable via `u`.
+  if a.state.is_completed then
+    a.on_key_buffer = ""
+    sync_cursor_to_state()
+    return
+  end
+
   local raw_keys = a.on_key_buffer or ""
   a.on_key_buffer = ""
   local applied = ffi_lib.explore_accept_cursor_move(
@@ -322,30 +352,22 @@ end
 ---InsertEnter handler — transition the view into Insert when we
 ---recognize which edit atom the user just triggered. The atom is identified
 ---by tail-matching the raw-key buffer against known edit recommendations;
----the matched rec's `typed_text` becomes the target the header displays
----to the user. On no match, we do nothing — InsertLeave's
+---once we land in Insert phase the C++ side emits a single recommendation
+---whose `text` is the canonical typed text, which becomes the target the
+---header displays. On no match, we do nothing — InsertLeave's
 ---`accept_insert_exit` fallback still validates the final buffer.
 local function on_insert_enter()
   local a = assert_current_view()
+  -- Sticky completion: don't transition into Insert. on_buffer_changed will
+  -- revert any typing the user does before they Esc back out.
+  if a.state.is_completed then return end
   -- Reentrancy: nested <C-o>-style inserts shouldn't re-call begin_insert.
   if a.state.phase.kind ~= "Navigate" and a.state.phase.kind ~= "Transform" then return end
 
   local keys = a.on_key_buffer or ""
   if keys == "" then return end
 
-  -- Longest-tail match against edit-kind recommendations so stray normal-mode
-  -- keystrokes (a dead-end `l` at EOL that didn't fire CursorMoved, etc.)
-  -- don't block recognition of the real atom.
-  local matched
-  for _, rec in ipairs(a.recommendations) do
-    if rec.kind == "edit" and rec.text ~= "" and #keys >= #rec.text then
-      if keys:sub(#keys - #rec.text + 1) == rec.text then
-        if not matched or #rec.text > #matched.text then
-          matched = rec
-        end
-      end
-    end
-  end
+  local matched = match_insert_recommendation(keys)
   if not matched then return end
 
   -- Deliberately DO NOT clear on_key_buffer here — so the full command
@@ -354,18 +376,26 @@ local function on_insert_enter()
   local applied = ffi_lib.explore_begin_insert(a.view_id)
   if applied.status == "Rejected" then return end
 
+  -- Refresh first: phase has flipped to Insert and the rec list now holds
+  -- one entry whose `text` is the typed-text target. Source `pending.target`
+  -- from there so the C++ side stays the single source of truth for what
+  -- needs typing — Lua just renders.
+  refresh_state_and_recommendations()
+  attach_ranks()
+
+  local insert_rec = a.recommendations[1]
+  local target = (insert_rec and insert_rec.text) or ""
+
   -- Snapshot the insertion origin so the UI can shrink `remaining` live
   -- as TextChangedI fires. row/col are from Vim's current cursor (post-atom,
   -- pre-typing) — i.e. where the next typed char will land.
   local cursor = v.nvim_win_get_cursor(a.scratch.win)
   a.pending = {
-    target = matched.typed_text or "",
+    target = target,
     row = cursor[1] - 1,
     col_start = cursor[2],
   }
 
-  refresh_state_and_recommendations()
-  attach_ranks()
   local remaining = current_remaining(a)
   header_render.render(a, remaining)
   list_render.render(a, remaining)
@@ -404,6 +434,17 @@ local function on_buffer_changed()
     end
   end
 
+  -- Sticky completion: any divergence (typed in normal mode without us
+  -- hooking InsertEnter, or stray r{x} etc.) reverts. C++ would reject
+  -- anyway, but doing it here avoids the warn-toast on every keystroke.
+  if a.state.is_completed then
+    a.pending = nil
+    a.on_key_buffer = ""
+    if not buffer_matches_session then sync_buffer_from_session() end
+    sync_cursor_to_state()
+    return
+  end
+
   if a.state.phase.kind == "Insert" then
     -- Clear the insertion-origin snapshot — we're leaving Insert on
     -- either branch below, so the TextChangedI live-remaining computation
@@ -440,6 +481,13 @@ local function on_buffer_changed()
   if buffer_matches_session then return end
 
   local raw_keys = a.on_key_buffer or ""
+  print("DEBUG buffer_changed phase=" .. a.state.phase.kind ..
+    " raw=" .. vim.inspect(raw_keys) ..
+    " match=" .. vim.inspect((match_insert_recommendation(raw_keys) or {}).text) ..
+    " lines=" .. vim.inspect(new_lines))
+  if match_insert_recommendation(raw_keys) then
+    return
+  end
   a.on_key_buffer = ""
 
   local applied = ffi_lib.explore_accept_buffer_state(
@@ -646,8 +694,8 @@ function M.open(label, result, opts)
   local s = settings_store()
   view.display_mode                        = s.display_mode
   view.recommendation_count                = s.recommendation_count
-  view.allow_multiple_movements_per_position = s.allow_multiple_movements_per_position
-  view.allow_multiple_edits_per_position   = s.allow_multiple_edits_per_position
+  view.nav_max_results_per_end_pos         = s.nav_max_results_per_end_pos
+  view.transform_max_results_per_start_pos = s.transform_max_results_per_start_pos
   view.show_user_typed                     = s.show_user_typed
   view.show_result_count                   = s.show_result_count
 
@@ -683,8 +731,8 @@ function M.open(label, result, opts)
           display_mode = a.display_mode,
           recommendation_count = a.recommendation_count,
           effective_count = a.recommendation_count,
-          allow_multiple_movements_per_position = a.allow_multiple_movements_per_position,
-          allow_multiple_edits_per_position = a.allow_multiple_edits_per_position,
+          nav_max_results_per_end_pos = a.nav_max_results_per_end_pos,
+          transform_max_results_per_start_pos = a.transform_max_results_per_start_pos,
           show_user_typed = a.show_user_typed,
           show_result_count = a.show_result_count,
         },
@@ -798,16 +846,18 @@ end
 ---next view).
 function open_settings_modal()
   local a = assert_current_view()
-  -- Dedup semantics: the stored field is `allow_multiple_*` (false →
-  -- dedup on), but the user-facing label is "dedup". Invert get/set
-  -- so the modal shows a natural "on/off" for dedup.
+  -- Dedup semantics: the stored field is an int cap (1 = dedup on,
+  -- larger = dedup off). The user-facing label is "dedup", so we map
+  -- bool ↔ int at the modal boundary: dedup-on is value 1, dedup-off
+  -- is INT_MAX (no effective cap).
+  local DEDUP_OFF = math.maxinteger or 2147483647
   local function dedup_toggle(flag_key)
     return
-      function() return not a[flag_key] end,
-      function(on) update_setting(a, flag_key, not on) end
+      function() return a[flag_key] == 1 end,
+      function(on) update_setting(a, flag_key, on and 1 or DEDUP_OFF) end
   end
-  local motion_get, motion_set = dedup_toggle("allow_multiple_movements_per_position")
-  local edit_get, edit_set = dedup_toggle("allow_multiple_edits_per_position")
+  local motion_get, motion_set = dedup_toggle("nav_max_results_per_end_pos")
+  local edit_get, edit_set = dedup_toggle("transform_max_results_per_start_pos")
 
   local optimal_results = (a.result and a.result.optimal_results) or {}
 

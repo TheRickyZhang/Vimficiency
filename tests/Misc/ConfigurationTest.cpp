@@ -55,7 +55,7 @@ protected:
                         NavOptimizerParams{}
                             .withMaxResults(30)
                             .withMaxNodesPopped(20000)
-                            .withAllowMultiplePerPosition(true),
+                            .withMaxResultsPerEndPos(2),
                         userSeq, boundary, navContext).getResults();
   }
 
@@ -259,7 +259,7 @@ TEST_F(ConfigurationTest, CountPenaltyOverrideAffectsMotionRanking) {
       .withMaxResults(30)
       .withMaxNodesPopped(20000)
       .withMinCountRepeat(4)
-      .withAllowMultiplePerPosition(true);
+      .withMaxResultsPerEndPos(2);
 
   auto baseResults = opt.optimize(lines, start, end, params, "",
                                   boundary, navContext).getResults();

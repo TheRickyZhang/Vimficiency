@@ -57,15 +57,18 @@ local function open_flow(label, result, fn)
   if not ok then error(err, 0) end
 end
 
-local function first_recommendation(kind, pred)
+-- Recs are kind-pure per phase: Navigate emits motions, Transform emits edit
+-- atoms, Insert emits the canonical typed text. Caller asserts the phase.
+local function first_recommendation_in_phase(expected_phase, pred)
   local st = explore.status()
   assert_true(st ~= nil, "explore status should be available")
+  assert_eq(st.phase.kind, expected_phase,
+    "recommendations sourced from phase " .. expected_phase)
   for _, rec in ipairs(st.recommendations) do
-    if rec.kind == kind and (not pred or pred(rec)) then
-      return rec
-    end
+    if not pred or pred(rec) then return rec end
   end
-  error("no " .. kind .. " recommendation matched\nstatus=" .. status_text(), 2)
+  error("no recommendation matched in phase " .. expected_phase ..
+        "\nstatus=" .. status_text(), 2)
 end
 
 local function fake_result(overrides)
@@ -80,7 +83,8 @@ local function fake_result(overrides)
 end
 
 local function enters_insert_mode(rec)
-  if not (rec.typed_text and rec.typed_text ~= "") then return false end
+  -- The typed-text content moved into the Insert-phase rec; here we only
+  -- check the structural prefix's first char.
   local first = rec.text:sub(1, 1)
   return first == "C" or first == "c" or first == "s"
     or first == "i" or first == "a" or first == "A"
@@ -89,7 +93,7 @@ end
 
 local function move_to_first_edit_target(scratch_buf)
   local target = explore.status()
-  local motion = first_recommendation("movement", function(rec)
+  local motion = first_recommendation_in_phase("Navigate", function(rec)
     return target.target_range
       and rec.landing.row == target.target_range.begin_pos.row
       and rec.landing.col == target.target_range.begin_pos.col
@@ -114,7 +118,7 @@ test("explore flow: natural motion updates cursor and completes motion-only goal
       user_seq = "w",
       optimal_results = { { seq = "w", cost = 1.0 } },
     }), function(scratch_buf)
-      local motion = first_recommendation("movement")
+      local motion = first_recommendation_in_phase("Navigate")
       feed(motion.text)
       trigger_cursor_moved(scratch_buf)
 
@@ -136,8 +140,15 @@ test("explore flow: insert recommendation accepts matching scratch edit", functi
     open_flow("flow-insert-ok", fake_result(), function(scratch_buf)
       move_to_first_edit_target(scratch_buf)
 
-      local edit = first_recommendation("edit", enters_insert_mode)
-      feed(edit.text .. edit.typed_text .. "<Esc>")
+      -- Feed structural + typed + <Esc> as one unit. The fake_result's
+      -- diff is "abc" → "aBc", so the picked structural's deletion range
+      -- determines the required typed continuation. For `ce`/`C`-style
+      -- structurals (which delete "bc"), the typed continuation is "Bc".
+      -- We can't observe intermediate Insert state in headless tests
+      -- because feedkeys "x" mode triggers an implicit InsertLeave when
+      -- it returns mid-insert, so we feed everything at once.
+      local edit = first_recommendation_in_phase("Transform", enters_insert_mode)
+      feed(edit.text .. "Bc<Esc>")
 
       -- After Stage 2: completion requires the cursor to actually reach
       -- goalPos, not merely "all edits applied". Insert exits at the
@@ -162,9 +173,10 @@ test("explore flow: insert mismatch reverts scratch buffer", function()
     open_flow("flow-insert-bad", fake_result(), function(scratch_buf)
       move_to_first_edit_target(scratch_buf)
 
-      local edit = first_recommendation("edit", enters_insert_mode)
-      local wrong = edit.typed_text == "X" and "Y" or "X"
-      feed(edit.text .. wrong .. "<Esc>")
+      -- Feed structural + WRONG typed + <Esc>. Same shape as the matching
+      -- variant, but with a typed continuation that doesn't reach goal.
+      local edit = first_recommendation_in_phase("Transform", enters_insert_mode)
+      feed(edit.text .. "X<Esc>")
 
       wait_for("mismatched insert should revert to the current fencepost", function()
         local st = explore.status()

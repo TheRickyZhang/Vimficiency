@@ -138,8 +138,9 @@ missing=$(
   ' "$target"
 )
 if [[ -n "$missing" ]]; then
-  echo "warning: tag references without matching anchors:" >&2
+  echo "error: tag references without matching anchors:" >&2
   echo "$missing" >&2
+  exit 1
 fi
 
 echo "Post-processed $target"

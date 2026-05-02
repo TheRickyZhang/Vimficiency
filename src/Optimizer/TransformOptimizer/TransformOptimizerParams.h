@@ -21,8 +21,12 @@ struct TransformOptimizerParams : OptimizerParamsBase {
   int navLinePaddingAbove = 1;
   int navLinePaddingBelow = 1;
 
-  // Maximum number of results to keep per starting cursor position.
-  int maxMultiplePerStartPosition = 1;
+  // Cap on results retained per starting cursor position. Default 1 keeps
+  // only the cheapest sequence per start; values >1 surface multiple
+  // distinct command shapes from the same start (pedagogically useful for
+  // showing alternatives). Search becomes terminal for a start once its
+  // bucket fills.
+  int maxResultsPerStartPos = 1;
 
   // Chainable setters for fluent configuration
   TransformOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
@@ -30,7 +34,7 @@ struct TransformOptimizerParams : OptimizerParamsBase {
   TransformOptimizerParams& withNavLinePaddingAbove(int v) { navLinePaddingAbove = v; return *this; }
   TransformOptimizerParams& withNavLinePaddingBelow(int v) { navLinePaddingBelow = v; return *this; }
   TransformOptimizerParams& withNavLinePadding(int v) { navLinePaddingAbove = navLinePaddingBelow = v; return *this; }
-  TransformOptimizerParams& withMaxMultiplePerStartPosition(int v) { maxMultiplePerStartPosition = v; return *this; }
+  TransformOptimizerParams& withMaxResultsPerStartPos(int v) { maxResultsPerStartPos = v; return *this; }
   TransformOptimizerParams& withMinCountRepeat(int v) { setMinCountRepeat(v); return *this; }
   TransformOptimizerParams& withMaxCountRepeat(int v) { setMaxCountRepeat(v); return *this; }
   // Factory for Dijkstra mode (no heuristic)

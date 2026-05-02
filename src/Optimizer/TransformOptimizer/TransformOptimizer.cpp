@@ -215,7 +215,7 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
                                        int bufferBeginLine, int bufferBeginCol,
                                        CursorPos goalPos) {
   assert(!initialLines.empty() && "empty startlines should be handled in compositionEditor by i, a, o, O");
-  params.maxMultiplePerStartPosition = max(1, params.maxMultiplePerStartPosition);
+  params.maxResultsPerStartPos = max(1, params.maxResultsPerStartPos);
 
   const int leftColOffset = transformBoundary.leftColOffset();
   const int rightColOffset = transformBoundary.rightColOffset();
@@ -282,7 +282,7 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
     int idx = state.getStartIndex();
     if (!startActive[idx]) return;
     auto& bucket = resultsByStart[idx];
-    if (static_cast<int>(bucket.size()) >= params.maxMultiplePerStartPosition) return;
+    if (static_cast<int>(bucket.size()) >= params.maxResultsPerStartPos) return;
 
     bool firstForStart = bucket.empty();
     bucket.push_back(result);
@@ -291,7 +291,7 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
       uniquePositionsCovered++;
       if (captureGoalPos) goalCapture.onGoal(idx, state.getPos());
     }
-    if (static_cast<int>(bucket.size()) == params.maxMultiplePerStartPosition) {
+    if (static_cast<int>(bucket.size()) == params.maxResultsPerStartPos) {
       if (startActive[idx]) {
         startActive[idx] = false;
         terminalStarts++;
@@ -335,7 +335,7 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
            "non-goal edit state must have in-bounds cursor line");
 
     auto cacheResult = mode.tryUseSuffixCache(s, resultsByStart,
-                                              params.maxMultiplePerStartPosition,
+                                              params.maxResultsPerStartPos,
                                               startActive,
                                               resultsFound,
                                               uniquePositionsCovered);

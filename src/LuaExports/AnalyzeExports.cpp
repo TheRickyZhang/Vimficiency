@@ -75,7 +75,7 @@ VF::LuaExports::Result<string> analyzeImpl(
         goalPos,
         NavOptimizerParams{}
             .withMaxResults(results_calculated)
-            .withAllowMultiplePerPosition(true),
+            .withMaxResultsPerEndPos(2),
         keyseqText,
         boundary,
         navigationContext).getResults();

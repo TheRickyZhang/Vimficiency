@@ -13,7 +13,6 @@
 #include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Optimizer/FrontierCommon.h"
-#include "Optimizer/TransformOptimizer/TransformFrontier.h"
 #include "Rejected.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
@@ -93,26 +92,13 @@ inline int phaseIndex(const Phase& p) {
   return std::visit([](auto&& x) { return x.index; }, p);
 }
 
-// One ranked suggestion returned by View::recommendations. The variant
-// alternative IS the kind (Nav vs Transform); the optimizer-produced
-// types ARE the wire types — Explore doesn't introduce a parallel
-// Suggestion hierarchy, since the optimizer outputs already carry the
-// minimum data the wire needs.
-using Suggestion = std::variant<FrontierItem, TransformFrontierItem>;
-
-inline std::string_view suggestionKind(const FrontierItem&)          { return "movement"; }
-inline std::string_view suggestionKind(const TransformFrontierItem&) { return "edit"; }
-inline std::string_view suggestionKind(const Suggestion& s) {
-  return std::visit([](const auto& a) { return suggestionKind(a); }, s);
-}
-
-// Common base accessor — the FrontierItem shared subset (token, goalPos,
-// cost). Use when callers need only the shared fields and don't care which
-// alternative holds them.
-inline const FrontierItem& base(const Suggestion& s) {
-  return std::visit(
-      [](const FrontierItem& f) -> const FrontierItem& { return f; }, s);
-}
+// One ranked suggestion returned by View::recommendations. Every
+// recommendation — motion, edit-structural-prefix, or insert-mode typed
+// text — fits the same shape: a token to execute, a landing position, and
+// an incremental cost. The recommendation's "kind" is implicit in the
+// view's current phase: Navigate emits motions, Transform emits edit
+// atoms, Insert emits the canonical typed text.
+using Suggestion = FrontierItem;
 
 // Mutable state snapshot. The View owns one live State and a history of
 // prior snapshots in its undo/redo stacks.
@@ -190,13 +176,15 @@ public:
   //     all surface; the command shape is the outcome.
   // See NavFrontier.h and TransformFrontier.h for the per-module details.
   //
-  // Both default to `false` (dedup on). The flag is forwarded to the
-  // underlying frontier modules so generation respects it end-to-end and
-  // the display layer never throws anything away post-hoc.
+  // Both default to `1` (cheapest per landing/start — i.e. dedup on).
+  // Pass a larger value to surface multiple distinct paths/sequences per
+  // landing/start. The cap flows to the underlying frontier modules so
+  // generation respects it end-to-end and the display layer never throws
+  // anything away post-hoc.
   std::vector<Suggestion> recommendations(
       int maxCount,
-      bool allowMultipleMovementsPerPosition = false,
-      bool allowMultipleEditsPerPosition = false) const;
+      int navMaxResultsPerEndPos = 1,
+      int transformMaxResultsPerStartPos = 1) const;
 
   // --- Actions ---
   // Each action produces a new state (on Applied) or a Rejected reason
@@ -252,11 +240,19 @@ private:
   std::vector<Suggestion> recommendNavigate(
       int navIndex,
       int maxCount,
-      bool allowMultipleMovementsPerPosition) const;
+      int navMaxResultsPerEndPos) const;
   std::vector<Suggestion> recommendTransform(
       int editIndex,
       int maxCount,
-      bool allowMultipleEditsPerPosition) const;
+      int transformMaxResultsPerStartPos) const;
+  // Insert phase emits a single FrontierItem whose token is the canonical
+  // typed text (no trailing <Esc>) the user must type to reach the planned
+  // post-edit fencepost. The structural command was already executed in
+  // Transform; Esc is handled by Lua via InsertLeave. Empty list when the
+  // diff has no insert-mode component (e.g. pure deletion).
+  std::vector<Suggestion> recommendInsert(
+      int editIndex,
+      int maxCount) const;
 
   // Motion gate: succeed iff phase is Navigate/Transform, returning the
   // navigation/edit index. Navigate(totalEdits) is valid here because the

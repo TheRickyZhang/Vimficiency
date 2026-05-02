@@ -27,6 +27,7 @@ jobs:
         with:
           vimdoc: vimficiency
           pandoc: build/vimficiency.md
+          version: 'Neovim >= 0.11'
           treesitter: 'true'
           ignore-rawblocks: 'true'
           dedup-subheadings: 'true'
@@ -39,3 +40,6 @@ jobs:
         with:
           commit_message: 'docs: regenerate vimdoc'
           file_pattern: doc/vimficiency.txt
+          commit_user_name: TheRickyZhang
+          commit_user_email: 140441625+TheRickyZhang@users.noreply.github.com
+          commit_author: 'TheRickyZhang <140441625+TheRickyZhang@users.noreply.github.com>'

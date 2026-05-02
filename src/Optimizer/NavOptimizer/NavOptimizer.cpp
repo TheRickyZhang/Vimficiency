@@ -124,7 +124,7 @@ LandingNavResult NavOptimizer::optimize(
       stats.incrementNodesExplored();
       double effort = s.getRunningEffort().getEffort(config);
 
-      if (params.allowMultiplePerPosition) {
+      if ((params.maxResultsPerEndPos > 1)) {
         allResults.emplace_back(s.getSequence().str(), effort, pos);
         uniquePositionsSeen.insert(stateKey);
         if (allResults.size() >= static_cast<size_t>(params.maxResults)) {
@@ -190,7 +190,7 @@ LandingNavResult NavOptimizer::optimize(
 
   vector<LandingResult> results;
   int uniqueCount;
-  if (params.allowMultiplePerPosition) {
+  if ((params.maxResultsPerEndPos > 1)) {
     results = std::move(allResults);
     uniqueCount = static_cast<int>(uniquePositionsSeen.size());
   } else {

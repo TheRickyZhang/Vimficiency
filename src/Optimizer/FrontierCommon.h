@@ -5,27 +5,29 @@
 // =============================================================================
 // Shared fields for the depth-1 frontier types in NavOptimizer/ and
 // TransformOptimizer/. Each frontier emits its own derived item / query;
-// what's common (`token` + `goalPos` + `cost` for items, and the input
-// `lines` / `cursor` / `maxCount` / `allowMultiplePerPosition` for queries)
-// lives here so the divergence is visible at the inheritance line.
+// what's common (`token` + `landingPos` + `costDiff` for items, and the input
+// `lines` / `cursor` / accepted sequence context / recommendation limits
+// for queries) lives here so the divergence is visible at the inheritance line.
+
+#include <string_view>
 
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 #include "Types/Token.h"
 
+// What the possible results we get are
+// Maybe better name: ExploreOption
 struct FrontierItem {
   Token token;
-  CursorPos goalPos{0, 0};
-  // Raw effort of this single token (not a cumulative path cost).
-  double cost = 0.0;
+  CursorPos landingPos{0, 0};
+  double costDiff = 0.0;
 };
 
+// What we currently are at
+// Maybe better name: ExploreStatus
 struct FrontierQuery {
   const Lines& lines;
   CursorPos cursor;
+  std::string_view acceptedSeq = {};
   int maxCount = 0;
-  // Per-frontier semantics — see NavFrontier.h / TransformFrontier.h for
-  // how each one interprets dedup. The flag's wire-meaning differs by
-  // frontier kind; only the field is shared.
-  bool allowMultiplePerPosition = false;
 };

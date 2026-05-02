@@ -87,6 +87,17 @@ struct ChangeGoalHandler {
   GoalStates onJoinGoal(TransformState& afterJn, const TransformState& base,
                         const SequenceBinding& sourceCmd);
 
+  // Stateless command-form helpers — exposed so depth-1 frontiers
+  // (TransformFrontier::enumerateDepth1DeletionStructurals) can convert
+  // a deletion enumerated by TransformExplorer into its change-mode
+  // analog without re-running the goal handler. `deleteToChangeChar`
+  // covers `D`→`C`, `x`→`s`, `X`→`hs`, `dw`→`dwi`, generic `dX`→`cX`.
+  // `deleteToChangeLine` covers `dd`→`cc` (or `0C` under autoindent
+  // with leading whitespace) and counted variants.
+  static KeyedSequence deleteToChangeChar(const SequenceBinding& sourceCmd);
+  static KeyedSequence deleteToChangeLine(const SequenceBinding& sourceCmd,
+                                          std::string_view lineContent);
+
 private:
   struct KeyedSegment {
     const KeyedSequence& sequence;
@@ -104,9 +115,6 @@ private:
   static KeyedSequence buildCollapseSequence(int totalLines, int cursorLine);
   static void appendOptionalCount(KeyedSequence& out, int count, const KeyedSequence& base);
   static KeyedSequence withOptionalCount(int count, const KeyedSequence& base);
-  static KeyedSequence deleteToChangeChar(const SequenceBinding& sourceCmd);
-  static KeyedSequence deleteToChangeLine(const SequenceBinding& sourceCmd,
-                                          std::string_view lineContent);
   static RunningEffort mergeGoalSuffixEffort(const KeyedSequence& prefix,
                                              const RunningEffort& typedSuffixEffort,
                                              double completionPenalty,
