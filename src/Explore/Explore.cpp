@@ -22,7 +22,7 @@ namespace Explore {
 namespace {
 
 // Shared rawKeys handling for accept*/apply* actions that fold reported
-// keys into acceptedSeq. parseSequence accepts edits (unlike parseMotions),
+// keys into seq. parseSequence accepts edits (unlike parseMotions),
 // so rawKeys like "rm" or "sm<Esc>" pass; the gate keeps unknown bytes out
 // of getEffort's downstream tokenizer. Unparseable non-empty keys reject
 // (silently dropping them undercounts effort).
@@ -34,8 +34,8 @@ std::expected<void, Rejected> appendRawKeysOrReject(State& next,
   if (!parseSequence(rawKeys)) {
     return std::unexpected(Rejected{"raw keys failed to parse"});
   }
-  next.acceptedSeq.append(rawKeys);
-  next.acceptedCost = getEffort(next.acceptedSeq, config);
+  next.seq.append(rawKeys);
+  next.cost = getEffort(next.seq, config);
   return {};
 }
 
@@ -133,13 +133,9 @@ View::View(Lines initialLines, CursorPos initialPos, Lines goalLines,
 // Query
 // =============================================================================
 
-optional<pair<CursorPos, CursorPos>> View::currentTargetRange() const {
-  // Insert mode: UI doesn't render a target range during typing.
-  if (std::holds_alternative<Insert>(state_.phase)) return nullopt;
-
-  const int i = phaseIndex(state_.phase);
-  CharRange r = plan_.getPlan().navTarget(i);
-  return make_pair(r.begin, r.end);
+pair<CursorPos, CursorPos> View::currentTargetRange() const {
+  CharRange r = plan_.getPlan().navTarget(phaseIndex(state_.phase));
+  return {r.begin, r.end};
 }
 
 bool View::isCompleted() const {
@@ -150,7 +146,7 @@ bool View::isCompleted() const {
 vector<Suggestion> View::recommendations(int maxCount,
                       int navMaxResultsPerEndPos,
                       int transformMaxResultsPerStartPos) const {
-  return std::visit(PhaseVisitor{
+  return std::visit(overload{
       [&](const Navigate& nav) {
         return recommendNavigate(
             nav.index, maxCount, navMaxResultsPerEndPos);
@@ -186,7 +182,7 @@ vector<Suggestion> View::recommendNavigate(
           FrontierQuery{
               .lines = state_.lines,
               .cursor = state_.cursor,
-              .acceptedSeq = state_.acceptedSeq,
+              .seq = state_.seq,
               .maxCount = maxCount,
           },
           target,
@@ -209,7 +205,7 @@ vector<Suggestion> View::recommendTransform(
           FrontierQuery{
               .lines = state_.lines,
               .cursor = state_.cursor,
-              .acceptedSeq = state_.acceptedSeq,
+              .seq = state_.seq,
               .maxCount = maxCount,
           },
           diff,
@@ -232,18 +228,18 @@ vector<Suggestion> View::recommendInsert(int editIndex, int maxCount) const {
 
   // costDiff: same monoid composition the frontier modules use, so the
   // displayed cost reflects the actual incremental effort of typing this
-  // sequence after `state_.acceptedSeq`'s last keystroke. (Boundary
+  // sequence after `state_.seq`'s last keystroke. (Boundary
   // interactions like same-finger / roll across the structural→typed seam
-  // are already accumulated into acceptedSeq once `s`/`cl`/`cw` was
+  // are already accumulated into seq once `s`/`cl`/`cw` was
   // committed.)
   RunningEffort acceptedEffort(
-      globalSequenceToKeys().tokenize(state_.acceptedSeq), config_);
+      globalSequenceToKeys().tokenize(state_.seq), config_);
   const double acceptedCost = acceptedEffort.getEffort(config_);
   RunningEffort candidate(globalSequenceToKeys().tokenize(typedText), config_);
   RunningEffort merged = RunningEffort::merge(acceptedEffort, candidate);
   const double costDiff = merged.getEffort(config_) - acceptedCost;
 
-  return {FrontierItem{
+  return {Suggestion{
       .token = Token{typedText},
       .landingPos = plannedEdit.transformResult.getGoalPos(),
       .costDiff = costDiff,
@@ -326,7 +322,6 @@ Outcome View::afterEditCompleted(State next, int editIndex) {
   // `isCompleted()` (Navigate at totalEdits_ with cursor at goalPos).
   next.lines = plan_.getPlan().fencepostAt(nextEdit);
   next.phase = phaseForEditCursor(nextEdit, next.cursor);
-  next.acceptedRevision++;
   return commit(std::move(next));
 }
 
@@ -350,10 +345,9 @@ Outcome View::applyMovement(string_view movementText) {
     return unexpected(
         Rejected{"transform movement left the current edit range"});
   }
-  next.acceptedSeq.append(std::move(eff->appendedSeq));
-  next.acceptedCost = getEffort(next.acceptedSeq, config_);
+  next.seq.append(std::move(eff->appendedSeq));
+  next.cost = getEffort(next.seq, config_);
   next.phase = phaseForEditCursor(*gated, next.cursor);
-  next.acceptedRevision++;
   return commit(std::move(next));
 }
 
@@ -374,11 +368,10 @@ Outcome View::acceptCursorMove(CursorPos newCursor, string_view rawKeys) {
         Rejected{"transform movement left the current edit range"});
   }
   if (!eff->appendedSeq.empty()) {
-    next.acceptedSeq.append(std::move(eff->appendedSeq));
-    next.acceptedCost = getEffort(next.acceptedSeq, config_);
+    next.seq.append(std::move(eff->appendedSeq));
+    next.cost = getEffort(next.seq, config_);
   }
   next.phase = phaseForEditCursor(*gated, next.cursor);
-  next.acceptedRevision++;
   return commit(std::move(next));
 }
 
@@ -396,8 +389,8 @@ Outcome View::applyEdit(string_view text) {
 
   State next = state_;
   next.cursor = eff->postCursor;
-  next.acceptedSeq.append(text);
-  next.acceptedCost = getEffort(next.acceptedSeq, config_);
+  next.seq.append(text);
+  next.cost = getEffort(next.seq, config_);
   return afterEditCompleted(std::move(next), editIndex);
 }
 
@@ -428,9 +421,8 @@ Outcome View::acceptBufferState(const Lines& newLines, CursorPos newCursor,
     return afterEditCompleted(std::move(next), editIndex);
   }
   // No-op: buffer already matches current fencepost (e.g. native undo or
-  // programmatic re-sync). Sync cursor + revision only.
+  // programmatic re-sync). Sync cursor only.
   next.phase = phaseForEditCursor(editIndex, next.cursor);
-  next.acceptedRevision++;
   return commit(std::move(next));
 }
 
@@ -442,7 +434,6 @@ Outcome View::beginInsert() {
 
   State next = state_;
   next.phase = Insert{editIndex};
-  next.acceptedRevision++;
   return commit(std::move(next));
 }
 

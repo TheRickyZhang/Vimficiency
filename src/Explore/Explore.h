@@ -2,7 +2,6 @@
 
 #include <cassert>
 #include <expected>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -18,97 +17,57 @@
 #include "Types/Lines.h"
 #include "Types/NavContext.h"
 
-// =============================================================================
-// Explore view
-// =============================================================================
-// Middle layer between Lua (InteractiveExports.cpp) and the optimizer lib (`src/Optimizer/`).
-// Lua calls in via the FFI exports in `LuaExports/InteractiveExports.cpp`.
-//
-// TLDR: review the lifecycle
-//
-// Conventions:
-//   - Plan is computed once at construction and never re-planned. Each
-//     `recommendations(...)` call rebuilds frontiers live from
-//     `Optimizer/*Frontier.h` modules — no warm optimizer is cached here.
-//   - User mistakes return `Rejected` with state unchanged; programming
-//     invariants `assert`. There is no Invalid phase.
-//   - Lifecycle is Lua's job: `explore_destroy` tears down on scratch close.
-//   - Action parsing/validation lives in `EditHandler`/`MovementHandler`,
-//     not inline in View methods.
-//
-// Action contract — every accept*/apply* satisfies these or returns Rejected
-// with state unchanged. New actions: walk this list explicitly.
-//   1. Phase gate. Use the require* helpers for the relevant phase/action.
-//   2. Reported cursor (when the action takes one from outside): must pass
-//      `Lines::contains` against the lines being committed, and the boundary
-//      check via `MovementHandler::finishMove` if motion-y.
-//   3. Reported lines (when the action takes them from outside): must match
-//      the expected fencepost (current and/or next) — go through
-//      `EditHandler::validateBufferState`.
-//   4. Non-empty raw keys: must parse via `parseSequence` (edit-bearing) or
-//      `parseMotions` (motion-only) — use `appendRawKeysOrReject`. Silently
-//      dropping unparseable keys undercounts cost and hides bugs.
-//   5. State unchanged on any Reject — never partially mutate `state_`. The
-//      "build a `next` snapshot, commit at the end" pattern enforces this.
-//   6. Successful return must `commit(...)` (or call a helper that does) so
-//      `acceptedRevision` increments and undo history is updated.
+/* Explore view
+  Middle layer between Lua (InteractiveExports.cpp) and the optimizer lib (`src/Optimizer/`).
+  Lua calls in via the FFI exports in `LuaExports/InteractiveExports.cpp`.
+  `recommendations(...)` call rebuilds new suggestions (can it preserve undo/redo?)
+
+  Phase model: a session has E edits and E+1 navigation segments alternating
+  Navigate(i)  for i ∈ [0, totalEdits]   target = i's diff range, or goalPos for i = totalEdits
+  Transform(i) for i ∈ [0, totalEdits)   apply edit i
+  Insert(i)    for i ∈ [0, totalEdits)   insert-mode continuation for edit i
+*/
 
 namespace Explore {
 
-// Phase model: a session has E edits and E+1 navigation segments
-// alternating between them. Phase identifies what the user is currently
-// doing in that grid:
-//
-//   Navigate(i)  for i ∈ [0, totalEdits]   target = plan.navTarget(i)
-//                                           (= edit i's diff range for i<E,
-//                                            = goalPos for i==E)
-//   Transform(i) for i ∈ [0, totalEdits)   apply edit i
-//   Insert(i)    for i ∈ [0, totalEdits)   insert-mode continuation for edit i
-//
-// "Completion" is a derived predicate (see View::isCompleted), not a phase
-// alternative. Pure-motion sessions are the degenerate E == 0 case; the only
-// reachable phase is Navigate(0) with target = goalPos.
-struct Navigate  { int index = 0; bool operator==(const Navigate&) const = default; };
-struct Transform { int index = 0; bool operator==(const Transform&) const = default; };
-struct Insert    { int index = 0; bool operator==(const Insert&) const = default; };
+struct Navigate  {
+  int index = 0;
+  bool operator==(const Navigate&) const = default;
+};
+struct Transform {
+  int index = 0;
+  bool operator==(const Transform&) const = default;
+};
+struct Insert    {
+  int index = 0;
+  bool operator==(const Insert&) const = default;
+};
+
 using Phase = std::variant<Navigate, Transform, Insert>;
 
+// Well-known overload pattern for visiting std::variant
 template <class... Ts>
-struct PhaseVisitor : Ts... { using Ts::operator()...; };
-template <class... Ts>
-PhaseVisitor(Ts...) -> PhaseVisitor<Ts...>;
+struct overload : Ts... { using Ts::operator()...; };
 
-inline std::string_view phaseKindName(const Phase& p) {
-  return std::visit(PhaseVisitor{
+inline std::string_view phaseName(const Phase& p) {
+  return std::visit(overload{
       [](const Navigate&)  { return std::string_view{"Navigate"}; },
       [](const Transform&) { return std::string_view{"Transform"}; },
       [](const Insert&)    { return std::string_view{"Insert"}; },
   }, p);
 }
 
-// Phase index always carries a value (no optional) — the variant alternative
-// encodes which subrange the index lives in.
 inline int phaseIndex(const Phase& p) {
   return std::visit([](auto&& x) { return x.index; }, p);
 }
 
-// One ranked suggestion returned by View::recommendations. Every
-// recommendation — motion, edit-structural-prefix, or insert-mode typed
-// text — fits the same shape: a token to execute, a landing position, and
-// an incremental cost. The recommendation's "kind" is implicit in the
-// view's current phase: Navigate emits motions, Transform emits edit
-// atoms, Insert emits the canonical typed text.
-using Suggestion = FrontierItem;
-
-// Mutable state snapshot. The View owns one live State and a history of
-// prior snapshots in its undo/redo stacks.
+// Mutable state snapshot. The View owns one live State and a history of prior snapshots in its undo/redo stacks.
 struct State {
   Phase phase = Navigate{0};
-  int acceptedRevision = 0;
   Lines lines;
   CursorPos cursor{0, 0};
-  std::string acceptedSeq;
-  double acceptedCost = 0.0;
+  std::string seq;
+  double cost = 0.0;
 
   bool operator==(const State&) const = default;
 };
@@ -128,68 +87,26 @@ public:
   const Phase& phase() const { return state_.phase; }
   const State& state() const { return state_; }
   int totalEdits() const { return totalEdits_; }
-  int acceptedRevision() const { return state_.acceptedRevision; }
   bool canUndo() const { return !undo_.empty(); }
   bool canRedo() const { return !redo_.empty(); }
 
-  // The session is complete iff the cursor has reached `goalPos` after all
-  // edits — i.e. phase is `Navigate{totalEdits()}` and the cursor matches
-  // the user's goalPos. Not sticky: moving the cursor away after reaching
-  // goal flips this back to false.
   bool isCompleted() const;
 
   const Lines& goalLines() const { return goalLines_; }
   CursorPos goalPos() const { return goalPos_; }
 
   // Half-open [begin, end) target for the current phase: edit diff range for
-  // Navigate/Transform(i), final goal point for Navigate(totalEdits), empty
-  // during Insert.
-  std::optional<std::pair<CursorPos, CursorPos>> currentTargetRange() const;
+  // Navigate/Transform/Insert(i), final goal point for Navigate(totalEdits).
+  // Insert(i) reports the same diff range as Navigate/Transform(i); whether
+  // to render it is a UI policy decision (see tags.lua).
+  std::pair<CursorPos, CursorPos> currentTargetRange() const;
 
-  // Top-K ranked IMMEDIATE NEXT MOLECULES for the current phase. Empty in
-  // Insert; a completed Navigate(totalEdits) naturally has no useful motion
-  // target left.
-  //
-  // Each recommendation is one atomic action the user could take right now
-  // (`w`, `f;`, `$`, `s`, `cl`, ...), NOT a full sequence to the target.
-  // The user picks one, the session advances by exactly that token, and
-  // the next call to `recommendations(...)` computes a fresh frontier from
-  // the new cursor state.
-  //
-  // Composition by phase:
-  //   - Navigate(i): motion frontier toward navTarget(i) — depth-1 live A*
-  //     peek (rankNavFrontier).
-  //   - Transform(i): edit frontier at the cursor (rankTransformFrontier).
-  //     Motion suggestions never appear in Transform — the phase invariant
-  //     keeps the cursor inside the diff, so the immediate next token is
-  //     always an edit. The user may still take a motion via
-  //     `applyMovement`; the Lua layer is responsible for that affordance.
-  //   - Insert(i): empty.
-  // Final trim caps the list at `maxCount`.
-  //
-  // Two independent dedup knobs — motions and edits use DIFFERENT dedup
-  // keys because their pedagogical axes differ:
-  //   - motions dedup by LANDING CELL: `w`/`W`/`e` all landing on the
-  //     same cell is redundant (the cell is the outcome).
-  //   - edits dedup by SEQUENCE TEXT: `rm`, `sm<Esc>`, `cl m<Esc>` all
-  //     landing at the same post-edit cursor are DISTINCT commands and
-  //     all surface; the command shape is the outcome.
-  // See NavFrontier.h and TransformFrontier.h for the per-module details.
-  //
-  // Both default to `1` (cheapest per landing/start — i.e. dedup on).
-  // Pass a larger value to surface multiple distinct paths/sequences per
-  // landing/start. The cap flows to the underlying frontier modules so
-  // generation respects it end-to-end and the display layer never throws
-  // anything away post-hoc.
   std::vector<Suggestion> recommendations(
       int maxCount,
-      int navMaxResultsPerEndPos = 1,
-      int transformMaxResultsPerStartPos = 1) const;
+      int navMaxResultsPerEndPos = 1, int transformMaxResultsPerStartPos = 1 // Passed as an optimizer param. In the future we can expand these to optimizer params themselves
+  ) const;
 
-  // --- Actions ---
-  // Each action produces a new state (on Applied) or a Rejected reason
-  // (state unchanged). No action can invalidate the view — programming-
-  // invariant failures assert instead.
+  // Each action produces a new state or a rejected reason
   Outcome applyMovement(std::string_view movementText);
   Outcome acceptCursorMove(CursorPos newCursor, std::string_view rawKeys);
   Outcome applyEdit(std::string_view text);
@@ -245,7 +162,7 @@ private:
       int editIndex,
       int maxCount,
       int transformMaxResultsPerStartPos) const;
-  // Insert phase emits a single FrontierItem whose token is the canonical
+  // Insert phase emits a single Suggestion whose token is the canonical
   // typed text (no trailing <Esc>) the user must type to reach the planned
   // post-edit fencepost. The structural command was already executed in
   // Transform; Esc is handled by Lua via InsertLeave. Empty list when the

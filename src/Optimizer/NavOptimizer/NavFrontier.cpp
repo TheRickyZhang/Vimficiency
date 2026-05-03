@@ -19,7 +19,7 @@
 
 using namespace std;
 
-vector<FrontierItem> rankNavFrontier(
+vector<Suggestion> rankNavFrontier(
     const NavFrontierQuery& query,
     const Config& config) {
   if (query.maxCount <= 0) return {};
@@ -49,7 +49,7 @@ vector<FrontierItem> rankNavFrontier(
   NavExplorer explorer(query.lines, query.navContext, query.boundary,
                           params, *motionRange, bufferIndex, 0);
   EffortBank bank(config);
-  RunningEffort acceptedEffort(globalSequenceToKeys().tokenize(query.acceptedSeq), config);
+  RunningEffort acceptedEffort(globalSequenceToKeys().tokenize(query.seq), config);
   const double acceptedCost = acceptedEffort.getEffort(config);
 
   auto scoreState = [&](CursorPos pos, double effort) {
@@ -117,12 +117,12 @@ vector<FrontierItem> rankNavFrontier(
   }
   sort(successors.begin(), successors.end());
 
-  vector<FrontierItem> items;
+  vector<Suggestion> items;
   items.reserve(static_cast<size_t>(query.maxCount));
   for (const NavState& s : successors) {
     string seq = s.getSequence().str();
     if (seq.empty()) continue;
-    items.push_back(FrontierItem{
+    items.push_back(Suggestion{
         .token = Token{std::move(seq)},
         .landingPos = s.getPos(),
         .costDiff = s.getEffort() - acceptedCost,

@@ -42,7 +42,7 @@ bool cursorInInsertionRange(
 // reaches `emit`, that's a bug in one of the enumerators — caught by the
 // debug assert below.
 struct EditEmitter {
-  vector<FrontierItem>& items;
+  vector<Suggestion>& items;
 #ifndef NDEBUG
   unordered_set<string> seenSequence_debug;
 #endif
@@ -61,7 +61,7 @@ struct EditEmitter {
     assert(seenSequence_debug.insert(string(fullSequence)).second &&
            "duplicate sequence reached EditEmitter::emit — enumerator bug");
 #endif
-    items.push_back(FrontierItem{
+    items.push_back(Suggestion{
         .token = extractStructuralToken(fullSequence),
         .landingPos = landingPos,
         .costDiff = costDiffFor(fullSequence),
@@ -222,7 +222,7 @@ void enumerateDepth1DeletionStructurals(
 
 }
 
-vector<FrontierItem> rankTransformFrontier(
+vector<Suggestion> rankTransformFrontier(
     const TransformFrontierQuery& query,
     const Config& config) {
   if (query.maxCount <= 0) return {};
@@ -231,9 +231,9 @@ vector<FrontierItem> rankTransformFrontier(
   optional<JoinPlan> joinPlan = computeJoinPlanForDiff(query.diff, query.lines, params, config);
   BracketQuoteContext bqContext = computeTextObjectContextForDiff(query.diff, query.lines);
 
-  vector<FrontierItem> items;
+  vector<Suggestion> items;
   items.reserve(static_cast<size_t>(query.maxCount));
-  RunningEffort acceptedEffort(globalSequenceToKeys().tokenize(query.acceptedSeq), config);
+  RunningEffort acceptedEffort(globalSequenceToKeys().tokenize(query.seq), config);
   const double acceptedCost = acceptedEffort.getEffort(config);
   EditEmitter emitter{
       items,
@@ -241,7 +241,7 @@ vector<FrontierItem> rankTransformFrontier(
       {},
 #endif
       acceptedEffort, acceptedCost, config};
-  auto finish = [&]() -> vector<FrontierItem> {
+  auto finish = [&]() -> vector<Suggestion> {
     stable_sort(items.begin(), items.end(), [](const auto& a, const auto& b) {
       return a.costDiff < b.costDiff;
     });

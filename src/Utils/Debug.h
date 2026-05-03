@@ -35,6 +35,28 @@ inline std::string consume_debug_output() {
   return result;
 }
 
+// Always-on diagnostic channel for soft-fail conditions that should
+// surface to the user (vs. `debug()`, which is dev-only). Drained from
+// Lua via `vf_get_warnings()` and routed through `vim.notify`.
+inline std::ostringstream& wout() {
+  static std::ostringstream stream;
+  return stream;
+}
+
+template <typename... Args> inline void warning(Args&&... args) {
+  auto& os = wout();
+  const char* sep = "";
+  ((os << sep << std::forward<Args>(args), sep = " "), ...);
+  os << '\n';
+}
+
+inline std::string consume_warning_output() {
+  std::string result = wout().str();
+  wout().str("");
+  wout().clear();
+  return result;
+}
+
 // inline void clear_debug_output() {
 //     dout().str("");
 //     dout().clear();

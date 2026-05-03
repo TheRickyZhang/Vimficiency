@@ -157,6 +157,12 @@ const char* vf_get_debug() {
   return debug_storage.c_str();
 }
 
+const char* vf_get_warnings() {
+  static std::string warning_storage;
+  warning_storage = consume_warning_output();
+  return warning_storage.c_str();
+}
+
 int vf_version() { return 1; }
 
 const char *vf_abi_hash() { return VF_ABI_HASH; }

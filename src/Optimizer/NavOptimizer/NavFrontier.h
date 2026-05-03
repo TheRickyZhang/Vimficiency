@@ -23,7 +23,7 @@
 //
 // Each returned item's `costDiff` / `landingPos` describe the next accepted
 // token. `costDiff` includes keyboard-model boundary effects from
-// `query.acceptedSeq`. The caller (Explore::View) uses these to drive a
+// `query.seq`. The caller (Explore::View) uses these to drive a
 // step-by-step UI; after the user picks a token, they call `rankNavFrontier`
 // again from the new cursor for the next step.
 //
@@ -57,6 +57,6 @@ struct NavFrontierQuery : FrontierQuery {
 // Returns up to `query.maxCount` distinct single-token candidates,
 // sorted by A* priority (lowest cost first). Empty if the cursor is
 // already on-target or no motion makes progress.
-std::vector<FrontierItem> rankNavFrontier(
+std::vector<Suggestion> rankNavFrontier(
     const NavFrontierQuery& query,
     const Config& config);

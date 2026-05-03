@@ -17,6 +17,6 @@ struct TransformFrontierQuery : FrontierQuery {
   int maxResultsPerStartPos = 1;
 };
 
-std::vector<FrontierItem> rankTransformFrontier(
+std::vector<Suggestion> rankTransformFrontier(
     const TransformFrontierQuery& query,
     const Config& config);

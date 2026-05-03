@@ -371,7 +371,7 @@ local function on_insert_enter()
   if not matched then return end
 
   -- Deliberately DO NOT clear on_key_buffer here — so the full command
-  -- (`s` + typed content + `<Esc>`) survives to acceptedSeq when
+  -- (`s` + typed content + `<Esc>`) survives to seq when
   -- InsertLeave calls accept_insert_exit.
   local applied = ffi_lib.explore_begin_insert(a.view_id)
   if applied.status == "Rejected" then return end
@@ -669,15 +669,14 @@ function M.open(label, result, opts)
       phase = { kind = "Navigate" },
       cursor = { row = start_row, col = start_col },
       total_edits = 0,
-      accepted_cost = 0,
-      accepted_seq = "",
-      accepted_revision = 0,
+      cost = 0,
+      seq = "",
       can_undo = false,
       can_redo = false,
     },
     recommendations = {},
 
-    -- raw-key capture (InsertEnter atom matching, acceptedSeq replay)
+    -- raw-key capture (InsertEnter atom matching, seq replay)
     on_key_buffer = "",
 
     -- insertion-origin snapshot (set on InsertEnter, cleared on InsertLeave)
@@ -714,8 +713,8 @@ function M.open(label, result, opts)
       vim.notify(vim.inspect({
         phase = a.state.phase,
         cursor = a.state.cursor,
-        accepted_seq = a.state.accepted_seq,
-        accepted_cost = a.state.accepted_cost,
+        seq = a.state.seq,
+        cost = a.state.cost,
         total_edits = a.state.total_edits,
         can_undo = a.state.can_undo,
         can_redo = a.state.can_redo,
@@ -914,9 +913,8 @@ function M.status()
     cursor = vim.deepcopy(a.state.cursor),
     scratch_cursor = { row = live_cursor[1] - 1, col = live_cursor[2] },
     target_range = vim.deepcopy(a.state.target_range),
-    accepted_seq = a.state.accepted_seq,
-    accepted_cost = a.state.accepted_cost,
-    accepted_revision = a.state.accepted_revision,
+    seq = a.state.seq,
+    cost = a.state.cost,
     can_undo = a.state.can_undo,
     can_redo = a.state.can_redo,
     pending = vim.deepcopy(a.pending),

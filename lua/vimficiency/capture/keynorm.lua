@@ -1,44 +1,47 @@
 -- lua/vimficiency/capture/keynorm.lua
 --
--- Shared "any key representation → C++ tokenizer-safe printable form"
--- conversion.
+-- Convert raw input bytes from `vim.on_key` into the C++ tokenizer's
+-- canonical printable form.
 --
--- `vim.on_key` delivers keys as raw bytes (e.g. 0x15 for <C-u>). The C++
--- sequence tokenizer (SequenceToKeys / MovementToKeysPrimitives) keys on the
--- printable `<C-x>` form, and `vim.fn.keytrans()` emits `<C-U>` (uppercase
--- modifier-letter), while the registered tokens are `<C-u>` (lowercase).
--- Without this normalization the tokenizer hits
--- `assert(false && "Malformed key sequence")` at runtime on any sequence
--- containing a Ctrl-letter.
+-- `vim.on_key` is nvim's lowest-level key hook: it delivers the bytes
+-- nvim itself read from the input stream. Concretely:
+--   - Plain ASCII / typed UTF-8: literal bytes (`a`, `é`).
+--   - Ctrl-letters: a single control byte (`\x15` for `<C-u>`).
+--   - Special keys (BS, arrows, Home/End, F-keys, …): K_SPECIAL form
+--     (`\x80kb` for `<BS>`, `\x80ku` for arrow up, etc.).
+-- It never delivers printable `<C-u>`-style notation — that's a vim
+-- script surface form, not an input-stream form.
 --
--- See dev/lua/key-normalization.md for the full rationale and contract.
+-- The C++ sequence tokenizer (SequenceToKeys / MovementToKeysPrimitives)
+-- keys on the printable form with **lowercase** modifier letters
+-- (`<C-u>`, not the `<C-U>` `keytrans` emits). So this helper is
+-- exactly two passes: `keytrans` to print, then a lowercase-fixup to
+-- match the project's token convention.
 --
 -- Callers:
 --   - lua/vimficiency/explore.lua — on_key buffer for the explore session
 --   - lua/vimficiency/capture/key_tracking.lua — mark/watch/recall capture
 --
--- Any new callsite that forwards on_key output to the optimizer/FFI MUST
--- route through `normalize` rather than calling `vim.fn.keytrans` directly,
--- otherwise it will reintroduce the assert on Ctrl-letter input.
+-- See dev/lua/key-normalization.md for the full rationale.
 
 local M = {}
 
---- Convert any key representation to the tokenizer's canonical printable
---- form. Idempotent: `normalize(normalize(x)) == normalize(x)` for every
---- input shape (raw bytes, printable notation, or a mix).
+--- Convert raw input bytes (as delivered by `vim.on_key`) to the C++
+--- tokenizer's printable form with lowercase modifier letters. Input
+--- MUST be raw bytes — passing already-printable notation is a bug
+--- (it will be re-escaped: `keytrans("<BS>")` returns `<lt>BS>`).
 ---
---- Implementation: parse through `nvim_replace_termcodes` first so the
---- input is always in raw-byte form before `keytrans()` runs. That kills
---- the `<` → `<lt>` escape trap of calling `keytrans` on already-printable
---- text — pre-existing `<lt>` collapses back to `<`, then `keytrans`
---- re-escapes it exactly once.
----@param input string|nil
----@return string
+--- Why no `nvim_replace_termcodes` pre-pass: `replace_termcodes` is
+--- the inverse direction (printable → raw) and it actively corrupts
+--- raw K_SPECIAL bytes by escaping `0x80` to `<80>`-notation, which
+--- breaks every special key. `keytrans` handles all raw-byte shapes
+--- directly: single-byte control codes, K_SPECIAL multi-byte keys,
+--- and plain ASCII/UTF-8 alike.
+---@param input string|nil  raw bytes from `vim.on_key`
+---@return string           printable form, e.g. `<C-u>`, `<BS>`, `a`
 function M.normalize(input)
   if not input or input == "" then return "" end
-  local raw = vim.api.nvim_replace_termcodes(input, true, true, true)
-  local printable = vim.fn.keytrans(raw)
-  return (printable:gsub("<C%-([A-Z])>", function(c)
+  return (vim.fn.keytrans(input):gsub("<C%-([A-Z])>", function(c)
     return "<C-" .. c:lower() .. ">"
   end))
 end

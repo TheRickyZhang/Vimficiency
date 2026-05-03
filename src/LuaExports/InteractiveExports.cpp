@@ -12,7 +12,6 @@ namespace payload = VF::LuaExports::payload;
 namespace {
 
 using Explore::View;
-using Explore::Suggestion;
 using Explore::Outcome;
 using VF::LuaExports::ViewRegistry;
 
@@ -29,24 +28,18 @@ struct PhaseWireFields {
 };
 PhaseWireFields phaseWireFields(const Explore::Phase& phase) {
   return {
-      Explore::phaseKindName(phase),
+      Explore::phaseName(phase),
       Explore::phaseIndex(phase),
   };
 }
 
-// State payload. Length-prefixed fields so raw bytes in acceptedSeq survive
+// State payload. Length-prefixed fields so raw bytes in `seq` survive
 // round-tripping. `is_completed` is the C++-side derived predicate (cursor
 // has reached goalPos at the post-final-edit nav segment). The trailing
-// four ints carry the current target range (-1 sentinels in Insert phase,
-// where the UI doesn't render a range).
+// four ints carry the current target range; the UI decides whether to
+// render it based on phase (e.g. hidden during Insert).
 string encodeState(const View& v) {
-  int tbRow = -1, tbCol = -1, teRow = -1, teCol = -1;
-  if (auto range = v.currentTargetRange()) {
-    tbRow = range->first.line;
-    tbCol = range->first.col;
-    teRow = range->second.line;
-    teCol = range->second.col;
-  }
+  const auto [targetBegin, targetEnd] = v.currentTargetRange();
   const Explore::State& st = v.state();
   const PhaseWireFields phase = phaseWireFields(st.phase);
   return encodeFields(
@@ -56,15 +49,14 @@ string encodeState(const View& v) {
       string_view(intField(st.cursor.line)),
       string_view(intField(st.cursor.col)),
       string_view(intField(v.totalEdits())),
-      string_view(doubleField(st.acceptedCost)),
-      string_view(st.acceptedSeq),
-      string_view(intField(st.acceptedRevision)),
+      string_view(doubleField(st.cost)),
+      string_view(st.seq),
       string_view(intField(v.canUndo() ? 1 : 0)),
       string_view(intField(v.canRedo() ? 1 : 0)),
-      string_view(intField(tbRow)),
-      string_view(intField(tbCol)),
-      string_view(intField(teRow)),
-      string_view(intField(teCol)));
+      string_view(intField(targetBegin.line)),
+      string_view(intField(targetBegin.col)),
+      string_view(intField(targetEnd.line)),
+      string_view(intField(targetEnd.col)));
 }
 
 // Apply-result payload. Two fields: status ("Applied" | "Rejected") and

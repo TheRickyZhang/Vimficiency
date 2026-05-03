@@ -16,8 +16,7 @@
 #include "Types/Token.h"
 
 // What the possible results we get are
-// Maybe better name: ExploreOption
-struct FrontierItem {
+struct Suggestion {
   Token token;
   CursorPos landingPos{0, 0};
   double costDiff = 0.0;
@@ -28,6 +27,6 @@ struct FrontierItem {
 struct FrontierQuery {
   const Lines& lines;
   CursorPos cursor;
-  std::string_view acceptedSeq = {};
+  std::string_view seq = {};
   int maxCount = 0;
 };
