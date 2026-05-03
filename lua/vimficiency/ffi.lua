@@ -73,6 +73,7 @@ end
 ---@field vf_apply_config fun(): nil
 ---@field vf_analyze fun(initial_text: string, goal_text: string, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, start_row: integer, start_col: integer, end_row: integer, end_col: integer, keyseq: string, window_height: integer, scroll_amount: integer, results_calculated: integer): string
 ---@field vf_get_debug fun(): string
+---@field vf_get_warnings fun(): string
 ---@field vf_version fun(): integer
 ---@field vf_abi_hash fun(): ffi.cdata*
 ---@field vf_debug_config fun(): string
@@ -695,12 +696,11 @@ end
 ---@field is_completed boolean  # cursor at goalPos with all edits applied
 ---@field cursor VF.Position
 ---@field total_edits integer
----@field accepted_cost number
----@field accepted_seq string
----@field accepted_revision integer
+---@field cost number
+---@field seq string
 ---@field can_undo boolean
 ---@field can_redo boolean
----@field target_range? VF.Range  # half-open diff range; nil when no current target
+---@field target_range VF.Range  # half-open diff range for the current phase
 
 --- Apply-result variants. C++ side is `std::expected<void, Rejected>`;
 --- Lua mirrors that via discriminated union — narrow on `result.status`.
@@ -728,9 +728,22 @@ end
 ---@field landing VF.Position
 ---@field rank? integer  # attached on the consumer side after sorting (see explore.lua attach_ranks)
 
+--- Drain any soft-fail diagnostics emitted by the C++ side during the
+--- most recent FFI call and surface them via `vim.notify`. Centralized
+--- here because every FFI wrapper that returns a payload routes through
+--- `require_non_error`, so this catches all entry points uniformly.
+local function drain_warnings()
+  local pending = ffi.string(lib.vf_get_warnings())
+  if pending == "" then return end
+  -- pcall: tests / headless contexts may stub `vim.notify`; do not let
+  -- a missing notifier turn a soft-fail diagnostic into a hard error.
+  pcall(vim.notify, "[vimficiency] " .. pending, vim.log.levels.WARN)
+end
+
 ---@param payload string
 ---@return string
 local function require_non_error(payload)
+  drain_warnings()
   if payload:sub(1, 7) == "ERROR: " then
     error(payload, 0)
   end
@@ -757,26 +770,21 @@ end
 ---@return VF.Explore.State
 local function parse_explore_state(payload)
   local parts = decode_string_list(payload)
-  assert(#parts == 15, "explore state payload must have 15 fields")
-  local tb_row = tonumber(parts[12]) or -1
-  ---@type VF.Range?
-  local target_range = nil
-  if tb_row >= 0 then
-    target_range = {
-      begin_pos = { row = tb_row, col = tonumber(parts[13]) or 0 },
-      end_pos = { row = tonumber(parts[14]) or 0, col = tonumber(parts[15]) or 0 },
-    }
-  end
+  assert(#parts == 14, "explore state payload must have 14 fields")
+  ---@type VF.Range
+  local target_range = {
+    begin_pos = { row = tonumber(parts[11]) or 0, col = tonumber(parts[12]) or 0 },
+    end_pos = { row = tonumber(parts[13]) or 0, col = tonumber(parts[14]) or 0 },
+  }
   return {
     phase = build_phase(parts[1], parts[2]),
     is_completed = parts[3] == "1",
     cursor = { row = tonumber(parts[4]) or 0, col = tonumber(parts[5]) or 0 },
     total_edits = tonumber(parts[6]) or 0,
-    accepted_cost = tonumber(parts[7]) or 0,
-    accepted_seq = parts[8],
-    accepted_revision = tonumber(parts[9]) or 0,
-    can_undo = parts[10] == "1",
-    can_redo = parts[11] == "1",
+    cost = tonumber(parts[7]) or 0,
+    seq = parts[8],
+    can_undo = parts[9] == "1",
+    can_redo = parts[10] == "1",
     target_range = target_range,
   }
 end

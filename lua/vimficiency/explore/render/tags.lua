@@ -46,7 +46,7 @@ end
 ---range: `[begin, end)`. Zero-width targets (pure insertion points) are
 ---represented by a single `{zero_width = true}` cell at begin.
 local function target_cells(state, scratch_buf)
-  if not state.target_range then return {} end
+  if state.phase.kind == "Insert" then return {} end
   local br, bc = state.target_range.begin_pos.row, state.target_range.begin_pos.col
   local er, ec = state.target_range.end_pos.row, state.target_range.end_pos.col
   local function line_len(row)

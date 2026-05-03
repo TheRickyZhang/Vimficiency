@@ -9,37 +9,57 @@ one) must convert raw key bytes into the tokenizer's canonical printable form
 The shared helper is `lua/vimficiency/capture/keynorm.lua` — route every
 conversion through `keynorm.normalize(input)`.
 
-## Why three transformations, not one
+## Input contract
 
-`vim.on_key` delivers keys in two shapes, and the tokenizer has an
-additional case convention — so `normalize` does three things in order:
+`normalize` accepts **only raw input bytes** as delivered by
+`vim.on_key`. It is not a general-purpose key-string normalizer:
+passing already-printable notation like `"<C-u>"` will corrupt it
+(`keytrans` re-escapes the `<`, yielding `<lt>C-u>`).
 
-1. **Parse to raw bytes.** `vim.api.nvim_replace_termcodes(input, true,
-   true, true)` interprets `input` as a Vim key-notation string and emits
-   raw bytes. Given `"<C-u>"` it produces `"\x15"`; given already-raw
-   `"\x15"` it leaves it alone (no `<…>` pattern to parse); given `"<lt>"`
-   it produces `"<"`. This step makes the rest of the pipeline oblivious
-   to whether the caller handed us raw or printable text.
+`vim.on_key` is nvim's lowest-level key hook and only produces three
+input shapes:
+- Plain ASCII / typed UTF-8 bytes (`a`, `é`).
+- Single-byte control codes for Ctrl-letters (`\x15` for `<C-u>`).
+- Multi-byte K_SPECIAL form for special keys (`\x80kb` for `<BS>`,
+  `\x80ku` for arrow up, etc.).
 
-2. **Print to canonical notation.** `vim.fn.keytrans(raw)` converts raw
-   bytes back to the Vim printable form — e.g. `"\x15"` → `"<C-U>"`. The
-   C++ tokenizer keys on this printable form, not raw control bytes.
+It never produces printable `<...>` notation — that's a vim-script
+surface form, never an input-stream form. So the function only needs
+to handle raw input.
 
-3. **Lowercase modifier-letter.** `vim.fn.keytrans("\x15")` returns
-   `"<C-U>"` (uppercase U), but the registered tokens in
+## What `normalize` does
+
+Two passes, in order:
+
+1. **Print to canonical notation.** `vim.fn.keytrans(raw)` handles all
+   three raw shapes uniformly (`"\x15"` → `"<C-U>"`, `"\x80kb"` →
+   `"<BS>"`, `"a"` → `"a"`). The C++ tokenizer keys on this form.
+
+2. **Lowercase the modifier letter.** `keytrans` emits `"<C-U>"`
+   (uppercase), but the registered tokens in
    `src/Keyboard/ToKeys/MovementToKeysPrimitives.h` and
    `src/Keyboard/ToKeys/EditToKeys.cpp` are **lowercase** (`"<C-u>"`).
-   This is an unconditional project convention — see the token tables for
-   the full list (`<C-a>` … `<C-z>` plus `<C-Space>`, `<C-BS>`, etc.).
-   Without lowercasing the modifier letter, keytrans output misses the
-   table.
+   See the token tables for the full list. Without lowercasing,
+   `keytrans` output misses the table.
 
-Because step 1 always parses first, `normalize` is **idempotent**:
-`normalize(normalize(x)) == normalize(x)` for every input shape. Any
-pre-existing `<lt>` in printable input collapses back to `<` during the
-parse, then `keytrans` re-escapes it exactly once — no `<` → `<lt>C-u>`
-corruption. Call sites can forward `vim.on_key` bytes unconditionally
-without format-detection heuristics.
+## Why no `nvim_replace_termcodes` pre-pass
+
+A previous version of `normalize` ran `nvim_replace_termcodes(input,
+true, true, true)` first, on the theory that doing so would let the
+function accept printable notation as well. That was a speculative
+flexibility — no caller ever exercised it — and it actively broke
+raw input.
+
+`replace_termcodes` is the **inverse** direction (printable → raw).
+When fed raw input containing a `0x80` byte (K_SPECIAL), it doesn't
+pass it through; it re-escapes the `0x80` as the 3-byte `<80>`-notation
+encoding (`0x80 0xFE 0x58`) so the result can be fed back through
+without ambiguity. `keytrans` then renders that escape as the literal
+string `<80>`, corrupting every K_SPECIAL key in the input (`<BS>` →
+`<80>kb`, arrows similarly mangled).
+
+Removing the pre-pass and tightening the contract to raw-only is
+strictly correct for every actual call site and avoids the trap.
 
 ## Call sites
 

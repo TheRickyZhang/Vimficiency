@@ -64,6 +64,7 @@ const char* vf_analyze(
   int scroll_amount,
   int results_calculated);
 const char* vf_get_debug();
+const char* vf_get_warnings();
 int vf_version();
 const char* vf_abi_hash();
 const char* vf_debug_config();

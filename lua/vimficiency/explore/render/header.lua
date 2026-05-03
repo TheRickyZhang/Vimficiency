@@ -31,7 +31,7 @@ local function summary_chunks(active, remaining)
   local label_hl = active.state.is_completed and "DiagnosticOk" or "Normal"
   return {
     { "Cost ", "Comment" },
-    { string.format("%.2f", active.state.accepted_cost), "Normal" },
+    { string.format("%.2f", active.state.cost), "Normal" },
     { "   Cursor ", "Comment" },
     { string.format("(%d,%d)", active.state.cursor.row, active.state.cursor.col), "Normal" },
     { "   Phase ", "Comment" },
@@ -43,7 +43,7 @@ end
 ---@return { title: string, seq: string, empty_text: string }[]
 local function gather_columns(active)
   local cols = {
-    { title = "Explored", seq = active.state.accepted_seq or "", empty_text = "(start)" },
+    { title = "Explored", seq = active.state.seq or "", empty_text = "(start)" },
   }
   local optimal = (active.result and active.result.optimal_results) or {}
   local want = math.min(active.show_result_count or 0, #optimal)

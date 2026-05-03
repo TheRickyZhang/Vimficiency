@@ -102,7 +102,7 @@ local function move_to_first_edit_target(scratch_buf)
     return st
       and st.cursor.row == motion.landing.row
       and st.cursor.col == motion.landing.col
-      and st.accepted_seq ~= ""
+      and st.seq ~= ""
   end)
 end
 
@@ -125,7 +125,7 @@ test("explore flow: natural motion updates cursor and completes motion-only goal
           and st.is_completed
           and st.cursor.row == motion.landing.row
           and st.cursor.col == motion.landing.col
-          and st.accepted_seq ~= ""
+          and st.seq ~= ""
       end)
       assert_eq(explore.status().scratch_lines, { "foo bar" })
     end)

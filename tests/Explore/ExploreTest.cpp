@@ -81,13 +81,12 @@ TEST_F(ExploreViewTest, PureMotionGoalStartsInNavigate) {
   EXPECT_EQ(view.totalEdits(), 0);
 
   auto range = view.currentTargetRange();
-  ASSERT_TRUE(range.has_value());
-  EXPECT_EQ(range->first, CursorPos(0, 4));
-  EXPECT_EQ(range->second, CursorPos(0, 4));
+  EXPECT_EQ(range.first, CursorPos(0, 4));
+  EXPECT_EQ(range.second, CursorPos(0, 4));
 
   auto recs = view.recommendations(5);
   ASSERT_FALSE(recs.empty());
-  EXPECT_TRUE(any_of(recs.begin(), recs.end(), [](const FrontierItem& rec) {
+  EXPECT_TRUE(any_of(recs.begin(), recs.end(), [](const Suggestion& rec) {
     return rec.landingPos.line == 0 && rec.landingPos.col == 4;
   }));
 }
@@ -99,7 +98,7 @@ TEST_F(ExploreViewTest, PureMotionGoalCompletesWhenCursorReachesGoal) {
   ASSERT_TRUE(view.applyMovement("w").has_value());
   EXPECT_TRUE(view.isCompleted());
   EXPECT_EQ(view.state().cursor, CursorPos(0, 4));
-  EXPECT_EQ(view.state().acceptedSeq, "w");
+  EXPECT_EQ(view.state().seq, "w");
   EXPECT_TRUE(view.recommendations(5).empty());
 }
 
@@ -131,7 +130,7 @@ TEST_F(ExploreViewTest, ApproachesEditWhenLinesDiffer) {
   EXPECT_GT(view.totalEdits(), 0);
   EXPECT_EQ(view.state().cursor.line, 0);
   EXPECT_EQ(view.state().cursor.col, 0);
-  EXPECT_TRUE(view.state().acceptedSeq.empty());
+  EXPECT_TRUE(view.state().seq.empty());
 }
 
 TEST_F(ExploreViewTest, RecommendationsAreDiverse) {
@@ -165,8 +164,8 @@ TEST_F(ExploreViewTest, ApplyMotionAdvancesCursorAndSequence) {
   ASSERT_TRUE(outcome.has_value());
   EXPECT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
   EXPECT_EQ(view.state().cursor.col, 4);
-  EXPECT_EQ(view.state().acceptedSeq, "w");
-  EXPECT_GT(view.state().acceptedCost, 0.0);
+  EXPECT_EQ(view.state().seq, "w");
+  EXPECT_GT(view.state().cost, 0.0);
   EXPECT_TRUE(view.canUndo());
 }
 
@@ -179,13 +178,13 @@ TEST_F(ExploreViewTest, RecommendationCostDiffIncludesAcceptedSequence) {
   ASSERT_TRUE(view.applyMovement("w").has_value());
 
   auto recs = view.recommendations(5);
-  auto rec = find_if(recs.begin(), recs.end(), [](const FrontierItem& candidate) {
+  auto rec = find_if(recs.begin(), recs.end(), [](const Suggestion& candidate) {
     return string_view(candidate.token) == "w";
   });
   ASSERT_NE(rec, recs.end());
 
-  string combined = view.state().acceptedSeq + string(rec->token);
-  const double expected = getEffort(combined, config) - view.state().acceptedCost;
+  string combined = view.state().seq + string(rec->token);
+  const double expected = getEffort(combined, config) - view.state().cost;
   const double standalone = getEffort(string(rec->token), config);
 
   EXPECT_NEAR(rec->costDiff, expected, 1e-9);
@@ -200,7 +199,7 @@ TEST_F(ExploreViewTest, ApplyMotionRejectsMalformedInput) {
   auto outcome = view.applyMovement("<"); // incomplete special key
   ASSERT_FALSE(outcome.has_value());
   EXPECT_FALSE(outcome.error().reason.empty());
-  EXPECT_TRUE(view.state().acceptedSeq.empty());
+  EXPECT_TRUE(view.state().seq.empty());
   EXPECT_EQ(view.state().cursor.col, 0);
   EXPECT_FALSE(view.canUndo());
 }
@@ -214,7 +213,7 @@ TEST_F(ExploreViewTest, ApplyMotionRejectsBoundaryEscape) {
   ASSERT_FALSE(outcome.has_value());
   EXPECT_EQ(outcome.error().reason, "motion landed outside the allowed boundary");
   EXPECT_EQ(view.state().cursor, CursorPos(0, 7));
-  EXPECT_TRUE(view.state().acceptedSeq.empty());
+  EXPECT_TRUE(view.state().seq.empty());
   EXPECT_FALSE(view.canUndo());
 }
 
@@ -227,7 +226,7 @@ TEST_F(ExploreViewTest, AcceptCursorMoveRejectsBoundaryEscape) {
   ASSERT_FALSE(outcome.has_value());
   EXPECT_EQ(outcome.error().reason, "motion landed outside the allowed boundary");
   EXPECT_EQ(view.state().cursor, CursorPos(0, 7));
-  EXPECT_TRUE(view.state().acceptedSeq.empty());
+  EXPECT_TRUE(view.state().seq.empty());
   EXPECT_FALSE(view.canUndo());
 }
 
@@ -241,7 +240,7 @@ TEST_F(ExploreViewTest, AcceptCursorMoveRejectsMismatchedRawKeys) {
   EXPECT_EQ(outcome.error().reason,
             "raw motion keys did not produce the observed cursor move");
   EXPECT_EQ(view.state().cursor, CursorPos(0, 0));
-  EXPECT_TRUE(view.state().acceptedSeq.empty());
+  EXPECT_TRUE(view.state().seq.empty());
   EXPECT_FALSE(view.canUndo());
 }
 
@@ -257,13 +256,13 @@ TEST_F(ExploreViewTest, UndoRestoresPriorCursorAndSequence) {
   auto undone = view.undo();
   ASSERT_TRUE(undone.has_value());
   EXPECT_EQ(view.state().cursor.col, 0);
-  EXPECT_TRUE(view.state().acceptedSeq.empty());
+  EXPECT_TRUE(view.state().seq.empty());
   EXPECT_TRUE(view.canRedo());
 
   auto redone = view.redo();
   ASSERT_TRUE(redone.has_value());
   EXPECT_EQ(view.state().cursor.col, cursorAfter);
-  EXPECT_EQ(view.state().acceptedSeq, "w");
+  EXPECT_EQ(view.state().seq, "w");
 }
 
 TEST_F(ExploreViewTest, UndoFromCleanStateIsRejected) {
@@ -304,7 +303,7 @@ TEST_F(ExploreViewTest, InsertPhaseRecommendationCarriesTypedText) {
 
   auto recs = view.recommendations(5);
   ASSERT_EQ(recs.size(), 1u);
-  const FrontierItem& item = recs[0];
+  const Suggestion& item = recs[0];
   EXPECT_FALSE(string_view(item.token).empty());
   EXPECT_GT(item.costDiff, 0.0);
   // The token must contain the new char `m` somewhere — the diff may span
@@ -325,7 +324,7 @@ TEST_F(ExploreViewTest, InsertPhaseRecommendationForPureInsertion) {
 
   auto recs = view.recommendations(5);
   ASSERT_EQ(recs.size(), 1u);
-  const FrontierItem& item = recs[0];
+  const Suggestion& item = recs[0];
   EXPECT_EQ(string_view(item.token), "X");
 }
 
@@ -358,10 +357,10 @@ TEST_F(ExploreViewTest, OutOfScopeEditRejectedWithoutStateChange) {
   ASSERT_TRUE(view.applyMovement("w").has_value());
   // Cursor is now on `n`. An edit command not in transformResult.resultsAt gets
   // rejected without mutating state.
-  const auto priorRevision = view.acceptedRevision();
+  const auto priorState = view.state();
   auto outcome = view.applyEdit("totally-not-a-real-edit");
   ASSERT_FALSE(outcome.has_value());
-  EXPECT_EQ(view.acceptedRevision(), priorRevision);
+  EXPECT_EQ(view.state(), priorState);
   EXPECT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
 }
 
@@ -376,7 +375,7 @@ TEST_F(ExploreViewTest, AcceptBufferStateRejectsInvalidCursor) {
             "buffer state reported an invalid cursor position");
   EXPECT_EQ(view.state().cursor, CursorPos(0, 0));
   EXPECT_EQ(view.state().lines, initial);
-  EXPECT_TRUE(view.state().acceptedSeq.empty());
+  EXPECT_TRUE(view.state().seq.empty());
 }
 
 TEST(ExtractStructuralToken, ReturnsFirstNonTypedTextToken) {
@@ -450,13 +449,13 @@ TEST_F(ExploreViewTest, AcceptInsertExitRejectsMismatchedBuffer) {
   ASSERT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
   ASSERT_TRUE(view.applyMovement(recs.front().token).has_value());
   ASSERT_TRUE(view.beginInsert().has_value());
-  const auto priorRevision = view.acceptedRevision();
+  const auto priorState = view.state();
 
   Lines wrong{Line("aXc")};
   auto outcome = view.acceptInsertExit(wrong, {0, 2}, "");
   ASSERT_FALSE(outcome.has_value());
   EXPECT_TRUE(std::holds_alternative<Explore::Insert>(view.phase()));
-  EXPECT_EQ(view.acceptedRevision(), priorRevision);
+  EXPECT_EQ(view.state(), priorState);
 }
 
 TEST_F(ExploreViewTest, AcceptInsertExitRejectsInvalidCursor) {
@@ -472,14 +471,14 @@ TEST_F(ExploreViewTest, AcceptInsertExitRejectsInvalidCursor) {
   ASSERT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
   ASSERT_TRUE(view.applyMovement(recs.front().token).has_value());
   ASSERT_TRUE(view.beginInsert().has_value());
-  const auto priorRevision = view.acceptedRevision();
+  const auto priorState = view.state();
 
   auto outcome = view.acceptInsertExit(goal, CursorPos(0, 99), "");
   ASSERT_FALSE(outcome.has_value());
   EXPECT_EQ(outcome.error().reason,
             "buffer state reported an invalid cursor position");
   EXPECT_TRUE(std::holds_alternative<Explore::Insert>(view.phase()));
-  EXPECT_EQ(view.acceptedRevision(), priorRevision);
+  EXPECT_EQ(view.state(), priorState);
 }
 
 // =============================================================================
@@ -499,7 +498,7 @@ TEST_F(ExploreViewTest, AcceptCursorMoveRejectsUnparseableRawKeys) {
   ASSERT_FALSE(outcome.has_value());
   EXPECT_NE(outcome.error().reason.find("failed to parse"), string::npos);
   EXPECT_EQ(view.state().cursor, CursorPos(0, 0));
-  EXPECT_TRUE(view.state().acceptedSeq.empty());
+  EXPECT_TRUE(view.state().seq.empty());
 }
 
 TEST_F(ExploreViewTest, AcceptBufferStateRejectsUnparseableRawKeys) {
@@ -511,7 +510,7 @@ TEST_F(ExploreViewTest, AcceptBufferStateRejectsUnparseableRawKeys) {
   ASSERT_FALSE(outcome.has_value());
   EXPECT_EQ(outcome.error().reason, "raw keys failed to parse");
   EXPECT_EQ(view.state().lines, initial);
-  EXPECT_TRUE(view.state().acceptedSeq.empty());
+  EXPECT_TRUE(view.state().seq.empty());
 }
 
 TEST_F(ExploreViewTest, AcceptInsertExitRejectsUnparseableRawKeys) {
@@ -590,7 +589,6 @@ TEST_F(ExploreViewTest, MotionRecommendationsAreFirstTokensOfOptimizerPaths) {
   auto view = makeView(initial, {0, 0}, goal, {0, 22});
 
   auto range = view.currentTargetRange();
-  ASSERT_TRUE(range.has_value());
 
   // Match the ground-truth's "no per-pos cap" below so both sides
   // enumerate the same universe of tokens for the subset check.
@@ -625,7 +623,7 @@ TEST_F(ExploreViewTest, MotionRecommendationsAreFirstTokensOfOptimizerPaths) {
 
   NavOptimizer opt(config);
   auto motionRange =
-      tryToMotionInterval(initial, CharRange(range->first, range->second));
+      tryToMotionInterval(initial, CharRange(range.first, range.second));
   ASSERT_TRUE(motionRange.has_value());
   auto result = opt.optimize(
       initial, {0, 0}, *motionRange, params, "",
