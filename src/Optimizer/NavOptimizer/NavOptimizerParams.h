@@ -7,8 +7,12 @@
 // =============================================================================
 
 struct NavOptimizerParams : OptimizerParamsBase {
-  // Explicit default: matches base but documents intent for single-goal search.
-  NavOptimizerParams() { maxResults = 10; }
+
+  // Motion-class search controls. Duplicated on CompositionOptimizerParams
+  // because composition planning runs Nav-style motion search between
+  // edits and needs the same knobs. NOT lifted into OptimizerParamsBase:
+  // TransformOptimizer doesn't enumerate motions in this graph-search
+  // sense, so the fields would be dead there.
 
   // Minimum column distance before exploring f-motion (f{char}). Recommended 2-5.
   int fMotionThreshold = 3;
@@ -17,13 +21,6 @@ struct NavOptimizerParams : OptimizerParamsBase {
   // When true, explores only 3-4 of 6 motion classes based on relative position to goal.
   // Trade-off: faster exploration but may miss some edge-case optimal paths.
   bool useDirectionalPruning = true;
-
-  // Line padding for sub-buffer slicing.
-  // Controls how many lines above/below the search region to include.
-  // Allows overshoot-and-return paths while bounding search space.
-  // See dev/optimizer/buffer-slicing.md for details.
-  int linePaddingAbove = 2;
-  int linePaddingBelow = 2;
 
   // Cap on results retained per landing (end) position. Default 1 keeps
   // only the cheapest path per landing cell. Values >1 keep multiple
@@ -40,15 +37,12 @@ struct NavOptimizerParams : OptimizerParamsBase {
   NavOptimizerParams& withExploreFactor(double v) { exploreFactor = v; return *this; }
   NavOptimizerParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
   NavOptimizerParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
-  NavOptimizerParams& withLinePaddingAbove(int v) { linePaddingAbove = v; return *this; }
-  NavOptimizerParams& withLinePaddingBelow(int v) { linePaddingBelow = v; return *this; }
-  NavOptimizerParams& withLinePadding(int v) { linePaddingAbove = linePaddingBelow = v; return *this; }
   NavOptimizerParams& withMinCountRepeat(int v) { setMinCountRepeat(v); return *this; }
   NavOptimizerParams& withMaxCountRepeat(int v) { setMaxCountRepeat(v); return *this; }
   NavOptimizerParams& withMaxResultsPerEndPos(int v) { maxResultsPerEndPos = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
-  static NavOptimizerParams dijkstra(int maxResults = 10, int maxNodesPopped = 50000) {
+  static NavOptimizerParams dijkstra(int maxResults = 20, int maxNodesPopped = 50000) {
     NavOptimizerParams p;
     p.maxResults = maxResults;
     p.maxNodesPopped = maxNodesPopped;

@@ -27,13 +27,17 @@ local M = {}
 ---@type table|nil
 local current_settings
 
+local PLAY_SCHEMA_VERSION = 1
+
 local function settings_store()
   if current_settings == nil then
     current_settings = vim.deepcopy(config.play or {})
-    local saved = settings_profile.load("play")
-    for k, v in pairs(saved) do
-      if current_settings[k] ~= nil or config.play[k] == nil then
-        current_settings[k] = v
+    local envelope = settings_profile.load("play")
+    if envelope.version == PLAY_SCHEMA_VERSION then
+      for k, v in pairs(envelope.data) do
+        if current_settings[k] ~= nil or config.play[k] == nil then
+          current_settings[k] = v
+        end
       end
     end
   end
@@ -43,7 +47,7 @@ end
 local function update_setting(key, value)
   local store = settings_store()
   store[key] = value
-  settings_profile.save("play", store)
+  settings_profile.save("play", PLAY_SCHEMA_VERSION, store)
 end
 
 ---Public accessor — session.lua's `simulate()` reads these on

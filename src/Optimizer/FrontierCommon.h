@@ -15,6 +15,8 @@
 #include "Types/Lines.h"
 #include "Types/Token.h"
 
+class OptimizerParamOverrides;
+
 // What the possible results we get are
 struct Suggestion {
   Token token;
@@ -29,4 +31,8 @@ struct FrontierQuery {
   CursorPos cursor;
   std::string_view seq = {};
   int maxCount = 0;
+  // Optional override blob, applied to the constructed optimizer params
+  // before search. Null = use whatever the C++ default is for every
+  // field. See OptimizerParamOverrides.h.
+  const OptimizerParamOverrides* overrides = nullptr;
 };

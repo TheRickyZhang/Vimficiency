@@ -11,8 +11,10 @@
 // Composition optimizers. Derived structs add optimizer-specific fields.
 
 struct OptimizerParamsBase {
-  // Maximum results (paths) to find
-  int maxResults = 10;
+  // LIKELY OVERRIDE CANDIDATE: among the shared base fields, this is
+  // the most common one users will want to differ per optimizer
+  // We could override per optimizer params, but having a consistent value is just easiest
+  int maxResults = 20;
 
   // Hard search budget: every priority-queue pop counts, including stale
   // or otherwise discarded states. This is the primary runtime guard.
@@ -27,10 +29,6 @@ struct OptimizerParamsBase {
   // (Dijkstra):   effortWeight=1.0, distanceWeight=0.0
   double effortWeight = 1.0;
   double distanceWeight = 1.0;
-
-  // Note these might not really belong here
-  int linePaddingAbove = 2;
-  int linePaddingBelow = 2;
 
   // Minimum and maximum numbered command counts to search (e.g. 5 in 5w).
   // An empty range (minPrefixCount > maxPrefixCount) explicitly disables

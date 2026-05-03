@@ -16,6 +16,7 @@
 #include "Optimizer/NavOptimizer/NavOptimizerParams.h"
 #include "Optimizer/NavOptimizer/NavRangeConversion.h"
 #include "Optimizer/NavOptimizer/NavState.h"
+#include "Optimizer/OptimizerParamOverrides.h"
 
 using namespace std;
 
@@ -44,7 +45,9 @@ vector<Suggestion> rankNavFrontier(
   // same scoring the full optimizer would, sort, and take top K. No full
   // search to the goal.
   NavOptimizerParams params;
-  params.withMaxResultsPerEndPos(std::max(1, query.maxResultsPerEndPos));
+  if (query.overrides) query.overrides->applyTo(params);
+  // Guard: per-cell cap must be ≥ 1 even if overrides set 0/negative.
+  params.maxResultsPerEndPos = std::max(1, params.maxResultsPerEndPos);
   BufferIndex bufferIndex(query.lines);
   NavExplorer explorer(query.lines, query.navContext, query.boundary,
                           params, *motionRange, bufferIndex, 0);
@@ -68,11 +71,11 @@ vector<Suggestion> rankNavFrontier(
     return (static_cast<int64_t>(p.line) << 32) | static_cast<uint32_t>(p.col);
   };
 
-  // Cap up to `query.maxResultsPerEndPos` distinct tokens per landing
+  // Cap up to `params.maxResultsPerEndPos` distinct tokens per landing
   // cell. Default 1 keeps just the cheapest token per cell; values > 1
   // surface multiple distinct paths to the same cell (e.g. `w` / `W` /
-  // `e` all reaching the same word start).
-  const int cap = std::max(1, query.maxResultsPerEndPos);
+  // `e` all reaching the same word start). Already clamped to ≥1 above.
+  const int cap = params.maxResultsPerEndPos;
   unordered_map<int64_t, vector<NavState>> resultsByLanding;
 
   auto emit = [&](NavState s) {

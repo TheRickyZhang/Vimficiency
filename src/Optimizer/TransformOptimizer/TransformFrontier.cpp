@@ -11,6 +11,7 @@
 #include "Effort/RunningEffort.h"
 #include "Keyboard/ToKeys/MovementToKeys.h"
 #include "Optimizer/CompositionOptimizer/PlannedEditArtifacts.h"
+#include "Optimizer/OptimizerParamOverrides.h"
 #include "Optimizer/TransformOptimizer/ChangeGoalHandler.h"
 #include "Optimizer/TransformOptimizer/TransformExplorer.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizerParams.h"
@@ -228,6 +229,7 @@ vector<Suggestion> rankTransformFrontier(
   if (query.maxCount <= 0) return {};
 
   CompositionOptimizerParams params;
+  if (query.overrides) query.overrides->applyTo(params);
   optional<JoinPlan> joinPlan = computeJoinPlanForDiff(query.diff, query.lines, params, config);
   BracketQuoteContext bqContext = computeTextObjectContextForDiff(query.diff, query.lines);
 

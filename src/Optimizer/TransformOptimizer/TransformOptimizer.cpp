@@ -125,13 +125,18 @@ struct DeletionGoalHandler {
             transformBoundary.hasLinesAbove(),
             transformBoundary.hasLinesBelow());
 
+        // TO-REVIEW: this internal NavOptimizer call uses a default-constructed
+        // NavOptimizerParams (motion-class settings, A* weights, etc.); it does
+        // NOT propagate user-configured motion-class settings (fMotionThreshold,
+        // useDirectionalPruning) from `params`. Deferred until we explore what
+        // alternative paradigms Transform might have — propagation may be the
+        // right call, or Transform's edit-shape enumeration may evolve to
+        // sidestep this internal Nav call entirely.
         auto navResult = navOpt.optimize(
             effectiveLines,
             beginPos,
             lastPos,
             NavOptimizerParams{}
-                .withLinePaddingAbove(params.navLinePaddingAbove)
-                .withLinePaddingBelow(params.navLinePaddingBelow)
                 .withMinCountRepeat(params.minPrefixCount)
                 .withMaxCountRepeat(params.maxPrefixCount),
             "",

@@ -9,6 +9,18 @@ local fields = {
   SLICE_EXPAND_TO_PARAGRAPH = false,
   MAX_SEARCH_LINES = 500,
 
+  -- User overrides for shared base optimizer parameters. Empty by
+  -- default — C++ owns the canonical defaults (`OptimizerParamsBase.h`).
+  -- Anything the user sets here flows to every canonical optimizer call
+  -- (marks/watches/recall/auto/explore-defaults) as `shared:` overrides.
+  -- Explore-session sidecar overrides (set live via the explore panel)
+  -- shadow these per-session.
+  --
+  -- Recognized keys: effortWeight, distanceWeight, exploreFactor,
+  -- maxNodesPopped, minPrefixCount, maxPrefixCount. See
+  -- `OptimizerParamsBase.h` for semantics and defaults.
+  optimizer = {},
+
   -- Recall ring / session safety
   KEY_SESSION_CAPACITY = 200,
   MAX_RETENTION_SECONDS = 120,

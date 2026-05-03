@@ -1,6 +1,7 @@
 #include "LuaExports/Common.h"
 #include "LuaExports/ViewRegistry.h"
 #include "Explore/Explore.h"
+#include "Optimizer/OptimizerParamOverrides.h"
 
 #include <string>
 #include <string_view>
@@ -181,15 +182,13 @@ const char* vf_explore_state(int view_id) {
 const char* vf_explore_recommendations(
     int view_id,
     int max_count,
-    int nav_max_results_per_end_pos,
-    int transform_max_results_per_start_pos) {
+    const char* optimizer_overrides) {
   CHECK(max_count >= 0, "max_count must be non-negative");
   static string storage;
   View& v = g_registry.get(view_id);
-  storage = encodeSuggestions(v.recommendations(
-      max_count,
-      nav_max_results_per_end_pos,
-      transform_max_results_per_start_pos));
+  const auto overrides = OptimizerParamOverrides::parse(
+      helpers::optionalText(optimizer_overrides));
+  storage = encodeSuggestions(v.recommendations(max_count, &overrides));
   return storage.c_str();
 }
 

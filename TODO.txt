@@ -20,6 +20,8 @@ ASK BLAKE: how to distinguish between the user's config, and stored settings dat
 
 - Later:
 - Can optimize the single-position navOptimizer case by meet in the middle, remove dup checks
+- Given that we have a visual-nav case in our transform optimizer, should the transform params contain a nav param for this case? If we proceed like this we suddenly need an embedded composition model - only strongly decide if the current design poses problems, or we are confident in our direction of improved transform searching
+
 implement debounced async for how to properly continuously perform optimize() calls to check among previous things automatically. Also need details for concurrency in implementing subprocesses?
 
 

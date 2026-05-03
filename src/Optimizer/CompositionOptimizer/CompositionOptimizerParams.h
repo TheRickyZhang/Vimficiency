@@ -7,8 +7,9 @@
 // =============================================================================
 
 struct CompositionOptimizerParams : OptimizerParamsBase {
-  // Explicit default: matches base but documents intent.
-  CompositionOptimizerParams() { maxResults = 10; }
+
+  // Motion-class controls — see NavOptimizerParams for why these are
+  // intentionally duplicated rather than lifted into the base.
 
   // Minimum column distance before exploring f-motion (f{char}). Recommended 2-5.
   int fMotionThreshold = 3;
@@ -49,7 +50,7 @@ struct CompositionOptimizerParams : OptimizerParamsBase {
   CompositionOptimizerParams& withTransformMaxResultsPerStartPos(int v) { transformMaxResultsPerStartPos = v; return *this; }
 
   // Factory for Dijkstra mode (no heuristic)
-  static CompositionOptimizerParams dijkstra(int maxResults = 10, int maxNodesPopped = 50000) {
+  static CompositionOptimizerParams dijkstra(int maxResults = 20, int maxNodesPopped = 50000) {
     CompositionOptimizerParams p;
     p.maxResults = maxResults;
     p.maxNodesPopped = maxNodesPopped;
