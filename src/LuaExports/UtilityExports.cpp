@@ -2,7 +2,12 @@
 #include "Interpreter/MovementInterpreter.h"
 #include "Interpreter/SequenceFormatting.h"
 #include "Interpreter/SequenceParser.h"
+#include "Optimizer/CompositionOptimizer/CompositionOptimizerParams.h"
+#include "Optimizer/NavOptimizer/NavOptimizerParams.h"
+#include "Optimizer/TransformOptimizer/TransformOptimizerParams.h"
 #include "Utils/Debug.h"
+
+#include <sstream>
 
 using namespace std;
 namespace helpers = VF::LuaExports::helpers;
@@ -146,6 +151,72 @@ const char *vf_format_sequence(const char *seq) {
   static string result_storage;
   return helpers::storeString(result_storage,
       Result<string>(formatSequenceForDisplay(helpers::optionalText(seq))));
+}
+
+// Default-initialize each param struct and dump every field as
+// `<scope>:<key>:<type>=<value>` lines. Lua's panel uses this to
+// display "current effective" values for unset overrides without
+// mirroring C++ defaults in Lua source. See
+// `lua/vimficiency/explore.lua`'s `OPTIMIZER_DEFAULTS` for the consumer.
+//
+// Cached on first call — defaults don't change at runtime.
+const char *vf_get_optimizer_defaults() {
+  static string cached;
+  if (cached.empty()) {
+    NavOptimizerParams nav;
+    TransformOptimizerParams tx;
+    CompositionOptimizerParams comp;
+
+    ostringstream out;
+    auto i = [&](string_view scope, string_view key, int v) {
+      out << scope << ':' << key << ":int=" << v << '\n';
+    };
+    auto d = [&](string_view scope, string_view key, double v) {
+      out << scope << ':' << key << ":double=" << v << '\n';
+    };
+    auto b = [&](string_view scope, string_view key, bool v) {
+      out << scope << ':' << key << ":bool=" << (v ? '1' : '0') << '\n';
+    };
+
+    // Nav
+    i("nav", "maxResults",            nav.maxResults);
+    i("nav", "maxNodesPopped",        nav.maxNodesPopped);
+    d("nav", "exploreFactor",         nav.exploreFactor);
+    d("nav", "effortWeight",          nav.effortWeight);
+    d("nav", "distanceWeight",        nav.distanceWeight);
+    i("nav", "minPrefixCount",        nav.minPrefixCount);
+    i("nav", "maxPrefixCount",        nav.maxPrefixCount);
+    i("nav", "fMotionThreshold",      nav.fMotionThreshold);
+    b("nav", "useDirectionalPruning", nav.useDirectionalPruning);
+    i("nav", "maxResultsPerEndPos",   nav.maxResultsPerEndPos);
+
+    // Transform
+    i("transform", "maxResults",            tx.maxResults);
+    i("transform", "maxNodesPopped",        tx.maxNodesPopped);
+    d("transform", "exploreFactor",         tx.exploreFactor);
+    d("transform", "effortWeight",          tx.effortWeight);
+    d("transform", "distanceWeight",        tx.distanceWeight);
+    i("transform", "minPrefixCount",        tx.minPrefixCount);
+    i("transform", "maxPrefixCount",        tx.maxPrefixCount);
+    i("transform", "maxResultsPerStartPos", tx.maxResultsPerStartPos);
+
+    // Composition
+    i("composition", "maxResults",            comp.maxResults);
+    i("composition", "maxNodesPopped",        comp.maxNodesPopped);
+    d("composition", "exploreFactor",         comp.exploreFactor);
+    d("composition", "effortWeight",          comp.effortWeight);
+    d("composition", "distanceWeight",        comp.distanceWeight);
+    i("composition", "minPrefixCount",        comp.minPrefixCount);
+    i("composition", "maxPrefixCount",        comp.maxPrefixCount);
+    i("composition", "fMotionThreshold",      comp.fMotionThreshold);
+    b("composition", "useDirectionalPruning", comp.useDirectionalPruning);
+    d("composition", "overshootPenalty",      comp.overshootPenalty);
+    i("composition", "navPaddingAbove",       comp.navPaddingAbove);
+    i("composition", "navPaddingBelow",       comp.navPaddingBelow);
+
+    cached = out.str();
+  }
+  return cached.c_str();
 }
 
 const char *vf_simulate_movements(

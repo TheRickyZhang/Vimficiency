@@ -71,9 +71,10 @@ end
 ---@field vf_count_class_name fun(index: integer): ffi.cdata*
 ---@field vf_get_config fun(): VF.C.Config
 ---@field vf_apply_config fun(): nil
----@field vf_analyze fun(initial_text: string, goal_text: string, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, start_row: integer, start_col: integer, end_row: integer, end_col: integer, keyseq: string, window_height: integer, scroll_amount: integer, results_calculated: integer): string
+---@field vf_analyze fun(initial_text: string, goal_text: string, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, start_row: integer, start_col: integer, end_row: integer, end_col: integer, keyseq: string, window_height: integer, scroll_amount: integer, results_calculated: integer, optimizer_overrides: string): string
 ---@field vf_get_debug fun(): string
 ---@field vf_get_warnings fun(): string
+---@field vf_get_optimizer_defaults fun(): string
 ---@field vf_version fun(): integer
 ---@field vf_abi_hash fun(): ffi.cdata*
 ---@field vf_debug_config fun(): string
@@ -88,7 +89,7 @@ end
 ---@field vf_explore_start fun(encoded_initial_lines: string, start_row: integer, start_col: integer, encoded_goal_lines: string, end_row: integer, end_col: integer, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, window_height: integer, scroll_amount: integer, user_seq: string): string
 ---@field vf_explore_destroy fun(view_id: integer): integer
 ---@field vf_explore_state fun(view_id: integer): string
----@field vf_explore_recommendations fun(view_id: integer, max_count: integer, nav_max_results_per_end_pos: integer, transform_max_results_per_start_pos: integer): string
+---@field vf_explore_recommendations fun(view_id: integer, max_count: integer, optimizer_overrides: string): string
 ---@field vf_explore_apply_movement fun(view_id: integer, movement_text: string): string
 ---@field vf_explore_accept_cursor_move fun(view_id: integer, new_row: integer, new_col: integer, raw_keys: string): string
 ---@field vf_explore_apply_edit fun(view_id: integer, text: string): string
@@ -518,7 +519,71 @@ M._parse_analyze_results = parse_analyze_results
 ---@param key_seq string
 ---@param window_height integer
 ---@param scroll_amount integer
+---@class VF.OptimizerOverrides
+---@field shared? table<string, number|integer|boolean>
+---@field nav? table<string, number|integer|boolean>
+---@field transform? table<string, number|integer|boolean>
+---@field composition? table<string, number|integer|boolean>
+
+---Encode optimizer-param overrides for the FFI boundary. Each scope's
+---table is flattened to `<scope>:<key>=<value>` lines; booleans become
+---`0` / `1`. Empty/nil input yields the empty string (= use C++ defaults).
+---Mirror of `OptimizerParamOverrides::parse` on the C++ side.
+---@param overrides? VF.OptimizerOverrides
+---@return string
+function M.encode_optimizer_overrides(overrides)
+  if not overrides then return "" end
+  local lines = {}
+  for _, scope in ipairs({ "shared", "nav", "transform", "composition" }) do
+    local kvs = overrides[scope]
+    if kvs then
+      for k, v in pairs(kvs) do
+        local encoded
+        if type(v) == "boolean" then
+          encoded = v and "1" or "0"
+        else
+          encoded = tostring(v)
+        end
+        lines[#lines + 1] = scope .. ":" .. k .. "=" .. encoded
+      end
+    end
+  end
+  return table.concat(lines, "\n")
+end
+
+---Fetch the C++ optimizer parameter defaults as a typed nested table.
+---Cached for the lifetime of the LuaJIT process — the C++ side caches
+---the encoded string and these defaults are compile-time constants.
+---Wire format mirrors the override blob with an extra `:type` token:
+---   `<scope>:<key>:int=10`
+---   `<scope>:<key>:double=2.0`
+---   `<scope>:<key>:bool=1`
+---@return { nav: table<string, any>, transform: table<string, any>, composition: table<string, any> }
+local optimizer_defaults_cache = nil
+function M.get_optimizer_defaults()
+  if optimizer_defaults_cache ~= nil then return optimizer_defaults_cache end
+  local raw = ffi.string(lib.vf_get_optimizer_defaults())
+  local out = { nav = {}, transform = {}, composition = {} }
+  for line in string.gmatch(raw, "[^\n]+") do
+    local scope, key, typ, value = line:match("^([^:]+):([^:]+):([^=]+)=(.*)$")
+    if scope and out[scope] then
+      if typ == "int" then
+        out[scope][key] = tonumber(value)
+      elseif typ == "double" then
+        out[scope][key] = tonumber(value)
+      elseif typ == "bool" then
+        out[scope][key] = (value == "1" or value == "true")
+      else
+        out[scope][key] = value  -- unknown type — store raw
+      end
+    end
+  end
+  optimizer_defaults_cache = out
+  return out
+end
+
 ---@param RESULTS_CALCULATED integer
+---@param optimizer_overrides? string Newline-delimited `<scope>:<key>=<value>` lines; empty/nil for defaults
 ---@return VF.Optimizer.Result[] results, number user_cost, string debug
 function M.analyze(
   initial_lines, goal_lines,
@@ -527,7 +592,8 @@ function M.analyze(
   start_row, start_col, end_row, end_col,
   key_seq,
   window_height, scroll_amount,
-  RESULTS_CALCULATED
+  RESULTS_CALCULATED,
+  optimizer_overrides
 )
 	local initial_text = table.concat(initial_lines, "\n")
 	local goal_text = table.concat(goal_lines, "\n")
@@ -539,7 +605,8 @@ function M.analyze(
     start_row, start_col, end_row, end_col,
     key_seq,
     window_height, scroll_amount,
-    RESULTS_CALCULATED
+    RESULTS_CALCULATED,
+    optimizer_overrides or ""
   )
   local dbg = ffi.string(lib.vf_get_debug())
   local result_str = ffi.string(result)
@@ -877,18 +944,12 @@ end
 
 ---@param view_id integer
 ---@param max_count integer
----@param nav_max_results_per_end_pos integer|nil  -- default 1 (cheapest per landing)
----@param transform_max_results_per_start_pos integer|nil  -- default 1 (cheapest per start)
+---@param optimizer_overrides? string Newline-delimited `<scope>:<key>=<value>` lines; empty/nil for defaults. Build via `M.encode_optimizer_overrides`.
 ---@return VF.Explore.Recommendation[]
-function M.explore_recommendations(
-    view_id, max_count,
-    nav_max_results_per_end_pos,
-    transform_max_results_per_start_pos)
+function M.explore_recommendations(view_id, max_count, optimizer_overrides)
   local payload = require_non_error(ffi.string(
     lib.vf_explore_recommendations(
-      view_id, max_count,
-      nav_max_results_per_end_pos or 1,
-      transform_max_results_per_start_pos or 1)))
+      view_id, max_count, optimizer_overrides or "")))
   return parse_explore_recommendations(payload)
 end
 

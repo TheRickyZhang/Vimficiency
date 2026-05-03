@@ -2,6 +2,7 @@
 #include "Boundary/NavBoundary.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
+#include "Optimizer/OptimizerParamOverrides.h"
 #include "Utils/Debug.h"
 #include <algorithm>
 #include <iomanip>
@@ -37,7 +38,8 @@ VF::LuaExports::Result<string> analyzeImpl(
     const char *keyseq,
     int window_height,
     int scroll_amount,
-    int results_calculated) {
+    int results_calculated,
+    const char *optimizer_overrides) {
   CHECK(results_calculated >= 0, "results_calculated must be non-negative");
   auto initialText = helpers::requiredText(initial_text, "initial_text");
   if (!initialText) return unexpected(initialText.error());
@@ -45,6 +47,9 @@ VF::LuaExports::Result<string> analyzeImpl(
   if (!goalText) return unexpected(goalText.error());
   auto keyseqTextResult = helpers::requiredText(keyseq, "keyseq");
   if (!keyseqTextResult) return unexpected(keyseqTextResult.error());
+
+  const auto overrides = OptimizerParamOverrides::parse(
+      helpers::optionalText(optimizer_overrides));
 
   const Lines initialLines = splitLines(*initialText);
   const Lines goalLines = splitLines(*goalText);
@@ -69,13 +74,15 @@ VF::LuaExports::Result<string> analyzeImpl(
     // NavOptimizer returns LandingResult (with goalPos); for analyze we only
     // surface (sequence, cost), so down-convert to Result for shared output.
     NavOptimizer opt(g_config_internal);
+    NavOptimizerParams navParams = NavOptimizerParams{}
+        .withMaxResults(results_calculated)
+        .withMaxResultsPerEndPos(2);
+    overrides.applyTo(navParams);
     auto navResults = opt.optimize(
         initialLines,
         initialPos,
         goalPos,
-        NavOptimizerParams{}
-            .withMaxResults(results_calculated)
-            .withMaxResultsPerEndPos(2),
+        navParams,
         keyseqText,
         boundary,
         navigationContext).getResults();
@@ -85,12 +92,15 @@ VF::LuaExports::Result<string> analyzeImpl(
     }
   } else {
     CompositionOptimizer opt(g_config_internal);
+    CompositionOptimizerParams compParams =
+        CompositionOptimizerParams{}.withMaxResults(results_calculated);
+    overrides.applyTo(compParams);
     results = opt.optimize(
         initialLines,
         initialPos,
         goalLines,
         goalPos,
-        CompositionOptimizerParams{}.withMaxResults(results_calculated),
+        compParams,
         keyseqText,
         boundary,
         navigationContext).getResults();
@@ -149,7 +159,8 @@ const char *vf_analyze(
     const char *keyseq,
     int window_height,
     int scroll_amount,
-    int results_calculated) {
+    int results_calculated,
+    const char *optimizer_overrides) {
   static string result_storage;
   return helpers::storeString(
       result_storage,
@@ -167,7 +178,8 @@ const char *vf_analyze(
           keyseq,
           window_height,
           scroll_amount,
-          results_calculated));
+          results_calculated,
+          optimizer_overrides));
 }
 
 }

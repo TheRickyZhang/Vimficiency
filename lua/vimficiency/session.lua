@@ -297,6 +297,8 @@ local function compute_result_for_active(active)
   local has_lines_above = start_search > 0
   local has_lines_below = end_search < math.max(#initial_lines, #goal_lines) - 1
 
+  local optimizer_overrides = ffi_lib.encode_optimizer_overrides({ shared = config.optimizer })
+
   local ok, results, user_cost, dbg = pcall(
     ffi_lib.analyze,
     initial_slice, goal_slice,
@@ -309,7 +311,8 @@ local function compute_result_for_active(active)
     keyseq_str,
     start_state.window_height,
     start_state.scroll_amount,
-    config.RESULTS_CALCULATED
+    config.RESULTS_CALCULATED,
+    optimizer_overrides
   )
 
   if not ok then

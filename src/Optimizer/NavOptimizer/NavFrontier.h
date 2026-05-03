@@ -45,12 +45,6 @@ struct NavFrontierQuery : FrontierQuery {
   CharRange targetRange;
   const NavBoundary& boundary;
   const NavContext& navContext;
-  // Cap on results retained per landing (end) cell. Default 1 keeps only
-  // the cheapest token per cell. Values > 1 surface multiple distinct
-  // tokens reaching the same cell (e.g., `w`/`W`/`e` all landing on the
-  // same word start). The frontier currently treats anything > 1 as "all"
-  // (no cap); true cap-at-N is a future refinement (Phase B.4).
-  int maxResultsPerEndPos = 1;
 };
 
 // Depth-1 live expansion from `query.cursor` toward `query.targetRange`.

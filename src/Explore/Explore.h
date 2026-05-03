@@ -28,6 +28,8 @@
   Insert(i)    for i ∈ [0, totalEdits)   insert-mode continuation for edit i
 */
 
+class OptimizerParamOverrides;
+
 namespace Explore {
 
 struct Navigate  {
@@ -101,10 +103,12 @@ public:
   // to render it is a UI policy decision (see tags.lua).
   std::pair<CursorPos, CursorPos> currentTargetRange() const;
 
+  // `overrides` carries the explore-session's optimizer tweaks (resolved
+  // from sidecar + user setup); null = use C++ defaults. Same blob shape
+  // as `vf_analyze`.
   std::vector<Suggestion> recommendations(
       int maxCount,
-      int navMaxResultsPerEndPos = 1, int transformMaxResultsPerStartPos = 1 // Passed as an optimizer param. In the future we can expand these to optimizer params themselves
-  ) const;
+      const OptimizerParamOverrides* overrides = nullptr) const;
 
   // Each action produces a new state or a rejected reason
   Outcome applyMovement(std::string_view movementText);
@@ -157,11 +161,11 @@ private:
   std::vector<Suggestion> recommendNavigate(
       int navIndex,
       int maxCount,
-      int navMaxResultsPerEndPos) const;
+      const OptimizerParamOverrides* overrides) const;
   std::vector<Suggestion> recommendTransform(
       int editIndex,
       int maxCount,
-      int transformMaxResultsPerStartPos) const;
+      const OptimizerParamOverrides* overrides) const;
   // Insert phase emits a single Suggestion whose token is the canonical
   // typed text (no trailing <Esc>) the user must type to reach the planned
   // post-edit fencepost. The structural command was already executed in

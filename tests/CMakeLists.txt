@@ -115,6 +115,9 @@ add_executable(vimficiency_tests
   NavOptimizer/HeuristicTest.cpp
   NavOptimizer/HumanApprovalTest.cpp
 
+  # Optimizer (shared)
+  Optimizer/OptimizerParamOverridesTest.cpp
+
   # Misc
   Misc/ConfigurationTest.cpp
   Misc/CountPenaltyFFITest.cpp

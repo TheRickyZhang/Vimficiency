@@ -23,6 +23,7 @@
 #include "Optimizer/TransformOptimizer/TransformSequenceDecomposition.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Optimizer/NavOptimizer/NavRangeConversion.h"
+#include "Optimizer/OptimizerParamOverrides.h"
 #include "Optimizer/Result.h"
 #include "Explore/Explore.h"
 #include "Types/CursorPos.h"
@@ -131,6 +132,31 @@ TEST_F(ExploreViewTest, ApproachesEditWhenLinesDiffer) {
   EXPECT_EQ(view.state().cursor.line, 0);
   EXPECT_EQ(view.state().cursor.col, 0);
   EXPECT_TRUE(view.state().seq.empty());
+}
+
+TEST_F(ExploreViewTest, RecommendationsHonorPerCellDedupOverride) {
+  // End-to-end check that overrides reach the frontier: with default
+  // dedup (cap 1), each landing cell carries one motion. Setting
+  // `nav:maxResultsPerEndPos` to a large value lifts the cap so
+  // multiple distinct motions to the same cell can surface.
+  Lines initial{Line("one two three four five")};
+  Lines goal{Line("one two three four FIVE")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 19});
+
+  // Default — one motion per landing cell.
+  auto deduped = view.recommendations(20);
+
+  // Override — disable the cap.
+  const auto unCapped = OptimizerParamOverrides::parse(
+      "nav:maxResultsPerEndPos=2147483647");
+  auto wide = view.recommendations(20, &unCapped);
+
+  // The override-broadened set should reach at least as many
+  // recommendations as the default set (more landing-cell coverage,
+  // and/or multiple tokens per cell).
+  ASSERT_FALSE(deduped.empty()) << "default dedup produced no recs";
+  EXPECT_GE(wide.size(), deduped.size())
+      << "override should not shrink the result set";
 }
 
 TEST_F(ExploreViewTest, RecommendationsAreDiverse) {
@@ -390,6 +416,10 @@ TEST(ExtractStructuralToken, ReturnsFirstNonTypedTextToken) {
 
 TEST(TransformFrontier, PreservesDistinctResultsFromSameStart) {
   DiffState diff(CursorPos(0, 0), CursorPos(0, 1), "x", "foo", TransformBoundary{});
+  // Test's intent: verify that multiple distinct command-shape tokens
+  // reaching the same diff goal are preserved by the frontier.
+  // TransformExplorer enumerates per-shape lanes inherently, so no
+  // override is needed to surface multiple tokens.
   auto recs = rankTransformFrontier(
       TransformFrontierQuery{
           FrontierQuery{
@@ -398,9 +428,6 @@ TEST(TransformFrontier, PreservesDistinctResultsFromSameStart) {
               .maxCount = 10,
           },
           diff,
-          // The test's intent is to verify that MULTIPLE tokens
-          // reaching the same goal state are preserved.
-          /*maxResultsPerStartPos=*/2,
       },
       Config::uniform());
   ASSERT_GE(recs.size(), 2u);
@@ -594,9 +621,12 @@ TEST_F(ExploreViewTest, MotionRecommendationsAreFirstTokensOfOptimizerPaths) {
   // enumerate the same universe of tokens for the subset check.
   // Navigate phase, so every rec is a motion.
   ASSERT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
-  auto recs = view.recommendations(10,
-      /*navMaxResultsPerEndPos=*/std::numeric_limits<int>::max(),
-      /*transformMaxResultsPerStartPos=*/1);
+  // Disable per-cell dedup so the explore set covers the full universe
+  // of motion tokens reaching this target — required for the subset
+  // check below.
+  const auto overrides = OptimizerParamOverrides::parse(
+      "nav:maxResultsPerEndPos=2147483647");
+  auto recs = view.recommendations(10, &overrides);
   vector<string> exploreMotionTexts;
   for (const auto& rec : recs)
     exploreMotionTexts.push_back(rec.token);
@@ -615,8 +645,6 @@ TEST_F(ExploreViewTest, MotionRecommendationsAreFirstTokensOfOptimizerPaths) {
       .withMaxResults(40)
       .withFMotionThreshold(compParams.fMotionThreshold)
       .withDirectionalPruning(compParams.useDirectionalPruning)
-      .withLinePaddingAbove(compParams.navPaddingAbove)
-      .withLinePaddingBelow(compParams.navPaddingBelow)
       .withMinCountRepeat(compParams.minPrefixCount)
       .withMaxCountRepeat(compParams.maxPrefixCount)
       .withMaxResultsPerEndPos(2);

@@ -3,19 +3,16 @@
 -- File layout: `stdpath("data")/vimficiency/<feature>_settings.json`
 -- Envelope:    `{ "version": N, "data": { ...settings... } }`
 --
--- The envelope lets us migrate cleanly — future versions can detect an
--- older shape and transform it instead of discarding. For now, a version
--- mismatch is treated as "no saved state" and the user's last toggles
--- are quietly forgotten; they can re-set via the settings modal.
+-- Each feature owns its own version contract. `load` returns the parsed
+-- envelope so the caller can detect the version and migrate or accept
+-- as-is. `save` requires an explicit version so each feature can bump
+-- independently of the others.
 --
 -- Best-effort throughout:
---   - missing file   → empty data (cold start)
---   - malformed JSON → empty data + one-time notify
---   - version skew   → empty data (silent; rewritten on next save)
+--   - missing file   → version=nil, data={} (cold start)
+--   - malformed JSON → version=nil, data={} + one-time notify
 --   - write errors   → silent (a settings save must never block the UI)
 local M = {}
-
-local SCHEMA_VERSION = 1
 
 local function dir()
   return vim.fn.stdpath("data") .. "/vimficiency"
@@ -25,16 +22,22 @@ local function path(feature)
   return dir() .. "/" .. feature .. "_settings.json"
 end
 
----Load the saved settings table for `feature`. Returns `{}` when the
----sidecar is missing, malformed, or at an incompatible schema version.
+---@class VF.SettingsProfile.Envelope
+---@field version integer|nil  schema version stored on disk; nil = no/malformed sidecar
+---@field data table
+
+---Load the saved envelope for `feature`. Returns `{ version = nil, data = {} }`
+---when the sidecar is missing or malformed. The caller inspects
+---`version` to decide between accept-as-is and migration.
 ---@param feature string  e.g. "explore", "play"
----@return table
+---@return VF.SettingsProfile.Envelope
 function M.load(feature)
+  local empty = { version = nil, data = {} }
   local fh = io.open(path(feature), "r")
-  if not fh then return {} end
+  if not fh then return empty end
   local content = fh:read("*a")
   fh:close()
-  if content == nil or content == "" then return {} end
+  if content == nil or content == "" then return empty end
 
   local ok, decoded = pcall(vim.json.decode, content)
   if not ok or type(decoded) ~= "table" then
@@ -43,22 +46,23 @@ function M.load(feature)
         "vimfy " .. feature .. ": settings JSON at " .. path(feature) ..
         " is malformed; ignoring", vim.log.levels.WARN)
     end)
-    return {}
+    return empty
   end
-  if decoded.version ~= SCHEMA_VERSION then
-    return {}
-  end
-  return type(decoded.data) == "table" and decoded.data or {}
+  return {
+    version = type(decoded.version) == "number" and decoded.version or nil,
+    data = type(decoded.data) == "table" and decoded.data or {},
+  }
 end
 
 ---Persist `data` as the saved settings for `feature`, wrapped in the
 ---versioned envelope. Overwrites any existing file; silently no-ops on
 ---write failure.
 ---@param feature string
+---@param version integer
 ---@param data table
-function M.save(feature, data)
+function M.save(feature, version, data)
   vim.fn.mkdir(dir(), "p")
-  local envelope = { version = SCHEMA_VERSION, data = data }
+  local envelope = { version = version, data = data }
   local ok, encoded = pcall(vim.json.encode, envelope)
   if not ok then return end
   local fh = io.open(path(feature), "w")

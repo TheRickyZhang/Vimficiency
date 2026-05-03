@@ -144,16 +144,13 @@ bool View::isCompleted() const {
 }
 
 vector<Suggestion> View::recommendations(int maxCount,
-                      int navMaxResultsPerEndPos,
-                      int transformMaxResultsPerStartPos) const {
+                      const OptimizerParamOverrides* overrides) const {
   return std::visit(overload{
       [&](const Navigate& nav) {
-        return recommendNavigate(
-            nav.index, maxCount, navMaxResultsPerEndPos);
+        return recommendNavigate(nav.index, maxCount, overrides);
       },
       [&](const Transform& transform) {
-        return recommendTransform(
-            transform.index, maxCount, transformMaxResultsPerStartPos);
+        return recommendTransform(transform.index, maxCount, overrides);
       },
       [&](const Insert& insert) {
         return recommendInsert(insert.index, maxCount);
@@ -175,7 +172,7 @@ Outcome View::commit(State next) {
 vector<Suggestion> View::recommendNavigate(
     int navIndex,
     int maxCount,
-    int navMaxResultsPerEndPos) const {
+    const OptimizerParamOverrides* overrides) const {
   CharRange target = plan_.getPlan().navTarget(navIndex);
   return rankNavFrontier(
       NavFrontierQuery{
@@ -184,11 +181,11 @@ vector<Suggestion> View::recommendNavigate(
               .cursor = state_.cursor,
               .seq = state_.seq,
               .maxCount = maxCount,
+              .overrides = overrides,
           },
           target,
           boundary_,
           navContext_,
-          navMaxResultsPerEndPos,
       },
       config_);
 }
@@ -196,7 +193,7 @@ vector<Suggestion> View::recommendNavigate(
 vector<Suggestion> View::recommendTransform(
     int editIndex,
     int maxCount,
-    int transformMaxResultsPerStartPos) const {
+    const OptimizerParamOverrides* overrides) const {
   assert(editIndex >= 0 && editIndex < totalEdits_ && "Transform editIndex out of range");
 
   const DiffState& diff = plan_.plannedEditAt(editIndex).diff;
@@ -207,9 +204,9 @@ vector<Suggestion> View::recommendTransform(
               .cursor = state_.cursor,
               .seq = state_.seq,
               .maxCount = maxCount,
+              .overrides = overrides,
           },
           diff,
-          transformMaxResultsPerStartPos,
       },
       config_);
 }

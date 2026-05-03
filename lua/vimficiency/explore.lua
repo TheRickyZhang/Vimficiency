@@ -6,8 +6,8 @@ local highlights       = require("vimficiency.explore.highlights")
 local tags_render      = require("vimficiency.explore.render.tags")
 local header_render    = require("vimficiency.explore.render.header")
 local list_render      = require("vimficiency.explore.render.list")
+local panel_render     = require("vimficiency.explore.render.panel")
 local keymaps          = require("vimficiency.explore.keymaps")
-local settings         = require("vimficiency.settings_modal")
 local settings_profile = require("vimficiency.settings_profile")
 
 -- Forward-declared locals. Hoisted to the top of the file so every
@@ -15,40 +15,122 @@ local settings_profile = require("vimficiency.settings_profile")
 -- definitions appear in.
 ---@type table<integer, VF.Explore.Active>  # keyed by tabpage id
 local active_by_tab = {}
-local open_settings_modal
+local toggle_settings_panel
 
--- Layered settings store. On first access we build the layer stack:
+-- Layered, sectioned settings store. Layers (lowest to highest precedence):
 --
---   hardcoded defaults  (in config.lua's `fields.explore`)
+--   hardcoded C++ defaults                        (OptimizerParamsBase.h)
 --        ↓ overlaid by
---   user's setup declarations  (already merged into `config.explore`
---        by `config.apply`)
---        ↓ overlaid by
---   sidecar file (`~/.local/share/nvim/vimficiency/explore_settings.json`)
+--   user global config (config.optimizer / config.explore)
+--        ↓ overlaid by (explore-only)
+--   sidecar (`~/.local/share/nvim/vimficiency/explore_settings.json`)
 --
--- Every runtime change (`gs` modal) mutates this table AND
--- writes to the sidecar so the next nvim run starts with the user's
--- latest preferences. To reset, delete the sidecar or use the settings
--- modal's reset action.
----@type table|nil
-local current_settings
+-- The sidecar is sectioned: `shared/nav/transform/composition` carry
+-- optimizer-param overrides (mirroring the OptimizerParamOverrides wire
+-- format), and `ui` carries explore-only render preferences. v1 → v2
+-- migration runs lazily on first load.
+local EXPLORE_SCHEMA_VERSION = 2
 
----Lazy-init the layered settings store. `vim.deepcopy(config.explore)`
----so mutations don't leak into the config module's shared table.
----@return table
-local function settings_store()
-  if current_settings == nil then
-    current_settings = vim.deepcopy(config.explore or {})
-    local saved = settings_profile.load("explore")
-    for k, v in pairs(saved) do
-      -- Only overlay keys we know about; ignore stale fields from
-      -- old schema versions, typos, etc.
-      if current_settings[k] ~= nil or config.explore[k] == nil then
-        current_settings[k] = v
+---@class VF.Explore.Settings
+---@field shared table<string, any>      # optimizer base-param overrides applied to all 3 optimizers
+---@field nav table<string, any>          # NavOptimizer-specific overrides
+---@field transform table<string, any>    # TransformOptimizer-specific overrides
+---@field composition table<string, any>  # CompositionOptimizer-specific overrides
+---@field ui { display_mode: string, recommendation_count: integer, show_user_typed: boolean, show_result_count: integer }
+
+---@return VF.Explore.Settings
+local function default_settings()
+  return {
+    shared = {},
+    nav = {},
+    transform = {},
+    composition = {},
+    ui = {
+      display_mode = config.explore.display_mode,
+      recommendation_count = config.explore.recommendation_count,
+      show_user_typed = config.explore.show_user_typed,
+      show_result_count = config.explore.show_result_count,
+    },
+  }
+end
+
+---Migrate a v1 (flat) sidecar payload to v2 (sectioned). Drops keys we
+---don't recognize.
+---@param data table<string, any>
+---@return VF.Explore.Settings
+local function migrate_v1_to_v2(data)
+  local out = default_settings()
+  if data.display_mode ~= nil then out.ui.display_mode = data.display_mode end
+  if data.recommendation_count ~= nil then out.ui.recommendation_count = data.recommendation_count end
+  if data.show_user_typed ~= nil then out.ui.show_user_typed = data.show_user_typed end
+  if data.show_result_count ~= nil then out.ui.show_result_count = data.show_result_count end
+  if data.nav_max_results_per_end_pos ~= nil then
+    out.nav.maxResultsPerEndPos = data.nav_max_results_per_end_pos
+  end
+  if data.transform_max_results_per_start_pos ~= nil then
+    out.transform.maxResultsPerStartPos = data.transform_max_results_per_start_pos
+  end
+  return out
+end
+
+---Load a v2 envelope payload into a fresh defaults table. Sections
+---missing or wrong-typed fall back to defaults; unknown keys inside a
+---section are kept (they're written through to the FFI override blob,
+---where the C++ parser warns and the appliers silent-skip — see
+---OptimizerParamOverrides::parse).
+---@param data table
+---@return VF.Explore.Settings
+local function load_v2(data)
+  local out = default_settings()
+  for _, scope in ipairs({ "shared", "nav", "transform", "composition" }) do
+    if type(data[scope]) == "table" then
+      for k, val in pairs(data[scope]) do
+        out[scope][k] = val
       end
     end
   end
+  if type(data.ui) == "table" then
+    for k, val in pairs(data.ui) do
+      if out.ui[k] ~= nil then out.ui[k] = val end
+    end
+  end
+  return out
+end
+
+---@type VF.Explore.Settings|nil
+local current_settings
+
+---@return VF.Explore.Settings
+local function settings_store()
+  if current_settings == nil then
+    local envelope = settings_profile.load("explore")
+    if envelope.version == EXPLORE_SCHEMA_VERSION then
+      current_settings = load_v2(envelope.data)
+    elseif envelope.version == 1 then
+      current_settings = migrate_v1_to_v2(envelope.data)
+      -- Rewrite in v2 shape so subsequent loads skip migration.
+      settings_profile.save("explore", EXPLORE_SCHEMA_VERSION, current_settings)
+    else
+      -- Cold start (nil) or unknown version: clean defaults.
+      current_settings = default_settings()
+    end
+  end
   return current_settings
+end
+
+---Resolve the effective value of a single optimizer-param key for a
+---given scope. Lookup order:
+---   1. per-scope override (e.g. `nav.fMotionThreshold`)
+---   2. shared override (`shared.fMotionThreshold`)
+---   3. nil  → caller emits no override; C++ default applies
+---@param key string
+---@param scope "nav"|"transform"|"composition"
+---@return any|nil
+local function resolve_param(key, scope)
+  local store = settings_store()
+  local scoped = store[scope] and store[scope][key]
+  if scoped ~= nil then return scoped end
+  return store.shared[key]
 end
 
 local M = {}
@@ -131,8 +213,6 @@ local RECOMMENDATION_COUNT_MAX = 10
 ---@field pending VF.Explore.Pending|nil        # insertion-origin snapshot while Insert
 ---@field display_mode string                          # "off" | "highlight" | "inplace" | "above" | "below"
 ---@field recommendation_count integer|nil             # settings override, or nil → config default
----@field nav_max_results_per_end_pos integer            # 1 = dedup motions by landing cell; large = keep multiple
----@field transform_max_results_per_start_pos integer    # 1 = dedup edits by start position; large = keep multiple
 ---@field show_user_typed boolean                      # include user's original typed sequence in the header
 ---@field show_result_count integer                    # how many captured `optimal_results` to include (0 → none)
 ---@field header_handlers table<string, function>      # keymaps attached to every header pane
@@ -152,15 +232,19 @@ end
 
 ---Update the live view + module store + sidecar file in one shot.
 ---Auto-save means the user doesn't think about persistence — it just
----happens on every toggle.
+---happens on every toggle. UI-section keys are mirrored to the view's
+---flat fields (where render code reads them); optimizer-section keys
+---live exclusively in the store and reach the C++ side via
+---`resolve_overrides` on each recommendation refresh.
 ---@param a VF.Explore.Active
+---@param section "shared"|"nav"|"transform"|"composition"|"ui"
 ---@param key string
 ---@param value any
-local function update_setting(a, key, value)
-  a[key] = value
+local function update_setting(a, section, key, value)
   local store = settings_store()
-  store[key] = value
-  settings_profile.save("explore", store)
+  store[section][key] = value
+  if section == "ui" then a[key] = value end
+  settings_profile.save("explore", EXPLORE_SCHEMA_VERSION, store)
 end
 
 local function copy_buffer_options(src_buf, scratch_buf)
@@ -213,13 +297,27 @@ local function sync_cursor_to_state()
   v.nvim_win_set_cursor(a.scratch.win, { a.state.cursor.row + 1, a.state.cursor.col })
 end
 
+---Build the explore session's optimizer override blob: global config
+---defaults under `shared:` overlaid by the explore session's sidecar
+---overrides (per-scope), encoded for the FFI boundary. Per-optimizer
+---scope drift wins over `shared:` for the optimizer it targets.
+---@return string
+local function resolve_overrides()
+  local store = settings_store()
+  local shared = vim.tbl_extend("force", {}, config.optimizer or {}, store.shared)
+  return ffi_lib.encode_optimizer_overrides({
+    shared = shared,
+    nav = store.nav,
+    transform = store.transform,
+    composition = store.composition,
+  })
+end
+
 local function refresh_state_and_recommendations()
   local a = assert_current_view()
   a.state = ffi_lib.explore_state(a.view_id)
-  a.recommendations = ffi_lib.explore_recommendations(a.view_id,
-    a.recommendation_count,
-    a.nav_max_results_per_end_pos,
-    a.transform_max_results_per_start_pos)
+  a.recommendations = ffi_lib.explore_recommendations(
+    a.view_id, a.recommendation_count, resolve_overrides())
 end
 
 ---Compute the suffix of the planned typed text still to be typed. Diffs the
@@ -511,6 +609,7 @@ local function destroy_view(a)
     pcall(v.nvim_del_autocmd, a.winclosed_autocmd)
     a.winclosed_autocmd = nil
   end
+  panel_render.close(a)
   ffi_lib.explore_destroy(a.view_id)
   active_by_tab[tab] = nil
   vim.schedule(function()
@@ -530,6 +629,11 @@ vim.on_key(function(_, typed)
   if not (typed and typed ~= "") then return end
   local a = current_view()
   if not a then return end
+  -- Only accumulate when focus is in the scratch buffer. Otherwise
+  -- panel keystrokes (j/k/l/h/q/gs) and any other side-window keys
+  -- would poison the buffer and silently break InsertEnter atom
+  -- matching the next time the user enters insert mode.
+  if v.nvim_get_current_buf() ~= a.scratch.buf then return end
   a.on_key_buffer = a.on_key_buffer .. keynorm.normalize(typed)
 end, on_key_ns)
 
@@ -686,13 +790,15 @@ function M.open(label, result, opts)
     -- toggles from previous views (within this nvim run) carry over.
     -- `update_setting` writes back into the store on changes.
   }
+  -- Seed view-level UI mirrors from the sectioned store. Optimizer
+  -- overrides (shared/nav/transform/composition) live exclusively in
+  -- the store and reach C++ through `resolve_overrides()` on every
+  -- recommendation refresh — no view-level mirror needed.
   local s = settings_store()
-  view.display_mode                        = s.display_mode
-  view.recommendation_count                = s.recommendation_count
-  view.nav_max_results_per_end_pos         = s.nav_max_results_per_end_pos
-  view.transform_max_results_per_start_pos = s.transform_max_results_per_start_pos
-  view.show_user_typed                     = s.show_user_typed
-  view.show_result_count                   = s.show_result_count
+  view.display_mode         = s.ui.display_mode
+  view.recommendation_count = s.ui.recommendation_count
+  view.show_user_typed      = s.ui.show_user_typed
+  view.show_result_count    = s.ui.show_result_count
 
   -- Register BEFORE installing keymaps / autocmds / first refresh_ui, so any
   -- handler that dispatches via current_view() finds this view.
@@ -701,12 +807,12 @@ function M.open(label, result, opts)
   -- Keymap spec is minimal by design — only view-flow keys are
   -- reachable in real time. Everything else (display mode, dedup,
   -- recommendation count, show-user-typed, result-count) lives behind
-  -- `gs` which opens the settings modal.
+  -- `gs` which toggles the settings side panel.
   view.header_handlers = {
     cancel             = function() M.cancel() end,
     undo               = undo,
     redo               = redo,
-    open_settings      = function() clear_on_key_buffer(); open_settings_modal() end,
+    open_settings      = function() clear_on_key_buffer(); toggle_settings_panel() end,
     debug_dump         = function()
       local a = assert_current_view()
       local optimal = (a.result and a.result.optimal_results) or {}
@@ -722,15 +828,7 @@ function M.open(label, result, opts)
         pending = a.pending,
         recs_count = #a.recommendations,
         recs = a.recommendations,
-        settings = {
-          display_mode = a.display_mode,
-          recommendation_count = a.recommendation_count,
-          effective_count = a.recommendation_count,
-          nav_max_results_per_end_pos = a.nav_max_results_per_end_pos,
-          transform_max_results_per_start_pos = a.transform_max_results_per_start_pos,
-          show_user_typed = a.show_user_typed,
-          show_result_count = a.show_result_count,
-        },
+        settings = vim.deepcopy(settings_store()),
         result = {
           user_seq = a.result and a.result.user_seq,
           user_cost = a.result and a.result.user_cost,
@@ -835,54 +933,184 @@ end
 -- missing. No defensive check is needed; the invariant is enforced
 -- structurally by "keymap-only access, no public M.* export".
 
----Build the settings schema for the current view and hand it to the
----settings modal. Every set-closure routes through `update_setting` so
----the view AND the module-level store stay in sync (store seeds the
----next view).
-function open_settings_modal()
-  local a = assert_current_view()
-  -- Dedup semantics: the stored field is an int cap (1 = dedup on,
+---Lookup the effective default for a panel-displayed optimizer param.
+---Reads C++ defaults via `ffi_lib.get_optimizer_defaults()` (cached at
+---the FFI layer). For "shared" UI rows we read from Nav's table — the
+---base defaults are uniform across all three optimizers, so picking
+---any one is equivalent. (Historically this was a fudge because
+---Transform overrode `maxResults`; the override has since been removed
+---and all three share the base default. If divergence reappears,
+---surface that field per-optimizer instead.)
+---@param scope "shared"|"nav"|"transform"|"composition"
+---@param key string
+---@return any|nil
+local function default_for(scope, key)
+  local defaults = ffi_lib.get_optimizer_defaults()
+  local lookup_scope = scope == "shared" and "nav" or scope
+  return defaults[lookup_scope] and defaults[lookup_scope][key]
+end
+
+---Build the settings schema for the active view. The schema fans out
+---into logically grouped subsets the panel renders top-to-bottom:
+---  • Display & UI (panel-only render prefs)
+---  • Frontier dedup (per-optimizer caps with bool toggles)
+---  • Optimizer (shared) — fields on OptimizerParamsBase, applied to all
+---    three optimizers via `shared:` scope.
+---  • Motion class — fields duplicated on Nav and Composition; one
+---    `shared:` knob covers both because Transform ignores them.
+---  • Composition planning — Composition-only fields.
+---
+---Per-optimizer drift (overriding a `shared:` key just for Nav, etc.)
+---isn't surfaced here; the override format supports it via direct
+---sidecar JSON edit, and a foldable Advanced section is a follow-up
+---once concrete demand surfaces.
+---@param a VF.Explore.Active
+---@return table[]
+local function build_settings_schema(a)
+  -- Dedup semantics: the stored value is an int cap (1 = dedup on,
   -- larger = dedup off). The user-facing label is "dedup", so we map
-  -- bool ↔ int at the modal boundary: dedup-on is value 1, dedup-off
-  -- is INT_MAX (no effective cap).
+  -- bool ↔ int: dedup-on is value 1, dedup-off is INT_MAX.
   local DEDUP_OFF = math.maxinteger or 2147483647
-  local function dedup_toggle(flag_key)
+  local store = settings_store()
+  local function dedup_toggle(scope, key)
     return
-      function() return a[flag_key] == 1 end,
-      function(on) update_setting(a, flag_key, on and 1 or DEDUP_OFF) end
+      function() return (store[scope][key] or 1) == 1 end,
+      function(on) update_setting(a, scope, key, on and 1 or DEDUP_OFF) end
   end
-  local motion_get, motion_set = dedup_toggle("nav_max_results_per_end_pos")
-  local edit_get, edit_set = dedup_toggle("transform_max_results_per_start_pos")
+  local motion_get, motion_set = dedup_toggle("nav", "maxResultsPerEndPos")
+  local edit_get, edit_set = dedup_toggle("transform", "maxResultsPerStartPos")
+
+  -- Effective-value getter for optimizer-param rows: store override
+  -- first, C++ default (via FFI) second. Setter always writes to the
+  -- store (which makes the override active).
+  local function opt_get(scope, key)
+    return function()
+      local v = store[scope][key]
+      if v ~= nil then return v end
+      return default_for(scope, key)
+    end
+  end
+  local function opt_set(scope, key)
+    return function(value) update_setting(a, scope, key, value) end
+  end
 
   local optimal_results = (a.result and a.result.optimal_results) or {}
 
-  local schema = {
+  return {
+    { kind = "hint", text = "── Display & UI ──" },
     { kind = "setting",
       label = "Display mode",
       value_kind = "enum", values = DISPLAY_MODES,
       get = function() return a.display_mode end,
-      set = function(value) update_setting(a, "display_mode", value) end },
+      set = function(value) update_setting(a, "ui", "display_mode", value) end },
     { kind = "setting",
       label = "Recommendation count",
       value_kind = "int", min = RECOMMENDATION_COUNT_MIN, max = RECOMMENDATION_COUNT_MAX,
       get = function() return a.recommendation_count end,
-      set = function(value) update_setting(a, "recommendation_count", value) end },
-    { kind = "setting",
-      label = "Motion dedup",
-      value_kind = "bool", get = motion_get, set = motion_set },
-    { kind = "setting",
-      label = "Edit dedup",
-      value_kind = "bool", get = edit_get, set = edit_set },
+      set = function(value) update_setting(a, "ui", "recommendation_count", value) end },
     { kind = "setting",
       label = "Show user typed",
       value_kind = "bool",
       get = function() return a.show_user_typed end,
-      set = function(value) update_setting(a, "show_user_typed", value) end },
+      set = function(value) update_setting(a, "ui", "show_user_typed", value) end },
     { kind = "setting",
       label = "Optimal results shown",
       value_kind = "int", min = 0, max = #optimal_results,
       get = function() return a.show_result_count end,
-      set = function(value) update_setting(a, "show_result_count", value) end },
+      set = function(value) update_setting(a, "ui", "show_result_count", value) end },
+
+    -- Optimizer (shared) — fields on OptimizerParamsBase, genuinely
+    -- shared by all three optimizers. One knob writes to `shared:`,
+    -- the C++ override applier propagates to Nav, Transform, and
+    -- Composition uniformly.
+    { kind = "separator" },
+    { kind = "hint", text = "── Optimizer (shared) ──" },
+    { kind = "setting",
+      label = "Max results",
+      value_kind = "int", min = 1, max = 100,
+      get = opt_get("shared", "maxResults"), set = opt_set("shared", "maxResults") },
+    { kind = "setting",
+      label = "Max nodes popped",
+      value_kind = "int", min = 1000, max = 500000, step = 1000,
+      get = opt_get("shared", "maxNodesPopped"), set = opt_set("shared", "maxNodesPopped") },
+    { kind = "setting",
+      label = "Explore factor",
+      value_kind = "float", min = 1.0, max = 10.0, step = 0.1,
+      get = opt_get("shared", "exploreFactor"), set = opt_set("shared", "exploreFactor") },
+    { kind = "setting",
+      label = "Effort weight",
+      value_kind = "float", min = 0.0, max = 5.0, step = 0.1,
+      get = opt_get("shared", "effortWeight"), set = opt_set("shared", "effortWeight") },
+    { kind = "setting",
+      label = "Distance weight",
+      value_kind = "float", min = 0.0, max = 5.0, step = 0.1,
+      get = opt_get("shared", "distanceWeight"), set = opt_set("shared", "distanceWeight") },
+    { kind = "setting",
+      label = "Min prefix count",
+      value_kind = "int", min = 2, max = 16,
+      get = opt_get("shared", "minPrefixCount"), set = opt_set("shared", "minPrefixCount") },
+    { kind = "setting",
+      label = "Max prefix count",
+      value_kind = "int", min = 0, max = 32,
+      get = opt_get("shared", "maxPrefixCount"), set = opt_set("shared", "maxPrefixCount") },
+
+    -- Nav-specific. fMotionThreshold and useDirectionalPruning are
+    -- duplicated on Composition's section below — they're separate
+    -- per-optimizer fields, not a shared knob.
+    { kind = "separator" },
+    { kind = "hint", text = "── Nav ──" },
+    { kind = "setting",
+      label = "Per-cell dedup",
+      value_kind = "bool", get = motion_get, set = motion_set },
+    { kind = "setting",
+      label = "fMotion threshold",
+      value_kind = "int", min = 0, max = 20,
+      get = opt_get("nav", "fMotionThreshold"),
+      set = opt_set("nav", "fMotionThreshold") },
+    { kind = "setting",
+      label = "Directional pruning",
+      value_kind = "bool",
+      get = opt_get("nav", "useDirectionalPruning"),
+      set = opt_set("nav", "useDirectionalPruning") },
+
+    { kind = "separator" },
+    { kind = "hint", text = "── Transform ──" },
+    { kind = "setting",
+      label = "Per-start dedup",
+      value_kind = "bool", get = edit_get, set = edit_set },
+
+    -- Composition-specific. Note `fMotionThreshold` /
+    -- `useDirectionalPruning` appear here AND under Nav by design —
+    -- they're physically separate fields on each struct (see
+    -- NavOptimizerParams.h's note on the duplication).
+    { kind = "separator" },
+    { kind = "hint", text = "── Composition ──" },
+    { kind = "setting",
+      label = "fMotion threshold",
+      value_kind = "int", min = 0, max = 20,
+      get = opt_get("composition", "fMotionThreshold"),
+      set = opt_set("composition", "fMotionThreshold") },
+    { kind = "setting",
+      label = "Directional pruning",
+      value_kind = "bool",
+      get = opt_get("composition", "useDirectionalPruning"),
+      set = opt_set("composition", "useDirectionalPruning") },
+    { kind = "setting",
+      label = "Overshoot penalty",
+      value_kind = "float", min = 0.0, max = 10.0, step = 0.5,
+      get = opt_get("composition", "overshootPenalty"),
+      set = opt_set("composition", "overshootPenalty") },
+    { kind = "setting",
+      label = "Nav padding above",
+      value_kind = "int", min = 0, max = 10,
+      get = opt_get("composition", "navPaddingAbove"),
+      set = opt_set("composition", "navPaddingAbove") },
+    { kind = "setting",
+      label = "Nav padding below",
+      value_kind = "int", min = 0, max = 10,
+      get = opt_get("composition", "navPaddingBelow"),
+      set = opt_set("composition", "navPaddingBelow") },
+
     { kind = "separator" },
     { kind = "action",
       label = "reset to default settings",
@@ -893,13 +1121,28 @@ function open_settings_modal()
         settings_profile.clear("explore")
         current_settings = nil
         local s = settings_store()
-        for key in pairs(s) do a[key] = s[key] end
+        for key, val in pairs(s.ui) do a[key] = val end
         refresh_ui()
+        panel_render.refresh(a)
         vim.notify("vimfy explore: settings reset to defaults",
           vim.log.levels.INFO)
       end },
+    { kind = "separator" },
+    { kind = "hint", text = "Tab/S-Tab adjust · i input" },
   }
-  settings.open(schema, refresh_ui, { title = "Explore Settings" })
+end
+
+---Toggle the explore settings side panel. Called from the `gs` keymap.
+---First press opens; second press closes.
+function toggle_settings_panel()
+  local a = assert_current_view()
+  if panel_render.is_open(a) then
+    panel_render.close(a)
+    return
+  end
+  panel_render.open(a, build_settings_schema(a), function()
+    refresh_ui()
+  end)
 end
 
 function M.status()
@@ -923,5 +1166,15 @@ function M.status()
     recommendations = vim.deepcopy(a.recommendations),
   }
 end
+
+-- Internal exports for tests. Migration is a pure function and easier
+-- to verify directly than through a full session round-trip; the
+-- schema-version constant lets tests assert lockstep.
+M._for_test = {
+  EXPLORE_SCHEMA_VERSION = EXPLORE_SCHEMA_VERSION,
+  migrate_v1_to_v2 = migrate_v1_to_v2,
+  default_settings = default_settings,
+  resolve_param = resolve_param,
+}
 
 return M

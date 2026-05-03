@@ -13,13 +13,6 @@
 // (either capped or exhausted) in shouldContinue().
 
 struct TransformOptimizerParams : OptimizerParamsBase {
-  TransformOptimizerParams() { maxResults = 20; }
-  // Line padding for internal NavOptimizer calls (visual delete path).
-  // Lower default than CompositionOptimizer since effectiveLines already
-  // includes prefix/suffix context. Adjustable to 0 for no padding.
-  // See dev/optimizer/buffer-slicing.md for details.
-  int navLinePaddingAbove = 1;
-  int navLinePaddingBelow = 1;
 
   // Cap on results retained per starting cursor position. Default 1 keeps
   // only the cheapest sequence per start; values >1 surface multiple
@@ -31,14 +24,11 @@ struct TransformOptimizerParams : OptimizerParamsBase {
   // Chainable setters for fluent configuration
   TransformOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
   TransformOptimizerParams& withMaxNodesPopped(int v) { maxNodesPopped = v; return *this; }
-  TransformOptimizerParams& withNavLinePaddingAbove(int v) { navLinePaddingAbove = v; return *this; }
-  TransformOptimizerParams& withNavLinePaddingBelow(int v) { navLinePaddingBelow = v; return *this; }
-  TransformOptimizerParams& withNavLinePadding(int v) { navLinePaddingAbove = navLinePaddingBelow = v; return *this; }
   TransformOptimizerParams& withMaxResultsPerStartPos(int v) { maxResultsPerStartPos = v; return *this; }
   TransformOptimizerParams& withMinCountRepeat(int v) { setMinCountRepeat(v); return *this; }
   TransformOptimizerParams& withMaxCountRepeat(int v) { setMaxCountRepeat(v); return *this; }
   // Factory for Dijkstra mode (no heuristic)
-  static TransformOptimizerParams dijkstra(int maxResults = 10, int maxNodesPopped = 50000) {
+  static TransformOptimizerParams dijkstra(int maxResults = 20, int maxNodesPopped = 50000) {
     TransformOptimizerParams p;
     p.maxResults = maxResults;
     p.maxNodesPopped = maxNodesPopped;
