@@ -209,6 +209,7 @@ local RECOMMENDATION_COUNT_MAX = 10
 ---@field list_buf integer                             # recommendation list buffer (left pane)
 ---@field state VF.Explore.State                # view-reported phase + cursor + seq
 ---@field recommendations VF.Explore.Recommendation[]
+---@field header_rows VF.Explore.HeaderRows           # plan-aligned rows for the header panes
 ---@field on_key_buffer string                         # raw keys captured since last reconcile
 ---@field pending VF.Explore.Pending|nil        # insertion-origin snapshot while Insert
 ---@field display_mode string                          # "off" | "highlight" | "inplace" | "above" | "below"
@@ -318,6 +319,9 @@ local function refresh_state_and_recommendations()
   a.state = ffi_lib.explore_state(a.view_id)
   a.recommendations = ffi_lib.explore_recommendations(
     a.view_id, a.recommendation_count, resolve_overrides())
+  -- Plan-aligned header rows: cheap to fetch (Explored is rebuilt from State,
+  -- optimal rows are cached server-side from construction-time spans).
+  a.header_rows = ffi_lib.explore_header_rows(a.view_id)
 end
 
 ---Compute the suffix of the planned typed text still to be typed. Diffs the
@@ -367,6 +371,16 @@ local function match_insert_recommendation(keys)
     end
   end
   return matched
+end
+
+local function keys_enter_insert(keys)
+  if keys == "" then return false end
+  local tokens, err = ffi_lib.tokenize_sequence(keys)
+  if err then return false end
+  for _, token in ipairs(tokens) do
+    if token.kind == "change" then return true end
+  end
+  return false
 end
 
 local function refresh_ui()
@@ -452,8 +466,10 @@ end
 ---by tail-matching the raw-key buffer against known edit recommendations;
 ---once we land in Insert phase the C++ side emits a single recommendation
 ---whose `text` is the canonical typed text, which becomes the target the
----header displays. On no match, we do nothing — InsertLeave's
----`accept_insert_exit` fallback still validates the final buffer.
+---header displays. Recommendation matching is only an early confidence
+---check; if the cursor is already in Transform and Vim did enter insert
+---mode, still show the canonical typed target and let InsertLeave validate
+---the final buffer.
 local function on_insert_enter()
   local a = assert_current_view()
   -- Sticky completion: don't transition into Insert. on_buffer_changed will
@@ -463,10 +479,9 @@ local function on_insert_enter()
   if a.state.phase.kind ~= "Navigate" and a.state.phase.kind ~= "Transform" then return end
 
   local keys = a.on_key_buffer or ""
-  if keys == "" then return end
-
   local matched = match_insert_recommendation(keys)
-  if not matched then return end
+  if not matched and a.state.phase.kind ~= "Transform" then return end
+  if not matched and keys ~= "" and not keys_enter_insert(keys) then return end
 
   -- Deliberately DO NOT clear on_key_buffer here — so the full command
   -- (`s` + typed content + `<Esc>`) survives to seq when
@@ -579,7 +594,7 @@ local function on_buffer_changed()
   if buffer_matches_session then return end
 
   local raw_keys = a.on_key_buffer or ""
-  if match_insert_recommendation(raw_keys) then
+  if match_insert_recommendation(raw_keys) or keys_enter_insert(raw_keys) then
     return
   end
   a.on_key_buffer = ""
@@ -970,7 +985,8 @@ local function build_settings_schema(a)
   -- Dedup semantics: the stored value is an int cap (1 = dedup on,
   -- larger = dedup off). The user-facing label is "dedup", so we map
   -- bool ↔ int: dedup-on is value 1, dedup-off is INT_MAX.
-  local DEDUP_OFF = math.maxinteger or 2147483647
+  -- INT32_MAX. LuaJIT runs on Lua 5.1 and lacks `math.maxinteger`.
+  local DEDUP_OFF = 2147483647
   local store = settings_store()
   local function dedup_toggle(scope, key)
     return
@@ -994,7 +1010,7 @@ local function build_settings_schema(a)
     return function(value) update_setting(a, scope, key, value) end
   end
 
-  local optimal_results = (a.result and a.result.optimal_results) or {}
+  local optimal_rows = (a.header_rows and a.header_rows.optimal) or {}
 
   return {
     { kind = "hint", text = "── Display & UI ──" },
@@ -1015,7 +1031,7 @@ local function build_settings_schema(a)
       set = function(value) update_setting(a, "ui", "show_user_typed", value) end },
     { kind = "setting",
       label = "Optimal results shown",
-      value_kind = "int", min = 0, max = #optimal_results,
+      value_kind = "int", min = 0, max = #optimal_rows,
       get = function() return a.show_result_count end,
       set = function(value) update_setting(a, "ui", "show_result_count", value) end },
 
@@ -1175,6 +1191,7 @@ M._for_test = {
   migrate_v1_to_v2 = migrate_v1_to_v2,
   default_settings = default_settings,
   resolve_param = resolve_param,
+  keys_enter_insert = keys_enter_insert,
 }
 
 return M

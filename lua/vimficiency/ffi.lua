@@ -100,6 +100,7 @@ end
 ---@field vf_explore_cancel_insert fun(view_id: integer): string
 ---@field vf_explore_undo fun(view_id: integer): string
 ---@field vf_explore_redo fun(view_id: integer): string
+---@field vf_explore_header_rows fun(view_id: integer): string
 
 local api_def_text = read_ffi_api_def()
 ffi.cdef(api_def_text)
@@ -506,19 +507,6 @@ end
 
 M._parse_analyze_results = parse_analyze_results
 
----@param initial_lines string[] Buffer lines at session start
----@param goal_lines string[] Buffer lines at session end (can equal initial_lines for motion-only)
----@param boundary_first_col integer Column offset at start of boundary (0 for linewise)
----@param boundary_last_col integer Last valid column in boundary (lastLineLen-1 for linewise)
----@param has_lines_above boolean Whether there are lines above the slice in the full buffer
----@param has_lines_below boolean Whether there are lines below the slice in the full buffer
----@param start_row integer (0-indexed, relative to slice)
----@param start_col integer (0-indexed)
----@param end_row integer (0-indexed, relative to slice)
----@param end_col integer (0-indexed)
----@param key_seq string
----@param window_height integer
----@param scroll_amount integer
 ---@class VF.OptimizerOverrides
 ---@field shared? table<string, number|integer|boolean>
 ---@field nav? table<string, number|integer|boolean>
@@ -582,6 +570,19 @@ function M.get_optimizer_defaults()
   return out
 end
 
+---@param initial_lines string[] Buffer lines at session start
+---@param goal_lines string[] Buffer lines at session end (can equal initial_lines for motion-only)
+---@param boundary_first_col integer Column offset at start of boundary (0 for linewise)
+---@param boundary_last_col integer Last valid column in boundary (lastLineLen-1 for linewise)
+---@param has_lines_above boolean Whether there are lines above the slice in the full buffer
+---@param has_lines_below boolean Whether there are lines below the slice in the full buffer
+---@param start_row integer (0-indexed, relative to slice)
+---@param start_col integer (0-indexed)
+---@param end_row integer (0-indexed, relative to slice)
+---@param end_col integer (0-indexed)
+---@param key_seq string
+---@param window_height integer
+---@param scroll_amount integer
 ---@param RESULTS_CALCULATED integer
 ---@param optimizer_overrides? string Newline-delimited `<scope>:<key>=<value>` lines; empty/nil for defaults
 ---@return VF.Optimizer.Result[] results, number user_cost, string debug
@@ -1041,6 +1042,49 @@ end
 function M.explore_redo(view_id)
   local payload = require_non_error(ffi.string(lib.vf_explore_redo(view_id)))
   return parse_explore_apply_result(payload)
+end
+
+---Plan-aligned header rows for the Explore display. Each row is a raw key
+---sequence (potentially with `<Esc>` and arbitrary insert bytes); render
+---them via `sequence_display.inline()`.
+---
+---`explored` reflects the current live State (rebuild after every action).
+---`optimal[i]` mirrors the i-th optimal result and never changes for the
+---lifetime of the View.
+---
+---User-typed rendering stays in Lua via the existing token-kind sectioner;
+---it has no plan-aligned boundaries, so we don't fabricate rows here.
+---@class VF.Explore.HeaderRows
+---@field explored string[]
+---@field optimal string[][]
+
+---@param view_id integer
+---@return VF.Explore.HeaderRows
+function M.explore_header_rows(view_id)
+  local payload = require_non_error(ffi.string(lib.vf_explore_header_rows(view_id)))
+  local parts = decode_string_list(payload)
+  local idx = 1
+  local explored_count = tonumber(parts[idx]) or 0
+  idx = idx + 1
+  local explored = {}
+  for i = 1, explored_count do
+    explored[i] = parts[idx + i - 1]
+  end
+  idx = idx + explored_count
+  local optimal_count = tonumber(parts[idx]) or 0
+  idx = idx + 1
+  local optimal = {}
+  for i = 1, optimal_count do
+    local col_count = tonumber(parts[idx]) or 0
+    idx = idx + 1
+    local col = {}
+    for j = 1, col_count do
+      col[j] = parts[idx + j - 1]
+    end
+    idx = idx + col_count
+    optimal[i] = col
+  end
+  return { explored = explored, optimal = optimal }
 end
 
 return M

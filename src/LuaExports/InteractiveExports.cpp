@@ -87,6 +87,29 @@ string encodeSuggestions(const vector<Suggestion>& recs) {
   return out;
 }
 
+// Length-prefixed header-rows payload. Each row is a raw key sequence (may
+// contain `<Esc>` and arbitrary insert-mode bytes); length-prefix encoding
+// avoids the separator-escape problem entirely. Lua applies
+// `sequence_display.inline()` per row when rendering.
+//
+// Layout (all fields are length-prefixed via `encodeField`):
+//   explored_count, row_0, row_1, ..., row_{explored_count-1},
+//   optimal_count,
+//   for each i in [0, optimal_count):
+//     col_i_count, row_0, row_1, ..., row_{col_i_count-1}
+string encodeHeaderRows(const View& v) {
+  const auto rows = v.headerRows();
+  string out;
+  out += encodeField(intField(static_cast<int>(rows.explored.size())));
+  for (const auto& row : rows.explored) out += encodeField(string_view(row));
+  out += encodeField(intField(static_cast<int>(rows.optimal.size())));
+  for (const auto& col : rows.optimal) {
+    out += encodeField(intField(static_cast<int>(col.size())));
+    for (const auto& row : col) out += encodeField(string_view(row));
+  }
+  return out;
+}
+
 VF::LuaExports::Result<string> startImpl(
     const char* encoded_initial_lines,
     int start_row,
@@ -286,6 +309,13 @@ const char* vf_explore_redo(int view_id) {
   static string storage;
   View& v = g_registry.get(view_id);
   storage = encodeOutcome(v.redo());
+  return storage.c_str();
+}
+
+const char* vf_explore_header_rows(int view_id) {
+  static string storage;
+  View& v = g_registry.get(view_id);
+  storage = encodeHeaderRows(v);
   return storage.c_str();
 }
 

@@ -11,11 +11,15 @@
 #include "Boundary/NavBoundary.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
+#include "Optimizer/CompositionOptimizer/EditSequenceSpan.h"
 #include "Optimizer/FrontierCommon.h"
 #include "Rejected.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 #include "Types/NavContext.h"
+
+#include <array>
+#include <cstdint>
 
 /* Explore view
   Middle layer between Lua (InteractiveExports.cpp) and the optimizer lib (`src/Optimizer/`).
@@ -63,6 +67,29 @@ inline int phaseIndex(const Phase& p) {
   return std::visit([](auto&& x) { return x.index; }, p);
 }
 
+// Per-State edit span list, sized to the composition optimizer's hard cap of
+// 16 edits. Fixed storage keeps undo/redo snapshots allocation-free at the
+// cost of ~128 bytes per snapshot. Equality intentionally compares only the
+// active prefix `[0, size)` so trailing zero-initialized entries don't break
+// State::operator==.
+struct EditSpanList {
+  std::array<EditSequenceSpan, 16> spans{};
+  uint8_t size = 0;
+
+  bool operator==(const EditSpanList& other) const {
+    if (size != other.size) return false;
+    for (uint8_t i = 0; i < size; ++i) {
+      if (!(spans[i] == other.spans[i])) return false;
+    }
+    return true;
+  }
+
+  void push(EditSequenceSpan s) {
+    assert(size < spans.size() && "EditSpanList overflow (>16 edits)");
+    spans[size++] = s;
+  }
+};
+
 // Mutable state snapshot. The View owns one live State and a history of prior snapshots in its undo/redo stacks.
 struct State {
   Phase phase = Navigate{0};
@@ -70,6 +97,13 @@ struct State {
   CursorPos cursor{0, 0};
   std::string seq;
   double cost = 0.0;
+
+  // Plan-aligned byte spans for each completed planned edit. Pushed by
+  // edit-completing actions (applyEdit, acceptBufferState with advance,
+  // acceptInsertExit). Movement / cursor sync / beginInsert / cancelInsert
+  // do not push. `size` matches the number of completed edits, so undo/redo
+  // pop spans in lockstep with `editsCompleted`.
+  EditSpanList editSpans;
 
   bool operator==(const State&) const = default;
 };
@@ -110,6 +144,23 @@ public:
       int maxCount,
       const OptimizerParamOverrides* overrides = nullptr) const;
 
+  // Header column rows, plan-aligned (not Vim-token-aligned).
+  //
+  // - `explored` is built fresh each call from the current `State.seq` and
+  //   `State.editSpans`, so undo/redo and edit completion are reflected.
+  // - `optimal[i]` is built fresh from the i-th optimal result's flat seq
+  //   plus the per-result edit spans captured at construction time. The
+  //   underlying plan/spans never change, so this is effectively cached.
+  //
+  // User-typed rendering deliberately stays in Lua via the existing
+  // token-kind sectioner: user input has no plan-aligned boundaries, so
+  // forcing a row format here would fabricate structure that isn't real.
+  struct HeaderRows {
+    std::vector<std::string> explored;
+    std::vector<std::vector<std::string>> optimal;
+  };
+  HeaderRows headerRows() const;
+
   // Each action produces a new state or a rejected reason
   Outcome applyMovement(std::string_view movementText);
   Outcome acceptCursorMove(CursorPos newCursor, std::string_view rawKeys);
@@ -144,6 +195,12 @@ private:
   // populated — pure-motion sessions use a 0-edit plan whose only nav target
   // is `goalPos`.
   CompositionResult plan_;
+
+  // Per-optimal-result edit byte spans, computed once at construction via
+  // CompositionOptimizer::optimizeWithEditSpans. Indexed in lockstep with
+  // `plan_.getResults()`. Used by `headerRows()` to render the Optimal-N
+  // columns segmented by composition plan rather than by Vim-token kind.
+  std::vector<std::vector<EditSequenceSpan>> optimalEditSpans_;
 
   // Live state + undo/redo history
   State state_;

@@ -7,6 +7,7 @@
 #include "CompositionPlan.h"
 #include "CompositionOptimizerParams.h"
 #include "CompositionSearchContext.h"
+#include "EditSequenceSpan.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 #include "Optimizer/OptimizerResult.h"
@@ -65,13 +66,10 @@ struct CompositionResult : BaseOptimizerResult<> {
   // Prints diff legend with {n} placeholders, then results with typed text substituted.
   friend std::ostream& operator<<(std::ostream& os, const CompositionResult& cr);
 
-private:
-  CompositionSearchStats stats_;
-  CompositionPlan plan_;
-  std::vector<CompositionExploredState> exploredStates_;
-  std::vector<TransformResult> editResults_;
-
-  friend struct CompositionOptimizer;
+  // Public construction so the CompositionOptimizer.cpp implementation can
+  // build it without coupling every helper through friendship. The contained
+  // invariants (one extra fencepost, one TransformResult per diff) are
+  // enforced by the asserts in the body.
   CompositionResult(std::vector<Result> results, CompositionSearchStats stats,
                     CompositionPlan plan,
                     std::vector<CompositionExploredState> exploredStates,
@@ -86,6 +84,32 @@ private:
     assert(editResults_.size() == plan_.diffs.size() &&
            "CompositionResult requires one TransformResult per diff");
   }
+
+private:
+  CompositionSearchStats stats_;
+  CompositionPlan plan_;
+  std::vector<CompositionExploredState> exploredStates_;
+  std::vector<TransformResult> editResults_;
+};
+
+// Display-only sidecar produced by `optimizeWithEditSpans()`. Contains the
+// usual `CompositionResult` plus, parallel to `result.getResults()`, the
+// per-result list of planned-edit byte spans inside that result's flat key
+// sequence. Used by `Explore::View` to render Optimal-N header columns
+// segmented by composition plan rather than by Vim-token kind.
+//
+// Invariant (when produced by `optimizeWithEditSpans`):
+//   editSpansByResult.size() == result.getResults().size()
+//   editSpansByResult[i].size() == result.totalEdits()
+//
+// We accept the parallel-vector shape here (the codebase usually prefers
+// per-edit accessors like `plannedEditAt`) because spans are a result-only
+// display side channel, not load-bearing model state. Folding them into
+// `Result` would pollute the universal optimizer pipeline used by
+// `vf_analyze` and other non-display callers.
+struct CompositionTraceResult {
+  CompositionResult result;
+  std::vector<std::vector<EditSequenceSpan>> editSpansByResult;
 };
 
 struct CompositionOptimizer {
@@ -110,6 +134,23 @@ struct CompositionOptimizer {
     const NavBoundary& boundary = NavBoundary(),
 
     // Niche settings
+    const NavContext& navigationContext = NavContext()
+  );
+
+  // Same as `optimize()`, but additionally records a per-edit byte span for
+  // every result the search emits. Intended exclusively for `Explore::View`'s
+  // header-row display: `vf_analyze` and other callers must use `optimize()`
+  // so they pay zero per-state cost for tracing they don't render.
+  // (The trace-aware queue entry uses `[[no_unique_address]]` for its trace
+  // field, so the non-traced code path is byte-identical to `optimize()`.)
+  CompositionTraceResult optimizeWithEditSpans(
+    const Lines& initialLines,
+    const CursorPos initialPos,
+    const Lines& goalLines,
+    const CursorPos goalPos,
+    CompositionOptimizerParams params = {},
+    std::string_view userSequence = "",
+    const NavBoundary& boundary = NavBoundary(),
     const NavContext& navigationContext = NavContext()
   );
 };

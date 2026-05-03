@@ -13,6 +13,7 @@ M.header_ns = header_ns
 ---@return table
 local function summary_chunks(active, remaining)
   local phase = active.state.phase
+  ---@type string
   local phase_label = phase.kind
   if active.state.is_completed then
     -- Sticky "Done" supersedes phase display; the actual phase
@@ -39,18 +40,24 @@ local function summary_chunks(active, remaining)
   }
 end
 
+---A column may carry plan-aligned `rows` (already-segmented strings, one per
+---visual line) OR a raw `seq` to be tokenized in Lua. Explored and Optimal-N
+---use `rows` so Vim-token-fused edits like `dE` and `ce i+1<Esc>` render as
+---the planned-edit boundaries the optimizer actually chose. User typed has
+---no plan boundaries — keep it on the legacy seq path so the UI doesn't
+---fabricate structure.
 ---@param active VF.Explore.Active
----@return { title: string, seq: string, empty_text: string }[]
+---@return { title: string, rows?: string[], seq?: string, empty_text: string }[]
 local function gather_columns(active)
+  local header_rows = active.header_rows or { explored = {}, optimal = {} }
   local cols = {
-    { title = "Explored", seq = active.state.seq or "", empty_text = "(start)" },
+    { title = "Explored", rows = header_rows.explored, empty_text = "(start)" },
   }
-  local optimal = (active.result and active.result.optimal_results) or {}
-  local want = math.min(active.show_result_count or 0, #optimal)
+  local want = math.min(active.show_result_count or 0, #header_rows.optimal)
   for i = 1, want do
     cols[#cols + 1] = {
       title = string.format("Optimal %d", i),
-      seq = optimal[i].seq or "",
+      rows = header_rows.optimal[i],
       empty_text = "(none)",
     }
   end
@@ -280,14 +287,32 @@ local function write_rows(buf, rows)
   vim.bo[buf].modifiable = false
 end
 
----@param column { title: string, seq: string, empty_text: string }
+---Build buffer rows for one header column. Two shapes:
+---  - `rows`: already plan-segmented strings (Explored / Optimal). Each row
+---    is one raw key chunk; tokenize per row so `<Esc>` etc. render
+---    cleanly, but DO NOT re-section (the segmentation is already correct).
+---  - `seq`: raw key sequence (User typed). Run the legacy token-kind
+---    sectioner.
+---@param column { title: string, rows?: string[], seq?: string, empty_text: string }
 ---@return table[][]
 local function build_rows(column)
   local lines
-  if column.seq ~= "" then
-    lines = sequence_display.lines(column.seq)
+  if column.rows then
+    if #column.rows == 0 then
+      lines = { column.empty_text }
+    else
+      lines = {}
+      for i, raw in ipairs(column.rows) do
+        lines[i] = sequence_display.inline(raw)
+      end
+    end
   else
-    lines = { column.empty_text }
+    local seq = column.seq or ""
+    if seq ~= "" then
+      lines = sequence_display.lines(seq)
+    else
+      lines = { column.empty_text }
+    end
   end
 
   local rows = {
