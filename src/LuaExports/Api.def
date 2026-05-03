@@ -143,3 +143,4 @@ const char* vf_explore_accept_insert_exit(
 const char* vf_explore_cancel_insert(int view_id);
 const char* vf_explore_undo(int view_id);
 const char* vf_explore_redo(int view_id);
+const char* vf_explore_header_rows(int view_id);

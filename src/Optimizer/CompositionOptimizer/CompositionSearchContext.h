@@ -1,9 +1,7 @@
 #pragma once
 
 #include <cassert>
-#include <functional>
 #include <optional>
-#include <queue>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -128,10 +126,11 @@ struct CompositionSearchContext {
   double effortWeight;
   double distanceWeight;
 
-  // Search state
-  using PriorityQueue = std::priority_queue<CompositionState, std::vector<CompositionState>,
-                                            std::greater<CompositionState>>;
-  PriorityQueue pq;
+  // Search state.
+  // pq lives locally in optimizeImpl() because its element type depends on
+  // the trace policy (see QueueEntry<Trace> in CompositionOptimizer.cpp).
+  // costMap stays here since its key (line, col, mode, editsCompleted) is
+  // independent of trace.
   std::unordered_map<CompositionStateKey, double, CompositionStateKeyHash> costMap;
 
   // Search limits
@@ -145,6 +144,12 @@ struct CompositionSearchContext {
   // Sub-optimizer aggregate stats
   int navNodesExplored = 0;
   int editNodesExplored = 0;
+
+  // Search-summary metrics deposited by `optimizeImpl` just before its local
+  // priority queue goes out of scope; read by `buildCompositionResult`. Only
+  // valid between those two points within a single optimize call.
+  int lastPqRemaining = 0;
+  bool lastFullyExplored = false;
 
   // Debug: optionally track explored states (composition-specific)
   std::vector<CompositionExploredState> exploredStates;
@@ -219,8 +224,14 @@ struct CompositionSearchContext {
     return std::move(exploredStates);
   }
 
-  // Build CompositionSearchStats from current context state
-  CompositionSearchStats getStats(int resultsFound) const;
+  // Build CompositionSearchStats from current context state.
+  // `pqRemaining` is the size of the templated priority queue (owned by
+  // optimizeImpl, not by the context); pass 0 if the search exited via
+  // result/budget caps. `fullyExplored` records whether the queue drained
+  // before any cap was hit.
+  CompositionSearchStats getStats(int resultsFound,
+                                  int pqRemaining,
+                                  bool fullyExplored) const;
 
 private:
   // Fencepost vectors (size = totalEdits() + 1): represent states *between* edits

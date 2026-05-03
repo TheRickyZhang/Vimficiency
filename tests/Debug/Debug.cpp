@@ -7,6 +7,7 @@
 //   - Or: ./vimficiency_tests --gtest_filter="NeovimOracleDebug.*"
 
 #include <gtest/gtest.h>
+#include <queue>
 
 #include "Interpreter/EditInterpreter.h"
 #include "Keyboard/Config.h"
@@ -1618,10 +1619,14 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
            << er.getGoalPos().line << "," << er.getGoalPos().col << ")" << endl;
     }
 
-    // Seed initial state (same as CompositionOptimizer::optimize does)
+    // Seed initial state (same as CompositionOptimizer::optimize does).
+    // The priority queue moved out of CompositionSearchContext into the
+    // optimizer's local scope; this debug trace mirrors that with a local pq.
+    std::priority_queue<CompositionState, std::vector<CompositionState>,
+                        std::greater<CompositionState>> pq;
     CompositionState startingState(initialPos, Mode::Normal, 0);
     startingState.setCost(ctx.heuristic(startingState, 0));
-    ctx.pq.push(startingState);
+    pq.push(startingState);
     ctx.costMap[startingState.getKey()] = startingState.getCost();
 
     auto enqueueState = [&](CompositionState&& newState) {
@@ -1635,10 +1640,10 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
         if (newState.getEditsCompleted() != ctx.totalEdits()) {
           ctx.costMap.emplace(newKey, newCost);
         }
-        ctx.pq.push(std::move(newState));
+        pq.push(std::move(newState));
       } else if (newCost <= it->second) {
         it->second = newCost;
-        ctx.pq.push(std::move(newState));
+        pq.push(std::move(newState));
       }
     };
     auto enqueueEditTransition = [&](const CompositionState& current,
@@ -1663,9 +1668,9 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     // Manual A* trace — pop states and print what happens
     int popCount = 0;
     vector<Result> results;
-    while (!ctx.pq.empty() && ctx.totalPops < params.maxNodesPopped && popCount < 50) {
-      CompositionState s = ctx.pq.top();
-      ctx.pq.pop();
+    while (!pq.empty() && ctx.totalPops < params.maxNodesPopped && popCount < 50) {
+      CompositionState s = pq.top();
+      pq.pop();
       ctx.totalPops++;
       CursorPos pos = s.getPos();
       int editsCompleted = s.getEditsCompleted();
@@ -1828,9 +1833,12 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
   NavContext navCtx;
   NavBoundary boundary;
 
+  // Local pq mirrors the templated optimizer's pq (moved out of context).
+  std::priority_queue<CompositionState, std::vector<CompositionState>,
+                      std::greater<CompositionState>> pq;
   CompositionState startingState(initialPos, Mode::Normal, 0);
   startingState.setCost(ctx.heuristic(startingState, 0));
-  ctx.pq.push(startingState);
+  pq.push(startingState);
   ctx.costMap[startingState.getKey()] = startingState.getCost();
 
   auto enqueueState = [&](CompositionState&& newState) {
@@ -1844,10 +1852,10 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
       if (newState.getEditsCompleted() != ctx.totalEdits()) {
         ctx.costMap.emplace(newKey, newCost);
       }
-      ctx.pq.push(std::move(newState));
+      pq.push(std::move(newState));
     } else if (newCost <= it->second) {
       it->second = newCost;
-      ctx.pq.push(std::move(newState));
+      pq.push(std::move(newState));
     }
   };
   auto enqueueEditTransition = [&](const CompositionState& current,
@@ -1871,9 +1879,9 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
 
   int popCount = 0;
   vector<Result> results;
-  while (!ctx.pq.empty() && ctx.totalPops < compParams.maxNodesPopped && popCount < 100) {
-    CompositionState s = ctx.pq.top();
-    ctx.pq.pop();
+  while (!pq.empty() && ctx.totalPops < compParams.maxNodesPopped && popCount < 100) {
+    CompositionState s = pq.top();
+    pq.pop();
     ctx.totalPops++;
     CursorPos pos = s.getPos();
     int editsCompleted = s.getEditsCompleted();
@@ -1961,7 +1969,7 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
   }
 
   cerr << "\nSearch exhausted after " << popCount << " pops, " << results.size() << " results" << endl;
-  cerr << "Queue remaining: " << static_cast<int>(ctx.pq.size()) << endl;
+  cerr << "Queue remaining: " << static_cast<int>(pq.size()) << endl;
 
   // Verify results
   if (!results.empty()) {

@@ -120,10 +120,17 @@ View::View(Lines initialLines, CursorPos initialPos, Lines goalLines,
   // call's inputs and semantics must track CompositionOptimizer::optimize.
   // Pure-motion sessions (initialLines == goalLines_) flow through here too,
   // producing a 0-edit plan whose only nav target is goalPos_.
+  //
+  // Explore opts into the traced variant because it needs plan-aligned edit
+  // spans to render the Optimal-N header columns. `vf_analyze` and any other
+  // non-display caller must use the plain `optimize()` so they pay zero
+  // per-state tracing cost.
   CompositionOptimizer opt(config_);
-  plan_ = opt.optimize(state_.lines, initialPos, goalLines_, goalPos_,
-                       compositionParams_, userSequence, boundary_,
-                       navContext_);
+  CompositionTraceResult traced = opt.optimizeWithEditSpans(
+      state_.lines, initialPos, goalLines_, goalPos_,
+      compositionParams_, userSequence, boundary_, navContext_);
+  plan_ = std::move(traced.result);
+  optimalEditSpans_ = std::move(traced.editSpansByResult);
 
   totalEdits_ = plan_.totalEdits();
   state_.phase = phaseForEditCursor(0, state_.cursor);
@@ -141,6 +148,24 @@ pair<CursorPos, CursorPos> View::currentTargetRange() const {
 bool View::isCompleted() const {
   auto* nav = std::get_if<Navigate>(&state_.phase);
   return nav && nav->index == totalEdits_ && state_.cursor == goalPos_;
+}
+
+View::HeaderRows View::headerRows() const {
+  HeaderRows out;
+  out.explored = rowsFromEditSpans(
+      state_.seq,
+      std::span<const EditSequenceSpan>(
+          state_.editSpans.spans.data(), state_.editSpans.size));
+
+  const auto& results = plan_.getResults();
+  assert(results.size() == optimalEditSpans_.size() &&
+         "optimal results must align with traced edit spans");
+  out.optimal.reserve(results.size());
+  for (size_t i = 0; i < results.size(); ++i) {
+    out.optimal.push_back(rowsFromEditSpans(
+        results[i].getSequence().view(), optimalEditSpans_[i]));
+  }
+  return out;
 }
 
 vector<Suggestion> View::recommendations(int maxCount,
@@ -386,7 +411,12 @@ Outcome View::applyEdit(string_view text) {
 
   State next = state_;
   next.cursor = eff->postCursor;
+  // Capture the edit's byte span BEFORE appending so begin = pre-append size,
+  // end = post-append size. Plan-aligned with composition output.
+  const uint32_t spanBegin = static_cast<uint32_t>(next.seq.size());
   next.seq.append(text);
+  const uint32_t spanEnd = static_cast<uint32_t>(next.seq.size());
+  next.editSpans.push(EditSequenceSpan{spanBegin, spanEnd});
   next.cost = getEffort(next.seq, config_);
   return afterEditCompleted(std::move(next), editIndex);
 }
@@ -411,14 +441,20 @@ Outcome View::acceptBufferState(const Lines& newLines, CursorPos newCursor,
 
   State next = state_;
   next.cursor = newCursor;
+  // Capture span begin before appending raw keys so the edit's start byte is
+  // exactly where the rawKeys (which performed this edit) begin in seq.
+  const uint32_t spanBegin = static_cast<uint32_t>(next.seq.size());
   if (auto e = appendRawKeysOrReject(next, rawKeys, config_); !e) {
     return unexpected(std::move(e.error()));
   }
   if (eff->advance) {
+    const uint32_t spanEnd = static_cast<uint32_t>(next.seq.size());
+    next.editSpans.push(EditSequenceSpan{spanBegin, spanEnd});
     return afterEditCompleted(std::move(next), editIndex);
   }
   // No-op: buffer already matches current fencepost (e.g. native undo or
-  // programmatic re-sync). Sync cursor only.
+  // programmatic re-sync). Sync cursor only — no span pushed because no
+  // planned edit advanced.
   next.phase = phaseForEditCursor(editIndex, next.cursor);
   return commit(std::move(next));
 }
@@ -453,11 +489,16 @@ Outcome View::acceptInsertExit(const Lines& newLines, CursorPos newCursor,
 
   State next = state_;
   // MIRROR applyEdit's shape: set cursor + seq/cost, then hand off to the
-  // uniform fencepost advancement path.
+  // uniform fencepost advancement path. Lua keeps the full insert command in
+  // rawKeys (`s`/`cl`/etc. + typed text + `<Esc>`), so this span covers the
+  // complete planned edit.
   next.cursor = newCursor;
+  const uint32_t spanBegin = static_cast<uint32_t>(next.seq.size());
   if (auto e = appendRawKeysOrReject(next, rawKeys, config_); !e) {
     return unexpected(std::move(e.error()));
   }
+  const uint32_t spanEnd = static_cast<uint32_t>(next.seq.size());
+  next.editSpans.push(EditSequenceSpan{spanBegin, spanEnd});
   return afterEditCompleted(std::move(next), editIndex);
 }
 

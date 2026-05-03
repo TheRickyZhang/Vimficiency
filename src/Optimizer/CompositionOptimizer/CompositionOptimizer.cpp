@@ -3,9 +3,14 @@
 #include <algorithm>
 #include <cassert>
 #include <cctype>
+#include <cstdint>
 #include <optional>
+#include <queue>
+#include <utility>
+#include <vector>
 
 #include "CompositionSearchContext.h"
+#include "EditSequenceSpan.h"
 #include "Optimizer/BuildTypedCommands.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Optimizer/NavOptimizer/NavRangeConversion.h"
@@ -23,6 +28,104 @@
 using namespace std;
 
 namespace {
+
+#if defined(__GNUC__) || defined(__clang__)
+#define VF_NO_UNIQUE_ADDRESS [[no_unique_address]]
+#else
+#define VF_NO_UNIQUE_ADDRESS
+#endif
+
+// =============================================================================
+// Trace policies (display-only segmentation, off the hot path)
+// =============================================================================
+//
+// The composition A* search can optionally record one byte span per planned
+// edit, so Explore can render Optimal-N header rows segmented by the plan
+// rather than by Vim-token kind. The tracing is opt-in per call:
+//
+//   optimize()                  -> NoTrace        (zero per-state cost)
+//   optimizeWithEditSpans()     -> EditSpanTrace  (one uint32 per state +
+//                                                  arena allocation per edit
+//                                                  transition only)
+//
+// Wrap-only-when-needed via [[no_unique_address]] inside QueueEntry: with
+// NoTrace, sizeof(QueueEntry) == sizeof(CompositionState) and the queue
+// behaves identically to the prior plain pq.
+
+struct EditTraceNode {
+  uint32_t previous = 0;     // 0 = root sentinel (never a real node)
+  uint8_t editIndex = 0;
+  uint32_t beginByte = 0;
+  uint32_t endByte = 0;
+};
+
+struct NoTrace {
+  struct State {};
+  static constexpr bool collecting = false;
+
+  // No-op recorders — they should compile away under -O.
+  State recordEdit(const State&, int /*editIndex*/,
+                   uint32_t /*begin*/, uint32_t /*end*/) const {
+    return {};
+  }
+  std::vector<EditSequenceSpan> reconstructSpans(
+      const State&, int /*totalEdits*/) const {
+    return {};
+  }
+};
+
+struct EditSpanTrace {
+  struct State { uint32_t node = 0; };
+  static constexpr bool collecting = true;
+
+  // Index 0 is a sentinel root used as "no parent". Real nodes start at 1.
+  std::vector<EditTraceNode> arena{EditTraceNode{}};
+
+  State recordEdit(const State& parent, int editIndex,
+                   uint32_t beginByte, uint32_t endByte) {
+    assert(parent.node < arena.size() && "trace parent out of range");
+    assert(editIndex >= 0 && editIndex < 256 && "editIndex must fit in uint8_t");
+    arena.push_back(EditTraceNode{
+        .previous = parent.node,
+        .editIndex = static_cast<uint8_t>(editIndex),
+        .beginByte = beginByte,
+        .endByte = endByte,
+    });
+    return State{static_cast<uint32_t>(arena.size() - 1)};
+  }
+
+  std::vector<EditSequenceSpan> reconstructSpans(const State& s,
+                                                 int totalEdits) const {
+    std::vector<EditSequenceSpan> spans(totalEdits);
+    std::vector<bool> seen(totalEdits, false);
+    int count = 0;
+    uint32_t node = s.node;
+    while (node != 0) {
+      assert(node < arena.size() && "trace chain out of range");
+      const EditTraceNode& n = arena[node];
+      assert(n.editIndex < totalEdits && "trace editIndex past totalEdits");
+      assert(!seen[n.editIndex] && "trace recorded duplicate editIndex");
+      assert(n.beginByte <= n.endByte && "trace span byte range is inverted");
+      seen[n.editIndex] = true;
+      spans[n.editIndex] = EditSequenceSpan{n.beginByte, n.endByte};
+      ++count;
+      node = n.previous;
+    }
+    assert(count == totalEdits && "trace chain must include exactly one node per edit");
+    return spans;
+  }
+};
+
+template <class Trace>
+struct QueueEntry {
+  CompositionState state;
+  VF_NO_UNIQUE_ADDRESS typename Trace::State trace;
+
+  // Min-heap by composition cost; trace state is invisible to ordering.
+  bool operator>(const QueueEntry& other) const {
+    return state > other.state;
+  }
+};
 
 // Compute cursor position after insertion (same for i/a/o/O/I/A + text + Esc)
 // Cursor ends on last char of inserted text, or stays at insertPos if empty
@@ -51,43 +154,39 @@ CursorPos clampGoalPosToLines(const CursorPos& pos, const Lines& lines) {
   return CursorPos(line, col, wantedCol);
 }
 
-} // anonymous namespace
-
-// `goalPos` is a real terminal target: the search continues past the last edit
-// with motion-only transitions until pos == goalPos. For pure-motion sessions
-// (E == 0), the search starts directly in the post-final-edit nav phase.
-CompositionResult CompositionOptimizer::optimize(
-    const Lines& initialLines, const CursorPos initialPos, const Lines& goalLines,
-    const CursorPos goalPos, CompositionOptimizerParams params,
-    string_view userSequence, const NavBoundary& boundary,
-    const NavContext& navigationContext) {
-  CHECK(goalLines.contains(goalPos),
-        "goalPos must be a valid normal-mode cursor position in goalLines");
-  if(goalPos < initialPos) {
-    debug("only support forward motion in CompositionOptimizer");
-  }
-
+// Templated search core. Both public optimize entrypoints route through here.
+// `Trace` is one of `NoTrace` (used by `optimize()`) or `EditSpanTrace` (used
+// by `optimizeWithEditSpans()`); under `NoTrace` the queue entries are byte-
+// equivalent to the prior plain CompositionState pq.
+//
+// Returns the goal results plus, when `Trace::collecting`, a parallel vector
+// of per-result edit spans. With NoTrace the spans vector is empty.
+template <class Trace>
+static std::pair<std::vector<Result>, std::vector<std::vector<EditSequenceSpan>>>
+optimizeImpl(
+    const Config& config,
+    const Lines& initialLines, const CursorPos initialPos,
+    const Lines& goalLines, const CursorPos goalPos,
+    const CompositionOptimizerParams& params, std::string_view userSequence,
+    const NavBoundary& boundary, const NavContext& navigationContext,
+    CompositionSearchContext& ctx,
+    Trace& trace) {
   NavOptimizer navOptimizer(config);
 
-  // Create search context - handles all pre-computation
-  CompositionSearchContext ctx(initialLines, initialPos, goalLines, goalPos,
-                               userSequence, navigationContext, boundary,
-                               params, config);
+  std::vector<Result> results;
+  std::vector<std::vector<EditSequenceSpan>> resultSpans;
 
-  if (ctx.totalEdits() > 16) {
-    debug("Cannot support more than 16 edits");
-    return {};
-  }
-
-  vector<Result> results;
+  using Entry = QueueEntry<Trace>;
+  std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> pq;
 
   // Initialize starting state with heuristic cost
   CompositionState startingState(initialPos, Mode::Normal, 0);
   startingState.setCost(ctx.heuristic(startingState, 0));
-  ctx.pq.push(startingState);
+  pq.push(Entry{startingState, typename Trace::State{}});
   ctx.costMap[startingState.getKey()] = startingState.getCost();
 
-  auto enqueueState = [&](CompositionState&& newState) {
+  auto enqueueState = [&](CompositionState&& newState,
+                          typename Trace::State traceState) {
     if (newState.getEffort() > ctx.maxEffort) {
       debug("  pruned (effort", newState.getEffort(), ">", ctx.maxEffort, "):",
             "\"" + newState.getSequence().str() + "\"");
@@ -108,32 +207,46 @@ CompositionResult CompositionOptimizer::optimize(
       if (!isTerminal) {
         ctx.costMap.emplace(newKey, newCost);
       }
-      ctx.pq.push(std::move(newState));
+      pq.push(Entry{std::move(newState), traceState});
     } else if (newCost <= it->second) {
       it->second = newCost;
-      ctx.pq.push(std::move(newState));
+      pq.push(Entry{std::move(newState), traceState});
     } else {
       debug("  not enqueued (cost", newCost, ">=", it->second, "):",
             "\"" + newState.getSequence().str() + "\"");
     }
   };
-  auto enqueueEditTransition = [&](const CompositionState& current,
+  // editOffset splits a transition sequence whose prefix is motion (Navigate)
+  // and suffix is the planned edit. Used for pure-insertion strategies that
+  // fuse motion + insertCmd into one transition; passing editOffset > 0 makes
+  // the recorded edit span cover only the insertion suffix.
+  auto enqueueEditTransition = [&](const Entry& parent,
                                    const Sequence& editSequence,
                                    const CursorPos& goalPos,
-                                   int editsAfter) {
-    CompositionState newState = current.afterEditTransition(
+                                   int editsAfter,
+                                   uint32_t editOffset = 0) {
+    const uint32_t base = static_cast<uint32_t>(parent.state.getSequence().size());
+    const uint32_t seqLen = static_cast<uint32_t>(editSequence.size());
+    assert(editOffset <= seqLen && "editOffset must lie inside transition sequence");
+    CompositionState newState = parent.state.afterEditTransition(
         editSequence, goalPos, Mode::Normal, config);
     newState.setCost(ctx.heuristic(newState, editsAfter));
-    enqueueState(std::move(newState));
+    typename Trace::State childTrace = parent.trace;
+    if constexpr (Trace::collecting) {
+      const int editIndex = editsAfter - 1;
+      childTrace = trace.recordEdit(parent.trace, editIndex,
+                                    base + editOffset, base + seqLen);
+    }
+    enqueueState(std::move(newState), childTrace);
   };
-  auto enqueueMotionTransition = [&](const CompositionState& current,
+  auto enqueueMotionTransition = [&](const Entry& parent,
                                      const Sequence& moveSequence,
                                      const CursorPos& goalPos,
                                      int editsCompleted) {
-    CompositionState newState = current.afterNavResult(
+    CompositionState newState = parent.state.afterNavResult(
         moveSequence, goalPos, config);
     newState.setCost(ctx.heuristic(newState, editsCompleted));
-    enqueueState(std::move(newState));
+    enqueueState(std::move(newState), parent.trace);
   };
 
   // Slice a padded subset of `fromLines` covering the cursor and target lines,
@@ -172,7 +285,7 @@ CompositionResult CompositionOptimizer::optimize(
   //   interval and pass `keepMultiplePerLanding=true` so multiple distinct
   //   sequences to the single point are enumerated.
   auto exploreMotionsToInterval = [&](
-      const CompositionState& s, CursorPos pos,
+      const Entry& parent, CursorPos pos,
       int targetBeginLine, int targetEndLine,
       const Lines& fromLines, int editsCompleted,
       int maxResults, bool keepMultiplePerLanding,
@@ -204,15 +317,16 @@ CompositionResult CompositionOptimizer::optimize(
       if (movResult.getSequence().empty()) continue;
       CursorPos goalPos = movResult.getGoalPos();
       goalPos.line += slice.beginLine;
-      enqueueMotionTransition(s, movResult.getSequence(), goalPos, editsCompleted);
+      enqueueMotionTransition(parent, movResult.getSequence(), goalPos, editsCompleted);
     }
   };
 
   debug("=== CompositionOptimizer A* search ===");
 
-  while (!ctx.pq.empty() && ctx.totalPops < params.maxNodesPopped) {
-    CompositionState s = ctx.pq.top();
-    ctx.pq.pop();
+  while (!pq.empty() && ctx.totalPops < params.maxNodesPopped) {
+    Entry current = pq.top();
+    pq.pop();
+    const CompositionState& s = current.state;
     ctx.totalPops++;
     CursorPos pos = s.getPos();
     int editsCompleted = s.getEditsCompleted();
@@ -223,6 +337,10 @@ CompositionResult CompositionOptimizer::optimize(
       debug("GOAL #" + to_string(results.size()) + ":",
             "\"" + s.getSequence().str() + "\"", "effort:", effort);
       results.emplace_back(s.getSequence().str(), effort);
+      if constexpr (Trace::collecting) {
+        resultSpans.push_back(
+            trace.reconstructSpans(current.trace, ctx.totalEdits()));
+      }
       if (results.size() >= static_cast<size_t>(params.maxResults)) {
         debug("maximum result count reached");
         break;
@@ -250,7 +368,7 @@ CompositionResult CompositionOptimizer::optimize(
     if (editsCompleted == ctx.totalEdits()) {
       debug("  post-edit nav from", pos, "to goalPos", goalPos);
       exploreMotionsToInterval(
-          s, pos, goalPos.line, goalPos.line,
+          current, pos, goalPos.line, goalPos.line,
           ctx.getLinesAfter(editsCompleted), editsCompleted,
           clamp(params.maxResults, 1, 10), /*keepMultiplePerLanding=*/true,
           [&](const Lines& subset, int beginLine) -> std::optional<CharInterval> {
@@ -282,7 +400,9 @@ CompositionResult CompositionOptimizer::optimize(
                         pos.col >= beginCol && pos.col < endCol);
 
         if (inRange) {
-          enqueueEditTransition(s, Sequence(insertCmd), transformResult.getGoalPos(),
+          // No motion prefix: editOffset = 0 — the whole transition sequence
+          // is the planned edit.
+          enqueueEditTransition(current, Sequence(insertCmd), transformResult.getGoalPos(),
                                 editsCompleted + 1);
         } else {
           // Slice a padded subset around [pos, target] for NavOptimizer
@@ -338,10 +458,16 @@ CompositionResult CompositionOptimizer::optimize(
             // Intentionally do not remap localGoal to full-buffer coordinates here:
             // this branch immediately appends the insertion and transitions using
             // transformResult.getGoalPos(), so intermediate motion endpoint isn't consumed.
+            //
+            // Tracing: the prefix (motion) is Navigate; only the insertCmd suffix
+            // is the planned edit. editOffset = motion length so the recorded edit
+            // span covers only the insertion, leaving the motion as a nav row.
             Sequence fullSeq = movResult.getSequence();
+            const uint32_t motionBytes =
+                static_cast<uint32_t>(fullSeq.size());
             fullSeq.append(insertCmd);
-            enqueueEditTransition(s, fullSeq, transformResult.getGoalPos(),
-                                  editsCompleted + 1);
+            enqueueEditTransition(current, fullSeq, transformResult.getGoalPos(),
+                                  editsCompleted + 1, motionBytes);
           }
         }
       };
@@ -412,7 +538,7 @@ CompositionResult CompositionOptimizer::optimize(
       }
       debug("  edit found at", pos, "seq:", "\"" + res.getSequence().str() + "\"",
             "cost:", res.getCost(), "goalPos:", editGoalPos);
-      enqueueEditTransition(s, res.getSequence(),
+      enqueueEditTransition(current, res.getSequence(),
                             editGoalPos, editsCompleted + 1);
     }
 
@@ -421,7 +547,7 @@ CompositionResult CompositionOptimizer::optimize(
     if (joinPlan && pos.line == joinPlan->entryLine) {
       debug("  J plan at line", pos.line, "seq:", "\"" + joinPlan->sequence.str() + "\"",
             "effort:", joinPlan->effort);
-      enqueueEditTransition(s, joinPlan->sequence, joinPlan->goalPos,
+      enqueueEditTransition(current, joinPlan->sequence, joinPlan->goalPos,
                             editsCompleted + 1);
     }
 
@@ -448,7 +574,7 @@ CompositionResult CompositionOptimizer::optimize(
                 seq += "<Esc>";
               }
               debug("    quote textobj:", string(1, bqContext.quoteModifier(q)) + q);
-              enqueueEditTransition(s, Sequence(seq), transformResult.getGoalPos(),
+              enqueueEditTransition(current, Sequence(seq), transformResult.getGoalPos(),
                                     editsCompleted + 1);
             }
           }
@@ -465,7 +591,7 @@ CompositionResult CompositionOptimizer::optimize(
                 seq += "<Esc>";
               }
               debug("    bracket textobj:", string(1, bqContext.bracketModifier(b)) + b);
-              enqueueEditTransition(s, Sequence(seq), transformResult.getGoalPos(),
+              enqueueEditTransition(current, Sequence(seq), transformResult.getGoalPos(),
                                     editsCompleted + 1);
             }
           }
@@ -486,7 +612,7 @@ CompositionResult CompositionOptimizer::optimize(
 
       // Motions to the next edit's diff range.
       exploreMotionsToInterval(
-          s, pos, nextEdit.beginPos.line, nextEdit.editEndLine() - 1,
+          current, pos, nextEdit.beginPos.line, nextEdit.editEndLine() - 1,
           currentLines, editsCompleted,
           clamp(nextEdit.origCharCount(), 1, 10),
           /*keepMultiplePerLanding=*/false,
@@ -503,7 +629,7 @@ CompositionResult CompositionOptimizer::optimize(
       if (joinPlan && pos.line != joinPlan->entryLine) {
         const int jLine = joinPlan->entryLine;
         exploreMotionsToInterval(
-            s, pos, jLine, jLine, currentLines, editsCompleted, /*maxResults=*/1,
+            current, pos, jLine, jLine, currentLines, editsCompleted, /*maxResults=*/1,
             /*keepMultiplePerLanding=*/false,
             [&](const Lines& subset, int beginLine) -> std::optional<CharInterval> {
               return wholeLineMotionInterval(subset, jLine - beginLine);
@@ -517,9 +643,28 @@ CompositionResult CompositionOptimizer::optimize(
         "nodes:", ctx.nodesProcessed,
         "pops:", ctx.totalPops,
         "skipped:", ctx.statesSkipped,
-        "queueRemaining:", static_cast<int>(ctx.pq.size()));
+        "queueRemaining:", static_cast<int>(pq.size()));
 
-  // Extract the persistent planned-edit breakdown and edit-scoped artifacts.
+  const int pqRemaining = static_cast<int>(pq.size());
+  const bool fullyExplored = pq.empty();
+  // Stash the search-summary metrics on `ctx` via the wrapper that also
+  // accepts pqRemaining/fullyExplored — we do this here, before pq goes out
+  // of scope, then `buildCompositionResult` reads them back.
+  ctx.lastPqRemaining = pqRemaining;
+  ctx.lastFullyExplored = fullyExplored;
+  return std::pair{std::move(results), std::move(resultSpans)};
+}
+
+} // anonymous namespace (templated optimizeImpl)
+
+// Build a CompositionResult from the search outputs plus the precomputed
+// per-edit data still owned by `ctx`. Consumes `ctx.edits` (moves diffStates
+// and transformResults out) and `ctx`'s explored states; do not touch ctx
+// after calling.
+static CompositionResult buildCompositionResult(
+    std::vector<Result> results,
+    const Lines& initialLines, CursorPos goalPos,
+    CompositionSearchContext& ctx) {
   std::vector<Lines> fenceposts;
   std::vector<DiffState> diffs;
   std::vector<TransformResult> transformResults;
@@ -539,10 +684,76 @@ CompositionResult CompositionOptimizer::optimize(
       .diffs = std::move(diffs),
       .fenceposts = std::move(fenceposts),
   };
-  return {std::move(results), ctx.getStats(numResults),
-          std::move(plan),
-          ctx.takeExploredStates(),
-          std::move(transformResults)};
+  return CompositionResult(std::move(results),
+                           ctx.getStats(numResults,
+                                        ctx.lastPqRemaining,
+                                        ctx.lastFullyExplored),
+                           std::move(plan),
+                           ctx.takeExploredStates(),
+                           std::move(transformResults));
+}
+
+// `goalPos` is a real terminal target: the search continues past the last edit
+// with motion-only transitions until pos == goalPos. For pure-motion sessions
+// (E == 0), the search starts directly in the post-final-edit nav phase.
+CompositionResult CompositionOptimizer::optimize(
+    const Lines& initialLines, const CursorPos initialPos, const Lines& goalLines,
+    const CursorPos goalPos, CompositionOptimizerParams params,
+    string_view userSequence, const NavBoundary& boundary,
+    const NavContext& navigationContext) {
+  CHECK(goalLines.contains(goalPos),
+        "goalPos must be a valid normal-mode cursor position in goalLines");
+  if(goalPos < initialPos) {
+    debug("only support forward motion in CompositionOptimizer");
+  }
+
+  CompositionSearchContext ctx(initialLines, initialPos, goalLines, goalPos,
+                               userSequence, navigationContext, boundary,
+                               params, config);
+
+  if (ctx.totalEdits() > 16) {
+    debug("Cannot support more than 16 edits");
+    return {};
+  }
+
+  NoTrace trace;
+  auto out = optimizeImpl<NoTrace>(
+      config, initialLines, initialPos, goalLines, goalPos,
+      params, userSequence, boundary, navigationContext, ctx, trace);
+  return buildCompositionResult(std::move(out.first), initialLines, goalPos, ctx);
+}
+
+CompositionTraceResult CompositionOptimizer::optimizeWithEditSpans(
+    const Lines& initialLines, const CursorPos initialPos, const Lines& goalLines,
+    const CursorPos goalPos, CompositionOptimizerParams params,
+    string_view userSequence, const NavBoundary& boundary,
+    const NavContext& navigationContext) {
+  CHECK(goalLines.contains(goalPos),
+        "goalPos must be a valid normal-mode cursor position in goalLines");
+  if(goalPos < initialPos) {
+    debug("only support forward motion in CompositionOptimizer");
+  }
+
+  CompositionSearchContext ctx(initialLines, initialPos, goalLines, goalPos,
+                               userSequence, navigationContext, boundary,
+                               params, config);
+
+  if (ctx.totalEdits() > 16) {
+    debug("Cannot support more than 16 edits");
+    return {};
+  }
+
+  EditSpanTrace trace;
+  auto out = optimizeImpl<EditSpanTrace>(
+      config, initialLines, initialPos, goalLines, goalPos,
+      params, userSequence, boundary, navigationContext, ctx, trace);
+  CompositionTraceResult result;
+  result.editSpansByResult = std::move(out.second);
+  result.result = buildCompositionResult(
+      std::move(out.first), initialLines, goalPos, ctx);
+  assert(result.editSpansByResult.size() == result.result.getResults().size() &&
+         "traced edit spans must align 1:1 with results");
+  return result;
 }
 
 ostream& operator<<(ostream& os, const CompositionResult& cr) {

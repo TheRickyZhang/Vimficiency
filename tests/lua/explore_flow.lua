@@ -88,6 +88,16 @@ local function enters_insert_mode(rec)
     or first == "I" or first == "o" or first == "O"
 end
 
+test("explore flow: insert-enter detection is structural, not recommendation-only", function()
+  local t = explore._for_test
+  assert_true(t.keys_enter_insert("i"), "plain i should enter insert")
+  assert_true(t.keys_enter_insert("ciw"), "change command should enter insert")
+  assert_true(t.keys_enter_insert("wciw"), "motion plus change should enter insert")
+  assert_true(not t.keys_enter_insert("rB"), "replace-char should not enter insert")
+  assert_true(not t.keys_enter_insert("x"), "delete should not enter insert")
+  assert_true(not t.keys_enter_insert(""), "empty raw key buffer should not defer buffer changes")
+end)
+
 local function move_to_first_edit_target(scratch_buf)
   local target = explore.status()
   local motion = first_recommendation_in_phase("Navigate", function(rec)

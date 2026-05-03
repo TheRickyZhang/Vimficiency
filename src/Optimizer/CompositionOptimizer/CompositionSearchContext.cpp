@@ -243,7 +243,9 @@ bool CompositionSearchContext::tryGetBufferIndex(
   return true;
 }
 
-CompositionSearchStats CompositionSearchContext::getStats(int resultsFound) const {
+CompositionSearchStats CompositionSearchContext::getStats(int resultsFound,
+                                                          int pqRemaining,
+                                                          bool fullyExplored) const {
   CompositionSearchStats stats;
   SearchStopReason stopReason = SearchStopReason::Unknown;
 
@@ -251,14 +253,14 @@ CompositionSearchStats CompositionSearchContext::getStats(int resultsFound) cons
     stopReason = SearchStopReason::MaxResultsFound;
   } else if (totalPops >= params.maxNodesPopped) {
     stopReason = SearchStopReason::MaxPopsReached;
-  } else if (pq.empty()) {
+  } else if (fullyExplored) {
     stopReason = SearchStopReason::FullyExplored;
   }
 
   stats.finalize(nodesProcessed,
                         totalPops,
                         resultsFound,
-                        static_cast<int>(pq.size()),
+                        pqRemaining,
                         stopReason);
   stats.setDebugSummary(0, statesSkipped);
   stats.setNodeBreakdown(navNodesExplored, editNodesExplored);
