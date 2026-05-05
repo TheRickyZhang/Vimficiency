@@ -18,7 +18,7 @@ end
 ---   t = "handle as typed" (not from a mapping).
 ---   x = "execute typed-ahead synchronously" — flushes autocmds before
 ---       returning.
---- Termcodes (`<Esc>`, `<CR>`, `<Space>`) are translated.
+--- Termcodes (`<Esc>`, `<CR>`, `<Space>`, `<lt>`) are translated.
 ---
 --- KNOWN QUIRK: when the fed keys leave vim in insert mode mid-sequence
 --- (e.g. just the structural part of `c{motion}` without trailing
@@ -29,7 +29,7 @@ end
 --- ending in normal mode (`structural + typed + <Esc>`) as one unit.
 ---@param keys string
 function M.feed(keys)
-  local termkeys = vim.api.nvim_replace_termcodes(keys, true, false, true)
+  local termkeys = vim.api.nvim_replace_termcodes(keys, true, true, true)
   vim.api.nvim_feedkeys(termkeys, "xt", false)
 end
 
@@ -39,7 +39,7 @@ end
 --- ambient mappings affecting the test.
 ---@param keys string
 function M.feed_with_remap(keys)
-  local termkeys = vim.api.nvim_replace_termcodes(keys, true, false, true)
+  local termkeys = vim.api.nvim_replace_termcodes(keys, true, true, true)
   vim.api.nvim_feedkeys(termkeys, "mxt", false)
 end
 

@@ -9,6 +9,7 @@
 #include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimOptions.h"
 
+#include "Interpreter/SequenceFormatting.h"
 #include "Keyboard/ToKeys/MovementToKeys.h"
 
 using namespace std;
@@ -60,11 +61,20 @@ std::expected<std::vector<ParsedMovement>, MovementParseError> parseMovements(st
       c = sv[i];  // Update c to char after count
     }
 
-    // f/F/t/T consume the next character as target, then max-munch ;/,
+    // f/F/t/T consume one target, including canonical forms like <Space>.
     if ((c == 'f' || c == 'F' || c == 't' || c == 'T') && i + 1 < sv.size()) {
       size_t start = i;
-      i += 2; // consume motion + target char
-      // Max-munch any following ; or ,
+      size_t targetEnd = i + 2;
+      if (sv[i + 1] == '<') {
+        size_t close = sv.find('>', i + 1);
+        if (close != std::string_view::npos) {
+          std::string_view special = sv.substr(i + 1, close - i);
+          if (parseDisplayChar(special).has_value()) {
+            targetEnd = close + 1;
+          }
+        }
+      }
+      i = targetEnd;
       while (i < sv.size() && (sv[i] == ';' || sv[i] == ',')) {
         i++;
       }
@@ -228,6 +238,16 @@ void applyParsedMovement(CursorPos& pos, Mode& mode,
                                   motion[0] == 't' || motion[0] == 'T')) {
     char cmd = motion[0];
     char target = motion[1];
+    size_t repeatStart = 2;
+    if (motion[1] == '<') {
+      size_t close = motion.find('>', 1);
+      if (close != std::string_view::npos) {
+        if (auto parsed = parseDisplayChar(motion.substr(1, close)); parsed.has_value()) {
+          target = *parsed;
+          repeatStart = close + 1;
+        }
+      }
+    }
     bool forward = (cmd == 'f' || cmd == 't');
     bool till = (cmd == 't' || cmd == 'T');
     const string &line = lines[pos.line];
@@ -239,7 +259,7 @@ void applyParsedMovement(CursorPos& pos, Mode& mode,
       }
     }
     // Process any ; or , repeats
-    for (size_t i = 2; i < motion.size(); i++) {
+    for (size_t i = repeatStart; i < motion.size(); i++) {
       char repeat = motion[i];
       bool repeatForward = (repeat == ';') ? forward : !forward;
       bool repeatTill = till; // t/T behavior is preserved

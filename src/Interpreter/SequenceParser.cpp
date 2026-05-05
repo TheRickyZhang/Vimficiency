@@ -124,8 +124,14 @@ string tryParseMotion(string_view sv, size_t i) {
     if (sv[i + 1] == '<') {
       string special = tryParseSpecialKey(sv, i + 1);
       if (!special.empty()) {
-        target = special;
-        targetEnd = i + 1 + special.size();
+        auto parsed = parseDisplayChar(special);
+        if (parsed.has_value()) {
+          target = displayChar(*parsed);
+          targetEnd = i + 1 + special.size();
+        } else {
+          target = displayChar(sv[i + 1]);
+          targetEnd = i + 2;
+        }
       } else {
         target = displayChar(sv[i + 1]);
         targetEnd = i + 2;
@@ -182,6 +188,10 @@ pair<string, size_t> tryParseDelete(string_view sv, size_t i) {
     if (sv[i + 1] == '<') {
       string special = tryParseSpecialKey(sv, i + 1);
       if (!special.empty()) {
+        auto parsed = parseDisplayChar(special);
+        if (parsed.has_value()) {
+          return {"r" + displayChar(*parsed), 1 + special.size()};
+        }
         return {"r" + special, 1 + special.size()};
       }
     }

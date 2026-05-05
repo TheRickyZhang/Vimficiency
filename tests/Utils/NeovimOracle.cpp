@@ -32,8 +32,8 @@ constexpr int RPC_RESPONSE = 1;
 // This means literal '<' (like in "ci<") would hang waiting for '>'.
 //
 // Strategy:
-// - Recognized special keys (<Esc>, <CR>, <C-x>, etc.) → raw bytes
-// - Unrecognized '<' → <lt> (Neovim's canonical escape for literal '<')
+// - Recognized special keys (<Esc>, <CR>, <C-x>, etc.) pass through.
+// - Unrecognized '<' → <lt> (Neovim's canonical escape for literal '<').
 std::string convertSpecialKeys(const std::string& keys) {
   std::string result;
   result.reserve(keys.size() * 2);  // May expand due to <lt> escaping
@@ -50,32 +50,29 @@ std::string convertSpecialKeys(const std::string& keys) {
         std::string tagLower;
         for (char c : tag) tagLower += std::tolower(c);
 
-        // Check for known special keys and convert to raw bytes
+        // Check for known special keys and pass their key notation through.
         bool matched = true;
         if (tagLower == "esc" || tagLower == "escape") {
-          result += '\x1b';
+          result += keys.substr(i, closePos - i + 1);
         } else if (tagLower == "cr" || tagLower == "enter" || tagLower == "return") {
-          result += '\r';
+          result += keys.substr(i, closePos - i + 1);
         } else if (tagLower == "tab") {
-          result += '\t';
+          result += keys.substr(i, closePos - i + 1);
         } else if (tagLower == "bs" || tagLower == "backspace") {
-          result += '\x08';  // ASCII BS (not \x7f DEL — Neovim treats them differently)
+          result += keys.substr(i, closePos - i + 1);
         } else if (tagLower == "del" || tagLower == "delete") {
-          result += "<Del>";  // Pass through for nvim_input (ANSI \x1b[3~ misparses as ESC + [3~)
+          result += keys.substr(i, closePos - i + 1);
         } else if (tagLower == "space") {
-          result += ' ';
+          result += keys.substr(i, closePos - i + 1);
         } else if (tagLower == "lt") {
-          result += '<';
+          result += "<lt>";
         } else if (tagLower == "gt") {
-          result += '>';
+          result += keys.substr(i, closePos - i + 1);
         } else if (tagLower.size() >= 2 && tagLower[0] == 'c' && tagLower[1] == '-') {
-          // Control key: <C-x> -> Ctrl+x
           if (tagLower.size() == 3) {
             char base = tagLower[2];
-            if (base >= 'a' && base <= 'z') {
-              result += static_cast<char>(base - 'a' + 1);
-            } else if (base == '[') {
-              result += '\x1b';  // C-[ is Escape
+            if ((base >= 'a' && base <= 'z') || base == '[') {
+              result += keys.substr(i, closePos - i + 1);
             } else {
               matched = false;
             }

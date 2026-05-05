@@ -9,6 +9,8 @@ package.path = tests_root .. "?.lua;" .. package.path
 
 local helpers = require("_helpers")
 local sim = require("vimficiency.simulate")
+local session = require("vimficiency.session")
+local session_store = require("vimficiency.session.store")
 
 -- Quiet the environment — mirrors `runner.lua`'s treatment so this test
 -- fits the same output shape as the main batch. See the runner for
@@ -104,7 +106,7 @@ end
 ---@param lines string[]
 ---@param fn fun()
 ---@param next fun(ok: boolean, err: any)
----@param opts { start_row: integer?, start_col: integer? }?   0-indexed; default (0, 0)
+---@param opts { start_row: integer?, start_col: integer?, user_seq: string? }?   0-indexed; default (0, 0)
 local function with_replay(sequences, lines, fn, next, opts)
   local prev_notify = vim.notify
   local prev_echo = vim.api.nvim_echo
@@ -115,6 +117,7 @@ local function with_replay(sequences, lines, fn, next, opts)
 
   local start_row = (opts and opts.start_row) or 0
   local start_col = (opts and opts.start_col) or 0
+  local user_seq = opts and opts.user_seq or nil
 
   helpers.new_buf({ "simulate source" })
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
@@ -127,10 +130,14 @@ local function with_replay(sequences, lines, fn, next, opts)
   -- Seed play settings so every pane in the test set is visible. Without
   -- this the tests would be clamped to the default window_count (2).
   local play = require("vimficiency.play")
-  play.set_setting("window_count", math.min(4, math.max(1, #suggestions)))
-  play.set_setting("include_user_sequence", false)
+  local expected_windows = #suggestions + (user_seq and 1 or 0)
+  play.set_setting("window_count", math.min(4, math.max(1, expected_windows)))
+  play.set_setting("include_user_sequence", user_seq ~= nil)
   sim.simulate_compare(lines, start_row, start_col,
-    { user = nil, suggestions = suggestions })
+    {
+      user = user_seq and { seq = user_seq } or nil,
+      suggestions = suggestions,
+    })
 
   local tries = 0
   local function finish(ok, err)
@@ -144,7 +151,7 @@ local function with_replay(sequences, lines, fn, next, opts)
     tries = tries + 1
     local windows = sim._debug_get_windows()
     local states = sim._debug_get_states()
-    if #windows == #sequences and #states == #sequences then
+    if #windows == expected_windows and #states == expected_windows then
       local ok, err = pcall(fn)
       finish(ok, err)
     elseif tries > 300 then
@@ -191,6 +198,10 @@ local cases = {
           "<Space>|w|w", "tokenized leading space")
         assert_eq(texts("Axyz<Esc>"),
           "A|xyz|<Esc>", "tokenized append-at-eol")
+        assert_eq(texts("A2<Space>*<Space>i<Esc>"),
+          "A|2|<Space>|*|<Space>|i|<Esc>", "tokenized insert-mode spaces")
+        assert_eq(texts("Afoo<CR>bar<Esc>"),
+          "A|foo|<CR>|bar|<Esc>", "tokenized insert-mode CR")
       end))
     end,
   },
@@ -248,6 +259,179 @@ local cases = {
     end,
   },
   {
+    name = "simulate replays insert-mode key notation as typed characters",
+    run = function(next)
+      local sequences = {
+        "A2<Space>*<Space>i<Esc>",
+        "Afoo<CR>bar<Esc>",
+        "feciw2<Space>*<Space>i<Esc>",
+      }
+      with_replay(sequences, { "cout << endl;" }, function()
+        local steps1 = #sim._debug_tokenize_for_animation(sequences[1])
+        local steps2 = #sim._debug_tokenize_for_animation(sequences[2])
+        local steps3 = #sim._debug_tokenize_for_animation(sequences[3])
+        assert_eq(get_snapshot(1, steps1).lines,
+          { "cout << endl;2 * i" }, "insert-mode <Space> should replay as spaces")
+        assert_eq(get_snapshot(2, steps2).lines,
+          { "cout << endl;foo", "bar" }, "insert-mode <CR> should replay as newline")
+        assert_eq(get_snapshot(3, steps3).lines,
+          { "cout << 2 * i;" }, "insert-mode key notation after ciw should replay fully")
+      end, next)
+    end,
+  },
+  {
+    name = "simulate replays key notation after dot-repeat and ciw",
+    run = function(next)
+      local key_notation = "x.ciw2<Space>*<Space>i<Esc>"
+      local legacy_raw = "x.ciw2 * i<Esc>"
+      with_replay({ key_notation, legacy_raw }, { "cout << i+1 << endl;" }, function()
+        local notation_steps = #sim._debug_tokenize_for_animation(key_notation)
+        local legacy_steps = #sim._debug_tokenize_for_animation(legacy_raw)
+        assert_eq(get_snapshot(1, notation_steps).lines,
+          { "cout << 2 * i << endl;" },
+          "key-notation spaces after x.ciw should replay fully")
+        assert_eq(get_snapshot(2, legacy_steps).lines,
+          { "cout << 2 * i << endl;" },
+          "legacy raw spaces after x.ciw should replay fully")
+      end, next, { start_col = 8 })
+    end,
+  },
+  {
+    name = "simulate replays saved-session dot-repeat ciw sequence",
+    run = function(next)
+      local lines = {
+        "#include <bits/stdc++.h>",
+        "using namespace std;",
+        "",
+        "int main() {",
+        "  int n = 1;",
+        "  for(int i = 0; i < n; i++) {",
+        "    cout << i+1 << endl;",
+        "  }",
+        "}",
+      }
+      local seq = "Wjwrm$i0<Esc>jfnrmjFix.ciw2<Space>*<Space>i<Esc>"
+      with_replay({ seq }, lines, function()
+        local steps = #sim._debug_tokenize_for_animation(seq)
+        local snap = get_snapshot(1, steps)
+        assert_eq(snap.lines[7],
+          "    cout << 2 * i << endl;",
+          "saved-session opt2 snapshot should contain full typed tail")
+        local win = get_window(1)
+        sim._debug_seek_to(steps)
+        assert_eq(vim.api.nvim_buf_get_lines(win.buf, 6, 7, true)[1],
+          "    cout << 2 * i << endl;",
+          "saved-session opt2 rendered buffer should contain full typed tail")
+      end, next, { start_row = 3, start_col = 0 })
+    end,
+  },
+  {
+    name = "simulate keeps finished suggestion rendered while user pane continues",
+    run = function(next)
+      local lines = {
+        "#include <bits/stdc++.h>",
+        "using namespace std;",
+        "",
+        "int main() {",
+        "  int n = 1;",
+        "  for(int i = 0; i < n; i++) {",
+        "    cout << i+1 << endl;",
+        "  }",
+        "}",
+      }
+      local user_seq = "jwwrmf;i0<Esc>jfnrmjBBBcWi<BS>2<Space>*<Space>i<Esc>"
+      local opt1 = "Wjwrm$i0<Esc>jfnrmjF+Xce2<Space>*<Space>i<Esc>"
+      local opt2 = "Wjwrm$i0<Esc>jfnrmjFix.ciw2<Space>*<Space>i<Esc>"
+      with_replay({ opt1, opt2 }, lines, function()
+        local user_steps = #sim._debug_tokenize_for_animation(user_seq)
+        sim._debug_seek_to(user_steps)
+        local windows = sim._debug_get_windows()
+        assert_eq(vim.api.nvim_buf_get_lines(windows[3].buf, 6, 7, true)[1],
+          "    cout << 2 * i << endl;",
+          "finished opt2 pane should keep full final buffer while user pane continues")
+      end, next, {
+        start_row = 3,
+        start_col = 0,
+        user_seq = user_seq,
+      })
+    end,
+  },
+  {
+    name = "session simulate replays saved-session dot-repeat ciw sequence",
+    run = function(next)
+      local lines = {
+        "#include <bits/stdc++.h>",
+        "using namespace std;",
+        "",
+        "int main() {",
+        "  int n = 1;",
+        "  for(int i = 0; i < n; i++) {",
+        "    cout << i+1 << endl;",
+        "  }",
+        "}",
+      }
+      local user_seq = "jwwrmf;i0<Esc>jfnrmjBBBcWi<BS>2<Space>*<Space>i<Esc>"
+      local opt1 = "Wjwrm$i0<Esc>jfnrmjF+Xce2<Space>*<Space>i<Esc>"
+      local opt2 = "Wjwrm$i0<Esc>jfnrmjFix.ciw2<Space>*<Space>i<Esc>"
+      local result = {
+        lines = lines,
+        start_row = 3,
+        start_col = 0,
+        end_row = 6,
+        end_col = 16,
+        user_seq = user_seq,
+        user_cost = 29,
+        optimal_results = {
+          { seq = opt1, cost = 26 },
+          { seq = opt2, cost = 28 },
+        },
+        start_time = 1,
+        key_count = 1,
+        timestamp = 2,
+      }
+
+      helpers.new_buf({ "session simulate source" })
+      local id = assert(session_store.register_fetched_result("simreplay", result))
+      local play = require("vimficiency.play")
+      play.set_setting("include_user_sequence", true)
+      play.set_setting("window_count", 3)
+      session.simulate("simreplay", 3)
+
+      local tries = 0
+      local function finish(ok, err)
+        sim.cleanup_compare()
+        session_store.remove(id)
+        next(ok, err)
+      end
+
+      local function wait_ready()
+        tries = tries + 1
+        local windows = sim._debug_get_windows()
+        local states = sim._debug_get_states()
+        if #windows == 3 and #states == 3 then
+          local ok, err = pcall(function()
+            local user = sim._debug_get_pool().user
+            assert_true(user ~= nil, "missing user replay pool entry")
+            sim._debug_seek_to(#user.tokens)
+            assert_eq(vim.api.nvim_buf_get_lines(windows[2].buf, 6, 7, true)[1],
+              "    cout << 2 * i << endl;",
+              "session.simulate opt1 pane should render the full typed tail")
+            assert_eq(vim.api.nvim_buf_get_lines(windows[3].buf, 6, 7, true)[1],
+              "    cout << 2 * i << endl;",
+              "session.simulate opt2 pane should render the full typed tail")
+          end)
+          finish(ok, err)
+        elseif tries > 300 then
+          finish(false, "session.simulate did not finish precompute")
+        else
+          vim.defer_fn(wait_ready, 10)
+        end
+      end
+
+      wait_ready()
+    end,
+  },
+  {
     name = "simulate virtual header wraps long sequences",
     run = function(next)
       with_replay({ string.rep("w", 120), "j" }, {
@@ -260,6 +444,7 @@ local cases = {
         assert_eq(lines[2], "[1] Local 0/120", "info row (label + local step)")
         assert_eq(lines[3], "Mode NORMAL", "mode row")
         assert_true(lines[4]:sub(1, 8) == "Sequence", "sequence line prefix")
+        assert_true(lines[#lines]:find("─", 1, true) ~= nil, "bottom divider row")
       end, next)
     end,
   },
@@ -273,8 +458,8 @@ local cases = {
         local lines = header_lines(seq1.buf)
         assert_true(lines[4]:find("Sequence 3w", 1, true) ~= nil,
           "first sequence row should show the first section")
-        assert_eq(lines[5], "ciw foo <Esc>", "edit section should render on its own line")
-        assert_eq(lines[6], "2j", "final motion section should render on its own line")
+        assert_eq(lines[5], "         ciw foo <Esc>", "edit section should align under sequence")
+        assert_eq(lines[6], "         2j", "final motion section should align under sequence")
       end, next)
     end,
   },

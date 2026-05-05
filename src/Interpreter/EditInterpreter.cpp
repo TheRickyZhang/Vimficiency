@@ -6,12 +6,14 @@
 #include "VimCore/VimOptions.h"
 #include "VimCore/VimTextObjectsLegacy.h"
 #include "VimCore/VimCore.h"
+#include "Interpreter/SequenceFormatting.h"
 #include "Utils/Debug.h"
 #include "Types/Lines.h"
 
 #include <algorithm>
 #include <cassert>
 #include <limits>
+#include <optional>
 
 using namespace std;
 
@@ -439,13 +441,24 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
 
   if (mode == Mode::Normal) {
     // Handle r{char} specially. Recall this fails if not enough characters.
-    if (e.size() == 2 && e[0] == 'r') {
+    if (e.size() >= 2 && e[0] == 'r') {
+      optional<char> target;
+      if (e.size() == 2) {
+        target = e[1];
+      } else if (e[1] == '<') {
+        target = parseDisplayChar(e.substr(1));
+        if (!target.has_value() && (e == "r<Esc>" || e == "r<Escape>")) {
+          return;
+        }
+      }
+      if (!target.has_value()) {
+        assert(false && "unsupported r{char} target");
+      }
       if (pos.col + count > m) {
         assert(false && "r{char} requires more chars than available");
       }
-      char newChar = e[1];
       for (int i = 0; i < count; i++) {
-        line[pos.col + i] = newChar;
+        line[pos.col + i] = *target;
       }
       pos.setCol(pos.col + count - 1);
       return;
@@ -1340,6 +1353,14 @@ vector<ParsedEdit> parseEdits(string_view seq) {
 
     // Handle r{char} - replace with specific character
     if (c == 'r' && i + 1 < sv.size()) {
+      if (sv[i + 1] == '<') {
+        size_t close = sv.find('>', i + 1);
+        if (close != string_view::npos) {
+          result.push_back(ParsedEdit{sv.substr(i, close - i + 1), cnt});
+          i = close + 1;
+          continue;
+        }
+      }
       result.push_back(ParsedEdit{sv.substr(i, 2), cnt});
       i += 2;
       continue;

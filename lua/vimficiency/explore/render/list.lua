@@ -86,7 +86,7 @@ function M.render(active, remaining)
     lines[#lines + 1] = "Session complete."
     lines[#lines + 1] = "u to undo  •  q to close"
   elseif phase_kind == "Insert" then
-    local text = remaining == "" and "<Esc>" or sequence_display.inline(remaining)
+    local text = remaining == "" and "<Esc>" or sequence_display.typed_text_inline(remaining)
     add_row(1, 1, { text, "type" }, highlights.rank_hl(1))
   elseif #active.recommendations == 0 then
     lines[#lines + 1] = "(none)"

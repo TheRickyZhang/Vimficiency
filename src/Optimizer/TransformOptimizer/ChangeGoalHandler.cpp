@@ -33,9 +33,8 @@ ChangeGoalHandler::ChangeGoalHandler(
   if constexpr (VimOptions::autoindent()) {
     goalFirstIndentLen = leadingSpaceCount(goalLines[0]);
     if (goalFirstIndentLen > 0) {
-      typedAfterIndent = KeyedSequence(
-          typed.seq.view().substr(goalFirstIndentLen),
-          PhysicalKeys(typed.keys.view().subspan(goalFirstIndentLen)));
+      typedAfterIndent = buildTypedCommands(
+          goalLines, leadingWhitespace(goalLines[0]), pre, suf);
       afterIndentEffort = RunningEffort(typedAfterIndent.keys, config);
     }
   }

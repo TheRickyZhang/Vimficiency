@@ -129,7 +129,8 @@ const MovementToKeys mainPunctuation = {
   {";", {Key::Key_Semicolon}},{":", {Key::Key_Shift, Key::Key_Semicolon}},
   {"'", {Key::Key_Apostrophe}},{"\"",{Key::Key_Shift, Key::Key_Apostrophe}},
   {",", {Key::Key_Comma}},
-  {"<LT>", {Key::Key_Shift, Key::Key_Comma}},  // NOTE: custom form since <...> is used for parsing others
+  {"<lt>", {Key::Key_Shift, Key::Key_Comma}},
+  {"<LT>", {Key::Key_Shift, Key::Key_Comma}},
   {".", {Key::Key_Period}},
   {">", {Key::Key_Shift, Key::Key_Period}},
   {"/", {Key::Key_Slash}}, {"?", {Key::Key_Shift, Key::Key_Slash}},
@@ -166,7 +167,7 @@ const MovementToKeys allSymbolsAndPunctuation = combineAll({
   digitSymbols,
 });
 
-// Single-char version for CHAR_TO_KEYS (uses '<' instead of '<LT>')
+// Single-char version for CHAR_TO_KEYS (uses '<' instead of key notation)
 const MovementToKeys allSingleCharPunctuationAndSymbols = combineAll({
   topPunctuation,
   mainPunctuationSingleChar,
@@ -226,4 +227,3 @@ const MovementToKeys ctrlCombinations = {
   {"<C-Tab>", {Key::Key_Ctrl, Key::Key_Tab}},
 };
 // -------------------- END Categorial Building Blocks --------------------
-

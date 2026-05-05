@@ -106,10 +106,7 @@ local focus_state = nil
 -- source of truth to the parser's grammar and drifted silently. See
 -- `dev/lua/replay-precompute.md` for the gating semantics.
 
---- Whether a token enters Insert/Visual from Normal. Consulted by the
---- precompute coroutine to decide between the synchronous-drain (`nx`) and
---- yield fast paths — modal transitions must stay on the yield path so the
---- oracle can sample the intermediate modal state.
+--- Whether a token itself starts a modal state.
 ---@param token VF.Sequence.Token
 ---@return boolean
 local function enters_modal_state(token)
@@ -197,22 +194,59 @@ local function tokenize_for_animation(seq)
     end
   end
 
+  local CHUNK_SIZE = 4
+
+  local function typed_chunks(text)
+    local chunks = {}
+    local chunk = ""
+    local chunk_units = 0
+    local function flush_chunk()
+      if chunk == "" then return end
+      chunks[#chunks + 1] = chunk
+      chunk = ""
+      chunk_units = 0
+    end
+    local i = 1
+    while i <= #text do
+      if text:sub(i, i) == "<" then
+        local close = text:find(">", i, true)
+        if close then
+          flush_chunk()
+          chunks[#chunks + 1] = text:sub(i, close)
+          i = close + 1
+        else
+          chunk = chunk .. text:sub(i, i)
+          chunk_units = chunk_units + 1
+          i = i + 1
+        end
+      else
+        chunk = chunk .. text:sub(i, i)
+        chunk_units = chunk_units + 1
+        i = i + 1
+      end
+
+      if chunk_units >= CHUNK_SIZE then
+        flush_chunk()
+      end
+    end
+    flush_chunk()
+    return chunks
+  end
+
   -- Happy path: tokens already carry `.kind` from the C++ parser. Chunk
   -- any `typed` tokens into small pieces so the animation shows typed
-  -- text materializing gradually, not as one jump.
+  -- text materializing gradually, not as one jump. Keep `<...>` forms
+  -- intact because captured insert-mode spaces/CRs arrive as feedable
+  -- key notation from `keytrans`.
   ---@type VF.Sequence.Token[]
   local expanded = {}
-  local CHUNK_SIZE = 4
   for _, tok in ipairs(tokens) do
     if tok.kind == "typed" then
-      local i = 1
-      while i <= #tok.text do
-        local chunk_end = min(i + CHUNK_SIZE - 1, #tok.text)
+      for _, chunk in ipairs(typed_chunks(tok.text)) do
         expanded[#expanded + 1] = {
-          text = tok.text:sub(i, chunk_end),
+          text = chunk,
           kind = "typed",
         }
-        i = chunk_end + 1
       end
     else
       expanded[#expanded + 1] = tok
@@ -333,15 +367,15 @@ local function header_label(entry)
   return string.format("[%d] ", entry.seq_idx)
 end
 
---- Render the virtual header above a replay buffer.
+--- Build the virtual header above a replay buffer.
 ---@param entry VF.Replay.Window
----@return nil
-local function render_header(entry)
+---@return table[]?
+local function build_virt_lines(entry)
   local snap = current_snap(entry)
-  if not snap then return end
+  if not snap then return nil end
 
   local pool_entry = pool_entry_for(entry)
-  if not pool_entry then return end
+  if not pool_entry then return nil end
 
   local tokens = pool_entry.tokens
   local local_step = min(multi_sim.global_step, #tokens)
@@ -386,16 +420,37 @@ local function render_header(entry)
       { pool_entry.cost, "Normal" },
     }
   end
+  local seq_label = "Sequence "
+  local seq_indent = string.rep(" ", #seq_label)
+  local emitted_first = false
   for i, line in ipairs(display_lines) do
-    local wrapped = wrap_chunks({ { line, "Normal" } }, width)
-    if i == 1 and wrapped[1] then
-      wrapped[1] = vim.list_extend({
-        { "Sequence ", "Comment" },
-      }, wrapped[1])
+    local wrapped = wrap_chunks({ { line, "Normal" } },
+      max(1, width - #seq_label))
+    for _, chunks in ipairs(wrapped) do
+      local prefix = emitted_first
+        and { seq_indent, "Normal" }
+        or { seq_label, "Comment" }
+      virt_lines[#virt_lines + 1] = vim.list_extend({ prefix }, chunks)
+      emitted_first = true
     end
-    vim.list_extend(virt_lines, wrapped)
   end
   virt_lines[#virt_lines + 1] = { { "", "Normal" } }
+
+  return virt_lines
+end
+
+---@param entry VF.Replay.Window
+---@param virt_lines table[]?
+---@param target_height integer
+local function apply_virt_lines(entry, virt_lines, target_height)
+  if not virt_lines then return end
+
+  while #virt_lines < target_height - 1 do
+    virt_lines[#virt_lines + 1] = { { "", "Normal" } }
+  end
+
+  local width = max(8, v.nvim_win_get_width(entry.win))
+  virt_lines[#virt_lines + 1] = { { string.rep("─", width), "Comment" } }
 
   v.nvim_buf_set_extmark(entry.buf, cursor_ns, 0, 0, {
     virt_lines = virt_lines,
@@ -416,10 +471,22 @@ end
 --- Update cursor highlight extmarks for all windows so the cursor is visible
 --- in unfocused buffers too, styled per simulated mode.
 local function update_cursor_highlights()
-  for _, entry in ipairs(multi_sim.windows) do
+  local cached = {}
+  local max_content = 0
+  for i, entry in ipairs(multi_sim.windows) do
+    if v.nvim_win_is_valid(entry.win) and v.nvim_buf_is_valid(entry.buf) then
+      cached[i] = build_virt_lines(entry)
+      if cached[i] then
+        max_content = max(max_content, #cached[i])
+      end
+    end
+  end
+  local target_height = max_content + 1
+
+  for i, entry in ipairs(multi_sim.windows) do
     if v.nvim_win_is_valid(entry.win) and v.nvim_buf_is_valid(entry.buf) then
       v.nvim_buf_clear_namespace(entry.buf, cursor_ns, 0, -1)
-      render_header(entry)
+      apply_virt_lines(entry, cached[i], target_height)
 
       local snap = current_snap(entry)
       local hl   = snap and mode_hl(snap.mode) or highlights.REPLAY_CURSOR
@@ -994,6 +1061,61 @@ local function precompute_states(tokens, lines, row, col, should_cancel, on_done
   ---@type VF.Replay.Snapshot[]
   local states = {}
 
+  ---@param state VF.Replay.Snapshot
+  local function apply_probe_snapshot(state)
+    if not v.nvim_win_is_valid(probe_win) then return end
+    v.nvim_set_current_win(probe_win)
+    v.nvim_buf_set_lines(buf, 0, -1, true, state.lines)
+    local safe_row = max(1, min(state.cursor[1], #state.lines))
+    local line = state.lines[safe_row] or ""
+    local safe_col = max(0, min(state.cursor[2], max(0, #line - 1)))
+    v.nvim_win_set_cursor(probe_win, { safe_row, safe_col })
+  end
+
+  ---@param state VF.Replay.Snapshot
+  local function restore_snapshot(state)
+    if not v.nvim_win_is_valid(probe_win) then return end
+    v.nvim_set_current_win(probe_win)
+    pcall(cmd, "stopinsert")
+    v.nvim_feedkeys(esc, "nx", false)
+    apply_probe_snapshot(state)
+  end
+
+  ---@param base VF.Replay.Snapshot
+  ---@param seq string
+  ---@param mode_override string?
+  ---@return VF.Replay.Snapshot
+  local function replay_from(base, seq, mode_override)
+    restore_snapshot(base)
+    v.nvim_feedkeys(v.nvim_replace_termcodes(seq, true, true, true), "nx", false)
+    local state = snap()
+    if mode_override then state.mode = mode_override end
+    return state
+  end
+
+  ---@param token_text string
+  ---@return string
+  local function bare_command(token_text)
+    return token_text:gsub("^%d+", "")
+  end
+
+  local PLAIN_INSERT_ENTRY = {
+    i = true, I = true, a = true, A = true,
+    o = true, O = true, R = true,
+  }
+
+  ---@param token_text string
+  ---@return boolean
+  local function is_plain_insert_entry(token_text)
+    return PLAIN_INSERT_ENTRY[bare_command(token_text)] == true
+  end
+
+  ---@param token_text string
+  ---@return string
+  local function change_mode(token_text)
+    return bare_command(token_text):sub(1, 1) == "R" and "R" or "i"
+  end
+
   local function teardown()
     if v.nvim_win_is_valid(probe_win) then
       v.nvim_win_close(probe_win, true)
@@ -1015,7 +1137,9 @@ local function precompute_states(tokens, lines, row, col, should_cancel, on_done
       v.nvim_set_current_win(probe_win)
       local mode_flags = "n"
       local curr_mode = v.nvim_get_mode().mode
-      if curr_mode:sub(1, 1) == "n" and not enters_modal_state(token) then
+      local first = curr_mode:sub(1, 1)
+      local insert_like = first == "i" or first == "R"
+      if not insert_like and not enters_modal_state(token) then
         mode_flags = "nx"
       end
       v.nvim_feedkeys(keys, mode_flags, false)
@@ -1023,12 +1147,61 @@ local function precompute_states(tokens, lines, row, col, should_cancel, on_done
       coroutine.yield()
     end
 
+    -- Headless feedkeys can leave `c{motion}` queued until text arrives.
+    -- Replay edit prefixes from the pre-edit checkpoint instead.
+    ---@param start_i integer
+    ---@return integer next_i
+    local function replay_edit_transaction(start_i)
+      local base = snap()
+      local entry_token = tokens[start_i]
+      local parts = { entry_token.text }
+      local mode = change_mode(entry_token.text)
+
+      if is_plain_insert_entry(entry_token.text) then
+        feed_and_yield(v.nvim_replace_termcodes(entry_token.text, true, true, true),
+          entry_token)
+        table.insert(states, snap())
+      else
+        table.insert(states, replay_from(base, table.concat(parts), mode))
+      end
+
+      local i = start_i + 1
+      while i <= #tokens and tokens[i].kind == "typed" do
+        parts[#parts + 1] = tokens[i].text
+        table.insert(states, replay_from(base, table.concat(parts), mode))
+        i = i + 1
+      end
+
+      if i <= #tokens and tokens[i].kind == "escape" then
+        parts[#parts + 1] = tokens[i].text
+        local final = replay_from(base, table.concat(parts), nil)
+        table.insert(states, final)
+        coroutine.yield()
+        coroutine.yield()
+        restore_snapshot(final)
+        coroutine.yield()
+        coroutine.yield()
+        apply_probe_snapshot(final)
+        return i + 1
+      end
+
+      restore_snapshot(states[#states])
+      return i
+    end
+
     table.insert(states, snap())
 
-    for _, tok in ipairs(tokens) do
+    local i = 1
+    while i <= #tokens do
       if not v.nvim_win_is_valid(probe_win) then return end
-      feed_and_yield(v.nvim_replace_termcodes(tok.text, true, false, true), tok)
-      table.insert(states, snap())
+      local tok = tokens[i]
+      if tok.kind == "change" then
+        i = replay_edit_transaction(i)
+      else
+        feed_and_yield(v.nvim_replace_termcodes(tok.text, true, true, true), tok)
+        table.insert(states, snap())
+        i = i + 1
+      end
     end
 
     -- Flush any remaining modal state before teardown. Synthesize an

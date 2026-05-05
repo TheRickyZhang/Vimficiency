@@ -80,6 +80,33 @@ TEST(ErrorHandlingTest, FormatSequenceDisplaysDigitLeadingTypedText) {
   EXPECT_EQ(formatSequenceForDisplay("i123<Esc>"), "i 123 <Esc>");
 }
 
+TEST(ErrorHandlingTest, ParseSequenceAcceptsCanonicalLiteralLtTargets) {
+  auto motion = parseSequence("f<lt>l");
+  ASSERT_TRUE(motion.has_value());
+  ASSERT_EQ(motion->size(), 2u);
+  EXPECT_EQ((*motion)[0].token, "f<lt>");
+  EXPECT_EQ((*motion)[1].token, "l");
+
+  auto replace = parseSequence("r<lt>");
+  ASSERT_TRUE(replace.has_value());
+  ASSERT_EQ(replace->size(), 1u);
+  EXPECT_EQ((*replace)[0].token, "r<lt>");
+}
+
+TEST(ErrorHandlingTest, ParseMovementsAcceptsCanonicalFindTargets) {
+  auto space = parseMovements("f<Space>l");
+  ASSERT_TRUE(space.has_value());
+  ASSERT_EQ(space->size(), 2u);
+  EXPECT_EQ((*space)[0].motion, "f<Space>");
+  EXPECT_EQ((*space)[1].motion, "l");
+
+  auto literalLt = parseMovements("f<lt>l");
+  ASSERT_TRUE(literalLt.has_value());
+  ASSERT_EQ(literalLt->size(), 2u);
+  EXPECT_EQ((*literalLt)[0].motion, "f<lt>");
+  EXPECT_EQ((*literalLt)[1].motion, "l");
+}
+
 
 // Test that SequenceToKeys throws for unknown key sequences
 // TEST(ErrorHandlingTest, TokenizerThrowsForUnknownSequence) {
@@ -96,4 +123,5 @@ TEST(ErrorHandlingTest, TokenizerAcceptsValidSequences) {
   EXPECT_NO_THROW(tokenizer.tokenize("abc"));
   EXPECT_NO_THROW(tokenizer.tokenize("123"));
   EXPECT_NO_THROW(tokenizer.tokenize("wWbBeE"));
+  EXPECT_EQ(tokenizer.tokenize("<lt>").size(), CHAR_TO_KEYS.at('<').size());
 }

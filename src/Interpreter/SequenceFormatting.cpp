@@ -11,6 +11,7 @@ std::string displayChar(char c) {
     case '\t': return "<Tab>";
     case '\n':
     case '\r': return "<CR>";
+    case '<':  return "<lt>";
     default:   return std::string(1, c);
   }
 }
@@ -20,6 +21,7 @@ std::optional<char> parseDisplayChar(std::string_view s) {
   if (s == "<Space>") return ' ';
   if (s == "<Tab>")   return '\t';
   if (s == "<CR>")    return '\n';
+  if (s == "<lt>" || s == "<LT>") return '<';
   return std::nullopt;
 }
 

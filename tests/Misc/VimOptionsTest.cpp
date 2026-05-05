@@ -323,3 +323,14 @@ TEST_F(VimOptionsTest, BuildTypedCommands_MultiLine) {
         << "Line " << i << " mismatch for typed sequence: " << typed.seq;
   }
 }
+
+TEST_F(VimOptionsTest, BuildTypedCommands_EmitsCanonicalKeyNotation) {
+  Lines goalLines = {"a <b\tc"};
+  KeyedSequence typed = buildTypedCommands(goalLines);
+
+  EXPECT_EQ(typed.seq, "a<Space><lt>b<Tab>c<Esc>");
+
+  auto result = oracleSimulate({""}, 0, 0, "i" + typed.seq.str());
+  ASSERT_EQ(result.lines.size(), goalLines.size());
+  EXPECT_EQ(result.lines[0], goalLines[0]);
+}

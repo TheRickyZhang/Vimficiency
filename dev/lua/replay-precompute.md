@@ -87,8 +87,10 @@ Two post-processing passes matter for replay:
   keystroke. If we fed them as separate tokens and sampled in between,
   Neovim would wait for the next key — blocking the event loop. So we
   glue them: `f` + `;` → `"f;"`.
-- **Chunk insert-mode text into 4-char segments** for nicer animation
-  (`"hello world"` → `["hell", "o wo", "rld"]`). Purely cosmetic.
+- **Chunk plain insert-mode text into 4-char segments** for nicer animation
+  (`"hello world"` → `["hell", "o wo", "rld"]`). `<...>` key notation is
+  kept intact as its own step, because captured insert-mode spaces and
+  returns arrive from `keytrans` as feedable forms like `<Space>` and `<CR>`.
 
 Both passes are visible via `M._debug_tokenize_for_animation` and
 exercised by `tests/lua/simulate/tokenize.lua`.
@@ -170,25 +172,24 @@ Identical inputs, identical time budgets (~0.5ms between yields),
 different outcomes. That rules out wall-clock-insufficiency and points
 squarely at nvim's input-loop scheduling.
 
-### The fix: `nx` for normal-mode-only tokens
+### The fix: drain ordinary tokens, replay edit transactions
 
 Neovim's `nvim_feedkeys` mode string has an `x` flag documented as
 "execute commands until typeahead is empty". That's a synchronous drain:
 by the time feedkeys returns, the queued key has been processed by the
 same code path `vgetc` uses. No more racing with the event loop.
 
-We can't blanket-switch to `x` because the precompute needs to
-**observe** intermediate modal states. Tokens like `i`, `v`, `c{motion}`
-enter modes the oracle needs to sample — and `x` drains until typeahead
-is empty, which for a pending `i` is the moment nvim becomes ready to
-accept the next insert-mode character, past the point where we'd sample
-the plain "just entered insert" state.
+We still cannot blanket-switch to `x`: replay needs visible Insert and
+Visual snapshots, not only final Normal-mode results. The current
+precompute therefore has two paths.
 
-So the fix is narrow:
+Ordinary tokens use synchronous drain whenever the probe is not in
+Insert/Replace and the token itself does not enter a modal state:
 
 ```lua
 local curr_mode = nvim_get_mode().mode
-if curr_mode:sub(1, 1) == "n" and not enters_modal_state(token) then
+local insert_like = curr_mode:sub(1, 1) == "i" or curr_mode:sub(1, 1) == "R"
+if not insert_like and not enters_modal_state(token) then
   nvim_feedkeys(keys, "nx", false)     -- synchronous drain
 else
   nvim_feedkeys(keys, "n", false)      -- fall through to yield path
@@ -197,18 +198,45 @@ coroutine.yield()
 coroutine.yield()
 ```
 
-`enters_modal_state(token)` is now a trivial view over token metadata:
-it returns `true` iff `token.kind == "change"` or `token.kind ==
-"visual"`. Those kinds are tagged by the C++ `SequenceParser` (see
-`src/Interpreter/SequenceParser.{h,cpp}`) and preserved across the FFI
-as `<kind>\t<text>\n` per token — so the classifier and the tokenizer
-can't drift. A parallel Lua table used to exist; it was deleted when
-kinds became first-class on the wire.
+`enters_modal_state(token)` is a trivial view over parser metadata:
+`token.kind == "change"` or `"visual"`. Those kinds are tagged by the
+C++ `SequenceParser` and preserved across the FFI as
+`<kind>\t<text>\n`, so Lua does not maintain a second command grammar.
 
-The check `curr_mode == "n"` filters out tokens fed *while* the oracle
-is in insert/visual/operator-pending — those are either typed
-characters or intra-mode motions that still benefit from the yield
-path for reasons the original comment describes.
+Insert-producing edit transactions use a different path. A transaction
+is:
+
+```
+change typed* escape?
+```
+
+For each visible step, precompute replays the corresponding prefix from
+the pre-edit snapshot:
+
+```
+ciw
+ciw2
+ciw2<Space>
+ciw2<Space>*
+ciw2<Space>*<Space>
+ciw2<Space>*<Space>i
+ciw2<Space>*<Space>i<Esc>
+```
+
+This keeps one replay snapshot per token, but avoids feeding `ciw`,
+then `2`, then `<Space>` as unrelated Normal-mode inputs. That matters
+in headless Neovim: `nvim_feedkeys("ciw", "n", false)` can leave the
+operator/change pending until the next typed key arrives, so the replay
+would capture stale Normal-mode snapshots and eventually show only the
+first typed character.
+
+Plain insert entries (`i`, `A`, etc.) still use the yielding path for
+the entry snapshot because Neovim can report their cursor/mode
+faithfully. Their typed prefixes are then replayed from the same
+pre-edit checkpoint. After a transaction-ending `<Esc>`, precompute
+lets InsertLeave settle and reapplies the recorded final snapshot
+before continuing with the next token; otherwise the hidden probe can
+inherit Neovim's delayed cursor adjustment.
 
 A minimal Lua classifier persists for one narrow case: the char-by-char
 fallback path in `tokenize_for_animation`, taken when both C++
@@ -270,6 +298,10 @@ during the investigation and removed after the fix landed).
   - `simulate precompute drains first normal-mode token before
     snapshot` — repeats the `j` / `$` / `$` three-sequence case from
     the live bug dump 20 times. Regression guard for the drain fix.
+  - `session simulate replays saved-session dot-repeat ciw sequence`
+    — runs through `session.simulate(...)`, not just `simulate_compare`,
+    and catches edit-transaction prefixes such as
+    `x.ciw2<Space>*<Space>i<Esc>`.
 - `tests/lua/capture/on_key_mapping_probe.lua` — characterizes what
   `vim.on_key` emits for different mapping shapes. Adjacent concern,
   not precompute per se, but informs whether a captured sequence can

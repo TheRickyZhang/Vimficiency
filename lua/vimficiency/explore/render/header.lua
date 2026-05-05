@@ -33,7 +33,7 @@ local function summary_chunks(active, remaining)
       phase.edit_index + 1, math.max(active.state.total_edits, 1))
   elseif phase.kind == "Insert" then
     phase_label = string.format("Insert '%s'",
-      sequence_display.inline(remaining, { sectionize = false }))
+      sequence_display.typed_text_inline(remaining))
   end
   return {
     { "Cost ", "Comment" },

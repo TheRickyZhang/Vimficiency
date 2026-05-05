@@ -42,4 +42,14 @@ test("simulate tokenization merges feedable commands", function()
     "Axyz<Esc>",
     "A|xyz|<Esc>",
     "change|typed|escape")
+
+  assert_tokenization(
+    "A2<Space>*<Space>i<Esc>",
+    "A|2|<Space>|*|<Space>|i|<Esc>",
+    "change|typed|typed|typed|typed|typed|escape")
+
+  assert_tokenization(
+    "Afoo<CR>bar<Esc>",
+    "A|foo|<CR>|bar|<Esc>",
+    "change|typed|typed|typed|escape")
 end)
