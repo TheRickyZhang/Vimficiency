@@ -183,17 +183,16 @@ TEST_F(ConfigurationTest, UniformLayout_NoWeightPenalties) {
   Config cfg = Config::uniform();
 
   // Uniform should have zeroed weights (no same-finger penalty, no alternation bonus, etc.)
-  EXPECT_DOUBLE_EQ(cfg.weights.w_same_finger, 0.0);
-  EXPECT_DOUBLE_EQ(cfg.weights.w_alt_bonus, 0.0);
-  EXPECT_DOUBLE_EQ(cfg.weights.w_roll_good, 0.0);
-  EXPECT_DOUBLE_EQ(cfg.weights.w_roll_bad, 0.0);
+  EXPECT_DOUBLE_EQ(cfg.weights.same_finger_weight, 0.0);
+  EXPECT_DOUBLE_EQ(cfg.weights.alt_hand_weight, 0.0);
+  EXPECT_DOUBLE_EQ(cfg.weights.good_roll_weight, 0.0);
+  EXPECT_DOUBLE_EQ(cfg.weights.bad_roll_weight, 0.0);
 }
 
 TEST_F(ConfigurationTest, WeightsAffectKeyCostMultiplier) {
   Config cfg = Config::uniform();
 
-  // Default w_key is 1.0
-  EXPECT_DOUBLE_EQ(cfg.weights.w_key, 1.0);
+  EXPECT_DOUBLE_EQ(cfg.weights.key_weight, 1.0);
 }
 
 // =============================================================================

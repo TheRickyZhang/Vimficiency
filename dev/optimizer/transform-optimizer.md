@@ -35,9 +35,11 @@ But here, we pop state -> explore deletions -> check if goal, so that we can con
 The A* search tracks visited states in an `unordered_map<TransformStateKey, double>` (the costmap). Each state is keyed by `(buffer content, cursor position, mode, startIndex)`. Since the buffer mutates during search (deletions, joins), the key must capture buffer identity.
 
 
-`TransformState` carries a precomputed 64-bit FNV-1a hash (`linesHash_`) over all buffer content. This hash is:
-- Computed once in the `TransformState` constructor
-- Recomputed after each buffer mutation (`afterDeletion`, `afterLinewiseDeletion`, `afterJoin`)
+`TransformEditorState` carries the editor snapshot used by both simulation and search: `Lines`, cursor, mode, and a precomputed 64-bit FNV-1a hash over all buffer content. This hash is:
+- Computed when an editor snapshot is constructed
+- Refreshed by `TransformSimulator` after buffer mutations (`afterDeletion`, `afterLinewiseDeletion`, `afterJoin`, and counted variants)
+
+`TransformState` wraps that editor snapshot with A* path/ranking data: sequence, running effort, cached effort, cost, dot-repeat context, and `startIndex`. Queue-ready states are created through `TransformStateFactory`, which records the editor snapshot, command effort, and heuristic cost together. This keeps pure editor simulation separate from ranked search states and avoids half-valid states with stale cost or repeat metadata.
 
 `TransformStateKey` stores `(linesHash, lineCount, line, col, mode, startIndex)` instead of the full `Lines` object. Both the hash function and equality operator use only these scalar fields — no buffer copying or content comparison.
 

@@ -1,5 +1,6 @@
 -- Fixed header panes above the explore scratch buffer.
 local v = vim.api
+local buf_window = require("vimficiency.explore.buf_window")
 local sequence_display = require("vimficiency.sequence_display")
 local util = require("vimficiency.util")
 
@@ -15,10 +16,15 @@ local function summary_chunks(active, remaining)
   local phase = active.state.phase
   ---@type string
   local phase_label = phase.kind
-  if active.state.is_completed then
+  local label_hl = "Normal"
+  if active.warning then
+    phase_label = "WARNING - invariant check failed"
+    label_hl = "DiagnosticError"
+  elseif active.state.is_completed then
     -- Sticky "Done" supersedes phase display; the actual phase
     -- (Navigate at totalEdits) leaks an off-by-one "N+1/N" otherwise.
     phase_label = "Done — u to undo, q to close"
+    label_hl = "DiagnosticOk"
   elseif phase.kind == "Navigate" and phase.edit_index ~= nil then
     phase_label = string.format("Navigate %d/%d",
       phase.edit_index + 1, math.max(active.state.total_edits, 1))
@@ -29,7 +35,6 @@ local function summary_chunks(active, remaining)
     phase_label = string.format("Insert '%s'",
       sequence_display.inline(remaining, { sectionize = false }))
   end
-  local label_hl = active.state.is_completed and "DiagnosticOk" or "Normal"
   return {
     { "Cost ", "Comment" },
     { string.format("%.2f", active.state.cost), "Normal" },
@@ -49,11 +54,11 @@ end
 ---@param active VF.Explore.Active
 ---@return { title: string, rows?: string[], seq?: string, empty_text: string }[]
 local function gather_columns(active)
-  local header_rows = active.header_rows or { explored = {}, optimal = {} }
+  local header_rows = active.header_rows
   local cols = {
     { title = "Explored", rows = header_rows.explored, empty_text = "(start)" },
   }
-  local want = math.min(active.show_result_count or 0, #header_rows.optimal)
+  local want = math.min(active.show_result_count, #header_rows.optimal)
   for i = 1, want do
     cols[#cols + 1] = {
       title = string.format("Optimal %d", i),
@@ -64,7 +69,7 @@ local function gather_columns(active)
   if active.show_user_typed then
     cols[#cols + 1] = {
       title = "User typed",
-      seq = (active.result and active.result.user_seq) or "",
+      seq = active.result.user_seq,
       empty_text = "(none)",
     }
   end
@@ -75,16 +80,9 @@ end
 ---@param pane VF.Explore.Window
 ---@param name string
 local function configure_window(active, pane, name)
-  v.nvim_buf_set_name(pane.buf, name)
-  vim.bo[pane.buf].buftype = "nofile"
-  vim.bo[pane.buf].bufhidden = "wipe"
-  vim.bo[pane.buf].swapfile = false
-  vim.bo[pane.buf].modifiable = false
-  vim.bo[pane.buf].filetype = "vimficiency"
+  buf_window.configure_scratch_buffer(pane.buf, name, { filetype = "vimficiency" })
   util.configure_scratch_window(pane.win, { winfixheight = true })
-  if active.header_handlers then
-    require("vimficiency.explore.keymaps").install_header(pane.buf, active.header_handlers)
-  end
+  require("vimficiency.explore.keymaps").install_header(pane.buf, active.header_handlers)
 end
 
 local function sort_windows_left_to_right(windows)
@@ -127,7 +125,7 @@ local function split_new_pane(active, source_win)
     end
   end
   assert(new_win, "vimfy explore: failed to create header pane")
-  local buf = v.nvim_create_buf(false, true)
+  local buf = buf_window.create_scratch_buffer(nil, { filetype = "vimficiency" })
   v.nvim_win_set_buf(new_win, buf)
   return { buf = buf, win = new_win }
 end
@@ -137,7 +135,7 @@ end
 local function ensure_panes(active, count)
   local current_win = v.nvim_get_current_win()
   local valid = {}
-  for _, pane in ipairs(active.header.windows or {}) do
+  for _, pane in ipairs(active.header.windows) do
     if v.nvim_win_is_valid(pane.win) and v.nvim_buf_is_valid(pane.buf) then
       valid[#valid + 1] = pane
     end
@@ -307,7 +305,7 @@ local function build_rows(column)
       end
     end
   else
-    local seq = column.seq or ""
+    local seq = assert(column.seq, "vimfy explore: header column missing sequence")
     if seq ~= "" then
       lines = sequence_display.lines(seq)
     else
@@ -348,12 +346,7 @@ end
 
 ---@param active VF.Explore.Active
 ---@param remaining string
----@return nil
 function M.render(active, remaining)
-  if not (active.header and active.header.summary and active.header.windows and #active.header.windows > 0) then
-    return
-  end
-
   local columns = gather_columns(active)
   ensure_panes(active, #columns)
   if #active.header.windows ~= #columns then

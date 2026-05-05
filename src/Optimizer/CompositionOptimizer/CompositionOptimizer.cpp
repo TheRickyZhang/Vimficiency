@@ -10,20 +10,15 @@
 #include <vector>
 
 #include "CompositionSearchContext.h"
+#include "CompositionStrategies.h"
 #include "EditSequenceSpan.h"
-#include "Optimizer/BuildTypedCommands.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Optimizer/NavOptimizer/NavRangeConversion.h"
 
 #include "Interpreter/SequenceParser.h"
-#include "Keyboard/KeyedSequence.h"
 #include "Optimizer/CompositionOptimizer/CompositionState.h"
-#include "Types/BracketFlags.h"
 #include "Utils/Debug.h"
-#include "Optimizer/Indentation.h"
-#include "Types/QuoteFlags.h"
 #include "Utils/StringUtils.h"
-#include "VimCore/VimCore.h"
 
 using namespace std;
 
@@ -179,9 +174,12 @@ optimizeImpl(
   using Entry = QueueEntry<Trace>;
   std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> pq;
 
-  // Initialize starting state with heuristic cost
-  CompositionState startingState(initialPos, Mode::Normal, 0);
-  startingState.setCost(ctx.heuristic(startingState, 0));
+  auto scoreState = [&](const CompositionState& state) {
+    return ctx.heuristic(state, state.getEditsCompleted());
+  };
+  CompositionStateFactory states(config, scoreState);
+
+  CompositionState startingState = states.initial(initialPos);
   pq.push(Entry{startingState, typename Trace::State{}});
   ctx.costMap[startingState.getKey()] = startingState.getCost();
 
@@ -228,9 +226,8 @@ optimizeImpl(
     const uint32_t base = static_cast<uint32_t>(parent.state.getSequence().size());
     const uint32_t seqLen = static_cast<uint32_t>(editSequence.size());
     assert(editOffset <= seqLen && "editOffset must lie inside transition sequence");
-    CompositionState newState = parent.state.afterEditTransition(
-        editSequence, goalPos, Mode::Normal, config);
-    newState.setCost(ctx.heuristic(newState, editsAfter));
+    CompositionState newState = states.afterEditTransition(
+        parent.state, editSequence, goalPos, Mode::Normal);
     typename Trace::State childTrace = parent.trace;
     if constexpr (Trace::collecting) {
       const int editIndex = editsAfter - 1;
@@ -241,11 +238,9 @@ optimizeImpl(
   };
   auto enqueueMotionTransition = [&](const Entry& parent,
                                      const Sequence& moveSequence,
-                                     const CursorPos& goalPos,
-                                     int editsCompleted) {
-    CompositionState newState = parent.state.afterNavResult(
-        moveSequence, goalPos, config);
-    newState.setCost(ctx.heuristic(newState, editsCompleted));
+                                     const CursorPos& goalPos) {
+    CompositionState newState = states.afterNavResult(
+        parent.state, moveSequence, goalPos);
     enqueueState(std::move(newState), parent.trace);
   };
 
@@ -291,8 +286,7 @@ optimizeImpl(
       int maxResults, bool keepMultiplePerLanding,
       auto&& makeLocalInterval) {
     auto slice = sliceMotionSubset(pos, targetBeginLine, targetEndLine, fromLines);
-    auto localInterval = makeLocalInterval(slice.subset, slice.beginLine);
-    if (!localInterval) return;
+    CharInterval localInterval = makeLocalInterval(slice.subset, slice.beginLine);
 
     auto navParams = NavOptimizerParams{}
         .withMaxResults(maxResults)
@@ -305,11 +299,11 @@ optimizeImpl(
         editsCompleted, slice.beginLine, slice.endLine, bufferIndex, lineOffset);
     auto navResult = hasBufferIndex
         ? navOptimizer.optimize(
-              slice.subset, slice.localPos, *localInterval,
+              slice.subset, slice.localPos, localInterval,
               navParams, "", slice.subsetBoundary,
               navigationContext, *bufferIndex, lineOffset)
         : navOptimizer.optimize(
-              slice.subset, slice.localPos, *localInterval,
+              slice.subset, slice.localPos, localInterval,
               navParams, "", slice.subsetBoundary, navigationContext);
     ctx.navNodesExplored += navResult.getStats().nodesExplored();
 
@@ -317,7 +311,7 @@ optimizeImpl(
       if (movResult.getSequence().empty()) continue;
       CursorPos goalPos = movResult.getGoalPos();
       goalPos.line += slice.beginLine;
-      enqueueMotionTransition(parent, movResult.getSequence(), goalPos, editsCompleted);
+      enqueueMotionTransition(parent, movResult.getSequence(), goalPos);
     }
   };
 
@@ -371,7 +365,7 @@ optimizeImpl(
           current, pos, goalPos.line, goalPos.line,
           ctx.getLinesAfter(editsCompleted), editsCompleted,
           clamp(params.maxResults, 1, 10), /*keepMultiplePerLanding=*/true,
-          [&](const Lines& subset, int beginLine) -> std::optional<CharInterval> {
+          [&](const Lines& subset, int beginLine) -> CharInterval {
             CursorPos localGoal(goalPos.line - beginLine, goalPos.col, goalPos.targetCol);
             return CharInterval(localGoal, localGoal);
           });
@@ -383,147 +377,97 @@ optimizeImpl(
     const DiffState& nextEdit = ctx.getDiffState(editsCompleted);
 
     // ========== PURE INSERTION HANDLING ==========
-    // Pure insertions have no edit region to transition into.
-    // We explore navigation + insertion strategies: o/I/A shortcuts or i fallback.
+    // Pure insertions have no edit region to transition into. Strategies
+    // come from CompositionStrategies::enumerateInsertions — same source
+    // CompositionFrontier consumes — so the depth-1 frontier and the full
+    // optimizer never drift.
     if (nextEdit.isPureInsertion()) {
       debug("  pure insertion at", nextEdit.beginPos,
             "text='" + makePrintable(nextEdit.insertedText) + "'");
       const TransformResult& transformResult = ctx.edits[editsCompleted].transformResult;
-      CursorPos insertPos = nextEdit.beginPos;
-      bool isNewLineInsertion = nextEdit.isNewLineInsertion();
 
-      // Explore an insertion strategy by navigating to a valid half-open target range,
-      // then inserting.
-      auto exploreInsertionStrategy = [&](int targetLine, int beginCol, int endCol,
-                                          const string& insertCmd) {
-        bool inRange = (pos.line == targetLine &&
-                        pos.col >= beginCol && pos.col < endCol);
+      // Dispatch one strategy: enqueue zero-prefix edit when cursor is already
+      // in range, otherwise run NavOptimizer to find motion prefixes and
+      // enqueue motion-prefixed edit transitions for each result.
+      auto dispatchInsertion = [&](const CompositionStrategies::Insertion& s) {
+        const bool inRange = (pos.line == s.targetLine &&
+                              pos.col >= s.beginCol && pos.col < s.endCol);
 
         if (inRange) {
           // No motion prefix: editOffset = 0 — the whole transition sequence
           // is the planned edit.
-          enqueueEditTransition(current, Sequence(insertCmd), transformResult.getGoalPos(),
+          enqueueEditTransition(current, Sequence(s.insertCmd),
+                                transformResult.getGoalPos(),
                                 editsCompleted + 1);
-        } else {
-          // Slice a padded subset around [pos, target] for NavOptimizer
-          auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
-              min(pos.line, targetLine), max(pos.line, targetLine) + 1,
-              params.navPaddingAbove, params.navPaddingBelow);
+          return;
+        }
 
-          Lines subset = currentLines.getLineRange(beginLine, endLine);
+        // Slice a padded subset around [pos, target] for NavOptimizer
+        auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
+            min(pos.line, s.targetLine), max(pos.line, s.targetLine) + 1,
+            params.navPaddingAbove, params.navPaddingBelow);
 
-          // Remap positions to subset-local coordinates
-          CursorPos localPos(pos.line - beginLine, pos.col, pos.targetCol);
-          CursorPos localRangeBegin(targetLine - beginLine, beginCol);
-          CursorPos localRangeEnd(targetLine - beginLine, endCol);
+        Lines subset = currentLines.getLineRange(beginLine, endLine);
 
-          // Boundary uses full subset extent, not the target range.
-          // The target range is only for the range-goal `optimize` isInRange
-          // check. Using it as boundary would clamp motions like $ to the
-          // range edge.
-          CursorPos subsetFirst(0, 0);
-          CursorPos subsetEnd(static_cast<int>(subset.size()) - 1,
-              subset.back().effectiveSize());
-          NavBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
-              beginLine > 0 || boundary.hasLinesAbove(),
-              endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
+        // Remap positions to subset-local coordinates
+        CursorPos localPos(pos.line - beginLine, pos.col, pos.targetCol);
+        CursorPos localRangeBegin(s.targetLine - beginLine, s.beginCol);
+        CursorPos localRangeEnd(s.targetLine - beginLine, s.endCol);
 
-          auto rangeParams = NavOptimizerParams{}
-              .withMaxResults(1)
-              .withMinCountRepeat(params.minPrefixCount)
-              .withMaxCountRepeat(params.maxPrefixCount);
-          const BufferIndex* bufferIndex = nullptr;
-          int lineOffset = 0;
-          bool hasBufferIndex = ctx.tryGetBufferIndex(
-              editsCompleted, beginLine, endLine, bufferIndex, lineOffset);
-          CharInterval motionRange = toMotionInterval(
-              subset, CharRange(localRangeBegin, localRangeEnd));
-          auto navResult = hasBufferIndex
-              ? navOptimizer.optimize(
-                    subset, localPos, motionRange,
-                    rangeParams, "", subsetBoundary,
-                    navigationContext, *bufferIndex, lineOffset)
-              : navOptimizer.optimize(
-                    subset, localPos, motionRange,
-                    rangeParams, "", subsetBoundary,
-                    navigationContext);
-          ctx.navNodesExplored += navResult.getStats().nodesExplored();
+        // Boundary uses full subset extent, not the target range.
+        // The target range is only for the range-goal `optimize` isInRange
+        // check. Using it as boundary would clamp motions like $ to the
+        // range edge.
+        CursorPos subsetFirst(0, 0);
+        CursorPos subsetEnd(static_cast<int>(subset.size()) - 1,
+            subset.back().effectiveSize());
+        NavBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
+            beginLine > 0 || boundary.hasLinesAbove(),
+            endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
-          for (const LandingResult& movResult : navResult.getResults()) {
-            if (movResult.getSequence().empty()) continue;
+        auto rangeParams = NavOptimizerParams{}
+            .withMaxResults(1)
+            .withMinCountRepeat(params.minPrefixCount)
+            .withMaxCountRepeat(params.maxPrefixCount);
+        const BufferIndex* bufferIndex = nullptr;
+        int lineOffset = 0;
+        bool hasBufferIndex = ctx.tryGetBufferIndex(
+            editsCompleted, beginLine, endLine, bufferIndex, lineOffset);
+        CharInterval motionRange(CharRange(localRangeBegin, localRangeEnd), subset);
+        auto navResult = hasBufferIndex
+            ? navOptimizer.optimize(
+                  subset, localPos, motionRange,
+                  rangeParams, "", subsetBoundary,
+                  navigationContext, *bufferIndex, lineOffset)
+            : navOptimizer.optimize(
+                  subset, localPos, motionRange,
+                  rangeParams, "", subsetBoundary,
+                  navigationContext);
+        ctx.navNodesExplored += navResult.getStats().nodesExplored();
 
-            const CursorPos& localGoal = movResult.getGoalPos();
-            assert(localGoal >= localRangeBegin && localGoal < localRangeEnd &&
-                   "pure insertion motion goal must be subset-local and inside target range");
-            // Intentionally do not remap localGoal to full-buffer coordinates here:
-            // this branch immediately appends the insertion and transitions using
-            // transformResult.getGoalPos(), so intermediate motion endpoint isn't consumed.
-            //
-            // Tracing: the prefix (motion) is Navigate; only the insertCmd suffix
-            // is the planned edit. editOffset = motion length so the recorded edit
-            // span covers only the insertion, leaving the motion as a nav row.
-            Sequence fullSeq = movResult.getSequence();
-            const uint32_t motionBytes =
-                static_cast<uint32_t>(fullSeq.size());
-            fullSeq.append(insertCmd);
-            enqueueEditTransition(current, fullSeq, transformResult.getGoalPos(),
-                                  editsCompleted + 1, motionBytes);
-          }
+        for (const LandingResult& movResult : navResult.getResults()) {
+          if (movResult.getSequence().empty()) continue;
+
+          const CursorPos& localGoal = movResult.getGoalPos();
+          assert(localGoal >= localRangeBegin && localGoal < localRangeEnd &&
+                 "pure insertion motion goal must be subset-local and inside target range");
+          // Intentionally do not remap localGoal to full-buffer coordinates here:
+          // this branch immediately appends the insertion and transitions using
+          // transformResult.getGoalPos(), so intermediate motion endpoint isn't consumed.
+          //
+          // Tracing: the prefix (motion) is Navigate; only the insertCmd suffix
+          // is the planned edit. editOffset = motion length so the recorded edit
+          // span covers only the insertion, leaving the motion as a nav row.
+          Sequence fullSeq = movResult.getSequence();
+          const uint32_t motionBytes =
+              static_cast<uint32_t>(fullSeq.size());
+          fullSeq.append(s.insertCmd);
+          enqueueEditTransition(current, fullSeq, transformResult.getGoalPos(),
+                                editsCompleted + 1, motionBytes);
         }
       };
 
-      // o: skip the trailing newline since the command opens a new line
-      if (isNewLineInsertion && insertPos.col == 0 && insertPos.line > 0) {
-        debug("    exploring o-strategy on line", insertPos.line - 1);
-        int targetLine = insertPos.line - 1;
-        int lineEnd = currentLines[targetLine].effectiveSize();
-        string_view sourceIndent = VimOptions::autoindent()
-            ? leadingWhitespace(currentLines[targetLine])
-            : string_view{};
-        Lines insertLines = Lines::unflatten(string(nextEdit.insertedTextBody()));
-        KeyedSequence typed = buildTypedCommands(insertLines, sourceIndent);
-        exploreInsertionStrategy(targetLine, 0, lineEnd,
-                                 "o" + typed.seq.str());
-      } else {
-        // I/A/i: handle autoindent for multi-line insertions
-        int fnb = VimCore::firstNonBlankColInLineStr(currentLines[insertPos.line]);
-        int lineLen = static_cast<int>(currentLines[insertPos.line].size());
-        int lineEnd = currentLines[insertPos.line].effectiveSize();
-        int lastContentCol = lineEnd - 1;
-        Lines insertLines = Lines::unflatten(nextEdit.insertedText);
-
-        if (insertPos.col == fnb) {
-          debug("    exploring I/i-strategy at fnb col", fnb);
-          // I: insert at first non-blank - navigate anywhere on line
-          // For multi-line, prefix before cursor is the indent (text before FNB)
-          KeyedSequence escaped = buildTypedCommands(insertLines, "",
-              currentLines[insertPos.line].substr(0, fnb));
-          exploreInsertionStrategy(insertPos.line, 0, lineEnd,
-                                   "I" + escaped.seq.str());
-          // Also explore i at exact position (cheaper when cursor is already there)
-          exploreInsertionStrategy(insertPos.line, insertPos.col, insertPos.col + 1,
-                                   "i" + escaped.seq.str());
-        } else if (insertPos.col == lineLen) {
-          debug("    exploring A/a-strategy at eol col", lineLen);
-          // A: append at end of line - navigate anywhere on line
-          // For multi-line, prefix is the entire current line
-          KeyedSequence escaped = buildTypedCommands(insertLines, "",
-              currentLines[insertPos.line]);
-          exploreInsertionStrategy(insertPos.line, 0, lineEnd,
-                                   "A" + escaped.seq.str());
-          // Also explore a at last column (cheaper when cursor is already at $)
-          exploreInsertionStrategy(insertPos.line, lastContentCol, lastContentCol + 1,
-                                   "a" + escaped.seq.str());
-        } else {
-          debug("    exploring i-strategy at col", insertPos.col);
-          // i: fallback - navigate to exact position
-          // For multi-line, prefix is text before cursor
-          KeyedSequence escaped = buildTypedCommands(insertLines, "",
-              currentLines[insertPos.line].substr(0, insertPos.col));
-          exploreInsertionStrategy(insertPos.line, insertPos.col, insertPos.col + 1,
-                                   "i" + escaped.seq.str());
-        }
-      }
+      CompositionStrategies::enumerateInsertions(nextEdit, currentLines, dispatchInsertion);
       continue;
     }
 
@@ -552,50 +496,24 @@ optimizeImpl(
     }
 
     if (editAlternatives.empty()) {
-      // Check for bracket/quote text object shortcuts
-      // These allow reaching the edit region from positions before it on the same line
+      // Bracket/quote text-object shortcuts. The strategy list comes from
+      // CompositionStrategies — same source CompositionFrontier consumes —
+      // so additions there flow to both consumers. The optimizer's per-step
+      // dispatch only fires strategies whose (line, col) matches the current
+      // cursor; off-cursor strategies become reachable via the motion-search
+      // branch further below.
       const BracketQuoteContext& bqContext = ctx.edits[editsCompleted].bracketQuoteContext;
       if (bqContext.line == pos.line) {
-        debug("  checking text objects at col", pos.col, "on line", pos.line);
         const TransformResult& transformResult = ctx.edits[editsCompleted].transformResult;
-        const string& insertedText = nextEdit.insertedText;
-        bool pureDeletion = nextEdit.isPureDeletion();
-        char textObjOp = pureDeletion ? 'd' : 'c';
-
-        if (pos.col < static_cast<int>(bqContext.validQuoteMask.size())) {
-          for (char q : QuoteFlags::ALL_QUOTES) {
-            if (bqContext.validQuoteMask[pos.col].seen(q)) {
-              // Build sequence:
-              // - pure deletion: d + i/a + quote
-              // - replacement/edit: c + i/a + quote + insertedText + <Esc>
-              string seq = string(1, textObjOp) + bqContext.quoteModifier(q) + q;
-              if (!pureDeletion) {
-                seq += insertedText;
-                seq += "<Esc>";
-              }
-              debug("    quote textobj:", string(1, bqContext.quoteModifier(q)) + q);
-              enqueueEditTransition(current, Sequence(seq), transformResult.getGoalPos(),
+        CompositionStrategies::enumerateBracketQuotes(
+            nextEdit, bqContext,
+            [&](const CompositionStrategies::BracketQuote& s) {
+              if (s.line != pos.line || s.col != pos.col) return;
+              debug("    text-object strategy at col", s.col, ":", s.body);
+              enqueueEditTransition(current, Sequence(s.body),
+                                    transformResult.getGoalPos(),
                                     editsCompleted + 1);
-            }
-          }
-        }
-        if (pos.col < static_cast<int>(bqContext.validBracketMask.size())) {
-          for (char b : BracketFlags::ALL_BRACKETS) {
-            if (bqContext.validBracketMask[pos.col].seen(b)) {
-              // Build sequence:
-              // - pure deletion: d + i/a + bracket
-              // - replacement/edit: c + i/a + bracket + insertedText + <Esc>
-              string seq = string(1, textObjOp) + bqContext.bracketModifier(b) + b;
-              if (!pureDeletion) {
-                seq += insertedText;
-                seq += "<Esc>";
-              }
-              debug("    bracket textobj:", string(1, bqContext.bracketModifier(b)) + b);
-              enqueueEditTransition(current, Sequence(seq), transformResult.getGoalPos(),
-                                    editsCompleted + 1);
-            }
-          }
-        }
+            });
       }
 
       // If cursor is already inside the edit range but no edit result was found
@@ -616,10 +534,10 @@ optimizeImpl(
           currentLines, editsCompleted,
           clamp(nextEdit.origCharCount(), 1, 10),
           /*keepMultiplePerLanding=*/false,
-          [&](const Lines& subset, int beginLine) -> std::optional<CharInterval> {
+          [&](const Lines& subset, int beginLine) -> CharInterval {
             CursorPos localBegin(nextEdit.beginPos.line - beginLine, nextEdit.beginPos.col);
             CursorPos localEnd(nextEdit.endPos.line - beginLine, nextEdit.endPos.col);
-            return tryToMotionInterval(subset, CharRange(localBegin, localEnd));
+            return CharInterval(CharRange(localBegin, localEnd), subset);
           });
 
       // J plan: if cursor isn't on the entry line, also search for motions to
@@ -631,7 +549,7 @@ optimizeImpl(
         exploreMotionsToInterval(
             current, pos, jLine, jLine, currentLines, editsCompleted, /*maxResults=*/1,
             /*keepMultiplePerLanding=*/false,
-            [&](const Lines& subset, int beginLine) -> std::optional<CharInterval> {
+            [&](const Lines& subset, int beginLine) -> CharInterval {
               return wholeLineMotionInterval(subset, jLine - beginLine);
             });
       }

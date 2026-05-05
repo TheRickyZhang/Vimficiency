@@ -1,5 +1,9 @@
 build/
 
+# Claude doesn't support the open standard for some reason, so we copy the agents standard into claude locally, but don't push it
+.claude
+CLAUDE.md
+
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
@@ -8,6 +12,7 @@ CTestTestfile.cmake
 Makefile
 .cache/
 .nvimlog
+nvim.log
 deps*
 deps/*
 

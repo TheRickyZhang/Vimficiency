@@ -45,6 +45,18 @@ struct TransformBoundary {
   int leftColOffset() const { return static_cast<int>(prefix_.size()); }
   int rightColOffset() const { return static_cast<int>(suffix_.size()); }
 
+  // Wrap `editRegionLines` with this boundary's prefix/suffix into the
+  // "effective lines" view consumed by TransformExplorer / TransformOptimizer.
+  // Both the optimizer's main loop setup and the depth-1 frontier
+  // (TransformFrontier::enumerateDepth1DeletionStructurals) call this so the
+  // construction stays in lockstep — direct mutation in one consumer was
+  // a frequent source of mismatched cursor / boundary semantics.
+  Lines withBoundary(Lines editRegionLines) const {
+    if (!prefix_.empty()) editRegionLines.front().insert(0, prefix_);
+    if (!suffix_.empty()) editRegionLines.back() += suffix_;
+    return editRegionLines;
+  }
+
   // Convert to BoundaryContext for interop with NavBoundary
   BoundaryContext context() const {
     BoundaryContext ctx;

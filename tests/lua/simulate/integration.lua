@@ -16,7 +16,7 @@ local sim = require("vimficiency.simulate")
 local verbose = vim.env.VF_TEST_VERBOSE == "1"
 if not verbose then
   ---@diagnostic disable-next-line: duplicate-set-field
-  vim.notify = function() end
+  vim.notify = function(...) end
 end
 vim.o.showmode = false
 
@@ -108,8 +108,10 @@ end
 local function with_replay(sequences, lines, fn, next, opts)
   local prev_notify = vim.notify
   local prev_echo = vim.api.nvim_echo
-  vim.notify = function() end
-  vim.api.nvim_echo = function() end
+  ---@diagnostic disable-next-line: duplicate-set-field
+  vim.notify = function(...) end
+  ---@diagnostic disable-next-line: duplicate-set-field
+  vim.api.nvim_echo = function(...) end
 
   local start_row = (opts and opts.start_row) or 0
   local start_col = (opts and opts.start_col) or 0
@@ -153,6 +155,16 @@ local function with_replay(sequences, lines, fn, next, opts)
   end
 
   wait_ready()
+end
+
+---@param name string
+---@return table
+local function load_vimficiency_file(name)
+  local path = plugin_root .. "/data/VimficiencyFiles/" .. name .. ".json"
+  local fh = assert(io.open(path, "r"))
+  local text = fh:read("*a")
+  fh:close()
+  return vim.json.decode(text)
 end
 
 ---@type { name: string, run: fun(next: fun(ok: boolean, err: any)) }[]
@@ -264,6 +276,29 @@ local cases = {
         assert_eq(lines[5], "ciw foo <Esc>", "edit section should render on its own line")
         assert_eq(lines[6], "2j", "final motion section should render on its own line")
       end, next)
+    end,
+  },
+  {
+    name = "simulate replays saved a.json fixture",
+    run = function(next)
+      local result = load_vimficiency_file("a")
+      local user_steps = #sim._debug_tokenize_for_animation(result.user_seq)
+      local opt_seq = result.optimal_results[1].seq
+      local opt_steps = #sim._debug_tokenize_for_animation(opt_seq)
+
+      with_replay({ result.user_seq, opt_seq }, result.lines, function()
+        local final_user = get_snapshot(1, user_steps)
+        assert_eq(final_user.lines, result.goal_lines,
+          "saved a.json user sequence should reach goal lines")
+        assert_eq(final_user.cursor, { result.end_row + 1, result.end_col },
+          "saved a.json user sequence should reach goal cursor")
+
+        local final_opt = get_snapshot(2, opt_steps)
+        assert_eq(final_opt.lines, result.goal_lines,
+          "saved a.json optimal sequence should reach goal lines")
+        assert_eq(final_opt.cursor, { result.end_row + 1, result.end_col },
+          "saved a.json optimal sequence should reach goal cursor")
+      end, next, { start_row = result.start_row, start_col = result.start_col })
     end,
   },
   {

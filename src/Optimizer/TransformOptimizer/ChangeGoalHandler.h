@@ -59,6 +59,14 @@ struct ChangeGoalHandler {
 
   bool isGoalReached(const Lines& lines) const;
 
+  // Replacement strategy — emits `r{char}` / `Nr{char}` (with motion prefixes
+  // for non-cursor-aligned diffs) for single-line same-length replacements.
+  // Public because the depth-1 frontier (TransformFrontier.cpp) calls it
+  // directly to mirror the optimizer's finalize-time emission. Listed in
+  // TransformPostExplorerEmissions.h's source-of-truth registry.
+  static std::optional<Result> tryReplacement(std::string_view deleted, std::string_view inserted,
+                                              const Config& config, double maxEffort);
+
   SuffixCacheResult tryUseSuffixCache(const TransformState& s,
                                       std::vector<std::vector<Result>>& resultsByStart,
                                       int maxResultsPerStart,
@@ -75,16 +83,16 @@ struct ChangeGoalHandler {
   // Goal emission methods — return states for the dispatcher to emit.
   // Only called in change mode (not pure deletion).
   template<class RangeT>
-  GoalStates onDeletionGoal(TransformState& afterDel, const TransformState& base, const RangeT& range,
-                            const SequenceBinding& sourceCmd);
+  GoalStates onDeletionGoal(const TransformEditorState& afterDel, const TransformState& base,
+                            const RangeT& range, const SequenceBinding& sourceCmd);
 
-  GoalStates onLinewiseGoal(TransformState& afterDel, const TransformState& base, LineRange range,
-                            const SequenceBinding& sourceCmd);
+  GoalStates onLinewiseGoal(const TransformEditorState& afterDel, const TransformState& base,
+                            LineRange range, const SequenceBinding& sourceCmd);
 
-  GoalStates onCountedLinewiseGoal(TransformState& afterDel, const TransformState& base,
+  GoalStates onCountedLinewiseGoal(const TransformEditorState& afterDel, const TransformState& base,
                                    LineRange range, const SequenceBinding& sourceCmd);
 
-  GoalStates onJoinGoal(TransformState& afterJn, const TransformState& base,
+  GoalStates onJoinGoal(const TransformEditorState& afterJn, const TransformState& base,
                         const SequenceBinding& sourceCmd);
 
   // Stateless command-form helpers — exposed so depth-1 frontiers
@@ -151,20 +159,18 @@ private:
                             const RunningEffort& typedSuffixEffort);
 
   // Core goal emission — returns states instead of calling back.
-  GoalStates emitEditGoal(TransformState& postCompletionState, const TransformState& base,
+  GoalStates emitEditGoal(const TransformEditorState& postCompletionState,
+                          const TransformState& base,
                           const SequenceBinding& sourceCmd,
                           const KeyedSequence& goalCompletionCmd,
                           const TypedGoalVariants& typedVariants,
                           bool allowDotGoalPath);
 
-  GoalStates emitLinewiseChangeGoal(TransformState& afterDel, const TransformState& base,
+  GoalStates emitLinewiseChangeGoal(const TransformEditorState& afterDel,
+                                    const TransformState& base,
                                     const SequenceBinding& sourceCmd, int line,
                                     int ccLineCount, const KeyedSequence& changeCmd,
                                     bool applyAutoindent);
-
-  // Replacement strategy
-  static std::optional<Result> tryReplacement(std::string_view deleted, std::string_view inserted,
-                                              const Config& config, double maxEffort);
 
   static CursorPos seedPositionForStart(int startIndex, const Lines& initialLines, int leftColOffset);
 };
@@ -172,7 +178,7 @@ private:
 // onDeletionGoal is the only template — stays in header (varies on RangeT).
 template<class RangeT>
 GoalStates ChangeGoalHandler::onDeletionGoal(
-    TransformState& afterDel, const TransformState& base, const RangeT& range,
+    const TransformEditorState& afterDel, const TransformState& base, const RangeT& range,
     const SequenceBinding& sourceCmd) {
   bool isDot = isDotRepeat(base, sourceCmd);
   KeyedSequence goalCompletionCmd = buildChangePrefix(sourceCmd,

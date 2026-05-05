@@ -21,26 +21,26 @@ Strict rules for `comments`:
   "has a tradeoff that's acceptable", or "could go either way". Those are
   noise. If you don't have a concrete change to recommend, omit the comment.
 - Do NOT use comments to discuss the PR in general — every comment must
-  point at some lines and ask for a specific change, with an associated danger urgency value in [low], [medium], or [high].
+  point at some lines and ask for a specific change. Set the structured
+  `severity` field to `low`, `medium`, or `high`; do not embed the severity
+  in the body text — the workflow prefixes it automatically.
 - Self-contained: state the problem and the suggested fix in the same
   comment.
 - Use the repo-relative file path. Line number is in the NEW file (RIGHT side).
 
-Avoiding false positives — the most important rule:
+Verify before making strong claims:
 
-- You only see the diff plus the files you fetch. You do NOT have full
-  project context, runtime knowledge, or all call sites. Before posting
-  a comment, ask yourself: am I confident the criticism is correct given
-  my limited view? If not, omit it.
-- Common false-positive patterns to be wary of:
-  - Calling code "unused" / "dead" without grepping the whole repo.
-  - Asserting a function "doesn't handle X" without checking whether X is impossible by upstream invariants.
-  - Suggesting a "missing" check that's actually enforced elsewhere.
-  - Claiming type/lifetime issues that depend on definitions you didn't
-    fetch.
-- When uncertain, either fetch the relevant file with `git show` to verify,
-  or skip the comment. A skipped real issue is recoverable; a confident
-  false criticism wastes the author's time and erodes trust in the bot.
+- You only see the diff plus the files you fetch. Do not assert any of the
+  following without first verifying via `git show` / repo inspection:
+  - Code is "unused" / "dead" (requires grepping the whole repo).
+  - A function "doesn't handle X" (requires checking upstream invariants).
+  - A check is "missing" (it may be enforced elsewhere).
+  - A type or lifetime issue (requires the relevant definitions).
+- For these specific claims, if you can't verify, drop the comment.
+- For other suspected issues, prefer to post rather than drop. If you're
+  not fully certain, post the comment and explicitly flag the uncertainty
+  in the body (e.g. "I haven't verified X — if it's already handled in
+  Y.cpp, ignore"). A flagged uncertain issue is more useful than silence.
 
 Deliberate design choices — distinct from false positives:
 

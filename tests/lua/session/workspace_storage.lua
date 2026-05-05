@@ -19,6 +19,10 @@ local function use_temp_save_dir()
   return tmp
 end
 
+local function remove_alias(alias)
+  session_store.remove(assert(session_store.get_id(alias)))
+end
+
 --- Construct a minimal VF.Session.Result for register_fetched_result.
 ---@param user_seq string
 ---@return table
@@ -52,7 +56,7 @@ test("workspace/storage: save copies to disk without touching memory", function(
     for _, n in ipairs(saved_list) do if n == "aaa" then found = true end end
     assert_true(found, "disk copy missing after save")
 
-    session_store.remove(session_store.get_id("aaa"))
+    remove_alias("aaa")
   end)
 end)
 
@@ -83,7 +87,7 @@ test("workspace/storage: fetch copies from disk to memory, disk preserved", func
     local id = session_store.register_fetched_result("ccc", fake_result("yank"))
     assert_true(id, "seed failed")
     session.save("ccc", "ccc")
-    session_store.remove(session_store.get_id("ccc"))
+    remove_alias("ccc")
     assert_true(not session_store.has_result("ccc"), "precondition: memory cleared")
 
     session.fetch("ccc", "ccc")
@@ -92,6 +96,7 @@ test("workspace/storage: fetch copies from disk to memory, disk preserved", func
     assert_true(session_store.has_result("ccc"),
       "fetch must register an in-memory alias")
     local result = session_store.get_result("ccc")
+    result = assert(result)
     assert_eq(result.user_seq, "yank", "fetched result round-tripped")
 
     -- Disk copy untouched.
@@ -100,7 +105,7 @@ test("workspace/storage: fetch copies from disk to memory, disk preserved", func
     for _, n in ipairs(saved_list) do if n == "ccc" then found = true end end
     assert_true(found, "fetch must not delete the disk copy")
 
-    session_store.remove(session_store.get_id("ccc"))
+    remove_alias("ccc")
   end)
 end)
 
@@ -117,10 +122,11 @@ test("workspace/storage: fetch refuses to overwrite an in-memory alias", functio
     session.fetch("ddd", "ddd")
 
     local result = session_store.get_result("ddd")
+    result = assert(result)
     assert_eq(result.user_seq, "mem",
       "fetch-into-occupied-alias must not overwrite memory")
 
-    session_store.remove(session_store.get_id("ddd"))
+    remove_alias("ddd")
   end)
 end)
 
@@ -134,22 +140,25 @@ test("workspace/storage: save overwrite-warns but does not refuse", function()
 
     -- Second save under same name with different content.
     local result = session_store.get_result("eee")
+    result = assert(result)
     result.user_seq = "v2"  -- mutate in-place
     session.save("eee", "eee")
 
     -- Disk has the second version.
-    session_store.remove(session_store.get_id("eee"))
+    remove_alias("eee")
     session.fetch("eee", "eee")
-    assert_eq(session_store.get_result("eee").user_seq, "v2",
+    local fetched = session_store.get_result("eee")
+    fetched = assert(fetched)
+    assert_eq(fetched.user_seq, "v2",
       "overwrite should have replaced the disk copy")
 
-    session_store.remove(session_store.get_id("eee"))
+    remove_alias("eee")
   end)
 end)
 
 test("workspace/storage: register_fetched_result rejects non-manual alias", function()
   h.silence_notify(function()
-    local id, err = session_store.register_fetched_result("3s", fake_result())
+    local id, err = session_store.register_fetched_result("3s", fake_result("abc"))
     assert_true(not id, "alias '3s' must be rejected")
     assert_match(err or "", "not a valid manual alias")
   end)

@@ -11,12 +11,12 @@ double RunningEffort::getEffort(const Config &model) const {
   const auto &w = model.weights;
 
   double s = 0.0;
-  s += w.w_key         * sum_key_cost;
-  s += w.w_same_finger * sum_same_finger;
-  s += w.w_same_key    * sum_same_key;
-  s += w.w_alt_bonus   * sum_alt_bonus;
-  s += w.w_roll_good   * sum_roll_good;
-  s += w.w_roll_bad    * sum_roll_bad;
+  s += w.key_weight         * sum_key_cost;
+  s += w.same_finger_weight * sum_same_finger;
+  s += w.same_key_weight    * sum_same_key;
+  s += w.alt_hand_weight    * sum_alt_bonus;
+  s += w.good_roll_weight   * sum_roll_good;
+  s += w.bad_roll_weight    * sum_roll_bad;
 
   return s + penalty_;
 }

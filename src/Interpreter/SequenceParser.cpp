@@ -1,6 +1,7 @@
 // SequenceParser.cpp - Implementation of sequence parsing for animation
 
 #include "SequenceParser.h"
+#include "Interpreter/SequenceFormatting.h"
 #include "Keyboard/ToKeys/MovementToKeys.h"
 
 #include <cassert>
@@ -116,13 +117,29 @@ string tryParseMotion(string_view sv, size_t i) {
     return "";
   }
 
-  // f/F/t/T motions consume target char and optional ;/,
+  // Targets may be bracket-form display chars, e.g. f<Space>.
   if ((c == 'f' || c == 'F' || c == 't' || c == 'T') && i + 1 < sv.size()) {
-    size_t end = i + 2;  // motion + target
+    string target;
+    size_t targetEnd;
+    if (sv[i + 1] == '<') {
+      string special = tryParseSpecialKey(sv, i + 1);
+      if (!special.empty()) {
+        target = special;
+        targetEnd = i + 1 + special.size();
+      } else {
+        target = displayChar(sv[i + 1]);
+        targetEnd = i + 2;
+      }
+    } else {
+      target = displayChar(sv[i + 1]);
+      targetEnd = i + 2;
+    }
+    size_t end = targetEnd;
     while (end < sv.size() && (sv[end] == ';' || sv[end] == ',')) {
       end++;
     }
-    return string(sv.substr(i, end - i));
+    return string(1, c) + target +
+           string(sv.substr(targetEnd, end - targetEnd));
   }
 
   // Standard longest-match for other motions
@@ -160,9 +177,15 @@ pair<string, size_t> tryParseDelete(string_view sv, size_t i) {
     return {string(1, c), 1};
   }
 
-  // r{char} (replace single char, stays in normal mode)
+  // r targets follow the same display-char grammar as find targets.
   if (c == 'r' && i + 1 < sv.size()) {
-    return {string(sv.substr(i, 2)), 2};
+    if (sv[i + 1] == '<') {
+      string special = tryParseSpecialKey(sv, i + 1);
+      if (!special.empty()) {
+        return {"r" + special, 1 + special.size()};
+      }
+    }
+    return {"r" + displayChar(sv[i + 1]), 2};
   }
 
   // J, gJ (join lines)

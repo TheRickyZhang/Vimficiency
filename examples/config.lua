@@ -70,12 +70,12 @@ return {
       -- slice_buffer_amount = 5,
 
       -- weights = {
-      --   keyWeight = 1.0,
-      --   sameFingerWeight = 0.0,
-      --   sameKeyWeight = 0.0,
-      --   altHandWeight = 0.0,
-      --   goodRollWeight = 0.0,
-      --   badRollWeight = 0.0,
+      --   key_weight         = 1.0,
+      --   same_finger_weight = 0.0,
+      --   same_key_weight    = 0.0,
+      --   alt_hand_weight    = 0.0,
+      --   good_roll_weight   = 0.0,
+      --   bad_roll_weight    = 0.0,
       -- },
 
       -- Override specific keys by ffi.Key index.
@@ -85,7 +85,7 @@ return {
       --   [ffi.Key.Space] = {
       --     hand = ffi.Hand.Left,
       --     finger = ffi.Finger.Lt,
-      --     cost = 0.2,
+      --     base_cost = 0.2,
       --   },
       -- },
 

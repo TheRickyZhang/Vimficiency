@@ -52,8 +52,8 @@ public:
         leftColOffset_(leftColOffset),
         rightColOffset_(rightColOffset) {}
 
-  template<class OnAnyDeletion, class OnLinewise, class OnJoin>
-  void exploreAllDeletions(const TransformState& state,
+  template<class State, class OnAnyDeletion, class OnLinewise, class OnJoin>
+  void exploreAllDeletions(const State& state,
                            OnAnyDeletion&& onAnyDeletion,
                            OnLinewise&& onLinewise,
                            OnJoin&& onJoin);
@@ -643,9 +643,9 @@ void TransformExplorer::exploreJoinCommands(
   onJoin(false, SequenceBinding(KeyedSequence::gJ, effortFor(KSId::gJ)));
 }
 
-template<class OnAnyDeletion, class OnLinewise, class OnJoin>
+template<class State, class OnAnyDeletion, class OnLinewise, class OnJoin>
 void TransformExplorer::exploreAllDeletions(
-    const TransformState& state,
+    const State& state,
     OnAnyDeletion&& onAnyDeletion,
     OnLinewise&& onLinewise,
     OnJoin&& onJoin) {
@@ -690,4 +690,45 @@ void TransformExplorer::exploreAllDeletions(
   exploreSentenceEdits<false>(
       Edit::BACKWARD_SENTENCE_EDITS, cursor, lines, onAnyDeletion, onLinewise);
   exploreJoinCommands(cursor, lines, onJoin);
+}
+
+// Single-source-of-truth sweep over every per-step explorer enumeration
+// the optimizer's main A* loop fires. Both the optimizer and the depth-1
+// frontier (TransformFrontier) call this — adding a new explorer
+// enumeration here flows to both consumers automatically. If you find
+// yourself adding a new `explorer.exploreXxx` call to one consumer,
+// it belongs here instead.
+//
+// Caller is responsible for the boundary-region guards (suffix/prefix
+// motion-only branches in the optimizer) and any pre/post-emission
+// bookkeeping (cost map, dispatch tracking).
+template<class State, class OnDeletion, class OnLinewise, class OnJoin,
+         class OnCountedLinewise, class OnCountedJoin>
+void sweepExplorerStructurals(
+    TransformExplorer& explorer,
+    const State& state,
+    const Lines& effectiveLines,
+    CursorPos cursor,
+    int leftColOffset,
+    int rightColOffset,
+    int minPrefixCount,
+    OnDeletion&& onDeletion,
+    OnLinewise&& onLinewise,
+    OnJoin&& onJoin,
+    OnCountedLinewise&& onCountedLinewise,
+    OnCountedJoin&& onCountedJoin) {
+  explorer.exploreAllDeletions(state, onDeletion, onLinewise, onJoin);
+  explorer.exploreCountedLineEdits(cursor, effectiveLines, minPrefixCount, onCountedLinewise);
+  explorer.exploreCountedJoinCommands(cursor, effectiveLines, minPrefixCount, onCountedJoin);
+  explorer.exploreCountedWordEdits(cursor, effectiveLines, minPrefixCount, onDeletion);
+
+  const int contentStart = (cursor.line == 0) ? leftColOffset : 0;
+  int contentEnd = static_cast<int>(effectiveLines[cursor.line].size());
+  if (cursor.line == effectiveLines.lastLine() && rightColOffset > 0) {
+    contentEnd -= rightColOffset;
+  }
+  if (contentEnd > contentStart) {
+    explorer.exploreCountedCharEdits(cursor, effectiveLines, contentStart, contentEnd,
+                                     minPrefixCount, onDeletion);
+  }
 }

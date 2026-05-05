@@ -3,6 +3,7 @@
 #include "Types/CursorPos.h"
 
 // Character-wise half-open: [begin, end).
+// TODO
 struct CharRange {
   CursorPos begin;
   CursorPos end;

@@ -16,12 +16,12 @@ local verbose = vim.env.VF_TEST_VERBOSE == "1"
 -- notifications visible for debugging.
 if not verbose then
   ---@diagnostic disable-next-line: duplicate-set-field
-  vim.notify = function() end
+  vim.notify = function(...) end
   -- `vim.api.nvim_echo` is used by some subcommands (e.g. `:Vimfy list`
   -- dumps session state); redirect to no-op as well.
   local original_echo = vim.api.nvim_echo
   ---@diagnostic disable-next-line: duplicate-set-field
-  vim.api.nvim_echo = function() end
+  vim.api.nvim_echo = function(...) end
   -- Re-expose the original so the rare test that really needs echo
   -- output can temporarily restore it.
   _G.__vf_test_original_echo = original_echo
@@ -141,36 +141,26 @@ else
   table.sort(test_files)
 end
 
--- Reset editor + plugin state between test files so a single Neovim
--- process can host the whole suite instead of spawning one per file. The
--- old per-process model traded ~150ms × N startup cost for "nothing leaks
--- between files"; this reset covers the specific things our plugin and
--- tests actually mutate, so we keep the isolation guarantee and pay the
--- startup cost exactly once.
---
--- If a test starts flaking after the suite gains a new stateful module,
--- look here first: something's mutating state this function doesn't know
--- about yet. Prefer extending this list over reverting to per-file
--- processes — the drift is easier to debug than the throughput is to
--- claw back.
+-- Reset stateful plugin/test surfaces while keeping one Neovim process.
 local function reset_state()
-  -- 1. Global `vim.on_key` listener: key_tracking.shutdown tears down
-  --    the shared namespace and clears all named subscribers. Without
-  --    this, subscribers accumulate (recall capture, end triggers, any
-  --    test-installed ones) and fire during subsequent tests.
+  -- Shared vim.on_key namespace survives module reload.
   local kt = package.loaded["vimficiency.capture.key_tracking"]
   if kt and type(kt.shutdown) == "function" then kt.shutdown() end
 
-  -- 2. Plugin augroup: init.lua creates `Vimficiency`; re-creating with
-  --    `clear = true` is the idempotent way to wipe its autocmds.
+  -- C++ config lives in the shared library, not package.loaded.
+  local ffi_lib = package.loaded["vimficiency.ffi"]
+  if ffi_lib and type(ffi_lib.reset_config) == "function" then
+    local ok, err = pcall(ffi_lib.reset_config)
+    if not ok then error("failed to reset native config: " .. tostring(err), 0) end
+  end
+
+  -- init.lua creates this augroup; clear it before re-sourcing.
   pcall(vim.api.nvim_create_augroup, "Vimficiency", { clear = true })
 
-  -- 3. User command `:Vimfy` may have been registered by init.setup().
   pcall(vim.api.nvim_del_user_command, "Vimfy")
   pcall(vim.api.nvim_del_user_command, "Vimficiency")
 
-  -- 4. Collapse to one tab, one window, one buffer. `simulate` tests
-  --    spawn extra tabs; session tests spawn scratch buffers.
+  -- Simulate/session tests leave tabs, windows, and scratch buffers.
   pcall(vim.cmd, "silent! tabonly")
   pcall(vim.cmd, "silent! only")
   local cur = vim.api.nvim_get_current_buf()
@@ -180,19 +170,10 @@ local function reset_state()
     end
   end
 
-  -- 5. Env vars tests override (workspace_storage.lua sets XDG_DATA_HOME
-  --    per-test). Restore the runner-wide tempdir so the next file
-  --    inherits a pristine, isolated data home rather than the user's
-  --    real one.
+  -- workspace_storage.lua mutates XDG_DATA_HOME.
   vim.env.XDG_DATA_HOME = test_data_home
 
-  -- 6. Unload plugin modules so the next file's top-level `require()`
-  --    calls re-execute and see a fresh module-local state (session
-  --    records, recall ring, config, etc.). Tests capture module refs
-  --    at file load via `local foo = require(...)` — `dofile` re-runs
-  --    the file, so those captures re-fetch, but only if the cache is
-  --    cleared first. `_helpers` and the test runner's own modules are
-  --    deliberately left intact.
+  -- Test helpers stay cached, so they must not hold plugin module refs.
   for name in pairs(package.loaded) do
     if name == "vimficiency" or name:match("^vimficiency%.") then
       package.loaded[name] = nil
@@ -203,7 +184,7 @@ end
 local t_start = vim.uv.hrtime()
 
 for i, path in ipairs(test_files) do
-  current_file = vim.fn.fnamemodify(path, ":t")
+  current_file = path:sub(#tests_dir + 1)
   file_passed, file_failed = 0, 0
 
   -- Reset BEFORE every file after the first — the first starts pristine
@@ -212,9 +193,7 @@ for i, path in ipairs(test_files) do
   if i > 1 then reset_state() end
   dofile(path)
 
-  -- One-liner per file: suppress for silently-passing files when not in
-  -- verbose mode — the green line per file was the main source of the
-  -- "wall of text" complaint. Failing files still surface here.
+  -- Suppress passing-file lines unless verbose; failing files still surface.
   local total = file_passed + file_failed
   if file_failed > 0 then
     io.stdout:write(string.format(

@@ -1,12 +1,3 @@
--- Recommendation list view for the left-hand explore panel.
---
--- Two modes, dispatched off `active.state.phase.kind`:
---   Insert    — one row: `1. <remaining-or-<Esc>>  type`, shrinks live.
---   Otherwise — rank-ordered table of motion/edit recs with cost, kind,
---               and landing coords, columns aligned.
---
--- Callers precompute `remaining` (the insert tail) so the panel
--- stays in lockstep with the header within one frame.
 local v = vim.api
 local highlights = require("vimficiency.explore.highlights")
 local sequence_display = require("vimficiency.sequence_display")
@@ -16,21 +7,40 @@ local M = {}
 -- Shared with render/tags.lua — same namespace name resolves to the same ID.
 local tags_ns = v.nvim_create_namespace("vimfy_explore_tags")
 
----@class VF.Explore.RecRow
----@field rank string   # e.g. " 1."  — rank marker, already padded
----@field chunks string[]  # remaining columns in order, no padding applied yet
----@field widths integer[] # target width per `chunks` slot (bytes)
----@field hl string       # rank hl group name
+local METRIC_LABELS = {
+  effort = "Effort",
+  distance = "Distance",
+  score = "Score",
+}
 
----Join one row into its final padded string. One space after the rank
----marker (matches existing density), two spaces between other columns.
+local METRIC_FIELDS = {
+  effort = "cost_diff",
+  distance = "distance",
+  score = "score",
+}
+
+local function recommendation_metric(active, item)
+  local mode = active.recommendation_sort or "effort"
+  local field = METRIC_FIELDS[mode] or "cost_diff"
+  return item[field] or item.cost_diff or 0
+end
+
+---@class VF.Explore.RecRow
+---@field rank string
+---@field chunks string[]
+---@field widths integer[] # target width per `chunks` slot (display columns)
+---@field hl string
+
+-- Align rendered columns, not UTF-8 byte counts.
+local strwidth = vim.fn.strdisplaywidth
+
 ---@param row VF.Explore.RecRow
 ---@return string
 local function format_rec_row(row)
   local parts = { row.rank }
   for i, chunk in ipairs(row.chunks) do
-    local w = row.widths[i] or #chunk
-    local pad = math.max(0, w - #chunk)
+    local w = row.widths[i] or strwidth(chunk)
+    local pad = math.max(0, w - strwidth(chunk))
     local sep = (i == 1) and " " or "  "
     parts[#parts + 1] = sep .. chunk .. string.rep(" ", pad)
   end
@@ -43,7 +53,9 @@ end
 function M.render(active, remaining)
   if not v.nvim_buf_is_valid(active.list_buf) then return end
 
-  local lines = { "Recommendations", "" }
+  local mode = active.recommendation_sort or "effort"
+  local label = METRIC_LABELS[mode] or METRIC_LABELS.effort
+  local lines = { "Recommendations (" .. label .. ")", "" }
   local hl_entries = {}
 
   ---@type VF.Explore.RecRow[]
@@ -56,29 +68,35 @@ function M.render(active, remaining)
   end
 
   local phase_kind = active.state.phase.kind
-  if active.state.is_completed then
-    -- Sticky "session complete" — recs are empty here by construction
-    -- (cursor on goal, no remaining target). Surface the state explicitly
-    -- instead of the generic "(none)".
+  if active.warning then
+    local function warn_line(text)
+      lines[#lines + 1] = text
+      hl_entries[#hl_entries + 1] = {
+        row = #lines - 1,
+        hl = "DiagnosticError",
+        end_col = #text,
+      }
+    end
+    warn_line("!!! EXPLORE STATE WARNING !!!")
+    warn_line(active.warning.title)
+    for _, line in ipairs(active.warning.lines) do
+      warn_line(line)
+    end
+  elseif active.state.is_completed then
     lines[#lines + 1] = "Session complete."
     lines[#lines + 1] = "u to undo  •  q to close"
   elseif phase_kind == "Insert" then
-    -- Parallel to the motion format: rank, text, kind. When the insert is
-    -- complete the text slot shows `<Esc>` so there's still a concrete
-    -- action to perform before phase advancement.
     local text = remaining == "" and "<Esc>" or sequence_display.inline(remaining)
     add_row(1, 1, { text, "type" }, highlights.rank_hl(1))
   elseif #active.recommendations == 0 then
     lines[#lines + 1] = "(none)"
   else
-    -- Phase determines the rec kind: Navigate → motion (show landing
-    -- coordinates), Transform → edit atom (no landing column).
     local is_motion = phase_kind == "Navigate"
-    local kind_label = is_motion and "move" or "edit"
     local total = #active.recommendations
     for i, item in ipairs(active.recommendations) do
       local text = sequence_display.inline(item.text)
-      local cost = string.format("%.2f", item.cost_diff)
+      local cost = string.format("%.2f", recommendation_metric(active, item))
+      local kind_label = is_motion and "move" or "edit"
       local chunks = { text, cost, kind_label }
       if is_motion then
         chunks[#chunks + 1] = string.format("-> (%d,%d)",
@@ -88,16 +106,15 @@ function M.render(active, remaining)
     end
   end
 
-  -- Column-width pass: widest chunk per slot across every staged row.
   local col_widths = {}
   for _, row in ipairs(rows) do
     for i, chunk in ipairs(row.chunks) do
-      col_widths[i] = math.max(col_widths[i] or 0, #chunk)
+      col_widths[i] = math.max(col_widths[i] or 0, strwidth(chunk))
     end
   end
   for _, row in ipairs(rows) do
     for i = 1, #row.chunks do
-      row.widths[i] = col_widths[i] or #row.chunks[i]
+      row.widths[i] = col_widths[i] or strwidth(row.chunks[i])
     end
     lines[#lines + 1] = format_rec_row(row)
     hl_entries[#hl_entries + 1] = {
@@ -113,7 +130,6 @@ function M.render(active, remaining)
 
   v.nvim_buf_clear_namespace(active.list_buf, tags_ns, 0, -1)
   for _, entry in ipairs(hl_entries) do
-    -- Highlight only the leading rank marker so colors don't wash the whole line.
     v.nvim_buf_set_extmark(active.list_buf, tags_ns, entry.row, 0, {
       end_col = entry.end_col,
       hl_group = entry.hl,

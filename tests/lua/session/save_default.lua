@@ -10,6 +10,7 @@
 
 local session       = require("vimficiency.session")
 local session_store = require("vimficiency.session.store")
+local h             = require("_helpers")
 
 --- Seed the store with a manual session under `alias`, then finish it
 --- with `finish_alias` so `@` has something to resolve to. Returns the
@@ -23,8 +24,7 @@ local function seed_and_finish_manual(alias, finish_alias)
     status = "active",
     key_seq = {},
   })
-  -- A dummy result table is fine; default_save_name never inspects it.
-  session_store.finish_session(id, { user_seq = "" }, finish_alias, nil, "manual")
+  session_store.finish_session(id, h.fake_result({ user_seq = "" }), finish_alias, nil, "manual")
   return id
 end
 

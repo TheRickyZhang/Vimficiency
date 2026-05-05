@@ -29,6 +29,8 @@ test("strip_recall_pre_resolution: pops matching tail from every active record",
   -- pre-resolution pending bytes of <Space>ve (" ve"). key_count follows.
   local rec_a = session_store._for_test_get_active(id_a)
   local rec_b = session_store._for_test_get_active(id_b)
+  rec_a = assert(rec_a)
+  rec_b = assert(rec_b)
   for _, e in ipairs({ ev("j"), ev("w"), ev(" "), ev("v"), ev("e") }) do
     table.insert(rec_a.key_seq, e); rec_a.key_count = (rec_a.key_count or 0) + 1
     table.insert(rec_b.key_seq, e); rec_b.key_count = (rec_b.key_count or 0) + 1
@@ -53,6 +55,7 @@ end)
 test("strip_recall_pre_resolution: no-op when tail doesn't match", function()
   local _, buf, id = h.seed_recall({ lines = { "a" } })
   local rec = session_store._for_test_get_active(id)
+  rec = assert(rec)
   for _, e in ipairs({ ev("j"), ev("w") }) do
     table.insert(rec.key_seq, e); rec.key_count = (rec.key_count or 0) + 1
   end
@@ -70,6 +73,7 @@ end)
 test("strip_recall_pre_resolution: skips finished records (key_seq is nil)", function()
   local _, buf, id = h.seed_recall({ lines = { "a" } })
   local rec = session_store._for_test_get_active(id)
+  rec = assert(rec)
   rec.status = "finished"
   rec.key_seq = nil
 

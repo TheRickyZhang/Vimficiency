@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Run lua-language-server in batch-check mode over ./lua. Mirrors the LSP's
-# editor-time behavior so warnings can be surveyed from the CLI.
+# Run lua-language-server in batch-check mode over every Lua file in the repo.
+# Mirrors the LSP's editor-time behavior so warnings can be surveyed from the
+# CLI.
 #
 # Resolves the binary in this order:
 #   1. anything on PATH (system package, manual symlink, etc.)
@@ -24,6 +25,6 @@ fi
 # LuaLS requires --logpath even though --check_format=pretty (the default)
 # writes diagnostics to stdout. The logpath just collects internal logs.
 exec "$luals" \
-  --check "$repo_root/lua" \
+  --check "$repo_root" \
   --configpath "$repo_root/.luarc.json" \
   --logpath "${LUALS_LOG_DIR:-/tmp/luals-check}"

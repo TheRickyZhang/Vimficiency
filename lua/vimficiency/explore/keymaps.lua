@@ -27,6 +27,8 @@ local SCRATCH_SPEC = {
     summary_group = "history", summary_desc = "Undo / redo explore step" },
   { lhs = "<C-r>",           handler = "redo",               desc = "Redo explore step",          nowait = true,
     summary_group = "history", summary_desc = "Undo / redo explore step" },
+  { lhs = "<Leader>u",       handler = "undo_all",           desc = "Undo all explore steps",     nowait = true,
+    summary_group = "history", summary_desc = "Undo all explore steps" },
   { lhs = "<Leader>d",       handler = "debug_dump",         desc = "Dump explore state to :messages (debug)", mode = "n", nowait = true },
 }
 

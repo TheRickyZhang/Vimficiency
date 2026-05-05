@@ -4,6 +4,7 @@ local auto_suggest = require("vimficiency.capture.auto_suggest")
 local alias_mod = require("vimficiency.session.alias")
 local util = require("vimficiency.util")
 local explore = require("vimficiency.explore")
+local explore_result = require("vimficiency.explore.result")
 
 local M = {}
 
@@ -437,6 +438,12 @@ subcommands.explore = {
       vim.notify("vimfy explore failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
       return
     end
+    local valid, validation_err = explore_result.validate(result)
+    if not valid then
+      vim.notify("vimfy explore failed: " .. validation_err, vim.log.levels.ERROR)
+      return
+    end
+    ---@cast result VF.Explore.OpenResult
     explore.open(selector, result)
   end,
 }

@@ -1,10 +1,12 @@
 #pragma once
 
 #include <string_view>
+#include <utility>
 
 #include "Types/Mode.h"
 #include "Types/CursorPos.h"
 #include "Types/Sequence.h"
+#include "Keyboard/Config.h"
 #include "Keyboard/PhysicalKeys.h"
 #include "Effort/RunningEffort.h"
 
@@ -12,8 +14,9 @@
 // CompositionStateKey: Unique identifier for deduplication in A* search
 // =============================================================================
 //
-// Unlike TransformState (which keys on lines pointer), CompositionState derives
-// lines from editsCompleted index, so key is just (pos, mode, editsCompleted).
+// Unlike TransformStateKey, which includes a TransformEditorState content hash,
+// CompositionState derives lines from editsCompleted, so key is just
+// (pos, mode, editsCompleted).
 
 struct CompositionStateKey {
   int line;
@@ -47,8 +50,12 @@ private:
   }
 };
 
-
+// Ranked composition search state. CompositionStateFactory is the public
+// creation and transition boundary, so cost stays tied to semantic state.
 class CompositionState {
+  template<class CostFn>
+  friend class CompositionStateFactory;
+
   CursorPos pos;
   Mode mode;
 
@@ -66,13 +73,13 @@ class CompositionState {
   // Helper to append to sequence and update effort
   void appendSequence(std::string_view s, const PhysicalKeys& keys, const Config& config);
 
-public:
   CompositionState(CursorPos pos, Mode mode, int editsCompleted,
                    RunningEffort runningEffort = RunningEffort(),
                    double effort = 0.0, double cost = 0.0)
       : pos(pos), mode(mode), editsCompleted(editsCompleted),
-        runningEffort(runningEffort), effort(effort), cost(cost) {}
+        runningEffort(std::move(runningEffort)), effort(effort), cost(cost) {}
 
+public:
   // Comparison for priority queue (min-heap by cost)
   bool operator<(const CompositionState& other) const { return cost < other.cost; }
   bool operator>(const CompositionState& other) const { return cost > other.cost; }
@@ -94,31 +101,6 @@ public:
   double getCost() const { return cost; }
   const RunningEffort& getRunningEffort() const { return runningEffort; }
 
-  // ==========================================================================
-  // State transitions - return new state with transition applied
-  // ==========================================================================
-
-  // Create new state with edit transition applied
-  // - editSequence: the sequence for this edit (from TransformResult)
-  // - newPos: position after edit completes (end position in edit region)
-  // - newMode: mode after edit completes
-  // Note: caller must set cost via setCost() after computing heuristic
-  [[nodiscard]] CompositionState afterEditTransition(
-      const Sequence& editSequence,
-      const CursorPos& newPos, Mode newMode,
-      const Config& config) const;
-
-  // Create new state with motion result applied
-  // - moveSequence: the sequence for this movement
-  // - newPos: position after movement completes
-  // Note: caller must set cost via setCost() after computing heuristic
-  [[nodiscard]] CompositionState afterNavResult(
-      const Sequence& moveSequence,
-      const CursorPos& newPos,
-      const Config& config) const;
-
-  void setCost(double newCost) { cost = newCost; }
-
 private:
   // Internal: apply edit transition to this state (mutates)
   void applyEditTransitionImpl(const Sequence& editSequence,
@@ -129,3 +111,50 @@ private:
   void applyNavResultImpl(const Sequence& moveSequence,
                              const CursorPos& newPos, const Config& config);
 };
+
+template<class CostFn>
+class CompositionStateFactory {
+  const Config& config;
+  CostFn computeCost;
+
+  double costFor(const CompositionState& state) const {
+    return computeCost(state);
+  }
+
+public:
+  CompositionStateFactory(const Config& config, CostFn computeCost)
+      : config(config), computeCost(std::move(computeCost)) {}
+
+  [[nodiscard]] CompositionState initial(
+      CursorPos pos, Mode mode = Mode::Normal,
+      int editsCompleted = 0,
+      RunningEffort runningEffort = RunningEffort()) const {
+    double effort = runningEffort.getEffort(config);
+    CompositionState state(pos, mode, editsCompleted, std::move(runningEffort), effort, 0.0);
+    state.cost = costFor(state);
+    return state;
+  }
+
+  [[nodiscard]] CompositionState afterEditTransition(
+      const CompositionState& state,
+      const Sequence& editSequence,
+      const CursorPos& newPos, Mode newMode) const {
+    CompositionState newState = state;
+    newState.applyEditTransitionImpl(editSequence, newPos, newMode, config);
+    newState.cost = costFor(newState);
+    return newState;
+  }
+
+  [[nodiscard]] CompositionState afterNavResult(
+      const CompositionState& state,
+      const Sequence& moveSequence,
+      const CursorPos& newPos) const {
+    CompositionState newState = state;
+    newState.applyNavResultImpl(moveSequence, newPos, config);
+    newState.cost = costFor(newState);
+    return newState;
+  }
+};
+
+template<class CostFn>
+CompositionStateFactory(const Config&, CostFn) -> CompositionStateFactory<CostFn>;

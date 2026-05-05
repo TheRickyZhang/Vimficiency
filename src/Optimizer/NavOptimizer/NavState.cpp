@@ -1,28 +1,8 @@
 #include "NavState.h"
-#include "Interpreter/MovementInterpreter.h"
 #include "Keyboard/ToKeys/CountToKeys.h"
 #include "Types/CountPrefixLimits.h"
 
 using namespace std;
-
-// Changes pos, mode, movementSequence
-void NavState::applySingleMovement(string_view motion, const NavContext& navContext,
-                               const Lines& lines) {
-  applyParsedMovement(pos, mode, ParsedMovement(motion), lines, navContext);
-  movementSequence.append(motion);
-}
-
-void NavState::applySingleMovementWithEffort(string_view motion, const NavContext& navContext,
-                                              const Lines& lines, const PhysicalKeys& keys,
-                                              const Config& config) {
-  applyParsedMovement(pos, mode, ParsedMovement(motion), lines, navContext);
-  movementSequence.append(motion);
-  effort = runningEffort.append(keys, config);
-}
-
-// =============================================================================
-// Private implementation - mutating methods
-// =============================================================================
 
 void NavState::applyMotionImpl(const KeyedSequence& ks, CursorPos endpoint,
                                   const Config& config) {
@@ -66,8 +46,4 @@ void NavState::applyFMotionImpl(const KeyedSequence& fMotion, int newCol,
   pos.setCol(newCol);
   movementSequence.append(fMotion.seq.view());
   effort = runningEffort.append(fMotion.keys, config);
-}
-
-void NavState::updateEffort(const PhysicalKeys& keys, const Config& config) {
-  effort = runningEffort.append(keys, config);
 }

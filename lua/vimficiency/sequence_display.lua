@@ -3,6 +3,21 @@ local ffi_lib = require("vimficiency.ffi")
 
 local M = {}
 
+-- Display-only glyphs; keep bracket notation for anything fed to Neovim.
+-- Bare replacements do not touch forms like <C-Space> or <S-Tab>.
+local GLYPHS = {
+  ["<Space>"] = "␣",
+  ["<Tab>"]   = "⇥",
+  ["<CR>"]    = "↵",
+}
+
+local function glyphify(text)
+  for bracket, glyph in pairs(GLYPHS) do
+    text = text:gsub(bracket, glyph)
+  end
+  return text
+end
+
 local function resolved_opts(opts)
   local defaults = config.sequence_display or {}
   opts = opts or {}
@@ -23,7 +38,7 @@ end
 local function join_tokens(tokens, tokenize)
   local parts = {}
   for _, token in ipairs(tokens) do
-    parts[#parts + 1] = token.text
+    parts[#parts + 1] = glyphify(token.text)
   end
   if tokenize then
     return table.concat(parts, " ")

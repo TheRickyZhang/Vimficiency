@@ -54,7 +54,7 @@ static_assert(
 VFConfig defaultConfigFfi() {
   VFConfig config{};
   config.default_keyboard = UNIFORM;
-  config.weights.keyWeight = 1.0;
+  config.weights.key_weight = 1.0;
   config.shiftwidth = -1;
   for (size_t i = 0; i < KEY_COUNT; i++) {
     config.keys[i].hand = static_cast<int8_t>(Hand::None);
@@ -81,12 +81,12 @@ void sync_config() {
     break;
   }
 
-  g_config_internal.weights.w_key = g_config_ffi.weights.keyWeight;
-  g_config_internal.weights.w_same_finger = g_config_ffi.weights.sameFingerWeight;
-  g_config_internal.weights.w_same_key = g_config_ffi.weights.sameKeyWeight;
-  g_config_internal.weights.w_alt_bonus = g_config_ffi.weights.altHandWeight;
-  g_config_internal.weights.w_roll_good = g_config_ffi.weights.goodRollWeight;
-  g_config_internal.weights.w_roll_bad = g_config_ffi.weights.badRollWeight;
+  g_config_internal.weights.key_weight         = g_config_ffi.weights.key_weight;
+  g_config_internal.weights.same_finger_weight = g_config_ffi.weights.same_finger_weight;
+  g_config_internal.weights.same_key_weight    = g_config_ffi.weights.same_key_weight;
+  g_config_internal.weights.alt_hand_weight    = g_config_ffi.weights.alt_hand_weight;
+  g_config_internal.weights.good_roll_weight   = g_config_ffi.weights.good_roll_weight;
+  g_config_internal.weights.bad_roll_weight    = g_config_ffi.weights.bad_roll_weight;
 
   for (size_t i = 0; i < KEY_COUNT; i++) {
     auto &src = g_config_ffi.keys[i];
@@ -130,6 +130,11 @@ extern const int VF_COUNT_CLASS_COUNT = static_cast<int>(CountClassCOUNT);
 
 VFConfig *vf_get_config() { return &g_config_ffi; }
 void vf_apply_config() { sync_config(); }
+void vf_reset_config() {
+  g_config_ffi = defaultConfigFfi();
+  VimOptions::shiftwidthRef() = 8;
+  sync_config();
+}
 
 const char *vf_key_name(int index) {
   if (index < 0 || index >= VF_KEY_COUNT) return nullptr;
@@ -174,14 +179,14 @@ const char *vf_debug_config() {
   oss << "=== VFConfig Debug ===\n";
   oss << "default_keyboard: " << g_config_ffi.default_keyboard << "\n";
   oss << "\n--- Weights (FFI) ---\n";
-  oss << "keyWeight: " << g_config_ffi.weights.keyWeight << "\n";
-  oss << "sameFingerWeight: " << g_config_ffi.weights.sameFingerWeight << "\n";
-  oss << "sameKeyWeight: " << g_config_ffi.weights.sameKeyWeight << "\n";
-  oss << "altHandWeight: " << g_config_ffi.weights.altHandWeight << "\n";
+  oss << "key_weight: " << g_config_ffi.weights.key_weight << "\n";
+  oss << "same_finger_weight: " << g_config_ffi.weights.same_finger_weight << "\n";
+  oss << "same_key_weight: " << g_config_ffi.weights.same_key_weight << "\n";
+  oss << "alt_hand_weight: " << g_config_ffi.weights.alt_hand_weight << "\n";
 
   oss << "\n--- Weights (Internal) ---\n";
-  oss << "w_key: " << g_config_internal.weights.w_key << "\n";
-  oss << "w_same_finger: " << g_config_internal.weights.w_same_finger << "\n";
+  oss << "key_weight: " << g_config_internal.weights.key_weight << "\n";
+  oss << "same_finger_weight: " << g_config_internal.weights.same_finger_weight << "\n";
   oss << "\n--- Count Penalty Overrides ---\n";
   oss << "use_count_penalty_overrides: " << g_config_ffi.use_count_penalty_overrides << "\n";
 

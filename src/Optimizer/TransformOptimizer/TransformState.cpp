@@ -1,5 +1,4 @@
-// TransformState is now a simple struct with inline methods.
-// This file kept for potential future additions.
+// TransformState implementation is inline in the header. The header also
+// defines the editor-only TransformEditorState/TransformSimulator layer.
 
 #include "TransformState.h"
-

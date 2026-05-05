@@ -8,7 +8,7 @@
 --   1. The panel module is the one with novel behavior; the gs wiring
 --      is a one-line keymap.
 --   2. A real explore session needs FFI + a captured analyze result;
---      that infrastructure is exercised by explore_flow.lua.
+--      that infrastructure is exercised by explore/flow.lua.
 local helpers = require("_helpers")
 local panel = require("vimficiency.explore.render.panel")
 
@@ -26,6 +26,12 @@ local function teardown(view)
   pcall(panel.close, view)
   pcall(vim.cmd, "silent! tabonly")
   pcall(vim.cmd, "silent! %bwipeout!")
+end
+
+local function open_panel(view, schema)
+  panel.open(view, schema, function() end)
+  assert_true(view.panel ~= nil, "panel should be open")
+  return view.panel
 end
 
 local function make_schema(state)
@@ -62,10 +68,10 @@ end
 test("explore panel: open creates buffer and renders all setting rows", function()
   local view = make_view()
   local schema, state = make_schema()
-  panel.open(view, schema, function() end)
+  local panel_view = open_panel(view, schema)
 
   assert_true(panel.is_open(view))
-  local lines = vim.api.nvim_buf_get_lines(view.panel.buf, 0, -1, false)
+  local lines = vim.api.nvim_buf_get_lines(panel_view.buf, 0, -1, false)
   -- 3 setting rows + 1 separator (blank) + 1 action = 5 lines.
   assert_eq(#lines, 5)
   assert_match(lines[1], "Flag")
@@ -78,7 +84,7 @@ test("explore panel: open creates buffer and renders all setting rows", function
   assert_match(lines[5], "Reset")
 
   -- Initial selection lands on the first selectable row.
-  assert_eq(view.panel.selection, 1)
+  assert_eq(panel_view.selection, 1)
   _ = state
 
   teardown(view)
@@ -87,8 +93,8 @@ end)
 test("explore panel: close tears down window and clears panel state", function()
   local view = make_view()
   local schema = make_schema()
-  panel.open(view, schema, function() end)
-  local panel_win = view.panel.win
+  local panel_view = open_panel(view, schema)
+  local panel_win = panel_view.win
   panel.close(view)
 
   assert_true(view.panel == nil)
@@ -101,16 +107,16 @@ end)
 test("explore panel: re-opening on already-open view re-renders in place", function()
   local view = make_view()
   local schema_a = make_schema({ flag = false })
-  panel.open(view, schema_a, function() end)
-  local first_buf = view.panel.buf
+  local panel_view = open_panel(view, schema_a)
+  local first_buf = panel_view.buf
 
   -- Second open with a different schema. The panel should reuse the
   -- existing window (not stack two splits) and update its rows.
   local schema_b, state_b = make_schema({ flag = true })
-  panel.open(view, schema_b, function() end)
+  panel_view = open_panel(view, schema_b)
 
-  assert_eq(view.panel.buf, first_buf)
-  local lines = vim.api.nvim_buf_get_lines(view.panel.buf, 0, -1, false)
+  assert_eq(panel_view.buf, first_buf)
+  local lines = vim.api.nvim_buf_get_lines(panel_view.buf, 0, -1, false)
   assert_match(lines[1], "[✓]")  -- new schema's flag = true
   _ = state_b
 
@@ -120,14 +126,14 @@ end)
 test("explore panel: refresh re-reads getters after external state change", function()
   local view = make_view()
   local schema, state = make_schema({ count = 2 })
-  panel.open(view, schema, function() end)
+  local panel_view = open_panel(view, schema)
 
   -- External mutation — the closure-captured state changed without
   -- going through a panel keymap. `refresh` must pull fresh values.
   state.count = 4
   panel.refresh(view)
 
-  local lines = vim.api.nvim_buf_get_lines(view.panel.buf, 0, -1, false)
+  local lines = vim.api.nvim_buf_get_lines(panel_view.buf, 0, -1, false)
   assert_match(lines[2], "[4]")
 
   teardown(view)

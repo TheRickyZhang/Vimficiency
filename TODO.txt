@@ -14,11 +14,21 @@ Review Exploration C++ code
 toNavSuggestion - huh wtf are these conversions?
 
 And as always once done triaging and fixing, make sure to actually verify that the feature still works for the user
+Make structs like CursorPos, CharRange, immutable?
+Test that our code is organized well: Expanding search so that we include 1 before / after so that a/i possibly searches as well;
+- Would need to update both the optmizier AND the explorer identically
+- Probably would want to fully figure out how insert-mode deletions with <C-w>, <C-u> would work.
+
+Think about good .agents skills to add along the way, and test to see if they work well.
+READ through ALL the explore code
+
+
 
 ASK BLAKE: how to distinguish between the user's config, and stored settings data (how the user uses)?
 
 
 - Later:
+- Consider if the sort by: effort vs distance vs heuristic is efficient enough and a semantic improvement to be handled in lua (would need to process all results from explorer)
 - Can optimize the single-position navOptimizer case by meet in the middle, remove dup checks
 - Given that we have a visual-nav case in our transform optimizer, should the transform params contain a nav param for this case? If we proceed like this we suddenly need an embedded composition model - only strongly decide if the current design poses problems, or we are confident in our direction of improved transform searching
 

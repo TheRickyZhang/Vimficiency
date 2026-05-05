@@ -1,26 +1,5 @@
 local helpers = require("_helpers")
-
-local function find_window_by_name(wins, expected_name)
-  for _, win in ipairs(wins) do
-    local buf = vim.api.nvim_win_get_buf(win)
-    if vim.api.nvim_buf_get_name(buf) == expected_name then
-      return win, buf
-    end
-  end
-  return nil, nil
-end
-
-local function find_windows_by_prefix(wins, prefix)
-  local found = {}
-  for _, win in ipairs(wins) do
-    local buf = vim.api.nvim_win_get_buf(win)
-    local name = vim.api.nvim_buf_get_name(buf)
-    if name:sub(1, #prefix) == prefix and name ~= prefix .. "summary" then
-      found[#found + 1] = { win = win, buf = buf, name = name }
-    end
-  end
-  return found
-end
+local explore_helpers = require("explore._helpers")
 
 test("explore.open creates a fixed header pane above the scratch pane", function()
   helpers.silence_notify(function()
@@ -47,10 +26,10 @@ test("explore.open creates a fixed header pane above the scratch pane", function
       local list_name = "vimficiency://explore/demo/recommendations"
       local scratch_name = "vimficiency://explore/demo"
 
-      local header_wins = find_windows_by_prefix(wins, header_prefix)
-      local summary_win, summary_buf = find_window_by_name(wins, summary_name)
-      local list_win = find_window_by_name(wins, list_name)
-      local scratch_win = find_window_by_name(wins, scratch_name)
+      local header_wins = explore_helpers.find_windows_by_prefix(header_prefix, wins)
+      local summary_win, summary_buf = explore_helpers.find_window_by_name(summary_name, wins)
+      local list_win = explore_helpers.find_window_by_name(list_name, wins)
+      local scratch_win = explore_helpers.find_window_by_name(scratch_name, wins)
 
       assert_eq(#header_wins, 3, "expected Explored, Optimal 1, and User typed header panes")
       assert_true(summary_win ~= nil, "missing shared summary header")

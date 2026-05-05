@@ -145,10 +145,9 @@ TEST(OptimizerParamOverrides, CompositionSpecificKeyAppliesOnlyToComposition) {
 }
 
 TEST(OptimizerParamOverrides, CountPrefixSettersHonorBaseValidation) {
-  // OptimizerParamsBase::setMinCountRepeat asserts the value satisfies
-  // the lower bound (CountPrefixLimits::MIN_PREFIX_COUNT). The override
-  // applier routes through these setters so callers can't bypass the
-  // invariant.
+  // OptimizerParamsBase::validate() asserts the prefix-count fields are in
+  // bounds. The override applier calls validate() at the end of applyTo()
+  // so callers can't slip through bad values.
   const auto overrides = OptimizerParamOverrides::parse(
       "shared:minPrefixCount=5\n"
       "shared:maxPrefixCount=12");

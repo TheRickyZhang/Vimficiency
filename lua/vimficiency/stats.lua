@@ -50,7 +50,7 @@ local CHART_PREFIX_WIDTH = 4 + 3 + 2  -- "    " + "100" + " ┤"
 --- until we know which signals are noise.
 function M.normalize_token(text)
   local count, op, tail = text:match("^(%d*)([fFtTrR])(.+)$")
-  if op and tail and #tail == 1 then
+  if op and tail and (#tail == 1 or tail:match("^<[^>]+>$")) then
     return count .. op .. "_"
   end
   return text

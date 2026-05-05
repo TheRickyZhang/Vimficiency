@@ -38,19 +38,14 @@ local fields = {
     sectionize = true, -- true: split movement/edit phases onto separate display lines; false: keep one flat display line
   },
 
-  -- Per-feature UI-level preferences (not optimizer tuning — those live
-  -- elsewhere in this table). Changed at runtime via the `gs` settings
-  -- modal inside the explore scratch buffer; changes persist in memory
-  -- for the lifetime of the nvim run and reset here on restart. To make
-  -- an override permanent, declare it in your init.lua's `setup()`.
-  explore = {
-    display_mode = "above",                        -- "off" | "highlight" | "inplace" | "above" | "below"
-    recommendation_count = 5,                      -- how many recs to surface; 1..10
-    nav_max_results_per_end_pos = 1,             -- 1 = keep cheapest motion per landing cell; large = keep all
-    transform_max_results_per_start_pos = 1,     -- 1 = keep cheapest edit per start; large = keep all
-    show_user_typed = true,                        -- include the user's captured typed sequence
-    show_result_count = 1,                         -- how many `optimal_results` to display alongside Explored
-  },
+  -- Explore-view UI preferences. Schema + built-in defaults live in
+  -- `lua/vimficiency/explore/settings.lua` as `VIEW_SETTINGS` (the runtime
+  -- source of truth). This table is just the user-override bag: values placed
+  -- here via `setup({ explore = { ... } })` shadow the built-in defaults.
+  -- Runtime toggles via the `gs` modal also persist here in-memory and
+  -- reset on restart — declare overrides in `setup()` to make them
+  -- permanent.
+  explore = {},
 
   play = {
     include_user_sequence = true,                  -- show the user's typed sequence as the leftmost pane

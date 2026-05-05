@@ -48,22 +48,22 @@ inline double weightedHeuristicCost(const Lines& lines, int leftColOffset, int r
   return distanceWeight * static_cast<double>(total);
 }
 
-inline TransformState applyDeletionTransition(const TransformState& base, const CharRange& range,
+inline TransformEditorState applyDeletionTransition(const TransformEditorState& base, const CharRange& range,
                                          std::string_view baseCmd) {
   bool isBackwardWordDelete = (baseCmd == "db" || baseCmd == "dB");
   return isBackwardWordDelete
-      ? base.afterBackwardWordDeletion(range)
-      : base.afterDeletion(range);
+      ? TransformSimulator::afterBackwardWordDeletion(base, range)
+      : TransformSimulator::afterDeletion(base, range);
 }
 
-inline TransformState applyDeletionTransition(const TransformState& base, const CharLineRange& range,
+inline TransformEditorState applyDeletionTransition(const TransformEditorState& base, const CharLineRange& range,
                                          std::string_view) {
-  return base.afterCharLineDeletion(range);
+  return TransformSimulator::afterCharLineDeletion(base, range);
 }
 
-inline TransformState applyDeletionTransition(const TransformState& base, const LineCharRange& range,
+inline TransformEditorState applyDeletionTransition(const TransformEditorState& base, const LineCharRange& range,
                                          std::string_view) {
-  return base.afterLineCharDeletion(range);
+  return TransformSimulator::afterLineCharDeletion(base, range);
 }
 
 // Forward declarations for concept signatures — avoids pulling in TransformOptimizer.h.
@@ -106,19 +106,19 @@ concept GoalHandlerCore = requires(
 template<class T>
 concept ChangeGoalEmitter = requires(
     T handler,
-    TransformState& mutableState,
+    const TransformEditorState& editorState,
     const TransformState& constState,
     const CharRange& charRange,
     const CharLineRange& charLineRange,
     const LineCharRange& lineCharRange,
     LineRange lineRange,
     const SequenceBinding& cmd) {
-  { handler.onDeletionGoal(mutableState, constState, charRange, cmd) } -> std::same_as<GoalStates>;
-  { handler.onDeletionGoal(mutableState, constState, charLineRange, cmd) } -> std::same_as<GoalStates>;
-  { handler.onDeletionGoal(mutableState, constState, lineCharRange, cmd) } -> std::same_as<GoalStates>;
-  { handler.onLinewiseGoal(mutableState, constState, lineRange, cmd) } -> std::same_as<GoalStates>;
-  { handler.onCountedLinewiseGoal(mutableState, constState, lineRange, cmd) } -> std::same_as<GoalStates>;
-  { handler.onJoinGoal(mutableState, constState, cmd) } -> std::same_as<GoalStates>;
+  { handler.onDeletionGoal(editorState, constState, charRange, cmd) } -> std::same_as<GoalStates>;
+  { handler.onDeletionGoal(editorState, constState, charLineRange, cmd) } -> std::same_as<GoalStates>;
+  { handler.onDeletionGoal(editorState, constState, lineCharRange, cmd) } -> std::same_as<GoalStates>;
+  { handler.onLinewiseGoal(editorState, constState, lineRange, cmd) } -> std::same_as<GoalStates>;
+  { handler.onCountedLinewiseGoal(editorState, constState, lineRange, cmd) } -> std::same_as<GoalStates>;
+  { handler.onJoinGoal(editorState, constState, cmd) } -> std::same_as<GoalStates>;
 };
 
 template<bool PureDeletion, GoalHandlerCore ModePolicy>
@@ -145,36 +145,38 @@ struct TransformTransitionDispatcher {
         std::move(state), pq, costMap, pendingByStart, startActive);
   }
 
-  void continueWithEdit(TransformState&& next, const SequenceBinding& sourceCmd, double hCost) {
+  TransformStateFactory stateFactory() const {
+    return TransformStateFactory(config, effortWeight);
+  }
+
+  void continueWithEdit(TransformEditorState&& next, const SequenceBinding& sourceCmd, double hCost) {
     bool isDot = baseState.hasLastEdit() &&
                  baseState.getLastEditCount() == sourceCmd.count &&
                  baseState.getLastEditBase() == sourceCmd.base.seq.view();
     if (isDot) {
-      next.recordSearch(".", bank[KSId::Period], effortWeight, hCost, config);
+      emitState(stateFactory().afterCommand(
+          baseState, std::move(next), ".", bank[KSId::Period], hCost));
     } else {
-      next.recordSearch(sourceCmd.count, sourceCmd.base.seq.view(),
-                        sourceCmd.effort, effortWeight, hCost, config);
-      next.setLastEdit(sourceCmd.count, sourceCmd.base.seq.view());
+      emitState(stateFactory().afterEditCommand(
+          baseState, std::move(next), sourceCmd.count, sourceCmd.base.seq.view(),
+          sourceCmd.effort, hCost));
     }
-    emitState(std::move(next));
   }
 
   void moveByMotion(const CursorPos& newPos, const SequenceBinding& motionCmd) {
     assert(motionCmd.count == 0 && "Boundary motions should not carry counts");
-    TransformState next = baseState;
-    next.setPos(newPos);
-    next.recordSearch(motionCmd.base.seq.view(), motionCmd.effort,
-                      effortWeight,
-                      weightedHeuristicCost(next.getLines(), leftColOffset,
-                                            rightColOffset, distanceWeight),
-                      config);
-    emitState(std::move(next));
+    TransformEditorState next = TransformSimulator::withPos(
+        baseState.getEditorState(), newPos);
+    emitState(stateFactory().afterCommand(
+        baseState, std::move(next), motionCmd.base.seq.view(), motionCmd.effort,
+        weightedHeuristicCost(baseState.getLines(), leftColOffset,
+                              rightColOffset, distanceWeight)));
   }
 
   template<class RangeT>
   void deleteRange(const RangeT& range, const SequenceBinding& sourceCmd) {
-    TransformState afterDeletion =
-        applyDeletionTransition(baseState, range, sourceCmd.base.seq.view());
+    TransformEditorState afterDeletion =
+        applyDeletionTransition(baseState.getEditorState(), range, sourceCmd.base.seq.view());
     if (!finishTransition(afterDeletion, sourceCmd)) return;
     if constexpr (PureDeletion) {
       continueWithEdit(std::move(afterDeletion), sourceCmd, 0.0);
@@ -184,8 +186,9 @@ struct TransformTransitionDispatcher {
   }
 
   void deleteLinewise(LineRange range, const SequenceBinding& sourceCmd) {
-    TransformState afterDeletion =
-        baseState.afterMultiLinewiseDeletion(range, transformBoundary.hasLinesBelow());
+    TransformEditorState afterDeletion =
+        TransformSimulator::afterMultiLinewiseDeletion(
+            baseState.getEditorState(), range, transformBoundary.hasLinesBelow());
     if (!finishLinewiseTransition(afterDeletion, sourceCmd)) return;
     if constexpr (PureDeletion) {
       continueWithEdit(std::move(afterDeletion), sourceCmd, 0.0);
@@ -195,8 +198,9 @@ struct TransformTransitionDispatcher {
   }
 
   void deleteCountedLinewise(LineRange range, const SequenceBinding& sourceCmd) {
-    TransformState afterDeletion =
-        baseState.afterMultiLinewiseDeletion(range, transformBoundary.hasLinesBelow());
+    TransformEditorState afterDeletion =
+        TransformSimulator::afterMultiLinewiseDeletion(
+            baseState.getEditorState(), range, transformBoundary.hasLinesBelow());
     if (!finishLinewiseTransition(afterDeletion, sourceCmd)) return;
     if constexpr (PureDeletion) {
       continueWithEdit(std::move(afterDeletion), sourceCmd, 0.0);
@@ -206,7 +210,8 @@ struct TransformTransitionDispatcher {
   }
 
   void joinLines(bool addSpace, const SequenceBinding& sourceCmd) {
-    TransformState afterJoin = baseState.afterJoin(addSpace);
+    TransformEditorState afterJoin =
+        TransformSimulator::afterJoin(baseState.getEditorState(), addSpace);
     if (!finishTransition(afterJoin, sourceCmd)) return;
     if constexpr (PureDeletion) {
       continueWithEdit(std::move(afterJoin), sourceCmd, 0.0);
@@ -216,7 +221,9 @@ struct TransformTransitionDispatcher {
   }
 
   void joinCountedLines(bool addSpace, const SequenceBinding& sourceCmd) {
-    TransformState afterJoin = baseState.afterMultiJoin(sourceCmd.count, addSpace);
+    TransformEditorState afterJoin =
+        TransformSimulator::afterMultiJoin(
+            baseState.getEditorState(), sourceCmd.count, addSpace);
     if (!finishTransition(afterJoin, sourceCmd)) return;
     if constexpr (PureDeletion) {
       continueWithEdit(std::move(afterJoin), sourceCmd, 0.0);
@@ -231,7 +238,7 @@ private:
     if (goals.dotVariant) emitState(std::move(*goals.dotVariant));
   }
 
-  bool finishTransition(TransformState& next, const SequenceBinding& sourceCmd) {
+  bool finishTransition(TransformEditorState& next, const SequenceBinding& sourceCmd) {
     const Lines& nextLines = next.getLines();
     if (mode.isGoalReached(nextLines)) return true;
 
@@ -242,7 +249,7 @@ private:
     return false;
   }
 
-  bool finishLinewiseTransition(TransformState& next, const SequenceBinding& sourceCmd) {
+  bool finishLinewiseTransition(TransformEditorState& next, const SequenceBinding& sourceCmd) {
     const Lines& nextLines = next.getLines();
     bool lineOutOfBounds = next.getPos().line < 0 ||
                            next.getPos().line >= static_cast<int>(nextLines.size());

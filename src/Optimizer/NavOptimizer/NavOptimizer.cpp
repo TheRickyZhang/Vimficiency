@@ -103,8 +103,8 @@ LandingNavResult NavOptimizer::optimize(
     return range.containsPos(pos);
   };
 
-  NavState initialState(startPos, RunningEffort(), 0.0, 0.0);
-  initialState.setCost(scoreState(initialState.getPos(), initialState.getEffort()));
+  NavStateFactory states(config, scoreState);
+  NavState initialState = states.initial(startPos);
   pq.push(initialState);
   costMap[initialState.getKey()] = initialState.getCost();
 
@@ -157,19 +157,18 @@ LandingNavResult NavOptimizer::optimize(
     stats.maybeRecordExploredState(pos.line, pos.col, s.getEffort(), s.getSequence());
 
     auto onStatic = [&](KSId motionId, const KeyedSequence& ks, CursorPos endpoint) {
-          NavState next = s.afterMotion(ks, bank[motionId], endpoint, config, scoreState);
+          NavState next = states.afterMotion(s, ks, bank[motionId], endpoint);
           stats.incrementMotionsEmitted();
           Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
         };
-    auto onCounted = [&](KSId motionId, const KeyedSequence& ks, int count,
+    auto onCounted = [&](KSId /*motionId*/, const KeyedSequence& ks, int count,
                          CursorPos endpoint, double extraPenalty) {
-          NavState next = s.afterCountedMotion(
-              ks, count, endpoint, config, extraPenalty, scoreState);
+          NavState next = states.afterCountedMotion(s, ks, count, endpoint, extraPenalty);
           stats.incrementMotionsEmitted();
           Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
         };
     auto onFMotion = [&](const KeyedSequence& motion, int newCol) {
-          NavState next = s.afterFMotion(motion, newCol, config, scoreState);
+          NavState next = states.afterFMotion(s, motion, newCol);
           stats.incrementMotionsEmitted();
           Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
         };

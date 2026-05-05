@@ -10,7 +10,7 @@ Wrapper around `vector<string>` with position-aware character access. Key method
 - `get(pos)` - returns char at position, `'\n'` for empty lines
 - `getNextPos()` / `getPrevPos()` - step to adjacent char (skip empty lines)
 - `getNextPosIncludeEmpty()` / `getPrevPosIncludeEmpty()` - step including empty lines
-- `hashLines(lines)` - FNV-1a hash over all line contents + line count. Used in `TransformStateKey` and `SuffixKey` to avoid full buffer copies in A* costmap keys (see `edit-optimizer.md` § State Hashing).
+- `hashLines(lines)` - FNV-1a hash over all line contents + line count. Stored on `TransformEditorState` and read by `TransformStateKey`/`SuffixKey` to avoid full buffer copies in A* costmap keys (see `dev/optimizer/transform-optimizer.md` § State Hashing).
 
 See `boundary-logic.md` for when to use each variant.
 

@@ -75,7 +75,7 @@ protected:
     NavBoundary boundary;
     // maxResultsPerEndPos>1 for tests to see all paths
     return opt.optimize(lines, start,
-                               toMotionInterval(lines, CharRange(rangeBegin, rangeEnd)),
+                               CharInterval(CharRange(rangeBegin, rangeEnd), lines),
                                NavOptimizerParams{}
                                    .withMaxResults(maxResults)
                                    .withMaxNodesPopped(20000)

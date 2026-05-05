@@ -47,7 +47,7 @@ c}: deletes "bc\ndef" → merged line "" → KEPT    → ["a", ""]  cursor (1,0)
 
 ### Impact on the Optimizer
 
-The TransformOptimizer explores deletions in Normal mode (`afterDeletion` calls `deleteRange` with default `Mode::Normal`). When converting a deletion to a change command for the goal suffix, the optimizer must compute the collapse sequence (`<BS>`/`<Del>` to join lines) based on **Insert mode** line counts, not Normal mode.
+The TransformOptimizer explores deletion snapshots in Normal mode (`TransformSimulator` deletion helpers call VimCore deletion utilities with `Mode::Normal`). When converting a deletion to a change command for the goal suffix, the optimizer must compute the collapse sequence (`<BS>`/`<Del>` to join lines) based on **Insert mode** line counts, not Normal mode.
 
 `buildGoalSuffix` in `TransformOptimizer.cpp` re-simulates the deletion with `Mode::Insert` to get the correct line count. Without this, `c}` sequences would be missing the `<BS>` needed to join the extra empty line that Insert mode preserves.
 

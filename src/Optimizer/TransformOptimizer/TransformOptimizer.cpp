@@ -11,14 +11,11 @@
 
 #include "ChangeGoalHandler.h"
 #include "TransformExplorer.h"
+#include "TransformPostExplorerEmissions.h"
 #include "TransformTransitionDispatcher.h"
 #include "Effort/EffortBank.h"
 
-#include "Boundary/NavBoundary.h"
-#include "Keyboard/PhysicalKeys.h"
 #include "Keyboard/KeyedSequence.h"
-#include "Keyboard/ToKeys/MovementToKeys.h"
-#include "Optimizer/NavOptimizer/NavOptimizer.h"
 
 using namespace std;
 
@@ -41,6 +38,21 @@ TransformResult::TransformResult(vector<vector<Result>> results, TransformSearch
     lineBaseIndex_.push_back(cumSum - colOffset);
     int positions = initialLines[i].empty() ? 1 : static_cast<int>(initialLines[i].size());
     cumSum += positions;
+  }
+
+  for (int line = 0; line < static_cast<int>(initialLines.size()); line++) {
+    const int positions = initialLines[line].empty()
+        ? 1
+        : static_cast<int>(initialLines[line].size());
+    const int firstCol = (line == 0) ? beginCol_ : 0;
+    for (int localCol = 0; localCol < positions; localCol++) {
+      const int bufferCol = firstCol + localCol;
+      const int idx = resultIndexAt(bufferBeginLine + line, bufferCol);
+      if (idx >= 0 && idx < static_cast<int>(results_.size()) &&
+          !results_[static_cast<size_t>(idx)].empty()) {
+        startPositions_.push_back(CursorPos(bufferBeginLine + line, bufferCol));
+      }
+    }
   }
 
   // Sort each bucket by cost (best first) — pop order is approximate due to
@@ -105,64 +117,16 @@ struct DeletionGoalHandler {
                       const Lines&, const TransformOptimizerParams& params,
                       int bufferBeginLine, int bufferBeginCol, CursorPos goalPos,
                       TransformSearchStats stats) {
-    if (effectiveLines.size() > 1 ||
-        static_cast<int>(effectiveLines[0].size()) > leftColOffset + rightColOffset) {
-      CursorPos beginPos(0, leftColOffset);
-      int lastLine = effectiveLines.lastLine();
-      int lastCol = static_cast<int>(effectiveLines[lastLine].size()) - 1 - rightColOffset;
-      CursorPos lastPos(lastLine, max(0, lastCol));
-
-      if (lastPos > beginPos || (lastPos.line == beginPos.line && lastPos.col > beginPos.col)) {
-        NavOptimizer navOpt(config);
-
-        // Visual replay needs literal Vim endpoints. Keep line-level context
-        // for absolute motions, but do not let prefix/suffix column clipping
-        // make motions like `$` appear to land before the protected suffix.
-        NavBoundary navBoundary(
-            effectiveLines,
-            CursorPos(0, 0),
-            effectiveLines.endPos(),
-            transformBoundary.hasLinesAbove(),
-            transformBoundary.hasLinesBelow());
-
-        // TO-REVIEW: this internal NavOptimizer call uses a default-constructed
-        // NavOptimizerParams (motion-class settings, A* weights, etc.); it does
-        // NOT propagate user-configured motion-class settings (fMotionThreshold,
-        // useDirectionalPruning) from `params`. Deferred until we explore what
-        // alternative paradigms Transform might have — propagation may be the
-        // right call, or Transform's edit-shape enumeration may evolve to
-        // sidestep this internal Nav call entirely.
-        auto navResult = navOpt.optimize(
-            effectiveLines,
-            beginPos,
-            lastPos,
-            NavOptimizerParams{}
-                .withMinCountRepeat(params.minPrefixCount)
-                .withMaxCountRepeat(params.maxPrefixCount),
-            "",
-            navBoundary
-        );
-
-        const auto& navResults = navResult.getResults();
-        if (!navResults.empty() && !navResults[0].getSequence().empty()) {
-          Sequence visualSeq("v");
-          visualSeq.append(navResults[0].getSequence().view());
-          visualSeq.append("d");
-
-          static const PhysicalKeys vKey = {Key::Key_V};
-          static const PhysicalKeys dKey = {Key::Key_D};
-          RunningEffort effort(vKey, config);
-          effort.append(globalSequenceToKeys().tokenize(navResults[0].getSequence().view()), config);
-          double totalEffort = effort.append(dKey, config);
-
-          auto& bucket = resultsByStart[0];
-          if (bucket.empty() || totalEffort < bucket[0].getCost()) {
-            if (bucket.empty()) {
-              bucket.emplace_back(std::move(visualSeq), totalEffort);
-            } else {
-              bucket[0] = Result(std::move(visualSeq), totalEffort);
-            }
-          }
+    auto visual = TransformPostExplorer::tryVisualDelete(
+        effectiveLines, leftColOffset, rightColOffset,
+        transformBoundary, params, config);
+    if (visual) {
+      auto& bucket = resultsByStart[0];
+      if (bucket.empty() || visual->getCost() < bucket[0].getCost()) {
+        if (bucket.empty()) {
+          bucket.push_back(std::move(*visual));
+        } else {
+          bucket[0] = std::move(*visual);
         }
       }
     }
@@ -227,11 +191,12 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
   const double effortWeight = params.effortWeight;
   const double distanceWeight = params.distanceWeight;
 
-  Lines effectiveLines = initialLines;
+  // Effective lines = boundary prefix + edit region + boundary suffix.
+  // Same wrapping the depth-1 frontier (TransformFrontier) uses, via the
+  // shared `withBoundary` so both stay in lockstep.
+  Lines effectiveLines = transformBoundary.withBoundary(initialLines);
   const auto& pre = transformBoundary.prefix();
   const auto& suf = transformBoundary.suffix();
-  if (!pre.empty()) effectiveLines.front().insert(0, pre);
-  if (!suf.empty()) effectiveLines.back() += suf;
 
   EffortBank bank(config);
   TransformExplorer explorer(transformBoundary, params, config, bank, leftColOffset, rightColOffset);
@@ -250,6 +215,7 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
 
   const double startPriority =
       weightedHeuristicCost(effectiveLines, leftColOffset, rightColOffset, distanceWeight);
+  TransformStateFactory states(config, effortWeight);
   int startIndex = 0;
   for (int line = 0; line < static_cast<int>(initialLines.size()); line++) {
     for (int col = 0; col < initialLines[line].effectiveSize(); col++) {
@@ -260,7 +226,7 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
         continue;
       }
       pendingByStart[startIndex]++;
-      pq.push(TransformState(effectiveLines, CursorPos(line, effCol), startIndex, startPriority));
+      pq.push(states.initial(effectiveLines, CursorPos(line, effCol), startIndex, startPriority));
       startIndex++;
     }
   }
@@ -397,26 +363,16 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
       continue;
     }
 
-    explorer.exploreAllDeletions(s, onDeletion, onLinewise, onJoin);
-    explorer.exploreCountedLineEdits(
-        pos, lines, params.minPrefixCount,
+    sweepExplorerStructurals(
+        explorer, s, lines, pos, leftColOffset, rightColOffset,
+        params.minPrefixCount,
+        onDeletion, onLinewise, onJoin,
         [&](LineRange range, const SequenceBinding& sourceCmd) {
           dispatch.deleteCountedLinewise(range, sourceCmd);
-        });
-    explorer.exploreCountedJoinCommands(
-        pos, lines, params.minPrefixCount,
+        },
         [&](bool addSpace, const SequenceBinding& sourceCmd) {
           dispatch.joinCountedLines(addSpace, sourceCmd);
         });
-    explorer.exploreCountedWordEdits(pos, lines, params.minPrefixCount, onDeletion);
-
-    int contentStart = (pos.line == 0) ? leftColOffset : 0;
-    int contentEnd = static_cast<int>(lines[pos.line].size());
-    if (pos.line == lines.lastLine() && rightColOffset > 0) {
-      contentEnd -= rightColOffset;
-    }
-    explorer.exploreCountedCharEdits(pos, lines, contentStart, contentEnd,
-                                     params.minPrefixCount, onDeletion);
     ::maybeMarkStartExhausted(pendingByStart, startActive, terminalStarts, activeStart);
   }
 

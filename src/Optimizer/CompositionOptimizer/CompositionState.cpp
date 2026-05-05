@@ -10,32 +10,6 @@ void CompositionState::appendSequence(string_view s, const PhysicalKeys& keys,
   effort = runningEffort.append(keys, config);
 }
 
-// =============================================================================
-// Public factory methods - return new state with transition applied
-// =============================================================================
-
-CompositionState CompositionState::afterEditTransition(
-    const Sequence& editSequence,
-    const CursorPos& newPos, Mode newMode,
-    const Config& config) const {
-  CompositionState newState = *this;
-  newState.applyEditTransitionImpl(editSequence, newPos, newMode, config);
-  return newState;
-}
-
-CompositionState CompositionState::afterNavResult(
-    const Sequence& moveSequence,
-    const CursorPos& newPos,
-    const Config& config) const {
-  CompositionState newState = *this;
-  newState.applyNavResultImpl(moveSequence, newPos, config);
-  return newState;
-}
-
-// =============================================================================
-// Private implementation - mutating methods
-// =============================================================================
-
 void CompositionState::applyEditTransitionImpl(
     const Sequence& editSequence,
     const CursorPos& newPos, Mode newMode,

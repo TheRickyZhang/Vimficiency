@@ -90,11 +90,13 @@ test("ffi.analyze: preserves substitute payload and cost for exact 2->3 scenario
 
   local replace = find_result(results, "$Ef2r3")
   assert_true(replace ~= nil, "expected replace candidate $Ef2r3")
+  replace = assert(replace)
   assert_true(replace.cost > 0, "$Ef2r3 should keep a positive cost")
 
   local substitute = find_result(results, "$Ef2s3<Esc>")
   assert_true(substitute ~= nil,
     "expected substitute candidate $Ef2s3<Esc>; got " .. vim.inspect(results))
+  substitute = assert(substitute)
   assert_true(substitute.cost > 0,
     "$Ef2s3<Esc> should keep a positive cost, got " .. tostring(substitute.cost))
 

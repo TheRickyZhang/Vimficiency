@@ -393,7 +393,7 @@ optional<Result> ChangeGoalHandler::tryReplacement(
 // Goal emission methods
 
 GoalStates ChangeGoalHandler::emitEditGoal(
-    TransformState& postCompletionState, const TransformState& base,
+    const TransformEditorState& postCompletionState, const TransformState& base,
     const SequenceBinding& sourceCmd,
     const KeyedSequence& goalCompletionCmd,
     const TypedGoalVariants& typedVariants,
@@ -420,10 +420,10 @@ GoalStates ChangeGoalHandler::emitEditGoal(
                        goalCompletionCmd, completionPenalty,
                        typedVariants.normalTyped.sequence, typedVariants.normalTyped.effort);
 
-  TransformState normalState = postCompletionState;
-  normalState.recordSearch(normalSeq.seq.view(), normalEffort,
-                           effortWeight, 0.0, config);
-  normalState.setLastEdit(sourceCmd.count, sourceCmd.base.seq.view());
+  TransformStateFactory states(config, effortWeight);
+  TransformState normalState = states.afterCommandWithLastEdit(
+      base, postCompletionState, normalSeq.seq.view(), normalEffort, 0.0,
+      sourceCmd.count, sourceCmd.base.seq.view());
 
   GoalStates result{std::move(normalState), nullopt};
 
@@ -437,17 +437,15 @@ GoalStates ChangeGoalHandler::emitEditGoal(
     RunningEffort dotEffort = RunningEffort::merge(dotPrefixEffort, typedVariants.dotTyped.effort);
     dotSeq += typedVariants.dotTyped.sequence;
 
-    TransformState dotState = std::move(postCompletionState);
-    dotState.recordSearch(dotSeq.seq.view(), dotEffort,
-                          effortWeight, 0.0, config);
-    result.dotVariant = std::move(dotState);
+    result.dotVariant = states.afterCommand(
+        base, postCompletionState, dotSeq.seq.view(), dotEffort, 0.0);
   }
 
   return result;
 }
 
 GoalStates ChangeGoalHandler::emitLinewiseChangeGoal(
-    TransformState& afterDel, const TransformState& base,
+    const TransformEditorState& afterDel, const TransformState& base,
     const SequenceBinding& sourceCmd, int line,
     int ccLineCount, const KeyedSequence& changeCmd,
     bool applyAutoindent) {
@@ -485,7 +483,7 @@ GoalStates ChangeGoalHandler::emitLinewiseChangeGoal(
 }
 
 GoalStates ChangeGoalHandler::onLinewiseGoal(
-    TransformState& afterDel, const TransformState& base, LineRange range,
+    const TransformEditorState& afterDel, const TransformState& base, LineRange range,
     const SequenceBinding& sourceCmd) {
   int line = range.beginLine;
   KeyedSequence changeCmd = deleteToChangeLine(sourceCmd, base.getLines()[line]);
@@ -499,7 +497,7 @@ GoalStates ChangeGoalHandler::onLinewiseGoal(
 }
 
 GoalStates ChangeGoalHandler::onCountedLinewiseGoal(
-    TransformState& afterDel, const TransformState& base,
+    const TransformEditorState& afterDel, const TransformState& base,
     LineRange range, const SequenceBinding& sourceCmd) {
   int line = range.beginLine;
   int lineCount = range.endLine - range.beginLine;
@@ -509,7 +507,7 @@ GoalStates ChangeGoalHandler::onCountedLinewiseGoal(
 }
 
 GoalStates ChangeGoalHandler::onJoinGoal(
-    TransformState& afterJn, const TransformState& base,
+    const TransformEditorState& afterJn, const TransformState& base,
     const SequenceBinding& sourceCmd) {
   bool isDot = isDotRepeat(base, sourceCmd);
   const auto& iCmd = KeyedSequence::i;

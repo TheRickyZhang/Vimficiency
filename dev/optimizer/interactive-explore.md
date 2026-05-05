@@ -63,7 +63,7 @@ or semantic drift and can be added later if testing shows they matter.
 
 ## Commit and cancel
 
-Commit is allowed only when the session is `Completed`.
+Commit is allowed only when `View::isCompleted()` is true.
 
 Commit policy for v1:
 
@@ -92,7 +92,8 @@ For each session:
    - suggest motion actions that move toward valid entry positions for edit `i`
    - once at a valid entry position, allow only edit-start actions for edit `i`
    - if the chosen edit enters insert mode, enforce the required typed suffix
-4. Once the session reaches the final fencepost state, mark it `Completed`.
+4. Once the session reaches the final fencepost and cursor goal, completion is
+   true.
 
 ### Composition compatibility boundary
 
@@ -114,29 +115,29 @@ Explore is to remain compatible.
 `Navigate`
 
 - Motion-oriented phase. With a planned edit index, the cursor is outside the
-  current edit range and recommendations include movements toward that range.
-- For a pure motion goal, `Navigate` carries no edit index and points directly
-  at the final cursor goal.
+  executable edit-start set and recommendations include movements toward that
+  set.
+- `Navigate(totalEdits)` is the post-final-edit cursor segment. Pure-motion
+  sessions start there.
 
 `Transform(i)`
 
 - Normal-mode edit phase for planned edit `i`.
-- Edit recommendations are available at the current cursor. Movements are still
-  accepted, but only while they stay inside the current edit range.
+- Edit recommendations are available only at executable edit starts reported by
+  `plannedEdit.transformResult.resultsAt(...)`. The textual diff range is a
+  render/target-range concept, not Transform eligibility.
+- Physical snapshots can also expose delete-first replacement intermediates.
 - Unsupported edits are rejected and do not mutate session state.
 
 `Insert(i)`
 
-- Insert-mode continuation for planned edit `i`.
-- C++ stores only the planned edit index. Lua owns the live typed-text suffix
-  because it is derivable from the scratch buffer and the matched edit
-  recommendation's `typed_text`.
+- Insert-mode continuation for planned edit `i`. Entry is accepted only when
+  the live cursor is still inside the expected planned edit scope.
 - Leaving insert mode is accepted only when the resulting buffer matches the
   planned post-edit fencepost.
 
-`Completed`
-
-- Goal reached. Recommendations are empty. UI should offer commit/cancel.
+Completion is not a runtime phase. It is derived from
+`Navigate(totalEdits)`, final text, and `goalPos`.
 
 There is no runtime `Invalid` phase. User-facing failures return `Rejected`
 with state unchanged; programming-invariant failures assert.
@@ -146,31 +147,33 @@ State diagram:
 
 ```text
 Start
-  -> Completed             if text and cursor already match goal
-  -> Navigate              if text matches but cursor differs
+  -> Navigate(totalEdits)  if text matches goal
   -> Navigate(0)           if text differs and cursor is outside edit 0
   -> Transform(0)          if text differs and cursor is inside edit 0
 
 Navigate
-  -- motion to goal ------> Completed
+  -- motion to goal ------> isCompleted() true
   -- other motion --------> Navigate
   -- text change ---------> Rejected
 
 Navigate(i)
   -- motion outside range -> Navigate(i)
   -- motion inside range --> Transform(i)
-  -- matching buffer -----> Navigate/Transform(i+1) or Completed
+  -- matching buffer -----> Navigate/Transform(i+1)
+  -- in-scope insert -----> Insert(i)
+  -- out-of-scope insert -> Rejected, revert scratch, stay
   -- unsupported edit ----> Rejected, stay
 
 Transform(i)
   -- in-range motion -----> Transform(i)
-  -- out-of-range motion -> Rejected, stay
-  -- matching transform --> Navigate/Transform(i+1) or Completed
+  -- out-of-range snapshot -> Navigate(i)
+  -- delete prefix -------> Transform(i) with partial edit span
+  -- matching transform --> Navigate/Transform(i+1)
   -- enters insert -------> Insert(i)
   -- unsupported edit ----> Rejected, stay
 
 Insert(i)
-  -- matching exit -------> Navigate/Transform(i+1) or Completed
+  -- matching exit -------> Navigate/Transform(i+1)
   -- abandoned insert ----> prior Navigate/Transform(i)
   -- wrong buffer --------> Rejected, revert scratch, prior phase
 ```
@@ -183,16 +186,24 @@ Allowed:
 
 - a motion that moves away from the best current approach path
 - a motion that overshoots and requires later correction
-- while transforming, a motion that stays inside the current edit range
+- while transforming, a motion that leaves the executable start and returns to
+  Navigate for the same planned edit
+- a physical snapshot that moves from Transform back out to Navigate
+- a delete-first prefix of a replacement before entering Insert
 
 Rejected but non-fatal:
 
 - an edit that does not belong to the current edit index
 - an edit started from an unsupported position
-- a transform-phase motion that leaves the current edit range
+- insert-mode entry outside the planned edit scope
 - an insert-mode exit whose buffer does not match the post-edit fencepost
 
 Internal invariant failures assert instead of becoming a phase.
+
+Lua also runs a defensive post-recovery invariant check against the live
+scratch buffer, cursor, mode, and backend state. Normal `Rejected` actions
+emit a warning notification and snap back before this fires; the large visible
+warning pane is reserved for states that remain inconsistent after recovery.
 
 ## Edit acceptance and completion
 
@@ -208,14 +219,17 @@ This keeps later edit phases from inheriting hidden state drift.
 
 ## Undo and redo
 
-Only accepted actions push a new session snapshot.
+Only user-meaningful accepted actions push a new session snapshot.
 
 - accepted action: push old snapshot to undo and clear redo
+- Insert and partial delete-prefix states: push nothing
 - rejected action: push nothing and clear nothing
 - invalidation: push nothing
 
 Scratch native undo is disabled. Session undo/redo is the only supported undo
-mechanism during explore.
+mechanism during explore. History follows Vim change boundaries: a replacement
+typed as `x` then `i...<Esc>` undoes back to the pre-edit Transform state, not
+the delete-prefix intermediate.
 
 ## Recommendation contract
 
@@ -225,20 +239,18 @@ mechanism during explore.
 
 `Navigate(i)`
 
-- return a ranked list of motion/edit candidates for the current planned edit
+- return a ranked list of movement-oriented candidates for the current planned
+  edit boundary
 
 `Transform(i)`
 
-- return edit candidates at the cursor, with motion backfill only inside the
-  current edit range
+- return edit candidates at the cursor, plus systematic delete-first
+  replacement alternatives
 
 `Insert`
 
-- return an empty recommendation list; Lua renders the live typed-text suffix
-
-`Completed`
-
-- return an empty recommendation list
+- return the remaining typed text without trailing `<Esc>`
+- completed sessions return an empty recommendation list
 
 ## Lua/controller responsibilities
 
@@ -247,7 +259,7 @@ The Lua scratch controller is responsible for:
 - creating and placing the scratch window
 - copying the explicit option set
 - disabling native scratch undo
-- observing insert text / insert leave events
+- forwarding live buffer/cursor/mode snapshots and normalized key evidence
 - reverting scratch state after rejected insert-mode edits
 - enforcing commit/cancel lifecycle
 
@@ -255,8 +267,8 @@ The C++ session core is responsible for:
 
 - phase transitions
 - accepted/rejected action semantics
+- deriving recommendations from the live snapshot state
 - undo/redo history
-- later, local recommendation generation
 
 ## Implementation order
 

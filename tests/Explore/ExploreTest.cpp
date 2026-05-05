@@ -197,7 +197,7 @@ TEST_F(ExploreViewTest, ApplyMotionAdvancesCursorAndSequence) {
 
 TEST_F(ExploreViewTest, RecommendationCostDiffIncludesAcceptedSequence) {
   config = Config::qwerty();
-  config.weights.w_same_key = 1.0;
+  config.weights.same_key_weight = 1.0;
   Lines lines{Line("foo bar baz")};
   auto view = makeView(lines, {0, 0}, lines, {0, 8});
 
@@ -256,18 +256,16 @@ TEST_F(ExploreViewTest, AcceptCursorMoveRejectsBoundaryEscape) {
   EXPECT_FALSE(view.canUndo());
 }
 
-TEST_F(ExploreViewTest, AcceptCursorMoveRejectsMismatchedRawKeys) {
+TEST_F(ExploreViewTest, AcceptCursorMoveTrustsObservedCursorOverRawReplay) {
   Lines initial{Line("foo bar baz qux")};
   Lines goal{Line("foo bar baz QUX")};
   auto view = makeView(initial, {0, 0}, goal, {0, 14});
 
   auto outcome = view.acceptCursorMove(CursorPos(0, 4), "l");
-  ASSERT_FALSE(outcome.has_value());
-  EXPECT_EQ(outcome.error().reason,
-            "raw motion keys did not produce the observed cursor move");
-  EXPECT_EQ(view.state().cursor, CursorPos(0, 0));
-  EXPECT_TRUE(view.state().seq.empty());
-  EXPECT_FALSE(view.canUndo());
+  ASSERT_TRUE(outcome.has_value());
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 4));
+  EXPECT_EQ(view.state().seq, "l");
+  EXPECT_TRUE(view.canUndo());
 }
 
 TEST_F(ExploreViewTest, UndoRestoresPriorCursorAndSequence) {
@@ -374,6 +372,106 @@ TEST_F(ExploreViewTest, InsertPhaseRecommendationEmptyForPureDeletion) {
     EXPECT_LE(recs.size(), 1u);
   }
 }
+
+TEST_F(ExploreViewTest, NavigatePhaseSurfacesACompositionForEolInsertion) {
+  // For an EOL pure insertion the optimizer telescopes Navigate+Transform
+  // by emitting `A<text>` from any column on the line. The composition
+  // frontier should surface this during Navigate phase so the user sees
+  // the shortcut alongside pure motions toward the insertion point.
+  Lines initial{Line("hello")};
+  Lines goal{Line("hello!")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 5});
+
+  ASSERT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
+  auto recs = view.recommendations(20);
+  ASSERT_FALSE(recs.empty());
+
+  // Composition motions include trailing <Esc> for the typed-payload exit
+  // (mirrors what the optimizer emits in its flat sequences).
+  const bool hasA = any_of(recs.begin(), recs.end(),
+      [](const Suggestion& s) { return string_view(s.token) == "A!<Esc>"; });
+  const bool hasMotionA = any_of(recs.begin(), recs.end(),
+      [](const Suggestion& s) { return string_view(s.token) == "$a!<Esc>"; });
+  EXPECT_TRUE(hasA)
+      << "Navigate phase must surface `A!<Esc>` composition motion (zero-prefix)";
+  EXPECT_TRUE(hasMotionA)
+      << "Navigate phase must surface `$a!<Esc>` composition motion (motion-prefixed)";
+}
+
+TEST_F(ExploreViewTest, TransformPhaseSurfacesReplaceCharForSingleCharDiff) {
+  // Parity with TransformOptimizer: ChangeGoalHandler::tryReplacement emits
+  // r{char} for single-line same-length replacement diffs at finalize time.
+  // The depth-1 frontier must surface it too.
+  Lines initial{Line("abc")};
+  Lines goal{Line("aBc")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 1});
+
+  ASSERT_TRUE(view.applyMovement("l").has_value());
+  ASSERT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
+
+  auto recs = view.recommendations(20);
+  ASSERT_FALSE(recs.empty());
+  const bool hasReplaceChar = any_of(recs.begin(), recs.end(),
+      [](const Suggestion& s) { return string_view(s.token) == "rB"; });
+  const bool hasDeleteFirst = any_of(recs.begin(), recs.end(),
+      [](const Suggestion& s) {
+        return string_view(s.token) == "x";
+      });
+  EXPECT_TRUE(hasReplaceChar)
+      << "depth-1 transform must emit `rB` for single-char same-length replacement";
+  EXPECT_TRUE(hasDeleteFirst)
+      << "replacement transform must expose deletion-first prefixes like `x`";
+}
+
+TEST_F(ExploreViewTest, RecommendationSortModesUseDifferentMetrics) {
+  Lines initial{Line("abc")};
+  Lines goal{Line("aBc")};
+  auto view = makeView(initial, {0, 1}, goal, {0, 1});
+
+  ASSERT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
+  const auto overrides = OptimizerParamOverrides::parse(
+      "transform:distanceWeight=2.0");
+
+  auto indexOf = [](const vector<Suggestion>& recs, string_view token) {
+    for (size_t i = 0; i < recs.size(); ++i) {
+      if (string_view(recs[i].token) == token) return static_cast<int>(i);
+    }
+    return -1;
+  };
+
+  auto effort = view.recommendations(20, &overrides, SuggestionSortMode::Effort);
+  auto distance = view.recommendations(20, &overrides, SuggestionSortMode::Distance);
+  auto score = view.recommendations(20, &overrides, SuggestionSortMode::Score);
+
+  const int effortReplace = indexOf(effort, "rB");
+  ASSERT_GE(effortReplace, 0);
+
+  const auto incomplete = find_if(effort.begin(), effort.end(),
+      [&](const Suggestion& s) {
+        return s.distance > 0.0 && s.costDiff < effort[effortReplace].costDiff;
+      });
+  ASSERT_NE(incomplete, effort.end());
+  const string incompleteToken = incomplete->token;
+
+  const int effortIncomplete = indexOf(effort, incompleteToken);
+  const int distanceIncomplete = indexOf(distance, incompleteToken);
+  const int distanceReplace = indexOf(distance, "rB");
+  const int scoreIncomplete = indexOf(score, incompleteToken);
+  const int scoreReplace = indexOf(score, "rB");
+
+  ASSERT_GE(effortIncomplete, 0);
+  ASSERT_GE(distanceIncomplete, 0);
+  ASSERT_GE(distanceReplace, 0);
+  ASSERT_GE(scoreIncomplete, 0);
+  ASSERT_GE(scoreReplace, 0);
+
+  EXPECT_LT(effortIncomplete, effortReplace);
+  EXPECT_LT(distanceReplace, distanceIncomplete);
+  EXPECT_LT(scoreReplace, scoreIncomplete);
+  EXPECT_GT(effort[effortIncomplete].distance, 0.0);
+  EXPECT_EQ(effort[effortReplace].distance, 0.0);
+}
+
 
 TEST_F(ExploreViewTest, OutOfScopeEditRejectedWithoutStateChange) {
   Lines initial{Line("int n = 10;")};
@@ -508,6 +606,240 @@ TEST_F(ExploreViewTest, AcceptInsertExitRejectsInvalidCursor) {
   EXPECT_EQ(view.state(), priorState);
 }
 
+TEST_F(ExploreViewTest, AcceptSnapshotLetsCursorLeaveTransformRange) {
+  Lines initial{Line("abc")};
+  Lines goal{Line("aBc")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 1});
+
+  ASSERT_TRUE(view.applyMovement("l").has_value());
+  ASSERT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
+
+  auto outcome = view.acceptSnapshot(initial, CursorPos(0, 0), "h", false);
+  ASSERT_TRUE(outcome.has_value());
+  EXPECT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 0));
+  EXPECT_EQ(view.state().seq, "lh");
+}
+
+TEST_F(ExploreViewTest, MovementAwayFromEditStartReturnsToNavigate) {
+  Lines initial{Line("abc")};
+  Lines goal{Line("aBc")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 1});
+
+  ASSERT_TRUE(view.applyMovement("l").has_value());
+  ASSERT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
+
+  auto movedAway = view.applyMovement("h");
+  ASSERT_TRUE(movedAway.has_value());
+  EXPECT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 0));
+
+  auto recs = view.recommendations(5);
+  ASSERT_FALSE(recs.empty());
+  EXPECT_TRUE(any_of(recs.begin(), recs.end(), [](const Suggestion& rec) {
+    return rec.landingPos == CursorPos(0, 1);
+  }));
+}
+
+TEST_F(ExploreViewTest, AcceptSnapshotBeginsInsertFromStructuralDeletion) {
+  Lines initial{Line("n")};
+  Lines goal{Line("m")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 0});
+
+  ASSERT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
+  Lines insertEntry{Line("")};
+  auto outcome = view.acceptSnapshot(insertEntry, CursorPos(0, 0), "ci", true);
+  ASSERT_TRUE(outcome.has_value());
+  EXPECT_TRUE(std::holds_alternative<Explore::Insert>(view.phase()));
+  EXPECT_TRUE(view.state().seq.empty())
+      << "insert structural keys are recorded with the completed insert edit";
+
+  auto recs = view.recommendations(1);
+  ASSERT_EQ(recs.size(), 1u);
+  EXPECT_EQ(string_view(recs[0].token), "m");
+}
+
+TEST_F(ExploreViewTest, AcceptSnapshotKeepsNormalDeletionInTransform) {
+  Lines initial{Line("n")};
+  Lines goal{Line("m")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 0});
+
+  Lines insertEntry{Line("")};
+  auto deleted = view.acceptSnapshot(insertEntry, CursorPos(0, 0), "x", false);
+  ASSERT_TRUE(deleted.has_value());
+  EXPECT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
+  EXPECT_EQ(view.state().lines, insertEntry);
+  EXPECT_EQ(view.state().seq, "x");
+
+  auto recs = view.recommendations(10);
+  ASSERT_FALSE(recs.empty());
+  EXPECT_TRUE(any_of(recs.begin(), recs.end(), [](const Suggestion& s) {
+    return string_view(s.token) == "i" || string_view(s.token) == "I";
+  }));
+
+  ASSERT_TRUE(view.acceptSnapshot(insertEntry, CursorPos(0, 0), "i", true).has_value());
+  ASSERT_TRUE(std::holds_alternative<Explore::Insert>(view.phase()));
+
+  auto completed = view.acceptSnapshot(goal, CursorPos(0, 0), "im<Esc>", false);
+  ASSERT_TRUE(completed.has_value());
+  EXPECT_TRUE(view.isCompleted());
+  EXPECT_EQ(view.state().seq, "xim<Esc>");
+  ASSERT_EQ(view.state().editSpans.size, 1);
+  EXPECT_EQ(view.state().editSpans.spans[0].beginByte, 0u);
+  EXPECT_EQ(view.state().editSpans.spans[0].endByte, view.state().seq.size());
+}
+
+TEST_F(ExploreViewTest, UndoSkipsDeletePrefixReplacementIntermediate) {
+  Lines initial{Line("int n = 10;")};
+  Lines goal{Line("int m = 10;")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 4});
+
+  ASSERT_TRUE(view.applyMovement("w").has_value());
+  ASSERT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
+  EXPECT_EQ(view.state().seq, "w");
+
+  Lines insertEntry{Line("int  = 10;")};
+  ASSERT_TRUE(view.acceptSnapshot(
+      insertEntry, CursorPos(0, 4), "x", false).has_value());
+  ASSERT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
+  EXPECT_TRUE(view.state().hasPartialEditSpan);
+  EXPECT_EQ(view.state().seq, "wx");
+
+  ASSERT_TRUE(view.acceptSnapshot(
+      insertEntry, CursorPos(0, 4), "i", true).has_value());
+  ASSERT_TRUE(std::holds_alternative<Explore::Insert>(view.phase()));
+
+  ASSERT_TRUE(view.acceptSnapshot(
+      goal, CursorPos(0, 4), "im<Esc>", false).has_value());
+  ASSERT_TRUE(view.isCompleted());
+  EXPECT_EQ(view.state().seq, "wxim<Esc>");
+  ASSERT_EQ(view.state().editSpans.size, 1);
+  EXPECT_EQ(view.state().editSpans.spans[0].beginByte, 1u);
+  EXPECT_EQ(view.state().editSpans.spans[0].endByte, view.state().seq.size());
+
+  ASSERT_TRUE(view.undo().has_value());
+  EXPECT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
+  EXPECT_EQ(view.state().lines, initial);
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 4));
+  EXPECT_EQ(view.state().seq, "w");
+
+  ASSERT_TRUE(view.undo().has_value());
+  EXPECT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
+  EXPECT_EQ(view.state().lines, initial);
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 0));
+  EXPECT_TRUE(view.state().seq.empty());
+
+  ASSERT_TRUE(view.redo().has_value());
+  EXPECT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
+  EXPECT_EQ(view.state().seq, "w");
+
+  ASSERT_TRUE(view.redo().has_value());
+  EXPECT_TRUE(view.isCompleted());
+  EXPECT_EQ(view.state().seq, "wxim<Esc>");
+}
+
+TEST_F(ExploreViewTest, CancelInsertAfterDeletePrefixKeepsPartialTransform) {
+  Lines initial{Line("n")};
+  Lines goal{Line("m")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 0});
+
+  Lines insertEntry{Line("")};
+  ASSERT_TRUE(view.acceptSnapshot(
+      insertEntry, CursorPos(0, 0), "x", false).has_value());
+  ASSERT_TRUE(view.acceptSnapshot(
+      insertEntry, CursorPos(0, 0), "i", true).has_value());
+  ASSERT_TRUE(std::holds_alternative<Explore::Insert>(view.phase()));
+
+  ASSERT_TRUE(view.cancelInsert().has_value());
+  EXPECT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
+  EXPECT_EQ(view.state().lines, insertEntry);
+  EXPECT_EQ(view.state().seq, "x");
+  EXPECT_TRUE(view.state().hasPartialEditSpan);
+  EXPECT_FALSE(view.canRedo());
+
+  ASSERT_TRUE(view.undo().has_value());
+  EXPECT_EQ(view.state().lines, initial);
+  EXPECT_TRUE(view.state().seq.empty());
+}
+
+TEST_F(ExploreViewTest, AcceptSnapshotCompletesInsertExit) {
+  Lines initial{Line("n")};
+  Lines goal{Line("m")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 0});
+
+  Lines insertEntry{Line("")};
+  ASSERT_TRUE(view.acceptSnapshot(insertEntry, CursorPos(0, 0), "ci", true).has_value());
+
+  auto outcome = view.acceptSnapshot(goal, CursorPos(0, 0), "cim<Esc>", false);
+  ASSERT_TRUE(outcome.has_value());
+  EXPECT_EQ(view.state().lines, goal);
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 0));
+  EXPECT_EQ(view.state().seq, "cim<Esc>");
+  EXPECT_TRUE(view.isCompleted());
+}
+
+TEST_F(ExploreViewTest, AcceptSnapshotAllowsInsertCursorPastEolForPureInsertion) {
+  Lines initial{Line("ab")};
+  Lines goal{Line("abX")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 2});
+
+  auto outcome = view.acceptSnapshot(initial, CursorPos(0, 2), "A", true);
+  ASSERT_TRUE(outcome.has_value());
+  EXPECT_TRUE(std::holds_alternative<Explore::Insert>(view.phase()));
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 2));
+
+  auto recs = view.recommendations(1);
+  ASSERT_EQ(recs.size(), 1u);
+  EXPECT_EQ(string_view(recs[0].token), "X");
+}
+
+TEST_F(ExploreViewTest, AcceptSnapshotAllowsInsertEntryThatCreatesLine) {
+  Lines initial{Line("a")};
+  Lines goal{Line("a"), Line("X")};
+  auto view = makeView(initial, {0, 0}, goal, {1, 0});
+
+  Lines insertEntry{Line("a"), Line("")};
+  auto outcome = view.acceptSnapshot(insertEntry, CursorPos(1, 0), "o", true);
+  ASSERT_TRUE(outcome.has_value());
+  EXPECT_TRUE(std::holds_alternative<Explore::Insert>(view.phase()));
+  EXPECT_EQ(view.state().lines, insertEntry);
+
+  auto recs = view.recommendations(1);
+  ASSERT_EQ(recs.size(), 1u);
+  EXPECT_EQ(string_view(recs[0].token), "X");
+}
+
+TEST_F(ExploreViewTest, AcceptSnapshotPureDeletionDoesNotEnterInsert) {
+  Lines initial{Line("abcd")};
+  Lines goal{Line("ad")};
+  auto view = makeView(initial, {0, 1}, goal, {0, 1});
+
+  ASSERT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
+  auto outcome = view.acceptSnapshot(goal, CursorPos(0, 1), "d", false);
+  ASSERT_TRUE(outcome.has_value());
+  EXPECT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
+  EXPECT_EQ(Explore::phaseIndex(view.phase()), view.totalEdits());
+  EXPECT_EQ(view.state().lines, goal);
+  EXPECT_TRUE(view.isCompleted());
+}
+
+TEST_F(ExploreViewTest, AcceptSnapshotRejectsInsertOutsidePlannedEditRange) {
+  Lines initial{Line("ab cde")};
+  Lines goal{Line("ab de")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 3});
+
+  ASSERT_TRUE(view.applyMovement("w").has_value());
+  ASSERT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
+  ASSERT_TRUE(view.acceptSnapshot(goal, CursorPos(0, 3), "x", false).has_value());
+  ASSERT_TRUE(view.isCompleted());
+
+  auto outcome = view.acceptSnapshot(goal, CursorPos(0, 4), "a", true);
+  ASSERT_FALSE(outcome.has_value());
+  EXPECT_EQ(outcome.error().reason,
+            "insert-mode entry outside planned edit range");
+  EXPECT_TRUE(view.isCompleted());
+}
+
 // =============================================================================
 // Action-contract rejections
 // =============================================================================
@@ -515,32 +847,42 @@ TEST_F(ExploreViewTest, AcceptInsertExitRejectsInvalidCursor) {
 // adding the corresponding rows here so the contract listed in Explore.h
 // is enforced by tests, not by author memory.
 
-TEST_F(ExploreViewTest, AcceptCursorMoveRejectsUnparseableRawKeys) {
+TEST_F(ExploreViewTest, AcceptCursorMoveRecordsUnparseableRawKeys) {
   Lines initial{Line("foo bar")};
   Lines goal{Line("foo BAR")};
   auto view = makeView(initial, {0, 0}, goal, {0, 4});
 
-  // "<" is an incomplete special-key escape — parseMotions rejects it.
   auto outcome = view.acceptCursorMove(CursorPos(0, 4), "<");
-  ASSERT_FALSE(outcome.has_value());
-  EXPECT_NE(outcome.error().reason.find("failed to parse"), string::npos);
-  EXPECT_EQ(view.state().cursor, CursorPos(0, 0));
-  EXPECT_TRUE(view.state().seq.empty());
+  ASSERT_TRUE(outcome.has_value());
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 4));
+  EXPECT_EQ(view.state().seq, "<");
 }
 
-TEST_F(ExploreViewTest, AcceptBufferStateRejectsUnparseableRawKeys) {
+TEST_F(ExploreViewTest, AcceptCursorMoveAcceptsLiveSpaceNotation) {
+  Lines initial{Line("abc def")};
+  Lines goal{Line("abc def")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 3});
+
+  auto outcome = view.acceptCursorMove(CursorPos(0, 3), "f<Space>");
+  ASSERT_TRUE(outcome.has_value());
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 3));
+  EXPECT_EQ(view.state().seq, "f<Space>");
+  EXPECT_DOUBLE_EQ(view.state().cost, getEffort("f<Space>", config));
+}
+
+TEST_F(ExploreViewTest, AcceptBufferStateRecordsUnparseableRawKeys) {
   Lines initial{Line("abc")};
   Lines goal{Line("aBc")};
   auto view = makeView(initial, {0, 0}, goal, {0, 1});
 
   auto outcome = view.acceptBufferState(goal, CursorPos(0, 1), "<");
-  ASSERT_FALSE(outcome.has_value());
-  EXPECT_EQ(outcome.error().reason, "raw keys failed to parse");
-  EXPECT_EQ(view.state().lines, initial);
-  EXPECT_TRUE(view.state().seq.empty());
+  ASSERT_TRUE(outcome.has_value());
+  EXPECT_EQ(view.state().lines, goal);
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 1));
+  EXPECT_EQ(view.state().seq, "<");
 }
 
-TEST_F(ExploreViewTest, AcceptInsertExitRejectsUnparseableRawKeys) {
+TEST_F(ExploreViewTest, AcceptInsertExitRecordsUnparseableRawKeys) {
   Lines initial{Line("abc")};
   Lines goal{Line("aBc")};
   auto view = makeView(initial, {0, 0}, goal, {0, 1});
@@ -552,9 +894,10 @@ TEST_F(ExploreViewTest, AcceptInsertExitRejectsUnparseableRawKeys) {
   ASSERT_TRUE(view.beginInsert().has_value());
 
   auto outcome = view.acceptInsertExit(goal, CursorPos(0, 1), "<");
-  ASSERT_FALSE(outcome.has_value());
-  EXPECT_EQ(outcome.error().reason, "raw keys failed to parse");
-  EXPECT_TRUE(std::holds_alternative<Explore::Insert>(view.phase()));
+  ASSERT_TRUE(outcome.has_value());
+  EXPECT_EQ(view.state().lines, goal);
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 1));
+  EXPECT_NE(view.state().seq.find("<"), string::npos);
 }
 
 TEST_F(ExploreViewTest, ApplyEditRejectedForMotionOnlyGoals) {
@@ -589,6 +932,30 @@ TEST_F(ExploreViewTest, BeginInsertRejectedAtPostFinalEditNav) {
   EXPECT_NE(outcome.error().reason.find("post-final-edit"), string::npos);
 }
 
+TEST_F(ExploreViewTest, UndoRedoSkipsInsertPhaseAcrossEdit) {
+  Lines initial{Line("abc")};
+  Lines goal{Line("aBc")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 1});
+
+  ASSERT_TRUE(view.applyMovement("l").has_value());
+  ASSERT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
+  ASSERT_TRUE(view.beginInsert().has_value());
+  ASSERT_TRUE(std::holds_alternative<Explore::Insert>(view.phase()));
+
+  ASSERT_TRUE(view.acceptInsertExit(goal, {0, 2}, "rB").has_value());
+  ASSERT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
+  EXPECT_EQ(view.state().lines, goal);
+
+  ASSERT_TRUE(view.undo().has_value());
+  EXPECT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
+  EXPECT_EQ(view.state().lines, initial);
+
+  ASSERT_TRUE(view.redo().has_value());
+  EXPECT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
+  EXPECT_EQ(view.state().lines, goal);
+  EXPECT_FALSE(view.canRedo());
+}
+
 TEST_F(ExploreViewTest, CancelInsertRestoresPreviousPhaseWithoutRedo) {
   Lines initial{Line("abc")};
   Lines goal{Line("aBc")};
@@ -607,73 +974,43 @@ TEST_F(ExploreViewTest, CancelInsertRestoresPreviousPhaseWithoutRedo) {
   EXPECT_FALSE(view.canRedo());
 }
 
-TEST_F(ExploreViewTest, MotionRecommendationsAreFirstTokensOfOptimizerPaths) {
-  // Explore shows immediate next tokens, not full paths to the target.
-  // Each motion recommendation must be the FIRST token of some full A*
-  // path that reaches the current edit's range, and they must be distinct.
+TEST_F(ExploreViewTest, NavigateMotionRecommendationsLandOnEditStarts) {
   Lines initial{Line("one two three four five six seven")};
   Lines goal{Line("one two three four FIVE six seven")};
   auto view = makeView(initial, {0, 0}, goal, {0, 22});
 
-  auto range = view.currentTargetRange();
-
-  // Match the ground-truth's "no per-pos cap" below so both sides
-  // enumerate the same universe of tokens for the subset check.
-  // Navigate phase, so every rec is a motion.
   ASSERT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
-  // Disable per-cell dedup so the explore set covers the full universe
-  // of motion tokens reaching this target — required for the subset
-  // check below.
   const auto overrides = OptimizerParamOverrides::parse(
       "nav:maxResultsPerEndPos=2147483647");
-  auto recs = view.recommendations(10, &overrides);
-  vector<string> exploreMotionTexts;
-  for (const auto& rec : recs)
-    exploreMotionTexts.push_back(rec.token);
-  ASSERT_FALSE(exploreMotionTexts.empty());
+  auto recs = view.recommendations(10, &overrides, SuggestionSortMode::Score);
+  ASSERT_FALSE(recs.empty());
 
-  set<string> exploreSet(exploreMotionTexts.begin(), exploreMotionTexts.end());
-  EXPECT_EQ(exploreSet.size(), exploreMotionTexts.size())
-      << "motion recommendations should be distinct first tokens";
+  set<string> seen;
+  int motionCount = 0;
+  bool hasRecoveryMotion = false;
+  for (const auto& rec : recs) {
+    ASSERT_TRUE(seen.insert(string(rec.token)).second)
+        << "recommendations should be distinct";
 
-  // Ground truth: run the same nav optimizer the frontier uses, collect
-  // full paths, and derive their first tokens. Explore's set must be a
-  // subset of that — anything else would be an invalid next step.
-  CompositionOptimizerParams compParams;
-  NavOptimizerParams params;
-  params
-      .withMaxResults(40)
-      .withFMotionThreshold(compParams.fMotionThreshold)
-      .withDirectionalPruning(compParams.useDirectionalPruning)
-      .withMinCountRepeat(compParams.minPrefixCount)
-      .withMaxCountRepeat(compParams.maxPrefixCount)
-      .withMaxResultsPerEndPos(2);
+    auto parsed = parseSequence(rec.token);
+    if (!parsed) continue;
+    const bool isMotion = all_of(parsed->begin(), parsed->end(),
+        [](const TaggedToken& token) {
+          return token.kind == TokenKind::Movement;
+        });
+    if (!isMotion) continue;
 
-  NavOptimizer opt(config);
-  auto motionRange =
-      tryToMotionInterval(initial, CharRange(range.first, range.second));
-  ASSERT_TRUE(motionRange.has_value());
-  auto result = opt.optimize(
-      initial, {0, 0}, *motionRange, params, "",
-      NavBoundary(initial, CursorPos(0, 0),
-                     CursorPos(static_cast<int>(initial.size()) - 1,
-                               static_cast<int>(initial.back().size()) + 1),
-                     false, false),
-      navContext);
-
-  set<string> validFirstTokens;
-  for (const auto& motion : result.getResults()) {
-    if (motion.getSequence().empty()) continue;
-    auto tokens = parseSequenceStrings(motion.getSequence().view());
-    if (!tokens || tokens->empty()) continue;
-    validFirstTokens.insert(tokens->front());
+    motionCount++;
+    auto probe = makeView(initial, {0, 0}, goal, {0, 22});
+    auto moved = probe.acceptCursorMove(rec.landingPos, rec.token);
+    ASSERT_TRUE(moved.has_value()) << "motion rec rejected: " << rec.token;
+    if (std::holds_alternative<Explore::Transform>(probe.phase())) {
+      hasRecoveryMotion = true;
+    }
+    EXPECT_EQ(probe.state().cursor, rec.landingPos);
   }
-
-  for (const auto& token : exploreSet) {
-    EXPECT_TRUE(validFirstTokens.contains(token))
-        << "explore recommended '" << token
-        << "' but it is not a first token of any optimal path";
-  }
+  EXPECT_GT(motionCount, 0);
+  EXPECT_TRUE(hasRecoveryMotion);
 }
 
 // ---------------------------------------------------------------------------

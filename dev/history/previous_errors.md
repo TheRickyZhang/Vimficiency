@@ -170,7 +170,7 @@ After diff 0, buffer is `["aaa bbb", "ccc", "ddd"]`. Diff 1's original position 
 
 Vim treats `cw`/`cW` like `ce`/`cE` — they don't include trailing whitespace, unlike `dw`/`dW`. The `deleteToChange` function in TransformOptimizer previously converted `dw` → `cw`, which would produce incorrect results when `dw` deleted trailing whitespace to reach the goal.
 
-**Fix:** Convert `dw`/`dW` to `dwi`/`dWi` (delete then enter insert mode) instead of `cw`/`cW`. No per-call equivalence check is needed because `de`/`dE` (WordEdge) is explored before `dw`/`dW` (GapEdge) — when the ranges are identical, `de` stores its result first and `dw` is skipped. So `dw` only reaches the goal when trailing whitespace made the difference, meaning `cw` is always wrong. See `dev/optimizer/edit-optimizer.md` § dw/dW → dwi/dWi.
+**Fix:** Convert `dw`/`dW` to `dwi`/`dWi` (delete then enter insert mode) instead of `cw`/`cW`. No per-call equivalence check is needed because `de`/`dE` (WordEdge) is explored before `dw`/`dW` (GapEdge) — when the ranges are identical, `de` stores its result first and `dw` is skipped. So `dw` only reaches the goal when trailing whitespace made the difference, meaning `cw` is always wrong. See `dev/optimizer/transform-optimizer.md` § dw/dW → dwi/dWi.
 
 ## exploreDeletion collapse sequence used d{motion} line count instead of c{motion}
 
@@ -234,9 +234,9 @@ Cursor positions in the prefix/suffix boundary region cannot perform regular edi
 
 ## Linewise deletion cursor past-end with hasLinesBelow
 
-When `dd` operates on the last line of effective lines and `transformBoundary.hasLinesBelow()` is true, the real buffer has a line below that the cursor lands on. Previously, `deleteRangeLinewise` always clamped cursor to `min(firstLine, size-1)`, hiding this.
+When `dd` operates on the last line of effective lines and `transformBoundary.hasLinesBelow()` is true, the real buffer has a line below that the cursor lands on. Previously, the linewise deletion helper always clamped cursor to `min(firstLine, size-1)`, hiding this.
 
-**Fix:** Added `hasLinesBelow` parameter to `deleteRangeLinewise` (and `TransformState::afterLinewiseDeletion`/`afterMultiLinewiseDeletion`). When `hasLinesBelow && firstLine >= newSize`, cursor stays past-end (at `firstLine`) instead of clamping. The A* search detects `needsKEscape = pos.line >= lines.size()`, clamps cursor to `size()-1`, then:
+**Fix:** Added `hasLinesBelow` parameter to `deleteLineRangeAndUpdatePos` and the `TransformSimulator` linewise deletion helpers. When `hasLinesBelow && firstLine >= newSize`, cursor stays past-end (at `firstLine`) instead of clamping. The A* search detects `needsKEscape = pos.line >= lines.size()`, clamps cursor to `size()-1`, then:
 - **Goal path:** cursor is valid for `emitEditGoal`/`buildCollapseSequence`
 - **Non-goal path:** `k` is appended to the command sequence; `applyEdit` handles past-end `k` during replay
 
@@ -309,12 +309,26 @@ Naively, `TransformStateKey` stored a full `Lines` copy. With `getKey()` called 
 
 ### Solution: Precomputed Content Hash
 
-`TransformState` carries a precomputed 64-bit FNV-1a hash (`linesHash_`) over all buffer content. This hash is:
-- Computed once in the `TransformState` constructor
-- Recomputed after each buffer mutation (`afterDeletion`, `afterLinewiseDeletion`, `afterJoin`)
+`TransformEditorState` carries a precomputed 64-bit FNV-1a hash over all buffer content. This hash is:
+- Computed when an editor snapshot is constructed
+- Refreshed by `TransformSimulator` after buffer mutations (`afterDeletion`, `afterLinewiseDeletion`, `afterJoin`, and counted variants)
+
+`TransformState` wraps the editor snapshot with A* path/ranking data and is created through `TransformStateFactory`, so sequence, effort, cost, and dot-repeat metadata stay synchronized with the editor snapshot.
 
 `TransformStateKey` stores `(linesHash, lineCount, line, col, mode, startIndex)` instead of the full `Lines` object. Both the hash function and equality operator use only these scalar fields — no buffer copying or content comparison.
 
 The same pattern applies to `SuffixKey` in the suffix cache (see below).
 
 **Collision risk**: 64-bit FNV-1a over ~10^4 states gives collision probability ~5×10^-12 per search. A hash collision would cause a state to be incorrectly pruned as "already visited," potentially missing a better path for one starting position — a minor quality degradation, not a correctness violation.
+
+## Lua batch reset missed helper-held modules and native config
+
+The Lua runner unloaded `vimficiency.*` between files, but cached test helpers survived. Any helper that captured plugin modules at top level could open Explore through an old registry while tests read a fresh one, producing batch-only "view not active" failures. The same reset missed C++ config stored in the loaded shared library. Helpers now lazy-require plugin modules, and the runner resets native config before clearing `package.loaded`.
+
+## Explore confused diff range with executable edit starts
+
+Explore used the character diff range to classify `Transform`, so moving away from a viable edit start could leave the view in an edit phase with no executable edit recommendations. The fix is to classify `Transform` only from `TransformResult::resultsAt(...)` or a residual insertion start, and make Navigate recommendations target those executable starts instead of the broad diff range.
+
+## Explore partial edit states leaked into undo history
+
+Explore treated delete-prefix replacement intermediates as undo checkpoints. In `w x i m <Esc>`, this made the first undo land at `w x` instead of the pre-edit `w` checkpoint, so history split one Vim change into two user-visible steps. History now skips both `Insert` and partial edit-span states; canceling insert from such a partial state mutates back to `Transform` without touching undo/redo.

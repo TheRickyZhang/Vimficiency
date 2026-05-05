@@ -313,6 +313,9 @@ private:
         pos, lines_, dirBoundary.edgeOffset, dirBoundary.hasLinesOutside);
 
     if (endpoint == POSITION_OUTSIDE_BOUNDARY) return;
+    // motionSentenceEndpoint returns `pos` when there is no next/prev
+    // sentence to land on. Don't surface a no-op `(` / `)`.
+    if (endpoint.pos() == pos.pos()) return;
 
     for (const auto& spec : specs) {
       emitMotion(spec.ksId, endpoint, onStatic);

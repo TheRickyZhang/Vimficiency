@@ -1,4 +1,4 @@
-*vimficiency.txt*  *vimficiency*          For Neovim >= 0.11         Last change: 2026 May 05
+*vimficiency.txt*  *vimficiency*          For Neovim >= 0.11         Last change: 2026 May 02
 
 ==============================================================================
 Table of Contents                              *vimficiency-table-of-contents*
@@ -27,25 +27,35 @@ to learn.
 ==============================================================================
 1. Installation                                     *vimficiency-installation*
 
-For requirements, plugin-manager snippets (lazy.nvim, packer, vim-plug), and
-manual-build instructions, see the top-level `README.md`. That is the canonical
-install reference; this page only covers what comes _after_ the library is
-built.
+
+REQUIREMENTS
+
+- Neovim 0.11+
+- A built `libvimficiency.so` on disk (see the top-level `README.md` for
+    build instructions).
 
 
 SETUP
+
+Add to your Neovim config:
 
 >lua
     require('vimficiency').setup()
 <
 
-For a complete setup with configuration and keymaps, use `examples/config.lua`
-as the canonical sample.
+For a complete lazy.nvim-style setup with configuration and keymaps, use
+`examples/config.lua` as the canonical sample.
 
-You can pass config overrides to `setup{}` — see 9. Configuration.
+If the library is not in a standard location, point at it with:
+
+>bash
+    export VIMFICIENCY_LIB_PATH=/path/to/build/libvimficiency.so
+<
 
 Bindings must route through `vimfy.map()`, `<Plug>Vimfy*`, or `wrap()`; see the
 keymap contract in the Index and the full writeup in 8. Keymaps.
+
+You can pass config overrides to `setup{}` — see 9. Configuration.
 
 
 VERIFYING INSTALLATION
@@ -58,10 +68,6 @@ If this prints the command list, you’re ready.
 
 If instead you see "command not defined", `setup()` didn’t run — check your
 config for syntax errors or a load-order issue, or see 14. Troubleshooting.
-
-If you see an "ABI mismatch" error on load, the shared library is stale against
-the Lua FFI bindings — rebuild the plugin (`:Lazy build vimficiency` or
-`cmake --build <plugin-dir>/build`).
 
 
 ==============================================================================
@@ -718,12 +724,12 @@ GLOBAL WEIGHTS (WEIGHTS) ~
 >lua
     require('vimficiency').setup({
       weights = {
-        keyWeight        = 1.0,   -- baseline per-keystroke cost
-        sameFingerWeight = 1.0,   -- penalty for consecutive same-finger
-        sameKeyWeight    = 1.0,   -- penalty for the same key twice
-        altHandWeight    = 1.0,   -- bonus for alternating hands
-        goodRollWeight   = 1.0,   -- bonus for inward rolls
-        badRollWeight    = 1.0,   -- penalty for outward rolls
+        key_weight         = 1.0,   -- baseline per-keystroke cost
+        same_finger_weight = 1.0,   -- penalty for consecutive same-finger
+        same_key_weight    = 1.0,   -- penalty for the same key twice
+        alt_hand_weight    = 1.0,   -- bonus for alternating hands
+        good_roll_weight   = 1.0,   -- bonus for inward rolls
+        bad_roll_weight    = 1.0,   -- penalty for outward rolls
       },
     })
 <
@@ -909,7 +915,7 @@ list cursor without leaving insert mode; `<CR>` opens the current entry;
 - `r` / `y` — on Saved, renames/duplicates the file. On Active, renames
     the manual alias / registers a duplicate finished record under a new
     alias. Only entries with a stable manual alias are renameable this
-    way; for recall and auto-suggest results, save to disk first (`:Vimfy   save <alias> <name>`) and then rename from the Saved pane.
+    way; for recall and auto-suggest results, save to disk first (`:Vimfy save <alias> <name>`) and then rename from the Saved pane.
 
 **Blocked on in-progress sessions:** `<CR>`, `r`, `y` all refuse to run on a
 still-accumulating session. Finish it with `:Vimfy finish` (or let Watch’s

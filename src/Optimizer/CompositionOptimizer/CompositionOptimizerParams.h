@@ -2,78 +2,36 @@
 
 #include "Optimizer/OptimizerParamsBase.h"
 
-// =============================================================================
-// CompositionOptimizerParams - Parameters for CompositionOptimizer::optimize()
-// =============================================================================
+// Field list for CompositionOptimizer. See OptimizerParamsBase.h for the
+// X-macro contract.
+
+#define COMPOSITION_OWN_FIELDS(F)                                                          \
+    F(int,    navPaddingAbove, withNavLinePaddingAbove, 1, parseInt)                       \
+    F(int,    navPaddingBelow, withNavLinePaddingBelow, 1, parseInt)                       \
+    F(double, overshootPenalty, withOvershootPenalty, 3.0, parseDouble)                    \
+    F(int,    transformMaxResultsPerStartPos, withTransformMaxResultsPerStartPos, 1, parseInt)
+
+#define COMPOSITION_FIELDS(F)     \
+    MOTION_CLASS_FIELDS(F)        \
+    COMPOSITION_OWN_FIELDS(F)
 
 struct CompositionOptimizerParams : OptimizerParamsBase {
+  COMPOSITION_FIELDS(VF_PARAMS_DECLARE_OWN_FIELD)
 
-  // Motion-class controls — see NavOptimizerParams for why these are
-  // intentionally duplicated rather than lifted into the base.
+#define VF_PARAMS_SELF CompositionOptimizerParams
+  OPTIMIZER_BASE_FIELDS(VF_PARAMS_WITH_SETTER)
+  COMPOSITION_FIELDS(VF_PARAMS_WITH_SETTER)
+#undef VF_PARAMS_SELF
 
-  // Minimum column distance before exploring f-motion (f{char}). Recommended 2-5.
-  int fMotionThreshold = 3;
-
-  // Direction-based motion pruning (6-class model):
-  // When true, explores only 3-4 of 6 motion classes based on relative position to goal.
-  // Trade-off: faster exploration but may miss some edge-case optimal paths.
-  bool useDirectionalPruning = true;
-
-  // Line padding for NavOptimizer calls.
-  // Controls how many lines above/below the search region to include.
-  // Allows overshoot-and-return paths while bounding search space.
-  // See dev/optimizer/buffer-slicing.md for details.
-  int navPaddingAbove = 1;
-  int navPaddingBelow = 1;
-
-  // Heuristic penalty for overshooting (going past the next edit region).
-  // Overshooting is penalized more than undershooting since it requires backtracking.
-  double overshootPenalty = 3.0;
-
-  // Forwarded into TransformOptimizerParams::maxResultsPerStartPos when
-  // CompositionOptimizer / its planning helpers run the per-edit transform
-  // search. Higher values let composition consider suboptimal edits that
-  // may compose better with surrounding motion context.
-  int transformMaxResultsPerStartPos = 1;
-
-  // Chainable setters for fluent configuration
-  CompositionOptimizerParams& withMaxResults(int v) { maxResults = v; return *this; }
-  CompositionOptimizerParams& withMaxNodesPopped(int v) { maxNodesPopped = v; return *this; }
-  CompositionOptimizerParams& withExploreFactor(double v) { exploreFactor = v; return *this; }
-  CompositionOptimizerParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
-  CompositionOptimizerParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
-  CompositionOptimizerParams& withNavLinePaddingAbove(int v) { navPaddingAbove = v; return *this; }
-  CompositionOptimizerParams& withNavLinePaddingBelow(int v) { navPaddingBelow = v; return *this; }
-  CompositionOptimizerParams& withNavLinePadding(int v) { navPaddingAbove = navPaddingBelow = v; return *this; }
-  CompositionOptimizerParams& withMinCountRepeat(int v) { setMinCountRepeat(v); return *this; }
-  CompositionOptimizerParams& withMaxCountRepeat(int v) { setMaxCountRepeat(v); return *this; }
-  CompositionOptimizerParams& withTransformMaxResultsPerStartPos(int v) { transformMaxResultsPerStartPos = v; return *this; }
-
-  // Factory for Dijkstra mode (no heuristic)
-  static CompositionOptimizerParams dijkstra(int maxResults = 20, int maxNodesPopped = 50000) {
-    CompositionOptimizerParams p;
-    p.maxResults = maxResults;
-    p.maxNodesPopped = maxNodesPopped;
-    p.distanceWeight = 0.0;
-    return p;
+  CompositionOptimizerParams& withNavLinePadding(int v) {
+    navPaddingAbove = navPaddingBelow = v;
+    return *this;
   }
-};
 
-// =============================================================================
-// CompositionOptimizerRangeParams - Extended params with range-specific options
-// =============================================================================
-// Extends CompositionOptimizerParams with range-specific options.
-
-struct CompositionOptimizerRangeParams : CompositionOptimizerParams {
-  // Chainable setters (return derived type for chaining)
-  CompositionOptimizerRangeParams& withMaxResults(int v) { maxResults = v; return *this; }
-  CompositionOptimizerRangeParams& withMaxNodesPopped(int v) { maxNodesPopped = v; return *this; }
-  CompositionOptimizerRangeParams& withExploreFactor(double v) { exploreFactor = v; return *this; }
-  CompositionOptimizerRangeParams& withFMotionThreshold(int v) { fMotionThreshold = v; return *this; }
-  CompositionOptimizerRangeParams& withDirectionalPruning(bool v) { useDirectionalPruning = v; return *this; }
-  CompositionOptimizerRangeParams& withNavLinePaddingAbove(int v) { navPaddingAbove = v; return *this; }
-  CompositionOptimizerRangeParams& withNavLinePaddingBelow(int v) { navPaddingBelow = v; return *this; }
-  CompositionOptimizerRangeParams& withNavLinePadding(int v) { navPaddingAbove = navPaddingBelow = v; return *this; }
-  CompositionOptimizerRangeParams& withMinCountRepeat(int v) { setMinCountRepeat(v); return *this; }
-  CompositionOptimizerRangeParams& withMaxCountRepeat(int v) { setMaxCountRepeat(v); return *this; }
+  static CompositionOptimizerParams dijkstra(int maxResults = 20, int maxNodesPopped = 50000) {
+    return CompositionOptimizerParams{}
+        .withMaxResults(maxResults)
+        .withMaxNodesPopped(maxNodesPopped)
+        .withDistanceWeight(0.0);
+  }
 };

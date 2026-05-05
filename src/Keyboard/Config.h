@@ -23,30 +23,30 @@ struct KeyInfo {
 
 // todo tune these
 struct ScoreWeights final {
-  double w_key  =  1.0;   // base key cost
-  double w_same_finger{}; // Pressing same finger
-  double w_same_key{};    // It is actually easier to process repeated key types.
-  double w_alt_bonus{};   // alternating hands
-  double w_roll_good{};   // "good" rolls
-  double w_roll_bad{};    // "bad" rolls
+  double key_weight          = 1.0;
+  double same_finger_weight{};
+  double same_key_weight{};
+  double alt_hand_weight{};
+  double good_roll_weight{};
+  double bad_roll_weight{};
 
   ScoreWeights() = default;
 
   ScoreWeights(std::string setting) :
-      w_same_finger(0),
-      w_same_key(-0.2),
-      w_alt_bonus(-0.1),
-      w_roll_good(-0.2),
-      w_roll_bad(0.2)
+      same_finger_weight(0),
+      same_key_weight(-0.2),
+      alt_hand_weight(-0.1),
+      good_roll_weight(-0.2),
+      bad_roll_weight(0.2)
   {
     debug("initialized with", setting);
   }
 
   ScoreWeights(double key, double same_finger, double same_key,
-               double alt_hand_bonus, double roll_good, double roll_bad)
-    :  w_same_finger(same_finger), w_same_key(same_key),
-              w_alt_bonus(alt_hand_bonus),
-              w_roll_good(roll_good), w_roll_bad(roll_bad) {}
+               double alt_hand, double good_roll, double bad_roll)
+    : key_weight(key), same_finger_weight(same_finger),
+      same_key_weight(same_key), alt_hand_weight(alt_hand),
+      good_roll_weight(good_roll), bad_roll_weight(bad_roll) {}
 };
 
 // Use factory pattern

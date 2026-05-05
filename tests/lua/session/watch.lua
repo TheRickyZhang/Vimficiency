@@ -34,6 +34,7 @@ test("watch: creates (manual, auto) record with disarm handle", function()
     session.watch("wrec")
     local rec = session_store.get_active("wrec")
     assert_true(rec ~= nil, "watch record should be active")
+    rec = assert(rec)
     assert_eq(rec.start_kind, "manual")
     assert_eq(rec.end_kind,   "auto")
     assert_true(type(rec.watch_disarm) == "function",
@@ -48,6 +49,7 @@ test("watch: close disarms the idle trigger", function()
     session.watch("wclose")
     local rec = session_store.get_active("wclose")
     assert_true(rec ~= nil)
+    rec = assert(rec)
     assert_eq(key_tracking.is_global_attached("watch_" .. rec.id), true,
       "global subscriber must be live while watching")
 
@@ -63,11 +65,13 @@ test("watch: overwrite disarms the prior trigger", function()
     session.watch("wover")
     local rec_a = session_store.get_active("wover")
     assert_true(rec_a ~= nil)
+    rec_a = assert(rec_a)
     local name_a = "watch_" .. rec_a.id
 
     session.watch("wover")  -- overwrite
     local rec_b = session_store.get_active("wover")
     assert_true(rec_b ~= nil)
+    rec_b = assert(rec_b)
     assert_true(rec_a.id ~= rec_b.id,
       "overwrite must allocate a new id")
 
@@ -87,9 +91,10 @@ test("watch: finish (manual :Vimfy finish) disarms the trigger", function()
     session.watch("wfinish")
     local rec = session_store.get_active("wfinish")
     assert_true(rec ~= nil)
+    rec = assert(rec)
     local name = "watch_" .. rec.id
 
-    local fake_result = { user_seq = "" }
+    local fake_result = h.fake_result({ user_seq = "" })
     assert_eq(
       session_store.finish_session(rec.id, fake_result, "wfinish", nil, "watch_idle"),
       true)
@@ -116,6 +121,8 @@ test("end_trigger.arm_idle: distinct names coexist", function()
   })
   assert_true(disarm_a ~= nil, "first arm should succeed")
   assert_true(disarm_b ~= nil, "second arm under different name should succeed")
+  disarm_a = assert(disarm_a)
+  disarm_b = assert(disarm_b)
   disarm_a()
   disarm_b()
 end)
@@ -133,5 +140,6 @@ test("end_trigger.arm_idle: name collision returns nil", function()
   })
   assert_true(disarm_1 ~= nil)
   assert_eq(disarm_2, nil, "duplicate name must refuse to arm")
+  disarm_1 = assert(disarm_1)
   disarm_1()
 end)

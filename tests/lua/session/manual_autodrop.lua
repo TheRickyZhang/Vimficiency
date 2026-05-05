@@ -48,6 +48,7 @@ test("manual_should_evict: last key older than timeout → idle reason", functio
   local s = fake_session(50, stale)
   local reason = session.manual_should_evict(s, 50, now)
   assert_true(reason ~= nil, "expected eviction")
+  reason = assert(reason)
   assert_true(reason:find("idle", 1, true) ~= nil,
     "expected idle reason, got: " .. tostring(reason))
 end)
@@ -57,6 +58,7 @@ test("manual_should_evict: cursor drift beyond search window evicts", function()
   local below = fake_session(0, now - 1 * NS_PER_SEC)
   local reason = session.manual_should_evict(below, config.MAX_SEARCH_LINES + 1, now)
   assert_true(reason ~= nil, "expected eviction")
+  reason = assert(reason)
   assert_true(reason:find("drifted", 1, true) ~= nil,
     "expected drift reason, got: " .. tostring(reason))
 
@@ -64,6 +66,7 @@ test("manual_should_evict: cursor drift beyond search window evicts", function()
   local above = fake_session(1000, now - 1 * NS_PER_SEC)
   reason = session.manual_should_evict(above, 499, now)
   assert_true(reason ~= nil, "expected eviction (upward drift)")
+  reason = assert(reason)
   assert_true(reason:find("drifted", 1, true) ~= nil,
     "expected drift reason, got: " .. tostring(reason))
 
@@ -79,6 +82,7 @@ test("manual_should_evict: drift wins over idle and nil key_seq is safe", functi
     s, config.MAX_SEARCH_LINES + 5, now
   )
   assert_true(reason ~= nil, "expected eviction")
+  reason = assert(reason)
   assert_true(reason:find("drifted", 1, true) ~= nil,
     "expected drift reason (drift checked before idle), got: " .. tostring(reason))
 
@@ -88,5 +92,6 @@ test("manual_should_evict: drift wins over idle and nil key_seq is safe", functi
     finished_shape, config.MAX_SEARCH_LINES + 1, now
   )
   assert_true(reason ~= nil)
+  reason = assert(reason)
   assert_true(reason:find("drifted", 1, true) ~= nil)
 end)

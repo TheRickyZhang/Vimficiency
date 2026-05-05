@@ -56,8 +56,8 @@ local function capture_reason(cfg, compute, trigger)
   harness({
     cfg = cfg,
     compute = compute,
-    finish = function(_id, _r, _alias, _override, reason)
-      captured = reason
+    finish = function(...)
+      captured = select(5, ...)
       return true
     end,
   }, trigger)
@@ -99,7 +99,8 @@ test("fire_idle: promotes end_kind from manual to auto on takeover", function()
     -- Mirror finish_session's real contract: the end_kind override is
     -- applied atomically with the status transition. A failing finish
     -- leaves end_kind untouched.
-    finish = function(_id, _r, _alias, override)
+    finish = function(...)
+      local override = select(4, ...)
       if override then captured.end_kind = override end
       return true
     end,

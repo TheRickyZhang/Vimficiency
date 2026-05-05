@@ -4,6 +4,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "Keyboard/Config.h"
 #include "Types/CharLineRange.h"
@@ -14,7 +15,6 @@
 #include "Types/CharRange.h"
 #include "Effort/RunningEffort.h"
 #include "Types/Lines.h"
-#include "Keyboard/PhysicalKeys.h"
 #include "VimCore/VimCore.h"
 #include "VimCore/VimEditUtils.h"
 
@@ -52,24 +52,30 @@ struct TransformStateKeyHash {
   }
 };
 
-// =============================================================================
-// TransformState - A* search state for transform optimization
-// =============================================================================
+// Editor-only snapshot: Vim buffer, cursor, mode, and cached content hash.
+// Search path, effort, and queue cost are deliberately kept out.
+class TransformEditorState {
+  friend class TransformSimulator;
 
-class TransformState {
-  Lines lines;                    // Current buffer content
-  CursorPos pos;                   // Cursor position
-  Mode mode = Mode::Normal;       // Current editing mode
-  int startIndex;                 // Which starting position this search is for
-  size_t linesHash_;              // Precomputed FNV-1a hash of buffer content
+  Lines lines_;
+  CursorPos pos_;
+  Mode mode_ = Mode::Normal;
+  size_t linesHash_ = 0;
 
-  std::string seq_{};             // Sequence of operations taken
-  int lastEditCount_ = 0;         // Count prefix of last edit for dot repeat (0 = uncounted)
-  std::string lastEditBase_{};    // Base command of last edit for dot repeat (not in TransformStateKey)
-  RunningEffort runningEffort{};  // Typing effort tracker (internal)
-  double effort_ = 0.0;           // Cached effort value
-  double cost_ = 0.0;             // Priority = effort + heuristic
+  void refreshHash() { linesHash_ = hashLines(lines_); }
 
+public:
+  TransformEditorState(Lines lines, CursorPos pos, Mode mode = Mode::Normal)
+      : lines_(std::move(lines)), pos_(pos), mode_(mode), linesHash_(hashLines(lines_)) {}
+
+  const Lines& getLines() const { return lines_; }
+  CursorPos getPos() const { return pos_; }
+  Mode getMode() const { return mode_; }
+  size_t getLinesHash() const { return linesHash_; }
+};
+
+// Pure editor mutations used by optimizer exploration and replay verification.
+class TransformSimulator {
   static void applyDeletion(Lines& lines, const CharRange& range, CursorPos& pos) {
     VimCore::deleteRangeAndUpdatePos(lines, range, pos, Mode::Normal);
   }
@@ -83,18 +89,120 @@ class TransformState {
   }
 
   template<class RangeT>
-  [[nodiscard]] TransformState afterDeletionImpl(const RangeT& range) const {
-    TransformState newState = *this;
-    applyDeletion(newState.lines, range, newState.pos);
-    newState.linesHash_ = hashLines(newState.lines);
+  static TransformEditorState afterDeletionImpl(
+      const TransformEditorState& state, const RangeT& range) {
+    TransformEditorState newState = state;
+    applyDeletion(newState.lines_, range, newState.pos_);
+    newState.refreshHash();
     return newState;
   }
 
 public:
-  TransformState(Lines lines, CursorPos pos, int startIndex, double initialCost)
-    : lines(std::move(lines)), pos(pos), startIndex(startIndex),
-      linesHash_(hashLines(this->lines)), cost_(initialCost) {}
+  [[nodiscard]] static TransformEditorState withPos(
+      const TransformEditorState& state, CursorPos newPos) {
+    TransformEditorState newState = state;
+    newState.pos_ = newPos;
+    return newState;
+  }
 
+  [[nodiscard]] static TransformEditorState afterDeletion(
+      const TransformEditorState& state, const CharRange& range) {
+    return afterDeletionImpl(state, range);
+  }
+
+  [[nodiscard]] static TransformEditorState afterCharLineDeletion(
+      const TransformEditorState& state, const CharLineRange& range) {
+    return afterDeletionImpl(state, range);
+  }
+
+  [[nodiscard]] static TransformEditorState afterLineCharDeletion(
+      const TransformEditorState& state, const LineCharRange& range) {
+    return afterDeletionImpl(state, range);
+  }
+
+  [[nodiscard]] static TransformEditorState afterBackwardWordDeletion(
+      const TransformEditorState& state, const CharRange& range) {
+    TransformEditorState newState = state;
+    CharRange normalized = range;
+    normalized.normalize();
+    int oldLineCount = static_cast<int>(newState.lines_.size());
+    CursorPos originalPos = newState.pos_;
+
+    VimCore::deleteRangeAndUpdatePos(newState.lines_, normalized, newState.pos_, Mode::Normal);
+
+    if (originalPos.col == 0
+        && originalPos.line > normalized.begin.line
+        && VimCore::didDeleteRangeRemoveBeginLine(
+               normalized, oldLineCount, static_cast<int>(newState.lines_.size()))
+        && !newState.lines_[newState.pos_.line].empty()) {
+      newState.pos_.setCol(
+          VimCore::firstNonBlankColInLineStr(newState.lines_[newState.pos_.line]));
+    }
+
+    newState.refreshHash();
+    return newState;
+  }
+
+  [[nodiscard]] static TransformEditorState afterLinewiseDeletion(
+    const TransformEditorState& state, int line, bool hasLinesBelow = false) {
+    TransformEditorState newState = state;
+    VimCore::deleteLineRangeAndUpdatePos(
+        newState.lines_, LineRange(line, line + 1), newState.pos_, hasLinesBelow);
+    newState.refreshHash();
+    return newState;
+  }
+
+  [[nodiscard]] static TransformEditorState afterMultiLinewiseDeletion(
+      const TransformEditorState& state, LineRange range, bool hasLinesBelow = false) {
+    TransformEditorState newState = state;
+    VimCore::deleteLineRangeAndUpdatePos(newState.lines_, range, newState.pos_, hasLinesBelow);
+    newState.refreshHash();
+    return newState;
+  }
+
+  [[nodiscard]] static TransformEditorState afterJoin(
+      const TransformEditorState& state, bool addSpace) {
+    TransformEditorState newState = state;
+    VimCore::joinLines(newState.lines_, newState.pos_, addSpace);
+    newState.refreshHash();
+    return newState;
+  }
+
+  [[nodiscard]] static TransformEditorState afterMultiJoin(
+      const TransformEditorState& state, int count, bool addSpace) {
+    TransformEditorState newState = state;
+    for (int i = 0; i < count - 1; i++) {
+      VimCore::joinLines(newState.lines_, newState.pos_, addSpace);
+    }
+    newState.refreshHash();
+    return newState;
+  }
+};
+
+// =============================================================================
+// TransformState - A* search state for transform optimization
+// =============================================================================
+
+// Queue-ready search state. It wraps a TransformEditorState with sequence,
+// effort, cost, and dot-repeat metadata; callers advance it through
+// TransformStateFactory so those fields stay synchronized.
+class TransformState {
+  friend class TransformStateFactory;
+
+  TransformEditorState editor;
+  int startIndex;                 // Which starting position this search is for
+
+  std::string seq_{};             // Sequence of operations taken
+  int lastEditCount_ = 0;         // Count prefix of last edit for dot repeat (0 = uncounted)
+  std::string lastEditBase_{};    // Base command of last edit for dot repeat (not in TransformStateKey)
+  RunningEffort runningEffort{};  // Typing effort tracker (internal)
+  double effort_ = 0.0;           // Cached effort value
+  double cost_ = 0.0;             // Priority = effort + heuristic
+
+  TransformState(TransformEditorState editor, int startIndex, double initialCost)
+      : editor(std::move(editor)), startIndex(startIndex), cost_(initialCost) {}
+
+public:
   // For priority queue ordering (min-heap) - default uses cost (A*)
   bool operator>(const TransformState& other) const { return cost_ > other.cost_; }
   bool operator<(const TransformState& other) const { return cost_ < other.cost_; }
@@ -102,139 +210,25 @@ public:
   // -----------------------------------------------------------------------------
   // Getters
   // -----------------------------------------------------------------------------
-  const Lines& getLines() const { return lines; }
-  CursorPos getPos() const { return pos; }
-  void setPos(CursorPos newPos) { pos = newPos; }
-  Mode getMode() const { return mode; }
+  const TransformEditorState& getEditorState() const { return editor; }
+  const Lines& getLines() const { return editor.getLines(); }
+  CursorPos getPos() const { return editor.getPos(); }
+  Mode getMode() const { return editor.getMode(); }
   int getStartIndex() const { return startIndex; }
-  size_t getLinesHash() const { return linesHash_; }
+  size_t getLinesHash() const { return editor.getLinesHash(); }
 
-  TransformStateKey getKey() const { return TransformStateKey(linesHash_, static_cast<int>(lines.size()), pos, mode, startIndex); }
+  TransformStateKey getKey() const {
+    return TransformStateKey(
+        editor.getLinesHash(), static_cast<int>(editor.getLines().size()),
+        editor.getPos(), editor.getMode(), startIndex);
+  }
   double getEffort() const { return effort_; }
   double getCost() const { return cost_; }
   const std::string& getSeq() const { return seq_; }
   int getLastEditCount() const { return lastEditCount_; }
   const std::string& getLastEditBase() const { return lastEditBase_; }
   bool hasLastEdit() const { return !lastEditBase_.empty(); }
-  void setLastEdit(int count, std::string_view base) { lastEditCount_ = count; lastEditBase_ = base; }
   const RunningEffort& getRunningEffort() const { return runningEffort; }
-
-  // -----------------------------------------------------------------------------
-  // State transitions - return new state with buffer mutation applied
-  // These do NOT record the command - use recordSearch() separately
-  // -----------------------------------------------------------------------------
-
-  // Create new state with deletion applied
-  [[nodiscard]] TransformState afterDeletion(const CharRange& range) const {
-    return afterDeletionImpl(range);
-  }
-
-  [[nodiscard]] TransformState afterCharLineDeletion(const CharLineRange& range) const {
-    return afterDeletionImpl(range);
-  }
-
-  [[nodiscard]] TransformState afterLineCharDeletion(const LineCharRange& range) const {
-    return afterDeletionImpl(range);
-  }
-
-  // Create new state with db/dB deletion semantics applied, including the
-  // special post-delete cursor adjustment after removing the begin line.
-  [[nodiscard]] TransformState afterBackwardWordDeletion(const CharRange& range) const {
-    TransformState newState = *this;
-    CharRange normalized = range;
-    normalized.normalize();
-    int oldLineCount = static_cast<int>(newState.lines.size());
-    CursorPos originalPos = newState.pos;
-
-    VimCore::deleteRangeAndUpdatePos(newState.lines, normalized, newState.pos, Mode::Normal);
-
-    if (originalPos.col == 0
-        && originalPos.line > normalized.begin.line
-        && VimCore::didDeleteRangeRemoveBeginLine(
-               normalized, oldLineCount, static_cast<int>(newState.lines.size()))
-        && !newState.lines[newState.pos.line].empty()) {
-      newState.pos.setCol(VimCore::firstNonBlankColInLineStr(newState.lines[newState.pos.line]));
-    }
-
-    newState.linesHash_ = hashLines(newState.lines);
-    return newState;
-  }
-
-  // Create new state with linewise deletion applied (for dd)
-  // hasLinesBelow: if true, cursor is not clamped when deleting the last line
-  [[nodiscard]] TransformState afterLinewiseDeletion(int line, bool hasLinesBelow = false) const {
-    TransformState newState = *this;
-    VimCore::deleteLineRangeAndUpdatePos(
-        newState.lines, LineRange(line, line + 1), newState.pos, hasLinesBelow);
-    newState.linesHash_ = hashLines(newState.lines);
-    return newState;
-  }
-
-  // Create new state with multi-line linewise deletion applied (for dj, dk, {n}dd)
-  // hasLinesBelow: if true, cursor is not clamped when deleting the last line
-  [[nodiscard]] TransformState afterMultiLinewiseDeletion(LineRange range, bool hasLinesBelow = false) const {
-    TransformState newState = *this;
-    VimCore::deleteLineRangeAndUpdatePos(newState.lines, range, newState.pos, hasLinesBelow);
-    newState.linesHash_ = hashLines(newState.lines);
-    return newState;
-  }
-
-  // Create new state with join applied (J/gJ)
-  [[nodiscard]] TransformState afterJoin(bool addSpace) const {
-    TransformState newState = *this;
-    VimCore::joinLines(newState.lines, newState.pos, addSpace);
-    newState.linesHash_ = hashLines(newState.lines);
-    return newState;
-  }
-
-  // Create new state with multiple joins applied ({n}J, {n}gJ: joins count lines)
-  [[nodiscard]] TransformState afterMultiJoin(int count, bool addSpace) const {
-    TransformState newState = *this;
-    for (int i = 0; i < count - 1; i++) {
-      VimCore::joinLines(newState.lines, newState.pos, addSpace);
-    }
-    newState.linesHash_ = hashLines(newState.lines);
-    return newState;
-  }
-
-  // -----------------------------------------------------------------------------
-  // Command recording
-  // -----------------------------------------------------------------------------
-
-  // Record a search command: appends to sequence, updates effort, computes cost.
-  // Cost = effortWeight * actualEffort + heuristicCost (heuristicCost = 0 at goal).
-  void recordSearch(std::string_view cmd, const PhysicalKeys& keys,
-                    double effortWeight, double heuristicCost, const Config& config) {
-    seq_ += cmd;
-    effort_ = runningEffort.append(keys, config);
-    cost_ = effortWeight * effort_ + heuristicCost;
-  }
-
-  // Overload using pre-computed effort (from effort cache) — avoids recomputing from keys.
-  void recordSearch(std::string_view cmd, const RunningEffort& precomputed,
-                    double effortWeight, double heuristicCost, const Config& config) {
-    seq_ += cmd;
-    effort_ = runningEffort.appendFrom(precomputed, config);
-    cost_ = effortWeight * effort_ + heuristicCost;
-  }
-
-  // Counted overload: prepends count digits to base command in sequence string.
-  // count=0 means uncounted (base command only).
-  void recordSearch(int count, std::string_view baseCmd, const RunningEffort& precomputed,
-                    double effortWeight, double heuristicCost, const Config& config) {
-    if (count > 0) seq_ += std::to_string(count);
-    seq_ += baseCmd;
-    effort_ = runningEffort.appendFrom(precomputed, config);
-    cost_ = effortWeight * effort_ + heuristicCost;
-  }
-
-  void recordSearch(int count, std::string_view baseCmd, const PhysicalKeys& keys,
-                    double effortWeight, double heuristicCost, const Config& config) {
-    if (count > 0) seq_ += std::to_string(count);
-    seq_ += baseCmd;
-    effort_ = runningEffort.append(keys, config);
-    cost_ = effortWeight * effort_ + heuristicCost;
-  }
 
   // -----------------------------------------------------------------------------
   // Debug/Output
@@ -248,5 +242,86 @@ public:
   friend std::ostream& operator<<(std::ostream& os, const TransformState& state) {
     os << state.seq_ << " (cost=" << state.cost_ << ")";
     return os;
+  }
+};
+
+// Couples an editor snapshot with command effort and heuristic cost to create
+// queue-ready TransformState values.
+class TransformStateFactory {
+  const Config& config;
+  double effortWeight;
+
+  void appendCommand(TransformState& state, std::string_view cmd,
+                     const RunningEffort& precomputed,
+                     double heuristicCost) const {
+    state.seq_ += cmd;
+    state.effort_ = state.runningEffort.appendFrom(precomputed, config);
+    state.cost_ = effortWeight * state.effort_ + heuristicCost;
+  }
+
+  void appendCountedCommand(TransformState& state, int count,
+                            std::string_view baseCmd,
+                            const RunningEffort& precomputed,
+                            double heuristicCost) const {
+    if (count > 0) state.seq_ += std::to_string(count);
+    state.seq_ += baseCmd;
+    state.effort_ = state.runningEffort.appendFrom(precomputed, config);
+    state.cost_ = effortWeight * state.effort_ + heuristicCost;
+  }
+
+public:
+  TransformStateFactory(const Config& config, double effortWeight)
+      : config(config), effortWeight(effortWeight) {}
+
+  [[nodiscard]] TransformState initial(
+      Lines lines, CursorPos pos, int startIndex, double initialCost) const {
+    return initial(TransformEditorState(std::move(lines), pos), startIndex, initialCost);
+  }
+
+  [[nodiscard]] TransformState initial(
+      TransformEditorState editor, int startIndex, double initialCost) const {
+    return TransformState(std::move(editor), startIndex, initialCost);
+  }
+
+  [[nodiscard]] TransformState afterCommand(
+      const TransformState& base,
+      TransformEditorState editor,
+      std::string_view cmd,
+      const RunningEffort& precomputed,
+      double heuristicCost) const {
+    TransformState state = base;
+    state.editor = std::move(editor);
+    appendCommand(state, cmd, precomputed, heuristicCost);
+    return state;
+  }
+
+  [[nodiscard]] TransformState afterEditCommand(
+      const TransformState& base,
+      TransformEditorState editor,
+      int count,
+      std::string_view baseCmd,
+      const RunningEffort& precomputed,
+      double heuristicCost) const {
+    TransformState state = base;
+    state.editor = std::move(editor);
+    appendCountedCommand(state, count, baseCmd, precomputed, heuristicCost);
+    state.lastEditCount_ = count;
+    state.lastEditBase_ = baseCmd;
+    return state;
+  }
+
+  [[nodiscard]] TransformState afterCommandWithLastEdit(
+      const TransformState& base,
+      TransformEditorState editor,
+      std::string_view cmd,
+      const RunningEffort& precomputed,
+      double heuristicCost,
+      int lastEditCount,
+      std::string_view lastEditBase) const {
+    TransformState state = afterCommand(
+        base, std::move(editor), cmd, precomputed, heuristicCost);
+    state.lastEditCount_ = lastEditCount;
+    state.lastEditBase_ = lastEditBase;
+    return state;
   }
 };

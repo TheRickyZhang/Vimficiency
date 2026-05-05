@@ -15,6 +15,7 @@
 #include "Optimizer/TransformOptimizer/ChangeGoalHandler.h"
 #include "Optimizer/TransformOptimizer/TransformExplorer.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizerParams.h"
+#include "Optimizer/TransformOptimizer/TransformPostExplorerEmissions.h"
 #include "Optimizer/TransformOptimizer/TransformSequenceDecomposition.h"
 #include "Optimizer/TransformOptimizer/TransformState.h"
 #include "Types/BracketFlags.h"
@@ -49,6 +50,8 @@ struct EditEmitter {
 #endif
   const RunningEffort& acceptedEffort;
   double acceptedCost;
+  double effortWeight;
+  double distanceWeight;
   const Config& config;
 
   double costDiffFor(string_view fullSequence) const {
@@ -57,16 +60,19 @@ struct EditEmitter {
     return merged.getEffort(config) - acceptedCost;
   }
 
-  void emit(string_view fullSequence, CursorPos landingPos) {
+  void emit(string_view fullSequence, CursorPos landingPos, double distance = 0.0) {
 #ifndef NDEBUG
     assert(seenSequence_debug.insert(string(fullSequence)).second &&
            "duplicate sequence reached EditEmitter::emit — enumerator bug");
 #endif
-    items.push_back(Suggestion{
+    Suggestion suggestion{
         .token = extractStructuralToken(fullSequence),
         .landingPos = landingPos,
-        .costDiff = costDiffFor(fullSequence),
-    });
+    };
+    updateSuggestionMetrics(
+        suggestion, costDiffFor(fullSequence), distance,
+        effortWeight, distanceWeight);
+    items.push_back(std::move(suggestion));
   }
 };
 
@@ -77,22 +83,22 @@ void appendInsertionStrategy(
     int beginCol,
     int endCol,
     string fullSequence,
-    CursorPos landingPos) {
+    CursorPos landingPos,
+    double distance) {
   if (targetLine < 0) return;
   if (beginCol < 0 || endCol <= beginCol) return;
   if (!cursorInInsertionRange(cursor, targetLine, beginCol, endCol)) return;
-  emitter.emit(fullSequence, landingPos);
+  emitter.emit(fullSequence, landingPos, distance);
 }
 
 // Depth-1 structural enumeration via TransformExplorer — replaces the
 // optimizer-driven path for diffs with deleted content (pure deletion +
 // replacement). Pure insertion is still handled by inline emission below.
 //
-// MIRROR: setup mirrors `TransformOptimizer::optimizeImpl` (effective lines =
-// prefix + deletedLines + suffix; cursor mapped to local edit-region coords).
-// Validity check: applying the structural via TransformState's after*()
-// methods must produce the post-deletion effective lines (prefix + suffix as
-// one line). Replacement diffs convert deletions to changes via asChange().
+// Effective-lines wrapping and cursor mapping flow through
+// `TransformBoundary::withBoundary` and the local-cursor translation right
+// below — same primitives the optimizer's main loop uses, so the two paths
+// can't drift on the boundary semantics.
 void enumerateDepth1DeletionStructurals(
     const TransformFrontierQuery& query,
     const Config& config,
@@ -100,15 +106,10 @@ void enumerateDepth1DeletionStructurals(
   const DiffState& diff = query.diff;
   if (!diff.hasDeletedContent()) return;
 
-  Lines effective = diff.deletedLines();
-  if (effective.empty()) return;
+  Lines deleted = diff.deletedLines();
+  if (deleted.empty()) return;
   const auto& boundary = diff.boundary;
-  if (!boundary.prefix().empty()) {
-    effective.front().insert(0, boundary.prefix());
-  }
-  if (!boundary.suffix().empty()) {
-    effective.back() += boundary.suffix();
-  }
+  Lines effective = boundary.withBoundary(std::move(deleted));
 
   // After fully deleting the edit region, effective collapses to one line
   // containing prefix + suffix.
@@ -129,9 +130,12 @@ void enumerateDepth1DeletionStructurals(
   TransformExplorer explorer(boundary, params, config, bank,
                               boundary.leftColOffset(),
                               boundary.rightColOffset());
-  TransformState state(effective, localCursor, /*startIndex=*/0, /*initialCost=*/0.0);
+  TransformEditorState state(effective, localCursor);
 
   const bool isReplacement = diff.isReplacement();
+  const double replacementInsertDistance = isReplacement
+      ? textDistanceEstimate(diff.insertedLines())
+      : 0.0;
 
   // Translate effective-line cursor back to buffer coords.
   auto bufferLanding = [&](CursorPos local) -> CursorPos {
@@ -165,15 +169,17 @@ void enumerateDepth1DeletionStructurals(
     return string(c.seq.view());
   };
 
-  auto applyAndEmitCharwise = [&](TransformState&& newState, const SequenceBinding& cmd) {
+  auto applyAndEmitCharwise = [&](TransformEditorState&& newState, const SequenceBinding& cmd) {
     if (newState.getLines() != expectedPost) return;
-    emitter.emit(charwiseSeq(cmd), bufferLanding(newState.getPos()));
+    emitter.emit(charwiseSeq(cmd), bufferLanding(newState.getPos()),
+                 replacementInsertDistance);
   };
 
-  auto applyAndEmitLinewise = [&](TransformState&& newState, const SequenceBinding& cmd,
+  auto applyAndEmitLinewise = [&](TransformEditorState&& newState, const SequenceBinding& cmd,
                                     std::string_view lineContent) {
     if (newState.getLines() != expectedPost) return;
-    emitter.emit(linewiseSeq(cmd, lineContent), bufferLanding(newState.getPos()));
+    emitter.emit(linewiseSeq(cmd, lineContent), bufferLanding(newState.getPos()),
+                 replacementInsertDistance);
   };
 
   // Polymorphic over CharRange / CharLineRange / LineCharRange — TransformExplorer
@@ -181,11 +187,11 @@ void enumerateDepth1DeletionStructurals(
   auto onAnyDeletion = [&](auto&& range, const SequenceBinding& cmd) {
     using R = std::decay_t<decltype(range)>;
     if constexpr (std::is_same_v<R, CharRange>) {
-      applyAndEmitCharwise(state.afterDeletion(range), cmd);
+      applyAndEmitCharwise(TransformSimulator::afterDeletion(state, range), cmd);
     } else if constexpr (std::is_same_v<R, CharLineRange>) {
-      applyAndEmitCharwise(state.afterCharLineDeletion(range), cmd);
+      applyAndEmitCharwise(TransformSimulator::afterCharLineDeletion(state, range), cmd);
     } else if constexpr (std::is_same_v<R, LineCharRange>) {
-      applyAndEmitCharwise(state.afterLineCharDeletion(range), cmd);
+      applyAndEmitCharwise(TransformSimulator::afterLineCharDeletion(state, range), cmd);
     }
   };
 
@@ -196,28 +202,63 @@ void enumerateDepth1DeletionStructurals(
         (range.beginLine >= 0 && range.beginLine < static_cast<int>(effective.size()))
             ? std::string_view(effective[range.beginLine])
             : std::string_view{};
-    applyAndEmitLinewise(state.afterMultiLinewiseDeletion(range, boundary.hasLinesBelow()),
-                          cmd, firstLineContent);
+    applyAndEmitLinewise(
+        TransformSimulator::afterMultiLinewiseDeletion(
+            state, range, boundary.hasLinesBelow()),
+        cmd, firstLineContent);
   };
 
-  // Joins are surfaced via the separate joinPlan path in rankTransformFrontier;
-  // skip emission here to avoid double-counting and to keep this helper
-  // deletion-focused.
-  auto onJoin = [&](bool /*addSpace*/, const SequenceBinding& /*cmd*/) {};
+  // Pure deletion of `\n` is the only depth-1 case where a bare J/gJ/NJ/NgJ
+  // matches the post-edit fencepost. Replacement-with-join (e.g. `\n` → ` `)
+  // is covered by the separate joinPlan emission downstream, which builds
+  // the correct `J`/`Ji<typed>` shape — skipping here avoids both
+  // duplication and incomplete change-mode reconstruction.
+  const bool emitJoinStructurals = diff.isPureDeletion();
+  auto onJoin = [&](bool addSpace, const SequenceBinding& cmd) {
+    if (!emitJoinStructurals) return;
+    applyAndEmitCharwise(TransformSimulator::afterJoin(state, addSpace), cmd);
+  };
+  auto onCountedJoin = [&](bool addSpace, const SequenceBinding& cmd) {
+    if (!emitJoinStructurals) return;
+    applyAndEmitCharwise(TransformSimulator::afterMultiJoin(state, cmd.count, addSpace), cmd);
+  };
 
-  explorer.exploreAllDeletions(state, onAnyDeletion, onLinewise, onJoin);
-  explorer.exploreCountedLineEdits(localCursor, effective, params.minPrefixCount, onLinewise);
-  explorer.exploreCountedWordEdits(localCursor, effective, params.minPrefixCount, onAnyDeletion);
+  // MIRROR: identical sweep to TransformOptimizer::optimizeImpl's main loop —
+  // see the source-of-truth comment on sweepExplorerStructurals in
+  // TransformExplorer.h. Adding a new explorer enumeration there flows here
+  // automatically.
+  sweepExplorerStructurals(
+      explorer, state, effective, localCursor,
+      boundary.leftColOffset(), boundary.rightColOffset(),
+      params.minPrefixCount,
+      onAnyDeletion, onLinewise, onJoin, onLinewise, onCountedJoin);
 
-  // Counted char edits: bound by the line's content (excluding prefix/suffix).
-  const int contentStart = (localCursor.line == 0) ? boundary.leftColOffset() : 0;
-  int contentEnd = static_cast<int>(effective[localCursor.line].size());
-  if (localCursor.line == static_cast<int>(effective.size()) - 1) {
-    contentEnd -= boundary.rightColOffset();
+  // Post-explorer emissions — see TransformPostExplorerEmissions.h for the
+  // full list. Each entry mirrors a corresponding finalize-time emission
+  // in the optimizer's GoalHandlers.
+  if (diff.isPureDeletion()) {
+    auto visual = TransformPostExplorer::tryVisualDelete(
+        effective, boundary.leftColOffset(), boundary.rightColOffset(),
+        boundary, params, config);
+    if (visual) {
+      emitter.emit(visual->getSequence().view(),
+                   bufferLanding(localCursor));
+    }
   }
-  if (contentEnd > contentStart) {
-    explorer.exploreCountedCharEdits(localCursor, effective, contentStart, contentEnd,
-                                     params.minPrefixCount, onAnyDeletion);
+  if (diff.isReplacement() && diff.deletedLines().size() == 1 &&
+      diff.insertedLines().size() == 1 &&
+      diff.deletedLines()[0].size() == diff.insertedLines()[0].size()) {
+    // tryReplacement emits a sequence assuming the cursor is at col 0 of the
+    // single line. Mirror the finalize-time gate in ChangeGoalHandler:
+    // emit only when our depth-1 cursor is at the start of the diff line.
+    if (localCursor.line == 0 && localCursor.col == boundary.leftColOffset()) {
+      auto replacement = ChangeGoalHandler::tryReplacement(
+          diff.deletedLines()[0], diff.insertedLines()[0],
+          config, std::numeric_limits<double>::infinity());
+      if (replacement) {
+        emitter.emit(replacement->getSequence().view(), bufferLanding(localCursor));
+      }
+    }
   }
 }
 
@@ -228,9 +269,12 @@ vector<Suggestion> rankTransformFrontier(
     const Config& config) {
   if (query.maxCount <= 0) return {};
 
-  CompositionOptimizerParams params;
-  if (query.overrides) query.overrides->applyTo(params);
-  optional<JoinPlan> joinPlan = computeJoinPlanForDiff(query.diff, query.lines, params, config);
+  CompositionOptimizerParams compositionParams =
+      OptimizerParamOverrides::resolved<CompositionOptimizerParams>(query.overrides);
+  TransformOptimizerParams transformParams =
+      OptimizerParamOverrides::resolved<TransformOptimizerParams>(query.overrides);
+  optional<JoinPlan> joinPlan = computeJoinPlanForDiff(
+      query.diff, query.lines, compositionParams, config);
   BracketQuoteContext bqContext = computeTextObjectContextForDiff(query.diff, query.lines);
 
   vector<Suggestion> items;
@@ -242,13 +286,11 @@ vector<Suggestion> rankTransformFrontier(
 #ifndef NDEBUG
       {},
 #endif
-      acceptedEffort, acceptedCost, config};
+      acceptedEffort, acceptedCost,
+      transformParams.effortWeight, transformParams.distanceWeight,
+      config};
   auto finish = [&]() -> vector<Suggestion> {
-    stable_sort(items.begin(), items.end(), [](const auto& a, const auto& b) {
-      return a.costDiff < b.costDiff;
-    });
-    if (items.size() > static_cast<size_t>(query.maxCount))
-      items.resize(static_cast<size_t>(query.maxCount));
+    sortAndCapSuggestions(items, query.maxCount, query.sortMode);
     return std::move(items);
   };
 
@@ -275,12 +317,13 @@ vector<Suggestion> rankTransformFrontier(
   if (query.diff.isPureInsertion()) {
     const CursorPos insertPos = query.diff.beginPos;
     const bool isNewLineInsertion = query.diff.isNewLineInsertion();
+    const double insertDistance = textDistanceEstimate(query.diff.insertedLines());
 
     if (isNewLineInsertion && insertPos.col == 0 && insertPos.line > 0) {
       const int targetLine = insertPos.line - 1;
       const int lineEnd = query.lines[targetLine].effectiveSize();
       appendInsertionStrategy(emitter, query.cursor, targetLine, 0, lineEnd,
-                              "o", editGoalPos);
+                              "o", editGoalPos, insertDistance);
     } else {
       const int fnb = VimCore::firstNonBlankColInLineStr(query.lines[insertPos.line]);
       const int lineLen = static_cast<int>(query.lines[insertPos.line].size());
@@ -289,20 +332,20 @@ vector<Suggestion> rankTransformFrontier(
 
       if (insertPos.col == fnb) {
         appendInsertionStrategy(emitter, query.cursor, insertPos.line, 0, lineEnd,
-                                "I", editGoalPos);
+                                "I", editGoalPos, insertDistance);
         appendInsertionStrategy(emitter, query.cursor, insertPos.line,
                                 insertPos.col, insertPos.col + 1,
-                                "i", editGoalPos);
+                                "i", editGoalPos, insertDistance);
       } else if (insertPos.col == lineLen) {
         appendInsertionStrategy(emitter, query.cursor, insertPos.line, 0, lineEnd,
-                                "A", editGoalPos);
+                                "A", editGoalPos, insertDistance);
         appendInsertionStrategy(emitter, query.cursor, insertPos.line,
                                 lastContentCol, lastContentCol + 1,
-                                "a", editGoalPos);
+                                "a", editGoalPos, insertDistance);
       } else {
         appendInsertionStrategy(emitter, query.cursor, insertPos.line,
                                 insertPos.col, insertPos.col + 1,
-                                "i", editGoalPos);
+                                "i", editGoalPos, insertDistance);
       }
     }
   }
@@ -324,12 +367,15 @@ vector<Suggestion> rankTransformFrontier(
   // `ca{`); the typed replacement content lives in the Insert phase rec.
   const bool pureDeletion = query.diff.isPureDeletion();
   const char textObjOp = pureDeletion ? 'd' : 'c';
+  const double textObjectDistance = pureDeletion
+      ? 0.0
+      : textDistanceEstimate(query.diff.insertedLines());
 
   if (query.cursor.col < static_cast<int>(bqContext.validQuoteMask.size())) {
     for (char q : QuoteFlags::ALL_QUOTES) {
       if (!bqContext.validQuoteMask[query.cursor.col].seen(q)) continue;
       string seq = string(1, textObjOp) + bqContext.quoteModifier(q) + q;
-      emitter.emit(seq, editGoalPos);
+      emitter.emit(seq, editGoalPos, textObjectDistance);
     }
   }
 
@@ -337,7 +383,7 @@ vector<Suggestion> rankTransformFrontier(
     for (char b : BracketFlags::ALL_BRACKETS) {
       if (!bqContext.validBracketMask[query.cursor.col].seen(b)) continue;
       string seq = string(1, textObjOp) + bqContext.bracketModifier(b) + b;
-      emitter.emit(seq, editGoalPos);
+      emitter.emit(seq, editGoalPos, textObjectDistance);
     }
   }
 

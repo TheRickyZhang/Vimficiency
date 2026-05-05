@@ -5,6 +5,24 @@
 #include "Interpreter/SequenceParser.h"
 #include "Utils/StringUtils.h"
 
+std::string displayChar(char c) {
+  switch (c) {
+    case ' ':  return "<Space>";
+    case '\t': return "<Tab>";
+    case '\n':
+    case '\r': return "<CR>";
+    default:   return std::string(1, c);
+  }
+}
+
+std::optional<char> parseDisplayChar(std::string_view s) {
+  if (s.size() == 1) return s[0];
+  if (s == "<Space>") return ' ';
+  if (s == "<Tab>")   return '\t';
+  if (s == "<CR>")    return '\n';
+  return std::nullopt;
+}
+
 // Note this is defined elsewhere from Sequence.h because it relies on higher-order parsing logic
 std::ostream& operator<<(std::ostream& os, const Sequence& seq) {
   if (seq.empty()) return os;

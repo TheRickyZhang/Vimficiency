@@ -29,14 +29,11 @@ std::expected<MotionSuccess, Rejected> applyMovement(
     const NavBoundary& boundary,
     const NavContext& navContext);
 
-// Trust-me cursor sync. `rawKeys` is appended only if it parses as a motion
-// sequence (keeps unknown bytes out of the view's seq/cost tokenizer).
+// Cursor sync from live Vim state. `rawKeys` is recorded as typed input.
 std::expected<MotionSuccess, Rejected> acceptCursorMove(
     const Lines& lines,
-    CursorPos oldCursor,
     CursorPos newCursor,
     std::string_view rawKeys,
-    const NavBoundary& boundary,
-    const NavContext& navContext);
+    const NavBoundary& boundary);
 
 }  // namespace Explore::MovementHandler

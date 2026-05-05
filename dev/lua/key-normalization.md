@@ -66,10 +66,10 @@ strictly correct for every actual call site and avoids the trap.
 Two places consume `on_key` output and feed it into a sequence string that
 eventually reaches the tokenizer:
 
-- **`lua/vimficiency/explore.lua`** — the explore session's on_key
-  buffer. Bytes flow through `explore_accept_cursor_move` into
-  `InteractiveExploreSession::acceptCursorMove`, which appends them to
-  `acceptedSeq` and calls `getEffort(acceptedSeq, config_)`. `getEffort`
+- **`lua/vimficiency/explore/handlers.lua`** — the explore session's
+  on_key buffer. Bytes flow through `explore_accept_snapshot` with the
+  current scratch buffer/cursor snapshot; C++ appends accepted raw keys to
+  the explored sequence and calls `getEffort(seq, config_)`. `getEffort`
   runs the tokenizer.
 
 - **`lua/vimficiency/capture/key_tracking.lua`** — the mark/watch/recall
@@ -82,16 +82,14 @@ eventually reaches the tokenizer:
 Any new consumer — a future stats pipeline, a debug logger, an export path
 — must also normalize, or the assert comes back.
 
-## Defensive backstop in C++
+## Explore snapshot path
 
-`InteractiveExploreSession::acceptCursorMove` pre-validates `rawKeys` through
-`parseMovements` before appending to `acceptedSeq`. If the keys don't parse as
-a motion sequence, the cursor is still updated but the sequence/cost are left
-alone. This catches bytes that slip through Lua normalization (rare forms
-like `<C-S-A>`, chord notations, or anything else the tokenizer doesn't
-register) without crashing the session. It is a backstop, not a substitute
-for the Lua-side normalization — it silently drops the sequence append, so
-`acceptedSeq` will not reflect what the user typed.
+Explore forwards normalized key bytes together with the live scratch buffer,
+cursor, and insert-mode bit to `explore_accept_snapshot`. The physical
+snapshot is authoritative; raw keys are effort/sequence evidence for how Vim
+reached that state. C++ no longer rejects a Vim-produced state just because
+the key string is incomplete, but normalization is still required before
+`getEffort(seq, config_)` tokenizes the accepted sequence.
 
 ## Testing expectations
 

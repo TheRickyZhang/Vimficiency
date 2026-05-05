@@ -8,12 +8,12 @@ extern const int VF_HAND_COUNT;
 extern const int VF_COUNT_CLASS_COUNT;
 
 typedef struct {
-  double keyWeight;
-  double sameFingerWeight;
-  double sameKeyWeight;
-  double altHandWeight;
-  double goodRollWeight;
-  double badRollWeight;
+  double key_weight;
+  double same_finger_weight;
+  double same_key_weight;
+  double alt_hand_weight;
+  double good_roll_weight;
+  double bad_roll_weight;
 } VFScoreWeights;
 
 typedef struct {
@@ -43,6 +43,7 @@ typedef struct {
 
 VFConfig* vf_get_config();
 void vf_apply_config();
+void vf_reset_config();
 
 const char* vf_key_name(int index);
 const char* vf_finger_name(int index);
@@ -118,29 +119,18 @@ const char* vf_explore_state(int view_id);
 const char* vf_explore_recommendations(
   int view_id,
   int max_count,
-  const char* optimizer_overrides);
+  const char* optimizer_overrides,
+  const char* sort_mode);
 const char* vf_explore_apply_movement(int view_id, const char* movement_text);
-const char* vf_explore_accept_cursor_move(
-  int view_id,
-  int new_row,
-  int new_col,
-  const char* raw_keys);
 const char* vf_explore_apply_edit(int view_id, const char* text);
-const char* vf_explore_accept_buffer_state(
-  int view_id,
-  const char* encoded_lines,
-  int new_row,
-  int new_col,
-  const char* raw_keys);
 const char* vf_explore_current_lines(int view_id);
-const char* vf_explore_begin_insert(int view_id);
-const char* vf_explore_accept_insert_exit(
+const char* vf_explore_accept_snapshot(
   int view_id,
   const char* encoded_lines,
   int new_row,
   int new_col,
-  const char* raw_keys);
-const char* vf_explore_cancel_insert(int view_id);
+  const char* raw_keys,
+  bool insert_mode);
 const char* vf_explore_undo(int view_id);
 const char* vf_explore_redo(int view_id);
 const char* vf_explore_header_rows(int view_id);

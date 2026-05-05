@@ -1,18 +1,24 @@
 #include "Explore.h"
 
+#include <algorithm>
 #include <cassert>
+#include <optional>
 #include <utility>
 #include <variant>
 
 #include "EditHandler.h"
 #include "Effort/RunningEffort.h"
-#include "Interpreter/SequenceParser.h"
 #include "Keyboard/ToKeys/MovementToKeys.h"
 #include "MovementHandler.h"
 #include "Optimizer/BuildTypedCommands.h"
+#include "Optimizer/CompositionOptimizer/DiffState.h"
+#include "Optimizer/CompositionOptimizer/CompositionFrontier.h"
 #include "Optimizer/NavOptimizer/NavFrontier.h"
+#include "Optimizer/OptimizerParamOverrides.h"
 #include "Optimizer/TransformOptimizer/TransformFrontier.h"
+#include "Optimizer/TransformOptimizer/TransformOptimizerParams.h"
 #include "VimCore/VimCore.h"
+#include "VimCore/VimEditUtils.h"
 #include "VimCore/VimOptions.h"
 
 using namespace std;
@@ -21,39 +27,26 @@ namespace Explore {
 
 namespace {
 
-// Shared rawKeys handling for accept*/apply* actions that fold reported
-// keys into seq. parseSequence accepts edits (unlike parseMotions),
-// so rawKeys like "rm" or "sm<Esc>" pass; the gate keeps unknown bytes out
-// of getEffort's downstream tokenizer. Unparseable non-empty keys reject
-// (silently dropping them undercounts effort).
-std::expected<void, Rejected> appendRawKeysOrReject(State& next,
-                                                    std::string_view rawKeys,
-                                                    const Config& config) {
+// Raw keys are evidence of how Vim reached the observed state; they are not
+// allowed to veto a state Vim already produced.
+void appendRawKeys(State& next,
+                   std::string_view rawKeys,
+                   const Config& config) {
   if (rawKeys.empty())
-    return {};
-  if (!parseSequence(rawKeys)) {
-    return std::unexpected(Rejected{"raw keys failed to parse"});
-  }
+    return;
   next.seq.append(rawKeys);
   next.cost = getEffort(next.seq, config);
-  return {};
 }
 
-// Derive the typed-text portion (no trailing <Esc>) for the canonical
-// insert-mode strategy implied by `diff`. Returns empty string if the diff
-// has no insert-mode component (pure deletion).
-//
-// MIRROR: matches the pure-insertion strategy construction in
-// `TransformFrontier.cpp::rankTransformFrontier`. Replacements use the
-// canonical inserted text with prefix-aware autoindent; the chosen
-// structural command (s/cl/cw/...) is irrelevant to the typed tail
-// because all consistent structural commands leave the cursor at
-// `diff.beginPos` ready to receive the inserted content.
+bool isHistoryCheckpoint(const State& state) {
+  return !std::holds_alternative<Insert>(state.phase) &&
+         !state.hasPartialEditSpan;
+}
+
 KeyedSequence buildInsertModeTypedSequence(const DiffState& diff,
                                             const Lines& lines) {
   if (diff.isPureInsertion() && diff.isNewLineInsertion() &&
       diff.beginPos.col == 0 && diff.beginPos.line > 0) {
-    // o-style new-line insertion: source indent comes from the previous line.
     const int targetLine = diff.beginPos.line - 1;
     const std::string_view sourceIndent = VimOptions::autoindent()
         ? leadingWhitespace(lines[targetLine])
@@ -76,21 +69,15 @@ KeyedSequence buildInsertModeTypedSequence(const DiffState& diff,
     return buildTypedCommands(insertLines, "", lines[line].substr(0, col));
   }
 
-  // Replacement: structural command leaves cursor at diff.beginPos with
-  // everything before that column unchanged.
   return buildTypedCommands(insertLines, "", lines[line].substr(0, col));
 }
 
-// Returns the typed text (no trailing <Esc>) for a diff with insert-mode
-// content. Empty string for pure deletions.
 std::string deriveInsertModeTypedText(const DiffState& diff,
                                        const Lines& lines) {
   if (diff.isPureDeletion()) return "";
 
   KeyedSequence ks = buildInsertModeTypedSequence(diff, lines);
 
-  // Strip trailing <Esc> token — Lua handles Esc via InsertLeave, so the
-  // recommendation token represents only what the user types in insert mode.
   std::string_view raw = ks.seq.view();
   static constexpr std::string_view ESC_STR = "<Esc>";
   if (raw.size() >= ESC_STR.size() &&
@@ -98,6 +85,117 @@ std::string deriveInsertModeTypedText(const DiffState& diff,
     raw.remove_suffix(ESC_STR.size());
   }
   return std::string(raw);
+}
+
+CursorPos insertExitCursor(const DiffState& diff) {
+  Lines inserted = diff.insertedLines();
+  if (inserted.empty()) return diff.beginPos;
+  if (inserted.size() == 1) {
+    int lastCol = diff.beginPos.col +
+        std::max(0, static_cast<int>(inserted[0].size()) - 1);
+    return CursorPos(diff.beginPos.line, lastCol);
+  }
+  int lastLine = diff.beginPos.line + static_cast<int>(inserted.size()) - 1;
+  int lastCol = inserted.back().empty()
+      ? 0
+      : static_cast<int>(inserted.back().size()) - 1;
+  return CursorPos(lastLine, lastCol);
+}
+
+bool containsInsertCursor(const Lines& lines, CursorPos pos) {
+  if (pos.line < 0 || pos.line >= static_cast<int>(lines.size()))
+    return false;
+  return pos.col >= 0 && pos.col <= static_cast<int>(lines[pos.line].size());
+}
+
+std::optional<DiffState> singleDiffBetween(
+    const Lines& from,
+    const Lines& to) {
+  // Preserve physical matching tails so delete-first options stay literal.
+  const std::string fromText = from.flatten();
+  const std::string toText = to.flatten();
+  if (fromText == toText) return std::nullopt;
+
+  int prefixLen = 0;
+  const int maxPrefix = static_cast<int>(std::min(fromText.size(), toText.size()));
+  while (prefixLen < maxPrefix && fromText[prefixLen] == toText[prefixLen])
+    prefixLen++;
+
+  int suffixLen = 0;
+  const int maxSuffix =
+      static_cast<int>(std::min(fromText.size(), toText.size())) - prefixLen;
+  while (suffixLen < maxSuffix &&
+         fromText[static_cast<int>(fromText.size()) - 1 - suffixLen] ==
+             toText[static_cast<int>(toText.size()) - 1 - suffixLen]) {
+    suffixLen++;
+  }
+
+  auto flatIndexToPosition = [](std::string_view text, int idx) {
+    int line = 0;
+    int col = 0;
+    for (int i = 0; i < idx && i < static_cast<int>(text.size()); i++) {
+      if (text[i] == '\n') {
+        line++;
+        col = 0;
+      } else {
+        col++;
+      }
+    }
+    return CursorPos(line, col);
+  };
+
+  auto advanceByText = [](CursorPos pos, std::string_view text) {
+    for (char c : text) {
+      if (c == '\n') {
+        pos.line++;
+        pos.setCol(0);
+      } else {
+        pos.setCol(pos.col + 1);
+      }
+    }
+    return pos;
+  };
+
+  const int deletedLen =
+      static_cast<int>(fromText.size()) - prefixLen - suffixLen;
+  const int insertedLen =
+      static_cast<int>(toText.size()) - prefixLen - suffixLen;
+  std::string deleted = fromText.substr(prefixLen, deletedLen);
+  std::string inserted = toText.substr(prefixLen, insertedLen);
+  CursorPos begin = flatIndexToPosition(fromText, prefixLen);
+  CursorPos end = advanceByText(begin, deleted);
+  return DiffState(
+      begin, end, std::move(deleted), std::move(inserted),
+      TransformBoundary(from, begin, end));
+}
+
+std::optional<DiffState> insertionResidualBetween(
+    const Lines& from,
+    const Lines& to) {
+  auto diff = singleDiffBetween(from, to);
+  if (!diff || !diff->isPureInsertion()) return std::nullopt;
+  return diff;
+}
+
+DiffState deletionPrefixDiff(const DiffState& diff) {
+  return DiffState(
+      diff.beginPos,
+      diff.endPos,
+      diff.deletedText,
+      "",
+      diff.boundary);
+}
+
+CharRange cursorPointRange(CursorPos pos) {
+  return CharRange{pos, CursorPos(pos.line, pos.col + 1)};
+}
+
+void appendUniqueSuggestions(vector<Suggestion>& dest, vector<Suggestion>&& src) {
+  for (auto& suggestion : src) {
+    const bool duplicate = any_of(dest.begin(), dest.end(),
+        [&](const Suggestion& item) { return item.token == suggestion.token; });
+    if (!duplicate) dest.push_back(std::move(suggestion));
+  }
 }
 
 } // namespace
@@ -133,7 +231,7 @@ View::View(Lines initialLines, CursorPos initialPos, Lines goalLines,
   optimalEditSpans_ = std::move(traced.editSpansByResult);
 
   totalEdits_ = plan_.totalEdits();
-  state_.phase = phaseForEditCursor(0, state_.cursor);
+  state_.phase = phaseForCursor(0, state_.lines, state_.cursor);
 }
 
 // =============================================================================
@@ -168,14 +266,16 @@ View::HeaderRows View::headerRows() const {
   return out;
 }
 
-vector<Suggestion> View::recommendations(int maxCount,
-                      const OptimizerParamOverrides* overrides) const {
+vector<Suggestion> View::recommendations(
+    int maxCount,
+    const OptimizerParamOverrides* overrides,
+    SuggestionSortMode sortMode) const {
   return std::visit(overload{
       [&](const Navigate& nav) {
-        return recommendNavigate(nav.index, maxCount, overrides);
+        return recommendNavigate(nav.index, maxCount, overrides, sortMode);
       },
       [&](const Transform& transform) {
-        return recommendTransform(transform.index, maxCount, overrides);
+        return recommendTransform(transform.index, maxCount, overrides, sortMode);
       },
       [&](const Insert& insert) {
         return recommendInsert(insert.index, maxCount);
@@ -188,52 +288,119 @@ vector<Suggestion> View::recommendations(int maxCount,
 // =============================================================================
 
 Outcome View::commit(State next) {
-  undo_.push_back(state_);
+  // Insert and partial edit states are internal pieces of one Vim change.
+  if (isHistoryCheckpoint(state_)) {
+    undo_.push_back(state_);
+  }
   redo_.clear();
   state_ = std::move(next);
   return {};
 }
 
+FrontierQuery View::makeFrontierQuery(
+    int maxCount,
+    const OptimizerParamOverrides* overrides,
+    SuggestionSortMode sortMode) const {
+  return FrontierQuery{
+      .lines = state_.lines,
+      .cursor = state_.cursor,
+      .seq = state_.seq,
+      .maxCount = maxCount,
+      .sortMode = sortMode,
+      .overrides = overrides,
+  };
+}
+
 vector<Suggestion> View::recommendNavigate(
     int navIndex,
     int maxCount,
-    const OptimizerParamOverrides* overrides) const {
-  CharRange target = plan_.getPlan().navTarget(navIndex);
-  return rankNavFrontier(
-      NavFrontierQuery{
-          FrontierQuery{
-              .lines = state_.lines,
-              .cursor = state_.cursor,
-              .seq = state_.seq,
-              .maxCount = maxCount,
-              .overrides = overrides,
-          },
-          target,
+    const OptimizerParamOverrides* overrides,
+    SuggestionSortMode sortMode) const {
+  FrontierQuery frontierQuery = makeFrontierQuery(maxCount, overrides, sortMode);
+  vector<Suggestion> nav;
+
+  if (navIndex < totalEdits_) {
+    for (CursorPos start : executableEditStartPositions(navIndex, state_.lines)) {
+      appendUniqueSuggestions(nav, rankNavFrontier(
+          NavFrontierQuery{
+            frontierQuery,
+            cursorPointRange(start),
+            boundary_,
+            navContext_,
+        }, config_));
+    }
+
+    const DiffState& diff = plan_.plannedEditAt(navIndex).diff;
+    vector<Suggestion> composition = rankCompositionFrontier(
+        CompositionFrontierQuery{frontierQuery, diff, boundary_, navContext_},
+        config_);
+    appendUniqueSuggestions(nav, std::move(composition));
+  } else {
+    CharRange target = plan_.getPlan().navTarget(navIndex);
+    nav = rankNavFrontier(
+        NavFrontierQuery{
+          frontierQuery,
+          target.isEmpty() ? cursorPointRange(target.begin) : target,
           boundary_,
           navContext_,
-      },
-      config_);
+      }, config_);
+  }
+
+  sortAndCapSuggestions(nav, maxCount, sortMode);
+  return nav;
 }
 
 vector<Suggestion> View::recommendTransform(
     int editIndex,
     int maxCount,
-    const OptimizerParamOverrides* overrides) const {
+    const OptimizerParamOverrides* overrides,
+    SuggestionSortMode sortMode) const {
   assert(editIndex >= 0 && editIndex < totalEdits_ && "Transform editIndex out of range");
+  assert(hasExecutableEditStartAt(editIndex, state_.lines, state_.cursor) &&
+         "Transform phase requires an executable edit start");
 
-  const DiffState& diff = plan_.plannedEditAt(editIndex).diff;
-  return rankTransformFrontier(
-      TransformFrontierQuery{
-          FrontierQuery{
-              .lines = state_.lines,
-              .cursor = state_.cursor,
-              .seq = state_.seq,
-              .maxCount = maxCount,
-              .overrides = overrides,
-          },
-          diff,
-      },
+  const auto plannedEdit = plan_.plannedEditAt(editIndex);
+  auto currentResidual = singleDiffBetween(state_.lines, plannedEdit.postFencepost);
+
+  if (currentResidual && currentResidual->isPureInsertion()) {
+    return rankTransformFrontier(
+        TransformFrontierQuery{makeFrontierQuery(maxCount, overrides, sortMode), *currentResidual},
+        config_);
+  }
+
+  vector<Suggestion> primary = rankTransformFrontier(
+      TransformFrontierQuery{makeFrontierQuery(maxCount, overrides, sortMode), plannedEdit.diff},
       config_);
+  if (!plannedEdit.diff.isReplacement() &&
+      !(currentResidual && currentResidual->isReplacement())) {
+    return primary;
+  }
+
+  // Extra Explore candidates expose delete-then-insert without changing the
+  // optimizer's canonical preference for one change command.
+  const DiffState& deletionBase =
+      (currentResidual && currentResidual->isReplacement())
+          ? *currentResidual
+          : plannedEdit.diff;
+  DiffState deletionPrefix = deletionPrefixDiff(deletionBase);
+  vector<Suggestion> alternatives = rankTransformFrontier(
+      TransformFrontierQuery{makeFrontierQuery(maxCount, overrides, sortMode), deletionPrefix},
+      config_);
+  TransformOptimizerParams transformParams =
+      OptimizerParamOverrides::resolved<TransformOptimizerParams>(overrides);
+  const double residualInsertDistance =
+      textDistanceEstimate(deletionBase.insertedLines());
+  for (auto& alt : alternatives) {
+    const bool duplicate = any_of(primary.begin(), primary.end(),
+        [&](const Suggestion& item) { return item.token == alt.token; });
+    if (duplicate) continue;
+    updateSuggestionMetrics(
+        alt, alt.costDiff, alt.distance + residualInsertDistance,
+        transformParams.effortWeight, transformParams.distanceWeight);
+    primary.push_back(std::move(alt));
+  }
+  sortAndCapSuggestions(primary, maxCount, sortMode);
+  return primary;
 }
 
 vector<Suggestion> View::recommendInsert(int editIndex, int maxCount) const {
@@ -242,18 +409,20 @@ vector<Suggestion> View::recommendInsert(int editIndex, int maxCount) const {
          "Insert editIndex out of range");
 
   // state_.lines is the pre-edit fencepost during Insert (afterEditCompleted
-  // hasn't run yet), so it shares coordinate space with `diff.beginPos`.
+  // hasn't run yet) unless the user entered Insert after a Normal-mode
+  // deletion prefix. In that case the physical buffer is already the
+  // deletion intermediate, so derive the typed tail from the residual diff.
   const auto plannedEdit = plan_.plannedEditAt(editIndex);
+  auto currentResidual = insertionResidualBetween(
+      state_.lines, plannedEdit.postFencepost);
+  const DiffState& insertDiff = currentResidual
+      ? *currentResidual
+      : plannedEdit.diff;
   std::string typedText =
-      deriveInsertModeTypedText(plannedEdit.diff, state_.lines);
+      deriveInsertModeTypedText(insertDiff, state_.lines);
   if (typedText.empty()) return {};
 
-  // costDiff: same monoid composition the frontier modules use, so the
-  // displayed cost reflects the actual incremental effort of typing this
-  // sequence after `state_.seq`'s last keystroke. (Boundary
-  // interactions like same-finger / roll across the structural→typed seam
-  // are already accumulated into seq once `s`/`cl`/`cw` was
-  // committed.)
+  // Running effort is contextual across the accepted-sequence boundary.
   RunningEffort acceptedEffort(
       globalSequenceToKeys().tokenize(state_.seq), config_);
   const double acceptedCost = acceptedEffort.getEffort(config_);
@@ -261,36 +430,56 @@ vector<Suggestion> View::recommendInsert(int editIndex, int maxCount) const {
   RunningEffort merged = RunningEffort::merge(acceptedEffort, candidate);
   const double costDiff = merged.getEffort(config_) - acceptedCost;
 
-  return {Suggestion{
+  Suggestion suggestion{
       .token = Token{typedText},
-      .landingPos = plannedEdit.transformResult.getGoalPos(),
-      .costDiff = costDiff,
-  }};
+      .landingPos = currentResidual
+          ? insertExitCursor(insertDiff)
+          : plannedEdit.transformResult.getGoalPos(),
+  };
+  updateSuggestionMetrics(suggestion, costDiff, 0.0, 1.0, 1.0);
+  return {std::move(suggestion)};
 }
 
-Phase View::phaseForEditCursor(int editIndex, CursorPos cursor) const {
+bool View::hasExecutableEditStartAt(
+    int editIndex,
+    const Lines& lines,
+    CursorPos cursor) const {
   assert(editIndex >= 0 && editIndex <= totalEdits_ &&
-         "phaseForEditCursor index out of plan range");
-  // Post-final-edit nav segment — the only target is goalPos, no edit to
-  // enter. Pure-motion sessions (E=0) start here too.
-  if (editIndex == totalEdits_)
-    return Navigate{editIndex};
+         "edit-start query index out of plan range");
+  if (editIndex == totalEdits_) return false;
+
   const auto plannedEdit = plan_.plannedEditAt(editIndex);
-  const DiffState& diff = plannedEdit.diff;
-  if (!diff.isPureInsertion() && diff.contains(cursor))
-    return Transform{editIndex};
-  if (diff.isPureInsertion() && cursor == diff.beginPos)
+  auto currentResidual = insertionResidualBetween(
+      lines, plannedEdit.postFencepost);
+  if (currentResidual && currentResidual->isPureInsertion()) {
+    return cursor == currentResidual->beginPos &&
+           containsInsertCursor(lines, cursor);
+  }
+  return !plannedEdit.transformResult.resultsAt(cursor.line, cursor.col).empty();
+}
+
+vector<CursorPos> View::executableEditStartPositions(
+    int editIndex,
+    const Lines& lines) const {
+  assert(editIndex >= 0 && editIndex <= totalEdits_ &&
+         "edit-start query index out of plan range");
+  if (editIndex == totalEdits_) return {};
+
+  const auto plannedEdit = plan_.plannedEditAt(editIndex);
+  auto currentResidual = insertionResidualBetween(
+      lines, plannedEdit.postFencepost);
+  if (currentResidual && currentResidual->isPureInsertion()) {
+    return {currentResidual->beginPos};
+  }
+  return plannedEdit.transformResult.startPositions();
+}
+
+Phase View::phaseForCursor(int editIndex, const Lines& lines, CursorPos cursor) const {
+  assert(editIndex >= 0 && editIndex <= totalEdits_ &&
+         "phaseForCursor index out of plan range");
+  if (hasExecutableEditStartAt(editIndex, lines, cursor))
     return Transform{editIndex};
   return Navigate{editIndex};
-}
-
-bool View::movementStaysInTransformRange(CursorPos cursor) const {
-  auto* t = std::get_if<Transform>(&state_.phase);
-  if (!t) return true;
-  const auto plannedEdit = plan_.plannedEditAt(t->index);
-  if (plannedEdit.diff.isPureInsertion())
-    return cursor == plannedEdit.diff.beginPos;
-  return plannedEdit.diff.contains(cursor);
 }
 
 expected<int, Rejected>
@@ -338,12 +527,9 @@ expected<int, Rejected> View::requireInsert(string_view action) const {
 
 Outcome View::afterEditCompleted(State next, int editIndex) {
   const int nextEdit = editIndex + 1;
-  // Always transition to phaseForEditCursor(nextEdit, ...). For
-  // nextEdit == totalEdits_ that returns Navigate{totalEdits_} — the
-  // post-final-edit nav segment. Completion is the derived predicate
-  // `isCompleted()` (Navigate at totalEdits_ with cursor at goalPos).
   next.lines = plan_.getPlan().fencepostAt(nextEdit);
-  next.phase = phaseForEditCursor(nextEdit, next.cursor);
+  next.hasPartialEditSpan = false;
+  next.phase = phaseForCursor(nextEdit, next.lines, next.cursor);
   return commit(std::move(next));
 }
 
@@ -363,13 +549,9 @@ Outcome View::applyMovement(string_view movementText) {
 
   State next = state_;
   next.cursor = eff->newCursor;
-  if (!movementStaysInTransformRange(next.cursor)) {
-    return unexpected(
-        Rejected{"transform movement left the current edit range"});
-  }
   next.seq.append(std::move(eff->appendedSeq));
   next.cost = getEffort(next.seq, config_);
-  next.phase = phaseForEditCursor(*gated, next.cursor);
+  next.phase = phaseForCursor(*gated, next.lines, next.cursor);
   return commit(std::move(next));
 }
 
@@ -379,21 +561,17 @@ Outcome View::acceptCursorMove(CursorPos newCursor, string_view rawKeys) {
     return unexpected(std::move(gated.error()));
 
   auto eff = MovementHandler::acceptCursorMove(
-      state_.lines, state_.cursor, newCursor, rawKeys, boundary_, navContext_);
+      state_.lines, newCursor, rawKeys, boundary_);
   if (!eff)
     return unexpected(std::move(eff.error()));
 
   State next = state_;
   next.cursor = eff->newCursor;
-  if (!movementStaysInTransformRange(next.cursor)) {
-    return unexpected(
-        Rejected{"transform movement left the current edit range"});
-  }
   if (!eff->appendedSeq.empty()) {
     next.seq.append(std::move(eff->appendedSeq));
     next.cost = getEffort(next.seq, config_);
   }
-  next.phase = phaseForEditCursor(*gated, next.cursor);
+  next.phase = phaseForCursor(*gated, next.lines, next.cursor);
   return commit(std::move(next));
 }
 
@@ -417,6 +595,7 @@ Outcome View::applyEdit(string_view text) {
   next.seq.append(text);
   const uint32_t spanEnd = static_cast<uint32_t>(next.seq.size());
   next.editSpans.push(EditSequenceSpan{spanBegin, spanEnd});
+  next.hasPartialEditSpan = false;
   next.cost = getEffort(next.seq, config_);
   return afterEditCompleted(std::move(next), editIndex);
 }
@@ -443,19 +622,20 @@ Outcome View::acceptBufferState(const Lines& newLines, CursorPos newCursor,
   next.cursor = newCursor;
   // Capture span begin before appending raw keys so the edit's start byte is
   // exactly where the rawKeys (which performed this edit) begin in seq.
-  const uint32_t spanBegin = static_cast<uint32_t>(next.seq.size());
-  if (auto e = appendRawKeysOrReject(next, rawKeys, config_); !e) {
-    return unexpected(std::move(e.error()));
-  }
+  const uint32_t spanBegin = next.hasPartialEditSpan
+      ? next.partialEditSpanBegin
+      : static_cast<uint32_t>(next.seq.size());
+  appendRawKeys(next, rawKeys, config_);
   if (eff->advance) {
     const uint32_t spanEnd = static_cast<uint32_t>(next.seq.size());
     next.editSpans.push(EditSequenceSpan{spanBegin, spanEnd});
+    next.hasPartialEditSpan = false;
     return afterEditCompleted(std::move(next), editIndex);
   }
   // No-op: buffer already matches current fencepost (e.g. native undo or
   // programmatic re-sync). Sync cursor only — no span pushed because no
   // planned edit advanced.
-  next.phase = phaseForEditCursor(editIndex, next.cursor);
+  next.phase = phaseForCursor(editIndex, next.lines, next.cursor);
   return commit(std::move(next));
 }
 
@@ -493,13 +673,113 @@ Outcome View::acceptInsertExit(const Lines& newLines, CursorPos newCursor,
   // rawKeys (`s`/`cl`/etc. + typed text + `<Esc>`), so this span covers the
   // complete planned edit.
   next.cursor = newCursor;
-  const uint32_t spanBegin = static_cast<uint32_t>(next.seq.size());
-  if (auto e = appendRawKeysOrReject(next, rawKeys, config_); !e) {
-    return unexpected(std::move(e.error()));
-  }
+  const uint32_t spanBegin = next.hasPartialEditSpan
+      ? next.partialEditSpanBegin
+      : static_cast<uint32_t>(next.seq.size());
+  appendRawKeys(next, rawKeys, config_);
   const uint32_t spanEnd = static_cast<uint32_t>(next.seq.size());
   next.editSpans.push(EditSequenceSpan{spanBegin, spanEnd});
+  next.hasPartialEditSpan = false;
   return afterEditCompleted(std::move(next), editIndex);
+}
+
+Outcome View::acceptSnapshot(const Lines& liveLines, CursorPos liveCursor,
+                             string_view rawKeys, bool insertMode) {
+  if (std::holds_alternative<Insert>(state_.phase)) {
+    if (insertMode)
+      return {};
+
+    if (liveLines == state_.lines) {
+      return cancelInsert();
+    }
+
+    auto outcome = acceptInsertExit(liveLines, liveCursor, rawKeys);
+    if (!outcome) {
+      Rejected rejected = std::move(outcome.error());
+      cancelInsert();
+      return unexpected(std::move(rejected));
+    }
+    return outcome;
+  }
+
+  const int editIndex = phaseIndex(state_.phase);
+  const bool hasPlannedEdit = editIndex < totalEdits_;
+
+  if (hasPlannedEdit) {
+    const auto plannedEdit = plan_.plannedEditAt(editIndex);
+    auto residualInsertion = insertionResidualBetween(
+        liveLines, plannedEdit.postFencepost);
+
+    if (insertMode && liveLines == state_.lines && residualInsertion &&
+        liveCursor == residualInsertion->beginPos &&
+        containsInsertCursor(liveLines, liveCursor)) {
+      State next = state_;
+      next.cursor = liveCursor;
+      next.phase = Insert{editIndex};
+      return commit(std::move(next));
+    }
+
+    if (liveLines != plannedEdit.postFencepost &&
+        residualInsertion) {
+      const bool validInsertCursor =
+          liveCursor == residualInsertion->beginPos &&
+          containsInsertCursor(liveLines, liveCursor);
+      const bool validDeleteCursor =
+          std::holds_alternative<Transform>(state_.phase) &&
+          plannedEdit.diff.isReplacement() &&
+          liveLines.contains(liveCursor);
+      if ((insertMode && validInsertCursor) ||
+          (!insertMode && validDeleteCursor)) {
+        State next = state_;
+        next.lines = liveLines;
+        next.cursor = liveCursor;
+        if (insertMode) {
+          next.phase = Insert{editIndex};
+        } else {
+          if (!next.hasPartialEditSpan) {
+            next.hasPartialEditSpan = true;
+            next.partialEditSpanBegin = static_cast<uint32_t>(next.seq.size());
+          }
+          appendRawKeys(next, rawKeys, config_);
+          next.phase = Transform{editIndex};
+        }
+        return commit(std::move(next));
+      }
+    }
+  }
+
+  if (liveLines == state_.lines) {
+    if (insertMode) {
+      if (!containsInsertCursor(liveLines, liveCursor)) {
+        return unexpected(
+            Rejected{"snapshot reported an invalid insert cursor position"});
+      }
+      State next = state_;
+      next.cursor = liveCursor;
+      next.phase = phaseForCursor(editIndex, next.lines, next.cursor);
+      if (hasPlannedEdit && std::holds_alternative<Transform>(next.phase)) {
+        next.phase = Insert{editIndex};
+        return commit(std::move(next));
+      }
+      return unexpected(
+          Rejected{"insert-mode entry outside planned edit range"});
+    }
+
+    if (!liveLines.contains(liveCursor)) {
+      return unexpected(
+          Rejected{"snapshot reported an invalid cursor position"});
+    }
+    if (liveCursor == state_.cursor && rawKeys.empty())
+      return {};
+
+    State next = state_;
+    next.cursor = liveCursor;
+    appendRawKeys(next, rawKeys, config_);
+    next.phase = phaseForCursor(editIndex, next.lines, next.cursor);
+    return commit(std::move(next));
+  }
+
+  return acceptBufferState(liveLines, liveCursor, rawKeys);
 }
 
 Outcome View::cancelInsert() {
@@ -507,9 +787,11 @@ Outcome View::cancelInsert() {
   if (!gated)
     return unexpected(std::move(gated.error()));
 
-  // By construction, the topmost undo entry is the beginInsert snapshot
-  // (Navigate/Transform for this editIndex). Pop it back into live state without
-  // touching redo — a rejected/abandoned insert shouldn't be user-redoable.
+  if (state_.hasPartialEditSpan) {
+    state_.phase = Transform{*gated};
+    return {};
+  }
+
   assert(!undo_.empty() && "Insert without a beginInsert undo snapshot");
   state_ = undo_.back();
   undo_.pop_back();
@@ -519,7 +801,9 @@ Outcome View::cancelInsert() {
 Outcome View::undo() {
   if (undo_.empty())
     return unexpected(Rejected{"nothing to undo"});
-  redo_.push_back(state_);
+  if (isHistoryCheckpoint(state_)) {
+    redo_.push_back(state_);
+  }
   state_ = undo_.back();
   undo_.pop_back();
   return {};
@@ -528,7 +812,9 @@ Outcome View::undo() {
 Outcome View::redo() {
   if (redo_.empty())
     return unexpected(Rejected{"nothing to redo"});
-  undo_.push_back(state_);
+  if (isHistoryCheckpoint(state_)) {
+    undo_.push_back(state_);
+  }
   state_ = redo_.back();
   redo_.pop_back();
   return {};

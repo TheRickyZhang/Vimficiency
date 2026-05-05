@@ -34,6 +34,12 @@ PhaseWireFields phaseWireFields(const Explore::Phase& phase) {
   };
 }
 
+SuggestionSortMode parseSuggestionSortMode(string_view text) {
+  if (text == "distance") return SuggestionSortMode::Distance;
+  if (text == "score") return SuggestionSortMode::Score;
+  return SuggestionSortMode::Effort;
+}
+
 // State payload. Length-prefixed fields so raw bytes in `seq` survive
 // round-tripping. `is_completed` is the C++-side derived predicate (cursor
 // has reached goalPos at the post-final-edit nav segment). The trailing
@@ -69,7 +75,7 @@ string encodeOutcome(const Outcome& outcome) {
   return encodeFields(string_view(status), string_view(reason));
 }
 
-// Wire encoder for one recommendation. 4 fields — Lua's
+// Wire encoder for one recommendation. 6 fields — Lua's
 // parse_explore_recommendations must match the field count. The recommendation's
 // "kind" (motion vs edit-structural vs typed-text) is implicit in the view's
 // current phase, which Lua already reads off `state.phase.kind`.
@@ -77,6 +83,8 @@ string encodeSuggestion(const Suggestion& item) {
   return encodeFields(
       string_view(item.token),
       string_view(doubleField(item.costDiff)),
+      string_view(doubleField(item.distance)),
+      string_view(doubleField(item.score)),
       string_view(intField(item.landingPos.line)),
       string_view(intField(item.landingPos.col)));
 }
@@ -205,13 +213,16 @@ const char* vf_explore_state(int view_id) {
 const char* vf_explore_recommendations(
     int view_id,
     int max_count,
-    const char* optimizer_overrides) {
+    const char* optimizer_overrides,
+    const char* sort_mode) {
   CHECK(max_count >= 0, "max_count must be non-negative");
   static string storage;
   View& v = g_registry.get(view_id);
   const auto overrides = OptimizerParamOverrides::parse(
       helpers::optionalText(optimizer_overrides));
-  storage = encodeSuggestions(v.recommendations(max_count, &overrides));
+  const SuggestionSortMode mode =
+      parseSuggestionSortMode(helpers::optionalText(sort_mode));
+  storage = encodeSuggestions(v.recommendations(max_count, &overrides, mode));
   return storage.c_str();
 }
 
@@ -221,31 +232,6 @@ const char* vf_explore_apply_movement(int view_id, const char* movement_text) {
   return helpers::storeString(storage, helpers::requiredText(movement_text, "movement_text").transform(
       [&](string_view text) {
         return encodeOutcome(v.applyMovement(text));
-      }));
-}
-
-const char* vf_explore_accept_cursor_move(
-    int view_id, int new_row, int new_col, const char* raw_keys) {
-  static string storage;
-  View& v = g_registry.get(view_id);
-  storage = encodeOutcome(
-      v.acceptCursorMove(CursorPos(new_row, new_col), helpers::optionalText(raw_keys)));
-  return storage.c_str();
-}
-
-const char* vf_explore_accept_buffer_state(
-    int view_id,
-    const char* encoded_lines,
-    int new_row,
-    int new_col,
-    const char* raw_keys) {
-  static string storage;
-  View& v = g_registry.get(view_id);
-  return helpers::storeString(storage, helpers::requiredText(encoded_lines, "encoded_lines")
-      .and_then(payload::decodeLineArray)
-      .transform([&](const Lines& newLines) {
-        return encodeOutcome(
-            v.acceptBufferState(newLines, CursorPos(new_row, new_col), helpers::optionalText(raw_keys)));
       }));
 }
 
@@ -268,34 +254,22 @@ const char* vf_explore_current_lines(int view_id) {
   return storage.c_str();
 }
 
-const char* vf_explore_begin_insert(int view_id) {
-  static string storage;
-  View& v = g_registry.get(view_id);
-  storage = encodeOutcome(v.beginInsert());
-  return storage.c_str();
-}
-
-const char* vf_explore_accept_insert_exit(
+const char* vf_explore_accept_snapshot(
     int view_id,
     const char* encoded_lines,
     int new_row,
     int new_col,
-    const char* raw_keys) {
+    const char* raw_keys,
+    bool insert_mode) {
   static string storage;
   View& v = g_registry.get(view_id);
   return helpers::storeString(storage, helpers::requiredText(encoded_lines, "encoded_lines")
       .and_then(payload::decodeLineArray)
-      .transform([&](const Lines& newLines) {
+      .transform([&](const Lines& liveLines) {
         return encodeOutcome(
-            v.acceptInsertExit(newLines, CursorPos(new_row, new_col), helpers::optionalText(raw_keys)));
+            v.acceptSnapshot(liveLines, CursorPos(new_row, new_col),
+                             helpers::optionalText(raw_keys), insert_mode));
       }));
-}
-
-const char* vf_explore_cancel_insert(int view_id) {
-  static string storage;
-  View& v = g_registry.get(view_id);
-  storage = encodeOutcome(v.cancelInsert());
-  return storage.c_str();
 }
 
 const char* vf_explore_undo(int view_id) {

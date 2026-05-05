@@ -2,6 +2,7 @@
 -- Round-trip and crash-safety for the JSONL log.
 
 local stats_log = require("vimficiency.stats.log")
+local h = require("_helpers")
 
 --- Point stdpath("data") at a fresh tempdir so the log file sits in an
 --- isolated location for this test. The runner already points
@@ -69,20 +70,21 @@ test("stats.log: malformed trailing line is silently skipped", function()
 end)
 
 test("stats.log: build_record flags beats when user beats optimizer", function()
-  local r = stats_log.build_record("mark", {
+  local r = stats_log.build_record("mark", h.fake_result({
     user_seq = "xyz",
     user_cost = 1.0,
     optimal_results = { { seq = "abc", cost = 5.0 } },
     finish_reason = "manual",
     key_count = 3,
-  })
+  }))
+  r = assert(r)
   assert_true(r.beats, "user_cost < best_opt_cost must flag beats")
   assert_eq(r.best_opt_cost, 5.0)
   assert_eq(r.best_opt_seq, "abc")
 end)
 
 test("stats.log: build_record picks the lowest-cost optimal entry", function()
-  local r = stats_log.build_record("mark", {
+  local r = stats_log.build_record("mark", h.fake_result({
     user_seq = "xyz",
     user_cost = 10.0,
     optimal_results = {
@@ -92,12 +94,16 @@ test("stats.log: build_record picks the lowest-cost optimal entry", function()
     },
     finish_reason = "manual",
     key_count = 3,
-  })
+  }))
+  r = assert(r)
   assert_eq(r.best_opt_cost, 2.0)
   assert_eq(r.best_opt_seq, "lo")
 end)
 
 test("stats.log: build_record returns nil when result is missing user_seq", function()
-  local r = stats_log.build_record("mark", { user_cost = 1.0 })
+  local result = h.fake_result({ user_cost = 1.0 })
+  result.user_seq = nil
+  ---@diagnostic disable-next-line: param-type-mismatch
+  local r = stats_log.build_record("mark", result)
   assert_eq(r, nil)
 end)

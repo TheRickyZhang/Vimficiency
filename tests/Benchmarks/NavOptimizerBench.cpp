@@ -129,6 +129,16 @@ struct DispatchExploreCase {
     return {lastLine, lastLineLen};
   }
 
+  static NavState makeInitialState(
+      CursorPos initialPos, const CharInterval& goalRange,
+      const NavOptimizerParams& params) {
+    auto scoreState = [&](CursorPos pos, double effort) {
+      double distance = NavHeuristic::distanceToRange(goalRange, pos);
+      return params.effortWeight * effort + params.distanceWeight * distance;
+    };
+    return NavStateFactory(benchConfig, scoreState).initial(initialPos);
+  }
+
   Lines lines;
   NavContext navContext;
   NavOptimizerParams params;
@@ -152,11 +162,11 @@ struct DispatchExploreCase {
         initialPos(initialPosIn),
         rangeBegin(computeRangeBegin(lines, rangeChars)),
         rangeEnd(computeRangeEnd(lines)),
-        goalRange(toMotionInterval(lines, CharRange(rangeBegin, rangeEnd))),
+        goalRange(CharInterval(CharRange(rangeBegin, rangeEnd), lines)),
         boundary(lines, rangeBegin, rangeEnd, true, true),
         bufferIndex(lines),
         explorer(lines, navContext, boundary, params, goalRange, bufferIndex, 0),
-        state(initialPos, RunningEffort(), 0.0, 0.0),
+        state(makeInitialState(initialPos, goalRange, params)),
         bank(benchConfig) {}
 };
 
@@ -232,7 +242,7 @@ static void runRangeWithParams(const RangeBenchmarkSetup& cfg,
   NavOptimizer opt(benchConfig);
   auto result = opt.optimize(
       cfg.lines, cfg.initialPos,
-      toMotionInterval(cfg.lines, CharRange(cfg.rangeBegin, cfg.rangeEnd)),
+      CharInterval(CharRange(cfg.rangeBegin, cfg.rangeEnd), cfg.lines),
       params, "", cfg.boundary);
   accumulateStats(outStats, result.getStats());
 }
@@ -345,23 +355,24 @@ static void BM_MotionExploreDispatch(benchmark::State& state,
       double distance = NavHeuristic::distanceToRange(c.goalRange, pos);
       return c.params.effortWeight * effort + c.params.distanceWeight * distance;
     };
+    NavStateFactory states(benchConfig, scoreState);
 
     size_t emitted = 0;
     if constexpr (!UseFixedBuffer) {
       auto onStatic = [&](KSId motionId, const KeyedSequence& ks, CursorPos endpoint) {
-        NavState next = c.state.afterMotion(ks, c.bank[motionId], endpoint, benchConfig, scoreState);
+        NavState next = states.afterMotion(c.state, ks, c.bank[motionId], endpoint);
         emitted++;
         Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
       };
-      auto onCounted = [&](KSId motionId, const KeyedSequence& ks, int count,
+      auto onCounted = [&](KSId /*motionId*/, const KeyedSequence& ks, int count,
                            CursorPos endpoint, double extraPenalty) {
-        NavState next = c.state.afterCountedMotion(
-            ks, count, endpoint, benchConfig, extraPenalty, scoreState);
+        NavState next = states.afterCountedMotion(
+            c.state, ks, count, endpoint, extraPenalty);
         emitted++;
         Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
       };
       auto onFMotion = [&](const KeyedSequence& motion, int newCol) {
-        NavState next = c.state.afterFMotion(motion, newCol, benchConfig, scoreState);
+        NavState next = states.afterFMotion(c.state, motion, newCol);
         emitted++;
         Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
       };
@@ -422,23 +433,23 @@ static void BM_MotionExploreDispatch(benchmark::State& state,
 
       for (size_t i = 0; i < staticCount; ++i) {
         const auto& transition = staticTransitions[i];
-        NavState next = c.state.afterMotion(
-            *transition.ks, c.bank[transition.motionId], transition.endpoint, benchConfig, scoreState);
+        NavState next = states.afterMotion(
+            c.state, *transition.ks, c.bank[transition.motionId], transition.endpoint);
         emitted++;
         Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
       }
       for (size_t i = 0; i < countedCount; ++i) {
         const auto& transition = countedTransitions[i];
-        NavState next = c.state.afterCountedMotion(
-            *transition.ks, transition.count, transition.endpoint, benchConfig,
-            transition.extraPenalty, scoreState);
+        NavState next = states.afterCountedMotion(
+            c.state, *transition.ks, transition.count, transition.endpoint,
+            transition.extraPenalty);
         emitted++;
         Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
       }
       for (size_t i = 0; i < fMotionCount; ++i) {
         const auto& transition = fMotionTransitions[i];
-        NavState next = c.state.afterFMotion(
-            transition.motion, transition.newCol, benchConfig, scoreState);
+        NavState next = states.afterFMotion(
+            c.state, transition.motion, transition.newCol);
         emitted++;
         Search::enqueueRangeState(std::move(next), pq, costMap, maxEffort, isInGoalRange);
       }

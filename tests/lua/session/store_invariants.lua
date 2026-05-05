@@ -19,6 +19,7 @@ test("get_active('1s'): resolves when a record is older than the window", functi
 
   local resolved = session_store.get_active("1s")
   assert_true(resolved ~= nil, "`1s` must resolve when a 5s-old record exists")
+  resolved = assert(resolved)
   assert_eq(resolved.id, id)
 
   session_store.remove(id)
@@ -60,7 +61,8 @@ test("can_store_manual: finished records do not consume capacity slots", functio
     session.start(alias)
     local rec = session_store.get_active(alias)
     assert_true(rec ~= nil, "start failed for " .. alias)
-    session_store.finish_session(rec.id, { user_seq = "" }, alias, nil, "manual")
+    rec = assert(rec)
+    session_store.finish_session(rec.id, h.fake_result({ user_seq = "" }), alias, nil, "manual")
   end
   assert_eq(session_store.can_store_manual("capf"), true,
     "a new alias must be allowed when all existing records are finished")

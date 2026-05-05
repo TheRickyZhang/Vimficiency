@@ -167,14 +167,14 @@ We reverted from this approach due to these usability issues.
 | Issue | Status | Workaround |
 |-------|--------|------------|
 | Operator-pending duplication | ✅ Fixed | Mode-based deduplication in `build_sequence()` |
-| Text object missing key | ❌ Unfixed | None currently implemented |
+| Text object missing key | ⚠️ Partial | Explore uses physical snapshots; global capture can still miss it |
 
 ## Impact on Vimficiency
 
 For sequences with text objects (`ciw`, `daw`, `yi"`, etc.):
-- User sequence is recorded incompletely
-- Cost comparison may be inaccurate
-- Optimizer suggestions are still valid (generated independently)
+- Global capture may record an incomplete user sequence, so cost comparison can be inaccurate
+- Explore phase/buffer transitions do not depend on a perfect `on_key` stream
+- Optimizer suggestions are still generated independently
 
 ## Binding-shape characterization (2026-04)
 

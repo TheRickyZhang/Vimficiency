@@ -45,6 +45,8 @@ struct TransformResult : BaseOptimizerResult<std::vector<Result>> {
     return {bucket.data(), bucket.size()};
   }
 
+  const std::vector<CursorPos>& startPositions() const { return startPositions_; }
+
   const CursorPos& getGoalPos() const { return goalPos_; }
 
   // Returns goal position for a given starting position.
@@ -83,6 +85,7 @@ private:
   int beginCol_ = 0;
   std::vector<int> lineBaseIndex_;
   std::vector<CursorPos> goalPosByStart_;
+  std::vector<CursorPos> startPositions_;
 
   friend std::ostream& operator<<(std::ostream& os, const TransformResult& transformResult);
 };

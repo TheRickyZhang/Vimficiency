@@ -49,10 +49,12 @@ end)
 
 test("util.set_buffer_keymaps requires desc", function()
   local buf = helpers.new_buf({ "x" })
+  local maps = {
+    ---@diagnostic disable-next-line: missing-fields
+    { lhs = "x", handler = function() end },
+  }
   assert_error(function()
-    util.set_buffer_keymaps(buf, {
-      { lhs = "x", handler = function() end },
-    })
+    util.set_buffer_keymaps(buf, maps)
   end, "require a desc")
 end)
 

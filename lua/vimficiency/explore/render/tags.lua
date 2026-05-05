@@ -24,6 +24,10 @@ M.TARGET_HL = highlights.TARGET_HL
 
 local rank_hl = highlights.rank_hl
 
+local function item_rank(item)
+  return assert(item.rank, "vimfy explore: recommendation missing rank")
+end
+
 ---@param recs VF.Explore.Recommendation[]
 ---@return table<integer, VF.Explore.Recommendation[]>
 local function group_motions_by_row(recs)
@@ -138,7 +142,7 @@ local function render_landing_highlights(active, filter)
       motions[#motions + 1] = item
     end
   end
-  table.sort(motions, function(x, y) return (x.rank or 0) < (y.rank or 0) end)
+  table.sort(motions, function(x, y) return item_rank(x) < item_rank(y) end)
 
   for _, item in ipairs(motions) do
     local row = item.landing.row
@@ -148,14 +152,14 @@ local function render_landing_highlights(active, filter)
       local line = v.nvim_buf_get_lines(active.scratch.buf, row, row + 1, false)[1] or ""
       if col >= #line then
         v.nvim_buf_set_extmark(active.scratch.buf, tags_ns, row, math.max(0, #line), {
-          virt_text = { { " ", rank_hl(item.rank or 0) } },
+          virt_text = { { " ", rank_hl(item_rank(item)) } },
           virt_text_pos = "overlay",
           priority = 2050,
         })
       else
         v.nvim_buf_set_extmark(active.scratch.buf, tags_ns, row, col, {
           end_col = col + 1,
-          hl_group = rank_hl(item.rank or 0),
+          hl_group = rank_hl(item_rank(item)),
           priority = 2050,
         })
       end
@@ -173,7 +177,7 @@ local function render_tags_inplace(active)
   for _, item in ipairs(active.recommendations) do
     if item.text ~= "" then motions[#motions + 1] = item end
   end
-  table.sort(motions, function(x, y) return (x.rank or 0) < (y.rank or 0) end)
+  table.sort(motions, function(x, y) return item_rank(x) < item_rank(y) end)
 
   for _, item in ipairs(motions) do
     local row = item.landing.row
@@ -182,7 +186,7 @@ local function render_tags_inplace(active)
       claim_with_gap(claims, row, col, 1)
       local first_char = sequence_display.inline(item.text):sub(1, 1)
       local on_target = target_set[row .. ":" .. col] == true
-      local hl = on_target and highlights.TARGET_HL or rank_hl(item.rank or 0)
+      local hl = on_target and highlights.TARGET_HL or rank_hl(item_rank(item))
       v.nvim_buf_set_extmark(active.scratch.buf, tags_ns, row, col, {
         virt_text = { { first_char, hl } },
         virt_text_pos = "overlay",
@@ -205,7 +209,7 @@ end
 ---actually made it onto the line, so callers can filter the landing-
 ---highlight pass to match.
 local function build_row_tag_line(items, placed_out)
-  table.sort(items, function(a_, b_) return (a_.rank or 0) < (b_.rank or 0) end)
+  table.sort(items, function(a_, b_) return item_rank(a_) < item_rank(b_) end)
 
   local claimed = {}
   local placed = {}
@@ -219,8 +223,8 @@ local function build_row_tag_line(items, placed_out)
       if claimed[c] then overlap = true; break end
     end
     if not overlap then
-      for c = start_col - 1, start_col + width do claimed[c] = true end
-      placed[#placed + 1] = { col = start_col, text = tag_text, rank = item.rank or 0, width = width }
+      for c = start_col, start_col + width - 1 do claimed[c] = true end
+      placed[#placed + 1] = { col = start_col, text = tag_text, rank = item_rank(item), width = width }
       if placed_out then placed_out[item] = true end
     end
   end

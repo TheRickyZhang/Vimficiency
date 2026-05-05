@@ -3,7 +3,7 @@
 -- Same row model as `settings_modal.lua` (kind/value_kind/get/set/run
 -- closures), but lives in a side-split window that stays open across
 -- recommendation refreshes so the user can see the impact of each
--- adjustment in real time. Toggle via `gs` (see explore.lua).
+-- adjustment in real time. Toggle via `gs` (see explore/keymaps.lua).
 --
 -- The panel is opened with a schema (an array of rows) and an
 -- `on_change` callback. Every adjustment fires the row's `set`/`run`,
@@ -16,6 +16,7 @@
 -- first arg and look up state from there.
 local util = require("vimficiency.util")
 local highlights = require("vimficiency.highlights")
+local buf_window = require("vimficiency.explore.buf_window")
 
 local M = {}
 
@@ -142,7 +143,8 @@ local function render(panel)
   v.nvim_buf_clear_namespace(panel.buf, selection_ns, 0, -1)
   local sel_line = layout.line_for_row[panel.selection]
   if sel_line then
-    local line_text = layout.lines[sel_line] or ""
+    local line_text = assert(layout.lines[sel_line],
+      "vimfy explore panel: selected row has no rendered line")
     v.nvim_buf_set_extmark(panel.buf, selection_ns, sel_line - 1, 0, {
       end_row = sel_line - 1,
       end_col = #line_text,
@@ -166,8 +168,8 @@ end
 ---@param panel VF.Explore.Panel
 ---@param delta integer
 local function adjust_selected(panel, delta)
-  local row = panel.rows[panel.selection]
-  if not row then return end
+  local row = assert(panel.rows[panel.selection],
+    "vimfy explore panel: selection points past schema")
   adjust(row, delta)
   if panel.on_change then panel.on_change() end
   render(panel)
@@ -179,8 +181,9 @@ end
 ---rows skip — their h/l handling is already direct.
 ---@param panel VF.Explore.Panel
 local function prompt_selected(panel)
-  local row = panel.rows[panel.selection]
-  if not row or row.kind ~= "setting" then return end
+  local row = assert(panel.rows[panel.selection],
+    "vimfy explore panel: selection points past schema")
+  if row.kind ~= "setting" then return end
   if row.value_kind ~= "int" and row.value_kind ~= "float" then return end
 
   vim.ui.input({
@@ -245,26 +248,22 @@ function M.open(view, rows, on_change)
   end
 
   highlights.refresh()
-  local prior_win = v.nvim_get_current_win()
   v.nvim_set_current_win(view.scratch.win)
   vim.cmd("botright vsplit")
   local panel_win = v.nvim_get_current_win()
-  local panel_buf = v.nvim_create_buf(false, true)
+  local panel_buf = buf_window.create_scratch_buffer(
+    "vimficiency://explore/panel",
+    { filetype = "vimficiency" })
   v.nvim_win_set_buf(panel_win, panel_buf)
   v.nvim_win_set_width(panel_win, PANEL_WIDTH)
-  v.nvim_buf_set_name(panel_buf, "vimficiency://explore/panel")
-  vim.bo[panel_buf].buftype = "nofile"
-  vim.bo[panel_buf].bufhidden = "wipe"
-  vim.bo[panel_buf].swapfile = false
-  vim.bo[panel_buf].modifiable = false
-  vim.bo[panel_buf].filetype = "vimficiency"
   util.configure_scratch_window(panel_win, { winfixwidth = true })
 
   local panel = {
     buf = panel_buf,
     win = panel_win,
     rows = rows,
-    selection = first_selectable_row(rows) or 1,
+    selection = assert(first_selectable_row(rows),
+      "vimfy explore panel: schema has no selectable rows"),
     on_change = on_change,
     view = view,
   }
@@ -272,10 +271,6 @@ function M.open(view, rows, on_change)
 
   install_keymaps(panel)
   render(panel)
-  -- Focus stays on the panel intentionally: opening the panel means the
-  -- user wants to interact with settings. Closing or `<C-w>h` returns
-  -- to scratch.
-  _ = prior_win
   return panel
 end
 

@@ -17,11 +17,23 @@ local h             = require("_helpers")
 local WATCH_CFG = { idle = { ms = 60000 }, cooldown_ms = 0 }
 
 local function call_new_active(start_kind, end_kind)
+  local win = vim.api.nvim_get_current_win()
+  local buf = vim.api.nvim_get_current_buf()
   return session_store.new_active_session(
     "id1", -1,
-    vim.api.nvim_get_current_win(),
-    vim.api.nvim_get_current_buf(),
-    { row = 0, col = 0, lines = {} },
+    win,
+    buf,
+    {
+      row = 0,
+      col = 0,
+      lines = {},
+      bufname = vim.api.nvim_buf_get_name(buf),
+      filetype = vim.bo[buf].filetype,
+      top_row = 0,
+      bottom_row = 0,
+      window_height = vim.api.nvim_win_get_height(win),
+      scroll_amount = vim.api.nvim_get_option_value("scroll", { win = win }),
+    },
     start_kind, end_kind
   )
 end
@@ -45,16 +57,24 @@ test("session_type_from_kinds: covers all four cells", function()
 end)
 
 test("session_type_from_kinds: rejects invalid pairs", function()
-  assert_error(function() session_store.session_type_from_kinds("bogus", "manual") end)
-  assert_error(function() session_store.session_type_from_kinds("manual", "bogus") end)
+  assert_error(function()
+    ---@diagnostic disable-next-line: param-type-mismatch
+    session_store.session_type_from_kinds("bogus", "manual")
+  end)
+  assert_error(function()
+    ---@diagnostic disable-next-line: param-type-mismatch
+    session_store.session_type_from_kinds("manual", "bogus")
+  end)
 end)
 
 test("summarize: surfaces type + start_kind + end_kind for active sessions", function()
   local buf = h.new_buf({ "line one", "line two" })
   session.start("kindssum")
   local rec = session_store.get_active("kindssum")
+  rec = assert(rec)
   local summary = session_store.summarize(rec.id)
   assert_true(summary ~= nil, "summary must exist for active session")
+  summary = assert(summary)
   assert_eq(summary.type,       "mark")
   assert_eq(summary.start_kind, "manual")
   assert_eq(summary.end_kind,   "manual")
@@ -65,7 +85,9 @@ test("summarize: surfaces type + start_kind + end_kind for active sessions", fun
   h.with_patch({ { config, "watch", WATCH_CFG } }, function()
     session.watch("kindssumw")
     local rec = session_store.get_active("kindssumw")
+    rec = assert(rec)
     local summary = session_store.summarize(rec.id)
+    summary = assert(summary)
     assert_eq(summary.type,       "watch")
     assert_eq(summary.start_kind, "manual")
     assert_eq(summary.end_kind,   "auto")
@@ -78,6 +100,7 @@ test("Mark: session.start yields (manual, manual)", function()
   session.start("kindsmark")
   local rec = session_store.get_active("kindsmark")
   assert_true(rec ~= nil, "Mark session should be active after start")
+  rec = assert(rec)
   assert_eq(rec.start_kind, "manual")
   assert_eq(rec.end_kind,   "manual")
   session.close("kindsmark")
@@ -90,6 +113,7 @@ test("Watch: session.watch yields (manual, auto)", function()
     session.watch("kindswatch")
     local rec = session_store.get_active("kindswatch")
     assert_true(rec ~= nil, "Watch session should be active after watch")
+    rec = assert(rec)
     assert_eq(rec.start_kind, "manual")
     assert_eq(rec.end_kind,   "auto")
     assert_true(rec.watch_disarm ~= nil, "watch must install a disarm handle")
@@ -116,7 +140,8 @@ test("Suggest: fire_idle flips a Recall record to (auto, auto)", function()
     -- Honor the end_kind override to mirror the real store's atomic
     -- contract: the flip happens inside finish_session on success. A
     -- return-true-and-ignore mock would silently skip the assertion here.
-    { session_store, "finish_session", function(_id, _r, _alias, override)
+    { session_store, "finish_session", function(...)
+        local override = select(4, ...)
         if override then record.end_kind = override end
         return true
       end },

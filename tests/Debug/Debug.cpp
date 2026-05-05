@@ -1344,7 +1344,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
 
     auto rangeResult = movOpt.optimize(
         initial, initialPos,
-        toMotionInterval(initial, CharRange(rangeBegin, rangeEnd)),
+        CharInterval(CharRange(rangeBegin, rangeEnd), initial),
         NavOptimizerParams{}.withMaxResults(10));
 
     cerr << "NavOptimizer returned " << rangeResult.getResults().size() << " results" << endl;
@@ -1582,7 +1582,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
 
     auto rangeResult = navOpt.optimize(
         initial, initialPos,
-        toMotionInterval(initial, CharRange(rangeBegin, rangeEnd)),
+        CharInterval(CharRange(rangeBegin, rangeEnd), initial),
         NavOptimizerParams{}.withMaxResults(10), "",
         boundary, navCtx);
 
@@ -1624,8 +1624,11 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     // optimizer's local scope; this debug trace mirrors that with a local pq.
     std::priority_queue<CompositionState, std::vector<CompositionState>,
                         std::greater<CompositionState>> pq;
-    CompositionState startingState(initialPos, Mode::Normal, 0);
-    startingState.setCost(ctx.heuristic(startingState, 0));
+    auto scoreState = [&](const CompositionState& state) {
+      return ctx.heuristic(state, state.getEditsCompleted());
+    };
+    CompositionStateFactory states(config, scoreState);
+    CompositionState startingState = states.initial(initialPos);
     pq.push(startingState);
     ctx.costMap[startingState.getKey()] = startingState.getCost();
 
@@ -1649,19 +1652,17 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
     auto enqueueEditTransition = [&](const CompositionState& current,
                                      const Sequence& editSequence,
                                      const CursorPos& goalPos,
-                                     int editsAfter) {
-      CompositionState newState = current.afterEditTransition(
-          editSequence, goalPos, Mode::Normal, config);
-      newState.setCost(ctx.heuristic(newState, editsAfter));
+                                     int /*editsAfter*/) {
+      CompositionState newState = states.afterEditTransition(
+          current, editSequence, goalPos, Mode::Normal);
       enqueueState(std::move(newState));
     };
     auto enqueueMotionTransition = [&](const CompositionState& current,
                                        const Sequence& moveSequence,
                                        const CursorPos& goalPos,
-                                       int editsCompleted) {
-      CompositionState newState = current.afterNavResult(
-          moveSequence, goalPos, config);
-      newState.setCost(ctx.heuristic(newState, editsCompleted));
+                                       int /*editsCompleted*/) {
+      CompositionState newState = states.afterNavResult(
+          current, moveSequence, goalPos);
       enqueueState(std::move(newState));
     };
 
@@ -1737,7 +1738,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
 
         auto movementResults = navOpt.optimize(
             subset, localPos,
-            toMotionInterval(subset, CharRange(localRangeBegin, localRangeEnd)),
+            CharInterval(CharRange(localRangeBegin, localRangeEnd), subset),
             NavOptimizerParams{}.withMaxResults(
                 clamp(nextEdit.origCharCount(), 1, 10)), "",
             subsetBoundary, navCtx).getResults();
@@ -1836,8 +1837,11 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
   // Local pq mirrors the templated optimizer's pq (moved out of context).
   std::priority_queue<CompositionState, std::vector<CompositionState>,
                       std::greater<CompositionState>> pq;
-  CompositionState startingState(initialPos, Mode::Normal, 0);
-  startingState.setCost(ctx.heuristic(startingState, 0));
+  auto scoreState = [&](const CompositionState& state) {
+    return ctx.heuristic(state, state.getEditsCompleted());
+  };
+  CompositionStateFactory states(config, scoreState);
+  CompositionState startingState = states.initial(initialPos);
   pq.push(startingState);
   ctx.costMap[startingState.getKey()] = startingState.getCost();
 
@@ -1861,19 +1865,17 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
   auto enqueueEditTransition = [&](const CompositionState& current,
                                    const Sequence& editSequence,
                                    const CursorPos& goalPos,
-                                   int editsAfter) {
-    CompositionState newState = current.afterEditTransition(
-        editSequence, goalPos, Mode::Normal, config);
-    newState.setCost(ctx.heuristic(newState, editsAfter));
+                                   int /*editsAfter*/) {
+    CompositionState newState = states.afterEditTransition(
+        current, editSequence, goalPos, Mode::Normal);
     enqueueState(std::move(newState));
   };
   auto enqueueMotionTransition = [&](const CompositionState& current,
                                      const Sequence& moveSequence,
                                      const CursorPos& goalPos,
-                                     int editsCompleted) {
-    CompositionState newState = current.afterNavResult(
-        moveSequence, goalPos, config);
-    newState.setCost(ctx.heuristic(newState, editsCompleted));
+                                     int /*editsCompleted*/) {
+    CompositionState newState = states.afterNavResult(
+        current, moveSequence, goalPos);
     enqueueState(std::move(newState));
   };
 
@@ -1952,7 +1954,7 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
 
       auto rangeResults = navOpt.optimize(
           subset, localPos,
-          toMotionInterval(subset, CharRange(localRangeBegin, localRangeEnd)),
+          CharInterval(CharRange(localRangeBegin, localRangeEnd), subset),
           NavOptimizerParams{}.withMaxResults(
               clamp(nextEdit.origCharCount(), 1, 10)), "",
           subsetBoundary, navCtx).getResults();
@@ -2067,7 +2069,7 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
     NavContext navCtx;
     auto rangeResult = navOpt.optimize(
         buffer, pos,
-        toMotionInterval(buffer, CharRange(rangeBegin, rangeEnd)),
+        CharInterval(CharRange(rangeBegin, rangeEnd), buffer),
         NavOptimizerParams{}.withMaxResults(5), "",
         boundary, navCtx);
 
@@ -2605,7 +2607,7 @@ TEST_F(NeovimOracleDebug, InvestigateLazyFailures) {
 // =============================================================================
 // This validates the replay-based suffix cache: when we replay a search
 // sequence via Edit::applyEdit, the intermediate (lines, pos) must match
-// what the optimizer's TransformState transitions produce.
+// the editor snapshots produced by TransformSimulator.
 
 // Helper: apply a single command via Edit::applyEdit
 static pair<Lines, CursorPos> applyViaEdit(const Lines& lines, CursorPos pos, string_view cmd) {
@@ -2620,7 +2622,7 @@ static pair<Lines, CursorPos> applyViaEdit(const Lines& lines, CursorPos pos, st
 
 TEST_F(DebugTest, ReplayVerification_Charwise) {
   // Test charwise deletions: Edit::applyEdit vs VimCore::deleteRange
-  // (TransformState::afterDeletion delegates to VimCore::deleteRange)
+  // (TransformSimulator::afterDeletion uses the same VimCore deletion helpers)
   Lines buf = {"hello world", "foo bar"};
 
   // x from (0,5): delete single char (space)
@@ -2653,7 +2655,7 @@ TEST_F(DebugTest, ReplayVerification_Charwise) {
 }
 
 TEST_F(DebugTest, ReplayVerification_Linewise) {
-  // Test dd: Edit::applyEdit vs TransformState::afterLinewiseDeletion
+  // Test dd: Edit::applyEdit vs TransformSimulator::afterLinewiseDeletion
   Lines buf = {"first line", "second line", "third line"};
 
   // dd from line 0
@@ -2661,8 +2663,8 @@ TEST_F(DebugTest, ReplayVerification_Linewise) {
     CursorPos start(0, 3);
     auto [editLines, editPos] = applyViaEdit(buf, start, "dd");
 
-    TransformState state(buf, start, 0, 0.0);
-    TransformState after = state.afterLinewiseDeletion(0);
+    TransformEditorState state(buf, start);
+    TransformEditorState after = TransformSimulator::afterLinewiseDeletion(state, 0);
     EXPECT_EQ(editLines, after.getLines()) << "dd line 0 lines mismatch";
     EXPECT_EQ(editPos.line, after.getPos().line) << "dd line 0 pos.line mismatch";
     EXPECT_EQ(editPos.col, after.getPos().col) << "dd line 0 pos.col mismatch";
@@ -2674,8 +2676,8 @@ TEST_F(DebugTest, ReplayVerification_Linewise) {
     CursorPos start(1, 5);
     auto [editLines, editPos] = applyViaEdit(buf, start, "dd");
 
-    TransformState state(buf, start, 0, 0.0);
-    TransformState after = state.afterLinewiseDeletion(1);
+    TransformEditorState state(buf, start);
+    TransformEditorState after = TransformSimulator::afterLinewiseDeletion(state, 1);
     EXPECT_EQ(editLines, after.getLines()) << "dd line 1 lines mismatch";
     EXPECT_EQ(editPos.line, after.getPos().line) << "dd line 1 pos.line mismatch";
     EXPECT_EQ(editPos.col, after.getPos().col) << "dd line 1 pos.col mismatch";
@@ -2687,8 +2689,8 @@ TEST_F(DebugTest, ReplayVerification_Linewise) {
     CursorPos start(2, 0);
     auto [editLines, editPos] = applyViaEdit(buf, start, "dd");
 
-    TransformState state(buf, start, 0, 0.0);
-    TransformState after = state.afterLinewiseDeletion(2);
+    TransformEditorState state(buf, start);
+    TransformEditorState after = TransformSimulator::afterLinewiseDeletion(state, 2);
     EXPECT_EQ(editLines, after.getLines()) << "dd last line lines mismatch";
     EXPECT_EQ(editPos.line, after.getPos().line) << "dd last line pos.line mismatch";
     EXPECT_EQ(editPos.col, after.getPos().col) << "dd last line pos.col mismatch";
@@ -2701,15 +2703,15 @@ TEST_F(DebugTest, ReplayVerification_Linewise) {
     CursorPos start(1, 1, 10);  // col=1 but targetCol=10
     auto [editLines, editPos] = applyViaEdit(buf2, start, "dd");
 
-    TransformState state(buf2, start, 0, 0.0);
-    TransformState after = state.afterLinewiseDeletion(1);
+    TransformEditorState state(buf2, start);
+    TransformEditorState after = TransformSimulator::afterLinewiseDeletion(state, 1);
     EXPECT_EQ(editLines, after.getLines()) << "dd targetCol lines mismatch";
     EXPECT_EQ(editPos, after.getPos()) << "dd targetCol pos mismatch";
   }
 }
 
 TEST_F(DebugTest, ReplayVerification_Join) {
-  // Test J/gJ: Edit::applyEdit vs TransformState::afterJoin
+  // Test J/gJ: Edit::applyEdit vs TransformSimulator::afterJoin
   Lines buf = {"hello  ", "  world", "end"};
 
   // J (add space)
@@ -2717,8 +2719,8 @@ TEST_F(DebugTest, ReplayVerification_Join) {
     CursorPos start(0, 2);
     auto [editLines, editPos] = applyViaEdit(buf, start, "J");
 
-    TransformState state(buf, start, 0, 0.0);
-    TransformState after = state.afterJoin(true);
+    TransformEditorState state(buf, start);
+    TransformEditorState after = TransformSimulator::afterJoin(state, true);
     EXPECT_EQ(editLines, after.getLines()) << "J lines mismatch";
     EXPECT_EQ(editPos, after.getPos()) << "J pos mismatch";
   }
@@ -2728,8 +2730,8 @@ TEST_F(DebugTest, ReplayVerification_Join) {
     CursorPos start(0, 2);
     auto [editLines, editPos] = applyViaEdit(buf, start, "gJ");
 
-    TransformState state(buf, start, 0, 0.0);
-    TransformState after = state.afterJoin(false);
+    TransformEditorState state(buf, start);
+    TransformEditorState after = TransformSimulator::afterJoin(state, false);
     EXPECT_EQ(editLines, after.getLines()) << "gJ lines mismatch";
     EXPECT_EQ(editPos, after.getPos()) << "gJ pos mismatch";
   }
@@ -2740,15 +2742,15 @@ TEST_F(DebugTest, ReplayVerification_Join) {
     CursorPos start(0, 2);
     auto [editLines, editPos] = applyViaEdit(buf2, start, "J");
 
-    TransformState state(buf2, start, 0, 0.0);
-    TransformState after = state.afterJoin(true);
+    TransformEditorState state(buf2, start);
+    TransformEditorState after = TransformSimulator::afterJoin(state, true);
     EXPECT_EQ(editLines, after.getLines()) << "J empty lines mismatch";
     EXPECT_EQ(editPos, after.getPos()) << "J empty pos mismatch";
   }
 }
 
 TEST_F(DebugTest, ReplayVerification_Motion) {
-  // Test motion commands: Edit::applyEdit position matches setPos
+  // Test motion commands: Edit::applyEdit position matches expected movement
   Lines buf = {"hello world", "foo bar", "end"};
 
   struct MotionTest { string cmd; CursorPos start; CursorPos expected; };
@@ -2993,7 +2995,7 @@ TEST_F(NeovimOracleDebugSentence, DISABLED_SentenceDeleteDivergence) {
 TEST_F(DebugTest, DISABLED_CompositionMultiLineCrash) {
   // Was reproducing EditSize/MultiLine crash: "Edit invalid on empty line"
   // Root cause: needsKEscape k moved cursor one line too far in effective lines
-  // because deleteRangeLinewise already clamped. Fixed by setting A* cursor to
+  // because linewise deletion had already clamped. Fixed by setting A* cursor to
   // max(0, size-2) to match replay position after dd+k.
   constexpr int DEFAULT_LINES = 15;
   constexpr int DEFAULT_AVG_LEN = 20;

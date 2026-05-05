@@ -1,36 +1,5 @@
 #pragma once
 
-// =============================================================================
-// Motion frontier — immediate next-token ranking
-// =============================================================================
-// Depth-1 live peek of the motion A* search graph from the cursor, scoped
-// to what `:Vimfy explore` needs: show the user the top-K SINGLE atomic
-// motion tokens they could take right now toward the target, not the top-K full
-// paths to it.
-//
-// How it relates to NavOptimizer:
-//   - Same `NavExplorer` and candidate-emission callbacks as
-//     `NavOptimizer::optimize`. Same scoring function
-//     (`effortWeight * effort + distanceWeight * distanceToRange`).
-//   - But only ONE expansion level: we build a single `NavState` at the
-//     cursor, emit all depth-1 successors, sort by A* cost, and return the
-//     top K. No priority queue, no iterative popping, no path stitching.
-//   - The full optimizer's cost-map filters no-progress states on re-entry
-//     (you can't re-visit the cursor cell at higher cost). Depth-1 has no
-//     prior entry to compare against, so no-op motions (landing == cursor)
-//     must be filtered explicitly at emission time — see the `isNoOp`
-//     guard in rankNavFrontier.
-//
-// Each returned item's `costDiff` / `landingPos` describe the next accepted
-// token. `costDiff` includes keyboard-model boundary effects from
-// `query.seq`. The caller (Explore::View) uses these to drive a
-// step-by-step UI; after the user picks a token, they call `rankNavFrontier`
-// again from the new cursor for the next step.
-//
-// No state is cached between calls. Each invocation rebuilds the
-// `BufferIndex` + `NavExplorer` from the live inputs; this is cheap for
-// depth 1 and sidesteps the undo/redo complexity of a persistent
-// optimizer.
 
 #include <vector>
 
@@ -42,6 +11,8 @@
 
 
 struct NavFrontierQuery : FrontierQuery {
+  // Must be non-empty. Callers expand zero-width (pure-insertion) targets
+  // upstream — see Explore::recommendNavigate.
   CharRange targetRange;
   const NavBoundary& boundary;
   const NavContext& navContext;

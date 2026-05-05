@@ -31,12 +31,12 @@ end
 -- Api.def is the canonical C ABI declaration consumed by both C++ and LuaJIT.
 
 ---@class VF.C.ScoreWeights
----@field keyWeight number
----@field sameFingerWeight number
----@field sameKeyWeight number
----@field altHandWeight number
----@field goodRollWeight number
----@field badRollWeight number
+---@field key_weight number
+---@field same_finger_weight number
+---@field same_key_weight number
+---@field alt_hand_weight number
+---@field good_roll_weight number
+---@field bad_roll_weight number
 
 ---@class VF.C.KeyInfo
 ---@field hand integer
@@ -71,6 +71,7 @@ end
 ---@field vf_count_class_name fun(index: integer): ffi.cdata*
 ---@field vf_get_config fun(): VF.C.Config
 ---@field vf_apply_config fun(): nil
+---@field vf_reset_config fun(): nil
 ---@field vf_analyze fun(initial_text: string, goal_text: string, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, start_row: integer, start_col: integer, end_row: integer, end_col: integer, keyseq: string, window_height: integer, scroll_amount: integer, results_calculated: integer, optimizer_overrides: string): string
 ---@field vf_get_debug fun(): string
 ---@field vf_get_warnings fun(): string
@@ -89,15 +90,11 @@ end
 ---@field vf_explore_start fun(encoded_initial_lines: string, start_row: integer, start_col: integer, encoded_goal_lines: string, end_row: integer, end_col: integer, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, window_height: integer, scroll_amount: integer, user_seq: string): string
 ---@field vf_explore_destroy fun(view_id: integer): integer
 ---@field vf_explore_state fun(view_id: integer): string
----@field vf_explore_recommendations fun(view_id: integer, max_count: integer, optimizer_overrides: string): string
+---@field vf_explore_recommendations fun(view_id: integer, max_count: integer, optimizer_overrides: string, sort_mode: string): string
 ---@field vf_explore_apply_movement fun(view_id: integer, movement_text: string): string
----@field vf_explore_accept_cursor_move fun(view_id: integer, new_row: integer, new_col: integer, raw_keys: string): string
 ---@field vf_explore_apply_edit fun(view_id: integer, text: string): string
----@field vf_explore_accept_buffer_state fun(view_id: integer, encoded_lines: string, new_row: integer, new_col: integer, raw_keys: string): string
 ---@field vf_explore_current_lines fun(view_id: integer): string
----@field vf_explore_begin_insert fun(view_id: integer): string
----@field vf_explore_accept_insert_exit fun(view_id: integer, encoded_lines: string, new_row: integer, new_col: integer, raw_keys: string): string
----@field vf_explore_cancel_insert fun(view_id: integer): string
+---@field vf_explore_accept_snapshot fun(view_id: integer, encoded_lines: string, new_row: integer, new_col: integer, raw_keys: string, insert_mode: boolean): string
 ---@field vf_explore_undo fun(view_id: integer): string
 ---@field vf_explore_redo fun(view_id: integer): string
 ---@field vf_explore_header_rows fun(view_id: integer): string
@@ -407,7 +404,7 @@ function M.configure(user_config)
 		for key_index, info in pairs(user_config.keys) do
 			config.keys[key_index].hand = info.hand
 			config.keys[key_index].finger = info.finger
-			config.keys[key_index].base_cost = info.cost
+			config.keys[key_index].base_cost = info.base_cost
 		end
 	end
 
@@ -460,6 +457,10 @@ function M.configure(user_config)
 
 	lib.vf_apply_config()
 	return consumed
+end
+
+function M.reset_config()
+	lib.vf_reset_config()
 end
 
 --- Parse the C++ analyze-export payload into {results, user_cost}.
@@ -787,14 +788,18 @@ end
 --- (motion / edit-structural / typed-text) is implicit in the view's
 --- current phase: Navigate emits motions, Transform emits edit atoms,
 --- Insert emits the canonical typed text. Consumers branch on
---- `state.phase.kind` rather than a per-rec discriminator.
+--- `state.phase.kind` for behavior.
 ---
 --- `cost_diff` is the incremental keyboard effort from the accepted sequence.
+--- `distance` is the estimated remaining work after that recommendation.
+--- `score` combines effort and distance with the active optimizer weights.
 ---@class VF.Explore.Recommendation
 ---@field text string
 ---@field cost_diff number
+---@field distance number
+---@field score number
 ---@field landing VF.Position
----@field rank? integer  # attached on the consumer side after sorting (see explore.lua attach_ranks)
+---@field rank? integer  # attached on the consumer side after sorting (see explore/state.lua)
 
 --- Drain any soft-fail diagnostics emitted by the C++ side during the
 --- most recent FFI call and surface them via `vim.notify`. Centralized
@@ -877,20 +882,22 @@ local function parse_explore_recommendations(payload)
   local parts = decode_string_list(payload)
   assert(#parts >= 1, "explore recommendations payload must have count prefix")
   local count = tonumber(parts[1]) or 0
-  local expected = 1 + count * 4
+  local expected = 1 + count * 6
   assert(#parts == expected,
     "explore recommendations payload has " .. #parts ..
     " fields, expected " .. expected .. " for count=" .. count)
   ---@type VF.Explore.Recommendation[]
   local recs = {}
   for i = 1, count do
-    local base = 1 + (i - 1) * 4
+    local base = 1 + (i - 1) * 6
     recs[i] = {
       text = parts[base + 1],
       cost_diff = tonumber(parts[base + 2]) or 0,
+      distance = tonumber(parts[base + 3]) or 0,
+      score = tonumber(parts[base + 4]) or 0,
       landing = {
-        row = tonumber(parts[base + 3]) or 0,
-        col = tonumber(parts[base + 4]) or 0,
+        row = tonumber(parts[base + 5]) or 0,
+        col = tonumber(parts[base + 6]) or 0,
       },
     }
   end
@@ -946,11 +953,12 @@ end
 ---@param view_id integer
 ---@param max_count integer
 ---@param optimizer_overrides? string Newline-delimited `<scope>:<key>=<value>` lines; empty/nil for defaults. Build via `M.encode_optimizer_overrides`.
+---@param sort_mode? "effort"|"distance"|"score"
 ---@return VF.Explore.Recommendation[]
-function M.explore_recommendations(view_id, max_count, optimizer_overrides)
+function M.explore_recommendations(view_id, max_count, optimizer_overrides, sort_mode)
   local payload = require_non_error(ffi.string(
     lib.vf_explore_recommendations(
-      view_id, max_count, optimizer_overrides or "")))
+      view_id, max_count, optimizer_overrides or "", sort_mode or "effort")))
   return parse_explore_recommendations(payload)
 end
 
@@ -960,29 +968,6 @@ end
 function M.explore_apply_movement(view_id, movement_text)
   local payload = require_non_error(ffi.string(
     lib.vf_explore_apply_movement(view_id, movement_text)))
-  return parse_explore_apply_result(payload)
-end
-
----@param view_id integer
----@param new_row integer
----@param new_col integer
----@param raw_keys string|nil
----@return VF.Explore.ApplyResult
-function M.explore_accept_cursor_move(view_id, new_row, new_col, raw_keys)
-  local payload = require_non_error(ffi.string(lib.vf_explore_accept_cursor_move(
-    view_id, new_row, new_col, raw_keys or "")))
-  return parse_explore_apply_result(payload)
-end
-
----@param view_id integer
----@param lines string[]
----@param new_row integer
----@param new_col integer
----@param raw_keys string|nil
----@return VF.Explore.ApplyResult
-function M.explore_accept_buffer_state(view_id, lines, new_row, new_col, raw_keys)
-  local payload = require_non_error(ffi.string(lib.vf_explore_accept_buffer_state(
-    view_id, encode_string_list(lines), new_row, new_col, raw_keys or "")))
   return parse_explore_apply_result(payload)
 end
 
@@ -1003,30 +988,15 @@ function M.explore_current_lines(view_id)
 end
 
 ---@param view_id integer
----@return VF.Explore.ApplyResult
-function M.explore_begin_insert(view_id)
-  local payload = require_non_error(ffi.string(
-    lib.vf_explore_begin_insert(view_id)))
-  return parse_explore_apply_result(payload)
-end
-
----@param view_id integer
 ---@param lines string[]
 ---@param new_row integer
 ---@param new_col integer
 ---@param raw_keys string|nil
+---@param insert_mode boolean
 ---@return VF.Explore.ApplyResult
-function M.explore_accept_insert_exit(view_id, lines, new_row, new_col, raw_keys)
-  local payload = require_non_error(ffi.string(lib.vf_explore_accept_insert_exit(
-    view_id, encode_string_list(lines), new_row, new_col, raw_keys or "")))
-  return parse_explore_apply_result(payload)
-end
-
----@param view_id integer
----@return VF.Explore.ApplyResult
-function M.explore_cancel_insert(view_id)
-  local payload = require_non_error(ffi.string(
-    lib.vf_explore_cancel_insert(view_id)))
+function M.explore_accept_snapshot(view_id, lines, new_row, new_col, raw_keys, insert_mode)
+  local payload = require_non_error(ffi.string(lib.vf_explore_accept_snapshot(
+    view_id, encode_string_list(lines), new_row, new_col, raw_keys or "", insert_mode)))
   return parse_explore_apply_result(payload)
 end
 

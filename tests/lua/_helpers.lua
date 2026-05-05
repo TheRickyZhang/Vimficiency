@@ -76,6 +76,7 @@ function M.fake_result(overrides)
     window_height = 20,
     scroll_amount = 10,
     user_seq = "x",
+    user_cost = 1.0,
     optimal_results = { { seq = "y", cost = 1.0 } },
   }
   if overrides then
@@ -89,8 +90,8 @@ end
 function M.silence_notify(fn)
   local util = require("vimficiency.util")
   M.with_patch({
-    { vim, "notify", function() end },
-    { util, "show_output", function() end },
+    { vim, "notify", function(...) end },
+    { util, "show_output", function(...) end },
   }, fn)
 end
 
@@ -124,7 +125,17 @@ function M.seed_recall(opts)
   local id = opts.id or util.new_id(buf)
   local rec = session_store.new_active_session(
     id, -1, win, buf,
-    { row = 0, col = 0, lines = lines },
+    {
+      row = 0,
+      col = 0,
+      lines = lines,
+      bufname = vim.api.nvim_buf_get_name(buf),
+      filetype = vim.bo[buf].filetype,
+      top_row = 0,
+      bottom_row = math.max(0, #lines - 1),
+      window_height = vim.api.nvim_win_get_height(win),
+      scroll_amount = vim.api.nvim_get_option_value("scroll", { win = win }),
+    },
     "auto", "manual"
   )
   rec.first_mode = "n"

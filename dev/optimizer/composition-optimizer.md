@@ -128,7 +128,7 @@ J plan efforts are included in `computeSuffixEditCosts()` alongside regular tran
 
 ### Autoindent in Pure Insertions
 
-For `o`/`A`/`I`/`i` with multi-line insertions, `buildTypedCommands` (from `src/Optimizer/BuildTypedCommands.h`) applies autoindent strip/backspace/clear logic (see `dev/optimizer/edit-optimizer.md` § Autoindent Handling):
+For `o`/`A`/`I`/`i` with multi-line insertions, `buildTypedCommands` (from `src/Optimizer/BuildTypedCommands.h`) applies autoindent strip/backspace/clear logic (see `dev/optimizer/transform-optimizer.md` § Autoindent Handling):
 
 | Command | Source indent | Line prefix |
 |---------|--------------|-------------|

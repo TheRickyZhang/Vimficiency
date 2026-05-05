@@ -153,13 +153,7 @@ const char *vf_format_sequence(const char *seq) {
       Result<string>(formatSequenceForDisplay(helpers::optionalText(seq))));
 }
 
-// Default-initialize each param struct and dump every field as
-// `<scope>:<key>:<type>=<value>` lines. Lua's panel uses this to
-// display "current effective" values for unset overrides without
-// mirroring C++ defaults in Lua source. See
-// `lua/vimficiency/explore.lua`'s `OPTIMIZER_DEFAULTS` for the consumer.
-//
-// Cached on first call — defaults don't change at runtime.
+// Lua settings_schema consumes these defaults without mirroring C++ values.
 const char *vf_get_optimizer_defaults() {
   static string cached;
   if (cached.empty()) {

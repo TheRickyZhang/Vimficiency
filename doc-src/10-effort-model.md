@@ -24,12 +24,12 @@ The following knobs are accepted by `setup{}`; see their live values with
 ```lua
 require('vimficiency').setup({
   weights = {
-    keyWeight        = 1.0,   -- baseline per-keystroke cost
-    sameFingerWeight = 1.0,   -- penalty for consecutive same-finger
-    sameKeyWeight    = 1.0,   -- penalty for the same key twice
-    altHandWeight    = 1.0,   -- bonus for alternating hands
-    goodRollWeight   = 1.0,   -- bonus for inward rolls
-    badRollWeight    = 1.0,   -- penalty for outward rolls
+    key_weight         = 1.0,   -- baseline per-keystroke cost
+    same_finger_weight = 1.0,   -- penalty for consecutive same-finger
+    same_key_weight    = 1.0,   -- penalty for the same key twice
+    alt_hand_weight    = 1.0,   -- bonus for alternating hands
+    good_roll_weight   = 1.0,   -- bonus for inward rolls
+    bad_roll_weight    = 1.0,   -- penalty for outward rolls
   },
 })
 ```

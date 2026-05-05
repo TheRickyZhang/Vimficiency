@@ -15,7 +15,7 @@ local h             = require("_helpers")
 -- Thin wrappers around the normalizers that also assign the result onto
 -- `config`. Matches what the plugin's setup path does on real user input.
 local function validate_watch(raw)
-  config.watch = config_detail.normalize_watch(raw, config._defaults.watch)
+  config.watch = config_detail.normalize_watch(raw)
 end
 
 local function validate_auto_suggest(raw)
@@ -46,7 +46,7 @@ test("configure: validates weight keys", function()
     function() ffi_lib.configure({ weights = { downwrad = 5 } }) end,
     "weights.downwrad", "typo in weights must error"
   )
-  ffi_lib.configure({ weights = { keyWeight = 1.0 } })
+  ffi_lib.configure({ weights = { key_weight = 1.0 } })
 end)
 
 test("configure: validates count penalty override shape", function()
