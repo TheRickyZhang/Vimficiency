@@ -120,8 +120,8 @@ the extra key without noticing.</p>
 <li>
 <p><strong>Recall only records keystrokes typed in normal file buffers</strong>
 (<code dir="auto">&#x26;buftype == ""</code>). Keys typed in help, quickfix, terminal, prompt,
-or scratch buffers are skipped — they aren’t meaningful for motion
-optimization, and recording them would cause recall queries to fail
+or scratch buffers are skipped — they aren’t meaningful for nav or
+transform optimization, and recording them would cause recall queries to fail
 with buffer-mismatch when you return to your file. If you bind a
 Vimfy action that opens an async floating-input prompt (e.g.
 <code dir="auto">vim.ui.input</code> overridden by dressing.nvim), the <code dir="auto">2</code> / <code dir="auto">&#x3C;CR></code> you
