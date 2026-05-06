@@ -1,19 +1,7 @@
 local v          = vim.api
-local util       = require("vimficiency.util")
 local buf_window = require("vimficiency.explore.buf_window")
 
 local M = {}
-
-local function split_and_capture(cmd)
-  local tab = v.nvim_get_current_tabpage()
-  local before = {}
-  for _, w in ipairs(v.nvim_tabpage_list_wins(tab)) do before[w] = true end
-  vim.cmd(cmd)
-  for _, w in ipairs(v.nvim_tabpage_list_wins(tab)) do
-    if not before[w] then return w end
-  end
-  error("vimfy explore: split " .. cmd .. " did not create a new window")
-end
 
 ---@class VF.Explore.Layout
 ---@field scratch_buf integer
@@ -55,13 +43,11 @@ function M.build(label, initial_lines, source_buf, source_win)
   buf_window.copy_buffer_options(source_buf, scratch_buf)
   buf_window.copy_window_options(source_win, scratch_win)
 
-  local list_win = split_and_capture("topleft vsplit")
-  local list_buf = buf_window.create_scratch_buffer(
+  local list_buf, list_win = buf_window.create_side_pane(
+    scratch_win,
+    "left",
     "vimficiency://explore/" .. label .. "/recommendations",
     { filetype = "vimficiency" })
-  v.nvim_win_set_buf(list_win, list_buf)
-  v.nvim_win_set_width(list_win, 44)
-  util.configure_scratch_window(list_win)
 
   v.nvim_set_current_win(scratch_win)
   return {

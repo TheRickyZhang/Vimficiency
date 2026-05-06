@@ -96,6 +96,17 @@ function M.wait_for(label, pred)
   assert_true(ok, label .. "\nstatus=" .. M.status_text())
 end
 
+function M.current_view()
+  return require("vimficiency.explore.registry").current()
+end
+
+function M.set_scratch(lines, cursor)
+  local view = M.current_view()
+  vim.api.nvim_buf_set_lines(view.scratch.buf, 0, -1, false, lines)
+  if cursor then vim.api.nvim_win_set_cursor(view.scratch.win, cursor) end
+  return view
+end
+
 function M.open_flow(label, result, fn)
   local explore_mod = explore()
   local scratch_tab
@@ -123,15 +134,20 @@ function M.open_flow(label, result, fn)
   if not ok then error(err, 0) end
 end
 
+function M.result(name, overrides)
+  return base.result_scenario(name, overrides)
+end
+
+function M.open_scenario_flow(label, scenario_name, overrides, fn)
+  if type(overrides) == "function" then
+    fn = overrides
+    overrides = nil
+  end
+  return M.open_flow(label, M.result(scenario_name, overrides), fn)
+end
+
 function M.fake_result(overrides)
-  return base.fake_result(vim.tbl_extend("force", {
-    lines = { "abc" },
-    goal_lines = { "aBc" },
-    end_row = 0,
-    end_col = 1,
-    user_seq = "lsB<Esc>",
-    optimal_results = { { seq = "lsB<Esc>", cost = 1.0 } },
-  }, overrides or {}))
+  return M.result("basic_insert", overrides)
 end
 
 return M

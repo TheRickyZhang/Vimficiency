@@ -4,15 +4,7 @@ local explore_helpers = require("explore._helpers")
 test("explore.open creates a 2-pane tab with the header rendered as virt_lines on scratch", function()
   helpers.silence_notify(function()
     local explore = require("vimficiency.explore")
-    local result = helpers.fake_result({
-      lines = { "alpha", "beta", "gamma", "delta" },
-      goal_lines = { "alpha", "beta", "gamma", "delta" },
-      user_seq = "j",
-      optimal_results = {
-        { seq = "k", cost = 1.0 },
-        { seq = "gg", cost = 2.0 },
-      },
-    })
+    local result = explore_helpers.result("layout_multiline")
 
     local ok, err = pcall(function()
       helpers.new_buf(result.lines)

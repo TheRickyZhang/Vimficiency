@@ -13,6 +13,7 @@ local header_ns = v.nvim_create_namespace("vimfy_explore_header")
 M.header_ns = header_ns
 
 local MIN_COLUMN_WIDTH = 12
+local MAX_COLUMN_WIDTH = 32
 local COLUMN_GAP = 1
 
 ---@param active VF.Explore.Active
@@ -151,9 +152,9 @@ local function rows_max_display_width(rows)
   return w
 end
 
----Same width-compaction algorithm the old per-pane layout used: fit
----desired widths exactly when there's room, otherwise scale down
----proportionally with a min-width floor.
+---Fit desired widths exactly when there's room, otherwise scale down
+---proportionally with a min-width floor. Each column is capped at
+---MAX_COLUMN_WIDTH; over-cap content wraps (see `wrap_column_rows`).
 ---@param rows_per_column table[][][]
 ---@param available_width integer
 ---@return integer[]
@@ -162,7 +163,8 @@ local function compute_column_widths(rows_per_column, available_width)
   local desired = {}
   local desired_total = 0
   for i = 1, count do
-    desired[i] = math.max(MIN_COLUMN_WIDTH, rows_max_display_width(rows_per_column[i]))
+    local content = rows_max_display_width(rows_per_column[i])
+    desired[i] = math.max(MIN_COLUMN_WIDTH, math.min(MAX_COLUMN_WIDTH, content))
     desired_total = desired_total + desired[i]
   end
 
@@ -190,6 +192,25 @@ local function compute_column_widths(rows_per_column, available_width)
     end
   end
   return widths
+end
+
+---Replace any over-width row in `rows` with the multi-line wrap of its
+---chunks. In-bounds rows pass through unchanged.
+---@param rows table[][]
+---@param width integer
+---@return table[][]
+local function wrap_column_rows(rows, width)
+  local out = {}
+  for _, row in ipairs(rows) do
+    if chunks_util.display_width(row) <= width then
+      out[#out + 1] = row
+    else
+      for _, wrapped in ipairs(chunks_util.wrap(row, width)) do
+        out[#out + 1] = wrapped
+      end
+    end
+  end
+  return out
 end
 
 ---@param rows_per_column table[][][]
@@ -275,6 +296,9 @@ function M.render(active, continuation)
   local available = math.max(MIN_COLUMN_WIDTH * #columns,
     v.nvim_win_get_width(active.scratch.win))
   local widths = compute_column_widths(column_rows, available)
+  for i = 1, #column_rows do
+    column_rows[i] = wrap_column_rows(column_rows[i], widths[i])
+  end
   local body = combine_columns(column_rows, widths)
 
   local virt_lines = summary_block(active, continuation)

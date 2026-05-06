@@ -22,10 +22,7 @@ Test that our code is organized well: Expanding search so that we include 1 befo
 Think about good .agents skills to add along the way, and test to see if they work well.
 READ through ALL the explore code
 
-
-
-ASK BLAKE: how to distinguish between the user's config, and stored settings data (how the user uses)?
-
+Logic for consolidating insert mode text into a shorter reference / symbol.
 
 - Later:
 - Consider if the sort by: effort vs distance vs heuristic is efficient enough and a semantic improvement to be handled in lua (would need to process all results from explorer)

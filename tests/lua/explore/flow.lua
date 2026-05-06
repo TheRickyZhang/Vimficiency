@@ -105,15 +105,21 @@ local function move_to_first_edit_target(scratch_buf)
   end)
 end
 
+local function complete_delete_mid_word(scratch_buf)
+  local handlers = require("vimficiency.explore.handlers")
+  local view = explore_helpers.current_view()
+  feed("w")
+  explore_helpers.trigger_cursor_moved(scratch_buf)
+  explore_helpers.set_scratch({ "ab de" }, { 1, 3 })
+  view.on_key_buffer = "x"
+  handlers.on_buffer_changed()
+  assert_true(explore.status().is_completed, "precondition: x completed the session")
+  return handlers, view
+end
+
 test("explore flow: natural motion updates cursor and completes motion-only goal", function()
   helpers.silence_notify(function()
-    explore_helpers.open_flow("flow-motion", explore_helpers.fake_result({
-      lines = { "foo bar" },
-      goal_lines = { "foo bar" },
-      end_col = 4,
-      user_seq = "w",
-      optimal_results = { { seq = "w", cost = 1.0 } },
-    }), function(scratch_buf)
+    explore_helpers.open_scenario_flow("flow-motion", "motion_word", function(scratch_buf)
       local motion = first_recommendation_in_phase("Navigate")
       feed(motion.text)
       explore_helpers.trigger_cursor_moved(scratch_buf)
@@ -133,13 +139,7 @@ end)
 
 test("explore flow: f space follows live cursor state", function()
   helpers.silence_notify(function()
-    explore_helpers.open_flow("flow-f-space", explore_helpers.fake_result({
-      lines = { "abc def" },
-      goal_lines = { "abc def" },
-      end_col = 3,
-      user_seq = "f ",
-      optimal_results = { { seq = "f ", cost = 1.0 } },
-    }), function(scratch_buf)
+    explore_helpers.open_scenario_flow("flow-f-space", "find_space", function(scratch_buf)
       feed("f<Space>")
       explore_helpers.trigger_cursor_moved(scratch_buf)
 
@@ -157,7 +157,7 @@ end)
 
 test("explore flow: insert recommendation accepts matching scratch edit", function()
   helpers.silence_notify(function()
-    explore_helpers.open_flow("flow-insert-ok", explore_helpers.fake_result(), function(scratch_buf)
+    explore_helpers.open_scenario_flow("flow-insert-ok", "basic_insert", function(scratch_buf)
       move_to_first_edit_target(scratch_buf)
 
       -- Feed structural + typed + <Esc> as one unit. The fake_result's
@@ -190,13 +190,7 @@ end)
 
 test("explore flow: ciw advances through swallowed text-object key", function()
   helpers.silence_notify(function()
-    explore_helpers.open_flow("flow-ciw-insert-ok", explore_helpers.fake_result({
-      lines = { "n" },
-      goal_lines = { "m" },
-      end_col = 0,
-      user_seq = "sm<Esc>",
-      optimal_results = { { seq = "sm<Esc>", cost = 1.0 } },
-    }), function()
+    explore_helpers.open_scenario_flow("flow-ciw-insert-ok", "single_char_change", function()
       feed("ciwm<Esc>")
 
       explore_helpers.wait_for("ciw insert should reach the goal buffer", function()
@@ -213,18 +207,11 @@ end)
 
 test("explore flow: insert-enter advances from expected buffer, not raw keys", function()
   helpers.silence_notify(function()
-    explore_helpers.open_flow("flow-insert-buffer-gate", explore_helpers.fake_result({
-      lines = { "n" },
-      goal_lines = { "m" },
-      end_col = 0,
-      user_seq = "sm<Esc>",
-      optimal_results = { { seq = "sm<Esc>", cost = 1.0 } },
-    }), function(scratch_buf)
+    explore_helpers.open_scenario_flow("flow-insert-buffer-gate", "single_char_change", function()
       local handlers = require("vimficiency.explore.handlers")
-      local registry = require("vimficiency.explore.registry")
-      local view = registry.current()
+      local view = explore_helpers.current_view()
       view.on_key_buffer = "ci"
-      vim.api.nvim_buf_set_lines(scratch_buf, 0, -1, false, { "" })
+      explore_helpers.set_scratch({ "" })
 
       handlers.on_insert_enter()
 
@@ -238,18 +225,11 @@ end)
 
 test("explore flow: structural TextChanged during insert does not cancel typing phase", function()
   helpers.silence_notify(function()
-    explore_helpers.open_flow("flow-insert-textchanged", explore_helpers.fake_result({
-      lines = { "n" },
-      goal_lines = { "m" },
-      end_col = 0,
-      user_seq = "sm<Esc>",
-      optimal_results = { { seq = "sm<Esc>", cost = 1.0 } },
-    }), function(scratch_buf)
+    explore_helpers.open_scenario_flow("flow-insert-textchanged", "single_char_change", function()
       local handlers = require("vimficiency.explore.handlers")
-      local registry = require("vimficiency.explore.registry")
-      local view = registry.current()
+      local view = explore_helpers.current_view()
       view.on_key_buffer = "ci"
-      vim.api.nvim_buf_set_lines(scratch_buf, 0, -1, false, { "" })
+      explore_helpers.set_scratch({ "" })
 
       handlers.on_insert_enter()
       handlers.on_buffer_changed({ event = "TextChanged" })
@@ -265,16 +245,10 @@ end)
 test("explore flow: live insert prefix appears in explored header", function()
   helpers.silence_notify(function()
     local label = "flow-insert-live-header"
-    explore_helpers.open_flow(label, explore_helpers.fake_result({
-      lines = { "cout << i << endl;" },
-      goal_lines = { "cout << 2 * i << endl;" },
-      end_col = 12,
-      user_seq = "ciw2<Space>*<Space>i<Esc>",
-      optimal_results = { { seq = "ciw2<Space>*<Space>i<Esc>", cost = 1.0 } },
-    }), function(scratch_buf)
+    explore_helpers.open_scenario_flow(label, "insert_expression", function(scratch_buf)
       local header_render = require("vimficiency.explore.render.header")
       local insert_helpers = require("vimficiency.explore.insert_helpers")
-      local view = require("vimficiency.explore.registry").current()
+      local view = explore_helpers.current_view()
 
       view.state.phase = { kind = "Insert", edit_index = 0 }
       view.header_rows.explored = { "ciw" }
@@ -286,8 +260,7 @@ test("explore flow: live insert prefix appears in explored header", function()
         col_start = 0,
       }
       view.on_key_buffer = "ciw2<Space>"
-      vim.api.nvim_buf_set_lines(scratch_buf, 0, -1, false, { "2 * i" })
-      vim.api.nvim_win_set_cursor(view.scratch.win, { 1, 2 })
+      explore_helpers.set_scratch({ "2 * i" }, { 1, 2 })
 
       header_render.render(view, insert_helpers.current_continuation(view))
 
@@ -301,17 +274,11 @@ end)
 test("explore flow: insert mismatch suggests backspace repair", function()
   helpers.silence_notify(function()
     local label = "flow-insert-backspace-repair"
-    explore_helpers.open_flow(label, explore_helpers.fake_result({
-      lines = { "cout << i << endl;" },
-      goal_lines = { "cout << 2 * i << endl;" },
-      end_col = 12,
-      user_seq = "ciw2<Space>*<Space>i<Esc>",
-      optimal_results = { { seq = "ciw2<Space>*<Space>i<Esc>", cost = 1.0 } },
-    }), function(scratch_buf)
+    explore_helpers.open_scenario_flow(label, "insert_expression", function()
       local header_render = require("vimficiency.explore.render.header")
       local insert_helpers = require("vimficiency.explore.insert_helpers")
       local list_render = require("vimficiency.explore.render.list")
-      local view = require("vimficiency.explore.registry").current()
+      local view = explore_helpers.current_view()
 
       view.state.phase = { kind = "Insert", edit_index = 0 }
       view.pending = {
@@ -321,8 +288,7 @@ test("explore flow: insert mismatch suggests backspace repair", function()
         col_start = 0,
       }
       view.on_key_buffer = "ciw2x"
-      vim.api.nvim_buf_set_lines(scratch_buf, 0, -1, false, { "2x * i" })
-      vim.api.nvim_win_set_cursor(view.scratch.win, { 1, 2 })
+      explore_helpers.set_scratch({ "2x * i" }, { 1, 2 })
 
       local continuation = insert_helpers.current_continuation(view)
       header_render.render(view, continuation)
@@ -338,20 +304,14 @@ end)
 
 test("explore flow: normal deletion snapshot stays transform and suggests insertion", function()
   helpers.silence_notify(function()
-    explore_helpers.open_flow("flow-x-then-insert", explore_helpers.fake_result({
-      lines = { "n" },
-      goal_lines = { "m" },
-      end_col = 0,
-      user_seq = "sm<Esc>",
-      optimal_results = { { seq = "sm<Esc>", cost = 1.0 } },
-    }), function(scratch_buf)
+    explore_helpers.open_scenario_flow("flow-x-then-insert", "single_char_change", function()
       local view = widen_recommendations()
       first_recommendation_in_phase("Transform", function(rec)
         return rec.text == "x"
       end)
       local handlers = require("vimficiency.explore.handlers")
       view.on_key_buffer = "x"
-      vim.api.nvim_buf_set_lines(scratch_buf, 0, -1, false, { "" })
+      explore_helpers.set_scratch({ "" })
 
       handlers.on_buffer_changed()
 
@@ -368,25 +328,10 @@ end)
 
 test("explore flow: bad insert entry snaps back with plan warning", function()
   with_notify_capture(function(notices)
-    explore_helpers.open_flow("flow-bad-insert-entry", explore_helpers.fake_result({
-      lines = { "ab cde" },
-      goal_lines = { "ab de" },
-      end_col = 3,
-      user_seq = "wxa<Esc>",
-      optimal_results = { { seq = "wx", cost = 2.0 } },
-    }), function(scratch_buf)
-      local handlers = require("vimficiency.explore.handlers")
-      local view = require("vimficiency.explore.registry").current()
+    explore_helpers.open_scenario_flow("flow-bad-insert-entry", "delete_mid_word", function(scratch_buf)
+      local handlers, view = complete_delete_mid_word(scratch_buf)
 
-      feed("w")
-      explore_helpers.trigger_cursor_moved(scratch_buf)
-      vim.api.nvim_buf_set_lines(scratch_buf, 0, -1, false, { "ab de" })
-      vim.api.nvim_win_set_cursor(view.scratch.win, { 1, 3 })
-      view.on_key_buffer = "x"
-      handlers.on_buffer_changed()
-      assert_true(explore.status().is_completed, "precondition: x completed the session")
-
-      vim.api.nvim_win_set_cursor(view.scratch.win, { 1, 4 })
+      explore_helpers.set_scratch({ "ab de" }, { 1, 4 })
       view.on_key_buffer = "a"
       handlers.on_insert_enter()
 
@@ -413,23 +358,8 @@ end)
 
 test("explore flow: fed append key restores completed cursor state", function()
   with_notify_capture(function(notices)
-    explore_helpers.open_flow("flow-fed-append-restore", explore_helpers.fake_result({
-      lines = { "ab cde" },
-      goal_lines = { "ab de" },
-      end_col = 3,
-      user_seq = "wxa<Esc>",
-      optimal_results = { { seq = "wx", cost = 2.0 } },
-    }), function(scratch_buf)
-      local handlers = require("vimficiency.explore.handlers")
-      local view = require("vimficiency.explore.registry").current()
-
-      feed("w")
-      explore_helpers.trigger_cursor_moved(scratch_buf)
-      vim.api.nvim_buf_set_lines(scratch_buf, 0, -1, false, { "ab de" })
-      vim.api.nvim_win_set_cursor(view.scratch.win, { 1, 3 })
-      view.on_key_buffer = "x"
-      handlers.on_buffer_changed()
-      assert_true(explore.status().is_completed, "precondition: x completed the session")
+    explore_helpers.open_scenario_flow("flow-fed-append-restore", "delete_mid_word", function(scratch_buf)
+      local _, view = complete_delete_mid_word(scratch_buf)
 
       feed("a")
 
@@ -457,14 +387,8 @@ end)
 
 test("explore flow: fed motion delete then append restores delete cursor state", function()
   with_notify_capture(function(notices)
-    explore_helpers.open_flow("flow-fed-wx-a-restore", explore_helpers.fake_result({
-      lines = { "ab cde" },
-      goal_lines = { "ab de" },
-      end_col = 3,
-      user_seq = "wxa<Esc>",
-      optimal_results = { { seq = "wx", cost = 2.0 } },
-    }), function(scratch_buf)
-      local view = require("vimficiency.explore.registry").current()
+    explore_helpers.open_scenario_flow("flow-fed-wx-a-restore", "delete_mid_word", function(scratch_buf)
+      local view = explore_helpers.current_view()
 
       feed("w")
       explore_helpers.trigger_cursor_moved(scratch_buf)
@@ -506,24 +430,9 @@ end)
 
 test("explore flow: bad insert entry exits insert before cursor restore", function()
   with_notify_capture(function()
-    explore_helpers.open_flow("flow-bad-insert-mode-restore", explore_helpers.fake_result({
-      lines = { "ab cde" },
-      goal_lines = { "ab de" },
-      end_col = 3,
-      user_seq = "wxa<Esc>",
-      optimal_results = { { seq = "wx", cost = 2.0 } },
-    }), function(scratch_buf)
-      local handlers = require("vimficiency.explore.handlers")
+    explore_helpers.open_scenario_flow("flow-bad-insert-mode-restore", "delete_mid_word", function(scratch_buf)
       local state_mod = require("vimficiency.explore.state")
-      local view = require("vimficiency.explore.registry").current()
-
-      feed("w")
-      explore_helpers.trigger_cursor_moved(scratch_buf)
-      vim.api.nvim_buf_set_lines(scratch_buf, 0, -1, false, { "ab de" })
-      vim.api.nvim_win_set_cursor(view.scratch.win, { 1, 3 })
-      view.on_key_buffer = "x"
-      handlers.on_buffer_changed()
-      assert_true(explore.status().is_completed, "precondition: x completed the session")
+      local handlers, view = complete_delete_mid_word(scratch_buf)
 
       local real_cmd = vim.cmd
       local real_reload = state_mod.reload_buffer
@@ -552,7 +461,7 @@ test("explore flow: bad insert entry exits insert before cursor restore", functi
           return real_refresh(active)
         end },
       }, function()
-        vim.api.nvim_win_set_cursor(view.scratch.win, { 1, 4 })
+        explore_helpers.set_scratch({ "ab de" }, { 1, 4 })
         view.on_key_buffer = "a"
         handlers.on_insert_enter()
 
@@ -576,20 +485,12 @@ end)
 
 test("explore flow: overdelete snaps back with plan warning", function()
   with_notify_capture(function(notices)
-    explore_helpers.open_flow("flow-overdelete", explore_helpers.fake_result({
-      start_col = 2,
-      lines = { "abc", "def" },
-      goal_lines = { "ab", "def" },
-      end_col = 1,
-      user_seq = "x",
-      optimal_results = { { seq = "x", cost = 1.0 } },
-    }), function(scratch_buf)
+    explore_helpers.open_scenario_flow("flow-overdelete", "overdelete_multiline", function()
       local handlers = require("vimficiency.explore.handlers")
-      local view = require("vimficiency.explore.registry").current()
+      local view = explore_helpers.current_view()
       assert_eq(explore.status().phase.kind, "Transform")
 
-      vim.api.nvim_buf_set_lines(scratch_buf, 0, -1, false, { "def" })
-      vim.api.nvim_win_set_cursor(view.scratch.win, { 1, 0 })
+      explore_helpers.set_scratch({ "def" }, { 1, 0 })
       view.on_key_buffer = "dd"
       handlers.on_buffer_changed()
 
@@ -612,22 +513,16 @@ end)
 
 test("explore flow: operator-pending duplicate keys are reduced before snapshot", function()
   helpers.silence_notify(function()
-    explore_helpers.open_flow("flow-diw-dedup", explore_helpers.fake_result({
-      lines = { "word" },
-      goal_lines = { "" },
-      end_col = 0,
-      user_seq = "diw",
-      optimal_results = { { seq = "diw", cost = 1.0 } },
-    }), function(scratch_buf)
+    explore_helpers.open_scenario_flow("flow-diw-dedup", "delete_text_object", function()
       local handlers = require("vimficiency.explore.handlers")
-      local view = require("vimficiency.explore.registry").current()
+      local view = explore_helpers.current_view()
       view.on_key_events = {
         key_event("n", "d"),
         key_event("no", "i"),
         key_event("n", "i"),
         key_event("n", "w"),
       }
-      vim.api.nvim_buf_set_lines(scratch_buf, 0, -1, false, { "" })
+      explore_helpers.set_scratch({ "" })
 
       handlers.on_buffer_changed()
 
@@ -641,18 +536,11 @@ end)
 
 test("explore flow: live cursor move leaves transform range despite buffered keys", function()
   helpers.silence_notify(function()
-    explore_helpers.open_flow("flow-ciw-precursor", explore_helpers.fake_result({
-      start_col = 1,
-      lines = { "abc" },
-      goal_lines = { "aBc" },
-      end_col = 1,
-      user_seq = "rB",
-      optimal_results = { { seq = "rB", cost = 1.0 } },
-    }), function()
-      local view = require("vimficiency.explore.registry").current()
+    explore_helpers.open_scenario_flow("flow-ciw-precursor", "replace_char", function()
+      local view = explore_helpers.current_view()
       local handlers = require("vimficiency.explore.handlers")
       view.on_key_buffer = "ci"
-      vim.api.nvim_win_set_cursor(view.scratch.win, { 1, 0 })
+      explore_helpers.set_scratch({ "abc" }, { 1, 0 })
 
       handlers.on_cursor_moved()
 
@@ -666,7 +554,7 @@ end)
 
 test("explore flow: insert mismatch reverts scratch buffer", function()
   helpers.silence_notify(function()
-    explore_helpers.open_flow("flow-insert-bad", explore_helpers.fake_result(), function(scratch_buf)
+    explore_helpers.open_scenario_flow("flow-insert-bad", "basic_insert", function(scratch_buf)
       move_to_first_edit_target(scratch_buf)
 
       -- Feed structural + WRONG typed + <Esc>. Same shape as the matching

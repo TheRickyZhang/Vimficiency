@@ -27,13 +27,13 @@ M.RECOMMENDATION_SORT_MODES = RECOMMENDATION_SORT_MODES
 local VIEW_SETTINGS = {
   { key = "display_mode",         type = "enum", label = "Display mode",
     default = "above",            values = DISPLAY_MODES },
-  { key = "recommendation_sort",  type = "enum", label = "Recommendation sort",
+  { key = "recommendation_sort",  type = "enum", label = "Suggestion sort",
     default = "effort",           values = RECOMMENDATION_SORT_MODES },
-  { key = "recommendation_count", type = "int",  label = "Recommendation count",
+  { key = "recommendation_count", type = "int",  label = "Suggestion count",
     default = 5,                  min = 1, max = 10 },
   { key = "show_user_typed",      type = "bool", label = "Show user typed",
     default = true },
-  { key = "show_result_count",    type = "int",  label = "Optimal results shown",
+  { key = "show_result_count",    type = "int",  label = "Results shown",
     default = 1,                  min = 0,
     max = function(a) return #a.header_rows.optimal end },
 }

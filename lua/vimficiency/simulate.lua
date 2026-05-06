@@ -830,17 +830,27 @@ local function current_window_is_replay_window()
   return false
 end
 
+---@type VF.SettingsWidget.Handle?
+local active_settings_handle = nil
+
 local function user_open_settings()
+  if active_settings_handle and active_settings_handle.is_open() then
+    active_settings_handle.close()
+    return
+  end
   if #multi_sim.windows == 0 or not current_window_is_replay_window() then
     vim.notify("vimfy: play settings are only available from a replay window",
       vim.log.levels.WARN)
     return
   end
   -- Rebuild the grid after the modal closes. Settings are persisted by
-  -- the modal itself; relayout_grid reuses any cached precompute state
+  -- the widget itself; relayout_grid reuses any cached precompute state
   -- so only brand-new ranks trigger fresh probes.
-  require("vimficiency.play").open_settings({
-    on_close = function() M.relayout_grid() end,
+  active_settings_handle = require("vimficiency.play").open_settings({
+    on_close = function()
+      active_settings_handle = nil
+      M.relayout_grid()
+    end,
   })
 end
 
@@ -946,7 +956,7 @@ local REPLAY_KEYMAPS = util.with_standard_ui_keymaps({
   settings = {
     lhs = "gs",
     handler = user_open_settings,
-    desc = "Open play settings",
+    desc = "Toggle play settings",
   },
 })
 

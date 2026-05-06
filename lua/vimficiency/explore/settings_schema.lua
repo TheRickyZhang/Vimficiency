@@ -163,7 +163,7 @@ function M.build(a, refresh_ui)
           vim.log.levels.INFO)
       end },
     { kind = "separator" },
-    { kind = "hint", text = "Tab/S-Tab adjust · i input" },
+    { kind = "hint", text = "←/→ step · ⏎/i input" },
   })
 end
 

@@ -29,80 +29,84 @@ test("watch: refuses to start when config.watch is falsy", function()
 end)
 
 test("watch: creates (manual, auto) record with disarm handle", function()
-  h.new_buf({ "hello", "world" })
-  with_watch_cfg(WATCH_CFG, function()
-    session.watch("wrec")
-    local rec = session_store.get_active("wrec")
-    assert_true(rec ~= nil, "watch record should be active")
-    rec = assert(rec)
-    assert_eq(rec.start_kind, "manual")
-    assert_eq(rec.end_kind,   "auto")
-    assert_true(type(rec.watch_disarm) == "function",
-      "watch_disarm must be installed on the record")
-    session.close("wrec")
+  h.with_buf({ "hello", "world" }, function()
+    with_watch_cfg(WATCH_CFG, function()
+      session.watch("wrec")
+      local rec = session_store.get_active("wrec")
+      assert_true(rec ~= nil, "watch record should be active")
+      rec = assert(rec)
+      assert_eq(rec.start_kind, "manual")
+      assert_eq(rec.end_kind,   "auto")
+      assert_true(type(rec.watch_disarm) == "function",
+        "watch_disarm must be installed on the record")
+      session.close("wrec")
+    end)
   end)
 end)
 
 test("watch: close disarms the idle trigger", function()
-  h.new_buf({ "hello", "world" })
-  with_watch_cfg(WATCH_CFG, function()
-    session.watch("wclose")
-    local rec = session_store.get_active("wclose")
-    assert_true(rec ~= nil)
-    rec = assert(rec)
-    assert_eq(key_tracking.is_global_attached("watch_" .. rec.id), true,
-      "global subscriber must be live while watching")
+  h.with_buf({ "hello", "world" }, function()
+    with_watch_cfg(WATCH_CFG, function()
+      session.watch("wclose")
+      local rec = session_store.get_active("wclose")
+      assert_true(rec ~= nil)
+      rec = assert(rec)
+      assert_eq(key_tracking.is_global_attached("watch_" .. rec.id), true,
+        "global subscriber must be live while watching")
 
-    session.close("wclose")
-    assert_eq(key_tracking.is_global_attached("watch_" .. rec.id), false,
-      "close must detach the global subscriber")
+      session.close("wclose")
+      assert_eq(key_tracking.is_global_attached("watch_" .. rec.id), false,
+        "close must detach the global subscriber")
+    end)
   end)
 end)
 
 test("watch: overwrite disarms the prior trigger", function()
-  h.new_buf({ "hello", "world" })
-  with_watch_cfg(WATCH_CFG, function()
-    session.watch("wover")
-    local rec_a = session_store.get_active("wover")
-    assert_true(rec_a ~= nil)
-    rec_a = assert(rec_a)
-    local name_a = "watch_" .. rec_a.id
+  h.with_buf({ "hello", "world" }, function()
+    with_watch_cfg(WATCH_CFG, function()
+      session.watch("wover")
+      local rec_a = session_store.get_active("wover")
+      assert_true(rec_a ~= nil)
+      rec_a = assert(rec_a)
+      local name_a = "watch_" .. rec_a.id
 
-    session.watch("wover")  -- overwrite
-    local rec_b = session_store.get_active("wover")
-    assert_true(rec_b ~= nil)
-    rec_b = assert(rec_b)
-    assert_true(rec_a.id ~= rec_b.id,
-      "overwrite must allocate a new id")
+      session.watch("wover")  -- overwrite
+      local rec_b = session_store.get_active("wover")
+      assert_true(rec_b ~= nil)
+      rec_b = assert(rec_b)
+      assert_true(rec_a.id ~= rec_b.id,
+        "overwrite must allocate a new id")
 
-    assert_eq(key_tracking.is_global_attached(name_a), false,
-      "previous watch's global subscriber must be detached on overwrite")
-    assert_eq(key_tracking.is_global_attached("watch_" .. rec_b.id), true,
-      "new watch's global subscriber must be live")
-    session.close("wover")
+      assert_eq(key_tracking.is_global_attached(name_a), false,
+        "previous watch's global subscriber must be detached on overwrite")
+      assert_eq(key_tracking.is_global_attached("watch_" .. rec_b.id), true,
+        "new watch's global subscriber must be live")
+      session.close("wover")
+    end)
   end)
 end)
 
 test("watch: finish (manual :Vimfy finish) disarms the trigger", function()
   -- Call the store directly so the test stays Lua-only while still exercising
   -- the finish-session disarm hook.
-  h.new_buf({ "hello", "world" })
-  with_watch_cfg(WATCH_CFG, function()
-    session.watch("wfinish")
-    local rec = session_store.get_active("wfinish")
-    assert_true(rec ~= nil)
-    rec = assert(rec)
-    local name = "watch_" .. rec.id
+  h.with_buf({ "hello", "world" }, function()
+    with_watch_cfg(WATCH_CFG, function()
+      session.watch("wfinish")
+      local rec = session_store.get_active("wfinish")
+      assert_true(rec ~= nil)
+      rec = assert(rec)
+      local name = "watch_" .. rec.id
 
-    local fake_result = h.fake_result({ user_seq = "" })
-    assert_eq(
-      session_store.finish_session(rec.id, fake_result, "wfinish", nil, "watch_idle"),
-      true)
+      local fake_result = h.fake_result({ user_seq = "" })
+      assert_eq(
+        session_store.finish_session(rec.id, fake_result, "wfinish", nil, "watch_idle"),
+        true)
 
-    assert_eq(key_tracking.is_global_attached(name), false,
-      "finish_session must disarm the watch trigger")
-    assert_eq(fake_result.finish_reason, "watch_idle",
-      "finish_session must stamp the reason onto the result")
+      assert_eq(key_tracking.is_global_attached(name), false,
+        "finish_session must disarm the watch trigger")
+      assert_eq(fake_result.finish_reason, "watch_idle",
+        "finish_session must stamp the reason onto the result")
+    end)
   end)
 end)
 

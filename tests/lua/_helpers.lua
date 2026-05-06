@@ -14,6 +14,60 @@ function M.new_buf(lines)
   return buf
 end
 
+---@param lines string[]|nil
+---@param fn fun(buf: integer)
+function M.with_buf(lines, fn)
+  local buf = M.new_buf(lines)
+  local ok, err = pcall(fn, buf)
+  if vim.api.nvim_buf_is_valid(buf) then
+    pcall(vim.api.nvim_buf_delete, buf, { force = true })
+  end
+  if not ok then error(err, 2) end
+end
+
+---@return string tmp_dir
+function M.use_temp_data_home()
+  local tmp = vim.fn.tempname()
+  vim.fn.mkdir(tmp, "p")
+  vim.env.XDG_DATA_HOME = tmp
+  return tmp
+end
+
+---@param list table
+---@param value any
+---@return boolean
+function M.list_contains(list, value)
+  for _, item in ipairs(list) do
+    if item == value then return true end
+  end
+  return false
+end
+
+---@return string
+function M.project_root()
+  local this_file = debug.getinfo(1, "S").source:sub(2)
+  return vim.fn.fnamemodify(this_file, ":p:h:h:h")
+end
+
+---@param rel string
+---@return string
+function M.data_path(rel)
+  return M.project_root() .. "/data/VimficiencyFiles/" .. rel
+end
+
+local json_cache = {}
+
+---@param rel string
+---@return table
+function M.read_data_json(rel)
+  if json_cache[rel] then return vim.deepcopy(json_cache[rel]) end
+  local path = M.data_path(rel)
+  local text = table.concat(vim.fn.readfile(path), "\n")
+  local decoded = vim.json.decode(text)
+  json_cache[rel] = decoded
+  return vim.deepcopy(decoded)
+end
+
 --- Synchronously feed keys as if typed by the user. Modes:
 ---   t = "handle as typed" (not from a mapping).
 ---   x = "execute typed-ahead synchronously" — flushes autocmds before
@@ -83,6 +137,32 @@ function M.fake_result(overrides)
     for k, v in pairs(overrides) do r[k] = v end
   end
   return r
+end
+
+---@param user_seq string|nil
+---@param overrides table|nil
+---@return table
+function M.finished_result(user_seq, overrides)
+  local seq = user_seq or "abc"
+  return M.fake_result(vim.tbl_deep_extend("force", {
+    lines = { "hello" },
+    user_seq = seq,
+    optimal_results = { { seq = seq, cost = 1.0 } },
+    start_time = 0,
+    key_count = 0,
+    timestamp = 0,
+    finish_reason = "manual",
+  }, overrides or {}))
+end
+
+---@param name string
+---@param overrides table|nil
+---@return table
+function M.result_scenario(name, overrides)
+  local scenarios = M.read_data_json("lua_test_scenarios.json")
+  local scenario = scenarios[name]
+  if not scenario then error("unknown result scenario: " .. name, 2) end
+  return M.fake_result(vim.tbl_deep_extend("force", scenario, overrides or {}))
 end
 
 --- Run `fn` with `vim.notify` and `util.show_output` stubbed to no-op.

@@ -105,12 +105,7 @@ end
 -- The fixture buffer is shared by every case: realistic enough to exercise
 -- word/operator motions but small enough that the test stays fast.
 local function fresh_result()
-  return explore_helpers.fake_result({
-    lines = { "int n = 10;" },
-    goal_lines = { "int n = 10;" },
-    user_seq = "x",
-    optimal_results = { { seq = "x", cost = 1.0 } },
-  })
+  return explore_helpers.result("invariant_motion")
 end
 
 local function run_case(label, seq)

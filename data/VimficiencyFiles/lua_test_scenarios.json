@@ -1,0 +1,115 @@
+{
+  "basic_insert": {
+    "lines": ["abc"],
+    "goal_lines": ["aBc"],
+    "end_row": 0,
+    "end_col": 1,
+    "user_seq": "lsB<Esc>",
+    "optimal_results": [
+      { "seq": "lsB<Esc>", "cost": 1.0 }
+    ]
+  },
+  "single_char_change": {
+    "lines": ["n"],
+    "goal_lines": ["m"],
+    "end_row": 0,
+    "end_col": 0,
+    "user_seq": "sm<Esc>",
+    "optimal_results": [
+      { "seq": "sm<Esc>", "cost": 1.0 }
+    ]
+  },
+  "insert_expression": {
+    "lines": ["cout << i << endl;"],
+    "goal_lines": ["cout << 2 * i << endl;"],
+    "end_row": 0,
+    "end_col": 12,
+    "user_seq": "ciw2<Space>*<Space>i<Esc>",
+    "optimal_results": [
+      { "seq": "ciw2<Space>*<Space>i<Esc>", "cost": 1.0 }
+    ]
+  },
+  "delete_mid_word": {
+    "lines": ["ab cde"],
+    "goal_lines": ["ab de"],
+    "end_row": 0,
+    "end_col": 3,
+    "user_seq": "wxa<Esc>",
+    "optimal_results": [
+      { "seq": "wx", "cost": 2.0 }
+    ]
+  },
+  "motion_word": {
+    "lines": ["foo bar"],
+    "goal_lines": ["foo bar"],
+    "end_row": 0,
+    "end_col": 4,
+    "user_seq": "w",
+    "optimal_results": [
+      { "seq": "w", "cost": 1.0 }
+    ]
+  },
+  "find_space": {
+    "lines": ["abc def"],
+    "goal_lines": ["abc def"],
+    "end_row": 0,
+    "end_col": 3,
+    "user_seq": "f ",
+    "optimal_results": [
+      { "seq": "f ", "cost": 1.0 }
+    ]
+  },
+  "overdelete_multiline": {
+    "start_col": 2,
+    "lines": ["abc", "def"],
+    "goal_lines": ["ab", "def"],
+    "end_row": 0,
+    "end_col": 1,
+    "user_seq": "x",
+    "optimal_results": [
+      { "seq": "x", "cost": 1.0 }
+    ]
+  },
+  "delete_text_object": {
+    "lines": ["word"],
+    "goal_lines": [""],
+    "end_row": 0,
+    "end_col": 0,
+    "user_seq": "diw",
+    "optimal_results": [
+      { "seq": "diw", "cost": 1.0 }
+    ]
+  },
+  "replace_char": {
+    "start_col": 1,
+    "lines": ["abc"],
+    "goal_lines": ["aBc"],
+    "end_row": 0,
+    "end_col": 1,
+    "user_seq": "rB",
+    "optimal_results": [
+      { "seq": "rB", "cost": 1.0 }
+    ]
+  },
+  "layout_multiline": {
+    "lines": ["alpha", "beta", "gamma", "delta"],
+    "goal_lines": ["alpha", "beta", "gamma", "delta"],
+    "end_row": 0,
+    "end_col": 0,
+    "user_seq": "j",
+    "optimal_results": [
+      { "seq": "k", "cost": 1.0 },
+      { "seq": "gg", "cost": 2.0 }
+    ]
+  },
+  "invariant_motion": {
+    "lines": ["int n = 10;"],
+    "goal_lines": ["int n = 10;"],
+    "end_row": 0,
+    "end_col": 0,
+    "user_seq": "x",
+    "optimal_results": [
+      { "seq": "x", "cost": 1.0 }
+    ]
+  }
+}

@@ -67,8 +67,11 @@ function M.set_setting(key, value)
   update_setting(key, value)
 end
 
----Build the settings schema and open the generic modal.
+---Build the settings schema and open the shared widget. Returns the
+---widget handle so callers can implement `gs` toggle (close if the
+---modal is already open).
 ---@param opts? { on_change?: fun(), on_close?: fun() }
+---@return VF.SettingsWidget.Handle?
 function M.open_settings(opts)
   opts = opts or {}
   -- Grid is a single row of up to 4 panes. When the user pane is
@@ -78,7 +81,7 @@ function M.open_settings(opts)
 
   local schema = {
     { kind = "setting",
-      label = "Include user sequence",
+      label = "Show user pane",
       value_kind = "bool",
       get = function() return settings_store().include_user_sequence end,
       set = function(v) update_setting("include_user_sequence", v) end },
@@ -97,7 +100,7 @@ function M.open_settings(opts)
           vim.log.levels.INFO)
       end },
   }
-  settings_ui.open(schema, opts.on_change, {
+  return settings_ui.open(schema, opts.on_change, {
     title = "Play Settings",
     on_close = opts.on_close,
   })

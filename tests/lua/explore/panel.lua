@@ -1,14 +1,7 @@
--- Tests for the explore settings side panel. The panel module is
--- self-contained: it takes a fake "view" with just a `scratch.win`
--- field, plus a schema and on_change callback, and manages its own
--- buffer + keymaps.
---
--- We exercise it directly (rather than driving through `gs` on a real
--- explore session) because:
---   1. The panel module is the one with novel behavior; the gs wiring
---      is a one-line keymap.
---   2. A real explore session needs FFI + a captured analyze result;
---      that infrastructure is exercised by explore/flow.lua.
+-- Tests for the explore settings side panel wrapper. Shared settings
+-- widget behavior lives in tests/lua/settings_window.lua; this file
+-- checks that the explore wrapper opens, refreshes, reuses, and closes
+-- its side-pane state.
 local helpers = require("_helpers")
 local panel = require("vimficiency.explore.render.panel")
 
@@ -84,7 +77,7 @@ test("explore panel: open creates buffer and renders all setting rows", function
   assert_match(lines[5], "Reset")
 
   -- Initial selection lands on the first selectable row.
-  assert_eq(panel_view.selection, 1)
+  assert_eq(panel_view.handle.selection(), 1)
   _ = state
 
   teardown(view)

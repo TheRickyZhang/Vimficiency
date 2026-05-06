@@ -36,6 +36,8 @@ local SCRATCH_WINDOW_DEFAULTS = {
   winbar         = "",
 }
 
+M.DEFAULT_SIDE_PANE_WIDTH = 40
+
 ---Apply the shared scratch-window chrome, then any per-site overrides.
 ---@param win integer
 ---@param overrides table<string, any>?
@@ -44,6 +46,18 @@ function M.configure_scratch_window(win, overrides)
   for name, value in pairs(merged) do
     v.nvim_set_option_value(name, value, { win = win })
   end
+end
+
+---Apply shared chrome for fixed left/right side panes.
+---@param win integer
+---@param overrides table<string, any>?
+function M.configure_side_pane(win, overrides)
+  overrides = vim.deepcopy(overrides or {})
+  local width = overrides.width or M.DEFAULT_SIDE_PANE_WIDTH
+  overrides.width = nil
+  if overrides.winfixwidth == nil then overrides.winfixwidth = true end
+  v.nvim_win_set_width(win, width)
+  M.configure_scratch_window(win, overrides)
 end
 
 --------------------------------------------------------------------------------

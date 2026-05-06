@@ -8,38 +8,16 @@ local h = require("_helpers")
 local session = require("vimficiency.session")
 local session_store = require("vimficiency.session.store")
 
---- Use a temp dir for the saved/ directory so tests don't touch the user's
---- real `stdpath("data")/vimficiency/saved`. `stdpath("data")` respects
---- `$XDG_DATA_HOME`, so overriding that for the test run is sufficient.
----@return string tmp_dir
-local function use_temp_save_dir()
-  local tmp = vim.fn.tempname()
-  vim.fn.mkdir(tmp, "p")
-  vim.env.XDG_DATA_HOME = tmp
-  return tmp
-end
-
 local function remove_alias(alias)
   session_store.remove(assert(session_store.get_id(alias)))
 end
 
---- Construct a minimal VF.Session.Result for register_fetched_result.
----@param user_seq string
----@return table
 local function fake_result(user_seq)
-  return {
-    lines = { "hello" },
-    start_row = 0, start_col = 0, end_row = 0, end_col = 0,
-    user_seq = user_seq or "abc",
-    user_cost = 1.0,
-    optimal_results = { { seq = user_seq or "abc", cost = 1.0 } },
-    start_time = 0, key_count = 0, timestamp = 0,
-    finish_reason = "manual",
-  }
+  return h.finished_result(user_seq)
 end
 
 test("workspace/storage: save copies to disk without touching memory", function()
-  use_temp_save_dir()
+  h.use_temp_data_home()
   h.silence_notify(function()
     local id, err = session_store.register_fetched_result("aaa", fake_result("user-seq"))
     assert_true(id, "seed failed: " .. tostring(err))
@@ -51,17 +29,15 @@ test("workspace/storage: save copies to disk without touching memory", function(
       "save must not remove the in-memory alias")
 
     -- Disk has it.
-    local saved_list = session.list_saved()
-    local found = false
-    for _, n in ipairs(saved_list) do if n == "aaa" then found = true end end
-    assert_true(found, "disk copy missing after save")
+    assert_true(h.list_contains(session.list_saved(), "aaa"),
+      "disk copy missing after save")
 
     remove_alias("aaa")
   end)
 end)
 
 test("workspace/storage: store moves from memory to disk", function()
-  use_temp_save_dir()
+  h.use_temp_data_home()
   h.silence_notify(function()
     local id = session_store.register_fetched_result("bbb", fake_result("user-seq"))
     assert_true(id, "seed failed")
@@ -73,15 +49,13 @@ test("workspace/storage: store moves from memory to disk", function()
       "store must remove the in-memory alias")
 
     -- Disk has it.
-    local saved_list = session.list_saved()
-    local found = false
-    for _, n in ipairs(saved_list) do if n == "bbb" then found = true end end
-    assert_true(found, "disk copy missing after store")
+    assert_true(h.list_contains(session.list_saved(), "bbb"),
+      "disk copy missing after store")
   end)
 end)
 
 test("workspace/storage: fetch copies from disk to memory, disk preserved", function()
-  use_temp_save_dir()
+  h.use_temp_data_home()
   h.silence_notify(function()
     -- Seed a session, save it, close the in-memory copy, then fetch back.
     local id = session_store.register_fetched_result("ccc", fake_result("yank"))
@@ -100,17 +74,15 @@ test("workspace/storage: fetch copies from disk to memory, disk preserved", func
     assert_eq(result.user_seq, "yank", "fetched result round-tripped")
 
     -- Disk copy untouched.
-    local saved_list = session.list_saved()
-    local found = false
-    for _, n in ipairs(saved_list) do if n == "ccc" then found = true end end
-    assert_true(found, "fetch must not delete the disk copy")
+    assert_true(h.list_contains(session.list_saved(), "ccc"),
+      "fetch must not delete the disk copy")
 
     remove_alias("ccc")
   end)
 end)
 
 test("workspace/storage: fetch refuses to overwrite an in-memory alias", function()
-  use_temp_save_dir()
+  h.use_temp_data_home()
   h.silence_notify(function()
     -- Seed both memory and disk under the same name.
     local id = session_store.register_fetched_result("ddd", fake_result("mem"))
@@ -131,7 +103,7 @@ test("workspace/storage: fetch refuses to overwrite an in-memory alias", functio
 end)
 
 test("workspace/storage: save overwrite-warns but does not refuse", function()
-  use_temp_save_dir()
+  h.use_temp_data_home()
   h.silence_notify(function()
     -- First save.
     local id1 = session_store.register_fetched_result("eee", fake_result("v1"))
@@ -157,7 +129,7 @@ test("workspace/storage: save overwrite-warns but does not refuse", function()
 end)
 
 test("workspace/storage: save preserves capture_debug extras", function()
-  local tmp = use_temp_save_dir()
+  local tmp = h.use_temp_data_home()
   h.silence_notify(function()
     local seeded = fake_result("debug-seq")
     seeded.capture_debug = {

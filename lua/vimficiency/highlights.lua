@@ -7,9 +7,10 @@
 -- computed in UI-local helpers that layer on top (see explore/highlights.lua
 -- for the alpha-blended rank palette).
 --
--- Every group is installed with `default = true`, so users can override any
--- of them with their own `:highlight` commands without us clobbering them
--- on the next refresh.
+-- Public semantic groups are installed with `default = true`, so users can
+-- override them with their own `:highlight` commands without us clobbering
+-- them on the next refresh. Internal masking groups may update directly
+-- when they need to track the active colorscheme.
 --
 -- Callers:
 --   - require this module at module scope to pick up the names.
@@ -40,6 +41,7 @@ M.REPLAY_ACTIVE        = "VimficiencyReplayActive"        -- active window's lab
 
 -- Shared settings modal
 M.SETTINGS_ACTION_ACTIVE = "VimficiencySettingsActionActive" -- selected action row
+M.SETTINGS_CURSOR_HIDDEN = "VimficiencySettingsCursorHidden" -- selected row only; no cursor cell
 
 -- =============================================================================
 -- Install
@@ -61,6 +63,11 @@ function M.refresh()
   v.nvim_set_hl(0, M.REPLAY_ACTIVE,        { link = "Title",      default = true })
 
   v.nvim_set_hl(0, M.SETTINGS_ACTION_ACTIVE, { bold = true, default = true })
+  -- `blend = 100` makes the cursor cell fully transparent. Combined with the
+  -- guicursor swap installed by `settings_window.hide_cursor`, the terminal
+  -- cursor disappears in modern TUIs; in older ones the cursor remains the
+  -- terminal default but the row-selection extmark still indicates state.
+  v.nvim_set_hl(0, M.SETTINGS_CURSOR_HIDDEN, { blend = 100, default = true })
 end
 
 M.refresh()

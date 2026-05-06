@@ -73,7 +73,7 @@ function M.install(scratch_buf, list_buf, handlers)
       settings = {
         lhs = "gs",
         handler = handlers.open_settings,
-        desc = "Open explore settings",
+        desc = "Toggle explore settings",
       },
     })
   util.set_buffer_keymaps(scratch_buf, scratch_resolved)
