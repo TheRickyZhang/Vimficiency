@@ -1,6 +1,6 @@
 # vimficiency
 
-![demo](https://github.com/user-attachments/assets/103863e8-b8a0-4e67-ac5d-5b0c4ff5a342)
+https://github.com/user-attachments/assets/103863e8-b8a0-4e67-ac5d-5b0c4ff5a342
 
 One of the biggest challenges with Vim is knowing which of the many ways to perform an edit is the most efficient — or what all the applicable motions even are.
 

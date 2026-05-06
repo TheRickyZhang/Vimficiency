@@ -4,18 +4,20 @@ local M = {}
 
 ---@class VF.Explore.AutocmdHandlers
 ---@field on_cursor_moved fun()
----@field on_buffer_changed fun()
+---@field on_buffer_changed fun(event?: table)
 ---@field on_insert_enter fun()
 ---@field on_insert_text_changed fun()
+---@field on_scroll fun()
 ---@field on_winclosed fun(event: table)
 
----Register the five autocmds the explore view depends on for the given
+---Register the autocmds the explore view depends on for the given
 ---scratch buffer. Returns the WinClosed autocmd id; the rest are
----buffer-scoped and die with the buffer.
+---buffer- or window-scoped and die with the buffer.
+---@param view VF.Explore.Active
 ---@param scratch_buf integer
 ---@param handlers VF.Explore.AutocmdHandlers
 ---@return integer winclosed_autocmd_id
-function M.install(scratch_buf, handlers)
+function M.install(view, scratch_buf, handlers)
   v.nvim_create_autocmd("CursorMoved", {
     buffer = scratch_buf,
     callback = handlers.on_cursor_moved,
@@ -36,6 +38,15 @@ function M.install(scratch_buf, handlers)
     buffer = scratch_buf,
     callback = handlers.on_insert_text_changed,
     desc = "vimfy explore: live-refresh insert remaining",
+  })
+  -- WinScrolled / WinResized fire for any window in the tab; filter to
+  -- the scratch window so the header only re-pins when relevant.
+  v.nvim_create_autocmd({ "WinScrolled", "WinResized", "VimResized" }, {
+    callback = function()
+      if not v.nvim_win_is_valid(view.scratch.win) then return end
+      handlers.on_scroll()
+    end,
+    desc = "vimfy explore: re-pin header virt_lines on scroll/resize",
   })
   -- Pattern-based (not buffer-scoped) so it survives the scratch buffer being wiped.
   return v.nvim_create_autocmd("WinClosed", {

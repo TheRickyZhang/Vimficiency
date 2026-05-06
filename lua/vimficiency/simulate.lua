@@ -3,6 +3,7 @@ local v       = vim.api
 local cmd     = vim.cmd
 local max     = math.max
 local min     = math.min
+local chunks_util = require("vimficiency.chunks")
 local ffi_lib = require("vimficiency.ffi")
 local sequence_display = require("vimficiency.sequence_display")
 local util    = require("vimficiency.util")
@@ -298,66 +299,7 @@ end
 ---@type fun(): integer
 local max_total_steps
 
---- Wrap highlighted chunks to the available window width.
----@param chunks table[]
----@param width integer
----@return table[]
-local function wrap_chunks(chunks, width)
-  width = max(1, width)
-  ---@type table[]
-  local lines = {}
-  ---@type table[]
-  local line = {}
-  local line_width = 0
-
-  local function push_line()
-    lines[#lines + 1] = line
-    line = {}
-    line_width = 0
-  end
-
-  for _, chunk in ipairs(chunks) do
-    local text = chunk[1]
-    local hl = chunk[2]
-    local total_chars = vim.fn.strchars(text)
-    local start = 0
-
-    while start < total_chars do
-      if line_width >= width then
-        push_line()
-      end
-
-      local piece_chars = 0
-      local piece = ""
-      while start + piece_chars < total_chars do
-        local next_piece = vim.fn.strcharpart(text, start, piece_chars + 1)
-        local next_width = vim.fn.strdisplaywidth(next_piece)
-        if piece_chars > 0 and line_width + next_width > width then
-          break
-        end
-        piece_chars = piece_chars + 1
-        piece = next_piece
-        if line_width + next_width >= width then
-          break
-        end
-      end
-
-      if piece_chars == 0 then
-        piece_chars = 1
-        piece = vim.fn.strcharpart(text, start, 1)
-      end
-
-      line[#line + 1] = { piece, hl }
-      line_width = line_width + vim.fn.strdisplaywidth(piece)
-      start = start + piece_chars
-    end
-  end
-
-  if #line > 0 or #lines == 0 then
-    push_line()
-  end
-  return lines
-end
+local wrap_chunks = chunks_util.wrap
 
 --- Label shown as the pane's header tag.
 ---@param entry VF.Replay.Window

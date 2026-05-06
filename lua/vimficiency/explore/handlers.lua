@@ -239,26 +239,20 @@ end
 ---@param win integer
 ---@return boolean
 local function owns_window(view, layout, win)
-  if win == view.scratch.win or win == layout.list_win or win == view.header.summary.win then
-    return true
-  end
-  for _, pane in ipairs(view.header.windows) do
-    if pane.win == win then return true end
-  end
-  return false
+  return win == view.scratch.win or win == layout.list_win
 end
 
 ---@param view VF.Explore.Active
 ---@param layout VF.Explore.Layout
 ---@return integer
 function M.install(view, layout)
-  return autocmds.install(layout.scratch_buf, {
+  return autocmds.install(view, layout.scratch_buf, {
     on_cursor_moved        = M.on_cursor_moved,
     on_buffer_changed      = M.on_buffer_changed,
     on_insert_enter        = M.on_insert_enter,
     on_insert_text_changed = M.on_insert_text_changed,
+    on_scroll              = function() header_render.reattach(view) end,
     on_winclosed           = function(args)
-      if view.header.rebuilding then return end
       local win = tonumber(args.match)
       if win and owns_window(view, layout, win) then lifecycle.destroy(view) end
     end,

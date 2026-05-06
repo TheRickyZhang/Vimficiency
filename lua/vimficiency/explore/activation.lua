@@ -14,8 +14,7 @@ local v = vim.api
 function M.attach(view, layout, capture_key, install_autocmds)
   registry.set(view)
   key_capture.install(capture_key)
-  keymaps.install(layout.columns_buf, layout.scratch_buf, layout.list_buf, view.header_handlers)
-  keymaps.install_header(layout.summary_buf, view.header_handlers)
+  keymaps.install(layout.scratch_buf, layout.list_buf, view.header_handlers)
   view.winclosed_autocmd = install_autocmds(view, layout)
 end
 

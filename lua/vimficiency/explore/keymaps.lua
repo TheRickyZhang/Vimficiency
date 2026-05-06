@@ -37,28 +37,7 @@ local LIST_SPEC = {
   { lhs = "q", handler = "cancel", desc = "Close explore session", nowait = true },
 }
 
----@type VF.Explore.KeymapSpec[]
-local HEADER_SPEC = {
-  { lhs = "q", handler = "cancel", desc = "Close explore session", nowait = true },
-}
-
-local resolve
-
-local function header_keymaps(handlers)
-  return util.with_standard_ui_keymaps(
-    resolve(HEADER_SPEC, handlers),
-    {
-      title = "Explore — Header Keys",
-      docs = true,
-      settings = {
-        lhs = "gs",
-        handler = handlers.open_settings,
-        desc = "Open explore settings",
-      },
-    })
-end
-
-resolve = function(spec, handlers)
+local function resolve(spec, handlers)
   local out = {}
   for _, entry in ipairs(spec) do
     local fn = handlers[entry.handler]
@@ -82,11 +61,10 @@ end
 ---etc.). This module only does the lhs → handler binding.
 ---
 ---Standard summary/settings/docs keys are auto-injected per pane.
----@param header_buf integer
 ---@param scratch_buf integer
 ---@param list_buf integer
 ---@param handlers table<string, function>
-function M.install(header_buf, scratch_buf, list_buf, handlers)
+function M.install(scratch_buf, list_buf, handlers)
   local scratch_resolved = util.with_standard_ui_keymaps(
     resolve(SCRATCH_SPEC, handlers),
     {
@@ -98,16 +76,8 @@ function M.install(header_buf, scratch_buf, list_buf, handlers)
         desc = "Open explore settings",
       },
     })
-  local header_resolved = header_keymaps(handlers)
   util.set_buffer_keymaps(scratch_buf, scratch_resolved)
-  util.set_buffer_keymaps(header_buf, header_resolved)
   util.set_buffer_keymaps(list_buf, resolve(LIST_SPEC, handlers))
-end
-
----@param header_buf integer
----@param handlers table<string, function>
-function M.install_header(header_buf, handlers)
-  util.set_buffer_keymaps(header_buf, header_keymaps(handlers))
 end
 
 return M

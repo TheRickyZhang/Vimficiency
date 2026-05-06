@@ -4,15 +4,6 @@ local settings = require("vimficiency.explore.settings")
 local M = {}
 local v = vim.api
 
----@class VF.Explore.Window
----@field buf integer
----@field win integer
-
----@class VF.Explore.Header
----@field summary VF.Explore.Window
----@field windows VF.Explore.Window[]
----@field rebuilding boolean
-
 ---@class VF.Explore.Scratch
 ---@field buf integer
 ---@field win integer
@@ -29,7 +20,6 @@ local v = vim.api
 ---@field label string
 ---@field result VF.Explore.OpenResult
 ---@field view_id integer
----@field header VF.Explore.Header
 ---@field scratch VF.Explore.Scratch
 ---@field list_buf integer
 ---@field state VF.Explore.State
@@ -56,11 +46,6 @@ function M.create(label, result, view_id, layout, header_handlers)
     label = label,
     result = result,
     view_id = view_id,
-    header = {
-      summary = { buf = layout.summary_buf, win = layout.summary_win },
-      windows = { { buf = layout.columns_buf, win = layout.columns_win } },
-      rebuilding = false,
-    },
     scratch = { buf = layout.scratch_buf, win = layout.scratch_win, tab = layout.scratch_tab },
     list_buf = layout.list_buf,
     state = {

@@ -4,8 +4,6 @@ local buf_window = require("vimficiency.explore.buf_window")
 
 local M = {}
 
--- Run `cmd` (a window-split command) and return the new window — i.e.,
--- the one in the current tab that wasn't there before.
 local function split_and_capture(cmd)
   local tab = v.nvim_get_current_tabpage()
   local before = {}
@@ -23,15 +21,12 @@ end
 ---@field scratch_tab integer
 ---@field list_buf integer
 ---@field list_win integer
----@field columns_buf integer
----@field columns_win integer
----@field summary_buf integer
----@field summary_win integer
 
----Build the explore tab's three-pane layout (scratch + list panel +
----summary/columns header). Inherits buffer/window options from the
----originating source so the scratch surface matches the user's
----workspace (filetype, indent, etc.).
+---Build the explore tab's two-pane layout (scratch + list panel).
+---Header is rendered as virt_lines extmarks on the scratch buffer
+---(see render/header.lua), so no separate header window is needed.
+---Scratch inherits buffer/window options from the originating source so
+---it matches the user's workspace (filetype, indent, etc.).
 ---@param label string
 ---@param initial_lines string[]
 ---@param source_buf integer
@@ -60,7 +55,6 @@ function M.build(label, initial_lines, source_buf, source_win)
   buf_window.copy_buffer_options(source_buf, scratch_buf)
   buf_window.copy_window_options(source_win, scratch_win)
 
-  -- List panel on the LEFT.
   local list_win = split_and_capture("topleft vsplit")
   local list_buf = buf_window.create_scratch_buffer(
     "vimficiency://explore/" .. label .. "/recommendations",
@@ -69,24 +63,10 @@ function M.build(label, initial_lines, source_buf, source_win)
   v.nvim_win_set_width(list_win, 44)
   util.configure_scratch_window(list_win)
 
-  -- Header columns above the scratch.
-  v.nvim_set_current_win(scratch_win)
-  local columns_win = split_and_capture("aboveleft split")
-  local columns_buf = buf_window.create_scratch_buffer(nil, { filetype = "vimficiency" })
-  v.nvim_win_set_buf(columns_win, columns_buf)
-
-  -- Summary header above the columns.
-  v.nvim_set_current_win(columns_win)
-  local summary_win = split_and_capture("aboveleft split")
-  local summary_buf = buf_window.create_scratch_buffer(nil, { filetype = "vimficiency" })
-  v.nvim_win_set_buf(summary_win, summary_buf)
-
   v.nvim_set_current_win(scratch_win)
   return {
     scratch_buf = scratch_buf, scratch_win = scratch_win, scratch_tab = scratch_tab,
     list_buf    = list_buf,    list_win    = list_win,
-    columns_buf = columns_buf, columns_win = columns_win,
-    summary_buf = summary_buf, summary_win = summary_win,
   }
 end
 

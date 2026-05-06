@@ -41,14 +41,10 @@ local function list_has_warning(view)
   return table.concat(list_lines, "\n"):find("EXPLORE STATE WARNING", 1, true) ~= nil
 end
 
-local function header_lines_for_title(label, title)
-  local prefix = "vimficiency://explore/" .. label .. "/header/"
-  local headers = explore_helpers.find_windows_by_prefix(prefix)
-  for _, header in ipairs(headers) do
-    local lines = vim.api.nvim_buf_get_lines(header.buf, 0, -1, false)
-    if lines[1] == title then return lines end
-  end
-  error("missing header column " .. title, 2)
+local function header_lines_for_title(scratch_buf, title)
+  local lines = explore_helpers.header_column_lines(scratch_buf, title)
+  if not lines then error("missing header column " .. title, 2) end
+  return lines
 end
 
 local function with_notify_capture(fn)
@@ -295,7 +291,7 @@ test("explore flow: live insert prefix appears in explored header", function()
 
       header_render.render(view, insert_helpers.current_continuation(view))
 
-      local lines = header_lines_for_title(label, "Explored")
+      local lines = header_lines_for_title(scratch_buf, "Explored")
       assert_eq(lines[3], "ciw")
       assert_eq(lines[4], "ciw 2␣")
     end)
