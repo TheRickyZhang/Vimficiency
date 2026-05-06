@@ -1,5 +1,7 @@
 #include "LuaExports/Common.h"
 
+#include "Interpreter/SequenceParser.h"
+
 #include <algorithm>
 #include <cstdlib>
 
@@ -13,6 +15,17 @@ bool isCleanBoundaryMode(string_view mode) {
   if (mode.empty()) return false;
   if (mode.substr(0, min<size_t>(2, mode.size())) == "no") return false;
   return mode.front() == 'n';
+}
+
+string modePrefix(string_view mode) {
+  return string(mode.substr(0, min<size_t>(2, mode.size())));
+}
+
+bool endsWithOperatorEdit(const string& sequence) {
+  auto parsed = parseSequence(sequence);
+  if (!parsed || parsed->empty()) return false;
+  const TokenKind kind = parsed->back().kind;
+  return kind == TokenKind::Change || kind == TokenKind::Delete;
 }
 
 pair<int, int> findDiffRange(const Lines& a, const Lines& b) {
@@ -45,9 +58,16 @@ Result<string> buildKeySequence(string_view encoded) {
       if (i + 1 < events.size()) {
         const auto& next = events[i + 1];
         const bool sameKey = curr.keyTyped == next.keyTyped;
-        const string currMode = curr.mode.substr(0, min<size_t>(2, curr.mode.size()));
-        const string nextMode = next.mode.substr(0, min<size_t>(2, next.mode.size()));
-        if (sameKey && currMode == "no" && nextMode != "no") {
+        const string currMode = modePrefix(curr.mode);
+        const string nextMode = modePrefix(next.mode);
+        if (sameKey && currMode == "no" && nextMode == "no" &&
+            endsWithOperatorEdit(out + curr.keyTyped)) {
+          out += curr.keyTyped;
+          i += 2;
+          dominated = true;
+        } else if (sameKey && currMode == "no" && nextMode != "no" &&
+                   i + 2 < events.size() &&
+                   endsWithOperatorEdit(out + curr.keyTyped + events[i + 2].keyTyped)) {
           out += curr.keyTyped;
           i += 2;
           dominated = true;

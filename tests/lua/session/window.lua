@@ -4,6 +4,7 @@
 -- a different window, we should proceed instead of hard-rejecting.
 
 local session = require("vimficiency.session")
+local ffi_lib = require("vimficiency.ffi")
 local util    = require("vimficiency.util")
 local h       = require("_helpers")
 
@@ -83,4 +84,38 @@ test("compute_result_for_active: different-buffer still hard-rejects", function(
 
   pcall(vim.api.nvim_buf_delete, buf_a, { force = true })
   pcall(vim.api.nvim_buf_delete, buf_b, { force = true })
+end)
+
+test("compute_result_for_active: includes capture key debug", function()
+  local buf = h.new_buf({ "cout << i+1 << endl;" })
+  local win = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_cursor(win, { 1, 8 })
+  local active = fake_active(buf, win)
+  active.key_seq = {
+    { t = 1000, mode = "n",  key_sent = "c", key_sent_raw = "c", key_typed = "c", key_typed_raw = "c", win = win, buf = buf },
+    { t = 2000, mode = "no", key_sent = "W", key_sent_raw = "W", key_typed = "W", key_typed_raw = "W", win = win, buf = buf },
+    { t = 3000, mode = "i",  key_sent = "W", key_sent_raw = "W", key_typed = "W", key_typed_raw = "W", win = win, buf = buf },
+    { t = 4000, mode = "i",  key_sent = "2", key_sent_raw = "2", key_typed = "2", key_typed_raw = "2", win = win, buf = buf },
+  }
+  active.key_count = #active.key_seq
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "cout << W2 << endl;" })
+
+  local result
+  h.with_patch({
+    { ffi_lib, "analyze", function()
+      return {}, 9.0, ""
+    end },
+  }, function()
+    result = assert(session.compute_result_for_active(active))
+  end)
+
+  assert_eq(result.user_seq, "cWW2")
+  assert_eq(result.capture_debug.raw_joined, "cWW2")
+  assert_eq(result.capture_debug.reduced_sequence, "cWW2")
+  assert_eq(result.capture_debug.normalized_sequence, "cWW2")
+  assert_eq(result.capture_debug.event_count, 4)
+  assert_eq(result.capture_debug.events[2].mode, "no")
+  assert_eq(result.capture_debug.events[3].key_typed, "W")
+
+  pcall(vim.api.nvim_buf_delete, buf, { force = true })
 end)

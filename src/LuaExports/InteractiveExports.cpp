@@ -86,7 +86,8 @@ string encodeSuggestion(const Suggestion& item) {
       string_view(doubleField(item.distance)),
       string_view(doubleField(item.score)),
       string_view(intField(item.landingPos.line)),
-      string_view(intField(item.landingPos.col)));
+      string_view(intField(item.landingPos.col)),
+      string_view(item.literalText));
 }
 
 string encodeSuggestions(const vector<Suggestion>& recs) {

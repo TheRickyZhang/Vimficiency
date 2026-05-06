@@ -35,9 +35,9 @@ end
 function M.refresh_ui(a)
   M.fetch(a)
   v.nvim_win_set_cursor(a.scratch.win, { a.state.cursor.row + 1, a.state.cursor.col })
-  local remaining = insert_helpers.current_remaining(a)
-  header_render.render(a, remaining)
-  list_render.render(a, remaining)
+  local continuation = insert_helpers.current_continuation(a)
+  header_render.render(a, continuation)
+  list_render.render(a, continuation)
   tags_render.render(a)
 end
 

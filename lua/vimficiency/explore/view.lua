@@ -20,6 +20,7 @@ local v = vim.api
 
 ---@class VF.Explore.Pending
 ---@field target string
+---@field literal_target string
 ---@field row integer
 ---@field col_start integer
 

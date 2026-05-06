@@ -29,12 +29,33 @@ local function record_events_for(lhs)
   return events
 end
 
+---@param lhs string
+---@param lines string[]
+---@param cursor [integer, integer]? 1-indexed row, 0-indexed col
+---@return table[]
+local function record_buffer_events_for(lhs, lines, cursor)
+  local events = {}
+  h.new_buf(lines)
+  vim.api.nvim_win_set_cursor(0, cursor or { 1, 0 })
+  local nsid = vim.on_key(function(key, typed)
+    events[#events + 1] = {
+      mode = vim.api.nvim_get_mode().mode,
+      key = vim.fn.keytrans(key or ""),
+      typed = vim.fn.keytrans(typed or ""),
+    }
+  end)
+  h.feed(lhs)
+  vim.on_key(nil, nsid)
+  return events
+end
+
 ---@param events table[]
 ---@return string
 local function format_events(events)
   local dump = {}
   for i, e in ipairs(events) do
-    dump[i] = string.format("  %d: key=%q typed=%q", i, e.key, e.typed)
+    dump[i] = string.format("  %d: mode=%q key=%q typed=%q",
+      i, e.mode or "", e.key, e.typed)
   end
   return table.concat(dump, "\n")
 end
@@ -121,4 +142,14 @@ test("on_key: unbound LHS records every key as user input", function()
     assert_eq(e.typed, e.key,
       string.format("event %d: typed == key expected for unbound input", i))
   end
+end)
+
+test("on_key: cW change motion trace", function()
+  local events = record_buffer_events_for(
+    "cW2<Space>*<Space>i<Esc>",
+    { "cout << i+1 << endl;" },
+    { 1, 8 })
+  trace("cW trace:\n" .. format_events(events) .. "\n")
+
+  assert_true(#events > 0, "expected key events for cW sequence")
 end)

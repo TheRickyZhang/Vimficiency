@@ -70,6 +70,43 @@ local function empty_array()
 end
 M.empty_array = empty_array
 
+---@param key_seq VF.KeyEvent[]|nil
+---@param reduced_sequence string
+---@param normalized_sequence string
+---@return table
+local function build_capture_debug(key_seq, reduced_sequence, normalized_sequence)
+  key_seq = key_seq or {}
+  local events = {}
+  local raw_parts = {}
+  local first_t = key_seq[1] and tonumber(key_seq[1].t) or nil
+
+  for i, ev in ipairs(key_seq) do
+    raw_parts[#raw_parts + 1] = ev.key_typed or ""
+    local t = tonumber(ev.t)
+    events[#events + 1] = {
+      index = i,
+      t = tostring(ev.t or ""),
+      dt_ms = first_t and t and ((t - first_t) / 1000000) or 0,
+      mode = ev.mode or "",
+      key_sent = ev.key_sent or "",
+      key_sent_raw = ev.key_sent_raw or "",
+      key_typed = ev.key_typed or "",
+      key_typed_raw = ev.key_typed_raw or "",
+      win = ev.win or 0,
+      buf = ev.buf or 0,
+    }
+  end
+
+  return {
+    version = 1,
+    event_count = #key_seq,
+    raw_joined = table.concat(raw_parts),
+    reduced_sequence = reduced_sequence,
+    normalized_sequence = normalized_sequence,
+    events = #events > 0 and events or empty_array(),
+  }
+end
+
 --- Encode `value` as JSON with 2-space indentation.
 --- `vim.json.encode` has no indent option, so we walk the structure
 --- ourselves and delegate leaf encoding to it. Object keys are sorted
@@ -353,6 +390,7 @@ local function compute_result_for_active(active)
     user_seq = keyseq_str,
     user_cost = user_cost,
     optimal_results = optimal_results,
+    capture_debug = build_capture_debug(active.key_seq, keyseq_raw, keyseq_str),
     start_time = active.time_started,
     key_count = #active.key_seq,
     timestamp = vim.uv.hrtime(),

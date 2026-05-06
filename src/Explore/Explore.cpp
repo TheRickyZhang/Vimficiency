@@ -436,6 +436,7 @@ vector<Suggestion> View::recommendInsert(int editIndex, int maxCount) const {
           ? insertExitCursor(insertDiff)
           : plannedEdit.transformResult.getGoalPos(),
   };
+  suggestion.literalText = insertDiff.insertedText;
   updateSuggestionMetrics(suggestion, costDiff, 0.0, 1.0, 1.0);
   return {std::move(suggestion)};
 }

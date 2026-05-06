@@ -17,7 +17,7 @@ end)
 
 ### Symptom
 
-When completing an operator-motion command, the motion key fires twice:
+When completing an operator-motion command, the motion key may fire twice:
 
 | User Types | vim.on_key Records | Expected |
 |------------|-------------------|----------|
@@ -37,17 +37,23 @@ The re-evaluation in step 3 causes the duplicate.
 
 ### Our Workaround
 
-In `capture/key_tracking.lua`, the `build_sequence()` function removes duplicates by detecting:
-- Same key appearing consecutively
-- First occurrence in operator-pending mode (`no`)
-- Second occurrence in a different mode (normal `n` or insert `i`)
+`build_sequence()` removes duplicates by detecting the live shape observed
+from real captures:
 
-```lua
-if same_key and curr_mode == "no" and next_mode ~= "no" then
-  -- Keep current, skip next (the duplicate)
-  i = i + 2
-end
-```
+- Same key appearing consecutively
+- Both occurrences are in operator-pending mode (`no`)
+- Keeping only the first occurrence already leaves the sequence ending in a
+  complete operator edit (`cW`, `dw`, `dd`, etc.)
+
+This keeps intentional repeated operator-pending keys such as `dgg`: `dg`
+does not parse as a complete operator edit, so both `g` keys are retained.
+It also keeps intentional typed text after a change, such as `cWW`: the
+inserted `W` arrives with insert mode (`i`), not operator-pending mode.
+
+Text-object prefixes have a second observed shape, where the duplicated
+`i`/`a` prefix is followed by the object key (`d`, `no:i`, `n:i`, `n:w`).
+The reducer drops the duplicate only when the sequence after dropping it
+forms a complete operator edit (`diw`).
 
 ## Issue 2: Missing Text Object Keys
 

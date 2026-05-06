@@ -27,9 +27,40 @@ test("build_sequence: removes operator-pending re-evaluation duplicate", functio
   local seq = key_tracking.build_sequence({
     ev("n", "d"),
     ev("no", "w"),
-    ev("n", "w"),
+    ev("no", "w"),
   })
   assert_eq(seq, "dw")
+end)
+
+test("build_sequence: preserves post-change inserted same key", function()
+  local seq = key_tracking.build_sequence({
+    ev("n", "c"),
+    ev("no", "W"),
+    ev("i", "W"),
+    ev("i", "2"),
+  })
+  assert_eq(seq, "cWW2")
+end)
+
+test("build_sequence: removes operator duplicate before inserted same key", function()
+  local seq = key_tracking.build_sequence({
+    ev("n", "c"),
+    ev("no", "W"),
+    ev("no", "W"),
+    ev("i", "W"),
+    ev("i", "2"),
+  })
+  assert_eq(seq, "cWW2")
+end)
+
+test("build_sequence: removes text-object prefix duplicate", function()
+  local seq = key_tracking.build_sequence({
+    ev("n", "d"),
+    ev("no", "i"),
+    ev("n", "i"),
+    ev("n", "w"),
+  })
+  assert_eq(seq, "diw")
 end)
 
 test("build_sequence: preserves intentional same-key repetitions", function()
@@ -40,8 +71,16 @@ test("build_sequence: preserves intentional same-key repetitions", function()
   assert_eq(seq, "jj")
 
   seq = key_tracking.build_sequence({
-    ev("no", "w"),
-    ev("no", "w"),
+    ev("n", "d"),
+    ev("no", "g"),
+    ev("no", "g"),
   })
-  assert_eq(seq, "ww")
+  assert_eq(seq, "dgg")
+
+  seq = key_tracking.build_sequence({
+    ev("n", "i"),
+    ev("i", "W"),
+    ev("i", "W"),
+  })
+  assert_eq(seq, "iWW")
 end)

@@ -380,11 +380,14 @@ local function build_virt_lines(entry)
   local tokens = pool_entry.tokens
   local local_step = min(multi_sim.global_step, #tokens)
   local width = max(8, v.nvim_win_get_width(entry.win))
-  local raw_parts = {}
-  for _, tok in ipairs(tokens) do
-    raw_parts[#raw_parts + 1] = tok.text
-  end
-  local display_lines = sequence_display.lines(table.concat(raw_parts, ""))
+  local highlight_index = multi_sim.global_step > 0
+      and multi_sim.global_step <= #tokens
+      and multi_sim.global_step
+      or nil
+  local display_lines = sequence_display.chunked_lines_for_tokens(tokens, {
+    highlight_index = highlight_index,
+    highlight_group = highlights.REPLAY_CURRENT,
+  })
 
   local is_active = entry.win == v.nvim_get_current_win()
   local label_hl = is_active and highlights.REPLAY_ACTIVE or "Comment"
@@ -423,9 +426,8 @@ local function build_virt_lines(entry)
   local seq_label = "Sequence "
   local seq_indent = string.rep(" ", #seq_label)
   local emitted_first = false
-  for i, line in ipairs(display_lines) do
-    local wrapped = wrap_chunks({ { line, "Normal" } },
-      max(1, width - #seq_label))
+  for _, line_chunks in ipairs(display_lines) do
+    local wrapped = wrap_chunks(line_chunks, max(1, width - #seq_label))
     for _, chunks in ipairs(wrapped) do
       local prefix = emitted_first
         and { seq_indent, "Normal" }
@@ -1419,7 +1421,7 @@ local function build_sim_ui(lines, row, col, plan)
     if i == 1 then
       win = v.nvim_get_current_win()
     else
-      cmd("vsplit")
+      cmd("rightbelow vsplit")
       win = v.nvim_get_current_win()
     end
 

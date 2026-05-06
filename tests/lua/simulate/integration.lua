@@ -9,6 +9,7 @@ package.path = tests_root .. "?.lua;" .. package.path
 
 local helpers = require("_helpers")
 local sim = require("vimficiency.simulate")
+local highlights = require("vimficiency.highlights")
 local session = require("vimficiency.session")
 local session_store = require("vimficiency.session.store")
 
@@ -100,6 +101,34 @@ local function header_lines(buf)
     end
   end
   error("missing virtual header")
+end
+
+---@param buf integer
+---@return table[][]
+local function header_virt_lines(buf)
+  local marks = vim.api.nvim_buf_get_extmarks(buf, -1, 0, -1, { details = true })
+  for _, mark in ipairs(marks) do
+    local details = mark[4]
+    if details.virt_lines then
+      return details.virt_lines
+    end
+  end
+  error("missing virtual header")
+end
+
+---@param buf integer
+---@param text string
+---@param hl string
+---@return boolean
+local function header_has_chunk(buf, text, hl)
+  for _, row in ipairs(header_virt_lines(buf)) do
+    for _, chunk in ipairs(row) do
+      if chunk[1] == text and chunk[2] == hl then
+        return true
+      end
+    end
+  end
+  return false
 end
 
 ---@param sequences string[]
@@ -276,6 +305,17 @@ local cases = {
           { "cout << endl;foo", "bar" }, "insert-mode <CR> should replay as newline")
         assert_eq(get_snapshot(3, steps3).lines,
           { "cout << 2 * i;" }, "insert-mode key notation after ciw should replay fully")
+      end, next)
+    end,
+  },
+  {
+    name = "simulate header keeps typed replay chunks visually contiguous",
+    run = function(next)
+      with_replay({ "A2<Space>*<Space>i<Esc>" }, { "cout << endl;" }, function()
+        local seq1 = get_window(1)
+        local lines = header_lines(seq1.buf)
+        assert_eq(lines[4], "Sequence A 2␣*␣i <Esc>",
+          "typed replay chunks should render as one contiguous typed section")
       end, next)
     end,
   },
@@ -460,6 +500,43 @@ local cases = {
           "first sequence row should show the first section")
         assert_eq(lines[5], "         ciw foo <Esc>", "edit section should align under sequence")
         assert_eq(lines[6], "         2j", "final motion section should align under sequence")
+      end, next)
+    end,
+  },
+  {
+    name = "simulate header highlights current token",
+    run = function(next)
+      with_replay({ "3wciwfoo<Esc>2j" }, {
+        "alpha beta gamma",
+      }, function()
+        local seq1 = get_window(1)
+        sim._debug_seek_to(2)
+        assert_true(header_has_chunk(seq1.buf, "ciw", highlights.REPLAY_CURRENT),
+          "current command token should be highlighted")
+        assert_true(not header_has_chunk(seq1.buf, "3w", highlights.REPLAY_CURRENT),
+          "previous token should not be highlighted")
+
+        sim._debug_seek_to(3)
+        assert_true(header_has_chunk(seq1.buf, "foo", highlights.REPLAY_CURRENT),
+          "current typed token should be highlighted")
+      end, next)
+    end,
+  },
+  {
+    name = "simulate header does not highlight completed shorter sequence",
+    run = function(next)
+      with_replay({ "j", "jj" }, {
+        "one",
+        "two",
+        "three",
+      }, function()
+        local seq1 = get_window(1)
+        local seq2 = get_window(2)
+        sim._debug_seek_to(2)
+        assert_true(not header_has_chunk(seq1.buf, "j", highlights.REPLAY_CURRENT),
+          "completed shorter sequence should not keep highlighting its last token")
+        assert_true(header_has_chunk(seq2.buf, "j", highlights.REPLAY_CURRENT),
+          "longer sequence should highlight the active token")
       end, next)
     end,
   },

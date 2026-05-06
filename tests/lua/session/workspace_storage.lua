@@ -156,6 +156,34 @@ test("workspace/storage: save overwrite-warns but does not refuse", function()
   end)
 end)
 
+test("workspace/storage: save preserves capture_debug extras", function()
+  local tmp = use_temp_save_dir()
+  h.silence_notify(function()
+    local seeded = fake_result("debug-seq")
+    seeded.capture_debug = {
+      version = 1,
+      event_count = 1,
+      raw_joined = "debug-seq",
+      reduced_sequence = "debug-seq",
+      normalized_sequence = "debug-seq",
+      events = {
+        { index = 1, mode = "n", key_typed = "d" },
+      },
+    }
+    local id = session_store.register_fetched_result("dbg", seeded)
+    assert_true(id, "seed failed")
+
+    session.save("dbg", "dbg")
+
+    local path = tmp .. "/nvim/vimficiency/saved/dbg.json"
+    local decoded = vim.json.decode(table.concat(vim.fn.readfile(path), "\n"))
+    assert_eq(decoded.capture_debug.raw_joined, "debug-seq")
+    assert_eq(decoded.capture_debug.events[1].mode, "n")
+
+    remove_alias("dbg")
+  end)
+end)
+
 test("workspace/storage: register_fetched_result rejects non-manual alias", function()
   h.silence_notify(function()
     local id, err = session_store.register_fetched_result("3s", fake_result("abc"))

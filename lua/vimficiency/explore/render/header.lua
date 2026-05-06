@@ -1,6 +1,7 @@
 -- Fixed header panes above the explore scratch buffer.
 local v = vim.api
 local buf_window = require("vimficiency.explore.buf_window")
+local insert_helpers = require("vimficiency.explore.insert_helpers")
 local sequence_display = require("vimficiency.sequence_display")
 local util = require("vimficiency.util")
 
@@ -9,10 +10,12 @@ local M = {}
 local header_ns = v.nvim_create_namespace("vimfy_explore_header")
 M.header_ns = header_ns
 
+local pane_bounce_augroup = v.nvim_create_augroup("vimfy_explore_pane_bounce", { clear = false })
+
 ---@param active VF.Explore.Active
----@param remaining string
+---@param continuation VF.Explore.InsertContinuation
 ---@return table
-local function summary_chunks(active, remaining)
+local function summary_chunks(active, continuation)
   local phase = active.state.phase
   ---@type string
   local phase_label = phase.kind
@@ -33,7 +36,7 @@ local function summary_chunks(active, remaining)
       phase.edit_index + 1, math.max(active.state.total_edits, 1))
   elseif phase.kind == "Insert" then
     phase_label = string.format("Insert '%s'",
-      sequence_display.typed_text_inline(remaining))
+      sequence_display.typed_chunks_inline(continuation.chunks))
   end
   return {
     { "Cost ", "Comment" },
@@ -52,24 +55,38 @@ end
 ---no plan boundaries — keep it on the legacy seq path so the UI doesn't
 ---fabricate structure.
 ---@param active VF.Explore.Active
----@return { title: string, rows?: string[], seq?: string, empty_text: string }[]
+---@return { title: string, rows?: string[], seq?: string, live_seq?: string, live_typed?: string, empty_text: string }[]
 local function gather_columns(active)
   local header_rows = active.header_rows
+  local live_seq = ""
+  local live_typed = ""
+  if active.state.phase.kind == "Insert" then
+    live_seq = active.on_key_buffer or ""
+    if live_seq == "" then
+      live_typed = insert_helpers.current_typed(active)
+    end
+  end
   local cols = {
-    { title = "Explored", rows = header_rows.explored, empty_text = "(start)" },
+    {
+      title = "Explored",
+      rows = header_rows.explored,
+      live_seq = live_seq,
+      live_typed = live_typed,
+      empty_text = "(start)",
+    },
   }
+  if active.show_user_typed then
+    cols[#cols + 1] = {
+      title = "User typed",
+      seq = active.result.user_seq,
+      empty_text = "(none)",
+    }
+  end
   local want = math.min(active.show_result_count, #header_rows.optimal)
   for i = 1, want do
     cols[#cols + 1] = {
       title = string.format("Optimal %d", i),
       rows = header_rows.optimal[i],
-      empty_text = "(none)",
-    }
-  end
-  if active.show_user_typed then
-    cols[#cols + 1] = {
-      title = "User typed",
-      seq = active.result.user_seq,
       empty_text = "(none)",
     }
   end
@@ -83,6 +100,22 @@ local function configure_window(active, pane, name)
   buf_window.configure_scratch_buffer(pane.buf, name, { filetype = "vimficiency" })
   util.configure_scratch_window(pane.win, { winfixheight = true })
   require("vimficiency.explore.keymaps").install_header(pane.buf, active.header_handlers)
+
+  -- Bounce focus from display-only header panes back to scratch. Gated by
+  -- `rebuilding` because ensure_panes' set_current_win → vsplit briefly
+  -- focuses each header pane to drive the split.
+  v.nvim_clear_autocmds({ buffer = pane.buf, group = pane_bounce_augroup })
+  v.nvim_create_autocmd("WinEnter", {
+    group = pane_bounce_augroup,
+    buffer = pane.buf,
+    callback = function()
+      if active.header.rebuilding then return end
+      if v.nvim_win_is_valid(active.scratch.win) then
+        v.nvim_set_current_win(active.scratch.win)
+      end
+    end,
+    desc = "vimfy explore: bounce focus from header pane to scratch",
+  })
 end
 
 local function sort_windows_left_to_right(windows)
@@ -207,39 +240,42 @@ local function set_compact_widths(active, pane_rows)
     desired_total = desired_total + desired[i]
   end
 
+  local targets = {}
   if desired_total <= total_width then
-    local remaining = total_width
+    for i = 1, count - 1 do targets[i] = desired[i] end
+    targets[count] = math.max(min_width,
+      total_width - (desired_total - desired[count]))
+  else
+    local scaled = {}
+    local scaled_total = 0
+    for i = 1, count do
+      scaled[i] = math.max(min_width,
+        math.floor(desired[i] * total_width / math.max(desired_total, 1)))
+      scaled_total = scaled_total + scaled[i]
+    end
+    if scaled_total > total_width then
+      local overflow = scaled_total - total_width
+      for i = count, 1, -1 do
+        local shrink = math.min(overflow, scaled[i] - min_width)
+        scaled[i] = scaled[i] - shrink
+        overflow = overflow - shrink
+        if overflow == 0 then break end
+      end
+    end
+    for i = 1, count - 1 do targets[i] = scaled[i] end
+    local sum_other = 0
+    for i = 1, count - 1 do sum_other = sum_other + targets[i] end
+    targets[count] = math.max(min_width, total_width - sum_other)
+  end
+
+  -- Apply twice. nvim_win_set_width's neighbor redistribution can leave
+  -- the last pane shy of its target on the first pass (the leftover that
+  -- should reach it lands on an intermediate pane instead); a second
+  -- pass re-pulls width into the target shape.
+  for _ = 1, 2 do
     for i, pane in ipairs(active.header.windows) do
-      local target = (i == count) and remaining or desired[i]
-      remaining = remaining - target
-      pcall(v.nvim_win_set_width, pane.win, math.max(min_width, target))
+      pcall(v.nvim_win_set_width, pane.win, targets[i])
     end
-    return
-  end
-
-  local scaled = {}
-  local scaled_total = 0
-  for i = 1, count do
-    scaled[i] = math.max(min_width,
-      math.floor(desired[i] * total_width / math.max(desired_total, 1)))
-    scaled_total = scaled_total + scaled[i]
-  end
-
-  if scaled_total > total_width then
-    local overflow = scaled_total - total_width
-    for i = count, 1, -1 do
-      local shrink = math.min(overflow, scaled[i] - min_width)
-      scaled[i] = scaled[i] - shrink
-      overflow = overflow - shrink
-      if overflow == 0 then break end
-    end
-  end
-
-  local remaining = total_width
-  for i, pane in ipairs(active.header.windows) do
-    local target = (i == count) and remaining or scaled[i]
-    remaining = remaining - target
-    pcall(v.nvim_win_set_width, pane.win, math.max(min_width, target))
   end
 end
 
@@ -291,7 +327,7 @@ end
 ---    cleanly, but DO NOT re-section (the segmentation is already correct).
 ---  - `seq`: raw key sequence (User typed). Run the legacy token-kind
 ---    sectioner.
----@param column { title: string, rows?: string[], seq?: string, empty_text: string }
+---@param column { title: string, rows?: string[], seq?: string, live_seq?: string, live_typed?: string, empty_text: string }
 ---@return table[][]
 local function build_rows(column)
   local lines
@@ -312,6 +348,11 @@ local function build_rows(column)
       lines = { column.empty_text }
     end
   end
+  if column.live_seq and column.live_seq ~= "" then
+    lines[#lines + 1] = sequence_display.inline(column.live_seq)
+  elseif column.live_typed and column.live_typed ~= "" then
+    lines[#lines + 1] = sequence_display.literal_typed_text_inline(column.live_typed)
+  end
 
   local rows = {
     { { column.title, "Title" } },
@@ -325,13 +366,13 @@ local function build_rows(column)
 end
 
 ---@param active VF.Explore.Active
----@param remaining string
+---@param continuation VF.Explore.InsertContinuation
 ---@return table[][]
-local function build_summary_rows(active, remaining)
+local function build_summary_rows(active, continuation)
   return {
     { { "", "Normal" } },
     { { "Explore", "Title" }, { " " .. active.label, "Comment" } },
-    summary_chunks(active, remaining),
+    summary_chunks(active, continuation),
     { { "", "Normal" } },
   }
 end
@@ -345,8 +386,8 @@ local function pad_rows(rows, target)
 end
 
 ---@param active VF.Explore.Active
----@param remaining string
-function M.render(active, remaining)
+---@param continuation VF.Explore.InsertContinuation
+function M.render(active, continuation)
   local columns = gather_columns(active)
   ensure_panes(active, #columns)
   if #active.header.windows ~= #columns then
@@ -355,7 +396,7 @@ function M.render(active, remaining)
 
   local pane_rows = {}
   local max_height = 0
-  local summary_rows = build_summary_rows(active, remaining)
+  local summary_rows = build_summary_rows(active, continuation)
   for i, column in ipairs(columns) do
     pane_rows[i] = build_rows(column)
     max_height = math.max(max_height, #pane_rows[i])

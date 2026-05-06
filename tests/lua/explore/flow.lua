@@ -41,6 +41,16 @@ local function list_has_warning(view)
   return table.concat(list_lines, "\n"):find("EXPLORE STATE WARNING", 1, true) ~= nil
 end
 
+local function header_lines_for_title(label, title)
+  local prefix = "vimficiency://explore/" .. label .. "/header/"
+  local headers = explore_helpers.find_windows_by_prefix(prefix)
+  for _, header in ipairs(headers) do
+    local lines = vim.api.nvim_buf_get_lines(header.buf, 0, -1, false)
+    if lines[1] == title then return lines end
+  end
+  error("missing header column " .. title, 2)
+end
+
 local function with_notify_capture(fn)
   local util = require("vimficiency.util")
   local notices = {}
@@ -252,6 +262,80 @@ test("explore flow: structural TextChanged during insert does not cancel typing 
       assert_eq(st.phase.kind, "Insert")
       assert_eq(st.pending.target, "m")
       assert_eq(st.scratch_lines[1], "")
+    end)
+  end)
+end)
+
+test("explore flow: live insert prefix appears in explored header", function()
+  helpers.silence_notify(function()
+    local label = "flow-insert-live-header"
+    explore_helpers.open_flow(label, explore_helpers.fake_result({
+      lines = { "cout << i << endl;" },
+      goal_lines = { "cout << 2 * i << endl;" },
+      end_col = 12,
+      user_seq = "ciw2<Space>*<Space>i<Esc>",
+      optimal_results = { { seq = "ciw2<Space>*<Space>i<Esc>", cost = 1.0 } },
+    }), function(scratch_buf)
+      local header_render = require("vimficiency.explore.render.header")
+      local insert_helpers = require("vimficiency.explore.insert_helpers")
+      local view = require("vimficiency.explore.registry").current()
+
+      view.state.phase = { kind = "Insert", edit_index = 0 }
+      view.header_rows.explored = { "ciw" }
+      view.header_rows.optimal = {}
+      view.pending = {
+        target = "2<Space>*<Space>i",
+        literal_target = "2 * i",
+        row = 0,
+        col_start = 0,
+      }
+      view.on_key_buffer = "ciw2<Space>"
+      vim.api.nvim_buf_set_lines(scratch_buf, 0, -1, false, { "2 * i" })
+      vim.api.nvim_win_set_cursor(view.scratch.win, { 1, 2 })
+
+      header_render.render(view, insert_helpers.current_continuation(view))
+
+      local lines = header_lines_for_title(label, "Explored")
+      assert_eq(lines[3], "ciw")
+      assert_eq(lines[4], "ciw 2␣")
+    end)
+  end)
+end)
+
+test("explore flow: insert mismatch suggests backspace repair", function()
+  helpers.silence_notify(function()
+    local label = "flow-insert-backspace-repair"
+    explore_helpers.open_flow(label, explore_helpers.fake_result({
+      lines = { "cout << i << endl;" },
+      goal_lines = { "cout << 2 * i << endl;" },
+      end_col = 12,
+      user_seq = "ciw2<Space>*<Space>i<Esc>",
+      optimal_results = { { seq = "ciw2<Space>*<Space>i<Esc>", cost = 1.0 } },
+    }), function(scratch_buf)
+      local header_render = require("vimficiency.explore.render.header")
+      local insert_helpers = require("vimficiency.explore.insert_helpers")
+      local list_render = require("vimficiency.explore.render.list")
+      local view = require("vimficiency.explore.registry").current()
+
+      view.state.phase = { kind = "Insert", edit_index = 0 }
+      view.pending = {
+        target = "2<Space>*<Space>i",
+        literal_target = "2 * i",
+        row = 0,
+        col_start = 0,
+      }
+      view.on_key_buffer = "ciw2x"
+      vim.api.nvim_buf_set_lines(scratch_buf, 0, -1, false, { "2x * i" })
+      vim.api.nvim_win_set_cursor(view.scratch.win, { 1, 2 })
+
+      local continuation = insert_helpers.current_continuation(view)
+      header_render.render(view, continuation)
+      list_render.render(view, continuation)
+
+      local list_lines = vim.api.nvim_buf_get_lines(view.list_buf, 0, -1, false)
+      assert_true(
+        table.concat(list_lines, "\n"):find("<BS> ␣%*␣i", 1) ~= nil,
+        "insert suggestion should repair the astray suffix with backspace")
     end)
   end)
 end)

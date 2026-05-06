@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -22,6 +23,7 @@ struct Suggestion {
   double costDiff = 0.0;  // Historical name; this is immediate effort.
   double distance = 0.0;
   double score = 0.0;
+  std::string literalText;  // Insert-phase only: buffer text represented by token.
 };
 
 inline double suggestionSortValue(const Suggestion& suggestion, SuggestionSortMode mode) {

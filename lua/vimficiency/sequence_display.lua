@@ -111,20 +111,54 @@ local function display_typed_text(text)
   return table.concat(parts)
 end
 
+local function display_token_text(token)
+  return token.kind == "typed"
+    and display_typed_text(token.text)
+    or display_key_notation(token.text)
+end
+
 local function expand_display_tokens(tokens)
   local out = {}
-  for _, token in ipairs(tokens or {}) do
+  for i, token in ipairs(tokens or {}) do
     out[#out + 1] = {
-      text = token.kind == "typed"
-        and display_typed_text(token.text)
-        or display_key_notation(token.text),
+      text = display_token_text(token),
       kind = token.kind,
+      index = token.index or i,
     }
   end
   return out
 end
 
-local function section_tokens(tokens)
+local function join_token_chunks(tokens, tokenize)
+  local chunks = {}
+  for i, token in ipairs(tokens) do
+    local prev = tokens[i - 1]
+    if tokenize and i > 1 and not (prev.kind == "typed" and token.kind == "typed") then
+      chunks[#chunks + 1] = { " ", "Normal" }
+    end
+    chunks[#chunks + 1] = { token.text, token.hl or "Normal" }
+  end
+  return chunks
+end
+
+local section_tokens
+
+local function chunked_token_lines(tokens, tokenize, sectionize)
+  if sectionize then
+    local sections = section_tokens(tokens)
+    if #sections > 1 then
+      local lines = {}
+      for _, section in ipairs(sections) do
+        lines[#lines + 1] = join_token_chunks(section.tokens, tokenize)
+      end
+      return lines
+    end
+  end
+
+  return { join_token_chunks(tokens, tokenize) }
+end
+
+function section_tokens(tokens)
   local sections = {}
   local current_movement = {}
   local edit_start = { change = true, delete = true }
@@ -207,6 +241,33 @@ function M.inline(seq, opts)
   return tokenized_lines(seq, resolved)[1] or ""
 end
 
+---@param tokens VF.Sequence.Token[]
+---@param opts { tokenize?: boolean, sectionize?: boolean, highlight_index?: integer, highlight_group?: string }?
+---@return table[][]
+function M.chunked_lines_for_tokens(tokens, opts)
+  local resolved = resolved_opts(opts)
+  opts = opts or {}
+
+  if not tokens or #tokens == 0 then
+    return { { { "", "Normal" } } }
+  end
+
+  local display_tokens = {}
+  for i, token in ipairs(tokens) do
+    local index = token.index or i
+    display_tokens[#display_tokens + 1] = {
+      text = display_token_text(token),
+      kind = token.kind,
+      index = index,
+      hl = opts.highlight_index == index
+        and (opts.highlight_group or "Visual")
+        or "Normal",
+    }
+  end
+
+  return chunked_token_lines(display_tokens, resolved.tokenize, resolved.sectionize)
+end
+
 ---@param text string
 ---@param opts { tokenize?: boolean }?
 ---@return string
@@ -218,6 +279,36 @@ function M.typed_text_inline(text, opts)
       kind = "typed",
     },
   }, resolved.tokenize)
+end
+
+---@param text string
+---@param opts { tokenize?: boolean }?
+---@return string
+function M.literal_typed_text_inline(text, opts)
+  local resolved = resolved_opts(opts)
+  return join_tokens({
+    {
+      text = display_plain_typed_text(text or ""),
+      kind = "typed",
+    },
+  }, resolved.tokenize)
+end
+
+---@param chunks { kind: string, text: string }[]
+---@param opts { tokenize?: boolean }?
+---@return string
+function M.typed_chunks_inline(chunks, opts)
+  local resolved = resolved_opts(opts)
+  local tokens = {}
+  for _, chunk in ipairs(chunks or {}) do
+    local text = chunk.kind == "literal"
+      and display_plain_typed_text(chunk.text or "")
+      or display_key_notation(chunk.text or "")
+    if text ~= "" then
+      tokens[#tokens + 1] = { text = text, kind = "typed" }
+    end
+  end
+  return join_tokens(tokens, resolved.tokenize)
 end
 
 function M.prefixed_lines(prefix, seq, opts, suffix)

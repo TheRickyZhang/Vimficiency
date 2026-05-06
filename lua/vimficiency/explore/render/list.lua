@@ -49,8 +49,8 @@ end
 
 ---Render the recommendation list buffer.
 ---@param active VF.Explore.Active
----@param remaining string  live pending-insert tail (empty in other phases)
-function M.render(active, remaining)
+---@param continuation VF.Explore.InsertContinuation
+function M.render(active, continuation)
   if not v.nvim_buf_is_valid(active.list_buf) then return end
 
   local mode = active.recommendation_sort or "effort"
@@ -86,7 +86,9 @@ function M.render(active, remaining)
     lines[#lines + 1] = "Session complete."
     lines[#lines + 1] = "u to undo  •  q to close"
   elseif phase_kind == "Insert" then
-    local text = remaining == "" and "<Esc>" or sequence_display.typed_text_inline(remaining)
+    local text = continuation.is_complete
+      and "<Esc>"
+      or sequence_display.typed_chunks_inline(continuation.chunks)
     add_row(1, 1, { text, "type" }, highlights.rank_hl(1))
   elseif #active.recommendations == 0 then
     lines[#lines + 1] = "(none)"

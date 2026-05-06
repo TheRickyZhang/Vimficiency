@@ -38,9 +38,9 @@ local function lines_equal(a, b)
 end
 
 local function render_warning(view)
-  local remaining = insert_helpers.current_remaining(view)
-  header_render.render(view, remaining)
-  list_render.render(view, remaining)
+  local continuation = insert_helpers.current_continuation(view)
+  header_render.render(view, continuation)
+  list_render.render(view, continuation)
 end
 
 local function set_background_warning(view, title, lines)
@@ -154,15 +154,16 @@ local function render_insert_phase(view)
       local cursor = v.nvim_win_get_cursor(view.scratch.win)
       view.pending = {
         target = insert_rec.text,
+        literal_target = insert_rec.literal_text ~= "" and insert_rec.literal_text or insert_rec.text,
         row = cursor[1] - 1,
         col_start = cursor[2],
       }
     end
   end
 
-  local remaining = insert_helpers.current_remaining(view)
-  header_render.render(view, remaining)
-  list_render.render(view, remaining)
+  local continuation = insert_helpers.current_continuation(view)
+  header_render.render(view, continuation)
+  list_render.render(view, continuation)
 end
 
 local function accept_live_snapshot(insert_mode)
@@ -214,9 +215,9 @@ end
 function M.on_insert_text_changed()
   local view = registry.current()
   if view.state.phase.kind ~= "Insert" then return end
-  local remaining = insert_helpers.current_remaining(view)
-  header_render.render(view, remaining)
-  list_render.render(view, remaining)
+  local continuation = insert_helpers.current_continuation(view)
+  header_render.render(view, continuation)
+  list_render.render(view, continuation)
 end
 
 function M.on_buffer_changed(event)

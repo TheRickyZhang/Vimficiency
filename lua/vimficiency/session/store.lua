@@ -58,6 +58,7 @@ local config = require("vimficiency.config")
 ---@field user_seq string              # What the user typed (keytrans string)
 ---@field user_cost number             # Effort cost of user's sequence
 ---@field optimal_results VF.Optimizer.Result[] # Top N results from optimizer (seq + cost)
+---@field capture_debug table|nil      # Captured key events and reducer output, persisted only for debugging
 ---@field start_time integer           # hrtime when the session started
 ---@field key_count integer            # Captured key events at finish (authoritative; user_seq is bytes, not keys)
 ---@field timestamp integer            # hrtime when the result was computed (finish time)

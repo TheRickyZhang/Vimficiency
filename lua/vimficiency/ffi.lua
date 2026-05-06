@@ -799,6 +799,7 @@ end
 ---@field distance number
 ---@field score number
 ---@field landing VF.Position
+---@field literal_text string
 ---@field rank? integer  # attached on the consumer side after sorting (see explore/state.lua)
 
 --- Drain any soft-fail diagnostics emitted by the C++ side during the
@@ -882,14 +883,14 @@ local function parse_explore_recommendations(payload)
   local parts = decode_string_list(payload)
   assert(#parts >= 1, "explore recommendations payload must have count prefix")
   local count = tonumber(parts[1]) or 0
-  local expected = 1 + count * 6
+  local expected = 1 + count * 7
   assert(#parts == expected,
     "explore recommendations payload has " .. #parts ..
     " fields, expected " .. expected .. " for count=" .. count)
   ---@type VF.Explore.Recommendation[]
   local recs = {}
   for i = 1, count do
-    local base = 1 + (i - 1) * 6
+    local base = 1 + (i - 1) * 7
     recs[i] = {
       text = parts[base + 1],
       cost_diff = tonumber(parts[base + 2]) or 0,
@@ -899,6 +900,7 @@ local function parse_explore_recommendations(payload)
         row = tonumber(parts[base + 5]) or 0,
         col = tonumber(parts[base + 6]) or 0,
       },
+      literal_text = parts[base + 7],
     }
   end
   return recs
