@@ -51,10 +51,27 @@ Result<vector<string>> decodeLengthPrefixedStrings(string_view encoded) {
 }
 
 Result<Lines> decodeLineArray(string_view encoded) {
-  return decodeLengthPrefixedStrings(encoded).transform([](const vector<string>& parts) {
+  return decodeLengthPrefixedStrings(encoded).and_then([](const vector<string>& parts)
+      -> Result<Lines> {
+    if (parts.empty()) {
+      return helpers::unexpectedError(
+          ExportErrorKind::InvalidPayload,
+          "line array payload must contain at least one line");
+    }
     Lines lines;
     lines.reserve(parts.size());
-    for (const auto& part : parts) {
+    for (size_t i = 0; i < parts.size(); ++i) {
+      const auto& part = parts[i];
+      if (part.find('\n') != string::npos) {
+        return helpers::unexpectedError(
+            ExportErrorKind::InvalidPayload,
+            string("line array payload contains newline byte at line ") + to_string(i));
+      }
+      if (part.find('\0') != string::npos) {
+        return helpers::unexpectedError(
+            ExportErrorKind::InvalidPayload,
+            string("line array payload contains NUL byte at line ") + to_string(i));
+      }
       lines.push_back(part);
     }
     return lines;

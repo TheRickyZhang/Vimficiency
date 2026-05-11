@@ -87,6 +87,16 @@ std::string firstSequence(const std::string& analyzeOut) {
   }
   return "";
 }
+
+std::string encodeLineArray(const std::vector<std::string>& lines) {
+  std::string out;
+  for (const auto& line : lines) {
+    out += std::to_string(line.size());
+    out += ':';
+    out += line;
+  }
+  return out;
+}
 }  // namespace
 
 TEST(CountPenaltyFFITest, FFIOverridesAffectMotionCountedCost) {
@@ -95,8 +105,13 @@ TEST(CountPenaltyFFITest, FFIOverridesAffectMotionCountedCost) {
 
   using GetConfigFn = VFConfig* (*)();
   using ApplyConfigFn = void (*)();
-  using AnalyzeFn = const char* (*)(const char*, const char*, int, int, bool, bool,
-                                    int, int, int, int, const char*, int, int, int);
+  using AnalyzeFn = VFByteSlice (*)(
+      const char*, size_t, const char*, size_t,
+      int, int, bool, bool,
+      int, int, int, int,
+      const char*, size_t,
+      int, int, int,
+      const char*, size_t);
 
   auto getConfig = reinterpret_cast<GetConfigFn>(dlsym(lib, "vf_get_config"));
   auto applyConfig = reinterpret_cast<ApplyConfigFn>(dlsym(lib, "vf_apply_config"));
@@ -121,14 +136,18 @@ TEST(CountPenaltyFFITest, FFIOverridesAffectMotionCountedCost) {
   }
   applyConfig();
 
-  const char* initial = "one two three four five six";
-  const char* goal = initial;
+  const std::string initial = encodeLineArray({"one two three four five six"});
+  const std::string goal = initial;
 
-  std::string baselineOut = analyze(
-      initial, goal,
+  VFByteSlice baselineSlice = analyze(
+      initial.data(), initial.size(),
+      goal.data(), goal.size(),
       0, 26, false, false,
       0, 0, 0, 19,
-      "", 40, 20, 20);
+      "", 0,
+      40, 20, 20,
+      "", 0);
+  std::string baselineOut(baselineSlice.data, baselineSlice.len);
   auto baseline = parseBySequence(baselineOut);
   std::string baselineTop = firstSequence(baselineOut);
 
@@ -149,11 +168,15 @@ TEST(CountPenaltyFFITest, FFIOverridesAffectMotionCountedCost) {
   cfg->count_penalty_overrides[toIndex(CountClass::MovementWORD)] = o;
   applyConfig();
 
-  std::string overriddenOut = analyze(
-      initial, goal,
+  VFByteSlice overriddenSlice = analyze(
+      initial.data(), initial.size(),
+      goal.data(), goal.size(),
       0, 26, false, false,
       0, 0, 0, 19,
-      "", 40, 20, 20);
+      "", 0,
+      40, 20, 20,
+      "", 0);
+  std::string overriddenOut(overriddenSlice.data, overriddenSlice.len);
   auto overridden = parseBySequence(overriddenOut);
   std::string overriddenTop = firstSequence(overriddenOut);
 

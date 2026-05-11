@@ -41,6 +41,11 @@ typedef struct {
   VFCountPenaltyOverride count_penalty_overrides[14];  // must match C++ CountClassCOUNT
 } VFConfig;
 
+typedef struct {
+  const char* data;
+  size_t len;
+} VFByteSlice;
+
 VFConfig* vf_get_config();
 void vf_apply_config();
 void vf_reset_config();
@@ -49,9 +54,11 @@ const char* vf_key_name(int index);
 const char* vf_finger_name(int index);
 const char* vf_hand_name(int index);
 const char* vf_count_class_name(int index);
-const char* vf_analyze(
-  const char* initial_text,
-  const char* goal_text,
+VFByteSlice vf_analyze(
+  const char* encoded_initial_lines,
+  size_t encoded_initial_lines_len,
+  const char* encoded_goal_lines,
+  size_t encoded_goal_lines_len,
   int boundary_first_col,
   int boundary_last_col,
   bool has_lines_above,
@@ -61,28 +68,33 @@ const char* vf_analyze(
   int end_row,
   int end_col,
   const char* keyseq,
+  size_t keyseq_len,
   int window_height,
   int scroll_amount,
   int results_calculated,
-  const char* optimizer_overrides);
-const char* vf_get_debug();
-const char* vf_get_warnings();
-const char* vf_get_optimizer_defaults();
+  const char* optimizer_overrides,
+  size_t optimizer_overrides_len);
+VFByteSlice vf_get_debug();
+VFByteSlice vf_get_warnings();
+VFByteSlice vf_get_optimizer_defaults();
 int vf_version();
 const char* vf_abi_hash();
-const char* vf_debug_config();
+VFByteSlice vf_debug_config();
 
-const char* vf_tokenize_movements(const char* seq);
-const char* vf_tokenize_sequence(const char* seq);
-const char* vf_build_sequence(const char* encoded_events);
-const char* vf_compute_search_region(
+VFByteSlice vf_tokenize_movements(const char* seq, size_t seq_len);
+VFByteSlice vf_tokenize_sequence(const char* seq, size_t seq_len);
+VFByteSlice vf_build_sequence(const char* encoded_events, size_t encoded_events_len);
+VFByteSlice vf_compute_search_region(
   const char* encoded_start_lines,
+  size_t encoded_start_lines_len,
   const char* encoded_end_lines,
+  size_t encoded_end_lines_len,
   int start_row,
   int end_row,
   int padding);
 int vf_resolve_recall_cutoff(
   const char* encoded_records,
+  size_t encoded_records_len,
   int64_t target_hrtime,
   int budget);
 int vf_manual_evict_reason(
@@ -93,18 +105,22 @@ int vf_manual_evict_reason(
   int64_t now_ns,
   int max_search_lines,
   int manual_idle_timeout_seconds);
-const char* vf_format_sequence(const char* seq);
-const char* vf_simulate_movements(
+VFByteSlice vf_format_sequence(const char* seq, size_t seq_len);
+VFByteSlice vf_simulate_movements(
   const char* encoded_lines,
+  size_t encoded_lines_len,
   int start_row,
   int start_col,
-  const char* seq);
+  const char* seq,
+  size_t seq_len);
 
-const char* vf_explore_start(
+VFByteSlice vf_explore_start(
   const char* encoded_initial_lines,
+  size_t encoded_initial_lines_len,
   int start_row,
   int start_col,
   const char* encoded_goal_lines,
+  size_t encoded_goal_lines_len,
   int end_row,
   int end_col,
   int boundary_first_col,
@@ -113,24 +129,32 @@ const char* vf_explore_start(
   bool has_lines_below,
   int window_height,
   int scroll_amount,
-  const char* user_seq);
+  const char* user_seq,
+  size_t user_seq_len);
 int vf_explore_destroy(int view_id);
-const char* vf_explore_state(int view_id);
-const char* vf_explore_recommendations(
+VFByteSlice vf_explore_state(int view_id);
+VFByteSlice vf_explore_recommendations(
   int view_id,
   int max_count,
   const char* optimizer_overrides,
-  const char* sort_mode);
-const char* vf_explore_apply_movement(int view_id, const char* movement_text);
-const char* vf_explore_apply_edit(int view_id, const char* text);
-const char* vf_explore_current_lines(int view_id);
-const char* vf_explore_accept_snapshot(
+  size_t optimizer_overrides_len,
+  const char* sort_mode,
+  size_t sort_mode_len);
+VFByteSlice vf_explore_apply_movement(
+  int view_id,
+  const char* movement_text,
+  size_t movement_text_len);
+VFByteSlice vf_explore_apply_edit(int view_id, const char* text, size_t text_len);
+VFByteSlice vf_explore_current_lines(int view_id);
+VFByteSlice vf_explore_accept_snapshot(
   int view_id,
   const char* encoded_lines,
+  size_t encoded_lines_len,
   int new_row,
   int new_col,
   const char* raw_keys,
+  size_t raw_keys_len,
   bool insert_mode);
-const char* vf_explore_undo(int view_id);
-const char* vf_explore_redo(int view_id);
-const char* vf_explore_header_rows(int view_id);
+VFByteSlice vf_explore_undo(int view_id);
+VFByteSlice vf_explore_redo(int view_id);
+VFByteSlice vf_explore_header_rows(int view_id);

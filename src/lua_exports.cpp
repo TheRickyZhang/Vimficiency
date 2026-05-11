@@ -156,23 +156,23 @@ const char *vf_count_class_name(int index) {
   return g_count_class_names[index];
 }
 
-const char* vf_get_debug() {
+VFByteSlice vf_get_debug() {
   static std::string debug_storage;
   debug_storage = consume_debug_output();
-  return debug_storage.c_str();
+  return helpers::byteSlice(debug_storage);
 }
 
-const char* vf_get_warnings() {
+VFByteSlice vf_get_warnings() {
   static std::string warning_storage;
   warning_storage = consume_warning_output();
-  return warning_storage.c_str();
+  return helpers::byteSlice(warning_storage);
 }
 
 int vf_version() { return 1; }
 
 const char *vf_abi_hash() { return VF_ABI_HASH; }
 
-const char *vf_debug_config() {
+VFByteSlice vf_debug_config() {
   static std::string debug_storage;
   std::ostringstream oss;
 
@@ -202,7 +202,7 @@ const char *vf_debug_config() {
   show_key(Key::Key_K, "K");
 
   debug_storage = oss.str();
-  return debug_storage.c_str();
+  return helpers::byteSlice(debug_storage);
 }
 
 }

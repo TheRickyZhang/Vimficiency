@@ -12,7 +12,8 @@
       "code-after-break": "Warning",
       "unbalanced-assignments": "Warning",
       "empty-block": "Warning",
-      "missing-fields": "Warning"
+      "missing-fields": "Warning",
+      "redefined-local": "Warning"
     }
   },
   "workspace": {

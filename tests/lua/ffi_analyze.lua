@@ -104,3 +104,65 @@ test("ffi.analyze: preserves substitute payload and cost for exact 2->3 scenario
   assert_true(truncated == nil,
     "truncated $Ef2s result must not appear after ffi parsing")
 end)
+
+test("ffi.analyze: accepts one empty physical line", function()
+  local results, user_cost = ffi_lib.analyze(
+    { "" }, { "" },
+    0, 0,
+    false, false,
+    0, 0,
+    0, 0,
+    "",
+    40, 20,
+    1
+  )
+
+  assert_true(type(results) == "table", "results should parse")
+  assert_true(user_cost >= 0, "user cost should parse")
+end)
+
+test("ffi.analyze: preserves trailing empty physical lines", function()
+  local results, user_cost = ffi_lib.analyze(
+    { "a", "" }, { "a", "" },
+    0, 0,
+    false, false,
+    0, 0,
+    1, 0,
+    "j",
+    40, 20,
+    1
+  )
+
+  assert_true(type(results) == "table", "results should parse")
+  assert_true(user_cost > 0, "user cost should include j")
+end)
+
+test("ffi.analyze: rejects empty line arrays", function()
+  assert_error(function()
+    ffi_lib.analyze(
+      {}, { "" },
+      0, 0,
+      false, false,
+      0, 0,
+      0, 0,
+      "",
+      40, 20,
+      1
+    )
+  end, "at least one line")
+end)
+
+test("ffi.analyze: rejects NUL bytes inside lines", function()
+  assert_error(function()
+    ffi_lib.analyze(
+      { "a" .. string.char(0) .. "b" }, { "a" },
+      0, 0,
+      false, false,
+      0, 0,
+      0, 0,
+      "",
+      40, 20,
+      1
+    )
+  end, "NUL byte")
+end)

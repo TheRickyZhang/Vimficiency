@@ -44,11 +44,13 @@ char tokenKindChar(TokenKind kind) {
 
 extern "C" {
 
-const char *vf_tokenize_movements(const char *seq) {
+VFByteSlice vf_tokenize_movements(const char *seq, size_t seq_len) {
   static string result_storage;
-  const string owned(helpers::optionalText(seq));
-  return helpers::storeString(result_storage,
-      parseMovements(owned)
+  return helpers::storeBytes(result_storage,
+      helpers::requiredBytes(seq, seq_len, "seq")
+          .and_then([](string_view seqText) -> Result<string> {
+            const string owned(seqText);
+            return parseMovements(owned)
           .transform([](const vector<ParsedMovement>& motions) {
             // All motion-parser output is TokenKind::Movement by construction.
             vector<string> rows;
@@ -65,13 +67,16 @@ const char *vf_tokenize_movements(const char *seq) {
                 .kind = ExportErrorKind::InvalidValue,
                 .message = formatMovementParseError(error),
             };
+          });
           }));
 }
 
-const char *vf_tokenize_sequence(const char *seq) {
+VFByteSlice vf_tokenize_sequence(const char *seq, size_t seq_len) {
   static string result_storage;
-  return helpers::storeString(result_storage,
-      parseSequence(helpers::optionalText(seq))
+  return helpers::storeBytes(result_storage,
+      helpers::requiredBytes(seq, seq_len, "seq")
+          .and_then([](string_view seqText) {
+            return parseSequence(seqText)
           .transform([](const vector<TaggedToken>& tokens) {
             vector<string> rows;
             rows.reserve(tokens.size());
@@ -85,27 +90,37 @@ const char *vf_tokenize_sequence(const char *seq) {
                 .kind = ExportErrorKind::InvalidValue,
                 .message = formatSequenceParseError(error),
             };
+          });
           }));
 }
 
-const char *vf_build_sequence(const char *encoded_events) {
+VFByteSlice vf_build_sequence(const char *encoded_events, size_t encoded_events_len) {
   static string result_storage;
-  return helpers::storeString(result_storage,
-      logic::buildKeySequence(helpers::optionalText(encoded_events)));
+  return helpers::storeBytes(result_storage,
+      helpers::requiredBytes(encoded_events, encoded_events_len, "encoded_events")
+          .and_then(logic::buildKeySequence));
 }
 
-const char *vf_compute_search_region(
+VFByteSlice vf_compute_search_region(
     const char *encoded_start_lines,
+    size_t encoded_start_lines_len,
     const char *encoded_end_lines,
+    size_t encoded_end_lines_len,
     int start_row,
     int end_row,
     int padding) {
   static string result_storage;
-  return helpers::storeString(result_storage,
-      helpers::requiredText(encoded_start_lines, "encoded_start_lines")
+  return helpers::storeBytes(result_storage,
+      helpers::requiredBytes(
+          encoded_start_lines,
+          encoded_start_lines_len,
+          "encoded_start_lines")
           .and_then(payload::decodeLineArray)
           .and_then([&](const Lines& startLines) {
-            return helpers::requiredText(encoded_end_lines, "encoded_end_lines")
+            return helpers::requiredBytes(
+                    encoded_end_lines,
+                    encoded_end_lines_len,
+                    "encoded_end_lines")
                 .and_then(payload::decodeLineArray)
                 .transform([&](const Lines& endLines) {
                   const auto [regionStart, regionEnd] = logic::computeSearchRegion(
@@ -117,11 +132,13 @@ const char *vf_compute_search_region(
 
 int vf_resolve_recall_cutoff(
     const char *encoded_records,
+    size_t encoded_records_len,
     int64_t target_hrtime,
     int budget) {
   CHECK(budget >= 0, "budget must be non-negative");
   return helpers::storeIntOr(0,
-      payload::decodeRecallRecordMeta(helpers::optionalText(encoded_records))
+      helpers::requiredBytes(encoded_records, encoded_records_len, "encoded_records")
+          .and_then(payload::decodeRecallRecordMeta)
           .transform([&](const vector<payload::RecallRecordMeta>& records) {
             return logic::resolveRecallCutoffIndex(records, target_hrtime, budget);
           }));
@@ -147,14 +164,17 @@ int vf_manual_evict_reason(
       manual_idle_timeout_seconds);
 }
 
-const char *vf_format_sequence(const char *seq) {
+VFByteSlice vf_format_sequence(const char *seq, size_t seq_len) {
   static string result_storage;
-  return helpers::storeString(result_storage,
-      Result<string>(formatSequenceForDisplay(helpers::optionalText(seq))));
+  return helpers::storeBytes(result_storage,
+      helpers::requiredBytes(seq, seq_len, "seq")
+          .transform([](string_view seqText) {
+            return formatSequenceForDisplay(seqText);
+          }));
 }
 
 // Lua settings_schema consumes these defaults without mirroring C++ values.
-const char *vf_get_optimizer_defaults() {
+VFByteSlice vf_get_optimizer_defaults() {
   static string cached;
   if (cached.empty()) {
     NavOptimizerParams nav;
@@ -210,20 +230,22 @@ const char *vf_get_optimizer_defaults() {
 
     cached = out.str();
   }
-  return cached.c_str();
+  return helpers::byteSlice(cached);
 }
 
-const char *vf_simulate_movements(
+VFByteSlice vf_simulate_movements(
     const char *encoded_lines,
+    size_t encoded_lines_len,
     int start_row,
     int start_col,
-    const char *seq) {
+    const char *seq,
+    size_t seq_len) {
   static string result_storage;
-  return helpers::storeString(result_storage,
-      helpers::requiredText(encoded_lines, "encoded_lines")
+  return helpers::storeBytes(result_storage,
+      helpers::requiredBytes(encoded_lines, encoded_lines_len, "encoded_lines")
           .and_then(payload::decodeLineArray)
           .and_then([&](const Lines& lines) {
-            return helpers::requiredText(seq, "seq")
+            return helpers::requiredBytes(seq, seq_len, "seq")
                 .transform([&](string_view movementSeq) {
                   CursorPos pos(start_row, start_col);
                   const CursorPos landed = simulateMovements(pos, movementSeq, lines, NavContext());
