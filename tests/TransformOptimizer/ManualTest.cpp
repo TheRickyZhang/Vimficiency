@@ -465,6 +465,7 @@ TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_ForwardParagraph_Backe
 TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_BackwardParagraph_Linewise) {
   // d{ from col 0: linewise
   verifySequenceWithOracle(oracle.get(), {"abc", "", "def"}, {2, 0}, "d{");
+  verifySequenceWithOracle(oracle.get(), {"        aaa", "    bbb"}, {1, 0}, "d{");
 }
 
 TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_BackwardParagraph_BackedUp) {

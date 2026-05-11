@@ -187,8 +187,9 @@ struct TransformTransitionDispatcher {
 
   void deleteLinewise(LineRange range, const SequenceBinding& sourceCmd) {
     TransformEditorState afterDeletion =
-        TransformSimulator::afterMultiLinewiseDeletion(
-            baseState.getEditorState(), range, transformBoundary.hasLinesBelow());
+        afterLinewiseDeletionForCommand(
+            baseState.getEditorState(), range, transformBoundary.hasLinesBelow(),
+            sourceCmd.base.seq.view());
     if (!finishLinewiseTransition(afterDeletion, sourceCmd)) return;
     if constexpr (PureDeletion) {
       continueWithEdit(std::move(afterDeletion), sourceCmd, 0.0);

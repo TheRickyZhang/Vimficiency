@@ -21,6 +21,7 @@ local COLUMN_GAP = 1
 ---@return table[]
 local function summary_chunks(active, continuation)
   local phase = active.state.phase
+  ---@type string
   local phase_label = phase.kind
   local label_hl = "Normal"
   if active.warning then

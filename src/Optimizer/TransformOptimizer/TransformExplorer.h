@@ -291,29 +291,28 @@ void TransformExplorer::exploreParagraphEdits(
   }
 
   for (const auto& spec : specs) {
+    SequenceBinding cmd(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId));
     if constexpr (Forward) {
-      bool endpointIsBlank = VimCore::isBlankLineStr(lines[endpointLine]);
-      int endLine = endpointIsBlank ? endpointLine - 1 : endpointLine;
-      if (endLine < cursor.line) continue;
+      CursorPos end(endpointLine, 0);
+      bool endpointIsEof = endpointLine == lastLine
+          && !VimCore::isBlankLineStr(lines[endpointLine]);
+      if (endpointIsEof) {
+        end.setCol(static_cast<int>(lines[endpointLine].size()));
+      }
+      if (end <= cursor) continue;
 
-      SequenceBinding cmd(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId));
-      if (endpointIsBlank && cursor.col == 0) {
-        onLinewise(LineRange(cursor.line, endpointLine), cmd);
-        continue;
-      }
-      if (endpointIsBlank) {
-        onAnyDeletion(CharLineRange(cursor, endpointLine), cmd);
-        continue;
-      }
-
-      int endColExclusive = static_cast<int>(lines[endLine].size());
-      if (cursor.col == 0 && cursor.line < endLine) {
-        onAnyDeletion(LineCharRange(cursor.line, CursorPos(endLine, endColExclusive)), cmd);
-      } else {
-        onAnyDeletion(CharRange(cursor, CursorPos(endLine, endColExclusive)), cmd);
-      }
+      auto resolved = VimCore::resolveExclusiveDeleteRange(
+          CharRange(cursor, end), lines, true);
+      TransformExplorerDetail::emitResolvedDeletion(
+          resolved, cmd, onAnyDeletion, onLinewise);
     } else {
-      if (endpointLine >= cursor.line) continue;
+      CursorPos begin(endpointLine, 0);
+      if (begin >= cursor) continue;
+
+      auto resolved = VimCore::resolveExclusiveDeleteRange(
+          CharRange(begin, cursor), lines, true);
+      TransformExplorerDetail::emitResolvedDeletion(
+          resolved, cmd, onAnyDeletion, onLinewise);
     }
   }
 }
@@ -502,13 +501,13 @@ void TransformExplorer::exploreCountedWordEdits(
     CursorPos lastEndpoint;
     int lastCount = 0;
     for (int count = 1; count <= maxIterations; count++) {
-      CursorPos endpoint = prev;
-      VimCore::motionE(endpoint, lines, spec.isBig);
-      if (endpoint == prev || endpoint.line != cursor.line) break;
-
-      int lineLen = static_cast<int>(lines[endpoint.line].size());
-      if (endpoint.col >= lineLen) endpoint.setCol(lineLen - 1);
-      if (inBoundaryRegion(endpoint, lines)) break;
+      CursorPos endpoint = VimCore::motionWordEndpoint<true, EdgeType::WordEdge>(
+          prev, lines, spec.isBig, spec.skipCurrent,
+          rightColOffset_, boundary_.hasLinesBelow(), false);
+      if (endpoint == POSITION_OUTSIDE_BOUNDARY ||
+          endpoint == prev || endpoint.line != cursor.line) {
+        break;
+      }
 
       lastEndpoint = endpoint;
       lastCount = count;
@@ -530,16 +529,15 @@ void TransformExplorer::exploreCountedWordEdits(
     CursorPos lastEnd;
     int lastCount = 0;
     for (int count = 1; count <= maxIterations; count++) {
-      CursorPos endpoint = prev;
-      VimCore::motionW(endpoint, lines, spec.isBig);
-      if (endpoint == prev || endpoint.line != cursor.line) break;
+      CursorPos endpoint = VimCore::motionWordEndpoint<true, EdgeType::GapEdge>(
+          prev, lines, spec.isBig, spec.skipCurrent,
+          rightColOffset_, boundary_.hasLinesBelow(), false);
+      if (endpoint == POSITION_OUTSIDE_BOUNDARY ||
+          endpoint == prev || endpoint.line != cursor.line) {
+        break;
+      }
 
-      int lineLen = static_cast<int>(lines[endpoint.line].size());
-      CursorPos end = (endpoint.col >= lineLen) ? CursorPos(endpoint.line, lineLen) : endpoint;
-      CursorPos boundaryCheckPos(endpoint.line, lineLen == 0 ? 0 : std::max(0, end.col - 1));
-      if (inBoundaryRegion(boundaryCheckPos, lines)) break;
-
-      lastEnd = end;
+      lastEnd = VimCore::wordEndpointToRangeEnd(endpoint, lines, EdgeType::GapEdge);
       lastCount = count;
       prev = endpoint;
     }
@@ -559,10 +557,13 @@ void TransformExplorer::exploreCountedWordEdits(
     CursorPos lastEndpoint;
     int lastCount = 0;
     for (int count = 1; count <= maxIterations; count++) {
-      CursorPos endpoint = prev;
-      VimCore::motionB(endpoint, lines, spec.isBig);
-      if (endpoint == prev || endpoint.line != cursor.line) break;
-      if (inBoundaryRegion(endpoint, lines)) break;
+      CursorPos endpoint = VimCore::motionWordEndpoint<false, EdgeType::WordEdge>(
+          prev, lines, spec.isBig, spec.skipCurrent,
+          leftColOffset_, boundary_.hasLinesAbove(), false);
+      if (endpoint == POSITION_OUTSIDE_BOUNDARY ||
+          endpoint == prev || endpoint.line != cursor.line) {
+        break;
+      }
 
       lastEndpoint = endpoint;
       lastCount = count;
@@ -591,10 +592,13 @@ void TransformExplorer::exploreCountedWordEdits(
     CursorPos lastEndpoint;
     int lastCount = 0;
     for (int count = 1; count <= maxIterations; count++) {
-      CursorPos endpoint = prev;
-      VimCore::motionGe(endpoint, lines, spec.isBig);
-      if (endpoint == prev || endpoint.line != cursor.line) break;
-      if (inBoundaryRegion(endpoint, lines)) break;
+      CursorPos endpoint = VimCore::motionWordEndpoint<false, EdgeType::NextEdge>(
+          prev, lines, spec.isBig, spec.skipCurrent,
+          leftColOffset_, boundary_.hasLinesAbove(), false);
+      if (endpoint == POSITION_OUTSIDE_BOUNDARY ||
+          endpoint == prev || endpoint.line != cursor.line) {
+        break;
+      }
 
       lastEndpoint = endpoint;
       lastCount = count;

@@ -636,6 +636,7 @@ end
 ---@class VF.Sequence.Token
 ---@field text string
 ---@field kind "movement"|"delete"|"change"|"visual"|"typed"|"escape"
+---@field index integer?
 
 -- Wire kind → Lua kind. Matches `tokenKindChar` in UtilityExports.cpp.
 -- Keep in sync: if the C++ enum grows a case, add its char here.

@@ -450,8 +450,7 @@ local cases = {
         local states = sim._debug_get_states()
         if #windows == 3 and #states == 3 then
           local ok, err = pcall(function()
-            local user = sim._debug_get_pool().user
-            assert_true(user ~= nil, "missing user replay pool entry")
+            local user = assert(sim._debug_get_pool().user, "missing user replay pool entry")
             sim._debug_seek_to(#user.tokens)
             assert_eq(vim.api.nvim_buf_get_lines(windows[2].buf, 6, 7, true)[1],
               "    cout << 2 * i << endl;",

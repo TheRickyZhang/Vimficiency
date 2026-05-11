@@ -115,6 +115,21 @@ CharRange textObjectRange(
     bool hasLinesAbove,  // are there lines above the edit region?
     bool hasLinesBelow); // are there lines below the edit region?
 
+CharRange quoteTextObjectRange(CursorPos cursor,
+                               const Lines& lines,
+                               bool isInner,
+                               char quote,
+                               int leftColOffset = 0,
+                               int rightColOffset = 0);
+
+CharRange bracketTextObjectRange(CursorPos cursor,
+                                 const Lines& lines,
+                                 bool isInner,
+                                 char open,
+                                 char close,
+                                 int leftColOffset = 0,
+                                 int rightColOffset = 0);
+
 // =============================================================================
 // Paragraph Endpoint/CharRange Computation
 // =============================================================================

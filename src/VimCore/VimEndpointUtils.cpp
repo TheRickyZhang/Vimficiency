@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <utility>
 
 #include "Boundary/TransformBoundary.h"
 #include "Types/CursorPos.h"
@@ -338,6 +339,167 @@ CharRange textObjectRange(CursorPos cursor, const Lines& lines, bool isInner,
     return CharRange(start, end);
   }
   return CharRange(start, end);
+}
+
+static bool crossesColumnBoundary(CharRange range, const Lines& lines,
+                                  int leftColOffset, int rightColOffset) {
+  if (!range.isValid()) return false;
+  range.normalize();
+
+  if (leftColOffset > 0 && range.begin.line == 0 &&
+      range.begin.col < leftColOffset) {
+    return true;
+  }
+
+  if (rightColOffset > 0 && range.end.line == lines.lastLine()) {
+    int firstSuffixCol = static_cast<int>(lines[range.end.line].size()) - rightColOffset;
+    if (range.end.col > firstSuffixCol) return true;
+  }
+
+  return false;
+}
+
+struct QuoteSpan {
+  static constexpr int NONE = -1;
+
+  int open = NONE;
+  int close = NONE;
+
+  bool found() const { return open != NONE; }
+  bool valid() const { return found() && open < close; }
+  bool contains(int col) const { return open <= col && col <= close; }
+  bool startsAfter(int col) const { return open > col; }
+};
+
+static QuoteSpan findQuoteSpan(const string& line, char quote, int col) {
+  QuoteSpan span;
+
+  for (int i = 0; i < static_cast<int>(line.size()); i++) {
+    if (line[i] != quote) continue;
+
+    if (!span.found()) {
+      span.open = i;
+      continue;
+    }
+
+    span.close = i;
+    assert(span.valid());
+    if (span.contains(col) || span.startsAfter(col)) return span;
+    span = QuoteSpan{};
+  }
+
+  return {};
+}
+
+CharRange quoteTextObjectRange(CursorPos cursor, const Lines& lines, bool isInner,
+                               char quote, int leftColOffset, int rightColOffset) {
+  int n = static_cast<int>(lines.size());
+  if (n == 0) return CharRange(cursor, cursor);
+
+  int line = std::clamp(cursor.line, 0, n - 1);
+  const string& ln = lines[line];
+  int len = static_cast<int>(ln.size());
+  if (len == 0) return CharRange(cursor, cursor);
+
+  int col = std::clamp(cursor.col, 0, len - 1);
+  QuoteSpan span = findQuoteSpan(ln, quote, col);
+  if (!span.valid()) return CharRange(cursor, cursor);
+
+  CharRange range = isInner
+      ? CharRange(CursorPos(line, span.open + 1), CursorPos(line, span.close))
+      : CharRange(CursorPos(line, span.open), CursorPos(line, span.close + 1));
+  if (range.isEmpty()) return CHAR_RANGE_OUTSIDE_BOUNDARY;
+  if (crossesColumnBoundary(range, lines, leftColOffset, rightColOffset)) {
+    return CHAR_RANGE_OUTSIDE_BOUNDARY;
+  }
+  return range;
+}
+
+static pair<CursorPos, CursorPos> findMatchingBrackets(
+    const Lines& lines, CursorPos pos, char open, char close) {
+  int n = static_cast<int>(lines.size());
+  CursorPos openPos(-1, -1);
+  CursorPos closePos(-1, -1);
+
+  int line = pos.line;
+  int col = pos.col;
+  int depth = 0;
+  if (line >= 0 && line < n && col >= 0 &&
+      col < static_cast<int>(lines[line].size())) {
+    char c = lines[line][col];
+    if (c == open) depth = 1;
+    else if (c == close) depth = -1;
+  }
+
+  int searchLine = pos.line;
+  int searchCol = pos.col;
+  if (depth <= 0) {
+    depth = 0;
+    while (searchLine >= 0) {
+      const string& ln = lines[searchLine];
+      int startCol = searchLine == pos.line
+          ? searchCol
+          : static_cast<int>(ln.size()) - 1;
+
+      for (int c = startCol; c >= 0; c--) {
+        if (ln[c] == close) {
+          depth++;
+        } else if (ln[c] == open) {
+          if (depth == 0) {
+            openPos = CursorPos(searchLine, c);
+            goto foundOpen;
+          }
+          depth--;
+        }
+      }
+      searchLine--;
+    }
+  } else {
+    openPos = CursorPos(line, col);
+  }
+
+foundOpen:
+  if (openPos.line < 0) return {CursorPos(-1, -1), CursorPos(-1, -1)};
+
+  depth = 1;
+  searchLine = openPos.line;
+  searchCol = openPos.col + 1;
+
+  while (searchLine < n) {
+    const string& ln = lines[searchLine];
+    int startCol = searchLine == openPos.line ? searchCol : 0;
+
+    for (int c = startCol; c < static_cast<int>(ln.size()); c++) {
+      if (ln[c] == open) {
+        depth++;
+      } else if (ln[c] == close) {
+        depth--;
+        if (depth == 0) {
+          closePos = CursorPos(searchLine, c);
+          return {openPos, closePos};
+        }
+      }
+    }
+    searchLine++;
+  }
+
+  return {CursorPos(-1, -1), CursorPos(-1, -1)};
+}
+
+CharRange bracketTextObjectRange(CursorPos cursor, const Lines& lines, bool isInner,
+                                 char open, char close, int leftColOffset,
+                                 int rightColOffset) {
+  auto [openPos, closePos] = findMatchingBrackets(lines, cursor, open, close);
+  if (openPos.line < 0 || closePos.line < 0) return CharRange(cursor, cursor);
+
+  CharRange range = isInner
+      ? CharRange(lines.getNextPos(openPos), closePos)
+      : CharRange(openPos, VimCore::onePastOnSameLine(lines, closePos));
+  if (range.isEmpty()) return CHAR_RANGE_OUTSIDE_BOUNDARY;
+  if (crossesColumnBoundary(range, lines, leftColOffset, rightColOffset)) {
+    return CHAR_RANGE_OUTSIDE_BOUNDARY;
+  }
+  return range;
 }
 
 // =============================================================================

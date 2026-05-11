@@ -20,9 +20,10 @@ test("explore.open creates a 2-pane tab with the header rendered as virt_lines o
       local scratch_win, scratch_buf = explore_helpers.find_window_by_name(scratch_name, wins)
       assert_true(list_win ~= nil, "missing recommendations window")
       assert_true(scratch_win ~= nil, "missing scratch window")
+      scratch_buf = assert(scratch_buf, "missing scratch buffer")
 
-      local strings = explore_helpers.header_virt_strings(scratch_buf)
-      assert_true(strings ~= nil, "scratch buffer should carry the header virt_lines extmark")
+      local strings = assert(explore_helpers.header_virt_strings(scratch_buf),
+        "scratch buffer should carry the header virt_lines extmark")
 
       local titles = {}
       for _, line in ipairs(strings) do

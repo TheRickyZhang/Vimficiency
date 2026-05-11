@@ -6,7 +6,6 @@
 #include "TransformOptimizer.h"
 #include "Keyboard/ToKeys/MovementToKeys.h"
 #include "Optimizer/BuildTypedCommands.h"
-#include "Optimizer/CountPenalty.h"
 
 using namespace std;
 
