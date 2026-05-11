@@ -203,8 +203,8 @@ void enumerateDepth1DeletionStructurals(
             ? std::string_view(effective[range.beginLine])
             : std::string_view{};
     applyAndEmitLinewise(
-        TransformSimulator::afterMultiLinewiseDeletion(
-            state, range, boundary.hasLinesBelow()),
+        afterLinewiseDeletionForCommand(
+            state, range, boundary.hasLinesBelow(), cmd.base.seq.view()),
         cmd, firstLineContent);
   };
 

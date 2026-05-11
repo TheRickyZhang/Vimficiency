@@ -4,7 +4,6 @@
 #include "VimCore/VimEndpointUtils.h"
 #include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimOptions.h"
-#include "VimCore/VimTextObjectsLegacy.h"
 #include "VimCore/VimCore.h"
 #include "Interpreter/SequenceFormatting.h"
 #include "Utils/Debug.h"
@@ -108,7 +107,8 @@ void yankRangeImpl(CursorPos& pos, Mode mode, const RangeT& range) {
 static void applyResolvedDeleteRange(Lines& lines,
                                      CursorPos& pos,
                                      const VimCore::ResolvedDeleteRange& resolved,
-                                     Mode mode) {
+                                     Mode mode,
+                                     bool hasLinesBelow) {
   switch (resolved.kind) {
     case VimCore::ResolvedDeleteRangeKind::Characterwise:
       if (!resolved.charRange.isEmpty()) {
@@ -124,7 +124,8 @@ static void applyResolvedDeleteRange(Lines& lines,
       }
       return;
     case VimCore::ResolvedDeleteRangeKind::Linewise:
-      VimCore::deleteLineRangeAndUpdatePos(lines, resolved.lineRange, pos);
+      VimCore::deleteOperatorLineRangeAndUpdatePos(
+          lines, resolved.lineRange, pos, hasLinesBelow);
       return;
   }
 }
@@ -960,7 +961,8 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
             // Forward: exclusive end = goalPos (motion destination).
             auto resolved = VimCore::resolveExclusiveDeleteRange(range, lines, e[0] == 'd');
             applyResolvedDeleteRange(
-                lines, pos, resolved, e[0] == 'c' ? Mode::Insert : Mode::Normal);
+                lines, pos, resolved, e[0] == 'c' ? Mode::Insert : Mode::Normal,
+                hasLinesBelow);
           }
           if (e[0] == 'c') mode = Mode::Insert;
         }
@@ -976,7 +978,8 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
             CharRange range(initialPos, pos);
             auto resolved = VimCore::resolveExclusiveDeleteRange(range, lines, e[0] == 'd');
             applyResolvedDeleteRange(
-                lines, pos, resolved, e[0] == 'c' ? Mode::Insert : Mode::Normal);
+                lines, pos, resolved, e[0] == 'c' ? Mode::Insert : Mode::Normal,
+                hasLinesBelow);
           }
           if (e[0] == 'c') mode = Mode::Insert;
         }
@@ -1008,7 +1011,8 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
             auto resolved = VimCore::resolveExclusiveDeleteRange(
                 CharRange(pos, goalPos), lines, e[0] == 'd');
             applyResolvedDeleteRange(
-                lines, pos, resolved, e[0] == 'c' ? Mode::Insert : Mode::Normal);
+                lines, pos, resolved, e[0] == 'c' ? Mode::Insert : Mode::Normal,
+                hasLinesBelow);
           }
           if (e[0] == 'c') mode = Mode::Insert;
         }
@@ -1037,7 +1041,8 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
             auto resolved = VimCore::resolveExclusiveDeleteRange(
                 CharRange(initialPos, pos), lines, e[0] == 'd');
             applyResolvedDeleteRange(
-                lines, pos, resolved, e[0] == 'c' ? Mode::Insert : Mode::Normal);
+                lines, pos, resolved, e[0] == 'c' ? Mode::Insert : Mode::Normal,
+                hasLinesBelow);
           }
           if (e[0] == 'c') mode = Mode::Insert;
         }
@@ -1158,22 +1163,22 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
       }
       // Quote objects
       else if (obj == '"' || obj == '\'' || obj == '`') {
-        r = inner ? VimTextObjectsLegacy::innerQuote(lines, pos, obj)
-                  : VimTextObjectsLegacy::aroundQuote(lines, pos, obj);
+        r = VimCore::quoteTextObjectRange(
+            pos, lines, inner, obj, leftColOffset, rightColOffset);
       }
       // Bracket objects - handle both opening and closing chars
       else if (obj == '(' || obj == ')' || obj == 'b') {
-        r = inner ? VimTextObjectsLegacy::innerBracket(lines, pos, '(', ')')
-                  : VimTextObjectsLegacy::aroundBracket(lines, pos, '(', ')');
+        r = VimCore::bracketTextObjectRange(
+            pos, lines, inner, '(', ')', leftColOffset, rightColOffset);
       } else if (obj == '{' || obj == '}' || obj == 'B') {
-        r = inner ? VimTextObjectsLegacy::innerBracket(lines, pos, '{', '}')
-                  : VimTextObjectsLegacy::aroundBracket(lines, pos, '{', '}');
+        r = VimCore::bracketTextObjectRange(
+            pos, lines, inner, '{', '}', leftColOffset, rightColOffset);
       } else if (obj == '[' || obj == ']') {
-        r = inner ? VimTextObjectsLegacy::innerBracket(lines, pos, '[', ']')
-                  : VimTextObjectsLegacy::aroundBracket(lines, pos, '[', ']');
+        r = VimCore::bracketTextObjectRange(
+            pos, lines, inner, '[', ']', leftColOffset, rightColOffset);
       } else if (obj == '<' || obj == '>') {
-        r = inner ? VimTextObjectsLegacy::innerBracket(lines, pos, '<', '>')
-                  : VimTextObjectsLegacy::aroundBracket(lines, pos, '<', '>');
+        r = VimCore::bracketTextObjectRange(
+            pos, lines, inner, '<', '>', leftColOffset, rightColOffset);
       } else {
         assert(false && "Unknown text object");
       }

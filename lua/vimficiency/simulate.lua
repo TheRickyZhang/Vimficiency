@@ -1050,7 +1050,7 @@ local function precompute_states(tokens, lines, row, col, should_cancel, on_done
   ---@param token_text string
   ---@return string
   local function bare_command(token_text)
-    return token_text:gsub("^%d+", "")
+    return (token_text:gsub("^%d+", ""))
   end
 
   local PLAIN_INSERT_ENTRY = {

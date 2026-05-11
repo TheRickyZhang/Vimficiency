@@ -8,7 +8,7 @@ local function close_current_win()
 end
 
 test("settings_modal: opens the shared settings widget in a float", function()
-  local handle = modal.open({
+  local handle = assert(modal.open({
     {
       kind = "setting",
       label = "count",
@@ -18,9 +18,8 @@ test("settings_modal: opens the shared settings widget in a float", function()
       get = function() return 1 end,
       set = function() end,
     },
-  }, nil, { title = "Example Settings" })
+  }, nil, { title = "Example Settings" }))
 
-  assert_true(handle ~= nil)
   assert_true(handle.is_open())
 
   local win = vim.api.nvim_get_current_win()

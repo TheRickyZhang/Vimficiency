@@ -160,6 +160,15 @@ public:
     return newState;
   }
 
+  [[nodiscard]] static TransformEditorState afterOperatorLinewiseDeletion(
+      const TransformEditorState& state, LineRange range, bool hasLinesBelow = false) {
+    TransformEditorState newState = state;
+    VimCore::deleteOperatorLineRangeAndUpdatePos(
+        newState.lines_, range, newState.pos_, hasLinesBelow);
+    newState.refreshHash();
+    return newState;
+  }
+
   [[nodiscard]] static TransformEditorState afterJoin(
       const TransformEditorState& state, bool addSpace) {
     TransformEditorState newState = state;
@@ -178,6 +187,19 @@ public:
     return newState;
   }
 };
+
+inline bool usesOperatorLinewiseCursor(std::string_view baseCmd) {
+  return baseCmd == "d}" || baseCmd == "d{" ||
+         baseCmd == "d)" || baseCmd == "d(";
+}
+
+inline TransformEditorState afterLinewiseDeletionForCommand(
+    const TransformEditorState& state, LineRange range, bool hasLinesBelow,
+    std::string_view baseCmd) {
+  return usesOperatorLinewiseCursor(baseCmd)
+      ? TransformSimulator::afterOperatorLinewiseDeletion(state, range, hasLinesBelow)
+      : TransformSimulator::afterMultiLinewiseDeletion(state, range, hasLinesBelow);
+}
 
 // =============================================================================
 // TransformState - A* search state for transform optimization

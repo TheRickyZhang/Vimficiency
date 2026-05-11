@@ -6,7 +6,11 @@
 #include <gtest/gtest.h>
 
 #include "Boundary/TransformBoundary.h"
+#include "Effort/EffortBank.h"
 #include "Interpreter/EditInterpreter.h"
+#include "Keyboard/Config.h"
+#include "Optimizer/TransformOptimizer/TransformExplorer.h"
+#include "Optimizer/TransformOptimizer/TransformOptimizerParams.h"
 #include "Types/Mode.h"
 #include "Types/CursorPos.h"
 #include "Utils/RandomBufferHelpers.h"
@@ -117,4 +121,35 @@ TEST(TransformOptimizerRegression, CountedDwWithLinesBelowBoundaryMatchesLocalSe
   EXPECT_EQ(withBoundary, localOnly);
   EXPECT_EQ(posWithBoundary, posLocal);
   EXPECT_EQ(modeWithBoundary, modeLocal);
+}
+
+TEST(TransformOptimizerRegression, BackwardParagraphExplorerEmitsDLeftBrace) {
+  Config config = Config::uniform();
+  Lines lines = {"abc", "", "def"};
+  TransformBoundary boundary(lines, CursorPos(0, 0), lines.endPos());
+  TransformOptimizerParams params;
+  EffortBank bank(config);
+  TransformExplorer explorer(
+      boundary, params, config, bank,
+      boundary.leftColOffset(), boundary.rightColOffset());
+
+  bool sawLinewiseDLeftBrace = false;
+  bool sawUnexpectedCharwiseDLeftBrace = false;
+
+  explorer.exploreParagraphEdits<false>(
+      Edit::BACKWARD_PARAGRAPH_EDITS, CursorPos(2, 0), lines,
+      [&](const auto&, const SequenceBinding& cmd) {
+        if (cmd.base.seq.view() == "d{") {
+          sawUnexpectedCharwiseDLeftBrace = true;
+        }
+      },
+      [&](LineRange range, const SequenceBinding& cmd) {
+        if (cmd.base.seq.view() == "d{" &&
+            range.beginLine == 1 && range.endLine == 2) {
+          sawLinewiseDLeftBrace = true;
+        }
+      });
+
+  EXPECT_TRUE(sawLinewiseDLeftBrace);
+  EXPECT_FALSE(sawUnexpectedCharwiseDLeftBrace);
 }

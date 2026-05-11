@@ -218,6 +218,8 @@ void deleteLineCharRangeAndUpdatePos(
 // because the real buffer has lines below that the cursor would land on.
 void deleteLineRangeAndUpdatePos(Lines& lines, const LineRange& range, CursorPos& pos,
                                  bool hasLinesBelow = false);
+void deleteOperatorLineRangeAndUpdatePos(Lines& lines, const LineRange& range, CursorPos& pos,
+                                         bool hasLinesBelow = false);
 
 // Insert text at position. Handles newlines (splits into multiple lines).
 // After insert, pos is at end of inserted text.
