@@ -54,10 +54,6 @@ extern Config g_config_internal;
 
 namespace helpers {
 
-inline std::string_view optionalText(const char* text) {
-  return text ? std::string_view(text) : std::string_view{};
-}
-
 inline std::unexpected<ExportError> unexpectedError(
     ExportErrorKind kind,
     std::string message) {
@@ -67,24 +63,32 @@ inline std::unexpected<ExportError> unexpectedError(
   } };
 }
 
-inline Result<std::string_view> requiredText(const char* text, std::string_view name) {
-  if (!text) {
+inline Result<std::string_view> requiredBytes(
+    const char* data,
+    size_t len,
+    std::string_view name) {
+  if (!data && len > 0) {
     return unexpectedError(
         ExportErrorKind::MissingInput,
         "missing " + std::string(name));
   }
-  return text;
+  return data ? std::string_view(data, len) : std::string_view{};
 }
 
-// FFI exports currently assume single-threaded Neovim calls, so a
-// per-export static backing string is sufficient for returned `const char*`.
-inline const char* storeString(std::string& storage, Result<std::string> result) {
+inline VFByteSlice byteSlice(const std::string& storage) {
+  return VFByteSlice{
+      .data = storage.data(),
+      .len = storage.size(),
+  };
+}
+
+inline VFByteSlice storeBytes(std::string& storage, Result<std::string> result) {
   if (!result) {
     storage = "ERROR: " + result.error().message;
-    return storage.c_str();
+    return byteSlice(storage);
   }
   storage = std::move(*result);
-  return storage.c_str();
+  return byteSlice(storage);
 }
 
 inline int storeIntOr(int fallback, Result<int> result) {

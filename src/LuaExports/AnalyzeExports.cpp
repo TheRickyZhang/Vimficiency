@@ -9,24 +9,17 @@
 
 using namespace std;
 namespace helpers = VF::LuaExports::helpers;
+namespace payload = VF::LuaExports::payload;
 using VF::LuaExports::g_config_internal;
 using VF::LuaExports::kEventFieldSep;
 
 namespace {
 
-Lines splitLines(string_view text) {
-  Lines lines;
-  istringstream stream{string(text)};
-  string line;
-  while (getline(stream, line)) {
-    lines.push_back(line);
-  }
-  return lines;
-}
-
 VF::LuaExports::Result<string> analyzeImpl(
-    const char *initial_text,
-    const char *goal_text,
+    const char *encoded_initial_lines,
+    size_t encoded_initial_lines_len,
+    const char *encoded_goal_lines,
+    size_t encoded_goal_lines_len,
     int boundaryFirstCol,
     int boundaryLastCol,
     bool hasLinesAbove,
@@ -36,27 +29,41 @@ VF::LuaExports::Result<string> analyzeImpl(
     int end_row,
     int end_col,
     const char *keyseq,
+    size_t keyseq_len,
     int window_height,
     int scroll_amount,
     int results_calculated,
-    const char *optimizer_overrides) {
+    const char *optimizer_overrides,
+    size_t optimizer_overrides_len) {
   CHECK(results_calculated >= 0, "results_calculated must be non-negative");
-  auto initialText = helpers::requiredText(initial_text, "initial_text");
+  auto initialText = helpers::requiredBytes(
+      encoded_initial_lines,
+      encoded_initial_lines_len,
+      "encoded_initial_lines");
   if (!initialText) return unexpected(initialText.error());
-  auto goalText = helpers::requiredText(goal_text, "goal_text");
+  auto goalText = helpers::requiredBytes(
+      encoded_goal_lines,
+      encoded_goal_lines_len,
+      "encoded_goal_lines");
   if (!goalText) return unexpected(goalText.error());
-  auto keyseqTextResult = helpers::requiredText(keyseq, "keyseq");
+  auto keyseqTextResult = helpers::requiredBytes(keyseq, keyseq_len, "keyseq");
   if (!keyseqTextResult) return unexpected(keyseqTextResult.error());
+  auto optimizerOverridesText = helpers::requiredBytes(
+      optimizer_overrides,
+      optimizer_overrides_len,
+      "optimizer_overrides");
+  if (!optimizerOverridesText) return unexpected(optimizerOverridesText.error());
 
   const auto overrides = OptimizerParamOverrides::parse(
-      helpers::optionalText(optimizer_overrides));
+      *optimizerOverridesText);
 
-  const Lines initialLines = splitLines(*initialText);
-  const Lines goalLines = splitLines(*goalText);
+  auto initialLinesResult = payload::decodeLineArray(*initialText);
+  if (!initialLinesResult) return unexpected(initialLinesResult.error());
+  auto goalLinesResult = payload::decodeLineArray(*goalText);
+  if (!goalLinesResult) return unexpected(goalLinesResult.error());
+  const Lines initialLines = std::move(*initialLinesResult);
+  const Lines goalLines = std::move(*goalLinesResult);
   const string keyseqText(*keyseqTextResult);
-
-  assert(!initialLines.empty() && "FFI contract: buffer must have at least one line");
-  assert(!goalLines.empty() && "FFI contract: goal buffer must have at least one line");
 
   const CursorPos initialPos(start_row, start_col);
   const CursorPos goalPos(end_row, end_col);
@@ -145,9 +152,11 @@ VF::LuaExports::Result<string> analyzeImpl(
 
 extern "C" {
 
-const char *vf_analyze(
-    const char *initial_text,
-    const char *goal_text,
+VFByteSlice vf_analyze(
+    const char *encoded_initial_lines,
+    size_t encoded_initial_lines_len,
+    const char *encoded_goal_lines,
+    size_t encoded_goal_lines_len,
     int boundaryFirstCol,
     int boundaryLastCol,
     bool hasLinesAbove,
@@ -157,16 +166,20 @@ const char *vf_analyze(
     int end_row,
     int end_col,
     const char *keyseq,
+    size_t keyseq_len,
     int window_height,
     int scroll_amount,
     int results_calculated,
-    const char *optimizer_overrides) {
+    const char *optimizer_overrides,
+    size_t optimizer_overrides_len) {
   static string result_storage;
-  return helpers::storeString(
+  return helpers::storeBytes(
       result_storage,
       analyzeImpl(
-          initial_text,
-          goal_text,
+          encoded_initial_lines,
+          encoded_initial_lines_len,
+          encoded_goal_lines,
+          encoded_goal_lines_len,
           boundaryFirstCol,
           boundaryLastCol,
           hasLinesAbove,
@@ -176,10 +189,12 @@ const char *vf_analyze(
           end_row,
           end_col,
           keyseq,
+          keyseq_len,
           window_height,
           scroll_amount,
           results_calculated,
-          optimizer_overrides));
+          optimizer_overrides,
+          optimizer_overrides_len));
 }
 
 }

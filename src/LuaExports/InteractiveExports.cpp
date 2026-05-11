@@ -121,9 +121,11 @@ string encodeHeaderRows(const View& v) {
 
 VF::LuaExports::Result<string> startImpl(
     const char* encoded_initial_lines,
+    size_t encoded_initial_lines_len,
     int start_row,
     int start_col,
     const char* encoded_goal_lines,
+    size_t encoded_goal_lines_len,
     int end_row,
     int end_col,
     int boundary_first_col,
@@ -132,10 +134,17 @@ VF::LuaExports::Result<string> startImpl(
     bool has_lines_below,
     int window_height,
     int scroll_amount,
-    const char* user_seq) {
-  auto initialTextRes = helpers::requiredText(encoded_initial_lines, "encoded_initial_lines");
+    const char* user_seq,
+    size_t user_seq_len) {
+  auto initialTextRes = helpers::requiredBytes(
+      encoded_initial_lines,
+      encoded_initial_lines_len,
+      "encoded_initial_lines");
   if (!initialTextRes) return unexpected(initialTextRes.error());
-  auto goalTextRes = helpers::requiredText(encoded_goal_lines, "encoded_goal_lines");
+  auto goalTextRes = helpers::requiredBytes(
+      encoded_goal_lines,
+      encoded_goal_lines_len,
+      "encoded_goal_lines");
   if (!goalTextRes) return unexpected(goalTextRes.error());
 
   auto initialLinesRes = payload::decodeLineArray(*initialTextRes);
@@ -145,8 +154,6 @@ VF::LuaExports::Result<string> startImpl(
 
   Lines initialLines = std::move(*initialLinesRes);
   Lines goalLines = std::move(*goalLinesRes);
-  if (initialLines.empty()) initialLines.push_back(Line(""));
-  if (goalLines.empty()) goalLines.push_back(Line(""));
 
   const CursorPos initialPos(start_row, start_col);
   const CursorPos goalPos(end_row, end_col);
@@ -159,7 +166,9 @@ VF::LuaExports::Result<string> startImpl(
       has_lines_below);
 
   NavContext navContext(window_height, scroll_amount);
-  const string_view userSeq = helpers::optionalText(user_seq);
+  auto userSeqRes = helpers::requiredBytes(user_seq, user_seq_len, "user_seq");
+  if (!userSeqRes) return unexpected(userSeqRes.error());
+  const string_view userSeq = *userSeqRes;
 
   const int view_id = g_registry.create(
       std::move(initialLines),
@@ -177,11 +186,13 @@ VF::LuaExports::Result<string> startImpl(
 
 extern "C" {
 
-const char* vf_explore_start(
+VFByteSlice vf_explore_start(
     const char* encoded_initial_lines,
+    size_t encoded_initial_lines_len,
     int start_row,
     int start_col,
     const char* encoded_goal_lines,
+    size_t encoded_goal_lines_len,
     int end_row,
     int end_col,
     int boundary_first_col,
@@ -190,108 +201,132 @@ const char* vf_explore_start(
     bool has_lines_below,
     int window_height,
     int scroll_amount,
-    const char* user_seq) {
+    const char* user_seq,
+    size_t user_seq_len) {
   static string storage;
-  return helpers::storeString(storage, startImpl(
-      encoded_initial_lines, start_row, start_col,
-      encoded_goal_lines, end_row, end_col,
+  return helpers::storeBytes(storage, startImpl(
+      encoded_initial_lines, encoded_initial_lines_len,
+      start_row, start_col,
+      encoded_goal_lines, encoded_goal_lines_len,
+      end_row, end_col,
       boundary_first_col, boundary_last_col,
       has_lines_above, has_lines_below,
       window_height, scroll_amount,
-      user_seq));
+      user_seq, user_seq_len));
 }
 
 int vf_explore_destroy(int view_id) {
   return g_registry.destroy(view_id) ? 1 : 0;
 }
 
-const char* vf_explore_state(int view_id) {
+VFByteSlice vf_explore_state(int view_id) {
   static string storage;
   storage = encodeState(g_registry.get(view_id));
-  return storage.c_str();
+  return helpers::byteSlice(storage);
 }
 
-const char* vf_explore_recommendations(
+VFByteSlice vf_explore_recommendations(
     int view_id,
     int max_count,
     const char* optimizer_overrides,
-    const char* sort_mode) {
+    size_t optimizer_overrides_len,
+    const char* sort_mode,
+    size_t sort_mode_len) {
   CHECK(max_count >= 0, "max_count must be non-negative");
   static string storage;
   View& v = g_registry.get(view_id);
-  const auto overrides = OptimizerParamOverrides::parse(
-      helpers::optionalText(optimizer_overrides));
-  const SuggestionSortMode mode =
-      parseSuggestionSortMode(helpers::optionalText(sort_mode));
+  auto overridesText = helpers::requiredBytes(
+      optimizer_overrides,
+      optimizer_overrides_len,
+      "optimizer_overrides");
+  if (!overridesText) return helpers::storeBytes(storage, unexpected(overridesText.error()));
+  auto sortModeText = helpers::requiredBytes(sort_mode, sort_mode_len, "sort_mode");
+  if (!sortModeText) return helpers::storeBytes(storage, unexpected(sortModeText.error()));
+
+  const auto overrides = OptimizerParamOverrides::parse(*overridesText);
+  const SuggestionSortMode mode = parseSuggestionSortMode(*sortModeText);
   storage = encodeSuggestions(v.recommendations(max_count, &overrides, mode));
-  return storage.c_str();
+  return helpers::byteSlice(storage);
 }
 
-const char* vf_explore_apply_movement(int view_id, const char* movement_text) {
+VFByteSlice vf_explore_apply_movement(
+    int view_id,
+    const char* movement_text,
+    size_t movement_text_len) {
   static string storage;
   View& v = g_registry.get(view_id);
-  return helpers::storeString(storage, helpers::requiredText(movement_text, "movement_text").transform(
+  return helpers::storeBytes(storage, helpers::requiredBytes(
+          movement_text,
+          movement_text_len,
+          "movement_text").transform(
       [&](string_view text) {
         return encodeOutcome(v.applyMovement(text));
       }));
 }
 
-const char* vf_explore_apply_edit(int view_id, const char* text) {
+VFByteSlice vf_explore_apply_edit(int view_id, const char* text, size_t text_len) {
   static string storage;
   View& v = g_registry.get(view_id);
-  return helpers::storeString(storage, helpers::requiredText(text, "text").transform(
+  return helpers::storeBytes(storage, helpers::requiredBytes(text, text_len, "text").transform(
       [&](string_view edit_text) {
         return encodeOutcome(v.applyEdit(edit_text));
       }));
 }
 
-const char* vf_explore_current_lines(int view_id) {
+VFByteSlice vf_explore_current_lines(int view_id) {
   static string storage;
   View& v = g_registry.get(view_id);
   storage.clear();
   for (const auto& line : v.state().lines) {
-    storage += to_string(line.size()) + ":" + string(line);
+    storage += encodeField(string_view(line));
   }
-  return storage.c_str();
+  return helpers::byteSlice(storage);
 }
 
-const char* vf_explore_accept_snapshot(
+VFByteSlice vf_explore_accept_snapshot(
     int view_id,
     const char* encoded_lines,
+    size_t encoded_lines_len,
     int new_row,
     int new_col,
     const char* raw_keys,
+    size_t raw_keys_len,
     bool insert_mode) {
   static string storage;
   View& v = g_registry.get(view_id);
-  return helpers::storeString(storage, helpers::requiredText(encoded_lines, "encoded_lines")
+  auto rawKeysResult = helpers::requiredBytes(raw_keys, raw_keys_len, "raw_keys");
+  if (!rawKeysResult) return helpers::storeBytes(storage, unexpected(rawKeysResult.error()));
+  return helpers::storeBytes(storage, helpers::requiredBytes(
+          encoded_lines,
+          encoded_lines_len,
+          "encoded_lines")
       .and_then(payload::decodeLineArray)
       .transform([&](const Lines& liveLines) {
         return encodeOutcome(
             v.acceptSnapshot(liveLines, CursorPos(new_row, new_col),
-                             helpers::optionalText(raw_keys), insert_mode));
+                             *rawKeysResult, insert_mode));
       }));
 }
 
-const char* vf_explore_undo(int view_id) {
+VFByteSlice vf_explore_undo(int view_id) {
   static string storage;
   View& v = g_registry.get(view_id);
   storage = encodeOutcome(v.undo());
-  return storage.c_str();
+  return helpers::byteSlice(storage);
 }
 
-const char* vf_explore_redo(int view_id) {
+VFByteSlice vf_explore_redo(int view_id) {
   static string storage;
   View& v = g_registry.get(view_id);
   storage = encodeOutcome(v.redo());
-  return storage.c_str();
+  return helpers::byteSlice(storage);
 }
 
-const char* vf_explore_header_rows(int view_id) {
+VFByteSlice vf_explore_header_rows(int view_id) {
   static string storage;
   View& v = g_registry.get(view_id);
   storage = encodeHeaderRows(v);
-  return storage.c_str();
+  return helpers::byteSlice(storage);
 }
 
 }  // extern "C"

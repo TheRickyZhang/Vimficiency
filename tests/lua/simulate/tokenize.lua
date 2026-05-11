@@ -53,3 +53,16 @@ test("simulate tokenization merges feedable commands", function()
     "A|foo|<CR>|bar|<Esc>",
     "change|typed|typed|typed|escape")
 end)
+
+test("simulate tokenization preserves NUL bytes in typed text", function()
+  local nul = string.char(0)
+  local tokens = sim._debug_tokenize_for_animation("i" .. nul .. "x<Esc>")
+
+  assert_eq(#tokens, 3)
+  assert_eq(tokens[1].text, "i")
+  assert_eq(tokens[1].kind, "change")
+  assert_eq(tokens[2].text, nul .. "x")
+  assert_eq(tokens[2].kind, "typed")
+  assert_eq(tokens[3].text, "<Esc>")
+  assert_eq(tokens[3].kind, "escape")
+end)

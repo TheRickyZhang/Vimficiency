@@ -60,6 +60,10 @@ end
 ---@field use_count_penalty_overrides boolean
 ---@field count_penalty_overrides VF.C.CountPenaltyOverride[]
 
+---@class VF.C.ByteSlice
+---@field data ffi.cdata*
+---@field len ffi.cdata*
+
 ---@class VF.C.Lib
 ---@field VF_KEY_COUNT integer
 ---@field VF_FINGER_COUNT integer
@@ -72,32 +76,32 @@ end
 ---@field vf_get_config fun(): VF.C.Config
 ---@field vf_apply_config fun(): nil
 ---@field vf_reset_config fun(): nil
----@field vf_analyze fun(initial_text: string, goal_text: string, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, start_row: integer, start_col: integer, end_row: integer, end_col: integer, keyseq: string, window_height: integer, scroll_amount: integer, results_calculated: integer, optimizer_overrides: string): string
----@field vf_get_debug fun(): string
----@field vf_get_warnings fun(): string
----@field vf_get_optimizer_defaults fun(): string
+---@field vf_analyze fun(encoded_initial_lines: string, encoded_initial_lines_len: integer, encoded_goal_lines: string, encoded_goal_lines_len: integer, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, start_row: integer, start_col: integer, end_row: integer, end_col: integer, keyseq: string, keyseq_len: integer, window_height: integer, scroll_amount: integer, results_calculated: integer, optimizer_overrides: string, optimizer_overrides_len: integer): VF.C.ByteSlice
+---@field vf_get_debug fun(): VF.C.ByteSlice
+---@field vf_get_warnings fun(): VF.C.ByteSlice
+---@field vf_get_optimizer_defaults fun(): VF.C.ByteSlice
 ---@field vf_version fun(): integer
 ---@field vf_abi_hash fun(): ffi.cdata*
----@field vf_debug_config fun(): string
----@field vf_tokenize_movements fun(seq: string): string
----@field vf_tokenize_sequence fun(seq: string): string
----@field vf_build_sequence fun(encoded_events: string): string
----@field vf_compute_search_region fun(encoded_start_lines: string, encoded_end_lines: string, start_row: integer, end_row: integer, padding: integer): string
----@field vf_resolve_recall_cutoff fun(encoded_records: string, target_hrtime: integer, budget: integer): integer
+---@field vf_debug_config fun(): VF.C.ByteSlice
+---@field vf_tokenize_movements fun(seq: string, seq_len: integer): VF.C.ByteSlice
+---@field vf_tokenize_sequence fun(seq: string, seq_len: integer): VF.C.ByteSlice
+---@field vf_build_sequence fun(encoded_events: string, encoded_events_len: integer): VF.C.ByteSlice
+---@field vf_compute_search_region fun(encoded_start_lines: string, encoded_start_lines_len: integer, encoded_end_lines: string, encoded_end_lines_len: integer, start_row: integer, end_row: integer, padding: integer): VF.C.ByteSlice
+---@field vf_resolve_recall_cutoff fun(encoded_records: string, encoded_records_len: integer, target_hrtime: integer, budget: integer): integer
 ---@field vf_manual_evict_reason fun(start_row: integer, cursor_row: integer, last_key_time_ns: integer, has_last_key: boolean, now_ns: integer, max_search_lines: integer, manual_idle_timeout_seconds: integer): integer
----@field vf_format_sequence fun(seq: string): string
----@field vf_simulate_movements fun(encoded_lines: string, start_row: integer, start_col: integer, seq: string): string
----@field vf_explore_start fun(encoded_initial_lines: string, start_row: integer, start_col: integer, encoded_goal_lines: string, end_row: integer, end_col: integer, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, window_height: integer, scroll_amount: integer, user_seq: string): string
+---@field vf_format_sequence fun(seq: string, seq_len: integer): VF.C.ByteSlice
+---@field vf_simulate_movements fun(encoded_lines: string, encoded_lines_len: integer, start_row: integer, start_col: integer, seq: string, seq_len: integer): VF.C.ByteSlice
+---@field vf_explore_start fun(encoded_initial_lines: string, encoded_initial_lines_len: integer, start_row: integer, start_col: integer, encoded_goal_lines: string, encoded_goal_lines_len: integer, end_row: integer, end_col: integer, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, window_height: integer, scroll_amount: integer, user_seq: string, user_seq_len: integer): VF.C.ByteSlice
 ---@field vf_explore_destroy fun(view_id: integer): integer
----@field vf_explore_state fun(view_id: integer): string
----@field vf_explore_recommendations fun(view_id: integer, max_count: integer, optimizer_overrides: string, sort_mode: string): string
----@field vf_explore_apply_movement fun(view_id: integer, movement_text: string): string
----@field vf_explore_apply_edit fun(view_id: integer, text: string): string
----@field vf_explore_current_lines fun(view_id: integer): string
----@field vf_explore_accept_snapshot fun(view_id: integer, encoded_lines: string, new_row: integer, new_col: integer, raw_keys: string, insert_mode: boolean): string
----@field vf_explore_undo fun(view_id: integer): string
----@field vf_explore_redo fun(view_id: integer): string
----@field vf_explore_header_rows fun(view_id: integer): string
+---@field vf_explore_state fun(view_id: integer): VF.C.ByteSlice
+---@field vf_explore_recommendations fun(view_id: integer, max_count: integer, optimizer_overrides: string, optimizer_overrides_len: integer, sort_mode: string, sort_mode_len: integer): VF.C.ByteSlice
+---@field vf_explore_apply_movement fun(view_id: integer, movement_text: string, movement_text_len: integer): VF.C.ByteSlice
+---@field vf_explore_apply_edit fun(view_id: integer, text: string, text_len: integer): VF.C.ByteSlice
+---@field vf_explore_current_lines fun(view_id: integer): VF.C.ByteSlice
+---@field vf_explore_accept_snapshot fun(view_id: integer, encoded_lines: string, encoded_lines_len: integer, new_row: integer, new_col: integer, raw_keys: string, raw_keys_len: integer, insert_mode: boolean): VF.C.ByteSlice
+---@field vf_explore_undo fun(view_id: integer): VF.C.ByteSlice
+---@field vf_explore_redo fun(view_id: integer): VF.C.ByteSlice
+---@field vf_explore_header_rows fun(view_id: integer): VF.C.ByteSlice
 
 local api_def_text = read_ffi_api_def()
 ffi.cdef(api_def_text)
@@ -175,6 +179,16 @@ M.Finger = build_enum(lib.VF_FINGER_COUNT, lib.vf_finger_name)
 M.Hand = build_enum(lib.VF_HAND_COUNT, lib.vf_hand_name)
 M.CountClass = build_enum(lib.VF_COUNT_CLASS_COUNT, lib.vf_count_class_name)
 
+---@param slice VF.C.ByteSlice
+---@return string
+local function slice_to_string(slice)
+	local len = tonumber(slice.len) or 0
+	if len == 0 then
+		return ""
+	end
+	return ffi.string(slice.data, len)
+end
+
 local EVENT_FIELD_SEP = string.char(0x1f)
 local EVENT_RECORD_SEP = string.char(0x1e)
 
@@ -189,6 +203,21 @@ local function encode_string_list(items)
 		out[#out + 1] = item
 	end
 	return table.concat(out)
+end
+
+---@param lines string[]
+---@param name string
+---@return string
+local function encode_line_array(lines, name)
+	assert(type(lines) == "table", name .. " must be a table")
+	assert(#lines > 0, name .. " must contain at least one line")
+	for i = 1, #lines do
+		local line = lines[i]
+		assert(type(line) == "string", name .. "[" .. i .. "] must be a string")
+		assert(not line:find("\n", 1, true), name .. "[" .. i .. "] contains newline byte")
+		assert(not line:find("\0", 1, true), name .. "[" .. i .. "] contains NUL byte")
+	end
+	return encode_string_list(lines)
 end
 
 --- Encode a Lua number as a decimal integer string with NO scientific
@@ -246,7 +275,8 @@ function M.build_sequence(key_seq)
 		parts[#parts + 1] = ev.key_typed
 		parts[#parts + 1] = EVENT_RECORD_SEP
 	end
-	local result = ffi.string(lib.vf_build_sequence(table.concat(parts)))
+	local payload = table.concat(parts)
+	local result = slice_to_string(lib.vf_build_sequence(payload, #payload))
 	if result:sub(1, 7) == "ERROR: " then
 		error("vf_build_sequence failed: " .. result, 0)
 	end
@@ -261,9 +291,13 @@ end
 ---@return integer
 ---@return integer
 function M.compute_search_region(start_lines, end_lines, start_row, end_row, padding)
-	local result = ffi.string(lib.vf_compute_search_region(
-		encode_string_list(start_lines),
-		encode_string_list(end_lines),
+	local start_payload = encode_line_array(start_lines, "start_lines")
+	local end_payload = encode_line_array(end_lines, "end_lines")
+	local result = slice_to_string(lib.vf_compute_search_region(
+		start_payload,
+		#start_payload,
+		end_payload,
+		#end_payload,
 		start_row,
 		end_row,
 		padding
@@ -291,8 +325,10 @@ function M.resolve_recall_cutoff(records, order, target_hrtime, budget)
 		parts[#parts + 1] = encode_int64(rec.time_started)
 		parts[#parts + 1] = rec.first_mode or ""
 	end
+	local encoded = encode_string_list(parts)
 	local index = lib.vf_resolve_recall_cutoff(
-		encode_string_list(parts),
+		encoded,
+		#encoded,
 		target_hrtime,
 		budget
 	)
@@ -551,7 +587,7 @@ end
 local optimizer_defaults_cache = nil
 function M.get_optimizer_defaults()
   if optimizer_defaults_cache ~= nil then return optimizer_defaults_cache end
-  local raw = ffi.string(lib.vf_get_optimizer_defaults())
+  local raw = slice_to_string(lib.vf_get_optimizer_defaults())
   local out = { nav = {}, transform = {}, composition = {} }
   for line in string.gmatch(raw, "[^\n]+") do
     local scope, key, typ, value = line:match("^([^:]+):([^:]+):([^=]+)=(.*)$")
@@ -597,21 +633,24 @@ function M.analyze(
   RESULTS_CALCULATED,
   optimizer_overrides
 )
-	local initial_text = table.concat(initial_lines, "\n")
-	local goal_text = table.concat(goal_lines, "\n")
+	local initial_payload = encode_line_array(initial_lines, "initial_lines")
+	local goal_payload = encode_line_array(goal_lines, "goal_lines")
+	local user_seq = key_seq or ""
+	local override_payload = optimizer_overrides or ""
 
 	local result = lib.vf_analyze(
-    initial_text, goal_text,
+    initial_payload, #initial_payload,
+    goal_payload, #goal_payload,
     boundary_first_col, boundary_last_col,
     has_lines_above, has_lines_below,
     start_row, start_col, end_row, end_col,
-    key_seq,
+    user_seq, #user_seq,
     window_height, scroll_amount,
     RESULTS_CALCULATED,
-    optimizer_overrides or ""
+    override_payload, #override_payload
   )
-  local dbg = ffi.string(lib.vf_get_debug())
-  local result_str = ffi.string(result)
+  local dbg = slice_to_string(lib.vf_get_debug())
+  local result_str = slice_to_string(result)
 
   if result_str:sub(1, 6) == "ERROR:" then
     error(result_str)
@@ -630,7 +669,7 @@ function M.version()
 end
 
 function M.debug_config()
-	return ffi.string(lib.vf_debug_config())
+	return slice_to_string(lib.vf_debug_config())
 end
 
 ---@class VF.Sequence.Token
@@ -674,7 +713,7 @@ end
 ---@return string|nil error
 function M.tokenize_movements(seq)
   if not seq or seq == "" then return {}, nil end
-  local result_str = ffi.string(lib.vf_tokenize_movements(seq))
+  local result_str = slice_to_string(lib.vf_tokenize_movements(seq, #seq))
   if result_str == "" then return {}, nil end
   if result_str:sub(1, 6) == "ERROR:" then return {}, result_str end
   return parse_kinded_tokens(result_str), nil
@@ -688,7 +727,7 @@ end
 ---@return string|nil error
 function M.tokenize_sequence(seq)
   if not seq or seq == "" then return {}, nil end
-  local result_str = ffi.string(lib.vf_tokenize_sequence(seq))
+  local result_str = slice_to_string(lib.vf_tokenize_sequence(seq, #seq))
   if result_str == "" then return {}, nil end
   if result_str:sub(1, 6) == "ERROR:" then return {}, result_str end
   return parse_kinded_tokens(result_str), nil
@@ -702,7 +741,7 @@ function M.format_sequence(seq)
   if not seq or seq == "" then
     return ""
   end
-  return ffi.string(lib.vf_format_sequence(seq))
+  return slice_to_string(lib.vf_format_sequence(seq, #seq))
 end
 
 ---@param lines string[]
@@ -716,11 +755,14 @@ function M.simulate_movements(lines, start_row, start_col, seq)
   if not seq or seq == "" then
     return start_row, start_col, nil
   end
-  local result_str = ffi.string(lib.vf_simulate_movements(
-    encode_string_list(lines),
+  local lines_payload = encode_line_array(lines, "lines")
+  local result_str = slice_to_string(lib.vf_simulate_movements(
+    lines_payload,
+    #lines_payload,
     start_row,
     start_col,
-    seq
+    seq,
+    #seq
   ))
   if result_str:sub(1, 6) == "ERROR:" then
     return nil, nil, result_str
@@ -808,7 +850,7 @@ end
 --- here because every FFI wrapper that returns a payload routes through
 --- `require_non_error`, so this catches all entry points uniformly.
 local function drain_warnings()
-  local pending = ffi.string(lib.vf_get_warnings())
+  local pending = slice_to_string(lib.vf_get_warnings())
   if pending == "" then return end
   -- pcall: tests / headless contexts may stub `vim.notify`; do not let
   -- a missing notifier turn a soft-fail diagnostic into a hard error.
@@ -927,15 +969,21 @@ function M.explore_start(initial_lines, start_row, start_col,
                          has_lines_above, has_lines_below,
                          window_height, scroll_amount,
                          user_seq)
-  local payload = require_non_error(ffi.string(lib.vf_explore_start(
-    encode_string_list(initial_lines),
+  local initial_payload = encode_line_array(initial_lines, "initial_lines")
+  local goal_payload = encode_line_array(goal_lines, "goal_lines")
+  local user_payload = user_seq or ""
+  local payload = require_non_error(slice_to_string(lib.vf_explore_start(
+    initial_payload,
+    #initial_payload,
     start_row, start_col,
-    encode_string_list(goal_lines),
+    goal_payload,
+    #goal_payload,
     end_row, end_col,
     boundary_first_col, boundary_last_col,
     has_lines_above, has_lines_below,
     window_height, scroll_amount,
-    user_seq or ""
+    user_payload,
+    #user_payload
   )))
   return tonumber(payload) or error("explore_start returned non-numeric view_id: " .. payload)
 end
@@ -949,7 +997,7 @@ end
 ---@param view_id integer
 ---@return VF.Explore.State
 function M.explore_state(view_id)
-  local payload = require_non_error(ffi.string(lib.vf_explore_state(view_id)))
+  local payload = require_non_error(slice_to_string(lib.vf_explore_state(view_id)))
   return parse_explore_state(payload)
 end
 
@@ -959,9 +1007,13 @@ end
 ---@param sort_mode? "effort"|"distance"|"score"
 ---@return VF.Explore.Recommendation[]
 function M.explore_recommendations(view_id, max_count, optimizer_overrides, sort_mode)
-  local payload = require_non_error(ffi.string(
+  local override_payload = optimizer_overrides or ""
+  local sort_payload = sort_mode or "effort"
+  local payload = require_non_error(slice_to_string(
     lib.vf_explore_recommendations(
-      view_id, max_count, optimizer_overrides or "", sort_mode or "effort")))
+      view_id, max_count,
+      override_payload, #override_payload,
+      sort_payload, #sort_payload)))
   return parse_explore_recommendations(payload)
 end
 
@@ -969,8 +1021,8 @@ end
 ---@param movement_text string
 ---@return VF.Explore.ApplyResult
 function M.explore_apply_movement(view_id, movement_text)
-  local payload = require_non_error(ffi.string(
-    lib.vf_explore_apply_movement(view_id, movement_text)))
+  local payload = require_non_error(slice_to_string(
+    lib.vf_explore_apply_movement(view_id, movement_text, #movement_text)))
   return parse_explore_apply_result(payload)
 end
 
@@ -978,15 +1030,16 @@ end
 ---@param text string
 ---@return VF.Explore.ApplyResult
 function M.explore_apply_edit(view_id, text)
-  local payload = require_non_error(ffi.string(
-    lib.vf_explore_apply_edit(view_id, text)))
+  local payload = require_non_error(slice_to_string(
+    lib.vf_explore_apply_edit(view_id, text, #text)))
   return parse_explore_apply_result(payload)
 end
 
 ---@param view_id integer
 ---@return string[]
 function M.explore_current_lines(view_id)
-  local payload = require_non_error(ffi.string(lib.vf_explore_current_lines(view_id)))
+  local slice = lib.vf_explore_current_lines(view_id)
+  local payload = require_non_error(slice_to_string(slice))
   return decode_string_list(payload)
 end
 
@@ -998,22 +1051,25 @@ end
 ---@param insert_mode boolean
 ---@return VF.Explore.ApplyResult
 function M.explore_accept_snapshot(view_id, lines, new_row, new_col, raw_keys, insert_mode)
-  local payload = require_non_error(ffi.string(lib.vf_explore_accept_snapshot(
-    view_id, encode_string_list(lines), new_row, new_col, raw_keys or "", insert_mode)))
+  local lines_payload = encode_line_array(lines, "lines")
+  local key_payload = raw_keys or ""
+  local payload = require_non_error(slice_to_string(lib.vf_explore_accept_snapshot(
+    view_id, lines_payload, #lines_payload, new_row, new_col,
+    key_payload, #key_payload, insert_mode)))
   return parse_explore_apply_result(payload)
 end
 
 ---@param view_id integer
 ---@return VF.Explore.ApplyResult
 function M.explore_undo(view_id)
-  local payload = require_non_error(ffi.string(lib.vf_explore_undo(view_id)))
+  local payload = require_non_error(slice_to_string(lib.vf_explore_undo(view_id)))
   return parse_explore_apply_result(payload)
 end
 
 ---@param view_id integer
 ---@return VF.Explore.ApplyResult
 function M.explore_redo(view_id)
-  local payload = require_non_error(ffi.string(lib.vf_explore_redo(view_id)))
+  local payload = require_non_error(slice_to_string(lib.vf_explore_redo(view_id)))
   return parse_explore_apply_result(payload)
 end
 
@@ -1034,7 +1090,7 @@ end
 ---@param view_id integer
 ---@return VF.Explore.HeaderRows
 function M.explore_header_rows(view_id)
-  local payload = require_non_error(ffi.string(lib.vf_explore_header_rows(view_id)))
+  local payload = require_non_error(slice_to_string(lib.vf_explore_header_rows(view_id)))
   local parts = decode_string_list(payload)
   local idx = 1
   local explored_count = tonumber(parts[idx]) or 0

@@ -72,6 +72,7 @@ target_link_libraries(test_utils
 
 add_executable(vimficiency_tests
   TestMain.cpp
+  ${PROJECT_SOURCE_DIR}/src/LuaExports/Payload.cpp
 
   # Commands - VimCore motion correctness
   Commands/CountMotionsTest.cpp
@@ -126,6 +127,7 @@ add_executable(vimficiency_tests
   Misc/EffortCompositionTest.cpp
   Misc/ErrorHandlingTest.cpp
   Misc/HashCollisionTest.cpp
+  Misc/LuaExportsPayloadTest.cpp
   Misc/NavClassMaskTest.cpp
   Misc/VimOptionsTest.cpp
   Explore/ExploreTest.cpp

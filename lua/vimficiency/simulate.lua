@@ -1020,17 +1020,17 @@ local function precompute_states(tokens, lines, row, col, should_cancel, on_done
     if not v.nvim_win_is_valid(probe_win) then return end
     v.nvim_set_current_win(probe_win)
     v.nvim_buf_set_lines(buf, 0, -1, true, state.lines)
-    local safe_row = max(1, min(state.cursor[1], #state.lines))
-    local line = state.lines[safe_row] or ""
+    local snap_row = max(1, min(state.cursor[1], #state.lines))
+    local line = state.lines[snap_row] or ""
     local safe_col = max(0, min(state.cursor[2], max(0, #line - 1)))
-    v.nvim_win_set_cursor(probe_win, { safe_row, safe_col })
+    v.nvim_win_set_cursor(probe_win, { snap_row, safe_col })
   end
 
   ---@param state VF.Replay.Snapshot
   local function restore_snapshot(state)
     if not v.nvim_win_is_valid(probe_win) then return end
     v.nvim_set_current_win(probe_win)
-    pcall(cmd, "stopinsert")
+    pcall(function() cmd("stopinsert") end)
     v.nvim_feedkeys(esc, "nx", false)
     apply_probe_snapshot(state)
   end
