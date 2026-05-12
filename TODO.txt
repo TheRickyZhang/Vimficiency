@@ -12,6 +12,9 @@ Review implementation of BufferIndex in optimizeToRange() (is it exploring corre
 
 - Are param handling consistent?
 
+- Add different types of tests: expect, property-based, fuzzing
+- Add some more randomized exploration in optimizers so it can explore more branches
+
 Review Exploration C++ code
 toNavSuggestion - huh wtf are these conversions?
 

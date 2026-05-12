@@ -81,35 +81,6 @@ CompositionSearchContext::CompositionSearchContext(
   // Build intermediate buffer states
   linesAfterNEdits_ = calculateLinesAfterDiffs(initialLines);
 
-  // Pre-compute subset BufferIndex for each edit level (for counted motion exploration).
-  // Each index covers the region between the previous edit and current edit + padding,
-  // which is where the A* search will query motion landing positions.
-  for (int i = 0; i < totalEdits(); i++) {
-    const Lines& buf = linesAfterNEdits_[i];
-    int bufSize = static_cast<int>(buf.size());
-
-    // Determine the line range the cursor could be in when approaching edit i.
-    // For i==0, it's the initial position.
-    // For i>0, it's within the region replaced by edit i-1.
-    int prevMinLine, prevMaxLine;
-    if (i == 0) {
-      prevMinLine = prevMaxLine = initialPos.line;
-    } else {
-      prevMinLine = edits[i - 1].diffState.beginPos.line;
-      prevMaxLine = prevMinLine + edits[i - 1].diffState.newLineCount() - 1;
-    }
-
-    int currMinLine = edits[i].diffState.beginPos.line;
-    int currMaxLine = edits[i].diffState.endPos.line;
-
-    int idxStart = std::max(0, std::min(prevMinLine, currMinLine) - params.navPaddingAbove);
-    int idxEnd = std::min(bufSize, std::max(prevMaxLine, currMaxLine) + 1 + params.navPaddingBelow);
-
-    edits[i].bufferIndexStart = idxStart;
-    edits[i].bufferIndexEnd = idxEnd;
-    edits[i].bufferIndex = BufferIndex(buf.getLineRange(idxStart, idxEnd));
-  }
-
   // Solve each edit region
   calculateTransformResults();
 
@@ -224,23 +195,6 @@ double CompositionSearchContext::heuristic(
   }
 
   return effortWeight * s.getEffort() + distanceWeight * h;
-}
-
-bool CompositionSearchContext::tryGetBufferIndex(
-    int editsCompleted, int motionBeginLine, int motionEndLine,
-    const BufferIndex*& outIndex, int& outLineOffset) const {
-  outIndex = nullptr;
-  outLineOffset = 0;
-
-  if (editsCompleted < 0 || editsCompleted >= totalEdits())
-    return false;
-  const auto& edit = edits[editsCompleted];
-  // Safety: motion search window must be within the indexed range
-  if (motionBeginLine < edit.bufferIndexStart || motionEndLine > edit.bufferIndexEnd)
-    return false;
-  outIndex = &edit.bufferIndex;
-  outLineOffset = motionBeginLine - edit.bufferIndexStart;
-  return true;
 }
 
 CompositionSearchStats CompositionSearchContext::getStats(int resultsFound,

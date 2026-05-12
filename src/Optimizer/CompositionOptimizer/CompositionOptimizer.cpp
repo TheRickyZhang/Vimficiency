@@ -257,6 +257,8 @@ optimizeImpl(
       int endLine;
       CursorPos localPos;
       NavBoundary subsetBoundary;
+      BufferIndex bufferIndex;
+      int bufferIndexLineOffset;
     };
     auto [beginLine, endLine] = fromLines.minmaxBoundWithPadding(
         min(pos.line, targetBeginLine), max(pos.line + 1, targetEndLine + 1),
@@ -269,7 +271,17 @@ optimizeImpl(
     NavBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
         beginLine > 0 || boundary.hasLinesAbove(),
         endLine <= fromLines.lastLine() || boundary.hasLinesBelow());
-    return Slice{std::move(subset), beginLine, endLine, localPos, std::move(subsetBoundary)};
+    auto bufferIndexWindow = buildCompositionBufferIndexWindow(
+        fromLines, beginLine, endLine);
+    return Slice{
+        std::move(subset),
+        beginLine,
+        endLine,
+        localPos,
+        std::move(subsetBoundary),
+        std::move(bufferIndexWindow.index),
+        bufferIndexWindow.lineOffset,
+    };
   };
 
   // Enumerate motions from `pos` toward a CharInterval target.
@@ -284,7 +296,7 @@ optimizeImpl(
   auto exploreMotionsToInterval = [&](
       const Entry& parent, CursorPos pos,
       int targetBeginLine, int targetEndLine,
-      const Lines& fromLines, int editsCompleted,
+      const Lines& fromLines,
       int maxResults, bool keepMultiplePerLanding,
       auto&& makeLocalInterval) {
     auto slice = sliceMotionSubset(pos, targetBeginLine, targetEndLine, fromLines);
@@ -293,18 +305,10 @@ optimizeImpl(
     auto navParams = navParamsForCompositionMotion(params)
         .withMaxResults(maxResults)
         .withMaxResultsPerEndPos(keepMultiplePerLanding ? 2 : 1);
-    const BufferIndex* bufferIndex = nullptr;
-    int lineOffset = 0;
-    bool hasBufferIndex = ctx.tryGetBufferIndex(
-        editsCompleted, slice.beginLine, slice.endLine, bufferIndex, lineOffset);
-    auto navResult = hasBufferIndex
-        ? navOptimizer.optimize(
-              slice.subset, slice.localPos, localInterval,
-              navParams, "", slice.subsetBoundary,
-              navigationContext, *bufferIndex, lineOffset)
-        : navOptimizer.optimize(
-              slice.subset, slice.localPos, localInterval,
-              navParams, "", slice.subsetBoundary, navigationContext);
+    auto navResult = navOptimizer.optimize(
+        slice.subset, slice.localPos, localInterval,
+        navParams, "", slice.subsetBoundary, navigationContext,
+        slice.bufferIndex, slice.bufferIndexLineOffset);
     ctx.navNodesExplored += navResult.getStats().nodesExplored();
 
     for (const LandingResult& movResult : navResult.getResults()) {
@@ -363,7 +367,7 @@ optimizeImpl(
       debug("  post-edit nav from", pos, "to goalPos", goalPos);
       exploreMotionsToInterval(
           current, pos, goalPos.line, goalPos.line,
-          ctx.getLinesAfter(editsCompleted), editsCompleted,
+          ctx.getLinesAfter(editsCompleted),
           clamp(params.maxResults, 1, 10), /*keepMultiplePerLanding=*/true,
           [&](const Lines& subset, int beginLine) -> CharInterval {
             CursorPos localGoal(goalPos.line - beginLine, goalPos.col, goalPos.targetCol);
@@ -406,16 +410,8 @@ optimizeImpl(
             currentLines, pos, s.targetLine, s.beginCol, s.endCol,
             boundary, params);
         if (!search) return;
-        const BufferIndex* bufferIndex = nullptr;
-        int lineOffset = 0;
-        bool hasBufferIndex = ctx.tryGetBufferIndex(
-            editsCompleted, search->beginLine, search->endLine, bufferIndex, lineOffset);
-        auto navResult = hasBufferIndex
-            ? optimizeCompositionRangeMotion(
-                  navOptimizer, *search, navigationContext, params, 1,
-                  *bufferIndex, lineOffset)
-            : optimizeCompositionRangeMotion(
-                  navOptimizer, *search, navigationContext, params, 1);
+        auto navResult = optimizeCompositionRangeMotion(
+            navOptimizer, *search, navigationContext, params, 1);
         ctx.navNodesExplored += navResult.getStats().nodesExplored();
 
         for (const LandingResult& movResult : navResult.getResults()) {
@@ -504,7 +500,7 @@ optimizeImpl(
       // Motions to the next edit's diff range.
       exploreMotionsToInterval(
           current, pos, nextEdit.beginPos.line, nextEdit.editEndLine() - 1,
-          currentLines, editsCompleted,
+          currentLines,
           clamp(nextEdit.origCharCount(), 1, 10),
           /*keepMultiplePerLanding=*/false,
           [&](const Lines& subset, int beginLine) -> CharInterval {
@@ -520,7 +516,7 @@ optimizeImpl(
       if (joinPlan && pos.line != joinPlan->entryLine) {
         const int jLine = joinPlan->entryLine;
         exploreMotionsToInterval(
-            current, pos, jLine, jLine, currentLines, editsCompleted, /*maxResults=*/1,
+            current, pos, jLine, jLine, currentLines, /*maxResults=*/1,
             /*keepMultiplePerLanding=*/false,
             [&](const Lines& subset, int beginLine) -> CharInterval {
               return wholeLineMotionInterval(subset, jLine - beginLine);

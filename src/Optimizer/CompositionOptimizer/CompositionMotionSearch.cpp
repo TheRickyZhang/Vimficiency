@@ -1,11 +1,27 @@
 #include "CompositionMotionSearch.h"
 
 #include <algorithm>
+#include <cassert>
 #include <utility>
 
 #include "Optimizer/CompositionOptimizer/CompositionNavParams.h"
 
 using namespace std;
+
+CompositionBufferIndexWindow buildCompositionBufferIndexWindow(
+    const Lines& lines, int navBeginLine, int navEndLine) {
+  assert(navBeginLine >= 0);
+  assert(navBeginLine < navEndLine);
+  assert(navEndLine <= static_cast<int>(lines.size()));
+
+  int indexBeginLine = max(0, navBeginLine - BUFFER_INDEX_CONTEXT_LINES);
+  int indexEndLine = min(
+      static_cast<int>(lines.size()), navEndLine + BUFFER_INDEX_CONTEXT_LINES);
+  return CompositionBufferIndexWindow{
+      BufferIndex(lines.getLineRange(indexBeginLine, indexEndLine)),
+      navBeginLine - indexBeginLine,
+  };
+}
 
 optional<CompositionRangeMotionSearch> buildCompositionRangeMotionSearch(
     const Lines& lines,
@@ -34,6 +50,7 @@ optional<CompositionRangeMotionSearch> buildCompositionRangeMotionSearch(
   NavBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
       beginLine > 0 || boundary.hasLinesAbove(),
       endLine <= lines.lastLine() || boundary.hasLinesBelow());
+  auto bufferIndexWindow = buildCompositionBufferIndexWindow(lines, beginLine, endLine);
 
   return CompositionRangeMotionSearch{
       std::move(subset),
@@ -44,6 +61,8 @@ optional<CompositionRangeMotionSearch> buildCompositionRangeMotionSearch(
       localRangeEnd,
       motionRange,
       std::move(subsetBoundary),
+      std::move(bufferIndexWindow.index),
+      bufferIndexWindow.lineOffset,
   };
 }
 
@@ -62,27 +81,7 @@ LandingNavResult optimizeCompositionRangeMotion(
       navParams,
       "",
       search.subsetBoundary,
-      navContext);
-}
-
-LandingNavResult optimizeCompositionRangeMotion(
-    NavOptimizer& navOptimizer,
-    const CompositionRangeMotionSearch& search,
-    const NavContext& navContext,
-    const CompositionOptimizerParams& params,
-    int maxResults,
-    const BufferIndex& bufferIndex,
-    int lineOffset) {
-  auto navParams = navParamsForCompositionMotion(params)
-      .withMaxResults(maxResults);
-  return navOptimizer.optimize(
-      search.subset,
-      search.localCursor,
-      search.motionRange,
-      navParams,
-      "",
-      search.subsetBoundary,
       navContext,
-      bufferIndex,
-      lineOffset);
+      search.bufferIndex,
+      search.bufferIndexLineOffset);
 }

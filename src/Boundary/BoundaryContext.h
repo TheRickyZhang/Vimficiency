@@ -8,7 +8,7 @@
 // =============================================================================
 // Stores the computed boundary information that both NavBoundary and
 // TransformBoundary need:
-// - hasLinesAbove/Below: for vertical boundary detection (gg/G, k/j escaping)
+// - hasLinesAbove/Below: hidden outside-line context for escape-capable motions
 // - leftColOffset/rightColOffset: protected column ranges at line boundaries
 //
 // This struct extracts the common logic from both boundary types to ensure
