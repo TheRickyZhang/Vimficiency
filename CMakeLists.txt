@@ -1,6 +1,33 @@
 cmake_minimum_required(VERSION 3.20)
 project(vimficiency LANGUAGES CXX)
 
+# Install repo-local git hooks (.githooks/) on first configure. Git refuses
+# to auto-install hooks on clone for security; CMake configure is the next
+# convenient pinch point since every developer runs it as part of setup.
+# Skipped in CI (CI doesn't push from these clones, so the hook is dead
+# weight and `git config` inside an Actions runner is just noise).
+if(EXISTS "${CMAKE_SOURCE_DIR}/.git"
+   AND EXISTS "${CMAKE_SOURCE_DIR}/.githooks/pre-push"
+   AND NOT DEFINED ENV{CI})
+  execute_process(
+    COMMAND git config --get core.hooksPath
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    OUTPUT_VARIABLE _vimf_hooks_path
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+  if(NOT _vimf_hooks_path STREQUAL ".githooks")
+    execute_process(
+      COMMAND git config core.hooksPath .githooks
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+      RESULT_VARIABLE _vimf_hooks_rc
+    )
+    if(_vimf_hooks_rc EQUAL 0)
+      message(STATUS "Installed git hooks: core.hooksPath -> .githooks")
+    endif()
+  endif()
+endif()
+
 # Default CMAKE_BUILD_TYPE to Debug for local iteration when none is specified.
 # Single-config generators (Make, Ninja) leave `CMAKE_BUILD_TYPE` empty by
 # default, which gives an undefined flag set — no `-O`, no `-DNDEBUG`. That's

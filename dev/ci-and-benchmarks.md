@@ -43,14 +43,11 @@ Shared dependency setup is centralized in `.github/actions/setup-ci-deps/action.
 ## Local benchmark pipeline (`scripts/bench-local-run.sh`)
 
 Benchmark publishing happens on the maintainer's machine via a `pre-push`
-git hook. Setup once after cloning:
-
-```bash
-scripts/install-hooks.sh
-```
-
-This sets `core.hooksPath=.githooks` so `.githooks/pre-push` fires on every
-`git push origin`.
+git hook. The hook installs itself the first time you run `cmake -B build`
+— the top-level `CMakeLists.txt` sets `core.hooksPath=.githooks` if it
+isn't already, so `.githooks/pre-push` fires on every `git push origin`.
+The install step is skipped in CI (`CI` env var present) since CI clones
+don't push from these checkouts.
 
 ### What the hook does
 
