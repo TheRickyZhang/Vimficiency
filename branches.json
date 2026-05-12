@@ -1,13 +1,6 @@
 {
   "branches": [
     {
-      "name": "improve-code-organization",
-      "safeName": "improve-code-organization",
-      "url": "https://TheRickyZhang.github.io/Vimficiency/branch/improve-code-organization/",
-      "updatedAt": "2026-05-12T09:46:01Z",
-      "repoFullName": "TheRickyZhang/Vimficiency"
-    },
-    {
       "name": "main1",
       "safeName": "main1",
       "url": "https://TheRickyZhang.github.io/Vimficiency/branch/main1/",
