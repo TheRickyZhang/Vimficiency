@@ -424,17 +424,18 @@ static pair<CursorPos, CursorPos> findMatchingBrackets(
   int line = pos.line;
   int col = pos.col;
   int depth = 0;
+  bool cursorOnClose = false;
   if (line >= 0 && line < n && col >= 0 &&
       col < static_cast<int>(lines[line].size())) {
     char c = lines[line][col];
     if (c == open) depth = 1;
-    else if (c == close) depth = -1;
+    else if (c == close) cursorOnClose = true;
   }
 
   int searchLine = pos.line;
-  int searchCol = pos.col;
-  if (depth <= 0) {
-    depth = 0;
+  int searchCol = pos.col - (cursorOnClose ? 1 : 0);
+  if (depth == 0) {
+    depth = cursorOnClose ? 1 : 0;
     while (searchLine >= 0) {
       const string& ln = lines[searchLine];
       int startCol = searchLine == pos.line
@@ -450,6 +451,10 @@ static pair<CursorPos, CursorPos> findMatchingBrackets(
             goto foundOpen;
           }
           depth--;
+          if (cursorOnClose && depth == 0) {
+            openPos = CursorPos(searchLine, c);
+            goto foundOpen;
+          }
         }
       }
       searchLine--;

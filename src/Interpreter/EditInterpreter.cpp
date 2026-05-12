@@ -59,6 +59,19 @@ static bool hasContent(const LineCharRange& range) {
           || (range.beginLine == range.end.line && range.end.col > 0));
 }
 
+static string leadingIndent(string_view s) {
+  size_t end = 0;
+  while (end < s.size() && (s[end] == ' ' || s[end] == '\t')) end++;
+  return string(s.substr(0, end));
+}
+
+static string autoindentFor(string_view s) {
+  if constexpr (VimOptions::autoindent()) {
+    return leadingIndent(s);
+  }
+  return "";
+}
+
 void applyDelete(Lines& lines, const CharRange& range, CursorPos& pos, Mode mode) {
   VimCore::deleteRangeAndUpdatePos(lines, range, pos, mode);
 }
@@ -113,6 +126,8 @@ static void applyResolvedDeleteRange(Lines& lines,
     case VimCore::ResolvedDeleteRangeKind::Characterwise:
       if (!resolved.charRange.isEmpty()) {
         applyDelete(lines, resolved.charRange, pos, mode);
+      } else if (mode == Mode::Insert) {
+        pos = resolved.charRange.begin;
       }
       return;
     case VimCore::ResolvedDeleteRangeKind::CharLine:
@@ -542,8 +557,8 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
         return;
 
       case hash("cc"): case hash("S"):
-        line.clear();
-        pos.setCol(0);
+        line = autoindentFor(line);
+        pos.setCol(static_cast<int>(line.size()));
         mode = Mode::Insert;
         return;
 
@@ -724,10 +739,11 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           if (lastLine >= n) {
             assert(false && "cj requires more lines below");
           }
-          // cj deletes lines and replaces with empty insert line
+          string indent = autoindentFor(lines[pos.line]);
+          // cj deletes lines and leaves Vim's autoindented insert line.
           lines.erase(lines.begin() + pos.line, lines.begin() + lastLine + 1);
-          lines.insert(lines.begin() + pos.line, "");
-          pos.setCol(0);
+          lines.insert(lines.begin() + pos.line, indent);
+          pos.setCol(static_cast<int>(indent.size()));
           mode = Mode::Insert;
         }
         return;
@@ -739,10 +755,11 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           if (beginLine < 0) {
             assert(false && "ck requires more lines above");
           }
+          string indent = autoindentFor(lines[beginLine]);
           lines.erase(lines.begin() + beginLine, lines.begin() + pos.line + 1);
-          lines.insert(lines.begin() + beginLine, "");
+          lines.insert(lines.begin() + beginLine, indent);
           pos.line = beginLine;
-          pos.setCol(0);
+          pos.setCol(static_cast<int>(indent.size()));
           mode = Mode::Insert;
         }
         return;
@@ -893,7 +910,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
         }
         {
           CharRange r(CursorPos(pos.line, 0), CursorPos(pos.line, pos.col));
-          VimCore::deleteRangeAndUpdatePos(lines, r, pos);
+          VimCore::deleteRangeAndUpdatePos(lines, r, pos, Mode::Insert);
         }
         mode = Mode::Insert;
         return;
@@ -908,7 +925,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
             assert(false && "c^ at or before first non-blank has no effect");
           }
           CharRange r(CursorPos(pos.line, firstNonBlank), CursorPos(pos.line, pos.col));
-          VimCore::deleteRangeAndUpdatePos(lines, r, pos);
+          VimCore::deleteRangeAndUpdatePos(lines, r, pos, Mode::Insert);
         }
         mode = Mode::Insert;
         return;
@@ -922,7 +939,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           int endLine = pos.line + count - 1;
           int endColExclusive = static_cast<int>(lines[endLine].size());
           CharRange r(pos, CursorPos(endLine, endColExclusive));
-          VimCore::deleteRangeAndUpdatePos(lines, r, pos);
+          VimCore::deleteRangeAndUpdatePos(lines, r, pos, Mode::Insert);
           mode = Mode::Insert;
         }
         return;

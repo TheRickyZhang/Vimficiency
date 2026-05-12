@@ -295,6 +295,22 @@ TEST_F(TextObjectsTest, DaW_WithTrailingWhitespace) {
   EXPECT_EQ(result.lines[0], "world");
 }
 
+TEST_F(TextObjectsTest, BracketRange_OnNestedClosingBracket) {
+  Lines lines = {"(())"};
+
+  CharRange inner = VimCore::bracketTextObjectRange(
+      CursorPos(0, 3), lines, true, '(', ')');
+  ASSERT_TRUE(inner.isValid());
+  EXPECT_EQ(inner.begin, CursorPos(0, 1));
+  EXPECT_EQ(inner.end, CursorPos(0, 3));
+
+  CharRange around = VimCore::bracketTextObjectRange(
+      CursorPos(0, 3), lines, false, '(', ')');
+  ASSERT_TRUE(around.isValid());
+  EXPECT_EQ(around.begin, CursorPos(0, 0));
+  EXPECT_EQ(around.end, CursorPos(0, 4));
+}
+
 // =============================================================================
 // Section 3: Boundary Checking Against VimCore
 // =============================================================================
