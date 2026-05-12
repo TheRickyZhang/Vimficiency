@@ -235,9 +235,6 @@ TEST_F(CompositionOptimizerHumanApprovalTests, PureDeletionPositionAdjustment) {
   customConfig.keyInfo[static_cast<int>(Key::Key_J)].base_cost = 0.1;
   CompositionOptimizer custom_opt{customConfig};
   CompositionResult res = custom_opt.optimize(initial, initialPos, goal, goalPos);
-  for(Result r : res.getResults()) {
-    cout << r << endl;
-  }
   verifyCompResult(res, initial, initialPos, goal, "PureDeletionPositionAdjustment");
 }
 

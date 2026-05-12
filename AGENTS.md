@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 ## Project Overview
 
@@ -14,7 +14,7 @@ Vimficiency is a Vim bindings optimizer that analyzes a user's actions and recom
 - `src/Optimizer`: Algorithm logic for optimization
 - `src/VimCore`: Explicit vim motion simulation
 - `src/Utils`: Utilities
-- `src/lua_exports.cpp`: C++ to Lua FFI interface
+- `src/lua_exports.cpp`, `src/LuaExports/`: C++ to Lua FFI interface
 - `tests/`: GoogleTest suite
 
 ## Terminology (Brief)
@@ -59,7 +59,7 @@ Lua (User concepts):
 
 **Important:**
 - Never use `rm -rf build` unless something appears corrupted. The build directory contains downloaded libraries (googletest, etc.) that take time to re-fetch.
-- Do not use python or write to tmp for debugging! Always debug print in tests/debug.
+- Do not use python or write to tmp for debugging! Always debug print in tests/Debug.
 - Generally, only run the corresponding test suite after making a logic change to ensure compatibility. Lua for lua, C++ for C++.
 
 ## Design Constraints
@@ -107,22 +107,25 @@ cmake --build build -j
 
 
 ## FFI Bridge
-Exposes C ABI for LuaJIT in `lua_exports.cpp`. **Position indexing:** Internal code is 0-indexed; Neovim is 1-indexed. Conversion happens at FFI boundary.
+Exposes C ABI for LuaJIT through `src/lua_exports.cpp` and the domain export files under `src/LuaExports/`. **Position indexing:** Internal code is 0-indexed; Neovim is 1-indexed. Conversion happens at FFI boundary.
 
-For Lua context, see `lua/CLAUDE.md`.
+For Lua context, see `lua/vimficiency/AGENTS.md`.
 
 ## Deep Dive References
 - @dev/ci-and-benchmarks.md - CI workflow (test/benchmark/deploy), benchmark dashboard (`bench-dashboard/`), gh-pages layout
-- @dev/boundary-logic.md - Word motion and boundary crossing logic, TransformBoundary API
-- @dev/edit-region-strategy.md - Replace vs change strategy (includes tryReplacement implementation)
-- @dev/neovim_on_key_issues.md - vim.on_key limitations, operator-pending duplication, missing text object keys
-- @dev/optimizer-architecture.md - A* heuristics, NavOptimizer (6-class motion exploration, templated specs), TransformOptimizer, CompositionOptimizer
-- @dev/session-invocation.txt - How vimficiency optimizer sessions are called and stored
-- @dev/testing.md - NeovimOracle, test file conventions, debug printing
-- @dev/utils.md - General utilities (QuoteFlags, BracketFlags, Lines, StringUtils)
-- @dev/vim-utils-principles.md - State validation, empty handling, MotionUtils vs EndpointUtils, **targetCol handling**
+- @dev/core/boundary-logic.md - Word motion and boundary crossing logic, TransformBoundary API
+- @dev/architecture/module-dependencies.md - Allowed C++ module dependency graph and placement rules
+- @dev/core/utils.md - General utilities (QuoteFlags, BracketFlags, Lines, StringUtils)
+- @dev/core/vim-edge-cases.md - Delete/change edge cases, autoindent, and VimCore behavior traps
 - @dev/core/keyboard.md - Keyboard module, key definitions (X macros), sequence-to-keys conversion, effort model
-- @dev/core/counted-edit-semantics.md - Why `{n}{edit}` ≠ `{edit}` repeated n times, safe counted edit generation strategy
+- @dev/core/counted-edit-semantics.md - Why `{n}{edit}` != `{edit}` repeated n times, safe counted edit generation strategy
+- @dev/lua/neovim_on_key_issues.md - vim.on_key limitations, operator-pending duplication, missing text object keys
+- @dev/lua/session-invocation.md - How vimficiency optimizer sessions are called and stored
+- @dev/optimizer/optimizer-architecture.md - A* heuristics, NavOptimizer, TransformOptimizer, CompositionOptimizer
+- @dev/optimizer/transform-optimizer.md - Transform search, replacement/change strategy, and goal suffix handling
+- @dev/optimizer/composition-optimizer.md - Planned-edit search and composition replay semantics
+- @dev/optimizer/interactive-explore.md - Explore state machine and interactive replay model
+- @dev/tests/testing.md - NeovimOracle, test file conventions, debug printing
 
 ## PR review focus
 Prioritize:

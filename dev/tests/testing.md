@@ -305,9 +305,9 @@ TEST_F(WordMotionTest, Random_wMotion) {
 
 ## Debugging
 
-- Use `tests/Debug.cpp` for scratchpad debugging (separate binary: `./build/tests/vimficiency_debug`)
+- Use `tests/Debug/Debug.cpp` for scratchpad debugging (separate binary: `./build/tests/vimficiency_debug`)
 - Use `debug()` macro from `Utils/Debug.h` (enabled by default via `VIMFICIENCY_DEBUG`)
-- Use `SequenceTracer` to step through motions (see `vim-utils-principles.md` §5)
+- Use `SequenceTracer` to step through motions; see `dev/code-semantics.md` for cursor and `targetCol` invariants
 
 ## Vim Documentation Reference
 
