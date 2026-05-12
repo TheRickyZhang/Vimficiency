@@ -1,4 +1,4 @@
-local ffi_lib        = require("vimficiency.ffi")
+local ffi_explore    = require("vimficiency.ffi.explore")
 local key_tracking   = require("vimficiency.capture.key_tracking")
 local keynorm        = require("vimficiency.capture.keynorm")
 local header_render  = require("vimficiency.explore.render.header")
@@ -63,7 +63,7 @@ local function check_background_invariants(view, context)
     return
   end
 
-  local ok, expected_lines = pcall(ffi_lib.explore_current_lines, view.view_id)
+  local ok, expected_lines = pcall(ffi_explore.explore_current_lines, view.view_id)
   if not ok then
     set_background_warning(view, "Explore invariant check could not read backend lines", {
       "context=" .. context,
@@ -175,7 +175,7 @@ local function accept_live_snapshot(insert_mode)
   local raw_keys = view.on_key_buffer
   local restore_from_insert = insert_mode or mode_is_insert()
 
-  local applied = ffi_lib.explore_accept_snapshot(
+  local applied = ffi_explore.explore_accept_snapshot(
     view.view_id, lines, new_row, new_col, raw_keys, insert_mode)
   if applied.status == "Rejected" then
     view.pending = nil

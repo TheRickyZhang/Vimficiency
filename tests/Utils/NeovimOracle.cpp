@@ -113,6 +113,20 @@ struct NeovimOracle::Impl {
   ~Impl() { shutdown(); }
 
   void shutdown() {
+    if (nvim_pid > 0 && stdin_fd >= 0) {
+      // Best-effort graceful quit: send nvim_command("qall!") then close
+      // stdin so nvim sees EOF on its RPC channel. Errors are ignored — the
+      // SIGTERM fallback below handles any case where nvim is already gone
+      // or unresponsive.
+      msgpack::sbuffer buf;
+      msgpack::packer<msgpack::sbuffer> pk(&buf);
+      pk.pack_array(4);
+      pk.pack(RPC_REQUEST);
+      pk.pack(msg_id++);
+      pk.pack(std::string("nvim_command"));
+      pk.pack(std::make_tuple(std::string("qall!")));
+      (void)write(stdin_fd, buf.data(), buf.size());
+    }
     if (stdin_fd >= 0) {
       close(stdin_fd);
       stdin_fd = -1;
@@ -122,8 +136,21 @@ struct NeovimOracle::Impl {
       stdout_fd = -1;
     }
     if (nvim_pid > 0) {
-      kill(nvim_pid, SIGTERM);
-      waitpid(nvim_pid, nullptr, 0);
+      // Poll for graceful exit; fall back to SIGTERM if it doesn't quit in time.
+      constexpr int kGraceMs = 200;
+      constexpr int kStepUs = 2000;
+      bool reaped = false;
+      for (int waited = 0; waited < kGraceMs * 1000; waited += kStepUs) {
+        if (waitpid(nvim_pid, nullptr, WNOHANG) == nvim_pid) {
+          reaped = true;
+          break;
+        }
+        usleep(kStepUs);
+      }
+      if (!reaped) {
+        kill(nvim_pid, SIGTERM);
+        waitpid(nvim_pid, nullptr, 0);
+      }
       nvim_pid = -1;
     }
   }

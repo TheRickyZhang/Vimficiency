@@ -6,13 +6,15 @@
 -- each section.
 
 local v = vim.api
-local uv = vim.uv
 
 local session = require("vimficiency.session")
 local session_store = require("vimficiency.session.store")
 local alias_mod = require("vimficiency.session.alias")
 local highlights = require("vimficiency.highlights")
-local sequence_display = require("vimficiency.sequence_display")
+local keymaps = require("vimficiency.session.picker.keymaps")
+local model = require("vimficiency.session.picker.model")
+local popups = require("vimficiency.session.picker.popups")
+local preview = require("vimficiency.session.picker.preview")
 local util = require("vimficiency.util")
 
 -- Namespace for picker-owned extmarks (header pane indicator, section
@@ -20,16 +22,6 @@ local util = require("vimficiency.util")
 local picker_ns = v.nvim_create_namespace("vimficiency.session.picker")
 
 local M = {}
-
---- Natural direction for each sort mode: alpha/category ascend (A→Z);
---- created descends (newest first). Capital suffix flips these defaults.
-local DEFAULT_DIRECTIONS = {
-  alpha    = "asc",
-  category = "asc",
-  created  = "desc",
-}
-
-local STATUS_SYMBOLS = { ongoing = "●", saved = "✓", blank = " " }
 
 -- Singleton state: nil when closed.
 ---@class VF.Session.PickerState
@@ -50,227 +42,24 @@ local STATUS_SYMBOLS = { ongoing = "●", saved = "✓", blank = " " }
 local state = nil
 
 --------------------------------------------------------------------------------
--- Helpers
---------------------------------------------------------------------------------
-
-local function save_dir()
-  return vim.fn.stdpath("data") .. "/vimficiency/saved"
-end
-
-local function format_age_ns(t_ns)
-  if not t_ns or t_ns == 0 then return "?" end
-  local diff = (uv.hrtime() - t_ns) / 1e9
-  if diff < 1 then return "just now" end
-  if diff < 60 then return string.format("%ds ago", math.floor(diff)) end
-  if diff < 3600 then return string.format("%dm ago", math.floor(diff / 60)) end
-  if diff < 86400 then return string.format("%dh ago", math.floor(diff / 3600)) end
-  return string.format("%dd ago", math.floor(diff / 86400))
-end
-
-local function format_epoch(sec)
-  if not sec or sec == 0 then return "?" end
-  return os.date("%Y-%m-%d %H:%M", sec)
-end
-
-local function fuzzy_match(haystack, needle)
-  if not needle or needle == "" then return true end
-  local h = haystack:lower()
-  local n = needle:lower()
-  local hi, ni = 1, 1
-  while hi <= #h and ni <= #n do
-    if h:sub(hi, hi) == n:sub(ni, ni) then ni = ni + 1 end
-    hi = hi + 1
-  end
-  return ni > #n
-end
-
-local function mark_key(item)
-  return item.pane .. ":" .. item.key
-end
-
---------------------------------------------------------------------------------
--- Item builders
---------------------------------------------------------------------------------
-
-local function build_active_items()
-  local summaries = session_store.summarize_all()
-  local items = {}
-  -- Active recall-type sessions are auto-generated per keystroke and would
-  -- flood the list. Fold them into a single synthetic summary row.
-  local recall_ring = {}
-  for _, s in ipairs(summaries) do
-    if s.type == "recall" and s.status == "active" then
-      table.insert(recall_ring, s)
-    else
-      table.insert(items, {
-        pane          = "active",
-        key           = s.id,
-        name          = s.display_alias or s.id,
-        category      = s.type,
-        status        = s.status,
-        start_time_ns = s.start_time,
-        end_time_ns   = s.end_time,
-        key_count     = s.key_count,
-        preview_seq   = s.preview,
-        result        = s.result,
-        summary       = s,
-      })
-    end
-  end
-  if #recall_ring > 0 then
-    local oldest_ns, newest_ns = math.huge, -math.huge
-    local total_keys = 0
-    for _, s in ipairs(recall_ring) do
-      if s.start_time < oldest_ns then oldest_ns = s.start_time end
-      if s.start_time > newest_ns then newest_ns = s.start_time end
-      total_keys = total_keys + (s.key_count or 0)
-    end
-    table.insert(items, {
-      pane           = "active",
-      key            = "__recall_ring__",
-      name           = "recall ring",
-      category       = "recall",
-      status         = "active",
-      is_synthetic   = true,
-      -- Sort by newest so the summary sits near other recent activity.
-      start_time_ns  = newest_ns,
-      ring_count     = #recall_ring,
-      ring_oldest_ns = oldest_ns,
-      ring_newest_ns = newest_ns,
-      ring_total_keys = total_keys,
-    })
-  end
-  return items
-end
-
-local function build_saved_items()
-  local names = session.list_saved()
-  local items = {}
-  for _, name in ipairs(names) do
-    local path = save_dir() .. "/" .. name .. ".json"
-    local stat = uv.fs_stat(path)
-    local mtime_sec = stat and stat.mtime.sec or 0
-    table.insert(items, {
-      pane      = "saved",
-      key       = name,
-      name      = name,
-      category  = "saved",
-      status    = "finished",
-      mtime_sec = mtime_sec,
-      path      = path,
-    })
-  end
-  return items
-end
-
---------------------------------------------------------------------------------
 -- Grouping + rendering
 --------------------------------------------------------------------------------
 
---- Sort `items` ascending by `mode`, then reverse in place if direction == "desc".
-local function sort_items(items, mode, direction)
-  local function cmp_asc(a, b)
-    if mode == "alpha" then
-      return a.name < b.name
-    elseif mode == "created" then
-      -- Ascending = oldest first.
-      local at = a.start_time_ns or (a.mtime_sec or 0) * 1e9
-      local bt = b.start_time_ns or (b.mtime_sec or 0) * 1e9
-      return at < bt
-    else -- category
-      if (a.category or "") ~= (b.category or "") then
-        return (a.category or "") < (b.category or "")
-      end
-      return a.name < b.name
-    end
-  end
-  table.sort(items, cmp_asc)
-  if direction == "desc" then
-    local n = #items
-    for i = 1, math.floor(n / 2) do
-      items[i], items[n - i + 1] = items[n - i + 1], items[i]
-    end
-  end
-end
-
---- Split items into sections: Ongoing (pinned top) + either categories or a
---- single "All" section depending on sort.
-local function group_into_sections(items, mode, direction)
-  local ongoing, rest = {}, {}
-  for _, it in ipairs(items) do
-    if it.pane == "active" and it.status == "active" then
-      table.insert(ongoing, it)
-    else
-      table.insert(rest, it)
-    end
-  end
-  sort_items(ongoing, mode, direction)
-  sort_items(rest, mode, direction)
-
-  local sections = {}
-  if #ongoing > 0 then
-    table.insert(sections, { title = "Ongoing", items = ongoing })
-  end
-  if mode == "category" then
-    local by_cat = {}
-    local order = {}
-    for _, it in ipairs(rest) do
-      local c = it.category or "other"
-      if not by_cat[c] then
-        by_cat[c] = {}
-        table.insert(order, c)
-      end
-      table.insert(by_cat[c], it)
-    end
-    table.sort(order)
-    for _, c in ipairs(order) do
-      table.insert(sections, { title = c, items = by_cat[c] })
-    end
-  elseif #rest > 0 then
-    table.insert(sections, { title = "All", items = rest })
-  end
-  return sections
-end
-
-local function row_for_item(item)
-  local s = assert(state, "row_for_item called outside picker session")
-  local sym
-  if item.pane == "active" and item.status == "active" then
-    sym = STATUS_SYMBOLS.ongoing
-  elseif item.pane == "saved" then
-    sym = STATUS_SYMBOLS.saved
-  else
-    sym = STATUS_SYMBOLS.blank
-  end
-  local marked = item.is_synthetic and " " or (s.marked[mark_key(item)] and "*" or " ")
-  local cat = item.category or ""
-  if item.is_synthetic then
-    local name = string.format("%s (%d)", item.name, item.ring_count)
-    local age = string.format("oldest %s", format_age_ns(item.ring_oldest_ns))
-    return string.format("  %s %s %-16s  %-8s  %s", marked, sym, name, cat, age)
-  end
-  local age
-  if item.pane == "active" then
-    age = format_age_ns(item.start_time_ns)
-  else
-    age = format_epoch(item.mtime_sec)
-  end
-  return string.format("  %s %s %-16s  %-8s  %s", marked, sym, item.name, cat, age)
-end
-
 local function render()
   if not state then return end
-  local pane_items = (state.pane == "active") and build_active_items() or build_saved_items()
+  local pane_items = (state.pane == "active")
+      and model.build_active_items()
+      or model.build_saved_items()
 
   -- Apply fuzzy filter.
   local filtered = {}
   for _, it in ipairs(pane_items) do
-    if fuzzy_match(it.name, state.query) then
+    if model.fuzzy_match(it.name, state.query) then
       table.insert(filtered, it)
     end
   end
 
-  local sections = group_into_sections(filtered, state.sort_mode, state.direction)
+  local sections = model.group_into_sections(filtered, state.sort_mode, state.direction)
 
   -- Float's window title already says "Vimfy Sessions"; header here
   -- just shows the two orthogonal controls (pane + sort). Highlight spans
@@ -334,7 +123,7 @@ local function render()
     table.insert(hl_spans,
       { #lines - 1, 0, #section_line, highlights.PICKER_SECTION })
     for _, it in ipairs(section.items) do
-      table.insert(lines, row_for_item(it))
+      table.insert(lines, model.row_for_item(it, state.marked))
       table.insert(rows, { item = it })
     end
   end
@@ -386,88 +175,6 @@ end
 -- Preview pane
 --------------------------------------------------------------------------------
 
-local function preview_lines_for_active(item)
-  if item.is_synthetic then
-    return {
-      "Recall ring (auto-generated key/time windows)",
-      "",
-      string.format("Entries:    %d", item.ring_count),
-      string.format("Newest:     %s", format_age_ns(item.ring_newest_ns)),
-      string.format("Oldest:     %s", format_age_ns(item.ring_oldest_ns)),
-      string.format("Total keys: %d", item.ring_total_keys),
-      "",
-      "The ring is populated on every keystroke; entries are not directly",
-      "actionable from this picker. Resolve a specific window via:",
-      "  :Vimfy recall N    — N keys ago",
-      "  :Vimfy recall Ns   — N seconds ago",
-    }
-  end
-  local lines = {
-    string.format("Alias:    %s", item.name),
-    string.format("Type:     %s", item.category or "?"),
-    string.format("Status:   %s", item.status),
-    string.format("Started:  %s", format_age_ns(item.start_time_ns)),
-  }
-  if item.end_time_ns then
-    table.insert(lines, string.format("Finished: %s", format_age_ns(item.end_time_ns)))
-  end
-  table.insert(lines, string.format("Keys:     %d", item.key_count or 0))
-  if item.preview_seq and item.preview_seq ~= "" then
-    table.insert(lines, "")
-    table.insert(lines, "User seq:")
-    table.insert(lines, "  " .. item.preview_seq)
-  end
-  local result = item.result
-  if result then
-    table.insert(lines, "")
-    local user_cost = result.user_cost and string.format(" (cost: %.2f)", result.user_cost) or ""
-    vim.list_extend(lines,
-      sequence_display.prefixed_lines("User full: ", result.user_seq or "", nil, user_cost))
-    table.insert(lines, "")
-    table.insert(lines, "Optimal:")
-    for i, r in ipairs(result.optimal_results or {}) do
-      if i > 5 then break end
-      vim.list_extend(lines,
-        sequence_display.prefixed_lines(string.format("  %d. ", i), r.seq or "", nil,
-          string.format("  (cost: %.2f)", r.cost or 0)))
-    end
-  end
-  return lines
-end
-
-local function preview_lines_for_saved(item)
-  local lines = {
-    string.format("Name:  %s", item.name),
-    string.format("Path:  %s", vim.fn.fnamemodify(item.path, ":~")),
-    string.format("Saved: %s", format_epoch(item.mtime_sec)),
-    "",
-  }
-  local raw = vim.fn.readfile(item.path)
-  local ok, data = pcall(vim.json.decode, table.concat(raw, "\n"))
-  if not ok or type(data) ~= "table" then
-    table.insert(lines, "(unable to parse file)")
-    return lines
-  end
-  table.insert(lines, string.format("Position: (%d,%d) -> (%d,%d)",
-    data.start_row or 0, data.start_col or 0, data.end_row or 0, data.end_col or 0))
-  local user_cost = data.user_cost and string.format(" (cost: %.2f)", data.user_cost) or ""
-  if data.user_seq and data.user_seq ~= "" then
-    vim.list_extend(lines,
-      sequence_display.prefixed_lines("User seq: ", data.user_seq, nil, user_cost))
-  else
-    table.insert(lines, "User seq: (none)" .. user_cost)
-  end
-  table.insert(lines, "")
-  table.insert(lines, "Optimal:")
-  for i, r in ipairs(data.optimal_results or {}) do
-    if i > 5 then break end
-    vim.list_extend(lines,
-      sequence_display.prefixed_lines(string.format("  %d. ", i), r.seq or "", nil,
-        string.format("  (cost: %.2f)", r.cost or 0)))
-  end
-  return lines
-end
-
 function M.update_preview()
   if not state or not v.nvim_buf_is_valid(state.prev_buf) then return end
   local row = state.cursor
@@ -475,19 +182,13 @@ function M.update_preview()
   local lines
   if not entry or entry.is_header then
     lines = { "(no selection)" }
-  elseif entry.item.pane == "active" then
-    lines = preview_lines_for_active(entry.item)
   else
-    lines = preview_lines_for_saved(entry.item)
+    lines = preview.lines_for_item(entry.item)
   end
   vim.bo[state.prev_buf].modifiable = true
   v.nvim_buf_set_lines(state.prev_buf, 0, -1, false, lines)
   vim.bo[state.prev_buf].modifiable = false
 end
-
---------------------------------------------------------------------------------
--- Current-row helpers
---------------------------------------------------------------------------------
 
 local function current_item()
   if not state then return nil end
@@ -497,10 +198,6 @@ local function current_item()
   if entry and entry.item then return entry.item end
   return nil
 end
-
---------------------------------------------------------------------------------
--- Actions
---------------------------------------------------------------------------------
 
 local function close()
   if not state then return end
@@ -522,7 +219,7 @@ end
 --- Apply a sort mode. `reverse` flips away from the mode's natural direction.
 local function act_sort_apply(mode, reverse)
   state.sort_mode = mode
-  local natural = DEFAULT_DIRECTIONS[mode] or "asc"
+  local natural = model.DEFAULT_DIRECTIONS[mode] or "asc"
   if reverse then
     state.direction = (natural == "asc") and "desc" or "asc"
   else
@@ -531,44 +228,11 @@ local function act_sort_apply(mode, reverse)
   render()
 end
 
-local SORT_HINT_LINES = {
-  "  Sort by…",
-  "",
-  "  n / N   name       (A→Z / Z→A)",
-  "  c / C   category   (A→Z / Z→A)",
-  "  t / T   time       (newest / oldest)",
-  "",
-  "  <Esc>   cancel",
-}
-
-local function show_sort_popup()
-  local buf = v.nvim_create_buf(false, true)
-  vim.bo[buf].buftype = "nofile"
-  vim.bo[buf].bufhidden = "wipe"
-  v.nvim_buf_set_lines(buf, 0, -1, false, SORT_HINT_LINES)
-  vim.bo[buf].modifiable = false
-  local width = 44
-  local height = #SORT_HINT_LINES
-  local row = math.floor((vim.o.lines - height) / 2)
-  local col = math.floor((vim.o.columns - width) / 2)
-  local win = v.nvim_open_win(buf, false, {
-    relative = "editor", row = row, col = col,
-    width = width, height = height, border = "rounded", style = "minimal",
-    title = " Sort ", title_pos = "center", focusable = false,
-  })
-  vim.cmd("redraw")
-  local ok, ch = pcall(vim.fn.getcharstr)
-  pcall(v.nvim_win_close, win, true)
-  if not ok or ch == "" or ch == "\27" then return end
-  local mode_of = { n = "alpha", c = "category", t = "created" }
-  local m = mode_of[ch:lower()]
-  if not m then return end
-  act_sort_apply(m, ch:match("%u") ~= nil)
-end
-
 -- Plain `s` falls through to the hint popup once the mapping engine resolves
 -- the ambiguous prefix (after 'timeoutlen'). Fast typers never see it.
-local act_sort_popup = show_sort_popup
+local function act_sort_popup()
+  popups.sort(act_sort_apply)
+end
 
 local function act_search()
   if not state or not v.nvim_win_is_valid(state.prompt_win) then return end
@@ -608,7 +272,7 @@ local function act_mark()
   local it = current_item()
   if not it then return end
   if it.is_synthetic then return end
-  local k = mark_key(it)
+  local k = model.mark_key(it)
   s.marked[k] = not s.marked[k] or nil
   -- Advance one row for rapid marking.
   local row = s.cursor + 1
@@ -687,7 +351,7 @@ local function act_delete()
     else
       session.rm(it.name)
     end
-    s.marked[mark_key(it)] = nil
+    s.marked[model.mark_key(it)] = nil
     render()
   end)
 end
@@ -797,72 +461,7 @@ local function act_duplicate()
     end)
 end
 
-local HELP_LINES = {
-  "  Vimfy session picker",
-  "",
-  "  /          fuzzy search",
-  "  <Tab>      switch Active ↔ Saved pane",
-  "  sn / sN    sort by name      (A→Z / Z→A)",
-  "  sc / sC    sort by category  (A→Z / Z→A)",
-  "  st / sT    sort by time      (newest / oldest)",
-  "  s          sort menu (s? shows the hint popup)",
-  "  <CR>       open",
-  "  d          delete",
-  "  m          toggle mark",
-  "  D          delete marked",
-  "  r          rename",
-  "  y          duplicate",
-  "  ?          this help",
-  "  q / <Esc>  close",
-}
-
-local function act_help()
-  local buf = v.nvim_create_buf(false, true)
-  vim.bo[buf].buftype = "nofile"
-  vim.bo[buf].bufhidden = "wipe"
-  v.nvim_buf_set_lines(buf, 0, -1, false, HELP_LINES)
-  vim.bo[buf].modifiable = false
-  local width = 56
-  local height = #HELP_LINES + 2
-  local row = math.floor((vim.o.lines - height) / 2)
-  local col = math.floor((vim.o.columns - width) / 2)
-  local win = v.nvim_open_win(buf, true, {
-    relative = "editor", row = row, col = col,
-    width = width, height = height, border = "rounded", style = "minimal",
-  })
-  vim.keymap.set("n", "q",     function() pcall(v.nvim_win_close, win, true) end, { buffer = buf, nowait = true })
-  vim.keymap.set("n", "<Esc>", function() pcall(v.nvim_win_close, win, true) end, { buffer = buf, nowait = true })
-  vim.keymap.set("n", "?",     function() pcall(v.nvim_win_close, win, true) end, { buffer = buf, nowait = true })
-end
-
---------------------------------------------------------------------------------
--- Window construction
---------------------------------------------------------------------------------
-
-local function install_keymaps(buf)
-  local function map(lhs, fn)
-    vim.keymap.set("n", lhs, fn, { buffer = buf, nowait = true, silent = true })
-  end
-  map("q",       close)
-  map("<Esc>",   close)
-  map("<Tab>",   act_toggle_pane)
-  map("sn",      function() act_sort_apply("alpha",    false) end)
-  map("sN",      function() act_sort_apply("alpha",    true)  end)
-  map("sc",      function() act_sort_apply("category", false) end)
-  map("sC",      function() act_sort_apply("category", true)  end)
-  map("st",      function() act_sort_apply("created",  false) end)
-  map("sT",      function() act_sort_apply("created",  true)  end)
-  map("s?",      act_sort_popup)
-  map("s",       act_sort_popup)
-  map("/",       act_search)
-  map("<CR>",    act_open)
-  map("d",       act_delete)
-  map("D",       act_delete_marked)
-  map("m",       act_mark)
-  map("r",       act_rename)
-  map("y",       act_duplicate)
-  map("?",       act_help)
-end
+local act_help = popups.help
 
 function M.open()
   if state then
@@ -930,29 +529,33 @@ function M.open()
     prompt_win = prompt_win, prompt_buf = prompt_buf,
     pane = "active",
     sort_mode = "category",
-    direction = DEFAULT_DIRECTIONS.category,
+    direction = model.DEFAULT_DIRECTIONS.category,
     query = "",
     marked = {},
     rows = {},
     cursor = 1,
   }
 
-  install_keymaps(buf)
+  keymaps.install(buf, {
+    close = close,
+    toggle_pane = act_toggle_pane,
+    sort_apply = act_sort_apply,
+    sort_popup = act_sort_popup,
+    search = act_search,
+    open = act_open,
+    delete = act_delete,
+    delete_marked = act_delete_marked,
+    mark = act_mark,
+    rename = act_rename,
+    duplicate = act_duplicate,
+    help = act_help,
+  })
 
-  -- Prompt bindings: CR picks, Esc/q returns to list, C-n/C-p + arrows move list.
-  local function pmap(mode, lhs, fn)
-    vim.keymap.set(mode, lhs, fn,
-      { buffer = prompt_buf, nowait = true, silent = true })
-  end
-  pmap("i", "<CR>",   function() exit_prompt_to_list(); act_open() end)
-  pmap("i", "<Esc>",  exit_prompt_to_list)
-  pmap("i", "<C-n>",  function() move_list(1) end)
-  pmap("i", "<C-p>",  function() move_list(-1) end)
-  pmap("i", "<Down>", function() move_list(1) end)
-  pmap("i", "<Up>",   function() move_list(-1) end)
-  pmap("n", "<CR>",   function() exit_prompt_to_list(); act_open() end)
-  pmap("n", "<Esc>",  exit_prompt_to_list)
-  pmap("n", "q",      exit_prompt_to_list)
+  keymaps.install_prompt(prompt_buf, {
+    exit_prompt_to_list = exit_prompt_to_list,
+    move_list = move_list,
+    open = act_open,
+  })
 
   -- Live-filter on every prompt-buffer change (insert or normal mode edits).
   v.nvim_create_autocmd({ "TextChangedI", "TextChanged" }, {

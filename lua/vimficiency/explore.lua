@@ -1,4 +1,4 @@
-local ffi_lib         = require("vimficiency.ffi")
+local ffi_explore     = require("vimficiency.ffi.explore")
 local highlights      = require("vimficiency.explore.highlights")
 local lifecycle       = require("vimficiency.explore.lifecycle")
 local panel_render    = require("vimficiency.explore.render.panel")
@@ -27,11 +27,11 @@ local function apply_history(view, fn)
 end
 
 local function undo()
-  return apply_history(registry.current(), ffi_lib.explore_undo)
+  return apply_history(registry.current(), ffi_explore.explore_undo)
 end
 
 local function redo()
-  return apply_history(registry.current(), ffi_lib.explore_redo)
+  return apply_history(registry.current(), ffi_explore.explore_redo)
 end
 
 local function undo_all()
@@ -39,7 +39,7 @@ local function undo_all()
   handlers.clear_key_buffer(view)
   local steps = 0
   while true do
-    local result = ffi_lib.explore_undo(view.view_id)
+    local result = ffi_explore.explore_undo(view.view_id)
     if result.status == "Rejected" then break end
     steps = steps + 1
   end

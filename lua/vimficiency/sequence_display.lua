@@ -1,5 +1,5 @@
 local config = require("vimficiency.config")
-local ffi_lib = require("vimficiency.ffi")
+local ffi_sequence = require("vimficiency.ffi.sequence")
 
 local M = {}
 
@@ -207,7 +207,7 @@ local function tokenized_lines(seq, opts)
     return { "" }
   end
 
-  local tokens, err = ffi_lib.tokenize_sequence(seq)
+  local tokens, err = ffi_sequence.tokenize_sequence(seq)
   if err or not tokens or #tokens == 0 then
     return { display_key_notation(seq) }
   end

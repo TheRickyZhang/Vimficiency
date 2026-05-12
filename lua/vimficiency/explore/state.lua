@@ -1,6 +1,7 @@
 local v                = vim.api
 local config           = require("vimficiency.config")
-local ffi_lib          = require("vimficiency.ffi")
+local ffi_explore      = require("vimficiency.ffi.explore")
+local ffi_optimizer    = require("vimficiency.ffi.optimizer")
 local header_render    = require("vimficiency.explore.render.header")
 local list_render      = require("vimficiency.explore.render.list")
 local tags_render      = require("vimficiency.explore.render.tags")
@@ -13,7 +14,7 @@ local M = {}
 function M.resolve_overrides()
   local store = settings.settings_store()
   local shared = vim.tbl_extend("force", {}, config.optimizer, store.shared)
-  return ffi_lib.encode_optimizer_overrides({
+  return ffi_optimizer.encode_optimizer_overrides({
     shared = shared,
     nav = store.nav,
     transform = store.transform,
@@ -23,11 +24,11 @@ end
 
 ---@param a VF.Explore.Active
 function M.fetch(a)
-  a.state = ffi_lib.explore_state(a.view_id)
-  a.recommendations = ffi_lib.explore_recommendations(
+  a.state = ffi_explore.explore_state(a.view_id)
+  a.recommendations = ffi_explore.explore_recommendations(
     a.view_id, a.recommendation_count, M.resolve_overrides(),
     a.recommendation_sort)
-  a.header_rows = ffi_lib.explore_header_rows(a.view_id)
+  a.header_rows = ffi_explore.explore_header_rows(a.view_id)
   for i, rec in ipairs(a.recommendations) do rec.rank = i end
 end
 
@@ -44,7 +45,7 @@ end
 ---@param a VF.Explore.Active
 ---@return VF.Explore.ReconfigurePlanResult
 function M.reconfigure_plan(a)
-  local result = ffi_lib.explore_reconfigure_plan(a.view_id, M.resolve_overrides())
+  local result = ffi_explore.explore_reconfigure_plan(a.view_id, M.resolve_overrides())
   if result.reset then
     a.pending = nil
     a.warning = nil
@@ -60,7 +61,7 @@ end
 
 ---@param a VF.Explore.Active
 function M.reload_buffer(a)
-  local lines = ffi_lib.explore_current_lines(a.view_id)
+  local lines = ffi_explore.explore_current_lines(a.view_id)
   v.nvim_buf_set_lines(a.scratch.buf, 0, -1, false, lines)
   vim.bo[a.scratch.buf].modified = false
 end

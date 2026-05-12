@@ -5,7 +5,7 @@ local uv = vim.uv
 local fs = vim.fs
 
 local config = require("vimficiency.config")
-local ffi_lib = require("vimficiency.ffi")
+local ffi_session = require("vimficiency.ffi.session")
 
 --------------------------------------------------------------------------------
 -- Shared scratch-window chrome
@@ -536,7 +536,7 @@ end
 ---@return integer region_start 0-indexed first line of region
 ---@return integer region_end 0-indexed last line of region
 function M.compute_search_region(start_row, end_row, start_lines, end_lines, padding)
-  return ffi_lib.compute_search_region(
+  return ffi_session.compute_search_region(
     start_lines,
     end_lines,
     start_row,

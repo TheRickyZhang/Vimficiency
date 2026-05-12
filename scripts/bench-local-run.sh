@@ -20,6 +20,17 @@ fi
 PUSHED_SHA="$1"
 BRANCH="$2"
 
+# ccache is required, not optional. Without it every run rebuilds from
+# scratch (current commit, plus HEAD~1 baseline) — pushing turns into a
+# 10-20 minute wait. ccache hits make the steady state ~3 min.
+if ! command -v ccache >/dev/null 2>&1; then
+  echo "[bench-local-run] ccache not found. Install it before running:" >&2
+  echo "  sudo pacman -S ccache    # Arch" >&2
+  echo "  sudo apt install ccache  # Debian/Ubuntu" >&2
+  echo "  brew install ccache      # macOS" >&2
+  exit 1
+fi
+
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 REPO_URL_RAW="$(git -C "$REPO_ROOT" remote get-url origin)"
 REPO_URL="$(printf '%s' "$REPO_URL_RAW" | sed -e 's|^git@github.com:|https://github.com/|' -e 's|\.git$||')"
@@ -55,10 +66,7 @@ trap 'echo "[bench-local-run] FAILED (exit $?) at $(date)"' ERR
 echo "[bench-local-run] starting $BRANCH @ $PUSHED_SHA at $(date)"
 echo "  log: $LOG_FILE"
 
-CCACHE_FLAGS=()
-if command -v ccache >/dev/null 2>&1; then
-  CCACHE_FLAGS=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
-fi
+CCACHE_FLAGS=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
 
 # --- Work clone ---
 # Separate clone so the user's primary checkout stays untouched while we
@@ -77,7 +85,6 @@ cd "$WORK_REPO"
 echo "[build] release at $PUSHED_SHA"
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF \
   -DVIMF_TRACK_STATES=OFF \
-  -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
   "${CCACHE_FLAGS[@]}"
 cmake --build build
 
@@ -95,40 +102,55 @@ run_suite EditOpt edit_result.json
 run_suite MotionOpt motion_result.json
 run_suite CompositionOpt composition_result.json
 
-# --- Baseline (HEAD~1) ---
-HAS_BASELINE=true
-if ! git rev-parse --verify --quiet "${PUSHED_SHA}^" >/dev/null; then
-  echo "[baseline] no parent commit; skipping comparison"
-  HAS_BASELINE=false
-fi
-if $HAS_BASELINE; then
-  echo "[baseline] building parent of $PUSHED_SHA"
-  git -c advice.detachedHead=false checkout --force "${PUSHED_SHA}^"
-  cmake --build build
-  run_suite EditOpt baseline_edit.json
-  run_suite MotionOpt baseline_motion.json
-  run_suite CompositionOpt baseline_composition.json
-  git -c advice.detachedHead=false checkout --force "$PUSHED_SHA"
-  cmake --build build
-
-  echo "[compare] vs baseline"
-  bun scripts/bench-compare.ts \
-    edit_result.json baseline_edit.json \
-    motion_result.json baseline_motion.json \
-    composition_result.json baseline_composition.json || true
-fi
-
-# --- Main-only artifacts ---
+# --- Main/branch split (needed for baseline lookup below) ---
 IS_MAIN=false
 if [ "$BRANCH" = "main" ]; then
   IS_MAIN=true
+fi
+
+# --- gh-pages clone (eager so the baseline step can read from it) ---
+if [ ! -d "$GHPAGES_REPO/.git" ]; then
+  echo "[setup] creating gh-pages clone at $GHPAGES_REPO"
+  git clone --no-hardlinks --branch gh-pages "$REPO_URL_RAW" "$GHPAGES_REPO"
+fi
+git -C "$GHPAGES_REPO" fetch --quiet origin gh-pages
+git -C "$GHPAGES_REPO" checkout --force gh-pages
+git -C "$GHPAGES_REPO" reset --hard origin/gh-pages
+
+# --- Baseline: pulled from the parent commit's previously-recorded numbers ---
+# Same physical machine that recorded the parent is recording this commit,
+# so the stored numbers are directly comparable. Rebuilding HEAD~1 the way
+# CI did was only necessary because CI runners are non-uniform across runs.
+# If the parent was never benched (first run on this machine, or the parent
+# was rebased away), we skip the comparison — it's informational.
+COMPARE_ARGS=()
+if PARENT_SHA=$(git rev-parse --verify "${PUSHED_SHA}^" 2>/dev/null); then
+  for triple in "edit:edit_result.json:baseline_edit.json" \
+                "motion:motion_result.json:baseline_motion.json" \
+                "composition:composition_result.json:baseline_composition.json"; do
+    o="${triple%%:*}"; rest="${triple#*:}"; curr="${rest%%:*}"; base="${rest#*:}"
+    # Prefer branch-scoped history when on a branch; fall back to main's data.
+    SRC="$GHPAGES_REPO/$o"
+    if ! $IS_MAIN && [ -f "$GHPAGES_REPO/branch/$SAFE_BRANCH/$o/data.json" ]; then
+      SRC="$GHPAGES_REPO/branch/$SAFE_BRANCH/$o"
+    fi
+    if bun scripts/bench-baseline-from-stored.ts "$SRC" "$PARENT_SHA" "$base"; then
+      COMPARE_ARGS+=("$curr" "$base")
+    fi
+  done
+fi
+
+if [ ${#COMPARE_ARGS[@]} -gt 0 ]; then
+  echo "[compare] vs stored parent ${PARENT_SHA:0:8}"
+  bun scripts/bench-compare.ts "${COMPARE_ARGS[@]}" || true
+else
+  echo "[compare] no stored baseline for parent; skipping"
 fi
 
 if $IS_MAIN; then
   echo "[explore] building tracking-enabled target"
   cmake -B build_track -DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF \
     -DVIMF_TRACK_STATES=ON \
-    -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
     "${CCACHE_FLAGS[@]}"
   cmake --build build_track --target vimficiency_explore
   VIMFICIENCY_SEED_MODE=fixed ./build_track/tests/vimficiency_explore
@@ -193,13 +215,10 @@ COMMIT_MSG=$(git log -1 --pretty=%s "$PUSHED_SHA")
 COMMIT_AUTHOR=$(git log -1 --pretty=%an "$PUSHED_SHA")
 COMMIT_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-# --- gh-pages clone ---
-if [ ! -d "$GHPAGES_REPO/.git" ]; then
-  echo "[setup] creating gh-pages clone at $GHPAGES_REPO"
-  git clone --no-hardlinks --branch gh-pages "$REPO_URL_RAW" "$GHPAGES_REPO"
-fi
+# gh-pages was cloned + reset earlier (so the baseline lookup could read it).
+# Re-fetch + reset now in case the tree drifted while we were building, so
+# the deploy lands on top of the latest published state.
 git -C "$GHPAGES_REPO" fetch --quiet origin gh-pages
-git -C "$GHPAGES_REPO" checkout --force gh-pages
 git -C "$GHPAGES_REPO" reset --hard origin/gh-pages
 
 cd "$GHPAGES_REPO"

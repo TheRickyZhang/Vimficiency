@@ -1,4 +1,4 @@
-local ffi_lib          = require("vimficiency.ffi")
+local ffi_optimizer    = require("vimficiency.ffi.optimizer")
 local settings_profile = require("vimficiency.settings_profile")
 local panel_render     = require("vimficiency.explore.render.panel")
 local settings         = require("vimficiency.explore.settings")
@@ -9,7 +9,7 @@ local M = {}
 ---@param key string
 ---@return any
 local function default_for(scope, key)
-  local defaults = ffi_lib.get_optimizer_defaults()
+  local defaults = ffi_optimizer.get_optimizer_defaults()
   local scope_defaults = assert(defaults[scope],
     "vimfy explore: missing optimizer defaults for " .. scope)
   local value = scope_defaults[key]

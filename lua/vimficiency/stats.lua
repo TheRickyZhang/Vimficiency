@@ -6,7 +6,7 @@
 
 local v = vim.api
 local log = require("vimficiency.stats.log")
-local ffi_lib = require("vimficiency.ffi")
+local ffi_sequence = require("vimficiency.ffi.sequence")
 local util = require("vimficiency.util")
 
 local M = {}
@@ -62,7 +62,7 @@ end
 
 local function safe_tokenize(seq)
   if not seq or seq == "" then return {} end
-  local ok, tokens = pcall(ffi_lib.tokenize_sequence, seq)
+  local ok, tokens = pcall(ffi_sequence.tokenize_sequence, seq)
   if not ok or not tokens then return {} end
   return tokens
 end
