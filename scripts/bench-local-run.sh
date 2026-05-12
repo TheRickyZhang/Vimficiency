@@ -61,23 +61,71 @@ fi
 
 LOG_FILE="$LOG_DIR/run-$(date +%Y%m%d-%H%M%S)-${PUSHED_SHA:0:8}-${SAFE_BRANCH}.log"
 exec >"$LOG_FILE" 2>&1
-trap 'echo "[bench-local-run] FAILED (exit $?) at $(date)"' ERR
+
+# Failure surfacing. The runner is backgrounded with stdout/stderr already
+# redirected to /dev/null by the hook, so without these mechanisms a crash
+# is invisible to the user:
+#   - $STATUS_FILE: pre-push hook reads this on the next push and prints a
+#     warning if the last exit was non-zero. Successful runs overwrite it,
+#     so the warning naturally clears.
+#   - notify-send: desktop notification on completion (low urgency on
+#     success, critical on failure). Silently skipped if not installed.
+STATUS_FILE="$CACHE_DIR/last-status"
+STAGE_DIR=""
+
+cleanup_and_report() {
+  local rc=$?
+  [ -n "$STAGE_DIR" ] && rm -rf "$STAGE_DIR"
+
+  printf 'exit_code=%s\nsha=%s\nbranch=%s\nlog=%s\nended_at=%s\n' \
+    "$rc" "$PUSHED_SHA" "$BRANCH" "$LOG_FILE" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    > "$STATUS_FILE"
+
+  if command -v notify-send >/dev/null 2>&1; then
+    if [ "$rc" -eq 0 ]; then
+      notify-send -u low -a vimficiency \
+        "Bench OK" "$BRANCH @ ${PUSHED_SHA:0:8}" 2>/dev/null || true
+    else
+      notify-send -u critical -a vimficiency \
+        "Bench FAILED (exit $rc)" "$BRANCH @ ${PUSHED_SHA:0:8}
+Log: $LOG_FILE" 2>/dev/null || true
+    fi
+  fi
+
+  [ "$rc" -ne 0 ] && echo "[bench-local-run] FAILED (exit $rc) at $(date)"
+}
+trap cleanup_and_report EXIT
 
 echo "[bench-local-run] starting $BRANCH @ $PUSHED_SHA at $(date)"
 echo "  log: $LOG_FILE"
 
 CCACHE_FLAGS=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
 
-# --- Work clone ---
-# Separate clone so the user's primary checkout stays untouched while we
-# bounce between $PUSHED_SHA and its parent for the baseline comparison.
-if [ ! -d "$WORK_REPO/.git" ]; then
-  echo "[setup] creating work clone at $WORK_REPO"
-  git clone --no-hardlinks "$REPO_ROOT" "$WORK_REPO"
-  git -C "$WORK_REPO" remote set-url origin "$REPO_URL_RAW"
+# Clean up any worktree entries pointing at directories we previously
+# deleted by hand; harmless when there are none.
+git -C "$REPO_ROOT" worktree prune
+
+# --- Source worktree ---
+# Detached worktree at PUSHED_SHA, sharing .git with the user's main repo.
+# Two reasons over a separate clone: (1) the commit being pushed is already
+# in the main repo's object store, so we sidestep the pre-push race where
+# `git fetch origin` runs before GitHub has the new tree; (2) one shared
+# .git instead of duplicating it. Pinned detached HEAD means whatever the
+# user does in their main checkout next can't move our source out from
+# under the in-progress build.
+
+# Migrate prior clone-based layout if present.
+if [ -d "$WORK_REPO/.git" ]; then
+  echo "[migrate] replacing prior work-clone with worktree at $WORK_REPO"
+  rm -rf "$WORK_REPO"
 fi
-git -C "$WORK_REPO" fetch --quiet origin
-git -C "$WORK_REPO" -c advice.detachedHead=false checkout --force "$PUSHED_SHA"
+
+if [ ! -e "$WORK_REPO/.git" ]; then
+  git -C "$REPO_ROOT" worktree add --detach --force "$WORK_REPO" "$PUSHED_SHA"
+else
+  git -C "$WORK_REPO" -c advice.detachedHead=false checkout --force "$PUSHED_SHA"
+fi
 
 cd "$WORK_REPO"
 
@@ -108,13 +156,23 @@ if [ "$BRANCH" = "main" ]; then
   IS_MAIN=true
 fi
 
-# --- gh-pages clone (eager so the baseline step can read from it) ---
-if [ ! -d "$GHPAGES_REPO/.git" ]; then
-  echo "[setup] creating gh-pages clone at $GHPAGES_REPO"
-  git clone --no-hardlinks --branch gh-pages "$REPO_URL_RAW" "$GHPAGES_REPO"
+# --- gh-pages worktree (eager so the baseline step can read from it) ---
+# Same .git sharing argument as the source worktree above. The gh-pages
+# worktree is on the actual gh-pages branch (not detached) so commits we
+# make below advance the branch and can be pushed straight to origin.
+
+# Migrate prior clone-based layout if present.
+if [ -d "$GHPAGES_REPO/.git" ]; then
+  echo "[migrate] replacing prior gh-pages-clone with worktree at $GHPAGES_REPO"
+  rm -rf "$GHPAGES_REPO"
 fi
-git -C "$GHPAGES_REPO" fetch --quiet origin gh-pages
-git -C "$GHPAGES_REPO" checkout --force gh-pages
+
+git -C "$REPO_ROOT" fetch --quiet origin gh-pages
+if [ ! -e "$GHPAGES_REPO/.git" ]; then
+  # -B (re)points the local gh-pages branch at origin/gh-pages; --force
+  # tolerates stale worktree entries that worktree prune already cleared.
+  git -C "$REPO_ROOT" worktree add -B gh-pages --force "$GHPAGES_REPO" origin/gh-pages
+fi
 git -C "$GHPAGES_REPO" reset --hard origin/gh-pages
 
 # --- Baseline: pulled from the parent commit's previously-recorded numbers ---
@@ -196,8 +254,7 @@ fi
 # Helper TS scripts are copied from the source checkout so deploy behavior
 # tracks the commit being built rather than whatever versions are on gh-pages.
 STAGE_DIR="$(mktemp -d -t vimficiency-bench-stage.XXXXXX)"
-cleanup() { rm -rf "$STAGE_DIR"; }
-trap cleanup EXIT
+# cleanup_and_report (registered earlier) removes $STAGE_DIR on EXIT.
 
 cp -r bench-dashboard/dist "$STAGE_DIR/dashboard-dist"
 cp scripts/bench-data.ts "$STAGE_DIR/bench-data.ts"

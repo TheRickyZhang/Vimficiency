@@ -28,6 +28,22 @@ if ! command -v ccache >/dev/null 2>&1; then
   exit 0
 fi
 
+# Surface any failure from the previous run. The runner is backgrounded
+# with output redirected, so an exit-128 crash like "unable to read tree"
+# is otherwise invisible until the user proactively checks the log dir.
+# A successful run overwrites $STATUS with exit_code=0, so this warning
+# clears itself naturally.
+STATUS="${VIMFICIENCY_BENCH_CACHE:-$HOME/.cache/vimficiency-bench}/last-status"
+if [ -f "$STATUS" ]; then
+  # shellcheck disable=SC1090
+  . "$STATUS"
+  if [ "${exit_code:-0}" != "0" ]; then
+    echo "[pre-push] previous bench run FAILED (exit ${exit_code}, sha ${sha:0:8} on ${branch})" >&2
+    echo "[pre-push]   log: ${log}" >&2
+  fi
+  unset exit_code sha branch log ended_at
+fi
+
 ZERO=0000000000000000000000000000000000000000
 
 while read -r LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA; do
