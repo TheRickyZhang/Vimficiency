@@ -1,4 +1,4 @@
-local ffi_lib = require("vimficiency.ffi")
+local ffi_core = require("vimficiency.ffi.core")
 local session = require("vimficiency.session")
 local auto_suggest = require("vimficiency.capture.auto_suggest")
 local alias_mod = require("vimficiency.session.alias")
@@ -407,7 +407,7 @@ subcommands.config = {
   desc = "Show current configuration",
   usage = "config",
   fn = function()
-    local debug_output = ffi_lib.debug_config()
+    local debug_output = ffi_core.debug_config()
     vim.cmd("botright new")
     local buf = vim.api.nvim_get_current_buf()
     vim.bo[buf].buftype = "nofile"

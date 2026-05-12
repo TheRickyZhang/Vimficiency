@@ -4,7 +4,7 @@ local auto_suggest = require("vimficiency.capture.auto_suggest")
 local commands = require("vimficiency.commands")
 local mapping_scan = require("vimficiency.mapping_scan")
 local recall_capture = require("vimficiency.capture.recall")
-local ffi_lib = require("vimficiency.ffi")
+local ffi_config = require("vimficiency.ffi.config")
 
 local M = {}
 
@@ -109,7 +109,7 @@ function M.setup(user_config)
   end
 
   local lua_consumed = config.apply(user_config)
-  local cpp_consumed = ffi_lib.configure(user_config)
+  local cpp_consumed = ffi_config.configure(user_config)
 
   local unknown = {}
   for key in pairs(user_config) do

@@ -17,7 +17,7 @@ Top-level modules are the plugin entry and cross-cutting infrastructure:
 | `commands.lua` | `:Vimfy` subcommand dispatch + tab completion. |
 | `config.lua` | Shared configuration constants (Lua-side only). |
 | `config_detail.lua` | Config introspection / validation helpers. |
-| `ffi.lua` | LuaJIT FFI bindings to `libvimficiency.so`. |
+| `ffi.lua` | Compatibility surface for LuaJIT FFI bindings to `libvimficiency.so`. |
 | `util.lua` | State capture, ID generation, UI helpers. |
 | `mapping_scan.lua` | Scans user mappings for `<Plug>Vimfy*` routing. |
 
@@ -27,9 +27,44 @@ Subdirectories hold supporting modules for each domain:
 
 | File | Purpose |
 |------|---------|
-| `session/store.lua` | Canonical session records + manual/recall indexing. |
 | `session/alias.lua` | Alias grammar validation for Mark / Watch / Recall handles. |
+| `session/compute.lua` | Active-session capture normalization and optimizer invocation. |
+| `session/disk.lua` | Saved-result JSON encoding, validation, and disk operations. |
+| `session/playback.lua` | Converts stored results into replay sequence pools. |
 | `session/result_view.lua` | Pure formatting helpers (position string, body lines) shared by `finish` and auto-suggest. |
+| `session/saved_view.lua` | Scratch-buffer view for saved result files. |
+| `session/store.lua` | Canonical session records + manual/recall indexing. |
+
+### `session/picker/` — session picker support
+
+| File | Purpose |
+|------|---------|
+| `session/picker/model.lua` | Active/saved item construction, filtering, sorting, and row formatting. |
+| `session/picker/preview.lua` | Preview-pane content for active and saved items. |
+| `session/picker/popups.lua` | Sort/help popup windows. |
+| `session/picker/keymaps.lua` | Picker and prompt keymap installation. |
+
+### `simulate/` — replay support
+
+| File | Purpose |
+|------|---------|
+| `simulate/actions.lua` | Replay key handlers and keymap table. |
+| `simulate/pool.lua` | Sequence pool tokenization and layout-slot planning. |
+| `simulate/precompute.lua` | Hidden Neovim probe used as the replay oracle. |
+| `simulate/render.lua` | Virtual headers, cursor highlights, status bar, and snapshot rendering. |
+| `simulate/tokenize.lua` | Parser-backed animation tokenization plus fallback splitting. |
+| `simulate/windows.lua` | Replay tab/window/buffer construction, focus, escape, and relayout teardown. |
+
+### `ffi/` — C ABI wrappers
+
+| File | Purpose |
+|------|---------|
+| `ffi/core.lua` | Loads `libvimficiency.so`, validates ABI hash, and owns shared encoders. |
+| `ffi/config.lua` | C++ configuration bridge. |
+| `ffi/session.lua` | Session/capture helpers exposed by C++. |
+| `ffi/optimizer.lua` | Optimizer analysis and optimizer-override encoding. |
+| `ffi/sequence.lua` | Sequence tokenization, formatting, and movement simulation. |
+| `ffi/explore.lua` | Explore-state and recommendation wrappers. |
 
 ### `capture/` — observation and triggers
 
@@ -106,21 +141,21 @@ is documented and the user fix is to migrate the mapping.
 - See `dev/lua/neovim_on_key_issues.md` for detailed analysis and potential workarounds
 - See neovim/neovim#19426 for `v:motion` feature request that would help
 
-**Approximate motion conversions** (in session.lua):
+**Approximate motion conversions** (in session/compute.lua):
 - `gj` → `j`, `gk` → `k` (screen-line motions unsupported by optimizer)
 
-## FFI Interface (ffi.lua)
+## FFI Interface (ffi/)
 
-Loads `libvimficiency.so` via LuaJIT FFI. Key exports:
+`ffi/core.lua` loads `libvimficiency.so` via LuaJIT FFI. Domain wrappers expose:
 
 ```lua
-ffi_lib.analyze(lines, ...) → VF.Optimizer.Result[], debug_str
-ffi_lib.configure(user_config)  -- Push config to C++
-ffi_lib.tokenize_sequence(seq) → VF.Sequence.Token[]  -- {text, kind} tokens
-ffi_lib.tokenize_movements(seq) → VF.Sequence.Token[]   -- all kind="motion"
+ffi_optimizer.analyze(lines, ...) → VF.Optimizer.Result[], debug_str
+ffi_config.configure(user_config)  -- Push config to C++
+ffi_sequence.tokenize_sequence(seq) → VF.Sequence.Token[]  -- {text, kind} tokens
+ffi_sequence.tokenize_movements(seq) → VF.Sequence.Token[]   -- all kind="motion"
 ```
 
-**Position indexing:** C++ uses 0-indexed rows/cols. Neovim uses 1-indexed rows. Conversion happens at FFI boundary in `session.lua`.
+**Position indexing:** C++ uses 0-indexed rows/cols. Neovim uses 1-indexed rows. Conversion happens before calls cross the FFI boundary, primarily in `session/compute.lua`.
 
 ## Configuration (config.lua)
 
@@ -153,8 +188,11 @@ Interactive Explore's larger state-machine units are **phases** (`Navigate`,
   merges feedable pairs like `f;` / `rX` before precompute
 
 Replay verification now lives in repo-native Lua tests:
-- `tests/lua/simulate.lua` covers tokenization / feedable-token merging
-- `tests/lua/simulate_integration.lua` covers the async replay oracle and UI rendering
+- `tests/lua/simulate/tokenize.lua` covers tokenization / feedable-token merging
+- `tests/lua/simulate/integration.lua` covers the async replay oracle and UI rendering
+
+## Testing
+After changing some lua sections, make sure to run ./scripts/lint-lua.sh to verify that all the lua semantics are correct.
 
 ## Commands
 

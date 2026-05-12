@@ -5,7 +5,7 @@
 local M = {}
 
 local alias_mod = require("vimficiency.session.alias")
-local ffi_lib = require("vimficiency.ffi")
+local ffi_session = require("vimficiency.ffi.session")
 local key_tracking = require("vimficiency.capture.key_tracking")
 local util = require("vimficiency.util")
 local config = require("vimficiency.config")
@@ -168,7 +168,7 @@ local last_finished_id = nil
 ---@param budget integer
 ---@return integer|nil
 local function resolve_recall_cutoff_pure(records, order, target_hrtime, budget)
-  return ffi_lib.resolve_recall_cutoff(records, order, target_hrtime, budget)
+  return ffi_session.resolve_recall_cutoff(records, order, target_hrtime, budget)
 end
 
 ---@param cutoff_index integer

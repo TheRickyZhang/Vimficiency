@@ -3,7 +3,7 @@
 -- See `dev/lua/neovim_on_key_issues.md` for the mapping-resolution details.
 local M = {}
 local uv = vim.uv
-local ffi_lib = require("vimficiency.ffi")
+local ffi_session = require("vimficiency.ffi.session")
 local keynorm = require("vimficiency.capture.keynorm")
 
 --------------------------------------------------------------------------------
@@ -114,7 +114,7 @@ end
 ---@param key_seq VF.KeyEvent[]
 ---@return string
 function M.build_sequence(key_seq)
-	return ffi_lib.build_sequence(key_seq)
+	return ffi_session.build_sequence(key_seq)
 end
 
 --- Remove the trailing events whose `key_typed_raw` bytes match `typed_raw`.

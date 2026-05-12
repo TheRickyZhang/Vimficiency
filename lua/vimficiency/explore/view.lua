@@ -1,4 +1,4 @@
-local ffi_lib  = require("vimficiency.ffi")
+local ffi_explore = require("vimficiency.ffi.explore")
 local settings = require("vimficiency.explore.settings")
 
 local M = {}
@@ -85,7 +85,7 @@ function M.status(view)
   out.scratch_cursor = { row = live_cursor[1] - 1, col = live_cursor[2] }
   out.pending = vim.deepcopy(view.pending)
   out.warning = vim.deepcopy(view.warning)
-  out.session_lines = ffi_lib.explore_current_lines(view.view_id)
+  out.session_lines = ffi_explore.explore_current_lines(view.view_id)
   out.scratch_lines = v.nvim_buf_get_lines(view.scratch.buf, 0, -1, false)
   out.recommendations = vim.deepcopy(view.recommendations)
   return out

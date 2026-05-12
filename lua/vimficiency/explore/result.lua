@@ -1,4 +1,4 @@
-local ffi_lib = require("vimficiency.ffi")
+local ffi_explore = require("vimficiency.ffi.explore")
 
 local M = {}
 local v = vim.api
@@ -57,7 +57,7 @@ end
 ---@param optimizer_overrides string|nil
 ---@return integer
 function M.start_view(result, source_win, optimizer_overrides)
-  return ffi_lib.explore_start(
+  return ffi_explore.explore_start(
     result.lines, result.start_row, result.start_col,
     result.goal_lines, result.end_row, result.end_col,
     0, M.boundary_last_col(result),

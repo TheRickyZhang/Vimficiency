@@ -21,6 +21,13 @@ if [ ! -x "$RUNNER" ]; then
   exit 0
 fi
 
+# Surface the ccache requirement here too — otherwise a missing-ccache
+# failure happens in the background and only shows up in the log file.
+if ! command -v ccache >/dev/null 2>&1; then
+  echo "[pre-push] ccache not installed; skipping bench (install with 'sudo pacman -S ccache')" >&2
+  exit 0
+fi
+
 ZERO=0000000000000000000000000000000000000000
 
 while read -r LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA; do
