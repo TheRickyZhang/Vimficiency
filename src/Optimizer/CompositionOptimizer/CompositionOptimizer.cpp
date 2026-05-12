@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "CompositionMotionSearch.h"
 #include "CompositionSearchContext.h"
 #include "CompositionNavParams.h"
 #include "CompositionStrategies.h"
@@ -401,52 +402,27 @@ optimizeImpl(
           return;
         }
 
-        // Slice a padded subset around [pos, target] for NavOptimizer
-        auto [beginLine, endLine] = currentLines.minmaxBoundWithPadding(
-            min(pos.line, s.targetLine), max(pos.line, s.targetLine) + 1,
-            params.navPaddingAbove, params.navPaddingBelow);
-
-        Lines subset = currentLines.getLineRange(beginLine, endLine);
-
-        // Remap positions to subset-local coordinates
-        CursorPos localPos(pos.line - beginLine, pos.col, pos.targetCol);
-        CursorPos localRangeBegin(s.targetLine - beginLine, s.beginCol);
-        CursorPos localRangeEnd(s.targetLine - beginLine, s.endCol);
-
-        // Boundary uses full subset extent, not the target range.
-        // The target range is only for the range-goal `optimize` isInRange
-        // check. Using it as boundary would clamp motions like $ to the
-        // range edge.
-        CursorPos subsetFirst(0, 0);
-        CursorPos subsetEnd(static_cast<int>(subset.size()) - 1,
-            subset.back().effectiveSize());
-        NavBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
-            beginLine > 0 || boundary.hasLinesAbove(),
-            endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
-
-        auto rangeParams = navParamsForCompositionMotion(params)
-            .withMaxResults(1);
+        auto search = buildCompositionRangeMotionSearch(
+            currentLines, pos, s.targetLine, s.beginCol, s.endCol,
+            boundary, params);
+        if (!search) return;
         const BufferIndex* bufferIndex = nullptr;
         int lineOffset = 0;
         bool hasBufferIndex = ctx.tryGetBufferIndex(
-            editsCompleted, beginLine, endLine, bufferIndex, lineOffset);
-        CharInterval motionRange(CharRange(localRangeBegin, localRangeEnd), subset);
+            editsCompleted, search->beginLine, search->endLine, bufferIndex, lineOffset);
         auto navResult = hasBufferIndex
-            ? navOptimizer.optimize(
-                  subset, localPos, motionRange,
-                  rangeParams, "", subsetBoundary,
-                  navigationContext, *bufferIndex, lineOffset)
-            : navOptimizer.optimize(
-                  subset, localPos, motionRange,
-                  rangeParams, "", subsetBoundary,
-                  navigationContext);
+            ? optimizeCompositionRangeMotion(
+                  navOptimizer, *search, navigationContext, params, 1,
+                  *bufferIndex, lineOffset)
+            : optimizeCompositionRangeMotion(
+                  navOptimizer, *search, navigationContext, params, 1);
         ctx.navNodesExplored += navResult.getStats().nodesExplored();
 
         for (const LandingResult& movResult : navResult.getResults()) {
           if (movResult.getSequence().empty()) continue;
 
           const CursorPos& localGoal = movResult.getGoalPos();
-          assert(localGoal >= localRangeBegin && localGoal < localRangeEnd &&
+          assert(localGoal >= search->localRangeBegin && localGoal < search->localRangeEnd &&
                  "pure insertion motion goal must be subset-local and inside target range");
           // Intentionally do not remap localGoal to full-buffer coordinates here:
           // this branch immediately appends the insertion and transitions using

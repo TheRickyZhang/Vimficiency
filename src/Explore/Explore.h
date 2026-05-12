@@ -99,6 +99,10 @@ struct State {
   bool operator==(const State&) const = default;
 };
 
+struct PlanReconfigureResult {
+  bool resetState = false;
+};
+
 // Action outcomes. Successful transitions return void; the new live state
 // is read back via View::state(). Failures return Rejected with a reason.
 using Outcome = std::expected<void, Rejected>;
@@ -136,6 +140,8 @@ public:
       int maxCount,
       const OptimizerParamOverrides* overrides = nullptr,
       SuggestionSortMode sortMode = SuggestionSortMode::Effort) const;
+  PlanReconfigureResult reconfigurePlan(
+      CompositionOptimizerParams compositionParams);
 
   // Explored/optimal rows are plan-aligned; user input has no such boundary.
   struct HeaderRows {
@@ -164,11 +170,14 @@ public:
 
 private:
   // Immutable view context
+  Lines initialLines_;
+  CursorPos initialPos_;
   Lines goalLines_;
   CursorPos goalPos_;
   NavBoundary boundary_;
   NavContext navContext_;
   Config config_;
+  std::string userSequence_;
   // Single source of truth for composition params: shared between the
   // initial plan computation and any per-phase recomputation
   // (e.g. join plans during recommendations()), so the two paths cannot drift.
@@ -192,6 +201,11 @@ private:
   std::vector<State> redo_;
 
   // --- Internal helpers ---
+
+  CompositionTraceResult computePlan(
+      CompositionOptimizerParams compositionParams) const;
+  void installPlan(CompositionTraceResult traced);
+  void resetToInitial();
 
   // Push current state onto undo, clear redo, move `next` into live state.
   // Always returns success.

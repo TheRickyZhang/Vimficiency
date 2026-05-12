@@ -58,7 +58,14 @@ local function toggle_settings_panel()
     panel_render.close(view)
     return
   end
-  local refresh = function() state.refresh_ui(view) end
+  local refresh = function()
+    if view.plan_reconfigure_pending then
+      view.plan_reconfigure_pending = nil
+      state.reconfigure_plan(view)
+      return
+    end
+    state.refresh_ui(view)
+  end
   panel_render.open(view, settings_schema.build(view, refresh), refresh)
 end
 

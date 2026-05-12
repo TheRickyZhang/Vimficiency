@@ -10,6 +10,8 @@ Review implementation of BufferIndex in optimizeToRange() (is it exploring corre
 - Different modes of invoking sessions
 - Improving the lua/C++ interaction semantics
 
+- Are param handling consistent?
+
 Review Exploration C++ code
 toNavSuggestion - huh wtf are these conversions?
 

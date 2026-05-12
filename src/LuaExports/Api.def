@@ -142,6 +142,10 @@ VFByteSlice vf_explore_recommendations(
   size_t optimizer_overrides_len,
   const char* sort_mode,
   size_t sort_mode_len);
+VFByteSlice vf_explore_reconfigure_plan(
+  int view_id,
+  const char* optimizer_overrides,
+  size_t optimizer_overrides_len);
 VFByteSlice vf_explore_apply_movement(
   int view_id,
   const char* movement_text,

@@ -198,6 +198,63 @@ void appendUniqueSuggestions(vector<Suggestion>& dest, vector<Suggestion>&& src)
   }
 }
 
+bool sameResult(const Result& a, const Result& b) {
+  return a.getSequence().view() == b.getSequence().view() &&
+         a.getCost() == b.getCost();
+}
+
+bool sameResultList(const vector<Result>& a, const vector<Result>& b) {
+  if (a.size() != b.size()) return false;
+  for (size_t i = 0; i < a.size(); ++i) {
+    if (!sameResult(a[i], b[i])) return false;
+  }
+  return true;
+}
+
+bool sameTransformResult(const TransformResult& a, const TransformResult& b) {
+  if (a.getGoalPos() != b.getGoalPos()) return false;
+  if (a.startPositions() != b.startPositions()) return false;
+  if (a.hasPerStartGoals() != b.hasPerStartGoals()) return false;
+  for (CursorPos start : a.startPositions()) {
+    if (a.goalPosAt(start.line, start.col) !=
+        b.goalPosAt(start.line, start.col)) {
+      return false;
+    }
+  }
+  const auto& ar = a.getResults();
+  const auto& br = b.getResults();
+  if (ar.size() != br.size()) return false;
+  for (size_t i = 0; i < ar.size(); ++i) {
+    if (!sameResultList(ar[i], br[i])) return false;
+  }
+  return true;
+}
+
+bool sameDiff(const DiffState& a, const DiffState& b) {
+  return a.beginPos == b.beginPos &&
+         a.endPos == b.endPos &&
+         a.deletedText == b.deletedText &&
+         a.insertedText == b.insertedText;
+}
+
+bool sameCompositionResult(const CompositionResult& a,
+                           const CompositionResult& b) {
+  const CompositionPlan& ap = a.getPlan();
+  const CompositionPlan& bp = b.getPlan();
+  if (ap.finalGoalPos != bp.finalGoalPos) return false;
+  if (ap.fenceposts != bp.fenceposts) return false;
+  if (ap.diffs.size() != bp.diffs.size()) return false;
+  for (size_t i = 0; i < ap.diffs.size(); ++i) {
+    if (!sameDiff(ap.diffs[i], bp.diffs[i])) return false;
+    if (!sameTransformResult(
+            a.plannedEditAt(static_cast<int>(i)).transformResult,
+            b.plannedEditAt(static_cast<int>(i)).transformResult)) {
+      return false;
+    }
+  }
+  return sameResultList(a.getResults(), b.getResults());
+}
+
 } // namespace
 
 // =============================================================================
@@ -208,30 +265,15 @@ View::View(Lines initialLines, CursorPos initialPos, Lines goalLines,
            CursorPos goalPos, NavBoundary boundary, NavContext navContext,
            Config config, string_view userSequence,
            CompositionOptimizerParams compositionParams)
-    : goalLines_(std::move(goalLines)), goalPos_(goalPos),
+    : initialLines_(std::move(initialLines)), initialPos_(initialPos),
+      goalLines_(std::move(goalLines)), goalPos_(goalPos),
       boundary_(std::move(boundary)), navContext_(navContext),
       config_(std::move(config)),
+      userSequence_(userSequence),
       compositionParams_(std::move(compositionParams)) {
 
-  state_.lines = initialLines;
-  state_.cursor = initialPos;
-
-  // Composition optimizer computes the plan we walk through. Pure-motion
-  // sessions flow through here too, producing a 0-edit plan whose only nav
-  // target is goalPos_.
-  //
-  // Explore opts into the traced variant because it needs plan-aligned edit
-  // spans to render the Optimal-N header columns. `vf_analyze` and any other
-  // non-display caller must use the plain `optimize()` so they pay zero
-  // per-state tracing cost.
-  CompositionOptimizer opt(config_);
-  CompositionTraceResult traced = opt.optimizeWithEditSpans(
-      state_.lines, initialPos, goalLines_, goalPos_,
-      compositionParams_, userSequence, boundary_, navContext_);
-  plan_ = std::move(traced.result);
-  optimalEditSpans_ = std::move(traced.editSpansByResult);
-
-  totalEdits_ = plan_.totalEdits();
+  resetToInitial();
+  installPlan(computePlan(compositionParams_));
   state_.phase = phaseForCursor(0, state_.lines, state_.cursor);
 }
 
@@ -284,9 +326,48 @@ vector<Suggestion> View::recommendations(
   }, state_.phase);
 }
 
+PlanReconfigureResult View::reconfigurePlan(
+    CompositionOptimizerParams compositionParams) {
+  CompositionTraceResult traced = computePlan(compositionParams);
+  const bool resetState = !sameCompositionResult(plan_, traced.result);
+
+  compositionParams_ = std::move(compositionParams);
+  installPlan(std::move(traced));
+
+  if (resetState) {
+    resetToInitial();
+    state_.phase = phaseForCursor(0, state_.lines, state_.cursor);
+  }
+  return PlanReconfigureResult{resetState};
+}
+
 // =============================================================================
 // Internal helpers
 // =============================================================================
+
+CompositionTraceResult View::computePlan(
+    CompositionOptimizerParams compositionParams) const {
+  // Explore opts into the traced variant because it needs plan-aligned edit
+  // spans to render the Optimal-N header columns.
+  CompositionOptimizer opt(config_);
+  return opt.optimizeWithEditSpans(
+      initialLines_, initialPos_, goalLines_, goalPos_,
+      compositionParams, userSequence_, boundary_, navContext_);
+}
+
+void View::installPlan(CompositionTraceResult traced) {
+  plan_ = std::move(traced.result);
+  optimalEditSpans_ = std::move(traced.editSpansByResult);
+  totalEdits_ = plan_.totalEdits();
+}
+
+void View::resetToInitial() {
+  state_ = State{};
+  state_.lines = initialLines_;
+  state_.cursor = initialPos_;
+  undo_.clear();
+  redo_.clear();
+}
 
 Outcome View::commit(State next) {
   // Insert and partial edit states are internal pieces of one Vim change.
