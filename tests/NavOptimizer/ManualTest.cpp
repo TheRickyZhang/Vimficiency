@@ -14,6 +14,8 @@
 #include "Keyboard/ToKeys/MovementToKeys.h"
 #include "Keyboard/Config.h"
 #include "Boundary/NavBoundary.h"
+#include "Optimizer/NavOptimizer/BufferIndex.h"
+#include "Optimizer/NavOptimizer/NavExplorer.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Optimizer/NavOptimizer/NavRangeConversion.h"
 #include "Effort/RunningEffort.h"
@@ -209,6 +211,11 @@ TEST_F(NavOptimizer_ManualTest, RangeWithWordMotions) {
 
 class NavBoundaryTest : public ::testing::Test {
 protected:
+  struct CountedCandidate {
+    string sequence;
+    CursorPos endpoint;
+  };
+
   static NavContext navContext;
 
   static void SetUpTestSuite() {
@@ -233,6 +240,44 @@ protected:
   static bool hasSequence(const vector<LandingResult>& results, const string& seq) {
     return std::any_of(results.begin(), results.end(),
         [&seq](const Result& r) { return r.getSequence() == seq; });
+  }
+
+  static vector<CountedCandidate> collectCountedCandidates(
+      const Lines& lines,
+      CursorPos start,
+      CursorPos goal,
+      const NavBoundary& boundary,
+      NavOptimizerParams params = NavOptimizerParams{}
+          .withMinCountRepeat(2)
+          .withMaxCountRepeat(8)) {
+    Config config = Config::uniform();
+    BufferIndex index(lines);
+    CharInterval goalRange(goal, goal);
+    NavExplorer explorer(lines, navContext, boundary, params, goalRange, index, 0);
+
+    auto score = [](CursorPos, double effort) { return effort; };
+    NavStateFactory states(config, score);
+    NavState base = states.initial(start);
+
+    vector<CountedCandidate> candidates;
+    auto onCounted = [&](KSId, const KeyedSequence& ks, int count,
+                         CursorPos endpoint, double) {
+      KeyedSequence counted(count, ks);
+      candidates.push_back({counted.seq.str(), endpoint});
+    };
+    auto onFMotion = [](const KeyedSequence&, int) {};
+    explorer.exploreCountedMotions(base, onCounted, onFMotion);
+    return candidates;
+  }
+
+  static bool hasCountedCandidate(
+      const vector<CountedCandidate>& candidates,
+      const string& sequence,
+      CursorPos endpoint) {
+    return std::any_of(candidates.begin(), candidates.end(),
+        [&](const CountedCandidate& candidate) {
+          return candidate.sequence == sequence && candidate.endpoint == endpoint;
+        });
   }
 };
 
@@ -295,6 +340,102 @@ TEST_F(NavBoundaryTest, ExcludeG_RemovesG) {
 
   EXPECT_FALSE(hasSequence(results, "G")) << "Boundary with hasLinesBelow should exclude G";
   EXPECT_TRUE(hasSequence(results, "jj")) << "Should still find alternative path";
+}
+
+TEST_F(NavBoundaryTest, CountedVerticalCandidatesCanLandOnEmbeddedSliceEdges) {
+  int checked = 0;
+
+  for (int fullLineCount = 6; fullLineCount <= 8; fullLineCount++) {
+    Lines fullBuffer;
+    for (int line = 0; line < fullLineCount; line++) {
+      fullBuffer.push_back("line" + to_string(line));
+    }
+
+    for (int subStart = 1; subStart < fullLineCount - 2; subStart++) {
+      for (int subLineCount = 3; subLineCount <= 5; subLineCount++) {
+        int subEnd = subStart + subLineCount - 1;
+        if (subEnd >= fullLineCount - 1) continue;
+
+        Lines subBuffer;
+        for (int line = subStart; line <= subEnd; line++) {
+          subBuffer.push_back(fullBuffer[line]);
+        }
+
+        NavBoundary boundary(
+            fullBuffer,
+            CursorPos(subStart, 0),
+            CursorPos(subEnd, fullBuffer[subEnd].effectiveSize()));
+
+        ASSERT_TRUE(boundary.hasLinesAbove());
+        ASSERT_TRUE(boundary.hasLinesBelow());
+
+        int lastLocalLine = subBuffer.lastLine();
+        for (int startLine = 0; startLine <= lastLocalLine; startLine++) {
+          int downCount = lastLocalLine - startLine;
+          if (downCount >= 2 && downCount <= 8) {
+            auto candidates = collectCountedCandidates(
+                subBuffer, CursorPos(startLine, 0), CursorPos(lastLocalLine, 0), boundary);
+            SCOPED_TRACE(::testing::Message()
+                << "down fullLineCount=" << fullLineCount
+                << " subStart=" << subStart
+                << " subLineCount=" << subLineCount
+                << " startLine=" << startLine);
+            ASSERT_TRUE(hasCountedCandidate(
+                candidates, to_string(downCount) + "j", CursorPos(lastLocalLine, 0)));
+            checked++;
+          }
+
+          int upCount = startLine;
+          if (upCount >= 2 && upCount <= 8) {
+            auto candidates = collectCountedCandidates(
+                subBuffer, CursorPos(startLine, 0), CursorPos(0, 0), boundary);
+            SCOPED_TRACE(::testing::Message()
+                << "up fullLineCount=" << fullLineCount
+                << " subStart=" << subStart
+                << " subLineCount=" << subLineCount
+                << " startLine=" << startLine);
+            ASSERT_TRUE(hasCountedCandidate(
+                candidates, to_string(upCount) + "k", CursorPos(0, 0)));
+            checked++;
+          }
+        }
+      }
+    }
+  }
+
+  EXPECT_GT(checked, 0);
+}
+
+TEST_F(NavBoundaryTest, CountedWordCandidatesCanStayWithinSingleLineEmbeddedSlice) {
+  Lines fullBuffer = {
+      "above",
+      "one two three four five six seven",
+      "below",
+  };
+  Lines subBuffer = {fullBuffer[1]};
+  NavBoundary boundary(
+      fullBuffer,
+      CursorPos(1, 0),
+      CursorPos(1, fullBuffer[1].effectiveSize()));
+
+  ASSERT_TRUE(boundary.hasLinesAbove());
+  ASSERT_TRUE(boundary.hasLinesBelow());
+
+  vector<pair<int, int>> goals = {
+      {2, 8},
+      {3, 14},
+      {4, 19},
+      {5, 24},
+      {6, 28},
+  };
+
+  for (const auto& [count, col] : goals) {
+    auto candidates = collectCountedCandidates(
+        subBuffer, CursorPos(0, 0), CursorPos(0, col), boundary);
+    SCOPED_TRACE(::testing::Message() << "count=" << count);
+    ASSERT_TRUE(hasCountedCandidate(
+        candidates, to_string(count) + "w", CursorPos(0, col)));
+  }
 }
 
 TEST_F(NavBoundaryTest, LeftColOffset_FiltersPrefixPositions) {

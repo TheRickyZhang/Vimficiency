@@ -1,10 +1,16 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <vector>
 #include "Types/Pos.h"
 #include "Types/Lines.h"
 #include "Types/LandingType.h"
+
+// One line of context is enough for all current indexed landing classes:
+// paragraph/sentence starts need previous-line state; word/WORD classes are
+// line-local. Callers may still use symmetric halos to keep window math simple.
+inline constexpr int BUFFER_INDEX_CONTEXT_LINES = 1;
 
 struct RepeatMovementResult {
   Pos pos{};
@@ -49,6 +55,12 @@ public:
   std::vector<RepeatMovementResult> getClosestInRange(
       LandingType type, Pos currPos,
       Pos rangeFront, Pos rangeBack) const;
+
+  template<bool Forward>
+  std::vector<RepeatMovementResult> getClosestInRange(
+      LandingType type, Pos currPos,
+      Pos rangeFront, Pos rangeBack,
+      const std::function<bool(Pos)>& isAllowedEndpoint) const;
 
   // Debug
   size_t count(LandingType type) const { return get(type).size(); }

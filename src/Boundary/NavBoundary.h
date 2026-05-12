@@ -10,7 +10,7 @@ struct TransformBoundary;
 // NavBoundary constrains the search space for NavOptimizer.
 //
 // Like TransformBoundary, stores information about what's outside the region:
-// - hasLinesAbove/Below: for gg/G exclusion and edge-line checks
+// - hasLinesAbove/Below: for motions that would target hidden outside lines
 // - leftColOffset: prefix length on begin line (0 = no prefix)
 // - rightColOffset: suffix length on end line (0 = no suffix)
 //

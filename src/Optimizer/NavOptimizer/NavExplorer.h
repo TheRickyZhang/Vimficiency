@@ -149,14 +149,10 @@ private:
     return boundary_.hasLinesBelow();
   }
 
-  bool canLandOnLine(int line) const {
-    if (boundary_.hasLinesAbove() && line == 0) return false;
-    if (boundary_.hasLinesBelow() && line == lines_.lastLine()) return false;
-    return true;
-  }
-
-  bool isValidLocalLandingLine(int line) const {
-    return line >= 0 && line <= lines_.lastLine() && canLandOnLine(line);
+  bool isValidLocalLandingPosition(const CursorPos& pos) const {
+    if (!lines_.contains(pos)) return false;
+    return boundary_.isPositionInBounds(
+        pos, lines_.lastLine(), static_cast<int>(lines_.back().size()));
   }
 
   int scrollShift(bool isHalfMotion, bool forward) const {
@@ -210,6 +206,8 @@ private:
                           const CursorPos& newPos,
                           OnCounted& onCounted) const {
     assert(cnt >= 0 && cnt <= CountPrefixLimits::MAX_PREFIX_COUNT);
+    assert(isValidLocalLandingPosition(newPos) &&
+           "counted motion producer emitted invalid landing position");
     CountPenaltyInput in;
     in.count = cnt;
     in.span = cnt;
@@ -411,14 +409,17 @@ private:
       if (!(globalPos > globalRangeLast)) return;
     }
 
+    auto isAllowedEndpoint = [&](Pos indexedPos) {
+      CursorPos localPos(indexedPos.line - off, indexedPos.col);
+      return isValidLocalLandingPosition(localPos);
+    };
     auto results = bufferIndex_.getClosestInRange<Forward>(
-        LT, globalPos, globalRangeFirst, globalRangeLast);
+        LT, globalPos, globalRangeFirst, globalRangeLast, isAllowedEndpoint);
     for (const auto& r : results) {
       if (!r.valid()) continue;
       if (!isValidPrefixCount(r.count)) continue;
 
       CursorPos localPos(r.pos.line - off, r.pos.col);
-      if (!isValidLocalLandingLine(localPos.line)) continue;
       exploreCountMotion<C>(motionId, r.count, localPos, onCounted);
     }
   }
@@ -457,11 +458,11 @@ private:
     const KSId motion = Forward ? KSId::j : KSId::k;
     for (int cnt = countRange->min; cnt <= countRange->max; cnt++) {
       int newLine = Forward ? (pos.line + cnt) : (pos.line - cnt);
-      if (!canLandOnLine(newLine)) continue;
-
       int newCol = clampTargetColToLine(pos.targetCol, newLine);
+      CursorPos newPos(newLine, newCol, pos.targetCol);
+      if (!isValidLocalLandingPosition(newPos)) continue;
       exploreCountMotion<CountClass::MovementLine>(motion, cnt,
-                                                 {newLine, newCol, pos.targetCol}, onCounted);
+                                                 newPos, onCounted);
     }
   }
 
@@ -479,8 +480,10 @@ private:
     const KSId motion = Forward ? KSId::l : KSId::h;
     for (int cnt = countRange->min; cnt <= countRange->max; cnt++) {
       int newCol = Forward ? (pos.col + cnt) : (pos.col - cnt);
+      CursorPos newPos(pos.line, newCol);
+      if (!isValidLocalLandingPosition(newPos)) continue;
       exploreCountMotion<CountClass::MovementChar>(motion, cnt,
-                                                 {pos.line, newCol}, onCounted);
+                                                 newPos, onCounted);
     }
   }
 

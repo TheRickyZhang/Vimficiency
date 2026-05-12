@@ -21,12 +21,22 @@ struct CompositionRangeMotionSearch {
   CursorPos localRangeEnd;
   CharInterval motionRange;
   NavBoundary subsetBoundary;
+  BufferIndex bufferIndex;
+  int bufferIndexLineOffset;
 
   CursorPos toBufferPos(CursorPos local) const {
     local.line += beginLine;
     return local;
   }
 };
+
+struct CompositionBufferIndexWindow {
+  BufferIndex index;
+  int lineOffset;
+};
+
+CompositionBufferIndexWindow buildCompositionBufferIndexWindow(
+    const Lines& lines, int navBeginLine, int navEndLine);
 
 std::optional<CompositionRangeMotionSearch> buildCompositionRangeMotionSearch(
     const Lines& lines,
@@ -43,12 +53,3 @@ LandingNavResult optimizeCompositionRangeMotion(
     const NavContext& navContext,
     const CompositionOptimizerParams& params,
     int maxResults);
-
-LandingNavResult optimizeCompositionRangeMotion(
-    NavOptimizer& navOptimizer,
-    const CompositionRangeMotionSearch& search,
-    const NavContext& navContext,
-    const CompositionOptimizerParams& params,
-    int maxResults,
-    const BufferIndex& bufferIndex,
-    int lineOffset);

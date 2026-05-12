@@ -11,7 +11,6 @@
 #include "JoinPlan.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizer.h"
-#include "Optimizer/NavOptimizer/BufferIndex.h"
 #include "Optimizer/SearchStats.h"
 #include "Boundary/NavBoundary.h"
 #include "Types/NavContext.h"
@@ -108,11 +107,6 @@ struct CompositionSearchContext {
     std::optional<JoinPlan> joinPlan;
     BracketQuoteContext bracketQuoteContext;
 
-    // Motion-search acceleration index over a subset of the pre-edit buffer.
-    // Covers lines [bufferIndexStart, bufferIndexEnd) of the pre-edit buffer.
-    BufferIndex bufferIndex;
-    int bufferIndexStart = 0;
-    int bufferIndexEnd = 0;
   };
   std::vector<PerEditData> edits;
 
@@ -194,13 +188,6 @@ struct CompositionSearchContext {
   const Lines& getLinesAfter(int editsCompleted) const {
     return linesAfterNEdits_[editsCompleted];
   }
-
-  // Get a reusable pre-computed BufferIndex for a given edit level, adjusted for
-  // the motion search window. On failure, clears out-params and returns false so
-  // callers can fall back to the overload that builds a local index.
-  bool tryGetBufferIndex(
-      int editsCompleted, int motionBeginLine, int motionEndLine,
-      const BufferIndex*& outIndex, int& outLineOffset) const;
 
   // Get the diff state for an edit index
   const DiffState& getDiffState(int editIndex) const {
