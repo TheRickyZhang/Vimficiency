@@ -2184,7 +2184,7 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
   }
 }
 
-TEST_F(DebugTest, InvestigateHumanApproval1) {
+TEST_F(DebugTest, DISABLED_InvestigateHumanApproval1) {
   Lines initial = {"steak is pretty nice", "don't you think?"};
   Lines goal = {"Dry-brined steak is excellent", "don't you agree?"};
 

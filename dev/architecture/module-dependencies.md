@@ -13,6 +13,8 @@ This document defines the allowed `src` module dependency graph and the intent o
 - `Boundary`: Boundary metadata and conversion helpers.
 - `Utils`: Generic helpers.
 - `Optimizer`: Search algorithms and optimizer-specific logic.
+- `Explore`: Interactive exploration adapter built on optimizer frontiers and VimCore replay.
+- `LuaExports`: C ABI adapter layer for LuaJIT, grouped by exported API domain.
 
 ## Allowed Dependencies
 
@@ -25,6 +27,8 @@ This document defines the allowed `src` module dependency graph and the intent o
 - `Session` -> `Types`
 - `Boundary` -> `Types`, `Utils`
 - `Optimizer` -> `Types`, `Utils`, `Keyboard`, `VimCore`, `Boundary`, `Interpreter`, `Effort`
+- `Explore` -> `Types`, `Keyboard`, `Effort`, `Boundary`, `VimCore`, `Interpreter`, `Optimizer`
+- `LuaExports` -> `Types`, `Keyboard`, `Boundary`, `Interpreter`, `VimCore`, `Optimizer`, `Explore`, `Utils`
 
 ## Placement Rules
 
@@ -35,6 +39,7 @@ This document defines the allowed `src` module dependency graph and the intent o
 - Keep foundational buffer/cursor types out of `Interpreter`; lower layers (`VimCore`, `Boundary`, `Optimizer`) share them via `Types`.
 - `Sequence` follows split ownership:
   type declaration in `Types`, formatting/parsing-aware stream implementation in a higher layer (`Interpreter`) to keep `Types` dependency-free.
+- Keep `Explore` and `LuaExports` as edge layers: they may compose lower-level modules, but lower-level modules must not include them.
 
 ## Enforcement
 
@@ -44,4 +49,4 @@ Run dependency lint locally:
 ./scripts/lint-module-deps.sh
 ```
 
-CI runs the same lint before build/tests.
+CI runs the same lint before build/tests. The lint currently enforces the core domain modules; `Explore`, `LuaExports`, and the root FFI entrypoint are documented edge layers rather than linted core modules.

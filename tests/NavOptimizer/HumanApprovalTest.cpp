@@ -5,7 +5,6 @@
 // are sensible and contain expected efficient sequences.
 //
 // Run: ./build/tests/vimficiency_tests --gtest_filter="NavOptimizerHumanApprovalTests.*"
-// 4. Remove DISABLED_ prefix
 
 #include <gtest/gtest.h>
 
@@ -15,7 +14,7 @@
 #include "Boundary/NavBoundary.h"
 #include "Effort/RunningEffort.h"
 #include "Types/Lines.h"
-#include "Utils/TestUtils.h"  // hasSequence, hasSequenceStartingWith, printResultsDebug
+#include "Utils/TestUtils.h"
 
 using namespace std;
 
@@ -50,11 +49,11 @@ TEST_F(NavOptimizerHumanApprovalTests, Motion_SimpleHorizontal) {
     NavOptimizerParams{}.withMaxResultsPerEndPos(2),
     "lllll"
   ).getResults();
-  // printResultsDebug(results, "Simple horizontal movement 0→5");
+  // printResultsDebug(results, "Simple horizontal movement 0 to 5");
 
   EXPECT_FALSE(results.empty()) << "Should find at least one path";
-
-  // TODO: Add assertions after reviewing output
+  EXPECT_TRUE(hasSequence(results, "5l") || hasSequence(results, "lllll"))
+      << "Should find the count-based horizontal movement or the original replay";
 }
 
 TEST_F(NavOptimizerHumanApprovalTests, Motion_VerticalJump) {
@@ -70,7 +69,7 @@ TEST_F(NavOptimizerHumanApprovalTests, Motion_VerticalJump) {
     "jjj"
   ).getResults();
 
-  // printResults(results, "Vertical jump 3 lines");
+  // printResultsDebug(results, "Vertical jump 3 lines");
 
   EXPECT_FALSE(results.empty());
 
@@ -96,7 +95,7 @@ TEST_F(NavOptimizerHumanApprovalTests, Motion_WordMotions) {
     "www"
   ).getResults();
 
-  // printResults(results, "Word motions to 'four'");
+  // printResultsDebug(results, "Word motions to 'four'");
 
   EXPECT_FALSE(results.empty());
 
@@ -118,7 +117,7 @@ TEST_F(NavOptimizerHumanApprovalTests, Motion_MixedMotions) {
     "jjllllllllll"
   ).getResults();
 
-  // printResults(results, "Mixed motions to line 2, col 11");
+  // printResultsDebug(results, "Mixed motions to line 2, col 11");
 
   EXPECT_FALSE(results.empty());
 

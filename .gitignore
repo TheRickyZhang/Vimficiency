@@ -18,6 +18,14 @@ deps/*
 
 dev/vim/
 
+# Generated or scratch artifacts that should not be tracked.
+/temp.txt
+/src/temp.txt
+/tests/Benchmarks/temp.txt
+/deps.dot
+/doc/tags
+/bench-dashboard/tsconfig.tsbuildinfo
+
 # Test seed files (generated when using random seeds)
 tests/.last_seeds.txt
 build-asan/
@@ -35,4 +43,3 @@ bench-dashboard/node_modules/
 bench-dashboard/dist/
 bench-dashboard/public/*/data.json
 bench-dashboard/public/*/explore.json
-
