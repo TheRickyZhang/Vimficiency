@@ -7,14 +7,12 @@
 
 #include "Effort/RunningEffort.h"
 #include "Keyboard/ToKeys/MovementToKeys.h"
-#include "Optimizer/CompositionOptimizer/CompositionNavParams.h"
+#include "Optimizer/CompositionOptimizer/CompositionMotionSearch.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizerParams.h"
 #include "Optimizer/CompositionOptimizer/CompositionStrategies.h"
 #include "Optimizer/CompositionOptimizer/PlannedEditArtifacts.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
-#include "Optimizer/NavOptimizer/NavRangeConversion.h"
 #include "Optimizer/OptimizerParamOverrides.h"
-#include "Types/CharInterval.h"
 
 using namespace std;
 
@@ -73,37 +71,17 @@ optional<MotionPrefix> cheapestMotionToRange(
     return MotionPrefix{"", cursor};
   }
 
-  auto [sliceBeginLine, sliceEndLine] = lines.minmaxBoundWithPadding(
-      min(cursor.line, targetLine), max(cursor.line, targetLine) + 1,
-      params.navPaddingAbove, params.navPaddingBelow);
-  Lines subset = lines.getLineRange(sliceBeginLine, sliceEndLine);
-
-  CursorPos localCursor(cursor.line - sliceBeginLine, cursor.col, cursor.targetCol);
-  CursorPos localRangeBegin(targetLine - sliceBeginLine, beginCol);
-  CursorPos localRangeEnd(targetLine - sliceBeginLine, endCol);
-  CharRange range(localRangeBegin, localRangeEnd);
-  CharInterval motionRange(range, subset);
-
-  CursorPos subsetFirst(0, 0);
-  CursorPos subsetEnd(static_cast<int>(subset.size()) - 1,
-      subset.back().effectiveSize());
-  NavBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
-      sliceBeginLine > 0 || boundary.hasLinesAbove(),
-      sliceEndLine <= lines.lastLine() || boundary.hasLinesBelow());
-
   NavOptimizer navOpt(config);
-  auto navParams = navParamsForCompositionMotion(params)
-      .withMaxResults(1);
-  auto result = navOpt.optimize(
-      subset, localCursor, motionRange,
-      navParams, "", subsetBoundary, navContext);
+  auto search = buildCompositionRangeMotionSearch(
+      lines, cursor, targetLine, beginCol, endCol, boundary, params);
+  if (!search) return nullopt;
+  auto result = optimizeCompositionRangeMotion(
+      navOpt, *search, navContext, params, 1);
   const auto& results = result.getResults();
   if (results.empty() || results[0].getSequence().empty()) return nullopt;
-  CursorPos landing = results[0].getGoalPos();
-  landing.line += sliceBeginLine;
   return MotionPrefix{
       string(results[0].getSequence().view()),
-      landing,
+      search->toBufferPos(results[0].getGoalPos()),
   };
 }
 

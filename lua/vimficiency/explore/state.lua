@@ -42,6 +42,23 @@ function M.refresh_ui(a)
 end
 
 ---@param a VF.Explore.Active
+---@return VF.Explore.ReconfigurePlanResult
+function M.reconfigure_plan(a)
+  local result = ffi_lib.explore_reconfigure_plan(a.view_id, M.resolve_overrides())
+  if result.reset then
+    a.pending = nil
+    a.warning = nil
+    a.on_key_buffer = ""
+    a.on_key_events = {}
+    M.reload_buffer(a)
+    vim.notify("vimfy explore: optimizer settings changed the plan; reset explore state",
+      vim.log.levels.INFO)
+  end
+  M.refresh_ui(a)
+  return result
+end
+
+---@param a VF.Explore.Active
 function M.reload_buffer(a)
   local lines = ffi_lib.explore_current_lines(a.view_id)
   v.nvim_buf_set_lines(a.scratch.buf, 0, -1, false, lines)

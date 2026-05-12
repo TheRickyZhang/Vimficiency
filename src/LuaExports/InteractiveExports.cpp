@@ -5,6 +5,7 @@
 
 #include <string>
 #include <string_view>
+#include <utility>
 
 using namespace std;
 namespace helpers = VF::LuaExports::helpers;
@@ -14,6 +15,7 @@ namespace {
 
 using Explore::View;
 using Explore::Outcome;
+using Explore::PlanReconfigureResult;
 using VF::LuaExports::ViewRegistry;
 
 ViewRegistry g_registry;
@@ -260,6 +262,27 @@ VFByteSlice vf_explore_recommendations(
   const auto overrides = OptimizerParamOverrides::parse(*overridesText);
   const SuggestionSortMode mode = parseSuggestionSortMode(*sortModeText);
   storage = encodeSuggestions(v.recommendations(max_count, &overrides, mode));
+  return helpers::byteSlice(storage);
+}
+
+VFByteSlice vf_explore_reconfigure_plan(
+    int view_id,
+    const char* optimizer_overrides,
+    size_t optimizer_overrides_len) {
+  static string storage;
+  View& v = g_registry.get(view_id);
+  auto overridesText = helpers::requiredBytes(
+      optimizer_overrides,
+      optimizer_overrides_len,
+      "optimizer_overrides");
+  if (!overridesText) return helpers::storeBytes(storage, unexpected(overridesText.error()));
+
+  const auto overrides = OptimizerParamOverrides::parse(*overridesText);
+  CompositionOptimizerParams compositionParams =
+      OptimizerParamOverrides::resolved<CompositionOptimizerParams>(&overrides);
+  const PlanReconfigureResult result =
+      v.reconfigurePlan(std::move(compositionParams));
+  storage = result.resetState ? "1" : "0";
   return helpers::byteSlice(storage);
 }
 

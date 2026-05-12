@@ -224,10 +224,8 @@ void enumerateDepth1DeletionStructurals(
     applyAndEmitCharwise(TransformSimulator::afterMultiJoin(state, cmd.count, addSpace), cmd);
   };
 
-  // MIRROR: identical sweep to TransformOptimizer::optimizeImpl's main loop —
-  // see the source-of-truth comment on sweepExplorerStructurals in
-  // TransformExplorer.h. Adding a new explorer enumeration there flows here
-  // automatically.
+  // Shared depth-1 sweep with TransformOptimizer::optimizeImpl. Adding a new
+  // explorer enumeration belongs in sweepExplorerStructurals.
   sweepExplorerStructurals(
       explorer, state, effective, localCursor,
       boundary.leftColOffset(), boundary.rightColOffset(),

@@ -95,6 +95,7 @@ end
 ---@field vf_explore_destroy fun(view_id: integer): integer
 ---@field vf_explore_state fun(view_id: integer): VF.C.ByteSlice
 ---@field vf_explore_recommendations fun(view_id: integer, max_count: integer, optimizer_overrides: string, optimizer_overrides_len: integer, sort_mode: string, sort_mode_len: integer): VF.C.ByteSlice
+---@field vf_explore_reconfigure_plan fun(view_id: integer, optimizer_overrides: string, optimizer_overrides_len: integer): VF.C.ByteSlice
 ---@field vf_explore_apply_movement fun(view_id: integer, movement_text: string, movement_text_len: integer): VF.C.ByteSlice
 ---@field vf_explore_apply_edit fun(view_id: integer, text: string, text_len: integer): VF.C.ByteSlice
 ---@field vf_explore_current_lines fun(view_id: integer): VF.C.ByteSlice
@@ -1019,6 +1020,22 @@ function M.explore_recommendations(view_id, max_count, optimizer_overrides, sort
       override_payload, #override_payload,
       sort_payload, #sort_payload)))
   return parse_explore_recommendations(payload)
+end
+
+---@class VF.Explore.ReconfigurePlanResult
+---@field reset boolean
+
+---@param view_id integer
+---@param optimizer_overrides? string Newline-delimited `<scope>:<key>=<value>` lines; empty/nil for defaults.
+---@return VF.Explore.ReconfigurePlanResult
+function M.explore_reconfigure_plan(view_id, optimizer_overrides)
+  local override_payload = optimizer_overrides or ""
+  local payload = require_non_error(slice_to_string(
+    lib.vf_explore_reconfigure_plan(
+      view_id,
+      override_payload,
+      #override_payload)))
+  return { reset = payload == "1" }
 end
 
 ---@param view_id integer

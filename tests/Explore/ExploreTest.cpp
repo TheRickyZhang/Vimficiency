@@ -103,6 +103,40 @@ TEST_F(ExploreViewTest, PureMotionGoalCompletesWhenCursorReachesGoal) {
   EXPECT_TRUE(view.recommendations(5).empty());
 }
 
+TEST_F(ExploreViewTest, ReconfigurePlanKeepsStateWhenPlanIsUnchanged) {
+  Lines lines{Line("foo bar baz")};
+  auto view = makeView(lines, {0, 0}, lines, {0, 8});
+
+  ASSERT_TRUE(view.applyMovement("w").has_value());
+  ASSERT_TRUE(view.canUndo());
+
+  Explore::PlanReconfigureResult result =
+      view.reconfigurePlan(CompositionOptimizerParams{});
+
+  EXPECT_FALSE(result.resetState);
+  EXPECT_EQ(view.state().seq, "w");
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 4));
+  EXPECT_TRUE(view.canUndo());
+}
+
+TEST_F(ExploreViewTest, ReconfigurePlanResetsWhenPlanResultsChange) {
+  Lines lines{Line("foo bar baz")};
+  auto view = makeView(lines, {0, 0}, lines, {0, 8});
+  ASSERT_GT(view.headerRows().optimal.size(), 1u);
+
+  ASSERT_TRUE(view.applyMovement("w").has_value());
+
+  CompositionOptimizerParams params;
+  params.withMaxResults(1);
+  Explore::PlanReconfigureResult result = view.reconfigurePlan(params);
+
+  EXPECT_TRUE(result.resetState);
+  EXPECT_EQ(view.state().seq, "");
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 0));
+  EXPECT_FALSE(view.canUndo());
+  EXPECT_LE(view.headerRows().optimal.size(), 1u);
+}
+
 TEST_F(ExploreViewTest, CompletionIsDerivedAndNotSticky) {
   Lines lines{Line("foo bar baz")};
   auto view = makeView(lines, {0, 0}, lines, {0, 4});

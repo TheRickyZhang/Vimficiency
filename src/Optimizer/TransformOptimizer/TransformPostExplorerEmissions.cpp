@@ -113,8 +113,9 @@ std::optional<Result> tryVisualDelete(
       transformBoundary.hasLinesAbove(),
       transformBoundary.hasLinesBelow());
 
-  // Transform params currently share count-prefix limits with this visual
-  // motion search; Nav-only motion-class controls are not part of transform.
+  // Visual-delete is a narrow post-explorer emission, not a general nav
+  // surface. It inherits transform count-prefix limits only; nav-only
+  // motion-class controls are intentionally not configurable here.
   NavOptimizer navOpt(config);
   auto navResult = navOpt.optimize(
       effectiveLines,

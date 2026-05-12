@@ -30,6 +30,7 @@ local v = vim.api
 ---@field pending VF.Explore.Pending|nil
 ---@field warning { title: string, lines: string[] }|nil
 ---@field restoring (true|{context: string})|nil
+---@field plan_reconfigure_pending boolean|nil
 ---@field header_handlers table<string, function>
 ---@field winclosed_autocmd integer|nil
 

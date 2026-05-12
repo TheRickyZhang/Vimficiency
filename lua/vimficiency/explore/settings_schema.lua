@@ -44,7 +44,12 @@ function M.build(a, refresh_ui)
     end
   end
   local function opt_set(scope, key)
-    return function(value) settings.update_setting(a, scope, key, value) end
+    return function(value)
+      settings.update_setting(a, scope, key, value)
+      if scope == "shared" or scope == "composition" then
+        a.plan_reconfigure_pending = true
+      end
+    end
   end
 
   local entries = { { kind = "hint", text = "── Display & UI ──" } }
@@ -156,6 +161,7 @@ function M.build(a, refresh_ui)
         settings.invalidate_cache()
         local s = settings.settings_store()
         for key, val in pairs(s.view) do a[key] = val end
+        a.plan_reconfigure_pending = true
         refresh_ui()
         panel_render.refresh(a)
         vim.notify("vimfy explore: settings reset to defaults",
