@@ -59,14 +59,6 @@ struct ChangeGoalHandler {
 
   bool isGoalReached(const Lines& lines) const;
 
-  // Replacement strategy — emits `r{char}` / `Nr{char}` (with motion prefixes
-  // for non-cursor-aligned diffs) for single-line same-length replacements.
-  // Public because the depth-1 frontier (TransformFrontier.cpp) calls it
-  // directly to mirror the optimizer's finalize-time emission. Listed in
-  // TransformPostExplorerEmissions.h's source-of-truth registry.
-  static std::optional<Result> tryReplacement(std::string_view deleted, std::string_view inserted,
-                                              const Config& config, double maxEffort);
-
   SuffixCacheResult tryUseSuffixCache(const TransformState& s,
                                       std::vector<std::vector<Result>>& resultsByStart,
                                       int maxResultsPerStart,

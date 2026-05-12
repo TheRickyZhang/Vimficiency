@@ -398,10 +398,90 @@ TEST_F(ExploreViewTest, NavigatePhaseSurfacesACompositionForEolInsertion) {
       << "Navigate phase must surface `$a!<Esc>` composition motion (motion-prefixed)";
 }
 
+TEST_F(ExploreViewTest, NavigateCompositionHonorsCompositionCountPrefixOverrides) {
+  Lines initial;
+  for (int i = 0; i < 20; i++) initial.push_back(Line("line " + to_string(i)));
+  Lines goal = initial;
+  goal.insert(goal.begin() + 5, Line("X"));
+  auto view = makeView(initial, {0, 0}, goal, {5, 0});
+
+  auto hasCountedLineInsert = [](const vector<Suggestion>& recs) {
+    return any_of(recs.begin(), recs.end(), [](const Suggestion& s) {
+      string_view token(s.token);
+      return token.rfind("4j", 0) == 0 &&
+             token.find("oX<Esc>") != string_view::npos;
+    });
+  };
+  auto tokens = [](const vector<Suggestion>& recs) {
+    string out;
+    for (const auto& rec : recs) {
+      if (!out.empty()) out += ", ";
+      out += rec.token;
+    }
+    return out;
+  };
+
+  auto defaultRecs = view.recommendations(100);
+  EXPECT_TRUE(hasCountedLineInsert(defaultRecs)) << tokens(defaultRecs);
+
+  const auto disableCompositionCounts = OptimizerParamOverrides::parse(
+      "composition:maxPrefixCount=0");
+  auto withoutCounts = view.recommendations(
+      100, &disableCompositionCounts, SuggestionSortMode::Effort);
+  EXPECT_FALSE(hasCountedLineInsert(withoutCounts))
+      << "composition frontier must pass composition count-prefix settings into nav: "
+      << tokens(withoutCounts);
+}
+
+TEST_F(ExploreViewTest, CompositionRecommendationCostIncludesFullShortcut) {
+  Lines initial{Line("hello")};
+  Lines goal{Line("hello!")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 5});
+
+  auto recs = view.recommendations(20);
+  auto rec = find_if(recs.begin(), recs.end(), [](const Suggestion& s) {
+    return string_view(s.token) == "$a!<Esc>";
+  });
+  ASSERT_NE(rec, recs.end());
+
+  EXPECT_NEAR(rec->costDiff, getEffort("$a!<Esc>", config), 1e-9);
+  EXPECT_GT(rec->costDiff, getEffort("$", config));
+}
+
+TEST_F(ExploreViewTest, TransformDeletionHonorsTransformCountPrefixOverrides) {
+  Lines initial{Line("a"), Line("b"), Line("c"), Line("d"), Line("e")};
+  Lines goal{Line("e")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 0});
+
+  auto hasCountedDelete = [](const vector<Suggestion>& recs) {
+    return any_of(recs.begin(), recs.end(), [](const Suggestion& s) {
+      return string_view(s.token) == "4dd";
+    });
+  };
+  auto tokens = [](const vector<Suggestion>& recs) {
+    string out;
+    for (const auto& rec : recs) {
+      if (!out.empty()) out += ", ";
+      out += rec.token;
+    }
+    return out;
+  };
+
+  auto defaultRecs = view.recommendations(100);
+  EXPECT_TRUE(hasCountedDelete(defaultRecs)) << tokens(defaultRecs);
+
+  const auto disableTransformCounts = OptimizerParamOverrides::parse(
+      "transform:maxPrefixCount=0");
+  auto withoutCounts = view.recommendations(
+      100, &disableTransformCounts, SuggestionSortMode::Effort);
+  EXPECT_FALSE(hasCountedDelete(withoutCounts))
+      << "transform frontier must pass transform count-prefix settings: "
+      << tokens(withoutCounts);
+}
+
 TEST_F(ExploreViewTest, TransformPhaseSurfacesReplaceCharForSingleCharDiff) {
-  // Parity with TransformOptimizer: ChangeGoalHandler::tryReplacement emits
-  // r{char} for single-line same-length replacement diffs at finalize time.
-  // The depth-1 frontier must surface it too.
+  // TransformPostExplorer owns the finalize-time replacement emission; the
+  // depth-1 frontier must surface it too.
   Lines initial{Line("abc")};
   Lines goal{Line("aBc")};
   auto view = makeView(initial, {0, 0}, goal, {0, 1});

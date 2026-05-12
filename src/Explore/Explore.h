@@ -108,7 +108,8 @@ public:
   View(Lines initialLines, CursorPos initialPos,
        Lines goalLines, CursorPos goalPos,
        NavBoundary boundary, NavContext navContext, Config config,
-       std::string_view userSequence = "");
+       std::string_view userSequence = "",
+       CompositionOptimizerParams compositionParams = {});
 
   // --- Query ---
   const Phase& phase() const { return state_.phase; }

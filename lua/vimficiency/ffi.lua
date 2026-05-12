@@ -91,7 +91,7 @@ end
 ---@field vf_manual_evict_reason fun(start_row: integer, cursor_row: integer, last_key_time_ns: integer, has_last_key: boolean, now_ns: integer, max_search_lines: integer, manual_idle_timeout_seconds: integer): integer
 ---@field vf_format_sequence fun(seq: string, seq_len: integer): VF.C.ByteSlice
 ---@field vf_simulate_movements fun(encoded_lines: string, encoded_lines_len: integer, start_row: integer, start_col: integer, seq: string, seq_len: integer): VF.C.ByteSlice
----@field vf_explore_start fun(encoded_initial_lines: string, encoded_initial_lines_len: integer, start_row: integer, start_col: integer, encoded_goal_lines: string, encoded_goal_lines_len: integer, end_row: integer, end_col: integer, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, window_height: integer, scroll_amount: integer, user_seq: string, user_seq_len: integer): VF.C.ByteSlice
+---@field vf_explore_start fun(encoded_initial_lines: string, encoded_initial_lines_len: integer, start_row: integer, start_col: integer, encoded_goal_lines: string, encoded_goal_lines_len: integer, end_row: integer, end_col: integer, boundary_first_col: integer, boundary_last_col: integer, has_lines_above: boolean, has_lines_below: boolean, window_height: integer, scroll_amount: integer, user_seq: string, user_seq_len: integer, optimizer_overrides: string, optimizer_overrides_len: integer): VF.C.ByteSlice
 ---@field vf_explore_destroy fun(view_id: integer): integer
 ---@field vf_explore_state fun(view_id: integer): VF.C.ByteSlice
 ---@field vf_explore_recommendations fun(view_id: integer, max_count: integer, optimizer_overrides: string, optimizer_overrides_len: integer, sort_mode: string, sort_mode_len: integer): VF.C.ByteSlice
@@ -583,12 +583,12 @@ end
 ---   `<scope>:<key>:int=10`
 ---   `<scope>:<key>:double=2.0`
 ---   `<scope>:<key>:bool=1`
----@return { nav: table<string, any>, transform: table<string, any>, composition: table<string, any> }
+---@return { shared: table<string, any>, nav: table<string, any>, transform: table<string, any>, composition: table<string, any> }
 local optimizer_defaults_cache = nil
 function M.get_optimizer_defaults()
   if optimizer_defaults_cache ~= nil then return optimizer_defaults_cache end
   local raw = slice_to_string(lib.vf_get_optimizer_defaults())
-  local out = { nav = {}, transform = {}, composition = {} }
+  local out = { shared = {}, nav = {}, transform = {}, composition = {} }
   for line in string.gmatch(raw, "[^\n]+") do
     local scope, key, typ, value = line:match("^([^:]+):([^:]+):([^=]+)=(.*)$")
     if scope and out[scope] then
@@ -962,16 +962,18 @@ end
 ---@param window_height integer
 ---@param scroll_amount integer
 ---@param user_seq string|nil
+---@param optimizer_overrides string|nil
 ---@return integer
 function M.explore_start(initial_lines, start_row, start_col,
                          goal_lines, end_row, end_col,
                          boundary_first_col, boundary_last_col,
                          has_lines_above, has_lines_below,
                          window_height, scroll_amount,
-                         user_seq)
+                         user_seq, optimizer_overrides)
   local initial_payload = encode_line_array(initial_lines, "initial_lines")
   local goal_payload = encode_line_array(goal_lines, "goal_lines")
   local user_payload = user_seq or ""
+  local override_payload = optimizer_overrides or ""
   local payload = require_non_error(slice_to_string(lib.vf_explore_start(
     initial_payload,
     #initial_payload,
@@ -983,7 +985,9 @@ function M.explore_start(initial_lines, start_row, start_col,
     has_lines_above, has_lines_below,
     window_height, scroll_amount,
     user_payload,
-    #user_payload
+    #user_payload,
+    override_payload,
+    #override_payload
   )))
   return tonumber(payload) or error("explore_start returned non-numeric view_id: " .. payload)
 end

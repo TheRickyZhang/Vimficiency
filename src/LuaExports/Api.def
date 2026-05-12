@@ -130,7 +130,9 @@ VFByteSlice vf_explore_start(
   int window_height,
   int scroll_amount,
   const char* user_seq,
-  size_t user_seq_len);
+  size_t user_seq_len,
+  const char* optimizer_overrides,
+  size_t optimizer_overrides_len);
 int vf_explore_destroy(int view_id);
 VFByteSlice vf_explore_state(int view_id);
 VFByteSlice vf_explore_recommendations(

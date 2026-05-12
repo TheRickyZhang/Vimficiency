@@ -206,18 +206,19 @@ void appendUniqueSuggestions(vector<Suggestion>& dest, vector<Suggestion>&& src)
 
 View::View(Lines initialLines, CursorPos initialPos, Lines goalLines,
            CursorPos goalPos, NavBoundary boundary, NavContext navContext,
-           Config config, string_view userSequence)
+           Config config, string_view userSequence,
+           CompositionOptimizerParams compositionParams)
     : goalLines_(std::move(goalLines)), goalPos_(goalPos),
       boundary_(std::move(boundary)), navContext_(navContext),
-      config_(std::move(config)) {
+      config_(std::move(config)),
+      compositionParams_(std::move(compositionParams)) {
 
   state_.lines = initialLines;
   state_.cursor = initialPos;
 
-  // MIRROR: composition optimizer computes the plan we walk through. This
-  // call's inputs and semantics must track CompositionOptimizer::optimize.
-  // Pure-motion sessions (initialLines == goalLines_) flow through here too,
-  // producing a 0-edit plan whose only nav target is goalPos_.
+  // Composition optimizer computes the plan we walk through. Pure-motion
+  // sessions flow through here too, producing a 0-edit plan whose only nav
+  // target is goalPos_.
   //
   // Explore opts into the traced variant because it needs plan-aligned edit
   // spans to render the Optimal-N header columns. `vf_analyze` and any other

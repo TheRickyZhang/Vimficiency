@@ -4,30 +4,27 @@
 // Post-explorer emissions — single source of truth
 // =============================================================================
 // Structurals that supplement the per-step enumeration in TransformExplorer.
-// Both consumers (the full optimizer's `*GoalHandler::finalize` and the
-// depth-1 `enumerateDepth1DeletionStructurals`) must apply these uniformly.
-//
-// Adding a new emission here means updating:
-//   - Whichever GoalHandler currently emits it in finalize, AND
-//   - The depth-1 frontier in TransformFrontier.cpp.
-// If you only update one consumer, you've created a parity gap.
-//
-// Current entries:
-//   - tryReplacement     (r{char} / Nr{char}) — single-line same-length
-//                        replacement diffs. Lives on ChangeGoalHandler;
-//                        re-declared here only for visibility.
-//   - tryVisualDelete    (v{motion}d) — full-region pure-deletion diffs.
+// Both the full optimizer's finalize paths and the depth-1 frontier call
+// these helpers directly, so eligibility and sequence construction stay
+// aligned.
 
 #include <optional>
+#include <string_view>
 
 #include "Boundary/TransformBoundary.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/Result.h"
-#include "Optimizer/TransformOptimizer/ChangeGoalHandler.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizerParams.h"
 #include "Types/Lines.h"
 
 namespace TransformPostExplorer {
+
+// Emits `r{char}` / `Nr{char}` for single-line same-length replacement diffs.
+std::optional<Result> tryReplacement(
+    std::string_view deleted,
+    std::string_view inserted,
+    const Config& config,
+    double maxEffort);
 
 // Builds a `v{motion}d` candidate that selects the entire deletion region
 // and deletes it. Returns nullopt when there's no spannable content (single

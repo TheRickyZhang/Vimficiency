@@ -54,8 +54,9 @@ end
 
 ---@param result VF.Explore.OpenResult
 ---@param source_win integer
+---@param optimizer_overrides string|nil
 ---@return integer
-function M.start_view(result, source_win)
+function M.start_view(result, source_win, optimizer_overrides)
   return ffi_lib.explore_start(
     result.lines, result.start_row, result.start_col,
     result.goal_lines, result.end_row, result.end_col,
@@ -63,7 +64,8 @@ function M.start_view(result, source_win)
     result.has_lines_above, result.has_lines_below,
     v.nvim_win_get_height(source_win),
     v.nvim_get_option_value("scroll", { win = source_win }),
-    result.user_seq)
+    result.user_seq,
+    optimizer_overrides)
 end
 
 return M

@@ -135,7 +135,9 @@ VF::LuaExports::Result<string> startImpl(
     int window_height,
     int scroll_amount,
     const char* user_seq,
-    size_t user_seq_len) {
+    size_t user_seq_len,
+    const char* optimizer_overrides,
+    size_t optimizer_overrides_len) {
   auto initialTextRes = helpers::requiredBytes(
       encoded_initial_lines,
       encoded_initial_lines_len,
@@ -169,6 +171,14 @@ VF::LuaExports::Result<string> startImpl(
   auto userSeqRes = helpers::requiredBytes(user_seq, user_seq_len, "user_seq");
   if (!userSeqRes) return unexpected(userSeqRes.error());
   const string_view userSeq = *userSeqRes;
+  auto overridesText = helpers::requiredBytes(
+      optimizer_overrides,
+      optimizer_overrides_len,
+      "optimizer_overrides");
+  if (!overridesText) return unexpected(overridesText.error());
+  const auto overrides = OptimizerParamOverrides::parse(*overridesText);
+  CompositionOptimizerParams compositionParams =
+      OptimizerParamOverrides::resolved<CompositionOptimizerParams>(&overrides);
 
   const int view_id = g_registry.create(
       std::move(initialLines),
@@ -178,7 +188,8 @@ VF::LuaExports::Result<string> startImpl(
       std::move(boundary),
       navContext,
       VF::LuaExports::g_config_internal,
-      userSeq);
+      userSeq,
+      compositionParams);
   return to_string(view_id);
 }
 
@@ -202,7 +213,9 @@ VFByteSlice vf_explore_start(
     int window_height,
     int scroll_amount,
     const char* user_seq,
-    size_t user_seq_len) {
+    size_t user_seq_len,
+    const char* optimizer_overrides,
+    size_t optimizer_overrides_len) {
   static string storage;
   return helpers::storeBytes(storage, startImpl(
       encoded_initial_lines, encoded_initial_lines_len,
@@ -212,7 +225,8 @@ VFByteSlice vf_explore_start(
       boundary_first_col, boundary_last_col,
       has_lines_above, has_lines_below,
       window_height, scroll_amount,
-      user_seq, user_seq_len));
+      user_seq, user_seq_len,
+      optimizer_overrides, optimizer_overrides_len));
 }
 
 int vf_explore_destroy(int view_id) {

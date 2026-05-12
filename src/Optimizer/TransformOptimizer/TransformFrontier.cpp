@@ -1,6 +1,7 @@
 #include "TransformFrontier.h"
 
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -102,6 +103,7 @@ void appendInsertionStrategy(
 void enumerateDepth1DeletionStructurals(
     const TransformFrontierQuery& query,
     const Config& config,
+    const TransformOptimizerParams& params,
     EditEmitter& emitter) {
   const DiffState& diff = query.diff;
   if (!diff.hasDeletedContent()) return;
@@ -125,7 +127,6 @@ void enumerateDepth1DeletionStructurals(
   const int lineSize = static_cast<int>(effective[localCursor.line].size());
   if (localCursor.col < 0 || localCursor.col > lineSize) return;
 
-  TransformOptimizerParams params;
   EffortBank bank(config);
   TransformExplorer explorer(boundary, params, config, bank,
                               boundary.leftColOffset(),
@@ -233,9 +234,7 @@ void enumerateDepth1DeletionStructurals(
       params.minPrefixCount,
       onAnyDeletion, onLinewise, onJoin, onLinewise, onCountedJoin);
 
-  // Post-explorer emissions — see TransformPostExplorerEmissions.h for the
-  // full list. Each entry mirrors a corresponding finalize-time emission
-  // in the optimizer's GoalHandlers.
+  // Post-explorer emissions — same helpers used by finalize-time paths.
   if (diff.isPureDeletion()) {
     auto visual = TransformPostExplorer::tryVisualDelete(
         effective, boundary.leftColOffset(), boundary.rightColOffset(),
@@ -248,11 +247,10 @@ void enumerateDepth1DeletionStructurals(
   if (diff.isReplacement() && diff.deletedLines().size() == 1 &&
       diff.insertedLines().size() == 1 &&
       diff.deletedLines()[0].size() == diff.insertedLines()[0].size()) {
-    // tryReplacement emits a sequence assuming the cursor is at col 0 of the
-    // single line. Mirror the finalize-time gate in ChangeGoalHandler:
-    // emit only when our depth-1 cursor is at the start of the diff line.
+    // tryReplacement assumes the cursor is at col 0 of the single line; emit
+    // only when the depth-1 cursor is at the start of the diff line.
     if (localCursor.line == 0 && localCursor.col == boundary.leftColOffset()) {
-      auto replacement = ChangeGoalHandler::tryReplacement(
+      auto replacement = TransformPostExplorer::tryReplacement(
           diff.deletedLines()[0], diff.insertedLines()[0],
           config, std::numeric_limits<double>::infinity());
       if (replacement) {
@@ -299,7 +297,7 @@ vector<Suggestion> rankTransformFrontier(
   // full A* over multi-token sequences. Pure insertion is still handled by
   // the inline branches further down.
   const size_t itemsBeforeDeletionEnum = items.size();
-  enumerateDepth1DeletionStructurals(query, config, emitter);
+  enumerateDepth1DeletionStructurals(query, config, transformParams, emitter);
   const bool gotDeletionStructurals = items.size() > itemsBeforeDeletionEnum;
 
   // Post-edit cursor target for inline emission paths (pure insertion +

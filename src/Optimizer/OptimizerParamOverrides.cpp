@@ -41,8 +41,6 @@ splitOnce(std::string_view s, char c) {
   return std::make_pair(s.substr(0, pos), s.substr(pos + 1));
 }
 
-// Distinguishes typos (warn) from scope mismatches (silent fall-through,
-// by design — see `applyNavField` etc.).
 const std::set<std::string_view, std::less<>>& knownKeys() {
   static const std::set<std::string_view, std::less<>> kKeys = {
 #define VF_KEY(type, name, withName, def, parser) #name,
@@ -54,6 +52,53 @@ const std::set<std::string_view, std::less<>>& knownKeys() {
 #undef VF_KEY
   };
   return kKeys;
+}
+
+const std::set<std::string_view, std::less<>>& baseKeys() {
+  static const std::set<std::string_view, std::less<>> kKeys = {
+#define VF_KEY(type, name, withName, def, parser) #name,
+      OPTIMIZER_BASE_FIELDS(VF_KEY)
+#undef VF_KEY
+  };
+  return kKeys;
+}
+
+const std::set<std::string_view, std::less<>>& navKeys() {
+  static const std::set<std::string_view, std::less<>> kKeys = {
+#define VF_KEY(type, name, withName, def, parser) #name,
+      OPTIMIZER_BASE_FIELDS(VF_KEY)
+      NAV_FIELDS(VF_KEY)
+#undef VF_KEY
+  };
+  return kKeys;
+}
+
+const std::set<std::string_view, std::less<>>& transformKeys() {
+  static const std::set<std::string_view, std::less<>> kKeys = {
+#define VF_KEY(type, name, withName, def, parser) #name,
+      OPTIMIZER_BASE_FIELDS(VF_KEY)
+      TRANSFORM_FIELDS(VF_KEY)
+#undef VF_KEY
+  };
+  return kKeys;
+}
+
+const std::set<std::string_view, std::less<>>& compositionKeys() {
+  static const std::set<std::string_view, std::less<>> kKeys = {
+#define VF_KEY(type, name, withName, def, parser) #name,
+      OPTIMIZER_BASE_FIELDS(VF_KEY)
+      COMPOSITION_FIELDS(VF_KEY)
+#undef VF_KEY
+  };
+  return kKeys;
+}
+
+bool keyAllowedInScope(std::string_view scope, std::string_view key) {
+  if (scope == "shared") return baseKeys().contains(key);
+  if (scope == "nav") return navKeys().contains(key);
+  if (scope == "transform") return transformKeys().contains(key);
+  if (scope == "composition") return compositionKeys().contains(key);
+  return false;
 }
 
 bool applyBaseField(OptimizerParamsBase& p,
@@ -69,43 +114,46 @@ bool applyBaseField(OptimizerParamsBase& p,
   return false;
 }
 
-void applyNavField(NavOptimizerParams& p,
+bool applyNavField(NavOptimizerParams& p,
                    std::string_view key,
                    std::string_view value) {
-  if (applyBaseField(p, key, value)) return;
+  if (applyBaseField(p, key, value)) return true;
 #define VF_MATCH(type, name, withName, def, parser)                  \
   if (key == #name) {                                                \
     if (auto v = parser(value)) p.name = *v;                         \
-    return;                                                          \
+    return true;                                                     \
   }
   NAV_FIELDS(VF_MATCH)
 #undef VF_MATCH
+  return false;
 }
 
-void applyTransformField(TransformOptimizerParams& p,
+bool applyTransformField(TransformOptimizerParams& p,
                          std::string_view key,
                          std::string_view value) {
-  if (applyBaseField(p, key, value)) return;
+  if (applyBaseField(p, key, value)) return true;
 #define VF_MATCH(type, name, withName, def, parser)                  \
   if (key == #name) {                                                \
     if (auto v = parser(value)) p.name = *v;                         \
-    return;                                                          \
+    return true;                                                     \
   }
   TRANSFORM_FIELDS(VF_MATCH)
 #undef VF_MATCH
+  return false;
 }
 
-void applyCompositionField(CompositionOptimizerParams& p,
+bool applyCompositionField(CompositionOptimizerParams& p,
                            std::string_view key,
                            std::string_view value) {
-  if (applyBaseField(p, key, value)) return;
+  if (applyBaseField(p, key, value)) return true;
 #define VF_MATCH(type, name, withName, def, parser)                  \
   if (key == #name) {                                                \
     if (auto v = parser(value)) p.name = *v;                         \
-    return;                                                          \
+    return true;                                                     \
   }
   COMPOSITION_FIELDS(VF_MATCH)
 #undef VF_MATCH
+  return false;
 }
 
 template <typename ApplyFn>
@@ -151,6 +199,9 @@ OptimizerParamOverrides OptimizerParamOverrides::parse(std::string_view encoded)
     if (!knownKeys().contains(key)) {
       warning("optimizer override: unknown key '", key, "' (scope ", scope, ")");
       // Still recorded so re-encoding is a round-trip.
+    } else if (!keyAllowedInScope(scope, key)) {
+      warning("optimizer override: key '", key,
+              "' is not valid in scope '", scope, "'");
     }
 
     target->insert_or_assign(std::string(key), std::string(value));
@@ -159,19 +210,19 @@ OptimizerParamOverrides OptimizerParamOverrides::parse(std::string_view encoded)
 }
 
 void OptimizerParamOverrides::applyTo(NavOptimizerParams& p) const {
-  applyMap(shared_, [&](auto& k, auto& v) { applyNavField(p, k, v); });
+  applyMap(shared_, [&](auto& k, auto& v) { applyBaseField(p, k, v); });
   applyMap(nav_, [&](auto& k, auto& v) { applyNavField(p, k, v); });
   p.validate();
 }
 
 void OptimizerParamOverrides::applyTo(TransformOptimizerParams& p) const {
-  applyMap(shared_, [&](auto& k, auto& v) { applyTransformField(p, k, v); });
+  applyMap(shared_, [&](auto& k, auto& v) { applyBaseField(p, k, v); });
   applyMap(transform_, [&](auto& k, auto& v) { applyTransformField(p, k, v); });
   p.validate();
 }
 
 void OptimizerParamOverrides::applyTo(CompositionOptimizerParams& p) const {
-  applyMap(shared_, [&](auto& k, auto& v) { applyCompositionField(p, k, v); });
+  applyMap(shared_, [&](auto& k, auto& v) { applyBaseField(p, k, v); });
   applyMap(composition_, [&](auto& k, auto& v) { applyCompositionField(p, k, v); });
   p.validate();
 }

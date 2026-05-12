@@ -1,9 +1,13 @@
 #include "TransformPostExplorerEmissions.h"
 
 #include <algorithm>
+#include <cassert>
+#include <utility>
+#include <vector>
 
 #include "Boundary/NavBoundary.h"
 #include "Effort/RunningEffort.h"
+#include "Keyboard/KeyedSequence.h"
 #include "Keyboard/PhysicalKeys.h"
 #include "Keyboard/ToKeys/MovementToKeys.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
@@ -11,6 +15,72 @@
 #include "Types/Sequence.h"
 
 namespace TransformPostExplorer {
+
+std::optional<Result> tryReplacement(
+    std::string_view deleted,
+    std::string_view inserted,
+    const Config& config,
+    double maxEffort) {
+  if (deleted.size() != inserted.size() || deleted == inserted) return std::nullopt;
+  assert(deleted.size() == inserted.size());
+  assert(deleted != inserted);
+
+  std::vector<int> diff;
+  for (size_t i = 0; i < deleted.size(); i++) {
+    if (deleted[i] != inserted[i]) diff.push_back(static_cast<int>(i));
+  }
+
+  KeyedSequence ks;
+
+  auto appendNav = [&](int dist) {
+    if (dist <= 2) ks.append(KeyedSequence::l, dist);
+    else ks.appendCounted(dist, KeyedSequence::l);
+  };
+
+  if (diff[0] > 0) appendNav(diff[0]);
+
+  size_t i = 0;
+  while (i < diff.size()) {
+    size_t j = i;
+    while (j + 1 < diff.size() && diff[j + 1] == diff[j] + 1 &&
+           inserted[diff[j + 1]] == inserted[diff[j]]) {
+      j++;
+    }
+
+    int runLength = static_cast<int>(j - i + 1);
+    if (runLength > 1) ks.appendCounted(runLength, KeyedSequence::r);
+    else ks += KeyedSequence::r;
+    ks.append(inserted[diff[i]]);
+
+    i = j + 1;
+    if (i < diff.size()) {
+      int dist = diff[i] - diff[j];
+      if (dist <= 2) {
+        ks.append(KeyedSequence::l, dist);
+      } else {
+        char findChar = deleted[diff[i]];
+        int occurrences = std::count(deleted.begin() + diff[j] + 1,
+                                     deleted.begin() + diff[i], findChar);
+        if (occurrences == 0) {
+          ks += KeyedSequence::f;
+          ks.append(findChar);
+        } else {
+          ks.appendCounted(dist, KeyedSequence::l);
+        }
+      }
+    }
+  }
+
+  int lastDiff = diff.back();
+  int endPos = static_cast<int>(inserted.size()) - 1;
+  if (lastDiff < endPos) appendNav(endPos - lastDiff);
+
+  RunningEffort effort(ks.keys, config);
+  double totalEffort = effort.getEffort(config);
+  if (totalEffort > maxEffort) return std::nullopt;
+
+  return Result(std::move(ks.seq), totalEffort);
+}
 
 std::optional<Result> tryVisualDelete(
     const Lines& effectiveLines,
@@ -43,11 +113,8 @@ std::optional<Result> tryVisualDelete(
       transformBoundary.hasLinesAbove(),
       transformBoundary.hasLinesBelow());
 
-  // TO-REVIEW: this internal NavOptimizer call uses a default-constructed
-  // NavOptimizerParams (motion-class settings, A* weights, etc.); it does
-  // NOT propagate user-configured motion-class settings (fMotionThreshold,
-  // useDirectionalPruning) from `params`. Same caveat as the prior inline
-  // version in DeletionGoalHandler::finalize.
+  // Transform params currently share count-prefix limits with this visual
+  // motion search; Nav-only motion-class controls are not part of transform.
   NavOptimizer navOpt(config);
   auto navResult = navOpt.optimize(
       effectiveLines,

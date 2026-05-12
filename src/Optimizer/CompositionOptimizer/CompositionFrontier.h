@@ -5,23 +5,21 @@
 // =============================================================================
 // Parallel to rankNavFrontier. Where NavFrontier surfaces pure motions toward
 // the diff range, CompositionFrontier surfaces *composition motions*:
-// sequences that telescope motion + transform progress into one stroke,
-// mirroring the optimizer's CompositionOptimizer emissions that fall outside
-// the strict Navigate→Transform alternation.
+// sequences that telescope motion + transform progress into one stroke.
 //
 // Three families correspond 1:1 with CompositionOptimizer.cpp's
 // cross-phase emission sites:
 //   - Pure-insertion shortcuts:  I/A/o (line-scope), i/a (point-scope)
 //                                + typed insert payload + <Esc>
-//                                (mirrors `exploreInsertionStrategy`)
+//                                (shared with `exploreInsertionStrategy`)
 //   - Bracket/quote shortcuts:   di"/da{/ci"/ca{ + (typed for replacement)
 //                                fired from any column where the bracket
 //                                pair is visible (`validQuoteMask` /
 //                                `validBracketMask`)
-//                                (mirrors the bqContext block)
+//                                (shared with the bqContext block)
 //   - joinPlan shortcut:          J/gJ/NJ/NgJ + optional embedded edit,
 //                                fired from any column on the entry line
-//                                (mirrors the joinPlan dispatch)
+//                                (shared with the joinPlan dispatch)
 //
 // Each emitted Suggestion's `token` is the FULL composition sequence
 // (motion prefix + structural [+ typed]) — what the user actually types.

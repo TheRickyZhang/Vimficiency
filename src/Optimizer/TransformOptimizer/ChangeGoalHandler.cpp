@@ -6,6 +6,7 @@
 #include "TransformOptimizer.h"
 #include "Keyboard/ToKeys/MovementToKeys.h"
 #include "Optimizer/BuildTypedCommands.h"
+#include "Optimizer/TransformOptimizer/TransformPostExplorerEmissions.h"
 
 using namespace std;
 
@@ -325,69 +326,6 @@ void ChangeGoalHandler::replayAndCacheSuffix(
   }
 }
 
-optional<Result> ChangeGoalHandler::tryReplacement(
-    string_view deleted, string_view inserted,
-    const Config& config, double maxEffort) {
-  assert(deleted.size() == inserted.size());
-  assert(deleted != inserted);
-
-  vector<int> diff;
-  for (size_t i = 0; i < deleted.size(); i++) {
-    if (deleted[i] != inserted[i]) diff.push_back(static_cast<int>(i));
-  }
-
-  KeyedSequence ks;
-
-  auto appendNav = [&](int dist) {
-    if (dist <= 2) ks.append(KeyedSequence::l, dist);
-    else ks.appendCounted(dist, KeyedSequence::l);
-  };
-
-  if (diff[0] > 0) appendNav(diff[0]);
-
-  size_t i = 0;
-  while (i < diff.size()) {
-    size_t j = i;
-    while (j + 1 < diff.size() && diff[j + 1] == diff[j] + 1 &&
-           inserted[diff[j + 1]] == inserted[diff[j]]) {
-      j++;
-    }
-
-    int runLength = static_cast<int>(j - i + 1);
-    if (runLength > 1) ks.appendCounted(runLength, KeyedSequence::r);
-    else ks += KeyedSequence::r;
-    ks.append(inserted[diff[i]]);
-
-    i = j + 1;
-    if (i < diff.size()) {
-      int dist = diff[i] - diff[j];
-      if (dist <= 2) {
-        ks.append(KeyedSequence::l, dist);
-      } else {
-        char findChar = deleted[diff[i]];
-        int occurrences = count(deleted.begin() + diff[j] + 1,
-                                deleted.begin() + diff[i], findChar);
-        if (occurrences == 0) {
-          ks += KeyedSequence::f;
-          ks.append(findChar);
-        } else {
-          ks.appendCounted(dist, KeyedSequence::l);
-        }
-      }
-    }
-  }
-
-  int lastDiff = diff.back();
-  int endPos = static_cast<int>(inserted.size()) - 1;
-  if (lastDiff < endPos) appendNav(endPos - lastDiff);
-
-  RunningEffort effort(ks.keys, config);
-  double totalEffort = effort.getEffort(config);
-  if (totalEffort > maxEffort) return nullopt;
-
-  return Result(std::move(ks.seq), totalEffort);
-}
-
 // Goal emission methods
 
 GoalStates ChangeGoalHandler::emitEditGoal(
@@ -571,8 +509,8 @@ TransformResult ChangeGoalHandler::finalize(
       initialLines[0].size() == goalLines[0].size()) {
     double bestCost = min_element(bucket.begin(), bucket.end(),
         [](const Result& a, const Result& b) { return a.getCost() < b.getCost(); })->getCost();
-    auto replacementResult = tryReplacement(initialLines[0], goalLines[0],
-                                            config, bestCost);
+    auto replacementResult = TransformPostExplorer::tryReplacement(
+        initialLines[0], goalLines[0], config, bestCost);
     if (replacementResult.has_value()) {
       bucket.push_back(*replacementResult);
     }

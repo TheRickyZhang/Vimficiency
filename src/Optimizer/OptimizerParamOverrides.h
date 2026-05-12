@@ -8,13 +8,13 @@ struct NavOptimizerParams;
 struct TransformOptimizerParams;
 struct CompositionOptimizerParams;
 
-// Parses and applies optimizer parameter overrides arriving
+// Parses and applies optimizer parameter overrides from Lua.
 class OptimizerParamOverrides {
 public:
   OptimizerParamOverrides() = default;
 
-  // Malformed lines are skipped (not an error)
-  // keys get caught later at apply time with the same silent-skip rule.
+  // Malformed or wrong-scope lines warn at parse time and no-op at apply time.
+  // `shared:` is restricted to OptimizerParamsBase fields.
   static OptimizerParamOverrides parse(std::string_view encoded);
 
   void applyTo(NavOptimizerParams& params) const;

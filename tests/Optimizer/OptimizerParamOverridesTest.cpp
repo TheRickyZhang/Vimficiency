@@ -64,29 +64,56 @@ TEST(OptimizerParamOverrides, PerOptimizerScopeWinsOverShared) {
   EXPECT_EQ(comp.maxResults, 20);
 }
 
-TEST(OptimizerParamOverrides, NavOnlyKeysIgnoredByOtherOptimizers) {
-  // `fMotionThreshold` is on Nav and Composition; `maxResultsPerEndPos`
-  // is Nav-only. Routing them via `shared:` should land on Nav, hit the
-  // Composition Nav-shaped fields, and silently no-op on Transform.
+TEST(OptimizerParamOverrides, SharedScopeAppliesOnlyBaseKeys) {
+  // `shared:` means OptimizerParamsBase only. Fields that exist on multiple
+  // concrete optimizers still need explicit concrete scopes.
   const auto overrides = OptimizerParamOverrides::parse(
       "shared:fMotionThreshold=7\n"
-      "shared:maxResultsPerEndPos=3");
+      "shared:maxResultsPerEndPos=3\n"
+      "shared:minPrefixCount=5\n"
+      "shared:maxPrefixCount=12");
 
   NavOptimizerParams nav;
   overrides.applyTo(nav);
+  EXPECT_EQ(nav.fMotionThreshold, NavOptimizerParams{}.fMotionThreshold);
+  EXPECT_EQ(nav.maxResultsPerEndPos, NavOptimizerParams{}.maxResultsPerEndPos);
+  EXPECT_EQ(nav.minPrefixCount, 5);
+  EXPECT_EQ(nav.maxPrefixCount, 12);
+
+  CompositionOptimizerParams comp;
+  overrides.applyTo(comp);
+  EXPECT_EQ(comp.fMotionThreshold, CompositionOptimizerParams{}.fMotionThreshold);
+  EXPECT_EQ(comp.minPrefixCount, 5);
+  EXPECT_EQ(comp.maxPrefixCount, 12);
+
+  TransformOptimizerParams tx;
+  overrides.applyTo(tx);
+  EXPECT_EQ(tx.minPrefixCount, 5);
+  EXPECT_EQ(tx.maxPrefixCount, 12);
+}
+
+TEST(OptimizerParamOverrides, ConcreteScopesApplyBaseAndConcreteKeys) {
+  const auto overrides = OptimizerParamOverrides::parse(
+      "nav:minPrefixCount=3\n"
+      "nav:fMotionThreshold=7\n"
+      "nav:maxResultsPerEndPos=3\n"
+      "composition:fMotionThreshold=9\n"
+      "transform:maxResultsPerStartPos=4\n"
+      "transform:fMotionThreshold=11");
+
+  NavOptimizerParams nav;
+  overrides.applyTo(nav);
+  EXPECT_EQ(nav.minPrefixCount, 3);
   EXPECT_EQ(nav.fMotionThreshold, 7);
   EXPECT_EQ(nav.maxResultsPerEndPos, 3);
 
   CompositionOptimizerParams comp;
   overrides.applyTo(comp);
-  EXPECT_EQ(comp.fMotionThreshold, 7);
+  EXPECT_EQ(comp.fMotionThreshold, 9);
 
-  // Transform doesn't have these fields. The applier silently skips —
-  // no compile error, no behavior change.
   TransformOptimizerParams tx;
-  const auto txBefore = tx;
   overrides.applyTo(tx);
-  EXPECT_EQ(tx.maxResults, txBefore.maxResults);  // base default unchanged
+  EXPECT_EQ(tx.maxResultsPerStartPos, 4);
 }
 
 TEST(OptimizerParamOverrides, BoolParsedAsZeroOneOrTrueFalse) {
@@ -123,8 +150,8 @@ TEST(OptimizerParamOverrides, MalformedLinesAreSkipped) {
   overrides.applyTo(nav);
   EXPECT_DOUBLE_EQ(nav.effortWeight, 2.5);
   EXPECT_DOUBLE_EQ(nav.distanceWeight, 0.25);
-  // The malformed lines didn't cause anything to land — `unknown_scope`
-  // is silently dropped (we don't recognize the scope at all).
+  // The malformed lines didn't cause anything to land; `unknown_scope`
+  // is dropped before apply.
   EXPECT_EQ(nav.maxResults, NavOptimizerParams{}.maxResults);
 }
 
@@ -136,7 +163,7 @@ TEST(OptimizerParamOverrides, CompositionSpecificKeyAppliesOnlyToComposition) {
   overrides.applyTo(comp);
   EXPECT_DOUBLE_EQ(comp.overshootPenalty, 10.0);
 
-  // Nav and Transform have no `overshootPenalty` field — silent skip.
+  // Nav and Transform never read the composition scope.
   NavOptimizerParams nav;
   overrides.applyTo(nav);
   // Nothing to assert on Nav directly; this is a "doesn't crash, doesn't
