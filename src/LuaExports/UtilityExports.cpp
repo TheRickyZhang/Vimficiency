@@ -4,6 +4,7 @@
 #include "Interpreter/SequenceParser.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizerParams.h"
 #include "Optimizer/NavOptimizer/NavOptimizerParams.h"
+#include "Optimizer/OptimizerParamsBase.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizerParams.h"
 #include "Utils/Debug.h"
 
@@ -177,6 +178,7 @@ VFByteSlice vf_format_sequence(const char *seq, size_t seq_len) {
 VFByteSlice vf_get_optimizer_defaults() {
   static string cached;
   if (cached.empty()) {
+    OptimizerParamsBase shared;
     NavOptimizerParams nav;
     TransformOptimizerParams tx;
     CompositionOptimizerParams comp;
@@ -191,6 +193,15 @@ VFByteSlice vf_get_optimizer_defaults() {
     auto b = [&](string_view scope, string_view key, bool v) {
       out << scope << ':' << key << ":bool=" << (v ? '1' : '0') << '\n';
     };
+
+    // Shared
+    i("shared", "maxResults",     shared.maxResults);
+    i("shared", "maxNodesPopped", shared.maxNodesPopped);
+    d("shared", "exploreFactor",  shared.exploreFactor);
+    d("shared", "effortWeight",   shared.effortWeight);
+    d("shared", "distanceWeight", shared.distanceWeight);
+    i("shared", "minPrefixCount", shared.minPrefixCount);
+    i("shared", "maxPrefixCount", shared.maxPrefixCount);
 
     // Nav
     i("nav", "maxResults",            nav.maxResults);

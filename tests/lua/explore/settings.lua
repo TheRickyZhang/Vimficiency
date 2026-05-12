@@ -1,7 +1,8 @@
 -- Tests for explore's settings layer: default-shape construction,
--- resolve_param's per-scope -> shared -> nil fallback, and sidecar
+-- resolve_param's per-scope -> shared-base -> nil fallback, and sidecar
 -- envelope edge cases.
 local explore = require("vimficiency.explore")
+local settings = require("vimficiency.explore.settings")
 local settings_profile = require("vimficiency.settings_profile")
 
 local helpers = explore._for_test
@@ -73,10 +74,11 @@ test("explore settings: get_optimizer_defaults parses C++ defaults across types"
   local ffi_lib = require("vimficiency.ffi")
   local defaults = ffi_lib.get_optimizer_defaults()
 
-  -- maxResults is uniform across all three optimizers (base default
-  -- 20). The historical Transform-only override was removed; if it
-  -- comes back, surface it per-optimizer in the panel instead of
-  -- continuing to fudge "shared" display.
+  -- Base defaults are exported under an explicit shared scope. Per-optimizer
+  -- defaults still include inherited base fields for concrete-scope editing.
+  assert_eq(defaults.shared.maxResults, 20)
+  assert_eq(defaults.shared.minPrefixCount, 4)
+  assert_eq(defaults.shared.maxPrefixCount, 16)
   assert_eq(defaults.nav.maxResults, 20)
   assert_eq(defaults.transform.maxResults, 20)
   assert_eq(defaults.composition.maxResults, 20)
@@ -89,4 +91,20 @@ test("explore settings: get_optimizer_defaults parses C++ defaults across types"
   -- Bools — the wire encodes true as "1" and false as "0".
   assert_eq(defaults.nav.useDirectionalPruning, true)
   assert_eq(defaults.composition.useDirectionalPruning, true)
+end)
+
+test("explore settings: shared fallback is base-only", function()
+  settings_profile.save("explore", settings.EXPLORE_SCHEMA_VERSION, {
+    shared = {
+      minPrefixCount = 6,
+      fMotionThreshold = 99,
+    },
+  })
+  settings.invalidate_cache()
+
+  assert_eq(helpers.resolve_param("minPrefixCount", "nav"), 6)
+  assert_eq(helpers.resolve_param("fMotionThreshold", "nav"), nil)
+
+  settings_profile.clear("explore")
+  settings.invalidate_cache()
 end)

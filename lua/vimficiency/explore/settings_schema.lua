@@ -10,9 +10,8 @@ local M = {}
 ---@return any
 local function default_for(scope, key)
   local defaults = ffi_lib.get_optimizer_defaults()
-  local lookup_scope = scope == "shared" and "nav" or scope
-  local scope_defaults = assert(defaults[lookup_scope],
-    "vimfy explore: missing optimizer defaults for " .. lookup_scope)
+  local scope_defaults = assert(defaults[scope],
+    "vimfy explore: missing optimizer defaults for " .. scope)
   local value = scope_defaults[key]
   assert(value ~= nil, "vimfy explore: missing optimizer default for " .. scope .. "." .. key)
   return value

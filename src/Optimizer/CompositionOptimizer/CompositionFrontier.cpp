@@ -7,11 +7,11 @@
 
 #include "Effort/RunningEffort.h"
 #include "Keyboard/ToKeys/MovementToKeys.h"
+#include "Optimizer/CompositionOptimizer/CompositionNavParams.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizerParams.h"
 #include "Optimizer/CompositionOptimizer/CompositionStrategies.h"
 #include "Optimizer/CompositionOptimizer/PlannedEditArtifacts.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
-#include "Optimizer/NavOptimizer/NavOptimizerParams.h"
 #include "Optimizer/NavOptimizer/NavRangeConversion.h"
 #include "Optimizer/OptimizerParamOverrides.h"
 #include "Types/CharInterval.h"
@@ -20,7 +20,7 @@ using namespace std;
 
 namespace {
 
-// Common collector — mirrors TransformFrontier::EditEmitter so the cost
+// Common collector — matches TransformFrontier::EditEmitter so the cost
 // arithmetic is consistent across the two depth-1 frontiers.
 struct CompositionEmitter {
   vector<Suggestion>& items;
@@ -62,8 +62,10 @@ optional<MotionPrefix> cheapestMotionToRange(
     const Lines& lines, CursorPos cursor,
     int targetLine, int beginCol, int endCol,
     const NavBoundary& boundary, const NavContext& navContext,
+    const CompositionOptimizerParams& params,
     const Config& config) {
   if (targetLine < 0 || beginCol < 0 || endCol <= beginCol) return nullopt;
+  if (targetLine >= static_cast<int>(lines.size())) return nullopt;
 
   const bool inRange = cursor.line == targetLine &&
                        cursor.col >= beginCol && cursor.col < endCol;
@@ -71,19 +73,37 @@ optional<MotionPrefix> cheapestMotionToRange(
     return MotionPrefix{"", cursor};
   }
 
-  CharRange range(CursorPos(targetLine, beginCol), CursorPos(targetLine, endCol));
-  CharInterval motionRange(range, lines);
+  auto [sliceBeginLine, sliceEndLine] = lines.minmaxBoundWithPadding(
+      min(cursor.line, targetLine), max(cursor.line, targetLine) + 1,
+      params.navPaddingAbove, params.navPaddingBelow);
+  Lines subset = lines.getLineRange(sliceBeginLine, sliceEndLine);
+
+  CursorPos localCursor(cursor.line - sliceBeginLine, cursor.col, cursor.targetCol);
+  CursorPos localRangeBegin(targetLine - sliceBeginLine, beginCol);
+  CursorPos localRangeEnd(targetLine - sliceBeginLine, endCol);
+  CharRange range(localRangeBegin, localRangeEnd);
+  CharInterval motionRange(range, subset);
+
+  CursorPos subsetFirst(0, 0);
+  CursorPos subsetEnd(static_cast<int>(subset.size()) - 1,
+      subset.back().effectiveSize());
+  NavBoundary subsetBoundary(subset, subsetFirst, subsetEnd,
+      sliceBeginLine > 0 || boundary.hasLinesAbove(),
+      sliceEndLine <= lines.lastLine() || boundary.hasLinesBelow());
 
   NavOptimizer navOpt(config);
+  auto navParams = navParamsForCompositionMotion(params)
+      .withMaxResults(1);
   auto result = navOpt.optimize(
-      lines, cursor, motionRange,
-      NavOptimizerParams{}.withMaxResults(1),
-      "", boundary, navContext);
+      subset, localCursor, motionRange,
+      navParams, "", subsetBoundary, navContext);
   const auto& results = result.getResults();
   if (results.empty() || results[0].getSequence().empty()) return nullopt;
+  CursorPos landing = results[0].getGoalPos();
+  landing.line += sliceBeginLine;
   return MotionPrefix{
       string(results[0].getSequence().view()),
-      results[0].getGoalPos(),
+      landing,
   };
 }
 
@@ -101,10 +121,11 @@ string compose(const MotionPrefix& motion, string_view body) {
 
 void emitInsertionStrategy(const CompositionFrontierQuery& query,
                            const CompositionStrategies::Insertion& s,
+                           const CompositionOptimizerParams& params,
                            CompositionEmitter& emitter) {
   auto motion = cheapestMotionToRange(
       query.lines, query.cursor, s.targetLine, s.beginCol, s.endCol,
-      query.boundary, query.navContext, emitter.config);
+      query.boundary, query.navContext, params, emitter.config);
   if (!motion) return;
   // Landing for the suggestion is `diff.beginPos` — by the time the user
   // finishes typing the insertCmd, the cursor sits at the insertion point.
@@ -113,16 +134,18 @@ void emitInsertionStrategy(const CompositionFrontierQuery& query,
 
 void emitBracketQuoteStrategy(const CompositionFrontierQuery& query,
                               const CompositionStrategies::BracketQuote& s,
+                              const CompositionOptimizerParams& params,
                               CompositionEmitter& emitter) {
   auto motion = cheapestMotionToRange(
       query.lines, query.cursor, s.line, s.col, s.col + 1,
-      query.boundary, query.navContext, emitter.config);
+      query.boundary, query.navContext, params, emitter.config);
   if (!motion) return;
   emitter.emit(compose(*motion, s.body), query.diff.beginPos);
 }
 
 void emitJoinPlan(const CompositionFrontierQuery& query,
                   const JoinPlan& joinPlan,
+                  const CompositionOptimizerParams& params,
                   CompositionEmitter& emitter) {
   // joinPlan accepts cursor on the entry line at any column. Compute the
   // cheapest motion to that line; if cursor is already there, motion is empty.
@@ -132,7 +155,7 @@ void emitJoinPlan(const CompositionFrontierQuery& query,
 
   auto motion = cheapestMotionToRange(
       lines, query.cursor, entryLine, 0, lines[entryLine].effectiveSize(),
-      query.boundary, query.navContext, emitter.config);
+      query.boundary, query.navContext, params, emitter.config);
   if (!motion) return;
   emitter.emit(compose(*motion, joinPlan.sequence.view()), joinPlan.goalPos);
 }
@@ -154,7 +177,7 @@ vector<Suggestion> rankCompositionFrontier(
   CompositionStrategies::enumerateInsertions(
       query.diff, query.lines,
       [&](const CompositionStrategies::Insertion& s) {
-        emitInsertionStrategy(query, s, emitter);
+        emitInsertionStrategy(query, s, params, emitter);
       });
 
   if (!query.diff.isPureInsertion()) {
@@ -163,12 +186,12 @@ vector<Suggestion> rankCompositionFrontier(
     CompositionStrategies::enumerateBracketQuotes(
         query.diff, bqContext,
         [&](const CompositionStrategies::BracketQuote& s) {
-          emitBracketQuoteStrategy(query, s, emitter);
+          emitBracketQuoteStrategy(query, s, params, emitter);
         });
 
     optional<JoinPlan> joinPlan =
         computeJoinPlanForDiff(query.diff, query.lines, params, config);
-    if (joinPlan) emitJoinPlan(query, *joinPlan, emitter);
+    if (joinPlan) emitJoinPlan(query, *joinPlan, params, emitter);
   }
 
   sortAndCapSuggestions(items, query.maxCount, query.sortMode);

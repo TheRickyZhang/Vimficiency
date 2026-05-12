@@ -12,6 +12,17 @@ M.DISPLAY_MODES = DISPLAY_MODES
 local RECOMMENDATION_SORT_MODES = { "effort", "distance", "score" }
 M.RECOMMENDATION_SORT_MODES = RECOMMENDATION_SORT_MODES
 
+local SHARED_OPTIMIZER_KEYS = {
+  maxResults = true,
+  maxNodesPopped = true,
+  exploreFactor = true,
+  effortWeight = true,
+  distanceWeight = true,
+  minPrefixCount = true,
+  maxPrefixCount = true,
+}
+M.SHARED_OPTIMIZER_KEYS = SHARED_OPTIMIZER_KEYS
+
 ---@class VF.Explore.ViewSettingSpec
 ---@field key string
 ---@field type "enum"|"int"|"bool"
@@ -108,7 +119,7 @@ function M.invalidate_cache()
   current_settings = nil
 end
 
--- Lookup order: per-scope override → shared override → nil.
+-- Lookup order: per-scope override → shared base override → nil.
 ---@param key string
 ---@param scope "nav"|"transform"|"composition"
 ---@return any|nil
@@ -116,6 +127,7 @@ function M.resolve_param(key, scope)
   local store = M.settings_store()
   local scoped = store[scope] and store[scope][key]
   if scoped ~= nil then return scoped end
+  if not SHARED_OPTIMIZER_KEYS[key] then return nil end
   return store.shared[key]
 end
 

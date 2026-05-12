@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "CompositionSearchContext.h"
+#include "CompositionNavParams.h"
 #include "CompositionStrategies.h"
 #include "EditSequenceSpan.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
@@ -288,10 +289,8 @@ optimizeImpl(
     auto slice = sliceMotionSubset(pos, targetBeginLine, targetEndLine, fromLines);
     CharInterval localInterval = makeLocalInterval(slice.subset, slice.beginLine);
 
-    auto navParams = NavOptimizerParams{}
+    auto navParams = navParamsForCompositionMotion(params)
         .withMaxResults(maxResults)
-        .withMinCountRepeat(params.minPrefixCount)
-        .withMaxCountRepeat(params.maxPrefixCount)
         .withMaxResultsPerEndPos(keepMultiplePerLanding ? 2 : 1);
     const BufferIndex* bufferIndex = nullptr;
     int lineOffset = 0;
@@ -425,10 +424,8 @@ optimizeImpl(
             beginLine > 0 || boundary.hasLinesAbove(),
             endLine <= currentLines.lastLine() || boundary.hasLinesBelow());
 
-        auto rangeParams = NavOptimizerParams{}
-            .withMaxResults(1)
-            .withMinCountRepeat(params.minPrefixCount)
-            .withMaxCountRepeat(params.maxPrefixCount);
+        auto rangeParams = navParamsForCompositionMotion(params)
+            .withMaxResults(1);
         const BufferIndex* bufferIndex = nullptr;
         int lineOffset = 0;
         bool hasBufferIndex = ctx.tryGetBufferIndex(
