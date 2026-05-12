@@ -15,8 +15,8 @@
 // flags for quote/bracket text objects and line-level operations.
 //
 // Workflow:
-// 1. Compute TransformBoundary from original text (once per transform region)
-// 2. Pass to VimEndpointUtils which uses raw chars for boundary decisions
+// 1. Compute TransformBoundary from the buffer that contains the transform region.
+// 2. Pass to VimEndpointUtils which uses raw chars for boundary decisions.
 //
 // Related: NavBoundary stores only offsets (no strings) for lighter-weight
 // motion constraint checking. Use context() to convert TransformBoundary to

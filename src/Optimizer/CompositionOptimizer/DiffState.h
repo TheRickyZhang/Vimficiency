@@ -1,6 +1,8 @@
 #pragma once
 
+#include <optional>
 #include <ostream>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -20,7 +22,7 @@
 // Benefits: Empty ranges are natural (beginPos == endPos), no -1 adjustments needed.
 
 struct DiffState {
-  // Character-precise edit region bounds (in original buffer coordinates)
+  // Character-precise edit region bounds in this diff's buffer context.
   // Half-open: [beginPos, endPos) defines exactly which characters need to change
   CursorPos beginPos;  // First character that differs (inclusive)
   CursorPos endPos;    // One past last character (exclusive, half-open)
@@ -46,7 +48,7 @@ struct DiffState {
   // Derived accessors
   int origLineStart() const { return beginPos.line; }
   int origLineCount() const { return deletedLines().size(); }
-  int newLineStart() const { return beginPos.line; }  // Same as origLineStart after adjustment
+  int newLineStart() const { return beginPos.line; }
   int newLineCount() const { return insertedLines().size(); }
 
   int origCharCount() const { return static_cast<int>(deletedText.size()); }
@@ -80,6 +82,41 @@ struct DiffState {
     }
     return insertedText;
   }
+};
+
+namespace DiffText {
+
+int positionToFlatIndex(const CursorPos& pos, const Lines& lines);
+CursorPos flatIndexToPosition(int idx, std::string_view flatText);
+CursorPos flatIndexToPosition(int idx, const Lines& lines);
+CursorPos advancePositionByText(CursorPos pos, std::string_view text);
+
+std::optional<DiffState> calculateContiguousResidualDiff(
+    const Lines& from,
+    const Lines& to);
+
+} // namespace DiffText
+
+class OriginalDiffMapper {
+public:
+  int mapFlatIndex(int originalFlat) const;
+
+  DiffState mapDiffToCurrent(
+      const DiffState& originalDiff,
+      const Lines& originalLines,
+      const Lines& currentLines) const;
+
+  void recordApplied(
+      const DiffState& originalDiff,
+      const Lines& originalLines);
+
+private:
+  struct AppliedSpan {
+    int begin = 0;
+    int end = 0;
+    int delta = 0;
+  };
+  std::vector<AppliedSpan> applied_;
 };
 
 // Character-level Myers diff algorithm.

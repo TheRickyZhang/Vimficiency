@@ -108,71 +108,10 @@ bool containsInsertCursor(const Lines& lines, CursorPos pos) {
   return pos.col >= 0 && pos.col <= static_cast<int>(lines[pos.line].size());
 }
 
-std::optional<DiffState> singleDiffBetween(
-    const Lines& from,
-    const Lines& to) {
-  // Preserve physical matching tails so delete-first options stay literal.
-  const std::string fromText = from.flatten();
-  const std::string toText = to.flatten();
-  if (fromText == toText) return std::nullopt;
-
-  int prefixLen = 0;
-  const int maxPrefix = static_cast<int>(std::min(fromText.size(), toText.size()));
-  while (prefixLen < maxPrefix && fromText[prefixLen] == toText[prefixLen])
-    prefixLen++;
-
-  int suffixLen = 0;
-  const int maxSuffix =
-      static_cast<int>(std::min(fromText.size(), toText.size())) - prefixLen;
-  while (suffixLen < maxSuffix &&
-         fromText[static_cast<int>(fromText.size()) - 1 - suffixLen] ==
-             toText[static_cast<int>(toText.size()) - 1 - suffixLen]) {
-    suffixLen++;
-  }
-
-  auto flatIndexToPosition = [](std::string_view text, int idx) {
-    int line = 0;
-    int col = 0;
-    for (int i = 0; i < idx && i < static_cast<int>(text.size()); i++) {
-      if (text[i] == '\n') {
-        line++;
-        col = 0;
-      } else {
-        col++;
-      }
-    }
-    return CursorPos(line, col);
-  };
-
-  auto advanceByText = [](CursorPos pos, std::string_view text) {
-    for (char c : text) {
-      if (c == '\n') {
-        pos.line++;
-        pos.setCol(0);
-      } else {
-        pos.setCol(pos.col + 1);
-      }
-    }
-    return pos;
-  };
-
-  const int deletedLen =
-      static_cast<int>(fromText.size()) - prefixLen - suffixLen;
-  const int insertedLen =
-      static_cast<int>(toText.size()) - prefixLen - suffixLen;
-  std::string deleted = fromText.substr(prefixLen, deletedLen);
-  std::string inserted = toText.substr(prefixLen, insertedLen);
-  CursorPos begin = flatIndexToPosition(fromText, prefixLen);
-  CursorPos end = advanceByText(begin, deleted);
-  return DiffState(
-      begin, end, std::move(deleted), std::move(inserted),
-      TransformBoundary(from, begin, end));
-}
-
 std::optional<DiffState> insertionResidualBetween(
     const Lines& from,
     const Lines& to) {
-  auto diff = singleDiffBetween(from, to);
+  auto diff = DiffText::calculateContiguousResidualDiff(from, to);
   if (!diff || !diff->isPureInsertion()) return std::nullopt;
   return diff;
 }
@@ -442,7 +381,8 @@ vector<Suggestion> View::recommendTransform(
          "Transform phase requires an executable edit start");
 
   const auto plannedEdit = plan_.plannedEditAt(editIndex);
-  auto currentResidual = singleDiffBetween(state_.lines, plannedEdit.postFencepost);
+  auto currentResidual = DiffText::calculateContiguousResidualDiff(
+      state_.lines, plannedEdit.postFencepost);
 
   if (currentResidual && currentResidual->isPureInsertion()) {
     return rankTransformFrontier(

@@ -244,8 +244,8 @@ private:
   // Helper: solve each edit region independently, populates edits[i].transformResult
   void calculateTransformResults();
 
-  // Helper: build intermediate buffer states after each diff
-  // Non-const: adjusts edits[i].diffState positions from original-buffer to intermediate-buffer coordinates
+  // Helper: build intermediate buffer states after each diff.
+  // Non-const: maps each planned diff into its pre-edit buffer context.
   std::vector<Lines> calculateLinesAfterDiffs(const Lines& initialLines);
 
   // Helper: compute text object contexts for each edit, populates edits[i].bracketQuoteContext
