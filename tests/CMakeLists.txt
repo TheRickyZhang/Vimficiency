@@ -85,6 +85,7 @@ add_executable(vimficiency_tests
   # Operator - VimCore edit/delete correctness
   Operator/Words.cpp
   Operator/Lines.cpp
+  Operator/ChangeMotions.cpp
   Operator/Paragraphs.cpp
   Operator/Sentences.cpp
   Operator/TextObjects.cpp

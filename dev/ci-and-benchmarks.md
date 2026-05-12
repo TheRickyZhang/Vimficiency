@@ -7,7 +7,11 @@ This page covers the benchmark pipeline. The separate
 
 ## CI Workflow (`.github/workflows/bench.yml`)
 
-The single workflow file defines three jobs, all running on `ubuntu-latest`.
+`bench.yml` runs correctness only — `dependency-lint`, `doc-lint`,
+`debug-build`, and `test`. Benchmark numbers are deliberately not produced in
+CI: GitHub-hosted runners vary by ~10% in wall-clock time, so the numbers
+were too noisy to compare across pushes. The bench pipeline moved to a local
+hook (next section) on the maintainer's machine, where hardware is stable.
 
 ### Dependency setup abstraction
 
@@ -18,45 +22,94 @@ Shared dependency setup is centralized in `.github/actions/setup-ci-deps/action.
 - Caches extracted Neovim under `~/.local/neovim/<version>` with key `neovim-<os>-<version>`
 - Adds cached Neovim to `PATH` when enabled
 
-### Job 1: `test` (every push and PR)
+### `test` job (every push and PR)
 
 1. Runs `setup-ci-deps` with Neovim enabled
 2. Restores compiler cache via `hendrikmuhs/ccache-action@v1` (`key: test`)
 3. Restores CMake dependency cache (`build/_deps`, `deps-v2-*`)
-4. Builds in Release mode (`-DVIMFICIENCY_DEBUG=OFF`)
+4. Builds in Release mode (`-DVIMF_DEBUG=OFF`, `-DVIMF_TRACK_STATES=OFF`)
 5. Runs unit tests: `./build/tests/vimficiency_tests --gtest_brief=1`
-
-### Job 2: `benchmark-run` (main branch only, after `test` passes)
-
-1. Runs `setup-ci-deps` without Neovim
-2. Restores compiler cache via `hendrikmuhs/ccache-action@v1` (`key: bench`)
-3. Restores CMake dependency cache (`build/_deps`, `deps-v2-*`)
-4. Builds the project in Release mode
-5. Runs three benchmark suites with deterministic seeds (`VIMFICIENCY_SEED_MODE=fixed`):
-   - `EditOpt.*` → `edit_result.json`
-   - `MotionOpt.*` → `motion_result.json`
-   - `CompositionOpt.*` → `composition_result.json`
-6. Collects exploration data via `vimficiency_explore`
-7. Builds and runs baseline benchmarks against `HEAD~1` for comparison
-8. Uploads all JSON files as a `benchmark-results` artifact
-
-### Job 3: `benchmark-store` (main branch only, after `benchmark-run`)
-
-1. Downloads benchmark artifact
-2. Compares current vs baseline results (`scripts/bench-compare.ts`)
-3. Builds the dashboard site (`bench-dashboard/`) with Bun + Vite
-4. Deploys to `gh-pages`:
-   - Ingests benchmark results into `data.json` using `scripts/bench-data.ts ingest`
-   - Merges exploration data into `explore.json` (keeps last 5 entries)
-   - Prunes benchmark data to last 100 entries per suite
-   - Copies dashboard HTML/JS/CSS assets
+6. Runs Lua tests via `tests/lua/run.sh` (FFI smoke)
+7. Builds `vimficiency_explore` with tracking on as a smoke test — does not
+   run it; the local bench pipeline is what executes it and ingests results
 
 ### CI cache and performance notes
 
-- `ccache` cache is restored before build in `test` and `benchmark-run`, reducing repeated compile work.
+- `ccache` cache is restored before build, reducing repeated compile work.
 - `build/_deps` cache stores CMake-fetched third-party source/build artifacts (for this repo, primarily GoogleTest and related CMake external content).
-- Neovim install in `test` is cached by OS + version. On cache hit, CI skips the GitHub release download and untar.
+- Neovim install is cached by OS + version. On cache hit, CI skips the GitHub release download and untar.
 - `apt-get update` and apt package installation are intentionally not cached in this workflow. These commands still run on every fresh GitHub-hosted runner, so `Setup CI deps` can remain one of the slower steps even when all project-level caches hit.
+
+## Local benchmark pipeline (`scripts/bench-local-run.sh`)
+
+Benchmark publishing happens on the maintainer's machine via a `pre-push`
+git hook. Setup once after cloning:
+
+```bash
+scripts/install-hooks.sh
+```
+
+This sets `core.hooksPath=.githooks` so `.githooks/pre-push` fires on every
+`git push origin`.
+
+### What the hook does
+
+For each pushed branch ref it applies guardrails (working tree clean, `HEAD`
+matches the pushed SHA, on AC power if a `/sys/class/power_supply/AC/online`
+sensor exists). Failed guardrails log a skip reason — they never block the
+push itself. If guardrails pass, it backgrounds `scripts/bench-local-run.sh
+<sha> <branch>` via `setsid nohup`, so the bench keeps running even after
+the terminal that ran `git push` is closed.
+
+### What the runner does
+
+Operates in `~/.cache/vimficiency-bench/` so the user's primary checkout is
+never touched:
+
+- `repo/` — work clone, fetched and reset to the pushed SHA, used to build
+  and run benches (and to check out `HEAD~1` for baseline comparison)
+- `gh-pages/` — separate clone of the `gh-pages` branch, written into and
+  pushed back to `origin`
+- `logs/run-<ts>-<sha>-<branch>.log` — full output of each run
+- `lock` — `flock`-based single-flight; concurrent invocations exit
+  immediately rather than queue stale runs
+
+Steps:
+
+1. Build current `<sha>` in Release with `VIMF_TRACK_STATES=OFF`
+2. Run three suites with `VIMFICIENCY_SEED_MODE=fixed`:
+   - `EditOpt.*` → `edit_result.json`
+   - `MotionOpt.*` → `motion_result.json`
+   - `CompositionOpt.*` → `composition_result.json`
+3. Check out `<sha>^`, rebuild, rerun the three suites into
+   `baseline_*.json`, check back out to `<sha>`
+4. `bun scripts/bench-compare.ts` against the baseline (informational; never
+   gates the run)
+5. **Main only:** build `vimficiency_explore` with `VIMF_TRACK_STATES=ON`,
+   run it for `*_explore.json`, verify non-empty `states`. Also run the test
+   suite with `--gtest_output=json` and convert to bench format
+6. Build `bench-dashboard/` with `--base=/Vimficiency/` (main) or
+   `--base=/Vimficiency/branch/<safe>/` (branch). Main also builds
+   `docs-site/`
+7. In the `gh-pages` clone: ingest results via `bench-data.ts ingest`,
+   strip historical exploration states via `explore-data.ts ingest`, prune
+   to 100 entries, copy dashboard/docs assets, `update-branches.ts upsert`
+   for branch pushes
+8. Commit and push to `origin gh-pages`. On push conflict (race with
+   another local run) we fetch + rebase once and retry
+9. **Branch only:** find the open PR via `gh pr list --head` and call
+   `update-pr-body.ts` to prepend the dashboard link to the PR body
+
+### Re-running manually
+
+If a push happened with the hook disabled or guardrails skipped it, run the
+runner directly:
+
+```bash
+scripts/bench-local-run.sh <sha> <branch>
+```
+
+The script handles main and branch pushes identically to the hook path.
 
 ## Data Pipeline
 

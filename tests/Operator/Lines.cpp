@@ -183,9 +183,9 @@ TEST_F(LinesTest, ResolveExclusiveDeleteRange_ChangeKeepsCharacterwiseShape) {
   auto resolved = VimCore::resolveExclusiveDeleteRange(
       CharRange(CursorPos(0, 0), CursorPos(1, 0)), lines, false);
 
-  EXPECT_EQ(resolved.kind, VimCore::ResolvedDeleteRangeKind::CharLine);
-  EXPECT_EQ(resolved.charLineRange.begin, CursorPos(0, 0));
-  EXPECT_EQ(resolved.charLineRange.endLine, 1);
+  EXPECT_EQ(resolved.kind, VimCore::ResolvedDeleteRangeKind::Characterwise);
+  EXPECT_EQ(resolved.charRange.begin, CursorPos(0, 0));
+  EXPECT_EQ(resolved.charRange.end, CursorPos(0, 5));
 }
 
 TEST_F(LinesTest, ResolveExclusiveDeleteRange_BacksUpMidLineCrossing) {

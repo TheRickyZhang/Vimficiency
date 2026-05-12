@@ -87,15 +87,14 @@ inline CursorPos onePastOnSameLine(const Lines& lines, const CursorPos& inclusiv
 //
 // Operator-specific notes:
 //   - d with Linewise: use deleteLineRangeAndUpdatePos() for proper cursor placement.
-//   - c with Linewise: Vim forces characterwise — use deleteRangeAndUpdatePos() instead.
-//     (see :help exclusive-linewise — "For the 'c' command the operator is
-//     not strung out but instead is made characterwise.")
+//   - c with Linewise: Vim forces characterwise, preserving the line break by
+//     backing the range up to the previous line's end.
 //   - d} has a paragraph-specific EOF exception: when } reaches the last
 //     non-blank line, the motion becomes inclusive (position is ON the last
 //     char, not past it).  This is handled before calling
 //     resolveExclusiveDeleteRange().
 //
-// Oracle-verified tests: ExclusiveLineAdjust_* in ManualTest.cpp.
+// Oracle-verified tests: ExclusiveLineAdjust_* and ChangeMotionsTest.
 //
 
 enum class ResolvedDeleteRangeKind {
@@ -137,8 +136,9 @@ struct ResolvedDeleteRange {
 };
 
 // Resolve a raw exclusive [begin, end) range into an explicit characterwise
-// CharRange or linewise LineRange. `allowLinewise` should be false for change-like
-// operators, which keep the raw characterwise range even in the col-0 case.
+// CharRange or linewise LineRange. `allowLinewise` should be false for
+// change-like operators, which keep newline-preserving characterwise behavior
+// in the col-0 case.
 inline ResolvedDeleteRange resolveExclusiveDeleteRange(
     CharRange range, const Lines& lines, bool allowLinewise) {
   range.normalize();
@@ -153,7 +153,10 @@ inline ResolvedDeleteRange resolveExclusiveDeleteRange(
     if (allowLinewise) {
       return ResolvedDeleteRange::linewise(LineRange(range.begin.line, range.end.line));
     }
-    return ResolvedDeleteRange::charLine(CharLineRange(range.begin, range.end.line));
+    return ResolvedDeleteRange::characterwise(
+        CharRange(range.begin,
+                  CursorPos(range.end.line - 1,
+                            static_cast<int>(lines[range.end.line - 1].size()))));
   }
 
   range.end = CursorPos(range.end.line - 1,
