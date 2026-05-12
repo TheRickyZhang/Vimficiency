@@ -60,4 +60,36 @@ TEST(CompositionResultPlannedEditView, AlignsDiffFencepostsAndEditResultPerEdit)
   }
 }
 
+TEST(CompositionResultPlannedEditView, ReversedDiffOrderKeepsFencepostsAligned) {
+  Config config = Config::uniform();
+  CompositionOptimizer opt(config);
+
+  Lines initial = {
+      "aaa",
+      "middle",
+      "tail",
+  };
+  Lines goal = {
+      "a",
+      "middle",
+      "tail suffix",
+  };
+  CursorPos initialPos(2, 3);
+  CursorPos goalPos = goal.lastPos();
+  NavBoundary boundary(initial, CursorPos(0, 0), initial.endPos());
+
+  CompositionResult result = opt.optimize(
+      initial, initialPos, goal, goalPos,
+      CompositionOptimizerParams{}.withMaxResults(1), "", boundary);
+
+  ASSERT_EQ(result.totalEdits(), 2);
+  EXPECT_EQ(result.getPlan().diffAt(0).beginPos.line, 2);
+  EXPECT_EQ(result.getPlan().fenceposts.back(), goal);
+  for (int editIndex = 0; editIndex < result.totalEdits(); editIndex++) {
+    const auto plannedEdit = result.plannedEditAt(editIndex);
+    EXPECT_EQ(Myers::applyDiffState(plannedEdit.diff, plannedEdit.preFencepost),
+              plannedEdit.postFencepost);
+  }
+}
+
 }  // namespace

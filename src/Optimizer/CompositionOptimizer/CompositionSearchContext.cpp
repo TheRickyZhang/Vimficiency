@@ -312,72 +312,20 @@ void CompositionSearchContext::calculateTransformResults() {
   }
 }
 
-// Convert (line, col) to flat character index in a Lines buffer.
-// Each line is followed by a \n separator (except conceptually the last,
-// but flatten() joins with \n so line i occupies [base, base+len] where
-// base = sum of (lines[j].size()+1) for j<i).
-static int posToFlat(const CursorPos& pos, const Lines& lines) {
-  int idx = 0;
-  for (int i = 0; i < pos.line && i < static_cast<int>(lines.size()); i++) {
-    idx += static_cast<int>(lines[i].size()) + 1;  // +1 for \n
-  }
-  idx += pos.col;
-  return idx;
-}
-
-// Convert flat character index back to (line, col) given a Lines buffer.
-static CursorPos flatToPos(int flatIdx, const Lines& lines) {
-  int remaining = flatIdx;
-  for (int i = 0; i < static_cast<int>(lines.size()); i++) {
-    int lineLen = static_cast<int>(lines[i].size());
-    if (remaining <= lineLen) {
-      return CursorPos(i, remaining);
-    }
-    remaining -= lineLen + 1;  // +1 for \n
-  }
-  // Past end — clamp to end of last line
-  int lastLine = static_cast<int>(lines.size()) - 1;
-  return CursorPos(lastLine, static_cast<int>(lines[lastLine].size()));
-}
-
 vector<Lines> CompositionSearchContext::calculateLinesAfterDiffs(
     const Lines& initialLines) {
   vector<Lines> result(totalEdits() + 1);
   result[0] = initialLines;
 
-  int cumulativeOffset = 0;
+  OriginalDiffMapper mapper;
 
   for (int i = 0; i < totalEdits(); i++) {
-    DiffState& diff = edits[i].diffState;
-    if (i > 0) {
-      // Adjust positions from original-buffer space to intermediate-buffer space.
-      // Convert to flat index against original buffer, shift by cumulative delta,
-      // then convert back to (line, col) against the current intermediate buffer.
-      // Must always adjust when i > 0, even if cumulativeOffset == 0, because
-      // earlier diffs may have changed line structure (e.g., \n → space) without
-      // changing character count.
-      auto adjustPos = [&](const CursorPos& pos) -> CursorPos {
-        int flatIdx = posToFlat(pos, initialLines);
-        flatIdx += cumulativeOffset;
-        return flatToPos(flatIdx, result[i]);
-      };
+    DiffState originalDiff = edits[i].diffState;
+    edits[i].diffState = mapper.mapDiffToCurrent(
+        originalDiff, initialLines, result[i]);
 
-      // Must check before mutating beginPos — hasDeletedContent() compares
-      // beginPos != endPos, and the adjusted beginPos may coincidentally equal
-      // the unadjusted endPos (see previous_errors.md).
-      bool hadDeletedContent = diff.hasDeletedContent();
-      diff.beginPos = adjustPos(diff.beginPos);
-      if (hadDeletedContent) {
-        diff.endPos = adjustPos(diff.endPos);
-      } else {
-        diff.endPos = diff.beginPos;  // pure insertion
-      }
-    }
-
-    result[i + 1] = Myers::applyDiffState(diff, result[i]);
-
-    cumulativeOffset += static_cast<int>(diff.insertedText.size())
-                      - static_cast<int>(diff.deletedText.size());
+    result[i + 1] = Myers::applyDiffState(edits[i].diffState, result[i]);
+    mapper.recordApplied(originalDiff, initialLines);
   }
 
   return result;

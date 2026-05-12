@@ -7,6 +7,9 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
+
 #include "Optimizer/CompositionOptimizer/DiffState.h"
 #include "Types/Lines.h"
 #include "Utils/RandomBufferHelpers.h"
@@ -33,6 +36,17 @@ static void expectDiffs(
 static void expectRoundTrip(const Lines& start, const Lines& end) {
   auto diffs = Myers::calculate(start, end);
   EXPECT_EQ(Myers::applyAllDiffState(diffs, start), end);
+}
+
+static DiffState makeDiff(
+    const Lines& context,
+    CursorPos begin,
+    CursorPos end,
+    string deleted,
+    string inserted) {
+  return DiffState(
+      begin, end, std::move(deleted), std::move(inserted),
+      TransformBoundary(context, begin, end));
 }
 
 // Validate structural invariants on a diff set
@@ -77,12 +91,7 @@ static void validateInvariants(
 
     // deletedText must match the original content at [beginPos, endPos)
     if (d.hasDeletedContent()) {
-      // Convert beginPos to flat index
-      int flatBegin = 0;
-      for (int l = 0; l < d.beginPos.line; l++)
-        flatBegin += static_cast<int>(initial[l].size()) + 1; // +1 for \n
-      flatBegin += d.beginPos.col;
-
+      int flatBegin = DiffText::positionToFlatIndex(d.beginPos, initial);
       string actual = startFlat.substr(flatBegin, d.deletedText.size());
       EXPECT_EQ(actual, d.deletedText)
           << "diff[" << i << "] deletedText doesn't match original at ("
@@ -178,6 +187,19 @@ TEST(DiffStateTest, PureNewline_PreservedAsBoundary) {
   auto diffs3 = Myers::calculate({"a", "b", "c"}, {"x", "y", "z"});
   ASSERT_EQ(diffs3.size(), 3);
   expectDiffs(diffs3, {{"a", "x"}, {"b", "y"}, {"c", "z"}});
+}
+
+TEST(DiffStateTest, ContiguousResidualDiff_CoalescesSeparatedChanges) {
+  Lines from{Line("a b c")};
+  Lines to{Line("x b y")};
+
+  auto residual = DiffText::calculateContiguousResidualDiff(from, to);
+  ASSERT_TRUE(residual.has_value());
+  EXPECT_EQ(residual->deletedText, "a b c");
+  EXPECT_EQ(residual->insertedText, "x b y");
+
+  auto planned = Myers::calculate(from, to);
+  expectDiffs(planned, {{"a", "x"}, {"c", "y"}});
 }
 
 // =============================================================================
@@ -294,61 +316,94 @@ TEST(DiffStateTest, Random_NoChange_NoDiffs) {
 
 namespace {
 
-// Convert (line, col) to flat index in a Lines buffer
-static int posToFlat(const CursorPos& pos, const Lines& lines) {
-  int idx = 0;
-  for (int i = 0; i < pos.line && i < static_cast<int>(lines.size()); i++) {
-    idx += static_cast<int>(lines[i].size()) + 1;
-  }
-  idx += pos.col;
-  return idx;
-}
-
-// Convert flat index to (line, col) in a Lines buffer
-static CursorPos flatToPos(int flatIdx, const Lines& lines) {
-  int remaining = flatIdx;
-  for (int i = 0; i < static_cast<int>(lines.size()); i++) {
-    int lineLen = static_cast<int>(lines[i].size());
-    if (remaining <= lineLen) {
-      return CursorPos(i, remaining);
-    }
-    remaining -= lineLen + 1;
-  }
-  int lastLine = static_cast<int>(lines.size()) - 1;
-  return CursorPos(lastLine, static_cast<int>(lines[lastLine].size()));
-}
-
-// Apply diffs one at a time with position adjustment (mirrors calculateLinesAfterDiffs)
+// Apply diffs one at a time in caller-specified order.
 Lines applySequentially(vector<DiffState> diffs, const Lines& initialLines) {
   Lines current = initialLines;
-  int cumulativeOffset = 0;
+  OriginalDiffMapper mapper;
 
-  for (auto& diff : diffs) {
-    if (cumulativeOffset != 0) {
-      auto adjustPos = [&](const CursorPos& pos) -> CursorPos {
-        int flatIdx = posToFlat(pos, initialLines);
-        flatIdx += cumulativeOffset;
-        return flatToPos(flatIdx, current);
-      };
-
-      diff.beginPos = adjustPos(diff.beginPos);
-      if (diff.hasDeletedContent()) {
-        diff.endPos = adjustPos(diff.endPos);
-      } else {
-        diff.endPos = diff.beginPos;
-      }
-    }
-
-    current = Myers::applyDiffState(diff, current);
-
-    cumulativeOffset += static_cast<int>(diff.insertedText.size())
-                      - static_cast<int>(diff.deletedText.size());
+  for (const auto& originalDiff : diffs) {
+    DiffState currentDiff = mapper.mapDiffToCurrent(
+        originalDiff, initialLines, current);
+    current = Myers::applyDiffState(currentDiff, current);
+    mapper.recordApplied(originalDiff, initialLines);
   }
 
   return current;
 }
 
 } // namespace
+
+TEST(DiffStateTest, ReversedSequentialApplication) {
+  Lines initial{Line("aaa"), Line("middle"), Line("tail")};
+  Lines goal{Line("a"), Line("middle"), Line("tail suffix")};
+  auto diffs = Myers::calculate(initial, goal);
+  ASSERT_EQ(diffs.size(), 2u);
+
+  reverse(diffs.begin(), diffs.end());
+
+  Lines sequential = applySequentially(diffs, initial);
+  EXPECT_EQ(sequential, goal);
+}
+
+TEST(DiffStateTest, OriginalDiffMapper_MapsLaterDiffAfterPriorInsertion) {
+  Lines initial{Line("abc"), Line("def"), Line("ghi")};
+  DiffState insertBefore = makeDiff(
+      initial, CursorPos(0, 0), CursorPos(0, 0), "", "top\n");
+  DiffState replaceLastLine = makeDiff(
+      initial, CursorPos(2, 0), CursorPos(2, 3), "ghi", "GHI");
+
+  OriginalDiffMapper mapper;
+  Lines current = Myers::applyDiffState(insertBefore, initial);
+  mapper.recordApplied(insertBefore, initial);
+
+  DiffState mapped = mapper.mapDiffToCurrent(
+      replaceLastLine, initial, current);
+
+  EXPECT_EQ(mapped.beginPos, CursorPos(3, 0));
+  EXPECT_EQ(mapped.endPos, CursorPos(3, 3));
+  EXPECT_EQ(mapped.boundary.prefix(), "");
+  EXPECT_EQ(mapped.boundary.suffix(), "");
+  EXPECT_EQ(Myers::applyDiffState(mapped, current),
+            (Lines{Line("top"), Line("abc"), Line("def"), Line("GHI")}));
+}
+
+TEST(DiffStateTest, OriginalDiffMapper_DoesNotShiftEarlierDiffAfterLaterInsertion) {
+  Lines initial{Line("abc"), Line("def"), Line("ghi")};
+  DiffState insertAfter = makeDiff(
+      initial, CursorPos(2, 3), CursorPos(2, 3), "", "\ntail");
+  DiffState replaceFirstLine = makeDiff(
+      initial, CursorPos(0, 0), CursorPos(0, 3), "abc", "ABC");
+
+  OriginalDiffMapper mapper;
+  Lines current = Myers::applyDiffState(insertAfter, initial);
+  mapper.recordApplied(insertAfter, initial);
+
+  DiffState mapped = mapper.mapDiffToCurrent(
+      replaceFirstLine, initial, current);
+
+  EXPECT_EQ(mapped.beginPos, CursorPos(0, 0));
+  EXPECT_EQ(mapped.endPos, CursorPos(0, 3));
+  EXPECT_EQ(Myers::applyDiffState(mapped, current),
+            (Lines{Line("ABC"), Line("def"), Line("ghi"), Line("tail")}));
+}
+
+TEST(DiffStateTest, OriginalDiffMapper_PermutationsOfIndependentDiffs) {
+  Lines initial{Line("alpha KEEP beta KEEP gamma")};
+  Lines goal{Line("ALPHA KEEP beta plus KEEP g")};
+  vector<DiffState> diffs = Myers::calculate(initial, goal);
+  ASSERT_EQ(diffs.size(), 3u);
+
+  array<int, 3> order{0, 1, 2};
+  do {
+    vector<DiffState> permuted;
+    for (int idx : order) {
+      permuted.push_back(diffs[static_cast<size_t>(idx)]);
+    }
+    EXPECT_EQ(applySequentially(permuted, initial), goal)
+        << "failed order "
+        << order[0] << "," << order[1] << "," << order[2];
+  } while (next_permutation(order.begin(), order.end()));
+}
 
 TEST(DiffStateTest, Random_SequentialApplication) {
   constexpr int NUM_ITERATIONS = 200;
@@ -366,7 +421,7 @@ TEST(DiffStateTest, Random_SequentialApplication) {
     Lines expected = Myers::applyAllDiffState(diffs, initial);
     ASSERT_EQ(expected, goal) << "applyAllDiffState sanity check failed, iter=" << iter;
 
-    // Sequential application with adjustment must produce the same result
+    // Sequential application in document order must produce the same result.
     Lines sequential = applySequentially(diffs, initial);
     EXPECT_EQ(sequential, expected)
         << "Sequential application failed, iter=" << iter

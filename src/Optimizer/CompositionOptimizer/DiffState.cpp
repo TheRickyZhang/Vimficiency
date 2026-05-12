@@ -18,6 +18,145 @@ ostream& operator<<(ostream& os, const DiffState& d) {
   return os;
 }
 
+namespace DiffText {
+
+CursorPos flatIndexToPosition(int idx, string_view flatText) {
+  int line = 0;
+  int col = 0;
+  for (int i = 0; i < idx && i < static_cast<int>(flatText.size()); i++) {
+    if (flatText[i] == '\n') {
+      line++;
+      col = 0;
+    } else {
+      col++;
+    }
+  }
+  return CursorPos(line, col);
+}
+
+CursorPos flatIndexToPosition(int idx, const Lines& lines) {
+  int remaining = idx;
+  for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+    const int lineLen = static_cast<int>(lines[i].size());
+    if (remaining <= lineLen) {
+      return CursorPos(i, remaining);
+    }
+    remaining -= lineLen + 1;
+  }
+  const int lastLine = static_cast<int>(lines.size()) - 1;
+  return CursorPos(lastLine, static_cast<int>(lines[lastLine].size()));
+}
+
+int positionToFlatIndex(const CursorPos& pos, const Lines& lines) {
+  int idx = 0;
+  for (int i = 0; i < pos.line && i < static_cast<int>(lines.size()); i++) {
+    idx += static_cast<int>(lines[i].size()) + 1;
+  }
+  idx += pos.col;
+  return idx;
+}
+
+CursorPos advancePositionByText(CursorPos pos, string_view text) {
+  for (char c : text) {
+    if (c == '\n') {
+      pos.line++;
+      pos.setCol(0);
+    } else {
+      pos.setCol(pos.col + 1);
+    }
+  }
+  return pos;
+}
+
+optional<DiffState> calculateContiguousResidualDiff(
+    const Lines& from,
+    const Lines& to) {
+  const string fromText = from.flatten();
+  const string toText = to.flatten();
+  if (fromText == toText) return nullopt;
+
+  int prefixLen = 0;
+  const int maxPrefix = static_cast<int>(min(fromText.size(), toText.size()));
+  while (prefixLen < maxPrefix && fromText[prefixLen] == toText[prefixLen])
+    prefixLen++;
+
+  int suffixLen = 0;
+  const int maxSuffix =
+      static_cast<int>(min(fromText.size(), toText.size())) - prefixLen;
+  while (suffixLen < maxSuffix &&
+         fromText[static_cast<int>(fromText.size()) - 1 - suffixLen] ==
+             toText[static_cast<int>(toText.size()) - 1 - suffixLen]) {
+    suffixLen++;
+  }
+
+  const int deletedLen =
+      static_cast<int>(fromText.size()) - prefixLen - suffixLen;
+  const int insertedLen =
+      static_cast<int>(toText.size()) - prefixLen - suffixLen;
+  string deleted = fromText.substr(prefixLen, deletedLen);
+  string inserted = toText.substr(prefixLen, insertedLen);
+  CursorPos begin = flatIndexToPosition(prefixLen, fromText);
+  CursorPos end = advancePositionByText(begin, deleted);
+  return DiffState(
+      begin, end, std::move(deleted), std::move(inserted),
+      TransformBoundary(from, begin, end));
+}
+
+} // namespace DiffText
+
+int OriginalDiffMapper::mapFlatIndex(int originalFlat) const {
+  int mapped = originalFlat;
+  for (const AppliedSpan& applied : applied_) {
+    assert(!(applied.begin < originalFlat && originalFlat < applied.end) &&
+           "diffs must not overlap in original-buffer coordinates");
+    if (applied.end <= originalFlat) {
+      mapped += applied.delta;
+    }
+  }
+  return mapped;
+}
+
+DiffState OriginalDiffMapper::mapDiffToCurrent(
+    const DiffState& originalDiff,
+    const Lines& originalLines,
+    const Lines& currentLines) const {
+  const bool hadDeletedContent = originalDiff.hasDeletedContent();
+  const int originalBegin =
+      DiffText::positionToFlatIndex(originalDiff.beginPos, originalLines);
+  const int originalEnd = hadDeletedContent
+      ? DiffText::positionToFlatIndex(originalDiff.endPos, originalLines)
+      : originalBegin;
+
+  CursorPos begin = DiffText::flatIndexToPosition(
+      mapFlatIndex(originalBegin), currentLines);
+  CursorPos end = hadDeletedContent
+      ? DiffText::flatIndexToPosition(mapFlatIndex(originalEnd), currentLines)
+      : begin;
+
+  return DiffState(
+      begin, end,
+      originalDiff.deletedText,
+      originalDiff.insertedText,
+      TransformBoundary(currentLines, begin, end));
+}
+
+void OriginalDiffMapper::recordApplied(
+    const DiffState& originalDiff,
+    const Lines& originalLines) {
+  const int begin =
+      DiffText::positionToFlatIndex(originalDiff.beginPos, originalLines);
+  const int end = originalDiff.hasDeletedContent()
+      ? DiffText::positionToFlatIndex(originalDiff.endPos, originalLines)
+      : begin;
+  assert(begin <= end && "original diff span must be non-reversed");
+  applied_.push_back(AppliedSpan{
+      begin,
+      end,
+      static_cast<int>(originalDiff.insertedText.size()) -
+          static_cast<int>(originalDiff.deletedText.size()),
+  });
+}
+
 namespace Myers {
 
 // Minimum length for a common substring to be preserved as a separate match.
@@ -43,36 +182,6 @@ static bool isWordBoundaryChar(char c) {
     default:
       return false;
   }
-}
-
-// =============================================================================
-// CursorPos Mapping Utilities
-// =============================================================================
-
-// Convert flat index in flattened text to (line, col) CursorPos
-// Flattened text uses \n as line separator
-static CursorPos flatIndexToPosition(int idx, const string& flatText) {
-  int line = 0;
-  int col = 0;
-  for (int i = 0; i < idx && i < static_cast<int>(flatText.size()); i++) {
-    if (flatText[i] == '\n') {
-      line++;
-      col = 0;
-    } else {
-      col++;
-    }
-  }
-  return CursorPos(line, col);
-}
-
-// Convert (line, col) CursorPos to flat index in flattened text
-static int positionToFlatIndex(const CursorPos& pos, const Lines& lines) {
-  int idx = 0;
-  for (int i = 0; i < pos.line && i < static_cast<int>(lines.size()); i++) {
-    idx += static_cast<int>(lines[i].size()) + 1;  // +1 for \n
-  }
-  idx += pos.col;
-  return idx;
 }
 
 // =============================================================================
@@ -387,7 +496,7 @@ vector<DiffState> calculate(const Lines& initialLines, const Lines& goalLines) {
     // Only create a diff if there's actually something to change
     if (!deleted.empty() || !inserted.empty()) {
       // Compute position bounds using half-open semantics
-      CursorPos posBegin = flatIndexToPosition(startOrigIdx, startText);
+      CursorPos posBegin = DiffText::flatIndexToPosition(startOrigIdx, startText);
 
       // posEnd is one past last char (half-open)
       // For pure insertions, posEnd == posBegin (empty range)
@@ -396,18 +505,7 @@ vector<DiffState> calculate(const Lines& initialLines, const Lines& goalLines) {
       if (deleted.empty()) {
         posEnd = posBegin;
       } else {
-        // Compute half-open end position
-        int line = posBegin.line;
-        int col = posBegin.col;
-        for (char c : deleted) {
-          if (c == '\n') {
-            line++;
-            col = 0;
-          } else {
-            col++;
-          }
-        }
-        posEnd = CursorPos(line, col);  // col may be 0 on next line if deleted ends with \n
+        posEnd = DiffText::advancePositionByText(posBegin, deleted);
       }
 
       // Construct DiffState with TransformBoundary computed from buffer context
@@ -467,7 +565,7 @@ Lines applyDiffState(const DiffState& diff, const Lines& lines) {
   string text = lines.flatten();
 
   // Find the flat indices for the edit region
-  int startIdx = positionToFlatIndex(diff.beginPos, lines);
+  int startIdx = DiffText::positionToFlatIndex(diff.beginPos, lines);
   int endIdx;
 
   if (diff.deletedText.empty()) {
@@ -488,32 +586,10 @@ Lines applyAllDiffState(const vector<DiffState>& diffs, const Lines& initialLine
   // Compute all flat indices upfront using the ORIGINAL text positions
   string text = initialLines.flatten();
 
-  // Build a map from CursorPos to flat index for the original text
-  auto posToFlatIdx = [&](const CursorPos& pos) -> int {
-    int idx = 0;
-    int line = 0, col = 0;
-    for (size_t j = 0; j < text.size(); j++) {
-      if (line == pos.line && col == pos.col) {
-        return static_cast<int>(j);
-      }
-      if (text[j] == '\n') {
-        line++;
-        col = 0;
-      } else {
-        col++;
-      }
-    }
-    // CursorPos at end of text
-    if (line == pos.line && col == pos.col) {
-      return static_cast<int>(text.size());
-    }
-    return static_cast<int>(text.size());
-  };
-
   // Pre-compute all flat indices for all diffs (using original positions)
   vector<pair<int, int>> indices;  // (startIdx, endIdx) for each diff
   for (const auto& diff : diffs) {
-    int startIdx = posToFlatIdx(diff.beginPos);
+    int startIdx = DiffText::positionToFlatIndex(diff.beginPos, initialLines);
     int endIdx = startIdx;
     if (!diff.deletedText.empty()) {
       endIdx = startIdx + static_cast<int>(diff.deletedText.size());
