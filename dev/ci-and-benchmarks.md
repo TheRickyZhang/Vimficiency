@@ -61,41 +61,50 @@ the terminal that ran `git push` is closed.
 ### What the runner does
 
 Operates in `~/.cache/vimficiency-bench/` so the user's primary checkout is
-never touched:
+never touched. Two `git worktree`s sharing `.git` with the main repo:
 
-- `repo/` — work clone, fetched and reset to the pushed SHA, used to build
-  and run benches (and to check out `HEAD~1` for baseline comparison)
-- `gh-pages/` — separate clone of the `gh-pages` branch, written into and
-  pushed back to `origin`
+- `repo/` — detached worktree at the pushed SHA, used to build and run benches
+- `gh-pages/` — worktree on the `gh-pages` branch, written into and pushed back to `origin`
 - `logs/run-<ts>-<sha>-<branch>.log` — full output of each run
-- `lock` — `flock`-based single-flight; concurrent invocations exit
-  immediately rather than queue stale runs
+- `last-status` — written on every exit; pre-push hook reads this so failures from a previous run surface on the next push
+- `lock` — `flock`-based single-flight; concurrent invocations exit immediately rather than queue stale runs
+
+### Single-source data model
+
+Every push — `main` or feature branch — ingests its results into the same
+root timeline at `gh-pages/{edit,motion,composition}/data.json`. There are
+no per-branch dashboards, no promotion-on-PR-merge logic, no
+`branches.json` index. Each commit in the chart corresponds to an actual
+measurement on the maintainer's hardware. The trade-off: feature-branch
+SHAs that never reach `main` (squashed away, rebased, abandoned) still
+appear on the timeline as historical points — accepted as the cost of
+keeping the bench/merge concerns decoupled.
+
+Main-only extras are conditional on `BRANCH=main` (a cheap optimization,
+not a correctness boundary): exploration data via `vimficiency_explore`
+with `VIMF_TRACK_STATES=ON`, test-suite timing via `--gtest_output=json`,
+and the docs-site build. Branch pushes skip these to stay fast.
 
 Steps:
 
-1. Build current `<sha>` in Release with `VIMF_TRACK_STATES=OFF`
+1. Build pushed `<sha>` in Release with `VIMF_TRACK_STATES=OFF`
 2. Run three suites with `VIMFICIENCY_SEED_MODE=fixed`:
    - `EditOpt.*` → `edit_result.json`
    - `MotionOpt.*` → `motion_result.json`
    - `CompositionOpt.*` → `composition_result.json`
-3. Check out `<sha>^`, rebuild, rerun the three suites into
-   `baseline_*.json`, check back out to `<sha>`
-4. `bun scripts/bench-compare.ts` against the baseline (informational; never
-   gates the run)
-5. **Main only:** build `vimficiency_explore` with `VIMF_TRACK_STATES=ON`,
-   run it for `*_explore.json`, verify non-empty `states`. Also run the test
-   suite with `--gtest_output=json` and convert to bench format
-6. Build `bench-dashboard/` with `--base=/Vimficiency/` (main) or
-   `--base=/Vimficiency/branch/<safe>/` (branch). Main also builds
-   `docs-site/`
-7. In the `gh-pages` clone: ingest results via `bench-data.ts ingest`,
-   strip historical exploration states via `explore-data.ts ingest`, prune
-   to 100 entries, copy dashboard/docs assets, `update-branches.ts upsert`
-   for branch pushes
-8. Commit and push to `origin gh-pages`. On push conflict (race with
-   another local run) we fetch + rebase once and retry
-9. **Branch only:** find the open PR via `gh pr list --head` and call
-   `update-pr-body.ts` to prepend the dashboard link to the PR body
+3. Baseline comparison: look up the parent SHA's stored entry in `gh-pages/{edit,motion,composition}/data.json` via `scripts/bench-baseline-from-stored.ts`, feed it to `bench-compare.ts`. Skipped when the parent has no stored entry (first run on this machine, parent was rebased away, etc.) — informational, never gates the run.
+4. **Main only:** build and run `vimficiency_explore` for exploration data; run the test suite and convert timing to bench format
+5. Build `bench-dashboard/` with `--base=/Vimficiency/`. **Main only:** also build `docs-site/`
+6. In the `gh-pages` worktree: ingest results, prune to 100 entries, ingest exploration (main only), copy dashboard/docs assets
+7. Commit + push to `origin gh-pages`. On push conflict (race with another local run) fetch + rebase once and retry
+
+### Failure surfacing
+
+The runner is backgrounded with output redirected to a log file, so a crash isn't immediately visible. Three mechanisms close that gap:
+
+- `notify-send` desktop notification on completion — critical urgency on failure, low on success. Silently skipped if no notification daemon
+- `~/.cache/vimficiency-bench/last-status` records exit code, SHA, branch, and log path
+- The next `git push` (via the pre-push hook) reads `last-status` and prints a warning if the previous exit was non-zero. A successful run overwrites the status so the warning clears
 
 ### Re-running manually
 
@@ -106,7 +115,8 @@ runner directly:
 scripts/bench-local-run.sh <sha> <branch>
 ```
 
-The script handles main and branch pushes identically to the hook path.
+The script's behavior is identical whether `<branch>` is `main` or a
+feature branch — only the optional main-only extras differ.
 
 ## Data Pipeline
 

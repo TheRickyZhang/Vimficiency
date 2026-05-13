@@ -34,15 +34,8 @@ fi
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 REPO_URL_RAW="$(git -C "$REPO_ROOT" remote get-url origin)"
 REPO_URL="$(printf '%s' "$REPO_URL_RAW" | sed -e 's|^git@github.com:|https://github.com/|' -e 's|\.git$||')"
-REPO_FULL_NAME="${REPO_URL#https://github.com/}"
-REPO_OWNER="${REPO_FULL_NAME%/*}"
-REPO_NAME="${REPO_FULL_NAME#*/}"
+REPO_NAME="${REPO_URL##*/}"
 SAFE_BRANCH=$(printf '%s' "$BRANCH" | sed 's|/|--|g; s|[^a-zA-Z0-9._-]||g')
-
-if [ "$BRANCH" != "main" ] && { [ -z "$SAFE_BRANCH" ] || [ "$SAFE_BRANCH" = "." ] || [ "$SAFE_BRANCH" = ".." ]; }; then
-  echo "[bench-local-run] refusing to deploy with empty sanitized branch name" >&2
-  exit 1
-fi
 
 CACHE_DIR="${VIMFICIENCY_BENCH_CACHE:-$HOME/.cache/vimficiency-bench}"
 WORK_REPO="$CACHE_DIR/repo"
@@ -187,12 +180,7 @@ if PARENT_SHA=$(git rev-parse --verify "${PUSHED_SHA}^" 2>/dev/null); then
                 "motion:motion_result.json:baseline_motion.json" \
                 "composition:composition_result.json:baseline_composition.json"; do
     o="${triple%%:*}"; rest="${triple#*:}"; curr="${rest%%:*}"; base="${rest#*:}"
-    # Prefer branch-scoped history when on a branch; fall back to main's data.
-    SRC="$GHPAGES_REPO/$o"
-    if ! $IS_MAIN && [ -f "$GHPAGES_REPO/branch/$SAFE_BRANCH/$o/data.json" ]; then
-      SRC="$GHPAGES_REPO/branch/$SAFE_BRANCH/$o"
-    fi
-    if bun scripts/bench-baseline-from-stored.ts "$SRC" "$PARENT_SHA" "$base"; then
+    if bun scripts/bench-baseline-from-stored.ts "$GHPAGES_REPO/$o" "$PARENT_SHA" "$base"; then
       COMPARE_ARGS+=("$curr" "$base")
     fi
   done
@@ -232,9 +220,6 @@ fi
 
 # --- Dashboard build ---
 BASE_PATH="/$REPO_NAME/"
-if ! $IS_MAIN; then
-  BASE_PATH="/$REPO_NAME/branch/$SAFE_BRANCH/"
-fi
 echo "[dashboard] building with base=$BASE_PATH"
 ( cd bench-dashboard && bun install --frozen-lockfile && bun run build -- --base="$BASE_PATH" )
 test -f bench-dashboard/dist/index.html
@@ -259,8 +244,6 @@ STAGE_DIR="$(mktemp -d -t vimficiency-bench-stage.XXXXXX)"
 cp -r bench-dashboard/dist "$STAGE_DIR/dashboard-dist"
 cp scripts/bench-data.ts "$STAGE_DIR/bench-data.ts"
 cp scripts/explore-data.ts "$STAGE_DIR/explore-data.ts"
-cp scripts/update-branches.ts "$STAGE_DIR/update-branches.ts"
-cp scripts/update-pr-body.ts "$STAGE_DIR/update-pr-body.ts"
 cp edit_result.json motion_result.json composition_result.json "$STAGE_DIR/"
 if $IS_MAIN; then
   cp -r docs-site/dist "$STAGE_DIR/docs-dist"
@@ -280,45 +263,66 @@ git -C "$GHPAGES_REPO" reset --hard origin/gh-pages
 
 cd "$GHPAGES_REPO"
 
+echo "[deploy]"
+
+# Migration from legacy `bench/<optimizer>/` layout to flat `<optimizer>/`.
+# Idempotent; runs every time but only acts the first time it sees the
+# legacy layout.
+for o in edit motion composition; do
+  if [ -d "bench/$o" ] && [ ! -d "$o" ]; then
+    echo "  migrating bench/$o -> $o"
+    mv "bench/$o" "$o"
+  fi
+done
+rm -rf bench
+
+# Ingest the three benchmark suites — every push contributes a data point.
+# Whether $BRANCH is "main" or a feature branch, the data lands on the same
+# root timeline (single-source-of-truth model). Branch SHAs that never
+# reach main will appear on the chart and stay there as historical points;
+# that's accepted as the cost of avoiding any cross-branch promotion logic.
+for pair in \
+  "edit:$STAGE_DIR/edit_result.json" \
+  "motion:$STAGE_DIR/motion_result.json" \
+  "composition:$STAGE_DIR/composition_result.json"; do
+  o="${pair%%:*}"; r="${pair#*:}"
+  mkdir -p "$o"
+  bun "$STAGE_DIR/bench-data.ts" ingest "$o" "$r" \
+    --commit-id="$PUSHED_SHA" \
+    --commit-msg="$COMMIT_MSG" \
+    --commit-ts="$COMMIT_TS" \
+    --author="$COMMIT_AUTHOR" \
+    --repo-url="$REPO_URL"
+done
+
+# Test-suite timing is only measured on main (the run executes the test
+# binary with --gtest_output=json; branches skip that step to stay fast).
 if $IS_MAIN; then
-  echo "[deploy] main"
+  mkdir -p tests
+  bun "$STAGE_DIR/bench-data.ts" ingest tests "$STAGE_DIR/test_timing_bench.json" \
+    --commit-id="$PUSHED_SHA" \
+    --commit-msg="$COMMIT_MSG" \
+    --commit-ts="$COMMIT_TS" \
+    --author="$COMMIT_AUTHOR" \
+    --repo-url="$REPO_URL"
+fi
 
-  for o in edit motion composition; do
-    if [ -d "bench/$o" ] && [ ! -d "$o" ]; then
-      echo "  migrating bench/$o -> $o"
-      mv "bench/$o" "$o"
-    fi
-  done
-  rm -rf bench
+PRUNE_DIRS=(edit motion composition)
+$IS_MAIN && PRUNE_DIRS+=(tests)
+for o in "${PRUNE_DIRS[@]}"; do
+  if [ -f "$o/data.json" ]; then
+    bun "$STAGE_DIR/bench-data.ts" clean-suites "$o"
+    bun "$STAGE_DIR/bench-data.ts" prune "$o"
+  fi
+done
 
-  for pair in \
-    "edit:$STAGE_DIR/edit_result.json" \
-    "motion:$STAGE_DIR/motion_result.json" \
-    "composition:$STAGE_DIR/composition_result.json" \
-    "tests:$STAGE_DIR/test_timing_bench.json"; do
-    o="${pair%%:*}"; r="${pair#*:}"
-    mkdir -p "$o"
-    bun "$STAGE_DIR/bench-data.ts" ingest "$o" "$r" \
-      --commit-id="$PUSHED_SHA" \
-      --commit-msg="$COMMIT_MSG" \
-      --commit-ts="$COMMIT_TS" \
-      --author="$COMMIT_AUTHOR" \
-      --repo-url="$REPO_URL"
-  done
-
-  for o in edit motion composition tests; do
-    if [ -f "$o/data.json" ]; then
-      bun "$STAGE_DIR/bench-data.ts" clean-suites "$o"
-      bun "$STAGE_DIR/bench-data.ts" prune "$o"
-    fi
-  done
-
+# Exploration data — main only, same rationale as test timing.
+if $IS_MAIN; then
   for pair in \
     "edit:$STAGE_DIR/edit_explore.json" \
     "motion:$STAGE_DIR/motion_explore.json" \
     "composition:$STAGE_DIR/composition_explore.json"; do
     o="${pair%%:*}"; r="${pair#*:}"
-    mkdir -p "$o"
     bun "$STAGE_DIR/explore-data.ts" ingest "$o" "$r" \
       --commit-id="$PUSHED_SHA" \
       --commit-msg="$COMMIT_MSG" \
@@ -326,73 +330,35 @@ if $IS_MAIN; then
       --author="$COMMIT_AUTHOR" \
       --repo-url="$REPO_URL"
   done
-
   for o in edit motion composition; do
     if [ -f "$o/explore.json" ]; then
       bun "$STAGE_DIR/explore-data.ts" prune "$o"
     fi
   done
+fi
 
-  cp "$STAGE_DIR/dashboard-dist/index.html" ./index.html
-  cp "$STAGE_DIR/dashboard-dist/index.html" ./404.html
-  touch .nojekyll
+cp "$STAGE_DIR/dashboard-dist/index.html" ./index.html
+cp "$STAGE_DIR/dashboard-dist/index.html" ./404.html
+touch .nojekyll
 
-  mkdir -p assets
-  rm -rf assets
-  mkdir -p assets
-  cp -r "$STAGE_DIR/dashboard-dist/assets/." assets/
-  find assets -type f -print -quit | grep -q . || {
-    echo "Failed to copy dashboard assets to gh-pages root"
-    exit 1
-  }
+rm -rf assets
+mkdir -p assets
+cp -r "$STAGE_DIR/dashboard-dist/assets/." assets/
+find assets -type f -print -quit | grep -q . || {
+  echo "Failed to copy dashboard assets to gh-pages root"
+  exit 1
+}
 
+if $IS_MAIN; then
   rm -rf docs
   cp -r "$STAGE_DIR/docs-dist" docs
   test -f docs/index.html
   test -f docs/01-installation/index.html
-
-  git add -f index.html 404.html .nojekyll assets/ edit/ motion/ composition/ tests/ docs/
-  COMMIT_TITLE="Update benchmark dashboard"
-else
-  echo "[deploy] branch $BRANCH"
-  DEPLOY_DIR="branch/$SAFE_BRANCH"
-
-  for o in edit motion composition; do
-    mkdir -p "$DEPLOY_DIR/$o"
-    if [ ! -f "$DEPLOY_DIR/$o/data.json" ] && [ -f "$o/data.json" ]; then
-      cp "$o/data.json" "$DEPLOY_DIR/$o/data.json"
-    fi
-  done
-
-  for pair in \
-    "edit:$STAGE_DIR/edit_result.json" \
-    "motion:$STAGE_DIR/motion_result.json" \
-    "composition:$STAGE_DIR/composition_result.json"; do
-    o="${pair%%:*}"; r="${pair#*:}"
-    bun "$STAGE_DIR/bench-data.ts" ingest "$DEPLOY_DIR/$o" "$r" \
-      --commit-id="$PUSHED_SHA" \
-      --commit-msg="$COMMIT_MSG" \
-      --commit-ts="$COMMIT_TS" \
-      --author="$COMMIT_AUTHOR" \
-      --repo-url="$REPO_URL"
-  done
-
-  cp "$STAGE_DIR/dashboard-dist/index.html" "$DEPLOY_DIR/index.html"
-  rm -rf "$DEPLOY_DIR/assets"
-  mkdir -p "$DEPLOY_DIR/assets"
-  cp -r "$STAGE_DIR/dashboard-dist/assets/." "$DEPLOY_DIR/assets/"
-  find "$DEPLOY_DIR/assets" -type f -print -quit | grep -q . || {
-    echo "Failed to copy dashboard assets to $DEPLOY_DIR"
-    exit 1
-  }
-
-  bun "$STAGE_DIR/update-branches.ts" upsert \
-    "$BRANCH" "$SAFE_BRANCH" "$REPO_OWNER" "$REPO_FULL_NAME" "$COMMIT_TS"
-  test -f branches.json
-
-  git add -f "$DEPLOY_DIR/" branches.json
-  COMMIT_TITLE="Update branch dashboard: $BRANCH"
 fi
+
+git add -f index.html 404.html .nojekyll assets/ edit/ motion/ composition/
+$IS_MAIN && git add -f tests/ docs/
+COMMIT_TITLE="Update benchmark dashboard"
 
 if git diff --cached --quiet; then
   echo "[deploy] no changes to publish"
@@ -407,19 +373,6 @@ else
     git fetch origin gh-pages
     git rebase origin/gh-pages
     git push origin gh-pages
-  fi
-fi
-
-# --- PR comment (branch only) ---
-if ! $IS_MAIN && command -v gh >/dev/null 2>&1; then
-  DASHBOARD_URL="https://${REPO_OWNER}.github.io${BASE_PATH}"
-  PR_NUMBER=$(gh pr list --repo "$REPO_FULL_NAME" --head "$BRANCH" --state open --json number --jq '.[0].number // empty' || true)
-  if [ -n "${PR_NUMBER:-}" ]; then
-    echo "[pr] updating PR #$PR_NUMBER body with dashboard link"
-    bun "$WORK_REPO/scripts/update-pr-body.ts" "$PR_NUMBER" "$DASHBOARD_URL" "$PUSHED_SHA" "$REPO_FULL_NAME" \
-      || echo "[pr] body update failed (non-fatal)"
-  else
-    echo "[pr] no open PR for $BRANCH; skipping"
   fi
 fi
 
