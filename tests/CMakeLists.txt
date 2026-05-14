@@ -88,8 +88,11 @@ add_executable(vimficiency_tests
   ${PROJECT_SOURCE_DIR}/src/LuaExports/Payload.cpp
 
   # Commands - VimCore motion correctness
+  Commands/CharFindMotions.cpp
   Commands/CountMotionsTest.cpp
+  Commands/CountedMiscMotions.cpp
   Commands/MiscMotions.cpp
+  Commands/ScrollMotions.cpp
   Commands/WordMotions.cpp
   Commands/LineMotions.cpp
   Commands/ParagraphMotions.cpp
@@ -105,17 +108,22 @@ add_executable(vimficiency_tests
 
   # CompositionOptimizer
   CompositionOptimizer/DiffStateTest.cpp
+  CompositionOptimizer/JoinLinesManualTest.cpp
   CompositionOptimizer/ManualTest.cpp
   CompositionOptimizer/OutputCorrectnessTest.cpp
   CompositionOptimizer/BracketQuoteContextTest.cpp
   CompositionOptimizer/HumanApprovalTest.cpp
+  CompositionOptimizer/PureInsertionManualTest.cpp
   CompositionOptimizer/PlannedEditViewTest.cpp
   CompositionOptimizer/GoalPosTest.cpp
   CompositionOptimizer/EditSequenceSpanTest.cpp
+  CompositionOptimizer/TextObjectManualTest.cpp
 
   # TransformOptimizer
+  TransformOptimizer/AutoindentManualTest.cpp
   TransformOptimizer/CountPenaltyIntegrationTest.cpp
   TransformOptimizer/ManualTest.cpp
+  TransformOptimizer/ExclusiveLinewiseManualTest.cpp
   TransformOptimizer/MultipleResultsPerStartTest.cpp
   TransformOptimizer/OutputCorrectnessTest.cpp
   TransformOptimizer/CostConsistencyTest.cpp
@@ -124,6 +132,8 @@ add_executable(vimficiency_tests
   TransformOptimizer/RegressionTests.cpp
 
   # NavOptimizer
+  NavOptimizer/BoundaryTest.cpp
+  NavOptimizer/CountRepeatTest.cpp
   NavOptimizer/ManualTest.cpp
   NavOptimizer/OutputCorrectnessTest.cpp
   NavOptimizer/CostConsistencyTest.cpp
@@ -145,8 +155,12 @@ add_executable(vimficiency_tests
   Misc/NavClassMaskTest.cpp
   Misc/VimOptionsTest.cpp
   Explore/ExploreTest.cpp
+  Explore/HeaderSpanTest.cpp
+  Explore/NativeFlowTest.cpp
+  Explore/RecommendationTest.cpp
   Explore/FixtureLoader.cpp
   Explore/FixtureIntegrationTest.cpp
+  Golden/GoldenReportTest.cpp
 )
 
 target_link_libraries(vimficiency_tests
@@ -272,8 +286,13 @@ target_link_libraries(vimficiency_benchmarks
 # the assert fire) keeps the default `cmake --build build` clean.
 if(VIMF_TRACK_STATES)
   add_executable(vimficiency_explore
+    Exploration/CompositionCases.cpp
+    Exploration/CompositionJsonWriter.cpp
+    Exploration/EditCases.cpp
     Exploration/SequenceChunker.cpp
     Exploration/ExplorationCollector.cpp
+    Exploration/ExplorationJsonWriter.cpp
+    Exploration/MotionCases.cpp
   )
 
   target_link_libraries(vimficiency_explore

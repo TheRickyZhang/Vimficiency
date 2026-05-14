@@ -75,6 +75,55 @@ The `LSAN_OPTIONS` prefix keeps smoke runs working in ptrace/sandboxed runners
 where LeakSanitizer can fail after libFuzzer has already completed the inputs.
 Omit it in a normal terminal when leak detection itself is the campaign goal.
 
+## What Changed In The Test Cleanup
+
+The suite now has sharper ownership by test type. When adding or moving tests,
+choose the smallest category that proves the behavior:
+
+| Test type | Use for | Developer rule |
+|-----------|---------|----------------|
+| Unit/assert tests | Exact local rules: ranges, cost math, parser errors, config, small helpers | Keep expected values explicit and deterministic. |
+| Oracle conformance tests | VimCore commands/operators that must match Neovim | Use `NeovimOracle`; include cursor and mode when they are part of behavior. |
+| Optimizer replay tests | Recommendations that claim to transform start -> goal | Verify emitted sequences replay to the goal, not just that a result exists. |
+| Generated/property tests | Repeated invariant checks over generated valid states | Use named seeds and `GeneratedProperty::check`; generated failures must print seed and case. |
+| FuzzTest tests | Structured generated parser/property coverage in gtest-compatible mode | Keep behind `VIMF_ENABLE_FUZZTEST`; do not depend on normal CI running it. |
+| Raw libFuzzer targets | Arbitrary hostile bytes at parser/file/FFI boundaries | Keep behind `VIMF_ENABLE_LIBFUZZER`; target only fallible boundary APIs. |
+| Golden tests | Curated user-facing examples and normalized reports | Keep small; update expected text only after human review. |
+| Debug/manual investigations | Scratch repros, noisy traces, human approval exploration | Keep in `vimficiency_debug` or disabled tests; do not treat them as correctness coverage. |
+
+Step 1 removed or quarantined misleading tests. Passing tests must assert the
+thing they claim to assert. Human-approval and debug-style files are allowed
+for investigation, but correctness tests should not rely on TODO assertions,
+raw `cout`/`cerr` inspection, or counters that can pass without checking the
+semantic condition.
+
+Step 2 centralized replay checks. Use `OracleReplay::matches(...)` from
+`tests/Utils/OracleReplay.h` when a sequence should reproduce an exact buffer,
+cursor, and mode. Use `OptimizerResultChecks::expectTopResultsReplay(...)` from
+`tests/Utils/OptimizerResultChecks.h` when optimizer results should be replayed
+against Neovim. This keeps diagnostics consistent and avoids each optimizer
+test hand-rolling a weaker replay check.
+
+Step 3 promoted random loops into generated-property suites. Use
+`GeneratedProperty::check({name, seed, iterations}, fn)` from
+`tests/Utils/GeneratedProperty.h` for deterministic generated cases. Prefer
+properties such as round trips, sorted costs, no duplicate results, and
+candidate replay validity. Do not generate arbitrary start/end pairs for
+optimizer tests; generate valid starts and valid edit scripts, derive the goal,
+then verify invariants.
+
+Step 4 added two opt-in fuzzing paths. `vimficiency_fuzz_tests` is the
+structured FuzzTest/GTest-compatible binary. `vimficiency_raw_fuzzers` is the
+raw libFuzzer path for arbitrary bytes. Raw fuzz targets should exercise APIs
+like payload decoders, fallible sequence/edit parsers, and snapshot parsing.
+If an API currently asserts on malformed input, first expose a fallible boundary
+parser and keep assertions at trusted internal call sites.
+
+Step 7 added minimal golden fixtures under `tests/Golden/`. These tests compare
+normalized Explore recommendation reports against checked-in text fixtures. They
+are intentionally small and should be curated by a human before being treated as
+canonical product examples.
+
 ### Lua Tests
 
 The Lua layer has its own harness separate from gtest, driven by a
@@ -101,13 +150,19 @@ down the state our plugin mutates (on_key subscribers, augroup,
 flaking, look there first — prefer extending the reset over reverting
 to per-file processes.
 
-Two files are deliberately isolated:
+Two entry-point files are deliberately isolated:
 
-- `simulate/integration.lua` — async coroutines + tab/window state.
+- `simulate/integration.lua` — async coroutines + tab/window state. Keep its
+  grouped cases in `tests/lua/simulate/_integration_cases_*.lua`; underscore
+  files are loaded by the isolated runner and skipped by normal discovery.
 - `capture/on_key_mapping_probe.lua` — Neovim characterization test
   that primes internal key-encoding state in ways downstream tests
   depend on NOT having happened (the `typed ~= key` heuristic in
   `key_tracking`). Documented in `run.sh`.
+
+Explore flow tests are split by behavior family under
+`tests/lua/explore/flow_*.lua`: motion, insert, restore/recovery, and
+transform behavior. Shared mechanics belong in `tests/lua/explore/_helpers.lua`.
 
 ### Using `vimficiency_debug` For Codegen Checks
 
@@ -140,7 +195,11 @@ tests/
 │   ├── SentenceMotions.cpp
 │   ├── ParagraphMotions.cpp
 │   ├── CountMotionsTest.cpp
-│   └── MiscMotions.cpp
+│   ├── MiscMotions.cpp
+│   ├── CharFindMotions.cpp
+│   ├── ScrollMotions.cpp
+│   ├── CountedMiscMotions.cpp
+│   └── MiscMotionsTestHelpers.h
 ├── Operator/          # VimCore edit/delete correctness (vs Neovim)
 │   ├── Words.cpp
 │   ├── Lines.cpp
@@ -148,21 +207,56 @@ tests/
 │   ├── Paragraphs.cpp
 │   ├── TextObjects.cpp
 │   └── TestHelpers.cpp  # Shared helpers (in test_utils lib)
-├── NavOptimizer/   # Optimizer output quality and correctness
+├── NavOptimizer/      # Optimizer output quality and correctness
+│   ├── ManualTest.cpp
+│   ├── BoundaryTest.cpp
+│   ├── CountRepeatTest.cpp
+│   ├── ManualTestHelpers.h
 │   ├── OutputCorrectnessTest.cpp
 │   ├── CostConsistencyTest.cpp
 │   ├── DeterminismTest.cpp
 │   └── HumanApprovalTest.cpp
-├── TransformOptimizer/     # Same structure as NavOptimizer
+├── TransformOptimizer/
+│   ├── ManualTest.cpp
+│   ├── AutoindentManualTest.cpp
+│   ├── ExclusiveLinewiseManualTest.cpp
+│   ├── ManualTestHelpers.h
+│   ├── OutputCorrectnessTest.cpp
+│   └── RegressionTests.cpp
 ├── CompositionOptimizer/
+│   ├── ManualTest.cpp
+│   ├── TextObjectManualTest.cpp
+│   ├── PureInsertionManualTest.cpp
+│   ├── JoinLinesManualTest.cpp
+│   ├── ManualTestHelpers.h
+│   ├── DiffStateTest.cpp
+│   └── OutputCorrectnessTest.cpp
 ├── Benchmarks/        # Performance benchmarks (separate binary)
 │   ├── BenchUtils.h   # Shared timing/output utilities
 │   └── NavOptimizerBench.cpp
 ├── Misc/              # Catch-all for other tests
+├── Explore/           # Explore state machine and recommendations
+│   ├── ExploreTest.cpp
+│   ├── RecommendationTest.cpp
+│   ├── NativeFlowTest.cpp
+│   ├── HeaderSpanTest.cpp
+│   └── TestHelpers.h
+├── Exploration/       # Opt-in dashboard trace collector
+│   ├── ExplorationCollector.cpp
+│   ├── ExplorationJsonWriter.cpp
+│   ├── CompositionJsonWriter.cpp
+│   ├── MotionCases.cpp
+│   ├── EditCases.cpp
+│   └── CompositionCases.cpp
+├── Golden/            # Curated user-facing report fixtures
 ├── Utils/             # Shared test infrastructure (built as static library)
 │   ├── NeovimOracle.cpp    # Neovim ground truth
 │   ├── TestUtils.cpp
 │   ├── EditTestGenerators.cpp
+│   ├── GeneratedProperty.h
+│   ├── OptimizerResultChecks.h
+│   ├── OracleReplay.cpp
+│   ├── OracleReplay.h
 │   ├── RandomBufferHelpers.h
 │   ├── RandomGeneration.h  # RandomGen singleton
 │   ├── SeedManager.h       # Seed mode management
@@ -177,8 +271,30 @@ tests/
 |----------|---------|--------------|
 | Commands/ | Verify VimCore motions match Neovim | NeovimOracle |
 | Operator/ | Verify VimCore edits match Neovim | NeovimOracle |
-| *Optimizer/ | Verify optimizer outputs are correct and reproducible | Simulation + manual |
+| *Optimizer/ | Verify optimizer outputs are correct and reproducible | Replay helpers + focused unit checks |
+| Golden/ | Protect curated user-facing report examples | Human-reviewed fixtures |
 | Fuzz/ | Verify parser/FFI boundaries reject malformed generated input cleanly | Invariants + clean rejection |
+
+### Where New Tests Belong
+
+Choose the test location by the proof obligation first, then by subsystem:
+
+- A single helper, parser rule, cost rule, or data-structure invariant belongs
+  in the closest existing unit/assert file for that module.
+- Vim command semantics belong in `Commands/` or `Operator/` with
+  `NeovimOracle` as ground truth.
+- Optimizer recommendations belong in the relevant `*Optimizer/` suite, using
+  replay helpers when the result claims to transform text or reach a cursor.
+- Repeated checks over generated valid states belong in a named generated
+  property test, using `GeneratedProperty::check`.
+- Arbitrary hostile bytes belong in `Fuzz/`, and only against fallible boundary
+  APIs that can cleanly accept or reject malformed input.
+- Human-facing report examples belong in `Golden/`, with expected output
+  updated only after review.
+- Lua plugin behavior belongs under `tests/lua/`, split by user-facing module
+  or flow family; shared setup should move into a local helper.
+- Scratch investigation belongs in `vimficiency_debug`, not in the correctness
+  suite.
 
 ## Ground Truth: NeovimOracle
 
@@ -313,10 +429,13 @@ This compares test fixture names against all struct/class names in `src/` and re
 
 ## Test Writing Strategy
 
-Each test file should have two sections:
+Each test should make its proof style obvious from the name and helper choice:
 
-1. **Manual cases** (top): Dense, specific scenarios for easy debugging
-2. **Randomized stress tests** (bottom): Bulk coverage via NeovimOracle comparison
+1. Manual examples: dense, specific regressions and edge cases.
+2. Oracle conformance: Neovim-backed checks for VimCore command semantics.
+3. Replay correctness: optimizer candidates must execute to the requested goal.
+4. Generated properties: deterministic loops over valid generated cases.
+5. Fuzz boundaries: opt-in arbitrary byte campaigns for fallible parsers.
 
 ```cpp
 // Manual: specific edge case
@@ -326,17 +445,17 @@ TEST_F(WordMotionTest, Manual_EmptyLineIsWord) {
   EXPECT_EQ(result.row, 1);  // Stops at empty line
 }
 
-// Randomized: bulk coverage
-TEST_F(WordMotionTest, Random_wMotion) {
-  RandomGen::seed(42);  // Fixed seed for reproducibility
-  for (int i = 0; i < 100; i++) {
-    auto buffer = generateRandomBuffer(5);
-    Position start = randomPosition(buffer);
-    Position ours = applyMovement(start, "w", buffer);
-    auto expected = oracle->simulate(buffer, start.line, start.col, "w");
-    EXPECT_EQ(ours.line, expected.row) << "Iteration " << i;
-    EXPECT_EQ(ours.col, expected.col) << "Iteration " << i;
-  }
+// Generated property: invariant over many valid cases
+TEST(DiffStateGeneratedPropertyTest, SingleLineRoundTripAndStructure) {
+  GeneratedProperty::check({"DiffState single-line round-trip", 42, 100}, [&](int) {
+    Lines initial = {randomLine(RandomGen::range(5, 30))};
+    Lines goal = randomlyEdit(initial);
+    if (initial == goal) return;
+
+    auto diffs = Myers::calculate(initial, goal);
+    EXPECT_EQ(Myers::applyAllDiffState(diffs, initial), goal);
+    validateInvariants(diffs, initial, goal);
+  });
 }
 ```
 
@@ -344,6 +463,18 @@ TEST_F(WordMotionTest, Random_wMotion) {
 - Regression test for a fixed bug
 - Document tricky expected behavior
 - Specific buffer structures random generation won't produce
+
+### When to Add Generated Tests
+- The expected answer is an invariant, not one literal output.
+- The input generator can produce valid states cheaply.
+- A failing case can be replayed from seed and case index.
+- The loop can stay fast enough for the normal `vimficiency_tests` binary.
+
+### When to Add Fuzz Targets
+- The input is naturally bytes from Lua, files, snapshots, or parser text.
+- Bad input can return a structured error without assertion failure.
+- The target is deterministic, narrow, and does not spawn Neovim.
+- The target can run with ASan/UBSan in a dedicated Clang build.
 
 ## Debugging
 

@@ -1,0 +1,13 @@
+Scenario: motion next word
+Start cursor: (0,0)
+Goal cursor: (0,4)
+Start lines:
+  0: foo bar baz
+Goal lines:
+  0: foo bar baz
+User sequence: llll (effort 4.00)
+Phase: Navigate(0/0)
+Recommendations:
+  1. w -> (0,4) effort +1.00 distance 0.00
+  2. e -> (0,2) effort +1.00 distance 2.00
+  3. l -> (0,1) effort +1.00 distance 3.00
