@@ -4,6 +4,8 @@
 //
 // Run: ./build/tests/vimficiency_tests --gtest_filter="ChangeMotionsTest.*"
 
+#include <cassert>
+
 #include <gtest/gtest.h>
 
 #include "Interpreter/EditInterpreter.h"
@@ -34,7 +36,9 @@ struct ChangeMotionCase {
 
 static void applyParsedSequence(Lines& lines, CursorPos& pos, Mode& mode, string_view sequence) {
   string lastEditCmd;
-  for (const ParsedEdit& edit : Edit::parseEdits(sequence)) {
+  auto parsed = Edit::parseEdits(sequence);
+  assert(parsed);
+  for (const ParsedEdit& edit : *parsed) {
     Edit::applyEdit(lines, pos, mode, edit, &lastEditCmd);
   }
 }

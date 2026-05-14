@@ -6,6 +6,7 @@
 //
 // Run: ./build/tests/vimficiency_tests --gtest_filter="TransformOptimizer_ManualTest.*"
 
+#include <cassert>
 #include <climits>
 #include <gtest/gtest.h>
 #include <memory>
@@ -56,7 +57,9 @@ struct ApplyResult {
 ApplyResult applySequence(const Lines& source, CursorPos initialPos, const string& sequence) {
   ApplyResult result(source, initialPos);
   string lastEditCmd;
-  for (const auto& op : Edit::parseEdits(sequence)) {
+  auto parsed = Edit::parseEdits(sequence);
+  assert(parsed);
+  for (const auto& op : *parsed) {
     Edit::applyEdit(result.lines, result.pos, result.mode, op, &lastEditCmd);
   }
   return result;

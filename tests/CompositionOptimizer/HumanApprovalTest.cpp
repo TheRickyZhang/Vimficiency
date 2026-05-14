@@ -16,6 +16,7 @@
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
+#include "Utils/OracleReplay.h"
 
 using namespace std;
 
@@ -47,11 +48,10 @@ protected:
     const auto& results = compResult.getResults();
     ASSERT_FALSE(results.empty()) << "No results" << ctx(context);
     for (size_t i = 0; i < results.size(); i++) {
-      SimulationResult nvim = oracle->simulate(
-          initial, initialPos.line, initialPos.col, results[i].getSequence().str());
-      EXPECT_TRUE(nvim.lines == goal)
-          << "Result " << i << " seq='" << results[i].getSequence() << "'" << ctx(context)
-          << "\n  Initial: " << initial << "\n  Goal: " << goal << "\n  Got: " << nvim.lines;
+      EXPECT_TRUE(OracleReplay::matches(
+          *oracle, initial, initialPos, results[i].getSequence().str(),
+          goal, nullopt, Mode::Normal,
+          context.empty() ? "result " + to_string(i) : context + " result " + to_string(i)));
     }
   }
 
@@ -61,11 +61,9 @@ protected:
       const Lines& initial, CursorPos initialPos,
       const Lines& goal,
       const string& context = "") {
-    SimulationResult nvim = oracle->simulate(
-        initial, initialPos.line, initialPos.col, result.getSequence().str());
-    EXPECT_TRUE(nvim.lines == goal)
-        << "seq='" << result.getSequence() << "'" << ctx(context)
-        << "\n  Initial: " << initial << "\n  Goal: " << goal << "\n  Got: " << nvim.lines;
+    EXPECT_TRUE(OracleReplay::matches(
+        *oracle, initial, initialPos, result.getSequence().str(),
+        goal, nullopt, Mode::Normal, context));
   }
 
   void verifyDiParenShortcutPolicy(const CompositionResult& compResult) {

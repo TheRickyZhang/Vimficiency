@@ -59,6 +59,14 @@ option(VIMF_DEBUG "Enable debug output" ON)
 # default — enabling this adds per-state allocations on every popped node).
 option(VIMF_TRACK_STATES "Enable explored-state recording for vimficiency_explore" OFF)
 
+# FuzzTest integration is opt-in so the default build/test path does not fetch
+# the fuzzing stack or require Clang/sanitizer/coverage-toolchain support.
+option(VIMF_ENABLE_FUZZTEST "Build FuzzTest-based fuzz/property tests" OFF)
+
+# Raw libFuzzer targets are separate from FuzzTest. They are for byte-level
+# parser/FFI boundary campaigns and need a dedicated Clang/sanitizer build.
+option(VIMF_ENABLE_LIBFUZZER "Build raw libFuzzer byte-level fuzz targets" OFF)
+
 # Legacy Vim compatibility mode (uses Vim defaults instead of Neovim defaults)
 # Key differences when enabled:
 #   - startofline: ON (cursor goes to first non-blank on gg/G/dd/etc)
@@ -122,6 +130,20 @@ target_compile_definitions(vimficiency_core PUBLIC
     $<$<BOOL:${VIMF_DEBUG}>:VIMF_DEBUG>
     $<$<BOOL:${VIMF_LEGACY_VIM}>:VIMF_LEGACY_VIM>
 )
+
+if(VIMF_ENABLE_LIBFUZZER)
+  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR "VIMF_ENABLE_LIBFUZZER requires Clang with libFuzzer support")
+  endif()
+
+  target_compile_options(vimficiency_core PRIVATE
+      -fsanitize=fuzzer-no-link,address,undefined
+      -fno-omit-frame-pointer
+  )
+  target_link_options(vimficiency_core PUBLIC
+      -fsanitize=address,undefined
+  )
+endif()
 
 # SHARED library for Neovim/Lua direct usage
 add_library(vimficiency SHARED

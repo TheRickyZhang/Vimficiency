@@ -18,6 +18,14 @@ using namespace std;
 
 namespace Edit {
 
+string formatEditParseError(const EditParseError& error) {
+  switch (error.kind) {
+    case EditParseErrorKind::MalformedSpecialKey:
+      return "Malformed special key at byte offset " + to_string(error.offset);
+  }
+  assert(false && "Unhandled EditParseErrorKind");
+}
+
 // Compile-time string hash for switch statements.
 // Uses M=131 (prime > 126, total chars supported) to guarantee collision-free hashing for all strings.
 // Math: hash(s) = s[0]*M^(n-1) + s[1]*M^(n-2) + ... + s[n-1]
@@ -334,8 +342,8 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
     assert(lastEditCmd && !lastEditCmd->empty() && ". with no previous edit to repeat");
     // Parse count from lastEditCmd (e.g., "5de" → edit="de", count=5)
     auto parsed = parseEdits(*lastEditCmd);
-    assert(!parsed.empty());
-    ParsedEdit repeat = parsed[0];
+    assert(parsed && !parsed->empty());
+    ParsedEdit repeat = (*parsed)[0];
     // Explicit count on '.' overrides the stored count
     if (edit.hasCount()) {
       repeat = ParsedEdit{repeat.edit, count};
@@ -404,7 +412,9 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
     CursorPos anchor = pos;
 
     // Apply motions to get end position
-    for (const auto& motion : parseEdits(movementSeq)) {
+    auto motions = parseEdits(movementSeq);
+    assert(motions);
+    for (const auto& motion : *motions) {
       applyEdit(lines, pos, mode, motion);
     }
 
@@ -1335,7 +1345,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
 // Edit Sequence Parsing
 // =============================================================================
 
-vector<ParsedEdit> parseEdits(string_view seq) {
+expected<vector<ParsedEdit>, EditParseError> parseEdits(string_view seq) {
   string_view sv(seq);
   vector<ParsedEdit> result;
   size_t i = 0;
@@ -1345,9 +1355,9 @@ vector<ParsedEdit> parseEdits(string_view seq) {
 
     // Parse optional count prefix
     int cnt = 0;
-    if (isdigit(c) && c != '0') {
+    if (c >= '1' && c <= '9') {
       constexpr int INT_MAX_VALUE = std::numeric_limits<int>::max();
-      while (i < sv.size() && isdigit(sv[i])) {
+      while (i < sv.size() && sv[i] >= '0' && sv[i] <= '9') {
         int digit = sv[i] - '0';
         if (cnt > (INT_MAX_VALUE - digit) / 10) {
           cnt = INT_MAX_VALUE;
@@ -1370,7 +1380,10 @@ vector<ParsedEdit> parseEdits(string_view seq) {
         i = close + 1;
         continue;
       }
-      assert(false && "Malformed special key");
+      return unexpected(EditParseError{
+          .kind = EditParseErrorKind::MalformedSpecialKey,
+          .offset = i,
+      });
     }
 
     // Handle r{char} - replace with specific character

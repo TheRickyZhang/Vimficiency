@@ -293,7 +293,9 @@ void ChangeGoalHandler::replayAndCacheSuffix(
     const RunningEffort& typedSuffixEffort) {
   cachePopulations++;
 
-  vector<ParsedEdit> prefixEdits = Edit::parseEdits(searchPrefixSeq);
+  auto parsedPrefixEdits = Edit::parseEdits(searchPrefixSeq);
+  assert(parsedPrefixEdits);
+  vector<ParsedEdit> prefixEdits = *parsedPrefixEdits;
   int prefixEditCount = static_cast<int>(prefixEdits.size());
   vector<KeyedSequence> replayEditCmds = buildKeyedSequencesFromParsedEdits(prefixEdits);
   replayEditCmds.push_back(completionSuffix);

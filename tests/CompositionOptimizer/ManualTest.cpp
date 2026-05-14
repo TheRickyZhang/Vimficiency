@@ -15,6 +15,7 @@
 #include "Boundary/NavBoundary.h"
 #include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
+#include "Utils/OracleReplay.h"
 
 using namespace std;
 
@@ -34,11 +35,9 @@ protected:
       const Lines& initial, CursorPos initialPos,
       const Lines& goal,
       const string& context = "") {
-    SimulationResult nvim = oracle->simulate(
-        initial, initialPos.line, initialPos.col, result.getSequence().str());
-    EXPECT_TRUE(nvim.lines == goal)
-        << "seq='" << result.getSequence() << "' (" << context << ")"
-        << "\n  Initial: " << initial << "\n  Goal: " << goal << "\n  Got: " << nvim.lines;
+    EXPECT_TRUE(OracleReplay::matches(
+        *oracle, initial, initialPos, result.getSequence().str(),
+        goal, nullopt, Mode::Normal, context));
   }
 
   // Verify at least one result exists and all results achieve goal state
@@ -54,14 +53,11 @@ protected:
 
     for (size_t i = 0; i < results.size(); i++) {
       const auto& seq = results[i].getSequence();
-      SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
-
-      EXPECT_EQ(nvim.lines, goal)
-          << "Lines mismatch" << (testContext.empty() ? "" : " (" + testContext + ")")
-          << " for result " << i << " seq='" << seq << "' from " << initialPos << "\n"
-          << "  Initial: " << initial << "\n"
-          << "  Goal:    " << goal << "\n"
-          << "  Got:     " << nvim.lines;
+      EXPECT_TRUE(OracleReplay::matches(
+          *oracle, initial, initialPos, seq.str(),
+          goal, nullopt, Mode::Normal,
+          testContext.empty() ? "result " + to_string(i)
+                              : testContext + " result " + to_string(i)));
     }
   }
 };

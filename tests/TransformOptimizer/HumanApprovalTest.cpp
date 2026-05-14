@@ -8,12 +8,18 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+
 #include "Types/NavContext.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 #include "Boundary/TransformBoundary.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizerParams.h"
 #include "Types/Lines.h"
+#include "Types/Mode.h"
+#include "Utils/NeovimOracle.h"
+#include "Utils/OracleReplay.h"
+#include "VimCore/VimEditUtils.h"
 
 using namespace std;
 
@@ -27,16 +33,54 @@ protected:
   inline static NavContext navContext = NavContext();
   inline static TransformOptimizerParams params;
   inline static TransformOptimizer opt{config};
+  inline static unique_ptr<NeovimOracle> oracle;
 
   static void SetUpTestSuite() {
     navContext = NavContext();
+    oracle = make_unique<NeovimOracle>();
   }
+
+  static void TearDownTestSuite() { oracle.reset(); }
 
   static TransformResult pureDeletionResult(
       const Lines& initialLines,
       TransformBoundary boundary,
       TransformOptimizerParams p) {
     return opt.optimizePureDeletion(initialLines, boundary, p);
+  }
+
+  static Lines deleteSpan(Lines lines, CursorPos begin, CursorPos end) {
+    CursorPos pos = begin;
+    VimCore::deleteRangeAndUpdatePos(lines, CharRange(begin, end), pos, Mode::Normal);
+    return lines;
+  }
+
+  static void verifyInitialResultReachesGoal(
+      const TransformResult& result,
+      const Lines& source,
+      CursorPos startPos,
+      const Lines& goal,
+      const string& context) {
+    ASSERT_GT(result.resultCount(), 0u) << context;
+    ASSERT_FALSE(result.getResults()[0].empty()) << context;
+
+    const Result& r = result.getResults()[0][0];
+    EXPECT_TRUE(OracleReplay::matches(
+        *oracle, source, startPos, r.getSequence().str(), goal,
+        nullopt, Mode::Normal, context));
+  }
+
+  static TransformResult verifyPureDeletion(
+      const Lines& fullBuffer,
+      CursorPos begin,
+      CursorPos end,
+      const string& context) {
+    Lines editRegion = fullBuffer.getSpan(begin, end);
+    TransformBoundary boundary(fullBuffer, begin, end);
+    TransformResult result = pureDeletionResult(editRegion, boundary, params);
+    verifyInitialResultReachesGoal(
+        result, fullBuffer, begin, deleteSpan(fullBuffer, begin, end), context);
+    return result;
   }
 };
 
@@ -45,15 +89,11 @@ protected:
 // =============================================================================
 
 TEST_F(TransformOptimizerHumanApprovalTests, Edit_PureDeletionSingleWord) {
-  // Delete a short word
   Lines initialLines = {"arstn"};
-  TransformBoundary boundary(initialLines, {0, 0}, initialLines.endPos());
-
-  TransformResult editRes = pureDeletionResult(initialLines, boundary, params);
+  TransformResult editRes = verifyPureDeletion(
+      initialLines, CursorPos(0, 0), initialLines.endPos(), "single word deletion");
   const auto& res = editRes.getResults();
 
-  // printResultsDebug(res, "Delete single word");
-  // Single word should use dw or de, not visual mode (too short)
   ASSERT_FALSE(res[0].empty());
   const auto& seq = res[0][0].getSequence();
   EXPECT_TRUE(seq.view().find("dw") != string::npos || seq.view().find("de") != string::npos)
@@ -61,92 +101,57 @@ TEST_F(TransformOptimizerHumanApprovalTests, Edit_PureDeletionSingleWord) {
 }
 
 TEST_F(TransformOptimizerHumanApprovalTests, Edit_PureDeletionMultipleLines) {
-  // Delete multiple words on single line
   Lines initialLines = {
     "aa bb",
     "arst neio"
   };
-  TransformBoundary boundary(initialLines, {0, 0}, initialLines.endPos());
-
-  TransformResult editRes = pureDeletionResult(initialLines, boundary, params);
-  const auto& res = editRes.getResults();
-
-  // printResultsDebug(res, "Delete multiple lines");
-  // ASSERT_TRUE(all results costs are <= 4 (always has option of dddd));
+  verifyPureDeletion(
+      initialLines, CursorPos(0, 0), initialLines.endPos(), "multiple-line deletion");
 }
 
 TEST_F(TransformOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTop) {
-  // Delete content with prefix on first line (no suffix)
   Lines fullBuffer = {
     "arstn arstn",
     "arstn arstn",
   };
-  // Edit region: from " " in first line to last char
   CursorPos firstPos(0, 5), endPos(1, 11);
-  Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
-  TransformBoundary boundary(fullBuffer, firstPos, endPos);
-
-  TransformResult editRes = pureDeletionResult(editRegion, boundary, params);
-  const auto& res = editRes.getResults();
-  // printResultsDebug(res, "Delete straddle top");
+  verifyPureDeletion(fullBuffer, firstPos, endPos, "straddle top deletion");
 }
 
 
 TEST_F(TransformOptimizerHumanApprovalTests, Edit_PureDeletionStraddleBottom) {
-  // Delete content with suffix on last line (no prefix)
   Lines fullBuffer = {
     "arstn arstn",
     "arstn arstn",
   };
-  // Edit region: from first char to " " in second line
   CursorPos firstPos(0, 0), endPos(1, 6);
-  Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
-  TransformBoundary boundary(fullBuffer, firstPos, endPos);
-
-  TransformResult editRes = pureDeletionResult(editRegion, boundary, params);
-  const auto& res = editRes.getResults();
-  // printResultsDebug(res, "Delete straddle bottom");
-  // ASSERT_TRUE(finds costs <= 5, like dddw)
+  verifyPureDeletion(fullBuffer, firstPos, endPos, "straddle bottom deletion");
 }
 
 TEST_F(TransformOptimizerHumanApprovalTests, Edit_PureDeletionStraddleTopAndBottom) {
-  // Delete content with both prefix and suffix (middle portion of two lines)
   Lines fullBuffer = {
     "arstn arstn",
     "arstn arstn",
   };
-  // Edit region: from first " " to second " " (middle portion)
   CursorPos firstPos(0, 5), endPos(1, 6);
-  Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
-  TransformBoundary boundary(fullBuffer, firstPos, endPos);
-
-  TransformResult editRes = pureDeletionResult(editRegion, boundary, params);
-  const auto& res = editRes.getResults();
-  // printResultsDebug(res, "Delete straddle top and bottom");
-  // ASSERT_TRUE(res[0] == "vjd" (best result by far))
-  // ASSERT_TRUE(finds cost <= 7)
+  TransformResult editRes = verifyPureDeletion(
+      fullBuffer, firstPos, endPos, "straddle top and bottom deletion");
+  ASSERT_FALSE(editRes.getResults()[0].empty());
+  EXPECT_EQ(editRes.getResults()[0][0].getSequence(), "vjd");
 }
 
 
 TEST_F(TransformOptimizerHumanApprovalTests, Edit_PureDeletionMultiLineFull) {
-  // Delete multi-line content with no boundary
-  // Visual mode v}d should be efficient here
   Lines initialLines = {
     "hello world",
     "foo bar baz",
     "one two three",
   };
-  TransformBoundary boundary(initialLines, {0, 0}, initialLines.endPos());
-
-  TransformResult editRes = pureDeletionResult(initialLines, boundary, params);
-  const auto& res = editRes.getResults();
-  // printResultsDebug(res, "Delete multi-line full");
-  // ASSERT_TRUE(all valid)
+  verifyPureDeletion(
+      initialLines, CursorPos(0, 0), initialLines.endPos(), "full multi-line deletion");
 }
 
-// TODO verify
 TEST_F(TransformOptimizerHumanApprovalTests, Edit_Replacement_Multiline) {
-  vector<Result> results;
   Lines initialLines = {
     "hello",
     "world"
@@ -156,6 +161,6 @@ TEST_F(TransformOptimizerHumanApprovalTests, Edit_Replacement_Multiline) {
     "worth"
   };
   TransformResult res = opt.optimizeTransform(initialLines, goalLines, TransformBoundary(), params);
-  // printResultsDebug(res.replaceResults, "multi line");
-  // ASSERT_FALSE(res.replaceResults.empty()) << "Should find replacement strategy";
+  verifyInitialResultReachesGoal(
+      res, initialLines, CursorPos(0, 0), goalLines, "multi-line replacement");
 }

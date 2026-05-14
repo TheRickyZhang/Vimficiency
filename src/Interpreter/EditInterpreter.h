@@ -1,5 +1,6 @@
 #pragma once
 
+#include <expected>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -68,11 +69,22 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
                int leftColOffset = 0, int rightColOffset = 0,
                bool hasLinesAbove = false);
 
+enum class EditParseErrorKind {
+  MalformedSpecialKey,
+};
+
+struct EditParseError {
+  EditParseErrorKind kind;
+  size_t offset;
+};
+
+std::string formatEditParseError(const EditParseError& error);
+
 // Parse an edit sequence string into individual ParsedEdit tokens.
 // Handles operators (d, c) + motions/text objects, special keys (<Esc>, <CR>, etc.),
 // and counts.
 // IMPORTANT: Returned ParsedEdits contain string_views into seq - caller must ensure seq outlives usage.
-std::vector<ParsedEdit> parseEdits(std::string_view seq);
+std::expected<std::vector<ParsedEdit>, EditParseError> parseEdits(std::string_view seq);
 
 void simulateEdits(CursorPos& pos, Mode& mode, const NavContext& navContext,
                           std::string_view movementSeq,

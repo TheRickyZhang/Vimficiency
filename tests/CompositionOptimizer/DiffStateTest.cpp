@@ -1,7 +1,7 @@
 // tests/CompositionOptimizer/DiffStateTest.cpp
 //
 // Tests for DiffState computation used in CompositionOptimizer.
-// Manual edge case tests + randomized invariant validation.
+// Manual edge case tests + generated-property invariant validation.
 //
 // Run: ./build/tests/vimficiency_tests --gtest_filter="*DiffState*"
 
@@ -12,6 +12,7 @@
 
 #include "Optimizer/CompositionOptimizer/DiffState.h"
 #include "Types/Lines.h"
+#include "Utils/GeneratedProperty.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
 
@@ -203,7 +204,7 @@ TEST(DiffStateTest, ContiguousResidualDiff_CoalescesSeparatedChanges) {
 }
 
 // =============================================================================
-// Randomized Tests
+// Generated property tests
 // =============================================================================
 
 namespace {
@@ -249,65 +250,53 @@ Lines randomlyEdit(const Lines& initial) {
 
 } // namespace
 
-TEST(DiffStateTest, Random_SingleLine_RoundTrip) {
-  constexpr int NUM_ITERATIONS = 100;
-  RandomGen::seed(42);
-
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
+TEST(DiffStateGeneratedPropertyTest, SingleLineRoundTripAndStructure) {
+  GeneratedProperty::check({"DiffState single-line round-trip", 42, 100}, [&](int) {
     Lines initial = {randomLine(RandomGen::range(5, 30))};
     Lines goal = randomlyEdit(initial);
-    if (initial == goal) continue;
+    if (initial == goal) return;
 
     auto diffs = Myers::calculate(initial, goal);
     EXPECT_EQ(Myers::applyAllDiffState(diffs, initial), goal)
         << "Round-trip failed: '" << initial.flatten()
         << "' -> '" << goal.flatten() << "'";
     validateInvariants(diffs, initial, goal);
-  }
+  });
 }
 
-TEST(DiffStateTest, Random_MultiLine_RoundTrip) {
-  constexpr int NUM_ITERATIONS = 100;
-  RandomGen::seed(43);
-
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
+TEST(DiffStateGeneratedPropertyTest, MultiLineRoundTripAndStructure) {
+  GeneratedProperty::check({"DiffState multi-line round-trip", 43, 100}, [&](int) {
     int numLines = RandomGen::range(2, 6);
     Lines initial = randomLines(numLines, 3, 15);
     Lines goal = randomlyEdit(initial);
-    if (initial == goal) continue;
+    if (initial == goal) return;
 
     auto diffs = Myers::calculate(initial, goal);
     EXPECT_EQ(Myers::applyAllDiffState(diffs, initial), goal)
-        << "Round-trip failed on multi-line iter=" << iter;
+        << "Round-trip failed on multi-line input";
     validateInvariants(diffs, initial, goal);
-  }
+  });
 }
 
-TEST(DiffStateTest, Random_CodeLikeBuffers) {
-  constexpr int NUM_ITERATIONS = 50;
-  RandomGen::seed(44);
-
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
+TEST(DiffStateGeneratedPropertyTest, CodeLikeRoundTripAndStructure) {
+  GeneratedProperty::check({"DiffState code-like round-trip", 44, 50}, [&](int) {
     Lines initial = randomCodeBuffer(RandomGen::range(3, 8), 15);
     Lines goal = randomlyEdit(initial);
-    if (initial == goal) continue;
+    if (initial == goal) return;
 
     auto diffs = Myers::calculate(initial, goal);
     EXPECT_EQ(Myers::applyAllDiffState(diffs, initial), goal)
-        << "Round-trip failed on code-like iter=" << iter;
+        << "Round-trip failed on code-like input";
     validateInvariants(diffs, initial, goal);
-  }
+  });
 }
 
-TEST(DiffStateTest, Random_NoChange_NoDiffs) {
-  constexpr int NUM_ITERATIONS = 50;
-  RandomGen::seed(45);
-
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
+TEST(DiffStateGeneratedPropertyTest, IdenticalBuffersProduceNoDiffs) {
+  GeneratedProperty::check({"DiffState identical buffers", 45, 50}, [&](int) {
     Lines lines = randomLines(RandomGen::range(1, 4), 3, 15);
     auto diffs = Myers::calculate(lines, lines);
     EXPECT_EQ(diffs.size(), 0) << "Identical buffers should produce no diffs";
-  }
+  });
 }
 
 // =============================================================================
@@ -405,29 +394,24 @@ TEST(DiffStateTest, OriginalDiffMapper_PermutationsOfIndependentDiffs) {
   } while (next_permutation(order.begin(), order.end()));
 }
 
-TEST(DiffStateTest, Random_SequentialApplication) {
-  constexpr int NUM_ITERATIONS = 200;
-  RandomGen::seed(46);
-
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
+TEST(DiffStateGeneratedPropertyTest, SequentialApplicationMatchesBatchApplication) {
+  GeneratedProperty::check({"DiffState sequential application", 46, 200}, [&](int) {
     int numLines = RandomGen::range(1, 6);
     Lines initial = randomLines(numLines, 3, 15);
     Lines goal = randomlyEdit(initial);
-    if (initial == goal) continue;
+    if (initial == goal) return;
 
     auto diffs = Myers::calculate(initial, goal);
 
-    // applyAllDiffState is known-correct (applies in reverse using original positions)
     Lines expected = Myers::applyAllDiffState(diffs, initial);
-    ASSERT_EQ(expected, goal) << "applyAllDiffState sanity check failed, iter=" << iter;
+    ASSERT_EQ(expected, goal) << "applyAllDiffState sanity check failed";
 
-    // Sequential application in document order must produce the same result.
     Lines sequential = applySequentially(diffs, initial);
     EXPECT_EQ(sequential, expected)
-        << "Sequential application failed, iter=" << iter
+        << "Sequential application failed"
         << "\ninitial: " << initial.flatten()
         << "\ngoal: " << goal.flatten()
         << "\nsequential: " << sequential.flatten()
         << "\ndiffs: " << diffs.size();
-  }
+  });
 }

@@ -1,7 +1,7 @@
 // tests/NavOptimizer/OutputCorrectnessTest.cpp
 //
-// Random/stress tests for NavOptimizer output correctness.
-// These tests use randomly generated buffers and verify results against Neovim.
+// Generated property tests for NavOptimizer motion-position correctness.
+// Each emitted motion sequence is checked against Neovim on the full buffer.
 //
 // Run: ./build/tests/vimficiency_tests --gtest_filter="NavOptimizerOutputCorrectness.*"
 
@@ -12,12 +12,12 @@
 #include "Keyboard/Config.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Boundary/NavBoundary.h"
-#include "Effort/RunningEffort.h"
 #include "Types/Lines.h"
+#include "Utils/GeneratedProperty.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomGeneration.h"
 
-#include <map>
+#include <exception>
 #include <memory>
 
 using namespace std;
@@ -92,11 +92,6 @@ protected:
     return test;
   }
 
-  // Convert sub-buffer position to full-buffer position
-  static CursorPos toFullBufferPos(const CursorPos& subPos, int subBufferStartLine) {
-    return CursorPos(subPos.line + subBufferStartLine, subPos.col);
-  }
-
   // Convert full-buffer position to sub-buffer position (with bounds checking)
   static pair<bool, CursorPos> toSubBufferPos(const CursorPos& fullPos, int subBufferStartLine, int subBufferLines) {
     int subLine = fullPos.line - subBufferStartLine;
@@ -113,154 +108,71 @@ protected:
     return opt.optimize(subBuffer, start, end, {},
                         "jjjjjjjjjj", boundary, navContext).getResults();
   }
+
+  void expectResultMatchesNeovim(
+      const EmbeddedMotionTest& test,
+      CursorPos subEnd,
+      const LandingResult& result) {
+    const auto& seq = result.getSequence();
+    SCOPED_TRACE(
+        ::testing::Message()
+            << "seq='" << seq << "'"
+            << " subStart=" << test.subStart
+            << " subEnd=" << subEnd
+            << " fullStart=" << test.fullStart
+            << " subBufferStartLine=" << test.subBufferStartLine
+            << " hasLinesAbove=" << test.boundary.hasLinesAbove()
+            << " hasLinesBelow=" << test.boundary.hasLinesBelow()
+            << "\nfullBuffer=" << test.fullBuffer
+            << "\nsubBuffer=" << test.subBuffer);
+
+    SimulationResult neovimResult;
+    try {
+      neovimResult = oracle->simulate(
+          test.fullBuffer, test.fullStart.line, test.fullStart.col, seq.str());
+    } catch (const exception& e) {
+      oracle->restart();
+      FAIL() << "NeovimOracle failed for seq='" << seq << "': " << e.what();
+    }
+
+    CursorPos neovimEnd(neovimResult.row, neovimResult.col);
+    CursorPos ourEnd = simulateMovements(test.subStart, seq.view(), test.subBuffer);
+    auto [inBounds, neovimSubPos] = toSubBufferPos(
+        neovimEnd, test.subBufferStartLine,
+        static_cast<int>(test.subBuffer.size()));
+
+    EXPECT_TRUE(inBounds)
+        << "Neovim landed outside sub-buffer at " << neovimEnd;
+    if (inBounds) {
+      EXPECT_EQ(ourEnd, neovimSubPos)
+          << "Our simulator and Neovim disagree on landing position"
+          << "\n  ourEnd=" << ourEnd
+          << "\n  neovimEndFull=" << neovimEnd
+          << "\n  neovimEndSub=" << neovimSubPos;
+    }
+  }
 };
 
 unique_ptr<NeovimOracle> NavOptimizerOutputCorrectness::oracle;
 NavContext NavOptimizerOutputCorrectness::navContext;
 
-// Track failures by motion type for analysis
-struct NavFailureStats {
-  map<string, int> failures;
-  map<string, int> totals;
-
-  void record(const string& seq, bool success) {
-    // Extract first motion from sequence
-    string firstMotion;
-    if (!seq.empty()) {
-      if (seq[0] >= '0' && seq[0] <= '9') {
-        // Count prefix, skip it
-        size_t i = 0;
-        while (i < seq.size() && seq[i] >= '0' && seq[i] <= '9') i++;
-        if (i < seq.size()) firstMotion = seq.substr(i, 1);
-      } else {
-        firstMotion = seq.substr(0, 1);
-        // Handle two-char motions like gg, ge
-        if (seq.size() >= 2 && (seq[0] == 'g' || seq.substr(0, 2) == "gg")) {
-          firstMotion = seq.substr(0, 2);
-        }
-      }
-    }
-    if (!firstMotion.empty()) {
-      totals[firstMotion]++;
-      if (!success) failures[firstMotion]++;
-    }
-  }
-
-  void print() const {
-    cerr << "\n=== Motion Failure Analysis ===\n";
-    for (const auto& [motion, total] : totals) {
-      int fails = 0;
-      auto it = failures.find(motion);
-      if (it != failures.end()) fails = it->second;
-      double rate = total > 0 ? (100.0 * fails / total) : 0;
-      cerr << motion << ": " << fails << "/" << total << " (" << rate << "% failure)\n";
-    }
-  }
-};
-
 // =============================================================================
-// Sub-buffer stress tests - verify optimizer correctness on embedded regions
+// Sub-buffer generated properties
 // =============================================================================
 
-TEST_F(NavOptimizerOutputCorrectness, SubBufferMotionCorrectness) {
-  // Test that optimizer predictions match Neovim behavior when operating on sub-buffers
-  RandomGen::seed(42);
-  const int iterations = 50;
-  int totalSequences = 0;
-  int failedSequences = 0;
-  int escapedBounds = 0;
-  NavFailureStats stats;
-
-  for (int i = 0; i < iterations; i++) {
-    // Generate embedded test case with sub-buffer smaller than full buffer
+TEST_F(NavOptimizerOutputCorrectness, GeneratedProperty_SubBufferMotionCorrectness) {
+  GeneratedProperty::check({"Nav sub-buffer motion correctness", 42, 50}, [&](int) {
     auto test = generateEmbeddedTest(8, 4);
 
-    // Pick a random end position within the sub-buffer
     int endLine = RandomGen::range(0, static_cast<int>(test.subBuffer.size()) - 1);
     int maxEndCol = test.subBuffer[endLine].empty() ? 0 : static_cast<int>(test.subBuffer[endLine].size()) - 1;
     CursorPos subEnd(endLine, RandomGen::range(0, max(0, maxEndCol)));
 
-    // Run optimizer on sub-buffer
     auto results = runOnSubBuffer(test.subBuffer, test.subStart, subEnd, test.boundary);
+    ASSERT_FALSE(results.empty()) << "NavOptimizer returned no results";
 
-    // For each result, verify against Neovim on full buffer
     for (const auto& result : results) {
-      totalSequences++;
-      const auto& seq = result.getSequence();
-
-      // Apply sequence to FULL buffer via Neovim
-      SimulationResult neovimResult;
-      try {
-        neovimResult = oracle->simulate(test.fullBuffer,
-            test.fullStart.line, test.fullStart.col, seq.str());
-      } catch (const exception& e) {
-        // Oracle connection issue - restart and skip this iteration
-        oracle->restart();
-        continue;
-      }
-      CursorPos neovimEnd(neovimResult.row, neovimResult.col);
-
-      // Apply same sequence to sub-buffer using our simulation
-      CursorPos ourEnd = simulateMovements(test.subStart, seq.view(), test.subBuffer);
-
-      // Convert Neovim result to sub-buffer coords
-      auto [inBounds, neovimSubPos] = toSubBufferPos(neovimEnd, test.subBufferStartLine,
-                                                      static_cast<int>(test.subBuffer.size()));
-
-      // Compare positions
-      bool posMatch;
-      if (inBounds) {
-        posMatch = (ourEnd.line == neovimSubPos.line && ourEnd.col == neovimSubPos.col);
-      } else {
-        // Neovim landed outside sub-buffer bounds - this is the key failure case
-        posMatch = false;
-        escapedBounds++;
-      }
-
-      stats.record(seq.str(), posMatch);
-
-      if (!posMatch) {
-        failedSequences++;
-        // Detailed failure logging (limited to first few)
-        if (failedSequences <= 3) {
-          cerr << "\n=== Sub-buffer Motion Failure #" << failedSequences << " ===" << endl;
-          cerr << "Sequence: \"" << seq << "\"" << endl;
-          cerr << "Full buffer (" << test.fullBuffer.size() << " lines):" << endl;
-          for (size_t j = 0; j < test.fullBuffer.size(); j++) {
-            cerr << "  [" << j << "]: \"" << test.fullBuffer[j] << "\"" << endl;
-          }
-          cerr << "Sub-buffer (lines " << test.subBufferStartLine << "-"
-               << (test.subBufferStartLine + test.subBuffer.size() - 1) << "):" << endl;
-          for (size_t j = 0; j < test.subBuffer.size(); j++) {
-            cerr << "  [" << j << "]: \"" << test.subBuffer[j] << "\"" << endl;
-          }
-          cerr << "Start: sub(" << test.subStart.line << "," << test.subStart.col << ") = "
-               << "full(" << test.fullStart.line << "," << test.fullStart.col << ")" << endl;
-          cerr << "Our prediction (sub-buffer): (" << ourEnd.line << ", " << ourEnd.col << ")" << endl;
-          cerr << "Neovim result (full-buffer): (" << neovimEnd.line << ", " << neovimEnd.col << ")" << endl;
-          if (inBounds) {
-            cerr << "Neovim in sub-buffer coords: (" << neovimSubPos.line << ", " << neovimSubPos.col << ")" << endl;
-          } else {
-            cerr << "Neovim ESCAPED sub-buffer bounds!" << endl;
-          }
-          cerr << "Boundary: hasLinesAbove=" << test.boundary.hasLinesAbove()
-               << ", hasLinesBelow=" << test.boundary.hasLinesBelow() << endl;
-        }
-      }
+      expectResultMatchesNeovim(test, subEnd, result);
     }
-  }
-
-  EXPECT_GT(totalSequences, 0) << "Should have tested some sequences";
-  EXPECT_EQ(failedSequences, 0) << failedSequences << " sequences produced incorrect results";
-
-  // Print summary statistics only on failure
-  if (failedSequences > 0) {
-    stats.print();
-    cerr << "\n=== Summary ===" << endl;
-    cerr << "Total sequences tested: " << totalSequences << endl;
-    cerr << "Failed sequences: " << failedSequences << endl;
-    cerr << "  - Escaped bounds: " << escapedBounds << endl;
-    double failRate = totalSequences > 0 ? (100.0 * failedSequences / totalSequences) : 0;
-    cerr << "Failure rate: " << failRate << "%" << endl;
-  }
+  });
 }

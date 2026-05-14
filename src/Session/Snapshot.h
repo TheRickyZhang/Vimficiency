@@ -1,5 +1,7 @@
 #include <filesystem>
+#include <expected>
 #include <string>
+#include <string_view>
 #include "Types/Lines.h"
 
 struct Snapshot {
@@ -22,4 +24,22 @@ struct Snapshot {
         lines(std::move(lines)) {}
 };
 
+enum class SnapshotParseErrorKind {
+  Empty,
+  BadHeader,
+  UnsupportedVersion,
+  MissingFilename,
+  MissingBufferName,
+  MissingCursorPosition,
+  InvalidCursorPosition,
+  MissingNavContext,
+  InvalidNavContext,
+};
+
+struct SnapshotParseError {
+  SnapshotParseErrorKind kind;
+};
+
+std::string formatSnapshotParseError(const SnapshotParseError& error);
+std::expected<Snapshot, SnapshotParseError> parseSnapshot(std::string_view bytes);
 Snapshot load_snapshot(const std::filesystem::path &path);

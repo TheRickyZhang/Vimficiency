@@ -2,13 +2,15 @@
 
 ## Test Binaries
 
-Three separate test binaries for different purposes:
+Core test binaries for different purposes:
 
 | Binary | Purpose | Location |
 |--------|---------|----------|
 | `vimficiency_tests` | Unit tests (correctness) | `build/tests/vimficiency_tests` |
 | `vimficiency_benchmarks` | Performance benchmarks | `build/tests/vimficiency_benchmarks` |
 | `vimficiency_debug` | Scratch tests for debugging | `build/tests/vimficiency_debug` |
+| `vimficiency_fuzz_tests` | Optional FuzzTest property/fuzz tests | `build-fuzztest/tests/vimficiency_fuzz_tests` |
+| `vimficiency_raw_fuzzers` | Optional raw libFuzzer parser/FFI targets | `build-raw-fuzz/tests/` |
 
 ### Running Tests
 
@@ -33,7 +35,45 @@ Three separate test binaries for different purposes:
 
 # Run debug tests
 ./build/tests/vimficiency_debug
+
+# Configure and run optional FuzzTest tests in short gtest-compatible mode
+cmake -S . -B build-fuzztest -DVIMF_ENABLE_FUZZTEST=ON
+cmake --build build-fuzztest -j --target vimficiency_fuzz_tests
+./build-fuzztest/tests/vimficiency_fuzz_tests --gtest_brief=1
+
+# Configure and run optional raw libFuzzer byte-level targets
+cmake -S . -B build-raw-fuzz -DVIMF_ENABLE_LIBFUZZER=ON -DCMAKE_CXX_COMPILER=clang++
+cmake --build build-raw-fuzz -j --target vimficiency_raw_fuzzers
+env LSAN_OPTIONS=detect_leaks=0 ./build-raw-fuzz/tests/vimficiency_fuzz_payload -max_total_time=10
+env LSAN_OPTIONS=detect_leaks=0 ./build-raw-fuzz/tests/vimficiency_fuzz_sequence_parser -max_total_time=10
+env LSAN_OPTIONS=detect_leaks=0 ./build-raw-fuzz/tests/vimficiency_fuzz_movement_parser -max_total_time=10
+env LSAN_OPTIONS=detect_leaks=0 ./build-raw-fuzz/tests/vimficiency_fuzz_edit_parser -max_total_time=10
+env LSAN_OPTIONS=detect_leaks=0 ./build-raw-fuzz/tests/vimficiency_fuzz_snapshot -max_total_time=10
+
 ```
+
+`VIMF_ENABLE_FUZZTEST` is off by default so the normal correctness suite
+does not fetch/build the fuzzing stack or require a coverage/sanitizer-capable
+toolchain. The gtest-compatible mode is short and prints `FUZZTEST_PRNG_SEED`
+values for replay when it finds a failure.
+
+FuzzTest's full coverage-guided modes require a Clang/sanitizer toolchain and
+are intentionally manual. Do not add them to the default suite or CTest
+discovery without first verifying the exact local toolchain; add raw libFuzzer
+targets for byte-level parser campaigns if FuzzTest's native fuzzing mode is
+not stable on that toolchain.
+
+`VIMF_ENABLE_LIBFUZZER` is also off by default. Raw fuzzers are one executable
+per byte boundary, built with Clang/libFuzzer plus ASan/UBSan instrumentation,
+and are not CTest-discovered. They should stay narrow: payload decoders,
+fallible sequence/edit parsers, snapshot decoding, and other APIs where
+arbitrary bytes can cleanly return success or a structured error. Keep
+assertions for impossible internal states; expose fallible APIs at file,
+parser, and FFI boundaries before adding raw-byte fuzz coverage there.
+
+The `LSAN_OPTIONS` prefix keeps smoke runs working in ptrace/sandboxed runners
+where LeakSanitizer can fail after libFuzzer has already completed the inputs.
+Omit it in a normal terminal when leak detection itself is the campaign goal.
 
 ### Lua Tests
 
@@ -127,6 +167,7 @@ tests/
 │   ├── RandomGeneration.h  # RandomGen singleton
 │   ├── SeedManager.h       # Seed mode management
 │   └── SeedManager.cpp
+├── Fuzz/              # Optional FuzzTest suites and raw libFuzzer targets
 └── Debug.cpp          # Scratchpad for debugging (separate binary)
 ```
 
@@ -137,6 +178,7 @@ tests/
 | Commands/ | Verify VimCore motions match Neovim | NeovimOracle |
 | Operator/ | Verify VimCore edits match Neovim | NeovimOracle |
 | *Optimizer/ | Verify optimizer outputs are correct and reproducible | Simulation + manual |
+| Fuzz/ | Verify parser/FFI boundaries reject malformed generated input cleanly | Invariants + clean rejection |
 
 ## Ground Truth: NeovimOracle
 
