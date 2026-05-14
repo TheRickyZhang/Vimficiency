@@ -6,6 +6,112 @@ local function explore()
   return require("vimficiency.explore")
 end
 
+function M.first_recommendation_in_phase(expected_phase, pred)
+  local st = explore().status()
+  assert_true(st ~= nil, "explore status should be available")
+  assert_eq(st.phase.kind, expected_phase,
+    "recommendations sourced from phase " .. expected_phase)
+  for _, rec in ipairs(st.recommendations) do
+    if not pred or pred(rec) then return rec end
+  end
+  error("no recommendation matched in phase " .. expected_phase ..
+        "\nstatus=" .. M.status_text(), 2)
+end
+
+function M.enters_insert_mode(rec)
+  local first = rec.text:sub(1, 1)
+  return first == "C" or first == "c" or first == "s"
+    or first == "i" or first == "a" or first == "A"
+    or first == "I" or first == "o" or first == "O"
+end
+
+function M.widen_recommendations()
+  local registry = require("vimficiency.explore.registry")
+  local state = require("vimficiency.explore.state")
+  local view = registry.current()
+  view.recommendation_count = 10
+  state.refresh_ui(view)
+  return view
+end
+
+function M.list_has_warning(view)
+  local list_lines = vim.api.nvim_buf_get_lines(view.list_buf, 0, -1, false)
+  return table.concat(list_lines, "\n"):find("EXPLORE STATE WARNING", 1, true) ~= nil
+end
+
+function M.header_lines_for_title(scratch_buf, title)
+  local lines = M.header_column_lines(scratch_buf, title)
+  if not lines then error("missing header column " .. title, 2) end
+  return lines
+end
+
+function M.with_notify_capture(fn)
+  local util = require("vimficiency.util")
+  local notices = {}
+  base.with_patch({
+    { vim, "notify", function(msg, level)
+      notices[#notices + 1] = { msg = tostring(msg), level = level }
+    end },
+    { util, "show_output", function() end },
+  }, function()
+    fn(notices)
+  end)
+end
+
+function M.key_event(mode, key_typed)
+  return {
+    t = 0,
+    mode = mode,
+    win = 0,
+    buf = 0,
+    key_sent_raw = key_typed,
+    key_sent = key_typed,
+    key_typed_raw = key_typed,
+    key_typed = key_typed,
+  }
+end
+
+function M.has_plan_deviation_warning(notices, reason)
+  for _, notice in ipairs(notices) do
+    if notice.level == vim.log.levels.WARN
+        and notice.msg:find("action deviated from the plan", 1, true)
+        and notice.msg:find(reason, 1, true) then
+      return true
+    end
+  end
+  return false
+end
+
+function M.move_to_first_edit_target(scratch_buf)
+  local target = explore().status()
+  local motion = M.first_recommendation_in_phase("Navigate", function(rec)
+    return target.target_range
+      and rec.landing.row == target.target_range.begin_pos.row
+      and rec.landing.col == target.target_range.begin_pos.col
+  end)
+  base.feed(motion.text)
+  M.trigger_cursor_moved(scratch_buf)
+  M.wait_for("motion recommendation should update FFI cursor", function()
+    local st = explore().status()
+    return st
+      and st.cursor.row == motion.landing.row
+      and st.cursor.col == motion.landing.col
+      and st.seq ~= ""
+  end)
+end
+
+function M.complete_delete_mid_word(scratch_buf)
+  local handlers = require("vimficiency.explore.handlers")
+  local view = M.current_view()
+  base.feed("w")
+  M.trigger_cursor_moved(scratch_buf)
+  M.set_scratch({ "ab de" }, { 1, 3 })
+  view.on_key_buffer = "x"
+  handlers.on_buffer_changed()
+  assert_true(explore().status().is_completed, "precondition: x completed the session")
+  return handlers, view
+end
+
 function M.find_window_by_name(expected_name, wins)
   wins = wins or vim.api.nvim_tabpage_list_wins(vim.api.nvim_get_current_tabpage())
   for _, win in ipairs(wins) do
