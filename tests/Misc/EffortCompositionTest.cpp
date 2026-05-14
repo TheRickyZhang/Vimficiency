@@ -11,6 +11,8 @@
 #include "Keyboard/ToKeys/MovementToKeys.h"
 #include "Keyboard/Config.h"
 #include "Effort/RunningEffort.h"
+#include "Utils/GeneratedProperty.h"
+#include "Utils/RandomGeneration.h"
 
 using namespace std;
 
@@ -58,6 +60,40 @@ protected:
     PhysicalKeys aKeys = globalSequenceToKeys().tokenize(aSeq);
     PhysicalKeys bKeys = globalSequenceToKeys().tokenize(bSeq);
     expectMergeEqualsNaive(aKeys, bKeys);
+  }
+
+  PhysicalKeys randomPhysicalKeys(int minLen, int maxLen) {
+    int len = RandomGen::range(minLen, maxLen);
+    PhysicalKeys keys;
+    keys.reserve(len);
+    for (int i = 0; i < len; i++) {
+      keys.push_back(static_cast<Key>(RandomGen::range(0, KEY_COUNT - 1)));
+    }
+    return keys;
+  }
+
+  void expectAssociativeMergeEqualsNaive(
+      const PhysicalKeys& aKeys,
+      const PhysicalKeys& bKeys,
+      const PhysicalKeys& cKeys) {
+    RunningEffort a = buildEffort(aKeys);
+    RunningEffort b = buildEffort(bKeys);
+    RunningEffort c = buildEffort(cKeys);
+
+    RunningEffort ab_c = RunningEffort::merge(RunningEffort::merge(a, b), c);
+    RunningEffort a_bc = RunningEffort::merge(a, RunningEffort::merge(b, c));
+
+    RunningEffort naive;
+    naive.append(aKeys, qwerty);
+    naive.append(bKeys, qwerty);
+    naive.append(cKeys, qwerty);
+
+    EXPECT_DOUBLE_EQ(naive.getEffort(qwerty), ab_c.getEffort(qwerty))
+        << "(a+b)+c should match naive";
+    EXPECT_DOUBLE_EQ(naive.getEffort(qwerty), a_bc.getEffort(qwerty))
+        << "a+(b+c) should match naive";
+    EXPECT_EQ(naive.getStrokes(), ab_c.getStrokes());
+    EXPECT_EQ(naive.getStrokes(), a_bc.getStrokes());
   }
 };
 
@@ -241,4 +277,50 @@ TEST_F(EffortCompositionTest, UniformConfig) {
 
   RunningEffort merged = RunningEffort::merge(a, b);
   EXPECT_DOUBLE_EQ(naive.getEffort(uniform), merged.getEffort(uniform));
+}
+
+// =============================================================================
+// Generated properties
+// =============================================================================
+
+TEST_F(EffortCompositionTest, GeneratedProperty_MergeEqualsSequentialAppend) {
+  GeneratedProperty::check(
+      {"RunningEffort merge equals sequential append", 1001, 300},
+      [&](int) {
+        expectMergeEqualsNaive(
+            randomPhysicalKeys(0, 16),
+            randomPhysicalKeys(0, 16));
+      });
+}
+
+TEST_F(EffortCompositionTest, GeneratedProperty_AssociativityMatchesSequentialAppend) {
+  GeneratedProperty::check(
+      {"RunningEffort associativity", 1002, 300},
+      [&](int) {
+        expectAssociativeMergeEqualsNaive(
+            randomPhysicalKeys(0, 12),
+            randomPhysicalKeys(0, 12),
+            randomPhysicalKeys(0, 12));
+      });
+}
+
+TEST_F(EffortCompositionTest, GeneratedProperty_AppendFromMatchesMergeAndSequentialAppend) {
+  GeneratedProperty::check(
+      {"RunningEffort appendFrom", 1003, 300},
+      [&](int) {
+        PhysicalKeys aKeys = randomPhysicalKeys(0, 16);
+        PhysicalKeys bKeys = randomPhysicalKeys(0, 16);
+
+        RunningEffort a = buildEffort(aKeys);
+        RunningEffort b = buildEffort(bKeys);
+        RunningEffort appended = a;
+        appended.appendFrom(b, qwerty);
+        RunningEffort merged = RunningEffort::merge(a, b);
+        RunningEffort naive = buildNaive(aKeys, bKeys);
+
+        EXPECT_DOUBLE_EQ(naive.getEffort(qwerty), appended.getEffort(qwerty));
+        EXPECT_DOUBLE_EQ(naive.getEffort(qwerty), merged.getEffort(qwerty));
+        EXPECT_EQ(naive.getStrokes(), appended.getStrokes());
+        EXPECT_EQ(naive.getStrokes(), merged.getStrokes());
+      });
 }

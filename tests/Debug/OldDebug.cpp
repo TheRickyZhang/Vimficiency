@@ -5,6 +5,8 @@
 //
 // Run: ./build/tests/vimficiency_debug --gtest_filter="*Debug*"
 
+#include <cassert>
+
 #include <gtest/gtest.h>
 
 // #include "Optimizer/Keyboard/Config.h"
@@ -474,7 +476,9 @@ TEST_F(DebugTest, DISABLED_InvestigatePosition11) {
   Mode mode = Mode::Normal;
 
   cerr << "\nTracing d{D from (1,6):" << endl;
-  for (const auto& op : Edit::parseEdits("d{D")) {
+  auto parsed = Edit::parseEdits("d{D");
+  assert(parsed);
+  for (const auto& op : *parsed) {
     cerr << "  Before: " << buf << " pos=" << pos << endl;
     Edit::applyEdit(buf, pos, mode, op);
     cerr << "  After '" << op.edit << "': " << buf << " pos=" << pos << endl;
@@ -533,7 +537,9 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJWithSuffix) {
     auto nvim = oracle_->simulate(nvimBuf, nvimRow, nvimCol, cmd);
 
     // Ours
-    for (const auto& op : Edit::parseEdits(cmd)) {
+    auto parsed = Edit::parseEdits(cmd);
+    assert(parsed);
+    for (const auto& op : *parsed) {
       Edit::applyEdit(ourBuf, ourPos, ourMode, op);
     }
 

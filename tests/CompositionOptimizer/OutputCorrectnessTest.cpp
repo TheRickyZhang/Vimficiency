@@ -1,7 +1,7 @@
 // tests/CompositionOptimizer/OutputCorrectnessTest.cpp
 //
-// Random/stress tests for CompositionOptimizer output correctness.
-// These tests use randomly generated buffers and verify results against Neovim.
+// Generated property tests for CompositionOptimizer result validity.
+// Each case replays a bounded set of top results against Neovim.
 //
 // Run: ./build/tests/vimficiency_tests --gtest_filter="CompositionOptimizerOutputCorrectness.*"
 
@@ -12,7 +12,9 @@
 #include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Types/Lines.h"
+#include "Utils/GeneratedProperty.h"
 #include "Utils/NeovimOracle.h"
+#include "Utils/OptimizerResultChecks.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
 
@@ -22,6 +24,7 @@ class CompositionOptimizerOutputCorrectness : public ::testing::Test {
 protected:
   static unique_ptr<NeovimOracle> oracle;
   static const int NUM_ITERATIONS = 30;
+  static constexpr size_t MAX_RESULTS_TO_REPLAY = 3;
   Config config = Config::uniform();
   CompositionOptimizer opt{config};
   CompositionOptimizerParams params{};
@@ -29,48 +32,42 @@ protected:
   static void SetUpTestSuite() { oracle = make_unique<NeovimOracle>(); }
   static void TearDownTestSuite() { oracle.reset(); }
 
-  // Verify all results transform initial -> goal via Neovim
-  void verifyResults(
+  void expectTopResultsReachGoal(
       const vector<Result>& results,
       const Lines& initial,
       CursorPos initialPos,
       const Lines& goal,
       const string& testContext = "") {
+    OptimizerResultChecks::expectTopResultsReplay(
+        *oracle, results, initial, initialPos, goal,
+        MAX_RESULTS_TO_REPLAY, testContext);
+  }
 
-    for (size_t i = 0; i < results.size(); i++) {
-      if (results[i].getSequence().empty()) continue;
-
-      const auto& seq = results[i].getSequence();
-      SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
-
-      EXPECT_EQ(nvim.lines, goal)
-          << "Result " << i << " failed" << (testContext.empty() ? "" : " (" + testContext + ")")
-          << "\n  seq='" << seq << "' from " << initialPos
-          << "\n  Initial: " << initial
-          << "\n  Goal:    " << goal
-          << "\n  Got:     " << nvim.lines;
-    }
+  void expectOptimizationTopResultsReachGoal(
+      const Lines& initial,
+      CursorPos initialPos,
+      const Lines& goal,
+      CursorPos goalPos,
+      const string& testContext = "") {
+    auto compResult = opt.optimize(initial, initialPos, goal, goalPos, params);
+    expectTopResultsReachGoal(
+        compResult.getResults(), initial, initialPos, goal, testContext);
   }
 };
 
 unique_ptr<NeovimOracle> CompositionOptimizerOutputCorrectness::oracle;
 
 // =============================================================================
-// Single Edit Stress Tests
+// Single edit generated properties
 // =============================================================================
 
-// Random single-line substitutions
-TEST_F(CompositionOptimizerOutputCorrectness, SingleLine_Edit) {
-  RandomGen::seed(42);
-  int passed = 0, total = 0;
-
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-    // Generate a random line
+// Single-line substitutions
+TEST_F(CompositionOptimizerOutputCorrectness, GeneratedProperty_SingleLineEditTopResultsReplay) {
+  GeneratedProperty::check({"Composition single-line edit replay", 42, NUM_ITERATIONS}, [&](int) {
     int lineLen = RandomGen::range(8, 20);
     string line = randomWord(lineLen);
     Lines initial = {line};
 
-    // Pick a random edit region within the line
     int editStart = RandomGen::range(0, max(0, lineLen - 3));
     int editLen = RandomGen::range(1, min(5, lineLen - editStart));
     int editEnd = editStart + editLen;
@@ -82,143 +79,61 @@ TEST_F(CompositionOptimizerOutputCorrectness, SingleLine_Edit) {
     string goalStr = line.substr(0, editStart) + replacement + line.substr(editEnd);
     Lines goal = {goalStr};
 
-    // Random cursor position
     int cursorCol = RandomGen::range(0, max(0, lineLen - 1));
     CursorPos initialPos(0, cursorCol);
     CursorPos goalPos(0, 0);
 
-    auto compResult = opt.optimize(
-        initial, initialPos, goal, goalPos, params);
-    const auto& results = compResult.getResults();
-
-    total++;
-    if (results.empty()) {
-      if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " (no results)\n"
-             << "  Initial: '" << line << "'\n"
-             << "  Goal:    '" << goalStr << "'" << endl;
-      }
-      continue;
-    }
-
-    // Verify first result
-    const auto& seq = results[0].getSequence();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
-
-    if (nvim.lines == goal) {
-      passed++;
-    } else {
-      if (total - passed <= 3) {
-        // Build visual marker for edit region
-        string marker(editStart, ' ');
-        marker += string(editEnd - editStart, '^');
-
-        cerr << "FAIL iter=" << iter << " seq='" << seq << "'"
-             << " initialPos=(0," << cursorCol << ")\n"
-             << "  Initial: '" << line << "'\n"
-             << "            " << marker << "\n"
-             << "  Edit:     [" << editStart << "," << editEnd << ") '"
-             << line.substr(editStart, editLen) << "' -> '" << replacement << "'\n"
-             << "  Goal:    '" << goalStr << "'\n"
-             << "  Got:     " << nvim.lines << endl;
-      }
-    }
-  }
-
-  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+    expectOptimizationTopResultsReachGoal(
+        initial, initialPos, goal, goalPos, "single-line edit");
+  });
 }
 
-// Random multi-line with single edit
-TEST_F(CompositionOptimizerOutputCorrectness, MultiLine_SingleEdit) {
-
-  RandomGen::seed(43);
-  int passed = 0, total = 0;
-
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-    // Generate random buffer (2-4 lines)
+// Multi-line single edits
+TEST_F(CompositionOptimizerOutputCorrectness, GeneratedProperty_MultiLineSingleEditTopResultsReplay) {
+  GeneratedProperty::check({"Composition multi-line single edit replay", 43, NUM_ITERATIONS}, [&](int) {
     int numLines = RandomGen::range(2, 4);
     Lines initial = randomLines(numLines, 5, 12);
 
-    // Pick a random line to edit
     int editLine = RandomGen::range(0, numLines - 1);
     string& targetLine = initial[editLine];
     int lineLen = static_cast<int>(targetLine.size());
-    if (lineLen < 2) continue;  // Skip very short lines
+    if (lineLen < 2) return;
 
-    // Pick edit region
     int editStart = RandomGen::range(0, max(0, lineLen - 2));
     int editLen = RandomGen::range(1, min(4, lineLen - editStart));
     int editEnd = editStart + editLen;
 
-    // Generate replacement
     string replacement = randomWord(RandomGen::range(1, 5));
 
-    // Build goal
     Lines goal = initial;
     goal[editLine] = targetLine.substr(0, editStart) + replacement + targetLine.substr(editEnd);
 
-    // Random cursor position
     int cursorLine = RandomGen::range(0, numLines - 1);
     int cursorCol = RandomGen::range(0, max(0, static_cast<int>(initial[cursorLine].size()) - 1));
     CursorPos initialPos(cursorLine, cursorCol);
     CursorPos goalPos(0, 0);
 
-    auto compResult = opt.optimize(
-        initial, initialPos, goal, goalPos, params);
-    const auto& results = compResult.getResults();
-
-    total++;
-    if (results.empty()) {
-      if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " (no results)\n"
-             << "  Initial: " << initial << "\n"
-             << "  Goal:    " << goal << endl;
-      }
-      continue;
-    }
-
-    const auto& seq = results[0].getSequence();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
-
-    if (nvim.lines == goal) {
-      passed++;
-    } else {
-      if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " seq='" << seq << "'\n"
-             << "  Initial: " << initial << "\n"
-             << "  Goal:    " << goal << "\n"
-             << "  Got:     " << nvim.lines << endl;
-      }
-    }
-  }
-
-  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+    expectOptimizationTopResultsReachGoal(
+        initial, initialPos, goal, goalPos, "multi-line single edit");
+  });
 }
 
 // =============================================================================
-// Pure Insertion/Deletion Stress Tests
+// Pure insertion/deletion generated properties
 // =============================================================================
 
-// Random pure insertions (adding text without removing)
-TEST_F(CompositionOptimizerOutputCorrectness, PureInsertion) {
-
-  RandomGen::seed(44);
-  int passed = 0, total = 0;
-
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-    // Generate initial buffer
+// Pure insertions
+TEST_F(CompositionOptimizerOutputCorrectness, GeneratedProperty_PureInsertionTopResultsReplay) {
+  GeneratedProperty::check({"Composition pure insertion replay", 44, NUM_ITERATIONS}, [&](int) {
     int numLines = RandomGen::range(1, 3);
     Lines initial = randomLines(numLines, 4, 10);
 
-    // Pick insertion point
     int insertLine = RandomGen::range(0, numLines - 1);
     int lineLen = static_cast<int>(initial[insertLine].size());
     int insertCol = RandomGen::range(0, lineLen);
 
-    // Generate text to insert (no newlines for simplicity)
     string insertText = randomWord(RandomGen::range(2, 6));
 
-    // Build goal
     Lines goal = initial;
     goal[insertLine] = initial[insertLine].substr(0, insertCol) +
                        insertText +
@@ -228,59 +143,25 @@ TEST_F(CompositionOptimizerOutputCorrectness, PureInsertion) {
     CursorPos initialPos(0, 0);
     CursorPos goalPos(0, 0);
 
-    auto compResult = opt.optimize(
-        initial, initialPos, goal, goalPos, params);
-    const auto& results = compResult.getResults();
-
-    total++;
-    if (results.empty()) {
-      if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " (no results)\n"
-             << "  Initial: " << initial << "\n"
-             << "  Goal:    " << goal << endl;
-      }
-      continue;
-    }
-
-    const auto& seq = results[0].getSequence();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
-
-    if (nvim.lines == goal) {
-      passed++;
-    } else {
-      if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " seq='" << seq << "'\n"
-             << "  Initial: " << initial << "\n"
-             << "  Goal:    " << goal << "\n"
-             << "  Got:     " << nvim.lines << endl;
-      }
-    }
-  }
-
-  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+    expectOptimizationTopResultsReachGoal(
+        initial, initialPos, goal, goalPos, "pure insertion");
+  });
 }
 
-// Random pure deletions (removing text without adding)
-TEST_F(CompositionOptimizerOutputCorrectness, PureDeletion) {
-
-  RandomGen::seed(45);
-  int passed = 0, total = 0;
-
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-    // Generate initial buffer with enough content to delete
+// Pure deletions
+TEST_F(CompositionOptimizerOutputCorrectness, GeneratedProperty_PureDeletionTopResultsReplay) {
+  GeneratedProperty::check({"Composition pure deletion replay", 45, NUM_ITERATIONS}, [&](int) {
     int numLines = RandomGen::range(1, 3);
     Lines initial = randomLines(numLines, 8, 15);
 
-    // Pick deletion region on a single line
     int deleteLine = RandomGen::range(0, numLines - 1);
     int lineLen = static_cast<int>(initial[deleteLine].size());
-    if (lineLen < 4) continue;
+    if (lineLen < 4) return;
 
     int deleteStart = RandomGen::range(0, lineLen - 3);
     int deleteLen = RandomGen::range(2, min(6, lineLen - deleteStart));
     int deleteEnd = deleteStart + deleteLen;
 
-    // Build goal
     Lines goal = initial;
     goal[deleteLine] = initial[deleteLine].substr(0, deleteStart) +
                        initial[deleteLine].substr(deleteEnd);
@@ -288,36 +169,9 @@ TEST_F(CompositionOptimizerOutputCorrectness, PureDeletion) {
     CursorPos initialPos(0, 0);
     CursorPos goalPos(0, 0);
 
-    auto compResult = opt.optimize(
-        initial, initialPos, goal, goalPos, params);
-    const auto& results = compResult.getResults();
-
-    total++;
-    if (results.empty()) {
-      if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " (no results)\n"
-             << "  Initial: " << initial << "\n"
-             << "  Goal:    " << goal << endl;
-      }
-      continue;
-    }
-
-    const auto& seq = results[0].getSequence();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
-
-    if (nvim.lines == goal) {
-      passed++;
-    } else {
-      if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " seq='" << seq << "'\n"
-             << "  Initial: " << initial << "\n"
-             << "  Goal:    " << goal << "\n"
-             << "  Got:     " << nvim.lines << endl;
-      }
-    }
-  }
-
-  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+    expectOptimizationTopResultsReachGoal(
+        initial, initialPos, goal, goalPos, "pure deletion");
+  });
 }
 
 // =============================================================================
@@ -325,17 +179,11 @@ TEST_F(CompositionOptimizerOutputCorrectness, PureDeletion) {
 // =============================================================================
 
 // Insert new lines
-TEST_F(CompositionOptimizerOutputCorrectness, InsertNewLine) {
-
-  RandomGen::seed(46);
-  int passed = 0, total = 0;
-
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-    // Start with 2-3 lines
+TEST_F(CompositionOptimizerOutputCorrectness, GeneratedProperty_InsertNewLineTopResultsReplay) {
+  GeneratedProperty::check({"Composition insert new line replay", 46, NUM_ITERATIONS}, [&](int) {
     int numLines = RandomGen::range(2, 3);
     Lines initial = randomLines(numLines, 4, 8);
 
-    // Insert a new line at random position
     int insertAfter = RandomGen::range(0, numLines - 1);
     string newLine = randomWord(RandomGen::range(3, 7));
 
@@ -345,50 +193,17 @@ TEST_F(CompositionOptimizerOutputCorrectness, InsertNewLine) {
     CursorPos initialPos(0, 0);
     CursorPos goalPos(0, 0);
 
-    auto compResult = opt.optimize(
-        initial, initialPos, goal, goalPos, params);
-    const auto& results = compResult.getResults();
-
-    total++;
-    if (results.empty()) {
-      if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " (no results)\n"
-             << "  Initial: " << initial << "\n"
-             << "  Goal:    " << goal << endl;
-      }
-      continue;
-    }
-
-    const auto& seq = results[0].getSequence();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
-
-    if (nvim.lines == goal) {
-      passed++;
-    } else {
-      if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " seq='" << seq << "'\n"
-             << "  Initial: " << initial << "\n"
-             << "  Goal:    " << goal << "\n"
-             << "  Got:     " << nvim.lines << endl;
-      }
-    }
-  }
-
-  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+    expectOptimizationTopResultsReachGoal(
+        initial, initialPos, goal, goalPos, "insert new line");
+  });
 }
 
 // Delete entire lines
-TEST_F(CompositionOptimizerOutputCorrectness, DeleteEntireLine) {
-
-  RandomGen::seed(47);
-  int passed = 0, total = 0;
-
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-    // Start with 3-4 lines
+TEST_F(CompositionOptimizerOutputCorrectness, GeneratedProperty_DeleteEntireLineTopResultsReplay) {
+  GeneratedProperty::check({"Composition delete entire line replay", 47, NUM_ITERATIONS}, [&](int) {
     int numLines = RandomGen::range(3, 4);
     Lines initial = randomLines(numLines, 4, 8);
 
-    // Delete a middle line
     int deleteLine = RandomGen::range(1, numLines - 2);
 
     Lines goal = initial;
@@ -397,36 +212,9 @@ TEST_F(CompositionOptimizerOutputCorrectness, DeleteEntireLine) {
     CursorPos initialPos(0, 0);
     CursorPos goalPos(0, 0);
 
-    auto compResult = opt.optimize(
-        initial, initialPos, goal, goalPos, params);
-    const auto& results = compResult.getResults();
-
-    total++;
-    if (results.empty()) {
-      if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " (no results)\n"
-             << "  Initial: " << initial << "\n"
-             << "  Goal:    " << goal << endl;
-      }
-      continue;
-    }
-
-    const auto& seq = results[0].getSequence();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
-
-    if (nvim.lines == goal) {
-      passed++;
-    } else {
-      if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " seq='" << seq << "'\n"
-             << "  Initial: " << initial << "\n"
-             << "  Goal:    " << goal << "\n"
-             << "  Got:     " << nvim.lines << endl;
-      }
-    }
-  }
-
-  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+    expectOptimizationTopResultsReachGoal(
+        initial, initialPos, goal, goalPos, "delete entire line");
+  });
 }
 
 // =============================================================================
@@ -434,21 +222,14 @@ TEST_F(CompositionOptimizerOutputCorrectness, DeleteEntireLine) {
 // =============================================================================
 
 // Two edits on the same line
-TEST_F(CompositionOptimizerOutputCorrectness, TwoEdits_SameLine) {
-
-  RandomGen::seed(48);
-  int passed = 0, total = 0;
-
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-    // Generate a line with distinct "words" separated by spaces
+TEST_F(CompositionOptimizerOutputCorrectness, GeneratedProperty_TwoEditsSameLineTopResultsReplay) {
+  GeneratedProperty::check({"Composition two edits same line replay", 48, NUM_ITERATIONS}, [&](int) {
     string line = randomWord(3) + " " + randomWord(4) + " " + randomWord(3);
     Lines initial = {line};
 
-    // Replace first and last word
     string newFirst = randomWord(3);
     string newLast = randomWord(3);
 
-    // Build goal by finding word boundaries
     size_t firstSpace = line.find(' ');
     size_t lastSpace = line.rfind(' ');
     string middle = line.substr(firstSpace, lastSpace - firstSpace + 1);
@@ -458,49 +239,16 @@ TEST_F(CompositionOptimizerOutputCorrectness, TwoEdits_SameLine) {
     CursorPos initialPos(0, 0);
     CursorPos goalPos(0, 0);
 
-    auto compResult = opt.optimize(
-        initial, initialPos, goal, goalPos, params);
-    const auto& results = compResult.getResults();
-
-    total++;
-    if (results.empty()) {
-      if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " (no results)\n"
-             << "  Initial: '" << line << "'\n"
-             << "  Goal:    '" << goalStr << "'" << endl;
-      }
-      continue;
-    }
-
-    const auto& seq = results[0].getSequence();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
-
-    if (nvim.lines == goal) {
-      passed++;
-    } else {
-      if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " seq='" << seq << "'\n"
-             << "  Initial: '" << line << "'\n"
-             << "  Goal:    '" << goalStr << "'\n"
-             << "  Got:     " << nvim.lines << endl;
-      }
-    }
-  }
-
-  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+    expectOptimizationTopResultsReachGoal(
+        initial, initialPos, goal, goalPos, "two edits same line");
+  });
 }
 
 // Two edits on different lines
-TEST_F(CompositionOptimizerOutputCorrectness, TwoEdits_DifferentLines) {
-
-  RandomGen::seed(49);
-  int passed = 0, total = 0;
-
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-    // Generate 3 lines
+TEST_F(CompositionOptimizerOutputCorrectness, GeneratedProperty_TwoEditsDifferentLinesTopResultsReplay) {
+  GeneratedProperty::check({"Composition two edits different lines replay", 49, NUM_ITERATIONS}, [&](int) {
     Lines initial = randomLines(3, 5, 10);
 
-    // Edit first and last line (keeping middle unchanged)
     Lines goal = initial;
     goal[0] = randomWord(RandomGen::range(4, 8));
     goal[2] = randomWord(RandomGen::range(4, 8));
@@ -508,34 +256,7 @@ TEST_F(CompositionOptimizerOutputCorrectness, TwoEdits_DifferentLines) {
     CursorPos initialPos(0, 0);
     CursorPos goalPos(0, 0);
 
-    auto compResult = opt.optimize(
-        initial, initialPos, goal, goalPos, params);
-    const auto& results = compResult.getResults();
-
-    total++;
-    if (results.empty()) {
-      if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " (no results)\n"
-             << "  Initial: " << initial << "\n"
-             << "  Goal:    " << goal << endl;
-      }
-      continue;
-    }
-
-    const auto& seq = results[0].getSequence();
-    auto nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
-
-    if (nvim.lines == goal) {
-      passed++;
-    } else {
-      if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " seq='" << seq << "'\n"
-             << "  Initial: " << initial << "\n"
-             << "  Goal:    " << goal << "\n"
-             << "  Got:     " << nvim.lines << endl;
-      }
-    }
-  }
-
-  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+    expectOptimizationTopResultsReachGoal(
+        initial, initialPos, goal, goalPos, "two edits different lines");
+  });
 }

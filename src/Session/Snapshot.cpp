@@ -1,17 +1,40 @@
 #include <cassert>
 #include <fstream>
+#include <sstream>
 
 #include "Snapshot.h"
 
 using namespace std;
 
-Snapshot load_snapshot(const std::filesystem::path& path) {
-  ifstream in(path);
-  if(!in) assert(false && "Can't read");
+string formatSnapshotParseError(const SnapshotParseError& error) {
+  switch (error.kind) {
+    case SnapshotParseErrorKind::Empty:
+      return "Snapshot empty";
+    case SnapshotParseErrorKind::BadHeader:
+      return "bad header";
+    case SnapshotParseErrorKind::UnsupportedVersion:
+      return "unsupported version";
+    case SnapshotParseErrorKind::MissingFilename:
+      return "No filename";
+    case SnapshotParseErrorKind::MissingBufferName:
+      return "No buffer name";
+    case SnapshotParseErrorKind::MissingCursorPosition:
+      return "No row or col";
+    case SnapshotParseErrorKind::InvalidCursorPosition:
+      return "Bad row or col";
+    case SnapshotParseErrorKind::MissingNavContext:
+      return "No navContext";
+    case SnapshotParseErrorKind::InvalidNavContext:
+      return "Bad navContext";
+  }
+  assert(false && "Unhandled SnapshotParseErrorKind");
+}
 
+expected<Snapshot, SnapshotParseError> parseSnapshot(string_view bytes) {
+  istringstream in{string(bytes)};
   string header;
   if(!getline(in, header)) {
-    assert(false && "Snapshot empty");
+    return unexpected(SnapshotParseError{SnapshotParseErrorKind::Empty});
   }
 
   string magic;
@@ -19,44 +42,44 @@ Snapshot load_snapshot(const std::filesystem::path& path) {
   {
     istringstream ss(header);
     if(! (ss >> magic >> version)) {
-      assert(false && "bad header");
+      return unexpected(SnapshotParseError{SnapshotParseErrorKind::BadHeader});
     }
   }
   if(magic != "vimficiency" || version != 1) {
-    assert(false && "unsupported version");
+    return unexpected(SnapshotParseError{SnapshotParseErrorKind::UnsupportedVersion});
   }
 
   string filename;
   if(!getline(in, filename)) {
-    assert(false && "No filename");
+    return unexpected(SnapshotParseError{SnapshotParseErrorKind::MissingFilename});
   }
   
   string bufname;
   if(!getline(in, bufname)) {
-    assert(false && "No buffer name");
+    return unexpected(SnapshotParseError{SnapshotParseErrorKind::MissingBufferName});
   }
 
   int row, col;
   string rowcol;
   if(!getline(in, rowcol)) {
-    assert(false && "No row or col");
+    return unexpected(SnapshotParseError{SnapshotParseErrorKind::MissingCursorPosition});
   }
   {
     istringstream ss(rowcol);
     if(!(ss >> row >> col)) {
-      assert(false && "Huh");
+      return unexpected(SnapshotParseError{SnapshotParseErrorKind::InvalidCursorPosition});
     }
   }
 
   int topRow, bottomRow, windowHeight, scrollAmount;
   string navContext;
   if(!getline(in, navContext)) {
-    assert(false && "No navContext");
+    return unexpected(SnapshotParseError{SnapshotParseErrorKind::MissingNavContext});
   }
   {
     istringstream ss(navContext);
     if(!(ss >> topRow >> bottomRow >> windowHeight >> scrollAmount)) {
-      assert(false && "Bad navContext");
+      return unexpected(SnapshotParseError{SnapshotParseErrorKind::InvalidNavContext});
     }
   }
 
@@ -69,4 +92,15 @@ Snapshot load_snapshot(const std::filesystem::path& path) {
   Snapshot s(std::move(bufname), std::move(filename), row, col,
              topRow, bottomRow, windowHeight, scrollAmount, std::move(lines));
   return s;
+}
+
+Snapshot load_snapshot(const std::filesystem::path& path) {
+  ifstream in(path);
+  if(!in) assert(false && "Can't read");
+
+  ostringstream buffer;
+  buffer << in.rdbuf();
+  auto parsed = parseSnapshot(buffer.str());
+  assert(parsed && "Invalid snapshot");
+  return *parsed;
 }

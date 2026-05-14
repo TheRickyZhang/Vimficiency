@@ -112,8 +112,8 @@ SentenceBoundaryTest generateSentenceBoundaryBuffer(int numLines) {
   // Define edit region (middle portion, avoiding markers)
   int midLine = numLines / 2;
   test.editStart = CursorPos(1, 0);
-  test.editEnd = CursorPos(lastLine - 1 >= 1 ? lastLine - 1 : lastLine,
-                          test.lines[lastLine - 1 >= 1 ? lastLine - 1 : lastLine].size() - 1);
+  int editEndLine = lastLine - 1 >= 1 ? lastLine - 1 : lastLine;
+  test.editEnd = CursorPos(editEndLine, test.lines[editEndLine].lastCol());
 
   // Pick cursor position in middle
   test.cursorLine = midLine;
@@ -155,6 +155,30 @@ bool rightMarkerCrossed(const SentenceBoundaryTest& test, const Lines& result) {
     }
   }
   return true;  // Marker not found, was crossed
+}
+
+void expectSentenceTextObjectStaysWithinMarkers(
+    NeovimOracle& oracle, const SentenceBoundaryTest& test, bool isInner,
+    const string& command, int iteration) {
+  auto result = oracle.simulate(test.lines, test.cursorLine, test.cursorCol, command);
+
+  EXPECT_FALSE(leftMarkerCrossed(test, result.lines))
+      << "Left marker crossed by " << command << " at iteration " << iteration
+      << "\nInput: " << test.lines << "\nResult: " << result.lines;
+  EXPECT_FALSE(rightMarkerCrossed(test, result.lines))
+      << "Right marker crossed by " << command << " at iteration " << iteration
+      << "\nInput: " << test.lines << "\nResult: " << result.lines;
+
+  CharRange range = VimCore::sentenceTextObjectRange(
+      CursorPos(test.cursorLine, test.cursorCol), test.lines, isInner,
+      test.lines.getPrevPos(test.editStart),
+      test.lines.getNextPosUnbounded(test.editEnd));
+
+  EXPECT_TRUE(range.isValid())
+      << "VimCore predicted boundary crossing for " << command
+      << " at iteration " << iteration
+      << "\nInput: " << test.lines
+      << "\nCursor: (" << test.cursorLine << ", " << test.cursorCol << ")";
 }
 
 // =============================================================================
@@ -201,69 +225,22 @@ TEST_F(SentencesTest, InnerSentence_OnBlankLine) {
 
 TEST_F(SentencesTest, InnerSentence_RandomBuffer) {
   RandomGen::seed(42);
-  int total = 0, passed = 0;
 
   for (int i = 0; i < NUM_ITERATIONS; i++) {
     int numLines = RandomGen::range(5, 10);
     auto test = generateSentenceBoundaryBuffer(numLines);
-
-    total++;
-
-    // Execute dis in Neovim
-    auto result = oracle_->simulate(test.lines, test.cursorLine, test.cursorCol, "dis");
-
-    // Check if boundaries were crossed
-    bool leftCrossed = leftMarkerCrossed(test, result.lines);
-    bool rightCrossed = rightMarkerCrossed(test, result.lines);
-
-    // Compute our predicted range
-    CharRange range = VimCore::sentenceTextObjectRange(
-        CursorPos(test.cursorLine, test.cursorCol), test.lines, true);
-
-    // For sentence boundary prediction, we'd need to compare range to marker positions
-    // For now, just verify the operation completes without errors
-    // and markers are reasonably preserved
-
-    // Simple check: if both markers survived, we passed
-    if (!leftCrossed && !rightCrossed) {
-      passed++;
-    } else {
-      // This might be expected behavior depending on cursor position
-      // Don't fail, just note it
-      passed++;  // Accept for now - sentence boundaries are complex
-    }
+    expectSentenceTextObjectStaysWithinMarkers(*oracle_, test, true, "dis", i);
   }
-
-  EXPECT_GE(passed, total * 0.8) << "At least 80% should pass boundary check";
 }
 
 TEST_F(SentencesTest, AroundSentence_RandomBuffer) {
   RandomGen::seed(123);
-  int total = 0, passed = 0;
 
   for (int i = 0; i < NUM_ITERATIONS; i++) {
     int numLines = RandomGen::range(5, 10);
     auto test = generateSentenceBoundaryBuffer(numLines);
-
-    total++;
-
-    // Execute das in Neovim
-    auto result = oracle_->simulate(test.lines, test.cursorLine, test.cursorCol, "das");
-
-    // Check if boundaries were crossed
-    bool leftCrossed = leftMarkerCrossed(test, result.lines);
-    bool rightCrossed = rightMarkerCrossed(test, result.lines);
-
-    // Simple check: if both markers survived, we passed
-    if (!leftCrossed && !rightCrossed) {
-      passed++;
-    } else {
-      // Accept - das includes whitespace which might reach markers
-      passed++;
-    }
+    expectSentenceTextObjectStaysWithinMarkers(*oracle_, test, false, "das", i);
   }
-
-  EXPECT_GE(passed, total * 0.8) << "At least 80% should pass boundary check";
 }
 
 // =============================================================================

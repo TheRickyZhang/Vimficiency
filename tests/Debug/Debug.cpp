@@ -6,6 +6,8 @@
 // Run: ./build/tests/vimficiency_debug --gtest_filter="DebugTest.*"
 //   - Or: ./vimficiency_tests --gtest_filter="NeovimOracleDebug.*"
 
+#include <cassert>
+
 #include <gtest/gtest.h>
 #include <queue>
 
@@ -207,7 +209,9 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
     Mode mode = Mode::Normal;
     string lastEdit;
 
-    auto edits = Edit::parseEdits(seq);
+    auto parsed = Edit::parseEdits(seq);
+    assert(parsed);
+    const auto& edits = *parsed;
     bool crashed = false;
     cerr << "Replay '" << seq << "': ";
     for (size_t i = 0; i < edits.size(); i++) {
@@ -236,7 +240,9 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
     Mode mode = Mode::Normal;
     string lastEdit;
     string seq = "D4gJ7dbDjd0dw.x";
-    auto edits = Edit::parseEdits(seq);
+    auto parsed = Edit::parseEdits(seq);
+    assert(parsed);
+    const auto& edits = *parsed;
     for (size_t i = 0; i < edits.size(); i++) {
       cerr << "  Before step " << i << " ('" << edits[i].edit
            << "' count=" << edits[i].effectiveCount()
@@ -278,7 +284,9 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
       Mode mode = Mode::Normal;
       string lastEdit;
 
-      auto edits = Edit::parseEdits(seq);
+      auto parsed = Edit::parseEdits(seq);
+      assert(parsed);
+      const auto& edits = *parsed;
       for (size_t j = 0; j < edits.size(); j++) {
         try {
           Edit::applyEdit(test, pos, mode, edits[j], &lastEdit);
@@ -442,8 +450,9 @@ TEST_F(DebugTest, DISABLED_InvestigateCountedWordEdit) {
     Mode mode = Mode::Normal;
     string lastEdit;
 
-    auto edits = Edit::parseEdits("deXXXXx");
-    for (const auto& e : edits) {
+    auto parsed = Edit::parseEdits("deXXXXx");
+    assert(parsed);
+    for (const auto& e : *parsed) {
       cerr << "Before '" << e.edit << "': buf=" << simBuf << " pos=(" << simPos.line << "," << simPos.col << ")" << endl;
       Edit::applyEdit(simBuf, simPos, mode, e, &lastEdit);
       cerr << "After:  buf=" << simBuf << " pos=(" << simPos.line << "," << simPos.col << ")" << endl;
@@ -459,8 +468,9 @@ TEST_F(DebugTest, DISABLED_InvestigateCountedWordEdit) {
     Mode mode = Mode::Normal;
     string lastEdit;
 
-    auto edits = Edit::parseEdits("deX...x");
-    for (const auto& e : edits) {
+    auto parsed = Edit::parseEdits("deX...x");
+    assert(parsed);
+    for (const auto& e : *parsed) {
       cerr << "Before '" << e.edit << "': buf=" << effLines << " pos=(" << simPos.line << "," << simPos.col << ")" << endl;
       Edit::applyEdit(effLines, simPos, mode, e, &lastEdit);
       cerr << "After:  buf=" << effLines << " pos=(" << simPos.line << "," << simPos.col << ")" << endl;
@@ -956,7 +966,9 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJoinBehavior) {
     Lines simLines = {"debceb,", "", " .ec"};
     CursorPos simPos(1, 0);
     Mode simMode = Mode::Normal;
-    Edit::applyEdit(simLines, simPos, simMode, Edit::parseEdits("J")[0]);
+    auto parsed = Edit::parseEdits("J");
+    assert(parsed);
+    Edit::applyEdit(simLines, simPos, simMode, (*parsed)[0]);
     cerr << "  Lines: " << simLines << " pos=" << simPos << endl;
   }
 
@@ -969,7 +981,9 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateJoinBehavior) {
     Lines simLines = source;
     CursorPos simPos(row, col);
     Mode simMode = Mode::Normal;
-    Edit::applyEdit(simLines, simPos, simMode, Edit::parseEdits("J")[0]);
+    auto parsed = Edit::parseEdits("J");
+    assert(parsed);
+    Edit::applyEdit(simLines, simPos, simMode, (*parsed)[0]);
     cerr << "  Ours:   " << simLines << " cursor=" << simPos << endl;
 
     bool match = (simLines == nvim.lines && simPos.line == nvim.row && simPos.col == nvim.col);
@@ -1008,8 +1022,9 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCCloseBrace) {
       Lines simLines = source;
       CursorPos simPos(row, col);
       Mode simMode = Mode::Normal;
-      auto edits = Edit::parseEdits("d}");
-      for (const auto& e : edits) Edit::applyEdit(simLines, simPos, simMode, e);
+      auto parsed = Edit::parseEdits("d}");
+      assert(parsed);
+      for (const auto& e : *parsed) Edit::applyEdit(simLines, simPos, simMode, e);
       bool match = (simLines == dResult.lines && simPos.line == dResult.row && simPos.col == dResult.col);
       cerr << "  d} sim: " << simLines << " cursor=" << simPos << (match ? " MATCH" : " MISMATCH") << endl;
     }
@@ -1019,8 +1034,9 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCCloseBrace) {
       Lines simLines = source;
       CursorPos simPos(row, col);
       Mode simMode = Mode::Normal;
-      auto edits = Edit::parseEdits("c}");
-      for (const auto& e : edits) Edit::applyEdit(simLines, simPos, simMode, e);
+      auto parsed = Edit::parseEdits("c}");
+      assert(parsed);
+      for (const auto& e : *parsed) Edit::applyEdit(simLines, simPos, simMode, e);
       // Type "X" in insert mode
       VimCore::insertText(simLines, simPos, "X");
       // <Esc> backs up one
@@ -1088,8 +1104,9 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDCloseBrace) {
     Lines simLines = source;
     CursorPos simPos(row, col);
     Mode simMode = Mode::Normal;
-    auto edits = Edit::parseEdits("d}");
-    for (const auto& e : edits) Edit::applyEdit(simLines, simPos, simMode, e);
+    auto parsed = Edit::parseEdits("d}");
+    assert(parsed);
+    for (const auto& e : *parsed) Edit::applyEdit(simLines, simPos, simMode, e);
     cerr << "  Ours:   " << simLines << " cursor=" << simPos << endl;
 
     bool match = (simLines == nvim.lines && simPos.line == nvim.row && simPos.col == nvim.col);
@@ -2613,8 +2630,9 @@ TEST_F(NeovimOracleDebug, InvestigateLazyFailures) {
 static pair<Lines, CursorPos> applyViaEdit(const Lines& lines, CursorPos pos, string_view cmd) {
   Lines result = lines;
   Mode mode = Mode::Normal;
-  auto edits = Edit::parseEdits(cmd);
-  for (const auto& e : edits) {
+  auto parsed = Edit::parseEdits(cmd);
+  assert(parsed);
+  for (const auto& e : *parsed) {
     Edit::applyEdit(result, pos, mode, e);
   }
   return {result, pos};
@@ -2846,7 +2864,9 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceJoinLinesResidualEditOpt) {
     Lines simBuf = buf;
     CursorPos simPos(1, 0);
     Mode simMode = Mode::Normal;
-    Edit::applyEdit(simBuf, simPos, simMode, Edit::parseEdits("daw")[0]);
+    auto parsed = Edit::parseEdits("daw");
+    assert(parsed);
+    Edit::applyEdit(simBuf, simPos, simMode, (*parsed)[0]);
     cerr << "  Our daw:    " << simBuf << " cursor=" << simPos << endl;
     bool match = simBuf == nvim.lines;
     cerr << "  " << (match ? "MATCH" : "MISMATCH") << endl;
@@ -2862,7 +2882,9 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceJoinLinesResidualEditOpt) {
     Lines simBuf = buf;
     CursorPos simPos(1, 0);
     Mode simMode = Mode::Normal;
-    Edit::applyEdit(simBuf, simPos, simMode, Edit::parseEdits("de")[0]);
+    auto parsed = Edit::parseEdits("de");
+    assert(parsed);
+    Edit::applyEdit(simBuf, simPos, simMode, (*parsed)[0]);
     cerr << "  Our de:    " << simBuf << " cursor=" << simPos << endl;
     bool match = simBuf == nvim.lines;
     cerr << "  " << (match ? "MATCH" : "MISMATCH") << endl;
@@ -2962,8 +2984,9 @@ TEST_F(NeovimOracleDebugSentence, DISABLED_SentenceDeleteDivergence) {
   CursorPos modelPos(0, 1);
   Mode modelMode = Mode::Normal;
   string lastEdit;
-  auto edits = Edit::parseEdits("d)");
-  for (auto& e : edits) {
+  auto parsed = Edit::parseEdits("d)");
+  assert(parsed);
+  for (auto& e : *parsed) {
     Edit::applyEdit(modelLines, modelPos, modelMode, e, &lastEdit);
   }
   cerr << "Model d) from [0,1] in 'c bedf.':" << endl;
@@ -3099,7 +3122,9 @@ TEST_F(DebugTest, DISABLED_ReproduceSmallEmbeddedSentenceCrash) {
 
   auto applyAndLog = [&](const string& cmd) {
     cerr << "  Before '" << cmd << "' at (" << pos.line << "," << pos.col << "): " << buf << endl;
-    for (const ParsedEdit& op : Edit::parseEdits(cmd)) {
+    auto parsed = Edit::parseEdits(cmd);
+    assert(parsed);
+    for (const ParsedEdit& op : *parsed) {
       Edit::applyEdit(buf, pos, mode, op, &lastEditCmd,
                       boundary.hasLinesBelow(), boundary.leftColOffset(),
                       boundary.rightColOffset(), boundary.hasLinesAbove());

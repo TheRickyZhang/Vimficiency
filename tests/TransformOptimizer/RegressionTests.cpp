@@ -3,16 +3,24 @@
 // Regression tests for TransformOptimizer edge cases.
 // Run: ./build/tests/vimficiency_tests --gtest_filter="TransformOptimizerRegression.*"
 
+#include <cassert>
+
 #include <gtest/gtest.h>
+
+#include <vector>
 
 #include "Boundary/TransformBoundary.h"
 #include "Effort/EffortBank.h"
 #include "Interpreter/EditInterpreter.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/TransformOptimizer/TransformExplorer.h"
+#include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizerParams.h"
 #include "Types/Mode.h"
 #include "Types/CursorPos.h"
+#include "Utils/EditTestGenerators.h"
+#include "Utils/NeovimOracle.h"
+#include "Utils/OracleReplay.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
 #include "Types/Lines.h"
@@ -52,6 +60,14 @@ EmbeddedCase buildSmallEmbeddedCaseSeed465950() {
   return {fullBuffer, editRegion, goalLines, boundary, firstPos, endPos};
 }
 
+CursorPos toFullBufferPos(CursorPos localPos, CursorPos regionBegin) {
+  localPos.line += regionBegin.line;
+  if (localPos.line == regionBegin.line) {
+    localPos.col += regionBegin.col;
+  }
+  return localPos;
+}
+
 }  // namespace
 
 TEST(TransformOptimizerRegression, BoundaryAwareReplayPrefixKeepsXApplicable) {
@@ -72,7 +88,9 @@ TEST(TransformOptimizerRegression, BoundaryAwareReplayPrefixKeepsXApplicable) {
 
   // Use a sequence that exercises boundary-aware prefix replay and leaves
   // `X` applicable afterward.
-  for (const ParsedEdit& op : Edit::parseEdits("DdaW")) {
+  auto parsedPrefix = Edit::parseEdits("DdaW");
+  assert(parsedPrefix);
+  for (const ParsedEdit& op : *parsedPrefix) {
     Edit::applyEdit(replayLines, pos, mode, op, &lastEditCmd,
                     test.boundary.hasLinesBelow(),
                     test.boundary.leftColOffset(),
@@ -152,4 +170,59 @@ TEST(TransformOptimizerRegression, BackwardParagraphExplorerEmitsDLeftBrace) {
 
   EXPECT_TRUE(sawLinewiseDLeftBrace);
   EXPECT_FALSE(sawUnexpectedCharwiseDLeftBrace);
+}
+
+TEST(TransformOptimizerRegression, StraddledPureDeletionAllResultsReplayToGoal) {
+  Config config = Config::uniform();
+  TransformOptimizer optimizer(config);
+  NeovimOracle oracle;
+
+  struct Case {
+    CursorPos begin;
+    CursorPos end;
+    Lines goal;
+  };
+
+  const Lines fullBuffer = {
+    "arstn arstn",
+    "arstn arstn",
+  };
+  const vector<Case> cases = {
+    {CursorPos(0, 5), CursorPos(1, 11), Lines{"arstn"}},
+    {CursorPos(0, 5), CursorPos(1, 6), Lines{"arstnarstn"}},
+  };
+
+  for (const Case& test : cases) {
+    Lines editRegion = fullBuffer.getSpan(test.begin, test.end);
+    TransformBoundary boundary(fullBuffer, test.begin, test.end);
+
+    TransformResult result = optimizer.optimizePureDeletion(
+        editRegion, boundary,
+        TransformOptimizerParams{}
+            .withMaxResults(200)
+            .withMaxResultsPerStartPos(5));
+
+    ASSERT_GT(result.resultCount(), 0u);
+    int checked = 0;
+    for (size_t i = 0; i < result.resultCount(); i++) {
+      const auto& bucket = result.getResults()[i];
+      if (bucket.empty()) continue;
+
+      CursorPos localPos = fromFlatIndex(static_cast<int>(i), editRegion);
+      ASSERT_TRUE(localPos.isValid()) << "Invalid local position at bucket " << i;
+      CursorPos fullPos = toFullBufferPos(localPos, test.begin);
+      for (const Result& resultForStart : bucket) {
+        EXPECT_TRUE(OracleReplay::matches(
+            oracle, fullBuffer, fullPos, resultForStart.getSequence().str(),
+            test.goal, nullopt, Mode::Normal,
+            "straddled pure deletion all results"))
+            << "begin=" << test.begin << " end=" << test.end
+            << " bucket=" << i << " localPos=" << localPos
+            << " fullPos=" << fullPos
+            << " seq='" << resultForStart.getSequence() << "'";
+        checked++;
+      }
+    }
+    EXPECT_GT(checked, 0);
+  }
 }

@@ -1,7 +1,7 @@
 // tests/TransformOptimizer/OutputCorrectnessTest.cpp
 //
-// Random/stress tests for TransformOptimizer output correctness.
-// These tests use randomly generated buffers and verify results against Neovim.
+// Generated property tests for TransformOptimizer result validity.
+// Each case replays a bounded set of emitted results against Neovim.
 //
 // Run: ./build/tests/vimficiency_tests --gtest_filter="TransformOptimizerOutputCorrectness.*"
 
@@ -14,7 +14,9 @@
 #include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 #include "Utils/EditTestGenerators.h"
 #include "Types/Lines.h"
+#include "Utils/GeneratedProperty.h"
 #include "Utils/NeovimOracle.h"
+#include "Utils/OptimizerResultChecks.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
 
@@ -25,6 +27,7 @@ protected:
   static unique_ptr<NeovimOracle> oracle;
   static const int CNT = 30;
   static const int REDUCED_CNT = 5;  // Reduced - embedded optimization is slow (~500ms each)
+  static constexpr size_t MAX_RESULTS_PER_START_TO_REPLAY = 3;
   Config config = Config::uniform();
   TransformOptimizerParams params{};
   TransformOptimizer opt{config};
@@ -35,102 +38,80 @@ protected:
   TransformResult pureDeletionResult(const Lines& initialLines, TransformBoundary boundary) {
     return opt.optimizePureDeletion(initialLines, boundary, params);
   }
+
+  void expectEmittedTopResultsReachGoal(
+      const vector<Result>& bucket,
+      const Lines& initial,
+      CursorPos initialPos,
+      const Lines& goal,
+      const string& context,
+      int& checkedStarts) {
+    if (bucket.empty()) return;
+    checkedStarts++;
+    OptimizerResultChecks::expectTopResultsReplay(
+        *oracle, bucket, initial, initialPos, goal,
+        MAX_RESULTS_PER_START_TO_REPLAY, context);
+  }
 };
 
 unique_ptr<NeovimOracle> TransformOptimizerOutputCorrectness::oracle;
 
 // =============================================================================
-// Stress Tests (random buffers, oracle-verified)
+// Deletion generated properties
 // =============================================================================
 
 // Single-line embedded: PREFIX | EDIT_REGION | SUFFIX on one line
 // Boundary checking works correctly since positions don't shift across lines
-TEST_F(TransformOptimizerOutputCorrectness, SingleLineEmbedded) {
-  RandomGen::seed(42);
-  int passed = 0, total = 0;
-
-  for (int iter = 0; iter < CNT; iter++) {
+TEST_F(TransformOptimizerOutputCorrectness, GeneratedProperty_SingleLineEmbeddedTopResultsReplay) {
+  GeneratedProperty::check({"Transform single-line embedded replay", 42, CNT}, [&](int) {
     auto test = generateRandomSingleLineEmbedded();
     TransformResult res = pureDeletionResult(test.editRegion, test.makeBoundary());
-    string expected = test.expectedAfterDeletion();
+    Lines expected{test.expectedAfterDeletion()};
+    int checkedStarts = 0;
 
     for (size_t i = 0; i < res.resultCount(); i++) {
       const auto& bucket = res.getResults()[i];
       if (bucket.empty()) continue;
-      const Result& r = bucket[0];
 
       CursorPos editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
       CursorPos bufferPos = test.toFullBufferPos(editPos);
 
-      total++;
-      const auto& seq = r.getSequence();
-      auto result = oracle->simulate(test.fullBuffer, bufferPos.line, bufferPos.col, seq.str());
-
-      if (result.lines.flatten() == expected) {
-        passed++;
-      } else {
-        if (total - passed <= 3) {
-          cerr << "FAIL iter=" << iter << " col=" << editPos.col << " seq='" << seq << "'\n"
-               << "  FullBuffer: '" << test.fullBuffer[0] << "'\n"
-               << "  EditRegion: '" << test.editRegion[0] << "'\n"
-               << "  Expected: '" << expected << "'\n"
-               << "  Got: '" << result.lines.flatten() << "'" << endl;
-        }
-      }
+      expectEmittedTopResultsReachGoal(
+          bucket, test.fullBuffer, bufferPos, expected,
+          "single-line embedded", checkedStarts);
     }
-  }
-
-  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+    EXPECT_GT(checkedStarts, 0);
+  });
 }
 
 // Multi-line full buffer deletion (no embedding - tests multi-line sequences work)
-TEST_F(TransformOptimizerOutputCorrectness, MultiLineFullBuffer) {
-  RandomGen::seed(43);
-  int passed = 0, total = 0;
-
-  for (int iter = 0; iter < CNT; iter++) {
+TEST_F(TransformOptimizerOutputCorrectness, GeneratedProperty_MultiLineFullBufferTopResultsReplay) {
+  GeneratedProperty::check({"Transform multi-line full buffer replay", 43, CNT}, [&](int) {
     int numLines = RandomGen::range(2, 3);
     Lines source = randomLines(numLines, 4, 8);
     TransformBoundary boundary(source, {0, 0}, source.endPos());
     TransformResult res = pureDeletionResult(source, boundary);
+    int checkedStarts = 0;
 
     for (size_t i = 0; i < res.resultCount(); i += 2) {
       const auto& bucket = res.getResults()[i];
       if (bucket.empty()) continue;
-      const Result& r = bucket[0];
 
       CursorPos pos = fromFlatIndex(static_cast<int>(i), source);
-
-      total++;
-      const auto& seq = r.getSequence();
-      auto nvim = oracle->simulate(source, pos.line, pos.col, seq.str());
-
-      bool ok = (nvim.lines.size() == 1 && nvim.lines[0].empty()) || nvim.lines.empty();
-      if (ok) {
-        passed++;
-      } else {
-        if (total - passed <= 3) {
-          cerr << "FAIL iter=" << iter << " pos=[" << pos.line << "," << pos.col
-               << "] seq='" << seq << "'\n"
-               << "  Source: " << source << "\n"
-               << "  Result: " << nvim.lines << endl;
-        }
-      }
+      expectEmittedTopResultsReachGoal(
+          bucket, source, pos, Lines{""},
+          "multi-line full buffer", checkedStarts);
     }
-  }
-
-  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+    EXPECT_GT(checkedStarts, 0);
+  });
 }
 
-TEST_F(TransformOptimizerOutputCorrectness, Replacement_SameLength) {
-  RandomGen::seed(44);
-  int passed = 0, total = 0;
-
-  for (int iter = 0; iter < CNT; iter++) {
+TEST_F(TransformOptimizerOutputCorrectness, GeneratedProperty_SameLengthReplacementTopResultsReplay) {
+  GeneratedProperty::check({"Transform same-length replacement replay", 44, CNT}, [&](int) {
     int wordLen = RandomGen::range(5, 9);
     string original = randomWord(wordLen);
     string replacement = randomWord(wordLen);
-    if (original == replacement) continue;
+    if (original == replacement) return;
 
     Lines source = {original};
     Lines goal = {replacement};
@@ -138,169 +119,100 @@ TEST_F(TransformOptimizerOutputCorrectness, Replacement_SameLength) {
     TransformResult res = opt.optimizeTransform(source, goal, boundary, params);
 
     const auto& bucket0 = res.getResults()[0];
-    if (bucket0.empty()) continue;
-    const Result& r = bucket0[0];
-    total++;
-
-    const auto& seq = r.getSequence();
-    auto nvim = oracle->simulate(source, 0, 0, seq.str());
-
-    if (nvim.lines.size() == 1 && nvim.lines[0] == replacement) {
-      passed++;
-    } else {
-      if (total - passed <= 3) {
-        cerr << "FAIL iter=" << iter << " seq='" << seq << "'\n"
-             << "  Original: '" << original << "'\n"
-             << "  Expected: '" << replacement << "'\n"
-             << "  Got: " << nvim.lines << endl;
-      }
-    }
-  }
-
-  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+    int checkedStarts = 0;
+    expectEmittedTopResultsReachGoal(
+        bucket0, source, CursorPos(0, 0), goal,
+        "same-length replacement", checkedStarts);
+    EXPECT_GT(checkedStarts, 0);
+  });
 }
 
 // Multi-line embedded: PREFIX on first line, SUFFIX on last line
 // Tests that cursor positions are consistent across line boundaries with embedding.
 // With full prefix/suffix support, effectiveLines matches fullBuffer exactly,
 // eliminating cursor position divergence after multi-line deletions.
-TEST_F(TransformOptimizerOutputCorrectness, MultiLineEmbedded) {
-  RandomGen::seed(45);
-  int passed = 0, total = 0;
-
-  for (int iter = 0; iter < REDUCED_CNT; iter++) {
+TEST_F(TransformOptimizerOutputCorrectness, GeneratedProperty_MultiLineEmbeddedTopResultsReplay) {
+  GeneratedProperty::check({"Transform multi-line embedded replay", 45, REDUCED_CNT}, [&](int) {
     auto test = generateRandomMultiLineEmbedded();
     TransformResult res = pureDeletionResult(test.editRegion, test.makeBoundary());
-    string expected = test.expectedAfterDeletion();
+    Lines expected{test.expectedAfterDeletion()};
+    int checkedStarts = 0;
 
     // Test a subset of positions (every 4th to reduce test time)
     for (size_t i = 0; i < res.resultCount(); i += 4) {
       const auto& bucket = res.getResults()[i];
       if (bucket.empty()) continue;
-      const Result& r = bucket[0];
 
       CursorPos editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
       CursorPos bufferPos = test.toFullBufferPos(editPos);
 
-      total++;
-      const auto& seq = r.getSequence();
-      auto nvim = oracle->simulate(test.fullBuffer, bufferPos.line, bufferPos.col, seq.str());
-
-      if (nvim.lines.flatten() == expected) {
-        passed++;
-      } else {
-        if (total - passed <= 3) {
-          cerr << "FAIL iter=" << iter << " editPos=[" << editPos.line << "," << editPos.col
-               << "] bufferPos=[" << bufferPos.line << "," << bufferPos.col << "] seq='" << seq << "'\n"
-               << "  FullBuffer: " << test.fullBuffer << "\n"
-               << "  EditRegion: " << test.editRegion << "\n"
-               << "  Expected: '" << expected << "'\n"
-               << "  Got: '" << nvim.lines.flatten() << "'" << endl;
-        }
-      }
+      expectEmittedTopResultsReachGoal(
+          bucket, test.fullBuffer, bufferPos, expected,
+          "multi-line embedded", checkedStarts);
     }
-  }
-
-  // With full prefix/suffix support, expect 100% pass rate
-  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+    EXPECT_GT(checkedStarts, 0);
+  });
 }
 
 // =============================================================================
 // Change Tests (non-empty goalLines, oracle-verified typing path)
 // =============================================================================
 
-// Single-line change: random initial and goal content, full-buffer boundary
-TEST_F(TransformOptimizerOutputCorrectness, SingleLine_Change) {
-  RandomGen::seed(50);
-  int passed = 0, total = 0;
-
-  for (int iter = 0; iter < CNT; iter++) {
+// Single-line change: generated initial and goal content, full-buffer boundary
+TEST_F(TransformOptimizerOutputCorrectness, GeneratedProperty_SingleLineChangeTopResultsReplay) {
+  GeneratedProperty::check({"Transform single-line change replay", 50, CNT}, [&](int) {
     int initLen = RandomGen::range(5, 8);
     int goalLen = RandomGen::range(3, 7);
     Lines source = {randomLine(initLen)};
     Lines goal = {randomLine(goalLen)};
-    if (source == goal) continue;
+    if (source == goal) return;
 
     TransformBoundary boundary(source, {0, 0}, source.endPos());
     TransformResult res = opt.optimizeTransform(source, goal, boundary, params);
+    int checkedStarts = 0;
 
     for (size_t i = 0; i < res.resultCount(); i++) {
       const auto& bucket = res.getResults()[i];
       if (bucket.empty()) continue;
-      const Result& r = bucket[0];
 
       CursorPos pos = fromFlatIndex(static_cast<int>(i), source);
-
-      total++;
-      const auto& seq = r.getSequence();
-      auto nvim = oracle->simulate(source, pos.line, pos.col, seq.str());
-
-      if (nvim.lines == goal) {
-        passed++;
-      } else {
-        if (total - passed <= 3) {
-          cerr << "FAIL iter=" << iter << " pos=[" << pos.line << "," << pos.col
-               << "] seq='" << seq << "'\n"
-               << "  Source: " << source << "\n"
-               << "  Goal: " << goal << "\n"
-               << "  Got: " << nvim.lines << endl;
-        }
-      }
+      expectEmittedTopResultsReachGoal(
+          bucket, source, pos, goal,
+          "single-line change", checkedStarts);
     }
-  }
-
-  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+    EXPECT_GT(checkedStarts, 0);
+  });
 }
 
 // Multi-line change: different source/goal content, full-buffer boundary
-TEST_F(TransformOptimizerOutputCorrectness, MultiLine_FullBufferChange) {
+TEST_F(TransformOptimizerOutputCorrectness, GeneratedProperty_MultiLineFullBufferChangeTopResultsReplay) {
   const int NUM_ITERATIONS = 3;  // Change path is expensive (~1s/iter at 50k node cap)
-  RandomGen::seed(51);
-  int passed = 0, total = 0;
-
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
+  GeneratedProperty::check({"Transform multi-line full-buffer change replay", 51, NUM_ITERATIONS}, [&](int) {
     int numLines = RandomGen::range(2, 3);
     Lines source = randomLines(numLines, 4, 8);
     Lines goal = randomLines(numLines, 4, 8);
-    if (source == goal) continue;
+    if (source == goal) return;
 
     TransformBoundary boundary(source, {0, 0}, source.endPos());
     TransformResult res = opt.optimizeTransform(source, goal, boundary, params);
+    int checkedStarts = 0;
 
     for (size_t i = 0; i < res.resultCount(); i += 4) {
       const auto& bucket = res.getResults()[i];
       if (bucket.empty()) continue;
-      const Result& r = bucket[0];
 
       CursorPos pos = fromFlatIndex(static_cast<int>(i), source);
-
-      total++;
-      const auto& seq = r.getSequence();
-      auto nvim = oracle->simulate(source, pos.line, pos.col, seq.str());
-
-      if (nvim.lines == goal) {
-        passed++;
-      } else {
-        if (total - passed <= 3) {
-          cerr << "FAIL iter=" << iter << " pos=[" << pos.line << "," << pos.col
-               << "] seq='" << seq << "'\n"
-               << "  Source: " << source << "\n"
-               << "  Goal: " << goal << "\n"
-               << "  Got: " << nvim.lines << endl;
-        }
-      }
+      expectEmittedTopResultsReachGoal(
+          bucket, source, pos, goal,
+          "multi-line full-buffer change", checkedStarts);
     }
-  }
-
-  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+    EXPECT_GT(checkedStarts, 0);
+  });
 }
 
 // Multi-line embedded change: prefix/suffix around edit region with different goal content
-TEST_F(TransformOptimizerOutputCorrectness, MultiLine_EmbeddedChange) {
-  RandomGen::seed(52);
-  int passed = 0, total = 0;
-
-  for (int iter = 0; iter < REDUCED_CNT; iter++) {
+TEST_F(TransformOptimizerOutputCorrectness, GeneratedProperty_MultiLineEmbeddedChangeTopResultsReplay) {
+  GeneratedProperty::check({"Transform multi-line embedded change replay", 52, REDUCED_CNT}, [&](int) {
     auto test = generateRandomMultiLineEmbedded();
 
     // Generate goal lines: same count as editRegion, with possible indentation
@@ -308,7 +220,7 @@ TEST_F(TransformOptimizerOutputCorrectness, MultiLine_EmbeddedChange) {
     Lines goal = randomLines(numGoalLines, 4, 8);
 
     // Skip if same as edit region (unlikely but possible)
-    if (goal == test.editRegion) continue;
+    if (goal == test.editRegion) return;
 
     TransformResult res = opt.optimizeTransform(test.editRegion, goal, test.makeBoundary(), params);
 
@@ -321,47 +233,20 @@ TEST_F(TransformOptimizerOutputCorrectness, MultiLine_EmbeddedChange) {
       if (i == numGoalLines - 1) line += test.suffix;
       expectedFull.push_back(line);
     }
-    string expected = expectedFull.flatten();
+    int checkedStarts = 0;
 
     // Test a subset of positions (every 4th to reduce test time)
     for (size_t i = 0; i < res.resultCount(); i += 4) {
       const auto& bucket = res.getResults()[i];
       if (bucket.empty()) continue;
-      const Result& r = bucket[0];
 
       CursorPos editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
       CursorPos bufferPos = test.toFullBufferPos(editPos);
 
-      total++;
-      const auto& seq = r.getSequence();
-
-      // Build the full buffer with goal content for oracle simulation
-      Lines fullWithGoal;
-      for (int j = 0; j < numGoalLines; j++) {
-        string line;
-        if (j == 0) line += test.prefix;
-        line += test.editRegion[j];
-        if (j == numGoalLines - 1) line += test.suffix;
-        fullWithGoal.push_back(line);
-      }
-
-      auto nvim = oracle->simulate(test.fullBuffer, bufferPos.line, bufferPos.col, seq.str());
-
-      if (nvim.lines.flatten() == expected) {
-        passed++;
-      } else {
-        if (total - passed <= 3) {
-          cerr << "FAIL iter=" << iter << " editPos=[" << editPos.line << "," << editPos.col
-               << "] bufferPos=[" << bufferPos.line << "," << bufferPos.col << "] seq='" << seq << "'\n"
-               << "  FullBuffer: " << test.fullBuffer << "\n"
-               << "  EditRegion: " << test.editRegion << "\n"
-               << "  Goal: " << goal << "\n"
-               << "  Expected: '" << expected << "'\n"
-               << "  Got: '" << nvim.lines.flatten() << "'" << endl;
-        }
-      }
+      expectEmittedTopResultsReachGoal(
+          bucket, test.fullBuffer, bufferPos, expectedFull,
+          "multi-line embedded change", checkedStarts);
     }
-  }
-
-  EXPECT_EQ(passed, total) << passed << "/" << total << " passed";
+    EXPECT_GT(checkedStarts, 0);
+  });
 }

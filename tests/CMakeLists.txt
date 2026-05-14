@@ -24,6 +24,14 @@ FetchContent_Declare(
   GIT_TAG        v3.11.3
 )
 
+if(VIMF_ENABLE_FUZZTEST)
+  FetchContent_Declare(
+    fuzztest
+    GIT_REPOSITORY https://github.com/google/fuzztest.git
+    GIT_TAG        2026-02-19
+  )
+endif()
+
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 set(MSGPACK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(MSGPACK_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -34,6 +42,10 @@ set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(googletest msgpack-c googlebenchmark nlohmann_json)
+
+if(VIMF_ENABLE_FUZZTEST)
+  FetchContent_MakeAvailable(fuzztest)
+endif()
 
 # =============================================================================
 # Shared test utilities library
@@ -46,6 +58,7 @@ FetchContent_MakeAvailable(googletest msgpack-c googlebenchmark nlohmann_json)
 add_library(test_utils STATIC
   Utils/EditTestGenerators.cpp
   Utils/NeovimOracle.cpp
+  Utils/OracleReplay.cpp
   Utils/SeedManager.cpp
   Utils/TestUtils.cpp
   Operator/TestHelpers.cpp
@@ -145,6 +158,88 @@ target_link_libraries(vimficiency_tests
 
 include(GoogleTest)
 gtest_discover_tests(vimficiency_tests)
+
+# =============================================================================
+# Fuzz/property tests binary
+# =============================================================================
+# Opt-in only. Gtest-compatible mode is CTest-discoverable; coverage-guided
+# modes are manual because discovery executes the fuzz binary during the build.
+
+if(VIMF_ENABLE_FUZZTEST)
+  if(FUZZTEST_FUZZING_MODE AND COMMAND fuzztest_setup_fuzzing_flags)
+    fuzztest_setup_fuzzing_flags()
+  endif()
+
+  add_executable(vimficiency_fuzz_tests
+    Fuzz/ParserPayloadFuzzTest.cpp
+    ${PROJECT_SOURCE_DIR}/src/LuaExports/Payload.cpp
+  )
+
+  target_link_libraries(vimficiency_fuzz_tests
+    PRIVATE
+      vimficiency_core
+  )
+
+  link_fuzztest(vimficiency_fuzz_tests)
+  if(NOT FUZZTEST_FUZZING_MODE AND NOT FUZZTEST_COMPATIBILITY_MODE STREQUAL "libfuzzer")
+    gtest_discover_tests(vimficiency_fuzz_tests)
+  endif()
+endif()
+
+# =============================================================================
+# Raw byte fuzzers
+# =============================================================================
+# Opt-in libFuzzer targets for hostile byte inputs. These are intentionally not
+# CTest-discovered; run them manually with libFuzzer flags in a dedicated build.
+
+if(VIMF_ENABLE_LIBFUZZER)
+  function(add_vimficiency_raw_fuzzer target)
+    add_executable(${target} ${ARGN})
+    target_link_libraries(${target}
+      PRIVATE
+        vimficiency_core
+    )
+    target_compile_options(${target}
+      PRIVATE
+        -fsanitize=fuzzer-no-link,address,undefined
+        -fno-omit-frame-pointer
+    )
+    target_link_options(${target}
+      PRIVATE
+        -fsanitize=fuzzer,address,undefined
+    )
+  endfunction()
+
+  add_vimficiency_raw_fuzzer(vimficiency_fuzz_payload
+    Fuzz/RawPayloadFuzzer.cpp
+    ${PROJECT_SOURCE_DIR}/src/LuaExports/Payload.cpp
+  )
+
+  add_vimficiency_raw_fuzzer(vimficiency_fuzz_sequence_parser
+    Fuzz/RawSequenceParserFuzzer.cpp
+  )
+
+  add_vimficiency_raw_fuzzer(vimficiency_fuzz_movement_parser
+    Fuzz/RawMovementParserFuzzer.cpp
+  )
+
+  add_vimficiency_raw_fuzzer(vimficiency_fuzz_edit_parser
+    Fuzz/RawEditParserFuzzer.cpp
+  )
+
+  add_vimficiency_raw_fuzzer(vimficiency_fuzz_snapshot
+    Fuzz/RawSnapshotFuzzer.cpp
+  )
+
+  add_custom_target(vimficiency_raw_fuzzers
+    DEPENDS
+      vimficiency_fuzz_payload
+      vimficiency_fuzz_sequence_parser
+      vimficiency_fuzz_movement_parser
+      vimficiency_fuzz_edit_parser
+      vimficiency_fuzz_snapshot
+  )
+endif()
 
 # =============================================================================
 # Benchmarks binary

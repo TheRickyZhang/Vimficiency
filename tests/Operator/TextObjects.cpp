@@ -260,6 +260,13 @@ TEST_F(TextObjectsTest, Diw_OnWhitespace) {
   EXPECT_EQ(result.lines[0], "helloworld");
 }
 
+TEST_F(TextObjectsTest, Diw_OnTrailingWhitespaceBeforeNextLine) {
+  Lines lines = {"abc ", " def"};
+  auto result = oracle_->simulate(lines, 0, 3, "diw");
+
+  EXPECT_EQ(result.lines, Lines({"abc", " def"}));
+}
+
 TEST_F(TextObjectsTest, Daw_WithTrailingWhitespace) {
   Lines lines = {"hello   world"};
   auto result = oracle_->simulate(lines, 0, 0, "daw");  // Cursor on 'h'
@@ -330,6 +337,17 @@ TEST_F(TextObjectsTest, TextObjectRange_InnerWord) {
 
   // diw should NOT reach the boundaries (only selects "def" at cols 4-6)
   EXPECT_NE(result.begin, POSITION_OUTSIDE_BOUNDARY);
+}
+
+TEST_F(TextObjectsTest, TextObjectRange_InnerWordWhitespaceStaysOnLine) {
+  Lines lines = {"abc ", " def"};
+
+  CharRange result = VimCore::textObjectRange(
+      CursorPos(0, 3), lines, true, false,
+      0, 0, false, false);
+
+  EXPECT_EQ(result.begin, CursorPos(0, 3));
+  EXPECT_EQ(result.end, CursorPos(0, 4));
 }
 
 TEST_F(TextObjectsTest, TextObjectRange_AroundWord) {

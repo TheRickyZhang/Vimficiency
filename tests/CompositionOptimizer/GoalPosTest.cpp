@@ -16,6 +16,7 @@
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
+#include "Utils/OracleReplay.h"
 
 using namespace std;
 
@@ -28,19 +29,12 @@ protected:
   static void SetUpTestSuite() { oracle = make_unique<NeovimOracle>(); }
   static void TearDownTestSuite() { oracle.reset(); }
 
-  // Replay the result through Neovim and assert both buffer and cursor land
-  // where the optimizer claims they will.
   void verifyGoalReached(
       const Result& result, const Lines& initial, CursorPos initialPos,
       const Lines& goal, CursorPos goalPos, const string& context) {
-    SimulationResult nvim = oracle->simulate(
-        initial, initialPos.line, initialPos.col, result.getSequence().str());
-    EXPECT_EQ(nvim.lines, goal)
-        << "Lines mismatch (" << context << ") seq='" << result.getSequence() << "'";
-    EXPECT_EQ(nvim.row, goalPos.line)
-        << "Row mismatch (" << context << ") seq='" << result.getSequence() << "'";
-    EXPECT_EQ(nvim.col, goalPos.col)
-        << "Col mismatch (" << context << ") seq='" << result.getSequence() << "'";
+    EXPECT_TRUE(OracleReplay::matches(
+        *oracle, initial, initialPos, result.getSequence().str(),
+        goal, goalPos, Mode::Normal, context));
   }
 };
 

@@ -104,18 +104,18 @@ CursorPos wordEndpointToRangeEnd(CursorPos endpoint,
 // Helper to compute whitespace run range. Always returns valid position.
 // Used for iw/iW when cursor on whitespace
 static CharRange computeWhitespaceRun(CursorPos cursor, const Lines& lines) {
+  const string& line = lines[cursor.line];
+  if (line.empty()) return CharRange(cursor, cursor);
+
   CursorPos start = cursor;
-  CursorPos next = lines.getPrevPos(start);
-  while (next != start && isBlank(lines.get(next))) {
-    start = next;
-    next = lines.getPrevPos(start);
+  while (start.col > 0 && isBlank(line[start.col - 1])) {
+    start.col--;
   }
 
   CursorPos end = cursor;
-  next = lines.getNextPos(end);
-  while (next != end && isBlank(lines.get(next))) {
-    end = next;
-    next = lines.getNextPos(end);
+  while (end.col + 1 < static_cast<int>(line.size()) &&
+         isBlank(line[end.col + 1])) {
+    end.col++;
   }
   return CharRange(start, VimCore::onePastOnSameLine(lines, end));
 }
@@ -223,8 +223,8 @@ CharRange textObjectRange(CursorPos cursor, const Lines& lines, bool isInner,
   if (isInner) {
     // diw/diW: (Backward, WordEdge) + (Forward, WordEdge)
     if (cursorOnWhitespace) {
-      // Whitespace run doesn't use motionWordEndpoint, so no line crossing
-      // possible But we still need to check column boundaries on the result
+      // Whitespace run doesn't use motionWordEndpoint, so check column
+      // boundaries on the result directly.
       CharRange wsRange = computeWhitespaceRun(cursor, lines);
       start = wsRange.begin;
       end = wsRange.end;
