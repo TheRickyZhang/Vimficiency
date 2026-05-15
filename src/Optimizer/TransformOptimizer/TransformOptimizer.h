@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <span>
 #include <vector>
 
@@ -21,7 +22,8 @@ struct TransformResult : BaseOptimizerResult<std::vector<Result>> {
   // results is a 2D vector: one bucket of Results per starting position.
   TransformResult(std::vector<std::vector<Result>> results, TransformSearchStats stats,
              const Lines& initialLines, int bufferBeginLine = 0,
-             int bufferBeginCol = 0, CursorPos goalPos = {0, 0});
+             int bufferBeginCol = 0, CursorPos goalPos = {0, 0},
+             std::vector<std::vector<CursorPos>> resultGoalPositions = {});
 
   const TransformSearchStats& getStats() const { return stats_; }
 
@@ -49,23 +51,20 @@ struct TransformResult : BaseOptimizerResult<std::vector<Result>> {
 
   const CursorPos& getGoalPos() const { return goalPos_; }
 
-  // Returns goal position for a given starting position.
-  // Pure deletions: per-start goal from goalPosByStart_ (with fallback to goalPos_).
-  // Regular edits: shared goalPos_.
-  CursorPos goalPosAt(int bufferLine, int bufferCol) const {
-    if (!goalPosByStart_.empty()) {
+  // Returns the post-edit cursor for a result alternative at this start.
+  CursorPos goalPosAt(
+      int bufferLine, int bufferCol, std::size_t resultIndex = 0) const {
+    if (!resultGoalPositions_.empty()) {
       int idx = resultIndexAt(bufferLine, bufferCol);
-      if (idx >= 0 && idx < static_cast<int>(goalPosByStart_.size()))
-        return goalPosByStart_[static_cast<size_t>(idx)];
+      if (idx >= 0 && idx < static_cast<int>(resultGoalPositions_.size())) {
+        const auto& bucket = resultGoalPositions_[static_cast<size_t>(idx)];
+        if (resultIndex < bucket.size()) return bucket[resultIndex];
+      }
     }
     return goalPos_;
   }
 
-  bool hasPerStartGoals() const { return !goalPosByStart_.empty(); }
-
-  void setGoalPosByStart(std::vector<CursorPos> goals) {
-    goalPosByStart_ = std::move(goals);
-  }
+  bool hasResultGoals() const { return !resultGoalPositions_.empty(); }
 
   // Flat result index for a buffer position, or -1 if out of range.
   int resultIndexAt(int bufferLine, int bufferCol) const {
@@ -84,7 +83,7 @@ private:
   int beginLine_ = 0;
   int beginCol_ = 0;
   std::vector<int> lineBaseIndex_;
-  std::vector<CursorPos> goalPosByStart_;
+  std::vector<std::vector<CursorPos>> resultGoalPositions_;
   std::vector<CursorPos> startPositions_;
 
   friend std::ostream& operator<<(std::ostream& os, const TransformResult& transformResult);

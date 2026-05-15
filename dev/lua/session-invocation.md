@@ -41,7 +41,7 @@ vimficiency finished [a] (0,0) -> (2,2)
 ### Sequence Formatting
 
 Sequences are tokenized into logical units using `SequenceParser`:
-- Motions: `w`, `3j`, `fa;`, `<C-d>`
+- Motions: `w`, `3j`, `fa`, `;`, `<C-d>`
 - Edit commands: `ciw`, `dd`, `D`, `3rx`
 - Typed text: Characters typed after entering insert mode
 - Special keys: `<Esc>`

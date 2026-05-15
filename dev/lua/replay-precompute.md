@@ -80,19 +80,21 @@ step we first tokenize it. Three tiers:
 3. **Per-character Lua fallback** — last resort; keeps `<Key>` forms
    intact.
 
-Two post-processing passes matter for replay:
+Two normalization rules matter for replay:
 
-- **Merge "needs-following-key" tokens.** `f`, `F`, `t`, `T`, `r`, `m`,
-  `'`, `` ` ``, `@` are all commands that consume exactly one more
-  keystroke. If we fed them as separate tokens and sampled in between,
-  Neovim would wait for the next key — blocking the event loop. So we
-  glue them: `f` + `;` → `"f;"`.
+- **Keep feedable command units intact.** Commands that consume exactly
+  one following keystroke (`f`, `F`, `t`, `T`, `r`, `m`, `'`, `` ` ``,
+  `@`) must include that key in the token, so `f;` remains one token when
+  semicolon is the find target. Char-find repeats stay separate replay
+  steps (`fa;` → `fa`, `;`) so Neovim carries find state between tokens.
+  The Lua character fallback applies the same feedable-unit rule when
+  both C++ tokenizers reject the sequence.
 - **Chunk plain insert-mode text into 4-char segments** for nicer animation
   (`"hello world"` → `["hell", "o wo", "rld"]`). `<...>` key notation is
   kept intact as its own step, because captured insert-mode spaces and
   returns arrive from `keytrans` as feedable forms like `<Space>` and `<CR>`.
 
-Both passes are visible via `M._debug_tokenize_for_animation` and
+Both rules are visible via `M._debug_tokenize_for_animation` and
 exercised by `tests/lua/simulate/tokenize.lua`.
 
 ## Feeding tokens: the drain problem
@@ -255,7 +257,7 @@ three reasons:
 3. Future tokens in the same sequence may enter modal state; keeping
    the yield scaffold in place means we don't have to re-introduce it.
 
-In practice this means pure-Normal motions (`j`, `w`, `$`, `f;`, `de`)
+In practice this means pure-Normal motions (`j`, `w`, `$`, `fa`, `;`, `de`)
 are deterministically drained, which is exactly the class of tokens
 the bug was dropping.
 

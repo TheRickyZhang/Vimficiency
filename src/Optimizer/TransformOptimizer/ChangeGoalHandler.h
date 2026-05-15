@@ -70,7 +70,8 @@ struct ChangeGoalHandler {
                       const Lines& initialLines, const Lines& goalLines,
                       const TransformOptimizerParams& params,
                       int bufferBeginLine, int bufferBeginCol, CursorPos goalPos,
-                      TransformSearchStats stats);
+                      TransformSearchStats stats,
+                      std::vector<std::vector<CursorPos>>&& resultGoalPositions);
 
   // Goal emission methods — return states for the dispatcher to emit.
   // Only called in change mode (not pure deletion).

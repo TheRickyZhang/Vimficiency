@@ -28,6 +28,7 @@ string formatSnapshotParseError(const SnapshotParseError& error) {
       return "Bad navContext";
   }
   assert(false && "Unhandled SnapshotParseErrorKind");
+  return "unknown snapshot parse error";
 }
 
 expected<Snapshot, SnapshotParseError> parseSnapshot(string_view bytes) {

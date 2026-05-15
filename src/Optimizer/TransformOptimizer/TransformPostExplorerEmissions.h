@@ -15,9 +15,15 @@
 #include "Keyboard/Config.h"
 #include "Optimizer/Result.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizerParams.h"
+#include "Types/CursorPos.h"
 #include "Types/Lines.h"
 
 namespace TransformPostExplorer {
+
+struct VisualDeleteResult {
+  Result result;
+  CursorPos goalPos;
+};
 
 // Emits `r{char}` / `Nr{char}` for single-line same-length replacement diffs.
 std::optional<Result> tryReplacement(
@@ -34,7 +40,7 @@ std::optional<Result> tryReplacement(
 // `effectiveLines` is the prefix+content+suffix view (matches what the
 // optimizer's main loop sees and what `enumerateDepth1DeletionStructurals`
 // constructs).
-std::optional<Result> tryVisualDelete(
+std::optional<VisualDeleteResult> tryVisualDelete(
     const Lines& effectiveLines,
     int leftColOffset,
     int rightColOffset,

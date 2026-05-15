@@ -112,6 +112,26 @@ TEST_F(TransformOptimizer_ManualTest, Boundary_VisualDeleteFallbackRespectsBound
     EXPECT_EQ(nvim.mode, Mode::Normal)
         << "Sequence '" << seq.str() << "' did not return to Normal mode";
   });
+
+  bool sawVisualDelete = false;
+  for (CursorPos slicePos : res.startPositions()) {
+    auto bucket = res.resultsAt(slicePos.line, slicePos.col);
+    for (size_t i = 0; i < bucket.size(); i++) {
+      const auto& seq = bucket[i].getSequence();
+      if (seq.empty() || seq.view()[0] != 'v') continue;
+      sawVisualDelete = true;
+
+      int fullCol = slicePos.line == 0 ? slicePos.col + initialPos.col : slicePos.col;
+      CursorPos fullPos(slicePos.line + initialPos.line, fullCol);
+      SimulationResult nvim = oracle->simulate(
+          fullBuffer, fullPos.line, fullPos.col, seq.str());
+      CursorPos localGoal = res.goalPosAt(slicePos.line, slicePos.col, i);
+      CursorPos fullGoal(localGoal.line + initialPos.line, localGoal.col);
+      EXPECT_EQ(CursorPos(nvim.row, nvim.col), fullGoal)
+          << "Sequence '" << seq.str() << "' recorded the wrong visual-delete cursor";
+    }
+  }
+  EXPECT_TRUE(sawVisualDelete);
 }
 
 TEST_F(TransformOptimizer_ManualTest, BackwardWordDeleteFromCol0_ReanchorsToFirstNonBlank) {

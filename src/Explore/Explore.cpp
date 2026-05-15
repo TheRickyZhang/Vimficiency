@@ -154,18 +154,23 @@ bool sameResultList(const vector<Result>& a, const vector<Result>& b) {
 bool sameTransformResult(const TransformResult& a, const TransformResult& b) {
   if (a.getGoalPos() != b.getGoalPos()) return false;
   if (a.startPositions() != b.startPositions()) return false;
-  if (a.hasPerStartGoals() != b.hasPerStartGoals()) return false;
-  for (CursorPos start : a.startPositions()) {
-    if (a.goalPosAt(start.line, start.col) !=
-        b.goalPosAt(start.line, start.col)) {
-      return false;
-    }
-  }
+  if (a.hasResultGoals() != b.hasResultGoals()) return false;
   const auto& ar = a.getResults();
   const auto& br = b.getResults();
   if (ar.size() != br.size()) return false;
   for (size_t i = 0; i < ar.size(); ++i) {
     if (!sameResultList(ar[i], br[i])) return false;
+  }
+  for (CursorPos start : a.startPositions()) {
+    auto aBucket = a.resultsAt(start.line, start.col);
+    auto bBucket = b.resultsAt(start.line, start.col);
+    if (aBucket.size() != bBucket.size()) return false;
+    for (size_t j = 0; j < aBucket.size(); j++) {
+      if (a.goalPosAt(start.line, start.col, j) !=
+          b.goalPosAt(start.line, start.col, j)) {
+        return false;
+      }
+    }
   }
   return true;
 }

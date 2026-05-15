@@ -38,9 +38,11 @@ BufferIndex::BufferIndex(const Lines& buffer) {
       bool prevIsWord = isSmallWordChar(prev);
       bool currIsBigWord = isBigWordChar(curr);
       bool prevIsBigWord = isBigWordChar(prev);
+      bool currIsNonBlank = !isBlank(curr);
+      bool prevIsBlank = col == 0 || isBlank(prev);
 
       // Word/WORD BEGIN: non-blank where previous was blank or different type
-      if (currIsWord && (col == 0 || isBlank(prev) || !prevIsWord)) {
+      if (currIsNonBlank && (prevIsBlank || currIsWord != prevIsWord)) {
         get(LandingType::WordBegin).emplace_back(line, col);
       }
       if (currIsBigWord && (col == 0 || !prevIsBigWord)) {
@@ -50,7 +52,7 @@ BufferIndex::BufferIndex(const Lines& buffer) {
       // Word/WORD END: non-blank where next is blank or different type
       bool nextIsWord = isSmallWordChar(next);
       bool nextIsBigWord = isBigWordChar(next);
-      if (currIsWord && (next == '\0' || isBlank(next) || !nextIsWord)) {
+      if (currIsNonBlank && (next == '\0' || isBlank(next) || currIsWord != nextIsWord)) {
         get(LandingType::WordEnd).emplace_back(line, col);
       }
       if (currIsBigWord && (next == '\0' || !nextIsBigWord)) {

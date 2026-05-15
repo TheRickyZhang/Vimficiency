@@ -184,11 +184,12 @@ Interactive Explore's larger state-machine units are **phases** (`Navigate`,
 - `:Vimfy focus <N>` / `:Vimfy escape` toggle the single-buffer view
 - Uses virtual header lines above each replay buffer for progress, mode, and a
   wrapped/highlighted sequence display
-- Uses C++ tokenizer with character fallback for unsupported motions, then
-  merges feedable pairs like `f;` / `rX` before precompute
+- Uses C++ tokenizer with character fallback for unsupported motions; tokens
+  keep feedable command units like `f;` / `rX` intact while leaving repeats
+  like `;` as separate replay steps
 
 Replay verification now lives in repo-native Lua tests:
-- `tests/lua/simulate/tokenize.lua` covers tokenization / feedable-token merging
+- `tests/lua/simulate/tokenize.lua` covers tokenization / feedable replay steps
 - `tests/lua/simulate/integration.lua` covers the async replay oracle and UI rendering
 
 ## Testing

@@ -428,9 +428,11 @@ optimizeImpl(
     const TransformResult& transformResult = ctx.edits[editsCompleted].transformResult;
     auto editAlternatives = transformResult.resultsAt(pos.line, pos.col);
 
-    for (const Result& res : editAlternatives) {
-      CursorPos editGoalPos = transformResult.goalPosAt(pos.line, pos.col);
-      if (transformResult.hasPerStartGoals()) {
+    for (size_t resultIndex = 0; resultIndex < editAlternatives.size(); resultIndex++) {
+      const Result& res = editAlternatives[resultIndex];
+      CursorPos editGoalPos = transformResult.goalPosAt(
+          pos.line, pos.col, resultIndex);
+      if (transformResult.hasResultGoals()) {
         editGoalPos = clampGoalPosToLines(editGoalPos, ctx.getLinesAfter(editsCompleted + 1));
       }
       debug("  edit found at", pos, "seq:", "\"" + res.getSequence().str() + "\"",

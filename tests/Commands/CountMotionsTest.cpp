@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 #include "Optimizer/NavOptimizer/BufferIndex.h"
 #include "Optimizer/NavOptimizer/CountableMovementPair.h"
 #include "Types/NavContext.h"
@@ -27,6 +29,19 @@ TEST(BufferIndexTest, EmptyBuffer) {
   Lines empty = {};
   BufferIndex idx(empty);
   // Should not crash - just have empty position lists
+}
+
+TEST(BufferIndexTest, SmallWordLandingsIncludePunctuationRuns) {
+  Lines lines = {"aa.,bb cc"};
+  BufferIndex idx(lines);
+
+  const auto& begins = idx.getPositions(LandingType::WordBegin);
+  EXPECT_NE(find(begins.begin(), begins.end(), Pos(0, 2)), begins.end())
+      << "small-word begins must include punctuation runs";
+
+  const auto& ends = idx.getPositions(LandingType::WordEnd);
+  EXPECT_NE(find(ends.begin(), ends.end(), Pos(0, 3)), ends.end())
+      << "small-word ends must include punctuation runs";
 }
 
 // =============================================================================

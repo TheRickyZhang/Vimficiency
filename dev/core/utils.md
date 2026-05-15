@@ -27,7 +27,7 @@ std::string formatSequenceForDisplay(std::string_view seq);
 ```
 
 **Tokenization**: Uses `parseSequenceStrings()` from `SequenceParser.h` which splits sequences into:
-- Motions: `w`, `3j`, `fa;`, `<C-d>`
+- Motions: `w`, `3j`, `fa`, `;`, `<C-d>`
 - Edits/Changes: `ciw`, `dd`, `D`, `s`
 - Typed text: Characters typed in insert mode (between change command and `<Esc>`)
 - Special keys: `<Esc>`

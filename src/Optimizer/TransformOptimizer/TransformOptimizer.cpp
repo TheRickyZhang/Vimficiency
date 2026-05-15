@@ -7,6 +7,7 @@
 #include "TransformOptimizer.h"
 
 #include <algorithm>
+#include <cassert>
 #include <vector>
 
 #include "ChangeGoalHandler.h"
@@ -25,12 +26,23 @@ using namespace std;
 
 TransformResult::TransformResult(vector<vector<Result>> results, TransformSearchStats stats,
                        const Lines& initialLines, int bufferBeginLine,
-                       int bufferBeginCol, CursorPos goalPos)
+                       int bufferBeginCol, CursorPos goalPos,
+                       vector<vector<CursorPos>> resultGoalPositions)
     : BaseOptimizerResult(std::move(results)),
       stats_(std::move(stats)),
       goalPos_(goalPos),
       beginLine_(bufferBeginLine),
-      beginCol_(bufferBeginCol) {
+      beginCol_(bufferBeginCol),
+      resultGoalPositions_(std::move(resultGoalPositions)) {
+  if (!resultGoalPositions_.empty()) {
+    assert(resultGoalPositions_.size() == results_.size() &&
+           "result cursor matrix must match transform result buckets");
+    for (size_t i = 0; i < results_.size(); i++) {
+      assert(resultGoalPositions_[i].size() == results_[i].size() &&
+             "each result cursor bucket must match result count");
+    }
+  }
+
   lineBaseIndex_.reserve(initialLines.size());
   int cumSum = 0;
   for (size_t i = 0; i < initialLines.size(); i++) {
@@ -57,9 +69,31 @@ TransformResult::TransformResult(vector<vector<Result>> results, TransformSearch
 
   // Sort each bucket by cost (best first) — pop order is approximate due to
   // inadmissible heuristic and suffix-cache emissions.
-  for (auto& bucket : results_) {
-    std::sort(bucket.begin(), bucket.end(),
-              [](const Result& a, const Result& b) { return a.getCost() < b.getCost(); });
+  for (size_t i = 0; i < results_.size(); i++) {
+    auto& bucket = results_[i];
+    if (resultGoalPositions_.empty()) {
+      std::sort(bucket.begin(), bucket.end(),
+                [](const Result& a, const Result& b) { return a.getCost() < b.getCost(); });
+      continue;
+    }
+
+    auto& goalBucket = resultGoalPositions_[i];
+    vector<size_t> order(bucket.size());
+    for (size_t j = 0; j < order.size(); j++) order[j] = j;
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+      return bucket[a].getCost() < bucket[b].getCost();
+    });
+
+    vector<Result> sortedBucket;
+    vector<CursorPos> sortedGoals;
+    sortedBucket.reserve(bucket.size());
+    sortedGoals.reserve(goalBucket.size());
+    for (size_t idx : order) {
+      sortedBucket.push_back(std::move(bucket[idx]));
+      sortedGoals.push_back(goalBucket[idx]);
+    }
+    bucket = std::move(sortedBucket);
+    goalBucket = std::move(sortedGoals);
   }
 }
 
@@ -86,24 +120,14 @@ void maybeMarkStartExhausted(const vector<int>& pendingByStart,
 }
 
 struct DeletionGoalHandler {
-  const Lines& effectiveLines;
-  int leftColOffset;
-  int rightColOffset;
-  const Config& config;
-  const TransformBoundary& transformBoundary;
   const string& preSuf;
 
-  DeletionGoalHandler(const Lines& effectiveLines, int leftColOffset, int rightColOffset,
-                      double, const Config& config,
-                      const TransformBoundary& transformBoundary,
+  DeletionGoalHandler(const Lines&, int, int,
+                      double, const Config&,
+                      const TransformBoundary&,
                       const Lines&, const Lines&,
                       const string&, const string&, const string& preSuf)
-      : effectiveLines(effectiveLines),
-        leftColOffset(leftColOffset),
-        rightColOffset(rightColOffset),
-        config(config),
-        transformBoundary(transformBoundary),
-        preSuf(preSuf) {}
+      : preSuf(preSuf) {}
 
   bool isGoalReached(const Lines& lines) const {
     return lines.size() == 1 && lines[0] == preSuf;
@@ -114,25 +138,13 @@ struct DeletionGoalHandler {
                                       const vector<char>&, int&, int&) { return {}; }
 
   TransformResult finalize(vector<vector<Result>>&& resultsByStart, const Lines& initialLines,
-                      const Lines&, const TransformOptimizerParams& params,
+                      const Lines&, const TransformOptimizerParams&,
                       int bufferBeginLine, int bufferBeginCol, CursorPos goalPos,
-                      TransformSearchStats stats) {
-    auto visual = TransformPostExplorer::tryVisualDelete(
-        effectiveLines, leftColOffset, rightColOffset,
-        transformBoundary, params, config);
-    if (visual) {
-      auto& bucket = resultsByStart[0];
-      if (bucket.empty() || visual->getCost() < bucket[0].getCost()) {
-        if (bucket.empty()) {
-          bucket.push_back(std::move(*visual));
-        } else {
-          bucket[0] = std::move(*visual);
-        }
-      }
-    }
-
-    return TransformResult(std::move(resultsByStart), std::move(stats), initialLines,
-                      bufferBeginLine, bufferBeginCol, goalPos);
+                      TransformSearchStats stats,
+                      vector<vector<CursorPos>>&& resultGoalPositions) {
+    return TransformResult(
+        std::move(resultsByStart), std::move(stats), initialLines,
+        bufferBeginLine, bufferBeginCol, goalPos, std::move(resultGoalPositions));
   }
 };
 
@@ -145,31 +157,36 @@ template<>
 struct PureDeletionGoalCapture<false> {
   explicit PureDeletionGoalCapture(int) {}
 
-  void onGoal(int, const CursorPos&) {}
+  void onResult(int, const CursorPos&) {}
+  void replaceResult(int, size_t, const CursorPos&) {}
 
-  TransformResult finalize(TransformResult&& transformResult, int) {
-    return std::move(transformResult);
-  }
+  vector<vector<CursorPos>> takeGoals(int) { return {}; }
 };
 
 template<>
 struct PureDeletionGoalCapture<true> {
-  vector<CursorPos> goalPosByStart;
+  vector<vector<CursorPos>> goalPosByStart;
 
   explicit PureDeletionGoalCapture(int totalPositions)
-      : goalPosByStart(static_cast<size_t>(totalPositions), CursorPos(-1, -1, -1)) {}
+      : goalPosByStart(static_cast<size_t>(totalPositions)) {}
 
-  void onGoal(int idx, const CursorPos& pos) {
-    goalPosByStart[static_cast<size_t>(idx)] = pos;
+  void onResult(int idx, const CursorPos& pos) {
+    goalPosByStart[static_cast<size_t>(idx)].push_back(pos);
   }
 
-  TransformResult finalize(TransformResult&& transformResult, int bufferBeginLine) {
-    for (CursorPos& p : goalPosByStart) {
-      if (p.line < 0) continue;
-      p.line += bufferBeginLine;
+  void replaceResult(int idx, size_t resultIndex, const CursorPos& pos) {
+    auto& bucket = goalPosByStart[static_cast<size_t>(idx)];
+    assert(resultIndex < bucket.size());
+    bucket[resultIndex] = pos;
+  }
+
+  vector<vector<CursorPos>> takeGoals(int bufferBeginLine) {
+    for (auto& bucket : goalPosByStart) {
+      for (CursorPos& p : bucket) {
+        p.line += bufferBeginLine;
+      }
     }
-    transformResult.setGoalPosByStart(std::move(goalPosByStart));
-    return std::move(transformResult);
+    return std::move(goalPosByStart);
   }
 };
 
@@ -258,9 +275,9 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
     bool firstForStart = bucket.empty();
     bucket.push_back(result);
     resultsFound++;
+    if (captureGoalPos) goalCapture.onResult(idx, state.getPos());
     if (firstForStart) {
       uniquePositionsCovered++;
-      if (captureGoalPos) goalCapture.onGoal(idx, state.getPos());
     }
     if (static_cast<int>(bucket.size()) == params.maxResultsPerStartPos) {
       if (startActive[idx]) {
@@ -386,10 +403,34 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
                             params.maxNodesPopped,
                             pq.empty());
 
-  return goalCapture.finalize(
-      mode.finalize(std::move(resultsByStart), initialLines, goalLines, params,
-                    bufferBeginLine, bufferBeginCol, goalPos, std::move(stats)),
-      bufferBeginLine);
+  if constexpr (PureDeletion) {
+    auto visual = TransformPostExplorer::tryVisualDelete(
+        effectiveLines, leftColOffset, rightColOffset,
+        transformBoundary, params, config);
+    if (visual) {
+      auto& bucket = resultsByStart[0];
+      if (bucket.empty()) {
+        bucket.push_back(std::move(visual->result));
+        goalCapture.onResult(0, visual->goalPos);
+      } else {
+        auto bestIt = std::min_element(
+            bucket.begin(), bucket.end(),
+            [](const Result& a, const Result& b) {
+              return a.getCost() < b.getCost();
+            });
+        if (visual->result.getCost() < bestIt->getCost()) {
+          size_t resultIndex = static_cast<size_t>(bestIt - bucket.begin());
+          *bestIt = std::move(visual->result);
+          goalCapture.replaceResult(0, resultIndex, visual->goalPos);
+        }
+      }
+    }
+  }
+
+  return mode.finalize(
+      std::move(resultsByStart), initialLines, goalLines, params,
+      bufferBeginLine, bufferBeginCol, goalPos, std::move(stats),
+      goalCapture.takeGoals(bufferBeginLine));
 }
 // Explicit template instantiations
 template TransformResult TransformOptimizer::optimizeImpl<false>(

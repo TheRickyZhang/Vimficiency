@@ -4,7 +4,7 @@ return function(ctx)
 
   return {
   {
-    name = "simulate tokenization merges feedable commands",
+    name = "simulate tokenization emits replay-safe command steps",
     run = function(next)
       next(pcall(function()
         -- Tokens are `{text, kind}` records after the FFI metadata refactor;
@@ -20,7 +20,9 @@ return function(ctx)
         assert_eq(texts("jf;i<BS>3<Esc><Space>ve"),
           "j|f;|i|<BS>|3|<Esc>|<Space>|v|e", "tokenized insert/visual sequence")
         assert_eq(texts("3wfa;ww"),
-          "3w|fa;|w|w", "tokenized motion sequence")
+          "3w|fa|;|w|w", "tokenized motion sequence")
+        assert_eq(texts("f;;"),
+          "f;|;", "tokenized semicolon target and repeat")
         assert_eq(texts("<Space>ww"),
           "<Space>|w|w", "tokenized leading space")
         assert_eq(texts("Axyz<Esc>"),
