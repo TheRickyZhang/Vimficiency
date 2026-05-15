@@ -235,17 +235,22 @@ int sentenceDecl(const Lines& lines, SentenceScanPos& pos) {
   return sentenceCharAt(lines, pos);
 }
 
-bool sentenceIsWhite(int c) {
-  return c == ' ' || c == '\t';
+// Thin int-accepting forwarders over the canonical unsigned-char predicates
+// in VimCore (isWhitespace, isSentenceEnd, isSentenceCloser). The sentence
+// scan loop works in `int` (sentenceCharAt returns int with 0 = end-of-line,
+// -1 = invalid), so adapters keep the call sites tidy without redefining the
+// predicates.
+inline bool sentenceIsWhite(int c) {
+  return isWhitespace(static_cast<unsigned char>(c));
 }
 
-bool sentenceIsEndPunct(int c) {
-  return c == '.' || c == '!' || c == '?';
+inline bool sentenceIsEndPunct(int c) {
+  return isSentenceEnd(static_cast<unsigned char>(c));
 }
 
-bool sentenceIsPunctOrCloser(int c) {
-  return sentenceIsEndPunct(c) || c == ')' || c == ']' ||
-         c == '"' || c == '\'';
+inline bool sentenceIsPunctOrCloser(int c) {
+  unsigned char ch = static_cast<unsigned char>(c);
+  return isSentenceEnd(ch) || isSentenceCloser(ch);
 }
 
 bool sentenceInMacro(string_view opt, string_view s) {
@@ -286,6 +291,25 @@ CursorPos sentenceScanToCursor(const Lines& lines, SentenceScanPos pos) {
   return {pos.line, clamp(pos.col, 0, len - 1)};
 }
 
+// Port of Neovim's `findsent()` from textobject.c — the MOTION path for `)` / `(`.
+//
+// Looks duplicative of `sentenceExtentAtOrAfter` / `sentenceGapEndpoint` in
+// VimEndpointUtils.cpp because both walk over Vim's sentence boundary rules,
+// but the two answer different questions and **must stay separate**:
+//
+//   - findSentenceLikeNeovim → motion: "where does `)` land the cursor?"
+//     `)` puts the cursor at the *start* of the next sentence (skipping
+//     trailing whitespace forward).
+//
+//   - sentenceExtentAtOrAfter / sentenceGapEndpoint → operator endpoint:
+//     "where does `d)` reach?" `d)` includes the trailing whitespace gap
+//     after the sentence-ending punctuation (see :help exclusive-linewise
+//     and the gap-after-sentence rule).
+//
+// Same underlying boundary definition, different endpoint. Forcing a single
+// helper would conflate motion and operator semantics — the same kind of
+// conflation the project deliberately avoids by separating `motionXxx`
+// (NavOptimizer / replay) from `xxxOperatorEndpoint` (TransformOptimizer).
 bool findSentenceLikeNeovim(CursorPos& cursor, const Lines& lines, bool forward, int count) {
   if (lines.empty() || count <= 0) return false;
 

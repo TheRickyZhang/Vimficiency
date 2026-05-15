@@ -12,6 +12,7 @@
 #include "Types/LineRange.h"
 #include "Types/Lines.h"
 #include "VimCore/VimCore.h"
+#include "VimCore/VimOptions.h"
 
 // Edit operations that modify buffer content.
 //
@@ -40,6 +41,53 @@ inline void clampInsertCol(const std::string& line, int& col) {
 inline CursorPos onePastOnSameLine(const Lines& lines, const CursorPos& inclusivePos) {
   int lineLen = static_cast<int>(lines[inclusivePos.line].size());
   return CursorPos(inclusivePos.line, std::min(inclusivePos.col + 1, lineLen));
+}
+
+// Linewise change with autoindent: shared mechanics for cc/S, cj, and ck.
+//
+// Replaces the inclusive line range [firstLine, lastLine] with a single new
+// line carrying `sourceLine`'s leading indent (preserved verbatim via
+// `leadingIndent`, including tabs), positions the cursor at the end of that
+// indent, and switches mode to Insert. Mirrors what Neovim does on a linewise
+// change operator: collapse to one autoindented line and drop into insert.
+//
+// Callers:
+//   - cc/S: firstLine == lastLine == pos.line, sourceLine == lines[pos.line]
+//   - cj:   firstLine == pos.line, lastLine == pos.line + count, sourceLine == lines[pos.line]
+//   - ck:   firstLine == pos.line - count, lastLine == pos.line, sourceLine == lines[firstLine]
+//
+// Caller is responsible for validating the range (the operator-level
+// preconditions like "cj requires count lines below") before invoking.
+// Leading indent of a line for Vim's autoindent replay (both spaces and tabs).
+// Vim's autoindent copies the source line's indent characters verbatim when
+// entering insert mode via cc/S/cj/ck/o/O, including tabs.
+//
+// Distinct from `leadingWhitespace` in `Optimizer/Indentation.h`, which is
+// spaces-only because the optimizer's downstream math (BuildTypedCommands'
+// `bsCountForIndent`, the combined-indent assembly in spaces) assumes
+// expandtab-style indentation throughout. Don't unify the two — use this one
+// from the replay/edit path and the optimizer's one from the goal-shape path.
+inline std::string_view leadingIndent(std::string_view s) {
+  size_t i = 0;
+  while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) i++;
+  return s.substr(0, i);
+}
+
+inline void linewiseChangeWithAutoindent(Lines& lines,
+                                         CursorPos& pos,
+                                         Mode& mode,
+                                         int firstLine,
+                                         int lastLine,
+                                         std::string_view sourceLine) {
+  std::string indent;
+  if constexpr (VimOptions::autoindent()) {
+    indent = std::string(leadingIndent(sourceLine));
+  }
+  lines.erase(lines.begin() + firstLine, lines.begin() + lastLine + 1);
+  lines.insert(lines.begin() + firstLine, indent);
+  pos.line = firstLine;
+  pos.setCol(static_cast<int>(indent.size()));
+  mode = Mode::Insert;
 }
 
 // =============================================================================

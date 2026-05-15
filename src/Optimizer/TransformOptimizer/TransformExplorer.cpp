@@ -4,19 +4,15 @@ using namespace std;
 
 bool TransformExplorer::inBoundaryRegion(const CursorPos& pos, const Lines& lines) const {
   if (pos.line < 0 || pos.line > lines.lastLine()) return true;
-  if (pos.line == 0 && pos.col < leftColOffset_) return true;
-  if (pos.line == lines.lastLine() && rightColOffset_ > 0 &&
-      pos.col >= static_cast<int>(lines[pos.line].size()) - rightColOffset_) {
-    return true;
-  }
-  return false;
+  VimCore::WordBoundaryContext boundary = wordBoundaryContext();
+  if (pos.line == 0 && pos.col < boundary.contentStartCol(0)) return true;
+  return boundary.inSuffixRegion(pos, lines);
 }
 
 pair<int, int> TransformExplorer::computeTransformBounds(const Lines& lines, const CursorPos& cursor) const {
-  int contentBegin = (cursor.line == 0) ? leftColOffset_ : 0;
-  int contentEnd = static_cast<int>(lines[cursor.line].size());
-  if (cursor.line == lines.lastLine() && rightColOffset_ > 0) {
-    contentEnd -= rightColOffset_;
-  }
+  VimCore::WordBoundaryContext boundary = wordBoundaryContext();
+  int contentBegin = boundary.contentStartCol(cursor.line);
+  int contentEnd = boundary.effectiveLineEnd(
+      lines, cursor.line, cursor.line == lines.lastLine());
   return {contentBegin, contentEnd};
 }

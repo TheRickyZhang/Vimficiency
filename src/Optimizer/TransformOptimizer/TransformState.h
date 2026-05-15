@@ -21,6 +21,56 @@
 // =============================================================================
 // TransformStateKey - for visited state tracking in A* search
 // =============================================================================
+//
+// `targetCol` (Vim's curswant — the column the user wanted before vertical
+// motion) is *deliberately omitted* from this key. See CompositionStateKey
+// and SuffixKey for parallel omissions; the invariant below is shared.
+//
+// The invariant. No two reachable states share the same
+// (linesHash, lineCount, line, col, mode, startIndex) tuple while differing
+// in `targetCol`. This holds today because every search arm either:
+//   (a) re-anchors the cursor through an operator immediately after vertical
+//       motion (which sets targetCol == col), or
+//   (b) never lets the cursor sit at a clamped column (col < targetCol).
+// The omission keeps the key compact and the visited set well-behaved.
+//
+// Trip wires — adding any of these makes targetCol load-bearing, and the
+// key (and its hash) must be widened to include it:
+//
+//   1. A search arm that emits curswant-preserving motion (j/k/gg/G/<C-d>/
+//      <C-u>/<C-f>/<C-b>) and then yields exploration at a state immediately
+//      after the motion — exposing a column where col < targetCol — *without*
+//      re-anchoring through an operator. Today the prefix- and suffix-
+//      boundary-escape paths in TransformOptimizer.cpp emit j/k with
+//      `pos.targetCol` preserved, but they always continue into an operator-
+//      anchored state, so the invariant holds. Candidates that would break
+//      it: a new "vertical scan to find a paragraph boundary" arm, or any
+//      planned-edit kind that walks vertically between fenceposts.
+//
+//   2. SuffixCache replaying a stored suffix that starts (or contains) a
+//      curswant-preserving motion. Today suffixes are dominated by <Esc> +
+//      insert-text patterns where the column is fully determined by the
+//      suffix itself, so caller `targetCol` is irrelevant. If a stored
+//      suffix ever begins with j/k/gg/G/<C-d>/<C-u>/<C-f>/<C-b> — or
+//      includes one mid-way — the cache key omits a value the replay
+//      depends on. Symptom: replay column diverges from cache-promised
+//      column on a hit.
+//
+//   3. CompositionOptimizer planned edits that walk vertically across
+//      width-varying lines. Today no planned-edit kind does this; if one
+//      is added, CompositionStateKey needs targetCol too.
+//
+//   4. Allowing the cursor to sit at a clamped column (col < targetCol)
+//      mid-search without an operator re-anchor. This is the general form
+//      of #1-#3; any change of that shape invalidates the invariant.
+//
+// Where the bug would surface first. The fuzz suite in tests/Properties/
+// (especially NavOptimizerProperties and TransformOptimizerProperties)
+// generates prose-like buffers with varying line widths — the soil this
+// kind of divergence grows in. Tabular fixtures rarely expose it because
+// all lines are similar width and clamping rarely happens. If you add a
+// trip wire above and the affected fuzz property starts failing with two
+// paths producing different columns from "identical" states, this is why.
 
 struct TransformStateKey {
   size_t linesHash;

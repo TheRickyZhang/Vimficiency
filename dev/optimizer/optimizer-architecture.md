@@ -153,3 +153,7 @@ Also note that a `debug(...)`-style helper only removes the helper body. Functio
 By default, detailed trace stats follow `DEBUG_ENABLED`. If a non-debug workflow needs trace payloads, build with `VIMFICIENCY_TRACE_SEARCH_STATS` to enable them explicitly without tying that decision to the general debug stream.
 
 If we later add more expensive stats, they should follow the same rule: keep aggregate reporting cheap and move payload-style diagnostics behind an explicit gate.
+
+## State Equivalence Keys and the targetCol Omission
+
+`TransformStateKey`, `CompositionStateKey`, and `SuffixKey` deliberately omit `targetCol` (Vim's curswant) from their equality and hash. The invariant that makes this safe — and the four concrete trip wires that would invalidate it — are documented in the comment block above `TransformStateKey` in `src/Optimizer/TransformOptimizer/TransformState.h`. If you're adding a search arm, a planned-edit kind, or a cached suffix that emits curswant-preserving motion (j/k/gg/G/scroll), read that comment before assuming the keys are still sufficient. Adding `targetCol` to all three keys (and their hashes) is the fix; the comment explains when you'll need to.
