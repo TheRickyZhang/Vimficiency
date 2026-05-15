@@ -12,6 +12,7 @@
 #include <queue>
 
 #include "Interpreter/EditInterpreter.h"
+#include "Interpreter/MovementInterpreter.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
@@ -852,8 +853,8 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
       // Our sim
       CursorPos pos(0, col);
       Lines simBuf = buf;
-      CursorPos simEndpoint = VimCore::motionWordEndpoint<false, EdgeType::WordEdge>(
-          pos, simBuf, false, true, 0, false, false);
+      CursorPos simEndpoint = VimCore::wordMotionEndpoint(
+          pos, simBuf, VimCore::WordMotionTarget::PreviousBegin, false);
       cerr << "  col=" << col << " b_endpoint=(" << simEndpoint.line << "," << simEndpoint.col << ")";
       if (simEndpoint == pos) {
         cerr << " (no move)" << endl;
@@ -1449,8 +1450,9 @@ TEST_F(NeovimOracleDebug, InvestigateCiwMismatch) {
     cerr << "  Char at cursor: '" << ourLines[pos.line][pos.col] << "'" << endl;
 
     // Simulate ciw: compute text object range
-    CharRange iwRange = VimCore::textObject(pos, ourLines, /*isInner=*/true, /*isBigWord=*/false);
-    cerr << "  textObject(iw) range: [(" << iwRange.begin.line << "," << iwRange.begin.col
+    CharRange iwRange = VimCore::wordTextObjectRange(
+        pos, ourLines, VimCore::WordTextObjectKind::Inner, false);
+    cerr << "  wordTextObjectRange(iw): [(" << iwRange.begin.line << "," << iwRange.begin.col
          << "), (" << iwRange.end.line << "," << iwRange.end.col << ")]" << endl;
     cerr << "  Deleted text: '";
     for (int c = iwRange.begin.col; c <= iwRange.end.col; c++) {
@@ -2890,17 +2892,22 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceJoinLinesResidualEditOpt) {
     cerr << "  " << (match ? "MATCH" : "MISMATCH") << endl;
   }
 
-  // Step 3: What does textObjectRange return for aw at (1,0)?
-  cerr << "\n--- Step 3: textObjectRange aw at (1,0) on ['aaa', 'xxx', 'ccc'] ---" << endl;
+  // Step 3: What does wordTextObjectRange return for aw at (1,0)?
+  cerr << "\n--- Step 3: wordTextObjectRange aw at (1,0) on ['aaa', 'xxx', 'ccc'] ---" << endl;
   {
     Lines buf = {"aaa", "xxx", "ccc"};
     // No boundary (full buffer)
-    CharRange r = VimCore::textObjectRange(CursorPos(1,0), buf, false, false, 0, 0, false, false);
+    CharRange r = VimCore::wordTextObjectRange(
+        CursorPos(1,0), buf, VimCore::WordTextObjectKind::Around, false);
     cerr << "  aw range: (" << r.begin.line << "," << r.begin.col
          << ")-(" << r.end.line << "," << r.end.col << ")" << endl;
 
     // With hasLinesAbove=true (as the edit boundary would have)
-    CharRange r2 = VimCore::textObjectRange(CursorPos(1,0), buf, false, false, 0, 0, true, false);
+    VimCore::WordBoundaryContext boundary;
+    boundary.hasLinesAbove = true;
+    CharRange r2 = VimCore::wordTextObjectRange(
+        CursorPos(1,0), buf, VimCore::WordTextObjectKind::Around, false,
+        boundary);
     cerr << "  aw range (hasAbove): (" << r2.begin.line << "," << r2.begin.col
          << ")-(" << r2.end.line << "," << r2.end.col << ")" << endl;
   }
@@ -3145,9 +3152,9 @@ TEST_F(DebugTest, DISABLED_ReproduceSmallEmbeddedSentenceCrash) {
   CursorPos cursor(0, 0);
   int rightColOffset = boundary.rightColOffset();
   bool hasLinesBelow = boundary.hasLinesBelow();
-  CursorPos endpoint = VimCore::motionSentenceEndpoint<true, SentenceEdgeType::NextEdge>(
-      cursor, editRegion, rightColOffset, hasLinesBelow);
-  cerr << "motionSentenceEndpoint from (0,0): (" << endpoint.line << "," << endpoint.col << ")" << endl;
+  CursorPos endpoint = VimCore::sentenceOperatorEndpoint(
+      cursor, editRegion, true, rightColOffset, hasLinesBelow);
+  cerr << "sentenceOperatorEndpoint from (0,0): (" << endpoint.line << "," << endpoint.col << ")" << endl;
   if (endpoint != POSITION_OUTSIDE_BOUNDARY) {
     cerr << "Explorer d) range: [(" << cursor.line << "," << cursor.col << "), ("
          << endpoint.line << "," << endpoint.col << "))" << endl;
@@ -3158,4 +3165,382 @@ TEST_F(DebugTest, DISABLED_ReproduceSmallEmbeddedSentenceCrash) {
         explorerBuf, CharRange(cursor, endpoint), explorerPos, Mode::Normal);
     cerr << "Explorer d) result: " << explorerBuf << " pos=(" << explorerPos.line << "," << explorerPos.col << ")" << endl;
   }
+}
+
+namespace {
+
+const char* debugModeName(Mode mode) {
+  switch (mode) {
+    case Mode::Normal: return "Normal";
+    case Mode::Insert: return "Insert";
+    case Mode::Visual: return "Visual";
+  }
+  return "Unknown";
+}
+
+void printLinesWithColumns(const string& label, const Lines& lines) {
+  cerr << label << " (" << lines.size() << " lines)" << endl;
+  for (size_t i = 0; i < lines.size(); i++) {
+    cerr << "  [" << i << "] len=" << lines[i].size() << " \"";
+    for (char c : lines[i]) {
+      if (c == ' ') {
+        cerr << '_';
+      } else {
+        cerr << c;
+      }
+    }
+    cerr << "\"" << endl << "       idx ";
+    for (size_t j = 0; j < lines[i].size(); j++) {
+      cerr << j % 10;
+    }
+    cerr << endl;
+  }
+}
+
+void printFirstLineDiff(const Lines& expected, const Lines& actual) {
+  size_t commonLines = min(expected.size(), actual.size());
+  for (size_t i = 0; i < commonLines; i++) {
+    size_t commonCols = min(expected[i].size(), actual[i].size());
+    for (size_t j = 0; j < commonCols; j++) {
+      if (expected[i][j] != actual[i][j]) {
+        cerr << "First content diff at line " << i << " col " << j
+             << ": expected '" << expected[i][j]
+             << "' actual '" << actual[i][j] << "'" << endl;
+        return;
+      }
+    }
+    if (expected[i].size() != actual[i].size()) {
+      cerr << "First diff at line " << i << " length: expected "
+           << expected[i].size() << " actual " << actual[i].size() << endl;
+      return;
+    }
+  }
+  if (expected.size() != actual.size()) {
+    cerr << "First diff is line count: expected " << expected.size()
+         << " actual " << actual.size() << endl;
+    return;
+  }
+  cerr << "No line/content diff" << endl;
+}
+
+void applyDebugEditToken(
+    Lines& lines,
+    CursorPos& pos,
+    Mode& mode,
+    const ParsedEdit& edit,
+    string& lastEdit) {
+  string token(edit.edit);
+  if (mode == Mode::Insert) {
+    if (token == "<Space>") {
+      VimCore::insertText(lines, pos, " ");
+      return;
+    }
+    if (!token.empty() && token[0] != '<') {
+      VimCore::insertText(lines, pos, token);
+      return;
+    }
+  }
+
+  Edit::applyEdit(lines, pos, mode, edit, &lastEdit);
+}
+
+void applyDebugEditSequence(
+    Lines& lines,
+    CursorPos& pos,
+    Mode& mode,
+    string& lastEdit,
+    const string& seq) {
+  size_t i = 0;
+  while (i < seq.size()) {
+    if (mode == Mode::Insert) {
+      if (seq[i] == '<') {
+        size_t close = seq.find('>', i);
+        if (close == string::npos) {
+          cerr << "malformed special key at offset " << i << endl;
+          return;
+        }
+        string token = seq.substr(i, close - i + 1);
+        if (token == "<Space>") {
+          VimCore::insertText(lines, pos, " ");
+        } else {
+          ParsedEdit edit(token);
+          applyDebugEditToken(lines, pos, mode, edit, lastEdit);
+        }
+        i = close + 1;
+        continue;
+      }
+
+      size_t nextSpecial = seq.find('<', i);
+      string text = seq.substr(i, nextSpecial == string::npos ? string::npos : nextSpecial - i);
+      VimCore::insertText(lines, pos, text);
+      if (nextSpecial == string::npos) return;
+      i = nextSpecial;
+      continue;
+    }
+
+    size_t countStart = i;
+    if (seq[i] >= '1' && seq[i] <= '9') {
+      while (i < seq.size() && seq[i] >= '0' && seq[i] <= '9') i++;
+    }
+    auto parsed = Edit::parseEdits(string_view(seq).substr(countStart));
+    if (!parsed || parsed->empty()) {
+      if (parsed) {
+        cerr << "parse produced no token at offset " << countStart << endl;
+      } else {
+        cerr << "parse failed: " << Edit::formatEditParseError(parsed.error()) << endl;
+      }
+      return;
+    }
+
+    const ParsedEdit& edit = (*parsed)[0];
+    applyDebugEditToken(lines, pos, mode, edit, lastEdit);
+    i = countStart + (i - countStart) + edit.edit.size();
+  }
+}
+
+void traceEditReplay(
+    NeovimOracle& oracle,
+    const string& label,
+    const Lines& initial,
+    CursorPos initialPos,
+    const Lines& goal,
+    const string& seq,
+    vector<string> chunks = {}) {
+  cerr << "\n=== " << label << " ===" << endl;
+  printLinesWithColumns("initial", initial);
+  printLinesWithColumns("goal", goal);
+  cerr << "start=" << initialPos << " seq='" << seq << "'" << endl;
+
+  if (chunks.empty()) {
+    auto parsed = Edit::parseEdits(seq);
+    if (!parsed) {
+      cerr << "parse failed: " << Edit::formatEditParseError(parsed.error()) << endl;
+      return;
+    }
+    for (const ParsedEdit& edit : *parsed) chunks.emplace_back(edit.edit);
+  }
+
+  Lines modelLines = initial;
+  CursorPos modelPos = initialPos;
+  Mode modelMode = Mode::Normal;
+  string lastEdit;
+
+  Lines nvimLines = initial;
+  int nvimRow = initialPos.line;
+  int nvimCol = initialPos.col;
+  Mode nvimMode = Mode::Normal;
+
+  bool foundDivergence = false;
+  for (size_t i = 0; i < chunks.size(); i++) {
+    const string& token = chunks[i];
+    applyDebugEditSequence(
+        modelLines, modelPos, modelMode, lastEdit, token);
+    auto nvim = oracle.simulate(nvimLines, nvimRow, nvimCol, token);
+    nvimLines = nvim.lines;
+    nvimRow = nvim.row;
+    nvimCol = nvim.col;
+    nvimMode = nvim.mode;
+
+    bool same = modelLines == nvimLines
+        && modelPos.line == nvimRow
+        && modelPos.col == nvimCol
+        && modelMode == nvimMode;
+    cerr << "step " << i << " token='" << token << "' same="
+         << (same ? "yes" : "no") << endl;
+    cerr << "  model pos=" << modelPos << " mode=" << debugModeName(modelMode)
+         << " nvim pos=(" << nvimRow << ", " << nvimCol << ") mode="
+         << debugModeName(nvimMode) << endl;
+
+    if (!same && !foundDivergence) {
+      foundDivergence = true;
+      cerr << "  first internal-vs-Neovim divergence after token '" << token
+           << "'" << endl;
+      printFirstLineDiff(modelLines, nvimLines);
+      printLinesWithColumns("model", modelLines);
+      printLinesWithColumns("nvim", nvimLines);
+    }
+  }
+
+  cerr << "final model vs goal:" << endl;
+  printFirstLineDiff(goal, modelLines);
+  cerr << "final nvim vs goal:" << endl;
+  printFirstLineDiff(goal, nvimLines);
+  printLinesWithColumns("final model", modelLines);
+  printLinesWithColumns("final nvim", nvimLines);
+}
+
+void traceNavReplay(
+    NeovimOracle& oracle,
+    const string& label,
+    const Lines& fullBuffer,
+    const Lines& subBuffer,
+    CursorPos fullStart,
+    CursorPos subStart,
+    const vector<string>& tokens,
+    const string& combined) {
+  cerr << "\n=== " << label << " ===" << endl;
+  printLinesWithColumns("full", fullBuffer);
+  printLinesWithColumns("sub", subBuffer);
+  cerr << "fullStart=" << fullStart << " subStart=" << subStart << endl;
+
+  Lines fullLines = fullBuffer;
+  int fullRow = fullStart.line;
+  int fullCol = fullStart.col;
+  Lines subNvimLines = subBuffer;
+  int subNvimRow = subStart.line;
+  int subNvimCol = subStart.col;
+  CursorPos modelPos = subStart;
+  Mode modelMode = Mode::Normal;
+  NavContext navContext;
+
+  for (size_t i = 0; i < tokens.size(); i++) {
+    const string& token = tokens[i];
+    auto full = oracle.simulate(fullLines, fullRow, fullCol, token);
+    fullLines = full.lines;
+    fullRow = full.row;
+    fullCol = full.col;
+
+    auto subNvim = oracle.simulate(subNvimLines, subNvimRow, subNvimCol, token);
+    subNvimLines = subNvim.lines;
+    subNvimRow = subNvim.row;
+    subNvimCol = subNvim.col;
+
+    applySingleMovement(modelPos, modelMode, token, subBuffer, navContext);
+
+    cerr << "step " << i << " token='" << token << "'" << endl;
+    cerr << "  Neovim full -> (" << fullRow << ", " << fullCol
+         << ") mapped sub=(" << (fullRow - fullStart.line) << ", "
+         << fullCol << ")" << endl;
+    cerr << "  Neovim sub  -> (" << subNvimRow << ", " << subNvimCol << ")"
+         << endl;
+    cerr << "  model sub   -> " << modelPos << endl;
+  }
+
+  auto countedFull = oracle.simulate(
+      fullBuffer, fullStart.line, fullStart.col, combined);
+  auto countedSub = oracle.simulate(
+      subBuffer, subStart.line, subStart.col, combined);
+  CursorPos countedModel = simulateMovements(subStart, combined, subBuffer);
+  cerr << "combined " << combined << " Neovim full=(" << countedFull.row << ", "
+       << countedFull.col << ") mapped sub=("
+       << (countedFull.row - fullStart.line) << ", " << countedFull.col << ")"
+       << endl;
+  cerr << "combined " << combined << " Neovim sub =(" << countedSub.row << ", "
+       << countedSub.col << ")" << endl;
+  cerr << "combined " << combined << " model sub  =" << countedModel << endl;
+}
+
+}  // namespace
+
+TEST_F(NeovimOracleDebug, FuzzFailureRepresentativeReplayTrace) {
+  traceEditReplay(
+      *oracle_,
+      "Composition multi-line single edit: (lralrfll0",
+      {" .b bb d", "f abf,c e,b", "ee  afda,", ",ad.adac"},
+      CursorPos(3, 7),
+      {" .afbb d", "f abf,c e,b", "ee  afda,", ",ad.adac"},
+      "(lralrfll0");
+
+  traceEditReplay(
+      *oracle_,
+      "Composition insert newline: ejifadd<CR>afd<Esc>{",
+      {", ba", "afd  ", "cbcc  b."},
+      CursorPos(0, 0),
+      {", ba", "afdfadd", "afd  ", "cbcc  b."},
+      "ejifadd<CR>afd<Esc>{",
+      {"e", "j", "ifadd<CR>afd<Esc>", "{"});
+
+  traceEditReplay(
+      *oracle_,
+      "Composition delete line: l)ddhcB.b<Esc>{",
+      {". fb", ",. bd", ".b,.ff", "bccb d"},
+      CursorPos(0, 0),
+      {". fb", ".b,.ff", "bccb d"},
+      "l)ddhcB.b<Esc>{",
+      {"l", ")", "dd", "h", "cB.b<Esc>", "{"});
+
+  traceEditReplay(
+      *oracle_,
+      "Transform single-line change: decge,.<Space>b<Esc>",
+      {". . fb"},
+      CursorPos(0, 1),
+      {",. b"},
+      "decge,.<Space>b<Esc>",
+      {"de", "cge,.<Space>b<Esc>"});
+
+  traceNavReplay(
+      *oracle_,
+      "Nav j4) representative",
+      {
+          ",.acc .bbc.ddab.a bbbbbca,.,",
+          "addd  dc bc.bdbd.adbb b .a,a",
+          "cbcc ,.c,a,b",
+          "dc c.,,b. dcc ccadd,,.,, da,.",
+          "c,c ,a cada... b a",
+          ".bbbaccc,ddb .",
+          ". abc aa.dbcb,... b. a,b.ac c",
+          "aa dadb,c..a",
+      },
+      {
+          "dc c.,,b. dcc ccadd,,.,, da,.",
+          "c,c ,a cada... b a",
+          ".bbbaccc,ddb .",
+          ". abc aa.dbcb,... b. a,b.ac c",
+      },
+      CursorPos(3, 24),
+      CursorPos(0, 24),
+      {"j", ")", ")", ")", ")"},
+      "j4)");
+
+  traceNavReplay(
+      *oracle_,
+      "Nav )Fc current failure",
+      {
+          "a,,aba.,.c. ,.bb",
+          "da.bbda cd,.cc.. abbd. ",
+          " , d .,bcb.,d aba,a.c,",
+          ".c,dbbddcadac b .ab.,.d,a.,,",
+          "babcdca. bca ,.ac c.   ..a d b",
+          "cca,,cdd,, ca, aaa",
+          ",cd,, aacd. ,cc",
+          "accd bad,.d .d.a.ac,c, d,,b",
+      },
+      {
+          " , d .,bcb.,d aba,a.c,",
+          ".c,dbbddcadac b .ab.,.d,a.,,",
+          "babcdca. bca ,.ac c.   ..a d b",
+          "cca,,cdd,, ca, aaa",
+      },
+      CursorPos(2, 0),
+      CursorPos(0, 0),
+      {")", "Fc"},
+      ")Fc");
+
+  traceEditReplay(
+      *oracle_,
+      "Transform multi-line embedded deletion current failure",
+      {"ccdafbcc", " ,.e", "c.d caf"},
+      CursorPos(2, 3),
+      {"ccdcaf"},
+      "dB.dgeJX...x",
+      {"dB", ".", "dge", "J", "X", ".", ".", ".", "x"});
+
+  traceEditReplay(
+      *oracle_,
+      "Transform single-line change current failure",
+      {". . fb"},
+      CursorPos(0, 1),
+      {",. b"},
+      "d)Xxciw,.<Space>b<Esc>",
+      {"d)", "X", "x", "ciw,.<Space>b<Esc>"});
+
+  traceEditReplay(
+      *oracle_,
+      "Transform multi-line embedded change current failure",
+      {"ccdafbcc", " ,.e", "c.d caf"},
+      CursorPos(2, 3),
+      {"ccd, .e", ",,eba,", "c decaf"},
+      "dB.dgeJxhX..s,<Space>.e<CR>,,eba,<CR>c<Space>de<Esc>",
+      {"dB", ".", "dge", "J", "x", "h", "X", ".", ".",
+       "s,<Space>.e<CR>,,eba,<CR>c<Space>de<Esc>"});
 }

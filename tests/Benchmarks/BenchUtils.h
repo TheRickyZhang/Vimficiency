@@ -21,6 +21,7 @@ enum class BufferShape { Uniform, Prose, CodeLike };
 
 constexpr int DEFAULT_RANGE_SIZE = 6;
 constexpr int DEFAULT_SEED_COUNT = 5;
+constexpr double DEFAULT_BENCH_MIN_TIME = 0.05;
 
 inline Lines generateBuffer(int numLines = 20, int avgLineLen = 30, BufferShape shape = BufferShape::CodeLike) {
   switch (shape) {

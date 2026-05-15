@@ -93,6 +93,14 @@ TEST(ErrorHandlingTest, ParseSequenceAcceptsCanonicalLiteralLtTargets) {
   EXPECT_EQ((*replace)[0].token, "r<lt>");
 }
 
+TEST(ErrorHandlingTest, ParseSequenceSplitsCharFindRepeats) {
+  auto result = parseSequence("fa2;");
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result->size(), 2u);
+  EXPECT_EQ((*result)[0].token, "fa");
+  EXPECT_EQ((*result)[1].token, "2;");
+}
+
 TEST(ErrorHandlingTest, ParseMovementsAcceptsCanonicalFindTargets) {
   auto space = parseMovements("f<Space>l");
   ASSERT_TRUE(space.has_value());
@@ -105,6 +113,23 @@ TEST(ErrorHandlingTest, ParseMovementsAcceptsCanonicalFindTargets) {
   ASSERT_EQ(literalLt->size(), 2u);
   EXPECT_EQ((*literalLt)[0].motion, "f<lt>");
   EXPECT_EQ((*literalLt)[1].motion, "l");
+}
+
+TEST(ErrorHandlingTest, ParseMovementsSplitsCharFindRepeats) {
+  auto repeated = parseMovements("2fa3;,");
+  ASSERT_TRUE(repeated.has_value());
+  ASSERT_EQ(repeated->size(), 3u);
+  EXPECT_EQ((*repeated)[0].motion, "fa");
+  EXPECT_EQ((*repeated)[0].effectiveCount(), 2u);
+  EXPECT_EQ((*repeated)[1].motion, ";");
+  EXPECT_EQ((*repeated)[1].effectiveCount(), 3u);
+  EXPECT_EQ((*repeated)[2].motion, ",");
+
+  auto semicolonTarget = parseMovements("f;;");
+  ASSERT_TRUE(semicolonTarget.has_value());
+  ASSERT_EQ(semicolonTarget->size(), 2u);
+  EXPECT_EQ((*semicolonTarget)[0].motion, "f;");
+  EXPECT_EQ((*semicolonTarget)[1].motion, ";");
 }
 
 

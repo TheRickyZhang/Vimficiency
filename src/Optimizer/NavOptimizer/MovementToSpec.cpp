@@ -7,35 +7,31 @@ using namespace std;
 // KSId references for bank lookup during A* search
 
 namespace Movement {
+using VimCore::WordMotionTarget;
 
-// Word motions: ksId, forward, edgeType, big, skipCurrent
 const vector<WordMovementSpec> WORD_MOTIONS = {
-    {KSId::w,  true,  EdgeType::NextEdge, false, false},
-    {KSId::W,  true,  EdgeType::NextEdge, true,  false},
-    {KSId::b,  false, EdgeType::WordEdge, false, true},
-    {KSId::B,  false, EdgeType::WordEdge, true,  true},
-    {KSId::e,  true,  EdgeType::WordEdge, false, true},
-    {KSId::E,  true,  EdgeType::WordEdge, true,  true},
-    {KSId::ge, false, EdgeType::NextEdge, false, false},
-    {KSId::gE, false, EdgeType::NextEdge, true,  false},
+    {KSId::w,  WordMotionTarget::NextBegin, false},
+    {KSId::W,  WordMotionTarget::NextBegin, true},
+    {KSId::b,  WordMotionTarget::PreviousBegin, false},
+    {KSId::B,  WordMotionTarget::PreviousBegin, true},
+    {KSId::e,  WordMotionTarget::NextEnd, false},
+    {KSId::E,  WordMotionTarget::NextEnd, true},
+    {KSId::ge, WordMotionTarget::PreviousEnd, false},
+    {KSId::gE, WordMotionTarget::PreviousEnd, true},
 };
 
-// Split by Forward/EdgeType for templated dispatch: ksId, big, skipCurrent
-const vector<WordMovementSpecNoEdge> FORWARD_NEXTEDGE_MOVEMENTS = {
-    {KSId::w, false, false},
-    {KSId::W, true,  false},
+const vector<WordMovementSpec> FORWARD_WORD_MOVEMENTS = {
+    {KSId::w, WordMotionTarget::NextBegin, false},
+    {KSId::W, WordMotionTarget::NextBegin, true},
+    {KSId::e, WordMotionTarget::NextEnd, false},
+    {KSId::E, WordMotionTarget::NextEnd, true},
 };
-const vector<WordMovementSpecNoEdge> FORWARD_WORDEDGE_MOVEMENTS = {
-    {KSId::e, false, true},
-    {KSId::E, true,  true},
-};
-const vector<WordMovementSpecNoEdge> BACKWARD_WORDEDGE_MOVEMENTS = {
-    {KSId::b, false, true},
-    {KSId::B, true,  true},
-};
-const vector<WordMovementSpecNoEdge> BACKWARD_NEXTEDGE_MOVEMENTS = {
-    {KSId::ge, false, false},
-    {KSId::gE, true,  false},
+
+const vector<WordMovementSpec> BACKWARD_WORD_MOVEMENTS = {
+    {KSId::b, WordMotionTarget::PreviousBegin, false},
+    {KSId::B, WordMotionTarget::PreviousBegin, true},
+    {KSId::ge, WordMotionTarget::PreviousEnd, false},
+    {KSId::gE, WordMotionTarget::PreviousEnd, true},
 };
 
 // Paragraph motions: ksId, forward

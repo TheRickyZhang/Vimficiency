@@ -29,14 +29,17 @@ Shared dependency setup is centralized in `.github/actions/setup-ci-deps/action.
 3. Restores CMake dependency cache (`build/_deps`, `deps-v2-*`)
 4. Builds in Release mode (`-DVIMF_DEBUG=OFF`, `-DVIMF_TRACK_STATES=OFF`)
 5. Runs unit tests: `./build/tests/vimficiency_tests --gtest_brief=1`
-6. Runs Lua tests via `tests/lua/run.sh` (FFI smoke)
-7. Builds `vimficiency_explore` with tracking on as a smoke test — does not
+6. Runs the FuzzTest generated-property seed corpus with `FUZZTEST_FUZZ_FOR=0`
+7. Runs Lua tests via `tests/lua/run.sh` (FFI smoke)
+8. Builds `vimficiency_explore` with tracking on as a smoke test — does not
    run it; the local bench pipeline is what executes it and ingests results
 
 ### CI cache and performance notes
 
 - `ccache` cache is restored before build, reducing repeated compile work.
-- `build/_deps` cache stores CMake-fetched third-party source/build artifacts (for this repo, primarily GoogleTest and related CMake external content).
+- `build/_deps` cache stores CMake-fetched third-party source/build artifacts
+  (for this repo, GoogleTest, FuzzTest, benchmark, msgpack, json, and their
+  related CMake external content).
 - Neovim install is cached by OS + version. On cache hit, CI skips the GitHub release download and untar.
 - `apt-get update` and apt package installation are intentionally not cached in this workflow. These commands still run on every fresh GitHub-hosted runner, so `Setup CI deps` can remain one of the slower steps even when all project-level caches hit.
 
@@ -88,7 +91,7 @@ and the docs-site build. Branch pushes skip these to stay fast.
 Steps:
 
 1. Build pushed `<sha>` in Release with `VIMF_TRACK_STATES=OFF`
-2. Run three suites with `VIMFICIENCY_SEED_MODE=fixed`:
+2. Run three suites with fixed benchmark fixtures:
    - `EditOpt.*` → `edit_result.json`
    - `MotionOpt.*` → `motion_result.json`
    - `CompositionOpt.*` → `composition_result.json`
@@ -135,7 +138,7 @@ Google Benchmark outputs JSON → `scripts/bench-data.ts ingest` parses it and a
         "commit": { "id": "...", "message": "...", "timestamp": "...", "url": "...", "author": { "username": "..." } },
         "date": 1704240000000,
         "benches": [
-          { "name": "EditOpt/BufferSize/1/iterations:5", "value": 1.693, "unit": "ms/iter" }
+          { "name": "EditOpt/BufferSize/1", "value": 1.693, "unit": "ms/iter" }
         ]
       }
     ]

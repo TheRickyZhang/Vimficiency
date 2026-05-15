@@ -124,21 +124,6 @@ struct QueueEntry {
   }
 };
 
-// Compute cursor position after insertion (same for i/a/o/O/I/A + text + Esc)
-// Cursor ends on last char of inserted text, or stays at insertPos if empty
-CursorPos computeInsertEndPos(CursorPos insertPos, const string& insertedText) {
-  assert(!insertedText.empty());
-  Lines inserted = Lines::unflatten(insertedText);
-  if (inserted.size() == 1) {
-    int endCol = insertPos.col + static_cast<int>(inserted[0].size()) - 1;
-    return CursorPos(insertPos.line, max(0, endCol));
-  } else {
-    int lastLine = insertPos.line + static_cast<int>(inserted.size()) - 1;
-    int lastCol = inserted.back().empty() ? 0 : static_cast<int>(inserted.back().size()) - 1;
-    return CursorPos(lastLine, lastCol);
-  }
-}
-
 // Clamp cursor to a valid normal-mode position on concrete post-edit lines.
 // Uses targetCol when available so vertical sticky-column intent is preserved.
 CursorPos clampGoalPosToLines(const CursorPos& pos, const Lines& lines) {
@@ -388,7 +373,6 @@ optimizeImpl(
     if (nextEdit.isPureInsertion()) {
       debug("  pure insertion at", nextEdit.beginPos,
             "text='" + makePrintable(nextEdit.insertedText) + "'");
-      const TransformResult& transformResult = ctx.edits[editsCompleted].transformResult;
 
       // Dispatch one strategy: enqueue zero-prefix edit when cursor is already
       // in range, otherwise run NavOptimizer to find motion prefixes and
@@ -401,8 +385,7 @@ optimizeImpl(
           // No motion prefix: editOffset = 0 — the whole transition sequence
           // is the planned edit.
           enqueueEditTransition(current, Sequence(s.insertCmd),
-                                transformResult.getGoalPos(),
-                                editsCompleted + 1);
+                                s.goalPos, editsCompleted + 1);
           return;
         }
 
@@ -422,7 +405,8 @@ optimizeImpl(
                  "pure insertion motion goal must be subset-local and inside target range");
           // Intentionally do not remap localGoal to full-buffer coordinates here:
           // this branch immediately appends the insertion and transitions using
-          // transformResult.getGoalPos(), so intermediate motion endpoint isn't consumed.
+          // the strategy's post-insert position, so the intermediate motion
+          // endpoint isn't consumed.
           //
           // Tracing: the prefix (motion) is Navigate; only the insertCmd suffix
           // is the planned edit. editOffset = motion length so the recorded edit
@@ -431,7 +415,7 @@ optimizeImpl(
           const uint32_t motionBytes =
               static_cast<uint32_t>(fullSeq.size());
           fullSeq.append(s.insertCmd);
-          enqueueEditTransition(current, fullSeq, transformResult.getGoalPos(),
+          enqueueEditTransition(current, fullSeq, s.goalPos,
                                 editsCompleted + 1, motionBytes);
         }
       };

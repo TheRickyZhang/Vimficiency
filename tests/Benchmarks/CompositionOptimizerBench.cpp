@@ -56,6 +56,18 @@ static CompBenchSetup makeDefaultSetup(int numLines, int avgLen, int editCount,
   return {initial, goal};
 }
 
+template<typename MakeSetup>
+static vector<CompBenchSetup> makeSeededSetups(MakeSetup makeSetup) {
+  auto& seedMgr = SeedManager::instance();
+  vector<CompBenchSetup> setups;
+  setups.reserve(DEFAULT_SEED_COUNT);
+  for (int i = 0; i < DEFAULT_SEED_COUNT; ++i) {
+    RandomGen::seed(seedMgr.getSeed(i));
+    setups.push_back(makeSetup(i));
+  }
+  return setups;
+}
+
 // =============================================================================
 // Benchmark Functions
 // =============================================================================
@@ -63,14 +75,15 @@ static CompBenchSetup makeDefaultSetup(int numLines, int avgLen, int editCount,
 // --- EditCount: varies number of separate edits ---
 static void BM_CompEditCount(benchmark::State& state) {
   int editCount = static_cast<int>(state.range(0));
-  auto& seedMgr = SeedManager::instance();
+  auto setups = makeSeededSetups([&](int) {
+    return makeDefaultSetup(DEFAULT_LINES, DEFAULT_AVG_LEN, editCount);
+  });
   CompositionSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
-    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
-    auto [initial, goal] = makeDefaultSetup(DEFAULT_LINES, DEFAULT_AVG_LEN, editCount);
+    const auto& setup = setups[iter % static_cast<int>(setups.size())];
     CompositionOptimizer opt(benchConfig);
-    auto result = opt.optimize(initial, {0, 0}, goal, {0, 0});
+    auto result = opt.optimize(setup.initial, {0, 0}, setup.goal, {0, 0});
     accumulateStats(totalStats, result.getStats());
     iter++;
   }
@@ -81,11 +94,7 @@ static void BM_CompEditCount(benchmark::State& state) {
 enum class EditSizeType { Small, Medium, Large, MultiLine };
 
 static void BM_CompEditSize(benchmark::State& state, EditSizeType sizeType) {
-  auto& seedMgr = SeedManager::instance();
-  CompositionSearchStats totalStats;
-  int iter = 0;
-  for (auto _ : state) {
-    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
+  auto setups = makeSeededSetups([&](int) {
     Lines initial = generateBuffer(DEFAULT_LINES, DEFAULT_AVG_LEN, DEFAULT_SHAPE);
     Lines goal = initial;
 
@@ -135,9 +144,15 @@ static void BM_CompEditSize(benchmark::State& state, EditSizeType sizeType) {
       }
     }
     if (goal == initial) goal[0] = "changed";
+    return CompBenchSetup{initial, goal};
+  });
 
+  CompositionSearchStats totalStats;
+  int iter = 0;
+  for (auto _ : state) {
+    const auto& setup = setups[iter % static_cast<int>(setups.size())];
     CompositionOptimizer opt(benchConfig);
-    auto result = opt.optimize(initial, {0, 0}, goal, {0, 0});
+    auto result = opt.optimize(setup.initial, {0, 0}, setup.goal, {0, 0});
     accumulateStats(totalStats, result.getStats());
     iter++;
   }
@@ -148,11 +163,7 @@ static void BM_CompEditSize(benchmark::State& state, EditSizeType sizeType) {
 enum class BalanceType { PureDel, Shrink, Balanced, Grow, PureIns };
 
 static void BM_CompDeletionBalance(benchmark::State& state, BalanceType balType) {
-  auto& seedMgr = SeedManager::instance();
-  CompositionSearchStats totalStats;
-  int iter = 0;
-  for (auto _ : state) {
-    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
+  auto setups = makeSeededSetups([&](int) {
     Lines initial = generateBuffer(DEFAULT_LINES, DEFAULT_AVG_LEN, DEFAULT_SHAPE);
     Lines goal = initial;
 
@@ -196,9 +207,15 @@ static void BM_CompDeletionBalance(benchmark::State& state, BalanceType balType)
         break;
     }
     if (goal == initial) goal[0] = "changed";
+    return CompBenchSetup{initial, goal};
+  });
 
+  CompositionSearchStats totalStats;
+  int iter = 0;
+  for (auto _ : state) {
+    const auto& setup = setups[iter % static_cast<int>(setups.size())];
     CompositionOptimizer opt(benchConfig);
-    auto result = opt.optimize(initial, {0, 0}, goal, {0, 0});
+    auto result = opt.optimize(setup.initial, {0, 0}, setup.goal, {0, 0});
     accumulateStats(totalStats, result.getStats());
     iter++;
   }
@@ -209,12 +226,7 @@ static void BM_CompDeletionBalance(benchmark::State& state, BalanceType balType)
 enum class CharDistType { Alpha, MixedSymbol, HighSpace, Prose };
 
 static void BM_CompCharDist(benchmark::State& state, CharDistType charType) {
-  auto& seedMgr = SeedManager::instance();
-  CompositionSearchStats totalStats;
-  int iter = 0;
-  for (auto _ : state) {
-    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
-
+  auto setups = makeSeededSetups([&](int) {
     Lines initial;
     initial.reserve(DEFAULT_LINES);
     for (int i = 0; i < DEFAULT_LINES; i++) {
@@ -244,8 +256,15 @@ static void BM_CompCharDist(benchmark::State& state, CharDistType charType) {
       if (goal[line] == initial[line]) goal[line] = "changed";
     }
 
+    return CompBenchSetup{initial, goal};
+  });
+
+  CompositionSearchStats totalStats;
+  int iter = 0;
+  for (auto _ : state) {
+    const auto& setup = setups[iter % static_cast<int>(setups.size())];
     CompositionOptimizer opt(benchConfig);
-    auto result = opt.optimize(initial, {0, 0}, goal, {0, 0});
+    auto result = opt.optimize(setup.initial, {0, 0}, setup.goal, {0, 0});
     accumulateStats(totalStats, result.getStats());
     iter++;
   }
@@ -256,14 +275,15 @@ static void BM_CompCharDist(benchmark::State& state, CharDistType charType) {
 static void BM_CompBufferSize(benchmark::State& state) {
   int numLines = static_cast<int>(state.range(0));
   int editCount = min(DEFAULT_EDIT_COUNT, numLines);
-  auto& seedMgr = SeedManager::instance();
+  auto setups = makeSeededSetups([&](int) {
+    return makeDefaultSetup(numLines, DEFAULT_AVG_LEN, editCount);
+  });
   CompositionSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
-    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
-    auto [initial, goal] = makeDefaultSetup(numLines, DEFAULT_AVG_LEN, editCount);
+    const auto& setup = setups[iter % static_cast<int>(setups.size())];
     CompositionOptimizer opt(benchConfig);
-    auto result = opt.optimize(initial, {0, 0}, goal, {0, 0});
+    auto result = opt.optimize(setup.initial, {0, 0}, setup.goal, {0, 0});
     accumulateStats(totalStats, result.getStats());
     iter++;
   }
@@ -273,14 +293,15 @@ static void BM_CompBufferSize(benchmark::State& state) {
 // --- LineLength: varies average line length ---
 static void BM_CompLineLength(benchmark::State& state) {
   int avgLen = static_cast<int>(state.range(0));
-  auto& seedMgr = SeedManager::instance();
+  auto setups = makeSeededSetups([&](int) {
+    return makeDefaultSetup(DEFAULT_LINES, avgLen, DEFAULT_EDIT_COUNT);
+  });
   CompositionSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
-    RandomGen::seed(seedMgr.getSeed(iter % DEFAULT_SEED_COUNT));
-    auto [initial, goal] = makeDefaultSetup(DEFAULT_LINES, avgLen, DEFAULT_EDIT_COUNT);
+    const auto& setup = setups[iter % static_cast<int>(setups.size())];
     CompositionOptimizer opt(benchConfig);
-    auto result = opt.optimize(initial, {0, 0}, goal, {0, 0});
+    auto result = opt.optimize(setup.initial, {0, 0}, setup.goal, {0, 0});
     accumulateStats(totalStats, result.getStats());
     iter++;
   }
@@ -295,7 +316,6 @@ static void registerArgBenchmark(const string& name, void(*fn)(benchmark::State&
                                   const vector<int>& args) {
   auto* b = benchmark::RegisterBenchmark(name, fn);
   for (int v : args) b->Arg(v);
-  b->Iterations(DEFAULT_SEED_COUNT);
 }
 
 // =============================================================================
@@ -315,7 +335,6 @@ static int registerCompositionBenchmarks = []() {
            {"MultiLine", EditSizeType::MultiLine}}) {
     auto* b = benchmark::RegisterBenchmark(
         "CompositionOpt/EditSize/" + name, BM_CompEditSize, type);
-    b->Iterations(DEFAULT_SEED_COUNT);
   }
 
   // DeletionBalance
@@ -327,7 +346,6 @@ static int registerCompositionBenchmarks = []() {
            {"PureIns", BalanceType::PureIns}}) {
     auto* b = benchmark::RegisterBenchmark(
         "CompositionOpt/DeletionBalance/" + name, BM_CompDeletionBalance, type);
-    b->Iterations(DEFAULT_SEED_COUNT);
   }
 
   // CharDist
@@ -338,7 +356,6 @@ static int registerCompositionBenchmarks = []() {
            {"Prose", CharDistType::Prose}}) {
     auto* b = benchmark::RegisterBenchmark(
         "CompositionOpt/CharDist/" + name, BM_CompCharDist, type);
-    b->Iterations(DEFAULT_SEED_COUNT);
   }
 
   // BufferSize

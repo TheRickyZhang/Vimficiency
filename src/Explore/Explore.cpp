@@ -57,16 +57,19 @@ KeyedSequence buildInsertModeTypedSequence(const DiffState& diff,
 
   const int line = diff.beginPos.line;
   const int col = diff.beginPos.col;
+  std::string_view lineText(lines[line].data(), lines[line].size());
   Lines insertLines = Lines::unflatten(diff.insertedText);
 
   if (diff.isPureInsertion()) {
     const int fnb = VimCore::firstNonBlankColInLineStr(lines[line]);
     const int lineLen = static_cast<int>(lines[line].size());
     if (col == fnb)
-      return buildTypedCommands(insertLines, "", lines[line].substr(0, fnb));
+      return buildTypedCommands(
+          insertLines, "", lineText.substr(0, fnb), lineText.substr(fnb));
     if (col == lineLen)
       return buildTypedCommands(insertLines, "", lines[line]);
-    return buildTypedCommands(insertLines, "", lines[line].substr(0, col));
+    return buildTypedCommands(
+        insertLines, "", lineText.substr(0, col), lineText.substr(col));
   }
 
   return buildTypedCommands(insertLines, "", lines[line].substr(0, col));
@@ -88,18 +91,16 @@ std::string deriveInsertModeTypedText(const DiffState& diff,
 }
 
 CursorPos insertExitCursor(const DiffState& diff) {
-  Lines inserted = diff.insertedLines();
-  if (inserted.empty()) return diff.beginPos;
-  if (inserted.size() == 1) {
-    int lastCol = diff.beginPos.col +
-        std::max(0, static_cast<int>(inserted[0].size()) - 1);
-    return CursorPos(diff.beginPos.line, lastCol);
-  }
-  int lastLine = diff.beginPos.line + static_cast<int>(inserted.size()) - 1;
-  int lastCol = inserted.back().empty()
-      ? 0
-      : static_cast<int>(inserted.back().size()) - 1;
-  return CursorPos(lastLine, lastCol);
+  bool newlineHandledByModeEntry =
+      diff.isPureInsertion() && diff.isNewLineInsertion() &&
+      diff.beginPos.col == 0 && diff.beginPos.line > 0;
+  Lines inserted =
+      newlineHandledByModeEntry
+          ? Lines::unflatten(std::string(diff.insertedTextBody()))
+          : diff.insertedLines();
+  std::string_view suffix =
+      newlineHandledByModeEntry ? "" : diff.boundary.suffix();
+  return typedCommandsExitCursor(diff.beginPos, inserted, suffix);
 }
 
 bool containsInsertCursor(const Lines& lines, CursorPos pos) {

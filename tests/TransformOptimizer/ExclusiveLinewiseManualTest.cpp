@@ -75,4 +75,16 @@ TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_BackwardParagraph_Back
   verifySequenceWithOracle(oracle.get(), {"abc", "", "def"}, {2, 2}, "d{");
 }
 
+TEST_F(TransformOptimizer_ManualTest, DeleteSpecial_BackwardWordBlankPrefixLinewise) {
+  verifySequenceWithOracle(oracle.get(), {" def", "ghi"}, {1, 0}, "db");
+  verifySequenceWithOracle(oracle.get(), {" ,.e", " caf"}, {1, 0}, "dB");
+  verifySequenceWithOracle(
+      oracle.get(), {"ccdafbcc", " ,.e", "c.d caf"}, {2, 3}, "dB.");
+}
+
+TEST_F(TransformOptimizer_ManualTest, DeleteSpecial_BackwardWordNonBlankPrefixStaysCharwise) {
+  verifySequenceWithOracle(oracle.get(), {"abc def", "ghi"}, {1, 0}, "db");
+  verifySequenceWithOracle(oracle.get(), {"abc def", "ghi"}, {1, 0}, "dB");
+}
+
 }  // namespace

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <expected>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -55,6 +56,10 @@ void yankRange(Lines& lines, CursorPos& pos, Mode mode, const LineCharRange& ran
 // Edit dispatcher
 // Routes parsed edit commands to appropriate operations.
 // -----------------------------------------------------------------------------
+
+bool updatesDotRepeat(Mode mode, std::string_view edit);
+std::string formatDotRepeatCommand(const ParsedEdit& edit);
+std::optional<std::string> dotRepeatCommandFor(Mode mode, const ParsedEdit& edit);
 
 // Apply a single parsed edit. If lastEditCmd is non-null, '.' repeats the
 // last buffer-modifying command stored there, and buffer-modifying commands

@@ -15,7 +15,6 @@
 #include "Types/CharLineRange.h"
 #include "Types/CharRange.h"
 #include "Types/CursorPos.h"
-#include "Types/EdgeType.h"
 #include "Types/LineCharRange.h"
 #include "Types/LineRange.h"
 #include "Types/Lines.h"
@@ -82,15 +81,11 @@ public:
                                int minCountRepeat,
                                OnDeletion&& onDeletion);
 
-  template<EdgeType Edge, class OnDeletion>
-  void exploreForwardWordEdits(
-      const std::vector<Edit::ForwardWordEditSpecNoEdge>& specs,
-      const CursorPos& cursor, const Lines& lines, OnDeletion&& onDeletion);
-
-  template<EdgeType Edge, class OnDeletion>
-  void exploreBackwardWordEdits(
-      const std::vector<Edit::BackwardWordEditSpecNoEdge>& specs,
-      const CursorPos& cursor, const Lines& lines, OnDeletion&& onDeletion);
+  template<class OnAnyDeletion, class OnLinewise>
+  void exploreWordEdits(
+      const std::vector<Edit::WordEditSpec>& specs,
+      const CursorPos& cursor, const Lines& lines,
+      OnAnyDeletion&& onAnyDeletion, OnLinewise&& onLinewise);
 
   template<bool Forward, class OnAnyDeletion, class OnLinewise>
   void exploreParagraphEdits(
@@ -131,6 +126,15 @@ public:
 private:
   const RunningEffort& effortFor(KSId id) const { return bank_[id]; }
   bool inBoundaryRegion(const CursorPos& pos, const Lines& lines) const;
+  VimCore::WordBoundaryContext wordBoundaryContext() const {
+    VimCore::WordBoundaryContext boundary;
+    boundary.leftColOffset = leftColOffset_;
+    boundary.rightColOffset = rightColOffset_;
+    boundary.hasLinesAbove = boundary_.hasLinesAbove();
+    boundary.hasLinesBelow = boundary_.hasLinesBelow();
+    boundary.clampOutside = false;
+    return boundary;
+  }
   std::pair<int, int> computeTransformBounds(const Lines& lines, const CursorPos& cursor) const;
 
   const TransformBoundary& boundary_;
@@ -192,10 +196,11 @@ void TransformExplorer::exploreTextObjectEdits(
     const std::vector<Edit::TextObjectEditSpec>& specs,
     const CursorPos& cursor, const Lines& lines, OnDeletion&& onDeletion) {
   for (const auto& spec : specs) {
-    CharRange range = VimCore::textObjectRange(
-        cursor, lines, spec.isInner, spec.isBig,
-        leftColOffset_, rightColOffset_,
-        boundary_.hasLinesAbove(), boundary_.hasLinesBelow());
+    CharRange range = VimCore::wordTextObjectRange(
+        cursor, lines,
+        spec.isInner ? VimCore::WordTextObjectKind::Inner
+                     : VimCore::WordTextObjectKind::Around,
+        spec.isBig, wordBoundaryContext());
 
     if (range.begin == POSITION_OUTSIDE_BOUNDARY || range.end == POSITION_OUTSIDE_BOUNDARY) {
       continue;
@@ -326,8 +331,8 @@ void TransformExplorer::exploreSentenceEdits(
   int lastLine = lines.lastLine();
   int boundaryOffset = Forward ? rightColOffset_ : leftColOffset_;
   bool hasLinesOutside = Forward ? boundary_.hasLinesBelow() : boundary_.hasLinesAbove();
-  CursorPos endpoint = VimCore::motionSentenceEndpoint<Forward, SentenceEdgeType::NextEdge>(
-      cursor, lines, boundaryOffset, hasLinesOutside);
+  CursorPos endpoint = VimCore::sentenceOperatorEndpoint(
+      cursor, lines, Forward, boundaryOffset, hasLinesOutside);
 
   if (endpoint == POSITION_OUTSIDE_BOUNDARY) return;
 
@@ -360,55 +365,29 @@ void TransformExplorer::exploreSentenceEdits(
   }
 }
 
-template<EdgeType Edge, class OnDeletion>
-void TransformExplorer::exploreForwardWordEdits(
-    const std::vector<Edit::ForwardWordEditSpecNoEdge>& specs,
-    const CursorPos& cursor, const Lines& lines, OnDeletion&& onDeletion) {
+template<class OnAnyDeletion, class OnLinewise>
+void TransformExplorer::exploreWordEdits(
+    const std::vector<Edit::WordEditSpec>& specs,
+    const CursorPos& cursor, const Lines& lines,
+    OnAnyDeletion&& onAnyDeletion, OnLinewise&& onLinewise) {
+  VimCore::WordBoundaryContext boundary = wordBoundaryContext();
   for (const auto& spec : specs) {
-    CursorPos endpoint = VimCore::motionWordEndpoint<true, Edge>(
-        cursor, lines, spec.isBig, spec.skipCurrent,
-        rightColOffset_, boundary_.hasLinesBelow(), false);
-
-    if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor) continue;
-
-    if constexpr (Edge == EdgeType::GapEdge) {
-      if (endpoint.line > cursor.line) {
-        CursorPos wordEnd = VimCore::motionWordEndpoint<true, EdgeType::WordEdge>(
-            cursor, lines, spec.isBig, spec.skipCurrent,
-            rightColOffset_, boundary_.hasLinesBelow(), false);
-        if (wordEnd == POSITION_OUTSIDE_BOUNDARY || wordEnd == cursor) continue;
-        endpoint = wordEnd;
-      }
+    CharRange range = VimCore::wordOperatorRange(
+        cursor, lines, spec.target, spec.isBig, boundary);
+    if (range.begin == POSITION_OUTSIDE_BOUNDARY ||
+        range.end == POSITION_OUTSIDE_BOUNDARY) {
+      continue;
     }
-
-    onDeletion(CharRange(cursor, VimCore::onePastOnSameLine(lines, endpoint)),
-               SequenceBinding(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId)));
-  }
-}
-
-template<EdgeType Edge, class OnDeletion>
-void TransformExplorer::exploreBackwardWordEdits(
-    const std::vector<Edit::BackwardWordEditSpecNoEdge>& specs,
-    const CursorPos& cursor, const Lines& lines, OnDeletion&& onDeletion) {
-  for (const auto& spec : specs) {
-    if (!spec.isExclusiveAtCursor && inBoundaryRegion(cursor, lines)) continue;
-
-    CursorPos endpoint = VimCore::motionWordEndpoint<false, Edge>(
-        cursor, lines, spec.isBig, spec.skipCurrent,
-        leftColOffset_, boundary_.hasLinesAbove(), false);
-
-    if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor) continue;
-
-    CharRange range;
-    if (spec.isExclusiveAtCursor) {
+    SequenceBinding cmd(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId));
+    if (spec.target == VimCore::WordOperatorTarget::DeleteBackToWordBegin) {
       int contentStartCol = cursor.line == 0 ? leftColOffset_ : 0;
-      if (cursor.col == contentStartCol && endpoint.line == cursor.line) continue;
-      range = VimCore::buildBackwardExclusiveCharRange(endpoint, cursor, lines, contentStartCol);
-    } else {
-      range = CharRange(endpoint, VimCore::onePastOnSameLine(lines, cursor));
+      auto resolved = VimCore::resolveBackwardExclusiveWordDeleteRange(
+          range.begin, cursor, lines, contentStartCol);
+      TransformExplorerDetail::emitResolvedDeletion(
+          resolved, cmd, onAnyDeletion, onLinewise);
+      continue;
     }
-
-    onDeletion(range, SequenceBinding(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId)));
+    onAnyDeletion(range, cmd);
   }
 }
 
@@ -495,122 +474,70 @@ void TransformExplorer::exploreCountedWordEdits(
 
   static constexpr int MAX_COUNT_ITERATIONS = 9;
   const int maxIterations = std::min(MAX_COUNT_ITERATIONS, maxCountRepeat);
+  VimCore::WordBoundaryContext boundary = wordBoundaryContext();
 
-  for (const auto& spec : Edit::FORWARD_WORDEDGE_EDITS) {
-    CursorPos prev = cursor;
-    CursorPos lastEndpoint;
-    int lastCount = 0;
-    for (int count = 1; count <= maxIterations; count++) {
-      CursorPos endpoint = VimCore::motionWordEndpoint<true, EdgeType::WordEdge>(
-          prev, lines, spec.isBig, spec.skipCurrent,
-          rightColOffset_, boundary_.hasLinesBelow(), false);
-      if (endpoint == POSITION_OUTSIDE_BOUNDARY ||
-          endpoint == prev || endpoint.line != cursor.line) {
-        break;
-      }
+  auto countedEffortFor = [&](const Edit::WordEditSpec& spec, int count) {
+    return spec.isBig
+        ? TransformExplorerDetail::buildCountedEffort<CountClass::EditWORD>(
+              config_, count, spec.ksId, count)
+        : TransformExplorerDetail::buildCountedEffort<CountClass::EditWord>(
+              config_, count, spec.ksId, count);
+  };
 
-      lastEndpoint = endpoint;
-      lastCount = count;
-      prev = endpoint;
-    }
-    if (lastCount >= minCountRepeat) {
-      RunningEffort countedEffort = spec.isBig
-          ? TransformExplorerDetail::buildCountedEffort<CountClass::EditWORD>(
-                config_, lastCount, spec.ksId, lastCount)
-          : TransformExplorerDetail::buildCountedEffort<CountClass::EditWord>(
-                config_, lastCount, spec.ksId, lastCount);
-      onDeletion(CharRange(cursor, VimCore::onePastOnSameLine(lines, lastEndpoint)),
-                 SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount));
-    }
-  }
-
-  for (const auto& spec : Edit::FORWARD_GAPEDGE_EDITS) {
+  for (const auto& spec : Edit::FORWARD_WORD_EDITS) {
     CursorPos prev = cursor;
     CursorPos lastEnd;
     int lastCount = 0;
     for (int count = 1; count <= maxIterations; count++) {
-      CursorPos endpoint = VimCore::motionWordEndpoint<true, EdgeType::GapEdge>(
-          prev, lines, spec.isBig, spec.skipCurrent,
-          rightColOffset_, boundary_.hasLinesBelow(), false);
-      if (endpoint == POSITION_OUTSIDE_BOUNDARY ||
-          endpoint == prev || endpoint.line != cursor.line) {
+      CharRange range = VimCore::wordOperatorRange(
+          prev, lines, spec.target, spec.isBig, boundary);
+      if (range.begin == POSITION_OUTSIDE_BOUNDARY ||
+          range.end == POSITION_OUTSIDE_BOUNDARY ||
+          range.end.line != cursor.line) {
         break;
       }
-
-      lastEnd = VimCore::wordEndpointToRangeEnd(endpoint, lines, EdgeType::GapEdge);
+      CursorPos nextPrev = lines.getPrevPos(range.end);
+      if (nextPrev == POSITION_OUTSIDE_BOUNDARY || nextPrev == prev) break;
+      lastEnd = range.end;
       lastCount = count;
-      prev = endpoint;
+      prev = nextPrev;
     }
     if (lastCount >= minCountRepeat) {
-      RunningEffort countedEffort = spec.isBig
-          ? TransformExplorerDetail::buildCountedEffort<CountClass::EditWORD>(
-                config_, lastCount, spec.ksId, lastCount)
-          : TransformExplorerDetail::buildCountedEffort<CountClass::EditWord>(
-                config_, lastCount, spec.ksId, lastCount);
+      RunningEffort countedEffort = countedEffortFor(spec, lastCount);
       onDeletion(CharRange(cursor, lastEnd),
                  SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount));
     }
   }
 
-  for (const auto& spec : Edit::BACKWARD_WORDEDGE_EDITS) {
+  for (const auto& spec : Edit::BACKWARD_WORD_EDITS) {
     CursorPos prev = cursor;
-    CursorPos lastEndpoint;
+    CursorPos lastBegin;
     int lastCount = 0;
     for (int count = 1; count <= maxIterations; count++) {
-      CursorPos endpoint = VimCore::motionWordEndpoint<false, EdgeType::WordEdge>(
-          prev, lines, spec.isBig, spec.skipCurrent,
-          leftColOffset_, boundary_.hasLinesAbove(), false);
-      if (endpoint == POSITION_OUTSIDE_BOUNDARY ||
-          endpoint == prev || endpoint.line != cursor.line) {
+      CharRange range = VimCore::wordOperatorRange(
+          prev, lines, spec.target, spec.isBig, boundary);
+      if (range.begin == POSITION_OUTSIDE_BOUNDARY ||
+          range.end == POSITION_OUTSIDE_BOUNDARY ||
+          range.begin == prev || range.begin.line != cursor.line) {
         break;
       }
 
-      lastEndpoint = endpoint;
+      lastBegin = range.begin;
       lastCount = count;
-      prev = endpoint;
+      prev = range.begin;
     }
     if (lastCount >= minCountRepeat) {
-      int contentStartCol = cursor.line == 0 ? leftColOffset_ : 0;
-      if (cursor.col > contentStartCol) {
-        CharRange range = VimCore::buildBackwardExclusiveCharRange(
-            lastEndpoint, cursor, lines, contentStartCol);
-        RunningEffort countedEffort = spec.isBig
-            ? TransformExplorerDetail::buildCountedEffort<CountClass::EditWORD>(
-                  config_, lastCount, spec.ksId, lastCount)
-            : TransformExplorerDetail::buildCountedEffort<CountClass::EditWord>(
-                  config_, lastCount, spec.ksId, lastCount);
-        onDeletion(range,
-                   SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount));
+      CharRange range;
+      if (spec.target == VimCore::WordOperatorTarget::DeleteBackToWordBegin) {
+        int contentStartCol = cursor.line == 0 ? leftColOffset_ : 0;
+        if (cursor.col <= contentStartCol) continue;
+        range = VimCore::buildBackwardExclusiveCharRange(
+            lastBegin, cursor, lines, contentStartCol);
+      } else {
+        range = CharRange(lastBegin, VimCore::onePastOnSameLine(lines, cursor));
       }
-    }
-  }
-
-  for (const auto& spec : Edit::BACKWARD_NEXTEDGE_EDITS) {
-    if (!spec.isExclusiveAtCursor && inBoundaryRegion(cursor, lines)) continue;
-
-    CursorPos prev = cursor;
-    CursorPos lastEndpoint;
-    int lastCount = 0;
-    for (int count = 1; count <= maxIterations; count++) {
-      CursorPos endpoint = VimCore::motionWordEndpoint<false, EdgeType::NextEdge>(
-          prev, lines, spec.isBig, spec.skipCurrent,
-          leftColOffset_, boundary_.hasLinesAbove(), false);
-      if (endpoint == POSITION_OUTSIDE_BOUNDARY ||
-          endpoint == prev || endpoint.line != cursor.line) {
-        break;
-      }
-
-      lastEndpoint = endpoint;
-      lastCount = count;
-      prev = endpoint;
-    }
-    if (lastCount >= minCountRepeat) {
-      RunningEffort countedEffort = spec.isBig
-          ? TransformExplorerDetail::buildCountedEffort<CountClass::EditWORD>(
-                config_, lastCount, spec.ksId, lastCount)
-          : TransformExplorerDetail::buildCountedEffort<CountClass::EditWord>(
-                config_, lastCount, spec.ksId, lastCount);
-      onDeletion(CharRange(lastEndpoint, VimCore::onePastOnSameLine(lines, cursor)),
+      RunningEffort countedEffort = countedEffortFor(spec, lastCount);
+      onDeletion(range,
                  SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount));
     }
   }
@@ -663,24 +590,18 @@ void TransformExplorer::exploreAllDeletions(
     assert(lines[cursor.line].empty());
 
     exploreFullLineEdits(Edit::EMPTYLINE_FULL_LINE_EDITS, cursor, lines, onLinewise);
-    exploreForwardWordEdits<EdgeType::WordEdge>(
-        Edit::FORWARD_WORDEDGE_EDITS, cursor, lines, onAnyDeletion);
-    exploreBackwardWordEdits<EdgeType::WordEdge>(
-        Edit::BACKWARD_WORDEDGE_EDITS, cursor, lines, onAnyDeletion);
-    exploreBackwardWordEdits<EdgeType::NextEdge>(
-        Edit::BACKWARD_NEXTEDGE_EDITS, cursor, lines, onAnyDeletion);
+    exploreWordEdits(
+        Edit::EMPTYLINE_FORWARD_WORD_EDITS, cursor, lines, onAnyDeletion,
+        onLinewise);
+    exploreWordEdits(
+        Edit::EMPTYLINE_BACKWARD_WORD_EDITS, cursor, lines, onAnyDeletion,
+        onLinewise);
     exploreJoinCommands(cursor, lines, onJoin);
     return;
   }
 
-  exploreForwardWordEdits<EdgeType::WordEdge>(
-      Edit::FORWARD_WORDEDGE_EDITS, cursor, lines, onAnyDeletion);
-  exploreForwardWordEdits<EdgeType::GapEdge>(
-      Edit::FORWARD_GAPEDGE_EDITS, cursor, lines, onAnyDeletion);
-  exploreBackwardWordEdits<EdgeType::WordEdge>(
-      Edit::BACKWARD_WORDEDGE_EDITS, cursor, lines, onAnyDeletion);
-  exploreBackwardWordEdits<EdgeType::NextEdge>(
-      Edit::BACKWARD_NEXTEDGE_EDITS, cursor, lines, onAnyDeletion);
+  exploreWordEdits(Edit::FORWARD_WORD_EDITS, cursor, lines, onAnyDeletion, onLinewise);
+  exploreWordEdits(Edit::BACKWARD_WORD_EDITS, cursor, lines, onAnyDeletion, onLinewise);
   exploreTextObjectEdits(Edit::TEXT_OBJECT_EDITS, cursor, lines, onAnyDeletion);
   exploreHalfLineEdits(Edit::HALF_LINE_EDITS, cursor, lines, contentBegin, contentEnd, onAnyDeletion);
   exploreFullLineEdits(Edit::FULL_LINE_EDITS, cursor, lines, onLinewise);

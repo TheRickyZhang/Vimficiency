@@ -4,7 +4,6 @@
 #include <string_view>
 #include <tuple>
 
-#include "Types/EdgeType.h"
 #include "Types/Lines.h"
 
 namespace VimCore {
@@ -25,28 +24,6 @@ void moveLine(CursorPos& pos, const Lines& lines, int dy);
 // =============================================================================
 // Word Motions
 // =============================================================================
-//
-// Unified word motion based on EdgeType, direction, and word type.
-// This is the fundamental building block; named motions forward to this.
-//
-// EdgeType is DIRECTION-INDEPENDENT:
-//   WordEdge: edge of the word we traverse (step back into word)
-//   GapEdge:  edge of the gap before next word (step back into gap)
-//   NextEdge: edge of the next unit (stay at first char of next thing)
-//
-// Mapping:
-//   Forward  + NextEdge -> w/W  (to start of next word)
-//   Forward  + WordEdge -> e/E  (to end of word)
-//   Backward + WordEdge -> b/B  (to start of word)
-//   Backward + NextEdge -> ge/gE (to end of previous word)
-
-// Motion that clamps result to valid positions (standard vim behavior)
-void motionWord(CursorPos& pos,
-                const Lines& lines,
-                bool forward,
-                EdgeType edgeType,
-                bool big,
-                bool skipCurrent = false);
 
 // Named word motion forwarders
 void motionW(CursorPos& pos, const Lines& lines, bool big);
@@ -80,6 +57,8 @@ void motionSentenceNext(CursorPos& pos, const Lines& lines);
 // forward: true for f/t, false for F/T
 // till: true for t/T (stop one short), false for f/F (land on target)
 int findCharInLine(char target, std::string_view line, int startCol, bool forward, bool till);
+int findCharInLine(char target, std::string_view line, int startCol,
+                   bool forward, bool till, int count, bool repeat);
 
 template<bool Forward>
 std::vector<std::tuple<char, int, int>> generateFMotions(int currCol, int targetCol, std::string_view line, int threshold);

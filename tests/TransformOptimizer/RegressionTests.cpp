@@ -172,6 +172,41 @@ TEST(TransformOptimizerRegression, BackwardParagraphExplorerEmitsDLeftBrace) {
   EXPECT_FALSE(sawUnexpectedCharwiseDLeftBrace);
 }
 
+TEST(TransformOptimizerRegression, SuffixCacheExpandsMismatchedDotRepeatContext) {
+  Config config = Config::uniform();
+  TransformOptimizer optimizer(config);
+  NeovimOracle oracle;
+
+  const Lines fullBuffer = {"ce.d.d ", "aa.eb", "f. e", ".e ae"};
+  const Lines editRegion = {".d.d ", "aa.eb", "f. e", ".e a"};
+  const Lines goalLines = {"fbbccbae", "c.dead", "aaadd   ", "e.b,"};
+  const Lines expectedFull = {
+      "cefbbccbae",
+      "c.dead",
+      "aaadd   ",
+      "e.b,e",
+  };
+  TransformBoundary boundary(fullBuffer, CursorPos(0, 2), CursorPos(3, 4));
+
+  TransformResult result = optimizer.optimizeTransform(
+      editRegion, goalLines, boundary,
+      TransformOptimizerParams{}
+          .withMaxResults(200)
+          .withMaxResultsPerStartPos(3));
+
+  auto bucket = result.resultsAt(2, 2);
+  ASSERT_FALSE(bucket.empty());
+
+  size_t checked = min<size_t>(3, bucket.size());
+  for (size_t i = 0; i < checked; i++) {
+    EXPECT_TRUE(OracleReplay::matches(
+        oracle, fullBuffer, CursorPos(2, 2),
+        bucket[i].getSequence().str(), expectedFull,
+        nullopt, Mode::Normal, "transform suffix cache dot context"))
+        << "sequence=" << bucket[i].getSequence().str();
+  }
+}
+
 TEST(TransformOptimizerRegression, StraddledPureDeletionAllResultsReplayToGoal) {
   Config config = Config::uniform();
   TransformOptimizer optimizer(config);

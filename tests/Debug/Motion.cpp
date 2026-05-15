@@ -278,7 +278,8 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDAW) {
 
   // Simulate daw
   cerr << "Before daw: " << testLines << " pos=(" << pos.line << "," << pos.col << ")" << endl;
-  auto range = VimCore::textObject(pos, testLines, false, false);  // daw
+  auto range = VimCore::wordTextObjectRange(
+      pos, testLines, VimCore::WordTextObjectKind::Around, false);
   cerr << "daw range: [" << range.begin.line << "," << range.begin.col << "] to ["
        << range.end.line << "," << range.end.col << "]" << endl;
 

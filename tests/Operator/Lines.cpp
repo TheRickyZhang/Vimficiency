@@ -199,6 +199,58 @@ TEST_F(LinesTest, ResolveExclusiveDeleteRange_BacksUpMidLineCrossing) {
   EXPECT_EQ(resolved.charRange.end, CursorPos(0, 6));
 }
 
+TEST_F(LinesTest, ResolveBackwardExclusiveWordDelete_BlankPrefixBecomesLinewise) {
+  Lines lines = {" ,.e", " caf"};
+
+  auto resolved = VimCore::resolveBackwardExclusiveWordDeleteRange(
+      CursorPos(0, 1), CursorPos(1, 0), lines);
+
+  EXPECT_EQ(resolved.kind, VimCore::ResolvedDeleteRangeKind::Linewise);
+  EXPECT_EQ(resolved.lineRange.beginLine, 0);
+  EXPECT_EQ(resolved.lineRange.endLine, 1);
+}
+
+TEST_F(LinesTest, ResolveBackwardExclusiveWordDelete_ContentPrefixStaysCharacterwise) {
+  Lines lines = {"abc def", "ghi"};
+
+  auto resolved = VimCore::resolveBackwardExclusiveWordDeleteRange(
+      CursorPos(0, 4), CursorPos(1, 0), lines);
+
+  EXPECT_EQ(resolved.kind, VimCore::ResolvedDeleteRangeKind::Characterwise);
+  EXPECT_EQ(resolved.charRange.begin, CursorPos(0, 4));
+  EXPECT_EQ(resolved.charRange.end, CursorPos(0, 7));
+}
+
+TEST_F(LinesTest, WordOperatorRange_DwStopsAtLineEndBeforeNextLine) {
+  Lines lines = {"ee ed ", " ,bb"};
+
+  CharRange range = VimCore::wordOperatorRange(
+      CursorPos(0, 5), lines,
+      VimCore::WordOperatorTarget::DeleteToNextWord,
+      false);
+
+  EXPECT_EQ(range.begin, CursorPos(0, 5));
+  EXPECT_EQ(range.end, CursorPos(0, 6));
+}
+
+TEST_F(LinesTest, SentenceOperatorEndpoint_GapAfterSentenceStopsAtNextStart) {
+  Lines lines = {". . fb"};
+
+  CursorPos endpoint = VimCore::sentenceOperatorEndpoint(
+      CursorPos(0, 1), lines, true);
+
+  EXPECT_EQ(endpoint, CursorPos(0, 2));
+}
+
+TEST_F(LinesTest, SentenceOperatorEndpoint_TrailingWhitespaceAtEofIsIncluded) {
+  Lines lines = {"e dcbb. "};
+
+  CursorPos endpoint = VimCore::sentenceOperatorEndpoint(
+      CursorPos(0, 1), lines, true);
+
+  EXPECT_EQ(endpoint, CursorPos(0, 8));
+}
+
 TEST_F(LinesTest, DeleteRange_WholeBufferLeavesSingleEmptyLine) {
   Lines lines = {"aa", "bb"};
   CursorPos cursor(0, 0);

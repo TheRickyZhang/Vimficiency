@@ -17,7 +17,6 @@
 // #include "VimCore/VimCore.h"
 // #include "VimCore/VimEndpointUtils.h"
 // #include "VimCore/VimMotionUtils.h"
-// #include "Types/SentenceEdgeType.h"
 // #include "Interpreter/MovementInterpreter.h"
 // #include "Interpreter/EditInterpreter.h"
 
@@ -400,12 +399,12 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceMixedContentFailure) {
     pos = ours;
   }
 
-  // Test VimCore::motionSentenceEndpoint directly
-  cerr << "\n=== VimCore::motionSentenceEndpoint trace ===" << endl;
+  // Test VimCore::sentenceMotionEndpoint directly
+  cerr << "\n=== VimCore::sentenceMotionEndpoint trace ===" << endl;
   using namespace VimCore;
 
-  CursorPos ep = motionSentenceEndpoint(CursorPos(3, 20), subBuffer, false, SentenceEdgeType::NextEdge);
-  cerr << "motionSentenceEndpoint((3,20), backward, NextEdge) = (" << ep.line << ", " << ep.col << ")" << endl;
+  CursorPos ep = sentenceMotionEndpoint(CursorPos(3, 20), subBuffer, false);
+  cerr << "sentenceMotionEndpoint((3,20), backward) = (" << ep.line << ", " << ep.col << ")" << endl;
 
   // Test what findCurrentSentenceStart returns
   cerr << "\n=== findCurrentSentenceStart trace ===" << endl;
@@ -646,19 +645,19 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceIndexFailure) {
   auto subResult3 = oracle_->simulate(subBuffer, 3, 6, "2(b");
   cerr << "Sub buffer:  2(b from (3,6) -> (" << subResult3.row << ", " << subResult3.col << ")" << endl;
 
-  // Trace VimCore::motionSentenceEndpoint to compare with Neovim
-  cerr << "\n=== VimCore::motionSentenceEndpoint trace ===" << endl;
+  // Trace VimCore::sentenceMotionEndpoint to compare with Neovim
+  cerr << "\n=== VimCore::sentenceMotionEndpoint trace ===" << endl;
 
   using namespace VimCore;
 
   // Single ( from (3, 6)
-  CursorPos ep1 = motionSentenceEndpoint(CursorPos(3, 6), subBuffer, false, SentenceEdgeType::NextEdge);
-  cerr << "motionSentenceEndpoint((3,6), backward) = (" << ep1.line << ", " << ep1.col << ")" << endl;
+  CursorPos ep1 = sentenceMotionEndpoint(CursorPos(3, 6), subBuffer, false);
+  cerr << "sentenceMotionEndpoint((3,6), backward) = (" << ep1.line << ", " << ep1.col << ")" << endl;
   cerr << "Neovim ( from (3,6) = (" << subResult1.row << ", " << subResult1.col << ")" << endl;
 
   // Single ( from ep1
-  CursorPos ep2 = motionSentenceEndpoint(ep1, subBuffer, false, SentenceEdgeType::NextEdge);
-  cerr << "motionSentenceEndpoint((" << ep1.line << "," << ep1.col << "), backward) = (" << ep2.line << ", " << ep2.col << ")" << endl;
+  CursorPos ep2 = sentenceMotionEndpoint(ep1, subBuffer, false);
+  cerr << "sentenceMotionEndpoint((" << ep1.line << "," << ep1.col << "), backward) = (" << ep2.line << ", " << ep2.col << ")" << endl;
 
   // b from ep2
   CursorPos pos_after_b = ep2;

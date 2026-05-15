@@ -159,6 +159,30 @@ TEST_F(NavBoundaryTest, CountedWordCandidatesCanStayWithinSingleLineEmbeddedSlic
   }
 }
 
+TEST_F(NavBoundaryTest, SentenceParagraphCandidatesNeedContextBehindTopSliceEdge) {
+  Lines fullBuffer = {
+      "a,,aba.,.c. ,.bb",
+      "da.bbda cd,.cc.. abbd. ",
+      " , d .,bcb.,d aba,a.c,",
+      ".c,dbbddcadac b .ab.,.d,a.,,",
+      "babcdca. bca ,.ac c.   ..a d b",
+      "cca,,cdd,, ca, aaa",
+      ",cd,, aacd. ,cc",
+      "accd bad,.d .d.a.ac,c, d,,b",
+  };
+  Lines subBuffer = {fullBuffer[2], fullBuffer[3], fullBuffer[4], fullBuffer[5]};
+  NavBoundary boundary(
+      fullBuffer,
+      CursorPos(2, 0),
+      CursorPos(5, fullBuffer[5].effectiveSize()));
+
+  auto candidates = collectStaticCandidates(
+      subBuffer, CursorPos(0, 0), CursorPos(2, 5), boundary);
+
+  EXPECT_FALSE(hasStaticCandidate(candidates, ")"));
+  EXPECT_FALSE(hasStaticCandidate(candidates, "}"));
+}
+
 TEST_F(NavBoundaryTest, LeftColOffset_FiltersPrefixPositions) {
   // NOTE: CursorPos-based column filtering was removed because it was ineffective
   // for motions that clamp to buffer edges (paragraph, sentence jumps).
@@ -245,9 +269,5 @@ TEST_F(NavBoundaryTest, IsPositionInBounds_WithColConstraints) {
   EXPECT_FALSE(boundary.isPositionInBounds(CursorPos(2, 10), lastLine, lastLineLength)) << "col 10 == 10 (first in suffix)";
   EXPECT_FALSE(boundary.isPositionInBounds(CursorPos(2, 14), lastLine, lastLineLength)) << "col 14 > 10";
 }
-
-// =============================================================================
-// minCountRepeat threshold tests
-// =============================================================================
 
 }  // namespace

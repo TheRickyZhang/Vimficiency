@@ -108,6 +108,46 @@ TEST_F(MiscMotionsTest, GG_G_RoundTrip) {
 // 3. CHARACTER FIND MOTIONS (f, F, t, T, ;, ,)
 // =============================================================================
 
+TEST_F(MiscMotionsTest, CharFind_TillRepeatSkipsAdjacentTarget) {
+  Lines lines = {"abcabcabc"};
+  expectPos(simulateMovements({0, 0}, "ta", lines), 0, 2, "ta lands before first match");
+  expectPos(simulateMovements({0, 0}, "ta;", lines), 0, 5, "ta; lands before second match");
+}
+
+TEST_F(MiscMotionsTest, CharFind_TillReverseRepeat) {
+  Lines lines = {". ,bcddcfaead feb."};
+  expectPos(simulateMovements({0, 0}, "te;,,", lines), 0, 11, "te;,, matches Vim repeat direction");
+}
+
+TEST_F(MiscMotionsTest, CharFind_RepeatStateSurvivesInterveningMotion) {
+  Lines lines = {"abcabcabc"};
+  expectPos(simulateMovements({0, 0}, "fal;", lines), 0, 6, "repeat uses previous fa after l");
+}
+
+TEST_F(MiscMotionsTest, CharFind_CountedRepeat) {
+  Lines lines = {"abcabcabcabc"};
+  expectPos(simulateMovements({0, 0}, "fa2;", lines), 0, 9, "2; reaches second repeated match");
+}
+
+TEST_F(MiscMotionsTest, CharFind_SemicolonCanBeTarget) {
+  Lines lines = {"a;b;c"};
+  expectPos(simulateMovements({0, 0}, "f;;", lines), 0, 3, "first semicolon is target, second repeats");
+}
+
+TEST_F(MiscMotionsTest, CharFind_RepeatWithoutPriorFindIsNoOp) {
+  Lines lines = {"abcabc"};
+  expectPos(simulateMovements({0, 3}, ";", lines), 0, 3, "bare ; has no previous find");
+  expectPos(simulateMovements({0, 3}, ",", lines), 0, 3, "bare , has no previous find");
+}
+
+TEST_F(MiscMotionsTest, CountedCharFind_IsAtomic) {
+  Lines lines = {"abxba"};
+  expectPos(simulateMovements({0, 0}, "2fb", lines), 0, 3, "2fb reaches second match");
+  expectPos(simulateMovements({0, 0}, "3fb", lines), 0, 0, "3fb fails without partial movement");
+  expectPos(simulateMovements({0, 0}, "2tb", lines), 0, 2, "2tb lands before second match");
+  expectPos(simulateMovements({0, 0}, "3tb", lines), 0, 0, "3tb fails without partial movement");
+}
+
 TEST_F(MiscMotionsTest, EmptyLineNavigation) {
   Lines lines = {""};
   expectPos(simulateMovements({0, 0}, "l", lines), 0, 0);
@@ -126,57 +166,6 @@ TEST_F(MiscMotionsTest, FirstAndLastPositions) {
   int lastLine = a2_block_lines.size() - 1;
   CursorPos p = simulateMovements({lastLine, 0}, "G", a2_block_lines);
   EXPECT_EQ(p.line, lastLine);
-}
-
-// =============================================================================
-// 7. PROPERTY-BASED TESTS
-// =============================================================================
-
-TEST_F(MiscMotionsTest, Property_H_NeverIncreasesColumn) {
-  for(int col = 0; col < 10; col++) {
-    CursorPos result = simulateMovements({0, col}, "h", a1_long_line);
-    EXPECT_LE(result.col, col) << "h from col " << col << " should not increase col";
-    EXPECT_EQ(result.line, 0) << "h should not change line";
-  }
-}
-
-TEST_F(MiscMotionsTest, Property_L_NeverDecreasesColumn) {
-  for(int col = 0; col < 10; col++) {
-    CursorPos result = simulateMovements({0, col}, "l", a1_long_line);
-    EXPECT_GE(result.col, col) << "l from col " << col << " should not decrease col";
-    EXPECT_EQ(result.line, 0) << "l should not change line";
-  }
-}
-
-TEST_F(MiscMotionsTest, Property_J_NeverDecreasesLine) {
-  for(int line = 0; line < (int)a2_block_lines.size(); line++) {
-    CursorPos result = simulateMovements({line, 0}, "j", a2_block_lines);
-    EXPECT_GE(result.line, line) << "j from line " << line << " should not decrease line";
-  }
-}
-
-TEST_F(MiscMotionsTest, Property_K_NeverIncreasesLine) {
-  for(int line = 0; line < (int)a2_block_lines.size(); line++) {
-    CursorPos result = simulateMovements({line, 0}, "k", a2_block_lines);
-    EXPECT_LE(result.line, line) << "k from line " << line << " should not increase line";
-  }
-}
-
-TEST_F(MiscMotionsTest, Property_GG_AlwaysLine0) {
-  auto lines = makeLines(20);
-  for(int line = 0; line < (int)lines.size(); line++) {
-    CursorPos result = simulateMovements({line, 0}, "gg", lines);
-    EXPECT_EQ(result.line, 0) << "gg from line " << line << " should go to line 0";
-  }
-}
-
-TEST_F(MiscMotionsTest, Property_G_AlwaysLastLine) {
-  auto lines = makeLines(20);
-  int lastLine = lines.size() - 1;
-  for(int line = 0; line < (int)lines.size(); line++) {
-    CursorPos result = simulateMovements({line, 0}, "G", lines);
-    EXPECT_EQ(result.line, lastLine) << "G from line " << line << " should go to last line";
-  }
 }
 
 }  // namespace

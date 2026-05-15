@@ -14,18 +14,6 @@ using namespace std;
 
 namespace {
 
-CursorPos computeInsertEndPos(CursorPos insertPos, const string& insertedText) {
-  if (insertedText.empty()) return insertPos;
-  Lines inserted = Lines::unflatten(insertedText);
-  if (inserted.size() == 1) {
-    int endCol = insertPos.col + static_cast<int>(inserted[0].size()) - 1;
-    return CursorPos(insertPos.line, max(0, endCol));
-  }
-  int lastLine = insertPos.line + static_cast<int>(inserted.size()) - 1;
-  int lastCol = inserted.back().empty() ? 0 : static_cast<int>(inserted.back().size()) - 1;
-  return CursorPos(lastLine, lastCol);
-}
-
 tuple<int, int, bool> findMatchingQuotePair(
     const string& line,
     int beginCol,
@@ -210,14 +198,16 @@ TransformResult computeTransformResultForDiff(
   if (diff.isPureInsertion()) {
     Lines insertLines = Lines::unflatten(diff.insertedText);
     KeyedSequence full = KeyedSequence::i;
-    full += buildTypedCommands(insertLines);
+    full += buildTypedCommands(
+        insertLines, "", diff.boundary.prefix(), diff.boundary.suffix());
     RunningEffort runningEffort(full.keys, config);
     double effort = runningEffort.getEffort(config);
 
     vector<vector<Result>> insertResultsByStart(1);
     insertResultsByStart[0].emplace_back(std::move(full.seq), effort);
 
-    CursorPos goalPos = computeInsertEndPos(diff.beginPos, diff.insertedText);
+    CursorPos goalPos = typedCommandsExitCursor(
+        diff.beginPos, insertLines, diff.boundary.suffix());
     Lines singlePoint = {""};
     return TransformResult(std::move(insertResultsByStart), {}, singlePoint,
                       diff.beginPos.line, diff.beginPos.col, goalPos);

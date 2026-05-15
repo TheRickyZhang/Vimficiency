@@ -12,7 +12,7 @@ We completed a structural cleanup to enforce explicit module boundaries in `src/
 
 - Consolidated shared value ownership under `src/Types/`:
   `Position`, `Range`, `LineRange`, `Mode`, `Sequence`, `EdgeType`,
-  `LineEdgeType`, `SentenceEdgeType`, and `LandingType`.
+  `LineEdgeType`, and `LandingType`.
 - Moved `NavContext` from `Editor` to `Types` as shared runtime context state.
 - Migrated boundary/value data holders from `Utils` to `Types`:
   `Lines`, `BracketFlags`, `QuoteFlags`, and `NoChar`.
@@ -39,7 +39,9 @@ We completed a structural cleanup to enforce explicit module boundaries in `src/
   (`EditInterpreter`, `MovementInterpreter`, `SequenceParser`) and
   `src/Session/` for snapshot I/O (`Snapshot`).
 - Moved `SequenceChunker` out of `src` into `tests/Exploration/` because it is
-  currently exploration/test tooling only.
+  currently exploration/test tooling only. (Later moved to `tools/Exploration/`
+  since the dashboard collector is tooling, not a test — see testing.md
+  placement rule.)
 - Grouped keyboard command-to-key mapping declarations under
   `src/Keyboard/ToKeys/` (`CharToKeys`, `CommandToKeys`, `CountToKeys`,
   `MovementToKeys`, `EditToKeys`, and primitives) to separate mapping catalogs
@@ -524,4 +526,3 @@ has changed` would also work, but it's fundamentally a race-tuned
 timeout: if the token is a no-op (e.g., `0` on col 0, or `j` on the
 last line) the pred never succeeds and we pay the full timeout per
 no-op token. `x` is `O(drain work)`, which is the right shape.
-

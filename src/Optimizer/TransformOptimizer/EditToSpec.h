@@ -2,8 +2,8 @@
 
 #include <vector>
 
-#include "Types/EdgeType.h"
 #include "Keyboard/KeyedSequence.h"
+#include "VimCore/VimEndpointUtils.h"
 
 // =============================================================================
 // Edit Operation Specs - constexpr tables for TransformOptimizer
@@ -13,48 +13,17 @@
 
 namespace Edit {
 
-// Forward word motion edits (de, dw, dE, dW)
-struct ForwardWordEditSpec {
+struct WordEditSpec {
   KSId ksId;
-  EdgeType edgeType;
+  VimCore::WordOperatorTarget target;
   bool isBig;
-  bool skipCurrent;  // de/dE need true; dw/dW need false
 };
-extern const std::vector<ForwardWordEditSpec> FORWARD_WORD_EDITS;
-// Subset: de/dE only (for empty lines where dw/dW equivalent to dd)
-extern const std::vector<ForwardWordEditSpec> EMPTYLINE_FORWARD_WORD_EDITS;
 
-// New: Split by EdgeType for templated dispatch (EdgeType implicit from vector name)
-struct ForwardWordEditSpecNoEdge {
-  KSId ksId;
-  bool isBig;
-  bool skipCurrent;
-};
-extern const std::vector<ForwardWordEditSpecNoEdge> FORWARD_WORDEDGE_EDITS;  // de, dE
-extern const std::vector<ForwardWordEditSpecNoEdge> FORWARD_GAPEDGE_EDITS;   // dw, dW
-
-// Backward word motion edits (db, dge, dB, dgE)
-struct BackwardWordEditSpec {
-  KSId ksId;
-  EdgeType edgeType;
-  bool isBig;
-  bool skipCurrent;         // db/dB need true; dge/dgE need false
-  bool isExclusiveAtCursor; // db/dB exclude cursor char from deletion
-};
-extern const std::vector<BackwardWordEditSpec> BACKWARD_WORD_EDITS;
-// Subset: db/dB/dge only (dgE equivalent to dge on empty lines)
-extern const std::vector<BackwardWordEditSpec> EMPTYLINE_BACKWARD_WORD_EDITS;
-extern const std::vector<BackwardWordEditSpec> EXCLUSIVE_BACKWARD_WORD_EDITS;
-
-// New: Split by EdgeType for templated dispatch (EdgeType implicit from vector name)
-struct BackwardWordEditSpecNoEdge {
-  KSId ksId;
-  bool isBig;
-  bool skipCurrent;
-  bool isExclusiveAtCursor;
-};
-extern const std::vector<BackwardWordEditSpecNoEdge> BACKWARD_WORDEDGE_EDITS;  // db, dB
-extern const std::vector<BackwardWordEditSpecNoEdge> BACKWARD_NEXTEDGE_EDITS;  // dge, dgE
+extern const std::vector<WordEditSpec> FORWARD_WORD_EDITS;
+extern const std::vector<WordEditSpec> EMPTYLINE_FORWARD_WORD_EDITS;
+extern const std::vector<WordEditSpec> BACKWARD_WORD_EDITS;
+extern const std::vector<WordEditSpec> EMPTYLINE_BACKWARD_WORD_EDITS;
+extern const std::vector<WordEditSpec> EXCLUSIVE_BACKWARD_WORD_EDITS;
 
 // Text object edits (diw, daw, diW, daW)
 struct TextObjectEditSpec {

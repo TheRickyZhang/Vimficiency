@@ -105,9 +105,7 @@ void emitInsertionStrategy(const CompositionFrontierQuery& query,
       query.lines, query.cursor, s.targetLine, s.beginCol, s.endCol,
       query.boundary, query.navContext, params, emitter.config);
   if (!motion) return;
-  // Landing for the suggestion is `diff.beginPos` — by the time the user
-  // finishes typing the insertCmd, the cursor sits at the insertion point.
-  emitter.emit(compose(*motion, s.insertCmd), query.diff.beginPos);
+  emitter.emit(compose(*motion, s.insertCmd), s.goalPos);
 }
 
 void emitBracketQuoteStrategy(const CompositionFrontierQuery& query,

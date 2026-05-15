@@ -1,8 +1,8 @@
 #pragma once
 
 #include <vector>
-#include "Types/EdgeType.h"
 #include "Keyboard/KeyedSequence.h"
+#include "VimCore/VimEndpointUtils.h"
 
 // =============================================================================
 // Motion Operation Specs - tables for NavOptimizer
@@ -15,23 +15,12 @@ namespace Movement {
 // Word motions (w, b, e, ge, W, B, E, gE)
 struct WordMovementSpec {
   KSId ksId;
-  bool forward;
-  EdgeType edgeType;
+  VimCore::WordMotionTarget target;
   bool big;
-  bool skipCurrent;
 };
 extern const std::vector<WordMovementSpec> WORD_MOTIONS;
-
-// Split by Forward/EdgeType for templated dispatch (EdgeType implicit from vector name)
-struct WordMovementSpecNoEdge {
-  KSId ksId;
-  bool big;
-  bool skipCurrent;
-};
-extern const std::vector<WordMovementSpecNoEdge> FORWARD_NEXTEDGE_MOVEMENTS;   // w, W
-extern const std::vector<WordMovementSpecNoEdge> FORWARD_WORDEDGE_MOVEMENTS;   // e, E
-extern const std::vector<WordMovementSpecNoEdge> BACKWARD_WORDEDGE_MOVEMENTS;  // b, B
-extern const std::vector<WordMovementSpecNoEdge> BACKWARD_NEXTEDGE_MOVEMENTS;  // ge, gE
+extern const std::vector<WordMovementSpec> FORWARD_WORD_MOVEMENTS;
+extern const std::vector<WordMovementSpec> BACKWARD_WORD_MOVEMENTS;
 
 // Paragraph motions ({, })
 struct ParagraphMovementSpec {
@@ -40,7 +29,7 @@ struct ParagraphMovementSpec {
 };
 extern const std::vector<ParagraphMovementSpec> PARAGRAPH_MOTIONS;
 
-// Split by Forward for templated dispatch (EdgeType is always NextEdge for motions)
+// Split by direction for paragraph dispatch.
 struct ParagraphMovementSpecNoDir {
   KSId ksId;
 };
@@ -54,7 +43,7 @@ struct SentenceMovementSpec {
 };
 extern const std::vector<SentenceMovementSpec> SENTENCE_MOTIONS;
 
-// Split by Forward for templated dispatch (EdgeType is always NextEdge for motions)
+// Split by direction for sentence dispatch.
 struct SentenceMovementSpecNoDir {
   KSId ksId;
 };

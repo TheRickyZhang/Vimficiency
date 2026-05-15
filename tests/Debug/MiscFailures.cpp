@@ -26,9 +26,10 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateRemainingFailures) {
     VimCore::deleteLineRangeAndUpdatePos(testLines, LineRange(0, 1), pos);
     cerr << "After dd: " << testLines << " pos=(" << pos.line << "," << pos.col << ")" << endl;
 
-    // Simulate daw - first check what textObjectRange returns
-    cerr << endl << "textObjectRange for daw at (" << pos.line << "," << pos.col << "):" << endl;
-    CharRange dawRange = VimCore::textObjectRange(pos, testLines, false, false, 0, 0, false, false);
+    // Simulate daw - first check what wordTextObjectRange returns
+    cerr << endl << "wordTextObjectRange for daw at (" << pos.line << "," << pos.col << "):" << endl;
+    CharRange dawRange = VimCore::wordTextObjectRange(
+        pos, testLines, VimCore::WordTextObjectKind::Around, false);
     cerr << "  CharRange: [" << dawRange.begin.line << "," << dawRange.begin.col << "] to ["
          << dawRange.end.line << "," << dawRange.end.col << "]" << endl;
 

@@ -68,10 +68,7 @@ public:
   void exploreAllStandardMotions(const NavState& base, OnStatic&& onStatic) {
     exploreHorizontalMotions(base, onStatic);
     exploreVerticalMovements(base, onStatic);
-    exploreWordMovements<true, EdgeType::NextEdge>(Movement::FORWARD_NEXTEDGE_MOVEMENTS, base, onStatic);
-    exploreWordMovements<true, EdgeType::WordEdge>(Movement::FORWARD_WORDEDGE_MOVEMENTS, base, onStatic);
-    exploreWordMovements<false, EdgeType::WordEdge>(Movement::BACKWARD_WORDEDGE_MOVEMENTS, base, onStatic);
-    exploreWordMovements<false, EdgeType::NextEdge>(Movement::BACKWARD_NEXTEDGE_MOVEMENTS, base, onStatic);
+    exploreWordMovements(Movement::WORD_MOTIONS, base, onStatic);
     exploreParagraphMovements<true>(Movement::FORWARD_PARAGRAPH_MOVEMENTS, base, onStatic);
     exploreParagraphMovements<false>(Movement::BACKWARD_PARAGRAPH_MOVEMENTS, base, onStatic);
     exploreSentenceMovements<true>(Movement::FORWARD_SENTENCE_MOVEMENTS, base, onStatic);
@@ -127,6 +124,17 @@ private:
         forward ? boundary_.rightColOffset() : boundary_.leftColOffset(),
         forward ? boundary_.hasLinesBelow() : boundary_.hasLinesAbove(),
     };
+  }
+
+  template<bool Forward>
+  bool hasHiddenContextOppositeScan(const CursorPos& pos) const {
+    if constexpr (Forward) {
+      return pos.line == 0 &&
+          (boundary_.hasLinesAbove() || boundary_.leftColOffset() > 0);
+    } else {
+      return pos.line == lines_.lastLine() &&
+          (boundary_.hasLinesBelow() || boundary_.rightColOffset() > 0);
+    }
   }
 
   int firstNonBlankCol(int line) const {
@@ -256,17 +264,34 @@ private:
     }
   }
 
-  template<bool Forward, EdgeType Edge, class OnStatic>
-  void exploreWordMovements(const std::vector<Movement::WordMovementSpecNoEdge>& specs,
-                          const NavState& base,
-                          OnStatic& onStatic) {
+  static bool isForwardWordTarget(VimCore::WordMotionTarget target) {
+    return target == VimCore::WordMotionTarget::NextBegin ||
+           target == VimCore::WordMotionTarget::NextEnd;
+  }
+
+  VimCore::WordBoundaryContext wordBoundaryForDirection(bool forward) const {
+    auto dirBoundary = forward ? boundaryForDirection(true) : boundaryForDirection(false);
+    VimCore::WordBoundaryContext boundary;
+    if (forward) {
+      boundary.rightColOffset = dirBoundary.edgeOffset;
+      boundary.hasLinesBelow = dirBoundary.hasLinesOutside;
+    } else {
+      boundary.leftColOffset = dirBoundary.edgeOffset;
+      boundary.hasLinesAbove = dirBoundary.hasLinesOutside;
+    }
+    return boundary;
+  }
+
+  template<class OnStatic>
+  void exploreWordMovements(const std::vector<Movement::WordMovementSpec>& specs,
+                            const NavState& base,
+                            OnStatic& onStatic) {
     CursorPos pos = base.getPos();
-    auto dirBoundary = boundaryForDirection(Forward);
 
     for (const auto& spec : specs) {
-      CursorPos endpoint = VimCore::motionWordEndpoint<Forward, Edge>(
-        pos, lines_, spec.big, spec.skipCurrent,
-        dirBoundary.edgeOffset, dirBoundary.hasLinesOutside, false);
+      CursorPos endpoint = VimCore::wordMotionEndpoint(
+          pos, lines_, spec.target, spec.big,
+          wordBoundaryForDirection(isForwardWordTarget(spec.target)));
 
       if (endpoint != POSITION_OUTSIDE_BOUNDARY) {
         emitMotion(spec.ksId, endpoint, onStatic);
@@ -279,6 +304,7 @@ private:
                                const NavState& base,
                                OnStatic& onStatic) {
     CursorPos pos = base.getPos();
+    if (hasHiddenContextOppositeScan<Forward>(pos)) return;
 
     auto dirBoundary = boundaryForDirection(Forward);
     int endpointLine = VimCore::motionParagraphEndpoint<Forward, LineEdgeType::NextEdge>(
@@ -305,14 +331,13 @@ private:
                               const NavState& base,
                               OnStatic& onStatic) {
     CursorPos pos = base.getPos();
+    if (hasHiddenContextOppositeScan<Forward>(pos)) return;
 
     auto dirBoundary = boundaryForDirection(Forward);
-    CursorPos endpoint = VimCore::motionSentenceEndpoint<Forward, SentenceEdgeType::NextEdge>(
-        pos, lines_, dirBoundary.edgeOffset, dirBoundary.hasLinesOutside);
-
+    CursorPos endpoint = VimCore::sentenceMotionEndpoint(
+        pos, lines_, Forward, dirBoundary.edgeOffset, dirBoundary.hasLinesOutside);
     if (endpoint == POSITION_OUTSIDE_BOUNDARY) return;
-    // motionSentenceEndpoint returns `pos` when there is no next/prev
-    // sentence to land on. Don't surface a no-op `(` / `)`.
+    if (!isValidLocalLandingPosition(endpoint)) return;
     if (endpoint.pos() == pos.pos()) return;
 
     for (const auto& spec : specs) {
@@ -396,6 +421,10 @@ private:
   void exploreCountedSpec(const NavState& base, OnCounted& onCounted) {
     CursorPos pos = base.getPos();
     constexpr KSId motionId = Forward ? ForwardKS : BackwardKS;
+
+    if constexpr (LT == LandingType::Paragraph || LT == LandingType::Sentence) {
+      if (hasHiddenContextOppositeScan<Forward>(pos)) return;
+    }
 
     int off = bufferLineOffset_;
 
@@ -588,16 +617,14 @@ private:
 
   template<class OnStatic>
   void exploreForwardCrossingMotions(const NavState& base, OnStatic& onStatic) {
-    exploreWordMovements<true, EdgeType::NextEdge>(Movement::FORWARD_NEXTEDGE_MOVEMENTS, base, onStatic);
-    exploreWordMovements<true, EdgeType::WordEdge>(Movement::FORWARD_WORDEDGE_MOVEMENTS, base, onStatic);
+    exploreWordMovements(Movement::FORWARD_WORD_MOVEMENTS, base, onStatic);
     exploreParagraphMovements<true>(Movement::FORWARD_PARAGRAPH_MOVEMENTS, base, onStatic);
     exploreSentenceMovements<true>(Movement::FORWARD_SENTENCE_MOVEMENTS, base, onStatic);
   }
 
   template<class OnStatic>
   void exploreBackwardCrossingMotions(const NavState& base, OnStatic& onStatic) {
-    exploreWordMovements<false, EdgeType::WordEdge>(Movement::BACKWARD_WORDEDGE_MOVEMENTS, base, onStatic);
-    exploreWordMovements<false, EdgeType::NextEdge>(Movement::BACKWARD_NEXTEDGE_MOVEMENTS, base, onStatic);
+    exploreWordMovements(Movement::BACKWARD_WORD_MOVEMENTS, base, onStatic);
     exploreParagraphMovements<false>(Movement::BACKWARD_PARAGRAPH_MOVEMENTS, base, onStatic);
     exploreSentenceMovements<false>(Movement::BACKWARD_SENTENCE_MOVEMENTS, base, onStatic);
   }
