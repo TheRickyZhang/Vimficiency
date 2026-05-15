@@ -17,6 +17,10 @@
 // Unlike TransformStateKey, which includes a TransformEditorState content hash,
 // CompositionState derives lines from editsCompleted, so key is just
 // (pos, mode, editsCompleted).
+//
+// `targetCol` is intentionally omitted — see TransformStateKey in
+// src/Optimizer/TransformOptimizer/TransformState.h for the invariant and
+// the trip wires that would invalidate it.
 
 struct CompositionStateKey {
   int line;

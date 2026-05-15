@@ -32,12 +32,7 @@ static bool inWordBoundaryRegion(const CursorPos& pos, const Lines& lines,
                                  WordBoundaryContext boundary) {
   if (pos.line < 0 || pos.line > lines.lastLine()) return true;
   if (pos.line == 0 && pos.col < boundary.leftColOffset) return true;
-  if (pos.line == lines.lastLine() && boundary.rightColOffset > 0 &&
-      pos.col >= static_cast<int>(lines[pos.line].size()) -
-                     boundary.rightColOffset) {
-    return true;
-  }
-  return false;
+  return boundary.inSuffixRegion(pos, lines);
 }
 
 template<bool Forward, EdgeType Edge>
@@ -249,7 +244,7 @@ CharRange wordOperatorRange(CursorPos cursor,
       if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor) {
         return CharRange(POSITION_OUTSIDE_BOUNDARY, POSITION_OUTSIDE_BOUNDARY);
       }
-      int contentStartCol = cursor.line == 0 ? boundary.leftColOffset : 0;
+      int contentStartCol = boundary.contentStartCol(cursor.line);
       if (cursor.col == contentStartCol && endpoint.line == cursor.line) {
         return CharRange(POSITION_OUTSIDE_BOUNDARY, POSITION_OUTSIDE_BOUNDARY);
       }

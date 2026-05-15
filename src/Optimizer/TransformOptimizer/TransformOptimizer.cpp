@@ -343,7 +343,7 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
                               SequenceBinding(KeyedSequence::h, bank[KSId::h]));
       }
       if (pos.line > 0) {
-        int newCol = min(pos.targetCol, lines[pos.line - 1].lastCol());
+        int newCol = VimCore::clampCol(lines, pos.targetCol, pos.line - 1);
         dispatch.moveByMotion(CursorPos(pos.line - 1, newCol, pos.targetCol),
                               SequenceBinding(KeyedSequence::k, bank[KSId::k]));
       }
@@ -355,7 +355,7 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
                               SequenceBinding(KeyedSequence::l, bank[KSId::l]));
       }
       if (lines.lastLine() > 0) {
-        int newCol = min(pos.targetCol, lines[1].lastCol());
+        int newCol = VimCore::clampCol(lines, pos.targetCol, 1);
         dispatch.moveByMotion(CursorPos(1, newCol, pos.targetCol),
                               SequenceBinding(KeyedSequence::j, bank[KSId::j]));
       }

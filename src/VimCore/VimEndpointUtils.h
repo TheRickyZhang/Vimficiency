@@ -48,6 +48,27 @@ struct WordBoundaryContext {
   bool hasLinesAbove = false;
   bool hasLinesBelow = false;
   bool clampOutside = true;
+
+  // First valid content column for a given line within the effective region.
+  // The prefix offset only applies to line 0; other lines have no prefix.
+  int contentStartCol(int line) const {
+    return line == 0 ? leftColOffset : 0;
+  }
+
+  // Effective end-of-content column on `line` (exclusive). On the last edit
+  // line, the suffix offset is excluded; other lines use the full line size.
+  int effectiveLineEnd(const Lines& lines, int line, bool isLastEditLine) const {
+    int lineSize = static_cast<int>(lines[line].size());
+    return isLastEditLine ? lineSize - rightColOffset : lineSize;
+  }
+
+  // True if `pos` falls inside the protected suffix region on the last edit
+  // line. Returns false when there is no suffix (rightColOffset == 0).
+  bool inSuffixRegion(const CursorPos& pos, const Lines& lines) const {
+    if (rightColOffset <= 0) return false;
+    if (pos.line != lines.lastLine()) return false;
+    return pos.col >= static_cast<int>(lines[pos.line].size()) - rightColOffset;
+  }
 };
 
 CursorPos wordMotionEndpoint(CursorPos cursor,

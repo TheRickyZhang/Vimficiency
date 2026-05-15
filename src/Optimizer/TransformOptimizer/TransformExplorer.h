@@ -217,15 +217,13 @@ void TransformExplorer::exploreHalfLineEdits(
     OnDeletion&& onDeletion) {
   int lastEditLine = lines.lastLine();
 
+  VimCore::WordBoundaryContext boundary = wordBoundaryContext();
   for (const Edit::LineEditSpec& spec : specs) {
     if (spec.ksId == KSId::D) {
       if (cursor.line == lastEditLine && boundary_.hasSuffix()) continue;
 
-      int lineLen = static_cast<int>(lines[cursor.line].size());
-      int lineContentEnd = lineLen;
-      if (cursor.line == lastEditLine && rightColOffset_ > 0) {
-        lineContentEnd -= rightColOffset_;
-      }
+      int lineContentEnd = boundary.effectiveLineEnd(
+          lines, cursor.line, cursor.line == lastEditLine);
       if (lineContentEnd <= 0) continue;
 
       int endCol = lineContentEnd - 1;
@@ -235,7 +233,7 @@ void TransformExplorer::exploreHalfLineEdits(
     } else if (spec.ksId == KSId::d0) {
       if (cursor.line == 0 && boundary_.hasPrefix()) continue;
 
-      int lineContentStart = (cursor.line == 0) ? leftColOffset_ : 0;
+      int lineContentStart = boundary.contentStartCol(cursor.line);
       if (cursor.col <= lineContentStart) continue;
       CharRange range(CursorPos(cursor.line, lineContentStart),
                       CursorPos(cursor.line, cursor.col));
@@ -336,13 +334,14 @@ void TransformExplorer::exploreSentenceEdits(
 
   if (endpoint == POSITION_OUTSIDE_BOUNDARY) return;
 
+  VimCore::WordBoundaryContext boundary = wordBoundaryContext();
   if constexpr (Forward) {
-    if (boundary_.hasSuffix() && endpoint.line == lastLine &&
-        endpoint.col >= static_cast<int>(lines[lastLine].size()) - rightColOffset_) {
+    if (boundary_.hasSuffix() && boundary.inSuffixRegion(endpoint, lines)) {
       return;
     }
   } else {
-    if (boundary_.hasPrefix() && endpoint.line == 0 && endpoint.col < leftColOffset_) {
+    if (boundary_.hasPrefix() && endpoint.line == 0
+        && endpoint.col < boundary.contentStartCol(0)) {
       return;
     }
   }
@@ -380,9 +379,8 @@ void TransformExplorer::exploreWordEdits(
     }
     SequenceBinding cmd(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId));
     if (spec.target == VimCore::WordOperatorTarget::DeleteBackToWordBegin) {
-      int contentStartCol = cursor.line == 0 ? leftColOffset_ : 0;
       auto resolved = VimCore::resolveBackwardExclusiveWordDeleteRange(
-          range.begin, cursor, lines, contentStartCol);
+          range.begin, cursor, lines, boundary.contentStartCol(cursor.line));
       TransformExplorerDetail::emitResolvedDeletion(
           resolved, cmd, onAnyDeletion, onLinewise);
       continue;
@@ -529,7 +527,7 @@ void TransformExplorer::exploreCountedWordEdits(
     if (lastCount >= minCountRepeat) {
       CharRange range;
       if (spec.target == VimCore::WordOperatorTarget::DeleteBackToWordBegin) {
-        int contentStartCol = cursor.line == 0 ? leftColOffset_ : 0;
+        int contentStartCol = boundary.contentStartCol(cursor.line);
         if (cursor.col <= contentStartCol) continue;
         range = VimCore::buildBackwardExclusiveCharRange(
             lastBegin, cursor, lines, contentStartCol);
@@ -647,11 +645,12 @@ void sweepExplorerStructurals(
   explorer.exploreCountedJoinCommands(cursor, effectiveLines, minPrefixCount, onCountedJoin);
   explorer.exploreCountedWordEdits(cursor, effectiveLines, minPrefixCount, onDeletion);
 
-  const int contentStart = (cursor.line == 0) ? leftColOffset : 0;
-  int contentEnd = static_cast<int>(effectiveLines[cursor.line].size());
-  if (cursor.line == effectiveLines.lastLine() && rightColOffset > 0) {
-    contentEnd -= rightColOffset;
-  }
+  VimCore::WordBoundaryContext sweepBoundary;
+  sweepBoundary.leftColOffset = leftColOffset;
+  sweepBoundary.rightColOffset = rightColOffset;
+  const int contentStart = sweepBoundary.contentStartCol(cursor.line);
+  const int contentEnd = sweepBoundary.effectiveLineEnd(
+      effectiveLines, cursor.line, cursor.line == effectiveLines.lastLine());
   if (contentEnd > contentStart) {
     explorer.exploreCountedCharEdits(cursor, effectiveLines, contentStart, contentEnd,
                                      minPrefixCount, onDeletion);

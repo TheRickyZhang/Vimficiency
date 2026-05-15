@@ -47,19 +47,6 @@ static bool hasContent(const LineCharRange& range) {
           || (range.beginLine == range.end.line && range.end.col > 0));
 }
 
-static string leadingIndent(string_view s) {
-  size_t end = 0;
-  while (end < s.size() && (s[end] == ' ' || s[end] == '\t')) end++;
-  return string(s.substr(0, end));
-}
-
-static string autoindentFor(string_view s) {
-  if constexpr (VimOptions::autoindent()) {
-    return leadingIndent(s);
-  }
-  return "";
-}
-
 void applyDelete(Lines& lines, const CharRange& range, CursorPos& pos, Mode mode) {
   VimCore::deleteRangeAndUpdatePos(lines, range, pos, mode);
 }
@@ -575,9 +562,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
         return;
 
       case hash("cc"): case hash("S"):
-        line = autoindentFor(line);
-        pos.setCol(static_cast<int>(line.size()));
-        mode = Mode::Insert;
+        VimCore::linewiseChangeWithAutoindent(lines, pos, mode, pos.line, pos.line, lines[pos.line]);
         return;
 
       case hash("o"):
@@ -741,12 +726,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           if (lastLine >= n) {
             assert(false && "cj requires more lines below");
           }
-          string indent = autoindentFor(lines[pos.line]);
-          // cj deletes lines and leaves Vim's autoindented insert line.
-          lines.erase(lines.begin() + pos.line, lines.begin() + lastLine + 1);
-          lines.insert(lines.begin() + pos.line, indent);
-          pos.setCol(static_cast<int>(indent.size()));
-          mode = Mode::Insert;
+          VimCore::linewiseChangeWithAutoindent(lines, pos, mode, pos.line, lastLine, lines[pos.line]);
         }
         return;
 
@@ -757,12 +737,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           if (beginLine < 0) {
             assert(false && "ck requires more lines above");
           }
-          string indent = autoindentFor(lines[beginLine]);
-          lines.erase(lines.begin() + beginLine, lines.begin() + pos.line + 1);
-          lines.insert(lines.begin() + beginLine, indent);
-          pos.line = beginLine;
-          pos.setCol(static_cast<int>(indent.size()));
-          mode = Mode::Insert;
+          VimCore::linewiseChangeWithAutoindent(lines, pos, mode, beginLine, pos.line, lines[beginLine]);
         }
         return;
 
@@ -948,6 +923,13 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
 
       case hash("D"):
       case hash("d$"):
+        // {count}D / {count}d$ spans `count` lines including the cursor line
+        // (`:help D`): endLine = pos.line + count - 1. Contrast with {count}dj
+        // / {count}dk above, where count is the number of *additional* lines
+        // below/above the cursor: endLine = pos.line + count + 1 (exclusive).
+        // Same arithmetic shape, opposite count semantics — Vim disagrees with
+        // itself across these operators; the asserts above each site state the
+        // precondition each one assumes.
         if (pos.line + count > n) {
           assert(false && "d$ requires more lines than available");
         }

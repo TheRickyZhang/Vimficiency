@@ -20,6 +20,11 @@
 
 // Key for suffix cache: editor state without startIndex. Dot-repeat context is
 // stored in SuffixValue so cache entries can still be shared across callers.
+//
+// `targetCol` is intentionally omitted — see TransformStateKey in
+// TransformState.h for the invariant and trip wires. Trip wire #2 there is
+// the SuffixCache-specific one: if a stored suffix ever begins (or contains)
+// a curswant-preserving motion, this key omits a value the replay depends on.
 struct SuffixKey {
   size_t linesHash;
   int lineCount;

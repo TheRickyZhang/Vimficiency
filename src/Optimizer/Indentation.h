@@ -5,7 +5,17 @@
 
 #include <string_view>
 
-// Return the leading whitespace (spaces only) of a string
+// Return the leading whitespace of a string (spaces only).
+//
+// This is the optimizer-side notion of indentation: spaces only, because the
+// downstream math in BuildTypedCommands (`bsCountForIndent` in char-units,
+// `combinedIndent.assign(..., ' ')` literal-space construction) assumes
+// expandtab-style indentation. Tab-indented buffers fall outside the
+// optimizer's modeled space and may produce suboptimal recommendations, but
+// not incorrect ones — the replay path (`VimCore::leadingIndent` in
+// VimEditUtils.h) preserves tabs faithfully.
+//
+// Don't unify with `VimCore::leadingIndent` — they encode different semantics.
 inline std::string_view leadingWhitespace(std::string_view s) {
   size_t i = 0;
   while (i < s.size() && s[i] == ' ') i++;
