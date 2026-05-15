@@ -19,7 +19,7 @@ local function assert_tokenization(seq, expected_texts, expected_kinds)
   assert_eq(table.concat(kinds, "|"), expected_kinds, "kinds for seq " .. seq)
 end
 
-test("simulate tokenization merges feedable commands", function()
+test("simulate tokenization emits replay-safe command steps", function()
   -- `i<BS>3<Esc>` drops into insert; `<BS>` and `3` are typed text chunks.
   -- `<Space>` and `w`/`e` are motions; `v` is visual-entering.
   assert_tokenization(
@@ -29,8 +29,13 @@ test("simulate tokenization merges feedable commands", function()
 
   assert_tokenization(
     "3wfa;ww",
-    "3w|fa;|w|w",
-    "movement|movement|movement|movement")
+    "3w|fa|;|w|w",
+    "movement|movement|movement|movement|movement")
+
+  assert_tokenization(
+    "f;;",
+    "f;|;",
+    "movement|movement")
 
   assert_tokenization(
     "<Space>ww",

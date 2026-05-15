@@ -227,19 +227,8 @@ TransformResult computeTransformResultForDiff(
     return result;
   }
 
-  CursorPos goalPos;
-  const Lines& inserted = diff.insertedLines();
-  if (inserted.empty() || (inserted.size() == 1 && inserted[0].empty())) {
-    goalPos = diff.beginPos;
-  } else if (inserted.size() == 1) {
-    goalPos = CursorPos(
-        diff.beginPos.line,
-        diff.beginPos.col + static_cast<int>(inserted[0].size()) - 1);
-  } else {
-    int lastLine = diff.beginPos.line + static_cast<int>(inserted.size()) - 1;
-    int lastCol = inserted.back().empty() ? 0 : static_cast<int>(inserted.back().size()) - 1;
-    goalPos = CursorPos(lastLine, lastCol);
-  }
+  CursorPos goalPos = typedCommandsExitCursor(
+      diff.beginPos, diff.insertedLines(), diff.boundary.suffix());
 
   TransformResult result = transformOptimizer.optimizeTransform(
       diff.deletedLines(), diff.insertedLines(), diff.boundary, editParams,

@@ -24,6 +24,7 @@ string formatEditParseError(const EditParseError& error) {
       return "Malformed special key at byte offset " + to_string(error.offset);
   }
   assert(false && "Unhandled EditParseErrorKind");
+  return "unknown parse error";
 }
 
 // Compile-time string hash for switch statements.

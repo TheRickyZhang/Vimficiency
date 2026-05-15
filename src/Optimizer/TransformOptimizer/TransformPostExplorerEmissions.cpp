@@ -12,7 +12,9 @@
 #include "Keyboard/ToKeys/MovementToKeys.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Optimizer/NavOptimizer/NavOptimizerParams.h"
+#include "Types/CharRange.h"
 #include "Types/Sequence.h"
+#include "VimCore/VimEditUtils.h"
 
 namespace TransformPostExplorer {
 
@@ -82,7 +84,7 @@ std::optional<Result> tryReplacement(
   return Result(std::move(ks.seq), totalEffort);
 }
 
-std::optional<Result> tryVisualDelete(
+std::optional<VisualDeleteResult> tryVisualDelete(
     const Lines& effectiveLines,
     int leftColOffset,
     int rightColOffset,
@@ -141,7 +143,16 @@ std::optional<Result> tryVisualDelete(
   effort.append(globalSequenceToKeys().tokenize(navResults[0].getSequence().view()), config);
   double totalEffort = effort.append(dKey, config);
 
-  return Result(std::move(visualSeq), totalEffort);
+  Lines replayLines = effectiveLines;
+  CursorPos replayPos = beginPos;
+  const int endLineSize = static_cast<int>(effectiveLines[lastPos.line].size());
+  CharRange range(beginPos, CursorPos(lastPos.line, std::min(lastPos.col + 1, endLineSize)));
+  VimCore::deleteRangeAndUpdatePos(replayLines, range, replayPos);
+
+  return VisualDeleteResult{
+      .result = Result(std::move(visualSeq), totalEffort),
+      .goalPos = replayPos,
+  };
 }
 
 }  // namespace TransformPostExplorer

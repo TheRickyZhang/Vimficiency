@@ -547,7 +547,8 @@ TransformResult ChangeGoalHandler::finalize(
     vector<vector<Result>>&& resultsByStart, const Lines& initialLines,
     const Lines& goalLines, const TransformOptimizerParams&,
     int bufferBeginLine, int bufferBeginCol, CursorPos goalPos,
-    TransformSearchStats stats) {
+    TransformSearchStats stats,
+    vector<vector<CursorPos>>&& resultGoalPositions) {
   auto& bucket = resultsByStart[0];
   if (!bucket.empty() &&
       initialLines.size() == 1 && goalLines.size() == 1 &&
@@ -565,6 +566,7 @@ TransformResult ChangeGoalHandler::finalize(
                       static_cast<int>(suffixCache.size()),
                       cachePopulations);
 
-  return TransformResult(std::move(resultsByStart), stats, initialLines,
-                    bufferBeginLine, bufferBeginCol, goalPos);
+  return TransformResult(
+      std::move(resultsByStart), stats, initialLines,
+      bufferBeginLine, bufferBeginCol, goalPos, std::move(resultGoalPositions));
 }

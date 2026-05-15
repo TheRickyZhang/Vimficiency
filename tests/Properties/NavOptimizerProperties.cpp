@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <exception>
-#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -156,6 +155,10 @@ class NavOptimizerGeneratedPropertyTest {
     EXPECT_TRUE(inBounds)
         << "Neovim landed outside sub-buffer at " << neovimEnd;
     if (inBounds) {
+      EXPECT_EQ(neovimSubPos, subEnd)
+          << "NavOptimizer result did not reach requested goal"
+          << "\n  neovimEndFull=" << neovimEnd
+          << "\n  neovimEndSub=" << neovimSubPos;
       EXPECT_EQ(ourEnd, neovimSubPos)
           << "Our simulator and Neovim disagree on landing position"
           << "\n  ourEnd=" << ourEnd

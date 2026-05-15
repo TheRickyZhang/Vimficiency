@@ -90,13 +90,15 @@ concept GoalHandlerCore = requires(
     int& intRef,
     const TransformOptimizerParams& params,
     CursorPos goalPos,
-    TransformSearchStats stats) {
+    TransformSearchStats stats,
+    std::vector<std::vector<CursorPos>>&& cursorGoals) {
   { constHandler.isGoalReached(lines) } -> std::same_as<bool>;
   { handler.tryUseSuffixCache(state, results, intVal, startActive,
                               intRef, intRef) } -> std::same_as<SuffixCacheResult>;
   { handler.finalize(std::move(movedResults), lines, lines, params,
                      intVal, intVal, goalPos,
-                     std::move(stats)) } -> std::same_as<TransformResult>;
+                     std::move(stats),
+                     std::move(cursorGoals)) } -> std::same_as<TransformResult>;
 };
 
 // ChangeGoalEmitter: the change-mode-only contract.

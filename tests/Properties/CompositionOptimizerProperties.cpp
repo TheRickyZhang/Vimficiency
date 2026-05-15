@@ -189,10 +189,11 @@ class CompositionOptimizerGeneratedPropertyTest {
       const Lines& initial,
       CursorPos initialPos,
       const Lines& goal,
+      CursorPos goalPos,
       const string& testContext) {
     OptimizerResultChecks::expectTopResultsReplay(
         oracle_, results, initial, initialPos, goal,
-        kMaxResultsToReplay, testContext);
+        kMaxResultsToReplay, testContext, goalPos);
   }
 
   void expectOptimizationTopResultsReachGoal(
@@ -203,7 +204,7 @@ class CompositionOptimizerGeneratedPropertyTest {
       const string& testContext) {
     auto compResult = opt_.optimize(initial, initialPos, goal, goalPos, params_);
     expectTopResultsReachGoal(
-        compResult.getResults(), initial, initialPos, goal, testContext);
+        compResult.getResults(), initial, initialPos, goal, goalPos, testContext);
   }
 };
 

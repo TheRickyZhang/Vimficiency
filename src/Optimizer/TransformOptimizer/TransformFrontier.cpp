@@ -238,8 +238,8 @@ void enumerateDepth1DeletionStructurals(
         effective, boundary.leftColOffset(), boundary.rightColOffset(),
         boundary, params, config);
     if (visual) {
-      emitter.emit(visual->getSequence().view(),
-                   bufferLanding(localCursor));
+      emitter.emit(visual->result.getSequence().view(),
+                   bufferLanding(visual->goalPos));
     }
   }
   if (diff.isReplacement() && diff.deletedLines().size() == 1 &&
