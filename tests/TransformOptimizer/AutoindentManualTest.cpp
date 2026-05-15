@@ -140,8 +140,4 @@ TEST_F(TransformOptimizer_ManualTest, AutoindentLinewise_CollapseWithBS) {
   });
 }
 
-// =============================================================================
-// Sentence motion regression: d) with cross-line sentence boundary
-// =============================================================================
-
 }  // namespace

@@ -42,15 +42,13 @@ All commands use the endpoint/range methodology. First, we search the span effec
 
 ```cpp
 // Forward word
-Position endpoint = VimCore::motionWordEndpoint(
-    cursor, lines, forward, edgeType, isBig, skipCurrent,
-    rightColOffset, hasLinesBelow);
+Position endpoint = VimCore::wordMotionEndpoint(
+    cursor, lines, WordMotionTarget::NextBegin, isBig, boundary);
 if (endpoint == POSITION_OUTSIDE_BOUNDARY) continue;
 
 // Text objects
-Range range = VimCore::textObjectRange(
-    cursor, lines, isInner, isBig,
-    leftColOffset, rightColOffset, hasLinesAbove, hasLinesBelow);
+Range range = VimCore::wordTextObjectRange(
+    cursor, lines, WordTextObjectKind::Inner, isBig, boundary);
 if (range.first == POSITION_OUTSIDE_BOUNDARY) continue;
 ```
 
@@ -60,9 +58,9 @@ if (range.first == POSITION_OUTSIDE_BOUNDARY) continue;
 | Simple line (h, l, 0, ^, $) | Col check | N/A (same-line only) |
 | Vertical (j, k) | Line bounds check | Inline |
 | Scroll (<C-d/u/f/b>) | Edge line check | `scrollEndpoint()` |
-| Word (w, b, e, W, B, E, ge, gE) | Col offset + hasLinesOutside | `motionWordEndpoint()` |
+| Word (w, b, e, W, B, E, ge, gE) | Col offset + hasLinesOutside | `wordMotionEndpoint()` |
 | Paragraph ({, }) | Edge line check | `motionParagraphEndpoint()` |
-| Sentence ((, )) | Edge line check | `motionSentenceEndpoint()` |
+| Sentence ((, )) | Edge line check | `sentenceMotionEndpoint()` |
 
 
 ### Special Cases (No Endpoint Check)
@@ -77,11 +75,9 @@ These motions use different boundary handling:
 Motion exploration uses templated functions with direction-split spec vectors for compile-time dispatch:
 
 ```cpp
-// Word motions - templated on Forward and EdgeType
-exploreWordMovements<true, EdgeType::NextEdge>(Movement::FORWARD_NEXTEDGE_MOVEMENTS, base);  // w, W
-exploreWordMovements<true, EdgeType::WordEdge>(Movement::FORWARD_WORDEDGE_MOVEMENTS, base);  // e, E
-exploreWordMovements<false, EdgeType::WordEdge>(Movement::BACKWARD_WORDEDGE_MOVEMENTS, base); // b, B
-exploreWordMovements<false, EdgeType::NextEdge>(Movement::BACKWARD_NEXTEDGE_MOVEMENTS, base); // ge, gE
+// Word motions use semantic target tables.
+exploreWordMovements(Movement::FORWARD_WORD_MOVEMENTS, base);  // w, W, e, E
+exploreWordMovements(Movement::BACKWARD_WORD_MOVEMENTS, base); // b, B, ge, gE
 
 // Paragraph/Sentence - templated on Forward
 exploreParagraphMovements<true>(Movement::FORWARD_PARAGRAPH_MOVEMENTS, base);   // }

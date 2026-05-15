@@ -42,7 +42,7 @@ Interesting (maybe?) things that have come up:
 - Usage of string::resize_and_overwrite (C++ 23) as a better alternative to reserve and push_back. No equivalent exists for vector yet.
 - Usage of .template / ::template disambiguation
 - Impact of stale object files (or potential compiler bug, but wasn't able to reproduce) when using inline helper functions passed as template arguments
-- Elegance of QuickCheck (Haskell/OCaml) as property-based checking library with generator composition and lazy evaluation shrinking -> RapidCheck in C++ with GTest integration.
+- Elegance of QuickCheck-style property testing; this repo uses Google FuzzTest for generated properties and fuzzing.
 - ODR violations are very insidious, with complete undefined behavior. Very easy to make without compiler warning with naming google tests!
 - std::minmax, std::partial_sum, std::transform_reduce
 - Have protected constructor for indicating not to use base class directly

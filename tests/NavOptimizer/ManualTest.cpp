@@ -54,6 +54,26 @@ TEST_F(NavOptimizer_ManualTest, BackwardStart_CanUseForwardCountedVerticalAfterO
   EXPECT_TRUE(contains_all(results, {"gg4j"})) << "Expected forward counted vertical after overshoot";
 }
 
+TEST_F(NavOptimizer_ManualTest, SentenceMotionLandingMatchesMovementReplay) {
+  Lines lines = {
+      " .b bb d",
+      "f abf,c e,b",
+      "ee  afda,",
+      ",ad.adac",
+  };
+  CursorPos start(3, 7);
+  CursorPos end(0, 2);
+
+  vector<LandingResult> results = runOptimizer(lines, start, end, "");
+
+  ASSERT_FALSE(results.empty());
+  for (const auto& result : results) {
+    CursorPos replayed = simulateMovements(start, result.getSequence().view(), lines);
+    EXPECT_EQ(replayed, result.getGoalPos())
+        << "seq='" << result.getSequence() << "'";
+  }
+}
+
 
 // =============================================================================
 // optimize tests

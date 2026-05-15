@@ -1,8 +1,6 @@
 #pragma once
 
-#include "Types/EdgeType.h"
 #include "Types/LineEdgeType.h"
-#include "Types/SentenceEdgeType.h"
 #include "Types/CharRange.h"
 #include "Types/LineRange.h"
 #include "Types/Lines.h"
@@ -25,95 +23,50 @@ namespace VimCore {
 // Word Endpoint/CharRange Computation
 // =============================================================================
 
-// Returns the endpoint position of a word motion.
-//
-// Boundary checking via boundaryOffset:
-//   forward:  returns POSITION_OUTSIDE_BOUNDARY if endpoint is in suffix region
-//             (last boundaryOffset cols of last line)
-//   backward: returns POSITION_OUTSIDE_BOUNDARY if endpoint is in prefix region
-//             (first boundaryOffset cols of line 0)
-//   boundaryOffset <= 0: no column boundary checking
-//
-// Boundary checking via hasLinesOutside:
-//   forward:  returns POSITION_OUTSIDE_BOUNDARY if endpoint.line > lastLine
-//             (pass hasLinesBelow)
-//   backward: returns POSITION_OUTSIDE_BOUNDARY if endpoint.line < 0
-//             (pass hasLinesAbove)
-//
-// lineBounded: When true, motion stops at line boundaries instead of crossing.
-//   Used by daw text object which doesn't cross lines from indentation.
+enum class WordMotionTarget {
+  NextBegin,
+  NextEnd,
+  PreviousBegin,
+  PreviousEnd,
+};
 
-// Templated version for compile-time dispatch on Forward and Edge
-template<bool Forward, EdgeType Edge>
-CursorPos motionWordEndpoint(CursorPos cursor,
+enum class WordOperatorTarget {
+  DeleteToNextWord,
+  DeleteToWordEnd,
+  DeleteBackToWordBegin,
+  DeleteBackToWordEnd,
+};
+
+enum class WordTextObjectKind {
+  Inner,
+  Around,
+};
+
+struct WordBoundaryContext {
+  int leftColOffset = 0;
+  int rightColOffset = 0;
+  bool hasLinesAbove = false;
+  bool hasLinesBelow = false;
+  bool clampOutside = true;
+};
+
+CursorPos wordMotionEndpoint(CursorPos cursor,
+                             const Lines& lines,
+                             WordMotionTarget target,
+                             bool isBigWord,
+                             WordBoundaryContext boundary = {});
+
+CharRange wordOperatorRange(CursorPos cursor,
                             const Lines& lines,
-                            bool big,
-                            bool skipCurrent,
-                            int boundaryOffset,
-                            bool hasLinesOutside,
-                            bool lineBounded = false);
+                            WordOperatorTarget target,
+                            bool isBigWord,
+                            WordBoundaryContext boundary = {});
 
-// Runtime dispatch version (for compatibility)
-CursorPos motionWordEndpoint(CursorPos cursor,
-                            const Lines& lines,
-                            bool forward,
-                            EdgeType edgeType,
-                            bool big,
-                            bool skipCurrent,
-                            int boundaryOffset,
-                            bool hasLinesOutside,
-                            bool lineBounded);
-
-// Convert a word-motion endpoint to a half-open range end.
-// For forward motions:
-// - WordEdge/GapEdge endpoints are inclusive and are advanced by one char.
-// - NextEdge endpoints are already exclusive.
-CursorPos wordEndpointToRangeEnd(CursorPos endpoint,
-                                         const Lines& lines,
-                                         EdgeType edgeType);
-
-// Computes the raw range that a word text object would select.
-// Returns CharRange where start/end could be POSITION_OUTSIDE_BOUNDARY on overflow.
-// Used internally - prefer textObject() for execution.
-//
-// From boundary-logic.md:
-//   diw/diW: (Backward, WordEdge) + (Forward, WordEdge)
-//   daw/daW: depends on cursor position and trailing whitespace
-CharRange textObjectCore(
-    CursorPos cursor,
-    const Lines& lines,
-    bool isInner,       // true for iw/iW, false for aw/aW
-    bool isBigWord);    // true for W variants
-
-// Computes the range that a word text object would select.
-// Clamps POSITION_OUTSIDE_BOUNDARY to buffer edges - always returns valid CharRange.
-// Used for executing text objects (no boundary checking).
-CharRange textObject(
-    CursorPos cursor,
-    const Lines& lines,
-    bool isInner,       // true for iw/iW, false for aw/aW
-    bool isBigWord);    // true for W variants
-
-// Returns the range that a word text object would select, with boundary checking.
-// Returns half-open CharRange [begin, end), where either endpoint can be
-// POSITION_OUTSIDE_BOUNDARY if crossing occurs.
-//
-// Boundary checking (same model as motionWordEndpoint):
-//   leftColOffset > 0:  crosses if range.begin is in prefix region
-//                       (first leftColOffset cols of line 0)
-//   rightColOffset > 0: crosses if range.end is in suffix region
-//                       (last rightColOffset cols of last line)
-//   hasLinesAbove:      crosses if backward motion goes past line 0
-//   hasLinesBelow:      crosses if forward motion goes past last line
-CharRange textObjectRange(
-    CursorPos cursor,
-    const Lines& lines,
-    bool isInner,        // true for iw/iW, false for aw/aW
-    bool isBigWord,      // true for W variants
-    int leftColOffset,   // columns protected at start of line 0
-    int rightColOffset,  // columns protected at end of last line
-    bool hasLinesAbove,  // are there lines above the edit region?
-    bool hasLinesBelow); // are there lines below the edit region?
+CharRange wordTextObjectRange(CursorPos cursor,
+                              const Lines& lines,
+                              WordTextObjectKind kind,
+                              bool isBigWord,
+                              WordBoundaryContext boundary = {});
 
 CharRange quoteTextObjectRange(CursorPos cursor,
                                const Lines& lines,
@@ -176,54 +129,29 @@ LineRange paragraphTextObjectRange(int cursorLine,
 // Sentence Endpoint/CharRange Computation
 // =============================================================================
 
-// Returns the position where a sentence motion lands.
-//
-// Boundary checking via boundaryOffset:
-//   forward:  returns POSITION_OUTSIDE_BOUNDARY if endpoint is in suffix region
-//             (last boundaryOffset cols of last line)
-//   backward: returns POSITION_OUTSIDE_BOUNDARY if endpoint is in prefix region
-//             (first boundaryOffset cols of line 0)
-//   boundaryOffset <= 0: no column boundary checking
-//
-// Boundary checking via hasLinesOutside:
-//   forward:  returns POSITION_OUTSIDE_BOUNDARY if endpoint.line > lastLine
-//             (pass hasLinesBelow)
-//   backward: returns POSITION_OUTSIDE_BOUNDARY if endpoint.line < 0
-//             (pass hasLinesAbove)
-//
-// SentenceEdgeType is DIRECTION-INDEPENDENT:
-//   SentenceEdge: edge of current sentence (punctuation + closers)
-//   GapEdge:      edge of whitespace gap after sentence end
-//   NextEdge:     start of next sentence
+// Returns the position where a pure sentence motion lands, with optional
+// boundary checks for sliced buffers.
+CursorPos sentenceMotionEndpoint(CursorPos cursor,
+                                 const Lines& lines,
+                                 bool forward,
+                                 int boundaryOffset = 0,
+                                 bool hasLinesOutside = false);
 
-// Templated version for compile-time dispatch on Forward and Edge
-template<bool Forward, SentenceEdgeType Edge>
-CursorPos motionSentenceEndpoint(CursorPos cursor,
-                                const Lines& lines,
-                                int boundaryOffset = 0,
-                                bool hasLinesOutside = false);
-
-// Runtime dispatch version (for internal use in text object functions)
-CursorPos motionSentenceEndpoint(CursorPos cursor,
-                                const Lines& lines,
-                                bool forward,
-                                SentenceEdgeType edgeType);
-
-// Convert a sentence-motion endpoint to a half-open range end.
-// For forward motions:
-// - SentenceEdge/GapEdge endpoints are inclusive and are advanced by one char.
-// - NextEdge endpoints are already exclusive.
-CursorPos sentenceEndpointToRangeEnd(CursorPos endpoint,
-                                             const Lines& lines,
-                                             SentenceEdgeType edgeType);
+// Returns the exclusive endpoint used by sentence operators (`d)`, `c)`,
+// `d(`, `c(`), with optional boundary checks for sliced buffers.
+CursorPos sentenceOperatorEndpoint(CursorPos cursor,
+                                   const Lines& lines,
+                                   bool forward,
+                                   int boundaryOffset = 0,
+                                   bool hasLinesOutside = false);
 
 // Returns the range for a sentence text object.
 // If boundaries are valid and result would cross:
 //   returns CHAR_RANGE_OUTSIDE_BOUNDARY if range.begin <= leftBoundary or range.end > rightBoundary
 //
 // From boundary-logic.md:
-//   dis: (Backward, SentenceEdge) + (Forward, SentenceEdge)
-//   das: depends on cursor position and trailing whitespace
+//   dis: sentence content
+//   das: sentence content plus trailing separator, or leading separator if needed
 CharRange sentenceTextObjectRange(CursorPos cursor,
                               const Lines& lines,
                               bool isInner,

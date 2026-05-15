@@ -59,6 +59,7 @@ jobs:
       - name: Build (Debug)
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Debug \
+            -DVIMF_ENABLE_FUZZTEST=OFF \
             -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j$(nproc)
@@ -100,6 +101,12 @@ jobs:
       - name: Unit tests
         run: ./build/tests/vimficiency_tests --gtest_brief=1
 
+      - name: FuzzTest seed corpus
+        run: |
+          env FUZZTEST_FUZZ_FOR=0 \
+            FUZZTEST_PRNG_SEED=OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk \
+            ./build/tests/vimficiency_fuzz_tests --gtest_brief=1
+
       - name: Lua tests
         # Exercises the FFI boundary end-to-end via Neovim headless. Without
         # this, encoding bugs at the Lua↔C++ seam (e.g. the `tostring` →
@@ -116,4 +123,3 @@ jobs:
             -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build_track --target vimficiency_explore -j$(nproc)
-

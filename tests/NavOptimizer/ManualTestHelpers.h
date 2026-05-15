@@ -80,6 +80,11 @@ protected:
     CursorPos endpoint;
   };
 
+  struct StaticCandidate {
+    std::string sequence;
+    CursorPos endpoint;
+  };
+
   inline static NavContext navContext;
 
   static void SetUpTestSuite() {
@@ -133,6 +138,29 @@ protected:
     return candidates;
   }
 
+  static std::vector<StaticCandidate> collectStaticCandidates(
+      const Lines& lines,
+      CursorPos start,
+      CursorPos goal,
+      const NavBoundary& boundary,
+      NavOptimizerParams params = NavOptimizerParams{}) {
+    Config config = Config::uniform();
+    BufferIndex index(lines);
+    CharInterval goalRange(goal, goal);
+    NavExplorer explorer(lines, navContext, boundary, params, goalRange, index, 0);
+
+    auto score = [](CursorPos, double effort) { return effort; };
+    NavStateFactory states(config, score);
+    NavState base = states.initial(start);
+
+    std::vector<StaticCandidate> candidates;
+    auto onStatic = [&](KSId, const KeyedSequence& ks, CursorPos endpoint) {
+      candidates.push_back({ks.seq.str(), endpoint});
+    };
+    explorer.exploreAllStandardMotions(base, onStatic);
+    return candidates;
+  }
+
   static bool hasCountedCandidate(
       const std::vector<CountedCandidate>& candidates,
       const std::string& sequence,
@@ -140,6 +168,15 @@ protected:
     return std::any_of(candidates.begin(), candidates.end(),
         [&](const CountedCandidate& candidate) {
           return candidate.sequence == sequence && candidate.endpoint == endpoint;
+        });
+  }
+
+  static bool hasStaticCandidate(
+      const std::vector<StaticCandidate>& candidates,
+      const std::string& sequence) {
+    return std::any_of(candidates.begin(), candidates.end(),
+        [&](const StaticCandidate& candidate) {
+          return candidate.sequence == sequence;
         });
   }
 };

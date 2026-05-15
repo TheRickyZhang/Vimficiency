@@ -18,9 +18,8 @@
 // Suffix Cache Types - for cross-position sharing in TransformOptimizer
 // =============================================================================
 
-// Key for suffix cache: (linesHash, lineCount, CursorPos, Mode) WITHOUT startIndex
-// This enables sharing cached suffixes across different starting positions.
-// Uses precomputed 64-bit hash instead of full buffer copy for O(1) key construction.
+// Key for suffix cache: editor state without startIndex. Dot-repeat context is
+// stored in SuffixValue so cache entries can still be shared across callers.
 struct SuffixKey {
   size_t linesHash;
   int lineCount;
@@ -127,8 +126,9 @@ struct SuffixValue {
     expandedVariant.effort = expandedEffort;
   }
 
-  // Entry where leading dot was expanded into explicit command.
-  // The dotOverride keeps the original dot variant for matching last-edit contexts.
+  // Entry where the first dot before any dot-resetting edit was expanded into
+  // an explicit command. dotOverride keeps the original compact variant for
+  // callers whose last-edit context still matches.
   SuffixValue(std::shared_ptr<const SuffixProgram> program,
               int expandedStartIndex, KeyedSequence expandedPrefix,
               const RunningEffort& expandedEffort,

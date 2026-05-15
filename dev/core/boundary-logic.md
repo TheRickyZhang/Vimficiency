@@ -2,38 +2,38 @@
 
 This document explains how boundaries constrain motion/edit searches in optimizers.
 
-## Edge Types (Building Blocks)
+## Boundary Building Blocks
 
-Three parallel enums define where operations stop:
+Paragraphs use direction-independent edge enums:
 
 ```
-EdgeType (words):          WordEdge | GapEdge | NextEdge
 LineEdgeType (paragraphs): BlockEdge | GapEdge | NextEdge
-SentenceEdgeType:          SentenceEdge | GapEdge | NextEdge
 ```
 
-- **WordEdge/BlockEdge/SentenceEdge**: Edge of current unit
+- **BlockEdge**: Edge of current unit
 - **GapEdge**: Edge of whitespace/blank gap after unit
 - **NextEdge**: Start of next unit
 
-These are direction-independent. See `MovementToSpec.h` and `EditToSpec.h` for full specs.
+Words and sentences expose explicit operations instead of shared edge enums.
+Bare movement, operator ranges, and text objects share scanner landmarks but
+are not interchangeable operations.
 
-## Command → Edge Type Mappings
+## Word Operation Mappings
 
 ### Word Motions
 ```
-w, W  | (Forward, NextEdge)   - start of next word
-e, E  | (Forward, WordEdge)   - end of current/next word (skipCurrent=true)
-b, B  | (Backward, WordEdge)  - start of previous word (skipCurrent=true)
-ge,gE | (Backward, NextEdge)  - end of previous word
+w, W  | WordMotionTarget::NextBegin
+e, E  | WordMotionTarget::NextEnd
+b, B  | WordMotionTarget::PreviousBegin
+ge,gE | WordMotionTarget::PreviousEnd
 ```
 
 ### Word Deletions
 ```
-dw,dW  | (Forward, GapEdge)   - delete to gap edge
-de,dE  | (Forward, WordEdge)  - delete to word end (skipCurrent=true)
-db,dB  | (Backward, WordEdge) - delete to word start (skipCurrent=true, isExclusiveAtCursor=true)
-dge,dgE| (Backward, NextEdge) - delete to previous word end
+dw,dW   | WordOperatorTarget::DeleteToNextWord
+de,dE   | WordOperatorTarget::DeleteToWordEnd
+db,dB   | WordOperatorTarget::DeleteBackToWordBegin
+dge,dgE | WordOperatorTarget::DeleteBackToWordEnd
 ```
 
 ### Word Text Objects
@@ -53,10 +53,12 @@ dap | Similar trailing/leading logic as daw
 
 ### Sentence Motions/Deletions
 ```
-)   | (Forward, NextEdge)  - start of next sentence
-(   | (Backward, NextEdge) - start of previous sentence
-dis | (Backward, SentenceEdge) + (Forward, SentenceEdge)
-das | Similar trailing/leading logic as daw
+)   | pure movement target from `sentenceMotionEndpoint`
+(   | pure movement target from `sentenceMotionEndpoint`
+d)  | exclusive operator endpoint from `sentenceOperatorEndpoint`
+d(  | exclusive operator endpoint from `sentenceOperatorEndpoint`
+dis | sentence content range
+das | sentence content plus trailing separator, or leading separator if needed
 ```
 
 ## Why Boundaries?
@@ -147,31 +149,30 @@ or `eb.context()` to convert when switching between optimizer types.
 Return sentinel values (`POSITION_OUTSIDE_BOUNDARY`, `LINE_OUTSIDE_BOUNDARY`, etc.) when crossing:
 
 ```cpp
-// Words - templated on Forward and EdgeType
-template<bool Forward, EdgeType Edge>
-Position motionWordEndpoint(cursor, lines, big, skipCurrent,
-                            boundaryOffset, hasLinesOutside);
-Range textObjectRange(cursor, lines, isInner, isBigWord,
-                      leftColOffset, rightColOffset, hasLinesAbove, hasLinesBelow);
+// Words - semantic public operations
+Position wordMotionEndpoint(cursor, lines, target, isBigWord, boundary);
+Range wordOperatorRange(cursor, lines, target, isBigWord, boundary);
+Range wordTextObjectRange(cursor, lines, kind, isBigWord, boundary);
 
 // Paragraphs - templated on Forward and LineEdgeType
 template<bool Forward, LineEdgeType Edge>
 int motionParagraphEndpoint(cursorLine, lines, hasLinesOutside);
 LineRange paragraphTextObjectRange(cursorLine, lines, isInner, topBoundary, bottomBoundary);
 
-// Sentences - templated on Forward and SentenceEdgeType
-template<bool Forward, SentenceEdgeType Edge>
-Position motionSentenceEndpoint(cursor, lines, boundaryOffset, hasLinesOutside);
+// Sentences - public operations stay semantically distinct
+Position sentenceMotionEndpoint(cursor, lines, forward, boundaryOffset, hasLinesOutside);
+Position sentenceOperatorEndpoint(cursor, lines, forward, boundaryOffset, hasLinesOutside);
 Range sentenceTextObjectRange(cursor, lines, isInner, leftBoundary, rightBoundary);
 ```
 
-All motion endpoint functions now follow the same boundary checking pattern:
-- Templated on `Forward` (direction) and edge type for compile-time dispatch
-- `boundaryOffset`: Column offset for prefix/suffix protection on edge lines
-- `hasLinesOutside`: Boolean flag for line-crossing protection (hasLinesAbove/Below)
+Word operations expose semantic targets; their direction/edge scan details stay
+inside VimCore. Paragraph endpoints still expose direction and `LineEdgeType`
+because their call sites map directly to line-boundary categories.
 
-Runtime dispatch versions are also available for internal use in text object functions
-(where direction and edge type are determined at runtime).
+Boundary inputs are family-specific:
+- Words use `WordBoundaryContext`.
+- Paragraphs use top/bottom line boundaries or `hasLinesOutside`.
+- Sentences use column offsets plus `hasLinesOutside`.
 
 ## Crossing Tables (Conceptual)
 
@@ -193,9 +194,9 @@ For full tables, see `wouldCross*` functions in `VimEndpointUtils.cpp`.
 
 ## Notable Edit Behaviors
 
-From `EditToSpec.h`, `BackwardWordEditSpec` has `isExclusiveAtCursor`:
-- `db`/`dB`: `true` — excludes cursor char from deletion
-- `dge`/`dgE`: `false` — includes cursor char
+Backward word operator ranges differ by operation:
+- `db`/`dB`: exclude cursor char from deletion
+- `dge`/`dgE`: include cursor char
 
 **Critical**: Inclusive backward deletions must verify cursor position isn't in
 boundary region, not just the motion endpoint.

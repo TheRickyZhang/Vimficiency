@@ -66,10 +66,13 @@ void SequenceParserErrorsStayWithinInput(string sequence) {
 }  // namespace
 
 FUZZ_TEST(PayloadFuzzTest, DecodeLengthPrefixedStringsRoundTripsAcceptedPayloads)
-    .WithDomains(fuzztest::String().WithMaxSize(512));
+    .WithDomains(fuzztest::String().WithMaxSize(512))
+    .WithSeeds({"", "0:", "1:a", "2:ab", "3:a\nb", "999:x"});
 
 FUZZ_TEST(PayloadFuzzTest, DecodeLineArrayAcceptsOnlyValidLines)
-    .WithDomains(fuzztest::String().WithMaxSize(512));
+    .WithDomains(fuzztest::String().WithMaxSize(512))
+    .WithSeeds({"", "0:", "1:a", "2:ab", "3:a\nb", "999:x"});
 
 FUZZ_TEST(SequenceParserFuzzTest, SequenceParserErrorsStayWithinInput)
-    .WithDomains(fuzztest::String().WithMaxSize(256));
+    .WithDomains(fuzztest::String().WithMaxSize(256))
+    .WithSeeds({"", "w", "3dw", "ciwhello<Esc>", "<C-d>", "\xffw"});

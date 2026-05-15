@@ -39,6 +39,7 @@ struct Insertion {
   int beginCol;
   int endCol;
   std::string insertCmd;
+  CursorPos goalPos;
 };
 
 // One bracket/quote shortcut. Fire `body` from the exact cursor position
@@ -69,7 +70,9 @@ void enumerateInsertions(const DiffState& diff, const Lines& lines, OnStrategy&&
         : std::string_view{};
     Lines insertLines = Lines::unflatten(std::string(diff.insertedTextBody()));
     KeyedSequence typed = buildTypedCommands(insertLines, sourceIndent);
-    cb(Insertion{targetLine, 0, lineEnd, "o" + typed.seq.str()});
+    cb(Insertion{
+        targetLine, 0, lineEnd, "o" + typed.seq.str(),
+        typedCommandsExitCursor(insertPos, insertLines)});
     return;
   }
 
@@ -79,21 +82,32 @@ void enumerateInsertions(const DiffState& diff, const Lines& lines, OnStrategy&&
   const int lineLen = static_cast<int>(lines[line].size());
   const int lineEnd = lines[line].effectiveSize();
   const int lastContentCol = lineEnd - 1;
+  std::string_view lineText(lines[line].data(), lines[line].size());
   Lines insertLines = Lines::unflatten(diff.insertedText);
 
   if (insertPos.col == fnb) {
+    std::string_view prefix = lineText.substr(0, fnb);
+    std::string_view suffix = lineText.substr(fnb);
     KeyedSequence escaped = buildTypedCommands(insertLines, "",
-        lines[line].substr(0, fnb));
-    cb(Insertion{line, 0, lineEnd, "I" + escaped.seq.str()});
-    cb(Insertion{line, insertPos.col, insertPos.col + 1, "i" + escaped.seq.str()});
+        prefix, suffix);
+    CursorPos goalPos = typedCommandsExitCursor(insertPos, insertLines, suffix);
+    cb(Insertion{line, 0, lineEnd, "I" + escaped.seq.str(), goalPos});
+    cb(Insertion{line, insertPos.col, insertPos.col + 1,
+                 "i" + escaped.seq.str(), goalPos});
   } else if (insertPos.col == lineLen) {
     KeyedSequence escaped = buildTypedCommands(insertLines, "", lines[line]);
-    cb(Insertion{line, 0, lineEnd, "A" + escaped.seq.str()});
-    cb(Insertion{line, lastContentCol, lastContentCol + 1, "a" + escaped.seq.str()});
+    CursorPos goalPos = typedCommandsExitCursor(insertPos, insertLines);
+    cb(Insertion{line, 0, lineEnd, "A" + escaped.seq.str(), goalPos});
+    cb(Insertion{line, lastContentCol, lastContentCol + 1,
+                 "a" + escaped.seq.str(), goalPos});
   } else {
+    std::string_view prefix = lineText.substr(0, insertPos.col);
+    std::string_view suffix = lineText.substr(insertPos.col);
     KeyedSequence escaped = buildTypedCommands(insertLines, "",
-        lines[line].substr(0, insertPos.col));
-    cb(Insertion{line, insertPos.col, insertPos.col + 1, "i" + escaped.seq.str()});
+        prefix, suffix);
+    cb(Insertion{line, insertPos.col, insertPos.col + 1,
+                 "i" + escaped.seq.str(),
+                 typedCommandsExitCursor(insertPos, insertLines, suffix)});
   }
 }
 

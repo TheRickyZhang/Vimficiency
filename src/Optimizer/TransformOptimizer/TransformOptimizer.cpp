@@ -334,10 +334,9 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
     if (inSuffixRegion) {
       int firstSuffixCol = static_cast<int>(lines.getSize(pos.line)) - rightColOffset;
       if (pos.col == firstSuffixCol && firstSuffixCol > 0) {
-        explorer.exploreBackwardWordEdits<EdgeType::WordEdge>(
-            Edit::BACKWARD_WORDEDGE_EDITS, pos, lines, onDeletion);
-        explorer.exploreBackwardWordEdits<EdgeType::NextEdge>(
-            Edit::BACKWARD_NEXTEDGE_EDITS, pos, lines, onDeletion);
+        explorer.exploreWordEdits(
+            Edit::EXCLUSIVE_BACKWARD_WORD_EDITS, pos, lines, onDeletion,
+            onLinewise);
       }
       if (pos.col > 0) {
         dispatch.moveByMotion(CursorPos(pos.line, pos.col - 1),

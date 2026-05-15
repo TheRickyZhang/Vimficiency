@@ -16,33 +16,17 @@ using namespace std;
 namespace VimCore {
 
 // =============================================================================
-// Word motions - general interface
+// Word motions
 // =============================================================================
 //
-// Unified word motion based on (direction, edgeType, isWORD).
-//
-// EdgeType is DIRECTION-INDEPENDENT - it describes which edge we seek:
-//   WordEdge: the edge of the word we traverse (step back into the word)
-//   GapEdge:  the edge of the gap before next word (step back into gap)
-//   NextEdge: the edge of the next unit (stay at first char of next thing)
-//
-// For MOTIONS (cursor movement):
-//   w  = Forward  + NextEdge  (to start of next word)
-//   e  = Forward  + WordEdge  (to end of word)
-//   b  = Backward + WordEdge  (to start of word)
-//   ge = Backward + NextEdge  (to end of previous word)
-//
-// For DELETIONS (different edges for some):
-//   dw  = Forward  + GapEdge   (delete including trailing whitespace)
-//   de  = Forward  + WordEdge
-//   db  = Backward + WordEdge
-//   dge = Backward + NextEdge
+// Named motions clamp the shared word scan to Vim cursor landings.
+// Edit/text-object ranges use VimEndpointUtils.
 //
 // =============================================================================
 
-void motionWord(CursorPos &pos, const Lines &lines,
-                bool forward, EdgeType edgeType, bool big,
-                bool skipCurrent) {
+static void motionWord(CursorPos &pos, const Lines &lines,
+                       bool forward, EdgeType edgeType, bool big,
+                       bool skipCurrent) {
   CursorPos result =
       motionWordCore(pos, lines, forward, edgeType, big, skipCurrent);
 
@@ -67,10 +51,10 @@ void motionWord(CursorPos &pos, const Lines &lines,
 // =============================================================================
 //
 // Pure motion semantics:
-//   w: Forward + Next (to next word start)
-//   e: Forward + End (to word end), skip current first
-//   b: Backward + Next (to previous word start)
-//   ge: Backward + End (to previous word end), skip current first
+//   w:  Forward  + NextEdge
+//   e:  Forward  + WordEdge, skip current first
+//   b:  Backward + WordEdge, skip current first
+//   ge: Backward + NextEdge, skip current first
 //
 
 void motionW(CursorPos &pos, const Lines &lines, bool big) {
@@ -189,175 +173,255 @@ void moveToParagraphEnd(CursorPos &pos, const Lines &lines) {
 // Sentence motions
 // =============================================================================
 
-void motionSentenceNext(CursorPos &pos, const Lines &lines) {
-  int n = (int)lines.size();
-  if (n == 0)
-    return;
+namespace {
 
-  int line = std::clamp(pos.line, 0, n - 1);
-  int col = (int)lines[line].size() == 0
-                ? 0
-                : std::clamp(pos.col, 0, (int)lines[line].size() - 1);
+struct SentenceScanPos {
+  int line = 0;
+  int col = 0;
+};
 
-  // If currently on blank run: jump to next nonblank line start.
-  // Special case: if all remaining lines are blank, move to next blank line (if
-  // any).
-  if (isBlankLineStr(lines[line])) {
-    int startLine = line;
-    while (line < n && isBlankLineStr(lines[line]))
-      ++line;
-    if (line >= n) {
-      // All remaining lines are blank - move to next blank line if we can
-      if (startLine + 1 < n) {
-        pos.line = startLine + 1;
-        pos.setCol(0);
-      }
-      return;
-    }
-    pos.line = line;
-    pos.setCol(firstNonBlankColInLineStr(lines[line]));
-    return;
+bool sameSentenceScanPos(SentenceScanPos a, SentenceScanPos b) {
+  return a.line == b.line && a.col == b.col;
+}
+
+int sentenceCharAt(const Lines& lines, SentenceScanPos pos) {
+  if (lines.empty() || pos.line < 0 || pos.line >= static_cast<int>(lines.size())) {
+    return -1;
   }
+  const string& line = lines[pos.line];
+  if (pos.col < 0) return -1;
+  if (pos.col >= static_cast<int>(line.size())) return 0;
+  return static_cast<unsigned char>(line[pos.col]);
+}
 
-  // Check if we're on whitespace/closer that follows a sentence end.
-  // If so, skip directly to next sentence start (we're in the gap).
-  {
-    unsigned char c = getChar(lines, line, col);
-    if (c == ' ' || c == '\t' || isSentenceCloser(c)) {
-      // Search backward to see if there's a sentence end before us on this line
-      int l = line, k = col;
-      while (k > 0) {
-        --k;
-        unsigned char pc = getChar(lines, l, k);
-        if (pc == '.' || pc == '!' || pc == '?') {
-          // Found punctuation - check if it's a valid sentence end
-          if (isSentenceEndAt(lines, l, k)) {
-            // We're in the gap after a sentence end - skip to next sentence
-            // start
-            auto [nl, nk] = skipToSentenceStart(lines, l, k);
-            pos.line = nl;
-            pos.setCol(nk);
-            return;
+int sentenceInc(const Lines& lines, SentenceScanPos& pos) {
+  if (lines.empty() || pos.line < 0 || pos.line >= static_cast<int>(lines.size())) {
+    return -1;
+  }
+  const int len = static_cast<int>(lines[pos.line].size());
+  if (pos.col < len) {
+    pos.col++;
+    return sentenceCharAt(lines, pos) == 0 ? 2 : 0;
+  }
+  if (pos.line + 1 >= static_cast<int>(lines.size())) {
+    return -1;
+  }
+  pos.line++;
+  pos.col = 0;
+  return 1;
+}
+
+int sentenceIncl(const Lines& lines, SentenceScanPos& pos) {
+  int result = sentenceInc(lines, pos);
+  if (result >= 1 && pos.col != 0) {
+    result = sentenceInc(lines, pos);
+  }
+  return result;
+}
+
+int sentenceDecl(const Lines& lines, SentenceScanPos& pos) {
+  if (lines.empty() || pos.line < 0 || pos.line >= static_cast<int>(lines.size())) {
+    return -1;
+  }
+  if (pos.col > 0) {
+    pos.col--;
+    return sentenceCharAt(lines, pos);
+  }
+  if (pos.line == 0) {
+    return -1;
+  }
+  pos.line--;
+  pos.col = max(0, static_cast<int>(lines[pos.line].size()) - 1);
+  return sentenceCharAt(lines, pos);
+}
+
+bool sentenceIsWhite(int c) {
+  return c == ' ' || c == '\t';
+}
+
+bool sentenceIsEndPunct(int c) {
+  return c == '.' || c == '!' || c == '?';
+}
+
+bool sentenceIsPunctOrCloser(int c) {
+  return sentenceIsEndPunct(c) || c == ')' || c == ']' ||
+         c == '"' || c == '\'';
+}
+
+bool sentenceInMacro(string_view opt, string_view s) {
+  for (size_t i = 0; i < opt.size(); i += 2) {
+    char first = opt[i];
+    char second = (i + 1 < opt.size()) ? opt[i + 1] : '\0';
+    char s0 = s.empty() ? '\0' : s[0];
+    char s1 = s.size() < 2 ? '\0' : s[1];
+
+    bool firstMatches = first == s0 || (first == ' ' && (s0 == '\0' || s0 == ' '));
+    bool secondMatches = second == s1 ||
+        ((second == '\0' || second == ' ') && (s0 == '\0' || s1 == '\0' || s1 == ' '));
+    if (firstMatches && secondMatches) return true;
+  }
+  return false;
+}
+
+bool sentenceStartPS(const Lines& lines, int line, int para = 0, bool both = false) {
+  if (line < 0 || line >= static_cast<int>(lines.size())) return false;
+  const string& s = lines[line];
+  char first = s.empty() ? '\0' : s[0];
+  if (static_cast<unsigned char>(first) == para || first == '\f' ||
+      (both && first == '}')) {
+    return true;
+  }
+  static constexpr string_view kSections = "SHNHH HUnhsh";
+  static constexpr string_view kParagraphs = "IPLPPPQPP TPHPLIPpLpItpplpipbp";
+  return first == '.' &&
+      (sentenceInMacro(kSections, string_view(s).substr(1)) ||
+       (para == 0 && sentenceInMacro(kParagraphs, string_view(s).substr(1))));
+}
+
+CursorPos sentenceScanToCursor(const Lines& lines, SentenceScanPos pos) {
+  if (lines.empty()) return {0, 0};
+  pos.line = clamp(pos.line, 0, static_cast<int>(lines.size()) - 1);
+  int len = static_cast<int>(lines[pos.line].size());
+  if (len == 0) return {pos.line, 0};
+  return {pos.line, clamp(pos.col, 0, len - 1)};
+}
+
+bool findSentenceLikeNeovim(CursorPos& cursor, const Lines& lines, bool forward, int count) {
+  if (lines.empty() || count <= 0) return false;
+
+  SentenceScanPos pos{
+      clamp(cursor.line, 0, static_cast<int>(lines.size()) - 1),
+      cursor.col,
+  };
+  int len = static_cast<int>(lines[pos.line].size());
+  pos.col = len == 0 ? 0 : clamp(pos.col, 0, len - 1);
+
+  bool noskip = false;
+  while (count > 0) {
+    count--;
+    SentenceScanPos prevPos = pos;
+    int c = sentenceCharAt(lines, pos);
+
+    if (c == 0) {
+      do {
+        if ((forward ? sentenceIncl(lines, pos) : sentenceDecl(lines, pos)) == -1) {
+          break;
+        }
+      } while (sentenceCharAt(lines, pos) == 0);
+      if (forward) {
+        goto found;
+      }
+    } else if (forward && pos.col == 0 && sentenceStartPS(lines, pos.line)) {
+      if (pos.line == static_cast<int>(lines.size()) - 1) {
+        return false;
+      }
+      pos.line++;
+      pos.col = 0;
+      goto found;
+    } else if (!forward) {
+      sentenceDecl(lines, pos);
+    }
+
+    {
+      bool foundDot = false;
+      while (true) {
+        c = sentenceCharAt(lines, pos);
+        if (!sentenceIsWhite(c) && !sentenceIsPunctOrCloser(c)) {
+          break;
+        }
+
+        SentenceScanPos tpos = pos;
+        if (sentenceDecl(lines, tpos) == -1 ||
+            (lines[tpos.line].empty() && forward)) {
+          break;
+        }
+        if (foundDot) {
+          break;
+        }
+        if (sentenceIsEndPunct(c)) {
+          foundDot = true;
+        }
+        if ((c == ')' || c == ']' || c == '"' || c == '\'') &&
+            !sentenceIsPunctOrCloser(sentenceCharAt(lines, tpos))) {
+          break;
+        }
+        sentenceDecl(lines, pos);
+      }
+    }
+
+    {
+      int startLine = pos.line;
+      while (true) {
+        c = sentenceCharAt(lines, pos);
+        if (c == 0 || (pos.col == 0 && sentenceStartPS(lines, pos.line))) {
+          if (!forward && pos.line != startLine) {
+            pos.line++;
+            pos.col = 0;
+          }
+          break;
+        }
+
+        if (sentenceIsEndPunct(c)) {
+          SentenceScanPos tpos = pos;
+          int next = 0;
+          do {
+            next = sentenceInc(lines, tpos);
+            if (next == -1) break;
+          } while (sentenceCharAt(lines, tpos) == ')' ||
+                   sentenceCharAt(lines, tpos) == ']' ||
+                   sentenceCharAt(lines, tpos) == '"' ||
+                   sentenceCharAt(lines, tpos) == '\'');
+
+          int after = sentenceCharAt(lines, tpos);
+          if (next == -1 || sentenceIsWhite(after) || after == 0) {
+            pos = tpos;
+            if (sentenceCharAt(lines, pos) == 0) {
+              sentenceIncl(lines, pos);
+            }
+            break;
           }
         }
-        if (pc != ' ' && pc != '\t' && !isSentenceCloser(pc)) {
-          // Hit non-whitespace/non-closer that's not punctuation
+
+        if ((forward ? sentenceIncl(lines, pos) : sentenceDecl(lines, pos)) == -1) {
+          if (count > 0) {
+            return false;
+          }
+          noskip = true;
           break;
         }
       }
     }
-  }
 
-  // Search forward for sentence end, then skip to next sentence start
-  int l = line, k = col;
-  while (true) {
-    if (isSentenceEndAt(lines, l, k)) {
-      auto [nl, nk] = skipToSentenceStart(lines, l, k);
-      pos.line = nl;
-      pos.setCol(nk);
-      return;
+found:
+    while (!noskip && sentenceIsWhite(sentenceCharAt(lines, pos))) {
+      if (sentenceIncl(lines, pos) == -1) {
+        break;
+      }
     }
 
-    if (!stepFwd(lines, l, k))
-      return;
+    if (sameSentenceScanPos(prevPos, pos)) {
+      if ((forward ? sentenceIncl(lines, pos) : sentenceDecl(lines, pos)) == -1) {
+        if (count > 0) {
+          return false;
+        }
+        break;
+      }
+      count++;
+    }
   }
+
+  cursor = sentenceScanToCursor(lines, pos);
+  return true;
+}
+
+}  // namespace
+
+void motionSentenceNext(CursorPos &pos, const Lines &lines) {
+  findSentenceLikeNeovim(pos, lines, true, 1);
 }
 
 void motionSentencePrev(CursorPos &pos, const Lines &lines) {
-  int n = (int)lines.size();
-  if (n == 0)
-    return;
-
-  auto [sl, sc] = findCurrentSentenceStart(lines, pos.line, pos.col);
-
-  // If already at sentence start, go to previous sentence start.
-  if (sl == pos.line && sc == pos.col) {
-    int l = sl, k = sc;
-
-    // Step back past the whitespace/closers that precede this sentence start
-    // to get into the content of the previous sentence
-    while (true) {
-      if (!stepBack(lines, l, k)) {
-        // At buffer start, can't go further
-        pos.line = sl;
-        pos.setCol(sc);
-        return;
-      }
-
-      // Blank line IS a sentence boundary - stop here
-      if (isBlankLineStr(lines[l])) {
-        pos.line = l;
-        pos.setCol(0);
-        return;
-      }
-
-      unsigned char c = getChar(lines, l, k);
-      // Skip whitespace and closers
-      if (c == ' ' || c == '\t' || isSentenceCloser(c)) {
-        continue;
-      }
-
-      // Sentence-ending punctuation could be a single-char sentence start
-      // if it's preceded by whitespace that follows a previous sentence end.
-      // Example: ". . c" - the second '.' is a sentence start because
-      //          the whitespace before it follows the first '.' (a sentence end).
-      // But "d . c" - the '.' is NOT a sentence start because the whitespace
-      //          follows 'd' (not a sentence end), so '.' is the END of that sentence.
-      if (c == '.' || c == '!' || c == '?') {
-        // Check the character before this punctuation
-        int prevL = l, prevK = k;
-        if (stepBack(lines, prevL, prevK)) {
-          unsigned char prevC = getChar(lines, prevL, prevK);
-          // If preceded by whitespace, check if there's a sentence end before the whitespace
-          if (prevC == ' ' || prevC == '\t' || prevC == '\n') {
-            // Skip back through whitespace to find what precedes it
-            int checkL = prevL, checkK = prevK;
-            while (checkL >= 0) {
-              unsigned char checkC = getChar(lines, checkL, checkK);
-              if (checkC != ' ' && checkC != '\t') {
-                // Found non-whitespace - is it a sentence end or closer?
-                if (checkC == '.' || checkC == '!' || checkC == '?' || isSentenceCloser(checkC)) {
-                  // Whitespace follows a sentence end/closer, so this punctuation
-                  // is the start of a new single-char sentence
-                  pos.line = l;
-                  pos.setCol(k);
-                  return;
-                }
-                // Whitespace follows regular content (like "d . c")
-                // This punctuation is NOT a sentence start - continue stepping back
-                break;
-              }
-              if (!stepBack(lines, checkL, checkK)) {
-                // Reached buffer start through whitespace - this punctuation is a sentence start
-                pos.line = l;
-                pos.setCol(k);
-                return;
-              }
-            }
-          }
-          // Preceded by non-whitespace (like "..") or whitespace after regular content
-          // Continue stepping back
-        } else {
-          // At buffer start - this is the sentence start
-          pos.line = l;
-          pos.setCol(k);
-          return;
-        }
-        continue;
-      }
-
-      // We're now in actual content - find this sentence's start
-      break;
-    }
-
-    auto [psl, psc] = findCurrentSentenceStart(lines, l, k);
-    pos.line = psl;
-    pos.setCol(psc);
-    return;
-  }
-
-  pos.line = sl;
-  pos.setCol(sc);
+  findSentenceLikeNeovim(pos, lines, false, 1);
 }
 
 // =============================================================================
@@ -369,18 +433,29 @@ void motionSentencePrev(CursorPos &pos, const Lines &lines) {
 // till: true for t/T (stop one short), false for f/F (land on target)
 int findCharInLine(char target, string_view line,
                    int startCol, bool forward, bool till) {
-  const int n = static_cast<int>(line.size());
+  return findCharInLine(target, line, startCol, forward, till,
+                        /*count=*/1, /*repeat=*/false);
+}
 
-  if (forward) {
-    for (int i = startCol + 1; i < n; i++) {
-      if (line[i] == target) {
-        return till ? i - 1 : i;
-      }
-    }
-  } else {
-    for (int i = startCol - 1; i >= 0; i--) {
-      if (line[i] == target) {
-        return till ? i + 1 : i;
+int findCharInLine(char target, string_view line, int startCol,
+                   bool forward, bool till, int count, bool repeat) {
+  if (count <= 0) return -1;
+
+  const int n = static_cast<int>(line.size());
+  const int step = forward ? 1 : -1;
+  int i = startCol + step;
+
+  // Repeating t/T skips the adjacent target the prior till stopped beside.
+  if (repeat && till) {
+    i += step;
+  }
+
+  int seen = 0;
+  for (; i >= 0 && i < n; i += step) {
+    if (line[i] == target) {
+      seen++;
+      if (seen == count) {
+        return till ? i - step : i;
       }
     }
   }

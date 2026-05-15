@@ -199,7 +199,7 @@ if $IS_MAIN; then
     -DVIMF_TRACK_STATES=ON \
     "${CCACHE_FLAGS[@]}"
   cmake --build build_track --target vimficiency_explore
-  VIMFICIENCY_SEED_MODE=fixed ./build_track/tests/vimficiency_explore
+  VIMFICIENCY_SEED_MODE=fixed ./build_track/tools/vimficiency_explore
 
   for f in edit_explore.json motion_explore.json composition_explore.json; do
     total=$(jq '[.cases[].states | length] | add // 0' "$f")

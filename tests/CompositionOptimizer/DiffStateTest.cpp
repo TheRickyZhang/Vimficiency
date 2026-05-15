@@ -12,9 +12,6 @@
 
 #include "Optimizer/CompositionOptimizer/DiffState.h"
 #include "Types/Lines.h"
-#include "Utils/GeneratedProperty.h"
-#include "Utils/RandomBufferHelpers.h"
-#include "Utils/RandomGeneration.h"
 
 using namespace std;
 
@@ -48,57 +45,6 @@ static DiffState makeDiff(
   return DiffState(
       begin, end, std::move(deleted), std::move(inserted),
       TransformBoundary(context, begin, end));
-}
-
-// Validate structural invariants on a diff set
-static void validateInvariants(
-    const vector<DiffState>& diffs, const Lines& initial, const Lines& goal) {
-
-  string startFlat = initial.flatten();
-  string goalFlat = goal.flatten();
-
-  // Diffs must be in document order and non-overlapping
-  for (size_t i = 0; i + 1 < diffs.size(); i++) {
-    const auto& a = diffs[i];
-    const auto& b = diffs[i + 1];
-    EXPECT_TRUE(a.endPos.line < b.beginPos.line ||
-                (a.endPos.line == b.beginPos.line && a.endPos.col <= b.beginPos.col))
-        << "diff[" << i << "] endPos (" << a.endPos.line << "," << a.endPos.col
-        << ") overlaps diff[" << (i + 1) << "] beginPos ("
-        << b.beginPos.line << "," << b.beginPos.col << ")";
-  }
-
-  for (size_t i = 0; i < diffs.size(); i++) {
-    const auto& d = diffs[i];
-
-    // Type flags are mutually exclusive (or all false for empty diff)
-    int typeCount = d.isPureInsertion() + d.isPureDeletion() + d.isReplacement();
-    EXPECT_LE(typeCount, 1) << "diff[" << i << "] has multiple type flags";
-
-    // Non-empty diff must have at least one type
-    if (!d.deletedText.empty() || !d.insertedText.empty()) {
-      EXPECT_EQ(typeCount, 1) << "diff[" << i << "] is non-empty but has no type flag";
-    }
-
-    // Pure insertion: beginPos == endPos
-    if (d.isPureInsertion()) {
-      EXPECT_EQ(d.beginPos, d.endPos) << "pure insertion diff[" << i << "] has non-empty range";
-    }
-
-    // Deletion/replacement: beginPos != endPos
-    if (d.isPureDeletion() || d.isReplacement()) {
-      EXPECT_NE(d.beginPos, d.endPos) << "deletion/replacement diff[" << i << "] has empty range";
-    }
-
-    // deletedText must match the original content at [beginPos, endPos)
-    if (d.hasDeletedContent()) {
-      int flatBegin = DiffText::positionToFlatIndex(d.beginPos, initial);
-      string actual = startFlat.substr(flatBegin, d.deletedText.size());
-      EXPECT_EQ(actual, d.deletedText)
-          << "diff[" << i << "] deletedText doesn't match original at ("
-          << d.beginPos.line << "," << d.beginPos.col << ")";
-    }
-  }
 }
 
 // =============================================================================
@@ -204,102 +150,6 @@ TEST(DiffStateTest, ContiguousResidualDiff_CoalescesSeparatedChanges) {
 }
 
 // =============================================================================
-// Generated property tests
-// =============================================================================
-
-namespace {
-
-// Apply random edits to a line-based buffer. Edits operate per-line to avoid
-// inserting/removing newlines, which keeps line structure predictable.
-Lines randomlyEdit(const Lines& initial) {
-  Lines result = initial;
-
-  int numEdits = RandomGen::range(1, 3);
-  for (int e = 0; e < numEdits; e++) {
-    int line = RandomGen::range(0, static_cast<int>(result.size()) - 1);
-    string& s = result[line];
-    int len = static_cast<int>(s.size());
-
-    int editType = RandomGen::range(0, 2);
-    if (editType == 0) {
-      // Insertion
-      int pos = RandomGen::range(0, len);
-      int insertLen = RandomGen::range(1, 5);
-      string ins;
-      for (int i = 0; i < insertLen; i++)
-        ins += RandomGen::pick<string_view>({{80, CharPools::LETTERS}, {20, CharPools::SPACE}});
-      s.insert(pos, ins);
-    } else if (editType == 1 && len > 0) {
-      // Deletion
-      int a = RandomGen::range(0, len - 1);
-      int delLen = min(RandomGen::range(1, 5), len - a);
-      s.erase(a, delLen);
-    } else if (len > 0) {
-      // Replacement
-      int a = RandomGen::range(0, len - 1);
-      int repLen = min(RandomGen::range(1, 5), len - a);
-      string rep;
-      for (int i = 0; i < repLen; i++)
-        rep += RandomGen::pick<string_view>({{80, CharPools::LETTERS}, {20, CharPools::SPACE}});
-      s.replace(a, repLen, rep);
-    }
-  }
-
-  return result;
-}
-
-} // namespace
-
-TEST(DiffStateGeneratedPropertyTest, SingleLineRoundTripAndStructure) {
-  GeneratedProperty::check({"DiffState single-line round-trip", 42, 100}, [&](int) {
-    Lines initial = {randomLine(RandomGen::range(5, 30))};
-    Lines goal = randomlyEdit(initial);
-    if (initial == goal) return;
-
-    auto diffs = Myers::calculate(initial, goal);
-    EXPECT_EQ(Myers::applyAllDiffState(diffs, initial), goal)
-        << "Round-trip failed: '" << initial.flatten()
-        << "' -> '" << goal.flatten() << "'";
-    validateInvariants(diffs, initial, goal);
-  });
-}
-
-TEST(DiffStateGeneratedPropertyTest, MultiLineRoundTripAndStructure) {
-  GeneratedProperty::check({"DiffState multi-line round-trip", 43, 100}, [&](int) {
-    int numLines = RandomGen::range(2, 6);
-    Lines initial = randomLines(numLines, 3, 15);
-    Lines goal = randomlyEdit(initial);
-    if (initial == goal) return;
-
-    auto diffs = Myers::calculate(initial, goal);
-    EXPECT_EQ(Myers::applyAllDiffState(diffs, initial), goal)
-        << "Round-trip failed on multi-line input";
-    validateInvariants(diffs, initial, goal);
-  });
-}
-
-TEST(DiffStateGeneratedPropertyTest, CodeLikeRoundTripAndStructure) {
-  GeneratedProperty::check({"DiffState code-like round-trip", 44, 50}, [&](int) {
-    Lines initial = randomCodeBuffer(RandomGen::range(3, 8), 15);
-    Lines goal = randomlyEdit(initial);
-    if (initial == goal) return;
-
-    auto diffs = Myers::calculate(initial, goal);
-    EXPECT_EQ(Myers::applyAllDiffState(diffs, initial), goal)
-        << "Round-trip failed on code-like input";
-    validateInvariants(diffs, initial, goal);
-  });
-}
-
-TEST(DiffStateGeneratedPropertyTest, IdenticalBuffersProduceNoDiffs) {
-  GeneratedProperty::check({"DiffState identical buffers", 45, 50}, [&](int) {
-    Lines lines = randomLines(RandomGen::range(1, 4), 3, 15);
-    auto diffs = Myers::calculate(lines, lines);
-    EXPECT_EQ(diffs.size(), 0) << "Identical buffers should produce no diffs";
-  });
-}
-
-// =============================================================================
 // Sequential Application Test
 // =============================================================================
 
@@ -392,26 +242,4 @@ TEST(DiffStateTest, OriginalDiffMapper_PermutationsOfIndependentDiffs) {
         << "failed order "
         << order[0] << "," << order[1] << "," << order[2];
   } while (next_permutation(order.begin(), order.end()));
-}
-
-TEST(DiffStateGeneratedPropertyTest, SequentialApplicationMatchesBatchApplication) {
-  GeneratedProperty::check({"DiffState sequential application", 46, 200}, [&](int) {
-    int numLines = RandomGen::range(1, 6);
-    Lines initial = randomLines(numLines, 3, 15);
-    Lines goal = randomlyEdit(initial);
-    if (initial == goal) return;
-
-    auto diffs = Myers::calculate(initial, goal);
-
-    Lines expected = Myers::applyAllDiffState(diffs, initial);
-    ASSERT_EQ(expected, goal) << "applyAllDiffState sanity check failed";
-
-    Lines sequential = applySequentially(diffs, initial);
-    EXPECT_EQ(sequential, expected)
-        << "Sequential application failed"
-        << "\ninitial: " << initial.flatten()
-        << "\ngoal: " << goal.flatten()
-        << "\nsequential: " << sequential.flatten()
-        << "\ndiffs: " << diffs.size();
-  });
 }

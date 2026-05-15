@@ -22,9 +22,8 @@
 struct MotionSpec {
   std::string cmd;   // e.g., "de", "dw", "db"
   bool isForward;    // direction of motion
-  EdgeType edgeType; // for word motions
+  VimCore::WordOperatorTarget target;
   bool isBigWord;    // true for W/E/B variants
-  bool skipCurrent;  // de/dE/db/dB need true; dw/dW/dge/dgE need false
 
   // Predict if motion would cross boundary using VimCore
   // boundaryOffset: for forward, protects suffix (last N cols of last line)
@@ -32,10 +31,18 @@ struct MotionSpec {
   // hasLinesOutside: for forward, pass hasLinesBelow; for backward, pass hasLinesAbove
   bool wouldCross(CursorPos cursor, const Lines& lines, int boundaryOffset,
                   bool hasLinesOutside) const {
-    CursorPos result = VimCore::motionWordEndpoint(
-        cursor, lines, isForward, edgeType, isBigWord, skipCurrent,
-        boundaryOffset, hasLinesOutside, /*lineBounded=*/false);
-    return result == POSITION_OUTSIDE_BOUNDARY;
+    VimCore::WordBoundaryContext boundary;
+    if (isForward) {
+      boundary.rightColOffset = boundaryOffset;
+      boundary.hasLinesBelow = hasLinesOutside;
+    } else {
+      boundary.leftColOffset = boundaryOffset;
+      boundary.hasLinesAbove = hasLinesOutside;
+    }
+    CharRange range = VimCore::wordOperatorRange(
+        cursor, lines, target, isBigWord, boundary);
+    return range.begin == POSITION_OUTSIDE_BOUNDARY ||
+           range.end == POSITION_OUTSIDE_BOUNDARY;
   }
 };
 
@@ -95,3 +102,28 @@ bool rightBoundaryCrossed(const RandomBufferTest& test, const Lines& result);
 // Run a single random test case for word motions
 bool runRandomMotionTest(NeovimOracle& oracle, const MotionSpec& motion,
                          const RandomBufferTest& test, bool verbose = false);
+
+// =============================================================================
+// Text Object Test Infrastructure
+// =============================================================================
+
+struct TextObjectSpec {
+  std::string cmd;   // e.g., "diw", "daw"
+  bool isInner;      // true for iw/iW, false for aw/aW
+  bool isBigWord;    // true for W variants
+
+  // Predict if text object would cross boundaries using VimCore. Uses
+  // offset-based boundary model: leftColOffset protects cols [0, offset) on
+  // line 0; rightColOffset protects cols [lineLen-offset, lineLen) on the
+  // last line.
+  bool wouldCross(CursorPos cursor, const Lines& lines,
+                  int leftColOffset, int rightColOffset,
+                  bool hasLinesAbove, bool hasLinesBelow) const;
+};
+
+const std::vector<TextObjectSpec>& getAllTextObjects();
+
+RandomBufferTest generateTextObjectBuffer(int numLines);
+
+bool runTextObjectTest(NeovimOracle& oracle, const TextObjectSpec& spec,
+                       const RandomBufferTest& test, bool verbose = false);

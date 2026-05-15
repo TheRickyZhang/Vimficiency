@@ -67,6 +67,20 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_AppendWithNewline) {
   expectHasValidResults(results, initial, initialPos, goal, "append with newline");
 }
 
+TEST_F(CompositionOptimizer_ManualTest, PureInsertion_MidLineNewlinePreservesWhitespaceSuffix) {
+  Lines initial = {", ba", "afd  ", "cbcc  b."};
+  Lines goal = {", ba", "afdfadd", "afd  ", "cbcc  b."};
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 0);
+
+  auto compResult = opt.optimize(
+      initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.getResults();
+
+  expectHasValidResults(
+      results, initial, initialPos, goal, "mid-line newline insertion");
+}
+
 TEST_F(CompositionOptimizer_ManualTest, PureInsertion_InsertAtStart) {
   // Insert at start of line: should use 'I' shortcut (if at first non-blank)
   Lines initial = {"a", "c"};

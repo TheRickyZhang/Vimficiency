@@ -10,6 +10,43 @@
 
 using namespace std;
 
+namespace {
+
+int firstDotBeforeDotContextReset(const vector<ParsedEdit>& edits, int start) {
+  for (int i = start; i < static_cast<int>(edits.size()); i++) {
+    if (edits[i].edit == ".") return i;
+    if (Edit::updatesDotRepeat(Mode::Normal, edits[i].edit)) return -1;
+  }
+  return -1;
+}
+
+string expandDotRepeatCommand(const ParsedEdit& dot, const string& lastEditCmd) {
+  assert(dot.edit == ".");
+  auto parsedLast = Edit::parseEdits(lastEditCmd);
+  assert(parsedLast && !parsedLast->empty());
+
+  ParsedEdit repeated = (*parsedLast)[0];
+  if (dot.hasCount()) {
+    repeated = ParsedEdit{repeated.edit, dot.effectiveCount()};
+  }
+  return Edit::formatDotRepeatCommand(repeated);
+}
+
+KeyedSequence buildExpandedDotPrefix(const SuffixProgram& program,
+                                     int startIndex,
+                                     int dotIndex,
+                                     string_view expandedDotCmd) {
+  KeyedSequence prefix;
+  for (int i = startIndex; i < dotIndex; i++) {
+    prefix += program.editCmds[i];
+  }
+  prefix += KeyedSequence(
+      expandedDotCmd, globalSequenceToKeys().tokenize(expandedDotCmd));
+  return prefix;
+}
+
+}  // namespace
+
 ChangeGoalHandler::ChangeGoalHandler(
     const Lines& effectiveLines, int leftColOffset, int rightColOffset,
     double effortWeight, const Config& config,
@@ -269,19 +306,22 @@ SuffixValue ChangeGoalHandler::buildSuffixValueForNextIndex(
   int programSize = suffixProgram->size();
   assert(nextIndex >= 0 && nextIndex <= programSize);
 
-  if (nextIndex >= static_cast<int>(dotAwareEdits.size()) ||
-      dotAwareEdits[nextIndex].edit != "." || lastEditCmd.empty()) {
+  int dotIndex = firstDotBeforeDotContextReset(dotAwareEdits, nextIndex);
+  if (dotIndex < 0 || lastEditCmd.empty()) {
     return SuffixValue(suffixProgram, nextIndex, rawSuffixEfforts[nextIndex]);
   }
 
-  KeyedSequence expandedPrefix(lastEditCmd, globalSequenceToKeys().tokenize(lastEditCmd));
+  string expandedDotCmd =
+      expandDotRepeatCommand(dotAwareEdits[dotIndex], lastEditCmd);
+  KeyedSequence expandedPrefix = buildExpandedDotPrefix(
+      *suffixProgram, nextIndex, dotIndex, expandedDotCmd);
   RunningEffort expandedPrefixEffort(expandedPrefix.keys, config);
 
   RunningEffort expandedEffort =
-      RunningEffort::merge(expandedPrefixEffort, rawSuffixEfforts[nextIndex + 1]);
+      RunningEffort::merge(expandedPrefixEffort, rawSuffixEfforts[dotIndex + 1]);
 
   return SuffixValue(
-      suffixProgram, nextIndex + 1, std::move(expandedPrefix), expandedEffort,
+      suffixProgram, dotIndex + 1, std::move(expandedPrefix), expandedEffort,
       lastEditCmd, nextIndex, rawSuffixEfforts[nextIndex]);
 }
 
@@ -313,7 +353,8 @@ void ChangeGoalHandler::replayAndCacheSuffix(
   string lastEditCmd;
   for (int nextIndex = 0; nextIndex < programEditCount; nextIndex++) {
     size_t replayHash = hashLines(replayLines);
-    SuffixKey sk(replayHash, static_cast<int>(replayLines.size()), replayPos, replayMode);
+    SuffixKey sk(replayHash, static_cast<int>(replayLines.size()), replayPos,
+                 replayMode);
     if (suffixCache.find(sk) == suffixCache.end()) {
       suffixCache[sk] = buildSuffixValueForNextIndex(
           suffixProgram, prefixEdits, rawSuffixEfforts, nextIndex, lastEditCmd);
@@ -468,7 +509,9 @@ SuffixCacheResult ChangeGoalHandler::tryUseSuffixCache(
   int idx = s.getStartIndex();
   if (!startActive[idx]) return {};
 
-  SuffixKey sk(s.getLinesHash(), static_cast<int>(s.getLines().size()), s.getPos(), s.getMode());
+  SuffixKey sk(
+      s.getLinesHash(), static_cast<int>(s.getLines().size()), s.getPos(),
+      s.getMode());
   auto cacheIt = suffixCache.find(sk);
   if (cacheIt == suffixCache.end()) return {};
 

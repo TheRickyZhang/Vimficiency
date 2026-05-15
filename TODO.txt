@@ -11,9 +11,11 @@ Review implementation of BufferIndex in optimizeToRange() (is it exploring corre
 - Improving the lua/C++ interaction semantics
 
 - Are param handling consistent?
+- Right now our parsing handles find state like: faw;, where the second ; works from the current position even after a w in between.
+- Really ensure that the suffix cache handling with . is correct AND performant.
 
 - Add different types of tests: expect, property-based, fuzzing
-- Add some more randomized exploration in optimizers so it can explore more branches
+- Add some more randomized exploration in optimizers so it can explore more branches (probably want a deterministics ration)
 
 Review Exploration C++ code
 toNavSuggestion - huh wtf are these conversions?

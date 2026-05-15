@@ -203,8 +203,4 @@ TEST_F(MiscMotionsTest, Scroll_WindowHeightTwo) {
   EXPECT_EQ(p.line, 25) << "C-b with window=2 should not move";
 }
 
-// =============================================================================
-// 5. COUNT PREFIXES (for motions not in other files)
-// =============================================================================
-
 }  // namespace

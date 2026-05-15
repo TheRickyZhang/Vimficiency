@@ -2,10 +2,38 @@
 
 #include "Keyboard/KeyedSequence.h"
 #include "Optimizer/Indentation.h"
+#include "Types/CursorPos.h"
 #include "Types/Lines.h"
 #include "VimCore/VimOptions.h"
 
 #include <string_view>
+
+inline int restoredSuffixSpacesForTypedCommands(
+    const Lines& goalLines,
+    std::string_view suffix) {
+  if constexpr (VimOptions::autoindent()) {
+    return goalLines.size() > 1 ? leadingSpaceCount(suffix) : 0;
+  }
+  return 0;
+}
+
+inline CursorPos typedCommandsExitCursor(
+    CursorPos insertPos,
+    const Lines& goalLines,
+    std::string_view suffix = "") {
+  int suffixSpaces = restoredSuffixSpacesForTypedCommands(goalLines, suffix);
+
+  if (goalLines.size() == 1) {
+    int typedLen = static_cast<int>(goalLines[0].size());
+    int col = typedLen == 0 ? insertPos.col : insertPos.col + typedLen - 1;
+    return CursorPos(insertPos.line, col);
+  }
+
+  int finalLine = insertPos.line + static_cast<int>(goalLines.size()) - 1;
+  int finalLineChars = static_cast<int>(goalLines.back().size()) + suffixSpaces;
+  int col = finalLineChars == 0 ? 0 : finalLineChars - 1;
+  return CursorPos(finalLine, col);
+}
 
 // Build the typed content string from goalLines, accounting for Neovim autoindent.
 //
@@ -109,7 +137,7 @@ inline KeyedSequence buildTypedCommands(
   // Restore suffix leading whitespace stripped by <CR> (see suffix param docs).
   if constexpr (VimOptions::autoindent()) {
     if (goalLines.size() > 1) {
-      int suffixSpaces = leadingSpaceCount(suffix);
+      int suffixSpaces = restoredSuffixSpacesForTypedCommands(goalLines, suffix);
       if (suffixSpaces > 0) {
         ks.append(' ', suffixSpaces);
       }

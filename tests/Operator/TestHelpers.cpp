@@ -8,7 +8,9 @@
 #include <algorithm>
 #include <iostream>
 
+#include "Types/CharRange.h"
 #include "Utils/RandomGeneration.h"
+#include "VimCore/VimEndpointUtils.h"
 
 using namespace std;
 
@@ -17,19 +19,16 @@ using namespace std;
 // =============================================================================
 
 const vector<MotionSpec>& getAllWordMotions() {
-  // cmd, isForward, edgeType, isBigWord, skipCurrent
+  using VimCore::WordOperatorTarget;
   static vector<MotionSpec> motions = {
-      // word motions (small)
-      {"de", true, EdgeType::WordEdge, false, true},
-      {"dw", true, EdgeType::GapEdge, false, false},
-      {"db", false, EdgeType::WordEdge, false, true},
-      {"dge", false, EdgeType::NextEdge, false, false},
-
-      // WORD motions
-      {"dE", true, EdgeType::WordEdge, true, true},
-      {"dW", true, EdgeType::GapEdge, true, false},
-      {"dB", false, EdgeType::WordEdge, true, true},
-      {"dgE", false, EdgeType::NextEdge, true, false},
+      {"de", true, WordOperatorTarget::DeleteToWordEnd, false},
+      {"dw", true, WordOperatorTarget::DeleteToNextWord, false},
+      {"db", false, WordOperatorTarget::DeleteBackToWordBegin, false},
+      {"dge", false, WordOperatorTarget::DeleteBackToWordEnd, false},
+      {"dE", true, WordOperatorTarget::DeleteToWordEnd, true},
+      {"dW", true, WordOperatorTarget::DeleteToNextWord, true},
+      {"dB", false, WordOperatorTarget::DeleteBackToWordBegin, true},
+      {"dgE", false, WordOperatorTarget::DeleteBackToWordEnd, true},
   };
   return motions;
 }
@@ -240,6 +239,143 @@ bool runRandomMotionTest(NeovimOracle& oracle, const MotionSpec& motion,
       cerr << "Left boundary: (" << test.leftBoundaryPos.line << ","
            << test.leftBoundaryPos.col << ")" << endl;
     }
+    cerr << "Result:" << endl;
+    for (size_t i = 0; i < result.lines.size(); i++) {
+      cerr << "  [" << i << "]: \"" << result.lines[i] << "\"" << endl;
+    }
+    cerr << "Predicted: " << (predictCross ? "CROSS" : "SAFE")
+         << ", Actual: " << (actualCross ? "CROSSED" : "SAFE") << endl;
+  }
+
+  return success;
+}
+
+// =============================================================================
+// TextObjectSpec definitions and helpers
+// =============================================================================
+
+bool TextObjectSpec::wouldCross(CursorPos cursor, const Lines& lines,
+                                int leftColOffset, int rightColOffset,
+                                bool hasLinesAbove, bool hasLinesBelow) const {
+  VimCore::WordBoundaryContext boundary;
+  boundary.leftColOffset = leftColOffset;
+  boundary.rightColOffset = rightColOffset;
+  boundary.hasLinesAbove = hasLinesAbove;
+  boundary.hasLinesBelow = hasLinesBelow;
+  boundary.clampOutside = false;
+  CharRange range = VimCore::wordTextObjectRange(
+      cursor, lines,
+      isInner ? VimCore::WordTextObjectKind::Inner
+              : VimCore::WordTextObjectKind::Around,
+      isBigWord, boundary);
+  return range.begin == POSITION_OUTSIDE_BOUNDARY ||
+         range.end == POSITION_OUTSIDE_BOUNDARY;
+}
+
+const vector<TextObjectSpec>& getAllTextObjects() {
+  static vector<TextObjectSpec> textObjects = {
+      {"diw", true, false},
+      {"daw", false, false},
+      {"diW", true, true},
+      {"daW", false, true},
+  };
+  return textObjects;
+}
+
+RandomBufferTest generateTextObjectBuffer(int numLines) {
+  RandomBufferTest test;
+  test.lines = randomLines(numLines, 10, 20);
+
+  int editLine = RandomGen::range(0, numLines - 1);
+  int lineLen2 = static_cast<int>(test.lines[editLine].size());
+
+  int minEditLen = 4;
+  if (lineLen2 < minEditLen + 2) {
+    test.lines[editLine] += string(minEditLen + 2 - lineLen2, 'x');
+    lineLen2 = static_cast<int>(test.lines[editLine].size());
+  }
+
+  int editStart = RandomGen::range(1, max(1, lineLen2 - minEditLen - 1));
+  int editEnd = RandomGen::range(editStart + minEditLen - 1,
+                                 min(lineLen2 - 2, editStart + 10));
+
+  test.editStartLine = editLine;
+  test.editStartCol = editStart;
+  test.editEndLine = editLine;
+  test.editEndCol = editEnd;
+
+  test.cursorCol = RandomGen::range(editStart, editEnd);
+  test.cursorLine = editLine;
+
+  test.hasLeftBoundary = true;
+  test.hasRightBoundary = true;
+  test.leftBoundaryPos = CursorPos(editLine, editStart - 1);
+  test.rightBoundaryPos = CursorPos(editLine, editEnd + 1);
+
+  string& line = test.lines[editLine];
+  string prefix;
+  for (int i = 0; i < editLine; i++) {
+    prefix += test.lines[i] + '\n';
+  }
+  prefix += line.substr(0, editStart);
+  test.prefix = prefix;
+
+  string suffix = line.substr(editEnd + 1);
+  for (int i = editLine + 1; i < numLines; i++) {
+    suffix += '\n';
+    suffix += test.lines[i];
+  }
+  test.suffix = suffix;
+
+  test.hasLinesAbove = (editLine > 0);
+  test.hasLinesBelow = (editLine < numLines - 1);
+
+  return test;
+}
+
+// VimCore boundary functions expect effectiveLines (only the edit-region
+// lines, with offsets protecting prefix/suffix columns), NOT the full buffer.
+// Text-object tests use single-line edit regions, so the cursor and offsets
+// are translated accordingly before calling wordTextObjectRange.
+bool runTextObjectTest(NeovimOracle& oracle, const TextObjectSpec& spec,
+                       const RandomBufferTest& test, bool verbose) {
+  auto result = oracle.simulate(test.lines, test.cursorLine, test.cursorCol, spec.cmd);
+
+  bool leftCrossed = test.hasLeftBoundary && leftBoundaryCrossed(test, result.lines);
+  bool rightCrossed = test.hasRightBoundary && rightBoundaryCrossed(test, result.lines);
+
+  Lines effectiveLines;
+  for (int i = test.editStartLine; i <= test.editEndLine; i++) {
+    effectiveLines.push_back(test.lines[i]);
+  }
+  int effectiveLastLine = static_cast<int>(effectiveLines.size()) - 1;
+
+  CursorPos cursor(test.cursorLine - test.editStartLine, test.cursorCol);
+
+  int leftColOffset = test.hasLeftBoundary ? test.editStartCol : 0;
+  int rightColOffset = 0;
+  if (test.hasRightBoundary) {
+    int lineLen = static_cast<int>(effectiveLines[effectiveLastLine].size());
+    rightColOffset = lineLen - test.editEndCol - 1;
+  }
+
+  bool predictCross = spec.wouldCross(cursor, effectiveLines, leftColOffset,
+                                       rightColOffset, test.hasLinesAbove,
+                                       test.hasLinesBelow);
+  bool actualCross = leftCrossed || rightCrossed;
+  bool success = !(actualCross && !predictCross);
+
+  if (verbose && !success) {
+    cerr << "\n=== TEXT OBJECT TEST FAILURE ===" << endl;
+    cerr << "Command: " << spec.cmd << endl;
+    cerr << "Input:" << endl;
+    for (size_t i = 0; i < test.lines.size(); i++) {
+      cerr << "  [" << i << "]: \"" << test.lines[i] << "\"" << endl;
+    }
+    cerr << "Cursor: (" << test.cursorLine << ", " << test.cursorCol << ")" << endl;
+    cerr << "Edit region: (" << test.editStartLine << "," << test.editStartCol << ") to ("
+         << test.editEndLine << "," << test.editEndCol << ")" << endl;
+    cerr << "Left offset: " << leftColOffset << ", Right offset: " << rightColOffset << endl;
     cerr << "Result:" << endl;
     for (size_t i = 0; i < result.lines.size(); i++) {
       cerr << "  [" << i << "]: \"" << result.lines[i] << "\"" << endl;

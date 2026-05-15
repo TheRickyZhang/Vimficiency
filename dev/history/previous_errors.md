@@ -191,9 +191,9 @@ cumSum += positions;
 ```
 This matches `initStartingPositions` in the search, which also counts 1 position for empty lines.
 
-## textObjectRange daw rejects when boundary clips leading whitespace
+## wordTextObjectRange daw rejects when boundary clips leading whitespace
 
-In `VimEndpointUtils.cpp`, `textObjectRange` handles `daw` on a word with no trailing whitespace by including leading whitespace instead. The backward `GapEdge` search finds the start of leading whitespace. If it returns col 0 (indicating only indentation before the word), the range falls back to `WordEdge` (word-only, no whitespace).
+In `VimEndpointUtils.cpp`, `wordTextObjectRange` handles `daw` on a word with no trailing whitespace by including leading whitespace instead. The backward gap search finds the start of leading whitespace. If it returns col 0 (indicating only indentation before the word), the range falls back to word-only content.
 
 However, when used in the TransformOptimizer with a prefix boundary (`leftColOffset > 0`), the backward `GapEdge` search can return the boundary start instead of the true whitespace start. This could land at col > 0, making the code think there's a prior word — producing a range that disagrees with Vim's actual `daw` behavior (which would include whitespace all the way to line start).
 

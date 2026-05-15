@@ -31,7 +31,8 @@ struct TransformStateKey {
   int startIndex;  // Include startIndex so each starting position has independent search
 
   TransformStateKey(size_t lh, int lc, CursorPos p, Mode m, int idx)
-      : linesHash(lh), lineCount(lc), line(p.line), col(p.col), mode(m), startIndex(idx) {}
+      : linesHash(lh), lineCount(lc), line(p.line), col(p.col), mode(m),
+        startIndex(idx) {}
 
   bool operator==(const TransformStateKey& other) const {
     return linesHash == other.linesHash && lineCount == other.lineCount
@@ -130,14 +131,8 @@ public:
 
     VimCore::deleteRangeAndUpdatePos(newState.lines_, normalized, newState.pos_, Mode::Normal);
 
-    if (originalPos.col == 0
-        && originalPos.line > normalized.begin.line
-        && VimCore::didDeleteRangeRemoveBeginLine(
-               normalized, oldLineCount, static_cast<int>(newState.lines_.size()))
-        && !newState.lines_[newState.pos_.line].empty()) {
-      newState.pos_.setCol(
-          VimCore::firstNonBlankColInLineStr(newState.lines_[newState.pos_.line]));
-    }
+    VimCore::adjustCursorAfterBackwardWordDelete(
+        normalized, oldLineCount, originalPos, newState.lines_, newState.pos_);
 
     newState.refreshHash();
     return newState;
@@ -190,7 +185,8 @@ public:
 
 inline bool usesOperatorLinewiseCursor(std::string_view baseCmd) {
   return baseCmd == "d}" || baseCmd == "d{" ||
-         baseCmd == "d)" || baseCmd == "d(";
+         baseCmd == "d)" || baseCmd == "d(" ||
+         baseCmd == "db" || baseCmd == "dB";
 }
 
 inline TransformEditorState afterLinewiseDeletionForCommand(

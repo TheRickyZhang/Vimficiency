@@ -6,58 +6,36 @@ using namespace std;
 // =============================================================================
 
 namespace Edit {
+using VimCore::WordOperatorTarget;
 
-// Forward word edits: ks{cmd, keys}, edgeType, isBig, skipCurrent
-const vector<ForwardWordEditSpec> FORWARD_WORD_EDITS = {
-    {KSId::de, EdgeType::WordEdge, false, true},
-    {KSId::dw, EdgeType::GapEdge, false, false},
-    {KSId::dE, EdgeType::WordEdge, true, true},
-    {KSId::dW, EdgeType::GapEdge, true, false},
-};
-// Subset: de/dE only (dw/dW equivalent to dd on empty lines)
-const vector<ForwardWordEditSpec> EMPTYLINE_FORWARD_WORD_EDITS = {
-    {KSId::de, EdgeType::WordEdge, false, true},
-    {KSId::dE, EdgeType::WordEdge, true, true},
+const vector<WordEditSpec> FORWARD_WORD_EDITS = {
+    {KSId::de, WordOperatorTarget::DeleteToWordEnd, false},
+    {KSId::dw, WordOperatorTarget::DeleteToNextWord, false},
+    {KSId::dE, WordOperatorTarget::DeleteToWordEnd, true},
+    {KSId::dW, WordOperatorTarget::DeleteToNextWord, true},
 };
 
-// Split by EdgeType for templated dispatch: ks{cmd, keys}, isBig, skipCurrent
-const vector<ForwardWordEditSpecNoEdge> FORWARD_WORDEDGE_EDITS = {
-    {KSId::de, false, true},
-    {KSId::dE, true, true},
-};
-const vector<ForwardWordEditSpecNoEdge> FORWARD_GAPEDGE_EDITS = {
-    {KSId::dw, false, false},
-    {KSId::dW, true, false},
+const vector<WordEditSpec> EMPTYLINE_FORWARD_WORD_EDITS = {
+    {KSId::de, WordOperatorTarget::DeleteToWordEnd, false},
+    {KSId::dE, WordOperatorTarget::DeleteToWordEnd, true},
 };
 
-// Backward word edits: ks{cmd, keys}, edgeType, isBig, skipCurrent, isExclusiveAtCursor
-const vector<BackwardWordEditSpec> BACKWARD_WORD_EDITS = {
-    {KSId::db, EdgeType::WordEdge, false, true, true},
-    {KSId::dge, EdgeType::NextEdge, false, true, false},
-    {KSId::dB, EdgeType::WordEdge, true, true, true},
-    {KSId::dgE, EdgeType::NextEdge, true, true, false},
+const vector<WordEditSpec> BACKWARD_WORD_EDITS = {
+    {KSId::db, WordOperatorTarget::DeleteBackToWordBegin, false},
+    {KSId::dge, WordOperatorTarget::DeleteBackToWordEnd, false},
+    {KSId::dB, WordOperatorTarget::DeleteBackToWordBegin, true},
+    {KSId::dgE, WordOperatorTarget::DeleteBackToWordEnd, true},
 };
 
-const vector<BackwardWordEditSpec> EXCLUSIVE_BACKWARD_WORD_EDITS = {
-    {KSId::db, EdgeType::WordEdge, false, true, true},
-    {KSId::dB, EdgeType::WordEdge, true, true, true},
+const vector<WordEditSpec> EXCLUSIVE_BACKWARD_WORD_EDITS = {
+    {KSId::db, WordOperatorTarget::DeleteBackToWordBegin, false},
+    {KSId::dB, WordOperatorTarget::DeleteBackToWordBegin, true},
 };
 
-// Subset: db/dB/dge only (dgE equivalent to dge on empty lines)
-const vector<BackwardWordEditSpec> EMPTYLINE_BACKWARD_WORD_EDITS = {
-    {KSId::db, EdgeType::WordEdge, false, true, true},
-    {KSId::dge, EdgeType::NextEdge, false, true, false},
-    {KSId::dB, EdgeType::WordEdge, true, true, true},
-};
-
-// Split by EdgeType for templated dispatch: ks{cmd, keys}, isBig, skipCurrent, isExclusiveAtCursor
-const vector<BackwardWordEditSpecNoEdge> BACKWARD_WORDEDGE_EDITS = {
-    {KSId::db, false, true, true},
-    {KSId::dB, true, true, true},
-};
-const vector<BackwardWordEditSpecNoEdge> BACKWARD_NEXTEDGE_EDITS = {
-    {KSId::dge, false, true, false},
-    {KSId::dgE, true, true, false},
+const vector<WordEditSpec> EMPTYLINE_BACKWARD_WORD_EDITS = {
+    {KSId::db, WordOperatorTarget::DeleteBackToWordBegin, false},
+    {KSId::dge, WordOperatorTarget::DeleteBackToWordEnd, false},
+    {KSId::dB, WordOperatorTarget::DeleteBackToWordBegin, true},
 };
 
 const vector<TextObjectEditSpec> TEXT_OBJECT_EDITS = {

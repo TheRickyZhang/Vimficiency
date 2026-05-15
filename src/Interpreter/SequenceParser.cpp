@@ -101,7 +101,7 @@ const unordered_set<string> REPLAY_MOTION_SPECIALS = {
 };
 
 // Try to parse a motion at position i
-// Returns the motion string (with any f/F/t/T target and ;, repeats) or empty string
+// Returns the motion string, or empty string if none starts at i.
 string tryParseMotion(string_view sv, size_t i) {
   if (i >= sv.size()) return "";
 
@@ -117,35 +117,27 @@ string tryParseMotion(string_view sv, size_t i) {
     return "";
   }
 
-  // Targets may be bracket-form display chars, e.g. f<Space>.
+  // Targets may be bracket-form display chars, e.g. f<Space>. Repeat commands
+  // `;` and `,` are parsed as separate motion tokens so replay can carry
+  // char-find state across intervening movement.
   if ((c == 'f' || c == 'F' || c == 't' || c == 'T') && i + 1 < sv.size()) {
     string target;
-    size_t targetEnd;
     if (sv[i + 1] == '<') {
       string special = tryParseSpecialKey(sv, i + 1);
       if (!special.empty()) {
         auto parsed = parseDisplayChar(special);
         if (parsed.has_value()) {
           target = displayChar(*parsed);
-          targetEnd = i + 1 + special.size();
         } else {
           target = displayChar(sv[i + 1]);
-          targetEnd = i + 2;
         }
       } else {
         target = displayChar(sv[i + 1]);
-        targetEnd = i + 2;
       }
     } else {
       target = displayChar(sv[i + 1]);
-      targetEnd = i + 2;
     }
-    size_t end = targetEnd;
-    while (end < sv.size() && (sv[end] == ';' || sv[end] == ',')) {
-      end++;
-    }
-    return string(1, c) + target +
-           string(sv.substr(targetEnd, end - targetEnd));
+    return string(1, c) + target;
   }
 
   // Standard longest-match for other motions

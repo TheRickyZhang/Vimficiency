@@ -87,30 +87,24 @@ add_executable(vimficiency_tests
   TestMain.cpp
   ${PROJECT_SOURCE_DIR}/src/LuaExports/Payload.cpp
 
-  # Commands - VimCore motion correctness
-  Commands/CharFindMotions.cpp
+  # Commands - VimCore motion regressions, specific-output assertions, and
+  # NavContext-dependent scroll tests. Bulk oracle conformance for motions
+  # lives in tests/Properties/ instead.
   Commands/CountMotionsTest.cpp
   Commands/CountedMiscMotions.cpp
   Commands/MiscMotions.cpp
   Commands/ScrollMotions.cpp
-  Commands/WordMotions.cpp
-  Commands/LineMotions.cpp
-  Commands/ParagraphMotions.cpp
-  Commands/SentenceMotions.cpp
 
-  # Operator - VimCore edit/delete correctness
-  Operator/Words.cpp
+  # Operator - boundary-aware delete/change unit tests and specific-output
+  # text-object regressions. Bulk operator+motion oracle conformance lives in
+  # tests/Properties/OperatorBoundaryProperties.cpp.
   Operator/Lines.cpp
-  Operator/ChangeMotions.cpp
-  Operator/Paragraphs.cpp
-  Operator/Sentences.cpp
   Operator/TextObjects.cpp
 
   # CompositionOptimizer
   CompositionOptimizer/DiffStateTest.cpp
   CompositionOptimizer/JoinLinesManualTest.cpp
   CompositionOptimizer/ManualTest.cpp
-  CompositionOptimizer/OutputCorrectnessTest.cpp
   CompositionOptimizer/BracketQuoteContextTest.cpp
   CompositionOptimizer/HumanApprovalTest.cpp
   CompositionOptimizer/PureInsertionManualTest.cpp
@@ -125,7 +119,6 @@ add_executable(vimficiency_tests
   TransformOptimizer/ManualTest.cpp
   TransformOptimizer/ExclusiveLinewiseManualTest.cpp
   TransformOptimizer/MultipleResultsPerStartTest.cpp
-  TransformOptimizer/OutputCorrectnessTest.cpp
   TransformOptimizer/CostConsistencyTest.cpp
   TransformOptimizer/DeterminismTest.cpp
   TransformOptimizer/HumanApprovalTest.cpp
@@ -135,7 +128,6 @@ add_executable(vimficiency_tests
   NavOptimizer/BoundaryTest.cpp
   NavOptimizer/CountRepeatTest.cpp
   NavOptimizer/ManualTest.cpp
-  NavOptimizer/OutputCorrectnessTest.cpp
   NavOptimizer/CostConsistencyTest.cpp
   NavOptimizer/DeterminismTest.cpp
   NavOptimizer/HeuristicTest.cpp
@@ -174,10 +166,10 @@ include(GoogleTest)
 gtest_discover_tests(vimficiency_tests)
 
 # =============================================================================
-# Fuzz/property tests binary
+# FuzzTest generated-property/fuzz tests binary
 # =============================================================================
-# Opt-in only. Gtest-compatible mode is CTest-discoverable; coverage-guided
-# modes are manual because discovery executes the fuzz binary during the build.
+# In unit-test mode this is the deterministic/property smoke runner. In
+# FUZZTEST_FUZZING_MODE it becomes the coverage-guided fuzz campaign runner.
 
 if(VIMF_ENABLE_FUZZTEST)
   if(FUZZTEST_FUZZING_MODE AND COMMAND fuzztest_setup_fuzzing_flags)
@@ -185,74 +177,33 @@ if(VIMF_ENABLE_FUZZTEST)
   endif()
 
   add_executable(vimficiency_fuzz_tests
+    Fuzz/ParserBoundaryFuzzTest.cpp
     Fuzz/ParserPayloadFuzzTest.cpp
+    Properties/CharFindMotionProperties.cpp
+    Properties/CompositionOptimizerProperties.cpp
+    Properties/CountedMotionProperties.cpp
+    Properties/DiffStateProperties.cpp
+    Properties/EffortCompositionProperties.cpp
+    Properties/MotionInvariantProperties.cpp
+    Properties/NavOptimizerProperties.cpp
+    Properties/OperatorBoundaryProperties.cpp
+    Properties/TransformOptimizerProperties.cpp
     ${PROJECT_SOURCE_DIR}/src/LuaExports/Payload.cpp
   )
 
   target_link_libraries(vimficiency_fuzz_tests
     PRIVATE
-      vimficiency_core
+      test_utils
   )
 
   link_fuzztest(vimficiency_fuzz_tests)
   if(NOT FUZZTEST_FUZZING_MODE AND NOT FUZZTEST_COMPATIBILITY_MODE STREQUAL "libfuzzer")
-    gtest_discover_tests(vimficiency_fuzz_tests)
+    gtest_discover_tests(vimficiency_fuzz_tests
+      PROPERTIES
+        ENVIRONMENT
+          "FUZZTEST_FUZZ_FOR=0\\;FUZZTEST_PRNG_SEED=OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk"
+    )
   endif()
-endif()
-
-# =============================================================================
-# Raw byte fuzzers
-# =============================================================================
-# Opt-in libFuzzer targets for hostile byte inputs. These are intentionally not
-# CTest-discovered; run them manually with libFuzzer flags in a dedicated build.
-
-if(VIMF_ENABLE_LIBFUZZER)
-  function(add_vimficiency_raw_fuzzer target)
-    add_executable(${target} ${ARGN})
-    target_link_libraries(${target}
-      PRIVATE
-        vimficiency_core
-    )
-    target_compile_options(${target}
-      PRIVATE
-        -fsanitize=fuzzer-no-link,address,undefined
-        -fno-omit-frame-pointer
-    )
-    target_link_options(${target}
-      PRIVATE
-        -fsanitize=fuzzer,address,undefined
-    )
-  endfunction()
-
-  add_vimficiency_raw_fuzzer(vimficiency_fuzz_payload
-    Fuzz/RawPayloadFuzzer.cpp
-    ${PROJECT_SOURCE_DIR}/src/LuaExports/Payload.cpp
-  )
-
-  add_vimficiency_raw_fuzzer(vimficiency_fuzz_sequence_parser
-    Fuzz/RawSequenceParserFuzzer.cpp
-  )
-
-  add_vimficiency_raw_fuzzer(vimficiency_fuzz_movement_parser
-    Fuzz/RawMovementParserFuzzer.cpp
-  )
-
-  add_vimficiency_raw_fuzzer(vimficiency_fuzz_edit_parser
-    Fuzz/RawEditParserFuzzer.cpp
-  )
-
-  add_vimficiency_raw_fuzzer(vimficiency_fuzz_snapshot
-    Fuzz/RawSnapshotFuzzer.cpp
-  )
-
-  add_custom_target(vimficiency_raw_fuzzers
-    DEPENDS
-      vimficiency_fuzz_payload
-      vimficiency_fuzz_sequence_parser
-      vimficiency_fuzz_movement_parser
-      vimficiency_fuzz_edit_parser
-      vimficiency_fuzz_snapshot
-  )
 endif()
 
 # =============================================================================
@@ -273,33 +224,6 @@ target_link_libraries(vimficiency_benchmarks
     test_utils
     benchmark::benchmark
 )
-
-# =============================================================================
-# Exploration collector binary
-# =============================================================================
-# Collects A* explored states for dashboard visualization.
-# Run with: VIMFICIENCY_SEED_MODE=fixed ./vimficiency_explore
-#
-# Only configured when VIMF_TRACK_STATES=ON: the binary's whole job is to
-# emit explored-state traces, and without tracking it trips a static_assert
-# in ExplorationCollector.cpp. Gating the target here (rather than letting
-# the assert fire) keeps the default `cmake --build build` clean.
-if(VIMF_TRACK_STATES)
-  add_executable(vimficiency_explore
-    Exploration/CompositionCases.cpp
-    Exploration/CompositionJsonWriter.cpp
-    Exploration/EditCases.cpp
-    Exploration/SequenceChunker.cpp
-    Exploration/ExplorationCollector.cpp
-    Exploration/ExplorationJsonWriter.cpp
-    Exploration/MotionCases.cpp
-  )
-
-  target_link_libraries(vimficiency_explore
-    PRIVATE
-      test_utils
-  )
-endif()
 
 # =============================================================================
 # Debug binary

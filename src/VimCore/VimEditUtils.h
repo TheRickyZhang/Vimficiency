@@ -11,6 +11,7 @@
 #include "Types/CharRange.h"
 #include "Types/LineRange.h"
 #include "Types/Lines.h"
+#include "VimCore/VimCore.h"
 
 // Edit operations that modify buffer content.
 //
@@ -168,12 +169,9 @@ inline ResolvedDeleteRange resolveExclusiveDeleteRange(
 // Backward Exclusive CharRange Construction
 // =============================================================================
 //
-// Backward exclusive motions (db, dB) produce ranges where the exclusive end
-// is the cursor position.  When cursor is at col 0 (or contentStartCol on
-// effective-line 0) AND the endpoint is on a previous line, the exclusive end
-// can't express "delete up to but not including col 0" — so the range is
-// rewritten to [endpoint, (prevLine, prevLineLen)) instead, deleting up to
-// (and including) the end of the previous line while preserving the current line.
+// Backward exclusive motions (db, dB) produce ranges whose exclusive end is
+// the cursor position. The characterwise fallback preserves the current line;
+// Vim's delete-specific blank-prefix rule is resolved separately below.
 //
 // contentStartCol: offset for effective-line coordinate systems (e.g.,
 // leftColOffset on line 0 in TransformExplorer). Defaults to 0 for real buffers.
@@ -188,6 +186,31 @@ inline CharRange buildBackwardExclusiveCharRange(
   return CharRange(endpoint, cursor);
 }
 
+inline bool hasOnlyBlankPrefix(std::string_view line, int endCol, int contentStartCol = 0) {
+  int begin = std::clamp(contentStartCol, 0, static_cast<int>(line.size()));
+  int end = std::clamp(endCol, begin, static_cast<int>(line.size()));
+  for (int col = begin; col < end; col++) {
+    char c = line[col];
+    if (c != ' ' && c != '\t') return false;
+  }
+  return true;
+}
+
+inline ResolvedDeleteRange resolveBackwardExclusiveWordDeleteRange(
+    const CursorPos& endpoint, const CursorPos& cursor, const Lines& lines,
+    int contentStartCol = 0) {
+  if (cursor.col == contentStartCol && endpoint.line < cursor.line) {
+    int endpointContentStart = endpoint.line == 0 ? contentStartCol : 0;
+    if (endpointContentStart == 0 &&
+        hasOnlyBlankPrefix(lines[endpoint.line], endpoint.col, endpointContentStart)) {
+      return ResolvedDeleteRange::linewise(LineRange(endpoint.line, cursor.line));
+    }
+  }
+
+  return ResolvedDeleteRange::characterwise(
+      buildBackwardExclusiveCharRange(endpoint, cursor, lines, contentStartCol));
+}
+
 // Given a normalized or unnormalized character delete range plus the line-count
 // before/after deletion, report whether the line containing range.begin was
 // removed in addition to the range's baseline line collapse.
@@ -197,6 +220,25 @@ inline bool didDeleteRangeRemoveBeginLine(CharRange range,
   range.normalize();
   int baselineRemoved = range.end.line - range.begin.line;
   return oldLineCount - newLineCount > baselineRemoved;
+}
+
+inline void adjustCursorAfterBackwardWordDelete(CharRange range,
+                                                int oldLineCount,
+                                                const CursorPos& originalPos,
+                                                const Lines& lines,
+                                                CursorPos& pos,
+                                                int firstContentCol = 0) {
+  range.normalize();
+
+  int cursorContentStart = (originalPos.line == 0) ? firstContentCol : 0;
+  if (originalPos.col != cursorContentStart || originalPos.line <= range.begin.line) return;
+  if (!didDeleteRangeRemoveBeginLine(
+          range, oldLineCount, static_cast<int>(lines.size()))) {
+    return;
+  }
+  if (lines[pos.line].empty()) return;
+
+  pos.setCol(firstNonBlankColInLineStr(lines[pos.line]));
 }
 
 // =============================================================================

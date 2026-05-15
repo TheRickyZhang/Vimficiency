@@ -14,6 +14,36 @@
 
 using namespace std;
 
+namespace {
+
+struct CharFindState {
+  bool valid = false;
+  char target = '\0';
+  bool forward = true;
+  bool till = false;
+};
+
+bool isFindCommand(char c) {
+  return c == 'f' || c == 'F' || c == 't' || c == 'T';
+}
+
+bool parseFindTarget(string_view motion, char& target) {
+  if (motion.size() < 2) return false;
+  if (motion[1] == '<') {
+    size_t close = motion.find('>', 1);
+    if (close != string_view::npos) {
+      if (auto parsed = parseDisplayChar(motion.substr(1, close)); parsed.has_value()) {
+        target = *parsed;
+        return true;
+      }
+    }
+  }
+  target = motion[1];
+  return true;
+}
+
+}  // namespace
+
 std::ostream& operator<<(std::ostream& os, const ParsedMovement& motion) {
   if(motion.hasCount()) {
     os << motion.effectiveCount();
@@ -62,7 +92,9 @@ std::expected<std::vector<ParsedMovement>, MovementParseError> parseMovements(st
     }
 
     // f/F/t/T consume one target, including canonical forms like <Space>.
-    if ((c == 'f' || c == 'F' || c == 't' || c == 'T') && i + 1 < sv.size()) {
+    // `;` and `,` remain separate motion tokens so replay can preserve Vim's
+    // last-char-find state across intervening movement.
+    if (isFindCommand(c) && i + 1 < sv.size()) {
       size_t start = i;
       size_t targetEnd = i + 2;
       if (sv[i + 1] == '<') {
@@ -75,9 +107,6 @@ std::expected<std::vector<ParsedMovement>, MovementParseError> parseMovements(st
         }
       }
       i = targetEnd;
-      while (i < sv.size() && (sv[i] == ';' || sv[i] == ',')) {
-        i++;
-      }
       result.push_back(ParsedMovement{sv.substr(start, i - start), cnt});
       continue;
     }
@@ -141,10 +170,11 @@ std::expected<std::vector<ParsedMovement>, MovementParseError> parseMovements(st
 // Directly modifies the position and mode passed in. 
 // We may think of passing in BufferIndex to improve simulating certain count motions.
 // However, I am not sure if it is worth it, as count > 1 is called only in simulateMotion(). It is helpful to compare vs repeated applications as well.
-void applyParsedMovement(CursorPos& pos, Mode& mode,
+static void applyParsedMovementWithState(CursorPos& pos, Mode& mode,
                        const ParsedMovement& parsedMotion,
                        const Lines& lines,
-                       const NavContext& navContext) {
+                       const NavContext& navContext,
+                       CharFindState& charFind) {
   (void)mode;  // Currently unused but kept for API consistency
   int n = static_cast<int>(lines.size());
   std::string_view motion = parsedMotion.motion;
@@ -162,9 +192,14 @@ void applyParsedMovement(CursorPos& pos, Mode& mode,
   } else if (motion == "0") {
     pos.setCol(0);
   } else if (motion == "$") {
-    // Special: {cnt}$ moves cursor down
     if(hasCount) {
-      VimCore::moveLine(pos, lines, count-1);
+      int targetLine = pos.line + count - 1;
+      if (targetLine >= n) {
+        if (pos.line == n - 1) return;
+        pos.line = n - 1;
+      } else {
+        pos.line = targetLine;
+      }
     }
     int len = static_cast<int>(lines[pos.line].size());
     // Set col to end of line, but targetCol to TARGETCOL_EOL so subsequent
@@ -182,8 +217,8 @@ void applyParsedMovement(CursorPos& pos, Mode& mode,
       col = len - 1;
     pos.setCol(col);
   } else if (motion == "gg") {
-    // Special: set line. Because it's 1 based, subtract 1
-    pos.line = hasCount ? count-1 : 0;
+    // Special: set line. Counted gg is 1-based and clamps at EOF.
+    pos.line = hasCount ? min(count - 1, n - 1) : 0;
     if constexpr (VimOptions::startOfLine()) {
       pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
     } else {
@@ -233,40 +268,37 @@ void applyParsedMovement(CursorPos& pos, Mode& mode,
   } else if (motion == ")") {
     for(int i = 0; i < count; i++) VimCore::motionSentenceNext(pos, lines);
   }
-  // f/F/t/T motions with optional ;/, repeats (e.g., "fa;;", "Ta,")
-  else if (motion.size() >= 2 && (motion[0] == 'f' || motion[0] == 'F' ||
-                                  motion[0] == 't' || motion[0] == 'T')) {
+  // f/F/t/T motions.
+  else if (motion.size() >= 2 && isFindCommand(motion[0])) {
     char cmd = motion[0];
-    char target = motion[1];
-    size_t repeatStart = 2;
-    if (motion[1] == '<') {
-      size_t close = motion.find('>', 1);
-      if (close != std::string_view::npos) {
-        if (auto parsed = parseDisplayChar(motion.substr(1, close)); parsed.has_value()) {
-          target = *parsed;
-          repeatStart = close + 1;
-        }
-      }
-    }
+    char target = '\0';
+    if (!parseFindTarget(motion, target)) return;
     bool forward = (cmd == 'f' || cmd == 't');
     bool till = (cmd == 't' || cmd == 'T');
     const string &line = lines[pos.line];
     
-    for(int i = 0; i < count; i++) {
-      int newCol = VimCore::findCharInLine(target, line, pos.col, forward, till);
-      if (newCol >= 0) {
-        pos.setCol(newCol);
-      }
+    int newCol = VimCore::findCharInLine(target, line, pos.col, forward, till,
+                                         count, /*repeat=*/false);
+    if (newCol >= 0) {
+      pos.setCol(newCol);
     }
-    // Process any ; or , repeats
-    for (size_t i = repeatStart; i < motion.size(); i++) {
-      char repeat = motion[i];
-      bool repeatForward = (repeat == ';') ? forward : !forward;
-      bool repeatTill = till; // t/T behavior is preserved
-      int newCol = VimCore::findCharInLine(target, line, pos.col, repeatForward, repeatTill);
-      if (newCol >= 0) {
-        pos.setCol(newCol);
-      }
+    charFind = CharFindState{
+        .valid = true,
+        .target = target,
+        .forward = forward,
+        .till = till,
+    };
+  }
+  // Repeat the previous f/F/t/T motion.
+  else if (motion == ";" || motion == ",") {
+    if (!charFind.valid) return;
+    bool repeatForward = motion == ";" ? charFind.forward : !charFind.forward;
+    const string& line = lines[pos.line];
+    int newCol = VimCore::findCharInLine(
+        charFind.target, line, pos.col, repeatForward, charFind.till,
+        count, /*repeat=*/true);
+    if (newCol >= 0) {
+      pos.setCol(newCol);
     }
   }
   // Jumps (rely on navContext)
@@ -316,6 +348,13 @@ void applyParsedMovement(CursorPos& pos, Mode& mode,
   }
 }
 
+void applyParsedMovement(CursorPos& pos, Mode& mode,
+                       const ParsedMovement& parsedMotion,
+                       const Lines& lines,
+                       const NavContext& navContext) {
+  CharFindState charFind;
+  applyParsedMovementWithState(pos, mode, parsedMotion, lines, navContext, charFind);
+}
 
 void applySingleMovement(CursorPos& pos, Mode& mode, string_view motion, const Lines& lines, const NavContext& navContext) {
   applyParsedMovement(pos, mode, ParsedMovement(motion, 0), lines, navContext);
@@ -332,8 +371,9 @@ CursorPos simulateMovements(CursorPos pos, std::string_view movementSeq, const L
   // in release it throws `std::bad_expected_access` rather than UB on a
   // bare `*motions` dereference.
   auto motions = parseMovements(movementSeq).value();
+  CharFindState charFind;
   for (const auto& motion : motions) {
-    applyParsedMovement(pos, mode, motion, lines, navContext);
+    applyParsedMovementWithState(pos, mode, motion, lines, navContext, charFind);
   }
   return pos;
 }
