@@ -1,6 +1,6 @@
 // tests/Debug/DiffDebug.cpp
 //
-// Standalone tool to visualize how Myers diff splits buffer changes into regions.
+// Standalone tool to visualize how diff planners split buffer changes into regions.
 //
 // Usage:
 //   ./build/tests/vimficiency_diff_debug <initial> <goal>
@@ -15,6 +15,7 @@
 #include <string>
 
 #include "Optimizer/CompositionOptimizer/DiffState.h"
+#include "Optimizer/CompositionOptimizer/TreeDiff.h"
 #include "Types/Lines.h"
 
 using namespace std;
@@ -46,14 +47,12 @@ static string printable(const string& s) {
   return result;
 }
 
-static void printDiffs(const Lines& initial, const Lines& goal) {
-  cout << "initial: " << initial << "  [" << printable(initial.flatten()) << "]" << endl;
-  cout << "goal:    " << goal << "  [" << printable(goal.flatten()) << "]" << endl;
-  cout << endl;
-
-  auto diffs = Myers::calculate(initial, goal);
-
-  cout << diffs.size() << " diff region(s):" << endl;
+static void printDiffs(
+    const char* name,
+    const vector<DiffState>& diffs,
+    const Lines& initial,
+    const Lines& goal) {
+  cout << name << ": " << diffs.size() << " diff region(s):" << endl;
   for (size_t i = 0; i < diffs.size(); i++) {
     const auto& d = diffs[i];
     const char* kind = d.isPureInsertion() ? "INSERT"
@@ -70,13 +69,22 @@ static void printDiffs(const Lines& initial, const Lines& goal) {
          << " below=" << d.boundary.hasLinesBelow() << endl;
   }
 
-  // Verify round-trip
   Lines reconstructed = Myers::applyAllDiffState(diffs, initial);
   if (reconstructed.flatten() != goal.flatten()) {
     cout << endl << "WARNING: round-trip mismatch!" << endl;
     cout << "  expected: " << printable(goal.flatten()) << endl;
     cout << "  got:      " << printable(reconstructed.flatten()) << endl;
   }
+}
+
+static void printDiffs(const Lines& initial, const Lines& goal) {
+  cout << "initial: " << initial << "  [" << printable(initial.flatten()) << "]" << endl;
+  cout << "goal:    " << goal << "  [" << printable(goal.flatten()) << "]" << endl;
+  cout << endl;
+
+  printDiffs("Myers", Myers::calculate(initial, goal), initial, goal);
+  cout << endl;
+  printDiffs("Tree", TreeDiff::calculate(initial, goal), initial, goal);
 }
 
 int main(int argc, char* argv[]) {

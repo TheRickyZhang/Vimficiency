@@ -11,6 +11,7 @@ concurrency:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 jobs:
   codex_review:
@@ -86,6 +87,7 @@ jobs:
         with:
           script: |
             const raw = ${{ toJSON(steps.codex_run.outputs.final-message) }};
+            const { execFileSync } = require("node:child_process");
 
             // Marker used to identify this bot's previous summary comments
             // so we can collapse them when posting a fresh one. Each new
@@ -97,30 +99,63 @@ jobs:
             function safeJsonParse(s) { try { return JSON.parse(s); } catch { return null; } }
             function isString(x) { return typeof x === "string"; }
             function isInt(x) { return Number.isInteger(x); }
-            function parseRightDiffLines(patch) {
-              const lines = new Set();
-              if (!isString(patch)) return lines;
+            function normalizeDiffPath(path) {
+              if (!isString(path) || path === "/dev/null") return null;
+              return path.replace(/^[ab]\//, "");
+            }
 
+            function parseRightDiffLines(diff) {
+              const validLinesByPath = new Map();
+              if (!isString(diff)) return validLinesByPath;
+
+              let path = null;
               let inHunk = false;
               let rightLine = 0;
 
-              for (const row of patch.split("\n")) {
+              function linesForPath(p) {
+                if (!validLinesByPath.has(p)) validLinesByPath.set(p, new Set());
+                return validLinesByPath.get(p);
+              }
+
+              for (const row of diff.split("\n")) {
+                if (row.startsWith("diff --git ")) {
+                  path = null;
+                  inHunk = false;
+                  continue;
+                }
+                if (row.startsWith("+++ ")) {
+                  path = normalizeDiffPath(row.slice(4));
+                  inHunk = false;
+                  if (path) linesForPath(path);
+                  continue;
+                }
+
                 const hunk = row.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
                 if (hunk) {
-                  inHunk = true;
+                  inHunk = path !== null;
                   rightLine = Number(hunk[1]);
                   continue;
                 }
-                if (!inHunk) continue;
+                if (!inHunk || !path) continue;
 
                 if (row.startsWith("+") || row.startsWith(" ")) {
-                  lines.add(rightLine);
+                  linesForPath(path).add(rightLine);
                   rightLine++;
                   continue;
                 }
                 if (row.startsWith("-") || row.startsWith("\\")) continue;
               }
-              return lines;
+              return validLinesByPath;
+            }
+
+            function localDiff() {
+              const base = context.payload.pull_request.base.sha;
+              const head = context.payload.pull_request.head.sha;
+              return execFileSync(
+                "git",
+                ["-c", "core.quotepath=false", "diff", "--no-ext-diff", "--unified=80", `${base}...${head}`],
+                { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }
+              );
             }
 
             const owner = context.repo.owner;
@@ -137,15 +172,7 @@ jobs:
               return;
             }
 
-            const files = await github.paginate(github.rest.pulls.listFiles, {
-              owner,
-              repo,
-              pull_number,
-              per_page: 100,
-            });
-            const validLinesByPath = new Map(
-              files.map((f) => [f.filename, parseRightDiffLines(f.patch)])
-            );
+            const validLinesByPath = parseRightDiffLines(localDiff());
 
             const comments = [];
             const dropped = [];  // diagnostics for the run log only

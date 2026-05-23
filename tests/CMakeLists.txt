@@ -245,7 +245,7 @@ target_link_libraries(vimficiency_debug
 # =============================================================================
 # Diff debug tool
 # =============================================================================
-# Visualize how Myers diff splits buffer changes into regions.
+# Visualize how diff planners split buffer changes into regions.
 # Run with: ./vimficiency_diff_debug 'aaa\nbbb\nccc' 'ccc\nddd'
 
 add_executable(vimficiency_diff_debug
