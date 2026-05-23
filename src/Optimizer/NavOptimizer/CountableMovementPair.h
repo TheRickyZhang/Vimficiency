@@ -15,8 +15,8 @@ struct CountableMovementPair {
 inline const std::vector<CountableMovementPair> COUNT_SEARCHABLE_MOTIONS_LINE = {
   {KeyedSequence::w,      KeyedSequence::b,  LandingType::WordBegin},
   {KeyedSequence::e,      KeyedSequence::ge, LandingType::WordEnd},
-  {KeyedSequence::W,      KeyedSequence::B,  LandingType::WORDBegin},
-  {KeyedSequence::E,      KeyedSequence::gE, LandingType::WORDEnd},
+  {KeyedSequence::W,      KeyedSequence::B,  LandingType::BigWordBegin},
+  {KeyedSequence::E,      KeyedSequence::gE, LandingType::BigWordEnd},
 };
 
 inline const std::vector<CountableMovementPair> COUNT_SEARCHABLE_MOTIONS_GLOBAL = {

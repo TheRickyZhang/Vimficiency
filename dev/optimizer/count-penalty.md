@@ -20,7 +20,7 @@ Rules:
 
 Counted motion emitters apply penalty at creation time:
 - `w/e/b/ge` -> `CountClass::MovementWord`
-- `W/E/B/gE` -> `CountClass::MovementWORD`
+- `W/E/B/gE` -> `CountClass::MovementBigWord`
 - `{/}` -> `CountClass::MovementParagraph`
 - `(/)` -> `CountClass::MovementSentence`
 
@@ -30,7 +30,7 @@ Counted motion emitters apply penalty at creation time:
 - `{n}dd` -> `CountClass::EditLine`
 - `{n}J`, `{n}gJ` -> `CountClass::Join`
 - `{n}de/{n}dw/{n}db/{n}dge` -> `CountClass::EditWord`
-- `{n}dE/{n}dW/{n}dB/{n}dgE` -> `CountClass::EditWORD`
+- `{n}dE/{n}dW/{n}dB/{n}dgE` -> `CountClass::EditBigWord`
 - `{n}x` -> `CountClass::EditChar`
 
 For full-edit mode (`ModePolicy<false>`), goal-conversion paths also preserve counted penalties when converting `d...` to change-prefixed forms.

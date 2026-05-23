@@ -5,6 +5,7 @@
 #include <limits>
 
 #include "PlannedEditArtifacts.h"
+#include "TreeDiff.h"
 #include "Utils/Debug.h"
 #include "Utils/StringUtils.h"
 
@@ -41,13 +42,27 @@ CompositionSearchContext::CompositionSearchContext(
     assert(s.size() < static_cast<size_t>(maxLineLength - 10));
   }
 
-  // Get minimal diff between start and end buffers
-  vector<DiffState> rawDiffs = Myers::calculate(
-      Lines(initialLines.begin(), initialLines.end()),
-      Lines(goalLines.begin(), goalLines.end()));
+  // Generate planned edit regions between start and end buffers.
+  vector<DiffState> rawDiffs;
+  switch (params.diffAlgorithm) {
+    case DiffAlgorithm::Myers:
+      rawDiffs = Myers::calculate(
+          Lines(initialLines.begin(), initialLines.end()),
+          Lines(goalLines.begin(), goalLines.end()));
+      break;
+    case DiffAlgorithm::Tree:
+      rawDiffs = TreeDiff::calculate(
+          Lines(initialLines.begin(), initialLines.end()),
+          Lines(goalLines.begin(), goalLines.end()));
+      break;
+    default:
+      CHECK(false, "unknown composition diff algorithm");
+  }
+  debug("diff algorithm:", DiffAlgorithm::name(params.diffAlgorithm));
 
-  // Determine processing direction based on start position relative to edits
-  if (!rawDiffs.empty()) {
+  // Preserve the historical Myers processing-order heuristic. The tree diff
+  // planner is intentionally forward-only for its first draft.
+  if (params.diffAlgorithm == DiffAlgorithm::Myers && !rawDiffs.empty()) {
     double distToFirst = costToGoal(initialPos, rawDiffs.front().beginPos);
     double distToLast = costToGoal(initialPos, rawDiffs.back().endPos);
     bool processForward = (distToFirst <= distToLast + 1.0);  // Slight bias toward forward

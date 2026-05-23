@@ -152,6 +152,11 @@ function M.build(a, refresh_ui)
       value_kind = "int", min = 0, max = 10,
       get = opt_get("composition", "navPaddingBelow"),
       set = opt_set("composition", "navPaddingBelow") },
+    { kind = "setting",
+      label = "Diff algorithm",
+      value_kind = "int", min = 0, max = 1,
+      get = opt_get("composition", "diffAlgorithm"),
+      set = opt_set("composition", "diffAlgorithm") },
 
     { kind = "separator" },
     { kind = "action",

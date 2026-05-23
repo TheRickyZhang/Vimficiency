@@ -92,7 +92,7 @@ TEST_F(TextObjectsTest, Daw_LastWordWithLeadingWhitespace) {
 TEST_F(TextObjectsTest, DiW_OnSymbol) {
   Lines lines = {"hello... world"};  // Note: space before world
   auto result = oracle_->simulate(lines, 0, 0, "diW");  // Cursor on 'h'
-  // WORD treats "hello..." as one word (no whitespace in it)
+  // bigWord treats "hello..." as one word (no whitespace in it)
   EXPECT_EQ(result.lines[0], " world");
 }
 

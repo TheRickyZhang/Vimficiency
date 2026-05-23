@@ -79,16 +79,16 @@ const EditToKeys NAV_HORIZONTAL = {
 
 const EditToKeys NAV_WORD_FWD = {
     {"w",   {Key::Key_W}},                       // next word start
-    {"W",   {Key::Key_Shift, Key::Key_W}},       // next WORD start
+    {"W",   {Key::Key_Shift, Key::Key_W}},       // next bigWord start
     {"e",   {Key::Key_E}},                       // word end
-    {"E",   {Key::Key_Shift, Key::Key_E}},       // WORD end
+    {"E",   {Key::Key_Shift, Key::Key_E}},       // bigWord end
 };
 
 const EditToKeys NAV_WORD_BWD = {
     {"b",   {Key::Key_B}},                       // prev word start
-    {"B",   {Key::Key_Shift, Key::Key_B}},       // prev WORD start
+    {"B",   {Key::Key_Shift, Key::Key_B}},       // prev bigWord start
     {"ge",  {Key::Key_G, Key::Key_E}},           // prev word end
-    {"gE",  {Key::Key_G, Key::Key_Shift, Key::Key_E}}, // prev WORD end
+    {"gE",  {Key::Key_G, Key::Key_Shift, Key::Key_E}}, // prev bigWord end
 };
 
 const EditToKeys NAV_LINE_START = {

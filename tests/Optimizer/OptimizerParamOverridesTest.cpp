@@ -157,11 +157,13 @@ TEST(OptimizerParamOverrides, MalformedLinesAreSkipped) {
 
 TEST(OptimizerParamOverrides, CompositionSpecificKeyAppliesOnlyToComposition) {
   const auto overrides = OptimizerParamOverrides::parse(
-      "composition:overshootPenalty=10.0");
+      "composition:overshootPenalty=10.0\n"
+      "composition:diffAlgorithm=1");
 
   CompositionOptimizerParams comp;
   overrides.applyTo(comp);
   EXPECT_DOUBLE_EQ(comp.overshootPenalty, 10.0);
+  EXPECT_EQ(comp.diffAlgorithm, 1);
 
   // Nav and Transform never read the composition scope.
   NavOptimizerParams nav;

@@ -198,8 +198,8 @@ TEST(CountableMovementPairTest, LineMotionsContainExpectedPairs) {
   // Verify COUNT_SEARCHABLE_MOTIONS_LINE has correct structure
   bool hasWordBegin = false;
   bool hasWordEnd = false;
-  bool hasWORDBegin = false;
-  bool hasWORDEnd = false;
+  bool hasBigWordBegin = false;
+  bool hasBigWordEnd = false;
 
   for (const auto& pair : COUNT_SEARCHABLE_MOTIONS_LINE) {
     if (pair.forward.seq.view() == "w" && pair.backward.seq.view() == "b" && pair.type == LandingType::WordBegin) {
@@ -208,18 +208,18 @@ TEST(CountableMovementPairTest, LineMotionsContainExpectedPairs) {
     if (pair.forward.seq.view() == "e" && pair.backward.seq.view() == "ge" && pair.type == LandingType::WordEnd) {
       hasWordEnd = true;
     }
-    if (pair.forward.seq.view() == "W" && pair.backward.seq.view() == "B" && pair.type == LandingType::WORDBegin) {
-      hasWORDBegin = true;
+    if (pair.forward.seq.view() == "W" && pair.backward.seq.view() == "B" && pair.type == LandingType::BigWordBegin) {
+      hasBigWordBegin = true;
     }
-    if (pair.forward.seq.view() == "E" && pair.backward.seq.view() == "gE" && pair.type == LandingType::WORDEnd) {
-      hasWORDEnd = true;
+    if (pair.forward.seq.view() == "E" && pair.backward.seq.view() == "gE" && pair.type == LandingType::BigWordEnd) {
+      hasBigWordEnd = true;
     }
   }
 
   EXPECT_TRUE(hasWordBegin) << "Missing w/b WordBegin pair";
   EXPECT_TRUE(hasWordEnd) << "Missing e/ge WordEnd pair";
-  EXPECT_TRUE(hasWORDBegin) << "Missing W/B WORDBegin pair";
-  EXPECT_TRUE(hasWORDEnd) << "Missing E/gE WORDEnd pair";
+  EXPECT_TRUE(hasBigWordBegin) << "Missing W/B BigWordBegin pair";
+  EXPECT_TRUE(hasBigWordEnd) << "Missing E/gE BigWordEnd pair";
 }
 
 TEST(CountableMovementPairTest, GlobalMotionsContainParagraphAndSentence) {

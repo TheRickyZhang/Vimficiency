@@ -1,4 +1,5 @@
 #include "CompositionOptimizer/ManualTestHelpers.h"
+#include "Optimizer/CompositionOptimizer/TreeDiff.h"
 
 using namespace std;
 
@@ -62,6 +63,22 @@ TEST_F(CompositionOptimizer_ManualTest, TwoEdits_DifferentLines) {
   const auto& results = compResult.getResults();
 
   expectHasValidResults(results, initial, initialPos, goal, "two edits different lines");
+}
+
+TEST_F(CompositionOptimizer_ManualTest, TreeDiffAlgorithm_HotSwap) {
+  Lines initial = {"abcdef"};
+  Lines goal = {"xxcdexx"};
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 6);
+
+  CompositionOptimizerParams treeParams = params;
+  treeParams.withDiffAlgorithm(DiffAlgorithm::Tree);
+
+  auto compResult = opt.optimize(
+      initial, initialPos, goal, goalPos, treeParams);
+  expectHasValidResults(
+      compResult.getResults(), initial, initialPos, goal,
+      "tree diff algorithm hot swap");
 }
 
 // =============================================================================

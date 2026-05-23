@@ -3,12 +3,20 @@
 - Heuristic: Estimated suffix cost of transforms not completed + distance to next transform (+ effort)
 
 ## Diff Generation
-- Our first step is to perform a character-level Myers diff analysis (similar algorithm to git). We separate into individual diffs by some heuristics, which currently are:
+- Our first step is to generate planned edit regions. The default is a
+  character-level Myers diff analysis (similar algorithm to git). It separates
+  individual diffs by local heuristics:
   - Match count >= MIN_MATCH_LENGTH -> separate, but otherwise merge
   - Don't count matches across new lines as much (likely share much tab whitespace)
   - Don't include boundary at end, cut off exactly since no more content
   - Have exceptions for well-formed short content inside "", (), etc. (To be expanded upon)
-- Using that, we track intermediate buffer states, compute suffix cost sums, and calculate a diff for each transform region
+- `composition:diffAlgorithm=1` selects the experimental `TreeDiff` planner
+  instead. It currently builds paragraph, line, WORD, word, and char nodes, then
+  emits one whole-buffer replacement for changed buffers. The planned next step
+  is a forward-only exact DP over those fixed-depth nodes.
+- Using the selected generator, we track intermediate buffer states, compute
+  suffix cost sums, and calculate a transform result for each planned edit
+  region.
 
 ## Composition Logic
 - By abstracting away direct edit commands into planned edit transitions over diffs, our search alternates between call types:

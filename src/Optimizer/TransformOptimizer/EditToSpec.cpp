@@ -42,7 +42,7 @@ const vector<TextObjectEditSpec> TEXT_OBJECT_EDITS = {
     // Small word
     {KSId::diw, true, false},
     {KSId::daw, false, false},
-    // Big WORD
+    // bigWord
     {KSId::diW, true, true},
     {KSId::daW, false, true},
 };
