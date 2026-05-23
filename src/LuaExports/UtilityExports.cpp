@@ -238,6 +238,7 @@ VFByteSlice vf_get_optimizer_defaults() {
     d("composition", "overshootPenalty",      comp.overshootPenalty);
     i("composition", "navPaddingAbove",       comp.navPaddingAbove);
     i("composition", "navPaddingBelow",       comp.navPaddingBelow);
+    i("composition", "diffAlgorithm",         comp.diffAlgorithm);
 
     cached = out.str();
   }

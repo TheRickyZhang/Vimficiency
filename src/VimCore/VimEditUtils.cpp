@@ -155,7 +155,7 @@ void deleteLineRangeAndUpdatePos(Lines& lines, const LineRange& range, CursorPos
   pos.line = min(r.beginLine, newSize - 1);
   if constexpr (VimOptions::startOfLine()) {
     // Legacy Vim: dd goes to first non-blank of the new current line
-    pos.setCol(firstNonBlankColInLineStr(lines[pos.line]));
+    pos.setCol(firstNonBlankColInLine(lines[pos.line]));
   } else {
     // Neovim: dd resets targetCol to the clamped column
     if (lines[pos.line].empty()) {
@@ -170,7 +170,7 @@ void deleteOperatorLineRangeAndUpdatePos(Lines& lines, const LineRange& range,
                                          CursorPos& pos, bool hasLinesBelow) {
   deleteLineRangeAndUpdatePos(lines, range, pos, hasLinesBelow);
   if (pos.line >= 0 && pos.line < static_cast<int>(lines.size())) {
-    pos.setCol(firstNonBlankColInLineStr(lines[pos.line]));
+    pos.setCol(firstNonBlankColInLine(lines[pos.line]));
   }
 }
 

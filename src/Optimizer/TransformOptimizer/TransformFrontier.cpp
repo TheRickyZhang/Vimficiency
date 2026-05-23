@@ -321,7 +321,7 @@ vector<Suggestion> rankTransformFrontier(
       appendInsertionStrategy(emitter, query.cursor, targetLine, 0, lineEnd,
                               "o", editGoalPos, insertDistance);
     } else {
-      const int fnb = VimCore::firstNonBlankColInLineStr(query.lines[insertPos.line]);
+      const int fnb = VimCore::firstNonBlankColInLine(query.lines[insertPos.line]);
       const int lineLen = static_cast<int>(query.lines[insertPos.line].size());
       const int lineEnd = query.lines[insertPos.line].effectiveSize();
       const int lastContentCol = lineEnd - 1;

@@ -9,8 +9,10 @@
 
 #include <algorithm>
 #include <array>
+#include <string_view>
 
 #include "Optimizer/CompositionOptimizer/DiffState.h"
+#include "Optimizer/CompositionOptimizer/TreeDiff.h"
 #include "Types/Lines.h"
 
 using namespace std;
@@ -34,6 +36,20 @@ static void expectDiffs(
 static void expectRoundTrip(const Lines& start, const Lines& end) {
   auto diffs = Myers::calculate(start, end);
   EXPECT_EQ(Myers::applyAllDiffState(diffs, start), end);
+}
+
+static void expectTreeRoundTrip(const Lines& start, const Lines& end) {
+  auto diffs = TreeDiff::calculate(start, end);
+  EXPECT_EQ(Myers::applyAllDiffState(diffs, start), end);
+}
+
+static string_view treeSpan(
+    const TreeDiff::Tree& tree,
+    const TreeDiff::Node& node) {
+  const auto [begin, end] = node.text;
+  return string_view(tree.text).substr(
+      static_cast<size_t>(begin),
+      static_cast<size_t>(end - begin));
 }
 
 static DiffState makeDiff(
@@ -147,6 +163,141 @@ TEST(DiffStateTest, ContiguousResidualDiff_CoalescesSeparatedChanges) {
 
   auto planned = Myers::calculate(from, to);
   expectDiffs(planned, {{"a", "x"}, {"c", "y"}});
+}
+
+TEST(TreeDiffTest, BuildTree_ParagraphAndLineRanges) {
+  TreeDiff::Tree tree({"one", "", "two"});
+
+  ASSERT_EQ(tree[TreeDiff::Level::Root].size(), 1u);
+  EXPECT_EQ(tree.text, "one\n\ntwo");
+
+  const TreeDiff::Node& root = tree[TreeDiff::Level::Root][0];
+  const auto [rootChildBegin, rootChildEnd] = root.children;
+  EXPECT_EQ(rootChildBegin, 0);
+  EXPECT_EQ(rootChildEnd, 2);
+
+  const auto& paragraphs = tree[TreeDiff::Level::Paragraph];
+  ASSERT_EQ(paragraphs.size(), 2u);
+  EXPECT_EQ(treeSpan(tree, paragraphs[0]), "one\n\n");
+  EXPECT_EQ(treeSpan(tree, paragraphs[1]), "two");
+  const auto [firstParaChildBegin, firstParaChildEnd] = paragraphs[0].children;
+  const auto [secondParaChildBegin, secondParaChildEnd] = paragraphs[1].children;
+  EXPECT_EQ(firstParaChildBegin, 0);
+  EXPECT_EQ(firstParaChildEnd, 2);
+  EXPECT_EQ(secondParaChildBegin, 2);
+  EXPECT_EQ(secondParaChildEnd, 3);
+}
+
+TEST(TreeDiffTest, BuildTree_WhitespaceOnlyLineSeparatesParagraphs) {
+  TreeDiff::Tree tree({"one", "  ", "two"});
+
+  const auto& paragraphs = tree[TreeDiff::Level::Paragraph];
+  ASSERT_EQ(paragraphs.size(), 2u);
+  EXPECT_EQ(treeSpan(tree, paragraphs[0]), "one\n  \n");
+  EXPECT_EQ(treeSpan(tree, paragraphs[1]), "two");
+}
+
+TEST(TreeDiffTest, BuildTree_EmptyBufferKeepsZeroLengthLine) {
+  TreeDiff::Tree tree({""});
+
+  ASSERT_EQ(tree[TreeDiff::Level::Root].size(), 1u);
+  EXPECT_EQ(tree.text, "");
+  EXPECT_EQ(tree[TreeDiff::Level::Paragraph].size(), 1u);
+  EXPECT_EQ(tree[TreeDiff::Level::Line].size(), 1u);
+  EXPECT_EQ(tree[TreeDiff::Level::BigWord].size(), 0u);
+  EXPECT_EQ(tree[TreeDiff::Level::Word].size(), 0u);
+  EXPECT_EQ(tree[TreeDiff::Level::Char].size(), 0u);
+
+  EXPECT_EQ(treeSpan(tree, tree[TreeDiff::Level::Paragraph][0]), "");
+  EXPECT_EQ(treeSpan(tree, tree[TreeDiff::Level::Line][0]), "");
+}
+
+TEST(TreeDiffTest, BuildTree_FinalNewlineCreatesTrailingEmptyLine) {
+  TreeDiff::Tree tree({"a", ""});
+
+  ASSERT_EQ(tree[TreeDiff::Level::Paragraph].size(), 1u);
+  ASSERT_EQ(tree[TreeDiff::Level::Line].size(), 2u);
+  EXPECT_EQ(tree.text, "a\n");
+  EXPECT_EQ(treeSpan(tree, tree[TreeDiff::Level::Paragraph][0]), "a\n");
+  EXPECT_EQ(treeSpan(tree, tree[TreeDiff::Level::Line][0]), "a\n");
+  EXPECT_EQ(treeSpan(tree, tree[TreeDiff::Level::Line][1]), "");
+}
+
+TEST(TreeDiffTest, BuildTree_AttachesWhitespaceToPreviousUnits) {
+  TreeDiff::Tree tree({"aa aa"});
+
+  const TreeDiff::Node& line = tree[TreeDiff::Level::Line][0];
+  const auto& bigWords = tree[TreeDiff::Level::BigWord];
+  const auto [bigWordBegin, bigWordEnd] = line.children;
+  ASSERT_EQ(bigWordEnd - bigWordBegin, 2);
+  EXPECT_EQ(treeSpan(tree, bigWords[bigWordBegin]), "aa ");
+  EXPECT_EQ(treeSpan(tree, bigWords[bigWordBegin + 1]), "aa");
+
+  const auto [wordBegin, wordEnd] = bigWords[bigWordBegin].children;
+  const TreeDiff::Node& firstWord =
+      tree[TreeDiff::Level::Word][wordBegin];
+  EXPECT_EQ(treeSpan(tree, firstWord), "aa ");
+  EXPECT_EQ(wordEnd - wordBegin, 1);
+  const auto [charBegin, charEnd] = firstWord.children;
+  EXPECT_EQ(charEnd - charBegin, 3);
+}
+
+TEST(TreeDiffTest, BuildTree_AttachesLeadingWhitespaceToFirstWord) {
+  TreeDiff::Tree tree({"  aa"});
+
+  const auto& bigWords = tree[TreeDiff::Level::BigWord];
+  ASSERT_EQ(bigWords.size(), 1u);
+  EXPECT_EQ(treeSpan(tree, bigWords[0]), "  aa");
+
+  const auto& words = tree[TreeDiff::Level::Word];
+  ASSERT_EQ(words.size(), 1u);
+  EXPECT_EQ(treeSpan(tree, words[0]), "  aa");
+}
+
+TEST(TreeDiffTest, BuildTree_AttachesMultipleWhitespaceToPreviousUnits) {
+  TreeDiff::Tree tree({"aa  bb"});
+
+  const auto& bigWords = tree[TreeDiff::Level::BigWord];
+  ASSERT_EQ(bigWords.size(), 2u);
+  EXPECT_EQ(treeSpan(tree, bigWords[0]), "aa  ");
+  EXPECT_EQ(treeSpan(tree, bigWords[1]), "bb");
+
+  const auto& words = tree[TreeDiff::Level::Word];
+  ASSERT_EQ(words.size(), 2u);
+  EXPECT_EQ(treeSpan(tree, words[0]), "aa  ");
+  EXPECT_EQ(treeSpan(tree, words[1]), "bb");
+}
+
+TEST(TreeDiffTest, BuildTree_NewlineSeparatesWordUnits) {
+  TreeDiff::Tree tree({"aa", "bb"});
+
+  const auto& bigWords = tree[TreeDiff::Level::BigWord];
+  ASSERT_EQ(bigWords.size(), 2u);
+  EXPECT_EQ(treeSpan(tree, bigWords[0]), "aa");
+  EXPECT_EQ(treeSpan(tree, bigWords[1]), "bb");
+
+  const auto& words = tree[TreeDiff::Level::Word];
+  ASSERT_EQ(words.size(), 2u);
+  EXPECT_EQ(treeSpan(tree, words[0]), "aa");
+  EXPECT_EQ(treeSpan(tree, words[1]), "bb");
+}
+
+TEST(TreeDiffTest, BuildTree_SplitsSmallWordsAndSymbolsInsideBigWord) {
+  TreeDiff::Tree tree({"foo.bar"});
+
+  const TreeDiff::Node& bigWord = tree[TreeDiff::Level::BigWord][0];
+  const auto& words = tree[TreeDiff::Level::Word];
+  const auto [wordBegin, wordEnd] = bigWord.children;
+  ASSERT_EQ(wordEnd - wordBegin, 3);
+  EXPECT_EQ(treeSpan(tree, words[wordBegin]), "foo");
+  EXPECT_EQ(treeSpan(tree, words[wordBegin + 1]), ".");
+  EXPECT_EQ(treeSpan(tree, words[wordBegin + 2]), "bar");
+}
+
+TEST(TreeDiffTest, RoundTrip_MixedInsertDeleteReplace) {
+  expectTreeRoundTrip(
+      Lines{"alpha beta", "  gamma", "", "tail"},
+      Lines{"alpha beet", "  gamma plus", "", "fin"});
 }
 
 // =============================================================================

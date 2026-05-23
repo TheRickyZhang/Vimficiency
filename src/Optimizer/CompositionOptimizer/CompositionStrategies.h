@@ -78,7 +78,7 @@ void enumerateInsertions(const DiffState& diff, const Lines& lines, OnStrategy&&
 
   // I/A/i/a family.
   const int line = insertPos.line;
-  const int fnb = VimCore::firstNonBlankColInLineStr(lines[line]);
+  const int fnb = VimCore::firstNonBlankColInLine(lines[line]);
   const int lineLen = static_cast<int>(lines[line].size());
   const int lineEnd = lines[line].effectiveSize();
   const int lastContentCol = lineEnd - 1;

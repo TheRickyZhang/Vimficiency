@@ -16,39 +16,17 @@
 namespace VimCore {
 
 // =============================================================================
-// 1. Character Classification (no dependencies, used by everything)
-// =============================================================================
-
-// Space or tab (not newline) - for within-line whitespace skipping
-bool isWhitespace(unsigned char c);
-
-// Space, tab, or newline - for general blank checks
-bool isBlank(unsigned char c);
-
-// Alphanumeric or underscore - small word characters
-bool isSmallWordChar(unsigned char c);
-
-// Non-whitespace non-null - big WORD characters
-bool isBigWordChar(unsigned char c);
-
-// [.!?] - sentence ending punctuation (used by BufferIndex)
-bool isSentenceEnd(unsigned char c);
-
-// [)'"'\]] - sentence closers
-bool isSentenceCloser(unsigned char c);
-
-// =============================================================================
-// 2. String/Line Helpers (depends on char classification)
+// 1. String/Line Helpers
 // =============================================================================
 
 // Check if line is blank (empty or whitespace-only)
-bool isBlankLineStr(std::string_view s);
+bool isBlankLine(std::string_view s);
 
 // Return column of first non-blank character (or 0 if all blank)
-int firstNonBlankColInLineStr(std::string_view s);
+int firstNonBlankColInLine(std::string_view s);
 
 // =============================================================================
-// 3. CursorPos Stepping (depends on Lines)
+// 2. CursorPos Stepping
 // =============================================================================
 
 // Modern CursorPos-based API (inline)
@@ -73,12 +51,12 @@ inline CursorPos stepBack(const Lines& lines, CursorPos pos) {
   else return lines.getNextPos(pos);
 }
 
-unsigned char getChar(const Lines& lines, int line, int col);
+char getChar(const Lines& lines, int line, int col);
 bool stepFwd(const Lines& lines, int& line, int& col);
 bool stepBack(const Lines& lines, int& line, int& col);
 
 // =============================================================================
-// 4. Word Motion Core (depends on stepping + char classification)
+// 3. Word Motion Core (depends on stepping + char classification)
 // =============================================================================
 
 // Core motion that returns raw result - POSITION_OUTSIDE_BOUNDARY if motion
@@ -107,7 +85,7 @@ CursorPos motionWordCore(CursorPos pos,
                         bool lineBounded = false);
 
 // =============================================================================
-// 5. Paragraph Helpers (depends on line classification)
+// 4. Paragraph Helpers (depends on line classification)
 // =============================================================================
 
 // Returns the first line index of the paragraph containing lineIdx.
@@ -117,7 +95,7 @@ int paragraphStartLine(const Lines& lines, int lineIdx);
 int paragraphEndLine(const Lines& lines, int lineIdx);
 
 // =============================================================================
-// 6. Sentence Helpers (depends on char classification + stepping)
+// 5. Sentence Helpers (depends on char classification + stepping)
 // =============================================================================
 
 // Check if position is a sentence end: [.!?] + optional closers + (whitespace or EOL)

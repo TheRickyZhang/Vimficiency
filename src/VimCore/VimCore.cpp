@@ -3,75 +3,49 @@
 #include <algorithm>
 #include <cassert>
 
+#include "CharMask.h"
+
 using namespace std;
 
 namespace VimCore {
 
 // =============================================================================
-// 1. Character Classification
+// 1. String/Line Helpers
 // =============================================================================
 
-bool isWhitespace(unsigned char c) {
-  return c == ' ' || c == '\t';
-}
-
-bool isBlank(unsigned char c) {
-  return c == ' ' || c == '\t' || c == '\n';
-}
-
-bool isSmallWordChar(unsigned char c) {
-  return std::isalnum(c) || c == '_';
-}
-
-bool isBigWordChar(unsigned char c) {
-  return c != 0 && !isBlank(c) && c != '\n';
-}
-
-bool isSentenceEnd(unsigned char c) {
-  return c == '.' || c == '!' || c == '?';
-}
-
-bool isSentenceCloser(unsigned char c) {
-  return c == ')' || c == ']' || c == '"' || c == '\'';
-}
-
-// =============================================================================
-// 2. String/Line Helpers
-// =============================================================================
-
-bool isBlankLineStr(std::string_view s) {
-  for (unsigned char c : s) {
-    if (c != ' ' && c != '\t')
+bool isBlankLine(std::string_view s) {
+  for (char c : s) {
+    if (!CharMask::isWhitespace(c))
       return false;
   }
   return true; // empty or whitespace-only
 }
 
-int firstNonBlankColInLineStr(std::string_view s) {
+int firstNonBlankColInLine(std::string_view s) {
   for (int i = 0; i < (int)s.size(); ++i) {
-    unsigned char c = (unsigned char)s[i];
-    if (c != ' ' && c != '\t')
+    char c = s[i];
+    if (!CharMask::isWhitespace(c))
       return i;
   }
   return 0;
 }
 
 // =============================================================================
-// 3. CursorPos Stepping
+// 2. CursorPos Stepping
 // =============================================================================
 
 // Char at (line,col):
 // - Returns 0 only if line is out of range.
 // - Returns '\n' if col is outside the actual line (used as "newline/blank"
 //   sentinel for word motions).
-unsigned char getChar(const Lines& lines, int line, int col) {
+char getChar(const Lines& lines, int line, int col) {
   int n = static_cast<int>(lines.size());
   if (line < 0 || line >= n)
     return 0;
   const auto& ln = lines[line];
   if (col < 0 || col >= static_cast<int>(ln.size()))
     return '\n';
-  return static_cast<unsigned char>(ln[col]);
+  return ln[col];
 }
 
 // Step forward one character in the logical buffer (across lines).
@@ -115,7 +89,7 @@ bool stepBack(const Lines& lines, int& line, int& col) {
 }
 
 // =============================================================================
-// 4. Word Motion Core
+// 3. Word Motion Core
 // =============================================================================
 
 namespace {
@@ -143,18 +117,18 @@ CursorPos motionWordCore(CursorPos pos,
   // ---------------------------------------------------------------------------
   if (skipCurrent) {
     CursorPos prevPos = pos;
-    unsigned char prevChar = lines.get(pos);
+    CharMask prevClass(lines.get(pos));
 
     pos = step<Forward>(lines, pos);
     if (pos == prevPos) {
       return POSITION_OUTSIDE_BOUNDARY;
     }
 
-    unsigned char currChar = lines.get(pos);
+    CharMask currClass(lines.get(pos));
 
     // b/B (backward WordEdge): Empty line is a word, stop here
     if constexpr (!Forward && Edge == EdgeType::WordEdge) {
-      if (currChar == '\n') {
+      if (currClass.newLine()) {
         return pos;
       }
     }
@@ -162,20 +136,18 @@ CursorPos motionWordCore(CursorPos pos,
     // ge/gE (backward NextEdge): Line/word boundaries are stopping points
     if constexpr (!Forward && Edge == EdgeType::NextEdge) {
       bool crossedLine = (pos.line != prevPos.line);
-      bool crossedWordBoundary =
-          crossedLine || isBlank(currChar) || isBlank(prevChar) ||
-          (!big && isSmallWordChar(currChar) != isSmallWordChar(prevChar));
-      if (crossedWordBoundary && !isBlank(currChar)) {
+      if ((crossedLine || !sameSpan(prevClass, currClass, big)) &&
+          !currClass.blank()) {
         return pos;
       }
     }
     // e/E (forward WordEdge): No early termination
   }
 
-  unsigned char c = lines.get(pos);
+  CharMask c(lines.get(pos));
 
   // Phase 1: If starting on blank, skip to first non-blank
-  if (isBlank(c)) {
+  if (c.blank()) {
     do {
       CursorPos prev = pos;
       pos = step<Forward>(lines, pos);
@@ -185,46 +157,47 @@ CursorPos motionWordCore(CursorPos pos,
         return handleLineBounded<Forward>(prev, lines);
       }
 
-      c = lines.get(pos);
-    } while (isBlank(c));
+      c = CharMask(lines.get(pos));
+    } while (c.blank());
 
     if constexpr (Edge == EdgeType::NextEdge) return pos;
     if constexpr (Edge == EdgeType::GapEdge) return stepBack<Forward>(lines, pos);
   }
 
-  // Phase 2: Skip same-type chars (current word)
-  bool startIsWordChar = isSmallWordChar(c);
+  // Phase 2: Skip current word span
   bool crossedLine = false;
-  do {
+  while (true) {
     CursorPos prev = pos;
+    CharMask prevClass = c;
     pos = step<Forward>(lines, pos);
     if (pos == prev) {
       if constexpr (Edge == EdgeType::WordEdge) return prev;
       return POSITION_OUTSIDE_BOUNDARY;
     }
-    c = lines.get(pos);
+    c = CharMask(lines.get(pos));
     if (pos.line != prev.line) {
       crossedLine = true;
       break;
     }
-  } while (!isBlank(c) && (big || isSmallWordChar(c) == startIsWordChar));
+    if (!continuesSpan(prevClass, c, big)) break;
+  }
 
   if constexpr (Edge == EdgeType::WordEdge) return stepBack<Forward>(lines, pos);
 
   // Empty line is a word
-  if (crossedLine && c == '\n') {
+  if (crossedLine && c.newLine()) {
     if constexpr (Edge == EdgeType::NextEdge) return pos;
     if constexpr (Edge == EdgeType::GapEdge) return stepBack<Forward>(lines, pos);
   }
 
-  // Phase 3: If at non-blank different type (word only, not WORD)
-  if (!isBlank(c)) {
+  // Phase 3: If at non-blank different type (word only, not bigWord)
+  if (!c.blank()) {
     if constexpr (Edge == EdgeType::NextEdge) return pos;
     if constexpr (Edge == EdgeType::GapEdge) return stepBack<Forward>(lines, pos);
   }
 
   // Phase 4: Skip whitespace to reach next word (but stop at empty lines)
-  while (isWhitespace(c)) {
+  while (c.whitespace()) {
     CursorPos prev = pos;
     pos = step<Forward>(lines, pos);
     if (pos == prev) return POSITION_OUTSIDE_BOUNDARY;
@@ -233,8 +206,8 @@ CursorPos motionWordCore(CursorPos pos,
       return handleLineBounded<Forward>(prev, lines);
     }
 
-    c = lines.get(pos);
-    if (c == '\n') {
+    c = CharMask(lines.get(pos));
+    if (c.newLine()) {
       if constexpr (Edge == EdgeType::NextEdge) return pos;
       if constexpr (Edge == EdgeType::GapEdge) return stepBack<Forward>(lines, pos);
     }
@@ -284,7 +257,7 @@ CursorPos motionWordCore(CursorPos pos,
 }
 
 // =============================================================================
-// 5. Paragraph Helpers
+// 4. Paragraph Helpers
 // =============================================================================
 
 // Returns the first line index of the paragraph containing lineIdx.
@@ -295,9 +268,9 @@ int paragraphStartLine(const Lines& lines, int lineIdx) {
     return 0;
   lineIdx = std::clamp(lineIdx, 0, n - 1);
 
-  bool blank = isBlankLineStr(lines[lineIdx]);
+  bool blank = isBlankLine(lines[lineIdx]);
   int i = lineIdx;
-  while (i > 0 && isBlankLineStr(lines[i - 1]) == blank)
+  while (i > 0 && isBlankLine(lines[i - 1]) == blank)
     --i;
   return i;
 }
@@ -310,23 +283,23 @@ int paragraphEndLine(const Lines& lines, int lineIdx) {
     return 0;
   lineIdx = std::clamp(lineIdx, 0, n - 1);
 
-  bool blank = isBlankLineStr(lines[lineIdx]);
+  bool blank = isBlankLine(lines[lineIdx]);
   int i = lineIdx;
-  while (i + 1 < n && isBlankLineStr(lines[i + 1]) == blank)
+  while (i + 1 < n && isBlankLine(lines[i + 1]) == blank)
     ++i;
   return i;
 }
 
 // =============================================================================
-// 6. Sentence Helpers
+// 5. Sentence Helpers
 // =============================================================================
 
 // Sentence end at (line,col): . ! ?  then optional closers  then (EOL or space/tab)
 bool isSentenceEndAt(const Lines& lines, int line, int col) {
-  unsigned char c = getChar(lines, line, col);
+  char c = getChar(lines, line, col);
   if (c == 0)
     return false;
-  if (c != '.' && c != '!' && c != '?')
+  if (!CharMask::isSentenceEnd(c))
     return false;
 
   int l = line, k = col;
@@ -337,8 +310,8 @@ bool isSentenceEndAt(const Lines& lines, int line, int col) {
     if (nl != l)
       return true; // EOL after punctuation/closers => boundary
 
-    unsigned char d = getChar(lines, nl, nk);
-    if (isSentenceCloser(d)) {
+    char d = getChar(lines, nl, nk);
+    if (CharMask::isSentenceCloser(d)) {
       l = nl;
       k = nk; // consume closer
       continue;
@@ -374,8 +347,8 @@ skipToSentenceStart(const Lines& lines, int line, int col) {
 
   // Skip closers; this may cross line boundaries.
   while (true) {
-    unsigned char c = getChar(lines, l, k);
-    if (!isSentenceCloser(c)) break;
+    char c = getChar(lines, l, k);
+    if (!CharMask::isSentenceCloser(c)) break;
     if (!stepFwd(lines, l, k)) return {l, k};  // EOF after closers
   }
 
@@ -384,7 +357,7 @@ skipToSentenceStart(const Lines& lines, int line, int col) {
     if (l >= n) return {n - 1, 0};
 
     // Blank line = sentence boundary, stop here
-    if (isBlankLineStr(lines[l])) {
+    if (isBlankLine(lines[l])) {
       return {l, 0};
     }
 
@@ -394,7 +367,7 @@ skipToSentenceStart(const Lines& lines, int line, int col) {
     }
 
     k = std::clamp(k, 0, len - 1);
-    unsigned char c = (unsigned char)lines[l][k];
+    char c = lines[l][k];
 
     if (c == ' ' || c == '\t') {
       if (!stepFwd(lines, l, k)) return {l, k};
@@ -431,10 +404,10 @@ findCurrentSentenceStart(const Lines& lines, int line, int col) {
 
   // If on blank line, we need to find the start of the LAST sentence
   // before the blank line (not the next sentence after).
-  if (isBlankLineStr(lines[line])) {
+  if (isBlankLine(lines[line])) {
     // Move to last non-blank line before this blank run
     int prevLine = line - 1;
-    while (prevLine >= 0 && isBlankLineStr(lines[prevLine])) {
+    while (prevLine >= 0 && isBlankLine(lines[prevLine])) {
       --prevLine;
     }
     if (prevLine < 0) {
@@ -454,8 +427,8 @@ findCurrentSentenceStart(const Lines& lines, int line, int col) {
     // Skip backward past any closers/punctuation at the end of line
     // to get into the content of the last sentence
     while (k > 0) {
-      unsigned char c = getChar(lines, l, k);
-      if (c == '.' || c == '!' || c == '?' || isSentenceCloser(c)) {
+      char c = getChar(lines, l, k);
+      if (CharMask::isSentenceEnd(c) || CharMask::isSentenceCloser(c)) {
         --k;
       } else {
         break;
@@ -471,12 +444,12 @@ findCurrentSentenceStart(const Lines& lines, int line, int col) {
       }
 
       // Check if we hit a blank line
-      if (isBlankLineStr(lines[l])) {
+      if (isBlankLine(lines[l])) {
         // Sentence starts at first non-blank after this blank run
         int nextLine = l + 1;
-        while (nextLine < n && isBlankLineStr(lines[nextLine])) ++nextLine;
+        while (nextLine < n && isBlankLine(lines[nextLine])) ++nextLine;
         if (nextLine >= n) return {n - 1, 0};
-        return {nextLine, firstNonBlankColInLineStr(lines[nextLine])};
+        return {nextLine, firstNonBlankColInLine(lines[nextLine])};
       }
 
       // Step backward
@@ -484,15 +457,15 @@ findCurrentSentenceStart(const Lines& lines, int line, int col) {
       if (!stepBack(lines, pl, pk)) {
         // Reached buffer start - sentence starts at first non-blank
         int i = 0;
-        while (i < n && isBlankLineStr(lines[i])) ++i;
+        while (i < n && isBlankLine(lines[i])) ++i;
         if (i >= n) return {0, 0};
-        return {i, firstNonBlankColInLineStr(lines[i])};
+        return {i, firstNonBlankColInLine(lines[i])};
       }
 
       // Check if stepping back crossed into a blank line
-      if (isBlankLineStr(lines[pl])) {
+      if (isBlankLine(lines[pl])) {
         // Sentence starts at line l
-        return {l, firstNonBlankColInLineStr(lines[l])};
+        return {l, firstNonBlankColInLine(lines[l])};
       }
 
       l = pl;
@@ -506,8 +479,8 @@ findCurrentSentenceStart(const Lines& lines, int line, int col) {
   // If we're ON sentence-ending punctuation or closer, step back first.
   // We want the start of the sentence we're IN, not the next one.
   {
-    unsigned char c = getChar(lines, l, k);
-    while (c == '.' || c == '!' || c == '?' || isSentenceCloser(c)) {
+    char c = getChar(lines, l, k);
+    while (CharMask::isSentenceEnd(c) || CharMask::isSentenceCloser(c)) {
       if (!stepBack(lines, l, k)) break;
       c = getChar(lines, l, k);
     }
@@ -517,14 +490,14 @@ findCurrentSentenceStart(const Lines& lines, int line, int col) {
   // If so, we're "between" sentences and should return the start of
   // the sentence that ENDED (not the next one after the whitespace).
   {
-    unsigned char c = getChar(lines, l, k);
+    char c = getChar(lines, l, k);
     if (c == ' ' || c == '\t') {
       // Search backward through whitespace to find potential sentence end
       int tl = l, tk = k;
       while (tk > 0) {
         --tk;
-        unsigned char tc = getChar(lines, tl, tk);
-        if (tc == '.' || tc == '!' || tc == '?') {
+        char tc = getChar(lines, tl, tk);
+        if (CharMask::isSentenceEnd(tc)) {
           if (isSentenceEndAt(lines, tl, tk)) {
             // We're in whitespace after a sentence end.
             // Find the start of THAT sentence (not the next one).
@@ -540,15 +513,15 @@ findCurrentSentenceStart(const Lines& lines, int line, int col) {
               } else {
                 // Buffer start - sentence starts at first non-blank
                 int i = 0;
-                while (i < n && isBlankLineStr(lines[i])) ++i;
+                while (i < n && isBlankLine(lines[i])) ++i;
                 if (i >= n) return {0, 0};
-                return {i, firstNonBlankColInLineStr(lines[i])};
+                return {i, firstNonBlankColInLine(lines[i])};
               }
             }
             break;
           }
         }
-        if (tc != ' ' && tc != '\t' && !isSentenceCloser(tc)) {
+        if (!CharMask::isWhitespace(tc) && !CharMask::isSentenceCloser(tc)) {
           break;  // Not in whitespace after sentence
         }
       }
@@ -562,12 +535,12 @@ findCurrentSentenceStart(const Lines& lines, int line, int col) {
     }
 
     // Check if we hit a blank line
-    if (isBlankLineStr(lines[l])) {
+    if (isBlankLine(lines[l])) {
       // Sentence starts at first non-blank after this blank run
       int nextLine = l + 1;
-      while (nextLine < n && isBlankLineStr(lines[nextLine])) ++nextLine;
+      while (nextLine < n && isBlankLine(lines[nextLine])) ++nextLine;
       if (nextLine >= n) return {n - 1, 0};
-      return {nextLine, firstNonBlankColInLineStr(lines[nextLine])};
+      return {nextLine, firstNonBlankColInLine(lines[nextLine])};
     }
 
     // Step backward
@@ -575,15 +548,15 @@ findCurrentSentenceStart(const Lines& lines, int line, int col) {
     if (!stepBack(lines, pl, pk)) {
       // Reached buffer start - sentence starts at first non-blank
       int i = 0;
-      while (i < n && isBlankLineStr(lines[i])) ++i;
+      while (i < n && isBlankLine(lines[i])) ++i;
       if (i >= n) return {0, 0};
-      return {i, firstNonBlankColInLineStr(lines[i])};
+      return {i, firstNonBlankColInLine(lines[i])};
     }
 
     // Check if stepping back crossed into a blank line
-    if (isBlankLineStr(lines[pl])) {
+    if (isBlankLine(lines[pl])) {
       // Sentence starts at line l
-      return {l, firstNonBlankColInLineStr(lines[l])};
+      return {l, firstNonBlankColInLine(lines[l])};
     }
 
     l = pl;

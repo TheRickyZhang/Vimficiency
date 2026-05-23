@@ -8,14 +8,14 @@
 enum class CountClass {
   MovementChar,
   MovementWord,
-  MovementWORD,
+  MovementBigWord,
   MovementLine,
   MovementParagraph,
   MovementSentence,
   MovementJump,
   EditChar,
   EditWord,
-  EditWORD,
+  EditBigWord,
   EditLine,
   EditParagraph,
   EditSentence,
@@ -48,7 +48,7 @@ inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MovementChar>{0
 template<>
 inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MovementWord>{1.0, 0.5, 0.1};
 template<>
-inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MovementWORD>{1.0, 0.5, 0.1};
+inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MovementBigWord>{1.0, 0.5, 0.1};
 template<>
 inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::MovementLine>{0.0, 0.5, 0.0};
 template<>
@@ -62,7 +62,7 @@ inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::EditChar>{0.0, 
 template<>
 inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::EditWord>{1.0, 0.5, 0.1};
 template<>
-inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::EditWORD>{1.0, 0.5, 0.1};
+inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::EditBigWord>{1.0, 0.5, 0.1};
 template<>
 inline constexpr CountPenaltyParams CountPenaltySpec<CountClass::EditLine>{0.0, 0.5, 0.0};
 template<>

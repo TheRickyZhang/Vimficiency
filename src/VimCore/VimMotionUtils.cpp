@@ -1,4 +1,5 @@
 #include "VimMotionUtils.h"
+#include "CharMask.h"
 #include "VimCore.h"
 #include "VimEndpointUtils.h"
 #include "Types/EdgeType.h"
@@ -104,7 +105,7 @@ void motionParagraphNext(CursorPos &pos, const Lines &lines) {
 
   // Special case: if at last line and it's not blank, go to last char
   // (This matches vim's behavior at EOF)
-  if (resultLine == n - 1 && !isBlankLineStr(lines[resultLine])) {
+  if (resultLine == n - 1 && !isBlankLine(lines[resultLine])) {
     int lastCol = std::max(0, (int)lines[resultLine].size() - 1);
     pos.setCol(lastCol);
   } else {
@@ -150,8 +151,8 @@ void moveToParagraphStart(CursorPos &pos, const Lines &lines) {
   pos.line = paragraphStartLine(lines, pos.line);
 
   // For non-blank paragraph, go to first non-blank column on that line.
-  if (!isBlankLineStr(lines[pos.line]))
-    pos.setCol(firstNonBlankColInLineStr(lines[pos.line]));
+  if (!isBlankLine(lines[pos.line]))
+    pos.setCol(firstNonBlankColInLine(lines[pos.line]));
   else
     pos.setCol(0);
 }
@@ -235,22 +236,20 @@ int sentenceDecl(const Lines& lines, SentenceScanPos& pos) {
   return sentenceCharAt(lines, pos);
 }
 
-// Thin int-accepting forwarders over the canonical unsigned-char predicates
-// in VimCore (isWhitespace, isSentenceEnd, isSentenceCloser). The sentence
-// scan loop works in `int` (sentenceCharAt returns int with 0 = end-of-line,
-// -1 = invalid), so adapters keep the call sites tidy without redefining the
-// predicates.
+// The sentence scan loop works in `int` (0 = end-of-line, -1 = invalid), so
+// these adapters keep sentinel handling separate from character classification.
 inline bool sentenceIsWhite(int c) {
-  return isWhitespace(static_cast<unsigned char>(c));
+  return c >= 0 && CharMask::isWhitespace(static_cast<char>(c));
 }
 
 inline bool sentenceIsEndPunct(int c) {
-  return isSentenceEnd(static_cast<unsigned char>(c));
+  return c >= 0 && CharMask::isSentenceEnd(static_cast<char>(c));
 }
 
 inline bool sentenceIsPunctOrCloser(int c) {
-  unsigned char ch = static_cast<unsigned char>(c);
-  return isSentenceEnd(ch) || isSentenceCloser(ch);
+  if (c < 0) return false;
+  CharMask cls(static_cast<char>(c));
+  return cls.sentenceEnd() || cls.sentenceCloser();
 }
 
 bool sentenceInMacro(string_view opt, string_view s) {

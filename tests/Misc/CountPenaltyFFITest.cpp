@@ -165,7 +165,7 @@ TEST(CountPenaltyFFITest, FFIOverridesAffectMotionCountedCost) {
   o.has_base = true;
   o.base = 60.0;
   cfg->count_penalty_overrides[toIndex(CountClass::MovementWord)] = o;
-  cfg->count_penalty_overrides[toIndex(CountClass::MovementWORD)] = o;
+  cfg->count_penalty_overrides[toIndex(CountClass::MovementBigWord)] = o;
   applyConfig();
 
   VFByteSlice overriddenSlice = analyze(

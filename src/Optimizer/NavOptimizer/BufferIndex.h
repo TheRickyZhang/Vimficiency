@@ -8,7 +8,7 @@
 #include "Types/LandingType.h"
 
 // One line of context is enough for all current indexed landing classes:
-// paragraph/sentence starts need previous-line state; word/WORD classes are
+// paragraph/sentence starts need previous-line state; word/bigWord classes are
 // line-local. Callers may still use symmetric halos to keep window math simple.
 inline constexpr int BUFFER_INDEX_CONTEXT_LINES = 1;
 

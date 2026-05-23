@@ -2,15 +2,30 @@
 
 ## Overview
 
-The CompositionOptimizer breaks buffer changes into individual edit regions using character-level Myers diff. These diffs are computed against the **original** buffer, but must be applied **sequentially** to intermediate buffer states. This requires adjusting diff positions as earlier diffs shift content.
+The CompositionOptimizer breaks buffer changes into individual planned edit
+regions. The default generator is character-level Myers diff; `TreeDiff` is an
+alternate generator selected with `composition:diffAlgorithm=1`. Both methods
+return `DiffState`s computed against the **original** buffer, but the diffs must
+be applied **sequentially** to intermediate buffer states. This requires
+adjusting diff positions as earlier diffs shift content.
 
-## Myers Diff Output
+## Diff Output Contract
 
-`Myers::calculate(initialLines, goalLines)` returns `vector<DiffState>` where each diff has:
+Diff generators return `vector<DiffState>` where each diff has:
 - `beginPos`, `endPos`: positions in the **original** buffer (half-open `[begin, end)`)
 - `deletedText`, `insertedText`: flattened content with `\n` for newlines
 
-All positions reference the original buffer because Myers compares the two flattened strings directly.
+All positions reference the original buffer so `OriginalDiffMapper` can remap
+each planned edit into the current intermediate buffer.
+
+## Algorithms
+
+- `diffAlgorithm=0`: `Myers::calculate`, the historical character-level
+  shortest-edit script plus local split/merge heuristics.
+- `diffAlgorithm=1`: `TreeDiff::calculate`, currently an experimental
+  fixed-depth tree builder over a lossless text hierarchy: paragraph -> line ->
+  WORD -> word -> char. Until the DP is added, it emits one whole-buffer
+  replacement for changed buffers so the selector remains round-trippable.
 
 ## The Sequential Application Problem
 
@@ -32,7 +47,9 @@ Each diff changes the flat text by `insertedText.size() - deletedText.size()` ch
 2. Add `cumulativeOffset` (sum of all prior deltas)
 3. Convert back to `(line, col)` against the **current intermediate** buffer (`flatToPos`)
 
-This works because Myers diffs are non-overlapping and in document order--a flat character offset exactly captures how much prior diffs shifted subsequent content.
+This works because generated diffs are non-overlapping original-buffer spans; a
+flat character offset exactly captures how much prior diffs shifted subsequent
+content.
 
 **Important:** Adjustment must run for all diffs after the first (`i > 0`), not only when `cumulativeOffset != 0`. A diff like `\n` -> ` ` has offset 0 but changes line structure, so flat-to-position conversion produces different `(line, col)` coordinates in the intermediate buffer. See `dev/history/previous_errors.md` § calculateLinesAfterDiffs for the full bug description.
 
@@ -51,7 +68,7 @@ The adjustment loop is O(num_diffs x num_lines) -- two linear scans per position
 | Operation | Complexity | Relative Cost |
 |-----------|------------|---------------|
 | `calculateTransformResults` (A* per edit) | O(diffs x A* nodes x ops) | ~95% |
-| `Myers::calculate` | O((N+M) x D) | ~3% |
+| diff generation | varies by selected algorithm | ~3% |
 | `computeTextObjectContexts` | O(diffs x line_len^2) | ~1% |
 | **Position adjustment** | **O(diffs x num_lines)** | **<1%** |
 
@@ -66,4 +83,5 @@ After adjustment, `diffStates[i].beginPos`/`endPos` are in intermediate-buffer c
 
 - Adjustment logic: `CompositionSearchContext::calculateLinesAfterDiffs()` in `CompositionSearchContext.cpp`
 - Helpers: `posToFlat()`, `flatToPos()` (file-static in same file)
-- Diff separation heuristics: see `dev/diff-separation-rules.md`
+- Myers diff separation heuristics: see `dev/diff-separation-rules.md`
+- Tree diff planner: `src/Optimizer/CompositionOptimizer/TreeDiff.cpp`

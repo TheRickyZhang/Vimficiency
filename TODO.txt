@@ -15,7 +15,7 @@ Review implementation of BufferIndex in optimizeToRange() (is it exploring corre
 - Really ensure that the suffix cache handling with . is correct AND performant.
 
 - Add different types of tests: expect, property-based, fuzzing
-- Add some more randomized exploration in optimizers so it can explore more branches (probably want a deterministics ration)
+- Add some more randomized exploration in optimizers so it can explore more branches (probably want a deterministics ration). Actually, probably modifying our approach to use Anytime Repairing A* is better - find the best approach we can in a specific time frame, given that a decently admissible heuristic is not possible.
 
 Review Exploration C++ code
 toNavSuggestion - huh wtf are these conversions?
@@ -53,41 +53,27 @@ Verify usage of maxMultipleP
 Improve clarity of handling characterwise vs linewise deletions currently distinguished by exclusive endpoint (line, line.size()) vs (line+1, 0)
 Improve onLinewiseGoal semantics - currently very lengthy
 
+
 == Later:
+Optimize our VimCore word motions to use stored flags to drive decisions, just like in our initial DP diff processing
+
+Write a vim benchmark test as a way to try to measure progress, with parts: direct instruction (go to highlighted, and delete), start/end buffer (change A -> B), general tasks (after reading about an algorithm, modify current impl to be correct, or refactor some code in a specified way).
 Migrate to modules when greater scope
-Always keep hashing in mind
-
-Allow easy transition to runtime configuration with Settings::runtime flag
-
+Always keep hashing for speedup in mind
 
 Can skip F-motions if no endpoints found?
 
-
 constexpr disabling of searched motions in MotionExplorer/EditExplorer
 
-Is it possible to save processing on copying state, then adjusting in optimizer search? (Can save memory with persistent data structures, but that is not the limiting factor)
-
-
-== Things to ask Blake about:
-Naming and organizing things!
-
 == Things missed by optimizer ()
-
-
-
 
 == Misc:
 - Distinguish between USER_EXPLORE_FACTOR and ABSOLUTE_EXPLORE_FACTOR (stop at minimum of the results with these) 
 Insert
 
-
-- Transition tests to RapidCheck (formalize property-based testing + automatic shrinking, see RapidCheckAdoption.md)
-
 Ranked by natural development order and priority. Complexity level (?) in * stars.
-
 - simple symbols: *, #, %                          ***
 - Niche commands: -/+, ~, gu, gU,                  *
-
 - Search, n/N (heuristic best-matching prefix)     ***
 - Separate pattern detection for potential macros? ***
 - Visual Mode                                      ******
@@ -96,7 +82,6 @@ Ranked by natural development order and priority. Complexity level (?) in * star
 - minimal register/macro use detecting repetition  ***
 - Reinforcement learning?                          *****
 
-
 Done:
 - Simulation                                       **
 - Build word indices                               **
@@ -104,5 +89,4 @@ Done:
 - f/t, ;/, motions                                 **
 - <C-d, u, f, b> page motions                      **
 - Real-time, automatic session spawning            *****
-
 

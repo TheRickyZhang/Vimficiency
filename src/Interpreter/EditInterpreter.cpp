@@ -1,4 +1,5 @@
 #include "EditInterpreter.h"
+#include "VimCore/CharMask.h"
 #include "VimCore/VimCore.h"
 #include "VimCore/VimEditUtils.h"
 #include "VimCore/VimEndpointUtils.h"
@@ -551,7 +552,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
         pos.line = min(pos.line, static_cast<int>(lines.size()) - 1);
         if (VimOptions::startOfLine()) {
           // Vim default: go to first non-blank, update targetCol
-          pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+          pos.setCol(VimCore::firstNonBlankColInLine(lines[pos.line]));
         } else {
           // Neovim default: dd resets targetCol to the clamped column
           if (lines[pos.line].empty()) {
@@ -589,7 +590,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
         return;
 
       case hash("I"):
-        pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+        pos.setCol(VimCore::firstNonBlankColInLine(lines[pos.line]));
         mode = Mode::Insert;
         return;
 
@@ -760,7 +761,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           debug("d^: count", count, "ignored (^ motion doesn't use count)");
         }
         {
-          int firstNonBlank = VimCore::firstNonBlankColInLineStr(lines[pos.line]);
+          int firstNonBlank = VimCore::firstNonBlankColInLine(lines[pos.line]);
           if (firstNonBlank >= pos.col) {
             assert(false && "d^ at or before first non-blank has no effect");
           }
@@ -782,18 +783,22 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
             return;
           }
           bool big = (e == "cW");
-          unsigned char c = static_cast<unsigned char>(line[pos.col]);
-          bool onWord = big ? VimCore::isBigWordChar(c) : VimCore::isSmallWordChar(c);
+          char c = line[pos.col];
+          bool onWord = big
+              ? VimCore::CharMask::isBigWord(c)
+              : VimCore::CharMask::isSmallWord(c);
 
           if (onWord) {
             // On a word: find end of CURRENT word (don't use e motion which goes to next word)
             // Stay on same line, find last char of current word type
-            auto isWordChar = [big](unsigned char ch) {
-              return big ? VimCore::isBigWordChar(ch) : VimCore::isSmallWordChar(ch);
+            auto isWordChar = [big](char ch) {
+              return big
+                  ? VimCore::CharMask::isBigWord(ch)
+                  : VimCore::CharMask::isSmallWord(ch);
             };
             int endCol = pos.col;
             int lineLen = static_cast<int>(line.size());
-            while (endCol + 1 < lineLen && isWordChar(static_cast<unsigned char>(line[endCol + 1]))) {
+            while (endCol + 1 < lineLen && isWordChar(line[endCol + 1])) {
               endCol++;
             }
             // Delete from current position to end of current word (inclusive)
@@ -898,7 +903,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           debug("c^: count", count, "ignored (^ motion doesn't use count)");
         }
         {
-          int firstNonBlank = VimCore::firstNonBlankColInLineStr(lines[pos.line]);
+          int firstNonBlank = VimCore::firstNonBlankColInLine(lines[pos.line]);
           if (firstNonBlank >= pos.col) {
             assert(false && "c^ at or before first non-blank has no effect");
           }
@@ -952,7 +957,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           for (int i = 0; i < count; i++) VimCore::motionParagraphNext(goalPos, lines);
           // Paragraph-specific: } at EOF (last non-blank line) is inclusive.
           bool atEof = goalPos.line == lines.lastLine()
-                    && !VimCore::isBlankLineStr(lines[goalPos.line]);
+                    && !VimCore::isBlankLine(lines[goalPos.line]);
           if (goalPos > pos || (atEof && goalPos >= pos)) {
             CharRange range(pos, goalPos);
             if (atEof) {
@@ -1109,7 +1114,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
         return;
 
       case hash("^"):
-        pos.setCol(VimCore::firstNonBlankColInLineStr(line));
+        pos.setCol(VimCore::firstNonBlankColInLine(line));
         return;
 
       case hash("$"):
@@ -1262,14 +1267,24 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           int col = pos.col - 1;
           const string& ln = lines[pos.line];
           // Skip whitespace backwards
-          while (col > 0 && VimCore::isBlank(ln[col])) col--;
+          while (col > 0 &&
+                 VimCore::CharMask::isBlank(ln[col])) {
+            col--;
+          }
           // Delete word chars backwards
-          if (VimCore::isSmallWordChar(ln[col])) {
-            while (col > 0 && VimCore::isSmallWordChar(ln[col - 1])) col--;
-          } else if (!VimCore::isBlank(ln[col])) {
+          VimCore::CharMask curr(ln[col]);
+          if (curr.smallWord()) {
+            while (col > 0 &&
+                   VimCore::CharMask::isSmallWord(ln[col - 1])) {
+              col--;
+            }
+          } else if (!curr.blank()) {
             // Non-word, non-blank: delete punctuation sequence
-            while (col > 0 && !VimCore::isSmallWordChar(ln[col - 1]) &&
-                   !VimCore::isBlank(ln[col - 1])) col--;
+            while (col > 0) {
+              VimCore::CharMask prev(ln[col - 1]);
+              if (prev.smallWord() || prev.blank()) break;
+              col--;
+            }
           }
           CharRange r(CursorPos(pos.line, col), CursorPos(pos.line, pos.col));
           VimCore::deleteRangeAndUpdatePos(lines, r, pos, Mode::Insert);

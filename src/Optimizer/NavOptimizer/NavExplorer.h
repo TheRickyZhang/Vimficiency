@@ -138,7 +138,7 @@ private:
   }
 
   int firstNonBlankCol(int line) const {
-    return VimCore::firstNonBlankColInLineStr(lines_[line]);
+    return VimCore::firstNonBlankColInLine(lines_[line]);
   }
 
   int clampTargetColToLine(int targetCol, int line) const {
@@ -315,7 +315,7 @@ private:
     int endpointCol = 0;
     if constexpr (Forward) {
       int lastLine = maxLineIndex();
-      if (endpointLine == lastLine && !VimCore::isBlankLineStr(lines_[endpointLine])) {
+      if (endpointLine == lastLine && !VimCore::isBlankLine(lines_[endpointLine])) {
         endpointCol = horizontalBoundsForLine(endpointLine).lastCol;
       }
     }
@@ -459,9 +459,9 @@ private:
                        KSId::w, KSId::b>(base, onCounted);
     exploreCountedSpec<Forward, LandingType::WordEnd, CountClass::MovementWord,
                        KSId::e, KSId::ge>(base, onCounted);
-    exploreCountedSpec<Forward, LandingType::WORDBegin, CountClass::MovementWORD,
+    exploreCountedSpec<Forward, LandingType::BigWordBegin, CountClass::MovementBigWord,
                        KSId::W, KSId::B>(base, onCounted);
-    exploreCountedSpec<Forward, LandingType::WORDEnd, CountClass::MovementWORD,
+    exploreCountedSpec<Forward, LandingType::BigWordEnd, CountClass::MovementBigWord,
                        KSId::E, KSId::gE>(base, onCounted);
   }
 

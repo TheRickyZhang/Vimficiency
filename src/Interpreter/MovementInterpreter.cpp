@@ -221,7 +221,7 @@ static void applyParsedMovementWithState(CursorPos& pos, Mode& mode,
     // Special: set line. Counted gg is 1-based and clamps at EOF.
     pos.line = hasCount ? min(count - 1, n - 1) : 0;
     if constexpr (VimOptions::startOfLine()) {
-      pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+      pos.setCol(VimCore::firstNonBlankColInLine(lines[pos.line]));
     } else {
       pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
     }
@@ -229,7 +229,7 @@ static void applyParsedMovementWithState(CursorPos& pos, Mode& mode,
     // Special: set line. Because it's 1 based, subtract 1
     pos.line = hasCount ? min(count-1, n-1) : n-1;
     if constexpr (VimOptions::startOfLine()) {
-      pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+      pos.setCol(VimCore::firstNonBlankColInLine(lines[pos.line]));
     } else {
       pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
     }
@@ -308,7 +308,7 @@ static void applyParsedMovementWithState(CursorPos& pos, Mode& mode,
     int amount = hasCount ? count : navContext.scrollAmount;
     pos.line = min(pos.line + amount, n - 1);
     if constexpr (VimOptions::startOfLine()) {
-      pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+      pos.setCol(VimCore::firstNonBlankColInLine(lines[pos.line]));
     } else {
       pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
     }
@@ -317,7 +317,7 @@ static void applyParsedMovementWithState(CursorPos& pos, Mode& mode,
     int amount = hasCount ? count : navContext.scrollAmount;
     pos.line = max(pos.line - amount, 0);
     if constexpr (VimOptions::startOfLine()) {
-      pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+      pos.setCol(VimCore::firstNonBlankColInLine(lines[pos.line]));
     } else {
       pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
     }
@@ -328,7 +328,7 @@ static void applyParsedMovementWithState(CursorPos& pos, Mode& mode,
       pos.line = min(pos.line + jump, n - 1);
     }
     if constexpr (VimOptions::startOfLine()) {
-      pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+      pos.setCol(VimCore::firstNonBlankColInLine(lines[pos.line]));
     } else {
       pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
     }
@@ -339,7 +339,7 @@ static void applyParsedMovementWithState(CursorPos& pos, Mode& mode,
       pos.line = max(pos.line - jump, 0);
     }
     if constexpr (VimOptions::startOfLine()) {
-      pos.setCol(VimCore::firstNonBlankColInLineStr(lines[pos.line]));
+      pos.setCol(VimCore::firstNonBlankColInLine(lines[pos.line]));
     } else {
       pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
     }

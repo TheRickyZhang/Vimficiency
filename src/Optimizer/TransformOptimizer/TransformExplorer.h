@@ -298,7 +298,7 @@ void TransformExplorer::exploreParagraphEdits(
     if constexpr (Forward) {
       CursorPos end(endpointLine, 0);
       bool endpointIsEof = endpointLine == lastLine
-          && !VimCore::isBlankLineStr(lines[endpointLine]);
+          && !VimCore::isBlankLine(lines[endpointLine]);
       if (endpointIsEof) {
         end.setCol(static_cast<int>(lines[endpointLine].size()));
       }
@@ -476,7 +476,7 @@ void TransformExplorer::exploreCountedWordEdits(
 
   auto countedEffortFor = [&](const Edit::WordEditSpec& spec, int count) {
     return spec.isBig
-        ? TransformExplorerDetail::buildCountedEffort<CountClass::EditWORD>(
+        ? TransformExplorerDetail::buildCountedEffort<CountClass::EditBigWord>(
               config_, count, spec.ksId, count)
         : TransformExplorerDetail::buildCountedEffort<CountClass::EditWord>(
               config_, count, spec.ksId, count);

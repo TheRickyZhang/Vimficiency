@@ -15,7 +15,7 @@ using EditToKeys = CommandToKeys;
 // Categories are named by their "reach" - how far from cursor they affect:
 //   CHAR_*      - affects single character
 //   WORD_*      - affects up to word boundary
-//   BIG_WORD_*  - affects up to WORD boundary (whitespace-delimited)
+//   BIG_WORD_*  - affects up to bigWord boundary (whitespace-delimited)
 //   LINE_*      - affects to line boundary
 //   FULL_LINE   - affects entire line
 //
@@ -135,4 +135,3 @@ extern const EditToKeys SENTENCE;   // d), d(
 extern const EditToKeys JOIN;       // J, gJ
 
 } // namespace Deletion
-

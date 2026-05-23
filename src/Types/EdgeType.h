@@ -3,11 +3,11 @@
 #include <cstdint>
 
 // =============================================================================
-// EdgeType: Where a word/WORD motion stops
+// EdgeType: Where a word/bigWord motion stops
 // =============================================================================
 //
 // Fundamental building block for word motions. Combined with direction and
-// isWORD, this fully specifies a word motion's behavior.
+// big, this fully specifies a word motion's behavior.
 //
 // These edge types are DIRECTION-INDEPENDENT. The physical position depends
 // on the direction of travel, but the concept is the same:

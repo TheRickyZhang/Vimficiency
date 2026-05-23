@@ -1,4 +1,5 @@
 #include "VimEndpointUtils.h"
+#include "CharMask.h"
 #include "VimCore.h"
 #include "VimEditUtils.h"
 #include "VimMotionUtils.h"
@@ -143,13 +144,14 @@ static CharRange computeWhitespaceRun(CursorPos cursor, const Lines& lines) {
   if (line.empty()) return CharRange(cursor, cursor);
 
   CursorPos start = cursor;
-  while (start.col > 0 && isBlank(line[start.col - 1])) {
+  while (start.col > 0 &&
+         CharMask::isBlank(line[start.col - 1])) {
     start.col--;
   }
 
   CursorPos end = cursor;
   while (end.col + 1 < static_cast<int>(line.size()) &&
-         isBlank(line[end.col + 1])) {
+         CharMask::isBlank(line[end.col + 1])) {
     end.col++;
   }
   return CharRange(start, VimCore::onePastOnSameLine(lines, end));
@@ -273,7 +275,7 @@ CharRange wordTextObjectRange(CursorPos cursor,
                               bool isBigWord,
                               WordBoundaryContext boundary) {
   bool isInner = kind == WordTextObjectKind::Inner;
-  bool cursorOnWhitespace = isBlank(lines.get(cursor));
+  bool cursorOnWhitespace = CharMask::isBlank(lines.get(cursor));
   CursorPos start;
   CursorPos end;
 
@@ -301,7 +303,8 @@ CharRange wordTextObjectRange(CursorPos cursor,
     CursorPos wordEnd = wordTextObjectEndpoint(
         cursor, lines, isBigWord, noSkip(kScanNextEnd), boundary);
     end = onePastInclusiveWordEndpoint(wordEnd, lines);
-    if (wordEnd != POSITION_OUTSIDE_BOUNDARY && isBlank(lines.get(wordEnd))) {
+    if (wordEnd != POSITION_OUTSIDE_BOUNDARY &&
+        CharMask::isBlank(lines.get(wordEnd))) {
       end = POSITION_OUTSIDE_BOUNDARY;
     }
     return finalizeWordTextObjectRange(CharRange(start, end), lines, boundary);
@@ -313,7 +316,8 @@ CharRange wordTextObjectRange(CursorPos cursor,
   if (rawWordEnd != POSITION_OUTSIDE_BOUNDARY) {
     int nextCol = rawWordEnd.col + 1;
     if (nextCol < static_cast<int>(lines[rawWordEnd.line].size())) {
-      hasTrailingWhitespace = isWhitespace(lines[rawWordEnd.line][nextCol]);
+      hasTrailingWhitespace =
+          CharMask::isWhitespace(lines[rawWordEnd.line][nextCol]);
     }
   }
 
@@ -336,7 +340,7 @@ CharRange wordTextObjectRange(CursorPos cursor,
           cursor, lines, isBigWord, noSkip(kScanPreviousBegin), boundary);
       if (wordStart != POSITION_OUTSIDE_BOUNDARY &&
           wordStart.line == cursor.line && wordStart.col > 0 &&
-          isBlank(lines[wordStart.line][wordStart.col - 1])) {
+          CharMask::isBlank(lines[wordStart.line][wordStart.col - 1])) {
         start = POSITION_OUTSIDE_BOUNDARY;
       } else {
         start = wordStart;
@@ -529,7 +533,7 @@ static int motionParagraphEndpointCore(int cursorLine, const Lines& lines) {
     return 0;
 
   cursorLine = std::clamp(cursorLine, 0, n - 1);
-  bool cursorOnBlank = isBlankLineStr(lines[cursorLine]);
+  bool cursorOnBlank = isBlankLine(lines[cursorLine]);
 
   int result = cursorLine;
 
@@ -548,7 +552,7 @@ static int motionParagraphEndpointCore(int cursorLine, const Lines& lines) {
       if (cursorOnBlank) {
         // Already on blanks - return end of blank run
         result = blockEnd;
-      } else if (blockEnd + 1 < n && isBlankLineStr(lines[blockEnd + 1])) {
+      } else if (blockEnd + 1 < n && isBlankLine(lines[blockEnd + 1])) {
         // Skip past non-blank paragraph, find end of following blank run
         result = paragraphEndLine(lines, blockEnd + 1);
       } else {
@@ -561,7 +565,7 @@ static int motionParagraphEndpointCore(int cursorLine, const Lines& lines) {
       if (cursorOnBlank) {
         // Already on blanks - return start of blank run
         result = blockStart;
-      } else if (blockStart > 0 && isBlankLineStr(lines[blockStart - 1])) {
+      } else if (blockStart > 0 && isBlankLine(lines[blockStart - 1])) {
         // Skip past non-blank paragraph, find start of preceding blank run
         result = paragraphStartLine(lines, blockStart - 1);
       } else {
@@ -574,7 +578,7 @@ static int motionParagraphEndpointCore(int cursorLine, const Lines& lines) {
     if constexpr (Forward) {
       // Skip current blank lines
       int i = cursorLine;
-      while (i < n && isBlankLineStr(lines[i])) {
+      while (i < n && isBlankLine(lines[i])) {
         i++;
       }
       if (i >= n) {
@@ -583,7 +587,7 @@ static int motionParagraphEndpointCore(int cursorLine, const Lines& lines) {
       } else {
         // Scan forward for next blank line
         i++;
-        while (i < n && !isBlankLineStr(lines[i])) {
+        while (i < n && !isBlankLine(lines[i])) {
           i++;
         }
         // Return blank line, or last line if not found
@@ -592,12 +596,12 @@ static int motionParagraphEndpointCore(int cursorLine, const Lines& lines) {
     } else {
       // Skip current blank lines
       int i = cursorLine;
-      while (i > 0 && isBlankLineStr(lines[i])) {
+      while (i > 0 && isBlankLine(lines[i])) {
         i--;
       }
       // Scan backward for previous blank line
       i--;
-      while (i >= 0 && !isBlankLineStr(lines[i])) {
+      while (i >= 0 && !isBlankLine(lines[i])) {
         i--;
       }
       // Return blank line, or line 0 if not found
@@ -672,7 +676,7 @@ LineRange paragraphTextObjectRange(int cursorLine, const Lines& lines,
     return LINE_RANGE_OUTSIDE_BOUNDARY;
 
   cursorLine = std::clamp(cursorLine, 0, n - 1);
-  bool cursorOnBlank = isBlankLineStr(lines[cursorLine]);
+  bool cursorOnBlank = isBlankLine(lines[cursorLine]);
 
   int startLine;
   int endLine;
@@ -709,7 +713,7 @@ LineRange paragraphTextObjectRange(int cursorLine, const Lines& lines,
 
     // Check for trailing blank lines
     bool hasTrailingBlanks =
-        (blockEnd + 1 < n && isBlankLineStr(lines[blockEnd + 1]));
+        (blockEnd + 1 < n && isBlankLine(lines[blockEnd + 1]));
 
     if (hasTrailingBlanks) {
       // Has trailing blank lines: (Backward, BlockEdge) + (Forward, GapEdge)
@@ -766,11 +770,11 @@ CursorPos onePastSentenceEnd(const Lines& lines, CursorPos endInclusive) {
 
 CursorPos firstSentenceStartAfterBlankRun(const Lines& lines, int line) {
   int n = static_cast<int>(lines.size());
-  while (line < n && isBlankLineStr(lines[line])) {
+  while (line < n && isBlankLine(lines[line])) {
     line++;
   }
   if (line >= n) return CursorPos(n - 1, 0);
-  return CursorPos(line, firstNonBlankColInLineStr(lines[line]));
+  return CursorPos(line, firstNonBlankColInLine(lines[line]));
 }
 
 CursorPos currentSentenceStart(CursorPos cursor, const Lines& lines) {
@@ -792,7 +796,7 @@ CursorPos previousSentenceStart(CursorPos sentenceStart, const Lines& lines) {
 
 std::optional<CursorPos> sentenceGapEndpoint(CursorPos cursor, const Lines& lines) {
   CursorPos clamped = clampSentencePos(cursor, lines);
-  unsigned char c = getChar(lines, clamped.line, clamped.col);
+  char c = getChar(lines, clamped.line, clamped.col);
   if (c != ' ' && c != '\t') return std::nullopt;
 
   int l = clamped.line;
@@ -800,12 +804,12 @@ std::optional<CursorPos> sentenceGapEndpoint(CursorPos cursor, const Lines& line
   if (!stepBack(lines, l, k)) return std::nullopt;
 
   while (true) {
-    unsigned char prev = getChar(lines, l, k);
-    if (prev != ' ' && prev != '\t') break;
+    char prev = getChar(lines, l, k);
+    if (!CharMask::isWhitespace(prev)) break;
     if (!stepBack(lines, l, k)) return std::nullopt;
   }
 
-  while (isSentenceCloser(getChar(lines, l, k))) {
+  while (CharMask::isSentenceCloser(getChar(lines, l, k))) {
     if (!stepBack(lines, l, k)) return std::nullopt;
   }
 
@@ -814,8 +818,8 @@ std::optional<CursorPos> sentenceGapEndpoint(CursorPos cursor, const Lines& line
   l = clamped.line;
   k = clamped.col;
   while (true) {
-    unsigned char gap = getChar(lines, l, k);
-    if (gap != ' ' && gap != '\t') return CursorPos(l, k);
+    char gap = getChar(lines, l, k);
+    if (!CharMask::isWhitespace(gap)) return CursorPos(l, k);
     if (!stepFwd(lines, l, k)) {
       return onePastSentenceEnd(lines, clamped);
     }
@@ -829,7 +833,7 @@ std::optional<SentenceExtent> sentenceExtentAtOrAfter(CursorPos cursor,
   CursorPos scanStart = clampSentencePos(cursor, lines);
   int line = scanStart.line;
   int col = scanStart.col;
-  if (isBlankLineStr(lines[line])) {
+  if (isBlankLine(lines[line])) {
     scanStart = firstSentenceStartAfterBlankRun(lines, line);
     line = scanStart.line;
     col = scanStart.col;
@@ -852,8 +856,8 @@ std::optional<SentenceExtent> sentenceExtentAtOrAfter(CursorPos cursor,
       }
 
       while (true) {
-        unsigned char c = getChar(lines, l, k);
-        if (!isSentenceCloser(c)) break;
+        char c = getChar(lines, l, k);
+        if (!CharMask::isSentenceCloser(c)) break;
         endLine = l;
         endCol = k;
         int tl = l;
@@ -871,7 +875,7 @@ std::optional<SentenceExtent> sentenceExtentAtOrAfter(CursorPos cursor,
 
       while (true) {
         if (l >= static_cast<int>(lines.size())) break;
-        if (isBlankLineStr(lines[l])) {
+        if (isBlankLine(lines[l])) {
           gapEndInclusive = CursorPos(l, 0);
           l++;
           k = 0;
@@ -884,7 +888,7 @@ std::optional<SentenceExtent> sentenceExtentAtOrAfter(CursorPos cursor,
           continue;
         }
         k = std::clamp(k, 0, len - 1);
-        unsigned char c = static_cast<unsigned char>(lines[l][k]);
+        char c = lines[l][k];
         if (c == ' ' || c == '\t') {
           gapEndInclusive = CursorPos(l, k);
           if (!stepFwd(lines, l, k)) {
@@ -966,7 +970,7 @@ static CursorPos sentenceOperatorEndpointCore(CursorPos cursor, const Lines& lin
   CursorPos clamped = clampSentencePos(cursor, lines);
 
   if (forward) {
-    if (isBlankLineStr(lines[clamped.line])) {
+    if (isBlankLine(lines[clamped.line])) {
       return firstSentenceStartAfterBlankRun(lines, clamped.line);
     }
     if (auto gapEndpoint = sentenceGapEndpoint(clamped, lines)) {

@@ -286,7 +286,7 @@ inline void adjustCursorAfterBackwardWordDelete(CharRange range,
   }
   if (lines[pos.line].empty()) return;
 
-  pos.setCol(firstNonBlankColInLineStr(lines[pos.line]));
+  pos.setCol(firstNonBlankColInLine(lines[pos.line]));
 }
 
 // =============================================================================

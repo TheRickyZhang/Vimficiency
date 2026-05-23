@@ -61,7 +61,7 @@ KeyedSequence buildInsertModeTypedSequence(const DiffState& diff,
   Lines insertLines = Lines::unflatten(diff.insertedText);
 
   if (diff.isPureInsertion()) {
-    const int fnb = VimCore::firstNonBlankColInLineStr(lines[line]);
+    const int fnb = VimCore::firstNonBlankColInLine(lines[line]);
     const int lineLen = static_cast<int>(lines[line].size());
     if (col == fnb)
       return buildTypedCommands(
