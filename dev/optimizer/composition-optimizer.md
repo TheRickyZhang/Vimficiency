@@ -11,9 +11,11 @@
   - Don't include boundary at end, cut off exactly since no more content
   - Have exceptions for well-formed short content inside "", (), etc. (To be expanded upon)
 - `composition:diffAlgorithm=1` selects the experimental `TreeDiff` planner
-  instead. It currently builds paragraph, line, WORD, word, and char nodes, then
-  emits one whole-buffer replacement for changed buffers. The planned next step
-  is a forward-only exact DP over those fixed-depth nodes.
+  instead. It builds paragraph, line, BigWord, Word, and Char nodes, then runs a
+  forward DP over those fixed-depth levels. The current prototype optimizes only
+  diff-open count plus inserted text length; deletion and movement complexity
+  are deferred. See `dev/optimizer/diff-generation.md` for the full TreeDiff
+  contract and limitations.
 - Using the selected generator, we track intermediate buffer states, compute
   suffix cost sums, and calculate a transform result for each planned edit
   region.

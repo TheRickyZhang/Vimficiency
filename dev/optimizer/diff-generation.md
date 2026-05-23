@@ -22,10 +22,211 @@ each planned edit into the current intermediate buffer.
 
 - `diffAlgorithm=0`: `Myers::calculate`, the historical character-level
   shortest-edit script plus local split/merge heuristics.
-- `diffAlgorithm=1`: `TreeDiff::calculate`, currently an experimental
-  fixed-depth tree builder over a lossless text hierarchy: paragraph -> line ->
-  WORD -> word -> char. Until the DP is added, it emits one whole-buffer
-  replacement for changed buffers so the selector remains round-trippable.
+- `diffAlgorithm=1`: `TreeDiff::calculate`, an experimental structural
+  planner. It builds a fixed-depth, lossless hierarchy over the flattened text
+  and runs a forward DP to choose flat replacement regions.
+
+## TreeDiff
+
+`TreeDiff` is not generic tree edit distance. Its output is still the same flat
+`vector<DiffState>` contract used by composition. The tree exists to give the
+planner Vim-shaped candidate boundaries:
+
+```
+Root -> Paragraph -> Line -> BigWord -> Word -> Char
+```
+
+The planner's job is to choose ordered, non-overlapping original-buffer spans:
+
+```
+replace initialText[oldBegin:oldEnd]
+with    goalText[newBegin:newEnd]
+```
+
+Those spans are converted to `DiffState` only after planning. `Char` leaves make
+the planner exact: any changed buffer can still be represented at character
+granularity.
+
+### Tree Shape
+
+The tree is built over `Lines::flatten()` and every node stores:
+
+- `text`: a half-open flat text range owned by that node
+- `children`: a half-open index range into the next level
+
+Important construction details:
+
+- `Root` always has one node.
+- Paragraphs are separated by empty or whitespace-only lines.
+- Lines include their terminating newline when one exists.
+- A final newline creates a trailing zero-length line node.
+- An empty buffer has a zero-length paragraph and line node.
+- BigWord/Word nodes exclude newline characters.
+- Leading whitespace attaches to the first word unit on a line.
+- Inter-word whitespace attaches to the previous word unit.
+
+Children are ordered, but a parent can own text outside the text covered by its
+children. The common case is line/paragraph newline text. DP recursion must only
+descend through children when the text outside the children is identical between
+old and new nodes; otherwise the enclosing node must remain a replacement
+candidate.
+
+### Current Cost Model
+
+The prototype intentionally uses only the first two planned cost terms:
+
+```
+cost = diffOpenCost * number_of_diffs
+     + total_inserted_text_length
+```
+
+Current implementation details:
+
+- `diffOpenCost` is `DIFF_COST` in `TreeDiff.cpp` and is currently `8`.
+- Inserted text length is counted in flattened characters.
+- Deleted text length currently costs `0`.
+- Movement between diffs currently costs `0`.
+
+Deleted text length is deliberately not charged yet. It is expected to be
+handled together with movement/edit complexity in the later model, because
+deleting more text is not a typing payload cost in the same way inserted text
+is.
+
+This simplified cost model has visible consequences. For example:
+
+```
+aaa bbb ccc -> xxx bbb yyy
+```
+
+can choose one larger diff:
+
+```
+"aaa bbb ccc" -> "xxx bbb yyy"
+```
+
+because one diff plus retyping the unchanged middle may be cheaper than opening
+two diffs. Once movement/edit complexity is added, distant edits should have a
+reason to split again.
+
+### DP Structure
+
+The DP solves sibling-list ranges recursively. At each level it compares the
+old and new children of a pair of parent ranges.
+
+There are two conceptual states:
+
+- `OUT(i, j)`: not currently building a replacement span
+- `IN(i, j)`: currently building one contiguous replacement span
+
+`i` and `j` are offsets into the old and new sibling lists.
+
+From `OUT`:
+
+- keep identical child text at zero cost
+- recurse into paired child nodes when both the node text differs and the
+  non-child text is unchanged
+- open a diff and enter `IN`
+
+From `IN`:
+
+- consume an old child only: delete text, currently zero cost
+- consume a new child only: insert text, cost is inserted text length
+- close the current diff and return to `OUT`
+
+The current implementation does not use an open-boundary recursive model.
+Recursive child plans are closed before returning to the parent. This keeps the
+prototype simple. If split artifacts across tree boundaries become a real
+problem, a future version may return plan variants for closed/open entry and
+exit states.
+
+### Range Refinement
+
+Tree tokenization can differ across old and new text:
+
+```
+aa aa -> aaaa
+```
+
+At the BigWord level this is:
+
+```
+old: ["aa ", "aa"]
+new: ["aaaa"]
+```
+
+There is no one-to-one child pair. When the DP reconstructs a coarse diff over a
+changed range, it asks the next level whether that whole range can be explained
+more cheaply. In this example the char-level refinement wins:
+
+```
+delete " "
+```
+
+This range refinement is what preserves exactness and allows the tree to guide
+candidate boundaries without forcing coarse replacements whenever tokenization
+changes.
+
+### Current Examples
+
+Observed output from `vimficiency_diff_debug` for `TreeDiff`:
+
+```
+aa aa -> aaaa
+  del " "
+```
+
+```
+hello -> hello world
+  ins " world"
+```
+
+```
+hello world -> hello
+  del " world"
+```
+
+```
+aaa bbb ccc -> xxx bbb yyy
+  "aaa bbb ccc" -> "xxx bbb yyy"
+```
+
+```
+a -> a\n
+  "a" -> "a\n"
+```
+
+The final-newline example is a whole-node replacement because newline text is
+outside word children; recursing into identical child text would otherwise hide
+the newline change.
+
+### Design Intent
+
+The tree is a search scaffold, not the output representation. It should:
+
+- provide Vim-relevant candidate boundaries
+- allow coarse line/paragraph replacement to compete with smaller edits
+- refine to char-level exactness when cheaper
+- avoid arbitrary whole-buffer replacement unless the cost model prefers it
+
+The tree should not become a hard boundary system. Output diffs remain flat text
+regions in original-buffer coordinates.
+
+### Deferred Work
+
+The next modeling step is movement/edit complexity:
+
+```
+cost += movement_between_diff_regions
+cost += deletion/edit complexity for the removed span
+```
+
+Until that exists, large replacements can be preferred more often than a human
+would expect because deleted text and cursor travel are free.
+
+Open-boundary recursive plans are also deferred. They are a principled way to
+let a diff opened in one child continue through adjacent siblings, but they
+expand the state space and may make the tree behave more like a raw interval DP.
+Do not add them until the simpler closed-plan model has been evaluated.
 
 ## The Sequential Application Problem
 

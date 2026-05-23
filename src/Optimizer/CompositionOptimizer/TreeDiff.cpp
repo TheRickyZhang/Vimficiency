@@ -346,9 +346,8 @@ private:
       };
 
       if (i < oldCount) {
-        const int cost = textSize(oldChild(i).text);
-        update(cost + outer(i + 1, j), InnerChoice::DropOldThenStop);
-        update(cost + inner(i + 1, j), InnerChoice::DropOld);
+        update(outer(i + 1, j), InnerChoice::DropOldThenStop);
+        update(inner(i + 1, j), InnerChoice::DropOld);
       }
 
       if (j < newCount) {
@@ -475,7 +474,7 @@ private:
                .children = childRangeForNew(startJ, endJ)});
 
       int coarseCost =
-          DIFF_COST + textSize(span.oldText) + textSize(span.newText);
+          DIFF_COST + textSize(span.newText);
       if (!refined.spans.empty() && refined.cost <= coarseCost) {
         return std::move(refined.spans);
       }
